@@ -12,8 +12,9 @@ import type { MultiGroup } from '../ui/DropdownMulti';
 import Term from '../ui/Term';
 import type { DeskContract, DeskChain } from '../../data/weigherDesk';
 import type { OptionRight } from '../../types/compass';
+import { fmtStrike } from '../../core/format';
 
-export const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
+export { fmtStrike };
 const grouped = (v: number, digits: number) => v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 /** Whole counts with commas. A missing count stays blank — never a zero that was not sent. */
 const fmtCount = (v: number) => (Number.isFinite(v) ? Math.round(v).toLocaleString('en-US') : '—');
@@ -199,9 +200,7 @@ const FullRow = (p: ICellRendererParams<ChainGridRow>) => {
   );
 };
 
-/* memo, deliberately: this is the desk's whale — 301 rows by up to 29
-   columns. It re-renders when its OWN facts change (a chain sweep, a
-   selection, a column pick) and sits out everything else. */
+/* Memo: up to 301 rows × 29 columns, re-rendered only when its own facts change (a chain refresh, a selection, a column pick). */
 /* The door to the watchlist on every strike — a + at the row's end, shown on the row's hover; once watched it
    stays, a check in the where-you-are ink */
 const WatchCell = ({ strike, on, onWatch }: { strike: number; on: boolean; onWatch: (strike: number) => void }) => (
@@ -467,8 +466,7 @@ export const ChainCard = memo(function ChainCard({
           rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: false }}
           suppressCellFocus
           animateRows={false}
-          /* The scrollbar's room is reserved from the first sizing pass, so the
-             flex columns never lay out under it (the last column was clipped) */
+          /* The scrollbar's room is reserved from the first sizing, so flex columns never lay out under it. */
           alwaysShowVerticalScroll
           onFirstDataRendered={() => setReady(true)}
           onBodyScroll={locate}

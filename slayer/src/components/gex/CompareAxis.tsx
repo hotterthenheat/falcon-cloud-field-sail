@@ -1,44 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE TWO BOOKS ON ONE RULER
-  (components/gex/CompareAxis.tsx)
-
-  The second box of Compare (2026-09-08). Two
-  names' hedging cannot share a price axis — $487
-  against $421 says nothing — so they share a
-  RULER: how far each strike is from its own name's
-  spot, in the desk's unit (percent, ATRs or
-  expected-move units). One column of distances
-  down the middle, spot at the centre; the first
-  name's capsules grow LEFT from it, the second's
-  grow RIGHT, each at the height its distance puts
-  it. The Map panel's own grammar — thermal
-  capsules, the figure inside, the walls named as
-  chips, the flip dashed — so nothing has to be
-  learned twice. The drawing itself is CompareRuler
-  (one lane, one greek); this box owns the head,
-  the controls, the reach sums and the fullscreen.
-
-  THE COMPARISON IS SPOKEN, NOT LEFT TO THE EYE
-  (Noah, 2026-09-09): the Reach card sets how far
-  the ruler runs in the day's expected moves, the
-  Greek card what the capsules measure, and under
-  the drawing four rows sum what sits in each band
-  of reach for both names with who is heavier and
-  which way each leans said in the middle.
-
-  FULLSCREEN, AND ALL FIVE (Noah, 2026-09-09:
-  "there should be a full screen option where a
-  user can choose to compare any of the greeks or
-  ALL of the greeks"): the box takes the whole
-  viewport the Map's way, the Greek card gains
-  "All", and All lays the five greeks out side by
-  side as five lanes on the same ruler, sharing one
-  window — a scroll on any moves them all. In
-  fullscreen a click on a capsule opens its NODE
-  CARD (CompareRuler), one across the box.
-==================================================
-*/
+/* Compare's ruler box: two names' hedging cannot share a price axis, so they share distance from each name's own spot
+   (percent, ATRs or expected moves). CompareRuler draws a lane; this box owns the head, controls, reach sums and fullscreen. */
 
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Maximize2, Minimize2 } from 'lucide-react';
@@ -58,9 +19,7 @@ import { AXIS_H, AXIS_HEADS_H, AXIS_READ_H } from './compareSkeletons';
 import { TickFigure } from '../ui/liveRead';
 
 /** The thermal ramp's two voices, for the words that name them */
-/* THE HEAD'S OTHER CARDS (Noah, 2026-09-10: "is 'the two books on one ruler'
-   missing some top buttons … the house color vs thermal color button"): the
-   Map's Expiry card and the calendar's Colours card, the same words. */
+/* The head's other cards: the Map's Expiry card and the calendar's Colours card. */
 const PALETTE_OPTIONS: DropdownOption<'thermal' | 'house'>[] = [
   { value: 'thermal', label: 'Thermal', hint: 'Yellow in the middle, red where hedging amplifies a move, blue where it absorbs one' },
   { value: 'house', label: 'House', hint: 'Gold where hedging amplifies, ice where it absorbs' },
@@ -71,10 +30,7 @@ interface Props {
   unit: DistanceUnit;
   reach: Reach;
   onReach: (r: Reach) => void;
-  /* THE GREEKS ARE A PICK (Noah, 2026-09-10: "the greek should allow the user
-     to choose the amount of greeks they want to compare and not handicap them
-     to 1 or 4"): the lanes drawn, in the book's order — one, some, or all
-     five — and the pick behind the card (exposureView.ts's rules) */
+  /* The lanes drawn, in the book's order (one, some or all five), and the pick behind the card (exposureView.ts rules). */
   greeks: Greek[];
   greekPick: string[];
   onGreekPick: (values: string[]) => void;
@@ -96,11 +52,7 @@ interface Props {
   onFull: (full: boolean) => void;
 }
 
-/** What each name holds on one side of spot within the ruler's reach, and who is
-    heavier there (2026-09-09: the four band rows under the drawing — words first,
-    then bars — read as a second ruler under the first, "is it reading the top
-    big ruler or the bottom one"; the comparison lives in the head now, two
-    facts, and the drawing is taller) */
+/** What each name holds on one side of spot within the ruler's reach, and who is heavier there. */
 interface ReachSide {
   neg: number;
   pos: number;
@@ -129,8 +81,7 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
   /* several lanes side by side, or the one drawing */
   const all = greeks.length > 1;
   /* the sub line's two inks follow the capsules' ramp */
-  /* the two poles AS WORDS read the tokens (2026-09-16): on black they are the ramp's own inks at 0.72
-     (tokens.css says so); on paper the light set cuts them — read off the ramp they were 3.6:1 and 4:1 */
+  /* The two poles as words read the tokens: the ramp's own inks are too faint on paper. */
   const WARM = palette === 'house' ? 'rgb(var(--ember))' : 'rgb(var(--thermal-warm))';
   const COOL = palette === 'house' ? 'rgb(var(--glacier))' : 'rgb(var(--thermal-cool))';
   const greek: Greek = greeks[0] ?? 'gex';
@@ -140,21 +91,15 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
   const lay = useMemo(() => layout(cmp, unit, reach, greek), [cmp, unit, reach, greek]);
   const limit = Math.max(0, lay.maxD - lay.R);
   const scrollable = lay.maxD > lay.R;
-  /* THE WINDOW'S TARGET along the ruler (0 = spot), one for every lane on the box */
+  /* The window's target along the ruler (0 = spot), shared by every lane. */
   const [want, setWant] = useState(0);
   useEffect(() => setWant(0), [cmp.a.ticker, cmp.b.ticker, reach]);
   const target = Math.max(-limit, Math.min(limit, want));
   const view = inView(lay, target);
   const scale = view.scale(greek);
 
-  /* THE NODE CARD (fullscreen): one open across the box, whichever lane it is
-     on; a new pair of names, another greek or leaving fullscreen closes it,
-     and Esc closes it before Esc leaves fullscreen. A CLICK ANYWHERE closes it
-     too (Noah, 2026-09-09: "not exit only when i click the focused node") —
-     the document hears it in the capture phase, before the lane's own click,
-     which then opens the next card if that click landed on another capsule.
-     Clicks inside the drawing are the lane's to judge, so a pull along the
-     ruler keeps the card and the capsule itself can let go. */
+  /* The node card (fullscreen): one open across the box. A click anywhere closes it, heard in the capture phase so a click
+     on another capsule then opens that one; Esc closes it before Esc leaves fullscreen. */
   const [card, setCard] = useState<NodeCard | null>(null);
   useEffect(() => setCard(null), [cmp.a.ticker, cmp.b.ticker, greekKey, full]);
   useEffect(() => {
@@ -176,13 +121,11 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
       document.removeEventListener('click', onClick, true);
     };
   }, [card]);
-  /* All on the page too (Noah, 2026-09-09: "non full screen on the rulers 'all' greek
-     selection should be possible as well… making the rulers smaller") — the lanes
-     picked stand in the single drawing's height; fullscreen gives them the screen */
+  /* Several greeks on the page share the single drawing's height; fullscreen gives them the screen. */
   /* both books are the vendor's, and its per-strike exposure carries no vega — VEX would draw $0 capsules */
   const greekGroups = useMemo(() => [{ title: 'What the capsules measure', options: GREEK_PICK_OPTIONS }], []);
 
-  /* WHAT SITS WITHIN REACH — each greek on the ruler, not the first one speaking for the rest. */
+  /* What sits within reach, for each greek on the ruler. */
   const reachFacts = useMemo(() => {
     return greeks.map(g => {
       const L = g === greek ? lay : layout(cmp, unit, reach, g);
@@ -218,8 +161,7 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
             )}
           </p>
         </div>
-        {/* THREE FACTS, not five (2026-09-29): what the ruler is in, and how many strikes lie beyond it, moved down to the
-            lane heads and the controls line — the head had more chrome than drawing */}
+        {/* Three facts; the ruler's unit and the strikes beyond it live in the lane heads. */}
         <dl className="grid grid-cols-3 gap-x-6">
           <div>
             <dt className="text-t10 text-textMuted">Shown</dt>
@@ -268,8 +210,7 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
               </div>
             </>
           )}
-          {/* ON A PHONE THE FLIPS ARE NAMED HERE (the owner's call, 2026-10-22): a ~140px lane has no room for a "flip 769.50"
-              chip beside its capsules, so the lane keeps only the dashed line and the head says which strike it is */}
+          {/* On a phone the flips are named here: a ~140 px lane has no room for the flip chip. */}
           {(cmp.a.flip != null || cmp.b.flip != null) && (
             <div className="md:hidden col-span-3 mt-2">
               <dt className="text-t10 text-textMuted">Flips · the dashed lines</dt>
@@ -279,9 +220,7 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
             </div>
           )}
         </dl>
-        {/* THE FULLSCREEN DOOR at the head's far right — where the calendar's and
-            the chart's sit (Noah, 2026-09-10: beside the title it "seems like
-            its on the wrong place") */}
+        {/* The fullscreen door at the head's far right, where the calendar's and chart's sit. */}
         <div className="shrink-0 h-6 flex items-center">
           <button
             type="button"
@@ -296,13 +235,12 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
         </div>
       </div>
 
-      {/* THE ONE LINE OF CONTROLS */}
       <div className="px-5 pb-2 flex items-center gap-2 flex-wrap shrink-0" data-axis-controls>
         <ExpiryCard label={cmp.a.ticker} value={expiryA} choices={ladderExpiryOptions(cmp.a.ticker)} onChange={onExpiryA} title={`Which expiries ${cmp.a.ticker} weighs. ${cmp.b.ticker} keeps its own.`} testId="compare-expiry-a" />
         <ExpiryCard label={cmp.b.ticker} value={expiryB} choices={ladderExpiryOptions(cmp.b.ticker)} onChange={onExpiryB} title={`Which expiries ${cmp.b.ticker} weighs. ${cmp.a.ticker} keeps its own.`} testId="compare-expiry-b" />
         <DropdownSelect label="Reach" value={reach} options={REACH_OPTIONS} onChange={onReach} title="How far the ruler runs, in the day's expected moves" testId="reach" />
         <DropdownMulti label="Greek" values={greekPick} groups={greekGroups} onChange={onGreekPick} emptyWord="All" title="One, some, or all four — a lane each, on one ruler" testId="compare-greek" align="start" />
-        {/* no Colours card on paper (2026-10-04): the paper ramps are one journey whatever the palette */}
+        {/* No Colours card on paper: the paper ramps are one journey whatever the palette. */}
         {!paper && <DropdownSelect label="Colours" value={palette} options={PALETTE_OPTIONS} onChange={onPalette} title="What the colours mean" testId="compare-colours" />}
         <span className="ml-auto font-mono text-t9 uppercase tracking-widest text-textMuted whitespace-nowrap" title={unit === '$' ? 'Dollars do not compare across names, so the ruler reads percent here' : undefined} data-axis-ruler-words>
           {rulerWords(lay.U)}
@@ -316,8 +254,7 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
            box does not move when the card flips between one greek and all */
         <div
           className={`min-h-0 px-3 pb-3 grid gap-2 ${full ? 'flex-1' : 'shrink-0'}`}
-          /* lanes no narrower than 200px — in the middle column four came to ~115px each, under the ruler's drawing floor,
-             and every lane stood blank (the Pinpoint sweep, 2026-10-22); they wrap to rows that share the height instead */
+          /* Lanes no narrower than 200 px (under the ruler's drawing floor they drew blank); they wrap to rows instead. */
           style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gridAutoRows: 'minmax(0, 1fr)', height: full ? undefined : AXIS_HEADS_H + AXIS_H + AXIS_READ_H + 12 /* the pb-3 */ }}
           data-axis-all
         >
@@ -329,13 +266,10 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
         </div>
       ) : (
         <>
-          {/* THE LANE HEADS */}
-          {/* THE LANE HEADS — each name at its own end: the name, its spot, what its longest capsule is and what lies
-              beyond the ruler (one line each; the caption that stood between them is gone; the count of strikes too
-              light to draw went with the tick rule, 2026-10-18 — every strike draws) */}
+
+          {/* Each name at its own end: its spot, its longest capsule and what lies beyond the ruler. */}
           <div className="sticky top-0 z-10 bg-panel px-5 flex items-center justify-between gap-4 font-mono text-t10 tnum tabular-nums shrink-0 whitespace-nowrap" style={{ height: AXIS_HEADS_H }} data-axis-heads>
-            {/* SHORT ENOUGH TO READ WHOLE (the second re-audit, 2026-10-22: "longest capsule $702M GEX · …" was cut): the
-                longest capsule as "max", the strikes past the ruler as "+N off" — the full words on the hover */}
+            {/* Short enough to read whole ("max", "+N off"); the full words on hover. */}
             <span className="min-w-0 truncate text-textSecondary" data-axis-head="a" title={`${cmp.a.ticker} at ${cmp.a.spot.toFixed(2)} · its longest capsule is ${fmtDollars(scale.a)} of ${GREEK_LABEL[greek]}${view.off.a > 0 ? ` · ${view.off.a} strikes lie beyond the ruler` : ''}`}>
               <span className="font-bold text-textPrimary">{cmp.a.ticker}</span> · <TickFigure value={cmp.a.spot}>{cmp.a.spot.toFixed(2)}</TickFigure> · <span className="text-textMuted">max {fmtDollars(scale.a)}</span>
               {view.off.a > 0 && <span className="text-textMuted"> · +{view.off.a} off</span>}
@@ -347,12 +281,9 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
           </div>
 
           {/* THE DRAWING — a fixed height on the page, the rest of the screen in fullscreen */}
-          {/* A DARK ISLAND on the dark terminal — the capsules wear the heat ramp, cut for a dark ground (Noah, 2026-09-12:
-              "these ladders need gray or black as the background"). ON PAPER it is part of the page since 2026-09-19: the
-              soft inset grey between two hairlines, and the canvas draws with its paper inks — every capsule edged, which is
-              what the dark ground was doing for the ramp's pale end (CompareRuler.tsx PAPER_INKS) */}
-          {/* full, the island wears the page's own ground with the box around it (Noah, 2026-10-18: "the top is more
-              black") — docked it is the dark island it always was */}
+          {/* A dark island on the dark terminal (the heat ramp is cut for a dark ground); on paper the soft inset grey,
+   and the canvas draws its paper inks with every capsule edged (CompareRuler PAPER_INKS). */}
+          {/* Fullscreen wears the page's own ground; docked it is the dark island. */}
           <div data-theme={paper ? 'light' : 'dark'} className={`${full ? 'bg-canvas flex-1 min-h-0 flex flex-col' : `${paper ? 'bg-inset border-y border-borderSubtle' : 'bg-panel'} shrink-0 rounded-md`}`} data-ruler-island>
             <RulerLane {...laneProps} greek={greek} height={full ? undefined : AXIS_H} />
           </div>

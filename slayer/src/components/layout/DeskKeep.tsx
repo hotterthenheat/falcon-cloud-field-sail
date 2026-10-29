@@ -23,12 +23,8 @@ interface Slot {
   node: ReactNode;
 }
 
-/**
- * The matched page, plus every desk already opened.
- * Hidden desks keep their React state. Their location is frozen so a live
- * URL on another desk cannot retarget their hooks. The shell's own routes
- * stay the source of the match.
- */
+/** The matched page plus every desk already opened. Hidden desks keep their state, their location frozen so another desk's URL
+    cannot retarget their hooks. */
 export default function DeskKeep() {
   const location = useLocation();
   const outlet = useOutlet();

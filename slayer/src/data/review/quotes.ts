@@ -1,7 +1,7 @@
 /* A contract's quote on the backtest tape (Black-Scholes on the synthetic walk), the expiries listed on a day, and
    the greeks from the price. Kept for sessions already in the journal; Backtest is paused. */
 
-import { isTradingDay, isoDate, sessionsBetween } from '../../core/calendar';
+import { isTradingDay, isoDate, sessionAtOrBefore as backToSession, sessionsBetween } from '../../core/calendar';
 import { blackScholesGreeks, blackScholesPrice } from '../../core/greeks';
 import { DAY_MIN, LAST_MIN, baseIvAt, dateOf, dayWords, prevDay, reviewName, spotAt } from './tape';
 
@@ -160,12 +160,6 @@ export interface ListedExpiry {
 /* the funds list a contract every session — and so do the paper account's indexes (SPX, NDX, RUT: data/paper/products.ts),
    which the backtest does not trade */
 const DAILY = new Set(['SPY', 'QQQ', 'IWM', 'SPX', 'NDX', 'RUT']);
-/** Back to a session when the date is a holiday (a Friday off makes it a Thursday expiry) */
-const backToSession = (d: Date): Date => {
-  const out = new Date(d);
-  for (let i = 0; i < 7 && !isTradingDay(out); i++) out.setDate(out.getDate() - 1);
-  return out;
-};
 const listedMemo = new Map<string, ListedExpiry[]>();
 /** The expiries a name listed on a day: the funds' dailies, six weeklies, three monthlies — nearest first */
 export function expiriesAt(ticker: string, iso: string): ListedExpiry[] {

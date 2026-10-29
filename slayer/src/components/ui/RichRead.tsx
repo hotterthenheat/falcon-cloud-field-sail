@@ -1,10 +1,7 @@
 import type { ReactNode } from 'react';
 
-/*
-  RichRead renders a generated sentence with its meaningful tokens lit by the house colour code (information, never
-  decoration): signed % and signed $ take the direction inks; unsigned $, %, counts and tickers are bold facts; the
-  accumulation/support and distribution/supply families take the side inks. Data modules emit plain strings.
-*/
+/* Renders a generated sentence with its meaningful tokens lit by the house colour code: signed % and $ in direction inks,
+   facts bold, the supply/support families in side inks. Data modules emit plain strings. */
 
 // All-caps words that are jargon, not tickers — never emphasized as symbols
 const JARGON = new Set([

@@ -1,18 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE POSITION FORM
-  (components/gex/PositionForm.tsx)
-
-  Add or change one position, in a card that opens
-  from the button that asked for it (Radix Popover,
-  the house PopoverCard). One compact row of
-  labelled fields — strike · call or put · own or
-  sold · contracts · expires · what you paid — the
-  way TradingView's strategy builder writes a leg.
-  Two pills for the two-choice fields, a solid pill
-  to save.
-==================================================
-*/
+/* Add or change one position in a popover from the button that asked (PopoverCard): one row of labelled fields,
+   like TradingView's strategy builder writes a leg. */
 
 import { useState, type ReactNode } from 'react';
 import * as Popover from '@radix-ui/react-popover';
@@ -54,8 +41,7 @@ const Field = ({ label, children, width }: { label: string; children: ReactNode;
 
 const inputCls = 'h-8 px-2 rounded-md border border-borderSubtle bg-panel font-mono text-t12 tnum text-textPrimary outline-none focus:border-silver/60 transition-colors';
 
-/* A pill that IS a side of the market wears it under the pointer — Call green, Put red — the rule every Calls/Puts card
-   follows (DropdownSelect's `tone`; Noah, 2026-09-19). The picked pill stays silver: silver is where you are. */
+/* A pill that is a side of the market wears it on hover (call green, put red); the picked pill stays silver. */
 const PILL_HOVER = { plain: 'hover:text-textPrimary hover:bg-ink/[0.05]', bull: 'hover:text-bull hover:bg-bull/[0.12]', bear: 'hover:text-bear hover:bg-bear/[0.12]' } as const;
 const Pills = <T extends string>({ value, options, onChange, label }: { value: T; options: { value: T; label: string; tone?: 'bull' | 'bear' }[]; onChange: (v: T) => void; label: string }) => (
   <span role="group" aria-label={label} className="inline-flex h-8 rounded-md border border-borderSubtle p-[2px] gap-[2px]">

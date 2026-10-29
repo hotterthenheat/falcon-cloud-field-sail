@@ -1,51 +1,10 @@
-/*
-==================================================
-  SLAYER TERMINAL - WHAT'S BEING BUILT
-  (data/building.ts)
-
-  The fifth page of Pinpoint (2026-09-07). The Map
-  says where the hedging sits. This says which of
-  it arrived TODAY — strike by strike, the hedging
-  added or taken off since the open, so a wall can
-  be seen forming before it is the wall and
-  draining before it breaks.
-
-  THE ARITHMETIC. Every snapshot of the day carries
-  open interest at each strike (calls and puts).
-  The change since the first snapshot, valued at
-  today's per-contract hedging (the chain's own
-  units at the live spot), is the hedging that
-  trading added:
-
-      added(K) = Δcalls(K) · unitCall(K)
-               + Δputs(K)  · unitPut(K)
-
-  in the house sign (negative = call-dominant =
-  dealers absorb, positive = put-dominant = they
-  amplify). What was there at the open is what sits
-  there now minus that. The wall's SIZE change —
-  |now| − |open| — is the read: built or drained.
-  Valuing both ends at today's spot keeps the price
-  move out of it: a wall does not "build" because
-  price walked toward it.
-
-  THE PACE. Today's change over the minutes run
-  gives dollars per minute; the same pace over the
-  minutes left projects each strike to the close,
-  and the walls re-picked on that projected book
-  say where the levels are heading. A straight
-  line, stated as one — not a forecast.
-
-  ON REAL DATA the exchanges publish open interest
-  overnight; the intraday figure is our estimate
-  from the day's trades, and the guide says so.
-==================================================
-*/
+/* Building: the hedging added or taken off at each strike, so a wall shows forming or draining. The vendor's overnight open-interest change
+   is valued at each contract's own gamma (valueOiChange), in the house sign; a wall's |now| − |was| is built or drained. */
 
 import { sessionStarts } from './indicators';
 import { levelRoles, pickLegWalls, type LevelRole } from '../core/walls';
 import { dollarGammaPerContract } from '../core/gammaFlip';
-import { bookToday, isoDate, isTradingDay, nextSession, today as nyTodayDate, MONTHS as MON } from '../core/calendar';
+import { bookToday, isoDate, isTradingDay, nextSession, sessionBefore, today as nyTodayDate, MONTHS as MON } from '../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
 import { recordDay } from './bookWindow';
 import { datesOf, smileOf, yearsTo } from './flipLevel';
@@ -75,13 +34,9 @@ export interface BuildRow {
   /** Contracts */
   dCall: number;
   dPut: number;
-  /** The change as the strike is printed, positive = built: a CALL WALL by its call gamma, a PUT WALL by its put gamma (the
-      leg that makes it — levelsFor legsAt), the supreme and every other strike by |net now| − |net was| (the eighth audit's
-      M2: the 765 call wall "shrank $341M" off its net while 8,499 calls were added to it) */
+  /** The change as the strike is printed, positive = built: a call wall by its call gamma, a put wall by its put gamma, every other strike by |net now| − |net was|. */
   sizeChange: number;
-  /** What `sizeChange` measures — 'both' on a strike that is the call wall AND the put wall (and not the supreme): each
-      role by its own leg, `callSize` and `putSize` (the ninth audit's M3: NVDA 212.50 "shrank $14M" off its net while
-      6,018 calls and 4,549 puts were added) */
+  /** What `sizeChange` measures; 'both' on a strike that is the call wall and the put wall (not the supreme), each role by its own leg. */
   basis: 'calls' | 'puts' | 'net' | 'both';
   /** The call leg's size change |now| − |was| (+ grew) — set when `basis` is 'both' */
   callSize?: number;
@@ -89,8 +44,7 @@ export interface BuildRow {
   putSize?: number;
   /** |now| − |open| on the net, whatever the strike is — the totals' figure */
   netSizeChange: number;
-  /** Net gamma now less what it was, in the RETAIL sign every page prints (calls +, puts −): the one change a strike shows
-      — now − was = change, always (the fourth audit: "783 +$9M · was −$11M" beside a change of "−$2M") */
+  /** Net gamma now less what it was, in the retail sign (calls +, puts −): now − was = change, always. */
   change: number;
   /** The wall's size through the day, sampled, 0..1 of the row's own peak */
   shape: number[];
@@ -177,10 +131,8 @@ export function oiWhen(dates: { from: string; to: string } | null | undefined): 
   /* the latest session that has finished: today's after its close, else the one before the session on record */
   const rec = recordDay();
   const finished = rec.done ? rec.date : lastSessionBefore(rec.date);
-  /* WHEN THE NEXT ONE IS DUE, AND THAT IT IS WATCHED FOR (the seventh audit's retail finding): uwBook asks the vendor
-     every five minutes on a trading day from 07:00 ET while the count is behind, and reads it the moment it lands */
-  /* …SAID FROM WHERE THE CLOCK STANDS (the eleventh audit's m1: "Oct 23's count is late today — the vendor usually has it
-     out before the 9:30 open" at 20:31 Friday — after the close it is not late, it is due before Monday's open) */
+  /* When the next count is due: uwBook asks the vendor every five minutes from 07:00 ET on a trading day while the count is behind. */
+  /* …said from where the clock stands: after the close a count is not late, it is due before the next open. */
   const phase = nySessionPhase();
   const tradingToday = isTradingDay(nyTodayDate());
   const late = tradingToday && phase === 'open' && rec.date === nyIsoDate();
@@ -206,11 +158,7 @@ function nextSessionWord(): string {
 }
 function lastSessionBefore(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
-  for (let back = 1; back < 12; back++) {
-    const p = new Date(y, m - 1, d - back);
-    if (isTradingDay(p)) return isoDate(p);
-  }
-  return iso;
+  return isoDate(sessionBefore(new Date(y, m - 1, d)));
 }
 
 /** The change's time words: the vendor's count names the session it counts (oiWhen) — never "today" or "yesterday" */
@@ -245,19 +193,15 @@ interface Valued {
   dPut: number;
   /** House-signed dollars the change added: calls negative, puts positive */
   call: number;
-  /** The same change valued at the vendor row's own per-contract gamma — on a same-day contract the main figure is
-      valued at a steady gamma instead, and a direction the two disagree on is noise (the tenth audit's M5) */
+  /** The same change valued at the vendor row's own per-contract gamma; on a same-day contract the main figure uses a steady gamma,
+      and a direction the two disagree on is noise. */
   callAlt?: number;
   putAlt?: number;
   put: number;
 }
 
-/**
- * The vendor's open-interest change for the contracts in `chain` (one expiry, a sum of several, or every live one),
- * each contract valued at its OWN gamma: the vendor's per-contract gamma where its contract rows are in, else the
- * chain's own exposure per contract, else Black-Scholes at that contract's vol (or the expiry's at-the-money vol).
- * Expired contracts and dates outside the scope are left out.
- */
+/** The vendor's open-interest change for the contracts in `chain`, each valued at its own gamma: the vendor's per-contract gamma,
+    else the chain's exposure per contract, else Black-Scholes at that contract's (or the expiry's ATM) vol. Expired and out-of-scope dates are left out. */
 export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike: number }[], change: OiChange, from?: string): Map<number, Valued> {
   const out = new Map<number, Valued>();
   const spot = snapshot.spot;
@@ -293,12 +237,8 @@ export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike
     const vendorGamma = call ? n?.callGamma : n?.putGamma;
     const oi = call ? n?.callOI : n?.putOI;
     const gex = call ? n?.callGex : n?.putGex;
-    /* ONE PRICING FOR "NOW" AND THE CHANGE (the sixth audit, 2026-10-23): "now" is the vendor's live-book row — its
-       gamma priced at the row's own price and minute (Thursday's 16:15 after the close) — but the change was valued at
-       option-contracts' per-contract gamma, which the vendor re-prices live before the open, so "was" drifted between
-       loads. The change is valued at the row's own pricing: the row's dollar gamma per contract (its exposure over the
-       open interest it was computed on); a contract with no row exposure is priced by Black-Scholes at the row's price
-       and minute. The vendor's live per-contract gamma is the last resort. */
+    /* One pricing for "now" and the change: the row's own dollar gamma per contract (its exposure over the OI it was computed on);
+       a contract with no row exposure is priced by Black-Scholes at the row's price and minute; the vendor's live per-contract gamma is the last resort. */
     let dg = 0;
     if (oi && oi > 0 && gex) dg = Math.abs(gex) / oi;
     else if (n?.gexPx && n.gexPx > 0) {
@@ -309,12 +249,8 @@ export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike
       const iv = (call ? n?.callIv : n?.putIv) || entry?.termIv?.[r.expiry] || entry?.iv || 0;
       dg = dollarGammaPerContract(spot, r.strike, yearsTo(r.expiry), iv);
     }
-    /* A SAME-DAY CONTRACT IS VALUED AT A STEADY GAMMA (the tenth audit's M5, 2026-10-23: PLTR 200 Today read "shrank
-       $458K · draining · new puts offset it" for +1,513 calls / +919 puts — the in-the-money 200P's row gamma rests on a
-       runaway vol near its bell and jumps between reads, the same instability that hopped the flip). In its last day a
-       contract is valued by Black-Scholes at the row's price and minute, at the vol the smile quotes at its strike (the
-       out-of-the-money side's); the row's own figure is kept beside it (`callAlt`/`putAlt`), and Building prints no
-       direction the two disagree on */
+    /* A same-day contract is valued at a steady gamma (Black-Scholes at the row's price and minute, at the smile's vol for its strike):
+       its row gamma near the bell jumps between reads. The row's figure is kept beside it (`callAlt`/`putAlt`). */
     const px = n?.gexPx && n.gexPx > 0 ? n.gexPx : spot;
     const tLeft = yearsTo(r.expiry, n?.gexAt ?? undefined);
     let dgMain = dg;
@@ -347,20 +283,19 @@ const SHAPE_POINTS = 40;
 
 const fmtContracts = (n: number) => `${n >= 0 ? '+' : '−'}${Math.abs(n).toLocaleString('en-US')}`;
 const signed = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
-/** A strike whose net changed sides, both figures in the RETAIL sign: "flipped from put-heavy to call-heavy (−$147M → +$122M)"
-    — never "shrank $25M", which is the difference of two sizes on opposite sides (the eighth audit) */
+/** A strike whose net changed sides, both figures in the retail sign, never the difference of two sizes on opposite sides. */
 export const switchedWords = (fromRetail: number, toRetail: number): string => {
   const side = (v: number) => (v > 0 ? 'call-heavy' : 'put-heavy');
   const f = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtDollars(Math.abs(v))}`;
   return `flipped from ${side(fromRetail)} to ${side(toRetail)} (${f(fromRetail)} → ${f(toRetail)})`;
 };
-/** A wall's size change in words — "grew $171M" / "shrank $171M" — never a sign beside a signed net (the seventh audit) */
+/** A wall's size change in words ("grew $171M" / "shrank $171M"), never a sign beside a signed net. */
 export const sizeWords = (v: number): string => (Math.abs(v) < 0.5 ? 'held its size' : `${v > 0 ? 'grew' : 'shrank'} ${fmtDollars(Math.abs(v))}`);
 /** A strike that is both walls, each role by its own leg: "calls grew $12M · puts grew $9M" */
 export const bothWords = (r: Pick<BuildRow, 'callSize' | 'putSize'>): string =>
   [r.callSize != null ? `calls ${sizeWords(r.callSize)}` : null, r.putSize != null ? `puts ${sizeWords(r.putSize)}` : null].filter(Boolean).join(' · ');
 
-/* NO BEHAVIOUR WORDS ON A $0 STRIKE (the ninth audit's m4: "$0 · put-heavy · dealers push moves along here") */
+/* No behaviour words on a $0 strike. */
 export const sideWords = (v: number) => (Math.abs(v) < 0.5 ? 'no gamma here' : v < 0 ? 'call-heavy, so dealers push back on moves here' : 'put-heavy, so dealers push moves along here');
 /** The lean alone, for a compact cell: "call-heavy" · "put-heavy" · "no gamma" */
 export const leanWord = (v: number) => (Math.abs(v) < 0.5 ? 'no gamma' : v < 0 ? 'call-heavy' : 'put-heavy');
@@ -390,20 +325,15 @@ export function buildBuilding(
   const chain = (snapshot.liveBook && snapshot.uwChains?.[profile.expiry]?.length ? snapshot.uwChains[profile.expiry] : snapshot.chain) ?? snapshot.chain;
   const valued = oiChange && oiChange.rows.length ? valueOiChange(snapshot, chain, oiChange) : null;
   const real = !!valued;
-  /* NEVER THE VOLUME WALK ON A LIVE BOOK (the fourth audit's retail blocker: "Drained last session −$156.0B", "770 · was
-     −$8.0B"): before the vendor's overnight count lands, the stand-in walked the WHOLE book's traded volume onto its open
-     interest and valued it at the levels' own expiry's per-contract gamma — every expiry's volume at one date's units.
-     On the live book the overnight count is the only measure; until it is in, nothing is counted, and the page says so */
+  /* Never the volume walk on a live book: the overnight count is the only measure, and until it is in nothing is counted. */
   /* …and on a full book, until every in-scope date the count touches has its contract rows (each contract is valued at
      its own vendor gamma — before they land it is priced off the model, and the figures moved by a few million as they
      did) */
   const entry = snapshot.liveBook ? peekEntry(snapshot.ticker) : undefined;
   const scopeDates = snapshot.liveBook ? datesOf(snapshot, chain as MarketSnapshot['chain']) : null;
   const floor = isoDate(bookToday());
-  /* ON WHAT IS ACTUALLY IN, NOT ON THE KIND OF BOOK (the seventh audit's M3, 2026-10-23: the Agenda's Building head
-     read +$138M / −$584M at 15.9s and +$141M / −$549M at 16.5s — the gate only held on a book marked full). Every live
-     date in scope that the count touches must have its chain and its contract rows read; a Board-only name reads the
-     contracts of the dates its flip re-prices with their own vols (uwBook ownIvDates), and is held to those. */
+  /* Gated on what is actually in: every live in-scope date the count touches must have its chain and contract rows read
+     (a Board-only name: the dates its flip re-prices with their own vols, uwBook ownIvDates). */
   const by = snapshot.uwByDate ?? {};
   const liveDates = Object.keys(by).filter(d => d >= floor && by[d]?.length).sort();
   const own = ownIvDates(by, liveDates, liveDates[0]);
@@ -413,9 +343,7 @@ export function buildBuilding(
     real &&
     !!entry &&
     [...touched].some(d => (by[d]?.length ? !entry.factsDates?.has(d) && (entry.wantFull || own.has(d)) : listed.has(d) && scopeDates !== 'ALL'));
-  /* NO WHOLE-BOOK STAND-IN (the fifth audit, 2026-10-23: TSLA 420 read "+$25M" — final +$3M — and 400 "+$73.8M", the
-     All figure, under "Today · Oct 23" while its chain loaded): until the scope's own chain is in, and its levels are
-     final, nothing is printed but "…" */
+  /* No whole-book stand-in: until the scope's own chain is in and its levels are final, only "…". */
   const scopeMissing = !!snapshot.liveBook && !snapshot.uwChains?.[profile.expiry]?.length;
   const levelsPending = !!snapshot.liveBook && profile.levels.complete === false;
   const loading = !!snapshot.liveBook && (!real || factsMissing || scopeMissing || levelsPending);
@@ -469,12 +397,9 @@ export function buildBuilding(
     const nowC = nowNode?.callGex ?? 0;
     const nowP = nowNode?.putGex ?? 0;
     legsAt.set(K, { nowC, nowP, openC: nowC - callAddedSigned, openP: nowP - putAddedSigned });
-    /* THE LEG THAT MAKES THE LEVEL (the eighth audit's M2): a call wall is the most call gamma, so it grew when its call
-       gamma grew; a put wall by its puts; the supreme (the most net) and every other strike by the net */
+    /* The leg that makes the level: a call wall by its call gamma, a put wall by its puts, the supreme and every other strike by the net. */
     const kRoles = levelRoles(K, levels);
-    /* …AND A STRIKE THAT IS BOTH WALLS BY EACH LEG (the ninth audit's M3: NVDA 212.50, the call wall and the put wall, read
-       "draining · shrank $14M" off its net while both legs grew) — the call wall's role by its calls, the put wall's by its
-       puts, both said; only the supreme is read by the net */
+    /* …and a strike that is both walls by each leg; only the supreme is read by the net. */
     const isCall = kRoles.includes('call wall');
     const isPut = kRoles.includes('put wall');
     const basis: BuildRow['basis'] = kRoles.includes('supreme') ? 'net' : isCall && isPut ? 'both' : isCall ? 'calls' : isPut ? 'puts' : 'net';
@@ -510,14 +435,9 @@ export function buildBuilding(
       }
     }
 
-    /* MOVED IS MEASURED AGAINST THE STRIKE ITSELF (the second re-audit, 2026-10-22: "0 of 41 moved", every row steady,
-       under "built overnight +$146M" — the bar was 5% of the book's biggest wall, which on SPY no single strike's change
-       reached). A strike moved when its size changed by a tenth of what it holds (open or now, the larger), and by more
-       than rounding: half a percent of the biggest wall in the window. */
+    /* A strike moved when its size changed by a tenth of what it holds (open or now, the larger) and by more than half a percent of the window's biggest wall. */
     const own = Math.max(Math.abs(legNow), Math.abs(legOpen));
-    /* A DIRECTION ONLY WHERE THE TWO VALUATIONS AGREE (the tenth audit's M5): the same change valued at the vendor rows'
-       own per-contract gamma — when that reads the other way (grew against shrank), the change is within the noise of the
-       per-contract gamma and the strike reads steady */
+    /* A direction only where both valuations agree; otherwise the change is inside per-contract gamma noise and the strike reads steady. */
     let alt = sizeChange;
     if (real && oc && (oc.callAlt != null || oc.putAlt != null)) {
       const cA = oc.callAlt ?? oc.call;
@@ -535,16 +455,14 @@ export function buildBuilding(
     const byClose = real ? 0 : (sizeChange / elapsedMin) * minutesLeft;
 
     const role: BuildRole = K === levels.callWall ? 'call wall' : K === levels.putWall ? 'put wall' : K === levels.supreme ? 'supreme' : null;
-    /* the supreme that is also a wall keeps its net, and says each wall's leg beside it (the ninth audit's M3) */
+    /* The supreme that is also a wall keeps its net and states each wall's leg beside it. */
     const wallLegs = basis === 'both' || (basis === 'net' && (isCall || isPut));
     rows.push({ strike: K, role, roles: kRoles, pin: !!s.pin, now, open, callAdded, putAdded, dCall, dPut, sizeChange, basis, ...(wallLegs ? { callSize: isCall ? callSize : undefined, putSize: isPut ? putSize : undefined } : {}), netSizeChange, change: shownGamma(now) - shownGamma(open), shape, when, verdict, byClose, words: '' });
     maxAbs = Math.max(maxAbs, Math.abs(now));
     maxChange = Math.max(maxChange, Math.abs(callAdded), Math.abs(putAdded));
   }
 
-  /* THE WORDS, once the scale is known — the verdict first, then the change,
-     then what stands there (Noah, 2026-09-13: "easily understandable…
-     word wise as well"); the strike itself is printed by the surface */
+  /* The words, once the scale is known: the verdict, the change, then what stands there. */
   const whenWords = (w: BuildRow['when']) => (w === 'early' ? 'mostly early in the day' : w === 'middle' ? 'mostly through the middle of the day' : w === 'late' ? 'mostly late in the day' : '');
   const oiDates = real && oiChange?.lastDate && oiChange.currDate ? { from: oiChange.lastDate, to: oiChange.currDate } : null;
   const when = changeWhen({ overnight: real, inSession: clock.inSession, oiDates });
@@ -552,8 +470,7 @@ export function buildBuilding(
   /* "before Oct 21's trading" — the state the count starts from */
   const before = real ? `before ${oiWhen(oiDates).trade ?? 'the overnight count'}` : 'at the open';
   for (const r of rows) {
-    /* NET GAMMA IN THE RETAIL SIGN, as every other page prints it (the retail test: "now $245M, put-heavy" here against
-       −$245M elsewhere) */
+    /* Net gamma in the retail sign, as every other page prints it. */
     const stand = `now ${retail(r.now)}, ${sideWords(r.now)}`;
     if (!hasOi) {
       /* nothing provisional while loading — not even the strike's "now", which may still be the whole book's */
@@ -561,15 +478,9 @@ export function buildBuilding(
       continue;
     }
     const dominant = Math.abs(r.callAdded) >= Math.abs(r.putAdded) ? 'calls' : 'puts';
-    /* ONE SIGN FOR "THE CHANGE" (the fifth audit, 2026-10-23: 769 read "draining · net +$175M overnight" with CHANGE
-       +$175M, while the head said "Shrank most 769 · −$175M" and the Map "−$175M taken off"): the change a strike shows
-       is its wall's SIZE change, |now| − |was| — + grew, − shrank — the figure the CHANGE column, the head's grew/shrank
-       most, the Agenda and the Map's report all print */
-    /* THE CHANGE IN WORDS, NO SIGN TO MISREAD (the seventh audit's retail finding: "769 … −$595M net gamma · was −$766M
-       … −$171M … DRAINING" — the net ROSE by $171M and the change read −$171M): the wall grew or shrank by so much.
-       Building and draining are the wall's SIZE, never the contract counts — so where contracts were added and the wall
-       still shrank, the words say why: calls and puts hedge in opposite directions, and the side that leans against the
-       wall shrinks it */
+    /* One sign for "the change": a strike's change is its wall's size change, |now| − |was| (+ grew, − shrank), the figure every page prints. */
+    /* The change in words: building and draining are the wall's size, never contract counts; where contracts were added and the wall
+       still shrank, the words say the side leaning against it shrank it. */
     const callHeavy = r.now < 0 || (r.now === 0 && r.open < 0);
     const against = callHeavy ? { word: 'puts', n: r.dPut } : { word: 'calls', n: r.dCall };
     const why =
@@ -622,7 +533,7 @@ export function buildBuilding(
   const fastestDown = byUp[byUp.length - 1] && byUp[byUp.length - 1].sizeChange < 0 ? byUp[byUp.length - 1] : null;
   const spotAfter = rows.findIndex(r => r.strike < spot);
 
-  /* WHERE THE WALLS ARE HEADING — the levels re-picked on the open's book and on the projected one */
+  /* Where the walls are heading: the levels re-picked on the open's book and on the projected one. */
   type Pt = { strike: number; v: number; c: number; p: number };
   const legOf = (r: BuildRow) => legsAt.get(r.strike) ?? { openC: 0, openP: 0, nowC: 0, nowP: 0 };
   const openPts: Pt[] = rows.map(r => ({ strike: r.strike, v: r.open, c: legOf(r).openC, p: legOf(r).openP }));
@@ -680,8 +591,7 @@ export function buildBuilding(
   const supOpen = supremeOf(openPts);
   const supNow = supremeOf(nowPts);
   const supClose = supremeOf(closePts);
-  /* THE ONE FLIP (data/flipLevel.ts) — the book's zero crossing, re-priced at each price. No past book is on the feed to
-     re-price, so the flip is today's alone */
+  /* The one flip (data/flipLevel.ts); no past book is on the feed to re-price, so the flip is today's alone. */
   const flipNow = levels.flipFound === false ? null : levels.flip;
   const flipOpen = flipNow;
   const flipClose = flipNow;
@@ -699,8 +609,7 @@ export function buildBuilding(
   else {
     const parts: string[] = [];
     if (real) {
-      /* THE OVERNIGHT COUNT, SAID AS ONE (the Pinpoint audit, 2026-10-22: "new hedging today" over a change that was set
-         overnight from yesterday's trading) */
+      /* The overnight count, said as one (it was set overnight from yesterday's trading). */
       if (fastestUp) parts.push(`${fmtStrike(fastestUp.strike)} grew most: its wall ${sizeWords(fastestUp.sizeChange)} ${day}${fastestUp.role ? `, and it is the ${fastestUp.role}` : ''}.`);
       if (fastestDown) parts.push(`${fmtStrike(fastestDown.strike)} shrank most: its wall ${sizeWords(fastestDown.sizeChange)}${fastestDown.role ? `, the ${fastestDown.role}` : ''}.`);
       if (!parts.length) parts.push(`Nothing was built or drained ${day}.`);

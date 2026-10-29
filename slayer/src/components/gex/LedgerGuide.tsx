@@ -1,18 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW TO READ THE CALENDAR
-  (components/gex/LedgerGuide.tsx)
-
-  The card behind the Exposure Ledger's "How to
-  read" door (Noah, 2026-09-06: "i love this, keep
-  it in the design pattern style. i think the
-  heatmap needs one as well"). Two figures drawn
-  in the ledger's own hand — capsules in a grid,
-  strikes down, expiry dates across, the supreme
-  starred — and today's calendar read in plain
-  words from the live numbers.
-==================================================
-*/
+/* The card behind the Exposure Ledger's "How to read": two figures in the ledger's own hand (capsules in a grid,
+   strikes down, dates across, the supreme starred) and today's calendar in plain words. */
 
 import { shownGamma, shownGreek } from './retailSign';
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
@@ -26,7 +13,7 @@ import { fmtStrike } from '../../core/format';
 const INK = 'rgb(var(--text-primary))';
 const INK_2 = 'rgb(var(--text-secondary))';
 const INK_3 = 'rgb(var(--text-muted))';
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const SUPREME = 'rgb(var(--supreme))';
 const PUT_WALL = 'rgb(var(--bear))';
 const CALL_WALL = 'rgb(var(--bull))';
@@ -34,11 +21,7 @@ const GRID = 'rgb(var(--ink) / 0.07)'; /* the ink token: on paper the white hair
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = '"Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
-/* THE DRAWINGS IN THE PALETTE ON THE SCREEN (the paying-user audit's H3, 2026-10-13): the figures were painted in the
-   thermal ramp's blue and red while the calendar beside them wore the house's ember and glacier — the picture that
-   teaches the colours taught the wrong ones. A cell is a signed figure in $M now, painted by the calendar's own
-   ramp (the side that pushes a move along is the positive one, the house's sign), its figure printed the calendar's
-   way. */
+/* The drawings use the palette on the screen: a cell is a signed $M figure in the calendar's own ramp (house sign), printed its way. */
 const Paint = createContext<{ mode?: HeatMode; paper: boolean }>({ paper: false });
 const FIG_MAX = 256;
 
@@ -56,13 +39,10 @@ const Cell = ({ x, y, w, v, ring }: { x: number; y: number; w: number; v: number
   );
 };
 
-/* THE DRAWINGS AT THEIR OWN SIZE (the re-audit's M1, 2026-10-13): drawn 368 wide and stretched to the card, their
-   8–9.5px type never reached the page's 11px floor and the dates in them were a September that never moved. They are
-   400 wide now, 11px throughout, dated from today, and a phone scrolls them sideways rather than shrinking them. */
+/* Drawings at their own size: 400 wide, 11 px type, dated from today; a phone scrolls them sideways. */
 const FIG_W = 400;
 
-/** A drawing's box: the card's own ground, scrolling sideways where the card is narrower than the drawing — and SAYING SO
-    at the edge (ui/scrollMore.ts; 2026-10-14: on a phone the drawing simply stopped mid-word) */
+/** A drawing's box: the card's ground, scrolling sideways where narrower than the drawing, and saying so at the edge (ui/scrollMore.ts). */
 const FigureBox = ({ children }: { children: ReactNode }) => {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => (ref.current ? attachScrollMore(ref.current) : undefined), []);

@@ -1,35 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - WHERE THE WALLS ARE HEADING
-  (components/gex/WallHeading.tsx)
-
-  Box 2 of the Building page. First cut was a table
-  (level · at the open · now · by the close · words)
-  — Noah, 2026-09-07: "i dont like how the bottom
-  card looks at all… its generic". Now it is a
-  DRAWING on the strike axis, ONE ROW PER LEVEL:
-
-    ── the row's track, spot dotted through every
-       row so the four levels read against price
-    ○  where it stood at the open (hollow)
-    ●  where it is now (filled, the row's ink)
-    ◌  where today's pace puts it by the close
-       (dashed ring, an arrow at the end when it
-       moves)
-    ◍  the strike growing fastest on that side,
-       tied to the wall by a hairline — the wall
-       a day early
-
-  A row per level is what keeps it readable: the
-  four levels sit within a few strikes of each
-  other near spot, and one shared lane stacked
-  their labels on top of one another (measured on
-  the first cut). The axis spans only the ground
-  the levels actually cover. One fixed read line
-  above the drawing speaks for the level under the
-  pointer.
-==================================================
-*/
+/* Where the walls are heading: a drawing on the strike axis, one row per level (shared lanes stacked their labels),
+   spot dotted through: ○ the open, ● now, ◌ where today's pace puts it by the close, ◍ the fastest-growing strike on that side. */
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import GuideFocus, { GuideDoor } from '../ui/GuideFocus';
@@ -40,13 +10,8 @@ import { HEADING_AXIS_H, HEADING_M, HEADING_ORDER, HEADING_ROW_H, HEADING_TOP, H
 import { fmtStrike, type AheadClock } from '../../data/ahead';
 import { oiWhen, type Building, type WallHeading as Level } from '../../data/building';
 
-/* THE FIGURE ON PAPER (the light sweep, 2026-09-19 — Noah: "the arrows and paths arent visible here to well"). It already
-   sat on the page's ground, but it was DRAWN for black: the travel and the tie at a third of the ink's voice (a bright
-   ink on black carries at 30%; a deep ink on white does not), the grid in white (no grid on paper at all), and the
-   "hollow" marks filled with a typed near-black — on paper the dashed ring and the diamond were solid black blobs.
-   Two sets: DARK_K is every value the figure always had, to the digit (a light-theme change never moves the dark
-   theme); PAPER_K is the same drawing at full voice — whole inks, a heavier line, a larger arrowhead, the hollows filled
-   with the panel, a grid of the page's ink. */
+/* Two ink sets: DARK_K as always drawn; PAPER_K at full voice for white (whole inks, heavier line, larger arrowhead,
+   hollows filled with the panel, a grid in the page's ink). */
 const DARK_K = { hole: '#0a0a0a', openFill: 'none', grid: '#ffffff', colA: 0.045, rowA: 0.055, tick: '#7c8290', key: '#8a909c', note: '#7d7d7d', tie: 0.3, travel: 0.35, go: 0.75, lineW: 1.25, open: 0.65, ring: 0.8, chal: 0.75, label: 0.7, closeLabel: 0.85, arrow: 0.8, arrowSize: 5 };
 const PAPER_K = { hole: 'rgb(var(--panel))', openFill: 'rgb(var(--panel))', grid: 'rgb(var(--ink))', colA: 0.09, rowA: 0.1, tick: 'rgb(var(--text-secondary))', key: 'rgb(var(--text-secondary))', note: 'rgb(var(--text-muted))', tie: 0.75, travel: 0.85, go: 1, lineW: 1.75, open: 1, ring: 1, chal: 1, label: 1, closeLabel: 1, arrow: 1, arrowSize: 5.5 };
 const useFigureInks = () => (useResolvedTheme() === 'light' ? PAPER_K : DARK_K);
@@ -93,13 +58,11 @@ interface Props {
   data: Building;
   clock: AheadClock;
   scope?: ReactNode;
-  /** On a desk tile the tile head names the box — only the door stays (2026-09-08) */
+  /** On a desk tile the tile head names the box; only the door stays. */
   headless?: boolean;
-  /** Fill the box: the rows spread to the height on hand instead of the drawing's
-      fixed aspect (Noah, 2026-09-08: the tile "does not take up the full sizing
-      of the box"). The labels keep their size; only the lanes open up. */
+  /** Fill the box: the lanes spread to the height on hand; the labels keep their size. */
   fill?: boolean;
-  /** ON A PULSE TILE (2026-09-30, the desk rebuilt): the drawing and one read at its foot — no door, no head */
+  /** On a Pulse tile: the drawing and one read at its foot, no door or head. */
   bare?: boolean;
 }
 
@@ -166,7 +129,7 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
 
   return (
     <section className={`relative flex flex-col min-w-0 ${fill ? 'h-full' : ''}`} data-heading-band>
-      {/* Its own door (Noah, 2026-09-08): the drawing is explained here, on the box it explains */}
+      {/* Its own door: the drawing is explained on the box it explains. */}
       <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read where the walls are heading" testId="heading-guide" viewport>
         <HeadingGuide data={data} clock={clock} />
       </GuideFocus>
@@ -193,7 +156,7 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
       </div>
       )}
 
-      {/* THE READ LINE — one fixed line for the level under the pointer; on a tile it is the foot */}
+      {/* The read line for the level under the pointer; on a tile it is the foot. */}
       <div className={bare ? 'order-last shrink-0 px-3 py-2 border-t border-ink/[0.06] font-mono text-t11 leading-snug select-none min-h-[34px] flex items-center gap-2' : 'mx-5 px-3 py-2 border-y border-borderSubtle/60 font-mono text-t11 leading-snug select-none min-h-[34px] flex items-center gap-2'} data-heading-read>
         {read ? (
           <>
@@ -289,8 +252,7 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
                     )}
                     {/* at the open — hollow */}
                     {l.open != null && moved && <circle cx={x(l.open)} cy={y} r={3} fill={K.openFill} stroke={ink} strokeOpacity={K.open} strokeWidth={K.lineW === 1.25 ? 1.25 : 1.5} data-mark="open" />}
-                    {/* …its strike, unless the level is heading back to where it opened: the ring's own label stands there, and the
-                        two were printed one over the other ("480" on "480", seen 2026-09-19) */}
+                    {/* …its strike, unless the level heads back to where it opened, where the ring's own label already stands. */}
                     {l.open != null && moved && !(moves && l.close === l.open) && (
                       <text x={x(l.open)} y={y - 9} textAnchor="middle" fontSize={8.5} fill={ink} fillOpacity={K.label} fontFamily={MONO}>
                         {fmtStrike(l.open)}

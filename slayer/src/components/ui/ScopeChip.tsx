@@ -1,9 +1,5 @@
-/*
-  The chip that says which name a surface reads. Following the frame: "follows SPY" with a silver link, and a pick
-  moves the frame. Its own name: the mark, the name and optionally the quote, with a broken link that rejoins the
-  frame; a pick stays local. Surfaces with no link model (Terrain panes, board cells) show the own-name chip without
-  the link. Both states share the DropdownSelect trigger's bordered look, 24px tall.
-*/
+/* Which name a surface reads: following the frame ("follows SPY", a pick moves the frame) or its own name (a pick stays local,
+   a broken link rejoins). Surfaces without a link model show the own-name chip alone. */
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';

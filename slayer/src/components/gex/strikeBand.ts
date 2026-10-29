@@ -1,22 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - LAYING OUT A STRIKE BAND
-  (components/gex/strikeBand.ts)
-
-  The geometry behind a diverging histogram whose
-  X AXIS IS THE STRIKE, not the clock — the shape the
-  reference uses for exposure by strike, and the one
-  shape that cannot be a pane inside the price chart,
-  because every pane there shares the time axis.
-
-  Pulled out of the component and proved separately
-  for the usual reason: arithmetic that only ever runs
-  inside a render is arithmetic nobody can test, and
-  the failures it produces (a bar off the top, a bar
-  that vanishes, labels stacked on each other) look
-  like styling bugs right up until they are not.
-==================================================
-*/
+/* Geometry for a diverging histogram whose x axis is the strike (no lightweight-charts pane can carry that), kept pure so it can be proved. */
 
 /** One bar, already in SVG user units with y measured DOWN from the top. */
 interface BandBar {
@@ -30,41 +12,12 @@ interface BandBar {
   positive: boolean;
 }
 
-/*
-  A REAL VALUE IS NEVER DRAWN AS NOTHING.
-
-  Away from the money most strikes carry a fraction of a percent of the
-  heaviest one, and scaled honestly they round to less than a pixel. Drawing
-  them at zero height makes the band assert the book is EMPTY there, which is a
-  different and stronger claim than "there is very little here". One pixel is
-  the smallest mark that distinguishes the two.
-
-  It applies only to values that are actually non-zero. A true zero draws
-  nothing, because nothing is what it means.
-*/
+/* A real value is never drawn as nothing: non-zero values get at least 1 px; a true zero draws nothing. */
 const MIN_INK = 1;
 
-/**
- * Place one bar per row across `width`, diverging from a zero rule at mid
- * height.
- *
- * `maxAbs` is the surface's scale rather than this window's max, so two bands
- * drawn from the same book stay comparable. A non-positive or non-finite scale
- * lays every bar out flat instead of dividing by it.
- */
-/*
-  GENERIC OVER THE ROW, not over `{ strike }` alone.
-
-  It took `readonly { strike: number }[]` and handed the accessor the same
-  narrowed type, so every caller whose rows carry a value had to cast inside
-  its own accessor — `r => (r as { v: number }).v`. A cast in the one place
-  that is supposed to READ the row is a cast that can be wrong silently, and
-  the band would then lay out zeros without complaining.
-
-  `T extends { strike: number }` keeps the constraint this function actually
-  relies on (it reads `strike` and nothing else) while letting the accessor
-  see the row it was given. Every existing call infers T and is unchanged.
-*/
+/** One bar per row across `width`, diverging from a zero rule at mid height. `maxAbs` is the surface's scale, so two bands
+    from one book compare; a non-positive or non-finite scale lays bars flat. */
+/* Generic over the row so the accessor sees the caller's row type without a cast; only `strike` is read here. */
 export function layoutBand<T extends { strike: number }>(
   rows: readonly T[],
   valueOf: (row: T, index: number) => number,
@@ -105,12 +58,7 @@ export function layoutBand<T extends { strike: number }>(
   });
 }
 
-/**
- * How many rows to skip between printed x-axis labels.
- *
- * Returns a stride, not a list, so the caller keeps ownership of what a label
- * says. `minPx` is the narrowest gap two labels may sit at before they touch.
- */
+/** How many rows to skip between printed x labels; `minPx` is the narrowest gap before labels touch. */
 export function labelStride(count: number, width: number, minPx: number): number {
   if (count <= 0 || !(width > 0) || !(minPx > 0)) return 1;
   const perLabel = width / count;
@@ -118,17 +66,8 @@ export function labelStride(count: number, width: number, minPx: number): number
   return Math.max(1, Math.ceil(minPx / perLabel));
 }
 
-/**
- * Where spot falls along the band, in the same user units as the bars.
- *
- * `spotAfterIndex` is the profile's own answer — the row index AFTER which the
- * marker belongs, and -0.5 when spot sits above every row. The rule lands on
- * the boundary BETWEEN two slots rather than on a bar's centre, because spot is
- * a price between strikes, not a strike.
- *
- * Returns null when the band has no rows to place it against; the caller draws
- * no rule rather than one at the left edge.
- */
+/** Where spot falls along the band: on the boundary between slots (spot is a price between strikes).
+    `spotAfterIndex` is the profile's row index after which spot sits (−0.5 above every row); null with no rows. */
 export function spotX(spotAfterIndex: number, count: number, width: number): number | null {
   if (count <= 0 || !(width > 0)) return null;
   if (!Number.isFinite(spotAfterIndex)) return null;
@@ -139,41 +78,15 @@ export function spotX(spotAfterIndex: number, count: number, width: number): num
   return x;
 }
 
-/**
- * The gap that leaves each bar `barFraction` of its slot.
- *
- * A FIXED gap is the wrong unit for a band that has to work at 300px and at
- * 1600px. Two pixels of air between 21 bars is generous at phone width and
- * invisible at desk width — measured at 1600px the band fused into one
- * continuous red-then-green block, which is exactly the failure the capsule
- * heatmap was built to fix: without air, a row of bars is a band the eye has to
- * find seams in before it can count columns.
- *
- * Proportional keeps the same PICTURE at every width. The floor of one pixel is
- * for the degenerate end: a band narrower than its strike count still has to
- * draw something.
- */
+/** The gap that leaves each bar `barFraction` of its slot: proportional, so the band keeps its air at any width; at least 1 px. */
 export function barGap(width: number, count: number, barFraction = 0.6): number {
   if (count <= 0 || !(width > 0)) return 1;
   const f = Number.isFinite(barFraction) ? Math.min(1, Math.max(0.05, barFraction)) : 0.6;
   return Math.max(1, (width / count) * (1 - f));
 }
 
-/**
- * Turn the profile's DESCENDING spot index into the ascending band's.
- *
- * `ExposureProfileData.spotAfterIndex` is an index into strikes sorted HIGH to
- * low — the row after which the spot marker belongs — and -0.5 means spot sits
- * above every strike in the window. The band draws strikes LOW to high, so the
- * index has to be mirrored, and mirroring an "after this row" index is not the
- * same as mirroring the row: the boundary between rows k and k+1 descending is
- * the boundary between n-2-k and n-1-k ascending.
- *
- * Off by one here does not throw and does not look wrong at a glance. It puts
- * the spot rule one strike away from where the market is, on a panel a reader
- * uses to decide which strike matters — which is the most expensive kind of
- * quiet bug this file could ship.
- */
+/** The profile's descending spot index mirrored into the ascending band: the boundary between rows k and k+1 descending
+    is between n−2−k and n−1−k ascending. Off by one here silently moves the spot rule a strike. */
 export function ascendingSpotIndex(spotAfterIndex: number, count: number): number {
   return count - 2 - spotAfterIndex;
 }

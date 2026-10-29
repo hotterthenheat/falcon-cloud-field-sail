@@ -1,17 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE COMPASS'S SKELETON
-  (pages/compassSkeleton.tsx)
-
-  The board standing in as itself (the walk,
-  2026-09-11): the shell head as static chrome,
-  then the box — the head with its facts, the four
-  cards, the sentence, the cards window — beside
-  the rail of heaviest contracts (a head, the
-  sticky column heads, rows of 62). Imports
-  nothing heavy.
-==================================================
-*/
+/* The Compass board's skeleton in its own shape (head, the box with its facts and cards, the rail of heaviest contracts); imports nothing heavy. */
 
 import { Compass as CompassIcon } from 'lucide-react';
 import { Block, ChartGround, Facts, Line, SubLine, TitleRow, Trigger } from '../components/ui/skeletonKit';
@@ -32,7 +19,7 @@ export const CompassHeadSkeleton = () => (
   </header>
 );
 
-/** Under the shell: the board for /compass, the Tracker's page for /compass/tracker (2026-09-13), a setup's page for /compass/<id> */
+/** Under the shell: the board for /compass, the Tracker or Blotter page, or a setup's page for /compass/<id>. */
 export const CompassRouteSkeleton = ({ pathname }: { pathname: string }) =>
   /^\/compass\/(tracker|blotter)/.test(pathname) ? (
     <PageSkeleton />
@@ -57,7 +44,7 @@ const CompassPageSkeleton = () => (
               <TitleRow title={74} chip={false} />
               <SubLine w={480} />
             </div>
-            {/* Found · Active · Proving · Fading · Top pick · Found at — measured 2026-09-11 */}
+            {/* Found · Active · Proving · Fading · Top pick · Found at, at measured widths. */}
             <Facts widths={[30, 30, 36, 31, 119, 52]} />
           </div>
           <div className="px-5 pb-2 flex items-center gap-2 flex-wrap">
@@ -69,7 +56,7 @@ const CompassPageSkeleton = () => (
           <div className="px-5 pb-3 h-[32px] flex items-center">
             <Line w="72%" h={11} />
           </div>
-          {/* The box grows with the cards (a typical sweep finds a dozen or so) */}
+          {/* The box grows with the cards (a typical scan finds a dozen or so). */}
           <div className="border-t border-borderSubtle px-5 pt-4 pb-5">
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
               {Array.from({ length: 12 }, (_, i) => (
@@ -133,10 +120,7 @@ const CompassPageSkeleton = () => (
   </>
 );
 
-/** A setup's page standing in (the name's history still walking in): the
-    head box (the logo, the contract, its state, the facts), the chart beside
-    the trade card (7/5), the contracts around it as a grid. Measured
-    2026-09-11: 77 · 649 · 257. */
+/** A setup's page standing in: the head box, the chart beside the trade card (7/5), the contracts as a grid. */
 const CampaignSkeleton = () => (
   <div className="flex flex-col gap-4" aria-hidden aria-busy="true" aria-label="Loading" data-skeleton="campaign">
     <div className="border border-borderSubtle rounded-md bg-panel h-[77px] px-5 flex items-center gap-6">
@@ -153,8 +137,8 @@ const CampaignSkeleton = () => (
           <SubLine w={420} />
         </div>
       </div>
-      {/* Premium · Confidence · The case · Targets · Breaks at · Liquidity — measured 2026-09-11 */}
-      {/* five facts since 2026-09-19: Confidence and The case were one figure said twice, and are one fact now (the meter and its word, measured 108) */}
+      {/* Premium · Confidence · Targets · Breaks at · Liquidity, at measured widths. */}
+
       <Facts widths={[41, 108, 118, 86, 123]} />
     </div>
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch h-[649px]">

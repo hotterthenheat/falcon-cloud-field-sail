@@ -1,23 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - CONTRACT PREMIUM PANE
-  The desk chart's CONTRACT lens — and it IS the
-  house chart now (Noah, 2026-08-25: "why is the
-  premium chart not the same lightweight chart?"):
-  the same lightweight-charts engine, the same
-  candle theme, the same fonts and crosshair, real
-  candles on the reader's chosen interval.
-
-  THE CANDLES ARE DERIVED, HONESTLY. The sim keeps
-  no per-bar tape for a contract, but premium is
-  MONOTONIC in spot (up for calls, down for puts),
-  so pricing the contract at a bar's own O, H, L
-  and C gives the bar's true premium extremes —
-  max/min of the four IS the high/low, whichever
-  right. Nothing is invented beyond what the
-  estimator already says.
-==================================================
-*/
+/* The desk chart's contract lens, on lightweight-charts like the house chart. Premium is monotonic in spot (up for calls,
+   down for puts), so pricing the contract at a bar's O, H, L and C gives that bar's true premium high and low. */
 
 import { useEffect, useRef } from 'react';
 import {
@@ -179,8 +161,7 @@ interface ContractPremiumPaneProps {
       campaign passes the SETUP's own iv so the tape and its level lines
       speak one model (the one-generator rule, applied to a chart). */
   iv?: number;
-  /** Labeled rules pinned to premiums — TPs, the stop, the reference
-      (Noah, 2026-08-29: "with tps, stops being labeled on the chart"). */
+  /** Labelled rules pinned to premiums: targets, the stop, the reference. */
   levels?: PremiumLevel[];
   /** Modeled futures drawn past the last bar. */
   projections?: PremiumProjection[];
@@ -196,31 +177,17 @@ interface ContractPremiumPaneProps {
   nodes?: PremiumNode[];
   /** CSS px of chrome covering the top of the pane. The bead column starts under it. */
   beadInset?: number;
-  /**
-   * The tape to reprice. The setup page passes the simulator's bars — the same
-   * price the premium on the card was minted from. Omitted, the pane uses the
-   * live book (the Weigher). A book at a different price floors a cheap strike
-   * and the chart becomes a flat line that disagrees with the card.
-   */
+  /** The tape to reprice: the setup page passes the bars its card's premium came from; omitted, the live book (the Weigher).
+      A book at another price floors a cheap strike to a flat line. */
   bars?: Candle[] | null;
   /** Line the last bar up with this spot before pricing, so the right edge is the printed premium. */
   spot?: number;
-  /**
-   * Premiums the scale must include while it is following the tape — the entry,
-   * the targets, the floor. Without them a target above the last session docks
-   * as a tick and the line the reader asked for never appears.
-   */
+  /** Premiums the scale must include while following the tape (entry, targets, floor), or a target above the session docks as a tick. */
   framePrices?: number[];
-  /** THE WHEEL BELONGS TO THE PAGE over a docked pane (the Weigher's desk scrolls — StrikeChart's `pageScroll`, the same
-      trade): the chart neither zooms nor pans on it. Off in fullscreen, where the wheel is the chart's again. (Noah,
-      2026-10-07: "when i click within the live chart and scroll my scroller it decides to move me down on the literal
-      website and change how the live chart looks" — the premium pane zoomed while the page scrolled under it.) */
+  /** The wheel belongs to the page over a docked pane (as StrikeChart's `pageScroll`): no zoom or pan; off in fullscreen. */
   pageScroll?: boolean;
-  /**
-   * This tape is one contract, not a book you tour. The time window stops at the
-   * first and last bar, the price window stays on the entry, the stop and the
-   * targets, and the axis says the day with the clock.
-   */
+  /** One contract, not a book to tour: the time window stops at the first and last bar, the price window holds the entry,
+      stop and targets, and the axis shows the day with the clock. */
   bound?: boolean;
   /** The bar under the crosshair, or the last bar when the pointer leaves. The line above the tape. */
   onBar?: (bar: { open: number; high: number; low: number; close: number } | null) => void;
@@ -228,11 +195,8 @@ interface ContractPremiumPaneProps {
   stockPane?: boolean;
   /** Stock prices that are modeled scenarios, drawn only on the stock pane. */
   scenarios?: { price: number; title: string }[];
-  /**
-   * The contract's own prints, already priced. When this is passed — including
-   * null while the tape is still loading — the stock path is not repriced into
-   * a premium. Null keeps the last draw. An empty list clears it.
-   */
+  /** The contract's own prints, already priced. When passed (null while loading) the stock path is not repriced;
+      null keeps the last draw, an empty list clears it. */
   traded?: { time: number; open: number; high: number; low: number; close: number }[] | null;
   /** The rows are already this timeframe. Folding them again pulls a daily bar onto the wrong day. */
   tradedAsIs?: boolean;
@@ -278,11 +242,8 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
   const linesRef = useRef<IPriceLine[]>([]);
   const marksRef = useRef<SetupMarksPrimitive | null>(null);
   const nodesRef = useRef<PremiumNodesPrimitive | null>(null);
-  /* Undocked levels COUNT in the autoscale range (read by the provider
-     below): a rule the caller chose to show on-plot must land on the plot,
-     not in the margin band where the floating strip lives — a TP just above
-     the candle range was rendering its label under the chrome. The caller's
-     docking contract still caps how far a wild TP can stretch the scale. */
+  /* Undocked levels count in the autoscale range so an on-plot rule lands on the plot, not under the chrome;
+     the caller's docking still caps how far a wild target stretches the scale. */
   const levelPricesRef = useRef<number[]>([]);
   const projSeriesRef = useRef<Map<string, ISeriesApi<'Line'>>>(new Map());
   const projRangeRef = useRef('');
@@ -390,11 +351,8 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
       }, 1);
       stockSeriesRef.current = stock;
     }
-    /* The frame belongs to the reader after they actually move it. Freezing on
-       pointerdown — before the axis drag starts — made the price scale ignore
-       the cursor. A wheel, or a drag that changes the time window, ends the
-       follow. Dragging the price scale turns autoscale off itself; the tick
-       must not turn it back on. Reset is the way home. */
+    /* The frame is the reader's once they actually move it (a wheel, or a drag that changes the time window); freezing on pointerdown
+       broke the price-scale drag. Reset is the way home. */
     const releaseFollow = () => {
       followRef.current = false;
       chart.priceScale('right').applyOptions({ autoScale: false });
@@ -705,13 +663,8 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
       );
   }, [JSON.stringify(scenarios)]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* The projections — their own thin line series, allowed to run past NOW.
-     Series are KEYED AND REUSED: the tape advances every second and each new
-     bar shifts every projected timestamp, so this effect runs per tick —
-     setData on a held series is a repaint, remove-and-recreate is churn.
-     The visible range is pinned only when the projection SHAPE changes
-     (mount, retirement, a leg vanishing); repinning per tick would stomp a
-     reader's own panning the moment they touched the chart. */
+  /* Projections: their own line series, allowed past now, keyed and reused (setData each tick is a repaint, recreate is churn).
+     The range is re-pinned only when the projection shape changes, so per-tick updates never stomp the reader's panning. */
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
@@ -752,9 +705,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
     }
   }, [projections]);
 
-  /* The greeted view, restorable (Noah, 2026-08-30): autoscale back on and
-     the same opening window the load applies — projections widen it exactly
-     as they do on first paint. */
+  /* The opening view, restorable: autoscale on and the load's window, widened by projections as on first paint. */
   const resetView = () => {
     const chart = chartRef.current;
     if (!chart) return;

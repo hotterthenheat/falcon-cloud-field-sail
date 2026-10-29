@@ -11,11 +11,8 @@ interface HoverReadoutProps {
 const GAP = 14;
 const EDGE = 8;
 
-/**
- * The floating hover read-out card. Pointer events pass through; portalled to <body> (inside transformed containers
- * `fixed` would anchor to the container). It measures itself to clamp to the viewport, flips to the pointer's other
- * side when out of room, and keeps a max-width so its shape is stable.
- */
+/** The floating hover card: pointer-transparent, portalled to <body> (a transformed ancestor would anchor `fixed`),
+    clamped to the viewport and flipped when out of room. */
 const HoverReadout = ({ x, y, children }: HoverReadoutProps) => {
   const ref = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 240, h: 130 });

@@ -1,8 +1,5 @@
-/*
-  One choice from a short list as a dropdown card: a small labelled trigger printing the choice, and a card listing
-  every choice with a check on the current one and, where it helps, a line on what it means. Radix DropdownMenu
-  supplies keyboard, focus, dismissal, typeahead and placement.
-*/
+/* One choice from a short list: a labelled trigger and a card with a check on the current choice and optional hints.
+   Radix DropdownMenu supplies keyboard, focus, dismissal, typeahead and placement. */
 
 import { Fragment, type CSSProperties } from 'react';
 import { FLAT_DOOR, FLAT_OPEN } from './flatDoor';

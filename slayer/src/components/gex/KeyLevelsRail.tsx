@@ -1,18 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - KEY LEVELS RAIL
-  (components/gex/KeyLevelsRail.tsx)
-
-  The compact structural table: level, distance,
-  parked pressure. It grew into a distance-scaled
-  ladder for a day (2026-08-26) and came straight
-  back (Noah: "revert the levels to look how they
-  prev did since they are apart of the strike
-  pressure ladder") — as a VIEW of the pressure
-  ladder the geometry is already on the other tab,
-  so the summary's job is to be a summary.
-==================================================
-*/
+/* The compact structural table: level, distance, parked pressure. A view of the pressure ladder, so it stays a summary. */
 
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import Term from '../ui/Term';
@@ -48,7 +34,7 @@ const KIND_BAR: Record<KeyLevelKind, string> = {
   spot: 'bg-textPrimary/60',
 };
 
-/** Each structural level explains itself on hover (the Term sweep, 2026-08-19) */
+/** Each structural level explains itself on hover. */
 const KIND_TERM: Partial<Record<KeyLevelKind, TermKey>> = {
   'call-wall': 'Call wall',
   'put-wall': 'Put wall',

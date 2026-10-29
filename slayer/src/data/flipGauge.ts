@@ -4,40 +4,8 @@ import { recordDay, sessionBook } from './bookWindow';
 import type { Candle, MarketSnapshot } from '../types/market';
 import { nyIsoDate, nyMinutes } from '../core/nyTime';
 
-/*
-==================================================
-  SLAYER TERMINAL - FLIP PROXIMITY (data/flipGauge.ts)
-
-  The most-consulted number on a dealer desk, as a
-  header strip rather than a chart read — P-4.
-==================================================
-
-  WHAT IT ANSWERS. Which side of the gamma flip the market is on, how far the
-  flip is, and how many times it has been crossed today. Every Pinpoint desk
-  already draws the flip; none of them ANSWER it — the reader takes it off a
-  chart, every time, on the page whose whole subject is dealer positioning.
-
-  THE REGIME FOLLOWS THE HOUSE'S OWN SIGN CONVENTION, read from where spot
-  sits against the flip, not from the aggregate sign. exposure.ts states the
-  spatial fact this encodes: "Above the flip dealers dampen the tape; below it
-  they chase it." Above = call-dominant side = dealers LONG gamma = moves
-  absorbed. Below = put-dominant side = dealers SHORT gamma = moves amplified.
-  The aggregate (netGex > 0) answers a different question — which side
-  OUTWEIGHS — and the two disagree precisely when spot is near the flip, which
-  is when this strip matters most.
-
-  CROSSINGS ARE COUNTED AGAINST EACH BAR'S OWN FLIP, not today's flip laid
-  over the whole session. The flip MIGRATES — that is the entire premise of
-  the Vanna & Charm page — so "crossed 2× today" has to mean price crossed
-  the line as it stood at the time, or a morning flip five points away turns
-  into crossings that never happened.
-
-  NO FLIP IS A REAL STATE, carried as null and rendered as such. A one-sided
-  book has no crossing; a gauge that silently substituted spot would read as
-  "the flip is exactly at the market", which is the opposite claim. The rule
-  itself is core/walls.ts's `pickFlip` — the ONE copy, which this file is the
-  fifth reader of and the reason it stopped being written inline.
-*/
+/* Which side of the flip the market is on, how far, and how often it was crossed today, as a header strip.
+   The rule is core/walls.ts pickFlip; no flip is a real state (null), never spot. */
 
 export type GammaRegime = 'SHORT' | 'LONG';
 
@@ -63,9 +31,7 @@ interface FlipGauge {
    once; ten minutes is the floor where a zero starts meaning something. */
 const GAUGE_MIN_BARS = 10;
 
-/* TEN MINUTES, NOT TEN BARS (the eighth audit's m1: the Board's names read 5-minute bars, so ten bars was 10:20 and every
-   name but the active one showed a bare "—" for the first fifty minutes). The floor is ten minutes of the session,
-   whatever the bars' width. */
+/* Ten minutes of the session, not ten bars (a 5-minute name would wait fifty minutes). */
 const coveredMinutes = (bars: readonly Candle[]): number => {
   if (!bars.length) return 0;
   const step = bars.length >= 2 ? Math.max(60, bars[1].time - bars[0].time) : 60;
@@ -73,17 +39,10 @@ const coveredMinutes = (bars: readonly Candle[]): number => {
 };
 const tooEarly = (bars: readonly Candle[]): boolean => coveredMinutes(bars) < GAUGE_MIN_BARS;
 
-/**
- * TIMES PRICE CROSSED THE FLIP — ONE DEFINITION FOR THE BOARD AND THE MAP (the ninth audit's M2, 2026-10-23: the Board
- * counted the flip's TESTS — bars whose range reached it — on 5-minute bars, NVDA 10× against 26 changes of side on the
- * one-minute bars). A crossing is a one-minute close on the other side of the flip from the last close that was not on
- * it: closes changing side. A close exactly on the flip changes nothing. The Map's report counts tests (bars that reached
- * it) beside this; the word is "crossed N×" wherever this count is printed.
- */
+/** Times price crossed the flip, one definition for the Board and the Map: a one-minute close on the other side from the last close
+    not on it. A close exactly on the flip changes nothing. The Map's report counts tests beside this. */
 export function flipCrossings(bars: readonly Candle[], flip: number): number {
-  /* COUNTED AT THE PRINTED FLIP (the tenth audit's m1: TSLA's flip 372.0716 printed 372.07 — a recount at 372.07 read 22×,
-     the page 24×, closes of exactly 372.07 falling on either side): the level is the cent the pages print, and a close
-     on it changes no side */
+  /* Counted at the printed flip (to the cent), so a recount matches the page. */
   const level = Math.round(flip * 100) / 100;
   let side = 0;
   let n = 0;
@@ -98,10 +57,7 @@ export function flipCrossings(bars: readonly Candle[], flip: number): number {
 
 export function buildFlipGauge(snapshot: MarketSnapshot): FlipGauge {
   const { ticker, spot, chain } = snapshot;
-  /* THE ONE FLIP (data/flipLevel.ts): where the book's net gamma, re-priced at that price, crosses zero — off the
-     snapshot's own levels chain. THE REGIME IS THE SIGN OF NET GAMMA AT SPOT, never the side of the flip: on a book
-     whose net is long gamma "price below the flip" said "amplifying" beside a green net (the retail test, 2026-10-22:
-     MSFT "amplifying moves" next to "Net GEX +$140.4M"). */
+  /* The one flip (data/flipLevel.ts) off the snapshot's levels chain; the regime is the sign of net gamma at spot, never the side of the flip. */
   const read = levelFlip(snapshot, chain);
   const flip = read.flip;
   const base: FlipGauge = {
@@ -114,20 +70,13 @@ export function buildFlipGauge(snapshot: MarketSnapshot): FlipGauge {
     bars: 0,
   };
 
-  /* CROSSED TODAY IS THE MAP'S COUNT: the same flip, the same cash-session bars and the same test rule the Map's level
-     report reads (data/levelRecord.ts levelTicks) — the per-bar flips off the volume-walked history counted something
-     else (TSLA 1× on the Board against 11 on the Map) */
+  /* Crossed today is the Map's count: the same flip, cash-session bars and test rule (levelRecord levelTicks). */
   const candles = sessionBars(ticker) ?? [];
   if (flip === null || tooEarly(candles)) return { ...base, bars: candles.length };
   return { ...base, crossings: flipCrossings(candles, flip), bars: candles.length };
 }
 
-/**
- * "FLIP CROSSED TODAY" IS TODAY'S SESSION AGAINST TODAY'S FLIP (the second re-audit, 2026-10-22): after the close the
- * levels move on to the next session's contracts, and counting Thursday's prices against Friday's flip is a count of
- * nothing. The flip here is the one of the book the session ran on (data/bookWindow.ts sessionBook); null with `why`
- * when that book is no longer available.
- */
+/** Today's session against the flip of the book it ran on (bookWindow sessionBook); null with `why` when that book is gone. */
 interface SessionCrossings {
   crossings: number | null;
   flip: number | null;
@@ -139,19 +88,14 @@ interface SessionCrossings {
   early?: boolean;
 }
 
-/* A FINISHED SESSION'S COUNT IS FROZEN (the third audit, 2026-10-23: QQQ's "Flip crossed today" read 13× and then 9×
-   after the bell — the morning book's flip was re-priced at each after-hours tick and the running clock). Once the
-   session has closed, its flip is read ONCE, at the session's own close (the last cash bar's price and minute), the
-   count is taken against it, and the answer is kept for that session: after-hours prints and the clock no longer move
-   it. Before the next open there is no session today yet, and the count says so rather than re-counting yesterday. */
+/* A finished session's count is frozen: once it closes, its flip is read once at the session's close and the answer kept,
+   so after-hours prints do not move it. */
 const frozenCross = new Map<string, SessionCrossings>();
 
 export function sessionFlipCrossings(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): SessionCrossings {
   const candles = sessionBars(snapshot.ticker) ?? [];
   const last = candles[candles.length - 1];
-  /* BEFORE TODAY'S OPEN THE COUNT IS THE LAST SESSION'S, NAMED BY ITS DATE (the fifth audit, 2026-10-23): sessionBars
-     and sessionBook both read the session on record (data/bookWindow.ts recordDay) — that day's bars against the book
-     that was live in it, labelled "Thu Oct 22 · against the book live then", never "today" */
+  /* Before today's open the count is the last session's (recordDay), against the book live then, named by its date. */
   const today = recordDay().date;
   const barDay = last ? nyIsoDate(last.time * 1000) : null;
   const sb = sessionBook(snapshot, scope);
@@ -166,7 +110,7 @@ export function sessionFlipCrossings(snapshot: MarketSnapshot, scope: 'ALL' | '0
   const book = sb.book;
   const read = levelFlip(book, book.chain);
   let out: SessionCrossings;
-  /* a stand-in book (the session's own not in yet) is never final, and never frozen (the eleventh audit's M2) */
+  /* A stand-in book is never final and never frozen. */
   if (sb.provisional) return { crossings: null, flip: read.flip, label: sb.label, why: null, complete: false, early: tooEarly(candles) };
   if (read.flip === null) out = { crossings: !tooEarly(candles) ? 0 : null, flip: null, label: sb.label, why: null, complete: read.complete, early: tooEarly(candles) };
   else if (tooEarly(candles)) out = { crossings: null, flip: read.flip, label: sb.label, why: null, complete: read.complete, early: true };
@@ -188,23 +132,6 @@ export const REGIME_WORDS: Record<GammaRegime, { label: string; blurb: string }>
   LONG: { label: 'LONG GAMMA', blurb: 'net gamma is positive here — dealer hedging absorbs moves' },
 };
 
-/*
-  THE FLIP, BY EXPIRY — P-9.
-
-  Three answers to one question, because the books are different books: the
-  0DTE lens is what evaporates at today's bell, the weekly is the trade the
-  street is carrying, and the whole book is the structure underneath both.
-  They routinely disagree, and the disagreement is the read — a 0DTE flip
-  below spot under a whole-book flip above it is a pinned morning and a
-  directional afternoon.
-
-  EACH LENS'S OWN WINDOWED PROFILE, through buildExposureProfile — the same
-  seam, the same EXPIRY_DECAY model, the same numbers the map and the matrix
-  draw for that lens. Computing a "0DTE flip" off anything other than what
-  the 0DTE view shows would let this row disagree with the page it sits on.
-
-  THE SPREAD IS BOOK − 0DTE: how far the structure sits from today's
-  artifact. Null unless both exist, because a spread against a book with no
-  flip is not a number.
-*/
+/* The flip by expiry: 0DTE, weekly and the whole book, each off its own windowed profile (buildExposureProfile, as the map draws that lens);
+   their disagreement is the read. The spread is book − 0DTE, null unless both exist. */
 

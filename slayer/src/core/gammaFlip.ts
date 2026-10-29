@@ -1,9 +1,6 @@
 import { getCarry } from './carry';
-/*
-  The gamma flip: the spot S* where the book's net gamma, re-priced at S* (sticky strike), is zero. Each leg is
-  re-priced from its own gamma at the price the vendor priced it, G(S) = G0·Sφ(d1(S))/(S0φ(d1(S0))), so G(S0) is the
-  book's own net; a leg whose gamma at spot is below the print's resolution is priced outright from its open interest.
-*/
+/* The gamma flip: the spot S* where the book's net gamma, re-priced sticky-strike, is zero. Each leg scales as
+   G(S) = G0·Sφ(d1(S))/(S0φ(d1(S0))); a leg below the print's resolution is priced outright from its open interest. */
 
 /** One leg of the book: its dollar gamma at today's spot (house sign), and what re-prices it */
 export interface GammaLeg {

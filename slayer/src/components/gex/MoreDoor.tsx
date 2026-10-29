@@ -1,17 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE MORE DOOR (components/gex/MoreDoor.tsx)
-
-  The band's rarely-pressed doors, behind one (the
-  owner, 2026-10-14, after a walk through the Map as
-  a user: "15 equally weighted pills with no grouping
-  … put the rarely used controls under a More menu"):
-  where the book comes from (BookProvenance's card)
-  and the two exports (data/exportBook.ts — the book
-  as CSV, the levels as JSON). The Names door's menu
-  grammar, the old Export door's rows.
-==================================================
-*/
+/* The band's rarely pressed doors behind one: where the book comes from (BookProvenance) and the two exports
+   (data/exportBook.ts: the book as CSV, the levels as JSON). */
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';

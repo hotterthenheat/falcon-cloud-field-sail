@@ -1,45 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - TARGETS, THE AGENDA (data/agenda.ts)
-
-  The Targets page rebuilt on the numbers the other
-  pages now produce (2026-09-08). A target is a
-  strike, and the question the page answers is the
-  one a trader asks at the open: which levels do I
-  watch today, in what order?
-
-  THE ORDER IS ONE SENTENCE: how likely price gets
-  there × how much happens if it does.
-
-    reach   the odds price touches the strike by the
-            close — the expected move for the minutes
-            left, priced the way a barrier is (wall.ts)
-    stake   the dollars that move when it does: the
-            hedging sitting at the strike (pushing back
-            or pushing along) plus what a move through
-            it forces dealers to trade on the way to the
-            next shelf (the hedge-flow ladder), against
-            what it takes to move this name 1% today
-
-    matters = reach × stake / what moves the name 1%
-
-  A wall two expected moves away outranks nothing; a
-  thin strike at spot outranks nothing; a wall at
-  0.3σ holding a market's worth of hedging with a
-  pocket behind it leads the day. Everything else on
-  the row is the other pages' answers for that strike
-  — holds or breaks (At the wall), built or drained
-  today (Building), the odds the close lands there
-  (Ahead) — so the reader never has to leave the
-  list to know what a level is.
-
-  The old five-factor composite (rankedtargets.ts —
-  gamma, open interest, volume, neighbours, distance
-  on uncalibrated weights) is gone: the Pulse Targets
-  panel reads this too, so a strike is #1 on the desk
-  for the same reason it is #1 on Pinpoint.
-==================================================
-*/
+/* Targets: which strikes to watch today, ranked by matters = reach × stake / what moves the name 1%. Reach is the odds of touching by the close
+   (wall.ts barrier pricing); stake is the hedging there plus the hedge flow to the next shelf. The Pulse panel reads the same order. */
 
 import { aheadWord, recordDay } from './bookWindow';
 import { levelTicks } from './levelRecord';
@@ -92,10 +52,8 @@ export interface Target {
   reach: number;
   /** Within half a strike step of price — reached already: the rows say "at price", and "Most likely reached" skips it */
   atPrice?: boolean;
-  /** TODAY'S SESSION HAS ALREADY TRADED THROUGH IT (the eighth audit: "Most likely reached · 760 · 82%" with the low at
-      759.14 and 760 tested 5–7 times on the Map): the session's range covers the strike, so it is reached — not a chance.
-      The tests are the Map's report's own count (data/levelRecord.ts levelTicks) on the same cash bars — null counts when
-      the bars are coarser than a minute (a Board name's 5-minute bars), where only "reached" is said */
+  /** Today's session already traded through it: the range covers the strike, so it is reached. Tests are the Map report's count
+      (levelRecord levelTicks) on the same cash bars; null on bars coarser than a minute. */
   today: { tests: number | null; held: number | null; broke: number | null } | null;
   /** "by Nov 20" when the odds run to a later expiry than the coming session — null for the close */
   horizon: string | null;
@@ -110,8 +68,7 @@ export interface Target {
   holdTo: number | null;
   /** The latest change in the hedging here, dollars, and Building's word for it */
   build: number;
-  /** The strike's net before and after the change, RETAIL sign — a strike that changed sides prints both (the eighth
-      audit: 767 −$147M → +$122M read "shrank $25M") */
+  /** The strike's net before and after the change, retail sign; a strike that changed sides prints both. */
   buildFrom: number;
   buildTo: number;
   /** What the change measures: a call wall by its calls, a put wall by its puts, everything else by its net (building.ts) */
@@ -136,9 +93,7 @@ export interface Target {
   /** One clause: what happens there */
   words: string;
   odds: WallOdds;
-  /** THE ROW'S CARD (2026-09-09, the three facts worth taking from the partner's
-      ranked page — the contracts behind the dollars, the neighbours, the driver):
-      open interest at the strike, in contracts */
+  /** The row's card: open interest at the strike, in contracts. */
   oi: { calls: number; puts: number };
   /** The strike against the two beside it, in words: "stands 2.8× above 489 and 491" */
   beside: string;
@@ -171,8 +126,7 @@ export interface Agenda {
   wallsInReach: number;
   /** The nearest wall price can plausibly reach — a named call or put wall or an absorbing shelf, whichever side */
   nearestWall: Target | null;
-  /** The nearest wall in reach on each side of price (the fifth audit: "Nearest wall in reach 769" hid the call wall at
-      770 right beside it — each side is named) */
+  /** The nearest wall in reach on each side of price. */
   wallAbove: Target | null;
   wallBelow: Target | null;
   /** The strike the close most likely lands on — null when no strike is likely enough to call it a lean (LEAN_MIN) */
@@ -187,14 +141,9 @@ export interface Agenda {
 const pct = chanceLabel;
 /** A wall in reach is one the day can plausibly get to */
 const IN_REACH = 0.15;
-/* ONE THRESHOLD EACH SIDE (the sixth audit, 2026-10-23: −$27M at 766 was a TRAPDOOR while +$27M at 771 and +$68M at
-   772 carried no tag — the trapdoor's bar was 3% of the heaviest strike, the shelf's 35%). A strike is a shelf or a
-   trapdoor only with SHELF_SHARE of the heaviest strike's net gamma, whichever its sign; under that it is too thin to be
-   either and carries no tag. */
+/* One threshold each side: a strike is a shelf or a trapdoor only with SHELF_SHARE of the heaviest net, whichever its sign; under it, no tag. */
 const FLAT_SHARE = SHELF_SHARE;
-/* ---- ONE CLASSIFIER, ONE INPUT, EVERYWHERE (the eighth audit's M1: 759 was "TRAPDOOR" on the Board and Compare and "too
-   thin to be a trapdoor" on the Agenda — the Board's and Compare's copy never saw `flat`). The Agenda's rows, the Board's
-   watch-first and Compare's all read the kind here, off the same Target fields. ---- */
+/* ---- One classifier for the Agenda's rows, the Board's watch-first and Compare, off the same Target fields ---- */
 type StrikeKind = 'named' | 'shelf' | 'trapdoor' | 'thin';
 type KindInput = Pick<Target, 'isShelf' | 'role' | 'isWall' | 'flat'>;
 /** What a strike is: a named level, a shelf (a wall the Map does not name), a trapdoor (its hedging pushes the move
@@ -219,14 +168,12 @@ export const reachWords = (t: Pick<Target, 'atPrice' | 'today' | 'reach'>, short
 /** Today's cash bars of the session on record — empty before today's open (the session on record is then a past one) */
 function todayCash(bars: readonly Candle[]): Candle[] {
   const rec = recordDay();
-  /* …and after today's close the targets are the next session's (the eleventh audit's m2: "reached today" on Friday
-     evening beside next-session odds) — the finished session's record is the Map's "How the levels held" */
+  /* After today's close the targets are the next session's; the finished session's record is the Map's "How the levels held". */
   if (!rec.isToday || rec.done) return [];
   return bars.filter(b => nyIsoDate(b.time * 1000) === rec.date && nyMinutes(b.time * 1000) >= 570 && nyMinutes(b.time * 1000) < 960);
 }
 
-/* "THE CLOSE LEANS TO 766 · 6%" IS NOT A LEAN (the retail test, 2026-10-23): one strike's odds have to reach this
-   before the page says the close leans anywhere */
+/* One strike's odds must reach this before the page says the close leans anywhere. */
 export const LEAN_MIN = 15;
 /** How far a challenger must out-score the last watch-first to replace it (a share of the leader's score) */
 const HOLD_LEAD = 0.12;
@@ -285,7 +232,7 @@ function wordsOf(o: WallOdds, shelf: boolean, flat = false): string {
 
 /** The least reach a strike's "matters most" score counts (see buildAgenda) */
 const REACH_FLOOR = 0.0005;
-/** The least reach a strike needs to lead "Watch first" while any strike has it (the tenth audit's M4) — "<1%" is under it */
+/** The least reach a strike needs to lead "Watch first" while any strike has it ("<1%" is under it). */
 const LEAD_REACH = 0.01;
 
 export function buildAgenda(
@@ -309,7 +256,7 @@ export function buildAgenda(
   const nodeAt = new Map(snapshot.chain.map(n => [n.strike, n]));
   const asc = [...profile.strikes].sort((a, b) => a.strike - b.strike);
   const heaviestNet = Math.max(1, ...asc.map(s => Math.abs(s.gex.net)));
-  /* TODAY'S SESSION SO FAR — a strike inside its range is reached already (todayWords); the counts only off minute bars */
+  /* Today's session so far: a strike inside its range is reached already; counts only off minute bars. */
   const cash = todayCash(bars);
   const lo = cash.length ? Math.min(...cash.map(b => b.low)) : Infinity;
   const hi = cash.length ? Math.max(...cash.map(b => b.high)) : -Infinity;
@@ -367,9 +314,7 @@ export function buildAgenda(
         verdict: brow?.verdict ?? 'steady',
         closes: closesAt.get(s.strike) ?? 0,
         stake,
-        /* A FLOOR UNDER THE REACH (the ninth audit's M5: NVDA's #7–#16 were 135…180 at "<1% reached × $0 at stake" above 220
-           — $19M, $8 away — because every far reach underflowed to 0 and tied): a strike's reach counts for at least
-           REACH_FLOOR, so among the strikes price is unlikely to reach the bigger stake still ranks first */
+        /* A floor under the reach (REACH_FLOOR), so among unlikely strikes the bigger stake still ranks first instead of all tying at 0. */
         matters: (Math.max(o.reach, REACH_FLOOR) * stake) / Math.max(1, marketPer1Pct),
         why: '',
         words: wordsOf(o, isShelf, Math.abs(s.gex.net) < FLAT_SHARE * heaviestNet),
@@ -389,18 +334,14 @@ export function buildAgenda(
     t.driver = r >= s * 1.3 ? 'odds' : s >= r * 1.3 ? 'size' : 'both';
   }
 
-  /* AN UNREACHABLE STRIKE DOES NOT LEAD (the tenth audit's M4: AMZN All expiries' "Watch first" was 290 · <1% reached ·
-     $3.2B, 17% away, because the reach floor let its size win): while some strike has a real chance of being reached
-     (LEAD_REACH, or the session already traded through it), every strike under LEAD_REACH ranks after all of those —
-     the floor still orders the far strikes among themselves */
+  /* An unreachable strike does not lead: while some strike has a real chance (LEAD_REACH, or already traded through), the rest rank after it;
+     the floor still orders the far strikes among themselves. */
   const anyReachable = targets.some(t => t.reach >= LEAD_REACH || !!t.today);
   const tier = (t: Target) => (anyReachable && t.reach < LEAD_REACH && !t.today ? 1 : 0);
-  /* …and ties broken by the stake, then the distance (the ninth audit's M5) — one order, every time */
+  /* Ties broken by stake, then distance: one order every time. */
   const byMattersSort = (a: Target, b: Target) => tier(a) - tier(b) || b.matters - a.matters || b.stake - a.stake || Math.abs(a.distancePct) - Math.abs(b.distancePct) || a.strike - b.strike;
   const byMatters = [...targets].sort(byMattersSort);
-  /* A LEADER IS KEPT UNTIL ANOTHER CLEARLY BEATS IT (the third audit, 2026-10-23: "Watch first" flipped 765 ↔ 762 on
-     after-hours ticks of ±$0.15). The last leader stays first while it scores within HOLD_LEAD of the top; a
-     challenger has to pass it by more than that to take the spot. */
+  /* A leader is kept until another beats it by more than HOLD_LEAD, so "Watch first" does not flip on small ticks. */
   const key = `${ticker}|${profile.expiry}`;
   const prevLead = leaderOf.get(key);
   if (byMatters.length > 1 && prevLead != null && byMatters[0].strike !== prevLead) {
@@ -417,25 +358,19 @@ export function buildAgenda(
   };
   const ordered = (order === 'matters' ? [...byMatters] : [...targets].sort(sorters[order])).map((t, i) => ({ ...t, rank: i + 1, why: whyOf(t, order, marketPer1Pct) }));
 
-  /* THE WATCH-FIRST THREE ARE ALWAYS "MATTERS MOST" — the day's sentence and the Board's watch-first; the podium on the
-     page shows the chosen order's own first three (TargetsBoard) */
+  /* The watch-first three are always "matters most"; the page's podium shows the chosen order's own first three (TargetsBoard). */
   const first = byMatters.slice(0, 3).map(t => ordered.find(x => x.strike === t.strike) ?? t);
-  /* NOT A STRIKE PRICE IS ALREADY ON (the fifth audit, 2026-10-23: "Most likely reached 764 · 99%" with spot at 763.96):
-     strikes within half a strike step of price are taken as reached already and left out */
-  /* ONE "AT PRICE" (the seventh audit's m5: half a strike step called CROX's 120 "at price" 0.82% away): the Board's
-     and the read's own tolerance, core/walls.ts wallPlace — within 0.05% of price */
+  /* Strikes price is already on are taken as reached and left out of "most likely reached". */
+  /* One "at price": within 0.05% of price (core/walls.ts wallPlace), as the Board reads it. */
   const onPrice = (t: Target) => wallPlace(t.strike, spot) === 'at';
-  /* …and the rows say so, so the head's "most likely reached" and the table read off the same set (the sixth audit's
-     retail test: "Most likely reached 763 · 84%" over a row of 764 at 99%) */
+  /* …and the rows say so, so the head and the table read off the same set. */
   for (const t of ordered) t.atPrice = onPrice(t);
-  /* …and neither is a strike the session has already traded through: it is reached, not likely (the eighth audit) */
+  /* …and neither is a strike the session already traded through: that is reached, not likely. */
   const reachable = ordered.filter(t => !onPrice(t) && !t.today);
   const mostReached = reachable.length ? reachable.reduce((a, b) => (b.reach > a.reach ? b : a)) : null;
-  /* THE WALLS IN REACH ARE EVERY WALL THE TABLE NAMES (the retail test, 2026-10-23: "Only wall in reach 770 · the only
-     one" above a row tagging 769 PUT WALL, nearer): the absorbing shelves and the named call and put walls alike */
+  /* Walls in reach are every wall the table names: the absorbing shelves and the named call and put walls. */
   const isWallRow = (t: Target) => t.isShelf || t.role === 'call wall' || t.role === 'put wall' || t.roles.includes('call wall') || t.roles.includes('put wall');
-  /* …and a wall price is on, or the session has already traded through, is in reach (the tenth audit: "Walls in reach ·
-     none in reach" beside a #1 wall already reached today) */
+  /* …and a wall price is on, or the session already traded through, is in reach. */
   const wallsInReach = ordered.filter(t => isWallRow(t) && (t.reach >= IN_REACH || !!t.today || onPrice(t)));
   const shelvesInReach = wallsInReach.filter(t => t.isShelf);
   const weakestWall = shelvesInReach.length ? shelvesInReach.reduce((a, b) => (b.hold < a.hold ? b : a)) : null;

@@ -1,5 +1,4 @@
-/* The sign-in providers' own marks, drawn to their guidelines: Google's G keeps its four brand colours on any
-   ground (exempt from the theme audit); Apple's takes the page ink. */
+/* Sign-in providers' marks per their guidelines: Google's G keeps its brand colours on any ground; Apple's takes the page ink. */
 
 /** Google's G in its brand colours. */
 export const GoogleMark = ({ size = 16, className = '' }: { size?: number; className?: string }) => (

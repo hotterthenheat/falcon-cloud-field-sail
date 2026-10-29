@@ -347,6 +347,7 @@ class TrailsPaneRenderer {
         const yA = series.priceToCoordinate(this.rPrice);
         const yB = series.priceToCoordinate(this.rPrice + 1);
         if (xRef !== null && yA !== null && yB !== null) {
+          this.movedAt = performance.now();
           const sx = barSpacing / this.rBar;
           const sy = (yB - yA) / (this.rYb - this.rYa);
           const dX = (xRef + sx * (-this.rMx / hr - this.rXRef)) * hr;
@@ -412,9 +413,14 @@ class TrailsPaneRenderer {
           }
         }
       }
-      const rasterW = scope.bitmapSize.width + 2 * Math.round(scope.bitmapSize.width * RASTER_MX);
-      const mxCss = Math.round(scope.bitmapSize.width * RASTER_MX) / hr;
-      for (let ci = cached || scrolled ? rLast : rFirst; ci < rLast; ci++) {
+      /* Margins only while the view moves (or right after it rests): a data tick or a new timeframe at rest rasters
+         the view alone, so those rebuilds cost what they did before the margins */
+      const wide = this.rebuildNext || performance.now() - this.movedAt < SETTLE_MS;
+      const mxPx = wide ? Math.round(scope.bitmapSize.width * RASTER_MX) : 0;
+      const myPx = wide ? Math.round(scope.bitmapSize.height * RASTER_MY) : 0;
+      const mxCss = mxPx / hr;
+      const cLast = wide ? rLast : last;
+      for (let ci = cached || scrolled ? cLast : wide ? rFirst : first; ci < cLast; ci++) {
         const col = src.columnAt(ci);
         // The bead's bar, and where inside it this moment sits
         const bucket = Math.floor(col.time / barSec) * barSec;
@@ -574,9 +580,7 @@ class TrailsPaneRenderer {
         }
       };
       if (!cached && !scrolled) {
-        const mxPx = Math.round(scope.bitmapSize.width * RASTER_MX);
-        const myPx = Math.round(scope.bitmapSize.height * RASTER_MY);
-        const bw = rasterW;
+        const bw = scope.bitmapSize.width + 2 * mxPx;
         const bh = scope.bitmapSize.height + 2 * myPx;
         const bmp = this.bmp ?? document.createElement('canvas');
         /* a size change clears the canvas; a same-size raster is cleared by hand */

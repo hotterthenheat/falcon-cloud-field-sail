@@ -1,16 +1,11 @@
-/*
-  Billing state for the Billing page: plan, standing, card summary and invoices, as Stripe reports them (never card
-  numbers). Without billing keys the state is a local sample, so the page shows what it will look like live.
-*/
+/* Billing state (plan, standing, card summary, invoices) as Stripe reports it, never card numbers; without keys a local sample. */
 
 import { useSyncExternalStore } from 'react';
 import { ACCOUNTS_ON, supabase } from './supabase';
 import type { PlanStatus } from './account';
 
-/* Stripe: three products with monthly and yearly prices (lookup keys `book_month` ... `desk_year`). Checkout runs through
-   the `stripe-checkout` function, the card, invoices and cancelling through `stripe-portal`, and Stripe's events reach
-   the profile through `stripe-webhook` -> billing_apply. The browser holds only the publishable key. Billing is on
-   when accounts are on and the publishable key is set. */
+/* Stripe: three products, monthly and yearly (lookup keys `book_month` … `desk_year`); checkout via `stripe-checkout`, card and invoices
+   via `stripe-portal`, events via `stripe-webhook` → billing_apply. The browser holds only the publishable key. */
 export const BILLING_ON: boolean = ACCOUNTS_ON && !!import.meta.env?.VITE_STRIPE_PUBLISHABLE_KEY;
 export type Period = 'month' | 'year';
 

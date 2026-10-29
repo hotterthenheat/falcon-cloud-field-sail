@@ -1,8 +1,4 @@
-/*
-  A DropdownSelect for lists long enough to need a search: the same trigger, a card opening on the search box and the
-  matches (logos for names, the current one in silver; arrows and Enter pick). Radix Popover, not DropdownMenu, whose
-  typeahead would eat the typed letters.
-*/
+/* DropdownSelect for long lists: a search box and matches (arrows and Enter pick). Radix Popover, because DropdownMenu's typeahead eats typed letters. */
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import * as Popover from '@radix-ui/react-popover';
@@ -45,9 +41,11 @@ interface DropdownSearchProps<T extends string> {
   /** The value meaning "everything": when not selected an X beside the chip resets to it, and it stays pinned above a
    long list. */
   clearTo?: T;
+  /** Runs each time the card opens, so a caller can fetch what the search needs only once someone looks */
+  onOpen?: () => void;
 }
 
-const DropdownSearch = <T extends string>({ label, value, options, onChange, title, placeholder = 'Search…', icon: Icon, ink, align = 'start', testId, defaultOpen = false, match, clearTo }: DropdownSearchProps<T>) => {
+const DropdownSearch = <T extends string>({ label, value, options, onChange, title, placeholder = 'Search…', icon: Icon, ink, align = 'start', testId, defaultOpen = false, match, clearTo, onOpen }: DropdownSearchProps<T>) => {
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
@@ -71,6 +69,10 @@ const DropdownSearch = <T extends string>({ label, value, options, onChange, tit
   const ROW = 42;
   const start = windowed ? Math.max(0, Math.floor(scrollTop / ROW) - 4) : 0;
   const shown = windowed ? rest.slice(start, Math.min(rest.length, start + 16)) : rest;
+
+  useEffect(() => {
+    if (open) onOpen?.();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

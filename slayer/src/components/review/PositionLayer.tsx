@@ -148,7 +148,7 @@ export interface PositionLayerProps {
   /** A stop's two switches (the ladder). Trailing: on, by a typed distance — or, with none, by the distance the stop stands at */
   onTrail?: (orderId: string, on: boolean, by?: number) => void;
   onBreakeven?: (orderId: string, on: boolean) => void;
-  /** THE RIGHT-CLICK (see the head note): what can be done at a price of the chart — nothing, where it returns null */
+  /** The right-click: what can be done at a price on the chart; null for nothing. */
   menu?: (price: number) => ChartMenu | null;
 }
 
@@ -341,7 +341,7 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ---- THE RIGHT-CLICK: a card at the price under the pointer ---- */
+  /* ---- The right-click: a card at the price under the pointer ---- */
   const [open, setOpen] = useState<{ x: number; y: number; card: ChartMenu } | null>(null);
   const menuRef = useRef(menu);
   menuRef.current = menu;

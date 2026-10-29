@@ -1,22 +1,10 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE START PAGE'S SKELETON
-  (pages/start/startSkeleton.tsx)
-
-  The start page standing in as itself while its
-  code travels: the head, then the ten cards — a
-  picture's box over three lines each. Imports
-  nothing heavy; the page reads the grid from here
-  so the two never drift.
-==================================================
-*/
+/* The start page's skeleton: the head, then the cards (a picture box over three lines). The page reads the grid from here so the two never drift. */
 
 import { Block, Line } from '../../components/ui/skeletonKit';
 
-/* THE CARDS' GRID — two on a phone turned sideways, three beside the rail on a laptop, four at a desk, five on a wide
-   screen (ten cards: two rows of five at 1905) */
+/* The cards' grid: 1, 2 (sm), 3 (lg), 4 (xl), 5 (2xl). */
 export const START_GRID = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4';
-/* THE PICTURE'S BOX — the still's own shape (the landing's desk stills are 1800 × 1250) */
+/* The picture's box: the stills' own 1800 × 1250 shape. */
 export const START_PICTURE = 'relative aspect-[1800/1250] bg-canvas overflow-hidden';
 
 export const StartRouteSkeleton = () => (

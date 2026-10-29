@@ -1,8 +1,5 @@
-/*
-  A page opened from elsewhere carries a way back: the opener navigates with `state: { wayBack: '/pulse' }` and this
-  pill reads it. It rides the route state, so going deeper drops it and the browser's Back restores it. Mounted once
-  in the shell.
-*/
+/* A page opened from elsewhere carries a way back: the opener navigates with `state: { wayBack: '/pulse' }` and this pill reads it
+   (route state, so going deeper drops it and Back restores it). */
 
 import { useEffect, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';

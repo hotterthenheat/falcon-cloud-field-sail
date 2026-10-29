@@ -1,35 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE ALERTS MENU (Pinpoint)
-  (components/gex/WatchMenu.tsx)
-
-  "Tell me when", as its own notification dropdown
-  (Noah, 2026-09-05: "the entire tell me when
-  section can be its own notification dropdown").
-  One bell on the toolbar with the armed count on
-  it; the card underneath lists every structural
-  thing a dealer map can change its mind about,
-  each with a switch:
-
-    price reaches the call wall · the put wall ·
-    the supreme · price crosses the gamma flip ·
-    dealers change sides · the supreme moves to
-    another strike · a wall moves two strikes
-
-  and nothing else. A DOOR, NOT AN INBOX (the alerts
-  rule, Noah, 2026-09-10: "we have 2 alert
-  sections. is that intuitive?"): it used to carry
-  what alerted, a "set again" and the honest-reach
-  footnote under the switches — that half lives in
-  ONE place now, the drawer behind the sidebar's
-  bell, and this card only sets. Price alerts on
-  single strikes live on the rows; this card is for
-  the structure. The store is the chart's own
-  (alertStore.ts): an alert armed here shows on the
-  Pulse chart's rail and bell, and one armed there
-  shows here.
-==================================================
-*/
+/* Pinpoint's structural alerts: one bell with the armed count, and a switch for each thing a dealer map can change
+   (a wall or supreme reached, the flip crossed, sides changing, the supreme or a wall moving). It only sets; fired alerts live in the drawer. Store: alertStore.ts. */
 
 import * as Switch from '@radix-ui/react-switch';
 import PopoverCard from '../ui/PopoverCard';
@@ -51,17 +21,14 @@ import { callWallWords, putWallWords } from '../../core/walls';
 import { flipSidesWords } from '../../data/flipLevel';
 import { fmtStrike } from '../../core/format';
 
-/* ARMED WEARS HOLO SILVER here — the label, its count and the switches (Noah,
-   2026-09-05: "change the alerts button and the sub toggle buttons to holo
-   silver on active"); the bell itself wears the alert orange (2026-09-10). */
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+/* Armed wears holo silver (the label, count and switches); the bell itself wears the alert orange. */
+const SILVER = 'rgb(var(--silver))';
 const SILVER_FILL = 'rgb(var(--silver-fill))'; /* the silver as a SURFACE — a filled pill with the dark word on it, the holo flat form on either ground */
 
 interface Watch {
   key: string;
   words: (levels: ExposureLevels | null) => string;
-  /* PLACEMENT-AWARE (the fifth audit, 2026-10-23: "The strike below with the most put gamma — a floor under drops" beside
-     a put wall at 769 with spot at 763.96): each level is described from where it sits against price (core/walls.ts) */
+  /* Placement-aware: each level is described from where it sits against price (core/walls.ts). */
   hint: (levels: ExposureLevels | null, spot: number | undefined) => string;
   arm: (ticker: string) => Alert | null;
   is: (a: Alert) => boolean;
@@ -109,7 +76,7 @@ const WATCHES: Watch[] = [
   { key: 'oiJump', words: () => 'Open interest doubles', hint: () => 'A strike’s open interest at least doubles against the previous read of the chain', arm: t => armOiJump(t), is: a => a.kind === 'oiJump' },
 ];
 
-/* The plain voice (`waitingWords` / `firedWords`) lives in alertStore.ts, shared with the drawer (2026-09-10) */
+/* The plain voice (`waitingWords` / `firedWords`) lives in alertStore.ts, shared with the drawer. */
 
 const WatchMenu = ({ ticker, spot, levels }: { ticker: string; spot?: number; levels: ExposureLevels | null }) => {
   const alerts = useAlerts(ticker);
@@ -129,7 +96,7 @@ const WatchMenu = ({ ticker, spot, levels }: { ticker: string; spot?: number; le
       aria-label={`Alerts — ${armed.length} set`}
       className="relative inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted data-[state=open]:border-silver/50 transition-colors font-mono select-none"
     >
-      {/* the bell jingles and wears the alert orange while set (Noah, 2026-09-10); the label and count keep their silver (2026-09-05) */}
+      {/* The bell jingles and wears the alert orange while set; the label and count keep their silver. */}
       <JingleBell count={armed.length} className="w-3 h-3" />
       <span className="text-t11 font-semibold" style={{ color: armed.length ? SILVER : undefined }}>
         Alerts

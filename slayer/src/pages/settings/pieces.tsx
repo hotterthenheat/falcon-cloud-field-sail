@@ -1,15 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - SETTINGS, THE PIECES (pages/settings/pieces.tsx)
-
-  The grammar every Settings page is built from —
-  a box of rows, a row, a door, a tag, a field, and
-  the line that says what went wrong — moved out of
-  Settings.tsx on 2026-10-10 so the People room
-  (People.tsx) is built of the same pieces without
-  the two files importing each other.
-==================================================
-*/
+/* The pieces every Settings page is built from (a box of rows, a row, a door, a tag, a field, the error line), shared with People.tsx. */
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -18,8 +7,7 @@ import { MorphingInfinity, useBusy, useWorking } from '../../components/ui/Worki
 /** A box of rows: the head, then the rows under hairlines */
 export const Section = ({ id, title, line, aside, children }: { id: string; title: string; line: string; aside?: ReactNode; children: ReactNode }) => (
   <section id={id} className="border border-borderSubtle rounded-md bg-panel overflow-clip scroll-mt-5" data-settings-section={id}>
-    {/* on a phone the tag goes UNDER the words, the Row's own rule (the phone sweep, 2026-09-19): beside them, "preview ·
-        sample account" took half the width and the section's one line ran to seven */}
+    {/* On a phone the tag goes under the words. */}
     <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-x-6 gap-y-2 max-sm:flex-col">
       <div className="min-w-0">
         <h2 className="text-t15 font-semibold leading-tight text-textPrimary">{title}</h2>
@@ -33,9 +21,7 @@ export const Section = ({ id, title, line, aside, children }: { id: string; titl
 
 /** One setting: the name and its line at the left, the control at the right */
 export const Row = ({ name, line, children, testId }: { name: string; line: string; children?: ReactNode; testId: string }) => (
-  /* On a phone the control goes UNDER its words (the phone pass, 2026-09-13):
-     side by side, a wide control (the desk's Name + Timeframe cards) squeezed
-     the words into a one-word-a-line column */
+  /* On a phone the control goes under its words. */
   <div className="px-5 py-3 border-t border-borderSubtle/60 flex items-center justify-between gap-6 max-sm:flex-col max-sm:items-stretch max-sm:gap-3" data-settings-row={testId}>
     <div className="min-w-0">
       <div className="text-t12 text-textPrimary">{name}</div>
@@ -46,8 +32,7 @@ export const Row = ({ name, line, children, testId }: { name: string; line: stri
 );
 
 /** A door: the house's small bordered button, a link when it has somewhere to go */
-/* A DOOR WHOSE ACTION IS IN FLIGHT (ui/Working.tsx): a handler that returns a promise holds the door busy until it settles — the mark
-   appears if that lasts. The sample's handlers are instant and never show it; at launch the same doors return Stripe's and the server's requests. */
+/* A door whose handler returns a promise stays busy until it settles (ui/Working.tsx), the mark appearing if that lasts. */
 export const Door = ({ children, onClick, to, href, title, tone = 'plain', testId, disabled = false }: { children: ReactNode; onClick?: () => void | Promise<unknown>; to?: string; href?: string; title?: string; tone?: 'plain' | 'bear' | 'silver'; testId: string; disabled?: boolean }) => {
   const [busy, run] = useBusy();
   const working = useWorking(busy);
@@ -82,9 +67,7 @@ export const Tag = ({ children, tone = 'plain' }: { children: ReactNode; tone?: 
 );
 
 /** A text field in a row — the chip ground; saves on blur or Enter, Esc puts the value back */
-/* A FIELD SAYS WHY IT DID NOT SAVE (2026-09-19). It used to fail in silence: an empty name snapped back without a word, and
-   "abc" was kept as an email address. `check` returns the reason a value cannot be kept, or null; the reason shows under the
-   field in the alert ink, the field keeps what was typed so it can be fixed, and nothing is saved until it passes. */
+/* A field says why it did not save: `check` returns the reason or null; the reason shows in the alert ink, the typed value stays, nothing saves until it passes. */
 export const Field = ({ value, onSave, prefix, width = 200, type = 'text', testId, check }: { value: string; onSave: (v: string) => void; prefix?: string; width?: number; type?: 'text' | 'email'; testId: string; check?: (v: string) => string | null }) => {
   const [v, setV] = useState(value);
   const [problem, setProblem] = useState<string | null>(null);

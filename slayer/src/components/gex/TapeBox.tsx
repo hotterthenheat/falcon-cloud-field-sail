@@ -352,8 +352,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     /* the clock (dayChart.ts dayClock): every minute of the session, hidden, on a scale of its own */
     const clockS = chart.addSeries(LineSeries, { visible: false, priceScaleId: CLOCK_SCALE, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
     chart.subscribeCrosshairMove(param => {
-      /* THE POINTER ON A RUNG — within the ladder's band at the right edge and near a rule: the rung brightens, its card
-         opens, and the minute's card stands aside */
+      /* The pointer on a rung, within the ladder's band near a rule: the rung brightens, its card opens, the minute's card stands aside. */
       /* only a pointer moves the rung's state: the chart calls this on every data tick too, with no pointer behind it */
       /* the pointer leaving the chart comes as a move with no point behind it (and no source event) — that, too, is
          the pointer off the rungs; a tick while the pointer is away looks the same, and says the same */
@@ -704,9 +703,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
                 <span className="ml-2 text-textMuted">{nearLevel(hb.close)}</span>
               </div>
             )}
-            {/* THE CARD ON A RUNG — the level's name in its ink, its price, how far from spot, one line on what it does to
-                price, and the two things the chips did: keep the strike, set its bell. Reachable: it stays while the
-                pointer is on it. */}
+            {/* The card on a rung: the level's name, price, distance from spot, what it does to price, and keep/bell chips; it stays while hovered. */}
             {levelHot &&
               (() => {
                 const w = KEY_LEVEL_WORDS[levelHot.key];

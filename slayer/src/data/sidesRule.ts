@@ -1,13 +1,5 @@
-/*
-  SIDES RULE, AS DATA — the pieces of Trace's one rule (components/trace/TraceGuide.tsx SidesRule) that a page needs
-  without Trace's tape machinery. Dossier reads through these; they mirror data/traceLive.ts line for line:
-
-  - darkPrintKey: the vendor's tracking_id is NOT unique (audit round 5, 2026-10-23: SPY's dark read deduped on it alone
-    and lost 59 prints, the largest of the day among them — 39,013 shares at 762.46, $29.75M). A print is one print by
-    its tracking id AND its time, size, price and cumulative volume — traceLive.ts darkPrint's id, unhashed.
-  - alertSide: a flow alert's side is the side that carried 60% or more of its WHOLE premium, unsided money included
-    (traceLive.ts alertToPrint) — never "ask over 1.15× the bid".
-*/
+/* Trace's sides rule as data for pages without Trace's tape (Dossier), mirroring traceLive.ts: a dark print is keyed by tracking id plus
+   time, size, price and cumulative volume (the id alone is not unique); a flow alert's side carries ≥60% of its whole premium. */
 
 const num = (v: unknown): number => {
   const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.replace(/,/g, '')) : NaN;

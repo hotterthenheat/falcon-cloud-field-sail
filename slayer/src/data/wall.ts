@@ -298,7 +298,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   const { tests: touches, held, broke: breaks } = testEvents(ctx.bars, K, side);
   const testsScore = touches === 0 ? 0 : clamp((held - 2 * breaks) / (touches + 2), -1, 1);
 
-  /* BEING BUILT OR DRAINED today */
+  /* Being built or drained today. */
   const brow = ctx.building.rows.find(r => r.strike === K);
   const build = brow?.sizeChange ?? 0;
   const buildScore = weight > 0 ? clamp(build / weight, -0.5, 0.5) * 2 : 0;
@@ -339,8 +339,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   const rungAt = (k: number | null) => (k == null ? null : (ctx.ladder.rungs.find(r => Math.abs(r.strike - k) < 1e-9) ?? null));
   const breakTo = nextShelf?.strike ?? (pocket ? (side === 'call' ? pocket.ceiling : pocket.floor) : null);
   const breakRung = rungAt(breakTo);
-  /* THE FLOW OF THE BREAK ITSELF — from this strike to where it runs, not from spot (the ladder's flow is cumulative
-     from spot, so a far strike's "at stake" grew with its distance and far, unlikely strikes outranked near ones) */
+  /* The break's own flow, from this strike to where it runs, not from spot (the ladder's flow is cumulative from spot). */
   const breakFlow = breakRung ? breakRung.flow - (rungAt(K)?.flow ?? 0) : 0;
   const breakPath: WallPath = {
     to: breakTo,

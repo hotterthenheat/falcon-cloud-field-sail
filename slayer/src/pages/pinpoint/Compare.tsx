@@ -1,33 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - COMPARE
-  (pages/pinpoint/Compare.tsx)
-
-  The seventh page of Pinpoint (2026-09-08, Noah:
-  "a compare page of 2 different stocks/tickers in
-  multiple ways you see fit"). Two names, three
-  boxes, read top to bottom:
-
-    HEAD TO HEAD    the same ten reads for both,
-                    side by side, each figure over
-                    its bar on a track, a card on
-                    the row under the pointer
-    ONE RULER       both books at their distance
-                    from their own spot — one grows
-                    left, the other right
-    SINCE THE OPEN  today's session, both names as
-                    one line each of percent from
-                    their own open, the gap beneath
-
-  A COMPOSITION: the reads are the Board's, Ahead's
-  and Targets'; the ruler is the desk's; the lines
-  are the chart library's. The first name follows
-  the frame (or holds its own); the second is the
-  page's, opening on the index twin. Each name's
-  chip sits at the head of its own column, and the
-  two sides keep that order in every box.
-==================================================
-*/
+/* Compare: two names, read top to bottom — both books on one ruler with each name's read at its edge, then since the open
+   (both as percent from their own open, the gap beneath). The first name follows the frame; the second opens on the index twin. */
 
 import { nyClock } from '../../core/nyTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -65,10 +37,10 @@ const SCAN_INTERVAL_MS = 10_000;
 const A_INK = 'rgb(var(--text-primary))';
 const B_INK = '#5B9CF6';
 
-/* New York's clock with its zone — the machine's own zone printed 18:xx on a 14:xx market (the retail test, 2026-10-22) */
+/* New York's clock with its zone. */
 const hhmmss = (d: Date) => nyClock(d, { seconds: true, zone: true });
 
-/* WHICH SIDES STAND OPEN beside the ruler (the partner's cut, 2026-10-18): both by rest; remembered, carried */
+/* Which side panels stand open beside the ruler: both by default; remembered and carried. */
 const SIDES_KEY = 'slayer_compare_sides';
 type Sides = { a: boolean; b: boolean };
 const readSides = (): Sides => {
@@ -126,10 +98,7 @@ const Compare = () => {
   useEffect(() => {
     if (!marketData) return;
     const now = Date.now();
-    /* the full book (every expiry's own chain) lands a few seconds after the board read — inside the sweep's window,
-       so it was dropped and the page sat on the whole-book-only read until the next refresh (the UI sweep, 2026-10-22:
-       the Map crowned the whole book's supreme while the other pages read today's) — a book that changes SHAPE is taken
-       at once */
+    /* A book that changes shape (its per-expiry chains landed) is taken at once, not at the next scan. */
     const shape = (s: MarketSnapshot | null) => Object.keys(s?.uwChains ?? {}).length;
     /* a book whose dates or contract facts landed (a new uwByDate — uwBook never edits a chain in place) is taken at once */
     const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData) || scanRef.current.uwByDate !== marketData.uwByDate;
@@ -161,9 +130,7 @@ const Compare = () => {
   const [pickB, setPickB] = useState<ExposureExpiry | null>(null);
   const expiryA: ExposureExpiry = pickA ?? scopeA;
   const expiryB: ExposureExpiry = pickB ?? scopeB;
-  /* NOTHING PROVISIONAL (the fourth audit's M1: QQQ read "−$12.1B · put wall 700 · call wall 740 · flip none nearby ·
-     ±$11.25" under "Next session · Oct 23" for 8–15 seconds — the whole book standing in for the front date). A side whose
-     levels are not final is not built: the page keeps its loading state until both are */
+  /* Nothing provisional: a side whose levels are not final is not built. */
   const finalSide = (s: MarketSnapshot | null, expiry: ExposureExpiry) => {
     if (!s) return null;
     const side = buildCompareSide(s, clock, expiry);
@@ -186,19 +153,12 @@ const Compare = () => {
       }
       return next;
     });
-  /* How far the ruler runs — two expected moves (2026-09-29: at three, nearly half the drawing was strikes too light to
-     draw; two is about what a day can reach, and the drawing is mostly capsules). It was three on the taller drawing
-     (2026-09-09: "cover more of the capsules"); the Reach card still goes there. */
+  /* The ruler runs two expected moves by default (about what a day reaches); the Reach card goes further. */
   const [reach, setReach] = useState<Reach>('two');
-  /* The capsules' ramp — the calendar's Colours card, thermal by default (Noah,
-     2026-09-10: "the house color vs thermal color button") */
+  /* The capsules' ramp, thermal by default. */
   const [palette, setPalette] = useState<'thermal' | 'house'>('thermal');
-  /* ONE GREEK PER PAGE, the Map's rule: the ruler, the reach sums and the Supreme
-     row follow it — "All" shows the five lanes (narrow on the page, the screen in fullscreen) and leaves the
-     card's Supreme row on gamma */
-  /* THE GREEKS ARE A PICK (Noah, 2026-09-10: "choose the amount of greeks they
-     want to compare and not handicap them to 1 or 4") — the lanes drawn are
-     the greeks ticked; the reach sums and the Supreme row follow the first */
+  /* One greek per page: the ruler, the reach sums and the Supreme row follow it; "All" shows five lanes and keeps the Supreme row on gamma. */
+  /* The lanes drawn are the greeks ticked; the reach sums and the Supreme row follow the first. */
   const [greekPick, setGreekPick] = useState<string[]>(['gex']);
   /* the vendor's books carry no vega — never a $0 VEX lane */
   const greeks = useMemo(() => {
@@ -209,9 +169,7 @@ const Compare = () => {
     return kept.length ? kept : pickGreeks(['gex']);
   }, [greekPick, aTicker, bTicker, nonce, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
   const greek: Greek = greeks[0] ?? 'gex';
-  /* THE RULER FULLSCREEN (Noah, 2026-09-09): the same box moved to the whole
-     viewport, the Map's way — one body, one drawing, nothing remounts. Esc
-     brings it back. */
+  /* The ruler fullscreen: the same box moved to the viewport, nothing remounts; Esc brings it back. */
   const [rulerFull, setRulerFull] = useState(false);
   useEffect(() => {
     if (!rulerFull) return;
@@ -230,9 +188,7 @@ const Compare = () => {
   const focusB = focusFor(bTicker);
   const onPick = (strike: number, t: string) => toggleFocus(strike, t);
 
-  /* The two chips wear the same clothes (Noah, 2026-09-09): the first in the
-     full following look with its silver link, the second its own name with no
-     link at all — it cannot follow the frame, that would make it the first. */
+  /* The first chip follows the frame with its silver link; the second is its own name with no link (following would make it the first). */
   const chipA = (
     <ScopeChip
       closeOutside
@@ -253,9 +209,7 @@ const Compare = () => {
     setB(a);
   };
 
-  /* EACH SIDE STANDS ON ITS OWN (the tenth audit's B3: Compare All expiries stayed a whole-page skeleton for 90s while QQQ
-     was ready, waiting on SPY): a side whose levels are final is drawn as soon as they are; the other side, and the ruler
-     that needs both, stand in their skeletons and say whose levels are still being read */
+  /* Each side stands on its own: a side with final levels draws at once; the other and the ruler wait in skeletons and say whose levels are being read. */
   const solo = scan && !cmp ? (sideA ? { side: 'a' as const, s: sideA, waiting: bTicker } : sideB ? { side: 'b' as const, s: sideB, waiting: aTicker } : null) : null;
   if (scan && solo && peekEntry(solo.waiting)?.status !== 'error') {
     const self = buildCompare(solo.s, solo.s, clock);
@@ -308,13 +262,11 @@ const Compare = () => {
 
   return (
     <>
-      {/* BOX 1 — THE TWO BOOKS ON ONE RULER, A NAME'S READ ON EACH SIDE (the partner's cut, 2026-10-18: the Head to head
-          box is gone; each name's read stands in a folding panel at its own edge of the ruler; the same box moves to the
-          viewport in fullscreen) */}
+      {/* Box 1: both books on one ruler, each name's read in a folding panel at its own edge; the box moves to the viewport in fullscreen. */}
       <motion.div
         layout
         transition={{ layout: { duration: 0.32, ease: [0.16, 1, 0.3, 1] } }}
-        /* the page's own ground when full, not the box's panel grey (Noah, 2026-09-10: "ashy/gray") */
+        /* The page's own ground when full. */
         className={rulerFull ? 'fixed inset-0 z-[80] bg-canvas flex flex-col' : 'relative border border-borderSubtle rounded-md bg-panel'}
         data-compare-ruler
         data-full={rulerFull || undefined}
@@ -354,7 +306,7 @@ const Compare = () => {
         </GuideFocus>
       </motion.div>
 
-      {/* BOX 2 — SINCE THE OPEN: today's two lines, the same for both, and the gap under them */}
+      {/* Box 2, since the open: today's two lines and the gap under them. */}
       <div className="border border-borderSubtle rounded-md bg-panel" data-compare-tapes>
         <Deferred index={1} fallback={<CompareTapesInner />} className="animate-fade-in">
           <CompareTapes a={aTicker} b={bTicker} aInk={A_INK} bInk={B_INK} revision={revision} />

@@ -1,8 +1,4 @@
-/*
-  Yesterday's levels, as a list. The feed does not keep yesterday's book.
-  What this desk has already read is stored by New York day. The next day
-  the previous read is the list. Nothing is invented.
-*/
+/* Yesterday's levels as a list: the feed keeps no past book, so this desk's own reads are stored by New York day. */
 
 interface LevelSnap {
   callWall: number | null;

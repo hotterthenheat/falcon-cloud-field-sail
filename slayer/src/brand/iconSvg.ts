@@ -1,8 +1,5 @@
-/*
-  The mark as still SVG strings for the tab icon and the static assets scripts/make-brand-assets.ts renders.
-  No DOM, so Node scripts can import it; colours are literal (a file has no theme): the foil, or the galaxy ink.
-  Tab frames: still, loading, live, alert, closed; offline is the still frame without its cursor.
-*/
+/* The mark as still SVG strings for the tab icon and scripts/make-brand-assets.ts. No DOM, literal colours,
+   so Node can import it. */
 
 import { MARK, MARK_CONTENT } from './paths';
 import type { MarkState } from './markState';

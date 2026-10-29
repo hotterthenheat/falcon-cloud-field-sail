@@ -5,6 +5,7 @@ import { useCallback, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SpotPrice from '../../../components/gex/SpotPrice';
 import { useLiveQuote } from '../../../data/liveQuote';
+import { fmtStrike } from '../../../core/format';
 
 /** A row's own door: the page it leads to, carrying the way back to Pulse (components/layout/WayBack) */
 export const useDoor = () => {
@@ -73,4 +74,4 @@ export const TileEmpty = ({ words, door, onDoor }: { words: string; door?: strin
 
 export const signedPct = (v: number, d = 2) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
 export const dirInk = (v: number) => (v > 0 ? 'text-bull' : v < 0 ? 'text-bear' : 'text-textSecondary');
-export const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
+export { fmtStrike };

@@ -1,9 +1,5 @@
-/*
-  A centred overlay card for drilldowns, over a dimmed page so the context stays visible (a side drawer would cover the
-  rows being compared). Owns the portal, backdrop, Escape, outside click, scroll lock and motion; the body scrolls,
-  the header does not. Closing fades for OUT_MS and a timer (never an animation end) unmounts it, holding the last
-  content through the fade.
-*/
+/* A centred overlay card over a dimmed page; owns portal, backdrop, Escape, outside click, scroll lock and motion.
+   Closing fades for OUT_MS, then a timer (never an animation end) unmounts it. */
 
 /** The close: the fade's length, and the timer that follows it */
 const OUT_MS = 180;

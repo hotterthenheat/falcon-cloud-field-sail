@@ -1,7 +1,4 @@
-/*
-  New York's session clock: the phase (pre-market, open, the closing auction, after hours, closed), the wall clock,
-  and the minutes to the next turn. The synthetic closing-auction read that lived here was unused and is gone.
-*/
+/* New York's session clock: the phase (pre-market, open, closing auction, after hours, closed), the wall clock, the minutes to the next turn. */
 
 import { MARKET_HOLIDAYS } from '../core/calendar';
 
@@ -29,11 +26,7 @@ export interface SessionClock {
   marketClosedToday: boolean;
 }
 
-/*
-  US market holidays now live in core/calendar.ts — the weigher needed the same
-  list to stop naming Saturday expiries, and two copies of a calendar is how
-  they drift. Replace with the exchange calendar when the real feed lands.
-*/
+/* Market holidays live in core/calendar.ts. */
 
 // One formatter, reused — this runs once a second.
 const NY_FMT = new Intl.DateTimeFormat('en-CA', {

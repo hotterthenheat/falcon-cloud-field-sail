@@ -1,36 +1,7 @@
-/*
-==================================================
-  SLAYER TERMINAL - STRIKE PRESSURE LADDER
-  The heatmap's replacement (Mo, 2026-08-19: "I
-  don't think we should keep a generic orange/gray
-  heatmap just because every other options platform
-  has one"). Every strike is a ROW; the put and call
-  gamma at it are TICKS counted out from the centre
-  line — one tick is a fixed sum, so $1.2B against
-  $300M is counted, not estimated. Beside the rows:
-  net, distance from spot, open interest, volume,
-  and the part the strike plays. Spot and the flip
-  run THROUGH the ladder as rules; walls, pin and
-  supreme are named on their rows.
+/* The strike pressure ladder: a row per strike, put and call gamma as ticks counted out from the centre (one tick a fixed sum),
+   with net, distance, OI, volume and role beside. The spine curve leans to each row's dominant side; its dashed ghost is the open's. */
 
-  THE SPINE (Noah, 2026-08-22): a contour drawn over
-  the bars — at every row it leans toward the side
-  that dominates, by that strike's net, and the rows
-  join into one curve. It crosses centre at the flip
-  and bulges hardest at the walls. A dashed ghost is
-  the same curve at the session open; the gap between
-  them, row by row, is the strike building or
-  bleeding. The bars never move — they are anchored
-  at centre so the legs stay comparable down the
-  ladder (the first cut grew them from the bent spine
-  and every row looked shoved sideways).
-==================================================
-*/
-
-/** A smooth open spline through points (Catmull-Rom, rendered as cubic
-    Béziers). One curve for the whole ladder — the per-row quadratics met at
-    corners and doubled back wherever neighbours pulled opposite ways (Noah,
-    2026-08-22: "the curve is glitching"). Control x is clamped to the lane. */
+/** A smooth open Catmull-Rom spline (as cubic Béziers), one curve for the whole ladder; control x is clamped to the lane. */
 export const splinePath = (pts: { x: number; y: number }[], xMin: number, xMax: number): string => {
   if (pts.length === 0) return '';
   if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;

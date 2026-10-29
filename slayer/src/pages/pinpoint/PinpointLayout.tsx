@@ -17,64 +17,15 @@ import RegimeLine from '../../components/gex/RegimeLine';
 import { SayPage } from '../../components/layout/PageMeta';
 import { fmtStrike } from '../../core/format';
 
-/*
-==================================================
-  SLAYER TERMINAL - PINPOINT SHELL (PinpointLayout)
-
-  Band 1 of the roadmap (2026-09-05, the blank
-  canvas): ONE HEAD of chrome, and nothing under it
-  but the page. Where am I — the page's name and its
-  one line — then what the market is doing, read
-  the way every box on Pinpoint reads its facts:
-  a label over a value.
-
-  THE LOCK WALK (Noah, 2026-09-09: "this header has
-  really been bothering me the entire time for the
-  whole pinpoint page. doesnt even look like a header
-  and the info in it makes me go '???'"): the row of
-  loose words — "SHORT GAMMA · flip 494.50 · $1.25
-  overhead · crossed 32× · 2h 19m to the close ·
-  $ % ATR σ" — became the house head. The page's
-  icon and name over its line on the left; on the
-  right the same facts LABELLED so each says what it
-  is (Dealers · amplifying moves; Flip · 494.50,
-  $1.25 above spot; Flip crossed today · 32 times;
-  To the close · 2h 19m), and the ruler as a labelled
-  card like every other control on Pinpoint. The
-  focus chip stays on the title row.
-
-  THE CLOCK IS THE REAL ONE — New York time, the
-  same clock the top bar shows — because "to the
-  close" is a promise about the exchange, not about
-  the simulator's replayed day.
-
-  THE FACTS ARE GONE (Noah, 2026-10-14, with their
-  picture: "remove this from the pinpoint top
-  section"): Dealers · Flip · Flip crossed today ·
-  Market no longer stand in the head — the Map's
-  own sentence and the Board say them. The head is
-  the page's name and line, the focus chip, and the
-  Ruler card.
-
-  WITH THE PARTNER'S MAP (2026-10-14): the LEVELS
-  card beside the Ruler (data/levelsScope.ts — the
-  walls, the flip and the supreme read off today's
-  contracts or every listed date, one choice for the
-  whole desk), a REPLAYING tag beside the name while
-  the Map's boxes are rewound (replayState.ts — the
-  head stays live, and says so), and a slot in the
-  head's row (#pinpoint-head-band) the Map draws its
-  band into when the row has the room, so a wide
-  screen's head is not left empty beside its name.
-==================================================
-*/
+/* Pinpoint's shell: one head (the page's icon, name and line, the focus chip, the Ruler and Levels cards, a REPLAYING tag while
+   the Map is rewound), and the page under it. The Map draws its band into #pinpoint-head-band when the row has room. */
 
 const PinpointLayout = () => {
   const { activeTicker } = useTicker();
   const marketData = usePinpointFeed(activeTicker);
   const sessionRead = useResolvedSession(activeTicker);
   const { focus, clearFocus } = useFocus();
-  /* Alerts are watched by the app shell on every page now (components/alerts/AlertWatcher.tsx, 2026-09-10) */
+  /* Alerts are watched by the shell on every page (components/alerts/AlertWatcher.tsx). */
   const location = useLocation();
   const navigate = useNavigate();
   const outlet = useOutlet();
@@ -85,14 +36,13 @@ const PinpointLayout = () => {
   const spot = focusTicker === activeTicker ? marketData?.spot : undefined;
   const dist = focused != null && spot ? ((focused - spot) / spot) * 100 : null;
 
-  /* THE REPLAY, SAID HERE TOO: the Map's boxes are rewound, the head is not */
+  /* The replay, said here too: the Map's boxes are rewound, the head is not. */
   const replaying = useReplayLabel();
   /* Which page this is — its name, its icon and one line, from the registry the sidebar reads */
   const page = GEX_SUBPAGES.find(p => location.pathname.startsWith(p.path)) ?? GEX_SUBPAGES[0];
   const PageIcon = page.icon;
-  /* THE AGENDA'S TWO FACES (Noah, 2026-10-14): the line under the name is the face's own; the switch itself stands in
-     the first box's head (Agenda.tsx AgendaSwitch), where Noah wanted it */
-  /* the session words follow the clock (the eleventh audit's m3: the Board's line said "what expires today" on Saturday) */
+  /* The Agenda's line under the name is the face's own; the switch is in the first box's head (Agenda.tsx). */
+  /* The session words follow the clock. */
   const bell = bellDay();
   const expiresWords = bell.head === 'Expires today' ? 'what expires today' : `what expires ${bell.head.slice('Expires '.length)}, the next session`;
   const line = page.path === '/pinpoint/agenda' ? AGENDA_LINES[agendaFaceOf(location.search)] : page.subtitle.replace('what expires today', expiresWords);
@@ -102,9 +52,7 @@ const PinpointLayout = () => {
       {/* THE HEAD. The page on the left, the ruler on the right; `flex-wrap`
           so a narrow window stacks the two instead of pushing the ruler off
           the edge — at desk width it is one band. */}
-      {/* THE FRAME OWNS THE SUBJECT AND THE PAGES (direction B, 2026-09-05): the
-          sidebar carries the ticker and the Map · Building · … choice, so this head
-          no longer repeats them. It names the page. */}
+      {/* The rail carries the ticker and the subpages, so this head only names the page. */}
       <header className="flex items-start gap-6 flex-wrap pb-3 border-b border-borderSubtle" data-shell>
         {/* the title block is its words' width, so the side (the Map's band, the cards) takes the row's room */}
         <div className="min-w-0 flex-none max-w-full" data-shell-title>
@@ -128,8 +76,7 @@ const PinpointLayout = () => {
                   </span>
                 )}
                 <button
-                  /* the chart is Terrain (2026-09-30: Pulse's chart tile has no fullscreen of its own any more); the way back
-                     brings the reader here again (Noah, 2026-09-09) */
+                  /* The chart is Terrain; the way back returns here. */
                   onClick={() => navigate('/terrain', { state: { chart: { ticker: focusTicker ?? activeTicker, focus: focused }, wayBack: location.pathname } })}
                   title="See this strike on the chart"
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-t9 font-semibold uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
@@ -153,10 +100,7 @@ const PinpointLayout = () => {
 
         {/* THE SIDE: the Map's band where the row has its room (#pinpoint-head-band — the Map measures the room against
             the band's named row and draws it here, else in its own strip under the head), then the two cards */}
-        {/* THE SIDE WRAPS UNDER THE TITLE WHEN THE ROW IS SHORT (the device sweep, 2026-10-18): with a basis of 0 it
-            never asked for room, so on a phone held sideways, a small laptop or a portrait monitor it was handed 10 to
-            165px and the two cards ran off the screen's edge — the only sideways scroll on the site. A floor of the
-            cards' own width makes `flex-wrap` carry the side to its own line instead. */}
+        {/* The side wraps under the title when the row is short: a floor of the cards' own width lets flex-wrap move it instead of overflowing. */}
         <div className="flex-[3_1_0%] min-w-0 flex items-center gap-x-4 gap-y-2 flex-wrap" data-shell-side>
           <div id="pinpoint-head-band" className="empty:hidden min-w-0 flex-1 [&>[data-ledger-toolbar]]:border-0 [&>[data-ledger-toolbar]]:bg-transparent [&>[data-ledger-toolbar]]:p-0" data-shell-band />
           <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2 max-sm:ml-0 max-sm:w-full max-sm:justify-start max-sm:gap-1.5 [&_:where(button)]:hit" data-shell-cards>
@@ -168,7 +112,7 @@ const PinpointLayout = () => {
         <p className="mt-2 font-mono text-t10 uppercase tracking-widest text-textMuted" data-session-note>{sessionRead.note}</p>
       )}
       <RegimeLine ticker={activeTicker} />
-      {/* the Agenda's Building face names itself in the tab (the eighth audit: /pinpoint/building read "Agenda") */}
+      {/* The Agenda's Building face names itself in the tab. */}
       <SayPage words={page.path === '/pinpoint/agenda' && agendaFaceOf(location.search) === 'building' ? 'Building · Agenda' : null} />
 
       <AnimatePresence mode="wait" initial={false}>
@@ -178,15 +122,11 @@ const PinpointLayout = () => {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -4 }}
           transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          /* THE DESK OWNS ITS FIRST SCREEN: top bar 56 + the shell's padding
-             and its head ≈ 164. Short pages stretch to a full first screen;
-             the footer starts below the fold. */
-          /* A FINGER'S HIT AREA ON EVERY PINPOINT CONTROL (the ship pass, 2026-10-22, at 390 wide: the window rails, the
-             strike doors, the row actions were 12–28px tall). `.hit` (index.css) adds an invisible 44px box on a coarse
-             pointer only; nothing a mouse sees changes. */
+          /* The desk owns its first screen (top bar 56 + the head ≈ 164); short pages stretch, the footer starts below the fold. */
+          /* A finger's hit area on every control: `.hit` (index.css) adds an invisible 44 px box on a coarse pointer only. */
           className="flex flex-col gap-4 flex-grow min-h-[calc(100vh-174px)] [&_:where(button)]:hit [&_:where(a)]:hit"
         >
-          {/* A subpage opens at its head, not where the last one's scroll was (2026-09-11) */}
+          {/* A subpage opens at its head. */}
           <ScrollHome />
           {/* A page's code travels on its first visit; it stands in as ITS OWN
               shape under a shell head that stays put (pinpointSkeletons.tsx) */}

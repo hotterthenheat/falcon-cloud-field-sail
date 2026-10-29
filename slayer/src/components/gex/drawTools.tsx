@@ -1,34 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE DRAWING TOOLS, AS A LIST
-  (components/gex/drawTools.tsx)
-
-  Every drawing tool the chart has, in the FAMILIES a
-  trader looks for them under (TradingView's own, from
-  the panels Noah sent on 2026-09-19). One list, read
-  by everything that offers a tool — the rail's family
-  buttons, a family's fly-out, the all-tools sheet and
-  the command palette — so a tool added here appears
-  in all four and cannot be in one and not another.
-
-  The rail shows ONE BUTTON A FAMILY, never one a tool
-  ("how can we add all of these into the toolbar
-  without extending the toolbar super long"): the rail
-  is as long as the families are many, and only the
-  lists grow. A family's button wears the LAST tool
-  used from it, so the tool a reader lives in is one
-  click and the list is for the rest.
-
-  NAMES are the ones traders already know — a reader
-  searching "horizontal line" must find it — and the
-  house's older words (Level, Moment, Box, Measure)
-  are kept as search words.
-
-  WHAT THE READER KEEPS (one store, every chart):
-    last   the tool each family's button wears
-    favs   the starred tools — the rail's last button
-==================================================
-*/
+/* Every drawing tool, in TradingView's families. One list read by the rail's family buttons, the fly-outs, the all-tools sheet
+   and the command palette. A family's button wears its last tool; starred tools sit on the rail's last button. Old house names stay as search words. */
 
 import { useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';

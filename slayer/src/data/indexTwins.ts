@@ -1,23 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - INDEX PRICE TWINS (indexTwins.ts)
-  One market, three prices: the ETF our sim quotes,
-  the cash index (ETF × family ratio) and the
-  futures (index + a carry basis). The instrument
-  LENS re-denominates GEX surfaces so the map reads
-  in the instrument you actually trade — the
-  overnight ES-vs-nodes read without a TradingView
-  detour (Noah, 2026-08-18, the Discord complaint).
-
-  SIM-ERA CONTRACT: ratios are fixed and the basis
-  drifts deterministically off the rounded spot —
-  replay-safe, no wall clock in data code. The data
-  phase swaps twinBasis for the measured feed (cash
-  indices via ThetaData; live futures optional — a
-  fair-value estimate keeps the lens honest without
-  a futures subscription).
-==================================================
-*/
+/* One market, three prices: the ETF, the cash index (ETF × family ratio) and the futures (index + a carry basis), so a GEX surface
+   can read in the instrument traded. Ratios are fixed and the basis is a deterministic fair-value estimate, no wall clock. */
 
 export type TwinLensKey = 'etf' | 'index' | 'futures';
 

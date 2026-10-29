@@ -1,41 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - WHAT'S BEING BUILT (BuildingLedger)
-
-  Box 1 of the Agenda's Building face: every strike
-  in the window with the hedging there now, what
-  today added or took off in calls and in puts, the
-  day's shape as a small line, and a word for it.
-  The strikes that did nothing fold into one line
-  per run (Noah, 2026-09-13: "the steady ones fold
-  away") — Show · Every strike opens them all.
-
-  TWO PIECES SINCE 2026-10-14 (Noah: "i want to
-  have the ability to choose different tickers and
-  different exps from 1 to 4 tickers. you choose how
-  the layout should be"):
-
-    BuildingControls   the one line of cards (Show ·
-                       Order · Strikes · the names
-                       door the page hands in), the
-                       key, the updated stamp — drawn
-                       ONCE by the page, over every
-                       pane
-    BuildingLedger     ONE PANE: its head (the name
-                       chip, the Expiry card and the
-                       pane's doors the page hands
-                       in), its two or four facts,
-                       the read line, the rows, the
-                       sentence. Beside other panes
-                       it goes COMPACT: the strike,
-                       the wall, the change and the
-                       word's chip — four columns a
-                       screen's quarter can hold.
-
-  The bar's grammar, the hatch, the shape line and
-  the chip are what they were (2026-09-07 → 13).
-==================================================
-*/
+/* Building: every strike in the window with its hedging now, today's calls and puts added or closed, the day's shape and a word.
+   BuildingControls is drawn once over every pane; BuildingLedger is one pane, compact (four columns) beside others. */
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
@@ -50,13 +14,11 @@ import { bothWords, changeWhen, leanWord, sideWords, sizeWords, switchedWords, t
 const fmtSigned = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtDollars(Math.abs(v))}`;
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const ROLE_INK: Record<string, string> = { 'call wall': CALL_WALL, 'put wall': PUT_WALL, supreme: SUPREME };
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
-/* THE HATCH — what left a strike today: red stripes on a 6px period along the
-   135° line, tiled every 8.485px across (6 ÷ sin 45°, so the tiles meet without
-   a seam) and DRIFTING slowly out of the bar (`.hatch-drift` in index.css —
-   Noah, 2026-09-13: "make this red section have a slow moving animation") */
+/* The hatch (what left a strike today): 6 px stripes at 135°, tiled every 8.485 px (6 ÷ sin 45°) so tiles meet without a seam;
+   `.hatch-drift` slides it out of the bar. */
 const HATCH = `repeating-linear-gradient(135deg, ${alpha(PUT_WALL, 0.6)} 0 3px, transparent 3px 6px)`;
 const HATCH_TILE = '8.485px 100%';
 
@@ -75,8 +37,7 @@ export const SHOW_OPTIONS: DropdownOption<BuildShow>[] = [
 
 const contracts = (n: number) => (n === 0 ? '0' : `${n > 0 ? '+' : '−'}${Math.abs(n).toLocaleString('en-US')}`);
 
-/* THE VERDICT AS A CHIP — the report's three tones, plus silver for a change
-   of kind rather than size (changed sides, new today) */
+/* The verdict chip: the report's three tones, plus silver for a change of kind (changed sides, new today). */
 type Tone = 'good' | 'bad' | 'silver' | 'quiet';
 const TONE: Record<Tone, string> = {
   good: 'bg-bull/10 text-bull border-bull/20',
@@ -96,9 +57,8 @@ const verdictOf = (r: BuildRow, compact = false): { chip: string; tone: Tone; wo
     if (r.verdict === 'building') return { chip: 'Building', tone: 'good', words };
     if (r.verdict === 'draining') return { chip: 'Draining', tone: 'bad', words };
   }
-  /* WHAT MOVED THE WALL, NOT JUST WHICH LEG (the seventh audit's retail finding: "774 … +1,509 calls, +4,911 puts …
-     DRAINING puts" read as puts leaving): the leg that moved it most, and whether its contracts were added or closed —
-     new puts on a call-heavy strike shrink it, and say so */
+  /* What moved the wall: the leg that moved it most and whether its contracts were added or closed
+     (new puts on a call-heavy strike shrink it, and say so). */
   const d = dominant === 'calls' ? r.dCall : r.dPut;
   const how = d > 0 ? (r.verdict === 'draining' ? `new ${dominant} offset it` : `${dominant} added`) : d < 0 ? `${dominant} closed` : dominant;
   const when = whenShort(r.when);
@@ -116,11 +76,7 @@ const verdictOf = (r: BuildRow, compact = false): { chip: string; tone: Tone; wo
   }
 };
 
-/** The wall's size through the day — a thin line, the last point marked. On a
-    row that moved, the stretch holding the day's biggest rise is tinted green
-    and the one holding its biggest drop red — the same 1px line, only its
-    colour shifts (Noah, 2026-09-07: "just a slight color change will do");
-    a steady row stays one quiet line. */
+/** The wall's size through the day as a thin line; on a row that moved, the stretch of the biggest rise is tinted green and the biggest drop red. */
 const Shape = ({ shape, live, verdict }: { shape: number[]; live: boolean; verdict: BuildRow['verdict'] }) => {
   const W = 96;
   const H = 18;
@@ -174,30 +130,15 @@ const Shape = ({ shape, live, verdict }: { shape: number[]; live: boolean; verdi
   );
 };
 
-/** THE WALL NOW — one bar against the biggest wall shown: what stood at the
-    open and stands now in quiet silver, what arrived today green past it, what
-    left today red hatching past the bar's end; the figure ALWAYS beside the
-    drawn end — the column keeps room past the longest bar for it (a first
-    cut moved it inside a bar at the edge, and Noah asked whether that was
-    meant: one place for the number is clearer). Compact (a pane beside
-    others), the figure alone — the unit and the open's are the read line's.
-    ON PAPER THE TRACK IS NOT DRAWN (Noah, 2026-09-19, the light sweep: "i like
-    the idea of the numbers hugging the green section of the capsule but it looks
-    unorganized when some of them are bleeding through the capsules and others
-    are on the outside"). On the dark terminal the track is a whisper (6% of
-    white) and a figure over it reads as floating; on paper the same wash is a
-    solid grey capsule, so a figure was over it, half over its end, or past it,
-    row by row. There the bar stands alone and every figure hugs its bar on clean
-    paper — one state. The bars' lengths still say which wall is the biggest;
-    the key drops its "track" entry there. Paper-only (index.css `paper-clear`,
-    `paper-hide`): the dark terminal is what it was. */
+/** The wall now: one bar against the biggest wall shown (the open in silver, today's adds green, today's removals hatched red),
+    the figure always past the drawn end. On paper the track is not drawn (`paper-clear`/`paper-hide`) so figures never sit half over it. */
 const signedGamma = (house: number) => {
   const v = shownGamma(house);
   return `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtDollars(Math.abs(v))}`;
 };
 
 const Wall = ({ row, max, compact = false, loading = false }: { row: BuildRow; max: number; compact?: boolean; loading?: boolean }) => {
-  /* NOTHING PROVISIONAL (the fifth audit): while the scope's chain loads the bar and its figure wait on "…" */
+  /* Nothing provisional: while the scope's chain loads, the bar and its figure show "…". */
   if (loading)
     return (
       <div className="relative h-[12px] rounded-full bg-ink/[0.06] paper-clear" data-build-wall data-wall-loading>
@@ -219,7 +160,7 @@ const Wall = ({ row, max, compact = false, loading = false }: { row: BuildRow; m
       {moved && !grew && open > now && (
         <span className="absolute inset-y-0 rounded-r-full hatch-drift" style={{ left: `${pct(now).toFixed(2)}%`, width: `${(pct(open) - pct(now)).toFixed(2)}%`, background: HATCH, backgroundSize: HATCH_TILE, transition }} data-wall-gone />
       )}
-      {/* the figure sits past the drawn end, the hatch included — the amount, its unit (Noah, 2026-09-13: "$123M… of what?"), the open's */}
+      {/* The figure past the drawn end, hatch included: the amount, its unit, the open's. */}
       <span className="absolute -top-px font-mono text-t10 font-semibold tnum whitespace-nowrap leading-[14px] text-textPrimary" style={{ left: `calc(${end.toFixed(2)}% + 8px)`, transition }} data-wall-figure>
         {/* in the retail sign every page prints: call-heavy (dealers long gamma) +, put-heavy − */}
         {signedGamma(row.now)}
@@ -261,10 +202,9 @@ export const BuildingControls = ({ clock, order, onOrder, window, onWindow, show
       </>
     )}
     {names}
-    {/* THE KEY — three capsules saying what the bars' colours mean (Noah, 2026-09-13: "the three different
-        colored capsules up top") — on this line, where a 1440 screen still has room for it */}
+    {/* The key: what the bars' colours mean. */}
     <span className="ml-3 inline-flex items-center gap-3 font-mono text-t9 text-textMuted whitespace-nowrap max-lg:flex-wrap max-lg:gap-y-1" data-build-key>
-      {/* the track first — the faint full length every bar sits on (Noah, 2026-09-13: "what is the second gray?") */}
+      {/* The track first: the faint full length every bar sits on. */}
       <span className="inline-flex items-center gap-1.5 paper-hide">
         <span className="w-4 h-[6px] rounded-full shrink-0 bg-ink/[0.06] ring-1 ring-inset ring-ink/[0.12]" data-key-swatch="track" /> the track · the biggest wall shown
       </span>
@@ -356,11 +296,9 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
 
   const readRow = (focus != null && rows.find(r => Math.abs(r.strike - focus) < 1e-9)) || (hover != null && rows.find(r => r.strike === hover)) || data.fastestUp || data.fastestDown || rows[0] || null;
   const pinned = focus != null && readRow != null && Math.abs(readRow.strike - focus) < 1e-9;
-  /* FOCUS AND BLUR (Noah, 2026-09-07): a pinned row stays sharp, every other row softens behind it */
+  /* Focus and blur: a pinned row stays sharp, every other row softens. */
   const anyKept = focus != null && rows.some(r => Math.abs(r.strike - focus) < 1e-9);
-  /* …and a click anywhere outside a row lets it go (Noah: "exitable on click
-     anywhere outside of that row"). Another row's click moves the pin instead;
-     the controls, the shell's focus chip and the guide are not "outside". */
+  /* A click outside a row lets it go; another row's click moves the pin. The controls, focus chip and guide are not "outside". */
   useEffect(() => {
     if (!anyKept || !onClear) return;
     const h = (e: MouseEvent) => {
@@ -381,7 +319,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
 
   return (
     <section className="relative flex flex-col min-w-0" data-build-band data-build-pane={ticker} data-compact={compact || undefined}>
-      {/* THE PANE'S HEAD — the chip, the Expiry card and the doors the page hands in; the pane's facts at the right */}
+      {/* The pane's head: the chip, the Expiry card and the page's doors; the pane's facts at the right. */}
       <div className={`${pad} pt-3 pb-2 flex items-start gap-4 ${compact ? 'flex-col' : 'flex-wrap'}`}>
         <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">{head}</div>
         <dl className={`flex flex-wrap gap-y-2 ${compact ? 'gap-x-4' : 'gap-x-6'}`} data-build-facts>
@@ -416,7 +354,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
         </dl>
       </div>
 
-      {/* THE READ LINE — one fixed line, the verdict first */}
+      {/* The read line: one fixed line, the verdict first. */}
       <div className={`${compact ? 'mx-4' : 'mx-5'} px-3 py-2 border-y border-borderSubtle/60 font-mono text-t11 leading-snug select-none min-h-[34px] flex items-center`} data-build-read>
         {readRow ? (
           <span className={`${pinned ? 'text-textPrimary' : 'text-textSecondary'} ${compact ? 'line-clamp-2' : ''}`}>
@@ -434,8 +372,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
         {/* The column template is the skeleton's own (buildingSkeletons.tsx), so the two cannot drift */}
         <div key={cut} className={`grid items-center animate-fade-in ${compact ? 'min-w-[340px] gap-x-[10px]' : 'min-w-[1080px] gap-x-[14px]'}`} style={{ gridTemplateColumns: compact ? LEDGER_COMPACT_COLUMNS : LEDGER_COLUMNS }}>
           <div className="h-[20px] px-2 font-mono text-t9 uppercase tracking-widest text-textMuted" title="The strike price, its role (call wall, put wall, supreme) and how far it is from the current price">Strike</div>
-          {/* the head names the measure — net gamma, in dollars (Noah, 2026-09-13: "what does that number even mean?… can we get
-              the 'net gamma' in there somewhere so it doesn't have to be a mystery") — and the full definition on hover */}
+          {/* The head names the measure (net gamma, in dollars), the full definition on hover. */}
           <div className="h-[20px] px-2 font-mono text-t9 uppercase tracking-widest text-textMuted whitespace-nowrap flex items-center gap-2 min-w-0" data-build-measure>
             <Term k="The wall now">The wall now</Term>
             {!compact && <span className="normal-case tracking-normal text-textMuted/70">· net gamma at the strike, in dollars</span>}
@@ -515,7 +452,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
                     {at ? 'at spot' : `${distance} ${above ? 'above' : 'below'} spot`}
                   </div>
                 </div>
-                {/* THE WALL NOW, and the lean under it */}
+                {/* The wall now, and the lean under it. */}
                 <div className={`px-2 min-w-0 ${compact ? 'pr-[48px]' : 'pr-[168px]'}`}>
                   <Wall row={r} max={maxAbs} compact={compact} loading={data.loading} />
                   {/* the lean takes the bar's reserved right room too — inside it "call-heavy · dealers push back…" was cut to "dealers p…" */}
@@ -525,8 +462,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
                   </div>
                 </div>
                 <div className={`px-2 text-right font-mono text-t12 tnum whitespace-nowrap ${r.verdict === 'steady' ? 'text-textMuted' : 'text-textPrimary font-semibold'}`} data-build-change>
-                  {/* A STRIKE THAT CHANGED SIDES HAS NO ONE SIZE (the eighth audit: 767 −$147M → +$122M read "shrank $25M"): both
-                      figures, the side it left and the side it took; a wall is read by its own leg (the call wall's calls) */}
+                  {/* A strike that changed sides has no single size: both figures, the side it left and the side it took. */}
                   {data.loading ? (
                     '…'
                   ) : r.verdict === 'switched' ? (

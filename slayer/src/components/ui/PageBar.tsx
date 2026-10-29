@@ -1,8 +1,4 @@
-/*
-  Page numbers under a long list. The first page, the one you are on,
-  and the last — so a fiftieth page is one click, not a long scroll.
-  The gap takes a number, the way a normal pager does.
-*/
+/* Page numbers under a long list: the first, the current and the last, so a far page is one click; the gap takes a number. */
 
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';

@@ -1,31 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - READING A SCRIPT BEFORE IT RUNS
-  (core/pine/analyze.ts)
-
-  Two walks over the tree that never touch a bar:
-
-    THE PLAN — every output call (plot, plotshape,
-    plotchar, hline, fill, alertcondition, alert) and
-    every input call, in source order, so the run and
-    the library number them the same way; an input's
-    id is the variable it is assigned to.
-
-    THE META — what the library keeps beside the
-    text (types/scripts ScriptMeta): the header's
-    title and pane, the inputs with their defaults
-    and bounds, the plots with their inks, the fills,
-    the alerts, and whether the script reads the
-    terminal's own numbers. Only constant arguments
-    are read; a dynamic colour falls back to the
-    house's line ink.
-
-  And one small pass that marks integer division —
-  Pine truncates `7 / 2` to 3 when both sides are
-  whole numbers, and a Hull average's `len / 2`
-  depends on it.
-==================================================
-*/
+/* Two walks over the tree before any bar: the plan (every output and input call in source order, so run and library number them alike)
+   and the meta (ScriptMeta from constant arguments). Plus a pass marking integer division (Pine truncates `7 / 2` when both sides are whole). */
 
 import type { ScriptInput, ScriptInputValue, ScriptMeta, ScriptPlot, ScriptPlotStyle } from '../../types/scripts';
 import type { Arg, Expr, Program, Stmt } from './ast';

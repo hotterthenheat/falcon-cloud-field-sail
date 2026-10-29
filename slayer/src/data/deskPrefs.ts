@@ -1,18 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE DESK'S PREFERENCES (data/deskPrefs.ts)
-
-  What every desk reads by, set once on the
-  Settings page (Noah, 2026-09-12: "make the desk
-  buttons actually have the function behind them"):
-  the name and the timeframe a desk opens on,
-  whether alerts sound, and whose clock the axes
-  keep. On this machine (localStorage) until the
-  account carries them; read by the hosts at their
-  first render, by the chart clock at every label,
-  by the bell at every ring.
-==================================================
-*/
+/* What every desk reads by, set on Settings: the name and timeframe a desk opens on, whether alerts sound, whose clock the axes keep.
+   In localStorage until the account carries them; read at first render, by the chart clock and by the bell. */
 
 import { useSyncExternalStore } from 'react';
 import type { Timeframe } from './timeframe';
@@ -25,8 +12,7 @@ interface DeskPrefs {
     ticker: string | null;
     /** null = each desk's own (Pulse 1m, the Map 15m …) */
     timeframe: Timeframe | null;
-    /** null = the start page; else a rail page's path — where the landing's launch door lands (pages/landing/pieces.tsx
-        doorTo; 2026-10-03) */
+    /** null = the start page; else a rail page's path, where the landing's launch door lands (landing/pieces.tsx doorTo). */
     page: string | null;
   };
   /** the jingle when one arms, the chime when it fires */

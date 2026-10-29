@@ -1,20 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - ENGINE CLOCK
-  The one place the scoring engine learns what time
-  it is. Live, nothing sets it and now() is the wall
-  clock — zero behavior change. In a replay, the
-  harness pins it to the historical moment before
-  calling the engine, and everything downstream
-  (dayKey seeding, expiry resolution) follows.
-
-  This exists because a backtest that reads the wall
-  clock is quietly scoring 2024's chain against
-  2026's calendar. Every engine-path use of
-  new Date() must route through here; adding a bare
-  new Date() to scoring code is a replay bug.
-==================================================
-*/
+/* The engine clock: the wall clock live; a replay harness pins it so dayKey seeding and expiry resolution follow the historical moment.
+   Engine code must read now() here, never a bare new Date(). */
 
 let injected: (() => Date) | null = null;
 

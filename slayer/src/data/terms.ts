@@ -1,15 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - TERM DICTIONARY
-  One-line plain-English definitions behind the
-  dotted-underline Term explainer (Noah, 2026-08-19:
-  "what is revision? what is options vs history?
-  these things just sound so abstract"). Keys read
-  as the label they explain; definitions say what
-  the number means to a person, never how the
-  engine computes it.
-==================================================
-*/
+/* One-line plain definitions behind the Term explainer, keyed by the label they explain, saying what a number means rather than how it is computed. */
 
 export const TERMS = {
   'Expected move': 'The move options are charging for this report — the market’s own guess, as a ± percent.',
@@ -39,12 +28,7 @@ export const TERMS = {
   'V/OI': 'Today’s volume against open interest. Above 1×, the contract traded more today than every position that existed this morning.',
   IV: 'Implied volatility — the size of move the option’s price is betting on, stated annualized.',
   Tag: 'How the order executed. A SWEEP raced across exchanges at once — the aggressive fingerprint; custom and ratio prints are parts of structures.',
-  /* ---- the two exposure panels ----
-     Noah, 2026-08-30: "what is the difference between these 2 sections... if
-     they are the same thing please let me know". They are not, but they DO
-     overlap in exactly one column, which is why they read alike — so each
-     definition names the other. A term that only describes itself would have
-     left the same question unanswered. */
+  /* ---- The two exposure panels overlap in one column, so each definition names the other ---- */
   'Exposure ledger':
     'The book across the calendar as a grid of capsules: strikes down the rows, expiries across the columns, one greek at a time or all five side by side. Every capsule is the net exposure at that strike and expiry on the house ramp — gold where dealer hedging amplifies a move, ice where it absorbs one, dark where it is balanced — with its figure inside. The supreme is the largest cell on the whole calendar, ringed in magenta with a star; spot runs through the rows as a rule. Hover a capsule and it lights with its row and column while the read line above carries put, call, net, OI and the verdict; click to pin it, click empty space to let go.',
   'Exposure matrix':

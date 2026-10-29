@@ -1,8 +1,5 @@
-/*
-  The "How to read this" pattern: a small door in a surface's head opens the guide as a centred card over the
-  surface it explains, blurred and dimmed behind. Esc (captured, so a fullscreen host stays) or a click on the blur
-  closes it. The host renders the layer inside its own `relative` box.
-*/
+/* "How to read this": the guide as a centred card over the surface it explains, the surface blurred behind.
+   Esc (captured, so a fullscreen host stays) or a click on the blur closes it; the host renders it inside its own `relative` box. */
 
 import { useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';

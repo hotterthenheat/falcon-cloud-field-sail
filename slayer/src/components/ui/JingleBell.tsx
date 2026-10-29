@@ -1,8 +1,5 @@
-/*
-  One bell for every place an alert is set. When its count rises it is kicked and swings back on an underdamped
-  framer-motion spring with a small pop, landing in the alert ink, which it keeps while anything is set. Quiet, it
-  takes the host's colour. Reduced motion gets the ink without the swing.
-*/
+/* One bell for every alert: when its count rises it swings back on an underdamped spring, landing in the alert ink
+   it keeps while anything is set. Reduced motion gets the ink without the swing. */
 
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { Bell } from 'lucide-react';

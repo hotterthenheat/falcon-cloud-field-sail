@@ -1,18 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE DESK'S SASH (pages/weigher/deskSplit.ts)
-
-  The Weigher's frame is two rows — the chart and
-  the chain in a WINDOW on top, the watchlist and
-  the position growing under it, the page
-  scrolling (2026-09-14). The window's height is
-  the reader's (Noah: "build it with the sash"):
-  dragged on a sash in the gap under it,
-  double-click resets, kept in this browser, in
-  pixels. Read by the desk AND its skeleton, so
-  the stand-in lands on the same height.
-==================================================
-*/
+/* The Weigher's sash: the top window's height (chart and chain) is the reader's, dragged on the sash under it, double-click resets,
+   kept in this browser in pixels. Read by the desk and its skeleton. */
 
 const KEY = 'slayer_weigher_top';
 export const DESK_TOP_DEFAULT = 560;

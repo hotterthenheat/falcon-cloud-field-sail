@@ -1,14 +1,6 @@
 import { useCallback, useState } from 'react';
 
-/*
-==================================================
-  SLAYER TERMINAL - A BOX'S FOLD (data/boxFold.ts)
-
-  Every box on the Map folds to its head and is remembered folded on this
-  machine (idea 6, 2026-10-13 — the tape did; someone who lives on the
-  matrix and the report can now fold the rest).
-==================================================
-*/
+/* Every box on the Map folds to its head, remembered on this machine. */
 
 const keyOf = (box: string) => `slayer_map_fold_${box}`;
 

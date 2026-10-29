@@ -1,9 +1,5 @@
-/*
-  The site footer, rendered by AppShell under every page (the landing and product pages render it too). It is
-  FooterArt's screen with the page's scene (footer/registry.ts), the links and a status line. `home` changes only
-  link behaviour: on the landing #pricing/#faq are in-page anchors and doors into the terminal play the launch gate;
-  inside the terminal they route back to the landing. Product pages (/products/*) are outside the terminal too.
-*/
+/* The site footer under every page: FooterArt's scene for the page (footer/registry.ts), the links and a status line.
+   `home` changes only link behaviour: on the landing #pricing/#faq are anchors and terminal doors play the launch gate. */
 
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';

@@ -474,31 +474,24 @@ export interface WeighRequest {
 }
 
 const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
-  /* TWO TIERS, the Pulse rule: the light tick runs every snapshot and feeds the cheap live readouts — prices, the
-     mood, the charts' bar appends. The SCAN tick sweeps every few seconds and feeds the heavy rebuilds — the
-     301-strike chain and the scanner. (The mid-drag freeze that used to ride here died with the movable desk.) */
+  /* Two tiers: the light tick feeds the cheap readouts (prices, mood, bar appends); the scan tick, every few seconds, the heavy rebuilds
+     (the 301-strike chain, the scanner). */
   const [tick, setTick] = useState(0);
   const [scanTick, setScanTick] = useState(0);
   const lastScanRef = useRef(0);
   /* The chart's chrome wears the ground of the tape's theme (the store's, on this desk — index.css re-scopes the
      strip's tokens under the stamp) */
   const chartThemeKey = useCandleThemeKey();
-  /* Both tiers publish as TRANSITIONS: the scan tick rebuilds a 301-row chain and the scanner — a 54–103ms render
-     measured at idle. As urgent updates those blocked the very click they landed under; as transitions React
-     yields to the click first and finishes the sweep after. Same data, same cadence, no frozen frame. */
+  /* Both tiers publish as transitions: the scan rebuild is a 54–103 ms render, and as a transition React lets a click land first. */
   const applyTick = useCallback(() => {
     const now = Date.now();
     const sweep = now - lastScanRef.current >= SCAN_MS;
     if (sweep) lastScanRef.current = now;
     startTransition(() => setTick(t => t + 1));
-    /* The sweep lands a frame AFTER the light tick, never in the same commit: measured on release after a long
-       drag, the two together were one 87ms task — the cheap readouts waiting on the 301-row rebuild. Apart, the
-       release paints at once and the sweep follows. */
+    /* The scan lands a frame after the light tick, never in the same commit (together they were one 87 ms task). */
     if (sweep) window.setTimeout(() => startTransition(() => setScanTick(t => t + 1)), 32);
   }, []);
-  /* No tick under the hand, desk-wide. Measured with the button held down on the chart: even with the chart's own
-     effects held, the light tick and the sweep still landed as 51ms and 85ms tasks — the desk re-rendering under a
-     drag. So while any pointer is down on the page, ticks are stashed; the newest is applied on release. */
+  /* No tick under the hand: while a pointer is down, ticks are stashed and the newest applied on release (they were 51 and 85 ms tasks mid-drag). */
   const pointerDownRef = useRef(false);
   const pendingTickRef = useRef(false);
   const onTick = useCallback(() => {
@@ -964,10 +957,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const identity = (
     <span className="inline-flex items-center gap-2 select-none shrink-0">
       <TickerQuickPick ticker={ticker} onPick={pickTicker} />
-      {/* Keyed by its subject: the strip's readout rolls between values (AnimatedNumber), which is right for a
-          tick of the same number and a lie between two different ones — unkeyed, React kept this element when the
-          strip turned to the contract, and the mark rolled down from the stock's $512 through every number between
-          on the way to its $0.55. A new subject mounts at its own value. */}
+      {/* Keyed by its subject, so switching from the stock to a contract mounts at the new value instead of rolling through every number between. */}
       {liveSpot > 0 && <SpotPrice key={`spot:${ticker}`} value={liveSpot} />}
       {dayPct != null && (
         <span className={`font-mono text-[11px] font-semibold tnum ${dayPct >= 0 ? 'text-bull' : 'text-bear'}`}>
@@ -981,9 +971,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   /* In the contract lens the strip speaks the CONTRACT \u2014 same capsule, same ticker door behind it, but the
      name is the whole contract and the tick is its mark against yesterday's modeled close, the reference's own
      "$0.38 \u25bc $0.07 (15.56%)" grammar. */
-  /* The chain sweeps every few seconds, but the capsule's price must tick
-     with the tape — one contract re-priced per second is cheap; 602 are
-     not. Same estimator, same smile, so the sweep never disagrees with it. */
+  /* The chain refreshes every few seconds, but the capsule's price ticks with the tape: one contract re-priced per second is cheap. */
   const shownMark = selected && Number.isFinite(selected.mark) ? selected.mark : null;
   const contractChg = shownMark != null && selected && Number.isFinite(selected.prevClose) ? shownMark - selected.prevClose : null;
   const contractChgPct = contractChg != null && selected && selected.prevClose > 0 ? (contractChg / selected.prevClose) * 100 : null;

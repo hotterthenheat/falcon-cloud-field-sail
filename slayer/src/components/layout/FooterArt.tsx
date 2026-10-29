@@ -1,12 +1,5 @@
-/*
-  The footer as one animated screen: the engine. The picture is a scene (footer/scenes.ts) chosen by address
-  (footer/registry.ts), drawn in coarse pixels with a red/blue fringe (footer/kit.ts); the footer's words are the
-  brightest marks ([data-footer-lit]). Around the pointer the screen comes back into focus and fast pointer moves
-  tear rows. On the landing (`live`) it moves while visible, with its own drifting arrow; elsewhere it is one still
-  frame until a pointer or touch wakes it. Reduced motion: one frame, clock advanced once a minute.
-  Not data: no figure on it is a price. Three canvases: still parts drawn once, moving parts ~30 fps (60 under the
-  pointer) only while awake and visible; word light and slip are custom properties written on change.
-*/
+/* The footer as one animated pixel screen: a scene by address (footer/registry.ts) drawn with a red/blue fringe (footer/kit.ts).
+   Moving parts run ~30 fps (60 under the pointer) only while awake and visible; elsewhere one still frame until a pointer wakes it. */
 
 import { useEffect, useRef, type ReactNode } from 'react';
 import { PHOTO } from '../../embed';

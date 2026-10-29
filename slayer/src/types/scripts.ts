@@ -1,9 +1,5 @@
-/*
-  The shape of a script (the Pine v6 subset users write, save and place on panes), shared by the editor, library,
-  runtime and charts. A Script is text plus what its last Save learned (inputs, plots, alerts, overlay) and its
-  versions; a ChartScript is one script on one pane with that reader's settings. All storage goes through
-  ScriptStore (data/scriptStore.ts in the browser today), so the backing store can change underneath.
-*/
+/* A script's shape (the Pine v6 subset), shared by editor, library, runtime and charts: text plus what its last Save learned and its versions;
+   a ChartScript is one script on one pane. All storage goes through ScriptStore (data/scriptStore.ts). */
 
 /* ---- what a script is ------------------------------------------------------------ */
 

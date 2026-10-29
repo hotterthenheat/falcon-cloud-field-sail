@@ -1,48 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - PEOPLE (pages/settings/People.tsx)
-
-  The admin room (Noah, 2026-10-10: "start with the
-  admin people room"), a section of Settings that
-  only an owner sees. Top to bottom, the shape he
-  said build to:
-
-    THE HEAD      one line — how many accounts, how
-                  many on a plan, how many banned —
-                  and the search box
-    THE CARDS     Plan · Status · Role · Sort, the
-                  house's dropdown cards
-    THE TABLE     the house grid in a window: the
-                  person, email, plan, role, status,
-                  joined, last seen, the ways in
-    A ROW'S CARD  press a row and the person's card
-                  opens over the room (ui/Modal): the
-                  facts, the doors — plan, role, ban,
-                  and since 2026-10-17 GIVEN (a plan on
-                  the house, "legacy"), UNTIL and BETA —
-                  and one line of reason before anything
-                  saves; their own history under it
-    THE LOG       a second box: the last hundred
-                  changes across everyone, written by
-                  the database itself
-
-  ROLES (2026-10-17, Noah with his partner: "make
-  more roles"): an OWNER changes anything here; the
-  TEAM reads the room and the log and changes
-  nothing; a MEMBER is a trader and never sees it.
-  A plan given is not a role — the person keeps
-  theirs and holds the higher of the gift and what
-  they pay for, until a date that is always set.
-
-  The words and the doors are data/admin.ts's; the
-  rules are the database's (owners change, the team
-  reads, the last owner stays, nobody bans
-  themselves) and the page only repeats what it
-  said. Without the account service the room shows
-  a sample, so it can be looked at and the checks
-  still run.
-==================================================
-*/
+/* The admin People room (owners and the team): head and search, Plan/Status/Role/Sort cards, the grid, a row's card
+   (plan, role, ban, given plan, until, beta, with a reason), and the change log. Rules are the database's; without accounts it shows a sample. */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ColDef, ICellRendererParams, RowClickedEvent } from 'ag-grid-community';
@@ -71,7 +28,7 @@ type StatusPick = 'all' | PersonStatus;
 type RolePick = 'all' | Role;
 type SortPick = 'newest' | 'name' | 'seen';
 type BanPick = 'keep' | 'lift' | '7d' | '30d' | '90d' | '365d' | 'forever';
-/** THE GRANT'S DOORS (2026-10-17): a plan given, until when, and the beta */
+/** The grant's doors: a plan given, until when, and the beta. */
 type GivenPick = 'none' | GrantPlan;
 type UntilPick = 'keep' | '30d' | '90d' | '365d' | '5y' | '10y';
 type BetaPick = 'off' | 'on';
@@ -155,7 +112,7 @@ const shownPlan = (p: Person, now = Date.now()): { plan: AccountPlan; given: boo
   if (given && (!paidStands || p.plan === 'none' || PLAN_RANK[given] > PLAN_RANK[p.plan])) return { plan: given, given: true };
   return { plan: p.plan, given: false };
 };
-/* THE LOG'S WORDS — a field as the reader says it, a value as a date where it is one */
+/* The log's words: a field as the reader says it, a value as a date where it is one. */
 const FIELD_WORD: Record<string, string> = { plan: 'plan', plan_status: 'standing', role: 'role', banned_until: 'ban', grant_plan: 'given', grant_until: 'given until', beta: 'beta' };
 const logValue = (field: string, v: string | null): string => {
   if (field === 'banned_until') return v ? `until ${fmtDay(v)}` : 'none';
@@ -196,7 +153,7 @@ const StatusWord = ({ s }: { s: PersonStatus }) => (
   </span>
 );
 
-/** the plan's chip — in the silver when it is a gift (2026-10-17), with the date it ends on the hover */
+/** The plan's chip, silver when it is a gift, its end date on hover. */
 const PlanChip = ({ plan, given = false, until = null }: { plan: AccountPlan; given?: boolean; until?: string | null }) =>
   plan === 'none' ? (
     <span className="font-mono text-t10 text-textMuted">—</span>
@@ -383,7 +340,7 @@ const PersonCard = ({ p, me, canEdit, log, nameOf, onClose, onChanged }: { p: Pe
         </div>
         )}
 
-        {/* THEIR OWN HISTORY */}
+        {/* Their own history. */}
         <div className="flex flex-col gap-1 min-w-0">
           <span className="font-mono text-t9 font-bold uppercase tracking-widest text-textSecondary">Their history</span>
           {log.length ? (
@@ -450,7 +407,7 @@ const COLUMNS: ColDef<PeopleRow>[] = [
 
 const PeopleBox = () => {
   const a = useAccount();
-  /* THE DOOR (2026-10-17): owners and the team come in; owners alone change anything — the database holds both rules */
+  /* Owners and the team come in; owners alone change anything (the database holds both rules). */
   const myRole = a.status === 'in' ? a.profile?.role ?? null : null;
   const team = !ACCOUNTS_ON || myRole === 'owner' || myRole === 'team';
   const canEdit = !ACCOUNTS_ON || myRole === 'owner';
@@ -531,7 +488,7 @@ const PeopleBox = () => {
   return (
     <>
       <Section id="people" title="People" line={line} aside={<Tag tone="silver">{!ACCOUNTS_ON ? 'preview · sample accounts' : canEdit ? 'owners change' : 'the team reads'}</Tag>}>
-        {/* THE HEAD LINE, AND THE SEARCH */}
+        {/* The head line, and the search. */}
         <div className="px-5 py-3 border-t border-borderSubtle/60 flex items-center gap-x-4 gap-y-2 flex-wrap">
           <p className="text-t11 text-textMuted whitespace-nowrap" data-people-line>
             {people == null ? 'Reading…' : `${counts.n} ${counts.n === 1 ? 'account' : 'accounts'} · ${counts.onPlan} on a plan · ${counts.given} given one · ${counts.banned} banned`}

@@ -1,27 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE SIGN-IN PAGE (pages/signin/SignIn.tsx)
-
-  Noah, with a picture (2026-10-03): "i like this
-  type of one with the holo silver and gravity
-  accents as our log in section and the google and
-  apple being the colored icons, the with our logo
-  at the top." So: one column in the middle of an
-  empty page — the mark on its tile, a title and a
-  line, the email and the password with its eye,
-  one solid door in the house's foil (the holo foil
-  on black, the galaxy ink on paper), "or continue
-  with" Google and Apple in their own marks, and
-  the two small lines under it. Three faces of the
-  same column: sign in, create an account, a reset
-  link; a fourth, the new password, when the reset
-  link lands here.
-
-  The doors are data/account.ts's; a signed-in
-  reader is sent on to `?next=`, else to where the
-  launch door lands (data/openDoor.ts).
-==================================================
-*/
+/* The sign-in page: one centred column (the mark, title, email and password, one foil door, Google and Apple in their own marks).
+   Faces: sign in, create an account, reset link, new password. Signed in, it sends the reader to `?next=` or the launch door (data/openDoor.ts). */
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -119,9 +97,7 @@ const SignIn = () => {
   const [problem, setProblem] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, run] = useBusy();
-  /* ONLY THE DOORS THAT OPEN (2026-10-10): the providers the project has switched on, asked once; until the answer no
-     door is drawn — a door drawn and then taken away is worse than one that arrives a beat later. Apple stays hidden
-     until Apple is set up. */
+  /* Only the doors that open: the enabled providers, asked once; nothing drawn until the answer. Apple stays hidden until set up. */
   const [doors, setDoors] = useState<Record<Provider, boolean> | null>(null);
   useEffect(() => {
     let live = true;
@@ -235,7 +211,7 @@ const SignIn = () => {
                 {recovering ? 'Keep it' : face === 'up' ? 'Create the account' : face === 'reset' ? 'Send the link' : 'Sign in'}
               </Solid>
             </div>
-            {/* the agreement, named where the account is made (2026-10-05) */}
+            {/* The agreement, named where the account is made. */}
             {face === 'up' && !recovering && (
               <p className={`${quiet} mt-3 text-center text-t115 text-textMuted`} data-signin-agree>
                 Creating the account means you agree to the{' '}
@@ -268,7 +244,6 @@ const SignIn = () => {
               </>
             )}
 
-            {/* THE TWO SMALL LINES */}
             <div className="mt-7 flex flex-col gap-1.5">
               {!recovering && face === 'in' && (
                 <>

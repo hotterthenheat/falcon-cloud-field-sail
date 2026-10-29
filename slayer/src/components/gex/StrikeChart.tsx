@@ -101,8 +101,7 @@ import type { FlowPrint } from '../../types/trace';
    than imported from the provider so a chart never depends on a React context it does not use. */
 type StampedFlowPrint = FlowPrint & { at: number };
 
-/* The band's share of the chart, as a stretch factor against the price pane's. `setHeight(90)` was the first attempt
-   and it does not hold: measured, the pane came back at 201px on a 900px window — lightweight-charts lays… */
+/* The band's share of the chart, as a stretch factor against the price pane's. */
 const FLOW_STRETCH = 1;
 const PRICE_STRETCH = 3;
 
@@ -224,8 +223,7 @@ export const INDICATOR_INKS: Record<keyof ChartIndicators, string> = {
   atrPane: '#C0C7CF',
 };
 
-/* What each indicator draws, and where, as data. `pane: 'overlay'` rides the tape's own scale; `'sub'` takes a
-   stacked pane below it sharing the time axis — the dexStrike dock's pattern, generalised through… */
+/* What each indicator draws, and where, as data. */
 export const SUB_PANE_ORDER: (keyof ChartIndicators)[] = ['rsi', 'macd', 'atrPane'];
 export const MAX_SUB_PANES = 2;
 
@@ -386,13 +384,12 @@ export const DEFAULT_OVERLAYS: ChartOverlays = {
   events: false,
 };
 
-/* Where a price lands on this chart, published live. A column drawn beside the tape has to agree with the tape's own
-   price scale or it is a second, contradicting set of numbers 54px away. */
-/** How wide the price gutter is forced to be when the chart draws its own live-price card (`priceTag`). */
-/** The axis is as wide as its figures: the chart no longer holds the price axis open for the live-price card — the
-    library sizes the axis to its tick text (tick + padding + text + padding, the text ten pixels from the left… */
+/** The library sizes the price axis to its tick text and the live-price card takes the measured width; this is the
+    axis's usual width at a three-digit price, which the chrome pads for. */
 export const PRICE_SCALE_MIN_WIDTH = 58;
 
+/* Where a price lands on this chart, published live. A column drawn beside the tape has to agree with the tape's own
+   price scale or it is a second, contradicting set of numbers 54px away. */
 export interface PriceProjection {
   /** Y in CSS px from the top of the plot, or null if the series is gone. */
   yFor(price: number): number | null;
@@ -567,7 +564,7 @@ import { BULL, CALL_WALL, PUT_WALL, SUPREME, FOCUS, DARK_POOL, ALERT as ALERT_IN
 
 // Level lines are created once per overlay/ticker, then their prices are
 /* The rail's two reader preferences One tiny store, module-wide, persisted — so hiding or re-docking the rail on any
-   chart does it on every chart at once, which is the only version a reader can predict. `open` hides the rail… */
+   chart does it on every chart at once, which is the only version a reader can predict. */
 type RailDock = 'left' | 'top';
 const RAIL_KEY = 'slayer_draw_rail';
 let railPrefs: { dock: RailDock; open: boolean } = (() => {
@@ -949,8 +946,8 @@ const StrikeChart = ({
   const conePrimRef = useRef<ExpectedMovePrimitive | null>(null);
   /** The layer, ditto. */
   const eventsPrimRef = useRef<EventsPrimitive | null>(null);
-  /** The calendar half of the events data, cached per ticker+day — earnings and macro dates move daily while the
-      prints move every tick, and rebuilding the whole earnings universe 40× a minute would be spend without… */
+  /** The calendar half of the events data, cached per ticker+day: the dates move daily while prints move every tick,
+      so it is not rebuilt per tick. */
   const eventsCalRef = useRef<{ key: string; earnings: EarningsEvent | null; macro: MacroDate[]; todayIso: string } | null>(null);
   /** The hovered marker's card. */
   const [eventCell] = useState(() => makeCell<{ e: MarketEvent; x: number } | null>(null));
@@ -961,7 +958,7 @@ const StrikeChart = ({
   /** The host tape's last one-minute bar at the last load — how a jump of the host's clock is told from a tick */
   const tapeLastRef = useRef(0);
   /* What the price card's countdown measures against: the bar time we last saw, when we saw it in real ms, and the
-     observed real gap between the last two arrivals. `realMs: 0` means "not yet observed" and the countdown… */
+     observed real gap between the last two arrivals. */
   const barClockRef = useRef({ stamp: 0, at: 0, realMs: 0 });
   const bucketSecRef = useRef(60);
   const levelTickerRef = useRef('');
@@ -987,14 +984,14 @@ const StrikeChart = ({
     }
   }, []);
   const barCountRef = useRef(0);
-  /* The history on demand: a world (name · interval · clock) opens on its recent bars; the reader scrolling to their
-     left edge asks for the whole store, once — `fullWorldRef` names the world that asked, `recentHeldRef` says… */
+  /* History on demand: a world (name · interval · clock) opens on its recent bars and scrolling to their left edge
+     loads the whole store once. `fullWorldRef` names the world that asked; the nonce re-runs the data effects. */
   const fullWorldRef = useRef<string | null>(null);
   const recentHeldRef = useRef(false);
   const worldKeyRef = useRef('');
   const [fullNonce, setFullNonce] = useState(0);
   /* Mirrored every render, read from a subscription installed once — the same pattern levelsRef and focusPriceRef
-     use, and the reason the mount effect never has to re-subscribe. `revision` bumps every 1500ms and an effect… */
+     use, and the reason the mount effect never has to re-subscribe. */
   const onCrosshairRef = useRef(onCrosshair);
   onCrosshairRef.current = onCrosshair;
   const syncRegisterRef = useRef(syncRegister);
@@ -1236,8 +1233,8 @@ const StrikeChart = ({
     };
   }, [showRecent, keepView]);
 
-  /* Hold still while the frame glides: the sidebar folding resized this chart on every frame of its 300ms glide —
-     three canvases re-allocated and the whole tape re-drawn eighteen times, the ribbon with it, 35–50ms a frame… */
+  /* Hold still while the frame glides: resizing on every frame of the sidebar's 300ms glide re-allocated three
+     canvases and redrew the tape each frame (35–50ms a frame with two charts). */
   useEffect(
     () =>
       onGlide(
@@ -1259,8 +1256,8 @@ const StrikeChart = ({
 
   /* Keep enough whitespace ahead of the last bar that the time axis is labelled all the way to the right edge, at
      whatever zoom the reader is at. */
-  /* The ceiling was 4000 and a reader found the end of it: at 2560px wide, fully zoomed out with the tape dragged
-     off the left edge, the visible span was 5011 bars and the right fifth of the axis went unlabelled — the exact… */
+  /* The cap is a runaway guard, not a budget: barSpacing bottoms out near 0.5, so a 4K-wide plot can show ~8000 bars
+     and the runway must reach them. */
   const RUNWAY_MAX = 12000;
   /** The runway grows by this many slots at a time — see ensureRunway. */
   const RUNWAY_STEP = 240;
@@ -1274,7 +1271,7 @@ const StrikeChart = ({
     const span = range ? Math.max(60, range.to - range.from) : 200;
     const reach = range ? range.to - (len - 1) : 0;
     const cur = runwayRef.current;
-    /* Grown in chunks: this runs on every visible-range change, i.e. */
+    /* Grown in chunks, because this runs on every visible-range change. */
     const need = Math.max(120, Math.ceil(reach + span), cur.from === lastTime ? cur.slots : 0);
     const want = Math.min(RUNWAY_MAX, Math.ceil(need / RUNWAY_STEP) * RUNWAY_STEP);
     if (cur.from === lastTime && cur.slots >= want) return;
@@ -1612,8 +1609,8 @@ const StrikeChart = ({
     trails.afterDraw = () => drawHoverRef.current();
     trails.onData = ref => setTrailRef(ref);
     candles.attachPrimitive(trails);
-    /* The key levels' ladder — fed by the levels effect while the switch is on; it reads the field's strike chips at
-       the edge so a wall's rung ends at its chip (attached after the trails, so it draws after them in the… */
+    /* The key levels' ladder ends each wall's rung at the field's strike chip, so it is attached after the trails to
+       draw after them in the same frame. */
     const ladder = new KeyLevelsPrimitive();
     ladder.chips = () => trails.chips;
     candles.attachPrimitive(ladder);
@@ -1783,13 +1780,17 @@ const StrikeChart = ({
 
     /* The frame belongs to the user after first touch. The library only suspends price autoscale on an axis drag; a
        wheel zoom or a pan keeps it on, so every 1s tick re-fit the price scale and undid the reader's hand. */
-    const freezeScale = () => chart.priceScale('right').applyOptions({ autoScale: false });
+    /* applyOptions re-lays the whole chart, so only the first wheel or press of a gesture pays it */
+    const freezeScale = () => {
+      const ps = chart.priceScale('right');
+      if (ps.options().autoScale) ps.applyOptions({ autoScale: false });
+    };
     container.addEventListener('wheel', freezeScale, { passive: true });
     container.addEventListener('pointerdown', freezeScale);
 
     return () => {
-      /* KeepView: remember where the reader was before this instance dies — the Weigher's fullscreen takeover
-         portals the chart to <body>, which is a remount, and the new instance restores this (see the data effect's… */
+      /* Remember the view before this instance dies (the Weigher's fullscreen portal is a remount); spacing and
+         scroll, not the logical range, so a wider pane shows more bars. */
       if (keepViewRef.current) {
         const w = loadedRef.current;
         const ts = chart.timeScale();
@@ -1858,8 +1859,8 @@ const StrikeChart = ({
     if (trails) next.attachPrimitive(trails);
     if (ladder) next.attachPrimitive(ladder);
     if (drawingsPrim) next.attachPrimitive(drawingsPrim);
-    /* A style swap replaces the series, and a primitive is attached to the series rather than to the chart — miss
-       this and the session rules vanish the first time the reader picks a line chart, with no error and nothing… */
+    /* Primitives hang on the series, not the chart, so a style swap must re-attach them or the session rules silently
+       vanish. */
     if (sessionPrim) next.attachPrimitive(sessionPrim);
     if (conePrim) next.attachPrimitive(conePrim);
     if (eventsPrimRef.current) next.attachPrimitive(eventsPrimRef.current);
@@ -2038,8 +2039,8 @@ const StrikeChart = ({
     const chart = chartRef.current;
     if (!chart) return;
 
-    /* Built on demand and torn down when off — the flow band's rule, and for the same measured reason: a pane that
-       is always present adds a separator and grows the time axis for every chart in the app, including charts… */
+    /* Built on demand and torn down when off: an always-present pane adds a separator and grows the time axis for
+       every chart, including ones that never turn it on. */
     if (!overlays.netDrift || altSpec) {
       const oldCalls = driftCallsRef.current;
       const oldPuts = driftPutsRef.current;
@@ -2207,8 +2208,7 @@ const StrikeChart = ({
                     ...(part.faint ? { color: part.ink + '99' } : {}),
                     ...(spec.pane === 'overlay' ? { priceScaleId: 'right' } : {}),
                     priceLineVisible: false,
-                    /* The value on the axis: every line prints its last value on its axis in its own ink — an
-                       overlay on the price axis beside the price, a sub-pane's on its own axis; MACD's signal alone… */
+                    /* Every line prints its last value on its axis in its own ink; MACD's signal alone stays quiet. */
                     lastValueVisible: part.part !== 'signal',
                     crosshairMarkerVisible: false,
                   },
@@ -3047,8 +3047,8 @@ const StrikeChart = ({
     return () => cancelAnimationFrame(levelRafRef.current);
   }, [levels, ticker]);
 
-  /* The scale glides: the focus price sits in the autoscale's extras so its line is always in frame — taking one
-     stretched the range and letting it go shrank it back, each in one frame, the whole tape and every trail… */
+  /* The scale glides: taking or dropping the focus price from the autoscale extras jolted the range in one frame, so
+     the range tweens to the autoscale's target instead. */
   const scaleGlideRef = useRef(0);
   const glideScale = (candleSeries: ISeriesApi<'Candlestick'>, from: { from: number; to: number } | null) => {
     cancelAnimationFrame(scaleGlideRef.current);
@@ -3738,8 +3738,8 @@ const StrikeChart = ({
       commitDrawing({ ...base, p2: p });
       return;
     }
-    /* A third-anchor kind's second phase ends on the next press: the base was drawn and released, the third anchor
-       (the channel's width, the curve's bend) has been tracking the pointer since, and this click is the reader… */
+    /* A third-anchor kind's second phase ends on this press: the third anchor (channel width, curve bend) has tracked
+       the pointer since the base was drawn. */
     if (pendingThirdRef.current) {
       const base = pendingThirdRef.current;
       pendingThirdRef.current = null;
@@ -3811,8 +3811,8 @@ const StrikeChart = ({
         next = ed.anchor === 0 ? { ...ed.orig, p1: p } : ed.anchor === 1 ? { ...ed.orig, p2: p } : { ...ed.orig, p3: p };
       }
     } else {
-      /* A body drag moves the whole mark in (bars, price): the price shift is the pointer's own, and the time shift
-         is a whole number of bars on the current grid — anchored times must land on the grid to survive a… */
+      /* A body drag moves the mark by the pointer's price shift and a whole number of bars, since anchored times must
+         stay on the bar grid. */
       const dPrice = p.price - ed.start.price;
       const i0 = prim.barIndexOf(ed.start.time);
       const i1 = prim.barIndexOf(p.time);
@@ -3983,8 +3983,8 @@ const StrikeChart = ({
           boxRectRef.current = null;
           touchDrawChart(chartId);
         }}
-        /* Everything in this box sits on the chart's ground — the dark island every chart is, and the box stamps the
-           ground of the theme this chart resolved, so the pills and the legend inside wear it (index.css… */
+        /* Everything in this box sits on the chart's dark ground and stamps the theme this chart resolved, so the
+           pills and legend inside wear it. */
         data-theme="dark"
         data-chart-ink
         data-chart-ground={chartGround(themeKey)}
@@ -4126,9 +4126,9 @@ const StrikeChart = ({
             ref={priceTagRef}
             aria-hidden
             /* The card wears the chart's ground, like its words. */
-            /* The card is the library's label size: one line at the axis's own 12px, the figure ten pixels from the
-               left edge where the library puts its tick text, the card as wide as the axis — beside the… */
-            className="pointer-events-none absolute top-0 right-0 z-10 rounded-[2px] border border-ink/[0.07] border-l-2 border-l-ink/60 bg-panel/95 pl-[8px] pr-0.5 py-px text-left whitespace-nowrap opacity-0 shadow-sm shadow-black/40"
+            /* The card is the library's label size: one line at the axis's 12px, as wide as the axis; the countdown
+               line stays in the DOM but hidden. */
+            className="pointer-events-none absolute top-0 right-0 z-10 will-change-transform rounded-[2px] border border-ink/[0.07] border-l-2 border-l-ink/60 bg-panel/95 pl-[8px] pr-0.5 py-px text-left whitespace-nowrap opacity-0 shadow-sm shadow-black/40"
             data-price-tag
           >
             <div className="font-mono text-t12 font-bold leading-[14px] tnum text-textPrimary" />
@@ -4184,8 +4184,8 @@ const StrikeChart = ({
                 ? /* 44 wide: a 24px icon column with a 10px arrow column beside it, so a family's arrow sits right of its icon */
                   'left-1.5 top-1/2 -translate-y-1/2 w-[44px] max-h-[92%] overflow-y-auto flex-col'
                 : /* Left of true centre: the right-hand strip cluster reaches further into the middle than the left one */
-                  /* IN the strip's empty middle, above it: the top dock exists only where a host has a top band —
-                     the takeovers — and every one of them wears a 44px strip with its clusters at the two ends… */
+                  /* In the strip's empty middle: the top dock exists only in the takeovers, and each of them has a
+                     44px strip with clusters at both ends. */
                   `top-1.5 h-[34px] overflow-x-auto flex-row ${gap ? '' : 'left-[calc(50%-48px)] -translate-x-1/2 max-w-[94%]'}`
             }`}
             style={rail.dock === 'left' ? leftDockStyle : topDockStyle}
@@ -4560,8 +4560,8 @@ const StrikeChart = ({
           })()}
         </CellView>
 
-        {/* The bead's card: the house's pointer card beside the bead under the pointer — the strike, its moment, the
-            greek there with its side's word, its share of the book then, and the change since the open; kept by… */}
+        {/* The bead's card: the strike under the pointer, its moment, the greek with its side, its share of the book,
+            and the change since the open; a click pins it. */}
         <CellView cell={beadCell}>{beadCard =>
           (pinnedBead?.hit ?? beadCard) &&
           (() => {

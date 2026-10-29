@@ -1,19 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE ROUTE'S SKELETON
-  (components/ui/RouteSkeleton.tsx)
-
-  What the shell shows while a page's code travels
-  (App's lazy routes): the page's OWN shape, chosen
-  by path (Noah, 2026-09-08: a generic skeleton
-  "doesn't take the shape of its container… that's
-  a design flaw"). Every section's skeletons live in
-  a small file of their own that imports nothing
-  heavy, so this can render before any chunk lands.
-  Pages without a shape of their own yet fall back
-  to the one page skeleton.
-==================================================
-*/
+/* What the shell shows while a page's code travels: the page's own shape by path, from small skeleton files that import nothing heavy;
+   pages without one fall back to the page skeleton. */
 
 import { PageSkeleton } from './Skeleton';
 import { PinpointRouteSkeleton } from '../../pages/pinpoint/pinpointSkeletons';

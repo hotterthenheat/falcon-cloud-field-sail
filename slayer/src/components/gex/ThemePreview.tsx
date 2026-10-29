@@ -1,23 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE THEME PREVIEW (components/gex/ThemePreview.tsx)
-
-  Not a swatch — the chart, drawn by the house
-  engine in the theme you are hovering (Noah,
-  2026-09-11: "i want an actual high quality image
-  of the layout on the chart like how we have it
-  for the add widgets on pulse"). The Pulse widget
-  preview's rule, applied to candles: today's own
-  bars on the name the chart is on, the real
-  candlestick series and volume, re-inked in place
-  as the pointer moves down the list. It cannot
-  drift from the product, because it IS the
-  product's engine.
-
-  One chart, re-themed — never one per theme:
-  twelve live charts in a menu would cost the open.
-==================================================
-*/
+/* The chart drawn by the house engine in the theme being hovered: today's bars on the chart's name, re-inked in place.
+   One chart re-themed, never one per theme. */
 
 import { useEffect, useRef } from 'react';
 import { CandlestickSeries, createChart, HistogramSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
@@ -115,7 +97,7 @@ const ThemePreview = ({ ticker, timeframe, themeKey, width = 352, height = 200 }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [themeKey, appTheme, bookRev]);
 
-  /* A dark island like every chart (2026-09-12) — the preview's ground is the chart's, not the menu's */
+  /* A dark island like every chart: the preview's ground is the chart's, not the menu's. */
   return <div ref={hostRef} className="rounded border border-borderSubtle overflow-hidden pointer-events-none select-none bg-panel" style={{ width, height }} aria-hidden data-theme-preview={themeKey} data-theme="dark" />;
 };
 

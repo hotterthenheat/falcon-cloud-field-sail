@@ -1,28 +1,10 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE NAMES ON THE BOARD
-  (data/boardNames.ts)
-
-  The Board used to carry whatever the simulator
-  happened to run — four names — under a caption
-  that called them "every name you follow" (Noah,
-  2026-09-09: "i still dont understand what it
-  means"; then "i need more tickers"). Now the
-  board is a list the user keeps: a dozen household
-  names to start, add any listing, take any off,
-  remembered in localStorage. One store, read with
-  useSyncExternalStore, the distance-unit store's
-  shape.
-==================================================
-*/
+/* The Board's names: a list the reader keeps (a default set, add any listing, take any off) in localStorage, one useSyncExternalStore store. */
 
 import { useSyncExternalStore } from 'react';
 
 const KEY = 'slayer_board_names';
 
-/** The board on first open — the index and the names everyone watches, famous first. TWENTY since 2026-10-11 (Noah, of
-    the board ending two-thirds of the way down a 960px screen: "add enough ticks to fill it") — the next eight of the
-    famous tier after the first twelve. */
+/** The board on first open: the index and the most-watched names, famous first. */
 export const DEFAULT_BOARD_NAMES = ['SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL', 'AMD', 'NFLX', 'AVGO', 'PLTR', 'COIN', 'MSTR', 'SMCI', 'HOOD', 'MU', 'TSM'];
 /** the board as it was first written for everyone — a stored board that still equals it is a default, not a choice */
 const OLD_DEFAULT = ['SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL', 'AMD', 'NFLX'];
@@ -45,10 +27,8 @@ function load(): string[] {
     if (raw) {
       const names = clean(JSON.parse(raw));
       if (names) {
-        /* A DEFAULT THAT CHANGED UNDER STORED STATE (core/storedDefaults.ts's rule, kept here because this store reads
-           its key the moment it loads): a stored board that is still the old dozen — the same names, any order — was
-           written for the reader, not chosen; it becomes the twenty, once. A board with a name added or taken off is
-           theirs and is left alone. */
+        /* A stored board still equal to the old default dozen (any order) was written for the reader, so it becomes the new default once;
+           an edited board is left alone (core/storedDefaults.ts's rule). */
         if (!localStorage.getItem(TWENTY_FLAG)) {
           localStorage.setItem(TWENTY_FLAG, '1');
           const same = names.length === OLD_DEFAULT.length && OLD_DEFAULT.every(n => names.includes(n));

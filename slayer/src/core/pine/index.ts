@@ -1,27 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE PINE RUNTIME (core/pine/index.ts)
-
-  The one door: `compile(source)` reads a script and
-  says what it is (its inputs, plots, alerts, pane —
-  the ScriptMeta the library keeps), or throws a
-  PineError with the line; `run(compiled, bars,
-  options)` draws it over the pane's bars and hands
-  back the lines, fills, marks and alerts.
-
-  A Pine v6 subset (v5 reads too): indicators with
-  inputs, `ta.*` / `math.*` / `str.*` / `color.*`,
-  plots, shapes, hlines, fills, bar colours and
-  alert conditions; series history, `var`, user
-  functions, tuples, if / for / while / switch. Not
-  yet: strategies, libraries, drawings (label, line,
-  box, table), arrays, `request.security`. Each
-  refusal names itself.
-
-  Never eval. Runs in the browser, on the pane's own
-  bars, under a time budget.
-==================================================
-*/
+/* The runtime's door: `compile(source)` returns the ScriptMeta or throws a PineError with the line; `run(compiled, bars, options)` returns
+   lines, fills, marks and alerts. A Pine v6 subset (v5 reads); no strategies, drawings, arrays or request.security. Never eval; time-budgeted. */
 
 import type { ScriptMeta } from '../../types/scripts';
 import { analyze, markIntDivision, planOutputs, type OutputPlan } from './analyze';

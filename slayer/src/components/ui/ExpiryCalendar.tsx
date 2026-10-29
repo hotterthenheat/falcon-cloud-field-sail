@@ -1,8 +1,4 @@
-/*
-  The month grid of DatePicker turned forward for expiries: only listed expiries are clickable, today wears the accent
-  ring and the choice the white selection. The trigger is a dropdown-style card with steppers, so the next or
-  previous expiry is one click away.
-*/
+/* DatePicker's month grid for expiries: only listed expiries click, today wears the accent ring; the trigger has steppers for the next or previous expiry. */
 
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import * as Popover from '@radix-ui/react-popover';
@@ -52,8 +48,7 @@ interface ExpiryCalendarProps {
   valueNote?: string;
   /** A word after a lit day's tooltip */
   dayNote?: (e: Expiry) => string | undefined;
-  /** Days before this (YYYY-MM-DD) are not drawn, and the month cannot step back past it.
-      The blotter's book starts on a day, so the days before it are not a month you can wander. */
+  /** Days before this (YYYY-MM-DD) are not drawn and the month cannot step back past it. */
   floor?: string;
 }
 

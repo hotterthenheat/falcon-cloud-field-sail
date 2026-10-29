@@ -101,7 +101,7 @@ const Building = () => {
   const [guideOpen, setGuideOpen] = useState(false);
   /* each pane's distance is that name's ruler */
   useNameUnit(activeTicker);
-  /* THE EXPIRIES AS DATES — one list for every pane's card (ladderControls, the Map's own) */
+  /* The expiries as dates, one list for every pane's card (ladderControls). */
   /* each pane's Expiry card names the listing its own name reads (ladderExpiryOptions with a ticker) — re-read as the
      book lands (bookRev re-renders the page) */
   const expiryOptionsFor = (t: string): ExpiryChoice<ExposureExpiry>[] => ladderExpiryOptions(t);
@@ -192,7 +192,7 @@ const Building = () => {
   /* …and "N of M moved" only once every pane's count is final */
   const counted = [...builds.values()].every(b => !b.loading) && [...builds.values()].some(b => b.rows.some(r => r.dCall !== 0 || r.dPut !== 0));
 
-  /* THE NAMES DOOR — the Map's: "+ Names N", a name from the whole listing, four at most (NamesDoor, Targets' too) */
+  /* The names door, the Map's (NamesDoor): "+ Names N", four at most. */
   const namesDoor = <NamesDoor count={panes.length} onPick={addPane} testId="build" />;
 
   return (
@@ -200,7 +200,7 @@ const Building = () => {
       <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read what's being built" testId="build-guide" viewport>
         <BuildingGuide data={first} clock={clock} />
       </GuideFocus>
-      {/* THE BOX'S HEAD — the Agenda's switch as the title, the guide, the line */}
+      {/* The box's head: the Agenda's switch as the title, the guide, the line. */}
       <div className="px-5 pt-4 pb-3">
         <div className="flex items-center gap-3 flex-wrap">
           <AgendaSwitch />

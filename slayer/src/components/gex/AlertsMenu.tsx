@@ -6,34 +6,8 @@ import {
 } from './alertStore';
 import { ALERT, alpha } from './paletteInk';
 
-/*
-==================================================
-  SLAYER TERMINAL - ALERTS MENU (gex/AlertsMenu.tsx)
-
-  Arm the things this pane can watch. A DOOR, NOT
-  AN INBOX (the alerts rule, 2026-09-10): what is
-  set and what alerted are read in the drawer behind
-  the sidebar's bell — one place, every name.
-==================================================
-
-  THE MARKS ON THE PANE ARE THE ALERT. This menu is only where you put one
-  down and take it away — the state a reader actually watches lives on the
-  pane (the price kind's dashed line, and the armed rail for everything
-  else), because the whole toolbar this menu hangs off is hidden until the
-  cursor is over its pane. A badge here would be invisible almost all of the
-  time, and an alert you cannot see fire is not an alert.
-
-  EVERY KIND IS A CHIP, NOT A FORM (T-22). The four levels, the pane's own
-  indicators, the book's three state changes and the tape's premium floors
-  are all finite sets — chips arm in one click and cannot be typed wrong.
-  The one thing that is genuinely a number the reader owns, a price, keeps
-  the one input. An armed chip lights and says so; arming it again is
-  refused, not doubled.
-
-  The last line is the most important one in the file. This fires while the
-  tab is open and not otherwise, and saying so is the difference between a
-  modest feature and a promise that quietly is not kept.
-*/
+/* Arms what this pane can watch; what is set and what fired live in the alerts drawer, and the marks on the pane are the alert.
+   Every kind is a chip (finite sets, one click); only a price takes typed input. Alerts fire only while the tab is open. */
 
 interface AlertsMenuProps {
   ticker: string;
@@ -79,9 +53,7 @@ const AlertsMenu = ({ ticker, spot, tf }: AlertsMenuProps) => {
   const full = alerts.length >= MAX_ALERTS;
   const capMsg = `${MAX_ALERTS} is the most one pane carries`;
 
-  /** One gate for every chip, both directions (Noah, 2026-08-28: "when i
-      click a button in the alerts that is already active then it should do
-      the opposite" — a lit chip clicked again takes the watch off). */
+  /** One gate for every chip: a lit chip clicked again takes the watch off. */
   const toggleChip = (existing: Alert | undefined, armFn: () => Alert | null) => {
     if (existing) {
       removeAlert(ticker, existing.id);
@@ -239,11 +211,7 @@ const AlertsMenu = ({ ticker, spot, tf }: AlertsMenuProps) => {
         })}
       </div>
 
-      {/* A DOOR, NOT AN INBOX (the alerts rule, Noah, 2026-09-10): the
-          "Active" list, the "recently alerted" log and the honest-reach line
-          that stood here live in ONE place now — the drawer behind the
-          sidebar's bell. A typed price alert still shows in place as its
-          dashed line on the pane; the drawer takes it off. */}
+      {/* Active and fired alerts live in the drawer behind the bell; a typed price alert shows as its dashed line on the pane. */}
     </div>
   );
 };

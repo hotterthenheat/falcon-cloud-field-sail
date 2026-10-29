@@ -1,11 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 
-/*
-  Keeps keyboard focus inside an open overlay and returns it on close. It remembers the opener (in a ref, so a re-run
-  effect cannot capture an element inside the overlay), moves focus in (first focusable child, else the container,
-  hence tabIndex={-1} on it), wraps Tab and Shift+Tab at both ends, and on close refocuses the opener if it is still
-  in the document. Keydown is captured on `document`, so an overlay's own key handlers cannot swallow Tab first.
-*/
+/* Keeps focus inside an open overlay (Tab and Shift+Tab wrap) and returns it to the opener on close. Keydown is captured
+   on `document` so the overlay's own handlers cannot swallow Tab; the container needs tabIndex={-1} as a fallback target. */
 
 /* every branch excludes tabindex="-1": `button:not([disabled])` alone matches untabbable buttons, which pushed `last`
   far from the real end and let focus escape */

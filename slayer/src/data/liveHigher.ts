@@ -3,11 +3,8 @@ import { tradingMinutes, TRADING_DAYS } from '../core/tradingYear';
 import { SESSION_LENGTH_MIN } from '../core/nyTime';
 import type { MarketSnapshot } from '../types/market';
 
-/*
-  Color, vomma, speed, veta, zomma: Black–Scholes at each contract's own vol and the book's spot, open interest as the
-  count, dealer-short sign. Units sit beside the book's: gamma ones in $GEX (per 1% move) per session, per 1% move or
-  per vol point; vega ones in $vega (per vol point) per vol point or per session — so VOMMA and VETA sit beside VEGA $.
-*/
+/* Colour, vomma, speed, veta, zomma: Black-Scholes at each contract's own vol and the book's spot, OI as the count, dealer-short sign.
+   Gamma ones in $GEX (per 1%) per session, per 1% or per vol point; vega ones in $vega per vol point or per session. */
 
 /** Trading-year fraction left until the cash close on `expiry`. Null once that close has passed. Same minutes as the flip. */
 export function yearsLeft(expiry: string, now = new Date()): number | null {

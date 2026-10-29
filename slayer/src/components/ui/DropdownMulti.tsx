@@ -1,8 +1,4 @@
-/*
-  Any number of choices, in the same dropdown card as DropdownSelect: the trigger prints what is picked, the card
-  lists grouped checkbox rows (each independent), stays open while ticking, and ends with Clear. Built on Radix
-  DropdownMenu.
-*/
+/* Any number of choices in DropdownSelect's card: grouped checkbox rows that stay open while ticking, ending with Clear (Radix DropdownMenu). */
 
 import { FLAT_DOOR, FLAT_OPEN } from './flatDoor';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';

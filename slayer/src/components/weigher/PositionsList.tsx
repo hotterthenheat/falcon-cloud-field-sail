@@ -11,6 +11,7 @@ import type { WatchReturns } from '../../data/watchlist';
 import type { WatchedContract } from '../../types/watchlist';
 import type { Position, Verdict } from '../../data/positions';
 import { nyIsoDate } from '../../core/nyTime';
+import { fmtStrike } from '../../core/format';
 
 export type ListRow =
   | { kind: 'watch'; id: string; w: WatchedContract; r: WatchReturns }
@@ -34,7 +35,7 @@ export const rSigned = (v: number) => `${v < 0 ? '−' : '+'}${Math.abs(v).toFix
 export const dirInk = (v: number) => (v > 0 ? 'text-bull' : v < 0 ? 'text-bear' : 'text-textPrimary');
 export const monthDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 export const daysSince = (at: number) => Math.max(0, Math.floor((Date.now() - at) / 86_400_000));
-export const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
+export { fmtStrike };
 
 const LIST_THEME = GRID_THEME.withParams({ rowHeight: 34, headerHeight: 28, fontSize: 11 });
 /** Every column with the Hedging one beside them: 210 + 100 + 72 + 72 + 100 + 108 + 36 = 698 — the column from 700 */

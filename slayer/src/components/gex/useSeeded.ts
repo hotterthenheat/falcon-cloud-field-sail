@@ -1,9 +1,4 @@
-/*
-  A name's book, asked for in the background. Ready when the live book
-  has landed or the ask has failed. Still arriving while it loads, and
-  it gives up after eight seconds so a name nobody fetched does not
-  say "working" forever.
-*/
+/* A name's book asked for in the background: ready when the live book lands or the ask fails; gives up after 8 s. */
 
 import { useEffect, useState } from 'react';
 import { ensureBook, peekEntry, useBookRev } from '../../data/uwBook';

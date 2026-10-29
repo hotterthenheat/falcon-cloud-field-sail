@@ -23,10 +23,7 @@ function isSessionUtc(t: number): boolean {
 /** The answer depends only on the expiry and the New York minute, so it is kept per (expiry, minute, floor). */
 const minutesMemo = new Map<string, number | null>();
 
-/**
- * Trading minutes left until 16:00 ET on `expiry`. Weekends and the overnight do not count.
- * Null once that close has passed. `floor` keeps five trading minutes so a re-price at the bell does not explode.
- */
+/** Trading minutes left until 16:00 ET on `expiry` (weekends and overnight do not count); null once past. `floor` keeps five minutes. */
 export function tradingMinutes(expiry: string, nowMs = Date.now(), floor = false): number | null {
   const key = `${expiry}|${Math.floor(nowMs / 60_000)}|${floor ? 1 : 0}`;
   const hit = minutesMemo.get(key);

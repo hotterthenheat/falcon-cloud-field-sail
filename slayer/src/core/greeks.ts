@@ -10,13 +10,7 @@ function normalPDF(x: number): number {
   return Math.exp((-x * x) / 2) / Math.sqrt(2 * Math.PI);
 }
 
-/**
- * Black-Scholes greeks with a continuous dividend yield.
- *
- * @param S spot · @param K strike · @param t years to expiry · @param v IV
- * @param r risk-free rate — defaults to the carry seam, NOT to a constant
- * @param q dividend yield — same seam
- */
+/** Black-Scholes greeks with a continuous dividend yield; r and q default to the carry seam (core/carry.ts), not constants. */
 export function blackScholesGreeks(S: number, K: number, t: number, v: number, r?: number, q?: number): Greeks {
   const carry = getCarry();
   const rate = r ?? carry.r;

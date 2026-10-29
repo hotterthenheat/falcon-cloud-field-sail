@@ -1,9 +1,5 @@
-/*
-  ThetaData v3, through this app. The browser calls /api/theta; the server
-  forwards to the local terminal at 127.0.0.1:25503/v3. A down terminal is
-  a 503 with code terminal_down — this file does not invent a greek, and it
-  does not hand the server's sentence to a cell.
-*/
+/* ThetaData v3 through /api/theta, which the server forwards to the local terminal (127.0.0.1:25503/v3). A down terminal is a 503 terminal_down;
+   nothing is invented and the server's sentence never reaches a cell. */
 
 import { SIM_DESK } from './deskMode';
 import { feedHeaders } from './feedGate';
@@ -59,12 +55,27 @@ function parseCsv(text: string): Record<string, string>[] {
   });
 }
 
+/* The terminal's own 47x codes (478: another terminal holds the session) mean it cannot answer anything. */
+const downStatus = (status: number) => status === 503 || (status >= 470 && status < 480);
+
+/* While the terminal is down every call would fail the same way: hold them all, 15 s at first and up to a minute. */
+let downUntil = 0;
+let downFor = 0;
+const noteDown = () => {
+  downFor = Math.min(60_000, downFor ? downFor * 2 : 15_000);
+  downUntil = Date.now() + downFor;
+};
+const noteUp = () => {
+  downFor = 0;
+  downUntil = 0;
+};
+
 /** A down terminal is the code, never the server's sentence. */
 function faultText(status: number, parsed: unknown, text: string): string {
   const o = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
   const code = o && typeof o.code === 'string' ? o.code : '';
   const raw = o ? String(o.error || o.message || '') : typeof parsed === 'string' ? parsed : text;
-  if (code === 'terminal_down' || status === 503 || status === 0 || /not running|thetadata/i.test(raw)) return 'terminal_down';
+  if (code === 'terminal_down' || status === 503 || status === 0 || downStatus(status) || /not running|thetadata|invalid session/i.test(raw)) return 'terminal_down';
   const msg = raw.replace(/\s+/g, ' ').trim().slice(0, 180);
   return msg || `unavailable ${status}`;
 }
@@ -73,6 +84,7 @@ export async function thetaCall(path: string, jump = false): Promise<{ status: n
   if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
   const auth = await feedHeaders();
   if (!auth.ok) return { status: 401, data: null, error: auth.code };
+  if (Date.now() < downUntil) return { status: 503, data: null, error: 'terminal_down' };
   await take(jump);
   try {
     const res = await fetch(`/api/theta${path}`, { headers: auth.headers });
@@ -90,9 +102,15 @@ export async function thetaCall(path: string, jump = false): Promise<{ status: n
       parsed = rows.length ? rows : text;
     }
     const data = unwrap(parsed);
-    if (!res.ok) return { status: res.status, data, error: faultText(res.status, parsed, text) };
+    if (!res.ok) {
+      const error = faultText(res.status, parsed, text);
+      if (error === 'terminal_down') noteDown();
+      return { status: res.status, data, error };
+    }
+    noteUp();
     return { status: res.status, data, error: null };
   } catch {
+    noteDown();
     return { status: 0, data: null, error: 'terminal_down' };
   } finally {
     release();

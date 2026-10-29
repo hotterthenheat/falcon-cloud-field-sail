@@ -15,11 +15,7 @@ const FLASH_UP = 'rgb(var(--bull))';
 const FLASH_DOWN = 'rgb(var(--bear))';
 const FLASH_HOLD_MS = 240;
 
-/**
- * Rolls smoothly between numeric values instead of snapping.
- * Mounts at its initial value (no entrance animation) — pair with `tnum`
- * on the parent so digits don't jitter horizontally while rolling.
- */
+/** Rolls smoothly between values; mounts at its initial value. Pair with `tnum` on the parent so digits do not jitter. */
 const AnimatedNumber = ({ value, format = v => v.toFixed(2), className, flash = false }: AnimatedNumberProps) => {
   const reduced = useReducedMotion();
   const raw = useMotionValue(value);

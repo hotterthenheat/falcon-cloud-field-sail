@@ -1,16 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - PINE IN THE EDITOR (components/scripts/pineLanguage.ts)
-
-  CodeMirror's view of a Pine script: a small
-  tokenizer for the highlighter, and the house's own
-  theme — the panel's black, the mono face, silver
-  for the keywords, the toolbar's line blue for the
-  functions, the old gold for strings and colours,
-  the muted ink for comments. No colour here means
-  anything on the chart's colour law; this is text.
-==================================================
-*/
+/* CodeMirror's view of Pine: a small tokenizer for the highlighter and the house theme (silver keywords, blue functions,
+   gold strings, muted comments). Text colours only; nothing here follows the chart's colour law. */
 
 import { HighlightStyle, StreamLanguage, syntaxHighlighting, type StringStream } from '@codemirror/language';
 import { EditorView } from '@codemirror/view';
@@ -77,7 +66,7 @@ export const pineLanguage = StreamLanguage.define<State>({
   languageData: { commentTokens: { line: '//' } },
 });
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const BLUE = '#5B9CF6';
 const GOLD = '#D9B76A';
 const MUTED = '#7c8290';

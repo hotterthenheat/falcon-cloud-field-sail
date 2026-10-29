@@ -1,26 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE EXPOSURE CURVE (exposureCurve.ts)
-
-  Dealer gamma AS A FUNCTION OF SPOT (the competitive
-  audit, 2026-10-13: the profile is the category's
-  principled way to the flip — the zero crossing of
-  the total — where a by-strike bar chart only
-  interpolates between two bars). The book's cells
-  are re-priced at hypothetical spots: a cell's
-  figure stands on gamma × open interest × spot² at
-  the spot it was figured at, so at another spot it
-  is that figure scaled by how Black-Scholes gamma
-  and spot² move — its date's time and at-the-money
-  vol, the one thing a cell needs that the surface
-  already carries. No open interest is re-read, no
-  side re-assumed: the sign is the cell's own.
-
-  Per drawn expiry and in total, over a band of
-  spots round the current one; the flip is the
-  total's zero crossing nearest spot, interpolated.
-==================================================
-*/
+/* Dealer gamma as a function of spot: each cell re-priced at hypothetical spots by how Black-Scholes gamma × spot² moves at its date's
+   time and ATM vol; no OI re-read, the sign the cell's own. The flip is the total's zero crossing nearest spot, interpolated. */
 
 import { blackScholesGreeks } from '../core/greeks';
 import type { ExposureSurface } from './exposureSurface';
@@ -62,11 +41,8 @@ export function buildExposureCurve(surface: ExposureSurface, expiries: number[],
   const steps = Math.max(11, opts.steps ?? STEPS);
   const drawn = expiries.filter(e => e >= 0 && e < surface.expiries.length);
 
-  /* each cell as (strike, its figure over gamma·spot²·100·1% at the current spot) — the contracts' net, what scales it
-     to another spot. BOUNDED BY THE CELL'S OPEN INTEREST: a modeled far cell (the house's desk legs are anchored to the
-     front, not priced one by one) keeps a figure where Black-Scholes gamma has all but vanished, and the ratio ran to
-     trillions at the band's edge on the first cut; the net can never be more contracts than are open there. A cell
-     with no count to bound it is skipped once its gamma at spot is a millionth of the at-the-money's. */
+  /* Each cell as (strike, its figure over gamma·spot²·100·1% at current spot), bounded by its open interest so a far cell's vanishing gamma
+     cannot blow the ratio up; a cell with no count is skipped below 1e-6 of the ATM gamma. */
   const cells: { e: number; k: number; t: number; v: number; eff: number }[] = [];
   for (const e of drawn) {
     const ex = surface.expiries[e];
@@ -84,9 +60,7 @@ export function buildExposureCurve(surface: ExposureSurface, expiries: number[],
       const oi = oiRow[s];
       let eff = fig / base;
       if (Number.isFinite(oi) && oi > 0) eff = Math.max(-oi, Math.min(oi, eff));
-      /* no open interest to bound it (the vendor's per-expiry rows carry none): a cell whose gamma at spot is under 1% of
-         the at-the-money's is skipped — its figure over a near-zero base read as hundreds of thousands of contracts, and
-         re-priced at its own strike the curve peaked at $3.4T on SPY once the book stood in dollars (2026-10-22) */
+      /* No open interest to bound it: skip a cell whose gamma at spot is under 1% of the ATM's (its ratio explodes). */
       else if (base < atm * 1e-2) continue;
       cells.push({ e, k: strikes[s], t, v, eff });
     }

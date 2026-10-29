@@ -1,25 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-/*
-==================================================
-  SLAYER TERMINAL - SAVED CUTS (data/savedViews.ts)
-
-  One store, any surface. Taken from the partner's
-  build at Noah's word (2026-10-13, "add his link
-  and save buttons to our tape").
-==================================================
-
-  THE FILTER IS THE ADDRESS. A screen the reader has tuned — the side, the
-  tenors, the floors, the order, the expiry — lived in one localStorage key
-  per page, which meant it could not be shared, could not be bookmarked,
-  could not be opened twice side by side, and could not be described to
-  anyone except by listing the controls out loud. Putting it in the query
-  string fixes all four at once, and it is the cheapest possible fix: the URL
-  bar is a share sheet every browser already ships.
-
-  The store is a FACTORY: a key in, a little store out, and any surface that
-  can express its cut as a query string gets saved cuts for four lines.
-*/
+/* Saved cuts for any surface whose filter is its query string (shareable, bookmarkable): a factory, a key in and a store out. */
 
 export interface SavedView {
   id: string;

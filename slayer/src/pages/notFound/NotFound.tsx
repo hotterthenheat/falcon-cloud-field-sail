@@ -1,35 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - NOTHING AT THIS ADDRESS
-  (pages/notFound/NotFound.tsx)
-
-  The app is one page, so a wrong address never 404s
-  at the server: the router matched nothing and drew
-  NOTHING — a black screen, no menu, no way back
-  (measured 2026-09-19: 0 characters). Two pages stand
-  there now (Noah picked "C, and yes add the did you
-  mean"):
-
-    INSIDE THE TERMINAL   a wrong address UNDER a
-      product (/pinpoint/ahed, /settings/a/b). The rail
-      and the footer stay, because the reader is one
-      click from where they meant to be: the address
-      typed back, the nearest real page, the palette,
-      and every product as a row.
-
-    THE PROMPT   a wrong address under nothing we have
-      (/pricing, /login — what people type by hand from
-      a post on X). Nothing of the terminal is up yet,
-      so it is the house's prompt, full screen: it
-      types the address, answers "no such page", and
-      offers the way in.
-
-  BOTH say the nearest real page (suggest.ts) and take
-  Enter for it. Both mark the page `noindex` and name
-  the tab "Page not found" — a single-page app cannot
-  send a 404 status, and this is the honest next best.
-==================================================
-*/
+/* Nothing at this address: under a product, the rail stays with the address typed back, the nearest page and every product;
+   otherwise a full-screen prompt that types the address and offers the way in. Both suggest the nearest page (suggest.ts) and mark noindex. */
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -188,7 +158,7 @@ export const NotFoundPrompt = () => {
   const calm = useReducedMotion();
   const found = useMemo(() => suggest(pathname), [pathname]);
   const command = `cd ${pathname}`;
-  /* THE PROMPT TYPES THE ADDRESS, then answers. How far it has typed; past the end = the answer is up. Still under reduced motion. */
+  /* The prompt types the address, then answers; past the end the answer is up. Shown whole under reduced motion. */
   const [typed, setTyped] = useState(calm ? command.length + 1 : 0);
   useEffect(() => {
     if (calm) {

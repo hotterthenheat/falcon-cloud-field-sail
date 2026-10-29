@@ -89,7 +89,6 @@ const dupClose = (a: Set<string>, b: Set<string>): boolean => {
   return both / Math.min(a.size, b.size) >= 0.6 && both >= 3;
 };
 
-
 /* The tape: the newest headlines on the cut in a seamless loop over the map. It holds still under the pointer, can be
    pulled by wheel or drag, steps with its arrows, and stands still under reduced motion. */
 /** One loop of the tape at rest — the CSS marquee's 110s, kept */
@@ -118,11 +117,21 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
     const still = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     let raf = 0;
     let last = 0;
+    /* the half's width is read on resize, not per frame, so the loop never forces a layout */
+    let halfW = 0;
+    let watched: Element | null = null;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => (halfW = halfRef.current?.offsetWidth ?? 0)) : null;
     const frame = (ts: number) => {
       raf = requestAnimationFrame(frame);
       const dt = last ? Math.min(64, ts - last) : 16;
       last = ts;
-      const halfW = halfRef.current?.offsetWidth ?? 0;
+      const half = halfRef.current;
+      if (half !== watched || !ro) {
+        if (ro && watched) ro.unobserve(watched);
+        if (ro && half) ro.observe(half);
+        watched = half;
+        halfW = half?.offsetWidth ?? 0;
+      }
       if (halfW <= 0) return;
       const h = holdRef.current;
       let x = xRef.current;
@@ -146,10 +155,12 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
       }
       xRef.current = x;
       strip.style.transform = `translate3d(${x.toFixed(2)}px,0,0)`;
-      strip.dataset.tapeX = String(Math.round(x));
     };
     raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+    };
   }, [tape.length > 0]);
 
   /* a native wheel listener, since React's is passive and the page would scroll under a pull */

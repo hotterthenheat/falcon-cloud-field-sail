@@ -1,8 +1,5 @@
-/*
-  The hedge-flow ladder: the dollars of stock dealers must trade to stay hedged if price walks from spot to each
-  strike — the change in their net delta, flow(K) = ∫ G(x)·dx/(0.01·x) from S to K, with G the book's net gamma per 1%
-  re-priced at each price x (the flip's re-pricing). Positive = dealers buy. Continuous hedging at the modelled sign.
-*/
+/* The hedge-flow ladder: dollars of stock dealers must trade to stay hedged if price walks from spot to each strike,
+   flow(K) = ∫ G(x)·dx/(0.01·x) from S to K with G the book's net gamma per 1% re-priced at x. Positive = dealers buy. */
 
 import type { ExposureProfileData } from '../types/gex';
 import { fmtStrike } from '../core/format';

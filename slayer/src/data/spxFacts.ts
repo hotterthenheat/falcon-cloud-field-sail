@@ -1,11 +1,5 @@
-/*
-  The SPX book Terrain is allowed to draw. Every figure in here is computed
-  from theta/cache/spx-book.json — cash SPX bars, SPXW greeks and open
-  interest, a year of VIX closes, and SPXW prints. Nothing is filled in.
-
-  Call gamma is negative and put gamma is positive (the house sign). Dollar
-  gamma uses the same dealer weights as engine/slayer_core/exposure.py.
-*/
+/* The SPX book Terrain may draw, computed from theta/cache/spx-book.json (cash SPX bars, SPXW greeks and OI, a year of VIX closes, SPXW prints).
+   House sign (call gamma negative); dollar gamma uses engine/slayer_core/exposure.py's dealer weights. */
 
 import type { Candle } from '../types/market';
 import type { KeyLevels } from '../types/gex';

@@ -31,8 +31,7 @@ interface NyParts {
   weekday: number;
 }
 
-/* ONE FORMATTER, AND A CACHE BY THE MINUTE: a tape formats thousands of stamps a second, and formatToParts is the slow
-   part. New York's offset never changes inside a minute, so a minute's parts are reused with the seconds added on. */
+/* One formatter and a cache by the minute: formatToParts is slow, and New York's offset never changes inside a minute. */
 let fmt: Intl.DateTimeFormat | null = null;
 const byMinute = new Map<number, NyParts>();
 export function nyParts(at?: At): NyParts {
@@ -127,11 +126,8 @@ export const nySessionPhase = (at?: At): 'before' | 'open' | 'after' => {
   return m < SESSION_OPEN_MIN ? 'before' : m < SESSION_CLOSE_MIN ? 'open' : 'after';
 };
 
-/* ── lightweight-charts on New York's clock ──────────────────────────────────────────────────────────────────────────
-   The library stamps an epoch axis in UTC and has no zone option. These say each tick in New York's time. A business
-   day ({ year, month, day } or 'YYYY-MM-DD') is a calendar date with no instant behind it and is printed as it is.
-   TickMarkType is the library's enum: 0 year, 1 month, 2 day of the month, 3 time, 4 time with seconds (written as
-   numbers so this module does not pull the chart library into every page that reads the clock). */
+/* lightweight-charts on New York's clock (the library stamps UTC and has no zone option). A business day prints as it is.
+   TickMarkType as numbers (0 year … 4 time with seconds) so this module does not import the chart library. */
 const timeParts = (t: Time): NyParts => {
   if (typeof t === 'number') return nyParts(t * 1000);
   const [y, m, d] = typeof t === 'string' ? t.split('-').map(Number) : [t.year, t.month, t.day];

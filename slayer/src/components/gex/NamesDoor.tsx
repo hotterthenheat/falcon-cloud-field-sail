@@ -1,15 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE NAMES DOOR (components/gex/NamesDoor.tsx)
-
-  "+ Names N" — the Map's door, a name picked from
-  the whole listing, four at most. Building's since
-  2026-10-14, and Targets' since 2026-10-15 (Noah:
-  "can we add exp and different tickers to the
-  targets page as well?") — one door, so the two
-  faces of the Agenda open the same way.
-==================================================
-*/
+/* "+ Names N": a name picked from the whole listing, four at most; one door for the Map, Building and Targets. */
 
 import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';

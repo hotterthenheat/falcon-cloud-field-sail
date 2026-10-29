@@ -1,8 +1,5 @@
-/*
-  Our scores never reach the screen as numbers: a figure is one of four words (poor, caution, good, strong) drawn as
-  four steps filled to that word in its ink. Steps, never a scale position. The caller supplies the word
-  (data/stockOverview.ts gradeOf, data/compass.ts gradeOfConfidence).
-*/
+/* Scores never reach the screen as numbers: one of four words drawn as four steps filled in its ink.
+   The caller supplies the word (stockOverview gradeOf, compass gradeOfConfidence). */
 
 import { GRADES, type Grade } from '../../data/stockOverview';
 

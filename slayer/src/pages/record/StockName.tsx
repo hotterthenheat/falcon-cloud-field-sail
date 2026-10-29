@@ -682,7 +682,7 @@ const StockName = () => {
       grade,
       facts: [
         { k: 'Marks', v: String(n) },
-        /* a full ISO date (the report's lane) does not fit the narrow column — it read "2026-08…"; month/day as the others */
+        /* A full ISO date does not fit the narrow column; month/day as the others. */
         { k: 'Last', v: last?.when ? (/^\d{4}-\d{2}-\d{2}$/.test(last.when) ? `${last.when.slice(5, 7)}/${last.when.slice(8, 10)}` : last.when) : '—' },
         { k: 'Trend then', v: last?.score != null ? gradeOf(last.score) : '—', cls: last?.score != null ? GRADE_INK[gradeOf(last.score)] : undefined },
         { k: 'The last', v: last?.text ?? '—', cls: last ? 'text-textSecondary' : undefined },

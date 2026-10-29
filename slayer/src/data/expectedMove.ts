@@ -1,10 +1,7 @@
 import type { Candle } from '../types/market';
 
-/*
-  The expected-move cone and the one σ every Pinpoint odd reads. The vendor's implied move is the ATM straddle, which
-  for a normal move is σ·√(2/π) ≈ 0.80σ; a vendor vol is a calendar-year vol, so one session carries one calendar
-  day's variance. The cone, the reach odds, the corridor and the close odds all take their σ from here.
-*/
+/* The cone and the one σ every Pinpoint odd reads. The vendor's implied move is the ATM straddle, σ·√(2/π) ≈ 0.80σ for a normal move;
+   a vendor vol is calendar-year, so one session carries a calendar day's variance. */
 
 /** 1σ per dollar of ATM straddle: σ = straddle·√(π/2) ≈ 1.2533 (dollars → dollars; E|X| = σ·√(2/π) for a normal X;
     UW SPY 10/29 implied_move 5.09 against the 772 straddle mid 5.26). */
@@ -84,17 +81,8 @@ export interface ExpectedMoveCone {
 
 const EMPTY: ExpectedMoveCone = { past: [], forward: [], crossings: [], openPrice: 0, openTime: null };
 
-/**
- * The cone, from the session's bars and the book's σ.
- *
- * @param sessionBars   today's 1-minute bars, oldest first — the caller cuts
- *                      the session (sessionStarts) so this cannot disagree
- *                      with the session-levels overlay about where today began
- * @param iv            annualized ATM vol on the calendar year, as the vendor quotes it (0.2 = 20%)
- * @param minutesToClose remaining trading minutes — 0 after the bell, and 0
- *                      is honest: the forward half collapses to nothing
- *                      because nothing remains implied
- */
+/** The cone from the session's 1-minute bars (oldest first, cut by sessionStarts), annualised ATM `iv` (0.2 = 20%),
+    and `minutesToClose` (0 after the bell collapses the forward half). */
 export function buildExpectedMoveCone(
   sessionBars: readonly Candle[],
   iv: number,

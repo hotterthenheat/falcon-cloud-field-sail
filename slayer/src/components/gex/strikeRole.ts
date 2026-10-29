@@ -1,18 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - A STRIKE'S LEVEL, IN ITS INK (components/gex/strikeRole.ts)
-
-  The matrix and the calendar print a strike's level in the strike's own
-  ink rather than in words after it (the owner, 2026-10-13: "close this
-  gap … i dont want any empty or unutilized spacing" — the column was as
-  wide as its widest label, "455 PUT WALL PIN", so every plain strike
-  carried ~75px of empty column before its first cell). The inks are the
-  ones the tape, the profile and the report already print the levels in:
-  the supreme magenta, the call wall glacier, the put wall ember, the flip
-  its own; the gamma pin a dotted underline, a strike you own a silver
-  one. The words stay on the strike's title and in the cards.
-==================================================
-*/
+/* A strike's level printed as the strike's own ink rather than words (so the column stays narrow): supreme magenta, call wall glacier,
+   put wall ember, the flip its own; the pin a dotted underline, an owned strike a silver one. The words stay on the title and cards. */
 
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME } from './paletteInk';
 

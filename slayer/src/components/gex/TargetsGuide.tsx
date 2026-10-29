@@ -1,13 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW TO READ THE AGENDA
-  (components/gex/TargetsGuide.tsx)
-
-  The Targets page's guide, in the house pattern:
-  a sentence or two per section, each figure the
-  surface drawn small, the figures that matter lit.
-==================================================
-*/
+/* The Targets page's guide: a sentence or two per section, each figure the surface drawn small. */
 
 import { aheadWord } from '../../data/bookWindow';
 import { holdLabel } from '../../data/wall';
@@ -17,7 +8,7 @@ import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
 import { targetName, type Agenda } from '../../data/agenda';
 import { pctWhole as pct } from '../../core/format';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const MONO = 'ui-monospace, Menlo, monospace';
 const SANS = 'ui-sans-serif, system-ui, sans-serif';
 const WARM = THERMAL_WARM;

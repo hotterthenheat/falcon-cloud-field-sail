@@ -128,7 +128,7 @@ interface TerrainCfg {
       one thing on one pane and another next door is a colour nobody can read. */
   palette: ProfilePalette;
   /** Which contracts the rails read — one expiry (the calendar card in the rail's head) or the whole book, for the
-      desk. The chart's walls, flip and supreme are the house levels in the levels scope, not this cut. */
+      desk. The chart's walls, flip and supreme are the house levels: the levels scope, or this cut's date when later. */
   railCut: RailCut;
 }
 
@@ -682,10 +682,22 @@ const Pane = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ticker, revision, railCut]
   );
-  /* The walls, flip and supreme are the house's (data/levelsFor.ts) in the desk-wide levels scope Pinpoint's head
-     sets, so Terrain names the same levels as Pinpoint and Dossier. */
+  /* The expiry a later-date cut reads, and its rows: the header's heaviest read and the house levels both use them. */
+  const bookPick = railCut === 'book' || railCut === 0
+    ? null
+    : (() => {
+        const d = expiryFor(railCut).date;
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })();
+  const shownBook = useMemo(
+    () => chainForDate(ticker, bookPick),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ticker, revision, bookPick],
+  );
+  /* The walls, flip and supreme are the house's (data/levelsFor.ts): the desk-wide levels scope Pinpoint's head sets, or
+     the cut's own expiry when the rail is cut to a later date, off the rows the rail already holds. */
   const levelsScope = useLevelsScope();
-  const house = useLevelsFor(ticker, levelsScope);
+  const house = useLevelsFor(ticker, levelsScope, bookPick ? shownBook?.date ?? null : null);
   const levels = useMemo(() => {
     const own = railData.levels;
     if (!house) return own;
@@ -717,19 +729,6 @@ const Pane = ({
     for (const r of confluence) out[r.tf] = r.state;
     return out;
   }, [confluence]);
-  /* The header's heaviest read comes off the near-spot core, not the widened set the rail draws. `rows` now reaches
-     the whole maintained book so the column can fill the price scale; pointing the header at it would have it… */
-  const bookPick = railCut === 'book' || railCut === 0
-    ? null
-    : (() => {
-        const d = expiryFor(railCut).date;
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      })();
-  const shownBook = useMemo(
-    () => chainForDate(ticker, bookPick),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ticker, revision, bookPick],
-  );
   const [rollNote, setRollNote] = useState<string | null>(null);
   const drawnDate = useRef<{ ticker: string; date: string } | null>(null);
   useEffect(() => {
@@ -821,13 +820,13 @@ const Pane = ({
   const headUp = (headChange ?? 0) >= 0;
 
 
-  /* Compact when the strip would not fit on one line — the mode the phone already uses (ChartToolbar's `compact`):
-     the seven timeframes collapse into the current interval as a trigger, and every dropdown trades its word for… */
+  /* Compact when the strip would not fit on one line, the phone's mode: the timeframes collapse into one trigger and
+     each dropdown shows its icon. */
   /* IN fullscreen the strip carries the identity, the toolbar and the door on one row: the full form must fit beside
      the identity and the way out, or the compact form rides the row — the docked row's own rule */
   const toolbarCompact = stripW > 0 && (expanded ? stripW - 24 < ID_ROW_FULL_PX + TOOLBAR_FULL_PX + ROW_DOOR_PX + 36 : stripW - PRICE_GUTTER_PX < TOOLBAR_FULL_PX);
-  /* The toolbar rides the identity row when the row has the room: the identity at its fullest (the change and the
-     confluence strip) plus a gap plus the toolbar as it would draw — full or compact — plus the fullscreen door… */
+  /* The toolbar rides the identity row when the row has room for the identity at its fullest, a gap, the toolbar as
+     it would draw, and the fullscreen door. */
   /* The pane's tabs left the head for the strip across the desk's top */
   const inlineFull = !expanded && stripInner > 0 && stripInner >= ID_ROW_FULL_PX + MTF_FULL_PX + 24 + TOOLBAR_FULL_PX + ROW_DOOR_PX;
   /* Short of the full labels beside the identity, the compact toolbar rides the row before a row of its own is spent
@@ -951,8 +950,8 @@ const Pane = ({
     </>
   );
 
-  /* The pane's picture: the chart's own canvases from the library, the rail beside them when it is open — whatever
-     view it shows: the Ladder paints a canvas, the Net and GEX views are tables of markup, so the rail is drawn… */
+  /* The pane's picture: the chart's canvases plus the open rail, which html2canvas draws (loaded only on the camera
+     press) because some rail views are markup. */
   const takeSnapshot = async (): Promise<HTMLCanvasElement | null> => {
     const chart = snapshotTakeRef.current?.();
     if (!chart) return null;
@@ -1303,8 +1302,8 @@ const Pane = ({
                     {headChange.toFixed(2)}%
                   </span>
                 )}
-                {/* The toolbar in the row, spread the pulse way: the timeframes right after the identity, the cluster
-                    — replay through theme — at the far right, and the fullscreen door as the row's last item… */}
+                {/* The toolbar in the row: timeframes after the identity, the replay-to-theme cluster at the far
+                    right, and the fullscreen door last. */}
                 {toolbarInline && (
                   <>
                     <div className="flex-1 min-w-0" data-toolbar-inline>
@@ -1316,8 +1315,8 @@ const Pane = ({
               </div>
               )}
 
-              {/* One read line, shared by the heaviest strikes (shown with the toolbar) and the hovered bar (while
-                  the pointer is on the plot) — a second row would push the chrome down under the pointer that… */}
+              {/* One read line shared by the heaviest strikes and the hovered bar, at a fixed height: a second row or
+                  a taller read pushed the chrome under the pointer and made it oscillate. */}
               <ChromeReadLine cell={readout} stripInner={stripInner} heavy={heavy} />
 
               {/* Its own, every one of them — and not there until you reach. Docked only: the expanded pane pins the
@@ -1327,8 +1326,8 @@ const Pane = ({
                   {paneToolbar(false)}
                 </div>
               )}
-              {/* The tools button on a 3- or 4-pane desk (see `rollable`): the row is one button at rest; a press
-                  rolls the kit down from under the button — a wipe from the button's lower edge, the kit's box… */}
+              {/* The tools button on a 3- or 4-pane desk (see `rollable`): one button at rest, and a press rolls the
+                  kit down from under it. */}
               {rollable && (
                 <div
                   className="chrome-hover chrome-tap relative z-10 pointer-events-none max-w-full rounded-md bg-canvas/25 backdrop-blur-[3px] px-1.5 py-1 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 flex flex-col items-start gap-1"
@@ -1419,8 +1418,8 @@ const Pane = ({
               width={cfg.ladderW ?? profileRestWidth(paneCount, expanded)}
               restWidth={profileRestWidth(paneCount, expanded)}
               onWidth={w => onCfg({ ladderW: w })}
-              /* The chart's floor beside the rail: the 2×2's 576px column everywhere, except the three-up, where the
-                 chart keeps at least half its pane ("for 3 panes i would say half of the parent box should be… */
+              /* The chart's floor beside the rail: the 2×2's 576px column, except on the three-up desk, where the
+                 chart keeps at least half its pane. */
               chartFloor={paneCount === 3 && !expanded ? 'half' : undefined}
               /* The expiry card in the rail's head beside the view tabs — the desk's one cut, so a change here
                  changes every pane */
@@ -1573,7 +1572,7 @@ const Terrain = () => {
         const key = symKey(patch.ticker);
         const saved = prev.setups[key];
         /* With nothing saved, applySetup reduces to `cur` — a symbol nobody has configured inherits the pane exactly
-           as it stands, which is the behaviour that was here before any of this. `compares` is written… */
+           as it stands, which is the behaviour that was here before any of this. */
         const setups = saved ? { ...prev.setups, [key]: { ...saved, seen: now } } : prev.setups;
         /* Linked panes follow the symbol. */
         const group = cur.link ?? null;
@@ -1708,8 +1707,7 @@ const Terrain = () => {
   /** Which pane has a menu open, and which menu — so `s` and `c` can open one without every pane growing its own
       piece of state. */
   const [menu, setMenu] = useState<{ pane: number; which: 'symbol' | 'compare' | 'tabs' } | null>(null);
-  /* The key handler has to know a menu is up. `editable` already covers the search box inside one — but the focus
-     trap can put focus on the panel itself, and ↑/↓ pressed there belong to the list being read, not to the pane… */
+  /* The key handler has to know a menu is up. */
   const menuOpenRef = useRef(false);
   menuOpenRef.current = menu !== null;
 
@@ -1784,8 +1782,8 @@ const Terrain = () => {
           setAnnounce(at >= 0 ? `${next}, ${at + 1} of ${ring.length}` : next);
           return;
         }
-        /* Both rail keys are unbound below `lg`, for the same reason the strikes button is not rendered there: the
-           rail is `hidden xl:block`, so the only thing a press could do is rewrite storage silently and announce… */
+        /* Both rail keys are unbound below `lg`: the rail is `hidden xl:block` there, so a press could only rewrite
+           storage for a rail nobody sees. */
         case 'r':
           if (belowLgRef.current) return;
           e.preventDefault();
@@ -1841,8 +1839,8 @@ const Terrain = () => {
   const sinks = useRef(new Map<number, CrosshairSync>()).current;
   const sourcePane = useRef<number | null>(null);
 
-  /* Plain functions, recreated every render on purpose: StrikeChart holds syncRegister through a ref and calls it
-     only on mount, and reaches onCrosshair through a ref refreshed every render, so a changing identity costs… */
+  /* StrikeChart holds syncRegister and onCrosshair through refs, so their identity changing between renders costs
+     nothing. */
   const registerSync = (i: number, apply: CrosshairSync | null) => {
     if (apply) sinks.set(i, apply);
     else sinks.delete(i);
@@ -1931,8 +1929,8 @@ const Terrain = () => {
               }
             : undefined
         }
-        /* They come and go like the pane chrome, and they were the loudest thing on the screen while they were here:
-           a solid white strikes button and a solid white active count, on a desk that had just been asked for… */
+        /* They come and go with the pane chrome: as solid white controls they were the loudest thing on a desk that
+           had been asked to be quiet. */
         /* Above the expanded pane, and fixed while it is up. The expanded pane is `fixed inset-0 z-[80]`, and this
            bar was `absolute z-30` — under it. */
         /* The desk bar, docked: A row under the grid. */
@@ -2157,7 +2155,7 @@ const Terrain = () => {
       <span className="sr-only" aria-live="polite">{announce}</span>
 
       {/* The charts are the page, so the grid takes every pixel the root has left rather than a fraction of the
-          viewport. `flex-1 min-h-0` is what does it — min-h-0 is what lets a flex child actually shrink; without it… */}
+          viewport. */}
       <div
         /* The stacked-phone minimum lives on the pane, not here — see the note on Pane's own wrapper for why a rule
            here does nothing. */

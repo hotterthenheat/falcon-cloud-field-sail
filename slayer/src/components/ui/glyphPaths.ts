@@ -1,8 +1,5 @@
-/*
-  Outlines of the thirteen page icons on a 64-unit square (ui/PageGlyph.tsx). Part roles: `s` the body in the house
-  foil (`t` marks quieter runs: dim, mid, shade), `i` the one part in the room's ink (layout/nav.ts NAV_INK), `x` a
-  gap cut through what precedes it. Generated from the drawing's vectors: do not edit by hand.
-*/
+/* The thirteen page icons on a 64-unit square: `s` the foil body (`t` quieter runs), `i` the room-ink part, `x` a gap cut through
+   what precedes it. Generated from the drawing's vectors; do not edit by hand. */
 
 export type GlyphRole = 's' | 'i' | 'x';
 

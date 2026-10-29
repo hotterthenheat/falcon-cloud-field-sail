@@ -1,18 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE DAY'S CLOCK (data/dayAxis.ts)
-
-  Where the day box's two charts — the tape and the book through the
-  day — start their clock. The session runs 09:30 to 16:00; a book whose
-  first bar came later (the house book opened mid-afternoon, a page that
-  had no history to backfill) drew three or four empty hours on the
-  left of both charts (the dead-space scan, 2026-10-13: 60% of a
-  2,700px chart empty before 13:16). The clock starts on the first bar's own
-  minute (a quarter-hour floor still left a fifth of a short session's
-  charts empty), so the two charts still share one axis, and on the
-  open itself whenever the data reaches it.
-==================================================
-*/
+/* Where the day box's two charts start their clock: the first bar's own minute, or 09:30 when the data reaches the open,
+   so a late-starting book draws no empty hours and both charts share one axis. */
 
 import { nyMinutes } from '../core/nyTime';
 import { CLOSE_MIN, OPEN_MIN } from './ahead';
@@ -27,12 +14,8 @@ export function dayAxisFrom(firstTime: number | null | undefined, open: number =
   return Math.max(open, first);
 }
 
-/** The axis' last minute: the close — or the last bar's, when the tape runs past it (the house book after hours; the
-    paying-user audit, 2026-10-13: its 16:11–22:40 bars were drawn in the last 9% of a 09:30–16:00 axis).
-    LIVE, THE SESSION SO FAR (the owner, 2026-10-14, as a retail user at 10:47: four fifths of both charts were blank
-    future): while the session runs the axis ends half an hour past the newest bar, on the next half hour, and never
-    under two hours of day — so the morning's charts are full of the morning, and the axis grows with the day to the
-    close. A replay and a closed session keep the whole day. */
+/** The axis' last minute: the close, or the last bar's when the tape runs past it. Live, it ends half an hour past the newest bar
+    (on the half hour, at least two hours of day) and grows to the close; a replay or closed session keeps the whole day. */
 export function dayAxisTo(lastTime: number | null | undefined, live = false, open: number = OPEN_MIN, close: number = CLOSE_MIN): number {
   if (lastTime == null || !Number.isFinite(lastTime) || lastTime <= 0) return close;
   const last = nyMinutes(lastTime * 1000);

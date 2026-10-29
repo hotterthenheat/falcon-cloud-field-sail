@@ -1,8 +1,4 @@
-/*
-  The branded gate for doors into the terminal (Launch terminal, a product's open, the footer, the not-found way to
-  Pulse); a refresh does not play it (index.html's wordmark covers that wait). A fixed duration over black, then the
-  destination fades in beneath.
-*/
+/* The branded gate for doors into the terminal: a fixed duration over black, then the destination fades in. A refresh does not play it. */
 
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';

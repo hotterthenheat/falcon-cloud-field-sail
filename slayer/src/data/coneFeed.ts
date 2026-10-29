@@ -1,16 +1,5 @@
-/*
-  The expected-move cone, from a real vol surface.
-
-  Unusual Whales term structure first. Each expiry's implied_move is the
-  dollar width the cone draws. A same-day row, while that session is open,
-  is the move still left — it is not scaled a second time. Before the open
-  and after the bell, one full session is the vendor's 1-day interpolated
-  move (implied_move_perc), or k·S·σ·√(1/365) when that print is missing.
-  k is the vendor's own scale, fitted off the term structure, or 0.68.
-
-  If that route is empty, Theta's at-the-money implied vol on the same
-  expiry is the width, on the same scale. Nothing here is a guessed vol.
-*/
+/* The expected-move cone from a real vol surface: UW term structure first, each expiry's implied_move the width (a same-day row in session
+   is the move left). Outside the session one session is the 1-day implied_move_perc, else k·S·σ·√(1/365); then Theta's ATM IV. No guessed vol. */
 
 import { RTH_MINUTES } from '../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase, SESSION_CLOSE_MIN } from '../core/nyTime';

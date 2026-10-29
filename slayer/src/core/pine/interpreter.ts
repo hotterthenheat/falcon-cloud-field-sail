@@ -1,24 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE PINE INTERPRETER
-  (core/pine/interpreter.ts)
-
-  Walks the tree once per bar, first bar to last,
-  the way Pine runs a script. Everything is a
-  SERIES: a variable keeps one value per bar, so
-  `x[1]` is what x was on the bar before; a `var`
-  keeps its value from bar to bar until reassigned;
-  a `ta.*` call is a stream that advances only when
-  its line runs. A user function opens a fresh scope
-  per CALL SITE, so two calls of the same function
-  keep separate streams, and its parameters are
-  series too.
-
-  No eval anywhere: a script can only reach what the
-  built-ins hand it. A run that outgrows its time
-  budget stops with the bar it reached.
-==================================================
-*/
+/* Walks the tree once per bar, as Pine runs. Every variable is a series (`x[1]` is the previous bar's); `var` persists; a `ta.*` call
+   advances only when its line runs. A user function gets a fresh scope per call site. No eval; a run over budget stops at the bar it reached. */
 
 import type { ScriptInputValue } from '../../types/scripts';
 import type { OutputPlan } from './analyze';

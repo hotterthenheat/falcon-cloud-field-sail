@@ -1,41 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE EXPOSURE MATRIX
-  (components/gex/ExposureMatrix.tsx)
-
-  Back at Noah's word (2026-09-28, with the picture
-  of the 22 August build: "delete the first part of
-  the pinpoint map page that showcases our current
-  ladder and replace that with this one"), then made
-  A VIEW OF THE CALENDAR'S BOX ("this should have the
-  same hover card and top button layout that the
-  ladder had with the color palette choice and all …
-  the calendar should be a button you can switch up
-  top as well like matrix vs calendar"). So it reads
-  what the ladder read — the surface under the
-  band's expiries, strikes and greeks — and wears
-  what the ladder wore: the Colours switch's ramp on
-  every bar, the pointer card, the kept strike, the
-  wall words on the strike.
-
-  The table it was: one row a strike, and for every
-  greek three cells — PUT · CALL · NET — each a
-  figure with a thin bar under it, the bar's length
-  the cell's share of its column's heaviest and its
-  ink that share on the palette's ramp (warm or gold
-  where hedging amplifies, cool or ice where it
-  absorbs; the August red-and-green on the legs went,
-  because red and green mean price direction in this
-  house and the leg's name stands in the head). The
-  spot rule between the strikes above and below
-  price.
-
-  SINCE 2026-10-12 (the partner, through Noah): the
-  NET alone on the table, one column a greek filling
-  the box, its bar the whole lane; the put and call
-  legs stay on the pointer card. `LEGS` says which.
-==================================================
-*/
+/* The exposure matrix, a view of the calendar's box: one row a strike and for each greek the net (or put/call legs,
+   per `LEGS`) as a figure over a bar in the Colours ramp; the spot rule splits the strikes above and below price. */
 
 import { levelRoles, type LevelRole } from '../../core/walls';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
@@ -59,7 +23,7 @@ import { fmtStrike } from '../../core/format';
 interface ExposureMatrixProps {
   surface: ExposureSurface;
   liveSpot: number;
-  /** False while the book is a replayed minute's — the spot row reads that minute, not the room (2026-10-14) */
+  /** False while the book is a replayed minute's: the spot row reads that minute. */
   live?: boolean;
   /** The greeks drawn, in the band's pick — a column group each */
   greeks: Greek[];
@@ -75,16 +39,13 @@ interface ExposureMatrixProps {
   onSelectStrike?: (strike: number) => void;
   /** The greek the pointer card reads — the band's lead */
   lead?: Greek;
-  /** Which legs the cells carry (the band's Legs card, 2026-10-13): the net, one leg, or both side by side */
+  /** Which legs the cells carry (the band's Legs card): the net, one leg, or both. */
   legs?: 'net' | 'call' | 'put' | 'both' | 'all';
-  /** The table's width at its widest — the strike column and every leg's column at MATRIX_COL_W — told to the host,
-      which packs the names' panes to it (2026-10-13) */
-  /** The expiry window the rows add up ("Oct 23 → Nov 3") — said on each greek's head, so a row is never read as the
-      levels' figure (the second re-audit, 2026-10-22: row 769 −$768.7M beside "SUPREME 769 · −$701.9M") */
+  /** The table's widest width (strike column plus every leg at MATRIX_COL_W), told to the host to pack panes. */
+  /** The expiry window the rows add up ("Oct 23 → Nov 3"), on each greek's head so a row is not read as a level's figure. */
   windowLabel?: string | null;
-  /** A LEVEL'S OWN FIGURE, ON HOVER (the sixth audit, 2026-10-23): every row prints the matrix window's sum; when the
-      window differs from the Levels card's contracts, the supreme's and the walls' GEX cells are marked and their hover
-      adds the Levels card's figure (house sign, by leg). Null where the strike is not on the levels' contracts. */
+  /** A level's own figure on hover: rows print the matrix window's sum; where that window differs from the Levels card's
+      contracts, the supreme's and walls' GEX cells are marked and their hover adds the Levels figure. Null off those contracts. */
   levelLegsAt?: ((strike: number) => { put: number; call: number; net: number } | null) | null;
   /** The Levels card's contracts in words ("Today · Oct 23") — for the marked cells' hover */
   levelsWords?: string | null;
@@ -96,36 +57,24 @@ interface ExposureMatrixProps {
 }
 
 type Leg = 'put' | 'call' | 'net';
-/* THE NET ALONE ON THE TABLE BY REST (the partner through Noah, 2026-10-12: the matrix "only showing the net and on
-   hover do we keep the put/call etc" … "the net to fill its container"): one column a greek, as wide as the box lets
-   it, its bar the whole lane; the put and call legs live on the pointer card. SINCE 2026-10-13 the band's Legs card can
-   draw one leg alone, or BOTH — two columns a greek, the put's bar growing left and the call's right from the seam. */
+/* The net alone by default, one column a greek with its bar the whole lane; the Legs card can draw one leg,
+   or both with the put's bar growing left and the call's right from the seam. */
 const legsOf = (pick: 'net' | 'call' | 'put' | 'both' | 'all'): Leg[] => (pick === 'all' ? ['put', 'call', 'net'] : pick === 'both' ? ['put', 'call'] : [pick]);
 const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'vega $', vanna: 'VANNA', charm: 'CHARM', color: 'COLOR', vomma: 'VOMMA', speed: 'SPEED', veta: 'VETA', zomma: 'ZOMMA' };
 const SILVER = 'rgb(var(--silver))';
-/* THE LEGS IN THE CAPSULES' OWN INKS (the paying-user audit's H8, 2026-10-13): the card said Put in the put wall's red
-   and Call in the call wall's green while the calendar's card said them in ember and glacier — one book, two codes. The
-   walls keep red and green (they are levels); a leg is the ramp's side */
+/* Legs in the capsules' inks (ember, glacier); red and green stay for the walls, which are levels. */
 const PUT_INK = EMBER;
 const CALL_INK = GLACIER;
 const ROW_H = 30;
-/* THE ROWS SHARE THE BOX, the ledger's way, down to this floor (the owner, 2026-10-13: the first row half under the head
-   and the last cut at the foot — forty 27px rows never fit an 870px box) — and with no ceiling ("i dont want any
-   deadspace": fullscreen left a quarter of every pane empty under 27px rows); ROW_H is only the first frame's guess */
-/* 24 since the figure stands over its bar (2026-10-14): a 12px figure, the gap and the 3px track — forty rows of it
-   scroll in an 870px box, the spot row centred on open, rather than crush to a hairline to fit */
+/* Rows share the box down to a floor, with no ceiling; ROW_H is only the first frame's guess. */
+/* 24 px: a 12 px figure, its gap and the 3 px track; forty rows scroll in an 870 px box, centred on spot, rather than crush. */
 const ROW_MIN = 24;
-/* THE CELL (the owner, 2026-10-14, a picture of the matrix they want: "i like this matrix UI"): the figure over a thin
-   bar on a faint track, put, call and net side by side under every greek, the greek and its unit on the group's head.
-   120px holds the level's word and "−$40.5M" at 12px with air; where nothing stands beside the panes (the day box
-   under the book, fullscreen) the table fills its pane and the tracks take the room. The logic is untouched: the
-   same rows, caps, inks and levels; only how a cell is drawn. */
+/* A cell: the figure over a thin bar on a faint track. 120 px holds a level's word and "−$40.5M" at 12 px;
+   where nothing stands beside the panes the table fills its pane. */
 const MATRIX_COL_W = 120;
 /** The narrowest a leg's column is drawn: "−$93.2M" at 12px and the cell's padding */
 const LEG_MIN = 80;
-/* THE CARD (the owner, 2026-10-13: "the side panel thing is so damn big"): four rows, one line under them, and wide
-   enough that "Open interest · 18,709 contracts" prints whole — the calendar's card is the same */
-/* a bit smaller than it was (the owner, 2026-10-14) */
+/* The card: four rows and one line, wide enough for "Open interest · 18,709 contracts" (the calendar's matches). */
 export const CARD_W = 224;
 const head = 'font-mono text-t11 font-semibold uppercase tracking-widest';
 
@@ -134,12 +83,8 @@ interface Row {
   legs: Record<Greek, { put: number; call: number; net: number }>;
 }
 
-/* THE GROUPS APART (Noah, 2026-09-28: "better dividers between each greek section … where the net ends and the put
-   begins for another greek there is no appearance of separation, but it also should not cast too much attention"):
-   the ladder's pane skin — a hairline at a group's left edge, a faint wash on every other group, a little more air
-   at the seam. */
-/* A shade more on the dark terminal (Noah: "a slight bit more for the dark mode, the light mode is pretty good") — the
-   light values are untouched; the two grounds get their own hairline and wash. */
+/* Groups apart: a hairline at each group's left edge, a faint wash on every other group, a little air at the seam. */
+/* The dark terminal gets a shade more hairline and wash; the light values stand. */
 const groupSkin = (gi: number, first: boolean, last: boolean, paper: boolean) =>
   `${first ? `border-l ${paper ? 'border-borderSubtle' : 'border-borderMuted'} pl-3` : ''} ${last ? 'pr-3' : ''} ${gi % 2 === 1 ? (paper ? 'bg-ink/[0.02]' : 'bg-ink/[0.045]') : ''}`;
 
@@ -151,9 +96,7 @@ const Cell = ({ value, shown, leg, cap, mode, paper, gi, first, last, rowH = ROW
     <td className={`px-2.5 py-0 align-middle ${groupSkin(gi, first, last, paper)}`} data-matrix-leg={leg} data-matrix-level-cell={level ? '' : undefined} title={level?.title}>
       <div className="flex flex-col justify-center" style={{ height: Math.max(ROW_MIN, rowH) - 1 }}>
         <div className="flex items-baseline justify-between gap-2 min-w-0">
-          {/* NO LEVEL WORDS IN THE CELLS (Noah, 2026-10-15, on the matrix in Terrain's panel: "the walls and supreme should
-              just be the color of the strike and show on the hover card but not on the actual matrix view") — the words
-              that stood here since 2026-10-14 are the strike's ink and the card's; the spacer keeps the figure at the right */}
+          {/* No level words in the cells: walls and supreme show as the strike's ink and on the card; the spacer keeps the figure right. */}
           <span aria-hidden />
           <span className={`font-mono text-t12 tnum leading-none whitespace-nowrap ${leg === 'net' ? 'font-bold text-textPrimary' : 'font-medium text-textPrimary'} ${level ? 'underline decoration-dotted underline-offset-2' : ''}`} style={level ? { textDecorationColor: level.ink } : undefined}>{pending ? '—' : fmtUsd(shown)}</span>
         </div>
@@ -173,10 +116,8 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   /* the pane's width and its strike column's, measured below — declared here, the legs read them */
   const [strikeColW, setStrikeColW] = useState(0);
   const [boxW, setBoxW] = useState(0);
-  /* THE LEGS PICKED, AND THE LEGS THAT FIT (2026-10-14, four names on a 1440 laptop: the Net column was cut off past a
-     277px pane): put, call and net need LEG_MIN a column; a pane narrower than that for all three shows the net they add
-     to — the matrix's own one-leg head says so ("GEX · net") — and takes all three back the moment it has the room. The
-     pane's natural width is always the picked legs', so a host packing the panes never holds one at the narrow width. */
+  /* The legs picked, and the legs that fit: a pane too narrow for all three (LEG_MIN each) shows the net, and the head says so.
+     The natural width is always the picked legs', so a host never holds a pane narrow. */
   const PICKED = useMemo(() => legsOf(legsPick), [legsPick]);
   const LEGS = useMemo<Leg[]>(() => {
     if (PICKED.length < 3 || boxW <= 0) return PICKED;
@@ -185,11 +126,10 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   }, [PICKED, boxW, strikeColW, shownGreeks.length]);
   const lead: Greek = leadProp && shownGreeks.includes(leadProp) ? leadProp : shownGreeks[0] ?? 'gex';
   const cols = 1 + shownGreeks.length * LEGS.length;
-  /* THE EXPIRIES DRAWN — the host's list, so every view sums the same book */
+  /* The expiries drawn are the host's list, so every view sums the same book. */
   const shownIdx = useMemo(() => (expiries.length ? expiries.filter(i => i >= 0 && i < surface.expiries.length) : [Math.max(0, surface.expiries.findIndex(e => e.dte === 0))]), [expiries, surface]);
-  /* THE ROWS SPLIT ROUND THE PRICE NOW (one price on the page, 2026-10-14 — the spot row sat where the ten-second scan
-     had left it while the head ticked on): the count of strikes at or over the room's price, re-rendered on only when
-     it changes; the pill between them reads the price itself (RoomSpotRule) */
+  /* Rows split at the room's live price: the count of strikes at or over it, re-rendered only when that count changes;
+     the pill between reads the price itself (RoomSpotRule). */
   const splitAt = useRoomSpotRead(surface.ticker, sp => surface.strikes.filter(s => s >= (sp ?? liveSpot ?? surface.spot)).length, Object.is, live);
   const { above, below } = useMemo(() => {
     const desc = [...surface.strikes].sort((a, b) => b - a);
@@ -233,8 +173,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   }, [rows]);
 
   const levels = surface.levels;
-  /* THE WALLS LOUDER, THE REST QUIETER (idea 9, 2026-10-14): a column's three heaviest bars at full ink, the others a
-     step down — the walls pop the way they do on the tape, and nothing else changes */
+  /* Each column's three heaviest bars at full ink, the rest a step down. */
   const heavyBy = useMemo(() => {
     const out: Record<string, Set<number>> = {};
     for (const g of shownGreeks)
@@ -243,8 +182,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   }, [rows, shownGreeks, LEGS]);
   const cents = useMemo(() => hasCents(rows.map(r => r.strike)), [rows]);
   const pinStrike = surface.front.strikes.find(r => r.pin)?.strike;
-  /* EVERY ROLE, IN THE ONE ORDER (core/walls.ts LEVEL_ORDER — the sixth audit: "769 SUPREME" dropped its put wall):
-     "supreme · put wall", in the first role's ink */
+  /* Every role, in LEVEL_ORDER (core/walls.ts), inked by the first. */
   const tagFor = (strike: number): { word: string; ink: string } | null => {
     const roles = levelRoles(strike, { supreme: levels.supreme, callWall: levels.callWall, putWall: levels.putWall, flip: levels.flipFound === false ? null : levels.flip });
     if (roles.length) return { word: roles.join(' · '), ink: ROLE_INKS[roles[0]] };
@@ -252,7 +190,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   };
   const ROLE_INKS: Record<LevelRole, string> = { supreme: SUPREME, 'call wall': CALL_WALL, 'put wall': PUT_WALL, flip: FLIP };
 
-  /* THE KEPT STRIKE — the ladder's rule: no card while one is kept; a click anywhere off the rows lets it go */
+  /* The kept strike, the ladder's rule: no hover card while one is kept; a click off the rows lets it go. */
   const keptStrike = selectedStrike ?? null;
   const pinned = keptStrike != null;
   const keptRef = useRef(keptStrike);
@@ -264,7 +202,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
       if (t?.closest('[data-matrix-row],[data-ladder-row],[data-cell],[data-strike],[data-profile-panel],[data-dropdown],[data-dropdown-card],[role="menu"],[data-focus-chip],[data-guide-door],button,a,input,select,textarea')) return;
       if (keptRef.current != null) onSelectStrike?.(keptRef.current);
     };
-    /* Escape lets go too, first and alone (the paying-user audit's H6 — the calendar's rule) */
+    /* Escape lets go too, first and alone (the calendar's rule). */
     const k = (ev: globalThis.KeyboardEvent) => {
       if (ev.key !== 'Escape' || ev.defaultPrevented || keptRef.current == null) return;
       if ((ev.target as Element | null)?.closest?.('input,textarea,select,[role="menu"],[role="dialog"]')) return;
@@ -279,14 +217,13 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
     };
   }, [pinned, onSelectStrike]);
 
-  /* THE POINTER CARD — the ladder's, one mounted element per hover, tracking the pointer by itself */
+  /* The pointer card: one mounted element per hover, tracking the pointer itself. */
   const [hovered, setHovered] = useState<number | null>(null);
   const [card, setCard] = useState<{ strike: number; x: number; y: number } | null>(null);
   const leaveTimer = useRef(0);
   useEffect(() => () => window.clearTimeout(leaveTimer.current), []);
-  /* A CLICK KEEPS THE CARD (2026-10-12, with the calendar's): the same card stands on the row where the pointer was
-     when it was clicked — an offset from the row's box, read again on scroll and resize — until the strike is let go.
-     A strike kept from elsewhere (the panel, the gutter) anchors at the strike cell's right edge. */
+  /* A click keeps the card on its row (an offset from the row's box, re-read on scroll and resize) until the strike is let go;
+     a strike kept from elsewhere anchors at the strike cell's right edge. */
   const [keptAt, setKeptAt] = useState<{ strike: number; dx: number; dy: number } | null>(null);
   const [keptPos, setKeptPos] = useState<{ x: number; y: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -304,8 +241,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
         return;
       }
       const r = row.getBoundingClientRect();
-      /* ONLY WHILE ITS ROW IS ON THE SCREEN (2026-10-14, the phone: clamped to the viewport, the card rode the top-left
-         corner over the day box and the report as the page scrolled) — the chip in the head keeps the strike meanwhile */
+      /* Only while its row is on screen; the head's chip keeps the strike meanwhile. */
       const b = box?.getBoundingClientRect();
       const seen = r.bottom > 0 && r.top < window.innerHeight && (!b || (r.bottom > b.top && r.top < b.bottom));
       if (!seen) {
@@ -350,8 +286,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
       </>
     );
     const aside = `${distPct >= 0 ? '+' : '−'}${Math.abs(distPct).toFixed(2)}% · ${distPct >= 0 ? 'above' : 'below'} spot`;
-    /* THE CARD ENDS IN PLAIN WORDS, the calendar's way (the owner's walks, 2026-10-14: the matrix is the view the page
-       opens on and its card stopped at a count of contracts); the percent says what it is of — the column's heaviest */
+    /* The card ends in plain words; the percent is of the column's heaviest. */
     const empty = Math.abs(l.put) < 1e-9 && Math.abs(l.call) < 1e-9;
     const verdict = empty ? 'nothing here · no hedging at this strike' : lead === 'gex' ? (l.net >= 0 ? 'peak · hedging amplifies a move here' : 'well · hedging absorbs a move here') : l.net >= 0 ? 'the put side wins here' : 'the call side wins here';
     const verdictInk = empty ? 'rgb(var(--text-muted))' : l.net >= 0 ? AMPLIFY : ABSORB;
@@ -374,16 +309,12 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
       </PointerFollowCard>
     );
   };
-  /* THE HOVER GOES ON WHILE A STRIKE IS KEPT (the owner, 2026-10-14: "it should only do that if they click on that strike
-     and then it'll stay but for normal should just be an easy hover"): a kept strike keeps its card on its row, and the
-     pointer still reads every other row out — one card at a time, the kept one back when the pointer leaves */
+  /* Hover still reads other rows while a strike is kept: one card at a time, the kept one back when the pointer leaves. */
   const cardRow = card && !(keptStrike != null && Math.abs(card.strike - keptStrike) < 1e-9) ? rows.find(r => Math.abs(r.strike - card.strike) < 1e-9) ?? null : null;
   const keptRow = pinned ? rows.find(r => Math.abs(r.strike - keptStrike) < 1e-9) ?? null : null;
 
-  /* THE KEYS REACH THE ROWS (the audit's H10, 2026-10-13): the table is one tab stop; ↑ ↓ walk the strikes, Home and End
-     jump to the ends, Enter or Space keeps the row — the same card and the same keep a click gives. The walked row lights
-     as a hovered one does and wears the house ring; the walk starts on the kept strike, else the strike just over spot,
-     and only from the keys (:focus-visible) — a click inside the box focuses it too, and changes nothing. */
+  /* Keyboard: the table is one tab stop; ↑ ↓ walk strikes, Home/End jump, Enter/Space keeps the row. The walk starts on the kept
+     strike, else just over spot, and shows only under :focus-visible. */
   const [keyRow, setKeyRow] = useState<number | null>(null);
   const rowId = (strike: number) => `matrix-${surface.ticker}-${String(strike).replace('.', '_')}`;
   const walkTo = (strike: number) => {
@@ -428,11 +359,8 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
 
   /* the box opens with price in the middle of it, once per name */
   const spotRef = useRef<HTMLTableRowElement | null>(null);
-  /* THE COLUMNS HOLD STILL (2026-10-12, the replay — Noah: "the only thing changing should be the color and
-     numbers not the literal node shape or size"): an auto table hands every column a share of the width by what
-     its cells say, so a figure growing from "$464.8M" to "-$1.1B" nudged every column half a pixel a step. The
-     table is laid out FIXED: the strike column at the width of its widest possible row (measured off the reserve
-     in its head), the legs sharing the rest equally. */
+  /* Columns hold still: a fixed layout, the strike column at its widest possible row (measured off the head's reserve),
+     the legs sharing the rest, so changing figures never nudge columns. */
   const [reserve, setReserve] = useState<HTMLSpanElement | null>(null);
   const [strikeWord, setStrikeWord] = useState<HTMLSpanElement | null>(null);
   useLayoutEffect(() => {
@@ -447,36 +375,29 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
     ro.observe(reserve);
     return () => ro.disconnect();
   }, [reserve, strikeWord]);
-  /* A LEG'S COLUMN AS DRAWN: the box (or the natural width, if less) past the strike column, shared by the legs; under the
-     figure, its gap and 40px of lane it stacks the figure over the bar instead (a phone, four names on a laptop) */
+  /* A leg's column as drawn: the box past the strike column, shared by the legs; under the figure, gap and 40 px of lane it stacks. */
   const legW = boxW > 0 ? (boxW - (strikeColW || 84)) / Math.max(1, shownGreeks.length * LEGS.length) : MATRIX_COL_W;
   /* a column too narrow for its unit on the head (four names on a laptop): the greek alone there */
   const stacked = legW < 96;
-  /* THE HEAD'S WORDS BY THE ROOM (Noah, 2026-10-18, a head on two lines — "VANNA · net · 1 vol / pt"): the greek, its
-     leg and its unit when the group's width holds them at 11px (7.2px a character, the ledger's own measure); the
-     greek and its leg when it holds that; the greek alone when stacked — never a wrap, the unit on the title instead */
+  /* The head's words by room (7.2 px a character at 11 px): greek, leg and unit; greek and leg; or the greek alone. Never a wrap. */
   const headRoom = legW * LEGS.length;
   const headChars = (g: (typeof shownGreeks)[number], withUnit: boolean) =>
     `${GREEK_LABEL[g]}${LEGS.length === 1 ? ` · ${LEGS[0]}` : ''}${withUnit ? ` · ${GREEK_UNIT[g]}` : ''}`.length;
   const headFits = (withUnit: boolean) => headRoom >= Math.max(0, ...shownGreeks.map(g => headChars(g, withUnit))) * 7.2 + 16;
   const headTier: 'full' | 'leg' | 'greek' = stacked ? 'greek' : headFits(true) ? 'full' : LEGS.length === 1 && headFits(false) ? 'leg' : 'greek';
-  /* THE PANE'S NATURAL WIDTH, told to the host (2026-10-13): the strike column as measured and every leg at its widest */
+  /* The pane's natural width, told to the host: the strike column as measured and every leg at its widest. */
   const natural = strikeColW > 0 ? strikeColW + shownGreeks.length * PICKED.length * MATRIX_COL_W : 0;
-  /* both before paint (2026-10-14): a pane added beside the others reports its width and centres its rows on the price in
-     the frame it first stands in, never a frame later */
+  /* Before paint, so a new pane reports its width and centres on the price in its first frame. */
   useLayoutEffect(() => {
     if (natural > 0) onNatural?.(natural);
   }, [natural, onNatural]);
-  /* THE ROWS SHARE THE BOX (2026-10-13): the box's height less the head and the spot row, over the rows, floored at
-     ROW_MIN and capped at ROW_H — an 870px box holds forty rows at 20px with nothing hidden under the head */
+  /* Rows share the box: its height less the head and spot row, over the rows, between ROW_MIN and ROW_H. */
   const theadRef = useRef<HTMLTableSectionElement | null>(null);
   const [rowH, setRowH] = useState(ROW_H);
   const centredFor = useRef<string | null>(null);
   useLayoutEffect(() => {
     /* re-centred once the rows take their height too — centred at the first height, the rows then shrank under it */
-    /* A NEW NAME RE-CENTRES ON ITS OWN PRICE (the fifth audit's retail test, 2026-10-23: a ticker switch left the matrix
-       scrolled mid-ladder) — the key holds the name, its rows and the price row, and is only spent once the price row is
-       on the page, so a switch that lands its rows a frame later still centres */
+    /* A new name re-centres on its own price; the key is spent only once the price row is on the page, so late rows still centre. */
     const row = spotRef.current;
     const box = row?.closest('[data-matrix-scroll]') as HTMLElement | null;
     if (!row || !box || !rows.length) return;
@@ -484,8 +405,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
     if (centredFor.current === key) return;
     centredFor.current = key;
     let top = Math.max(0, row.offsetTop - box.clientHeight / 2);
-    /* NO ROW HALF UNDER THE HEAD (the fourth audit: SPY's supreme row, 769, sat clipped under the sticky head at load) — the
-       first row under the head starts whole */
+    /* No row half under the sticky head: the first row starts whole. */
     const head = theadRef.current?.offsetHeight ?? 0;
     if (top > 0) {
       for (const el of box.querySelectorAll<HTMLElement>('[data-matrix-row]')) {
@@ -566,15 +486,11 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
         data-walked={walked || undefined}
         title={you}
       >
-        {/* THE STRIKE AT THE FAR LEFT, ITS TAGS AFTER IT, THE COLUMN NO WIDER THAN ITS WIDEST ROW (Noah, 2026-10-12:
-            "the strikes should be furthest left" and no empty band — the table sizes the column to its content, the
-            cells take the rest) */}
-        {/* the strike in the first ink (the owner, 2026-10-14: "strike numbers — what the row IS — are dim grey") */}
-        {/* the extra foot room lifts the strike onto its figures' line — the cells stack a 3px beam under the figure, so a
-            centred strike sat ~4px below the numbers it names (the UI sweep, 2026-10-22) */}
+        {/* The strike at the far left, its column no wider than its widest row. */}
+
+        {/* Extra foot room lifts the strike onto its figures' line (the cells stack a 3 px beam under the figure). */}
         <td className={`pl-2 pr-1.5 ${rowH < 20 ? 'pt-0 pb-1' : 'pt-0.5 pb-2'} leading-tight bg-inset text-right font-mono text-t11 font-semibold tnum text-textPrimary whitespace-nowrap`}>
-          {/* THE LEVEL IN THE STRIKE'S INK (strikeRole.ts, 2026-10-13): the words after it made the column as wide as its
-              widest label, and every plain strike carried the gap */}
+          {/* The level as the strike's ink (strikeRole.ts); words after it widened the column for every strike. */}
           <span
             className={`${role.ink ? 'font-bold' : on || lit ? 'text-textPrimary' : ''} ${underlineClass(role.underline)}`}
             style={role.ink ? { color: role.ink } : undefined}
@@ -587,9 +503,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
         {shownGreeks.map((g, gi) =>
           LEGS.map((leg, li) => {
             const lvl = g === 'gex' && windowLabel && role.ink && (r.strike === levels.supreme || r.strike === levels.callWall || r.strike === levels.putWall) ? levelLegsAt?.(r.strike) ?? null : null;
-            /* EVERY ROW IS THE MATRIX WINDOW'S FIGURE (the sixth audit, 2026-10-23: rows 769/770 printed the Levels card's
-               Oct 23 figure, −$595.1M, under "GEX · Oct 23 → Nov 3" while every other row and the hover read the window's
-               sum, −$657.5M). The level's own figure moves to the cell's hover and the level chips. */
+            /* Every row is the matrix window's figure; a level's own figure lives on the cell's hover and the level chips. */
             const v = r.legs[g][leg];
             return (
               <Cell
@@ -652,8 +566,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
         <thead ref={theadRef} className="sticky top-0 z-10 bg-panel shadow-[0_8px_8px_-8px_rgba(0,0,0,0.55)]">
           <tr>
             <th className={`${head} !tracking-normal pl-2 pr-1.5 pt-2 pb-1 text-right text-textSecondary border-b border-borderSubtle bg-panel`}>
-              {/* THE COLUMN'S WIDTH IS RESERVED (2026-10-12, the replay): the widest row this table can print, set
-                  invisibly, so a wall's words moving from row to row never move the column or the cells beside it */}
+              {/* The column's width is reserved for the widest row, set invisibly, so a wall's words moving never move the columns. */}
               <span ref={setReserve} aria-hidden className="invisible block h-0 w-max overflow-hidden whitespace-nowrap normal-case tracking-normal text-t11 font-semibold tnum">
                 {cents ? `${Math.floor(Math.max(...rows.map(r => r.strike), 0))}.00` : rows.map(r => fmtStrike(r.strike)).reduce((a, b) => (b.length > a.length ? b : a), '')}
               </span>
@@ -663,19 +576,15 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
               <th
                 key={g}
                 colSpan={LEGS.length}
-                /* the head's cells carry the panel's ground themselves (2026-10-14): a sticky head is only as opaque as its
-                   cells, and the rows scrolling under a two-row head ghosted through the legs' row */
+                /* The head's cells carry the panel ground: a sticky head is only as opaque as its cells. */
                 className={`${head} px-2 pt-2 pb-1 text-center border-b border-l bg-panel ${paper ? 'border-borderSubtle' : 'border-borderMuted'} ${g === lead && shownGreeks.length > 1 ? 'text-silver' : 'text-textPrimary'}`}
                 data-matrix-group={g}
                 data-lead={g === lead || undefined}
-                /* the silver head is the greek the pointer card reads — said, not left to be guessed (the audit's L8) */
+                /* The silver head is the greek the pointer card reads, and says so. */
                 title={`${g === lead && shownGreeks.length > 1 ? `The greek the card reads · ${GREEK_UNIT[g]}` : GREEK_UNIT[g]}${windowLabel ? (windowLevels ? ` · each row adds up the matrix window, ${windowLabel} (the Expiries card), and the coloured rows are that window's own call wall, put wall and supreme — the Levels card (${levelsWords ?? 'its scope'}) names its own on the rest of the page` : ` · each row adds up the matrix window, ${windowLabel} (the Expiries card) — not the Levels card's contracts, so a level's row can differ from the level's own figure`) : ''}`}
               >
-                {/* ONE LEG, ONE HEAD (the audit's M4, 2026-10-13): with the net alone on the table the leg's name rides the
-                    greek's head — "GEX · net · 1% move" — and the row that said "NET" five times is gone; it comes back
-                    with the legs if they ever return */}
-                {/* a narrow column wears the greek alone (the paying-user audit, a phone: "VANNA · net · 1 vol pt" on three
-                    lines over a 70px column); its unit is in the title */}
+                {/* One leg, one head: with the net alone the leg rides the greek's head ("GEX · net · 1% move"). */}
+                {/* A narrow column wears the greek alone; its unit is in the title. */}
                 <span className="inline-block max-w-full whitespace-nowrap truncate align-bottom" data-matrix-head-tier={headTier}>
                   {GREEK_LABEL[g]}
                   {headTier !== 'greek' && (
@@ -691,9 +600,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
                     </span>
                   )}
                 </span>
-                {/* THE LEGS' WORDS ON THE SAME HEAD ROW (2026-10-14): a second <tr> in a sticky head is not painted opaque by
-                    Chromium in a collapsed-border table, whatever its cells say — the rows scrolling under it ghosted
-                    through "put · call · net"; one row, the words in a grid over their columns, paints whole */}
+                {/* The legs' words on the same head row: Chromium does not paint a second sticky <tr> opaque in a collapsed-border table. */}
                 {LEGS.length > 1 && (
                   <span className="mt-1 grid" style={{ gridTemplateColumns: `repeat(${LEGS.length}, minmax(0, 1fr))` }} data-matrix-legs>
                     {LEGS.map(leg => (
@@ -710,10 +617,8 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
         <tbody>
           {rowsAbove.map(renderRow)}
           <tr ref={spotRef} data-matrix-spot>
-            {/* the rule under the net columns alone, the strike column's cell empty — the pill at the middle of the
-                nodes (Noah, 2026-10-12) */}
-            {/* …and across the whole pane when the legs are narrow: the price pill is wider than one stacked leg, and it ran
-                past the pane's edge (four names at 768, 2026-10-13) */}
+            {/* The rule under the net columns alone, the strike column's cell empty. */}
+            {/* …and across the whole pane when the legs are narrow, where the price pill is wider than one stacked leg. */}
             {!stacked && <td aria-hidden />}
             <td colSpan={stacked ? cols : cols - 1} className="px-2 py-1">
               <RoomSpotRule ticker={surface.ticker} fallback={liveSpot ?? surface.spot} centre live={live} />

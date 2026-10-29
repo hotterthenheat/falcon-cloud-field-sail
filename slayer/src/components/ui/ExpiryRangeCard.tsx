@@ -1,9 +1,5 @@
-/*
-  Picks a window of expiries (From and Through) on the expiry calendar, with only the book's expiries lit. The armed row
-  takes the next click (Through by default); a Through before From pulls From down, a From past Through pushes
-  Through up. Shortcuts: Today only, This week, Next 7. The host sets the ceiling (how many expiries it can draw):
-  days past it stay dim, and moving From drags Through along.
-*/
+/* A window of expiries (From and Through) on the expiry calendar: the armed row takes the next click, and the ends push each other
+   to stay ordered. Shortcuts: Today, This week, Next 7. Days past the host's ceiling stay dim. */
 
 import { FLAT_DOOR, FLAT_OPEN } from './flatDoor';
 import { useState } from 'react';

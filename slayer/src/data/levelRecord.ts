@@ -1,30 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW THE LEVELS HELD, SESSION BY SESSION
-  (data/levelRecord.ts)
-
-  THE BASE RATES (the competitive audit, 2026-10-13:
-  no product in the category publishes auditable
-  accuracy for its levels — "none of us publishes
-  auditable accuracy statistics"; the Map's report
-  grades today, this grades the sessions on hand).
-  For every past session the market keeps, the
-  levels AS THEY STOOD AT ITS OPEN — read off the
-  first book kept that session, never off a later
-  one (no look-ahead) — and what the session then
-  did to them: tested or not, held its first test or
-  broke it, broke at all; and whether the close
-  landed inside one expected move of the open.
-
-  The record is read, not stored: the house keeps a
-  few sessions of bars and a book a bar; the feed
-  keeps the sessions the vendor serves. A machine
-  that reads the vendor's two years will grade two
-  years. The rule for a test and a break is the
-  report's own (levelTicks), moved here so the two
-  cannot drift.
-==================================================
-*/
+/* Base rates: for every past session on hand, the levels as they stood at its open (its first book, no look-ahead) and what the session did
+   to them (tested, held the first test, broke), and whether the close landed inside one expected move. Read, not stored; levelTicks is the report's own rule. */
 
 import type { Candle } from '../types/market';
 

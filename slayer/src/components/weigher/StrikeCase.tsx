@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import CardTabs from '../ui/CardTabs';
 import Fact from '../ui/Fact';
 import ContractLabel from '../ui/ContractLabel';
-import { readGate, offsetOf, spanOf, thetaPerSessionHour } from '../../data/weigherGate';
+import { readGate, thetaPerSessionHour } from '../../data/weigherGate';
 import { seatsNow, type LiveScore } from '../../data/compassModel';
 import { STOP_KEEP, TP1_STOP, TP2_STOP, TP3_STOP, TP4_TRAIL, DRIVE, weekdayDte } from '../../data/compassParams';
 import { odteDoneMin } from '../../data/compassSession';
@@ -105,9 +105,7 @@ function speak(s: string): string | null {
 
 const strikeLabel = (n: number) => (n % 1 === 0 ? n.toFixed(0) : n.toFixed(2));
 
-const StrikeCase = ({ ticker, c, right, chain, profile, book, tick, score, listed, onPickAlt }: Props) => {
-  void profile;
-  void book;
+const StrikeCase = ({ ticker, c, right, chain, tick, score, listed, onPickAlt }: Props) => {
   const sim = chain.source !== 'live';
   const held = sim ? { p1: null, prun: null, retOpen: null, gex: null, ...seatsNow() } : score ?? { p1: null, prun: null, retOpen: null, gex: null, ...seatsNow() };
   const gate = useMemo(
@@ -116,10 +114,6 @@ const StrikeCase = ({ ticker, c, right, chain, profile, book, tick, score, liste
     [chain, c, held.p1, held.prun, held.retOpen, held.gex, held.seats, tick, held.sentRoots.join('|')]
   );
   const strikes = useMemo(() => chain.rows.map(r => r.strike), [chain.rows]);
-  const span = spanOf(chain);
-  void span;
-  const dist = offsetOf(strikes, chain.spot, c.strike);
-  void dist;
   const ordered = useMemo(() => [...new Set(strikes.filter(k => k > 0))].sort((a, b) => a - b), [strikes]);
   const ret = held.retOpen;
   const side = ret == null || !Number.isFinite(ret) ? 'The opening price is not in yet.' : Math.abs(ret) >= DRIVE ? (ret > 0 ? 'The stock is up from the open, so the call is the side.' : 'The stock is down from the open, so the put is the side.') : 'The stock is flat from the open.';

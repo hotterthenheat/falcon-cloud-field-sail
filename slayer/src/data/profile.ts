@@ -1,8 +1,5 @@
-/*
-  The reader's profile as the terminal shows it: picture, name, handle, email, sign-in method and sessions. Kept in
-  localStorage (starting from a sample) and mirrored from the account row while signed in (data/account.ts). The
-  picture is cropped to a 128px square and stored with the profile.
-*/
+/* The reader's profile (picture, name, handle, email, sign-in method, sessions) in localStorage, mirrored from the account row while signed in.
+   The picture is cropped to a 128 px square. */
 
 import { useSyncExternalStore } from 'react';
 

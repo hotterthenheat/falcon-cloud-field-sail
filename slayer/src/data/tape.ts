@@ -4,7 +4,6 @@
 import type { BookContract, FlowPrint, PrintSentiment, TapeSummary } from '../types/trace';
 import { dayLean, hashId } from './traceLive';
 
-
 /** A day-book row as a print for the contract card. The anchor is the clip the caller hands in (a flow alert's print, or
     the contract's real last trade); without one the card speaks for the day — never an invented print. */
 export function bookRowToPrint(

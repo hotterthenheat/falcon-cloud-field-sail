@@ -1,34 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - RESET VIEW CONTROL
-  Every chart's way home (Noah, 2026-08-30: "on
-  every chart i need a reset chart button that goes
-  back to how the user was greeted... right click be
-  reserved for a reset button display card").
-
-  One control, three doors, mounted INSIDE the chart
-  wrapper so every host inherits all of them:
-    - a whisper pill floating on the tape (wakes on
-      hover, the drawing-rail grammar)
-    - RIGHT-CLICK anywhere on the chart → a context
-      card at the cursor: "Reset chart view · Alt+R"
-    - Alt+R while the cursor is over the chart
-
-  The card portals to document.body — charts live
-  inside overflow-hidden and transformed (RGL)
-  ancestors, and a fixed card inside a transformed
-  ancestor sizes to the widget, not the viewport
-  (the containing-block law). It closes on pick,
-  click-away, or Esc; its own mousedown is stopped
-  so the click-away listener can't unmount the
-  button before the click lands.
-
-  The host is found by parentElement off a hidden
-  anchor, so callers just drop the control in — no
-  refs to thread. `onReset` rides a ref, so hosts
-  may pass a fresh closure every render.
-==================================================
-*/
+/* Every chart's way home: a hover pill, a right-click card ("Reset chart view · Alt+R") and Alt+R over the chart.
+   The card portals to body (a fixed box in a transformed ancestor sizes to it); the host is found off a hidden anchor. */
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';

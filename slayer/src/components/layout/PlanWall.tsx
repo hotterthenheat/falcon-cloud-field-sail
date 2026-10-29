@@ -1,10 +1,5 @@
-/*
-  What a locked room shows: its own picture dimmed behind glass with the room's glyph, name, line, the plan it is part
-  of, and the Desk offer with its price and a door to checkout (the room's own lower plan as a quiet line). Signed
-  out, it says sign in or choose. PlanGate sits between the shell's Outlet and the page and shows the wall when the
-  held plan does not reach; while the account loads, the picture shows without words, never the real page.
-  The server enforces the same plans on the data (shared/plans.mjs).
-*/
+/* What a locked room shows: its picture dimmed behind glass, its name and plan, and the Desk offer with a door to checkout.
+   PlanGate shows it when the held plan does not reach; the server enforces the same plans (shared/plans.mjs). */
 
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowRight, Lock } from 'lucide-react';

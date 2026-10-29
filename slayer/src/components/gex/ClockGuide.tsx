@@ -2,27 +2,14 @@ import { useLedgerPalette } from '../../data/ledgerPalette';
 import { bellDay } from '../../data/bookWindow';
 import { pressureInks } from './paletteInk';
 import { fmtStrike } from '../../core/format';
-/*
-==================================================
-  SLAYER TERMINAL - HOW TO READ THE TRADER'S CLOCK
-  (components/gex/ClockGuide.tsx)
-
-  The card behind the clock's "How to read" door
-  (Noah, 2026-09-06: "the traders clock and levels
-  held need one too"). Two figures in the clock's
-  own hand — the 78 blocks, the phase names, the
-  silver NOW, a phase in focus with its card — and
-  today's clock in plain words.
-==================================================
-*/
+/* The card behind the Trader's Clock's "How to read": two figures in the clock's own hand and today's clock in plain words. */
 
 const INK = 'rgb(var(--text-primary))';
 const INK_2 = 'rgb(var(--text-secondary))';
 const INK_3 = 'rgb(var(--text-muted))';
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const LIVE = 'rgb(var(--select))';
-/* the pressure pair as tokens (2026-09-16: an SVG attribute reads a var(), measured) — since 2026-10-17 the Map's
-   palette's own pair (paletteInk.ts pressureInks), read in the figure that draws them */
+/* The pressure pair as tokens (an SVG attribute reads a var()), from paletteInk pressureInks. */
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = '"Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
@@ -37,8 +24,7 @@ const PHASES = [
   { key: 'close', name: 'The close', from: 76, to: 78, weight: 1, push: 'along' },
 ] as const;
 const X0 = 14;
-/* THE DRAWINGS AT THEIR OWN SIZE (the re-audit's M1, 2026-10-13): 400 wide, 11px throughout, the phase names on two
-   rows as the clock's own are on a phone; a phone scrolls the drawing sideways rather than shrinking it */
+/* The drawings at their own size (400 wide, 11 px); a phone scrolls the drawing sideways rather than shrinking it. */
 const FIG_W = 400;
 const SPAN = 372;
 const BW = SPAN / BLOCKS;
@@ -130,7 +116,7 @@ const FocusFigure = () => {
       })}
       {/* The card above the hovered block, clear of the names */}
       <path d={`M${bx(hov) + BW / 2} 92 v-34`} stroke={SILVER} strokeOpacity="0.6" />
-      {/* the card's own tokens — on paper it was a black card with the page's ink on it, unread (the audit's M14) */}
+      {/* The card's own tokens, so it reads on paper too. */}
       <rect x={cardX} y={14} width={cardW} height={44} rx={6} fill="rgb(var(--card))" stroke="rgb(var(--border-muted))" />
       <Label x={cardX + 10} y={28} fill={INK} mono weight={700}>
         14:35

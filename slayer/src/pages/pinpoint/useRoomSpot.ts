@@ -1,30 +1,10 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE ONE PRICE ON THE PAGE
-  (pages/pinpoint/useRoomSpot.ts)
-
-  The partner's walk through the Map as a user
-  (2026-10-14): the head read 455.38, the matrix's
-  spot row 455.77 and the tape's Last 455.52 on one
-  screen — "the first thing a newcomer checks is
-  whether the numbers agree". Every box on the Map
-  prints THIS now: a name's price off the simulator
-  (core/simulator.ts TICKERS[t].currentPrice — the
-  forming bar's close is the same figure, so the
-  tape's line ends on it too), read on a short
-  clock and re-rendering a reader only when the
-  figure moves. His version read the room's market
-  store (the feed's or the house's); ours is the
-  house's alone until the feed is wired, behind the
-  same two hooks, so the boxes need no change then.
-==================================================
-*/
+/* The one price on the page: every box on the Map prints a name's live spot from the vendor book (uwBook peekSpot),
+   re-rendering a reader only when the figure moves. */
 
 import { useRef, useSyncExternalStore } from 'react';
 import { bookStatus, ensureBook, peekSpot } from '../../data/uwBook';
 
-/** The simulator ticks every 1.5s (MarketDataContext); a read every half second lands within a frame or two of the tick
-    at the cost of one property read a name */
+/** A read every half second: one property read a name, so a new spot shows within half a second of landing */
 const POLL_MS = 500;
 const subs = new Map<string, Set<() => void>>();
 const last = new Map<string, number | null>();

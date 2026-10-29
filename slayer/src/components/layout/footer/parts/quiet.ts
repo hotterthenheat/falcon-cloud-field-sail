@@ -4,7 +4,7 @@
 import { ARROW, FONT, PIX, box, chip, clamp, clock, dashedCard, dayWord, ease, frame, hash01, keep, lerp, prose, rgb, rng, type, walk, type Box, type Part, type Pen, type Pill, type Stage } from '../kit';
 import { bell } from './field';
 
-/* ---- THE ALERTS' LIST: every alert in one place — its bell, its name, what it waits for, its switch --------------- */
+/* ---- The alerts list: each alert's bell, name, what it waits for, its switch ---- */
 
 const NAMES = ['SPY', 'NVDA', 'QQQ', 'TSLA', 'AAPL', 'META', 'AMD', 'MSFT'];
 const WHAT = ['crosses', 'above', 'below', 'crosses', 'above', 'below'];

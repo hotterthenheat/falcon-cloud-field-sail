@@ -1,17 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE SETTINGS PAGE'S SKELETON
-  (pages/settings/settingsSkeleton.tsx)
-
-  The page standing in as itself while its code
-  travels: the shell head with the mark and two
-  facts, the rail of seven sections, and THE ONE
-  BOX the route names (each section is its own
-  page since 2026-09-12) — the three theme tiles
-  for Appearance, the rows for the rest. Imports
-  nothing heavy.
-==================================================
-*/
+/* The Settings skeleton: the shell head, the rail, and the one box the route names (theme tiles for Appearance, rows for the rest). */
 
 import { Fragment } from 'react';
 import { Block, Facts, Line, SubLine, Trigger } from '../../components/ui/skeletonKit';
@@ -81,8 +68,7 @@ const SectionBox = ({ section }: { section: string }) => {
     case 'keyboard':
       /* five groups — everywhere, the desk, the active chart, Review's desk, the editor — 29 keys (Settings.tsx KEY_GROUPS) */
       return <Box rows={31} rowH={41} groups={[4, 3, 9, 11, 2, 2]} />;
-    /* THE LAUNCH PAGES (2026-09-12) — each block built from the page's own
-       paddings, so the heights match by construction */
+    /* The launch pages, each block built from the page's own paddings so heights match. */
     case 'account':
       return (
         <Box
@@ -239,7 +225,7 @@ export const SettingsPageSkeleton = ({ section = 'account' }: { section?: string
   <>
     <Head />
     <div className="grid grid-cols-1 xl:grid-cols-[168px_minmax(0,1fr)] gap-4 items-start w-full max-w-[1072px] mx-auto" aria-hidden data-skeleton="settings">
-      {/* the rail in the page's order (2026-09-14): Account · Billing · Data | Appearance · The desk · Keyboard | About */}
+      {/* The rail in the page's order: Account · Billing · Data | Appearance · The desk · Keyboard | About. */}
       <div className="flex flex-col gap-0.5">
         {[0, 1, 2, 3, 4, 5, 6].map(i => (
           <div key={i} className={`flex items-center gap-2 px-2.5 h-8 ${i === 3 || i === 6 ? 'mt-2' : ''}`}>

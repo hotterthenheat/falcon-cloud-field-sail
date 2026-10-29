@@ -7,7 +7,7 @@ import { peekQuote } from './liveQuote';
 import { vendorFault, type FeedFault } from '../components/ui/liveRead';
 import type { BookContract, FlowPrint } from '../types/trace';
 import type { DarkPoolIntent, DarkPoolLevel, DarkPoolPrint, DarkPoolView, LevelRole, Posture } from '../types/darkpool';
-import { isoDate, isTradingDay, sessionsBetween } from '../core/calendar';
+import { isoDate, isTradingDay, sessionBefore, sessionsBetween } from '../core/calendar';
 import { marketPhase } from '../core/marketPhase';
 import { nyParts, nyWallTime } from '../core/nyTime';
 import type { MoneynessKey, NetFlowSegment, SpreadKind, SpreadLeg, SpreadTrade } from './flowBook';
@@ -1866,10 +1866,7 @@ export function nextSessionIso(iso: string): string {
 export function prevSessionIso(iso: string = tapeSessionIso()): string {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return iso;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  d.setDate(d.getDate() - 1);
-  for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() - 1);
-  return isoDate(d);
+  return isoDate(sessionBefore(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))));
 }
 interface NewestOi {
   /** The count after the volume's session */

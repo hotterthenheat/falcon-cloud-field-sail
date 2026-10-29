@@ -1,8 +1,5 @@
-/*
-  Every infinite brand loop (mark foil, cursors, the signature dot) is pinned to the document timeline (startTime 0),
-  so marks mounted at different moments still move in step. Components align their loops in a layout effect; a
-  document listener pins any loop that starts elsewhere. One-shot animations and paused loops are left alone.
-*/
+/* Every infinite brand loop is pinned to the document timeline (startTime 0) so marks mounted at different moments move in step.
+   One-shot and paused animations are left alone. */
 
 /** The brand loops, by keyframe name (index.css). */
 const BRAND_LOOPS = new Set(['sm-pan', 'sm-blink']);

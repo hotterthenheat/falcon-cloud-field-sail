@@ -1,10 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - PINPOINT GEX TYPES (gex.ts)
-  Strike chart overlays, strike×expiry matrix,
-  multi-ticker flow board & dark pool prints
-==================================================
-*/
+/* Pinpoint's GEX types: strike-chart overlays, the strike × expiry matrix, the flow board and dark-pool prints. */
 
 /** Key dealer-structure price levels drawn on the strike chart. */
 export interface KeyLevels {
@@ -49,7 +43,7 @@ export interface StrikeExposure {
   gex: GreekSplit;
   dex: GreekSplit;
   vex: GreekSplit;
-  /** Dollars of dealer delta per one point of vol — positive: a vol drop makes them buy there (2026-09-09) */
+  /** Dollars of dealer delta per vol point; positive: a vol drop makes them buy there. */
   vanna: GreekSplit;
   /** Dollars of dealer delta the clock takes per session — negative: they buy there as it runs */
   charm: GreekSplit;
@@ -186,9 +180,7 @@ export interface ReadLevel {
   distPct: number;
 }
 
-/** The migration read, as MEASUREMENTS (Mo, 2026-08-19: "walls hold — expect
-    the morning structure to govern the close" reads as a prediction). Facts
-    plus ONE short computation-statement line. */
+/** The migration read as measurements: facts plus one short computation line, never a prediction. */
 export interface MigrationRead {
   flip: ReadLevel;
   callWall: ReadLevel;

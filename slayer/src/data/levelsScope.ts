@@ -1,22 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - WHICH CONTRACTS THE LEVELS ARE READ OFF
-  (data/levelsScope.ts)
-
-  The call wall, the put wall, the flip and the
-  supreme can be read off TODAY'S contracts alone
-  (0DTE — the day's walls, what the clock and the
-  report have always read) or off EVERY listed date
-  together (the structural levels the longer book
-  holds). One choice for the whole Pinpoint desk,
-  worn by its head beside the Ruler, remembered on
-  this machine (the competitive audit, 2026-10-13:
-  "0DTE-specific walls as distinct levels"). On the
-  house's simulated book the two agree — its expiry
-  lens moves magnitudes, never levels; on the feed
-  they are the vendor's own rows by date.
-==================================================
-*/
+/* Which contracts the levels are read off: today's alone (0DTE) or every listed date. One desk-wide choice beside the Ruler,
+   remembered on this machine; on the feed they are the vendor's own rows by date. */
 
 import { useSyncExternalStore } from 'react';
 import type { DropdownOption } from '../components/ui/DropdownSelect';
@@ -70,8 +53,7 @@ export const LEVELS_OPTIONS: DropdownOption<LevelsScope>[] = [
   { value: 'ALL', label: 'All expiries', hint: 'Every listed expiry added together — the bigger, slower levels' },
 ];
 
-/* A NAME KEEPS ITS OWN (the desk used to force one Levels card on every name). The default above is what a name
-   uses until it is set. Remembered on this machine. */
+/* A name keeps its own scope, remembered on this machine; the default above applies until it is set. */
 const NAME_KEY = 'slayer_levels_by_name';
 const readNames = (): Record<string, LevelsScope> => {
   try {

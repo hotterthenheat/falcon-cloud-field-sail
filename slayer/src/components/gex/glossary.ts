@@ -1,7 +1,4 @@
-/*
-  PINPOINT'S WORDS, DEFINED ONCE (the retail test, 2026-10-22: "supreme", "trapdoor", "shelf" and "the book" printed
-  with no word on what they mean). Every place one of them stands on Pinpoint carries the line below on hover.
-*/
+/* Pinpoint's words, defined once; every place one stands carries its line on hover. */
 const WORDS = {
   gex: 'GEX (gamma exposure): the dollars of stock dealers would trade for a 1% move to stay hedged, strike by strike — positive (green) means they are long gamma and trade against the move, negative (red) short gamma and trade with it',
   supreme: 'Supreme: the single strike with the most dealer gamma on it (either sign), on this name’s levels — today’s contracts, or every listed expiry — usually the strongest level on the chart',
@@ -21,8 +18,7 @@ const WORDS = {
   likeliestClose: 'Likeliest close: the strike the 4:00 print most likely lands on, from the expected move left — named only when one strike reaches 15%. Not max pain, which is where the most option value would expire worthless',
 } as const;
 
-/* EVERY TERM'S HOVER POINTS AT THE ONE CARD (the eleventh audit's retail finding: GEX, DEX, VEX, vanna, charm, NOPE, supreme,
-   trapdoor and flip were defined only where each stood) — the card ("First time here?", on Pinpoint's head) holds them all */
+/* Every term's hover points at the "First time here?" card, which holds them all. */
 const FIRST_TIME_HINT = ' · Every term in one place: “First time here?” at the top of Pinpoint’s pages';
 export const GLOSSARY = Object.fromEntries(Object.entries(WORDS).map(([k, v]) => [k, `${v}${FIRST_TIME_HINT}`])) as { readonly [K in keyof typeof WORDS]: string };
 

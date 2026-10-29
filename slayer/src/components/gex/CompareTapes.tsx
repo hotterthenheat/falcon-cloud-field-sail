@@ -1,23 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - SINCE THE OPEN
-  (components/gex/CompareTapes.tsx)
-
-  The third box of Compare, rebuilt (Noah,
-  2026-09-09: the first cut reused one name's chart
-  with the other crossed over it — one name had
-  candles, its levels, its hedging trails and its
-  volume, the other a bare line; "not to my
-  standards"). A comparison gives both names the
-  same thing: today's session, each as ONE line of
-  percent from its own open, the same weight, in
-  its own ink, nothing else on the plot — and under
-  them the gap, a stepped band in the leader's
-  ink, so who is ahead and by how much reads at a
-  glance. The chart library draws it; the read line
-  in the foot speaks the minute under the pointer.
-==================================================
-*/
+/* Compare's "Since the open": both names as one line of percent from its own open, same weight, own ink,
+   with the gap under them as a stepped band in the leader's ink. The read line speaks the minute under the pointer. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BaselineSeries, createChart, LineSeries, LineStyle, LineType, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
@@ -90,28 +72,23 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
   const lineARef = useRef<ISeriesApi<'Line'> | null>(null);
   const lineBRef = useRef<ISeriesApi<'Line'> | null>(null);
   const gapRef = useRef<ISeriesApi<'Baseline'> | null>(null);
-  /* THE HOVER CARD (Noah, 2026-09-09: "i like the chart now but its not
-     informational i should have a translucent hover card on hover"): the minute
-     under the pointer, both prices and both percents, and the gap — beside the
-     pointer, flipping to its other side near the right edge, never off the plot */
+  /* The hover card: both prices, both percents and the gap, beside the pointer, flipping sides near the right edge. */
   const [hover, setHover] = useState<{ point: Point; left: number; top: number } | null>(null);
   const aRead = useResolvedSession(a);
   const bRead = useResolvedSession(b);
   const session = aRead.session !== 'rth' && aRead.session === bRead.session ? aRead.session : 'rth';
   const today = useMemo(() => buildToday(a, b, session !== 'rth'), [a, b, revision, session]);
-  /* THE BARS' OWN DAY (the fifth audit, 2026-10-23: "Since the open … Today" over Thursday's session at 01:00 Friday) */
+  /* The bars' own day ("Today" only when the session is today's). */
   const lastT = today.points[today.points.length - 1]?.time;
   const barDay = lastT != null ? nyIsoDate(lastT * 1000) : null;
   const dayW = barDay ? DayRef(barDay) : 'Today';
   const pointsRef = useRef(today.points);
   pointsRef.current = today.points;
 
-  /* Mount once — and again on a theme flip: the tapes read their inks at creation (2026-09-12) */
+  /* Mount once, and again on a theme flip: the tapes read their inks at creation. */
   const appTheme = useResolvedTheme();
-  /* ON PAPER THE CHART IS PART OF THE PAGE (the light sweep, 2026-09-19): it has no Theme menu, so on the light page it does
-     not wear the candle theme's grey — it sits on the page's soft inset with the page's inks, one grey with the box that
-     holds it. On the dark terminal it is the dark island on the panel, whatever candle theme is picked (2026-09-20: it
-     took the candle theme's ground, and a Stone pick made it a grey box on the dark page). */
+  /* On paper the chart sits on the page's inset with the page's inks (it has no Theme menu); on the dark terminal
+     it is the dark island whatever candle theme is picked. */
   const paper = appTheme === 'light';
   useEffect(() => {
     const host = hostRef.current;
@@ -125,8 +102,7 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
       /* New York's clock, like every other Pinpoint chart — on a UTC machine the axis read 15:00 → 19:55 */
       localization: { timeFormatter: (t: Time) => fmtClockLocal(t, 'ny') },
       grid: { vertLines: { visible: false }, horzLines: { visible: false } },
-      /* Room above the lines: at 0.08 the leader's live chip sat over the top axis
-         figure and hid half of it (the lock walk, 2026-09-09) */
+      /* Room above the lines, so the leader's live chip does not cover the top axis figure. */
       rightPriceScale: { borderColor: surface.line, scaleMargins: { top: 0.16, bottom: 0.28 } },
       timeScale: { borderColor: surface.line, timeVisible: true, secondsVisible: false, rightOffset: 4, tickMarkFormatter: nyTickMarks },
       crosshair: {
@@ -137,15 +113,11 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
       handleScale: false,
     });
     const pctFormat = { type: 'custom' as const, formatter: (v: number) => signedPct(v), minMove: 0.01 };
-    /* THE INKS ON THE CANVAS ARE RESOLVED off the plot's own box — a token
-       string handed to the library painted the leader's line black, invisible
-       on the dark terminal (Noah, 2026-09-12); the box is a dark island, so
-       the leader's "text-primary" is the island's white on either theme */
+    /* Inks resolved off the plot's box: a token string handed to the library painted black. */
     const lineA = chart.addSeries(LineSeries, { color: resolveInk(aInk, host), lineWidth: 2, priceLineVisible: false, lastValueVisible: true, priceFormat: pctFormat, crosshairMarkerRadius: 3 });
     const lineB = chart.addSeries(LineSeries, { color: resolveInk(bInk, host), lineWidth: 2, priceLineVisible: false, lastValueVisible: true, priceFormat: pctFormat, crosshairMarkerRadius: 3 });
     lineA.createPriceLine({ price: 0, color: paper ? readToken('--ink', 0.32, host) : 'rgba(255,255,255,0.22)', lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: false, title: '' });
-    /* THE GAP AS A STEPPED BAND, not a bar a minute (2026-09-29): four hundred one-pixel bars read as a barcode — the house
-       rule for a minute-spaced figure is the stepped baseline, filled in the leader's ink on each side of level */
+    /* The gap as a stepped baseline in the leader's ink; a bar a minute read as a barcode. */
     const gapInkA = resolveInk(aInk, host);
     const gapInkB = resolveInk(bInk, host);
     const gap = chart.addSeries(BaselineSeries, {
@@ -280,8 +252,7 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
           <div
             className="absolute z-10 pointer-events-none rounded-md border border-borderSubtle px-2.5 py-2 flex flex-col gap-1 text-t105 text-textSecondary"
             style={{ left: hover.left, top: hover.top, width: CARD_W, background: 'rgba(8,8,10,0.88)', backdropFilter: 'blur(3px)' }}
-            /* THE CARD IS ITS OWN DARK GLASS: its ground is typed dark, so its words must be the dark set — over a light
-               ground (paper, or a Stone tape on either page) they were the box's dark ink on the dark card, unreadable */
+            /* The card is dark glass, so its words take the dark set whatever the ground under it. */
             data-theme="dark"
             data-chart-glass
             data-tapes-card
@@ -321,7 +292,6 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
         )}
       </div>
 
-      {/* THE READ LINE — now */}
       <div className="px-5 border-t border-ink/[0.06] flex items-center gap-3 whitespace-nowrap overflow-hidden text-t105 text-textSecondary" style={{ height: TAPES_READ_H }} data-tapes-read>
         {at ? (
           <>

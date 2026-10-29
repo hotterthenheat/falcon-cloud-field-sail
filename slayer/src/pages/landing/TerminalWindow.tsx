@@ -46,10 +46,8 @@ interface Reel {
 const crumbs = (pathname: string): string[] => pathname.split('/').filter(Boolean).slice(0, 3);
 const pageName = (path: string): string => crumbs(path).join(' ').replace(/-/g, ' ');
 
-/** THE PROMPT: the command that opened the page on screen, typed a letter at a time each time the page changes —
-    every letter its own span lit on its own beat (index.css.window-typing), so the typing is exact in any face —
-    and the cursor after it on the brand's beat (.window-cursor: the mark's own keyframes, pinned to the page's
-    clock by brand/brandClock.ts) */
+/** The prompt: the command that opened the page, typed a letter at a time (each letter its own span, index.css .window-typing),
+    the cursor after it on the brand clock. */
 const Prompt = ({ path }: { path: string }) => {
   const cmd = `open ${crumbs(path).join('/')}`;
   return (

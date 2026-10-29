@@ -1,34 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - SETTINGS (pages/settings/Settings.tsx)
-
-  How the terminal looks, what the desk opens on,
-  what it says out loud (Noah, 2026-09-12: "creating
-  the skeleton for the settings page and
-  incorporating just the theme light and dark
-  mode"). The shape he took from the mockup: the
-  shell head wearing the house mark, a rail of
-  sections at the left, and each setting as a ROW —
-  the name and one line at the left, the control at
-  the right, hairlines between — the way Linear
-  lays its preferences. No cards for facts.
-
-  ONE RULE: a control exists only when it does
-  something today. Account, billing and the data
-  provider are rows that say they arrive with the
-  launch, never a switch that does nothing.
-
-  THE THEME TILES draw the terminal itself in each
-  theme — the tokens are scoped by `data-theme` on
-  any element (theme/tokens.css), so a tile is the
-  real palette, not a picture of one.
-
-  Every choice saves as you go: the theme through
-  theme/theme.ts, the candles through the candle
-  theme store every chart reads, the ruler through
-  the desk-wide unit.
-==================================================
-*/
+/* Settings: a rail of sections at the left, each setting a row (name and line left, control right). A control exists only when it
+   does something today. Theme tiles draw the real tokens (scoped `data-theme`); every choice saves as you go. */
 
 import { Fragment, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
@@ -40,8 +11,7 @@ import DropdownSelect, { type DropdownOption } from '../../components/ui/Dropdow
 import Modal from '../../components/ui/Modal';
 import { MorphingInfinity, useBusy } from '../../components/ui/Working';
 import { Door, Field, Row, Said, Section, Tag } from './pieces';
-/* THE PEOPLE ROOM'S GRID (AG Grid, 326 KB on the wire) loads only when an owner opens People — imported plainly it rode
-   along with every Settings page for everyone (the speed pass, 2026-10-11) */
+/* People's grid (AG Grid, ~326 KB) loads only when an owner opens People. */
 const PeopleBox = lazy(() => import('./People'));
 import { NAV_ITEMS } from '../../components/layout/nav';
 import { chime } from '../../core/sound';
@@ -66,22 +36,14 @@ import Wordmark from '../../brand/Wordmark';
 
 /* ---- the sections ------------------------------------------------------------- */
 
-/* EACH SECTION IS ITS OWN PAGE (Noah, 2026-09-12: "the subtabs should be
-   subpages not all on the same page. transition should be smooth") —
-   /settings/<id>, the rail a row of links, one box at a time, the box
-   arriving on a short cross-fade. /settings alone lands on Account.
-   THE ORDER IS THE READER'S PRIORITY (Noah, 2026-09-14: "account and billing
-   is the most important, so those should be first"): the reader's own things
-   — the account, the plan, the data — then how the terminal looks and works,
-   then About. */
+/* Each section is its own page (/settings/<id>, /settings lands on Account), in the reader's priority: account, plan and data,
+   then look and work, then About. */
 export type SettingsSection = 'account' | 'people' | 'billing' | 'data' | 'appearance' | 'desk' | 'keyboard' | 'about';
 export const SETTINGS_SECTIONS: SettingsSection[] = ['account', 'people', 'billing', 'data', 'appearance', 'desk', 'keyboard', 'about'];
 const isSection = (v: string | undefined): v is SettingsSection => (SETTINGS_SECTIONS as string[]).includes(v ?? '');
 const HOME_SECTION: SettingsSection = 'account';
 
-/* `owners`: a section only an owner — or, since 2026-10-17, the team, who read it — sees on the rail (People, 2026-10-10:
-   the admin room, under Account since it is the owners' own thing, not a trading page for the terminal's rail); `gap`: a
-   breath on the rail before it, the groups */
+/* `owners`: shown only to owners and the team (People); `gap`: a breath before it on the rail. */
 const SECTIONS: { id: SettingsSection; label: string; icon: LucideIcon; soon?: boolean; owners?: boolean; gap?: boolean }[] = [
   { id: 'account', label: 'Account', icon: UserRound },
   { id: 'people', label: 'People', icon: Users, owners: true },
@@ -107,7 +69,7 @@ const RULER_OPTIONS: DropdownOption<DistanceUnit>[] = [
   { value: 'σ', label: 'σ', hint: 'Expected one-day moves — how many the options price in' },
 ];
 
-/* THE DESK'S ROWS — the name and the timeframe a desk opens on, the clock */
+/* The desk's rows: the name and timeframe a desk opens on, the clock. */
 const OPENS_ON_NAMES: DropdownOption<string>[] = [
   { value: '', label: 'Where you left off', hint: 'The name the terminal last had up' },
   ...['SPY', 'QQQ', 'AAPL', 'NVDA'].map(t => ({ value: t, label: t, hint: `Every visit opens on ${t}` })),
@@ -116,8 +78,7 @@ const OPENS_ON_TIMEFRAMES: DropdownOption<string>[] = [
   { value: '', label: "Each desk's own", hint: 'Pulse and the Weigher at 1m, the Map at 15m' },
   ...TIMEFRAMES.filter(t => t.value !== '15s').map(t => ({ value: t.value, label: t.label, hint: `Every chart opens at ${t.label}` })),
 ];
-/* THE PAGE THE TERMINAL OPENS ON (2026-10-03, the start page): the start page itself, or any page of the rail — where the
-   landing's launch door lands (pages/landing/pieces.tsx doorTo) */
+/* The page the terminal opens on: the start page or any rail page (where landing/pieces.tsx doorTo lands). */
 const OPENS_ON_PAGES: DropdownOption<string>[] = [
   { value: '', label: 'The start page', hint: 'Every page, one picture each — pick where to go' },
   ...NAV_ITEMS.filter(i => i.glyph && i.path !== '/community').map(i => ({ value: i.path, label: i.label, hint: `Every launch opens on ${i.label}` })),
@@ -127,14 +88,8 @@ const CLOCK_OPTIONS: DropdownOption<ClockZone>[] = [
   { value: 'ny', label: 'New York', hint: "The market's clock — the open at 09:30, the close at 16:00" },
 ];
 
-/* EVERY KEY THE TERMINAL ANSWERS TO, grouped by where it works (Noah,
-   2026-09-13, on the page listing six: "do you think it's too short?" — it was
-   under-listed, not too short: Terrain's desk answers to twelve more). Each
-   group's keys are read off the handler that owns them — AppShell (the
-   palette), CommandPalette (its list), Terrain's pane keys, ResetViewControl
-   (Alt+R while the pointer is over a chart), the script editor's keymap
-   (Mod-s, Mod-Enter). `alt` marks keys that are alternatives ("1 / 2 / 3 / 4")
-   rather than a chord ("Ctrl + K"). */
+/* Every key the terminal answers to, grouped by where it works, each read off the handler that owns it; `alt` marks alternatives
+   ("1 / 2 / 3 / 4") rather than a chord. */
 type Shortcut = { keys: string[]; does: string; alt?: boolean };
 const KEY_GROUPS: { where: string; keys: Shortcut[] }[] = [
   {
@@ -208,7 +163,7 @@ const VERSION = '1.0.0';
 /** The house mark — the rail's S|, the badge here */
 const Mark = ({ size = 24 }: { size?: number }) => <SlayerMark size={size} bare label="" />;
 
-/* THE PIECES — Section, Row, Door, Tag, Field, Said — live in pieces.tsx since 2026-10-10, shared with the People room */
+/* Section, Row, Door, Tag, Field and Said live in pieces.tsx, shared with People. */
 
 /** The terminal, small, in one theme — real tokens under a scoped attribute */
 const Mini = ({ theme }: { theme: 'dark' | 'light' }) => (
@@ -241,7 +196,7 @@ const ThemeTile = ({ choice, current, onPick }: { choice: ThemeChoice; current: 
       data-theme-tile={choice}
       data-on={on || undefined}
     >
-      {/* taller since 2026-09-12 (Noah: "make the appearance boxes taller") — the terminal reads as one */}
+
       <div className="h-[132px] rounded border border-borderSubtle overflow-hidden">
         {choice === 'system' ? (
           <div className="flex h-full">
@@ -258,10 +213,7 @@ const ThemeTile = ({ choice, current, onPick }: { choice: ThemeChoice; current: 
       </div>
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className={`text-t12 ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>{name}</span>
-        {/* Silver, where you are — never lime: THE HOUSE CHECKBOX (the menus'
-            filled square with the dark tick), not a bare mark (Noah,
-            2026-09-12: "make the checkmark a blue checkbox instead on the
-            active theme") */}
+        {/* Silver where you are, as the house checkbox (filled square, dark tick). */}
         {on && (
           <span className="inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-[3px] border bg-silverFill border-silverFill" data-theme-check>
             <Check className="w-2.5 h-2.5 text-onfoil" strokeWidth={3} />
@@ -273,9 +225,8 @@ const ThemeTile = ({ choice, current, onPick }: { choice: ThemeChoice; current: 
   );
 };
 
-/* DIRECTION COLOURS (2026-10-13, the partner's setting at Noah's word): the house's green and red, or blue and orange
-   for red–green colour blindness, or the pair stronger with the quieter words nearer the lead ink — with ▲ and ▼ on
-   every signed figure under either choice (theme/tokens.css). Each tile shows its own pair whatever is chosen. */
+/* Direction colours: green and red, blue and orange for red–green colour blindness, or a stronger pair, with ▲ ▼ on signed figures
+   under any choice (theme/tokens.css). Each tile shows its own pair. */
 const CVD_WORDS: Record<ColourVision, [string, string]> = {
   standard: ['Green and red', 'Up in green, down in red — the house’s pair'],
   'blue-orange': ['Blue and orange', 'For red–green colour blindness: up in blue, down in orange, with ▲ and ▼'],
@@ -326,15 +277,8 @@ const Key = ({ children }: { children: ReactNode }) => (
 
 /* ---- the page ----------------------------------------------------------------- */
 
-/* ---- the launch pages, on the seam --------------------------------------------
-   Account, Billing and Data are THE LAUNCH PAGES drawn now (Noah, 2026-09-12:
-   "i just want the preview of how things would look after apis are plugged in
-   and stripe is purchased") — the terminal's own doctrine: the page against
-   a frozen shape (data/profile.ts, data/billing.ts), a sample on this machine
-   underneath, the service swapped in later. What can be real today IS real:
-   the picture, the name, the handle, the plan switch, the export, the clear.
-   A door the service alone can open (Stripe's portal, sign out) says what it
-   will do; the head's tag says the ground is a sample. */
+/* ---- Account, Billing and Data on their services' shapes (data/profile.ts, data/billing.ts), a local sample under them;
+   what can be real today is ---- */
 
 const checkEmail = (v: string): string | null => (/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v) ? null : 'That is not an email address');
 const checkHandle = (v: string): string | null => {
@@ -371,7 +315,7 @@ const AccountPreview = () => {
       <Row name="Sign in with" line="A link to your inbox, or the account you already have — no password to keep" testId="sign-in-way">
         <DropdownSelect<SignInWay> label="Sign in" value={p.signIn} options={SIGN_IN_OPTIONS} onChange={v => setProfile({ signIn: v })} title="How you sign in" testId="settings-sign-in" align="end" />
       </Row>
-      {/* WHERE YOU ARE SIGNED IN */}
+      {/* Where you are signed in. */}
       <div className="px-5 py-3 border-t border-borderSubtle/60" data-settings-row="devices">
         <div className="text-t12 text-textPrimary">Where you're signed in</div>
         <div className="text-t11 text-textMuted">Every machine with this account open — sign one out from here</div>
@@ -407,8 +351,7 @@ const AccountPreview = () => {
   );
 };
 
-/* ---- the account, live (2026-10-03: auth at Noah's word — email and password on Supabase Auth, the terminal open while
-   signed out until billing exists; data/account.ts holds the doors, the database holds the rules) ------------------- */
+/* ---- The account, live: email and password on Supabase Auth; data/account.ts holds the doors, the database the rules ---- */
 
 /** SIGNED IN: change the password from its row */
 const PasswordChange = () => {
@@ -470,10 +413,8 @@ const PasswordChange = () => {
   );
 };
 
-/** SIGNED IN: THE DOOR OUT FOR GOOD (2026-10-10, Noah: "build the delete account door"). One ask, answered in the person's
-    own email — a word to type works for a Google sign-in as well as a password; then the function ends the plan on Stripe
-    and deletes the account, the database cascading the rest (data/account.ts deleteAccount). The last owner is refused by
-    the function and told to hand the seat on first. "Deleted" stays up for a breath, then the front page loads clean. */
+/** Signed in, delete for good: confirmed by typing the account's email, then the function ends the Stripe plan and deletes the account
+    (the database cascades). The last owner is refused. */
 const DeleteAccount = ({ email, planName }: { email: string; planName: string | null }) => {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState('');
@@ -578,8 +519,7 @@ const AccountLive = () => {
   if (a.status !== 'in' || !a.user)
     return (
       <Section id="account" title="Account" line="Sign in to keep your picture, name and handle with you between machines" aside={<Tag>signed out</Tag>}>
-        {/* the sign-in itself is a page of its own (pages/signin/SignIn.tsx, Noah's picture of 2026-10-03); these two doors
-            go there and come back here */}
+        {/* The sign-in itself is its own page (pages/signin/SignIn.tsx); these doors go there and come back. */}
         <div className="px-5 py-4 border-t border-borderSubtle/60 flex items-center justify-between gap-6 max-sm:flex-col max-sm:items-stretch max-sm:gap-3" data-account-signed-out>
           <div className="text-t11 text-textMuted">The terminal stays open without an account. Sign in, or create one, on its own page.</div>
           <div className="shrink-0 flex items-center gap-2">
@@ -639,7 +579,7 @@ const PERIOD_TABS = [
   { value: 'month', label: 'Monthly' },
   { value: 'year', label: 'Yearly' },
 ] as const;
-/* AN OWNER'S EYES (2026-10-10): the terminal as a plan sees it, for this browser session — data/access.ts */
+/* An owner's eyes: the terminal as a plan sees it, for this browser session (data/access.ts). */
 const VIEW_AS_OPTIONS: DropdownOption<ViewAs>[] = [
   { value: 'self', label: 'Yourself', hint: 'An owner — every room open' },
   { value: 'none', label: 'No plan', hint: 'Signed in, nothing bought — every room walled' },
@@ -649,9 +589,8 @@ const VIEW_AS_OPTIONS: DropdownOption<ViewAs>[] = [
 ];
 const STANDS = new Set(['active', 'trialing', 'past_due']);
 
-/** BILLING, LIVE (2026-10-10 — Stripe in test mode): the plan and its standing off the profile row, where Stripe's
-    webhook writes them; a plan chosen goes to Stripe's hosted checkout, a plan held goes to the portal; the card and
-    the invoices live on the portal, never here. Back from checkout the row is read again until Stripe's word lands. */
+/** Billing, live: the plan and standing off the profile row (Stripe's webhook writes them); choose → checkout, held → portal.
+    Back from checkout the row is re-read until Stripe's word lands. */
 const BillingLive = () => {
   const a = useAccount();
   const access = useAccess();
@@ -687,8 +626,7 @@ const BillingLive = () => {
     setParams({}, { replace: true });
   }, [checkout, landed, setParams]);
   const line = 'Your plan and the card behind it — the card lives with Stripe, never here';
-  /* an old link with a plan in hand goes to the hand-off page, which asks Stripe at once (2026-10-10 — this page used
-     to make the checkout itself, and the person sat here three seconds wondering) */
+  /* An old link with a plan in hand goes to /checkout, which asks Stripe at once. */
   if (wantPlan) return <Navigate to={`/checkout?plan=${planKeyOf(wantPlan)}&period=${wantPeriod === 'year' ? 'year' : 'month'}`} replace />;
   if (a.status === 'loading')
     return (
@@ -719,8 +657,7 @@ const BillingLive = () => {
   const held = planOf(p.plan === 'none' ? 'book' : p.plan);
   const stands = STANDS.has(p.planStatus);
   const heldPrice = p.plan !== 'none' ? priceOf(p.plan, p.planPeriod ?? 'month') : null;
-  /* A PLAN GIVEN (2026-10-17): a complimentary plan an owner set in People — "legacy" — stands beside anything paid for;
-     the page leads with it when it is all there is, or ranks higher, and says so: with our thanks, until a date */
+  /* A plan given (set in People) stands beside anything paid; the page leads with it when it is all there is or ranks higher. */
   const given = grantHeld(p);
   const givenLeads = given != null && (p.plan === 'none' || !stands || PLAN_RANK[given] > PLAN_RANK[p.plan]);
   const lead = givenLeads && given ? planOf(given) : held;
@@ -806,8 +743,7 @@ const BillingLive = () => {
           })}
         </div>
       </div>
-      {/* AN OWNER'S EYES — owners walk everywhere; this looks through a plan's instead, for this browser session only
-          (Noah, 2026-10-10: "i would like to see what a user who only spends 80 sees") */}
+      {/* An owner's eyes: look through a plan's access, for this browser session only. */}
       {access.owner && access.on && (
         <Row name="See the terminal as" line="You are an owner, so every room opens to you. Look through a plan's eyes instead — this screen only, nothing on your account changes" testId="view-as">
           <DropdownSelect<ViewAs> label="Seeing as" value={access.viewing} options={VIEW_AS_OPTIONS} onChange={setViewAs} title="The plan whose walls this screen shows" testId="settings-view-as" align="end" />
@@ -854,7 +790,7 @@ const BillingPreview = () => {
       <div className="px-5 pb-4 border-t border-borderSubtle/60 pt-3" data-settings-row="plans">
         <div className="text-t12 text-textPrimary">Plans</div>
         <div className="text-t11 text-textMuted">Month to month, stopping at the end of the cycle</div>
-        {/* as many columns as plans are sold — two while the Seat is off the page (data/billing.ts, 2026-10-05) */}
+        {/* As many columns as plans are sold. */}
         <div className={`mt-3 grid ${PLANS.length >= 3 ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
           {PLANS.map(t => {
             const on = t.key === b.plan;
@@ -1104,8 +1040,7 @@ const Settings = () => {
   const theme = useResolvedTheme();
   const cvd = useColourVision();
   const candleKey = useCandleThemeKey();
-  /* THE MAP'S COLOURS (data/ledgerPalette.ts): a preference made once, off the Map's band since the partner's Map came
-     (2026-10-14) — and never on paper, where the two ramps differ by nothing the eye can use (Noah, 2026-10-04) */
+  /* The Map's colours (data/ledgerPalette.ts): a preference made once, never on paper (the two ramps match there). */
   const ledgerPalette = useLedgerPalette();
   const unit = useDistanceUnit();
   const desk = useDeskPrefs();
@@ -1156,16 +1091,8 @@ const Settings = () => {
         </dl>
       </header>
 
-      {/* THE COLUMN IS THE FOOTER'S (Noah, 2026-09-12: "shorten the width of
-          these cards… leaving more spacing on the right side", then, with a
-          line drawn down the footer's last column: "a vertical line with the
-          footer access column", and "when the sidebar is fully collapsed the
-          left side needs to come closer to the middle") — the rail and the
-          boxes sit in the footer's own measure: 1072px (max-w-6xl less its
-          padding), centred in the page like the footer is, so the boxes' edges
-          meet the footer's first and last columns whether the sidebar is out
-          or in; the head stays full width, the shell grammar. A row's name and
-          its control sit in one eye span; the window's sides stay quiet. */}
+      {/* The rail and boxes sit in the footer's own 1072 px measure, centred, so their edges meet the footer's columns with the sidebar in or out;
+   the head stays full width. */}
       <div className="grid grid-cols-1 xl:grid-cols-[168px_minmax(0,1fr)] gap-4 items-start w-full max-w-[1072px] mx-auto" data-settings>
         {/* THE RAIL — the subpages, the one open lit */}
         <nav className="xl:sticky xl:top-5 flex xl:flex-col gap-0.5 flex-wrap" aria-label="Settings sections" data-settings-rail>
@@ -1239,10 +1166,7 @@ const Settings = () => {
             <Row name="Ruler" line="The default unit a name uses until you set one on its strip. Dollars, percent, ATR, or the expected move." testId="ruler">
               <DropdownSelect<DistanceUnit> label="Ruler" value={unit} options={RULER_OPTIONS} onChange={setDistanceUnit} title="The default ruler. A name you set on Pinpoint keeps its own." testId="settings-ruler" align="end" />
             </Row>
-            {/* THE DESK'S OWN ROWS, LIVE (Noah, 2026-09-12: "make the desk buttons
-                actually have the function behind them") — data/deskPrefs.ts;
-                the hosts read them at their first render, the bell at every
-                ring, the chart clock at every label */}
+            {/* The desk's own rows, live (data/deskPrefs.ts): read at first render, by the bell and by the chart clock. */}
             <Row name="Opens on" line="The page the launch door opens, and the name and the timeframe every desk starts on — from the next visit" testId="opens-on">
               <DropdownSelect<string> label="Page" value={desk.opensOn.page ?? ''} options={OPENS_ON_PAGES} onChange={v => setDeskPrefs({ opensOn: { page: v || null } })} title="The page the landing's launch door opens" testId="settings-opens-page" align="end" />
               <DropdownSelect<string> label="Name" value={desk.opensOn.ticker ?? ''} options={OPENS_ON_NAMES} onChange={v => setDeskPrefs({ opensOn: { ticker: v || null } })} title="The name the terminal opens on" testId="settings-opens-name" align="end" />
@@ -1273,7 +1197,7 @@ const Settings = () => {
           <Section id="keyboard" title="Keyboard" line="Every key the terminal answers to, by where it works">
             {KEY_GROUPS.map(g => (
               <Fragment key={g.where}>
-                {/* THE GROUP'S NAME — a whisper head over its rows, the house's section label */}
+                {/* The group's name, a whisper head over its rows. */}
                 <div className="px-5 pt-3 pb-1.5 border-t border-borderSubtle/60 font-mono text-t9 leading-[13px] uppercase tracking-widest text-textMuted" data-settings-key-group={g.where}>
                   {g.where}
                 </div>
@@ -1295,7 +1219,6 @@ const Settings = () => {
           </Section>
           )}
 
-          {/* THE LAUNCH PAGES, on the seam */}
           {current === 'account' && <AccountBox />}
           {current === 'people' && (
             <Suspense fallback={<div className="min-h-[360px]" aria-busy="true" />}>

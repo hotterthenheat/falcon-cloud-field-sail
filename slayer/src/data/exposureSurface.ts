@@ -1,34 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - EXPOSURE SURFACE (exposureSurface.ts)
-  Strike × EXPIRY × greek — the book across the whole
-  calendar (Noah, 2026-09-03, holding Skylit's
-  heatmap beside the Field: dates as columns, one
-  greek at a time or all three, the king node, a
-  strike range — "we are going nowhere until we come
-  up with something generational").
-
-  HONEST TERM STRUCTURE. The profile's expiry lens
-  scales the whole book by one factor, which cannot
-  draw a range — every expiry would be the same
-  ridge at a different height. The Weigher's desk
-  chains can: they price real per-expiry contracts
-  (gamma, delta, vega, open interest per strike and
-  side) through one estimator, so gamma decays into
-  the future, vega grows, and open interest sits
-  where each expiry's book actually is.
-
-  ONE BOOK, STILL. The FRONT row is the ladder's own
-  numbers, exactly — the 0DTE profile every other
-  surface on the page reads — and each farther
-  expiry is the desk's leg at that strike, carried
-  in the front leg's sign and scaled by the front
-  leg's own ratio to its desk twin. The ladder and
-  the range can never disagree about today, and the
-  calendar behind today is the estimator's, not a
-  decay table's.
-==================================================
-*/
+/* Strike × expiry × greek, the book across the calendar. Live books come from the vendor's per-date rows (liveSurface);
+   otherwise the front row is the ladder's own numbers and each farther expiry the desk chain's leg, scaled by the front leg's ratio. */
 
 import { buildExposureProfile, type StrikeWindow } from './exposure';
 import { buildDeskChain, DESK_DTES } from './weigherDesk';
@@ -98,11 +69,7 @@ export interface KingNode {
   value: number;
 }
 
-/** THE SUPREME — the heaviest STRIKE of the whole book, the one the chart
-    wears in magenta and every other page names; here with the date that
-    carries most of it. Not the heaviest cell: that is `king`, the star.
-    (Noah, 2026-09-08: the chart's magenta trail and the ledger's SUPREME chip
-    named two different strikes — one was a strike, the other a cell.) */
+/** The supreme: the heaviest strike of the whole book (magenta everywhere), with the date carrying most of it; the heaviest cell is `king`. */
 export interface SupremeNode {
   strike: number;
   /** Index into `expiries` — the date holding most of this strike's hedging */
@@ -148,10 +115,7 @@ export interface ExposureSurface {
   waiting?: string | null;
 }
 
-/** The ledger's calendar (Noah, 2026-09-04: "increase the amount of dates you
-    can see at a time"): this week's dailies, the Fridays out to seven weeks,
-    then the monthlies to a quarter — each resolved to a real session and
-    deduped below, so two horizons on one Friday are one column. */
+/** The ledger's calendar: this week's dailies, Fridays out to seven weeks, monthlies to a quarter, each resolved to a real session and deduped. */
 export const CALENDAR_DTES = [0, 1, 2, 3, 4, 7, 14, 21, 28, 35, 42, 49, 63, 77, 91] as const;
 
 const EPS = 1e-6;
@@ -385,9 +349,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow): ExposureSurf
   };
 }
 
-/** `pricedOff`: whose spot and open interest the desk's expiries are priced from — the live simulator's (every surface
-    on screen, the replay's columns included, as before) or the SNAPSHOT GIVEN (the book at the session's open, from
-    levelview's `snapshotAtOpen`, for the calendar's "since the open" badges — 2026-10-12) */
+/** `pricedOff`: whose spot and OI the desk's expiries are priced from, the live book or the snapshot given (levelview snapshotAtOpen). */
 export function buildExposureSurface(snapshot: MarketSnapshot, half: StrikeWindow, dtes: readonly number[] = DESK_DTES, pricedOff: 'live' | 'snapshot' = 'live'): ExposureSurface {
   if (snapshot.liveBook) return liveSurface(snapshot, half);
   const front = buildExposureProfile(snapshot, '0DTE', half);

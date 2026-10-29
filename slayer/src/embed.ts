@@ -1,10 +1,5 @@
-/*
-  The seam between the landing's window and the terminal loaded inside it. A page is EMBEDDED when it runs in a frame
-  and was asked for with `?embed`; read once at load, so it survives navigation inside the frame. Embedded, the theme
-  comes from outside and is never stored, the rail opens folded, there is no sound, and "/" goes to Pulse.
-  Data is whatever the visitor's session allows: signed out, the paid feeds stay closed (data/feedGate.ts).
-  Messages (same origin only): out to in `go {path}`, `theme {theme}`; in to out `ready`, `route`, `escape` {path}.
-*/
+/* The seam between the landing's window and the terminal inside it: embedded means framed and asked for with `?embed` (read once).
+   Theme from outside, rail folded, no sound, "/" to Pulse; same-origin messages `go`/`theme` in, `ready`/`route`/`escape` out. */
 
 import type { Theme } from './theme/theme';
 

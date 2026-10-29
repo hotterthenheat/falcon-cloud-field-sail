@@ -207,8 +207,7 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
      count's flip is still provisional, the cell waits */
   const crossPending = (!!cross.why && !peekRecordAsked(ticker, recordDay().date)) || (!cross.why && !cross.complete);
 
-  /* PENDING UNTIL THE SCOPE'S CONTRACTS ARE IN: "Today" needs the front date's strikes and its contract rows (the flip
-     re-prices each with its own vol); "All expiries" needs every live date's strikes */
+  /* Pending until the scope's contracts are in: "Today" needs the front date's strikes and contract rows, "All expiries" every live date's strikes. */
   if (scope === 'ALL') ensureScopeDates(ticker);
   /* one readiness signal: a row is final exactly when levelsFor says its levels are */
   const pending = !!snapshot.liveBook && (!lv || !lv.complete);

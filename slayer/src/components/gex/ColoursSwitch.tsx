@@ -1,30 +1,12 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE COLOURS SWITCH
-  (components/gex/ColoursSwitch.tsx)
-
-  The Map's Colours card — Bencho's Palette (ui/Palette.tsx)
-  at the toolbar's size, switching the ladder and the
-  calendar between the house ramp and the thermal one. The
-  swatches are the ramp itself, sampled where the ladder
-  reads it (through its window, heatmap.ts), so the strip
-  IS the scale the rows wear.
-
-  One component so every ladder that opens the Map wears
-  the same switch (2026-09-22, Noah: the Pulse strike
-  ladder should "match the formatting of the pinpoint map
-  page which it takes you to"). It was ExposureField's own
-  until then.
-==================================================
-*/
+/* The Map's Colours card (ui/Palette.tsx at toolbar size): the ladder and calendar between the house and thermal ramps.
+   The swatches are sampled from the ramp where the ladder reads it, so the strip is the scale. Shared by every ladder that opens the Map. */
 
 import Palette from '../ui/Palette';
 import { heatRampColorFor, ladderRampT } from './heatmap';
 
 export type LedgerPalette = 'house' | 'thermal';
 
-/* The order is the switch's: house, then thermal (Noah, 2026-09-21, with Bencho's block: "i want the thermal to house
-   switch to be this as well") */
+/* The switch's order: house, then thermal. */
 const PALETTE_ORDER = ['house', 'thermal'] as const;
 const PALETTE_WORDS: Record<LedgerPalette, { name: string; hint: string }> = {
   thermal: { name: 'Thermal', hint: 'yellow in the middle, red where hedging amplifies a move, blue where it absorbs one' },

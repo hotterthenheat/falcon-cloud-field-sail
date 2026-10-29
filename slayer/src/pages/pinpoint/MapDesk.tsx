@@ -60,9 +60,7 @@ type BoxKey = 'calendar' | 'tape' | 'day' | 'report';
 type Scopes = Partial<Record<BoxKey, string>>;
 let scopesMemory: Scopes = {};
 
-/** THE FOUR BOXES AS A PILL RAIL on a phone: the holo pill sits on the box in view (an IntersectionObserver reads which of
-    the four stands highest on the screen), and a tap scrolls to any other — the rail Terrain's panel tabs and the journal
-    wear, never four bare buttons of their own */
+/** The four boxes as a pill rail on a phone: the pill sits on the box highest on screen (IntersectionObserver), a tap scrolls to another. */
 const MAP_JUMPS = [
   { value: 'map-book', label: 'Book' },
   { value: 'map-session', label: 'The day' },
@@ -186,8 +184,7 @@ const MapDesk = () => {
     }
   }, [marketData, activeTicker]);
 
-  /* THE OWN-NAME SNAPSHOTS — one per name a box has stepped onto, rebuilt on
-     the scan cadence like the frame's own. A pure read of the simulator. */
+  /* Own-name snapshots, one per name a box has stepped onto, rebuilt on the scan cadence like the frame's (uwBook snapshotOf). */
   const pinnedKey = [scopes.calendar, scopes.tape, scopes.day, scopes.report].filter(Boolean).join('|');
   const ownSnaps = useMemo(() => {
     const m = new Map<string, MarketSnapshot>();
@@ -300,7 +297,7 @@ const MapDesk = () => {
     },
     [range, minutePos, bookRev]
   );
-  /* THE NAMES THE BOOK HOLDS, host first (ExposureField onNames): more than one, and the day splits into a box a name */
+  /* The names the book holds, host first (ExposureField onNames); more than one splits the day into a box a name. */
   const [bookNames, setBookNames] = useState<string[]>([]);
   /* the Expiries card's dates — the clock, the report and the tape read this window, not a book of their own */
   const [bookDates, setBookDates] = useState<string[] | null>(null);
@@ -476,7 +473,7 @@ const MapDesk = () => {
   const bookStyleW = bookW > 0 ? (bookFits ? bookW : topRowW || bookW) : undefined;
   const dayBeside = !split && !!bookStyleW && topRowW > 0 && topRowW - bookStyleW - 16 >= DAY_MIN;
   const datesFor = (t: string): string[] | null => (nameDates[t]?.length ? nameDates[t] : bookDates);
-  /* THE LEVELS ARE THAT NAME'S, not the frame's. Changing SPY's Levels card does not move QQQ's tape, clock or report. */
+  /* The levels are that name's, not the frame's: changing SPY's Levels card does not move QQQ's boxes. */
   const scopeOf = (snap: MarketSnapshot) => levelsForName(snap.ticker);
   const lv = (snap: MarketSnapshot): MarketSnapshot => levelsBook(snap, scopeOf(snap));
   const lvDates = (snap: MarketSnapshot): string[] | null => {
@@ -520,11 +517,8 @@ const MapDesk = () => {
       )}
       {/* jump links on a phone (the page is ~3,000px tall there): the house pill rail, the pill on the box in view */}
       <MapJumps />
-      {/* THE CALENDAR, FIRST — the same book by expiry, the Exposure Ledger with
-          its one-row toolbar (greek · expiries · strikes · palette · Now | After
-          the bell · the read · fullscreen) and the replay's transport. The host
-          names the book, so the ledger's head carries no name or search. The
-          strike a capsule pins is the same shared strike every box lights. */}
+      {/* The calendar first: the same book by expiry (the Exposure Ledger with its one-row toolbar and the replay transport).
+   The host names the book; the strike a capsule pins is the shared strike every box lights. */}
       {/* 870px holds the default window (±20 strikes at the ledger's 18px floor) with the toolbar, no scrolling */}
       {/* …and never past the fold: the box is the first screen's (never under 640, 1000 at most), so the matrix is not a scroll
          region inside a cut box */}

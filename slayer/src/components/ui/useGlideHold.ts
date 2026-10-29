@@ -1,9 +1,5 @@
-/*
-  A heavy column (a grown grid, a strip of cards) holds its width during the sidebar's 300 ms glide and takes the new
-  width once it ends, instead of relaying every row each frame; main clips the overlap (index.css [data-glide]). Width
-  only, no compositor layer: promoting a sixteen-screen grid rasters all of it first. A callback ref, so a remounted
-  wrapper re-subscribes.
-*/
+/* A heavy column holds its width through the sidebar's 300 ms glide and takes the new width once it ends (main clips the overlap).
+   Width only, no compositor layer (promoting a huge grid rasters all of it). */
 
 import { useEffect, useState } from 'react';
 import { onGlide } from '../../core/glide';

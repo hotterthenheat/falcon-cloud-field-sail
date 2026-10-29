@@ -1,9 +1,5 @@
-/*
-  Palette: adapted from Bencho's "Palette" block (bencho.dev, MIT, bencho.dev/licence).
-  With `sets`/`index`/`onChange` it switches between given palettes; without, it is the original generator.
-  Sizes are props (defaults are the original constants), `label` titles the first pill, `edge` adds the hairline.
-  The CSS tokens it reads are mapped onto the house tokens on `.pal` (index.css).
-*/
+/* Adapted from Bencho's "Palette" block (bencho.dev, MIT). With `sets`/`index`/`onChange` it switches palettes; without, it is the generator.
+   Sizes are props; its CSS tokens map onto the house tokens on `.pal` (index.css). */
 
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';

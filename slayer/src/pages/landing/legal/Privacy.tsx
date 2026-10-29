@@ -1,32 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE PRIVACY POLICY
-  (pages/landing/legal/Privacy.tsx)
-
-  Noah, 2026-10-05, with a competitor's privacy page:
-  "i like how they use their words but make it in our
-  format and use case". So: their concreteness — what
-  is taken on its own, the list of uses, who it is
-  shared with, the rights one by one, the reporting
-  the exchanges require, where the data lives in the
-  world — in OUR shape (a plain line first, then the
-  text that governs) and only what is TRUE OF OUR
-  BUILD: accounts and what a member makes with
-  Supabase, payments with Stripe (we never hold a
-  card number), sign-in through Google or Apple if
-  chosen, the market data providers never learn who a
-  member is, NO advertising pixels, NO text messages,
-  NO AI assistant, preferences in the browser's own
-  storage. THE ONE MEASUREMENT TOOL (2026-10-11): the
-  visit count is Plausible, cookieless, and only on a
-  build that names the site (core/analytics.ts) — this
-  page reads the same switch, so it says what is true
-  of the build it is on. Where a thing may come later
-  (a campaign tag on a link) the page says "may" and
-  promises to say so here first. Nothing lifted from
-  theirs. Not legal advice.
-==================================================
-*/
+/* The Privacy Policy, only what is true of this build: accounts on Supabase, payments on Stripe (no card numbers held), optional Google
+   or Apple sign-in, data providers never learn who a member is, no ad pixels; Plausible only when the build names the site (core/analytics.ts). Not legal advice. */
 
 import LegalPage, { B, L, LEGAL, Mail, P, To, type LegalSection } from './LegalPage';
 import { ANALYTICS_ON } from '../../../core/analytics';

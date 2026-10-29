@@ -2,20 +2,8 @@ import { useSyncExternalStore } from 'react';
 import { isTradingDay } from '../core/calendar';
 import { nyParts } from '../core/nyTime';
 
-/*
-  THE SESSION THE BOOK IS READ IN.
-
-  Regular hours were the only session the desks asked for. The keys also
-  carry premarket and the short after-hours window on the new equity and
-  ETF names, and the overnight book on SPX, VIX and XSP. One choice, every
-  desk — the distance-unit pattern — so the tape, the chain and the map
-  never disagree about which session they are looking at.
-
-  Nothing saved means the clock: premarket, the cash session, after hours,
-  then overnight, as New York crosses each window. A reader can pin any
-  session. That pin stays until they choose Follow the clock. An old saved
-  choice is not a pin — it used to freeze the desk on Regular overnight.
-*/
+/* The session the book is read in, one choice for every desk: pre, regular, after hours or overnight (SPX, VIX, XSP).
+   Nothing saved follows the clock; a pin stays until Follow the clock. An old saved choice is not a pin. */
 
 export type DeskSession = 'rth' | 'pre' | 'post' | 'overnight';
 

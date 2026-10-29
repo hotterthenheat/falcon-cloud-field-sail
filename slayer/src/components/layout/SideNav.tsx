@@ -1,39 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE SIDEBAR (components/layout/SideNav.tsx)
-
-  The frame, direction B (Noah, 2026-09-05): the
-  terminal's ONE SUBJECT sits first, before
-  navigation; under it the groups and their pages,
-  with the current product's pages nested; at the
-  bottom the one honest line about the data and
-  the clock.
-
-  THE LOOK (Noah, 2026-09-06, the second reference —
-  Tomasz Trefler's "Left Side Menu"): the sidebar
-  HUGS THE SIDE — no inset, no floating card, a
-  full-height panel with one hairline on its right.
-  The mark and the wordmark on top, the subject
-  dressed as the search field, one utility row
-  (Alerts, with its count), then small uppercase
-  section labels, tight icon + label rows, and the
-  current product's pages on a TREE RAIL — a
-  vertical line whose bright part fills down to the
-  page you are on, "the completion bar feel". The
-  current product is a soft pill with a silver bar
-  on the panel's edge; a round notch on that edge
-  collapses it to a 52px icon rail that keeps our
-  ">_" mark (Noah: "i do love this logo though for
-  the collapsed look").
-
-  Why the edge bar is ONE element on the panel and
-  not a pseudo-element on each row: the rows live
-  inside a scroller that clips sideways, and a bar
-  hung off a row would be cut at the padding. One
-  bar, measured against the current row, glides
-  between pages instead of blinking.
-==================================================
-*/
+/* The sidebar: the desk's subject first, then the groups with the current product's pages on a tree rail.
+   The edge bar is one element on the panel (a row's own bar would be clipped by the scroller), gliding between rows. */
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -71,7 +37,7 @@ import Wordmark from '../../brand/Wordmark';
 import Signature, { SignatureDot } from '../../brand/Signature';
 import { readMarketState } from '../../data/marketState';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const COLLAPSED_KEY = 'slayer_sidenav_collapsed';
 /** The panel's widths — open, and the icon rail */
 const SIDENAV_W = 236;
@@ -118,8 +84,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   /* the contract the reader is inside — Compass's tree keeps its row (see subpagesFor) */
   const { chosenId } = useCompassView();
   const profile = useProfile();
-  /* the foot is a sign-in door while no one is signed in (2026-10-03, the account service); without the service the
-     sample profile stands as before */
+  /* The foot is a sign-in door while signed out; without an account service the sample profile stands. */
   const account = useAccount();
   const signedOut = account.status === 'out' || account.status === 'loading';
   const placeholder = profile.name === SAMPLE_PROFILE.name && profile.handle === SAMPLE_PROFILE.handle && profile.email === SAMPLE_PROFILE.email;
@@ -133,9 +98,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const navRef = useRef<HTMLElement | null>(null);
   const [bar, setBar] = useState<{ top: number } | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
-  /* EVERY name's alerts (the rule, 2026-09-10: the bell counts across all
-     names, not the subject's alone) — how many are set, how many fired
-     unseen, and whether the drawer is open */
+  /* Every name's alerts: how many are set, how many fired unseen, and whether the drawer is open. */
   const allAlerts = useAllAlerts();
   const setTotal = allAlerts.reduce((n, a) => n + a.alerts.filter(x => !x.firedAt).length, 0);
   const unseen = useUnseenAll();
@@ -155,11 +118,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   }, []);
 
   const toggleCollapsed = () => {
-    /* The main column is told where it is going (core/glide.ts): its width
-       once this panel has folded or opened — the desk lays its tiles out for
-       that at once and rides the glide there; the charts that cannot afford a
-       resize per frame size for it at the start. Measured off <main>, not the
-       viewport, so a scrollbar or a drawer changes nothing. */
+    /* The main column is told its width once the panel has folded (core/glide.ts), measured off <main>, so desks lay out for it at once. */
     const main = document.querySelector('main');
     const next = collapsed ? SIDENAV_W : SIDENAV_RAIL_W;
     const to = main ? { mainWidth: main.getBoundingClientRect().width + (width - next) } : null;
@@ -177,9 +136,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
     setTip(null);
   };
 
-  /* THE EDGE BAR follows the current product row: measured against the
-     panel, so it rides the edge whatever the scroller is doing; hidden while
-     the row is scrolled out of the nav's window. */
+  /* The edge bar follows the current product row, measured against the panel; hidden while the row is scrolled out. */
   const measure = useCallback(() => {
     const aside = asideRef.current;
     const nav = navRef.current;
@@ -198,11 +155,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
     }
     setBar({ top: Math.round(mid - a.top - BAR_H / 2) });
   }, []);
-  /* A frame after the commit, never inside it (2026-09-06, the perf sweep):
-     measured in a layout effect on every route change, the three rects
-     forced the NEW page's whole layout early — 24ms of every page's open
-     on the profiler, charged to the sidebar. The bar glides on a 300ms
-     transition anyway; one frame is nothing to it. */
+  /* A frame after the commit: measuring in a layout effect forced the new page's layout early (~24 ms per route). */
   useEffect(() => {
     const id = requestAnimationFrame(measure);
     return () => cancelAnimationFrame(id);
@@ -232,8 +185,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const quoteTicker = activeTicker === 'SPXW' || activeTicker === 'XSP' ? 'SPX' : activeTicker === 'NDXP' ? 'NDX' : activeTicker === 'RUTW' ? 'RUT' : activeTicker;
   const quoted = useLiveQuote(quoteTicker);
   const spot = live?.spot ?? quoted?.regularPrice ?? null;
-  /* THE DAY'S CHANGE, NOT THE AFTER-HOURS MOVE (the second re-audit, 2026-10-22): the regular session's change, the
-     move outside the session in the hover; zero in the neutral ink */
+  /* The regular session's change, not the after-hours move (that is in the hover); zero in the neutral ink. */
   const move = live?.liveBook ? dayMoveOfSnapshot(live) : quoted ? { dayPct: quoted.changePct, extPct: quoted.extPct, phase: quoted.phase } : null;
   const moveWords = dayMoveWords(move);
   const change = move ? move.dayPct : null;
@@ -244,11 +196,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   /* the signature's word, read on the clock's own tick so the dot and the session line never disagree */
   const marketWord = readMarketState().word;
 
-  /* THE MARK AND THE WORDMARK — the door home. HIS PARTNER'S LOGO SYSTEM (Noah, 2026-10-03, shown his marks beside
-     ours: "all of it"): the bare S|, the foil panning across it and the cursor blinking on the page's beat, and
-     ">slayer_terminal" drawn as outlines beside it; folded, the S| alone — with its cursor held lit (index.css: a lone S
-     beside the rail's notch read as cut whenever the cursor blinked off; Noah, 2026-10-03). The S brightens as the pointer
-     nears it. (The S on the holo tile and the word that typed itself on, 2026-09-30, went with the switch.) */
+  /* The mark and wordmark, the door home: the S| with its foil and cursor and ">slayer_terminal" beside it; folded, the S| alone
+     with its cursor held lit. The S brightens as the pointer nears. */
   /* Open, the long word. Shut, the S. The click folds and opens the rail — there is no notch beside it. */
   const brand = (
     <NavLink
@@ -305,11 +254,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
     </button>
   );
 
-  /* THE UTILITY ROW — every alert, with the count: fired-and-unseen in lime
-     (live), else how many are set. It used to be a link to the Targets page
-     ("where the bell lives"); now it opens THE DRAWER at the right, over
-     whatever page the reader is on (Noah, 2026-09-10: "why is the alerts
-     page just the targets page?"). Silver while the drawer is open. */
+  /* The alerts row: fired-and-unseen count, else how many are set; it opens the drawer over the current page. Silver while open. */
   const alertsRow = (
     <button
       type="button"
@@ -318,18 +263,13 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
       aria-expanded={drawerOpen}
       onMouseEnter={e => showTip(e, unseen > 0 ? `${unseen} alerted` : setTotal > 0 ? `${setTotal} alert${setTotal === 1 ? '' : 's'} set` : 'Alerts')}
       onMouseLeave={hideTip}
-      /* A BUTTON, so it must be told to fill its row (an anchor with
-         `flex` stretches on its own; a button hugs its content — Noah,
-         2026-09-10: "the alerts button doesnt look like the rest"). Open
-         wears the nav rows' own current-desk look: the pill, primary
-         medium text, the bell in its ink. */
+      /* A button, so it is told to fill its row; open, it wears the nav rows' current look. */
       className={`group relative flex items-center gap-2.5 h-[30px] rounded-lg text-t13 text-left transition-colors ${
         collapsed ? 'w-8 ml-[10px] justify-center' : 'w-full px-2.5'
       } ${drawerOpen ? 'bg-ink/[0.06] text-textPrimary font-medium' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]'}`}
       aria-label="Alerts"
     >
-      {/* jingles when an alert is set on any name (Noah, 2026-09-10) — drawn as the Alerts glyph since the rail wears the
-          landing's icons (2026-10-03); its dot is the alert ink always */}
+      {/* Jingles when an alert is set on any name; its dot is always the alert ink. */}
       <JingleBell
         count={setTotal}
         ink={NAV_INK.alerts}
@@ -338,11 +278,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
         className={`shrink-0 transition-opacity duration-200 ${drawerOpen ? 'opacity-100' : 'opacity-80 group-hover:opacity-100'}`}
       />
       {!collapsed && <span>Alerts</span>}
-      {/* WHAT ALERTED AND WAS NOT LOOKED AT: the number in a small RED curved
-          square (Noah, 2026-09-10: "i dont like the alert color lime … a
-          little red [badge] with a number in it" → "add the curved square
-          instead") — on the icon's corner when the rail is collapsed, at the
-          row's end when open. */}
+      {/* Fired and unseen: the count in a small red rounded square, on the icon's corner when collapsed, at the row's end when open. */}
       {collapsed
         ? unseen > 0 && (
             <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-[4px] bg-bear text-white font-mono text-t8 font-bold leading-[14px] text-center tnum" data-alerts-count>
@@ -361,9 +297,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
     </button>
   );
 
-  /* THE WATCHLIST DOOR (2026-10-13, the partner's, at Noah's word): the one list of names
-     (components/layout/WatchlistDrawer.tsx), opened at the right like the alerts — a small row
-     under the bell, the count of names at its end */
+  /* The watchlist door (WatchlistDrawer.tsx), opened at the right like the alerts, with the count of names. */
   const watchOpen = useWatchlistOpen();
   const watchCount = useNameWatch().sections.reduce((n, s) => n + s.names.length, 0);
   const watchLabel = watchCount > 0 ? `Watchlist — ${watchCount} ${watchCount === 1 ? 'name' : 'names'}` : 'Watchlist';
@@ -390,10 +324,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
     </button>
   );
 
-  /* THE TREE FOLDS (Noah, 2026-09-28: "clicking it once gives a dropdown but when you click it again it should bring it
-     back up"): a section's pages drop down when you enter it; a click on the section's row while you are inside folds
-     them, another unfolds them — no navigation on those clicks. A section you leave forgets the fold, so coming back
-     opens it again. */
+  /* The tree folds: a section's pages drop down on entry; clicking its row while inside folds and unfolds without navigating.
+     Leaving a section forgets the fold. */
   const [folded, setFolded] = useState<Record<string, boolean>>({});
   /* the plan held, for the locks on the rooms outside it (data/access.ts) */
   const access = useAccess();
@@ -404,8 +336,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
     });
   }, [pathname]);
 
-  /* THE RAIL'S ORDER (2026-09-28, nav.ts): Home (Pulse) stands ABOVE the Alerts row with no caption; the captioned
-     groups scroll under; More (Community · Settings) is pinned to the foot of the list with no caption */
+  /* The rail's order (nav.ts): Home above the Alerts row, the captioned groups, More pinned to the foot. */
   const groupBlocks = NAV_GROUPS.map((group, gi) => {
     const meta = NAV_GROUP_META[group];
     const first = gi === 1;
@@ -426,8 +357,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
           const tree = !collapsed && inside ? subpagesFor(item.path, pathname, chosenId) : undefined;
           const open = !!tree && !folded[item.path];
           const subs = tree;
-          /* the page you are on is the LONGEST nested path the pathname starts with — The board (/compass) is a prefix of every
-             Compass page, so the first match lit it on a contract's page and on the Tracker (Noah, 2026-09-13) */
+          /* The page you are on is the longest nested path the pathname starts with (/compass prefixes every Compass page). */
           const activeIdx = subs ? subs.reduce((best, s, i) => (pathname.startsWith(s.path) && (best < 0 || s.path.length > subs[best].path.length) ? i : best), -1) : -1;
           const link = (
             <NavLink
@@ -453,11 +383,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
               title={collapsed ? undefined : tree ? `${item.description} — click to ${open ? 'fold' : 'unfold'} its pages` : item.description}
               aria-label={item.label}
             >
-              {/* THE PAGE'S GLYPH, as the landing draws it (Noah, 2026-10-03: "change this sidebar inside of the actual
-                  terminal to mimic the logos/icons we have on the landing page for each page"): the foil body with the
-                  page's one coloured part — the answer to "thirteen inks at once was too much color" (2026-09-09), which
-                  the old line icons met by going grey at rest. Settings keeps its line icon, which takes its ink on hover
-                  and on the page you are on. */}
+              {/* The page's glyph as the landing draws it (foil body, one coloured part); Settings keeps its line icon. */}
               {item.glyph ? (
                 <PageGlyph name={item.glyph} size={17} className={`shrink-0 transition-opacity duration-200 ${inside ? 'opacity-100' : 'opacity-80 group-hover:opacity-100'}`} />
               ) : (
@@ -469,28 +395,19 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
                 />
               )}
               {!collapsed && <span className="truncate">{item.label}</span>}
-              {/* THE LOCK (2026-10-10): a room outside the plan held wears a quiet lock, so you know before you press */}
+              {/* A room outside the held plan wears a quiet lock. */}
               {!collapsed && access.on && !access.can(item.path) && <Lock className={`${tree ? '' : 'ml-auto'} w-3 h-3 shrink-0 text-textMuted`} aria-hidden data-nav-locked />}
               {/* the fold's chevron — only on a section with pages, only while you are in it */}
               {tree && <ChevronDown className={`ml-auto w-3 h-3 shrink-0 text-textMuted transition-transform duration-200 ${open ? '' : '-rotate-90'}`} aria-hidden data-nav-fold={open ? 'open' : 'folded'} />}
             </NavLink>
           );
           if (!subs) return link;
-          /* THE TREE RAIL: a dim track down the nested pages, and a bright
-             fill from its top to the page you are on — the completion bar.
-             STOP TO STOP (Noah, 2026-10-18, the Dossier fold: "the vertical
-             line does not end on the last section of the dropdown, it goes
-             slightly past it"): the track used to span the rows' box, so it
-             ran half a row past the last page's centre — the dot's stop —
-             and half a row above the first. It runs from the first page's
-             centre to the last page's; the fill from the first stop to the
-             page you are on. */
+          /* The tree rail: a dim track from the first page's centre to the last, and a bright fill down to the page you are on. */
           const fillTo = activeIdx >= 0 ? activeIdx * SUB_H + SUB_H / 2 : 0;
           return (
             <div key={item.path} className="flex flex-col" data-nav-open={item.path}>
               {link}
-              {/* THE FOLD GLIDES (Noah, 2026-09-28: "dropdown and back up should also be smoother"): the house's Fold —
-                  the rows' height and opacity over 220ms, nothing mounted or unmounted on a click */}
+              {/* The fold glides (height and opacity over 220 ms); nothing mounts or unmounts on a click. */}
               <Fold axis="y" open={open} testId="data-nav-tree-fold">
               <div className="relative ml-[23px] mt-1 mb-1" data-nav-tree>
                 <span className="absolute left-0 w-px bg-ink/[0.12]" style={{ top: SUB_H / 2, bottom: SUB_H / 2 }} aria-hidden data-nav-track />
@@ -541,14 +458,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const [home, ...groups] = groupBlocks;
 
   const width = collapsed ? SIDENAV_RAIL_W : SIDENAV_W;
-  /* ANCHORED TO THE LEFT CORNER THROUGH THE GLIDE (Noah, 2026-09-14: the collapse "jitters
-     super fast and leaves its corner really quickly before returning back to it"): the rail's
-     rows used to CENTRE their icon (`mx-auto`, `justify-center`) — and the classes flip the
-     moment the width starts its 300ms glide, so every icon leapt to the middle of a bar still
-     236 wide and slid back as it narrowed. Each row now sets a fixed left inset that centres
-     its box in the 52px rail — the mark at 12, a 32px box at 10, the 24px picture at 14 — and
-     nothing depends on the width in flight. Opening was always fine: the open rows sit at the
-     left by nature. */
+  /* Rail rows keep a fixed left inset that centres them in the 52 px rail, so icons do not jump while the width glides. */
 
   return (
     <>
@@ -599,8 +509,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
         <nav ref={navRef} className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-1 flex flex-col ${collapsed ? 'px-0' : 'px-2'}`} aria-label="Terminal">
           {groups}
         </nav>
-        {/* WHO IS AT THE DESK (2026-09-12): the reader's picture and name at the
-            foot, a door to their account; the rail keeps the picture alone */}
+        {/* Who is at the desk: picture and name at the foot, a door to the account; the rail keeps the picture alone. */}
         <NavLink
           to={guest ? '/signin' : '/settings/account'}
           title={collapsed ? undefined : guest ? 'Sign in' : 'Your account'}
@@ -627,10 +536,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
             </span>
           )}
         </NavLink>
-        {/* THE SIGNATURE (his partner's logo system, 2026-10-03): "slayer:~ $ ● live" — the market's own word, live while
-            it is open and closed when it is shut — over the session's own line and the clock. The rail, folded, keeps the
-            state's dot. The Sim badge that stood here is the tip's word now; the footer's status line says it on every
-            page. */}
+        {/* The signature: "slayer:~ $ ● live", the market's own word, over the session line and the clock; folded, the dot alone. */}
         <div
           className={`shrink-0 border-t border-ink/[0.07] bg-ink/[0.02] ${collapsed ? 'pl-[22px] pr-0 py-3.5' : 'px-3.5 py-2.5'}`}
           title={collapsed ? `slayer:~ $ ${marketWord} · ${clock.label}` : undefined}
@@ -645,7 +551,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
               <Signature state={marketWord} rule={false} className="text-t105" />
               <span className="mt-1.5 flex items-center gap-2 font-mono text-t10 tnum">
                 <span className="min-w-0 truncate text-textSecondary" title={clock.label} data-session-line>
-                  {/* 16:00–16:15 on Trace: stock options are shut, index and ETF options still trade (the tenth Trace audit) */}
+                  {/* 16:00–16:15 on Trace: stock options are shut, index and ETF options still trade. */}
                   {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'stocks closed · index & ETF options trade to 3:15 PM CT' : open ? clock.label : clock.label.toLowerCase()}
                 </span>
                 <NavClock />
@@ -670,20 +576,17 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
           document.body
         )}
 
-      {/* THE PHONE STRIP — the menu, the subject and the search. THE MENU (2026-09-19): the rail is off under 768px and nothing
-          stood in for it — the only way between pages on a phone was to know the palette and type a page's name. The house
-          mark opens it: the same groups, products and pages as the rail, as a sheet (MobileMenu.tsx). */}
+      {/* The phone strip: the menu (MobileMenu.tsx, opened by the house mark), the subject and the search. */}
       <div className="md:hidden fixed inset-x-0 top-0 z-40 h-12 flex items-center gap-2.5 px-2.5 bg-canvas/80 backdrop-blur-md border-b border-borderSubtle">
         <button type="button" onClick={() => setMenuOpen(true)} aria-label="Menu" aria-haspopup="dialog" aria-expanded={menuOpen} className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-md border border-borderSubtle text-textSecondary" data-mobile-menu-door>
           <Menu className="w-4 h-4" />
         </button>
-        {/* the name's chip gives way, never the search door (the seventh audit's m8: the door's right edge at 396px of 390) */}
+        {/* The name's chip gives way, never the search door. */}
         <button onClick={onOpenPalette} className="inline-flex items-center gap-2 rounded-md border border-borderMuted bg-chip px-2.5 py-1 min-w-0 overflow-hidden">
           <CompanyLogo ticker={activeTicker} size={16} />
           <span className="text-t12 font-semibold text-textPrimary">{activeTicker}</span>
           {spot != null ? <span className="font-mono text-t11 tnum text-textPrimary">{priceText}</span> : <span className="font-mono text-t11 tnum text-textMuted">—</span>}
-          {/* THE DAY'S MOVE ON THE PHONE TOO (the retail test, 2026-10-23: the strip showed the price and no change) — the
-              same words as the rail's: the session's change, "pre-market +x%" before the open */}
+          {/* The day's move on the phone too, in the rail's words. */}
           {changeText && change != null && (
             <span className="font-mono text-t10 tnum whitespace-nowrap truncate min-w-0" style={{ color: changeInk(change) }} title={moveWords?.title} data-phone-change>
               {changeText}

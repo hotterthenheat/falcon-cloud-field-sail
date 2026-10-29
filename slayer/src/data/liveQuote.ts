@@ -1,12 +1,5 @@
-/*
-  One quote. The last print, the regular session's change, and the move outside the session kept apart.
-  Nothing here reads the simulator. A name with no print yet is null.
-
-  THE DAY'S CHANGE AFTER THE BELL (the re-audit, 2026-10-22): after the close stock-state is the post-market bar and its
-  prev_close is TODAY's regular close, so close − prev_close was the after-hours move (PG read +0.01% on a +5.59% day).
-  `changePct` is now the regular session's change (data/dayChange.ts), `extPct` the pre-/post-market move on its own,
-  labelled by `phase`. The price stays the last print.
-*/
+/* One quote: the last print, the regular session's change (data/dayChange.ts) and the extended-hours move kept apart, labelled by `phase`.
+   A name with no print yet is null. */
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { peekSpot, subscribeBook, tapeQuote } from './uwBook';
@@ -30,9 +23,7 @@ export interface LiveQuote {
   /** Before the open the session's change is not yet made: the LAST session's change, kept so a pre-market page can
       say "−1.2% Oct 22" instead of a bare 0.00% (null when the rows have not landed) */
   lastSessionPct: number | null;
-  /** THE REGULAR PRICE (audit round 5: Pinpoint and Dossier showed $763.96 and $763.97 for one SPY — one page the
-      after-hours print, the other the close): in the session the last print; outside it the last regular close. Every
-      page that prints "the price" prints this one */
+  /** The regular price: the last print in the session, the last regular close outside it; every page that prints "the price" prints this. */
   regularPrice: number;
   /** The extended-hours print (pre-market or after hours) when it differs from the regular price, else null — shown
       apart, labelled by `phase`, timed by `tapeAt` */
@@ -43,10 +34,8 @@ export interface LiveQuote {
 }
 
 const TTL = 15_000;
-/* HOW OFTEN A QUOTE IS RE-READ (the eleventh audit, 2026-10-23 evening: every page re-asked SPY's state and quote
-   four times a minute all night and all weekend, on a key every visitor shares three calls at a time): every 15s in
-   the regular session, every minute in the extended hours (04:00–09:30, 16:00–20:00), every 15 minutes when nothing
-   trades (overnight, weekends, holidays); and never while the tab is hidden */
+/* How often a quote is re-read: 15 s in the regular session, a minute in extended hours (04:00–09:30, 16:00–20:00),
+   15 minutes when nothing trades; never while the tab is hidden. */
 function ttlNow(): number {
   if (!isTradingDay(nyTodayDate())) return 15 * 60_000;
   const m = nyMinutes();
@@ -110,7 +99,9 @@ function quoteOf(t: string): LiveQuote | null {
   const regularPrice = ch.phase === 'regular' || regClose == null ? spot : regClose;
   const extPrice = ch.phase !== 'regular' && regClose != null && Math.abs(spot - regClose) >= 0.005 ? spot : null;
   const prev = memo.get(t);
-  if (prev && prev.spot === spot && prev.changePct === changePct && prev.extPct === ch.extPct && prev.phase === ch.phase && prev.regClose === regClose && prev.lastSessionPct === lastSessionPct && prev.tapeAt === r.tapeAt) return prev;
+  /* Object.is: a NaN figure must still match itself, or every read is a new snapshot and useSyncExternalStore loops */
+  const same = (x: unknown, y: unknown) => Object.is(x, y);
+  if (prev && same(prev.spot, spot) && same(prev.changePct, changePct) && same(prev.extPct, ch.extPct) && prev.phase === ch.phase && same(prev.regClose, regClose) && same(prev.lastSessionPct, lastSessionPct) && same(prev.tapeAt, r.tapeAt) && same(prev.regularPrice, regularPrice) && same(prev.extPrice, extPrice)) return prev;
   const next: LiveQuote = { spot, changePct, extPct: ch.extPct, phase: ch.phase, regClose, regDate, lastSessionPct, regularPrice, extPrice, tapeAt: r.tapeAt, at: r.at };
   memo.set(t, next);
   return next;
@@ -127,9 +118,7 @@ export function ensureQuote(ticker: string): void {
   if (hit && Date.now() - hit.at < ttlNow()) return;
   if (hit && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
   inflight.add(t);
-  /* while the stock-state is known to be stalled (seen on any name in the last five minutes), a name already read
-     today asks the quote alone — one call, not two (the ninth audit: the Stocks index made ~170 calls a minute reading
-     both); its prev_close does not move in the session. The state is asked again once the five minutes pass. */
+  /* While stock-state is known stalled (any name in the last five minutes), a name already read today asks the quote alone, one call not two. */
   if (hit && hit.prev_close > 0 && (hit.market_time ?? '').toLowerCase().startsWith('reg') && nySessionPhase() === 'open' && Date.now() - stalledAt < STALL_HOLD) {
     whalesQuote(t)
       .then(q => {
@@ -153,9 +142,7 @@ export function ensureQuote(ticker: string): void {
       let mt = typeof s?.market_time === 'string' ? s.market_time : undefined;
       let tape = Date.parse(String((s as { tape_time?: string } | null)?.tape_time ?? ''));
       let px = close;
-      /* A STALLED STATE STILL SAYING "REGULAR" AFTER THE BELL (2026-10-23 17:26 ET: SPY's stock-state read regular, its
-         10:35 print, while the quote said postmarket at 761.05 and the regular close was 759.85): outside the session a
-         "regular" state older than two minutes is not believed — the quote's phase and last trade are */
+      /* Outside the session a "regular" stock-state older than two minutes is not believed; the quote's phase and last trade are. */
       const sessionOpen = isTradingDay(nyTodayDate()) && nySessionPhase() === 'open';
       if ((mt ?? '').toLowerCase().startsWith('reg') && !sessionOpen && Number.isFinite(tape) && Date.now() - tape > 120_000) {
         const q = await whalesQuote(t).catch(() => null);
@@ -168,9 +155,7 @@ export function ensureQuote(ticker: string): void {
           mt = qm;
         }
       }
-      /* A STALLED STOCK-STATE IN THE SESSION (2026-10-23: the vendor's stock-state sat at its 10:35 print on every name
-         for more than an hour while the quote's last trade ran on): when the state's print is over two minutes old in
-         the regular session, the quote's last trade is the price, if it is newer */
+      /* In the session, when stock-state's print is over two minutes old, the quote's newer last trade is the price. */
       if ((mt ?? '').toLowerCase().startsWith('reg') && nySessionPhase() === 'open' && Number.isFinite(tape) && Date.now() - tape > 120_000) {
         if (Date.now() - tape > STALL_MARKET) stalledAt = Date.now();
         const q = await whalesQuote(t).catch(() => null);
@@ -206,9 +191,7 @@ async function fillTapeQuote(t: string): Promise<void> {
   emit();
 }
 
-/** THE PRICE, SAID AS WHICH PRICE IT IS (the retail test, 2026-10-23: AAPL read $348.20 / $348.30 / $348.34 on three
-    pages, the after-hours print beside the regular-session change, with no clock). In the session: "348.34 · 14:05 ET";
-    outside it: "348.22 close · 348.34 after hours 19:25 ET". */
+/** The price, said as which price it is: in the session "348.34 · 14:05 ET"; outside it "348.22 close · 348.34 after hours 19:25 ET". */
 export function priceWords(q: LiveQuote | null | undefined): { lead: number; line: string } | null {
   if (!q) return null;
   const clock = `${nyClock(q.tapeAt, { zone: true })}`;
@@ -282,18 +265,8 @@ export function useDayMoves(tickers: readonly string[]): Map<string, LiveQuote> 
   }, [key, at]);
 }
 
-/* ---- THE DAY'S MOVE OVER A WHOLE SET, FROM THE SCREENER (the fourth audit, 2026-10-23) ------------------------------
-   "Biggest move today: NVDA −4.4% · 3 of 86 read" while META (−6.98%) and AMD (−8.10%) had stories — the set was read
-   one quote at a time and named before it had landed. Now every name is read in bulk off /screener/stocks (about sixty
-   names a call, the proxy's path limit), and the result is given only when the whole set is in.
-
-   THE SCREENER HAS NO REGULAR CLOSE (audit round 6, 2026-10-23). Its `close` is the last print (after the bell, the
-   post-market one) and `intraday_change` is (close − open) ÷ open — the spec's own words — so close ÷ (1 + intraday_change)
-   gave back the session's OPEN (SPCX 10/22: open 154.20, close 143.965, ic −6.64% → "−3.2%" against 159.31; the regular
-   close was 144.75, −9.14%). Outside the session the regular close and the close before it are read off the name's daily
-   rows (data/dayChange.ts loadRegularCloses — the source the top bar, the quote and Pinpoint read), and the screener
-   gives only the last print (the extended one, kept apart) and the reference closes. In the session `close` is the last
-   regular print and `prev_close` the prior regular close, so the row is read as it stands. */
+/* ---- A whole set's day moves, read in bulk off /screener/stocks (~60 names a call) and given only once the whole set is in.
+   The screener has no regular close outside the session, so those closes come from the daily rows (dayChange loadRegularCloses) ---- */
 interface SetMove {
   pct: number;
   /** The New York session the move belongs to */
@@ -359,10 +332,8 @@ function screenerDayMove(row: Record<string, unknown>, closes: Closes | null): S
 /** Whether a screener row needs the daily rows for its regular price (every row outside the session) */
 export const screenerNeedsCloses = (row: Record<string, unknown>): boolean => !inSessionRow(String(row.date ?? '').slice(0, 10));
 
-/* THE LARGEST MOVE A ROW COULD HAVE (round 6): the regular close sits inside the session's range, so the regular move
-   off prev_close is at most the larger of high and low against it. A name whose whole range is inside the leader's move
-   cannot lead, and its daily rows are not read — exact, never a guess. Before the open, on a row already dated today
-   (its range the pre-market's), there is no bound. */
+/* The largest move a row could have: the regular close sits inside the session's range, so a name whose range is inside the leader's move
+   cannot lead and its daily rows are not read. No bound before the open on a row dated today. */
 const moveBound = (row: Record<string, unknown>): number => {
   const date = String(row.date ?? '').slice(0, 10);
   const prev = numOf(row.prev_close);

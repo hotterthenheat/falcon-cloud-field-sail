@@ -1,7 +1,4 @@
-/*
-  One contract, one quote. Header, chart, checks, setup, and the
-  nearby book all read this object. Nothing here is a fill.
-*/
+/* One contract, one quote, read by the header, chart, checks, setup and nearby book. Nothing here is a fill. */
 
 import type { OptionRight } from '../types/compass';
 
@@ -126,12 +123,8 @@ export function quoteStale(quotedAt: number, now: number, missing: boolean): boo
   return now - quotedAt > STALE_MS;
 }
 
-/**
- * Entry is a live action only when the session is open, the contract is not
- * expired, the quote is present and fresh, and an execution quote exists.
- * This feed never has an execution quote, so a passing candidate is still
- * not entry-eligible.
- */
+/** Entry is live only with the session open, the contract unexpired, a fresh quote and an execution quote;
+    this feed has none, so a passing candidate is still not entry-eligible. */
 export function entryGate(input: {
   sessionOpen: boolean;
   expired: boolean;

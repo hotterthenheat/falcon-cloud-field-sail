@@ -1,7 +1,4 @@
-/* PRACTICE · THE SKELETONS — each page stands in as its own shape while its code travels (the house rule,
-   skeleton-sweep): Paper is the chart beside the right column (the account over the order) over the book; a
-   backtest's list is a box with a head and rows, its desk a chart beside a chain over a blotter beside a ticket;
-   the Journal is its head, the month beside the figures, two charts, the five cuts. */
+/* Practice's skeletons, each page in its own shape: Paper (chart, account, order, book), a backtest's list and desk, the Journal. */
 
 import { ChartSkeleton, Skeleton, TableSkeleton } from '../../components/ui/Skeleton';
 

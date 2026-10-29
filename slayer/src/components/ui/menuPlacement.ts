@@ -1,7 +1,5 @@
-/*
-  Where an anchored dropdown lands, as plain arithmetic (testable without a DOM). Menus are portalled to the body so
-  an overflow-hidden pane cannot clip them, and anchored by edges so they need not be measured before placing.
-*/
+/* Where an anchored dropdown lands, as plain arithmetic. Menus portal to the body (so panes cannot clip them)
+   and are anchored by edges, so they need no measuring before placement. */
 
 export type MenuSide = 'bottom' | 'top' | 'left' | 'right';
 

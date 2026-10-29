@@ -1,17 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - A READ-OUT BESIDE ITS POINT
-  (components/gex/besideDot.ts)
-
-  The day box's two plots (the tape, the book through the day) said the
-  pointer's minute in a card pinned to a top corner — the eye went to the
-  corner and back for every minute read (the paying-user audit's M14,
-  2026-10-13). The card stands at the point now: right of it, or left of
-  it past the plot's middle; above it, or under it where the plot's head
-  has no room. Coordinates are the plot's own, the card's box absolute in
-  the plot's frame.
-==================================================
-*/
+/* A read-out beside its point: right of it (left past the plot's middle), above it (under where the head has no room),
+   in the plot's own coordinates. */
 
 import type { CSSProperties } from 'react';
 

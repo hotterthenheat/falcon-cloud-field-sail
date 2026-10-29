@@ -1,19 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - PANES, ONE A NAME (data/panes.ts)
-
-  One to four names side by side, each on its own
-  expiry — Building's grammar (Noah, 2026-10-14: "the
-  ability to choose different tickers and different
-  exps from 1 to 4 tickers"), and Targets' since
-  2026-10-15 ("can we add exp and different tickers to
-  the targets page as well?"). A pane holds its own
-  name, or none — the first pane follows the frame —
-  and its expiry. The panes are kept on this machine
-  under the page's own key, four at most: a quarter
-  of the screen is the least a pane can read in.
-==================================================
-*/
+/* One to four names side by side, each with its own expiry (Building, Targets): the first pane follows the frame; kept on this machine per page. */
 
 import { useEffect, useRef } from 'react';
 import type { ExposureExpiry } from '../types/gex';
@@ -63,10 +48,7 @@ export function readPanes(storageKey: string): Pane[] {
   return [{ key: 'p0', expiry: '0DTE' }];
 }
 
-/**
- * A pane that is still on its name's levels moves when that name's levels change.
- * A pane the reader put on another expiry keeps it (`offScope`).
- */
+/** A pane still on its name's levels moves when they change; one put on another expiry keeps it (`offScope`). */
 export function usePanesFollowScope(panes: Pane[], setPanes: (next: Pane[]) => void): ExposureExpiry {
   const { activeTicker } = useTicker();
   const scope = useNameLevels(activeTicker);

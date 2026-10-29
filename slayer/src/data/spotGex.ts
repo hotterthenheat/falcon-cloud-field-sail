@@ -1,12 +1,5 @@
-/*
-  Spot gamma the way Unusual Whales states it.
-
-  gamma_per_one_percent_move = Σ open_interest × gamma × price × price
-  Puts are negated (sign −1). The same sum with session volume is the _vol
-  number. 100 × 0.01 is 1, so this is dollars of gamma for a 1% move when
-  gamma is the per-share Black-Scholes greek the chain prints. No greek is
-  filled in here. A contract with no open interest or no gamma is skipped.
-*/
+/* Spot gamma as Unusual Whales states it: Σ OI × gamma × price², puts negated; with session volume it is the _vol figure.
+   Dollars of gamma for a 1% move off the chain's per-share gamma; contracts without OI or gamma are skipped. */
 
 import { pickFlip, pickLegWalls } from '../core/walls';
 

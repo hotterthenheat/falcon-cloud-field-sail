@@ -8,6 +8,7 @@ import type { OptionRight } from '../types/compass';
 import { nyMinutes, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { minuteInSession, sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { thetaCall } from './theta';
+import { nyYmd } from '../core/calendar';
 import { whalesBars, whalesDailyLong, type UwBar, type UwDaily } from './whales';
 import { ensureQuote, peekQuote, useLiveQuote } from './liveQuote';
 
@@ -58,10 +59,7 @@ function specOf(tf: Timeframe): Spec | 'day' | 'week' {
   }
 }
 
-function ymd(at = Date.now()): string {
-  const p = nyParts(at);
-  return `${p.year}${String(p.month).padStart(2, '0')}${String(p.day).padStart(2, '0')}`;
-}
+const ymd = (at = Date.now()): string => nyYmd(at);
 
 function num(v: unknown): number {
   const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;

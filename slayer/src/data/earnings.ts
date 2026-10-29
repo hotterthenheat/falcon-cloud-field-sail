@@ -123,7 +123,7 @@ export interface ActiveContract {
   spotWord?: string;
   /** Move needed by expiry to break even on the mid, % */
   breakevenPct: number;
-  /** The contract's expiry as a date key ("2026-09-18"); the Weigher resolves it on its own calendar */
+  /** The contract's expiry as a date key; the Weigher resolves it on its own calendar. */
   expiry: string;
 }
 
@@ -173,7 +173,7 @@ export interface NextReport {
   /** Sessions until the report, 0 = today */
   daysOut: number;
   dateLabel: string;
-  /** The report's date as a key ("2026-11-19") */
+  /** The report's date as a key. */
   iso: string;
   slot: ReportSlot;
   /** true = the company has set the date; false = an analyst estimate */

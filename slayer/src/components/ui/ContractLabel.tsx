@@ -1,7 +1,4 @@
-/*
-  The whole contract in its side's ink with its logo: the mark, then one pill with name, strike and side (bull for a
-  call, bear for a put), a hairline border and a faint tint. Every surface that prints a contract uses this.
-*/
+/* A whole contract in its side's ink with its logo: one pill with name, strike and side (bull call, bear put). Every surface that prints a contract uses this. */
 
 import CompanyLogo from './CompanyLogo';
 

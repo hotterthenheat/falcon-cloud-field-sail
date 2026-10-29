@@ -1,8 +1,5 @@
-/*
-  Folds a control in or out of a row while keeping it mounted: a grid track animates 1fr to 0fr with the child clipped
-  and faded, so neighbours slide on real layout (no transform or remount). Shut, it leaves the tab order and pointer
-  (visibility flips at the end) and its gap is cancelled.
-*/
+/* Folds a control in or out while keeping it mounted: a grid track animates 1fr → 0fr with the child clipped and faded,
+   so neighbours slide on real layout. Shut, it leaves the tab order and pointer. */
 
 import type { ReactNode } from 'react';
 

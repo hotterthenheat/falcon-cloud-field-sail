@@ -1,46 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - EVERY PAGE'S TITLE AND DESCRIPTION
-  (components/layout/PageMeta.tsx)
-
-  Until 2026-09-19 the whole site had ONE title and
-  one description — index.html's — so forty pages sat
-  in a browser's tabs, its history and a search result
-  under the same name. Mounted once, beside the routes,
-  this gives each page its own:
-
-    the tab       "Map · Pinpoint · Slayer Terminal" —
-                  the page first, because a tab shows
-                  its first dozen letters
-    the search    a sentence about THAT page
-
-  WHERE THE WORDS COME FROM. A section's pages already
-  carry a plain-English subtitle under their heading
-  (pinpoint · trace · record subnav.ts) — that IS the
-  description, read from the same list, so the page and
-  its description cannot disagree. The top-level pages
-  are written here, under the house rules: plain
-  English, no buzzwords, and the brand never calls
-  itself an options terminal (it is market-wide).
-
-  A link preview (X, iMessage, Slack) does not run the
-  app — it reads index.html, whose tags are the
-  landing's. This component keeps the Open Graph pair
-  in step anyway, for the readers that do.
-
-  An address the app does not know gets the site's own
-  name and no page name — the 404 page will take that.
-
-  A PAGE WITH WORDS OF ITS OWN (2026-09-26 — Noah, of a
-  tab reading "SMUAF0FPB3X · Backtest": "what does that
-  say"): an id in an address is never a title. A page
-  built round one thing — a backtest session, a trade in
-  the journal — says that thing's name here (`SayPage`),
-  and the tab reads "SPY from Jun 29 · Backtest". Until it
-  does, the parent page's own name stands; only a segment
-  that looks like a ticker (NVDA, BRK.B) is read as one.
-==================================================
-*/
+/* Every page's title and description: the tab reads "Page · Section · Slayer Terminal", the description is the section's own subtitle
+   (subnav.ts). `SayPage` lets a page built round one thing name it; a link preview reads index.html, not this. */
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -64,7 +23,7 @@ const page = (name: string, description: string, section?: string): Meta => ({ t
 
 /* the pages that stand alone */
 const TOP: Record<string, Meta> = {
-  /* the products' own pages of the site (2026-10-02) */
+  /* The products' own pages. */
   '/products/pulse': page('Pulse', 'The live desk: tiles — the chart, the book, key levels, the wire — that you add, drag and size, on a desk that saves as you go.', 'Products'),
   '/products/practice': page('Practice', 'Three rooms on one feed: paper trading on today’s prices, a backtest that replays a past day a minute at a time, and the journal every closed trade lands in.', 'Products'),
   '/products/paper': page('Paper Trade','The live desk with nothing at stake: a practice account or a prop firm’s evaluation, options off the chain and futures long or short, on today’s prices.', 'Products'),
@@ -86,7 +45,7 @@ const TOP: Record<string, Meta> = {
   '/start': page('Start', 'Every page of the terminal, one picture and one line each: pick where to begin.'),
   '/signin': page('Sign in', 'Sign in to Slayer Terminal, or create your account.'),
   '/checkout': page('Checkout', 'On your way to Stripe’s checkout for the plan you chose.'),
-  /* the legal pages (2026-10-05) */
+  /* The legal pages. */
   '/terms': page('Terms of Service', 'The agreement between you and Slayer Terminal for the site and the terminal, each section said in plain words first.'),
   '/privacy': page('Privacy Policy', 'What Slayer Terminal keeps about you, where it lives, what it is for, and how to take it with you or have it deleted.'),
 };

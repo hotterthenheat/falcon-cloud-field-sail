@@ -1,20 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE WEIGHER'S SKELETON
-  (pages/weigherSkeleton.tsx)
-
-  The desk standing in as itself (the walk,
-  2026-09-11): the shell head with its two facts,
-  then the four cards on the same 3:2 grid — the
-  chart with its floating strip, the chain with its
-  line of cards over a grid of 30px rows, the
-  scanner with its Kind card over 34px rows, the
-  contract card's empty ground. Landed geometry
-  measured 2026-09-11 at 1905×960: head 56, frame
-  from 80, cells 515 · 343, card heads 33. Imports
-  nothing heavy.
-==================================================
-*/
+/* The Weigher's skeleton in its own shape (head, the four cards on the 3:2 grid), from landed geometry; imports nothing heavy. */
 
 import { Scale } from 'lucide-react';
 import { Block, ChartGround, Facts, Line, Trigger } from '../components/ui/skeletonKit';
@@ -83,7 +67,7 @@ export const WeigherPageSkeleton = () => (
       </div>
       <Facts widths={[110, 118]} />
     </header>
-    {/* the window at the reader's own height (the sash, 2026-09-14), the bottom row as tall as its cards — the stand-in lands where the desk lands */}
+    {/* The window at the reader's own sash height, so the stand-in lands where the desk does. */}
     <div className="relative mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2.5" style={{ gridTemplateRows: deskRows(readDeskTop()) }}>
       {/* the chart, its strip floating over the top: the name capsule, Stock/Premium, the toolbar */}
       <div className="min-h-0 min-w-0">

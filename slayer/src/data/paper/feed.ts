@@ -1,11 +1,5 @@
-/* Everything the paper account knows about the market comes through this file, and all of it is live: a name's
-   price the vendor's regular-session price (liveQuote; an index from the vendor book) an option's quote the
-   contract's own NBBO from Unusual Whales' listed contracts (weigherChain) what is listed the vendor's listed
-   expiries for the name a name's candles today's minute bars from the vendor book An order fills only on a
-   two-sided live quote during the options session; with no quote it waits. Futures are not carried (the keys have
-   no futures feed), so the paper desk does not trade them. The one modelled number is a what-if: where the name
-   would have to stand for a contract to bid a price, which is Black-Scholes at the IV solved from the contract's
-   live mark. It places lines on the chart; it never fills. */
+/* Everything the paper account knows about the market, all live: names from liveQuote (indexes from the vendor book), option quotes from
+   UW's listed contracts (weigherChain), candles from the vendor book. Fills need a two-sided live quote in session; no futures. The one model (spotForBid) only draws lines. */
 
 import type { Candle } from '../../types/market';
 import type { DeskChain } from '../weigherDesk';

@@ -12,12 +12,13 @@ import { type ExposureSurface } from './exposureSurface';
 import type { SessionClock } from './moc';
 import type { ExposureProfileData } from '../types/gex';
 import type { MarketSnapshot } from '../types/market';
+import { fmtStrikeOrDash as fmtStrike } from '../core/format';
 
 export const OPEN_MIN = 9 * 60 + 30;
 export const CLOSE_MIN = 16 * 60;
 export const SESSION_MIN = CLOSE_MIN - OPEN_MIN; // 390
 
-export const fmtStrike = (v: number) => (!Number.isFinite(v) ? '—' : v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
+export { fmtStrike };
 const fmtPrice = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : '—');
 export const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 /** "$48M" / "$1.2B" — the schedule's dollars */
@@ -130,9 +131,8 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
   const low: CorridorEdge = lowWall ? { price: Math.max(putWall, Math.min(centreEnd - sigma, spot)), why: 'the put wall' } : { price: centreEnd - sigma, why: 'the expected move' };
   const outer = { low: spot - 2 * sigma, high: spot + 2 * sigma };
 
-  /* The flip inside the corridor splits it. THE SIDE THAT IS FAST IS WHERE DEALERS ARE SHORT GAMMA, read off the net at
-     spot (data/flipLevel.ts), never off which side of the flip spot sits: long gamma here means the far side of the flip
-     is the fast one; short gamma here means this side is. No flip within ±10% splits nothing. */
+  /* The flip splits the corridor. The fast side is where dealers are short gamma, read off the net at spot (flipLevel.ts),
+     never off which side of the flip spot sits. No flip within ±10% splits nothing. */
   const flipInside = profile.levels.flipFound !== false && flip > outer.low && flip < outer.high ? flip : null;
   const longHere = profile.levels.net != null ? profile.levels.net < 0 : spot >= flip;
   const fastSide: Corridor['fastSide'] = flipInside == null ? null : longHere === flipInside > spot ? 'above' : 'below';
@@ -158,8 +158,7 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
   const all = sessionBars(snapshot.ticker) ?? [];
   const path: Corridor['path'] = [];
   if (all.length) {
-    /* EVERY BAR AT ITS OWN NEW YORK MINUTE when the session cut is inside the cash session (levelview.ts sessionCut) —
-       a tape that began after the open draws from where it began, never stretched back to 09:30 */
+    /* Every bar at its own New York minute when the cut is inside the cash session (levelview sessionCut); a late-starting tape is not stretched to 09:30. */
     const inCash = all.every(b => inCashSession(b.time));
     if (inCash) {
       for (const b of all) {

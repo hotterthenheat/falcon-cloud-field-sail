@@ -1,8 +1,5 @@
-/*
-  Who may call the paid-data proxies (/api/uw, /api/theta) from this page. Calls are made only while the terminal's
-  shell is mounted, and, when accounts are configured, only with a signed-in session whose token rides along.
-  The landing and signed-out visitors therefore never reach either proxy; the server enforces the same rules.
-*/
+/* Who may call the paid-data proxies from this page: only while the terminal shell is mounted and, with accounts configured,
+   with a signed-in session's token. The landing and signed-out visitors never reach them; the server enforces the same. */
 
 import { ACCOUNTS_ON, supabase } from './supabase';
 

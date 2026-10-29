@@ -1,11 +1,8 @@
-/*
-  What every footer picture is drawn with. The brush draws still parts twice: sharp, and broken (coarse; a share of
-  each mark survives, lines become dashes); the engine (FooterArt.tsx) lays the red/blue fringe under the broken copy.
-  The pen draws moving parts three passes a frame (red a pixel left, blue a pixel right, then the inks; words only on
-  the last). The walk is a price line with momentum that leans back to its start. Art, not data: no figure is a price.
-*/
+/* What every footer picture is drawn with: still parts twice (sharp, and broken under FooterArt's red/blue fringe), moving parts in three passes
+   a frame. The walk is a price line with momentum that leans back to its start. Art, not data. */
 
 import { FONT_SANS } from '../../../theme/fonts';
+import { clamp } from '../../../core/math';
 
 /** the broken screen's pixel, in CSS px */
 export const PIX = 2;
@@ -47,7 +44,7 @@ export const hash01 = (n: number) => {
   x ^= x >>> 16;
   return (x >>> 0) / 4294967296;
 };
-export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+export { clamp };
 /** smoothstep */
 export const ease = (t: number) => t * t * (3 - 2 * t);
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;

@@ -1,16 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE CHART'S OWN INDICATORS
-  (components/gex/indicatorItems.ts)
-
-  The built-in overlays and panes StrikeChart draws
-  from its own maths (data/indicators.ts) — the
-  "Chart tools" shelf of the script library, and
-  the rows the toolbar used to list. Kept apart from
-  the toolbar so the library can read them without
-  a circle.
-==================================================
-*/
+/* The built-in overlays and panes StrikeChart draws from data/indicators.ts (the library's "Chart tools" shelf),
+   kept apart from the toolbar so the library can read them without an import cycle. */
 
 import type { ChartIndicators } from './StrikeChart';
 

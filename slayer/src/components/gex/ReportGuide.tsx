@@ -1,29 +1,17 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW TO READ THE LEVEL REPORT
-  (components/gex/ReportGuide.tsx)
-
-  The card behind "How the levels held today"'s
-  door (Noah, 2026-09-06: "the traders clock and
-  levels held need one too"). Two figures in the
-  report's own hand — one row's anatomy with its
-  session strip, and what counts as a test and a
-  break — then today's levels in plain words.
-==================================================
-*/
+/* The card behind "How the levels held today": one row's anatomy, what counts as a test and a break, then today's levels. */
 
 import { longDay, recordDay } from '../../data/bookWindow';
 import { fmtStrike } from '../../core/format';
 const INK = 'rgb(var(--text-primary))';
 const INK_2 = 'rgb(var(--text-secondary))';
 const INK_3 = 'rgb(var(--text-muted))';
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const GREEN = 'rgb(var(--bull))';
 const RED = 'rgb(var(--bear))';
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = '"Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
-/* THE DRAWINGS AT THEIR OWN SIZE (the re-audit's M1, 2026-10-13): 400 wide, 11px throughout; a phone scrolls them */
+/* Drawings at their own size: 400 wide, 11 px; a phone scrolls them. */
 const FIG_W = 400;
 const Label = ({ x, y, children, anchor = 'start', fill = INK_2, size = 11, mono = false, weight = 400 }: { x: number; y: number; children: string; anchor?: 'start' | 'middle' | 'end'; fill?: string; size?: number; mono?: boolean; weight?: number }) => (
   <text x={x} y={y} textAnchor={anchor} dominantBaseline="middle" fontFamily={mono ? MONO : SANS} fontSize={size} fontWeight={weight} fill={fill}>

@@ -1,7 +1,4 @@
-/*
-  The latest live spot per name, readable without loading the Trace data module. data/traceLive.ts registers its
-  reader when it loads; until then (on pages that never load it) every name reads 0, and callers keep their own spot.
-*/
+/* The latest live spot per name without loading Trace's data module: traceLive.ts registers its reader on load; until then every name reads 0. */
 
 let reader: (ticker: string) => number = () => 0;
 

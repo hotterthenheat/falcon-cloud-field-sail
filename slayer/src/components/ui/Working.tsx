@@ -1,11 +1,5 @@
-/*
-  A small working mark for a box already on screen whose contents are pending (a skeleton shows what shape is coming;
-  this says the visible thing is working). Never for route changes; it appears only after `delay` (300 ms).
-  `useBeat` holds it for one beat over a box whose requested change lands too fast to see.
-  The mark is loading-ui's Morphing Infinity (loading-ui.com, "the installed files are yours"), on framer-motion,
-  still under reduced motion, in the surrounding text colour.
-  Exports: MorphingInfinity, Working (delayed, polite status), useWorking(active), useBusy() for buttons.
-*/
+/* A small working mark for a visible box whose contents are pending, shown only after `delay` (300 ms); `useBeat` holds it one beat
+   over a change too fast to see. The mark is loading-ui's Morphing Infinity, still under reduced motion. */
 
 import { useCallback, useEffect, useRef, useState, type SVGProps } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';

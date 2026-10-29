@@ -1,29 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE START PAGE (pages/start/Start.tsx)
-
-  Noah (2026-10-03): "i want there to be a nice
-  little page when the user launches the website for
-  the first time that basically has an image of each
-  page and they can decide which page they want to go
-  to, a brief description of that page and simple to
-  manuever instead of being ploped into the pulse
-  page first thing."
-
-  So: inside the terminal, the rail at its left,
-  every page of the rail as a card in the rail's own
-  order — the page as the film maker photographed it
-  (the landing's stills, in both themes), its room,
-  its glyph and name, and one plain line — and every
-  card a door. The landing's launch door lands here
-  every time (pages/landing/pieces.tsx doorTo; his
-  word the same night: "make it be the first thing i
-  see even right now") unless Settings › The desk ›
-  Opens on › Page names another page. Stills, not
-  films, until the recordings are re-cut with the
-  new mark.
-==================================================
-*/
+/* The start page: every rail page as a card (its still in both themes, glyph, name, one line), each a door. The landing's launch door
+   lands here unless Settings › The desk › Opens on names another page. */
 
 import { useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -39,7 +15,7 @@ import { useResolvedTheme } from '../../theme/theme';
 import { stillFor } from '../landing/films';
 import { START_GRID, START_PICTURE } from './startSkeleton';
 
-/* THE STILL'S PAGE: three rails lead to a section whose first page the photographer named */
+/* The still's page: three rails lead to a section whose first page was photographed. */
 const STILL_PATH: Record<string, string> = {
   '/trace': '/trace/live-tape',
   '/dossier': '/dossier/news',
@@ -68,9 +44,7 @@ const Start = () => {
   const account = useAccount();
   const access = useAccess();
   const [params, setParams] = useSearchParams();
-  /* PAID, AND LANDED HERE (2026-10-10 — the checkout page sends a person here, "the 8 page layout where the user can
-     choose where they want to go"): the plan is named in the head's line, and the row is read again behind the page
-     until Stripe's word lands; the mark in the address goes once the plan shows */
+  /* Paid and landed here: the plan is named in the head's line, the row re-read until Stripe's word lands; the address mark goes once the plan shows. */
   const paid = params.get('checkout') === 'success';
   const plan = account.profile && account.profile.plan !== 'none' && ['active', 'trialing', 'past_due'].includes(account.profile.planStatus) ? planOf(account.profile.plan) : null;
   useEffect(() => {
@@ -125,7 +99,7 @@ const Start = () => {
               <div className="px-3.5 pt-3 pb-3.5 border-t border-borderSubtle/60">
                 <p className="flex items-center font-mono text-t9 uppercase tracking-widest text-textMuted">
                   {card.group}
-                  {/* a room outside the plan held says which plan it is part of (2026-10-10) — the card still opens, onto the wall */}
+                  {/* A room outside the held plan says which plan it is part of; the card still opens, onto the wall. */}
                   {access.on && !access.can(card.path) && (
                     <span className="ml-auto inline-flex items-center gap-1" data-start-locked={planFor(card.path) ?? ''}>
                       <Lock className="w-2.5 h-2.5" aria-hidden="true" />

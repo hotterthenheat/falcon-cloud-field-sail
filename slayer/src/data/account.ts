@@ -1,10 +1,5 @@
-/*
-  Who is signed in (Supabase Auth), and the sign-in, sign-out and delete calls. One store read by the shell and the
-  Account page: status (off | loading | out | in), user, profile (the `profiles` row: name, handle, picture, role,
-  plan, ban, grant, beta) and `recovering` (arrived from a password-reset link). While signed in, the terminal's own
-  profile store (data/profile.ts) mirrors the row and writes changes back. Row-level security decides what a row
-  may do (supabase/migrations); this file never assumes more.
-*/
+/* Who is signed in (Supabase Auth) and the sign-in, sign-out and delete calls: status, user, the `profiles` row and `recovering`.
+   data/profile.ts mirrors the row while signed in; row-level security decides what a row may do. */
 
 import { useSyncExternalStore } from 'react';
 import type { Session, User } from '@supabase/supabase-js';

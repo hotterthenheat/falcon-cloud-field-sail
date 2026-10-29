@@ -1,27 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE EDITOR'S DOCK (data/editorDock.ts)
-
-  One editor for the whole terminal, docked at the
-  RIGHT of a full-screen chart the way TradingView
-  sets its Pine Editor (Noah, 2026-09-10: "look how
-  trading view has theirs placed. i want it to be
-  like that which can be dragged to increase the
-  width") — the chart gives it the room through one
-  CSS variable, `--editor-w`, that every full-screen
-  takeover reads for its right edge. This is its
-  state: open or not, which script and which pane,
-  the dock's width (remembered), the drafts a closed
-  dock keeps, and the scripts recently opened for
-  the menu.
-
-  The editor is a full-screen thing only: a desk of
-  panes has no room beside a chart, so the library
-  keeps its doors shut until the chart fills the
-  screen, and the dock closes when the chart leaves
-  full screen — the draft stays.
-==================================================
-*/
+/* One Pine editor for the terminal, docked right of a full-screen chart as TradingView does; the chart gives it room through `--editor-w`.
+   State: open, which script and pane, the dock's width, closed drafts, recent scripts. Full-screen only: the dock closes when the chart leaves it, the draft stays. */
 
 import { useSyncExternalStore } from 'react';
 import type { PaneId, Script } from '../types/scripts';
@@ -129,10 +107,7 @@ export function recentScripts(): RecentScript[] {
   }
 }
 
-/** A script opened, saved or ADDED TO A CHART goes to the top of the recently
-    used — the editor's menu and the library's shelf read the same list
-    (Noah, 2026-09-10: "for the indicators there should be a recents
-    section"). A chart tool counts too, by its library key. */
+/** A script opened, saved or added to a chart goes to the top of the recents, which the editor's menu and the library's shelf both read. */
 export function remember(script: Pick<Script, 'id' | 'title'>): void {
   const next = [{ id: script.id, title: script.title }, ...recentScripts().filter(r => r.id !== script.id)].slice(0, 6);
   try {

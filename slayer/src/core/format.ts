@@ -1,15 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE FIGURES' SPELLING (core/format.ts)
-
-  The two spellings the tape's compound cells
-  needed first, taken from the partner's build at
-  Noah's word (2026-10-13):
-
-    pctSigned(2.345)       "+2.3%"   ("−0.4%", "0.0%" unsigned at zero, "—" for no figure)
-    expiryLabel("10/17/2026") "Oct 17"  (a year off this one adds " ’27")
-==================================================
-*/
+/* Shared figure spellings: strikes, percents, dollars, expiry labels. */
 
 import { nyParts } from './nyTime';
 import { MONTHS } from './calendar';

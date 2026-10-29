@@ -1,29 +1,11 @@
-/*
-==================================================
-  SLAYER TERMINAL - MARKET CALENDAR
-  One source of truth for "is the market open on
-  this date", and for turning a horizon in days
-  into a REAL expiry.
-
-  Born because the weigher was doing
-  `Date.now() + dte * 86400000` and happily listing
-  contracts that expire on a Saturday. Options
-  expire on trading days; anything that names an
-  expiry has to come through here.
-==================================================
-*/
+/* The market calendar: whether the market is open on a date, and turning a horizon in days into a real expiry
+   (options expire on trading days; anything naming an expiry comes through here). */
 
 import { now } from './clock';
 import { nyParts } from './nyTime';
 
-/** US equity market holidays. Same list moc.ts used privately — now shared.
-    EXTENDED BACK TO 2016 (2026-09-17): the replay walks the tape from 2016, and a
-    calendar that knew only 2026 would have counted Good Friday 2019 as a session.
-    The Python engine (engine/slayer_core/calendar.py) carries the SAME list, held
-    to this one by scripts/calendar-ref.ts. The one-offs are real: 2018-12-05 (the
-    Bush day of mourning) and 2025-01-09 (Carter). Juneteenth is observed from
-    2022. Early closes (the day after Thanksgiving, Christmas Eve) are NOT here —
-    the tape itself shows when trading stopped, and the harness reads it there. */
+/** US equity market holidays back to 2016 for the replay (incl. 2018-12-05 and 2025-01-09; Juneteenth from 2022),
+    mirrored by engine/slayer_core/calendar.py via scripts/calendar-ref.ts. Early closes are not here. */
 export const MARKET_HOLIDAYS = new Set([
   // 2016
   '2016-01-01', '2016-01-18', '2016-02-15', '2016-03-25', '2016-05-30',
@@ -98,18 +80,13 @@ function atMidnight(d: Date): Date {
     Every default `from` in this module flows through here, which is what
     stops a backtest from resolving 2024's expiries against 2026's calendar. */
 export function today(): Date {
-  /* THE MARKET'S DAY, NOT THE BROWSER'S (the Pinpoint sweep, 2026-10-22): read off the local date, a UTC machine at
-     22:30 New York on Oct 21 called the session "Oct 22", and the Agenda printed "Today · Oct 22" over a book that
-     had closed on the 21st. The keys stay local midnights; the day they name is New York's. */
+  /* The market's day, not the browser's: keys are local midnights, but the day they name is New York's. */
   const p = nyParts(now());
   return new Date(p.year, p.month - 1, p.day);
 }
 
-/** The day the BOOK is on: New York's date until the 4:00 bell, the next calendar day after — today's contracts stop
-    trading at 4:00 on their expiry day (the late 16:15 close is for the index and ETF options that do NOT expire that
-    day), so from 4:00 "0DTE" is the next session's expiry, and says so. THE ROLL IS AT 4:00, NOT 16:15 (the tenth audit's
-    M3, 2026-10-23: from 16:00 to 16:15 the scope read "Next session" while the book was still Friday's — "SPY · Oct 23 ·
-    next expiry", "Expires Fri 10/23 21%" and closing odds for a session already closed). */
+/** The day the book is on: New York's date until 16:00, the next day after, because today's contracts stop at 4:00
+    (the 16:15 close is for index and ETF options not expiring that day). */
 export function bookToday(): Date {
   const p = nyParts(now());
   const after = p.hour * 60 + p.minute >= 16 * 60;
@@ -178,18 +155,8 @@ function fmtExpiry(d: Date): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`;
 }
 
-/**
- * Resolve a requested horizon (in calendar days) to a REAL expiry.
- *
- * Prefer walking BACK off a weekend — a "7 day" weekly is that Friday, not the
- * Saturday after it. But backward alone has a hole: two days out from a Friday
- * is Sunday, and stepping back from there lands on the Friday you are standing
- * on, turning a 2-day request into a same-day contract. So if the backward walk
- * reaches today or earlier, go FORWARD from the target instead.
- *
- * dte 0 is its own case: it means today when the market is open, and the next
- * session when it is not (asking for a same-day contract on a Saturday).
- */
+/** A horizon in calendar days to a real expiry: walk back off a weekend (a 7-day weekly is that Friday), but forward
+    if that reaches today (2 days from Friday is Monday). dte 0 is today when open, else the next session. */
 export function expiryFor(dte: number, from: Date = today()): Expiry {
   const base = atMidnight(from);
   const want = Math.max(0, Math.round(dte));
@@ -214,12 +181,7 @@ export function expiryFor(dte: number, from: Date = today()): Expiry {
   };
 }
 
-/**
- * The expiry AT a date (the tape's "10/17/2026", a structure's leg), as the
- * exchanges list it: a listed date that is not a session walks back to the
- * last one before it (a holiday Friday's weeklies expire on the Thursday).
- * The partner's, taken with his tape (2026-10-13).
- */
+/** The expiry at a listed date: a date that is not a session walks back (a holiday Friday's weeklies expire Thursday). */
 export function expiryAt(on: Date, from: Date = today()): Expiry {
   const base = atMidnight(from);
   const date = walkToSession(atMidnight(on), -1);
@@ -232,46 +194,12 @@ export function expiryAt(on: Date, from: Date = today()): Expiry {
   };
 }
 
-/*
-  HOW LONG A REGULAR SESSION IS, in one place.
-
-  09:30 to 16:00 New York — 6.5 hours, 390 minutes. It was written as a bare
-  6.5 in the vol modules and as the derived 390 in the simulator, so the
-  session length was several facts that happened to agree. It lives in the
-  calendar because that is the module that already owns when the market is
-  open. (Ported from the partner tree, 2026-08-27, with the session-levels
-  and expected-move work that reads it.)
-*/
+/* The regular session: 09:30–16:00 New York, 6.5 h, 390 min, defined once. */
 const RTH_HOURS = 6.5;
 export const RTH_MINUTES = RTH_HOURS * 60;
 
-/*
-  ══ T-16 — THE FUTURES CLOCK ══════════════════════════════════════════════
-
-  The equity tape this desk draws stops at 16:00; the futures market that
-  decides the next open barely stops at all. This model knows WHERE IN THE
-  GLOBEX WEEK a wall-clock instant sits — the first piece of T-16, and the
-  piece that is pure calendar. The overnight TAPE (session shading down the
-  pane, the overnight high/low carried into the open) waits on MKT Futures:
-  there is no honest way to shade an Asia session over bars that do not
-  exist, so the chip ships now and the shading ships with the feed.
-
-  THE WEEK, in New York wall time (DST rides free — every read goes through
-  America/New_York, never a fixed UTC offset):
-
-    Sunday 18:00 the week opens · Mon–Thu 17:00→18:00 daily maintenance ·
-    Friday 17:00 the week closes. Inside a trading day:
-      18:00 → 03:00  GLOBEX · ASIA
-      03:00 → 09:30  GLOBEX · EUROPE   (London at the desk's 03:00)
-      09:30 → 16:00  RTH               (the cash session this desk draws)
-      16:00 → 17:00  GLOBEX · POST     (the hour after the cash close)
-
-  HOLIDAYS ARE AN APPROXIMATION, and say so here: CME trades shortened
-  hours on most equity holidays, but the desk's holiday table is the cash
-  market's — a holiday reads CLOSED until the futures feed carries the real
-  product calendar. Early closes (day-after-Thanksgiving et al.) are out of
-  scope for the same reason.
-*/
+/* Where in the Globex week a New York instant sits: Sun 18:00 open, Mon–Thu 17:00–18:00 maintenance, Fri 17:00 close;
+   Asia 18–03, Europe 03–09:30, RTH, post 16–17. Holidays are the cash market's (an approximation). */
 type FuturesPhase = 'GLOBEX_ASIA' | 'GLOBEX_EUROPE' | 'RTH' | 'GLOBEX_POST' | 'MAINTENANCE' | 'CLOSED';
 
 export const FUTURES_PHASE_WORDS: Record<FuturesPhase, { label: string; blurb: string }> = {

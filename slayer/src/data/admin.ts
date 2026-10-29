@@ -1,8 +1,5 @@
-/*
-  Data for the admin People room: every account as the database gives it to an owner (the row plus last sign-in,
-  confirmation and providers), and one change call that carries its reason so the audit log always has the why.
-  The rules are the database's (supabase/migrations: admin_people, roles_grants). Without accounts it shows a sample.
-*/
+/* The admin People room's data: every account as the database gives an owner, and one change call that carries its reason for the audit log.
+   The rules are the database's (supabase/migrations); without accounts it shows a sample. */
 
 import { supabase } from './supabase';
 import type { AccountPlan, GrantPlan, PlanStatus, Role } from './account';

@@ -1,9 +1,4 @@
-/*
-  The landing footer's picture: every product on one desk. The live chart with broken key levels and Terrain's strike
-  field, a bell on a line (alerts), the Pinpoint ladder with walls and flip, the Trace tape, Compass sparklines, the
-  Weigher's payoff, a paper position, and the Dossier's world faint behind. The front marks are brightest; the
-  pointer's focus brings any panel back sharp, and the self-driven arrow tours them.
-*/
+/* The landing footer's picture: every product on one desk, the front marks brightest; the pointer's focus and the self-driven arrow tour the panels. */
 
 import { box, compose, cut, dim, type Box, type Part, type SceneMaker } from './kit';
 import { chart, chips, crumb, ladder, panel } from './parts/chart';

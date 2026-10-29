@@ -1,37 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE TERMS OF SERVICE
-  (pages/landing/legal/Terms.tsx)
-
-  Noah's decisions, 2026-10-05: the name is Slayer
-  Terminal; disputes go to arbitration one at a time
-  with a class-action waiver; NO REFUNDS; NO
-  STREAMING; the plans are Book · Tape · Desk with
-  the Seat off the page and one seam for a plan
-  "paid once"; the address is info@slayerterminal.com.
-  The state is LEGAL.state (LegalPage.tsx), empty
-  until he names it.
-
-  THE READING (Noah, later the same day, of a
-  competitor's pages: "its nice and simple"): short
-  sentences, one point a line, lists where things
-  can be listed, no flourish — in OUR shape, a plain
-  line first and the text that governs under it, and
-  in our own words throughout.
-
-  What is ours to say that a general template never
-  has: the four words are descriptions; a Compass
-  setup is the method applied, graded on paper, no
-  track record; the backtest and the paper desk are
-  modelled; scripts are yours and unreviewed; the
-  Dossier's records are public filings; alerts are
-  in-app and best-effort; your things are yours and we
-  use them only to run your account; the exchanges'
-  professional-status question is real.
-
-  Not legal advice. A lawyer reads this before launch.
-==================================================
-*/
+/* The Terms of Service: arbitration one at a time with a class-action waiver, no refunds, no streaming, plans Book · Tape · Desk;
+   the state is LEGAL.state. Plain lines first, then the governing text. Not legal advice; a lawyer reads it before launch. */
 
 import LegalPage, { B, L, LEGAL, Mail, P, To, homeState, type LegalSection } from './LegalPage';
 

@@ -1,37 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - REPLAY (data/replay.ts)
-
-  The Map rewinds (2026-09-08). One position on the
-  session — seconds from the open — and every surface
-  on the page reads the book as it stood then: the
-  chart's bars, the levels, the ladder, the calendar,
-  the clock. The simulator keeps one snapshot of the
-  book per minute bar (net gamma, delta and vega and
-  the open interest at every strike); between two
-  minutes the book is read on a FIVE-SECOND grid by
-  interpolating them, so a replay at speed shows the
-  colours turning through the day rather than
-  stepping (Noah: "i should be able to see the
-  smoothness in transition of colors").
-
-  What is read at a position:
-    the bars      every minute bar up to it, the last
-                  one folded to the interpolated close
-    spot          between the two bars' closes
-    the chain     every strike the book knew at that
-                  minute: net gamma, delta, vega and
-                  both legs' open interest, the gamma
-                  split between the legs by the same
-                  weights the simulator uses (dealers
-                  net short calls −0.55, short puts
-                  −0.53), the live chain's greeks as
-                  the template where they are not in
-                  the snapshot
-  Nothing here is a forecast — it is the day so far,
-  at the moment you point at.
-==================================================
-*/
+/* The Map rewinds: one position (seconds from the session's first bar), and every surface reads the book as it stood then — bars up to it,
+   spot between two closes, the chain from the book history (bookHistory), read on a five-second grid between minutes so colours turn smoothly. */
 
 import { bookHistory, dayBars } from './uwBook';
 import { OPEN_MIN, hhmm } from './ahead';
@@ -124,8 +92,7 @@ export function sectionBarsAt(range: ReplayRange, pos: number): Candle[] {
 
 /** New York's minute at the session's first bar — 570 when the tape starts at the open (levelview.ts sessionCut) */
 export const replayStart = (range: ReplayRange | null | undefined): number => (range && range.bars.length ? nyMinutes(range.bars[0].time * 1000) : OPEN_MIN);
-/** The clock at a position: minutes from midnight, New York's — from the session's own first bar when it is given, else
-    as if the session opened at 09:30 (the partner's fix, taken 2026-10-14: a session that began late read 09:30) */
+/** The clock at a position, New York minutes from midnight, from the session's own first bar when given, else from 09:30. */
 export const replayMinute = (pos: number, range?: ReplayRange | null) => {
   const min = replayStart(range) + Math.floor(pos / BAR_SEC);
   return min >= 24 * 60 || min < 0 ? ((min % (24 * 60)) + 24 * 60) % (24 * 60) : min;
@@ -133,10 +100,7 @@ export const replayMinute = (pos: number, range?: ReplayRange | null) => {
 export const replayLabel = (pos: number, range?: ReplayRange | null) => hhmm(replayMinute(pos, range));
 /** The day the session is — from its first bar, New York's calendar */
 export const replayDay = (range: ReplayRange) => nyDay(range.bars[0].time * 1000);
-/** THE POSITION OF A NEW YORK MINUTE INSIDE A SESSION (Noah, 2026-10-14, the second name's day box an hour ahead of the
-    first's in a replay): a position is seconds from a session's FIRST bar, and two names' sessions need not start on the
-    same minute — so another name is rewound to the host's minute, never to the host's position. The last bar at or
-    before the minute; 0 before the first, the length past the last. */
+/** A New York minute's position in a session: another name is rewound to the host's minute, never its position (sessions can start on different minutes). */
 export function posAtMinute(range: ReplayRange, min: number): number {
   const bars = range.bars;
   if (!bars.length) return 0;
@@ -211,14 +175,8 @@ function levelsAt(range: ReplayRange, pos: number): GexLevel[] {
    gamma, delta and vega for the moment, and today's vanna and charm. */
 const EMPTY_NODE: Omit<StrikeNode, 'strike'> = { callOI: 0, putOI: 0, gamma: 0, callGex: 0, putGex: 0, netGex: 0, callDex: 0, putDex: 0, netDex: 0, callVex: 0, putVex: 0, netVex: 0, vanna: 0, charm: 0, callVanna: 0, putVanna: 0, netVanna: 0, callCharm: 0, putCharm: 0, netCharm: 0 };
 
-/*
-  THE LEGS OF A REWOUND STRIKE, BOUNDED (the partner's audit, taken 2026-10-14: at 09:33 DEX at 475 read "$175.4B /
-  −$107.0B", thirty times its neighbours). The history keeps each strike's NET and both legs' open interest. The legs
-  were the net divided out by the legs' weights — and where the two weighted legs nearly cancel, that divisor is near
-  nothing and the legs run to any size. Now each leg is the live leg at that strike scaled by its own open interest
-  then and now (what a leg is made of), and the small difference to the kept net is shared between the legs by their
-  size, so the two still add to the net exactly and neither can be larger than its contracts allow.
-*/
+/* The legs of a rewound strike, bounded: each leg is the live leg scaled by its own OI then and now, and the small difference to the kept net
+   is shared by size, so the legs add to the net and neither exceeds its contracts (dividing the net by near-cancelling weights blew up). */
 function legsOf(net: number, callEst: number, putEst: number): { call: number; put: number } {
   const size = Math.abs(callEst) + Math.abs(putEst);
   if (size < 1e-9) return { call: net / 2, put: net / 2 };
@@ -226,15 +184,8 @@ function legsOf(net: number, callEst: number, putEst: number): { call: number; p
   return { call: callEst + (rest * Math.abs(callEst)) / size, put: putEst + (rest * Math.abs(putEst)) / size };
 }
 
-/*
-  A PAST MINUTE OF THE VENDOR'S BOOK IS TODAY'S CONTRACTS RE-PRICED (the Pinpoint audit, 2026-10-22: "Each window" and the
-  HEAVIEST change column always read "steady" — the rewound snapshot spread `...live` and kept the live per-expiry chains,
-  which the profile prefers, so every past window WAS the live book; and the chain it built instead walked today's volume
-  onto the open interest, which volume is not). Open interest is counted once, overnight — the contracts at 10:00 are the
-  contracts now. What changed is the price and the clock, so each leg's dollar gamma is re-priced with Black-Scholes at
-  that minute's spot and time to expiry, at its own vol (data/flipLevel.ts's inputs), vol held where it is now. Every
-  per-expiry chain and the whole book move together, so the levels, the matrix and the windows all read the same moment.
-*/
+/* A past minute of the vendor's book is today's contracts re-priced: OI is counted overnight, so each leg's dollar gamma is re-priced
+   (Black-Scholes at that minute's spot and time, own vol) and every chain moves together. */
 const RATIO_CAP = 25;
 function repriceDate(chain: readonly StrikeNode[], date: string, s0: number, s1: number, t0: number, t1: number, atmIv: number): StrikeNode[] {
   const T0 = yearsTo(date, t0);

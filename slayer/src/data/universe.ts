@@ -1,13 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - EQUITY UNIVERSE (universe.ts)
-  The shared large-cap universe every research module
-  reads from — Stocks, News, Earnings, Compass and
-  Trace all key off the same names so cross-module
-  stories line up (a headline moves the same ticker
-  the sector board ranks).
-==================================================
-*/
+/* The shared large-cap universe Stocks, News, Earnings, Compass and Trace key off, so cross-module stories line up. */
 
 export type Sector =
   | 'Technology'

@@ -1,44 +1,26 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE COMPARE PAGE'S SKELETONS
-  (components/gex/compareSkeletons.tsx)
-
-  The three boxes standing in their own shape: the
-  two books on one ruler with a name's read folding
-  at each side (2026-10-18 — the head-to-head box
-  is gone; the four cards, the lane heads, the
-  drawing at its exact height with its spine of
-  strikes, the read line), today's two lines over a
-  chart's ground with its read line, and the pair.
-  Imports nothing but the kit, so the shell can show
-  them while the page's chunk is still travelling;
-  the surfaces import their geometry FROM here, so
-  the two cannot drift.
-==================================================
-*/
+/* Compare's skeletons in their own shape (the ruler box with its side reads, today's two lines, the pair). Imports only the kit;
+   the surfaces import their geometry from here. */
 
 import { Skeleton } from '../ui/Skeleton';
 import { Block, Box, ChartGround, Facts, Line, SubLine, TitleRow } from '../ui/skeletonKit';
 
 /* ---- geometry shared with HeadToHead.tsx / CompareAxis.tsx / CompareRuler.tsx / CompareTapes.tsx / ComparePair.tsx ---- */
 
-/** A NAME'S READ BESIDE THE RULER (2026-10-18): the panel open, and its tab folded */
+/** A name's read beside the ruler: the panel open, its tab folded. */
 const SIDE_W = 320;
-/** The drawing's height (640 since 2026-09-09 — Noah: "needs to be taller, cover more of
-    the capsules"), the lane heads over it and the read line under it */
+/** The drawing's height, the lane heads over it and the read line under it. */
 export const AXIS_H = 640;
 export const AXIS_HEADS_H = 22;
 export const AXIS_READ_H = 26;
 /** The ruler's own column — the distances */
 export const AXIS_COL_W = 60;
-/** THE SPINE OF STRIKES (2026-09-29): a column of strike figures on each side of the ruler, so every capsule is named
-    where the Map's ladder names its strikes — the first cut printed a strike only on hover */
+/** The spine of strikes: a column of strike figures each side of the ruler. */
 export const AXIS_STRIKE_W = 46;
 /** Today's two lines, and the read line under them */
 export const TAPES_H = 300;
 export const TAPES_READ_H = 26;
 /** The pair over the sessions — the drawing's height and its margins — and its read line */
-/* 300 since 2026-10-15 — the pair stands as a chart, not a strip (Noah: "bland … like plain html") */
+/* The pair stands as a chart, not a strip. */
 export const PAIR_H = 300;
 const PAIR_M = { l: 16, r: 84, t: 22, b: 28 };
 export const PAIR_READ_H = 26;
@@ -72,7 +54,7 @@ export const CompareAxisInner = () => {
         <Facts widths={[60, 104, 104]} />
       </div>
       <div className="px-5 pb-2 flex items-center gap-2 flex-wrap">
-        {/* Expiry · Reach · Greek · Colours — measured 163/203/103/140 (2026-09-10) */}
+        {/* Expiry · Reach · Greek · Colours, at their measured widths. */}
         <Skeleton className="h-7 w-[163px] rounded-md" />
         <Skeleton className="h-7 w-[203px] rounded-md" />
         <Skeleton className="h-7 w-[103px] rounded-md" />
@@ -106,7 +88,7 @@ export const CompareAxisInner = () => {
         <Line w={160} h={10} />
         <Line w={220} h={10} />
       </div>
-      {/* the four band rows that stood here are gone (2026-09-09) — the reach facts live in the head */}
+
       <div className="h-3" />
     </section>
   );
@@ -138,8 +120,7 @@ export const CompareTapesInner = () => (
 
 /* ---- box 4 ---------------------------------------------------------------------- */
 
-/** The pair, standing: the band across the drawing, the average through it, one line of sessions — no facts in the
-    head since 2026-09-29 (the read line says them; three facts beside the title wrapped it at 1440) */
+/** The pair, standing: the band, the average through it, one line of sessions. */
 export const ComparePairInner = () => {
   const dots = 21;
   const inner = PAIR_H - PAIR_M.t - PAIR_M.b;
@@ -174,7 +155,7 @@ export const ComparePairInner = () => {
         <Line w={100} h={10} />
         <Line w={160} h={10} />
       </div>
-      {/* the pair's sentence is always two lines (63 = 8 + 2 × 19.5 + 16, measured 2026-09-29) */}
+      {/* The pair's sentence is always two lines (63 = 8 + 2 × 19.5 + 16). */}
       <div className="px-5 pb-4 pt-2 min-h-[63px] flex flex-col justify-center gap-[9px]">
         <Line w="96%" h={11} />
         <Line w="38%" h={11} />
