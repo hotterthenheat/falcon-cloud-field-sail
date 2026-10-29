@@ -788,6 +788,7 @@ const NO_FLOW_PRINTS: readonly never[] = [];
 /* The chrome's one read line: the hovered bar while the pointer is on the plot, else the heaviest strikes. It sheds
    cells to the strip's measured width rather than wrapping or clipping; `stripInner === 0` (not yet measured) shows
    everything, because a full row that sheds reads as a fit and a short row that grows reads as a glitch. */
+/* The read line changes on every crosshair move: it is its own layer, contained, so it repaints alone. */
 const ChromeReadLine = ({ cell, stripInner, heavy }: { cell: Cell<CrosshairBar | null>; stripInner: number; heavy: { strike: number; value: number }[] }) => {
   const readout = useCell(cell);
   const roomFor = (px: number) => stripInner === 0 || stripInner >= px;
@@ -797,7 +798,7 @@ const ChromeReadLine = ({ cell, stripInner, heavy }: { cell: Cell<CrosshairBar |
     const showVol = readout.volume != null && roomFor(READOUT_C_PX + READOUT_OHL_PX + READOUT_VOL_PX);
     const showOhl = readout.open != null && roomFor(READOUT_C_PX + READOUT_OHL_PX);
     return (
-      <div className="chrome-hover relative z-10 pointer-events-none hidden sm:flex items-center h-[23px] w-fit max-w-full rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 leading-none" data-readout-line>
+      <div className="chrome-hover relative z-10 pointer-events-none hidden sm:flex items-center h-[23px] w-fit max-w-full rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 leading-none [contain:layout_paint] will-change-transform" data-readout-line>
         <span className="flex items-center gap-2.5 whitespace-nowrap">
           {showOhl && (
             <>
