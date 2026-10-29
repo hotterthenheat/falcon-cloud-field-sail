@@ -65,6 +65,7 @@
 ==================================================
 */
 
+import { daySigmaOfIv } from '../../data/expectedMove';
 import { nyClock } from '../../core/nyTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
@@ -85,7 +86,7 @@ import { BuildingLedgerSkeleton, BuildingPageSkeleton } from '../../components/g
 import { BookOrSkeleton } from './BookDown';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
 import { aheadClock } from '../../data/ahead';
-import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
+import { fmtDistance, sessionAtr } from '../../data/atr';
 import { buildBuilding, oiWhen, type Building as BuildingData } from '../../data/building';
 import { unitForName, useNameUnit } from '../../data/distanceUnits';
 import { levelsForName } from '../../data/levelsScope';
@@ -291,7 +292,7 @@ const Building = () => {
           const t = tickerFor(p);
           const linked = p.ticker === undefined;
           const iv = data ? peekIv(data.ticker) : null;
-          const scales = data && iv != null ? { atr: sessionAtr(bookCandles(data.ticker) ?? []), sigma: peekDaySigma(data.ticker) ?? impliedDaySigma(data.spot, iv) } : null;
+          const scales = data && iv != null ? { atr: sessionAtr(bookCandles(data.ticker) ?? []), sigma: peekDaySigma(data.ticker) ?? daySigmaOfIv(data.spot, iv) } : null;
           const distanceOf = (strike: number) => (data && scales ? fmtDistance(strike - data.spot, data.spot, unitForName(t), scales) : '');
           const head = (
             <>

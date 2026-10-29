@@ -27,6 +27,7 @@
 ==================================================
 */
 
+import { daySigmaOfIv } from '../../data/expectedMove';
 import { holdShort as holdShortOf } from '../../data/wall';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -39,7 +40,7 @@ import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
 import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, peekExtLast, peekPriceAt, refreshBoardPrices, ensureBook } from '../../data/uwBook';
 import { useNameUnit } from '../../data/distanceUnits';
-import { fmtDistance, impliedDaySigma } from '../../data/atr';
+import { fmtDistance } from '../../data/atr';
 import { bellDay, cadenceWords, dayWordOf, expirySpan, longDay, recordDay, recordPossessive, sessionDay, todayScopeLabel } from '../../data/bookWindow';
 import { buildBoardRow, netGexTitle, type BoardRow } from '../../data/board';
 import { strikeTag, todayWords } from '../../data/agenda';
@@ -83,7 +84,7 @@ const Dist = ({ ticker, spot, pct }: { ticker: string; spot: number; pct: number
   if (Math.abs(pct) < 0.05) return <>at price</>;
   if (unit === '%') return <>{fmtPct(pct)}</>;
   const delta = (pct / 100) * spot;
-  return <>{fmtDistance(delta, spot, unit, { atr: null, sigma: unit === 'σ' ? peekDaySigma(ticker) ?? impliedDaySigma(spot, peekIv(ticker) ?? 0) : null })}</>;
+  return <>{fmtDistance(delta, spot, unit, { atr: null, sigma: unit === 'σ' ? peekDaySigma(ticker) ?? daySigmaOfIv(spot, peekIv(ticker) ?? 0) : null })}</>;
 };
 
 // ---- cell renderers: the house grammar inside the grid -----------------------

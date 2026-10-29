@@ -52,7 +52,7 @@
 
 */
 
-import { impliedDaySigma } from './atr';
+import { daySigmaOfIv, normCdf, sigmaOverMinutes } from './expectedMove';
 import { peekDaySigma, peekMoveToClose } from './uwBook';
 import { datesOf } from './flipLevel';
 import { lastSessionSupreme, moveIntoClose, ofLast, rangeFrom, recentSessions, sessionSoFar } from './aheadHistory';
@@ -170,10 +170,9 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
   const spot = snapshot.spot;
   const one = snapshot.liveBook ? datesOf(snapshot, snapshot.chain) : null;
   const oneDate = Array.isArray(one) && one.length === 1 ? one[0] : null;
-  const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, oneDate) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
-  /* the corridor is to the coming close — one session's move on the vendor's own scale (uwBook peekDaySigma), scaled to
-     the minutes left exactly once (uwBook peekMoveToClose: a same-day expiry's own move in its session is already that) */
-  const sigma = (snapshot.liveBook ? peekMoveToClose(snapshot.ticker, oneDate, clock.minutesLeft) : null) ?? sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
+  const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, oneDate) : null) ?? daySigmaOfIv(spot, iv) ?? spot * 0.01;
+  /* 1σ to the coming close, scaled to the minutes left exactly once (data/expectedMove.ts) */
+  const sigma = (snapshot.liveBook ? peekMoveToClose(snapshot.ticker, oneDate, clock.minutesLeft) : null) ?? sigmaOverMinutes(sigmaDay, clock.minutesLeft);
   const { callWall, putWall, flip } = profile.levels;
   const gravityEnd = gravityFor(clock.minutesLeft);
   const start = clock.nowMin ?? OPEN_MIN;
@@ -291,9 +290,10 @@ export type CloseRole = 'call wall' | 'put wall' | 'supreme' | 'pin' | null;
 
 export interface CloseOdd {
   strike: number;
-  /** Percent, rounded to one decimal; the rows sum to ~100 */
+  /** Model weight, percent to one decimal: the normal's share at the strike times the book's pull, renormalised. The rows
+      sum to the share inside the window (the tails past it are not rows). */
   odds: number;
-  /** The bell curve alone, before the book pulls on it — percent */
+  /** The normal alone, before the book pulls on it — percent (probability of closing within half a step of the strike) */
   plain: number;
   /** How the book changes this strike's odds: >1 pulls, <1 pushes */
   pull: number;
@@ -331,7 +331,7 @@ export interface CloseOdds {
 export interface CloseReads {
   /** "345 at 17%, then 344 at 13% and 346 at 11%" */
   likely: string;
-  /** "a 50% chance it closes between 343 and 346 · an 80% chance between 340 and 348" */
+  /** "the model puts 50% of the close between 343 and 346 · 80% between 340 and 348" */
   bands: string;
   /** "the supreme at 345 draws the close toward it · the odds tighten as the close nears" */
   pull: string;
@@ -359,8 +359,6 @@ function bandOf(rows: CloseOdd[], top: CloseOdd | undefined, target: number): Cl
   return { low: asc[lo].strike, high: asc[hi].strike, mass: Math.round(mass), strikes: hi - lo + 1 };
 }
 
-const pdf = (z: number) => Math.exp(-0.5 * z * z);
-
 interface OddsPoint {
   strike: number;
   plain: number;
@@ -369,8 +367,9 @@ interface OddsPoint {
   role: CloseRole;
 }
 
-/** The odds curve at one moment: a bell curve `sigma` wide on spot, each strike
-    pulling (absorbs, the pin) or pushing (amplifies) on it with `gravity` */
+/** The model's curve at one moment: each strike's share of a normal `sigma` wide on spot (the probability of closing
+    within half a strike step of it), weighted by a pull (absorbs, the pin) or push (amplifies) with `gravity`. The
+    pull is a heuristic, not calibrated: the result is a model weight, not a measured chance. */
 function oddsCurve(profile: ExposureProfileData, spot: number, sigma: number, gravity: number, maxHalf: number): OddsPoint[] {
   const { callWall, putWall, supreme, pin } = profile.levels;
   const maxAbs = Math.max(1, profile.maxAbs.gex);
@@ -383,9 +382,9 @@ function oddsCurve(profile: ExposureProfileData, spot: number, sigma: number, gr
   const half = Math.max(4, Math.min(maxHalf, Math.ceil((2.2 * sigma) / step) + 1));
   const from = Math.max(0, spotIdx - half);
   const window = desc.slice(from, from + half * 2 + 1);
+  const sd = Math.max(sigma, 1e-6);
   return window.map(s => {
-    const z = (s.strike - spot) / Math.max(sigma, 1e-6);
-    const plain = pdf(z);
+    const plain = normCdf((s.strike + step / 2 - spot) / sd) - normCdf((s.strike - step / 2 - spot) / sd);
     const net = s.gex.net / maxAbs; // + amplifies (pushes the close off it), − absorbs (pulls it in)
     const absorb = Math.max(0, -net);
     const amplify = Math.max(0, net);
@@ -399,16 +398,19 @@ function oddsCurve(profile: ExposureProfileData, spot: number, sigma: number, gr
 export function buildCloseOdds(profile: ExposureProfileData, spot: number, sigma: number, clock: AheadClock, maxHalf = 12): CloseOdds {
   const gravity = gravityFor(clock.minutesLeft);
   const raw = oddsCurve(profile, spot, sigma, gravity, maxHalf);
+  /* the mass past the rows shown stays in the total (pull 1), so a short window never inflates its rows */
   let plainSum = 0;
   let sum = 0;
   for (const r of raw) {
     plainSum += r.plain;
     sum += r.w;
   }
+  const tail = Math.max(0, 1 - plainSum);
+  sum += tail;
   const rows: CloseOdd[] = raw.map(r => ({
     strike: r.strike,
     odds: sum > 0 ? Math.round((1000 * r.w) / sum) / 10 : 0,
-    plain: plainSum > 0 ? Math.round((1000 * r.plain) / plainSum) / 10 : 0,
+    plain: Math.round(1000 * r.plain) / 10,
     pull: r.pull,
     role: r.role,
   }));
@@ -436,19 +438,19 @@ export function buildCloseOdds(profile: ExposureProfileData, spot: number, sigma
     const halfWidth = half.strikes ? half.high - half.low + step : 0;
     const caught = past.length && halfWidth > 0 ? past.filter(s => Math.abs(s.close - s.open) <= halfWidth / 2 + 1e-9).length : null;
     const record = caught != null ? ` · from their open, a 50% run this wide would have caught the close in ${ofLast(caught, past.length)}` : '';
-    const bands = `a 50% chance it closes between ${fmtStrike(half.low)} and ${fmtStrike(half.high)} · an 80% chance between ${fmtStrike(most.low)} and ${fmtStrike(most.high)}${record}`;
+    const bands = `the model puts 50% of the close between ${fmtStrike(half.low)} and ${fmtStrike(half.high)} · 80% between ${fmtStrike(most.low)} and ${fmtStrike(most.high)}${record}`;
     const who = lead.role
       ? `the ${lead.role} at ${fmtStrike(lead.strike)} draws the close toward it`
       : lead.pull > 1.02
         ? `the strikes around ${fmtStrike(lead.strike)} draw the close toward it`
-        : `the expected move alone puts it at ${fmtStrike(lead.strike)} — no strike is pulling`;
+        : `1σ alone puts it at ${fmtStrike(lead.strike)} — no strike is pulling`;
     const last = lastSessionSupreme(profile.ticker, clock.inSession);
     const lastWords = last ? ` · the last session closed ${last.away < step / 2 ? 'on' : `${fmtStrike(Number(last.away.toFixed(2)))} from`} its own heaviest strike, ${fmtStrike(last.strike)}` : '';
     const when = clock.inSession ? 'the odds tighten as the close nears' : "a whole day's range is in play until the open";
     reads = { likely, bands, pull: `${who}${lastWords} · ${when}` };
   }
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  const sentence = reads ? `Most likely ${reads.likely}. There is ${reads.bands.replace(' · ', ', and ')}. ${cap(reads.pull.replace(' · ', '; '))}.` : 'No strikes near enough to spot to say.';
+  const sentence = reads ? `Model weights: ${reads.likely}. ${cap(reads.bands.replace(' · ', ', and '))}. ${cap(reads.pull.replace(' · ', '; '))}.` : 'No strikes near enough to spot to say.';
   return { rows, top, spotAfter: spotAfter < 0 ? rows.length : spotAfter, sigma, gravity, half, most, reads, sentence };
 }
 

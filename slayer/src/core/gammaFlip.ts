@@ -1,49 +1,8 @@
 import { getCarry } from './carry';
 /*
-==================================================
-  SLAYER TERMINAL - THE GAMMA FLIP, AS A TRADER MEANS IT
-  (core/gammaFlip.ts)
-
-  The flip is the PRICE where dealers switch from long
-  to short gamma: the spot S* at which the whole book's
-  net gamma, re-priced at S*, is zero.
-
-  The old rule (core/walls.ts pickFlip) named the
-  midpoint of the per-strike sign change nearest spot —
-  a fact about two neighbouring strikes, not about the
-  book (the Pinpoint audit, 2026-10-22: SPY Today read
-  770.50 between 770 and 771 while the book's total
-  never crossed zero; TSLA 376.25 against 385).
-
-  HOW. Each leg (strike × expiry × call/put) carries its
-  dollar gamma at today's spot, G₀ (the vendor's own
-  greek-exposure rows, in the house sign). At a
-  hypothetical spot S its gamma is re-priced with
-  Black-Scholes at that leg's own implied vol and time
-  to expiry:
-
-      G(S) = G₀ · [S·φ(d₁(S))] / [S₀·φ(d₁(S₀))]
-
-  (dollar gamma per 1% is Γ·S²·0.01, and Γ·S² =
-  S·φ(d₁)/(σ√T) — the σ√T cancels). G₀ is the vendor's
-  live open-interest gamma, OI·100·Γ(S₀)·S₀²·0.01, so this
-  IS the contracts priced outright at S — and G(S₀) is
-  exactly the book's net at spot, so the flip can never
-  contradict the net GEX sign it sits beside. No constant
-  rides along: the old outright branch carried the gap
-  between a stale vendor snapshot and the model flat to
-  every hypothetical spot (≈ +$256M on NVDA's 10/23
-  contracts, the second re-audit 2026-10-22), which hid a
-  crossing a dollar away. Legs with no vol are carried
-  flat (a far listing with no vol on hand).
-
-  A leg carries the price its G₀ was priced at (s0 — after
-  the close the vendor's rows are priced at the 4:00 close,
-  not the after-hours last), and is re-priced from there.
-  The crossing nearest the live spot inside ±10% is the flip;
-  none there is a real state ("no flip nearby"), never a
-  level invented at spot.
-==================================================
+  The gamma flip: the spot S* where the book's net gamma, re-priced at S* (sticky strike), is zero. Each leg is
+  re-priced from its own gamma at the price the vendor priced it, G(S) = G0·Sφ(d1(S))/(S0φ(d1(S0))), so G(S0) is the
+  book's own net; a leg whose gamma at spot is below the print's resolution is priced outright from its open interest.
 */
 
 /** One leg of the book: its dollar gamma at today's spot (house sign), and what re-prices it */
@@ -59,8 +18,11 @@ export interface GammaLeg {
       regular close, not the after-hours last). The leg is re-priced FROM here. */
   s0?: number;
   /** The leg's open interest, when known — its re-priced dollar gamma can never pass what that many contracts hold at
-      their peak, OI·K·e^(−rT)/(√(2π)·σ·√T) (the most Γ·S² a contract reaches, near its strike) */
+      their peak, OI·K·e^(−qT)/(√(2π)·σ·√T) (the most Γ·S² a contract reaches, near its strike) */
   oi?: number;
+  /** House sign of one contract's gamma on this leg (calls −1, puts +1). With `oi`, a leg too far from spot for its
+      printed gamma to carry information is priced outright: side·OI·100·Γ(S)·S²·1%. */
+  side?: 1 | -1;
   /** True when `iv` is the contract's own printed vol (not the smile's or the at-the-money stand-in) */
   ownIv?: boolean;
   /** The time to expiry g0 was priced at, years, when the leg is re-priced at another moment (`t` is then that moment's —
@@ -109,7 +71,7 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r?:
   const yld = q ?? carry.q;
   let sum = 0;
   for (const l of legs) {
-    if (!l.g0) continue;
+    if (!l.g0 && !(l.oi && l.side)) continue;
     if (!(l.iv > 0) || !(l.t > 0)) {
       sum += l.g0;
       continue;
@@ -118,30 +80,18 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r?:
     const base = l.s0 && l.s0 > 0 ? l.s0 : S0;
     const tBase = l.t0 && l.t0 > 0 ? l.t0 : l.t;
     const a = d1Of(base, l.strike, tBase, l.iv, rate, yld);
-    /* A LEG WHOSE GAMMA AT SPOT IS BELOW THE PRINT'S RESOLUTION (the tenth pass, 2026-10-23 15:54 ET): six deviations
-       from its strike a contract holds under e^-18 of its peak gamma, so the vendor's cent-rounded figure there is noise,
-       and re-pricing it toward the strike multiplied that noise by e^30 (minutes before the bell, SPY's same-day book
-       drew at −3×10^17 and the Map stopped). Such a leg is carried flat, as a rounding leg already is. */
-    if (Math.abs(a) > 6) {
-      sum += l.g0;
+    /* Six deviations from its strike a leg's printed gamma is rounding noise, and the ratio would multiply it by e^30:
+       such a leg is priced outright from its open interest, or carried flat without one. */
+    if (Math.abs(a) > OUTRIGHT_D1) {
+      sum += l.oi && l.oi > 0 && l.side ? l.side * l.oi * dollarGammaPerContract(S, l.strike, l.t, l.iv, rate, yld) : l.g0;
       continue;
     }
     const b = d1Of(S, l.strike, l.t, l.iv, rate, yld);
     /* Γ·S² ∝ e^{−qT}·S·φ(d₁)/(σ√T). The dividend does not cancel when the two moments have different time left. */
     const ln = -yld * (l.t - tBase) + Math.log(S / base) - (b * b) / 2 + (a * a) / 2 + (tBase !== l.t ? 0.5 * Math.log(tBase / l.t) : 0);
-    /* NO 25× CAP (the second re-audit, 2026-10-22): a wing's gamma legitimately grows a few hundred times as price walks
-       to its strike (NVDA's 230 call, 1 day out: $7M at 212, ~$2B at 230), and the cap froze those legs at their spot
-       value, which left jitter crossings on SPY's whole book and moved QQQ's by 1%. G₀ is the vendor's live gamma, so the
-       ratio is the contract priced outright. Only rounding noise is guarded (repricedFlip carries it flat). */
     let g = l.g0 * Math.exp(Math.min(ln, 60));
-    /* THE PHYSICAL CEILING (the fifth audit, 2026-10-23): Γ·S² of one contract peaks near its strike at
-       K·e^(−rT)/(√(2π)·σ·√T); a leg's open interest can hold no more than that many times it. Only on a leg whose vol
-       stands in (the smile's or the ATM's): a contract with its own printed vol is priced outright, and capping it
-       against a vol the vendor's gamma was not computed at would bend a real curve (AAPL's whole book: 326.0 → 317.7) */
-    /* — and on any leg in its last day (the tenth pass, 2026-10-23 15:54 ET: a same-day leg minutes from its bell,
-       priced off a spot a few dollars from its strike, grew by e^30+ and drew SPY's book at −$3×10^17, which the chart
-       library refuses and the Map stopped). Inside a day the ceiling binds whatever vol the leg carries: no contract
-       can hold more gamma than that, own vol or not. */
+    /* No contract holds more Γ·S² than its peak near the strike: the ceiling binds legs on a stand-in vol, and any leg in
+       its last day (a same-day leg priced off a spot dollars away otherwise grows by e^30). */
     if (l.oi && l.oi > 0 && (!l.ownIv || l.t <= 1 / 252)) {
       const cap = Math.max(Math.abs(l.g0), (l.oi * l.strike * Math.exp(-yld * l.t)) / (SQRT2PI * l.iv * Math.sqrt(l.t)));
       if (Math.abs(g) > cap) g = Math.sign(g) * cap;
@@ -151,16 +101,20 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r?:
   return sum;
 }
 
+/** Six deviations from the strike: past this a leg's printed gamma is under e^-18 of its peak (rounding). */
+const OUTRIGHT_D1 = 6;
+
+/** Legs whose growth would be rounding are carried flat: under a ten-millionth of the book's gross gamma, or under a
+    hundred-thousandth on a stand-in vol. A leg priced outright from its open interest is never rounding. */
+export function quietLegs(legs: readonly GammaLeg[]): GammaLeg[] {
+  const gross = legs.reduce((a, l) => a + Math.abs(l.g0), 0);
+  return legs.map(l => (l.oi && l.side ? l : Math.abs(l.g0) < gross * 1e-7 || (!l.ownIv && Math.abs(l.g0) < gross * 1e-5) ? { ...l, iv: 0 } : l));
+}
+
 /** The flip off re-priced legs: the zero of net gamma across hypothetical spots, nearest spot inside ±10% */
 export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r?: number, range: number = RANGE, q?: number): FlipRead {
   const net0 = legsIn.reduce((a, l) => a + l.g0, 0);
-  /* the vendor prints gamma to the cent: a leg within a ten-millionth of the book is rounding, and multiplied by a
-     wing's growth it would be noise the size of a strike — such legs are carried flat */
-  const gross = legsIn.reduce((a, l) => a + Math.abs(l.g0), 0);
-  /* A NEGLIGIBLE LEG CANNOT MOVE THE CROSSING (the fifth audit): one with no vol of its own (the smile's or the ATM
-     stand-in) that is under a hundred-thousandth of the book at spot is carried flat too — its growth would rest on a
-     vol nobody quoted */
-  const legs = legsIn.map(l => (Math.abs(l.g0) < gross * 1e-7 || (!l.ownIv && Math.abs(l.g0) < gross * 1e-5) ? { ...l, iv: 0 } : l));
+  const legs = quietLegs(legsIn);
   if (!(spot > 0) || !legs.length) return { flip: null, netAtSpot: net0, beyond: null, range, method: 'repriced' };
   const lo = spot * (1 - range);
   const hi = spot * (1 + range);

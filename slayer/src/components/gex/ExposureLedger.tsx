@@ -715,7 +715,8 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
   const callV = fs >= 0 && cellOpen && !dead && callRow ? q3(callRow[fs]) : Number.NaN;
   const netV = fs >= 0 && cellOpen && !dead && netRow ? q3(netRow[fs]) : Number.NaN;
   const oi = fs >= 0 ? (surface.oi[focus.e]?.[fs] ?? 0) : 0;
-  const gexV = fs >= 0 ? surface.net.gex[focus.e][fs] : 0;
+  /* a hovered or kept expiry index can outlive a smaller surface (a new name, a narrower window) */
+  const gexV = fs >= 0 ? (surface.net.gex[focus.e]?.[fs] ?? 0) : 0;
   const distPct = ((focus.strike - surface.spot) / surface.spot) * 100;
   const kingHere = kingFor(focus.greek);
   const isKingCell = kingHere.strike === focus.strike && kingHere.e === focus.e;

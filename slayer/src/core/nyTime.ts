@@ -15,6 +15,7 @@
   stands on it.
 
     nyClock(at)               "14:03"     (seconds: true → "14:03:42"; zone: true → "14:03 ET")
+    deskClock(at)             "1:03 PM"   the desk's Central 12-hour clock, display only (zone: true → "1:03 PM CT")
     nyDay(at)                 "Oct 9"     (weekday: true → "Fri Oct 9")
     nyStamp(at)               "Oct 9, 14:03"
     nyIsoDate(at)             "2026-10-09"
@@ -105,8 +106,15 @@ export function ctParts(at?: At): NyParts {
   return second === 0 ? p : { ...p, second };
 }
 
-/** "7:55 AM", "7:55:03 AM" with seconds, "7:55 AM CT" with the zone. Central time — the desk's clock. Session math stays on New York. */
+/** New York's clock, 24-hour: "14:03", "14:03:42" with seconds, "14:03 ET" with the zone. */
 export function nyClock(at?: At, opts: { seconds?: boolean; zone?: boolean } = {}): string {
+  const p = nyParts(at);
+  const s = `${two(p.hour)}:${two(p.minute)}${opts.seconds ? `:${two(p.second)}` : ''}`;
+  return opts.zone ? `${s} ET` : s;
+}
+
+/** The desk's local clock, Central and 12-hour: "1:03 PM", "1:03:42 PM CT" — display only, never session math. */
+export function deskClock(at?: At, opts: { seconds?: boolean; zone?: boolean } = {}): string {
   const p = ctParts(at);
   const h = p.hour % 12 || 12;
   const ap = p.hour < 12 ? 'AM' : 'PM';
@@ -183,12 +191,12 @@ export const nySessionPhase = (at?: At): 'before' | 'open' | 'after' => {
    TickMarkType is the library's enum: 0 year, 1 month, 2 day of the month, 3 time, 4 time with seconds (written as
    numbers so this module does not pull the chart library into every page that reads the clock). */
 const timeParts = (t: Time): NyParts => {
-  if (typeof t === 'number') return ctParts(t * 1000);
+  if (typeof t === 'number') return nyParts(t * 1000);
   const [y, m, d] = typeof t === 'string' ? t.split('-').map(Number) : [t.year, t.month, t.day];
   return { year: y, month: m || 1, day: d || 1, hour: 0, minute: 0, second: 0, weekday: new Date(Date.UTC(y, (m || 1) - 1, d || 1)).getUTCDay() };
 };
 
-const h12 = (p: NyParts) => `${p.hour % 12 || 12}:${two(p.minute)} ${p.hour < 12 ? 'AM' : 'PM'}`;
+const hm = (p: NyParts) => `${two(p.hour)}:${two(p.minute)}`;
 
 export const nyTickMarks: TickMarkFormatter = (time, type) => {
   const p = timeParts(time);
@@ -200,17 +208,17 @@ export const nyTickMarks: TickMarkFormatter = (time, type) => {
     case 2:
       return String(p.day);
     case 4:
-      return typeof time === 'number' ? `${h12(p).replace(' ', `:${two(p.second)} `)}` : String(p.day);
+      return typeof time === 'number' ? `${hm(p)}:${two(p.second)}` : String(p.day);
     default:
-      return typeof time === 'number' ? h12(p) : `${two(p.hour)}:${two(p.minute)}`;
+      return hm(p);
   }
 };
 
-/** The crosshair's label: "Oct 9, 7:55 AM" for an instant, "Oct 9" for a business day */
+/** The crosshair's label: "Oct 9, 14:03" (New York) for an instant, "Oct 9" for a business day */
 export const nyTimeFormatter = (time: Time): string => {
   const p = timeParts(time);
   const day = `${MONTHS[p.month - 1]} ${p.day}`;
-  return typeof time === 'number' ? `${day}, ${h12(p)}` : day;
+  return typeof time === 'number' ? `${day}, ${hm(p)}` : day;
 };
 
 /** Spread into createChart's options (or applyOptions): `createChart(el, { ...NY_CHART_TIME, ... })`. A chart that sets

@@ -5,21 +5,9 @@ import { SESSION_LENGTH_MIN } from '../core/nyTime';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
 
 /*
-  COLOR, VOMMA, SPEED, VETA, ZOMMA — calculated, not copied off a morning snapshot.
-
-  Each leg is Black–Scholes at that contract's own implied vol, at the book's spot,
-  with the trading time left until 16:00 ET on its expiry. The contract count is
-  the same one gamma uses: flow inventory inside five sessions (it may be
-  negative), open interest after that. A leg with no contract vol is left out.
-  A settled expiry is left out — the cell is not a zero. Nothing here is filled
-  from greek-exposure, from a flat at-the-money vol, or from the simulator.
-
-  UNITS, matched to the house book:
-    color, speed, zomma — dollars of gamma-per-1% (the same GEX unit)
-    vomma, veta — dollars of vega per vol point
-  Both legs take the house sign (dealers short the option), the same negation
-  the live gamma book uses. The rate and yield are the carry seam, and the
-  card says when they are still assumed.
+  Color, vomma, speed, veta, zomma: Black–Scholes at each contract's own vol and the book's spot, open interest as the
+  count, dealer-short sign. Units sit beside the book's: gamma ones in $GEX (per 1% move) per session, per 1% move or
+  per vol point; vega ones in $vega (per vol point) per vol point or per session — so VOMMA and VETA sit beside VEGA $.
 */
 
 /** Trading-year fraction left until the cash close on `expiry`. Null once that close has passed. Same minutes as the flip. */
@@ -63,9 +51,8 @@ const ZERO_SIDE = (): Record<HigherKey, HigherSide> => ({
   zomma: { call: 0, put: 0 },
 });
 
-/** Dealer-short dollars for one contract. Null when spot, time, vol or the count cannot be priced.
-    `count` is the signed inventory gamma uses. Positive means dealers are short; negative means they are long, and the greek flips with it.
-    Both legs take −1 on top of that count. Not the simulator's 0.55 participation. */
+/** Dealer-short dollars for one contract position of `count` contracts. Null when it cannot be priced.
+    color $GEX/session · speed $GEX per 1% move · zomma $GEX/vol pt · vomma $vega/vol pt · veta $vega/session. */
 export function contractHigher(spot: number, strike: number, years: number, iv: number, count: number): Record<HigherKey, number> | null {
   if (!Number.isFinite(count) || count === 0) return null;
   if (!(iv > 0) || iv > 3) return null;
@@ -75,15 +62,17 @@ export function contractHigher(spot: number, strike: number, years: number, iv: 
   const signed = count * 100 * -1;
   return {
     color: perDay(g.color) * gexScale * signed,
-    speed: g.speed * gexScale * signed,
+    /* ∂Γ/∂S per $1, times the dollars a 1% move is */
+    speed: g.speed * gexScale * spot * 0.01 * signed,
     zomma: perVolPoint(g.zomma) * gexScale * signed,
-    vomma: perVolPoint(g.vomma) * signed,
-    veta: perDay(g.veta) * signed,
+    /* raw vomma and veta are of vega per 1.00 of vol: one more ÷100 puts them on vega per vol point */
+    vomma: perVolPoint(perVolPoint(g.vomma)) * signed,
+    veta: perVolPoint(perDay(g.veta)) * signed,
   };
 }
 
-/** Call and put dollars at one strike. Null when neither leg can be priced. `years` is the trading-year fraction to that expiry.
-    The two counts are the same signed inventory gamma uses, not raw open interest. */
+/** Call and put dollars at one strike. Null when neither leg can be priced. `years` is the trading-year fraction to that
+    expiry; the counts are the contracts' open interest, the count gamma uses. */
 export function strikeHigher(spot: number, strike: number, years: number, callIv: number | undefined, putIv: number | undefined, callCount: number, putCount: number): Record<HigherKey, HigherSide> | null {
   const call = contractHigher(spot, strike, years, callIv ?? 0, callCount);
   const put = contractHigher(spot, strike, years, putIv ?? 0, putCount);
@@ -168,11 +157,11 @@ export function higherForStrikes(
 }
 
 const META: { key: HigherRow['key']; label: string; unit: string; about: string }[] = [
-  { key: 'color', label: 'Color', unit: 'per session · gamma per 1%', about: 'The slope of gamma-per-1% right now, stated per session. Not a forecast of tomorrow’s gamma.' },
-  { key: 'vomma', label: 'Vomma', unit: 'per vol point · vega', about: 'How much vega the book gains or loses when vol moves one point, from each contract’s own vol.' },
-  { key: 'speed', label: 'Speed', unit: 'per $1 · gamma per 1%', about: 'How much the gamma-per-1% book changes when the underlying moves one dollar.' },
-  { key: 'veta', label: 'Veta', unit: 'per session · vega', about: 'The slope of vega right now, stated per session. Not a forecast of tomorrow’s vega.' },
-  { key: 'zomma', label: 'Zomma', unit: 'per vol point · gamma per 1%', about: 'How much the gamma-per-1% book changes when vol moves one point.' },
+  { key: 'color', label: 'Color', unit: '$GEX per session', about: 'The slope of gamma-per-1% right now, stated per session. Not a forecast of tomorrow’s gamma.' },
+  { key: 'vomma', label: 'Vomma', unit: '$vega per vol point', about: 'How much vega the book gains or loses when vol moves one point, from each contract’s own vol.' },
+  { key: 'speed', label: 'Speed', unit: '$GEX per 1% move', about: 'How much the gamma-per-1% book changes when the underlying moves 1%.' },
+  { key: 'veta', label: 'Veta', unit: '$vega per session', about: 'The slope of vega right now, stated per session. Not a forecast of tomorrow’s vega.' },
+  { key: 'zomma', label: 'Zomma', unit: '$GEX per vol point', about: 'How much the gamma-per-1% book changes when vol moves one point.' },
 ];
 
 /** Net higher greeks for the book in hand. Null until a dated chain has a contract vol. Does not wait on the minute gamma flag. */

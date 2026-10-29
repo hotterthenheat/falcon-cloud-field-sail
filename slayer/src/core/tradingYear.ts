@@ -7,11 +7,37 @@ const DAY = 86_400_000;
 /** A leg at the bell stays finite. Five trading minutes, not five clock minutes. */
 const FLOOR_MIN = 5;
 
+/** Is the UTC-midnight day `t` (ms) a session — memoised, every leg of every book asks the same few hundred days. */
+const sessionDay = new Map<number, boolean>();
+function isSessionUtc(t: number): boolean {
+  let v = sessionDay.get(t);
+  if (v == null) {
+    const utc = new Date(t);
+    v = isTradingDay(new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate()));
+    if (sessionDay.size > 50_000) sessionDay.clear();
+    sessionDay.set(t, v);
+  }
+  return v;
+}
+
+/** The answer depends only on the expiry and the New York minute, so it is kept per (expiry, minute, floor). */
+const minutesMemo = new Map<string, number | null>();
+
 /**
  * Trading minutes left until 16:00 ET on `expiry`. Weekends and the overnight do not count.
  * Null once that close has passed. `floor` keeps five trading minutes so a re-price at the bell does not explode.
  */
 export function tradingMinutes(expiry: string, nowMs = Date.now(), floor = false): number | null {
+  const key = `${expiry}|${Math.floor(nowMs / 60_000)}|${floor ? 1 : 0}`;
+  const hit = minutesMemo.get(key);
+  if (hit !== undefined) return hit;
+  const v = tradingMinutesNow(expiry, nowMs, floor);
+  if (minutesMemo.size > 20_000) minutesMemo.clear();
+  minutesMemo.set(key, v);
+  return v;
+}
+
+function tradingMinutesNow(expiry: string, nowMs: number, floor: boolean): number | null {
   const [ey, em, ed] = expiry.split('-').map(Number);
   if (!ey || !em || !ed) return null;
   const p = nyParts(nowMs);
@@ -20,9 +46,7 @@ export function tradingMinutes(expiry: string, nowMs = Date.now(), floor = false
   if (end < start) return floor ? FLOOR_MIN : null;
   let minutes = 0;
   for (let t = start; t <= end; t += DAY) {
-    const utc = new Date(t);
-    const day = new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
-    if (!isTradingDay(day)) {
+    if (!isSessionUtc(t)) {
       if (t === end) return floor ? FLOOR_MIN : null;
       continue;
     }
@@ -37,6 +61,24 @@ export function tradingMinutes(expiry: string, nowMs = Date.now(), floor = false
   }
   if (!(minutes > 0)) return floor ? FLOOR_MIN : null;
   return floor ? Math.max(FLOOR_MIN, minutes) : minutes;
+}
+
+/** Regular-session minutes between two instants (0 when `b` is not after `a`). Walks only the days between them. */
+export function tradingMinutesBetween(a: number, b: number): number {
+  if (!(b > a)) return 0;
+  const pa = nyParts(a);
+  const pb = nyParts(b);
+  const start = Date.UTC(pa.year, pa.month - 1, pa.day);
+  const end = Date.UTC(pb.year, pb.month - 1, pb.day);
+  const clamp = (m: number) => Math.min(SESSION_CLOSE_MIN, Math.max(SESSION_OPEN_MIN, m));
+  let total = 0;
+  for (let t = start; t <= end; t += DAY) {
+    if (!isSessionUtc(t)) continue;
+    const from = t === start ? clamp(pa.hour * 60 + pa.minute) : SESSION_OPEN_MIN;
+    const to = t === end ? clamp(pb.hour * 60 + pb.minute) : SESSION_CLOSE_MIN;
+    if (to > from) total += to - from;
+  }
+  return total;
 }
 
 /** Years on the 252-session clock. The floor is five trading minutes. */

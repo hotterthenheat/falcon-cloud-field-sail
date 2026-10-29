@@ -568,6 +568,40 @@
   }
 }
 
+/* THE FOIL'S PAN ON THE COMPOSITOR. `background-position` is painted on the main thread, and Chrome paints the whole
+   document in one pass, so one panning pill re-paints everything on screen every frame — on Terrain, with the rail's
+   calendar up, ~13ms a frame of a 16.7ms budget while nothing else moved. `.foil-glide`, added beside `.holo-bg`,
+   `.galaxy-bg` or `.holo-ring`, draws the same pan as a transform of an oversized copy of the ink: the image is 250% of
+   the box (the classes' background-size), parked at y 50% (top −75%), slid from x 0% to 100% (−60% of its own width).
+   The host must be positioned. */
+.foil-glide {
+  --foil-ink: var(--holo-gradient-bright);
+  background-image: none;
+  animation: none;
+  overflow: hidden;
+  isolation: isolate;
+}
+.galaxy-bg.foil-glide { --foil-ink: var(--galaxy-gradient); }
+.holo-ring.foil-glide { --foil-ink: var(--holo-gradient); background: none; }
+.foil-glide::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: -75%;
+  width: 250%;
+  height: 250%;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--foil-ink);
+  animation: foil-glide 4.5s ease-in-out infinite alternate;
+}
+@keyframes foil-glide {
+  to { transform: translateX(-60%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .foil-glide::before { animation: none; }
+}
+
 /* THE TAPE on the wire (2026-09-13) rode the landing's marquee (keyframes removed with the
    landing page, 2026-09-19), slower and paused under
    the pointer, until 2026-09-16: it is driven by a frame loop now so it can be

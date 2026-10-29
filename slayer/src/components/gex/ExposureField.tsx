@@ -1085,11 +1085,21 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      the ×, the gaps and the padding — read off the heads drawn, after every commit (the content's widths, never the
      pane's, so the answer holds still) */
   const [headNeed, setHeadNeed] = useState(0);
+  /* measured only when the heads' markup (or the fonts) changed: reading widths on every commit forced a layout per render,
+     and the field renders on every frame of a panel drag */
+  const headSigRef = useRef('');
   useLayoutEffect(() => {
     const island = islandRef.current;
     if (!island) return;
+    const heads = island.querySelectorAll<HTMLElement>('[data-field-column-head]');
+    let sig = typeof document !== 'undefined' ? document.fonts?.status ?? '' : '';
+    heads.forEach(h => {
+      sig += `|${h.innerHTML}`;
+    });
+    if (sig === headSigRef.current) return;
+    headSigRef.current = sig;
     let need = 0;
-    island.querySelectorAll<HTMLElement>('[data-field-column-head]').forEach(h => {
+    heads.forEach(h => {
       const main = h.querySelector<HTMLElement>('[data-field-head-main]');
       const doors = h.querySelector<HTMLElement>('[data-field-head-doors]');
       if (!main || !doors) return;
@@ -1101,6 +1111,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       const content = kids.reduce((w, k) => w + k.getBoundingClientRect().width, 0) + Math.max(0, kids.length - 1) * 8;
       need = Math.max(need, Math.ceil(content) + doors.offsetWidth + 8 + 24 + 2);
     });
+    /* nothing laid out yet (a hidden island reads zero widths): measure again on the next commit */
+    if (need <= 34) headSigRef.current = '';
     setHeadNeed(prev => (Math.abs(prev - need) < 2 ? prev : Math.ceil(need)));
   });
   manyRef.current = extraBooks.length > 0;
@@ -1299,7 +1311,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {view !== 'profile' && !panel && <DropdownSelect label="Legs" value={legsDrawn} options={legsOptions(view === 'calendar')} onChange={setLegs} title="Which legs the cells carry" testId="ledger-legs" bare={stripsBare} flat={toolbar === 'band'} />}
       {divider}
       {/* the trigger says the window DRAWN when the fit cuts the one chosen — "Today → Oct 16 · 4 of 7" (the audit's H4) */}
-      <ExpiryRangeCard label="Expiries" days={expiryDays} from={range.from} through={range.through} onChange={(from, through) => setRange({ from, through })} ceiling={ceiling} ceilingWhy={ceilingWhy} shortcuts={shortcuts} title="Which expiries this book shows." testId="ledger-expiries" note={fitNote} bare={stripsBare || panel} flat={toolbar === 'band'} cut={{ through: shownIdx[shownIdx.length - 1] ?? range.through, shown: shownIdx.length, wanted }} />
+      {/* the book can land with no expiries for a frame: the card indexes days[0] */}
+      {expiryDays.length > 0 && (<ExpiryRangeCard label="Expiries" days={expiryDays} from={range.from} through={range.through} onChange={(from, through) => setRange({ from, through })} ceiling={ceiling} ceilingWhy={ceilingWhy} shortcuts={shortcuts} title="Which expiries this book shows." testId="ledger-expiries" note={fitNote} bare={stripsBare || panel} flat={toolbar === 'band'} cut={{ through: shownIdx[shownIdx.length - 1] ?? range.through, shown: shownIdx.length, wanted }} />)}
       {!panel && <DropdownSelect
         label="Strikes"
         value={rings}

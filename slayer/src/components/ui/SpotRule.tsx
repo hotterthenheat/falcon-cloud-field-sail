@@ -26,7 +26,7 @@ const SpotRule = ({ ticker, price, centre = false }: SpotRuleProps) => {
   <span className={`flex items-center gap-1.5 select-none ${centre ? 'w-full' : ''}`} aria-label={`${ticker} spot ${price.toFixed(2)}`}>
     <span className="h-px flex-grow bg-gradient-to-r from-textPrimary/10 via-textPrimary/40 to-textPrimary/50" />
     <span className="font-mono text-t11 uppercase tracking-wider text-textSecondary whitespace-nowrap">{ticker}</span>
-    <span className={`inline-flex items-center rounded-[3px] px-1.5 py-px font-mono text-t11 font-bold tnum whitespace-nowrap ${paper ? 'galaxy-bg' : 'holo-bg text-onfoil'}`} data-spot-pill>
+    <span className={`relative foil-glide inline-flex items-center rounded-[3px] px-1.5 py-px font-mono text-t11 font-bold tnum whitespace-nowrap ${paper ? 'galaxy-bg' : 'holo-bg text-onfoil'}`} data-spot-pill>
       {price.toFixed(2)}
     </span>
     {centre ? (

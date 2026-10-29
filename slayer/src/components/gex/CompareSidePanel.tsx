@@ -423,7 +423,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
             s.closes ? (
               <span className="inline-flex items-baseline gap-1.5">
                 <Door k={s.closes.strike} />
-                <span className="text-t10 text-textMuted">{s.closes.odds.toFixed(0)}% of the time</span>
+                <span className="text-t10 text-textMuted" title="Model weight: a normal on 1σ to the close, pulled by the book — not a measured chance">{s.closes.odds.toFixed(0)}% model weight</span>
               </span>
             ) : (
               <span className="text-textMuted" title={s.closeTop ? `No strike reaches ${LEAN_MIN}% — the best, ${s.closeTop.strike}, is ${s.closeTop.odds.toFixed(0)}%` : undefined}>{s.closeTop ? 'no clear lean' : '—'}</span>

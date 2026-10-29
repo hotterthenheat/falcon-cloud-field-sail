@@ -18,19 +18,27 @@ export interface Tree {
   l: number[];
   r: number[];
   v: number[];
-  h: number;
 }
 
 const NONE = 0;
 const ZERO = 1;
 const NAN_MISSING = 2;
+/* LightGBM's kZeroThreshold: anything this close to 0 counts as zero for the Zero missing type. */
+const ZERO_EPS = 1e-35;
+
+/* LightGBM writes infinite thresholds as "inf"/"-inf", which Number() reads as NaN. */
+function num(token: string): number {
+  if (token === 'inf' || token === '+inf') return Infinity;
+  if (token === '-inf') return -Infinity;
+  return Number(token);
+}
 
 function nums(line: string): number[] {
   const cut = line.indexOf('=');
   if (cut < 0) return [];
   const body = line.slice(cut + 1).trim();
   if (!body) return [];
-  return body.split(/\s+/).map(Number);
+  return body.split(/\s+/).map(num);
 }
 
 /** Parse a LightGBM v4 text dump. Returns null if it is not 300 numerical trees. */
@@ -68,7 +76,8 @@ export function parseBoosters(text: string, trees: number): Tree[] | null {
       const missing = (d >> 2) & 3;
       if (missing !== NONE && missing !== ZERO && missing !== NAN_MISSING) return null;
     }
-    out.push({ s: split, t: threshold, d: decision, l: left, r: right, v: value, h: shrinkage });
+    if (threshold.some(Number.isNaN) || value.some(Number.isNaN)) return null;
+    out.push({ s: split, t: threshold, d: decision, l: left, r: right, v: value });
   }
   return out;
 }
@@ -79,7 +88,7 @@ function goLeft(decision: number, raw: number, threshold: number): boolean {
   let val = raw;
   if ((val == null || Number.isNaN(val)) && missingType !== NAN_MISSING) val = 0;
   const stillMissing = val == null || Number.isNaN(val);
-  if ((missingType === ZERO && val === 0) || (missingType === NAN_MISSING && stillMissing)) return defaultLeft;
+  if ((missingType === ZERO && Math.abs(val) <= ZERO_EPS) || (missingType === NAN_MISSING && stillMissing)) return defaultLeft;
   return val <= threshold;
 }
 
@@ -92,7 +101,8 @@ export function predict(trees: readonly Tree[], x: readonly number[]): number {
     for (let step = 0; step < guard; step++) {
       const child = goLeft(tree.d[node], x[tree.s[node]], tree.t[node]) ? tree.l[node] : tree.r[node];
       if (child < 0) {
-        sum += tree.v[~child] * tree.h;
+        /* The text dump stores leaf values with the learning rate already applied. */
+        sum += tree.v[~child];
         break;
       }
       node = child;

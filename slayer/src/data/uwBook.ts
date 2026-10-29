@@ -30,9 +30,10 @@ import { spxRead } from './spxBook';
 import { blackScholesGreeks } from '../core/greeks';
 import { expiryOpen, tradingYears } from '../core/tradingYear';
 import { carryFor } from '../core/carry';
-import { dealerInventory, flowFirm, flowImbalance, flowWindow, ivOnTradingClock, markGap, quoteMaxAge, smoothSmile, unsignedShare } from '../core/volClock';
+import { dealerInventory, flowFirm, flowImbalance, flowWindow, ivOnTradingClock, quoteMaxAge, smoothSmile, unsignedShare } from '../core/volClock';
 import { noteClose, noteNodes, peakStrikes, type CloseRow } from './nodeScore';
 import { SIM_DESK } from './deskMode';
+import { sigmaFromStraddle, sigmaOverMinutes, STRADDLE_K, STRADDLE_TO_SIGMA } from './expectedMove';
 import {
   uwCall,
   whalesBars,
@@ -1030,10 +1031,8 @@ function foldContracts(rows: UwContract[], expiry: string): Map<number, LegBook>
   return by;
 }
 
-/* NEW NODES, NEVER THE OLD ONES EDITED (the third audit, 2026-10-23: CROX's Map flip read 114.43 against 114.77 on
-   Compare and levelsFor — the Map's levels were cached on the snapshot object, and the contract vols the flip re-prices
-   with were then painted INTO that same snapshot's nodes, so the cache never saw them land). A chain that gains its
-   contract facts is a new chain; whatever is keyed on the old one recomputes. */
+/** A date's chain with its contracts' facts (vols, OI, delta, vanna, charm, vega) laid on — new nodes, never the old
+    ones edited, so whatever is keyed on the old chain recomputes. Gamma stays the vendor's open-interest rows. */
 function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi: boolean, spot = 0, expiry = '', ticker = ''): StrikeNode[] {
   const t = expiry ? tradingYears(expiry) : 0;
   const near = !!expiry && flowWindow(expiry);
@@ -1069,32 +1068,35 @@ function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi:
   if (!(spot > 0) || !(t > 0)) return painted;
   let volSum = 0;
   let bareSum = 0;
-  let biggest = 0;
   const closes: CloseRow[] = [];
+  const flowNets: { strike: number; value: number }[] = [];
   for (const n of painted) {
     const leg = book.get(n.strike);
     if (!leg) continue;
-    /* One expiry's own contracts. Ask minus bid is what gets added to open interest.
-       The gross million on an SPY 0DTE strike is not the inventory, and the all-expiry flow row is not this number. */
-    const callN = near ? dealerInventory(leg.callOI, leg.callAsk, leg.callBid, leg.callMulti, leg.callVol) : leg.callOI;
-    const putN = near ? dealerInventory(leg.putOI, leg.putAsk, leg.putBid, leg.putMulti, leg.putVol) : leg.putOI;
-    /* A negative count is dealers long that side. It is kept, and the minus below flips the greek. */
+    /* Every greek counts open interest, like the vendor's gamma rows. The ask-minus-bid inventory is only a
+       side estimate (the morning-miss score and the flow peaks); it never reaches the book's gamma, walls or flip. */
+    const callN = leg.callOI;
+    const putN = leg.putOI;
     const callNet = flowImbalance(leg.callAsk, leg.callBid, leg.callMulti, leg.callVol);
     const putNet = flowImbalance(leg.putAsk, leg.putBid, leg.putMulti, leg.putVol);
     const gross = leg.callVol + leg.putVol;
     const bare = leg.callMid + leg.callNone + leg.putMid + leg.putNone;
     const firm = !near || flowFirm(Math.abs(callNet) + Math.abs(putNet), gross, unsignedShare(bare, 0, gross));
     n.flowFirm = firm;
+    const call = n.callIv && n.callIv > 0 ? blackScholesGreeks(spot, n.strike, t, n.callIv, carry?.r, carry?.q) : null;
+    const put = n.putIv && n.putIv > 0 ? blackScholesGreeks(spot, n.strike, t, n.putIv, carry?.r, carry?.q) : null;
     if (near) {
-      closes.push({ expiry, strike: n.strike, right: 'C', flow: callN, oi: leg.callOI });
-      closes.push({ expiry, strike: n.strike, right: 'P', flow: putN, oi: leg.putOI });
+      const callInv = dealerInventory(leg.callOI, leg.callAsk, leg.callBid, leg.callMulti, leg.callVol);
+      const putInv = dealerInventory(leg.putOI, leg.putAsk, leg.putBid, leg.putMulti, leg.putVol);
+      closes.push({ expiry, strike: n.strike, right: 'C', flow: callInv, oi: leg.callOI });
+      closes.push({ expiry, strike: n.strike, right: 'P', flow: putInv, oi: leg.putOI });
+      /* house sign, the vendor's convention: calls negative, puts positive */
+      const scale = spot * spot * 0.01 * 100;
+      flowNets.push({ strike: n.strike, value: (put ? put.gamma * putInv * scale : 0) - (call ? call.gamma * callInv * scale : 0) });
     }
     volSum += leg.callVol + leg.putVol;
     bareSum += leg.callMid + leg.callNone + leg.putMid + leg.putNone;
-    const call = n.callIv && n.callIv > 0 ? blackScholesGreeks(spot, n.strike, t, n.callIv, carry?.r, carry?.q) : null;
-    const put = n.putIv && n.putIv > 0 ? blackScholesGreeks(spot, n.strike, t, n.putIv, carry?.r, carry?.q) : null;
-    /* One count for every greek. callN / putN is the flow inventory inside five sessions and open interest after that.
-       Vega is repriced here, on this clock and this vol — not the vendor's calendar-time vega. */
+    /* Vega is repriced here, on this clock and this vol, not the vendor's calendar-time vega. */
     n.callBook = callN;
     n.putBook = putN;
     if (call && callN !== 0) {
@@ -1117,34 +1119,23 @@ function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi:
     n.netDex = n.callDex + n.putDex;
     n.netVanna = n.callVanna + n.putVanna;
     n.netCharm = n.callCharm + n.putCharm;
-    const signed = near && (leg.callAsk > 0 || leg.callBid > 0 || leg.putAsk > 0 || leg.putBid > 0);
-    if (signed && (call || put)) {
-      const flowCall = call ? -call.gamma * spot * spot * 0.01 * callN * 100 : n.callGex;
-      const flowPut = put ? -put.gamma * spot * spot * 0.01 * putN * 100 : n.putGex;
-      if (n.oiNetGex == null) {
-        n.oiNetGex = n.netGex;
-        n.oiCallGex = n.callGex;
-        n.oiPutGex = n.putGex;
-      }
-      n.callGex = flowCall;
-      n.putGex = flowPut;
-      n.netGex = flowCall + flowPut;
-      biggest = Math.max(biggest, Math.abs(n.netGex), Math.abs(n.oiNetGex ?? 0));
-    }
-  }
-  if (biggest > 0) {
-    for (const n of painted) {
-      if (n.oiNetGex == null) continue;
-      n.bookGap = markGap(n.netGex, n.oiNetGex, biggest);
-    }
   }
   if (ticker && spot > 0 && near) {
-    const flow = peakStrikes(painted.map(n => ({ strike: n.strike, value: n.netGex })));
-    const oi = peakStrikes(painted.filter(n => n.oiNetGex != null).map(n => ({ strike: n.strike, value: n.oiNetGex ?? 0 })));
+    const flow = peakStrikes(flowNets);
+    const oi = peakStrikes(painted.map(n => ({ strike: n.strike, value: n.netGex })));
     noteNodes(ticker, spot, flow, oi, volSum > 0 ? unsignedShare(bareSum, 0, volSum) : null);
   }
   if (ticker && near && closes.length) noteClose(ticker, nyIsoDate(), closes);
   return painted;
+}
+
+/** One expiry's book off the vendor's raw rows, the path a live date takes (spot-exposures/expiry-strike gamma, then
+    the date's option-contracts laid on). For the proofs (scripts/gamma-sign-proof.ts). */
+export function expiryBookFromRows(spotRows: unknown, contracts: UwContract[], spot: number, expiry: string): StrikeNode[] {
+  const live: LiveGamma = new Map();
+  liveGammaRows(spotRows, live);
+  const chain = withLiveGamma([], live);
+  return contracts.length ? paintLegs(chain, foldContracts(contracts, expiry), true, spot, expiry) : chain;
 }
 
 function smoothSide(nodes: StrikeNode[], key: 'callIv' | 'putIv'): void {
@@ -1570,17 +1561,12 @@ function liveListing(expiries: Entry['expiries']): Entry['expiries'] {
   return live;
 }
 
-/*
-  ONE SNAPSHOT PER BOOK STATE (the sixth audit's M3, 2026-10-23): every page asked for a name's snapshot on every book
-  event — dozens a second while a Board's dates land — and each ask summed every date's chain again and re-read the flip,
-  so the main thread was busy over half the time and the next reads went out late. A name's snapshot is now built once
-  per state of its own book (the arrays it is made of, the price, the day's move, the clock's minute) and handed out
-  again until one of them changes; another name's book landing leaves it alone.
-*/
+/* A name's snapshot is built once per state of its own book (the arrays it is made of, the price, the day's move, the
+   session phase) and handed out again until one of them changes. */
 const snapMemo = new WeakMap<Entry, Map<LevelsScope, { sig: string; refs: unknown[]; snap: MarketSnapshot }>>();
 function materialize(entry: Entry, scope: LevelsScope): MarketSnapshot {
   const refs: unknown[] = [entry.byDate, entry.all, entry.expiries, entry.candles, entry.termIv, entry.totals, entry.factsDates, entry.state, entry.flow, entry.history];
-  const sig = [entry.at, entry.spot, entry.changePct, entry.extPct, entry.phase, entry.dayKnown, entry.iv, entry.gammaLive, entry.full, entry.frontFacts, entry.factsDates?.size ?? 0, entry.candles.length, entry.candles[entry.candles.length - 1]?.close, isoDate(bookToday()), Math.floor(Date.now() / 60_000), settledLive.size, gammaPriced.size].join('|');
+  const sig = [entry.spot, entry.changePct, entry.extPct, entry.phase, entry.dayKnown, entry.iv, entry.gammaLive, entry.full, entry.frontFacts, entry.factsDates?.size ?? 0, entry.candles.length, entry.candles[entry.candles.length - 1]?.close, isoDate(bookToday()), nySessionPhase(Date.now()), settledLive.size, gammaPriced.size].join('|');
   let byScope = snapMemo.get(entry);
   const hit = byScope?.get(scope);
   if (hit && hit.sig === sig && hit.refs.every((r, i) => r === refs[i])) return hit.snap;
@@ -1876,26 +1862,22 @@ function termDteOf(rows: UwTerm[]): Record<string, number> | null {
   }
   return Object.keys(out).length ? out : null;
 }
-/** The k used when the vendor's rows give none — its typical value (straddle-to-σ√T with its day count) */
-const K_DEFAULT = 0.68;
-
 /*
-  THE SCOPE'S EXPECTED MOVE (the fifth audit, 2026-10-23: CROX's Today scope is Nov 20, and the page read ATM IV × spot
-  × √(1/252) = $4.95 while the vendor's own implied move into Nov 20 is $14.98; where both exist that ATM formula runs
-  ≈ 1.76× the vendor's one-day figure). The move the reach odds and the "expected move" read is the vendor's implied move
-  into the scope's expiry wherever it has one — over the scope's whole horizon, so a multi-day scope's odds are "by Nov
-  20", and say so. A date with no implied move of its own is read with the vendor's own formula, k·S·σ·√(dte/365), k
-  fitted off its other rows; the 30-day IV only when the date has no ATM vol either. `source` says which was used.
+  The expected move, as ONE STANDARD MOVE (1σ, dollars). The vendor's implied move is its ATM straddle, so 1σ is
+  straddle·√(π/2) (data/expectedMove.ts); a date with no implied move takes the straddle off its ATM vol on the vendor's
+  own scale, k·S·σ·√(dte/365) (k fitted off its rows, √(2/π) without them). Every odd and the cone read these.
 */
 export interface ScopeMove {
-  /** Dollars, one standard move over the horizon */
+  /** Dollars, one standard move (1σ) over the horizon */
   move: number;
+  /** The vendor's straddle the move was read from, dollars (≈0.80σ) */
+  straddle: number;
   /** The expiry the move runs to */
   until: string | null;
   /** True when that expiry is past the coming session — the odds are "by <date>", not "by the close" */
   multi: boolean;
   source: 'vendor' | 'fitted' | 'iv30';
-  /** "the vendor's implied move into Nov 20" — which number was used, in words */
+  /** "1σ = the vendor's straddle into Nov 20 × 1.25" — which number was used, in words */
   words: string;
 }
 const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -1903,6 +1885,8 @@ export const monDayOf = (iso: string): string => {
   const [, m, d] = iso.split('-').map(Number);
   return m && d ? `${MON3[m - 1]} ${d}` : iso;
 };
+/** The straddle a vendor vol implies over `dte` calendar days on the vendor's own scale */
+const straddleOf = (e: Entry, iv: number, dte: number): number => (e.termK ?? STRADDLE_K) * e.spot * iv * Math.sqrt(dte / 365);
 export function peekScopeMove(ticker: string, date?: string | null): ScopeMove | null {
   const e = peekEntry(ticker);
   if (!e || e.status !== 'live' || !(e.spot > 0)) return null;
@@ -1911,30 +1895,21 @@ export function peekScopeMove(ticker: string, date?: string | null): ScopeMove |
   const d = date && date >= floor ? date : listed[0] ?? null;
   const session = isoDate(nextSession(bookToday()));
   const multi = !!d && d > session;
-  const k = e.termK ?? K_DEFAULT;
   const name = d ? monDayOf(d) : null;
   const vendor = d ? e.termMove?.[d] : undefined;
-  if (vendor && vendor > 0) return { move: vendor, until: d, multi, source: 'vendor', words: `the vendor's implied move into ${name}` };
+  const of = (straddle: number, source: ScopeMove['source'], words: string): ScopeMove => ({ move: sigmaFromStraddle(straddle), straddle, until: d, multi, source, words: `1σ = ${words} × ${STRADDLE_TO_SIGMA.toFixed(2)}` });
+  if (vendor && vendor > 0) return of(vendor, 'vendor', `the vendor's straddle into ${name}`);
   const dte = (d && e.termDte?.[d]) || (d ? Math.max(1, Math.round((Date.parse(`${d}T00:00:00Z`) - Date.parse(`${floor}T00:00:00Z`)) / 86_400_000) + 1) : 1);
   const atm = d ? e.termIv?.[d] : undefined;
-  if (atm && atm > 0) return { move: k * e.spot * atm * Math.sqrt(dte / 365), until: d, multi, source: 'fitted', words: `${name}'s at-the-money vol on the vendor's own scale (no implied move printed for ${name})` };
-  if (e.iv > 0) return { move: k * e.spot * e.iv * Math.sqrt(dte / 365), until: d, multi, source: 'iv30', words: `the 30-day implied vol on the vendor's scale (no vol printed for ${name ?? 'the expiry'})` };
+  if (atm && atm > 0) return of(straddleOf(e, atm, dte), 'fitted', `the straddle ${name}'s at-the-money vol prices`);
+  if (e.iv > 0) return of(straddleOf(e, e.iv, dte), 'iv30', `the straddle the 30-day implied vol prices (no vol printed for ${name ?? 'the expiry'})`);
   return null;
 }
 
 /*
-  ONE SESSION'S EXPECTED MOVE, DOLLARS (the third audit, 2026-10-23: "EXPECTED MOVE ±$7.32", which drives every reach
-  odd, was the 30-day IV off iv-rank — 15.2% — while the Oct 23 ATM vol is 17.4% and the vendor's own implied move into
-  Oct 23 is $4.74). The move is the expiry the levels read: when that expiry IS the coming session, the vendor's own
-  implied move into it; a later expiry (CROX's Nov 20) its at-the-money vol over one session on the vendor's own scale
-  (k·S·σ·√(1/365) — the move over the scope's whole horizon is peekScopeMove); the 30-day IV only when the term structure
-  has nothing. `date` null: the first live listing.
-  THIS IS ALWAYS A FULL SESSION'S FIGURE (the tenth audit's B2, 2026-10-23): the vendor's implied move into a same-day
-  expiry is its straddle priced NOW — the move LEFT to that close (SPY $1.17 at 15:28, $0.75 after the bell), not a
-  session's — and the pages scaled it by √(minutes left / 390) a second time (Compare ±$0.35 to the close, "Likeliest
-  close 195 · 100%" with PLTR $0.76 away). Once the same-day expiry's session has opened, one full session is the
-  vendor's interpolated 1-day vol on its own scale (k·S·σ₁·√(1/365)); the move from now to the close is peekMoveToClose,
-  scaled exactly once.
+  One full session's 1σ, dollars, for the expiry the levels read. The vendor's straddle into the coming session while
+  that session has not opened; once a same-day expiry's session runs its straddle is only what is LEFT, so a full
+  session is the 1-day vol on the vendor's scale. A later expiry: its ATM vol over one session. Null without a move.
 */
 const sameDayRunning = (d: string | null): boolean => !!d && d === nyIsoDate() && nySessionPhase() !== 'before';
 export function peekDaySigma(ticker: string, date?: string | null): number | null {
@@ -1945,31 +1920,20 @@ export function peekDaySigma(ticker: string, date?: string | null): number | nul
   const d = date && date >= floor ? date : listed[0] ?? null;
   const session = isoDate(nextSession(bookToday()));
   const move = d ? e.termMove?.[d] : undefined;
-  const k = e.termK ?? K_DEFAULT;
   if (d === session && move && move > 0) {
-    if (!sameDayRunning(d)) return move;
-    /* the session is running: the vendor's figure is what is left of it — one full session off the 1-day vol */
-    if (e.dayIv && e.dayIv > 0) return k * e.spot * e.dayIv * Math.sqrt(1 / 365);
-    if (e.dayMoveFrac > 0 && e.dayMoveFrac < 0.2) return e.dayMoveFrac * e.spot;
+    if (!sameDayRunning(d)) return sigmaFromStraddle(move);
+    if (e.dayIv && e.dayIv > 0) return sigmaFromStraddle(straddleOf(e, e.dayIv, 1));
+    if (e.dayMoveFrac > 0 && e.dayMoveFrac < 0.2) return sigmaFromStraddle(e.dayMoveFrac * e.spot);
     const left = Math.max(0, CLOSE_MIN - nyMinutes());
-    return move / Math.sqrt(Math.max(0.1, left / (CLOSE_MIN - OPEN_MIN)));
+    return sigmaFromStraddle(move) / Math.sqrt(Math.max(0.1, left / (CLOSE_MIN - OPEN_MIN)));
   }
-  /* ONE SESSION ON THE VENDOR'S OWN SCALE (the fifth audit: ATM × S × √(1/252) ran ≈ 1.76× the vendor's one-day move):
-     k·S·σ·√(1/365), k fitted off its rows — on SPY 0.68 × 763.96 × 0.174 × √(1/365) = $4.73 against its $4.74 */
   const atm = d ? e.termIv?.[d] : undefined;
-  if (atm && atm > 0) return k * e.spot * atm * Math.sqrt(1 / 365);
-  return e.iv > 0 ? k * e.spot * e.iv * Math.sqrt(1 / 365) : null;
+  if (atm && atm > 0) return sigmaFromStraddle(straddleOf(e, atm, 1));
+  return e.iv > 0 ? sigmaFromStraddle(straddleOf(e, e.iv, 1)) : null;
 }
 
-/*
-  THE MOVE FROM NOW TO THE CLOSE, TIME-SCALED ONCE (the tenth audit's B2). Which number is which:
-  · the vendor's implied move into the same-day expiry, read while its session runs, IS the move to that close — taken
-    as it is, never scaled again;
-  · peekDaySigma is one full session — scaled by √(minutes left / 390).
-  `minutesLeft`: the session's minutes still to run (a full 390 outside the session). Null when the book has no move.
-  The reach odds (data/wall.ts scopeSigma), the corridor (data/ahead.ts), the Map's "One move" (TapeBox) and the Read's
-  "To the close" all read this.
-*/
+/** 1σ from now to the close, dollars, time-scaled once: a same-day expiry's straddle read in its session already IS the
+    move left; a full session's 1σ is scaled by √(minutes left / 390). `minutesLeft`: 390 outside the session. */
 export function peekMoveToClose(ticker: string, date: string | null | undefined, minutesLeft: number): number | null {
   const e = peekEntry(ticker);
   if (!e || e.status !== 'live' || !(e.spot > 0)) return null;
@@ -1977,9 +1941,9 @@ export function peekMoveToClose(ticker: string, date: string | null | undefined,
   const listed = e.expiries.map(x => x.date).filter(d => d >= floor).sort();
   const d = date && date >= floor ? date : listed[0] ?? null;
   const move = d ? e.termMove?.[d] : undefined;
-  if (d && sameDayRunning(d) && nySessionPhase() === 'open' && move && move > 0) return move;
+  if (d && sameDayRunning(d) && nySessionPhase() === 'open' && move && move > 0) return sigmaFromStraddle(move);
   const day = peekDaySigma(ticker, date);
-  return day == null ? null : day * Math.sqrt(Math.min(CLOSE_MIN - OPEN_MIN, Math.max(0, minutesLeft)) / (CLOSE_MIN - OPEN_MIN));
+  return day == null ? null : sigmaOverMinutes(day, minutesLeft);
 }
 
 /** The interpolated 1-day implied vol (days = 1), annualised fraction — null when the rows carry none */

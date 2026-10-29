@@ -94,7 +94,7 @@ export const GREEK_UNIT_WORDS: Record<Greek, string> = {
   charm: 'dollars of delta the clock takes a day',
   color: 'dollars of gamma-per-1% per session',
   vomma: 'dollars of vega per vol point',
-  speed: 'dollars of gamma-per-1% per $1',
+  speed: 'dollars of gamma-per-1% per 1% move',
   veta: 'dollars of vega per session',
   zomma: 'dollars of gamma-per-1% per vol point',
 };

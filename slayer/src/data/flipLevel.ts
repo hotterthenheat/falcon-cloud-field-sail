@@ -52,8 +52,9 @@
 
 import { bellDay, shortDay, todayScopeLabel } from './bookWindow';
 import { carryFor } from '../core/carry';
-import { tradingMinutes, tradingYears } from '../core/tradingYear';
-import { cumulativeFlip, dollarGammaPerContract, netGammaAt, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
+import { tradingMinutesBetween, tradingYears } from '../core/tradingYear';
+import { vendorIvOnTradingClock } from '../core/volClock';
+import { cumulativeFlip, dollarGammaPerContract, netGammaAt, quietLegs, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
 import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
 import { bookCandles, ownIvDates, peekEntry, peekGammaPriced } from './uwBook';
@@ -120,34 +121,28 @@ export function smileOf(chain: readonly StrikeNode[], spot: number): (k: number)
 /** The own vol over which a same-day in-the-money leg is taken as runaway (see legsOfDate) */
 const ITM_RUNAWAY_IV = 1.5;
 
-/** One date's legs. `own`: re-price with each contract's own vol where it is in (the front date), the same expiry's
-    smile at that strike where it is not — else the date's ATM vol. `s0`: the price the date's gamma was priced at, when
-    it is not the search's spot. `spot`: the price the smile's out-of-the-money side is read from. */
+/** One date's legs. `own`: each contract's own vol where it is in, the same expiry's smile at that strike where it is
+    not — else the date's ATM vol (a calendar-year vol, moved onto the trading clock the legs run on). `s0`: the price
+    the date's gamma was priced at, when it is not the search's spot. `spot`: where the smile's OTM side is read from. */
 const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, now: number, own: boolean, s0?: number, perRow = false, spot = 0): GammaLeg[] => {
   const t0 = yearsTo(date, now);
+  const atm0 = vendorIvOnTradingClock(atmIv, date, now);
   const out: GammaLeg[] = [];
   const smile = own ? smileOf(chain, s0 && s0 > 0 ? s0 : spot) : null;
   for (const n of chain) {
-    /* EACH ROW AT ITS OWN PRICE AND MINUTE when the vendor's rows carry them (after its overnight roll every strike of a
-       date has its own) — the date's latest otherwise */
+    /* each row at its own price and minute when the vendor's rows carry them, the date's latest otherwise */
     const own0 = perRow && n.gexPx && n.gexPx > 0 ? n.gexPx : s0;
     const t = perRow && n.gexAt ? yearsTo(date, n.gexAt) : t0;
+    const atm = perRow && n.gexAt ? vendorIvOnTradingClock(atmIv, date, n.gexAt) : atm0;
     const wing = smile ? smile(n.strike) : 0;
-    const volOf = (mine: number | undefined) => (own && mine && mine > 0 ? mine : wing > 0 ? wing : atmIv);
-    /* THE CONTRACTS' OWN CEILING: a leg's dollar gamma can never pass what its open interest holds at the strike,
-       OI × K·e^(−rT) / (√(2π)·σ·√T) — whatever vol it is re-priced with (core/gammaFlip.ts) */
+    const volOf = (mine: number | undefined) => (own && mine && mine > 0 ? mine : wing > 0 ? wing : atm);
     const at = own0 && own0 > 0 ? own0 : spot;
-    const push = (g0: number, mine: number | undefined, oi: number, itm: boolean) => {
+    const push = (g0: number, mine: number | undefined, oi: number, itm: boolean, side: 1 | -1) => {
       let g = g0;
       let iv = volOf(mine);
       let ownIv = own && !!mine && mine > 0;
-      /* AN IN-THE-MONEY SAME-DAY LEG AT A RUNAWAY VOL IS DAMPED (the tenth audit's M1, 2026-10-23: PLTR's 190C, $5 in the
-         money with minutes left, printed IV 265% and its gamma ran $0.5M at 15:01 → $8.28M at 15:25 with price unchanged —
-         an in-the-money contract near its bell trades at parity, so its vol, and the gamma the vendor computes from it, is
-         noise, and it hopped the flip). A leg in its last day, in the money, whose own vol is over ITM_RUNAWAY_IV and well
-         above the out-of-the-money side's at its strike (the smile), is re-priced at the smile's vol: its gamma at spot is
-         scaled by the two vols' gamma ratio, and the rest of the vendor's figure is carried flat (legSet), so the net at
-         spot is still the vendor's */
+      /* An in-the-money leg in its last day trades at parity, so a runaway own vol (over ITM_RUNAWAY_IV and well above
+         the smile) is noise: its gamma at spot is scaled to the smile's vol and the rest is carried flat (legSet). */
       if (own && ownIv && itm && t <= 1 / YEAR_SESSION && at > 0 && (mine ?? 0) > ITM_RUNAWAY_IV && wing > 0 && wing < (mine ?? 0) * 0.7) {
         const g1 = dollarGammaPerContract(at, n.strike, t, wing);
         const g2 = dollarGammaPerContract(at, n.strike, t, mine!);
@@ -157,10 +152,12 @@ const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, n
           ownIv = false;
         }
       }
-      if (g) out.push({ strike: n.strike, g0: g, iv, t, s0: own0, oi: own && oi > 0 ? oi : undefined, ownIv });
+      /* a leg the vendor prints no gamma for at spot still holds contracts: priced outright from its open interest
+         (core/gammaFlip.ts) once price walks toward it */
+      if (g || (oi > 0 && iv > 0)) out.push({ strike: n.strike, g0: g, iv, t, s0: own0, oi: oi > 0 ? oi : undefined, side, ownIv });
     };
-    if (n.callGex) push(n.callGex, n.callIv, n.callOI, n.strike < at);
-    if (n.putGex) push(n.putGex, n.putIv, n.putOI, n.strike > at);
+    push(n.callGex, n.callIv, n.callOI, n.strike < at, -1);
+    push(n.putGex, n.putIv, n.putOI, n.strike > at, 1);
   }
   return out;
 };
@@ -337,6 +334,37 @@ export function stickFlip(key: string, read: FlipRead, spot: number, now: number
 
 const cache = new Map<string, LevelFlip>();
 
+/** A chain's content as a short hash (memoised per array): the flip re-prices only when its inputs change, not on
+    every refresh of the same rows. */
+const sigMemo = new WeakMap<readonly StrikeNode[], string>();
+export function chainSig(chain: readonly StrikeNode[] | undefined): string {
+  if (!chain) return '-';
+  const hit = sigMemo.get(chain);
+  if (hit) return hit;
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  const mix = (v: number | undefined) => {
+    const x = v == null || !Number.isFinite(v) ? 0 : Math.round(v * 1000);
+    h1 = Math.imul(h1 ^ (x | 0), 16777619);
+    h2 = Math.imul(h2 ^ ((x / 4294967296) | 0), 2246822519) ^ (h1 >>> 13);
+  };
+  for (const n of chain) {
+    mix(n.strike);
+    mix(n.callGex);
+    mix(n.putGex);
+    mix(n.netGex);
+    mix(n.callIv);
+    mix(n.putIv);
+    mix(n.callOI);
+    mix(n.putOI);
+    mix(n.gexAt);
+    mix(n.gexPx);
+  }
+  const out = `${chain.length}.${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}`;
+  sigMemo.set(chain, out);
+  return out;
+}
+
 interface LegSet {
   legs: GammaLeg[];
   complete: boolean;
@@ -384,7 +412,7 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
   const pricedIn = pinned != null || !entry.gammaLive || [...ownDates].every(d => !!peekGammaPriced(snapshot.ticker, d));
   const termIn = want.every(d => ownDates.has(d)) || !!entry.termIv;
   const carry = carryFor(snapshot.ticker);
-  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}|${pricedIn}|${termIn}|${asOfPx ?? ''}|${carry.r}|${carry.q}`;
+  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${want.map(d => chainSig(by[d])).join(',')}|${chainSig(chain)}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}|${pricedIn}|${termIn}|${asOfPx ?? ''}|${carry.r}|${carry.q}`;
   const term = entry.termIv ?? {};
   const legs: GammaLeg[] = [];
   let withVol = 0;
@@ -483,17 +511,14 @@ function holdRead(snapshot: MarketSnapshot, at: number | undefined): boolean {
 export function levelNetPath(snapshot: MarketSnapshot, chain: readonly StrikeNode[], prices: readonly number[], times?: readonly number[]): { path: number[]; complete: boolean } | null {
   const set = legSet(snapshot, chain);
   if (!set || !set.withVol) return null;
-  const gross = set.legs.reduce((a, l) => a + Math.abs(l.g0), 0);
-  const legs = set.legs.map(l => (Math.abs(l.g0) < gross * 1e-7 || (!l.ownIv && Math.abs(l.g0) < gross * 1e-5) ? { ...l, iv: 0 } : l));
-  const wall = Date.now();
-  const ref = pricingClock(undefined, wall);
+  const legs = quietLegs(set.legs);
+  const ref = pricingClock(undefined, Date.now());
+  const y = carryFor(snapshot.ticker);
   const path = prices.map((S, i) => {
     const at = times?.[i];
-    const leftThen = at != null && Number.isFinite(at) ? tradingMinutes('2099-12-31', at, false) : null;
-    const leftNow = tradingMinutes('2099-12-31', ref, false);
-    const back = leftThen != null && leftNow != null ? Math.max(0, leftThen - leftNow) / (390 * 252) : 0;
+    /* each minute at its own clock: the time to expiry it had, its time now plus the session minutes since */
+    const back = at != null && Number.isFinite(at) ? tradingMinutesBetween(at, ref) / (390 * 252) : 0;
     const these = back > 0 ? legs.map(l => (l.iv > 0 && l.t > 0 ? { ...l, t: l.t + back, t0: l.t } : l)) : legs;
-    const y = carryFor(snapshot.ticker);
     const v = netGammaAt(these, snapshot.spot, S, y.r, y.q);
     return v === 0 ? 0 : -v;
   });
