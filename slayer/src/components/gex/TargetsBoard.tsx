@@ -332,7 +332,7 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
         {t.today?.tests ? <span className="text-textSecondary whitespace-nowrap">held {t.today.held}, broke {t.today.broke} today</span> : null}
         {t.closes > 0 && <span className="text-textSecondary" title="Model weight for the close at this strike: a normal on 1σ to the close, pulled by the book — not a measured chance">close weight {t.closes.toFixed(0)}%</span>}
         <span className="text-textSecondary cursor-help" title={stakeTip(t.stake, marketPer1Pct)}>
-          {fmtDollars(t.stake)} at stake{t.stake / Math.max(1, marketPer1Pct) >= 0.05 ? ` · ${(t.stake / Math.max(1, marketPer1Pct)).toFixed(1)}× the 1% move` : ''}
+          {fmtDollars(t.stake)} at stake{marketPer1Pct > 1 && t.stake / marketPer1Pct >= 0.05 ? ` · ${(t.stake / marketPer1Pct).toFixed(1)}× the 1% move` : ''}
         </span>
       </p>
       <div className="mt-auto flex items-center justify-end h-[22px] -mr-1">

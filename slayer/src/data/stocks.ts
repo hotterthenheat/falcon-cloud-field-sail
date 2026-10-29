@@ -43,6 +43,8 @@ export interface StockPick {
   /** Each scored sleeve's measures in words, with their figures ("RSI, 14 sessions 39 · ADX … 18 · down on the week") —
       the bar's hover, so a bar is never a shape alone */
   sleeveNotes?: Partial<Record<keyof StockSleeves, string>>;
+  /** Why a quiet sleeve was left out, in words ("only $412K of premium, too thin to read") */
+  quietWhy?: Partial<Record<keyof StockSleeves, string>>;
   /** Listed, and not on the screener. No sleeve is invented. */
   listedOnly?: boolean;
   /** The New York session the price and its change belong to */
@@ -124,7 +126,18 @@ export function pickFromLive(input: {
       quality: noteOf(at('numbers')?.factors),
       flow: noteOf(at('money')?.factors),
     },
+    quietWhy: {
+      momentum: whyQuiet(at('trend')?.factors),
+      quality: whyQuiet(at('numbers')?.factors),
+      flow: whyQuiet(at('money')?.factors),
+    },
   };
+}
+/** A left-out pillar's reason: its figures, then each distinct reason once (the last clause of a note that gives one) */
+function whyQuiet(fs: readonly { label: string; value: string; note: string }[] | undefined): string {
+  if (!fs || !fs.length) return 'none of its measures are on the screener row';
+  const reasons = [...new Set(fs.filter(f => f.note.includes(' — ')).map(f => f.note.split(' — ').pop()!))];
+  return `${fs.map(f => `${f.label} ${f.value}`).join(' · ')}${reasons.length ? ` — ${reasons.join('; ')}` : ''}`;
 }
 const noteOf = (fs: readonly { label: string; value: string; context?: boolean }[] | undefined): string | undefined =>
   fs && fs.length ? fs.filter(f => !f.context).map(f => `${f.label}: ${f.value}`).join(' · ') : undefined;

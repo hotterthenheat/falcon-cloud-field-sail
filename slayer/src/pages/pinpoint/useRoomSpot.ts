@@ -4,7 +4,8 @@
 
 import { useRef, useSyncExternalStore } from 'react';
 import { bookStatus, ensureBook, peekSpot } from '../../data/uwBook';
-import { ensureThetaPrice, peekThetaPrice } from '../../data/thetaQuote';
+import { peekThetaPrice } from '../../data/thetaQuote';
+import { askThetaPrice } from '../../components/gex/LivePrice';
 import { thetaAllowedHere } from '../../data/theta';
 import { isTradingDay } from '../../core/calendar';
 import { nyIsoDate, nyMinutes } from '../../core/nyTime';
@@ -26,7 +27,8 @@ const inSession = (): boolean => {
 /* the terminal's print, when it is this session's and agrees with the book within a fifth (a different listing never does) */
 const thetaSpot = (ticker: string, book: number | null): number | null => {
   if (!inSession() || !thetaAllowedHere('/stock/snapshot/trade')) return null;
-  ensureThetaPrice(ticker);
+  /* paced by the price's own asker (LivePrice askThetaPrice), never at the half-second read */
+  askThetaPrice(ticker);
   const held = peekThetaPrice(ticker);
   const px = held?.live ? held.value.price : null;
   if (px == null || !(px > 0)) return null;

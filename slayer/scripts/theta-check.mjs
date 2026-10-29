@@ -89,7 +89,6 @@ const CHECKS = [
   [`contracts quoted on ${lastDay}`, `/option/list/contracts/quote?symbol=SPY&date=${lastDay}&max_dte=120&format=json`],
   [`chain NBBO for a day (date=)`, `/option/history/quote?symbol=SPY&expiration=${exp}&right=both&strike_range=14&date=${lastDay}&interval=1m&format=json`],
   [`dates quoted for ${exp}`, `/option/list/dates/quote?symbol=SPY&expiration=${exp}&format=json`],
-  [`index 1m bars (date=)`, `/index/history/ohlc?symbol=SPX&date=${lastDay}&interval=1m&format=json`],
   [`stock 1m bars (date=)`, `/stock/history/ohlc?symbol=SPY&date=${lastDay}&interval=1m&format=json`],
   [`contract NBBO today (paper catch-up)`, `/option/history/quote?symbol=SPY&expiration=${exp}&strike=${strike}&right=call&date=${today}&interval=1m&format=json`],
   [`daily closes (Pinpoint day change)`, `/stock/history/eod?symbol=SPY&start_date=${lastDay}&end_date=${lastDay}&format=json`],

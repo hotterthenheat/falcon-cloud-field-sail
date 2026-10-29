@@ -168,7 +168,7 @@ const sleeveCell =
   (key: keyof StockSleeves) =>
   ({ data }: ICellRendererParams<StockPick>) => {
     if (!data) return null;
-    if (data.quiet.includes(key)) return <span className="font-mono text-t10 text-textMuted" title="Not on this feed — left out of the screen">—</span>;
+    if (data.quiet.includes(key)) return <span className="font-mono text-t10 text-textMuted cursor-help" title={`${SLEEVE_NAME[key]} is not read, so it is left out of the screen: ${data.quietWhy?.[key] ?? 'none of its measures are on the screener row'}`} data-sleeve={key} data-grade="unread">—</span>;
     const v = data.sleeves[key];
     const g = gradeOfComposite(v);
     /* the grade word beside the bar, the measures it is read from on hover */
