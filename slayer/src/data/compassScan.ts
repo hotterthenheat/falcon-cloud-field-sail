@@ -760,7 +760,7 @@ async function fillLate(now: number): Promise<void> {
     for (const row of due) {
       if (stopped || running) return;
       const waiting = Object.entries(row.names).filter(([, state]) => state === 'pending').map(([symbol]) => symbol);
-      await pool(waiting, 4, symbol => lateName(row, symbol));
+      await pool(waiting, 2, symbol => lateName(row, symbol));
       if (meta.theta === 'down') return;
     }
     /* Book C's window passed with no sweep: the 15:20 quotes recorded then */

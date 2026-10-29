@@ -377,7 +377,7 @@ const CampaignAnalysis = ({
                         ? { word: 'Open paper', why: 'On the book. Paper only. Nothing is sent.', ink: 'text-textPrimary' }
                         : { word: 'Candidate', why: 'Paper only. Track it to watch it. Nothing is sent.', ink: 'text-textPrimary' };
   const closed = outcome && outcome.status === 'closed' && outcome.exit && outcome.fill
-    ? { result: outcome.exit.px > outcome.fill.ask ? 'win' as const : 'loss' as const, why: outcome.exit.why, exitPx: outcome.exit.px }
+    ? { result: (outcome.pnl ?? (outcome.exit.px - outcome.fill.ask)) > 0 ? 'win' as const : 'loss' as const, why: outcome.exit.why, exitPx: outcome.exit.px }
     : outcome && outcome.status === 'unavailable'
       ? { result: 'unavailable' as const, why: 'Unavailable', exitPx: 0 }
       : null;

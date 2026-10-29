@@ -61,7 +61,7 @@ export function installUwFixtures(set: string): { asked: string[] } {
     const body = await res!.text();
     const type = res!.headers.get('content-type') ?? 'application/json';
     /* an outage is not data: recording stops rather than keep it (a lost ThetaData session answers 503 or 478) */
-    if (res!.status >= 500 || res!.status === 474 || res!.status === 478 || /terminal_down|session_lost|terminal_unavailable|invalid session id/i.test(body.slice(0, 400))) {
+    if (res!.status >= 500 || res!.status === 429 || res!.status === 474 || res!.status === 478 || /terminal_down|session_lost|terminal_unavailable|invalid session id/i.test(body.slice(0, 400))) {
       throw new Error(`golden: ${theta ? 'ThetaData' : 'Unusual Whales'} did not answer ${path} (${res!.status}); nothing recorded — try again when it does`);
     }
     mkdirSync(dir, { recursive: true });
