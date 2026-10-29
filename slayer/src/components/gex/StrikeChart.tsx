@@ -29,7 +29,6 @@ import { deskTape, ensureBook, historyForDate, peekDaySigma, peekEntry, peekIv, 
 import { useSessionQuote } from '../../data/sessionQuote';
 import { getDeskSession, minuteInSession, sessionMeta, sessionOfMinute, useDeskSession } from '../../data/deskSession';
 import { snapsAsOf } from '../../data/exposureScope';
-import { WhyHere } from './whyHere';
 import { onGlide, promisedWidth } from '../../core/glide';
 import { compile, explain, run as runScript, type Compiled } from '../../core/pine';
 import { setPaneBars, usePaneScripts } from '../../data/paneScripts';
@@ -1408,6 +1407,48 @@ const StrikeChart = ({
      move it forced a layout each time, right after the pane's read line had written to the DOM. */
   const boxRectRef = useRef<DOMRect | null>(null);
   const wheelAtRef = useRef(0);
+  /* The field's hovered bead, drawn on its own canvas over pane 0 (see GexTrailsPrimitive.hoverOverlay) */
+  const hoverCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const hoverDrawnRef = useRef(false);
+  const drawHoverRef = useRef(() => {});
+  drawHoverRef.current = () => {
+    const cv = hoverCanvasRef.current;
+    const chart = chartRef.current;
+    const trails = trailsRef.current;
+    if (!cv || !chart || !trails) return;
+    const shape = trails.hoverShape();
+    if (!shape && !hoverDrawnRef.current) return;
+    const { width: w, height: h } = chart.paneSize(0);
+    const dpr = window.devicePixelRatio || 1;
+    const bw = Math.round(w * dpr);
+    const bh = Math.round(h * dpr);
+    if (cv.width !== bw || cv.height !== bh) {
+      cv.width = bw;
+      cv.height = bh;
+      cv.style.width = `${w}px`;
+      cv.style.height = `${h}px`;
+    }
+    const g = cv.getContext('2d');
+    if (!g) return;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, bw, bh);
+    hoverDrawnRef.current = !!shape;
+    if (!shape) return;
+    const cx = shape.x * dpr;
+    const cy = shape.y * dpr;
+    const rx = shape.rx * dpr;
+    const ry = shape.ry * dpr;
+    g.fillStyle = shape.fill;
+    g.beginPath();
+    g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    g.fill();
+    const lw = Math.max(1, Math.round(1.5 * dpr));
+    g.lineWidth = lw;
+    g.strokeStyle = shape.ring;
+    g.beginPath();
+    g.ellipse(cx, cy, rx + lw, ry + lw, 0, 0, Math.PI * 2);
+    g.stroke();
+  };
   const boxRect = (el: HTMLElement) => (boxRectRef.current ??= el.getBoundingClientRect());
   useEffect(() => {
     if (!boxEl) return;
@@ -2071,6 +2112,8 @@ const StrikeChart = ({
 
     const trails = new GexTrailsPrimitive();
     trails.chromeInset = chromeInsetRef.current;
+    trails.hoverOverlay = true;
+    trails.afterDraw = () => drawHoverRef.current();
     trails.onData = ref => setTrailRef(ref);
     candles.attachPrimitive(trails);
     /* The key levels' ladder — fed by the levels effect while the switch is on; it reads the field's strike chips at the
@@ -5024,6 +5067,7 @@ const StrikeChart = ({
             </div>
           </>
         )}
+        <canvas ref={hoverCanvasRef} aria-hidden className="absolute left-0 top-0 z-[3] pointer-events-none" />
         <div ref={containerRef} className={`absolute inset-0 ${picking ? 'cursor-crosshair' : ''}`} onPointerDownCapture={onSleepingMarkDown} data-pick-time={picking ? '' : undefined} data-replay-idx={replay ? replayIdx : undefined} data-replay-len={replay ? (replayDataRef.current?.bars.length ?? 0) : undefined} data-replay-time={replay && replayTime != null ? replayTime : undefined} data-replay-debug={replay ? replayDebug : undefined} />
         {sessionNote && !replay && !quiet && (
           <p className="absolute top-2 left-1/2 z-[4] -translate-x-1/2 max-w-[360px] truncate rounded-md border border-borderSubtle bg-canvas/85 px-2 py-1 font-mono text-t10 text-textSecondary pointer-events-none" data-session-note>
@@ -5580,7 +5624,6 @@ const StrikeChart = ({
                 <CardRow k="Price" v={levelCard.price.toFixed(2)} ink={ink} />
                 {dist != null && <CardRow k="From spot" v={`${dist >= 0 ? '+' : '−'}${Math.abs(dist).toFixed(2)}%`} sub={dist >= 0 ? 'above' : 'below'} />}
                 <span className="col-span-2 mt-0.5 text-textSecondary leading-snug">{w.line}</span>
-                <WhyHere ticker={ticker} level={levelCard.key} />
               </PointerFollowCard>
             );
           })()}

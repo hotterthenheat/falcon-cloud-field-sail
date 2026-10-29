@@ -8,7 +8,6 @@ import { GEX_SUBPAGES } from '../../pages/pinpoint/subnav';
 import { TRACE_SUBPAGES } from '../../pages/trace/subnav';
 import { RECORD_SUBPAGES } from '../../pages/record/subnav';
 import { useMarketData } from '../../context/MarketDataContext';
-import Simulator from '../../core/simulator';
 import { armDrawTool, canArmDrawTool, searchDrawTools } from '../gex/drawTools';
 import { ensureListed, roomOf, searchRoom, useListedRev } from '../../data/listedNames';
 import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
@@ -30,6 +29,8 @@ interface PaletteAction {
   icon?: React.ReactNode;
 }
 
+/* The names offered before anything is typed */
+const QUICK_NAMES = ['SPY', 'QQQ', 'IWM', 'SPX', 'AAPL', 'NVDA'];
 const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -121,11 +122,11 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
         run: () => changeTicker(t.symbol),
       }));
     }
-    return Object.keys(Simulator.TICKERS).map(tk => ({
+    return QUICK_NAMES.map(tk => ({
       id: `ticker-${tk}`,
       group: 'Ticker' as const,
       label: `Set ticker → ${tk}`,
-      hint: tk === activeTicker ? 'active' : 'switch simulation feed',
+      hint: tk === activeTicker ? 'active' : '',
       icon: <ArrowRightLeft className="w-3.5 h-3.5" />,
       run: () => changeTicker(tk),
     }));
