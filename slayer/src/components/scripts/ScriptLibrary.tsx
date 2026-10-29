@@ -367,7 +367,7 @@ const ScriptLibrary = ({
         widthClass="max-w-[1080px]"
         header={
           <div className="flex items-center gap-3 min-w-0">
-            <span className="holo-bg w-6 h-6 rounded-[6px] shrink-0 flex items-center justify-center font-mono text-t10 font-bold text-onfoil" aria-hidden>
+            <span className="relative foil-glide holo-bg w-6 h-6 rounded-[6px] shrink-0 flex items-center justify-center font-mono text-t10 font-bold text-onfoil" aria-hidden>
               &gt;_
             </span>
             <span className="text-t15 font-semibold leading-tight text-textPrimary">Indicators and scripts</span>

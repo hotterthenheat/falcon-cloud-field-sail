@@ -443,7 +443,7 @@ const Pulse = () => {
             {locked ? <Lock className="w-3.5 h-3.5" /> : <LockOpen className="w-3.5 h-3.5" />}
           </button>
           <span className="relative">
-            <button onClick={() => setPickerOpen(o => !o)} aria-expanded={pickerOpen} className="inline-flex items-center gap-1.5 h-7 px-3 rounded-md holo-bg text-onfoil hover:brightness-105 font-mono text-t11 font-semibold uppercase tracking-wider transition-all" data-picker-open>
+            <button onClick={() => setPickerOpen(o => !o)} aria-expanded={pickerOpen} className="relative foil-glide inline-flex items-center gap-1.5 h-7 px-3 rounded-md holo-bg text-onfoil hover:brightness-105 font-mono text-t11 font-semibold uppercase tracking-wider transition-all" data-picker-open>
               <Plus className="w-3.5 h-3.5" /> Add widget
             </button>
             {pickerOpen && <Picker ctx={deskCtx} counts={counts} boxFor={boxFor} onAdd={addWidget} onDragKey={setDragKey} onClose={closePicker} />}

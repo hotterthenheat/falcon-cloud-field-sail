@@ -288,7 +288,7 @@ export const NotFoundPrompt = () => {
                     e.preventDefault();
                     launch('/pulse');
                   }}
-                  className="h-12 pl-5 pr-4 inline-flex items-center gap-2 rounded-full text-t145 font-medium holo-bg text-onfoil"
+                  className="h-12 pl-5 pr-4 inline-flex items-center gap-2 rounded-full text-t145 font-medium relative foil-glide holo-bg text-onfoil"
                   data-not-found-door="launch"
                 >
                   Launch the terminal <ArrowRight className="w-4 h-4" aria-hidden />

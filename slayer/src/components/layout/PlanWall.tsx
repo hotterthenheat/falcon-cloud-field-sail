@@ -69,7 +69,7 @@ const PlanWall = ({ room, needed, fill = true }: { room: NavItem; needed: PlanKe
   const own = needed !== 'desk' ? need : null;
   const ownPrice = own ? priceOf(needed, 'month') : null;
   const doorTo = (plan: PlanKey) => (signedOut ? `/signin?face=up&next=${encodeURIComponent(`/checkout?plan=${plan}&period=month`)}` : `/checkout?plan=${plan}&period=month`);
-  const solid = theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg';
+  const solid = `relative foil-glide ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`;
   return (
     /* no card: the words stand on the glass (as on the Community wall): the room's name in the foil, its line and plan,
        then the Desk offer in the landing's pricing type with one door; Tape quieter */

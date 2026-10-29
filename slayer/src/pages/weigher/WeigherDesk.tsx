@@ -47,8 +47,7 @@ import {
 import { scoreLiveContract, type LiveScore } from '../../data/compassModel';
 import { yearFracLeft, WEIGHER_Q, WEIGHER_R } from '../../data/weigherGate';
 import { printOf } from '../../data/compassParams';
-import { useTerrainTape } from '../../data/terrainTape';
-import { paintLive, useWeigherContract, useWeigherTape } from '../../data/weigherTape';
+import { paintLive, useWeigherContract, useWeigherSpot, useWeigherTape } from '../../data/weigherTape';
 import { useDeskSession, sessionOfMinute } from '../../data/deskSession';
 import { nyMinutes } from '../../core/nyTime';
 import { blackScholesPrice } from '../../core/greeks';
@@ -710,7 +709,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const levels = useMemo(() => buildLevelsFor(ticker), [ticker, tick]);
   const under = printOf(ticker);
   const bookSession = useDeskSession();
-  const tape = useTerrainTape(under);
+  const tape = useWeigherSpot(under);
   const weighed = useWeigherTape(under, timeframe, bookSession);
   const liveSpot = chain.source === 'live' && chain.spot > 0 ? chain.spot : tape && tape.spot > 0 ? tape.spot : 0;
   const dayPct = tape && tape.prev > 0 && liveSpot > 0 ? (liveSpot / tape.prev - 1) * 100 : null;

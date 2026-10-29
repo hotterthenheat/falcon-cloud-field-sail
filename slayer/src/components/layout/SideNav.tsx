@@ -103,6 +103,16 @@ interface Tip {
   y: number;
 }
 
+/** New York's time to the second — its own component so the tick re-renders this span, not the rail */
+const NavClock = () => {
+  const [time, setTime] = useState(() => nyClock(undefined, { seconds: true, zone: true }));
+  useEffect(() => {
+    const id = window.setInterval(() => setTime(nyClock(undefined, { seconds: true, zone: true })), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  return <span className="ml-auto text-textMuted select-none">{time}</span>;
+};
+
 const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const { activeTicker } = useTicker();
   /* the contract the reader is inside — Compass's tree keeps its row (see subpagesFor) */
@@ -119,7 +129,6 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [clock, setClock] = useState(() => readSessionClock());
-  const [time, setTime] = useState(() => nyClock(undefined, { seconds: true, zone: true }));
   const asideRef = useRef<HTMLElement | null>(null);
   const navRef = useRef<HTMLElement | null>(null);
   const [bar, setBar] = useState<{ top: number } | null>(null);
@@ -132,10 +141,15 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const unseen = useUnseenAll();
   const drawerOpen = useAlertsDrawer();
 
+  /* the rail re-renders only when the session's words change; the seconds tick in NavClock alone */
+  const shownAs = useRef('');
   useEffect(() => {
     const id = window.setInterval(() => {
-      setClock(readSessionClock());
-      setTime(nyClock(undefined, { seconds: true, zone: true }));
+      const next = readSessionClock();
+      const key = `${next.phase}|${next.label}|${readMarketState().word}|${marketPhase()}`;
+      if (key === shownAs.current) return;
+      shownAs.current = key;
+      setClock(next);
     }, 1000);
     return () => window.clearInterval(id);
   }, []);
@@ -619,8 +633,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
             page. */}
         <div
           className={`shrink-0 border-t border-ink/[0.07] bg-ink/[0.02] ${collapsed ? 'pl-[22px] pr-0 py-3.5' : 'px-3.5 py-2.5'}`}
-          title={collapsed ? `slayer:~ $ ${marketWord} · ${clock.label} · ${time}` : undefined}
-          onMouseEnter={e => showTip(e, `slayer:~ $ ${marketWord} · ${clock.label} · ${time}`)}
+          title={collapsed ? `slayer:~ $ ${marketWord} · ${clock.label}` : undefined}
+          onMouseEnter={e => showTip(e, `slayer:~ $ ${marketWord} · ${clock.label} · ${nyClock(undefined, { seconds: true, zone: true })}`)}
           onMouseLeave={hideTip}
           data-sidenav-signature
         >
@@ -634,7 +648,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
                   {/* 16:00–16:15 on Trace: stock options are shut, index and ETF options still trade (the tenth Trace audit) */}
                   {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'stocks closed · index & ETF options trade to 3:15 PM CT' : open ? clock.label : clock.label.toLowerCase()}
                 </span>
-                <span className="ml-auto text-textMuted select-none">{time}</span>
+                <NavClock />
               </span>
             </>
           )}

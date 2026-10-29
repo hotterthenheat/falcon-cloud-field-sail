@@ -124,7 +124,7 @@ export const LiveHold = ({ paused, onToggle, heldAt, waitingFirst = false }: { p
         aria-pressed={paused}
         title={paused ? (waitingFirst ? 'Paused — holds at the first read' : heldAt ? `Held as of ${clock(heldAt)} — resume to follow the feed` : 'Resume — follow the feed again') : 'Pause — hold the page until you resume'}
         className={`inline-grid place-items-center px-3 py-1.5 rounded-md border font-mono text-t11 font-semibold uppercase tracking-wider transition-colors ${
-          paused ? 'border-warn/40 bg-warn/[0.06] text-warn hover:bg-warn/[0.1]' : paper ? 'galaxy-bg border-transparent' : 'holo-bg text-onfoil border-transparent hover:opacity-90'
+          paused ? 'border-warn/40 bg-warn/[0.06] text-warn hover:bg-warn/[0.1]' : paper ? 'relative foil-glide galaxy-bg border-transparent' : 'relative foil-glide holo-bg text-onfoil border-transparent hover:opacity-90'
         }`}
         data-hold-button
       >

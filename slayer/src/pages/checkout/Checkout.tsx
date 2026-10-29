@@ -153,7 +153,7 @@ const UpgradeFace = ({ planKey, period, upgrade }: { planKey: PlanKey; period: P
         onClick={go}
         disabled={busy}
         aria-busy={busy || undefined}
-        className={`mt-5 h-12 w-full rounded-full inline-flex items-center justify-center gap-2 text-t15 font-medium transition-opacity disabled:opacity-70 disabled:cursor-progress ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
+        className={`mt-5 h-12 w-full rounded-full inline-flex items-center justify-center gap-2 text-t15 font-medium transition-opacity disabled:opacity-70 disabled:cursor-progress relative foil-glide ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
         data-checkout-go="upgrade"
       >
         Upgrade to {to.name} — {fmtCents(upgrade.dueToday)} today
@@ -412,7 +412,7 @@ const Pay = ({ checkout, period }: { checkout: StripeCheckoutElementsValue; peri
         onClick={pay}
         disabled={busy}
         aria-busy={busy || undefined}
-        className={`mt-5 h-12 w-full rounded-full inline-flex items-center justify-center gap-2 text-t15 font-medium transition-opacity disabled:opacity-70 disabled:cursor-progress ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
+        className={`mt-5 h-12 w-full rounded-full inline-flex items-center justify-center gap-2 text-t15 font-medium transition-opacity disabled:opacity-70 disabled:cursor-progress relative foil-glide ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
         data-checkout-go
       >
         Pay {due} {period === 'year' ? 'a year' : 'a month'}
@@ -472,7 +472,7 @@ const Problem = ({ why, onRetry }: { why: string; onRetry?: () => void }) => {
       </p>
       <div className="mt-6 flex flex-col gap-2.5">
         {onRetry && (
-          <button type="button" onClick={onRetry} className={`h-11 w-full rounded-[10px] inline-flex items-center justify-center text-t135 font-medium ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`} data-checkout-retry>
+          <button type="button" onClick={onRetry} className={`h-11 w-full rounded-[10px] inline-flex items-center justify-center text-t135 font-medium relative foil-glide ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`} data-checkout-retry>
             Try again
           </button>
         )}

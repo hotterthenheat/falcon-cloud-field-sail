@@ -142,7 +142,7 @@ export const DOOR_ARROW = 'transition-transform duration-300 ease-[cubic-bezier(
 export const Pill = ({ children, onClick, href, kind = 'solid', size = 'lg', testId, busy = false }: { children: ReactNode; onClick?: () => void; href: string; kind?: 'solid' | 'ghost'; size?: 'lg' | 'sm'; testId?: string; busy?: boolean }) => {
   const ground = useBlockGround();
   const working = useWorking(busy);
-  const fill = kind === 'solid' ? (ground === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg') : 'border border-borderMuted text-textPrimary hover:border-textPrimary/70 hover:bg-ink/[0.06]';
+  const fill = kind === 'solid' ? (ground === 'dark' ? 'relative foil-glide holo-bg text-onfoil' : 'relative foil-glide galaxy-bg') : 'border border-borderMuted text-textPrimary hover:border-textPrimary/70 hover:bg-ink/[0.06]';
   const glyph = size === 'lg' ? 'w-4 h-4' : 'w-3.5 h-3.5';
   return (
     <a
@@ -421,7 +421,7 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
                     e.preventDefault();
                     launch(doorTo());
                   }}
-                  className={`${DOOR_GROUP} h-10 pl-4 pr-3.5 inline-flex items-center gap-1.5 rounded-full text-t135 font-medium whitespace-nowrap ${ground === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
+                  className={`${DOOR_GROUP} h-10 pl-4 pr-3.5 inline-flex items-center gap-1.5 rounded-full text-t135 font-medium whitespace-nowrap relative foil-glide ${ground === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
                   data-landing-door="nav"
                 >
                   <span className="sm:hidden">Launch</span>
@@ -489,7 +489,7 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
                 setMenu(false);
                 launch(doorTo());
               }}
-              className={`${DOOR_GROUP} mt-4 h-12 flex items-center justify-center gap-2 rounded-full text-t15 font-medium ${ground === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
+              className={`${DOOR_GROUP} mt-4 h-12 flex items-center justify-center gap-2 rounded-full text-t15 font-medium relative foil-glide ${ground === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
               data-landing-door="menu"
             >
               Launch the terminal
