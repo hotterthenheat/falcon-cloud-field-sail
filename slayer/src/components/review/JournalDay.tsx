@@ -1,7 +1,5 @@
-/*
-  A journal day opened under the month: the date, what it made, how many closed and won, its best and worst
-  trade, and the trades in the house grid.
-*/
+/* A journal day opened under the month: the date, what it made, how many closed and won, its best and worst trade,
+   and the trades in the house grid. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { UTCTimestamp } from 'lightweight-charts';
@@ -151,7 +149,7 @@ const JournalDay = ({ day, total, holders, onDayNote, onOpen, onClose, today, co
           </div>
         )}
         <div className="min-w-0 flex flex-col">
-          {/* HOW THE DAY WENT — its running total, once there are two trades to run */}
+          {/* How the day went — its running total, once there are two trades to run */}
           {rows.length > 1 && (
             <div className="px-5 pt-4 pb-3 border-b border-borderSubtle/70" data-journal-day-curve>
               <div className={headWord}>How the day went</div>
@@ -189,7 +187,7 @@ const JournalDay = ({ day, total, holders, onDayNote, onOpen, onClose, today, co
               </div>
             </div>
           )}
-          {/* THE DAY'S WORDS */}
+          {/* The day's words */}
           {shown && (
             <div className="px-5 pt-4 pb-5 flex flex-col gap-4" data-journal-day-notes>
               <div className="flex items-center gap-4 flex-wrap">

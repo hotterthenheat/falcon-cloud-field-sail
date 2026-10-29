@@ -1,7 +1,5 @@
-/*
-  The options backtest desk: a replayed chart, the chain at the clock's minute, the order card, and the book. It
-  opens only while Backtest runs (BACKTEST_LIVE).
-*/
+/* The options backtest desk: a replayed chart, the chain at the clock's minute, the order card, and the book. It
+   opens only while Backtest runs (BACKTEST_LIVE). */
 
 import BacktestPaused from './BacktestPaused';
 import { BACKTEST_LIVE } from '../../data/review/tape';
@@ -29,9 +27,9 @@ import type { Timeframe } from '../../data/timeframe';
 import type { Candle } from '../../types/market';
 import type { KeyLevels } from '../../types/gex';
 
-/* THE CHART'S SETTINGS ON THIS DESK. The intervals a one-minute tape can make (no 15s: there are no seconds to fold; no
-   weekly: the sessions kept behind the clock are too few weeks). The overlays that read BARS — the rest need the book, and a
-   replayed tape has none yet, so their switches are not offered. */
+/* The chart's settings on this desk. The intervals a one-minute tape can make (no 15s: there are no seconds to
+   fold; no weekly: the sessions kept behind the clock are too few weeks). The overlays that read BARS — the rest
+   need the book, and a replayed tape has none yet, so their switches are not offered. */
 const REVIEW_TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '30m', '1h', '1D'];
 const REVIEW_OVERLAY_KEYS: (keyof ChartOverlays)[] = ['volume', 'session', 'cone', 'volDrift'];
 /** Sessions kept behind the clock's day — what the daily candles, a 50-bar average and yesterday's levels are made from */
@@ -59,7 +57,7 @@ const Desk = () => {
   /** The takeover is up — the shell's, held here because the chain's window reads it */
   const [full, setFull] = useState(false);
   const cursor = session?.cursor ?? null;
-  /* THE NAME ON THE DESK: one of the session's (two at most); the other keeps running on the same clock */
+  /* The name on the desk: one of the session's (two at most); the other keeps running on the same clock */
   const names = useMemo(() => (session ? namesOf(session) : ['SPY']), [session?.ticker, session?.tickers]); // eslint-disable-line react-hooks/exhaustive-deps
   const [activeName, setActiveName] = useState('');
   const ticker = names.includes(activeName) ? activeName : names[0];
@@ -92,8 +90,8 @@ const Desk = () => {
     const centre = open != null && now != null && Math.abs(now - open) <= step * (CHAIN_EACH - 4) ? open : undefined;
     return chainAt(ticker, cursor.day, cursor.minute, exp, CHAIN_EACH, centre);
   }, [ticker, cursor?.day, cursor?.minute, exp]); // eslint-disable-line react-hooks/exhaustive-deps
-  /* THE TAPE EACH CHART DRAWS: the sessions behind the clock's day, whole, then today up to the clock — never a bar past it.
-     By name: one chart on the page, two side by side in the takeover. */
+  /* The tape each chart draws: the sessions behind the clock's day, whole, then today up to the clock — never a
+     bar past it. By name: one chart on the page, two side by side in the takeover. */
   const contextBy = useMemo<Record<string, Candle[]>>(() => {
     if (!cursor) return {};
     const days: string[] = [];
@@ -106,8 +104,8 @@ const Desk = () => {
   const pickedQuote = useMemo(() => (cursor && picked ? quoteAt(picked, cursor.day, cursor.minute) : null), [picked, cursor?.day, cursor?.minute]); // eslint-disable-line react-hooks/exhaustive-deps
   /* a strike's drop-down is that strike's — the bought leg of a spread, not the pair */
   const pickedDay = useMemo(() => (cursor && picked && drillOpen ? contractDay(longLeg(picked), cursor.day, cursor.minute) : null), [picked, drillOpen, cursor?.day, cursor?.minute]); // eslint-disable-line react-hooks/exhaustive-deps
-  /* THE POSITION ON THE CHART: where it was entered, and — for what rides it — where the name would have to stand, at this
-     minute, for the contract to bid the order's price */
+  /* The position on the chart: where it was entered, and — for what rides it — where the name would have to stand,
+     at this minute, for the contract to bid the order's price */
   const positionsBy = useMemo<Record<string, ChartPosition[]>>(() => Object.fromEntries(names.map(n => [n, account ? account.positions.filter(p => p.contract.ticker === n).map(p => ({ key: p.key, contract: p.contract, qty: p.qty, spotIn: p.spotIn, pnl: p.pnl, r: p.r, avg: p.avg, bid: p.quote.bid, dead: p.quote.dead, room: session ? ladderRoom(session, p.contract) : undefined, take: session ? ladderTake(session, p.contract) : undefined })) : []])), [account, names]); // eslint-disable-line react-hooks/exhaustive-deps
   const bracketsBy = useMemo<Record<string, ChartBracket[]>>(() => {
     const out: Record<string, ChartBracket[]> = Object.fromEntries(names.map(n => [n, [] as ChartBracket[]]));
@@ -118,8 +116,9 @@ const Desk = () => {
       const list = out[o.contract.ticker];
       const pos = account.positions.find(p => p.key === contractKey(o.contract));
       if (!list || !pos) continue;
-      /* WHAT IT WAITS ON. The contract's price: its dollars hold, and its line is wherever the name would have to stand
-         THIS minute. The name's price: its line holds, and its dollars are what the contract would bid there THIS minute. */
+      /* What it waits on. The contract's price: its dollars hold, and its line is wherever the name would have to
+         stand THIS minute. The name's price: its line holds, and its dollars are what the contract would bid there
+         THIS minute. */
       const onName = o.on === 'name';
       const level = onName ? o.price : spotForBid(o.contract, day, minute, o.price);
       const sellsAt = onName ? quoteWith(o.contract, day, minute, o.price).bid : o.price;
@@ -139,8 +138,9 @@ const Desk = () => {
     return out;
   }, [session, account, names]);
 
-  /* THE RESTING ORDERS THAT ARE NOT WAYS OUT — a buy waiting at a price, said as such on the chart ("1 · Buy limit · 480C
-     @ 1.20", PositionLayer): where the name would have to stand, this minute, for the contract's ask to come down to it */
+  /* The resting orders that are not ways out — a buy waiting at a price, said as such on the chart ("1 · Buy limit
+     · 480C @ 1.20", PositionLayer): where the name would have to stand, this minute, for the contract's ask to
+     come down to it */
   const entriesBy = useMemo<Record<string, ChartEntry[]>>(() => {
     const out: Record<string, ChartEntry[]> = Object.fromEntries(names.map(n => [n, [] as ChartEntry[]]));
     if (!session) return out;
@@ -227,7 +227,7 @@ const Desk = () => {
   const tomorrow = nextDay(cursor.day);
   const working = session.orders.filter(o => o.status === 'working');
   const orders = [...working, ...session.orders.filter(o => o.status !== 'working').reverse()].slice(0, 40);
-  /* THE READER'S OWN RULES, and where each stands */
+  /* The reader's own rules, and where each stands */
   const rules = session.rules;
   const dayState = rules?.dailyLossPct ? dayStateOf(session) : null;
   const rulesLine =
@@ -272,7 +272,7 @@ const Desk = () => {
   };
   /* the chart keeps the walls on screen when it has them; a replayed tape has no book, so only where the name stands */
   const levelsOf = (n: string): KeyLevels => ({ spot: spotOf(n), callWall: NaN, putWall: NaN, flip: NaN, supreme: NaN });
-  /* THE NAMES, AS THE SHELL READS THEM: each with its tape, and what is drawn over it */
+  /* The names, as the shell reads them: each with its tape, and what is drawn over it */
   const deskNames: DeskName[] = names.map(n => {
     const px = spotOf(n);
     const open = dayBars(n, cursor.day)[0]?.open ?? px;
@@ -312,7 +312,7 @@ const Desk = () => {
     };
   });
 
-  /* ---- THE CHAIN, AS IT STOOD — a strike opens onto its stats and its greeks (components/review/ChainCard) ---- */
+  /* The chain, as it stood — a strike opens onto its stats and its greeks (components/review/ChainCard) */
   /* held: the contract itself, or the bought leg of a spread; sold: the other leg of one (open, or on the ticket) */
   const legOf = (p: ContractId) => p.ticker === ticker && p.expiry === exp && p.right === right;
   const chainCard = (
@@ -351,9 +351,8 @@ const Desk = () => {
           </button>
         )}
       </div>
-      {/* THE ORDER IS THE PAPER DESK'S (components/paper/OptionsChain ChainOrder — 2026-09-26, Noah: "make the contract
-          orders look the same on the backtesting section for both options and futures"): the same size row, the two
-          buttons, the limit box, the spread, the brackets — fed the replayed minute's quotes and this session's refusals */}
+      {/* The order is the paper desk's: the same size row, the two buttons, the limit box, the spread, the
+          brackets — fed the replayed minute's quotes and this session's refusals */}
       {picked && pickedQuote ? (
         <div className="px-4 pb-3" data-review-ticket={contractWords(picked)}>
           <ChainOrder

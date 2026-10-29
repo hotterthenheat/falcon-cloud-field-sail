@@ -1,51 +1,13 @@
 /*
-  ThetaData v3 proxy. The browser calls /api/theta/* and this forwards
-  the path to the local terminal at http://127.0.0.1:25503/v3/*.
-  Stocks, options, indices, the session calendar, and Treasury rates only.
-  Identical in-flight GETs share one call. Snapshots are kept 15s;
-  a calendar or a rate is kept 300s.
-
-  The terminal is a separate process (java -jar ThetaTerminalv3.jar).
-  If nothing is listening, this says why, and starts the jar only when
-  Java 21+ and a key or creds.txt are actually on the machine.
+  ThetaData v3 proxy. The browser calls /api/theta/*; this checks the caller (server/auth.mjs) and forwards
+  stocks, options, indices, the session calendar and Treasury rates to the local terminal (THETA_REST_BASE).
+  It never starts the terminal (theta/supervisor.mjs does) and never runs on Vercel, where no terminal exists.
 */
 
-import { spawn, spawnSync } from 'node:child_process';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { gate, sendDenied } from './auth.mjs';
+import { forwardPath } from './paths.mjs';
 
 const BASE = process.env.THETA_REST_BASE || 'http://127.0.0.1:25503';
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const JAR = process.env.THETA_JAR || path.join(HERE, '..', 'theta', 'ThetaTerminalv3.jar');
-const CREDS = path.join(path.dirname(JAR), 'creds.txt');
-const LOG = path.join(path.dirname(JAR), 'terminal.log');
-
-function javaBin() {
-  if (process.env.THETA_JAVA && fs.existsSync(process.env.THETA_JAVA)) return process.env.THETA_JAVA;
-  const bundled = path.join(path.dirname(JAR), 'jdk', 'bin', 'java');
-  if (fs.existsSync(bundled)) return bundled;
-  return 'java';
-}
-
-function javaHome() {
-  const bin = javaBin();
-  if (bin.endsWith(`${path.sep}bin${path.sep}java`)) return path.dirname(path.dirname(bin));
-  return '';
-}
-
-function childEnv(key) {
-  const home = javaHome();
-  const pathEnv = home
-    ? `${path.join(home, 'bin')}${path.delimiter}${process.env.PATH || ''}`
-    : process.env.PATH;
-  return {
-    ...process.env,
-    ...(key ? { THETADATA_API_KEY: key } : {}),
-    ...(home ? { JAVA_HOME: home } : {}),
-    ...(pathEnv ? { PATH: pathEnv } : {}),
-  };
-}
 
 const ALLOWED = [
   /^\/stock\/.+/,
@@ -58,7 +20,6 @@ const ALLOWED = [
 const cache = new Map();
 const inflight = new Map();
 const MAX_CACHE = 200;
-let booting = false;
 
 const ttlFor = (p) => {
   const path = p.split('?')[0];
@@ -67,88 +28,17 @@ const ttlFor = (p) => {
   if (/\/snapshot\//.test(path)) return 0;
   return 1_000;
 };
-const allowed = (p) => p.length < 500 && !p.includes('..') && ALLOWED.some((re) => re.test(p));
 
 const send = (res, status, body, type = 'application/json') => {
   res.statusCode = status;
   res.setHeader('content-type', type);
   res.setHeader('cache-control', 'no-store');
-  res.end(typeof body === 'string' ? body : body);
+  res.end(body);
 };
 
-function readKeyFile(file) {
-  try {
-    const text = fs.readFileSync(file, 'utf8');
-    for (const line of text.split('\n')) {
-      const m = line.match(/^\s*THETADATA_API_KEY\s*=\s*"?([^"\s#]+)"?/);
-      if (m) return m[1];
-    }
-    const one = text.trim();
-    if (/^td1_[A-Za-z0-9]+$/.test(one)) return one;
-  } catch {
-    /* no file */
-  }
-  return '';
-}
-
-/** The key on disk beats the process env. Vite loads .env.local over .env, and that file can hold a dead key. */
-function apiKey() {
-  const dir = path.dirname(JAR);
-  return readKeyFile(path.join(dir, '.env'))
-    || readKeyFile(path.join(HERE, '..', '.env'))
-    || process.env.THETADATA_API_KEY
-    || readKeyFile(CREDS)
-    || '';
-}
-
-/** The bootstrap jar rejects a good key. The current terminal jar in lib/ accepts --api-key. */
-function terminalJar() {
-  const lib = path.join(path.dirname(JAR), 'lib');
-  try {
-    const jars = fs.readdirSync(lib).filter((n) => n.endsWith('.jar')).sort();
-    if (jars.length) return path.join(lib, jars[jars.length - 1]);
-  } catch {
-    /* bootstrap */
-  }
-  return JAR;
-}
-
-function javaMajor() {
-  const out = spawnSync(javaBin(), ['-version'], { encoding: 'utf8' });
-  const text = `${out.stdout || ''}\n${out.stderr || ''}`;
-  const m = text.match(/version "(?:1\.)?(\d+)/);
-  return m ? Number(m[1]) : 0;
-}
-
-function downReason() {
-  const major = javaMajor();
-  const jar = fs.existsSync(JAR);
-  const key = Boolean(apiKey());
-  const java = major >= 21 ? `Java ${major}` : `Java ${major || 'missing'} (the terminal needs 21)`;
-  if (!jar && !key) {
-    return `${java}. ThetaTerminalv3.jar is not installed and THETADATA_API_KEY is not set, so nothing is listening on port 25503.`;
-  }
-  if (!jar) return `${java}. The Theta terminal jar is not on this machine, so port 25503 is closed.`;
-  if (major < 21) {
-    const auth = key ? '' : ' THETADATA_API_KEY is not set either, so there is nothing to log in with once Java is 21.';
-    return `${java}. The jar is on disk, but it cannot start on this runtime.${auth}`;
-  }
-  if (!key) return `${java}. The jar is here, but THETADATA_API_KEY is not set, so the terminal was not started.`;
-  return 'The Theta terminal was started and has not opened port 25503 yet.';
-}
-
-function tryStart() {
-  if (booting) return;
-  booting = true;
-  const child = spawn('sh', [path.join(path.dirname(JAR), 'keep-up.sh')], {
-    detached: true,
-    stdio: 'ignore',
-  });
-  child.unref();
-  child.on('exit', () => {
-    booting = false;
-  });
-}
+/* The client reads `code`; the sentence is for people and says nothing about the machine. */
+const DOWN = JSON.stringify({ error: 'The market data terminal is not running.', code: 'terminal_down' });
+const NO_TERMINAL = JSON.stringify({ error: 'This deployment has no market data terminal.', code: 'terminal_unavailable' });
 
 async function load(reqPath) {
   const running = inflight.get(reqPath);
@@ -179,11 +69,18 @@ export async function proxyTheta(req, res) {
     send(res, 405, JSON.stringify({ error: 'method not allowed' }));
     return;
   }
-  let reqPath = req.url || '/';
-  reqPath = reqPath.replace(/^\/api\/theta/, '') || '/';
-  if (!reqPath.startsWith('/')) reqPath = `/${reqPath}`;
-  if (!allowed(reqPath)) {
+  if (process.env.VERCEL && !process.env.THETA_REST_BASE) {
+    send(res, 503, NO_TERMINAL);
+    return;
+  }
+  const reqPath = forwardPath(req.url, /^\/api\/theta/, 500);
+  if (!reqPath || !ALLOWED.some((re) => re.test(reqPath))) {
     send(res, 404, JSON.stringify({ error: 'not found' }));
+    return;
+  }
+  const verdict = await gate(req, 'theta');
+  if (!verdict.ok) {
+    sendDenied(res, verdict);
     return;
   }
   const hit = cache.get(reqPath);
@@ -195,7 +92,6 @@ export async function proxyTheta(req, res) {
     const got = await load(reqPath);
     send(res, got.status, got.body, got.type);
   } catch {
-    tryStart();
-    send(res, 503, JSON.stringify({ error: `Theta terminal is not running. ${downReason()}`, code: 'terminal_down' }));
+    send(res, 503, DOWN);
   }
 }

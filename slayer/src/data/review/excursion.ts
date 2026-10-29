@@ -1,7 +1,5 @@
-/*
-  What a closed trade did between the way in and the way out, walked again minute by minute on the tape it was
-  played on: its path, best and worst, and where each way out would have left.
-*/
+/* What a closed trade did between the way in and the way out, walked again minute by minute on the tape it was
+   played on: its path, best and worst, and where each way out would have left. */
 
 import { MULT, stampOf, type Session, type Trade } from './engine';
 import type { FutSession, FutTrade } from './futuresEngine';

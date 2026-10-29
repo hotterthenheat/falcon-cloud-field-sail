@@ -1,7 +1,5 @@
-/*
-  Pulse's live chart tile: the house chart on the tile's name with its own toolbar, compares and fullscreen,
-  and the book's levels drawn on it.
-*/
+/* Pulse's live chart tile: the house chart on the tile's name with its own toolbar, compares and fullscreen, and
+   the book's levels drawn on it. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -51,8 +49,8 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
   /* Which greek the docked strike band draws. Per instance, like the interval and the overlays. */
   const [bandMetric, setBandMetric] = useState<BandMetric>('dex');
   const [full, setFull] = useState(false);
-  /* Mode 3 of 3 (Noah, 2026-08-23: "the full full screen one") — the taskbar itself disappears and the tape IS the
-     screen; Esc steps back down to fullscreen. Only reachable FROM fullscreen. */
+  /* Mode 3 of 3 — the taskbar itself disappears and the tape IS the screen; Esc steps back down to fullscreen.
+     Only reachable FROM fullscreen. */
   const [superFull, setSuperFull] = useState(false);
   const { closing: fullClosing, close: closeFull } = useFadeClose(() => {
     setFull(false);
@@ -67,12 +65,12 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
     });
   const removeCompare = (t: string, mode: CompareMode) => setCompares(cs => cs.filter(c => !(c.ticker === t && c.mode === mode)));
 
-  /* Panel black, not inset — the tile's chrome is the panel's, and a second black against it read as a seam (Noah,
-     2026-08-23: "i see 2 different shades"). The tape paints its own theme inside the chart; the strip and the legend over
-     it wear that theme's GROUND (2026-09-13) — the tile stamps it, index.css re-scopes their tokens. */
+  /* Panel black, not inset — the tile's chrome is the panel's, and a second black against it read as a seam. The
+     tape paints its own theme inside the chart; the strip and the legend over it wear that theme's GROUND — the
+     tile stamps it, index.css re-scopes their tokens. */
   const surface = 'rgb(var(--panel))';
   const ground = chartGround(useCandleThemeKey());
-  /* The tile's body — the section its toolbar's menus stay inside (2026-09-13) */
+  /* The tile's body — the section its toolbar's menus stay inside */
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
   /* the chart's own levels — the rule Terrain's panes draw by */
@@ -80,8 +78,8 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
   /* Dark-pool prints for the DP overlay, pinned to the name so the lines do not wander with the tick */
   const prints = useMemo(() => buildPrints(ctx.ticker, levels.spot), [ctx.ticker]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* THE DOCKED BAND'S BOOK, rebuilt per tick from the desk's own snapshot: today's expiry, ten strikes each side — the
-     window the desk's other tiles read. Built only while the band is actually drawn. */
+  /* The docked band's book, rebuilt per tick from the desk's own snapshot: today's expiry, ten strikes each side —
+     the window the desk's other tiles read. Built only while the band is actually drawn. */
   const bandData = useMemo(
     () => (overlays.dexStrike ? buildExposureProfile(ctx.snapshot, '0DTE', 10) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,9 +96,9 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
     [focus, ctx.ticker, ctx.revision]
   );
 
-  /* THE ONE FULLSCREEN BUTTON is the tile head's (Noah, 2026-09-12): the head hands this chart a one-shot token and the
-     chart lifts its own fullscreen — the rest of the toolbar, the editor dock, total fullscreen and Esc's ladder all ride
-     on it. The toolbar's own button only shows the way back once up. */
+  /* The one fullscreen button is the tile head's: the head hands this chart a one-shot token and the chart lifts
+     its own fullscreen — the rest of the toolbar, the editor dock, total fullscreen and Esc's ladder all ride on
+     it. The toolbar's own button only shows the way back once up. */
   useEffect(() => {
     if (lift) setFull(true);
   }, [lift]);
@@ -136,34 +134,34 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
       ref={bodyRef}
       className="relative h-full min-h-0"
       style={{ background: surface }}
-      /* A DARK ISLAND on any page (2026-09-12): the tape, its strip and its legend read the dark tokens */
+      /* A dark island on any page: the tape, its strip and its legend read the dark tokens */
       data-theme="dark"
-      /* …and the strip and the legend the ground of the tape's theme (2026-09-13) */
+      /* …and the strip and the legend the ground of the tape's theme */
       data-chart-ground={ground}
       data-chart-tile={timeframe}
       data-chart-full={full || undefined}
     >
-      {/* THE TASKBAR (settled 2026-08-23 against TradingView's): chrome, not an object — full width, fused to the top edge,
-          no container, no border. The tape runs full-bleed underneath and the bar is a veil over it: 55% of the surface
-          plus a soft blur. In total fullscreen it rests invisible at the top edge and comes up when the pointer reaches it. */}
+      {/* THE TASKBAR: chrome, not an object — full width, fused to the top edge, no container, no border. The tape
+          runs full-bleed underneath and the bar is a veil over it: 55% of the surface plus a soft blur. In total
+          fullscreen it rests invisible at the top edge and comes up when the pointer reaches it. */}
       <div
         className={`absolute top-0 inset-x-0 z-10 w-full select-none flex flex-wrap items-center backdrop-blur-md backdrop-saturate-150 ${full ? 'px-3 py-2 gap-3' : 'px-2 py-1.5 gap-2'}${
           superFull ? ' opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200' : ''
         }`}
         data-taskbar-rest={superFull ? 'hidden' : undefined}
         style={{ background: 'rgb(var(--panel) / 0.55)' }}
-        /* Floating chrome the chart's scripts legend measures and sits under (2026-09-10) */
+        /* Floating chrome the chart's scripts legend measures and sits under */
         data-chart-chrome
       >
-        {/* Fullscreen earns the TradingView move (Noah, 2026-08-17): change the name without leaving the takeover. Docked,
-            the name is changed on the tile's head. */}
+        {/* Fullscreen earns the TradingView move: change the name without leaving the takeover. Docked, the name
+            is changed on the tile's head. */}
         {full && pickTicker && (
           <>
             <span className="inline-flex items-center gap-2">
               <TickerQuickPick ticker={ctx.ticker} onPick={pickTicker} />
               {/* TV's "+" beside the symbol capsule — compare symbols */}
               <CompareControl current={ctx.ticker} compares={compares} onAdd={addCompare} onRemove={removeCompare} />
-              {/* The price twins on index names (Noah, 2026-08-18) — the cash index and the futures beside the ETF */}
+              {/* The price twins on index names — the cash index and the futures beside the ETF */}
               {(() => {
                 const fam = twinFamilyFor(ctx.ticker);
                 if (!fam) return null;
@@ -183,7 +181,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
             minimal
             candles
             menuSide="bottom"
-            /* Docked, the menus are the small ones, and every menu stays inside the tile (Noah, 2026-09-13) */
+            /* Docked, the menus are the small ones, and every menu stays inside the tile */
             dense={!full}
             menuBounds={bodyRef}
             spread
@@ -191,8 +189,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
             onTimeframe={tf => set({ tf })}
             overlays={overlays}
             onOverlays={setOverlays}
-            /* The quartet rides ONLY in fullscreen (Noah, 2026-08-23: "remove those sections completely unless... full
-               screen"); the settings themselves persist across modes. */
+            /* The quartet rides ONLY in fullscreen; the settings themselves persist across modes. */
             replay={replay}
             onToggleReplay={full ? () => setReplay(r => !r) : undefined}
             chartStyle={chartStyle}
@@ -200,7 +197,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
             indicators={indicators}
             onIndicators={full ? setIndicators : undefined}
             paneId="pulse:main"
-            /* The Alerts door rides where Indicators does (the alerts rule, 2026-09-11: set in place) */
+            /* The Alerts door rides where Indicators does */
             alertTicker={full ? ctx.ticker : undefined}
             alertSpot={levels.spot}
             /* the door's own focus would hold the resting taskbar up (focus-within) — let it go as the tape takes the screen */
@@ -258,7 +255,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
           </span>
         )}
       </div>
-      {/* THE WAY BACK FROM MODE 3, always on screen at rest-dim — never a screen with nothing on it */}
+      {/* The way back from mode 3, always on screen at rest-dim — never a screen with nothing on it */}
       {superFull && (
         <button
           onClick={() => setSuperFull(false)}
@@ -272,8 +269,8 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
       {/* A COLUMN, so the docked band can take a row of its own beneath the tape. The tape owns the whole window and runs
           under the translucent bar, edge to edge. */}
       <div className="absolute inset-0 flex flex-col">
-        {/* The chart legend (Noah, 2026-08-23, TradingView's grammar): name · interval · the live tick, floating on the
-            tape's top-left just under the taskbar. Facts only. pointer-events-none: the tape pans straight through it. */}
+        {/* The chart legend: name · interval · the live tick, floating on the tape's top-left just under the
+            taskbar. Facts only. pointer-events-none: the tape pans straight through it. */}
         <div className={`absolute left-2 z-10 pointer-events-none select-none flex flex-col gap-1 font-mono ${superFull ? 'top-2' : full ? 'top-12' : 'top-10'}`} data-chart-chrome>
           <div className="flex items-baseline gap-1.5">
             <span className="text-t11 font-semibold text-textPrimary">{ctx.ticker}</span>
@@ -324,8 +321,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
             focusPrice={focus}
             drawing={drawing}
             onExitDraw={() => setDrawing(false)}
-            /* THE RAIL ONLY IN FULLSCREEN (Noah, 2026-09-12: "the live chart on pulse shouldnt even show the toolbar until
-               user decides to enter the full screen size") — no way in while docked, so no rail */
+            /* The rail only in fullscreen — no way in while docked, so no rail */
             onEnterDraw={full ? () => setDrawing(true) : undefined}
             railTopOk={full}
             height={full ? 460 : 180}
@@ -342,7 +338,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
      containing block for position:fixed — an in-place overlay would size itself to the tile. */
   if (full) {
     return createPortal(
-      /* Edge to edge — no padding, no frame, no rounded corners: the chart IS the screen (Noah, 2026-08-23) */
+      /* Edge to edge — no padding, no frame, no rounded corners: the chart IS the screen */
       <div
         className={`fixed inset-0 z-[80] flex flex-col animate-soft-in transition-opacity duration-200 ease-out ${fullClosing ? 'opacity-0' : ''}`}
         /* the script editor's dock takes the right edge while it is open (data/editorDock.ts) */

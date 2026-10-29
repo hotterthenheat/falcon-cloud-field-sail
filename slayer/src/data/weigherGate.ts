@@ -1,7 +1,5 @@
-/*
-  One read of a Weigher contract. The chain, the case, and the curve ask this.
-  A blank greek stays blank. A simulated chain is named, and it is not scored.
-*/
+/* One read of a Weigher contract. The chain, the case, and the curve ask this. A blank greek stays blank. A
+   simulated chain is named, and it is not scored. */
 
 import { blackScholesPrice } from '../core/greeks';
 import { weekdayDte, SPAN_INDEX, strikeSpan, bookBRange, P1_MIN, BID_MIN, SPREAD_MAX, DRIVE, onScanGrid, inLottery, releaseBlocks, QUOTE_MAX_AGE_MS, SEAT_CAP, LOTTERY_ASK_MAX } from './compassParams';

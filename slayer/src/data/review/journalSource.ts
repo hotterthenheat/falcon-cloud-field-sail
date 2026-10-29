@@ -1,7 +1,5 @@
-/*
-  The two journals' one seam: where the trades come from (paper accounts or backtest sessions), where their notes
-  are kept, and what the page's foot says about the prices.
-*/
+/* The two journals' one seam: where the trades come from (paper accounts or backtest sessions), where their notes
+   are kept, and what the page's foot says about the prices. */
 
 import { useMemo } from 'react';
 import { paperRowsOf, rowsOf, type DayNote, type JournalEntry, type JournalRow } from './journal';

@@ -1,7 +1,5 @@
-/*
-  The paper account's clock: New York's wall clock, the trading day, the bell and years to expiry, as pure
-  functions of an instant so the engine can be handed any moment.
-*/
+/* The paper account's clock: New York's wall clock, the trading day, the bell and years to expiry, as pure
+   functions of an instant so the engine can be handed any moment. */
 
 import { isTradingDay, isoDate, sessionsBetween } from '../../core/calendar';
 import { nyClock } from '../../core/nyTime';
@@ -63,7 +61,7 @@ export function nyInstant(date: string, minutes: number): number {
   return at;
 }
 
-/** THE TRADING DAY a moment belongs to: the one that ends after it (17:00 New York is the edge) */
+/** The trading day a moment belongs to: the one that ends after it (17:00 New York is the edge) */
 export function tradingDayOf(ms: number): string {
   const t = nyAt(ms);
   return sessionFrom(t.minutes >= ROLL_MIN ? addDays(t.date, 1) : t.date);

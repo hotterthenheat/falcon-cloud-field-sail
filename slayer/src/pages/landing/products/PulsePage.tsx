@@ -9,8 +9,8 @@ import ProductPage, { Aside, Head, Picture } from './ProductPage';
 
 const SHOTS = '/landing/products/pulse';
 
-/* THE FIVE HOUSE DESKS, in the bar's order, with the desk's own line (desks.ts PRESET_BLURBS — copied, not imported:
-   the desks file brings every tile's code with it, and this page is the landing's chunk) */
+/* The five house desks, in the bar's order, with the desk's own line (desks.ts PRESET_BLURBS — copied, not
+   imported: the desks file brings every tile's code with it, and this page is the landing's chunk) */
 const DESKS: { name: string; file: string; says: string }[] = [
   { name: 'The session', file: 'the-session', says: 'The working desk: the chart, the book as a matrix beside it, where the walls are heading and the key levels beneath.' },
   { name: 'The open', file: 'the-open', says: 'Before the bell and the first hour: the chart, the book across the calendar, the levels, the wire and who reports.' },
@@ -19,7 +19,7 @@ const DESKS: { name: string; file: string; says: string }[] = [
   { name: 'My book', file: 'my-book', says: 'What you hold and watch: positions and watchlist, the chain, the setups that fit the levels and the levels themselves.' },
 ];
 
-/* THE RECORDING'S THREE LINES — what the film shows, in the order it shows it */
+/* The recording's three lines — what the film shows, in the order it shows it */
 const ARRANGE: { word: string; says: string }[] = [
   { word: 'Drag', says: 'Take a tile by its head. The spot it will land on shows in silver, and it drops into the open space when you let go.' },
   { word: 'Size', says: 'Pull any corner. The tile fits what you give it — a chart redraws to the box, a list shows as many rows as fit.' },
@@ -42,7 +42,7 @@ const PulsePage = () => (
     path="/pulse"
     plan="It is in every plan."
   >
-    {/* ── A TILE, UP CLOSE ── */}
+    {/* ── a tile, up close ── */}
     <Aside
       eyebrow="A tile"
       first="A tile holds one thing."
@@ -59,10 +59,10 @@ const PulsePage = () => (
       </p>
     </Aside>
 
-    {/* ── THE ONE RECORDING ── */}
+    {/* ── the one recording ── */}
     <Arrange />
 
-    {/* ── THE LIST OF TILES ── */}
+    {/* ── the list of tiles ── */}
     <Aside
       eyebrow="The list"
       first="Seventeen tiles to pick from."

@@ -9,11 +9,9 @@ import WeigherDesk, { type WeighRequest } from './weigher/WeigherDesk';
 const Weigher = () => {
   const location = useLocation();
 
-  /* Trace's print drilldown jumps here with a name to weigh; the Record's
-     busiest rows with a CONTRACT (name · strike · side · expiry, 2026-09-12).
-     Read ONCE and consumed from history, the Compass pattern — a refresh must
-     not drag the desk back to a name the user has since moved off. The way
-     back (`wayBack`) is the shell's and stays in the state. */
+  /* Trace's print drilldown jumps here with a name to weigh; the Record's busiest rows with a CONTRACT. Read ONCE
+     and consumed from history, the Compass pattern — a refresh must not drag the desk back to a name the user has
+     since moved off. The way back (`wayBack`) is the shell's and stays in the state. */
   const [incoming, setIncoming] = useState<WeighRequest | null>(null);
   useEffect(() => {
     const state = location.state as { weigh?: WeighRequest; wayBack?: string } | null;
@@ -25,9 +23,8 @@ const Weigher = () => {
   }, []);
 
   return (
-    /* No PageHeader at all (Noah, 2026-08-30: "way too much space up top" —
-       the Trace verdict again): the desk's own strip carries the identity,
-       fused onto the same line as the session pill. */
+    /* No PageHeader at all: the desk's own strip carries the identity, fused onto the same line as the session
+       pill. */
     <WeigherDesk incoming={incoming} />
   );
 };

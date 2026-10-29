@@ -1,7 +1,5 @@
-/*
-  Backtest is paused: a replay needs the option quotes that stood each minute, and the app has no source for them
-  yet. The old seeded tape was a random walk, so it is not offered as a past market.
-*/
+/* Backtest is paused: a replay needs the option quotes that stood each minute, and the app has no source for them
+   yet. The old seeded tape was a random walk, so it is not offered as a past market. */
 
 import { History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';

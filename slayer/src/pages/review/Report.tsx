@@ -25,8 +25,9 @@ const FUT_ENDED: Record<FutTrade['how'], string> = { closed: 'Closed by you', ta
 
 const Report = () => {
   const { id } = useParams();
-  /* ONE REPORT, TWO KINDS OF SESSION: the figures are the same (statsOf reads what any closed trade has), the cuts and the
-     columns are each kind's own — an option's by its days to expiry and its delta, a future's by its side and its hour */
+  /* One report, two kinds of session: the figures are the same (statsOf reads what any closed trade has), the cuts
+     and the columns are each kind's own — an option's by its days to expiry and its delta, a future's by its side
+     and its hour */
   const session = useAnySession(id);
   /* the tab carries the session's name, never its id (layout/PageMeta) */
   useEffect(() => {

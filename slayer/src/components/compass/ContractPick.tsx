@@ -1,8 +1,5 @@
-/*
-  The premium chart's capsule. Every contract this name has on the board.
-  The menu is the house popover: portal, Escape, click-away, and it stays
-  on screen. Rows load the first time it opens.
-*/
+/* The premium chart's capsule. Every contract this name has on the board. The menu is the house popover: portal,
+   Escape, click-away, and it stays on screen. Rows load the first time it opens. */
 
 import { useEffect, useState } from 'react';
 import { ChevronDown } from 'lucide-react';

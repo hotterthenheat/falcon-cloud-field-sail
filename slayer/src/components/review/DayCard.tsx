@@ -1,8 +1,6 @@
-/*
-  REVIEW · THE DAY CARD — a labelled card like every other on a line (DropdownSelect's clothes), opening the house
-  calendar (ExpiryPicker's) on the TAPE'S days: a day the tape does not hold cannot be picked, nor one before `min`
-  (the desk's clock only moves forward).
-*/
+/* REVIEW · the day card — a labelled card like every other on a line (DropdownSelect's clothes), opening the house
+   calendar (ExpiryPicker's) on the TAPE'S days: a day the tape does not hold cannot be picked, nor one before
+   `min` (the desk's clock only moves forward). */
 
 import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';

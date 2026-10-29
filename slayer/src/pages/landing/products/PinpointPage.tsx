@@ -44,7 +44,7 @@ const PinpointPage = () => (
       </p>
     </Room>
 
-    {/* ── THE ONE RECORDING ── */}
+    {/* ── the one recording ── */}
     <MapFilm />
 
     <Room eyebrow="Still the Map" first="The day on a clock." second="With how each level has held so far." pictures={<Pair items={[

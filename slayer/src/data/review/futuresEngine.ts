@@ -236,8 +236,8 @@ export function futBookOf(s: FutSession): Book {
   return { positions, trades, realized: cents(realized), feesPaid: cents(feesPaid) };
 }
 
-/** WHAT A NAME HAS BANKED (the chart's RP&L, 2026-09-22): its closed trades, and what its open ones have closed in pieces,
-    fees in — from the fills of the days before `beforeDay` (none: all of them). The day's share is the whole less that. */
+/** What a name has banked: its closed trades, and what its open ones have closed in pieces, fees in — from the
+    fills of the days before `beforeDay` (none: all of them). The day's share is the whole less that. */
 export function futBankedOf(s: FutSession, name: string, beforeDay?: string): number {
   const { positions, trades } = futBookOf({ ...s, fills: s.fills.filter(f => f.symbol === name && (beforeDay == null || f.at.day < beforeDay)) });
   return cents(trades.reduce((x, t) => x + t.pnl, 0) + positions.reduce((x, p) => x + p.banked, 0));
@@ -332,7 +332,7 @@ const resize = (s: FutSession, left: Map<string, number>, at: Moment, why: strin
 /** A stop armed to trail: the points it keeps, and the best price so far */
 const trailFrom = (price: number, ref: number): { trail: number; peak: number } => ({ trail: Math.abs(ref - price), peak: ref });
 
-/** AFTER A WAY OUT FILLS: the ladder is made to fit what is still held (the rules page, "A ladder of ways out") */
+/** After a way out fills: the ladder is made to fit what is still held (the rules page, "A ladder of ways out") */
 function afterExit(s: FutSession, out: FutOrder, price: number, at: Moment): FutSession {
   let next = s;
   if (out.oco) {
@@ -382,17 +382,17 @@ export function futRefusal(s: FutSession, d: FutDraft): string | null {
   const { positions } = futBookOf(s);
   const pos = positions.find(p => p.symbol === d.symbol);
   const buy = d.side === 'buy';
-  /* A STOP WAITS ON THE FAR SIDE OF THE PRICE, whichever way it is used: a sell stop under it (a long's way out, or a
-     short's way in), a buy stop over it — where it already stands past the price it would go at once */
+  /* A stop waits on the far side of the price, whichever way it is used: a sell stop under it (a long's way out,
+     or a short's way in), a buy stop over it — where it already stands past the price it would go at once */
   const against = !!pos && pos.long !== buy;
   if (d.kind === 'stop' && (buy ? d.price! <= last : d.price! >= last)) return against ? `The stop has to be ${buy ? 'over' : 'under'} where it trades — it would go at once` : `A ${buy ? 'buy' : 'sell'} stop waits ${buy ? 'above' : 'under'} the price — it ${buy ? 'buys the break' : 'sells the breakdown'}`;
-  /* AGAINST THE POSITION IT IS A WAY OUT — or, past flat, A REVERSAL: the close, then the rest the other way */
+  /* Against the position it is a way out — or, past flat, A REVERSAL: the close, then the rest the other way */
   let qtyIn = d.qty;
   let freed = 0;
   const reversal = against && d.qty > pos!.qty;
   if (against) {
-    /* a way out AT THE MARKET is never "spoken for" — the ladder gives way (afterExit); one that WAITS has to find contracts
-       nothing else speaks for — every one of them, for a reversal */
+    /* a way out at the market is never "spoken for" — the ladder gives way (afterExit); one that WAITS has to find
+       contracts nothing else speaks for — every one of them, for a reversal */
     const free = pos!.qty - reserved(s, d.symbol);
     if (d.kind !== 'market' && Math.min(d.qty, pos!.qty) > free) return reversal ? 'Those contracts are already spoken for by a working order — a reversal that waits needs every one of them free' : 'Those contracts are already spoken for by a working order';
     if (!reversal) return null;
@@ -440,7 +440,8 @@ function fillNow(s: FutSession, o: FutOrder, price: number, how: FutFillHow, at:
   const prod = futProduct(o.symbol);
   let [id, next] = nextId(s, 'f');
   const { targets, stops } = rungsOf(o.exit ? undefined : o.bracket, o.qty);
-  /* THE PLANNED RISK: where the stops stand on average, by their contracts — and only where they cover every contract */
+  /* The planned risk: where the stops stand on average, by their contracts — and only where they cover every
+     contract */
   const covered = stops.reduce((a, r) => a + r.qty, 0);
   const plannedStop = stops.length && covered === o.qty ? stops.reduce((a, r) => a + r.price * r.qty, 0) / covered : undefined;
   const fill: FutFill = { id, orderId: o.id || null, at, symbol: o.symbol, contract: o.contract, side: o.side, qty: o.qty, price: onTick(prod, price), fee: cents(feeOf(s, o.symbol) * o.qty), how, exit: o.exit, plannedStop, tag: o.tag };
@@ -536,10 +537,9 @@ export function futLadderTake(s: FutSession, symbol: string): Record<'target' | 
   return { target: take('limit'), stop: take('stop') };
 }
 
-/** A target or a stop put on a position already open (on the chart: pulled off its chip). THE FIRST of a kind speaks for every
-    contract the ladder may; A FURTHER PULL ADDS A LEVEL — the contracts no level of that kind covers yet, or else half of the
-    biggest level's. Not taken when the ladder is full, or no level has two contracts to give. A new stop wears the switches
-    its group's stops wear. */
+/** A target or a stop put on a position already open (on the chart: pulled off its chip). THE FIRST of a kind
+    speaks for every contract the ladder may; a further pull adds a level — the contracts no level of that kind
+    covers yet, or else half of the biggest level's. */
 export function futAttach(s: FutSession, symbol: string, kind: 'target' | 'stop', price: number, now: number): FutSession {
   const pos = futBookOf(s).positions.find(p => p.symbol === symbol);
   if (!pos || !(price > 0)) return s;
@@ -624,8 +624,9 @@ function minuteOrders(s: FutSession, at: Moment): FutSession {
       else next = fillNow(next, live, px, pass, at);
     }
   }
-  /* TRAILING STOPS, AFTER THE CHECK: each was tried where it stood, against the whole bar; only now is it moved — by the bar's
-     HIGH for a long, its LOW for a short. A bar cannot say which came first, so the good part is never assumed to have. */
+  /* Trailing stops, after the check: each was tried where it stood, against the whole bar; only now is it moved —
+     by the bar's HIGH for a long, its LOW for a short. A bar cannot say which came first, so the good part is
+     never assumed to have. */
   if (next.orders.some(o => o.status === 'working' && o.trail != null)) {
     next = {
       ...next,

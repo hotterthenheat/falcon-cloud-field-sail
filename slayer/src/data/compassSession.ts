@@ -1,29 +1,6 @@
-/*
-  What each Compass name can actually trade, in New York time.
-  The scan window is not this. A stock tape, an equity option, and an
-  index option are three different clocks.
-
-  Stocks and ETFs, the Theta stock tape: pre-market 04:00–09:30,
-  regular 09:30–16:00, after-hours 16:00–20:00. Every listed name.
-
-  Equity options, everyone else: 09:30–16:00 only. The stock can be
-  printing on either side of that and the option is shut.
-
-  Equity options Cboe extended on 2026-10-19 (the published list):
-  pre-market 07:30–09:25, then a halt, then the regular session.
-  Single names curb 16:00–16:15. The ETFs on that list already run
-  their regular session to 16:15, so they have no second curb.
-
-  Index options SPX, SPXW, XSP, VIX, RUT, RUTW: overnight
-  20:15–09:25, halt to 09:30, regular to 16:15, curb to 17:00,
-  Sunday night through Friday afternoon. The cash index is not
-  that tape. SPX and RUT print 09:30–16:00. VIX prints 03:15–16:15.
-
-  A 0DTE is done when THAT contract stops, not when the scan does.
-  Expiring SPX, SPXW, XSP, RUT, RUTW stop at 16:00. Expiring VIX
-  stops at the 09:30 open. An expiring equity stops at its own
-  option close, 16:00 or 16:15.
-*/
+/* What each Compass name can actually trade, in New York time. The scan window is not this. A stock tape, an
+   equity option, and an index option are three different clocks. Stocks and ETFs, the Theta stock tape: pre-market
+   04:00–09:30, regular 09:30–16:00, after-hours 16:00–20:00. Every listed name. */
 
 import { isTradingDay } from '../core/calendar';
 import { now } from '../core/clock';
@@ -341,7 +318,7 @@ export function resolveDeskSession(ticker: string, minutes: readonly number[] | 
   const root = ticker.toUpperCase();
   if (asked === 'rth' || minutes == null) return { session: asked, asked, held: false, note: null };
   const cashIndex = INDEX.has(root) || root === 'NDX' || root === 'NDXP' || root === 'VIXW';
-  /* A cash index's 16:00–16:15 print is the close, not after hours. SPX's last print on 2026-10-27 was 16:04. */
+  /* A cash index's 16:00–16:15 print is the close, not after hours. SPX's last print was 16:04. */
   const has = minutes.some(m => {
     if (asked === 'overnight') return m >= 20 * 60 || m < 4 * 60;
     if (asked === 'pre') return m >= 4 * 60 && m < 9 * 60 + 30;

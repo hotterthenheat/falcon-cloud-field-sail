@@ -1,7 +1,5 @@
-/*
-  What each day of the period made, as slim bars from a baseline, green up and red down; the pointer lifts a bar
-  and says the day in a card beside it.
-*/
+/* What each day of the period made, as slim bars from a baseline, green up and red down; the pointer lifts a bar
+   and says the day in a card beside it. */
 
 import { useState } from 'react';
 import { dirInk, pct, usdSigned } from './words';
@@ -70,8 +68,8 @@ const JournalDayBars = ({ days, picked, onPick, height }: Props) => {
             const h = d.net === 0 ? 2 : Math.max(3, Math.round((Math.abs(d.net) / (up ? maxUp : maxDown)) * (up ? roomUp : roomDown)));
             const on = d.day === picked;
             const lit = d.day === over;
-            /* THE CARD BESIDE THE BAR, never over it: right of a bar in the left half, left of one in the right half;
-               its head at an up bar's tip, its foot at a down bar's, and never past the plot's top or bottom */
+            /* The card beside the bar, never over it: right of a bar in the left half, left of one in the right
+               half; its head at an up bar's tip, its foot at a down bar's, and never past the plot's top or bottom */
             const side = i < n / 2 ? 'left-full ml-1.5' : 'right-full mr-1.5';
             const tip = up ? base - h : base + 1 + h;
             const cardTop = Math.max(0, Math.min(H - CARD_H, up ? tip - CARD_GAP : tip + CARD_GAP - CARD_H));

@@ -44,7 +44,7 @@ const CompassPage = () => (
       </p>
     </Aside>
 
-    {/* ── THE FOUR CHOICES ── */}
+    {/* ── the four choices ── */}
     <Room
       eyebrow="The four choices"
       first="Four choices at the top."
@@ -62,10 +62,10 @@ const CompassPage = () => (
       </p>
     </Room>
 
-    {/* ── THE ONE RECORDING ── */}
+    {/* ── the one recording ── */}
     <Film />
 
-    {/* ── THE SETUP'S PAGE ── */}
+    {/* ── the setup's page ── */}
     <Aside eyebrow="The setup’s page" first="A setup’s own page." second="The chart, the case and the contract." flip picture={<Picture src={`${SHOTS}/setup`} alt="A setup's own page: the head with the contract, its state and its facts, the chart with the marks beside the card on Why we chose this" ratio="1440 / 1000" />}>
       <p>
         Every setup has an address of its own, so the browser’s Back works and a link lands on it. The head carries the contract in its side’s ink, its state and the expiry, and the facts a trader asks first: the
@@ -95,7 +95,7 @@ const CompassPage = () => (
       </p>
     </Room>
 
-    {/* ── THE CONTRACTS AROUND IT ── */}
+    {/* ── the contracts around it ── */}
     <Aside eyebrow="The contracts around it" first="The contracts around it." second="The strikes beside the setup." flip picture={<Picture src={`${SHOTS}/drivers`} alt="The contracts around the setup: the heaviest strikes on the same name as rows, the setup's own row selected, with each one's role, gamma, volume against open interest, distance from spot and exposure" ratio="1400 / 556" />}>
       <p>
         The strikes on the same name that carry the most weight sit under the chart as rows, with the setup’s own row selected: each one’s role, its gamma, its volume against open interest, how far it sits from spot,

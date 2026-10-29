@@ -21,10 +21,9 @@ export const PAPER_FUTURES: PaperFutProduct[] = [
 ];
 const BY_SYMBOL = new Map(PAPER_FUTURES.map(p => [p.symbol, p]));
 
-/* THE INDEXES (2026-09-22 — Noah: "we will have index options so make our price feed carry that"). Each is made from its
-   fund at the ratio its futures use and NO carry — a future trades over its index by its carry, so ES less SPX is ES's 12
-   points, as it should be. Their options are listed the way the funds' are (dailies, weeklies, monthlies) on the index's
-   own strike spacing, and settle in cash at the bell. */
+/* THE INDEXES. Each is made from its fund at the ratio its futures use and NO carry — a future trades over its
+   index by its carry, so ES less SPX is ES's 12 points, as it should be. Their options are listed the way the
+   funds' are (dailies, weeklies, monthlies) on the index's own strike spacing, and settle in cash at the bell. */
 export interface PaperIndex {
   symbol: string;
   name: string;

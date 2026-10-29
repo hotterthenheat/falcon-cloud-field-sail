@@ -1,33 +1,13 @@
 /*
-  SLAYER TERMINAL - THE DOOR OUT FOR GOOD (supabase/functions/account-delete)
-
-  Settings › Account › Delete account (Noah, 2026-10-10: "build the delete account door"). The privacy page promises
-  it and the terms say it is done from Settings; until now it was a mail to us.
-
-  What it does, in order, for the signed-in person only:
-    1. checks the confirmation — the request carries the email they typed, and it must be theirs;
-    2. refuses to delete the last owner (someone else must be made an owner first — the People room);
-    3. ends the billing: the Stripe customer is deleted, which cancels any subscription at once (no refund of the
-       rest of the period — the terms say so); the invoices stay in Stripe's books as the law asks. If Stripe cannot
-       do it, NOTHING is deleted and the person is told to try again — a plan must never outlive its account;
-    4. deletes the auth user; the database cascades the profile, the carried stores (user_state) and the log rows
-       about them (audit_log.subject).
-
-  Secrets: STRIPE_SECRET_KEY (the Supabase dashboard; billing may be off on a build, then step 3 is skipped). The
-  request carries the person's JWT (verify_jwt on). The service-role key is the runtime's own, never the browser's.
+  account-delete: Settings > Account > Delete account, for the signed-in person only.
+    1. the typed email must be the account's;  2. the last owner cannot leave;
+    3. the Stripe customer is deleted (cancelling any subscription); if Stripe fails, nothing is deleted;
+    4. the auth user is deleted, and the database cascades the profile, user_state and audit rows.
+  Secret: STRIPE_SECRET_KEY (step 3 is skipped without it). The gateway checks the JWT (verify_jwt on).
 */
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import Stripe from 'npm:stripe@17';
 import { createClient } from 'npm:@supabase/supabase-js@2';
-
-let client: Stripe | null = null;
-const stripe = (): Stripe => (client ??= new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, { httpClient: Stripe.createFetchHttpClient() }));
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
+import { CORS, admin as adminClient, json, serve, stripe } from '../_shared/http.ts';
 
 const handle = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -48,7 +28,7 @@ const handle = async (req: Request): Promise<Response> => {
   }
   if (!user.email || typed.trim().toLowerCase() !== user.email.toLowerCase()) return json({ error: 'Type the account’s email exactly to confirm.' }, 400);
 
-  const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  const admin = adminClient();
   const { data: row, error: rowError } = await admin.from('profiles').select('role,stripe_customer_id').eq('id', user.id).maybeSingle();
   if (rowError) return json({ error: `Could not read the account: ${rowError.message}` }, 500);
 
@@ -84,13 +64,4 @@ const handle = async (req: Request): Promise<Response> => {
   return json({ deleted: true });
 };
 
-/* a throw above would leave the runtime's bare 500 with no CORS headers — unreadable to the browser; caught, said plainly */
-Deno.serve(async (req: Request) => {
-  try {
-    return await handle(req);
-  } catch (e) {
-    console.error('account-delete', (e as Error)?.message ?? e);
-    const m = (e as Error)?.message ?? '';
-    return json({ error: m ? `Deleting hit a snag: ${m}` : 'Deleting hit a snag.' }, 500);
-  }
-});
+serve('account-delete', handle, 'Deleting');

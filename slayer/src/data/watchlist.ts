@@ -1,9 +1,6 @@
-/*
-  The watched contracts, kept on this machine (`slayer_watchlist_v2`) and carried by the account when signed in
-  (data/sync.ts). A row is marked at its live vendor quote (weigherChain): the mid of a two-sided NBBO, else the last
-  print; with no quote yet the mark is blank, never a model price. Returns are in dollars (×100 × size) and in R,
-  where 1R is the cost when added.
-*/
+/* The watched contracts, kept on this machine (`slayer_watchlist_v2`) and carried by the account when signed in
+   (data/sync.ts). A row is marked at its live vendor quote (weigherChain): the mid of a two-sided NBBO, else the
+   last print; with no quote yet the mark is blank, never a model price. */
 
 import { useSyncExternalStore } from 'react';
 import { isoDate, sessionsBetween, today } from '../core/calendar';
@@ -14,7 +11,7 @@ import { ensureMarks, liveSpotOf, peekMark, subscribeMarks } from './weigherChai
 import type { OptionRight } from '../types/compass';
 import type { WatchRequest, WatchedContract } from '../types/watchlist';
 
-/** v2 (2026-09-14): the store's key moved once so the desk opened on a clean list for the walk (Noah: "refresh my entire watchlist") */
+/** v2: the store's key moved once so the desk opened on a clean list for the walk */
 export const WATCHLIST_KEY = 'slayer_watchlist_v2';
 
 /* ---- storage ------------------------------------------------------------------- */
@@ -232,11 +229,9 @@ export function setWatchedSize(id: string, size: number): void {
   commit(list.map(x => (x.id === id ? { ...x, size: Math.max(1, Math.round(size)) } : x)));
 }
 
-/**
- * The housekeeping a page runs on its beat: today's close on every open row (one entry per session, the last live
- * mark of the day), and the bell — a contract past its expiry settles at intrinsic against the live price. A row
- * with no live mark or price yet is left as it is.
- */
+/** The housekeeping a page runs on its beat: today's close on every open row (one entry per session, the last live
+    mark of the day), and the bell — a contract past its expiry settles at intrinsic against the live price. A row
+    with no live mark or price yet is left as it is. */
 export function tickWatchlist(): void {
   const todayKey = isoDate(today());
   let changed = false;

@@ -1,7 +1,5 @@
-/*
-  How a position will be left: one to three targets and one or two stops with the contracts shared between them,
-  breakeven after the first target, and a trailing stop. The count at each level can be typed.
-*/
+/* How a position will be left: one to three targets and one or two stops with the contracts shared between them,
+   breakeven after the first target, and a trailing stop. The count at each level can be typed. */
 
 import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { Check } from 'lucide-react';
@@ -103,7 +101,8 @@ const LadderFields = ({ qty, value, onChange, target, stop, trail, costWords, le
   );
   return (
     <div className="flex flex-col gap-2.5" data-ticket-ladder={`${nT}/${nS}`}>
-      {/* HOW MANY LEVELS, first — then a field a level, sharing one row (five at the most: three targets, two stops) */}
+      {/* How many levels, first — then a field a level, sharing one row (five at the most: three targets, two
+          stops) */}
       <div className={`flex gap-x-3 gap-y-2 flex-wrap ${head ? 'items-center' : 'items-end'}`}>
         {head}
         {lead}

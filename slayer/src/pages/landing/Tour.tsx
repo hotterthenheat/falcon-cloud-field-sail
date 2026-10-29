@@ -29,8 +29,8 @@ export interface TourStep {
   kind: string;
   name: string;
   lead: string;
-  /** THE LEAD BY THE GROUND THE WORDS STAND ON (2026-09-22, Noah: "shouldn't the wording be 'Dark mode too' if the user
-      is coming from a light mode") — the themes room stands on the ground the page turned INTO, so it names that one */
+  /** The lead by the ground the words stand on — the themes room stands on the ground the page turned INTO, so it
+      names that one */
   leadFor?: Record<Ground, string>;
   rest: string;
   /** The page the window shows while this step is on screen */
@@ -53,7 +53,7 @@ interface Props {
   onOpen: (path: string) => void;
   /** The ground under the floating bar changed */
   onBarGround: (g: Ground) => void;
-  /** THE TURN BACK's two lines: the first stands on the far ground, the second on the ground the page opened on */
+  /** The turn back's two lines: the first stands on the far ground, the second on the ground the page opened on */
   endSays: [string, string];
 }
 
@@ -64,14 +64,8 @@ const PIN_TOP_SMALL = 68;
 const EDGE = 24;
 /** The window's own chrome, which keeps its size while the terminal scales: the bar and the two borders */
 const CHROME = 42;
-/* THE PAGES PLAY THEMSELVES (2026-10-03 — Noah, of his partner's landing: "this loading thing on the landing pages that
-   changes from one page to another after a certain period. implement that as well"): while a tool with several pages
-   is the one on screen, the window turns to the tool's next page every DWELL, a silver line filling under the page it
-   is on. ONE RULE FOR THE PAUSE (Noah, the same night: "if im hovering on the actual recording then pause the loading,
-   if the mouse is ANYWHERE else then continue it, there should be no delays, jitters nor lags at all"): the pointer over
-   the window pauses the clock, the pointer anywhere else runs it — nothing else holds it, no grace after a move, no
-   hold on a pick (a pick turns the window to that page and starts its count again). Only while the window is on
-   screen and the tab in front; where less motion is asked for it changes only when asked, at once. */
+/* The pages play themselves: while a tool with several pages is the one on screen, the window turns to the tool's
+   next page every DWELL, a silver line filling under the page it is on. */
 const DWELL = 6500;
 
 const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
@@ -108,7 +102,7 @@ const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
 
   const { scrollY } = useScroll();
 
-  /* WHICH GROUND THE PAGE IS ON: the far one between the two turns, home before the first and after the second */
+  /* Which ground the page is on: the far one between the two turns, home before the first and after the second */
   const place = useCallback(
     (y: number) => {
       const g = geo.current;
@@ -152,9 +146,9 @@ const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
     /* this rect is read for its SIZE only: the crossing (below) moves the cell, so where it stands is taken from the
        grid's own layout, never from a rect a transform has shifted */
     const cr = c.getBoundingClientRect();
-    /* THE WINDOW TAKES THE PICTURE'S SHAPE: as wide as the cell, its screen SHOT_ASPECT — and where that would be taller
-       than the cell, as tall as the cell and narrower, kept against the right edge. A picture is never cropped or
-       stretched on a desk. In one column the cell is a fixed band and the picture fills it from its top left. */
+    /* The window takes the picture's shape: as wide as the cell, its screen SHOT_ASPECT — and where that would be
+       taller than the cell, as tall as the cell and narrower, kept against the right edge. A picture is never
+       cropped or stretched on a desk. */
     const b0 = box.current;
     if (b0) {
       if (small) b0.style.width = b0.style.height = '';
@@ -170,13 +164,8 @@ const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
       }
     }
 
-    /* THE CROSSING (Noah, 2026-10-17: "the videos are on the right and the words are on the left so on the change it
-       should be the other way around"): on the far ground the window stands at the page's LEFT edge and the words in
-       the RIGHT column — the mirror of the way in. Both travels are measured from the grid's own layout (the words'
-       column width, the gutters, the box's width), never typed: the window's box lands EDGE from the left edge, the
-       words' column against the grid's right padding, and the gap between them is the gap they had. CSS glides both
-       on `data-tour-turned` (index.css) in the same moment the terminal turns its theme — while the turn's two lines
-       are off the screen, one gone above and one not yet up from below. Nothing moves in one column. */
+    /* THE CROSSING: on the far ground the window stands at the page's LEFT edge and the words in the RIGHT column
+       — the mirror of the way in. */
     const wd = words.current;
     if (wd && !small && b0) {
       const gap = parseFloat(cs.columnGap) || 0;
@@ -225,8 +214,8 @@ const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
     };
   }, [measure]);
 
-  /* WHOSE WORDS ARE ON SCREEN: the step crossing one line — half way down a desk, lower on a phone,
-     where the window holds the top half. One observer; it fires on a crossing, never on scroll. */
+  /* Whose words are on screen: the step crossing one line — half way down a desk, lower on a phone, where the
+     window holds the top half. One observer; it fires on a crossing, never on scroll. */
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined') return;
     const line = small ? 78 : 50;
@@ -365,8 +354,8 @@ const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
                 data-on={on || undefined}
                 className="text-textPrimary"
               >
-                {/* THE TURN'S QUIET STRETCH: the ground changes and the terminal follows. Two lines, each on
-                    the end of the gradient it names, so neither is ever read over the steel in the middle. */}
+                {/* The turn's quiet stretch: the ground changes and the terminal follows. Two lines, each on the
+                    end of the gradient it names, so neither is ever read over the steel in the middle. */}
                 {s.turn && (
                   <div ref={band} className="relative h-[96svh] lg:h-[135svh]" data-tour-band>
                     {s.turnSays && (
@@ -421,7 +410,7 @@ const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
                                   <span aria-hidden="true" className={`absolute left-0 top-3 bottom-3 w-[2px] rounded-full transition-colors ${here ? 'bg-silver' : 'bg-transparent'}`} />
                                   {body}
                                   <ArrowRight aria-hidden="true" className={`absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 transition ${here ? 'text-silver' : 'text-textMuted opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0'}`} />
-                                  {/* THE LINE FILLING: how long until the next page */}
+                                  {/* The line filling: how long until the next page */}
                                   {on && here && cycles && (
                                     <span className="absolute left-0 right-0 -bottom-px h-[2px] bg-ink/[0.08] overflow-hidden" aria-hidden="true" data-tour-dwell>
                                       <span ref={bar} className="block h-full bg-silver origin-left" style={{ transform: 'scaleX(0)' }} />
@@ -451,7 +440,8 @@ const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
               </article>
             );
           })}
-          {/* THE TURN BACK: the ground goes home and the terminal with it. The tour's last words stand here, one line on each ground. */}
+          {/* The turn back: the ground goes home and the terminal with it. The tour's last words stand here, one
+              line on each ground. */}
           <div ref={bandBack} className="relative h-[84svh] lg:h-[112svh]" data-tour-band="back">
             <p data-theme={b} className="absolute inset-x-0 top-[6%] max-w-[11ch] text-textPrimary font-light text-t38 lg:text-t52 leading-[1.02] tracking-[-0.04em]">
               {endSays[0]}

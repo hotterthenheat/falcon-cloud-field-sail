@@ -1,7 +1,6 @@
-/*
-  An alert firing, or a paper fill, shown wherever the reader is: one chip at the window's top right for five
-  seconds; a click opens the alerts drawer. It is the only voice for a firing, so a chart of the name does not repeat it.
-*/
+/* An alert firing, or a paper fill, shown wherever the reader is: one chip at the window's top right for five
+   seconds; a click opens the alerts drawer. It is the only voice for a firing, so a chart of the name does not
+   repeat it. */
 
 import { UndoToasts } from '../ui/undo';
 import { useEffect, useRef, useState } from 'react';
@@ -62,8 +61,8 @@ const AlertToasts = () => {
     return () => window.clearTimeout(id);
   });
 
-  /* THE COLUMN STAYS MOUNTED, EMPTY OR NOT (2026-10-13): the undo chips (ui/undo.tsx) stand at its top whatever the
-     alerts are doing, and a polite live region has to be in the page before what it says arrives */
+  /* The column stays mounted, empty or not: the undo chips (ui/undo.tsx) stand at its top whatever the alerts are
+     doing, and a polite live region has to be in the page before what it says arrives */
   return (
     <div className="fixed top-3 right-3 z-[86] flex flex-col items-end gap-1.5 pointer-events-none" aria-live="polite" aria-label="Notices" data-alert-toasts>
       <UndoToasts />

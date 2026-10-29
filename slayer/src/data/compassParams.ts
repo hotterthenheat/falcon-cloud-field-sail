@@ -1,7 +1,5 @@
-/*
-  Compass parameters, in one place. The entry and runner trees ship in public/models;
-  scoring stays shut until those files hash to the values below.
-*/
+/* Compass parameters, in one place. The entry and runner trees ship in public/models; scoring stays shut until
+   those files hash to the values below. */
 
 export const UNIVERSE_SHA = 'eb0ed706ae8dd5d5442a99d012db5077e6f9ba1ad0ef10a551af36b87840ef7e';
 export const UNIVERSE_N = 458;
@@ -265,10 +263,8 @@ export function stopAfter(entryAsk: number, peak: number, runner: boolean): numb
   return stop;
 }
 
-/**
- * Each minute, in order. Stop first, then a non-runner at 1.50 × the ask.
- * There is no sale because a clock hit 55 minutes.
- */
+/** Each minute, in order. Stop first, then a non-runner at 1.50 × the ask. There is no sale because a clock hit 55
+    minutes. */
 export function treeExit(entryAsk: number, bid: number, peak: number, runner: boolean): { why: string; px: number } | null {
   if (!(entryAsk > 0) || !(bid >= 0) || !Number.isFinite(bid)) return null;
   const stop = stopAfter(entryAsk, peak, runner);
@@ -318,11 +314,8 @@ export function releaseBlocks(title: string, releaseMin: number, nowMin: number)
   return nowMin >= releaseMin - 15 && nowMin <= releaseMin + 15;
 }
 
-/**
- * Unchanged spot. Dollar theta is the theta column times 365.
- * Price decay over dt years is |theta year| × dt.
- * Reject when that decay reaches the 0.5322 haircut before the flat.
- */
+/** Unchanged spot. Dollar theta is the theta column times 365. Price decay over dt years is |theta year| × dt.
+    Reject when that decay reaches the 0.5322 haircut before the flat. */
 export function thetaBurns(thetaPerDay: number, gamma: number, ask: number, dtYears: number): boolean {
   if (!(ask > 0) || !(dtYears > 0) || !(gamma > 0) || !Number.isFinite(thetaPerDay)) return false;
   const thetaYear = thetaPerDay * 365;

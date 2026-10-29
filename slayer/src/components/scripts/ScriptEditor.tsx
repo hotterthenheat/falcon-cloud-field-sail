@@ -1,7 +1,5 @@
-/*
-  Where a script is written: its name as a menu (save, copy, rename, versions, new), the code, and a status line
-  that compiles against the chart's bars.
-*/
+/* Where a script is written: its name as a menu (save, copy, rename, versions, new), the code, and a status line
+   that compiles against the chart's bars. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';

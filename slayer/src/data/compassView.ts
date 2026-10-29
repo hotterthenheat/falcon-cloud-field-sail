@@ -1,7 +1,5 @@
-/*
-  What the Compass board was set to (tenor, kind, layout, name, selected card), kept across the trip to a setup's
-  page and back.
-*/
+/* What the Compass board was set to (tenor, kind, layout, name, selected card), kept across the trip to a setup's
+   page and back. */
 
 import { useSyncExternalStore } from 'react';
 import type { OptionRight, ScannerKey, SleeveKey } from '../types/compass';
@@ -15,9 +13,8 @@ export interface CompassView {
   /** null = every name */
   tickerFilter: string | null;
   selectedId: string | null;
-  /** THE CONTRACT THE READER IS INSIDE (2026-09-13): the last setup page landed on — the sidebar's
-      "Inside the contract" points at it and keeps it across the board and the Tracker until another
-      contract takes its place (Noah: "it should stay there until another con takes its place") */
+  /** The contract the reader is inside: the last setup page landed on — the sidebar's "Inside the contract" points
+      at it and keeps it across the board and the Tracker until another contract takes its place */
   chosenId: string | null;
   /** Board side. BOTH is the whole book. Call or Put narrows it. */
   right: OptionRight | 'BOTH';

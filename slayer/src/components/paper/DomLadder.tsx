@@ -1,7 +1,5 @@
-/*
-  A future's price ladder, a tick a row: working orders on their side of their price, a press places the quick size
-  (a limit below the price, a stop above), and the session's volume per price as a bar.
-*/
+/* A future's price ladder, a tick a row: working orders on their side of their price, a press places the quick
+   size (a limit below the price, a stop above), and the session's volume per price as a bar. */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Crosshair, X } from 'lucide-react';
@@ -72,7 +70,7 @@ const DomLadder = ({ symbol, last, bars, position, orders, q, locked, onBuyAt, o
     return m;
   }, [orders, p]);
 
-  /* THE WINDOW FOLLOWS THE PRICE — until the reader scrolls it; the door brings it back */
+  /* The window follows the price — until the reader scrolls it; the door brings it back */
   const box = useRef<HTMLDivElement | null>(null);
   const [follow, setFollow] = useState(true);
   const programmatic = useRef(false);
@@ -95,8 +93,8 @@ const DomLadder = ({ symbol, last, bars, position, orders, q, locked, onBuyAt, o
   };
   const pnlAt = (px: number) => (position ? (px - position.avg) * (position.long ? 1 : -1) * p.pointValue * position.qty : null);
   const cell = 'h-full inline-flex items-center justify-center font-mono text-t10 tnum';
-  /* A SIDE'S CELL is a press of its own — a div that answers as a button (the keyboard too), since the reader's orders on it
-     are buttons and a button cannot hold a button */
+  /* A side's cell is a press of its own — a div that answers as a button (the keyboard too), since the reader's
+     orders on it are buttons and a button cannot hold a button */
   const pressable = (onPress: () => void) => ({
     role: 'button' as const,
     tabIndex: locked ? -1 : 0,
@@ -203,8 +201,8 @@ const DomLadder = ({ symbol, last, bars, position, orders, q, locked, onBuyAt, o
   );
 };
 
-/** THE LADDER BESIDE A FUTURE'S CHART: its head says whose it is and carries the X; Esc anywhere in it closes it too —
-    kept to the ladder, so a drawing, a menu or the full screen keep their own Esc */
+/** The ladder beside a future's chart: its head says whose it is and carries the X; Esc anywhere in it closes it
+    too — kept to the ladder, so a drawing, a menu or the full screen keep their own Esc */
 export const LadderDock = ({ contract, onClose, children }: { contract: string; onClose: () => void; children: ReactNode }) => (
   <div
     className="hidden lg:flex w-[340px] shrink-0 flex-col min-h-0 border-l border-borderSubtle bg-panel animate-soft-in"

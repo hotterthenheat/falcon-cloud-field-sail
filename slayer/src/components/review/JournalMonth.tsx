@@ -1,7 +1,5 @@
-/*
-  The journal's month as cards, Sunday to Saturday with a column for each week's total; a day that closed something
-  wears what it made in its ink.
-*/
+/* The journal's month as cards, Sunday to Saturday with a column for each week's total; a day that closed
+   something wears what it made in its ink. */
 
 import { ChevronLeft, ChevronRight, PenLine } from 'lucide-react';
 import { card } from './DeskShell';
@@ -10,16 +8,8 @@ import { monthWeeks, monthWords, shiftMonth, type DayTotal } from '../../data/re
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-/* THE CARDS KEEP A SHAPE (2026-10-03 — Noah, with his partner's month beside ours: "in box sizing what is the difference
-   between my cards and my partners cards, i think his look better"): ours stretched to fill the box, 177 wide by 82 tall at
-   1905 — a slab beside his 150 by 82. A day is 11:6 whatever the width now (wider screen, taller card), the cards sit 8px
-   apart, and the number stands top-left on EVERY day — a button centres a lone line, so the empty days' numbers sat
-   mid-card while the full days' sat at the top.
-
-   THE SHAPE IS THE ROW'S, NOT THE CARD'S. CSS aspect-ratio on a grid item is a trap both ways: a height floor on it becomes
-   a width floor (the grid overflowed at 1440), and a stretched height becomes a width (the same). So the board is a size
-   container and each week row's height is computed from the board's width — a day's width (eight columns, seven 8px gaps,
-   the week column 0.85 of a day) times 6/11 — never under 80px, where three lines must fit on a narrow day. */
+/* The cards keep a shape: ours stretched to fill the box, 177 wide by 82 tall at 1905 — a slab beside his 150 by
+   82. */
 const GRID = 'grid grid-cols-[repeat(7,minmax(0,1fr))_minmax(84px,0.85fr)] gap-2';
 const ROWS = '[grid-auto-rows:max(80px,calc((100cqw_-_56px)/7.85*0.5455))]';
 const door = 'inline-flex items-center justify-center w-7 h-7 rounded-md border border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors';

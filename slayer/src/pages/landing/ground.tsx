@@ -38,7 +38,7 @@ export const useGround = (): GroundValue => {
   if (!v) throw new Error('useGround outside the landing');
   return v;
 };
-/** The ground of the block a component stands in (see THE FOIL TRAP) */
+/** The ground of the block a component stands in (see the foil trap) */
 export const useBlockGround = (): Ground => useContext(BlockCtx);
 
 export const GroundProvider = ({ children }: { children: ReactNode }) => {
@@ -69,12 +69,11 @@ export const GroundProvider = ({ children }: { children: ReactNode }) => {
       setA(next);
     };
     const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
-    /* THE TURN IS A CUT WHILE A FILM ROLLS (2026-10-03 — Noah: "when i click on the light and dark mode toggle it doesnt
-       change instantly … sometimes the button is unresponsive"): the View Transition captures the page twice, and each
-       capture rasterises every playing film — measured, the page stood frozen ~210ms with the wall's eight films up
-       (the capture before the change 33ms, React's own update 40ms, the rest the second capture and the crossfade's first
-       frame), and 3ms with no transition at all. So the crossfade of 2026-09-19 stays for a page of stills — less motion,
-       saved data, no films — and a page with a film rolling simply switches, at once. */
+    /* The turn is a cut while a film rolls: the View Transition captures the page twice, and each capture
+       rasterises every playing film — measured, the page stood frozen ~210ms with the wall's eight films up (the
+       capture before the change 33ms, React's own update 40ms, the rest the second capture and the crossfade's
+       first frame), and 3ms with no transition at all. So the crossfade of stays for a page of stills — less
+       motion, saved data, no films — and a page with a film rolling simply switches, at once. */
     const rolling = Array.from(document.querySelectorAll('video')).some(v => !v.paused && v.readyState >= 2);
     if (typeof doc.startViewTransition === 'function' && !calm?.matches && !rolling) doc.startViewTransition(() => flushSync(run));
     else run();

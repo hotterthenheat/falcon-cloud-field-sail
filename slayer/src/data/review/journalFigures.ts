@@ -5,7 +5,7 @@
 import { directionOf, entryOf, instantOf, nameOf, type JournalRow } from './journal';
 import { nyAt } from '../paper/clock';
 
-/** THE CALENDAR DAY a trade closed on, New York's — what the journal's calendar files it under (see the head note) */
+/** The calendar day a trade closed on, New York's — what the journal's calendar files it under (see the head note) */
 export const calendarDayOf = (r: JournalRow): string => nyAt(instantOf(r, r.t.closed) * 1000).date;
 
 const cents = (v: number) => Math.round(v * 100) / 100;
@@ -116,7 +116,7 @@ export interface RunPoint {
   drop: number;
   row: JournalRow | null;
 }
-/** THE RUNNING TOTAL: a point a trade in the order they closed, starting from nothing a minute before the first */
+/** The running total: a point a trade in the order they closed, starting from nothing a minute before the first */
 export function runningOf(rows: JournalRow[]): RunPoint[] {
   let total = 0;
   let best = 0;
@@ -177,7 +177,7 @@ const groupBy = (rows: JournalRow[], keyOf: (r: JournalRow) => string): Map<stri
   return m;
 };
 const hh = (h: number) => `${String(h).padStart(2, '0')}:00`;
-/** BY THE HOUR IT WAS OPENED, on New York's clock — the hours that have a trade, in the order of the day */
+/** By the hour it was opened, on New York's clock — the hours that have a trade, in the order of the day */
 export function byHour(rows: JournalRow[]): Lane[] {
   const by = groupBy(rows, r => String(Math.floor(nyAt(instantOf(r, r.t.opened) * 1000).minutes / 60)));
   return [...by.entries()].map(([h, list]) => laneOf(h, hh(Number(h)), `Opened ${hh(Number(h))}–${hh((Number(h) + 1) % 24)} New York`, list)).sort((a, b) => Number(a.key) - Number(b.key));
@@ -202,7 +202,8 @@ export function byName(rows: JournalRow[]): Lane[] {
   const by = groupBy(rows, nameOf);
   return [...by.entries()].map(([name, list]) => laneOf(name, name, `Traded in ${name}`, list)).sort((a, b) => b.n - a.n || Math.abs(b.net) - Math.abs(a.net) || (a.key < b.key ? -1 : 1));
 }
-/** LONG OR SHORT — a call is a way up and a put a way down, as the journal's cut reads them (journal.ts directionOf) */
+/** Long or short — a call is a way up and a put a way down, as the journal's cut reads them (journal.ts
+    directionOf) */
 export function bySide(rows: JournalRow[]): Lane[] {
   const by = groupBy(rows, directionOf);
   return [laneOf('up', 'Long · calls', 'Needed it to go up — a long future, a call', by.get('up') ?? []), laneOf('down', 'Short · puts', 'Needed it to go down — a short future, a put', by.get('down') ?? [])];
@@ -222,8 +223,9 @@ export function roundStep(x: number): number {
   return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;
 }
 const dollars = (v: number) => `$${Math.round(v).toLocaleString('en-US')}`;
-/** THE SIZE OF THE RESULT — six buckets cut at a round step near a third of the biggest result: how often a trade is a big one,
-    each way. Wins on top, as a ladder reads. A trade that made nothing counts with the losses, as the stats count it. */
+/** The size of the result — six buckets cut at a round step near a third of the biggest result: how often a trade
+    is a big one, each way. Wins on top, as a ladder reads. A trade that made nothing counts with the losses, as the
+    stats count it. */
 export function bySize(rows: JournalRow[]): { lanes: Lane[]; step: number } {
   const step = roundStep(Math.max(0, ...rows.map(r => Math.abs(r.t.pnl))));
   const s = step;

@@ -197,6 +197,11 @@ class TrailsPaneRenderer {
   }
 
   draw(target: DrawTarget): void {
+    this.drawField(target);
+    this.source.afterDraw?.();
+  }
+
+  private drawField(target: DrawTarget): void {
     const src = this.source;
     /* the frame's chips, told to the key levels' ladder (drawn after this, at `top`) — none until the labels pass writes them */
     src.chips = [];
@@ -570,7 +575,7 @@ class TrailsPaneRenderer {
       if (!scrolled && this.bmp) ctx.drawImage(this.bmp, 0, 0);
 
       // ---- THE HOVER, over the bitmap (never in it): the veil, the bead again at full, its ring --------------
-      const hover = src.hover;
+      const hover = src.hoverOverlay ? null : src.hover;
       if (hover && hover.ci >= first && hover.ci < last) {
         const col = src.columnAt(hover.ci);
         const b = col.all.get(hover.strike);
@@ -764,13 +769,51 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
       return;
     }
     this.hover = hit;
-    this.requestUpdate?.();
+    if (this.hoverOverlay) this.afterDraw?.();
+    else this.requestUpdate?.();
   }
 
   setRingInk(rgb: readonly [number, number, number]): void {
     if (this.ringInk[0] === rgb[0] && this.ringInk[1] === rgb[1] && this.ringInk[2] === rgb[2]) return;
     this.ringInk = rgb;
-    if (this.hover) this.requestUpdate?.();
+    if (this.hover) {
+      if (this.hoverOverlay) this.afterDraw?.();
+      else this.requestUpdate?.();
+    }
+  }
+
+  /*
+    THE HOVER ON ITS OWN CANVAS. Drawn into the pane, a new bead under the pointer asked the chart for a full repaint —
+    candles, volume and every layer — several times a second on a sweep. With `hoverOverlay` set the host draws the
+    bead and its ring on a canvas over the pane from `hoverShape()` (on every hover change and after every pane draw,
+    `afterDraw`), and the pane is left alone. The geometry is the renderer's own.
+  */
+  hoverOverlay = false;
+  afterDraw: (() => void) | null = null;
+  hoverShape(): { x: number; y: number; rx: number; ry: number; fill: string; ring: string } | null {
+    const hover = this.hover;
+    if (!hover || !this.enabled || !this.chart || !this.series || hover.ci < 0 || hover.ci >= this.snapshots.length) return null;
+    const ts = this.chart.timeScale();
+    const barSpacing = ts.options().barSpacing ?? 6;
+    const barSec = this.barSec;
+    const slots = Math.max(1, Math.round(barSec / Math.max(1, this.stepSec)));
+    const stride = Math.max(1, Math.ceil(3 / (barSpacing / slots)));
+    const drawnSlots = Math.max(1, Math.ceil(slots / stride));
+    const col = this.columnAt(hover.ci);
+    const b = col.all.get(hover.strike);
+    const bucket = Math.floor(col.time / barSec) * barSec;
+    const slot = slots > 1 ? Math.floor(((col.time - bucket) / barSec) * slots) : 0;
+    const xBar = ts.timeToCoordinate(bucket as Time);
+    const y = this.series.priceToCoordinate(hover.strike);
+    if (!b || xBar === null || y === null || slot % stride !== 0) return null;
+    const x = slots > 1 ? xBar - barSpacing * 0.5 + ((slot / stride + 0.5) / drawnSlots) * barSpacing : xBar;
+    const focus = this.focusStrike;
+    const aMax = Math.max(3, Math.min(barSpacing * 0.6, 9));
+    const ry = beadHalfHeight(Math.max(focus != null && b.strike === focus ? 0.08 : 0, b.t), 0.45, aMax);
+    const isSupreme = this.supremeStrike != null && b.strike === this.supremeStrike;
+    const rgb = focus != null && b.strike === focus ? INK_RGB[this.focusInk] : isSupreme ? SUPREME_RGB : b.put ? PUT_RGB : CALL_RGB;
+    const r = this.ringInk;
+    return { x, y, rx: (barSpacing / drawnSlots) * 0.54, ry: Math.max(ry, 1.5), fill: `rgba(${rgb[0]},${rgb[1]},${rgb[2]},1)`, ring: `rgba(${r[0]},${r[1]},${r[2]},0.95)` };
   }
 
   /** The chart's ground, as channels — read off its options and kept until the option's string changes */

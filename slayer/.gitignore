@@ -53,3 +53,22 @@ graphify-out/
 engine/.venv/
 engine/**/__pycache__/
 engine/.pytest_cache/
+
+# QA output and one-off local scripts
+screenshots/
+scripts/_*
+
+# Copies of public/ files; the app fetches public/models and public/config
+/models/
+/config/
+/config.toml
+
+# ThetaData terminal: a vendor download, see docs/theta-terminal.md
+theta/jdk/
+theta/*.jar
+theta/lib/
+theta/cache/
+theta/run/
+theta/.env
+theta/creds.txt
+theta/*.log

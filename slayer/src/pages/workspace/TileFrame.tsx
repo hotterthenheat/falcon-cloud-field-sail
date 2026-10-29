@@ -1,7 +1,5 @@
-/*
-  The frame every Pulse tile wears: one head line that is the drag handle (grip, icon, title, the tile's controls,
-  its name and link, its door and menu), and the body sized to what is left.
-*/
+/* The frame every Pulse tile wears: one head line that is the drag handle (grip, icon, title, the tile's controls,
+   its name and link, its door and menu), and the body sized to what is left. */
 
 import { useCallback, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
@@ -41,9 +39,9 @@ const useTileSize = () => {
   return [ref, size] as const;
 };
 
-/* HOW THE CONTROLS STAND, off the tile's own width (the library's arithmetic — known before paint, so the head never
-   lays out twice): what is left of the line after the title, the chip, the door and the menu is the controls' room; a
-   card's width is estimated off its words in the mono face. */
+/* How the controls stand, off the tile's own width (the library's arithmetic — known before paint, so the head
+   never lays out twice): what is left of the line after the title, the chip, the door and the menu is the
+   controls' room; a card's width is estimated off its words in the mono face. */
 type Standing = 'named' | 'bare' | 'door';
 interface HeadPlan {
   standing: Standing;

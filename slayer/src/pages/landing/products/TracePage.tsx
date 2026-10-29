@@ -49,10 +49,10 @@ const TracePage = () => (
       </p>
     </Aside>
 
-    {/* ── THE ONE RECORDING ── */}
+    {/* ── the one recording ── */}
     <TapeFilm />
 
-    {/* ── THE DARK POOL ── */}
+    {/* ── the dark pool ── */}
     <Room eyebrow="The dark pool" first="Trades done off the exchange." second="Each with its read." pictures={<Pair items={[
       { src: `${SHOTS}/dark-pool`, ratio: '1800 / 1196', name: 'The shelves and the crosses', says: 'The shelves at the top: the prices where the dark dollars rested, each a pivot, a support or a resistance, with how many prints defended it. Under them, every cross with its venue, which shelf it sits on, and the read — accumulation, distribution, rotation, a hedge — with how sure it is.' },
       { src: `${SHOTS}/dark-leaders`, ratio: '1800 / 957', name: 'Where the dark money went', says: 'The market’s dark tape by sector and by name, heaviest first. Press a name and the box above turns to it.' },
@@ -63,7 +63,7 @@ const TracePage = () => (
       </p>
     </Room>
 
-    {/* ── THE BOOK, READ FOUR WAYS ── */}
+    {/* ── the book, read four ways ── */}
     <Room eyebrow="The book" first="The whole day’s flow." second="Read four ways." pictures={<Pair items={[
       { src: `${SHOTS}/screener`, ratio: '1440 / 1000', name: 'The screener', says: 'Every contract that traded today, in one grid a screen tall. The screens are questions — most active, biggest premium, open interest built today — and the cards narrow by side, tenor, volume, premium and money. A row opens the contract’s card.' },
       { src: `${SHOTS}/net-flow`, ratio: '1440 / 1000', name: 'Net flow', says: 'Every name ranked from most bullish to most bearish by net premium — calls bought and puts sold against the reverse — and the picked name through the session on the pane beside it: its own candles, net calls and net puts, cut by money and by clock.' },
@@ -73,7 +73,7 @@ const TracePage = () => (
       <p>The same day book, from four angles. Each one is a question the tape raises, and each row anywhere is a door to the contract’s card.</p>
     </Room>
 
-    {/* ── WHEN, WHY, AND IN WHAT SHAPE ── */}
+    {/* ── when, why, and in what shape ── */}
     <Room eyebrow="When, why, what shape" first="Three more cuts of the tape." second="By the quarter hour, by reason and by structure." pictures={<Pair items={[
       { src: `${SHOTS}/intervals`, ratio: '1800 / 1117', name: 'A quarter hour of the day', says: 'Most contracts dribble all session; a few burst — the whole day in one window, somebody acting all at once. The strip at the top walks the session window by window; the share of the day is the tell.' },
       { src: `${SHOTS}/watchers`, ratio: '1800 / 1117', name: 'The desk watching the tape', says: 'Not your alerts — the desk’s own watchers over the day book, and what they caught, newest first, each with the reason it is in front of you: a sweep against the trend, open interest built from nothing, a print that is the whole day’s volume.' },
@@ -83,7 +83,7 @@ const TracePage = () => (
       <p>Three more ways the room reads the day — by the clock, by the reason, by the shape — and one that reads two names at once.</p>
     </Room>
 
-    {/* ── THE TRACKER, IN A LINE ── */}
+    {/* ── the tracker, in a line ── */}
     <div className="max-w-[72ch]" data-product-tracker>
       <Eyebrow>Under watch</Eyebrow>
       <Head className="mt-5" first="Mark a print." second="And see what it has done since." />

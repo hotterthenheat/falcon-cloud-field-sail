@@ -1,7 +1,5 @@
-/*
-  A Compass contract's own page: the live chart with the entry, the stop and the exits on it, the quote and its
-  greeks, and the call's state as Compass reads it. States, never orders.
-*/
+/* A Compass contract's own page: the live chart with the entry, the stop and the exits on it, the quote and its
+   greeks, and the call's state as Compass reads it. States, never orders. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, Bookmark, ShieldAlert } from 'lucide-react';
@@ -110,14 +108,12 @@ interface CampaignAnalysisProps {
   sleeve: SleeveKey;
   /** Provenance: when this page opened — the numbers that earned the click are frozen from then */
   gradedAt?: string;
-  /** Open another contract on the same name — a driver row, or the capsule's
-      pick (which may carry a different tenor). The page's route does the rest
-      (pages/compass/SetupPage.tsx, 2026-09-11); the way back lives there too. */
+  /** Open another contract on the same name — a driver row, or the capsule's pick (which may carry a different
+      tenor). The page's route does the rest; the way back lives there too. */
   onOpenContract?: (strike: number, right: OptionRight, sleeve?: SleeveKey) => void;
 }
 
-/** The campaign's story, stamped ON the tape (Noah's sketch, 2026-08-09):
-    the entry premium on the bar it was graded, and each banked TP on the
+/** The campaign's story, stamped ON the tape: the entry premium on the bar it was graded, and each banked TP on the
     candle that actually crossed it. */
 export interface CampaignEntry {
   /** Bar time (UTC seconds) of the sweep that opened this review */
@@ -173,15 +169,9 @@ const CampaignAnalysis = ({
   if (stampRef.current.sig !== quoteSig) stampRef.current = { sig: quoteSig, at: Date.now() };
   const quotedAt = stampRef.current.at;
 
-  /* ENTRY = the bar on the tape when this review opened — and with it, THE
-     WHOLE CAMPAIGN FROZEN: entry premium, price targets, premium ladder,
-     floor. The engine derives targets as a percentage OF SPOT and this page
-     regrades every tick, so live targets recede exactly as fast as price
-     approaches them (Noah caught it: "same side magnets" — measured: spot
-     +0.29 toward TP1 while TP1 fled +0.41). A campaign whose milestones move
-     is unhittable by construction. Frozen at open, the same anchor as the
-     provenance line: the numbers that earned the click must not silently
-     become other numbers. */
+  /* ENTRY = the bar on the tape when this review opened — and with it, THE whole campaign frozen: entry premium,
+     price targets, premium ladder, floor. The engine derives targets as a percentage OF SPOT and this page
+     regrades every tick, so live targets recede exactly as fast as price approaches them. */
   const entryRef = useRef<
     | (CampaignEntry & {
         id: string;
@@ -205,10 +195,9 @@ const CampaignAnalysis = ({
   }
   const entry = entryRef.current && entryRef.current.id === setup.id ? entryRef.current : null;
 
-  /* The campaign view of the setup: defining fields frozen at open, market
-     reads (liveMid, score, greeks, spread) live. Every campaign surface on
-     this page — chart lines, ladder, floor panel, facts, track — speaks c,
-     never the regrading setup. */
+  /* The campaign view of the setup: defining fields frozen at open, market reads (liveMid, score, greeks, spread)
+     live. Every campaign surface on this page — chart lines, ladder, floor panel, facts, track — speaks c, never
+     the regrading setup. */
   const c = useMemo<Setup>(
     () =>
       entry
@@ -223,12 +212,8 @@ const CampaignAnalysis = ({
     [setup, entry]
   );
 
-  /* TP hits AND the floor break are read off the TAPE, not the simulator's
-     rolled status flags — every event must have a candle to point at, and
-     the chart, the ladder and the count must all tell one story. Judged
-     against the FROZEN campaign levels (c), latched with a scan watermark
-     for cheap incremental sweeps — and once the floor breaks, nothing banks
-     after it: the campaign died first. */
+  /* TP hits AND the floor break are read off the TAPE, not the simulator's rolled status flags — every event must
+     have a candle to point at, and the chart, the ladder and the count must all tell one story. */
   const tapeRef = useRef<{ id: string; scanned: number; hits: Map<number, number>; brk: CampaignBreak | null }>({
     id: '',
     scanned: 0,
@@ -505,9 +490,8 @@ const CampaignAnalysis = ({
           <p className="mt-1 text-t12 text-textPrimary">This contract left the board at {nyClock(left.at, { seconds: true, zone: true })}. It is off the list.</p>
         </div>
       )}
-      {/* THE SETUP'S HEAD — the name's page grammar (EarningsName): the logo, the
-          contract in its side's ink, its state, the tenor and the kind, one line;
-          the facts at the right. */}
+      {/* The setup's head — the name's page grammar (EarningsName): the logo, the contract in its side's ink, its
+          state, the tenor and the kind, one line; the facts at the right. */}
       <div
         className="relative border border-borderSubtle rounded-md bg-panel"
         data-setup-head={setup.id}

@@ -1,7 +1,5 @@
-/*
-  Which scripts sit on each pane, with their settings, as one reactive store the chart, the library and the
-  toolbar all read.
-*/
+/* Which scripts sit on each pane, with their settings, as one reactive store the chart, the library and the
+   toolbar all read. */
 
 import { useSyncExternalStore } from 'react';
 import type { Bar } from '../core/pine';

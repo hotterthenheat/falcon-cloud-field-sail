@@ -46,7 +46,7 @@ const Strip = ({ title, rest, testId, children }: { title: string; rest: string;
 );
 
 const KnowGrid = ({ children }: { children: ReactNode }) => (
-  <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--know),minmax(0,1fr))]" style={{ '--know': NAMES_TO_KNOW } as CSSProperties}>
+  <div className="grid gap-2 grid-cols-2 max-sm:[&>*:nth-child(n+3)]:hidden sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--know),minmax(0,1fr))]" style={{ '--know': NAMES_TO_KNOW } as CSSProperties}>
     {children}
   </div>
 );

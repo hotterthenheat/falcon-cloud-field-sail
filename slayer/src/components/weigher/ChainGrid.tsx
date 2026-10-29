@@ -1,7 +1,5 @@
-/*
-  The Weigher's chain as a grid: the column catalog, the market's line between strikes, and the weigh-up (stats and
-  greeks) unfolding under a picked strike. The paper desk uses the same grid.
-*/
+/* The Weigher's chain as a grid: the column catalog, the market's line between strikes, and the weigh-up (stats
+   and greeks) unfolding under a picked strike. The paper desk uses the same grid. */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Check, ChevronRight, Plus } from 'lucide-react';
@@ -26,13 +24,9 @@ const fixed = (v: number, d: number) => (Number.isFinite(v) ? grouped(v, d) : '�
 const pct0 = (v: number) => (Number.isFinite(v) ? `${grouped(v, 0)}%` : '—');
 const strikeText = (v: number) => (Number.isFinite(v) ? grouped(v, v % 1 === 0 ? 0 : 2) : '—');
 
-/* ---- the chain's column catalog -------------------------------------------
-   Every face of the contract the reference offers that is a FACT (Noah,
-   2026-08-26, the customize-columns screenshots). The four return-on-…
-   entries stayed out on purpose: a projected yield on a position is strategy
-   advice wearing a stat's clothes, and we are not a broker. Order here IS
-   column order; the menu speaks the reference's wording, the header speaks
-   compact, and every jargon head carries its Term. */
+/* The chain's column catalog: every face of the contract the reference offers that is a FACT. The four return-on-…
+   entries stayed out on purpose: a projected yield on a position is strategy advice wearing a stat's clothes, and
+   we are not a broker. */
 export interface ChainCol {
   key: string;
   /** The menu's wording - the reference's own names */
@@ -73,8 +67,7 @@ export const CHAIN_COLUMNS: ChainCol[] = [
   { key: 'theta', label: 'Theta', head: 'Theta', term: 'Theta', render: c => ({ text: fixed(c.theta, 4) }) },
   { key: 'vega', label: 'Vega', head: 'Vega', term: 'Vega', render: c => ({ text: fixed(c.vega, 4) }) },
   { key: 'rho', label: 'Rho', head: 'Rho', term: 'Rho', render: c => ({ text: fixed(c.rho, 4) }) },
-  /* what the contract loses a day in DOLLARS a contract — theta × 100, the figure a buyer feels (the Live Chart's chain,
-     2026-09-22: "you would need the actual options chain to see the vol, decay etc") */
+  /* what the contract loses a day in DOLLARS a contract — theta × 100, the figure a buyer feels */
   { key: 'decay', label: 'Decay a calendar day', head: 'Decay/day', term: 'Theta', render: c => ({ text: Number.isFinite(c.theta) ? money(Math.abs(c.theta * 100)) : '—', ink: 'text-bear' }) },
   { key: 'iv', label: 'IV', head: 'IV', term: 'IV', render: c => ({ text: Number.isFinite(c.iv) ? `${grouped(c.iv, 1)}%` : '—' }) },
   { key: 'itm', label: 'Probability ITM (model)', head: 'ITM · model', term: 'ITM odds', render: c => ({ text: pct0(c.itmOdds) }) },
@@ -113,17 +106,8 @@ export const DEFAULT_COLS = ['mark', 'delta', 'iv', 'itm', 'vol', 'oi'];
 /** The catalog as the Columns card's one group — the reference's own names */
 export const COLUMN_GROUPS: MultiGroup[] = [{ title: 'Facts', options: CHAIN_COLUMNS.map(c => ({ value: c.key, label: c.label })) }];
 
-/* ---- the chain as a grid ----------------------------------------------------
-   THE HOUSE GRID (the walk, 2026-09-11): AG Grid on the house theme at 30px
-   rows — only the rows in the window exist, so a ±400 chain scrolls and
-   re-inks like a short one (the Trace walk's scroll fix, the one Noah asked
-   for here: "the sidebar drag being laggy"). The market's hairline and
-   Pulse's inline weigh-up ride as FULL-WIDTH rows; the picked strike is the
-   grid's selection (index.css .slayer-chain re-inks it, no re-render); the
-   chain still opens centred on the market and the back-to-price pill still
-   floats up when the spot row leaves the window. The progressive first paint
-   (forty rows, then sixty a frame) is gone with the table: the grid never
-   renders a row nobody can see. */
+/* the chain as a grid the house grid: AG Grid on the house theme at 30px rows — only the rows in the window exist,
+   so a ±400 chain scrolls and re-inks like a short one. */
 const CHAIN_THEME = GRID_THEME.withParams({ rowHeight: 30, headerHeight: 28, fontSize: 11, cellHorizontalPadding: 8 });
 const CHAIN_COL: ColDef<ChainGridRow> = { sortable: false, resizable: true, suppressMovable: true };
 type ChainGridRow =
@@ -134,12 +118,8 @@ const CHAIN_ROW_H = 30;
 const DIVIDER_H = 22;
 const DRILL_H = 210;
 
-/* The strike cell — the chevron turns on the picked row (CSS, off the selection); a strike the reader HOLDS says so (the
-   Live Chart's chain — `held`).
-   THE STRIKE CARRIES ITS BOOK (the desk's chain — `book`): the Map's shape chip after the figure, and the strike's net
-   gamma as a short bar along the cell's foot on the house ramp — the weight of hedging there. A column of its own was
-   built first and pushed the watch door off the chain's right edge at 1440 (2026-09-28); in the strike's cell the chain
-   keeps every column it had. The whole read waits in the strike's weigh-up (BookBlock). */
+/* The strike cell — the chevron turns on the picked row (CSS, off the selection); a strike the reader HOLDS says
+   so (the Live Chart's chain — `held`). */
 const StrikeCell = ({ data, held, book }: ICellRendererParams<ChainGridRow> & { held?: ReadonlySet<number>; book?: (strike: number) => BookAtStrike | null }) => {
   if (data?.kind !== 'row') return null;
   const read = book?.(data.c.strike) ?? null;
@@ -210,7 +190,7 @@ const FullRow = (p: ICellRendererParams<ChainGridRow>) => {
   return (
     <div ref={ref} className="bg-silver/[0.04] animate-soft-in" data-chain-drill>
       <div className="px-3 py-2.5 border-b border-ink/[0.05] flex flex-col gap-3">
-        {/* THE CASE FIRST (the Weigher, 2026-10-07): the word, the reasons, the alternatives — then the figures */}
+        {/* The case first: the word, the reasons, the alternatives — then the figures */}
         {data.kind === 'drill' && data.head?.(data.c)}
         <WeighGrids c={data.c} />
         {data.kind === 'drill' && data.extra?.(data.c)}
@@ -222,9 +202,8 @@ const FullRow = (p: ICellRendererParams<ChainGridRow>) => {
 /* memo, deliberately: this is the desk's whale — 301 rows by up to 29
    columns. It re-renders when its OWN facts change (a chain sweep, a
    selection, a column pick) and sits out everything else. */
-/* THE DOOR TO THE WATCHLIST ON EVERY STRIKE (Noah, 2026-09-14: "there should be some sort
-   of add to watchlist on the chain like a plus button or something") — a + at the row's end,
-   shown on the row's hover; once watched it stays, a check in the where-you-are ink */
+/* The door to the watchlist on every strike — a + at the row's end, shown on the row's hover; once watched it
+   stays, a check in the where-you-are ink */
 const WatchCell = ({ strike, on, onWatch }: { strike: number; on: boolean; onWatch: (strike: number) => void }) => (
   <button
     type="button"
@@ -270,25 +249,20 @@ export const ChainCard = memo(function ChainCard({
       to re-centre the scroll on the market. A moving spot alone must NOT
       re-centre; it would fight the user's own scrolling every tick. */
   centerKey: string;
-  /** Pulse's grammar (Noah, 2026-08-26: "it drops down just right under
-      that strike and not all the way at the bottom") — the selected row
-      unfolds its weigh-up inline, Robinhood-style. The desk page leaves
-      this off; its weigh-up owns the bottom-right card. */
+  /** Pulse's grammar — the selected row unfolds its weigh-up inline, Robinhood-style. The desk page leaves this
+      off; its weigh-up owns the bottom-right card. */
   inlineDrill?: boolean;
-  /** A strike to bring into view — a contract carried in by a deep link
-      (Noah, 2026-09-12: "instead of taking me to the spot it should take me
-      to the dropdown view of that specific strike"). `n` bumps per ask so
-      the same strike asked twice scrolls twice; the row lands at the top
-      third, its weigh-up unfolding beneath it. */
+  /** A strike to bring into view — a contract carried in by a deep link. `n` bumps per ask so the same strike asked
+      twice scrolls twice; the row lands at the top third, its weigh-up unfolding beneath it. */
   reveal?: { strike: number; n: number } | null;
   /** What the inline dropdown carries under the weigh-up — the Live Chart's order for the contract */
   drillExtra?: (c: DeskContract) => ReactNode;
-  /** What it carries ABOVE the weigh-up — the Weigher's case for the strike (StrikeCase, 2026-10-07) */
+  /** What it carries ABOVE the weigh-up — the Weigher's case for the strike */
   drillHead?: (c: DeskContract) => ReactNode;
   /** The strikes the reader holds on this side and expiry: marked on their rows */
   held?: ReadonlySet<number>;
-  /** OUR TWO CENTS ON EVERY STRIKE (2026-09-28): the dealer book's read of it — the shape word and the net bar as a
-      column, "The book" (data/bookAtStrike.ts); the desk hands it, Pulse's tile does not */
+  /** Our two cents on every strike: the dealer book's read of it — the shape word and the net bar as a column, "The
+      book" (data/bookAtStrike.ts); the desk hands it, Pulse's tile does not */
   book?: (strike: number) => BookAtStrike | null;
 }) {
   const gridRef = useRef<AgGridReact<ChainGridRow>>(null);
@@ -394,8 +368,8 @@ export const ChainCard = memo(function ChainCard({
     }
     return y;
   }, [dividerIdx, rows]);
-  /* Once the spot row leaves the window, the pill floats up with the live
-     price and an arrow pointing back the way it went (Noah, 2026-08-25) */
+  /* Once the spot row leaves the window, the pill floats up with the live price and an arrow pointing back the way
+     it went */
   const locate = useCallback(() => {
     const api = gridRef.current?.api;
     if (!api || dividerIdx < 0) return setAway(null);
@@ -438,10 +412,9 @@ export const ChainCard = memo(function ChainCard({
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [ready, dividerIdx, centerKey, centerOnSpot, locate]);
-  /* …unless a contract was carried in: its row is brought to the top third
-     (the market's centring above runs first, this lands after it). Waits for
-     the ladder that holds the strike — a name switch lands its rows a render
-     later — and asks once per `n`. */
+  /* …unless a contract was carried in: its row is brought to the top third (the market's centring above runs
+     first, this lands after it). Waits for the ladder that holds the strike — a name switch lands its rows a
+     render later — and asks once per `n`. */
   const revealed = useRef(0);
   useEffect(() => {
     if (!reveal || !ready || revealed.current === reveal.n) return;
@@ -529,9 +502,8 @@ export const StatCell = ({ label, value, term, ink }: { label: string; value: st
   </span>
 );
 
-/** The weigh-up's two sections — Stats and The Greeks — shared verbatim by
-    the desk's Strike card and Pulse's inline drilldown, so the two surfaces
-    can never drift apart. A fragment on purpose: hosts that SPREAD the
+/** The weigh-up's two sections — Stats and The Greeks — shared verbatim by the desk's Strike card and Pulse's
+    inline drilldown, so the two surfaces can never drift apart. A fragment on purpose: hosts that SPREAD the
     sections (justify-evenly) need them as direct children. */
 export const WeighGrids = ({ c }: { c: DeskContract }) => (
   <>

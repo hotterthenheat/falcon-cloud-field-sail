@@ -1,7 +1,5 @@
-/*
-  The community room, behind the coming-soon wall until it has a backend: the reader's own posts, what is trending,
-  and setups with the record they build. No members or posts are invented.
-*/
+/* The community room, behind the coming-soon wall until it has a backend: the reader's own posts, what is
+   trending, and setups with the record they build. No members or posts are invented. */
 
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -111,8 +109,7 @@ const SetupCard = ({ s }: { s: Setup }) => {
   );
 };
 
-/** The wall's rest state — UP (Noah, 2026-09-13 night: the coming-soon wall stands over the
-    Community and the Watchlist pages, and nowhere else); `?open` on the URL takes it down for a walk */
+/** The wall's rest state — UP; `?open` on the URL takes it down for a walk */
 const WALL_DEFAULT = true;
 
 /* The room's own name is the reader's — remembered across route changes within a session */
@@ -120,13 +117,11 @@ let viewMemory: View = 'feed';
 
 const Room = () => {
   const profile = useProfile();
-  /* THE WALL (the first launch) — UP by rest since 2026-09-13 night (it stood down for the
-     walk: Noah, "remove the coming soon part for now i want to see how the page looks");
-     `?open` on the URL takes it down, `?wall` puts it up. The wall itself — the lamp, the
-     beam, the countdown, the notify field — is the house's (components/ui/ComingSoonWall),
+  /* THE WALL (the first launch) — UP by rest night; `?open` on the URL takes it down, `?wall` puts it up. The wall
+     itself — the lamp, the beam, the countdown, the notify field — is the house's (components/ui/ComingSoonWall),
      the same glass over the Watchlist. */
-  /* THE BETA DOOR (2026-10-17): an owner, or anyone an owner put in the beta (Settings › People), walks through the
-     wall by rest; `?wall` still puts it up for them */
+  /* The beta door: an owner, or anyone an owner put in the beta (Settings › People), walks through the wall by
+     rest; `?wall` still puts it up for them */
   const access = useAccess();
   const walled = useWalled(WALL_DEFAULT && !access.beta);
 
@@ -173,7 +168,7 @@ const Room = () => {
     [posts, view, lean, name, person, state.following, state.saved]
   );
 
-  /* THE KEPT POST — the Pulse focus: the row lifted, the rest behind one blurred scrim */
+  /* The kept post — the Pulse focus: the row lifted, the rest behind one blurred scrim */
   const pinned = kept != null && shown.some(p => p.id === kept);
   const [scrim, setScrim] = useState(false);
   useEffect(() => {
@@ -344,7 +339,7 @@ const Room = () => {
                   </div>
                 ))}
               </dl>
-              {/* THE RECORD the reader's settled setups build — the partner's subtitle promised it and his page never showed it */}
+              
               <div className="px-4 py-2.5 border-t border-borderSubtle/60 text-t11 text-textSecondary" data-room-record>
                 {myRecord.settled === 0 ? (
                   <span className="text-textMuted">No setup settled yet.</span>
@@ -444,7 +439,7 @@ const Room = () => {
               </div>
             </div>
 
-            {/* THE FEED BOX — the head, the cards, the sentence, the rows */}
+            {/* The feed box — the head, the cards, the sentence, the rows */}
             <div className="border border-borderSubtle rounded-md bg-panel overflow-clip" data-room-feed data-view={view} data-lean={lean} data-name={name} data-person={person ?? undefined} data-shown={shown.length}>
               <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
                 <div className="min-w-0 flex-1">
@@ -486,7 +481,8 @@ const Room = () => {
                 {sentence}
               </p>
               <div className="relative border-t border-borderSubtle">
-                {/* THE FOCUS SCRIM — one layer for the blur and the dim; only its opacity animates (the ladder's own) */}
+                {/* The focus scrim — one layer for the blur and the dim; only its opacity animates (the ladder's
+                    own) */}
                 <div
                   aria-hidden
                   data-room-scrim={pinned ? '' : undefined}
@@ -586,7 +582,7 @@ const Room = () => {
             </div>
           </div>
 
-          {/* ---- THE ROOM'S EDGE ------------------------------------------------------ */}
+          {/* The room's edge */}
           <div className="flex flex-col gap-2.5 min-w-0">
             <div className="border border-borderSubtle rounded-md bg-panel overflow-hidden" data-room-notices>
               <div className="px-4 h-10 flex items-center gap-2">
@@ -633,11 +629,8 @@ const Room = () => {
           </div>
         </div>
 
-        {/* THE WALL — the house glass over the whole room until launch (Noah, 2026-09-13, with two
-            references — a gradient wordmark over a dark page with a notify field, and a spotlight
-            cone over "Coming Soon" with a countdown: "take inspiration from these 2 but make the
-            room in the background seeable to some extent"); the room's two materials — the people
-            and the names — stand at its foot */}
+        {/* THE WALL — the house glass over the whole room until launch; the room's two materials — the people and
+            the names — stand at its foot */}
         {walled && (
           <ComingSoonWall
             kicker="The room"

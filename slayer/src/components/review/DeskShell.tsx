@@ -1,7 +1,5 @@
-/*
-  One shell for both practice desks: the account strip, the house chart with its top row, the measured heights,
-  the takeover panel, two charts side by side, the clock and the book's rows. A desk only says what its kind is.
-*/
+/* One shell for both practice desks: the account strip, the house chart with its top row, the measured heights,
+   the takeover panel, two charts side by side, the clock and the book's rows. A desk only says what its kind is. */
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { SayPage } from '../layout/PageMeta';
@@ -35,8 +33,8 @@ export const smallDoor = 'inline-flex items-center leading-normal align-middle h
 /** A door in the chart's top row — the house toolbar's own button, so the desk's doors and the toolbar's read as one row */
 export const barDoor = 'inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.03] disabled:opacity-30 disabled:cursor-not-allowed transition-colors';
 
-/* THE DESK'S HEIGHTS. The book is never shorter than BOOK_PX — its tabs, its column names and three rows — and grows with
-   its rows; the desk is never shorter than a two-line top row, the chart's own floor, and the book. */
+/* The desk's heights. The book is never shorter than BOOK_PX — its tabs, its column names and three rows — and
+   grows with its rows; the desk is never shorter than a two-line top row, the chart's own floor, and the book. */
 const BOOK_PX = 200;
 const DESK_MIN_PX = 730;
 const DESK_FOOT_PX = 12;
@@ -45,10 +43,9 @@ const PANEL_PX = 440;
 const TAPE_FLOOR_PX = 760;
 /** The least each chart keeps for the two to stand side by side */
 const SPLIT_PANE_PX = 560;
-/* A CARD THAT GROWS TO FILL ITS COLUMN (the Live Chart's order on a future, `data-review-ticket-card="grow"`) is as tall as
-   the column — so its OWN height is read from what is in it: each child at its own height (a column's child the same way,
-   all the way down), the gaps between them and the padding round them. Never the stretch: the desk's height is worked out
-   from the order's, and a stretched order read as its own would grow the desk a little more every time it was read. */
+/* A card that grows to fill its column (the Live Chart's order on a future, `data-review-ticket-card="grow"`) is
+   as tall as the column — so its OWN height is read from what is in it: each child at its own height (a column's
+   child the same way, all the way down), the gaps between them and the padding round them. */
 function ownHeight(el: HTMLElement): number {
   const cs = getComputedStyle(el);
   if (!/flex/.test(cs.display) || !cs.flexDirection.startsWith('column')) return el.offsetHeight;
@@ -71,8 +68,8 @@ export interface GridPane {
   timeframe: Timeframe;
   foot?: ReactNode;
 }
-/* THE TOP ROW'S WIDTHS, MEASURED (2026-09-20, at 1905): the name, the toolbar with its words and the desk's doors need
-   1,113px in one row; the takeover's account figures add 215, and the third figure (the cash) 115 more. */
+/* The top row's widths, measured: the name, the toolbar with its words and the desk's doors need 1,113px in one
+   row; the takeover's account figures add 215, and the third figure (the cash) 115 more. */
 const HEAD_FULL_PX = 1130;
 const HEAD_ACCOUNT_PX = 215;
 const HEAD_CASH_PX = 135;
@@ -126,9 +123,8 @@ export interface DeskName {
   layer: Omit<PositionLayerProps, 'api' | 'ticker' | 'minutes'>;
   /** A long or a short drawn on its chart, placed (StrikeChart `onTradeMark`) */
   onTradeMark?: (mark: TradeMark) => void;
-  /** What its chart says at its top left, after its name — the RP&L and UP&L badges (PnlBadges); IN THE FULL
-      SCREEN they ride the top strip after the intervals instead (Noah, 2026-09-22), the chart's own name borderless at its
-      left wall */
+  /** What its chart says at its top left, after its name — the RP&L and UP&L badges (PnlBadges); in the full SCREEN
+      they ride the top strip after the intervals instead, the chart's own name borderless at its left wall */
   corner?: ReactNode;
 }
 
@@ -163,9 +159,9 @@ interface DeskShellProps {
   picker?: ReactNode;
   /** The line under the desk */
   foot?: string;
-  /** THE LIVE CHART'S heartbeat — bumped every tick of the feed, where there is no `clock` */
+  /** The live chart's heartbeat — bumped every tick of the feed, where there is no `clock` */
   revision?: number;
-  /** ONE TO FOUR CHARTS (see the head note) — in place of the names' own charts */
+  /** One to four charts (see the head note) — in place of the names' own charts */
   grid?: {
     layout: GridLayout;
     panes: GridPane[];
@@ -216,20 +212,21 @@ interface DeskShellProps {
   nextDayTitle?: string;
   /** The desk's own jumps, between Go to and Next day */
   doors?: (hands: DeskHands) => ReactNode;
-  /** What stands BESIDE THE CHART, inside the tape — the Live Chart's ladder on a future: the chart gives it the room while
-      it stands and takes it back when it goes (page and full screen alike) */
+  /** What stands beside the chart, inside the tape — the Live Chart's ladder on a future: the chart gives it the
+      room while it stands and takes it back when it goes (page and full screen alike) */
   chartSide?: ReactNode;
   /** The desk's own keys, by `KeyboardEvent.key` */
   keys?: Record<string, (hands: DeskHands) => void>;
   /** Over the tape: what this kind of day has to say (an option's bell) */
   notice?: (hands: DeskHands) => ReactNode;
 
-  /** THE CARDS AT THE RIGHT — the takeover's panel. `sideMinPx`: the least the card above the ticket keeps */
+  /** The cards at the right — the takeover's panel. `sideMinPx`: the least the card above the ticket keeps */
   full: boolean;
-  /** The full screen fills the screen EDGE TO EDGE: no padding round it, its chart and cards on hairlines (see the head note) */
+  /** The full screen fills the screen edge to edge: no padding round it, its chart and cards on hairlines (see the
+      head note) */
   fullBleed?: boolean;
-  /** The right column's width — the Live Chart widens it for a name's options chain (2026-09-22: "build it with the wider
-      column"); the takeover's panel takes the same */
+  /** The right column's width — the Live Chart widens it for a name's options chain; the takeover's panel takes the
+      same */
   sideWidth?: number;
   onFull: (full: boolean) => void;
   side: ReactNode;
@@ -351,9 +348,9 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
     if (clock) clock.move({ day, minute: Math.max(0, Math.min(clock.lastMin, minute)) });
   };
 
-  /* THE DESK'S ONE HEIGHT, measured: what the page's scroller leaves under whatever is above the grid — or what the side
-     card's floor and the ticket need, when that is more. Read again when the window, the account strip or the ticket
-     changes size. */
+  /* The desk's one height, measured: what the page's scroller leaves under whatever is above the grid — or what
+     the side card's floor and the ticket need, when that is more. Read again when the window, the account strip or
+     the ticket changes size. */
   const gridRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     const grid = gridRef.current;
@@ -396,7 +393,7 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
   }, [full, session.id]);
   const two = names.length > 1;
   const gridOn = grid?.panes[Math.min(grid.active, grid.panes.length - 1)];
-  /* THE FULL SCREEN'S RP&L · UP&L, in the strip between the intervals and the indicators — the chart on the desk's */
+  /* The full screen's rp&L · UP&L, in the strip between the intervals and the indicators — the chart on the desk's */
   const stripCorner = full ? (gridOn ? gridOn.name.corner : (names.find(n => n.symbol === active) ?? names[0])?.corner) : undefined;
   const headBase = HEAD_FULL_PX + (full ? HEAD_ACCOUNT_PX : 0) + (two ? HEAD_NAME_PX : 0) + (stripCorner ? HEAD_PNL_PX : 0);
   /* the row wrapped with its words on: remember the width, and shed them at or under it (a wider row tries again) */
@@ -411,7 +408,8 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
   const on = names.find(n => n.symbol === active) ?? names[0];
   const compact = headW <= wrapW || headW < headBase;
   const tight = two && !compact;
-  /* TWO CHARTS SIDE BY SIDE: the takeover, two names, the reader's switch on, and room for both (never over a desk's own grid) */
+  /* Two charts side by side: the takeover, two names, the reader's switch on, and room for both (never over a
+     desk's own grid) */
   const split = !grid && full && two && prefs.split && headW >= SPLIT_PANE_PX * 2;
   const shown = split ? names : [on];
   const paneIdOf = (n: DeskName) => paneIds[names.indexOf(n) <= 0 ? 0 : 1];
@@ -545,8 +543,8 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
           </span>
         )}
         <span className="w-px h-4 bg-borderSubtle shrink-0" aria-hidden />
-        {/* THE HOUSE TOOLBAR, in the house order: the intervals at the left, the rest pushed right. Its floor is its own
-            row (`min-w-fit`): on a narrow tape it wraps under the name whole, never into a pile. */}
+        {/* The house toolbar, in the house order: the intervals at the left, the rest pushed right. Its floor is
+            its own row (`min-w-fit`): on a narrow tape it wraps under the name whole, never into a pile. */}
         <div className="flex-1 min-w-fit" data-review-toolbar>
           <ChartToolbar
             minimal
@@ -576,8 +574,8 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
             afterIntervals={stripCorner ? <span className="inline-flex items-center [&_*]:shadow-none" data-desk-strip-pnl>{stripCorner}</span> : undefined}
           />
         </div>
-        {/* THE DESK'S OWN DOORS, at the row's end: the clock's jumps, then the split, the panel and the fullscreen door —
-            last, where the house puts it */}
+        {/* The desk's own doors, at the row's end: the clock's jumps, then the split, the panel and the fullscreen
+            door — last, where the house puts it */}
         <span className="w-px h-4 bg-borderSubtle shrink-0" aria-hidden />
         {/* `ml-auto`: should the row ever wrap, the doors stay at the right edge, where they are looked for */}
         <span className="ml-auto flex items-center gap-1">
@@ -607,9 +605,8 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
       {/* the chart, and what the desk stands beside it (`chartSide`) */}
       <div className="flex-1 min-h-[430px] lg:min-h-0 flex min-w-0">
       <div className="relative flex-1 min-w-0 flex flex-col bg-panel" data-theme="dark" data-chart-ground={chartGround(themeKey)}>
-        {/* ONE CHART — OR, IN THE TAKEOVER, THE SESSION'S TWO SIDE BY SIDE. Keyed by the name: the other name's tape is a
-            chart of its own, and breathes in (the house's browse grammar). A press anywhere on a chart puts ITS name on
-            the desk — the panel at the right follows — and the chart on the desk wears a silver edge. */}
+        {/* ONE CHART — Or, in the takeover, the session's two side by side. Keyed by the name: the other name's
+            tape is a chart of its own, and breathes in (the house's browse grammar). */}
         {grid ? (
           <div className={`flex-1 min-h-0 grid gap-px bg-borderSubtle ${GRID_CLASS[grid.layout]}`} data-desk-grid={grid.layout}>
             {grid.panes.map((p, i) => {
@@ -648,10 +645,9 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
                       return (
                         <>
                           <PositionLayer api={api} ticker={p.name.symbol} minutes={tfMinutes(p.timeframe)} {...p.name.layer} />
-                          {/* EVERY PANE SAYS WHOSE IT IS AND AT WHAT INTERVAL, at its top left against the wall: "ES · 1m", no box
-                              round it (Noah, 2026-09-22, with a picture of one: "the timeframe one should look like this at all times
-                              minus the ticker price") — among several, the one on the desk in silver; then, on the page, its corner
-                              (RP&L · UP&L) — in the full screen those ride the strip */}
+                          {/* Every pane says whose it is and at what interval, at its top left against the wall:
+                              "ES · 1m", no box round it — among several, the one on the desk in silver; then, on
+                              the page, its corner (RP&L · UP&L) — in the full screen those ride the strip */}
                           <span className="absolute left-2 top-2 z-10 flex items-center gap-2 pointer-events-none" data-chart-chrome>
                             <span className="inline-flex items-center gap-1.5 h-6 font-mono text-t11 tnum whitespace-nowrap" data-chart-chrome data-desk-pane-chip={p.name.symbol}>
                               <span className={`font-bold ${!many ? 'text-textPrimary' : here ? 'text-silver' : 'text-textSecondary'}`}>{p.name.label}</span>
@@ -723,9 +719,9 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
                           </span>
                           {!full && n.corner}
                         </span>
-                        {/* THE CLOCK'S BAR, AT THE FOOT OF THE PRICE PANE — hung off the time axis, an indicator given a pane of
-                            its own had the bar lying across it. `pl-14` clears the drawing rail. Side by side it is ONE bar
-                            across both charts (below), not one in each. */}
+                        {/* The clock's bar, at the foot of the price pane — hung off the time axis, an indicator
+                            given a pane of its own had the bar lying across it. `pl-14` clears the drawing rail.
+                            Side by side it is ONE bar across both charts (below), not one in each. */}
                         {!split && strip && (
                           <PaneFoot chart={api.chart} className="pl-14">
                             {strip}
@@ -735,9 +731,9 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
                     );
                   }}
                 />
-                {/* THE CHART ON THE DESK IS UNMISTAKABLE: a 2px frame at full strength, in the chart's own ink (pale silver on
-                    a dark tape, deep steel on Stone), a bar of it across the top — and the chart that is NOT on the desk
-                    steps back a little, so the eye has one place to go. */}
+                {/* The chart on the desk is unmistakable: a 2px frame at full strength, in the chart's own ink
+                    (pale silver on a dark tape, deep steel on Stone), a bar of it across the top — and the chart
+                    that is NOT on the desk steps back a little, so the eye has one place to go. */}
                 {split && here && (
                   <span className="absolute inset-0 z-20 pointer-events-none ring-2 ring-inset ring-silver" aria-hidden="true" data-chart-ink data-review-pane-edge>
                     <span className="absolute inset-x-0 top-0 h-[3px] bg-silver" />
@@ -770,7 +766,7 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
       <div className={`${card} px-5 py-3 flex items-start gap-6 flex-wrap`} data-review-account>
         <div className="min-w-0 flex-1">
           <div className="h-6 flex items-center gap-2.5">
-            {/* side by side: stacked, a dark badge and a four-colour mark bled into each other (Noah, with a picture) */}
+            {/* side by side: stacked, a dark badge and a four-colour mark bled into each other */}
             <span className="inline-flex items-center gap-1.5 shrink-0">
               {names.map(n => (
                 <CompanyLogo key={n.symbol} ticker={n.symbol} size={18} />
@@ -799,14 +795,15 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
       )}
 
       {/* while the takeover is up the tape and the desk's cards live THERE — one chart, one ticket, wherever they are */}
-      {/* THE TAPE AND THE BOOK AT THE LEFT, THE DESK'S CARDS AT THE RIGHT — two columns that do not push each other (the right
-          one spans both rows). In the source the order is tape · cards · book, which is the order a phone stacks them in. */}
+      {/* The tape and the book at the left, the desk's cards at the right — two columns that do not push each
+          other (the right one spans both rows). In the source the order is tape · cards · book, which is the order
+          a phone stacks them in. */}
       <div ref={gridRef} className={`grid gap-2.5 ${full ? 'items-start' : 'items-start lg:items-stretch lg:grid-cols-[minmax(0,1fr)_var(--desk-side)] lg:grid-rows-[var(--tape-h)_auto]'}`} style={{ '--desk-side': `${sideWidth}px` } as CSSProperties} data-review-desk-grid>
         {!full && <div className="min-w-0 lg:min-h-0 lg:col-start-1 lg:row-start-1">{tape}</div>}
         {!full && (
-          /* THE RIGHT COLUMN IS AS TALL AS THE LEFT ONE, and never the other way round: its cards sit in a box laid OVER the
-             cell (`absolute inset-0`), so a chain — which would otherwise ask for the height of every strike it holds —
-             asks the grid for nothing, and takes what the tape and the book make */
+          /* The right column is as tall as the left one, and never the other way round: its cards sit in a box
+             laid OVER the cell (`absolute inset-0`), so a chain — which would otherwise ask for the height of
+             every strike it holds — asks the grid for nothing, and takes what the tape and the book make */
           <div className="min-w-0 lg:relative lg:col-start-2 lg:row-start-1 lg:row-span-2">
             <div className="flex flex-col gap-2.5 lg:absolute lg:inset-0">{side}</div>
           </div>

@@ -1,7 +1,5 @@
-/*
-  A closed trade on its chart: the days it was on, the day before and the rest of the last day, with arrows in
-  and out and the price lines that applied.
-*/
+/* A closed trade on its chart: the days it was on, the day before and the rest of the last day, with arrows in and
+   out and the price lines that applied. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { LineStyle, createSeriesMarkers, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type SeriesType, type Time, type UTCTimestamp } from 'lightweight-charts';
@@ -82,8 +80,8 @@ const TradeLayer = ({ api, marks, levels, from, to, tradeKey }: { api: ChartLaye
       .map(m => ({ time: m.time as UTCTimestamp, position: m.buy ? ('belowBar' as const) : ('aboveBar' as const), shape: m.buy ? ('arrowUp' as const) : ('arrowDown' as const), color: readToken(m.buy ? '--silver' : '--warn', undefined, el), text: m.text }));
     markersRef.current.setMarkers(ms);
   }, [api, marks, levels, seriesN]);
-  /* THE CHART OPENS ON THE TRADE: its window with room either side — a frame on, once the tape has landed (the house
-     chart's own rule for a range set from outside) */
+  /* The chart opens on the trade: its window with room either side — a frame on, once the tape has landed (the
+     house chart's own rule for a range set from outside) */
   useEffect(() => {
     let raf = 0;
     let tries = 0;
@@ -155,7 +153,7 @@ const TradeTape = ({ row, excursion, height = 380 }: { row: JournalRow; excursio
   const barOf = (l: JournalRow['t']['legs'][number]): number => (row.paper ? (l as { bar: number }).bar : instantOf(row, l.at) - 60);
   const tIn = barOf(row.t.legs[0]);
   const tOut = barOf(row.t.legs[row.t.legs.length - 1]);
-  /* AN ARROW A FILL (the ladder): every way in and every piece going out, on the candle it happened in */
+  /* An arrow a fill (the ladder): every way in and every piece going out, on the candle it happened in */
   const marks = useMemo(() => {
     const onBar = (t: number) => t - (t % bucket);
     const price = (v: number) => (row.fut ? (row.paper ? futWords(symbol, v) : futPrice(futProduct(symbol), v)) : v.toFixed(2));

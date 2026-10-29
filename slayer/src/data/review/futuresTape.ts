@@ -1,7 +1,5 @@
-/*
-  The futures backtest's tape: a seeded synthetic walk per product, kept only to redraw sessions already in the
-  journal (Backtest is paused).
-*/
+/* The futures backtest's tape: a seeded synthetic walk per product, kept only to redraw sessions already in the
+   journal (Backtest is paused). */
 
 import type { Candle } from '../../types/market';
 import { dateOf, gauss, stream, tapeDays } from './tape';
@@ -131,8 +129,8 @@ function framesFor(symbol: string): Map<string, DayFrame> {
   return out;
 }
 
-/* THE DAY'S SHAPE, by the New York clock: a quiet night, Europe's morning, the 08:30 numbers, the stock market's own U,
-   and a slow last hour. Minute k begins at 18:00 + k. */
+/* The day's shape, by the New York clock: a quiet night, Europe's morning, the 08:30 numbers, the stock market's
+   own U, and a slow last hour. Minute k begins at 18:00 + k. */
 const shapeAt = (k: number): number => {
   if (k < 480) return 0.35; // 18:00 – 02:00
   if (k < 840) return 0.55; // 02:00 – 08:00

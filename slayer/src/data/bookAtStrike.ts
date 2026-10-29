@@ -1,8 +1,6 @@
-/*
-  What the live dealer book says about each strike of a name: its shape (wall, cliff, shelf, void), which way
-  dealers lean on a move through it, its part (a wall, the supreme, distance from the flip), how it held today,
-  the close odds and what the day added. Built once per scan; the Weigher's chain and strike block read it.
-*/
+/* What the live dealer book says about each strike of a name: its shape (wall, cliff, shelf, void), which way
+   dealers lean on a move through it, its part (a wall, the supreme, distance from the flip), how it held today,
+   the close odds and what the day added. Built once per scan; the Weigher's chain and strike block read it. */
 
 import { bookCandles, bookHistory, peekIv, snapshotOf } from './uwBook';
 import { aheadClock, buildCloseOdds, buildCorridor, fmtDollars } from './ahead';

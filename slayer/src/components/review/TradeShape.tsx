@@ -1,7 +1,5 @@
-/*
-  A trade's shape as a hexagon on six axes in its result's ink, with the reader's usual shape behind it; the axis
-  under the pointer lights and its card says the figure.
-*/
+/* A trade's shape as a hexagon on six axes in its result's ink, with the reader's usual shape behind it; the axis
+   under the pointer lights and its card says the figure. */
 
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { PointerFollowCard, CardRow } from '../ui/PointerCard';

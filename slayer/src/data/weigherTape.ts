@@ -1,9 +1,6 @@
-/*
-  The Weigher's tape. One timeframe, one session, the vendor's own bars.
-  A 15-second chart is 15-second prints. A daily chart is the day's open,
-  high, low and close. Premarket is not the cash session wearing another name.
-  Nothing here is the simulator, and an empty session stays empty.
-*/
+/* The Weigher's tape. One timeframe, one session, the vendor's own bars. A 15-second chart is 15-second prints. A
+   daily chart is the day's open, high, low and close. Premarket is not the cash session wearing another name.
+   Nothing here is the simulator, and an empty session stays empty. */
 
 import { useEffect, useState } from 'react';
 import type { Candle } from '../types/market';

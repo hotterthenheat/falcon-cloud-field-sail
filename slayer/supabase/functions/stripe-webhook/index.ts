@@ -1,26 +1,12 @@
 /*
-  SLAYER TERMINAL - STRIPE'S WORD (supabase/functions/stripe-webhook)
-
-  Stripe tells us when a payment lands, a subscription changes, ends, or a payment fails; this sets the person's plan
-  and its standing on the profiles row through billing_apply, which writes the reason into the log as Stripe's.
-
-  The request is Stripe's, not a person's: no JWT (verify_jwt off), the signature checked against the endpoint's
-  signing secret instead. Secrets: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET (the Supabase dashboard). The subscription
-  is read back from Stripe on every event rather than trusted from the payload, so the shape is the SDK's own.
-
-  The plan while the subscription stands (active, trialing, past_due) is the price's; when it ends it is none. The
-  person is found by the subscription's user_id (set at checkout), else by the Stripe customer on the row.
+  stripe-webhook: Stripe's events set the person's plan and its standing through billing_apply.
+  No JWT (verify_jwt off); the signature is checked against STRIPE_WEBHOOK_SECRET instead, and the subscription is
+  re-read from Stripe on every event. The person is the subscription's user_id metadata, else the row's customer.
 */
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import Stripe from 'npm:stripe@17';
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { Stripe, admin, stripe } from '../_shared/http.ts';
 
-/* the client is made when a request comes, after the secrets are checked — made at boot with no key it throws, and the
-   whole function dies with a bare "worker error" (the first smoke test, 2026-10-10) */
-let client: Stripe | null = null;
-const stripe = (): Stripe => (client ??= new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, { httpClient: Stripe.createFetchHttpClient() }));
 const crypto = Stripe.createSubtleCryptoProvider();
-const admin = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const STANDS = new Set(['active', 'trialing', 'past_due']);
 
 const planOf = (sub: Stripe.Subscription): { plan: string | null; period: string | null } => {
@@ -92,8 +78,7 @@ Deno.serve(async (req: Request) => {
       case 'invoice.paid':
       case 'invoice.payment_failed': {
         const inv = event.data.object as Stripe.Invoice;
-        /* the endpoint speaks Stripe's newest API version (2026-09-30), where an invoice names its subscription under
-           parent.subscription_details rather than at the top; the SDK's own type still has the old place — read either */
+        /* newer API versions name the subscription under parent.subscription_details; the SDK type has the old field */
         const parent = (inv as unknown as { parent?: { subscription_details?: { subscription?: string | { id: string } | null } | null } | null }).parent;
         const named = inv.subscription ?? parent?.subscription_details?.subscription ?? null;
         const subId = typeof named === 'string' ? named : named?.id;

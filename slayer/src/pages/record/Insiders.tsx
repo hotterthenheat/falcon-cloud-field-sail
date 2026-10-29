@@ -545,7 +545,7 @@ const Insiders = () => {
         ) : (
           <div
             /* every name across from 1280; six on a laptop, four on a tablet, two on a phone */
-            className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--names),minmax(0,1fr))]" style={{ '--names': NAMES_TO_KNOW } as CSSProperties}>
+            className="grid gap-2 grid-cols-2 max-sm:[&>*:nth-child(n+3)]:hidden sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--names),minmax(0,1fr))]" style={{ '--names': NAMES_TO_KNOW } as CSSProperties}>
             {toKnow.map(f => (
               <NameCard key={f.ticker} f={f} on={picks.includes(`name:${f.ticker}`)} onToggle={() => toggleName(f.ticker)} />
             ))}

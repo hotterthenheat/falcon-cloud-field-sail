@@ -1,7 +1,5 @@
-/*
-  Compass scorer. Books A and B call Model 1 (entry) and Model 2 (runner).
-  Book C calls neither. A hash or tree-count miss scores nothing.
-*/
+/* Compass scorer. Books A and B call Model 1 (entry) and Model 2 (runner). Book C calls neither. A hash or
+   tree-count miss scores nothing. */
 
 import { parseBoosters, predict, type Tree } from './lgbm';
 import { thetaCall } from './theta';
@@ -1473,10 +1471,8 @@ function weigherStub(ticker: string, strike: number, right: OptionRight, bid: nu
 
 const liveScoreMemo = new Map<string, { at: number; p1: number | null; prun: number | null; retOpen: number | null; gex: number | null }>();
 
-/**
- * Model 1 and Model 2 on one live contract. The feature row is the scorer's own.
- * A missing bar stays missing. No score is invented.
- */
+/** Model 1 and Model 2 on one live contract. The feature row is the scorer's own. A missing bar stays missing. No
+    score is invented. */
 export async function scoreLiveContract(input: {
   ticker: string;
   strike: number;

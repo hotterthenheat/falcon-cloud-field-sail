@@ -4,7 +4,7 @@
 
 import type { ReactNode } from 'react';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal */
 const BULL = 'rgb(var(--bull))';
 const BEAR = 'rgb(var(--bear))';
 const MUTED = '#7c8290';
@@ -153,8 +153,8 @@ const PositionFigure = () => (
     <path d="M 12 100 L 250 100" fill="none" stroke={BEAR} strokeWidth={1.2} />
     <path d="M 250 100 L 408 62" fill="none" stroke={BULL} strokeWidth={1.2} />
     <path d="M 12 99 C 150 99, 230 96, 300 84 S 380 66, 408 60" fill="none" stroke={SILVER} strokeWidth={1} strokeDasharray="3 3" />
-    {/* two verticals and no more (2026-09-14): the market's line with its dot on today's line, and
-        the ruler's price with a dot on each line — the walls stand on the ruler under the chart */}
+    {/* two verticals and no more: the market's line with its dot on today's line, and the ruler's price with a dot
+        on each line — the walls stand on the ruler under the chart */}
     <line x1={300} x2={300} y1={62} y2={104} stroke={SILVER} strokeOpacity={0.35} strokeWidth={0.8} />
     <circle cx={300} cy={84} r={1.8} fill={SILVER} stroke="#0a0a0a" strokeWidth={0.8} />
     <line x1={350} x2={350} y1={62} y2={104} stroke={SILVER} strokeOpacity={0.6} strokeWidth={0.8} />

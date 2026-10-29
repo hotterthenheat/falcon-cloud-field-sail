@@ -1,7 +1,5 @@
-/*
-  What a practice desk draws over the house chart: the fills, the open position with its chip, and the targets and
-  stops that ride it as lines that can be dragged.
-*/
+/* What a practice desk draws over the house chart: the fills, the open position with its chip, and the targets and
+   stops that ride it as lines that can be dragged. */
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { LineStyle, createSeriesMarkers, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type SeriesType, type Time, type UTCTimestamp } from 'lightweight-charts';
@@ -157,8 +155,8 @@ export interface PositionLayerProps {
 const short = (c: ContractId, ticker: string) => contractWords(c).replace(`${ticker} `, '');
 const SILVER_FILL = 'rgb(var(--silver-fill))';
 
-/** THE TRAIL CARD on a stop's chip (2026-09-21): the distance it keeps can be typed — it starts as what the stop is
-    trailing by, or, not yet trailing, the distance it stands at now */
+/** The trail card on a stop's chip: the distance it keeps can be typed — it starts as what the stop is trailing by,
+    or, not yet trailing, the distance it stands at now */
 const TrailDoor = ({ b, dp, onTrail }: { b: ChartBracket; dp: number; onTrail: (orderId: string, on: boolean, by?: number) => void }) => {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
@@ -269,9 +267,9 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
   const [pull, setPull] = useState<{ key: string; kind: 'target' | 'stop'; price: number; money: number; level: number; pinned: boolean; room: 'first' | 'more' | null } | null>(null);
   const pullRef = useRef<{ key: string; y0: number; line: IPriceLine | null; kind: 'target' | 'stop'; price: number; level: number; pinned: boolean } | null>(null);
 
-  /* THE CHIPS RIDE THEIR LINES: a line's height on screen changes with every new bar, every zoom, every resize, and the
-     library tells nobody — so the chips are placed each frame, by whole pixels (a half pixel blurs the words), and kept
-     inside the plot when their line is out of view. The same loop notices a new series. */
+  /* The chips ride their lines: a line's height on screen changes with every new bar, every zoom, every resize,
+     and the library tells nobody — so the chips are placed each frame, by whole pixels (a half pixel blurs the
+     words), and kept inside the plot when their line is out of view. The same loop notices a new series. */
   useEffect(() => {
     let raf = 0;
     const place = () => {
@@ -309,9 +307,9 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
             seen.push({ id, el, y: Math.max(12, Math.min(h - 12, y)) });
           }
         }
-        /* A LADDER'S LEVELS SIT CLOSE (five of them, a few points apart): chips that would lie on each other are moved
-           apart by whole chips, in the order of their lines — a chip stays beside its line where it can, and keeps its
-           place in the ladder where it cannot. The one under the hand is never moved: it is where the hand is. */
+        /* A ladder's levels sit close (five of them, a few points apart): chips that would lie on each other are
+           moved apart by whole chips, in the order of their lines — a chip stays beside its line where it can, and
+           keeps its place in the ladder where it cannot. */
         const GAP = 24;
         seen.sort((a, b) => a.y - b.y);
         const held = dragRef.current?.id;
@@ -328,9 +326,9 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
     raf = requestAnimationFrame(place);
     return () => {
       cancelAnimationFrame(raf);
-      /* ONLY WHILE THE CHART STANDS. On the way out of the page the chart's clean-up runs before this one (a parent's
-         before its child's) and takes every line with it; a line taken off a removed chart does not throw here — it asks
-         for a redraw that throws a frame later ("Object is disposed"). */
+      /* Only while the chart stands. On the way out of the page the chart's clean-up runs before this one (a
+         parent's before its child's) and takes every line with it; a line taken off a removed chart does not throw
+         here — it asks for a redraw that throws a frame later ("Object is disposed"). */
       const series = api.chart() && api.series() === seriesRef.current ? seriesRef.current : null;
       if (series) {
         for (const line of linesRef.current.values()) series.removePriceLine(line);
@@ -444,7 +442,7 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
     const want = new Map<string, { price: number; color: string; token: string; style: LineStyle; title: string; label: boolean }>();
     const line = (price: number, token: string, style: LineStyle, title: string, label: boolean) => ({ price, color: ink(token), token, style, title, label });
     for (const p of positions) {
-      /* solid, in the colour of what it is up or down (the head note, 2026-09-22) — the ways out are dashed */
+      /* solid, in the colour of what it is up or down — the ways out are dashed */
       want.set(`in:${p.key}`, line(p.spotIn, p.pnl >= 0 ? '--bull' : '--bear', LineStyle.Solid, '', true));
       if (plain) continue; // a future has no strike
       want.set(`k:${p.key}`, line(p.contract.strike, '--text-muted', LineStyle.SparseDotted, p.contract.short != null ? `${p.contract.strike}${p.contract.right} bought` : `${short(p.contract, ticker)} strike`, false));
@@ -468,11 +466,8 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
       if (have) have.applyOptions(opts);
       else linesRef.current.set(id, series.createPriceLine(opts));
     }
-    /* ROOM ROUND A POSITION. The scale fits the candles, so a position entered at the day's high sat against the plot's
-       ceiling: its target was off the chart, and a line pulled off the chip had nowhere to go. With a position open the
-       scale takes in every line drawn for it and ROOM_PCT of the name's price beyond — where a contract's target and stop
-       usually live. The line under the hand is NOT counted: a scale that moves mid-drag is a target that runs from the
-       pointer. */
+    /* Room round a position. The scale fits the candles, so a position entered at the day's high sat against the
+       plot's ceiling: its target was off the chart, and a line pulled off the chip had nowhere to go. */
     /* …and NOT a line further off than the name's expected day: room for it would flatten the candles to a thread. Its
        chip waits at the edge instead (the frame loop). */
     const farOff = new Set([...brackets.filter(b => b.far).map(b => `o:${b.orderId}`), ...entries.filter(x => x.far).map(x => `e:${x.orderId}`)]);
@@ -596,14 +591,13 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
   };
 
   const dp = plain?.decimals ?? 2;
-  /* ONE BAR A CHIP (the head note): blocks of solid colour side by side, the dark words on them — index.css's `.fill-*`,
-     which goes soft (the ink on a tint) over a light tape (2026-09-26); the words take the block's ink */
+  /* One bar a chip (the head note): blocks of solid colour side by side, the dark words on them — index.css's
+     `.fill-*`, which goes soft (the ink on a tint) over a light tape; the words take the block's ink */
   const chipBase = 'group absolute right-2 top-0 h-[20px] inline-flex items-stretch rounded-[3px] font-mono text-t11 tnum whitespace-nowrap pointer-events-auto select-none shadow-[0_3px_10px_rgba(0,0,0,0.45)]';
   const chip = `${chipBase} ring-1 ring-black/40`;
-  /* THE THREE CHIPS READ APART (Noah, 2026-09-26: "these cards need to look unique … having Stp and TP on them and having
-     where you entered look different"): a way out says its word — TP · SL, TP2 for a second rung — before its money; THE
-     POSITION IS WHERE YOU ARE, so its chip alone wears the silver ring (black on a light tape, index.css), and a future's
-     says its side ("1 long") where an option says its contract */
+  /* The three chips read apart: a way out says its word — TP · SL, TP2 for a second rung — before its money; THE
+     position is where you are, so its chip alone wears the silver ring (black on a light tape, index.css), and a
+     future's says its side ("1 long") where an option says its contract */
   const chipIn = `${chipBase} ring-[1.5px] ring-silver`;
   const block = 'inline-flex items-center px-1.5';
   const fill = (tone: 'bull' | 'bear') => (tone === 'bull' ? 'fill-bull' : 'fill-bear');
@@ -654,7 +648,7 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
             </div>
           );
         })}
-        {/* THE LINE BEING PULLED — one bar in the colour of what it has become, and what it would be worth */}
+        {/* The line being pulled — one bar in the colour of what it has become, and what it would be worth */}
         {pull && (
           <div ref={bind(`new:${pull.key}`)} className={`${chip} pointer-events-none ring-2 ring-silver/70`} style={{ visibility: 'hidden' }} data-chart-pull={pull.kind} data-pull-room={pull.room ?? 'none'}>
             <span className={`inline-flex items-stretch rounded-[3px] ${fill(pull.kind === 'target' ? 'bull' : 'bear')}`}>
@@ -755,7 +749,8 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
                 >
                   <X className="w-3 h-3" />
                 </button>
-                {/* OUT OF THE PICTURE (shown by the frame loop): which way the line is, and where the name would have to be */}
+                {/* Out of the picture (shown by the frame loop): which way the line is, and where the name would
+                    have to be */}
                 <span hidden className="ml-1 self-center px-1 rounded-[3px] bg-panel text-t10 text-textMuted" data-chip-off>
                   <span data-chip-arrow aria-hidden="true" />
                   {b.level == null ? ' out of reach' : pinned || plain ? '' : ` ${ticker} ${b.level.toFixed(2)}`}
@@ -763,7 +758,8 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
               </div>
             );
           })}
-        {/* THE RESTING ORDERS THAT ARE NOT WAYS OUT — "1 · Buy stop · ✕" on an outline in the side's colour (the head note) */}
+        {/* The resting orders that are not ways out — "1 · Buy stop · ✕" on an outline in the side's colour (the
+            head note) */}
         {entries.map(x => {
           const id = `e:${x.orderId}`;
           const held = drag?.id === id;
@@ -803,7 +799,7 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
               <button type="button" onClick={() => onCancelOrder(x.orderId)} title={`Cancel the ${what.toLowerCase()}`} aria-label={`Cancel the ${what.toLowerCase()}`} className={`inline-flex items-center justify-center w-5 border-l border-current rounded-r-[2px] transition-colors ${buy ? 'hover:bg-bull' : 'hover:bg-bear'} hover:text-onfoil`} data-chart-entry-cancel>
                 <X className="w-3 h-3" />
               </button>
-              {/* OUT OF THE PICTURE (shown by the frame loop): which way the line is */}
+              {/* Out of the picture (shown by the frame loop): which way the line is */}
               <span hidden className="ml-1 self-center px-1 rounded-[3px] bg-panel text-t10 text-textMuted" data-chip-off>
                 <span data-chip-arrow aria-hidden="true" />
                 {x.level == null ? ' out of reach' : x.label ? ` ${ticker} ${x.level.toFixed(2)}` : ''}
@@ -812,7 +808,7 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
           );
         })}
       </div>
-      {/* THE RIGHT-CLICK'S CARD — at the price it was opened on */}
+      {/* The right-click's card — at the price it was opened on */}
       {open && cardPos && (
         <div ref={cardRef} className="absolute z-[60] w-[272px] rounded-md border border-borderMuted bg-panel p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.5)] animate-soft-in" style={cardPos} onContextMenu={e => e.preventDefault()} data-chart-menu data-theme="dark">
           <div className="px-2 pt-1 pb-1.5">{open.card.head}</div>

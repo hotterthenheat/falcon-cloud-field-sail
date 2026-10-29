@@ -1,9 +1,6 @@
-/*
-  The shell's alert watcher: every armed alert, on every name that holds one, judged against the live feeds — the
-  name's price, its vendor dealer book (walls, flip, supreme, net exposure), today's minute bars for the indicator
-  and script kinds, the name's option prints and the wire. The store's firing is idempotent, so a chart that also
-  watches a name changes nothing. A name whose live read has not landed waits. Renders nothing.
-*/
+/* The shell's alert watcher: every armed alert, on every name that holds one, judged against the live feeds — the
+   name's price, its vendor dealer book (walls, flip, supreme, net exposure), today's minute bars for the indicator
+   and script kinds, the name's option prints and the wire. */
 
 import { useEffect, useRef, useState } from 'react';
 import { readExposureNow, type ExposureNow } from '../../data/gex';

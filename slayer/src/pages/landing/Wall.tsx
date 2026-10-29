@@ -48,7 +48,8 @@ const Wall = ({ rooms, onPick }: { rooms: WallRoom[]; onPick: (id: string) => vo
     return () => window.clearTimeout(t);
   }, [other, rooms]);
 
-  /* THE READER REACHES FOR THE THEME: for INTENT_MS the other theme's films run hidden, in step with the ones on screen */
+  /* The reader reaches for the theme: for INTENT_MS the other theme's films run hidden, in step with the ones on
+     screen */
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     let timer = 0;
@@ -96,9 +97,9 @@ const Wall = ({ rooms, onPick }: { rooms: WallRoom[]; onPick: (id: string) => vo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rolling, theme, ready, armed, warm, rooms]);
 
-  /* A FILM SHOWS WHEN IT CAN PLAY (a video that has not drawn a frame is a black box over its still). On its first load
-     each is sent a share of the way into itself — the fourth a half of the way, and so on — so the wall never ticks in
-     step. */
+  /* A film shows when it can play (a video that has not drawn a frame is a black box over its still). On its first
+     load each is sent a share of the way into itself — the fourth a half of the way, and so on — so the wall never
+     ticks in step. */
   const sent = useRef(new Set<string>());
   const loaded = (k: string, i: number, on: boolean, v: HTMLVideoElement) => {
     if (sent.current.has(k)) return;
@@ -149,7 +150,7 @@ const Wall = ({ rooms, onPick }: { rooms: WallRoom[]; onPick: (id: string) => vo
           className="landing-screen group relative flex flex-col overflow-hidden rounded-[10px] sm:rounded-[12px] border border-borderMuted bg-canvas text-left text-textPrimary animate-fade-in [animation-fill-mode:both] transition-[transform,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 hover:border-textPrimary/40 motion-reduce:transition-none motion-reduce:hover:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver"
           data-wall-room={r.id}
         >
-          {/* THE SCREEN'S BAR — the tour window's, made small: the room's icon, its name, its number */}
+          {/* The screen's bar — the tour window's, made small: the room's icon, its name, its number */}
           <span className="shrink-0 h-6 sm:h-7 px-2 sm:px-2.5 flex items-center gap-1.5 sm:gap-2 border-b border-borderSubtle bg-panel">
             {r.glyph && <PageGlyph name={r.glyph} size={14} className="shrink-0 max-sm:w-3 max-sm:h-3" />}
             <span className="min-w-0 truncate text-t115 sm:text-t125 font-medium">{r.name}</span>
@@ -176,7 +177,8 @@ const Wall = ({ rooms, onPick }: { rooms: WallRoom[]; onPick: (id: string) => vo
                     muted
                     loop
                     playsInline
-                    /* nothing loads until play(), which runs only while the wall is on screen; the still holds the frame */
+                    /* nothing loads until play, which runs only while the wall is on screen; the still holds the
+                       frame */
                     preload="none"
                     disablePictureInPicture
                     aria-hidden="true"

@@ -34,9 +34,8 @@ interface Room {
 
 const fromRegistry = (pages: { path: string; label: string; subtitle: string }[]): Feature[] => pages.map(p => ({ title: p.label, says: p.subtitle, path: p.path }));
 
-/* THE ROOMS, in the tour's order. Pulse's tiles and desks are pages/workspace/registry.tsx's and desks.ts's (not imported:
-   they bring every tile's code with them) — fourteen and five, counted there on 2026-10-17 (Paper and Journal left Pulse at Noah's word on
-   2026-10-03; the range, where it closes and at the wall on 2026-10-17, with the Ahead and At-the-wall pages). */
+/* THE ROOMS, in the tour's order. Pulse's tiles and desks are pages/workspace/registry.tsx's and desks.ts's (not
+   imported: they bring every tile's code with them) — fourteen and five, counted there. */
 const ROOMS: Room[] = [
   {
     id: 'pulse',
@@ -99,7 +98,7 @@ const ROOMS: Room[] = [
     name: 'In every room',
     kind: 'The small things',
     features: [
-      /* Alerts is not listed (Noah, 2026-10-10: "just an in-house thing not an entire page") */
+      /* Alerts is not listed */
       /* not every page has a guide (Pulse and the Tracker have none), so the line does not say "every" */
       { title: 'How to read', says: 'Look for How to read on a page. It explains what you are looking at in plain English.' },
       { title: 'Saved layouts', says: 'Your layouts, tickers and colours save on their own. The terminal opens the way you left it.' },
@@ -119,8 +118,8 @@ export const SHARED_COUNT = ROOMS.find(r => r.id === 'every')?.features.length ?
 /** "Open the Weigher", not "Open The Weigher" */
 const doorName = (name: string) => name.replace(/^The /, 'the ');
 
-/* ONE TERMINAL, IN PLACE OF… — what a trader would otherwise keep open beside it, each on the icon of the page that does
-   it. Kinds of tool, never anybody's product. */
+/* One terminal, in place of… — what a trader would otherwise keep open beside it, each on the icon of the page
+   that does it. Kinds of tool, never anybody's product. */
 const IN_PLACE_OF: { glyph: GlyphName; text: string; room: string }[] = [
   { glyph: 'trace', text: 'a flow feed', room: 'trace' },
   { glyph: 'pinpoint', text: 'an exposure map', room: 'pinpoint' },
@@ -170,7 +169,8 @@ const Everything = ({ onOpen }: { onOpen: (path: string) => void }) => {
     [at, rooms, bringIn]
   );
 
-  /* A CHIP OF "IN PLACE OF" picks the room that does that job, and brings the list into view if it has left the screen */
+  /* A chip of "in place of" picks the room that does that job, and brings the list into view if it has left the
+     screen */
   const pickRoom = useCallback(
     (id: string) => {
       const i = ROOMS.findIndex(r => r.id === id);
@@ -226,7 +226,8 @@ const Everything = ({ onOpen }: { onOpen: (path: string) => void }) => {
           })}
         </div>
 
-        {/* THE PICKED ROOM'S PAGES — the panel swaps softly: the old one out quickly, the new one in a little slower */}
+        {/* The picked room's pages — the panel swaps softly: the old one out quickly, the new one in a little
+            slower */}
         <div role="tabpanel" id={`${uid}-panel`} aria-labelledby={`${uid}-tab-${room.id}`} className="lg:col-span-8 xl:col-span-9 mt-8 lg:mt-0 min-h-[420px] lg:min-h-[470px]" data-everything-panel={room.id}>
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -286,7 +287,7 @@ const Everything = ({ onOpen }: { onOpen: (path: string) => void }) => {
         </div>
       </div>
 
-      {/* ONE TERMINAL, IN PLACE OF */}
+      {/* One terminal, in place of */}
       <div className="mt-12 lg:mt-14 pt-7 border-t border-borderSubtle flex flex-col lg:flex-row lg:items-start gap-x-8 gap-y-4" data-landing-in-place-of>
         <p className="shrink-0 font-mono text-t11 uppercase tracking-[0.22em] text-textMuted lg:pt-[9px]">One terminal, in place of</p>
         <ul className="flex flex-wrap gap-2">

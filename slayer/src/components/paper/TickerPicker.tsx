@@ -1,7 +1,5 @@
-/*
-  What is on the paper chart: index options and stocks (and futures, when a futures feed is live), with one search
-  over all of them; the arrow keys walk the matches and Enter picks.
-*/
+/* What is on the paper chart: index options and stocks (and futures, when a futures feed is live), with one search
+   over all of them; the arrow keys walk the matches and Enter picks. */
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import * as Popover from '@radix-ui/react-popover';

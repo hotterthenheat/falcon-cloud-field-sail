@@ -1,11 +1,11 @@
-"""One factual SPX book for Terrain. No fills. Writes theta/cache/spx-book.json."""
-import json, urllib.request
+"""One factual SPX book for Terrain. No fills. Writes public/books/spx.json (the copy the app fetches)."""
+import json, os, urllib.request
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 BASE = "http://127.0.0.1:25503/v3"
 NY = ZoneInfo("America/New_York")
-OUT = "/workspace/slayer/theta/cache/spx-book.json"
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "public", "books", "spx.json")
 
 
 def get(path):

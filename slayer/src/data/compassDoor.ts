@@ -1,9 +1,5 @@
-/*
-  Compass doors the scan already claims.
-  The window is 09:30–15:00 ET on a session day.
-  One tracked name per session. Five open.
-  The blotter is not this book.
-*/
+/* Compass doors the scan already claims. The window is 09:30–15:00 ET on a session day. One tracked name per
+   session. Five open. The blotter is not this book. */
 
 import { useEffect, useMemo, useState } from 'react';
 import { isoDate, isTradingDay, nextSession } from '../core/calendar';

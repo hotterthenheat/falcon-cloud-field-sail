@@ -1,12 +1,5 @@
-/*
-  PAPER · THE EVALUATION PLANS, AS ROWS — the one small table the start page (StartCard) and the account card's New
-  door (AccountCard) share: a head row that says what each figure is, then a plan a row. It replaces a run-on sentence
-  ("target +$3,000 · may lose $2,000 · a day $1,000 · 5 at once" — Noah, 2026-09-26: "this doesnt make sense") with the
-  prop firm's own words, TARGET · LOSS LIMIT · DAILY LIMIT · CONTRACTS, each carrying its plain sentence on hover.
-  THE TABLE KNOWS ITS ROOM (the chain head's rule): under ~420px of box — a phone, or the start page's two cards side by
-  side at a 1024px window — the four columns cannot hold their words, so each plan is its own block: the plan and Start
-  on a line, the four figures under their own labels beneath. Measured on the box itself, never the window.
-*/
+/* PAPER · the evaluation plans, as rows — the one small table the start page (StartCard) and the account card's
+   New door (AccountCard) share: a head row that says what each figure is, then a plan a row. */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { EVAL_PLANS, type EvalPlan } from '../../data/paper/engine';

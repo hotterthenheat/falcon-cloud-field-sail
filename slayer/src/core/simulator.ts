@@ -1,7 +1,5 @@
-/*
-  The old random-walk market. No page reads it any more; a few data modules and the reference scripts in
-  scripts/ still import it, and a name's history is walked only when one of them asks for it.
-*/
+/* The old random-walk market. No page reads it any more; a few data modules and the reference scripts in scripts/
+   still import it, and a name's history is walked only when one of them asks for it. */
 
 import type {
   Candle,
@@ -33,8 +31,8 @@ const Simulator = (() => {
     QQQ: { basePrice: 440, currentPrice: 440, iv: 0.18, step: 1 },
     AAPL: { basePrice: 190, currentPrice: 190, iv: 0.20, step: 0.5 },
     NVDA: { basePrice: 120, currentPrice: 120, iv: 0.35, step: 0.5 },
-    /* THE THIRD FUND (2026-09-22): IWM was nobody's — a hash priced it at $382, a stock's price, where the backtest's tape
-       and the Russell futures the paper desk prices off it (RTY = IWM × 10) need the fund's own. Registered, not
+    /* The third fund: IWM was nobody's — a hash priced it at $382, a stock's price, where the backtest's tape and
+       the Russell futures the paper desk prices off it (RTY = IWM × 10) need the fund's own. Registered, not
        watched: it seeds the first time something asks for it, like any name. */
     IWM: { basePrice: 221.7, currentPrice: 221.7, iv: 0.21, step: 1 }
   };
@@ -42,11 +40,8 @@ const Simulator = (() => {
   /** Core watchlist that always populates the opportunity feed. */
   const WATCHLIST = ['SPY', 'QQQ', 'AAPL', 'NVDA'];
 
-  /* The scan roster: famous optionable names the Compass board sweeps WITHOUT
-     seeding them into the tick loop (registration costs ~0.6s of forward-simmed
-     candles per name — twenty at once is a frozen terminal). Base prices are
-     hand-set sim reference values, same idea as TICKERS above; a name promotes
-     to a full TICKERS entry the first time the user actually opens it. */
+  /* The scan roster: famous optionable names the Compass board sweeps WITHOUT seeding them into the tick loop
+     (registration costs ~0.6s of forward-simmed candles per name — twenty at once is a frozen terminal). */
   const SCAN_ROSTER: { ticker: string; px: number; iv: number }[] = [
     { ticker: 'TSLA', px: 248, iv: 0.48 },
     { ticker: 'META', px: 512, iv: 0.3 },
@@ -113,15 +108,8 @@ const Simulator = (() => {
     return h >>> 0;
   }
 
-  /*
-    Persistent OI book — the market's memory. Real open interest lives at a
-    strike for days; it doesn't teleport to wherever price wanders. Each
-    ticker keeps a per-strike OI ledger that drifts slowly toward the "fresh"
-    ATM-centered profile (positioning migrates), breathes with order-flow
-    noise, and decays once price leaves a strike far behind. Everything that
-    reads a chain (matrix, trails, walls) reads THIS book, so walls persist,
-    get tested, and fade for real instead of shadowing price.
-  */
+  /* Persistent OI book — the market's memory. Real open interest lives at a strike for days; it doesn't teleport
+     to wherever price wanders. */
   interface BookEntry {
     callOI: number;
     putOI: number;
@@ -195,17 +183,7 @@ const Simulator = (() => {
     }
   }
 
-  /*
-    GEX-aware price step — the feedback loop. The book shapes the walk:
-      · heavy shelves are BARRIERS: a move that would punch through gets most
-        of its overshoot absorbed (tests and bounces), with a rare clean
-        break that runs;
-      · the nearest strong shelf exerts a gentle PIN when price is close
-        (grind-along-the-wall days);
-      · between shelves ("no man's land") volatility runs freer.
-    Gamma is approximated with a single Gaussian per strike so seeding stays
-    fast; the display path keeps exact Black-Scholes.
-  */
+  /* GEX-aware price step — the feedback loop. */
   function gexAwareStep(sym: string, price: number, scale = 1): number {
     const cfg = TICKERS[sym];
     const book = oiBook[sym];
@@ -271,16 +249,8 @@ const Simulator = (() => {
     seedCandles(sym);
   }
 
-  /*
-    THE SEED IS RESUMABLE (2026-09-06, the perf sweep). A name's history is
-    8,580 bars of walking through its evolving book, and it used to be one
-    synchronous call — 0.6s of frozen frame per name, and the scan board
-    seeds a name every quarter second. Now the walk is a JOB that can be
-    advanced a few milliseconds at a time from idle callbacks (seedAsync),
-    and finished synchronously by whoever cannot wait (ensureTicker, the
-    same result either way). A name mid-seed is not in candleHistory yet, so
-    tick() skips it and peekCandles says null, exactly as before it began.
-  */
+  /* The seed is resumable. A name's history is 8,580 bars of walking through its evolving book, and it used to be
+     one synchronous call — 0.6s of frozen frame per name, and the scan board seeds a name every quarter second. */
   interface SeedJob {
     sym: string;
     bars: Candle[];
@@ -295,23 +265,17 @@ const Simulator = (() => {
 
   /** The instant a new history should END at: the newest bar of any name already seeded, else the wall clock */
   function historyAnchor(): number {
-    /* Late-seeded names join the CLOCK ALREADY RUNNING, not the wall clock:
-       bar time advances ~15× wall speed (one 60s bar per 4 real ticks), so a
-       name ensured mid-session and anchored to Date.now() would land its
-       whole history deep in the veterans' past — its compare line ends a
-       fifth of the way into the chart and never catches up (Noah,
-       2026-08-23: "the iwm one looks far behind"). Anchor to the newest bar
-       of any ticker already seeded; wall clock only for the very first. */
+    /* Late-seeded names join the clock already running, not the wall clock: bar time advances ~15× wall speed (one
+       60s bar per 4 real ticks), so a name ensured mid-session and anchored to Date.now would land its whole
+       history deep in the veterans' past — its compare line ends a fifth of the way into the chart and never
+       catches up. Anchor to the newest bar of any ticker already seeded; wall clock only for the very first. */
     const ref = Object.values(candleHistory).find(b => b && b.length > 0);
     return ref ? ref[ref.length - 1].time : seedAnchorSec(Date.now());
   }
 
-  /* THE HISTORY ENDS AT A REAL CLOSE OUTSIDE THE SESSION (the partner's fix, taken with his Map 2026-10-14): the walk
-     always ended at the wall clock, so a desk opened at 22:30 had a "today" of 16:13–22:42 — the replay walked an
-     evening the trader's clock (09:30–16:00) could not follow, and every box of the day drew it. Inside a weekday's
-     cash session it still ends now; outside it, on the last weekday's 15:59, so the last session is that day's
-     09:30–15:59 to the minute (the live bars after it roll on past the close, and levelview's sessionCut leaves them
-     out of the day). */
+  /* The history ends at a real close outside the session: the walk always ended at the wall clock, so a desk
+     opened at 22:30 had a "today" of 16:13–22:42 — the replay walked an evening the trader's clock (09:30–16:00)
+     could not follow, and every box of the day drew it. */
   function seedAnchorSec(nowMs: number): number {
     let at = nowMs;
     for (let k = 0; k < 8; k++) {
@@ -323,12 +287,9 @@ const Simulator = (() => {
     return Math.floor(nowMs / 1000);
   }
 
-  /* THE SESSIONS ARE NEW YORK'S (2026-10-14, after the partner's anchor fix): the walk laid fixed blocks of 390 bars back
-     from its anchor, so a name seeded later — anchored to the newest live bar, which rolls on past the close — had a
-     "today" that began at 10:46 and a second name's day box stood an hour ahead of the first's in a replay (Noah: it
-     "doesn't even align with the current price"). The minutes are laid out first: the anchor's own day from its 09:30 to
-     the anchor (past the close when the anchor is a live bar after hours; part of a day during the session), then the
-     SESSIONS − 1 weekday sessions before it, 09:30 to 15:59 each, weekends and holidays skipped — oldest first. */
+  /* The sessions are new york's: the walk laid fixed blocks of 390 bars back from its anchor, so a name seeded
+     later — anchored to the newest live bar, which rolls on past the close — had a "today" that began at 10:46 and
+     a second name's day box stood an hour ahead of the first's in a replay. */
   function sessionTimes(anchorSec: number): number[] {
     const out: number[] = [];
     const weekdayOpen = (daySec: number): boolean => {
@@ -359,16 +320,11 @@ const Simulator = (() => {
     const nowSec = anchorSec ?? historyAnchor();
     const alignedNow = nowSec - (nowSec % BAR_SECONDS);
     const times = sessionTimes(alignedNow);
-    /* Roster names must LAND on their scan quote: the board priced their
-       cards off it, and a first click that seeds them 15% away opens the
-       monitor on floor-priced garbage. A gentle homeward pull (0.15% of the
-       remaining gap per bar) steers the walk to end ≈ basePrice while the
-       book evolves ON the corrected path — wall physics stay coherent, and
-       the watchlist keeps its unpulled drift (a feature: it reads live). */
-    /* A UNIVERSE name is quoted too (2026-09-12): the Record prices its pages
-       off the universe quote, so its walk lands there as well — Linde seeded
-       at $452 used to end at $356, and the busiest $480 call arrived on the
-       Weigher a hundred dollars out of the money. */
+    /* Roster names must LAND on their scan quote: the board priced their cards off it, and a first click that
+       seeds them 15% away opens the monitor on floor-priced garbage. */
+    /* A UNIVERSE name is quoted too: the Record prices its pages off the universe quote, so its walk lands there
+       as well — Linde seeded at $452 used to end at $356, and the busiest $480 call arrived on the Weigher a
+       hundred dollars out of the money. */
     const quoted = SCAN_ROSTER.some(r => r.ticker === sym) || !!universeLookup(sym);
     const homeK = quoted ? 0.0015 : 0;
     evolveBook(sym, cfg.basePrice, 1); // seed the book at the journey's start
@@ -417,12 +373,9 @@ const Simulator = (() => {
     const { sym, bars, snaps } = job;
     const cfg = TICKERS[sym];
     let close = job.close;
-    /* Final-session taper (roster names only): the homeward pull gets the
-       walk NEAR the quote; this closes the residual exactly, spread across
-       the last session so no single bar jumps. The book evolved on the
-       unadjusted path, so its strain is bounded by that residual (≈2%) over
-       one session — versus 15% everywhere without it. First click now
-       prices the SAME market the card did. */
+    /* Final-session taper (roster names only): the homeward pull gets the walk NEAR the quote; this closes the
+       residual exactly, spread across the last session so no single bar jumps. The book evolved on the unadjusted
+       path, so its strain is bounded by that residual (≈2%) over one session — versus 15% everywhere without it. */
     if (job.homeK > 0 && bars.length > 0) {
       const gap = r2(cfg.basePrice - close);
       if (Math.abs(gap) > 0.005) {
@@ -467,25 +420,14 @@ const Simulator = (() => {
     return stepSeed(job, budgetMs) ? 'done' : 'pending';
   }
 
-  /*
-    THE SEED'S HOT PATH (2026-09-06, the perf sweep — Noah: "opening the pulse
-    page… opening the weigher… stutters"). Seeding one name walks 22 sessions ×
-    390 bars and takes a GEX snapshot at every bar: 8,580 chains × 61 strikes ×
-    two Black-Scholes evaluations ≈ a million exp/log calls ≈ 0.6s of frozen
-    frame per name — and the scan board seeds a name every 250ms. The snapshot
-    needs ONE greek, gamma, and Black-Scholes gamma is homogeneous of degree
-    −1 in (S, K): Γ(S, K) = Γ(1, K/S) / S. So gamma is memoised on the
-    log-moneyness ln(S/K), quantised to 1/4000 (0.025%), per iv — the exact
-    formula at the bucket's centre, from the same greeks module the display
-    chain uses. The seed drops to a few tens of milliseconds a name.
-  */
+  /* The seed's hot path. Seeding one name walks 22 sessions × 390 bars and takes a GEX snapshot at every bar:
+     8,580 chains × 61 strikes × two Black-Scholes evaluations ≈ a million exp/log calls ≈ 0.6s of frozen frame per
+     name — and the scan board seeds a name every 250ms. */
   const GAMMA_T = 0.003; // 0DTE, the same horizon generateOptionsChain prices
   const GAMMA_Q = 4000;
-  /* THE THREE GREEKS, ONE MEMO (2026-09-06: the trails follow the head's
-     Greek, so the history carries delta and vega beside gamma). All three
-     are scale-free in (spot, strike) at a fixed horizon and vol: gamma and
-     vega scale with spot, delta not at all — so one Black-Scholes evaluation
-     per log-moneyness bucket serves every bar of the walk. */
+  /* The three greeks, one memo. All three are scale-free in (spot, strike) at a fixed horizon and vol: gamma and
+     vega scale with spot, delta not at all — so one Black-Scholes evaluation per log-moneyness bucket serves every
+     bar of the walk. */
   interface UnitGreeks {
     gamma: number;
     deltaCall: number;
@@ -517,10 +459,9 @@ const Simulator = (() => {
     if (!oiBook[sym]) evolveBook(sym, spot);
     const book = oiBook[sym];
     const baseStrike = Math.round(spot / step) * step;
-    /* OI rides along with the gamma it explains (his P-8) — same instant,
-       same book, so a ΔOI reading can never be timestamped away from the
-       level it accounts for. The weights are generateOptionsChain's: dealers
-       net short calls (−0.55) and net short puts (−0.53). */
+    /* OI rides along with the gamma it explains (his P-8) — same instant, same book, so a ΔOI reading can never be
+       timestamped away from the level it accounts for. The weights are generateOptionsChain's: dealers net short
+       calls (−0.55) and net short puts (−0.53). */
     const scale = 100 * spot * spot * 0.01;
     const levels: GexSnapshot['levels'] = [];
     for (let i = -30; i <= 30; i++) {
@@ -537,15 +478,8 @@ const Simulator = (() => {
     return { time, levels };
   }
 
-  /*
-    THE SECONDS TAPE (T-14, ported 2026-08-27).
-
-    One tick is one 15-second bar. It is LIVE-ONLY by construction: the ring
-    starts empty and fills as the app runs, exactly as a per-second feed is
-    empty before it connects. Nothing here resamples the 1-minute history —
-    a sub-minute label over resampled minutes would be a different
-    instrument wearing the same name.
-  */
+  /* The seconds tape. One tick is one 15-second bar. It is LIVE-ONLY by construction: the ring starts empty and
+     fills as the app runs, exactly as a per-second feed is empty before it connects. */
   const secondsHistory: Record<string, Candle[]> = {};
   /** Two sessions of quarters — 4 per minute × 390 × 2. */
   const SECONDS_LIMIT = 3120;
@@ -706,7 +640,7 @@ const Simulator = (() => {
 
   // Generate Strike-by-Strike Chain
   /** `bookOverride`: another moment's open interest by strike (the session's open, off a GEX snapshot) priced at
-      `spotOverride` — the book as it stood then, by the same estimator (the calendar's "since the open", 2026-10-12) */
+      `spotOverride` — the book as it stood then, by the same estimator */
   function generateOptionsChain(tickerKey: TickerSymbol, spotOverride?: number, bookOverride?: ReadonlyMap<number, BookEntry>): StrikeNode[] {
     const config = TICKERS[tickerKey];
     const spot = spotOverride ?? config.currentPrice;
@@ -716,7 +650,7 @@ const Simulator = (() => {
     const strikes: StrikeNode[] = [];
     const baseStrike = Math.round(spot / step) * step;
     // 30 each side — the whole maintained book (BOOK_RANGE), so a ±30 window
-    // on the ladder shows real rows, not a repeat of ±15 (Noah, 2026-08-22:
+    // 
     // far strikes are where the tail hedges sit). The real feed carries the
     // full chain; this only costs the sim's seeding ~2× per name.
     const strikeRange = 30;
@@ -756,11 +690,9 @@ const Simulator = (() => {
       const putVex = putOI * 100 * greeks.vega * dealerPutDirection;
       const netVex = callVex + putVex;
 
-      /* VANNA and CHARM as exposures, on delta's own footing (2026-09-09):
-         vanna is ∂Δ/∂σ with σ a fraction, so ×0.01 states it per ONE POINT
-         of vol; charm is the delta the clock takes per YEAR, so ÷252 states
-         it per session. Both × OI × 100 × spot × the dealer's direction, the
-         way DEX is. */
+      /* VANNA and CHARM as exposures, on delta's own footing: vanna is ∂Δ/∂σ with σ a fraction, so ×0.01 states it
+         per ONE POINT of vol; charm is the delta the clock takes per YEAR, so ÷252 states it per session. Both ×
+         OI × 100 × spot × the dealer's direction, the way DEX is. */
       const callVanna = callOI * 100 * greeks.vanna * 0.01 * spot * dealerCallDirection;
       const putVanna = putOI * 100 * greeks.vanna * 0.01 * spot * dealerPutDirection;
       const netVanna = callVanna + putVanna;
@@ -819,7 +751,7 @@ const Simulator = (() => {
     // The crossing NEAREST SPOT, not the first one walking up the chain: a
     // noisy book can carry a jitter crossing deep in a tail, and breaking on
     // the first hit labeled THAT as the regime border while the structural
-    // flip sat at spot. Matches data/gex.ts buildLevelsFor (Noah, 2026-08-18).
+    // flip sat at spot. Matches data/gex.ts buildLevelsFor.
     let flipStrike = spot;
     let flipDist = Infinity;
     for (let i = 1; i < chain.length; i++) {
@@ -953,12 +885,9 @@ const Simulator = (() => {
     }
   }
 
-  /**
-   * A snapshot for ANY ticker, read from current state without advancing the
-   * simulation. `tick` only ever emits the active symbol, so surfaces that show
-   * several names at once (a workspace of panels, a multi-chart board) need
-   * this to derive per-ticker views. Pure read — safe to call during render.
-   */
+  /** A snapshot for ANY ticker, read from current state without advancing the simulation. `tick` only ever emits
+      the active symbol, so surfaces that show several names at once (a workspace of panels, a multi-chart board)
+      need this to derive per-ticker views. Pure read — safe to call during render. */
   function snapshotFor(symbolRaw: string): MarketSnapshot {
     const sym = ensureTicker(symbolRaw);
     const cfg = TICKERS[sym];
@@ -1025,18 +954,9 @@ const Simulator = (() => {
     /** The indicator math alone, for the engine port's reference generator
         (scripts/indicators-ref.ts) — the same function every snapshot reads. */
     getIndicators,
-    /** The live harness's answer to "what is the market right now" for the
-        scan universe. Engine modules (Compass) take this as an ARGUMENT
-        instead of reading the simulator themselves — a replay harness passes
-        historical quotes through the same parameter.
-
-        The roster reaches past the seeded watchlist WITHOUT registering
-        names: ensureTicker forward-seeds a full candle history (~0.6s per
-        name — 20 of them would freeze the terminal for the exact reason the
-        partner's build grew a separate scan engine). Unseeded names get a
-        lightweight day-stable quote instead; the first CLICK on one of their
-        cards is what seeds them, one name at a time, the Dark Pool Leaders
-        precedent. */
+    /** The live harness's answer to "what is the market right now" for the scan universe. Engine modules (Compass)
+        take this as an ARGUMENT instead of reading the simulator themselves — a replay harness passes historical
+        quotes through the same parameter. */
     quoteLight,
     universeQuotes: (active: string): UniverseQuote[] => {
       const names = Array.from(new Set([active, ...WATCHLIST, ...SCAN_ROSTER.map(r => r.ticker)]));

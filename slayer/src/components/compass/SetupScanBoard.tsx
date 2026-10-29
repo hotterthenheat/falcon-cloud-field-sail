@@ -1,7 +1,5 @@
-/*
-  The ranked calls under the board's head: cards two across, or the same rows as a grid. The box grows with what
-  the scan found and the page scrolls.
-*/
+/* The ranked calls under the board's head: cards two across, or the same rows as a grid. The box grows with what
+   the scan found and the page scrolls. */
 
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight } from 'lucide-react';

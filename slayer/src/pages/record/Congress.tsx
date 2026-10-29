@@ -574,7 +574,7 @@ const Congress = () => {
         ) : (
           <div
             /* every report across from 1280; six on a laptop, four on a tablet, two on a phone */
-            className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--reports),minmax(0,1fr))]"
+            className="grid gap-2 grid-cols-2 max-sm:[&>*:nth-child(n+3)]:hidden sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--reports),minmax(0,1fr))]"
             style={{ '--reports': REPORTS_TO_KNOW } as CSSProperties}
           >
             {toKnow.map(t => (

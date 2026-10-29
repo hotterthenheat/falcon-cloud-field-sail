@@ -1,8 +1,5 @@
-/*
-  The four desks, on the name Compass is holding.
-  The top is the tape: what is printing. The bottom is
-  what is about to. None of it is in the score.
-*/
+/* The four desks, on the name Compass is holding. The top is the tape: what is printing. The bottom is what is
+   about to. None of it is in the score. */
 
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';

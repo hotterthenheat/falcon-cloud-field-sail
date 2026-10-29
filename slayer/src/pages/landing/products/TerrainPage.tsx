@@ -44,7 +44,7 @@ const TerrainPage = () => (
       </p>
     </Aside>
 
-    {/* ── ONE SET OF CONTROLS ── */}
+    {/* ── one set of controls ── */}
     <Room eyebrow="One set of controls" first="A strip over every chart." second="And one bar under all of them." pictures={<Pair cols={1} items={[
       { src: `${SHOTS}/strip`, ratio: '1400 / 63', name: 'A pane’s strip', says: 'The name and its price at the left, the timeframes after them, the fullscreen door at the end. The cluster — Replay, Indicators, Alerts, Candles, Overlays, Theme — rides the row when the pane is wide enough for it, and otherwise keeps a row of its own under the book that shows under the pointer. The strike rail’s own head stands beside it.' },
       { src: `${SHOTS}/bar`, ratio: '1400 / 44', name: 'The desk bar', says: 'How many charts, the Strikes switch for the rails, the Colours card, and Layouts: name an arrangement and bring it back with one pick. In fullscreen the bar floats, and gains the Pine door.' },
@@ -55,10 +55,10 @@ const TerrainPage = () => (
       </p>
     </Room>
 
-    {/* ── THE ONE RECORDING ── */}
+    {/* ── the one recording ── */}
     <Film />
 
-    {/* ── THE STRIKE RAIL ── */}
+    {/* ── the strike rail ── */}
     <Room eyebrow="The strike rail" first="The book beside the chart." second="Shown as a ladder or as the net." pictures={<Pair items={[
       { src: `${SHOTS}/rail-ladder`, ratio: '528 / 798', name: 'The ladder', says: 'A row a strike, the puts to the left and the calls to the right on the ramp, the figures past the tips, and the spine leaning the way the net leans with its ghost at the open. The walls, the flip and the heaviest strike are marked on the column.' },
       { src: `${SHOTS}/rail-net`, ratio: '528 / 798', name: 'The net', says: 'Each strike’s net gamma as a figure in the leading side’s ink, and under it one row of dashes split between puts and calls, the row’s length the strike’s weight against the heaviest on screen.' },
@@ -80,7 +80,7 @@ const TerrainPage = () => (
       </p>
     </Room>
 
-    {/* ── YOUR OWN SCRIPTS ── */}
+    {/* ── your own scripts ── */}
     <Room eyebrow="Your own scripts" first="Your own scripts, in Pine." second="Written beside the chart they draw on." pictures={<Pair items={[
       { src: `${SHOTS}/library`, ratio: '1200 / 822', name: 'The library', says: 'Behind the Indicators door: what you used recently, your favourites and your own scripts, then the shipped shelves — Slayer’s own, the technicals, the chart tools. A row’s switch puts it on the pane, the gear opens its inputs, and a name opens it in the editor.' },
       { src: `${SHOTS}/editor`, ratio: '1440 / 1000', name: 'The editor', says: 'Docked at the right of a fullscreen chart, as wide as you drag it. Every keystroke re-reads the script over the chart’s own bars and names the line of any error. Add to chart saves a version and draws it; a legend at the chart’s corner lists what is on, with an eye and an × for each.' },

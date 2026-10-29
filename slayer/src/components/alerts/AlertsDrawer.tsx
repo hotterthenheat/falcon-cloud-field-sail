@@ -1,7 +1,5 @@
-/*
-  Every alert in one place, over any page: what is set (a card per name, a row per alert) and what has alerted this
-  session, newest first. The sidebar's bell opens it.
-*/
+/* Every alert in one place, over any page: what is set (a card per name, a row per alert) and what has alerted
+   this session, newest first. The sidebar's bell opens it. */
 
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -69,7 +67,7 @@ const ALL = 'all';
 
 /* ---- the parts ------------------------------------------------------------------------ */
 
-/* The shelf heads read as heads, not footnotes (Noah, 2026-09-10: "a bit too muted") */
+/* The shelf heads read as heads, not footnotes */
 const Shelf = ({ label, count, action, onAction, children }: { label: string; count: number; action?: string; onAction?: () => void; children: React.ReactNode }) => (
   <section className="px-3.5 pt-4" data-alerts-shelf={label.toLowerCase()}>
     <div className="flex items-baseline gap-1.5 pb-2">
@@ -176,11 +174,8 @@ const AlertsDrawer = () => {
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
-  /* THE GLIDE (Noah, 2026-09-10: "the alert sidebars transition is not smooth
-     enough for me. the in and out is too quick"): the drawer slides in from
-     the right over 0.5s and slides back out over 0.36s on the standard
-     curve — framer-motion's AnimatePresence keeps it mounted for the way
-     out. Reduced motion: it appears and goes. */
+  /* THE GLIDE: the drawer slides in from the right over 0.5s and slides back out over 0.36s on the standard curve
+     — framer-motion's AnimatePresence keeps it mounted for the way out. Reduced motion: it appears and goes. */
   const reduce = useReducedMotion();
   /* the standard curve, not the house expo — the expo is home by 120ms on a
      400px panel and reads as a snap (measured x37 · x4 · x1 · 0) */
@@ -223,7 +218,7 @@ const AlertsDrawer = () => {
   return (
     <AnimatePresence>
       {open && <div key="scrim" className="fixed inset-0 z-[87]" onClick={closeAlertsDrawer} aria-hidden data-alerts-scrim />}
-      {/* TRANSLUCENT (Noah, 2026-09-10: "the alerts sidetab should be translucent") — the draw rail's glass: the page shows through, blurred */}
+      {/* TRANSLUCENT — the draw rail's glass: the page shows through, blurred */}
       {open && (
       <motion.aside
         key="drawer"

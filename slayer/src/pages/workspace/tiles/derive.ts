@@ -1,8 +1,6 @@
-/*
-  What the book tiles read off a name's live snapshot — today's book, the calendar's surface, the levels, the
-  building, the agenda — each built once per snapshot and shared, so two tiles on one name never build the same
-  book twice. A build that throws (a name with no book) is remembered as null and the tile says so.
-*/
+/* What the book tiles read off a name's live snapshot — today's book, the calendar's surface, the levels, the
+   building, the agenda — each built once per snapshot and shared, so two tiles on one name never build the same
+   book twice. A build that throws (a name with no book) is remembered as null and the tile says so. */
 
 import { buildAgenda, type Agenda, type AgendaOrder } from '../../../data/agenda';
 import { aheadClock, type AheadClock } from '../../../data/ahead';

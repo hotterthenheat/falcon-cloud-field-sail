@@ -1,8 +1,6 @@
-/*
-  The paper book. Every pick fills at the ask of the first quote a full minute after the call;
-  a missing quote is not replaced and a fill is never refused because the ask moved.
-  Fees are a flat per-side estimate (see optionFees), not a broker's schedule.
-*/
+/* The paper book. Every pick fills at the ask of the first quote a full minute after the call; a missing quote is
+   not replaced and a fill is never refused because the ask moved. Fees are a flat per-side estimate (see
+   optionFees), not a broker's schedule. */
 
 import { useEffect, useState } from 'react';
 import type { OptionRight, Setup } from '../types/compass';

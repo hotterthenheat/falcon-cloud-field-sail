@@ -1,7 +1,5 @@
-/*
-  The pieces the Pulse tiles share, so every tile reads as one desk: the read line at a tile's foot, rows under
-  hairlines, a row that is a door, the empty state, a short bar, and the name's live price.
-*/
+/* The pieces the Pulse tiles share, so every tile reads as one desk: the read line at a tile's foot, rows under
+   hairlines, a row that is a door, the empty state, a short bar, and the name's live price. */
 
 import { useCallback, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';

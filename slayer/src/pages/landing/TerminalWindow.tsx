@@ -1,7 +1,5 @@
-/*
-  The terminal in a window on the landing page, playing recordings of the real pages; its bar says the data in
-  them is simulated.
-*/
+/* The terminal in a window on the landing page, playing recordings of the real pages; its bar says the data in
+   them is simulated. */
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useReducedMotion } from 'framer-motion';
@@ -25,13 +23,12 @@ interface Props {
   desk: boolean;
   /** Size the screen by the picture's own shape (a desk). Otherwise the host gives the height. */
   natural?: boolean;
-  /** WHAT PLAYS (2026-10-02, the products' pages): the page's own tour film (left out), a film by name — the key the
-      film maker made it under, less its theme and form (`pulse-arrange`) — or `false`: the still alone. */
+  /** WHAT PLAYS: the page's own tour film (left out), a film by name — the key the film maker made it under, less
+      its theme and form (`pulse-arrange`) — or `false`: the still alone. */
   film?: string | false;
-  /** THE LOADING MOMENT (Boot.tsx — his partner's, 2026-10-03): 'switch' — a window that turns from page to page boots
-      each new page as it comes (and its first page as the window is first seen): a grain that resolves, along the
-      page's own motion (`bootSweep`); the film holds its first frame until the boot has gone. Left out, a page simply
-      fades in over the last. */
+  /** The loading moment: 'switch' — a window that turns from page to page boots each new page as it comes (and its
+      first page as the window is first seen): a grain that resolves, along the page's own motion (`bootSweep`); the
+      film holds its first frame until the boot has gone. Left out, a page simply fades in over the last. */
   boot?: 'switch';
   bootSweep?: Sweep;
   className?: string;
@@ -49,10 +46,10 @@ interface Reel {
 const crumbs = (pathname: string): string[] => pathname.split('/').filter(Boolean).slice(0, 3);
 const pageName = (path: string): string => crumbs(path).join(' ').replace(/-/g, ' ');
 
-/** THE PROMPT (his partner's bar, 2026-10-03): the command that opened the page on screen, typed a letter at a time each
-    time the page changes — every letter its own span lit on its own beat (index.css .window-typing), so the typing is
-    exact in any face — and the cursor after it on the brand's beat (.window-cursor: the mark's own keyframes, pinned to
-    the page's clock by brand/brandClock.ts) */
+/** THE PROMPT: the command that opened the page on screen, typed a letter at a time each time the page changes —
+    every letter its own span lit on its own beat (index.css.window-typing), so the typing is exact in any face —
+    and the cursor after it on the brand's beat (.window-cursor: the mark's own keyframes, pinned to the page's
+    clock by brand/brandClock.ts) */
 const Prompt = ({ path }: { path: string }) => {
   const cmd = `open ${crumbs(path).join('/')}`;
   return (
@@ -169,9 +166,9 @@ const TerminalWindow = ({ path, theme, desk, natural = false, film, boot, bootSw
   }, [key, filmed, path, theme, form]);
   const top = reels.find(r => r.key === key);
 
-  /* THE READER REACHES FOR THE THEME (films.ts themeIntent): the other theme's film of this page is mounted and run
-     hidden, in step with the one on screen, for INTENT_MS — so the turn finds it playing and the window turns colour
-     with the page (2026-10-03, Noah: the screens "wont change colors as fast as the rest") */
+  /* The reader reaches for the theme (films.ts themeIntent): the other theme's film of this page is mounted and
+     run hidden, in step with the one on screen, for INTENT_MS — so the turn finds it playing and the window turns
+     colour with the page */
   const [armed, setArmed] = useState(false);
   const armTimer = useRef(0);
   useEffect(() => {
@@ -201,8 +198,7 @@ const TerminalWindow = ({ path, theme, desk, natural = false, film, boot, bootSw
   const lastPath = useRef(path);
   useEffect(() => {
     if (boot !== 'switch' || calm || want === lastWant.current) return;
-    /* a new PAGE boots; the same page turning theme simply fades to its other picture (a boot on the theme's turn put
-       the grain's work on the toggle's own frame — 2026-10-03, the landing's lag) */
+    /* a new PAGE boots; the same page turning theme simply fades to its other picture */
     const turned = path !== lastPath.current;
     lastWant.current = want;
     lastPath.current = path;
@@ -280,8 +276,7 @@ const TerminalWindow = ({ path, theme, desk, natural = false, film, boot, bootSw
     >
       {/* THE BAR — which page this is, and that its numbers are simulated */}
       <div className="shrink-0 h-10 pl-3.5 pr-3.5 flex items-center gap-1.5 sm:gap-3 border-b border-borderSubtle bg-panel font-mono transition-colors duration-500">
-        {/* the house mark where the prompt stood (Noah, 2026-09-30: "put the S in the window title bar too") — the bare S|
-            since the switch to his partner's logo system (2026-10-03) */}
+        
         <SlayerMark size={16} bare label="" />
         <Prompt path={drawn} />
         <span className="ml-auto text-t95 uppercase tracking-[0.16em] text-textMuted whitespace-nowrap">simulated data</span>
@@ -313,7 +308,7 @@ const TerminalWindow = ({ path, theme, desk, natural = false, film, boot, bootSw
             muted
             loop
             playsInline
-            /* nothing loads until play(); the poster stands until the reel can play */
+            /* nothing loads until play; the poster stands until the reel can play */
             preload="none"
             disablePictureInPicture
             aria-label={`The terminal's ${pageName(r.path)} page, in use`}

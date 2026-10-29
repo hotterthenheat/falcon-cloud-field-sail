@@ -1,9 +1,6 @@
-/*
-  Live option prices from Unusual Whales' listed contracts: each contract's NBBO, last print, open interest, volume
-  and the vendor's greeks. The Weigher's chain falls back to this when ThetaData does not answer, and the
-  watchlist, positions and the paper account mark their contracts here. Nothing in this file is modelled except
-  the greeks solved from the mark when the vendor leaves one blank.
-*/
+/* Live option prices from Unusual Whales' listed contracts: each contract's NBBO, last print, open interest,
+   volume and the vendor's greeks. The Weigher's chain falls back to this when ThetaData does not answer, and the
+   watchlist, positions and the paper account mark their contracts here. */
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { expiryFor, isoDate, isTradingDay, today as nyToday } from '../core/calendar';

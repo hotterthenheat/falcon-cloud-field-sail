@@ -5,9 +5,7 @@
 import { Users } from 'lucide-react';
 import { Block, Line, SubLine, Trigger } from '../../components/ui/skeletonKit';
 
-/* THE ROOM'S SHAPE — the page reads these too. Three columns from `lg`; a
-   phone gets ONE, the feed first (the phone pass, 2026-09-13 — the 300px
-   right column used to run off a 390px screen). */
+/* The room's shape — the page reads these too. Three columns from `lg`; a phone gets ONE, the feed first. */
 export const ROOM_GRID = 'grid gap-2.5 items-start grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_300px]';
 export const ROOM_POST_H = 100;
 export const ROOM_TREND_H = 36;

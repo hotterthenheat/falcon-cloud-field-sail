@@ -2,62 +2,81 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { proxyUw } from './server/uwProxy.mjs';
 import { proxyTheta } from './server/thetaProxy.mjs';
+import { superviseTheta } from './theta/supervisor.mjs';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
-/* The Unusual Whales token stays in UNUSUAL_WHALES_API_KEY. The browser calls
-   /api/uw/* and this middleware adds the bearer token. */
-const whalesProxy = (): Plugin => ({
-  name: 'unusual-whales-proxy',
-  configureServer(server) {
-    server.middlewares.use('/api/uw', (req, res) => {
-      void proxyUw(req, res);
+/* The data proxies (server/) run inside the dev and preview servers; their keys stay in this process.
+   Any other /api path answers 404 instead of falling through to the SPA's index.html. */
+const dataProxies = (): Plugin => {
+  const mount = (use: (path: string, fn: (req: IncomingMessage, res: ServerResponse) => void) => void) => {
+    use('/api/uw', (req, res) => void proxyUw(req, res));
+    use('/api/theta', (req, res) => void proxyTheta(req, res));
+    use('/api', (_req, res) => {
+      res.statusCode = 404;
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ error: 'not found' }));
     });
-    server.middlewares.use('/api/theta', (req, res) => {
-      void proxyTheta(req, res);
-    });
-    server.middlewares.use('/api/log', (_req, res) => {
-      res.statusCode = 204;
-      res.end();
-    });
-    server.middlewares.use('/api/stall', (_req, res) => {
-      res.statusCode = process.env.STALL_KEY ? 501 : 404;
-      res.end();
-    });
-  },
-  /* the built site, served by `vite preview`, reads the same proxy — so the production bundle can be checked live */
-  configurePreviewServer(server) {
-    server.middlewares.use('/api/uw', (req, res) => {
-      void proxyUw(req, res);
-    });
-    server.middlewares.use('/api/theta', (req, res) => {
-      void proxyTheta(req, res);
-    });
-  },
-});
+  };
+  return {
+    name: 'data-proxies',
+    configureServer(server) {
+      mount((path, fn) => server.middlewares.use(path, fn));
+      /* one ThetaData terminal for local work (theta/supervisor.mjs); THETA_AUTOSTART=0 leaves it to `npm run theta` */
+      if (process.env.THETA_AUTOSTART !== '0') {
+        const stop = superviseTheta();
+        if (stop) server.httpServer?.once('close', stop);
+      }
+    },
+    configurePreviewServer(server) {
+      mount((path, fn) => server.middlewares.use(path, fn));
+    },
+  };
+};
 
-// https://vitejs.dev/config/
+/* server-side settings read from .env files the way the host's environment would provide them */
+const SERVER_ENV = [
+  'UNUSUAL_WHALES_API_KEY',
+  'THETADATA_API_KEY',
+  'THETA_JAR',
+  'THETA_JAVA',
+  'THETA_AUTOSTART',
+  'SUPABASE_URL',
+  'SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'VITE_SUPABASE_URL',
+  'VITE_SUPABASE_PUBLISHABLE_KEY',
+  'UW_PROXY_OPEN',
+  'PROXY_PLAN_GATE',
+  'PROXY_RATE_BURST',
+  'PROXY_RATE_PER_SEC',
+];
+
+/* Vendor libraries in a few stable chunks: fewer requests on first load, and an app deploy leaves them cached. */
+const VENDOR_CHUNKS: [string, RegExp][] = [
+  ['vendor-react', /node_modules\/(react|react-dom|scheduler|react-router|react-router-dom|@remix-run\/router)\//],
+  ['vendor-motion', /node_modules\/(framer-motion|motion-dom|motion-utils)\//],
+  ['vendor-supabase', /node_modules\/@supabase\//],
+  ['vendor-grid', /node_modules\/(ag-grid-community|ag-grid-react)\//],
+  ['vendor-charts', /node_modules\/(lightweight-charts|fancy-canvas)\//],
+  ['vendor-codemirror', /node_modules\/(@codemirror|@lezer|codemirror|style-mod|w3c-keyname|crelt)\//],
+  ['vendor-radix', /node_modules\/(@radix-ui|@floating-ui)\//],
+];
+const manualChunks = (id: string): string | undefined => VENDOR_CHUNKS.find(([, re]) => re.test(id))?.[0];
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  if (env.UNUSUAL_WHALES_API_KEY && !process.env.UNUSUAL_WHALES_API_KEY) {
-    process.env.UNUSUAL_WHALES_API_KEY = env.UNUSUAL_WHALES_API_KEY;
-  }
-  if (env.THETADATA_API_KEY && !process.env.THETADATA_API_KEY) {
-    process.env.THETADATA_API_KEY = env.THETADATA_API_KEY;
+  for (const name of SERVER_ENV) {
+    if (env[name] && !process.env[name]) process.env[name] = env[name];
   }
   return {
-  plugins: [react(), whalesProxy()],
+  plugins: [react(), dataProxies()],
   server: {
     host: '0.0.0.0',
     port: 8080,
     strictPort: true,
-    /* A hidden tab drops this socket. The client then reloads the page. That is the restart. */
+    /* no HMR socket: a hidden tab dropping it would reload the page */
     hmr: false,
-    /* THE FIRST LOAD AFTER `npm run dev` (Noah, 2026-09-20: "a white screen for about 5-7 seconds"). Measured: the very first
-       visit painted at 4.2s, the second at 0.2s — the same page, the same browser. The dev server compiles nothing until it is
-       asked: on the first visit every file is transformed on demand, and Tailwind's first pass over the whole source takes
-       ~2.3s on its own, during which every other request queues behind it. (A built site has none of this — it is the dev
-       server's cold start, not the page.) So the server does that work THE MOMENT IT STARTS instead of when the browser asks:
-       the entry and everything it imports (index.css with it), the landing, and the page the landing's doors open. By the
-       time a tab is opened it is already warm. */
+    /* compile the entry and the first rooms at startup, so the first visit does not wait on a cold transform */
     warmup: {
       clientFiles: [
         './src/main.tsx',
@@ -70,16 +89,21 @@ export default defineConfig(({ mode }) => {
       ],
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks,
+        /* merge tiny chunks (skeletons, small helpers) into their neighbours to cut the request waterfall */
+        experimentalMinChunkSize: 20_000,
+      },
+    },
+  },
   resolve: {
-    // One React, always — guards against mixed pre-bundle generations
-    // ("Invalid hook call") when deps are installed mid-flight.
+    /* one React, even when the pre-bundle is regenerated mid-session */
     dedupe: ['react', 'react-dom'],
   },
   define: {
-    // react-draggable 4.7 (via react-grid-layout) reads process.env in the
-    // browser and throws ReferenceError on every drag without this shim.
-    // Empty on purpose. Do not replace this with the process env. A library
-    // reads process.env; shipping the real env would put the whale key in the bundle.
+    /* react-draggable reads process.env in the browser. Empty on purpose: the real env would ship the server keys. */
     'process.env': {},
   },
   };

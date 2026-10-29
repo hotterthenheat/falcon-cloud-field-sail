@@ -1,7 +1,5 @@
-/*
-  On a phone Pulse is one chart holding the window, carrying the symbol picker, compare and the toolbar the desk
-  would.
-*/
+/* On a phone Pulse is one chart holding the window, carrying the symbol picker, compare and the toolbar the desk
+   would. */
 
 import { useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
@@ -62,7 +60,7 @@ const PhoneChart = ({ snapshot, revision, onPick }: Props) => {
   return (
     /* A COLUMN: the tape takes what the strip under it leaves */
     <div ref={bodyRef} className="relative h-full min-h-0 flex flex-col" style={{ background: 'rgb(var(--panel))' }} data-theme="dark" data-chart-ground={ground}>
-      {/* ONE LINE THAT WRAPS UNDER THE SYMBOL — 40px on every control in the strip and in the menus it opens */}
+      {/* One line that wraps under the symbol — 40px on every control in the strip and in the menus it opens */}
       <div className="order-last shrink-0 z-10 w-full select-none flex flex-wrap items-center border-t border-borderSubtle px-3 py-2 gap-3 [&_button]:min-h-[40px]" style={{ background: 'rgb(var(--panel))' }} data-chart-chrome>
         <span className="inline-flex items-center gap-2">
           <TickerQuickPick ticker={ticker} onPick={onPick} />

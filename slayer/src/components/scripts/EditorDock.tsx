@@ -1,7 +1,5 @@
-/*
-  The script editor docked at the right of a full-screen chart, with a draggable, remembered width, so the chart
-  stays live beside the code.
-*/
+/* The script editor docked at the right of a full-screen chart, with a draggable, remembered width, so the chart
+   stays live beside the code. */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { closeEditor, DOCK_MAX_SHARE, DOCK_MIN, setDockWidth, useEditorDock } from '../../data/editorDock';

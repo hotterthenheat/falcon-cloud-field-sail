@@ -1,7 +1,5 @@
-/*
-  The ways to trade off the paper chart itself, for every pane: the position's bar, the brackets on the chart, and
-  drawing a long or short.
-*/
+/* The ways to trade off the paper chart itself, for every pane: the position's bar, the brackets on the chart, and
+   drawing a long or short. */
 
 import type { ReactNode } from 'react';
 import { Minus, Plus } from 'lucide-react';
@@ -38,7 +36,7 @@ export interface Hands {
 const sign = (long: boolean) => (long ? 1 : -1);
 
 /* ================================================================== */
-/*  THE POSITION'S BAR                                                  */
+/* The position's bar */
 /* ================================================================== */
 
 export function positionLines(h: Hands, name: string): BarLine[] {
@@ -185,7 +183,7 @@ export function chartMenu(h: Hands, name: string): (price: number) => ChartMenu 
       if (working.length) sections.push({ items: [{ label: `Cancel ${working.length} working on ${name}`, off, run: () => working.forEach(o => cancelOrder(account.id, o.id)), testId: 'cancel-working' }] });
       return { head, sections };
     }
-    /* AN OPTION PANE: the chart is the NAME's, so a price here is a level of the name */
+    /* An option pane: the chart is the NAME's, so a price here is a level of the name */
     const at = Math.round(raw * 100) / 100;
     const spot = h.spotOf(name);
     const atW = `${name} ${at.toFixed(2)}`;
@@ -222,7 +220,7 @@ export function chartMenu(h: Hands, name: string): (price: number) => ChartMenu 
 }
 
 /* ================================================================== */
-/*  A DRAWN LONG OR SHORT, AS AN ORDER                                  */
+/* A drawn long or short, as an order */
 /* ================================================================== */
 
 export interface MarkPlan {
@@ -257,7 +255,7 @@ export function planOfMark(h: Hands, name: string, mark: TradeMark, qty: number)
       refused: lock,
     };
   }
-  /* an option: a call for a long, a put for a short — the strike nearest the entry, its ways out ON THE NAME */
+  /* an option: a call for a long, a put for a short — the strike nearest the entry, its ways out on the name */
   const exp = h.expiryOf(name);
   if (!exp) return { words: `No expiry is listed for ${name} now`, money: null, place: () => undefined, refused: 'Nothing listed' };
   const right = long ? 'C' : 'P';

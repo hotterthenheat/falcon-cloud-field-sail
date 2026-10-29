@@ -1,7 +1,5 @@
-/*
-  One Compass call as a card: the contract, its book, the live bid against the fill, the stop, and when it was
-  quoted and called. Labels stay quiet; numbers carry the direction's ink.
-*/
+/* One Compass call as a card: the contract, its book, the live bid against the fill, the stop, and when it was
+   quoted and called. Labels stay quiet; numbers carry the direction's ink. */
 
 import { ArrowUpRight, TriangleAlert } from 'lucide-react';
 import type { Setup } from '../../types/compass';

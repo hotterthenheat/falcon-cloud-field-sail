@@ -3,10 +3,8 @@ import { readDeskPrefs } from '../data/deskPrefs';
 import type { FlowPrint } from '../types/trace';
 import type { MarketSnapshot, TickerSymbol } from '../types/market';
 
-/*
-  The name on the desk, and nothing else. Prices, books and prints come from the live feeds each page reads
-  (liveQuote, uwBook, traceLive, ThetaData); this provider runs no market of its own and does not tick.
-*/
+/* The name on the desk, and nothing else. Prices, books and prints come from the live feeds each page reads
+   (liveQuote, uwBook, traceLive, ThetaData); this provider runs no market of its own and does not tick. */
 
 export type StampedPrint = FlowPrint & { at: number };
 

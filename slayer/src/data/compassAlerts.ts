@@ -1,7 +1,5 @@
-/*
-  Compass call alerts. Off until the reader turns them on.
-  Empty names means every name. 0DTE and 1–7 DTE are separate switches.
-*/
+/* Compass call alerts. Off until the reader turns them on. Empty names means every name. 0DTE and 1–7 DTE are
+   separate switches. */
 
 import { useEffect, useState } from 'react';
 
