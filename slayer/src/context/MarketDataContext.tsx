@@ -30,9 +30,18 @@ const NO_PRINTS: StampedPrint[] = [];
 const DEFAULT_TICKER = 'SPY';
 
 const clean = (ticker: string): TickerSymbol => ticker.trim().toUpperCase() || DEFAULT_TICKER;
+/* Where the reader left off, for Settings' "Where you left off" */
+const LAST_KEY = 'slayer_active_ticker';
+const lastTicker = (): string => {
+  try {
+    return localStorage.getItem(LAST_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
 
 export const MarketDataProvider = ({ children }: { children: ReactNode }) => {
-  const [activeTicker, setActiveTicker] = useState<TickerSymbol>(() => clean(readDeskPrefs().opensOn.ticker || DEFAULT_TICKER));
+  const [activeTicker, setActiveTicker] = useState<TickerSymbol>(() => clean(readDeskPrefs().opensOn.ticker || lastTicker() || DEFAULT_TICKER));
   const [previousTicker, setPreviousTicker] = useState<TickerSymbol | null>(null);
   const activeRef = useRef(activeTicker);
   activeRef.current = activeTicker;
@@ -46,6 +55,11 @@ export const MarketDataProvider = ({ children }: { children: ReactNode }) => {
     setPreviousTicker(prev);
     activeRef.current = next;
     setActiveTicker(next);
+    try {
+      localStorage.setItem(LAST_KEY, next);
+    } catch {
+      /* a private window keeps it for the page */
+    }
   }, []);
 
   const revertTicker = useCallback(() => {

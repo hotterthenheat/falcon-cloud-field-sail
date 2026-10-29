@@ -43,7 +43,6 @@ import { Door, Field, Row, Said, Section, Tag } from './pieces';
 /* THE PEOPLE ROOM'S GRID (AG Grid, 326 KB on the wire) loads only when an owner opens People — imported plainly it rode
    along with every Settings page for everyone (the speed pass, 2026-10-11) */
 const PeopleBox = lazy(() => import('./People'));
-import Simulator from '../../core/simulator';
 import { NAV_ITEMS } from '../../components/layout/nav';
 import { chime } from '../../core/sound';
 import { TIMEFRAMES, type Timeframe } from '../../data/timeframe';
@@ -111,7 +110,7 @@ const RULER_OPTIONS: DropdownOption<DistanceUnit>[] = [
 /* THE DESK'S ROWS — the name and the timeframe a desk opens on, the clock */
 const OPENS_ON_NAMES: DropdownOption<string>[] = [
   { value: '', label: 'Where you left off', hint: 'The name the terminal last had up' },
-  ...Simulator.WATCHLIST.map(t => ({ value: t, label: t, hint: `Every visit opens on ${t}` })),
+  ...['SPY', 'QQQ', 'AAPL', 'NVDA'].map(t => ({ value: t, label: t, hint: `Every visit opens on ${t}` })),
 ];
 const OPENS_ON_TIMEFRAMES: DropdownOption<string>[] = [
   { value: '', label: "Each desk's own", hint: 'Pulse and the Weigher at 1m, the Map at 15m' },

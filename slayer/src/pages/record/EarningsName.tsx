@@ -7,14 +7,14 @@ import { personDisplay } from '../../data/tickers';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, LayoutGrid } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import BarsChart from '../../components/record/BarsChart';
 import AnimatedNumber from '../../components/ui/AnimatedNumber';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import HoverReadout from '../../components/ui/HoverReadout';
 import { richText, stateOf } from '../../components/earnings/volState';
 import { BULL } from '../../components/gex/paletteInk';
 import { useTicker } from '../../context/MarketDataContext';
-import { dollars3 as fmtDollars } from './money';
+import { dollars3 as fmtDollars, signedPct } from './money';
 import { bracketLabel, seatLabel } from '../../data/congress';
 import { useInsiderFlow, useTickerCongress } from '../../data/liveRecord';
 import { When } from '../../components/record/when';
@@ -32,8 +32,6 @@ import { expiryOpen } from '../../core/tradingYear';
 import { peekIv, useBookRev } from '../../data/uwBook';
 import { whalesGreekExpiry, whalesTermStructure, type UwGreekStrike, type UwTerm } from '../../data/whales';
 
-const AXIS = { stroke: 'transparent', tick: { fill: 'rgb(var(--text-secondary))', fontSize: 10, fontFamily: 'inherit' } };
-const GRID = { stroke: 'rgba(255,255,255,0.05)', vertical: false };
 const BEAR = 'rgb(var(--bear))';
 const WHITE_DIM = 'rgba(237,237,237,0.28)';
 
@@ -582,32 +580,22 @@ const EarningsName = () => {
         <Box title="Beats and misses" sub={`EPS against the estimate · ${split.beat} beat, ${split.inline} in line, ${split.miss} missed of ${nQ}${hasRev ? ` · revenue ${revBeats} of ${nQ}` : ''}`} testId="beats">
           <div className="px-5 pb-4">
             <div className="h-[132px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={epsData} margin={{ top: 4, right: 8, bottom: 0, left: 8 }} barGap={2}>
-                  <CartesianGrid {...GRID} />
-                  <XAxis dataKey="label" {...AXIS} />
-                  <YAxis {...AXIS} width={40} tickFormatter={(v: number) => `$${v}`} />
-                  <Tooltip
-                    isAnimationActive={false}
-                    cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-                    content={({ active, payload, label }) =>
-                      active && payload?.length ? (
-                        <TooltipShell>
-                          <div className="text-textSecondary">{label}</div>
-                          <div>estimate ${Number(payload[0]?.value).toFixed(2)}</div>
-                          <div>actual ${Number(payload[1]?.value).toFixed(2)}</div>
-                        </TooltipShell>
-                      ) : null
-                    }
-                  />
-                  <Bar dataKey="est" fill={WHITE_DIM} radius={[2, 2, 0, 0]} barSize={9} isAnimationActive={false} />
-                  <Bar dataKey="actual" radius={[2, 2, 0, 0]} barSize={9} isAnimationActive={false}>
-                    {epsData.map(q => (
-                      <Cell key={q.label} fill={q.inline ? 'rgb(var(--warn))' : q.beat ? BULL : BEAR} fillOpacity={q.beat ? 0.9 : 0.8} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <BarsChart
+                testId="eps"
+                labels={epsData.map(q => q.label)}
+                series={[
+                  { values: epsData.map(q => q.est), width: 9, fill: () => WHITE_DIM },
+                  { values: epsData.map(q => q.actual), width: 9, fill: i => (epsData[i].inline ? 'rgb(var(--warn))' : epsData[i].beat ? BULL : BEAR), opacity: i => (epsData[i].beat ? 0.9 : 0.8) },
+                ]}
+                tickFormat={v => `$${v}`}
+                tip={i => (
+                  <TooltipShell>
+                    <div className="text-textSecondary">{epsData[i].label}</div>
+                    <div>estimate ${Number(epsData[i].est).toFixed(2)}</div>
+                    <div>actual ${Number(epsData[i].actual).toFixed(2)}</div>
+                  </TooltipShell>
+                )}
+              />
             </div>
             <p className="mt-2 font-mono text-t9 uppercase tracking-widest text-textMuted">
               grey the estimate · <span className="text-bull">green beat</span> · <span className="text-warn">amber in line</span> · <span className="text-bear">red missed</span>
@@ -617,36 +605,22 @@ const EarningsName = () => {
         <Box title="Past moves" sub={`The stock's move the session after each of its last ${nMoves || 'few'} reports`} testId="moves">
           <div className="px-5 pb-4">
             <div className="h-[132px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={moveData} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
-                  <CartesianGrid {...GRID} />
-                  <XAxis dataKey="label" {...AXIS} />
-                  <YAxis {...AXIS} width={40} tickFormatter={(v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)}%`} />
-                  <Tooltip
-                    isAnimationActive={false}
-                    cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-                    content={({ active, payload, label }) =>
-                      active && payload?.length ? (
-                        <TooltipShell>
-                          <div className="text-textSecondary">{label}</div>
-                          <div>
-                            {Number(payload[0]?.value) >= 0 ? '+' : ''}
-                            {Number(payload[0]?.value).toFixed(1)}% next session
-                          </div>
-                        </TooltipShell>
-                      ) : null
-                    }
-                  />
-                  {isPriced && <ReferenceLine y={e.impliedMovePct} stroke="rgba(199,211,232,0.55)" strokeDasharray="4 3" />}
-                  {isPriced && <ReferenceLine y={-e.impliedMovePct} stroke="rgba(199,211,232,0.55)" strokeDasharray="4 3" />}
-                  <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" />
-                  <Bar dataKey="move" radius={[2, 2, 0, 0]} barSize={16} isAnimationActive={false}>
-                    {moveData.map(q => (
-                      <Cell key={q.label} fill={q.move >= 0 ? BULL : BEAR} fillOpacity={q.move >= 0 ? 0.9 : 0.8} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <BarsChart
+                testId="moves"
+                labels={moveData.map(q => q.label)}
+                series={[{ values: moveData.map(q => q.move), width: 16, fill: i => (moveData[i].move >= 0 ? BULL : BEAR), opacity: i => (moveData[i].move >= 0 ? 0.9 : 0.8) }]}
+                refs={[
+                  ...(isPriced ? [{ y: e.impliedMovePct, stroke: 'rgba(199,211,232,0.55)', dash: '4 3' }, { y: -e.impliedMovePct, stroke: 'rgba(199,211,232,0.55)', dash: '4 3' }] : []),
+                  { y: 0, stroke: 'rgba(255,255,255,0.15)' },
+                ]}
+                tickFormat={v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)}%`}
+                tip={i => (
+                  <TooltipShell>
+                    <div className="text-textSecondary">{moveData[i].label}</div>
+                    <div>{signedPct(moveData[i].move)} next session</div>
+                  </TooltipShell>
+                )}
+              />
             </div>
             <p className="mt-2 font-mono text-t9 uppercase tracking-widest text-textMuted">
               {isPriced ? `the dashed lines are the ±${e.impliedMovePct.toFixed(1)}% priced for this print` : 'the options do not price this print yet'}

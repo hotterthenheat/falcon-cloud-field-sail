@@ -6,12 +6,11 @@ import { sigmaFracOver, sigmaOverMinutes } from '../../data/expectedMove';
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { DayHeadSlot } from './DayBox';
-import { AreaSeries, createChart, createSeriesMarkers, LineSeries, LineStyle, LineType, type IChartApi, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type LineData, type SeriesMarker, type Time, type UTCTimestamp, type WhitespaceData } from 'lightweight-charts';
+import { AreaSeries, createChart, createSeriesMarkers, LineSeries, LineStyle, type IChartApi, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type LineData, type SeriesMarker, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { Bell, BellRing, ChevronDown } from 'lucide-react';
 import { roomLevels } from '../../data/roomLevels';
-import { bookHistory, deskBars, liveBars, peekDaySigma, peekIv, peekMoveToClose, peekScopeMove, useBookRev, useResolvedSession } from '../../data/uwBook';
+import { deskBars, liveBars, peekDaySigma, peekIv, peekMoveToClose, peekScopeMove, useBookRev, useResolvedSession } from '../../data/uwBook';
 import { scopeDateOf } from '../../data/wall';
-import { pickFlip } from '../../core/walls';
 import { readSessionClock } from '../../data/moc';
 import { CLOSE_MIN, aheadClock, buildCorridor, hhmm, type AheadClock } from '../../data/ahead';
 import { buildExposureProfile } from '../../data/exposure';
@@ -156,28 +155,6 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const groupsKey = groups.map(g => `${g.key}@${g.price}`).join('|');
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
-  /* the flip's path: each minute's book's flip, paired to the bars by time (a closed minute's book never changes) */
-  const flipMemo = useRef(new WeakMap<GexSnapshot, number | null>());
-  /* the path is off: no past book is on the feed to re-price, so no past flip is drawn */
-  const FLIP_PATH = false;
-  const flipTrail = useMemo<(LineData<Time> | WhitespaceData<Time>)[]>(() => {
-    if (!FLIP_PATH) return [];
-    const snaps = bookHistory(snapshot.ticker) ?? [];
-    if (!snaps?.length || !bars.length) return [];
-    const byTime = new Map(snaps.map(s => [s.time, s]));
-    return bars.map(b => {
-      const s = byTime.get(b.time);
-      let f: number | null | undefined = null;
-      if (s) {
-        f = flipMemo.current.get(s);
-        if (f === undefined) {
-          f = pickFlip(s.levels, b.close, l => l.value);
-          flipMemo.current.set(s, f);
-        }
-      }
-      return f != null && Number.isFinite(f) ? { time: b.time as UTCTimestamp, value: f } : { time: b.time as UTCTimestamp };
-    });
-  }, [snapshot.ticker, bars]);
   const alerts = useAlerts(snapshot.ticker);
   const watched = (key: Level['key']) => alerts.find(a => a.kind === 'level' && a.level === key && !a.firedAt);
 
@@ -246,12 +223,10 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const [scaleW, setScaleW] = useState(DAY_SCALE_W);
   const chartRef = useRef<IChartApi | null>(null);
   const priceRef = useRef<ISeriesApi<'Area'> | null>(null);
-  const flipRef = useRef<ISeriesApi<'Line'> | null>(null);
   const fieldRef = useRef<ThermalFieldPrimitive | null>(null);
   const clockRef = useRef<ISeriesApi<'Line'> | null>(null);
   const linesRef = useRef<IPriceLine[]>([]);
   const fedPrice = useRef<readonly LineData<Time>[] | null>(null);
-  const fedFlip = useRef<readonly (LineData<Time> | WhitespaceData<Time>)[] | null>(null);
   /* what the scale must hold beyond the bars: the levels within reach and the field's one-move band at its end (read by the
      autoscale at draw time) */
   const fieldLast = fieldPoints[fieldPoints.length - 1];
@@ -364,7 +339,6 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
         return { priceRange: { minValue: lo, maxValue: hi } };
       },
     });
-    const flip = chart.addSeries(LineSeries, { color: alpha(resolveInk(FLIP, host), 0.55), lineWidth: 1, lineStyle: LineStyle.Dashed, lineType: LineType.WithSteps, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
     /* the thermal field ahead of now, under the line (thermalFieldPrimitive.ts) */
     const field = new ThermalFieldPrimitive();
     price.attachPrimitive(field);
@@ -435,11 +409,9 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     /* the axis as wide as its figures, shared with the hedging chart under it */
     const unsync = syncDayScale(chart, snapshot.ticker, 'tape', setScaleW);
     priceRef.current = price;
-    flipRef.current = flip;
     fieldRef.current = field;
     clockRef.current = clockS;
     fedPrice.current = null;
-    fedFlip.current = null;
     linesRef.current = [];
     return () => {
       unsync();
@@ -466,12 +438,11 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dayStart, FROM, TO, paper, part, open, bars.length > 0]);
 
-  /* the price and the flip's path — the newest minute only, unless the day itself changed */
+  /* the price — the newest minute only, unless the day itself changed */
   const pricePoints = useMemo<LineData<Time>[]>(() => bars.map(b => ({ time: b.time as UTCTimestamp, value: b.close })), [bars]);
   useEffect(() => {
     if (priceRef.current) feedSeries(priceRef.current, pricePoints, fedPrice);
-    if (flipRef.current) feedSeries(flipRef.current, flipTrail, fedFlip);
-  }, [pricePoints, flipTrail, paper, part, open]);
+  }, [pricePoints, paper, part, open]);
 
   /* the field, handed to its primitive: the thermal inks off the page, the points a minute */
   useEffect(() => {
