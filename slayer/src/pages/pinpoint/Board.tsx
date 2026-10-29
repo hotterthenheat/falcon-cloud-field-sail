@@ -13,7 +13,7 @@ import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
 import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
-import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, refreshBoardPrices, ensureBook } from '../../data/uwBook';
+import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, refreshBoardPrices, ensureBook, bookStatus } from '../../data/uwBook';
 import { useNameUnit } from '../../data/distanceUnits';
 import { fmtDistance } from '../../data/atr';
 import { bellDay, cadenceWords, dayWordOf, expirySpan, longDay, recordDay, recordPossessive, todayScopeLabel } from '../../data/bookWindow';
@@ -37,8 +37,9 @@ import { callWallWordsAt, levelRoles, putWallWordsAt, wallPlace } from '../../co
 import { BOARD_TTL_MS, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { ReadMiss } from './BookDown';
 import { kindTip } from '../../components/gex/glossary';
-import { LivePrice, ThetaOfflineNote } from '../../components/gex/LivePrice';
-import { AsOf } from '../../components/ui/states';
+import { LivePrice } from '../../components/gex/LivePrice';
+import { AsOf, EmptyBox, ErrorBox, LoadingBox } from '../../components/ui/states';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { fmtStrike } from '../../core/format';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal */
@@ -90,10 +91,18 @@ const RemoveName = ({ ticker, remove }: { ticker: string; remove: (t: string) =>
   );
 };
 
-/* today's strikes not in yet: the cells say loading rather than print the whole book's levels */
+/* today's strikes not in yet: the cell is the house's loading line (components/ui Skeleton), the height of the read it
+   stands for, so the row does not jump when the read lands */
 const Pending = ({ data }: { data: BoardRow }) => (
-  <span className="font-mono text-t11 text-textMuted" title={data.scope === 'ALL' ? `Still loading every expiry's contracts on ${data.ticker}` : `Still loading ${data.ticker}'s front expiry`} data-board-pending>
-    …
+  <span
+    role="status"
+    aria-label={`${data.ticker}: loading`}
+    className="flex flex-col justify-center gap-1.5 w-full py-0.5"
+    title={data.scope === 'ALL' ? `Still loading every expiry's contracts on ${data.ticker}` : `Still loading ${data.ticker}'s front expiry`}
+    data-board-pending
+  >
+    <Skeleton line className="h-2.5 w-[70%] max-w-[88px]" />
+    <Skeleton line className="h-2 w-[45%] max-w-[56px] opacity-70" />
   </span>
 );
 
@@ -556,14 +565,14 @@ const Board = () => {
   const recKey = `${recordDay().date}|${recordDay().isToday}|${recordDay().done}|${bellDay().head}|${todayScopeLabel()}`;
   const columnDefs = useMemo<ColDef<BoardRow>[]>(() => {
     const cols: ColDef<BoardRow>[] = [
-      { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 100, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
-      { headerName: 'Price', field: 'spot', flex: 1.1, minWidth: 156, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: todayScopeLabel() === 'Today' ? "The last price and today's change" : "The regular-session close — the price the levels were read at, and every distance on the board is measured from it — and the session's change; the after-hours move is beside it, labelled" },
-      { headerName: 'Net GEX', field: 'netGex', flex: 0.8, minWidth: 112, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: "Net GEX on this name's own levels, dollars per 1% move, and what dealer hedging does at the current price: positive absorbs moves, negative amplifies them. Each name can be today or every expiry." },
+      { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 96, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
+      { headerName: 'Price', field: 'spot', flex: 1.1, minWidth: 132, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: todayScopeLabel() === 'Today' ? "The last price and today's change" : "The regular-session close — the price the levels were read at, and every distance on the board is measured from it — and the session's change; the after-hours move is beside it, labelled" },
+      { headerName: 'Net GEX', field: 'netGex', flex: 0.8, minWidth: 108, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: "Net GEX on this name's own levels, dollars per 1% move, and what dealer hedging does at the current price: positive absorbs moves, negative amplifies them. Each name can be today or every expiry." },
       {
         headerName: 'Flip · how far',
         field: 'flipDistPct',
         flex: 0.9,
-        minWidth: 118,
+        minWidth: 112,
         cellRenderer: FlipCell,
         sort: 'asc',
         headerTooltip: "The flip: the price where the name's net gamma, re-priced at that price, crosses zero — where dealer hedging switches between absorbing and amplifying moves — and how far it is from the current price. Names closest to their flip — as a share of price, whatever the ruler prints — come first; \"none nearby\" means no crossing within 10%, and those come last",
@@ -574,28 +583,28 @@ const Board = () => {
         headerName: 'Nearest wall',
         field: 'nearest',
         flex: 1.4,
-        minWidth: 150,
+        minWidth: 132,
         cellRenderer: WallCell,
         cellDataType: false,
         headerTooltip: 'The nearer of the two walls and how far it is. The call wall is the strike with the most call gamma: while dealers are long gamma there it tends to slow a rise (above price it is a lid; once price is through it, it can act as support). The put wall is the strike with the most put gamma: below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet',
         comparator: (a: BoardRow['nearest'], b: BoardRow['nearest']) => Math.abs(a.distPct) - Math.abs(b.distPct),
       },
-      { headerName: 'Supreme', field: 'supreme', flex: 0.5, minWidth: 72, cellRenderer: SupremeCell, headerTooltip: "The strike with the most hedging on this name, on that name's own levels." },
+      { headerName: 'Supreme', field: 'supreme', flex: 0.5, minWidth: 84, cellRenderer: SupremeCell, headerTooltip: "The strike with the most hedging on this name, on that name's own levels." },
       {
         headerName: 'Watch first',
         field: 'watch',
         flex: 1.6,
-        minWidth: 168,
+        minWidth: 152,
         cellRenderer: WatchCell,
         cellDataType: false,
         headerTooltip: `The one price to watch first: the strike price is most likely to reach with the most hedging behind it. "Reached" is the chance price gets there ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'}; "0.85× top wall" is its size against the biggest wall on this name; the dollar figure is the hedging parked there`,
         // The name whose first target matters most, first
         comparator: (a: BoardRow['watch'], b: BoardRow['watch']) => (a ? a.reach * a.stake : -1) - (b ? b.reach * b.stake : -1),
       },
-      { headerName: bellDay().head, field: 'bellShare', flex: 0.7, minWidth: 82, cellRenderer: BellCell, headerTooltip: `${bellDay().tip("the name")}. A dash means nothing on the name expires that day` },
+      { headerName: bellDay().head, field: 'bellShare', flex: 0.7, minWidth: 80, cellRenderer: BellCell, headerTooltip: `${bellDay().tip("the name")}. A dash means nothing on the name expires that day` },
       /* the session on record, named: before today's open these are the last session's */
-      { headerName: recordDay().isToday ? 'Flip crossed today' : `Flip crossed · ${longDay(recordDay().date)}`, field: 'crossings', flex: 0.9, minWidth: 168, cellRenderer: CrossCell, headerTooltip: `How many times price crossed the flip in ${recordPossessive()} session: one-minute closes changing side of it — the same count the Map's report prints on its flip row ("crossed N×"). The flip is the one of the contracts that were live in that session (after the close, or before the next open, that session's own book, not the next session's). The more crossings, the less either side of it means` },
-      { headerName: recordDay().isToday ? (recordDay().done ? 'Today' : 'Today so far') : longDay(recordDay().date), field: 'spark', flex: 0.5, minWidth: 80, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: recordDay().isToday ? 'The price path since the open' : `The price path through ${longDay(recordDay().date)}'s session` },
+      { headerName: recordDay().isToday ? 'Flip crossed today' : `Flip crossed · ${longDay(recordDay().date)}`, field: 'crossings', flex: 0.9, minWidth: 108, cellRenderer: CrossCell, headerTooltip: `How many times price crossed the flip in ${recordPossessive()} session: one-minute closes changing side of it — the same count the Map's report prints on its flip row ("crossed N×"). The flip is the one of the contracts that were live in that session (after the close, or before the next open, that session's own book, not the next session's). The more crossings, the less either side of it means` },
+      { headerName: recordDay().isToday ? (recordDay().done ? 'Today' : 'Today so far') : longDay(recordDay().date), field: 'spark', flex: 0.5, minWidth: 72, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: recordDay().isToday ? 'The price path since the open' : `The price path through ${longDay(recordDay().date)}'s session` },
       {
         headerName: 'Your positions',
         field: 'yours',
@@ -645,15 +654,36 @@ const Board = () => {
   const bookAt = stamps.reduce<number | null>((best, e) => (e && e.at > 0 ? (best == null ? e.at : Math.min(best, e.at)) : best), null);
   const keptAt = stamps.reduce<number | null>((best, e) => (e?.keptAt ? (best == null ? e.at : Math.min(best, e.at)) : best), null);
   const bookDown = names.length > 0 && stamps.length > 0 && stamps.every(e => e?.status === 'error');
+  /* how many names are still reading: a row waiting on its levels, or a name with no row yet whose read has not failed */
+  const rowOf = new Map(rows.map(r => [r.ticker, r]));
+  const missing = names.filter(n => !rowOf.has(n.toUpperCase()));
+  const failed = missing.filter(n => bookStatus(n) === 'error');
+  /* a read that answered, and answered with no listed contracts for the name: nothing to draw, said once */
+  const empty = missing.filter(n => {
+    const e = peekEntry(n);
+    return e?.status === 'live' && !!e.expiriesAt && e.expiries.length === 0 && e.all.length === 0;
+  });
+  const waiting = missing.filter(n => !failed.includes(n) && !empty.includes(n));
+  const loading = rows.filter(r => r.pending).length + missing.length - failed.length - empty.length;
+  const shown = names.length - loading - failed.length - empty.length;
+  /* the one status: a kept copy's "as of", else when the board last swept (and, out of session, the close the levels
+     are from). The prices' ThetaData state is said once, on the name strip above (RegimeLine), not again here. */
+  const cadence = cadenceWords().replace(/^as of /, 'levels from ');
   return (
     /* the board is as tall as its rows: every name shows, the page scrolls, never the grid */
     <div className="border border-borderSubtle rounded-md overflow-clip flex flex-col" data-board>
       <div className="shrink-0 flex items-center gap-3 flex-wrap px-2 py-1.5 bg-panel border-b border-borderSubtle/70" data-board-toolbar>
         <span className="font-mono text-t9 uppercase tracking-widest text-textSecondary">The names on your board</span>
-        {keptAt != null ? <AsOf at={keptAt} title="Some rows are this browser's kept copies, shown while their fresh reads land" /> : <StaleMark at={bookAt} ttlMs={BOARD_TTL_MS} fault={bookDown ? 'failed' : null} />}
-        <ThetaOfflineNote />
-        <span className="font-mono text-t9 uppercase tracking-widest text-textMuted tnum tabular-nums" data-board-count>
-          {rows.length < names.length ? `${rows.length} of ${names.length} in · ${names.length - rows.length} still loading` : `${names.length} names`} · closest to its flip (as a % of price) first · click a name to open it on the map
+        <span
+          className={`font-mono text-t9 uppercase tracking-widest tnum tabular-nums ${loading > 0 ? 'text-textSecondary' : 'text-textMuted'}`}
+          title="Closest to its flip (as a % of price) first · click a name to open it on the Map"
+          aria-live="polite"
+          data-board-count
+        >
+          {loading > 0 ? `loading ${loading} of ${names.length}` : `${shown} name${shown === 1 ? '' : 's'}`}
+          {failed.length > 0 && <span className="text-warn"> · {failed.length} failed</span>}
+          {empty.length > 0 && <span> · {empty.length} no data</span>}
+          <span className="max-lg:hidden"> · closest to its flip first</span>
         </span>
         <input
           value={quick}
@@ -702,7 +732,17 @@ const Board = () => {
               document.body
             )}
         </span>
-        <span className="font-mono text-t9 uppercase tracking-widest text-textMuted tnum tabular-nums">updated {scanAt} · {cadenceWords()}</span>
+        <span className="basis-full flex items-center gap-x-2 gap-y-1 flex-wrap font-mono text-t9 uppercase tracking-widest text-textMuted tnum tabular-nums" data-board-status>
+          {keptAt != null ? (
+            <AsOf at={keptAt} title="Some rows are this browser's kept copies, shown while their fresh reads land" />
+          ) : (
+            <>
+              <StaleMark at={bookAt} ttlMs={BOARD_TTL_MS} fault={bookDown ? 'failed' : null} />
+              {scanAt && <span>updated {scanAt}</span>}
+            </>
+          )}
+          <span>{keptAt != null || scanAt ? '· ' : ''}{cadence}</span>
+        </span>
       </div>
       {bookDown && rows.length === 0 ? (
         <ReadMiss onRetry={() => names.forEach(t => ensureBook(t, 'full'))} />
@@ -726,7 +766,7 @@ const Board = () => {
         </div>
       ) : (
       /* more to the right, said: a fade says the grid scrolls on, and the scrollbar stays up */
-      <div ref={boardWrapRef} className="slayer-board relative" data-more-right={moreRight || undefined}>
+      <div ref={boardWrapRef} className={`slayer-board relative ${rows.length === 0 && waiting.length > 0 ? '[&_.ag-center-cols-viewport]:!min-h-0 [&_.ag-body-viewport]:!min-h-0 [&_.ag-center-cols-container]:!min-h-0 [&_.ag-pinned-left-cols-container]:!min-h-0' : ''}`} data-more-right={moreRight || undefined}>
         {moreRight && <span aria-hidden className="pointer-events-none absolute top-0 right-0 bottom-3 w-16 z-20 bg-gradient-to-l from-panel via-panel/70 to-transparent" />}
         <AgGridProvider modules={MODULES}>
           <AgGridReact<BoardRow>
@@ -741,6 +781,8 @@ const Board = () => {
               e.api.onSortChanged();
             }}
             overlayNoRowsTemplate='<span class="font-mono text-t11 text-textSecondary">Still reading the book</span>'
+            /* while names are still reading, their loading rows stand under the head instead of the overlay */
+            suppressNoRowsOverlay={waiting.length > 0}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             context={gridContext}
@@ -759,6 +801,36 @@ const Board = () => {
           />
         </AgGridProvider>
       </div>
+      )}
+      {/* a name with no row yet is a loading row of its own: its logo and symbol, the reads as loading lines */}
+      {!phone && waiting.length > 0 && !(bookDown && rows.length === 0) && (
+        <div role="status" aria-label={`Loading ${waiting.length} more name${waiting.length === 1 ? '' : 's'}`} className="border-t border-borderSubtle/70" data-board-waiting>
+          {waiting.map(n => (
+            <div key={n} className="flex items-center h-11 border-b border-borderSubtle/40 last:border-b-0" data-board-waiting-row={n}>
+              <span className="flex items-center gap-2 w-[96px] shrink-0 px-3 font-mono">
+                <CompanyLogo ticker={n} size={16} />
+                <span className="text-t12 font-bold text-textSecondary">{n}</span>
+              </span>
+              {/* one loading line a column, the way the row's reads will sit */}
+              <span className="flex-1 min-w-0 flex items-center" aria-hidden>
+                {[0.62, 0.5, 0.55, 0.7, 0.4, 0.66, 0.45, 0.5, 0.6].map((w, i) => (
+                  <span key={i} className={`flex-1 min-w-0 px-3 ${i > 5 ? 'max-xl:hidden' : ''}`}>
+                    <Skeleton line className="h-2.5" style={{ width: `${w * 100}%` }} />
+                  </span>
+                ))}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {phone && waiting.length > 0 && rows.length > 0 && <LoadingBox shape="lines" rows={2} label={`Loading ${waiting.length} more names`} className="border-t border-borderSubtle/70" />}
+      {(failed.length > 0 || empty.length > 0) && !(bookDown && rows.length === 0) && (
+        <div className="border-t border-borderSubtle/70 divide-y divide-borderSubtle/50" data-board-misses>
+          {failed.length > 0 && (
+            <ErrorBox compact what={`${failed.join(', ')} did not load`} detail="The feed did not answer for these names. The board asks again on its own." onRetry={() => failed.forEach(t => ensureBook(t, 'full', true))} />
+          )}
+          {empty.length > 0 && <EmptyBox compact title={`No options data · ${empty.join(', ')}`} reason="The feed answered with no listed contracts for these names, so there are no levels to read." />}
+        </div>
       )}
     </div>
   );

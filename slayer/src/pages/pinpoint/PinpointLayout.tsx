@@ -134,7 +134,8 @@ const PinpointLayout = () => {
           </button>
         </p>
       )}
-      <RegimeLine ticker={activeTicker} />
+      {/* the Board stamps its own rows once; the strip's stamp would be a second "as of" over it */}
+      <RegimeLine ticker={activeTicker} stamp={!location.pathname.startsWith('/pinpoint/board')} />
       {/* The Agenda's Building face names itself in the tab. */}
       <SayPage words={page.path === '/pinpoint/agenda' && agendaFaceOf(location.search) === 'building' ? 'Building · Agenda' : null} />
 

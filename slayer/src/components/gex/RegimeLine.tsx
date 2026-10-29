@@ -51,7 +51,8 @@ function regimeSentence(lv: TickerLevels | null): { lead: string; rest: string; 
   return { lead: 'Dealers are long gamma', rest: `: moves tend to be absorbed and price tends to pin${near}, ${until}.`, tone: 'LONG' };
 }
 
-const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
+/** `stamp` false leaves the kept-copy "as of" to the page under the strip (the Board says one for every name) */
+const RegimeLine = ({ ticker, stamp = true }: { ticker: string | null | undefined; stamp?: boolean }) => {
   const scope = useNameLevels(ticker);
   const unit = useNameUnit(ticker);
   const lv = useLevelsFor(ticker, scope);
@@ -100,7 +101,7 @@ const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
         )}
         {lv?.complete && lv.flip == null && <span className="font-mono text-t11 text-textMuted" title={GLOSSARY.flip}>no flip within 10%</span>}
         {lv?.complete && <span className="font-mono text-t10 uppercase tracking-wider text-textMuted">{lv.scopeLabel}</span>}
-        {entry?.keptAt && (
+        {stamp && entry?.keptAt && (
           <span data-kept>
             <AsOf at={entry.at} title="This browser's kept copy of the book, shown while the fresh read loads; it is replaced as soon as that lands" />
           </span>

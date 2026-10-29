@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Component, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import SideNav from './SideNav';
 import SiteFooter from './SiteFooter';
@@ -76,6 +76,14 @@ const AppShell = () => {
       closeFeeds.current?.();
       closeFeeds.current = null;
     };
+  }, []);
+
+  /* THE TEXT FLOOR: inside the terminal no type step is under 11px (index.css html[data-type-floor]); on <html>, so the
+     drawers, menus and toasts in portals meet it too. Set before the first paint; the site pages keep their sizes. */
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute('data-type-floor', '');
+    return () => root.removeAttribute('data-type-floor');
   }, []);
 
   useEffect(() => {

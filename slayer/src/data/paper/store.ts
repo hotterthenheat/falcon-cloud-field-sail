@@ -440,7 +440,7 @@ export function nextName(base: string, accounts: PaperAccount[] = state.accounts
   return `${base} #${n + 1}`;
 }
 /** What an account on a plan is called before the number */
-export const baseNameOf = (plan: PaperPlan | null, size: number): string => (plan ? `${plan.firm ?? 'Your rules'} ${plan.label}` : `Practice ${sizeWords(size)}`);
+export const baseNameOf = (plan: PaperPlan | null, size: number): string => (plan ? `${plan.firm ?? 'Your rules'}${plan.firm && plan.program ? ` ${plan.program}` : ''} ${sizeWords(plan.size)}` : `Practice ${sizeWords(size)}`);
 
 /** A practice account of the size chosen — beside every other one. Returns its id (null where this tab cannot). */
 export function startPractice(size: number): string | null {
