@@ -21,8 +21,9 @@ const dataProxies = (): Plugin => {
     name: 'data-proxies',
     configureServer(server) {
       mount((path, fn) => server.middlewares.use(path, fn));
-      /* one ThetaData terminal for local work (theta/supervisor.mjs); THETA_AUTOSTART=0 leaves it to `npm run theta` */
-      if (process.env.THETA_AUTOSTART !== '0') {
+      /* one ThetaData terminal for local work (theta/supervisor.mjs); THETA_AUTOSTART=0 leaves it to `npm run theta`, and
+         a machine that shares the always-on terminal (THETA_RELAY_URL) never starts its own */
+      if (process.env.THETA_AUTOSTART !== '0' && !process.env.THETA_RELAY_URL) {
         const stop = superviseTheta();
         if (stop) server.httpServer?.once('close', stop);
       }
@@ -37,6 +38,8 @@ const dataProxies = (): Plugin => {
 const SERVER_ENV = [
   'UNUSUAL_WHALES_API_KEY',
   'THETADATA_API_KEY',
+  'THETA_RELAY_URL',
+  'THETA_RELAY_SECRET',
   'THETA_JAR',
   'THETA_JAVA',
   'THETA_AUTOSTART',

@@ -1,0 +1,23 @@
+# systemd unit for the always-on ThetaData relay (docs/theta-terminal.md, "The always-on terminal").
+# Copy to /etc/systemd/system/theta-relay.service, put the two secrets in /etc/theta-relay.env, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now theta-relay
+[Unit]
+Description=ThetaData terminal and relay for Slayer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=theta
+WorkingDirectory=/opt/slayer
+# THETADATA_API_KEY=td1_...  and  THETA_RELAY_SECRET=<long random string>
+EnvironmentFile=/etc/theta-relay.env
+ExecStart=/usr/bin/node theta/relay.mjs
+Restart=always
+RestartSec=5
+# the terminal is a JVM: give it room and keep it from being the first thing the kernel kills
+MemoryMax=3G
+OOMScoreAdjust=-500
+
+[Install]
+WantedBy=multi-user.target

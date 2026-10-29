@@ -20,7 +20,9 @@ const TERMINAL_PID = path.join(RUN, 'terminal.pid');
 const LOG_DIR = path.join(RUN, 'logs');
 /* THETA_CONFIG and THETA_REST_BASE move the terminal together (the config's port and the URL the proxy calls) */
 const CONFIG = process.env.THETA_CONFIG || path.join(HERE, 'config.toml');
-const PROBE = `${process.env.THETA_REST_BASE || 'http://127.0.0.1:25503'}/v3/calendar/today`;
+const BASE = process.env.THETA_REST_BASE || 'http://127.0.0.1:25503';
+/* a real market-data answer, so a terminal whose session was taken over reads as unhealthy, not as up */
+const PROBE = `${BASE}/v3/stock/snapshot/quote?symbol=SPY&format=json`;
 const CHECK_MS = 15_000;
 const BOOT_GRACE_MS = 60_000;
 const MAX_BACKOFF_MS = 5 * 60_000;
@@ -90,13 +92,15 @@ const readPid = (file) => {
   }
 };
 
-/** Does anything answer HTTP on the terminal's port? Any status counts: the port belongs to a terminal. */
-async function answering() {
+/** 'up', 'session_lost' (another terminal holds the account), or 'down' (nothing answers on the port). */
+async function health() {
   try {
-    await fetch(PROBE, { signal: AbortSignal.timeout(5_000) });
-    return true;
+    const r = await fetch(PROBE, { signal: AbortSignal.timeout(8_000) });
+    if (r.ok) return 'up';
+    const text = await r.text();
+    return /invalid session id/i.test(text) ? 'session_lost' : 'up';
   } catch {
-    return false;
+    return 'down';
   }
 }
 
@@ -174,12 +178,31 @@ export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`) } = {}
     });
   };
 
+  let lostTicks = 0;
+  let lostRestarts = 0;
   const tick = async () => {
     if (stopped) return;
-    const up = await answering();
-    if (up) {
+    const state = await health();
+    if (state === 'up') {
       misses = 0;
-      if (child && Date.now() - startedAt > BOOT_GRACE_MS) backoff = 5_000;
+      lostTicks = 0;
+      if (child && Date.now() - startedAt > BOOT_GRACE_MS) {
+        backoff = 5_000;
+        lostRestarts = 0;
+      }
+      return;
+    }
+    if (state === 'session_lost') {
+      /* the terminal reconnects on its own; a fresh login after a minute of losses takes the session back, and a
+         repeat means another terminal keeps logging in with this account */
+      lostTicks += 1;
+      if (child && lostTicks >= 4 && Date.now() >= nextStart) {
+        lostRestarts += 1;
+        if (lostRestarts >= 2) log('another terminal keeps taking this account\'s session: stop the other one (one terminal per account)');
+        log(`session lost for ${Math.round((lostTicks * CHECK_MS) / 1000)}s; restarting the terminal to log in again`);
+        lostTicks = 0;
+        child.kill();
+      }
       return;
     }
     if (child) {

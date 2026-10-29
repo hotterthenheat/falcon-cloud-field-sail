@@ -1,5 +1,5 @@
 /*
-  Golden tests run the app's own data code against recorded Unusual Whales answers, so a change that moves a number
+  Golden tests run the app's own data code against recorded Unusual Whales and ThetaData answers, so a change that moves a number
   fails CI. A fixture set is one directory under scripts/fixtures/golden/<set>/, one gzipped answer per request path.
 
   Replay (CI):   npx tsx scripts/golden/<test>.ts
@@ -19,46 +19,50 @@ const RECORD = process.env.GOLDEN_RECORD === '1';
 
 const keyOf = (path: string) => createHash('sha1').update(path).digest('hex').slice(0, 16);
 
-type Saved = { path: string; status: number; body: string };
+type Saved = { path: string; status: number; body: string; type?: string };
 
-/** Serve /api/uw/* from the named fixture set (or record it). Returns the paths asked for, in order. */
+/** Serve /api/uw/* and /api/theta/* from the named fixture set (or record them). Returns the paths asked for, in order. */
 export function installUwFixtures(set: string): { asked: string[] } {
   const dir = join(ROOT, set);
   const asked: string[] = [];
   const real = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    const m = /^\/api\/uw(\/.*)$/.exec(url);
-    if (!m) {
-      if (url.startsWith('/api/theta')) return new Response(JSON.stringify({ code: 'terminal_unavailable' }), { status: 404 });
-      return real(input, init);
-    }
-    const path = m[1];
-    asked.push(path);
-    const file = join(dir, `${keyOf(path)}.json.gz`);
+    const m = /^\/api\/(uw|theta)(\/.*)$/.exec(url);
+    if (!m) return real(input, init);
+    const theta = m[1] === 'theta';
+    const path = m[2];
+    asked.push(theta ? `theta:${path}` : path);
+    const file = join(dir, `${keyOf(theta ? `theta:${path}` : path)}.json.gz`);
     if (existsSync(file)) {
       const saved = JSON.parse(gunzipSync(readFileSync(file)).toString('utf8')) as Saved;
-      return new Response(saved.body, { status: saved.status, headers: { 'content-type': 'application/json' } });
+      return new Response(saved.body, { status: saved.status, headers: { 'content-type': saved.type ?? 'application/json' } });
     }
-    if (!RECORD) throw new Error(`golden: no recording for ${path} in ${set} (record with GOLDEN_RECORD=1)`);
-    /* through the local proxy when it runs (it holds the key's three slots for everyone), else straight to the vendor */
-    const via = process.env.GOLDEN_UW_BASE ?? 'http://127.0.0.1:8080/api/uw';
-    const key = process.env.UNUSUAL_WHALES_API_KEY;
+    if (!RECORD) throw new Error(`golden: no recording for ${theta ? 'theta ' : ''}${path} in ${set} (record with GOLDEN_RECORD=1)`);
     let res: Response | null = null;
-    for (let attempt = 0; attempt < 6; attempt++) {
-      try {
-        res = await real(`${via}${path}`, { headers: { Accept: 'application/json' } });
-      } catch {
-        if (!key) throw new Error('golden: no local proxy and no UNUSUAL_WHALES_API_KEY to record with');
-        res = await real(`https://api.unusualwhales.com/api${path}`, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' } });
+    if (theta) {
+      /* ThetaData through the local dev proxy, which forwards to the running terminal */
+      res = await real(`${process.env.GOLDEN_THETA_BASE ?? 'http://127.0.0.1:8080/api/theta'}${path}`);
+    } else {
+      /* through the local proxy when it runs (it holds the key's three slots for everyone), else straight to the vendor */
+      const via = process.env.GOLDEN_UW_BASE ?? 'http://127.0.0.1:8080/api/uw';
+      const key = process.env.UNUSUAL_WHALES_API_KEY;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        try {
+          res = await real(`${via}${path}`, { headers: { Accept: 'application/json' } });
+        } catch {
+          if (!key) throw new Error('golden: no local proxy and no UNUSUAL_WHALES_API_KEY to record with');
+          res = await real(`https://api.unusualwhales.com/api${path}`, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' } });
+        }
+        if (res.status !== 429 && res.status < 500) break;
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
       }
-      if (res.status !== 429 && res.status < 500) break;
-      await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
     }
     const body = await res!.text();
+    const type = res!.headers.get('content-type') ?? 'application/json';
     mkdirSync(dir, { recursive: true });
-    writeFileSync(file, gzipSync(JSON.stringify({ path, status: res!.status, body } satisfies Saved)));
-    return new Response(body, { status: res!.status, headers: { 'content-type': 'application/json' } });
+    writeFileSync(file, gzipSync(JSON.stringify({ path, status: res!.status, body, type } satisfies Saved)));
+    return new Response(body, { status: res!.status, headers: { 'content-type': type } });
   }) as typeof fetch;
   return { asked };
 }
