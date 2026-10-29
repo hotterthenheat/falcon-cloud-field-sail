@@ -872,9 +872,8 @@ export interface ScanRow {
   ticker: string;
   last: number;
   changePct: number;
-  /** Contracts traded today across the name's chain */
-  optVolume: number;
-  ivPct: number;
+  /** Net option premium today (bought at the ask less sold at the bid), dollars; NaN where the list does not carry it */
+  netPremium: number;
 }
 
 /** Whether New York is trading right now — 9:30 to 16:00 ET on a weekday.
