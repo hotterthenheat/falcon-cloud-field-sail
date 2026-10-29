@@ -1,157 +1,98 @@
 import { MismatchDirection, type Logical, type ISeriesPrimitive, type SeriesAttachedParameter, type Time, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { GexSnapshot } from '../../types/market';
-import { nyIsoDate, nySession } from '../../core/nyTime';
-import { nodeMark, peakStrikes, priceTag, type NodeMark, type PriceTag } from '../../data/nodeScore';
+import { nySession } from '../../core/nyTime';
+import { dealerOf } from '../../core/dealerSign';
 
 /*
-  Exposure nodes — the ORIGINAL trail form, back by request (Noah,
-  2026-08-22: "the prev exposure trail we used to have, the same one Skylit
-  and a few others had"). For every bar-aligned snapshot, one small bead at
-  each strike that carries enough gamma: its thickness and brightness are
-  that moment's strength, and it simply isn't drawn when the strike stops
-  mattering — so a wall reads as a dotted band that fattens as it builds,
-  thins as it drains, and breaks where it died. Beads are anchored to
-  absolute price (y) and time (x), so they stay pinned across timeframes.
+  The exposure field: one row per strike, as tall as the strike spacing, one column per chart bar, one colour per cell —
+  that strike's dealer gamma at that time on the chosen expiries (data/book/exposureLog.ts builds the grid). Rows never
+  overlap; a cell with no reading is left empty.
 
-  WHITE, not red/green (Noah): the trails say WHERE and HOW MUCH; the sign
-  lives on the ladder, the map and the levels. Strength lives in alpha and
-  height, never in desaturation.
-
-  The level view rides on top: a focused strike's beads wear the focus ink
-  (lime, or magenta while it is the supreme) at full strength, and the rest of
-  the field steps back.
+  The colour is a perceptual ramp on the cell's size against the field's own scale (the 98th percentile of every cell,
+  so one freak print does not flatten the rest): dim navy for the quiet cells, rising through teal and green to yellow
+  where dealers are long gamma (their hedging absorbs a move), and through violet and rose to amber where they are short
+  it (their hedging pushes a move along). Small cells recede in alpha as well as in light.
 */
 
-/* THE FIELD'S OWN INKS (Noah, 2026-08-22): the house heatmap's steel-gold
-   poles — gold = put-dominant / amplifying, steel = call-dominant /
-   absorbing — and magenta on the supreme strike, as everywhere else. Not the
-   market red/green: on THIS surface those belong to the candles, and a
-   field in the tape's ink can't be told from the tape. The legend above the
-   chart teaches the pair. Strength lives in height and alpha, never in
-   desaturation. */
-const PUT_RGB: readonly [number, number, number] = [245, 197, 66]; // honey gold
-const CALL_RGB: readonly [number, number, number] = [214, 237, 248]; // glacier ice — the absorb pole (2026-08-29)
-const SUPREME_RGB: readonly [number, number, number] = [234, 0, 255]; // magenta, restored — mirrors palette SUPREME
-/* THE WALLS LIVE HERE (Noah, 2026-08-22: "I hate how they look on the side
-   line"): each moment's call wall beads ink glacier, its put wall ember, and the
-   flip runs as a blue tick trail — the levels ON the tape, history included,
-   instead of static lines at today's values. Same level rules as the chips
-   used (buildLevelsFor): wall = heaviest |gamma| above/below that moment's
-   close, flip = the sign-change midpoint nearest it. */
-const CW_RGB: readonly [number, number, number] = [48, 209, 88]; // bull green
-const PW_RGB: readonly [number, number, number] = [255, 59, 48]; // bear red
-const FLIP_RGBA = 'rgba(156,163,175,0.8)'; // indecision gray — the regime border (mirrors palette FLIP); alpha raised with the 2026-08-29 weight pass
+/* The two ramps, low to high: lightness rises monotonically along each */
+const POS_STOPS: readonly (readonly [number, number, number])[] = [
+  [24, 38, 66],
+  [27, 84, 112],
+  [33, 145, 140],
+  [94, 201, 98],
+  [253, 231, 37],
+];
+const NEG_STOPS: readonly (readonly [number, number, number])[] = [
+  [24, 38, 66],
+  [74, 44, 120],
+  [156, 47, 143],
+  [232, 84, 63],
+  [252, 166, 54],
+];
+/** Colour steps per side */
+const STEPS = 32;
+const rampAt = (stops: readonly (readonly [number, number, number])[], t: number): [number, number, number] => {
+  const x = Math.max(0, Math.min(1, t)) * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(x));
+  const f = x - i;
+  const a = stops[i];
+  const b = stops[i + 1];
+  return [Math.round(a[0] + (b[0] - a[0]) * f), Math.round(a[1] + (b[1] - a[1]) * f), Math.round(a[2] + (b[2] - a[2]) * f)];
+};
+/** A cell's alpha at strength t: quiet cells recede */
+const alphaAt = (t: number): number => 0.16 + 0.76 * Math.pow(Math.max(0, Math.min(1, t)), 0.7);
+const LUT: { pos: string[]; neg: string[]; posSolid: string[]; negSolid: string[] } = { pos: [], neg: [], posSolid: [], negSolid: [] };
+for (let s = 0; s < STEPS; s++) {
+  const t = (s + 0.5) / STEPS;
+  const p = rampAt(POS_STOPS, t);
+  const n = rampAt(NEG_STOPS, t);
+  const al = alphaAt(t).toFixed(3);
+  LUT.pos.push(`rgba(${p[0]},${p[1]},${p[2]},${al})`);
+  LUT.neg.push(`rgba(${n[0]},${n[1]},${n[2]},${al})`);
+  LUT.posSolid.push(`rgb(${p[0]},${p[1]},${p[2]})`);
+  LUT.negSolid.push(`rgb(${n[0]},${n[1]},${n[2]})`);
+}
 
-/* WHEN TWO IDENTITIES SHARE A STRIKE, THE SUPREME WINS OUTRIGHT (Noah,
-   2026-08-29: "its so bright practically hard to miss especially on the
-   charts" — then, shown a supreme-on-put-wall band rendering amber: "this is
-   nowhere near neon"). The 2026-08-22 blends (wine/violet/amber) existed so
-   a wall was never swallowed, but a 50/50 mix swallows the SUPREME instead —
-   and lime diluted is olive, not neon. The wall's identity still gets told:
-   its chip, its axis line, and the ladder's K·PW / K·CW tags all name it.
-   The band belongs to the crown. */
-const FLIPK_RGBA = 'rgba(234,0,255,0.85)';
+/** The ramps as CSS gradients (the legend's scale) and their top inks: `put` is the long-gamma side (positive dealer
+    gamma, absorbs), `call` the short-gamma side — names the cards and keys have always read */
+export const FIELD_RAMP_CSS = {
+  pos: `linear-gradient(90deg, ${POS_STOPS.map(c => `rgb(${c[0]},${c[1]},${c[2]})`).join(', ')})`,
+  neg: `linear-gradient(90deg, ${NEG_STOPS.map(c => `rgb(${c[0]},${c[1]},${c[2]})`).join(', ')})`,
+} as const;
+const top = (c: readonly [number, number, number]) => `rgb(${c[0]},${c[1]},${c[2]})`;
+export const BEAD_INK_CSS = { put: top(POS_STOPS[3]), call: top(NEG_STOPS[3]) } as const;
+
 /* The field's raster reaches this share of the pane past each side (x) and above and below (y), and is redrawn this long
    after the view last moved */
 const RASTER_MX = 0.35;
 const RASTER_MY = 0.25;
 const SETTLE_MS = 120;
-/* the field's ink slots, in the order the renderer's INKS list holds them */
-const INK_F = 0;
-const INK_K = 1;
-const INK_CW = 2;
-const INK_PW = 3;
-const INK_P = 4;
-const INK_C = 5; // the supreme outranks the flip on a shared strike too
 
-/* A peak is at least each same-sign neighbour and 20% of that moment's largest node.
-   A tie is one node across both strikes. The rest stays, at about a quarter. */
-
-/* THE HOVER (Noah, 2026-10-15, after reading his partner's Terrain: "i want all of those things like hover ring, chain,
-   veil, card and legend line … but do not incorporate his sizing … nor his colors. the hover should ONLY hover over
-   that specific one"): the bead under the pointer wears a ring in the page's ink and is drawn again at its full light,
-   and a veil of the chart's ground dims the rest of the field to HOVER_KEEP — the one bead, never its strike's whole
-   chain. THE CHAIN IS THE CLICK: a click on a bead keeps its strike (the host's focus — the level view the field has
-   had since 2026-08-22: the strike's beads at full in silver, the rest stepping back), and its card stays up. The
-   veil and the ring are drawn over the cached bitmap each frame, never into it, so a pointer never rebuilds the field.
-   The sizes and the inks are the field's own. */
-/** The light the rest of the field keeps under a hover */
-export const HOVER_KEEP = 0.6;
-/** The bead under the pointer, as the card reads it */
+/** The cell under the pointer, as the card reads it */
 export interface BeadHit {
   strike: number;
-  /** the bead's own moment, and its column's index in the field */
+  /** the cell's bar time, and its column's index in the field */
   time: number;
   ci: number;
-  /** the greek drawn at the strike then, signed dollars; its share of that moment's book, 0–1; its value at the day's
-      open — null where the field holds no column of that day's open */
+  /** the cell's dealer gamma, dollars per 1% (positive: dealers long gamma); its share of the column's gross; the strike's
+      value at the day's first column on or after the open — null where the field holds none */
   value: number;
   share: number;
   open: number | null;
-  /** the side (positive = put-dominant, pushes a move along) and the bead's strength against the reference */
+  /** the long-gamma side, and the cell's strength against the field's scale */
   put: boolean;
   t: number;
-  /** Born, grew, flipped, died — set on the bucket that confirmed it. */
   mark?: 'born' | 'grew' | 'flipped' | 'died';
-  /** What price did over the ten minutes after it touched. */
   tag?: 'rejected' | 'absorbed' | 'broke';
-  /** False when the flow net is too small a share of the volume to trust. */
   firm?: boolean;
-  /** the bead's centre and half-sizes on the pane, CSS px */
+  /** the cell's centre and half-sizes on the pane, CSS px */
   x: number;
   y: number;
   rx: number;
   ry: number;
 }
-/** The side beads' inks as CSS, for the card's figure (the honey gold and the glacier ice above) */
-export const BEAD_INK_CSS = { put: `rgb(${PUT_RGB[0]},${PUT_RGB[1]},${PUT_RGB[2]})`, call: `rgb(${CALL_RGB[0]},${CALL_RGB[1]},${CALL_RGB[2]})` } as const;
-/** The bead's half-height at strength t: t^1.6 between the hairline and the bar's swell (the draw's own amplitude) */
-const beadHalfHeight = (t: number, aMin: number, aMax: number): number => aMin + Math.pow(t, 1.6) * (aMax - aMin);
-/** A colour as the chart's options give it — "#rrggbb" or "rgb(a)(r, g, b)" — as channels */
-const rgbOf = (css: string): readonly [number, number, number] => {
-  const hex = css.trim().match(/^#([0-9a-f]{6})$/i);
-  if (hex) return [parseInt(hex[1].slice(0, 2), 16), parseInt(hex[1].slice(2, 4), 16), parseInt(hex[1].slice(4, 6), 16)];
-  const m = css.match(/\d+(?:\.\d+)?/g) ?? [];
-  return [Number(m[0]) || 0, Number(m[1]) || 0, Number(m[2]) || 0];
-};
 
-/** One bead: a strike's strength against the reference, and which side owns it */
-interface Bead {
-  strike: number;
-  t: number;
-  /** Sim side-coding: positive = put-dominant (amplifies), negative = call-dominant (absorbs) */
-  put: boolean;
-  /** A local peak or a flat tie. The rest of the column stays, faded. */
-  peak: boolean;
-  /** False when the bead is the rest of the book, drawn behind same-day expiry. */
-  front: boolean;
-  /** The other strike of a tie. One bead covers both. */
-  span?: number;
-  /** Born, grew, flipped, or died. Set on the bucket the rule confirms. */
-  mark?: NodeMark;
-  /** What price did in the ten minutes after it touched. */
-  tag?: PriceTag;
-  /** The bucket has no print for a strike that was a node. Not a blank. */
-  missing?: boolean;
-  /** False when the flow net is under about 2% of the strike's volume. Drawn dashed. */
-  firm?: boolean;
-}
-
-/** One column of the field, ranked and scaled at load time */
-interface Column {
-  time: number;
-  /** The strikes that draw, strongest first */
-  top: Bead[];
-  /** Every strike — only consulted for a focused strike outside the top */
-  all: Map<number, Bead>;
-  /** The bucket before this one was missing. The row says so. */
-  gap?: boolean;
-  /** `top` in draw order (the rest-of-book beads first), sorted once on first draw */
-  ordered?: Bead[];
-}
-
-/** The focused level's ink: the focus lime — or the supreme's magenta while the
-    focused strike IS the supreme. Mirrors palette FOCUS/SUPREME. */
+/** The focused level's ink. Mirrors palette FOCUS/SUPREME. */
 export type FocusInk = 'focus' | 'supreme';
 const INK_RGB: Record<FocusInk, readonly [number, number, number]> = {
   focus: [199, 211, 232],
@@ -169,22 +110,17 @@ interface DrawTarget {
   useBitmapCoordinateSpace(cb: (scope: BitmapScope) => void): void;
 }
 
-class TrailsPaneRenderer {
+/** Which exposure the field draws. Gamma is the grid's `value`; delta and vega ride beside it where a host hands them. */
+export type TrailGreek = 'gex' | 'dex' | 'vex';
+const levelValue = (l: GexSnapshot['levels'][number], greek: TrailGreek): number => (greek === 'gex' ? l.value : greek === 'dex' ? (l.dex ?? 0) : (l.vex ?? 0));
+
+class FieldRenderer {
   constructor(private source: GexTrailsPrimitive) {}
 
-  /*
-    The bead field (hundreds of columns × a dozen beads × two subpaths) is the layer's whole cost, so it is rasterized
-    once and cached against everything it depends on: the data revision, pan/zoom, both scales and the identity inputs.
-    A hover or crosshair repaint blits the bitmap. The vertical scale is fingerprinted by two prices' coordinates
-    (price→pixel is affine, so two points pin it).
-  */
   private cacheKey = '';
-  /** The field, rasterized — a hover repaint blits this. A pan or a price-scale
-      drag blits it shifted, and the paths are rebuilt once the gesture stops,
-      so the frame stays a drawImage instead of thousands of fills. */
+  /** The field, rasterized: a hover repaint blits this, and a pan or zoom maps it until the gesture rests */
   private bmp: HTMLCanvasElement | null = null;
-  /* The raster's own frame, to map it onto a moved view: its margins (bitmap px), the data revision and pixel ratios it
-     was drawn at, a reference bar's time and x, the bar spacing, and two price probes (price→pixel is affine) */
+  /* The raster's own frame, to map it onto a moved view */
   private rMx = 0;
   private rMy = 0;
   private rRev = -1;
@@ -199,9 +135,8 @@ class TrailsPaneRenderer {
   private settle = 0;
   private rebuildNext = false;
   private movedAt = 0;
-  private labelsOf: { snap: GexSnapshot; greek: TrailGreek; total: number; top: { strike: number; value: number }[] } | null = null;
 
-  /** One rebuild after the pan stops. Re-arming during the gesture never paints. */
+  /** One rebuild after the gesture stops. Re-arming during the gesture never paints. */
   private armSettle(src: GexTrailsPrimitive): void {
     this.movedAt = performance.now();
     if (this.settle) return;
@@ -212,8 +147,7 @@ class TrailsPaneRenderer {
       }
       this.settle = 0;
       this.cacheKey = '';
-      /* the resting frame must re-raster, not map the old raster again (which re-armed this, a repaint every few
-         frames for as long as the chart sat still) */
+      /* the resting frame re-rasters, never maps the old raster again */
       this.rebuildNext = true;
       src.requestUpdate?.();
     };
@@ -227,119 +161,56 @@ class TrailsPaneRenderer {
 
   private drawField(target: DrawTarget): void {
     const src = this.source;
-    /* the frame's chips, told to the key levels' ladder (drawn after this, at `top`) — none until the labels pass writes them */
     src.chips = [];
-    if (!src.enabled || !src.chart || !src.series || src.snapshots.length === 0) return;
+    const cols = src.cols;
+    if (!src.enabled || !src.chart || !src.series || cols.length === 0 || !(src.ref > 0)) return;
     const series = src.series;
     const ts = src.chart.timeScale();
-    /* Only the columns on screen: the snapshots are time-sorted, so the visible window is two binary searches, and a
-       column is built the first time it is seen (columnAt), not for the whole session up front. */
     const vis = ts.getVisibleRange();
     if (!vis) return;
-    const fromT = Number(vis.from) - src.barSec * 2;
-    const toT = Number(vis.to) + src.barSec * 2;
-    const snaps = src.snapshots;
-    let lo = 0;
-    let hi = snaps.length;
-    while (lo < hi) {
-      const m = (lo + hi) >> 1;
-      if (snaps[m].time < fromT) lo = m + 1;
-      else hi = m;
-    }
-    const first = lo;
-    lo = first;
-    hi = snaps.length;
-    while (lo < hi) {
-      const m = (lo + hi) >> 1;
-      if (snaps[m].time <= toT) lo = m + 1;
-      else hi = m;
-    }
-    const last = lo; // exclusive
+    const barSec = src.barSec;
+    const fromT = Number(vis.from) - barSec * 2;
+    const toT = Number(vis.to) + barSec * 2;
+    const first = src.colIndexAtOrAfter(fromT);
+    const last = src.colIndexAtOrAfter(toT + 1e-6); // exclusive
     if (last <= first) return;
-    /* The raster reaches past the view by RASTER_MX of its width each side (in bars, through the logical range, so a
-       session gap does not shorten it): a pan or zoom then maps the last raster instead of re-rastering every frame */
-    const barSpacing0 = ts.options().barSpacing ?? 6;
+    /* the raster's reach past the view, in bars through the logical range (a session gap does not shorten it) */
+    const barSpacing = ts.options().barSpacing ?? 6;
     let rFirst = first;
     let rLast = last;
     const lr = ts.getVisibleLogicalRange();
     const paneW = src.chart.paneSize(0).width;
     if (lr && paneW > 0) {
-      const mB = Math.ceil((paneW * RASTER_MX) / Math.max(0.5, barSpacing0)) + 2;
+      const mB = Math.ceil((paneW * RASTER_MX) / Math.max(0.5, barSpacing)) + 2;
       const at = (i: number, dir: MismatchDirection) => {
         const d = series.dataByIndex(i, dir);
         return d ? Number(d.time) : null;
       };
       const tL = at(Math.floor(lr.from) - mB, MismatchDirection.NearestRight);
       const tR = at(Math.ceil(lr.to) + mB, MismatchDirection.NearestLeft);
-      const fromR = Math.min(fromT, (tL ?? fromT) - src.barSec * 2);
-      const toR = Math.max(toT, (tR ?? toT) + src.barSec * 2);
-      lo = 0;
-      hi = first;
-      while (lo < hi) {
-        const m = (lo + hi) >> 1;
-        if (snaps[m].time < fromR) lo = m + 1;
-        else hi = m;
-      }
-      rFirst = lo;
-      lo = last;
-      hi = snaps.length;
-      while (lo < hi) {
-        const m = (lo + hi) >> 1;
-        if (snaps[m].time <= toR) lo = m + 1;
-        else hi = m;
-      }
-      rLast = lo;
+      rFirst = Math.min(first, src.colIndexAtOrAfter(Math.min(fromT, (tL ?? fromT) - barSec * 2)));
+      rLast = Math.max(last, src.colIndexAtOrAfter(Math.max(toT, (tR ?? toT) + barSec * 2) + 1e-6));
     }
-    const col0 = src.columnAt(first);
-    const barSpacing = ts.options().barSpacing ?? 6;
-    if (src.ref <= 0 && src.restRef <= 0) return;
-    /* WAVEFORMS, NOT DOTS (Noah, 2026-08-22, against Sovereign's close-ups):
-       a rail is a ribbon — every bead is as WIDE as its slot, so they touch,
-       and the variation is VERTICAL: the ribbon's thickness flickers with
-       each moment's strength, like an audio waveform. Weak strikes draw as
-       hairline dashes, not specks. The ribbon is translucent and layered (a
-       wider, fainter halo under a soft core) so candles show through it. */
-    /* Amplitude follows the BAR WIDTH, not a fixed pixel count, so 15m/1h
-       ribbons sit in proportion to their candles: the heaviest rail is
-       ~60% of a bar tall, a hairline is under a pixel. t^1.6 keeps the
-       weak field thin without crushing the mid-rails to nothing. */
-    const A_MIN = 0.45;
-    const A_MAX = Math.max(3, Math.min(barSpacing * 0.6, 9));
     const focus = src.focusStrike;
-    const supreme = src.supremeStrike;
     const ink = INK_RGB[src.focusInk];
-    const inkCss = `rgba(${ink[0]},${ink[1]},${ink[2]},0.95)`;
+    const strikes = src.strikes;
+    const R = strikes.length;
+    const probeStrike = strikes[R >> 1] ?? 0;
 
     target.useBitmapCoordinateSpace(scope => {
       const ctx = scope.context;
       const hr = scope.horizontalPixelRatio;
       const vr = scope.verticalPixelRatio;
       const wCss = scope.mediaSize.width;
-      /* SUB-BAR BEADS (Noah, 2026-08-22: one bead per 30m/1h bar was a row of
-         pearls): the field's clock is finer than the bars, so a bar holds
-         several beads, each placed at its own time across the bar's width.
-         On 1m/5m the slot IS the bar and nothing changes.
-         BUDGET: never more columns than the pixels can show — a slot under
-         ~3px wide is drawn every 2nd/3rd/nth, so a zoomed-out 1h chart costs
-         the same frame as a 1m one (the price-scale drag lagged without it). */
-      const barSec = src.barSec;
-      const slots = Math.max(1, Math.round(barSec / Math.max(1, src.stepSec)));
-      const stride = Math.max(1, Math.ceil(3 / (barSpacing / slots)));
-      const drawnSlots = Math.max(1, Math.ceil(slots / stride));
-      const rx = (barSpacing / drawnSlots) * 0.54 * hr;
       const halfW = barSpacing * 0.5;
 
-      /* The cache fingerprint — see the field notes above. */
-      const firstBucket = Math.floor(col0.time / barSec) * barSec;
-      const x0 = ts.timeToCoordinate(firstBucket as Time);
-      const probeA = series.priceToCoordinate(col0.top[0]?.strike ?? 0) ?? -1;
-      const probeB = series.priceToCoordinate((col0.top[0]?.strike ?? 0) + 1) ?? -1;
-      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${supreme}|${src.cwStrike}|${src.pwStrike}|${src.flipPrice}|${src.focusInk}|${src.chromeInset}`;
+      const x0 = ts.timeToCoordinate(cols[first].time as Time);
+      const probeA = series.priceToCoordinate(probeStrike) ?? -1;
+      const probeB = series.priceToCoordinate(probeStrike + 1) ?? -1;
+      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${src.focusInk}`;
       const cached = key === this.cacheKey && !!this.bmp;
-      /* A MOVED VIEW MAPS THE LAST RASTER. The raster was drawn with margins at another bar spacing, scroll and price
-         scale; both axes are affine, so one drawImage puts every bead where this frame's scales want it (the beads'
-         heights keep the raster's scale until the rebuild). The rebuild runs once the gesture rests (SETTLE_MS), or
-         now when the view leaves the raster or the scale drifts too far. A resting view re-rasters, so it is exact. */
+      /* A moved view maps the last raster: both axes are affine, so one drawImage puts every cell where this frame's
+         scales want it, until the gesture rests (SETTLE_MS) or the view leaves the raster or the scale drifts too far */
       let scrolled = false;
       const bmp0 = this.bmp;
       if (!cached && !this.rebuildNext && bmp0 && this.rRev === src.rev && this.rHr === hr && this.rVr === vr && this.rBar > 0 && this.rYb !== this.rYa) {
@@ -363,235 +234,88 @@ class TrailsPaneRenderer {
         }
       }
 
-      /* BATCHED: beads are gathered into one path per ink (alpha quantised to
-         ~20 steps), then each path is filled once — into the BITMAP. */
-      /* one path per ink and quantised alpha, keyed inkIndex * 1000 + alphaStep (numbers: no string per bead) */
-      const cores = new Map<number, Path2D>();
-      const halos = new Map<number, Path2D>();
-      const flipPath = new Path2D();
-      let flipDrawn = false;
-      const glyphs: { x: number; y: number; mark?: NodeMark; tag?: PriceTag; word?: string }[] = [];
-      /* the field's own words sit just under the host's floating chrome, never under its controls */
-      const glyphTop = (src.chromeInset > 0 ? src.chromeInset + 12 : 14) * vr;
-      let lastGapX = -Infinity;
-      const dashes: { x: number; y: number; w: number }[] = [];
-      /* Zoomed out, one word per node stacks into noise. Count the window instead. */
-      const tight = barSpacing < 8;
-      let born = 0;
-      let grew = 0;
-      let flipped = 0;
-      let died = 0;
-      let held = 0;
-      let off = 0;
-      let broke = 0;
-      const pathFor = (map: Map<number, Path2D>, key: number) => {
-        let p = map.get(key);
-        if (!p) map.set(key, (p = new Path2D()));
-        return p;
-      };
-      const yCache = new Map<number, number | null>();
-      const yOf = (strike: number) => {
-        let y = yCache.get(strike);
-        if (y === undefined) {
-          y = series.priceToCoordinate(strike);
-          yCache.set(strike, y);
-        }
-        return y;
-      };
-
-      // ---- the beads (skipped whole when the cache holds) --------------------
-      /* the window's counts read the view's columns only, never the raster's margins */
-      if (tight && !cached && !scrolled) {
-        for (let ci = first; ci < last; ci++) {
-          const top = src.columnAt(ci).top;
-          for (let bi = 0; bi < top.length; bi++) {
-            const bead = top[bi];
-            if (bead.mark === 'born') born += 1;
-            else if (bead.mark === 'grew') grew += 1;
-            else if (bead.mark === 'flipped') flipped += 1;
-            else if (bead.mark === 'died') died += 1;
-            if (bead.tag === 'absorbed') held += 1;
-            else if (bead.tag === 'rejected') off += 1;
-            else if (bead.tag === 'broke') broke += 1;
-          }
-        }
-      }
-      /* Margins only while the view moves (or right after it rests): a data tick or a new timeframe at rest rasters
-         the view alone, so those rebuilds cost what they did before the margins */
-      const wide = this.rebuildNext || performance.now() - this.movedAt < SETTLE_MS;
-      const mxPx = wide ? Math.round(scope.bitmapSize.width * RASTER_MX) : 0;
-      const myPx = wide ? Math.round(scope.bitmapSize.height * RASTER_MY) : 0;
-      const mxCss = mxPx / hr;
-      const cLast = wide ? rLast : last;
-      for (let ci = cached || scrolled ? cLast : wide ? rFirst : first; ci < cLast; ci++) {
-        const col = src.columnAt(ci);
-        // The bead's bar, and where inside it this moment sits
-        const bucket = Math.floor(col.time / barSec) * barSec;
-        const slot = slots > 1 ? Math.floor(((col.time - bucket) / barSec) * slots) : 0;
-        if (slot % stride !== 0) continue;
-        const xBar = ts.timeToCoordinate(bucket as Time);
-        if (xBar === null || xBar < -halfW - mxCss || xBar > wCss + halfW + mxCss) continue;
-        const x = slots > 1 ? xBar - halfW + ((slot / stride + 0.5) / drawnSlots) * barSpacing : xBar;
-        const cx = x * hr;
-        /* a gap is named once per run of empty columns, under the host's floating chrome */
-        if (col.gap && cx - lastGapX > 28 * hr) {
-          glyphs.push({ x: cx, y: glyphTop + 2 * vr, word: 'gap' });
-          lastGapX = cx;
-        }
-
-        // The flip: ONE dotted blue line at TODAY'S flip — a tick per column
-        // in the field's grammar, never a solid side line
-        if (src.flipPrice != null) {
-          const fy = series.priceToCoordinate(src.flipPrice);
-          if (fy !== null) {
-            /* Taller and near-continuous (Noah, 2026-08-29: "more noticable
-               ... not color wise") — 90% slot coverage keeps it reading as a
-               dashed rule rather than a row of crumbs. */
-            const w = (barSpacing / drawnSlots) * 0.9 * hr;
-            flipPath.rect(cx - w / 2, fy * vr - 1.3 * vr, w, 2.6 * vr);
-            flipDrawn = true;
-          }
-        }
-
-        // This moment's field, ranked at load — plus the focused strike at
-        // EVERY moment, however faint (its history must have no gaps)
-        let beads = (col.ordered ??= [...col.top].sort((a, b) => Number(a.front !== false) - Number(b.front !== false)));
-        if (focus != null && !col.top.some(b => b.strike === focus)) {
-          const fb = col.all.get(focus);
-          if (fb) {
-            /* where the stable sort would have put it: after the rest-of-book beads, or last */
-            const back = beads.findIndex(b => b.front !== false);
-            const at = fb.front === false ? (back < 0 ? beads.length : back) : beads.length;
-            beads = [...beads.slice(0, at), fb, ...beads.slice(at)];
-          }
-        }
-
-        for (let bi = 0; bi < beads.length; bi++) {
-          const bead = beads[bi];
-          const isFocus = focus != null && bead.strike === focus;
-          const y = yOf(bead.strike);
-          if (y === null) continue;
-
-          // t^1.6 — the amplitude; weak strikes stay hairlines, rails swell
-          const t = Math.max(isFocus ? 0.08 : 0, bead.t);
-          const s = Math.pow(t, 1.6);
-          const thin = bead.front === false && !isFocus ? 0.62 : 1;
-          const ry = (A_MIN + s * (A_MAX - A_MIN)) * vr * thin;
-          const yc = y * vr;
-          // Translucent on purpose — the tape reads THROUGH the ribbon
-          let core = 0.42 + s * 0.5;
-          let halo = 0.03 + s * 0.06;
-          /* A peak keeps its ink. Anything else stays at about a quarter, and is not deleted. */
-          if (bead.missing) {
-            core = 0.35;
-            halo = 0;
-          } else if (!bead.peak && !isFocus) {
-            core = 0.25;
-            halo = 0;
-          }
-          if (bead.front === false && !isFocus && bead.peak) {
-            core *= 0.55;
-            halo *= 0.45;
-          }
-          if (focus != null && !isFocus) {
-            core *= 0.3; // the field steps back
-            halo *= 0.3;
-          }
-          /* A thin flow net is still drawn, dashed and faded, so a sign flip stays visible without looking certain. */
-          if (bead.firm === false) {
-            core *= 0.35;
-            halo *= 0.2;
-          }
-          /* Ink precedence: the focus wins, then THE SUPREME — above the walls
-             (Noah, 2026-08-29: the crown is never diluted; reverses the
-             2026-08-22 wall-over-supreme order, whose worry — "I don't even see
-             any put wall" — is answered by the wall's chip, axis line and
-             the ladder's K·PW tag), then today's walls, then the side. */
-          const isSupreme = supreme != null && bead.strike === supreme;
-          /* SIDE BEADS TRAVEL THE HOUSE RAMP (ember/glacier, 2026-08-29 —
-             "what about the charts"): each bead's hue comes from the ramp at
-             its own strength, so a band heats oxblood → fire → gold where
-             the book is heavy and cools where it drains — the ladder's
-             journey, on the tape. Identity beads (focus/supreme/walls) keep
-             their identity inks. The color-t is floored at 0.2 so the
-             faintest bead still whispers in hue instead of vanishing into
-             ramp-black — the alpha already carries the fade. Quantised to 8
-             bins so the batcher stays a batcher. */
-          const inkKey = isFocus
-            ? INK_F
-            : isSupreme
-              ? INK_K
-              : bead.strike === src.cwStrike
-                ? INK_CW
-                : bead.strike === src.pwStrike
-                  ? INK_PW
-                  : bead.put
-                    ? INK_P
-                    : INK_C;
-
-          /* Each ELLIPSE bead is its OWN subpath: ellipse() draws a line
-             from the path's current point to the ellipse's start, so without
-             the moveTo every bead joined the last one. HAIRLINES DRAW AS
-             RECTS (2026-08-29): under ~2px of height an ellipse is invisible
-             arc math — the vast majority of beads — and rect() paths cost a
-             fraction. Only the swelling rails keep the round nose. */
-          const y2 = bead.span ? yOf(bead.span) : null;
-          const top = y2 == null ? yc - ry : Math.min(y, y2) * vr;
-          const bot = y2 == null ? yc + ry : Math.max(y, y2) * vr;
-          const mid = (top + bot) / 2;
-          const half = Math.max(ry, (bot - top) / 2);
-          const round = half > 2 * vr && !bead.missing;
-          if (!bead.missing && t > 0.55 && half * 1.35 > 2.4 * vr) {
-            const hx = rx * 1.15;
-            const p = pathFor(halos, inkKey * 1000 + Math.round(halo * 40));
-            if (round) {
-              p.moveTo(cx + hx, mid);
-              p.ellipse(cx, mid, hx, half * 1.9, 0, 0, Math.PI * 2);
-            } else {
-              p.rect(cx - hx, mid - half * 1.9, hx * 2, half * 3.8);
-            }
-          }
-          const p = pathFor(cores, inkKey * 1000 + Math.round(core * 20));
-          if (bead.missing) {
-            p.rect(cx - rx * 0.7, mid - 0.6 * vr, rx * 1.4, 1.2 * vr);
-          } else if (round) {
-            p.moveTo(cx + rx, mid);
-            p.ellipse(cx, mid, rx, half, 0, 0, Math.PI * 2);
-          } else {
-            p.rect(cx - rx, top, rx * 2, Math.max(1, bot - top));
-          }
-          if (bead.mark || bead.tag) {
-            if (!tight) glyphs.push({ x: cx, y: Math.max(11 * vr, top - 2 * vr), mark: bead.mark, tag: bead.tag });
-          }
-          if (bead.firm === false) dashes.push({ x: cx, y: mid, w: Math.max(rx * 2, 4 * hr) });
-        }
-      }
-      if (tight && !cached) {
-        const parts: string[] = [];
-        if (born) parts.push(`${born} born`);
-        if (grew) parts.push(`${grew} grew`);
-        if (flipped) parts.push(`${flipped} flipped`);
-        if (died) parts.push(`${died} died`);
-        if (held) parts.push(`${held} held`);
-        if (off) parts.push(`${off} off`);
-        if (broke) parts.push(`${broke} broke`);
-        /* clear of the drawing rail at the left edge */
-        if (parts.length) glyphs.push({ x: 56 * hr, y: glyphTop, word: parts.join(' · ') });
-      }
-
-      const INKS: readonly (readonly [number, number, number])[] = [ink, SUPREME_RGB, CW_RGB, PW_RGB, PUT_RGB, CALL_RGB];
-      const paint = (tctx: CanvasRenderingContext2D, map: Map<number, Path2D>, step: number) => {
-        for (const [key, path] of map) {
-          const rgb = INKS[Math.floor(key / 1000)] ?? CALL_RGB;
-          tctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${((key % 1000) / step).toFixed(3)})`;
-          tctx.fill(path);
-        }
-      };
       if (!cached && !scrolled) {
+        /* margins only while the view moves (or right after it rests) */
+        const wide = this.rebuildNext || performance.now() - this.movedAt < SETTLE_MS;
+        const mxPx = wide ? Math.round(scope.bitmapSize.width * RASTER_MX) : 0;
+        const myPx = wide ? Math.round(scope.bitmapSize.height * RASTER_MY) : 0;
+        const mxCss = mxPx / hr;
+        const cFrom = wide ? rFirst : first;
+        const cTo = wide ? rLast : last;
+        /* each row's edges: half way to the neighbouring strikes, the outer rows as tall as their neighbour's step */
+        const edgeY = new Float64Array(R + 1);
+        for (let r = 0; r <= R; r++) {
+          const lo = r === 0 ? strikes[0] - (R > 1 ? (strikes[1] - strikes[0]) / 2 : 0.5) : (strikes[r - 1] + strikes[r]) / 2;
+          const y = series.priceToCoordinate(r === R ? strikes[R - 1] + (R > 1 ? (strikes[R - 1] - strikes[R - 2]) / 2 : 0.5) : lo);
+          edgeY[r] = y === null ? NaN : y * vr;
+        }
+        const hBmp = scope.bitmapSize.height;
+        /* one path per ink step and side, cells of a row merged across touching bars of the same step */
+        const paths = new Map<number, Path2D>();
+        const pathFor = (k: number) => {
+          let p = paths.get(k);
+          if (!p) paths.set(k, (p = new Path2D()));
+          return p;
+        };
+        const xl = new Float64Array(cTo - cFrom);
+        const xr = new Float64Array(cTo - cFrom);
+        for (let c = cFrom; c < cTo; c++) {
+          const x = ts.timeToCoordinate(cols[c].time as Time);
+          if (x === null || x < -halfW - mxCss || x > wCss + halfW + mxCss) {
+            xl[c - cFrom] = NaN;
+            continue;
+          }
+          xl[c - cFrom] = Math.round((x - halfW) * hr);
+          xr[c - cFrom] = Math.round((x + halfW) * hr);
+        }
+        const vals = src.values;
+        const ref = src.ref;
+        for (let r = 0; r < R; r++) {
+          const ya = edgeY[r];
+          const yb = edgeY[r + 1];
+          if (!Number.isFinite(ya) || !Number.isFinite(yb)) continue;
+          let yTop = Math.min(ya, yb);
+          let yBot = Math.max(ya, yb);
+          if (yBot < -myPx || yTop > hBmp + myPx) continue;
+          /* a hairline between rows once they are tall enough to spare it */
+          const h = yBot - yTop;
+          if (h > 5 * vr) yTop += Math.max(1, Math.round(0.6 * vr));
+          yTop = Math.round(yTop);
+          yBot = Math.round(yBot);
+          if (yBot - yTop < 1) yBot = yTop + 1;
+          const dim = focus != null && strikes[r] !== focus;
+          let runKey = -1;
+          let runL = 0;
+          let runR = 0;
+          const flush = () => {
+            if (runKey >= 0) pathFor(runKey).rect(runL, yTop, runR - runL, yBot - yTop);
+            runKey = -1;
+          };
+          for (let c = cFrom; c < cTo; c++) {
+            const L = xl[c - cFrom];
+            const v = vals[c * R + r];
+            if (Number.isNaN(L) || Number.isNaN(v) || v === 0) {
+              flush();
+              continue;
+            }
+            const tt = Math.min(1, Math.abs(v) / ref);
+            const step = Math.min(STEPS - 1, Math.floor(tt * STEPS));
+            const k = (v > 0 ? 0 : 1) * 1000 + step + (dim ? 100 : 0);
+            const Rr = xr[c - cFrom];
+            if (k === runKey && Math.abs(L - runR) <= 1) {
+              runR = Rr;
+              continue;
+            }
+            flush();
+            runKey = k;
+            runL = L;
+            runR = Rr;
+          }
+          flush();
+        }
         const bw = scope.bitmapSize.width + 2 * mxPx;
         const bh = scope.bitmapSize.height + 2 * myPx;
         const bmp = this.bmp ?? document.createElement('canvas');
-        /* a size change clears the canvas; a same-size raster is cleared by hand */
         if (bmp.width !== bw || bmp.height !== bh) {
           bmp.width = bw;
           bmp.height = bh;
@@ -600,39 +324,24 @@ class TrailsPaneRenderer {
         if (bctx) {
           bctx.setTransform(1, 0, 0, 1, 0, 0);
           bctx.clearRect(0, 0, bw, bh);
-          /* everything is drawn in the view's own pixels, shifted into the margins by whole pixels */
           bctx.setTransform(1, 0, 0, 1, mxPx, myPx);
-          paint(bctx, halos, 40);
-          paint(bctx, cores, 20);
-          bctx.font = `${Math.round(8 * vr)}px sans-serif`;
-          bctx.fillStyle = 'rgba(237,237,237,0.9)';
-          bctx.textBaseline = 'bottom';
-          for (const g of glyphs) {
-            const word = g.word ?? (g.mark === 'born' ? '+' : g.mark === 'grew' ? '↑' : g.mark === 'flipped' ? '↔' : g.mark === 'died' ? '×' : g.tag === 'broke' ? 'broke' : g.tag === 'absorbed' ? 'held' : g.tag === 'rejected' ? 'off' : '');
-            if (!word) continue;
-            bctx.textAlign = g.word && !g.mark && !g.tag ? 'left' : 'center';
-            bctx.fillText(word, g.x, g.y);
+          for (const [k, path] of paths) {
+            const step = k % 100;
+            const side = Math.floor(k / 1000) === 0 ? LUT.pos : LUT.neg;
+            bctx.globalAlpha = k % 1000 >= 100 ? 0.4 : 1;
+            bctx.fillStyle = side[step];
+            bctx.fill(path);
           }
-          if (dashes.length) {
-            bctx.save();
-            bctx.setLineDash([3 * hr, 2 * hr]);
-            bctx.strokeStyle = 'rgba(237,237,237,0.7)';
-            bctx.lineWidth = Math.max(1, vr);
-            bctx.beginPath();
-            for (const d of dashes) {
-              bctx.moveTo(d.x - d.w / 2, d.y);
-              bctx.lineTo(d.x + d.w / 2, d.y);
+          bctx.globalAlpha = 1;
+          /* the focused strike's row, outlined across the field */
+          if (focus != null) {
+            const r = strikes.indexOf(focus);
+            if (r >= 0 && Number.isFinite(edgeY[r]) && Number.isFinite(edgeY[r + 1])) {
+              bctx.fillStyle = `rgba(${ink[0]},${ink[1]},${ink[2]},0.9)`;
+              const lw = Math.max(1, Math.round(vr));
+              bctx.fillRect(-mxPx, Math.round(Math.min(edgeY[r], edgeY[r + 1])), bw, lw);
+              bctx.fillRect(-mxPx, Math.round(Math.max(edgeY[r], edgeY[r + 1])) - lw, bw, lw);
             }
-            bctx.stroke();
-            bctx.restore();
-          }
-          /* The regime border draws OVER the field (2026-08-29): it is the
-             line the whole map hinges on, and under the beads it spent half
-             its length buried in whatever band it crossed. */
-          if (flipDrawn) {
-            const flipOnSupreme = supreme != null && src.flipPrice != null && Math.abs(src.flipPrice - supreme) < 1e-6;
-            bctx.fillStyle = flipOnSupreme ? FLIPK_RGBA : FLIP_RGBA;
-            bctx.fill(flipPath);
           }
           bctx.setTransform(1, 0, 0, 1, 0, 0);
           this.bmp = bmp;
@@ -643,11 +352,10 @@ class TrailsPaneRenderer {
           this.rRev = src.rev;
           this.rHr = hr;
           this.rVr = vr;
-          /* the view's middle, as a logical index — it maps anywhere, on screen or off */
           this.rRefLogical = ts.coordinateToLogical(wCss / 2) ?? 0;
           this.rXRef = ts.logicalToCoordinate(this.rRefLogical as Logical) ?? wCss / 2;
           this.rBar = barSpacing;
-          this.rPrice = col0.top[0]?.strike ?? 0;
+          this.rPrice = probeStrike;
           this.rYa = probeA;
           this.rYb = probeB;
           if (this.settle) {
@@ -657,193 +365,115 @@ class TrailsPaneRenderer {
         }
       }
       if (!scrolled && this.bmp) ctx.drawImage(this.bmp, -this.rMx, -this.rMy);
-
-      // ---- THE HOVER, over the bitmap (never in it): the veil, the bead again at full, its ring --------------
-      const hover = src.hoverOverlay ? null : src.hover;
-      if (hover && hover.ci >= first && hover.ci < last) {
-        const col = src.columnAt(hover.ci);
-        const b = col.all.get(hover.strike);
-        const bucket = Math.floor(col.time / barSec) * barSec;
-        const slot = slots > 1 ? Math.floor(((col.time - bucket) / barSec) * slots) : 0;
-        const xBar = ts.timeToCoordinate(bucket as Time);
-        const y = yOf(hover.strike);
-        if (b && xBar !== null && y !== null && slot % stride === 0) {
-          /* No veil. Dimming the whole field read as a blur on the nodes.
-             The bead under the pointer is drawn again, with a ring. The rest stay as they are. */
-          const x = slots > 1 ? xBar - halfW + ((slot / stride + 0.5) / drawnSlots) * barSpacing : xBar;
-          const cx = x * hr;
-          const yc = y * vr;
-          const ry = beadHalfHeight(Math.max(focus != null && b.strike === focus ? 0.08 : 0, b.t), A_MIN, A_MAX) * vr;
-          /* the bead again, at its full light, in its own ink */
-          const isSupreme = supreme != null && b.strike === supreme;
-          const rgb = focus != null && b.strike === focus ? ink : isSupreme ? SUPREME_RGB : b.put ? PUT_RGB : CALL_RGB;
-          ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},1)`;
-          ctx.beginPath();
-          ctx.ellipse(cx, yc, rx, Math.max(ry, 1.5 * vr), 0, 0, Math.PI * 2);
-          ctx.fill();
-          /* the ring: 1.5 CSS px in the page's ink, just outside the bead */
-          const lw = Math.max(1, Math.round(1.5 * Math.min(hr, vr)));
-          const r = src.ringInk;
-          ctx.lineWidth = lw;
-          ctx.strokeStyle = `rgba(${r[0]},${r[1]},${r[2]},0.95)`;
-          ctx.beginPath();
-          ctx.ellipse(cx, yc, rx + lw, Math.max(ry, 1.5 * vr) + lw, 0, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-      }
-
-      // ---- axis-side strength labels for the heaviest strikes ---------------
-      const latest = src.snapshots[src.snapshots.length - 1];
-      if (!latest) return;
-      // Four labels at most, read off the latest snapshot — once per snapshot and greek, not every frame
-      if (this.labelsOf?.snap !== latest || this.labelsOf.greek !== src.greek) {
-        const total = latest.levels.reduce((s, l) => s + Math.abs(src.valueOf(l)), 0);
-        const top =
-          total > 0
-            ? [...latest.levels]
-                .map(l => ({ strike: l.strike, value: src.valueOf(l) }))
-                .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-                .slice(0, 4)
-                .filter(l => Math.abs(l.value) / total >= 0.08)
-            : [];
-        this.labelsOf = { snap: latest, greek: src.greek, total, top };
-      }
-      const { total, top } = this.labelsOf;
-      if (total <= 0) return;
-
-      const labelPx = src.labelPx;
-      ctx.font = `${Math.round(labelPx * vr)}px "Inter", sans-serif`;
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      const xRight = (wCss - 8) * hr;
-
-      const drawLabel = (lvl: { strike: number; value: number }, color: string) => {
-        const y = series.priceToCoordinate(lvl.strike);
-        // Off the pane's top there is no line to name — the words go with it
-        if (y === null || y < 0) return;
-        const pct = Math.round((Math.abs(lvl.value) / total) * 100);
-        const strikeLabel = lvl.strike % 1 === 0 ? lvl.strike.toFixed(0) : lvl.strike.toFixed(2);
-        const text = `${strikeLabel} · ${pct}%`;
-
-        // Dark backing pad so the label survives whatever sits behind it
-        const w = ctx.measureText(text).width;
-        /* The pad rides the type size. Fixed padding around shrinking text
-           leaves the chip the same height with a smaller word rattling inside
-           it — smaller type and no more room, which is the opposite of the
-           point. */
-        const scale = labelPx / 9.5;
-        const padX = 4 * hr * scale;
-        const padY = 2.5 * vr * scale;
-        const boxH = 12 * vr * scale;
-        /* UNDER THE HOST'S CHROME, NEVER BEHIND IT (Noah, 2026-09-14: the top
-           wall's "430 · 17%" over the strip's fullscreen door): the label's box
-           stops at the chrome's edge and slides down to sit under it — the line
-           stays where the price is. The autoscale keeps the walls clear of the
-           band by rest; this is for a tape the reader has scaled by hand. */
-        let yPix = y * vr;
-        const floor = src.chromeInset > 0 ? (src.chromeInset + 3) * vr : 0;
-        const boxTop = yPix - boxH / 2 - padY / 2;
-        if (boxTop < floor) yPix += floor - boxTop;
-        ctx.fillStyle = 'rgba(5,5,5,0.72)';
-        ctx.fillRect(xRight - w - padX, yPix - boxH / 2 - padY / 2, w + padX * 2, boxH + padY);
-        ctx.fillStyle = color;
-        ctx.fillText(text, xRight, yPix);
-        src.chips.push({ strike: lvl.strike, left: (xRight - w - padX) / hr, top: (yPix - boxH / 2 - padY / 2) / vr, bottom: (yPix + boxH / 2 + padY / 2) / vr });
-      };
-
-      for (const lvl of top) {
-        if (focus != null && lvl.strike === focus) continue; // drawn below, in its own ink
-        const isSupreme = supreme != null && lvl.strike === supreme;
-        const rgb = isSupreme ? SUPREME_RGB : lvl.value >= 0 ? PUT_RGB : CALL_RGB;
-        /* The field's labels step back while a strike is focused — the SUPREME's
-           never does. Lime at 0.55 is olive, not neon (the house lime rule:
-           its identity IS luminance), and the crown is the one label that
-           must survive every state. */
-        drawLabel(lvl, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${focus != null && !isSupreme ? 0.55 : 0.95})`);
-      }
-      // The focused level is always labelled — its share of the book, in its ink
-      if (focus != null) {
-        const f = latest.levels.find(l => l.strike === focus);
-        if (f) drawLabel(f, inkCss);
-      }
     });
   }
 }
 
-class TrailsPaneView {
-  private _renderer: TrailsPaneRenderer;
+class FieldPaneView {
+  private _renderer: FieldRenderer;
   constructor(source: GexTrailsPrimitive) {
-    this._renderer = new TrailsPaneRenderer(source);
+    this._renderer = new FieldRenderer(source);
   }
   zOrder(): 'bottom' {
     return 'bottom';
   }
-  renderer(): TrailsPaneRenderer {
+  renderer(): FieldRenderer {
     return this._renderer;
   }
 }
-
-/** A moment's largest |value|, remembered against the snapshot object */
-/** Which exposure the beads draw — the head's Greek (2026-09-06). Gamma is the
-    history's `value`; delta and vega ride beside it on every level. */
-export type TrailGreek = 'gex' | 'dex' | 'vex';
-const momentMax: Record<TrailGreek, WeakMap<GexSnapshot, number>> = { gex: new WeakMap(), dex: new WeakMap(), vex: new WeakMap() };
-const levelValue = (l: GexSnapshot['levels'][number], greek: TrailGreek): number => (greek === 'gex' ? l.value : greek === 'dex' ? (l.dex ?? 0) : (l.vex ?? 0));
 
 export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
   chart: IChartApi | null = null;
   series: ISeriesApi<'Candlestick'> | null = null;
   requestUpdate?: () => void;
+  /** The columns as handed in (one a bar, the last reading of each bar kept) */
   snapshots: GexSnapshot[] = [];
+  /** The columns' bar times, and the dense grid: values[col * strikes.length + row], dealer sign, NaN = no reading */
+  cols: { time: number }[] = [];
+  strikes: number[] = [];
+  values: Float64Array = new Float64Array(0);
   maxAbs = 1;
-  /** Robust strength reference: high percentile of per-moment maxima. Using
-      the absolute max instead lets one freak spike crush every other wall. */
+  /** The field's scale: the 98th percentile of every cell's size — the size a cell is drawn at full light */
   ref = 0;
+  restRef = 0;
   enabled = true;
-  /** The chart's bar length, seconds — a bead finds its bar by it */
+  /** The chart's bar length, seconds — a column finds its bar by it */
   barSec = 60;
-  /**
-   * The strike chips' type size in CSS px — 9.5 normally, smaller on a phone.
-   *
-   * A field rather than another `setData` argument: it is a presentation
-   * setting that changes with the HOST, while setData carries the data and is
-   * called on every tick. Bundling them would make a size change look like new
-   * data to every reader of this class.
-   */
+  /** Kept for the hosts that set it: the field prints no labels of its own */
   labelPx = 9.5;
-  /** The host's floating chrome, CSS px from the pane's top to its lowest edge — the strike
-      chips never paint behind it (set by the chart as it measures the strip; 0 = no chrome) */
   chromeInset = 0;
-  /** The field's own clock, seconds between snapshots — beads per bar = barSec / stepSec */
   stepSec = 60;
-  /** The level view's strike — its beads lead, the field steps back. */
   focusStrike: number | null = null;
-  /** Its ink: lime, or magenta while the focused strike is the supreme. The
-      focus never follows the supreme — the strike you clicked is the strike
-      you're watching; the ink reports its standing (Noah, 2026-08-22). */
   focusInk: FocusInk = 'focus';
-  /** The book's supreme strike — its band wears magenta (re-read every scan) */
   supremeStrike: number | null = null;
-  /** TODAY'S levels — ONE green band, ONE red band, ONE blue flip line, all
-      re-read every scan so they move with the math (Noah, 2026-08-22) */
   cwStrike: number | null = null;
   pwStrike: number | null = null;
   flipPrice: number | null = null;
-  /** The strike chips drawn at the right edge THIS FRAME, media px — the key levels' ladder (keyLevelsPrimitive, drawn
-      after this at `top`) ends a wall's rung at its chip and prints no figure of its own there, since the chip already
-      names the strike. Empty while the field is off. */
+  /** Strike chips at the right edge this frame — none: the key levels' ladder names the levels */
   chips: { strike: number; left: number; top: number; bottom: number }[] = [];
-  private _paneViews: TrailsPaneView[];
-  /** The bead under the pointer (beadAt), drawn with its ring over the veiled field; null when the pointer is off */
+  private _paneViews: FieldPaneView[];
   hover: BeadHit | null = null;
-  /** The ring's ink — the page's lead ink on the chart's ground (white on the black tape; the host sets a light tape's) */
   ringInk: readonly [number, number, number] = [255, 255, 255];
-  /** Told after every data hand-off, with the size reference the beads stand against — the host's legend line */
+  /** Told after every data hand-off, with the scale the cells stand against — the host's legend */
   onData?: (ref: number) => void;
-  private groundCache: { css: string; rgb: readonly [number, number, number] } | null = null;
+  /** Bumped on every data hand-off — the raster's cache keys on it */
+  rev = 0;
+  greek: TrailGreek = 'gex';
+  hoverOverlay = false;
+  afterDraw: (() => void) | null = null;
 
   constructor() {
-    this._paneViews = [new TrailsPaneView(this)];
+    this._paneViews = [new FieldPaneView(this)];
+  }
+
+  valueOf(l: GexSnapshot['levels'][number]): number {
+    return levelValue(l, this.greek);
+  }
+
+  /** The first column at or after time t (seconds) */
+  colIndexAtOrAfter(t: number): number {
+    const cols = this.cols;
+    let lo = 0;
+    let hi = cols.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (cols[m].time < t) lo = m + 1;
+      else hi = m;
+    }
+    return lo;
+  }
+
+  /** The row holding a price: half way to each neighbouring strike, or -1 off the field */
+  rowAt(price: number): number {
+    const s = this.strikes;
+    const R = s.length;
+    if (!R) return -1;
+    let lo = 0;
+    let hi = R;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (s[m] < price) lo = m + 1;
+      else hi = m;
+    }
+    const cand = [lo - 1, lo].filter(i => i >= 0 && i < R);
+    let best = -1;
+    let bestD = Infinity;
+    for (const i of cand) {
+      const d = Math.abs(s[i] - price);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (best < 0) return -1;
+    const step = R > 1 ? (best === 0 ? s[1] - s[0] : best === R - 1 ? s[R - 1] - s[R - 2] : Math.min(s[best] - s[best - 1], s[best + 1] - s[best])) : 1;
+    return bestD <= step / 2 + 1e-9 ? best : -1;
+  }
+
+  /** A cell's dealer value, NaN where it has no reading */
+  cell(ci: number, row: number): number {
+    if (ci < 0 || ci >= this.cols.length || row < 0 || row >= this.strikes.length) return NaN;
+    return this.values[ci * this.strikes.length + row];
   }
 
   setHover(hit: BeadHit | null): void {
@@ -860,185 +490,125 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
   setRingInk(rgb: readonly [number, number, number]): void {
     if (this.ringInk[0] === rgb[0] && this.ringInk[1] === rgb[1] && this.ringInk[2] === rgb[2]) return;
     this.ringInk = rgb;
-    if (this.hover) {
-      if (this.hoverOverlay) this.afterDraw?.();
-      else this.requestUpdate?.();
-    }
+    if (this.hover && this.hoverOverlay) this.afterDraw?.();
   }
 
-  /*
-    THE HOVER ON ITS OWN CANVAS. Drawn into the pane, a new bead under the pointer asked the chart for a full repaint —
-    candles, volume and every layer — several times a second on a sweep. With `hoverOverlay` set the host draws the
-    bead and its ring on a canvas over the pane from `hoverShape()` (on every hover change and after every pane draw,
-    `afterDraw`), and the pane is left alone. The geometry is the renderer's own.
-  */
-  hoverOverlay = false;
-  afterDraw: (() => void) | null = null;
-  hoverShape(): { x: number; y: number; rx: number; ry: number; fill: string; ring: string } | null {
+  /** The hovered cell for the host's overlay canvas: its rectangle at full light, ringed in the page's ink */
+  hoverShape(): { x: number; y: number; rx: number; ry: number; fill: string; ring: string; rect: true } | null {
     const hover = this.hover;
-    if (!hover || !this.enabled || !this.chart || !this.series || hover.ci < 0 || hover.ci >= this.snapshots.length) return null;
-    const ts = this.chart.timeScale();
-    const barSpacing = ts.options().barSpacing ?? 6;
-    const barSec = this.barSec;
-    const slots = Math.max(1, Math.round(barSec / Math.max(1, this.stepSec)));
-    const stride = Math.max(1, Math.ceil(3 / (barSpacing / slots)));
-    const drawnSlots = Math.max(1, Math.ceil(slots / stride));
-    const col = this.columnAt(hover.ci);
-    const b = col.all.get(hover.strike);
-    const bucket = Math.floor(col.time / barSec) * barSec;
-    const slot = slots > 1 ? Math.floor(((col.time - bucket) / barSec) * slots) : 0;
-    const xBar = ts.timeToCoordinate(bucket as Time);
-    const y = this.series.priceToCoordinate(hover.strike);
-    if (!b || xBar === null || y === null || slot % stride !== 0) return null;
-    const x = slots > 1 ? xBar - barSpacing * 0.5 + ((slot / stride + 0.5) / drawnSlots) * barSpacing : xBar;
-    const focus = this.focusStrike;
-    const aMax = Math.max(3, Math.min(barSpacing * 0.6, 9));
-    const ry = beadHalfHeight(Math.max(focus != null && b.strike === focus ? 0.08 : 0, b.t), 0.45, aMax);
-    const isSupreme = this.supremeStrike != null && b.strike === this.supremeStrike;
-    const rgb = focus != null && b.strike === focus ? INK_RGB[this.focusInk] : isSupreme ? SUPREME_RGB : b.put ? PUT_RGB : CALL_RGB;
+    if (!hover || !this.enabled || !this.chart || !this.series) return null;
+    const geo = this.cellGeom(hover.ci, this.strikes.indexOf(hover.strike));
+    if (!geo) return null;
+    const v = this.cell(hover.ci, this.strikes.indexOf(hover.strike));
+    if (Number.isNaN(v)) return null;
+    const step = Math.min(STEPS - 1, Math.floor(Math.min(1, Math.abs(v) / (this.ref || 1)) * STEPS));
     const r = this.ringInk;
-    return { x, y, rx: (barSpacing / drawnSlots) * 0.54, ry: Math.max(ry, 1.5), fill: `rgba(${rgb[0]},${rgb[1]},${rgb[2]},1)`, ring: `rgba(${r[0]},${r[1]},${r[2]},0.95)` };
+    return { ...geo, fill: v > 0 ? LUT.posSolid[step] : LUT.negSolid[step], ring: `rgba(${r[0]},${r[1]},${r[2]},0.95)`, rect: true };
   }
 
-  /** The chart's ground, as channels — read off its options and kept until the option's string changes */
+  /** A cell's centre and half-sizes on the pane, CSS px */
+  private cellGeom(ci: number, row: number): { x: number; y: number; rx: number; ry: number } | null {
+    if (!this.chart || !this.series || row < 0 || ci < 0 || ci >= this.cols.length) return null;
+    const ts = this.chart.timeScale();
+    const x = ts.timeToCoordinate(this.cols[ci].time as Time);
+    const s = this.strikes;
+    const R = s.length;
+    const lo = row === 0 ? s[0] - (R > 1 ? (s[1] - s[0]) / 2 : 0.5) : (s[row - 1] + s[row]) / 2;
+    const hi = row === R - 1 ? s[R - 1] + (R > 1 ? (s[R - 1] - s[R - 2]) / 2 : 0.5) : (s[row] + s[row + 1]) / 2;
+    const ya = this.series.priceToCoordinate(lo);
+    const yb = this.series.priceToCoordinate(hi);
+    if (x === null || ya === null || yb === null) return null;
+    const half = (ts.options().barSpacing ?? 6) / 2;
+    return { x, y: (ya + yb) / 2, rx: half, ry: Math.max(1, Math.abs(ya - yb) / 2) };
+  }
+
+  /** The chart's ground, as channels */
   groundRgb(): readonly [number, number, number] {
     const bg = this.chart?.options().layout.background as { color?: string; topColor?: string } | undefined;
     const css = bg?.color ?? bg?.topColor ?? '#0a0a0a';
-    if (!this.groundCache || this.groundCache.css !== css) this.groundCache = { css, rgb: rgbOf(css) };
-    return this.groundCache.rgb;
+    const hex = css.trim().match(/^#([0-9a-f]{6})$/i);
+    if (hex) return [parseInt(hex[1].slice(0, 2), 16), parseInt(hex[1].slice(2, 4), 16), parseInt(hex[1].slice(4, 6), 16)];
+    const m = css.match(/\d+(?:\.\d+)?/g) ?? [];
+    return [Number(m[0]) || 0, Number(m[1]) || 0, Number(m[2]) || 0];
   }
 
-  /**
-   * The bead under a point on the pane (CSS px), or null: the drawn column whose slot holds x (the same slots and stride
-   * the renderer placed this frame) and, in it, the drawn strike nearest y within the bead's own height and a little
-   * more — a hairline is a few pixels' reach, a swelling rail its own. Read by the chart's hover ring, its card and its
-   * click.
-   */
+  /** The cell under a point on the pane (CSS px), or null: the bar under x, the strike row under y, a cell with a reading */
   beadAt(x: number, y: number): BeadHit | null {
-    if (!this.enabled || !this.chart || !this.series || !this.snapshots.length || this.ref <= 0) return null;
-    /* a bead under the host's chrome is behind the strip — nothing to point at there */
+    if (!this.enabled || !this.chart || !this.series || !this.cols.length || !(this.ref > 0)) return null;
     if (y < this.chromeInset) return null;
     const ts = this.chart.timeScale();
-    const series = this.series;
-    const t = ts.coordinateToTime(x);
-    if (t == null) return null;
-    const barSec = this.barSec;
-    const barSpacing = ts.options().barSpacing ?? 6;
-    const slots = Math.max(1, Math.round(barSec / Math.max(1, this.stepSec)));
-    const stride = Math.max(1, Math.ceil(3 / (barSpacing / slots)));
-    const drawnSlots = Math.max(1, Math.ceil(slots / stride));
-    const rx = (barSpacing / drawnSlots) * 0.54;
-    const halfW = barSpacing * 0.5;
-    const aMin = 0.45;
-    const aMax = Math.max(3, Math.min(barSpacing * 0.6, 9));
-    const bucket = Math.floor(Number(t) / barSec) * barSec;
-    /* the columns of this bar and its neighbours — a bead's width reaches past its bar's edge when the slots are few */
-    const snaps = this.snapshots;
-    let lo = 0;
-    let hi = snaps.length;
-    const from = bucket - barSec;
-    while (lo < hi) {
-      const m = (lo + hi) >> 1;
-      if (snaps[m].time < from) lo = m + 1;
-      else hi = m;
-    }
-    const focus = this.focusStrike;
-    let best: { bead: Bead; ci: number; cx: number; cy: number; ry: number } | null = null;
-    let bestD = Infinity;
-    for (let ci = lo; ci < snaps.length && snaps[ci].time < bucket + 2 * barSec; ci++) {
-      const col = this.columnAt(ci);
-      const cb = Math.floor(col.time / barSec) * barSec;
-      const slot = slots > 1 ? Math.floor(((col.time - cb) / barSec) * slots) : 0;
-      if (slot % stride !== 0) continue;
-      const xBar = ts.timeToCoordinate(cb as Time);
-      if (xBar === null) continue;
-      const cx = slots > 1 ? xBar - halfW + ((slot / stride + 0.5) / drawnSlots) * barSpacing : xBar;
-      if (Math.abs(cx - x) > rx + 0.5) continue;
-      let beads = col.top;
-      if (focus != null && !beads.some(b => b.strike === focus)) {
-        const fb = col.all.get(focus);
-        if (fb) beads = [...beads, fb];
-      }
-      for (let bi = 0; bi < beads.length; bi++) {
-        const bead = beads[bi];
-        const by = series.priceToCoordinate(bead.strike);
-        if (by === null) continue;
-        const ry = beadHalfHeight(Math.max(focus != null && bead.strike === focus ? 0.08 : 0, bead.t), aMin, aMax);
-        const d = Math.abs(by - y);
-        if (d <= Math.max(ry, 3) + 1.5 && d < bestD) {
-          bestD = d;
-          best = { bead, ci, cx, cy: by, ry };
-        }
-      }
-    }
-    if (!best) return null;
-    const snap = snaps[best.ci];
-    const lvl = snap.levels.find(l => l.strike === best!.bead.strike);
-    if (!lvl) return null;
-    const value = this.valueOf(lvl);
+    const logical = ts.coordinateToLogical(x);
+    if (logical === null) return null;
+    const bar = this.series.dataByIndex(Math.round(logical), MismatchDirection.None);
+    if (!bar) return null;
+    const ci = this.colIndexAtOrAfter(Number(bar.time));
+    if (ci >= this.cols.length || this.cols[ci].time !== Number(bar.time)) return null;
+    const price = this.series.coordinateToPrice(y);
+    if (price === null) return null;
+    const row = this.rowAt(price);
+    const v = this.cell(ci, row);
+    if (Number.isNaN(v) || v === 0) return null;
+    const geo = this.cellGeom(ci, row);
+    if (!geo) return null;
     let total = 0;
-    for (const l of snap.levels) total += Math.abs(this.valueOf(l));
-    return { strike: best.bead.strike, time: snap.time, ci: best.ci, value, share: total > 0 ? Math.abs(value) / total : 0, open: this.openValue(best.ci, best.bead.strike), put: best.bead.put, t: best.bead.t, mark: best.bead.mark, tag: best.bead.tag, firm: best.bead.firm, x: best.cx, y: best.cy, rx, ry: best.ry };
+    const R = this.strikes.length;
+    for (let r = 0; r < R; r++) {
+      const w = this.values[ci * R + r];
+      if (!Number.isNaN(w)) total += Math.abs(w);
+    }
+    return { strike: this.strikes[row], time: this.cols[ci].time, ci, value: v, share: total > 0 ? Math.abs(v) / total : 0, open: this.openValue(ci, this.strikes[row]), put: v > 0, t: Math.min(1, Math.abs(v) / this.ref), ...geo };
   }
 
   /** The strike's value at its day's first column on or after the New York open — null where the field holds none */
   openValue(ci: number, strike: number): number | null {
-    const snaps = this.snapshots;
-    const at = snaps[ci];
+    const at = this.cols[ci];
     if (!at) return null;
     const open = nySession(at.time * 1000).open / 1000;
     if (at.time < open) return null;
-    let lo = 0;
-    let hi = ci + 1;
-    while (lo < hi) {
-      const m = (lo + hi) >> 1;
-      if (snaps[m].time < open) lo = m + 1;
-      else hi = m;
-    }
-    const first = snaps[lo];
-    if (!first || first.time > at.time) return null;
-    const l = first.levels.find(x => x.strike === strike);
-    return l ? this.valueOf(l) : null;
+    const first = this.colIndexAtOrAfter(open);
+    if (first > ci) return null;
+    const v = this.cell(first, this.strikes.indexOf(strike));
+    return Number.isNaN(v) ? null : v;
   }
 
-  /** The strike's standing at a column: its rank by size among the column's strikes, of how many */
+  /** The strike's standing at a column: its rank by size among the column's cells, of how many */
   rankAt(ci: number, strike: number): { rank: number; of: number } | null {
-    const snap = this.snapshots[ci];
-    if (!snap) return null;
-    const v = snap.levels.find(l => l.strike === strike);
-    if (!v) return null;
-    const a = Math.abs(this.valueOf(v));
+    const row = this.strikes.indexOf(strike);
+    const v = this.cell(ci, row);
+    if (Number.isNaN(v)) return null;
+    const a = Math.abs(v);
     let rank = 1;
-    for (const l of snap.levels) if (Math.abs(this.valueOf(l)) > a) rank++;
-    return { rank, of: snap.levels.length };
+    let of = 0;
+    const R = this.strikes.length;
+    for (let r = 0; r < R; r++) {
+      const w = this.values[ci * R + r];
+      if (Number.isNaN(w)) continue;
+      of++;
+      if (Math.abs(w) > a) rank++;
+    }
+    return { rank, of };
   }
 
-  /** The strike's value `seconds` before a column, from the nearest column at or before that moment — null off the field */
+  /** The strike's value `seconds` before a column, from the nearest column with a reading at or before then */
   valueBefore(ci: number, strike: number, seconds: number): { value: number; time: number } | null {
-    const snaps = this.snapshots;
-    const at = snaps[ci];
+    const at = this.cols[ci];
     if (!at) return null;
-    const want = at.time - seconds;
-    let i = ci;
-    while (i > 0 && snaps[i].time > want) i--;
-    const col = snaps[i];
-    if (!col || col.time > want + this.stepSec) return null;
-    const l = col.levels.find(x => x.strike === strike);
-    return l ? { value: this.valueOf(l), time: col.time } : null;
+    const row = this.strikes.indexOf(strike);
+    let i = this.colIndexAtOrAfter(at.time - seconds + 1e-6) - 1;
+    if (i < 0) return null;
+    if (this.cols[i].time < at.time - seconds - Math.max(this.barSec, 60)) return null;
+    const v = this.cell(i, row);
+    return Number.isNaN(v) ? null : { value: v, time: this.cols[i].time };
   }
 
   setSupreme(strike: number | null): void {
-    if (this.supremeStrike === strike) return;
     this.supremeStrike = strike;
-    this.requestUpdate?.();
   }
 
   setWalls(cw: number | null, pw: number | null, flip: number | null): void {
-    if (this.cwStrike === cw && this.pwStrike === pw && this.flipPrice === flip) return;
     this.cwStrike = cw;
     this.pwStrike = pw;
     this.flipPrice = flip;
-    this.requestUpdate?.();
   }
 
   setFocus(strike: number | null, ink: FocusInk = 'focus'): void {
@@ -1062,219 +632,64 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
 
   updateAllViews(): void {}
 
-  paneViews(): TrailsPaneView[] {
+  paneViews(): FieldPaneView[] {
     return this._paneViews;
   }
 
-  /** Bumped on every data hand-off — the renderer's path cache keys on it. */
-  rev = 0;
-  /** Built columns by snapshot identity — see setData's incremental note. */
-  private colCache = new WeakMap<GexSnapshot, { time: number; top: Bead[]; all: Map<number, Bead>; back?: GexSnapshot; gap?: boolean; ordered?: Bead[] }>();
-  private colRef = -1;
-
-  /** The Greek the beads draw — see TrailGreek */
-  greek: TrailGreek = 'gex';
-  private colGreek: TrailGreek = 'gex';
-  valueOf(l: GexSnapshot['levels'][number]): number {
-    return levelValue(l, this.greek);
-  }
-
-  /** The 85th percentile of this session's column maxima. It only rises.
-      Same-day expiry and the rest of the book each keep their own, so a
-      0DTE pin does not resize the monthly shelf. It resets on a new session, not when a larger node prints. */
-  private ratchet = 0;
-  private restRatchet = 0;
-  private scaleDay = '';
-  private wasSplit = false;
-  private behindAt = new Map<number, GexSnapshot>();
-  private glyph = new Map<string, { mark?: NodeMark; tag?: PriceTag }>();
-  restRef = 0;
-  private colRest = -1;
-
-  setData(snapshots: GexSnapshot[], maxAbs: number, enabled: boolean, barSec = 60, greek: TrailGreek = 'gex', _scaleTo = 0, behind: GexSnapshot[] = [], prices: readonly { time: number; close: number }[] = []): void {
+  /**
+   * The columns (house sign, as the book keeps every figure), the chart's bar length and the greek. Columns are folded to
+   * the chart's bars, the last of each bar kept (a level reads its last reading inside the bar). The trailing arguments
+   * are kept for the hosts' call shape.
+   */
+  setData(snapshots: GexSnapshot[], maxAbs: number, enabled: boolean, barSec = 60, greek: TrailGreek = 'gex', _scaleTo = 0, _behind: GexSnapshot[] = [], prices: readonly { time: number; close: number }[] = []): void {
     this.rev++;
-    const lastPx = prices.length ? prices[prices.length - 1].time : Infinity;
-    const clip = (rows: GexSnapshot[]) => rows.filter(s => s.time <= lastPx);
-    snapshots = clip(snapshots);
-    behind = clip(behind);
-    this.snapshots = snapshots;
-    this.behindAt = new Map(behind.map(s => [s.time, s]));
-    this.maxAbs = maxAbs;
-    this.barSec = barSec;
-    const anchor = snapshots[0]?.time ?? behind[0]?.time ?? 0;
-    const day = anchor ? nyIsoDate(anchor * 1000) : '';
-    const split = behind.length > 0;
-    if (day !== this.scaleDay || greek !== this.greek || split !== this.wasSplit) {
-      this.ratchet = 0;
-      this.restRatchet = 0;
-      this.scaleDay = day;
-      this.wasSplit = split;
-    }
     this.greek = greek;
-    let step = Infinity;
-    const span = snapshots.length ? snapshots : behind;
-    for (let i = 1; i < span.length; i++) {
-      const d = span[i].time - span[i - 1].time;
-      if (d > 0 && d < step) step = d;
-    }
-    this.stepSec = Number.isFinite(step) ? step : barSec;
-    this.glyph = this.glyphsOf(snapshots, prices);
-    const p85 = (rows: GexSnapshot[]) => {
-      const maxima: number[] = [];
-      const memo = momentMax[greek];
-      for (const s of rows) {
-        let m = memo.get(s);
-        if (m === undefined) {
-          m = 0;
-          for (const l of s.levels) {
-            const a = Math.abs(levelValue(l, greek));
-            if (a > m) m = a;
-          }
-          memo.set(s, m);
-        }
-        if (m > 0) maxima.push(m);
-      }
-      maxima.sort((a, b) => a - b);
-      return maxima.length ? maxima[Math.min(maxima.length - 1, Math.floor(maxima.length * 0.85))] : 0;
-    };
-    this.ratchet = Math.max(this.ratchet, p85(snapshots));
-    this.restRatchet = Math.max(this.restRatchet, behind.length ? p85(behind) : 0);
-    this.ref = this.ratchet;
-    this.restRef = this.restRatchet;
-    const ref = this.ref;
-    const rest = this.restRef;
-    if (ref !== this.colRef || rest !== this.colRest || greek !== this.colGreek) {
-      this.colCache = new WeakMap();
-      this.colRef = ref;
-      this.colRest = rest;
-      this.colGreek = greek;
-    }
+    this.barSec = barSec;
+    this.maxAbs = maxAbs;
     this.enabled = enabled;
+    const lastPx = prices.length ? prices[prices.length - 1].time + barSec : Infinity;
+    const folded: GexSnapshot[] = [];
+    /* each column onto its own bar: the last bar starting at or before it (the chart's bars need not sit on round times) */
+    const barOf = (t: number): number => {
+      if (!prices.length) return barSec >= 86_400 ? t : Math.floor(t / barSec) * barSec;
+      let lo = 0;
+      let hi = prices.length;
+      while (lo < hi) {
+        const m = (lo + hi) >> 1;
+        if (prices[m].time <= t) lo = m + 1;
+        else hi = m;
+      }
+      return lo > 0 ? prices[lo - 1].time : Math.floor(t / barSec) * barSec;
+    };
+    for (const s of snapshots) {
+      if (s.time > lastPx) continue;
+      const bucket = barOf(s.time);
+      const prev = folded[folded.length - 1];
+      if (prev && prev.time === bucket) folded[folded.length - 1] = { time: bucket, levels: s.levels };
+      else folded.push({ time: bucket, levels: s.levels });
+    }
+    this.snapshots = folded;
+    const strikeSet = new Set<number>();
+    for (const s of folded) for (const l of s.levels) strikeSet.add(l.strike);
+    const strikes = [...strikeSet].sort((a, b) => a - b);
+    const index = new Map(strikes.map((k, i) => [k, i]));
+    const R = strikes.length;
+    const values = new Float64Array(folded.length * R).fill(NaN);
+    const sizes: number[] = [];
+    for (let c = 0; c < folded.length; c++) {
+      for (const l of folded[c].levels) {
+        const v = dealerOf(levelValue(l, greek));
+        values[c * R + index.get(l.strike)!] = v;
+        if (v !== 0) sizes.push(Math.abs(v));
+      }
+    }
+    sizes.sort((a, b) => a - b);
+    this.ref = sizes.length ? sizes[Math.min(sizes.length - 1, Math.floor(sizes.length * 0.98))] : 0;
+    this.cols = folded.map(s => ({ time: s.time }));
+    this.strikes = strikes;
+    this.values = values;
+    if (this.hover && (this.hover.ci >= folded.length || this.cols[this.hover.ci]?.time !== this.hover.time)) this.hover = null;
     this.requestUpdate?.();
     this.onData?.(enabled ? this.ref : 0);
-  }
-
-  /** Born, grew, flipped, and died, plus the ten-minute price tag. One pass over the book the chart is drawing. */
-  private glyphsOf(snapshots: readonly GexSnapshot[], prices: readonly { time: number; close: number }[]): Map<string, { mark?: NodeMark; tag?: PriceTag }> {
-    const out = new Map<string, { mark?: NodeMark; tag?: PriceTag }>();
-    const seen = new Map<number, { v: number; peak: boolean; time: number; floor: number; firm: boolean }[]>();
-    for (const s of snapshots) {
-      const rows = s.levels.map(l => ({ strike: l.strike, value: this.valueOf(l), firm: l.firm !== false })).filter(r => r.value !== 0);
-      const max = rows.reduce((m, r) => Math.max(m, Math.abs(r.value)), 0);
-      const floor = max * 0.2;
-      const peaks = new Set(peakStrikes(rows));
-      const by = new Map(rows.map(r => [r.strike, r]));
-      const strikes = new Set<number>([...seen.keys(), ...by.keys()]);
-      for (const strike of strikes) {
-        const row = by.get(strike);
-        const v = row?.value ?? 0;
-        const list = seen.get(strike) ?? [];
-        list.push({ v, peak: v !== 0 && peaks.has(strike) && Math.abs(v) >= floor, time: s.time, floor, firm: row?.firm !== false });
-        seen.set(strike, list);
-      }
-    }
-    for (const [strike, list] of seen) {
-      for (let i = 1; i < list.length; i++) {
-        /* nodeMark reads the last five buckets only; handing it the whole prefix made this quadratic in the session */
-        const mark = nodeMark(list.slice(Math.max(0, i - 4), i + 1), list[i].floor);
-        if (!mark) continue;
-        if (!list[i].firm && mark !== 'died') continue;
-        out.set(`${list[i].time}|${strike}`, { mark });
-      }
-    }
-    if (prices.length) {
-      /* the closes in [t, t + 600], by bisection when the bars are in order (they are: the series' own) */
-      let ordered = true;
-      for (let k = 1; k < prices.length && ordered; k++) ordered = prices[k].time >= prices[k - 1].time;
-      const windowFrom = (t: number): number[] => {
-        if (!ordered) return prices.filter(px => px.time >= t && px.time <= t + 600).map(px => px.close);
-        let lo = 0;
-        let hi = prices.length;
-        while (lo < hi) {
-          const mid = (lo + hi) >> 1;
-          if (prices[mid].time < t) lo = mid + 1;
-          else hi = mid;
-        }
-        const out: number[] = [];
-        for (let k = lo; k < prices.length && prices[k].time <= t + 600; k++) out.push(prices[k].close);
-        return out;
-      };
-      for (const [strike, list] of seen) {
-        for (const p of list) {
-          if (!p.peak) continue;
-          const path = windowFrom(p.time);
-          const tag = priceTag(strike, path);
-          if (!tag) continue;
-          const key = `${p.time}|${strike}`;
-          const prev = out.get(key);
-          out.set(key, { mark: prev?.mark, tag });
-        }
-      }
-    }
-    return out;
-  }
-
-  /** The column for snapshot i — built the first time it is on screen, then
-      cached against the snapshot's identity (see setData's note). */
-  columnAt(i: number): Column {
-    const snap = this.snapshots[i];
-    const back = snap ? this.behindAt.get(snap.time) : undefined;
-    const cached = snap ? this.colCache.get(snap) : undefined;
-    if (cached && cached.back === back) return cached;
-    const all = new Map<number, Bead>();
-    const drawn: Bead[] = [];
-    const take = (rowsSnap: GexSnapshot | undefined, scale: number, front: boolean) => {
-      if (!rowsSnap || !(scale > 0)) return;
-      const rows = rowsSnap.levels
-        .map(l => ({ strike: l.strike, v: this.valueOf(l), firm: l.firm !== false }))
-        .filter(r => r.v !== 0)
-        .sort((a, b) => a.strike - b.strike);
-      let step = Infinity;
-      for (let k = 1; k < rows.length; k++) {
-        const d = rows[k].strike - rows[k - 1].strike;
-        if (d > 0 && d < step) step = d;
-      }
-      if (!Number.isFinite(step)) step = 1;
-      const floor = rows.reduce((m, r) => Math.max(m, Math.abs(r.v)), 0) * 0.2;
-      for (let j = 0; j < rows.length; j++) {
-        const n = rows[j];
-        const a = Math.abs(n.v);
-        const near = (o?: { strike: number; v: number }) =>
-          !!o && Math.abs(o.strike - n.strike) <= step * 1.01 && Math.sign(o.v) === Math.sign(n.v) && o.v !== 0;
-        const left = rows[j - 1];
-        const right = rows[j + 1];
-        const L = near(left) ? Math.abs(left.v) : -Infinity;
-        const R = near(right) ? Math.abs(right.v) : -Infinity;
-        const peak = a >= floor && a >= L && a >= R;
-        const span = peak && near(right) && a === Math.abs(right.v) ? right.strike : undefined;
-        const folded = near(left) && a === Math.abs(left.v) && Math.abs(left.v) >= floor && Math.abs(left.v) >= (near(rows[j - 2]) ? Math.abs(rows[j - 2].v) : -Infinity);
-        const t = Math.min(1, a / scale);
-        const note = front ? this.glyph.get(`${rowsSnap.time}|${n.strike}`) : undefined;
-        const bead: Bead = { strike: n.strike, t, put: n.v >= 0, peak, front, span, mark: note?.mark, tag: note?.tag, firm: n.firm };
-        if (front || !all.has(n.strike)) all.set(n.strike, bead);
-        if (folded) continue;
-        drawn.push(bead);
-      }
-      if (front && this.snapshots.length) {
-        const prev = this.snapshots[this.snapshots.indexOf(rowsSnap) - 1];
-        const prevRows = prev?.levels.map(l => ({ strike: l.strike, v: this.valueOf(l) })).filter(r => r.v !== 0) ?? [];
-        const prevMax = prevRows.reduce((m, r) => Math.max(m, Math.abs(r.v)), 0);
-        const have = new Set(rows.map(r => r.strike));
-        for (const p of prevRows) {
-          if (have.has(p.strike) || Math.abs(p.v) < prevMax * 0.2) continue;
-          const bead: Bead = { strike: p.strike, t: 0, put: p.v >= 0, peak: false, front, missing: true };
-          if (!all.has(p.strike)) all.set(p.strike, bead);
-          drawn.push(bead);
-        }
-      }
-    };
-    take(back, this.restRef, false);
-    take(snap, this.ref || 1, true);
-    const top = drawn.sort((a, b) => b.t - a.t);
-    const prev = this.snapshots[i - 1];
-    const gap = !!snap && !!prev && snap.time - prev.time > this.stepSec * 1.5;
-    const col = { time: snap?.time ?? back?.time ?? 0, top, all, back, gap };
-    if (snap) this.colCache.set(snap, col);
-    return col;
   }
 }
