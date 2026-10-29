@@ -763,10 +763,13 @@ function rollDay(now: number): void {
   swept.lottery = false;
 }
 
-/** Quotes for the cards already up: one snapshot per name and expiry. No new universe walk. */
+let heldAt = 0;
+
+/** Quotes for the cards already up: one snapshot per name and expiry, at most every 15 seconds. No new universe walk. */
 async function refreshHeld(now: number): Promise<void> {
   const live = currentPicks();
-  if (!live.length) return;
+  if (!live.length || now - heldAt < 15_000) return;
+  heldAt = now;
   const byExp = new Map<string, string[]>();
   for (const s of live) {
     if (!s.expiryDate) continue;
