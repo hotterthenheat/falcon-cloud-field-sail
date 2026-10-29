@@ -3,7 +3,7 @@
    pushes are hand-set context. If it breaks: the next shelf and the dealer flow along the path (data/hedgeFlow.ts). */
 
 import { daySigmaOfIv, sigmaFracOver, sigmaOverMinutes, touchOdds } from './expectedMove';
-import Simulator from '../core/simulator';
+import { blackScholesGreeks } from '../core/greeks';
 import { findAirPockets, SHELF_SHARE, type AirPocket } from './airPockets';
 import { buildHedgeFlowLadder, type FlowLadder } from './hedgeFlow';
 import { SESSION_MIN, fmtDollars, fmtStrike, wholeBookVanna, type AheadClock } from './ahead';
@@ -217,7 +217,7 @@ export function printsDemand(snapshot: MarketSnapshot, iv: number): number {
     if (o.ticker !== snapshot.ticker) continue;
     const strike = Number(o.strike);
     if (!(strike > 0)) continue;
-    const g = Simulator.getGreeks(snapshot.spot, strike, 1 / 252, iv);
+    const g = blackScholesGreeks(snapshot.spot, strike, 1 / 252, iv);
     const delta = o.type === 'C' ? g.deltaCall : g.deltaPut; // put delta is negative
     const shares = o.size * 100 * delta;
     /* A customer BUYING (at the ask) leaves the dealer short the option, so the

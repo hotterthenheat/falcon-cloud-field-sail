@@ -35,7 +35,7 @@
 ==================================================
 */
 
-import Simulator from '../core/simulator';
+import { bookCandles } from './uwBook';
 import { pickFlip, pickWalls } from '../core/walls';
 import { sessionStarts } from './indicators';
 import { nyDay } from '../core/nyTime';
@@ -69,7 +69,7 @@ const fmt = (v: number) => (!Number.isFinite(v) ? '—' : v % 1 === 0 ? v.toFixe
 export function freshnessOf(ticker?: string): string {
   let when = 'the last close';
   if (ticker) {
-    const bars = Simulator.peekCandles(ticker);
+    const bars = bookCandles(ticker);
     if (bars && bars.length > 2) {
       const starts = sessionStarts(bars, 1);
       if (starts.length >= 2) when = `${nyDay(bars[starts[starts.length - 1] - 1].time * 1000)}'s close`;

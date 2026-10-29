@@ -1,4 +1,4 @@
-import Simulator from '../core/simulator';
+import { bookCandles, bookHistory } from './uwBook';
 import type { GexSnapshot } from '../types/market';
 
 /*
@@ -76,8 +76,8 @@ const totalOf = (snap: GexSnapshot): number => {
 
 /** Today's total net GEX, per sampled bar, with spot alongside — P-3. */
 export function buildNetGexSeries(ticker: string): NetGexSeries {
-  const candles = Simulator.getCandles(ticker);
-  const snaps = Simulator.getGexHistory(ticker);
+  const candles = bookCandles(ticker);
+  const snaps = bookHistory(ticker);
   const empty: NetGexSeries = { points: [], zeroCrossings: [], min: 0, max: 0 };
   if (!candles?.length || !snaps?.length) return empty;
 
@@ -116,7 +116,7 @@ export function buildNetGexSeries(ticker: string): NetGexSeries {
  * sign convention already gives every other surface.
  */
 export function buildGexPercentile(ticker: string, current: number): GexPercentile | null {
-  const snaps = Simulator.getGexHistory(ticker);
+  const snaps = bookHistory(ticker);
   if (!snaps?.length) return null;
 
   let atOrBelow = 0;

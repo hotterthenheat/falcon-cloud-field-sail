@@ -1,7 +1,6 @@
 /* The tape's print rules: what a print is (its kind), which way it reads (sentiment), what is never a bet, the Notable
    order, and the summary a view's head reads. enrichPrint expands the simulator's thin orders for the simulator desks. */
 
-import Simulator from '../core/simulator';
 import { now } from '../core/clock';
 import { nyClock } from '../core/nyTime';
 import type { TapeOrder } from '../types/market';
@@ -14,70 +13,6 @@ const h01 = (seed: string): number => (hashId(seed) % 1000) / 1000;
 const DTE_POOL = [0, 1, 2, 5, 9, 16, 30, 44, 72, 102, 254];
 const STRATS: StratTag[] = ['Vertical', 'Butterfly', 'Ratio', 'Custom'];
 
-export function enrichPrint(order: TapeOrder, id: number): FlowPrint {
-  const seed = `${order.ticker}-${order.strike}-${order.side}-${order.size}-${id}`;
-  const h = (tag: string) => h01(`${seed}-${tag}`);
-
-  const cfg = Simulator.TICKERS[order.ticker];
-  const spot = cfg?.currentPrice ?? 100;
-  const baseIv = cfg?.iv ?? 0.2;
-  const strike = Number(order.strike);
-  const right = order.type;
-
-  const dte = DTE_POOL[Math.floor(Math.pow(h('dte'), 1.6) * DTE_POOL.length)];
-  const expDate = new Date(Date.now() + dte * 86400000);
-  const expiry = `${String(expDate.getMonth() + 1).padStart(2, '0')}/${String(expDate.getDate()).padStart(2, '0')}/${expDate.getFullYear()}`;
-
-  const intrinsic = right === 'C' ? Math.max(spot - strike, 0) : Math.max(strike - spot, 0);
-  const money = (strike - spot) / spot;
-  const timeValue = spot * baseIv * 0.08 * Math.exp(-Math.pow(money * 18, 2) / 2) * (0.5 + Math.sqrt((dte + 1) / 30));
-  const fill = Number(Math.max(0.05, intrinsic * 0.98 + timeValue).toFixed(2));
-
-  const spreadW = Math.max(0.02, fill * 0.03 * (0.6 + h('spr')));
-  const fillPos = order.side === 'ASK' ? 0.72 + h('pos') * 0.28 : h('pos') * 0.28;
-  const mid = order.side === 'ASK' ? fill - spreadW * fillPos : fill + spreadW * (1 - fillPos);
-  const bid = Number((mid - spreadW / 2).toFixed(2));
-  const ask = Number((mid + spreadW / 2).toFixed(2));
-
-  const isMid = h('mid') > 0.82;
-  const side: FlowPrint['side'] = isMid ? 'MID' : order.side;
-  const ratioBidPct = Math.round(side === 'BID' ? 45 + h('rb') * 50 : side === 'ASK' ? 5 + h('rb') * 50 : 35 + h('rb') * 30);
-
-  const volume = Math.round(order.size * (4 + h('vol') * 80));
-  const oi = Math.max(1, Math.round(volume * (0.4 + h('oi') * 3.2)));
-  const deltaOI = h('doi') > 0.35 ? Math.round((h('doi2') - 0.4) * oi * 0.25) : 0;
-
-  const legs = h('legs') > 0.78 ? 2 + Math.floor(h('legs2') * 3) : 1;
-  const strat: StratTag = legs > 1 ? STRATS[Math.floor(h('strat') * STRATS.length)] : h('strat') > 0.9 ? 'Custom' : '—';
-
-  return {
-    id,
-    time: nyClock(now(), { seconds: true }),
-    ticker: order.ticker,
-    legs,
-    strike,
-    right,
-    otmPct: Number((money * 100).toFixed(1)),
-    expiry,
-    dte,
-    fill,
-    bid,
-    ask,
-    fillPos: Number(fillPos.toFixed(2)),
-    side,
-    ratioBidPct,
-    size: order.size,
-    premium: Math.round(fill * order.size * 100),
-    volume,
-    oi,
-    deltaOI,
-    spot: Number(spot.toFixed(2)),
-    iv: Number((baseIv * 100 * (0.8 + h('iv') * 0.6)).toFixed(2)),
-    volOverOI: Number((volume / oi).toFixed(2)),
-    strat,
-    sweep: order.orderType === 'SWEEP',
-  };
-}
 
 /** A day-book row as a print for the contract card. The anchor is the clip the caller hands in (a flow alert's print, or
     the contract's real last trade); without one the card speaks for the day — never an invented print. */

@@ -2,7 +2,6 @@
    on the Levels card's contracts, and the share that expires at the bell — off the same builders every page reads. */
 
 import type { LevelRole } from '../core/walls';
-import Simulator from '../core/simulator';
 import { buildAgenda, type Agenda, type AgendaOrder, type Target } from './agenda';
 import { aheadClock, type AheadClock } from './ahead';
 import { buildBuilding } from './building';
@@ -272,12 +271,6 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
 /** The names on the board — the list the user keeps (data/boardNames.ts) */
 export function boardTickers(): string[] {
   return getBoardNames();
-}
-
-/** Whether the simulator already carries a name — an unseeded one takes ~0.6s
-    to walk its history in, so the Board seeds those one at a time */
-export function boardNameSeeded(ticker: string): boolean {
-  return !!Simulator.TICKERS[ticker.toUpperCase()];
 }
 
 export function buildBoard(tickers: string[] = boardTickers()): BoardRow[] {
