@@ -81,7 +81,7 @@ export const LaunchProvider = ({ children }: { children: ReactNode }) => {
             <div className="w-52 h-[2px] rounded-full bg-ink/[0.08] overflow-hidden" data-gate-track>
               {/* CSS transform fill (see .animate-gate-fill) — compositor-driven,
                   so it never stutters while the main thread loads chunks. */}
-              <div className="h-full rounded-full holo-bar animate-gate-fill" />
+              <div className="relative h-full rounded-full holo-bar foil-glide [--foil-ink:var(--holo-gradient)] animate-gate-fill" />
             </div>
             <span className="sr-only">{caption}</span>
             <Signature rule={false} className="text-t105 select-none" />

@@ -9,7 +9,7 @@ import { nyMinutes, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { minuteInSession, sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { thetaCall } from './theta';
 import { whalesBars, whalesDailyLong, type UwBar, type UwDaily } from './whales';
-import { ensureQuote, peekQuote } from './liveQuote';
+import { ensureQuote, peekQuote, useLiveQuote } from './liveQuote';
 
 const INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
 
@@ -328,6 +328,42 @@ async function pullPrint(symbol: string): Promise<{ price: number; at: number } 
   const at = Math.floor(nyWallStamp(row.timestamp) / 1000);
   if (!(price > 0) || !(at > 0)) return null;
   return { price, at };
+}
+
+/** The name's last print and the prior session's close: ThetaData's print each second (every 15 s while it fails),
+    else the Unusual Whales quote. The close's day is read from the last eod row before today. */
+export function useWeigherSpot(ticker: string): { spot: number; prev: number } | null {
+  const symbol = ticker.trim().toUpperCase();
+  const uw = useLiveQuote(INDEX.has(symbol) ? null : symbol);
+  const [row, setRow] = useState<{ key: string; spot: number; prev: number } | null>(null);
+  useEffect(() => {
+    if (!symbol) return;
+    let dead = false;
+    let timer = 0;
+    let prev = 0;
+    let prevAt = 0;
+    const tick = async () => {
+      if (Date.now() - prevAt > 5 * 60_000) {
+        prevAt = Date.now();
+        const eod = await pullEod(symbol, ymd(Date.now() - 10 * 86400000), ymd());
+        const todayClose = dayClose(Math.floor(Date.now() / 1000));
+        const before = eod.bars.filter(b => b.time < todayClose);
+        if (before.length) prev = before[before.length - 1].close;
+      }
+      const print = await pullPrint(symbol);
+      if (dead) return;
+      if (print) setRow({ key: symbol, spot: print.price, prev });
+      timer = window.setTimeout(() => void tick(), print ? 1_000 : 15_000);
+    };
+    void tick();
+    return () => {
+      dead = true;
+      window.clearTimeout(timer);
+    };
+  }, [symbol]);
+  if (row && row.key === symbol && row.spot > 0) return { spot: row.spot, prev: row.prev };
+  if (uw && uw.spot > 0) return { spot: uw.spot, prev: uw.regularPrice > 0 ? uw.regularPrice / (1 + uw.changePct / 100) : 0 };
+  return null;
 }
 
 export function useWeigherTape(ticker: string, tf: Timeframe, session: DeskSession): WeigherTape {

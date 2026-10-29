@@ -427,7 +427,9 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
       headerCenter={
         /* The whole session box wears the holo foil; the label carries today-vs-past, so the material stays
            constant. */
-        <div className="group relative flex items-center gap-0.5 rounded holo-bg text-onfoil px-1 py-0.5">
+        <div className="group relative isolate flex items-center gap-0.5 rounded text-onfoil px-1 py-0.5">
+            {/* the foil on its own layer: the date picker opens inside this box and must not be clipped */}
+            <span className="absolute inset-0 -z-10 rounded holo-bg foil-glide pointer-events-none" aria-hidden />
             {/* One hover wash for the whole box rather than per-segment tints */}
             <span
               className="absolute inset-0 rounded bg-black/0 group-hover:bg-black/[0.12] transition-colors pointer-events-none"

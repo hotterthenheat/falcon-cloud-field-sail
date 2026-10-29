@@ -82,7 +82,7 @@ const Solid = ({ children, onClick, busy, testId }: { children: ReactNode; onCli
       onClick={onClick}
       disabled={busy}
       aria-busy={busy || undefined}
-      className={`h-11 w-full rounded-[10px] inline-flex items-center justify-center gap-2 text-t135 font-medium transition-opacity disabled:cursor-progress ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
+      className={`h-11 w-full rounded-[10px] inline-flex items-center justify-center gap-2 text-t135 font-medium transition-opacity disabled:cursor-progress relative foil-glide ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
       data-signin-go={testId}
     >
       {children}

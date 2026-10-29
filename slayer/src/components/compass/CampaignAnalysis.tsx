@@ -726,7 +726,7 @@ const CampaignAnalysis = ({
                       const ans = trackSetup(setup, scanner, { mark: q.mark, stop: shownStop, ask: q.entryPremium });
                       setTrackNo(ans.ok ? null : ans.why === 'full' ? '5 open. Untrack one first.' : ans.why === 'closed' ? 'Scan is closed. 0DTE entries run 09:30 to 15:00 ET.' : `Already tracking ${ans.contract}.`);
                     }}
-                    className="flex-1 min-w-0 inline-flex items-center justify-center gap-2 px-2 holo-bg text-onfoil hover:brightness-105 font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap"
+                    className="relative foil-glide flex-1 min-w-0 inline-flex items-center justify-center gap-2 px-2 holo-bg text-onfoil hover:brightness-105 font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap"
                   >
                     <Bookmark className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate">{trackNo ?? (tracked ? (expired ? 'Kept' : 'Tracking') : expired ? 'Keep the close' : 'Track')}</span>
@@ -736,7 +736,7 @@ const CampaignAnalysis = ({
                       type="button"
                       disabled={!tracked}
                       onClick={() => tracked && navigate('/compass/tracker', { state: { focus: setup.id } })}
-                      className={`w-9 shrink-0 inline-flex items-center justify-center border-l border-black/25 holo-bg text-onfoil ${tracked ? 'hover:brightness-105' : 'opacity-40'}`}
+                      className={`relative foil-glide w-9 shrink-0 inline-flex items-center justify-center border-l border-black/25 holo-bg text-onfoil ${tracked ? 'hover:brightness-105' : 'opacity-40'}`}
                       aria-label="Open in Tracker"
                       data-setup-track="open"
                     >

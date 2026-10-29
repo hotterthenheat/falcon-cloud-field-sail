@@ -171,7 +171,7 @@ const Picker = ({ ctx, counts, boxFor, onAdd, onDragKey, onClose }: Props) => {
               <span aria-hidden>·</span>
               {def.named ? 'follows the desk’s name, or holds its own' : 'the whole market'}
             </p>
-            <button type="button" onClick={() => onAdd(def.key)} className="mt-auto inline-flex items-center justify-center gap-1.5 h-8 rounded-md holo-bg text-onfoil hover:brightness-105 font-mono text-t11 font-semibold uppercase tracking-wider transition-all" data-picker-add={def.key}>
+            <button type="button" onClick={() => onAdd(def.key)} className="relative foil-glide mt-auto inline-flex items-center justify-center gap-1.5 h-8 rounded-md holo-bg text-onfoil hover:brightness-105 font-mono text-t11 font-semibold uppercase tracking-wider transition-all" data-picker-add={def.key}>
               <Plus className="w-3.5 h-3.5" /> Add {def.title}
             </button>
           </>

@@ -279,7 +279,7 @@ const Hero = ({ onLaunch, onPick }: { onLaunch: () => void; onPick: (id: string)
             Trade what you can{' '}
             <span className="relative inline-block whitespace-nowrap">
               <span className={`inline-block px-[0.07em] -mx-[0.07em] ${ground === 'dark' ? 'holo-text' : 'galaxy-text'}`}>see.</span>
-              <span aria-hidden="true" className={`absolute left-0 right-0 bottom-[0.05em] h-[0.13em] rounded-full ${ground === 'dark' ? 'bg-silver/25' : 'galaxy-bar'}`} />
+              <span aria-hidden="true" className={`absolute left-0 right-0 bottom-[0.05em] h-[0.13em] rounded-full ${ground === 'dark' ? 'bg-silver/25' : 'galaxy-bar foil-glide [--foil-ink:var(--galaxy-gradient)]'}`} />
             </span>
           </h1>
         </div>
