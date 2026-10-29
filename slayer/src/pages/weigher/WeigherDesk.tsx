@@ -22,7 +22,7 @@ import { onGlide } from '../../core/glide';
 import { DOCK_ROOM } from '../../data/editorDock';
 import { useTicker } from '../../context/MarketDataContext';
 import { snapshotOf, useBookRev } from '../../data/uwBook';
-import { buildLevelsFor, buildPrints } from '../../data/gex';
+import { buildLevelsFor, buildPrints, fmtUsd } from '../../data/gex';
 import { wantSpotGex } from '../../data/spotGexBook';
 import {
   blankChain,
@@ -124,7 +124,7 @@ const KIND_OPTIONS: DropdownOption<ListKind>[] = [
   { value: 'watchlist', label: 'Watchlist', hint: 'The contracts you watch — marked when added, tracked as if bought' },
   { value: 'gainers', label: 'Gainers today', hint: 'The largest gains this session first', tone: 'bull' },
   { value: 'losers', label: 'Losers today', hint: 'The largest losses this session first', tone: 'bear' },
-  { value: 'voliv', label: 'Busiest options', hint: 'The most contracts traded, the priciest vol first' },
+  { value: 'voliv', label: 'Top net premium', hint: 'The names with the most net option premium today, either way' },
 ];
 /** Names the gainers and losers are read from. The price and the day's change are the screener's. */
 const SCAN_NAMES = ['SPY', 'QQQ', 'IWM', 'DIA', 'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'TSLA', 'AMD', 'AVGO', 'GOOGL', 'NFLX', 'MU', 'INTC', 'AMAT', 'ARM', 'SMCI', 'PLTR', 'HOOD', 'COIN', 'ORCL', 'CRM', 'UBER', 'BA', 'JPM', 'XLF', 'GLD', 'TLT', 'SMH'];
@@ -289,8 +289,7 @@ export const ScanGrid = memo(function ScanGrid({ rows, ticker, preset, onPick, w
             <span className="font-mono text-[10px] text-textMuted">—</span>
           ),
       },
-      { colId: 'optvol', headerName: 'Opt vol', width: 88, type: 'rightAligned', headerTooltip: "Contracts traded today across the name's chain", cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data && data.optVolume > 0 ? <span className="font-mono text-[10px] tnum text-textSecondary">{data.optVolume.toLocaleString('en-US')}</span> : <span className="font-mono text-[10px] text-textMuted">—</span>) },
-      { colId: 'iv', headerName: 'IV', width: 64, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data && data.ivPct > 0 ? <span className="font-mono text-[10px] tnum text-textSecondary">{data.ivPct.toFixed(0)}%</span> : <span className="font-mono text-[10px] text-textMuted">—</span>) },
+      { colId: 'net', headerName: 'Net prem', width: 96, type: 'rightAligned', headerTooltip: 'Net option premium today: bought at the ask less sold at the bid', cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data && Number.isFinite(data.netPremium) ? <span className={`font-mono text-[10px] tnum ${data.netPremium >= 0 ? 'text-bull' : 'text-bear'}`}>{fmtUsd(data.netPremium)}</span> : <span className="font-mono text-[10px] text-textMuted">—</span>) },
     ],
     []
   );
@@ -691,18 +690,19 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     if (preset === 'watchlist') return [];
     if (preset === 'voliv') {
       return topNet.rows
-        .filter(r => r.ticker && r.volume > 0)
+        .filter(r => r.ticker && Number.isFinite(r.net) && r.net !== 0)
+        .sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
         .slice(0, 24)
         .map(r => {
           const q = peekBatchQuote(r.ticker);
-          return { ticker: r.ticker, last: q?.price ?? 0, changePct: q?.pct ?? Number.NaN, optVolume: r.volume, ivPct: 0 };
+          return { ticker: r.ticker, last: q?.price ?? 0, changePct: q?.pct ?? Number.NaN, netPremium: r.net };
         });
     }
     const rows: ScanRow[] = [];
     for (const name of SCAN_NAMES) {
       const q = peekBatchQuote(name);
       if (!q || q.pct == null || !(q.price > 0)) continue;
-      rows.push({ ticker: name, last: q.price, changePct: q.pct, optVolume: 0, ivPct: 0 });
+      rows.push({ ticker: name, last: q.price, changePct: q.pct, netPremium: Number.NaN });
     }
     rows.sort((a, b) => (preset === 'losers' ? a.changePct - b.changePct : b.changePct - a.changePct));
     return rows;
