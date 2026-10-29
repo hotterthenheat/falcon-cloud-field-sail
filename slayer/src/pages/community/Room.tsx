@@ -315,7 +315,9 @@ const Room = () => {
         </div>
       </header>
 
-      <div className="relative" data-room data-walled={walled || undefined}>
+      {/* walled, the room is at least as tall as the wall's card (ComingSoonWall: calc(100vh − 140px), 600px at least),
+          so the countdown and the notify field never stand over the footer */}
+      <div className={`relative ${walled ? 'min-h-[max(600px,calc(100vh-140px))]' : ''}`} data-room data-walled={walled || undefined}>
         <div className={`${ROOM_GRID} ${walled ? 'pointer-events-none select-none' : ''}`} aria-hidden={walled || undefined} data-room-grid>
           {/* ---- THE READER ---------------------------------------------------------- */}
           <div className="flex flex-col gap-2.5 min-w-0">
