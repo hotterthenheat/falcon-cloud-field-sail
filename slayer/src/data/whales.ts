@@ -5,6 +5,7 @@
 
 import { SIM_DESK } from './deskMode';
 import { feedHeaders } from './feedGate';
+import { readSaved, save } from './uwStore';
 
 export interface UwNews {
   created_at: string;
@@ -134,9 +135,28 @@ export async function uwCall(path: string, priority = false, low = false): Promi
   entry.done = true;
   entry.at = Date.now();
   if (got.error) shared.delete(path);
+  else save(path, got.status, got.data);
   if (shared.size > 400) for (const [k, v] of shared) if (v.done && Date.now() - v.at > REUSE_MS) shared.delete(k);
   return copyOf(got);
 }
+
+/**
+ * Paint first, then refresh: hands `on` the answer this browser kept for the path (with the instant it was kept), then
+ * the fresh one (savedAt null). A reader shows the kept copy as "as of" that instant, never as live.
+ */
+export async function uwSwr<T>(path: string, on: (data: T, savedAt: number | null) => void, priority = false): Promise<UwAnswer> {
+  let freshIn = false;
+  void readSaved(path).then(k => {
+    if (k && !freshIn) on(structuredClone(k.data) as T, k.at);
+  });
+  const got = await uwCall(path, priority);
+  freshIn = true;
+  if (!got.error) on(got.data as T, null);
+  return got;
+}
+
+/** The answer this browser kept for a path, or null. */
+export const uwKept = (path: string) => readSaved(path);
 
 const failWait = new Map<string, { n: number; until: number }>();
 
