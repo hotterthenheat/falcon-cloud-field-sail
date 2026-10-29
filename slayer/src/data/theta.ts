@@ -89,7 +89,7 @@ export async function thetaCall(path: string, jump = false): Promise<{ status: n
   if (Date.now() < downUntil) return { status: 503, data: null, error: 'terminal_down' };
   await take(jump);
   try {
-    const res = await fetch(`/api/theta${path}`, { headers: auth.headers });
+    const res = await fetch(`/api/theta${path}`, { headers: { ...auth.headers, 'x-theta-soft': '1' } });
     const text = await res.text();
     const type = res.headers.get('content-type') || '';
     let parsed: unknown = null;
@@ -104,6 +104,12 @@ export async function thetaCall(path: string, jump = false): Promise<{ status: n
       parsed = rows.length ? rows : text;
     }
     const data = unwrap(parsed);
+    /* an outage the proxy answered 200 (x-theta-soft) still carries its code */
+    const outage = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as { code?: unknown }).code : undefined;
+    if (outage === 'terminal_down' || outage === 'session_lost' || outage === 'terminal_unavailable') {
+      noteDown();
+      return { status: 503, data: null, error: 'terminal_down' };
+    }
     if (!res.ok) {
       const error = faultText(res.status, parsed, text);
       if (error === 'terminal_down') noteDown();

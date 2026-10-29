@@ -31,6 +31,12 @@ const DOWN = JSON.stringify({ error: 'The market data terminal is not running.',
 const LOST = JSON.stringify({ error: 'The market data session is reconnecting.', code: 'session_lost' });
 const NO_TERMINAL = JSON.stringify({ error: 'This deployment has no market data terminal configured.', code: 'terminal_unavailable' });
 
+/* The app's own client sends x-theta-soft: 1 and reads `code`, so an outage it already shows on screen is answered
+   200 rather than 503, and the browser does not log every call of a known outage as an error. Anyone else gets 503. */
+const OUTAGE = /"code":"(terminal_down|session_lost|terminal_unavailable)"/;
+const statusFor = (req, status, body) =>
+  status === 503 && req.headers['x-theta-soft'] === '1' && OUTAGE.test(String(body).slice(0, 200)) ? 200 : status;
+
 async function load(reqPath) {
   const running = inflight.get(reqPath);
   if (running) return running;
@@ -67,7 +73,7 @@ export async function proxyTheta(req, res) {
     return;
   }
   if (process.env.VERCEL && !RELAY && !process.env.THETA_REST_BASE) {
-    send(res, 503, NO_TERMINAL);
+    send(res, statusFor(req, 503, NO_TERMINAL), NO_TERMINAL);
     return;
   }
   const reqPath = forwardPath(req.url, /^\/api\/theta/, 500);
@@ -87,8 +93,8 @@ export async function proxyTheta(req, res) {
   }
   try {
     const got = await load(reqPath);
-    send(res, got.status, got.body, got.type);
+    send(res, statusFor(req, got.status, got.body), got.body, got.type);
   } catch {
-    send(res, 503, DOWN);
+    send(res, statusFor(req, 503, DOWN), DOWN);
   }
 }
