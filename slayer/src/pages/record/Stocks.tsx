@@ -1,49 +1,9 @@
-/*
-==================================================
-  SLAYER TERMINAL - STOCKS (pages/record/Stocks.tsx)
-
-  How every name screens. Four sleeves — the trend
-  (momentum), the numbers (quality), the money (flow)
-  and the news — each read against the 50 line and
-  rolled into one screen: STRONG, MIXED or WEAK. The
-  same sleeves rolled up by sector are THE ROTATION,
-  so who leads and which names carry it come from one
-  composite, never two opinions.
-
-  Walked into the Record (Noah, 2026-09-10: "i think
-  it needs to be apart of the records section and
-  also needs to go through the extensive walk"). The
-  old page — a metric grid of five cards, a ladder
-  panel with a summary paragraph, a filter-tab table
-  with a thesis strip — is now the Record's one box:
-
-    THE HEAD      the names and how they split, the
-                  breadth, the leading and trailing
-                  sector (each a door to its names)
-    THE CARDS     Screen · Sector · Names, and the
-                  Filter as a card reading the page
-    THE SENTENCE
-    THE ROTATION  every sector ranked, leader first,
-                  its bar the share of the leader's
-                  screen, its direction word and its
-                  two windows — a card keeps the grid
-                  to its names
-    THE GRID      in a window a screen tall: the name,
-                  its sector, the price and the day,
-                  the 30-day line, the four sleeves as
-                  BARS ONLY (the figures stay inside
-                  the engine — Noah, 2026-08-16), the
-                  screen word, and the read in plain
-                  words. A row opens the name on the Map.
-
-  States, not orders: STRONG / MIXED / WEAK are what
-  the data says about a name, never an instruction.
-==================================================
-*/
+/* How every house name grades: the head's facts, the controls, the sector rotation, then the grid of names (price, day,
+   year, the three pillars as bars with their words, the grade and the read). States, never orders. */
 
 import { companyName, displayName, searchTickers } from '../../data/tickers';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
-import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
@@ -59,26 +19,26 @@ import { SectorMark } from '../../components/trace/SectorMark';
 import { StocksGuide } from '../../components/record/StocksGuide';
 import { useBoardNames } from '../../data/boardNames';
 import { aboveFifty, buildSectorBoard, type SectorRow, type StockPick, type StockSleeves, type StockVerdict } from '../../data/stocks';
-import { batchMisses, peekBatchQuote, useBatchQuote, useLiveStocks, useScreenerQuotes, type BatchQuote } from '../../data/liveFiles';
-import { extendedLine, priceWords, peekQuote, useLiveQuote } from '../../data/liveQuote';
-import { nyClock, nyIsoDate, nyMinutes, nySessionPhase } from '../../core/nyTime';
+import { peekBatchQuote, useBatchQuote, useLiveStocks, useScreenerQuotes, type BatchQuote } from '../../data/liveFiles';
+import { peekQuote } from '../../data/liveQuote';
+import { nyClock, nyIsoDate, nySessionPhase } from '../../core/nyTime';
 import { isTradingDay } from '../../core/calendar';
 import { shortDay as shortDayWord } from '../../data/nyDate';
 import { gradeOfComposite, type Grade } from '../../data/stockOverview';
 import { lookup, SECTORS, UNIVERSE, type Sector } from '../../data/universe';
-import { ensureListed, equitySymbols, listedCount, searchListed, useListedRev } from '../../data/listedNames';
+import { searchListed } from '../../data/listedNames';
 import { ROTATION_SECTORS } from './recordSkeletons';
 import { statHelp } from '../../components/record/statHelp';
 import { phonePin } from '../../components/record/pagedGrid';
 import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
+import { signedPct } from './money';
 
 type ScreenPick = 'all' | Grade;
 type SectorPick = 'all' | Sector;
 type NamesPick = 'all' | 'board';
 
 /** User-facing screen words — the data's read, never an instruction */
-/* strong · good · caution · poor (Noah, 2026-09-19): the same four words the name's own page says, off the same
-   cuts (stockOverview.ts `gradeOfComposite`), never a figure of ours. STRONG wears a ring: it is the rare one. */
+/* the four words, off the name page's own cuts; strong wears a ring, it is the rare one */
 const gradeOfPick = (p: StockPick): Grade => gradeOfComposite(p.composite);
 const SCREEN_DOT: Record<Grade, string> = { strong: 'bg-bull ring-2 ring-bull/30', good: 'bg-bull', caution: 'bg-warn', poor: 'bg-bear' };
 const GRADE_RANK: Grade[] = ['strong', 'good', 'caution', 'poor'];
@@ -108,7 +68,12 @@ const PHASE_BAR: Record<SectorRow['phase'], string> = { LEADING: 'bg-bull', IMPR
 /** The two consumer sectors by their second word on a card 150px wide — the mark and the grid carry the whole name */
 const SHORT_SECTOR: Partial<Record<Sector, string>> = { 'Consumer Discretionary': 'Discretionary', 'Consumer Staples': 'Staples' };
 
-const signedPct = (v: number, d = 1) => `${v >= 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
+const NO_SECTOR: SectorRow = { sector: 'Technology', score: 1, rs1w: 0, rs1m: 0, breadthPct: 0, count: 0, ret1w: null, ret1m: null, phase: 'LAGGING' };
+/** Search shows this many listed names; warrants, units, rights and preferreds are left out */
+const SEARCH_ROWS = 40;
+const COMMON_SYMBOL = /^[A-Z]{1,5}(\.[AB])?$/;
+const ROW_H = 56;
+const GRID_ROWS = 12;
 const dirInk = (v: number) => (v >= 0 ? 'text-bull' : 'text-bear');
 /** "A, B and C" — never "A and B and C" */
 const listPhrase = (items: string[]) => (items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
@@ -148,55 +113,39 @@ const SectorCell = ({ data }: ICellRendererParams<StockPick>) => {
   );
 };
 
-/* THE PRICE AND THE DAY FROM THE QUOTE (the ship pass, 2026-10-22): the screener's prev_close lags a session — NVDA read
-   +1.29% here (against 216.47) while the quote, the name's own page and Pinpoint's Board read −1.22% (against 221.97).
-   The quote is the one the rest of the terminal reads; the screener's figure stands only until it lands. */
-/* THE ROWS' PRICES IN BULK (round 9): the index asked every row's own quote every fifteen seconds (73–170 calls a
-   minute); the screener answers the whole list in three calls with the live close and its time, read every 45 seconds
-   in the session (liveFiles.useScreenerQuotes, on liveQuote's screenerRead rule). A name the screener has no row for
-   reads its own quote. */
+/* the rows' prices come in bulk off the screener (liveFiles.useScreenerQuotes); a name off the screen shows a dash */
 const batchWords = (b: BatchQuote): string => {
   if (b.live) return `${b.price.toFixed(2)}${b.tapeAt ? ` · ${nyClock(b.tapeAt, { zone: true })}` : ''}`;
   return b.ext != null ? `${b.price.toFixed(2)} close · ${b.ext.toFixed(2)} outside the session${b.tapeAt ? ` ${nyClock(b.tapeAt, { zone: true })}` : ''}` : `${b.price.toFixed(2)} close`;
 };
-/* ONE RULE FOR A FLAT EXTENDED MOVE (round 11: LIN read "AH +0.00%", TSLA at 0.00 read nothing) — under 0.005% it is
-   not shown */
+/* an extended move under 0.005% is not shown */
 const EXT_FLOOR = 0.005;
-const batchExt = (b: BatchQuote): string | null => (b.live || b.extPct == null || Math.abs(b.extPct) < EXT_FLOOR ? null : `${sessionWord(b.tapeAt)} ${b.extPct >= 0 ? '+' : '−'}${Math.abs(b.extPct).toFixed(2)}%`);
-/* THE EXTENDED SESSION BY THE PRINT, NOT THE WALL CLOCK (round 11: Saturday morning read Friday's after-hours move as
-   "pre −0.06%" — the word was picked by the hour, before noon). A print is pre-market only when it crossed on today's
-   trading day before the open (04:00–09:30); otherwise it is the last session's after hours */
-const sessionWord = (tapeAt: number | null): 'pre-market' | 'after hours' => {
+const batchExt = (b: BatchQuote, ticker: string): string | null => (b.live || b.extPct == null || Math.abs(b.extPct) < EXT_FLOOR ? null : `${sessionWord(b, ticker)} ${b.extPct >= 0 ? '+' : '−'}${Math.abs(b.extPct).toFixed(2)}%`);
+/* Pre-market only once a pre-market print exists: the name's live quote says so, or its screener row is already dated
+   today before the open on a trading day. Otherwise the move is the last session's after hours. */
+const sessionWord = (b: BatchQuote, ticker: string): 'pre-market' | 'after hours' => {
+  const q = peekQuote(ticker);
+  if (q) return q.phase === 'pre' ? 'pre-market' : 'after hours';
   const today = nyIsoDate();
   const [y, m, d] = today.split('-').map(Number);
-  if (!isTradingDay(new Date(y, m - 1, d))) return 'after hours';
-  if (tapeAt == null || !Number.isFinite(tapeAt)) return nySessionPhase() === 'before' ? 'pre-market' : 'after hours';
-  const mins = nyMinutes(tapeAt);
-  return nyIsoDate(tapeAt) === today && mins >= 240 && mins < 570 ? 'pre-market' : 'after hours';
+  return isTradingDay(new Date(y, m - 1, d)) && nySessionPhase() === 'before' && b.rowDate === today ? 'pre-market' : 'after hours';
 };
 const LastCell = ({ data }: ICellRendererParams<StockPick>) => {
   const b = useBatchQuote(data?.ticker);
-  const q = useLiveQuote(data && !b && batchMisses(data.ticker) ? data.ticker : null);
   if (!data) return null;
-  const words = b ? { lead: b.price, line: batchWords(b) } : priceWords(q);
-  /* until the read lands, the screener's REGULAR price from the list's own read — its after-hours print apart.
-     A listed name with no price yet is a dash, not $0.00. */
-  const px = words?.lead ?? (data.price > 0 ? data.price : 0);
+  const px = b?.price ?? (data.price > 0 ? data.price : 0);
   if (!(px > 0)) return <span className="font-mono text-t11 text-textMuted" title="No price on the feed">—</span>;
-  const fallbackTitle = data.extPrice != null ? `${data.price.toFixed(2)} close · ${data.extPrice.toFixed(2)} outside the session (the screener's)` : 'the screener’s price';
-  return <span className="font-mono text-t11 tnum text-textPrimary" title={words?.line ?? fallbackTitle}>${px.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+  const title = b ? batchWords(b) : data.extPrice != null ? `${data.price.toFixed(2)} close · ${data.extPrice.toFixed(2)} outside the session` : `${data.price.toFixed(2)}`;
+  return <span className="font-mono text-t11 tnum text-textPrimary" title={title}>${px.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
 };
 const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
   const b = useBatchQuote(data?.ticker);
-  const q = useLiveQuote(data && !b && batchMisses(data.ticker) ? data.ticker : null);
   if (!data) return null;
-  if (data.listedOnly && !b && !q) return <span className="font-mono text-t11 text-textMuted" title="No session change on the feed">—</span>;
-  /* before the open the session has not moved: the last session's change, dated */
-  const pre = b ? !b.live : q?.phase === 'pre' && q.lastSessionPct != null;
-  const chg = b ? b.pct ?? data.changePct : pre ? q!.lastSessionPct! : q?.spot && q.spot > 0 ? q.changePct : data.changePct;
-  /* the extended move kept apart — every row the same convention (audit round 5: META) */
-  const ext = b ? batchExt(b) : q ? (q.extPct != null && Math.abs(q.extPct) < EXT_FLOOR ? null : extendedLine(q)) : data.extPct != null && Math.abs(data.extPct) >= EXT_FLOOR ? `after hours ${data.extPct >= 0 ? '+' : '−'}${Math.abs(data.extPct).toFixed(2)}%` : null;
-  const day = b && !b.live ? ` (${b.date})` : q?.regDate ? ` (${q.regDate})` : '';
+  if (data.listedOnly && !b) return <span className="font-mono text-t11 text-textMuted" title="No screen on this name">—</span>;
+  const pre = b ? !b.live : false;
+  const chg = b ? b.pct ?? data.changePct : data.changePct;
+  const ext = b ? batchExt(b, data.ticker) : data.extPct != null && Math.abs(data.extPct) >= EXT_FLOOR ? `after hours ${data.extPct >= 0 ? '+' : '−'}${Math.abs(data.extPct).toFixed(2)}%` : null;
+  const day = b && !b.live ? ` (${b.date})` : '';
   return (
     <span className="flex flex-col items-end justify-center h-full leading-tight" title={`${pre ? `The last session's change${day}` : "The regular session's change"}${ext ? ` · ${ext}, kept apart` : ''}`}>
       <span className={`font-mono text-t11 tnum ${dirInk(chg)}`}>{signedPct(chg, 2)}</span>
@@ -225,8 +174,7 @@ const sleeveCell =
     if (data.quiet.includes(key)) return <span className="font-mono text-t10 text-textMuted" title="Not on this feed — left out of the screen">—</span>;
     const v = data.sleeves[key];
     const g = gradeOfComposite(v);
-    /* A BAR WITH ITS WORD AND ITS FIGURES (the fourth audit's retail test, 2026-10-23: the bars carried no value or label)
-       — the grade word beside it, the measures it is read from on hover */
+    /* the grade word beside the bar, the measures it is read from on hover */
     const note = data.sleeveNotes?.[key];
     return (
       <span className="flex items-center gap-1.5 h-full w-full pr-2 cursor-help" title={`${SLEEVE_NAME[key]} reads ${g} (${v > 50 ? 'above the 50 line — for the name' : 'below the 50 line — against it'})${note ? `. ${note}` : ''}`} data-sleeve={key} data-grade={g}>
@@ -252,12 +200,12 @@ const ScreenCell = ({ data }: ICellRendererParams<StockPick>) =>
 
 const WhyCell = ({ data }: ICellRendererParams<StockPick>) =>
   data ? (
-    <span className="block py-1.5 text-t11 leading-snug text-textSecondary whitespace-normal break-words" title={data.thesis}>
+    <span className="block py-1 text-t11 leading-snug text-textSecondary whitespace-normal break-words line-clamp-3" title={data.thesis}>
       {data.thesis}
     </span>
   ) : null;
 
-/* THE PHONE CARD — the name, the price and the day, the screen word and the three sleeves' words (PhoneCards.tsx) */
+/* the phone card: the name, the price and the day, the grade and the three pillars' words */
 const StockCard = (p: StockPick) => {
   const g = gradeOfPick(p);
   const sleeve = (k: keyof StockSleeves, label: string) =>
@@ -310,7 +258,7 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
     type="button"
     onClick={onToggle}
     aria-pressed={on}
-    title={`${s.note} ${s.count} ${s.count === 1 ? 'name' : 'names'} on this board.${s.ret1w != null ? ` Their average return: ${signedPct(s.ret1w)} over a week, ${s.ret1m != null ? signedPct(s.ret1m) : '—'} over a month.` : ''} Against the average of every name here: ${signedPct(s.rs1w).replace('%', ' pts')} over a week, ${signedPct(s.rs1m).replace('%', ' pts')} over a month — the direction word reads those two. ${on ? 'Click to show every sector.' : `Click to keep the grid to ${s.sector}.`}`}
+    title={`${s.count} ${s.count === 1 ? 'name' : 'names'}. Against the board: ${signedPct(s.rs1w).replace('%', ' pts')} on the week, ${signedPct(s.rs1m).replace('%', ' pts')} on the month. ${on ? 'Click to show every sector.' : `Click to keep the grid to ${s.sector}.`}`}
     className={`group text-left rounded-md border px-3 py-2.5 transition-colors min-w-0 ${on ? 'border-silver/60 bg-silver/[0.08]' : 'border-borderMuted bg-card hover:border-silver/40 hover:bg-silver/[0.05]'}`}
     data-stocks-sector={s.sector}
     data-on={on || undefined}
@@ -324,8 +272,7 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
       <span className={`block h-full rounded-full ${leader ? 'bg-supreme' : PHASE_BAR[s.phase]}`} style={{ width: `${Math.round((s.score / top) * 100)}%` }} />
     </span>
     <span className={`mt-1 block h-[12px] font-mono text-t8 uppercase tracking-widest whitespace-nowrap ${leader ? 'text-supreme' : PHASE_INK[s.phase]}`}>{leader ? 'LEADING' : PHASE_WORD[s.phase]}</span>
-    {/* THE REAL RETURN, AND THE RELATIVE ONE SAID AS RELATIVE (the re-audit, 2026-10-22: "1w +3.4% · 1m +13.1%" was the
-        sector against the board's average, read as a return; Utilities is one name) */}
+    {/* the members' real return, and the return against the board said as points */}
     <span className="mt-0.5 block h-[12px] font-mono text-t9 tnum whitespace-nowrap overflow-hidden">
       <span className="text-textMuted">1w </span>
       <span className={s.ret1w != null ? dirInk(s.ret1w) : 'text-textMuted'}>{s.ret1w != null ? signedPct(s.ret1w) : '—'}</span>
@@ -358,8 +305,9 @@ const Stocks = () => {
   const waiting = liveBoard.status === 'loading' && picks.length === 0;
   const quiet = failed || waiting;
   const sectors = useMemo(() => buildSectorBoard(picks), [picks]);
-  const top = sectors[0];
-  const bottom = sectors[sectors.length - 1];
+  /* before any name lands there is no sector; the head says so through `quiet` */
+  const top = sectors[0] ?? NO_SECTOR;
+  const bottom = sectors[sectors.length - 1] ?? NO_SECTOR;
 
   /* The cards cut the board; the Filter keeps from the cut */
   const cut = useMemo(() => {
@@ -367,19 +315,9 @@ const Stocks = () => {
     return picks.filter(p => (screen === 'all' || gradeOfPick(p) === screen) && (sector === 'all' || p.sector === sector) && (names === 'all' || board.has(p.ticker)));
   }, [picks, screen, sector, names, boardNames]);
 
-  /* THE FILTER reads the names on the cut; any pick matching keeps the row. Names
-     only — the sectors are the Sector card's and the rotation's (Noah, 2026-09-10:
-     a Filter holding Technology contradicted every other sector he clicked) */
+  /* The filter reads the names on the cut; any pick keeps its row. Sectors are the Sector control's and the rotation's. */
   const [filter, setFilter] = useState<string[]>([]);
   const [find, setFind] = useState('');
-  const [depth, setDepth] = useState(160);
-  const listedRev = useListedRev();
-  useEffect(() => {
-    ensureListed();
-  }, []);
-  useEffect(() => {
-    setDepth(160);
-  }, [find, screen, sector, names, filter]);
   const filterGroups = useMemo<MultiGroup[]>(() => {
     const byName = new Map(cut.map(p => [p.ticker, p.name]));
     filter.forEach(f => {
@@ -400,42 +338,18 @@ const Stocks = () => {
       quiet: ['momentum', 'quality', 'flow', 'news'],
       composite: 0,
       verdict: 'HOLD',
-      thesis: known
-        ? 'Listed. No screen on this name — the sleeves are not scored.'
-        : 'Listed. No company name on the book yet, and the sleeves are not scored.',
+      thesis: 'Listed, not on the screen. Open the name for its page.',
       trend: [],
       listedOnly: true,
     });
     if (query) {
-      const hits = searchListed('equity', query, depth, searchTickers(query, depth), companyName);
-      return hits.map(hit => {
-        const scored = picks.find(p => p.ticker === hit.symbol);
-        if (scored) return scored;
-        const known = filedName(hit.symbol, hit.name);
-        return blankOf(hit.symbol, known);
-      });
-    }
-    if (filter.length === 0 && screen === 'all' && sector === 'all' && names === 'all') {
-      const seen = new Set<string>();
-      const out: StockPick[] = [];
-      for (const p of cut) {
-        if (seen.has(p.ticker)) continue;
-        seen.add(p.ticker);
-        out.push(p);
-      }
-      for (const symbol of equitySymbols()) {
-        if (out.length >= depth) break;
-        if (seen.has(symbol)) continue;
-        seen.add(symbol);
-        const known = filedName(symbol);
-        out.push(blankOf(symbol, known));
-      }
-      return out;
+      const hits = searchListed('equity', query, SEARCH_ROWS * 2, searchTickers(query, SEARCH_ROWS * 2), companyName).filter(h => COMMON_SYMBOL.test(h.symbol));
+      return hits.slice(0, SEARCH_ROWS).map(hit => picks.find(p => p.ticker === hit.symbol) ?? blankOf(hit.symbol, filedName(hit.symbol, hit.name)));
     }
     if (filter.length === 0) return cut;
     const on = new Set(filter);
     return cut.filter(p => on.has(`name:${p.ticker}`));
-  }, [cut, filter, find, picks, listedRev, depth, screen, sector, names]);
+  }, [cut, filter, find, picks]);
 
   const facts = useMemo(() => {
     const scored = rows.filter(p => !p.listedOnly);
@@ -443,7 +357,7 @@ const Stocks = () => {
     const strong = count('strong');
     const good = count('good');
     const weak = count('poor');
-    /* price above its 50-day average, not RSI over 50 (the re-audit, 2026-10-22) */
+    /* price above its 50-day average */
     const placed = scored.map(aboveFifty).filter((v): v is boolean => v != null);
     const breadth = placed.length ? Math.round((placed.filter(Boolean).length / placed.length) * 100) : 0;
     /* A search hit with no screen is not caution. The counts are the scored rows only. */
@@ -457,7 +371,7 @@ const Stocks = () => {
   const sentence = useMemo<ReactNode>(
     () => (
       <>
-        <span className="text-supreme font-semibold">{top.sector}</span> leads the rotation, {sectors[1].sector} close behind
+        <span className="text-supreme font-semibold">{top.sector}</span> leads the rotation{sectors[1] ? `, ${sectors[1].sector} close behind` : ''}
         {laggards.length > 0 ? (
           <>
             {' — '}
@@ -474,14 +388,9 @@ const Stocks = () => {
   );
 
   const newsQuiet = picks.length > 0 && picks.every(p => p.quiet.includes('news'));
-  /* THE DAY COLUMN NAMES ITS DAY (audit round 7: "Today" held Oct 22's change before the open) — in the session it is
-     today; outside it, the last session's date, off the market's own quote */
+  /* in the session the column is today; outside it, the last session's date */
   /* the scored names, plus the newest page of the unscreened list — never the whole 26k in one quote */
-  const quoteTickers = useMemo(() => {
-    const scored = rows.filter(p => !p.listedOnly).map(p => p.ticker);
-    const tail = rows.filter(p => p.listedOnly).slice(-80).map(p => p.ticker);
-    return [...new Set([...scored, ...tail])];
-  }, [rows]);
+  const quoteTickers = useMemo(() => picks.map(p => p.ticker), [picks]);
   useScreenerQuotes(quoteTickers);
   /* a house name the screener has no row for (BYDDY) is said, never silently dropped */
   const unscreened = useMemo(() => (liveBoard.status === 'live' && picks.length ? UNIVERSE.filter(u => !picks.some(p => p.ticker === u.ticker)).map(u => u.ticker) : []), [liveBoard.status, picks]);
@@ -492,31 +401,26 @@ const Stocks = () => {
   const columnDefs = useMemo<ColDef<StockPick>[]>(() => {
     const cols: ColDef<StockPick>[] = [
       /* the fixed widths add to ~1130px so the Why column lands inside a laptop's grid instead of past its right edge */
-      { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 140, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
-      { headerName: 'Sector', field: 'sector', width: 132, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
-      { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, valueGetter: p => (p.data ? (peekBatchQuote(p.data.ticker)?.price || priceWords(peekQuote(p.data.ticker))?.lead || p.data.price) : 0), type: 'rightAligned', headerTooltip: 'The regular close outside the session (hover for the after-hours or pre-market print and its time, ET); the last price in it' },
-      { headerName: dayHead, field: 'changePct', width: 80, cellRenderer: TodayCell, valueGetter: p => (p.data ? (peekBatchQuote(p.data.ticker)?.pct ?? peekQuote(p.data.ticker)?.changePct ?? p.data.changePct) : 0), type: 'rightAligned', headerTooltip: "The regular session's change — in the session today's, outside it the last session's (the date in the head) — its close against the close before it. The after-hours or pre-market move sits under it, kept apart" },
-      { headerName: 'Year', field: 'trend', width: 104, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
-      { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 112, cellRenderer: sleeveCell('momentum'), headerTooltip: "The trend: the price against its 20-day EMA, RSI, ADX with the week's direction, and the month — the screener's. The word is its grade; hover for the figures. A dash is left out of the screen." },
-      { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 112, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth over the last four quarters. The word is its grade; hover for the figure. A dash means the feed has no growth figure.' },
-      { headerName: 'Money', colId: 'flow', valueGetter: p => p.data?.sleeves.flow ?? 0, width: 112, cellRenderer: sleeveCell('flow'), headerTooltip: 'The money: relative volume, bullish against bearish premium, and call against put premium. The word is its grade; hover for the figures. A dash means no premium on the feed.' },
+      { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 124, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
+      { headerName: 'Sector', field: 'sector', width: 118, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
+      { headerName: 'Last', field: 'price', width: 84, cellRenderer: LastCell, valueGetter: p => (p.data ? peekBatchQuote(p.data.ticker)?.price || p.data.price : 0), type: 'rightAligned', headerTooltip: 'The last price in the session; the regular close outside it (hover for the extended print, ET)' },
+      { headerName: dayHead, field: 'changePct', width: 78, cellRenderer: TodayCell, valueGetter: p => (p.data ? peekBatchQuote(p.data.ticker)?.pct ?? p.data.changePct : 0), type: 'rightAligned', headerTooltip: "The regular session's change (the last session's outside it); the extended move sits under it" },
+      { headerName: 'Year', field: 'trend', width: 116, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
+      { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 96, cellRenderer: sleeveCell('momentum'), headerTooltip: "Price against its 20-day EMA, RSI, ADX with the week's direction, and the month. Hover for the figures." },
+      { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 96, cellRenderer: sleeveCell('quality'), headerTooltip: 'EPS growth over one and two years (capped at ±100%) and the change in share count. Hover for the figures.' },
+      { headerName: 'Money', colId: 'flow', valueGetter: p => p.data?.sleeves.flow ?? 0, width: 96, cellRenderer: sleeveCell('flow'), headerTooltip: 'Relative volume and the side of the options premium. Under $1M of premium it is not scored.' },
     ];
     if (!newsQuiet) cols.push({ headerName: 'News', colId: 'news', valueGetter: p => p.data?.sleeves.news ?? 0, width: 88, cellRenderer: sleeveCell('news'), headerTooltip: "The wire's lean on the name. A dash stays out of the screen." });
     cols.push(
-      { headerName: 'Screen', field: 'verdict', width: 100, cellRenderer: ScreenCell, comparator: (_a: StockVerdict, _b: StockVerdict, na, nb) => GRADE_RANK.indexOf(na.data ? gradeOfPick(na.data) : 'poor') - GRADE_RANK.indexOf(nb.data ? gradeOfPick(nb.data) : 'poor'), headerTooltip: 'The measures that have a number, rolled into one word. What the data says, never an instruction.' },
-      { headerName: 'Why', field: 'thesis', flex: 2.4, minWidth: 220, autoHeight: true, wrapText: true, cellRenderer: WhyCell, sortable: false, headerTooltip: 'What is for the name, what is against it — hover for the whole line' },
+      { headerName: 'Screen', field: 'verdict', width: 92, cellRenderer: ScreenCell, comparator: (_a: StockVerdict, _b: StockVerdict, na, nb) => GRADE_RANK.indexOf(na.data ? gradeOfPick(na.data) : 'poor') - GRADE_RANK.indexOf(nb.data ? gradeOfPick(nb.data) : 'poor'), headerTooltip: 'The measures that have a number, rolled into one word. What the data says, never an instruction.' },
+      { headerName: 'Why', field: 'thesis', flex: 2.4, minWidth: 230, cellRenderer: WhyCell, sortable: false, headerTooltip: 'What is for the name and what is against it' },
     );
     return cols;
   }, [newsQuiet, dayHead]);
   const defaultColDef = useMemo<ColDef<StockPick>>(() => ({ sortable: true, resizable: true, suppressMovable: true }), []);
 
-  /* THE CUT GLIDES IN (Noah, 2026-09-10: "clicking on any of the sectors should
-     have the smooth glide animation that we have… it just appears"). The old
-     page keyed its table by the filter so a swap faded up softly; the grid
-     stays mounted here, so its window replays the house soft-in on every new
-     cut instead — the rows land in place under it, nothing shuffles. */
+  /* the grid stays mounted, so a new cut replays the house soft-in over its window */
   const gridRef = useRef<HTMLDivElement | null>(null);
-  const moreRef = useRef<HTMLDivElement | null>(null);
   const cutKey = `${screen}|${sector}|${names}|${filter.join(',')}`;
   useEffect(() => {
     const el = gridRef.current;
@@ -526,20 +430,7 @@ const Stocks = () => {
     el.classList.add('animate-soft-in');
   }, [cutKey]);
 
-  const universe = listedCount('equity');
-  const canGrow = rows.length > 0 && rows.length < universe && (find.trim().length > 0 || (screen === 'all' && sector === 'all' && names === 'all' && filter.length === 0));
-  useEffect(() => {
-    const el = moreRef.current;
-    if (!el || !canGrow) return;
-    const obs = new IntersectionObserver(entries => {
-      if (entries.some(e => e.isIntersecting)) setDepth(d => Math.min(d + 180, universe || d + 180));
-    }, { rootMargin: '480px' });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [canGrow, rows.length, universe]);
-
-  /* A row opens the name's own page (the partner's review, 2026-09-13: "stop
-     sending me to the pinpoint page") — the Map is a door on that page */
+  /* a row opens the name's own page */
   const open = (e: RowClickedEvent<StockPick>) => {
     if (!e.data) return;
     navigate(`/dossier/stocks/${e.data.ticker}`);
@@ -583,9 +474,7 @@ const Stocks = () => {
             </dd>
           </div>
           <div>
-            {/* RANKED LAST, WITH ITS DIRECTION (the retail pass, 2026-10-22): "Trailing sector: Consumer Discretionary" sat over
-                that sector's own card reading TURNING UP while Communication read FALLING — the rank is by its names'
-                screens, the direction by the two windows against the tape; the fact says both */}
+            {/* ranked last by its names' grades, with its direction beside it: a sector can rank last and still be turning up */}
             <dt className="text-t10 text-textMuted cursor-help" title="The sector whose names screen worst, by rank — its direction against the tape (the card's word) beside it. A sector can rank last and still be turning up">Ranked last</dt>
             <dd className="mt-0.5 whitespace-nowrap" data-stocks-trailer>
               {quiet ? <span className="font-mono text-t12 text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="font-mono text-t12 tnum text-bear hover:underline underline-offset-2">
@@ -595,7 +484,6 @@ const Stocks = () => {
           </div>
         </dl>
       </div>
-      {/* THE ONE LINE OF CONTROLS */}
       <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-stocks-controls>
         <DropdownSelect label="Screen" value={screen} options={SCREEN_OPTIONS} onChange={setScreen} title="Which screens" testId="stocks-screen" />
         <DropdownSelect label="Sector" value={sector} options={SECTOR_OPTIONS} onChange={setSector} title="Which sector" testId="stocks-sector" />
@@ -616,17 +504,13 @@ const Stocks = () => {
           {waiting ? 'Reading the screens.' : sentence}
         </p>
       )}
-      {/* THE ROTATION */}
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-stocks-rotation>
-        {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
+        {/* on a phone the head stacks: the label over its words */}
         <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The rotation</span>
           <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">every sector ranked by its names' screens, leader first · its names' average return over a week and a month, and the month against the board's average · click a sector to keep the grid to its names</span>
         </div>
-        {/* every sector across from 1280; six on a small laptop, four on a tablet, two on a phone (the device sweep,
-            2026-10-18: eleven across at 360 left a card 30px wide and cut its two windows, and at 1024 still 70px) */}
-        {/* five across from a laptop up (the dossier sweep, 2026-10-22: ten across left each card ~105px, the names cut to
-            "Tech…" and the 1m figure past the card's edge) — two rows of five, ranked left to right */}
+        {/* two on a phone, four on a tablet, five across from a laptop */}
         {quiet ? (
           <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : 'Reading the screens'}</div>
         ) : (
@@ -637,17 +521,18 @@ const Stocks = () => {
         </div>
         )}
       </div>
-      {/* THE GRID — grown to its rows, the page scrolls (2026-09-11, the Compass board's rule) */}
+      {/* the grid scrolls inside a fixed window, so its rows virtualise */}
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-stocks-grid>
         {phone ? (
           <PhoneCards rows={rows} rowKey={p => p.ticker} card={StockCard} onOpen={p => navigate(`/dossier/stocks/${p.ticker}`)} empty={failed ? 'This read did not land' : waiting ? 'Reading the screens' : 'No name on this cut'} testId="stocks" resetKey={cutKey} />
         ) : (
         <AgGridProvider modules={GRID_MODULES}>
+          <div style={{ height: Math.min(Math.max(rows.length, 3), GRID_ROWS) * ROW_H + 42 }}>
           <AgGridReact<StockPick>
             {...phonePin}
             theme={GRID_THEME}
-            domLayout="autoHeight"
             rowData={rows}
+            rowHeight={ROW_H}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             getRowId={p => p.data.ticker}
@@ -660,13 +545,13 @@ const Stocks = () => {
             overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : waiting ? 'Reading the screens' : 'No name on this cut')}
             key={failed ? 'failed' : waiting ? 'waiting' : 'live'}
           />
+          </div>
         </AgGridProvider>
         )}
       </div>
       {rows.length > 0 && (
-        <div ref={moreRef} className="px-5 py-2 border-t border-borderSubtle/60 font-mono text-t10 text-textMuted" data-stocks-more>
-          {rows.length.toLocaleString()} on this page
-          {listedCount('equity') > rows.length ? ` · ${listedCount('equity').toLocaleString()} listed stocks · scroll for more` : ''}
+        <div className="px-5 py-2 border-t border-borderSubtle/60 font-mono text-t10 text-textMuted" data-stocks-more>
+          {rows.length.toLocaleString()} {rows.length === 1 ? 'name' : 'names'}{find.trim() ? ' found' : ' with a screen · search finds any listed stock'}
         </div>
       )}
     </div>

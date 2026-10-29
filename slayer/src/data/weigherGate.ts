@@ -13,6 +13,10 @@ import type { DeskChain, DeskContract } from './weigherDesk';
 
 export const WEIGHER_R = 0.042;
 export const WEIGHER_Q = 0;
+/* Theta is shown per calendar day across the app, the same as the ThetaData feed and Compass. */
+export const THETA_DAYS = 365;
+/** A calendar-day theta as the decay over one hour of the cash session (6.5 hours, 252 sessions a year). */
+export const thetaPerSessionHour = (thetaPerDay: number): number => (thetaPerDay * THETA_DAYS) / (252 * 6.5);
 
 function ncdf(x: number): number {
   const k = 1 / (1 + 0.2316419 * Math.abs(x));
@@ -65,17 +69,19 @@ export interface BsRead {
   profitShort: number;
 }
 
-function touchProb(spot: number, barrier: number, t: number, vol: number, up: boolean): number {
+/** Chance the price touches `barrier` before `t`, under the risk-neutral lognormal walk (the reflection-principle formula). */
+export function touchProb(spot: number, barrier: number, t: number, vol: number, up: boolean, r = WEIGHER_R, q = WEIGHER_Q): number {
   if (!(spot > 0) || !(barrier > 0) || !(t > 0) || !(vol > 0)) return NaN;
   if (up && spot >= barrier) return 1;
   if (!up && spot <= barrier) return 1;
-  const mu = WEIGHER_R - WEIGHER_Q - (vol * vol) / 2;
+  const mu = r - q - (vol * vol) / 2;
   const s = vol * Math.sqrt(t);
   const d = (Math.log(spot / barrier) + mu * t) / s;
   const lam = (2 * mu) / (vol * vol);
+  const shift = (2 * mu * t) / s;
   const p = up
-    ? ncdf(d) + Math.pow(barrier / spot, lam) * ncdf(d - (2 * Math.log(barrier / spot)) / s)
-    : ncdf(-d) + Math.pow(barrier / spot, lam) * ncdf(-d + (2 * Math.log(barrier / spot)) / s);
+    ? ncdf(d) + Math.pow(barrier / spot, lam) * ncdf(d - shift)
+    : ncdf(-d) + Math.pow(barrier / spot, lam) * ncdf(-d + shift);
   if (!Number.isFinite(p)) return NaN;
   return Math.min(1, Math.max(0, p));
 }
@@ -113,7 +119,7 @@ export function bsOnMark(spot: number, strike: number, right: OptionRight, bid: 
   return {
     delta: right === 'C' ? nd1 : nd1 - 1,
     gamma: pdf / (spot * iv * sq),
-    theta: thetaYear / 252,
+    theta: thetaYear / THETA_DAYS,
     vega: (spot * sq * pdf) / 100,
     rho: ((right === 'C' ? 1 : -1) * strike * t * df * (right === 'C' ? nd2 : ncdf(-d2))) / 100,
     iv: iv * 100,
@@ -239,9 +245,8 @@ export function readGate(input: GateInput): GateRead {
       if (c.right !== want) return fail(9, ret > 0 ? 'The stock is up 0.35% or more from the open. Only the call is sent.' : 'The stock is down 0.35% or more from the open. Only the put is sent.');
       passed.push(ret > 0 ? 'Call side of the open.' : 'Put side of the open.');
     } else {
-      const gex = input.gex;
-      if (!(gex != null && gex < 0)) return fail(10, 'Flat root. Gamma and the ask-side split do not name one side, so neither is sent.');
-      return fail(10, 'Flat root. The ask-side split is not in hand, so neither is sent.');
+      /* Compass's rule: a flat root is sent only when the opposite side does not clear as well. */
+      passed.push('Flat root. Sent only if the opposite side does not clear too.');
     }
   } else if (!(c.ask <= LOTTERY_ASK_MAX)) {
     return fail(8, 'Book C ask is over $1.65.');

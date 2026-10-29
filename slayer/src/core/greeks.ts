@@ -1,48 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - BLACK-SCHOLES GREEKS (greeks.ts)
-  Pure math, no state, no clock. Extracted from the
-  simulator so the SCORING engine can price greeks
-  without importing the simulator at all — a replay
-  process that pulls in core/simulator boots the
-  whole synthetic market (seeded history, timers,
-  Math.random), which is exactly what a backtest
-  must never do.
-
-  The simulator now imports THIS, so live and replay
-  price greeks with byte-identical code.
-==================================================
-
-  P-24A — THE CARRY, AND WHAT CHANGED WITH IT.
-
-  This file priced everything at a hardcoded `r = 0.05` with NO dividend
-  yield. Both now come from `core/carry.ts`, which is a seam rather than a
-  constant: today it serves the assumed dividend yield, and the risk-free
-  rate once Theta's 3-month bill has called `setCarry`. Nothing in the
-  formulas below changes when that print arrives — they already read
-  `getCarry()`. Every formula below is the
-  generalized (continuous-yield) Black-Scholes, so q = 0 reproduces the old
-  arithmetic exactly wherever the old arithmetic was right.
-
-  ONE PLACE IT WAS NOT RIGHT, and it is worth naming because the numbers on
-  screen move: the put charm was `charmCall + r·e^{−rt}`. In this model
-  Δput = e^{−qt}(N(d1) − 1), so ∂Δput/∂t and ∂Δcall/∂t differ by exactly
-  q·e^{−qt} — a DIVIDEND term, not a rate one. At the old q = 0 the two
-  charms must be EQUAL, and the old code had them differing by ~5% of the
-  discount factor. The generalized formulas below make the pair consistent
-  with the deltas they are the time-derivative of, and the proof pins that
-  relationship rather than the literal number, so a future refactor cannot
-  quietly reintroduce it.
-
-  THE VEGA SCALING TRAP (P-24D). `vega` and `rho` here are PER ONE POINT of
-  their input — per 1% of vol, per 1% of rate — because that is what a
-  reader means by "vega". The raw partials are per 1.00, so both are divided
-  by 100 INSIDE this file. A feed that quotes per-1.00 vega therefore needs
-  dividing by 100 ONCE, on ingest — never again here. Ingesting and
-  rescaling double-scales by 100× and produces plausible wrong numbers
-  rather than an error, which is why the proof asserts the convention
-  directly.
-*/
+/* Black-Scholes greeks with a continuous dividend yield — pure math, no state, no clock (live and replay price greeks
+   with the same code). r and q come from core/carry.ts. vega and rho are PER POINT (÷100 here): a feed that quotes
+   per-1.00 vega is divided once on ingest, never again. */
 
 import { getCarry } from './carry';
 import type { Greeks } from '../types/market';
@@ -134,19 +92,8 @@ export function blackScholesPrice(
     : K * dfR * normalCDF(-d2) - S * dfQ * normalCDF(-d1);
 }
 
-/**
- * Implied vol from a price — the inversion P-24A asks for.
- *
- * BISECTION, not Newton, and the choice is deliberate: vega collapses toward
- * zero for deep wings and near expiry, and Newton divides by it — one bad
- * step there returns a confident absurdity. Bisection cannot diverge; it
- * either brackets the answer or reports that it could not, and "could not"
- * is a state every caller here already knows how to render.
- *
- * Returns null when the price is outside what the model can produce at ANY
- * vol — below intrinsic, or above the ceiling — because that is a quote
- * problem, not a vol.
- */
+/** Implied vol from a price, by bisection (vega collapses in the wings and near expiry, where Newton diverges). Null when
+    the price is outside what the model can produce at any vol — a quote problem, not a vol. */
 export function impliedVolFromPrice(
   price: number,
   S: number,

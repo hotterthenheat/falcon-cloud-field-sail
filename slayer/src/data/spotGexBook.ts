@@ -1,7 +1,6 @@
 /*
-  The live spot-gex book. Open interest, gamma and session volume come off
-  Theta's chain for every expiration still listed. Unusual Whales is asked
-  only to check the total, and only after the local number exists.
+  The local spot-gex book: open interest, gamma and session volume off Theta's chain for every listed expiration,
+  checked against Unusual Whales' total. Never read from Pinpoint or the Dossier, which are Unusual Whales only.
 */
 
 import { uwCall } from './whales';
@@ -12,6 +11,11 @@ import { spotGex, usesAtmPrice, type SpotGex, type SpotGexLeg, type OptionSide }
 const CHAIN: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW', NDX: 'NDXP', VIX: 'VIXW' };
 /** The weekly root is the same index. One book, one name. */
 const SAME: Record<string, string> = { SPXW: 'SPX', RUTW: 'RUT', NDXP: 'NDX', VIXW: 'VIX' };
+
+/** Pinpoint and the Dossier read Unusual Whales only (docs/DATA_SOURCES.md): no ThetaData read starts from their pages. */
+export function uwOnlyDesk(): boolean {
+  return typeof location !== 'undefined' && /(^|\/)(pinpoint|dossier)(\/|$)/.test(location.pathname);
+}
 
 export function sameName(ticker: string): string {
   const name = ticker.trim().toUpperCase();
@@ -159,6 +163,7 @@ async function uwTotal(ticker: string): Promise<number | null> {
 }
 
 async function pull(ticker: string): Promise<SpotGexBook | null> {
+  if (uwOnlyDesk()) return null;
   const name = sameName(ticker);
   const root = CHAIN[name] ?? name;
   const dates = await expirations(root);

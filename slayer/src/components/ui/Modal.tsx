@@ -1,27 +1,8 @@
 /*
-==================================================
-  SLAYER TERMINAL - MODAL
-  A centred overlay card — the house pattern for
-  drilldowns that need room but must not take the
-  screen. Deliberately NOT a side drawer: a right-
-  hand panel covers the very rows you are comparing
-  against, while a centred card over a dimmed tape
-  keeps the context you came from visible.
-
-  Owns the portal, backdrop, escape, click-outside,
-  scroll lock and motion. Callers supply a header
-  and a body; the body scrolls, the header doesn't.
-
-  THE WAY OUT IS AS SMOOTH AS THE WAY IN (Noah,
-  2026-09-28, on the Trace print card: "the entrance
-  and exit need to be smoother"): closing keeps the
-  card up for OUT_MS on a fade and a small settle,
-  then a TIMER unmounts it — never an animation's
-  end (the house's wedge law: a close must never
-  depend on an animation finishing). The last content
-  is held through the fade, so a host that clears
-  its record on close does not empty the card mid-way.
-==================================================
+  A centred overlay card for drilldowns, over a dimmed page so the context stays visible (a side drawer would cover the
+  rows being compared). Owns the portal, backdrop, Escape, outside click, scroll lock and motion; the body scrolls,
+  the header does not. Closing fades for OUT_MS and a timer (never an animation end) unmounts it, holding the last
+  content through the fade.
 */
 
 /** The close: the fade's length, and the timer that follows it */
@@ -67,13 +48,8 @@ const Modal = ({ open, onClose, ariaLabel, header, children, headerActions, head
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   // Escape closes; the page underneath must not scroll while we're up.
-  /* THE INNERMOST THING GETS THE KEY (2026-09-10: the scripts library opened
-     over a full-screen chart, and one Escape closed the library AND left
-     full screen). Listened on the document, which the key reaches before the
-     window where the full-screen takeovers listen; a layer inside the modal
-     (a Radix menu) that already took the key marks it defaultPrevented and is
-     left alone, and the modal marks it the same way so the takeovers behind
-     it stand still. */
+  /* The innermost layer takes Escape: the modal listens on the document (before window-level fullscreen listeners),
+     skips keys a nested layer already defaultPrevented, and marks its own so the layers behind stay. */
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -121,10 +97,8 @@ const Modal = ({ open, onClose, ariaLabel, header, children, headerActions, head
           </div>
         </div>
 
-        {/* [&>*]:shrink-0 — sections render at natural height and the BODY
-            scrolls. Without it, any child with overflow-hidden (rounded frames)
-            has a flex min-size of 0 and gets crushed to fit 86vh instead:
-            clipped text, half-drawn charts, whole sections silently missing. */}
+        {/* [&>*]:shrink-0: sections keep their natural height and the body scrolls; otherwise an overflow-hidden child has a
+            flex min-size of 0 and is crushed */}
         <div className="overflow-y-auto px-4 py-4 flex flex-col gap-4 [&>*]:shrink-0">{h.children}</div>
       </div>
     </div>,

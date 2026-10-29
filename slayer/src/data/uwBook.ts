@@ -1,16 +1,6 @@
-/*
-  Pinpoint's book, from Unusual Whales.
-
-  The browser asks /api/uw. The server holds the token. Spot, the strike
-  book, open interest, today's tape and (for the name on screen) each
-  expiry's own gamma are the vendor's rows. Walls and the flip are still
-  named here, off those rows.
-
-  Sign. UW prints call gamma positive and put gamma negative. This house
-  prints call-dominant shelves NEGATIVE and put-dominant shelves POSITIVE
-  (core/walls.ts). Negating both legs lands on that, and the net flips
-  with them, so a put-heavy strike stays the one that amplifies.
-*/
+/* Pinpoint's book, from Unusual Whales (the browser asks /api/uw; the server holds the token).
+   Sign: UW prints call gamma positive, puts negative; the house sign negates both legs (core/walls.ts), so call-heavy
+   strikes are NEGATIVE (dealers long gamma) and put-heavy ones POSITIVE. Readers print -house as the retail sign. */
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { startPinpoint } from './vendorFeed';
@@ -24,7 +14,7 @@ import type { Candle, GexSnapshot, Indicators, MarketSnapshot, StrikeNode, Trade
 import { getDeskSession, minuteInSession, sessionMeta, useDeskSession, type DeskSession } from './deskSession';
 import { resolveDeskSession, type SessionRead } from './compassSession';
 import { levelsForName, readLevelsScope, useNameLevels, type LevelsScope } from './levelsScope';
-import { awaitSpotGex, sameName } from './spotGexBook';
+import { awaitSpotGex, sameName, uwOnlyDesk } from './spotGexBook';
 import { thetaCall } from './theta';
 import { spxRead } from './spxBook';
 import { blackScholesGreeks } from '../core/greeks';
@@ -60,7 +50,7 @@ import {
 
 const OPEN_MIN = 9 * 60 + 30;
 const CLOSE_MIN = 16 * 60;
-/** The cash index's closing print lands after 16:00. SPX on 2026-10-27 was 16:04; VIX prints through 16:15. That is the close, not after hours. */
+/** An index's closing print lands after 16:00 (VIX prints through 16:15): that is the close, not after hours. */
 const INDEX_CASH_TO = 16 * 60 + 15;
 /** CBOE indexes. /stock/SPX/ohlc and stock-state answer 422 (cboe_index_access_missing). The day's price is the index tape. */
 const INDEX_TAPE = new Set(['SPX', 'RUT', 'NDX', 'VIX', 'XSP']);
@@ -124,7 +114,9 @@ function noteBlankDays(symbol: string, rows: readonly { at: number; priced: bool
   for (const [day, v] of by) if (v.n > 0 && v.good === 0 && day > blank) blank = day;
   if (blank) blankTapeDay.set(symbol.toUpperCase(), blank);
 }
+/** One-minute bars off the ThetaData terminal (a name the vendor has no bars for) — none on the UW-only desks. */
 async function thetaTape(symbol: string, index: boolean): Promise<UwBar[]> {
+  if (uwOnlyDesk()) return [];
   const end = ymdNY(Date.now());
   const back = symbol.toUpperCase() === 'SPX' ? 8 : 4;
   const start = ymdNY(Date.now() - back * 86400000);
@@ -187,11 +179,8 @@ function vixLive(symbol: string, minute: number): boolean {
   return symbol.toUpperCase() === 'VIX' && minute >= 3 * 60 + 15 && minute <= INDEX_CASH_TO;
 }
 
-/**
- * Price off the tape when the vendor has no stock-state.
- * A regular print (including the closing auction) keeps yesterday as prev_close, so the spot stays today's print.
- * After hours, prev_close is today's regular close — the same way the vendor's stock-state is read.
- */
+/** Price off the tape when the vendor has no stock-state. A regular print keeps yesterday as prev_close; after hours
+    prev_close is today's regular close, the way the vendor's stock-state is read. */
 function quoteFromBars(symbol: string, bars: readonly UwBar[]): { close: number; prev_close: number; market_time: string; tape_time: string } | null {
   if (!bars.length) return null;
   const last = bars[bars.length - 1];
@@ -315,9 +304,8 @@ interface Entry {
   termIv?: Record<string, number>;
   /** The front date's contract rows (open interest, vol, gamma) are painted on its chain */
   frontFacts?: boolean;
-  /** The dates whose contract rows have been read (painted, or asked and refused) — the flip re-prices the front date
-      with its contracts' own vols, so it is final only once the front date is here (the fourth audit's M1: SPY's Map
-      read 771.25 for seconds on the at-the-money vol, then 772.17) */
+  /** The dates whose contract rows have been read (painted, or asked and refused) — the flip is final only once its own-vol
+      dates are here. */
   factsDates?: Set<string>;
   /** Every listed date has landed at least once (a later refresh re-reads them in place) — until then the Map's
       matrix window is still growing, and says so */
@@ -374,15 +362,9 @@ const emptyNode = (strike: number): StrikeNode => ({
   netCharm: 0,
 });
 
-/** Both gamma legs are negated into the house sign (see the head of this file and core/walls.ts): the vendor's call
-    gamma prints positive, the house's call-dominant shelf is NEGATIVE. Left as printed (the live sweep, 2026-10-22),
-    pickWalls found no call-dominant shelf above spot and named SPOT the call wall, the put wall landed 80 points away,
-    the matrix wore ice on the amplifying side, and a call-heavy book read "amplifying". */
-/* AND SCALED INTO THE HOUSE'S UNITS (the vendor's own spec, 2026-10-22): greek-exposure prints each greek × open
-   interest × 100 — shares, "without underlying-price scaling". The house book (core/simulator.ts) is dollars: GEX per
-   1% move is × spot² × 0.01, DEX × spot, vanna per vol point × 0.01 × spot, charm per session × spot / 252. Read raw,
-   SPY's heaviest strike printed $413K of gamma instead of ~$2.5B, so every wall weighed nothing against the market's
-   dollars per 1% and the hold odds sat on their 8% floor on every name. */
+/** Both legs negated into the house sign (head of this file, core/walls.ts). */
+/* greek-exposure rows are shares (greek × OI × 100); scaled to the house's dollars: GEX per 1% × S²·1%, DEX × S, vanna
+   per vol point × S·1%, charm per session × S/252. */
 export function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number }): StrikeNode {
   const g = spot > 0 ? spot * spot * 0.01 : 1;
   const d = spot > 0 ? spot : 1;
@@ -453,22 +435,9 @@ function flowMap(rows: UwFlowStrike[]): Map<number, { call: number; put: number 
   return m;
 }
 
-/*
-  THE GAMMA IS THE LIVE OPEN-INTEREST BOOK, NOT THE MORNING SNAPSHOT (the second re-audit, 2026-10-22). The vendor's
-  greek-exposure rows (strike, expiry, strike-expiry) are priced ONCE, at the spot and the greeks of their snapshot:
-  fitted leg by leg against Black-Scholes they sit at NVDA ~216.5, SPY ~766.8, AAPL ~346.1 — the morning's prices, not
-  the close (NVDA 212.21). On a −4% day that is the whole gap the audit found: NVDA's 10/23 rows netted +$182M while the
-  same vendor's contracts (open interest × gamma × 100, at today's price) net −$74M, and the flip carried the ≈$256M
-  difference flat and printed "none nearby" over a crossing at 213. The vendor's spot-exposures rows are the same open
-  interest priced at the current price, once a minute (call_gamma_oi / put_gamma_oi: dollars per 1% move) — checked
-  strike by strike against OI × Γ × 100 × S² × 1% off option-contracts: equal to the cent. The book's gamma is read off
-  them: spot-exposures/strike for every expiry, spot-exposures/expiry-strike for one date. The same rows carry vanna and
-  charm (call_vanna_oi / put_vanna_oi, call_charm_oi / put_charm_oi). Those are not yet dollars: fitted against the
-  greek-exposure share rows where gamma agreed, call vanna equals the share vanna (vanna × OI × 100) and call charm
-  equals that share × spot × 1% × 365; the put legs are printed with the opposite sign. Dollars are the house units
-  already on the map — vanna × spot × 1% per vol point, charm × spot / 252 per session — with the put sign undone.
-  Delta stays on the greek-exposure rows. If the live rows fail, the snapshot is kept.
-*/
+/* The book's gamma is the vendor's spot-exposures rows: open interest priced at the current price each minute
+   (call_gamma_oi / put_gamma_oi, $ per 1%; equal to OI × Γ × 100 × S² × 1% off option-contracts). Their vanna and charm
+   are scaled to the house's dollars (fitted against the share rows; the put legs print with the opposite sign). */
 type LiveLeg = {
   c: number;
   p: number;
@@ -489,13 +458,8 @@ const liveGammaCache = new Map<string, { at: number; rows: LiveGamma }>();
 const liveGammaWait = new Map<string, Promise<LiveGamma | null>>();
 const LIVE_GAMMA_MS = 60_000;
 
-/*
-  WHERE AND WHEN THE VENDOR PRICED THE ROWS (the fourth audit, 2026-10-23: CROX's flip read 113.89 against 115.35 — the
-  vendor's gamma was computed at the row's own price, the 120.99 regular close, at 20:15Z, and the flip re-priced it as
-  if it had been computed at the after-hours 119.44 and at the wall clock). Every spot-exposures row carries the price
-  and the minute it was priced at; the flip re-prices each leg FROM that price and AT that minute (data/flipLevel.ts),
-  so after the close it stops moving until the vendor prints a new minute, and every page reads the same flip.
-*/
+/* Each spot-exposures row carries the price and minute it was priced at; the flip re-prices each leg from there, so a
+   shut market's flip stands still until the vendor prints a new minute. */
 const gammaPriced = new Map<string, { price: number; at: number }>();
 /** The price and the instant the vendor priced a name's live gamma rows (one date, or the whole book) — null until in */
 export const peekGammaPriced = (ticker: string, date: string | null): { price: number; at: number } | null =>
@@ -628,16 +592,9 @@ function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma): StrikeNod
   return out;
 }
 
-/*
-  EVERY DATE'S LIVE GAMMA IN ONE WALK (the sixth audit's M3, 2026-10-23: the Board on All expiries had 2 of 20 rows at
-  41s — each name asked spot-exposures/expiry-strike once per listed date, ~25 asks a name, 514 across the Board). The
-  same route without `expirations[]` returns every expiry's rows, one per strike and expiry, 500 a page — SPY's 34 dates
-  in 13 pages, AAPL's 23 in 4, CROX's 8 in 1. Each date's rows are kept exactly as the per-date ask keeps them (the same
-  per-row price and minute, the same cache), so a date read either way is the same chain. Null when a page fails.
-*/
-/* ONE WALK SHARED (audit round 7: a stock page walked SPY's pages 0–10 twice — the Board dates' read and the levels'
-   far dates each started their own walk seconds apart). A walk in flight, or one finished in the last WALK_REUSE_MS, is
-   the walk: the second caller takes its answer. */
+/* Every date's live gamma in one walk of spot-exposures/expiry-strike without `expirations[]` (500 rows a page); each
+   date's rows are kept exactly as the per-date ask keeps them. Null when a page fails. */
+/* One walk shared: a walk in flight, or finished within WALK_REUSE_MS, answers a second caller. */
 const WALK_REUSE_MS = 15_000;
 const walks = new Map<string, { at: number; p: Promise<Map<string, LiveGamma> | null> }>();
 function liveGammaAll(ticker: string, priority = false): Promise<Map<string, LiveGamma> | null> {
@@ -653,13 +610,8 @@ function liveGammaAll(ticker: string, priority = false): Promise<Map<string, Liv
   });
   return p;
 }
-/*
-  NO READ WAITS FOREVER (the tenth audit's B3, 2026-10-23 16:50 ET: one page of SPY's every-expiry walk — page 9 — sat in
-  the proxy unanswered for minutes while the vendor itself answered it in 0.6s, so the walk never ended, the full book's
-  far dates were never asked, and SPY's All-expiries levels never finished on any page). A walk page, and a date's
-  chain, that has not answered in its time is taken as failed: the walk gives way to each date's own ask, and a date is
-  asked again on the next pass.
-*/
+/* No read waits forever: a walk page or a date's chain that has not answered in its time is taken as failed, and the
+   date is asked on its own (or on the next pass). */
 const WALK_PAGE_MS = 25_000;
 const DATE_READ_MS = 40_000;
 function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
@@ -706,13 +658,8 @@ async function liveGammaWalk(ticker: string, priority = false): Promise<Map<stri
   return out;
 }
 
-/*
-  THE DATES' GAMMA KEPT LIVE (the seventh audit's live pass, 2026-10-23): the whole book's gamma is now the dates' own rows
-  added up (oneSnapshot), and a date's chain was read once — the Board's never again, the full book's every three minutes —
-  so in the session the All-expiries levels would have stood still. Every live date's gamma is read again in one walk of
-  every expiry's rows (liveGammaAll, kept a minute) whenever the book refreshes, and laid onto the chains in hand; each
-  chain's other greeks and its contracts' facts stay as they were.
-*/
+/* The dates' gamma kept live: every live date's rows are re-read in one walk (kept a minute) whenever the book
+   refreshes, and laid onto the chains in hand; other greeks and contract facts stay. */
 const datesGammaAt = new Map<string, number>();
 async function refreshDatesGamma(entry: Entry, token: number): Promise<void> {
   if (!entry.gammaLive) return;
@@ -747,10 +694,8 @@ async function dateChain(ticker: string, date: string, spot: number, withGreeks:
     liveGamma(ticker, date, priority).catch(() => null),
   ]);
   let base = Array.isArray(rows) ? chainFrom(rows, spot, new Map()) : [];
-  /* A DATE THAT SETTLED AT 4:00 (after the close, until the book rolls): the vendor's live aggregate still carries its
-     contracts (SPY's whole book read −$17.7B against −$14.7B on the live dates, the 10/22 contracts' gamma at the bell),
-     so its live rows are kept to come off the whole book (liveAll); its chain is the vendor's rows as they stood this
-     morning — the book today's session ran on, for the session's report (data/bookWindow.ts sessionBook) */
+  /* A date that settled at 4:00: its live rows are kept to come off the whole book (liveAll); its chain is the vendor's
+     morning rows — the book the session ran on, for the session's report. */
   if (settled) {
     if (live) settledLive.set(`${ticker}|${date}`, live);
     if (base.length) return base;
@@ -795,9 +740,7 @@ function candlesFrom(bars: UwBar[], cashTo = CLOSE_MIN): { cash: Candle[]; tape:
   const lastCash = [...parsed].reverse().find(inCash);
   const lastDay = lastCash ? nyIsoDate(lastCash.time * 1000) : null;
   const prior = lastDay && lastDay !== day ? parsed.filter(b => inCash(b) && nyIsoDate(b.time * 1000) === lastDay) : [];
-  /* ONCE TODAY'S SESSION HAS ITS FIRST BAR IT IS THE SESSION, HOWEVER SHORT (the seventh audit's live pass: at 09:35 on
-     five-minute bars today had one cash bar, so the Board fell back to Thursday's bars and counted "NVDA 15×" against
-     Friday's live flip under "today") — the counts wait for their own minimum of bars instead */
+  /* Once today's session has a bar it is the session; the counts wait for their own minimum of bars. */
   if (session.length >= 1 && day === nyIsoDate()) return { cash: session, tape: tape.length ? tape : parsed };
   const cash = session.length >= 2 ? session : prior.length >= 2 ? prior : tape.filter(b => nyIsoDate(b.time * 1000) === day);
   return { cash: cash.length >= 2 ? cash : parsed, tape: tape.length ? tape : parsed };
@@ -979,7 +922,7 @@ function emptyLeg(): LegBook {
   return { callOI: 0, putOI: 0, callVex: 0, putVex: 0, callVol: 0, putVol: 0, callIv: 0, putIv: 0, callGamma: 0, putGamma: 0, callAsk: 0, callBid: 0, putAsk: 0, putBid: 0, callMulti: 0, putMulti: 0, callMid: 0, putMid: 0, callNone: 0, putNone: 0, callBidPx: 0, callAskPx: 0, putBidPx: 0, putAskPx: 0 };
 }
 
-function foldContracts(rows: UwContract[], expiry: string): Map<number, LegBook> {
+function foldContracts(rows: UwContract[], expiry: string, now = Date.now()): Map<number, LegBook> {
   const by = new Map<number, LegBook>();
   for (const row of rows) {
     const parsed = parseOcc(String(row.option_symbol || ''));
@@ -989,7 +932,7 @@ function foldContracts(rows: UwContract[], expiry: string): Map<number, LegBook>
     const vega = num(row.vega);
     const leg = by.get(parsed.strike) ?? emptyLeg();
     const dollar = oi * 100 * vega;
-    const quoteOk = quoteUsable(row, expiry);
+    const quoteOk = quoteUsable(row, expiry, now);
     const iv = contractIv(row, expiry);
     const gamma = num(row.gamma);
     const askVol = num(row.ask_volume);
@@ -1034,6 +977,9 @@ function foldContracts(rows: UwContract[], expiry: string): Map<number, LegBook>
 /** A date's chain with its contracts' facts (vols, OI, delta, vanna, charm, vega) laid on — new nodes, never the old
     ones edited, so whatever is keyed on the old chain recomputes. Gamma stays the vendor's open-interest rows. */
 function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi: boolean, spot = 0, expiry = '', ticker = ''): StrikeNode[] {
+  /* vols are put on the trading clock at the minute (and price) the vendor priced the date's gamma, the clock the flip
+     re-prices at — never the wall clock, or a shut market's book would drift overnight with no new rows */
+  const priced = pricedClockOf(nodes);
   const t = expiry ? tradingYears(expiry) : 0;
   const near = !!expiry && flowWindow(expiry);
   const carry = ticker ? carryFor(ticker) : null;
@@ -1059,8 +1005,8 @@ function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi:
     for (const n of painted) {
       const leg = book.get(n.strike);
       if (!leg) continue;
-      if (leg.callIv > 0 || (leg.callBidPx > 0 && leg.callAskPx > 0)) n.callIv = ivOnTradingClock(leg.callBidPx, leg.callAskPx, leg.callIv, spot, n.strike, expiry, 'C', Date.now(), carry?.r, carry?.q);
-      if (leg.putIv > 0 || (leg.putBidPx > 0 && leg.putAskPx > 0)) n.putIv = ivOnTradingClock(leg.putBidPx, leg.putAskPx, leg.putIv, spot, n.strike, expiry, 'P', Date.now(), carry?.r, carry?.q);
+      if (leg.callIv > 0 || (leg.callBidPx > 0 && leg.callAskPx > 0)) n.callIv = ivOnTradingClock(leg.callBidPx, leg.callAskPx, leg.callIv, priced.px || spot, n.strike, expiry, 'C', priced.at, carry?.r, carry?.q);
+      if (leg.putIv > 0 || (leg.putBidPx > 0 && leg.putAskPx > 0)) n.putIv = ivOnTradingClock(leg.putBidPx, leg.putAskPx, leg.putIv, priced.px || spot, n.strike, expiry, 'P', priced.at, carry?.r, carry?.q);
     }
   }
   smoothSide(painted, 'callIv');
@@ -1129,13 +1075,25 @@ function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi:
   return painted;
 }
 
+/** The minute and price the vendor priced a date's gamma rows at (the latest row's), else the wall clock */
+function pricedClockOf(nodes: readonly StrikeNode[]): { at: number; px: number } {
+  let at = 0;
+  let px = 0;
+  for (const n of nodes)
+    if (n.gexAt != null && n.gexAt >= at) {
+      at = n.gexAt;
+      px = n.gexPx ?? 0;
+    }
+  return at > 0 ? { at, px } : { at: Date.now(), px: 0 };
+}
+
 /** One expiry's book off the vendor's raw rows, the path a live date takes (spot-exposures/expiry-strike gamma, then
     the date's option-contracts laid on). For the proofs (scripts/gamma-sign-proof.ts). */
 export function expiryBookFromRows(spotRows: unknown, contracts: UwContract[], spot: number, expiry: string): StrikeNode[] {
   const live: LiveGamma = new Map();
   liveGammaRows(spotRows, live);
   const chain = withLiveGamma([], live);
-  return contracts.length ? paintLegs(chain, foldContracts(contracts, expiry), true, spot, expiry) : chain;
+  return contracts.length ? paintLegs(chain, foldContracts(contracts, expiry, pricedClockOf(chain).at), true, spot, expiry) : chain;
 }
 
 function smoothSide(nodes: StrikeNode[], key: 'callIv' | 'putIv'): void {
@@ -1161,8 +1119,7 @@ function carryFacts(next: StrikeNode[], prev: readonly StrikeNode[] | undefined)
       putIv: n.putIv || o.putIv,
       callGamma: n.callGamma || o.callGamma,
       putGamma: n.putGamma || o.putGamma,
-      /* the contracts' own open interest and vega, as painted, until they are read again — the greek rows' open
-         interest is another count, and Building values each contract against it (the seventh audit's M3) */
+      /* the contracts' own open interest, as painted, until they are read again (Building values each contract against it) */
       callOI: o.callOI || n.callOI,
       putOI: o.putOI || n.putOI,
       callBook: n.callBook ?? o.callBook,
@@ -1215,23 +1172,18 @@ async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) 
 
 /** Open interest and vega the greek-by-expiry rows do not carry. One request a date. */
 async function fillExpiryFacts(entry: Entry, token: number, only?: readonly string[]): Promise<void> {
-  /* laid onto the book's current copy — a refresh while the contracts were read (the full book re-reads every 45s) must
-     not throw them away (the tenth audit's B3) */
+  /* laid onto the book's current copy, so a refresh while the contracts were read does not throw them away */
   void token;
   const still = () => cache.get(entry.ticker)?.status === 'live';
   const dates = only ? only.filter(d => d in entry.byDate) : Object.keys(entry.byDate);
   if (!dates.length) return;
-  /* ONE EXPIRY AT A TIME, NEVER THE WHOLE NAME IN ONE WALK (the seventh audit's M1, 2026-10-23): the whole-name walk of
-     option-contracts pages unstably — META's handed 7,416 rows of which 6,332 were unique and 916 own-vol-date contracts
-     were missing, a different 1,096 on the next walk, so the All-expiries flip read 617.29 on one load and 617.11 on
-     the next. Each date's contracts are read on their own (whales.ts whalesOptionContractsPaged: one page, or calls and
-     puts apart — no unstable paging), and a date whose read fails is left unread (not marked in), so it is asked
-     again rather than taken as having no contracts. */
+  /* One expiry at a time (the whole-name walk of option-contracts pages unstably); a date whose read fails is left unread
+     so it is asked again, never taken as having no contracts. */
   const hot = isHot(entry.ticker);
   const books = await mapLimit(dates, 3, async date => {
     try {
       const rows = await whalesOptionContractsPaged(entry.ticker, date, hot);
-      return [date, Array.isArray(rows) ? foldContracts(rows, date) : null] as const;
+      return [date, Array.isArray(rows) ? foldContracts(rows, date, pricedClockOf(entry.byDate[date] ?? []).at) : null] as const;
     } catch {
       return [date, null] as const;
     }
@@ -1360,9 +1312,7 @@ function planFor(ticker: string, spot: number, chain: StrikeNode[], flipAt: numb
   };
 }
 
-/* NEVER AN EXPIRED DATE (the ship pass, 2026-10-22): after the bell the vendor still lists the day that just settled
-   (NVDA: Oct 21, then Oct 23) — "today" on the 22nd sat equidistant between them and could read the settled book. A
-   choice resolves to its own date, else the first listing after it, else the nearest one still live. */
+/* Never an expired date: a choice resolves to its own date, else the first listing after it, else the nearest live one. */
 const closestDate = (want: string, dates: string[], floor: string = isoDate(bookToday())): string | null => {
   const live = dates.filter(d => d >= floor).sort();
   if (live.includes(want)) return want;
@@ -1396,9 +1346,7 @@ export function expiryDateFor(ticker: string, choice: string): string | null {
   if (!entry) return null;
   const dte = LADDER_DTE.find(([label]) => label === choice)?.[1];
   if (dte == null) return null;
-  /* THE DATE chainsFor HANDS THE PAGES, NOT THE NEAREST WITHIN FOUR DAYS (the third audit, 2026-10-23: CROX's Expiry
-     card said "Next session · Oct 23" while its Today scope read Nov 20 — closestDate gives up past four days, chainsFor
-     then falls back to the first live date). The same resolution, step for step. */
+  /* the date chainsFor hands the pages, resolved step for step the same way */
   const floor = isoDate(bookToday());
   const dates = Object.keys(entry.byDate).filter(d => d >= floor);
   const hit = closestDate(isoDate(expiryFor(dte, bookToday()).date), dates);
@@ -1409,9 +1357,8 @@ export function expiryDateFor(ticker: string, choice: string): string | null {
 
 const LIVE_KEYS = ['callGex', 'putGex', 'netGex', 'callDex', 'putDex', 'netDex', 'callVex', 'putVex', 'netVex', 'callVanna', 'putVanna', 'netVanna', 'callCharm', 'putCharm', 'netCharm', 'callOI', 'putOI'] as const;
 
-/* THE WHOLE BOOK WITHOUT THE DAY THAT SETTLED (the ship pass, 2026-10-22): the vendor's per-strike totals are dated to its
-   last session, so before the next open "every expiry" still carried the settled 0DTE's gamma. Once that date's own
-   chain is in, it comes off the total, strike by strike. */
+/* The whole book without the day that settled: the vendor's totals still carry it until they roll, so once that date's
+   own chain is in it comes off the total, strike by strike. */
 function liveAll(entry: Entry): StrikeNode[] {
   const memo = liveAllMemo.get(entry);
   const floor = isoDate(bookToday());
@@ -1422,15 +1369,9 @@ function liveAll(entry: Entry): StrikeNode[] {
 }
 const liveAllMemo = new WeakMap<Entry, { all: StrikeNode[]; byDate: Entry['byDate']; floor: string; n: number; out: StrikeNode[] }>();
 
-/*
-  THE WHOLE BOOK'S GAMMA IS THE SUM OF ITS DATES' ROWS, ONE SNAPSHOT (the seventh audit's m9, 2026-10-23): the vendor's
-  whole-book rows (spot-exposures/strike) and its per-expiry rows (spot-exposures/expiry-strike) are two snapshots with
-  their own minutes, and the difference was carried flat into the flip (META +$297.46M net against +$297.33M on the
-  dates). Once every live listed date's rows are in, the whole book's call and put gamma at each strike ARE those
-  dates' rows added up — the net, the walls and the flip are then read off the one snapshot. Until then the vendor's
-  whole-book rows stand in, and the levels say they are provisional (datesComplete). Delta, vanna, charm and open
-  interest stay on the whole-book greek rows (the per-date ones are not read for a Board-only name).
-*/
+/* Once every live listed date's rows are in, the whole book's call and put gamma at each strike ARE those dates' rows
+   added up (one snapshot for net, walls and flip); until then the vendor's whole-book rows stand in, provisional.
+   Delta, vanna, charm and open interest stay on the whole-book greek rows. */
 function oneSnapshot(entry: Entry, base: StrikeNode[]): StrikeNode[] {
   const floor = isoDate(bookToday());
   /* every live listing must be one the dates read (the first forty — datesComplete) */
@@ -1462,9 +1403,8 @@ function oneSnapshot(entry: Entry, base: StrikeNode[]): StrikeNode[] {
   return out;
 }
 
-/** THE BOOK A FINISHED SESSION RAN ON, ONE SNAPSHOT (the seventh audit's m9): the live dates' rows added up (oneSnapshot)
-    with the contracts that settled at that session's bell put back from their own live rows — null until every date
-    is in (the vendor's whole-book rows, a second snapshot, then stand in) */
+/** The book a finished session ran on: the live dates' rows with that session's settled contracts put back — null until
+    every date is in. */
 export function peekSessionAll(ticker: string, settledDate: string): StrikeNode[] | null {
   const e = cache.get(ticker.toUpperCase());
   if (!e || e.status !== 'live' || !e.gammaLive) return null;
@@ -1548,10 +1488,7 @@ function chainsFor(entry: Entry): Partial<Record<string, StrikeNode[]>> {
   return out;
 }
 
-/* THE LISTING AS IT STANDS ON THE BOOK'S DAY (the ship pass, 2026-10-22): the vendor's expiries are dated to its last
-   session — after the bell and into the next morning it still lists the day that settled at dte 0 (SPY Oct 21 with
-   the book on Oct 22), and the Map's window, its supreme and its levels card counted the settled contracts as live.
-   Settled dates leave the listing; the rest count their days from the book's day, so Oct 22 is "today" again. */
+/* The listing as it stands on the book's day: settled dates leave it, the rest count their days from the book's day. */
 function liveListing(expiries: Entry['expiries']): Entry['expiries'] {
   const floor = isoDate(bookToday());
   const settledFront = expiries.find(e => e.dte === 0 && e.date < floor);
@@ -1631,13 +1568,8 @@ export function peekPriceAt(ticker: string): number | null {
   return e?.status === 'live' && e.priceAt ? e.priceAt : null;
 }
 
-/*
-  THE BOARD'S PRICES EVERY TEN SECONDS, ONE CALL (the ninth audit's m2, 2026-10-23: the Board's price could be 90s old
-  under "updated … every 10s" — a Board name's book refreshes every 90s). In the regular session every live name on the
-  Board takes its last price from one /screener/stocks call (the quote's last trade, quote_time — fresh while the
-  stock-state is stalled), so the price, every distance and "at price" move on at the Board's own cadence; the levels
-  refresh on theirs. Names whose book is not live yet are left alone.
-*/
+/* The Board's prices every ten seconds in one /screener/stocks call while the session runs; the levels refresh on their
+   own cadence. Names whose book is not live yet are left alone. */
 const pricedAsk = new Map<string, number>();
 const PRICES_MS = 10_000;
 export function refreshBoardPrices(tickers: readonly string[]): void {
@@ -1708,17 +1640,13 @@ export function peekDayMove(ticker: string): DayMove | null {
   return { dayPct: e.dayKnown === false ? null : e.changePct, extPct: e.extPct ?? null, phase: e.phase ?? 'regular' };
 }
 
-/* THE DAY'S CHANGE, BEFORE AND AFTER THE BELL (the second re-audit, 2026-10-22: SPY −0.00% on a −1.18% day, AAPL −0.06%
-   on +1.23%): after the close the stock-state is the post-market bar and its prev_close is TODAY's regular close, so
-   close − prev_close is the after-hours move. The day's change is today's regular close against the one before it
-   (data/dayChange.ts, the daily rows, read once a New York day — the visible names first, as each book lands). */
+/* The day's change is today's regular close against the one before it (data/dayChange.ts); after the close
+   close − prev_close on the stock-state is the after-hours move, kept apart. */
 function applyDay(entry: Entry): void {
   const st = entry.state;
   if (!st) return;
   const ph = dayChangeOf(st, null).phase;
-  /* THE CLOSES IN EVERY PHASE (the sixth audit's M1, 2026-10-23): before the open the lead figure is the last session's
-     change, which needs the regular closes as much as after the bell does — handed only to post/closed, the pre-market
-     read got null and printed 0.00%. In the session the quote's own prev_close is the base and the closes change nothing. */
+  /* Every phase but the session needs the regular closes (before the open the lead figure is the last session's change). */
   const needsCloses = ph !== 'regular';
   const closes = peekRegularCloses(entry.ticker);
   const ch = dayChangeOf(st, closes);
@@ -1748,8 +1676,7 @@ export const fmtPct = (v: number, digits = 2): string => `${v > 0 ? '+' : v < 0 
 export function dayMoveWords(m: Pick<DayMove, 'dayPct' | 'extPct' | 'phase'> | null | undefined, digits = 2): { main: string; ext: string | null; title: string; when: string | null } | null {
   const w = dayMoveWordsOf(m, digits);
   if (!w) return null;
-  /* THE SESSION NAMED BY ITS DATE when it is not today's (the sixth audit's M1: "−1.18% Oct 22 · pre-market +0.12%",
-     the Dossier's words) — before the open, and on a weekend or a holiday */
+  /* the session named by its date when it is not today's (before the open, a weekend or a holiday) */
   const rec = recordIso();
   return { ...w, when: m && m.dayPct != null && rec !== nyIsoDate() ? monDayOf(rec) : null };
 }
@@ -1757,8 +1684,7 @@ function dayMoveWordsOf(m: Pick<DayMove, 'dayPct' | 'extPct' | 'phase'> | null |
   if (!m) return null;
   const ext = m.extPct != null && Number.isFinite(m.extPct) ? `${m.phase === 'pre' ? 'pre-market' : 'after hours'} ${fmtPct(m.extPct, digits)}` : null;
   if (m.phase === 'pre') {
-    /* before the open the lead figure is the last session's change, the pre-market move beside it (the sixth audit:
-       one page read "0.00%", another only the pre-market move, for the same name at the same minute) */
+    /* before the open: the last session's change, the pre-market move beside it */
     return {
       main: m.dayPct != null && Number.isFinite(m.dayPct) ? fmtPct(m.dayPct, digits) : '…',
       ext,
@@ -1766,8 +1692,7 @@ function dayMoveWordsOf(m: Pick<DayMove, 'dayPct' | 'extPct' | 'phase'> | null |
     };
   }
   if (m.dayPct == null) return { main: '…', ext, title: 'The day’s change is loading (the regular closes are read once a day)' };
-  /* the session named by its date when it is not New York's today (the fifth audit: "Today's regular-session change" at
-     01:00 Friday over Thursday's) */
+  /* the session named by its date when it is not New York's today */
   const rec = recordIso();
   const word = rec === nyIsoDate() ? 'Today’s' : `${longDayOf(rec)}’s`;
   return {
@@ -2090,10 +2015,7 @@ function publishMinutes(ticker: string, rows: BookMinute[]) {
   minuteRevListeners.forEach(fn => fn());
 }
 
-/** The day's gamma, one print a minute. Volume gamma — it crosses zero as hedging
-    flips — not the open-interest level, and not the straight line reconstructed
-    from today's volume in historyFrom. Directional gamma only when volume has
-    not printed yet. */
+/** The day's gamma, one print a minute: the open-interest series first, then volume gamma, then directional. */
 export function ensureBookMinutes(ticker: string): void {
   if (SIM_DESK) return;
   const t = ticker.toUpperCase();
@@ -2122,10 +2044,8 @@ export function ensureBookMinutes(ticker: string): void {
       if (Number.isFinite(vol)) volRows.push({ ...base, net: -vol });
       if (Number.isFinite(dir)) dirRows.push({ ...base, net: -dir });
     }
-    /* THE OPEN-INTEREST SERIES FIRST (the second re-audit, 2026-10-22: the Map printed "LINE NOW · VENDOR −$13.8B", the
-       volume-based series — a different measure from every net GEX on the page). gamma_per_one_percent_move_oi is the
-       whole book's open interest re-priced each minute at that minute's price: the same measure as the levels' net GEX
-       (its last print is the All-expiries net to the cent). Volume, then the directional series, only when it is absent. */
+    /* The open-interest series first: gamma_per_one_percent_move_oi is the whole book re-priced each minute (the same
+       measure as the levels' net GEX); volume, then directional, only when it is absent. */
     const oiRows: BookMinute[] = [];
     for (const row of raw) {
       if (!row || typeof row !== 'object') continue;
@@ -2234,12 +2154,8 @@ export function usePinpointFeed(ticker: string | null | undefined): MarketSnapsh
   }, [name, scope, version]);
 }
 
-/*
-  THE NAMES ON SCREEN FIRST (the fourth audit's M1: the Board's SPY and NVDA rows sat on "…" past 30s while other names
-  filled; the Agenda's Targets stayed a skeleton as long). The key allows three calls at once across the app, so the
-  order of the queue is the order things fill: the name the desk is on, and SPY (the market's own), jump it; every
-  other name queues behind them in turn.
-*/
+/* The names on screen first: the key allows three calls at once, so the queue order is the fill order — the name the
+   desk is on, and SPY, jump it. */
 const hotNames = new Set<string>(['SPY']);
 let hotActive: string | null = null;
 /** The name the desk is on — its calls jump the key's queue (SPY's always do) */
@@ -2366,13 +2282,8 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     whalesIvRank(ticker, hot).catch(() => []),
     (hot ? hotGet<UwTerm[]>(`/stock/${t}/volatility/term-structure`, true) : whalesTermStructure(ticker)).catch(() => [] as UwTerm[]),
     whalesInterpIv(ticker).catch(() => [] as UwInterp[]),
-    /* A WHOLE DAY OF BARS, NOT THE LAST FEW HOURS (the ship pass, 2026-10-22): the feed hands bars newest first,
-       post-market included — after the bell 500 one-minute bars reached back only to ~11:40, so the day's chart and
-       "How the levels held" started late morning. 1000 / 200 cover pre-market, the session and the evening. */
-    /* ONE-MINUTE BARS FOR EVERY NAME (the ninth audit's M1/M2, 2026-10-23): a Board name read 5-minute bars, so its
-       "Times price crossed the flip" and the Map's "How the levels held" — opened from the Board, or after a Board refresh
-       re-read a full name in board mode — counted 5-minute bars (SPY 9/7/2 against 14/10/4) where one-minute counts are
-       promised. One /ohlc/1m call a name a refresh, the same URL the full book and the Dossier read (one proxy copy). */
+    /* a whole day of one-minute bars (pre-market, the session and the evening) */
+    /* one-minute bars for every name, the same URL the full book and the Dossier read (one proxy copy) */
     /* Two cash sessions for the chart (yesterday and today). 1800 one-minute bars
        reach the prior open; the book's own candles stay today's session. */
     whalesBars(ticker, '1m', 1800).catch(() => [] as UwBar[]),
@@ -2393,10 +2304,8 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   }
   let state = stateRaw;
   let strikes = Array.isArray(strikeRaw) ? strikeRaw : [];
-  /* An index has no stock-state (the vendor answers 422) and no quote. The live
-     gamma rows already carry the price they were marked at, and greek-exposure
-     has the strikes. Use that first — do not wait on the Theta chain, which is
-     a second source and is often down. */
+  /* An index has no stock-state or quote: the live gamma rows carry the price they were marked at, and greek-exposure has
+     the strikes. */
   if ((!state || strikes.length === 0) && live && live.size) {
     if (strikes.length === 0) {
       strikes = [...live.keys()].filter(k => k > 0).map(strike => ({ strike }));
@@ -2418,7 +2327,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   }
   /* A name the vendor does not price any other way is read off the local chain.
      SPX and SPXW are one book. Do not wait on a dead terminal — four seconds, then the book fails and can be asked again. */
-  if (!state || strikes.length === 0) {
+  if ((!state || strikes.length === 0) && !uwOnlyDesk()) {
     const local = await Promise.race([
       awaitSpotGex(ticker),
       new Promise<null>(resolve => setTimeout(() => resolve(null), 4000)),
@@ -2443,24 +2352,16 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     if (quoted) state = quoted;
   }
   if (!state || strikes.length === 0) throw new Error('shape');
-  /* OUTSIDE THE SESSION THE PRICE IS THE REGULAR CLOSE (the fourth audit, 2026-10-23: the Board printed AAPL's after-hours
-     $348.60 beside the regular session's change, measured every distance from it, and the Dossier said 348.22). The
-     levels were priced at the 4:00 close (the vendor's rows carry that price), so the price on Pinpoint, and every
-     distance to a level, is that close — the Dossier's own convention (data/liveQuote.ts priceWords). The after-hours
-     or pre-market print is kept apart (`last`) and labelled where it is shown. */
-  /* A STALLED STOCK-STATE IS NOT THE PRICE (the eighth Pinpoint fix, 2026-10-23 11:16 ET: the vendor's stock-state sat at
-     its 10:35 print — SPY 759.68, tape_time 14:35Z — on every name for 40 minutes while the one-minute bars and the quote
-     ran on at 762.8; every distance and "at price" on Pinpoint was read off the stalled print). In the regular session a
-     bar newer than the state's tape time by more than two minutes is the price. */
+  /* Outside the session the price is the regular close (the levels were priced there); the after-hours or pre-market
+     print is kept apart (`last`) and labelled where shown. */
+  /* A stalled stock-state is not the price: in the session a bar newer than the state's tape time by over two minutes is. */
   const barsSplit = candlesFrom(Array.isArray(bars) ? bars : [], cashToOf(ticker));
   const name = sameName(ticker);
   chartSpan.set(name, twoCashSessions(Array.isArray(bars) ? bars : [], cashToOf(ticker), name === 'SPX' ? 3 : 2));
   chartAll.set(name, parseTape(Array.isArray(bars) ? bars : []));
   const tapeMs = Date.parse(String((state as { tape_time?: string }).tape_time ?? ''));
   const newest = barsSplit.tape[barsSplit.tape.length - 1] ?? barsSplit.cash[barsSplit.cash.length - 1];
-  /* …ONLY INSIDE THE SESSION (the eleventh audit's M1, 2026-10-23 20:31 ET: the state was still stuck on its 10:35 print
-     marked "regular", so after the close the stalled rule took the newest bar — the 19:59 after-hours print, SPY 761.11
-     −0.37% "as of 20:00" — as the price, while the Dossier printed "$759.85 close · 761.11 after hours"). */
+  /* …only inside the session (after the close the newest bar is an after-hours print). */
   const [ty, tm, td] = nyIsoDate().split('-').map(Number);
   const sessionOpen = isTradingDay(new Date(ty, tm - 1, td)) && nySessionPhase() === 'open';
   const stateStalled = sessionOpen && state.market_time === 'regular' && !!newest && Number.isFinite(tapeMs) && newest.time * 1000 + 60_000 - tapeMs > 120_000;
@@ -2493,8 +2394,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     ticker,
     status: 'live',
     at: Date.now(),
-    /* A REFRESH NEVER DOWNGRADES OR BLANKS (the ninth audit's M1): a full book read again stays full — its dates and
-       their contracts are carried below and re-read in place — so nothing on the page drops back to "loading" */
+    /* a refresh never downgrades or blanks: a full book read again stays full */
     full: !!prevEntry?.full && (mode === 'full' || !!prevEntry?.wantFull),
     wantFull: mode === 'full' || !!prevEntry?.wantFull,
     spot,
@@ -2588,13 +2488,8 @@ function keepTotals(entry: Entry, rows: unknown): void {
 
 const FRONT_MS = 180_000;
 
-/* WHICH DATES RE-PRICE WITH THEIR CONTRACTS' OWN VOLS (the fifth audit, 2026-10-23): the front date, and every live date
-   holding at least OWN_IV_SHARE of the dates' gross gamma. With only the front date's own vols AAPL's whole book read
-   336.7 (its later dates' wings at the ATM vol) against 326.0 with every contract's own; with the dates under 0.5% of
-   the gross on their ATM vol it reads 326.00 (QQQ 734.37 against 734.33) — at 2% it was 329.1, AAPL's book is that
-   flat — and a Board-only name skips five to nine dates' contracts. The full book reads every date's contracts anyway; the
-   Board reads these dates' (loadBoardDates) — both pages pick the dates by the same rule off the same chains, so both
-   re-price with the same vols. */
+/* The dates that re-price with their contracts' own vols: the front date and every live date holding at least
+   OWN_IV_SHARE of the dates' gross gamma — the Map and a Board-only name pick them by the same rule off the same chains. */
 export const OWN_IV_SHARE = 0.005;
 export function ownIvDates(byDate: Readonly<Record<string, readonly StrikeNode[] | undefined>>, dates: readonly string[], front: string | undefined): Set<string> {
   const gross = (d: string) => (byDate[d] ?? []).reduce((a, n) => a + Math.abs(n.callGex) + Math.abs(n.putGex), 0);
@@ -2603,13 +2498,8 @@ export function ownIvDates(byDate: Readonly<Record<string, readonly StrikeNode[]
   return new Set(g.filter(([d, v]) => d === front || (total > 0 && v >= OWN_IV_SHARE * total)).map(([d]) => d));
 }
 
-/*
-  A BOARD NAME'S FRONT DATE (the ship pass, 2026-10-22). A name read for the Board alone used to carry no per-expiry
-  chain at all, so its "Today" levels silently fell back to the whole book (QQQ's net GEX on the Board was the whole
-  book's while Compare read today's) and its "Expires today" read "—". Two calls a name, kept three minutes: the
-  listing with each date's gamma (the share that expires today comes straight off it) and the first live date's own
-  strikes (the "Today" levels). The full book still loads every date for the name on screen.
-*/
+/* A Board name's front date: the listing with each date's gamma and the first live date's own strikes (two calls, kept
+   three minutes), so its "Today" levels are today's, not the whole book's. */
 async function loadFront(entry: Entry, token: number): Promise<void> {
   const still = () => gen.get(entry.ticker) === token;
   const today = isoDate(bookToday());
@@ -2620,9 +2510,7 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
     if (allScope) await refreshDatesGamma(entry, token);
     return;
   }
-  /* THE BOARD'S FRONT DATE AHEAD OF THE QUEUE (the retail test, 2026-10-22: 16 of 20 names sat on "…" at 22s): the
-     three calls that fill a row's "Today" levels jump the key's queue, so each name's row fills as its own core lands
-     rather than after every name's */
+  /* the calls that fill a Board row's "Today" levels jump the key's queue */
   let listed: { date: string; dte: number }[] = [];
   const hot = isHot(entry.ticker);
   const got = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/greek-exposure/expiry`, hot);
@@ -2630,8 +2518,7 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
   listed = listingOf(got.data);
   keepTotals(entry, got.data);
   if (!still() || !listed.length) return;
-  /* the first live listing when nothing is within four days (CROX: Nov 20 — the fourth audit found its Board "Today"
-     levels never loaded and read the whole book's, labelled "today loading", for good) */
+  /* the first live listing when nothing is within four days */
   const front = closestDate(isoDate(expiryFor(0, bookToday()).date), listed.map(r => r.date)) ?? listed.map(r => r.date).filter(d => d >= today).sort()[0];
   if (!front) return;
   let chain: StrikeNode[] = entry.byDate[front] ?? [];
@@ -2661,8 +2548,8 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
     if (rows) {
       /* in only once read — a failed read is asked again on the next pass, never taken as "no contracts" */
       current.factsDates = new Set([...(current.factsDates ?? []), front]);
-      const book = foldContracts(rows, front);
       const have = current.byDate[front] ?? chain;
+      const book = foldContracts(rows, front, pricedClockOf(have).at);
       if (book.size && have.length) current.byDate = { ...current.byDate, [front]: paintLegs(have, book, true, current.spot, front, current.ticker) };
       current.frontFacts = true;
       current.at = Date.now();
@@ -2672,8 +2559,8 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
   }
   /* AFTER THE CLOSE, TODAY'S OWN CONTRACTS (names with a same-day expiry): the book the session ran on, for "Flip crossed
      today" — the vendor still serves this morning's rows for them (one call, once) */
-  /* …and before today's open, the last session's own contracts (the session on record — data/bookWindow.ts recordDay):
-     "How the levels held" and "Flip crossed" grade that session against the book live in it (the fifth audit) */
+  /* …and before today's open, the last session's own contracts (the session on record): "How the levels held" and "Flip
+     crossed" grade that session against its own book */
   const ny = recordIso();
   if (today > ny && listed.some(r => r.date === ny)) {
     const cur = cache.get(entry.ticker);
@@ -2689,16 +2576,15 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
         emit();
       }
     }
-    /* …and that session's own contracts (the seventh audit's M2): its flip re-prices them with their own vols, and is
-       final — "Flip crossed", "How the levels held" — only once they are read */
+    /* …and that session's own contracts: its flip is final only once they are read */
     const had = cache.get(entry.ticker);
     if (had && had.byDate[ny]?.length && !had.factsDates?.has(ny)) {
       const rows = await whalesOptionContractsPaged(entry.ticker, ny, hot).catch(() => null);
       if (!still()) return;
       const after = cache.get(entry.ticker);
       if (after && rows) {
-        const book = foldContracts(rows, ny);
         const have = after.byDate[ny];
+        const book = foldContracts(rows, ny, pricedClockOf(have ?? []).at);
         if (book.size && have?.length) after.byDate = { ...after.byDate, [ny]: paintLegs(have, book, true, after.spot, ny, after.ticker) };
         after.factsDates = new Set([...(after.factsDates ?? []), ny]);
         after.at = Date.now();
@@ -2710,8 +2596,7 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
   if (levelsForName(entry.ticker) === 'ALL') await loadBoardDates(entry.ticker, token, listed);
 }
 
-/** The session on record's own date has been asked for (its chain landed, or the ask came back) — until then a page
-    that needs that book says "…", never "not available" (the seventh audit's m1) */
+/** The session on record's own date has been asked for — until then a page that needs that book says "…". */
 const recordAsked = new Set<string>();
 export function peekRecordAsked(ticker: string, date: string): boolean {
   const e = cache.get(ticker.toUpperCase());
@@ -2755,18 +2640,11 @@ function datesComplete(entry: Entry): boolean {
 const datesWait = new Set<string>();
 /** Listed dates whose strikes came back empty — asked once, not waited on forever */
 const emptyDates = new Map<string, Set<string>>();
-/*
-  ONE BOARD NAME'S DATES AT A TIME, THE NAME ON SCREEN FIRST (the fifth audit, 2026-10-23: the Board in All expiries sat
-  on "Reading the levels…" for 17 of 20 names at 45s). Every name queued its forty dates at once, so the key's three
-  slots were shared by all twenty and every row finished late together. The dates are read a name at a time — the hot
-  name (the one the desk is on) ahead of the rest, then in the order asked (the Board's own order) — so rows land one
-  after another; the chains already read are kept on the book and never asked again.
-*/
+/* One Board name's dates at a time, the name on screen first, so rows land one after another; chains already read are
+   kept and never asked again. */
 const datesQueue: { ticker: string; run: () => Promise<void>; done: () => void }[] = [];
 let datesRunning = 0;
-/* five names at a time (the sixth audit's M3; five since the seventh's m11, with five asks in flight from the browser —
-   whales.ts MAX_INFLIGHT): each name's walk is one page after another, so five names keep the proxy's queue fed — the
-   name on screen still first */
+/* five names at a time (each name's walk is one page after another), the name on screen first */
 const DATES_AT_ONCE = 5;
 function pumpDates(): void {
   while (datesRunning < DATES_AT_ONCE && datesQueue.length) {
@@ -2875,10 +2753,8 @@ export function peekBellShare(ticker: string): { share: number } | { share: null
   if (!e || e.status !== 'live') return { share: null, why: 'wait' };
   /* the session the book is on (after Friday's bell bookToday is Saturday, and nothing "expired Saturday") */
   const today = isoDate(nextSession(bookToday()));
-  /* THE LIVE BOOK, NOT THE MORNING SNAPSHOT (the third audit, 2026-10-23: NVDA 17% against 13% live, TSLA 25 against 28,
-     AAPL 23 against 25): today's date's live open-interest gamma, gross, against the whole live book's (settled dates
-     off). Calls carry one sign on every date and puts the other, so the whole book's per-strike legs add to the same
-     gross as every date's added up. The morning snapshot (greek-exposure/expiry) only stands in until the live rows land. */
+  /* Today's date's live open-interest gamma, gross, against the whole live book's (settled dates off); the morning
+     snapshot (greek-exposure/expiry) stands in only until the live rows land. */
   const listedToday = e.expiries.some(x => x.date === today) || e.totals?.some(t => t.date === today);
   const todayChain = e.byDate[today];
   /* the whole live book is only final once the contracts that settled come off it (liveAll) */
@@ -2889,8 +2765,7 @@ export function peekBellShare(ticker: string): { share: number } | { share: null
     const dies = gross(todayChain);
     if (total > 0) return { share: Math.min(100, Math.round((100 * dies) / total)) };
   }
-  /* NOTHING PROVISIONAL (the fourth audit: the Board read 16% off the morning snapshot at first load, then the live 15%):
-     with the live book on, a name whose date is listed waits for that date's live rows rather than print the stand-in */
+  /* nothing provisional: a name whose date is listed waits for that date's live rows */
   if (e.gammaLive && listedToday && !todayChain?.length) return { share: null, why: 'wait' };
   if (!e.totals?.length) return listedToday === false && e.expiries.length ? { share: null, why: 'none' } : { share: null, why: 'wait' };
   const live = e.totals.filter(t => t.date >= today);
@@ -2900,15 +2775,8 @@ export function peekBellShare(ticker: string): { share: number } | { share: null
   return total > 0 ? { share: Math.round((100 * dies) / total) } : { share: null, why: 'wait' };
 }
 
-/*
-  ONE FULL WALK A NAME AT A TIME, NEVER ABANDONED BY A REFRESH (the tenth audit's B3, 2026-10-23: SPY's All-expiries levels
-  never finished on the Map, the Board or Compare in 2–3.5 minutes). The full book is re-read every FULL_MS (45s), and
-  each re-read started the forty-date walk again and dropped the one in flight (its writes were tied to the read that
-  started it) — SPY's walk takes longer than 45s on the key's three slots, so it never reached its end and the book was
-  never `full`. The walk now runs once per name, lays what it reads onto whatever copy of the book is current, and a
-  re-read while it runs leaves it be. A date whose read failed is asked once more at the end, and a date the vendor
-  answers empty is taken as empty (not waited on for good).
-*/
+/* One full walk a name at a time, never abandoned by a refresh: it lays what it reads onto the current copy of the book;
+   a failed date is asked once more at the end, and an empty answer is taken as empty. */
 const expWalking = new Set<string>();
 async function loadExpiries(entry: Entry, token: number): Promise<void> {
   if (expWalking.has(entry.ticker)) return;
@@ -2981,15 +2849,9 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
     emit();
   };
   /* The dates on screen first, then the rest of the listed book. */
-  /* THE NEAR DATES' OPEN INTEREST AT ONCE (the ship pass, 2026-10-22): the by-expiry rows carry no open interest, and
-     it was filled only after all ~40 dates had landed — on Building (today's expiry by default) every strike's change
-     read +$0 for the better part of a minute. The dates on screen get theirs as soon as they are in. */
-  /* the far dates' live gamma in one walk of every expiry (liveGammaAll — the sixth audit's M3), read beside the near
-     dates; each far date then asks only its greek rows, its live rows already in hand */
-  /* THE FRONT DATE FIRST, ON ITS OWN (the eighth audit's load times: Map 17s, Agenda 19s, Building 27s). "Today" — the
-     desk's default scope — is final once the front date's chain and its contracts are in; it waited on all six near
-     dates' chains before its contracts were even asked. The front date is pulled and its contracts asked at once; the
-     other near dates follow beside them. */
+  /* the near dates' open interest as soon as they are in, not after all ~40 dates */
+  /* the far dates' live gamma in one walk (liveGammaAll); each far date then asks only its greek rows */
+  /* the front date first, on its own: "Today" is final once its chain and contracts are in */
   const front = near.slice(0, 1);
   const frontGot = await pull(front, true);
   if (!still()) return;
@@ -3084,14 +2946,8 @@ function load(ticker: string, mode: BookMode) {
   });
 }
 
-/*
-  A CLOSED MARKET'S BOOK IS READ ONCE (the eleventh audit's M3, 2026-10-23 evening: the Map sat at 35 requests a minute on
-  SPY's Next-session book and the Board at 158 — option-contracts, spot-exposures/expiry-strike and greek-exposure/
-  strike-expiry asked again every 45–90s over rows that do not move until the next session). From BOOK_SETTLED_MIN on a
-  trading day (the vendor's last rows print by ~16:15) to PREMARKET_MIN on the next trading day, a book that has landed
-  whole is held: it is read again at ~07:00 ET on the next trading day, then at the session's cadence. A book that has not
-  landed whole (a failed or missing piece) keeps being read until it has.
-*/
+/* A shut market's book is read once: from BOOK_SETTLED_MIN on a trading day to PREMARKET_MIN on the next, a book that
+   landed whole is held (bookSettled); one that has not keeps being read until it has. */
 const BOOK_SETTLED_MIN = 16 * 60 + 30;
 const PREMARKET_MIN = 7 * 60;
 /** When a book read at `at` is next read: null in the live window (07:00 → 16:30 ET on a trading day), else the next
@@ -3138,8 +2994,7 @@ export function ensureBook(ticker: string, mode: BookMode = 'board', force = fal
     if (mode === 'full') e.wantFull = true;
     return;
   }
-  /* NEVER A DOWNGRADE (the ninth audit's M1): a name the Map holds in full is refreshed in full whoever asks — a Board
-     caller's 'board' read used to reload it with the Board's mode */
+  /* never a downgrade: a name held in full is refreshed in full whoever asks */
   if (e && (e.full || e.wantFull)) mode = 'full';
   /* a closed market's settled book is held until the next pre-market (bookFixedUntil) — an upgrade to the full book
      still loads what the board read lacks */
@@ -3163,17 +3018,9 @@ export function ensureBook(ticker: string, mode: BookMode = 'board', force = fal
 
 /* ---- the last session's open-interest change, contract by contract ---------------------------------------------- */
 
-/* WHAT WAS BUILT IS THE VENDOR'S OPEN-INTEREST CHANGE, NOT THE DAY'S VOLUME (the Pinpoint sweep, 2026-10-22): Building
-   took every contract traded today as open interest added since the open — on SPY, where a strike trades several times
-   its open interest in a day, that printed walls "was $11.1B" against $36M now and "drained $144.6B". The vendor's
-   oi-change is the real thing: each contract's open interest this morning against the session before. Summed here to
-   the strike, calls and puts apart. Pages are ordered by the size of the change, so the first few hold everything that
-   moved a wall. */
-/* BOTH DIRECTIONS (the third audit, 2026-10-23): the vendor's default order is the largest INCREASE first — six pages
-   of it ran out at a change of 0 and never reached one contract that was closed. SPY's 770 call wall read "steady
-   −$95K" over −2,995 calls (−$70.5M), 769 "+$0" over −6,478 puts; 110 of the 342 Oct 23 contracts fell and none were
-   counted. Increases are read largest first (order=desc), decreases largest first (order=asc), each until its pages
-   reach a change of 0 — everything past that point is unchanged. */
+/* What was built is the vendor's open-interest change (each contract's OI this morning against the session before),
+   not the day's volume. */
+/* Both directions: increases largest first (order=desc), decreases largest first (order=asc), each until a change of 0. */
 const OI_PAGES = 14;
 
 /** One contract's open-interest change: the vendor's oi_diff_plain — this morning's open interest (curr_date, set
@@ -3193,6 +3040,8 @@ export interface OiChange {
   /** The open-interest dates the change runs between ("2026-10-21" → "2026-10-22") */
   lastDate: string | null;
   currDate: string | null;
+  /** 'top': the largest 500 increases and 500 decreases only (the Board's read); 'full': every changed contract */
+  depth: 'top' | 'full';
 }
 const oiChangeCache = new Map<string, OiChange>();
 const oiChangeAt = new Map<string, number>();
@@ -3200,10 +3049,7 @@ const oiChangeAt = new Map<string, number>();
 const OI_CHANGE_MS = 30 * 60_000;
 const oiChangeWait = new Set<string>();
 
-/* KEYED BY CONTRACT, NOT BY STRIKE (the Pinpoint audit, 2026-10-22): the strike-only parse dropped the expiry and summed
-   every date's change at a strike, and Building then valued that sum at the selected scope's per-contract gamma — SPY
-   767 read "+42,691 puts" on today's chain when 1,921 of them were 10/22 and 36,716 were 10/27. Each row keeps its
-   expiry, strike and side; Building picks the contracts in scope and values each with its own gamma. */
+/* Keyed by contract, not by strike: Building picks the contracts in scope and values each with its own gamma. */
 /** The last session that has finished: today's after its 4:00 close, else the trading day before today */
 function finishedSessionIso(): string {
   const iso = nyIsoDate();
@@ -3215,10 +3061,8 @@ function finishedSessionIso(): string {
   }
   return iso;
 }
-/* THE NEXT COUNT AS SOON AS IT IS OUT (the seventh audit's retail finding: "BUILT OCT 21" with "Oct 22's count is not out
-   yet" at 07:25 on Oct 23, and nothing said when it would be): while the count in hand does not yet cover the last
-   finished session, the vendor's first page is asked every five minutes, and the whole count is read again the moment it
-   carries a newer date */
+/* While the count in hand is behind the last finished session, the first page is probed every five minutes and the
+   whole count is read again once it carries a newer date. */
 const OI_STALE_MS = 5 * 60_000;
 const oiChangeChecked = new Map<string, number>();
 /** When the open-interest count was last asked for (epoch ms), and whether it is behind the last finished session */
@@ -3233,16 +3077,20 @@ export function oiCheckWindow(now: number = Date.now()): boolean {
   const mins = nyMinutes(now);
   return isTradingDay(new Date(y, m - 1, d)) && mins >= PREMARKET_MIN && mins < CLOSE_MIN;
 }
-export function ensureOiChange(ticker: string): void {
+/** `depth` 'top' reads one page each way (the largest changes — what moves a wall), for a name read in passing (the
+    Board, the Agenda's rows); 'full' every page, for Building. A top read in hand is upgraded when full is asked. */
+export function ensureOiChange(ticker: string, depth: 'top' | 'full' = 'full'): void {
   const t = ticker.toUpperCase();
   if (!t || oiChangeWait.has(t)) return;
   const held = oiChangeCache.get(t);
+  if (held && depth === 'full' && held.depth === 'top') {
+    readOiChange(t, 'full');
+    return;
+  }
   const behind = !!held?.lastDate && held.lastDate < finishedSessionIso();
   const age = Date.now() - Math.max(oiChangeAt.get(t) ?? 0, oiChangeChecked.get(t) ?? 0);
   if (held && age < (behind ? OI_STALE_MS : OI_CHANGE_MS)) return;
-  /* THE COUNT IS LOOKED FOR ONLY WHEN IT CAN LAND (the eleventh audit's M3: Building probed every five minutes all
-     weekend): the vendor sets it overnight and has it out before the open, so a count in hand is asked again only on a
-     trading day from 07:00 ET until the close — and, behind, until the newer count lands */
+  /* a count in hand is looked for again only when a new one can land: a trading day from 07:00 ET to the close */
   if (held && !oiCheckWindow()) return;
   oiChangeWait.add(t);
   if (held && behind) {
@@ -3256,14 +3104,14 @@ export function ensureOiChange(ticker: string): void {
       if (newer) {
         oiChangeAt.delete(t);
         oiChangeChecked.delete(t);
-        readOiChange(t);
+        readOiChange(t, held.depth === 'full' ? 'full' : depth);
       } else emit();
     })().catch(() => oiChangeWait.delete(t));
     return;
   }
-  readOiChange(t);
+  readOiChange(t, held?.depth === 'full' ? 'full' : depth);
 }
-function readOiChange(t: string): void {
+function readOiChange(t: string, depth: 'top' | 'full'): void {
   oiChangeWait.add(t);
   void (async () => {
     const out: OiChangeRow[] = [];
@@ -3271,8 +3119,8 @@ function readOiChange(t: string): void {
     let currDate: string | null = null;
     const seen = new Set<string>();
     for (const order of ['desc', 'asc'] as const) {
-      for (let page = 0; page < OI_PAGES; page++) {
-        /* a name off screen reads its change in the background lane — no row's levels wait on it (the sixth audit's M3) */
+      for (let page = 0; page < (depth === 'top' ? 1 : OI_PAGES); page++) {
+        /* a name off screen reads its change in the background lane */
         const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=${page}&order=${order}`, isHot(t), !isHot(t));
         const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
         let reachedZero = false;
@@ -3294,7 +3142,7 @@ function readOiChange(t: string): void {
     }
     /* nothing came back (every page failed): keep the last count rather than print an empty one */
     if (!out.length && oiChangeCache.has(t)) return;
-    oiChangeCache.set(t, { rows: out, lastDate, currDate });
+    oiChangeCache.set(t, { rows: out, lastDate, currDate, depth });
     oiChangeAt.set(t, Date.now());
     oiChangeChecked.set(t, Date.now());
     emit();

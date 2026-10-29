@@ -12,6 +12,28 @@ import { darkPrint } from './traceLive';
 import { alertSides, darkPrintKey } from './sidesRule';
 import { uwCall, whalesAnalysts, whalesBars, whalesDailyLong, whalesEarnings, whalesFinancials, whalesOptionContracts, whalesScreener, whalesStock, type UwDaily } from './whales';
 import { nyClock, nyIsoDate, nyMinutes as nyMinuteOf, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
+import { noteBarCloses, peekRegularCloses, regularCloses } from './dayChange';
+
+/* Five regular closes need about fifteen daily rows (pre, regular and post a day), not two years of them. */
+const CLOSES_ROWS = 18;
+const closesAsked = new Map<string, Promise<{ date: string; close: number }[]>>();
+/** A name's last regular closes, newest first, read once a New York day and shared with the quote's cache */
+export function loadCloses(ticker: string): Promise<{ date: string; close: number }[]> {
+  const t = ticker.toUpperCase();
+  const hit = peekRegularCloses(t);
+  if (hit) return Promise.resolve(hit);
+  const running = closesAsked.get(t);
+  if (running) return running;
+  const p = uwCall(`/stock/${encodeURIComponent(t)}/ohlc/1d?limit=${CLOSES_ROWS}`, true)
+    .then(got => {
+      const closes = regularCloses(Array.isArray(got.data) ? (got.data as UwDaily[]) : []).slice(0, 5);
+      if (closes.length) noteBarCloses(t, closes);
+      return peekRegularCloses(t) ?? closes;
+    })
+    .finally(() => closesAsked.delete(t));
+  closesAsked.set(t, p);
+  return p;
+}
 
 export interface EarnRow {
   report_date?: string;

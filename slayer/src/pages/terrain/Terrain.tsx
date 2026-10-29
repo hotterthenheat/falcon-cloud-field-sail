@@ -64,63 +64,21 @@ import {
 import { flipRing, stepSymbol, stepTf } from './paneKeys';
 
 /*
-==================================================
-  SLAYER TERMINAL - TERRAIN (pages/terrain/Terrain.tsx)
+  TERRAIN — one to four chart panes that own the viewport.
 
-  Charts, and nothing else. One to four of them,
-  filling the screen, and EACH ONE IS ITS OWN
-  WORKSPACE — its own symbol, interval, overlays,
-  indicators and tape shape.
-==================================================
+  Each pane is its own workspace: symbol, interval, overlays, indicators, style, theme and rail. Only the arrangement
+  (pane count, rail on/off for all) and the rails' colours and expiry cut are desk-wide.
 
-  THE PANES ARE INDEPENDENT (Noah, 2026-08-25: "each chart box should have
-  its own time frame area, it's own everything because each is different from
-  the other ones"). The first cut shared one rail across every pane, on the
-  reasoning that a three-up read only means something if the panes agree. That
-  was the wrong call for this desk and it is reversed here: the panes are
-  three different instruments at three different resolutions, and the whole
-  point of putting them side by side is that they are set up differently.
+  A pane, top to bottom: identity (symbol · price · change), its toolbar, one read line (the hovered bar, else the
+  heaviest strikes), then StrikeChart with the ProfilePanel rail beside it.
 
-  So the only things left on the top rail are the two that belong to the
-  ARRANGEMENT rather than to any chart: how many panes there are, and whether
-  they carry their strike rail. Everything else lives in the pane.
-
-  WHAT A PANE CARRIES, top to bottom:
-
-      symbol · price · session change      identity
-      interval + overlays + indicators     ChartToolbar, `minimal`
-      the three heaviest strikes near      the book, in one line
-      spot, signed
-      the chart, and the panel beside it   StrikeChart + ProfilePanel
-                                           (the Map's: size at each
-                                           strike and what a move
-                                           there forces, figures in
-                                           the capsules and in the
-                                           read line — 2026-09-08,
-                                           in the old rail's place)
-
-  IT TAKES THE WHOLE SCREEN. The shell wraps every page in horizontal padding,
-  20px above and 64px below, then ends it with the site footer. A workspace
-  wants none of that, so the margins are cancelled and the height is pinned to
-  the viewport less the top bar — measured at 56px, not guessed. The footer
-  still follows, below the fold, exactly as it does on every other page.
-  Below `lg` all of it comes off: the panes stack, the height cap lifts, and
-  the page scrolls, because four charts sharing one phone screen is four
-  charts nobody can read.
-
-  WHY IT IS NOT THE 4-WAY BOARD. /pulse/board is four cells with four
-  toolbars, fixed at four, on a page that scrolls. Terrain is one to four
-  panes that own the viewport, with a strike rail and named levels on the
-  axis. They have converged on per-pane controls, which is the right answer
-  for both; what still separates them is the arrangement and the density.
+  The page cancels the shell's padding and pins its height to the viewport below the 56px top bar; below `lg` the panes
+  stack and the page scrolls.
 */
 
 const TERRAIN_KEY = 'slayer_terrain_v1';
 
-/* `stepTf` and the symbol ring moved to ./paneKeys — pure, and therefore
-   provable by `npm test`, which this file can never be: it imports
-   StrikeChart, which imports the charting library. The clamp had been
-   unasserted since it was written. */
+/* `stepTf` and the symbol ring live in ./paneKeys so `npm test` can load them without the charting library. */
 
 /** How many panes are on screen. Four is the ceiling: at 1440 a fifth pane is
     260px wide, and a chart that narrow stops being a chart — the same finding
@@ -1200,31 +1158,14 @@ const Pane = ({
   /* The panel's "How to read", as a focus over this pane — the Map's own card */
   const [guideOpen, setGuideOpen] = useState(false);
 
-  /*
-    THE HOVERED BAR — T-8. The chart reports its own values at the crosshair,
-    for a pointer on this plot and for a moment arriving from another pane, so
-    a synced desk reads values on every pane rather than only under the cursor.
-
-    Cleared on a change of symbol or interval as well as on the chart's own
-    leave. The chart does emit null when the pointer goes, but a reload is not
-    a leave: switching symbol with the pointer still resting on the plot would
-    otherwise leave the last name's prices in this row under the new name's
-    tape. Same reason `focus` resets.
-  */
+  /* The bar under the crosshair — this pane's pointer or a moment synced from another pane. Cleared on a symbol or
+     interval change too: a reload is not a pointer leave, and the last name's prices would sit under the new tape. */
   const [readout] = useState(() => makeCell<CrosshairBar | null>(null));
   useEffect(() => readout.set(null), [ticker, timeframe, readout]);
 
 
-  /* THE CHROME WEARS THIS PANE'S THEME (Noah, 2026-09-13, three cuts in one night: "the
-     tool chart should NEVER change colors" → "the only thing I specified as staying black
-     was the drawing tool bar" → "now you can change the top section to match the chart
-     theme"). The pane stamps the ground of ITS OWN theme on its box (data-chart-ground —
-     the store's theme is not this pane's, which is what painted a dark pane's strip light
-     grey the first time), and index.css re-scopes the tokens on every strip and chip inside
-     to that ground: Stone's chrome is stone with dark ink, a dark tape's is black with light
-     ink, the drawing rail stays black on either. The box itself keeps the panel black — it
-     is the frame. The panel beside the tape is its OWN island on the PAGE's theme since
-     2026-10-17 (ProfilePanel; Noah: "i only decided to make the chart dark"). */
+  /* The chrome wears this pane's candle theme: the box stamps its own ground (data-chart-ground) and index.css re-scopes
+     the tokens inside to it. The drawing rail stays black, and the ProfilePanel beside the tape follows the page's theme. */
   const ground = chartGround(theme);
   const surface = 'rgb(var(--panel))';
   /* The strip's 55% wash of the chrome's panel — the strip carries data-chart-chrome, so the
@@ -1960,45 +1901,12 @@ const Pane = ({
               )}
 
               {/*
-                THE BOOK, on its own line and only while you are looking.
-
-                It rode in the identity row and kept getting cut mid-number —
-                a pane printed "521 -$235.4", which is the front of -$235.4M
-                and reads as a complete number that is wrong by six orders of
-                magnitude. Fading the tail did not fix that; a faded number is
-                still a number. On its own full-width line, revealed with the
-                toolbar, there is room for every entry whole.
-              */}
-              {/*
-                THE HOVERED BAR TAKES THE BOOK'S LINE — T-8, and it shares the
-                slot rather than adding one.
-
-                A row of its own would push the toolbar and the compare legend
-                DOWN the moment the pointer crossed onto the plot — chrome
-                moving under the cursor that caused it, on a desk whose whole
-                premise is that the tape keeps still. Sharing costs nothing and
-                the two reads are never both wanted: the pointer is either over
-                the tape, where the question is what this bar did, or over the
-                chrome, where it is where the book is. Leaving the plot brings
-                the heaviest read straight back.
-
-                It is not `opacity-0` like the row it replaces, because it only
-                exists WHILE the pointer is on the plot — which is already the
-                hover state. Fading in something that is only ever created by a
-                hover would just make it late.
-
-                ONE SLOT, ONE HEIGHT (Noah, 2026-10-18: "severe shaking … the
-                words move up and down RAPIDLY" with the pointer between two
-                rows of the scripts legend). The two reads shared the slot but
-                not its height — the readout's cells inherited the page's 16px
-                line and stood 32px tall where the heaviest line stood 23 — so
-                the chrome grew nine pixels the moment the pointer reached the
-                plot, and the legend measured under this chrome (ScriptLegend)
-                moved down with it, under the pointer, which was then on a row,
-                so the plot lost the pointer, the chrome shrank, the legend
-                moved back up, and round again at the frame rate. Both reads
-                now stand in a 23px line and an empty slot keeps the height, so
-                nothing the hover does changes where the chrome ends.
+                ONE READ LINE, shared by the heaviest strikes (shown with the toolbar) and the hovered bar (while the
+                pointer is on the plot) — a second row would push the chrome down under the pointer that caused it.
+                Both reads keep the same 23px height, and an empty slot keeps it too: when the readout stood taller,
+                the chrome grew on hover, the legend below moved under the pointer, the plot lost it, and the chrome
+                oscillated at the frame rate. The heaviest strikes get a full-width line because a cut-off figure
+                ("521 -$235.4" of -$235.4M) reads as a whole, wrong number.
               */}
               <ChromeReadLine cell={readout} stripInner={stripInner} heavy={heavy} />
 

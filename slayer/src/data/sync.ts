@@ -1,28 +1,9 @@
 /*
-  SLAYER TERMINAL - THE STORES' SYNC (data/sync.ts)
-
-  Noah (2026-10-10): "build the first one" — a paying member's desk layouts, watchlist, journal and preferences lived
-  only in the browser they used. Now the account carries them: every store the terminal keeps in localStorage under a
-  carried key is mirrored to the account's own rows (public.user_state, one row a key, the value as the browser kept
-  it), and follows the person between machines.
-
-  HOW, without touching thirty stores: the stores write localStorage as they always did. This module watches the
-  browser's own setItem/removeItem for the carried keys, stamps each change, and uploads it a breath later, batched.
-  At boot, before any store reads its key, the account's rows are pulled and the newer side wins, key by key — a row
-  newer than the local stamp is written into localStorage; a local value the account has never seen is uploaded (so
-  the machine's state becomes the account's at the first sign-in). A fresh sign-in on a page already running pulls the
-  same way and reloads once if anything landed, since the stores had already read their keys. Signing out flushes
-  what is pending, then clears the carried keys from this browser: a shared machine starts the next person clean, and
-  the account brings everything back at the next sign-in.
-
-  What is carried: a person's work (the watchlist, positions, the Pulse desks, Terrain's layout and named layouts and
-  drawings, the Weigher's desk, the paper accounts, journal and desk, the review journal and its tags, closed trades,
-  tracked setups, Trace's watchers, alert names, flow reasons, the 0DTE and screener settings, the ledger's names,
-  news follows, the room) and the Settings preferences (theme, candles, the ruler, the desk's own rows, a few column
-  choices). NOT carried: scripts — they live in IndexedDB and get their own seam later; the profile, which the row
-  already mirrors; and device things (the rail's fold, dock widths, tab leases, an owner's view-as).
-
-  Last write wins by time. Offline, the upload waits for the next change or the next boot; nothing is lost locally.
+  Carries a person's localStorage state through their account (public.user_state, one row per carried key).
+  The stores keep writing localStorage; this watches the browser's setItem/removeItem for CARRIED keys, stamps each
+  change and uploads it in batches. At boot the account's rows are pulled and the newer side wins, key by key.
+  Signing out flushes, then clears the carried keys. Scripts (IndexedDB) and device-only state are not carried.
+  Last write wins by time; offline, an upload waits for the next change or boot.
 */
 
 import { supabase } from './supabase';
@@ -58,7 +39,7 @@ const CARRIED: string[] = [
   'slayer_alert_names',
   'slayer_flow_reasons_v1',
   'slayer_odte_v1',
-  /* the screener's whole screen (data/screenerViews) and every page's saved cuts (data/savedViews, 2026-10-13) */
+  /* the screener's screen and every page's saved cuts */
   'slayer_screener_screen_v2',
   'slayer_screener_views_v1',
   'slayer_tape_cuts_v1',
@@ -85,18 +66,15 @@ const CARRIED_SET = new Set(CARRIED);
 const STAMPS_KEY = 'slayer_sync_stamps';
 const MAX_VALUE = 1_048_576;
 const FLUSH_MS = 1500;
-const BOOT_WAIT_MS = 2500;
+const RELOAD_KEY = 'slayer_sync_reloaded';
 
 /* the browser's own writers, kept so a pull can write without being heard as a change */
-const native = {
-  set: Storage.prototype.setItem,
-  remove: Storage.prototype.removeItem,
-};
+const native = typeof Storage !== 'undefined'
+  ? { set: Storage.prototype.setItem, remove: Storage.prototype.removeItem }
+  : { set: (() => undefined) as Storage['setItem'], remove: (() => undefined) as Storage['removeItem'] };
 
-/* when each carried key last changed on this machine, AS WHOM — ISO instants, kept in storage so they survive a reload.
-   A stamp is only worth something to the person who made it: a machine that wrote a store's defaults while signed out
-   has nothing to say against the account, and another person's stamps are not this one's (the first probe, 2026-10-10:
-   three stores stamped "now" at a signed-out boot, and would have beaten the account at the next sign-in) */
+/* When each carried key last changed on this machine, and for which user. A stamp counts only for the person who made
+   it: defaults written while signed out, or another person's changes, never beat the account. */
 interface Stamps {
   user: string | null;
   keys: Record<string, string>;
@@ -274,11 +252,19 @@ export async function pullState(): Promise<number> {
   return changed;
 }
 
-/** at boot, before the stores read their keys: pull with a short patience, so an unreachable service never holds the
-    page — then the stores read what landed */
+/** At boot, behind the first render: pull, and if the account's state changed any key the stores have already read,
+    reload once per tab session so they read it. */
 export async function bootSync(): Promise<void> {
   if (!supabase) return;
-  await Promise.race([pullState().catch(() => 0), new Promise<void>(resolve => window.setTimeout(resolve, BOOT_WAIT_MS))]);
+  const changed = await pullState().catch(() => 0);
+  if (changed <= 0) return;
+  try {
+    if (sessionStorage.getItem(RELOAD_KEY)) return;
+    sessionStorage.setItem(RELOAD_KEY, '1');
+  } catch {
+    return;
+  }
+  window.location.reload();
 }
 
 /** a fresh sign-in on a page already running: the account's state is pulled first (it beats anything this machine

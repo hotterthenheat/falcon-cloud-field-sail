@@ -49,7 +49,7 @@ import ComingSoonWall, { useWalled } from '../../components/ui/ComingSoonWall';
 import { useAccess } from '../../data/access';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import { initials, useProfile } from '../../data/profile';
-import { fmtFollowers, fmtR, loadRoom, ME, PEOPLE, personOf, rMultiple, recordOf, saveRoom, SEED_NOTICES, SEED_POSTS, timeAgo, tokenize, trendingOf } from '../../data/room';
+import { fmtFollowers, fmtR, loadRoom, ME, PEOPLE, personOf, rMultiple, recordOf, saveRoom, timeAgo, tokenize, trendingOf } from '../../data/room';
 import type { Lean, Post, RoomState, Setup, SetupState } from '../../types/room';
 import { ROOM_FOLLOW_H, ROOM_GRID, ROOM_NOTICE_H, ROOM_POST_H, ROOM_TREND_H } from './roomSkeleton';
 
@@ -193,7 +193,7 @@ const Room = () => {
   const [sFrame, setSFrame] = useState('2 weeks');
 
   /* Every post: the reader's own first, then the seeded room, newest first */
-  const posts = useMemo(() => [...state.posts, ...SEED_POSTS].sort((a, b) => b.at.localeCompare(a.at)), [state.posts]);
+  const posts = useMemo(() => [...state.posts].sort((a, b) => b.at.localeCompare(a.at)), [state.posts]);
   const trending = useMemo(() => trendingOf(posts), [posts]);
   const nameOptions = useMemo<DropdownOption<string>[]>(() => [{ value: 'all', label: 'Every name', hint: 'Whatever the room is naming' }, ...trending.map(t => ({ value: t.name, label: `$${t.name}`, hint: `${t.posts} post${t.posts === 1 ? '' : 's'} in the last day` }))], [trending]);
 
@@ -630,22 +630,13 @@ const Room = () => {
                 <h3 className="text-t12 font-semibold text-textPrimary">Notifications</h3>
                 <Bell className="ml-auto w-3.5 h-3.5 text-textMuted" aria-hidden />
               </div>
-              {SEED_NOTICES.map(n => (
-                <div key={n.id} className="px-4 flex items-center gap-3 border-t border-borderSubtle/60" style={{ height: ROOM_NOTICE_H }}>
-                  <Mark handle={n.handle} size={24} />
-                  <div className="min-w-0">
-                    <div className="text-t115 text-textSecondary truncate">
-                      <span className="font-semibold text-textPrimary">{nameOf(n.handle)}</span> {n.what}
-                    </div>
-                    <div className="font-mono text-t10 tnum text-textMuted">{timeAgo(n.at)} ago</div>
-                  </div>
-                </div>
-              ))}
+              <div className="px-4 py-3 border-t border-borderSubtle/60 text-t11 text-textMuted">Nothing yet. Notifications arrive once the room opens.</div>
             </div>
             <div className="border border-borderSubtle rounded-md bg-panel overflow-hidden" data-room-follow>
               <div className="px-4 h-10 flex items-center">
                 <h3 className="text-t12 font-semibold text-textPrimary">Who to follow</h3>
               </div>
+              {suggested.length === 0 && <div className="px-4 py-3 border-t border-borderSubtle/60 text-t11 text-textMuted">No members yet.</div>}
               {suggested.map(p => (
                 <div key={p.handle} className="px-4 flex items-center gap-3 border-t border-borderSubtle/60" style={{ height: ROOM_FOLLOW_H }} data-room-suggest={p.handle}>
                   <Mark handle={p.handle} size={28} />
@@ -690,15 +681,6 @@ const Room = () => {
             blurb="One room for the people trading with the terminal — their reads, their setups and the record those setups build. What stands under the glass is the shape of it."
             foot={
               <>
-                <div className="flex items-center">
-                  {PEOPLE.map((p, i) => (
-                    <span key={p.handle} className={`rounded-full ring-2 ring-canvas ${i > 0 ? '-ml-2' : ''}`}>
-                      <Mark handle={p.handle} size={26} />
-                    </span>
-                  ))}
-                </div>
-                <span className="font-mono text-t10 text-textMuted whitespace-nowrap">{PEOPLE.length} traders already in</span>
-                <span className="w-px h-4 bg-borderSubtle" />
                 <div className="flex items-center gap-1.5">
                   {['SPY', 'NVDA', 'META', 'AAPL'].map(t => (
                     <span key={t} className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-t10 font-bold text-textPrimary">

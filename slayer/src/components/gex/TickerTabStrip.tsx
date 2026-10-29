@@ -1,30 +1,8 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE TAB STRIP
-  (components/gex/TickerTabStrip.tsx)
-
-  TradingView's tab bar for a Terrain desk (Noah,
-  2026-10-18, with the app's own bar on his screen:
-  "i kind of want the extra tickers to look like
-  that"): a strip across the top of the page, one
-  tab a name the active pane holds — the mark, the
-  name, the price and its change — the tab in hand
-  lit, a close on it, a plus at the end that opens
-  the house's lookup and adds the name picked as a
-  new tab, on the tape at once. Five at most: the
-  sixth press is disabled and says so.
-
-  Before this (2026-10-17) the tabs stood as small
-  chips beside the symbol chip in the pane's own
-  head — a row already carrying the price, the
-  readout and the toolbar. The strip gives the head
-  its room back and the tabs their own.
-
-  A desk of two to four panes has a set of tabs a
-  pane; the strip shows the ACTIVE pane's, its
-  number at the strip's left edge, so a tab pressed
-  renames the pane you are in.
-==================================================
+  The tab strip across the top of Terrain: one tab per name the ACTIVE pane holds (logo, name, price, change), the
+  active tab lit, a close on each, and a "+" that opens the ticker lookup and adds the pick as a new tab. Five at most —
+  the sixth press is disabled and says so. On a multi-pane desk the active pane's number leads the strip, so a tab
+  pressed renames the pane you are in.
 */
 
 import { useEffect, useRef, useState } from 'react';

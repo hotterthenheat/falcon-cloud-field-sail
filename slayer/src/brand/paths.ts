@@ -1,18 +1,7 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE MARK'S OUTLINES (brand/paths.ts)
+/* The mark's outlines on its 64-unit tile: corner brackets, ">", the S and the cursor, traced from the logo drawing
+   (edit the drawing, not these). The product glyphs on the same tile are ui/PageGlyph.tsx. */
 
-  ">S|" on its 64-unit tile — the Logo System his partner drew (2026-09-30),
-  taken whole at Noah's word (2026-10-03: "all of it"): the tile's corner
-  brackets, the ">", the S "cut at its own weight: heavy, flat-ended strokes,
-  square joins", and the cursor. Traced once from the drawing's vectors —
-  edit the drawing there, not here.
-
-  The thirteen product glyphs on the same tile are ui/PageGlyph.tsx's.
-==================================================
-*/
-
-/** The 64-unit tile, its corner brackets (a 0.7 stroke), the ">", the S and the cursor */
+/** The 64-unit tile, its brackets (0.7 stroke), the ">", the S and the cursor. */
 export const MARK = {
   tile: 'M3 -0.01L61 -0.01C62.66 -0.01 64 1.34 64 2.99L64 60.99C64 62.65 62.66 63.99 61 63.99L3 63.99C1.34 63.99 0 62.65 0 60.99L0 2.99C0 1.34 1.34 -0.01 3 -0.01Z',
   brackets: 'M3.5 7.79L3.5 3.49L7.8 3.49M56.2 3.49L60.5 3.49L60.5 7.79M60.5 56.19L60.5 60.49L56.2 60.49M7.8 60.49L3.5 60.49L3.5 56.19',
@@ -22,5 +11,5 @@ export const MARK = {
   cursor: [46, 15.49, 5.9, 33] as const,
 } as const;
 
-/** the S| alone, without the ">": 24.4 → 51.9 across, 15.49 → 48.49 down */
+/** the S| alone: 24.4 to 51.9 across, 15.49 to 48.49 down */
 export const MARK_CONTENT = { x0: 24.4, y0: 15.49, x1: 51.9, y1: 48.49 } as const;

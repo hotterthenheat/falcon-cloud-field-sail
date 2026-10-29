@@ -1,9 +1,5 @@
-/*
-  The wire map, drawn here. Land and borders come from the
-  public-domain country atlas already in the bundle — no
-  tile server, no key. Water is the background, so zooming
-  out never opens a black frame.
-*/
+/* The wire map (MapLibre on the public-domain country atlas, fetched once by URL): no tile server, no key. Water is
+   the background, so zooming out never opens a black frame. Loaded only when the News page shows its map. */
 import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource } from 'maplibre-gl';
@@ -13,11 +9,11 @@ import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 import { feature } from 'topojson-client';
 import { geoArea, geoCentroid, geoContains } from 'd3-geo';
-import worldAtlas from 'world-atlas/countries-50m.json';
+import atlasUrl from 'world-atlas/countries-110m.json?url';
 import cities from '../../data/cities.json';
 import { useResolvedTheme } from '../../theme/theme';
 import type { CityPing, GeoZone, NewsGrade } from '../../data/newsroom';
-import type { FlyTo, HeatPoint, Reach } from './NewsMap';
+import { HEAT_INK, OPEN_INK, NEWS_INK, type FlyTo, type HeatPoint, type MapProps, type Reach } from './NewsMap';
 
 const SEA: Record<'dark' | 'light', string> = { dark: '#12181e', light: '#d7e3ea' };
 const LAND: Record<'dark' | 'light', string> = { dark: '#2a333c', light: '#f3f0e8' };
@@ -46,14 +42,19 @@ const unwrapFeature = (f: GeoJSON.Feature): GeoJSON.Feature => {
   return f;
 };
 
+const EMPTY_LAND: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 let land: GeoJSON.FeatureCollection | null = null;
-const landCollection = (): GeoJSON.FeatureCollection => {
-  if (!land) {
-    const fc = feature(worldAtlas as unknown as Parameters<typeof feature>[0], (worldAtlas as { objects: { countries: Parameters<typeof feature>[1] } }).objects.countries) as unknown as GeoJSON.FeatureCollection;
-    land = { type: 'FeatureCollection', features: fc.features.filter(f => String(f.id) !== '010' && f.geometry).map(unwrapFeature) };
-  }
-  return land;
-};
+type Atlas = Parameters<typeof feature>[0] & { objects: { countries: Parameters<typeof feature>[1] } };
+let atlasAsk: Promise<void> | null = null;
+/** The atlas, read once a visit; Antarctica is left off (no story lands there) */
+const loadAtlas = (): Promise<void> =>
+  (atlasAsk ??= fetch(atlasUrl)
+    .then(r => r.json() as Promise<Atlas>)
+    .then(topo => {
+      const fc = feature(topo, topo.objects.countries) as unknown as GeoJSON.FeatureCollection;
+      land = { type: 'FeatureCollection', features: fc.features.filter(f => String(f.id) !== '010' && f.geometry).map(unwrapFeature) };
+    }));
+const landCollection = (): GeoJSON.FeatureCollection => land ?? EMPTY_LAND;
 const countryFeatures = () => landCollection().features;
 
 type GazCity = { n: string; lat: number; lng: number; pop: number; z: number; c: string };
@@ -100,26 +101,8 @@ const baseStyle = (tone: 'dark' | 'light') => ({
   ],
 });
 
-export interface LiveSession {
-  key: string;
-  label: string;
-  west: number;
-  east: number;
-}
-
-interface Props {
-  pins: CityPing[];
-  selectedCity: string | null;
-  hoverCity: string | null;
-  onPick: (pin: CityPing) => void;
-  onHover: (pin: CityPing | null) => void;
-  heat: HeatPoint[];
-  reach: Reach | null;
-  flyTo?: FlyTo | null;
-  sessions: LiveSession[];
-  className?: string;
-  /** Called when the WebGL map cannot draw (no WebGL, a worker that never answers, a failed style) — the page swaps in
-      the flat SVG map rather than leave an empty dark box (audit round 5, the retail phone test) */
+interface Props extends MapProps {
+  /** Called when the WebGL map cannot draw (no WebGL, a worker that never answers, a failed style) */
   onFail?: () => void;
 }
 
@@ -195,7 +178,7 @@ const ensureLayers = (map: maplibregl.Map) => {
     type: 'fill',
     source: 'news-land',
     paint: {
-      'fill-color': ['match', ['get', 'role'], 'open', '#5f9e86', 'heat', '#c4845a', '#4d7a68'],
+      'fill-color': ['match', ['get', 'role'], 'open', OPEN_INK, 'heat', HEAT_INK, NEWS_INK],
       'fill-opacity': ['match', ['get', 'role'], 'open', 0.42, 'heat', 0.34, 0.28],
     },
   });
@@ -653,4 +636,22 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
   );
 };
 
-export default LiveMap;
+/** The map once the atlas is in hand; a box of the same size until then */
+const LiveMapLoader = (props: Props) => {
+  const [ready, setReady] = useState(land != null);
+  const onFail = useRef(props.onFail);
+  onFail.current = props.onFail;
+  useEffect(() => {
+    if (ready) return;
+    let dead = false;
+    loadAtlas()
+      .then(() => !dead && setReady(true))
+      .catch(() => !dead && onFail.current?.());
+    return () => {
+      dead = true;
+    };
+  }, [ready]);
+  return ready ? <LiveMap {...props} /> : <div className={props.className} data-news-map="loading" />;
+};
+
+export default LiveMapLoader;

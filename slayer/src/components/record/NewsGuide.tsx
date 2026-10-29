@@ -1,19 +1,7 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW TO READ THE WIRE
-  (components/record/NewsGuide.tsx)
-
-  The News page's guide in the house pattern: a
-  figure per thing, the surface drawn small in its
-  own inks, ONE sentence under each (Noah,
-  2026-09-09: "waaaay to many words not enough
-  high quality images. short and sweet").
-==================================================
-*/
+/* The News page's guide: one short section per part of the page, a small figure where a picture says it faster. */
 
 import type { ReactNode } from 'react';
-import NewsMap, { type HeatPoint, type MapNote, type Reach } from './NewsMap';
-import type { CityPing } from '../../data/newsroom';
+import { HEAT_INK, OPEN_INK } from './NewsMap';
 
 const SILVER = 'rgb(var(--silver))';
 const SUPREME = 'rgb(var(--supreme))';
@@ -36,71 +24,6 @@ const Figure = ({ children, label, h = 110 }: { children: ReactNode; label: stri
       {children}
     </svg>
   </figure>
-);
-
-/* THE MAP FIGURES: the real map, still, in figure mode — the same borders,
-   pins, heat, wash and arcs the page draws, so the guide shows the thing
-   itself (Noah, 2026-09-09: the drawn ovals were "not matching our high
-   quality type design at all"). */
-const MapFigure = ({ label, children }: { label: string; children: ReactNode }) => (
-  <figure data-theme="dark" className="mt-3 rounded-md border border-borderSubtle/60 bg-panel overflow-hidden" role="img" aria-label={label} data-guide-figure>
-    {children}
-  </figure>
-);
-const ping = (city: string, lat: number, lng: number, n: number, grade: CityPing['grade'], freshest: CityPing['freshest'] = 'developing'): CityPing => ({
-  city,
-  lat,
-  lng,
-  n,
-  threats: grade === 'THREAT' ? n : 0,
-  allies: grade === 'ALLY' ? n : 0,
-  grade,
-  topId: city,
-  topHeadline: '',
-  maxSeverity: 5,
-  freshest,
-});
-const still = { onPick: () => undefined, onHover: () => undefined, hoverCity: null };
-/** A Wednesday at 09:30 UTC — London open, Tokyo and New York closed */
-const LONDON_MORNING = new Date('2026-09-09T09:30:00Z');
-
-const PIN_FIGURE = {
-  pins: [ping('Santa Clara', 37.35, -121.95, 3, 'WATCH'), ping('Washington', 38.89, -77.04, 1, 'WATCH'), ping('Riyadh', 24.71, 46.68, 2, 'WATCH', 'fresh'), ping('Shanghai', 31.23, 121.47, 1, 'WATCH')],
-  notes: [
-    { lat: 37.35, lng: -121.95, text: '3 stories', dy: 52 },
-    { lat: 38.89, lng: -77.04, text: 'open', dy: 44 },
-    { lat: 24.71, lng: 46.68, text: 'fresh', dy: 52 },
-  ] as MapNote[],
-};
-const PinsFigure = () => (
-  <MapFigure label="The map, still: a big three at Santa Clara, a pin with the silver ring at Washington, a two with a halo at Riyadh, a small one at Shanghai">
-    <NewsMap figure pins={PIN_FIGURE.pins} selectedCity="Washington" heat={[]} reach={null} at={new Date('2026-09-09T22:00:00Z')} notes={PIN_FIGURE.notes} {...still} />
-  </MapFigure>
-);
-
-const HEAT_FIGURE = {
-  pins: [ping('Santa Clara', 37.35, -121.95, 1, 'ALLY')],
-  heat: [
-    { lat: 40.71, lng: -74.01, w: 30 },
-    { lat: 29.76, lng: -95.37, w: 12 },
-    { lat: 24.71, lng: 46.68, w: 12 },
-    { lat: 25.03, lng: 121.56, w: 14 },
-    { lat: 37.56, lng: 126.97, w: 8 },
-    { lat: 22.54, lng: 114.06, w: 9 },
-    { lat: 51.44, lng: 5.47, w: 6 },
-    { lat: 51.51, lng: -0.13, w: 9 },
-    { lat: 35.68, lng: 139.69, w: 7 },
-  ] as HeatPoint[],
-  reach: { lat: 37.35, lng: -121.95, city: 'Santa Clara', zones: [] } as Reach,
-  notes: [
-    { lat: 36, lng: -98, text: 'hot · most news lands here', dy: 74 },
-    
-  ] as MapNote[],
-};
-const HeatFigure = () => (
-  <MapFigure label="The map, still: the United States warmed hottest, Asia and the Gulf warm, a silver wash over Europe reading London open, the open pin at Santa Clara">
-    <NewsMap figure pins={HEAT_FIGURE.pins} selectedCity="Santa Clara" heat={HEAT_FIGURE.heat} reach={HEAT_FIGURE.reach} at={LONDON_MORNING} notes={HEAT_FIGURE.notes} {...still} />
-  </MapFigure>
 );
 
 /* The square before a headline */
@@ -217,16 +140,8 @@ const MonthFigure = () => {
 
 export const NewsGuide = () => (
   <div data-news-guide>
-    <Section title="The pins">
-      <p>One pin per city: its size the count, a halo when a story there is fresh, the silver ring on the open one. Pins are grey because Unusual Whales sends no positive or negative read on its headlines — every one arrives marked neutral — so the page does not invent one.</p>
-      <PinsFigure />
-    </Section>
-    <Section title="Heat, reach, sessions">
-      <p>The land warms where the stories come from — each story's city, weighed by how hard it lands — and the wash is the market that is open now.</p>
-      <HeatFigure />
-    </Section>
-    <Section title="The tape, the kinds, the glide">
-      <p>The newest headlines cross the top of the map on a loop; it holds still under the pointer, the wheel or a drag pulls it back by hand, and the arrows at its ends step one headline at a time. A story that leaves the tape is still a row below. The pills at the map's foot pull one kind of story up everywhere. Pick a story anywhere — the tape, a pin, a row — and the map glides to its city, flat; Fit brings the world back.</p>
+    <Section title="The map">
+      <p>The map sits under the story list and loads when you open it. One pin per city a story comes from, its size the count. Countries a story reaches are tinted <span style={{ color: HEAT_INK }}>copper</span>, the open story's own <span style={{ color: OPEN_INK }}>green</span>, and a pale wash marks the cash market open now. Pins are grey: the vendor marks every headline neutral, so no story is graded for or against its name. Pick a story anywhere and the map flies to its city.</p>
     </Section>
     <Section title="The square">
       <p>How hard a story lands, on the wire and on the calendar.</p>

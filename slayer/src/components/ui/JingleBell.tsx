@@ -1,28 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE BELL THAT RINGS (components/ui/JingleBell.tsx)
-
-  One bell for every place an alert is set (Noah,
-  2026-09-10: "when i do set an alert i want the
-  little bell to jingle and then turn orange"):
-  when its count rises it is KICKED from its crown
-  and swings back on a spring — underdamped, so it
-  overshoots and settles the way a real bell does —
-  with a small pop in size, and the alert ink lands
-  as the swing dies. While anything is set it stays
-  in that ink — a bell in colour means "you are
-  watching something". Quiet, it takes whatever
-  colour the host's classes give it.
-
-  PHYSICS, NOT A SCRIPT OF ANGLES (Noah, later the
-  same night: "i actually dont like the alert
-  shake. is there built in libraries for more high
-  quality ones?"): the first cut was hand-written
-  CSS keyframes (18°, −15°, 11°, −7°…) and read as a
-  shake. framer-motion is already in the house; a
-  spring from a 22° kick decays on its own maths.
-  Reduced motion gets the ink without the swing.
-==================================================
+  One bell for every place an alert is set. When its count rises it is kicked and swings back on an underdamped
+  framer-motion spring with a small pop, landing in the alert ink, which it keeps while anything is set. Quiet, it
+  takes the host's colour. Reduced motion gets the ink without the swing.
 */
 
 import { useEffect, useRef, type CSSProperties } from 'react';
@@ -41,8 +20,7 @@ interface JingleBellProps {
   className?: string;
   strokeWidth?: number;
   style?: CSSProperties;
-  /** Draw the Alerts glyph (ui/PageGlyph.tsx) at this size instead of the line bell — the rail and the phone menu, where
-      every page wears its glyph (2026-10-03). The swing is the same; the glyph's dot is always the alert ink. */
+  /** Draw the Alerts page glyph (ui/PageGlyph.tsx) instead of the line bell, as in the rail and phone menu. */
   glyph?: number;
 }
 

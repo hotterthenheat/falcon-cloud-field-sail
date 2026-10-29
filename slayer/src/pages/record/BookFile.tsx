@@ -1,15 +1,10 @@
-/*
-  A HOUSE, A SHORT FILE, A FUND.
-
-  The same page the lists are. One bordered desk: the head and four
-  facts, one line of controls with the way back on it, one sentence,
-  then the house grid. Not a second, grayer page.
-*/
+/* A house, a short file, a fund: one bordered desk like the lists — the head's facts, the controls with the way back,
+   one sentence, then the grid. */
 
 import { CoSub } from '../../components/record/CoName';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { whalesScreener } from '../../data/whales';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { type ColDef, type ICellRendererParams } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
@@ -33,7 +28,7 @@ import { lastSessionIso, nyTodayIso, shortDay as shortDayOf } from '../../data/n
 import { FUND_TYPES, shortRowFromFile, useCompanyName, useEtfFile, useEtfWeights, useHouseBook, useShortRow, useStockCard } from '../../data/liveFiles';
 import { SQUEEZE_INK, SQUEEZE_TIP, squeezeRead } from '../../data/squeeze';
 import { useShortReads } from '../../data/shortFile';
-import { displayName, tickerName } from '../../data/tickers';
+import { displayName } from '../../data/tickers';
 import { AssetCell, BillsSwitch, CongressCard, assetKey, assetLine } from './Congress';
 import { PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
 import { holdingAssetKey } from '../../data/fileBooks';
@@ -49,8 +44,7 @@ import { HouseSectors, ShortHistory } from '../../components/vendor/LiveDesk';
 import type { CongressTrade, ReportOwner } from '../../types/record';
 import { statHelp } from '../../components/record/statHelp';
 
-/* A UNIT CHANGE NEVER READS "−0.0M" (the retail test, round 6): no change says "unchanged"; a change under 50K units is
-   said in thousands */
+/* no change reads "unchanged"; a change under 50K units is said in thousands */
 const unitsDelta = (m: number): string => {
   if (!Number.isFinite(m) || m === 0) return 'unchanged';
   const sign = m > 0 ? '+' : '−';
@@ -83,8 +77,7 @@ const Missing = ({ to, label }: { to: string; label: string }) => (
   </>
 );
 
-/** Still reading — never "not on this book" while the read is out (the ship pass, 2026-10-22: a slow filing read as a
-    missing one) */
+/** still reading, never "not on this book" while the read is out */
 const Reading = ({ to, back, what }: { to: string; back: string; what: string }) => (
   <>
     <WayBack to={to} label={back} />
@@ -196,8 +189,7 @@ export const HouseFile = () => {
             <dt className="text-t10 text-textMuted cursor-help" title={`The ${feed.length} largest lines read here, by value`}>Top {feed.length} lines</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{moneyB(value)}{bookLive.totalB ? <span className="text-textMuted"> · {Math.round((100 * value) / bookLive.totalB)}%</span> : null}</dd>
           </div>
-          {/* THE WHOLE FILING'S CALLS AND PUTS (audit round 7: the cards read "Calls $0 · Puts $0" off the top 80 lines while
-              BlackRock's 13F carries $12.8B of calls and $4.16B of puts — the feed's own call_value / put_value) */}
+          {/* the whole filing's calls and puts, the feed's own call_value and put_value */}
           <div>
             <dt className="text-t10 text-textMuted cursor-help" title={`Calls on the whole 13F as Unusual Whales totals it (call_value) — the market value of the shares the call lines cover${callValue > 0 ? `; ${moneyB(callValue)} of it in the ${feed.length} lines read below` : `; none of the ${feed.length} largest lines below is a call`}`}>Calls · whole 13F</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{bookLive.optionsB ? moneyB(bookLive.optionsB.calls) : '—'}</dd>
@@ -285,7 +277,7 @@ export const ShortFile = () => {
   const reads = useShortReads(ok ? t : '');
   const card = useStockCard(ok ? t : '');
   const coName = useCompanyName(ok ? t : '', true);
-  /* THE PRICE ON THE SHORT FILE (the retail test, round 7: GME's file had none) — the quote every page leads with */
+  /* the short file's price is the quote every page leads with */
   const quote = useLiveQuote(ok ? t : null);
   const priced = priceWords(quote);
   const isFund = card?.issueType ? FUND_TYPES.test(card.issueType) : undefined;
@@ -301,7 +293,7 @@ export const ShortFile = () => {
     return newest ? newest.slice(0, 10) : null;
   }, [reads.rebate]);
   const fileWaiting = reads.waiting;
-  /* THE SESSION'S FULL VOLUME (round 11), one screener row: the squeeze point is scored on short volume over it */
+  /* the session's full volume, one screener row: the short-volume share is shown against it */
   const [fullVol, setFullVol] = useState<{ date: string; vol: number } | null>(null);
   useEffect(() => {
     if (!ok) return;
@@ -396,14 +388,13 @@ export const ShortFile = () => {
           <div>
             <dt className="text-t10 text-textMuted cursor-help" title={`Of the last session's off-exchange volume reported to FINRA (dark pools and wholesalers — not the lit exchanges' trades), the share reported as short sales; market makers' hedges count too, so about half is ordinary. Source: ${row.shortVolSource ?? 'Unusual Whales short volume and ratio (FINRA)'}`}>Short volume · off-exchange</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{row.shortVolRatio.toFixed(0)}%{row.shortVolDate ? <span className="text-textMuted"> · {asOfDay(row.shortVolDate)}</span> : null}</dd>
-            {/* the source named on the card (audit round 6) */}
+            {/* the source named on the card */}
             <dd className="font-mono text-t9 text-textMuted whitespace-nowrap" data-short-vol-source>{row.shortVolSource?.startsWith('the by-market') ? 'FINRA CNMS · by-market rows' : 'FINRA CNMS · short volume read'}</dd>
           </div>
           ) : null}
         </dl>
       </div>
-      {/* NO VERDICT ON THE SETTLEMENT ALONE (audit round 10: GME read "SQUEEZE WEAK" off the settlement's fee, "the feed
-         sent no newer reading", before today's borrow landed and changed both) — held until the file's own reads settle */}
+      {/* the squeeze word is held until the file's own reads settle */}
       {squeeze && fileWaiting && (
         <div className="mx-5 mb-3 rounded-md border border-borderMuted bg-card px-4 py-3" data-short-squeeze="reading">
           <div className="flex items-center gap-3 flex-wrap">
@@ -423,13 +414,16 @@ export const ShortFile = () => {
             {squeeze.facts.map(f => (
               <li key={f.text}>{f.text}</li>
             ))}
+            {squeeze.context.map(f => (
+              <li key={f.text} className="text-textMuted">{f.text} · shown, not scored</li>
+            ))}
           </ul>
           <p className={`mt-1 text-t10 ${squeeze.stale ? 'text-warn' : 'text-textMuted'}`}>
             Short interest as of {asOfDay(squeeze.asOf)}{squeeze.stale ? ' — a newer settlement should be out, so the shorts may have moved since' : ' — the latest settlement published; the next lands about seven business days after the 15th or month-end'}. {borrowDay ? `The fee and the shares to borrow are the latest reading, ${asOfDay(borrowDay)}.` : 'The fee and the shares to borrow are the settlement day’s — the feed sent no newer reading.'} A setup is not a forecast: it says the shorts would be squeezed if buyers came, not that they will.
           </p>
           {listRead && listRead.word !== squeeze.word ? (
             <p className="mt-1 text-t10 text-textSecondary" data-short-list-read={listRead.word}>
-              The Shorts list reads this name <span className={`font-semibold uppercase ${SQUEEZE_INK[listRead.word]}`}>{listRead.word}</span>: it scores the settlement’s own figures only (fee {shortLive.row?.feeRate == null ? '—' : `${shortLive.row.feeRate.toFixed(2)}%`}, {borrowM(shortLive.row?.availableM ?? null)} to borrow on {asOfDay(shortLive.row?.borrowAsOf ?? listRead.asOf)}), while this file adds today’s borrow, the last session’s short volume and the fails to deliver.
+              The Shorts list reads this name <span className={`font-semibold uppercase ${SQUEEZE_INK[listRead.word]}`}>{listRead.word}</span>: it scores the settlement’s own figures only (fee {shortLive.row?.feeRate == null ? '—' : `${shortLive.row.feeRate.toFixed(2)}%`}, {borrowM(shortLive.row?.availableM ?? null)} to borrow on {asOfDay(shortLive.row?.borrowAsOf ?? listRead.asOf)}), while this file reads today’s borrow.
             </p>
           ) : null}
         </div>
@@ -437,9 +431,7 @@ export const ShortFile = () => {
       <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-short-sentence>
         {row.shortSharesM.toFixed(1)}M shares short, {row.interestPct.toFixed(2)}% of a {row.floatM.toFixed(0)}M float, {row.daysToCover.toFixed(1)} days to cover.
         {row.availableM == null ? ' The feed did not say how many shares are left to borrow.' : row.availableM >= 10 - 1e-9 ? ' At least 10M shares are available to borrow.' : ` ${borrowM(row.availableM)} shares are available to borrow.`}
-        {/* ONE MARKET IS NOT "THE HEAVIEST" (round 8: "FINRA CNMS printed the heaviest short volume, 51% of that market"
-            with no other market on file). FINRA's CNMS rows are the off-exchange trades reported to its trade-reporting
-            facilities — the dark pools and the wholesalers — so their total is off-exchange volume alone, never the day's. */}
+        {/* FINRA's CNMS rows are off-exchange volume alone (dark pools and wholesalers), never the day's whole volume. */}
         {lead && markets.length === 1 ? (
           <>
             {' '}
@@ -524,9 +516,7 @@ export const FundFile = () => {
   const fundPaged = usePagedGrid<EtfHolding>();
   const holdings = fundLive.holdings;
   const cover = fundLive.cover;
-  /* THE WHOLE FUND'S SPLIT, NOT THE LINES READ (the data audit, 2026-10-22): the holdings route sends the largest 250 lines
-     — 44% of IWM's 1,941 — and the page scaled those to 100% and called it "the book by country". The sector and
-     country tables now read the fund's own weights (/etfs/{t}/weights), which cover the whole fund. */
+  /* The sector and country tables read the fund's own weights (/etfs/{t}/weights), which cover the whole fund. */
   const weights = useEtfWeights(etf);
   const lineSectors = useMemo(() => weightSlices(holdings.map(h => ({ name: h.sector, weight: h.weight }))), [holdings]);
   const sectors = weights.sectors.length ? weights.sectors : [];
@@ -620,7 +610,7 @@ export const FundFile = () => {
             <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${ink(fund.flow5dM)}`}>{moneyFlow(fund.flow5dM)}</dd>
           </div>
           <div>
-            {/* dated by its session (round 11): outside the session it is the last session's, not "today" */}
+            {/* dated by its session: outside the session it is the last session's */}
             <dt className="text-t10 text-textMuted" title={`Option contracts traded on ${shortDayOf(lastSessionIso())}${lastSessionIso() === nyTodayIso() ? ', today' : ', the last session'}`}>Call · put volume · {shortDayOf(lastSessionIso())}</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum whitespace-nowrap">
               <span className="text-bull">{fund.callVol == null ? '—' : fund.callVol.toLocaleString('en-US')}</span>
@@ -742,7 +732,7 @@ const WEIGHT_BAR: ColDef<{ id: string; name: string; weight: number }> = { heade
 const SECTOR_COLS: ColDef<{ id: string; name: string; weight: number }>[] = [{ headerName: 'Sector', field: 'name', flex: 1.2, minWidth: 140, headerTooltip: 'The sector it files under' }, WEIGHT_BAR];
 const COUNTRY_COLS: ColDef<{ id: string; name: string; weight: number }>[] = [{ headerName: 'Country', field: 'name', flex: 1.2, minWidth: 140, headerTooltip: 'Where the company is based' }, WEIGHT_BAR];
 
-function Board<T extends IdRow>({ title, rest, testId, rows, cols, reading = false }: { title: string; rest: string; testId: string; rows: T[]; cols: ColDef<T>[]; /** the read is still out — never "nothing" before it lands (round 8) */ reading?: boolean }) {
+function Board<T extends IdRow>({ title, rest, testId, rows, cols, reading = false }: { title: string; rest: string; testId: string; rows: T[]; cols: ColDef<T>[]; /** the read is still out, never "nothing" before it lands */ reading?: boolean }) {
   return (
     <div>
       <div className="px-5 border-t border-borderSubtle/60">
@@ -798,8 +788,7 @@ export const MemberFile = () => {
   const { member: id = '' } = useParams();
   const phone = usePhoneCards();
   useVendor('dossier', '', `/dossier/congress/${id}`);
-  /* THE ROSTER NAMES THE MEMBER (round 8: the page walked the whole 90-day book for a name) — the book is read only
-     for a member the roster does not list */
+  /* the roster names the member; the book is read only for a member it does not list */
   const rosterStatus = useCongressRoster();
   const roster = memberFromRoster(id);
   const needBook = rosterStatus !== 'loading' && !roster;
@@ -816,7 +805,7 @@ export const MemberFile = () => {
   const [kind, setKind] = useState<TypePick>('any');
   const [owner, setOwner] = useState<OwnerPick>('any');
   const [picks, setPicks] = useState<string[]>([]);
-  /* Treasury bills hidden by default, counted (audit round 5) — the equity trades surface */
+  /* Treasury bills hidden by default, counted */
   const [hideBills, setHideBills] = useState(true);
   const billsHidden = hideBills ? book.trades.filter(isTreasuryBill).length : 0;
   const trades = useMemo(() => (hideBills ? book.trades.filter(t => !isTreasuryBill(t)) : book.trades), [book.trades, hideBills]);
@@ -875,8 +864,7 @@ export const MemberFile = () => {
     );
   }
   if (!member) return <Missing to="/dossier/congress" label="Congress" />;
-  /* "…" UNTIL THE REPORTS ARE READ (audit round 10: "Reports 0 · Purchases 0 · Sales 0 · Late 0 · T-bills hidden · 0"
-     stood for a second and a half beside "Reading their reports") */
+  /* "…" until the reports are read */
   const reading = book.status === 'loading';
   const dots = <span className="text-textMuted">…</span>;
   const late = trades.filter(t => t.late).length;

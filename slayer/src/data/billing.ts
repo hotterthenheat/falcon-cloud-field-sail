@@ -1,50 +1,22 @@
 /*
-==================================================
-  SLAYER TERMINAL - BILLING'S SEAM (data/billing.ts)
-
-  What the Billing page reads: the plan, its
-  standing, the card behind it, the invoices. THE
-  SHAPE our server will hand back from Stripe
-  (the customer, the subscription, the payment
-  method, the invoice list) — never card numbers:
-  Stripe's hosted Checkout takes a new card and
-  Stripe's Customer Portal changes it, sees the
-  invoices and cancels; this page shows what
-  Stripe knows and opens those two doors. Until
-  the keys are in (roadmap step 5) the state is a
-  sample on this machine, so the page is the
-  launch page, not a placeholder (Noah,
-  2026-09-12: "the preview of how things would
-  look after apis are plugged in and stripe is
-  purchased").
-==================================================
+  Billing state for the Billing page: plan, standing, card summary and invoices, as Stripe reports them (never card
+  numbers). Without billing keys the state is a local sample, so the page shows what it will look like live.
 */
 
 import { useSyncExternalStore } from 'react';
 import { ACCOUNTS_ON, supabase } from './supabase';
 import type { PlanStatus } from './account';
 
-/* STRIPE, IN TEST MODE (2026-10-10, Noah: "ive connected you to stripe"). The plans live in Stripe as three products
-   with a monthly and a yearly price each (the lookup keys `book_month` … `desk_year`); a press on a plan opens Stripe's
-   hosted Checkout through the project's `stripe-checkout` function, the card, the invoices and cancelling live on
-   Stripe's Customer Portal through `stripe-portal`, and Stripe's own word lands on the profile row through
-   `stripe-webhook` → billing_apply. The browser holds no key but the publishable one; the secret key and the webhook's
-   signing secret are the functions' secrets, set in the Supabase dashboard. BILLING IS ON when the accounts are and the
-   publishable key is in: the landing's doors read "Choose …" and go to checkout; off, they open the terminal as before. */
-export const BILLING_ON: boolean = ACCOUNTS_ON && !!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+/* Stripe: three products with monthly and yearly prices (lookup keys `book_month` ... `desk_year`). Checkout runs through
+   the `stripe-checkout` function, the card, invoices and cancelling through `stripe-portal`, and Stripe's events reach
+   the profile through `stripe-webhook` -> billing_apply. The browser holds only the publishable key. Billing is on
+   when accounts are on and the publishable key is set. */
+export const BILLING_ON: boolean = ACCOUNTS_ON && !!import.meta.env?.VITE_STRIPE_PUBLISHABLE_KEY;
 export type Period = 'month' | 'year';
 
-/* THE PLANS ARE BOOK · DESK · SEAT (Noah, 2026-10-02: "new names instead of pinpoint and compass for the plans, i want
-   something unique to us but not corny" — three trading-floor nouns, each true of its plan). Book: the dealer book,
-   read — the walls, the flip, the tape, the wire. Desk: the whole desk — contracts picked off the levels, the Weigher,
-   the paper desk, the backtest, the journal, the room. Seat: a seat on an exchange was bought once and kept — one
-   payment, yours for good. They were Pinpoint, Compass and Lifetime; a stored plan under an old key still reads. */
-/* THREE PLANS AGAIN (Noah, 2026-10-05: "i still want there to be 3 plans … our top plan being 180 that includes compass"):
-   BOOK $75 · TAPE $120 · DESK $180. Each answers one question, the way the rail does — Book: what do the dealers hold
-   (Pulse, Terrain, Pinpoint, Alerts); Tape: what is the market doing (Trace, Dossier, scripts); Desk: which contract,
-   and where do I practise (Compass, the Weigher, Practice — Desk's at his word later that day — and Community when it
-   opens). Tape is a floor noun like the other two, true of its plan — Trace IS the tape. The Seat stays off the page
-   (below). */
+/* Plan keys: book, tape, desk, seat. Old keys (pinpoint, compass, lifetime) still read. */
+/* Book $80 (Pulse, Terrain, Pinpoint, Alerts), Tape $120 (adds Trace, Dossier, scripts), Desk $180 (adds Compass, the
+   Weigher, Practice, Community). The Seat is off the page (below). */
 export type PlanKey = 'book' | 'tape' | 'desk' | 'seat';
 const OLD_KEYS: Record<string, PlanKey> = { pinpoint: 'book', compass: 'desk', lifetime: 'seat' };
 export const planKeyOf = (v: unknown): PlanKey => (v === 'book' || v === 'tape' || v === 'desk' || v === 'seat' ? v : OLD_KEYS[String(v)] ?? 'desk');
@@ -57,9 +29,8 @@ interface Plan {
   period: string;
   monthly: number | null;
 }
-/** The price a card prints for a period: a year is ten months — two months free (the yearly Stripe prices are set so).
-    `amount` is the same figure as a number, for a card that ROLLS from one period's price to the other's (Noah,
-    2026-10-10: "the transition from monthly to yearly should be smooth for the numbers"); null for a plan with no price. */
+/** The price a card prints for a period; a year is ten months. `amount` is the number, for a card that animates
+    between periods; null for a plan without a price. */
 export const priceOf = (key: PlanKey, period: Period): { price: string; amount: number | null; period: string; aMonth: string | null; saves: string | null } => {
   const p = planOf(key);
   if (p.monthly == null) return { price: p.price, amount: null, period: p.period, aMonth: null, saves: null };
@@ -69,14 +40,11 @@ export const priceOf = (key: PlanKey, period: Period): { price: string; amount: 
   }
   return { price: p.price, amount: p.monthly, period: p.period, aMonth: null, saves: null };
 };
-/** a whole-dollar price, `$1,800` — also the shape a rolling price takes on every frame */
+/** a whole-dollar price, `$1,800` */
 export const fmtDollars = (v: number): string => `$${Math.round(v).toLocaleString('en-US')}`;
-/** The tiers as the landing prices them. Noah, 2026-09-19: $75 and $180 (they were $125 and $275); the Book $80 since
-    2026-10-10 ("make the book plan be 80 dollars instead of 75"). */
-/* THE SEAT IS OFF THE PAGE FOR NOW (Noah, 2026-10-05: "we are thinking of removing the custom lifetime plan just until we
-   get up and running so you can remove that from the page as of now"). PLANS is what is SOLD — Book and Desk; the Seat
-   keeps its key, so a stored plan under it still reads and `planOf('seat')` still names it, and its row below comes back
-   to PLANS the day he says so. */
+/** The tiers as the landing prices them. */
+/* PLANS is what is sold. The Seat keeps its key (stored plans still read, planOf('seat') names it) and its row below
+   returns to PLANS when it is sold again. */
 export const PLANS: Plan[] = [
   { key: 'book', name: 'Book', kicker: 'The charts and the book', price: '$80', period: 'a month', monthly: 80 },
   { key: 'tape', name: 'Tape', kicker: 'The tape and the record', price: '$120', period: 'a month', monthly: 120 },
@@ -99,7 +67,7 @@ export interface Invoice {
 export interface Billing {
   plan: PlanKey;
   status: SubscriptionStatus;
-  /** ISO date — the next charge, or the end of a canceled term */
+  /** ISO date: the next charge, or the end of a cancelled term */
   renewsOn: string;
   /** what Stripe shows of the card, never the number */
   card: { brand: string; last4: string; expMonth: number; expYear: number } | null;
@@ -115,7 +83,7 @@ const monthsFrom = (n: number) => {
   return iso(d);
 };
 
-/** The sample: on Desk since four months, renewing in a month, a Visa on file */
+/** The sample: on Desk for four months, renewing in a month, a Visa on file */
 export const SAMPLE_BILLING: Billing = {
   plan: 'desk',
   status: 'active',
@@ -142,13 +110,13 @@ const subscribe = (fn: () => void) => {
   };
 };
 
-/** A plan switch — at launch this is Stripe Checkout (up) or the Portal (down); the sample just moves */
+/** A plan switch: Checkout (up) or the Portal (down) when live; the sample just moves */
 export function setPlan(plan: PlanKey): void {
   billing = { ...billing, plan, status: 'active' };
   try {
     localStorage.setItem(KEY, JSON.stringify({ plan: billing.plan, status: billing.status, renewsOn: billing.renewsOn, card: billing.card }));
   } catch {
-    /* storage off — the choice lives for the session */
+    /* storage off: the choice lives for the session */
   }
   listeners.forEach(fn => fn());
 }
@@ -163,7 +131,7 @@ export function fmtDate(isoDate: string): string {
 /** the same, from an instant */
 export const fmtWhen = (iso: string): string => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-/* ---- the live doors (Stripe through the project's functions) ----------------------------------------------------- */
+/* ---- live calls (Stripe through the project's functions) ---- */
 
 export type BillingOutcome = { ok: true } | { ok: false; why: string };
 
@@ -194,14 +162,14 @@ const whyOf = async (error: unknown): Promise<string> => {
   return e.message ? e.message.charAt(0).toUpperCase() + e.message.slice(1) : 'Billing did not answer.';
 };
 
-/** THE DOOR TO CHECKOUT — the browser leaves for Stripe's page (or the portal, when a plan already stands) */
-/** the browser's own Stripe key — the one made for pages; the secret key never leaves the functions' secrets */
-export const STRIPE_PUBLISHABLE_KEY: string | undefined = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+/** Checkout: the browser leaves for Stripe (or the portal when a plan already stands) */
+/** the publishable key, made for pages; the secret key stays in the functions' secrets */
+export const STRIPE_PUBLISHABLE_KEY: string | undefined = import.meta.env?.VITE_STRIPE_PUBLISHABLE_KEY;
 
 export type CheckoutMade =
   | { ok: true; kind: 'mount'; clientSecret: string }
   | { ok: true; kind: 'portal'; url: string }
-  /** already on a plan and asking for a higher one: what the card on file pays today, and when the new price starts */
+  /** already on a plan and asking for a higher one: what the card pays today, and when the new price starts */
   | { ok: true; kind: 'upgrade'; from: PlanKey; fromPeriod: Period; dueToday: number; nextOn: string | null }
   | { ok: true; kind: 'upgraded' }
   | { ok: false; why: string };
@@ -222,9 +190,8 @@ const read = (data: CheckoutAnswer | null): CheckoutMade => {
   return { ok: false, why: data?.error ?? 'Billing did not answer.' };
 };
 
-/** THE CHECKOUT, MADE (2026-10-10): a client secret for OUR OWN PAGE (/checkout) to mount Stripe's framed fields with —
-    the card is typed into Stripe's frames inside our layout and never reaches us. Someone already on a plan asking for a
-    higher one gets the UPGRADE's figures instead (confirmUpgrade does it); the same plan or a lower one, the portal. */
+/** A client secret for /checkout to mount Stripe's framed fields (the card never reaches us). An upgrade gets its
+    figures instead (confirmUpgrade applies it); the same or a lower plan gets the portal. */
 export async function makeCheckout(plan: PlanKey, period: Period): Promise<CheckoutMade> {
   if (!supabase || !BILLING_ON) return { ok: false, why: 'Billing is not switched on yet.' };
   const { data, error } = await supabase.functions.invoke<CheckoutAnswer>('stripe-checkout', { body: { plan, period } });
@@ -232,7 +199,7 @@ export async function makeCheckout(plan: PlanKey, period: Period): Promise<Check
   return read(data);
 }
 
-/** THE UPGRADE, DONE: the plan moves now and the card on file pays the difference for the rest of the period */
+/** The upgrade: the plan moves now and the card pays the prorated difference */
 export async function confirmUpgrade(plan: PlanKey, period: Period): Promise<CheckoutMade> {
   if (!supabase || !BILLING_ON) return { ok: false, why: 'Billing is not switched on yet.' };
   const { data, error } = await supabase.functions.invoke<CheckoutAnswer>('stripe-checkout', { body: { plan, period, confirm: true } });
@@ -240,21 +207,19 @@ export async function confirmUpgrade(plan: PlanKey, period: Period): Promise<Che
   return read(data);
 }
 
-/* THE SESSION MADE AHEAD (Noah, 2026-10-10: "why does it take forever for stripe to load"): a signed-in press on a plan
-   asks Stripe for the session before the checkout page even opens, and the page takes that answer instead of asking
-   again — the function's second passes during the page change, not after it */
+/* a signed-in press on a plan starts the checkout session before the page opens, and the page reuses that answer */
 let ahead: { plan: PlanKey; period: Period; made: Promise<CheckoutMade> } | null = null;
 export const makeCheckoutAhead = (plan: PlanKey, period: Period): void => {
   ahead = { plan, period, made: makeCheckout(plan, period) };
 };
-/** the session made ahead for this plan and period, if one is waiting — else made now */
+/** the session made ahead for this plan and period, if waiting; else made now */
 export const takeCheckout = (plan: PlanKey, period: Period): Promise<CheckoutMade> => {
   const a = ahead;
   ahead = null;
   return a && a.plan === plan && a.period === period ? a.made : makeCheckout(plan, period);
 };
 
-/** THE DOOR TO THE PORTAL — the card, the invoices, a change of plan, cancelling, on Stripe's page */
+/** The customer portal: card, invoices, plan changes, cancelling */
 export async function openPortal(): Promise<BillingOutcome> {
   if (!supabase || !BILLING_ON) return { ok: false, why: 'Billing is not switched on yet.' };
   const { data, error } = await supabase.functions.invoke<{ url?: string; error?: string }>('stripe-portal', { body: {} });

@@ -1,22 +1,11 @@
-/*
-==================================================
-  SLAYER TERMINAL - WATCHLIST TYPES (types/watchlist.ts)
-
-  A watched contract (2026-09-13, docs/watchlist-spec.md):
-  marked at the price the moment it is added and
-  tracked as a position from then on — the cost when
-  added, the mark now, today's and total return, the
-  breakeven, the expiry — until the reader closes it
-  or the bell settles it. No orders, no sides, no
-  broker: a watchlist that keeps score.
-==================================================
-*/
+/* A watched contract (docs/watchlist-spec.md): marked at the add and tracked like a position (cost, mark, returns,
+   breakeven, expiry) until closed by the reader or settled at the bell. No orders or broker. */
 
 import type { OptionRight } from './compass';
 
 export type WatchStatus = 'open' | 'closed' | 'expired';
 
-/** One session's close of the contract's mark — the row's line since it was added */
+/** One session's close of the contract's mark. */
 export interface WatchMark {
   /** ISO date */
   day: string;
@@ -33,9 +22,9 @@ export interface WatchedContract {
   expiry: string;
   /** Date.now() at the add */
   addedAt: number;
-  /** The mark at the add — the cost, the risk, 1R */
+  /** The mark at the add: the cost, the risk, 1R. */
   addedMark: number;
-  /** The underlying at the add — the breakeven's anchor on the card */
+  /** The underlying at the add, the card's breakeven anchor. */
   addedSpot: number;
   /** Contracts; 1 unless the reader sets it */
   size: number;
@@ -49,7 +38,7 @@ export interface WatchedContract {
   marks: WatchMark[];
 }
 
-/** What a door hands the store — the same shape as the Weigher's deep link */
+/** What an add hands the store; the same shape as the Weigher's deep link. */
 export interface WatchRequest {
   ticker: string;
   strike: number;

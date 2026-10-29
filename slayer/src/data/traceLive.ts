@@ -1,8 +1,5 @@
-/*
-  TRACE — live Unusual Whales rows, mapped onto the grids the desks already draw.
-  The browser calls /api/uw. This file does not invent a layout and does not
-  talk to the simulator.
-*/
+/* Trace's live Unusual Whales reads, mapped onto the rows the pages draw. The browser calls /api/uw; nothing here talks
+   to the simulator. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { uwCall } from './whales';
@@ -13,6 +10,9 @@ import type { DarkPoolIntent, DarkPoolLevel, DarkPoolPrint, DarkPoolView, LevelR
 import { isoDate, isTradingDay, sessionsBetween } from '../core/calendar';
 import { nyParts, nyWallTime } from '../core/nyTime';
 import type { MoneynessKey, NetFlowSegment, SpreadKind, SpreadLeg, SpreadTrade } from './flowBook';
+import { leanOfSides, postureOfNet } from './traceLean';
+
+export { dayLean, LEAN_EDGE, sideShares, type DayLean } from './traceLean';
 
 const POLL_MS = 4_000;
 
@@ -31,39 +31,40 @@ interface CacheBox<T> {
   fault: FeedFault | null;
 }
 
-const num = (v: unknown): number => {
+/** A vendor field as a number; anything unreadable is 0 */
+export const num = (v: unknown): number => {
   const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.replace(/,/g, '')) : NaN;
   return Number.isFinite(n) ? n : 0;
 };
 
-function rowsOf(data: unknown): Record<string, unknown>[] {
+const COUNT = new Intl.NumberFormat('en-US');
+/** A count with thousands separators — the one formatter every Trace page uses */
+export const fmtCount = (v: number): string => COUNT.format(v);
+
+export function rowsOf(data: unknown): Record<string, unknown>[] {
   if (Array.isArray(data)) return data.filter((r): r is Record<string, unknown> => !!r && typeof r === 'object');
   if (data && typeof data === 'object' && Array.isArray((data as { data?: unknown }).data)) {
     return rowsOf((data as { data: unknown }).data);
   }
-  /* ONE ALERT'S TRADES COME AS { alert, has_more, trades: [...] } (/option-trades/flow-alerts/{id}) — read as neither an
-     array nor `.data`, every alert's strip said "0 prints" (the re-audit, 2026-10-22: alert 3356f987, trade_count 2) */
+  /* one alert's trades come as { alert, has_more, trades: [...] } */
   if (data && typeof data === 'object' && Array.isArray((data as { trades?: unknown }).trades)) {
     return rowsOf((data as { trades: unknown }).trades);
   }
   return [];
 }
 
-/* ---- the session's clock ------------------------------------------------------------------------------------------
-   THE REGULAR SESSION IS 09:30–16:00 New York for a stock's options, and 09:30–16:15 for the broad index and ETF options
-   that keep trading to 16:15 (SPX, NDX, RUT, VIX, XSP and SPY, QQQ, IWM, DIA…) — the re-audit, 2026-10-22: SPY's panes cut
-   at 16:00 read net puts +$6.90M against a day of +$17.27M. Before 09:30 is pre-market, after the close is after hours,
-   and a closed day is closed. */
+/* The regular session is 09:30–16:00 New York for a stock's options and 09:30–16:15 for the index and ETF options that
+   trade to 16:15. LATE_CLOSE is a fallback: a print's own extended_hours flag wins where it has one. */
 const LATE_CLOSE = new Set(['SPX', 'SPXW', 'NDX', 'NDXP', 'XSP', 'RUT', 'RUTW', 'MRUT', 'VIX', 'VIXW', 'XND', 'DJX', 'OEX', 'XEO', 'SPY', 'QQQ', 'IWM', 'DIA', 'MDY', 'EEM', 'EFA', 'GLD', 'SLV', 'TLT', 'XLE', 'XLF', 'XLK', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'SMH', 'SOXX', 'SOXL', 'IBIT', 'KRE', 'KWEB', 'FXI', 'EWZ', 'EWY', 'UNG', 'UVXY', 'UVIX', 'HYG', 'LQD', 'GDX', 'XBI', 'USO', 'TQQQ', 'SQQQ']);
 export const SESSION_OPEN = 570;
-/** New York minute the regular session ends for this name's options — 16:15 for the late-closing index and ETF options */
+/** New York minute the regular session ends for this name's options */
 export function sessionEndMin(ticker?: string | null): number {
   return ticker && LATE_CLOSE.has(ticker.toUpperCase()) ? 975 : 960;
 }
-/** "16:15" or "16:00" */
-export const sessionEndLabel = (ticker?: string | null) => (sessionEndMin(ticker) === 975 ? '3:15 PM CT' : '3:00 PM CT');
+/** "16:15 ET" or "16:00 ET" */
+export const sessionEndLabel = (ticker?: string | null) => (sessionEndMin(ticker) === 975 ? '16:15 ET' : '16:00 ET');
 export type SessionPhase = 'pre' | 'regular' | 'after' | 'closed';
-/** Where New York's clock stands against the stock session (09:30–16:00; after hours to 20:00, pre-market from 04:00) */
+/** Where New York's clock stands against the stock session (pre-market from 04:00, after hours to 20:00) */
 export function sessionPhase(at: Date = new Date()): SessionPhase {
   const p = nyParts(at);
   if (!isTradingDay(new Date(p.year, p.month - 1, p.day))) return 'closed';
@@ -74,9 +75,7 @@ export function sessionPhase(at: Date = new Date()): SessionPhase {
   return 'closed';
 }
 
-/** THE MARKET'S CLOCK, BY INSTRUMENT (the third audit, 2026-10-22: from 16:00 to 16:15 the badge said "After hours" while
-    SPX, SPY and QQQ options were still in their regular session). 'late' is 16:00–16:15 on a session day: stock options
-    have closed, the index and ETF options that keep trading to 16:15 have not. */
+/** 'late' is 16:00–16:15 on a session day: stock options have closed, the late-closing index and ETF options have not */
 export type MarketPhase = SessionPhase | 'late';
 export function marketPhase(at: Date = new Date()): MarketPhase {
   const ph = sessionPhase(at);
@@ -84,31 +83,26 @@ export function marketPhase(at: Date = new Date()): MarketPhase {
   const p = nyParts(at);
   return p.hour * 60 + p.minute < 975 ? 'late' : 'after';
 }
-/** Where one name's options stand: in the regular session until its own close (16:00, or 16:15 for the late closers) */
-export function sessionPhaseFor(ticker: string | null | undefined, at: Date = new Date()): SessionPhase {
-  const ph = marketPhase(at);
-  if (ph !== 'late') return ph;
-  return sessionEndMin(ticker) === 975 ? 'regular' : 'after';
-}
 
-/** THE LAST REGULAR SESSION THAT HAS ENDED — its New York day and the instant of its 16:15 close (the last options to
-    close) — or null while one is still running (09:30–16:15 on a session day). After the close, before the open and on a
-    closed day, the Trace pages that read "the regular session" read this one (the third audit: after the close the Live
-    Tape and the dark pool showed only after-hours prints under a "Regular" session card). */
-export function lastRegularClose(at: Date = new Date()): { iso: string; closeMs: number; openMs: number } | null {
+/** The last session that has ended at `endMin` (New York minute) — its day, open and close — or null while it runs */
+function lastCloseAt(at: Date, endMin: number): { iso: string; closeMs: number; openMs: number } | null {
   const p = nyParts(at);
   const m = p.hour * 60 + p.minute;
   const d = new Date(p.year, p.month - 1, p.day);
-  if (isTradingDay(d) && m >= SESSION_OPEN && m < 975) return null;
-  if (!(isTradingDay(d) && m >= 975)) {
+  if (isTradingDay(d) && m >= SESSION_OPEN && m < endMin) return null;
+  if (!(isTradingDay(d) && m >= endMin)) {
     d.setDate(d.getDate() - 1);
     for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() - 1);
   }
   const y = d.getFullYear();
   const mo = d.getMonth() + 1;
   const da = d.getDate();
-  return { iso: isoDate(d), closeMs: nyWallTime(y, mo, da, 16, 15), openMs: nyWallTime(y, mo, da, 9, 30) };
+  return { iso: isoDate(d), closeMs: nyWallTime(y, mo, da, Math.floor(endMin / 60), endMin % 60), openMs: nyWallTime(y, mo, da, 9, 30) };
 }
+/** The last options session that has ended (closing 16:15, the last options to close); null while one runs */
+export const lastRegularClose = (at: Date = new Date()) => lastCloseAt(at, 975);
+/** The last stock session that has ended (16:00) — dark and lit prints are equity prints; null while it runs */
+export const lastStockClose = (at: Date = new Date()) => lastCloseAt(at, 960);
 
 /** A Trace figure in money with a real minus sign ("−$4.2K", never "-$4.2K") */
 export const usd = (v: number): string => {
@@ -121,62 +115,7 @@ export const usd = (v: number): string => {
 };
 
 /** "1 contract", "2 contracts" */
-export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
-
-/** THE DAY'S SIDES, ALL THREE (the re-audit, 2026-10-22: QQQ 725C read "ask" on 166 at the ask against 128 on the bid
-    while 38,000 of its 38,304 contracts were a no-side cross). Shares of the WHOLE day's volume — at the ask, on the bid,
-    and at the mid or with no side — and a lean only where one is real: at least half the day traded on a side, and
-    that side carried LEAN_EDGE (55%) or more of the sided volume.
-    ONE RULE ACROSS TRACE (the third audit, 2026-10-22: the card's anchor used 55/45 of ask ÷ (ask + bid) ignoring the
-    mid, the Lean cell 58/42 with an "unsided" rule, the Tracker a ±6 band): every lean on Trace — the Lean cell, the
-    Screener's words, the Tracker, Compare, the card — is this function. It reads CONTRACTS by side, because that is what
-    the vendor carries per contract (the screener has no premium by side); a name's net premium is a separate figure and
-    says so where it is drawn. */
-export const LEAN_EDGE = 55;
-export interface DayLean {
-  /** Shares of the WHOLE volume, 0–100 */
-  ask: number;
-  bid: number;
-  mid: number;
-  /** Shares of the SIDED volume (ask + bid), 0–100 — the figure the lean is decided on, and the one a lean label prints
-      (audit round 4: SPXW 7600P read "BID 47%" — its share of all volume — while the rule had called it on 59.9% of the
-      sided volume) */
-  askSided: number;
-  bidSided: number;
-  lean: 'ASK' | 'BID' | 'EVEN' | 'UNSIDED';
-}
-export function dayLean(r: { askPct: number; volume: number; sideVol?: { ask: number; bid: number; mid: number } }): DayLean {
-  const sv = r.sideVol;
-  if (!sv) {
-    const a = Number.isFinite(r.askPct) ? r.askPct : NaN;
-    if (!Number.isFinite(a)) return { ask: NaN, bid: NaN, mid: NaN, askSided: NaN, bidSided: NaN, lean: 'UNSIDED' };
-    return { ask: a, bid: 100 - a, mid: 0, askSided: a, bidSided: 100 - a, lean: a >= LEAN_EDGE ? 'ASK' : a <= 100 - LEAN_EDGE ? 'BID' : 'EVEN' };
-  }
-  const total = sv.ask + sv.bid + sv.mid;
-  if (!(total > 0)) return { ask: NaN, bid: NaN, mid: NaN, askSided: NaN, bidSided: NaN, lean: 'UNSIDED' };
-  const pc = (v: number) => (v / total) * 100;
-  const sided = sv.ask + sv.bid;
-  const askOfSided = sided > 0 ? sv.ask / sided : 0.5;
-  const lean: DayLean['lean'] = sided < total * 0.5 ? 'UNSIDED' : askOfSided >= LEAN_EDGE / 100 ? 'ASK' : askOfSided <= 1 - LEAN_EDGE / 100 ? 'BID' : 'EVEN';
-  return { ask: pc(sv.ask), bid: pc(sv.bid), mid: pc(sv.mid), askSided: askOfSided * 100, bidSided: sided > 0 ? 100 - askOfSided * 100 : 50, lean };
-}
-
-/** Whole-percent shares of a three-way split that always sum to 100 (largest remainder) — one rounding for every side
-    figure on a card (the third audit: "bid 44%" in one place, "BID 43%" in the bar) */
-export function sideShares(bid: number, mid: number, ask: number): { bid: number; mid: number; ask: number } {
-  const total = bid + mid + ask;
-  if (!(total > 0)) return { bid: 0, mid: 0, ask: 0 };
-  const raw = [bid, mid, ask].map(v => (v / total) * 100);
-  const fl = raw.map(Math.floor);
-  let left = 100 - fl.reduce((a, b) => a + b, 0);
-  const order = raw.map((v, i) => ({ i, r: v - Math.floor(v) })).sort((a, b) => b.r - a.r);
-  for (const o of order) {
-    if (left <= 0) break;
-    fl[o.i]++;
-    left--;
-  }
-  return { bid: fl[0], mid: fl[1], ask: fl[2] };
-}
+export const plural = (n: number, one: string, many = `${one}s`) => `${fmtCount(n)} ${n === 1 ? one : many}`;
 
 export function nyIsoToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
@@ -185,8 +124,7 @@ export function nyIsoToday(): string {
 export function nyDateOf(ms: number): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(ms));
 }
-/** Newest first by the full instant, never by the time of day alone (audit round 5: the lit lane sorted 10/21's 16:00
-    closing cross among 10/22's prints by "16:00:00") */
+/** Newest first by the full instant, never by the time of day alone (two days' prints can share a clock) */
 export const byNewest = (a: { epochMs?: number; time: string }, b: { epochMs?: number; time: string }) => (b.epochMs ?? 0) - (a.epochMs ?? 0) || b.time.localeCompare(a.time);
 
 function clock(iso: unknown): { time: string; minute: number; epoch: number; ms: number } {
@@ -206,13 +144,18 @@ function clock(iso: unknown): { time: string; minute: number; epoch: number; ms:
   return { time, minute, epoch: Math.floor(d.getTime() / 1000), ms: d.getTime() };
 }
 
-function hashId(s: string): number {
-  let h = 2166136261;
+/** A 53-bit hash (cyrb53) — a 32-bit one collides about once in twenty 20,000-row buffers */
+export function hashId(s: string): number {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
   for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
   }
-  return h >>> 0;
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 
 function expiryLabel(iso: string): string {
@@ -221,13 +164,8 @@ function expiryLabel(iso: string): string {
   return `${m[2]}/${m[3]}/${m[1]}`;
 }
 
-/** THE TAPE'S SESSION — the last options session with data: the New York trading day the vendor's option prints belong
-    to. The option tape has no pre-market, so a trading day becomes the session at the 09:30 open — never at 04:00 or
-    midnight; before it, and on a weekend or holiday (src/core/calendar.ts), the session is the last trading day before
-    (audit round 6, 2026-10-23: rolled at 04:00, every Trace figure at 04:15 ET on Fri Oct 23 — days to expiry, the 0DTE
-    share, the contract card's date, Compare's same-day expiry, the cross card's bars, every relative-day word — was
-    counted against an Oct 23 that had no option prints; the data was still Thu Oct 22's). EVERY Trace consumer reads
-    this one rule — tapeSessionIso() for now, sessionIsoAt(ms) for any instant. */
+/** The options session an instant belongs to. The option tape has no pre-market, so a trading day becomes the session at
+    the 09:30 open; before it (or on a closed day) the session is the last trading day. Every Trace date reads this. */
 export function sessionIsoAt(ms: number): string {
   const p = nyParts(new Date(ms));
   const d = new Date(p.year, p.month - 1, p.day);
@@ -243,8 +181,7 @@ export function tapeSessionIso(): string {
   return sessionIsoAt(Date.now());
 }
 
-/** Calendar days from a trade day (YYYY-MM-DD, default the tape's session) to an expiry — a print's DTE counts from its
-    own trade date, never from the clock */
+/** Calendar days from a trade day (default the tape's session) to an expiry */
 export function dteFrom(iso: string, fromIso: string = tapeSessionIso()): number {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   const f = fromIso.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -729,9 +666,6 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
     ask,
     fillPos,
     side,
-    /* where the fill sat in its quote, −100 at the bid to +100 at the ask */
-    flowScore: spread > 0 ? Math.round((fillPos - 0.5) * 200) : 0,
-    ratioLabel: volSum > 0 ? (askVol >= bidVol ? `ASK ${Math.round((askVol / volSum) * 100)}%` : `BID ${Math.round((bidVol / volSum) * 100)}%`) : '—',
     ratioBidPct: volSum > 0 ? Math.round((bidVol / volSum) * 100) : NaN,
     size,
     nbboBidSize: row.nbbo_bid_size != null && row.nbbo_bid_size !== '' ? num(row.nbbo_bid_size) : undefined,
@@ -770,10 +704,10 @@ function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const bidPrem = num(row.total_bid_side_prem);
   const sided = askPrem + bidPrem;
   const total = num(row.total_premium);
-  /* THE SHARE OF THE WHOLE ALERT (audit round 4: SPY 750P, $73.3K in all and $31.5K of it on the bid, read "BID 100%" —
-     the share was of the sided money only, blind to the unsided rest): each side's share of the alert's TOTAL premium */
+  /* the alert's side is the one lean rule over its premium by side, the unsided rest as mid */
   const whole = Math.max(total, sided);
-  const side: 'ASK' | 'BID' | 'MID' = whole > 0 && askPrem >= 0.6 * whole ? 'ASK' : whole > 0 && bidPrem >= 0.6 * whole ? 'BID' : 'MID';
+  const lean = leanOfSides({ ask: askPrem, bid: bidPrem, mid: Math.max(0, whole - sided) }).lean;
+  const side: 'ASK' | 'BID' | 'MID' = lean === 'ASK' ? 'ASK' : lean === 'BID' ? 'BID' : 'MID';
   const tags = side === 'ASK' ? ['ask_side'] : side === 'BID' ? ['bid_side'] : ['mid_side'];
   const base = tradeToPrint(
     {
@@ -806,8 +740,6 @@ function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
     sweep: row.has_sweep === true,
     legs: row.has_multileg === true && row.has_singleleg !== true ? 2 : 1,
     trades: num(row.trade_count) || undefined,
-    /* the alert's own money by side, each a share of its WHOLE premium: "BID 43%" with the rest unsided */
-    ratioLabel: whole > 0 ? (askPrem >= bidPrem ? `ASK ${Math.round((askPrem / whole) * 100)}%` : `BID ${Math.round((bidPrem / whole) * 100)}%`) : '—',
     ratioBidPct: whole > 0 ? Math.round((bidPrem / whole) * 100) : NaN,
     alertSides: { ask: askPrem, bid: bidPrem, other: Math.max(0, total - sided) },
     alertRule: row.alert_rule ? String(row.alert_rule) : undefined,
@@ -1426,7 +1358,6 @@ function execOf(price: number, bid: number, ask: number): 'ASK' | 'BID' | 'MID' 
     for $119K read as distribution while GS 500 sh for $440K was "too small" — a share count means nothing across a $12 and
     an $880 stock). A cross of $250K and up carries a read; below it, none. */
 export const DARK_SIZED_USD = 250_000;
-export const DARK_SIZED_WORDS = '$250K and up, by its dollars — not its share count';
 function intentOf(cents: number, sized: boolean): DarkPoolIntent {
   if (!sized) return 'ROTATION';
   if (cents > 0) return 'ACCUMULATION';
@@ -1618,7 +1549,7 @@ export function postureOf(prints: DarkPoolPrint[]): { posture: Posture; net: num
   const dist = read.reduce((a, p) => a + (p.intent === 'DISTRIBUTION' ? p.notional : 0), 0);
   const all = read.reduce((a, p) => a + p.notional, 0);
   const net = all > 0 ? Math.round(((acc - dist) / all) * 100) : 0;
-  const posture: Posture = net > 15 ? 'ACCUMULATING' : net < -15 ? 'DISTRIBUTING' : 'BALANCED';
+  const posture: Posture = postureOfNet(net);
   const after = prints.length > 0 && read.length === 0 && prints.some(p => p.extended);
   const note = after
     ? 'Every print in hand is after hours — set against a post-market quote, so none is read.'
@@ -1707,20 +1638,6 @@ export function useAccumTape(kind: 'dark' | 'lit', limit: number, enabled = true
     };
   }, [path, kind, enabled]);
   return { rows, at, fault, waiting: waiting && rows.length === 0 };
-}
-
-/** THE STOCK SESSION THAT HAS ENDED — a dark or lit print is an equity print, and the equity session closes at 16:00 —
-    or null while it runs (09:30–16:00 on a session day) */
-export function lastStockClose(at: Date = new Date()): { iso: string; closeMs: number; openMs: number } | null {
-  const p = nyParts(at);
-  const m = p.hour * 60 + p.minute;
-  const d = new Date(p.year, p.month - 1, p.day);
-  if (isTradingDay(d) && m >= SESSION_OPEN && m < 960) return null;
-  if (!(isTradingDay(d) && m >= 960)) {
-    d.setDate(d.getDate() - 1);
-    for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() - 1);
-  }
-  return { iso: isoDate(d), closeMs: nyWallTime(d.getFullYear(), d.getMonth() + 1, d.getDate(), 16, 0), openMs: nyWallTime(d.getFullYear(), d.getMonth() + 1, d.getDate(), 9, 30) };
 }
 
 /* THE DAY'S REGULAR-SESSION CROSSES, AFTER THE CLOSE (the third audit, 2026-10-22: after the bell the market's dark tape
@@ -1982,14 +1899,13 @@ export function useNameDark(ticker: string | null, untilMs: number | null = null
 }
 
 /** One screener row as a book contract (exported for scripts/trace-moneyness-proof.ts) */
-export function contractRow(row: Record<string, unknown>, i: number): BookContract {
+export function contractRow(row: Record<string, unknown>, _i = 0): BookContract {
   const ticker = String(row.ticker_symbol || row.underlying_symbol || row.ticker || '').toUpperCase();
   const expiryIso = String(row.expiry || '').slice(0, 10);
   const strike = num(row.strike);
   const right: 'C' | 'P' = String(row.option_type || '').toLowerCase().startsWith('p') ? 'P' : 'C';
-  /* THE LIVE SPOT FIRST (audit round 9, major 1): the row's stock_price is the vendor's stock-state, frozen at 10:35 ET on
-     Oct 23 — the name's newest live price (liveSpotOf) wins, the row's own only when none is in hand; an index's row
-     carries no stock_price — the index level from its spot-exposure minutes (see indexLevel) */
+  /* the row's stock_price is the vendor's stock-state, which can stall for hours: the newest live price wins; an index
+     row carries none, so it reads the index level */
   const live = liveSpotOf(ticker);
   const spot = live || num(row.stock_price) || indexLevel(ticker);
   const volume = num(row.volume);
@@ -2001,7 +1917,8 @@ export function contractRow(row: Record<string, unknown>, i: number): BookContra
   const when = clock(row.last_fill);
   const dte = dteOf(expiryIso);
   return {
-    key: `${ticker}-${strike}-${right}-${dte}-${i}`,
+    /* stable across polls and re-ranks: the OCC symbol, else the contract's parts */
+    key: row.option_symbol ? String(row.option_symbol) : `${ticker}-${strike}-${right}-${expiryIso}`,
     optionSymbol: row.option_symbol ? String(row.option_symbol) : undefined,
     ticker,
     sector: row.sector ? String(row.sector) : null,
@@ -2037,10 +1954,7 @@ export function contractRow(row: Record<string, unknown>, i: number): BookContra
     crossPct: volume > 0 ? Math.min(100, (num(row.cross_volume) / volume) * 100) : 0,
     askPct: ask + bid > 0 ? (ask / (ask + bid)) * 100 : 0,
     prevOI: num(row.prev_oi),
-    prevVolume: 0,
     prevAvgFill: num(row.chain_prev_close),
-    prevPremium: 0,
-    prevAskPct: 0,
     oiStreak: num(row.days_of_oi_increases),
     volGtOiStreak: num(row.days_of_vol_greater_than_oi),
     /* the name's next report in sessions from the tape's day — only when it lands before this contract expires
@@ -2053,7 +1967,6 @@ export function contractRow(row: Record<string, unknown>, i: number): BookContra
       return sessionsBetween(at(session), at(er));
     })(),
     earnIso: /^\d{4}-\d{2}-\d{2}$/.test(String(row.next_earnings_date || '').slice(0, 10)) ? String(row.next_earnings_date).slice(0, 10) : null,
-    prevSpark: [],
     sideVol: { ask, bid, mid },
     expired: expiredAtBell(expiryIso, ticker),
     theta: row.theta != null && row.theta !== '' ? num(row.theta) : undefined,
@@ -2082,15 +1995,9 @@ export function standing<T extends { expired?: boolean }>(rows: T[]): { rows: T[
   return { rows: out, expired: rows.length - out.length };
 }
 
-/* ---- THE OPEN INTEREST THAT PAIRS WITH THE VOLUME (audit round 7, major 2) --------------------------------------
-   The screener's open_interest is the count set the morning OF its session — after the session BEFORE traded — and its
-   prev_oi the morning before that. So beside Oct 22's volume it showed Oct 21's build: ORCL 140C "OI 8,038 / prev 1,038"
-   when /historic already carried the Oct 23 count (26,023, built by Oct 22's 18,243 contracts); SPXW 7650P Oct 23 read
-   "+4,548 (+100%)" though Oct 22's flow took it from 9,099 to 6,901. Once the count after the volume's session is
-   published (the vendor sets it overnight: /stock/{t}/oi-change?date=<next session>, then the contract's /historic for
-   what those pages do not reach), each row takes it — OI, the OI before and ΔOI all of the volume's session. Until then
-   the row keeps the screener's count and says whose trading it reflects (oiDay) and that the volume's own is not out
-   (oiPending). */
+/* Open interest is counted the morning after a session trades. The screener's open_interest is the count its session
+   opened on; once the vendor publishes the count after the volume's session (oi-change?date=<next session>, else the
+   contract's /historic), the row takes it and says whose trading it reflects (oiDay, oiPending). */
 export function nextSessionIso(iso: string): string {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return iso;
@@ -2099,7 +2006,8 @@ export function nextSessionIso(iso: string): string {
   for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() + 1);
   return isoDate(d);
 }
-function prevSessionOf(iso: string): string {
+/** The session before a session day, YYYY-MM-DD */
+export function prevSessionIso(iso: string = tapeSessionIso()): string {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return iso;
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
@@ -2110,79 +2018,123 @@ function prevSessionOf(iso: string): string {
 interface NewestOi {
   /** The count after the volume's session */
   oi: number;
-  /** The count that stood at that session's open */
+  /** The count that session opened on */
   before: number;
   streak?: number;
 }
-/** occ:date → the count dated `date` (null = asked, the vendor has none for it) */
+/** occ:date → the count dated `date`; null = asked and the vendor has none (kept for the session) */
 const newestOiCache = new Map<string, NewestOi | null>();
-const newestOiAsked = new Map<string, number>();
-const NEWEST_OI_MS = 30 * 60_000;
-const NEWEST_OI_HISTORIC_CAP = 80;
+/** ticker:date whose oi-change pages are read */
+const oiPagesRead = new Set<string>();
+/** date → not published yet; asked again after this instant */
+const oiNotOutUntil = new Map<string, number>();
+const OI_RETRY_MS = 30 * 60_000;
+/** The next session's counts land overnight; today's date is not asked before this New York minute */
+const OI_PUBLISH_MIN = 7 * 60;
+/** A run reads at most this many contracts' /historic — the rows a page has on screen */
+const OI_HISTORIC_CAP = 20;
+/** Rows a page's book pairs without a grid reporting what is on screen: its heaviest by premium */
+const OI_FIRST = 20;
 let newestOiVer = 0;
 const newestOiListeners = new Set<() => void>();
 const volDayOf = (r: BookContract) => (r.lastDay && /^\d{4}-\d{2}-\d{2}$/.test(r.lastDay) ? r.lastDay : tapeSessionIso());
+const oiKey = (r: BookContract, next: string) => `${r.optionSymbol}:${next}`;
 
-async function loadNewestOi(rows: BookContract[]): Promise<void> {
+function oiDateDue(next: string): boolean {
   const today = nyIsoToday();
-  /* by the date of the count asked for: the session after each row's volume, once that morning has come */
-  const want = new Map<string, Map<string, BookContract[]>>();
+  if (next > today) return false;
+  if (next === today) {
+    const p = nyParts(new Date());
+    if (p.hour * 60 + p.minute < OI_PUBLISH_MIN) return false;
+  }
+  return (oiNotOutUntil.get(next) ?? 0) <= Date.now();
+}
+
+/** One name's 500 largest open-interest increases and decreases for `next`; false when the date is not published yet */
+async function readOiPages(ticker: string, next: string): Promise<boolean> {
+  for (const order of ['desc', 'asc'] as const) {
+    const res = await uwCall(`/stock/${encodeURIComponent(ticker)}/oi-change?limit=500&date=${next}&order=${order}`, false, true);
+    const page = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
+    const dated = page.filter(x => String(x.curr_date ?? '').slice(0, 10) === next);
+    if (order === 'desc' && !dated.length) return false;
+    for (const x of dated) newestOiCache.set(`${String(x.option_symbol ?? '')}:${next}`, { oi: num(x.curr_oi), before: num(x.last_oi), streak: x.days_of_oi_increases != null ? num(x.days_of_oi_increases) : undefined });
+  }
+  return true;
+}
+
+async function readOiHistoric(r: BookContract, next: string): Promise<void> {
+  try {
+    const res = await uwCall(`/option-contract/${encodeURIComponent(r.optionSymbol!)}/historic?limit=3`, false, true);
+    const box = res.data as { chains?: unknown[]; data?: unknown[] } | unknown[] | null;
+    const list = (Array.isArray(box) ? box : Array.isArray((box as { chains?: unknown[] })?.chains) ? (box as { chains: unknown[] }).chains : Array.isArray((box as { data?: unknown[] })?.data) ? (box as { data: unknown[] }).data : []) as Record<string, unknown>[];
+    const at = list.find(x => String(x.date ?? '').slice(0, 10) === next);
+    const was = list.find(x => String(x.date ?? '').slice(0, 10) === volDayOf(r));
+    newestOiCache.set(oiKey(r, next), at && was ? { oi: num(at.open_interest), before: num(was.open_interest) } : null);
+  } catch {
+    newestOiCache.set(oiKey(r, next), null);
+  }
+}
+
+async function pairRun(rows: BookContract[]): Promise<boolean> {
+  const byDate = new Map<string, BookContract[]>();
   for (const r of rows) {
     if (!r.optionSymbol || r.expired) continue;
     const next = nextSessionIso(volDayOf(r));
-    if (next > today) continue;
-    const k = `${r.optionSymbol}:${next}`;
-    if (newestOiCache.has(k) && Date.now() - (newestOiAsked.get(k) ?? 0) < NEWEST_OI_MS) continue;
-    const byT = want.get(next) ?? new Map<string, BookContract[]>();
-    byT.set(r.ticker, [...(byT.get(r.ticker) ?? []), r]);
-    want.set(next, byT);
+    if (!oiDateDue(next) || newestOiCache.has(oiKey(r, next))) continue;
+    byDate.set(next, [...(byDate.get(next) ?? []), r]);
   }
-  if (!want.size) return;
   let changed = false;
-  for (const [next, byT] of want) {
-    const missing: BookContract[] = [];
-    for (const [t, list] of byT) {
-      const got = new Map<string, Record<string, unknown>>();
-      for (const order of ['desc', 'asc'] as const) {
-        const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&date=${next}&order=${order}`, false, true);
-        const page = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
-        for (const x of page) if (String(x.curr_date ?? '').slice(0, 10) === next) got.set(String(x.option_symbol ?? ''), x);
+  for (const [next, list] of byDate) {
+    /* the heaviest name first: if its pages are empty the date is not out, and nothing else is asked */
+    const prem = new Map<string, number>();
+    for (const r of list) prem.set(r.ticker, (prem.get(r.ticker) ?? 0) + r.premium);
+    let out = true;
+    for (const t of [...prem.keys()].sort((a, b) => (prem.get(b) ?? 0) - (prem.get(a) ?? 0))) {
+      const k = `${t}:${next}`;
+      if (oiPagesRead.has(k)) continue;
+      if (!(await readOiPages(t, next))) {
+        oiNotOutUntil.set(next, Date.now() + OI_RETRY_MS);
+        out = false;
+        break;
       }
-      for (const r of list) {
-        const x = got.get(r.optionSymbol!);
-        const k = `${r.optionSymbol}:${next}`;
-        if (!x) {
-          missing.push(r);
-          continue;
-        }
-        newestOiCache.set(k, { oi: num(x.curr_oi), before: num(x.last_oi), streak: x.days_of_oi_increases != null ? num(x.days_of_oi_increases) : undefined });
-        newestOiAsked.set(k, Date.now());
-        changed = true;
-      }
+      oiPagesRead.add(k);
+      changed = true;
     }
-    /* what the pages did not reach (an unchanged count, or past the first 500 changes): the contract's own history,
-       heaviest rows first so the ones on screen land first */
-    missing.sort((a, b) => b.premium - a.premium);
-    for (const r of missing.slice(0, NEWEST_OI_HISTORIC_CAP)) {
-      const k = `${r.optionSymbol}:${next}`;
-      try {
-        const res = await uwCall(`/option-contract/${encodeURIComponent(r.optionSymbol!)}/historic?limit=3`, false, true);
-        const box = res.data as { chains?: unknown[]; data?: unknown[] } | unknown[] | null;
-        const list = (Array.isArray(box) ? box : Array.isArray((box as { chains?: unknown[] })?.chains) ? (box as { chains: unknown[] }).chains : Array.isArray((box as { data?: unknown[] })?.data) ? (box as { data: unknown[] }).data : []) as Record<string, unknown>[];
-        const at = list.find(x => String(x.date ?? '').slice(0, 10) === next);
-        const was = list.find(x => String(x.date ?? '').slice(0, 10) === volDayOf(r));
-        newestOiCache.set(k, at && was ? { oi: num(at.open_interest), before: num(was.open_interest) } : null);
-      } catch {
-        newestOiCache.set(k, null);
-      }
-      newestOiAsked.set(k, Date.now());
+    if (!out) continue;
+    /* an unchanged count, or one past the 500 largest changes, is not on the pages: the contract's own history */
+    const missing = list.filter(r => !newestOiCache.has(oiKey(r, next)) && oiPagesRead.has(`${r.ticker}:${next}`)).sort((a, b) => b.premium - a.premium);
+    for (const r of missing.slice(0, OI_HISTORIC_CAP)) {
+      await readOiHistoric(r, next);
       changed = true;
     }
   }
-  if (changed) {
-    newestOiVer++;
-    for (const f of newestOiListeners) f();
+  return changed;
+}
+
+/* single flight: one run at a time; rows asked meanwhile wait for the next run */
+let oiRunning = false;
+const oiWaiting = new Map<string, BookContract>();
+async function loadNewestOi(rows: BookContract[]): Promise<void> {
+  for (const r of rows) if (r.optionSymbol) oiWaiting.set(r.key, r);
+  if (oiRunning || !oiWaiting.size) return;
+  oiRunning = true;
+  try {
+    while (oiWaiting.size) {
+      const batch = [...oiWaiting.values()];
+      oiWaiting.clear();
+      if (await pairRun(batch)) {
+        newestOiVer++;
+        for (const f of newestOiListeners) f();
+      }
+    }
+  } finally {
+    oiRunning = false;
   }
+}
+
+/** Pair the open interest of the rows a grid has on screen (TraceGrid onVisible) */
+export function pairOiFor(rows: readonly BookContract[]): void {
+  void loadNewestOi(rows.slice(0, OI_HISTORIC_CAP));
 }
 
 /** The rows with the open interest of their volume's session wherever it is out (see above) */
@@ -2196,7 +2148,7 @@ export function usePairedOi(rows: BookContract[]): BookContract[] {
     };
   }, []);
   useEffect(() => {
-    if (rows.length) void loadNewestOi(rows);
+    if (rows.length) void loadNewestOi([...rows].sort((a, b) => b.premium - a.premium).slice(0, OI_FIRST));
   }, [rows]);
   return useMemo(() => {
     void ver;
@@ -2204,13 +2156,15 @@ export function usePairedOi(rows: BookContract[]): BookContract[] {
       const vol = volDayOf(r);
       const next = nextSessionIso(vol);
       const hit = r.optionSymbol ? newestOiCache.get(`${r.optionSymbol}:${next}`) : undefined;
-      if (!hit) return { ...r, volDay: vol, oiDay: prevSessionOf(vol), oiPending: !r.expired };
+      if (!hit) return { ...r, volDay: vol, oiDay: prevSessionIso(vol), oiPending: !r.expired };
       return {
         ...r,
         oi: hit.oi,
         prevOI: hit.before,
         deltaOI: hit.oi - hit.before,
         deltaOIPct: hit.before > 0 ? ((hit.oi - hit.before) / hit.before) * 100 : 0,
+        /* Vol/OI stays against the count the session opened on — now the paired `before` */
+        volOverOI: hit.before > 0 ? r.volume / hit.before : 0,
         oiStreak: hit.streak ?? r.oiStreak,
         volDay: vol,
         oiDay: vol,
@@ -2220,24 +2174,44 @@ export function usePairedOi(rows: BookContract[]): BookContract[] {
   }, [rows, ver]);
 }
 
-/** Hottest chains, plus the name on the desk so a one-name page is not an empty SPX book. */
-/** A book contract's identity across pages (its row key carries its index on the page) */
-const bookIdOf = (r: BookContract) => `${r.ticker}|${r.strike}|${r.right}|${r.expiry}`;
+const bookIdOf = (r: BookContract) => r.key;
 export interface EndlessBook extends LivePack<BookContract[]> {
-  /** The older pages (the screener's `page`), read as the reader scrolls — present when asked for */
+  /** The screener's older pages, read as the reader scrolls */
   older?: OlderPages<BookContract>;
 }
-/** `endless` (the market's book only): the screener's next pages by premium, 200 at a time, as the reader scrolls */
-export function useLiveBook(ticker?: string | null, enabled = true, endless = false): EndlessBook {
-  const pack = useLiveBookRaw(ticker, enabled);
-  const older = useOlderPages(`book:${(ticker || '').toUpperCase() || 'mkt'}`, pack.rows, bookIdOf, (_inHand, pageNo) => olderBook(pageNo, 'order=premium&order_direction=desc', 200), enabled && endless && !ticker);
-  const rows = usePairedOi(endless ? older.rows : pack.rows);
-  return useMemo(() => ({ ...pack, rows, older: endless ? older : undefined }), [pack.at, pack.fault, pack.waiting, rows, endless, older.state, older.loadOlder]); // eslint-disable-line react-hooks/exhaustive-deps
+/** The market's 200 heaviest contracts by premium — one shared read for every page and every name */
+function useMarketBookRaw(enabled: boolean): LivePack<BookContract[]> {
+  return useLive(
+    'book:mkt',
+    async () => {
+      /* nearly every book carries SPXW: its level is asked beside the book, not after it */
+      void ensureIndexLevels(['SPX']);
+      return mapBook(await getRows('/screener/option-contracts?limit=200&order=premium&order_direction=desc'));
+    },
+    [],
+    enabled
+  );
 }
-/** THE BOOK A SEARCH ASKS FOR (audit round 11, major 5: Footprints, Watchers read "No contract matches 'NVDA'" while NVDA
-    220C Nov 20 sat on the screener's page 2 — the search only cut the market's 200 loaded): with a name searched, that
-    name's own contracts by the day's premium (ticker_symbol), 200 a page and paged as the reader scrolls; without one, the
-    market's book. One hook, so a page never holds the two. */
+/** One name's 80 heaviest contracts */
+function useNameBookRaw(name: string, enabled: boolean): LivePack<BookContract[]> {
+  return useLive(name ? `book-name:${name}` : 'book-name:off', async () => mapBook(await getRows(`/screener/option-contracts?ticker_symbol=${encodeURIComponent(name)}&limit=80&order=premium&order_direction=desc`)), [], enabled && !!name);
+}
+/** The market's book, with a name's own 80 ahead of it when one is given; `endless` pages the market's book on scroll */
+export function useLiveBook(ticker?: string | null, enabled = true, endless = false): EndlessBook {
+  const name = (ticker || '').trim().toUpperCase();
+  const market = useMarketBookRaw(enabled);
+  const named = useNameBookRaw(name, enabled);
+  const older = useOlderPages('book:mkt', market.rows, bookIdOf, (_inHand, pageNo) => olderBook(pageNo, 'order=premium&order_direction=desc', 200), enabled && endless && !name);
+  const merged = useMemo(() => {
+    if (!name) return endless ? older.rows : market.rows;
+    const seen = new Set<string>();
+    return named.rows.concat(market.rows).filter(r => !!r.ticker && !seen.has(r.key) && (seen.add(r.key), true));
+  }, [name, endless, older.rows, market.rows, named.rows]);
+  const rows = usePairedOi(merged);
+  const waiting = market.waiting || (!!name && named.waiting);
+  return useMemo(() => ({ rows, at: market.at, fault: market.fault, waiting, older: endless && !name ? older : undefined }), [rows, market.at, market.fault, waiting, endless, name, older]);
+}
+/** A searched name's own book by the day's premium, paged on scroll; without a name, the market's */
 export function useSearchBook(name: string | null | undefined): EndlessBook & { name: string | null } {
   const t = (name || '').trim().toUpperCase() || null;
   const market = useLiveBook(null, !t, true);
@@ -2250,42 +2224,9 @@ export function useSearchBook(name: string | null | undefined): EndlessBook & { 
   return t ? { ...named, name: t } : { ...market, name: null };
 }
 
-function useLiveBookRaw(ticker?: string | null, enabled = true): LivePack<BookContract[]> {
-  const name = (ticker || '').trim().toUpperCase();
-  return useLive(
-    `book:${name || 'mkt'}`,
-    async () => {
-      /* SPX's level is asked beside the book, not after it (audit round 8, load time) — nearly every book carries SPXW */
-      void ensureIndexLevels(['SPX']);
-      const market = getRows('/screener/option-contracts?limit=200&order=premium&order_direction=desc');
-      const named = name
-        ? getRows(`/screener/option-contracts?ticker_symbol=${encodeURIComponent(name)}&limit=80&order=premium&order_direction=desc`).catch(() => [] as Record<string, unknown>[])
-        : Promise.resolve([] as Record<string, unknown>[]);
-      const [a, b] = await Promise.all([market, named]);
-      await Promise.all([ensureIndexLevels(b.concat(a).map(tickerOfRow)), ensureSpots(b.concat(a).map(tickerOfRow))]);
-      const seen = new Set<string>();
-      const out: BookContract[] = [];
-      for (const row of b.concat(a)) {
-        const mapped = contractRow(row, out.length);
-        /* one contract once: the name's page and the market's page overlap, and the key carries the row's index, so it
-           never caught the repeat — the same SPY 773 call sat on Footprints twice */
-        const id = String(row.option_symbol || `${mapped.ticker}-${mapped.strike}-${mapped.right}-${mapped.expiry}`);
-        if (!mapped.ticker || seen.has(id)) continue;
-        seen.add(id);
-        out.push(mapped);
-      }
-      return out;
-    },
-    [],
-    enabled
-  );
-}
-
-/** The screener's page — 200 contracts in the vendor's own order: by premium, or by volume for "most active" (it asked
-    for premium and the page said "heaviest volume first", the audit 2026-10-22) */
+/** The screener's page — 200 contracts in the vendor's own order: by premium, or by volume for "most active" */
 export function useContracts(unusual: boolean, issue?: 'stock' | 'etf' | null, order: 'premium' | 'volume' = 'premium', ticker?: string | null, enabled = true): EndlessBook {
   const parts = [`order=${order}`, 'order_direction=desc'];
-  /* a name searched is asked of the vendor (audit round 11, major 5 — the Screener as Footprints and Watchers) */
   const t = (ticker || '').trim().toUpperCase();
   if (t) parts.push(`ticker_symbol=${encodeURIComponent(t)}`);
   if (unusual) parts.push('unusual=true');
@@ -2294,7 +2235,6 @@ export function useContracts(unusual: boolean, issue?: 'stock' | 'etf' | null, o
   const q = parts.join('&');
   const key = `contracts:${unusual ? 'u' : 'h'}:${issue ?? 'any'}:${order}:${t || 'mkt'}`;
   const pack = useLive(key, async () => mapBook(await getRows(`/screener/option-contracts?limit=200&${q}`)), [], enabled);
-  /* ENDLESS (the owner, 2026-10-23): the screener's next pages in the same order, 200 at a time, as the reader scrolls */
   const older = useOlderPages(key, pack.rows, bookIdOf, (_inHand, pageNo) => olderBook(pageNo, q, 200), enabled);
   const rows = usePairedOi(older.rows);
   return useMemo(() => ({ ...pack, rows, older }), [pack.at, pack.fault, pack.waiting, rows, older.state, older.loadOlder]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2485,19 +2425,15 @@ let legTimer: number | null = null;
 const LEG_GAP_MS = 1_200;
 let legAskSeq = 0;
 let legRev = 0;
-let legCalls = 0;
 const legListeners = new Set<() => void>();
 const legNotify = () => {
   legRev++;
   for (const fn of legListeners) fn();
 };
-/** How many legs reads this tab has made (the proof scripts read it) */
-export const legsReadCount = () => legCalls;
 const legOpen = (id: string) => !!id && !legRaw.has(id) && !legInflight.has(id);
 function readLegs(id: string, low: boolean) {
   legInflight.add(id);
   legBusy++;
-  legCalls++;
   uwCall(`/option-trades/multi-leg/${encodeURIComponent(id)}/legs`, !low, low)
     .then(got => {
       if (got.error) {
@@ -2760,10 +2696,20 @@ export function nameFromLegs(legs: SpreadLeg[]): { name: string; kind: SpreadKin
   }
   if (legs.length === 3 && (calls.length === 3 || puts.length === 3)) {
     const [a, m, b] = calls.length === 3 ? calls : puts;
-    if (new Set([a.strike, m.strike, b.strike]).size !== 3 || B(a) !== B(b) || B(a) === B(m)) return null;
-    const w = a.contracts ?? 1;
-    if ((b.contracts ?? 1) !== w || (m.contracts ?? 1) !== 2 * w) return null;
-    return { name: `${B(a) ? 'long' : 'short'} ${rw(a.right)} butterfly${m.strike - a.strike !== b.strike - m.strike ? ' (uneven wings)' : ''}`, kind: 'butterfly' };
+    if (new Set([a.strike, m.strike, b.strike]).size !== 3) return null;
+    const ca = a.contracts ?? 1;
+    const cm = m.contracts ?? 1;
+    const cb = b.contracts ?? 1;
+    if (B(a) === B(b) && B(a) !== B(m)) {
+      if (cb === ca && cm === 2 * ca) return { name: `${B(a) ? 'long' : 'short'} ${rw(a.right)} butterfly${m.strike - a.strike !== b.strike - m.strike ? ' (uneven wings)' : ''}`, kind: 'butterfly' };
+      if (cm === ca + cb) return { name: `${B(a) ? 'long' : 'short'} ${rw(a.right)} ratio butterfly`, kind: 'butterfly' };
+      return null;
+    }
+    /* a ladder: the leg nearest the money on one side, the two further out on the other, equal sizes */
+    const near = a.right === 'C' ? a : b;
+    const far = a.right === 'C' ? [m, b] : [a, m];
+    if (eq && B(far[0]) === B(far[1]) && B(near) !== B(far[0])) return { name: `${B(near) ? 'long' : 'short'} ${rw(a.right)} ladder`, kind: 'ratio' };
+    return null;
   }
   if (legs.length === 4 && calls.length === 2 && puts.length === 2 && eq) {
     const [cl, ch] = calls;
@@ -2825,6 +2771,16 @@ function vendorChecked(vendor: string, legs: SpreadLeg[], net: number): { name: 
   return null;
 }
 
+/** Off by more than 2% (and $5) of the larger figure */
+const offBy = (a: number | 'uncapped', b: number | 'uncapped') => (a === 'uncapped' || b === 'uncapped' ? a !== b : Math.abs(a - b) > Math.max(5, 0.02 * Math.max(Math.abs(a), Math.abs(b))));
+/** The settled legs disagree with the vendor: its stated risk when it gave a direction, else its family */
+function contradictsVendor(t: SpreadTrade, range: { maxLoss: number | 'uncapped'; maxProfit: number | 'uncapped' } | null, legsKind: SpreadKind): boolean {
+  const vk = t.vendorKind ?? t.kind;
+  if (t.vendorDirection === 'unknown') return vk !== 'custom' && legsKind !== vk;
+  if (!range || !t.vendorRisk) return false;
+  return offBy(range.maxLoss, t.vendorRisk.loss) || offBy(range.maxProfit, t.vendorRisk.profit);
+}
+
 /** The structure the row stands for, settled from its legs once they are in hand */
 function settleSpread(t: SpreadTrade): SpreadTrade {
   const raw = legRaw.get(t.id);
@@ -2858,6 +2814,7 @@ function settleSpread(t: SpreadTrade): SpreadTrade {
   const unread = !!t.compression || !!t.extended;
   const named = named0 && unread ? { ...named0, name: neutralShape(named0.name) } : named0;
   const vendor = t.shapeOfVendor ?? t.shape;
+  const unverified = contradictsVendor(t, range, named?.kind ?? t.kind) || undefined;
   const sideTagged = raw.filter(l => String(l.side) === 'ask' || String(l.side) === 'bid').length;
   return {
     ...t,
@@ -2875,6 +2832,7 @@ function settleSpread(t: SpreadTrade): SpreadTrade {
     maxLoss: range ? range.maxLoss : null,
     maxProfit: range ? range.maxProfit : null,
     riskNote: !settled ? 'unsettled' : !oneExpiry ? 'expiries' : !known ? 'no-net' : undefined,
+    unverified,
     ...(() => {
       const th = positionThetaCapped(legs, known ? t.netPremium : undefined);
       return { theta: th ? th.value : NaN, thetaCapped: th?.capped || undefined };
@@ -2903,6 +2861,11 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
   const tradeDay = when.epoch > 0 ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(when.epoch * 1000)) : '';
   const expiryIso = tradeDay ? new Date(Date.parse(`${tradeDay}T00:00:00Z`) + dteAtTrade * 86_400_000).toISOString().slice(0, 10) : '';
   const code = String(row.code || '').toLowerCase();
+  const dir = String(row.direction || '');
+  const vendorDirection = dir === 'long' || dir === 'short' || dir === 'unknown' ? dir : undefined;
+  /* the vendor's max_loss is negative dollars; a null max_profit beside a stated loss is uncapped */
+  const vLoss = row.max_loss != null && row.max_loss !== '' ? Math.abs(num(row.max_loss)) : null;
+  const vendorRisk = vendorDirection && vendorDirection !== 'unknown' && vLoss != null ? { loss: vLoss, profit: row.max_profit != null && row.max_profit !== '' ? Math.abs(num(row.max_profit)) : ('uncapped' as const) } : null;
   /* the far leg (audit round 10, minor 4: a diagonal showed only its near leg, "10/23/2026 · 0d" for min_dte 0 / max_dte 7) */
   const farDte = row.max_dte != null && row.max_dte !== '' ? num(row.max_dte) : dteAtTrade;
   const farIso = tradeDay && farDte > dteAtTrade ? new Date(Date.parse(`${tradeDay}T00:00:00Z`) + farDte * 86_400_000).toISOString().slice(0, 10) : '';
@@ -2919,6 +2882,9 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
     time: when.time,
     ticker,
     kind,
+    vendorKind: kind,
+    vendorDirection,
+    vendorRisk,
     shape: shapeName(strategy),
     shapeOfVendor: shapeName(strategy),
     strikesLabel: strikes.length ? strikes.join(' / ') : '—',
@@ -3586,3 +3552,7 @@ export async function olderNameDark(ticker: string, inHand: DarkPoolPrint[], day
   const rows = mapped.filter(p => !p.dateIso || p.dateIso === dayIso);
   return { rows, end: got.length < limit || rows.length < mapped.length };
 }
+
+/* lets WatchContext read live spots without importing this module (core/liveSpots.ts) */
+import { registerLiveSpots } from '../core/liveSpots';
+registerLiveSpots(liveSpotOf);

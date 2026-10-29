@@ -1,15 +1,15 @@
 /*
-  The paper book. A fill is the ask one minute after the signal.
-  A missing quote is not replaced. Fees follow Robinhood's published
-  schedule: $0.50 a side, $0.04 ORF and OCC a side, and the SEC fee on the sale.
+  The paper book. Every pick fills at the ask of the first quote a full minute after the call;
+  a missing quote is not replaced and a fill is never refused because the ask moved.
+  Fees are a flat per-side estimate (see optionFees), not a broker's schedule.
 */
 
 import { useEffect, useState } from 'react';
 import type { OptionRight, Setup } from '../types/compass';
 import type { TrackedSetup } from '../types/tracker';
-import { currentPicks, entryAsk, noteLeft } from './compassModel';
+import { currentPicks, entryAsk, noteLeft, pinFill } from './compassModel';
 import { noteCompassCall } from './compassAlerts';
-import { nyClock, nyMinutes, nyParts, nyWallTime } from '../core/nyTime';
+import { nyClock, nyMinutes, nyParts } from '../core/nyTime';
 import { STOP_KEEP } from './contractQuote';
 import { lotteryExit, reversalLine, stopAfter, treeExit } from './compassParams';
 
@@ -214,63 +214,14 @@ function load(): BookLine[] {
   }
 }
 
-/**
- * 2026-10-27, 10:21 ET. The swing model scored this wing near 31%.
- * The exit is the first minute the close traded through +50%, not the high.
- */
-const AVERAGE_WINS: BookLine[] = [
-  [7730, 0.65, 0.98, 50, '10:24', 3],
-  [7720, 1.2, 1.8, 50, '10:25', 4],
-  [7700, 4, 6, 50, '10:25', 4],
-  [7690, 6.9, 10.35, 50, '10:25', 4],
-  [7680, 11.16, 16.74, 50, '10:29', 8],
-  [7685, 8.85, 13.28, 50, '10:25', 4],
-  [7695, 5.35, 8.03, 50, '10:25', 4],
-  [7705, 2.95, 4.43, 50, '10:25', 4],
-  [7710, 2.15, 3.23, 50, '10:25', 4],
-  [7715, 1.6, 2.4, 50, '10:25', 4],
-  [7725, 0.85, 1.28, 50, '10:24', 3],
-  [7735, 0.47, 0.71, 50, '10:24', 3],
-  [7740, 0.37, 0.56, 50, '10:25', 4],
-  [7745, 0.3, 0.45, 50, '10:25', 4],
-  [7750, 0.22, 0.33, 50, '10:24', 3],
-  [7755, 0.2, 0.3, 50, '10:28', 7],
-].map(([strike, paid, exitPx, ret, out, held]) => ({
-  id: `avg-2026-10-27-SPXW-${strike}-C`,
-  date: '2026-10-27',
-  ticker: 'SPXW',
-  contract: `SPXW ${strike}C`,
-  right: 'C' as const,
-  strike: strike as number,
-  paid: paid as number,
-  exitPx: exitPx as number,
-  entered: '10:21',
-  exit: out as string,
-  why: '31% swing. In at 10:21. Out at +50% the first minute the close cleared it. Not the high.',
-  result: 'win' as const,
-  ret: ret as number,
-  held: held as number,
-  at: nyWallTime(2026, 10, 27, 10, 21),
-}));
+/* Rows an older build wrote into every visitor's book without a real fill. */
+const NOT_FILLED = /^avg-2026-10-27-SPXW-\d+-C$|^SPXW-7745-C-top-setups-odte$/;
 
-function seedAverageWins(): void {
-  const byId = new Map(AVERAGE_WINS.map(line => [line.id, line]));
-  let wrote = false;
-  lines = lines.map(row => {
-    const fresh = byId.get(row.id);
-    if (!fresh) return row;
-    byId.delete(row.id);
-    if (row.exit === fresh.exit && row.exitPx === fresh.exitPx && row.why === fresh.why) return row;
-    wrote = true;
-    return fresh;
-  });
-  if (byId.size) {
-    lines = [...byId.values(), ...lines];
-    wrote = true;
-  }
-  if (!wrote) return;
-  try { localStorage.setItem(KEY, JSON.stringify(lines)); } catch { /* this load still has the rows */ }
-  emit();
+function dropUnfilled(): void {
+  const kept = lines.filter(row => !NOT_FILLED.test(row.id));
+  if (kept.length === lines.length) return;
+  lines = kept;
+  try { localStorage.setItem(KEY, JSON.stringify(lines)); } catch { /* this load is clean either way */ }
 }
 
 export function bookLine(id: string): BookLine | null {
@@ -329,22 +280,34 @@ export function useCompassBook(): BookLine[] {
   return rows;
 }
 
-export function lockFill(id: string, trackedAt: number, quote: LiveQuote | null, now = Date.now(), _ticker = '', signalAsk = 0, immediate = false): LockedFill {
+const WAIT: LockedFill = { status: 'wait', bid: 0, ask: 0, mid: 0 };
+/* No quote from the fill minute within this long after the call, and the fill is unavailable. */
+const FILL_GIVE_UP_MS = 3 * 60_000;
+
+/** The one fill rule for a pick: the ask of the first valid quote stamped a full minute after the call. */
+export function lockFill(id: string, calledAt: number, quote: LiveQuote | null, now = Date.now()): LockedFill {
   const held = fills.get(id);
   if (held && held.status !== 'wait') return held;
-  if (!immediate && !nextAskDue(trackedAt, now)) return { status: 'wait', bid: 0, ask: 0, mid: 0 };
-  if (!quote || !(quote.ask > 0) || quote.bid < 0 || quote.ask < quote.bid) {
-    const miss = { status: 'unavailable' as const, bid: 0, ask: 0, mid: 0 };
-    fills.set(id, miss);
-    return miss;
+  const pinned = entryAsk(id);
+  if (pinned > 0) {
+    const restored = { status: 'filled' as const, bid: 0, ask: pinned, mid: 0 };
+    fills.set(id, restored);
+    return restored;
   }
-  if (signalAsk > 0 && quote.ask > signalAsk + 1e-6) {
-    const miss = { status: 'unavailable' as const, bid: quote.bid, ask: quote.ask, mid: 0 };
-    fills.set(id, miss);
-    return miss;
+  if (!nextAskDue(calledAt, now)) return WAIT;
+  const fresh = quote != null && quote.at > 0 && nextAskDue(calledAt, quote.at);
+  const valid = fresh && quote.ask > 0 && quote.bid >= 0 && quote.ask >= quote.bid;
+  if (!valid) {
+    if (fresh || now - calledAt > FILL_GIVE_UP_MS) {
+      const miss = { status: 'unavailable' as const, bid: 0, ask: 0, mid: 0 };
+      fills.set(id, miss);
+      return miss;
+    }
+    return WAIT;
   }
   const locked = { status: 'filled' as const, bid: quote.bid, ask: quote.ask, mid: (quote.bid + quote.ask) / 2 };
   fills.set(id, locked);
+  pinFill(id, quote.ask);
   return locked;
 }
 
@@ -359,7 +322,7 @@ export function settleOpen(tracked: TrackedSetup[], setups: Setup[], spots: Map<
     if (setup?.band === 'closest') continue;
     const quote = setup && setup.quotedAt ? { bid: setup.bid, ask: setup.ask, at: setup.quotedAt } : null;
     const lottery = setup?.band === 'lottery';
-    const fill = lockFill(t.id, t.trackedAt, quote, Date.now(), t.ticker, t.signalAsk ?? 0, lottery);
+    const fill = lockFill(t.id, t.trackedAt, quote);
     if (fill.status === 'wait') continue;
     if (fill.status === 'unavailable') {
       remember(stampClose({
@@ -433,7 +396,21 @@ export function settleBoard(live: Setup[], now = Date.now()): void {
     const q = byId.get(pick.id);
     const bid = q && q.ask > 0 && q.bid >= 0 && q.ask >= q.bid ? q.bid : pick.bid;
     const spot = (q?.spot ?? pick.spot) || 0;
-    const paid = entryAsk(pick.id);
+    const calledAt = pick.seenAt && pick.seenAt > 0 ? pick.seenAt : now;
+    const quoted = q && q.quotedAt ? { bid: q.bid, ask: q.ask, at: q.quotedAt } : pick.quotedAt ? { bid: pick.bid, ask: pick.ask, at: pick.quotedAt } : null;
+    const fill = lockFill(pick.id, calledAt, quoted, now);
+    if (fill.status === 'wait') continue;
+    if (fill.status === 'unavailable') {
+      if (!bookLine(pick.id)) {
+        remember(stampClose({
+          id: pick.id, ticker: pick.ticker, contract: pick.contract, right: pick.right, strike: pick.strike,
+          paid: 0, exitPx: 0, why: 'Unavailable', result: 'unavailable', held: null,
+        }));
+        noteLeft(pick, 'Unavailable');
+      }
+      continue;
+    }
+    const paid = fill.ask;
     if (!(paid > 0) || !(bid >= 0)) continue;
     const heldMin = pick.seenAt ? Math.max(0, Math.round((now - pick.seenAt) / 60000)) : 0;
     const heldSec = pick.seenAt ? Math.max(0, Math.round((now - pick.seenAt) / 1000)) : 0;
@@ -475,6 +452,9 @@ export function settleBoard(live: Setup[], now = Date.now()): void {
         why,
         result: call.result,
         held: heldMin,
+        fillBid: fill.bid || undefined,
+        fillAsk: fill.ask,
+        fillMid: fill.mid || undefined,
       }),
       entered: had?.entered || nyClock(at),
     });
@@ -483,4 +463,4 @@ export function settleBoard(live: Setup[], now = Date.now()): void {
 }
 
 lines = load();
-seedAverageWins();
+dropUnfilled();

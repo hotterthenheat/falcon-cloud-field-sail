@@ -1,42 +1,8 @@
 /*
-==================================================
-  SLAYER TERMINAL - SITE FOOTER
-  The landing page's footer, extracted so it ends
-  EVERY main page (Noah, 2026-08-23) — AppShell
-  renders it under the routed content; the landing
-  and the products' pages keep their own copies.
-
-  ONE PIECE, HIS PARTNER'S PICTURES (2026-10-03 —
-  Noah, with his partner's footer: the whole footer
-  one screen, the terminal caught in the dark, a
-  picture a page, still until a hand is on it; then
-  2026-10-07: "for the footers my partner actually
-  wants the other ones and not the actual look of the
-  website"). The footer is FooterArt's screen, and the
-  picture on it is one of his partner's drawn scenes
-  (footer/scenes.ts, picked by the address in
-  footer/registry.ts) — Pulse's desk, Terrain's strike
-  field, Trace's tape, the Dossier's map, the book's
-  walls, Compass's cards, the Weigher's curve, Paper's
-  orders, the backtest's scrubber, the Journal's month,
-  and on the landing every product at once, moving. The
-  page's own still broken into pixels — our first cut —
-  is gone at his word. Half the height his first one had
-  (his: "the footers are a bit big"): the words and the
-  three stacks of links on the left, the picture beside
-  them as tall as they are, one status line at the
-  foot. The words stay crisp: the fringe is the
-  picture's, not the links'.
-
-  `home` changes only the link plumbing, never the
-  look: on the landing, #pricing/#faq are in-page
-  anchors and every door into the terminal plays the
-  launch gate; in the terminal they route back to the
-  landing's sections and the doors are plain
-  navigations. A product's own page (/products/*) is
-  outside the terminal too, so its doors play the
-  gate; its anchors route home.
-==================================================
+  The site footer, rendered by AppShell under every page (the landing and product pages render it too). It is
+  FooterArt's screen with the page's scene (footer/registry.ts), the links and a status line. `home` changes only
+  link behaviour: on the landing #pricing/#faq are in-page anchors and doors into the terminal play the launch gate;
+  inside the terminal they route back to the landing. Product pages (/products/*) are outside the terminal too.
 */
 
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
@@ -51,12 +17,8 @@ import { sceneFor } from './footer/registry';
 
 const FooterArt = lazy(() => import('./FooterArt'));
 
-/* THE LINKS, WALKED (2026-09-19). What was wrong: "Launch Terminal" and "Log in / Sign up" both went to "/", the front page
-   — on the front page itself they did nothing, and there is no sign-in to go to yet; "Pulse" was listed twice; Terrain, a
-   whole product, was not listed at all; "FAQ" is called Questions everywhere else. Now every row goes where it says.
-   THE PRODUCTS ARE THE PRODUCTS MENU'S (2026-10-03): the eleven, in the rail's order, four abreast; one with a page of its own
-   on the site opens that page, the rest open the terminal at theirs. Alerts is not among them (Noah, 2026-10-10: "just an
-   in-house thing not an entire page") — a drawer over every page of the terminal, not a product. */
+/* Every row goes where it says. Products follow the rail's order; one with its own site page opens that page, the rest
+   open the terminal. Alerts is a drawer over every page, not a product. */
 interface FooterLinkDef {
   label: string;
   to: string;
@@ -94,7 +56,7 @@ const STACKS: FooterCol[][] = [
         { label: 'Questions', to: '#faq' },
         { label: 'Community', to: '/community' },
         { label: 'Contact', to: 'mailto:info@slayerterminal.com' },
-        /* the legal pages (2026-10-05) */
+        /* the legal pages */
         { label: 'Terms', to: '/terms' },
         { label: 'Privacy', to: '/privacy' },
       ],
@@ -115,11 +77,11 @@ const STACKS: FooterCol[][] = [
   ],
 ];
 
-/** the pages of the site that are not the terminal: a door to one is a plain link, never the launch gate */
+/** Site pages outside the terminal: a link to one is plain, never the launch gate. */
 const SITE = /^\/(products\/|terms|privacy|$)/;
 
-/** Anchor / route / mailto — one link component so the columns stay declarative. `home`: the anchors are in-page; `gate`:
-    a door into the terminal plays the launch transition (the landing and the products' pages). */
+/** One link component (anchor, route, mailto). `home`: anchors are in-page; `gate`: doors into the terminal play the
+    launch transition. */
 const FooterLink = ({ to, home, gate, className, children }: { to: string; home: boolean; gate: boolean; className: string; children: ReactNode }) => {
   const { launch } = useLaunch();
   if (to.startsWith('https:')) {
@@ -162,8 +124,7 @@ const FooterLink = ({ to, home, gate, className, children }: { to: string; home:
       </a>
     );
   }
-  /* from outside the terminal every door into it plays the launch gate — it was only Pulse's, and the other products cut
-     straight to a half-loaded page */
+  /* from outside the terminal every door into it plays the launch gate */
   if (gate && !SITE.test(to)) {
     return (
       <a
@@ -185,10 +146,8 @@ const FooterLink = ({ to, home, gate, className, children }: { to: string; home:
   );
 };
 
-/* THE MARKET'S STATE, in New York, on the real clock (the status line): the brand's own reading (data/marketState.ts —
-   the signature's word comes from the same place, so the dot and the words never disagree) and the clock */
-/* THE SESSION WORD ON THE REAL CLOCK: pre-market trading starts at 04:00 ET — before it, and from 20:00 on, it is the overnight.
-   The clock beside it is Central, 12-hour, the same instant. */
+/* the market state in New York for the status line, from data/marketState.ts like the signature's word */
+/* pre-market starts at 04:00 ET; before it and from 20:00 it is overnight. The clock beside it is Central, 12-hour. */
 const sessionWordAt = (d: Date, short: string): string => {
   if (short !== 'pre-market' && short !== 'after hours') return short;
   const m = nyMinutes(d);
@@ -207,25 +166,21 @@ const useMarketNow = () => {
 const SiteFooter = ({ home = false }: { home?: boolean }) => {
   const { pathname } = useLocation();
   const gate = home || pathname.startsWith('/products/');
-  /* the landing's picture is every product at once; every other page's is its own, by its address — and while the alerts
-     drawer is open over a page, the footer under it is the alerts' (his partner's rule: they have no page of their own) */
+  /* the landing shows every product at once, other pages their own; with the alerts drawer open, the alerts scene */
   const alerts = useAlertsDrawer();
   const scene = home && pathname === '/' ? 'landing' : alerts ? 'alerts' : sceneFor(pathname);
   const market = useMarketNow();
   return (
-    /* shrink-0: on the Weigher the footer shares a definite-height flex column
-       with a full-viewport desk — left shrinkable, flexbox would absorb the
-       whole deficit HERE and silently collapse the footer to nothing. */
+    /* shrink-0: on the Weigher the footer shares a fixed-height column and would otherwise collapse to nothing */
     <footer className="shrink-0 border-t border-borderSubtle overflow-hidden bg-canvas" data-site-footer={scene}>
       <Suspense fallback={<div className="min-h-[120px]" />}>
       <FooterArt scene={scene} live={scene === 'landing'}>
-        {/* the column is the layout's query (index.css .footer-sheet): a page with the rail open lays its footer by the
-            room it has, not the screen's */}
+        {/* the column is the container query (index.css .footer-sheet): the footer lays out by the room it has */}
         <div className="footer-sheet mx-auto w-full max-w-[1240px] px-6 lg:px-10 pt-12 lg:pt-14">
           <div className="footer-grid">
             {/* the art frames the panels ([data-footer-panel]) under the pointer */}
             <div className="self-start" data-footer-panel>
-              {/* the wordmark with its cursor (his partner's logo system, 2026-10-03) */}
+              {/* the wordmark with its cursor */}
               <Wordmark height={13} cursor label="Slayer Terminal" />
               <p className="footer-word mt-4 text-t16 leading-[22px] font-medium tracking-tight text-textPrimary" data-footer-lit>
                 Trade what you can see.
@@ -234,9 +189,9 @@ const SiteFooter = ({ home = false }: { home?: boolean }) => {
                 Most of what moves a price is public, just scattered. Slayer gathers it into one terminal.
               </p>
             </div>
-            {/* THE SCREEN'S PICTURE: an empty box the art draws the page's scene in */}
+            {/* the empty box the art draws the scene in */}
             <div aria-hidden="true" data-footer-scene />
-            {/* the stacks a step closer (2026-10-07): the room they give up goes to the picture beside them */}
+            {/* the link stacks sit close so the picture gets the room */}
             <nav aria-label="Footer" className="flex flex-wrap gap-x-8 gap-y-7">
               {STACKS.map(stack => (
                 <div key={stack[0].title} className="flex flex-col gap-6">
@@ -261,11 +216,10 @@ const SiteFooter = ({ home = false }: { home?: boolean }) => {
             </nav>
           </div>
         </div>
-        {/* THE STATUS LINE, at the screen's foot: the market's state on the real clock, what this is not, whose it is */}
+        {/* the status line: market state, disclaimer, owner */}
         <div className="mx-auto w-full max-w-[1240px] px-6 lg:px-10 mt-10 lg:mt-12">
           <div className="border-t border-borderSubtle/70 py-4 flex flex-wrap items-center gap-x-8 gap-y-2 font-mono text-t105 tracking-wide text-textMuted">
-            {/* the signature (his partner's logo system, 2026-10-03), the market's finer word after it where it adds one
-                (pre-market, after hours, the weekend), and the New York clock */}
+            {/* the signature, the finer session word where it adds one (pre-market, after hours, weekend), and the New York clock */}
             <span className="inline-flex items-center whitespace-nowrap" data-footer-market={market.words}>
               <Signature rule={false} detail={`· ${market.words === 'market open' || market.words === 'closed' ? '' : `${market.words} · `}${market.clock} New York`} className="text-t105" />
             </span>
@@ -273,7 +227,7 @@ const SiteFooter = ({ home = false }: { home?: boolean }) => {
               For informational purposes only. Not investment advice.
             </span>
             <span className="footer-word ml-auto whitespace-nowrap" data-footer-lit>
-              {/* the year is the calendar's, not a number typed once (2026-09-19) */}© {new Date().getFullYear()} Slayer Terminal
+              {/* the year from the calendar */}© {new Date().getFullYear()} Slayer Terminal
             </span>
           </div>
         </div>

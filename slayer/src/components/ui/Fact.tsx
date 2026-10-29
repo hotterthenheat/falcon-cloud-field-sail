@@ -1,12 +1,7 @@
 import React from 'react';
 
-/**
- * Dot-leader evidence row — the vitals-strip grammar, used wherever a
- * paragraph used to narrate the same numbers (Mo, 2026-08-19: "show the
- * evidence... then a very small conclusion underneath"). Label whispers,
- * leader dots bridge, the value speaks in bright tabular figures. Pass a
- * <Term> as the label when the word needs explaining.
- */
+/** A dot-leader evidence row: a quiet label, leader dots, and the value in bright tabular figures. Pass a <Term> as
+    the label when the word needs explaining. */
 const Fact = ({
   label,
   value,
@@ -16,14 +11,13 @@ const Fact = ({
   label: React.ReactNode;
   value: React.ReactNode;
   valueCls?: string;
-  /** A row sized for a card that is a reading surface on its own (the Weigher's case, 2026-10-10): a larger figure, a
-      little more air — the same grammar */
+  /** A larger row for a card that is a reading surface on its own */
   big?: boolean;
 }) => (
   <span className={`flex items-baseline gap-2 min-w-0 font-mono ${big ? 'py-1' : ''}`}>
     <span className={`${big ? 'text-t105' : 'text-t10'} uppercase tracking-wider text-textSecondary shrink-0`}>{label}</span>
     <span className="flex-1 self-center border-b border-dotted border-ink/15" />
-    {/* the big row's figure a notch larger than the house's, semibold not bold (Noah, 2026-10-10: "slightly too big and bold") */}
+    {/* the large row's figure is a notch above the house size, semibold */}
     <span className={`${big ? 'text-t14 font-semibold' : 'text-t13 font-bold'} tnum ${valueCls}`}>{value}</span>
   </span>
 );

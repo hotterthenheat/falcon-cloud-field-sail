@@ -1,27 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE PEOPLE ROOM'S DATA (data/admin.ts)
-
-  What the admin People room reads and the one door
-  it has (Noah, 2026-10-10: "start with the admin
-  people room"). Every account as the database hands
-  it to an owner — the row, plus what only the auth
-  side knows: the last sign-in, whether the address
-  is confirmed, the ways in. A change goes through
-  ONE function, with its reason, so the log the
-  database writes can never miss the why.
-
-  The rules live in the database
-  (supabase/migrations/20261011_admin_people.sql,
-  20261017_roles_grants.sql): owners change, the
-  team reads, the last owner stays, nobody bans
-  themselves. The page only says what the database
-  said, in plain words.
-
-  Without the account service (a clone without keys,
-  the photographer) the room shows a sample, so the
-  layout can be looked at and the checks still run.
-==================================================
+  Data for the admin People room: every account as the database gives it to an owner (the row plus last sign-in,
+  confirmation and providers), and one change call that carries its reason so the audit log always has the why.
+  The rules are the database's (supabase/migrations: admin_people, roles_grants). Without accounts it shows a sample.
 */
 
 import { supabase } from './supabase';
@@ -49,7 +29,7 @@ export interface Person {
   planPeriod: 'month' | 'year' | null;
   planRenewsOn: string | null;
   hasBilling: boolean;
-  /** THE GRANT (2026-10-17): a plan given, until when, and why; beta opens the walled rooms */
+  /** A grant: the plan given, until when, and why; beta opens walled rooms */
   grantPlan: GrantPlan | null;
   grantUntil: string | null;
   grantNote: string | null;
@@ -94,7 +74,7 @@ export const ago = (iso: string | null, now = Date.now()): string => {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d > 300 ? 'numeric' : undefined });
 };
 
-/** The reason a call was refused, said plainly — the database's own words are already plain, so mostly a first capital */
+/** The reason a call was refused, in plain words */
 const plainWhy = (message: string): string => {
   const m = message.toLowerCase();
   if (m.includes('owners only')) return 'Owners only.';
@@ -158,7 +138,7 @@ const personOf = (r: PeopleRow): Person => ({
   beta: !!r.beta,
 });
 
-/** Every account, newest first — owners and the team; anyone else is refused by the database */
+/** Every account, newest first (owners and the team; the database refuses anyone else) */
 export async function loadPeople(): Promise<{ people: Person[]; why: string | null }> {
   if (!supabase) return { people: SAMPLE_PEOPLE, why: null };
   const { data, error } = await supabase.rpc('admin_people');
@@ -189,7 +169,7 @@ export interface AdminPatch {
   beta?: boolean;
 }
 
-/** THE ONE DOOR: a change and its reason in one breath */
+/** The one change call: a patch and its reason together */
 export async function adminUpdate(subject: string, patch: AdminPatch, note: string): Promise<Outcome> {
   if (!supabase) return { ok: true };
   const body: Record<string, string> = {};
@@ -204,7 +184,7 @@ export async function adminUpdate(subject: string, patch: AdminPatch, note: stri
   return error ? { ok: false, why: plainWhy(error.message) } : { ok: true };
 }
 
-/* ---- the sample, for a build without the account service --------------------------------------------------------- */
+/* ---- sample, for a build without the account service ---- */
 
 const day = 24 * 3600 * 1000;
 const at = (daysAgo: number, hours = 0): string => new Date(Date.now() - daysAgo * day - hours * 3600 * 1000).toISOString();

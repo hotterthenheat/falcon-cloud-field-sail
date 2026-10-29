@@ -16,13 +16,13 @@ export const PRACTICE_SUBPAGES: PracticeSubpage[] = [
   {
     path: '/practice/paper',
     label: 'Paper Trade',
-    subtitle: 'Trade today’s prices with pretend money — a practice account or a prop firm’s evaluation, options off the chain and futures long or short',
+    subtitle: 'Trade today’s live option quotes with pretend money — options off the chain, filled at the live bid and ask',
     icon: LineChart,
   },
   {
     path: '/practice/backtest',
     label: 'Backtest',
-    subtitle: 'Replay a past market minute by minute and trade it with pretend money — a name’s option contracts off the chain as it stood, or futures long and short',
+    subtitle: 'Paused until real minute-by-minute option history is wired in',
     icon: History,
   },
   {

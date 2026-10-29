@@ -1,26 +1,12 @@
 /*
-==================================================
-  SLAYER TERMINAL - UNDO, IN PLACE OF "ARE YOU SURE?" (ui/undo.tsx)
+  Undo instead of "are you sure?": a destructive action happens at once and a chip in the toast column (AlertToasts)
+  offers Undo with a countdown.
 
-  A destructive action happens AT ONCE, and a chip in
-  the shell's toast column says what went, with an
-  Undo and a countdown — "Forgot "Big puts" · Undo
-  6s". A confirm dialog asks before every click; an
-  undo asks nothing and forgives the one that was
-  wrong. The chip lives in the one toast column
-  (AlertToasts), never a second stack over it. Taken
-  from the partner's build with the saved cuts, at
-  Noah's word (2026-10-13).
-==================================================
-
-  USAGE. Do the destructive thing first, keeping what it takes to put it back, then hand the way back to
-  `undoable`: `const gone = desks[i]; removeDesk(i); undoable({ label: \`Removed ${gone.name}\`, undo: () => restoreDesk(gone, i) });`
-  The chip shows "<label> · Undo" for `ms` (6 s by default), its countdown pausing while a pointer is over it or
-  focus is in it; Undo runs `undo` once and the chip goes, and Ctrl+Z (⌘Z) runs the newest chip's Undo from anywhere
-  that is not a text field. `onExpire` runs if the time runs out instead. A second chip with the same `key` replaces
-  the first. The label is the plain past tense of what happened, in the house's words, and never "Undo" itself.
-  `undoable` returns a function that takes the chip away without undoing. Nothing to mount on a page: the terminal
-  shell renders <UndoToasts /> once, inside AlertToasts' column.
+  Usage: do the destructive thing, keep what restores it, then
+  `undoable({ label: \`Removed ${gone.name}\`, undo: () => restoreDesk(gone, i) })`. The chip shows for `ms` (6 s),
+  pausing under the pointer or focus; Undo (or Ctrl/Cmd+Z outside a text field) runs `undo` once. `onExpire` runs
+  on timeout; a chip with the same `key` replaces the last. The label is the plain past tense. `undoable` returns a
+  dismiss function. The shell renders <UndoToasts /> once.
 */
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -90,8 +76,7 @@ function runUndo(id: number) {
   const e = drop(id);
   if (!e) return;
   e.undo();
-  /* the chip held focus (or the key was pressed from where the action was): hand it back to where the reader acted,
-     else to the page itself, never to the page's body */
+  /* focus returns to where the reader acted, else to the page, never to the body */
   requestAnimationFrame(() => {
     const at = document.activeElement;
     if (at && at !== document.body && document.contains(at)) return;

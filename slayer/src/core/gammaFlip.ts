@@ -118,10 +118,8 @@ export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r?: numb
   if (!(spot > 0) || !legs.length) return { flip: null, netAtSpot: net0, beyond: null, range, method: 'repriced' };
   const lo = spot * (1 - range);
   const hi = spot * (1 + range);
-  /* TWO GRIDS (a contract minutes from expiry has a gamma bump well under a dollar wide on a $700 name, while a LEAP's
-     barely bends across the whole range): the broad legs are priced on a 240-step grid and read between its points; the
-     narrow ones — wider than a few coarse steps they are not — are priced exactly on a grid finer than half the
-     narrowest material one, σ·√T·S. Spot is a point of both, so the sign at spot is the book's own net. */
+  /* Two grids: broad legs on a 240-step grid read between its points; narrow ones (a contract minutes from expiry) priced
+     exactly on a grid finer than half the narrowest material width σ·√T·S. Spot is on both, so the sign at spot is the net. */
   const coarseStep = (hi - lo) / STEPS;
   const broad: GammaLeg[] = [];
   const narrow: GammaLeg[] = [];

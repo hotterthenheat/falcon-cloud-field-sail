@@ -58,7 +58,7 @@ import { useCompassView } from '../../data/compassView';
 import { lookup } from '../../data/universe';
 import { readSessionClock } from '../../data/moc';
 import { nyClock } from '../../core/nyTime';
-import { marketPhase } from '../../data/traceLive';
+import { marketPhase } from '../../core/marketPhase';
 import { useAllAlerts, useUnseenAll } from '../gex/alertStore';
 import { toggleAlertsDrawer, useAlertsDrawer } from '../../data/alertsDrawer';
 import { toggleWatchlist, useNameWatch, useWatchlistOpen } from '../../data/nameWatch';
@@ -104,7 +104,7 @@ interface Tip {
 }
 
 const SideNav = ({ onOpenPalette }: SideNavProps) => {
-  const { activeTicker, marketData } = useMarketData();
+  const { activeTicker } = useMarketData();
   /* the contract the reader is inside — Compass's tree keeps its row (see subpagesFor) */
   const { chosenId } = useCompassView();
   const profile = useProfile();
@@ -212,18 +212,17 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const hideTip = () => setTip(null);
 
   const name = lookup(activeTicker)?.name ?? null;
-  /* Trace, Terrain, and Weigher read the live tape — the simulated quote never belongs beside a live print */
-  const onLiveDesk = pathname.startsWith('/pinpoint') || pathname.startsWith('/dossier') || pathname.startsWith('/trace') || pathname.startsWith('/terrain') || pathname.startsWith('/weigher') || pathname.startsWith('/compass');
+  /* Every desk reads the live quote; there is no simulated price to fall back to. */
   const live = usePinpointFeed(pathname.startsWith('/pinpoint') ? activeTicker : null);
   /* A weekly root has no stock print. The rail quotes the index it tracks. */
   const quoteTicker = activeTicker === 'SPXW' || activeTicker === 'XSP' ? 'SPX' : activeTicker === 'NDXP' ? 'NDX' : activeTicker === 'RUTW' ? 'RUT' : activeTicker;
-  const quoted = useLiveQuote(onLiveDesk ? quoteTicker : null);
-  const spot = onLiveDesk ? (live?.spot ?? quoted?.regularPrice ?? null) : (live?.spot ?? marketData?.spot ?? null);
+  const quoted = useLiveQuote(quoteTicker);
+  const spot = live?.spot ?? quoted?.regularPrice ?? null;
   /* THE DAY'S CHANGE, NOT THE AFTER-HOURS MOVE (the second re-audit, 2026-10-22): the regular session's change, the
      move outside the session in the hover; zero in the neutral ink */
   const move = live?.liveBook ? dayMoveOfSnapshot(live) : quoted ? { dayPct: quoted.changePct, extPct: quoted.extPct, phase: quoted.phase } : null;
-  const moveWords = onLiveDesk ? dayMoveWords(move) : null;
-  const change = onLiveDesk ? (move ? move.dayPct : null) : (live?.changePercent ?? marketData?.changePercent ?? 0);
+  const moveWords = dayMoveWords(move);
+  const change = move ? move.dayPct : null;
   const open = clock.phase === 'OPEN' || clock.phase === 'AUCTION';
   const priceText = spot != null ? `$${spot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
   const changeText = spot != null && change != null ? (moveWords ? moveWords.main : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change).toFixed(2)}%`) : '';
@@ -621,7 +620,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
         <div
           className={`shrink-0 border-t border-ink/[0.07] bg-ink/[0.02] ${collapsed ? 'pl-[22px] pr-0 py-3.5' : 'px-3.5 py-2.5'}`}
           title={collapsed ? `slayer:~ $ ${marketWord} · ${clock.label} · ${time}` : undefined}
-          onMouseEnter={e => showTip(e, `${onLiveDesk ? '' : 'Simulated data · '}slayer:~ $ ${marketWord} · ${clock.label} · ${time}`)}
+          onMouseEnter={e => showTip(e, `slayer:~ $ ${marketWord} · ${clock.label} · ${time}`)}
           onMouseLeave={hideTip}
           data-sidenav-signature
         >

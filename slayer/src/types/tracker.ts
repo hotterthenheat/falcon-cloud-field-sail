@@ -19,6 +19,8 @@ export interface TrackedSetup {
   /** Which tenor it was found on. Optional: rows tracked before the sleeve
       axis (2026-08-04) don't carry one — treat as 'odte'. */
   sleeve?: SleeveKey;
+  /** The contract's own expiration, YYYY-MM-DD. Absent on rows kept before this field. */
+  expiry?: string;
   trackedAt: number;         // Date.now() timestamp
   scoreAtTrack: number;      // score when user clicked "Track"
   verdictAtTrack: Verdict;   // verdict when tracked

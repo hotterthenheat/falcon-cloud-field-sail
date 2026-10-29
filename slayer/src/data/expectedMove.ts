@@ -123,13 +123,8 @@ export function buildExpectedMoveCone(
     };
     past.push(p);
 
-    /* Inside/outside the 1σ band, by CLOSE. The first bar ALWAYS counts as
-       inside — its band has zero width, so any close off the open would read
-       "outside" there, and arming the tracker on that degenerate read would
-       swallow the session's real exit (a gap-open day would never mark).
-       A crossing is a TRANSITION, and the open cannot be one. Re-entries
-       re-arm the edge, so a day that leaves, returns and leaves again marks
-       each exit. */
+    /* Inside or outside the 1σ band by close. The first bar always counts as inside (its band has zero width); a crossing
+       is a transition, and a re-entry re-arms the edge. */
     const side: -1 | 0 | 1 = b.close > p.up1 ? 1 : b.close < p.dn1 ? -1 : 0;
     if (side !== 0 && prevSide === 0 && i > 0) {
       crossings.push({ time: b.time, edge: side === 1 ? p.up1 : p.dn1, dir: side === 1 ? 'up' : 'down' });

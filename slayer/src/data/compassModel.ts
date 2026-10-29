@@ -6,6 +6,7 @@
 import { parseBoosters, predict, type Tree } from './lgbm';
 import { thetaCall } from './theta';
 import { nyParts, nyWallStamp } from '../core/nyTime';
+import { isTradingDay } from '../core/calendar';
 import { ensureBook, snapshotOf } from './uwBook';
 import { econReleases } from './monthCalendar';
 import {
@@ -53,7 +54,6 @@ import {
   inLottery,
   releaseBlocks,
   thetaBurns,
-  customerGammaNegative,
   lotteryEntry,
   MODEL_1_NAME,
   MODEL_2_NAME,
@@ -156,7 +156,7 @@ const SECTOR_OF: Record<string, string> = {
   ...Object.fromEntries(XLF.map(t => [t, 'XLF'])),
 };
 
-interface Bar { m: number; o: number; h: number; l: number; c: number; v: number }
+interface Bar { d: string; m: number; o: number; h: number; l: number; c: number; v: number }
 interface Curve { cum: Map<number, number[]>; five: Map<number, number[]> }
 interface PinBook { nodes: { strike: number; call: number; put: number }[]; oi: (strike: number, right: OptionRight) => number }
 interface LeftRow { id: string; ticker: string; contract: string; why: string; at: number }
@@ -180,6 +180,7 @@ function bsStates(S: number, K: number, T: number, sig: number, call: boolean): 
   const de = call ? nd1 : nd1 - 1;
   const ga = pdf / (S * vol);
   const thetaYear = -(S * pdf * sig) / (2 * Math.sqrt(T)) - (call ? R * K * df * cdf(d2) : -R * K * df * cdf(-d2));
+  /* Theta per calendar day: the convention the trees were trained on and the one the app shows. */
   return { px, de, ga, th: thetaYear / 365, ve: (S * pdf * Math.sqrt(T)) / 100 };
 }
 
@@ -212,11 +213,21 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : NaN;
 }
 
-function stampMinute(stamp: unknown): number {
+function stampAt(stamp: unknown): { d: string; m: number } | null {
   const at = nyWallStamp(stamp);
-  if (!at) return NaN;
+  if (!at) return null;
   const p = nyParts(at);
-  return p.hour * 60 + p.minute;
+  return { d: `${p.year}${String(p.month).padStart(2, '0')}${String(p.day).padStart(2, '0')}`, m: p.hour * 60 + p.minute };
+}
+
+/** The trading session before `day` (YYYYMMDD), skipping weekends and market holidays. */
+function priorSessionYmd(day: string): string {
+  const d = new Date(Number(day.slice(0, 4)), Number(day.slice(4, 6)) - 1, Number(day.slice(6, 8)));
+  for (let i = 0; i < 10; i++) {
+    d.setDate(d.getDate() - 1);
+    if (isTradingDay(d)) break;
+  }
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function barsOf(data: unknown): Bar[] {
@@ -229,12 +240,13 @@ function barsOf(data: unknown): Bar[] {
   }
   const out: Bar[] = [];
   for (const b of flat) {
-    const m = stampMinute(b.timestamp ?? b.time ?? b.date);
+    const at = stampAt(b.timestamp ?? b.time ?? b.date);
     const c = num(b.close);
-    if (!Number.isFinite(m) || !(c > 0)) continue;
-    out.push({ m, o: num(b.open) || c, h: num(b.high) || c, l: num(b.low) || c, c, v: num(b.volume) || 0 });
+    if (!at || !(c > 0)) continue;
+    out.push({ d: at.d, m: at.m, o: num(b.open) || c, h: num(b.high) || c, l: num(b.low) || c, c, v: num(b.volume) || 0 });
   }
-  out.sort((a, b) => a.m - b.m);
+  /* A multi-day pull must stay grouped by date; sorting by minute alone interleaves the days. */
+  out.sort((a, b) => (a.d === b.d ? a.m - b.m : a.d < b.d ? -1 : 1));
   return out;
 }
 
@@ -255,8 +267,8 @@ async function loadBars(symbol: string, day: string): Promise<Bar[]> {
   return bars;
 }
 
-async function loadPrior(name: string, now: number): Promise<{ h: number; l: number; c: number } | null> {
-  const bars = await loadBars(name, ymd(now - 86400000));
+async function loadPrior(name: string, day: string): Promise<{ h: number; l: number; c: number } | null> {
+  const bars = await loadBars(name, priorSessionYmd(day));
   if (!bars.length) return null;
   let h = 0;
   let l = Infinity;
@@ -297,7 +309,7 @@ export function setScanBusy(on: boolean): void {
 }
 
 async function fetchCurve(symbol: string, now: number): Promise<Curve | null> {
-  const end = ymd(now - 86400000);
+  const end = priorSessionYmd(sessionYmd(now));
   const start = ymd(now - 21 * 86400000);
   const root = UNDER[symbol] ?? symbol;
   const index = INDEX.has(symbol) || INDEX.has(root);
@@ -306,45 +318,35 @@ async function fetchCurve(symbol: string, now: number): Promise<Curve | null> {
     : `/stock/history/ohlc?symbol=${root}&start_date=${start}&end_date=${end}&interval=1m&format=json`;
   const got = await thetaCall(path);
   const bars = got.error ? [] : barsOf(got.data);
-  const byDay = new Map<string, Bar[]>();
+  const days = new Map<string, Bar[]>();
   for (const b of bars) {
-    const key = String(Math.floor(b.m));
-    void key;
+    const list = days.get(b.d);
+    if (list) list.push(b);
+    else days.set(b.d, [b]);
   }
-  const days = new Map<number, Bar[]>();
-  let cursor = -1;
-  let bag: Bar[] = [];
-  for (const b of bars) {
-    if (b.m + 1 < cursor) {
-      if (bag.length) days.set(days.size, bag);
-      bag = [];
-    }
-    bag.push(b);
-    cursor = b.m;
-  }
-  if (bag.length) days.set(days.size, bag);
   const cum = new Map<number, number[]>();
   const five = new Map<number, number[]>();
   for (const list of days.values()) {
-    list.sort((a, b) => a.m - b.m);
+    /* Cumulative volume by minute, and the volume of the last five minutes from a running window. */
     let run = 0;
-    const atMin = new Map<number, number>();
+    const totals: { m: number; total: number }[] = [];
+    let back = 0;
     for (const b of list) {
       run += b.v;
-      atMin.set(b.m, run);
+      totals.push({ m: b.m, total: run });
     }
-    for (const [m, total] of atMin) {
+    for (let k = 0; k < totals.length; k++) {
+      const { m, total } = totals[k];
+      while (back + 1 <= k && totals[back + 1].m <= m - 5) back++;
+      const prior = totals[back].m <= m - 5 ? totals[back].total : 0;
       const held = cum.get(m) ?? [];
       held.push(total);
       cum.set(m, held);
-      const prior = [...atMin.entries()].filter(([mm]) => mm <= m - 5).sort((a, b) => b[0] - a[0])[0];
-      const last5 = total - (prior ? prior[1] : 0);
       const bag5 = five.get(m) ?? [];
-      bag5.push(Math.max(0, last5));
+      bag5.push(Math.max(0, total - prior));
       five.set(m, bag5);
     }
   }
-  void byDay;
   return cum.size ? { cum, five } : null;
 }
 
@@ -906,7 +908,7 @@ function persistCalls(): void {
     wings: [...wingPicks.entries()],
     lottery: [...lotteryPicks.entries()],
     kept: [...kept.entries()],
-    pinned: [...pinnedAsk.entries()],
+    filled: [...pinnedAsk.entries()],
     near: [...nearPicks.entries()],
     pass: [...passBook.values()],
     seen: [...seen],
@@ -929,7 +931,7 @@ function restoreCalls(): void {
     wings?: [string, Setup][];
     lottery?: [string, Setup][];
     kept?: [string, Setup][];
-    pinned?: [string, number][];
+    filled?: [string, number][];
     near?: [string, Setup][];
     pass?: PassLine[];
     seen?: string[];
@@ -942,7 +944,7 @@ function restoreCalls(): void {
     for (const [k, v] of pack.wings ?? []) if (v && v.id) wingPicks.set(k, v);
     for (const [k, v] of pack.lottery ?? []) if (v && v.id) lotteryPicks.set(k, v);
     for (const [k, v] of pack.kept ?? []) if (v && v.id) kept.set(k, v);
-    for (const [k, n] of pack.pinned ?? []) if (k && n > 0) pinnedAsk.set(k, n);
+    for (const [k, n] of pack.filled ?? []) if (k && n > 0) pinnedAsk.set(k, n);
     for (const [k, v] of pack.near ?? []) if (v && v.id) nearPicks.set(k, v);
     for (const row of pack.pass ?? []) if (row && row.ticker && row.contract) passBook.set(`${row.sleeve}|${row.contract}`, row);
     for (const id of pack.seen ?? []) seen.add(id);
@@ -950,63 +952,7 @@ function restoreCalls(): void {
     for (const t of pack.rootB ?? []) seenRootB.add(t);
     for (const t of pack.rootC ?? []) seenRootC.add(t);
   }
-  if (day === '20261028') holdSpxw7745();
   persistCalls();
-}
-
-/** This session's call. A reload had it only in memory, so the card and the blotter both lost it. */
-function holdSpxw7745(): void {
-  const id = 'SPXW-7745-C-top-setups-odte';
-  if ([...picks.values(), ...lotteryPicks.values(), ...wingPicks.values(), ...kept.values()].some(s => s.id === id)) return;
-  const setup: Setup = {
-    id,
-    ticker: 'SPXW',
-    contract: 'SPXW 7745C',
-    right: 'C',
-    strike: 7745,
-    expiry: '0DTE',
-    expiryDate: '2026-10-28',
-    sessionsLeft: 0.1,
-    sigmaMovePct: 0,
-    sleeve: 'odte',
-    score: 0,
-    verdict: 'ENTER',
-    topRated: false,
-    topOpportunity: false,
-    expectedMovePct: 0,
-    swingTarget: { price: 0, pct: 0 },
-    scalpExit: { price: 0, pct: 0 },
-    headline: 'SPXW 7745C',
-    whyChips: ['LIVE'],
-    whyText: 'Book C. No model.',
-    greeks: { delta: 0, gamma: 0, theta: 0, vega: 0, iv: 0, rho: 0 },
-    bid: 4.5,
-    ask: 4.7,
-    mid: 4.6,
-    liveMid: 4.6,
-    highWater: 4.6,
-    confidence: 0,
-    health: 0,
-    momentum: 'NEUTRAL',
-    takeProfits: [],
-    priceTargets: [],
-    liquidityLabel: 'Normal',
-    liquiditySpread: '',
-    invalidationPrice: 0,
-    invalidationReason: '',
-    spot: 0,
-    seenAt: Date.now() - 20 * 60_000,
-    quotedAt: Date.now(),
-    band: 'lottery',
-    runner: false,
-    modelAgree: false,
-    better: 'entry',
-    strength: false,
-  };
-  lotteryPicks.set(id, setup);
-  if (!pinnedAsk.has(id)) pinnedAsk.set(id, 1.65);
-  seen.add(id);
-  seenRootC.add('SPXW');
 }
 
 restoreCalls();
@@ -1015,7 +961,7 @@ export function entryAsk(id: string): number {
   return pinnedAsk.get(id) ?? 0;
 }
 
-/** The card and the contract read this. The entry ask stays pinned. */
+/** The card and the contract read this. A pick's fill does not move with later quotes. */
 export function stampPickQuote(ticker: string, expiry: string, strike: number, right: string, q: { bid: number; ask: number; at: number; under: number; iv: number; delta: number; theta: number; vega: number }): void {
   const day = expiry.slice(0, 10);
   const touch = (book: Map<string, Setup>) => {
@@ -1045,11 +991,14 @@ export function stampPickQuote(ticker: string, expiry: string, strike: number, r
   touch(nearPicks);
 }
 
-function pinEntry(s: Setup): void {
-  if (!pinnedAsk.has(s.id)) {
-    const ask = s.ask > 0 ? s.ask : s.mid;
-    if (ask > 0) pinnedAsk.set(s.id, ask);
-  }
+function pinEntry(_s: Setup): void {
+  persistCalls();
+}
+
+/** The ledger's fill for a pick: the ask quoted a full minute after the call. Set once. */
+export function pinFill(id: string, ask: number): void {
+  if (pinnedAsk.has(id) || !(ask > 0)) return;
+  pinnedAsk.set(id, ask);
   persistCalls();
 }
 
@@ -1210,7 +1159,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
   const secBars = new Map<string, Bar[]>();
   await Promise.all(etfs.map(async etf => { secBars.set(etf, await loadBars(etf, day)); }));
   const pd = new Map<string, { h: number; l: number; c: number } | null>();
-  await Promise.all(names.map(async name => { pd.set(name, await loadPrior(name, now)); }));
+  await Promise.all(names.map(async name => { pd.set(name, await loadPrior(name, day)); }));
   const pins = new Map<string, PinBook | null>();
   const wanted = new Map<string, { ticker: string; expiry: string; spot: number }>();
   for (const s of rows) {
@@ -1357,16 +1306,10 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
         out.push({ ...best(side), book });
         continue;
       }
+      /* A flat root with both sides clearing has no side named: the ask-side flow split that would break the tie is not read. */
       if (calls.length && puts.length) {
-        const gex = list.find(r => Number.isFinite(r.gex))?.gex ?? NaN;
-        if (!customerGammaNegative(gex)) {
-          const had = passed.get(list[0].setup.ticker) ?? [];
-          had.push(`${list[0].setup.ticker} is flat. Gamma and flow do not name one side, so neither is sent.`);
-          passed.set(list[0].setup.ticker, had.slice(0, 6));
-          continue;
-        }
         const had = passed.get(list[0].setup.ticker) ?? [];
-        had.push(`${list[0].setup.ticker} is flat. The ask-side split is not in hand, so neither is sent.`);
+        had.push(`${list[0].setup.ticker} is flat and both sides cleared. Nothing names one side, so neither is sent.`);
         passed.set(list[0].setup.ticker, had.slice(0, 6));
         continue;
       }
@@ -1709,7 +1652,7 @@ export async function scoreLiveContract(input: {
     const spy = under === 'SPY' ? bars : await loadBars('SPY', day);
     const etf = SECTOR_OF[under] ?? SECTOR_OF[ticker] ?? '';
     const sec = etf ? await loadBars(etf, day) : [];
-    const prior = await loadPrior(under, now);
+    const prior = await loadPrior(under, day);
     const tape = tapeOf(bars, indexName, minute, input.spot);
     const retOpen = tape.S > 0 && tape.op > 0 ? tape.S / tape.op - 1 : null;
     if (!(tape.S > 0)) {

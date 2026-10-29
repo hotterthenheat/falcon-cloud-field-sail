@@ -260,7 +260,7 @@ const LedgerTooltip = ({ active, payload, step }: LedgerTipProps) => {
     <Box>
       <div className="text-textMuted">
         {flowClock(from)}
-        {step > 1 ? `–${flowClock(from + step)}` : ''} CT · {(p.vol ?? 0).toLocaleString('en-US')} contracts
+        {step > 1 ? `–${flowClock(from + step)}` : ''} ET · {(p.vol ?? 0).toLocaleString('en-US')} contracts
       </div>
       {(p.up ?? 0) > 0 && <div style={{ color: ASK }}>paid the offer {fmtUsd(p.up as number)}</div>}
       {(p.down ?? 0) > 0 && <div style={{ color: BID }}>hit the bid {fmtUsd(p.down as number)}</div>}
@@ -375,7 +375,7 @@ const NetTooltip = ({ active, payload }: NetTipProps) => {
   if (!p) return null;
   return (
     <Box>
-      <div className="text-textMuted">{Number.isFinite(p.min) ? `${flowClock(p.min as number)} CT` : ''}</div>
+      <div className="text-textMuted">{Number.isFinite(p.min) ? `${flowClock(p.min as number)} ET` : ''}</div>
       {Number.isFinite(p.netCall) && <div style={{ color: (p.netCall as number) >= 0 ? ASK : BID }}>net calls {fmtUsd(p.netCall as number)}</div>}
       {Number.isFinite(p.netPut) && <div style={{ color: (p.netPut as number) > 0 ? BID : ASK }}>net puts {fmtUsd(p.netPut as number)} {(p.netPut as number) > 0 ? '· bought, bearish' : (p.netPut as number) < 0 ? '· sold, bullish' : ''}</div>}
     </Box>
@@ -450,7 +450,7 @@ const BarTooltip = ({ active, payload, step }: BarTipProps) => {
     <Box>
       <div className="text-textMuted">
         {flowClock(from)}
-        {step > 1 ? `–${flowClock(from + step)}` : ''} CT
+        {step > 1 ? `–${flowClock(from + step)}` : ''} ET
       </div>
       {Number.isFinite(p.callVol) && <div style={{ color: ASK }}>calls {Math.abs(p.callVol as number).toLocaleString('en-US')} contracts</div>}
       {Number.isFinite(p.putVol) && <div style={{ color: BID }}>puts {Math.abs(p.putVol as number).toLocaleString('en-US')} contracts</div>}

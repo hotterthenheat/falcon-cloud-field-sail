@@ -14,6 +14,8 @@
 ==================================================
 */
 
+import BacktestPaused from './BacktestPaused';
+import { BACKTEST_LIVE } from '../../data/review/tape';
 import { useEffect, useMemo } from 'react';
 import { sayPage } from '../../components/layout/PageMeta';
 import { Link, useParams } from 'react-router-dom';
@@ -196,4 +198,6 @@ const Report = () => {
   );
 };
 
-export default Report;
+const ReportGate = () => (BACKTEST_LIVE ? <Report /> : <BacktestPaused />);
+
+export default ReportGate;

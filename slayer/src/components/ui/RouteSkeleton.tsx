@@ -20,7 +20,7 @@ import { PinpointRouteSkeleton } from '../../pages/pinpoint/pinpointSkeletons';
 import { TraceRouteSkeleton } from '../../pages/trace/traceSkeletons';
 import { WeigherPageSkeleton } from '../../pages/weigherSkeleton';
 import { CompassHeadSkeleton, CompassRouteSkeleton } from '../../pages/compassSkeleton';
-import { PulseBoardSkeleton, PulsePageSkeleton } from '../../pages/workspace/pulseSkeletons';
+import { PulsePageSkeleton } from '../../pages/workspace/pulseSkeletons';
 import { RecordRouteSkeleton } from '../../pages/record/recordSkeletons';
 import { PracticeRouteSkeleton } from '../../pages/practice/practiceSkeletons';
 import { SettingsPageSkeleton } from '../../pages/settings/settingsSkeleton';
@@ -43,7 +43,6 @@ const RouteSkeleton = ({ pathname }: { pathname: string }) => {
         <CompassRouteSkeleton pathname={pathname} />
       </>
     );
-  if (pathname.startsWith('/pulse/board')) return <PulseBoardSkeleton />;
   if (pathname.startsWith('/pulse')) return <PulsePageSkeleton />;
   return <PageSkeleton />;
 };

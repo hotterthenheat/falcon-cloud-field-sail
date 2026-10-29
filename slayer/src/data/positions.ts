@@ -223,7 +223,6 @@ function expiryWords(expiry: string): { expires: string; sessions: number } {
 export function readPosition(p: Position, profile: ExposureProfileData): PositionRead {
   const L = profile.levels;
   const spot = L.spot;
-  const wantsUp = (p.right === 'C') === (p.side === 'long');
   const row = profile.strikes.find(s => eq(s.strike, p.strike));
   const gammaHere = row ? row.gex.net : 0;
   const big = profile.maxAbs.gex > 0 && Math.abs(gammaHere) >= 0.35 * profile.maxAbs.gex;
@@ -240,41 +239,39 @@ export function readPosition(p: Position, profile: ExposureProfileData): Positio
   const zone = p.strike > L.callWall ? 'past the call wall' : p.strike < L.putWall ? 'under the put wall' : 'between the walls';
   const sits = on.length ? `${on.join(' · ')} · ${rel}` : `${rel} · ${zone}`;
 
-  /* What the hedging does to it — which side of the flip spot is on decides
-     whether dealers lean against a move or chase it; a wall between spot and
-     the strike is the thing in the way */
+  /* Above the flip dealers lean against moves (damped, pinned); below it they chase them. A buyer needs the move, so
+     chasing helps; a seller needs the price to stay away from the strike, so damping helps. A wall between spot and
+     the strike blocks the move either way. */
   const absorbing = spot > L.flip;
   const flip = fmtStrike(L.flip);
+  const up = p.right === 'C';
+  const wallInWay = up ? p.strike > L.callWall && L.callWall > spot : p.strike < L.putWall && L.putWall < spot;
+  const wallWords = up ? `the call wall at ${fmtStrike(L.callWall)}` : `the put wall at ${fmtStrike(L.putWall)}`;
+  const moveWord = up ? 'rallies' : 'the move down';
   let verdict: Verdict;
   let hedging: string;
-  if (wantsUp) {
-    const wallInWay = p.strike > L.callWall && L.callWall > spot;
+  if (p.side === 'long') {
     if (absorbing) {
       verdict = 'against';
-      hedging = `hedging works against you — above the flip at ${flip} dealers sell into rallies`;
-      if (wallInWay) hedging += `, and the call wall at ${fmtStrike(L.callWall)} stands between spot and your strike`;
+      hedging = `hedging works against you — above the flip at ${flip} dealers lean against ${moveWord}`;
+      if (wallInWay) hedging += `, and ${wallWords} stands between spot and your strike`;
     } else if (wallInWay) {
       verdict = 'mixed';
-      hedging = `hedging works with you under the flip at ${flip} — dealers chase rallies — but the call wall at ${fmtStrike(L.callWall)} stands between spot and your strike`;
+      hedging = `hedging works with you under the flip at ${flip} — dealers chase ${moveWord} — but ${wallWords} stands between spot and your strike`;
     } else {
       verdict = 'with';
-      hedging = `hedging works with you while price is under the flip at ${flip} — dealers chase rallies; above it they sell into them`;
+      hedging = `hedging works with you while price is under the flip at ${flip} — dealers chase ${moveWord}; above it they lean against it`;
     }
+  } else if (absorbing) {
+    verdict = 'with';
+    hedging = `hedging works with you — above the flip at ${flip} dealers damp the moves, which helps a seller`;
+    if (wallInWay) hedging += `, and ${wallWords} stands between spot and your strike`;
+  } else if (wallInWay) {
+    verdict = 'mixed';
+    hedging = `hedging works against you under the flip at ${flip} — dealers chase ${moveWord} — but ${wallWords} stands between spot and your strike`;
   } else {
-    const wallInWay = p.strike < L.putWall && L.putWall < spot;
-    if (!absorbing) {
-      if (wallInWay) {
-        verdict = 'mixed';
-        hedging = `hedging works with you under the flip at ${flip} — dealers chase the move down — but the put wall at ${fmtStrike(L.putWall)} stands between spot and your strike`;
-      } else {
-        verdict = 'with';
-        hedging = `hedging works with you while price is under the flip at ${flip} — dealers chase the move down`;
-      }
-    } else {
-      verdict = 'against';
-      hedging = `hedging works against you until price is under the flip at ${flip} — dealers buy the dips; below it they chase them`;
-      if (wallInWay) hedging += `, and the put wall at ${fmtStrike(L.putWall)} stands between spot and your strike`;
-    }
+    verdict = 'against';
+    hedging = `hedging works against you while price is under the flip at ${flip} — dealers chase ${moveWord} toward your strike`;
   }
 
   const { expires, sessions } = expiryWords(p.expiry);

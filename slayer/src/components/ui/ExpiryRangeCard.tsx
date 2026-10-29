@@ -1,34 +1,8 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE EXPIRY RANGE CARD
-  (components/ui/ExpiryRangeCard.tsx)
-
-  The Map's Expiries card (Noah, 2026-09-22: "right
-  now it forces you to start from the current date
-  and goes through to the date you choose… there
-  should be some sort of max you can choose, 7 being
-  the max when you are choosing all 5 greeks"). The
-  ExpiryCard beside it picks ONE day; this one picks
-  a WINDOW — From and Through — on the same calendar,
-  with the book's expiries as the only lit days.
-
-  TWO ROWS, ONE GRID. From and Through sit above the
-  grid as two rows; the row that is armed takes the
-  next day clicked. The card opens with Through armed
-  — that is the change a reader makes most — and a
-  click on From arms it. A Through day before From
-  pulls From down to it; a From day past Through
-  pushes Through up to it. Shortcuts at the head do
-  both at once: Today only · This week · Next 7.
-
-  THE CEILING is the host's — how many expiries it
-  will draw at once (seven with five greeks side by
-  side, more with fewer). With Through armed, days
-  past From + ceiling stay dim and the foot says why;
-  a From moved so far that the window would run over
-  drags Through in with it. The note under the grid
-  is the host's other cut — what fits at the width.
-==================================================
+  Picks a window of expiries (From and Through) on the expiry calendar, with only the book's expiries lit. The armed row
+  takes the next click (Through by default); a Through before From pulls From down, a From past Through pushes
+  Through up. Shortcuts: Today only, This week, Next 7. The host sets the ceiling (how many expiries it can draw):
+  days past it stay dim, and moving From drags Through along.
 */
 
 import { FLAT_DOOR, FLAT_OPEN } from './flatDoor';
@@ -76,9 +50,8 @@ interface ExpiryRangeCardProps {
   bare?: boolean;
   /** The house's flat control (ui/flatDoor.ts) — the Map band's */
   flat?: boolean;
-  /** WHAT THE HOST DRAWS when its fit cuts the window short (the partner's audit, taken 2026-10-14): the last expiry
-      drawn and the count, so the trigger says "Today → Oct 16 · 4 of 7" rather than a window the grid under it does
-      not draw */
+  /** What the host actually draws when its width cuts the window short: the last expiry drawn and the count, so the
+      trigger reads "Today -> Oct 16 · 4 of 7". */
   cut?: { through: number; shown: number; wanted: number };
 }
 

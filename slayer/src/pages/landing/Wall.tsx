@@ -225,11 +225,8 @@ const Wall = ({ rooms, onPick }: { rooms: WallRoom[]; onPick: (id: string) => vo
                     muted
                     loop
                     playsInline
-                    /* METADATA, NOT THE WHOLE FILM (the speed pass, 2026-10-11): with "auto" every film on the wall, both
-                       themes' worth, was fetched in full before anyone scrolled — 5 MB on the first visit. Now the browser
-                       takes the header alone; the film streams when play() is called, which the rolling logic above does
-                       only for the theme on screen. The still under it holds the frame meanwhile. */
-                    preload="metadata"
+                    /* nothing loads until play(), which runs only while the wall is on screen; the still holds the frame */
+                    preload="none"
                     disablePictureInPicture
                     aria-hidden="true"
                     onLoadedData={e => loaded(k, i, on, e.currentTarget)}

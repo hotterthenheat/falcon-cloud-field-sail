@@ -6,6 +6,7 @@
 */
 
 import { SIM_DESK } from './deskMode';
+import { feedHeaders } from './feedGate';
 
 let inflight = 0;
 const next: (() => void)[] = [];
@@ -70,9 +71,11 @@ function faultText(status: number, parsed: unknown, text: string): string {
 
 export async function thetaCall(path: string, jump = false): Promise<{ status: number; data: unknown; error: string | null }> {
   if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
+  const auth = await feedHeaders();
+  if (!auth.ok) return { status: 401, data: null, error: auth.code };
   await take(jump);
   try {
-    const res = await fetch(`/api/theta${path}`);
+    const res = await fetch(`/api/theta${path}`, { headers: auth.headers });
     const text = await res.text();
     const type = res.headers.get('content-type') || '';
     let parsed: unknown = null;

@@ -1,58 +1,19 @@
-/*
-==================================================
-  SLAYER TERMINAL - TRACKER (Trace)
-
-  Everything the reader bookmarked on the Trace
-  pages, and what it has done since (Noah,
-  2026-09-03: "what do you think should be the
-  display format of the bookmarked rows" → "build
-  it"). A Compass setup is a thesis with a verdict,
-  so the Compass tracker deals in cards. A Trace
-  bookmark is a FACT the reader wants to follow up
-  on, so this page deals in rows, and the one
-  question every row answers is: what has it done
-  since I marked it?
-
-  ONE GRID, NOT THREE (Noah, same day, on the first
-  cut's three stacked tables: "do you see how the
-  columns arent aligned? i know they shouldnt be
-  which makes it a lose lose situation"). Two
-  tables with different column sets can never line
-  up, and pinning widths would align three columns
-  and stagger the rest. So there is one table. The
-  facts every kind of mark shares — the name, the
-  contract, when and where it was marked, its price
-  now against then, the underlying then and now,
-  volume and interest added, the lean then and now
-  — are columns. The facts only one kind carries —
-  a print's size, fill and side; a structure's size
-  and net; a contract's last — are composed into
-  ONE "Then" cell, the way the contract cell
-  composes strike, side and expiry. Rows rank by
-  how much they moved, whatever they are.
-
-  A contract no longer on today's book sits with
-  its THEN intact and its SINCE blank — a bookmark
-  is never silently dropped. A print's contract is
-  USUALLY off the book (the tape and the book draw
-  strikes apart), which is why the underlying's
-  move is a column every row can carry.
-==================================================
-*/
+/* Everything the reader marked on Trace and what it has done since. One grid for every kind of option mark (the shared
+   facts are columns; a print's or structure's own facts compose one "Then" cell), ranked by how much each moved; a mark
+   off today's book keeps its "then" and never drops. Kept dark crosses have their own box. */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQParam } from '../../components/trace/addressCut';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
 import { contractKey, crossOfWatch, useWatch, type WatchSource, type WatchedContract, type WatchedCross, type WatchedItem, type WatchedPrint } from '../../context/WatchContext';
-import CrossDrilldown from '../../components/trace/CrossDrilldown';
+import CrossDrilldown, { IntentTag } from '../../components/trace/CrossDrilldown';
 import type { DarkPoolPrint } from '../../types/darkpool';
 
 /** The options under watch — every kind but a dark cross */
 type WatchedOption = Exclude<WatchedItem, WatchedCross>;
-import { dayLean, ensureSpots, expiredAtBell, liveSpotOf, occOf, traceHeld, sessionIsoAt, tapeSessionIso, useContractDays, useLiveBook, useMarkNow, usd as fmtUsd, type ContractDayNow } from '../../data/traceLive';
-import { ctParts, nyClock } from '../../core/nyTime';
-import { ensureBook, peekSpot, useBookRev } from '../../data/uwBook';
+import { dayLean, ensureSpots, expiredAtBell, fmtCount as num, liveSpotOf, occOf, traceHeld, sessionIsoAt, tapeSessionIso, useContractDays, useLiveBook, useMarkNow, usd as fmtUsd, type ContractDayNow } from '../../data/traceLive';
+import { nyClock, nyParts } from '../../core/nyTime';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -68,7 +29,6 @@ import TraceBox, { Champion, Fact, TraceGrid } from '../../components/trace/Trac
 import { TrackerGuide } from '../../components/trace/TraceGuide';
 import { nextCountDay } from '../../components/trace/dayWords';
 
-const num = (v: number) => v.toLocaleString('en-US');
 const signedPct = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`;
 const signedNum = (v: number) => `${v >= 0 ? '+' : '−'}${num(Math.abs(v))}`;
 const pct = (now: number, then: number) => (then > 0 ? ((now - then) / then) * 100 : 0);
@@ -87,28 +47,25 @@ const SOURCE_LABEL: Record<WatchSource, string> = {
   'dark-pool': 'Dark pool',
 };
 
-/** "8:07 AM CT" today, "10/27 8:07 AM CT" for an older mark — Central, 12-hour */
+/** "14:07 ET" today, "10/27 14:07 ET" for an older mark */
 function markedAt(ms: number): string {
-  const d = ctParts(new Date(ms));
-  const t = ctParts(new Date());
+  const d = nyParts(ms);
+  const t = nyParts(new Date());
   const hm = nyClock(ms, { zone: true });
   const sameDay = d.year === t.year && d.month === t.month && d.day === t.day;
   return sameDay ? hm : `${String(d.month).padStart(2, '0')}/${String(d.day).padStart(2, '0')} ${hm}`;
 }
 
-/** The lean as the Lean cell would say it, in its ink — for a then → now pair. */
+/** The lean as the Lean cell would say it, in its ink, for a then → now pair */
 const leanWord = (askPct: number, side?: { ask: number; bid: number; mid: number }) => {
   if (side) {
     const l = dayLean({ askPct, volume: side.ask + side.bid + side.mid, sideVol: side });
     if (l.lean === 'UNSIDED') return { text: Number.isFinite(l.mid) ? `MID ${Math.round(l.mid)}%` : '—', ink: 'text-textMuted' };
     if (l.lean === 'EVEN') return { text: 'EVEN', ink: 'text-textMuted' };
-    /* the share the rule is called on — the side's share of the SIDED contracts (the Lean cell's figure) */
+    /* the share the rule is called on: the side's share of the sided contracts */
     return { text: l.lean === 'ASK' ? `ASK ${Math.round(l.askSided)}%` : `BID ${Math.round(l.bidSided)}%`, ink: 'text-textPrimary' };
   }
-  /* THE RULE ON THE UNROUNDED SHARE (audit round 4: an ask share of 54.6% was rounded to 55 BEFORE the 55% rule, so the
-     mark read "ASK 55%" and the same data now read "EVEN" — a lean change that never happened). The one lean rule
-     (traceLive dayLean) decides on the figure as kept; only the printed number is rounded. A share that rounds up to the
-     edge but sits under it prints EVEN, never "ASK 55%". */
+  /* the rule decides on the unrounded share; only the printed number is rounded, so 54.6% is EVEN, never "ASK 55%" */
   const l = dayLean({ askPct, volume: 0 }).lean;
   const mid = l === 'EVEN' || l === 'UNSIDED';
   const a = Math.round(askPct);
@@ -125,8 +82,7 @@ function occCandidates(w: { ticker: string; strike: number; right: 'C' | 'P'; ex
   const roots = WEEKLY_ROOT[w.ticker] ? [WEEKLY_ROOT[w.ticker], w.ticker] : [w.ticker];
   return roots.map(r => occOf(r, w.strike, w.right, w.expiry)).filter((x): x is string => !!x);
 }
-/** A marked contract as a book row, from its OWN session (the vendor's historic row) — the figures it carries, the rest
-    unknown, never invented */
+/** A marked contract as a book row from its own session's historic row; what it does not carry stays unknown */
 function bookOfDay(w: { ticker: string; strike: number; right: 'C' | 'P'; expiry: string; at: { spot: number } }, occ: string, d: ContractDayNow): BookContract {
   const sided = d.sideVol.ask + d.sideVol.bid;
   return {
@@ -158,14 +114,10 @@ function bookOfDay(w: { ticker: string; strike: number; right: 'C' | 'P'; expiry
     floorPct: 0,
     askPct: sided > 0 ? (d.sideVol.ask / sided) * 100 : NaN,
     prevOI: 0,
-    prevVolume: 0,
     prevAvgFill: 0,
-    prevPremium: 0,
-    prevAskPct: 0,
     oiStreak: 0,
     volGtOiStreak: 0,
     earnDays: null,
-    prevSpark: [],
     sideVol: d.sideVol,
   };
 }
@@ -176,18 +128,16 @@ const isoOfExpiry = (e: string) => {
 
 const Dash = () => <span className="text-textSecondary">—</span>;
 
-/** Index option roots — the feed has no stock state or bars for them (/stock/SPXW/stock-state answers 422), so the
-    Tracker neither seeds a book for them nor draws a spot: an index mark's spot reads "—", never "$0.00" */
+/** Index option roots: the feed has no stock price for them, so an index mark's spot reads "—", never "$0.00" */
 const INDEX_ROOTS = new Set(['SPX', 'SPXW', 'XSP', 'NDX', 'NDXP', 'XND', 'RUT', 'RUTW', 'MRUT', 'VIX', 'VIXW', 'DJX', 'OEX', 'XEO']);
 
-/** Fixed widths for the figure columns (the spot's then → now and its change would otherwise clip); the name, contract and mark share the rest */
+/** Fixed widths for the figure columns, which would otherwise clip; the rest share the room */
 const WIDTHS: Record<string, number> = { then: 150, money: 84, since: 124, spot: 196, vol: 84, oi: 80, lean: 120 };
 const FLEXES: Record<string, number> = { ticker: 1, contract: 2.2, marked: 1.6 };
 
-// ---- one row shape for every kind of mark ----------------------------------------
 
 interface TrackRow {
-  /* an option under watch — a contract, a print or a structure; the dark crosses have their own box (2026-10-19) */
+  /** An option under watch: a contract, a print or a structure */
   w: WatchedOption;
   /** The contract on today's book, when the book carries it */
   live: BookContract | null;
@@ -199,8 +149,7 @@ interface TrackRow {
   volAdded: number | null;
   /** Why volume added is not a number: the mark was in an earlier session (today's whole volume is then shown) */
   volWord?: string;
-  /** The price now — the SAME field as the price marked: the screener's close for a contract, the newest trade's fill
-      for a print — and when it was set */
+  /** The price now, the same field as the price marked (a contract's close, a print's newest fill), and when */
   nowPrice: number | null;
   nowAt: string | null;
   nowSrc?: 'close' | 'fill';
@@ -208,7 +157,7 @@ interface TrackRow {
   leanThen: number | null;
   /** A print's contract day by side when it was marked */
   sideThen?: { ask: number; bid: number; mid: number };
-  /** The open interest has not been counted again since the mark (the count is set each morning) — the day it will be */
+  /** The day the next open-interest count lands, while none has since the mark */
   oiNext?: string;
   leanNow: number | null;
   /** The contract's day by side now, when its own day was read */
@@ -221,9 +170,9 @@ interface TrackRow {
 
 const FlowTracker = () => {
   const navigate = useNavigate();
-  const { marketData, activeTicker } = useMarketData();
+  const { activeTicker } = useTicker();
   const { watched, toggle: toggleWatch } = useWatch();
-  /* THE OPTIONS under watch feed the grid below; the dark crosses have a box of their own (2026-10-19) */
+  /* the options under watch feed the grid; the dark crosses have a box of their own */
   const options = useMemo(() => watched.filter((w): w is WatchedOption => w.kind !== 'cross'), [watched]);
   const crosses = useMemo(() => watched.filter((w): w is WatchedCross => w.kind === 'cross').sort((a, b) => b.watchedAt - a.watchedAt), [watched]);
   const crossRowKey = useCallback((w: WatchedCross) => w.key, []);
@@ -262,7 +211,7 @@ const FlowTracker = () => {
           </span>
         ),
       },
-      { key: 'time', header: 'Time', sortValue: w => w.time, render: w => <span className="text-textSecondary">{w.time}</span> },
+      { key: 'time', header: 'Time ET', sortValue: w => w.time, render: w => <span className="text-textSecondary">{w.time}</span> },
       { key: 'price', header: 'Price', align: 'right', sortValue: w => w.price, render: w => <span className="font-bold text-textPrimary">${w.price.toFixed(2)}</span> },
       {
         key: 'vs',
@@ -279,9 +228,7 @@ const FlowTracker = () => {
         header: 'Read',
         sortValue: w => w.intent,
         render: w => (
-          <span className={`font-mono text-t10 font-semibold uppercase tracking-wider whitespace-nowrap ${w.intent === 'ACCUMULATION' ? 'text-bull' : w.intent === 'DISTRIBUTION' ? 'text-bear' : w.intent === 'HEDGE FLOW' ? 'text-warn' : 'text-textMuted'}`}>
-            {w.intent}
-          </span>
+          <IntentTag intent={w.intent} />
         ),
       },
       {
@@ -296,37 +243,39 @@ const FlowTracker = () => {
     ],
     [toggleWatch]
   );
-  /* the search is in the address (?q=) and takes a contract too (the owner, 2026-10-23) */
+  /* the search is in the address (?q=) and takes a contract too */
   const [query, setQuery] = useQParam();
-  /** The open card: a contract's key, and the print clip when opened from a print row. */
+  /** The open card: a contract's key, and the print clip when opened from a print row */
   const [open, setOpen] = useState<{ key: string; clip?: { size: number; fill: number; side: 'ASK' | 'BID'; time: string; multi?: boolean } } | null>(null);
 
-  /* AN EMPTY TRACKER ASKS NOTHING (audit round 9, minor 6: with no marks it polled two screener routes every 4s) */
+  /* an empty tracker asks nothing */
   const contractPack = useLiveBook(activeTicker, options.length > 0);
-  /* the marks' names' live prices — the "now" beside each mark's spot then (traceLive liveSpotOf) */
+  /* the marks' names' live prices, the "now" beside each mark's spot then; a landing re-renders the rows */
   const markNames = useMemo(() => [...new Set(options.map(w => w.ticker.toUpperCase()))].sort().join(','), [options]);
+  const [spotRev, setSpotRev] = useState(0);
   useEffect(() => {
     if (!markNames) return;
-    void ensureSpots(markNames.split(','));
+    let live = true;
+    const read = () => void ensureSpots(markNames.split(',')).then(() => live && setSpotRev(n => n + 1));
+    read();
     const id = window.setInterval(() => {
-      if (!traceHeld()) void ensureSpots(markNames.split(','));
+      if (!traceHeld()) read();
     }, 60_000);
-    return () => window.clearInterval(id);
+    return () => {
+      live = false;
+      window.clearInterval(id);
+    };
   }, [markNames]);
-  const bookRev = useBookRev();
-  const liveBook = contractPack.rows;
-  const book = liveBook;
-  const tick = marketData;
+  const book = contractPack.rows;
   const [guideOpen, setGuideOpen] = useState(false);
 
-  /* Today's book by contract key — the "now" every row is measured against when the book carries it */
+  /* today's book by contract key: the "now" a row is measured against when the book carries it */
   const byKey = useMemo(() => {
     const m = new Map<string, BookContract>();
     for (const r of book) m.set(contractKey(r), r);
     return m;
   }, [book]);
-  /* EACH MARK BY ITS OWN CONTRACT (the re-audit, 2026-10-22: a contract marked from the Screener read "off today's book"
-     because this page looked for it in another page's book) — the contract's own session off the vendor */
+  /* each mark reads its own contract's session, never another page's book */
   const occs = useMemo(() => options.filter(w => w.kind !== 'structure').flatMap(w => occCandidates(w as { ticker: string; strike: number; right: 'C' | 'P'; expiry: string; occ?: string })), [options]);
   const days = useContractDays(occs).rows;
   const markNow = useMarkNow(useMemo(() => options.filter(w => w.kind !== 'structure').map(w => {
@@ -343,9 +292,7 @@ const FlowTracker = () => {
         .filter(w => nq === '' || (w.kind === 'structure' ? normSymbol(w.ticker) === normSymbol(parseContractQuery(query)?.ticker ?? query) || normSymbol(w.ticker).includes(nq) : matchesContract(query, { ticker: w.ticker, strike: w.strike, right: w.right, expiry: w.expiry })))
         .map(w => {
           const isIndex = INDEX_ROOTS.has(w.ticker.toUpperCase());
-          if (!isIndex) ensureBook(w.ticker, 'board');
-          /* the name's live price — the one every Trace page draws (liveSpotOf), the book's spot only without it */
-          const spotNow = isIndex ? null : liveSpotOf(w.ticker) || peekSpot(w.ticker);
+          const spotNow = isIndex ? null : liveSpotOf(w.ticker) || null;
           const spotThen = w.at.spot;
           const spotChg = spotNow != null && spotThen > 0 ? pct(spotNow, spotThen) : null;
           if (w.kind === 'structure') {
@@ -356,11 +303,10 @@ const FlowTracker = () => {
           const own: ContractDayNow | null = occ ? days[occ] ?? null : null;
           const booked = byKey.get(contractKey(w)) ?? null;
           const now = markNow[w.key];
-          /* the card's row: the contract's own screener row, else the page's book, else its own day — the card only */
+          /* the card's row: the contract's own screener row, else the book, else its own day */
           const live: BookContract | null = now?.book ?? booked ?? (own && own.iso === todayIso ? bookOfDay(w, occ!, own) : null);
           const markDay = sessionIsoAt(w.watchedAt);
-          /* LIKE WITH LIKE: a contract's close against its close, off the screener both times; a print's fill against the
-             contract's newest trade, off the tape route both times — never one source against the other */
+          /* like with like: a contract's close against its close, a print's fill against the newest fill */
           let nowPrice: number | null = null;
           let nowAt: string | null = null;
           let nowVol: number | null = null;
@@ -386,8 +332,7 @@ const FlowTracker = () => {
           const chg = nowPrice != null && then > 0 ? pct(nowPrice, then) : null;
           const expired = expiredAtBell(isoOfExpiry(w.expiry), w.ticker);
           const nowNote = nowPrice != null ? undefined : expired ? 'expired' : own ? `no print today · last ${own.iso.slice(5).replace('-', '/')}` : undefined;
-          /* VOLUME ADDED IS NEVER NEGATIVE: within the mark's own session it is now less then, one field; a mark from an
-             earlier session has today's whole volume added, and says so */
+          /* volume added is never negative: now less then within the mark's session; an older mark shows today's whole */
           const sameDay = nowDay != null && nowDay === markDay;
           const diff = nowVol != null && sameDay ? nowVol - w.at.volume : null;
           const volAdded = diff != null && diff >= 0 ? diff : null;
@@ -405,8 +350,7 @@ const FlowTracker = () => {
             nowAt,
             nowSrc: w.kind === 'contract' ? ('close' as const) : ('fill' as const),
             oiDelta: nowOi != null ? nowOi - w.at.oi : null,
-            /* THE COUNT HAS NOT COME YET (audit round 8: "OI since +0" intraday, when the next count is set the morning of
-               Mon Oct 26) — a mark in the session still running has no newer count to compare */
+            /* a mark in the running session has no newer count to compare yet */
             oiNext: markDay === tapeSessionIso() ? nextCountDay(markDay) : undefined,
             leanThen: w.kind === 'contract' ? w.at.askPct : w.kind === 'print' && w.at.daySide && w.at.daySide.ask + w.at.daySide.bid > 0 ? (w.at.daySide.ask / (w.at.daySide.ask + w.at.daySide.bid)) * 100 : null,
             sideThen: w.kind === 'print' ? w.at.daySide : undefined,
@@ -418,7 +362,7 @@ const FlowTracker = () => {
         })
         .sort((a, b) => Math.abs(b.moved) - Math.abs(a.moved)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [options, byKey, nq, tick, bookRev, days, todayIso, markNow]
+    [options, byKey, nq, spotRev, days, todayIso, markNow]
   );
 
   /* Three registers per column, measured over what is on screen. */
@@ -432,8 +376,7 @@ const FlowTracker = () => {
     [rows]
   );
 
-  /* The card: the contract's live row, with the print's own clip when the
-     row was a print. Stepping walks the table's own order. */
+  /* the card: the contract's live row, with the print's own clip from a print row; steps walk the table's order */
   const drillList = useMemo(() => {
     const seen = new Set<string>();
     const out: BookContract[] = [];
@@ -455,8 +398,7 @@ const FlowTracker = () => {
     });
   }, []);
   const keyOf = useCallback((r: TrackRow) => r.w.key, []);
-  /* A contract that has left the book dims; a print's contract being off
-     the book is the usual case, and a structure never had one — they don't. */
+  /* an expired contract dims; a print off the book is usual, and a structure never had one */
   const dimGone = useCallback((r: TrackRow) => (r.w.kind !== 'structure' && r.nowNote === 'expired' ? 'opacity-50' : undefined), []);
 
   const columns = useMemo<Column<TrackRow>[]>(
@@ -478,11 +420,9 @@ const FlowTracker = () => {
         header: 'Contract',
         align: 'right',
         sortValue: r => (r.w.kind === 'structure' ? 0 : r.w.strike),
-        // A structure's cell in the contract cell's own shape: strikes bold,
-        // the strategy as its word, the expiry muted, the same door.
+        /* a structure in the contract cell's shape: strikes bold, the strategy as its word, the expiry muted */
         render: r =>
           r.w.kind === 'structure' ? (
-            /* all three parts take the silver under the pointer, as the contract cell's do (2026-09-16) */
             <span className={`group/door inline-flex items-baseline gap-1.5 pb-[2px] ${DOOR}`}>
               <span className={`font-mono text-xs font-bold text-textPrimary tnum ${DOOR_GROUP_TEXT}`}>{r.w.strikesLabel}</span>
               <span className={`font-mono text-t11 font-semibold text-textPrimary ${DOOR_GROUP_TEXT}`}>{r.w.spreadKind}</span>
@@ -507,8 +447,7 @@ const FlowTracker = () => {
         header: 'Then',
         align: 'right',
         sortValue: r => (r.w.kind === 'contract' ? r.w.at.last : r.w.kind === 'print' ? r.w.fill : Math.abs(r.w.net)),
-        // What was marked, in its own words: a contract's last, a print as
-        // it printed, a structure as it traded.
+        /* what was marked: a contract's last, a print as it printed, a structure as it traded */
         render: r => {
           const w = r.w;
           if (w.kind === 'contract')
@@ -540,8 +479,7 @@ const FlowTracker = () => {
         header: 'Then $',
         align: 'right',
         sortValue: r => (r.w.kind === 'contract' ? r.w.at.premium : r.w.premium),
-        // The dollars behind the mark: the print's premium, the structure's,
-        // a contract's day when it was marked.
+        /* the dollars behind the mark: the print's or structure's premium, a contract's day when marked */
         render: r => {
           const w = r.w;
           if (w.kind === 'structure') {
@@ -639,7 +577,6 @@ const FlowTracker = () => {
     [marks]
   );
 
-  // ---- the head ------------------------------------------------------------------
 
   const total = options.length;
   const counts = useMemo(
@@ -650,13 +587,11 @@ const FlowTracker = () => {
     }),
     [options]
   );
-  /* The champions: the mark that moved most since (a real move, not +0.0%),
-     the one building the most interest, the one unwinding the most. */
+  /* the mark that moved most, the one building the most interest, the one unwinding the most */
   const champs = useMemo(() => {
     const label = (r: TrackRow) => (r.w.kind === 'structure' ? `${r.w.ticker} ${r.w.strikesLabel}` : `${r.w.ticker} ${r.w.strike}${r.w.right}`);
     const priced = rows.filter(r => r.chg != null);
-    /* A PENNY IS NOT A MOVE (audit round 10, minor 8: "Moved most NVDA 215C +100.0%" was $0.01 → $0.02): a % move is
-       ranked only on a price of MIN_MOVE_PRICE and up that moved MIN_MOVE_ABS or more */
+    /* a penny is not a move: rank a % move only on a price and a move of 5¢ or more */
     const thenOf = (r: TrackRow): number | null => (r.w.kind === 'contract' ? r.w.at.last : r.w.kind === 'print' ? r.w.fill : null);
     const real = (r: TrackRow) => {
       const then = thenOf(r);
@@ -715,6 +650,7 @@ const FlowTracker = () => {
         sub="Everything you marked on Trace — and what it has done since · a row opens its card"
         testId="tracker"
         data={{ watched: total, rows: rows.length }}
+        foldOnPhone
         guide={{ title: 'How to read the watch', door: 'What a mark and the since columns mean', body: <TrackerGuide />, testId: 'tracker-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
@@ -749,7 +685,7 @@ const FlowTracker = () => {
         sentence={read}
       >
         {total === 0 ? (
-          /* The empty state is a sentence with doors, not a grid */
+          /* the empty state is a sentence with doors, not a grid */
           <div className="border-t border-borderSubtle px-5 pt-5 pb-6 text-t12 text-textSecondary leading-relaxed" data-tracker-empty>
             Nothing is under watch. The mark at the left of any row on the <ReadDoor onOpen={() => navigate('/trace/live-tape')}>Live Tape</ReadDoor>, the <ReadDoor onOpen={() => navigate('/trace/screener')}>Screener</ReadDoor> or any other Trace page keeps it here, with what it has done since.
           </div>
@@ -758,9 +694,7 @@ const FlowTracker = () => {
         )}
       </TraceBox>
 
-      {/* THE CROSSES UNDER WATCH (2026-10-19; Noah: "you should also be able to save and bookmark it for it to be seen in
-          the tracker"): the dark-pool crosses kept from their cards and rows, each with its figures and its read; a row
-          opens the cross's card. Stands only when one is kept. */}
+      {/* the kept dark crosses, each with its figures and read; stands only when one is kept */}
       {crosses.length > 0 && (
         <TraceBox
           title="Dark crosses under watch"
@@ -785,7 +719,7 @@ const FlowTracker = () => {
       )}
       <CrossDrilldown print={openCross} view={null} onClose={() => setOpenCross(null)} />
 
-      <BookDrill list={drillList} openKey={open?.key ?? null} onOpen={k => setOpen(k ? { key: k } : null)} clipFor={clipFor} tick={tick} />
+      <BookDrill list={drillList} openKey={open?.key ?? null} onOpen={k => setOpen(k ? { key: k } : null)} clipFor={clipFor} />
     </>
   );
 };

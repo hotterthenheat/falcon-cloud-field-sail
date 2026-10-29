@@ -37,6 +37,8 @@
 ==================================================
 */
 
+import BacktestPaused from './BacktestPaused';
+import { BACKTEST_LIVE } from '../../data/review/tape';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Play, Plus, RotateCcw, Trash2, X } from 'lucide-react';
@@ -292,7 +294,7 @@ const Sessions = () => {
           {tickers.length > 1 ? ' on one clock and one account,' : ''} {fut ? 'at 18:00 New York the evening before' : 'at the bell of'} <span className="text-textPrimary font-semibold">{dayWords(startDay, true)}</span> with <span className="text-textPrimary font-semibold">{usd(cash, 0)}</span>.{' '}
           {fut
             ? 'You play the day forward and trade it long or short, on margin. One price, no bid and ask — so a market order fills a tick against you, a limit only when traded through, and a target and a stop in the same minute is the stop.'
-            : 'You play the day forward, pick a contract off the chain as it stood, and trade it at its real bid and ask — long calls and puts, paid in cash.'}{' '}
+            : 'You play the day forward, pick a contract off the chain, and trade it at the replay’s bid and ask — long calls and puts, paid in cash.'}{' '}
           {ruleWords.length > 0 ? (
             <>
               Your rules: <span className="text-textPrimary font-semibold">{ruleWords.join(' · ')}</span>. A buy that breaks one is refused, a way out never is — and they cannot be changed once the session starts.
@@ -308,4 +310,6 @@ const Sessions = () => {
   );
 };
 
-export default Sessions;
+const SessionsGate = () => (BACKTEST_LIVE ? <Sessions /> : <BacktestPaused />);
+
+export default SessionsGate;

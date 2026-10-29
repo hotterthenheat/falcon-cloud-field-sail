@@ -4,14 +4,8 @@ import { ArrowUp, ChevronDown, ChevronUp } from 'lucide-react';
 
 /** Rows the first paint carries — about a screen; the window takes over from there */
 const FIRST_ROWS = 36;
-/* THE WINDOW (2026-09-09, Noah: the sidebar "used to be very laggy" on every
-   Trace page): only the rows near the scroll box's viewport are in the DOM,
-   with two empty rows holding the height of the rest. Measured before: the
-   Screener's 250 rows were 15,000 nodes, and the sidebar's 300ms width
-   animation forced five 68ms layouts of all of them; Windows' 287 rows were
-   worse. A screen of rows is what the Record's grids draw, and they were
-   smooth. The guess is the house row (py-2, text-xs); the first row drawn
-   corrects it. */
+/* Windowed rendering: only rows near the scroll viewport are in the DOM, with two spacer rows holding the rest's height
+   (a 250-row screener was 15,000 nodes). The row-height guess is corrected by the first row drawn. */
 const ROW_H_GUESS = 39;
 const OVERSCAN = 14;
 
@@ -43,28 +37,14 @@ interface DataTableProps<T> {
       stable — a fresh function per render is harmless, but the string it
       returns is what the row memo compares. */
   rowClass?: (row: T) => string | undefined;
-  /** FROZEN COLUMNS — for a table whose rows ARRIVE (the tape, 2026-09-03,
-      moved here from LiveTape where it was born on 2026-08-30: "tables
-      shrink then go back to normal spacing"). Measured there: an auto-layout
-      table re-spaces every column whenever a wider row lands or scrolls
-      off — three times in twenty seconds, columns shifting up to 11px —
-      and the whole table breathes sideways under the reader. Frozen, the
-      table measures itself ONCE per column set (auto layout, the first body
-      row's cells, plus a little slack), then locks those widths into a
-      colgroup under fixed layout. A value that genuinely would not fit
-      releases the freeze for one re-measure, checked on the newest eight
-      rows only, where arrivals land. Off by default: a table that changes
-      once a minute (the Screener) has nothing to freeze. */
+  /** Frozen columns, for tables whose rows arrive (the tape): measure once per column set, lock the widths in a
+      fixed-layout colgroup, and release for one re-measure only when one of the newest eight rows would not fit.
+      Off by default. */
   freezeColumns?: boolean;
 }
 
-/* ONE ROW, MEMOISED (2026-09-03). The tape's rows are immutable prints —
-   a print never changes after it lands — so with the table's callbacks and
-   column array held stable by the caller, a tick that prepends one row
-   re-renders ONE row, not a hundred and twenty. On the once-a-minute pages
-   the rows are rebuilt wholesale each minute and the memo simply passes
-   through; a selection change now touches the two rows whose `selected`
-   flipped instead of the whole table. */
+/* Rows are memoised: with stable callbacks and columns from the caller, a new print re-renders one row, and a selection
+   change touches only the two rows whose `selected` flipped. */
 const DataRowInner = <T,>({
   row,
   columns,
@@ -82,9 +62,7 @@ const DataRowInner = <T,>({
     data-row
     onClick={onRowClick ? () => onRowClick(row) : undefined}
     className={`border-b border-borderSubtle/60 last:border-0 transition-colors ${onRowClick ? 'cursor-pointer' : ''} ${
-      /* Holographic silver, not lime (Noah, 2026-08-30): a selected
-         row is WHERE YOU ARE — the same rail the drilldown's
-         latest row and the Weigher's open row wear. */
+      /* a selected row wears the silver rail: where you are */
       selected ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-ink/[0.02]'
     } ${extra ?? ''}`}
   >
@@ -117,10 +95,7 @@ const DataTable = <T,>({
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(initialSort ?? null);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
-  /* Which box actually scrolls. Capped (maxHeight) → this table's own box.
-     Uncapped → the table flows with the PAGE (Noah, 2026-08-30: "not a static
-     box that you scroll INSIDE of... actually be able to scroll DOWN like in
-     live tape"), so the door home watches and drives the shell's main. */
+  /* The box that scrolls: with maxHeight, this table's own; without, the page's (the shell's main). */
   const scrollBox = () => (maxHeight ? scrollerRef.current : (scrollerRef.current?.closest('main') ?? null));
   const [showTop, setShowTop] = useState(false);
   useEffect(() => {
@@ -177,13 +152,8 @@ const DataTable = <T,>({
     });
   }, [rows, sort, columns]);
 
-  /* THE WINDOW (see the top of the file): the first paint carries the first
-     screen; from then on the scroll box says which rows are near its
-     viewport, one placement per frame at most, and the state only changes
-     when the window does — a width animation that moves no row costs no
-     render. The table body's top is read in the box's scroll space so the
-     window is right whether the box is this table's own (maxHeight) or the
-     shell's main. */
+  /* The window: the first paint carries the first screen; then the scroll box decides which rows are near its viewport,
+     at most one placement per frame, and state changes only when the window does. */
   const tableRef = useRef<HTMLTableElement | null>(null);
   const total = sortedRows.length;
   const [win, setWin] = useState({ start: 0, end: FIRST_ROWS });
@@ -243,12 +213,7 @@ const DataTable = <T,>({
   useLayoutEffect(() => {
     if (freezeColumns) setColWidths(null);
   }, [colSig, freezeColumns]);
-  /* A FRAME AFTER EACH COMMIT, never inside it (2026-09-06, the perf sweep):
-     measured in a layout effect, the eighteen rects forced the freshly
-     rendered table's whole layout early — 12ms of the trace page's open on
-     the profiler, and the eight-row clip check the same on every tick. A
-     frame on, the browser has laid the table out for paint anyway; the
-     first frame simply runs unfrozen. */
+  /* measured a frame after each commit, not in a layout effect, which forced an early full layout of the table */
   useEffect(() => {
     if (!freezeColumns) return;
     const id = requestAnimationFrame(() => {
@@ -259,14 +224,8 @@ const DataTable = <T,>({
         const tds = table.querySelector('tbody tr')?.querySelectorAll('td');
         if (!tds || tds.length !== columns.length) return;
         const raw = [...tds].map(td => td.getBoundingClientRect().width);
-        /* Two cases, told apart by whether the columns are at their NATURAL
-           widths (the table overflows its box) or were STRETCHED to fill it.
-           Overflowing: round up and add slack, so the next slightly wider
-           value still lands without a re-measure. Fitting: every column
-           already holds free space, so no slack — and round DOWN, because
-           under fixed layout the table grows to the columns' sum, and
-           nineteen rounded-up stretched columns summed to 19px past a box
-           they fit in, buying a scrollbar for nothing (2026-09-03). */
+        /* Natural widths (the table overflows): round up and add slack. Stretched (it fits): no slack and round down, since
+           under fixed layout rounded-up columns would sum past the box and add a scrollbar. */
         const box = scrollerRef.current?.clientWidth ?? 0;
         const total = raw.reduce((s, w) => s + w, 0);
         setColWidths(total > box + 1 ? raw.map(w => Math.ceil(w) + 6) : raw.map(w => Math.floor(w)));
@@ -282,11 +241,7 @@ const DataTable = <T,>({
     });
     return () => cancelAnimationFrame(id);
   });
-  /* The box changing width (a side rail shown or hidden, a window resized)
-     releases the freeze too — frozen widths measured for one box would
-     overflow a narrower one and leave a wider one short. ONCE THE WIDTH HAS
-     SETTLED (2026-09-09): the sidebar animates its width over 300ms, and
-     releasing on every frame of it re-rendered the whole table per frame. */
+  /* a box width change releases the freeze, once the width has settled (the sidebar animates over 300 ms) */
   useEffect(() => {
     if (!freezeColumns) return;
     const el = scrollerRef.current;
@@ -397,12 +352,6 @@ const DataTable = <T,>({
   );
 };
 
-/* MEMOISED (Noah, 2026-08-30: "some sort of buffer... jolts the entire
-   website"). Measured on the Screener: every 1.5s market tick re-rendered
-   this table — 250 rows × 17 cells — for 55–104ms, and the minute turn for
-   182ms, with nothing on screen changing. The tick reaches every page
-   through the market-data context; this table has no business redrawing for
-   it unless its rows, columns or selection actually changed. Callers keep
-   `rowKey` and `onRowClick` referentially stable (useCallback) so the memo
-   can do its job; the cast keeps the generic signature memo() would erase. */
+/* Memoised: market ticks reach every page through context, and this table must not redraw unless its rows, columns or
+   selection change. Callers keep `rowKey` and `onRowClick` stable; the cast keeps the generic signature. */
 export default memo(DataTable) as typeof DataTable;

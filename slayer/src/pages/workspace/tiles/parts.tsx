@@ -1,32 +1,24 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE · WHAT EVERY TILE IS MADE OF
-  (pages/workspace/tiles/parts.tsx)
-
-  The few pieces the tiles share, so twenty-one of
-  them read as one desk:
-
-    TileRead    the ONE read line at a tile's foot —
-                a sentence, two lines at most
-    TileRows    a list of rows under hairlines, the
-                house's table grammar at a tile's
-                size, scrolling inside the tile
-    TileRow     one row: a door when it leads
-                somewhere, plain when it does not
-    TileEmpty   a tile with nothing to show yet says
-                so, and where to go to change that
-    TileBar     a short bar on the house's track — a
-                size beside a figure, never a chart
-==================================================
+  The pieces the Pulse tiles share, so every tile reads as one desk: the read line at a tile's foot, rows under
+  hairlines, a row that is a door, the empty state, a short bar, and the name's live price.
 */
 
 import { useCallback, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import SpotPrice from '../../../components/gex/SpotPrice';
+import { useLiveQuote } from '../../../data/liveQuote';
 
 /** A row's own door: the page it leads to, carrying the way back to Pulse (components/layout/WayBack) */
 export const useDoor = () => {
   const navigate = useNavigate();
   return useCallback((path: string, state?: Record<string, unknown>) => navigate(path, { state: { ...state, wayBack: '/pulse' } }), [navigate]);
+};
+
+/** A name's live regular-session price (the vendor quote), else `fallback`, else nothing */
+export const LiveSpot = ({ ticker, fallback, className }: { ticker: string; fallback?: number; className?: string }) => {
+  const q = useLiveQuote(ticker);
+  const v = q && q.regularPrice > 0 ? q.regularPrice : fallback;
+  return v != null && v > 0 ? <SpotPrice value={v} className={className} /> : null;
 };
 
 /** A tile with no book to read for its name */

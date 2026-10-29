@@ -168,10 +168,8 @@ export function buildVannaCharm(
     { label: 'Supreme Node', kind: 'supreme', current: base.supreme, projected: proj.supreme },
   ];
 
-  // The read — MEASUREMENTS, not narrative (Mo, 2026-08-19: "walls hold —
-  // expect the morning structure to govern the close" reads as a prediction).
-  // Levels with distances, the charm concentration, the biggest move since
-  // the last scan, and one line that states what this scenario computes.
+  // The read is measurements, not narrative: levels with distances, the charm concentration, the biggest move since the
+  // last scan, and one line stating what the scenario computes.
   const fmt = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
   const dist = (price: number) => Number((((price - spot) / spot) * 100).toFixed(2));
   const lvl = (price: number) => ({ price, distPct: dist(price) });

@@ -160,16 +160,10 @@ class TrailsPaneRenderer {
   constructor(private source: GexTrailsPrimitive) {}
 
   /*
-    THE PATH CACHE (2026-08-29, the Weigher lag hunt). Building the bead
-    field is the layer's whole cost — hundreds of columns × a dozen beads ×
-    two subpaths — and it was rebuilt on EVERY repaint, including the 60fps
-    crosshair repaints a hovering pointer causes. The profiler put ~90% of
-    the desk's busy time here. The built Path2D batches are pure functions
-    of (data revision, pan/zoom, the two scales, the identity inputs), so
-    they are cached against exactly that fingerprint: a hover repaint now
-    reuses them and only re-runs the ~30 fills. The vertical scale is
-    captured by probing two prices — price→pixel is affine, so two points
-    pin it completely.
+    The bead field (hundreds of columns × a dozen beads × two subpaths) is the layer's whole cost, so it is rasterized
+    once and cached against everything it depends on: the data revision, pan/zoom, both scales and the identity inputs.
+    A hover or crosshair repaint blits the bitmap. The vertical scale is fingerprinted by two prices' coordinates
+    (price→pixel is affine, so two points pin it).
   */
   private cacheKey = '';
   /** The field, rasterized — a hover repaint blits this. A pan or a price-scale
@@ -184,6 +178,7 @@ class TrailsPaneRenderer {
   private blitVr = 1;
   private settle = 0;
   private movedAt = 0;
+  private labelsOf: { snap: GexSnapshot; greek: TrailGreek; total: number; top: { strike: number; value: number }[] } | null = null;
 
   /** One rebuild after the pan stops. Re-arming during the gesture never paints. */
   private armSettle(src: GexTrailsPrimitive): void {
@@ -208,13 +203,8 @@ class TrailsPaneRenderer {
     if (!src.enabled || !src.chart || !src.series || src.snapshots.length === 0) return;
     const series = src.series;
     const ts = src.chart.timeScale();
-    /* ONLY THE COLUMNS ON SCREEN (2026-09-06, the perf sweep): the field used
-       to walk every snapshot in the store — 8,580 of them — on every data
-       repaint, asking the time scale for a coordinate each, to find the few
-       hundred that were visible. The snapshots are time-sorted, so the
-       visible window is two binary searches, and the columns are built
-       lazily as they are first seen (setData no longer ranks the whole
-       session up front — the Weigher's open spent 96ms doing that). */
+    /* Only the columns on screen: the snapshots are time-sorted, so the visible window is two binary searches, and a
+       column is built the first time it is seen (columnAt), not for the whole session up front. */
     const vis = ts.getVisibleRange();
     if (!vis) return;
     const fromT = Number(vis.from) - src.barSec * 2;
@@ -616,15 +606,21 @@ class TrailsPaneRenderer {
       // ---- axis-side strength labels for the heaviest strikes ---------------
       const latest = src.snapshots[src.snapshots.length - 1];
       if (!latest) return;
-      const total = latest.levels.reduce((s, l) => s + Math.abs(src.valueOf(l)), 0);
+      // Four labels at most, read off the latest snapshot — once per snapshot and greek, not every frame
+      if (this.labelsOf?.snap !== latest || this.labelsOf.greek !== src.greek) {
+        const total = latest.levels.reduce((s, l) => s + Math.abs(src.valueOf(l)), 0);
+        const top =
+          total > 0
+            ? [...latest.levels]
+                .map(l => ({ strike: l.strike, value: src.valueOf(l) }))
+                .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+                .slice(0, 4)
+                .filter(l => Math.abs(l.value) / total >= 0.08)
+            : [];
+        this.labelsOf = { snap: latest, greek: src.greek, total, top };
+      }
+      const { total, top } = this.labelsOf;
       if (total <= 0) return;
-
-      // Four labels at most — one small sort on one snapshot, not per column
-      const top = [...latest.levels]
-        .map(l => ({ strike: l.strike, value: src.valueOf(l) }))
-        .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-        .slice(0, 4)
-        .filter(l => Math.abs(l.value) / total >= 0.08);
 
       const labelPx = src.labelPx;
       ctx.font = `${Math.round(labelPx * vr)}px "Inter", sans-serif`;
@@ -994,7 +990,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
       if (d > 0 && d < step) step = d;
     }
     this.stepSec = Number.isFinite(step) ? step : barSec;
-    this.glyph = this.glyphsOf(snapshots, prices, this.stepSec);
+    this.glyph = this.glyphsOf(snapshots, prices);
     const p85 = (rows: GexSnapshot[]) => {
       const maxima: number[] = [];
       const memo = momentMax[greek];
@@ -1031,7 +1027,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /** Born, grew, flipped, and died, plus the ten-minute price tag. One pass over the book the chart is drawing. */
-  private glyphsOf(snapshots: readonly GexSnapshot[], prices: readonly { time: number; close: number }[], step: number): Map<string, { mark?: NodeMark; tag?: PriceTag }> {
+  private glyphsOf(snapshots: readonly GexSnapshot[], prices: readonly { time: number; close: number }[]): Map<string, { mark?: NodeMark; tag?: PriceTag }> {
     const out = new Map<string, { mark?: NodeMark; tag?: PriceTag }>();
     const seen = new Map<number, { v: number; peak: boolean; time: number; floor: number; firm: boolean }[]>();
     for (const s of snapshots) {
@@ -1087,7 +1083,6 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
         }
       }
     }
-    void step;
     return out;
   }
 
@@ -1134,9 +1129,6 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
       }
       if (front && this.snapshots.length) {
         const prev = this.snapshots[this.snapshots.indexOf(rowsSnap) - 1];
-        if (prev && rowsSnap.time - prev.time > this.stepSec * 1.5) {
-          /* the hole is named on the column, below */
-        }
         const prevRows = prev?.levels.map(l => ({ strike: l.strike, v: this.valueOf(l) })).filter(r => r.v !== 0) ?? [];
         const prevMax = prevRows.reduce((m, r) => Math.max(m, Math.abs(r.v)), 0);
         const have = new Set(rows.map(r => r.strike));

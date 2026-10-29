@@ -261,12 +261,6 @@ export function companyName(symbol: string): string {
   return n.toUpperCase() === sym ? n : displayName(n);
 }
 /** The legal form of the company's name — for a line that quotes the filing */
-export function companyLegalName(symbol: string): string {
-  recaseStored();
-  const sym = symbol.toUpperCase();
-  const n = uwNames.get(sym) ?? tickerName(sym);
-  return n.toUpperCase() === sym ? n : displayName(n, 'legal');
-}
 
 /** True when the symbol is on the bundled listing — a name off it (an OTC symbol on a filing) is not asked of the vendor */
 export const isListed = (symbol: string): boolean => bySymbol.has(symbol.toUpperCase());

@@ -1,44 +1,9 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE MARK (brand/SlayerMark.tsx)
-
-  ">S|" on its tile — one component for the rail, the launch gate,
-  the landing's bar and the system pages. HIS PARTNER'S LOGO SYSTEM,
-  TAKEN WHOLE (Noah, 2026-10-03, shown his partner's marks in place
-  beside ours: "all of it but keep our galaxy color if changing
-  themes i dont want plain white or black"). It replaces the S on
-  the holo tile (2026-09-30 → 2026-10-03) everywhere.
-
-  THE MARK STANDS STILL BUT FOR TWO THINGS: the foil pans across
-  the S in every state but offline, and the cursor blinks in every
-  state but offline (hidden) and alert (the warning ink flashes in
-  its place). Every mark and wordmark cursor on a page blinks and
-  pans on one beat (brand/brandClock.ts).
-
-  THE FOIL IS THE HOUSE'S ON EITHER GROUND: holographic silver on
-  black, and on paper THE GALAXY INK (near-black with slate and
-  violet — index.css --galaxy-gradient) — never a flat black S
-  (--foil-1…5 in theme/tokens.css carry both runs; the signature's
-  dot and the wordmark's lit letters wear the same five stops).
-
-  WHY IT IS THREE LAYERS AND NOT ONE SVG: the S never stops moving,
-  and an SVG part that animates is repainted every frame. So the
-  tile, its brackets and the ">" are a still SVG; the S is a box cut
-  to the S's outline (a CSS mask) with a wide strip of foil inside
-  it that SLIDES — a transform the compositor runs without painting
-  anything; the cursor is a box whose opacity blinks, the same.
-
-  SIZES: from 64 px the whole mark — tile, corner brackets, the ">".
-  Below 64 px there is no ">" and no brackets; the S| is centred on
-  its tile. `bare` drops the tile too (the rail, the bar, a heading).
-
-  STATES: brand/markState.ts. The mark follows the terminal unless
-  it is told a state (the launch gate's "loading", a fault's
-  "offline").
-
-  NEAR: bring the pointer within 80 px and the S brightens — opt-in,
-  for the rail's mark and the landing's.
-==================================================
+  The mark ">S|" on its tile, used by the rail, launch gate, landing bar and system pages.
+  Three layers so nothing repaints: a still SVG (tile, brackets, ">"), the S as a CSS mask over a sliding foil strip
+  (a compositor transform), and a cursor that blinks by opacity, all on one clock (brandClock.ts).
+  From 64 px the whole mark; below, the S| alone centred on its tile; `bare` drops the tile. States: markState.ts.
+  The foil is silver on dark and the galaxy ink on paper (--foil-1..5); `near` brightens the S within 80 px.
 */
 
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from 'react';
@@ -58,7 +23,7 @@ interface SlayerMarkProps {
   /** brighten the S when the pointer comes within 80 px */
   near?: boolean;
   className?: string;
-  /** the accessible name — "Slayer Terminal" when left out; an empty string makes the mark decorative */
+  /** The accessible name, "Slayer Terminal" by default; an empty string makes the mark decorative. */
   label?: string;
 }
 
@@ -66,7 +31,7 @@ type Box = { x: number; y: number; side: number };
 
 const boxFor = (size: number, bare: boolean, prompt: boolean): Box => {
   if (!bare && size >= 64) return { x: 0, y: 0, side: 64 };
-  /* air under the S: a box that ended on the stroke clipped the last row (the folded rail, 26px) */
+  /* room under the S: a box ending on the stroke clipped the last row at 26 px */
   const x0 = prompt ? 9.5 : MARK_CONTENT.x0 - 2;
   const y0 = MARK_CONTENT.y0 - 3;
   const x1 = MARK_CONTENT.x1 + 3;
@@ -85,9 +50,8 @@ const place = (b: Box, x: number, y: number, w: number, h: number): CSSPropertie
   height: `${(h / b.side) * 100}%`,
 });
 
-/* The S's outline as a mask image, built once: its own viewBox is the S's box WITH A MARGIN round it, and the masked box
-   carries the same margin — a box whose edge landed mid-pixel clipped the S's last row flat at one device pixel a point
-   (Noah, 2026-10-03: "look how the s is cut off at the bottom"); with the margin, a rounded edge cuts nothing but air */
+/* The S outline as a mask image, built once, with a margin round its box: an edge landing mid-pixel clipped the
+   S's last row flat. */
 const S_PAD = 3;
 const [sx0, sy0, sx1, sy1] = MARK.sBox;
 const S_BOX = [sx0 - S_PAD, sy0 - S_PAD, sx1 - sx0 + S_PAD * 2, sy1 - sy0 + S_PAD * 2] as const;
@@ -95,7 +59,7 @@ const S_MASK = `url("data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${S_BOX.join(' ')}" preserveAspectRatio="none"><path d="${MARK.s}"/></svg>`
 )}")`;
 
-/* ── NEAR: one listener for every mark that asked, rect reads batched into a frame ─────────────────────────────── */
+/* one pointer listener for every mark that asked for `near`, rect reads batched per frame */
 const nearMarks = new Set<HTMLElement>();
 let nearFrame = 0;
 let lastPointer: { x: number; y: number } | null = null;
@@ -130,13 +94,13 @@ const watchNear = (el: HTMLElement) => {
   };
 };
 
-/** The mark with the terminal's own state */
+/** The mark with the terminal's own state. */
 const LiveMark = (props: Omit<SlayerMarkProps, 'state'>) => {
   const state = useMarkState();
   return <MarkFace {...props} state={state} />;
 };
 
-/** The mark: the terminal's state unless one is given */
+/** The mark: the terminal's state unless one is given. */
 const SlayerMark = (props: SlayerMarkProps) => (props.state ? <MarkFace {...props} state={props.state} /> : <LiveMark {...props} />);
 
 const MarkFace = ({ size, state, bare = false, prompt = false, near = false, className = '', label }: SlayerMarkProps & { state: MarkState }) => {
@@ -145,7 +109,7 @@ const MarkFace = ({ size, state, bare = false, prompt = false, near = false, cla
     if (!near || !ref.current) return;
     return watchNear(ref.current);
   }, [near]);
-  /* on the page's beat from the first frame, and again whenever the state changes the loops (brand/brandClock.ts) */
+  /* align to the brand clock on mount and whenever the state changes the loops */
   useLayoutEffect(() => {
     alignBrandLoops(ref.current);
   }, [state]);

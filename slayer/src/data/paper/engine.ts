@@ -266,6 +266,8 @@ export interface PaperAccount {
   fee: number;
   /** Practice only: fees off, futures fill at the price (the rules page, "The sandbox") */
   sandbox?: boolean;
+  /** 'live': opened on the live feed. Accounts from the old simulated feed carry nothing here and are ended on load. */
+  feed?: 'live';
   opt: { orders: OptOrder[]; fills: OptFill[] };
   fut: { orders: FutOrder[]; fills: FutFill[] };
   /** The last price seen for each thing held — what a position left open by a page that could not close it is closed at */
@@ -332,6 +334,7 @@ export function newAccount(o: { id: string; kind: AccountKind; name: string; sta
     peak: start,
     fee: o.fee ?? 0.65,
     sandbox: o.kind === 'practice' ? o.sandbox || undefined : undefined,
+    feed: 'live',
     opt: { orders: [], fills: [] },
     fut: { orders: [], fills: [] },
     marks: {},

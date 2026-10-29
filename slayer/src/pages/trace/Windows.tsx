@@ -1,45 +1,25 @@
-/*
-==================================================
-  SLAYER TERMINAL - INTERVALS (Trace)
-  One name's session cut into quarter hours: WHEN
-  did its options day happen, and which way did each
-  quarter hour lean?
-
-  REBUILT ON THE VENDOR'S MINUTES (the audit,
-  2026-10-22): this page spread each contract's day
-  volume over the quarter hours with hashed weights —
-  every figure on it was invented. A contract's own
-  minute bars are one request per contract, which the
-  key's three-request ceiling cannot carry for a book
-  of two hundred; the NAME's minutes are one request:
-  /stock/{t}/net-prem-ticks — every minute's calls
-  and puts traded, by side, and the net call and net
-  put premium (at the ask less on the bid), across
-  every expiry. Each quarter hour sums its fifteen
-  minutes; nothing is shaped, scaled or guessed.
-==================================================
-*/
+/* One name's session cut into quarter hours: when its options day happened and which way each quarter hour leaned. Each
+   quarter hour sums the vendor's own minutes (/stock/{t}/net-prem-ticks, every expiry); nothing is shaped or guessed. */
 
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
 import { VENDOR_TOTAL_NOTE, windowLabel, type IntervalWindow } from '../../data/flowBook';
-import { SESSION_OPEN, sessionEndLabel, sessionEndMin, sessionPhase, tapeSessionIso, useNameMinutes, usd as fmtUsd, type NameMinute } from '../../data/traceLive';
+import { fmtCount as num, SESSION_OPEN, sessionEndLabel, sessionEndMin, sessionPhase, tapeSessionIso, useNameMinutes, usd as fmtUsd, type NameMinute } from '../../data/traceLive';
 import { isLiveDay, shortDay } from '../../components/trace/dayWords';
 import { nyParts } from '../../core/nyTime';
 import type { Column } from '../../components/ui/DataTable';
 import RichRead from '../../components/ui/RichRead';
 import ScopeChip from '../../components/ui/ScopeChip';
-import { FLOW_TTL_MS, StaleMark } from '../../components/ui/liveRead';
 import { earnMarks, weightInk } from '../../components/trace/earnedInk';
-import { LiveHold, useHold } from '../../components/trace/LiveHold';
+import { LiveHold, SessionMark, useHold } from '../../components/trace/LiveHold';
+import { WindowsGuide } from '../../components/trace/TraceGuide';
 import DayStrip from '../../components/trace/DayStrip';
 import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { isQuery, useAddressCut } from '../../components/trace/addressCut';
 
-const num = (v: number) => v.toLocaleString('en-US');
 const signed = (v: number) => `${v >= 0 ? '+' : '−'}${fmtUsd(Math.abs(v))}`;
-/** Net calls bought lean bullish; net puts bought lean bearish — one colour rule */
+/** Net calls bought lean bullish, net puts bought bearish */
 const callInk = (v: number) => (v > 0 ? 'text-bull' : v < 0 ? 'text-bear' : 'text-textMuted');
 const putInk = (v: number) => callInk(-v);
 
@@ -104,12 +84,12 @@ function liveQuarter(endMin: number): number | null {
 const WIDTHS: Record<string, number> = { win: 132, vol: 104, share: 120, calls: 150, puts: 150, ncall: 104, nput: 104, net: 104 };
 const TOOLTIPS: Record<string, string> = {
   vol: 'Calls and puts traded in the quarter hour, every expiry',
-  share: "The quarter hour's share of the session's contracts — so far while the session runs",
+  share: "The quarter hour's share of the session's contracts so far",
   calls: 'Calls traded, and how many of them at the ask against on the bid',
   puts: 'Puts traded, and how many of them at the ask against on the bid',
-  ncall: `Net call premium: call premium at the ask less on the bid — bought leans bullish. ${VENDOR_TOTAL_NOTE}`,
-  nput: `Net put premium: put premium at the ask less on the bid — bought leans bearish. ${VENDOR_TOTAL_NOTE}`,
-  net: `Net calls less net puts — the quarter hour’s lean. ${VENDOR_TOTAL_NOTE}`,
+  ncall: 'Call premium at the ask less on the bid; bought leans bullish',
+  nput: 'Put premium at the ask less on the bid; bought leans bearish',
+  net: `Net calls less net puts: the quarter hour’s lean. ${VENDOR_TOTAL_NOTE}`,
 };
 
 const SideSplit = ({ ask, bid, total }: { ask: number; bid: number; total: number }) => (
@@ -122,7 +102,8 @@ const SideSplit = ({ ask, bid, total }: { ask: number; bid: number; total: numbe
 );
 
 const Windows = () => {
-  const { activeTicker } = useMarketData();
+  const { activeTicker } = useTicker();
+  const [guideOpen, setGuideOpen] = useState(false);
   const addr = useAddressCut({
     name: { def: '', valid: isQuery },
     win: { def: 'live', valid: (v: string) => v === 'live' || /^\d{1,2}$/.test(v) },
@@ -130,7 +111,7 @@ const Windows = () => {
   const name = (addr.cut.name || activeTicker || 'SPY').toUpperCase();
   const pack = useNameMinutes(name);
   const hold = useHold(pack.rows, name, !(pack.waiting && pack.rows.length === 0));
-  /* THE NAME'S OWN SESSION: to 16:15 for the index and ETF options that trade then (the re-audit, 2026-10-22) */
+  /* the name's own session: to 16:15 for the index and ETF options that trade then */
   const endMin = sessionEndMin(name);
   const slots = (endMin - SESSION_OPEN) / 15;
   const nowIdx = liveQuarter(endMin);
@@ -139,18 +120,14 @@ const Windows = () => {
   const windows = useMemo<IntervalWindow[]>(() => quarters.map(q => ({ idx: q.idx, label: q.label, totalVol: q.vol, live: q.live })), [quarters]);
   const state: 'reading' | 'down' | 'in' = quarters.length ? 'in' : pack.fault ? 'down' : pack.waiting ? 'reading' : 'in';
 
-  /* "Live" follows the quarter hour the clock is in. After the bell it opens the loudest quarter — the close is the quiet bar. */
+  /* "Newest" is the newest quarter hour with a figure, in the session and after it; Busiest is its own champion */
   const lastIdx = quarters.length ? quarters[quarters.length - 1].idx : 0;
-  /* After the bell, "live" opens the loudest quarter. The close is the quiet bar, and a reader was taking it for the day. */
-  let loudIdx = lastIdx;
-  let loudVol = -1;
-  for (const q of quarters) if (q.vol > loudVol) { loudVol = q.vol; loudIdx = q.idx; }
-  const winIdx = addr.cut.win === 'live' ? (closed && quarters.length ? loudIdx : lastIdx) : Number(addr.cut.win);
+  const winIdx = addr.cut.win === 'live' ? lastIdx : Number(addr.cut.win);
   const sel = quarters.find(q => q.idx === winIdx) ?? null;
   const setWin = useCallback((v: number | 'live') => addr.set({ win: String(v) }), [addr]);
 
   const marks = useMemo(() => ({ vol: earnMarks(quarters, q => q.vol) }), [quarters]);
-  /* THE DATA'S DAY, NAMED (audit round 7: "Between 16:00 and 16:15 ET, SPY traded…" at 07:30 the next morning) */
+  /* the data's own day, named when it is not today's */
   const dataDay = hold.value.find(m => m.day)?.day ?? tapeSessionIso();
   const onDay = isLiveDay(dataDay) ? 'today' : `on ${shortDay(dataDay)}`;
   const dayTag = isLiveDay(dataDay) ? '' : `${shortDay(dataDay)} · `;
@@ -177,7 +154,6 @@ const Windows = () => {
     );
   }, [state, sel, name, closed, dataDay]);
 
-  /* ONE PLAIN LINE (retail, round 11) — the picked quarter hour's lean in dollars; the full read behind "more" */
   const leadLine =
     state === 'reading'
       ? `Reading ${name}'s minutes…`
@@ -253,12 +229,14 @@ const Windows = () => {
       <DayStrip windows={state === 'in' ? windows : []} selectedIdx={winIdx} onSelect={i => setWin(i)} paused={hold.paused} slots={slots} />
       <TraceBox
         title="A quarter hour of the day"
-        sub={`${name}'s options ${onDay}, every expiry, 8:30 AM–${sessionEndLabel(name)} in quarter hours — minute by minute · a row or a bar picks the quarter hour`}
+        sub={`${name}'s options ${onDay}, every expiry, 09:30–${sessionEndLabel(name)} in quarter hours · a row or a bar picks one`}
         testId="windows"
         data={{ name, window: sel?.label, rows: quarters.length }}
+        foldOnPhone
+        guide={{ title: 'How to read the quarter hours', door: 'What the bars, the sides and the lean mean', body: <WindowsGuide />, testId: 'windows-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label={isLiveDay(dataDay) ? 'The session' : `The session · ${shortDay(dataDay)}`} testId="session" title={`${name}'s option contracts traded ${onDay} ${closed ? '' : 'so far '}in the regular session (8:30 AM–${sessionEndLabel(name)}), every expiry — minute ticks, the figure Net Flow's pane and Compare's net show. ${VENDOR_TOTAL_NOTE}`}>
+            <Fact label={isLiveDay(dataDay) ? 'The session' : `The session · ${shortDay(dataDay)}`} testId="session" title={`${name}'s contracts ${onDay}, 09:30–${sessionEndLabel(name)}, every expiry: the minute ticks, as on Net Flow's pane`}>
               {state !== 'in' ? <span className="text-textMuted">—</span> : <>{num(day.vol)} <span className="text-textSecondary">contracts · lean</span> <span className={callInk(day.netCall - day.netPut)}>{signed(day.netCall - day.netPut)}</span></>}
             </Fact>
             <Fact label="This quarter hour" testId="window">
@@ -282,12 +260,12 @@ const Windows = () => {
               </Champion>
             )}
             {day.bull && day.bull.netCall - day.bull.netPut > 0 && (
-              <Champion label="Most bullish" ink="bull" title={`Open this quarter hour · net calls less net puts, the minute ticks. ${VENDOR_TOTAL_NOTE}`} onOpen={() => setWin(day.bull!.idx)} testId="bull">
+              <Champion label="Most bullish" ink="bull" title="Open this quarter hour: net calls less net puts" onOpen={() => setWin(day.bull!.idx)} testId="bull">
                 {dayTag}{day.bull.label} · {signed(day.bull.netCall - day.bull.netPut)}
               </Champion>
             )}
             {day.bear && day.bear.netCall - day.bear.netPut < 0 && (
-              <Champion label="Most bearish" ink="bear" title={`Open this quarter hour · net calls less net puts, the minute ticks. ${VENDOR_TOTAL_NOTE}`} onOpen={() => setWin(day.bear!.idx)} testId="bear">
+              <Champion label="Most bearish" ink="bear" title="Open this quarter hour: net calls less net puts" onOpen={() => setWin(day.bear!.idx)} testId="bear">
                 {dayTag}{day.bear.label} · {signed(day.bear.netCall - day.bear.netPut)}
               </Champion>
             )}
@@ -296,7 +274,7 @@ const Windows = () => {
         controls={
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
-            <span className={hold.paused ? 'invisible' : undefined} aria-hidden={hold.paused || undefined}><StaleMark at={pack.at} ttlMs={45_000} fault={pack.fault} /></span>
+            <SessionMark at={pack.at} fault={pack.fault} paused={hold.paused} ttlMs={45_000} />
             <ScopeChip ticker={name} quote closeOutside onPick={t => addr.set({ name: t, win: 'live' })} title="The name whose session is cut into quarter hours" />
             <span className="inline-flex items-center gap-1.5 flex-wrap" data-windows-nav data-span>
               <button type="button" onClick={() => pos > 0 && setWin(quarters[pos - 1].idx)} disabled={pos <= 0} aria-label="Previous quarter hour" className={stepBtn}>
@@ -312,7 +290,7 @@ const Windows = () => {
                 type="button"
                 onClick={() => setWin('live')}
                 aria-pressed={addr.cut.win === 'live'}
-                title="Follow the newest quarter hour — the one the clock is in, still filling"
+                title="Follow the newest quarter hour"
                 className={`h-7 px-2.5 rounded-md border font-mono text-t11 uppercase tracking-widest transition-colors ${addr.cut.win === 'live' ? 'border-silver/50 bg-silver/[0.06] text-textPrimary' : 'border-borderSubtle bg-chip text-textSecondary hover:text-textPrimary hover:border-borderMuted'}`}
                 data-windows-latest
               >

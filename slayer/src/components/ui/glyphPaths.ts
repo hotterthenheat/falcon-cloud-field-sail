@@ -1,31 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE PAGE ICONS' OUTLINES
-  (components/ui/glyphPaths.ts)
-
-  The thirteen icons Noah's partner had drawn for the
-  terminal's rooms, one each — Pulse, Terrain, Trace,
-  Dossier, Pinpoint, Compass, the Weigher, Practice,
-  Paper, Backtest, Journal, Community, Alerts. Taken
-  from his copy of the terminal at Noah's word
-  (2026-10-01: "i need you to incoperate the icons he
-  has for the different pages but making them
-  smaller, his look a bit too large"). The OUTLINES
-  are his, to the number; the tile they sat on, the
-  ">" before them and his logo are not taken — ours
-  stand bare (ui/PageGlyph.tsx).
-
-  Each is drawn on a 64-unit square. A part's role:
-    s  the body — the house's foil (silver on black,
-       the galaxy ink on paper); `t` marks its quieter
-       runs: dim, mid, shade
-    i  the one coloured part, in the room's own ink
-       (layout/nav.ts NAV_INK)
-    x  a gap cut through what is drawn before it
-
-  GENERATED from his brand/paths.ts — do not edit a
-  path by hand.
-==================================================
+  Outlines of the thirteen page icons on a 64-unit square (ui/PageGlyph.tsx). Part roles: `s` the body in the house
+  foil (`t` marks quieter runs: dim, mid, shade), `i` the one part in the room's ink (layout/nav.ts NAV_INK), `x` a
+  gap cut through what precedes it. Generated from the drawing's vectors: do not edit by hand.
 */
 
 export type GlyphRole = 's' | 'i' | 'x';

@@ -1,37 +1,12 @@
-/*
-==================================================
-  SLAYER TERMINAL - FOOTPRINTS (Trace)
-  What the flow left standing (Noah, 2026-08-30 —
-  expansion page 2, from the reference's open-
-  interest explorer; renamed: footprints are the
-  marks the prints leave behind).
-
-  Volume is loud and gone by the close; open
-  interest is what STAYED. This page ranks the
-  overnight ledger — positions built, positions
-  unwound, who built them (ask or bid side), and
-  whether the build has legs (streaks). Same laws
-  as the Screener: screens are questions, the one
-  state engine only speaks inside the contract
-  card, every column open.
-
-  THE PARTNER'S LAYOUT (Noah, 2026-10-13): the
-  ticker and the contract stand still at the left
-  while the rest scrolls, the page's one figure —
-  ΔOI — stands at the right; the cut lives in the
-  address (addressCut.ts) so Link and Save work;
-  an Expiry card; the Screen card; two-line rows on
-  a phone; a build with no standing interest never
-  wears the fastest-build crown.
-==================================================
-*/
+/* Footprints: what the flow left standing — open interest built and unwound by one session's trading, on the market's
+   book (or a searched name's). The cut lives in the address. */
 
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
 import { FOOTPRINT_SCREENS, notABet, notABetHint, notABetLabel, notABetWord, runFootprintScreen, stockLike, type FootprintScreenKey } from '../../data/flowBook';
-import { indexRoot, INDEX_OTM_TITLE, standing, useSearchBook, usd as fmtUsd } from '../../data/traceLive';
-import { dayAdv, dayLabel, dayPos, earnWords, oiAfterWords, oiCoverOf, oiInWords, oiLags, oiPendingWords, nextCountDay, oiRowTitle, prevSessionIso, shortDay, type OiCover } from '../../components/trace/dayWords';
+import { fmtCount as num, pairOiFor, standing, useSearchBook, usd as fmtUsd } from '../../data/traceLive';
+import { dayLabel, earnWords, oiAfterWords, oiCoverOf, oiInWords, oiLags, oiPendingWords, oiRowTitle, prevSessionIso, shortDay, type OiCover } from '../../components/trace/dayWords';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -40,13 +15,12 @@ import WatchStar from '../../components/trace/WatchStar';
 import { contractKey, watchContract } from '../../context/WatchContext';
 import RichRead from '../../components/ui/RichRead';
 import BookDrill from '../../components/trace/BookDrill';
-import ContractCell from '../../components/trace/ContractCell';
+import ContractCell, { OtmCell, otmSortValue } from '../../components/trace/ContractCell';
 import ReadDoor from '../../components/trace/ReadDoor';
 import { earnMarks, weightInk, type InkMarks } from '../../components/trace/earnedInk';
 import FlowSearch, { searchMiss, matchesContract, normSymbol, searchedName, useSearchedName } from '../../components/trace/FlowSearch';
-import { LiveHold, useHold } from '../../components/trace/LiveHold';
+import { LiveHold, SessionMark, useHold } from '../../components/trace/LiveHold';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
-import LeanCell from '../../components/trace/LeanCell';
 import TermLine from '../../components/trace/TermLine';
 import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
@@ -56,38 +30,19 @@ import { FootprintsGuide } from '../../components/trace/TraceGuide';
 import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
 import { useExpiryCut } from '../../components/trace/bookExpiry';
 import { isoDate } from '../../core/calendar';
-import { pctSigned } from '../../core/format';
 
-const num = (v: number) => v.toLocaleString('en-US');
-
-/* THE CARDS (the walk, 2026-09-09): the filters popover's chips as labelled cards */
 const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
   { value: 'ALL', label: 'Both', hint: 'Calls and puts' },
   { value: 'C', label: 'Calls', hint: 'Calls only' },
   { value: 'P', label: 'Puts', hint: 'Puts only' },
 ];
-/* wide enough for their heads */
-/** The previous session's columns — dropped when the book does not carry them */
-const PREV_DAY_KEYS = new Set(['builton', 'prevvol', 'prevprem', 'spark']);
-/* fitted to 1440 with every column on (audit round 10, minor 10: "Earr", "Oct 22 cl…", "4 trading…" and the ΔOI with its
-   not-a-bet tag were cut) */
-const WIDTHS: Record<string, number> = { ticker: 104, contract: 144, dte: 52, otm: 80, oi: 88, prevoi: 88, doi: 142, doipct: 72, builton: 104, prevavg: 100, prevprem: 92, streak: 60, spark: 96, earn: 108, lean: 96 };
+const WIDTHS: Record<string, number> = { ticker: 104, contract: 144, dte: 52, otm: 80, oi: 88, prevoi: 88, doi: 142, doipct: 72, prevavg: 100, streak: 60, earn: 108 };
 const PIN_LEFT = ['ticker', 'contract'];
 const PIN_RIGHT = ['doi'];
 const FOOT_CUTS = createViewStore('slayer_footprints_cuts_v1');
-/* A "fastest build" on a near-empty contract is a percentage of nothing ("+46,175%" on 77 contracts): the champion ranks
-   only builds that stood on this much open interest */
+/* a percentage build on a near-empty contract is a percentage of nothing: the fastest-build crown needs this much before */
 const FASTEST_MIN_PREV_OI = 500;
 
-/** Which side built it, in words */
-const builtWords = (r: BookContract) => {
-  const bid = 100 - r.prevAskPct;
-  /* the live book carries no prior-session side (prevVolume 0): no side to name, never a default "on the bid" */
-  if (!Number.isFinite(r.prevAskPct) || !(r.prevVolume > 0)) return null;
-  return r.prevAskPct - bid >= 16 ? 'built at the ask' : bid - r.prevAskPct >= 16 ? 'built on the bid' : 'built at the mid';
-};
-
-/** A contract's overnight on a phone */
 const phoneRow = (r: BookContract) => (
   <PhoneRow
     lead={<WatchStar k={contractKey(r)} make={() => watchContract(r, 'footprints')} />}
@@ -107,60 +62,32 @@ const phoneRow = (r: BookContract) => (
         {num(Math.abs(r.deltaOI))} OI
       </span>,
       <span key="o">{num(r.oi)} standing</span>,
-      ...(builtWords(r) ? [<span key="b">{builtWords(r)}</span>] : []),
     ]}
   />
 );
 
-/* the open-interest heads name whose trading they reflect (audit round 7: "as of the last close" beside Oct 21's build) */
+/* the open-interest heads name whose trading they reflect */
 const tooltipsFor = (cover: OiCover): Record<string, string> => ({
-  ...TOOLTIPS,
-  oi: `Open interest ${oiAfterWords(cover.day)} — counted the morning after`,
-  prevoi: cover.day ? `Open interest that stood at ${shortDay(cover.day)}'s open — after ${shortDay(prevSessionIso(cover.day))}'s trading` : 'Open interest of the count before',
-  doi: `What open interest did ${oiInWords(cover.day)} — positions built or unwound. A row marked with an earlier day is still on the count before (the feed has not published this contract's newer one)`,
-});
-const TOOLTIPS: Record<string, string> = {
-  oi: 'Open interest as of the last count',
-  prevoi: 'Open interest of the count before',
-  doi: 'What open interest did from the session before to this one — positions built or unwound',
+  oi: `Open interest ${oiAfterWords(cover.day)}, counted the morning after`,
+  prevoi: cover.day ? `Open interest at ${shortDay(cover.day)}'s open` : 'Open interest of the count before',
+  doi: `Built or unwound ${oiInWords(cover.day)}; a row marked with an earlier day is still on the count before`,
   doipct: 'The change as a share of what stood before',
-  builton: 'Which side did the building in the session before — at the ask, buyers; on the bid, sellers',
   prevavg: "The contract's close the session before",
   streak: 'Sessions in a row the interest has grown',
-  spark: "Yesterday's volume, quarter hour by quarter hour",
-  earn: "The name's next report, if it sits inside the position's runway",
-};
+  earn: "The name's next report, if it lands before expiry",
+});
 
-/* The quintile machinery moved to components/trace/earnedInk.ts (2026-08-30,
-   when the whole flow family got the three-register pass) and gained the
-   SUPREME tier there - one magenta champion per column. */
-const dirInk = (v: number, m: InkMarks): string =>
-  Math.abs(v) >= m.top ? 'text-supreme font-bold' : Math.abs(v) >= m.bar ? (v > 0 ? 'text-bull dir-up' : 'text-bear dir-down') : 'text-textPrimary';
-
-/** The prior session's 15-min volume shape — a whisper, not a second fact. */
-const PrevSpark = ({ values }: { values: number[] }) =>
-  values.length === 0 ? (
-    <span className="text-textSecondary">—</span>
-  ) : (
-    <svg width={52} height={14} aria-hidden className="block">
-      {values.map((v, i) => {
-        const h = Math.max(1, v * 13);
-        /* the primary ink, a token — a literal near-white vanished on paper */
-        return <rect key={i} x={i * 2} y={14 - h} width={1.4} height={h} fill="rgb(var(--text-primary) / 0.6)" />;
-      })}
-    </svg>
-  );
+const dirInk = (v: number, m: InkMarks): string => (Math.abs(v) >= m.top ? 'text-supreme font-bold' : Math.abs(v) >= m.bar ? (v > 0 ? 'text-bull dir-up' : 'text-bear dir-down') : 'text-textPrimary');
 
 const Footprints = () => {
-  const { marketData, activeTicker } = useMarketData();
-  /* THE CUT IS THE ADDRESS */
+  const { activeTicker } = useTicker();
   const addr = useAddressCut({
     screen: { def: 'builds', valid: oneOf(FOOTPRINT_SCREENS.map(x => x.key)) },
     side: { def: 'ALL', valid: oneOf(['ALL', 'C', 'P']) },
     q: { def: '', valid: isQuery },
     exp: { def: '', valid: isIsoDay },
   });
-  const screenAsked = addr.cut.screen as FootprintScreenKey;
+  const screen = addr.cut.screen as FootprintScreenKey;
   const setScreen = (v: FootprintScreenKey) => addr.set({ screen: v });
   const side = addr.cut.side as 'ALL' | 'C' | 'P';
   const setSide = (v: 'ALL' | 'C' | 'P') => addr.set({ side: v });
@@ -170,319 +97,48 @@ const Footprints = () => {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
 
-  /* THE MARKET'S BOOK ONLY (audit round 5: the "market" book silently took in the shell's active ticker — the market's top
-     200 plus SPY's top 80 — so changing the ticker elsewhere moved the market's figures, and SPY 767P stood as the
-     biggest build though it is not among the market's 200). A name is read with the search. */
-  /* ENDLESS (the owner, 2026-10-23): the screener's next pages by premium as the reader scrolls */
-  /* A NAME SEARCHED IS ASKED FOR (audit round 11, major 5: "?q=NVDA" read "No contract matches" while NVDA 220C Nov 20 sat
-     on the screener's page 2): that name's own book, paged; else the market's */
+  /* the market's book only — the shell's ticker never joins it; a name is read through the search */
   const askedName = useSearchedName(query);
   const bookPack = useSearchBook(askedName);
   const bookWord = bookPack.name ? `${bookPack.name}'s book` : "the market's book";
   const liveBook = bookPack.rows;
-  /* NOT YET IS NOT NOTHING (audit round 8, major 5: "+0 added … No open interest changed" while the book loaded) */
   const reading = (bookPack.waiting && liveBook.length === 0) || searchedName(query) !== askedName;
-  // The shared hold (see LiveHold): book and tick freeze together while paused.
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !reading);
-  const { book: heldBook, tick } = hold.value;
-  /* THE EXPIRY CUT: the dates on the book, as a calendar */
+  const hold = useHold(liveBook, activeTicker, !reading);
+  const heldBook = hold.value;
   const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldBook, r => r.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
-  /* WHAT STILL STANDS (the re-audit, 2026-10-22: 64 of 146 builds were Oct 22 contracts, read after the bell as standing
-     interest) — a contract that expired at the bell is left out, and the sentence says how many */
+  /* a contract that expired at the bell no longer stands */
   const stand = useMemo(() => standing(cutExpiry(heldBook)), [heldBook, cutExpiry]);
   const book = stand.rows;
-  /* ONE SESSION'S BUILDS (audit round 7): the counts that pair with the newest published day; a contract the feed has
-     not re-counted yet keeps its row, marked, and stays out of every sum and pill */
+  /* one session's builds: a row the vendor has not re-counted keeps its place, marked, out of every sum and crown */
   const cover = useMemo(() => oiCoverOf(book), [book]);
   const onCount = useCallback((r: BookContract) => !oiLags(r, cover), [cover]);
-  /* THE SCREENS THE FEED CAN ANSWER (the ship pass, 2026-10-22): bought/sold to open and carryover read the PREVIOUS
-     session's side and volume, which the live book does not carry — "Sold to open" passed every build (a side of 0 is
-     ≤ 42%) and the other two never matched. Without that data they are not offered, and a link that asks for one
-     lands on the biggest builds. */
-  const hasPrevSide = useMemo(() => heldBook.some(r => r.prevVolume > 0), [heldBook]);
-  const PREV_ONLY: FootprintScreenKey[] = ['bought', 'sold', 'carryover'];
-  const screen: FootprintScreenKey = !hasPrevSide && PREV_ONLY.includes(screenAsked) ? 'builds' : screenAsked;
   const keyOf = useCallback((r: { key: string }) => r.key, []);
   const openRow = useCallback((r: { key: string }) => setOpenKey(r.key), []);
 
-  const rows = useMemo(() => {
-    const cut = runFootprintScreen(book, screen);
-    const sided = side === 'ALL' ? cut : cut.filter(r => r.right === side);
-    const nq = normSymbol(query);
-    return nq === '' ? sided : sided.filter(r => matchesContract(query, r));
-  }, [book, screen, side, query]);
-  const shown = rows;
-
-  /* THE SENTENCE FOLLOWS THE FILTER (retail, 2026-10-23: filtered to NVDA it still said "Biggest build: SPY 767P") — the
-     side and the search cut the sentence's contracts; the screen is the grid's */
   const filtered = useMemo(() => {
     const sided = side === 'ALL' ? book : book.filter(r => r.right === side);
-    const nq = normSymbol(query);
-    return nq === '' ? sided : sided.filter(r => matchesContract(query, r));
+    return normSymbol(query) === '' ? sided : sided.filter(r => matchesContract(query, r));
   }, [book, side, query]);
-  const cutWord = useMemo(() => {
-    const bits = [query ? `matching "${query}"` : '', side === 'C' ? 'calls only' : side === 'P' ? 'puts only' : ''].filter(Boolean);
-    return bits.length ? bits.join(', ') : '';
-  }, [query, side]);
-  /* THE SHARED RULE (audit round 10, major 2: "Biggest build EWZ 46C · +105,220" was a contract whose day was 116,450 of
-     125,373 contracts in cross trades): a floor package, a day of spread legs or a day of crosses (flowBook notABet) is not a
-     bet — out of the crowns, the head's totals and the sentence's sums, and said as left out, as on Compare's footprints */
+  const rows = useMemo(() => runFootprintScreen(filtered, screen), [filtered, screen]);
+  const cutWord = useMemo(() => [query ? `matching "${query}"` : '', side === 'C' ? 'calls only' : side === 'P' ? 'puts only' : ''].filter(Boolean).join(', '), [query, side]);
+  /* floor packages, days of spread legs and days of crosses are not bets: out of the crowns and the sums */
   const ranked = useCallback((r: BookContract) => onCount(r) && !notABet(r), [onCount]);
-  const loudestBuild = useMemo(() => [...filtered.filter(r => r.deltaOI > 0 && ranked(r))].sort((a, b) => b.deltaOI - a.deltaOI)[0] ?? null, [filtered, ranked]);
-  /* THE SENTENCE FOLLOWS THE SCREEN (audit round 8: on Unwinds it still ended "Biggest build…") */
-  const loudestUnwind = useMemo(() => [...filtered.filter(r => r.deltaOI < 0 && ranked(r))].sort((a, b) => a.deltaOI - b.deltaOI)[0] ?? null, [filtered, ranked]);
+  const loudestBuild = useMemo(() => filtered.filter(r => r.deltaOI > 0 && ranked(r)).sort((a, b) => b.deltaOI - a.deltaOI)[0] ?? null, [filtered, ranked]);
+  const loudestUnwind = useMemo(() => filtered.filter(r => r.deltaOI < 0 && ranked(r)).sort((a, b) => a.deltaOI - b.deltaOI)[0] ?? null, [filtered, ranked]);
   const loudest = screen === 'unwinds' ? loudestUnwind : loudestBuild;
 
-  /* ReactNode: "The loudest:" is a door into the same card its table row
-     opens — even when the current screen has it filtered out. */
-  const read = useMemo<ReactNode>(() => {
-    if (reading) return <RichRead text={`Reading ${bookWord} and its open interest…`} />;
-    if (bookPack.fault && heldBook.length === 0) return <RichRead text="The book did not answer — the footprints fill when it does." />;
-    const onCountRows = filtered.filter(onCount);
-    const counted = onCountRows.filter(r => !notABet(r));
-    const apart = onCountRows.filter(r => notABet(r));
-    const apartMoved = apart.reduce((a, r) => a + r.deltaOI, 0);
-    const apartWords = apart.length ? ` ${num(apart.length)} more — ${notABetLabel(apart).toLowerCase()}, open interest ${apartMoved >= 0 ? '+' : '−'}${num(Math.abs(apartMoved))} — are left out: packages, legs and crosses are not bets.` : '';
-    const builds = counted.filter(r => r.deltaOI > 0);
-    const unwinds = counted.filter(r => r.deltaOI < 0);
-    const added = builds.reduce((a, r) => a + r.deltaOI, 0);
-    const removed = unwinds.reduce((a, r) => a + r.deltaOI, 0);
-    /* the contracts still on the count before — not the ones set apart as not a bet (audit round 11, minor 6) */
-    const lag = filtered.length - onCountRows.length;
-    const tail = `${lag ? ` ${num(lag)} contract${lag === 1 ? ' is' : 's are'} still on the count before (the feed has not re-counted ${lag === 1 ? 'it' : 'them'}) — marked, and left out.` : ''}${cover.allPending && cover.volDay && cover.volDay !== cover.day ? ` ${dayPos(cover.volDay).replace(/^./, c => c.toUpperCase())} volume builds the next count, set the morning of ${nextCountDay(cover.volDay)}.` : ''}`;
-    if (builds.length === 0 && unwinds.length === 0) return <RichRead text={`No open interest changed ${oiInWords(cover.day)} on ${counted.length ? '' : 'any single bet among '}${cutWord ? `the contracts ${cutWord}` : 'the book'}.${apartWords}${tail}`} />;
-    /* The Screener's grammar (Noah, 2026-08-30): what open interest did, in
-       plain words — no "standing interest", no "builds and unwinds" puzzle. */
-    /* WHAT IT COVERS (the audit, 2026-10-22: "Open interest grew by 297,774 overnight" summed only the book's contracts) */
-    const base = `Across the ${num(counted.length)} standing contract${counted.length === 1 ? '' : 's'} ${cutWord ? `${cutWord} ` : ''}that are single bets on ${bookWord} (the ${num(heldBook.length)} contracts loaded, ${dayPos()} heaviest premium first${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}), open interest rose ${num(added)} ${oiInWords(cover.day)} on ${num(builds.length)} of them and fell ${num(Math.abs(removed))} on ${num(unwinds.length)}.${apartWords}${tail}`;
-    if (!loudest) return <RichRead text={base} />;
-    const unwind = loudest.deltaOI < 0;
-    return (
-      <>
-        <RichRead text={`${base} ${unwind ? 'Biggest unwind' : 'Biggest build'}: `} />
-        <ReadDoor onOpen={() => setOpenKey(loudest.key)}>
-          {loudest.ticker} {loudest.strike}
-          {loudest.right}
-        </ReadDoor>
-        <RichRead text={` [[${unwind ? '−' : '+'}${num(Math.abs(loudest.deltaOI))}]]${!unwind && loudest.prevVolume > 0 ? `, built ${loudest.prevAskPct >= 50 ? 'at the ask' : 'on the bid'}` : ''}${!unwind && stockLike(loudest) ? ` — ${Math.abs(loudest.otmPct).toFixed(0)}% in the money with ${loudest.dte} days to run: likely a stock replacement or a roll, not a directional bet` : ''}.`} />
-      </>
-    );
-  }, [filtered, cutWord, loudest, stand.expired, onCount, cover, reading, bookPack.fault, heldBook.length, bookWord]);
-
-  const activeScreen = FOOTPRINT_SCREENS.find(s => s.key === screen) ?? FOOTPRINT_SCREENS[0];
-  const screenOptions = useMemo<DropdownOption<FootprintScreenKey>[]>(() => FOOTPRINT_SCREENS.filter(s => hasPrevSide || !['bought', 'sold', 'carryover'].includes(s.key)).map(s => ({ value: s.key, label: s.label, hint: s.hint })), [hasPrevSide]);
-
-  /*
-    INK IS EARNED, COLUMN BY COLUMN (Noah, 2026-08-30: "shoudnt the green be
-    reserved for cons that are above a certain amount of positive change
-    because right now they all read the same color no matter how small or big
-    ... matter of fact shoudnt the entire page be like that? look at prev vol.
-    they are all white making nothing stand out").
-
-    Each column sets its OWN bar at the 80th percentile of what is actually on
-    screen, and only the cells that clear it get any emphasis. ΔOI and ΔOI %
-    are SIGNED, so they earn direction ink. Counts and dollars have no
-    direction, so they earn WEIGHT — intensity is bold white, never a hue that
-    would imply a verdict the number is not making.
-  */
-  const marks = useMemo(
-    () => ({
-      oi: earnMarks(shown, r => r.oi),
-      prevOI: earnMarks(shown, r => r.prevOI),
-      doi: earnMarks(shown, r => r.deltaOI),
-      doiPct: earnMarks(shown, r => r.deltaOIPct),
-      prevVol: earnMarks(shown, r => r.prevVolume),
-      vol: earnMarks(shown, r => r.volume),
-      prevAvg: earnMarks(shown, r => r.prevAvgFill),
-      prevPrem: earnMarks(shown, r => r.prevPremium),
-    }),
-    [shown]
-  );
-
-  /* the live screener sends no previous session's volume, premium, side or tape — those columns read 0, "BID 100%" and
-     a flat line on every row; they stand only when the book carries them */
-  const prevKnown = useMemo(() => shown.some(r => r.prevVolume > 0 || r.prevPremium > 0), [shown]);
-  const columns = useMemo<Column<BookContract>[]>(
-    () => (
-      [
-      {
-        key: 'ticker',
-        header: 'Ticker',
-        sortValue: r => r.ticker,
-        // The star leads the row, the tape's own placement (see WatchStar).
-        render: r => (
-          <span className="inline-flex items-center gap-1.5">
-            <WatchStar k={contractKey(r)} make={() => watchContract(r, 'footprints')} />
-            <CompanyLogo ticker={r.ticker} size={15} />
-            <span className="font-bold text-textPrimary">{r.ticker}</span>
-          </span>
-        ),
-      },
-      {
-        key: 'contract',
-        header: 'Contract',
-        align: 'right',
-        sortValue: r => r.strike,
-        render: r => <ContractCell strike={r.strike} right={r.right} expiry={r.expiry} />,
-      },
-      {
-        key: 'dte',
-        header: 'DTE',
-        align: 'right',
-        sortValue: r => r.dte,
-        render: r => <span className="text-textPrimary">{r.dte}d</span>,
-      },
-      {
-        key: 'otm',
-        header: 'OTM %',
-        align: 'right',
-        sortValue: r => r.otmPct,
-        render: r => (Number.isFinite(r.otmPct) ? <span className="text-textPrimary" title={indexRoot(r.ticker) ? INDEX_OTM_TITLE : undefined}>{indexRoot(r.ticker) ? "≈" : ""}{pctSigned(r.otmPct, 1)}</span> : <span className="text-textMuted" title="The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)">—</span>),
-      },
-      {
-        key: 'oi',
-        header: 'OI',
-        align: 'right',
-        sortValue: r => r.oi,
-        render: r => <span className={weightInk(r.oi, marks.oi)}>{num(r.oi)}</span>,
-      },
-      {
-        key: 'prevoi',
-        header: 'Prev OI',
-        align: 'right',
-        sortValue: r => r.prevOI,
-        render: r => <span className={weightInk(r.prevOI, marks.prevOI)}>{num(r.prevOI)}</span>,
-      },
-      {
-        key: 'doi',
-        header: 'ΔOI',
-        align: 'right',
-        sortValue: r => r.deltaOI,
-        /* THIS page's lead fact, so it earns the strongest treatment there
-           is — direction ink AND weight — but only above the bar. Below it the
-           number still reads; it just stops shouting alongside a build forty
-           times its size. */
-        render: r => {
-          /* a row still on the count before says whose day it is, in plain ink — never ranked with the rest */
-          const lag = oiLags(r, cover) && r.oiDay ? <span className="mr-1 text-t10 text-textMuted">{shortDay(r.oiDay)}</span> : notABet(r) ? <span className="mr-1 text-t10 text-warn" title={`${notABetHint(r)} — not ranked, and out of the totals above`}>{notABetWord(r) === 'floor package' ? 'pkg' : notABetWord(r) === 'a cross' ? 'cross' : 'legs'}</span> : null;
-          if (r.deltaOI === 0) return <span className="text-textSecondary" title={oiRowTitle(r)}>{lag}—</span>;
-          const a = Math.abs(r.deltaOI);
-          const ink = lag || notABet(r) ? 'text-textPrimary' : a >= marks.doi.top ? 'text-supreme font-bold' : a >= marks.doi.bar ? `font-bold ${r.deltaOI > 0 ? 'text-bull dir-up' : 'text-bear dir-down'}` : 'text-textPrimary';
-          return (
-            <span className={ink} title={oiRowTitle(r)}>
-              {lag}
-              {r.deltaOI > 0 ? '+' : '−'}
-              {num(Math.abs(r.deltaOI))}
-            </span>
-          );
-        },
-      },
-      {
-        key: 'doipct',
-        header: 'ΔOI %',
-        align: 'right',
-        sortValue: r => r.deltaOIPct,
-        // Ranked against the PERCENTAGES, not the contract counts — colour
-        // only, so the absolute column stays the louder of the pair.
-        render: r => {
-          if (r.deltaOI === 0) return <span className="text-textSecondary">—</span>;
-          return (
-            <span className={dirInk(r.deltaOI > 0 ? Math.abs(r.deltaOIPct) : -Math.abs(r.deltaOIPct), marks.doiPct)}>
-              {r.prevOI < 100 ? 'new' : <>{r.deltaOIPct > 0 ? '+' : '−'}{num(Math.abs(Math.round(r.deltaOIPct)))}%</>}
-            </span>
-          );
-        },
-      },
-      {
-        key: 'builton',
-        header: 'Built on',
-        align: 'right',
-        sortValue: r => r.prevAskPct,
-        // Which side did the building — the tape's own bid/ask cell.
-        render: r => <LeanCell askPct={r.prevAskPct} />,
-      },
-      {
-        key: 'prevvol',
-        header: 'Prev vol',
-        align: 'right',
-        sortValue: r => r.prevVolume,
-        render: r => <span className={weightInk(r.prevVolume, marks.prevVol)}>{num(r.prevVolume)}</span>,
-      },
-      {
-        key: 'vol',
-        /* the session's own day named (audit round 6: "Vol today" at 04:15 on Oct 23 was Oct 22's) */
-        header: `Vol ${dayLabel()}`,
-        align: 'right',
-        sortValue: r => r.volume,
-        render: r => <span className={weightInk(r.volume, marks.vol)}>{num(r.volume)}</span>,
-      },
-      {
-        key: 'prevavg',
-        /* chain_prev_close is the close of the session BEFORE the book's (audit round 6: ORCL 140C "Prev close $29.58" was
-           Oct 21's, beside an Oct 22 close of 26.95) — named by its date */
-        header: `${shortDay(prevSessionIso())} close`,
-        align: 'right',
-        sortValue: r => r.prevAvgFill,
-        render: r => <span className={weightInk(r.prevAvgFill, marks.prevAvg)}>${r.prevAvgFill.toFixed(2)}</span>,
-      },
-      {
-        key: 'prevprem',
-        header: 'Prev $',
-        align: 'right',
-        sortValue: r => r.prevPremium,
-        render: r => <span className={weightInk(r.prevPremium, marks.prevPrem)}>{fmtUsd(r.prevPremium)}</span>,
-      },
-      {
-        key: 'streak',
-        header: 'Streak',
-        align: 'right',
-        sortValue: r => r.oiStreak,
-        // A build with legs — three sessions and up earns weight, not a hue.
-        render: r => (r.oiStreak === 0 ? <span className="text-textSecondary">—</span> : <span className={r.oiStreak >= 3 ? 'font-bold text-textPrimary' : 'text-textPrimary'}>{r.oiStreak}d</span>),
-      },
-      {
-        key: 'spark',
-        header: 'Prev day',
-        align: 'right',
-        render: r => <PrevSpark values={r.prevSpark} />,
-      },
-      {
-        key: 'earn',
-        header: 'Earnings',
-        align: 'right',
-        sortValue: r => r.earnDays ?? 999,
-        // A report inside the position's runway is a risk event — warn ink.
-        render: r => { const e = earnWords(r); return e ? <span className={r.earnDays! <= 5 ? 'text-warn' : 'text-textPrimary'} title={e.title}>{e.text}</span> : <span className="text-textSecondary">—</span>; },
-      },
-      ] as Column<BookContract>[]
-    ).filter(c => prevKnown || !PREV_DAY_KEYS.has(c.key)),
-    [marks, prevKnown, cover]
-  );
-
-  /* THE TAPE'S HEAD, THIS PAGE'S RULES (Noah, 2026-08-30): the composition
-     strip — facts left, champions as pills right — and the column chooser.
-     The bull/bear pills only show when they are not the magenta one. */
-  const champs = useMemo(() => {
-    const builds = shown.filter(r => r.deltaOI > 0 && ranked(r));
-    const unwinds = shown.filter(r => r.deltaOI < 0 && ranked(r));
-    const build = builds.reduce<BookContract | null>((a, r) => (a === null || r.deltaOI > a.deltaOI ? r : a), null);
-    const unwind = unwinds.reduce<BookContract | null>((a, r) => (a === null || r.deltaOI < a.deltaOI ? r : a), null);
-    const fastest = builds.filter(r => r.prevOI >= FASTEST_MIN_PREV_OI).reduce<BookContract | null>((a, r) => (a === null || r.deltaOIPct > a.deltaOIPct ? r : a), null);
-    return { build, unwind, fastest };
-  }, [shown, ranked]);
   const facts = useMemo(() => {
     let added = 0;
     let shed = 0;
     let builds = 0;
     let unwinds = 0;
     let apart = 0;
-    /* THE HEAD FOLLOWS THE FILTER (audit round 8: under Side = Puts the head summed the whole book while the sentence and
-       the pills were puts) — the side and the search cut it, as they cut the sentence */
+    let apartMoved = 0;
     for (const r of filtered) {
       if (!onCount(r)) continue;
-      /* the single bets only (the shared rule) — the rest counted apart */
       if (notABet(r)) {
         apart++;
+        apartMoved += r.deltaOI;
         continue;
       }
       if (r.deltaOI > 0) {
@@ -493,30 +149,144 @@ const Footprints = () => {
         unwinds++;
       }
     }
-    return { added, shed, builds, unwinds, apart, counted: filtered.filter(r => onCount(r) && !notABet(r)).length };
+    return { added, shed, builds, unwinds, apart, apartMoved, lag: filtered.filter(r => !onCount(r)).length };
   }, [filtered, onCount]);
+
+  const read = useMemo<ReactNode>(() => {
+    if (reading) return <RichRead text={`Reading ${bookWord} and its open interest…`} />;
+    if (bookPack.fault && heldBook.length === 0) return <RichRead text="The book did not answer — the footprints fill when it does." />;
+    const apartWords = facts.apart ? ` ${num(facts.apart)} more (${notABetLabel(filtered.filter(r => onCount(r) && notABet(r))).toLowerCase()}, ${facts.apartMoved >= 0 ? '+' : '−'}${num(Math.abs(facts.apartMoved))}) are not bets and are left out.` : '';
+    const lagWords = facts.lag ? ` ${num(facts.lag)} still on the count before are left out.` : '';
+    const scope = `${num(heldBook.length)} contracts loaded on ${bookWord}${stand.expired ? `, ${num(stand.expired)} expired left out` : ''}`;
+    const base = `Of the ${scope}: open interest rose ${num(facts.added)} on ${num(facts.builds)} and fell ${num(facts.shed)} on ${num(facts.unwinds)} ${oiInWords(cover.day)}.${apartWords}${lagWords}`;
+    if (!loudest) return <RichRead text={base} />;
+    const unwind = loudest.deltaOI < 0;
+    return (
+      <>
+        <RichRead text={`${base} ${unwind ? 'Biggest unwind' : 'Biggest build'}: `} />
+        <ReadDoor onOpen={() => setOpenKey(loudest.key)}>
+          {loudest.ticker} {loudest.strike}
+          {loudest.right}
+        </ReadDoor>
+        <RichRead text={` [[${unwind ? '−' : '+'}${num(Math.abs(loudest.deltaOI))}]]${!unwind && stockLike(loudest) ? ' — deep in the money and long-dated: likely a stock replacement, not a bet' : ''}.`} />
+      </>
+    );
+  }, [filtered, loudest, stand.expired, onCount, cover, reading, bookPack.fault, heldBook.length, bookWord, facts]);
+
+  const marks = useMemo(
+    () => ({
+      oi: earnMarks(rows, r => r.oi),
+      prevOI: earnMarks(rows, r => r.prevOI),
+      doi: earnMarks(rows, r => r.deltaOI),
+      doiPct: earnMarks(rows, r => r.deltaOIPct),
+      vol: earnMarks(rows, r => r.volume),
+      prevAvg: earnMarks(rows, r => r.prevAvgFill),
+    }),
+    [rows]
+  );
+
+  const columns = useMemo<Column<BookContract>[]>(
+    () => [
+      {
+        key: 'ticker',
+        header: 'Ticker',
+        sortValue: r => r.ticker,
+        render: r => (
+          <span className="inline-flex items-center gap-1.5">
+            <WatchStar k={contractKey(r)} make={() => watchContract(r, 'footprints')} />
+            <CompanyLogo ticker={r.ticker} size={15} />
+            <span className="font-bold text-textPrimary">{r.ticker}</span>
+          </span>
+        ),
+      },
+      { key: 'contract', header: 'Contract', align: 'right', sortValue: r => r.strike, render: r => <ContractCell strike={r.strike} right={r.right} expiry={r.expiry} /> },
+      { key: 'dte', header: 'DTE', align: 'right', sortValue: r => r.dte, render: r => <span className="text-textPrimary">{r.dte}d</span> },
+      { key: 'otm', header: 'OTM %', align: 'right', sortValue: r => otmSortValue(r.otmPct), render: r => <OtmCell otmPct={r.otmPct} ticker={r.ticker} /> },
+      { key: 'oi', header: 'OI', align: 'right', sortValue: r => r.oi, render: r => <span className={weightInk(r.oi, marks.oi)}>{num(r.oi)}</span> },
+      { key: 'prevoi', header: 'Prev OI', align: 'right', sortValue: r => r.prevOI, render: r => <span className={weightInk(r.prevOI, marks.prevOI)}>{num(r.prevOI)}</span> },
+      {
+        key: 'doi',
+        header: 'ΔOI',
+        align: 'right',
+        sortValue: r => r.deltaOI,
+        render: r => {
+          /* a row still on the count before names its day, in plain ink; a non-bet says what it is */
+          const lag = oiLags(r, cover) && r.oiDay ? <span className="mr-1 text-t10 text-textMuted">{shortDay(r.oiDay)}</span> : notABet(r) ? <span className="mr-1 text-t10 text-warn" title={notABetHint(r)}>{notABetWord(r) === 'floor package' ? 'pkg' : notABetWord(r) === 'a cross' ? 'cross' : 'legs'}</span> : null;
+          if (r.deltaOI === 0) return <span className="text-textSecondary" title={oiRowTitle(r)}>{lag}—</span>;
+          const a = Math.abs(r.deltaOI);
+          const ink = lag ? 'text-textPrimary' : a >= marks.doi.top ? 'text-supreme font-bold' : a >= marks.doi.bar ? `font-bold ${r.deltaOI > 0 ? 'text-bull dir-up' : 'text-bear dir-down'}` : 'text-textPrimary';
+          return (
+            <span className={ink} title={oiRowTitle(r)}>
+              {lag}
+              {r.deltaOI > 0 ? '+' : '−'}
+              {num(a)}
+            </span>
+          );
+        },
+      },
+      {
+        key: 'doipct',
+        header: 'ΔOI %',
+        align: 'right',
+        sortValue: r => r.deltaOIPct,
+        render: r =>
+          r.deltaOI === 0 ? (
+            <span className="text-textSecondary">—</span>
+          ) : (
+            <span className={dirInk(r.deltaOI > 0 ? Math.abs(r.deltaOIPct) : -Math.abs(r.deltaOIPct), marks.doiPct)}>
+              {r.prevOI < 100 ? 'new' : <>{r.deltaOIPct > 0 ? '+' : '−'}{num(Math.abs(Math.round(r.deltaOIPct)))}%</>}
+            </span>
+          ),
+      },
+      { key: 'vol', header: `Vol ${dayLabel()}`, align: 'right', sortValue: r => r.volume, render: r => <span className={weightInk(r.volume, marks.vol)}>{num(r.volume)}</span> },
+      { key: 'prevavg', header: `${shortDay(prevSessionIso())} close`, align: 'right', sortValue: r => r.prevAvgFill, render: r => <span className={weightInk(r.prevAvgFill, marks.prevAvg)}>${r.prevAvgFill.toFixed(2)}</span> },
+      { key: 'streak', header: 'Streak', align: 'right', sortValue: r => r.oiStreak, render: r => (r.oiStreak === 0 ? <span className="text-textSecondary">—</span> : <span className={r.oiStreak >= 3 ? 'font-bold text-textPrimary' : 'text-textPrimary'}>{r.oiStreak}d</span>) },
+      {
+        key: 'earn',
+        header: 'Earnings',
+        align: 'right',
+        sortValue: r => r.earnDays ?? 999,
+        render: r => {
+          const e = earnWords(r);
+          return e ? <span className={r.earnDays! <= 5 ? 'text-warn' : 'text-textPrimary'} title={e.title}>{e.text}</span> : <span className="text-textSecondary">—</span>;
+        },
+      },
+    ],
+    [marks, cover]
+  );
+
+  const champs = useMemo(() => {
+    const builds = rows.filter(r => r.deltaOI > 0 && ranked(r));
+    const unwinds = rows.filter(r => r.deltaOI < 0 && ranked(r));
+    const build = builds.reduce<BookContract | null>((a, r) => (a === null || r.deltaOI > a.deltaOI ? r : a), null);
+    const unwind = unwinds.reduce<BookContract | null>((a, r) => (a === null || r.deltaOI < a.deltaOI ? r : a), null);
+    const fastest = builds.filter(r => r.prevOI >= FASTEST_MIN_PREV_OI).reduce<BookContract | null>((a, r) => (a === null || r.deltaOIPct > a.deltaOIPct ? r : a), null);
+    return { build, unwind, fastest };
+  }, [rows, ranked]);
   const tooltips = useMemo(() => tooltipsFor(cover), [cover]);
   const pendingNote = oiPendingWords(cover);
-  /* a deep-in-the-money, long-dated build trades like the stock — flagged, not read as a bet (retail, 2026-10-23) */
   const pill = (r: BookContract, v: string) => `${r.ticker} ${r.strike}${r.right} · ${v}${stockLike(r) ? ' · stock-like' : ''}`;
   const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_footprints_cols');
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
+  const activeScreen = FOOTPRINT_SCREENS.find(s => s.key === screen) ?? FOOTPRINT_SCREENS[0];
+  const screenOptions = useMemo<DropdownOption<FootprintScreenKey>[]>(() => FOOTPRINT_SCREENS.map(s => ({ value: s.key, label: s.label, hint: s.hint })), []);
 
   return (
     <>
       <TraceBox
         title="What the flow left standing"
-        sub={`${activeScreen.label} — ${activeScreen.hint} · open interest ${oiAfterWords(cover.day)}${pendingNote ? ` (${pendingNote})` : ''} · the market's book, every name — search for one · a row opens the contract's card`}
+        sub={`${activeScreen.label} · OI ${oiAfterWords(cover.day)}${pendingNote ? ` (${pendingNote})` : ''}`}
         testId="footprints"
+        foldOnPhone
         data={{ screen, rows: rows.length, expiry: expiry ?? 'all' }}
         guide={{ title: 'How to read the footprints', door: 'What open interest, a build and a streak mean', body: <FootprintsGuide />, testId: 'footprints-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label={`OI ${oiInWords(cover.day)} · ${cutWord || 'on the book'}`} testId="overnight" title={`Open interest added and shed ${oiInWords(cover.day)} (counted the morning after), summed over the ${num(facts.counted)} standing contracts${cutWord ? ` ${cutWord}` : ''}${cover.lagging ? ` (${num(cover.lagging)} still on the count before are left out)` : ''} on the market's book that are single bets — the contracts loaded, most premium ${dayAdv()} first (more as you scroll), every name; the terminal's ticker is not added — not the whole market${facts.apart ? `. ${num(facts.apart)} floor packages, days of spread legs or of crosses are left out: not bets` : ''}`}>
-              {reading ? <span className="text-textMuted">—</span> : <><span className="text-bull">+{num(facts.added)}</span> <span className="text-textSecondary">added ·</span> <span className="text-bear">−{num(facts.shed)}</span> <span className="text-textSecondary">shed</span></>}
+            <Fact label="Interest added · shed" testId="overnight" title={`Open interest built and unwound ${oiInWords(cover.day)}, single bets only${cutWord ? `, ${cutWord}` : ''}`}>
+              {reading ? <span className="text-textMuted">—</span> : <><span className="text-bull">+{num(facts.added)}</span> <span className="text-textSecondary">·</span> <span className="text-bear">−{num(facts.shed)}</span></>}
             </Fact>
-            <Fact label="Contracts" testId="contracts">
-              {reading ? <span className="text-textMuted">—</span> : <>{num(facts.builds)} <span className="text-textSecondary">built · {num(facts.unwinds)} unwound{facts.apart ? ` · ${num(facts.apart)} not bets, apart` : ''}</span></>}
+            <Fact label="Built · unwound" testId="contracts" title={facts.apart ? `${num(facts.apart)} packages, legs or crosses left out` : undefined}>
+              {reading ? <span className="text-textMuted">—</span> : <>{num(facts.builds)} <span className="text-textSecondary">·</span> {num(facts.unwinds)}</>}
             </Fact>
             {champs.build && champs.build !== champs.fastest && (
               <Champion label="Biggest build" ink="bull" onOpen={() => setOpenKey(champs.build!.key)} testId="build">
@@ -529,7 +299,7 @@ const Footprints = () => {
               </Champion>
             )}
             {champs.fastest && (
-              <Champion label={`Fastest build · ≥${num(FASTEST_MIN_PREV_OI)} OI before`} ink="supreme" title={`The biggest percentage build in open interest among contracts with at least ${num(FASTEST_MIN_PREV_OI)} contracts of open interest before — a contract that went from 3 to 300 is +9,900% on next to nothing, so it is not ranked here`} onOpen={() => setOpenKey(champs.fastest!.key)} testId="fastest">
+              <Champion label="Fastest build" ink="supreme" title={`Largest % build among contracts with ${num(FASTEST_MIN_PREV_OI)}+ open interest before`} onOpen={() => setOpenKey(champs.fastest!.key)} testId="fastest">
                 {pill(champs.fastest, `+${num(Math.round(champs.fastest.deltaOIPct))}% from ${num(champs.fastest.prevOI)}`)}
               </Champion>
             )}
@@ -538,10 +308,11 @@ const Footprints = () => {
         controls={
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
+            <SessionMark at={bookPack.at} fault={bookPack.fault} paused={hold.paused} />
             <FlowSearch value={query} onChange={setQuery} rows={book} countNoun="contracts" span />
             <DropdownSelect label="Screen" value={screen} options={screenOptions} onChange={setScreen} title="Which side of the overnight ledger" testId="footprints-cut" />
             <DropdownSelect label="Side" value={side} options={SIDE_OPTIONS} onChange={setSide} title="Calls, puts or both" testId="footprints-side" />
-            <ExpiryCalendar value={chosen ? isoDate(chosen.date) : ''} expiries={expiries} onChange={e => setExpiry(isoDate(e.date))} onClear={() => setExpiry(null)} label="Expiry" icon={CalendarDays} steppers={false} title="Only contracts on one expiry — or every expiry" testId="footprints-expiry" />
+            <ExpiryCalendar value={chosen ? isoDate(chosen.date) : ''} expiries={expiries} onChange={e => setExpiry(isoDate(e.date))} onClear={() => setExpiry(null)} label="Expiry" icon={CalendarDays} steppers={false} title="One expiry, or every expiry" testId="footprints-expiry" />
             <SavedCutsControl store={FOOT_CUTS} query={addr.query} onOpen={addr.open} noun="cut" testId="footprints" onSay={cuts.say} open={cuts.open} onToggleOpen={cuts.toggle} />
             <div className="ml-auto">
               <ColumnChooser columns={chooserCols} hidden={hidden} onToggle={toggle} onAll={showAll} onNone={() => hideAll(columns.map(c => c.key))} />
@@ -558,7 +329,7 @@ const Footprints = () => {
             )}
           </>
         }
-        lead={reading ? `Reading ${bookWord}…` : facts.builds + facts.unwinds === 0 ? `No open interest changed ${oiInWords(cover.day)} on ${cutWord ? `the contracts ${cutWord}` : bookWord}.` : `Open interest ${oiInWords(cover.day)}: ${num(facts.builds)} contract${facts.builds === 1 ? '' : 's'} built (+${num(facts.added)}), ${num(facts.unwinds)} unwound (−${num(facts.shed)})${loudest ? ` — biggest ${loudest.deltaOI < 0 ? 'unwind' : 'build'} ${loudest.ticker} ${loudest.strike}${loudest.right} ${loudest.deltaOI < 0 ? '−' : '+'}${num(Math.abs(loudest.deltaOI))}` : ''}.`}
+        lead={reading ? `Reading ${bookWord}…` : facts.builds + facts.unwinds === 0 ? `No open interest changed ${oiInWords(cover.day)}.` : `${num(facts.builds)} contracts built (+${num(facts.added)}), ${num(facts.unwinds)} unwound (−${num(facts.shed)}) ${oiInWords(cover.day)}.`}
         detail={
           <>
             {read}
@@ -566,10 +337,10 @@ const Footprints = () => {
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts', 'the list for the day is done', hold.paused, 'Load more ↓')} emptyText={query.trim() && book.length > 0 ? searchMiss(query, 'contract') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the footprints fill when the book answers' : "Nothing on this cut — no contract's open interest moved enough to show under these cards"} testId="footprints" />
+        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight onVisible={pairOiFor} endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts', 'the list for the day is done', hold.paused, 'Load more ↓')} emptyText={query.trim() && book.length > 0 ? searchMiss(query, 'contract') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the footprints fill when the book answers' : 'No open interest moved on this cut'} testId="footprints" />
       </TraceBox>
 
-      <BookDrill list={loudest && !shown.some(r => r.key === loudest.key) ? [loudest, ...shown] : shown} openKey={openKey} onOpen={setOpenKey} tick={tick} />
+      <BookDrill list={loudest && !rows.some(r => r.key === loudest.key) ? [loudest, ...rows] : rows} openKey={openKey} onOpen={setOpenKey} />
     </>
   );
 };

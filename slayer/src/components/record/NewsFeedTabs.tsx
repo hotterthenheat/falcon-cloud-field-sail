@@ -60,10 +60,8 @@ export const FEED_TABS = [
   /* the stories of no named beat have a tab of their own (round 8: "DEALS & PRODUCT · 69" held the General stories) */
   { value: 'other', label: 'Other company news' },
 ] as const;
-const leanOf = (g: NewsGrade): 'positive' | 'negative' | null => (g === 'ALLY' ? 'positive' : g === 'THREAT' ? 'negative' : null);
 /** The wire's columns — the same seven the rows under the map wear */
 export const FEED_COLS = '72px 104px 96px 72px minmax(0, 1fr) 76px 72px';
-const signed = (v: number, d = 1) => `${v >= 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
 /** The tab in hand outlives the page — back from a story's page, the reader lands on the tab they left */
 /* it opens on a kind, not on "All" — the wire box above already lists every story, and the two boxes opened on the same
    list, every headline twice on the page (the retail pass, 2026-10-22) */
@@ -303,7 +301,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
                 )}
                 <span>·</span>
                 <CatTag category={e.item.category} size={9} />
-                {(e.item.major || onBoard(e) || leanOf(e.grade)) && <NewsFlag major={e.item.major} onBoard={onBoard(e)} lean={leanOf(e.grade)} />}
+                {(e.item.major || onBoard(e)) && <NewsFlag major={e.item.major} onBoard={onBoard(e)} />}
                 <span className="ml-auto tnum font-semibold">
                   <PublishMove p={e.item.prediction} short />
                 </span>
@@ -335,7 +333,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
             <span className="min-w-0 h-5 flex items-center">
               <CatTag category={e.item.category} size={9} />
             </span>
-            <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} lean={leanOf(e.grade)} /></span>
+            <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} /></span>
             <span className="min-w-0 flex items-center gap-2">
               <ImpactMark tier={tierOf(e.severity)} />
               <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-t12 ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>

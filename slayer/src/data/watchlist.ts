@@ -1,36 +1,16 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE WATCHLIST'S STORE (data/watchlist.ts)
-
-  The watched contracts, kept on this machine
-  (`slayer_watchlist_v2`) and carried by the account
-  when signed in (data/sync.ts) — the Tracker's pattern, as
-  a module store with a subscription so a door on
-  any page can add without a provider.
-
-  PRICED BY THE ONE ESTIMATOR every Compass surface
-  prices with (data/compass estimatePremium, on the
-  chain's own smile — weigherDesk contractIvFor):
-  the mark at the add, the mark every tick, the
-  close every session, intrinsic at the bell. One
-  pricer, never two (the partner's two-pricer
-  lesson). When live quotes land, `markOf` is the
-  one seam to move.
-
-  RETURNS IN R AS WELL AS DOLLARS: for a bought
-  option the premium paid is the whole risk, so
-  1R = the cost when added; a doubled contract is
-  +1.0R, a contract gone to zero is −1.0R. Dollars
-  are ×100 × size.
-==================================================
+  The watched contracts, kept on this machine (`slayer_watchlist_v2`) and carried by the account when signed in
+  (data/sync.ts). A row is marked at its live vendor quote (weigherChain): the mid of a two-sided NBBO, else the last
+  print; with no quote yet the mark is blank, never a model price. Returns are in dollars (×100 × size) and in R,
+  where 1R is the cost when added.
 */
 
 import { useSyncExternalStore } from 'react';
-import Simulator from '../core/simulator';
 import { isoDate, sessionsBetween, today } from '../core/calendar';
 import { now } from '../core/clock';
 import { estimatePremium } from './compass';
 import { contractIvFor } from './weigherDesk';
+import { ensureMarks, liveSpotOf, peekMark, subscribeMarks } from './weigherChain';
 import type { OptionRight } from '../types/compass';
 import type { WatchRequest, WatchedContract } from '../types/watchlist';
 
@@ -92,16 +72,16 @@ export function yearsToExpiry(expiry: string, from: Date = today()): number {
   return Math.max(sessions, 0.5) / 252;
 }
 
-/** The underlying now — the sim's tape; the live feed's seam later */
+/** The underlying's live price, or NaN until it lands */
 export function spotOf(ticker: string): number {
-  const sym = Simulator.ensureTicker(ticker);
-  return Simulator.TICKERS[sym].currentPrice;
+  return liveSpotOf(ticker) ?? NaN;
 }
 
-/** The contract's mark now, by the one estimator */
-export function markOf(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right' | 'expiry'>, spot = spotOf(w.ticker)): number {
-  const iv = contractIvFor(w.ticker, w.strike, w.right);
-  return Number(estimatePremium(spot, w.strike, w.right, iv, yearsToExpiry(w.expiry)).toFixed(2));
+/** The contract's live mark (NBBO mid, else last print), or NaN until its quote lands */
+export function markOf(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right' | 'expiry'>): number {
+  void ensureMarks(w.ticker, w.expiry);
+  const m = peekMark(w.ticker, w.expiry, w.strike, w.right);
+  return m && m.mark > 0 ? Number(m.mark.toFixed(2)) : NaN;
 }
 
 /** What the contract is worth at the bell — intrinsic, nothing else */
@@ -157,7 +137,7 @@ export interface WatchReturns {
 
 export function returnsOf(w: WatchedContract, spot = spotOf(w.ticker)): WatchReturns {
   const open = w.status === 'open';
-  const mark = open ? markOf(w, spot) : (w.closedMark ?? w.addedMark);
+  const mark = open ? markOf(w) : (w.closedMark ?? w.addedMark);
   const todayKey = isoDate(today());
   const before = [...w.marks].filter(m => m.day < todayKey).sort((a, b) => (a.day < b.day ? 1 : -1))[0];
   const prevClose = before ? before.close : w.addedMark;
@@ -261,7 +241,10 @@ export function isWatching(req: Pick<WatchRequest, 'ticker' | 'strike' | 'right'
 export function closeWatched(id: string): void {
   const w = list.find(x => x.id === id);
   if (!w || w.status !== 'open') return;
-  commit(list.map(x => (x.id === id ? { ...x, status: 'closed', closedAt: now().getTime(), closedMark: markOf(x) } : x)));
+  const mark = markOf(w);
+  /* a close needs a live mark to lock at */
+  if (!(mark > 0)) return;
+  commit(list.map(x => (x.id === id ? { ...x, status: 'closed', closedAt: now().getTime(), closedMark: mark } : x)));
 }
 
 /** Take it off the list altogether — the record forgets it */
@@ -278,11 +261,9 @@ export function setWatchedNote(id: string, note: string): void {
 }
 
 /**
- * The tick's housekeeping, called by the page on every render of the tape:
- * today's close on every open row (one entry per session, the last mark of
- * the day), and the bell — a contract past its expiry settles at intrinsic.
- * Writes only when a day rolls or a contract settles; the in-memory close
- * updates every tick and is flushed with the next write or on the way out.
+ * The housekeeping a page runs on its beat: today's close on every open row (one entry per session, the last live
+ * mark of the day), and the bell — a contract past its expiry settles at intrinsic against the live price. A row
+ * with no live mark or price yet is left as it is.
  */
 export function tickWatchlist(): void {
   const todayKey = isoDate(today());
@@ -290,13 +271,14 @@ export function tickWatchlist(): void {
   let touched = false;
   const next = list.map(w => {
     if (w.status !== 'open') return w;
-    const spot = spotOf(w.ticker);
-    /* THE BELL: the expiry's session has passed */
     if (w.expiry < todayKey) {
+      const spot = spotOf(w.ticker);
+      if (!(spot > 0)) return w;
       changed = true;
       return { ...w, status: 'expired' as const, closedAt: now().getTime(), closedMark: intrinsicOf(w.strike, w.right, spot) };
     }
-    const mark = markOf(w, spot);
+    const mark = markOf(w);
+    if (!(mark > 0)) return w;
     const last = w.marks[w.marks.length - 1];
     if (!last || last.day !== todayKey) {
       changed = true;
@@ -311,6 +293,13 @@ export function tickWatchlist(): void {
   if (changed) commit(next);
   else if (touched) emit();
 }
+
+/* a landed quote re-renders every list that shows the rows */
+subscribeMarks(() => {
+  if (!list.length) return;
+  list = list.slice();
+  emit();
+});
 
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => save(list));

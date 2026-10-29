@@ -77,7 +77,6 @@ const TOP: Record<string, Meta> = {
   '/products/pinpoint': page('Pinpoint', 'Where dealer hedging sits and what it does to price: the book by strike and expiry, the range to the close, what today added, whether a wall holds, the strikes in the order they matter, every name on one board, two names side by side.', 'Products'),
   '/products/dossier': page('Dossier', 'What is on the record for any name: the news wire with the numbers behind each headline, the earnings calendar, insiders, Congress, and a screen that scores every name.', 'Products'),
   '/pulse': page('Pulse', 'Your own desk of live panels: the chart, the hedging at every strike and the book across the calendar, arranged your way and kept as you left it.'),
-  '/pulse/board': page('Four charts', 'Four names at once, each with its own timeframe and overlays.', 'Pulse'),
   '/terrain': page('Terrain', 'Charts and nothing in the way: one to four side by side on one set of controls, with drawing tools, your own scripts and the book beside the chart.'),
   '/compass': page('Compass', 'Contracts that fit the levels right now. Each one carries a live state: active while the structure holds, watch while it forms, fading when it breaks.'),
   '/compass/tracker': page('Tracker', 'The setups you kept, followed to the close.', 'Compass'),

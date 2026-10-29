@@ -50,10 +50,9 @@
 import { useSyncExternalStore } from 'react';
 import { EMBEDDED, PHOTO } from '../../embed';
 import { chime } from '../../core/sound';
-import { onFeedTick } from '../feedTicks';
 import { contractKey, type ContractId, type Quote } from '../review/quotes';
 import type { DayNote, JournalEntry } from '../review/journal';
-import { LIFE, SIM_FEED, barNowOf, candlesOf, futCandles, futNow, isPaperFuture, optionQuote, paperFut, spotForBidNow } from './feed';
+import { FUTURES_LIVE, LIFE, SIM_FEED, barNowOf, candlesOf, futCandles, futNow, isPaperFuture, optionQuote, optionQuoteAt, optionsOpen, paperFut, spotForBidNow } from './feed';
 import { dayWords, nyAt } from './clock';
 import {
   afterHand,
@@ -87,6 +86,9 @@ import {
 } from './engine';
 
 const KEY = 'slayer_paper_v1';
+/* How often working orders are checked against the live quotes */
+const TICK_MS = 2_000;
+const SIMULATED_TAG = ' · simulated prices';
 const JOURNAL_KEY = 'slayer_paper_journal_v1';
 const LEASE_KEY = 'slayer_paper_lease_v1';
 /** A lease is good for this long, and renewed this often */
@@ -112,12 +114,11 @@ export function liveMarket(now = Date.now()): PaperMarket {
       if (!q) quotes.set(k, (q = optionQuote(c, now)));
       return q;
     },
-    optQuoteAt: (c: ContractId, spot: number) => optionQuote(c, now, spot),
+    optQuoteAt: (c: ContractId, spot: number) => optionQuoteAt(c, now, spot),
     fut: (symbol: string) => futNow(symbol),
     bar: (ticker: string) => barNowOf(isPaperFuture(ticker) ? paperFut(ticker).fund : ticker),
     candles: (ticker: string) => (isPaperFuture(ticker) ? futCandles(ticker) : candlesOf(ticker)),
-    /* THE SIMULATED FEED NEVER SHUTS (the rules page, "The prices") — the real feed's hours come in here */
-    open: () => true,
+    open: kind => (kind === 'option' ? optionsOpen(now) : FUTURES_LIVE),
   };
 }
 /** Where the name would have to stand now for a contract to bid this — the chart's lines, and a pin's level */
@@ -145,7 +146,9 @@ function load(): Pick<PaperState, 'accounts' | 'inHand'> {
   if (typeof localStorage === 'undefined' || EMBEDDED) return { accounts: [], inHand: null };
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null') as { accounts?: unknown[]; inHand?: string | null } | null;
-    const accounts = Array.isArray(raw?.accounts) ? raw!.accounts.filter(isAccount) : [];
+    const kept = Array.isArray(raw?.accounts) ? raw!.accounts.filter(isAccount) : [];
+    /* an account traded on the old simulated feed is ended and named for it: its prices were never the market's */
+    const accounts = kept.map(a => (a.feed === 'live' ? a : { ...a, feed: 'live' as const, name: a.name.endsWith(SIMULATED_TAG) ? a.name : `${a.name}${SIMULATED_TAG}`, status: a.status === 'open' ? ('ended' as const) : a.status, statusAt: a.status === 'open' ? Date.now() : a.statusAt, statusWhy: a.status === 'open' ? 'Ended: it was traded on the old simulated feed' : a.statusWhy }));
     const inHand = typeof raw?.inHand === 'string' && accounts.some(a => a.id === raw.inHand) ? raw.inHand : (accounts.find(a => a.status === 'open')?.id ?? null);
     return { accounts, inHand };
   } catch {
@@ -320,10 +323,12 @@ export function startPaperRunner(): () => void {
   started = true;
   const holding = holdLease();
   commit({ holding, elsewhere: !holding });
-  const offTick = onFeedTick(() => {
+  /* the working orders are judged on this beat against the live quotes */
+  const beat = window.setInterval(() => {
     if (!state.holding || !state.accounts.length) return;
     tickAll(liveMarket());
-  });
+  }, TICK_MS);
+  const offTick = () => window.clearInterval(beat);
   /* the lease: kept while this tab holds it; a tab that loses it (taken over) stops trading and reads what the other writes */
   const renew = window.setInterval(() => {
     if (state.holding) {

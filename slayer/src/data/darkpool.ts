@@ -1,38 +1,22 @@
-/*
-==================================================
-  SLAYER TERMINAL - DARK POOL ENGINE (darkpool.ts)
-  Derives an off-exchange story from the simulator
-  snapshot: liquidity shelves, print classification
-  and a net institutional posture. Deterministic per
-  ticker + session day — swaps for a real DP feed
-  without touching the page.
-==================================================
-*/
+/* The simulator's dark-pool story (shelves, print reads, a posture) for Dossier and the contract score, and the
+   sector map the flow pages share. Trace's live dark pool reads traceLive. */
 
 import type { Grade } from './stockOverview';
-import Simulator from '../core/simulator';
 import { dayKey, h01, hPick, hRange } from '../core/rng';
 import type { MarketSnapshot } from '../types/market';
+import { postureGrade, postureOfNet } from './traceLean';
 import type {
-  DarkLeaderRow,
-  DarkLeadersView,
   DarkPoolIntent,
   DarkPoolLevel,
   DarkPoolPrint,
   DarkPoolView,
-  DarkSector,
   LevelRole,
   Posture,
 } from '../types/darkpool';
 
 const VENUES = ['UBS ATS', 'MS Pool', 'JPM-X', 'Sigma X', 'CrossFinder', 'IEX-D', 'Level ATS'];
 
-// ---- sector universe for the Leaders view -----------------------------------
-// Categorical identity colors — muted so the page stays black-first; the
-// numbers carry the ranking, the dot only names the sector. Index ETFs ride
-// in Financial Services (that's where the street files them, and it keeps the
-// top card honest — index flow IS most of the dark tape).
-/** Exported since 2026-09-09: the Record's feeds (insiders, Congress) draw their names from it too */
+/* sector identity colours, muted so the numbers carry the ranking; index ETFs file under Financial Services */
 export const SECTOR_UNIVERSE: { sector: string; color: string; weight: number; tickers: string[] }[] = [
   { sector: 'Financial Services', color: '#7DD3A8', weight: 3.2, tickers: ['SPY', 'QQQ', 'IWM', 'JPM', 'BAC', 'GS', 'MS', 'SCHW', 'BLK', 'V'] },
   { sector: 'Technology', color: '#7EA6F0', weight: 2.4, tickers: ['NVDA', 'AAPL', 'MSFT', 'AMD', 'AVGO', 'TSM', 'MU', 'ORCL', 'INTC', 'CRM'] },
@@ -47,15 +31,12 @@ export const SECTOR_UNIVERSE: { sector: string; color: string; weight: number; t
   { sector: 'Basic Materials', color: '#93B87A', weight: 0.24, tickers: ['LIN', 'SHW', 'FCX', 'NEM', 'APD', 'NUE', 'DOW', 'ECL', 'ALB', 'EMN'] },
 ];
 
-/** Every sector the terminal files, in the Leaders' order, with its dot colour —
-    the 0DTE panes cut the book by these (2026-09-03). */
+/** Every sector the terminal files, with its dot colour */
 export const SECTOR_LIST: { sector: string; color: string }[] = SECTOR_UNIVERSE.map(s => ({ sector: s.sector, color: s.color }));
 
 let sectorIndex: Map<string, { sector: string; color: string }> | null = null;
 
-/** Sector identity (name + categorical dot color) for any ticker the Leaders
-    universe carries. ONE sector map for the whole terminal — the flow pages
-    read this instead of growing their own. Null for names we don't file. */
+/** A ticker's sector and dot colour: the one sector map for the terminal; null for names not filed */
 export function sectorOf(ticker: string): { sector: string; color: string } | null {
   if (!sectorIndex) {
     sectorIndex = new Map();
@@ -64,64 +45,6 @@ export function sectorOf(ticker: string): { sector: string; color: string } | nu
     }
   }
   return sectorIndex.get(ticker.toUpperCase()) ?? null;
-}
-
-/** Stable per-ticker price: live sim price when the sim tracks it, otherwise a
-    hash-derived quote that never jumps between renders. */
-function leaderPrice(sym: string): number {
-  const live = Simulator.TICKERS[sym];
-  if (live) return live.currentPrice;
-  return Number((12 + Math.pow(h01(`dpl-px-${sym}`), 1.6) * 950).toFixed(2));
-}
-
-/** Market-wide off-exchange leaders, grouped by sector. Deterministic per day
-    (structure) with live prices for sim-tracked names — swaps for a real DP
-    aggregation feed without touching the page. */
-export function buildDarkPoolLeaders(): DarkLeadersView {
-  const day = dayKey();
-
-  const sectors: DarkSector[] = SECTOR_UNIVERSE.map(cfg => {
-    // Day-varied sector weight: leadership rotates, Financials/Tech stay heavy
-    const dayW = cfg.weight * (0.6 + h01(`${day}-dplw-${cfg.sector}`) * 0.9);
-
-    const rows: DarkLeaderRow[] = cfg.tickers
-      .map(sym => {
-        const s = `${day}-dpl-${sym}`;
-        const price = leaderPrice(sym);
-        const notional = dayW * 1e9 * (0.04 + Math.pow(h01(`${s}-n`), 1.9));
-        const spike = h01(`${s}-spike`) > 0.97 ? hRange(`${s}-spikem`, 5, 9) : 1;
-        const pctAvgVol = Math.min(320, (1 + Math.pow(h01(`${s}-av`), 2.2) * 28) * spike);
-        return {
-          ticker: sym,
-          price,
-          dirUp: h01(`${s}-dir`) > 0.48,
-          notional,
-          pctAvgVol: Number(pctAvgVol.toFixed(1)),
-          size: Math.round(notional / price / 100) * 100,
-        };
-      })
-      .sort((a, b) => b.notional - a.notional);
-
-    const notional = rows.reduce((a, r) => a + r.notional, 0);
-    return {
-      sector: cfg.sector,
-      color: cfg.color,
-      notional,
-      sharePct: 0, // filled below once the total is known
-      prints: Math.round(notional / hRange(`${day}-dplp-${cfg.sector}`, 1.6e6, 2.4e6)),
-      rows,
-    };
-  }).sort((a, b) => b.notional - a.notional);
-
-  const totalNotional = sectors.reduce((a, s) => a + s.notional, 0);
-  for (const s of sectors) s.sharePct = (s.notional / totalNotional) * 100;
-
-  return {
-    totalNotional,
-    totalPrints: sectors.reduce((a, s) => a + s.prints, 0),
-    updated: new Date().toLocaleTimeString('en-GB'),
-    sectors,
-  };
 }
 
 const PRINT_COUNT = 26;
@@ -158,19 +81,10 @@ function levelUsage(role: LevelRole, price: number, defended: number, sharePct: 
   return `Two-way shelf at $${p} — institutions rotating, not committing. Trade the break: direction follows whichever side absorbs.`;
 }
 
-/* HOW SURE A PRINT'S READ IS, SAID IN THE FOUR WORDS (Noah, 2026-09-19: "move conviction to the four words as well"). The grid
-   printed "71%" over a bar as long as the figure, the head sentence "at 71% conviction", the stock page "72% sure". The
-   figure stays here — it weighs the posture and sorts the column — and never reaches a digit. The cuts are `classify`'s own
-   tiers below, not borrowed ones:
-     poor      under 55 — the ceiling of routine rotation, the tier whose read says "no signal by itself"
-     good      from 68 — the floor of the full case: size, the side of the market and the tape all agreeing
-     strong    from 85 — only the top of that tier. Rare on purpose ("when its really great")
-     caution   between 55 and 68 — a sized print that only leans, or a likely hedge
-   The word wears the READ's ink (accumulation green, distribution red, hedge amber, rotation grey), as the figure did: the
-   read is a side, and a strong read of SELLING in the four words' green would say the opposite of the word beside it. */
+/* a print's conviction in the four words, on classify's own tiers; the figure never reaches a digit */
 export const gradeOfConviction = (conviction: number): Grade => (conviction >= 85 ? 'strong' : conviction >= 68 ? 'good' : conviction >= 55 ? 'caution' : 'poor');
 
-/** The line a print has to clear to count as SIZED — the top quarter or so by shares */
+/** The line a print has to clear to count as sized: about the top quarter by shares */
 const SIZED_PERCENTILE = 0.72;
 
 function classify(
@@ -180,10 +94,7 @@ function classify(
   atLevel: boolean,
   sessionUp: boolean
 ): { intent: DarkPoolIntent; conviction: number; read: string } {
-  // The read: sized prints below spot in an up-tape = someone building; sized
-  // prints above spot into strength = someone leaving into liquidity. Small or
-  // mid prints at VWAP-ish levels are rotation; prints glued to option shelves
-  // are most likely hedge flow, not directional conviction.
+  /* sized below spot in an up-tape is building; sized above into strength is leaving; on an options shelf is a hedge */
   const below = vsSpotPct < -0.08;
   const above = vsSpotPct > 0.08;
 
@@ -225,27 +136,11 @@ function classify(
   };
 }
 
-/* THE POSTURE, SAID IN WORDS (Noah, 2026-09-19: "move the dark pool posture to the four words as well"). The posture printed
-   as a side and a figure — "Accumulating +79%", "accumulating · +79" — and the figure is our own index (sized prints, each
-   weighed by how sure its read is), so it never reaches a digit. It is TWO facts and both stay, as words:
-     WHICH SIDE LEADS   accumulating · distributing · balanced — a direction, in the direction's ink, on the line it always
-                        had (18 either way). It is not a grade: distribution is not "poor", it is what a put buyer wants.
-     HOW FAR IT LEANS   the four words, off |net|. The cuts are this model's own lines, not borrowed ones:
-                          poor      under 18 — the same line: a poor lean IS "balanced", so the page says Balanced and no more
-                          strong    from 80 — nine of every ten weighed dollars on one side. Rare on purpose ("when its really
-                                    great"): the first cut, 60, called 41 of the 110 names strong; 80 calls 16
-                          good      from 50 — three dollars to one · caution between 18 and 50
-                        (the simulator's books are few and lopsided — median lean 56 — so re-read these on the live spread)
-   The figure still weighs a contract (core/contractScore.ts), quantizes the close read (data/moc.ts) and sets the LENGTH of
-   the stock page's selling ←→ buying bar. */
-export const gradeOfPosture = (netPosturePct: number): Grade => {
-  const lean = Math.abs(netPosturePct);
-  return lean >= 80 ? 'strong' : lean >= 50 ? 'good' : lean >= 18 ? 'caution' : 'poor';
-};
+/* the posture's side and its grade share one threshold (traceLean), so a lean graded "poor" is always Balanced */
 export const POSTURE_WORD: Record<Posture, string> = { ACCUMULATING: 'Accumulating', DISTRIBUTING: 'Distributing', BALANCED: 'Balanced' };
 /** The posture in one phrase — "accumulating · strong", or "balanced" alone (a poor lean is no lean) */
 export const postureRead = (view: Pick<DarkPoolView, 'posture' | 'netPosturePct'>): string =>
-  view.posture === 'BALANCED' ? 'balanced' : `${POSTURE_WORD[view.posture].toLowerCase()} · ${gradeOfPosture(view.netPosturePct)}`;
+  view.posture === 'BALANCED' ? 'balanced' : `${POSTURE_WORD[view.posture].toLowerCase()} · ${postureGrade(view.netPosturePct)}`;
 
 export function buildDarkPoolView(snapshot: MarketSnapshot): DarkPoolView {
   const { ticker, spot, priceHistory, changePercent } = snapshot;
@@ -257,9 +152,7 @@ export function buildDarkPoolView(snapshot: MarketSnapshot): DarkPoolView {
   const hi = Math.max(...priceHistory, spot);
   const range = Math.max(hi - lo, spot * 0.004);
 
-  // ---- liquidity shelves ----------------------------------------------------
-  // Anchor shelves inside the session range with a bias toward the extremes —
-  // that's where institutional resting interest actually concentrates.
+  /* shelves sit inside the session range, biased to the extremes where resting interest concentrates */
   const rawLevels = Array.from({ length: LEVEL_COUNT }, (_, i) => {
     const t = h01(seed(`lvl-${i}`));
     const edgeBiased = t < 0.5 ? Math.pow(t * 2, 1.5) / 2 : 1 - Math.pow((1 - t) * 2, 1.5) / 2;
@@ -287,11 +180,10 @@ export function buildDarkPoolView(snapshot: MarketSnapshot): DarkPoolView {
     };
   });
 
-  // ---- prints -----------------------------------------------------------------
   const now = Date.now();
   const prints: DarkPoolPrint[] = Array.from({ length: PRINT_COUNT }, (_, i) => {
     const pSeed = seed(`p-${i}`);
-    // Prints gravitate to shelves ~55% of the time; the rest scatter in range.
+    /* prints land on a shelf about 55% of the time; the rest scatter in range */
     const nearShelf = h01(`${pSeed}-at`) < 0.55;
     const shelf = levels[Math.floor(h01(`${pSeed}-which`) * levels.length)];
     const price = nearShelf
@@ -321,7 +213,6 @@ export function buildDarkPoolView(snapshot: MarketSnapshot): DarkPoolView {
     };
   }).sort((a, b) => (a.time < b.time ? 1 : -1));
 
-  // ---- posture ------------------------------------------------------------------
   let accW = 0;
   let distW = 0;
   for (const p of prints) {
@@ -330,7 +221,7 @@ export function buildDarkPoolView(snapshot: MarketSnapshot): DarkPoolView {
   }
   const gross = accW + distW || 1;
   const netPosturePct = ((accW - distW) / gross) * 100;
-  const posture: Posture = netPosturePct > 18 ? 'ACCUMULATING' : netPosturePct < -18 ? 'DISTRIBUTING' : 'BALANCED';
+  const posture: Posture = postureOfNet(netPosturePct);
   const strongest = [...levels].sort((a, b) => b.notional - a.notional)[0];
   const postureNote =
     posture === 'ACCUMULATING'
@@ -356,10 +247,7 @@ export function buildDarkPoolView(snapshot: MarketSnapshot): DarkPoolView {
   };
 }
 
-/* ---- THE MARKET'S DARK TAPE (2026-10-19; the partner: "you can only see the dark pool for a specific ticker and not
-   the entire market") — every name's crosses in one tape, newest first, with the market's own facts: the off-exchange
-   share and the posture weighted by each name's dark dollars, the strongest shelf and the largest cross across names.
-   Each name's view is kept, so a cross's card reads its shelves and its sequence without a second build. */
+/** The market's dark tape: every name's crosses, newest first, with the market's own facts */
 export interface DarkTapeView {
   prints: DarkPoolPrint[];
   views: Map<string, DarkPoolView>;
@@ -371,34 +259,4 @@ export interface DarkTapeView {
   crosses: number;
   strongest: (DarkPoolLevel & { ticker: string }) | null;
   largest: DarkPoolPrint | null;
-}
-
-export function buildDarkPoolTape(names: readonly string[], snapshotOf: (ticker: string) => MarketSnapshot): DarkTapeView {
-  const views = new Map<string, DarkPoolView>();
-  const prints: DarkPoolPrint[] = [];
-  let share = 0;
-  let net = 0;
-  let total = 0;
-  let strongest: (DarkPoolLevel & { ticker: string }) | null = null;
-  let largest: DarkPoolPrint | null = null;
-  for (const t of names) {
-    let v: DarkPoolView;
-    try {
-      v = buildDarkPoolView(snapshotOf(t));
-    } catch {
-      continue;
-    }
-    views.set(t, v);
-    prints.push(...v.prints);
-    share += v.dpSharePct * v.totalNotional;
-    net += v.netPosturePct * v.totalNotional;
-    total += v.totalNotional;
-    for (const l of v.levels) if (!strongest || l.notional > strongest.notional) strongest = { ...l, ticker: t };
-    if (v.largest && (!largest || v.largest.notional > largest.notional)) largest = v.largest;
-  }
-  prints.sort((a, b) => (a.time === b.time ? b.notional - a.notional : a.time < b.time ? 1 : -1));
-  const dpSharePct = total > 0 ? share / total : 0;
-  const netPosturePct = total > 0 ? net / total : 0;
-  const posture: Posture = netPosturePct > 18 ? 'ACCUMULATING' : netPosturePct < -18 ? 'DISTRIBUTING' : 'BALANCED';
-  return { prints, views, names: [...views.keys()], dpSharePct, netPosturePct, posture, totalNotional: total, crosses: prints.length, strongest, largest };
 }

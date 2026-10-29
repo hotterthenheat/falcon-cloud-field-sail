@@ -1,49 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - AT THE WALL (data/wall.ts)
-
-  The sixth page of Pinpoint (2026-09-08). The Map
-  names the walls. This answers the question a
-  trader asks when price gets to one: DOES IT HOLD
-  OR BREAK, and what happens either way.
-
-  A wall is a tug-of-war. What pushes back is the
-  dealer hedging sitting at the strike and its close
-  neighbours — dollars of stock dealers must sell
-  into a rise or buy into a drop per 1% move. What
-  pushes in is the market: how many dollars it
-  takes to move this name 1% today (today's dollar
-  volume over today's travel), the speed price is
-  running at against the pace its options priced,
-  and the stock dealers must buy or sell because of
-  today's option prints. Around that, what today
-  has already shown — how the level behaved when
-  touched, whether it is being built or drained —
-  and the clock, since the part of a wall that
-  expires at 4:00 stops counting at 4:00.
-
-  THE ODDS ARE A MODEL WITH ITS INPUTS STATED, not
-  a calibrated probability: each factor below is a
-  measured fact and a push, the pushes add on a
-  logistic scale, and the constants are the desk's
-  own until real history calibrates them
-  (data-providers-decision: ThetaData). The page
-  says "model odds" on the surface. Separately, the
-  odds price REACHES the wall by the close come
-  from the expected move for the minutes left, the
-  way a barrier is priced: twice the tail.
-
-  If it breaks: the next shelf beyond it and the
-  empty stretch between (the air-pocket engine),
-  with the dollars of dealer flow forced along the
-  path (the hedge-flow ladder). If it holds: where
-  price is sent back toward, with the same flow
-  arithmetic.
-
-  THE PAGE IS GONE (Noah, 2026-10-14: "remove the entire at the wall page we dont need it"): /pinpoint/wall is
-  deleted; this stands for the Pulse desk's At-the-wall tile, and for Targets, which reads the same odds.
-==================================================
-*/
+/* At the wall: the walls' model behind Targets and the Pulse desk's At-the-wall tile. Reach odds are touch odds on the
+   1σ left (data/expectedMove.ts); a wall's percentage is its size against the top wall, not a probability; the factor
+   pushes are hand-set context. If it breaks: the next shelf and the dealer flow along the path (data/hedgeFlow.ts). */
 
 import { daySigmaOfIv, sigmaFracOver, sigmaOverMinutes, touchOdds } from './expectedMove';
 import Simulator from '../core/simulator';
@@ -89,13 +46,8 @@ export function scopeSigma(snapshot: MarketSnapshot, minutesLeft: number, iv: nu
 
 /* ---- the constants, named so they can be calibrated ------------------------------ */
 
-/* THE WALL READING IS CHAIN-RELATIVE (the owner's call, 2026-10-22): a wall's percentage is its own weight — the
-   hedging on the strike and its neighbours — against the HEAVIEST wall on the same ticker's active chain, measured the
-   same way. The heaviest wall reads 100%; a wall half its size 50%. Nothing is calibrated on other names:
-   SPY, QQQ, NVDA or any ticker each read against their own chain only, and SIZE is the driver.
-   It is a measure of how big the wall is, not a probability that price turns there — the back-test
-   (docs/wall-backtest.md) found size does not predict a hold, so the pages say "of the top wall", never "holds". The
-   tests, the build, the speed, the prints and the vanna stay in the factor list as context the reader can weigh. */
+/* A wall's reading is its weight (the strike and its neighbours) against the heaviest wall on the same chain — a size,
+   not a probability (the back-test found size does not predict a hold), so the pages say "of the top wall". */
 
 /** Kept for the size factor's words: a wall at this ratio of the typical wall reads as typical */
 export const PAR_RATIO = 1;
@@ -109,8 +61,7 @@ const A_BUILD = 0.8;
 const A_SPEED = -0.458;
 /** Logits against, for prints handing dealers a wall's worth of stock to push through it — not back-testable, hand-set */
 const A_PRINTS = 0.6;
-/** Logits against, for a one-point vol drop forcing a wall's worth of dealer stock through it — VANNA (2026-09-09) —
-    not back-testable, hand-set */
+/** Logits against, for a one-point vol drop forcing a wall's worth of dealer stock through it (vanna) — hand-set */
 const A_VOL = 0.6;
 /** How much of a wall's expiring-today part still counts at the close */
 const CHARM_FLOOR = 0.35;
@@ -205,11 +156,8 @@ export const holdShort = (v: number): string => (v >= 0.999 ? '100%' : v < 0.05 
 export const chanceLabel = (v: number): string => (v < 0.005 ? '<1%' : v > 0.995 ? '>99%' : `${Math.round(v * 100)}%`);
 const signedDollars = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 
-/** Tests of a level as VISITS, not bars: a test begins when a bar's range
-    first reaches the strike, and ends held when price leaves it back on its
-    own side without a close beyond, or broke on the first close beyond it.
-    (The report card's rule counts every touching bar; a strike inside an
-    hour of chop would read "tested 35×", which is noise, not tests.) */
+/** Tests of a level as visits, not bars: a test begins when a bar reaches the strike and ends held when price leaves it
+    back on its own side, or broke on the first close beyond it. */
 export function testEvents(bars: readonly Candle[], strike: number, side: WallSide): { tests: number; held: number; broke: number } {
   let held = 0;
   let broke = 0;
@@ -317,16 +265,9 @@ function roleOf(K: number, levels: ExposureProfileData['levels']): WallRole {
   return null;
 }
 
-/** THE WEIGHT: the strike and its close neighbours, absorbing counted for, amplifying against.
-    ONE RULE BOTH SIDES OF SPOT, THE MAP'S COLOURS' (the Pinpoint audit, 2026-10-22): a strike absorbs where dealers are
-    LONG gamma there (house sign negative — the Map's cool "pushes back"), and pushes a move along where they are SHORT
-    gamma (positive — the warm "pushes a move along"), above spot or below. The old rule counted put-dominant gamma below
-    spot as absorbing, so SPY 760/761/762 read "PUT WALL 100% / SHELF 95%" on strikes the Map coloured as pushing a move
-    along, while the identical sign at 765 above spot read TRAPDOOR. */
-/* THE STRIKE'S OWN SIGN NAMES IT (the second re-audit, 2026-10-22: SPY 770 nets +$15.4M — dealers long, Building's
-   "dealers push back" — yet the Agenda called it a TRAPDOOR, because its heavier short-gamma neighbour 769 at half
-   weight outvoted it). The neighbours still size a wall (half weight, the same side only), but the side — wall or
-   trapdoor — is the strike's own gamma. A strike with no gamma weighs nothing. */
+/** The weight: the strike and its close neighbours, absorbing counted for, amplifying against — a strike absorbs where
+    dealers are long gamma there (house sign negative), above spot or below. */
+/* The strike's own sign names it wall or trapdoor; neighbours (same side, half weight) only size it. */
 function wallWeight(K: number, spot: number, strikes: readonly StrikeExposure[]): number {
   const own = strikes.find(s => s.strike === K)?.gex.net ?? 0;
   if (!own) return 0;
@@ -603,15 +544,9 @@ export function buildWallBoard(
   const ctx = buildWallContext(snapshot, profile, building, surface, bars, clock, iv);
   const { heaviest, marketPer1Pct, sigmaLeft } = ctx;
 
-  /* Every shelf on the book that PUSHES BACK (a shelf whose hedging pushes
-     moves along is a trapdoor, not a wall — it never makes the list, though
-     a strike the reader focuses is still read), plus the named levels,
-     nearest first */
+  /* every shelf that pushes back, plus the named levels, nearest first (a trapdoor is read only when focused) */
   const set = new Set<number>();
-  /* A SHELF STAYS LISTED (2026-09-13; Noah: the board "just keeps increasing
-     and decreasing in size"): the book breathes a few percent a bar, so a
-     shelf near the third-of-the-biggest line flickered on and off the board.
-     Once listed, a shelf stays while it holds three quarters of the line. */
+  /* once listed, a shelf stays while it holds three quarters of the listing line (the book breathes a few percent a bar) */
   const kept = listedShelves.get(ticker) ?? new Set<number>();
   for (const s of strikes) {
     const share = Math.abs(s.gex.net) / Math.max(1, heaviest);

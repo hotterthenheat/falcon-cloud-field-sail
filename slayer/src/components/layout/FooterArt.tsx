@@ -1,78 +1,11 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE FOOTER, ONE PIECE
-  (components/layout/FooterArt.tsx)
-
-  THE TERMINAL IN THE DARK (2026-10-02 — the owner, with
-  a photograph of the terminal caught on a black screen,
-  only its brightest marks left and broken into pixels:
-  "make it super cool like a live footer make some sort
-  of artistic thing from the photo"). From 2026-10-02 it
-  was a band at the footer's foot; then (2026-10-03 — the
-  owner: "i want that glitchy thing and the footer to be
-  ONE not the art work and then the footer i want it as
-  one art piece") it is THE WHOLE FOOTER: one screen, and
-  the footer's words are on it.
-
-  A PICTURE FOR EVERY PAGE (2026-10-03 — the owner: "make
-  sure the art footer is on every page … each page had its
-  own art work similar to that one but thats representive
-  of its page … and then the landing page one you go into
-  more depth"). This file is the ENGINE; what the screen
-  shows is a SCENE (footer/scenes.ts), picked by the
-  address (footer/registry.ts): Pulse's desk, Terrain's
-  strike field, Trace's tape, the Dossier's map, the
-  book's walls, Compass's cards, the Weigher's curve,
-  Paper's orders, the backtest's scrubber, the Journal's
-  month — and on the landing every product at once. Each
-  is drawn in the photograph's language (footer/kit.ts):
-  every mark in coarse pixels with a hair of red on one
-  edge and blue on the other, most of the screen gone to
-  the ground, specks, levels broken into coloured dashes.
-  THE WORDS ARE THE SCREEN'S BRIGHTEST MARKS
-  ([data-footer-lit], index.css .footer-word): the same
-  hair of red and blue at rest.
-
-  THE POINTER BRINGS IT BACK, anywhere on the footer:
-  around it the screen comes into focus — the pixels give
-  way to the terminal, sharp; the frames of its panels
-  come back round the words ([data-footer-panel]) and
-  round the picture's own; the words under it go bright
-  and lose their fringe; what is under it reads (a chart's
-  crosshair, a row's moment). A pointer that moves fast
-  tears the rows it crosses, words and all. Where it has
-  been goes dark again in about a second.
-
-  STILL UNTIL A HAND IS ON IT (2026-10-03 — the owner:
-  "the illestrative one is always movin on the landing but
-  on the rest of the pages its static until the person
-  uses their cursor over it"). On the landing (`live`) the
-  screen moves whenever it is on screen with the tab in
-  front, and with no pointer on it an arrow of its own —
-  the photograph's — drifts over it and rests on what it
-  reads (it lights no words). Everywhere else it is ONE
-  FINISHED FRAME and no animation frame is asked for at
-  all: a pointer on it wakes it (its moving parts move,
-  the focus, the tears), and once the pointer has gone it
-  settles within the focus's fade and stops. A touch wakes
-  it for a few seconds. The picture keeps its own clock,
-  which runs only while it is awake, so it wakes where it
-  stopped. Under reduced motion one still frame, the
-  pointer's focus drawn where it stands, the clock moved
-  on once a minute.
-
-  Art, not data: no figure on it is a price — the tags are
-  the clock, the axis the day's own times. Every ink is a
-  token read off the footer's own ground, read again when
-  the theme turns: on paper the photograph is printed in
-  ink. THE COST: three canvases under the footer; the
-  screen's still parts drawn once (again on a resize, a
-  turn of theme, a new page's picture), the moving ones
-  about thirty times a second (sixty under the pointer),
-  only while awake and on screen with the tab in front; a
-  word's light and slip are two custom properties, written
-  only when they change.
-==================================================
+  The footer as one animated screen: the engine. The picture is a scene (footer/scenes.ts) chosen by address
+  (footer/registry.ts), drawn in coarse pixels with a red/blue fringe (footer/kit.ts); the footer's words are the
+  brightest marks ([data-footer-lit]). Around the pointer the screen comes back into focus and fast pointer moves
+  tear rows. On the landing (`live`) it moves while visible, with its own drifting arrow; elsewhere it is one still
+  frame until a pointer or touch wakes it. Reduced motion: one frame, clock advanced once a minute.
+  Not data: no figure on it is a price. Three canvases: still parts drawn once, moving parts ~30 fps (60 under the
+  pointer) only while awake and visible; word light and slip are custom properties written on change.
 */
 
 import { useEffect, useRef, type ReactNode } from 'react';
@@ -91,13 +24,11 @@ const REST = 1700;
 /** how long a touch keeps a still footer awake (ms) */
 const TOUCH = 3600;
 
-/* THE FRINGE'S THREE PASSES over the moving parts: red a pixel left, blue a pixel right, then the marks in their own inks */
+/* the fringe's three passes: red a pixel left, blue a pixel right, then the marks in their own inks */
 const FRINGE = 0.66;
 
-/* THE PAGE'S SCALE (2026-10-06): the landing grows with a big screen as one piece (index.css html[data-landing-scale] —
-   the root's font size over 16; 1 under every other page), and the picture grows with it: it is laid and drawn in the
-   design's px, its canvases laid over the footer's real size. The coarse pixel stays whole on the screen (PIX times the
-   scale times the device's ratio a whole number), so the grain never comes out uneven. */
+/* The landing scales with large screens (html[data-landing-scale]); the picture is laid in design px and the coarse
+   pixel stays a whole number of device pixels, so the grain is even. */
 const scaleOf = (): number => {
   const s = (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16;
   if (s <= 1) return 1;
@@ -106,23 +37,20 @@ const scaleOf = (): number => {
 };
 
 const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElement, cvsC: HTMLCanvasElement, sc: Scene, live: boolean) => {
-  /* THREE LAYERS, so a frame touches only what moves (2026-10-03: one canvas over the whole footer cost a long task a
-     frame): A, the broken screen's still parts, in coarse pixels, drawn once; B, the moving parts, coarse too; C, the
-     focus round the pointer, the arrow — sharp, and only where they are. A and B are drawn a coarse pixel to a canvas
-     pixel and shown pixelated, so the browser does the enlarging. */
+  /* Three layers so a frame touches only what moves: A the still parts (coarse, drawn once), B the moving parts (coarse),
+     C the focus and arrow (sharp). A and B are a coarse pixel per canvas pixel, shown pixelated. */
   const aCtx = cvsA.getContext('2d');
   const bCtx = cvsB.getContext('2d');
   const cCtx = cvsC.getContext('2d');
   if (!aCtx || !bCtx || !cCtx) return () => {};
   const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  /* the arrow of its own: only where the screen moves by itself — and never in the landing's films (the photographer's
-     window, embed.ts PHOTO): a film has one pointer, the hand using the page */
+  /* the self-driven arrow only where the screen moves by itself, and never in the photographer's window (embed.ts PHOTO) */
   const arrow = live && !calm && !PHOTO;
   /** the page's scale (scaleOf), and a canvas's pixels to one of the picture's px */
   let k = 1;
   let dpr = Math.min(2, window.devicePixelRatio || 1);
 
-  /* and off the page: the still parts broken (coarse) and sharp, and the two the focus is made in */
+  /* offscreen: the still parts broken and sharp, and the two the focus is built from */
   const brokenStill = document.createElement('canvas');
   const sharpStill = document.createElement('canvas');
   const focus = document.createElement('canvas');
@@ -140,9 +68,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
   let cssH = 0;
   let LW = 0;
   let LH = 0;
-  /* NO SIZE, NO DRAWING (2026-10-03: a footer under a hidden ancestor, or laid out to nothing for a moment, sized its sharp
-     copy 0 × 0 and the next focus composited it — "The image argument is a canvas element with a width or height of 0"):
-     while the footer has no size the screen keeps what it last drew and draws nothing */
+  /* while the footer has no size (hidden ancestor) nothing is drawn: a 0x0 canvas cannot be composited */
   let blank = true;
   /** a canvas that can be drawn from */
   const has = (cv: HTMLCanvasElement) => cv.width > 0 && cv.height > 0;
@@ -155,7 +81,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
   /* the engine's own chance: the screen's glitches, a fast pointer's tears */
   const rand = rng(20261003);
 
-  /* what was drawn out of place last frame — a focus, a tear, the arrow, a word over the focus — to be put back */
+  /* boxes drawn out of place last frame (focus, tear, arrow, words), to be restored */
   let wasA: Box[] = [];
   let wasC: Box[] = [];
   /* a box in the picture's px, as whole coarse pixels (a pixel's margin round it) */
@@ -189,15 +115,13 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     return { x0: (r.left - h.left) / k, x1: (r.right - h.left) / k, y0: (r.top - h.top) / k, y1: (r.bottom - h.top) / k };
   };
 
-  /* THE SCREEN'S LAYOUT, in the picture's px, measured off the footer: the picture in the box it marks for it, the frames
-     of its panels, and its words */
+  /* the screen's layout in picture px, measured off the footer: the picture's box, panel frames and words */
   const layout = () => {
     const marked = host.querySelector('[data-footer-scene]');
     const inset = W >= 1240 ? (W - 1240) / 2 + 40 : W >= 1024 ? 40 : W >= 640 ? 24 : 16;
     const b = marked ? rel(marked) : { x0: inset, x1: W - inset, y0: 0, y1: H };
     laidIn = b;
-    /* a small picture (a phone's, or the short band between the words below lg) keeps to its page's one or two parts; a
-       desk's box beside the words is 450 to 560 wide and 300 tall since the footer was halved (2026-10-03) */
+    /* a small picture (phone, or the band below lg) keeps to one or two parts; a desk box is 450-560 wide and 300 tall */
     stage = { W, H, box: b, phone: b.x1 - b.x0 < 420 || b.y1 - b.y0 < 260, ink, calm };
     panels = Array.from(host.querySelectorAll('[data-footer-panel]'), rel);
     /* a word's light and slip start from nothing again, so its box is measured where it stands */
@@ -209,13 +133,13 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     sc.layout(stage);
   };
 
-  /* ---- THE SCREEN'S STILL PARTS ---------------------------------------------------------------------------------- */
+  /* ---- still parts ---- */
 
-  /* what every picture has: the frames round the words (in focus), and the photograph's grain (broken) */
+  /* every picture has the frames round the words (in focus) and the grain (broken) */
   const ground = (b: Brush) => {
     const { c } = b;
     if (b.sharp) {
-      /* THE PANELS round the words: the screen's own frames come back round what the pointer reads */
+      /* the panels round the words come back into focus under the pointer */
       c.strokeStyle = rgb(ink.ink, 0.14);
       c.lineWidth = 1;
       for (const p of panels) {
@@ -228,7 +152,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
       }
       return;
     }
-    /* SPECKS: the photograph's grain — a few pixels and dashes over the whole screen, some in colour */
+    /* specks: a few pixels and dashes over the screen, some in colour */
     const r = b.r;
     const count = Math.round((W * H) / 1400);
     for (let i = 0; i < count; i++) {
@@ -248,7 +172,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     }
   };
 
-  /* THE FOOTER COMES UP OUT OF THE PAGE: its first lines fade in from nothing (a canvas, cut by a gradient, once) */
+  /* the footer fades up out of the page: a gradient drawn into the still parts once */
   const rise = (c: CanvasRenderingContext2D, width: number, depth: number) => {
     c.save();
     c.setTransform(1, 0, 0, 1, 0, 0);
@@ -260,8 +184,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     c.fillRect(0, 0, width, depth);
     c.restore();
   };
-  /* the still parts, built: sharp at the screen's own resolution; broken in coarse pixels, a hair of red on the left of
-     each mark and blue on the right (each colour a copy of the marks, laid under them a pixel aside) */
+  /* the still parts, built sharp and broken (coarse, a red copy a pixel left and a blue one a pixel right) */
   const build = () => {
     if (blank) return;
     sharpStill.width = Math.max(1, Math.round(W * dpr));
@@ -345,21 +268,21 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     build();
   };
 
-  /* ---- THE HAND AND THE ARROW --------------------------------------------------------------------------------------- */
+  /* ---- pointer and arrow ---- */
 
   /* the picture's own clock: it runs only while the screen is awake */
   let st = 0;
   let last = 0;
-  /* the reader's pointer, and the places it has lit (each goes dark over LINGER) */
+  /* the pointer, and the places it has lit (each fades over LINGER) */
   const hand = { x: 0, y: 0, on: false, at: 0 };
   const lit: { x: number; y: number; t: number; r: number; hand: boolean }[] = [];
   let tears: { y: number; h: number; dx: number; x0: number; x1: number; until: number; hand: boolean }[] = [];
   /* a touch keeps a still footer awake until then */
   let wakeUntil = 0;
-  /* the arrow of its own: where it is, where it set off from, which sight it is on, and when it may set off again */
+  /* the arrow: position, origin, current target, and when it may move on */
   const ghost = { x: 0, y: 0, fx: 0, fy: 0, t: 0, leg: 0, show: 0, rest: false, back: 0 };
 
-  /* ---- A FRAME ----------------------------------------------------------------------------------------------------- */
+  /* ---- a frame ---- */
 
   let wordsAt = 0;
   const pens: [Pen, number][] = [
@@ -375,7 +298,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     const f: Frame = { t: st, dt, wall: Date.now(), seconds: !calm };
     sc.tick(f);
 
-    /* THE ARROW: glides to the next thing, rests on it (on a line, it rides the line), and gives way to a pointer */
+    /* the arrow glides to the next target, rests (riding a line when on one), and yields to a pointer */
     if (arrow) {
       ghost.show += ((hand.on ? 0 : 1) - ghost.show) * (1 - Math.exp(-dt / (hand.on ? 120 : 400)));
       const list = sc.sights(f);
@@ -415,7 +338,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     while (lit.length && (lit.length > 40 || now - lit[0].t > LINGER)) lit.shift();
     tears = tears.filter(t => t.until > now);
 
-    /* WHAT IS OUT OF PLACE THIS FRAME: the focus's box (snapped to the coarse grid), the rows torn, the arrow */
+    /* out of place this frame: the focus box (snapped to the coarse grid), torn rows, the arrow */
     let focusBox: Box | null = null;
     if (lit.length) {
       let x0 = Infinity;
@@ -437,7 +360,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     }
     const tearBoxes = tears.map(t => ({ x0: Math.max(0, Math.min(t.x0, t.x0 + t.dx)), x1: Math.min(W, Math.max(t.x1, t.x1 + t.dx)), y0: t.y, y1: t.y + t.h }));
 
-    /* 1 · THE STILL SCREEN (layer A): what was drawn over last frame is put back, and the rows torn now slip */
+    /* 1. layer A: restore last frame's boxes, slip the rows torn now */
     for (const r of wasA) restoreA(r);
     for (const r of tearBoxes) restoreA(r);
     if (focusBox) restoreA(focusBox);
@@ -447,7 +370,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
       if (q.w > 0 && q.h > 0 && has(brokenStill)) aCtx.drawImage(brokenStill, q.x, q.y, q.w, q.h, q.x + Math.round(t.dx / PIX), q.y, q.w, q.h);
     }
 
-    /* 2 · THE MOVING PARTS (layer B), in their own box only, fringed: a red pass, a blue pass, the marks */
+    /* 2. layer B: the moving parts in their own box, fringed */
     const mb = sc.live();
     if (mb) {
       const sb = toLo(mb);
@@ -466,14 +389,13 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
         if (q.w > 0 && q.h > 0 && has(cvsB)) bCtx.drawImage(cvsB, q.x, q.y, q.w, q.h, q.x + Math.round(t.dx / PIX), q.y, q.w, q.h);
       }
     }
-    /* the screen's own glitch: now and then a row slips sideways for a moment (on a still page only under the hand) */
+    /* the screen's own glitch: a row slips for a moment (on a still page only under the hand) */
     if (!calm && (live || hand.on) && rand() < dt / 2200) {
       const y = Math.floor(rand() * LH);
       tears.push({ y: y * PIX, h: (1 + Math.floor(rand() * 3)) * PIX, dx: (rand() - 0.5) * 40, x0: 0, x1: W, until: now + 110, hand: false });
     }
 
-    /* 3 · THE FOCUS (layer C): where the pointer (or the arrow) is and has been, the broken screen gives way and the
-       terminal comes back, sharp — only in the focus's own box */
+    /* 3. layer C: inside the focus box the broken screen gives way to the sharp terminal */
     for (const r of wasC) clearC(r);
     let pills: Pill[] | null = null;
     if (focusBox && has(mask) && has(focus) && has(sharpStill)) {
@@ -525,8 +447,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
       cCtx.setTransform(1, 0, 0, 1, 0, 0);
       cCtx.drawImage(focus, bx0 * dpr, by0 * dpr, bw * dpr, bh * dpr, bx0 * dpr, by0 * dpr, bw * dpr, bh * dpr);
     }
-    /* what the pointer reads (the moment under a crosshair, a row's time) — over the mask, so it reads wherever the pointer
-       is (it was cut away outside the lit place: 2026-10-03 audit) */
+    /* the pointer's readout is drawn over the mask, so it reads wherever the pointer is */
     const pillBoxes: Box[] = [];
     if (pills) {
       cCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -549,7 +470,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
       cCtx.setTransform(1, 0, 0, 1, 0, 0);
     }
 
-    /* 4 · THE ARROW of its own, while no pointer is on the screen */
+    /* 4. the self-driven arrow, while no pointer is on the screen */
     let arrowBox: Box | null = null;
     if (arrow && ghost.show > 0.02) {
       arrowBox = { x0: ghost.x - 3, y0: ghost.y - 3, x1: ghost.x + 15, y1: ghost.y + 22 };
@@ -571,9 +492,8 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     wasA = focusBox ? [focusBox, ...tearBoxes] : tearBoxes;
     wasC = [focusBox, arrowBox, ...pillBoxes].filter((b): b is Box => !!b);
 
-    /* 5 · THE WORDS: lit where the reader's pointer is and has been (the arrow of its own lights none), and torn with the
-       rows a fast pointer tears — thirty times a second at most, in twelfths, each written only when it changes (a word
-       drawn again is its text and its fringe painted again) */
+    /* 5. the words: lit where the pointer is and was, torn with fast-torn rows; at most 30 times a second, in twelfths,
+       each written only on change */
     if (now - wordsAt < 30 && hand.on) return;
     wordsAt = now;
     for (const w of words) {
@@ -604,13 +524,12 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     }
   };
 
-  /* ---- WHEN IT DRAWS ----------------------------------------------------------------------------------------------- */
+  /* ---- scheduling ---- */
 
   let raf = 0;
   let seen = false;
   let drawn = 0;
-  /* awake: on the landing whenever seen; elsewhere while a hand is on it, a touch's moment lasts, or a lit place or a
-     tear is still fading */
+  /* awake: on the landing whenever visible; elsewhere while a pointer or touch is on it or something is still fading */
   const awake = (now: number) => live || hand.on || now < wakeUntil || lit.some(l => now - l.t < LINGER) || tears.some(t => t.until > now);
   const loop = (now: number) => {
     raf = 0;
@@ -623,7 +542,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
       drawn = now;
       draw(now, false);
     }
-    /* SETTLED: the frame just drawn is the still one, and no frame is asked for until a hand comes back */
+    /* settled: the last frame is the still one, and no frame is requested until a pointer returns */
     if (!awake(now)) {
       last = 0;
       return;
@@ -635,7 +554,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     last = 0;
     raf = requestAnimationFrame(loop);
   };
-  /* under reduced motion the frame stands still; its clock moves on once a minute while it is seen */
+  /* reduced motion: a still frame whose clock advances once a minute while visible */
   let tick = 0;
   const minute = () => {
     window.clearTimeout(tick);
@@ -702,10 +621,10 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     ghost.x = ghost.fx = (first.box.x0 + first.box.x1) / 2;
     ghost.y = ghost.fy = H * 0.4;
   }
-  /* THE FIRST FRAME: finished, the picture's clock at its start */
+  /* the first frame: finished, the clock at its start */
   draw(performance.now(), true);
 
-  /* the pointer is read over the whole footer — the words and the links are on the screen, not over it */
+  /* the pointer is read over the whole footer: words and links are on the screen, not over it */
   host.addEventListener('pointermove', move);
   host.addEventListener('pointerdown', move);
   host.addEventListener('pointerleave', leave);
@@ -715,7 +634,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     const arriving = e.isIntersecting && !seen;
     seen = e.isIntersecting;
     if (calm) return minute();
-    /* a still footer is photographed as the reader arrives at it: one frame, its tags the moment now (no frame asked for) */
+    /* a still footer is drawn once as it scrolls into view, its tags at the current time */
     if (arriving && !live && !raf) draw(performance.now(), true);
     go();
   });
@@ -726,9 +645,8 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     redraw();
   });
   ro.observe(host);
-  /* THE PICTURE'S BOX CAN CHANGE WITH THE FOOTER'S SIZE UNCHANGED — the landing's column follows the screen's height
-     (index.css --landing-col), so a window made shorter moves the words and the box under a footer just as wide and
-     tall — so the box is watched too, and the picture laid again where it has gone */
+  /* the picture's box can move while the footer's size does not (the landing column follows the window height), so
+     the box is observed too */
   const scene = host.querySelector('[data-footer-scene]');
   const ro2 = new ResizeObserver(() => {
     if (blank || !scene || !laidIn) return;
@@ -739,7 +657,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     redraw();
   });
   if (scene) ro2.observe(scene);
-  /* the words are measured where they stand: once the type is in, again (a word's box moves when its font arrives) */
+  /* words are measured once the font has loaded: a word's box moves when its font arrives */
   let alive = true;
   document.fonts?.ready.then(() => {
     if (!alive || blank) return;
@@ -747,7 +665,7 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
     build();
     redraw();
   });
-  /* a theme turn: every ink read again once the new ground is on the page, the still parts drawn again */
+  /* on a theme change every ink is re-read and the still parts redrawn */
   let themed = 0;
   const mo = new MutationObserver(() => {
     cancelAnimationFrame(themed);
@@ -783,8 +701,8 @@ const run = (host: HTMLDivElement, cvsA: HTMLCanvasElement, cvsB: HTMLCanvasElem
   };
 };
 
-/** The whole footer as one screen: `scene` is the picture (the page's own), `live` the landing's — it moves whenever seen;
-    everywhere else the picture stands still until a hand is on it */
+/** The footer as one screen: `scene` is the page's picture; `live` (the landing) moves whenever visible, elsewhere it is
+    still until a pointer is on it. */
 const FooterArt = ({ children, className = '', scene = 'pulse', live = false }: { children: ReactNode; className?: string; scene?: SceneName; live?: boolean }) => {
   const box = useRef<HTMLDivElement | null>(null);
   const layerA = useRef<HTMLCanvasElement | null>(null);
@@ -800,8 +718,7 @@ const FooterArt = ({ children, className = '', scene = 'pulse', live = false }: 
     let alive = true;
     let stop: (() => void) | undefined;
     let idle = 0;
-    /* the picture's code arrives on its own (registry.ts), and the screen is built when the page has a moment — the footer
-       stands under everything a page opens with */
+    /* the scene code loads on its own (registry.ts) and the screen is built when the page is idle */
     loadScene(scene).then(
       make => {
         if (!alive) return;
@@ -822,8 +739,8 @@ const FooterArt = ({ children, className = '', scene = 'pulse', live = false }: 
 
   return (
     <div ref={box} className={`relative isolate w-full ${className}`} data-footer-art={scene}>
-      {/* under everything the footer holds (its fade up out of the page is drawn into the still parts: a mask over the layers
-          made the browser lay the whole footer again each frame) */}
+      {/* under everything the footer holds; the fade-in is drawn into the still parts (a CSS mask relaid the footer every
+          frame) */}
       <div aria-hidden="true" className="absolute inset-0 -z-10 overflow-hidden pointer-events-none">
         <canvas ref={layerA} className="absolute left-0 top-0 block [image-rendering:pixelated]" />
         <canvas ref={layerB} className="absolute left-0 top-0 block [image-rendering:pixelated]" />

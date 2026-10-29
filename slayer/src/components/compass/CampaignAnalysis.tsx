@@ -28,7 +28,7 @@ import { activeStop, bookLine, closeOf, flatNow, lockFill, lotteryFlatNow, noteP
 import { liveSetups, liveSpark, useContractBars, useContractLive, useSecondGreek } from '../../data/thetaBook';
 import { entryAsk, leftOf, noteLeft, passedOver } from '../../data/compassModel';
 import { entryGate, formatAge, quoteContract, quoteMissing, quoteStale } from '../../data/contractQuote';
-import { SPREAD_MAX, STOP_KEEP, spreadPass, weekdayDte } from '../../data/compassParams';
+import { MODELS_VALIDATED, SPREAD_MAX, STOP_KEEP, UNVALIDATED_WORD, spreadPass, weekdayDte } from '../../data/compassParams';
 import { BLOCK_MIN_PREMIUM, BLOCK_MIN_SIZE } from '../../data/tape';
 import { useShelfPrints } from '../../data/traceLive';
 import type { FlowPrint } from '../../types/trace';
@@ -400,7 +400,7 @@ const CampaignAnalysis = ({
       ? (setup.whyText || 'Not a ticket.')
       : !(bidPx > 0.15) ? 'Bid is at or under 0.15' : spreadFrac > spreadCap + 1e-9 ? 'Spread is over 8%' : missing ? 'Quote missing' : stale ? 'Quote stale' : null;
   const trackedRow = trackedSetups.find(t => t.id === setup.id);
-  const fill = tracked && trackedRow ? lockFill(setup.id, trackedRow.trackedAt, quotedAt ? { bid: q.bid, ask: q.ask, at: quotedAt } : null, Date.now(), setup.ticker) : null;
+  const fill = tracked && trackedRow ? lockFill(setup.id, trackedRow.trackedAt, quotedAt ? { bid: q.bid, ask: q.ask, at: quotedAt } : null) : null;
   const paidNow = fill?.status === 'filled' ? fill.ask : 0;
   const priorPeak = tracked ? peakBefore(setup.id) : 0;
   const peakNow = tracked ? notePeak(setup.id, q.bid) : 0;
@@ -460,7 +460,7 @@ const CampaignAnalysis = ({
       if (bookLine(setup.id)) untrackSetup(setup.id);
       return;
     }
-    const fill = lockFill(setup.id, row.trackedAt, quotedAt ? { bid: q.bid, ask: q.ask, at: quotedAt } : null, Date.now(), setup.ticker);
+    const fill = lockFill(setup.id, row.trackedAt, quotedAt ? { bid: q.bid, ask: q.ask, at: quotedAt } : null);
     if (fill.status === 'wait') return;
     if (fill.status === 'unavailable') {
       remember(stampClose({
@@ -536,7 +536,8 @@ const CampaignAnalysis = ({
   const greekOk = Number.isFinite(ivPct) && ivPct > 0;
   const pts = spotPx > 0 ? (setup.right === 'C' ? spotPx - setup.strike : setup.strike - spotPx) : NaN;
   const place = !Number.isFinite(pts) ? '' : Math.abs(pts) / spotPx < 0.0015 ? 'ATM' : `${Math.abs(pts).toFixed(0)} pts ${pts > 0 ? 'ITM' : 'OTM'}`;
-  const kindLabel = setup.band === 'closest' ? 'Closest' : setup.band === 'lottery' ? 'Book C' : setup.band === 'wing' ? 'Book B' : setup.band === 'top' ? 'Book A' : '';
+  const unchecked = MODELS_VALIDATED ? '' : ` · ${UNVALIDATED_WORD}`;
+  const kindLabel = setup.band === 'closest' ? 'Closest' : setup.band === 'lottery' ? 'Book C' : setup.band === 'wing' ? `Book B${unchecked}` : setup.band === 'top' ? `Book A${unchecked}` : '';
   const [guideOpen, setGuideOpen] = useState(false);
 
   const left = leftOf(setup.id);

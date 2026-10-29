@@ -184,11 +184,6 @@ export function terrainTape(ticker: string): TerrainTape | null {
   return tapes.get(terrainRoot(ticker)) ?? null;
 }
 
-export function terrainBars(ticker: string): Candle[] | null {
-  const t = terrainTape(ticker);
-  return t && t.status === 'live' ? t.bars : null;
-}
-
 export function subscribeTerrain(fn: () => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);

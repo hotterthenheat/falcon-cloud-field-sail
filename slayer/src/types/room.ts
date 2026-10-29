@@ -1,13 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE ROOM'S TYPES (types/room.ts)
-  One room: people, their posts, the setups those
-  posts carry and the record the setups build.
-  The shapes the room's service will hand back
-  once accounts exist; until then the seeds and
-  this browser's storage fill them.
-==================================================
-*/
+/* The community room: people, posts, the setups posts carry and the record they build. Seeds and this browser's
+   storage fill these until a room service exists. */
 
 export type Lean = 'BULLISH' | 'BEARISH';
 

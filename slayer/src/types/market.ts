@@ -1,9 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - SHARED DOMAIN TYPES (market.ts)
-  Options chain, dealer exposure, trade plan & ledger models
-==================================================
-*/
+/* Shared market types: option chain, dealer exposure, trade plan and ledger. */
 
 /** Any listed symbol. Core sim tickers are seeded; others are synthesized on demand. */
 export type TickerSymbol = string;
@@ -23,7 +18,7 @@ export interface Greeks {
   vanna: number;
   charmCall: number;
   charmPut: number;
-  /** Per one POINT of rate, like vega is per one point of vol — P-24A. */
+  /** Per one point of rate, as vega is per one point of vol. */
   rhoCall: number;
   rhoPut: number;
 }
@@ -42,17 +37,12 @@ export interface GexLevel {
   strike: number;
   /** Net GEX at this strike (summed across expiries), signed dollars */
   value: number;
-  /** Net delta exposure at the same instant, signed dollars — the trails
-      follow the head's Greek (2026-09-06); optional so older folds still read */
+  /** Net delta exposure at the same instant, signed dollars; optional on older snapshots. */
   dex?: number;
   /** Net vega exposure at the same instant, signed dollars */
   vex?: number;
-  /*
-    OPEN INTEREST AT THE SAME INSTANT — the ΔOI heat's raw material. Carried
-    on the GEX snapshot rather than in a store of its own so the two can
-    never drift apart. Optional: a consumer must render absence rather than
-    treat it as zero change.
-  */
+  /* Open interest at the same instant, carried on the snapshot so the two never drift apart. Optional: absence is not
+     zero change. */
   callOI?: number;
   putOI?: number;
   /** False when the flow net is under about 2% of that strike's gross volume. Absent means the open-interest book. */
@@ -75,8 +65,8 @@ export interface Indicators {
 
 export interface StrikeNode {
   strike: number;
-  /** The price and the instant (epoch ms) the vendor priced this strike's live gamma at (spot-exposures `price`, `time`)
-      — the flip re-prices the strike's legs FROM that price, AT that instant (data/flipLevel.ts) */
+  /** The price and instant (epoch ms) the vendor priced this strike's live gamma at; the flip re-prices from them
+      (data/flipLevel.ts). */
   gexPx?: number;
   gexAt?: number;
   callOI: number;
@@ -97,30 +87,28 @@ export interface StrikeNode {
   callVex: number;
   putVex: number;
   netVex: number;
-  /** The unit greeks at the strike — per contract, not exposures */
+  /** The unit greeks at the strike, per contract (not exposures). */
   vanna: number;
   charm: number;
-  /** VANNA as an exposure: dollars of dealer delta per ONE POINT of vol, by leg —
-      positive means a vol drop makes dealers buy stock there (2026-09-09) */
+  /** Vanna exposure: dollars of dealer delta per one point of vol, by leg; positive means a vol drop makes dealers buy. */
   callVanna: number;
   putVanna: number;
   netVanna: number;
-  /** CHARM as an exposure: dollars of dealer delta the clock takes per DAY, by leg —
-      negative means dealers buy stock there as the clock runs */
+  /** Charm exposure: dollars of dealer delta per day, by leg; negative means dealers buy as the clock runs. */
   callCharm: number;
   putCharm: number;
   netCharm: number;
   /** Today's contracts at this strike, when the feed has them. Absent on a sample chain. */
   callVol?: number;
   putVol?: number;
-  /** The vendor's implied vol and per-contract gamma for this strike's call and put on ONE expiry
-      (option-contracts) — set on a per-expiry chain once its contract rows are in; absent otherwise */
+  /** The vendor's implied vol and per-contract gamma for this strike's call and put on one expiry, once its
+      option-contracts rows are read. */
   callIv?: number;
   putIv?: number;
   callGamma?: number;
   putGamma?: number;
-  /** Signed contract count the greeks were multiplied by. Positive means dealers are short that side.
-      Set for every expiry: flow inventory within five sessions, open interest after that. Absent until the contracts are read. */
+  /** Signed contract count the greeks were multiplied by (positive: dealers short that side). Flow inventory within
+      five sessions, open interest after; absent until the contracts are read. */
   callBook?: number;
   putBook?: number;
   /** False when this strike's flow net is too small a share of its volume to trust. The sign is still the flow sign. */
@@ -174,17 +162,16 @@ export interface MarketSnapshot {
   uwExpiries?: { date: string; dte: number }[];
   /** Expiry dates whose option-contracts rows have been read. VEX and the higher greeks are real only on these dates. */
   uwFacts?: ReadonlySet<string>;
-  /** The live book's day move: `changePercent` is the regular session's change; this keeps the move outside the session
-      (pre-market before the open, after hours after the close) apart, and whether the day's change is known yet */
+  /** The day move outside the regular session (pre-market or after hours), kept apart from `changePercent`, and whether
+      the day's change is known yet. */
   dayMove?: { extPct: number | null; phase: 'pre' | 'regular' | 'post' | 'closed'; known: boolean };
-  /** The instant (epoch ms) a book is read as of — set only for a session that has closed, so its flip is re-priced at
-      that session's own clock rather than now (data/bookWindow.ts sessionBook) */
+  /** The instant (epoch ms) a closed session's book is read as of, so its flip is priced at that session's clock
+      (data/bookWindow.ts sessionBook). */
   asOf?: number;
-  /** A finished session's clock for the flip alone (epoch ms) — its close — so the flip and every count against it stop
-      moving after the bell, without the asOf's contract-vol switch (data/bookWindow.ts sessionBook, data/flipLevel.ts) */
+  /** A finished session's close (epoch ms), freezing the flip and the counts against it after the bell. */
   flipAt?: number;
-  /** The Levels card's scope is not in yet and the whole book stands in for it (data/bookWindow.ts levelsBook) — every
-      level read off this snapshot is provisional, and no page draws it (the seventh audit's retail blocker) */
+  /** The Levels scope has not loaded and the whole book stands in: every level is provisional and none is drawn
+      (data/bookWindow.ts levelsBook). */
   levelsPending?: boolean;
 }
 

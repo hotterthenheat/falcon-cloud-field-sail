@@ -1,13 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE CROSS CARD
-  One dark-pool cross in the print card's grammar:
-  the masthead, the money and where it sat in the
-  quote, the sentence, the facts, the sequence,
-  then the stock and the running dark dollars on
-  one clock. A stock cross — no option fields.
-==================================================
-*/
+/* One dark-pool cross in the print card's grammar: the money and where it sat in the quote, the read, the facts, the
+   sequence, then the stock and the running dark dollars on one clock. */
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, Check, ChevronDown, ChevronUp, Copy, Crosshair, Scale } from 'lucide-react';
@@ -15,32 +8,31 @@ import { LineSeries, LineStyle, createChart, createSeriesMarkers, type IChartApi
 import Modal from '../ui/Modal';
 import Fact from '../ui/Fact';
 import RichRead from '../ui/RichRead';
-import GradeMeter from '../ui/GradeMeter';
 import SlayerMark from '../../brand/SlayerMark';
 import Wordmark from '../../brand/Wordmark';
 import { nyClock } from '../../core/nyTime';
-import { execWord, nyDateOf, postureOf, quotePlace, tapeSessionIso, useDarkDay, useStockLast, useStockMinutes } from '../../data/traceLive';
+import { execWord, fmtCount as num, nyDateOf, postureOf, quotePlace, tapeSessionIso, usd as fmtUsd, useDarkDay, useStockLast, useStockMinutes } from '../../data/traceLive';
 import { dayAdv } from './dayWords';
-import { usd as fmtUsd } from '../../data/traceLive';
-import { gradeOfConviction, gradeOfPosture, POSTURE_WORD } from '../../data/darkpool';
+import { POSTURE_WORD } from '../../data/darkpool';
+import { postureGrade } from '../../data/traceLean';
 import { crossKey, useWatch, watchedCross } from '../../context/WatchContext';
 import { readToken, useResolvedTheme } from '../../theme/theme';
 import { dayChartOptions, type DaySurface } from '../gex/dayChart';
 import type { DarkPoolIntent, DarkPoolPrint, DarkPoolView, LevelRole } from '../../types/darkpool';
 
-const num = (v: number) => v.toLocaleString('en-US');
 const INTENT_INK: Record<DarkPoolIntent, string> = { ACCUMULATION: 'text-bull', DISTRIBUTION: 'text-bear', 'HEDGE FLOW': 'text-warn', ROTATION: 'text-textMuted' };
-const INTENT_BAR: Record<DarkPoolIntent, string> = { ACCUMULATION: 'bg-bull/80', DISTRIBUTION: 'bg-bear/80', 'HEDGE FLOW': 'bg-warn/80', ROTATION: 'bg-ink/25' };
 const ROLE_INK: Record<LevelRole, string> = { SUPPORT: 'text-bull', RESISTANCE: 'text-bear', PIVOT: 'text-textMuted' };
 const ROLE_TOKEN: Record<LevelRole, string> = { SUPPORT: '--bull', RESISTANCE: '--bear', PIVOT: '--text-muted' };
 const ROLE_WORD: Record<LevelRole, string> = { SUPPORT: 'support', RESISTANCE: 'resistance', PIVOT: 'pivot' };
 const SEQ_SHOWN = 6;
 
 const INTENT_TAG: Record<DarkPoolIntent, string> = { ACCUMULATION: 'ACCUMULATION', DISTRIBUTION: 'DISTRIBUTION', 'HEDGE FLOW': 'AT THE MID', ROTATION: 'NO READ' };
-const IntentTag = ({ intent }: { intent: DarkPoolIntent }) => (
+/** A cross's read as a tag, in its ink */
+export const IntentTag = ({ intent }: { intent: DarkPoolIntent }) => (
   <span className={`font-mono text-t10 font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{INTENT_TAG[intent]}</span>
 );
-const noReadWord = (p: DarkPoolPrint) => (p.special ? (p.auction ? 'no read · auction' : 'no read · terms') : p.extended ? 'no read · after hours' : 'no read · small');
+/** Why a cross carries no read */
+export const noReadWord = (p: DarkPoolPrint) => (p.special ? (p.auction ? 'no read · auction' : 'no read · terms') : p.extended ? 'no read · after hrs' : 'no read · small');
 
 const shelfOf = (p: DarkPoolPrint, view: DarkPoolView | null) => {
   if (!view || !p.atLevel) return null;
@@ -49,14 +41,13 @@ const shelfOf = (p: DarkPoolPrint, view: DarkPoolView | null) => {
   return best;
 };
 
-/** A one-letter market-center code is not a venue name. */
+/** A one-letter market-center code is not a venue name */
 const venueWord = (v: string) => (v.trim().length > 2 && /[A-Za-z]/.test(v) ? v.trim() : 'off-exchange');
 
-/* NO SIDE WHERE THERE IS NONE (audit round 4: crosses 3% over the quote read "inside quote" — the fallback for a print with
-   no execution side): an own-terms print is priced by its terms; a print with no quote has no place in one */
+/* no side where there is none: an own-terms print is priced by its terms; one with no quote has no place in it */
 const sideWord = (p: DarkPoolPrint) =>
   p.special ? 'own terms' : p.exec === 'ASK' ? 'paid offer' : p.exec === 'BID' ? 'hit bid' : p.exec === 'MID' ? (execWord(p) === 'MID' ? 'at the mid' : execWord(p) === 'OVER MID' ? 'inside, over mid' : 'inside, under mid') : p.bid == null || p.ask == null ? 'no quote' : 'off the quote';
-/* the label agrees with the read (audit round 7): inside the spread it is MID only within the ¼¢ band */
+/* the label agrees with the read: inside the spread it is MID only within the ¼¢ band */
 const sideLabel = (p: DarkPoolPrint) => (p.exec === 'ASK' ? 'BOUGHT' : p.exec === 'BID' ? 'SOLD' : p.exec === 'MID' ? execWord(p) ?? '' : '');
 
 const fillFrac = (p: DarkPoolPrint): number | null => {
@@ -67,9 +58,7 @@ const fillFrac = (p: DarkPoolPrint): number | null => {
   return null;
 };
 
-/* The card's own ground. The day chart's figure surface is a grey slab
-   (#7d7d7d on a grey chip) and does not belong on this sheet. Axis figures
-   are the page ink, the crosshair is silver, the ground is the inset. */
+/* the card's own ground: page-ink axis figures, a silver crosshair, the inset behind */
 const cardSurface = (host: HTMLElement, paper: boolean): DaySurface => {
   const bg = readToken('--inset', undefined, host);
   const ink = readToken('--text-primary', undefined, host);
@@ -100,19 +89,15 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
   const darkRef = useRef<HTMLDivElement | null>(null);
   const holdRef = useRef<TapeHold | null>(null);
   const paper = useResolvedTheme() === 'light';
-  /* THE STOCK'S WHOLE DAY, EXTENDED HOURS IN (the re-audit, 2026-10-22: the stock line ended at the 16:00 close while
-     the cross was at 17:04): the name's own one-minute bars for the session's date, pre-market to after hours */
+  /* the name's one-minute bars for the cross's own date, pre-market to after hours */
   const bars = useStockMinutes(print.ticker, crossIsoOf(print)).rows;
   const crosses = useMemo(() => (view?.prints?.length ? view.prints : [print]), [view, print]);
-  /* THE STOCK'S OWN LAST TRADE (audit round 4: "THE STOCK · QQQ $725.39" was a stale contingent cross; QQQ was $703.29) */
+  /* the stock's own last trade, never a cross's price */
   const last = useStockLast(print.ticker).rows;
   const stockPx = last?.price ?? (view && view.spot > 0 ? view.spot : null);
-  /* AFTER HOURS IS NOT A SIDE (the third audit, 2026-10-22: an after-hours tape wore "UNDER THE MID 64%" in red): where
-     the crosses in view are all extended-hours prints, the split is drawn in plain ink */
+  /* after hours is not a side: an all after-hours split is drawn in plain ink */
   const allAfter = crosses.length > 0 && crosses.every(p => p.extended);
-  /* THE SPLIT READS PRINTS PRICED AT THE QUOTE (audit round 4: QQQ's "UNDER 2% · OVER 98%" counted the no-read contingent
-     prints at $725.39, 3% over the quote): own-terms prints are priced by their terms and are left out; so are after-hours
-     prints beside regular ones */
+  /* the split reads prints priced at the quote: own-terms ones, and after-hours ones beside regular, are left out */
   const placed = crosses.filter(p => !p.special && (allAfter || !p.extended));
   const underDol = placed.reduce((a, p) => a + (quotePlace(p.vsSpotPct, p.price).cents < 0 ? p.notional : 0), 0);
   const overDol = placed.reduce((a, p) => a + (quotePlace(p.vsSpotPct, p.price).cents > 0 ? p.notional : 0), 0);
@@ -188,30 +173,30 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
     const day = bars;
     if (day.length === 0) return;
     const stockData = day.map(c => ({ time: c.time as UTCTimestamp, value: c.close }));
-    const ordered: { clock: string; time: number }[] = [];
-    const atClock = new Map<string, number>();
     let lo = Infinity;
     let hi = -Infinity;
     for (const c of day) {
-      const clock = nyClock(c.time * 1000);
-      atClock.set(clock, c.time);
-      ordered.push({ clock, time: c.time });
       if (c.close < lo) lo = c.close;
       if (c.close > hi) hi = c.close;
     }
-    const place = (hhmm: string): number => {
-      const exact = atClock.get(hhmm);
-      if (exact != null) return exact;
-      let best = ordered[0]?.time ?? day[0].time;
-      for (const o of ordered) if (o.clock <= hhmm) best = o.time;
+    /* each cross sits on the bar of its own epoch minute (the last bar at or before it); no instant, no place */
+    const place = (p: DarkPoolPrint): number | null => {
+      if (!(p.epochMs && p.epochMs > 0)) return null;
+      const sec = Math.floor(p.epochMs / 60_000) * 60;
+      if (sec < day[0].time) return null;
+      let best = day[0].time;
+      for (const c of day) {
+        if (c.time > sec) break;
+        best = c.time;
+      }
       return best;
     };
     const added = new Map<number, number>();
     for (const p of crosses) {
-      if (!p.time || p.time === '—') continue;
-      const t = place(p.time);
-      added.set(t, (added.get(t) ?? 0) + p.notional);
+      const t = place(p);
+      if (t != null) added.set(t, (added.get(t) ?? 0) + p.notional);
     }
+    const here = place(print);
     let cum = 0;
     const run = day.map(c => {
       cum += added.get(c.time) ?? 0;
@@ -233,7 +218,7 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
       const synced = hold.price.timeScale().getVisibleLogicalRange();
       if (synced) hold.dark.timeScale().setVisibleLogicalRange(synced);
       hold.n = stockData.length;
-      hold.marks.setMarkers([{ time: place(print.time) as UTCTimestamp, position: 'inBar', color: readToken('--silver', 1, priceHost), shape: 'circle' }]);
+      hold.marks.setMarkers(here != null ? [{ time: here as UTCTimestamp, position: 'inBar', color: readToken('--silver', 1, priceHost), shape: 'circle' }] : []);
       hold.dataKey = dataKey;
     }
     const pad = Math.max((hi - lo) * 0.15, print.price * 0.004);
@@ -380,8 +365,7 @@ interface CrossDrilldownProps {
 
 const th = 'px-2 py-1.5 font-mono text-t11 font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle';
 const td = 'px-2 py-1.5 font-mono text-t11 tnum';
-const linkBtn =
-  'slayer-chip uppercase tracking-wider justify-center';
+const linkBtn = 'slayer-chip uppercase tracking-wider justify-center';
 
 const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext = false, onOpen }: CrossDrilldownProps) => {
   const navigate = useNavigate();
@@ -391,12 +375,11 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
   const marked = !!print && isWatched(key);
   const shelf = useMemo(() => (print ? shelfOf(print, view) : null), [print, view]);
   const sequence = useMemo(() => (view ? [...view.prints].sort((a, b) => (a.time === b.time ? b.notional - a.notional : a.time < b.time ? 1 : -1)) : []), [view]);
-  /* the cross's own session's figures, named by its date (audit round 6) */
+  /* the cross's own session's figures, named by its date */
   const crossIso = print ? crossIsoOf(print) : null;
   const day = useDarkDay(print?.ticker ?? null, crossIso);
-  /* THE DAY'S VWAP PRICES THE DARK SHARES (audit round 7: "≈$488.9M" was USHY's 13,968,395 dark shares all at its $35
-     bucket, the stock at $35.58): the vendor sends shares by coarse price bucket and no average price, so the dollars take
-     the stock's own regular-session VWAP from its minute bars; the buckets only when the bars are not in */
+  /* the vendor sends dark shares by coarse price bucket and no average price, so the dollars take the day's VWAP from
+     the minute bars, and the buckets only when the bars are not in */
   const dayBars = useStockMinutes(print?.ticker ?? null, crossIso).rows;
   const vwap = useMemo(() => {
     let pv = 0;
@@ -474,7 +457,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
             <div className="flex items-center gap-x-5 gap-y-2 flex-wrap px-4 py-3" data-print-money>
               <span className="flex items-baseline gap-2.5">
                 <span className={`font-mono text-t22 font-bold tnum leading-none ${print.notional >= 1_000_000 ? 'text-supreme' : 'text-textPrimary'}`}>{fmtUsd(print.notional)}</span>
-                {/* no side word beside "no read" (audit round 10, minor 7: BOUGHT beside NO READ · SMALL) */}
+                {/* no side word beside "no read" */}
                 {print.intent !== 'ROTATION' && sideLabel(print) && <span className={`font-mono text-t13 font-bold ${print.exec === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{sideLabel(print)}</span>}
                 {print.sized && <span className="font-mono text-t11 uppercase font-semibold text-textPrimary">Sized</span>}
               </span>
@@ -504,33 +487,29 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
                 value={
                   view ? (
                     (() => {
-                      /* the posture is computed here from the prints, by the SidesRule (postureOf) — never a view's stored
-                         field (audit round 5: USHY read Balanced beside 70/30) */
+                      /* computed from the prints (postureOf), never a view's stored field */
                       const pv = postureOf(view.prints);
                       return pv.read === 0 ? (
-                        <span className="text-textMuted" title="No sized regular-session cross at the quote — nothing to read">nothing to read</span>
+                        <span className="text-textMuted" title="No sized regular-session cross at the quote">nothing to read</span>
                       ) : (
-                        <span className={pv.posture === 'ACCUMULATING' ? 'text-bull' : pv.posture === 'DISTRIBUTING' ? 'text-bear' : 'text-textSecondary'} title={`Net ${pv.net > 0 ? '+' : pv.net < 0 ? '−' : ''}${Math.abs(pv.net)}% of the sized dollars over the mid less under it, across ${pv.read} sized cross${pv.read === 1 ? '' : 'es'} in hand. ${pv.note}`}>
+                        <span className={pv.posture === 'ACCUMULATING' ? 'text-bull' : pv.posture === 'DISTRIBUTING' ? 'text-bear' : 'text-textSecondary'} title={`Sized dollars over the mid less under it, across ${pv.read} sized cross${pv.read === 1 ? '' : 'es'} in hand. ${pv.note}`}>
                           {POSTURE_WORD[pv.posture]}
-                          {pv.posture !== 'BALANCED' ? ` · ${gradeOfPosture(pv.net)}` : ''}
+                          {pv.posture !== 'BALANCED' ? ` · ${postureGrade(pv.net)}` : ''}
                         </span>
                       );
                     })()
                   ) : '—'
                 }
               />
-              {/* THE DAY IS THE NAME'S OWN DAY (the audit, 2026-10-22: "Dark dollars today" was the buffer's few prints) —
-                  /darkpool/{t}/price-levels, every dark and lit share by price */}
+              {/* the name's whole day by price, not the prints in hand */}
               <Fact label={`Off-exchange ${dayAdv(crossIso ?? undefined)}`} value={day.rows && Number.isFinite(day.rows.sharePct) ? `${day.rows.sharePct.toFixed(0)}% of the day's shares` : day.waiting ? '…' : '—'} />
               <Fact label={`Dark dollars ${dayAdv(crossIso ?? undefined)}`} value={day.rows ? (
-                /* THE METHOD SAID (audit round 7: "≈$488.9M" priced every share at its $35 bucket): the feed sends dark
-                   shares by price bucket, no VWAP — each bucket's shares at the bucket's price */
                 Number.isFinite(vwap) ? (
-                  <span title={`${num(day.rows.darkShares)} dark shares at ${print?.ticker}'s regular-session VWAP, $${vwap.toFixed(2)} (from its one-minute bars, close × volume) — the feed sends dark shares by coarse price bucket and no average price, so the dollars are approximate; at the buckets' own prices they read ≈${fmtUsd(day.rows.darkDollars)}`}>
+                  <span title={`Dark shares at the day's VWAP ($${vwap.toFixed(2)}); approximate, since shares come by price bucket. At bucket prices ≈${fmtUsd(day.rows.darkDollars)}`}>
                     ≈{fmtUsd(day.rows.darkShares * vwap)} · {num(day.rows.darkShares)} sh <span className="text-textMuted">· at the day's VWAP ${vwap.toFixed(2)}</span>{day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}
                   </span>
                 ) : (
-                  <span title={`Each price bucket's dark shares at the bucket's own price (shares are grouped into coarse price buckets — often whole dollars — and no average price is sent), so the dollars are approximate`}>
+                  <span title="Each price bucket's dark shares at the bucket's price, so the dollars are approximate">
                     ≈{fmtUsd(day.rows.darkDollars)} · {num(day.rows.darkShares)} sh <span className="text-textMuted">· at bucket prices</span>{day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}
                   </span>
                 )

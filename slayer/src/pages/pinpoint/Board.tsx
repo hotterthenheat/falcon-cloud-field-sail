@@ -555,9 +555,14 @@ const Board = () => {
     };
     step();
   }, []);
+  /* a book landing in pieces emits many times a second: one rebuild per burst; a row whose own book did not move is
+     handed back unchanged (data/board.ts buildBoardRow) and leaves the grid alone */
   useEffect(() => {
-    lastRef.current = Date.now();
-    rebuild(names, true);
+    const id = window.setTimeout(() => {
+      lastRef.current = Date.now();
+      rebuild(names, true);
+    }, 120);
+    return () => window.clearTimeout(id);
   }, [names, rebuild, bookRev]);
   useEffect(() => {
     /* the prices every scan, in one call (uwBook refreshBoardPrices — the ninth audit's m2); the levels on their own cadence */

@@ -1,21 +1,9 @@
 import type { ReactNode } from 'react';
 
 /*
-  RichRead — renders a generated narrative sentence with its meaningful
-  tokens lit by the house color code, so the terminal's prose pops the same
-  way its panels do. Color = information, never decoration:
-    signed %      → bull green-lime / bear red (direction)
-    $ amounts, %, ×-counts, tickers → bold white (facts)
-    accumulation/support family     → bull   (side)
-    distribution/supply family      → bear   (side)
-  Data modules keep emitting plain strings — this is presentation only.
-
-  SIGNED DOLLARS AND THE LEAN WORDS joined the grammar on 2026-08-30 (Noah,
-  on the 0DTE read: "numbers and important facts should be highlighted in
-  whatever color you think is required and the rest be normal") — a signed
-  dollar figure is a DIRECTION exactly like a signed percent, and
-  bullish/bearish are the side family in their plainest clothes. A bare
-  unsigned $ stays a fact in bold white; the sign is what buys the ink.
+  RichRead renders a generated sentence with its meaningful tokens lit by the house colour code (information, never
+  decoration): signed % and signed $ take the direction inks; unsigned $, %, counts and tickers are bold facts; the
+  accumulation/support and distribution/supply families take the side inks. Data modules emit plain strings.
 */
 
 // All-caps words that are jargon, not tickers — never emphasized as symbols
@@ -30,13 +18,10 @@ const TOKEN_RE =
   /([Cc]alls \d+(?:\.\d+)?%|[Pp]uts \d+(?:\.\d+)?%|[+]\$\d[\d,]*(?:\.\d+)?[BMK]?|[−-]\$\d[\d,]*(?:\.\d+)?[BMK]?|[+]\d+(?:\.\d+)?%|[−-]\d+(?:\.\d+)?%|\d+(?:\.\d+)?%|\$\d[\d,]*(?:\.\d+)?[BMK]?|\d+(?:\.\d+)?(?:×|x\b)|\d+ (?:lifting|pressing|positive|negative)\b|(?:[Bb]ullish|[Bb]earish|(?:at|on) the ask|(?:at|on) the bid|[Ll]ifting|[Pp]ressing|[Pp]ositive|[Nn]egative|[Aa]ccumulat(?:ion|ing|ive)|[Aa]bsorbed|[Tt]ailwind|[Bb]uy side|[Dd]istribut(?:ion|ing|ive)|[Ss]ell side|[Hh]eadline risk|[Ss]upport|[Rr]esistance|[Ss]upply)\b|\b[A-Z]{2,5}\b)/;
 
 function classFor(token: string): string | null {
-  /* A side SHARE reads as one lit token — "calls 57%" is the tape's lean,
-     the same fact the pane headers paint green/red (Noah, 2026-08-30: "do you
-     not think these reads are too bland"). Bare counts stay plain: 455
-     contracts is arithmetic, not a side. */
+  /* a side share ("calls 57%") reads as one lit token; bare counts stay plain */
   if (/^calls \d/i.test(token)) return 'text-bull font-semibold tnum';
   if (/^puts \d/i.test(token)) return 'text-bear font-semibold tnum';
-  /* a side is not a direction (2026-10-13): at the ask / on the bid wear the plain ink, weighted */
+  /* a side is not a direction: at the ask / on the bid wear the plain ink, weighted */
   if (/^(at|on) the ask$/i.test(token)) return 'text-textPrimary font-medium';
   if (/^(at|on) the bid$/i.test(token)) return 'text-textPrimary font-medium';
   /* a signed figure carries its mark (dir-up / dir-down: ▲ ▼ under a colour-vision choice, theme/tokens.css) */
@@ -49,9 +34,7 @@ function classFor(token: string): string | null {
   if (/^\d/.test(token) && token.endsWith('%')) return 'font-semibold tnum text-textPrimary';
   if (token.startsWith('$')) return 'font-semibold tnum text-textPrimary';
   if (/^\d+(?:\.\d+)?[×x]$/.test(token)) return 'font-semibold tnum text-textPrimary';
-  /* The wire's grade words — positive / negative since 2026-09-09, the older
-     lifting / pressing still lit — counts ride along ("11 positive") so the
-     figure and its lean read as one lit token. */
+  /* the wire's grade words (positive / negative, and the older lifting / pressing) light with their counts */
   if (/^(\d+ )?(lifting|positive)$/i.test(token)) return 'text-bull font-medium tnum';
   if (/^(\d+ )?(pressing|negative)$/i.test(token)) return 'text-bear font-medium tnum';
   if (/^(accumulat|absorbed|tailwind|buy side|support)/i.test(token)) return 'text-bull font-medium';
@@ -60,11 +43,8 @@ function classFor(token: string): string | null {
   return null;
 }
 
-/* CHAMPION MARKUP (Noah, 2026-08-30: the tables crown their single largest in
-   magenta, but the sentences saying "The largest:" printed it flat white).
-   A generator wraps its champion fact in [[...]] and the whole span renders in
-   the supreme register — the one grammar, prose included. Everything outside
-   the brackets tokenizes exactly as before. */
+/* Champion markup: a generator wraps its champion fact in [[...]] and the span renders in the supreme register;
+   everything outside tokenizes as usual. */
 const SUPREME_RE = /\[\[(.+?)\]\]/;
 
 const tokenize = (text: string, keyBase: string): ReactNode[] =>

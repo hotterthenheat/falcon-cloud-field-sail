@@ -1,11 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - A CARD WITH THE TILE'S CORNERS (brand/BracketCard.tsx)
-
-  The mark's corner brackets, drawn at a card's corners — the system pages (a fault, the error boundary) and the share
-  image. The brackets are the tile's own ink (--bracket). His partner's, taken with the rest (2026-10-03).
-==================================================
-*/
+/* A card with the mark tile's corner brackets (--bracket ink): fault screens, the error boundary, the share image. */
 
 import type { ReactNode } from 'react';
 

@@ -9,47 +9,17 @@ interface CompanyLogoProps {
 }
 
 /*
-  Company mark for any ticker. Tries the real brand glyph first
-  (public/logos/{TICKER}.svg — simple-icons set with each brand's OFFICIAL
-  color baked into the file; near-black brands flip to white so nothing
-  vanishes on the dark canvas), and falls back to a house-styled monogram
-  tile for names we don't carry art for. Expanding coverage = dropping
-  another SVG in the folder; no code changes.
-
-  ONE BOX, TWO FACES (Noah, 2026-08-30, the open-time hop). The glyph and
-  the monogram used to be two different inline boxes: an <img> has no text
-  baseline, the monogram does, so when a missing glyph swapped to its tile
-  the table row it sat in shifted by a pixel — Multi-Leg's SPY/MU/COIN rows
-  shrinking 46ms after mount (the 404 round trip) while AAPL and TSLA, whose
-  files exist, held. A shared wrapper was not enough: the tile's letters
-  still handed the cell a text baseline. So the letters are OUT OF FLOW —
-  absolutely positioned inside the fixed box — and neither face has in-flow
-  text; the box's baseline is its bottom edge before and after the swap.
+  A company mark for any ticker: the brand SVG (public/logos/{TICKER}.svg, brand colour baked in), else a monogram
+  tile. Both faces share one fixed box with no in-flow text (the letters are absolutely positioned), so swapping
+  faces never shifts the row's baseline.
 */
-/* A NAME WITH NO LOGO IS ASKED FOR ONCE (2026-09-19). Seventeen names had a file then (85 since 2026-09-20 — `npm run
-   logos:fetch`, docs/logo-sources.md); every other name's <img> asked the server,
-   got nothing, and fell back to the letters — and did so again for EVERY row and EVERY mount that showed the name (a tape of
-   SPY prints is hundreds of wasted requests on a phone's connection). The names that failed are remembered for the session,
-   so the letters draw at once and the request is never repeated. */
+/* names without a file are remembered for the session, so the letters draw at once and the request is not repeated */
 const NO_LOGO = new Set<string>();
 
-/* A MARK THAT HAS TO ANSWER TO THE GROUND (2026-09-20, found while adding Microsoft, Oracle and Coinbase). An <img> cannot
-   read the page — its colour is baked into the file — and two kinds of brand cannot live with that:
-     · AN INK MARK — a brand that IS black (Apple). Its file was flipped to white for the dark canvas, and on the light page
-       it was a white apple on white paper: gone.
-     · A DEEP MARK — a brand so dark it sinks on black (Bank of America's navy #012169: right on paper, all but invisible on
-       the dark canvas — the same "near-black flips to white" rule, a brand it had missed; Boeing's blue #1D439C is the same
-       story, a faint thread on black).
-   So these few are drawn as a MASK — the file gives the SHAPE, the page gives the COLOUR: an ink mark is the page's own
-   ink (`--text-primary`, which on the dark terminal is #ededed, the very colour the file carried — dark is unmoved to the
-   digit), a deep mark is its brand colour where the ground is light and the page's ink where it is dark (`--logo-flip`,
-   tokens.css). Both tokens are re-scoped by the chart's chrome, so a mark inside a dark chart on a light page is still
-   right. Every other brand keeps its own colour on any ground, as an <img>. A name listed here MUST have a file: a mask
-   has no onError, so a missing file would draw nothing. */
-/* The lists grew with the fetched set (scripts/fetch-logos.mjs), each one LOOKED AT on both grounds at 16px: black brands
-   (Nike, Palantir, Uber, UPS, Roblox, Lucid, Rivian) and the navies and deep purples that sink on black. A name
-   goes here only when its file is ONE colour — a mask keeps the shape and throws the colours away (Citi's red arc, PayPal's
-   two blues and Pepsi's globe stay an <img> for that reason). */
+/* Marks that must answer to the ground are drawn as a CSS mask (the file gives the shape, the page the colour):
+   ink marks (black brands) take --text-primary; deep marks (navies that sink on black) take their brand colour on
+   light grounds and the page ink on dark (--logo-flip). A listed name must have a file: a mask has no onError. */
+/* only single-colour files belong in these lists: a mask discards colour */
 const INK_MARKS = new Set(['AAPL', 'NKE', 'PLTR', 'UBER', 'UPS', 'RBLX', 'LCID', 'RIVN']);
 const DEEP_MARKS: Record<string, string> = {
   BAC: '#012169',
@@ -63,11 +33,7 @@ const DEEP_MARKS: Record<string, string> = {
   MDLZ: '#4F2170',
 };
 
-/* A FUND HAS NO COMPANY (Noah, 2026-09-20: "for spy qqq and iwm you decide what fits best"). SPY is not State Street's
-   logo to a trader, QQQ is not Invesco's — nobody would know either at 16px, and the issuers' marks are long wordmarks.
-   THE TICKER IS THE MARK: the three letters ARE what everyone reads. So a fund keeps its letters, but as a badge that
-   was MEANT — the page's ink as a solid tile with the letters cut out of it — where a name we simply have no file for
-   wears the quiet grey tile. It is the list's anchor, and it is never asked of the server. */
+/* Funds have no company mark: the ticker is the mark, as a solid ink tile with the letters cut out, never fetched. */
 /* A fund has no company. The ticker is the mark — a solid tile, not a gray "missing" one, and never a request.
    The first eight are the indexes and the big ETFs even when a file exists (the issuer's wordmark is the wrong mark).
    The rest are the other products on the Compass list: a letter tile until a file is actually there. */
@@ -81,11 +47,8 @@ const FUND_EXTRA = new Set([
   'TAN', 'UCO', 'SSO', 'RSP',
 ]);
 
-/* A FILE THAT IS NOT A MARK (the dossier sweep, 2026-10-22). Most of the fetched set are favicons wrapped in an SVG: a
-   raster, not a shape. Two of those fail on the page: a favicon that is one flat colour (NEM's is a white 16px square)
-   draws a blank tile, and an ink mark drawn as a MASK (AAPL, PLTR) has no transparency to cut, so the mask is the whole
-   square — a white block where the apple should be. Each file is read once, off screen: a flat one falls back to the
-   letters, an opaque one is shown as the picture it is instead of masked. */
+/* Many files are favicons wrapped in SVG. Each is read once off screen: a flat one falls back to the letters, an opaque
+   one is shown as a picture rather than masked. */
 type Probe = 'flat' | 'opaque' | 'dark' | 'ok';
 const PROBED = new Map<string, Probe>();
 const PROBING = new Map<string, Promise<Probe>>();
@@ -171,9 +134,7 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
   return (
     <span
       aria-hidden
-      /* overflow-hidden is load-bearing: it pins an inline-block's baseline to
-         its bottom edge whatever is inside, so the glyph and the tile sit
-         identically in a line box — measured, this was the last pixel. */
+      /* overflow-hidden pins the inline-block baseline to its bottom edge, so glyph and tile align identically */
       className={`relative inline-block align-middle shrink-0 select-none overflow-hidden ${className}`}
       style={{ width: size, height: size }}
     >
@@ -186,7 +147,7 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
             letterSpacing: '-0.02em',
           }}
         >
-          {/* the whole symbol up to five letters (round 11: FWONK's tile read "FWON", another listed symbol) */}
+          {/* the whole symbol, up to five letters */}
           {sym.length <= 5 ? sym : sym.slice(0, 4)}
         </span>
       ) : !local ? (
@@ -212,9 +173,8 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
           className="block h-full w-full rounded-[4px]"
         />
       ) : probe === undefined ? (
-        /* NO <img> BEFORE THE FILE IS READ (round 11: /logos/HSBC.svg, SPCX, CEA, PUMP and the Congress ITT card drew the
-           browser's broken-image icon — the dev server answers a missing file with the app's HTML). The probe reads the
-           file off screen; until it answers the box is empty, then it is the mark or the letters, never a broken picture */
+        /* no <img> before the probe answers: a missing file would show the broken-image icon (the dev server answers with
+           HTML). The box stays empty, then shows the mark or the letters. */
         <span className="block h-full w-full" />
       ) : masked && probe === undefined ? (
         /* a mask waits for its file to be read — drawn early, an opaque file flashes as a solid square */

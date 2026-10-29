@@ -91,8 +91,6 @@ export function sessionBars(ticker: string) {
   return sessionCut(bars);
 }
 
-/** True when the session cut starts at the open — false when the tape began later, or before the bell */
-export const startsAtOpen = (bars: readonly Candle[]): boolean => bars.length > 0 && nyMinutes(bars[0].time * 1000) === SESSION_OPEN_MIN;
 /** True when a bar's minute is inside the cash session */
 export const inCashSession = (t: number): boolean => {
   const m = nyMinutes(t * 1000);

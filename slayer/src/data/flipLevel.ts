@@ -1,54 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - ONE FLIP FOR EVERY PAGE
-  (data/flipLevel.ts)
-
-  The flip every Pinpoint surface prints — the Map's
-  levels card and ruler, the Agenda, the Board's
-  "Flip · how far" and "Flip crossed today", Compare —
-  is read here, off the same contracts the levels are
-  read from (the LEVELS scope: today's own expiry, or
-  every listed one), with core/gammaFlip.ts's rule: the
-  price where the book's net gamma, re-priced at that
-  price, crosses zero.
-
-  THE INPUTS ARE THE VENDOR'S, AND THE SAME ON EVERY
-  PAGE. Each expiry's strikes carry the vendor's live
-  open-interest gamma at spot (spot-exposures — each
-  contract's OI × Γ × 100 × S² × 1%, data/uwBook.ts), so
-  re-pricing a leg is pricing those contracts outright:
-  G(S) = G₀ · Γ(S)S² / Γ(S₀)S₀², exact at spot, with no
-  constant carried. THE VOL RULE, AS THE CODE RUNS IT
-  (FLIP_RULE below is the same rule in a reader's words,
-  printed on the Map's data card — the sixth audit's m4):
-  · the front date and every date holding 0.5% or more of
-    the dates' gross gamma (uwBook ownIvDates): each leg at
-    its own contract's implied vol (option-contracts);
-  · on those dates a leg whose contract prints no vol: the
-    same expiry's smile at that strike (smileOf — the
-    out-of-the-money side's vols, linear between strikes,
-    flat past the last), and such a stand-in leg is capped
-    at what its open interest can hold (core/gammaFlip.ts);
-  · every other date (under 0.5%): its at-the-money vol off
-    the term structure — never a far wing at the ATM vol on
-    a date that matters (the fifth audit). The
-  same ticker and scope must give the
-  same flip whichever page loaded it first (the second
-  re-audit, 2026-10-22: NVDA All expiries read 205.38 on
-  the Board and 201.70 on the Map). Time to expiry runs
-  to 4:00 ET on the date. Whatever of the whole book's
-  per-strike total is not on a loaded date (a listing
-  past the fortieth, or a date still loading — the flip
-  is then marked provisional) is carried flat. No vol at
-  all on a book falls back to the running-net crossing.
-
-  THE REGIME IS THE SIGN OF NET GAMMA AT SPOT, never the
-  side of the flip: long gamma (absorbing) when net is
-  positive in the retail sign, short (amplifying) when it
-  is negative. The flip is where that changes, so the
-  word, the net figure and the flip cannot disagree.
-==================================================
-*/
+/* The one flip every Pinpoint page prints: the price where the levels' contracts' net gamma, re-priced at that price
+   (core/gammaFlip.ts), crosses zero. Inputs are the vendor's open-interest gamma, each leg at its own contract vol (the
+   smile, or the date's ATM vol on the trading clock, when it has none). The regime is the sign of net gamma at spot. */
 
 import { bellDay, shortDay, todayScopeLabel } from './bookWindow';
 import { carryFor } from '../core/carry';
@@ -64,7 +16,7 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 
 /** The flip's rule in a reader's words — the one statement of it on the pages (keep it the code's: see the head) */
 export const FLIP_RULE =
-  "The flip is the price where the book's net gamma, re-priced at that price, crosses zero within ±10%. In the session, when the profile crosses more than once, the flip stays on the crossing it stood on while that crossing is still there (the first read takes the one nearest price); while that crossing is missing the flip shows the crossing nearest it, and it moves for good once its crossing has been gone from three reads in a row over two minutes — and says so; the other crossing is named beside it once it has held its place for three reads over two minutes. Outside the session the vendor's rows stand still, so the flip is the crossing nearest price — the same on every page. Each leg is re-priced from the price and minute the vendor priced it at (after the close, the rows' own minute — never the wall clock), to 4:00 ET on its expiry. Vol: on the front expiry and on every expiry holding 0.5% or more of the book's gamma, each contract's own implied vol; a contract there with no vol of its own takes its expiry's smile at that strike (linear between the strikes that have one), capped at what its open interest can hold — and so does an in-the-money contract in its last day whose own vol runs over 150% and well above the smile's (its gamma then rests on a vol nobody trades at: it is re-priced at the smile's vol and the rest of its printed gamma is carried flat); the smaller expiries take their at-the-money vol off the term structure. A leg too small to matter — under a ten-millionth of the book's gross gamma, or under a hundred-thousandth with no vol of its own — is carried flat (its growth would be rounding, or rest on a vol nobody quoted)";
+  "The flip is the price where the book's net gamma, re-priced at that price, crosses zero within ±10%. Each contract is re-priced from the price and minute the vendor priced it at, to 4:00 ET on its expiry, at its own implied vol — or its expiry's smile, or the at-the-money vol for small expiries; contracts too far from price for their printed gamma to matter are priced from their open interest. When the profile crosses more than once in the session, the flip stays on its crossing until that crossing is gone, and says so; outside the session it is the crossing nearest price.";
 
 /* ---- which dates a chain is ---------------------------------------------------------------------------------- */
 
@@ -86,14 +38,8 @@ export function yearsTo(expiry: string, now: number = Date.now()): number {
   return tradingYears(expiry, now);
 }
 
-/*
-  THE VOL A LEG WITHOUT ITS OWN IS RE-PRICED WITH (the fifth audit, 2026-10-23: TSLA's 252.5P/257.5P, CROX's wings —
-  contracts the vendor prints gamma for but no implied vol — took the at-the-money vol, and a deep wing priced at the
-  ATM vol "grows" by millions as price walks toward it: ≈ −$7e12 at 0.95× spot, which moved TSLA's Today flip from
-  365.1 to 366.7 and CROX's from 113.8 to 115.6). The smile of the same expiry stands in: at each strike the
-  out-of-the-money side's own vol (the in-the-money one where that is all there is), linear between strikes that
-  have one, flat past the last — the vol the market is actually quoting near that strike. ATM only with no smile.
-*/
+/* A leg with no vol of its own takes its expiry's smile at that strike (the OTM side's vol, linear between strikes,
+   flat past the last) — a far wing at the ATM vol would grow without bound as price walks toward it. */
 export function smileOf(chain: readonly StrikeNode[], spot: number): (k: number) => number {
   const pts: [number, number][] = [];
   for (const n of chain) {
@@ -202,42 +148,17 @@ export interface LevelFlip extends FlipRead {
   moved?: { from: number; at: number } | null;
 }
 
-/*
-  TWO CROSSINGS, ONE FLIP, NO SILENT SWAP (the ninth audit's M4, 2026-10-23: SPY's Today flip read 764.21 → 772.62 →
-  764.04 → 772.06 → 773.13 → 764.36 → 763.96 within 35 minutes — with ~2.5h to expiry the profile crossed zero twice, and
-  the nearer crossing opened and closed as the minute's rows re-priced). When the profile crosses more than once, the flip
-  stays on the crossing it stood on while that crossing is still there (within STICK_FRAC of price), and the other is
-  disclosed (`second`). It moves only when its crossing closes — and then says so (`moved`). The choice is kept per name,
-  contracts and New York day, in this browser (localStorage), so a reload with the same inputs reads the same flip; a
-  first read takes the crossing nearest price.
-*/
+/* With more than one crossing the flip stays on the one it stood on while it is there (within STICK_FRAC of price) and
+   the other is disclosed (`second`); it moves only when its crossing closes, and says so (`moved`). */
 const STICK_FRAC = 0.004;
-/* THE HOLD OUTLASTS A BRIEF READ (the tenth audit's M1, 2026-10-23: Compare's SPY flip went 764.19 → 756.68 at 15:25 on
-   one read, GOOGL 325.33 → 316.31 → none → 329.40 across reloads; the vendor's in-the-money same-day gamma jumps between
-   reads — PLTR's 190C $0.5M at 15:01, $8.28M at 15:25 with price unchanged). The kept crossing has to be missing from
-   HOLD_READS reads in a row spanning HOLD_MS before the hold gives it up. */
+/* The kept crossing must be missing HOLD_READS reads in a row over HOLD_MS before the hold gives it up. */
 const HOLD_READS = 3;
 const HOLD_MS = 120_000;
-/* THE SECOND CROSSING IS NAMED ONLY ONCE IT IS STEADY (the same audit: the disclosed second flip jumped 769 → 750 → 752 →
-   753 → 756 → 776 → 788 in 70 minutes): a crossing is disclosed beside the flip only after it has been seen, within
-   STICK_FRAC of where it was, on SECOND_READS reads spanning SECOND_MS; once disclosed it keeps its place the way the
-   flip does */
+/* A second crossing is disclosed only once seen in place on SECOND_READS reads over SECOND_MS. */
 const SECOND_READS = 3;
 const SECOND_MS = 120_000;
-/*
-  THE HOLD NEVER PRINTS A CROSSING THAT IS NOT THERE, AND COUNTS READS, NOT CALLS (the eleventh audit's B1, 2026-10-24:
-  on a closed market Compare and the Dossier read SPY's Next-session flip 766.50 while the Map read 773.31 — the profile
-  crossed once, at 773.31. Compare's side panel prices replay books at the day's earlier prices, each was taken as a live
-  read, and the last one, priced at 763.64, seeded the kept crossing; the result was cached on its input key, so the hold
-  never looked again while the market was shut). Now:
-  · only the live book at its own price is a read of the hold (holdRead below) — a replay, a scenario or a session's
-    report is priced on its own and never touches it;
-  · a read counts once per input key (`seen`): the same rows read by ten components are one read;
-  · the flip printed is always one of the current read's crossings — while the kept one is missing it is the crossing
-    nearest where the kept one stood, and the kept one is given up once it has been missing HOLD_READS reads over HOLD_MS;
-  · outside the session there is no hold at all: the rows do not move, so every page and every fresh profile takes the
-    same crossing off the same inputs — the one nearest price (data/flipLevel.ts levelFlip).
-*/
+/* The hold only ever prints one of the current read's crossings; it counts the live book at its own price, once per
+   input key, and only in the session — outside it every page takes the crossing nearest price off the same inputs. */
 interface Stick {
   flip: number | null;
   moved: { from: number; at: number } | null;
@@ -251,8 +172,7 @@ interface Stick {
 const sticky = new Map<string, Stick>();
 const STICK_STORE = 'pinpoint.flipStick.v3';
 let stickRaw: string | null | undefined;
-/* EVERY PAGE OF THIS BROWSER READS THE SAME CHOICE (the same audit: QQQ's flip 732.17 on Compare against 692.34 on the
-   Board 12 minutes later): the kept choice is re-read from storage whenever another tab has written it */
+/* Every tab of this browser reads the same kept choice (re-read whenever another tab wrote it). */
 function loadStick(): void {
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STICK_STORE) : null;
@@ -384,30 +304,19 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
   if (!want.length) return null;
   const listed = (snapshot.uwExpiries ?? []).map(e => e.date).filter(d => d >= floor);
   const complete = dates === 'ALL' ? listed.length === 0 || listed.every(d => want.includes(d)) : true;
-  /* `at`: the clock to re-price at (a finished session's close) — without the asOf's contract-vol switch. A pinned clock
-     (the session's report, the replay) prices the snapshot's own spot at it; the live levels price each date FROM the
-     price and AT the minute the vendor priced its rows (uwBook peekGammaPriced, the fourth audit 2026-10-23) */
+  /* `at` pins the clock (a finished session's close). Live levels price each date from the price and at the minute the
+     vendor priced its rows (uwBook peekGammaPriced). */
   const pinned = at ?? snapshot.asOf ?? snapshot.flipAt;
   const wall = Date.now();
   const priced = pinned == null ? want.map(d => peekGammaPriced(snapshot.ticker, d)) : [];
   const sig = pinned != null ? `p${Math.floor(pinned / 60_000)}` : priced.map(p => (p ? `${p.at}@${p.price}` : '-')).join(',') + (priced.every(Boolean) ? '' : `|${Math.floor(pricingClock(undefined, wall) / 60_000)}`);
   /* the front date: the first live listing that holds strikes — the one date every page loads contracts for */
   const front = Object.keys(by).filter(d => d >= floor && by[d]?.length).sort()[0];
-  /* WHICH DATES RE-PRICE WITH THEIR OWN CONTRACTS' VOLS (the fifth audit, 2026-10-23): the front date, and every live
-     date holding 0.5% or more of the dates' gross gamma (uwBook ownIvDates): with only the front date's own vols AAPL's
-     whole book read 336.7 (its later dates' wings at the ATM vol), against 326.0 with every contract's own. The Map and a
-     Board-only name pick the same dates off the same chains and load their contracts, so both re-price with the same vols. */
+  /* The front date and every date holding 0.5% or more of the dates' gross gamma re-price with their own contract vols. */
   const ownDates = ownIvDates(by, want, front);
-  /* FINAL ONLY WITH THOSE DATES' OWN VOLS (the fourth audit's M1: SPY's Map read 771.25 off the at-the-money vol for
-     seconds, then 772.17): until their contracts are read the flip is provisional, and the pages print "…" */
-  /* …ON A PINNED CLOCK TOO (the seventh audit's M2, 2026-10-23): a finished session's book, priced at its close, was
-     taken as final before its own contract vols were in — "How the levels held" graded AAPL against 344.01 (then
-     326.75), and the Board froze "Flip crossed · 10/22" at META 6× (0×), GOOGL 18× (0×). Pinned or live, a flip is
-     final only once the dates it re-prices with their own vols have their contracts read. */
+  /* Final only once those dates' contracts are read; until then the pages print "…". */
   const factsIn = [...ownDates].every(d => !!entry.factsDates?.has(d));
-  /* …AND ONLY ONCE EVERY INPUT THAT MOVES THE ANSWER IS IN (the eleventh audit's B1): the own-vol dates' live rows with
-     the price and minute the vendor priced them at (until then a date is re-priced from the wrong price and clock), and
-     the term structure the other dates take their vol from */
+  /* …and once the own-vol dates' pricing minute and the term structure (the other dates' vols) are in. */
   const asOfPx = snapshot.asOf != null && at == null ? priceAtMinute(snapshot.ticker, snapshot.asOf) : null;
   const pricedIn = pinned != null || !entry.gammaLive || [...ownDates].every(d => !!peekGammaPriced(snapshot.ticker, d));
   const termIn = want.every(d => ownDates.has(d)) || !!entry.termIv;
@@ -421,9 +330,7 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
     const atm = term[d] ?? (entry.iv > 0 ? entry.iv : 0);
     const p = pinned == null ? priced[i] : null;
     const now = pinned ?? pricingClock(p?.at, wall);
-    /* A SNAPSHOT IS RE-PRICED FROM ITS OWN PRICE AT ITS OWN TIME (the eleventh audit's m5): the session's morning rows
-       (asOf 9:30) were priced from the closing price the report's book carries — they are priced from the price at their
-       own minute (the first cash bar at or after it) */
+    /* A snapshot pinned to an earlier minute is re-priced from the price at that minute. */
     const own0 = p && p.price > 0 && p.price !== spot ? p.price : asOfPx != null && asOfPx !== spot ? asOfPx : undefined;
     const ls = legsOfDate(by[d], d, atm, now, ownDates.has(d) || snapshot.asOf != null, own0, pinned == null, spot);
     for (const l of ls) if (l.iv > 0) withVol++;
@@ -447,8 +354,7 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
 /** The flip of the contracts in `chain` (defaults to the snapshot's levels chain) — see the head of this file */
 export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[] = snapshot.chain, at?: number): LevelFlip {
   const spot = snapshot.spot;
-  /* the running-net fallback is final only off a book that is not the live one; on the live book it stands in while the
-     dates land, and says so (the fourth audit's M1: "FLIP none nearby" for seconds on a cold load) */
+  /* On the live book the running-net fallback stands in while the dates land and is marked provisional. */
   const fallback = (final = !snapshot.liveBook): LevelFlip => ({ ...cumulativeFlip(chain.map(n => ({ strike: n.strike, net: n.netGex })), spot), complete: final });
   const set = legSet(snapshot, chain, at);
   if (!set) return fallback();
@@ -465,10 +371,7 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
     if (cache.size > 400) cache.clear();
     cache.set(set.key, base);
   }
-  /* THE HOLD IS THE LIVE BOOK'S, IN THE SESSION, ONCE FINAL (the eleventh audit's B1): a read is the hold's only when it is
-     the live book itself at its own price — not a replay or scenario book priced at another price (Compare's side panel
-     seeded SPY's hold at 766.51 from its 763.64 replay), not a pinned clock (a session's report). Outside the session the
-     rows stand still and there is no hold: every page reads the crossing nearest price off the same inputs. */
+  /* The hold applies only to the live book at its own price, in the session, once final (holdRead). */
   if (!set.complete || !holdRead(snapshot, at)) return base;
   const dates = datesOf(snapshot, chain);
   const stick = stickFlip(`${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : (dates ?? []).join(',')}|${nyIsoDate()}`, base, spot, Date.now(), set.key);
@@ -497,17 +400,9 @@ function holdRead(snapshot: MarketSnapshot, at: number | undefined): boolean {
   return sessionLive();
 }
 
-/*
-  THE BOOK'S NET THROUGH THE DAY, IN THE LEVELS' SCOPE (the fifth audit, 2026-10-23: the Map's "Dealer gamma through the
-  day" drew the vendor's whole-book minute series — −13B…−18B, the settled day in it, and NVDA's green 0…700M — under a
-  headline of the Today scope's −$3.1B / −$73.9M). The vendor's minute series is the open-interest book re-priced at
-  each minute's price; this is the same thing for the scope's own contracts: the legs the flip reads, priced at each
-  price handed in — so the path ends at the headline's net, in the same scope and the same sign. RETAIL sign (+ absorbs).
-  Null while the scope's legs are not final.
-*/
-/* …AT EACH MINUTE'S OWN CLOCK (the tenth audit's retail finding: the morning minutes were priced at the current time to
-   expiry, so a same-day leg drew the afternoon's gamma at the morning's prices). `times` (epoch ms, one per price): each
-   leg is re-priced with the time to its expiry that minute had — its time now plus the time since that minute. */
+/* The book's net through the day in the levels' scope: the flip's legs priced at each price handed in, so the path ends
+   at the headline net. RETAIL sign (+ absorbs). Null while the legs are not final. `times`: each price's own minute —
+   every leg then carries the time to expiry that minute had. */
 export function levelNetPath(snapshot: MarketSnapshot, chain: readonly StrikeNode[], prices: readonly number[], times?: readonly number[]): { path: number[]; complete: boolean } | null {
   const set = legSet(snapshot, chain);
   if (!set || !set.withVol) return null;
@@ -552,8 +447,7 @@ export function flipMeaning(read: Pick<FlipRead, 'flip' | 'netAtSpot' | 'range'>
     : `Dealers are short gamma here (their hedging amplifies moves); a move ${dir} ${fmtK(read.flip)} turns them long gamma, and their hedging starts to absorb moves.`;
 }
 
-/** Which side of the flip absorbs, on THIS book (the fourth audit's m4: the tip said "above it absorbs, below it
-    amplifies" whatever the book): the side price is on wears the regime of the net, the far side the other */
+/** Which side of the flip absorbs on THIS book: the side price is on wears the regime of the net, the far side the other. */
 export function flipSidesWords(flip: number, spot: number, houseNet: number): string {
   const long = houseNet < 0;
   const aboveAbsorbs = long ? flip < spot : flip > spot;
@@ -564,8 +458,7 @@ export function flipSidesWords(flip: number, spot: number, houseNet: number): st
 
 /* ---- "expires today", one wording for every page (the Map's clock, the Board, Compare, the Agenda) -------------- */
 
-/** What "Expires today" prints when nothing on the name expires that day: "nothing expires today", after the close
-    "nothing expires Fri 10/23" (the fourth audit: "— none today" sat under "EXPIRES FRI 10/23") */
+/** What "Expires today" prints when nothing on the name expires that day ("nothing expires Fri 10/23" after the close). */
 export const bellNone = (): string => {
   const b = bellDay();
   return `nothing ${b.head.charAt(0).toLowerCase()}${b.head.slice(1)}`;
@@ -579,21 +472,15 @@ export interface RegimeRead {
   read: string;
 }
 
-/**
- * THE BOOK READ AS ONE SENTENCE — PINPOINT'S (replacing data/gex.ts readHeatPattern on these pages, which named the
- * regime by the side of the flip: "below the flip the hedging amplifies moves, whatever the book nets to"). The regime
- * is the sign of net gamma at spot; the flip is where it changes; the levels are named as the Agenda names them — the
- * call wall (the most call hedging) and the put wall (the most put hedging), each described from where it sits against
- * price (core/walls.ts callWallWords / putWallWords) — a put wall above price is overhead hedging, not a floor.
- */
+/** The book read as one sentence: the regime is the sign of net gamma at spot, the flip is where it changes, and each wall
+    is described from where it sits against price (a put wall above price is overhead hedging, not a floor). */
 export function readRegime(levels: { spot: number; flip: number; flipFound?: boolean; callWall: number; putWall: number; net?: number }, netAt?: (strike: number) => number | null): RegimeRead {
   const { spot, callWall, putWall } = levels;
   const flip = levels.flipFound === false ? null : levels.flip;
-  /* one strike format on every page (the seventh audit's m2: "769.00" here, "769" everywhere else) */
+  /* one strike format on every page */
   const px = fmtK;
   const long = levels.net != null ? levels.net < 0 : flip != null && spot >= flip;
-  /* THE WALLS ARE THE MOST CALL AND THE MOST PUT GAMMA, EITHER SIDE OF PRICE (core/walls.ts pickLegWalls, the second
-     re-audit 2026-10-22) — so each is placed in words by where it actually is */
+  /* the walls are the most call and the most put gamma either side of price, so each is placed by where it is */
   /* ONE TOLERANCE FOR "AT PRICE" (core/walls.ts wallPlace, 0.05%): the clause and the wall's words beside it agree */
   const side = (k: number) => {
     const p = wallPlace(k, spot);
@@ -619,7 +506,7 @@ export function readRegime(levels: { spot: number; flip: number; flipFound?: boo
     return { key: 'WHIPSAW', read: `Dealers are short gamma, so their hedging speeds a move up whichever way it goes, and the put wall is all the way down at ${px(putWall)}.${flipClause}` };
   return {
     key: 'AMPLIFYING',
-    /* the one order (core/walls.ts LEVEL_ORDER): the call wall, then the put wall (the seventh audit's m2) */
+    /* the one order (core/walls.ts LEVEL_ORDER): the call wall, then the put wall */
     read: `Dealers are short gamma, so their hedging amplifies moves. ${cap(cw)}: ${callWallWords(callWall, spot, netAt?.(callWall))}; ${pw}: ${putWallWords(putWall, spot, netAt?.(putWall))}.${flipClause}`,
   };
 }

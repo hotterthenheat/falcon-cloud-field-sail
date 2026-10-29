@@ -1,45 +1,9 @@
-/*
-==================================================
-  SLAYER TERMINAL - INSIDERS (data/insiders.ts)
-
-  What the people who run a company did with their
-  own shares — and, far more, WHETHER THEY CHOSE
-  TO. The partner's engine (2026-09-09), ported into
-  the house.
-
-  THE DISTINCTION THE PAGE EXISTS FOR. Most insider
-  selling is a 10b5-1 plan: a schedule adopted
-  months earlier, run automatically, the seller
-  taking no view on the day it prints. "CFO sold
-  $4M" without saying it was a plan is false in
-  every way that matters. Chosen trades carry the
-  information, and the asymmetry is sharp: there
-  are many reasons to sell and essentially one
-  reason to buy. So a chosen BUY is the loudest row
-  on the page, and the signal is a word, not a
-  score.
-
-  THE CODE IS THE ROW. Most Form 4 rows are not
-  trades: a grant (A), a conversion (M), a tax
-  withholding (F) are compensation plumbing, and
-  the F row even carries a per-share price — the
-  valuation used for the withholding — which is
-  exactly why trackers mistake it for a sale. So
-  the page defaults to the open-market codes and
-  keeps the rest one toggle away, never mixed in.
-
-  THE PEOPLE ARE INVENTED: a real officer's name on
-  a trade they did not make would be a fabricated
-  record about a real person. A live feed puts the
-  filing's reporting owner beside the role and
-  every reading keeps working.
-==================================================
-*/
+/* Insider filings: what the people who run a company did with their own shares, and whether they chose to. Most
+   selling is on a 10b5-1 plan and carries no view; a purchase someone chose is the row with one obvious motive. Most
+   Form 4 rows are compensation (grants, conversions, withholdings), kept one toggle away from the trades. */
 
 import { dollars3 } from '../pages/record/money';
-import { dayKey, h01, hash } from '../core/rng';
-import { RECORD_UNIVERSE, recordPrice } from './recordUniverse';
-import type { InsiderFlow, InsiderKind, InsiderRole, InsiderSignal, InsiderTrade, PlanState, TxCode, TxCodeMeta } from '../types/record';
+import type { InsiderFlow, InsiderSignal, InsiderTrade, PlanState, TxCode, TxCodeMeta } from '../types/record';
 
 export const TX_CODES: Record<TxCode, TxCodeMeta> = {
   P: { code: 'P', label: 'Purchase', discretionary: true, openMarket: true, acquires: true, note: 'A purchase on the open market or in a private placement, at a price the buyer accepted. Bought by a person, it is the one row here with a single obvious motive behind it; bought by a company or fund, it is a strategic stake and is counted apart.' },
@@ -52,54 +16,6 @@ export const TX_CODES: Record<TxCode, TxCodeMeta> = {
 };
 export const OPEN_MARKET_CODES: TxCode[] = ['P', 'S'];
 export const ALL_CODES: TxCode[] = ['P', 'S', 'A', 'M', 'F', 'G', 'D'];
-
-/* FICTIONAL FILERS — see the header. A ROSTER PER COMPANY, built once over the
-   whole universe so no invented person holds office at two companies (Noah,
-   2026-09-09, on twelve names covering 110 companies: one director at eBay,
-   Intel and Comcast on a single screen "looks fake"). The roster is keyed by
-   the ticker alone: a CFO stays the CFO from one day to the next. */
-const FIRSTS = ['Adaeze', 'Anders', 'Beatrix', 'Callum', 'Cordelia', 'Dagny', 'Desmond', 'Eloise', 'Emeka', 'Farah', 'Fenwick', 'Giselle', 'Gustav', 'Halima', 'Hollis', 'Imani', 'Ingrid', 'Jasper', 'Josephine', 'Kenji', 'Leonora', 'Lucian', 'Maren', 'Marisela', 'Matthias', 'Nadia', 'Nils', 'Odette', 'Oluwaseun', 'Priya', 'Quentin', 'Rashid', 'Rosalind', 'Sabine', 'Soren', 'Tabitha', 'Tomasz', 'Ulrika', 'Vance', 'Vivienne', 'Wendell', 'Xiomara', 'Yusuf', 'Zelda', 'Aurelio', 'Bronwyn', 'Caspian', 'Delphine'];
-const LASTS = ['Adeyemi', 'Ashcroft', 'Bergström', 'Blackwood', 'Castellanos', 'Chaudhry', 'Delacroix', 'Dunmore', 'El-Amin', 'Fairbanks', 'Fitzwilliam', 'Groves', 'Haldane', 'Holloway', 'Ibarra', 'Iwasaki', 'Jorgensen', 'Kaplan', 'Kowalczyk', 'Lindqvist', 'Marchetti', 'Mbeki', 'Nakamura', 'Nyström', 'Okoro', 'Oyelaran', 'Pryce', 'Quintero', 'Ravensworth', 'Rutherford', 'Sallinen', 'Schreiber', 'Thorvald', 'Tremblay', 'Underhill', 'Vasquez', 'Voss', 'Whitlock', 'Winterbourne', 'Xu', 'Yamamoto', 'Zielinski', 'Abernathy', 'Bellingham', 'Carmichael', 'Danforth', 'Eriksen', 'Fontaine', 'Galloway', 'Hargreaves', 'Ilunga', 'Jankowski', 'Kirchner', 'Lockhart', 'Moreau', 'Nakagawa', 'Oduya', 'Pemberton', 'Rasmussen', 'Sørensen', 'Tanaka', 'Villanueva', 'Westergaard', 'Yeboah'];
-/* The offices only one person can hold are handed out by rank per company, so a
-   table never shows two chief executives of the same name */
-const SINGULAR_ROLES: InsiderRole[] = ['CEO', 'CFO', 'COO'];
-const PLURAL_ROLES: InsiderRole[] = ['Director', 'EVP', 'Chief Legal Officer', '10% owner'];
-const ROSTER = 8;
-interface Officer {
-  person: string;
-  role: InsiderRole;
-}
-const roleAt = (i: number): InsiderRole => (i < SINGULAR_ROLES.length ? SINGULAR_ROLES[i] : PLURAL_ROLES[(i - SINGULAR_ROLES.length) % PLURAL_ROLES.length]);
-/* ONE hash split in two. Two hashes of strings that differ only in their last
-   character are correlated under FNV (the state before the last byte is
-   shared), so drawing the first name from "…|f" and the last from "…|l" reached
-   a fraction of the pairs and the dedupe could not escape them (measured
-   2026-09-09: 559 distinct names in 880 draws, 4,872 retries). */
-const draw = (ticker: string, i: number, salt: number): string => {
-  const h = hash(`roster|${ticker}|${i}|${salt}`);
-  return `${FIRSTS[h % FIRSTS.length]} ${LASTS[Math.floor(h / FIRSTS.length) % LASTS.length]}`;
-};
-let rosters: Map<string, Officer[]> | null = null;
-/** Every company's roster, once — the universe walked in order, a name never reused */
-function universeRosters(): Map<string, Officer[]> {
-  if (rosters) return rosters;
-  const used = new Set<string>();
-  const map = new Map<string, Officer[]>();
-  for (const u of RECORD_UNIVERSE) {
-    const list: Officer[] = [];
-    for (let i = 0; i < ROSTER; i++) {
-      let person = draw(u.ticker, i, 0);
-      for (let salt = 1; used.has(person) && salt < 12; salt++) person = draw(u.ticker, i, salt);
-      used.add(person);
-      list.push({ person, role: roleAt(i) });
-    }
-    map.set(u.ticker, list);
-  }
-  rosters = map;
-  return map;
-}
-/** A company's roster — a name outside the universe gets one drawn on the spot */
-export const rosterOf = (ticker: string): Officer[] => universeRosters().get(ticker) ?? Array.from({ length: ROSTER }, (_, i) => ({ person: draw(ticker, i, 0), role: roleAt(i) }));
 
 /** An OPEN-MARKET buy someone chose: the filing ticked "not a 10b5-1 plan". A buy on a plan is not one, and neither is a
     buy whose filing left the box blank — the row reads UNSTATED, so the sums do not count it as chosen either (the data
@@ -117,9 +33,7 @@ export const isCorporateBuy = (t: { code: TxCode; entity?: boolean }): boolean =
     read CHOSEN and counted in "sold by choice") — the filer is classed the same way for its sales */
 export const isCorporateTrade = (t: { code: TxCode; entity?: boolean }): boolean => !!t.entity && !!TX_CODES[t.code]?.openMarket;
 
-const EMPTY: InsiderFlow = { ticker: '', trades: [], bought: 0, sold: 0, net: 0, plannedValue: 0, compValue: 0, buyerCluster: 0, openMarketBuys: 0, chosenSold: 0, signal: 'quiet', windowDays: 0 };
-
-/** Roll a set of filings — the simulator and the live wire share the verdict. */
+/** Roll a set of filings into the window's totals and its signal */
 export function summariseFlow(ticker: string, trades: InsiderTrade[], windowDays: number): InsiderFlow {
   let bought = 0;
   let sold = 0;
@@ -158,102 +72,9 @@ export function summariseFlow(ticker: string, trades: InsiderTrade[], windowDays
   return { ticker, trades, bought, sold, net, plannedValue, compValue, buyerCluster: recentBuyers.size, openMarketBuys, chosenSold, signal, windowDays };
 }
 
-/** One name's insider filings over a window — deterministic per session day */
-export function insiderFlow(ticker: string, windowDays = 90, day = dayKey()): InsiderFlow {
-  const sym = ticker.toUpperCase();
-  const seed = `${sym}|${day}|ins`;
-  /* Most names have a handful of filings in a quarter and some have none — an empty window is itself a fact */
-  const count = Math.floor(h01(`${seed}|n`) * 7);
-  const px = recordPrice(sym);
-  const trades: InsiderTrade[] = [];
-  let bought = 0;
-  let sold = 0;
-  let plannedValue = 0;
-  let openMarketBuys = 0;
-  let compValue = 0;
-  let chosenSold = 0;
-  const roster = rosterOf(sym);
-  for (let i = 0; i < count; i++) {
-    const s = `${seed}|${i}`;
-    const { person, role } = roster[Math.floor(h01(`${s}|pn`) * roster.length)];
-    /* The code is drawn first and everything follows from it; the mix is the real one's — mostly compensation plumbing */
-    const cr = h01(`${s}|c`);
-    const code: TxCode = cr < 0.2 ? 'M' : cr < 0.37 ? 'F' : cr < 0.51 ? 'A' : cr < 0.79 ? 'S' : cr < 0.9 ? 'P' : cr < 0.96 ? 'D' : 'G';
-    const meta = TX_CODES[code];
-    const kind: InsiderKind = meta.acquires ? 'BUY' : 'SELL';
-    /* Three states; a plan is overwhelmingly a selling instrument */
-    const pr = h01(`${s}|p`);
-    const planRate = meta.acquires ? 0.1 : 0.6;
-    const plan: PlanState = !meta.openMarket ? 'discretionary' : pr < planRate ? 'plan' : pr < planRate + 0.28 ? 'discretionary' : 'unknown';
-    const daysAgo = Math.floor(h01(`${s}|d`) * windowDays) + 1;
-    const shares = Math.round((500 + h01(`${s}|sh`) ** 2 * 120_000) / 100) * 100;
-    const sincePct = Number(((h01(`${s}|m`) * 2 - 1) * 14).toFixed(1));
-    const price = Number((px / (1 + sincePct / 100)).toFixed(2));
-    const value = Math.round(shares * price);
-    const heldAfter = Math.round(shares * (2 + h01(`${s}|h`) * 40));
-    trades.push({ id: s, ticker: sym, role, person, code, kind, shares, price, value, daysAgo, plan, clusterCount: 0, heldAfter, stakePct: Number(((shares / (shares + heldAfter)) * 100).toFixed(1)), sincePct });
-    /* Bought and sold are MARKET activity only; the plumbing is counted apart */
-    if (meta.openMarket) {
-      if (kind === 'BUY') {
-        bought += value;
-        if (isChosenBuy({ code, plan })) openMarketBuys += value;
-      } else {
-        sold += value;
-        if (plan === 'discretionary') chosenSold += value;
-      }
-      if (plan === 'plan' && kind === 'SELL') plannedValue += value;
-    } else compValue += value;
-  }
-  /* Clusters: distinct filers acting the same way inside 30 days */
-  const recentBuyers = new Set(trades.filter(t => t.code === 'P' && t.daysAgo <= 30).map(t => t.person));
-  const recentSellers = new Set(trades.filter(t => t.code === 'S' && t.daysAgo <= 30).map(t => t.person));
-  for (const t of trades) {
-    if (t.daysAgo > 30) continue;
-    if (t.code === 'P') t.clusterCount = recentBuyers.size;
-    else if (t.code === 'S') t.clusterCount = recentSellers.size;
-  }
-  trades.sort((a, b) => a.daysAgo - b.daysAgo);
-  const net = bought - sold;
-  /* The verdict, in the order that is the argument: a chosen buy first and against the smallest bar */
-  const discretionarySold = chosenSold;
-  let signal: InsiderSignal = 'quiet';
-  /* FLAT READS FLAT (the retail test, round 6: FOX "ACCUMULATING · against $10.3M sold by choice" on $10.3M bought and
-     $10.3M sold): chosen buying and chosen selling within a tenth of each other is neither side */
-  const evenly = openMarketBuys > 0 && discretionarySold > 0 && Math.abs(openMarketBuys - discretionarySold) <= 0.1 * Math.max(openMarketBuys, discretionarySold);
-  if (trades.length === 0) signal = 'quiet';
-  else if (evenly) signal = 'flat';
-  else if (openMarketBuys > 0 && openMarketBuys >= discretionarySold) signal = 'accumulating';
-  else if (discretionarySold > 0 && discretionarySold >= sold * 0.4) signal = 'distributing';
-  else if (sold > 0) signal = 'scheduled selling';
-  return { ticker: sym, trades, bought, sold, net, plannedValue, compValue, buyerCluster: recentBuyers.size, openMarketBuys, chosenSold, signal, windowDays };
-}
-
 /** A stable address for a person. Names are unique across the book. */
 export const personSlug = (name: string) =>
   name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
-/** Everything this person filed in the window, including the grants the tape leaves out. */
-export function insiderBook(slug: string, windowDays = 90, day = dayKey()) {
-  const trades = insiderFeed(windowDays, ALL_CODES, day).filter(t => personSlug(t.person) === slug);
-  if (trades.length === 0) return null;
-  const first = trades[0];
-  return { person: first.person, role: first.role, ticker: first.ticker, trades };
-}
-
-/** Every filing across the universe, newest first — the page's feed */
-export function insiderFeed(windowDays = 90, codes: TxCode[] = OPEN_MARKET_CODES, day = dayKey()): InsiderTrade[] {
-  const keep = new Set(codes);
-  return RECORD_UNIVERSE.flatMap(u => insiderFlow(u.ticker, windowDays, day).trades)
-    .filter(t => keep.has(t.code))
-    .sort((a, b) => a.daysAgo - b.daysAgo);
-}
-
-/** Names with chosen insider buying, heaviest first */
-export function insiderBuyers(windowDays = 90, day = dayKey()): InsiderFlow[] {
-  return RECORD_UNIVERSE.map(u => insiderFlow(u.ticker, windowDays, day))
-    .filter(f => f.openMarketBuys > 0)
-    .sort((a, b) => b.openMarketBuys - a.openMarketBuys);
-}
 
 /* ONE FORMATTER WITH THE PAGE'S CARDS (the fourth audit, 2026-10-23: the sentence read $1.4B beside a card's $1.35B) */
 const fmtM = dollars3;

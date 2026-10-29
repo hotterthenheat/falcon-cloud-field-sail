@@ -96,6 +96,8 @@
 ==================================================
 */
 
+import BacktestPaused from './BacktestPaused';
+import { BACKTEST_LIVE } from '../../data/review/tape';
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { X } from 'lucide-react';
@@ -572,10 +574,12 @@ const Desk = () => {
   );
 };
 
-/* A SESSION IS ONE KIND OR THE OTHER (docs/review-futures-rules.md): the same address opens the desk of its kind */
+/* A session is one kind or the other: the same address opens the desk of its kind, while Backtest runs */
 const DeskOfKind = () => {
   const { id } = useParams();
-  return isFutures(useAnySession(id)) ? <FuturesDesk /> : <Desk />;
+  const session = useAnySession(id);
+  if (!BACKTEST_LIVE) return <BacktestPaused />;
+  return isFutures(session) ? <FuturesDesk /> : <Desk />;
 };
 
 export default DeskOfKind;

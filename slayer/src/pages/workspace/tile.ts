@@ -55,7 +55,6 @@ import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type { ExposureProfileData } from '../../types/gex';
 import type { MarketSnapshot } from '../../types/market';
-import type { CompassView } from '../../types/compass';
 
 /** What the desk hands every tile about the name it is on */
 export interface WorkspaceCtx {
@@ -63,14 +62,10 @@ export interface WorkspaceCtx {
   /** The snapshot this context was built from — a tile that derives its own view (its own expiry, its own greek)
       rebuilds from it */
   snapshot: MarketSnapshot;
-  /** Bumped with every feed tick */
+  /** Bumped with every sweep of the live book */
   revision: number;
-  /** The 1s heat tick */
-  pulseTick: number;
   /** Today's book, ten strikes each side — the levels every tile reads */
   exposure: ExposureProfileData;
-  /** The Compass board for this name's universe — built the first time a tile asks */
-  setups: CompassView;
 }
 
 /** A tile's own settings — kept with the instance on the desk */

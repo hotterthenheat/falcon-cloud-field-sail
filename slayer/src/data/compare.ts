@@ -1,25 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - COMPARE (data/compare.ts)
-
-  Two names, the same reads, side by side (Noah,
-  2026-09-08: "a compare page of 2 different
-  stocks/tickers in multiple ways you see fit").
-  Nothing here is a new model: for each name it is
-  the Board's row — the flip gauge, the day's book,
-  the bell's share, the agenda's first strike — plus
-  Ahead's expected move and where the close lands,
-  and the book's strikes with their distance from
-  spot, so two books can sit on ONE ruler.
-
-  THE RULER is the desk's (DistanceUnitPicker): a
-  strike is placed by how far it is from its own
-  name's spot — percent, ATR or expected-move
-  units. Dollars do not compare across names, so
-  the '$' choice reads as percent here and the head
-  says so.
-==================================================
-*/
+/* Compare: two names, the same reads side by side — the Board's row, the corridor and close weights, and each book's
+   strikes by distance from its own spot, so two books sit on one ruler (dollars do not compare across names, so '$'
+   reads as percent here). */
 
 import { daySigmaOfIv, sigmaOverMinutes } from './expectedMove';
 import { wallPlace } from '../core/walls';
@@ -44,12 +25,8 @@ export const WINDOW = 30;
 
 export type { Greek };
 
-/* THE GREEK (Noah, 2026-09-09: "shouldn't we be able to compare the different
-   gex, vex and dex of each ticker?… when I switch the map from gex to dex the
-   supreme node changes"): the ruler, the reach sums and the Supreme row follow
-   one Greek card; the walls stay gamma's, because a wall is a gamma idea. Each
-   greek has its own two words for a strike's sign — gamma speaks push, delta
-   speaks lean, vega speaks volatility — the ledger's own reading. */
+/* The greek the ruler, the reach sums and the Supreme row follow; the walls stay gamma's. Each greek has its own two
+   words for a strike's sign. */
 export const GREEK_OPTIONS: { value: Greek; label: string; hint: string }[] = [
   { value: 'gex', label: 'GEX', hint: 'Gamma — how hard dealers must hedge a move' },
   { value: 'dex', label: 'DEX', hint: 'Delta — which way dealers are leaning' },
@@ -85,8 +62,7 @@ export const GREEK_WORDS: Record<Greek, GreekWords> = {
 };
 export const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'vega $', vanna: 'VANNA', charm: 'CHARM', color: 'COLOR', vomma: 'VOMMA', speed: 'SPEED', veta: 'VETA', zomma: 'ZOMMA' };
 
-/** EACH GREEK IN ONE PLAIN SENTENCE (the retail test, 2026-10-22: "VEX −$14.6K next to VANNA $3.9M with no explanation") —
-    the hover on every label that prints them side by side */
+/** Each greek in one plain sentence — the hover on every label that prints them side by side */
 export const GREEK_EXPLAIN: Record<Greek, string> = {
   gex: 'GEX (gamma): the stock dealers must trade for a 1% move — positive, they absorb moves; negative, they amplify them',
   dex: 'DEX (delta): the stock dealers already hold against their options — which way their hedging leans',
@@ -147,7 +123,7 @@ export interface CompareSide {
   closes: { strike: number; odds: number } | null;
   /** The best single strike's odds even when it is no lean */
   closeTop: { strike: number; odds: number } | null;
-  /* THE BOOK'S READ FOR TWO NAMES (2026-10-17 — Head to head is the read card laid out for two): what the card prints */
+  /* the book's read for two names: what the card prints */
   /** The snapshot the side was built from — the windows' history is read off it (data/replay.ts) */
   snapshot: MarketSnapshot;
   /** The book's strikes, descending, every greek's legs at each — the heaviest list, the strike's legs and greeks */
@@ -207,7 +183,7 @@ export function fmtShared(v: number, unit: Exclude<DistanceUnit, '$'>): string {
   return `${sign}${a.toFixed(2)}σ`;
 }
 
-/** One book, on the contracts the reader picked — today's by default (Noah, 2026-09-10: the ruler's head gained an Expiry card like the Map's) */
+/** One book, on the contracts the reader picked — today's by default */
 export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, expiry: ExposureExpiry = '0DTE'): CompareSide | null {
   if (!snapshot.chain || snapshot.chain.length === 0) return null;
   const { ticker, spot } = snapshot;
@@ -223,7 +199,7 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   const gauge = buildFlipGauge(lens);
   const iv = peekIv(ticker) ?? 0.2;
   /* the expiry this side reads: its own implied move, not the 30-day IV (data/uwBook.ts peekDaySigma) */
-  /* …over the scope's own horizon — "by Nov 20" for a later expiry (data/wall.ts scopeSigma, the fifth audit) */
+  /* …over the scope's own horizon — "by Nov 20" for a later expiry (data/wall.ts scopeSigma) */
   const ss = scopeSigma(lens, clock.minutesLeft, iv);
   const sigmaDay = snapshot.liveBook ? ss.sigmaDay : daySigmaOfIv(spot, iv) ?? spot * 0.01;
   const sigmaLeft = snapshot.liveBook ? ss.sigmaLeft : sigmaOverMinutes(sigmaDay, clock.minutesLeft);
@@ -256,15 +232,12 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     weight: Math.abs(rows.gex.find(r => Math.abs(r.strike - k) < 1e-9)?.value ?? lens.chain.find(n => Math.abs(n.strike - k) < 1e-9)?.netGex ?? 0),
   });
 
-  /* THE NAMED LEVELS ARE levelsFor's (the sixth audit's B1, 2026-10-23: META All expiries' supreme read 700 · +$186.1M
-     here — the heaviest strike of the drawn window — against 750 · +$290.7M on the raw book and the Board). On the two
-     Levels scopes the supreme, the walls and the flip are the one function's, drawn or not. */
+  /* the named levels are levelsFor's on the two Levels scopes, drawn or not */
   const lv = snapshot.liveBook && (expiry === '0DTE' || expiry === 'ALL') ? levelsFor(ticker, expiry) : null;
   if (lv) supreme.gex = at(lv.supreme);
   else supreme.gex = at(profile.levels.supreme);
-  /* NO OTHER SCOPE'S LEVELS UNDER THIS ONE'S NAME (the eighth audit's m6: SPY "FLIP 772.69" — the All-expiries flip — under
-     TODAY'S CONTRACTS): on a live book a Levels scope with no levelsFor reading yet, or a picked expiry whose own chain has
-     not landed (the lens above then fell back to the levels book), is not final — the page keeps its loading state */
+  /* no other scope's levels under this one's name: a Levels scope with no levelsFor reading yet, or a picked expiry whose
+     chain has not landed, is not final */
   const scoped = expiry === '0DTE' || expiry === 'ALL';
   /* (a picked expiry the name does not list never lands — once every date is in, the page reads what there is) */
   const ownMissing = !!snapshot.liveBook && (scoped ? !lv : !snapshot.uwChains?.[expiry]?.length && scopeDatesPending(ticker, 'ALL'));
@@ -283,9 +256,7 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     /* no surface for this name yet */
   }
   const bars = sessionBars(ticker) ?? [];
-  /* THE LIKELIEST CLOSE IS THE DESK AGENDA'S (the seventh audit's m4: Compare said "764 · 9% of the time" while the Agenda
-     said "no clear lean" and listed 765 at 8%) — the same build, the same expected move, and the same LEAN_MIN before a
-     strike is called the close's lean */
+  /* the likeliest close is the desk agenda's: the same build, the same 1σ and the same LEAN_MIN */
   const agenda = deskAgenda(snapshot, expiry, clock, 'matters', watchSurface(snapshot));
   const lead = agenda?.first[0];
   const watch: BoardRow['watch'] = watchFrom(lead);
@@ -294,8 +265,7 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     ticker,
     spot,
     changePct: snapshot.changePercent,
-    /* THE REGIME IS levelsFor's (the eighth audit's m2): the sign of the scope's whole net, as the Board, the Map and the
-       Dossier print it — the gauge's net at spot was a second reading of the same word */
+    /* the regime is levelsFor's: the sign of the scope's whole net */
     regime: lv ? lv.regime : gauge.regime,
     flip: flipAt,
     flipDistPct: flipAt != null && spot > 0 ? ((flipAt - spot) / spot) * 100 : null,
@@ -325,8 +295,7 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
       const n = lens.chain.find(x => Math.abs(x.strike - k) < 1e-9);
       return n ? retailNet(n.netGex) : null;
     })())).read,
-    /* the expiries THESE figures read (the ninth audit's m4: "61 STRIKES · 25 EXPIRIES" under "TODAY'S CONTRACTS") — one
-       on Today or a picked date, every listed one on All expiries */
+    /* the expiries these figures read: one on Today or a picked date, every listed one on All expiries */
     expiryCount: expiry === 'ALL' ? (snapshot.uwExpiries?.length || surface?.expiries.length || 1) : 1,
     expiry,
   };
@@ -397,9 +366,8 @@ export interface PairPoint {
   closeB: number;
 }
 
-/** WHERE A DAY SITS AGAINST THE USUAL RANGE, IN WORDS A PERSON CAN PICTURE (Noah, 2026-09-20, on the pair: "i dont know what
-    it does") — never "+0.8σ". The usual range is the average, one usual swing each way; a day is said as how far it has
-    gone toward an edge of it, or how far past. */
+/** Where a day sits against the usual range, in words a person can picture (never "+0.8σ"): how far toward an edge of
+    the average ± one usual swing, or how far past. */
 export interface PairPlace {
   where: 'inside' | 'above' | 'below';
   /** Which name is further ahead than on an average day — neither, on the average */
@@ -441,9 +409,7 @@ export interface DailyClose {
   close: number;
 }
 
-/* THE SESSIONS COME FROM THE DAILY BARS WHEN THEY ARE IN (the Pinpoint sweep, 2026-10-22): the book's own candles hold
-   a session or two of 5-minute bars, so "the pair" sat on "not enough sessions on the tape yet" on every name. The
-   vendor's daily bars carry months; the minute bars still draw today. */
+/* The sessions come from the daily bars when they are in (months of them); the minute bars still draw today. */
 export function buildPair(a: string, b: string, dailyA?: readonly DailyClose[] | null, dailyB?: readonly DailyClose[] | null): Pair {
   const ba = bookCandles(a) ?? [];
   const bb = bookCandles(b) ?? [];
@@ -489,9 +455,7 @@ export function buildPair(a: string, b: string, dailyA?: readonly DailyClose[] |
     const cb = bAt.get(x.time);
     if (cb) today.push({ time: x.time, ratio: x.close / cb, closeA: x.close, closeB: cb });
   }
-  /* ONE QUOTE ON THE PAGE (the second re-audit, 2026-10-22: "SPY 763.97 ÷ QQQ 704.59" under a head reading QQQ 703.42):
-     today's point is the two last prices the heads print (the book's spot — after the close, the after-hours print), not
-     the last minute bar both happened to print */
+  /* one quote on the page: today's point is the two last prices the heads print */
   const qa = peekSpot(a);
   const qb = peekSpot(b);
   if (qa != null && qb != null && qb > 0 && today.length) today[today.length - 1] = { ...today[today.length - 1], ratio: qa / qb, closeA: qa, closeB: qb };
@@ -505,7 +469,7 @@ export function buildPair(a: string, b: string, dailyA?: readonly DailyClose[] |
   }
   const z = now != null && mean != null && sd != null && sd > 0 ? (now - mean) / sd : null;
   const outside = mean != null && sd != null ? done.filter(p => Math.abs(p.ratio - mean!) > sd!).length : 0;
-  /* THE SENTENCE, IN PLAIN WORDS (2026-09-20): what the figure is, what is usual, where today sits, how often it leaves */
+  /* the sentence: what the figure is, what is usual, where today sits, how often it leaves */
   const place = now != null ? pairPlace(now, mean, sd) : null;
   const f3 = (v: number) => v.toFixed(v >= 10 ? 2 : 3);
   const sentence =
@@ -526,7 +490,7 @@ export function buildPair(a: string, b: string, dailyA?: readonly DailyClose[] |
 const onFlip = (s: CompareSide) => s.flipDistPct != null && Math.abs(s.flipDistPct) < 0.05;
 export const regimeWord = (s: CompareSide) => (onFlip(s) ? 'go either way on' : s.regime === 'LONG' ? 'absorb' : s.regime === 'SHORT' ? 'amplify' : 'lean one way');
 
-/* ONE "AT PRICE" (core/walls.ts wallPlace, 0.05% — the tenth audit's m2) */
+/* One "at price" (core/walls.ts wallPlace, 0.05%) */
 const placeWords = (strike: number, spot: number, distPct: number): string => {
   const p = wallPlace(strike, spot);
   return p === 'at' ? 'right at price' : `${Math.abs(distPct).toFixed(2)}% ${p}`;

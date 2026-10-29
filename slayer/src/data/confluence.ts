@@ -182,12 +182,3 @@ export function buildConfluence(base: readonly Candle[]): ConfluenceRow[] {
 /** ▲ / ▬ / ▼ — and a dash where there is no view. */
 export const TREND_GLYPH: Record<TrendState, string> = { up: '▲', flat: '▬', down: '▼' };
 
-/** What a row means, in words, for the hover title and a screen reader. */
-export const trendWords = (row: ConfluenceRow): string =>
-  row.state === null
-    ? `${row.tf}: not enough history — ${row.bars} bar${row.bars === 1 ? '' : 's'}`
-    : row.state === 'up'
-      ? `${row.tf}: above its EMA${CONFLUENCE_EMA} and its VWAP`
-      : row.state === 'down'
-        ? `${row.tf}: below its EMA${CONFLUENCE_EMA} and its VWAP`
-        : `${row.tf}: between its EMA${CONFLUENCE_EMA} and its VWAP`;

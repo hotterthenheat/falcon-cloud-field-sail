@@ -6,7 +6,6 @@ import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME, noRows } from '../ui/houseGrid';
 import CompanyLogo from '../ui/CompanyLogo';
-import { tickerName } from '../../data/tickers';
 import { buildHoldings, type HoldingRow } from '../../data/fileBooks';
 import type { InsiderTrade, ReportOwner } from '../../types/record';
 import { useCongressBook } from '../../data/liveRecord';

@@ -1,67 +1,10 @@
 /*
-==================================================
-  SLAYER TERMINAL - "IT IS WORKING"
-  (components/ui/Working.tsx)
-
-  The small mark for a wait where THE BOX IS ALREADY
-  ON SCREEN and only what is in it is pending (Noah,
-  2026-09-19: "a little loading component that i
-  dont think should take away from the skeleton
-  load"). Two jobs that never overlap:
-
-    a SKELETON   what SHAPE is coming — a page's code
-                 is on its way (the route skeletons)
-    THIS         the thing you are looking at is
-                 WORKING — the window is booting, the
-                 name you picked is arriving, the
-                 button you pressed is doing it
-
-  So it is never used on a route change, and never
-  for a wait the reader cannot see: it appears only
-  once the wait has lasted `delay` (300ms), so a fast
-  one never flickers it. No wait is ever invented to
-  show it off.
-
-  THE ONE EXCEPTION, AND IT IS NOT A WAIT (Noah,
-  2026-09-19, on Trace's Intervals page: "should have
-  our brief little loading icon before transitioning
-  because right now the transition is way too quick
-  for the user to even figure out that the page
-  switched"): a change the reader ASKED FOR that lands
-  faster than the eye — 300 rows re-sorted in one
-  frame reads as nothing having happened. `useBeat`
-  holds the mark over the box for one short beat so
-  the change is SEEN. It is for a whole box swapping
-  what it holds at the reader's click, nothing
-  smaller, and never for data that moved by itself.
-
-  THE MARK is loading-ui's Morphing Infinity — a line
-  that goes circle → infinity → circle (loading-ui.com
-  /docs/components/morphing-infinity; their words:
-  "the installed files are yours"). Adapted: it rides
-  the motion library we already have (framer-motion is
-  the same package under its old name), it holds still
-  as the infinity where the reader asked for less
-  motion, and it takes its colour from the text around
-  it. COLOUR: leave it the quiet ink. It is not live
-  (lime), not where-you-are (silver), not the supreme
-  (magenta) and not a direction.
-
-  WHAT IS HERE:
-    <MorphingInfinity />   the mark alone
-    <Working />            the mark after the delay,
-                           with an optional line, as
-                           a polite status
-    useWorking(active)     the delay, for a surface
-                           that places the mark itself
-    useBusy()              for a button: run an action,
-                           and if it returns a promise
-                           the button is busy until it
-                           settles. Today's actions are
-                           instant and never show it;
-                           at launch the same handlers
-                           return the request.
-==================================================
+  A small working mark for a box already on screen whose contents are pending (a skeleton shows what shape is coming;
+  this says the visible thing is working). Never for route changes; it appears only after `delay` (300 ms).
+  `useBeat` holds it for one beat over a box whose requested change lands too fast to see.
+  The mark is loading-ui's Morphing Infinity (loading-ui.com, "the installed files are yours"), on framer-motion,
+  still under reduced motion, in the surrounding text colour.
+  Exports: MorphingInfinity, Working (delayed, polite status), useWorking(active), useBusy() for buttons.
 */
 
 import { useCallback, useEffect, useRef, useState, type SVGProps } from 'react';

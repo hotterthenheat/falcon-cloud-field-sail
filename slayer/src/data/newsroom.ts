@@ -1,26 +1,7 @@
-/*
-==================================================
-  SLAYER TERMINAL - NEWS ROOM GEOGRAPHY (data)
-  The globe's information layer. ONE generator rule:
-  the wire facts come from data/news.ts (the same
-  buildNewsFeed the Pulse widget reads) — this module
-  only DECORATES each item with geography and the
-  room's grading, so the globe, the wire rail and the
-  widget can never disagree about what the news is.
+/* The wire's geography: each live headline placed at its company's home city (or the place a macro story names),
+   with the zones it reaches. Decoration only; the stories themselves come from liveRecord.ts. */
 
-  Grading is states-not-orders vocabulary:
-    THREAT — the story reads negative for what it touches
-    ALLY   — the story reads positive for what it touches
-    WATCH  — the wire spoke, the model reads it neutral
-  Thresholds ±0.12 on sentiment — the SAME cut the
-  retired v1 page used for tones and lean counts
-  (docs/news-page-reference.md), kept so history
-  reads continuously.
-==================================================
-*/
-
-import { buildNewsFeed, type NewsItem } from './news';
-import { now } from '../core/clock';
+import type { NewsItem } from './news';
 
 export type NewsGrade = 'THREAT' | 'ALLY' | 'WATCH';
 
@@ -112,7 +93,6 @@ const HQ: Record<string, { lat: number; lng: number; city: string; cluster: Clus
   IWM: { lat: 40.71, lng: -74.01, city: 'New York', cluster: 'index' },
   DIA: { lat: 40.71, lng: -74.01, city: 'New York', cluster: 'index' },
 };
-const LISTING_VENUE = { lat: 40.71, lng: -74.01, city: 'New York', cluster: 'index' as Cluster };
 
 /* ── where each cluster's news lands ──────────────────────────────────────
    Zones with RELATIVE weights; severity scales them into heat. Plain-English
@@ -210,7 +190,6 @@ const MACRO_ORIGINS: { re: RegExp; lat: number; lng: number; city: string }[] = 
   { re: /\b(?:crude|oil prices?|brent)\b/i, lat: 48.21, lng: 16.37, city: 'Vienna' },
 ];
 
-const gradeOf = (s: number): NewsGrade => (s > 0.12 ? 'ALLY' : s < -0.12 ? 'THREAT' : 'WATCH');
 
 /** Internal 1–10 from the wire's own numbers — deterministic, never shown raw. */
 const severityOf = (n: NewsItem): number =>
@@ -230,7 +209,8 @@ export function geoFromItems(items: NewsItem[]): GeoNewsEvent[] {
     return {
       id: item.id,
       item,
-      grade: gradeOf(item.sentiment),
+      /* the vendor marks every headline neutral, so no story is graded for or against its name */
+      grade: 'WATCH' as NewsGrade,
       severity,
       origin: o
         ? {
@@ -246,10 +226,6 @@ export function geoFromItems(items: NewsItem[]): GeoNewsEvent[] {
   });
 }
 
-export function buildGeoNews(): GeoNewsEvent[] {
-  return geoFromItems(buildNewsFeed());
-}
-
 /** Words for the internal severity — meters and words, never the number.
     The cuts are the News page's three impact tiers (its square before a
     headline): 7+ heavy, 4–6 firm, under 4 light. */
@@ -263,8 +239,6 @@ export const severityWord = (severity: number): string =>
 export type Freshness = 'fresh' | 'developing' | 'faded';
 export const freshnessOf = (e: GeoNewsEvent): Freshness =>
   e.item.minutesAgo <= 45 ? 'fresh' : e.item.minutesAgo <= 180 ? 'developing' : 'faded';
-/** How much of its weight an aging story keeps — scales heat and pings. */
-export const FRESHNESS_FACTOR: Record<Freshness, number> = { fresh: 1, developing: 0.72, faded: 0.45 };
 
 /* ── one ping per CITY, not per story ─────────────────────────────────────
    Five NYC stories must read as ONE louder ping with a count, not dot soup.
@@ -301,58 +275,6 @@ export interface EconEvent {
   inMinutes: number;
   forecast?: string;
   previous?: string;
-}
-
-const ECON_CATALOG: {
-  title: string;
-  region: EconEvent['region'];
-  impact: EconEvent['impact'];
-  dayOffset: number;
-  hour: number;
-  minute: number;
-  unit?: string;
-  base?: number;
-}[] = [
-  { title: 'Initial jobless claims', region: 'USD', impact: 'medium', dayOffset: 0, hour: 8, minute: 30, unit: 'K', base: 232 },
-  { title: 'Treasury 10-yr auction', region: 'USD', impact: 'low', dayOffset: 0, hour: 13, minute: 0 },
-  { title: 'Consumer credit', region: 'USD', impact: 'low', dayOffset: 0, hour: 15, minute: 0 },
-  { title: 'Fed speakers (3)', region: 'USD', impact: 'high', dayOffset: 1, hour: 10, minute: 0 },
-  { title: 'CPI y/y', region: 'USD', impact: 'high', dayOffset: 1, hour: 8, minute: 30, unit: '%', base: 2.5 },
-  { title: 'BOJ Core CPI y/y', region: 'JPY', impact: 'high', dayOffset: 1, hour: 19, minute: 30, unit: '%', base: 1.4 },
-  { title: 'German ifo Business Climate', region: 'EUR', impact: 'medium', dayOffset: 2, hour: 4, minute: 0, unit: '', base: 87.1 },
-  { title: 'FOMC meeting minutes', region: 'USD', impact: 'high', dayOffset: 2, hour: 14, minute: 0 },
-  { title: 'UK GDP q/q', region: 'GBP', impact: 'medium', dayOffset: 3, hour: 2, minute: 0, unit: '%', base: 0.3 },
-  { title: 'ECB minutes', region: 'EUR', impact: 'medium', dayOffset: 3, hour: 7, minute: 30 },
-  { title: 'RBA meeting minutes', region: 'AUD', impact: 'low', dayOffset: 3, hour: 21, minute: 30 },
-  { title: 'Nonfarm payrolls', region: 'USD', impact: 'high', dayOffset: 4, hour: 8, minute: 30, unit: 'K', base: 178 },
-  { title: 'China Caixin PMI', region: 'CNY', impact: 'high', dayOffset: 4, hour: 21, minute: 45, unit: '', base: 50.4 },
-];
-
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-export function buildEconCalendar(): EconEvent[] {
-  const t0 = now();
-  const daySeed = t0.getFullYear() * 372 + (t0.getMonth() + 1) * 31 + t0.getDate();
-  return ECON_CATALOG.map((c, i) => {
-    const dt = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + c.dayOffset, c.hour, c.minute);
-    const h = Math.abs(Math.sin(daySeed * 7 + i * 13.7)) % 1;
-    const fmt = (v: number) => (c.unit === 'K' ? `${Math.round(v)}K` : c.unit === '%' ? `${v.toFixed(1)}%` : v.toFixed(1));
-    const prev = c.base != null ? c.base : undefined;
-    const fcst = c.base != null ? c.base * (1 + (h - 0.5) * 0.06) : undefined;
-    return {
-      id: `econ-${i}`,
-      title: c.title,
-      region: c.region,
-      impact: c.impact,
-      dayLabel: `${DAY_NAMES[dt.getDay()]} ${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`,
-      timeLabel: dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      inMinutes: Math.round((dt.getTime() - t0.getTime()) / 60_000),
-      forecast: fcst != null ? fmt(fcst) : undefined,
-      previous: prev != null ? fmt(prev) : undefined,
-    };
-  })
-    .filter(e => e.inMinutes > -600)
-    .sort((a, b) => a.inMinutes - b.inMinutes);
 }
 
 /* ── synthesized insights ─────────────────────────────────────────────────
@@ -429,8 +351,8 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
       title: 'Just landed',
       ink: 'neutral',
       read: who
-        ? `${fresh.length} ${fresh.length === 1 ? 'story is' : 'stories are'} under an hour old and still rippling — ${who} ${named.length + macros > 1 ? 'are' : 'is'} the freshest ink on the board.`
-        : `${fresh.length} ${fresh.length === 1 ? 'story is' : 'stories are'} under an hour old and still rippling.`,
+        ? `${fresh.length} ${fresh.length === 1 ? 'story' : 'stories'} in the last 45 minutes — ${who} ${named.length + macros > 1 ? 'are' : 'is'} the freshest.`
+        : `${fresh.length} ${fresh.length === 1 ? 'story' : 'stories'} in the last 45 minutes.`,
     });
   }
   return out;

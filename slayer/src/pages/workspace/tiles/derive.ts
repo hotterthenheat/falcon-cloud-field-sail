@@ -1,25 +1,9 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE · WHAT THE TILES READ
-  (pages/workspace/tiles/derive.ts)
-
-  The book tiles all read the same few things off a
-  name's snapshot — today's book, the calendar's
-  surface, the range to the close, where the walls
-  are heading, the wall board, the agenda. Each is
-  built ONCE per snapshot and shared: two tiles on
-  one name never build the same book twice, and a
-  tile's head (its controls are data, read every
-  render) asks for what its body already built.
-
-  The desk hands a name one snapshot per sweep (10s),
-  so "per snapshot" is the sweep's cadence. A build
-  that throws (a name with no book) is remembered as
-  null — the tile says so.
-==================================================
+  What the book tiles read off a name's live snapshot — today's book, the calendar's surface, the levels, the
+  building, the agenda — each built once per snapshot and shared, so two tiles on one name never build the same
+  book twice. A build that throws (a name with no book) is remembered as null and the tile says so.
 */
 
-import Simulator from '../../../core/simulator';
 import { buildAgenda, type Agenda, type AgendaOrder } from '../../../data/agenda';
 import { aheadClock, type AheadClock } from '../../../data/ahead';
 import { buildBuilding, type Building } from '../../../data/building';
@@ -27,8 +11,9 @@ import { buildExposureProfile } from '../../../data/exposure';
 import { buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from '../../../data/exposureSurface';
 import { sessionBars } from '../../../data/levelview';
 import { readSessionClock } from '../../../data/moc';
-import { buildPulseView } from '../../../data/pulse';
-import type { ExposureProfileData, KeyLevelRow } from '../../../types/gex';
+import { buildKeyLevels } from '../../../data/pulse';
+import { bookCandles, bookHistory, peekIv } from '../../../data/uwBook';
+import type { ExposureProfileData, KeyLevelRow, KeyLevels } from '../../../types/gex';
 import type { MarketSnapshot } from '../../../types/market';
 
 const once = <T,>(build: (s: MarketSnapshot) => T) => {
@@ -49,7 +34,8 @@ const once = <T,>(build: (s: MarketSnapshot) => T) => {
 
 /** New York's clock now — what the agenda and the building run on */
 export const clockNow = (): AheadClock => aheadClock(readSessionClock());
-export const ivOf = (ticker: string) => Simulator.TICKERS[ticker]?.iv ?? 0.2;
+/** The name's live at-the-money IV from the vendor book, else a plain 20% for the range model */
+export const ivOf = (ticker: string) => peekIv(ticker) ?? 0.2;
 
 /** Today's book, fifteen strikes each side — the agenda */
 export const profile15 = once<ExposureProfileData>(s => buildExposureProfile(s, '0DTE', 15));
@@ -57,12 +43,19 @@ export const profile15 = once<ExposureProfileData>(s => buildExposureProfile(s, 
 export const profile30 = once<ExposureProfileData>(s => buildExposureProfile(s, '0DTE', 30));
 /** The whole calendar's book — the Map's */
 export const surface30 = once<ExposureSurface>(s => buildExposureSurface(s, 30, CALENDAR_DTES));
-export const keyLevelsOf = once<KeyLevelRow[]>(s => buildPulseView(s).keyLevels);
+/** The walls, flip and supreme the chart draws: today's book, thirty strikes each side */
+export const levelsOf = (s: MarketSnapshot | null): KeyLevels => profile30Safe(s)?.levels ?? { spot: s?.spot ?? NaN, callWall: NaN, putWall: NaN, flip: NaN, supreme: NaN };
+const profile30Safe = (s: MarketSnapshot | null) => (s ? profile30(s) : null);
+export const keyLevelsOf = once<KeyLevelRow[]>(s => {
+  const p = profile30(s);
+  if (!p) throw new Error('no book');
+  return buildKeyLevels(s, p.levels, p.levels.pin ?? s.spot);
+});
 
 export const buildingOf = once<Building>(s => {
   const p = profile30(s);
   if (!p) throw new Error('no book');
-  return buildBuilding(s, Simulator.getGexHistory(s.ticker), Simulator.getCandles(s.ticker), p, clockNow());
+  return buildBuilding(s, bookHistory(s.ticker) ?? [], bookCandles(s.ticker) ?? [], p, clockNow());
 });
 
 /* by a second key — the agenda's order */
