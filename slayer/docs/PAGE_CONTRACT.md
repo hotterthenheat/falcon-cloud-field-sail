@@ -52,6 +52,17 @@ Every page in the terminal meets these rules. Read this with `docs/DATA_SOURCES.
     ("The refresh failed · showing as of 10:42 ET · Retry").
   - `<BoxState loading? error? empty? shape? rows? emptyTitle? emptyReason? errorWhat? onRetry?>{children}</BoxState>`
     — picks one of the above, or the children once there is data.
+- A small control keeps its drawn size and takes the class `tap-40` (index.css): on a touch screen its hit area
+  reaches 40 px around its centre. `DropdownSelect` triggers carry it already.
+- Real-time stock, index and option prices come from `data/thetaQuote.ts` (ThetaData snapshots):
+  `useThetaPrice(t)` → `{ held, status }` (`held.value.price`, `prevClose`, `todayClose`, `read`; `held.live` false
+  is the last reading kept from before, stamp it with `asOfText(held.value.read)`), `useThetaPrices(names)`,
+  `useThetaMarks(contracts)` + `peekThetaMark(t, expiry, strike, right)` for an option's NBBO mid, `thetaMove(price)`
+  for the move from the last regular close, and `useThetaStatus()`. With the terminal down, show the kept price
+  stamped and say "ThetaData offline" (`OfflineLine` in `components/layout/NavQuote.tsx`); never a stand-in.
+- Moving between pages: a rail link to a page whose code is not loaded holds the current page until it is
+  (`components/layout/RouteHold.tsx`; wrap other link groups in `data-route-hold` for the same). Route code is fetched
+  on pointer or focus over any link and at idle for a reader inside the terminal (`data/warmRooms.ts`).
 
 ## 5. Locked by tests
 

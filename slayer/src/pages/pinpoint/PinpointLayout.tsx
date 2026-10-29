@@ -101,7 +101,7 @@ const PinpointLayout = () => {
         {/* THE SIDE: the Map's band where the row has its room (#pinpoint-head-band — the Map measures the room against
             the band's named row and draws it here, else in its own strip under the head), then the two cards */}
         {/* The side wraps under the title when the row is short: a floor of the cards' own width lets flex-wrap move it instead of overflowing. */}
-        <div className="flex-[3_1_0%] min-w-0 flex items-center gap-x-4 gap-y-2 flex-wrap" data-shell-side>
+        <div className="flex-[3_1_0%] min-w-0 max-sm:basis-full flex items-center gap-x-4 gap-y-2 flex-wrap" data-shell-side>
           <div id="pinpoint-head-band" className="empty:hidden min-w-0 flex-1 [&>[data-ledger-toolbar]]:border-0 [&>[data-ledger-toolbar]]:bg-transparent [&>[data-ledger-toolbar]]:p-0" data-shell-band />
           <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2 max-sm:ml-0 max-sm:w-full max-sm:justify-start max-sm:gap-1.5 [&_:where(button)]:hit" data-shell-cards>
             <SessionBook />

@@ -62,7 +62,7 @@ const phoneRow = (r: BookContract) => (
         <span className="text-t11 text-textSecondary tnum">{r.expiry.slice(0, 5)}</span>
       </>
     }
-    aside={r.lastAt}
+    aside={`${r.lastAt} ET`}
     figures={[
       <span key="p" className="font-semibold text-textPrimary">
         {fmtUsd(r.premium)}

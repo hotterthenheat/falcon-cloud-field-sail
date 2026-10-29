@@ -30,10 +30,10 @@ const LINES: Record<string, string> = {
   '/trace': 'The options tape and the dark pool, print by print: who is buying what, and where the money is leaning.',
   '/dossier': 'The file on a name: its news, who reports when, what insiders filed, what Congress disclosed, how it screens.',
   '/pinpoint': 'The dealer book as a matrix or a calendar: the walls, the flip, and what they mean for the day ahead.',
-  '/compass': 'The contracts that fit today’s levels, 0DTE to long-dated, each card with its case and its marks on the chart.',
+  '/compass': 'Contracts scored on the terminal’s live quotes, same day and one to seven days out, each call with its marks on the chart.',
   '/weigher': 'One desk for a contract: the chain, the book at a strike, your positions and your watchlist.',
-  '/practice/paper': 'Trade today’s prices with pretend money, options and futures, on a practice account or an evaluation.',
-  '/practice/backtest': 'Replay a past market minute by minute and trade it with pretend money, to test an edge.',
+  '/practice/paper': 'Trade today’s live option quotes with pretend money on a practice account.',
+  '/practice/backtest': 'Replay a recorded ThetaData session minute by minute and trade it at the bid and ask each contract had.',
   '/practice/journal': 'Every trade you closed, paper or backtest, on its day, with your own words on it.',
 };
 

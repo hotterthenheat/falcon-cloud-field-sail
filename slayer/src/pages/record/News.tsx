@@ -89,8 +89,8 @@ const dupClose = (a: Set<string>, b: Set<string>): boolean => {
   return both / Math.min(a.size, b.size) >= 0.6 && both >= 3;
 };
 
-/* The tape: the newest headlines on the cut in a seamless loop over the map. It holds still under the pointer, can be
-   pulled by wheel or drag, steps with its arrows, and stands still under reduced motion. */
+/* The tape: the newest headlines on the cut in a seamless loop over the map. It runs one loop and rests, holds still
+   under the pointer, can be pulled by wheel or drag, steps with its arrows, and stands still under reduced motion. */
 /** One loop of the tape at rest — the CSS marquee's 110s, kept */
 const TAPE_SECONDS_PER_LOOP = 110;
 /** The lead before the first headline (the halves' `pl-4`) — a step lands a headline behind it */
@@ -119,6 +119,8 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
     let last = 0;
     /* the half's width is read on resize, not per frame, so the loop never forces a layout */
     let halfW = 0;
+    /* how far the tape has drifted on its own; it rests after one loop */
+    let drifted = 0;
     let watched: Element | null = null;
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => (halfW = halfRef.current?.offsetWidth ?? 0)) : null;
     const frame = (ts: number) => {
@@ -142,8 +144,10 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
           x = target;
           targetRef.current = null;
         }
-      } else if (!(h.hover || h.focus || h.drag) && !still) {
-        x -= (halfW / TAPE_SECONDS_PER_LOOP) * (dt / 1000);
+      } else if (!(h.hover || h.focus || h.drag) && !still && drifted < halfW && !document.hidden) {
+        const step = (halfW / TAPE_SECONDS_PER_LOOP) * (dt / 1000);
+        x -= step;
+        drifted += step;
       }
       /* the loop: the two halves are identical, so a half's width is a full turn */
       if (x <= -halfW) {

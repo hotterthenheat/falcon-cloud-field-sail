@@ -4,14 +4,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { uwCall } from './whales';
 import { readSaved, save as saveKept } from './uwStore';
-import { peekQuote } from './liveQuote';
 import { vendorFault, type FeedFault } from '../components/ui/liveRead';
 import type { BookContract, FlowPrint } from '../types/trace';
-import type { DarkPoolIntent, DarkPoolLevel, DarkPoolPrint, DarkPoolView, LevelRole, Posture } from '../types/darkpool';
-import { isoDate, isTradingDay, sessionBefore, sessionsBetween } from '../core/calendar';
+import type { DarkPoolPrint, DarkPoolView } from '../types/darkpool';
 import { marketPhase } from '../core/marketPhase';
-import { nyParts, nyWallTime } from '../core/nyTime';
-import type { MoneynessKey, NetFlowSegment, SpreadKind, SpreadLeg, SpreadTrade } from './flowBook';
+import { nyParts } from '../core/nyTime';
+import type { MoneynessKey, NetFlowSegment, SpreadTrade } from './flowBook';
 import { alertToPrint, byNewest, clock, contractRow, dteFrom, ensureIndexLevels, extendedOf, heldFresh, indexRoot, lastRegularClose, liveSpotOf, liveTrades, mapBook, mapWithIndex, markAlertPackages, nextSessionIso, num, nyDateOf, nyIsoToday, prevSessionIso, printCondition, quoteNoReadOf, rowsOf, SESSION_OPEN, sessionEndMin, sideOfTags, tapeSessionIso, tickerOfRow, tradeToPrint } from './traceRows';
 import { dedupeSpreads, settleSpreadWith, spreadOf } from './traceSpreads';
 import { type DarkDay, darkDayOf, darkLevels, darkPrint, darkView, mergeDark } from './traceDark';
@@ -580,10 +578,13 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
       let acc: FlowPrint[] = [];
       let olderThan: number | undefined;
       for (let n = 0; n < GAP_PAGES && !stop; n++) {
-        /* an idle tape asks a small first page (a 500-print page is ~600 KB); a full one walks on in whole pages */
-        const got = await page({ newerThan: sinceMs > 0 ? sinceMs - 1 : undefined, olderThan }, n === 0 ? firstLimit : TAPE_PAGE);
-        acc = dedupe(acc.concat(got));
-        if (!got.full) return { batch: acc, joined: true };
+        /* the newest page carries no time cursor, so every viewer's poll is the same request (the proxy serves one copy);
+           older pages walk back from the data's own oldest print. An idle tape asks a small first page (a 500-print page
+           is ~600 KB); a full one walks on in whole pages. */
+        const got = await page({ olderThan }, n === 0 ? firstLimit : TAPE_PAGE);
+        const fresh = sinceMs > 0 ? got.filter(r => msOf(r) >= sinceMs) : got;
+        acc = dedupe(acc.concat(fresh));
+        if (!got.full || (sinceMs > 0 && (got.oldest || oldestMs(got)) <= sinceMs)) return { batch: acc, joined: true };
         const next = (got.oldest || oldestMs(got)) + 1;
         if (!next || (olderThan != null && next >= olderThan)) break;
         olderThan = next;
@@ -1117,7 +1118,7 @@ export function pairOiFor(rows: readonly BookContract[]): void {
 }
 
 /** The rows with the open interest of their volume's session wherever it is out (see above) */
-function usePairedOi(rows: BookContract[]): BookContract[] {
+function usePairedOi(rows: BookContract[], only?: string): BookContract[] {
   const [ver, setVer] = useState(newestOiVer);
   useEffect(() => {
     const f = () => setVer(newestOiVer);
@@ -1127,8 +1128,10 @@ function usePairedOi(rows: BookContract[]): BookContract[] {
     };
   }, []);
   useEffect(() => {
-    if (rows.length) void loadNewestOi([...rows].sort((a, b) => b.premium - a.premium).slice(0, OI_FIRST));
-  }, [rows]);
+    /* a name's book pairs that name's rows only — the market's rows behind them are another page's */
+    const mine = only ? rows.filter(r => r.ticker === only) : rows;
+    if (mine.length) void loadNewestOi([...mine].sort((a, b) => b.premium - a.premium).slice(0, OI_FIRST));
+  }, [rows, only]);
   return useMemo(() => {
     void ver;
     return rows.map(r => {
@@ -1190,7 +1193,7 @@ export function useLiveBook(ticker?: string | null, enabled = true, endless = fa
     const seen = new Set<string>();
     return named.rows.concat(market.rows).filter(r => !!r.ticker && !seen.has(r.key) && (seen.add(r.key), true));
   }, [name, endless, older.rows, market.rows, named.rows]);
-  const rows = usePairedOi(merged);
+  const rows = usePairedOi(merged, name || undefined);
   const waiting = market.waiting || (!!name && named.waiting);
   return useMemo(() => ({ rows, at: market.at, fault: market.fault, waiting, kept: market.kept, older: endless && !name ? older : undefined }), [rows, market.at, market.fault, market.kept, waiting, endless, name, older]);
 }
@@ -1221,6 +1224,16 @@ export function useContracts(unusual: boolean, issue?: 'stock' | 'etf' | null, o
   const older = useOlderPages(key, pack.rows, bookIdOf, (_inHand, pageNo) => olderBook(pageNo, q, 200), enabled);
   const rows = usePairedOi(older.rows);
   return useMemo(() => ({ ...pack, rows, older }), [pack.at, pack.fault, pack.waiting, pack.kept, rows, older.state, older.loadOlder]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/** One name's contracts expiring on `iso` (its same-day book), by the day's premium, paged on scroll */
+export function useSameDayBook(name: string | null, iso: string): EndlessBook {
+  const t = (name || '').trim().toUpperCase();
+  const q = `ticker_symbol=${encodeURIComponent(t)}&expiry_dates[]=${iso}&order=premium&order_direction=desc`;
+  const key = `sameday:${t}:${iso}`;
+  const pack = useLive(t ? key : 'sameday:off', () => readBook(`${q}&limit=200`), [] as BookContract[], !!t);
+  const older = useOlderPages(key, pack.rows, bookIdOf, (_inHand, pageNo) => olderBook(pageNo, q, 200), !!t);
+  return useMemo(() => ({ ...pack, rows: older.rows, older }), [pack.at, pack.fault, pack.waiting, pack.kept, older.rows, older.state, older.loadOlder]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** The newest flow alerts — or, with `opts.untilMs`, the newest filed before that instant (the regular session's last
@@ -1296,6 +1309,14 @@ function pumpLegs() {
     if (legOpen(id)) readLegs(id, false);
   }
   if (legBusy > 0) return;
+  /* a hidden tab asks nothing; the queue picks up when it is shown */
+  if (tabHidden()) {
+    if (legTimer == null) legTimer = window.setTimeout(() => {
+      legTimer = null;
+      pumpLegs();
+    }, 5_000);
+    return;
+  }
   /* the rows on screen (rank 0) at twice the pace of the rest */
   const asks = [...legAsks.values()].sort((a, b) => a.order - b.order);
   const onScreen = asks.some(a => a.order < 1_000_000 && a.ids.some(legOpen));

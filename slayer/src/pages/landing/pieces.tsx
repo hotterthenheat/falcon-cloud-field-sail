@@ -68,9 +68,9 @@ const PRODUCT_GROUPS: { caption: string; products: Product[] }[] = [
   {
     caption: 'Practice',
     products: [
-      { name: 'Practice', glyph: 'practice', line: 'Trade live option quotes with pretend money, and review every trade', path: '/practice', page: '/products/practice' },
+      { name: 'Practice', glyph: 'practice', line: 'Trade with pretend money, replay recorded sessions, review every trade', path: '/practice', page: '/products/practice' },
       { name: 'Paper Trade', glyph: 'paper', line: 'Today’s live option quotes with pretend money, on a practice account', path: '/practice/paper', page: '/products/paper' },
-      { name: 'Backtest', glyph: 'backtest', line: 'Paused until real minute-by-minute option history is wired in', path: '/practice/backtest', page: '/products/backtest' },
+      { name: 'Backtest', glyph: 'backtest', line: 'Replay a recorded session minute by minute, at the bid and ask it really had', path: '/practice/backtest', page: '/products/backtest' },
       { name: 'Journal', glyph: 'journal', line: 'Every closed trade on its day, with your tags and your words', path: '/practice/journal', page: '/products/journal' },
     ],
   },

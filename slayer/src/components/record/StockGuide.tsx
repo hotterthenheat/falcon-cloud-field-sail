@@ -153,38 +153,6 @@ const PointsFigure = () => {
   );
 };
 
-/** The book on a price scale: five marks in their inks */
-const ScaleFigure = () => {
-  const marks: [string, string, number, string][] = [
-    ['put wall', '116.5', 40, BEAR],
-    ['flip', '116.75', 62, SILVER],
-    ['supreme', '119', 220, SUPREME],
-    ['spot', '120.00', 300, INK],
-    ['call wall', '121', 372, BULL],
-  ];
-  return (
-    <Figure label="A price scale from left to right: put wall 116.5 in red, flip 116.75 dashed in silver, supreme 119 in magenta, spot 120.00 as a plain white tick, call wall 121 in green" h={64}>
-      <line x1={12} x2={408} y1={32} y2={32} stroke="#ffffff" strokeOpacity={0.14} />
-      <rect x={40} y={29} width={332} height={6} fill={SILVER} fillOpacity={0.1} />
-      {marks.map(([word, price, x, ink], i) => {
-        const up = i === 1;
-        const isSpot = word === 'spot';
-        return (
-          <g key={word}>
-            <line x1={x} x2={x} y1={isSpot ? 23 : 27} y2={isSpot ? 41 : 37} stroke={ink} strokeWidth={isSpot ? 2 : 1.25} strokeDasharray={word === 'flip' ? '2 2' : undefined} />
-            <text x={x} y={up ? 18 : 50} textAnchor="middle" fontSize={8.5} fontWeight={isSpot ? 700 : 500} fill={ink} fontFamily={MONO}>
-              {price}
-            </text>
-            <text x={x} y={up ? 9 : 59} textAnchor="middle" fontSize={6.5} letterSpacing={0.6} fill={ink} fillOpacity={0.75} fontFamily={MONO}>
-              {word.toUpperCase()}
-            </text>
-          </g>
-        );
-      })}
-    </Figure>
-  );
-};
-
 export const StockGuide = ({ view }: { view: StockOverview }) => (
   <div data-stock-guide>
     <Section title="The read">
@@ -196,18 +164,18 @@ export const StockGuide = ({ view }: { view: StockOverview }) => (
       <FactorFigure />
     </Section>
     <Section title="What is behind it">
-      <p>Under "Behind the read", every factor is listed with the heaviest first: a bar to the right in green when it speaks for the name, to the left in red when it speaks against it, and the word at the end. The longer the bar, the more that factor matters to the read. The moves beside the list say what the read would become if a factor turned the other way: it stays where it is, or it changes to another of the four words.</p>
+      <p>Under "How the read is made", every factor is listed with the heaviest first: a bar to the right in green when it speaks for the name, to the left in red when it speaks against it, and the word at the end. The longer the bar, the more that factor matters to the read. The moves beside the list say what the read would become if a factor turned the other way: it stays where it is, or it changes to another of the four words.</p>
       <PointsFigure />
     </Section>
-    <Section title="The book on a scale">
-      <p>In "The money", one line puts the put wall, the flip, spot, the call wall and the supreme on a price scale, each in its own ink — where the price sits between the walls, at a glance. "The numbers" does the same for fair value: the cheap fifth in green, the rich fifth in red, the price as a plain tick.</p>
-      <ScaleFigure />
+    <Section title="What goes into the grade">
+      <p>The trend (32% of the grade): the price against its 20-day average, RSI, ADX with the week's direction, and the last month. The numbers (24%): earnings growth as a rate a year — the slowest of the one-, two- and three-year rates, so one odd quarter cannot inflate it — and the change in the share count. The money (26%): which side of the options trade the premium is on, calls against puts when the side agrees, and heavy volume when it backs the side; under $1M of premium it is not scored. Strong is 72 and up, good 60 and up, poor 46 or less, caution between. Hover the word "Reads" for this name's own sums.</p>
+      <p className="mt-1">The dealer book — the walls, the flip and gamma — is read on Pinpoint; "The map on Pinpoint" opens it for this name.</p>
     </Section>
     <Section title="Do the pillars agree">
       <p>The read also leans bullish, bearish or neutral. Under "Why now", each pillar is marked as agreeing with that lean or arguing against it, and the line under them names where the read fails first if it fails — the strongest pillar on the other side, or the next report when every pillar agrees.</p>
     </Section>
     <Section title="What is real">
-      <p>The scored trend, numbers and money read the name's screener row on Unusual Whales (its 20-day EMA, 50- and 200-day SMA, RSI, ADX, month, earnings growth, relative volume, and its call, put, bullish and bearish premium); the swing structure reads the name's own sessions, the dark pool its off-exchange prints, the news the wire. The last print reads the name's own earnings file; when the feed has no print for a name, the box says so instead of showing a guess. Every source's status and time sits in "Behind the read"; the method behind it — what was observed, derived and inferred — sits behind the fold under it.</p>
+      <p>The scored trend, numbers and money read the name's screener row on Unusual Whales (its 20-day EMA, 50- and 200-day SMA, RSI, ADX, month, earnings growth, relative volume, and its call, put, bullish and bearish premium); the swing structure reads the name's own sessions, the dark pool its off-exchange prints, the news the wire. The last print reads the name's own earnings file; when the feed has no print for a name, the box says so instead of showing a guess. Every source's status and time sits in "How the read is made"; the method behind it — what was observed, derived and inferred — sits behind the fold under it.</p>
     </Section>
     <Section title="Today">
       <p>

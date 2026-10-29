@@ -1,6 +1,7 @@
 /* Every alert in one place, over any page: what is set (a card per name, a row per alert) and what has alerted
    this session, newest first. The sidebar's bell opens it. */
 
+import { nyClock } from '../../core/nyTime';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -61,8 +62,9 @@ const doorOf = (a: Alert): { label: string; to: string } => {
   }
 };
 
-const hhmm = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-const hhmmss = (ms: number) => new Date(ms).toLocaleTimeString('en-GB');
+/* New York's clock, said as such */
+const hhmm = (ms: number) => nyClock(ms, { zone: true });
+const hhmmss = (ms: number) => nyClock(ms, { seconds: true, zone: true });
 const ALL = 'all';
 
 /* ---- the parts ------------------------------------------------------------------------ */

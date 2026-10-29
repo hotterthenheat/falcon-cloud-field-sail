@@ -7,6 +7,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { readExposureNow, type ExposureNow } from '../../data/gex';
 import { bookCandles, bookHistory, ensureBook } from '../../data/uwBook';
 import { peekThetaPrice, useThetaPrices } from '../../data/thetaQuote';
+import { ensureQuote, peekQuote, useDayMoves } from '../../data/liveQuote';
+import { useUwOnlyRoute } from '../layout/NavQuote';
 import { uwCall } from '../../data/whales';
 import { newsPulse } from '../../data/news';
 import { emaSeries, rsiSeries, vwapSeries } from '../../data/indicators';
@@ -56,7 +58,10 @@ const AlertWatcher = () => {
   const names = useAllAlerts();
   /* the names with an alert still waiting: their prices are polled on the session's clock, and each landing judges */
   const watched = useMemo(() => names.filter(n => n.alerts.some(a => !a.firedAt)).map(n => n.ticker.toUpperCase()), [names]);
-  const priceRev = useThetaPrices(watched);
+  /* on the Unusual Whales rooms (Trace, Pinpoint, the Dossier) the price is the vendor's quote; elsewhere the terminal's */
+  const uwOnly = useUwOnlyRoute();
+  const priceRev = useThetaPrices(uwOnly ? [] : watched);
+  const uwMoves = useDayMoves(uwOnly ? watched : []);
   /* bumped by the beat, a landed script compile or a landed tape read */
   const [beat, setBeat] = useState(0);
   const ranOn = useRef(new Map<string, number>());
@@ -74,9 +79,17 @@ const AlertWatcher = () => {
       const sym = ticker.toUpperCase();
       const needsBook = waiting.some(a => a.kind === 'level' || a.kind === 'gexflip' || a.kind === 'newsupreme' || a.kind === 'wallmove' || a.kind === 'script' || a.kind === 'indicator');
       if (needsBook) ensureBook(sym);
-      const held = peekThetaPrice(sym);
-      if (!held?.live) continue;
-      const close = held.value.price;
+      let close: number;
+      if (uwOnly) {
+        ensureQuote(sym);
+        const q = peekQuote(sym);
+        if (!q || !(q.spot > 0)) continue;
+        close = q.spot;
+      } else {
+        const held = peekThetaPrice(sym);
+        if (!held?.live) continue;
+        close = held.value.price;
+      }
       if (!(close > 0)) continue;
 
       const exp = needsBook ? exposureOf(sym, close) : null;
@@ -169,7 +182,7 @@ const AlertWatcher = () => {
         for (const a of group) judge(a, ctx);
       }
     }
-  }, [names, priceRev, beat]);
+  }, [names, priceRev, uwMoves, uwOnly, beat]);
 
   return null;
 };

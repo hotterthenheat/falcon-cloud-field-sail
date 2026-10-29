@@ -224,7 +224,7 @@ export async function ensureBars(ticker: string, day: string): Promise<boolean> 
   if (bars.has(key)) return bars.get(key) != null;
   barsWant.set(key, 'loading');
   const root = INDEXES.has(t) ? 'index' : 'stock';
-  const path = root === 'index' ? `/index/history/price?symbol=${encodeURIComponent(t)}&date=${ymd(day)}&interval=1m&format=json` : `/stock/history/ohlc?symbol=${encodeURIComponent(t)}&date=${ymd(day)}&interval=1m&format=json`;
+  const path = root === 'index' ? `/index/history/ohlc?symbol=${encodeURIComponent(t)}&date=${ymd(day)}&interval=1m&format=json` : `/stock/history/ohlc?symbol=${encodeURIComponent(t)}&date=${ymd(day)}&interval=1m&format=json`;
   const got = await load(key, path, rows => parseBars(day, rows));
   if (got.offline) {
     barsWant.set(key, 'offline');
@@ -263,7 +263,7 @@ export async function ensureBarsRange(ticker: string, from: string, to: string):
   }
   const job = (async () => {
     const root = INDEXES.has(t) ? 'index' : 'stock';
-    const what = root === 'index' ? 'price' : 'ohlc';
+    const what = 'ohlc';
     const got = await thetaCall(`/${root}/history/${what}?symbol=${encodeURIComponent(t)}&start_date=${ymd(a)}&end_date=${ymd(b)}&interval=1m&format=json`, true);
     if (got.status !== 472 && (got.error === 'terminal_down' || got.status === 401)) {
       if (!offlineSince) offlineSince = Date.now();
@@ -360,7 +360,10 @@ export interface Leg {
   strike: number;
   right: 'C' | 'P';
 }
-/** One leg's day: its bid and ask at the end of every minute (NaN where none stood) */
+/** A minute whose quote was one-sided or crossed */
+const NO_MARKET = -2;
+/** One leg's day: its bid and ask at the end of every minute (NaN where no row was recorded, NO_MARKET where the row was
+    no market) */
 interface LegDay {
   bid: number[];
   ask: number[];
@@ -389,16 +392,19 @@ export function parseQuotes(ticker: string, rows: Row[], only?: Leg): Map<string
     if (!d) out.set(key, (d = emptyDay()));
     const bid = num(r.bid);
     const ask = num(r.ask);
-    /* a one-sided or crossed print is no market */
+    /* a one-sided or crossed quote is no market that minute: marked so, never carried over by an older quote */
     if (bid >= 0 && ask > 0 && ask >= bid) {
       d.bid[m] = bid;
       d.ask[m] = ask;
+    } else {
+      d.bid[m] = NO_MARKET;
+      d.ask[m] = NO_MARKET;
     }
   }
   return out;
 }
 const pack = (d: LegDay) => ({ b: d.bid.map(v => (Number.isFinite(v) ? v : -1)), a: d.ask.map(v => (Number.isFinite(v) ? v : -1)) });
-const unpack = (p: { b: number[]; a: number[] }): LegDay => ({ bid: p.b.map(v => (v >= 0 ? v : NaN)), ask: p.a.map(v => (v > 0 ? v : NaN)) });
+const unpack = (p: { b: number[]; a: number[] }): LegDay => ({ bid: p.b.map(v => (v === -1 ? NaN : v)), ask: p.a.map(v => (v === -1 ? NaN : v)) });
 const hasAny = (d: LegDay) => d.ask.some(v => v > 0);
 
 /** Load one contract's quotes for a day */
@@ -458,24 +464,27 @@ export const legNeed = (c: Leg, day: string): Need => legWant.get(`leg|${legKey(
 /** Has the leg's day been answered (with quotes, or with none) */
 export const legKnown = (c: Leg, day: string): boolean => legs.has(`leg|${legKey(c)}|${day}`);
 
-/** The NBBO at the end of a minute, or null where none stood (or the day is not loaded). After the name's last bar of
-    an early close, nothing stands. */
+/** The NBBO standing at the end of a minute: that minute's row, else the last one before it that day (a quote stands
+    until it changes) — null before the day's first, where the day is not loaded, or after the name's last bar of an
+    early close */
 export function nbboAt(c: Leg, day: string, minute: number): { bid: number; ask: number } | null {
   const d = legs.get(`leg|${legKey(c)}|${day}`);
   if (!d) return null;
   const m = Math.max(0, Math.min(LAST_MIN, minute));
   const last = closeMinOf(c.ticker, day);
   if (last >= 0 && m > last) return null;
-  const bid = d.bid[m];
-  const ask = d.ask[m];
-  return Number.isFinite(ask) && Number.isFinite(bid) ? { bid, ask } : null;
+  for (let k = m; k >= 0; k--) {
+    if (d.ask[k] === NO_MARKET) return null;
+    if (Number.isFinite(d.ask[k]) && Number.isFinite(d.bid[k])) return { bid: d.bid[k], ask: d.ask[k] };
+  }
+  return null;
 }
 /** The leg's mid through the day up to a minute (for the day's high and low so far) */
 export function midsUpTo(c: Leg, day: string, minute: number): number[] {
   const d = legs.get(`leg|${legKey(c)}|${day}`);
   if (!d) return [];
   const out: number[] = [];
-  for (let m = 0; m <= Math.min(LAST_MIN, minute); m++) if (Number.isFinite(d.bid[m]) && Number.isFinite(d.ask[m])) out.push((d.bid[m] + d.ask[m]) / 2);
+  for (let m = 0; m <= Math.min(LAST_MIN, minute); m++) if (d.ask[m] > 0 && d.bid[m] >= 0) out.push((d.bid[m] + d.ask[m]) / 2);
   return out;
 }
 

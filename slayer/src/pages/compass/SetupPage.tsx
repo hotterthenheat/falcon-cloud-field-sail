@@ -16,6 +16,8 @@ import { COMPASS_SET } from '../../data/compassUniverse';
 import type { Setup } from '../../types/compass';
 import CampaignAnalysis from '../../components/compass/CampaignAnalysis';
 import NameDesks from '../../components/compass/NameDesks';
+import { signals } from '../../data/compassLedger';
+import { nyClock, nyDay } from '../../core/nyTime';
 
 const SetupPage = () => {
   const { id = '' } = useParams();
@@ -121,6 +123,28 @@ const SetupPage = () => {
             <p className="mt-1 text-t16 font-semibold text-textPrimary">{left.contract}</p>
             <p className="mt-2 font-mono text-t12 font-bold uppercase tracking-wider text-bear">{left.why}</p>
             <p className="mt-1 text-t12 text-textSecondary">This contract left the board. It is not a live pick.</p>
+          </div>
+        </>
+      );
+    }
+    const fired = signals().find(r => r.id === id);
+    if (fired) {
+      const o = fired.outcome;
+      const result = o?.status === 'closed' && o.exit && o.fill
+        ? `${o.exit.why}. Filled ${o.fill.ask.toFixed(2)}, out ${o.exit.px.toFixed(2)} at ${nyClock(o.exit.at, { zone: true })}, ${o.ret != null ? `${o.ret >= 0 ? '+' : '−'}${Math.abs(o.ret).toFixed(1)}%` : ''}.`
+        : o?.status === 'unavailable'
+          ? 'No valid quote stood a minute after the call. No price was substituted.'
+          : o?.fill
+            ? `Filled ${o.fill.ask.toFixed(2)}. Still open on its last read.`
+            : 'Waiting for its fill.';
+      return (
+        <>
+          {back}
+          <div className="border border-borderSubtle rounded-md bg-panel px-5 py-6" data-setup-record={fired.key}>
+            <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">{fired.ticker} · Book {fired.book}{fired.p1 != null ? ` · Model 1 ${(fired.p1 * 100).toFixed(1)}%` : ''}</span>
+            <p className="mt-1 text-t16 font-semibold text-textPrimary">{fired.contract}</p>
+            <p className="mt-2 text-t12 text-textSecondary">Called {nyDay(fired.firedAt, { weekday: true })}, {nyClock(fired.firedAt, { zone: true })} on {fired.bid.toFixed(2)} × {fired.ask.toFixed(2)}. {result}</p>
+            <Link to="/compass/blotter" className="mt-3 inline-flex slayer-chip uppercase tracking-wider">The blotter</Link>
           </div>
         </>
       );

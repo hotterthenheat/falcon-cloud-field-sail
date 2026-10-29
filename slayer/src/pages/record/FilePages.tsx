@@ -2,7 +2,7 @@
    the names to know, then the grid. A row opens the name. */
 
 import { CoSub, useSeen } from '../../components/record/CoName';
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams } from 'ag-grid-community';
 import { Controls, HeadFact, PhoneFold, RecordGrid, RecordHead, RecordPanel, Summary, ToKnow } from '../../components/record/RecordFrame';
@@ -36,12 +36,6 @@ const Strip = ({ title, rest, testId, children }: { title: string; rest: string;
       <span>{title}</span>
       <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">{rest}</span>
     </div>
-    {children}
-  </div>
-);
-
-const KnowGrid = ({ children }: { children: ReactNode }) => (
-  <div className="grid gap-2 grid-cols-2 max-sm:[&>*:nth-child(n+3)]:hidden sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--know),minmax(0,1fr))]" style={{ '--know': NAMES_TO_KNOW } as CSSProperties}>
     {children}
   </div>
 );

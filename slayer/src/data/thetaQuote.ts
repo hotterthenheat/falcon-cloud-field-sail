@@ -6,7 +6,7 @@
 */
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { thetaCall } from './theta';
+import { thetaCall, uwOnlyRoute } from './theta';
 import { nyIsoDate, nyMinutes, nyWallStamp } from '../core/nyTime';
 import { isTradingDay, today as nyToday } from '../core/calendar';
 import type { OptionRight } from '../types/compass';
@@ -246,7 +246,8 @@ export function ensureThetaPrice(ticker: string): void {
   const sym = symbolOf(ticker);
   if (!sym || typeof window === 'undefined') return;
   const hit = live.get(`S:${sym}`);
-  if ((hit && Date.now() - hit.read < ttl()) || hidden()) return;
+  /* the Unusual Whales rooms ask the terminal nothing (data/theta.ts uwOnlyRoute) */
+  if ((hit && Date.now() - hit.read < ttl()) || hidden() || uwOnlyRoute()) return;
   void readPrice(sym);
 }
 
@@ -255,7 +256,7 @@ export function ensureThetaMark(ticker: string, expiry: string, strike: number, 
   if (typeof window === 'undefined') return;
   const key = markKey(ticker, expiry, strike, right);
   const hit = live.get(key);
-  if ((hit && Date.now() - hit.read < Math.max(5_000, ttl())) || hidden()) return;
+  if ((hit && Date.now() - hit.read < Math.max(5_000, ttl())) || hidden() || uwOnlyRoute()) return;
   void readMark(ticker, expiry, strike, right);
 }
 
@@ -284,7 +285,7 @@ const closeAsked = new Set<string>();
 export function ensureThetaCloseOn(ticker: string, iso: string): void {
   const sym = symbolOf(ticker);
   const key = `${sym}|${iso}`;
-  if (closeOn.has(key) || closeAsked.has(key) || typeof window === 'undefined' || hidden()) return;
+  if (closeOn.has(key) || closeAsked.has(key) || typeof window === 'undefined' || hidden() || uwOnlyRoute()) return;
   const k = kept[`C:${key}`] as ThetaPrice | undefined;
   if (k && k.price > 0) {
     closeOn.set(key, k.price);

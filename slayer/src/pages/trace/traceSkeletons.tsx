@@ -41,7 +41,7 @@ const DP_SHELVES = 6;
 
 /* ---- the head ------------------------------------------------------------------ */
 
-/** The shell's head as itself: the page's icon and name over its line */
+/** The shell's head as itself: the page's icon and name */
 const TraceStripSkeleton = ({ pathname }: { pathname: string }) => {
   const active = TRACE_SUBPAGES.find(p => pathname.startsWith(p.path)) ?? TRACE_SUBPAGES[0];
   const PageIcon = active.icon;
@@ -54,7 +54,6 @@ const TraceStripSkeleton = ({ pathname }: { pathname: string }) => {
           </span>
           <span className="text-t15 font-semibold leading-tight text-textPrimary">{active.label}</span>
         </div>
-        <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">{active.subtitle}</p>
       </div>
     </header>
   );

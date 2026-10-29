@@ -6,7 +6,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import SetupScanCard from '../../../components/compass/SetupScanCard';
 import { CHAIN_COLUMNS, ChainCard, DEFAULT_COLS, type ChainCol } from '../../../components/weigher/ChainGrid';
 import { ListGrid, usdSigned, type ListRow } from '../../../components/weigher/PositionsList';
-import { expiryFor, isoDate, today } from '../../../core/calendar';
+import { expiryFor, isoDate, MONTHS, today } from '../../../core/calendar';
 import { buildBook } from '../../../data/bookAtStrike';
 import { setupIdOf } from '../../../data/compass';
 import { useThetaBook } from '../../../data/thetaBook';
@@ -24,7 +24,8 @@ import type { TileControl, TileProps, TileState, WorkspaceCtx } from '../tile';
 import { profile30 } from './derive';
 import { TileEmpty, TileRead, dirInk, useDoor } from './parts';
 
-const fmtDay = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+/* an expiry's calendar date (the date object is the day itself, not an instant) */
+const fmtDay = (d: Date) => `${MONTHS[d.getMonth()]} ${d.getDate()}`;
 
 /* ------------------------------------------------------------------ Compass setups */
 

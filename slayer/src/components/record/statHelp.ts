@@ -23,6 +23,8 @@ const HELP: Record<string, string> = {
   'EPS growth · 4 quarters': "The latest quarter's earnings per share against the same quarter a year before",
   'EPS growth · YoY': "The latest quarter's earnings per share against the same quarter a year before",
   'EPS growth · year over year': "The latest quarter's earnings per share against the same quarter a year before",
+  'Earnings growth': 'Earnings per share growth as a rate a year: the slowest of the one-, two- and three-year rates',
+  'Unusual alerts': 'Flow alerts on contracts that traded at least twice their open interest',
   Estimates: 'The analysts’ average estimates on the feed',
   'IV rank': 'Where today’s implied volatility sits in its past-year range: 0 is the lowest of the year, 100 the highest',
   /* the stock */

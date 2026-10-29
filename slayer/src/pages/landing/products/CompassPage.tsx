@@ -24,23 +24,23 @@ const CompassPage = () => (
     head={['Contracts picked off today’s levels.', 'With the reason for each.']}
     intro={
       <>
-        Compass scores the option chains on the terminal’s live quotes and keeps a board of the contracts that clear the bar — same day and one to seven days out, calls and puts, each one a card with its state, its premium and the move it needs.
-        Pick a card and you get the whole case on one page: the chart with the entry, the floor and the targets drawn on it, the reasons it made the board, and the contracts around it. Track the ones you like and the
-        Tracker keeps their live figures as the session moves.
+        Compass scores the option chains on the ThetaData terminal’s live quotes with two trained models, every five minutes from 09:45 to 15:00 ET, and keeps a board of the calls that clear the bar and the closest misses —
+        same day and one to seven days out. Every call goes to the blotter the moment it fires, with the quote it fired on, and is filled and closed by fixed rules on the quotes that follow. A call opens its own page:
+        the live chart with the entry, the stop and the exits on it, the quote and its greeks.
       </>
     }
     path="/compass"
     plan="It comes with Desk."
   >
     {/* ── THE BOARD ── */}
-    <Aside eyebrow="The board" first="Every card is a contract." second="With its reason and its state." picture={<Picture src={`${SHOTS}/board`} alt="The board: the sweep's facts and its one-line read across the top, the cards two across under them, and the Heaviest contracts rail beside them" ratio="1440 / 953" />}>
+    <Aside eyebrow="The board" first="Every card is a call." second="With the rules it fired and closes on." picture={<Picture src={`${SHOTS}/board`} alt="The board: the sweep's facts and its one-line read across the top, the cards two across under them, and the Heaviest contracts rail beside them" ratio="1440 / 953" />}>
       <p>
-        The board is one box. Across its head, what the sweep found: how many setups cleared the bar, how many are active, proving or fading, the top pick, and when the sweep ran. Under that, one line that says it in
-        words. Then the cards, two across, newest sweep first.
+        The board is one box. Across its head, what the scan found today: how many calls fired, the best Model 1 read against the bar a call needs, how many came closest, and how many of the five seats are taken. Then
+        the cards, two across, newest first.
       </p>
       <p>
-        A card is a contract and its case: the name and the strike in the side’s ink, its state, the premium, the move the stock has priced for the period, where it breaks, and how the targets stand. One press selects
-        it; a second opens its page. The states say where a setup is in its life: watch, active, moving, fading — and retired once its floor breaks.
+        A call needs Model 1 at 70.67% or more, a bid over $0.15 and a spread at or under 8%. It fills at the ask of the first quote a full minute after the call, and closes on the stop, the take-profit, a reversal of the
+        underlying or the 15:55 ET flat — each read off a quote that printed. The Book A and Book B calls are marked unvalidated until the live model inputs are re-checked against training.
       </p>
     </Aside>
 
@@ -56,8 +56,8 @@ const CompassPage = () => (
       }
     >
       <p>
-        The cards sit over the board and none of them leaves it. Expiry is same day or one to seven days out. Type is calls, puts or both. Name narrows the board to one ticker. Layout turns the cards into a table with the
-        same rows, sortable by any head. The Book A and Book B calls are marked unvalidated until the live model inputs are re-checked against training.
+        The choices sit over the board and none of them leaves it. Expiry is same day or one to seven days out. Type is calls, puts or both. Name narrows the board to one ticker. Layout turns the cards into a table with the
+        same rows, sortable by any head.
       </p>
     </Room>
 
@@ -65,51 +65,28 @@ const CompassPage = () => (
     <Film />
 
     {/* ── the setup's page ── */}
-    <Aside eyebrow="The setup’s page" first="A setup’s own page." second="The chart, the case and the contract." flip picture={<Picture src={`${SHOTS}/setup`} alt="A setup's own page: the head with the contract, its state and its facts, the chart with the marks beside the card on Why we chose this" ratio="1440 / 1000" />}>
+    <Aside eyebrow="The call’s page" first="A call’s own page." second="The chart, the quote and the contract." flip picture={<Picture src={`${SHOTS}/setup`} alt="A setup's own page: the head with the contract, its state and its facts, the chart with the marks beside the card on Why we chose this" ratio="1440 / 1000" />}>
       <p>
-        Every setup has an address of its own, so the browser’s Back works and a link lands on it. The head carries the contract in its side’s ink, its state and the expiry, and the facts a trader asks first: the
-        premium live, how the case stands, how many targets have been hit, where it breaks, and how tight the market is. Under it, the chart and the card share the screen; under them, the contracts around it. The
-        way back to the board is the first thing on the page.
+        Every call has an address of its own, so the browser’s Back works and a link lands on it. The head carries the contract in its side’s ink, the call’s state and the expiry, and the quote live from the terminal:
+        the bid and ask, the spread, the greeks. The way back to the board is the first thing on the page.
       </p>
     </Aside>
 
     {/* ── THE CHART ── */}
-    <Aside eyebrow="The chart" first="The marks on the chart." second="The entry, the floor and the targets." picture={<Picture src={`${SHOTS}/chart`} alt="The setup's chart: a silver arrow on the entry candle, a thin red rule for the floor, and the targets as a ladder of green rungs at the right edge" ratio="1193 / 1080" />}>
+    <Aside eyebrow="The chart" first="The marks on the chart." second="The entry, the stop and the exits." picture={<Picture src={`${SHOTS}/chart`} alt="The setup's chart: a silver arrow on the entry candle, a thin red rule for the floor, and the targets as a ladder of green rungs at the right edge" ratio="1193 / 1080" />}>
       <p>
-        The marks stay out of the candles’ way. The entry is a silver arrow on its candle, pointing the trade’s way, with a chip at the edge. The floor is a thin red rule that stops at the candle that broke it. The
-        targets are a ladder of rungs at the right edge, numbered, each one filled once it is won. Bring the pointer near any of them and a small card says which it is, what it stands at, how far from spot it is and
-        whether it has been hit. The strip over the chart turns between the stock and the contract’s premium, and the two views cross-fade rather than reload.
-      </p>
-    </Aside>
-
-    {/* ── THE CARD ── */}
-    <Room eyebrow="The card" first="Why we chose this." second="The card opens on the reason." pictures={<Pair cols={3} items={[
-      { src: `${SHOTS}/why`, ratio: '854 / 1080', name: 'Why we chose this', says: 'The tab the card opens on. The state and the case; why it is on the board, with the numbers behind that read as rows — priced against fair value, the move it needs, which side the dealers are on, the clock, the greeks, the liquidity; and what would make us wrong.' },
-      { src: `${SHOTS}/setup-tab`, ratio: '854 / 1080', name: 'Setup', says: 'The plan as a table: the entry, each target with its price and whether it has been hit, and the floor — the price that retires the setup if it trades through. Track setup lives in the foot, with the door to the Tracker.' },
-      { src: `${SHOTS}/contract-tab`, ratio: '854 / 1080', name: 'Contract', says: 'The premium against fair value, the expected move into expiry, the greeks, and the whole thing in dollars for one contract — what it costs, what the targets pay, what the floor costs.' },
-    ]} />}>
-      <p>
-        The card beside the chart speaks in three tabs, and it opens on the reason. That order was deliberate: before the numbers, the case in plain words, so a card can be dismissed in a sentence or earn the rest of
-        your attention.
-      </p>
-    </Room>
-
-    {/* ── the contracts around it ── */}
-    <Aside eyebrow="The contracts around it" first="The contracts around it." second="The strikes beside the setup." flip picture={<Picture src={`${SHOTS}/drivers`} alt="The contracts around the setup: the heaviest strikes on the same name as rows, the setup's own row selected, with each one's role, gamma, volume against open interest, distance from spot and exposure" ratio="1400 / 556" />}>
-      <p>
-        The strikes on the same name that carry the most weight sit under the chart as rows, with the setup’s own row selected: each one’s role, its gamma, its volume against open interest, how far it sits from spot,
-        and its exposure. They are why the levels are where they are. Open any of them and the page turns to that contract, with the way back kept.
+        The marks stay out of the candles’ way. The entry is a silver arrow on its candle, pointing the trade’s way, with a chip at the edge. The stop is a thin red rule; the exits stand at the right edge. Bring the
+        pointer near any of them and a small card says which it is and what it stands at. The strip over the chart turns between the stock and the contract’s premium.
       </p>
     </Aside>
 
     {/* ── THE TRACKER ── */}
-    <Room eyebrow="The Tracker" first="The setups you follow." second="Each with its live figures." pictures={<Pair items={[
-      { src: `${SHOTS}/tracker-cards`, ratio: '1400 / 352', name: 'As cards', says: 'Every setup you pressed Track on, rebuilt live each tick: the contract, its state, the premium now against the entry, and how the targets stand. A card opens its page.' },
+    <Room eyebrow="The Tracker" first="The calls you follow." second="Each where it stands now." pictures={<Pair items={[
+      { src: `${SHOTS}/tracker-cards`, ratio: '1400 / 352', name: 'As cards', says: 'Every call you pressed Track on: the contract, its state and the premium now against the entry. A card opens its page.' },
       { src: `${SHOTS}/tracker-table`, ratio: '1400 / 455', name: 'As a table', says: 'The same list as rows, when you want them side by side and sorted by any head. One list, two views — never two lists.' },
     ]} />}>
       <p>
-        Track a setup from its page and it joins the Tracker, one of Compass’s own pages. The contracts you merely watch live on the Weigher; the Tracker holds setups, each with the case it was tracked on and
-        where it stands now.
+        Track a call from its page and it joins the Tracker, one of Compass’s own pages. The contracts you merely watch live on the Weigher; the Tracker holds Compass’s calls, each with where it stands now.
       </p>
     </Room>
   </ProductPage>

@@ -593,6 +593,19 @@ const Pane = ({
   const [stripH, setStripH] = useState(46);
   /* The same observation answers a second question: how much room the toolbar has. */
   const [stripW, setStripW] = useState(0);
+  /* Every layout choice the strip's width makes, as one key: a width that changes none of them (a rail drag, a window
+     resize between thresholds) is not a new render of the pane, its toolbar and its rail. */
+  const stripKeyRef = useRef<(w: number) => string>(() => '');
+  stripKeyRef.current = (w: number) => {
+    if (!(w > 0)) return '0';
+    const inner = w - PRICE_GUTTER_PX - (ownScale ? PRICE_GUTTER_PX : STRIP_PAD_PX);
+    const row = ID_ROW_FULL_PX + MTF_FULL_PX + 24 + ROW_DOOR_PX;
+    const marks = [ID_ROW_FULL_PX, ID_ROW_NO_PCT_PX, ID_ROW_NO_BADGE_PX, READOUT_C_PX + READOUT_OHL_PX, READOUT_C_PX + READOUT_OHL_PX + READOUT_VOL_PX, row + TOOLBAR_FULL_PX, row + TOOLBAR_COMPACT_PX];
+    for (let k = 1; k <= 8; k++) marks.push(READOUT_C_PX + READOUT_OHL_PX + READOUT_VOL_PX + k * READOUT_IND_PX);
+    const heavy = Math.max(1, Math.min(HEAVY_MAX, Math.floor((inner - HEAVY_LABEL_PX) / HEAVY_ENTRY_PX)));
+    const compact = expanded ? w - 24 < ID_ROW_FULL_PX + TOOLBAR_FULL_PX + ROW_DOOR_PX + 36 : w - PRICE_GUTTER_PX < TOOLBAR_FULL_PX;
+    return `${marks.map(m => (inner >= m ? 1 : 0)).join('')}|${heavy}|${compact ? 1 : 0}`;
+  };
   useEffect(() => {
     const el = stripRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
@@ -602,7 +615,8 @@ const Pane = ({
       const r = el.getBoundingClientRect();
       const h = Math.round(r.height);
       if (h > 0) setStripH(h);
-      if (r.width > 0) setStripW(Math.round(r.width));
+      const w = Math.round(r.width);
+      if (w > 0) setStripW(prev => (prev > 0 && stripKeyRef.current(prev) === stripKeyRef.current(w) ? prev : w));
     });
     obs.observe(el);
     return () => obs.disconnect();

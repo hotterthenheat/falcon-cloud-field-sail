@@ -62,6 +62,8 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
   const futures: Row[] = PAPER_FUTURES.map(p => ({ value: p.symbol, code: frontOn(p.symbol, day), name: CME_NAMES[p.symbol] ?? p.name, keywords: `${p.symbol} ${p.name} ${p.fund} futures`, price: open ? futPrice(p.symbol) : null, decimals: p.decimals }));
   const indexRows: Row[] = indexes.map(x => ({ value: x.symbol, code: x.symbol, name: `${x.name} options`, keywords: `${x.symbol} ${x.name} index options ${x.fund}`, price: open ? indexPrice(x.symbol) : null, decimals: 2 }));
   const stocks: Row[] = useMemo(() => {
+    /* the list's company names are asked for only once it is open: a closed picker asks for nothing */
+    if (!open) return [];
     const roots = optionSymbols();
     const skip = new Set(indexes.map(x => x.symbol));
     const label = (ticker: string) => {
@@ -98,7 +100,7 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
       if (prefix.length >= 80) break;
     }
     return [...prefix, ...contains].slice(0, 80).map(toRow);
-  }, [query, listedRev, nameRev, stockWindow, indexes]);
+  }, [open, query, listedRev, nameRev, stockWindow, indexes]);
   const q = query.trim().toLowerCase();
   const hit = (r: Row) => !q || r.code.toLowerCase().includes(q) || r.value.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) || r.keywords.toLowerCase().includes(q);
   const groups = [
@@ -150,8 +152,8 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
       <Popover.Trigger asChild>
         <button
           type="button"
-          aria-label={`What is on the chart: ${current?.code ?? value} — ${current?.name ?? ''}`}
-          title={current ? `${current.code} · ${current.name}` : value}
+          aria-label={`What is on the chart: ${current?.code ?? value} — ${current?.name ?? companyName(value)}`}
+          title={current ? `${current.code} · ${current.name}` : `${value} · ${companyName(value)}`}
           className="group inline-flex items-center gap-1.5 h-7 pl-1.5 pr-2 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted data-[state=open]:border-silver/50 transition-colors font-mono select-none"
           data-paper-ticker={value}
         >

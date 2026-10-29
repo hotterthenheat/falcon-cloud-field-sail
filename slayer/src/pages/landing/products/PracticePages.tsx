@@ -52,8 +52,8 @@ export const PracticePage = () => (
     head={['Practice on live option quotes.', 'With pretend money and nothing at stake.']}
     intro={
       <>
-        Practice is three rooms. Paper trades options with pretend money, filled at each contract’s live bid and ask during the options session. Backtest is paused until real minute-by-minute option history is wired in — the
-        old tape was a synthetic random walk, so it is not offered as a past market. The Journal is where every closed trade ends up, on its day, with your words next to it. Futures are paused too: there is no live futures feed.
+        Practice is three rooms. Paper trades options with pretend money, filled at each contract’s live bid and ask during the options session. Backtest replays a recorded ThetaData session, and fills at the bid and ask
+        each contract had that minute. The Journal is where every closed trade ends up, on its day, with your words next to it. Options only: neither data feed carries futures.
       </>
     }
     path="/practice/paper"
@@ -67,10 +67,10 @@ export const PracticePage = () => (
       <To to="/products/paper">Read about Paper</To>
     </Aside>
 
-    <Aside eyebrow="Backtest" first="Backtest is paused." second="Until real option history is wired in." flip picture={<Picture src={`${SHOTS}/backtest-desk`} alt="The backtest desk on a played day: the chart with a position and its brackets, the chain as it stood, the order" ratio="1440 / 1000" />}>
+    <Aside eyebrow="Backtest" first="Replay a past session." second="At the bid and ask it really had." flip picture={<Picture src={`${SHOTS}/backtest-desk`} alt="The backtest desk on a played day: the chart with a position and its brackets, the chain as it stood, the order" ratio="1440 / 1000" />}>
       <p>
-        A replay needs the bid and ask every contract had each minute of a past day. The app does not have that history yet, and the tape it used before was a seeded random walk, so Backtest is paused rather than passing
-        that off as a past market. Sessions played on it stay in the Journal, marked as synthetic.
+        A replay trades the bid and ask every contract had each minute of a past day, read from ThetaData’s recorded history. Pick the name and the day, set your rules, and play the clock; every fill is a quote that
+        printed that minute.
       </p>
       <To to="/products/backtest">Read about Backtest</To>
     </Aside>
@@ -116,16 +116,15 @@ export const PaperPage = () => (
     intro={
       <>
         Paper is the live desk with nothing at stake. Start a practice account at the size you want and trade options off the chain at each contract’s live bid and ask, during the options session. Orders wait when there is
-        no two-sided quote. The account carries from day to day, and every closed trade goes to the journal. Evaluations and futures are paused: there is no live futures feed.
+        no two-sided quote. The account carries from day to day, and every closed trade goes to the journal. Options only: neither data feed carries futures.
       </>
     }
     path="/practice/paper"
     plan={PLAN}
   >
-    <Aside eyebrow="Starting out" first="Start with a practice account." second="Evaluations return with a futures feed." picture={<Picture src={`${SHOTS}/paper-start`} alt="The paper desk's start page: a practice account at four sizes, or a prop firm's evaluation with its plans" ratio="1440 / 1000" />}>
+    <Aside eyebrow="Starting out" first="Start with a practice account." second="Your size, your rules." picture={<Picture src={`${SHOTS}/paper-start`} alt="The paper desk's start page: a practice account at four sizes" ratio="1440 / 1000" />}>
       <p>
-        A practice account is pretend money with no rules but your own: $10,000 to $100,000, options, a fee an option each way. An evaluation is a prop firm’s futures test; it is paused until the app has a live futures
-        feed.
+        A practice account is pretend money with no rules but your own: $10,000 to $100,000, options, a fee an option each way.
       </p>
     </Aside>
 
@@ -151,7 +150,7 @@ export const PaperPage = () => (
     <Aside eyebrow="The account" first="The account on one card." second="Worth, free, today and all time." narrow picture={<Picture src={`${SHOTS}/paper-account`} alt="The account card: worth, today, all time, what is free, what is open, what is tied up, and the counts" ratio="870 / 375" />}>
       <p>
         The account card sits above the chain and stays put. What the account is worth, what it made today and over its whole run, what is free to trade with and what is open, and a bar for what is tied up. Cancel all, flatten
-        and a new account are a press away. On an evaluation the same card carries the status and how far you are from the target and the floor.
+        and a new account are a press away.
       </p>
     </Aside>
 
@@ -165,11 +164,10 @@ export const BacktestPage = () => (
     name="Backtest"
     glyph="backtest"
     group="Practice"
-    head={['Replay a past day.', 'Paused until real history is wired in.']}
+    head={['Replay a past day.', 'At the bid and ask it really had.']}
     intro={
       <>
-        Backtest is paused. A replay has to trade the bid and ask each contract really had that minute, and the app has no source for that history yet; the tape it ran on before was a seeded random walk, not a past market.
-        What follows is how the desk works, for when real history is wired in. Sessions already played stay in the Journal, marked as synthetic.
+        Backtest replays a recorded ThetaData session minute by minute. Every order fills at the bid or ask the contract really had that minute, the chain stands as it stood, and the day runs at the pace you set.
       </>
     }
     path="/practice/backtest"
@@ -177,8 +175,8 @@ export const BacktestPage = () => (
   >
     <Aside eyebrow="A session" first="A session starts from one line of cards." second="The name, the day, the rules, then the clock." picture={<Picture src={`${SHOTS}/backtest-sessions`} alt="The sessions page: the cards that make a session, and the list of sessions kept on this machine" ratio="1440 / 1000" />}>
       <p>
-        Options or futures. The name, and a second one if you want two on the desk. What you start with, the day the clock starts on, the fee. Then your rules: how many positions may be open at once, what one trade may cost
-        — or, on futures, risk between the fill and the stop — and the loss on the day that stops you. Every session you’ve run stays in the list under it with where its clock stands and what it’s worth, with doors to its desk
+        The name, and a second one if you want two on the desk. What you start with, the day the clock starts on, the fee. Then your rules: how many positions may be open at once, what one trade may cost and the loss
+        on the day that stops you. Every session you’ve run stays in the list under it with where its clock stands and what it’s worth, with doors to its desk
         and its report.
       </p>
     </Aside>
@@ -199,13 +197,6 @@ export const BacktestPage = () => (
       <p>
         The bar floats at the foot of the chart and folds to a pill when you want the tape. The track is the whole day; press anywhere on it to jump there. The pace is a multiple — one candle a second at 1× — and the steps
         move the clock a minute back or forward, so you can walk a decision candle by candle. Nothing happens on the desk unless the clock moves.
-      </p>
-    </Aside>
-
-    <Aside eyebrow="Futures" first="Futures in the backtest." second="Brackets in points from the fill." picture={<Picture src={`${SHOTS}/backtest-futures`} alt="A futures session: the contract card, the order card with market, limit and stop, the brackets in points" ratio="1440 / 1000" />}>
-      <p>
-        A futures session puts the contract’s card where the chain would be: a point, a tick, the margin a contract holds, the fee each way, and the day so far by its sessions — overnight, the day session, the last hour.
-        The order card is market, limit or stop; join the bid or the ask; close, reverse, flatten. The brackets are distances in points from the fill, and a press sizes the position to a share of the account at risk.
       </p>
     </Aside>
 

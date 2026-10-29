@@ -119,7 +119,7 @@ export const NAV_ITEMS: NavItem[] = [
     glyph: 'compass',
     ink: NAV_INK.compass,
     /* the rail tooltip and palette hint read this: we do not say we grade */
-    description: 'Contracts that fit the levels right now — 0DTE to long-dated, the strongest first',
+    description: 'Contracts scored on the live quotes — same day and one to seven days out',
     group: 'Trade',
   },
   {

@@ -634,8 +634,9 @@ const PaperDesk = () => {
   return (
     <div className="flex flex-col gap-2.5">
       {!holding && elsewhere && <HeldElsewhere />}
-      <ThetaLine since={feedOffline()} at={nameRead?.takenAt} what="ThetaData offline — reconnecting · the quotes on screen are the last ones read, and nothing fills until it answers" />
+      <ThetaLine since={feedOffline()} at={nameRead?.takenAt} what="ThetaData offline — reconnecting · nothing fills until it answers" />
       <DeskShell
+        phoneSideFirst
         session={{ id: account.id, name: account.name }}
         kind="paper"
         /* no strip over the chart: the account is the right column's first card */

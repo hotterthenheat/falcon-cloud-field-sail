@@ -4,16 +4,9 @@
 Journal (`/practice/journal`, whose **Backtest** book is this journal, `?book=backtest`; the paper accounts have the other
 book). The old `/review/*` addresses land where their pages went.
 
-**The Order card is the paper desk's (2026-09-26 — Noah: "make the contract orders look the same on the backtesting section
-for both options and futures").** The futures desk's Order is `components/paper/OrderPanel` `FutOrderPanel` — Market ·
-Limit · Stop, the position line, the size row (− n + and 1 · 3 · 5 · 10 · 15), **Buy · Sell** in one press each, Join bid ·
-Join ask · Close position · Reverse · Cancel orders · Flatten all · Cancel all, the brackets as **distances in points from
-the fill** (kept between orders under `slayer_review_brackets_v1`), size to a share of the account at risk, the foot. The
-options desk's Order is the paper chain's `ChainOrder` — the size row, **Buy @ Ask · Buy @ Lmt** (or, held, **Sell @ Bid ·
-Sell @ Lmt**, All, Buy more), the limit box with Mid, the Spread pick, the folded Target / Stop on the contract's or the
-name's price. What differs from the live desk is only where the prices and the refusals come from: the replayed minute
-and this session's rules. A market future fills a tick against you here, so the brackets measure from that fill. The
-older tickets (`OrderTicket`, `FuturesTicket`) are gone; a stop to close a held option is pulled off its chip on the chart.
+**The Order card is the paper desk's** — the paper chain's `ChainOrder`: the size row, **Buy @ Ask · Buy @ Lmt** (or, held,
+**Sell @ Bid · Sell @ Lmt**), the limit box, the spread and the brackets, fed the replayed minute's quotes. There is no
+futures backtest: neither data key carries futures, so `/practice/futures` lands on this page.
 
 Written 2026-09-20, before the code (Noah: "a genuine papertrading section where a user can backtest their edge… options
 papertrading"). One page, plain words. `src/data/review/engine.ts` implements exactly this; when a rule changes, it
@@ -45,9 +38,10 @@ real, with the costs that are real for options: the spread, the fee, and the dec
 - **Decay is not charged. It is in the price.** The quote a minute later, or a morning later, is already lower by what
   the contract lost. The greeks on screen (delta, theta a day, implied vol) are worked out from that price by our own
   math, the same math the live terminal uses.
-- On the simulator (today) the quote comes from `src/data/review/quotes.ts`: a Black-Scholes price on a seeded tape, with
-  a spread that widens away from the money. When the real tape is wired in, **that one file is the seam** — nothing
-  above it changes.
+- The quote is ThetaData's recorded NBBO (`src/data/review/history.ts`, read through `quotes.ts`): the one-minute
+  interval quote, the bid and ask standing at the end of each minute. The name's price is its recorded one-minute bar.
+  The expiries and strikes are the contracts quoted that day. A session can open on any day from the oldest the key's
+  history reaches to the newest finished session; each day loads once and is kept in the browser.
 
 ## Orders and fills
 
@@ -61,8 +55,8 @@ real, with the costs that are real for options: the spread, the fee, and the dec
 | Target **on the name** at N | the name's minute closes at or past N, on the contract's good side (a call: at or over; a put: at or under) | the bid of that minute |
 | Stop **on the name** at N | the name's minute closes at or past N, on the other side | the bid of that minute |
 
-- A **dead quote gives no fill**: a bid of zero cannot be sold into, and a spread wider than 60% of the mark is not a
-  market. The order waits.
+- A **dead quote gives no fill**: a minute with no two-sided quote (no bid, no ask, or none recorded) is not a market.
+  The order waits. A wide quote is still the market, and fills at its side.
 - A **target and a stop** may ride a buy. They are a limit sell and a stop sell on the same contracts; when one fills,
   the other gives up the contracts it sold — all of them, where there is one of each. More than one of each is a
   LADDER (its own section, below).

@@ -291,7 +291,7 @@ const phoneRow = (r: TapeRow) => {
           <span className="text-t11 text-textSecondary tnum">{r.p.expiry.slice(0, 5)}</span>
         </>
       }
-      aside={r.p.time}
+      aside={`${r.p.time} ET`}
       figures={[
         <span key="p" className="font-semibold text-textPrimary">
           {fmtUsd(r.p.premium)}

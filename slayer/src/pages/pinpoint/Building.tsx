@@ -44,8 +44,8 @@ let panesMemory: Pane[] | null = null;
 /* The ledger's choices, held across route changes, reset on reload */
 let orderMemory: BuildOrder = 'strike';
 let windowMemory: StrikeWindow = 20;
-/* every strike by default; Show · What moved folds the steady strikes away */
-let showMemory: BuildShow = 'all';
+/* the strikes that moved by default; Show · Every strike lists the steady ones too */
+let showMemory: BuildShow = 'moved';
 
 const WINDOWS = new Set<number>([10, 15, 20, 25, 30]);
 const ORDERS = new Set<string>(['strike', 'built', 'drained']);
@@ -206,11 +206,11 @@ const Building = () => {
           <AgendaSwitch />
           <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the bar, the chip and the line mean" testId="build-guide" />
         </div>
-        <p className="mt-0.5 text-t11 text-textMuted lg:whitespace-nowrap lg:truncate" title={first.overnight ? `The overnight open-interest count · ${oiWhen(first.oiDates).long}` : undefined}>
-          {first.overnight
-            ? `The overnight open-interest count, contract by contract · the hedging ${oiWhen(first.oiDates).long} added or took off, each contract valued at the same pricing as the wall now (the live book's own price and minute)${oiWhen(first.oiDates).pending ? ` · ${oiWhen(first.oiDates).pending}` : ''} · every strike, the steady ones too — Show · What moved folds them away`
-            : `${clock.inSession ? "Today's trading" : 'The last session'}, strike by strike · estimated from the day's volume until the overnight open-interest count loads · every strike, the steady ones too — Show · What moved folds them away`}
-          {panes.length > 1 ? ' · one pane a name, each with its own expiry, strikes and order' : ''}
+        <p
+          className="mt-0.5 text-t11 text-textMuted sm:whitespace-nowrap sm:truncate"
+          title={first.overnight ? `The overnight open-interest count, contract by contract (${oiWhen(first.oiDates).long}), each contract valued at the live book's own price and minute${oiWhen(first.oiDates).pending ? ` · ${oiWhen(first.oiDates).pending}` : ''}` : "Estimated from the day's volume until the overnight open-interest count loads"}
+        >
+          {first.overnight ? `What the overnight open-interest count added and took off · ${oiWhen(first.oiDates).short}` : `${clock.inSession ? "Today's trading" : 'The last session'}, from volume until the open-interest count loads`}
         </p>
       </div>
       <BuildingControls clock={clock} order={order} onOrder={setOrder} window={window} onWindow={setWindow} show={show} onShow={setShow} names={namesDoor} updatedAt={scan.at} moved={counted ? moved : null} total={total} lenses={panes.length < 2} />

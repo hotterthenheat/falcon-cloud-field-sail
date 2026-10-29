@@ -11,7 +11,7 @@ import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
-import { RecordHead } from '../../components/record/RecordFrame';
+import { RecordHead, Summary } from '../../components/record/RecordFrame';
 import { EtfsGuide, InstitutionsGuide, ShortsGuide } from '../../components/record/FileGuides';
 import { CongressGuide } from '../../components/record/CongressGuide';
 import { When } from '../../components/record/when';
@@ -202,11 +202,11 @@ export const HouseFile = () => {
         <DropdownSelect label="Side" value={book} options={BOOK_OPTIONS} onChange={setBook} title="Shares, call, or put. Not a contract." testId="house-book" />
         <DropdownSelect label="Change" value={status} options={STATUS_OPTIONS} onChange={setStatus} title="What happened versus the prior 13F" testId="house-status" />
       </div>
-      <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-house-sentence>
+      <Summary testId="house">
         {house ? displayName(house) : house} reported {bookLive.totalB != null ? moneyB(bookLive.totalB) : 'its book'} on its latest 13F. The {feed.length} largest lines, shown here, are {moneyB(value)}{bookLive.totalB ? ` (${Math.round((100 * value) / bookLive.totalB)}% of it)` : ''}{bookLive.optionsB ? <>; the whole filing holds {moneyB(bookLive.optionsB.calls)} of calls and {moneyB(bookLive.optionsB.puts)} of puts, {callValue + putValue > 0 ? `${moneyB(callValue)} and ${moneyB(putValue)} of them in these lines` : 'none of them among these lines'}</> : <>: calls {moneyB(callValue)}, puts {moneyB(putValue)}</>}; {changed.length} of them changed size by more than 2% versus the prior quarter.
         {line ? <> The line you opened is {line}.</> : null}
         {focused ? (focused.quarters.length > 1 ? <> {focused.quarters.length} quarters of {focused.ticker} sit under the grid, {focused.quarters[0]?.unitsM.toFixed(1)}M units in {focused.quarters[0]?.period} and {focused.quarters[focused.quarters.length - 1]?.unitsM.toFixed(1)}M now.</> : <> One quarter of {focused.ticker} is on file, {focused.quarters[0]?.unitsM.toFixed(1)}M units.</>) : null}
-      </p>
+      </Summary>
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-file-strip="house-know">
         <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The lines to know</span>
@@ -417,7 +417,7 @@ export const ShortFile = () => {
           ) : null}
         </div>
       )}
-      <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-short-sentence>
+      <Summary testId="short">
         {row.shortSharesM.toFixed(1)}M shares short, {row.interestPct.toFixed(2)}% of a {row.floatM.toFixed(0)}M float, {row.daysToCover.toFixed(1)} days to cover.
         {row.availableM == null ? ' The feed did not say how many shares are left to borrow.' : row.availableM >= 10 - 1e-9 ? ' At least 10M shares are available to borrow.' : ` ${borrowM(row.availableM)} shares are available to borrow.`}
         {/* FINRA's CNMS rows are off-exchange volume alone (dark pools and wholesalers), never the day's whole volume. */}
@@ -435,7 +435,7 @@ export const ShortFile = () => {
             <span className="text-textPrimary font-semibold">{lead.exchange}</span> printed the heaviest short volume{row.exchangesDate ? ` on ${asOfDay(row.exchangesDate)}` : ''}, {lead.ratio.toFixed(0)}% of that market{row.exchangesDate && row.shortVolDate && row.exchangesDate !== row.shortVolDate ? ` — the by-market figures are a session behind the ${row.shortVolRatio != null ? `${row.shortVolRatio.toFixed(0)}% ` : ''}short volume of ${asOfDay(row.shortVolDate)}` : ''}.
           </>
         ) : null}
-      </p>
+      </Summary>
       {markets.length > 0 ? (
       <>
       <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-short-controls>
@@ -607,7 +607,7 @@ export const FundFile = () => {
       <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-fund-controls>
         <DropdownSelect label="Sector" value={sector} options={sectorOptions} onChange={setSector} title="Which sector of the book" testId="fund-sector" />
       </div>
-      <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-fund-sentence>
+      <Summary testId="fund">
         {lead ? (
           <>
             <span className="text-textPrimary font-semibold">{lead.bond ? lead.name : lead.ticker}</span> is the largest line, {lead.weight.toFixed(2)}% of {fund.etf}{partial ? ` — the grid is ${coverWords}, so it does not add to 100%` : ''}. Five sessions: {fund.flows.map(f => `${f.day} ${moneyFlow(f.flowM)}`).join(', ')}.
@@ -617,7 +617,7 @@ export const FundFile = () => {
         ) : (
           'Nothing in this book on this cut.'
         )}
-      </p>
+      </Summary>
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-file-strip="fund-know">
         <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The lines to know</span>
@@ -891,13 +891,13 @@ export const MemberFile = () => {
         <DropdownSelect label="Owner" value={owner} options={OWNER_FILE_OPTIONS} onChange={setOwner} title="Whose holding" testId="member-owner" />
         <BillsSwitch hide={hideBills} onToggle={() => setHideBills(v => !v)} hidden={billsHidden} testId="member-bills" reading={reading} />
       </div>
-      <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-member-sentence>
+      <Summary testId="member">
         {book.status === 'loading'
           ? 'Reading their reports.'
           : book.status === 'sim'
             ? 'Their reports did not load.'
             : <>{trades.length.toLocaleString('en-US')} {trades.length === 1 ? 'report' : 'reports'} of trades made in the last year{book.complete ? '' : ` — the read stopped at ${trades.length}, so older ones in the year may be missing`}. {late === 0 ? 'None' : late} filed past {STOCK_ACT_DEADLINE_DAYS} days.{book.unreadTypes ? ` ${book.unreadTypes} with an unreadable type left out.` : ''}{billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from these counts.` : ''} Amounts are the disclosed ranges, nothing finer.</>}
-      </p>
+      </Summary>
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-file-strip="member-know">
         <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The names to know</span>

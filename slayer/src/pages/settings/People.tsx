@@ -1,6 +1,7 @@
 /* The admin People room (owners and the team): head and search, Plan/Status/Role/Sort cards, the grid, a row's card
    (plan, role, ban, given plan, until, beta, with a reason), and the change log. Rules are the database's; without accounts it shows a sample. */
 
+import { nyClock, nyDay, nyIsoDate } from '../../core/nyTime';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ColDef, ICellRendererParams, RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
@@ -122,8 +123,8 @@ const logValue = (field: string, v: string | null): string => {
   return v ?? '—';
 };
 
-const fmtWhen = (iso: string | null): string => (iso ? new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—');
-const fmtDay = (iso: string | null): string => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
+const fmtWhen = (iso: string | null): string => (iso ? `${nyDay(Date.parse(iso))}, ${nyIsoDate(Date.parse(iso)).slice(0, 4)}, ${nyClock(Date.parse(iso), { zone: true })}` : '—');
+const fmtDay = (iso: string | null): string => (iso ? `${nyDay(Date.parse(iso))}, ${nyIsoDate(Date.parse(iso)).slice(0, 4)}` : '—');
 
 /* ---- the pieces ----------------------------------------------------------------------------------------------------- */
 

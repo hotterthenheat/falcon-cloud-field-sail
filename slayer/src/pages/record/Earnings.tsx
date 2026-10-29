@@ -2,7 +2,8 @@
    five days (or a list of days), then every report in a paged grid. */
 
 import { Controls, PhoneFold, RecordHead, Summary } from '../../components/record/RecordFrame';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { createStore, useStore } from '../../data/feedStore';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Moon, Search, Sunrise, X } from 'lucide-react';
@@ -127,17 +128,15 @@ const MacroChip = ({ m }: { m: MacroDate }) => (
 /** The board's cell: the mark, the ticker, our move, whether the date is set */
 /* a card or grid row asks for its name's past reports once it comes into view; one observer for the page */
 const seenNames = new Set<string>();
-let seenRev = 0;
+const seenStore = createStore(0);
 let seenTimer: number | null = null;
-const seenListeners = new Set<() => void>();
 const markSeen = (t: string) => {
   if (seenNames.has(t)) return;
   seenNames.add(t);
   if (seenTimer != null) return;
   seenTimer = window.setTimeout(() => {
     seenTimer = null;
-    seenRev += 1;
-    seenListeners.forEach(fn => fn());
+    seenStore.set(n => n + 1);
   }, 300);
 };
 let seenIo: IntersectionObserver | null = null;
@@ -178,14 +177,7 @@ function useSeenRef<T extends HTMLElement>(ticker: string) {
   return ref;
 }
 function useSeenNames(): string[] {
-  const rev = useSyncExternalStore(
-    fn => {
-      seenListeners.add(fn);
-      return () => seenListeners.delete(fn);
-    },
-    () => seenRev,
-    () => seenRev
-  );
+  const rev = useStore(seenStore);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => [...seenNames].sort(), [rev]);
 }

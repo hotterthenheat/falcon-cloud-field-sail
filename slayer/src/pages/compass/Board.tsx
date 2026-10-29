@@ -11,7 +11,7 @@ import { liveSpark, useThetaBook, alertUniverse, scanNames, setScanFocus } from 
 import { useSignals } from '../../data/compassLedger';
 import { bestByName, currentPicks, lastScanAt, lockReason, scanBusy, scanReport, seatsNow } from '../../data/compassModel';
 import { MODELS_VALIDATED, P1_MIN, SEAT_CAP, UNVALIDATED_LINE, inModelWindow } from '../../data/compassParams';
-import { nyClock, nyDay, nyMinutes } from '../../core/nyTime';
+import { nyClock, nyDay, nyMinutes, nyWallTime } from '../../core/nyTime';
 import { setCompassView, useCompassView, type BoardLayout } from '../../data/compassView';
 import { useScanClock } from '../../data/compassDoor';
 import { setCompassAlert, useCompassAlert } from '../../data/compassAlerts';
@@ -363,7 +363,7 @@ const Board = () => {
             <NameStrip names={names} bests={bests} selected={tickerFilter} onPick={t => setCompassView({ tickerFilter: t === tickerFilter ? null : t, selectedId: null })} />
             {!currentPicks().length && live.earlier && rankedSetups.length > 0 && (
               <p className="px-5 py-2 border-t border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textMuted" data-compass-asof>
-                As of {nyDay(live.earlier.at || Date.now(), { weekday: true })}{live.earlier.at ? `, ${nyClock(live.earlier.at, { zone: true })}` : ''} · the last session&apos;s scan, not live
+                As of {live.earlier.at ? `${nyDay(live.earlier.at, { weekday: true })}, ${nyClock(live.earlier.at, { zone: true })}` : nyDay(nyWallTime(Number(live.earlier.day.slice(0, 4)), Number(live.earlier.day.slice(4, 6)), Number(live.earlier.day.slice(6, 8)), 12), { weekday: true })} · the last session&apos;s scan, not live
               </p>
             )}
             {offered === 'odte' && odteAsleep() && !rankedSetups.length ? (

@@ -145,6 +145,8 @@ interface DeskFact {
 }
 
 interface DeskShellProps {
+  /** On a phone the desk's cards (the account, the chain and its order) come before the tape */
+  phoneSideFirst?: boolean;
   session: { id: string; name: string; startDay?: string };
   kind?: 'futures' | 'paper';
   onRename?: (name: string) => void;
@@ -253,7 +255,7 @@ export const DeskMissing = () => (
   </div>
 );
 
-const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: ownStrip, picker, foot, revision, grid, account, names, active, onSwitch, switchLabel, logos = false, heldAs = 'count', prefsKey, paneIds, timeframes, overlayKeys, clock, goToTitle = '', nextDayTitle = '', doors, chartSide, keys: ownKeys, notice, full, onFull, fullBleed = false, sideWidth = PANEL_PX, side, sideMinPx, panelWord, panelTitle, tab, onTab, counts, book }: DeskShellProps) => {
+const DeskShell = ({ phoneSideFirst = false, session, kind, onRename, subline = '', facts = [], strip: ownStrip, picker, foot, revision, grid, account, names, active, onSwitch, switchLabel, logos = false, heldAs = 'count', prefsKey, paneIds, timeframes, overlayKeys, clock, goToTitle = '', nextDayTitle = '', doors, chartSide, keys: ownKeys, notice, full, onFull, fullBleed = false, sideWidth = PANEL_PX, side, sideMinPx, panelWord, panelTitle, tab, onTab, counts, book }: DeskShellProps) => {
   const navigate = useNavigate();
   const themeKey = useCandleThemeKey();
   const [playing, setPlaying] = useState(false);
@@ -803,7 +805,7 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
           /* The right column is as tall as the left one, and never the other way round: its cards sit in a box
              laid OVER the cell (`absolute inset-0`), so a chain — which would otherwise ask for the height of
              every strike it holds — asks the grid for nothing, and takes what the tape and the book make */
-          <div className="min-w-0 lg:relative lg:col-start-2 lg:row-start-1 lg:row-span-2">
+          <div className={`min-w-0 lg:relative lg:col-start-2 lg:row-start-1 lg:row-span-2 ${phoneSideFirst ? 'max-lg:order-first' : ''}`}>
             <div className="flex flex-col gap-2.5 lg:absolute lg:inset-0">{side}</div>
           </div>
         )}

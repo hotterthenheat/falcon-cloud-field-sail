@@ -160,18 +160,16 @@ const STEPS: TourStep[] = [
       { title: 'Stocks', says: 'A plain read of any name: strong, good, caution or poor.', path: '/dossier/stocks' },
     ],
   },
-  /* PRACTICE, the eighth room. Paper trading leads; until then OPTIONS BACKTESTING led, and it still stands
-     second, with FUTURES beside it (the same night: "i also want to have backtesting/paper trading for regular
-     futures"). The brand above stays market-wide. */
+  /* PRACTICE, the eighth room: paper trading leads, the backtest and the journal follow. */
   {
     id: 'practice',
     glyph: 'practice',
     code: '08',
-    kind: 'Paper trading and the journal',
+    kind: 'Paper trading and backtesting',
     name: 'Practice',
     /* the headline leads with paper trading, as the room's first row does */
     lead: 'Paper trade today’s live option quotes.',
-    rest: 'A practice account on each contract’s live bid and ask — options off the chain, the same order card and chart as the desk, and nothing reaches a broker. Backtest and futures are paused until real history and a futures feed are wired in. One journal keeps every closed trade.',
+    rest: 'A practice account on each contract’s live bid and ask — options off the chain, the same order card and chart as the desk, and nothing reaches a broker. The backtest replays recorded ThetaData sessions at the bid and ask each contract had. One journal keeps every closed trade.',
     /* paper trading leads the room — its still is the options desk in use, not the start page (the photographer's
        `photo=1` window, embed.ts) */
     path: '/practice/paper',
@@ -195,7 +193,7 @@ const ROOMS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eig
 const IT_DOES = [
   'Shows where dealer hedging sits, and redraws it as the day moves',
   'Reads a contract against that and says it in a word: strong, good, caution or poor',
-  'Keeps a setup current: active while it holds, watch while it forms, fading when it breaks',
+  'Keeps a Compass call current on the live quote, from its fill to its close',
   'Explains every page in plain English',
 ];
 const IT_NEVER = ['Tells you what to buy or sell', 'Places an order. It is not a broker', 'Boils a trade down to one number', 'Gives financial advice'];
@@ -222,7 +220,7 @@ const PLAN_ROWS: PlanRow[] = [
   { text: 'Compass, contracts that fit the levels', card: ['Compass', 'contracts that fit the levels'], glyph: 'compass', in: { book: false, tape: false, desk: true, seat: true } },
   { text: 'The Weigher, for any contract you name', card: ['The Weigher', 'for any contract you name'], glyph: 'weigher', in: { book: false, tape: false, desk: true, seat: true } },
   /* Practice is desk's */
-  { text: 'Practice: paper trading and the journal', card: ['Practice', 'paper trading and the journal'], glyph: 'practice', in: { book: false, tape: false, desk: true, seat: true } },
+  { text: 'Practice: paper trading, backtesting and the journal', card: ['Practice', 'paper trading, backtesting and the journal'], glyph: 'practice', in: { book: false, tape: false, desk: true, seat: true } },
   { text: "Community, the traders' room", card: ['Community', 'the traders’ room'], glyph: 'community', in: { book: false, tape: false, desk: 'soon', seat: 'soon' } },
   /* The seat's own three lines, kept for the day it returns to the page: { text: 'One payment, nothing recurring',
      card: ['One payment', 'nothing recurring'], in: { book: false, tape: false, desk: false, seat: true } }, {

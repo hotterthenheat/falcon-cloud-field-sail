@@ -34,6 +34,9 @@ const CARRIED: string[] = [
   'slayer_alert_names',
   'slayer_flow_reasons_v1',
   'slayer_odte_v1',
+  /* the Compass record: the calls and the signals behind them */
+  'slayer_compass_signals_v1',
+  'slayer_compass_calls_v1',
   /* the screener's screen and every page's saved cuts */
   'slayer_screener_screen_v2',
   'slayer_screener_views_v1',
