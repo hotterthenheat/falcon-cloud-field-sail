@@ -1292,6 +1292,8 @@ export interface LiveScore {
 
 /** Seats already taken today. Book A and Book B share the five. */
 export function seatsNow(): { seats: number; sentRoots: string[] } {
+  /* in a browser the seats are the server engine's: read them when nothing on the page holds the feed */
+  if (!compassHost().server && typeof window !== 'undefined') void import('./compassFeed').then(m => m.refreshCompassSoon());
   const sentRoots = [...new Set([...seenRootA, ...seenRootB, ...seenRootC])];
   return { seats: new Set([...seenRootA, ...seenRootB]).size, sentRoots };
 }

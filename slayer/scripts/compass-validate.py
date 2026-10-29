@@ -9,7 +9,7 @@
 #
 # Run: <venv>/bin/python -I scripts/compass-validate.py <slayer dir> [YYYY-MM-DD] [rows per name]
 #      (needs lightgbm and numpy; reads ThetaData through the dev server's /api/theta)
-import json, math, os, sys, urllib.request, statistics
+import json, math, os, sys, time, urllib.request, urllib.error, statistics
 from collections import defaultdict
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
@@ -42,8 +42,15 @@ _cache = {}
 def theta(path):
     if path in _cache:
         return _cache[path]
-    with urllib.request.urlopen(f'{base}{path}', timeout=120) as r:
-        body = json.loads(r.read().decode())
+    for attempt in range(40):  # the terminal drops its session for a minute at a time: wait for it
+        try:
+            with urllib.request.urlopen(f'{base}{path}', timeout=120) as r:
+                body = json.loads(r.read().decode())
+            break
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 503) or attempt == 39:
+                raise
+            time.sleep(5)
     rows = body.get('response', body) if isinstance(body, dict) else body
     flat = []
     for it in rows if isinstance(rows, list) else []:

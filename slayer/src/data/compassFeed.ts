@@ -161,6 +161,15 @@ export function holdCompassFeed(): () => void {
   };
 }
 
+let pulledAt = 0;
+
+/** A page outside Compass that shows the engine's seats (Weigher) reads the state once a minute at most. */
+export function refreshCompassSoon(): void {
+  if (timer || Date.now() - pulledAt < 60_000) return;
+  pulledAt = Date.now();
+  void pull();
+}
+
 export function compassFeed(): CompassFeed {
   return feed;
 }
