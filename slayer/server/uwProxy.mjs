@@ -134,35 +134,59 @@ const recent = [];
 const UPSTREAM_SLOTS = 3;
 let upstreamBusy = 0;
 let refreshBusy = 0;
-/* a viewer waiting on an answer goes ahead of every background refresh, and refreshes never hold more than one of the
-   three slots, so a slow background walk can never keep a viewer waiting */
+/* A viewer goes ahead of every background refresh, and a quick request ahead of a slow one: a route whose answers
+   have been taking over 1.5 s (a whole chain, a long tape) waits behind the quick ones (a quote, the day's exposure),
+   so one viewer's heavy walk never makes another's price time out. Refreshes hold at most one of the three slots. */
+const quickQueue = [];
 const viewerQueue = [];
 const refreshQueue = [];
-const refreshMayGo = () => upstreamBusy < UPSTREAM_SLOTS && refreshBusy < 1 && viewerQueue.length === 0;
+const took = new Map();
+const routeOf = (path) => path.split('?')[0].replace(/\/[A-Z0-9.$_-]{1,12}(?=\/|$)/g, '/:t').replace(/\/[0-9a-f-]{20,}/g, '/:id');
+const slow = (path) => (took.get(routeOf(path)) ?? 0) > 1_500;
+const noteTook = (path, ms) => {
+  const r = routeOf(path);
+  const was = took.get(r);
+  took.set(r, was == null ? ms : 0.7 * was + 0.3 * ms);
+};
+/* slow work (a viewer's heavy route, or a refresh) never holds the last slot: a quick ask always finds one free */
+let slowBusy = 0;
+const slowMayGo = () => upstreamBusy < UPSTREAM_SLOTS && slowBusy < UPSTREAM_SLOTS - 1;
+const refreshMayGo = () => slowMayGo() && refreshBusy < 1 && quickQueue.length === 0 && viewerQueue.length === 0;
 function wake() {
-  while (upstreamBusy < UPSTREAM_SLOTS && viewerQueue.length) {
+  while (upstreamBusy < UPSTREAM_SLOTS && quickQueue.length) {
     upstreamBusy += 1;
+    quickQueue.shift()();
+  }
+  while (viewerQueue.length && slowMayGo()) {
+    upstreamBusy += 1;
+    slowBusy += 1;
     viewerQueue.shift()();
   }
   if (refreshQueue.length && refreshMayGo()) {
     upstreamBusy += 1;
     refreshBusy += 1;
+    slowBusy += 1;
     refreshQueue.shift()();
   }
 }
-async function upstreamSlot(fn, lane = 'viewer') {
+async function upstreamSlot(fn, lane = 'viewer', path = '') {
   const refresh = lane !== 'viewer';
-  if (refresh ? refreshMayGo() : upstreamBusy < UPSTREAM_SLOTS) {
+  /* a refresh is slow work whatever its route; a viewer's ask is slow when its route has been taking long */
+  const heavy = refresh || slow(path);
+  const free = refresh ? refreshMayGo() : heavy ? slowMayGo() && viewerQueue.length === 0 : upstreamBusy < UPSTREAM_SLOTS;
+  if (free) {
     upstreamBusy += 1;
+    if (heavy) slowBusy += 1;
     if (refresh) refreshBusy += 1;
   } else {
     /* the slot is counted for us when we are woken (wake), so no caller can slip in between */
-    await new Promise((r) => (refresh ? refreshQueue : viewerQueue).push(r));
+    await new Promise((r) => (refresh ? refreshQueue : heavy ? viewerQueue : quickQueue).push(r));
   }
   try {
     return await fn();
   } finally {
     upstreamBusy -= 1;
+    if (heavy) slowBusy -= 1;
     if (refresh) refreshBusy -= 1;
     wake();
   }
@@ -206,12 +230,15 @@ async function load(path, key, lane) {
     for (let attempt = 0; ; attempt++) {
       /* the body is read inside the slot, so a slot frees only once the vendor has finished answering */
       [upstream, buf] = await upstreamSlot(async () => {
+        const t0 = Date.now();
         const r = await fetch(`https://api.unusualwhales.com/api${path}`, {
           headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
           signal: AbortSignal.timeout(12_000),
         });
-        return [r, Buffer.from(await r.arrayBuffer())];
-      }, lane).catch((e) => {
+        const body = Buffer.from(await r.arrayBuffer());
+        noteTook(path, Date.now() - t0);
+        return [r, body];
+      }, lane, path).catch((e) => {
         recent.push(`${e?.name || 'error'} ${path.slice(0, 60)}`);
         throw e;
       });
@@ -258,7 +285,7 @@ export async function proxyUw(req, res) {
     return;
   }
   if (/^(?:\/api\/uw)?\/__hub(?:\?|$)/.test(req.url || '') && process.env.VERCEL_ENV !== 'production') {
-    send(res, 200, JSON.stringify({ ...hub.stats(), slotsBusy: upstreamBusy, refreshSlots: refreshBusy, viewersQueued: viewerQueue.length, refreshesQueued: refreshQueue.length, recent }));
+    send(res, 200, JSON.stringify({ ...hub.stats(), slotsBusy: upstreamBusy, slowSlots: slowBusy, refreshSlots: refreshBusy, quickQueued: quickQueue.length, viewersQueued: viewerQueue.length, refreshesQueued: refreshQueue.length, recent }));
     return;
   }
   const path = forwardPath(req.url, /^\/api\/uw/, 400);
