@@ -209,7 +209,7 @@ const JournalCalendar = ({ month, onMonth, home, days, today, picked, onPick, no
                     </span>
                   </div>
                 ) : (
-                  <div className="px-3 py-2 flex items-center justify-end text-right font-mono text-t9 uppercase tracking-wider text-textMuted/70" data-journal-week-sum={0} data-journal-week-empty={weekAhead ? 'ahead' : 'none'}>
+                  <div className="px-3 py-2 flex items-center justify-end text-right font-mono text-t9 uppercase tracking-wider text-textMuted" data-journal-week-sum={0} data-journal-week-empty={weekAhead ? 'ahead' : 'none'}>
                     {weekAhead ? '' : entered ? 'nothing entered' : 'no trades'}
                   </div>
                 )}
