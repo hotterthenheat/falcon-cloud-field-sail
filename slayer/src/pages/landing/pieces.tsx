@@ -1,7 +1,5 @@
-/*
-  What the landing page and the product pages share: the bar with its Products menu, the pills, the eyebrow, the
-  two-tone head and the page's width.
-*/
+/* What the landing page and the product pages share: the bar with its Products menu, the pills, the eyebrow, the
+   two-tone head and the page's width. */
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -17,11 +15,11 @@ import SlayerMark from '../../brand/SlayerMark';
 import Wordmark from '../../brand/Wordmark';
 
 export const MAIL = 'info@slayerterminal.com';
-/** WHERE EVERY DOOR INTO THE TERMINAL LANDS — data/openDoor.ts (the start page, every time, unless Settings › The desk ›
-    Opens on › Page names another; read at the click). Re-exported so the landing's pages keep one import. */
+/** Where every door into the terminal lands — data/openDoor.ts (the start page, every time, unless Settings › The
+    desk › Opens on › Page names another; read at the click). Re-exported so the landing's pages keep one import. */
 export { DOOR, START, doorTo };
-/* THE BAR'S THREE WORDS. "Products" opens the menu of every product (Noah, 2026-10-01, of his partner's bar: "notice how
-   my partners page has a 'Products' section and not 'the tools'"); Pricing and Questions are this page's own sections. */
+/* The bar's three words. "Products" opens the menu of every product; Pricing and Questions are this page's own
+   sections. */
 const NAV: { label: string; href: string }[] = [
   { label: 'Pricing', href: '#pricing' },
   { label: 'Questions', href: '#faq' },
@@ -29,17 +27,15 @@ const NAV: { label: string; href: string }[] = [
 /** what the link's address says: the section on the landing */
 const hrefOf = (hash: string, home: boolean) => (home ? hash : `/${hash}`);
 
-/* EVERY PRODUCT, ONE LINE EACH — the Products menu. The groups are the terminal's rail's (layout/nav.ts), in its order;
-   a pick opens that page in the terminal. The lines are written for this menu, each read against the terminal as it
-   stands. ALERTS IS NOT ON THE MENU (Noah, 2026-10-10: "alerts shouldn't be a section for the landing page, that's just
-   an in-house thing not an entire page"): it is a drawer over every page of the terminal, not a product. */
+/* Every product, one line each — the Products menu. The groups are the terminal's rail's (layout/nav.ts), in its
+   order; a pick opens that page in the terminal. The lines are written for this menu, each read against the
+   terminal as it stands. Alerts is not on the menu: it is a drawer over every page of the terminal, not a product. */
 export interface Product {
   name: string;
   glyph: GlyphName;
   line: string;
   path: string;
-  /** THE PRODUCT'S OWN PAGE (2026-10-02, Noah: "make the products sections open up a new brief page explaining that
-      product with recordings"): a pick opens this page of the site, not the terminal. The products without one still
+  /** The product's own page: a pick opens this page of the site, not the terminal. The products without one still
       launch the terminal at their page. */
   page?: string;
 }
@@ -84,10 +80,9 @@ export const PRODUCT_GROUPS: { caption: string; products: Product[] }[] = [
 export const Wrap = ({ children, className = '' }: { children: ReactNode; className?: string }) => <div className={`mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-10 ${className}`}>{children}</div>;
 
 /** A short rule and one small word — above every head on the page */
-/* THE ARRIVALS (his partner's, at Noah's word, 2026-10-03: "add the arrivals to our section headings"): a block wrapped in
-   `Arrive` is set waiting if it stands below the fold when it mounts, and set in — once — as it comes into view; its lines
-   marked `arrive-line` then come up one at a time by their `--i` (index.css), the big line (`arrive-settle`) out of a
-   soft blur. A block already on screen at mount is never touched, nor is anything where less motion is asked for. */
+/* THE ARRIVALS: a block wrapped in `Arrive` is set waiting if it stands below the fold when it mounts, and set in
+   — once — as it comes into view; its lines marked `arrive-line` then come up one at a time by their `--i`
+   (index.css), the big line (`arrive-settle`) out of a soft blur. */
 const useArrival = <T extends HTMLElement>(margin = '0px 0px -18% 0px', watch = true) => {
   const ref = useRef<T | null>(null);
   useEffect(() => {
@@ -109,9 +104,9 @@ const useArrival = <T extends HTMLElement>(margin = '0px 0px -18% 0px', watch = 
   return ref;
 };
 
-/** A block whose heading arrives: a div the arrival watches. `atMount`: a block that is on screen when the page opens
-    and should arrive anyway — its lines rise on the first paint (the legal pages' head, 2026-10-05: "make the
-    transition … have a nice simple smooth animation"); the viewport is not consulted, and less-motion still wins (index.css). */
+/** A block whose heading arrives: a div the arrival watches. `atMount`: a block that is on screen when the page
+    opens and should arrive anyway — its lines rise on the first paint; the viewport is not consulted, and
+    less-motion still wins (index.css). */
 export const Arrive = ({ id, className = '', atMount = false, children }: { id?: string; className?: string; atMount?: boolean; children: ReactNode }) => {
   const ref = useArrival<HTMLDivElement>(undefined, !atMount);
   return (
@@ -128,24 +123,21 @@ export const Eyebrow = ({ children }: { children: ReactNode }) => (
   </p>
 );
 
-/** EVERY HEAD IS TWO LINES IN TWO TONES: what it is in ink, the turn of the thought in grey */
+/** Every head is two lines in two tones: what it is in ink, the turn of the thought in grey */
 export const TwoTone = ({ first, second, className = '' }: { first: string; second: string; className?: string }) => (
   <h2 className={`arrive-line arrive-settle [--i:1] font-light tracking-[-0.04em] leading-[1.02] text-t40 sm:text-t56 lg:text-t72 [text-wrap:balance] ${className}`}>
     {first} <span className="block text-textMuted">{second}</span>
   </h2>
 );
 
-/* THE DOOR'S ARROW GLIDES (Noah, 2026-09-20, on the plan buttons: "the middle ones arrow should be moving to the right smoothly in
-   and out on hover… same with the launch terminal arrows"). One class for every door with an arrow: four pixels to the right
-   under the pointer and back again on the same curve — the house's ease, so it leaves as smoothly as it arrives. A NAMED group
+/* The door's arrow glides. One class for every door with an arrow: four pixels to the right under the pointer and
+   back again on the same curve — the house's ease, so it leaves as smoothly as it arrives. A NAMED group
    (`group/door`): an unnamed one answers to any ancestor's hover too (the tour's rows are groups). */
 export const DOOR_GROUP = 'group/door';
 export const DOOR_ARROW = 'transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover/door:translate-x-1 motion-reduce:transition-none motion-reduce:group-hover/door:translate-x-0';
 
-/** THE PILL. Solid: the silver foil on black, solid ink on paper (the foil is a surface, it would vanish there). Ghost: a hairline.
-    NO GROWING UNDER THE POINTER (the same day: the two ghost pills "look laggy"): a 2% scale re-draws the words at a size
-    between two pixel grids every frame, soft while it moves and snapping sharp at the end — that was the lag. The ghost
-    answers with its edge and a wash, the solid with its arrow; only a press still gives (2%, 100ms). */
+/** THE PILL. Solid: the silver foil on black, solid ink on paper (the foil is a surface, it would vanish there).
+    Ghost: a hairline. */
 /** `busy`: the door is waiting on something it asked for (a plan's checkout being made at Stripe) — after the house's
     300ms the arrow gives way to the working mark, and a second press does nothing */
 export const Pill = ({ children, onClick, href, kind = 'solid', size = 'lg', testId, busy = false }: { children: ReactNode; onClick?: () => void; href: string; kind?: 'solid' | 'ghost'; size?: 'lg' | 'sm'; testId?: string; busy?: boolean }) => {
@@ -177,8 +169,8 @@ const toAnchor = (href: string) => {
   history.replaceState(null, '', href);
 };
 
-/** THE SITE'S OWN PAGES share the bar (the landing, and each product's page): a link to a section of the landing scrolls
-    there on the landing and goes there from anywhere else — the landing lands on its hash when it opens */
+/** The site's own pages share the bar (the landing, and each product's page): a link to a section of the landing
+    scrolls there on the landing and goes there from anywhere else — the landing lands on its hash when it opens */
 const useSiteLinks = () => {
   const home = useLocation().pathname === '/';
   const navigate = useNavigate();
@@ -191,8 +183,8 @@ const useSiteLinks = () => {
   };
 };
 
-/** ONE LAUNCH DOOR ON THE SCREEN AT A TIME (Noah, 2026-10-01): the bar's own door stands only while no other
-    "Launch the terminal" is in view — the page's doors are marked `data-landing-door="hero"` / `"close"` */
+/** One launch door on the screen at a time: the bar's own door stands only while no other "Launch the terminal" is
+    in view — the page's doors are marked `data-landing-door="hero"` / `"close"` */
 export const useDoorSeen = (): boolean => {
   const [seen, setSeen] = useState(true);
   useEffect(() => {
@@ -214,9 +206,9 @@ export const useDoorSeen = (): boolean => {
   return seen;
 };
 
-/** THE PRODUCTS MENU: the groups in the rail's order, each product beside its icon (small, bare) with its one line. On a
-    desk the groups flow in two columns; on a phone they are names in one column, no lines. Its foot is the door to
-    "Every page, by room" further down the page. */
+/** The products menu: the groups in the rail's order, each product beside its icon (small, bare) with its one line.
+    On a desk the groups flow in two columns; on a phone they are names in one column, no lines. Its foot is the
+    door to "Every page, by room" further down the page. */
 export const ProductsMenu = ({ onPick, onEvery, compact = false }: { onPick: (p: Product) => void; onEvery: () => void; compact?: boolean }) => (
   <div>
     <div className={compact ? 'flex flex-col' : 'columns-2 gap-x-10'} data-landing-products>
@@ -271,17 +263,12 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
   const { scrollY } = useScroll();
   const [lifted, setLifted] = useState(false);
   useMotionValueEvent(scrollY, 'change', y => setLifted(y > 24));
-  /* ONE MOTION, NOT TWO (Noah, 2026-10-03: "the button lags a bit before finding its spot in the far right corner. it
-     moves to one spot then shifts to the right after like half a second" — then, of the door at the toggle's left: "the
-     launch terminal should be far right always"). The bar used to narrow to the pill at 24px of scroll and take its door
-     later, when the hero's door had left the screen — two triggers, so the toggle moved twice. Now the glass comes at
-     24px and MOVES NOTHING (the bar keeps its width), and the bar narrows to the pill at the moment the door slides in,
-     so the door's arrival and the pill's shrink are one motion, the door always last. The same one motion back, when the
-     hero's or the closing door comes into view again. */
+  /* One motion, not two. The bar used to narrow to the pill at 24px of scroll and take its door later, when the
+     hero's door had left the screen — two triggers, so the toggle moved twice. */
   const narrow = lifted && door;
-  /* THE PHONE'S MENU (2026-09-19): under 768px the bar's three links were simply gone — a visitor on a phone, which is most
-     of them, had no way to Pricing or the questions but to scroll for them. A button opens them as a small sheet under the
-     bar, in the page's own grammar: rows on hairlines. It closes on a pick, on Escape, and on a tap outside it. */
+  /* The phone's menu: under 768px the bar's three links were simply gone — a visitor on a phone, which is most of
+     them, had no way to Pricing or the questions but to scroll for them. A button opens them as a small sheet
+     under the bar, in the page's own grammar: rows on hairlines. */
   const [menu, setMenu] = useState(false);
   /* the Products menu on a desk: opens under its word, closes the same ways */
   const [products, setProducts] = useState(false);
@@ -304,11 +291,9 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
       document.removeEventListener('pointerdown', down, true);
     };
   }, [menu, products]);
-  /* THE MENU OPENS UNDER THE POINTER (Noah, 2026-10-05: "i hover of this product button up top i think the dropdown should
-     show and not wait for the user to click it"): a mouse resting on the word opens it, and it stays while the pointer is
-     on the word or in the panel; leaving either closes it after a short grace, long enough to cross the gap between the
-     bar and the panel. A touch or a key still opens and closes it by the press. A mouse CLICK on the word opens it rather
-     than toggling, so a reader who hovers and then clicks out of habit does not shut what just opened. */
+  /* The menu opens under the pointer: a mouse resting on the word opens it, and it stays while the pointer is on
+     the word or in the panel; leaving either closes it after a short grace, long enough to cross the gap between
+     the bar and the panel. A touch or a key still opens and closes it by the press. */
   const hoverClose = useRef(0);
   const byMouse = (e: ReactPointerEvent) => e.pointerType === 'mouse';
   const openOnHover = (e: ReactPointerEvent) => {
@@ -351,8 +336,7 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
           aria-label={site.home ? 'Slayer Terminal, back to the top' : 'Slayer Terminal, the front page'}
           data-landing-brand
         >
-          {/* HIS PARTNER'S LOGO SYSTEM (2026-10-03): the wordmark with its cursor on the open bar; the bare S| on the lifted
-              pill and on a phone */}
+          
           <span className={narrow ? 'hidden' : 'hidden sm:inline-flex'}>
             <Wordmark height={15} cursor label="" />
           </span>
@@ -391,8 +375,8 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
             </a>
           ))}
         </nav>
-        {/* the right cluster: the toggle, the phone's menu, and the door LAST (Noah, 2026-10-03: "the launch terminal should be
-            far right always"); the door's arrival moves the toggle once, with the pill's shrink (see `narrow` above) */}
+        {/* the right cluster: the toggle, the phone's menu, and the door LAST; the door's arrival moves the toggle
+            once, with the pill's shrink (see `narrow` above) */}
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
           <button
             type="button"
@@ -420,10 +404,8 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
           >
             {menu ? <X className="w-4 h-4" aria-hidden="true" /> : <Menu className="w-4 h-4" aria-hidden="true" />}
           </button>
-          {/* ONE DOOR ON THE SCREEN AT A TIME (Noah, 2026-10-01, with the bar's door and the hero's circled: "dont you think
-              these 2 buttons being the same thing with the same shape and same wording is redundant?"). The bar's door
-              stands only while no other "Launch the terminal" is in view — it slides in as the hero's leaves the screen,
-              and out again where the closing one comes up. */}
+          {/* One door on the screen at a time. The bar's door stands only while no other "Launch the terminal" is
+              in view — it slides in as the hero's leaves the screen, and out again where the closing one comes up. */}
           <AnimatePresence initial={false}>
             {door && (
               <motion.span
@@ -521,13 +503,9 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
   );
 };
 
-/* THE LAST WORDS, READ BY SCROLLING (2026-10-03 — Noah, of his partner's closing lines: "the 'seen enough? step inside'
-   of my partners has a cool animation that glides in so take a look at that and add it as well"): each letter of the
-   closing lines stands faint and turns to its own ink, one letter at a time, as the lines come up the screen — the
-   scroll is the playhead, and scrolling back takes them back. A reader that hears the page hears the lines whole (the
-   label); where less motion is asked for, they stand lit. Only the letters that change are touched, and only while the
-   lines are near the screen. A scroll that comes to rest with them on screen lights the rest of them, one after another.
-   His partner's piece, in our words. */
+/* The last words, read by scrolling: each letter of the closing lines stands faint and turns to its own ink, one
+   letter at a time, as the lines come up the screen — the scroll is the playhead, and scrolling back takes them
+   back. */
 export const LitLines = ({ lines, className = '' }: { lines: { text: string; ink: string }[]; className?: string }) => {
   const ref = useRef<HTMLHeadingElement | null>(null);
   const calm = useReducedMotion();

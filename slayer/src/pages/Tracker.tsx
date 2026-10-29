@@ -1,7 +1,6 @@
-/*
-  The contracts you track from Compass, marked at their live vendor quote: what it was when you tracked it, what it
-  is now, and whether its expiry has passed. A contract with no live quote yet shows a dash, never a model price.
-*/
+/* The contracts you track from Compass, marked at their live vendor quote: what it was when you tracked it, what
+   it is now, and whether its expiry has passed. A contract with no live quote yet shows a dash, never a model
+   price. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';

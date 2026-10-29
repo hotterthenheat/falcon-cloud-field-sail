@@ -1,7 +1,5 @@
-/*
-  The paper account's rules in code: pure functions over an account that is its orders and fills, so everything
-  the desk shows is read off them. The market comes in through PaperMarket (feed.ts).
-*/
+/* The paper account's rules in code: pure functions over an account that is its orders and fills, so everything
+   the desk shows is read off them. The market comes in through PaperMarket (feed.ts). */
 
 import { MULT, nameGoesUp, type Bracket, type OrderKind, type Side } from '../review/engine';
 import { onTick } from '../review/futuresTape';
@@ -22,7 +20,7 @@ export interface PaperMoment {
   day: string;
 }
 
-/** THE MARKET AS IT STANDS — all the engine knows of it (feed.ts builds the live one) */
+/** The market as it stands — all the engine knows of it (feed.ts builds the live one) */
 export interface PaperMarket {
   now: number;
   /** This page load's name (feed.ts LIFE) — written on every fill */
@@ -302,7 +300,7 @@ export function newAccount(o: { id: string; kind: AccountKind; name: string; sta
 }
 
 /* ================================================================== */
-/*  THE OPTIONS BOOK                                                   */
+/* The options book */
 /* ================================================================== */
 
 export interface OptLeg {
@@ -448,7 +446,7 @@ export function optBookOf(a: PaperAccount): { positions: OptPosition[]; trades: 
 }
 
 /* ================================================================== */
-/*  THE FUTURES BOOK                                                   */
+/* The futures book */
 /* ================================================================== */
 
 export interface FutLeg {
@@ -594,9 +592,9 @@ export function futBookOf(a: PaperAccount): { positions: FutPosition[]; trades: 
   return { positions, trades, realized: cents(realized), feesPaid: cents(feesPaid) };
 }
 
-/** WHAT A NAME HAS BANKED (the chart's RP&L, 2026-09-22): its closed trades, and what its open ones have taken off in
-    pieces, fees in — from the fills before `before` (an instant; none: all of them). The day's share is now's, less the
-    day's start's: a trade held over the roll counts its pieces on the day each was sold. */
+/** What a name has banked: its closed trades, and what its open ones have taken off in pieces, fees in — from the
+    fills before `before` (an instant; none: all of them). The day's share is now's, less the day's start's: a trade
+    held over the roll counts its pieces on the day each was sold. */
 export function bankedOf(a: PaperAccount, name: string, before = Infinity): number {
   const upTo: PaperAccount = {
     ...a,
@@ -614,7 +612,7 @@ export function bankedOf(a: PaperAccount, name: string, before = Infinity): numb
 }
 
 /* ================================================================== */
-/*  WHAT THE ACCOUNT IS WORTH                                          */
+/* What the account is worth */
 /* ================================================================== */
 
 export type MarkedOpt = OptPosition & { quote: Quote; value: number; pnl: number; r: number };
@@ -884,7 +882,7 @@ function plannedStopOf(o: OptOrder, m: PaperMarket): number | undefined {
 const trailFrom = (price: number, on: 'name' | undefined, q: Quote): { trail: number; peak: number } => (on === 'name' ? { trail: cents(Math.max(0.01, Math.abs(q.spot - price))), peak: q.spot } : { trail: cents(Math.max(0.01, q.bid - price)), peak: q.bid });
 const trailAt = (by: number, on: 'name' | undefined, q: Quote): { trail: number; peak: number } => ({ trail: cents(Math.max(0.01, by)), peak: on === 'name' ? q.spot : q.bid });
 
-/** AFTER A SELL: the ladder is made to fit what is still held (the backtest's rule, engine.ts afterSell) */
+/** After a sell: the ladder is made to fit what is still held (the backtest's rule, engine.ts afterSell) */
 function afterSell(a: PaperAccount, sold: OptOrder, q: Quote, at: PaperMoment, m: PaperMarket): PaperAccount {
   const key = contractKey(sold.contract);
   let next = a;
@@ -1308,7 +1306,7 @@ export function futClose(a: PaperAccount, m: PaperMarket, symbol: string): Paper
 }
 
 /* ================================================================== */
-/*  EVERYTHING AT ONCE: THE RULES' HAND AND THE PAGE'S                 */
+/* Everything at once: The rules' hand and the page's */
 /* ================================================================== */
 
 /** Close everything open at the market and cancel everything working — the rules' hand (`rule`) or the page's (`page`).
@@ -1332,8 +1330,8 @@ export function flattenAll(a: PaperAccount, m: PaperMarket, how: 'rule' | 'page'
   return { ...next, touchedAt: m.now };
 }
 
-/** FLAT BY THE READER'S HAND, at once: everything working cancelled, then every position out at the market — the reader's own
-    closes (a trade ends "Sold by you" / "Closed by you"), never the rules' */
+/** Flat by the reader's hand, at once: everything working cancelled, then every position out at the market — the
+    reader's own closes (a trade ends "Sold by you" / "Closed by you"), never the rules' */
 export function flattenByHand(a: PaperAccount, m: PaperMarket): PaperAccount {
   let next = a;
   for (const o of a.opt.orders) if (o.status === 'working') next = optCancel(next, m, o.id);
@@ -1385,8 +1383,8 @@ export interface PaperEvent {
 /** Is an option position's expiry past: 16:00 New York on its date */
 const expired = (c: ContractId, now: number) => bellOf(c.expiry) <= now;
 
-/** THE DAY ROLLS at 17:00 New York: day orders go, the day that was is written down, an evaluation's high mark and its
-    pass are judged on its close, and the new day begins from what the account is worth */
+/** The day rolls at 17:00 New York: day orders go, the day that was is written down, an evaluation's high mark and
+    its pass are judged on its close, and the new day begins from what the account is worth */
 function roll(a: PaperAccount, m: PaperMarket, events: PaperEvent[]): PaperAccount {
   const day = tradingDayOf(m.now);
   if (day === a.day) return a;
@@ -1440,7 +1438,7 @@ function optTickOrders(a: PaperAccount, m: PaperMarket): PaperAccount {
     } else if (live.kind === 'limit' && live.side === 'sell' && q.bid >= live.price!) next = optFillNow(next, live, Math.max(live.price!, q.bid), 'limit', q, m);
     else if (live.kind === 'stop' && live.side === 'sell' && q.bid <= live.price!) next = optFillNow(next, live, q.bid, 'stop', q, m);
   }
-  /* TRAILING STOPS, AFTER THE CHECK: each was tried where it stood; only now is it moved by this tick's price */
+  /* Trailing stops, after the check: each was tried where it stood; only now is it moved by this tick's price */
   if (next.opt.orders.some(o => o.status === 'working' && o.trail != null)) {
     next = setOpt(
       next,
@@ -1513,7 +1511,8 @@ function futTickOrders(a: PaperAccount, m: PaperMarket): PaperAccount {
   return next;
 }
 
-/** WHILE IT IS HELD: what each open trade is worth on this tick — its best and worst every tick, a point every few seconds */
+/** While it is held: what each open trade is worth on this tick — its best and worst every tick, a point every few
+    seconds */
 function keepHeld(a: PaperAccount, m: PaperMarket): PaperAccount {
   const ob = optBookOf(a).positions;
   const fb = futBookOf(a).positions;
@@ -1546,8 +1545,9 @@ function keepHeld(a: PaperAccount, m: PaperMarket): PaperAccount {
   return { ...a, held, marks };
 }
 
-/** THE CANDLES A TRADE WAS ON, written down as it closes: an hour before the way in to the way out, at a coarser candle
-    when that is more than PATH_BARS of them — in whole units over a base, to keep a journal of hundreds small */
+/** The candles a trade was on, written down as it closes: an hour before the way in to the way out, at a coarser
+    candle when that is more than PATH_BARS of them — in whole units over a base, to keep a journal of hundreds
+    small */
 export function pathOf(bars: Candle[], fromSec: number, toSec: number, unit: number): TradePath | null {
   const inside = bars.filter(b => b.time >= fromSec && b.time <= toSec);
   if (!inside.length) return null;
@@ -1622,8 +1622,9 @@ function fillEvents(before: PaperAccount, after: PaperAccount, events: PaperEven
   }
 }
 
-/** ONE TICK OF THE FEED: the day rolls, what expired settles, an evaluation is flat by 16:59, working orders meet the price,
-    trailing stops follow it, an evaluation's floor and day are kept, and every open trade is written down as it stands. */
+/** One tick of the feed: the day rolls, what expired settles, an evaluation is flat by 16:59, working orders meet
+    the price, trailing stops follow it, an evaluation's floor and day are kept, and every open trade is written
+    down as it stands. */
 export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; events: PaperEvent[] } {
   const events: PaperEvent[] = [];
   const before = a;
@@ -1653,7 +1654,7 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
     }
     next = optTickOrders(next, m);
     next = futTickOrders(next, m);
-    /* THE EVALUATION'S FLOOR AND ITS DAY, as it happens */
+    /* The evaluation's floor and its day, as it happens */
     if (next.kind === 'evaluation' && next.plan && next.status === 'open') {
       const plan = next.plan;
       const v = viewOf(next, m);

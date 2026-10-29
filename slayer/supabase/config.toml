@@ -1,0 +1,23 @@
+# Supabase CLI settings for this project (`supabase link`, `supabase db push`, `supabase functions deploy`).
+# Only what the app depends on is set; everything else keeps the CLI defaults. See docs/supabase.md.
+project_id = "slayer"
+
+[api]
+schemas = ["public"]
+
+[auth]
+site_url = "https://slayerterminal.com"
+
+# The person's JWT is checked by the gateway before these run.
+[functions.stripe-checkout]
+verify_jwt = true
+
+[functions.stripe-portal]
+verify_jwt = true
+
+[functions.account-delete]
+verify_jwt = true
+
+# Stripe calls this one; it verifies Stripe's signature instead of a JWT.
+[functions.stripe-webhook]
+verify_jwt = false

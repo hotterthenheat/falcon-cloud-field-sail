@@ -1,7 +1,5 @@
-/*
-  Where a backtest session starts and is come back to: the cards that make a session (name, cash, day, fee, the
-  reader's rules) and every session kept on this machine.
-*/
+/* Where a backtest session starts and is come back to: the cards that make a session (name, cash, day, fee, the
+   reader's rules) and every session kept on this machine. */
 
 import BacktestPaused from './BacktestPaused';
 import { BACKTEST_LIVE } from '../../data/review/tape';
@@ -44,7 +42,7 @@ const FUT_FEES: DropdownOption<number>[] = [
   { value: 4, label: '$4.00 a contract', hint: 'A dearer broker, all in' },
 ];
 const NAME_OPTIONS = REVIEW_NAMES.map(n => ({ value: n.ticker, label: n.ticker, hint: n.name, logo: n.ticker, keywords: n.name }));
-/* THE READER'S OWN RULES — 0 is "no rule". Hard blocks on a way in, never on a way out (data/review/engine). */
+/* The reader's own rules — 0 is "no rule". Hard blocks on a way in, never on a way out (data/review/engine). */
 const OPEN_RULES: DropdownOption<number>[] = [
   { value: 0, label: 'No limit', hint: 'As many positions as the cash pays for' },
   ...[1, 2, 3, 5].map(v => ({ value: v, label: v === 1 ? '1 position' : `${v} positions`, hint: v === 1 ? 'One trade at a time, across both names' : `A buy that would open a ${v === 2 ? 'third' : v === 3 ? 'fourth' : 'sixth'} is refused` })),
@@ -169,8 +167,8 @@ const Sessions = () => {
         header: '',
         align: 'right',
         render: r => (
-          /* `leading-normal` + `align-middle`: a grid cell's line is as tall as its row, and a button inherits it — its word
-             dropped to the button's floor and the pair rode high on the row (Noah, 2026-09-20, with a picture) */
+          /* `leading-normal` + `align-middle`: a grid cell's line is as tall as its row, and a button inherits it
+             — its word dropped to the button's floor and the pair rode high on the row */
           <span className="inline-flex items-center gap-1.5 leading-normal align-middle">
             <button type="button" onClick={() => navigate(`/practice/backtest/${r.s.id}/report`)} className="inline-flex items-center h-6 px-2 rounded-md border border-borderSubtle font-mono text-t10 text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-session-report={r.s.id}>
               Report

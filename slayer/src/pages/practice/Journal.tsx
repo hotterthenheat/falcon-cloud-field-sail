@@ -1,6 +1,6 @@
-/* PRACTICE › JOURNAL — one page, two books (2026-09-26): the paper accounts' trades, or the backtest sessions', never
-   mixed; which book rides the address (`?book=backtest`, paper by rest). The page is pages/review/JournalHome.tsx,
-   handed the book's source (data/review/journalSource.ts). */
+/* PRACTICE › JOURNAL — one page, two books: the paper accounts' trades, or the backtest sessions', never mixed;
+   which book rides the address (`?book=backtest`, paper by rest). The page is pages/review/JournalHome.tsx, handed
+   the book's source (data/review/journalSource.ts). */
 import { useLocation } from 'react-router-dom';
 import { JournalHome } from '../review/JournalHome';
 import type { JournalKind } from '../../data/review/journalSource';

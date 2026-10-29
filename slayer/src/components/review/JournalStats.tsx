@@ -1,7 +1,5 @@
-/*
-  The period's figures beside the month: what it made, won and lost, average win and loss, best and worst trade and
-  day, runs, profit factor, expectancy and the deepest drawdown.
-*/
+/* The period's figures beside the month: what it made, won and lost, average win and loss, best and worst trade
+   and day, runs, profit factor, expectancy and the deepest drawdown. */
 
 import type { ReactNode } from 'react';
 import { card } from './DeskShell';

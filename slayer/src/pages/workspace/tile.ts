@@ -1,7 +1,5 @@
-/*
-  What a Pulse tile is: one instrument and one read, its controls declared as data for the head, its own settings,
-  and a door to the real page. The chart alone lifts its own fullscreen.
-*/
+/* What a Pulse tile is: one instrument and one read, its controls declared as data for the head, its own settings,
+   and a door to the real page. The chart alone lifts its own fullscreen. */
 
 import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
@@ -54,7 +52,7 @@ export interface TileProps {
   pickTicker?: (ticker: string) => void;
 }
 
-/* The group You went with its tiles (2026-10-02): alerts and the tracker left the desk, and the clock stands under Market */
+/* The group You went with its tiles: alerts and the tracker left the desk, and the clock stands under Market */
 export type WidgetGroup = 'Market' | 'The book' | 'Trade' | 'Practice';
 export const WIDGET_GROUPS: WidgetGroup[] = ['Market', 'The book', 'Trade'];
 
@@ -105,8 +103,8 @@ export interface WidgetDef {
   toggles?: TileToggle[];
   /** The page it opens. None: the tile has no door (the session clock) */
   page?: TilePage;
-  /** THE TILE LIFTS ITS OWN FULLSCREEN (the chart only): the head's button is the fullscreen glyph and hands the body a
-      token (`lift`); its page, if it has one, is offered in the tile's menu instead */
+  /** The tile lifts its own fullscreen (the chart only): the head's button is the fullscreen glyph and hands the
+      body a token (`lift`); its page, if it has one, is offered in the tile's menu instead */
   fullscreen?: boolean;
   Body: ComponentType<TileProps>;
   /** The tile standing in its own shape for the frame it takes to mount */

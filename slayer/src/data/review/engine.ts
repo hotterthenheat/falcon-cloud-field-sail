@@ -1,7 +1,5 @@
-/*
-  The backtest's rules in code: pure functions over a session that is its orders and fills, with no clock, storage
-  or React of its own; the desk, the report and the journal read everything off them.
-*/
+/* The backtest's rules in code: pure functions over a session that is its orders and fills, with no clock, storage
+   or React of its own; the desk, the report and the journal read everything off them. */
 
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from './ladder';
 import { contractKey, dteAt, legsOf, quoteAt, quoteWith, spotForBid, type ContractId, type Quote } from './quotes';
@@ -316,8 +314,8 @@ export function bookOf(s: Session): Book {
   return { positions, trades };
 }
 
-/** WHAT A NAME HAS BANKED (the chart's RP&L, 2026-09-22): its closed trades, and what its open ones have sold off in pieces,
-    fees in — from the fills of the days before `beforeDay` (none: all of them). The day's share is the whole less that. */
+/** What a name has banked: its closed trades, and what its open ones have sold off in pieces, fees in — from the
+    fills of the days before `beforeDay` (none: all of them). The day's share is the whole less that. */
 export function bankedOf(s: Session, name: string, beforeDay?: string): number {
   const { positions, trades } = bookOf({ ...s, fills: s.fills.filter(f => f.contract.ticker === name && (beforeDay == null || f.at.day < beforeDay)) });
   return cents(trades.reduce((x, t) => x + t.pnl, 0) + positions.reduce((x, p) => x + p.banked, 0));
@@ -392,7 +390,7 @@ const resize = (s: Session, left: Map<string, number>, at: Moment, why: string):
   }),
 });
 
-/** AFTER A SELL: the ladder is made to fit what is still held (the rules page, "A ladder of ways out") */
+/** After a sell: the ladder is made to fit what is still held (the rules page, "A ladder of ways out") */
 function afterSell(s: Session, sold: Order, q: Quote, at: Moment): Session {
   const key = contractKey(sold.contract);
   let next = s;
@@ -571,8 +569,8 @@ export function refusal(s: Session, d: Draft): string | null {
     return null;
   }
   const held = bookOf(s).positions.find(p => p.key === contractKey(d.contract))?.qty ?? 0;
-  /* A MARKET SELL BY HAND IS NEVER "SPOKEN FOR": the ladder gives way (afterSell). A sell that WAITS has to find contracts
-     nothing else speaks for. */
+  /* A market sell by hand is never "SPOKEN FOR": the ladder gives way (afterSell). A sell that WAITS has to find
+     contracts nothing else speaks for. */
   if (d.kind === 'market' ? held < d.qty : held - reserved(s, contractKey(d.contract)) < d.qty) return held ? (d.kind === 'market' ? `You hold ${held}` : 'Those contracts are already spoken for by a working order') : 'You do not hold that contract';
   if (d.kind === 'market' && q.dead) return 'No bid to sell into right now';
   if (d.on === 'name' && nameHit(d, q.spot)) return `${name} is already past that — it would sell on the next minute`;
@@ -644,12 +642,7 @@ export function ladderTake(s: Session, contract: ContractId): Record<'target' | 
   return { target: take('limit'), stop: take('stop') };
 }
 
-/** A target or a stop put on a position ALREADY OPEN (on the chart: pulled off the position's own chip). THE FIRST of a kind
-    speaks for every contract the ladder may (what is held, less what a loose working sell already speaks for); A FURTHER
-    PULL ADDS A LEVEL — it takes the contracts no level of that kind covers yet, or else half of the biggest level's. Not
-    taken when the ladder is full, when no level has two contracts to give, or when it would not wait (a target at or under
-    the bid, a stop at or over it). With `on: 'name'` the price is a level of the NAME. A new stop wears the switches its
-    group's stops wear. */
+/** A target or a stop put on a position ALREADY OPEN (on the chart: pulled off the position's own chip). */
 export function attach(s: Session, contract: ContractId, kind: 'target' | 'stop', price: number, now: number, on?: 'name'): Session {
   const key = contractKey(contract);
   const pos = bookOf(s).positions.find(p => p.key === key);
@@ -691,11 +684,9 @@ export function setBreakeven(s: Session, orderId: string, on: boolean, now: numb
   return { ...s, touchedAt: now, orders: s.orders.map(x => (x.status === 'working' && x.kind === 'stop' && (x.id === orderId || (o.oco && x.oco === o.oco)) ? { ...x, breakeven: on || undefined } : x)) };
 }
 
-/** THE SAME WAY OUT, WAITING ON THE OTHER THING — without moving its line. To the name: the level the name would have to
-    stand at, this minute, for the contract to bid the order's price (from here on the LEVEL holds and the dollars drift).
-    To the contract: what the contract would bid, this minute, with the name at the order's level (from here on the DOLLARS
-    hold and the level drifts). Not taken when there is nothing to turn it into: a price no level in reach gives, or a
-    level where the contract bids nothing. */
+/** The same way out, waiting on the other thing — without moving its line. To the name: the level the name would
+    have to stand at, this minute, for the contract to bid the order's price (from here on the LEVEL holds and the
+    dollars drift). */
 export function rebase(s: Session, orderId: string, to: 'name' | 'contract', now: number): Session {
   const o = s.orders.find(x => x.id === orderId);
   if (!o || o.status !== 'working' || o.side !== 'sell' || o.kind === 'market' || o.price == null) return s;
@@ -739,8 +730,8 @@ function minuteOrders(s: Session, at: Moment): Session {
     } else if (o.kind === 'limit' && o.side === 'sell' && q.bid >= o.price!) next = fillNow(next, o, Math.max(o.price!, q.bid), 'limit', q, at);
     else if (o.kind === 'stop' && o.side === 'sell' && q.bid <= o.price!) next = fillNow(next, o, q.bid, 'stop', q, at);
   }
-  /* TRAILING STOPS, AFTER THE CHECK: each was tried where it stood; only now is it moved by this minute's price — the good
-     part of a minute is never assumed to have come before the bad part */
+  /* Trailing stops, after the check: each was tried where it stood; only now is it moved by this minute's price —
+     the good part of a minute is never assumed to have come before the bad part */
   if (next.orders.some(o => o.status === 'working' && o.trail != null)) {
     next = {
       ...next,

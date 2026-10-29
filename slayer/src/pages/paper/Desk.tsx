@@ -1,7 +1,5 @@
-/*
-  The paper desk: one to four charts on live prices, the account card, the chain with the order inside a strike,
-  and the book of positions, orders and trades. Orders fill at each contract's live bid and ask.
-*/
+/* The paper desk: one to four charts on live prices, the account card, the chain with the order inside a strike,
+   and the book of positions, orders and trades. Orders fill at each contract's live bid and ask. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
@@ -44,16 +42,17 @@ import { frontOn, futWords } from '../../data/paper/products';
 import { dayBeginsAt, nyMomentWords } from '../../data/paper/clock';
 import { amendOrder, attachFut, attachOpt, breakevenOrder, cancelOrder, cancelWorking, closeFut, closeOpt, endEval, flattenAccount, liveMarket, placeFutOrder, placeOptOrder, readPaper, rebaseOrder, setInHand, startEvaluation, startPractice, takeHere, trailOrder, usePaper } from '../../data/paper/store';
 
-/* THE CHART'S SETTINGS ON THIS DESK. A name's live chart has its book: the walls, the trails, the vol pane. A future's is
-   its fund's candles turned into its price — no book of its own, so the overlays that read one are not offered. */
+/* The chart's settings on this desk. A name's live chart has its book: the walls, the trails, the vol pane. A
+   future's is its fund's candles turned into its price — no book of its own, so the overlays that read one are not
+   offered. */
 const NAME_TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '30m', '1h', '1D'];
 const FUT_TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '30m', '1h'];
 const NAME_OVERLAYS: (keyof ChartOverlays)[] = ['volume', 'levels', 'trails', 'session', 'cone', 'volDrift'];
 const FUT_OVERLAYS: (keyof ChartOverlays)[] = ['volume', 'session'];
 /** Whether the ladder stands beside a future's chart */
 const LADDER_KEY = 'slayer_paper_ladder';
-/** Strikes each side of the chain's centre, the least the chain keeps under the account card, and the column's widths — a
-    name's chain takes the wider one (2026-09-22: "build it with the wider column") */
+/** Strikes each side of the chain's centre, the least the chain keeps under the account card, and the column's
+    widths — a name's chain takes the wider one */
 const CHAIN_EACH = 20;
 const CHAIN_MIN_PX = 380;
 const SIDE_FUT_PX = 440;
@@ -141,7 +140,8 @@ const PaperDesk = () => {
   const [picked, setPicked] = useState<ContractId | null>(null);
   const [drillOpen, setDrillOpen] = useState(true);
   const centreRef = useRef<{ key: string; at: number } | null>(null);
-  /* A FUTURE'S LADDER beside the chart — open or shut as the reader last left it; why a press was refused, said a moment */
+  /* A future's ladder beside the chart — open or shut as the reader last left it; why a press was refused, said a
+     moment */
   const [ladderOpen, setLadderOpenRaw] = useState<boolean>(() => {
     try {
       return localStorage.getItem(LADDER_KEY) === '1';
@@ -208,7 +208,7 @@ const PaperDesk = () => {
     );
   }
 
-  /* ---- THE MARKET AS IT STANDS, and the account against it ---- */
+  /* The market as it stands, and the account against it */
   const m = liveMarket();
   const v = viewOf(account, m);
   const ev = evalRead(account, v, m.now);
@@ -225,7 +225,7 @@ const PaperDesk = () => {
     const step = stepOf(name);
     if (!centreRef.current || centreRef.current.key !== ck || Math.abs(spot - centreRef.current.at) > step * (CHAIN_EACH - 4)) centreRef.current = { key: ck, at: spot };
   }
-  /* THE CHAIN AS THE WEIGHER DRAWS IT, on the Live Chart's own quotes (feed.ts liveDeskChain) */
+  /* The chain as the weigher draws it, on the Live Chart's own quotes (feed.ts liveDeskChain) */
   const chain = !fut && exp ? liveDeskChain(name, exp, m.now, CHAIN_EACH, centreRef.current?.at) : null;
   /* the strike whose dropdown is open: the picked contract's, while it is on the chain's side and expiry */
   const openStrike = !fut && drillOpen && picked && picked.ticker === name && picked.expiry === exp && picked.right === right ? picked.strike : null;
@@ -237,7 +237,7 @@ const PaperDesk = () => {
     setDrillOpen(true);
   };
 
-  /* ---- WHAT THE DESK'S HANDS DO OFF A CHART (pages/paper/deskHands.tsx): the menu, the bar, a drawn long or short ---- */
+  /* What the desk's hands do off a chart (pages/paper/deskHands.tsx): the menu, the bar, a drawn long or short */
   const hands: Hands = {
     account,
     m,
@@ -251,8 +251,8 @@ const PaperDesk = () => {
     spotOf,
   };
 
-  /* ---- WHAT IS DRAWN OVER A CHART — a name's positions, its ways out, this page load's fills: once a name, for every pane
-     that shows it ---- */
+  /* What is drawn over a chart — a name's positions, its ways out, this page load's fills: once a name, for every
+     pane that shows it */
   const built = new Map<string, DeskName>();
   const deskNameOf = (name: string): DeskName => {
   const hit = built.get(name);
@@ -277,7 +277,8 @@ const PaperDesk = () => {
       if (o.status !== 'working' || o.side !== 'sell' || o.price == null || o.kind === 'market' || o.contract.ticker !== name) continue;
       const pos = v.opt.find(p => p.key === contractKey(o.contract));
       if (!pos) continue;
-      /* WHAT IT WAITS ON: the contract's price (its line is where the name would have to stand NOW) or the name's (the line holds) */
+      /* What it waits on: the contract's price (its line is where the name would have to stand NOW) or the name's
+         (the line holds) */
       const onName = o.on === 'name';
       const level = onName ? o.price : spotForBidNow(o.contract, m.now, o.price);
       const sellsAt = onName ? m.optQuoteAt(o.contract, o.price).bid : o.price;
@@ -286,9 +287,9 @@ const PaperDesk = () => {
       brackets.push({ orderId: o.id, kind: o.kind === 'stop' ? 'stop' : 'target', on: onName ? 'name' : 'contract', contract: o.contract, qty: o.qty, price: o.price, level, money: (sellsAt - pos.avg) * 100 * o.qty, edge: nameGoesUp(o.kind, o.contract.right) ? 'up' : 'down', far: level == null || Math.abs(level - here) > reach, trail: o.kind === 'stop' ? (o.trail ?? null) : undefined, trailNow: o.kind === 'stop' ? Math.max(0.01, onName ? Math.abs(here - o.price) : pos.quote.bid - o.price) : undefined, breakeven: !!o.breakeven, canBreakeven: !!o.oco && account.opt.orders.some(x => x.status === 'working' && x.oco === o.oco && x.kind === 'limit') });
     }
   }
-  /* THE RESTING ORDERS THAT ARE NOT WAYS OUT — a limit or a stop waiting to open (or add to) a position, said as such on the
-     chart ("1 · Buy stop · ✕", PositionLayer): a future's at its price; an option's buy where the name would have to stand
-     for the contract's ask to come down to it */
+  /* The resting orders that are not ways out — a limit or a stop waiting to open (or add to) a position, said as
+     such on the chart ("1 · Buy stop · ✕", PositionLayer): a future's at its price; an option's buy where the name
+     would have to stand for the contract's ask to come down to it */
   const entries: ChartEntry[] = [];
   if (fut) {
     const prodE = paperFut(name);
@@ -363,7 +364,7 @@ const PaperDesk = () => {
   const deskName = deskNameOf(name);
   const prod = fut ? paperFut(name) : null;
 
-  /* ---- THE CARDS AT THE RIGHT ---- */
+  /* The cards at the right */
   /* held: the contract itself, or the bought leg of a spread; sold: the other leg of one (open, or on the ticket) */
   const legOf = (p: ContractId) => p.ticker === name && p.expiry === exp && p.right === right;
   const accountCard = (
@@ -382,7 +383,7 @@ const PaperDesk = () => {
     />
   );
   const version = `${account.touchedAt}|${account.opt.fills.length}|${account.fut.fills.length}|${revision}|${holding}`;
-  /* THE ORDER INSIDE A STRIKE'S DROPDOWN (components/paper/OptionsChain): what it asks of the desk */
+  /* The order inside a strike's dropdown (components/paper/OptionsChain): what it asks of the desk */
   const chainDesk: ChainOrderDesk = {
     refuse: d => optRefusalLive(account.id, d),
     locked: lock ?? (account.status !== 'open' ? 'This account is closed' : null),
@@ -442,7 +443,7 @@ const PaperDesk = () => {
     version,
   };
   const futPos = fut ? (v.fut.find(p => p.symbol === name) ?? null) : null;
-  /* A FUTURE'S ORDER CARD — a name's options are ordered inside the chain's dropdown, and need none */
+  /* A future's order card — a name's options are ordered inside the chain's dropdown, and need none */
   const ticketCard = fut ? (
     /* on a future nothing else stands in the column: the order GROWS to its foot (DeskShell reads what is in it, not the stretch) */
     <div className={`${card} min-w-0 shrink-0 flex flex-col ${fut ? 'lg:grow' : ''}`} data-review-ticket-card={fut ? 'grow' : ''}>
@@ -483,9 +484,9 @@ const PaperDesk = () => {
     </div>
   ) : null;
 
-  /* ---- A FUTURE'S LADDER, beside the chart (components/paper/DomLadder) — a press is the Order card's press at that row's
-     price: at the price the market, under it a limit to buy (a stop to sell), over it a stop to buy (a limit to sell), the
-     Order card's brackets riding along (futDraftAt) ---- */
+  /* A future's ladder, beside the chart (components/paper/DomLadder) — a press is the Order card's press at that
+     row's price: at the price the market, under it a limit to buy (a stop to sell), over it a stop to buy (a limit
+     to sell), the Order card's brackets riding along (futDraftAt) */
   const ladderPress = (side: Side, px: number) => {
     const prodL = paperFut(name);
     const lastT = onTick(prodL, spot);
@@ -602,8 +603,6 @@ const PaperDesk = () => {
     { key: 'pnl', header: 'Made or lost', align: 'right', render: r => <span className={`font-semibold ${dirInk(r.t.pnl)}`}>{usdSigned(r.t.pnl)} <span className="text-t10 font-normal opacity-80">{r.t.r != null ? rWords(r.t.r) : 'no stop · no R'}</span></span> },
   ];
 
-  /* ---- THE HEAD'S PICKER: what is on the chart — the partner's grouped list, with one search over all of it
-     (components/paper/TickerPicker) ---- */
   const picker = (
     <span className="inline-flex items-center gap-2 font-mono text-t12 tnum" data-paper-picker={name}>
       <TickerPicker value={name} onChange={n => setName(n)} futuresOnly={evaluation} day={account.day} futPrice={s => m.fut(s)} indexPrice={s => spotOf(s)} indexes={PAPER_INDEXES} />
@@ -695,7 +694,7 @@ function futRefusalLive(id: string, d: Parameters<typeof futRefusal>[2]): string
   return a ? futRefusal(a, liveMarket(), d) : 'No account';
 }
 
-/** A DRAWN LONG OR SHORT, BEING PLACED: what order it is, what it risks, at what size — placed, or put away */
+/** A drawn long or short, being placed: what order it is, what it risks, at what size — placed, or put away */
 const MarkCard = ({ plan, qty, onQty, onCancel }: { plan: ReturnType<typeof planOfMark>; qty: number; onQty: (n: number) => void; onCancel: () => void }) => (
   /* under the drawing's own bar (StrikeChart's mark bar sits at the chart's top while the mark is selected) */
   <div className="mt-11 pointer-events-auto w-[min(560px,calc(100%-24px))] rounded-lg border border-borderMuted bg-panel/95 backdrop-blur-md p-3 shadow-[0_14px_40px_rgba(0,0,0,0.45)] animate-soft-in" data-theme="dark" data-paper-mark-card>
@@ -727,7 +726,8 @@ const MarkCard = ({ plan, qty, onQty, onCancel }: { plan: ReturnType<typeof plan
   </div>
 );
 
-/** ANOTHER TAB HOLDS THE ACCOUNTS (docs/paper-rules.md, "One tab at a time"): this one reads them, and can take them */
+/** Another tab holds the accounts (docs/paper-rules.md, "One tab at a time"): this one reads them, and can take
+    them */
 const HeldElsewhere = () => (
   <div className={`${card} px-5 py-3 flex items-center gap-4 flex-wrap border-warn/40`} data-paper-elsewhere>
     <div className="min-w-0 flex-1">

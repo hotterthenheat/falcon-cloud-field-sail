@@ -1,7 +1,5 @@
-/*
-  Compass's shell: one head over the board, the blotter, the tracker and a setup's page.
-  The scan engine starts with the first Compass page (useThetaBook), so a visitor who never opens Compass never runs it.
-*/
+/* Compass's shell: one head over the board, the blotter, the tracker and a setup's page. The scan engine starts
+   with the first Compass page (useThetaBook), so a visitor who never opens Compass never runs it. */
 
 import { Suspense, useMemo } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';

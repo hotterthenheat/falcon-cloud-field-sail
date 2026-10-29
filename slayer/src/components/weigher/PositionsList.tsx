@@ -1,7 +1,5 @@
-/*
-  One list, two kinds of rows: contracts you watch (marked when added) and positions you own or sold (what you
-  paid), each marked at the live quote.
-*/
+/* One list, two kinds of rows: contracts you watch (marked when added) and positions you own or sold (what you
+   paid), each marked at the live quote. */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ColDef, GridSizeChangedEvent, ICellRendererParams, RowClickedEvent } from 'ag-grid-community';
@@ -50,8 +48,7 @@ const HEDGE_SAYS: Record<Verdict, string> = {
 const LIST_COL: ColDef<ListRow> = { sortable: false, resizable: false, suppressMovable: true };
 
 const contractOf = (row: ListRow) => (row.kind === 'watch' ? row.w : row.p);
-/** The row's tag — only what differs INSIDE its card (the card's name says the rest, 2026-09-14:
-    Your positions and the Watchlist are two cards now) */
+/** The row's tag — only what differs INSIDE its card */
 export const tagOf = (row: ListRow): string => {
   if (row.kind === 'watch') return row.w.status === 'open' ? '' : row.w.status === 'closed' ? 'closed' : 'settled';
   return row.p.source === 'tracker' ? 'from the Tracker' : row.p.side === 'long' ? '' : 'you sold';
@@ -69,19 +66,19 @@ export const ListGrid = memo(function ListGrid({
   rows: ListRow[];
   selectedId: string | null;
   onPick: (row: ListRow) => void;
-  /** OUR TWO CENTS ON EVERY ROW (2026-09-28): whether dealer hedging works with the contract today, against it, or both —
-      the position card's own verdict, as one word a row; null = no read (a settled row, a name with no book yet) */
+  /** Our two cents on every row: whether dealer hedging works with the contract today, against it, or both — the
+      position card's own verdict, as one word a row; null = no read (a settled row, a name with no book yet) */
   hedgeOf?: (row: ListRow) => Verdict | null;
-  /** THE TRASH BIN on every row (Noah, 2026-09-14: "so delete is relatively easy") — shown on the
-      row's hover, the picked row, and under the keyboard; a click removes without picking */
+  /** The trash bin on every row — shown on the row's hover, the picked row, and under the keyboard; a click removes
+      without picking */
   onRemove?: (row: ListRow) => void;
   emptyText: string;
   testId: string;
 }) {
   const gridRef = useRef<AgGridReact<ListRow>>(null);
-  /* THE LIST KNOWS ITS ROOM (the chain's head does the same): the Hedging word is a COLUMN of its own where the card is
-     wide enough to hold every column with it (1905 wide desks), and rides the contract's own line below that — a column
-     pushed Today under a sideways scroll in a 1440 card and the trash bin off a 1600 one (2026-09-28) */
+  /* The list knows its room (the chain's head does the same): the Hedging word is a COLUMN of its own where the
+     card is wide enough to hold every column with it (1905 wide desks), and rides the contract's own line below
+     that — a column pushed Today under a sideways scroll in a 1440 card and the trash bin off a 1600 one */
   const [wide, setWide] = useState(false);
   const onGridSizeChanged = useCallback((e: GridSizeChangedEvent<ListRow>) => setWide(e.clientWidth >= HEDGE_COLUMN_FROM), []);
   const hedgeColumn = !!hedgeOf && wide;
@@ -235,7 +232,7 @@ export const ListGrid = memo(function ListGrid({
     });
   }, [selectedId, rows, ready]);
   return (
-    /* a WINDOW (2026-09-14): the card's height is the column's share; the rows past it scroll inside */
+    /* a WINDOW: the card's height is the column's share; the rows past it scroll inside */
     <div className="slayer-board h-full" data-watch-grid={rows.length} data-list={testId}>
       <AgGridProvider modules={GRID_MODULES}>
         <AgGridReact<ListRow>

@@ -1,7 +1,4 @@
-/*
-  The contract's premium chart.
-  One pane. High, low, and last are the candles on this chart, not a second book.
-*/
+/* The contract's premium chart. One pane. High, low, and last are the candles on this chart, not a second book. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Maximize2, Minimize2 } from 'lucide-react';

@@ -1,7 +1,5 @@
-/*
-  The period's trades cut by hour, weekday, name, side and result size, a row a lane with a bar for what it made;
-  the pointer says the lane in full at the card's foot.
-*/
+/* The period's trades cut by hour, weekday, name, side and result size, a row a lane with a bar for what it made;
+   the pointer says the lane in full at the card's foot. */
 
 import { useState } from 'react';
 import { card, headWord } from './DeskShell';

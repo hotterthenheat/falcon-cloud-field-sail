@@ -1,7 +1,5 @@
-/*
-  The chain beside the chart, shared by the backtest and the paper desk: a window that opens on the money, a strike
-  that opens onto its stats, greeks and order.
-*/
+/* The chain beside the chart, shared by the backtest and the paper desk: a window that opens on the money, a
+   strike that opens onto its stats, greeks and order. */
 
 import { useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { ChevronRight } from 'lucide-react';

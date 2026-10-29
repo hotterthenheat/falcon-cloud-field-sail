@@ -1,7 +1,5 @@
-/*
-  A setup's page at /compass/<id>: the id is the setup's address, so the tracker, the tape and Back all land here.
-  A contract that left the board says why.
-*/
+/* A setup's page at /compass/<id>: the id is the setup's address, so the tracker, the tape and Back all land here.
+   A contract that left the board says why. */
 
 import { useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -35,8 +33,8 @@ const SetupPage = () => {
     return parsed;
   }, [id]);
 
-  /* The desk REPOINTS to the contract's underlying — a QQQ setup over an SPY
-     chain was the monitor pricing the wrong market (Noah's screenshot, 2026-08) */
+  /* The desk REPOINTS to the contract's underlying — a QQQ setup over an SPY chain was the monitor pricing the
+     wrong market */
   useEffect(() => {
     if (address && address.ticker !== activeTicker) changeTicker(address.ticker);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -101,7 +99,7 @@ const SetupPage = () => {
         <div className="border border-borderSubtle rounded-md bg-panel h-40 flex flex-col items-center justify-center gap-2" data-setup-missing>
           <span className="font-mono text-t13 font-bold text-textPrimary">{id}</span>
           <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">no setup at this address</span>
-          {/* a slip of the hand lands here too — /compass/trakcer meant the Tracker (pages/notFound/suggest.ts, 2026-09-19) */}
+          {/* a slip of the hand lands here too — /compass/trakcer meant the Tracker */}
           {meant && (
             <Link to={meant.path} className="mt-1 text-t12 text-textSecondary hover:text-textPrimary transition-colors" data-not-found-link={meant.path}>
               Did you mean <span className="text-textPrimary font-medium underline decoration-borderMuted underline-offset-4">{meant.label}</span>?

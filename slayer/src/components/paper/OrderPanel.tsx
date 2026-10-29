@@ -1,7 +1,5 @@
-/*
-  The paper desk's Order card: the contract, the order type (market, limit, stop), the position, the size, the
-  ways out, and what the press will cost in plain words.
-*/
+/* The paper desk's Order card: the contract, the order type (market, limit, stop), the position, the size, the
+   ways out, and what the press will cost in plain words. */
 
 import { useEffect, useMemo, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
@@ -104,7 +102,7 @@ export const SizeRow = ({ q, onQ }: { q: number; onQ: (n: number) => void }) => 
   );
 };
 
-/** A BUY OR A SELL, one press: the house's quiet colours at rest, the direction's fill under the pointer */
+/** A buy or a sell, one press: the house's quiet colours at rest, the direction's fill under the pointer */
 export const Act = ({ side, count, at, why, onPress }: { side: Side; count: number; at: string; why: string | null; onPress: () => void }) => (
   <button
     type="button"
@@ -199,7 +197,7 @@ const TheRest = ({ join, close, reverse, common, hands }: { join: { bid: string;
   </div>
 );
 
-/** THE BRACKETS' HEADING — handed to LadderFields, which puts it on its counts' row */
+/** The brackets' heading — handed to LadderFields, which puts it on its counts' row */
 export const BracketsHead = ({ words, says }: { words: string; says?: string }) => (
   <span className="inline-flex items-baseline gap-2 min-w-0 grow basis-[120px] overflow-hidden" title={says ?? words}>
     <span className="font-mono text-t10 font-semibold uppercase tracking-widest text-textPrimary">Brackets</span>
@@ -227,9 +225,7 @@ export const RiskSize = ({ shares, riskEach, onPick, words }: { shares: number[]
 /*  A FUTURE                                                           */
 /* ================================================================== */
 
-/** What a future's Order card asks of the desk — the live paper desk's, or the backtest's (2026-09-26, Noah: "make the
-    contract orders look the same on the backtesting section for both options and futures" — ONE card, two desks; what
-    differs is where the prices and the refusals come from) */
+/** What a future's Order card asks of the desk — the live paper desk's, or the backtest's */
 export interface FutOrderDesk extends Common {
   product: FutProduct;
   /** The month it is ("ESZ6") and where it trades */
@@ -266,9 +262,8 @@ const writeBrackets = (symbol: string, d: LadderDraft, key = BRACKETS_KEY) => {
   }
 };
 
-/** A FUTURE'S ORDER AT A PRESS, ITS BRACKETS PRICED: the distances (points) turned into prices off where it will FILL — a
-    market or a stop a tick against the press (`slip`, none in the sandbox), a limit at its price. The Order card's buttons
-    and the ladder's rows both come through here, so a press anywhere carries the same brackets. */
+/** A future's order at a press, its brackets priced: the distances (points) turned into prices off where it will
+    FILL — a market or a stop a tick against the press (`slip`, none in the sandbox), a limit at its price. */
 export const futDraftAt = (a: { symbol: string; prod: FutProduct; last: number; slip: number; pos: { long: boolean; qty: number } | null; brackets: LadderDraft; side: Side; kind: OrderKind; price?: number; qty: number }): FutDraft => {
   const lastT = onTick(a.prod, a.last);
   const p = a.kind === 'market' ? undefined : a.price;
@@ -314,7 +309,7 @@ export const FutOrderPanel = ({ desk, symbol, q, onQ, onPlace, onClose, onCancel
   const bid = onTick(prod, lastT - desk.slip);
   const ask = onTick(prod, lastT + desk.slip);
 
-  /* THE BRACKETS AT THE PRESS: the distances turned into prices on the side the press takes (futDraftAt) */
+  /* The brackets at the press: the distances turned into prices on the side the press takes (futDraftAt) */
   const draftFor = (side: Side, k: OrderKind = kind, px?: number, qty = q): FutDraft =>
     futDraftAt({ symbol, prod, last, slip: desk.slip, pos, brackets: ladder, side, kind: k, price: k === 'market' ? undefined : (px ?? num(price)), qty });
   const refuse = (d: FutDraft) => desk.locked ?? desk.refuse(d);
@@ -331,7 +326,7 @@ export const FutOrderPanel = ({ desk, symbol, q, onQ, onPlace, onClose, onCancel
   );
   const press = (side: Side) => onPlace(draftFor(side));
 
-  /* WHAT THE BRACKETS RISK AND COULD MAKE at this size: the distances, worked in dollars (either side the same) */
+  /* What the brackets risk and could make at this size: the distances, worked in dollars (either side the same) */
   const b = bracketOf(ladder, q);
   const covered = (b?.stops ?? []).reduce((x, r) => x + r.qty, 0);
   const atRisk = b?.stops?.length && covered >= q ? b.stops.reduce((x, r) => x + r.price * prod.pointValue * r.qty, 0) : null;

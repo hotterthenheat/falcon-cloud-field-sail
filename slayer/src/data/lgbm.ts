@@ -1,15 +1,6 @@
-/*
-  LightGBM text model. Binary sigmoid. The walk is NumericalDecision
-  from LightGBM's tree.h, not "NaN always takes the default side."
-
-  decision_type bits:
-    bit 1 (value 2) is default-left.
-    bits 2–3 are the missing type: 0 none, 1 zero, 2 NaN.
-  A NaN is coerced to 0 unless the missing type is NaN. Only missing
-  type NaN, or a real 0 when the missing type is Zero, takes the
-  default side. Every other value, including a coerced 0, is
-  compared with the threshold.
-*/
+/* LightGBM text model. Binary sigmoid. The walk is NumericalDecision from LightGBM's tree.h, not "NaN always takes
+   the default side." decision_type bits: bit 1 (value 2) is default-left. bits 2–3 are the missing type: 0 none, 1
+   zero, 2 NaN. A NaN is coerced to 0 unless the missing type is NaN. */
 
 export interface Tree {
   s: number[];
@@ -26,7 +17,7 @@ const NAN_MISSING = 2;
 /* LightGBM's kZeroThreshold: anything this close to 0 counts as zero for the Zero missing type. */
 const ZERO_EPS = 1e-35;
 
-/* LightGBM writes infinite thresholds as "inf"/"-inf", which Number() reads as NaN. */
+/* LightGBM writes infinite thresholds as "inf"/"-inf", which Number reads as NaN. */
 function num(token: string): number {
   if (token === 'inf' || token === '+inf') return Infinity;
   if (token === '-inf') return -Infinity;

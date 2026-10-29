@@ -1,8 +1,6 @@
-/*
-  The backtest's tape: one name's past sessions, a minute bar at a time. It is a seeded random walk, not a past
-  market, so Backtest is paused (BACKTEST_LIVE) until real history is wired in; the tape stays only to redraw the
-  sessions already in the Journal. It ends at a fixed session, so a saved session reopens on the same prices.
-*/
+/* The backtest's tape: one name's past sessions, a minute bar at a time. It is a seeded random walk, not a past
+   market, so Backtest is paused (BACKTEST_LIVE) until real history is wired in; the tape stays only to redraw the
+   sessions already in the Journal. It ends at a fixed session, so a saved session reopens on the same prices. */
 
 import { isTradingDay, isoDate } from '../../core/calendar';
 import { UNIVERSE } from '../universe';

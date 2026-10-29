@@ -1,7 +1,5 @@
-/*
-  A pencil that opens a small card to rename a session. It is drawn outside the grid so the grid does not take the
-  field's keys.
-*/
+/* A pencil that opens a small card to rename a session. It is drawn outside the grid so the grid does not take the
+   field's keys. */
 
 import { useEffect, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';

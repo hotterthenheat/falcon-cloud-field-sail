@@ -1,10 +1,4 @@
-/*
-  REVIEW · WHAT A STRIKE OPENS ONTO (Noah, 2026-09-20, with the Weigher's chain: "isnt that info useful for the backtesting
-  so each strike has its own dropdown?"). The Weigher's weigh-up, word for word — Stats, then The Greeks, a silver label
-  over a bright figure, the same glossary under the same words — read AS THE CONTRACT STOOD at the clock's minute: the
-  day's high and low SO FAR, yesterday's close, what it has traded, what is open in it, where the name has to be at the
-  bell for it to pay for itself. (Three columns here, not the Weigher's five: the chain is a side panel.)
-*/
+/* REVIEW · what a strike opens onto. */
 
 import Term from '../ui/Term';
 import type { ContractDay, ContractId, Quote } from '../../data/review/quotes';

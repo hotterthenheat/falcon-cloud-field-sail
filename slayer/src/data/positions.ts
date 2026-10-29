@@ -1,7 +1,5 @@
-/*
-  The positions the reader owns or sold, kept per name, and how each reads against the day's dealer map: where it
-  sits, whether hedging works with it, and when it expires.
-*/
+/* The positions the reader owns or sold, kept per name, and how each reads against the day's dealer map: where it
+   sits, whether hedging works with it, and when it expires. */
 
 import { useMemo, useSyncExternalStore } from 'react';
 import { expiryFor, isoDate, sessionsBetween, today } from '../core/calendar';
@@ -30,7 +28,7 @@ export interface Position {
   addedAt: number;
 }
 
-/** v2 (2026-09-14): the key moved once with the watchlist's so the Weigher opened on a clean list for the walk */
+/** v2: the key moved once with the watchlist's so the Weigher opened on a clean list for the walk */
 const KEY = 'slayer_positions_v2';
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -96,7 +94,7 @@ export function usePositions(ticker: string | null | undefined): Position[] {
   return useMemo(() => (ticker ? all.filter(p => p.ticker === ticker) : []), [all, ticker]);
 }
 
-/** Every position on every name — the Weigher's list (2026-09-14) */
+/** Every position on every name — the Weigher's list */
 export function useAllPositions(): Position[] {
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }

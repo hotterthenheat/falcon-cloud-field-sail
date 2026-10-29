@@ -1,7 +1,5 @@
-/*
-  What Add widget opens: a search and the widgets in their groups, each draggable onto the desk or added with a
-  press to the first gap that fits.
-*/
+/* What Add widget opens: a search and the widgets in their groups, each draggable onto the desk or added with a
+   press to the first gap that fits. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, GripVertical, Plus, Search } from 'lucide-react';
@@ -151,7 +149,7 @@ const Picker = ({ ctx, counts, boxFor, onAdd, onDragKey, onClose }: Props) => {
         </div>
       </div>
 
-      {/* THE PICTURE AND WHAT IT IS */}
+      {/* The picture and what it is */}
       <div className="flex-1 min-w-0 p-3.5 flex flex-col gap-2.5">
         {def && box ? (
           <>

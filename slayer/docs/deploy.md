@@ -25,7 +25,7 @@ the webhook secret are not in the build, not in the repo, not in Vercel. They st
    `/assets` and the font are cached for a year.
 2. **Set the production branch to `v1`.** Settings → Git → Production Branch. Every push to `v1` is a release from
    then on; every other branch and pull request gets its own private preview address.
-3. **Add the three variables.** Settings → Environment Variables. Names and values from `.env.local`:
+3. **Add the variables.** Settings → Environment Variables. Names and values from `.env.local`:
 
    | Name | Production | Preview and Development |
    |---|---|---|
@@ -34,12 +34,19 @@ the webhook secret are not in the build, not in the repo, not in Vercel. They st
    | `VITE_STRIPE_PUBLISHABLE_KEY` | the **live** publishable key, once Stripe is live | the **test** publishable key |
    | `VITE_PLAUSIBLE_DOMAIN` | `slayerterminal.com`, when the count is wanted | leave empty |
    | `UNUSUAL_WHALES_API_KEY` | the Unusual Whales token | the same |
+   | `SUPABASE_URL` | the project URL (the data proxies verify sessions against it) | the same |
+   | `SUPABASE_SERVICE_ROLE_KEY` | optional: lets the proxies read `profiles` directly; without it they read the caller's own row with the publishable key and the caller's token | the same |
 
-   `UNUSUAL_WHALES_API_KEY` is the one secret that does live on Vercel, and only because the site's `/api/uw` function
-   reads it there. It must not start with `VITE_` — a `VITE_` name is copied into the browser. The function adds the
-   token; the pages call `/api/uw` and never see it.
-   A value that starts `sb_secret_`, `sk_`, or `whsec_` never goes here. If one is ever typed here by mistake, roll
-   it in its own dashboard the same day.
+   `UNUSUAL_WHALES_API_KEY` (and `SUPABASE_SERVICE_ROLE_KEY`, if used) are the only secrets on Vercel, read by the
+   `/api/uw` function. They must not start with `VITE_`: a `VITE_` name is copied into the browser.
+   Without `SUPABASE_URL` (or `VITE_SUPABASE_URL`) the deployed `/api/uw` answers 503 to everyone: it never runs open.
+   Optional tuning: `PROXY_RATE_BURST` (default 300) and `PROXY_RATE_PER_SEC` (default 5) per user and feed, per
+   function instance; `PROXY_PLAN_GATE=off` drops the plan check (sign-in and bans still apply) for a build without
+   Stripe, where the browser's gates are off too. `UW_PROXY_OPEN=1` opens the proxy for local work and is ignored when
+   `VERCEL_ENV=production`. ThetaData does not run on Vercel: `/api/theta` answers 503 `terminal_unavailable` there
+   unless `THETA_REST_BASE` points at a reachable terminal. See `docs/data-proxies.md`.
+   A value that starts `sk_` or `whsec_` never goes here. If one is ever typed here by mistake, roll it in its own
+   dashboard the same day.
 4. **Deploy.** The first build takes a few minutes. The site is up at an address ending in `.vercel.app`. Open it, sign
    in, buy Book with the test card, open a walled room. Everything the dev server does, this does, from the edge.
 5. **The domain.** Vercel → Settings → Domains → add `slayerterminal.com` and `www.slayerterminal.com`. If the name
@@ -114,10 +121,11 @@ password protection on, which is a paid feature; or the wallets wait for launch 
   are still shot against the dev server, where the sample stays.
 - **The local map tiles never ship.** `public/tiles/nyc.pmtiles` (128 MB) is git-ignored and is referenced by nothing
   in the app any more; Vercel builds from git and never sees it. Nothing to do.
-- **The content security policy is in report-only mode.** `vercel.json` sends a `Content-Security-Policy-Report-Only`
-  header naming every outside address the site may talk to: Supabase, Stripe's script and frames, Plausible, Google's
-  picture host for avatars, and nothing else. In report-only mode the browser allows everything and only writes a
-  complaint to its console when something falls outside the list. After a week live with no complaints, rename the
-  header to `Content-Security-Policy` and the same list becomes a wall: a script injected anywhere then does nothing.
-  If a complaint names something real (a new Stripe address, say), add it to the list first.
+- **The content security policy is in report-only mode, with reports collected.** `vercel.json` sends a
+  `Content-Security-Policy-Report-Only` header naming every outside address the site may talk to (Supabase, Stripe's
+  script and frames, Plausible, Google's avatar host) with `report-uri /api/csp-report` and `report-to csp`. The
+  `api/csp-report` function writes one `csp-violation {...}` line per report to the Vercel function log (Vercel →
+  the project → Logs, filter `csp-violation`). After a week with no violations that matter, rename the header to
+  `Content-Security-Policy`; add any real address a report names first. The inline theme script in `index.html` is
+  allowed by its hash: editing that script means updating the `sha256-` value (the browser's console prints the new one).
 - **What is not here yet, on purpose:** the Apple sign-in; the Terms' unnamed state.

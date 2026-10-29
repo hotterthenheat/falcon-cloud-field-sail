@@ -1,7 +1,5 @@
-/*
-  The key-levels rail Pulse draws: the walls, spot, the pin, the flip and the supreme, one row each, with the
-  dealer gamma at the nearest strike.
-*/
+/* The key-levels rail Pulse draws: the walls, spot, the pin, the flip and the supreme, one row each, with the
+   dealer gamma at the nearest strike. */
 
 import type { MarketSnapshot } from '../types/market';
 import type { KeyLevelRow, KeyLevels } from '../types/gex';

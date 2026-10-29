@@ -1,7 +1,5 @@
-/*
-  This contract, four strikes each side, and the other side of those strikes.
-  The rollup is the house stat row. The prints under it are the tape's own row.
-*/
+/* This contract, four strikes each side, and the other side of those strikes. The rollup is the house stat row.
+   The prints under it are the tape's own row. */
 
 import { useEffect, useMemo, useRef } from 'react';
 import { useNameTape, useShelfPrints, usd } from '../../data/traceLive';

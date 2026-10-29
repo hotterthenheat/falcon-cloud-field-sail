@@ -1,7 +1,5 @@
-/*
-  The picked row of the Weigher's list as a returns card: a watched contract against its mark when added, or a
-  position against what was paid, with the what-if curve and the book's read.
-*/
+/* The picked row of the Weigher's list as a returns card: a watched contract against its mark when added, or a
+   position against what was paid, with the what-if curve and the book's read. */
 
 import { useMemo } from 'react';
 import { Eye, Minus, Pencil, Plus, Trash2, X } from 'lucide-react';
@@ -42,10 +40,8 @@ interface Props {
   contractKey: string;
   /** Watch the picked contract (not watched yet) */
   onWatch?: () => void;
-  /** THE CASE for the picked contract (Noah's partner, 2026-10-10: the chain's dropdown was too small a window for
-      it — "the position card to act as either the information of the chain … then if you decide to add a position or
-      watchlist it acts as the simulated returns"): drawn in the card while the contract is not on the list; the returns
-      take the card the moment it is */
+  /** THE CASE for the picked contract: drawn in the card while the contract is not on the list; the returns take
+      the card the moment it is */
   theCase?: React.ReactNode;
   /** Which face the card shows — the head's switch (WeigherDesk) */
   face: CardView;
@@ -248,7 +244,7 @@ const PositionDeskCard = ({ picked, row, profile, contractKey, onWatch, onClose,
           </dl>
         ) : (
           /* Robinhood's "only available for active positions", as one quiet line */
-          /* `flex-1`: the card fills its row (WeigherDesk, 2026-10-07), and the room a live chart would take is this box's */
+          /* `flex-1`: the card fills its row, and the room a live chart would take is this box's */
           <div className="flex-1 min-h-[96px] flex items-center justify-center rounded-md border border-borderSubtle/60 bg-ink/[0.02]" data-sim-settled>
             <span className="font-mono text-t10 text-textMuted">
               {w ? (w.status === 'closed' ? 'Closed by hand' : 'Settled at the bell') : `Expired ${monthDay(pos.expiry)}`}
@@ -256,7 +252,7 @@ const PositionDeskCard = ({ picked, row, profile, contractKey, onWatch, onClose,
           </div>
         )}
 
-        {/* WHAT IT HAS DONE — since the moment it was added (watched), or against what you paid (owned) */}
+        {/* What it has done — since the moment it was added (watched), or against what you paid (owned) */}
         <dl className="grid grid-cols-5 gap-x-4 gap-y-1 border-t border-borderSubtle/50 pt-3" data-position-facts="watch">
           {row.kind === 'watch' ? (
             <>

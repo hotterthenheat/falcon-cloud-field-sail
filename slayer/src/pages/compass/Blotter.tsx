@@ -1,7 +1,5 @@
-/*
-  The blotter shows only the paper fills this browser recorded from Compass's own calls.
-  Return is the exit against what was paid, the same sum on every trade.
-*/
+/* The blotter shows only the paper fills this browser recorded from Compass's own calls. Return is the exit
+   against what was paid, the same sum on every trade. */
 
 import { useMemo, useState } from 'react';
 import { CalendarDays } from 'lucide-react';

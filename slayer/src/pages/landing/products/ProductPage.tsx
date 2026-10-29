@@ -12,15 +12,15 @@ import { Block, GroundProvider, useBlockGround, useGround } from '../ground';
 import { Arrive, DOOR_ARROW, DOOR_GROUP, Eyebrow, Nav, Pill, TwoTone, Wrap, useDoorSeen } from '../pieces';
 import TerminalWindow from '../TerminalWindow';
 
-/** A SECTION'S HEAD: smaller than the page's, the same two tones */
+/** A section's head: smaller than the page's, the same two tones */
 export const Head = ({ first, second, className = '' }: { first: string; second: string; className?: string }) => (
   <h2 className={`arrive-line arrive-settle [--i:1] font-light tracking-[-0.035em] leading-[1.04] text-t32 sm:text-t40 lg:text-t46 [text-wrap:balance] ${className}`}>
     {first} <span className="block text-textMuted">{second}</span>
   </h2>
 );
 
-/** A PICTURE OF THE PRODUCT, on the page's ground: `src` less its theme — the file is `<src>-<ground>.webp`. The frame is
-    the window's, without its bar: a hairline, the panel's ground, the house's corner. */
+/** A picture of the product, on the page's ground: `src` less its theme — the file is `<src>-<ground>.webp`. The
+    frame is the window's, without its bar: a hairline, the panel's ground, the house's corner. */
 export const Picture = ({ src, alt, ratio, className = '' }: { src: string; alt: string; ratio: string; className?: string }) => {
   const ground = useBlockGround();
   return (
@@ -30,8 +30,8 @@ export const Picture = ({ src, alt, ratio, className = '' }: { src: string; alt:
   );
 };
 
-/** ONE THING ABOUT THE PRODUCT, said beside its picture. The words take five columns, the picture seven; `flip` puts the
-    picture first. On a phone the words come first, then the picture. */
+/** One thing about the product, said beside its picture. The words take five columns, the picture seven; `flip`
+    puts the picture first. On a phone the words come first, then the picture. */
 export const Aside = ({ eyebrow, first, second, flip = false, narrow = false, picture, children }: { eyebrow: string; first: string; second: string; flip?: boolean; /** a tall picture: five columns to it, seven to the words */ narrow?: boolean; picture: ReactNode; children: ReactNode }) => (
   <div className="grid grid-cols-1 lg:grid-cols-12 gap-x-12 gap-y-8 items-center" data-product-aside={eyebrow}>
     <Arrive className={`${narrow ? 'lg:col-span-7' : 'lg:col-span-5'} ${flip ? 'lg:order-2' : ''}`}>
@@ -43,7 +43,7 @@ export const Aside = ({ eyebrow, first, second, flip = false, narrow = false, pi
   </div>
 );
 
-/** A TWO-UP OF PICTURES with a line under each — the pieces of a room */
+/** A two-up of pictures with a line under each — the pieces of a room */
 export const Pair = ({ items, cols = 2 }: { items: { src: string; ratio: string; name: string; says: string }[]; /** three across for three pictures of one shape (Compass's card on its three tabs); one across for wide thin pictures that need the whole width to read (Terrain's strip and bar) */ cols?: 1 | 2 | 3 }) => (
   <ul className={`mt-10 grid grid-cols-1 ${cols === 3 ? 'md:grid-cols-3 gap-x-6' : cols === 2 ? 'lg:grid-cols-2 gap-x-8' : ''} gap-y-10`}>
     {items.map(a => (
@@ -56,7 +56,7 @@ export const Pair = ({ items, cols = 2 }: { items: { src: string; ratio: string;
   </ul>
 );
 
-/** A ROOM'S HEAD AND ITS PARAGRAPH, over whatever pictures follow */
+/** A room's head and its paragraph, over whatever pictures follow */
 export const Room = ({ eyebrow, first, second, children, pictures }: { eyebrow: string; first: string; second: string; children: ReactNode; pictures: ReactNode }) => (
   <div data-product-room={eyebrow}>
     <Arrive className="max-w-[72ch]">
@@ -97,9 +97,8 @@ const Page = ({ name, glyph, group, head, intro, path, plan, children }: Props) 
   return (
     <div className="relative isolate min-h-screen overflow-x-clip font-sans" data-product-page={name}>
       <Nav ground={a} door={!doorSeen} />
-      {/* no padding under the block: the footer is the last thing in it and ends the page flush, as on the landing (Noah,
-          2026-10-03: "its not all the way at the bottom unlike the one on the landing page") — the room before the
-          footer is the door's own */}
+      {/* no padding under the block: the footer is the last thing in it and ends the page flush, as on the landing
+          — the room before the footer is the door's own */}
       <Block on="a" id="product" label={name} className="pt-28 sm:pt-32">
         <Wrap>
           {/* ── THE HEAD: the product by name, what it is, and its page in the window ── */}
@@ -125,7 +124,7 @@ const Page = ({ name, glyph, group, head, intro, path, plan, children }: Props) 
               desk whole. The picture sits in it from its top left, the way a page sits in a window shorter than it. */}
           <TerminalWindow path={path} theme={a} desk film={false} className="mt-12 sm:mt-14 h-[420px] sm:h-[520px] lg:h-[620px]" />
 
-          {/* ── THE PRODUCT, ONE THING AT A TIME ── */}
+          {/* ── the product, one thing at a time ── */}
           <div className="mt-[12vh] flex flex-col gap-[11vh]">{children}</div>
 
           {/* ── THE DOOR ── */}

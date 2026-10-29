@@ -4,7 +4,7 @@
 
 import type { ReactNode } from 'react';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal */
 const BULL = 'rgb(var(--bull))';
 const BEAR = 'rgb(var(--bear))';
 const WARN = 'rgb(var(--warn))';

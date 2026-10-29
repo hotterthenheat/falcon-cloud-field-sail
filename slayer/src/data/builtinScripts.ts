@@ -1,7 +1,5 @@
-/*
-  The scripts the terminal ships, as read-only Pine source: the Slayer shelf (which reads the terminal's own
-  numbers through `slayer.*`) and the classic technicals. Make a copy turns one into yours.
-*/
+/* The scripts the terminal ships, as read-only Pine source: the Slayer shelf (which reads the terminal's own
+   numbers through `slayer.*`) and the classic technicals. Make a copy turns one into yours. */
 
 import { compile, explain } from '../core/pine';
 import type { Script } from '../types/scripts';

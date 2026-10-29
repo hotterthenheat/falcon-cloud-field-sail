@@ -1,7 +1,5 @@
-/*
-  The session clock tile: New York's time, the session's phases end to end with where we are, and what the
-  phase means for the desk's levels.
-*/
+/* The session clock tile: New York's time, the session's phases end to end with where we are, and what the phase
+   means for the desk's levels. */
 
 import { useEffect, useState } from 'react';
 import { PHASES, type ClockFacts } from '../../../components/gex/TraderClock';

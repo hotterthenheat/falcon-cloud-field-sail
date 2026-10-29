@@ -1,7 +1,5 @@
-/*
-  Pulse, the desk you land on: tiles on a grid the reader arranges, on named desks that save as they go, each
-  tile built from the live vendor book of its name.
-*/
+/* Pulse, the desk you land on: tiles on a grid the reader arranges, on named desks that save as they go, each tile
+   built from the live vendor book of its name. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -24,7 +22,8 @@ import { widgetByKey } from './registry';
 import type { TileState, WidgetDef, WorkspaceCtx } from './tile';
 import { firstFit, isPreset, loadDesks, PRESET_BLURBS, PRESET_NAMES, presetTemplate, saveDesks, type DeskStore, type SavedWorkspace, type WidgetInstance } from './desks';
 
-/* THE GRID'S OWN ARITHMETIC (react-grid-layout calcGridItemWHPx): 12 columns, rows of 88, a 12px gutter, no padding */
+/* The grid's own arithmetic (react-grid-layout calcGridItemWHPx): 12 columns, rows of 88, a 12px gutter, no
+   padding */
 const GRID_COLS = 12;
 const GRID_GUTTER = 12;
 const ROW_H = 88;
@@ -36,12 +35,9 @@ const tileHeight = (h: number): number => ROW_H * h + Math.max(0, h - 1) * GRID_
 /** The id the library gives the tile being dragged in from the picker */
 const DROPPING = '__dropping';
 
-/* THE DESK'S WIDTH, MEASURED BEFORE THE FIRST PAINT (Noah, 2026-09-12: "everytime i re-enter the page and the cards
-   start sliding into their designated areas the internals of the cards look delayed and laggy"). The library's
-   WidthProvider rendered the first frame at an assumed 1280px, learnt the real width a frame later, and its 200ms
-   transform transition carried every tile from the wrong layout to the right one. Its `measureBeforeMount` is broken
-   in 1.5.2. So the desk measures its own host as it attaches — synchronously, before paint — and the tiles are born
-   where they belong; the observer keeps the width honest through the sidebar's glide. */
+/* The desk's width, measured before the first paint. The library's WidthProvider rendered the first frame at an
+   assumed 1280px, learnt the real width a frame later, and its 200ms transform transition carried every tile from
+   the wrong layout to the right one. Its `measureBeforeMount` is broken in 1.5.2. */
 const useHostWidth = () => {
   const [width, setWidth] = useState<number | null>(null);
   const cleanup = useRef<(() => void) | null>(null);
@@ -57,10 +53,10 @@ const useHostWidth = () => {
       if (!held) read();
     });
     ro.observe(el);
-    /* THE SIDEBAR'S GLIDE (core/glide.ts; Noah, 2026-09-12: "the sidebar slide in and out disrupting the layout of the
-       pulse cards"): the frame says where it is going, the desk lays the tiles out for THAT width at once, and they
-       travel there on the sidebar's own clock and curve (index.css [data-glide='frame']) — the column and the cards
-       move as one, and what is inside sizes for the destination off the tile's promise (data-tile-width). */
+    /* The sidebar's glide: the frame says where it is going, the desk lays the tiles out for THAT width at once,
+       and they travel there on the sidebar's own clock and curve (index.css [data-glide='frame']) — the column and
+       the cards move as one, and what is inside sizes for the destination off the tile's promise
+       (data-tile-width). */
     const off = onGlide(
       () => {
         if (document.documentElement.getAttribute('data-glide') !== 'frame') return;
@@ -150,8 +146,8 @@ const Pulse = () => {
     setLayout(ws.layout);
   };
 
-  /* A DESK CHANGES IN TWO BEATS (Noah, 2026-08-19: "right now its a rapid change"): the desk in hand fades out, then
-     the next mounts under a fresh key and breathes in. A timer, never an animation's end. */
+  /* A desk changes in two beats: the desk in hand fades out, then the next mounts under a fresh key and breathes
+     in. A timer, never an animation's end. */
   const [switching, setSwitching] = useState(false);
   const [deskRef, deskWidth] = useHostWidth();
   const switchTimer = useRef(0);
@@ -205,8 +201,8 @@ const Pulse = () => {
     onMouseLeave: () => setPeek(null),
   });
 
-  /* A tile whose widget has left the registry would stand as an invisible box that still drags (Noah, 2026-08-17:
-     "there is nothing there yet im still moving it"). loadDesks drops them at the start; this drops them mid-flight. */
+  /* A tile whose widget has left the registry would stand as an invisible box that still drags. loadDesks drops
+     them at the start; this drops them mid-flight. */
   useEffect(() => {
     if (!instances.some(w => !widgetByKey(w.key))) return;
     const alive = instances.filter(w => widgetByKey(w.key));
@@ -242,7 +238,7 @@ const Pulse = () => {
     return () => window.clearTimeout(id);
   }, [bookRev, names]);
 
-  /* ONE CONTEXT A NAME, A SWEEP; a name whose live book has not landed has none yet, and its tile says so */
+  /* One context a name, a sweep; a name whose live book has not landed has none yet, and its tile says so */
   const contexts = useMemo(() => {
     const map = new Map<string, WorkspaceCtx>();
     for (const t of names) {
@@ -275,7 +271,7 @@ const Pulse = () => {
   const [dragKey, setDragKey] = useState<string | null>(null);
   const dragDef = dragKey ? widgetByKey(dragKey) : undefined;
 
-  /** The first gap from the top that takes it, shrinking toward its floor when the gap is narrower (Noah, 2026-08-19) */
+  /** The first gap from the top that takes it, shrinking toward its floor when the gap is narrower */
   const addWidget = (key: string) => {
     const def = widgetByKey(key);
     if (!def) return;
@@ -307,18 +303,17 @@ const Pulse = () => {
   };
   const patchState = (id: string, patch: TileState) => setInstances(prev => prev.map(w => (w.id === id ? { ...w, state: { ...w.state, ...patch } } : w)));
 
-  /* THE LINK (Mo, 2026-08-19): a tile with no name of its own follows the terminal, and a pick on it MOVES the terminal
-     — every linked tile follows. A tile holding a name keeps its pick to itself. Unlinking pins it to what it shows
-     now, so nothing jumps at the moment of unlinking. */
+  /* THE LINK: a tile with no name of its own follows the terminal, and a pick on it MOVES the terminal — every
+     linked tile follows. A tile holding a name keeps its pick to itself. Unlinking pins it to what it shows now,
+     so nothing jumps at the moment of unlinking. */
   const setTileTicker = (id: string, ticker: string | undefined) => setInstances(prev => prev.map(w => (w.id === id ? { ...w, ticker } : w)));
   const pickFor = (inst: WidgetInstance) => (t: string) => {
     if (inst.ticker === undefined) changeTicker(t);
     else setTileTicker(inst.id, t);
   };
 
-  /* EVERY DOOR IS A PAGE (Noah, 2026-09-12: "it should take user to the actual page with a button allowing them to go
-     back to the pulse page from there"; 2026-09-30: every one of them). The tile's real page, on the tile's name,
-     set up to show what the tile showed, carrying the way back. */
+  /* Every door is a page. The tile's real page, on the tile's name, set up to show what the tile showed, carrying
+     the way back. */
   const openPage = (def: WidgetDef, inst: WidgetInstance) => {
     const page = def.page;
     if (!page) return;
@@ -334,9 +329,9 @@ const Pulse = () => {
     navigate(`${path}${ctx ? page.search?.(state, ctx) ?? '' : ''}`, { state: { ...(ctx ? page.state?.(state, ctx) : undefined), wayBack: '/pulse' } });
   };
 
-  /* THE PHONE GETS ONE CHART, not a stacked desk (ported 2026-08-27). Branched here, not hidden with CSS: a hidden grid
-     still MOUNTS — its tiles building canvases behind a screen nobody can see, on the device least able to carry them.
-     The desks above are untouched: a reader back on a laptop finds their arrangement as they left it. */
+  /* The phone gets one chart, not a stacked desk. Branched here, not hidden with CSS: a hidden grid still MOUNTS —
+     its tiles building canvases behind a screen nobody can see, on the device least able to carry them. The desks
+     above are untouched: a reader back on a laptop finds their arrangement as they left it. */
   if (isPhone) {
     return (
       /* Full bleed over the shell's padding; `dvh`, so the chart's own axis is not under the browser's bar on arrival */
@@ -373,7 +368,8 @@ const Pulse = () => {
 
   return (
     <>
-      {/* THE DESK BAR — one row: where you are, the desks (the house's, then yours), and what you can do to this one */}
+      {/* The desk bar — one row: where you are, the desks (the house's, then yours), and what you can do to this
+          one */}
       <div className="flex items-center gap-x-3 gap-y-2 flex-wrap min-h-9" data-desk-bar>
         <h1 className="text-t15 font-semibold leading-tight text-textPrimary">Pulse</h1>
         <span className="w-px h-4 bg-borderSubtle" aria-hidden />
@@ -488,19 +484,19 @@ const Pulse = () => {
               rowHeight={ROW_H}
               margin={[GRID_GUTTER, GRID_GUTTER]}
               containerPadding={[0, 0]}
-              /* the rows close up under a tile taken away (Noah, 2026-08-17: the no-compaction trial "messed it up") */
+              /* the rows close up under a tile taken away */
               compactType="vertical"
               draggableHandle=".widget-drag"
               isDraggable={!locked}
               isResizable={!locked}
-              /* every corner resizes (Noah, 2026-08-17) — the library defaults to the bottom right alone */
+              /* every corner resizes — the library defaults to the bottom right alone */
               resizeHandles={['se', 'sw', 'ne', 'nw']}
               /* a widget dragged out of the picker lands where it is let go */
               isDroppable={!!dragDef}
               droppingItem={dragDef ? { i: DROPPING, w: dragDef.w, h: dragDef.h } : undefined}
               onDrop={(next: Layout[], item: Layout) => dropWidget(next, item)}
-              /* THE SNAP (2026-09-06): on release the library glides the item to its grid size over 200ms, and a chart
-                 inside re-laid itself on every frame of it. It holds through the snap and takes the final size once. */
+              /* THE SNAP: on release the library glides the item to its grid size over 200ms, and a chart inside
+                 re-laid itself on every frame of it. It holds through the snap and takes the final size once. */
               onDragStop={() => beginGlide(260, 'snap')}
               onResizeStop={() => beginGlide(260, 'snap')}
               onLayoutChange={(next: Layout[]) => setLayout(next.filter(l => l.i !== DROPPING))}
@@ -514,8 +510,8 @@ const Pulse = () => {
                   <div
                     key={inst.id}
                     className="border border-borderSubtle bg-panel rounded-md overflow-hidden flex flex-col"
-                    /* THE TILE'S PROMISE (core/glide.ts): its laid-out width, which during the sidebar's glide is where it is
-                       going — what is inside sizes for it at once */
+                    /* The tile's promise (core/glide.ts): its laid-out width, which during the sidebar's glide is
+                       where it is going — what is inside sizes for it at once */
                     data-tile-width={width}
                     data-tile={def.key}
                   >

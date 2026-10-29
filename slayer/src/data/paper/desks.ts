@@ -23,7 +23,7 @@ export interface SavedDesk {
 interface DesksState {
   desks: SavedDesk[];
   current: string;
-  /** THE QUICK SIZE: what the chart's menu, the order keys and the ladder trade — contracts, 1 by rest */
+  /** The quick size: what the chart's menu, the order keys and the ladder trade — contracts, 1 by rest */
   quick?: number;
 }
 

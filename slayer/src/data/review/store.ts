@@ -1,7 +1,5 @@
-/*
-  The reader's backtest sessions, kept in localStorage and synced when signed in, as a module store with a
-  subscription.
-*/
+/* The reader's backtest sessions, kept in localStorage and synced when signed in, as a module store with a
+   subscription. */
 
 import { useSyncExternalStore } from 'react';
 import { advance, amend, attach, cancel, newSession, place, rebase, setBreakeven, setTrail, type Draft, type Moment, type Session, type SessionRules } from './engine';
@@ -69,9 +67,9 @@ export function createFutSession(o: { name: string; tickers: string[]; rules?: S
   commit([s, ...list], true);
   return s;
 }
-/** RUN IT AGAIN: a new session on the same set-up — the names, the money, the fee, the start day, the reader's rules —
-    with a fresh book and the clock back at that day's open. What a second try at a day is; not a copy of the first
-    try's trades. "SPY from Jun 22" → "SPY from Jun 22 · run 2" → "· run 3". */
+/** Run it again: a new session on the same set-up — the names, the money, the fee, the start day, the reader's
+    rules — with a fresh book and the clock back at that day's open. What a second try at a day is; not a copy of
+    the first try's trades. "SPY from Jun 22" → "SPY from Jun 22 · run 2" → "· run 3". */
 export function runAgain(id: string): AnySession | null {
   const from = list.find(s => s.id === id);
   if (!from) return null;

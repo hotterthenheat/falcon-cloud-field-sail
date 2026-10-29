@@ -1,7 +1,5 @@
-/*
-  The arithmetic both engines share for several targets and stops: sharing out the contracts, the next rung, and
-  what a ladder may hold.
-*/
+/* The arithmetic both engines share for several targets and stops: sharing out the contracts, the next rung, and
+   what a ladder may hold. */
 
 export interface Rung {
   price: number;

@@ -1,7 +1,5 @@
-/*
-  The Weigher's chain: listed expiries and the live chain from ThetaData (the vendor's listed contracts when
-  ThetaData does not answer), the session's volume and open interest, and yesterday's close.
-*/
+/* The Weigher's chain: listed expiries and the live chain from ThetaData (the vendor's listed contracts when
+   ThetaData does not answer), the session's volume and open interest, and yesterday's close. */
 
 import { expiryFor, isoDate, type Expiry } from '../core/calendar';
 import { estimatePremium } from './compass';
@@ -27,10 +25,9 @@ function hash(s: string): number {
 }
 const h01 = (s: string) => hash(s) / 4294967295;
 
-/** Today's key, so day-stable noise rolls at midnight like the sim's quotes.
-    Remembered for a second at a time: it is asked ten times per contract,
-    and a whole book of chains asked it ninety thousand times per build —
-    a Date and an ISO string each (5ms of every Ledger open, profiled). */
+/** Today's key, so day-stable noise rolls at midnight like the sim's quotes. Remembered for a second at a time: it
+    is asked ten times per contract, and a whole book of chains asked it ninety thousand times per build — a Date
+    and an ISO string each (5ms of every Ledger open, profiled). */
 let dayKeyAt = 0;
 let dayKeyMemo = '';
 const dayKey = () => {
@@ -71,9 +68,8 @@ export interface DeskContract {
   breakeven: number;
   /** Strike distance from spot, signed percent */
   fromSpotPct: number;
-  /* The column-catalog facts (Noah, 2026-08-26, the customize-columns ask):
-     everything below is derived from the same pricing above — no new model,
-     just more of its faces. */
+  /* The column-catalog facts: everything below is derived from the same pricing above — no new model, just more of
+     its faces. */
   /** Day-stable resting size on each side of the quote, contracts */
   bidSize: number;
   askSize: number;
@@ -154,16 +150,9 @@ export function deskExpiries(): Expiry[] {
   return out;
 }
 
-/** The desk's horizon (calendar days, what `expiryFor` walks) for a REAL
-    expiry date ("2026-09-18") — a deep link carries the date, never a count
-    (the Record sent sessions once and the desk read them as days: a Friday
-    print landed on the Wednesday, 2026-09-12). A listed horizon that resolves
-    to the date wins, so the rail's own door is the one that lights; otherwise
-    the first horizon inside ninety days that lands there; null past that.
-    What comes back is the RESOLVED horizon (`Expiry.dte`, the calendar days
-    to the real date) — the value the rail's options carry and the desk
-    stores — never the requested one (a "7" asked on a Saturday resolves to
-    Friday, six days out; storing 7 would list the Friday twice). */
+/** The desk's horizon (calendar days, what `expiryFor` walks) for a REAL expiry date — a deep link carries the
+    date, never a count (the Record sent sessions once and the desk read them as days: a Friday print landed on the
+    Wednesday). */
 export function dteForDate(key: string): number | null {
   for (const dte of DESK_DTES) {
     const e = expiryFor(dte);
@@ -189,7 +178,7 @@ export function contractIvFor(ticker: string, strike: number, right: OptionRight
 const FALLBACK_IV = 0.3;
 
 /** `snap`: price the chain off THIS snapshot's spot and open interest instead of the live simulator's — the book at
-    the session's open (levelview's `snapshotAtOpen`), for the calendar's "since the open" (2026-10-12) */
+    the session's open (levelview's `snapshotAtOpen`), for the calendar's "since the open" */
 export function buildDeskChain(ticker: string, dte: number, depth = 10, snap?: MarketSnapshot): DeskChain {
   const snapshot = snap ?? snapshotOf(ticker);
   if (!snapshot) return blankChain(ticker, dte);
@@ -211,14 +200,8 @@ export function buildDeskChain(ticker: string, dte: number, depth = 10, snap?: M
   }
   if (!Number.isFinite(step) || step <= 0) step = 1;
 
-  /*
-    THE LADDER IS NOT CAPPED BY THE BOOK (Noah, 2026-08-25: "there should be
-    way more strikes"). The sim maintains ~30 strikes a side for the GEX
-    machinery; a quote table reaches further. Strikes are laid on the chain's
-    own grid centred at the book's spot strike, real nodes hand over their
-    open interest, and the wings past the book get a deterministic, day-stable
-    OI that decays with distance — priced by the same estimator either way.
-  */
+  /* The ladder is not capped by the book. The sim maintains ~30 strikes a side for the GEX machinery; a quote
+     table reaches further. */
   const byStrike = new Map(sorted.map(n => [n.strike, n]));
   const center = sorted[spotIdx]?.strike ?? Math.round(spot / step) * step;
   const wingOI = (strike: number, right: OptionRight): number => {

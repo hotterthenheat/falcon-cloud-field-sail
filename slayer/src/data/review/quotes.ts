@@ -1,7 +1,5 @@
-/*
-  A contract's quote on the backtest tape (Black-Scholes on the synthetic walk), the expiries listed on a day, and
-  the greeks from the price. Kept for sessions already in the journal; Backtest is paused.
-*/
+/* A contract's quote on the backtest tape (Black-Scholes on the synthetic walk), the expiries listed on a day, and
+   the greeks from the price. Kept for sessions already in the journal; Backtest is paused. */
 
 import { isTradingDay, isoDate, sessionsBetween } from '../../core/calendar';
 import { blackScholesGreeks, blackScholesPrice } from '../../core/greeks';
@@ -14,7 +12,7 @@ export interface ContractId {
   right: Right;
   /** YYYY-MM-DD */
   expiry: string;
-  /** A VERTICAL SPREAD: the strike SOLD against `strike` — same right, same expiry (see the head note) */
+  /** A vertical spread: the strike SOLD against `strike` — same right, same expiry (see the head note) */
   short?: number;
 }
 /** What a spread is worth at the most: the distance between its strikes */
@@ -87,9 +85,9 @@ export function quoteWith(c: ContractId, iso: string, minute: number, spot: numb
   return priceWith(c, spot, yearsLeft(iso, minute, c.expiry), baseIvAt(c.ticker, iso));
 }
 
-/** THE PRICER ITSELF (2026-09-22): a contract with the name at `spot`, `t` years of trading time left and the name's base
-    vol `base`. The backtest reads it through quoteWith (the seeded tape's minute and day); the paper desk through its live
-    feed (data/paper/feed.ts: the real clock, the simulator's vol) — one price, whichever clock is asking. */
+/** The pricer itself: a contract with the name at `spot`, `t` years of trading time left and the name's base vol
+    `base`. The backtest reads it through quoteWith (the seeded tape's minute and day); the paper desk through its
+    live feed (data/paper/feed.ts: the real clock, the simulator's vol) — one price, whichever clock is asking. */
 export function priceWith(c: ContractId, spot: number, t: number, base: number): Quote {
   if (c.short != null) return spreadQuote(c, spot, t, base);
   const intrinsic = Math.max(0, c.right === 'C' ? spot - c.strike : c.strike - spot);
@@ -226,12 +224,9 @@ export function chainAt(ticker: string, iso: string, minute: number, expiry: str
   return { spot, rows };
 }
 
-/** Where the name would have to stand, at this minute, for the contract's BID to be `bid` — THE NEAREST SUCH PLACE TO WHERE
-    IT STANDS NOW. Walked outward from the name's price (up for a bid a call does not have yet, down for one it has
-    passed; a put the other way) to the first crossing, then closed in on by bisection. Walked, not bisected end to end,
-    because a SPREAD's bid is not one-way: it rises with the name and then falls away deep in the money, where the legs'
-    own spreads swallow it — end to end, the far end read "nothing" and a level in plain sight was called out of reach.
-    Null when no price in reach gets there (a target past what the time left, or a spread's width, allows). */
+/** Where the name would have to stand, at this minute, for the contract's BID to be `bid` — The nearest such place
+    to where it stands now. Walked outward from the name's price (up for a bid a call does not have yet, down for
+    one it has passed; a put the other way) to the first crossing, then closed in on by bisection. */
 export const spotForBid = (c: ContractId, iso: string, minute: number, bid: number): number | null => spotForQuote(c, iso, minute, bid, 'bid');
 /** …and for its ASK to be `ask` — where a resting buy limit is drawn on the chart: it fills when the ask comes down to it */
 export const spotForAsk = (c: ContractId, iso: string, minute: number, ask: number): number | null => spotForQuote(c, iso, minute, ask, 'ask');
@@ -295,9 +290,9 @@ const u01 = (key: string): number => {
   return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
 };
 const ranges = new Map<string, { upTo: number; high: number; low: number }>();
-/** THE STAND-IN'S SHARE OF THE SEAM: the high and low are read off the day's quotes so far (true of the real tape too);
-    the volume, the open interest and the last trade are seeded figures of the right size and shape — with the real tape
-    they are the vendor's trades and its daily open-interest file. */
+/** The stand-in's share of the seam: the high and low are read off the day's quotes so far (true of the real tape
+    too); the volume, the open interest and the last trade are seeded figures of the right size and shape — with the
+    real tape they are the vendor's trades and its daily open-interest file. */
 export function contractDay(c: ContractId, iso: string, minute: number): ContractDay {
   const key = `${contractKey(c)}|${iso}`;
   let r = ranges.get(key);

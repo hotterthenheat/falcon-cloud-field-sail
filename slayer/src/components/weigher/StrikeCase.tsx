@@ -1,7 +1,5 @@
-/*
-  The case for one contract. Six tabs. The word is the first gate that fails,
-  or the pass. Figures are Fact rows. A simulated chain is named and is not scored.
-*/
+/* The case for one contract. Six tabs. The word is the first gate that fails, or the pass. Figures are Fact rows.
+   A simulated chain is named and is not scored. */
 
 import { useMemo, useState } from 'react';
 import CardTabs from '../ui/CardTabs';

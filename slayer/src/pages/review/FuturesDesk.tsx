@@ -1,7 +1,5 @@
-/*
-  The futures backtest desk, on the same shell as the options desk: the contract card where the chain would be,
-  the order card, and brackets in points from the fill.
-*/
+/* The futures backtest desk, on the same shell as the options desk: the contract card where the chain would be,
+   the order card, and brackets in points from the fill. */
 
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -34,8 +32,8 @@ const CONTEXT_DAYS = 5;
 type Tab = 'open' | 'orders' | 'closed';
 /** The least the contract's card keeps above the ticket */
 const CARD_MIN_PX = 300;
-/* THE DAY'S MARKS on the clock's bar, as shares of its 1,380 minutes: the evening open, midnight, Europe's morning, the
-   stock market's open and close — an hour a mark (the options bar's way) is twenty-three of them */
+/* The day's marks on the clock's bar, as shares of its 1,380 minutes: the evening open, midnight, Europe's
+   morning, the stock market's open and close — an hour a mark (the options bar's way) is twenty-three of them */
 const DAY_MARKS = [
   { u: 0, label: '18:00' },
   { u: 360 / 1380, label: '00:00' },
@@ -62,7 +60,8 @@ const FuturesDesk = () => {
   const symbol = names.includes(activeName) ? activeName : names[0];
   const account = useMemo<FutAccount | null>(() => (session ? futAccountOf(session) : null), [session]);
 
-  /* THE TAPE EACH CHART DRAWS: the trading days behind the clock's, whole, then today up to the clock — never a bar past it */
+  /* The tape each chart draws: the trading days behind the clock's, whole, then today up to the clock — never a
+     bar past it */
   const contextBy = useMemo<Record<string, Candle[]>>(() => {
     if (!cursor) return {};
     const days: string[] = [];
@@ -122,8 +121,8 @@ const FuturesDesk = () => {
     return out;
   }, [session, account, names]);
 
-  /* THE RESTING ORDERS THAT ARE NOT WAYS OUT — a limit or a stop waiting to open (or add to) a position, said as such on the
-     chart ("1 · Buy stop · ✕", PositionLayer), at its price */
+  /* The resting orders that are not ways out — a limit or a stop waiting to open (or add to) a position, said as
+     such on the chart ("1 · Buy stop · ✕", PositionLayer), at its price */
   const entriesBy = useMemo<Record<string, ChartEntry[]>>(() => {
     const out: Record<string, ChartEntry[]> = Object.fromEntries(names.map(n => [n, [] as ChartEntry[]]));
     if (!session) return out;
@@ -223,7 +222,7 @@ const FuturesDesk = () => {
       </span>
     ) : null;
 
-  /* THE NAMES, AS THE SHELL READS THEM: each with its tape, and what is drawn over it */
+  /* The names, as the shell reads them: each with its tape, and what is drawn over it */
   const deskNames: DeskName[] = names.map(n => {
     const p = futProduct(n);
     const b = futDayBars(n, cursor.day);
@@ -354,10 +353,9 @@ const FuturesDesk = () => {
     </div>
   );
 
-  /* THE ORDER IS THE PAPER DESK'S (components/paper/OrderPanel FutOrderPanel — 2026-09-26, Noah: "make the contract orders
-     look the same on the backtesting section for both options and futures"): the type pills, the size row, Buy · Sell,
-     the rest, the brackets as distances, the foot — fed the replayed minute's price and this session's refusals. A market
-     order here fills a tick against you (futuresEngine), so the brackets are measured from that fill. */
+  /* The order is the paper desk's: the type pills, the size row, Buy · Sell, the rest, the brackets as distances,
+     the foot — fed the replayed minute's price and this session's refusals. A market order here fills a tick
+     against you (futuresEngine), so the brackets are measured from that fill. */
   const posHere = account.positions.find(p => p.symbol === symbol) ?? null;
   const workingHere = working.filter(o => o.symbol === symbol);
   const ticketCard = (

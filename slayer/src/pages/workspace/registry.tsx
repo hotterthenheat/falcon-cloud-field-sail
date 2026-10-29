@@ -1,7 +1,5 @@
-/*
-  Every widget a Pulse desk can hold, by group: its size and limits, its settings and controls, and the page its
-  door opens.
-*/
+/* Every widget a Pulse desk can hold, by group: its size and limits, its settings and controls, and the page its
+   door opens. */
 
 import { BookOpenText, Briefcase, CalendarClock, CandlestickChart, Clock, Compass, GitCompareArrows, Grid3x3, Landmark, LineChart, Milestone, Newspaper, Rows3, TableProperties, Target } from 'lucide-react';
 import { writeLedgerView } from '../../components/gex/ledgerView';
@@ -32,7 +30,7 @@ export const WIDGETS: WidgetDef[] = [
     maxH: 10,
     named: true,
     /* its interval, overlays and theme are on its own taskbar, over the tape — and the head's button lifts its own
-       fullscreen, where the indicators are (2026-10-02, the chart as it was). Terrain is in its menu. */
+       fullscreen, where the indicators are. Terrain is in its menu. */
     fullscreen: true,
     page: { path: '/terrain', label: 'Terrain', state: (state, ctx) => ({ chart: { ticker: ctx.ticker, timeframe: chartTf(state) } }) },
     Body: ChartTile,
@@ -151,9 +149,8 @@ export const WIDGETS: WidgetDef[] = [
     Body: LevelsTile,
     skeleton: rows(6),
   },
-  /* THE RANGE, WHERE IT CLOSES and AT THE WALL left here on 2026-10-17 (Noah: "everything in the pulse widgets section
-     that was deleted because of the pinpoint page deletions should also be removed") — the Ahead and At-the-wall pages
-     went on 2026-10-14 and their bands went with them; a desk saved with one of the three drops it (desks.ts sanitize) */
+  /* The range, where it closes and at the wall left here — the Ahead and At-the-wall pages went and their bands
+     went with them; a desk saved with one of the three drops it (desks.ts sanitize) */
   {
     key: 'targets',
     title: 'Targets',
@@ -263,9 +260,8 @@ export const WIDGETS: WidgetDef[] = [
     skeleton: rows(6),
   },
 
-  /* PAPER AND JOURNAL ARE NOT PULSE TILES, AS OF NOW (Noah, 2026-10-03: "i dont think paper or journal should be apart of
-     the pulse section as of now") — the tiles' code stays in tiles/you.tsx; a desk saved with either drops it (desks.ts
-     drops a tile whose widget left the registry). */
+  /* Paper and journal are not pulse tiles, as of now — the tiles' code stays in tiles/you.tsx; a desk saved with
+     either drops it (desks.ts drops a tile whose widget left the registry). */
 
   /* ---------------------------------------------------------------- THE DAY (the clock stands under Market) */
   {

@@ -1,7 +1,5 @@
-/*
-  A closed trade's own page: the trade on its chart, its shape, what it did while held, the reader's tags and
-  words, and three questions worth answering.
-*/
+/* A closed trade's own page: the trade on its chart, its shape, what it did while held, the reader's tags and
+   words, and three questions worth answering. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SayPage } from '../../components/layout/PageMeta';
@@ -92,8 +90,8 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
   }, [navigate]);
 
   const ex = useMemo(() => (row ? excursionOf(row) : null), [row?.key, row?.t.pnl]); // eslint-disable-line react-hooks/exhaustive-deps
-  /* THE READER'S USUAL SHAPE — the six reads averaged over the whole journal of this book, the ghost behind the trade's
-     own; walked once per journal (the excursions are cached by trade) */
+  /* The reader's usual shape — the six reads averaged over the whole journal of this book, the ghost behind the
+     trade's own; walked once per journal (the excursions are cached by trade) */
   const usual = useMemo(() => usualShape(all), [all]);
 
   if (!row || !ex) {
@@ -110,12 +108,9 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
 
   const entry = entryOf(row);
   const save = (patch: Partial<JournalEntry>) => source.setEntry(row.s.id, row.t.id, patch);
-  /* THE WORDS ARE KEPT AS THEY ARE TYPED (Noah, 2026-09-22: "there is no place for me to know whether or not my
-     words got saved into my journaling"): a beat after the last keystroke, and the moment the field is left. Each
+  /* The words are kept as they are typed: a beat after the last keystroke, and the moment the field is left. Each
      field says so beside its question — "Keeping…" while the beat runs, then "Kept" with a check in silver, the
-     house's word for a thing held (the rail card's foot). Reload the page and the mark stands, read off the entry.
-     A field with words in it wears a silver hairline, so the eye finds the answered ones. A pending beat is
-     flushed — to the trade it was typed on — when the page walks to another trade or goes away. */
+     house's word for a thing held (the rail card's foot). Reload the page and the mark stands, read off the entry. */
   type Ask = 'why' | 'saw' | 'again';
   const [keptState, setKeptState] = useState<Partial<Record<Ask, 'keeping' | 'kept'>>>({});
   const pending = useRef<Partial<Record<Ask, { timer: number; flush: () => void }>>>({});
@@ -161,7 +156,7 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
       : row.t.pnl > 0
         ? `Up ${usd(ex.best.pnl, 0)} at its best, ${momentOf(ex.best.time, oneDay)}. You took ${usd(row.t.pnl, 0)} — ${pct(ex.kept ?? 0)} of it.`
         : `Up ${usd(ex.best.pnl, 0)} at its best, ${momentOf(ex.best.time, oneDay)} — and it ended ${usdSigned(row.t.pnl, 0)}. None of the best was kept.`;
-  /* THE SHAPE OF IT (Noah, 2026-09-29): six reads of the trade — it re-shapes as the words on the right are written */
+  /* The shape of it: six reads of the trade — it re-shapes as the words on the right are written */
   const shape = shapeOf(row, ex, entry);
   const vs = againstUsual(shape, usual);
   const names = (ks: (typeof vs)['above']) => ks.map(k => SHAPE_LABEL[k].toLowerCase()).join(', ');
@@ -207,17 +202,15 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
 
       {/* the tab carries the trade's name, never the address's ids (layout/PageMeta) */}
       <SayPage words={titleOf(row)} />
-      {/* THE TWO COLUMNS END LEVEL (Noah, 2026-09-26: "look at the random spacing in the bottom right corner"): the row
-          stretches both, and each column's last card takes the room — the held chart grows on the left, the three answer
-          boxes share it on the right — so neither ends above the other */}
+      {/* The two columns end level: the row stretches both, and each column's last card takes the room — the held
+          chart grows on the left, the three answer boxes share it on the right — so neither ends above the other */}
       <div className="grid gap-3 items-stretch lg:grid-cols-[minmax(0,1fr)_440px]">
-        {/* LOOKING AT IT AGAIN */}
+        {/* Looking at it again */}
         <div className="min-w-0 flex flex-col gap-3">
           <div className={`${card} min-w-0`}>
             <TradeTape row={row} excursion={ex} />
           </div>
-          {/* THE SHAPE OF IT (Noah, 2026-09-29, with a six-axis radar beside this card: "a cooler hexogram" in place of
-              "While you held it") — six reads of the trade as one figure, the reader's usual shape behind it; the six
+          {/* The shape of it — six reads of the trade as one figure, the reader's usual shape behind it; the six
               figures as dot-leader rows beside it, the story and the comparison under */}
           <div className={`${card} min-w-0 flex-1 flex flex-col`} data-journal-shape data-shape-area={shape.area.toFixed(2)}>
             <div className={`${head} flex-wrap h-auto min-h-9 py-1.5`}>
@@ -255,7 +248,7 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
           </div>
         </div>
 
-        {/* SAYING SOMETHING ABOUT IT */}
+        {/* Saying something about it */}
         <div className="min-w-0 flex flex-col gap-3">
           <div className={`${card} min-w-0`} data-journal-facts>
             <div className={head}>
@@ -267,8 +260,8 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
             {row.fut ? (
               <dl className="px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-3">
                 <Fact label="In">{whenWords(row, row.t.opened)} · {futAt(row, row.t.avgIn)}</Fact>
-                {/* the figures that carry a direction wear it (2026-09-22: "all i see is black and white"): the way out
-                    and the points in the trade's own ink, the risk in the warn ink */}
+                {/* the figures that carry a direction wear it: the way out and the points in the trade's own ink,
+                    the risk in the warn ink */}
                 <Fact label="Out">{whenWords(row, row.t.closed)} · <span className={dirInk(row.t.pnl)}>{futAt(row, row.t.avgOut)}</span></Fact>
                 <Fact label="Side · size">{row.t.long ? 'Long' : 'Short'} · {row.t.qty}</Fact>
                 <Fact label="Points it made"><span className={dirInk(row.t.pnl)}>{futAt(row, (row.t.avgOut - row.t.avgIn) * (row.t.long ? 1 : -1))}</span></Fact>
@@ -278,8 +271,8 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
             ) : (
               <dl className="px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-3">
                 <Fact label="In">{whenWords(row, row.t.opened)} · {row.t.avgIn.toFixed(2)}</Fact>
-                {/* the figures that carry a direction wear it (2026-09-22: "all i see is black and white"): the way out in
-                    the trade's own ink, the name's move in its own, the decay in the warn ink — it is a cost paid */}
+                {/* the figures that carry a direction wear it: the way out in the trade's own ink, the name's move
+                    in its own, the decay in the warn ink — it is a cost paid */}
                 <Fact label="Out">{whenWords(row, row.t.closed)} · <span className={dirInk(row.t.pnl)}>{row.t.avgOut.toFixed(2)}</span></Fact>
                 <Fact label="Size · what it cost">{row.t.qty} · {usd(row.t.cost)}</Fact>
                 <Fact label="Expiry · days left at entry">{dayWords(row.t.contract.expiry)} · {row.t.dteIn}d</Fact>
@@ -291,7 +284,8 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
             )}
           </div>
 
-          {/* IT LEFT IN PIECES (the ladder): every fill of the trade, in order — the ways in, and each piece going out */}
+          {/* It left in pieces (the ladder): every fill of the trade, in order — the ways in, and each piece going
+              out */}
           {row.t.legs.length > 2 && (
             <div className={`${card} min-w-0`} data-journal-pieces>
               <div className={head}>

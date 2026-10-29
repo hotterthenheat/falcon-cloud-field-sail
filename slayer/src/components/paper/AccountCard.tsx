@@ -1,7 +1,5 @@
-/*
-  The paper account in hand: what it is worth, today and all time, what is free and open, and a bar of what is tied
-  up. An evaluation leads with its room to the floor instead.
-*/
+/* The paper account in hand: what it is worth, today and all time, what is free and open, and a bar of what is
+   tied up. An evaluation leads with its room to the floor instead. */
 
 import { useState, type ReactNode } from 'react';
 import * as Popover from '@radix-ui/react-popover';
@@ -37,7 +35,8 @@ const Cell = ({ label, children, sub, title, testId }: { label: string; children
   </div>
 );
 
-/** ONE BAR FROM THE FLOOR TO THE TARGET: the start marked, the account's worth a dot on it, the way it has gone washed in its direction */
+/** One bar from the floor to the target: the start marked, the account's worth a dot on it, the way it has gone
+    washed in its direction */
 const FloorBar = ({ ev, worth }: { ev: EvalRead; worth: number }) => {
   const lo = ev.floor;
   const hi = Math.max(ev.targetAt, worth);
@@ -75,7 +74,7 @@ const FloorBar = ({ ev, worth }: { ev: EvalRead; worth: number }) => {
   );
 };
 
-/** WHAT IS TIED UP of what the account is worth: the options' worth and the margin held */
+/** What is tied up of what the account is worth: the options' worth and the margin held */
 const TiedBar = ({ v }: { v: PaperView }) => {
   const worth = Math.max(1, v.equity);
   const opt = Math.max(0, v.optValue);

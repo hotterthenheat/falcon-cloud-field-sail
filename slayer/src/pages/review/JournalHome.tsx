@@ -1,7 +1,5 @@
-/*
-  The journal's front page: the month first, the period's figures beside it, what each day made, the lanes, and a
-  day opened under the month.
-*/
+/* The journal's front page: the month first, the period's figures beside it, what each day made, the lanes, and a
+   day opened under the month. */
 
 import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import type { UTCTimestamp } from 'lightweight-charts';
@@ -87,7 +85,7 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
   const liveSession = q.get('session');
   const livePicked = ISO_DAY.test(q.get('day') ?? '') ? q.get('day') : null;
 
-  /* ---- THE SOFT SWAP (the head comment): the page is drawn from ONE SNAPSHOT that trails the address by the fade ---- */
+  /* The soft swap (the head comment): the page is drawn from ONE SNAPSHOT that trails the address by the fade */
   const liveKey = `${liveKind}|${livePeriod}|${liveSession ?? ''}|${livePicked ?? ''}`;
   const [drawn, setDrawn] = useState<Drawn>({ key: liveKey, kind: liveKind, period: livePeriod, session: liveSession, picked: livePicked });
   const [fading, setFading] = useState(false);
@@ -155,7 +153,7 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
     return out;
   }, [source, account]);
 
-  /* ---- THE PERIOD, DRAWN ---- */
+  /* The period, drawn */
   const run = useMemo(() => runningOf(rows), [rows]);
   const runBy = useMemo(() => new Map(run.map(p => [p.time, p])), [run]);
   /* ONE list each, kept — a fresh array drops the card under the pointer (SessionsChart's own note) */
@@ -281,7 +279,7 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
         }
         controls={
           <>
-            {/* THE BOOK: the paper accounts' trades or the backtest sessions' — one page, never mixed (2026-09-26) */}
+            {/* THE BOOK: the paper accounts' trades or the backtest sessions' — one page, never mixed */}
             {books && (
               <>
                 <FilterTabs options={BOOKS} value={liveKind} onChange={v => set({ book: v === 'paper' ? null : v, session: null, day: null, month: null })} ariaLabel="Which book" />
@@ -327,9 +325,8 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
         {null}
       </TraceBox>
 
-      {/* ---- THE MONTH, and the period's figures beside it — ONE ROW, the two ending level (2026-09-26: "the uneven
-          spacing of the calendar bottom and the side card"): the calendar's weeks grow to the figures' height, the figures'
-          groups spread to the calendar's ---- */}
+      {/* THE MONTH, and the period's figures beside it — ONE ROW, the two ending level: the calendar's weeks grow
+          to the figures' height, the figures' groups spread to the calendar's */}
       {/* side by side only from 1400px: at lg the calendar had ~430px for eight columns (33px a day), at xl 638px (69px a
           day — a four-figure day is 60px wide at 14px and spilled); from 1400 a day has 86px+, at 1440 the 92px he saw */}
       <div className="grid gap-3 items-stretch min-[1400px]:grid-cols-[minmax(0,1fr)_340px]">
@@ -348,7 +345,7 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
         </Swap>
       )}
 
-      {/* ---- THE PERIOD, DRAWN · FIVE CUTS · EVERY TRADE — one region, all of it the period's ---- */}
+      {/* The period, drawn · FIVE CUTS · EVERY TRADE — one region, all of it the period's */}
       <Swap key={`rest|${periodKey}`} out={periodOut} late={alive.current} className="flex flex-col gap-3" data-journal-period-region>
       <div className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]" data-journal-period-drawn>
         <div className={`${card} flex flex-col min-w-0`}>
@@ -423,7 +420,7 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
         <JournalLanes title="By setup" lanes={setups} labelW={122} rest="Your own tags, counted — the setup each trade was written down as" testId="setup" />
       </div>
 
-      {/* ---- EVERY TRADE IN THE PERIOD ---- */}
+      {/* Every trade in the period */}
       <div className={`${card} flex flex-col min-w-0`} data-journal-trades>
         <div className={chartHead}>
           <span className={headWord}>The trades</span>

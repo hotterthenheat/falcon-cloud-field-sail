@@ -1,7 +1,5 @@
-/*
-  The Weigher desk: the chart, the live chain, the name lists and the weigh-up of one contract on one static desk,
-  with the positions and watchlist under them marked at live quotes.
-*/
+/* The Weigher desk: the chart, the live chain, the name lists and the weigh-up of one contract on one static desk,
+   with the positions and watchlist under them marked at live quotes. */
 
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -88,9 +86,8 @@ import { fmtStrike, CHAIN_COLUMNS, DEFAULT_COLS, COLUMN_GROUPS, ChainCard } from
 import type { Timeframe } from '../../data/timeframe';
 import type { OptionRight } from '../../types/compass';
 
-/* Still v2 on purpose: the desk went static (2026-08-30) and the stored
-   `layout` field simply stopped being read — but the tickers, columns, depth
-   and every other choice in the same record survive the change untouched. */
+/* Still v2 on purpose: the desk went static and the stored `layout` field simply stopped being read — but the
+   tickers, columns, depth and every other choice in the same record survive the change untouched. */
 const DESK_KEY = 'slayer_weigher_desk_v2';
 
 /** The heavy tables' sweep cadence — the chain and scanner rebuild on this
@@ -100,17 +97,12 @@ const SCAN_MS = 3000;
 /* The light tick's beat with no simulator behind it: the live chain refreshes on its own timer. */
 const PUMP_MS = 3000;
 
-/** How far the chain reaches each side of spot. The book maintains ~30; the
-    ladder synthesizes honest wings beyond it (see buildDeskChain). Sized to
-    read like a FULL listed chain — Robinhood shows SPY roughly ±150 strikes,
-    and Noah asked twice (2026-08-25: "WAYY more", then "add more strikes
-    please"). The second ask was a migration bug wearing a feature-request
-    coat: his stored depth (30) was still on the previous list, so it
-    validated and never fell forward. No old value (10/15/20/30/50/80) is on
-    THIS list, so every stored depth migrates to the new default. */
+/** How far the chain reaches each side of spot. The book maintains ~30; the ladder synthesizes honest wings beyond
+    it (see buildDeskChain). The second ask was a migration bug wearing a feature-request coat: his stored depth
+    (30) was still on the previous list, so it validated and never fell forward. */
 /** Listed strikes each side of the price. Not the Compass span. */
 const DESK_DEPTHS = [12, 20, 40] as const;
-/* THE CHAIN HEAD'S ROOM, in px of card. One row where the four cards fit; otherwise they drop to their own row. */
+/* The chain head's room, in px of card. One row where the four cards fit; otherwise they drop to their own row. */
 const CHAIN_ONE_ROW_PX = 790;
 const CHAIN_NAMED_ROW_PX = 610;
 const SIDE_OPTIONS: DropdownOption<OptionRight>[] = [
@@ -122,9 +114,8 @@ const REACH_OPTIONS: DropdownOption<number>[] = [
   { value: 20, label: '±20', hint: 'Up to twenty listed strikes each side of the price. Fewer if that chain lists fewer.' },
   { value: 40, label: '±40', hint: 'Up to forty listed strikes each side of the price. Fewer if that chain lists fewer.' },
 ];
-/** What the desk's list card lists: THE WATCHLIST first (Noah, 2026-09-14 — Robinhood's list
-    on the desk: every watched contract, marked when added, tracked as if bought), then the
-    scanner's three cuts. The card opens on the watchlist whenever anything is watched. */
+/** What the desk's list card lists: THE WATCHLIST first, then the scanner's three cuts. The card opens on the
+    watchlist whenever anything is watched. */
 type ListKind = ScanPreset | 'watchlist';
 /** Which of the bottom row's three cards stand folded to their heads (kept in `slayer_weigher_folds`):
     Your positions · the Watchlist · The position */
@@ -170,8 +161,8 @@ function loadDesk(): DeskState {
     const cols = storedCols ? CHAIN_COLUMNS.map(x => x.key).filter(k => storedCols.includes(k)) : [];
     return opensOnList({
       ticker: typeof c.ticker === 'string' && c.ticker ? c.ticker : def.ticker,
-      /* any horizon inside ninety days — a contract's own expiry, carried in
-         by a deep link, is kept across a refresh (2026-09-12) */
+      /* any horizon inside ninety days — a contract's own expiry, carried in by a deep link, is kept across a
+         refresh */
       dte: typeof c.dte === 'number' && Number.isInteger(c.dte) && c.dte >= 0 && c.dte <= 90 ? c.dte : def.dte,
       optRoot: typeof c.optRoot === 'string' ? c.optRoot.trim().toUpperCase() : '',
       lens: c.lens === 'contract' ? 'contract' : 'stock',
@@ -185,13 +176,11 @@ function loadDesk(): DeskState {
   }
 }
 
-/* ---- the card shell --------------------------------------------------------
-   The cards keep their translucent fill from the wash days, but not the
-   backdrop blur: with the wash gone (2026-09-03) there is nothing under a
-   card but the shell's flat canvas, and a backdrop-filter over a flat ground
-   is a compositing cost that paints nothing. */
-/* The card is a PANEL (2026-09-12): the 55% near-black wash it wore read as
-   the same panel on the dark canvas and as a mid-grey slab on the light one */
+/* The card shell: the cards keep their translucent fill from the wash days, but not the backdrop blur: with the
+   wash gone there is nothing under a card but the shell's flat canvas, and a backdrop-filter over a flat ground is
+   a compositing cost that paints nothing. */
+/* The card is a PANEL: the 55% near-black wash it wore read as the same panel on the dark canvas and as a mid-grey
+   slab on the light one */
 const DeskCard = ({
   title,
   actions,
@@ -201,27 +190,23 @@ const DeskCard = ({
 }: {
   title?: React.ReactNode;
   actions?: React.ReactNode;
-  /** A SECOND HEAD ROW, under the title's (the chain's cards when the card is too narrow for one line — see
+  /** A second head row, under the title's (the chain's cards when the card is too narrow for one line — see
       `CHAIN_ONE_ROW_PX`): one block with the first, so the rule between the head and the body moves under it */
   under?: React.ReactNode;
   children: React.ReactNode;
-  /** A card that folds to its head (the three cards of the bottom row, 2026-09-14): the chevron
-      beside the title. The two list cards fold through their column's rows (the cell shrinks,
-      the card is clipped); a card that folds ITSELF (`self` — the position card, whose row is as
-      tall as it is) glides its body from its height to nothing and stands at its own height. */
+  /** A card that folds to its head: the chevron beside the title. The two list cards fold through their column's
+      rows (the cell shrinks, the card is clipped); a card that folds ITSELF (`self` — the position card, whose row
+      is as tall as it is) glides its body from its height to nothing and stands at its own height. */
   fold?: { open: boolean; onToggle: () => void; testId?: string; self?: boolean };
 }) => (
-  /* a card that folds itself stands at its own height only while FOLDED; open, it fills its cell like the others
-     (2026-10-07: the position card ended short of the lists beside it) */
+  /* a card that folds itself stands at its own height only while FOLDED; open, it fills its cell like the others */
   <div className={`${fold?.self && !fold.open ? '' : 'h-full '}flex flex-col overflow-hidden rounded-md border border-ink/[0.07] bg-panel`} data-folded={fold && !fold.open ? '' : undefined}>
     {/* min-h, not h: a crowded actions strip (the chain's) wraps, and the
         header must GROW with it — with a fixed height the wrapped chips
         slid under the table and its sticky header ate their clicks. */}
     <div className={`shrink-0 flex items-center gap-2 pr-2.5 py-0.5 min-h-8 ${under ? '' : 'border-b border-ink/[0.05]'}`}>
-      {/* The title takes its NATURAL width and keeps it — flex-1 here let the
-          chain's loaded strip squeeze it down to "C…". The actions take the
-          remainder and wrap; the header grows to fit them. (The drag grip
-          that lived here died with the movable desk, 2026-08-30.) */}
+      {/* The title takes its NATURAL width and keeps it — flex-1 here let the chain's loaded strip squeeze it down
+          to "C…". The actions take the remainder and wrap; the header grows to fit them. */}
       <div className="select-none flex items-center gap-2 pl-2.5 self-stretch shrink-0">
         {fold && (
           <button
@@ -239,11 +224,8 @@ const DeskCard = ({
           <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-textPrimary whitespace-nowrap">{title}</span>
         )}
       </div>
-      {/* NO overflow-x-auto here: overflow-x forces overflow-y clipping too,
-          and it cut the chain's ticker dropdown to a 26px sliver below the
-          header (Noah, 2026-08-25: "the chain ticker should have the same
-          dropdown as the chart ticker" — it always was the same menu, just
-          decapitated). Wide strips wrap instead; the header grows. */}
+      {/* NO overflow-x-auto here: overflow-x forces overflow-y clipping too, and it cut the chain's ticker
+          dropdown to a 26px sliver below the header. Wide strips wrap instead; the header grows. */}
       {actions && (
         <span className="ml-auto flex flex-1 flex-wrap items-center justify-end gap-1.5 min-w-0">{actions}</span>
       )}
@@ -346,15 +328,11 @@ export const ScanGrid = memo(function ScanGrid({ rows, ticker, preset, onPick, w
   );
 });
 
-/** One chain row, with the spot rule under it when it brackets the market.
-    Clicking it puts the strike ON THE SCALE - the Strike card carries the
-    weigh-up now, so the ladder itself stays clean. */
-/* The contract capsule's OWN menu (Noah, 2026-08-27: "i shoudnt be shown
-   tickers, rather i should be shown the strikes i can click on") - in the
-   contract lens the capsule's job is stepping between CONTRACTS, so its
-   door lists the chain's strikes, opened with the one on the scale centred.
-   The ticker door still lives where tickers are the subject: the stock
-   lens and the chain header. */
+/** One chain row, with the spot rule under it when it brackets the market. Clicking it puts the strike on the scale
+    - the Strike card carries the weigh-up now, so the ladder itself stays clean. */
+/* The contract capsule's OWN menu - in the contract lens the capsule's job is stepping between CONTRACTS, so its
+   door lists the chain's strikes, opened with the one on the scale centred. The ticker door still lives where
+   tickers are the subject: the stock lens and the chain header. */
 const StrikePickInner = ({
   label,
   contracts,
@@ -489,9 +467,8 @@ const ShellFollow = memo(function ShellFollow({ ticker, onExternal }: { ticker: 
 });
 
 /* ---- the desk -------------------------------------------------------------- */
-/** What a deep link may carry: a name alone (Trace's "Weigh it"), or THE
-    contract — the Record's busiest rows (2026-09-12): the side and the
-    expiry DATE ("2026-09-18") pick the chain, the strike picks the row */
+/** What a deep link may carry: a name alone (Trace's "Weigh it"), or THE contract — the Record's busiest rows: the
+    side and the expiry DATE pick the chain, the strike picks the row */
 export interface WeighRequest {
   ticker: string;
   strike?: number;
@@ -500,42 +477,31 @@ export interface WeighRequest {
 }
 
 const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
-  /* TWO TIERS, the Pulse rule (Noah, 2026-08-27: "i dont ever have this
-     problem with the pulse page"): the light tick runs every snapshot and
-     feeds the cheap live readouts — prices, the mood, the charts' bar
-     appends. The SCAN tick sweeps every few seconds and feeds the heavy
-     rebuilds — the 301-strike chain and the scanner. (The mid-drag freeze
-     that used to ride here died with the movable desk.) */
+  /* TWO TIERS, the Pulse rule: the light tick runs every snapshot and feeds the cheap live readouts — prices, the
+     mood, the charts' bar appends. The SCAN tick sweeps every few seconds and feeds the heavy rebuilds — the
+     301-strike chain and the scanner. (The mid-drag freeze that used to ride here died with the movable desk.) */
   const [tick, setTick] = useState(0);
   const [scanTick, setScanTick] = useState(0);
   const lastScanRef = useRef(0);
-  /* The chart's chrome wears the ground of the tape's theme (the store's, on this desk —
-     index.css re-scopes the strip's tokens under the stamp; 2026-09-13) */
+  /* The chart's chrome wears the ground of the tape's theme (the store's, on this desk — index.css re-scopes the
+     strip's tokens under the stamp) */
   const chartThemeKey = useCandleThemeKey();
-  /* Both tiers publish as TRANSITIONS (Noah, 2026-08-30): the scan tick
-     rebuilds a 301-row chain and the scanner — a 54–103ms render measured
-     at idle. As urgent updates those blocked the very click they landed
-     under; as transitions React yields to the click first and finishes the
-     sweep after. Same data, same cadence, no frozen frame. */
+  /* Both tiers publish as TRANSITIONS: the scan tick rebuilds a 301-row chain and the scanner — a 54–103ms render
+     measured at idle. As urgent updates those blocked the very click they landed under; as transitions React
+     yields to the click first and finishes the sweep after. Same data, same cadence, no frozen frame. */
   const applyTick = useCallback(() => {
     const now = Date.now();
     const sweep = now - lastScanRef.current >= SCAN_MS;
     if (sweep) lastScanRef.current = now;
     startTransition(() => setTick(t => t + 1));
-    /* The sweep lands a frame AFTER the light tick, never in the same
-       commit: measured on release after a long drag, the two together were
-       one 87ms task — the cheap readouts waiting on the 301-row rebuild.
-       Apart, the release paints at once and the sweep follows. */
+    /* The sweep lands a frame AFTER the light tick, never in the same commit: measured on release after a long
+       drag, the two together were one 87ms task — the cheap readouts waiting on the 301-row rebuild. Apart, the
+       release paints at once and the sweep follows. */
     if (sweep) window.setTimeout(() => startTransition(() => setScanTick(t => t + 1)), 32);
   }, []);
-  /* NO TICK UNDER THE HAND, desk-wide (Noah, 2026-08-30: "i was in the middle
-     of a drag and it practically ignored me and changed my view"). Measured
-     with the button held down on the chart: even with the chart's own
-     effects held, the light tick and the sweep still landed as 51ms and 85ms
-     tasks — the desk re-rendering under a drag. So while any pointer is down
-     on the page, ticks are stashed; the newest is applied on release. A
-     click holds them for the ~100ms it lasts, a drag for as long as it
-     takes, and the data is never stale by more than the gesture. */
+  /* No tick under the hand, desk-wide. Measured with the button held down on the chart: even with the chart's own
+     effects held, the light tick and the sweep still landed as 51ms and 85ms tasks — the desk re-rendering under a
+     drag. So while any pointer is down on the page, ticks are stashed; the newest is applied on release. */
   const pointerDownRef = useRef(false);
   const pendingTickRef = useRef(false);
   const onTick = useCallback(() => {
@@ -782,11 +748,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   // One array per chain per side — the picker's memo depends on this identity.
   const sideContracts = useMemo(() => chain.rows.map(r => (right === 'C' ? r.call : r.put)), [chain, right]);
 
-  /* FULLSCREEN takeovers (Noah, 2026-08-27: "make the ability for the chart
-     to be full screen.... same with the chain") — the pressure ladder's
-     grammar: portal to <body>, Esc exits on a fade, page scroll locks
-     underneath. One card at a time; its grid cell goes blank behind the
-     takeover so no chart runs twice. */
+  /* FULLSCREEN takeovers — the pressure ladder's grammar: portal to <body>, Esc exits on a fade, page scroll locks
+     underneath. One card at a time; its grid cell goes blank behind the takeover so no chart runs twice. */
   const [full, setFull] = useState<'chart' | 'chain' | null>(null);
   /* the chain card's measured width — what its head lays itself out by (see `chainHead`); read before the first paint,
      so the head never opens broken and then mends itself */
@@ -873,19 +836,18 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     patch({ ticker: t, lens: 'stock', optRoot: '' });
   };
 
-  /* A deep link arrives with a name (Trace's "Weigh it") — or with a CONTRACT
-     (the Record's busiest rows, 2026-09-12). It repoints the desk once; after
-     that the desk's own pickers own the ticker again, and the stored desk
-     state carries it to the next visit. A contract also sets the side and the
-     nearest listed expiry, and asks for its strike. */
+  /* A deep link arrives with a name (Trace's "Weigh it") — or with a CONTRACT. It repoints the desk once; after
+     that the desk's own pickers own the ticker again, and the stored desk state carries it to the next visit. A
+     contract also sets the side and the nearest listed expiry, and asks for its strike. */
   const [pendingPick, setPendingPick] = useState<{ ticker: string; dte: number; strike: number } | null>(null);
-  /* THE LIST'S PICK — the row the reader pressed on the positions or the watchlist card; the card draws it until the
-     reader presses a strike on the chain or moves the desk to another name (declared here so those pickers can let it go) */
+  /* The list's pick — the row the reader pressed on the positions or the watchlist card; the card draws it until
+     the reader presses a strike on the chain or moves the desk to another name (declared here so those pickers can
+     let it go) */
   const [listSel, setListSel] = useState<string | null>(null);
-  /* THE CARD'S FACE — Our read or Simulated returns (declared here so the pickers can turn it; the rule is below, with
-     the row the card draws) */
+  /* The card's face — Our read or Simulated returns (declared here so the pickers can turn it; the rule is below,
+     with the row the card draws) */
   const [cardView, setCardView] = useState<CardView>('read');
-  /* POINT THE DESK AT A CONTRACT — the deep link's move, and a watchlist row's (2026-09-14) */
+  /* Point the desk at a contract — the deep link's move, and a watchlist row's */
   const pointTo = useCallback(
     (req: WeighRequest) => {
       const t = req.ticker;
@@ -906,10 +868,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   /* The pick lands once the chain for THAT name and expiry is up — on the
      row's own strike when the chain lists it, else the nearest listed one */
   const [reveal, setReveal] = useState<{ strike: number; n: number } | null>(null);
-  /* THE CASE'S DOORS POINT THE DESK AT THE OTHER CONTRACT (Noah, 2026-10-07: "the chain should also open up that card
-     not just go back to normal"): the same strike on another expiry goes through the deep link's pending pick, so the
-     chain for that expiry opens on the strike, its dropdown unfolded; another strike on this expiry is picked and
-     revealed outright. */
+  /* The case's doors point the desk at the other contract: the same strike on another expiry goes through the deep
+     link's pending pick, so the chain for that expiry opens on the strike, its dropdown unfolded; another strike
+     on this expiry is picked and revealed outright. */
   const pointToContract = useCallback(
     (strike: number, toDte: number, nextRight?: OptionRight) => {
       setListSel(null);
@@ -927,11 +888,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ticker, dte, expiries]
   );
-  /* THE LIGHT WHEN THE CHART TURNS TO A PREMIUM (Noah, 2026-10-07: "a double click should show the flickering light
-     for a short moment when changing to the premium not the actual focus" — his picture: the Tracker's card, the lime
-     ring that glows in and out round what was just added): whenever the contract lens comes up, or the contract under
-     it changes — a double click on the chain, the Premium tab, a door in the case while the premium is up — ARRIVED for
-     a moment: the chart's box wears the Tracker's ring once (`animate-focus-flash`). Leaving the lens arms it again. */
+  /* The light when the chart turns to a premium: whenever the contract lens comes up, or the contract under it
+     changes — a double click on the chain, the Premium tab, a door in the case while the premium is up — ARRIVED
+     for a moment: the chart's box wears the Tracker's ring once (`animate-focus-flash`). */
   const [arrived, setArrived] = useState<{ n: number } | null>(null);
   const litRef = useRef<string | null>(null);
   useEffect(() => {
@@ -959,12 +918,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     setReveal(r => ({ strike: nearest.strike, n: (r?.n ?? 0) + 1 }));
   }, [pendingPick, chain, ticker, dte]);
 
-  /* ONE click weighs, TWO clicks chart (Noah, 2026-08-26: "a double click of
-     the chain should change the live chart to the contract one and one click
-     shows the strike info at the bottom"). The single click only moves the
-     Strike card; the chart keeps whatever lens it had — except when the
-     click CLEARS the selection, because a contract lens with no contract has
-     nothing to show and falls back to the stock tape. */
+  /* ONE click weighs, TWO clicks chart. The single click only moves the Strike card; the chart keeps whatever lens
+     it had — except when the click CLEARS the selection, because a contract lens with no contract has nothing to
+     show and falls back to the stock tape. */
   /* What the last single click did, and when — the double-click rule below
      needs to know whether the first click of a pair CLOSED the row. */
   const lastToggle = useRef<{ strike: number; off: boolean; at: number } | null>(null);
@@ -973,14 +929,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     setListSel(null);
     setCardView('read');
     if (clicks >= 2) {
-      /* A quick re-click on the OPEN row arrives as the second click of a
-         double (e.detail 2): the first click closed the row, and treating the
-         second as "chart it" re-opened it and flipped the chart (Noah,
-         2026-09-11: "sometimes the reclick doesnt allow the dropdown to go
-         back up making me click in 2 or 3 times"). If the first click of
-         this pair closed this strike, the row stays closed — the double
-         click charts a row from CLOSED (the first click opens it, the second
-         charts it), never from open. */
+      /* A quick re-click on the OPEN row arrives as the second click of a double (e.detail 2): the first click
+         closed the row, and treating the second as "chart it" re-opened it and flipped the chart. */
       const last = lastToggle.current;
       if (last && last.off && Math.abs(last.strike - strike) < 1e-9 && Date.now() - last.at < 700) return;
       setSel(strike);
@@ -1010,16 +960,16 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   /* Floating identity, defined once and rendered inside EACH lens's chart
      box — over the plot, below the toolbar (it was landing on the Tools
      row). */
-  // The name leads the toolbar row (Noah, 2026-08-25: "right next to the
+  // 
   // timeframes on the left, pushing the timeframes and tools down to the
   // right") - an inline group, nothing floating.
   const identity = (
     <span className="inline-flex items-center gap-2 select-none shrink-0">
       <TickerQuickPick ticker={ticker} onPick={pickTicker} />
-      {/* KEYED BY ITS SUBJECT (2026-10-07): the strip's readout rolls between values (AnimatedNumber), which is right
-          for a tick of the same number and a lie between two different ones — unkeyed, React kept this element
-          when the strip turned to the contract, and the mark rolled down from the stock's $512 through every
-          number between on the way to its $0.55. A new subject mounts at its own value. */}
+      {/* Keyed by its subject: the strip's readout rolls between values (AnimatedNumber), which is right for a
+          tick of the same number and a lie between two different ones — unkeyed, React kept this element when the
+          strip turned to the contract, and the mark rolled down from the stock's $512 through every number between
+          on the way to its $0.55. A new subject mounts at its own value. */}
       {liveSpot > 0 && <SpotPrice key={`spot:${ticker}`} value={liveSpot} />}
       {dayPct != null && (
         <span className={`font-mono text-[11px] font-semibold tnum ${dayPct >= 0 ? 'text-bull' : 'text-bear'}`}>
@@ -1030,11 +980,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     </span>
   );
 
-  /* In the contract lens the strip speaks the CONTRACT (Noah, 2026-08-26:
-     "it should say 'spy 507 call' with the price ticker being changed from
-     the stock price to the contract changing price") \u2014 same capsule, same
-     ticker door behind it, but the name is the whole contract and the tick
-     is its mark against yesterday's modeled close, the reference's own
+  /* In the contract lens the strip speaks the CONTRACT \u2014 same capsule, same ticker door behind it, but the
+     name is the whole contract and the tick is its mark against yesterday's modeled close, the reference's own
      "$0.38 \u25bc $0.07 (15.56%)" grammar. */
   /* The chain sweeps every few seconds, but the capsule's price must tick
      with the tape — one contract re-priced per second is cheap; 602 are
@@ -1060,10 +1007,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     </span>
   );
 
-  /* The Stock/Premium door in the strip's SECOND slot, the setup page's
-     grammar (2026-09-11: "a control never changes side") — it used to sit at
-     the far right and say Contract. Premium needs a picked contract; with
-     none picked the door stays on Stock. */
+  /* The Stock/Premium door in the strip's SECOND slot, the setup page's grammar — it used to sit at the far right
+     and say Contract. Premium needs a picked contract; with none picked the door stays on Stock. */
   const lensTabs = (
     <CardTabs
       ariaLabel="Chart view"
@@ -1078,47 +1023,22 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
 
   /* The card bodies live in consts so the SAME JSX serves the grid cell and
      the fullscreen takeover — one source, two frames, no drift. */
-  /*
-    THE PULSE GRAMMAR, applied here (Noah, 2026-08-29: "the weigher chart is
-    currently having the same problem as we prev did with the pulse charts.
-    i clearly see padding on all 4 sides. the bar up top is not translucent
-    ... basically 2 rows of top sections instead of one"):
-
-    - the tape is EDGE TO EDGE — absolute inset-0, no header rows in flow;
-    - ONE strip, fused to the top, translucent over the tape (the card's own
-      surface at its own alpha + blur, so there is no second black);
-    - everything that lived on the old two rows rides that strip: the drag
-      grip, the identity, the toolbar, the Stock/Contract lens chips, and
-      the fullscreen door — which becomes the minimize door IN fullscreen,
-      because the takeover shows this same body and a Back row over it was
-      the second row Noah counted.
-  */
   const chartStrip = (
     <div
-      /* NO band (Noah, 2026-08-29, after two alpha attempts: "i beg to
-         differ" — a dark wash over a dark tape IS a solid box; there is
-         nothing behind it for translucency to reveal). The Terrain floating
-         chrome grammar instead: the strip is transparent and each control
-         carries its own pill, so the tape runs untouched to the card's top
-         edge. */
-      /* CLEAR OF THE PRICE AXIS (Noah, 2026-08-30: the lens chips and the
-         fullscreen door read as "overbleeding the price axis"). The strip
-         spans the card, so its right cluster used to land on the axis
-         column; a right inset the width of that column keeps every control
-         inside the plot, where the tape is, and off the numbers. */
-      /* pr-[68px], down from 76 (2026-09-13): the axis column is 54, so 14px
-         stays clear of it — and the 8px is what keeps the whole strip on ONE
-         row at 1905 now that the toolbar no longer squeezes (below). */
+      /* NO band. The Terrain floating chrome grammar instead: the strip is transparent and each control carries
+         its own pill, so the tape runs untouched to the card's top edge. */
+      /* Clear of the price axis. The strip spans the card, so its right cluster used to land on the axis column; a
+         right inset the width of that column keeps every control inside the plot, where the tape is, and off the
+         numbers. */
+      /* pr-[68px], down from 76: the axis column is 54, so 14px stays clear of it — and the 8px is what keeps the
+         whole strip on ONE row at 1905 now that the toolbar no longer squeezes (below). */
       className="absolute top-0 inset-x-0 z-20 flex flex-wrap items-center gap-x-2.5 gap-y-1 pl-2 pr-[68px] py-1 select-none"
-      /* Floating chrome the chart's scripts legend measures and sits under (2026-09-10) */
+      /* Floating chrome the chart's scripts legend measures and sits under */
       data-chart-chrome
     >
-      {/* THE SAME STRIP AS PULSE, slot for slot (the walk, 2026-09-11): the
-          identity, the Stock/Premium door, then the toolbar — timeframes,
-          overlays, indicators, alerts, theme — and the expand door last. On
-          the half-width card the toolbar drops its words (compact icons); in
-          fullscreen it wears Pulse's full words. Replay and the drawing rail
-          stay off: review tools, not weighing tools. */}
+      {/* The same strip as pulse, slot for slot: the identity, the Stock/Premium door, then the toolbar —
+          timeframes, overlays, indicators, alerts, theme — and the expand door last. On the half-width card the
+          toolbar drops its words (compact icons); in fullscreen it wears Pulse's full words. */}
       {lens === 'contract' && selected != null && sel != null ? (
         <>
           {contractIdentity}
@@ -1144,21 +1064,12 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         <>
           {identity}
           {lensTabs}
-          {/* `spread` + the room to spread in (Noah, 2026-09-11: "shouldn't the
-              indicators and everything right of it be on the right side of the
-              header?") — Pulse's rule: the timeframes keep the left, the divider
-              becomes the spacer, Indicators · Alerts · Candles · Overlays · Theme
-              land at the right edge beside the expand door. Compact (the card)
-              stays packed — there is no room to spread across. */}
-          {/* ITS FLOOR IS ITS OWN ROW (Noah, 2026-09-13, the card at ~1130px:
-              "as the page gets slightly smaller the top section just gets
-              completely discombobulated"): this wrapper was `min-w-0`, so
-              when the identity and the tabs left it less than a row's worth,
-              it shrank to one icon's width and the toolbar's own wrap stacked
-              its six controls into a COLUMN, with the identity centred beside
-              it. `min-w-fit` keeps the floor at the toolbar's one-row width
-              (capped at the strip's own), so it wraps to a row of its own
-              under the identity instead — two tidy rows, then one again. */}
+          {/* `spread` + the room to spread in — Pulse's rule: the timeframes keep the left, the divider becomes
+              the spacer, Indicators · Alerts · Candles · Overlays · Theme land at the right edge beside the expand
+              door. Compact (the card) stays packed — there is no room to spread across. */}
+          {/* Its floor is its own row: this wrapper was `min-w-0`, so when the identity and the tabs left it less
+              than a row's worth, it shrank to one icon's width and the toolbar's own wrap stacked its six controls
+              into a COLUMN, with the identity centred beside it. */}
           <div className="flex-1 min-w-fit flex items-center gap-1.5">
             <SessionBook />
             <ChartToolbar
@@ -1178,12 +1089,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
               onIndicators={setIndicators}
               paneId="weigher"
               fullscreen={full === 'chart'}
-              /* THE DOOR RIDES THE TOOLBAR (2026-09-13): it used to stand alone
-                 after it with `ml-auto`, so when the toolbar wrapped to a row
-                 of its own the door was left behind on the first row, or
-                 dropped to a third. As the toolbar's last control it goes
-                 wherever the toolbar goes — and in fullscreen it is the
-                 minimize door at the strip's far right, as before. */
+              /* The door rides the toolbar: it used to stand alone after it with `ml-auto`, so when the toolbar
+                 wrapped to a row of its own the door was left behind on the first row, or dropped to a third. */
               onToggleFullscreen={full === 'chart' ? close : () => setFull('chart')}
             />
           </div>
@@ -1193,8 +1100,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   );
 
   const chartBody = (
-    /* A dark island on any page (2026-09-12): the tape and its strip read the dark tokens —
-       and the strip the ground of the tape's theme (2026-09-13) */
+    /* A dark island on any page: the tape and its strip read the dark tokens — and the strip the ground of the
+       tape's theme */
     <div className="relative h-full bg-panel" data-theme="dark" data-chart-ground={chartGround(chartThemeKey)} data-tape-session={bookSession} data-tape-tf={timeframe} data-tape-bars={chartTape.bars.length} data-tape-first={chartTape.bars[0]?.time ?? 0} data-tape-note={chartTape.note ?? ''}>
       {/* THE RING when the chart turns to a premium, fullscreen — the Tracker's card flash, once (`arrived`); just inside
           the screen's edge, where an outset ring would fall off it. Docked, the ring stands round the card (the frame) */}
@@ -1221,7 +1128,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
             />
           </div>
         ) : (
-          /* The chart mounts a frame after the page paints, behind its skeleton (2026-09-06, the perf sweep) */
+          /* The chart mounts a frame after the page paints, behind its skeleton */
           <Deferred fallback={<ChartSkeleton className="h-full" />} className="h-full animate-fade-in">
             <StrikeChart
               ticker={ticker}
@@ -1230,9 +1137,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
               levels={levels}
               timeframe={timeframe}
               keepView
-              /* THE WHEEL BELONGS TO THE PAGE over the docked chart (2026-09-14, Noah: "the scroll
-                 bar doesn't work at all" — the desk scrolls now, and the chart ate every wheel
-                 over the top-left 40% of the screen); fullscreen keeps the wheel zoom, as Terrain
+              /* The wheel belongs to the page over the docked chart; fullscreen keeps the wheel zoom, as Terrain
                  below lg does — the same trade, see `pageScroll` */
               pageScroll={full !== 'chart'}
               overlays={overlays}
@@ -1250,19 +1155,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     </div>
   );
 
-  /* The chain's line of cards: the name's own door (Noah, 2026-08-25: "the
-     chain should have its own ticker search" — the same state as the chart's
-     picker, so either one repoints both), then Side · Expiry (as dates, the
-     Map's spelling) · Reach (the strike distance is a choice, not a cap) ·
-     Columns (the catalog, in catalog order), and the expected move as a fact.
-
-     THE HEAD KNOWS ITS ROOM (Noah, 2026-09-20, with the landing's picture of this desk: "the chain buttons of top … are
-     screwed up"). Measured: the line needs ~760px of card, and the card has 491 at 1280, 571 at 1440 and 643 at 1600 —
-     on every laptop the cards broke into a ragged second line inside their own strip and the fullscreen door fell to a
-     third. So, by the card's measured width: ONE ROW where it fits (as it always was on a wide screen); else TWO — the
-     chain's identity on the title's row (whose chain · the move it is charging for · the door at the row's end) and the
-     four cards on a row of their own; and where even four NAMED cards do not fit a row, the cards drop their printed
-     names (`bare` — the name stays in the tooltip and the open card's heading) rather than break again. */
+  /* The chain's line of cards: the name's own door, then Side · Expiry (as dates, the Map's spelling) · Reach (the
+     strike distance is a choice, not a cap) · Columns (the catalog, in catalog order), and the expected move as a
+     fact. The head knows its room. */
   const chainName = <TickerQuickPick ticker={ticker} onPick={pickTicker} slim />;
   const chainMove = (
     <span className="inline-flex items-center gap-2">
@@ -1301,19 +1196,16 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   );
   const chainHead: 'one' | 'two' | 'bare' = chainW === 0 || chainW >= CHAIN_ONE_ROW_PX ? 'one' : chainW >= CHAIN_NAMED_ROW_PX ? 'two' : 'bare';
 
-  /* THE WEIGH-UP IS GONE (Noah, 2026-09-14): the Compass grade, the board's rank and the
-     doors to the setup page left the card with it — the card is the contract's page now */
-  /* THE WATCHLIST ON THE DESK (2026-09-14 — Noah, with Robinhood's list and its contract page:
-     the bottom-left card lists every watched contract, the bottom-right reads the one picked).
-     The store's housekeeping — today's close, the bell — rides the desk's tick; the rows are
-     priced on the sweep, like the chain. */
+  /* The weigh-up is gone: the Compass grade, the board's rank and the doors to the setup page left the card with
+     it — the card is the contract's page now */
+  /* The watchlist on the desk. The store's housekeeping — today's close, the bell — rides the desk's tick; the
+     rows are priced on the sweep, like the chain. */
   const watchlist = useWatchlist();
   useEffect(() => {
     tickWatchlist();
   }, [tick]);
-  /* ONE LIST, TWO KINDS OF ROWS (2026-09-14): the contracts you watch and the positions you own
-     or sold (the Map's "Your positions", moved here) — priced on the sweep, open rows first,
-     newest first */
+  /* One list, two kinds of rows: the contracts you watch and the positions you own or sold (the Map's "Your
+     positions", moved here) — priced on the sweep, open rows first, newest first */
   const positions = useAllPositions();
   const legKey = useMemo(() => {
     const keys: string[] = [];
@@ -1355,9 +1247,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     const prev = leg && leg.prevClose > 0 ? leg.prevClose : quoted?.prev ?? null;
     return { mark, prev };
   };
-  /* TWO CARDS (Noah, 2026-09-14: "one is just a random watchlist position whilst the other is
-     YOUR position"): the positions you own or sold in one, the contracts you watch in the other
-     — the same rows, priced on the sweep, newest first, a watched row's settled ones last */
+  /* TWO CARDS: the positions you own or sold in one, the contracts you watch in the other — the same rows, priced
+     on the sweep, newest first, a watched row's settled ones last */
   const ownRows = useMemo<ListRow[]>(
     () =>
       positions
@@ -1422,15 +1313,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const watched = useMemo(() => (watchReq ? watchedFor(watchReq) : null), [watchReq, watchlist]);
   const watching = watched?.status === 'open';
-  /* THE ROW THE CARD DRAWS: the row the reader pressed on a list, while the desk is on its name — else the picked
-     contract's own row (an open watched one first, then a position) — else none.
-     A PRESSED ROW ALWAYS OPENS (Noah, 2026-09-20, a TSLA 244P that "just refuses to open anything up"; 2026-09-28, "the
-     'your positions' doesnt allow me to view the right card … but the watchlist does"): the chain could not point at
-     those contracts — a strike it does not list (TSLA steps by 2.50), an expiry it no longer carries (a position from
-     Sep 21 on Sep 28) — and the card, matching the row against the CHAIN's contract, found nothing and said "Not on your
-     list" under the very row that was pressed. The card prices a row from the row, not from the chain: the pressed row
-     is drawn whatever strike or date the desk settled on. The reader's own press on a strike of the chain, or a move to
-     another name, lets the pick go and the card follows the chain again (pickStrike, pickTicker). */
+  /* The row the card draws: the row the reader pressed on a list, while the desk is on its name — else the picked
+     contract's own row (an open watched one first, then a position) — else none. */
   const cardRow = useMemo<ListRow | null>(() => {
     const chosen = listSel ? listRows.find(r => r.id === listSel) : null;
     if (chosen && (chosen.kind === 'watch' ? chosen.w : chosen.p).ticker === ticker) return chosen;
@@ -1440,10 +1324,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     };
     return listRows.find(r => same(r) && (r.kind === 'own' || r.w.status === 'open')) ?? listRows.find(r => same(r)) ?? null;
   }, [listRows, listSel, watchReq, ticker]);
-  /* THE CARD'S TWO FACES (Noah, 2026-10-13): Our read — the case for the contract in hand — or Simulated returns.
-     A strike pressed on the chain opens the card on the read; a row pressed on a list opens it on the returns; the head's
-     switch turns it either way until the next pick. The read is the chain's contract's; a row whose date the chain no
-     longer carries has none, and the card says so. */
+  /* The card's two faces: Our read — the case for the contract in hand — or Simulated returns. A strike pressed on
+     the chain opens the card on the read; a row pressed on a list opens it on the returns; the head's switch turns
+     it either way until the next pick. */
   const cardRowId = cardRow ? cardRow.id : null;
   useEffect(() => {
     if (!cardRowId) setCardView('read');
@@ -1454,10 +1337,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     const c = cardRow.kind === 'watch' ? cardRow.w : cardRow.p;
     return c.ticker === ticker && c.right === right && Math.abs(c.strike - sel) < 1e-9 && c.expiry === isoDate(chain.expiry.date);
   }, [cardRow, sel, ticker, right, chain.expiry.date]);
-  /* THE RING ON THE CARD when it turns to a new case (Noah, 2026-10-10: "the card should have the little in and out
-     hover color that we have for the live chart when double clicked but this time for when you open up a new
-     dropdown"): the Tracker's flash, once, whenever the case's contract changes — a strike pressed, a door in the
-     case, another expiry — and not when the card turns to a position. */
+  /* The ring on the card when it turns to a new case: the Tracker's flash, once, whenever the case's contract
+     changes — a strike pressed, a door in the case, another expiry — and not when the card turns to a position. */
   const [caseArrived, setCaseArrived] = useState<{ n: number } | null>(null);
   const caseKeyRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1497,18 +1378,16 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     },
     [pointTo]
   );
-  /* THE TRASH BIN on a list row (Noah, 2026-09-14): a watched contract leaves the list, a
-     position is removed — the row glides out (animateRows) and the card follows the list */
+  /* The trash bin on a list row: a watched contract leaves the list, a position is removed — the row glides out
+     (animateRows) and the card follows the list */
   const removeRow = useCallback((row: ListRow) => {
     if (row.kind === 'watch') removeWatched(row.w.id);
     else removePosition(row.p.id);
     setListSel(s => (s === row.id ? null : s));
   }, []);
-  /* THE BOTTOM ROW'S CARDS FOLD to their heads (Noah, 2026-09-14): a folded list card gives its
-     room to the other; both folded, the column is two heads; THE POSITION CARD folds too (Noah:
-     "make the position page collapsable as well") — its body glides away and the row settles on
-     the column's floor. Kept in this browser. The rows glide between the two states
-     (grid-template-rows transitions in Chromium). */
+  /* The bottom row's cards fold to their heads: a folded list card gives its room to the other; both folded, the
+     column is two heads; the position card folds too — its body glides away and the row settles on the column's
+     floor. Kept in this browser. */
   const [folds, setFolds] = useState<Folds>(() => {
     try {
       const raw = localStorage.getItem('slayer_weigher_folds');
@@ -1530,8 +1409,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     });
   }, []);
   const columnRows = `${folds.positions ? 'minmax(33px, 0fr)' : 'minmax(0, 1fr)'} ${folds.watchlist ? 'minmax(33px, 0fr)' : 'minmax(0, 1fr)'}`;
-  /* A POSITION JUST ADDED lands on the desk: the form saved it, the list has it — its row is
-     picked so the card turns to it on the soft fade (Noah: "smooth as butter") */
+  /* A position just added lands on the desk: the form saved it, the list has it — its row is picked so the card
+     turns to it on the soft fade */
   const knownPositions = useRef<Set<string> | null>(null);
   useEffect(() => {
     const ids = new Set(positions.map(p => p.id));
@@ -1542,9 +1421,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     const row = fresh ? listRows.find(r => r.id === fresh.id) : null;
     if (row) pickRow(row);
   }, [positions, listRows, pickRow]);
-  /* THE DOOR ON EVERY CHAIN ROW (Noah, 2026-09-14): the strikes of this ladder that are on the
-     list, and the +: it picks the strike, watches it if it is not watched yet, and turns the
-     list card to the watchlist — the position lands in the card the moment it is entered */
+  /* The door on every chain row: the strikes of this ladder that are on the list, and the +: it picks the strike,
+     watches it if it is not watched yet, and turns the list card to the watchlist — the position lands in the card
+     the moment it is entered */
   const expiryIso = isoDate(chain.expiry.date);
   const watchedStrikes = useMemo(() => new Set(watchlist.filter(w => w.status === 'open' && w.ticker === ticker && w.right === right && w.expiry === expiryIso).map(w => w.strike)), [watchlist, ticker, right, expiryIso]);
   const watchFromChain = useCallback(
@@ -1558,9 +1437,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     [watchedStrikes, ticker, right, expiryIso, quoteAt, chain.spot]
   );
 
-  /* THE DAY'S DEALER MAP for the name — the position card's sketch draws its walls and flip
-     on the price axis and its read speaks against it (the Positions panel reads every
-     position against the 0DTE book, thirty strikes each side); rebuilt on the sweep */
+  /* The day's dealer map for the name — the position card's sketch draws its walls and flip on the price axis and
+     its read speaks against it (the Positions panel reads every position against the 0DTE book, thirty strikes
+     each side); rebuilt on the sweep */
   const profile = useMemo<ExposureProfileData | null>(() => {
     try {
       const snap = snapshotOf(ticker);
@@ -1570,23 +1449,15 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker, scanTick]);
-  /* OUR TWO CENTS (Noah, 2026-09-28, his partner: "or else it would just be a robinhood watchlist all over again"):
-     THE BOOK for the desk's name — every strike's shape, lean, part, record, close odds and change (data/bookAtStrike.ts)
-     — read by the chain's column and the strike's third block; and the lists' HEDGING word, the position card's own
-     verdict for every row, a profile per name on the scan */
+  /* Our two cents: THE BOOK for the desk's name — every strike's shape, lean, part, record, close odds and change
+     (data/bookAtStrike.ts) — read by the chain's column and the strike's third block; and the lists' HEDGING word,
+     the position card's own verdict for every row, a profile per name on the scan */
   const book = useMemo(() => (profile ? buildBook(ticker, profile) : null), [profile, ticker]);
   const bookAt = useCallback((strike: number) => book?.rows.get(strike) ?? null, [book]);
   const drillBook = useCallback((c: DeskContract) => <BookBlock read={bookAt(c.strike)} c={c} />, [bookAt]);
-  /* THE CASE FOR THE STRIKE (Noah, 2026-10-07: "similar to compass but more in detail … why we would choose this or
-     not choose this … if not that strike then what strike would we recommend"): the word and its line, for it and
-     against it, what has to happen, the alternatives as doors, the same strike down the calendar, what to look at for
-     the horizon (components/weigher/StrikeCase.tsx, data/strikeCase.ts). An alternative's door picks its strike, and
-     its expiry when it is another's — through the desk's own setters, so the chain and the card follow.
-     IT STANDS IN THE POSITION CARD, not the chain's dropdown (his partner, 2026-10-10: the dropdown was a keyhole for
-     it — "the position card to act as either the information of the chain and the stats can stay in the dropdown.
-     then if you decide to add a position or watchlist it acts as the simulated returns"): the dropdown keeps the
-     stats, the greeks and the book; the card makes the case while the contract is not on the list, and turns to the
-     returns the moment it is. */
+  /* The case for the strike: the word and its line, for it and against it, what has to happen, the alternatives as
+     doors, the same strike down the calendar, what to look at for the horizon (components/weigher/StrikeCase.tsx,
+     data/strikeCase.ts). */
   const drillCase = useCallback(
     (c: DeskContract) => <StrikeCase ticker={ticker} c={c} right={right} chain={chain} profile={profile} book={book} tick={scanTick} score={liveScore} listed={expiries.map(e => ({ dte: e.weekday ?? e.dte, label: e.label }))} onPickAlt={pointToContract} />,
     [ticker, right, chain, profile, book, scanTick, pointToContract, liveScore, expiries]
@@ -1648,15 +1519,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     />
   );
 
-  /* THE WHOLE DESK HOLDS STILL FOR THE SIDEBAR'S GLIDE (Noah, 2026-09-11, the
-     Weigher walk: "my main pet peeve about that page … the sidebar drag being
-     laggy"). The chain's rows got their hold on 2026-09-10 and the chart has
-     its own, but the frame around them — the scanner's rows, the strike's
-     meters, four card heads, the grid itself — still re-laid out on every one
-     of the glide's eighteen frames (measured: 28ms worst frames here against
-     14 on Compass). The charts' rule, applied to the desk as one: the root
-     pins its width when the glide begins and takes the new width once when
-     it ends — one layout. main clips the overlap (index.css [data-glide]). */
+  /* The whole desk holds still for the sidebar's glide. */
   const deskRef = useRef<HTMLDivElement | null>(null);
   useEffect(
     () =>
@@ -1665,11 +1528,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
           const el = deskRef.current;
           if (!el) return;
           el.style.width = `${el.getBoundingClientRect().width}px`;
-          /* And it rides the glide as ONE compositor layer: the sidebar's
-             width shifts the whole column sideways every frame, and without
-             a layer the chart's canvases and both tables re-rasterise on each
-             of them (the residual after the width hold — measured 21–35ms
-             worst frames against Compass's 14). Rastered once, then moved. */
+          /* And it rides the glide as ONE compositor layer: the sidebar's width shifts the whole column sideways
+             every frame, and without a layer the chart's canvases and both tables re-rasterise on each of them
+             (the residual after the width hold — measured 21–35ms worst frames against Compass's 14). */
           el.style.willChange = 'transform';
         },
         () => {
@@ -1696,26 +1557,10 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       <ShellFollow ticker={ticker} onExternal={onShellName} />
       <TickPump onTick={onTick} />
 
-      {/* ONE strip of chrome, the Trace verdict applied here (Noah,
-          2026-08-30: "just like the trace pages we are having way too much
-          space up top") — the page identity on the left and THE SESSION READ
-          on the right. Weight at both ends, the card-head law.
-
-          THE SESSION READ, not a badge (Noah, 2026-08-30: the centred
-          sun/moon capsule "looks exactly like robinhood legend" — gone).
-          Three quiet facts in the house's own registers: the session as a
-          whisper label (overnight wears the moon ink, the evening colour),
-          the index's move in direction ink, and a DIVERGING hairline — the
-          Net Flow board's instrument turned two-sided: a centre mark is
-          unchanged, the fill runs right for up and left for down, and its
-          length is the size of the move (±2% fills a side — Noah, 2026-08-30:
-          "make it 2%"; an ordinary day now shows on the bar). The fill EASES
-          between ticks on the house curve instead of stepping. No icon, no
-          capsule, no fill behind the words. */}
-      {/* THE SHELL HEAD (the walk, 2026-09-11) — the page's icon and name over
-          one line, the house head every walked page wears; the session read
-          rides at the right as two labelled facts (the diverging hairline kept:
-          ±2% fills a side, Noah 2026-08-30). */}
+      {/* ONE strip of chrome, the Trace verdict applied here — the page identity on the left and the session read
+          on the right. Weight at both ends, the card-head law. The session read, not a badge. */}
+      {/* The shell head — the page's icon and name over one line, the house head every walked page wears; the
+          session read rides at the right as two labelled facts. */}
       <header className="shrink-0 flex items-start gap-6 flex-wrap pb-3 border-b border-borderSubtle" data-shell data-weigher-shell>
         <div className="min-w-0 flex-1">
           <div className="h-6 flex items-center gap-2.5" data-shell-page>
@@ -1741,23 +1586,13 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         <WeigherGuide />
       </GuideFocus>
 
-      {/* THE STATIC FRAME (Noah, 2026-08-30): four cells, drawn once.
-          Top row = the chart and the chain, 50/50, on 60% of the height;
-          bottom row = the scanner and the strike read, 50/50, on the
-          remaining 40%. 3fr/2fr IS 60/40; minmax(0,·) on every track is
-          load-bearing — without it a wide chain row or a tall read would
-          push its track past the split and the frame would silently stop
-          being the frame. */}
-      {/* ON A PHONE, A COLUMN (the phone pass, 2026-09-13 — Noah: "charts
-          should stay… our product should be phone small level"): the four
-          cards under each other at a readable height each — the chart at
-          three fifths of the screen, the chain a screen, the scanner three
-          fifths — and the page scrolls (the shell drops the viewport frame
-          below md). Four cells in a 390px frame were four unreadable ones. */}
-      {/* THE WINDOW AND THE ROW UNDER IT (2026-09-14): the chart and the chain in a window at the
-          reader's height (the sash), the watchlist and the position in a row that grows with
-          its cards — the page scrolls, like every other page. The phone's column never sees the
-          style; its cards stack at their own heights. */}
+      {/* The static frame: four cells, drawn once. */}
+      {/* On a phone, a column: the four cards under each other at a readable height each — the chart at three
+          fifths of the screen, the chain a screen, the scanner three fifths — and the page scrolls (the shell
+          drops the viewport frame below md). Four cells in a 390px frame were four unreadable ones. */}
+      {/* The window and the row under it: the chart and the chain in a window at the reader's height (the sash),
+          the watchlist and the position in a row that grows with its cards — the page scrolls, like every other
+          page. The phone's column never sees the style; its cards stack at their own heights. */}
       {belowLg && portraitDesk && (
         <p className="mt-3 text-[11px] text-textMuted" data-portrait-note>
           Built for a wide screen — on a tall one the chart and the chain stack, each at its full width.
@@ -1771,15 +1606,13 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         data-desk-top={belowLg ? undefined : top}
       >
         <div className="relative min-h-0 min-w-0 max-xl:h-[60vh]">
-          {/* NOT a DeskCard: the chart card has no header row — the strip
-              inside chartBody is its whole chrome (Noah, 2026-08-29: one
-              row, translucent, tape edge to edge). */}
+          {/* NOT a DeskCard: the chart card has no header row — the strip inside chartBody is its whole chrome. */}
           <div className="h-full relative overflow-hidden rounded-md border border-ink/[0.07] bg-panel">
             {full === 'chart' ? <div className="h-full" /> : chartBody}
           </div>
-          {/* THE RING round the card when the chart turns to a premium (Noah, 2026-10-07; the Tracker's card flash):
-              a sibling of the card, not a child — the card clips its children at its edge, and the ring stands just
-              outside the border, as the Tracker's does round its card */}
+          {/* THE RING round the card when the chart turns to a premium: a sibling of the card, not a child — the
+              card clips its children at its edge, and the ring stands just outside the border, as the Tracker's
+              does round its card */}
           {arrived && full !== 'chart' && <div key={arrived.n} className="absolute inset-0 z-30 pointer-events-none rounded-md animate-focus-flash" data-weigher-flash />}
         </div>
 
@@ -1808,29 +1641,24 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         </div>
 
         <div className="min-h-0 min-w-0 grid gap-2.5 min-h-[438px] transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]" style={{ gridTemplateRows: columnRows }} data-left-column data-folds={`${folds.positions ? 'p' : ''}${folds.watchlist ? 'w' : ''}${folds.position ? 'c' : ''}`}>
-          {/* TWO CARDS IN THE LEFT COLUMN (Noah, 2026-09-14): YOUR POSITIONS — the ones you own
-              or sold, the Map's form to add one — over THE WATCHLIST, the contracts you watch
-              (its List control turns it into the scanner's roster). Both feed the position card
-              beside them; the picked row wears the selection in whichever card holds it. THE
-              TWO ARE EQUAL WINDOWS (Noah: "should have equal lengths… if they exceed this
-              height the rest should be scrollable inside of the boxes"): the column takes the
-              row's height — the position card's, or 438 at the least — split in two, and each
-              grid scrolls inside its card. */}
+          {/* Two cards in the left column: YOUR POSITIONS — the ones you own or sold, the Map's form to add one —
+              over THE WATCHLIST, the contracts you watch (its List control turns it into the scanner's roster). */}
           <div className="min-h-0" data-positions-card>
             <DeskCard
               title="Your positions"
               fold={{ open: !folds.positions, onToggle: () => toggleFold('positions'), testId: 'positions' }}
               actions={
-                /* ADD A POSITION — the Map's form, here now: strike · call or put · own or sold · contracts · expires · what you paid */
+                /* Add a position — the Map's form, here now: strike · call or put · own or sold · contracts ·
+                   expires · what you paid */
                 <PositionForm
                   ticker={ticker}
                   quoteFor={quoteFor}
-                  /* a strike THE CHAIN LISTS: the money rounded to a dollar (244 on a name that steps by 2.50) made positions
-                     no chain row could answer to */
+                  /* a strike the chain lists: the money rounded to a dollar (244 on a name that steps by 2.50)
+                     made positions no chain row could answer to */
                   defaultStrike={sel ?? (chain.rows.length ? chain.rows.reduce((best, r) => (Math.abs(r.strike - (liveSpot || levels.spot)) < Math.abs(best.strike - (liveSpot || levels.spot)) ? r : best), chain.rows[0]).strike : Math.round(liveSpot || levels.spot))}
                   align="end"
                   trigger={
-                    /* the small size — a 28px control filled the head's 32px line to the borders (Noah, 2026-09-14) */
+                    /* the small size — a 28px control filled the head's 32px line to the borders */
                     <button className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-ink/[0.03] hover:bg-ink/[0.06] font-mono text-[9px] uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors" title="Add a position you own or sold — its simulated returns land in the card" data-add-position>
                       <Plus className="w-3 h-3" />
                       Add a position
@@ -1848,12 +1676,10 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
               fold={{ open: !folds.watchlist, onToggle: () => toggleFold('watchlist'), testId: 'watchlist' }}
               actions={<DropdownSelect label="List" value={preset} options={KIND_OPTIONS} onChange={v => patch({ preset: v })} title="What this card lists" testId="weigher-kind" align="end" size="sm" />}
             >
-              {/* THE HOUSE GRID (the walk, 2026-09-11) — the roster as an AG Grid
-                  window: the head pinned, the rows in the house's clothes, the
-                  desk's name in the where-you-are selection; a row puts that
-                  name on the desk. The watchlist wears the same window: a row
-                  puts that CONTRACT on the desk. */}
-              {/* the swap between the list and a scanner's cut lands on the house's soft fade (Noah: "smooth as butter") */}
+              {/* The house grid — the roster as an AG Grid window: the head pinned, the rows in the house's
+                  clothes, the desk's name in the where-you-are selection; a row puts that name on the desk. The
+                  watchlist wears the same window: a row puts that CONTRACT on the desk. */}
+              {/* the swap between the list and a scanner's cut lands on the house's soft fade */}
               <div key={preset} className="h-full animate-soft-in-slow" data-list-view={preset}>
                 {preset === 'watchlist' ? <ListGrid rows={watchRows} selectedId={cardRow?.id ?? null} onPick={pickRow} onRemove={removeRow} emptyText="Nothing watched yet — press + on a strike in the chain" testId="watchlist" /> : <ScanGrid rows={scan} ticker={ticker} preset={preset} onPick={pickTicker} waiting={!scanQuotes.settled && scan.length === 0} />}
               </div>
@@ -1861,12 +1687,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
           </div>
         </div>
 
-        {/* THE POSITION CARD FILLS THE ROW (Noah, 2026-10-07, with an expired position picked: "one is slightly
-            shorter than the other" — its chart box had collapsed to one line, so the card stood 22px short of the two
-            list cards beside it): open, it is as tall as the row, and the row is as tall as the taller column — the
-            card itself when its chart is up, the two lists' 438 floor otherwise — with the slack going into its body
-            (PositionDeskCard, the settled box). FOLDED it stands at its own height (self-start): never a stretched
-            card with a folded body. */}
+        {/* The position card fills the row: open, it is as tall as the row, and the row is as tall as the taller
+            column — the card itself when its chart is up, the two lists' 438 floor otherwise — with the slack
+            going into its body (PositionDeskCard, the settled box). */}
         <div className={`relative min-h-0 min-w-0 ${folds.position ? 'self-start' : ''}`} data-position-card>
           {/* the ring round the card when it turns to a new case — a sibling of the card, which clips its children */}
           {caseArrived && <div key={caseArrived.n} className="absolute inset-0 z-30 pointer-events-none rounded-md animate-focus-flash" data-case-flash />}
@@ -1880,8 +1703,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
             fold={{ open: !folds.position, onToggle: () => toggleFold('position'), testId: 'position', self: true }}
             actions={
               cardRow || (selected && sel != null) ? (
-                /* the card's own contract where it draws a row — its strike AND its date, which the chain may not list
-                   (a position from Sep 21 pressed on Sep 28 said "· 2d", the chain's, 2026-09-28) */
+                /* the card's own contract where it draws a row — its strike AND its date, which the chain may not
+                   list */
                 <span className="font-mono text-[10px] font-semibold tnum text-textSecondary whitespace-nowrap" data-position-head>
                   {(() => {
                     const c = cardRow ? (cardRow.kind === 'watch' ? cardRow.w : cardRow.p) : null;
@@ -1928,10 +1751,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         )}
       </div>
 
-      {/* Portal, not a plain fixed div: the cards' backdrop-blur creates a
-          containing block for position:fixed, so an in-place overlay would
-          size itself to the card. Escaping to <body> is the only way out
-          (the ladder widget learned this first). */}
+      {/* Portal, not a plain fixed div: the cards' backdrop-blur creates a containing block for position:fixed, so
+          an in-place overlay would size itself to the card. Escaping to <body> is the only way out (the ladder
+          widget learned this first). */}
       {full === 'chart' &&
         createPortal(
           /* The Pulse takeover's grammar: the chart IS the screen — no
@@ -1950,16 +1772,15 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         )}
       {full === 'chain' &&
         createPortal(
-          /* THE CHAIN IS THE SCREEN (Noah, 2026-10-07: "on full screen there should be no padding on any of the 4
-             corners") — no frame round it, no border, no rounding: the chart's takeover grammar, edge to edge */
+          /* The chain is the screen — no frame round it, no border, no rounding: the chart's takeover grammar,
+             edge to edge */
           <div
             className={`fixed inset-0 z-[80] bg-panel flex flex-col animate-soft-in transition-opacity duration-200 ease-out ${
               closing ? 'opacity-0' : ''
             }`}
           >
             <div className="flex-1 min-h-0 bg-panel overflow-hidden flex flex-col">
-              {/* ONE row (Noah, 2026-08-29: the Back button was the second
-                  one) — the chain's own controls, and the minimize door. */}
+              {/* ONE row — the chain's own controls, and the minimize door. */}
               <div className="shrink-0 flex items-center gap-2 px-2.5 py-1.5 border-b border-ink/[0.05]">
                 <span className="ml-auto flex flex-wrap items-center justify-end gap-1.5 min-w-0">{chainActions}</span>
                 <button

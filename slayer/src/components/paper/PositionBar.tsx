@@ -1,7 +1,5 @@
-/*
-  The position on its chart's foot: where it came in, where it is, what it is up or down, where it breaks even with
-  fees, the target and stop riding it, and Reverse and Close.
-*/
+/* The position on its chart's foot: where it came in, where it is, what it is up or down, where it breaks even
+   with fees, the target and stop riding it, and Reverse and Close. */
 
 import { useState } from 'react';
 import { ArrowLeftRight, X } from 'lucide-react';

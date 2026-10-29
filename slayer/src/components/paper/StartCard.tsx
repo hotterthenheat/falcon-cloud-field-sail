@@ -1,7 +1,5 @@
-/*
-  Before there is an account: a practice account of the size chosen, or an evaluation on a plan. Plain words about
-  what the prices are, since the reader is about to trust them.
-*/
+/* Before there is an account: a practice account of the size chosen, or an evaluation on a plan. Plain words about
+   what the prices are, since the reader is about to trust them. */
 
 import { ClipboardCheck, Wallet } from 'lucide-react';
 import { card } from '../review/DeskShell';

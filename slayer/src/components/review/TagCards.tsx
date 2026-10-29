@@ -1,7 +1,5 @@
-/*
-  A closed trade's tags as labelled cards (the setup, the mistakes, whether the plan was followed), beside the door
-  to the reader's own tag lists.
-*/
+/* A closed trade's tags as labelled cards (the setup, the mistakes, whether the plan was followed), beside the
+   door to the reader's own tag lists. */
 
 import { useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';

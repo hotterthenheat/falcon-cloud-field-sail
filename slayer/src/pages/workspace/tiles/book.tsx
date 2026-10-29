@@ -1,7 +1,5 @@
-/*
-  Pulse's book tiles, each one instrument over the live dealer book: the book, key levels, the range, where it
-  closes, at the wall, targets, where the walls are heading, and head to head.
-*/
+/* Pulse's book tiles, each one instrument over the live dealer book: the book, key levels, the range, where it
+   closes, at the wall, targets, where the walls are heading, and head to head. */
 
 import { holdShort } from '../../../data/wall';
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -77,7 +75,8 @@ export const BookTile = ({ ctx, state, set }: TileProps) => {
   const [fit, setFit] = useState(Infinity);
   const onFit = useCallback((_key: string, n: number | null) => setFit(n ?? Infinity), []);
 
-  /* THE TILE'S EXPIRY, as the book's columns: one date (the nearest the book holds), every one, or the calendar's run */
+  /* The tile's expiry, as the book's columns: one date (the nearest the book holds), every one, or the calendar's
+     run */
   const expiries = useMemo(() => {
     if (!surface) return [];
     const all = surface.expiries.map((_, i) => i);
@@ -157,7 +156,7 @@ export const LevelsTile = ({ ctx, state }: TileProps) => {
   );
 };
 
-/* the range, where it closes and at the wall stood here until 2026-10-17 — gone with the Ahead and At-the-wall pages */
+/* the range, where it closes and at the wall stood here — gone with the Ahead and At-the-wall pages */
 
 /* ------------------------------------------------------------------ targets */
 

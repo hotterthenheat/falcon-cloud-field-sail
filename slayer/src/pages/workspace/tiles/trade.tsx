@@ -1,8 +1,6 @@
-/*
-  The trade tiles: Compass's own calls (a card opens that setup's page), the live chain (a strike unfolds its
-  weigh-up and the book's read), and the Weigher's two lists — what you hold and what you watch — marked at the
-  live vendor quotes.
-*/
+/* The trade tiles: Compass's own calls (a card opens that setup's page), the live chain (a strike unfolds its
+   weigh-up and the book's read), and the Weigher's two lists — what you hold and what you watch — marked at the
+   live vendor quotes. */
 
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import SetupScanCard from '../../../components/compass/SetupScanCard';
@@ -131,7 +129,7 @@ export const ChainTile = ({ ctx, state, size }: TileProps) => {
   const [sel, setSel] = useState<number | null>(null);
   const chain = useLiveChain(ctx.ticker, dte);
   const cols: ChainCol[] = useMemo(() => CHAIN_COLUMNS.filter(c => COLS_BY_ROOM[size.room].includes(c.key)), [size.room]);
-  /* OUR TWO CENTS ON EVERY STRIKE — the dealer book's read, where the tile has the width for it */
+  /* Our two cents on every strike — the dealer book's read, where the tile has the width for it */
   const book = useMemo(() => {
     const profile = profile30(ctx.snapshot);
     return profile ? buildBook(ctx.ticker, profile) : null;

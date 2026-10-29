@@ -1,7 +1,5 @@
-/*
-  The community room's data: the reader's own posts and marks in this browser, and the small engines —
-  what a post mentions, what is trending, what a setup settled for and the record a person builds.
-*/
+/* The community room's data: the reader's own posts and marks in this browser, and the small engines — what a post
+   mentions, what is trending, what a setup settled for and the record a person builds. */
 
 import type { Lean, Person, Post, RoomState, Setup } from '../types/room';
 

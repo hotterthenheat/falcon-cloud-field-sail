@@ -1,7 +1,5 @@
-/*
-  What the journal keeps that the engines do not: the reader's words and tags on a trade, notes on a day, and the
-  tag lists the reader owns.
-*/
+/* What the journal keeps that the engines do not: the reader's words and tags on a trade, notes on a day, and the
+   tag lists the reader owns. */
 
 import { useSyncExternalStore } from 'react';
 import { accountOf, type Session, type Trade } from './engine';
@@ -56,12 +54,9 @@ export const paperRowsOf = (accounts: PaperAccount[], words: { entries: Record<s
     })
     .sort((a, b) => instantOf(b, b.t.closed) - instantOf(a, a.t.closed));
 
-/* WHEN, as a real New York instant. The two kinds of session count their minutes from different opens (an option's from
-   09:30, a future's from 18:00 the evening before), so minute 319 of a futures day (23:19) sorted between two afternoon
-   option trades — "newest first" has to compare instants, not minutes.
-   THE MOMENT IS THE END OF ITS MINUTE, as the desk's clock says it ("in at 09:31" is the bar that began at 09:30): a bar's
-   stamp is when it BEGAN, so a minute is added — and a figure drawn from these reads the same clock as the facts beside it.
-   A PAPER moment is the instant itself — no minute to add. */
+/* WHEN, as a real New York instant. The two kinds of session count their minutes from different opens (an option's
+   from 09:30, a future's from 18:00 the evening before), so minute 319 of a futures day (23:19) sorted between two
+   afternoon option trades — "newest first" has to compare instants, not minutes. */
 export const instantOf = (r: JournalRow, m: Moment): number => {
   if (r.paper) return Math.floor((m as PaperMoment).at / 1000);
   const x = m as Trade['closed'];

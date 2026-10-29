@@ -59,7 +59,7 @@ const DossierPage = () => (
       </p>
     </Aside>
 
-    {/* ── THE HEADLINES, BY WEIGHT ── */}
+    {/* ── the headlines, by weight ── */}
     <Aside
       eyebrow="The headlines"
       first="Every headline is weighed."
@@ -75,7 +75,7 @@ const DossierPage = () => (
       </p>
     </Aside>
 
-    {/* ── THE ONE RECORDING ── */}
+    {/* ── the one recording ── */}
     <WireFilm />
 
     {/* ── THE DAY ── */}
@@ -150,7 +150,7 @@ const DossierPage = () => (
       </div>
     </div>
 
-    {/* ── INSIDERS AND CONGRESS ── */}
+    {/* ── insiders and congress ── */}
     <div data-product-record>
       <div className="max-w-[62ch]">
         <Eyebrow>Insiders and Congress</Eyebrow>

@@ -1,7 +1,5 @@
-/*
-  The reader's paper accounts, kept in localStorage and synced when signed in: one tab holds them at a time, a
-  beat works the orders against the live quotes, and every change goes through the engine.
-*/
+/* The reader's paper accounts, kept in localStorage and synced when signed in: one tab holds them at a time, a
+   beat works the orders against the live quotes, and every change goes through the engine. */
 
 import { useSyncExternalStore } from 'react';
 import { EMBEDDED, PHOTO } from '../../embed';
@@ -54,7 +52,7 @@ const RENEW_MS = 2_500;
 const SAVE_SOON_MS = 2_000;
 
 /* ================================================================== */
-/*  THE LIVE MARKET                                                    */
+/* The live market */
 /* ================================================================== */
 
 /** The market as the feed has it now — what every engine call on this machine is handed. A contract asked for twice in one
@@ -153,7 +151,7 @@ export const usePaper = (): PaperState => useSyncExternalStore(subscribe, snapsh
 export const readPaper = (): PaperState => state;
 
 /* ================================================================== */
-/*  ONE TAB AT A TIME                                                  */
+/* One tab at a time */
 /* ================================================================== */
 
 const TAB = `${Date.now().toString(36)}${Math.floor(Math.random() * 1679616).toString(36)}`;
@@ -204,7 +202,7 @@ export function takeHere(): void {
 }
 
 /* ================================================================== */
-/*  THE FILL ALERTS                                                    */
+/* The fill alerts */
 /* ================================================================== */
 
 export interface PaperToast {
@@ -299,7 +297,7 @@ export function startPaperRunner(): () => void {
       journalListeners.forEach(fn => fn());
     }
   };
-  /* THE PAGE CLOSES (the simulated feed): what is open is closed at the market it saw, and the lease is let go */
+  /* The page closes (the simulated feed): what is open is closed at the market it saw, and the lease is let go */
   const onHide = () => {
     if (!state.holding) return;
     if (SIM_FEED) {
@@ -322,7 +320,7 @@ export function startPaperRunner(): () => void {
 }
 
 /* ================================================================== */
-/*  WHAT THE READER DOES                                               */
+/* What the reader does */
 /* ================================================================== */
 
 /** A change by the reader's hand, through the engine, on the live market — nothing when this tab does not hold the accounts */
@@ -338,8 +336,9 @@ function act(id: string, fn: (a: PaperAccount, m: PaperMarket) => PaperAccount):
 }
 export const placeOptOrder = (id: string, d: OptDraft) => act(id, (a, m) => optPlace(a, m, d));
 export const placeFutOrder = (id: string, d: FutDraft) => act(id, (a, m) => futPlace(a, m, d));
-/** EVERY WORKING ORDER AT ONCE — the Order card's Cancel orders (one future's, or one contract's) and Cancel all (the
-    account's); what a cancel takes with it (the other side of a group) goes the way a single cancel would take it */
+/** Every working order at once — the Order card's Cancel orders (one future's, or one contract's) and Cancel all
+    (the account's); what a cancel takes with it (the other side of a group) goes the way a single cancel would take
+    it */
 export const cancelWorking = (id: string, only?: { symbol?: string; contract?: string }) =>
   act(id, (a, m) => {
     let x = a;
@@ -362,8 +361,8 @@ export const flattenAccount = (id: string) => act(id, (a, m) => flattenByHand(a,
 export const endEval = (id: string) => act(id, (a, m) => endEvaluation(a, m));
 
 const newId = () => `a${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-/** A PRACTICE ACCOUNT of the size chosen. One is open at a time: starting another closes the last one (its trades stay in
-    the journal under its name). */
+/** A practice account of the size chosen. One is open at a time: starting another closes the last one (its trades
+    stay in the journal under its name). */
 export function startPractice(size: number): string | null {
   if (!state.holding) return null;
   const now = Date.now();
@@ -384,7 +383,7 @@ export function startEvaluation(plan: EvalPlan): string | null {
 }
 export const setInHand = (id: string) => state.accounts.some(a => a.id === id) && commit({ inHand: id }, true);
 /* ================================================================== */
-/*  THE JOURNAL'S OWN KEY                                              */
+/* The journal's own key */
 /* ================================================================== */
 
 export interface PaperJournal {

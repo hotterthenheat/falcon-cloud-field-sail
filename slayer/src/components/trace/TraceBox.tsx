@@ -452,10 +452,12 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
   onVisibleRef.current = onVisible;
   const visTimer = useRef(0);
   /* the rows on screen: a windowed grid by its own scroll, a grid that grows with the page by the page's scroll */
-  const tellVisible = (api: { getDisplayedRowCount: () => number; getDisplayedRowAtIndex: (i: number) => { data?: T } | undefined }) => {
+  const tellVisible = (api: { isDestroyed: () => boolean; getDisplayedRowCount: () => number; getDisplayedRowAtIndex: (i: number) => { data?: T } | undefined }) => {
     if (!onVisibleRef.current) return;
     window.clearTimeout(visTimer.current);
     visTimer.current = window.setTimeout(() => {
+      /* a remounted grid (a new key) destroys the api this timer closed over */
+      if (api.isDestroyed()) return;
       const wrap = wrapRef.current;
       const n = api.getDisplayedRowCount();
       if (!wrap || !n) return;
@@ -478,6 +480,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
       onVisibleRef.current?.(out);
     }, 250);
   };
+  useEffect(() => () => window.clearTimeout(visTimer.current), []);
   useEffect(() => {
     if (!onVisible) return;
     const onScroll = () => {

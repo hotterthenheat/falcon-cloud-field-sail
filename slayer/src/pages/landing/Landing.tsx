@@ -1,7 +1,5 @@
-/*
-  The landing page: the wall of tools, the tour with its window, the tape of names, every room, pricing and
-  questions. Every picture is the terminal itself; the recordings run on simulated data and say so.
-*/
+/* The landing page: the wall of tools, the tour with its window, the tape of names, every room, pricing and
+   questions. Every picture is the terminal itself; the recordings run on simulated data and say so. */
 
 import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -23,13 +21,12 @@ import Everything, { FEATURE_COUNT, ROOM_COUNT, SHARED_COUNT } from './Everythin
 import PageGlyph, { type GlyphName } from '../../components/ui/PageGlyph';
 
 /** where a letter goes */
-/** The plan doors go to Stripe's checkout when billing is on (data/billing.ts: the accounts and the publishable key);
-    off, they open the terminal. Noah, 2026-10-10: "there is no 'try it first' … 'choose'" — the doors say Choose. */
+/** The plan doors go to Stripe's checkout when billing is on (data/billing.ts: the accounts and the publishable
+    key); off, they open the terminal. — the doors say Choose. */
 const CHECKOUT_OPEN = BILLING_ON;
 
-/* THE TOUR. Every name, page and row here is a real one — the window opens it as the words arrive.
-   THE ORDER IS NOAH'S (2026-09-20): Pulse · Compass · Terrain · Pinpoint, then the turn of the ground, then Trace · the
-   Weigher · the Record. The codes are numbered off the order here, so moving a step is moving its block. */
+/* THE TOUR. Every name, page and row here is a real one — the window opens it as the words arrive. The codes are
+   numbered off the order here, so moving a step is moving its block. */
 const STEPS: TourStep[] = [
   {
     id: 'pulse',
@@ -43,7 +40,7 @@ const STEPS: TourStep[] = [
     sweep: 'deal',
     rows: [
       { title: 'The desk', says: 'The chart, the hedging at every strike and the book across the calendar, side by side.', path: '/pulse' },
-      /* the four-chart board left the tour's Pulse rows (Noah, 2026-10-03: "the 4 way/layouts of charts in general is meant for terrain") */
+      /* the four-chart board left the tour's Pulse rows */
     ],
   },
   {
@@ -58,8 +55,8 @@ const STEPS: TourStep[] = [
     sweep: 'down',
     rows: [
       { title: 'The board', says: 'What cleared the bar on this sweep.', path: '/compass' },
-      /* its picture was held back for an evening: the Tracker's cards printed "Confidence 92%", a score of ours, and none goes
-         on a public page. They say the four words now (Noah, 2026-09-19), so the row has its picture again. */
+      /* its picture was held back for an evening: the Tracker's cards printed "Confidence 92%", a score of ours,
+         and none goes on a public page. They say the four words now, so the row has its picture again. */
       { title: 'Tracker', says: 'What you kept, followed to the close.', path: '/compass/tracker' },
     ],
   },
@@ -163,26 +160,20 @@ const STEPS: TourStep[] = [
       { title: 'Stocks', says: 'A plain read of any name: strong, good, caution or poor.', path: '/dossier/stocks' },
     ],
   },
-  /* PRACTICE (Review until 2026-09-26, when paper trading and backtesting became one section), the eighth room. PAPER
-     TRADING LEADS since 2026-09-26 (Noah: "i want the paper trading live to be the first one … change the practice headline
-     to lead with paper trading"); until then OPTIONS BACKTESTING led (2026-09-20: "i want the emphasis to be put on the
-     'options backtesting'… because thats not something you see everyday"), and it still stands second, with FUTURES beside
-     it (the same night: "i also want to have backtesting/paper trading for regular futures"). The brand above stays
-     market-wide. Its pictures are the desks IN USE — the photographer starts an account or a session by the form's own
-     doors, plays it forward and trades it (scripts/landing-stage.mjs). The lines were read against TradeZella
-     ("Backtest your strategy in plain English", "replay it by hand, bar by bar"), Option Omega ("Backtest it. Automate
-     it.") and ORATS ("Options Backtester") first: none of theirs are here. */
+  /* PRACTICE, the eighth room. Paper trading leads; until then OPTIONS BACKTESTING led, and it still stands
+     second, with FUTURES beside it (the same night: "i also want to have backtesting/paper trading for regular
+     futures"). The brand above stays market-wide. */
   {
     id: 'practice',
     glyph: 'practice',
     code: '08',
     kind: 'Paper trading and backtesting',
     name: 'Practice',
-    /* the headline leads with paper trading, as the room's first row does (Noah, 2026-09-26) */
+    /* the headline leads with paper trading, as the room's first row does */
     lead: 'Paper trade today’s live option quotes.',
     rest: 'A practice account on each contract’s live bid and ask — options off the chain, the same order card and chart as the desk, and nothing reaches a broker. Backtest and futures are paused until real history and a futures feed are wired in. One journal keeps every closed trade.',
-    /* paper trading leads the room (Noah, 2026-09-26: "i want the paper trading live to be the first one") — its still
-       is the options desk in use, not the start page (the photographer's `photo=1` window, embed.ts) */
+    /* paper trading leads the room — its still is the options desk in use, not the start page (the photographer's
+       `photo=1` window, embed.ts) */
     path: '/practice/paper',
     sweep: 'deal',
     rows: [
@@ -209,20 +200,9 @@ const IT_DOES = [
 ];
 const IT_NEVER = ['Tells you what to buy or sell', 'Places an order. It is not a broker', 'Boils a trade down to one number', 'Gives financial advice'];
 
-/* WHAT EACH PLAN HOLDS — Noah's to re-decide (see the header). The prices come from data/billing.ts.
-   A line marked `soon` is sold with the plan but not open yet, and says so: Community is one room behind
-   the terminal's "coming soon" wall (Noah, 2026-09-19: it goes on the second plan, marked).
-   PRACTICE IS ON THE SECOND PLAN (Noah, 2026-09-20, of what was then Review: "review is in compass").
-   THE PLANS ARE BOOK · DESK · SEAT (2026-10-02; they were Pinpoint, Compass, Lifetime — data/billing.ts says why).
-   THREE PLANS AGAIN, 2026-10-05: BOOK $75 (then $80, 2026-10-10) · TAPE $120 · DESK $180, the Seat off the page (Noah: "i still want there to
-   be 3 plans … our top plan being 180 that includes compass") — Trace goes up to Tape with Dossier, Practice and the
-   scripts; Compass, the Weigher and Community are Desk's. Each plan answers one question (data/billing.ts).
-
-   ONE LIST, TWO READINGS (2026-10-01). Every line any plan holds is written ONCE, with the plans that hold it. The
-   plan's card reads it as "everything in the plan before, and what this one adds"; the plans side by side (below the
-   cards — Noah brought the table from his partner's landing) read it whole. So the two can never disagree, and
-   re-deciding a plan is changing its letters here. Two lines took the rooms' present names as they were moved here:
-   "The Record" is the Dossier (2026-09-28) and "Review" is Practice (2026-09-26). */
+/* The prices come from data/billing.ts. A line marked `soon` is sold with the plan but not open yet, and says so:
+   Community is one room behind the terminal's "coming soon" wall. Practice is on the second plan. The plans are
+   book · DESK · SEAT. */
 type Holds = boolean | 'soon';
 interface PlanRow {
   /** the line whole — the table's */
@@ -241,14 +221,14 @@ const PLAN_ROWS: PlanRow[] = [
   { text: 'Your own scripts on the charts', card: ['Scripts', 'your own, on the charts'], in: { book: false, tape: true, desk: true, seat: true } },
   { text: 'Compass, contracts that fit the levels', card: ['Compass', 'contracts that fit the levels'], glyph: 'compass', in: { book: false, tape: false, desk: true, seat: true } },
   { text: 'The Weigher, for any contract you name', card: ['The Weigher', 'for any contract you name'], glyph: 'weigher', in: { book: false, tape: false, desk: true, seat: true } },
-  /* PRACTICE IS DESK'S (Noah, 2026-10-05, of the three cards: "i would like the practice to only be on the desk and not the tape one") */
+  /* Practice is desk's */
   { text: 'Practice: paper trading, backtesting and the journal', card: ['Practice', 'paper trading, backtesting and the journal'], glyph: 'practice', in: { book: false, tape: false, desk: true, seat: true } },
   { text: "Community, the traders' room", card: ['Community', 'the traders’ room'], glyph: 'community', in: { book: false, tape: false, desk: 'soon', seat: 'soon' } },
-  /* THE SEAT'S OWN THREE LINES, kept for the day it returns to the page (Noah, 2026-10-05: the custom plan off the page
-     "just until we get up and running"; data/billing.ts):
-       { text: 'One payment, nothing recurring', card: ['One payment', 'nothing recurring'], in: { book: false, tape: false, desk: false, seat: true } },
-       { text: 'A one-to-one session to set up your desk', card: ['A session', 'one to one, to set up your desk'], in: { book: false, tape: false, desk: false, seat: true } },
-       { text: 'New tools before anyone else', card: ['New tools', 'before anyone else'], in: { book: false, tape: false, desk: false, seat: true } }, */
+  /* The seat's own three lines, kept for the day it returns to the page: { text: 'One payment, nothing recurring',
+     card: ['One payment', 'nothing recurring'], in: { book: false, tape: false, desk: false, seat: true } }, {
+     text: 'A one-to-one session to set up your desk', card: ['A session', 'one to one, to set up your desk'], in:
+     { book: false, tape: false, desk: false, seat: true } }, { text: 'New tools before anyone else', card: ['New
+     tools', 'before anyone else'], in: { book: false, tape: false, desk: false, seat: true } }, */
 ];
 /** the plans on the page, in order — what billing SELLS (the Seat is off the page for now) */
 const PLAN_ORDER: PlanKey[] = PLANS.map(p => p.key);
@@ -285,38 +265,9 @@ const FAQ: { q: string; a: string }[] = [
 
 /* ---- the pieces ---------------------------------------------------------------------------- */
 
-/* THE HEADLINE IS OURS (Noah, 2026-09-19). The first one — "Dealers have to hedge. See where." — turned out to sit a breath
-   from a competitor's own hero ("Dealers have to hedge… exactly where they'll be forced to"): both were the first line anyone
-   would write about this category. So the headline stopped leading with the dealers' obligation. Two of my replacements
-   missed ("The options market." · "The market shows its work."); Noah then PICKED this one from four: "Trade what you can
-   see." — short and blunt, in a trader's own voice, and true to a terminal that shows and never instructs.
-
-   AND IT DOES NOT SAY "OPTIONS" (Noah, the same day: "we are going to expand to futures and other things so i dont think
-   this options focused look is something we should go for"): the hero, the eyebrow, the paragraph and the footer's line speak
-   of THE MARKET and of TRADERS. A tool's own words may still say options where that is what the tool reads today.
-
-   THE MARKED WORD. The headline ends on one word in the house's ink — the foil on a dark ground, the galaxy ink on paper
-   (2026-09-30) — over a soft bar. Until 2026-10-01 the headline had a second line, "See the levels / flow / book /
-   record.", whose last word changed letter by letter; the hero became one line that day (below) and the marked word is
-   the headline's own last one, "see."
-
-   ITS BOX IS WIDER THAN ITS LETTERS (Noah, 2026-09-20: the last letter cut off at its right edge). The ink is a background
-   clipped to the text, so it is painted only inside the word's own box — and the headline's tight tracking makes that box
-   narrower than the glyphs. The padding gives the ink room on both sides; the equal negative margin takes the room back.
-
-   THE FIRST SCREEN SHOWS THE TOOLS (2026-10-01 — Noah, of his partner's landing: "i like the first section of the page
-   showcasing all the tools instead of big words", and then: "replace the big window with the wall"). Under the words
-   stands THE WALL: all eight tools, each playing a film of itself in use (Wall.tsx).
-
-   THE WORDS' LAYOUT IS THE ONE HE SHOWED (the same day, with a picture of his partner's hero: "top section should look
-   more like this than the current layout we have"): the small line, then THE HEADLINE ON ONE LINE across the page, its
-   last word marked; under it the paragraph at the left and the one door at the right, on the paragraph's own line. The
-   first cut of the wall's hero had put the headline on two lines at the left with the paragraph and the door stacked
-   beside it. Ours still: the type, the eyebrow, the inks, the door's words ("what i dont like is his text sizing, or
-   logo, or his color pallete we will keep that from ours").
-
-   On a desk both rows of the wall are on the first screen (the wall is only as wide as the height left under the words
-   lets two rows stand); on a phone the wall comes straight after the headline and the words follow it. */
+/* The headline is ours. The first one — "Dealers have to hedge. See where." — turned out to sit a breath from a
+   competitor's own hero ("Dealers have to hedge… exactly where they'll be forced to"): both were the first line
+   anyone would write about this category. So the headline stopped leading with the dealers' obligation. */
 const Hero = ({ onLaunch, onPick }: { onLaunch: () => void; onPick: (id: string) => void }) => {
   const ground = useBlockGround();
   return (
@@ -337,8 +288,8 @@ const Hero = ({ onLaunch, onPick }: { onLaunch: () => void; onPick: (id: string)
           <p className="max-w-[35rem] lg:max-w-[52rem] text-t16 sm:text-t17 leading-[1.55] text-textSecondary">
             Most of what moves a price is public, just scattered. Slayer gathers it into one terminal: the prints, the positions, the levels, the filings. Every page explains itself in plain English.
           </p>
-          {/* the door alone. A line stood beside it ("No sign-up. It opens on simulated data.") until 2026-10-01 — Noah: "i
-              also dont like the words next to the bottom button delete it completely". It went from every door it stood by. */}
+          {/* the door alone. A line stood beside it ("No sign-up. It opens on simulated data."). It went from
+              every door it stood by. */}
           <div className="shrink-0">
             <Pill href={doorTo()} onClick={onLaunch} testId="hero">
               Launch the terminal
@@ -355,10 +306,9 @@ const Hero = ({ onLaunch, onPick }: { onLaunch: () => void; onPick: (id: string)
   );
 };
 
-/* THE PLAN'S OWN WALL: the eight rooms as small screens, the ones this plan opens LIT with a picture of the real page
-   and the rest left as empty outlines. It is the hero's wall again, with a plan's lights on — so a buyer sees what the
-   money opens, and what it does not, before reading a line. The same eight in the same places on every card, so the
-   three can be compared at a glance. A lit screen is a door to its room in the tour. */
+/* The plan's own wall: the eight rooms as small screens, the ones this plan opens LIT with a picture of the real
+   page and the rest left as empty outlines. It is the hero's wall again, with a plan's lights on — so a buyer sees
+   what the money opens, and what it does not, before reading a line. */
 const PlanRooms = ({ planKey, onPick }: { planKey: PlanKey; onPick: (id: string) => void }) => {
   const theme = useBlockGround();
   const lit = (id: string) => PLAN_ROWS.some(r => r.glyph === id && r.in[planKey] === true);
@@ -392,24 +342,17 @@ const PlanRooms = ({ planKey, onPick }: { planKey: PlanKey; onPick: (id: string)
   );
 };
 
-/* THE PLAN'S CARD, REDRAWN SO A BUYER CAN PICTURE WHAT THEY ARE BUYING (Noah, 2026-10-01, with Skylit's pricing beside
-   ours: "it allows the user to actually envision what they are buying … i dont like how they have too many emojis and
-   icons … i dont want to be a replica of skylit"). What their cards do that ours did not: say WHO a plan is for, put the
-   door right under the price, and name each thing with what it does. Read beside Linear's ("All Basic features +", a
-   line under each plan's name) and TradingView's (a concrete line a feature). None of them shows the product in the
-   plan — so ours does: THE PLAN'S OWN WALL (PlanRooms), real pictures of the rooms it opens.
-   From the top: the name · who it is for · the price · the door · the wall · what it adds, as a name and what it is.
-   NO ICON ON A LINE — the wall is the picture; a row is words. The six parts share their rows across the three cards
-   (subgrid), so the prices, the doors, the walls and the lists each start level.
-   A BIT SMALLER (Noah, 2026-09-20: "i think the pricing cards can be a bit smaller") still holds: tight rows, the price at 52px. */
+/* The plan's card, redrawn so a buyer can picture what they are buying. What their cards do that ours did not: say
+   WHO a plan is for, put the door right under the price, and name each thing with what it does. Read beside
+   Linear's ("All Basic features +", a line under each plan's name) and TradingView's (a concrete line a feature). */
 const Plan = ({ planKey, period, onChoose, onPick }: { planKey: PlanKey; period: Period; onChoose: (key: PlanKey) => void; onPick: (id: string) => void }) => {
   const plan = PLANS.find(p => p.key === planKey)!;
   const adds = addsOf(planKey);
   const featured = planKey === FEATURED;
   const custom = plan.monthly == null;
   const priced = priceOf(planKey, period);
-  /* the first card sits flush with the section's left edge, like the head over it; the LAST keeps its right padding —
-     flush right, its wall and its Soon chip touched the edge (Noah, 2026-10-05) */
+  /* the first card sits flush with the section's left edge, like the head over it; the LAST keeps its right
+     padding — flush right, its wall and its Soon chip touched the edge */
   return (
     <div className={`flex flex-col lg:grid lg:row-span-7 lg:grid-rows-subgrid py-7 lg:py-8 lg:px-8 first:lg:pl-0 ${featured ? 'max-lg:-mx-4 max-lg:px-4 sm:max-lg:-mx-6 sm:max-lg:px-6 bg-ink/[0.025]' : ''}`} data-landing-plan={planKey}>
       <div className="flex items-center gap-2.5">
@@ -420,9 +363,9 @@ const Plan = ({ planKey, period, onChoose, onPick }: { planKey: PlanKey; period:
         {PLAN_FOR[planKey]}
       </p>
       {/* the page's big numbers are its prices — the only figures of ours it shows */}
-      {/* the price for the period the toggle is on (the yearly one is ten months); under a yearly price, what it is a month.
-          THE NUMBER ROLLS from one period's price to the other's (Noah, 2026-10-10: "the transition from monthly to yearly should
-          be smooth for the numbers") — the house's AnimatedNumber; the period word crossfades beside it; the month line fades in */}
+      {/* the price for the period the toggle is on (the yearly one is ten months); under a yearly price, what it
+          is a month. The number rolls from one period's price to the other's — the house's AnimatedNumber; the
+          period word crossfades beside it; the month line fades in */}
       <p className="mt-6 flex items-baseline gap-2" data-plan-price={period}>
         <span className="text-t44 sm:text-t52 font-light leading-none tracking-[-0.045em] tnum" data-plan-amount={priced.amount ?? undefined}>
           {priced.amount != null ? <AnimatedNumber value={priced.amount} format={fmtDollars} /> : priced.price}
@@ -461,8 +404,9 @@ const Plan = ({ planKey, period, onChoose, onPick }: { planKey: PlanKey; period:
               <li key={r.text} className="py-2.5 border-b border-borderSubtle grid grid-cols-[6.25rem_minmax(0,1fr)_auto] items-baseline gap-x-3 text-t135 leading-snug" data-plan-soon={soon || undefined}>
                 <span className="font-medium text-textPrimary">{r.card[0]}</span>
                 <span className="text-textSecondary">{r.card[1]}</span>
-                {/* an ORANGE CAPSULE (Noah, 2026-09-19): a solid pill, the Map's capsules' shape, in the house's orange — `warn` follows the ground,
-                    so it is a visible orange on paper too; the dark word on it is the same on both (4.6:1 on paper, 9:1 on black) */}
+                {/* an ORANGE CAPSULE: a solid pill, the Map's capsules' shape, in the house's orange — `warn`
+                    follows the ground, so it is a visible orange on paper too; the dark word on it is the same on
+                    both (4.6:1 on paper, 9:1 on black) */}
                 {soon && <span className="self-center h-[20px] px-2 inline-flex items-center rounded-full bg-warn font-mono text-t9 font-bold uppercase tracking-[0.14em] text-onfoil">Soon</span>}
               </li>
             );
@@ -473,12 +417,8 @@ const Plan = ({ planKey, period, onChoose, onPick }: { planKey: PlanKey; period:
   );
 };
 
-/** EVERY PLAN, SIDE BY SIDE (2026-10-01 — Noah, with a picture of his partner's table: "the two images i just sent you but
-    with a nicer touchup"). PLAN_ROWS read whole: a line on each row, a mark under each plan that holds it. Folded under
-    its own door, so the prices stay the end of the section for anyone who has seen enough.
-    THE TOUCH-UP, over the picture: the fold OPENS AND SHUTS smoothly (it snapped); the rows stand in groups — what
-    every plan holds, what Desk adds (and what only Seat had, while it was on the page) — so the eye finds where a plan starts; the plan that
-    holds every room is washed down its column; the icons are small; a held line's mark is the silver. */
+/** Every plan, side by side. PLAN_ROWS read whole: a line on each row, a mark under each plan that holds it. Folded
+    under its own door, so the prices stay the end of the section for anyone who has seen enough. */
 const PlansSideBySide = () => {
   const [open, setOpen] = useState(false);
   const calm = useReducedMotion();
@@ -589,15 +529,15 @@ const Page = () => {
   const { a } = useGround();
   const { launch } = useLaunch();
   const [barGround, setBarGround] = useState<Ground>(a);
-  /* IS ANOTHER DOOR IN VIEW? The hero's and the closing one are watched; the bar's own door stands only while neither
-     is on the screen (under the bar counts as off it) — pieces.tsx */
+  /* Is another door in view? The hero's and the closing one are watched; the bar's own door stands only while
+     neither is on the screen (under the bar counts as off it) — pieces.tsx */
   const doorSeen = useDoorSeen();
   const open = useCallback((path: string) => launch(path), [launch]);
   /* the door lands on the start page the first time, then on Pulse or the page Settings names (pieces.tsx doorTo) */
   const door = useCallback(() => launch(doorTo()), [launch]);
-  /* A PLAN CHOSEN (2026-10-10): billing on → OUR OWN CHECKOUT PAGE for it (/checkout — Stripe's framed fields inside our
-     layout; the card never reaches us), signed out by way of the sign-in page first; billing off → the terminal, as the
-     door always did. The period is the toggle's. */
+  /* A plan chosen: billing on → our own checkout page for it (/checkout — Stripe's framed fields inside our
+     layout; the card never reaches us), signed out by way of the sign-in page first; billing off → the terminal,
+     as the door always did. The period is the toggle's. */
   const [period, setPeriod] = useState<Period>('month');
   const account = useAccount();
   const navigate = useNavigate();
@@ -612,8 +552,8 @@ const Page = () => {
     },
     [account.status, period, navigate, door]
   );
-  /* STRIPE'S SCRIPT, FETCHED WHILE THE READER IS STILL ON THE PRICES — the checkout page then mounts its fields without
-     waiting for it (Noah, 2026-10-10: "why does it take forever for stripe to load") */
+  /* Stripe's script, fetched while the reader is still on the prices — the checkout page then mounts its fields
+     without waiting for it */
   useEffect(() => {
     if (!CHECKOUT_OPEN) return;
     const el = document.getElementById('pricing');
@@ -629,9 +569,9 @@ const Page = () => {
     io.observe(el);
     return () => io.disconnect();
   }, []);
-  /* A SCREEN OF THE WALL: its room's words in the tour, the window beside them showing it. On a desk the room's name
-     stands a third of the way down, beside the window; in one column the window is pinned over the top of the screen, so
-     the name stands just under it. */
+  /* A screen of the wall: its room's words in the tour, the window beside them showing it. On a desk the room's
+     name stands a third of the way down, beside the window; in one column the window is pinned over the top of the
+     screen, so the name stands just under it. */
   const toRoom = useCallback((id: string) => {
     const el = document.querySelector<HTMLElement>(`[data-tour-step="${id}"] [data-tour-head]`);
     if (!el) return;
@@ -656,18 +596,17 @@ const Page = () => {
       </a>
       <Nav ground={barGround} door={!doorSeen} />
 
-      {/* ── THE HERO AND THE TOUR: one ground — the wall of tools, then each tool beside the window ───────── */}
+      {/* ── the hero and the tour: one ground — the wall of tools, then each tool beside the window ───────── */}
       <Tour head={<Hero onLaunch={door} onPick={toRoom} />} steps={STEPS} first={DOOR} onOpen={open} onBarGround={setBarGround} endSays={[`${ROOMS} rooms.`, 'One terminal.']} />
 
-      {/* ── THE NAMES, AND WHAT IS PAID FOR ──────────────────────────────────────────────── */}
-      {/* "In every room" stood here — four small windows over four lines (2026-09-30). The windows went on 2026-10-01 at
-          Noah's word ("remove the 4 small windows"): the wall and the tour's films show the terminal at work now. The
-          four lines live on as the last room of "Everything in it". */}
+      {/* ── the names, and what is paid for ──────────────────────────────────────────────── */}
+      {/* "In every room" stood here — four small windows over four lines. The four lines live on as the last room
+          of "Everything in it". */}
       <Block on="a" id="more" label="Everything in it, and what you are paying for" className="pt-[2vh] pb-[12vh]">
-        {/* THE TAPE (2026-09-30): the names the terminal covers, across the whole page, in the room between the tour's last
+        {/* THE TAPE: the names the terminal covers, across the whole page, in the room between the tour's last
             words and this block's head */}
         <Tape />
-        {/* EVERYTHING IN IT (2026-10-01): every page of every room, each a door (Everything.tsx) */}
+        {/* Everything in it: every page of every room, each a door (Everything.tsx) */}
         <Wrap className="mt-[13vh] scroll-mt-10" >
           <Arrive id="everything" className="flex flex-col lg:flex-row lg:items-end gap-x-16 gap-y-6 scroll-mt-24">
             <div>
@@ -685,12 +624,8 @@ const Page = () => {
               <Eyebrow>What you are paying for</Eyebrow>
               <TwoTone className="mt-6" first="A read." second="Never an instruction." />
             </Arrive>
-            {/* ONE TABLE, TWO COLUMNS (Noah, 2026-09-30: "this section isnt even aligned properly"). The two lists stood side by
-                side, each setting its own row heights — a line of "It does" that wrapped pushed its rule down, and the rules
-                of the two columns fell out of step. Now the rows belong to ONE grid (five of them: the head and four lines)
-                and each column borrows them (subgrid), so a rule on the left meets its rule on the right whatever wraps, and
-                both columns end together. Both lists hold four lines; the row counts below are theirs. Under `sm` they are
-                two plain lists, one above the other. */}
+            {/* One table, two columns. The two lists stood side by side, each setting its own row heights — a line
+                of "It does" that wrapped pushed its rule down, and the rules of the two columns fell out of step. */}
             <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 sm:grid-rows-[repeat(5,auto)] gap-x-12 gap-y-10 sm:gap-y-0" data-landing-does>
               {[
                 { head: 'It does', rows: IT_DOES, ink: 'text-textPrimary', headInk: 'text-textPrimary' },
@@ -718,7 +653,7 @@ const Page = () => {
           <Arrive>
           <Eyebrow>Pricing</Eyebrow>
           <div className="mt-6 flex flex-col lg:flex-row lg:items-end gap-x-16 gap-y-6">
-            {/* the refund policy left this headline for the Questions, said kindly (Noah, 2026-09-19) */}
+            {/* the refund policy left this headline for the Questions, said kindly */}
             <TwoTone first="Pick your plan." second="Cancel any time." />
             <p className="arrive-line [--i:2] lg:ml-auto max-w-[30rem] text-t16 leading-relaxed text-textSecondary lg:pb-2">
               Book is the charts and the book. Tape adds the tape and the record. Desk is everything. Cancel whenever you like and you keep your access until the period you paid for ends.
@@ -726,8 +661,7 @@ const Page = () => {
             </p>
           </div>
           </Arrive>
-          {/* MONTHLY · YEARLY (Noah, 2026-10-10: "a toggle button for monthly and annually"): one capsule, the period the cards price
-              by; a year is ten months */}
+          {/* MONTHLY · YEARLY: one capsule, the period the cards price by; a year is ten months */}
           <div className="mt-8 flex items-center gap-4 flex-wrap" data-landing-period={period}>
             <div role="group" aria-label="Billed" className="inline-flex items-center rounded-full border border-borderMuted p-1">
               {(['month', 'year'] as Period[]).map(p => (
@@ -756,15 +690,15 @@ const Page = () => {
         </Wrap>
       </Block>
 
-      {/* ── THE QUESTIONS, THE LAST DOOR, THE FOOTER ─────────────────────────────────────── */}
+      {/* ── the questions, the last door, the footer ─────────────────────────────────────── */}
       <Block on="a" id="faq" label="Questions" className="pt-[12vh] scroll-mt-10">
         <Wrap>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-x-16 gap-y-10">
             <Arrive className="lg:col-span-5 lg:sticky lg:top-28 lg:self-start">
               <Eyebrow>Questions</Eyebrow>
               <TwoTone className="mt-6" first="Asked" second="before you buy." />
-              {/* anything else goes to a person (2026-10-01, from his partner's page). "How do I reach you?" left the list:
-                  the address stands here as a door, with the same words. */}
+              {/* anything else goes to a person. "How do I reach you?" left the list: the address stands here as a
+                  door, with the same words. */}
               <div className="arrive-line [--i:2] mt-8 flex flex-wrap items-center gap-x-4 gap-y-2.5" data-landing-write>
                 <Pill href={`mailto:${MAIL}`} kind="ghost" size="sm" testId="write">
                   {MAIL}
@@ -783,8 +717,8 @@ const Page = () => {
           </div>
 
           <div className="py-[18vh] text-center">
-            {/* THE ROOMS, ONCE MORE (2026-10-01, from his partner's page): the eight icons in a row over the last line, each
-                a door into its room — small, as everywhere on this page */}
+            {/* The rooms, once more: the eight icons in a row over the last line, each a door into its room —
+                small, as everywhere on this page */}
             <ul className="mb-10 flex flex-wrap justify-center gap-x-5 gap-y-3 sm:gap-x-6" aria-label="The rooms" data-landing-close-rooms>
               {WALL_ROOMS.map(r => (
                 <li key={r.id}>
@@ -804,9 +738,7 @@ const Page = () => {
                 </li>
               ))}
             </ul>
-            {/* Noah's pick from four (2026-09-19, of "Do not take our word for it. / Read it yourself.": "i dont like these 2
-                sentences") — short and a little teasing, after a page of stills. READ IN BY THE SCROLL (2026-10-03, his
-                partner's piece — pieces.tsx LitLines): the letters light one after another as the lines come up. */}
+            {/* Read in by the scroll: the letters light one after another as the lines come up. */}
             <LitLines
               lines={[
                 { text: 'Seen enough?', ink: 'text-textPrimary' },

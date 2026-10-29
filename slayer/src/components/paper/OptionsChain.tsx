@@ -1,7 +1,5 @@
-/*
-  A name's options, traded from the chain: calls or puts at its head with the expiry and columns, then the
-  Weigher's grid with the order opening inside a pressed strike.
-*/
+/* A name's options, traded from the chain: calls or puts at its head with the expiry and columns, then the
+   Weigher's grid with the order opening inside a pressed strike. */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import DropdownMulti from '../ui/DropdownMulti';
@@ -109,7 +107,7 @@ const OptionsChain = ({ ticker, chain, right, onRight, expiry, expiryOptions, on
 };
 
 /* ================================================================== */
-/*  THE ORDER, INSIDE A STRIKE'S DROPDOWN                               */
+/* The order, inside a strike's dropdown */
 /* ================================================================== */
 
 /** A position held at a strike of the chain's side and expiry — a single contract, or a spread bought on it */
@@ -157,8 +155,8 @@ const intoView = (el: HTMLElement | null) => {
 
 const quiet = 'h-6 px-2 rounded-md border border-borderSubtle font-mono text-t10 text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-35 disabled:cursor-not-allowed transition-colors';
 
-/** THE ORDER — inside a strike's dropdown on the live paper desk, and the backtest's Order card (2026-09-26, Noah: "make the
-    contract orders look the same on the backtesting section for both options and futures"): one composition, two desks */
+/** THE ORDER — inside a strike's dropdown on the live paper desk, and the backtest's Order card: one composition,
+    two desks */
 export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: Pick<DeskContract, 'strike' | 'right'>; ticker: string; expiry: string; spot: number; desk: ChainOrderDesk; /** The small "Order" word at its head — off inside a card that already says it */ word?: boolean }) => {
   const base: ContractId = { ticker, strike: c.strike, right: c.right, expiry };
   const pos = desk.heldAt(c.strike);
@@ -175,8 +173,8 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
   const [basis, setBasis] = useState<'contract' | 'name'>('contract');
   const n = desk.q;
   const sellN = pos ? Math.max(1, Math.min(n, pos.qty)) : n;
-  /* A STRIKE OPENED: its order brought into view once the grid has sized the dropdown to it — and again when the target
-     and the stop unfold */
+  /* A strike opened: its order brought into view once the grid has sized the dropdown to it — and again when the
+     target and the stop unfold */
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const t = window.setTimeout(() => intoView(rootRef.current), 140);
@@ -203,7 +201,7 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
     [desk.version, desk.locked, n, limit, short, ladder, basis, bracketsOpen, !!pos]
   );
 
-  /* THE STRIKES THAT CAN BE SOLD AGAINST IT, while nothing is held: further out, the nearest eight */
+  /* The strikes that can be sold against it, while nothing is held: further out, the nearest eight */
   const spreadOptions: DropdownOption<number>[] = pos
     ? []
     : [

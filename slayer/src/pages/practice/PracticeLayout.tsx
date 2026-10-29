@@ -1,8 +1,6 @@
-/*
-  Practice: trading with pretend money. Paper trades today's live quotes, Backtest is paused until real history is
-  wired in, and the Journal holds every trade of either — two books, never mixed. The head says where each page's
-  prices come from.
-*/
+/* Practice: trading with pretend money. Paper trades today's live quotes, Backtest is paused until real history is
+   wired in, and the Journal holds every trade of either — two books, never mixed. The head says where each page's
+   prices come from. */
 
 import { Suspense } from 'react';
 import { useLocation, useOutlet } from 'react-router-dom';

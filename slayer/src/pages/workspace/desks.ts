@@ -1,7 +1,5 @@
-/*
-  Pulse's named desks: the house presets and the reader's own, each autosaving its layout, a preset resettable to
-  its template, and first-fit placement for a new tile.
-*/
+/* Pulse's named desks: the house presets and the reader's own, each autosaving its layout, a preset resettable to
+   its template, and first-fit placement for a new tile. */
 
 import type { Layout } from 'react-grid-layout';
 import { widgetByKey } from './registry';
@@ -49,8 +47,8 @@ const assemble = (cells: { inst: WidgetInstance; l: Layout }[]): SavedWorkspace 
 let presets: Record<string, SavedWorkspace> | null = null;
 export const PRESETS = (): Record<string, SavedWorkspace> =>
   (presets ??= {
-    /* the range, where it closes and at the wall left the desks on 2026-10-17 with their pages; the three desks that held
-       them are refilled with the tiles that stand — where the walls are heading, the targets and the levels */
+    /* the range, where it closes and at the wall left the desks with their pages; the three desks that held them
+       are refilled with the tiles that stand — where the walls are heading, the targets and the levels */
     'The session': assemble([cell('chart', 0, 0, 7, 5), cell('book', 7, 0, 5, 5, { view: 'matrix' }), cell('heading', 0, 5, 7, 4), cell('levels', 7, 5, 5, 4)]),
     'The open': assemble([cell('chart', 0, 0, 6, 5), cell('book', 6, 0, 6, 5, { view: 'calendar' }), cell('levels', 0, 5, 4, 4), cell('news', 4, 5, 4, 4), cell('earnings', 8, 5, 4, 4)]),
     '0DTE': assemble([cell('chart', 0, 0, 6, 5, { tf: '1m' }), cell('book', 6, 0, 6, 5, { view: 'matrix', expiry: '0DTE' }), cell('targets', 0, 5, 6, 4), cell('levels', 6, 5, 6, 4)]),
@@ -103,8 +101,8 @@ export function loadDesks(): DeskStore {
   // Seed any preset that is missing (a first run, or a preset added later)
   for (const name of PRESET_NAMES) if (!store.desks[name]) store.desks[name] = clone(PRESETS()[name]);
   // Sanitize everything that came off disk
-  /* A HOUSE DESK WHOSE TILE LEFT THE REGISTRY IS REBUILT FROM ITS PRESET (2026-10-03, Paper and Journal leaving Pulse): a
-     stored My book would otherwise keep two tiles and two holes — the house changed the desk, not the reader */
+  /* A house desk whose tile left the registry is rebuilt from its preset: a stored My book would otherwise keep
+     two tiles and two holes — the house changed the desk, not the reader */
   for (const name of PRESET_NAMES) {
     const d = store.desks[name];
     if (d && (d.instances ?? []).some(w => w && !widgetByKey(w.key))) store.desks[name] = clone(PRESETS()[name]);
@@ -126,15 +124,9 @@ export const presetTemplate = (name: string): SavedWorkspace | null => (isPreset
 
 export const GRID_COLS = 12;
 
-/**
- * Where a new tile lands (Noah, 2026-08-19: "it should fill the closest
- * empty space from the top → down... the nearest empty box that is a
- * reasonable size"). Scans rows top-down and columns left-right; at each
- * cell, the biggest size that fits — the widget's default first, shrinking
- * toward its minimum when the hole is narrower or shorter. The first cell with
- * ANY fit wins, so height (being near the top) beats size. Nothing fits above
- * the occupied band → the bottom, at default size.
- */
+/** Where a new tile lands. Scans rows top-down and columns left-right; at each cell, the biggest size that fits —
+    the widget's default first, shrinking toward its minimum when the hole is narrower or shorter. The first cell
+    with ANY fit wins, so height (being near the top) beats size. */
 export function firstFit(layout: Layout[], def: { w: number; h: number; minW?: number; minH?: number }): { x: number; y: number; w: number; h: number } {
   const occupied = new Set<string>();
   let bottom = 0;

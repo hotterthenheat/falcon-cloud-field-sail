@@ -1,7 +1,5 @@
-/*
-  The Compass board: the scan's calls and closest misses under one head with its facts and controls, and the
-  selected name's desks in a rail beside it. The board keeps its view across a trip to a setup's page.
-*/
+/* The Compass board: the scan's calls and closest misses under one head with its facts and controls, and the
+   selected name's desks in a rail beside it. The board keeps its view across a trip to a setup's page. */
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -86,8 +84,7 @@ function oneSide(rows: Setup[]): Setup[] {
   return out.sort((a, b) => bandRank(b) - bandRank(a) || (b.p1 ?? 0) - (a.p1 ?? 0));
 }
 
-/* Each card's glyph wears its own ink on hover and while open — the sidebar's
-   rule (Noah, 2026-09-11: "turn a colour like we have on our sidebar") */
+/* Each card's glyph wears its own ink on hover and while open — the sidebar's rule */
 const CARD_INK = { expiry: NAV_INK.record, kind: NAV_INK.weigher, name: NAV_INK.compass, layout: NAV_INK.terrain } as const;
 
 const Board = () => {

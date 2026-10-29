@@ -1,7 +1,5 @@
-/*
-  Options stop trading at 16:00 New York. In the last fifteen minutes the desk says how long is left and what
-  expires today; at the bell it says the day is over and how what was held settled.
-*/
+/* Options stop trading at 16:00 New York. In the last fifteen minutes the desk says how long is left and what
+   expires today; at the bell it says the day is over and how what was held settled. */
 
 import { ArrowRight, BellRing, X } from 'lucide-react';
 import { usdSigned } from './words';

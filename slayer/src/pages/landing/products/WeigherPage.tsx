@@ -51,7 +51,7 @@ const WeigherPage = () => (
       </p>
     </Aside>
 
-    {/* ── THE ONE RECORDING ── */}
+    {/* ── the one recording ── */}
     <Film />
 
     {/* ── THE CARD ── */}
@@ -73,7 +73,7 @@ const WeigherPage = () => (
       <p>Two cards in the left column, newest first. Press any row and the card at the right becomes it; a row’s × takes it off the list.</p>
     </Room>
 
-    {/* ── ADDING A POSITION ── */}
+    {/* ── adding a position ── */}
     <Aside eyebrow="Adding a position" first="Adding a position." second="One form: strike, side, size, expiry, price." narrow flip picture={<Picture src={`${SHOTS}/add-position`} alt="The Add a position form: the strike, call or put, the number of contracts, the expiry with quick picks, and what you paid" ratio="1028 / 582" />}>
       <p>
         Press Add a position in the head of Your positions and a short form opens on the desk’s name: the strike, call or put, how many contracts, the expiry — with quick picks for this Friday, next Friday and the monthly —
@@ -81,7 +81,7 @@ const WeigherPage = () => (
       </p>
     </Aside>
 
-    {/* ── ADDING TO THE WATCHLIST ── */}
+    {/* ── adding to the watchlist ── */}
     <Room eyebrow="Adding to the watchlist" first="Watching a strike." second="One press, and it is on the list, marked." pictures={<Pair items={[
       { src: `${SHOTS}/watch-chain`, ratio: '1028 / 570', name: 'The + on the strike', says: 'Every row of the chain ends in a +. Press it and that contract goes on the watchlist, marked at this tick’s price. The + turns to a mark once it is watched, and the card for a strike that isn’t watched yet offers the same door in its foot.' },
       { src: `${SHOTS}/watchlist`, ratio: '1028 / 255', name: 'Where it lands', says: 'The watchlist card, newest first: the contract, when it was added, the mark then and now, today and the whole run in dollars and in R. Press the row and the card turns to it; Close settles it at the mark and keeps the row as closed by hand.' },

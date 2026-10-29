@@ -1,7 +1,5 @@
-/*
-  The setup's marks drawn on the chart's own canvas at the tape's right edge: the entry, the stop and the targets as
-  one short ladder, docked when off screen.
-*/
+/* The setup's marks drawn on the chart's own canvas at the tape's right edge: the entry, the stop and the targets
+   as one short ladder, docked when off screen. */
 
 import type { IChartApi, ISeriesApi, ISeriesPrimitive, SeriesAttachedParameter, Time, UTCTimestamp } from 'lightweight-charts';
 import { LADDER_MONO as MONO, ladderPen, type DrawTarget } from '../gex/ladderPaint';
@@ -135,8 +133,8 @@ class MarksRenderer {
         }
       }
 
-      /* THE TAKE PROFITS — a full line with a dark chip, so a green candle
-         cannot swallow the label. A hit is thicker and says so. */
+      /* The take profits — a full line with a dark chip, so a green candle cannot swallow the label. A hit is
+         thicker and says so. */
       for (const t of data.targets) {
         const raw = yOf(t.price);
         const px = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

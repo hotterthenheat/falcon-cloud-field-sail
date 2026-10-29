@@ -7,3 +7,14 @@ node_modules/
 slayer/theta/creds.txt
 slayer/theta/terminal.log
 slayer/.env
+
+# Local output and chat uploads: kept on disk, never committed
+screenshots/
+attachments/
+artifacts/
+/*.whl
+hs_err_pid*.log
+
+# The Theta terminal writes config.toml into its working directory; the tracked copy is slayer/theta/config.toml
+/config.toml
+/compass-spec.pdf

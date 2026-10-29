@@ -1,7 +1,5 @@
-/*
-  Where a reader's scripts are kept: IndexedDB on their own machine, with versions, favourites and what sits on
-  each pane.
-*/
+/* Where a reader's scripts are kept: IndexedDB on their own machine, with versions, favourites and what sits on
+   each pane. */
 
 import { compile, explain } from '../core/pine';
 import type { ChartScript, PaneId, Script, ScriptFavourite, ScriptInputValue, ScriptSave, ScriptShelf, ScriptStore, ScriptVersion, ScriptVisibility } from '../types/scripts';

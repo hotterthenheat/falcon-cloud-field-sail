@@ -1,7 +1,5 @@
-/*
-  What can go on a pane and what is on it: the built-in scripts, the classic technicals, the chart's tools, your
-  scripts and favourites, with one search, a tick to draw one and a gear for its inputs.
-*/
+/* What can go on a pane and what is on it: the built-in scripts, the classic technicals, the chart's tools, your
+   scripts and favourites, with one search, a tick to draw one and a gear for its inputs. */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, Settings2, Star } from 'lucide-react';
@@ -35,7 +33,7 @@ interface Row {
 }
 
 const SHELVES: { key: Shelf; label: string; section: 'Personal' | 'Built in' }[] = [
-  /* what you added to a chart or opened lately, newest first (Noah, 2026-09-10) */
+  /* what you added to a chart or opened lately, newest first */
   { key: 'recent', label: 'Recently used', section: 'Personal' },
   { key: 'favourites', label: 'Favourites', section: 'Personal' },
   { key: 'mine', label: 'My scripts', section: 'Personal' },
@@ -48,11 +46,9 @@ const KIND_WORD: Record<Kind, string> = { slayer: 'slayer', pine: 'pine', chart:
 
 /* ---- the script's own alerts ------------------------------------------------------ */
 
-/* TELL ME WHEN, for a script (2026-09-10, Noah: "wire the script alerts into
-   the bell"): every `alertcondition(...)` the script declares, as a switch —
-   the Targets card's grammar. Set in place: armed here for THIS name on THIS
-   pane's timeframe with the placement's inputs; judged by the shell's
-   watcher on every page; rung through the bell like every other alert. */
+/* Tell me when, for a script: every `alertcondition(...)` the script declares, as a switch — the Targets card's
+   grammar. Set in place: armed here for THIS name on THIS pane's timeframe with the placement's inputs; judged by
+   the shell's watcher on every page; rung through the bell like every other alert. */
 const AlertSwitches = ({ script, chart, paneId }: { script: Script; chart: ChartScript; paneId: PaneId }) => {
   const pane = getPaneBars(paneId);
   const ticker = pane?.ticker ?? '';
@@ -154,7 +150,7 @@ interface ScriptLibraryProps {
   paneId?: PaneId;
   indicators?: ChartIndicators;
   onIndicators?: (next: ChartIndicators) => void;
-  /** The editor sits beside a FULL-SCREEN chart only (Noah, 2026-09-10) — off, the doors to it stay shut and say why */
+  /** The editor sits beside a FULL-SCREEN chart only — off, the doors to it stay shut and say why */
   fullscreen?: boolean;
   overlays?: ChartOverlays;
   onOverlays?: (next: ChartOverlays) => void;
@@ -213,7 +209,7 @@ const ScriptLibrary = ({
   const [recentTick, setRecentTick] = useState(0);
   const version = useLibraryVersion();
   const placed = usePaneScripts(paneId);
-  /* THE EDITOR IS THE DOCK'S (2026-09-10): opening a script closes this chooser so the chart shows under the code */
+  /* The editor is the dock's: opening a script closes this chooser so the chart shows under the code */
   const edit = useCallback(
     (script: Script | null) => {
       if (!fullscreen) return;
@@ -405,10 +401,8 @@ const ScriptLibrary = ({
           />
         </label>
 
-        {/* ONE SIZE ON EVERY SHELF (Noah, 2026-09-10: "when i click different subpages
-            the size changes creating an unpleasant look"): the shelves and the rows
-            share a fixed height and the rows scroll inside it, so five Slayer
-            scripts and eighteen technicals open the same card. */}
+        {/* One size on every shelf: the shelves and the rows share a fixed height and the rows scroll inside it,
+            so five Slayer scripts and eighteen technicals open the same card. */}
         <div className="grid grid-cols-[176px_minmax(0,1fr)] gap-4 h-[56vh]" data-library>
           {/* THE SHELVES */}
           <nav className="flex flex-col gap-1 pr-4 border-r border-borderSubtle overflow-y-auto" aria-label="Shelves">
@@ -537,8 +531,7 @@ const ScriptLibrary = ({
                         data-library-row={r.key}
                         data-on={r.on || undefined}
                       >
-                        {/* THE KIND AS A FILLED TAG (the partner, 2026-10-18: "too muted and ashy" — an outline in the muted ink on
-                            a 28-grey hairline was near invisible): SLAYER the house's silver tag, PINE and CHART the chip ground */}
+                        {/* The kind as a filled tag: SLAYER the house's silver tag, PINE and CHART the chip ground */}
                         <span className={`inline-flex w-fit items-center font-mono text-t8 font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border ${r.kind === 'slayer' ? 'bg-silverFill border-silverFill text-onfoil' : 'bg-ink/[0.1] border-borderMuted text-textPrimary'}`} data-library-kind={r.kind}>{KIND_WORD[r.kind]}</span>
                         <span className="min-w-0 flex items-baseline gap-2">
                           {r.script && fullscreen ? (
