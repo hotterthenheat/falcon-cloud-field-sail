@@ -374,6 +374,7 @@ export function startPractice(size: number): string | null {
 }
 /** AN EVALUATION on a plan. One runs at a time — the page asks for the running one to be ended first. */
 export function startEvaluation(plan: EvalPlan): string | null {
+  if (!FUTURES_LIVE) return null;
   if (!state.holding || state.accounts.some(a => a.kind === 'evaluation' && a.status === 'open')) return null;
   const now = Date.now();
   const same = state.accounts.filter(a => a.kind === 'evaluation' && a.plan?.label === plan.label).length;

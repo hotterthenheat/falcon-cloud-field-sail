@@ -34,7 +34,6 @@ const BacktestProduct = lazy(() => import('./pages/landing/products/PracticePage
 const JournalProduct = lazy(() => import('./pages/landing/products/PracticePages').then(m => ({ default: m.JournalPage })));
 const Pulse = lazy(() => import('./pages/workspace/Pulse'));
 const Terrain = lazy(() => import('./pages/terrain/Terrain'));
-const TerrainShare = lazy(() => import('./pages/terrain/TerrainShare'));
 const CompassLayout = lazy(() => import('./pages/compass/CompassLayout'));
 const CompassBoard = lazy(() => import('./pages/compass/Board'));
 const CompassSetup = lazy(() => import('./pages/compass/SetupPage'));
@@ -181,7 +180,6 @@ const App = () => {
             <Route path="/start" element={<Start />} />
             <Route path="/pulse" element={<Pulse />} />
             <Route path="/terrain" element={<Terrain />} />
-            <Route path="/terrain/s" element={<TerrainShare />} />
             <Route path="/live-terminal" element={<Navigate to="/pulse" replace />} />
             <Route path="/workspace" element={<Navigate to="/pulse" replace />} />
             <Route path="/compass" element={<CompassLayout />}>

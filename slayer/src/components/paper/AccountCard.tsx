@@ -167,7 +167,7 @@ const AccountCard = ({ account: a, accounts, view: v, ev, now, onPick, onPractic
                   {onPractice && (
                     <>
                       <p className="text-t12 font-medium text-textPrimary">A practice account</p>
-                      <p className="mt-1 text-t11 leading-snug text-textMuted">Options and futures, from the size you pick. The practice account you have now is closed at the market first, and stays in the list.</p>
+                      <p className="mt-1 text-t11 leading-snug text-textMuted">Options, from the size you pick. The practice account you have now is closed at the market first, and stays in the list.</p>
                       <div className="mt-2.5 grid grid-cols-4 gap-1.5">
                         {PRACTICE_SIZES.map(size => (
                           <button
@@ -239,7 +239,7 @@ const AccountCard = ({ account: a, accounts, view: v, ev, now, onPick, onPractic
           ) : ev ? (
             `Futures only · the floor follows ${ev.plan.trailing === 'eod' ? 'the best close' : 'the best moment, open trades in'} · flat by 16:59 New York`
           ) : (
-            `Options and futures · $${a.fee.toFixed(2)} an option each way · the account carries from day to day`
+            `Options at live quotes · $${a.fee.toFixed(2)} an option each way · the account carries from day to day`
           )}
         </p>
         <div className="grid grid-cols-3 gap-x-4 gap-y-3" data-paper-facts>

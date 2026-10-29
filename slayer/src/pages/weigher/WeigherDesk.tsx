@@ -22,6 +22,7 @@ import { onGlide } from '../../core/glide';
 import { DOCK_ROOM } from '../../data/editorDock';
 import { useTicker } from '../../context/MarketDataContext';
 import { snapshotOf, useBookRev } from '../../data/uwBook';
+import { peekMark, useMarks } from '../../data/weigherChain';
 import { buildLevelsFor, buildPrints, fmtUsd } from '../../data/gex';
 import { wantSpotGex } from '../../data/spotGexBook';
 import {
@@ -1239,11 +1240,14 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       window.clearInterval(id);
     };
   }, [legKey, chainWait]);
+  const marksRev = useMarks(useMemo(() => [...positions.map(p => ({ ticker: p.ticker, expiry: p.expiry })), ...watchlist.filter(w => w.status === 'open').map(w => ({ ticker: w.ticker, expiry: w.expiry }))], [positions, watchlist]));
   const liveOf = (ticker: string, expiry: string, strike: number, right: 'C' | 'P') => {
     const onChain = chain.source === 'live' && chain.ticker === ticker && chain.expiryIso === expiry ? chain.rows.find(r => Math.abs(r.strike - strike) < 1e-6) : undefined;
     const leg = onChain ? (right === 'C' ? onChain.call : onChain.put) : null;
     const quoted = legBook.get(`${ticker}|${expiry}|${strike}|${right}`);
-    const mark = leg && leg.mark > 0 ? leg.mark : quoted?.mark ?? null;
+    /* ThetaData's leg read first; the vendor's listed-contract quote when ThetaData has none */
+    const uw = peekMark(ticker, expiry, strike, right);
+    const mark = leg && leg.mark > 0 ? leg.mark : quoted?.mark ?? (uw && uw.mark > 0 ? uw.mark : null);
     const prev = leg && leg.prevClose > 0 ? leg.prevClose : quoted?.prev ?? null;
     return { mark, prev };
   };
@@ -1265,7 +1269,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         })
         .sort((a, b) => (b.kind === 'own' ? b.p.addedAt : 0) - (a.kind === 'own' ? a.p.addedAt : 0)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [positions, chain, legBook]
+    [positions, chain, legBook, marksRev]
   );
   const watchRows = useMemo<ListRow[]>(() => {
     const rank = (w: WatchedContract) => (w.status === 'open' ? 0 : 1);
@@ -1298,7 +1302,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         },
       };
     });
-  }, [watchlist, chain, legBook]);
+  }, [watchlist, chain, legBook, marksRev]);
   useEffect(() => {
     for (const w of watchlist) {
       if (w.status !== 'open') continue;
