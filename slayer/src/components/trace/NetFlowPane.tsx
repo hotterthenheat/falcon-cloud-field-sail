@@ -471,7 +471,7 @@ const NetFlowPane = ({ seg, mny, onSeg, onMny, onExpand, expanded, ticker, dteMa
             onClick={onExpand}
             title={expanded ? 'Leave full screen' : 'Full screen'}
             aria-label={expanded ? 'Leave full screen' : 'Show this pane full screen'}
-            className="p-1 -mr-1 rounded text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04] transition-colors"
+            className="p-1.5 -my-1 -mr-1.5 max-sm:p-4 max-sm:-my-4 max-sm:-mr-4 rounded text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04] transition-colors"
           >
             {expanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
           </button>

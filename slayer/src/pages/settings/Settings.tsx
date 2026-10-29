@@ -20,7 +20,7 @@ import { NAV_ITEMS } from '../../components/layout/nav';
 import { chime } from '../../core/sound';
 import { TIMEFRAMES, type Timeframe } from '../../data/timeframe';
 import { setDeskPrefs, useDeskPrefs, type ClockZone } from '../../data/deskPrefs';
-import { setProfile, useProfile, type SignInWay } from '../../data/profile';
+import { SAMPLE_PROFILE, setProfile, useProfile, type SignInWay } from '../../data/profile';
 import { ACCOUNTS_ON } from '../../data/supabase';
 import { checkPassword, deleteAccount, leaveAfterDelete, reloadProfile, setPassword, signOut, useAccount } from '../../data/account';
 import { grantHeld, PLAN_RANK, setViewAs, useAccess, type ViewAs } from '../../data/access';
@@ -299,6 +299,59 @@ const SIGN_IN_OPTIONS: DropdownOption<SignInWay>[] = [
   { value: 'apple', label: 'Apple', hint: 'Your Apple ID' },
 ];
 
+/** The preview's Delete: there is no account to delete, so it says so and puts the sample account back (name, handle,
+    email, picture, sign-in way, the machines list) — the one thing deleting does here. */
+const PreviewDelete = () => {
+  const [open, setOpen] = useState(false);
+  const [done, setDone] = useState(false);
+  const close = () => {
+    setOpen(false);
+    setDone(false);
+  };
+  return (
+    <>
+      <Door tone="bear" onClick={() => setOpen(true)} title="Asks first; on the preview it puts the sample account back" testId="delete-account">
+        <Trash2 className="w-3 h-3" /> Delete account
+      </Door>
+      <Modal open={open} onClose={close} ariaLabel="Delete the account" header={<span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">Delete the account?</span>} widthClass="max-w-[480px]">
+        {done ? (
+          <>
+            <p className="text-t12 text-textPrimary" data-account-reset>
+              The sample account is back.
+            </p>
+            <div className="flex items-center justify-end">
+              <Door onClick={close} testId="delete-done">
+                Close
+              </Door>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-t12 text-textPrimary">This is the preview's sample account — there is no account on a server to delete.</p>
+            <p className="text-t11 text-textMuted">Deleting it here puts the sample back: the name, handle, email, picture, sign-in way and the machines list. Your board, marks and settings on this machine stay.</p>
+            <div className="flex items-center justify-end gap-2">
+              <Door onClick={close} testId="delete-cancel">
+                Keep it
+              </Door>
+              <Door
+                tone="bear"
+                onClick={() => {
+                  setProfile({ ...SAMPLE_PROFILE });
+                  setDone(true);
+                }}
+                title="Puts the sample account back"
+                testId="delete-confirm"
+              >
+                <Trash2 className="w-3 h-3" /> Reset the sample account
+              </Door>
+            </div>
+          </>
+        )}
+      </Modal>
+    </>
+  );
+};
+
 /** ACCOUNT, THE PREVIEW — the sample account, on a build without the account service (.env.local unset) */
 const AccountPreview = () => {
   const p = useProfile();
@@ -342,12 +395,11 @@ const AccountPreview = () => {
       <div className="px-5 py-3 border-t border-borderSubtle/60 flex items-center justify-between gap-6" data-settings-row="account-foot">
         <div className="text-t11 text-textMuted">Signing out keeps everything on the account · deleting it takes the board, the marks and the scripts with it</div>
         <div className="shrink-0 flex items-center gap-2">
-          <Door title="Signs this machine out of the account" testId="sign-out">
+          {/* the preview has no account behind it: Sign out opens the sign-in page, Delete puts the sample back */}
+          <Door to="/signin" title="The preview has no account to sign out of — this opens the sign-in page" testId="sign-out">
             <LogOut className="w-3 h-3" /> Sign out
           </Door>
-          <Door tone="bear" title="Asks twice, then deletes the account and everything on it" testId="delete-account">
-            <Trash2 className="w-3 h-3" /> Delete account
-          </Door>
+          <PreviewDelete />
         </div>
       </div>
     </Section>
@@ -769,6 +821,9 @@ const BillingBox = () => (ACCOUNTS_ON ? <BillingLive /> : <BillingPreview />);
 const BillingPreview = () => {
   const b = useBilling();
   const plan = planOf(b.plan);
+  /* the preview has no Stripe account behind it: the portal's doors and the receipts say so, in one line under the plan */
+  const [note, setNote] = useState<string | null>(null);
+  const noPortal = () => setNote("The preview has no Stripe account — on a live account this opens Stripe's billing portal.");
   return (
     <Section id="billing" title="Billing" line="Your plan and the card behind it — the card lives with Stripe, never here" aside={<Tag>preview · sample plan</Tag>}>
       {/* THE PLAN — what you are on, its standing, the next charge */}
@@ -786,9 +841,14 @@ const BillingPreview = () => {
             {plan.monthly != null && ` · $${plan.monthly} then`}
           </div>
         </div>
-        <Door title="Stripe's billing portal — the card, the invoices, cancelling" testId="manage-billing">
+        <Door onClick={noPortal} title="Stripe's billing portal — the card, the invoices, cancelling" testId="manage-billing">
           <ExternalLink className="w-3 h-3" /> Manage billing
         </Door>
+        {note && (
+          <div className="basis-full" aria-live="polite" data-billing-note>
+            <Said problem={null} note={note} />
+          </div>
+        )}
       </div>
       {/* THE TIERS — the landing's three, yours lit; up is Stripe's Checkout, down is the portal */}
       <div className="px-5 pb-4 border-t border-borderSubtle/60 pt-3" data-settings-row="plans">
@@ -843,7 +903,7 @@ const BillingPreview = () => {
         ) : (
           <span className="font-mono text-t11 text-textMuted">No card on file</span>
         )}
-        <Door title="Opens Stripe's portal on the card" testId="update-card">
+        <Door onClick={noPortal} title="Opens Stripe's portal on the card" testId="update-card">
           Update
         </Door>
       </Row>
@@ -862,7 +922,14 @@ const BillingPreview = () => {
                   <Tag>{inv.status}</Tag>
                 </td>
                 <td className="text-right w-16">
-                  <button type="button" className="inline-flex items-center gap-1 font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors" title="The receipt, from Stripe">
+                  <button
+                    type="button"
+                    onClick={() => setNote(`The ${fmtDate(inv.date)} invoice is a sample — on a live account its receipt opens from Stripe.`)}
+                    className="inline-flex items-center gap-1 min-h-[24px] max-sm:min-h-[40px] font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors"
+                    title="The receipt, from Stripe"
+                    aria-label={`Receipt for the ${fmtDate(inv.date)} invoice`}
+                    data-settings-receipt={inv.id}
+                  >
                     <FileText className="w-3 h-3" /> PDF
                   </button>
                 </td>
@@ -1122,7 +1189,7 @@ const Settings = () => {
             <Mark />
             <h1 className="text-t15 font-semibold leading-tight text-textPrimary">Settings</h1>
           </div>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">Your account and plan, how the terminal looks, what the desk opens on</p>
+          <p className="mt-0.5 text-t11 text-textMuted sm:whitespace-nowrap sm:truncate">Your account and plan, how the terminal looks, what the desk opens on</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2" data-shell-facts>
           <div className="min-w-0">

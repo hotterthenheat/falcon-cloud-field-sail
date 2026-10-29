@@ -48,8 +48,8 @@ const MONEY_OPTIONS: DropdownOption<'ALL' | 'DEBIT' | 'CREDIT'>[] = [
   { value: 'CREDIT', label: 'Collected', hint: 'Structures that paid the trader to put on' },
 ];
 /* the set at rest fits a 1440 box beside the pinned risk columns */
-/* the strategy is words: two lines and its hover, giving way to the figures first */
-const PROSE = ['kind'];
+/* the strategy is words and the strikes a ladder: both wrap to two lines with their hover, giving way to the figures first */
+const PROSE = ['kind', 'strikes'];
 const WIDTHS: Record<string, number> = { time: 100, ticker: 84, strikes: 136, exp: 104, size: 56, net: 124, prem: 124, legs: 56, kind: 160, maxloss: 88, maxprofit: 88 };
 /* who on the left, the risk at the right, both always on screen */
 const PIN_LEFT = ['time', 'ticker'];
@@ -506,7 +506,19 @@ const MultiLeg = () => {
         key: 'strikes',
         header: 'Strikes',
         sortValue: t => Number(t.strikesLabel.split(' / ')[0]) || 0,
-        render: t => <span className="font-mono tnum font-bold text-textPrimary whitespace-nowrap">{t.strikesLabel}</span>,
+        /* a long ladder breaks between strikes, never inside one: each strike stays whole, two lines at most */
+        render: t => (
+          <span className="inline-flex items-center align-middle max-w-full" title={t.strikesLabel}>
+            <span className="font-mono tnum font-bold leading-tight text-textPrimary whitespace-normal line-clamp-2">
+              {t.strikesLabel.split(' / ').map((k, i) => (
+                <span key={i} className="whitespace-nowrap">
+                  {i > 0 ? ' / ' : ''}
+                  {k}
+                </span>
+              ))}
+            </span>
+          </span>
+        ),
       },
       {
         key: 'exp',
