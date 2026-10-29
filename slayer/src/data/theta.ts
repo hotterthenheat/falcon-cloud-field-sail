@@ -82,8 +82,12 @@ function faultText(status: number, parsed: unknown, text: string): string {
   return msg || `unavailable ${status}`;
 }
 
+/** Trace, Pinpoint and the Dossier read Unusual Whales only: no ThetaData request ever leaves their pages, whatever asks. */
+export const uwOnlyRoute = (): boolean => typeof location !== 'undefined' && /^\/(trace|pinpoint|dossier)(\/|$)/.test(location.pathname);
+
 export async function thetaCall(path: string, jump = false): Promise<{ status: number; data: unknown; error: string | null }> {
   if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
+  if (uwOnlyRoute()) return { status: 0, data: null, error: 'uw_only' };
   const auth = await feedHeaders();
   if (!auth.ok) return { status: 401, data: null, error: auth.code };
   if (Date.now() < downUntil) return { status: 503, data: null, error: 'terminal_down' };

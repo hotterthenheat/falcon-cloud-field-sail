@@ -14,7 +14,8 @@ const REQUEST_FAULT = new Set([471, 472, 473, 477]);
 
 /** The terminal cannot answer anything: down, not deployed, disconnected, or held by another session. */
 const offlineError = (a: ThetaAnswer): boolean => {
-  if (REQUEST_FAULT.has(a.status)) return false;
+  /* a page that reads Unusual Whales only refused the read (data/theta.ts uwOnlyRoute): the terminal is not in question */
+  if (REQUEST_FAULT.has(a.status) || a.error === 'uw_only') return false;
   return a.error === 'terminal_down' || a.error === 'terminal_unavailable' || a.status === 0 || a.status === 503 || a.status === 474 || a.status === 478 || a.status === 571;
 };
 
