@@ -67,6 +67,8 @@ const NewAccount = ({ onPractice, onPlan }: Props) => {
         ) : (
           PROP_FIRMS.map(f => {
             const programs = [...new Set(f.plans.map(p => p.program ?? ''))];
+            /* a gap every program of the firm shares is said once under the firm, not under each program */
+            const shared = (f.plans[0]?.notModelled ?? []).filter(n => f.plans.every(p => p.notModelled?.includes(n)));
             return (
               <section key={f.id} className="pt-3 border-t border-borderSubtle/70 flex flex-col gap-3 min-w-0" data-paper-firm={f.id}>
                 <div className="flex items-baseline gap-x-3 gap-y-1 flex-wrap min-w-0">
@@ -77,18 +79,24 @@ const NewAccount = ({ onPractice, onPlan }: Props) => {
                   </a>
                 </div>
                 {f.about && <p className="-mt-1.5 text-t11 text-textMuted leading-snug">{f.about}</p>}
+                {shared.length ? (
+                  <p className="-mt-1 text-t10 text-warn leading-snug" data-paper-not-modelled="firm">
+                    Not modelled here, on every {f.name} plan: {shared.join(' · ')}
+                  </p>
+                ) : null}
                 {programs.map(prog => {
                   const plans = f.plans.filter(p => (p.program ?? '') === prog);
                   const first = plans[0];
+                  const own = (first.notModelled ?? []).filter(n => !shared.includes(n));
                   return (
                     <div key={prog} className="flex flex-col gap-2 min-w-0" data-paper-program={`${f.id}:${prog}`}>
                       <div className="flex items-baseline gap-2 flex-wrap">
                         <span className="text-t12 font-medium text-textPrimary">{prog}</span>
                         <span className="text-t10 text-textMuted">{planChips(first, true).join(' · ')}</span>
                       </div>
-                      {first.notModelled?.length ? (
+                      {own.length ? (
                         <p className="text-t10 text-warn leading-snug" data-paper-not-modelled>
-                          Not modelled here: {first.notModelled.join(' · ')}
+                          Not modelled here: {own.join(' · ')}
                         </p>
                       ) : null}
                       <div className="flex flex-wrap gap-1.5">
