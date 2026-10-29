@@ -80,7 +80,7 @@ const commit = (next: string[]) => {
   for (const l of listeners) l();
 };
 
-export function getBoardNames(): string[] {
+function getBoardNames(): string[] {
   return current;
 }
 

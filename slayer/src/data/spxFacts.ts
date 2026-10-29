@@ -106,7 +106,7 @@ export interface SpxRail {
   pin: number | null;
 }
 
-export interface FlowBucket {
+interface FlowBucket {
   time: number;
   callPrem: number;
   putPrem: number;
@@ -605,7 +605,3 @@ export function flowBuckets(read: SpxRead, barSec: number): FlowBucket[] {
   return [...by.values()].sort((a, b) => a.time - b.time);
 }
 
-export function railForExpiry(read: SpxRead, expiration: string | null): SpxRail | null {
-  if (!expiration) return read.bookRail;
-  return read.byExpiry.get(expiration) ?? null;
-}

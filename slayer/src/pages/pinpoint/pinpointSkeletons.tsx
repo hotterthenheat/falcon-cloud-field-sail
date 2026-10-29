@@ -177,7 +177,7 @@ const CalendarBoxSkeleton = ({ className = 'h-[870px]' }: { className?: string }
 );
 
 /** The Day: the trader's clock — head with three facts, the phases strip, the schedule band, the line */
-export const DayInner = () => (
+const DayInner = () => (
     <section className="relative flex flex-col min-w-0" aria-hidden data-skeleton="day-box">
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-0 flex-1">
@@ -210,7 +210,7 @@ const DayBoxSkeleton = () => (
 );
 
 /** How the levels held today: a head and five level rows of 85px */
-export const ReportInner = () => (
+const ReportInner = () => (
     <section className="relative flex flex-col min-w-0" aria-hidden data-skeleton="report-box">
       <div className="px-5 pt-4 pb-3">
         <TitleRow title={190} />

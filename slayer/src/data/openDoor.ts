@@ -20,5 +20,5 @@ import { readDeskPrefs } from './deskPrefs';
 
 /** The terminal's front door of old — Pulse; still the tour's first window */
 export const DOOR = '/pulse';
-export const START = '/start';
+const START = '/start';
 export const doorTo = (): string => readDeskPrefs().opensOn.page ?? START;

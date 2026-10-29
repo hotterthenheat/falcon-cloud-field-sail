@@ -52,14 +52,6 @@ export const Facts = ({ widths, cols }: { widths: number[]; cols?: number }) => 
   </dl>
 );
 
-/** A panel header the house way: h-10, px-4, a title at the left and something at the right */
-export const PanelHeader = ({ title = 127, right = 190 }: { title?: number; right?: number }) => (
-  <header className="flex items-center justify-between gap-3 px-4 h-10 border-b border-borderSubtle shrink-0">
-    <Line w={title} h={11} />
-    {right > 0 && <Line w={right} h={12} />}
-  </header>
-);
-
 /** A chart's ground: one quiet block with a price axis down its right edge and a time axis along its foot */
 export const ChartGround = ({ className = '', axis = 60, foot = 22 }: { className?: string; axis?: number; foot?: number }) => (
   <div className={`relative h-full w-full ${className}`} data-skeleton="chart">

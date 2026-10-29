@@ -567,20 +567,6 @@ export function heatCellStyle(value: number, maxAbs: number, mode: HeatMode = HE
   };
 }
 
-/** Two strong inks off ONE ramp — for a surface that draws the put side and the
-    call side as lines or lanes beside capsules on the same ramp (the Building
-    ledger's two-lane bar, 2026-09-07): `pos` is the amplify side (puts), `neg`
-    the absorb side (calls), read at `t` rather than at the pole because the
-    house pole is near-white ice and the thermal pole is a deep navy — neither
-    is a line colour on a dark panel. */
-export function heatLaneInks(mode: HeatMode = HEAT_MODE, t = 0.7, paper = false): { pos: string; neg: string } {
-  const hex = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
-  if (paper) return { pos: hex(paperInk(1, 1, mode)), neg: hex(paperInk(-1, 1, mode)) };
-  const pal = RAMPS[mode as keyof typeof RAMPS];
-  if (!pal) return { pos: '#ededed', neg: '#8f8f8f' };
-  return { pos: hex(rampColor(pal.pos, t)), neg: hex(rampColor(pal.neg, t)) };
-}
-
 /** One lane's colour ON THE RAMP ITSELF — the bar wears the heat its size
     earns, the same colour a capsule of that value would (Noah, 2026-09-07:
     "shouldn't the call/put chart match if we switch the heatmap to

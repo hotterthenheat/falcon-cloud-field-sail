@@ -93,7 +93,7 @@ export function yearsToExpiry(expiry: string, ms: number): number {
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /** "7:55 AM CT" — the desk's clock. The trading day underneath is still New York's. */
-export const nyClockWords = (ms: number): string => nyClock(ms, { zone: true });
+const nyClockWords = (ms: number): string => nyClock(ms, { zone: true });
 /** "Sep 22 · 14:03" in New York */
 export const nyMomentWords = (ms: number): string => {
   const t = nyAt(ms);

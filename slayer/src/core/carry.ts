@@ -49,8 +49,3 @@ export function getCarry(): Carry {
   return current;
 }
 
-/** What the figures above are standing on — for surfaces that caveat. */
-export function carrySource(): CarrySource {
-  return source;
-}
-
