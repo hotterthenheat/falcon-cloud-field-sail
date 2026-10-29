@@ -40,8 +40,8 @@ import { makeCell, useCell, type Cell } from '../../components/gex/hoverCell';
 import { useFadeClose } from '../../components/ui/useFadeClose';
 import CompareControl from '../../components/gex/CompareControl';
 import TickerTabStrip, { TAB_MAX } from '../../components/gex/TickerTabStrip';
-import { BEAD_INK_CSS } from '../../components/gex/gexNodesPrimitive';
-import { SUPREME as SUPREME_INK } from '../../components/gex/paletteInk';
+import FieldKey from '../../components/gex/FieldKey';
+import { useMaxPain } from '../../components/gex/levelExtras';
 import { composeSnapshot, snapshotName } from '../../components/gex/snapshot';
 import { readSessionClock } from '../../data/moc';
 import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, profileRestWidth, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
@@ -134,6 +134,8 @@ interface TerrainCfg {
   /** Which contracts the rails read — one expiry (the calendar card in the rail's head) or the whole book, for the
       desk. The chart's walls, flip and supreme are the house levels: the levels scope, or this cut's date when later. */
   railCut: RailCut;
+  /** The desk's look: from 2 every pane opens with the cone and the key levels on (a stored desk is moved once) */
+  look?: number;
 }
 
 /** A calendar expiry's days-to-expiry, or the whole book */
@@ -220,6 +222,16 @@ const SCALES = new Set<string>(PRICE_SCALES.map(o => o.value));
 /* Same rule: derived from the engine's own list rather than typed twice. */
 const OR_VALUES = new Set<number>(OPENING_RANGES);
 
+/** A Terrain pane opens with the field, the forward cone and the key levels */
+const TERRAIN_OVERLAYS = { ...DEFAULT_OVERLAYS, cone: true, levels: true };
+const LOOK = 2;
+/** A desk stored before LOOK, moved once: every pane's and every setup's cone and key levels on */
+const lookUp = (cfg: TerrainCfg, stored: unknown): TerrainCfg => {
+  if (stored === LOOK) return cfg;
+  const on = <T extends { overlays?: ChartOverlays }>(x: T): T => (x.overlays ? { ...x, overlays: { ...x.overlays, cone: true, levels: true } } : x);
+  return { ...cfg, look: LOOK, panes: cfg.panes.map(on), setups: Object.fromEntries(Object.entries(cfg.setups).map(([k, v]) => [k, on(v)])) as SetupMap };
+};
+
 /** The pane slots differ only by symbol at first; a reader sets the rest. */
 const OPEN_NAMES = ['SPY', 'QQQ', 'AAPL', 'NVDA'] as const;
 const defaultPanes = (): PaneCfg[] =>
@@ -227,7 +239,7 @@ const defaultPanes = (): PaneCfg[] =>
     ticker,
     tabs: [ticker],
     timeframe: '15m' as Timeframe,
-    overlays: { ...DEFAULT_OVERLAYS },
+    overlays: { ...TERRAIN_OVERLAYS },
     indicators: { ...DEFAULT_INDICATORS },
     chartStyle: 'candles' as ChartStyle,
     clock: 'time',
@@ -241,7 +253,7 @@ const defaultPanes = (): PaneCfg[] =>
   }));
 
 /* The map starts empty on a fresh install, deliberately. */
-const defaults = (): TerrainCfg => ({ layout: 3, panes: defaultPanes(), setups: {}, palette: 'thermal', railCut: 'book' });
+const defaults = (): TerrainCfg => ({ layout: 3, panes: defaultPanes(), setups: {}, palette: 'thermal', railCut: 'book', look: LOOK });
 
 /** One stored pane, validated field by field against a known-good default. */
 /* Migration only. A blob written before setups existed has four panes a reader did configure, so their settings
@@ -329,7 +341,7 @@ function loadCfg(): TerrainCfg {
       const stored = c.panes as unknown[];
       const panes = def.panes.map((d, i) => readPane(stored[i], { ...d, ladder: deskLadder ?? d.ladder }));
       const hadSetups = !!c.setups && typeof c.setups === 'object';
-      return { layout, panes, setups: hadSetups ? readSetups(c.setups) : seedFrom(panes), palette, railCut };
+      return lookUp({ layout, panes, setups: hadSetups ? readSetups(c.setups) : seedFrom(panes), palette, railCut }, c.look);
     }
 
     // The flat shape, fanned out
@@ -347,7 +359,7 @@ function loadCfg(): TerrainCfg {
         ladder: deskLadder ?? d.ladder,
       })
     );
-    return { layout, panes, setups: seedFrom(panes), palette, railCut };
+    return lookUp({ layout, panes, setups: seedFrom(panes), palette, railCut }, c.look);
   } catch {
     return def;
   }
@@ -571,8 +583,6 @@ interface PaneProps {
   /** The pane's real box, handed up so the desk can scroll it into view when a key makes it active — below `lg` the
       panes stack and the page scrolls. */
   boxRef?: (el: HTMLDivElement | null) => void;
-  /** The field's key reference, out to the desk's line; 0 when the field is off */
-  onTrailRef?: (index: number, ref: number) => void;
   /* Extra grid classes for this pane's box. */
   cell?: string;
   /** The desk's one choice of rail colours — see TerrainCfg.palette */
@@ -587,9 +597,11 @@ const Pane = ({
   onCrosshair, registerSync, replay, onToggleReplay, onExitReplay,
   drawing, onToggleDrawing, onExitDraw,
   isActive, onActivate, paneCount, closing = false, menuOpen, onMenu,
-  boxRef, cell = '', palette, railCut, onRailCut, arriveFocus = null, onTrailRef,
+  boxRef, cell = '', palette, railCut, onRailCut, arriveFocus = null,
 }: PaneProps) => {
-  const onTrailKey = useCallback((ref: number) => onTrailRef?.(index, ref), [onTrailRef, index]);
+  /* the field's scale, for the key in the chart's corner (0 while the field is off) */
+  const [fieldScale, setFieldScale] = useState(0);
+  const onTrailKey = useCallback((ref: number) => setFieldScale(ref), []);
   const chartCrosshair = useStable(onCrosshair);
   const chartSyncRegister = useStable(registerSync);
   const chartExitDraw = useStable(onExitDraw);
@@ -706,7 +718,12 @@ const Pane = ({
      the cut's own expiry when the rail is cut to a later date, off the rows the rail already holds. */
   const levelsScope = useLevelsScope();
   const house = useLevelsFor(ticker, levelsScope, bookPick ? shownBook?.date ?? null : null);
-  const levels = useMemo(() => paneLevels(railData.spot, house), [railData, house]);
+  /* the levels' own contracts: their largest strike sizes each wall, and their expiry names max pain */
+  const levelsChain = house ? chainForDate(ticker, house.date ?? 'book') : null;
+  const levelsNodes = levelsChain?.nodes;
+  const levelsTop = useMemo(() => (levelsNodes ? levelsNodes.reduce((m, n) => Math.max(m, Math.abs(n.netGex)), 0) : 0), [levelsNodes]);
+  const maxPain = useMaxPain(ticker, house?.date ?? levelsChain?.date ?? null, overlays.levels);
+  const levels = useMemo(() => paneLevels(railData.spot, house, { top: levelsTop, maxPain }), [railData, house, levelsTop, maxPain]);
   // Deterministic per ticker, so the dark-pool lines do not wander on a tick
   const prints = useMemo(() => [] as { price: number; notional: number; date: string; size: number; time: string }[], []);
   /* The rail's rows come off the same snapshot `levels` was reduced from. The header's three-strike read uses them
@@ -1099,7 +1116,8 @@ const Pane = ({
               ticker={ticker}
               paneId={`terrain:${index + 1}`}
               revision={revision}
-              bookDate={bookPick}
+              /* the field reads the rail's cut: one expiry, or every expiry */
+              bookDate={railCut === 'book' ? 'book' : bookPick}
               levels={levels}
               timeframe={timeframe}
               flowPrints={NO_FLOW_PRINTS}
@@ -1143,6 +1161,18 @@ const Pane = ({
               frameless
             />
             </Deferred>
+            {/* The field's key: the model, its switch, the colour scale and the cut's net GEX */}
+            {overlays.trails && !replay && fieldScale > 0 && (
+              <div className="absolute left-12 bottom-9 z-20" data-terrain-field-key>
+                <FieldKey
+                  ticker={ticker}
+                  cut={railCut === 'book' ? 'book' : shownBook?.date ?? null}
+                  cutWords={railCut === 'book' ? 'every expiry' : shownBook?.label ?? '—'}
+                  scale={fieldScale}
+                  compact={isPhone}
+                />
+              </div>
+            )}
 
             {/* Who this pane is, and how it is set up floating over the tape, not stacked above it. */}
             {/* IT comes and goes. Graded, not all-or-nothing, because the two rows answer different questions. */}
@@ -1639,9 +1669,6 @@ const Terrain = () => {
   /* The strip's tabs — the active pane's */
   const stripPane = cfg.panes[active] ?? cfg.panes[0];
   const stripTabs = stripPane.tabs.length ? stripPane.tabs : [stripPane.ticker];
-  /* The field's key reference a pane, for the desk bar's line */
-  const [trailRefs, setTrailRefs] = useState<Record<number, number>>({});
-  const reportTrailRef = useCallback((i: number, ref: number) => setTrailRefs(prev => (prev[i] === ref ? prev : { ...prev, [i]: ref })), []);
   /* Mirrors for the key handler, which is installed once and must never read a stale closure — the same pattern the
      charts use for their own subscriptions. */
   const activeRef = useRef(0);
@@ -1907,30 +1934,6 @@ const Terrain = () => {
         data-chart-chrome={expanded !== null ? '' : undefined}
         data-chart-ground={expanded !== null ? chartGround(panes[expanded]?.theme ?? pageDefaultCandleKey()) : undefined}
       >
-        {/* The field's key, ON the desk's line: the words every pane shares, and the active pane's reference figure,
-            at the bar's left; the panes draw no key row of their own */}
-        {expanded === null && !belowLg && stripPane.overlays.trails && !(replaying[active] ?? false) && (
-          <div className="mr-auto min-w-0 flex items-center gap-x-3 font-mono text-t9 text-textMuted whitespace-nowrap overflow-hidden" data-terrain-key>
-            <span>size = gamma at the strike</span>
-            <span className="inline-flex items-center gap-1">
-              <span className="w-3 h-[5px] rounded-full shrink-0" style={{ background: BEAD_INK_CSS.put }} aria-hidden /> puts · pushes a move along
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="w-3 h-[5px] rounded-full shrink-0" style={{ background: BEAD_INK_CSS.call }} aria-hidden /> calls · holds one back
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="w-3 h-[5px] rounded-full shrink-0" style={{ background: SUPREME_INK }} aria-hidden /> the supreme
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="w-3 h-[5px] rounded-full shrink-0" style={{ background: 'rgb(var(--silver))' }} aria-hidden /> your strike
-            </span>
-            {(trailRefs[active] ?? 0) > 0 && (
-              <span data-terrain-key-ref>
-                full size = {fmtUsd(trailRefs[active] ?? 0)} per 1% move{cfg.layout > 1 ? ` · ${stripPane.ticker}` : ''}
-              </span>
-            )}
-          </div>
-        )}
         <div
           role="group"
           aria-label="How many charts"
@@ -2133,7 +2136,6 @@ const Terrain = () => {
             arriveFocus={i === 0 ? arrive?.focus ?? null : null}
             cfg={pane}
             onCfg={patch => setPane(i, patch)}
-            onTrailRef={reportTrailRef}
             revision={revision}
             expanded={expanded === i}
             onToggleExpand={() => toggleExpand(i)}

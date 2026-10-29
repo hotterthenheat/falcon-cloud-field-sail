@@ -18,7 +18,7 @@ import { readSessionClock } from '../../data/moc';
 import { CLOSE_MIN, aheadClock, buildCorridor, hhmm, type AheadClock } from '../../data/ahead';
 import { buildExposureProfile } from '../../data/exposure';
 import { ThermalFieldPrimitive, type FieldPoint, type Rgb } from './thermalFieldPrimitive';
-import { dayAxisFrom, dayAxisTo } from '../../data/dayAxis';
+import { axisForSession, dayAxisFrom, dayAxisTo } from '../../data/dayAxis';
 import { besideDot } from './besideDot';
 import { nyIsoDate, nyMinutes } from '../../core/nyTime';
 import { dayRef, longDay, todayScopeLabel } from '../../data/bookWindow';
@@ -189,9 +189,11 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const liveMin = h * 60 + m;
   const inSession = at != null ? true : clock.phase === 'OPEN' || clock.phase === 'AUCTION';
   /* the clock starts where the day's bars do (data/dayAxis.ts) — the book under it reads the same bars, so the same minute */
-  const FROM = dayAxisFrom(bars[0]?.time);
+  /* a pre-market or evening tape keeps its own window, the clock the book under it reads (axisForSession) */
+  const offCash = tapeSession === 'pre' || tapeSession === 'post' ? axisForSession(bars, tapeSession, at == null && inSession) : null;
+  const FROM = offCash?.from ?? dayAxisFrom(bars[0]?.time);
   /* live, the axis is the session so far (dayAxis.ts); a replay and a closed day keep the whole session */
-  const TO = dayAxisTo(bars[bars.length - 1]?.time, at == null && inSession);
+  const TO = offCash?.to ?? dayAxisTo(bars[bars.length - 1]?.time, at == null && inSession);
   const nowMin = at != null ? Math.max(FROM, Math.min(TO, at)) : inSession ? Math.max(FROM, liveMin) : TO;
   const spot = bars.length ? bars[bars.length - 1].close : snapshot.spot;
   /* what "Last" prints: the room's price — the replay's last bar when rewound */

@@ -246,6 +246,18 @@ function weekRow(rows: Row[], today: string): Row | null {
   return friday ?? ahead.find(r => r.dte >= 3 && r.dte <= 11) ?? ahead[Math.min(ahead.length - 1, 1)] ?? ahead[0];
 }
 
+/** The surface's at-the-money vols by expiry (calendar-year fractions, as the source quotes them) and where they came
+    from: ThetaData's at-the-money IV on a ThetaData page, the vendor's term structure on an Unusual Whales page */
+export function coneTerm(ticker: string): { rows: { expiry: string; iv: number }[]; source: 'theta' | 'uw'; at: number } | null {
+  const surface = cache.get(keyOf(ticker));
+  if (!surface) return null;
+  const rows = surface.rows.filter(r => r.iv > 0).map(r => ({ expiry: r.expiry, iv: r.iv }));
+  return rows.length ? { rows, source: surface.source === 'theta' ? 'theta' : 'uw', at: surface.at } : null;
+}
+
+/** The surface's revision: it moves when a name's vols land */
+export const coneRev = (): number => rev;
+
 export function coneFor(ticker: string, horizon: ConeHorizon, spot: number): ConeDraw | null {
   const surface = cache.get(keyOf(ticker));
   if (!surface || !(spot > 0)) return null;
