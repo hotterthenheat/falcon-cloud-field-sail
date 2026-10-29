@@ -39,10 +39,11 @@ import { nameGoesUp } from '../../data/review/engine';
 import { contractKey, contractWords, type ContractId, type Right } from '../../data/review/quotes';
 import { companyName } from '../../data/tickers';
 import type { Timeframe } from '../../data/timeframe';
-import { bankedOf, evalRead, futLadderRoom, futLadderTake, futRefusal, optLadderRoom, optLadderTake, optRefusal, viewOf, type FutOrder, type FutTrade, type MarkedFut, type MarkedOpt, type OptOrder, type OptTrade } from '../../data/paper/engine';
+import { bankedOf, evalRead, gapOf, futLadderRoom, futLadderTake, futRefusal, optLadderRoom, optLadderTake, optRefusal, viewOf, type FutOrder, type FutTrade, type MarkedFut, type MarkedOpt, type OptOrder, type OptTrade } from '../../data/paper/engine';
 import { FUTURES_LIVE, LIFE, PAPER_INDEXES, feedOffline, isPaperIndex, ivOf, liveDeskChain, paperIndex, futCandles, spotRead, isPaperFuture, listedNow, paperFut, spotOf, spotForAskNow, spotForBidNow, stepOf } from '../../data/paper/feed';
 import { frontOn, futWords } from '../../data/paper/products';
 import { dayBeginsAt, nyMomentWords } from '../../data/paper/clock';
+import { nyClock } from '../../core/nyTime';
 import { amendOrder, attachFut, attachOpt, breakevenOrder, cancelOrder, cancelWorking, closeFut, closeOpt, endEval, flattenAccount, liveMarket, placeFutOrder, placeOptOrder, readPaper, rebaseOrder, setInHand, startEvaluation, startPractice, takeHere, trailOrder, usePaper } from '../../data/paper/store';
 
 /* The chart's settings on this desk. A name's live chart has its book: the walls, the trails, the vol pane. A
@@ -588,7 +589,16 @@ const PaperDesk = () => {
       header: 'Stands',
       render: r =>
         r.o.status === 'working' ? (
-          <span className="text-silver font-semibold">Working · {r.o.tif === 'day' ? 'today only' : 'until cancelled'}</span>
+          <span className="text-silver font-semibold">
+            Working · {r.o.tif === 'day' ? 'today only' : 'until cancelled'}
+            {!r.fut && gapOf(r.o, m.now) != null ? <span className="font-normal text-textMuted"> · the minutes it missed are being checked</span> : null}
+            {!r.fut && r.o.unjudged ? (
+              <span className="font-normal text-warn" title={r.o.unjudged.why}>
+                {' '}
+                · {nyClock(r.o.unjudged.from)}–{nyClock(r.o.unjudged.to, { zone: true })} not judged: {r.o.unjudged.why}
+              </span>
+            ) : null}
+          </span>
         ) : r.o.status === 'filled' ? (
           <span className="text-textPrimary">Filled at {r.fut ? futWords(r.o.symbol, r.o.fillPrice ?? 0) : r.o.fillPrice?.toFixed(2)}</span>
         ) : (

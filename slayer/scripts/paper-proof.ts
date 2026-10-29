@@ -12,6 +12,9 @@ import { futOfFund, isPaperIndex, paperFut } from '../src/data/paper/products';
 import { optionRootOf } from '../src/data/paper/thetaFeed';
 import type { ContractId } from '../src/data/review/quotes';
 import { priceWith } from './paper-test-pricer';
+import { replayGaps, type Fetched } from '../src/data/paper/catchUp';
+import { legKey } from '../src/data/review/history';
+import { gapOf } from '../src/data/paper/engine';
 import type { Candle } from '../src/types/market';
 
 let failed = 0;
@@ -301,6 +304,51 @@ ok('the page closing flattens at the market, in its own words', futBookOf(g).tra
   e = tick(e, { ...market(), closeOf: (t, d) => (t === 'SPY' && d === WED ? 503.4 : NaN) }).account;
   const done = optBookOf(e).trades[0];
   ok('…and settles at what it was worth in the money at that close', done?.how === 'expired' && done.avgOut === 3.4 && e.opt.fills[1].fee === 0, `${done?.avgOut}`);
+}
+
+/* ================= the minutes a resting order missed, replayed from the minute history ================= */
+{
+  const DAY = '2026-09-24';
+  now = nyInstant(DAY, 10 * 60);
+  px.SPY = 500;
+  let r = newAccount({ id: 'p8', kind: 'practice', name: 'Away', startCash: 25_000, now });
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  r = optPlace(r, market(), { contract: c, side: 'buy', qty: 1, kind: 'market' });
+  const paid = r.opt.fills[0].price;
+  /* a target at paid + 1.00, placed at 10:00, then the reader is on a page that reads no option quotes until 11:00 */
+  r = optPlace(r, market(), { contract: c, side: 'sell', qty: 1, kind: 'limit', price: +(paid + 1).toFixed(2) });
+  const target = r.opt.orders.find(o => o.status === 'working')!;
+  now = nyInstant(DAY, 11 * 60);
+  ok('an order unjudged for over a minute and a half has a gap, from when it was placed', gapOf(target, now) === target.placed.at);
+  /* back: the live tick does not judge it on 11:00's quote — its missed minutes come first */
+  px.SPY = 520;
+  r = tick(r, market()).account;
+  ok('the live tick leaves an order with a gap alone, even where the quote now would fill it', r.opt.orders.find(o => o.id === target.id)!.status === 'working');
+  /* the minute history: the bid is paid + 0.40 until 10:20, paid + 1.10 at 10:21 (minute 50), paid + 2.00 after;
+     SPY's bars at 505 */
+  const bid = new Array(390).fill(NaN);
+  const ask = new Array(390).fill(NaN);
+  for (let m = 0; m < 390; m++) {
+    const b = m < 50 ? paid + 0.4 : m === 50 ? paid + 1.1 : paid + 2;
+    bid[m] = +b.toFixed(2);
+    ask[m] = +(b + 0.1).toFixed(2);
+  }
+  const fetched: Fetched = { quotes: new Map([[`${legKey(c)}|${DAY}`, { bid, ask }]]), bars: new Map([[`SPY|${DAY}`, new Array(390).fill(505)]]), failed: new Map() };
+  r = replayGaps(r, fetched, now, 'L1');
+  const sold = r.opt.fills.find(f => f.side === 'sell');
+  /* minute 50 ends at 10:21:00: the first bid at or over the target, sold at that bid */
+  ok('replayed: it fills at the first missed minute whose bid reaches it, at that bid', !!sold && sold.price === +(paid + 1.1).toFixed(2) && sold.how === 'limit', `${sold?.price}`);
+  ok('…stamped with that minute’s end, 10:21 New York', !!sold && sold.at.at === nyInstant(DAY, 10 * 60 + 21));
+  /* the same gap, with the history not to be had: the order stays working and says so */
+  let u = newAccount({ id: 'p10', kind: 'practice', name: 'Unread', startCash: 25_000, now: nyInstant(DAY, 10 * 60) });
+  now = nyInstant(DAY, 10 * 60);
+  u = optPlace(u, market(), { contract: c, side: 'buy', qty: 1, kind: 'market' });
+  u = optPlace(u, market(), { contract: c, side: 'sell', qty: 1, kind: 'limit', price: 99 });
+  now = nyInstant(DAY, 11 * 60);
+  const none: Fetched = { quotes: new Map(), bars: new Map(), failed: new Map([[u.opt.orders.find(o => o.status === 'working')!.id, { why: 'ThetaData has no history for those minutes', again: false }]]) };
+  u = replayGaps(u, none, now, 'L1');
+  const left = u.opt.orders.find(o => o.kind === 'limit')!;
+  ok('without the history it stays working, says which minutes were not judged, and the live tick takes it from now', left.status === 'working' && left.unjudged?.why === 'ThetaData has no history for those minutes' && left.unjudged.from === left.placed.at && gapOf(left, now) == null);
 }
 
 console.log(`\n${passed} held · ${failed} missed`);

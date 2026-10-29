@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CalendarDays } from 'lucide-react';
-import { dayLean, fmtCount as num, lastRegularClose, plural, quoteNoReadWords, tapeSessionIso, tideBetween, useDayBigAlerts, useDayTopContracts, useTide, useAlertTrades, useFlowAlerts, useNameTopContracts, useOlderPages, olderAlerts, usePrintStream, usd as fmtUsd, type TapeQuery } from '../../data/traceLive';
+import { dayLean, dayStartMs, fmtCount as num, lastRegularClose, plural, quoteNoReadWords, tapeSessionIso, tideBetween, useDayBigAlerts, useDayTopContracts, useTide, useAlertTrades, useFlowAlerts, useNameTopContracts, useOlderPages, olderAlerts, usePrintStream, usd as fmtUsd, type TapeQuery } from '../../data/traceLive';
 import { leanWords } from '../../data/traceLean';
 import { useTraceSession } from '../../components/trace/traceSession';
 import { nyClock, nyWallTime } from '../../core/nyTime';
@@ -497,8 +497,13 @@ const LiveTape = () => {
       if (!m) return;
       const [y, mo, d] = dayOfTape.split('-').map(Number);
       let at = nyWallTime(y, mo, d, Number(m[1]), Number(m[2]));
-      const end = anchor?.closeMs ?? Date.now();
-      if (at > end) at = end;
+      /* a time at or past now is the live end: the newest page, no cursor */
+      if (!anchor && at >= Date.now() - 60_000) {
+        setJumpAt(null);
+        setTopSignal(n => n + 1);
+        return;
+      }
+      if (anchor && at > anchor.closeMs) at = anchor.closeMs;
       if (at <= startMs) at = startMs + 60_000;
       setJumpAt(at);
       setTopSignal(n => n + 1);
@@ -671,10 +676,7 @@ const LiveTape = () => {
   /* after the close the head leads with the day, not the last prints' seconds */
   const dayFirst = lane === 'prints' && !!anchor && regularOnly && !scopeActive;
   const dayIso = anchor?.iso ?? tapeSessionIso();
-  const dayOpenMs = useMemo(() => {
-    const [y, m, d] = dayIso.split('-').map(Number);
-    return Date.UTC(y, m - 1, d, 8, 0);
-  }, [dayIso]);
+  const dayOpenMs = useMemo(() => dayStartMs(dayIso), [dayIso]);
   const dayWanted = showDay || dayFirst;
   const dayTide = useTide('market', '', dayWanted);
   /* twenty, so three bets remain after the packages are set apart */

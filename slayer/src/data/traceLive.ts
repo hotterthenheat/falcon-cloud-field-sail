@@ -981,9 +981,9 @@ export function useNameDark(ticker: string | null, untilMs: number | null = null
       const day0 = untilMs ? nyDateOf(untilMs) : nyIsoToday();
       const onDay = (p: DarkPoolPrint) => !p.dateIso || p.dateIso === day0;
       const mapped = prints.filter(r => !r.canceled).map((r, i) => darkPrint(r, i)).filter(onDay);
-      /* the stock's own last trade, never a cross's price (a cross may be an own-terms print far off the market); the
-         newest cross priced at the quote only when the quote does not answer */
-      const spot = quote.price > 0 ? quote.price : mapped.find(p => !p.special)?.price || 0;
+      /* the stock's own last trade, never a cross's price (a cross may be an own-terms print far off the market); with no
+         quote there is no spot, and nothing is placed against one */
+      const spot = quote.price > 0 ? quote.price : 0;
       const dayVol = quote.vol;
       const day = darkDayOf(levels, dayVol);
       return { view: darkView(name, mapped, darkLevels(levels, spot, mapped), spot, day && Number.isFinite(day.sharePct) ? day.sharePct : 0), lit: lit.filter(r => !r.canceled).map((r, i) => darkPrint(r, i, 0, 'lit')).filter(onDay), day };

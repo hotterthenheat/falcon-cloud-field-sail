@@ -134,6 +134,11 @@ export function sessionIsoAt(ms: number): string {
   return isoDate(d);
 }
 export const SESSION_OPEN_MIN_ET = 9 * 60 + 30;
+/** A New York day's 04:00 — where its pre-market prints and alerts start, in either daylight or standard time */
+export function dayStartMs(iso: string): number {
+  const [y, m, d] = iso.split('-').map(Number);
+  return nyWallTime(y, m, d, 4, 0);
+}
 export function tapeSessionIso(): string {
   return sessionIsoAt(Date.now());
 }

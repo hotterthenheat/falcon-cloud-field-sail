@@ -89,7 +89,7 @@ import { SessionLevelsPrimitive, sessionLines } from './sessionLevelsPrimitive';
 import { buildExpectedMoveCone, daySigmaOfIv } from '../../data/expectedMove';
 import { buildTapeEvents, macroWindow, type MarketEvent, type MacroDate } from '../../data/events';
 import { sessionAtr } from '../../data/atr';
-import { uwOnlyDesk } from '../../data/spotGexBook';
+import { thetaUseHere } from '../../data/theta';
 import { type EarningsEvent } from '../../data/earnings';
 import { ensureEarnings, peekEarningsEvent } from '../../data/earningsFeed';
 import { EventsPrimitive } from './eventsPrimitive';
@@ -339,13 +339,16 @@ export function displayBars(ticker: string, mins: number, alt?: AltBarSpec | nul
   /* Rule bars have no live tape — they stay empty. */
   if (alt) return [];
   const session = getDeskSession();
-  /* Pinpoint and the Dossier read Unusual Whales alone (docs/DATA_SOURCES.md); every other desk draws ThetaData's bars */
-  if (!uwOnlyDesk()) return thetaChartBars(ticker, mins, session);
+  /* Pinpoint, Trace and the Dossier read Unusual Whales (docs/DATA_SOURCES.md); every other desk draws ThetaData's bars */
+  if (thetaBars()) return thetaChartBars(ticker, mins, session);
   if (mins < 1) return [];
   ensureBook(ticker, 'board');
   const book = deskTape(ticker, session).bars;
   return book && book.length >= 1 ? aggregateCandles(book, mins) : [];
 }
+
+/* ThetaData draws the bars where it is the page's source; Pinpoint, Trace and the Dossier draw Unusual Whales' */
+const thetaBars = (): boolean => thetaUseHere() === 'all';
 
 /** A session's window in New York time: "4:00 AM–9:30 AM ET" */
 const etWindow = (session: DeskSession): string => {
@@ -778,7 +781,7 @@ const StrikeChart = ({
     if (host) return aggregateCandles(host.bars, Math.max(1, mins));
     return displayBars(ticker, mins, alt);
   };
-  const baseBars = (): Candle[] => tapeRef.current?.bars ?? (uwOnlyDesk() ? deskTape(ticker, session).bars : thetaChartBars(ticker, 1, session));
+  const baseBars = (): Candle[] => tapeRef.current?.bars ?? (!thetaBars() ? deskTape(ticker, session).bars : thetaChartBars(ticker, 1, session));
   /* HistoryForDate stamps the whole chain on every candle (candles × strikes objects) and the effects below ask for
      it several times a change: it is kept until the book emits (the rev), the chain or the candles move. */
   const bookRevRef = useRef(bookRev);
@@ -805,7 +808,7 @@ const StrikeChart = ({
   /* No tick rebuild under the hand: while a pointer is down on the chart the revision is held (every tick-driven
      effect keys on it) and the newest one is applied on release. */
   /* ThetaData's live print moves the forming bar between the host's ticks (every desk but Pinpoint and the Dossier) */
-  const printRev = usePrintRev(!tape && !uwOnlyDesk());
+  const printRev = usePrintRev(!tape && thetaBars());
   const liveRev = revisionProp + printRev;
   const [revision, setRevision] = useState(liveRev);
   const keepViewRef = useRef(keepView);
@@ -1049,7 +1052,7 @@ const StrikeChart = ({
   useEffect(() => {
     const id = window.setTimeout(() => {
       /* a ThetaData tape still being read (this browser's copy included) is not an empty one */
-      if (barCountRef.current === 0 && (tapeRef.current || uwOnlyDesk() || thetaChartNote(ticker, tfMinutes(timeframe), getDeskSession()) != null)) setQuiet(true);
+      if (barCountRef.current === 0 && (tapeRef.current || !thetaBars() || thetaChartNote(ticker, tfMinutes(timeframe), getDeskSession()) != null)) setQuiet(true);
     }, 1200);
     return () => window.clearTimeout(id);
   }, [ticker, timeframe, barClock]);
@@ -2521,7 +2524,7 @@ const StrikeChart = ({
 
     const base = baseBars();
     if (!tapeRef.current) {
-      const note = uwOnlyDesk() ? deskTape(ticker, session).note : thetaChartNote(ticker, tfMinutes(timeframe), session);
+      const note = !thetaBars() ? deskTape(ticker, session).note : thetaChartNote(ticker, tfMinutes(timeframe), session);
       setSessionNote(prev => (prev === note ? prev : note));
     } else {
       /* a host's tape that is kept or offline says so over its bars */
@@ -2538,7 +2541,7 @@ const StrikeChart = ({
         setQuiet(true);
         return;
       }
-      if (uwOnlyDesk()) {
+      if (!thetaBars()) {
         const book = peekEntry(ticker);
         if (!book || book.status === 'loading') return;
       } else if (thetaChartNote(ticker, tfMinutes(timeframe), session) == null) return;
@@ -2563,7 +2566,7 @@ const StrikeChart = ({
     if (bars.length > 0) setQuiet(false);
     /* A rule clock reads the seconds tape, so it wears the chip too. A host that brought real 15-second history is
        not "live since connect" — that chip would call two days of prints a gap. */
-    setLiveFrom(!tapeRef.current?.native && uwOnlyDesk() && (altSpec || mins < 1) ? bars[0]?.time ?? 0 : null);
+    setLiveFrom(!tapeRef.current?.native && !thetaBars() && (altSpec || mins < 1) ? bars[0]?.time ?? 0 : null);
     drawingsRef.current?.setBars(bars);
     /* The measure counts bars and annualizes off them, so the layer has to know what a bar is worth here — set
        beside the times it belongs with, so a timeframe change can never move one without the other. */
@@ -3238,7 +3241,7 @@ const StrikeChart = ({
      session levels, the ATR and the cone read it) and the timeframe's own grain */
   const compareNames = compares.map(c => c.ticker).join(',');
   useEffect(() => {
-    if (tape || uwOnlyDesk()) return;
+    if (tape || !thetaBars()) return;
     const names = [ticker, ...compareNames.split(',').filter(Boolean)];
     const grain = chartGrain(tfMinutes(timeframe));
     const offs = names.flatMap(n => wantChartTape(n, grain, session));

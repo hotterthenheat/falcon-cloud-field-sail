@@ -3,13 +3,14 @@
    component, re-rendering only when that name's reading changes, so nothing else on the rail moves with the tape. With
    the terminal down it shows the last reading, stamped with when it was taken. */
 
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { asOfText } from '../ui/states';
+import { AsOf, asOfText } from '../ui/states';
 import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
 import { thetaAllowedHere } from '../../data/theta';
 import { extendedLine, useLiveQuote } from '../../data/liveQuote';
 import { changeInk } from '../../data/uwBook';
+import { uwKept } from '../../data/whales';
 
 /** The page in view may not ask the terminal for prices: it reads Unusual Whales (re-read on every navigation) */
 export function useUwOnlyRoute(): boolean {
@@ -39,11 +40,37 @@ export interface NavQuoteRead {
   source: 'theta' | 'uw';
 }
 
+/** The vendor's state this browser kept for a name (data/uwStore.ts), until the fresh quote lands: its last print and
+    the print's instant */
+function useKeptState(sym: string | null): { price: number; at: number } | null {
+  const [kept, setKept] = useState<{ sym: string; price: number; at: number } | null>(null);
+  useEffect(() => {
+    if (!sym) return;
+    let live = true;
+    void uwKept(`/stock/${encodeURIComponent(sym)}/stock-state`).then(k => {
+      const d = k?.data as { data?: { close?: string; tape_time?: string } } | { close?: string; tape_time?: string } | null;
+      const row = d && 'data' in d ? d.data : (d as { close?: string; tape_time?: string } | null);
+      const price = Number(row?.close);
+      const at = Date.parse(String(row?.tape_time ?? '')) || k?.at || 0;
+      if (live && price > 0 && at > 0) setKept({ sym, price, at });
+    });
+    return () => {
+      live = false;
+    };
+  }, [sym]);
+  return kept && kept.sym === sym ? kept : null;
+}
+
 export function useNavQuote(ticker: string): NavQuoteRead {
   const uwOnly = useUwOnlyRoute();
   const sym = quoteSymbolOf(ticker);
   const { held, status } = useThetaPrice(uwOnly ? null : sym);
   const uw = useLiveQuote(uwOnly ? sym : null);
+  const keptUw = useKeptState(uwOnly && !uw ? sym : null);
+  if (uwOnly && !uw && keptUw) {
+    /* the vendor's quote is on its way: the last one this browser kept, stamped, never as live */
+    return { priceText: money(keptUw.price), changeText: '', change: null, extText: null, live: false, offline: false, asOf: keptUw.at, source: 'uw' };
+  }
   if (uwOnly) {
     /* before the open the lead is the last session's change; the extended move rides beside it */
     const change = uw ? (uw.phase === 'pre' ? uw.lastSessionPct : uw.changePct) : null;
@@ -101,10 +128,11 @@ export const NavPrice = memo(({ ticker, compact = false }: { ticker: string; com
 });
 NavPrice.displayName = 'NavPrice';
 
-/** The offline line, only while the terminal is down */
+/** The offline line while the terminal is down; a kept vendor price says how old it is */
 export const NavOffline = memo(({ ticker }: { ticker: string }) => {
   const q = useNavQuote(ticker);
-  if (!q.offline) return null;
-  return <OfflineLine asOf={q.asOf} className="px-1 h-4" />;
+  if (q.offline) return <OfflineLine asOf={q.asOf} className="px-1 h-4" />;
+  if (q.source === 'uw' && q.asOf) return <AsOf at={q.asOf} className="px-1 h-4" title="Kept from the last visit. The fresh quote replaces it when it lands." />;
+  return null;
 });
 NavOffline.displayName = 'NavOffline';

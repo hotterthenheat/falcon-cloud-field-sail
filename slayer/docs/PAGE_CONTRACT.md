@@ -57,7 +57,7 @@ Every page in the terminal meets these rules. Read this with `docs/DATA_SOURCES.
   reaches 40 px around its centre. `DropdownSelect` triggers carry it already.
 - Real-time stock, index and option prices come from `data/thetaQuote.ts` (ThetaData snapshots):
   `useThetaPrice(t)` → `{ held, status }` (`held.value.price`, `prevClose`, `todayClose`, `read`; `held.live` false
-  is the last reading kept from before, stamp it with `asOfText(held.value.read)`), `useThetaPrices(names)`,
+  is the last reading kept from before, stamp it with `asOfText(held.value.at)`, the print's own instant), `useThetaPrices(names)`,
   `useThetaMarks(contracts)` + `peekThetaMark(t, expiry, strike, right)` for an option's NBBO mid, `thetaMove(price)`
   for the move from the last regular close, and `useThetaStatus()`. With the terminal down, show the kept price
   stamped and say "ThetaData offline" (`OfflineLine` in `components/layout/NavQuote.tsx`); never a stand-in.

@@ -37,6 +37,8 @@ export interface PaperMarket {
   open: (kind: 'option' | 'future') => boolean;
   /** The name's 16:00 close on a past or today's date (what an expiring contract settles on) — NaN until it is known */
   closeOf?: (ticker: string, day: string) => number;
+  /** A replayed minute of the history (store.ts catch-up), not the live market */
+  replay?: boolean;
 }
 /** What a contract is worth in the money with the name at `close` — a spread's two legs, kept inside its width */
 export function settleValue(c: ContractId, close: number): number {
@@ -69,6 +71,10 @@ export interface OptOrder {
   moved?: PaperMoment;
   /** The page load it was placed in — a later one cancels what an earlier one left working (the simulated feed) */
   life: string;
+  /** Up to when it has been judged against a quote (ms): live, or replayed from the minute history (gapOf) */
+  judgedTo?: number;
+  /** Minutes that could not be judged — no history for them — said beside the order */
+  unjudged?: { from: number; to: number; why: string };
 }
 /** How a fill came: an order's kind — or the market's (the bell), the rules' (an evaluation), the page's (it closed) */
 type OptFillHow = OrderKind | 'expired' | 'rule' | 'page';
@@ -1402,7 +1408,8 @@ function roll(a: PaperAccount, m: PaperMarket, events: PaperEvent[]): PaperAccou
   if (ledger[was]) ledger[was] = { ...ledger[was], close: v.equity };
   let next: PaperAccount = { ...a, ledger };
   const when = momentAt(m.now);
-  next = setOpt(next, next.opt.orders.map(o => (o.status === 'working' && o.tif === 'day' ? { ...o, status: 'cancelled' as const, done: when, why: 'the day ended' } : o)));
+  /* a day order with minutes still to replay waits for them: the replay ends it at its own day's bell */
+  next = setOpt(next, next.opt.orders.map(o => (o.status === 'working' && o.tif === 'day' && gapOf(o, m.now) == null ? { ...o, status: 'cancelled' as const, done: when, why: 'the day ended' } : o)));
   next = setFut(next, next.fut.orders.map(o => (o.status === 'working' && o.tif === 'day' ? { ...o, status: 'cancelled' as const, done: when, why: 'the day ended' } : o)));
   if (next.kind === 'evaluation' && next.plan && next.status === 'open' && ledger[was]) {
     const plan = next.plan;
@@ -1425,15 +1432,30 @@ function roll(a: PaperAccount, m: PaperMarket, events: PaperEvent[]): PaperAccou
 
 /** A working order's moment to be looked at: never the tick it was placed on */
 const lookable = (placed: PaperMoment, now: number) => placed.at < now;
+/** Longer than this unjudged (the page in view could not read option quotes, or the terminal was away) is a GAP */
+export const GAP_MS = 90_000;
+/** Since when a working order has not been judged, where that is a gap the minute history has to replay first — or null.
+    While it has one, the live tick leaves it alone, and it is not cancelled at the day's end or settled at its expiry. */
+export function gapOf(o: OptOrder, now: number): number | null {
+  if (o.status !== 'working' || o.kind === 'market') return null;
+  const from = Math.max(o.placed.at, o.judgedTo ?? o.placed.at);
+  return now - from > GAP_MS ? from : null;
+}
+/** Judge the working orders against one market: the live tick's step, and each replayed minute's (store.ts catch-up) */
+export const judgeOrders = (a: PaperAccount, m: PaperMarket): PaperAccount => optTickOrders(a, m);
 
 function optTickOrders(a: PaperAccount, m: PaperMarket): PaperAccount {
   let next = a;
+  const judged = new Set<string>();
   for (const o of a.opt.orders) {
     if (o.status !== 'working' || !lookable(o.placed, m.now)) continue;
+    /* minutes it missed are replayed first, in order (store.ts): judging it on today's quote now would skip them */
+    if (!m.replay && gapOf(o, m.now) != null) continue;
     const live = next.opt.orders.find(x => x.id === o.id);
     if (!live || live.status !== 'working') continue;
     const q = m.optQuote(live.contract);
     if (q.dead) continue;
+    judged.add(o.id);
     if (live.on === 'name') {
       if (live.side === 'sell' && nameHit(live, q.spot)) next = optFillNow(next, live, q.bid, live.kind, q, m);
       continue;
@@ -1446,6 +1468,9 @@ function optTickOrders(a: PaperAccount, m: PaperMarket): PaperAccount {
     } else if (live.kind === 'limit' && live.side === 'sell' && q.bid >= live.price!) next = optFillNow(next, live, Math.max(live.price!, q.bid), 'limit', q, m);
     else if (live.kind === 'stop' && live.side === 'sell' && q.bid <= live.price!) next = optFillNow(next, live, q.bid, 'stop', q, m);
   }
+  /* what was looked at on a quote is judged up to now (a minute at a time: the account is not rewritten every tick) */
+  if (judged.size && next.opt.orders.some(o => judged.has(o.id) && o.status === 'working' && Math.floor((o.judgedTo ?? 0) / 60_000) < Math.floor(m.now / 60_000)))
+    next = setOpt(next, next.opt.orders.map(o => (judged.has(o.id) && o.status === 'working' ? { ...o, judgedTo: m.now } : o)));
   /* Trailing stops, after the check: each was tried where it stood; only now is it moved by this tick's price */
   if (next.opt.orders.some(o => o.status === 'working' && o.trail != null)) {
     next = setOpt(
@@ -1643,6 +1668,8 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
     /* 16:00 on its date: an expiring contract settles at what it is worth in the money */
     for (const p of optBookOf(next).positions) {
       if (!expired(p.contract, m.now)) continue;
+      /* a way out of it with minutes still to replay may have sold it before the bell: the settlement waits for them */
+      if (next.opt.orders.some(o => contractKey(o.contract) === p.key && gapOf(o, m.now) != null)) continue;
       const when = momentAt(m.now);
       next = setOpt(next, next.opt.orders.map(o => (o.status === 'working' && contractKey(o.contract) === p.key ? { ...o, status: 'cancelled' as const, done: when, why: 'the contract expired' } : o)));
       /* on the name's 16:00 close that day, not wherever it stands when the page next ticks; it waits until that is known */

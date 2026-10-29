@@ -43,7 +43,9 @@ const say = (k: string, v: unknown) => REPORT && console.log(`REPORT ${k} = ${JS
 const close = T.lastRegularClose()!;
 expectEqual('session read is Oct 28', close.iso, '2026-10-28');
 const stockClose = T.lastStockClose()!.closeMs;
-const preOpen = close.openMs - 330 * 60_000; // 04:00 ET, where the day's alerts start
+const preOpen = T.dayStartMs(close.iso); // 04:00 ET, where the day's alerts start
+/* the 04:00 New York boundary in daylight time (08:00Z) and after the clocks go back on Nov 1 (09:00Z) */
+expectEqual('day start Oct 28 (EDT) and Nov 2 (EST)', [new Date(T.dayStartMs('2026-10-28')).toISOString(), new Date(T.dayStartMs('2026-11-02')).toISOString()], ['2026-10-28T08:00:00.000Z', '2026-11-02T09:00:00.000Z']);
 
 /* ---- 1. not-a-bet: the market's last 500 prints before the 16:15 close ---------------------------------------- */
 const mkt = await T.readTapePage({}, { olderThan: close.closeMs }, 500);
