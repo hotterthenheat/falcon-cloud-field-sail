@@ -71,6 +71,8 @@ export function yearsLeft(iso: string, minute: number, expiry: string): number {
 export const dteAt = (iso: string, expiry: string): number => Math.max(0, Math.round((dateOf(expiry).getTime() - dateOf(iso).getTime()) / 86400000));
 
 const cents = (v: number) => Math.round(v * 100) / 100;
+/** A mark is the mid itself — half a cent is kept (3.90 / 3.91 is marked at 3.905, not 3.90): only float dust is cut */
+const mid4 = (v: number) => Math.round(v * 1e4) / 1e4;
 const intrinsicOf = (c: ContractId, spot: number) => (spot > 0 ? Math.max(0, c.right === 'C' ? spot - c.strike : c.strike - spot) : 0);
 const noQuote = (c: ContractId, spot: number): Quote => ({ bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic: cents(intrinsicOf(c, spot)), dead: true, spot });
 
@@ -88,8 +90,8 @@ function legQuote(c: ContractId, iso: string, minute: number): Quote {
   const spot = spotAt(c.ticker, iso, minute);
   const intrinsic = intrinsicOf(c, spot);
   const q = nbboAt(c, iso, minute);
-  if (!q || !(q.ask > 0) || !(q.bid > 0)) return { ...noQuote(c, spot), bid: q?.bid ?? 0, ask: q?.ask ?? 0, mark: q ? cents((q.bid + q.ask) / 2) : NaN };
-  const mark = cents((q.bid + q.ask) / 2);
+  if (!q || !(q.ask > 0) || !(q.bid > 0)) return { ...noQuote(c, spot), bid: q?.bid ?? 0, ask: q?.ask ?? 0, mark: q ? mid4((q.bid + q.ask) / 2) : NaN };
+  const mark = mid4((q.bid + q.ask) / 2);
   return { bid: q.bid, ask: q.ask, mark, ...greeksOn(c, (q.bid + q.ask) / 2, spot, yearsLeft(iso, minute, c.expiry)), intrinsic: cents(intrinsic), dead: false, spot };
 }
 
@@ -107,7 +109,7 @@ export function quoteAt(c: ContractId, iso: string, minute: number): Quote {
   return {
     bid,
     ask,
-    mark: cents((bid + ask) / 2),
+    mark: mid4((bid + ask) / 2),
     iv: bought.iv,
     delta: bought.delta - sold.delta,
     gamma: bought.gamma - sold.gamma,
@@ -140,10 +142,10 @@ export function markAt(c: ContractId, iso: string, minute: number): Mark {
   };
   const a = one(longLeg(c));
   if (!a) return { mark: NaN };
-  if (c.short == null) return { mark: cents(a.mid), staleFrom: a.from };
+  if (c.short == null) return { mark: mid4(a.mid), staleFrom: a.from };
   const b = one({ ...longLeg(c), strike: c.short });
   if (!b) return { mark: NaN };
-  return { mark: cents(Math.max(0, Math.min(spreadWidth(c), a.mid - b.mid))), staleFrom: Math.min(a.from, b.from) };
+  return { mark: mid4(Math.max(0, Math.min(spreadWidth(c), a.mid - b.mid))), staleFrom: Math.min(a.from, b.from) };
 }
 
 /* ---- the bell of an expiry: how a contract settles ---- */

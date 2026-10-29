@@ -396,7 +396,8 @@ const Desk = () => {
       expiryOptions={expiryOptions}
       onExpiry={setExpiry}
       expiryTitle="The expiries listed on this day"
-      rows={chain?.rows ?? []}
+      /* a day the vendor recorded nothing near the money on: the empty box says so, not a ladder of dashes */
+      rows={chainState === 'none' || chainState === 'offline' ? [] : (chain?.rows ?? [])}
       picked={picked}
       drillOpen={drillOpen}
       onPick={pickRow}

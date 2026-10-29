@@ -49,6 +49,7 @@ const StockName = lazy(() => import('./pages/record/StockName'));
 const RecordLayout = lazy(() => import('./pages/record/RecordLayout'));
 const PracticeLayout = lazy(() => import('./pages/practice/PracticeLayout'));
 const PaperDesk = lazy(() => import('./pages/paper/Desk'));
+const PaperAccounts = lazy(() => import('./pages/paper/Accounts'));
 const ReviewSessions = lazy(() => import('./pages/review/Sessions'));
 const ReviewDesk = lazy(() => import('./pages/review/Desk'));
 const ReviewReport = lazy(() => import('./pages/review/Report'));
@@ -196,7 +197,8 @@ const App = () => {
             <Route path="/skys-vision" element={<Navigate to="/compass" replace />} />
             <Route path="/practice" element={<PracticeLayout />}>
               <Route index element={<Navigate to="/practice/paper" replace />} />
-              <Route path="paper" element={<PaperDesk />} />
+              <Route path="paper" element={<PaperAccounts />} />
+              <Route path="paper/:accountId" element={<PaperDesk />} />
               <Route path="backtest" element={<ReviewSessions />} />
               <Route path="futures" element={<Navigate to="/practice/backtest" replace />} />
               <Route path="backtest/:id" element={<ReviewDesk />} />

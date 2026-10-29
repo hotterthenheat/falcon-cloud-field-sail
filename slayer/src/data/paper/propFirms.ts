@@ -78,3 +78,22 @@ export function customPlan(c: CustomRules): PaperPlan {
 
 /** "$25K" */
 export const sizeWords = (n: number): string => (n >= 1000 && n % 1000 === 0 ? `$${(n / 1000).toLocaleString('en-US')}K` : `$${n.toLocaleString('en-US')}`);
+
+const k = (n: number) => sizeWords(n);
+/** A plan's rules in a few words each, for the chooser and the account's line */
+export function planChips(plan: PaperPlan): string[] {
+  const r = plan.rules;
+  const out: string[] = [];
+  const targets = r.phases.map(p => p.target).filter((t): t is number => t != null);
+  if (targets.length) out.push(`target ${targets.map(t => `+${k(t)}`).join(' then ')}`);
+  if (r.drawdown) out.push(`${r.drawdown.mode === 'static' ? 'max loss' : r.drawdown.mode === 'eod' ? 'EOD trailing' : 'intraday trailing'} ${k(r.drawdown.amount)}`);
+  if (r.dailyLoss) out.push(`daily ${k(r.dailyLoss.amount)}${r.dailyLoss.breach === 'pause' ? ' (pauses the day)' : ''}`);
+  if (r.minDays) out.push(`${r.minDays} days min`);
+  if (r.consistency != null) out.push(`best day ≤ ${Math.round(r.consistency * 100)}%`);
+  if (r.timeLimitDays) out.push(`${r.timeLimitDays} days to pass`);
+  if (r.maxContracts) out.push(`${r.maxContracts} contracts max`);
+  if (r.flatBy) out.push(`flat by ${r.flatBy} ET`);
+  else if (!r.overnight) out.push('flat by the close');
+  if (!r.zeroDte) out.push('no 0DTE');
+  return out;
+}

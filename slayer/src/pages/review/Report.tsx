@@ -198,7 +198,7 @@ const Report = () => {
         <div className="px-5 pb-4 pt-3 border-t border-borderSubtle/70 min-w-0" data-report-days>
           <div className="font-mono text-t10 font-semibold uppercase tracking-widest text-textPrimary">By day</div>
           <div className="mt-1.5 overflow-x-auto">
-            <div className="grid grid-cols-[minmax(84px,1fr)_auto_auto_auto_auto] gap-x-4 font-mono text-t11 tnum min-w-[360px]">
+            <div className="grid grid-cols-[minmax(84px,1fr)_auto_auto_auto_auto] gap-x-4 font-mono text-t11 tnum min-w-[340px] max-w-[720px]">
               <span className="text-t9 uppercase tracking-widest text-textMuted pb-1">Day</span>
               <span className="text-t9 uppercase tracking-widest text-textMuted text-right pb-1">Closed</span>
               <span className="text-t9 uppercase tracking-widest text-textMuted text-right pb-1" title="What the trades that closed that day made or lost">Their P&amp;L</span>

@@ -267,7 +267,6 @@ export const JournalManualHome = () => {
                     range={runRange}
                     zone="ny"
                     scale="pnl"
-                    curved
                     cardW={220}
                     cardH={84}
                     testId="manual-running"
@@ -810,7 +809,8 @@ const ImportCard = ({ j, onClose }: { j: ManualJournal; onClose: () => void }) =
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setRead(text.trim() ? readJournalCsv(text) : null);
-    setDone(null);
+    /* the "brought in" line stays until something new is pasted */
+    if (text.trim()) setDone(null);
   }, [text]);
   const count = read ? (read.kind === 'trades' ? read.trades.length : read.days.length) : 0;
   const bring = () => {
