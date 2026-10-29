@@ -284,8 +284,11 @@ export async function ensureIndexLevels(tickers: Iterable<string>): Promise<void
     }
     if (waitFor) jobs.push(job);
   }
-  await Promise.all(jobs);
+  /* never holds a page's rows long: past INDEX_WAIT_MS they map without the level (the distance reads "—") and the
+     next read carries it */
+  if (jobs.length) await Promise.race([Promise.all(jobs), new Promise(r => setTimeout(r, INDEX_WAIT_MS))]);
 }
+const INDEX_WAIT_MS = 5_000;
 export const tickerOfRow = (r: Record<string, unknown>) => String(r.underlying_symbol || r.ticker || r.ticker_symbol || '').toUpperCase();
 
 /* One live spot per name, the newest of the live quote, the newest print's underlying price and the stock screener's

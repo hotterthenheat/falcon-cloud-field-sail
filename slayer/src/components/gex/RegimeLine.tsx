@@ -7,7 +7,8 @@ import { LEVELS_OPTIONS, setLevelsForName, useNameLevels, type LevelsScope } fro
 import { setUnitForName, useNameUnit } from '../../data/distanceUnits';
 import { todayScopeLabel } from '../../data/bookWindow';
 import { fmtGexUsd } from '../../data/gex';
-import { changeInk, dayMoveWords, peekDayMove, peekEntry, useBookRev } from '../../data/uwBook';
+import { peekEntry, useBookRev } from '../../data/uwBook';
+import { LivePrice } from './LivePrice';
 import { nyStamp } from '../../core/nyTime';
 import type { DistanceUnit } from '../../data/atr';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
@@ -57,8 +58,6 @@ const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
   useBookRev();
   const said = regimeSentence(lv);
   const entry = ticker ? peekEntry(ticker) : undefined;
-  const day = ticker ? dayMoveWords(peekDayMove(ticker)) : null;
-  const dayPct = ticker ? peekDayMove(ticker)?.dayPct ?? null : null;
   const flipPct = lv?.flip != null && lv.spot > 0 ? ((lv.flip - lv.spot) / lv.spot) * 100 : null;
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -80,14 +79,9 @@ const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
       <div className="flex items-center gap-x-2 gap-y-0.5 flex-wrap min-w-0 [&>*]:whitespace-nowrap" title={title || undefined}>
         {name ? <CompanyLogo ticker={name} size={18} /> : null}
         <span className="font-mono text-t13 font-semibold text-textPrimary">{name || '—'}</span>
-        {lv && (
-          <span className="font-mono text-t12 tnum text-textPrimary" data-regime-price title={day?.title}>
-            {lv.spot.toFixed(2)}
-            {day && (
-              <span className="ml-1.5 text-t11" style={{ color: changeInk(dayPct) }}>
-                {day.main}
-              </span>
-            )}
+        {name && (
+          <span className="text-t12" data-regime-price>
+            <LivePrice ticker={name} levelsAt={lv?.spot ?? null} />
           </span>
         )}
         <span className="font-mono text-t11 font-semibold" style={ink ? { color: ink } : undefined} data-regime-word={tone ?? 'pending'}>

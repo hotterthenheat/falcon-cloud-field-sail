@@ -1,11 +1,13 @@
-/* The expected-move cone from a real vol surface: UW term structure first, each expiry's implied_move the width (a same-day row in session
-   is the move left). Outside the session one session is the 1-day implied_move_perc, else k·S·σ·√(1/365); then Theta's ATM IV. No guessed vol. */
+/* The expected-move cone from a real vol surface. On a ThetaData page: each expiry's at-the-money IV off the terminal,
+   one standard deviation, S·σ·√t. On an Unusual Whales page: the term structure, each expiry's implied_move the width (a
+   same-day row in session is the move left); outside the session one session is the 1-day implied_move_perc, else
+   k·S·σ·√(1/365). No guessed vol. */
 
 import { RTH_MINUTES } from '../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase, SESSION_CLOSE_MIN } from '../core/nyTime';
 import { YEAR_MINUTES } from './measure';
 import { thetaGet } from './thetaFeed';
-import { uwOnlyDesk } from './spotGexBook';
+import { thetaUseHere } from './theta';
 import { uwCall } from './whales';
 
 type ConeHorizon = 'session' | 'week' | 'next';
@@ -87,6 +89,7 @@ function minutesLeft(): number {
 }
 
 function scaleK(surface: Surface, spot: number): number {
+  if (surface.source === 'theta') return 1;
   if (!(spot > 0)) return K_DEFAULT;
   const ks: number[] = [];
   for (const row of surface.rows) {
@@ -138,9 +141,10 @@ async function atmIv(root: string, expiration: string): Promise<{ iv: number; un
   let under = 0;
   const byStrike = new Map<number, { c: number; p: number }>();
   for (const item of asRows(got.data)) {
-    const contract = item.contract as Record<string, unknown> | undefined;
-    const data = firstRecord(item.data);
-    if (!contract || !data) continue;
+    /* v3 answers flat rows; a grouped answer nests the contract and its quote */
+    const contract = (item.contract as Record<string, unknown> | undefined) ?? item;
+    const data = 'data' in item ? firstRecord(item.data) : item;
+    if (!data) continue;
     const strike = num(contract.strike);
     const iv = annual(num(data.implied_vol));
     const px = num(data.underlying_price);
@@ -175,7 +179,8 @@ async function fromTheta(ticker: string): Promise<Surface | null> {
   const today = nyIsoDate();
   const dates: string[] = [];
   for (const row of asRows(got.data)) {
-    const exp = String(row.expiration ?? '');
+    let exp = String(row.expiration ?? '').slice(0, 10);
+    if (/^\d{8}$/.test(exp)) exp = `${exp.slice(0, 4)}-${exp.slice(4, 6)}-${exp.slice(6, 8)}`;
     if (/^\d{4}-\d{2}-\d{2}$/.test(exp) && exp >= today) dates.push(exp);
   }
   dates.sort();
@@ -189,25 +194,31 @@ async function fromTheta(ticker: string): Promise<Surface | null> {
     rows.push({ expiry, dte, iv: atm.iv, move: 0 });
   }
   if (!rows.length) return null;
-  return { at: Date.now(), rows, dayIv: rows[0].iv, dayFrac: 0, k: 0, source: 'theta' };
+  /* the IV's own one-standard-deviation move: no vendor straddle to fit a scale to */
+  return { at: Date.now(), rows, dayIv: rows[0].iv, dayFrac: 0, k: 1, source: 'theta' };
 }
+
+/** One surface per name and source: a page that reads ThetaData never draws the one read on an Unusual Whales page. */
+const keyOf = (ticker: string) => `${ticker.toUpperCase()}|${thetaUseHere() === 'all' ? 'theta' : 'uw'}`;
 
 export function ensureCone(ticker: string): void {
   const name = ticker.toUpperCase();
-  if (!name || inflight.has(name)) return;
-  const hit = cache.get(name);
+  const key = keyOf(name);
+  if (!name || inflight.has(key)) return;
+  const hit = cache.get(key);
   if (hit && Date.now() - hit.at < 60_000) return;
-  inflight.add(name);
+  inflight.add(key);
   void (async () => {
     try {
-      /* Pinpoint and the Dossier read Unusual Whales only (docs/DATA_SOURCES.md) */
-      const surface = (await fromUw(name)) ?? (uwOnlyDesk() ? null : await fromTheta(name));
+      /* ThetaData's at-the-money IV where it is the page's source (Terrain, Weigher, Compass); Unusual Whales' term
+         structure on Pinpoint, Trace and the Dossier. Neither stands in for the other. */
+      const surface = thetaUseHere() === 'all' ? await fromTheta(name) : await fromUw(name);
       if (surface) {
-        cache.set(name, surface);
+        cache.set(key, surface);
         emit();
       }
     } finally {
-      inflight.delete(name);
+      inflight.delete(key);
     }
   })();
 }
@@ -236,7 +247,7 @@ function weekRow(rows: Row[], today: string): Row | null {
 }
 
 export function coneFor(ticker: string, horizon: ConeHorizon, spot: number): ConeDraw | null {
-  const surface = cache.get(ticker.toUpperCase());
+  const surface = cache.get(keyOf(ticker));
   if (!surface || !(spot > 0)) return null;
   const today = nyIsoDate();
   const phase = nySessionPhase();

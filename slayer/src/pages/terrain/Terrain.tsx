@@ -4,7 +4,7 @@ import { ChevronUp, Code2, Link2, Maximize2, Minimize2, Rows3, SlidersHorizontal
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
 import { useDeskSession, type DeskSession } from '../../data/deskSession';
-import { chainForDate, deskTape, expiryLabel, peekChange, peekEntry, peekSpot, useBookRev } from '../../data/uwBook';
+import { chainForDate, expiryLabel, peekSpot, useBookRev } from '../../data/uwBook';
 import { useSessionQuote } from '../../data/sessionQuote';
 import { peekPrint, usePrintRev, useTapeRev, useThetaTape, wantPrint } from '../../data/thetaTape';
 import { thetaChartBars } from '../../data/thetaCandles';
@@ -1355,12 +1355,7 @@ const Pane = ({
                     <span className="font-mono text-t10 font-semibold" style={{ color: c.ink }}>
                       {c.ticker}
                     </span>
-                    {peekSpot(c.ticker) != null && (
-                      <SpotPrice
-                        value={peekSpot(c.ticker) as number}
-                        className="font-mono text-t10 tnum text-textSecondary"
-                      />
-                    )}
+                    <HeadPrice ticker={c.ticker} session={session} className="font-mono text-t10 tnum text-textSecondary" />
                     <button
                       onClick={() => removeCompare(c.ticker, c.mode)}
                       aria-label={`Remove the ${c.ticker} comparison`}
