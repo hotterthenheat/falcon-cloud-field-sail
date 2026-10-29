@@ -167,10 +167,9 @@ export function replayGaps(a: PaperAccount, f: Fetched, now: number, life: strin
         const v = q.iv > 0 ? Math.max(0, blackScholesPrice(spot, c.strike, t, q.iv, c.right)) : 0;
         return { ...q, bid: cents(v), ask: cents(v), mark: cents(v), dead: !(v > 0), spot };
       },
-      fut: () => NaN,
       bar: () => Math.floor(end / 1000) - 60,
       candles: () => [],
-      open: kind => kind === 'option',
+      open: () => true,
     };
     next = judgeOrders(next, market);
   }

@@ -9,15 +9,28 @@ import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import TraceBox, { Fact, RestFoot, TraceGrid, useRestCap } from '../../components/trace/TraceBox';
 import ContractLabel from '../../components/ui/ContractLabel';
+import { EmptyBox } from '../../components/ui/states';
 import SessionsChart, { type ChartPoint } from '../../components/record/SessionsChart';
 import type { Column } from '../../components/ui/DataTable';
-import { accountOf, cutsOf, decayPerDay, stampOf, statsOf, type Trade } from '../../data/review/engine';
+import { accountOf, cutsOf, decayPerDay, feesOf, stampOf, statsOf, type Trade } from '../../data/review/engine';
 import { contractWords } from '../../data/review/quotes';
 import { useSession } from '../../data/review/store';
-import { dateOf, dayWords } from '../../data/review/history';
+import { barTime, dayWords } from '../../data/review/history';
 import { dirInk, heldWords, momentWords, pct, rWords, usd, usdSigned } from '../../components/review/words';
 
 const ENDED: Record<Trade['how'], string> = { sold: 'Sold by you', target: 'Target hit', stopped: 'Stopped out', expired: 'Held to the bell', scaled: 'Scaled out' };
+const endedWords = (t: Trade) => (t.how !== 'expired' ? ENDED[t.how] : t.settle === 'cash' ? 'Cash-settled' : t.avgOut > 0 ? 'Exercised at the close' : 'Expired worthless');
+/** A day of the session: what closed on it, and the account as the bell left it (where the bell has rung) */
+interface DayRow {
+  day: string;
+  n: number;
+  net: number;
+  /** The account at the bell, marked — null on a day the bell has not rung on */
+  equity: number | null;
+  /** The account's move that day, open contracts marked — null without both bells */
+  move: number | null;
+  held: number | null;
+}
 /** What a trade has been worth, with its 95% range (the mean's ± 1.96 standard errors) — null under two trades */
 export function expectancyRange(pnls: number[]): { mean: number; lo: number; hi: number } | null {
   const n = pnls.length;
@@ -40,14 +53,48 @@ const Report = () => {
   const stats = useMemo(() => statsOf(trades), [trades]);
   const range = useMemo(() => expectancyRange(trades.map(t => t.pnl)), [trades]);
   const cuts = useMemo<{ title: string; rows: { label: string; n: number; winRate: number; net: number; avgR: number | null }[] }[]>(() => cutsOf(trades), [trades]);
-  /* the running total, a point a day a trade closed on (noon: the same date in every reader's zone) */
+  /* the running total of what the closed trades made, a point at each close — the real New York minute it closed on */
   const curve = useMemo<ChartPoint[]>(() => {
-    const byDay = new Map<string, number>();
+    if (!session || !trades.length) return [];
+    const pts: ChartPoint[] = [{ time: barTime(trades[0].opened.day, Math.max(0, trades[0].opened.minute)), value: 0 }];
     let run = 0;
-    for (const t of trades) byDay.set(t.closed.day, (run += t.pnl));
-    const pts = [...byDay.entries()].map(([day, value]) => ({ time: Math.floor(dateOf(day).getTime() / 1000), value }));
-    return session && pts.length ? [{ time: Math.floor(dateOf(session.startDay).getTime() / 1000) - 86400, value: 0 }, ...pts] : pts;
+    for (const t of trades) {
+      run += t.pnl;
+      const time = barTime(t.closed.day, t.closed.minute + 1);
+      /* two closes in one minute are one point */
+      if (pts[pts.length - 1].time >= time) pts[pts.length - 1] = { time: pts[pts.length - 1].time, value: run };
+      else pts.push({ time, value: run });
+    }
+    return pts;
   }, [trades, session]);
+  const oneDay = useMemo(() => new Set(trades.flatMap(t => [t.opened.day, t.closed.day])).size <= 1, [trades]);
+  /* By day: the trades that closed on it, and the account at its bell (the engine keeps one a day it rings) */
+  const days = useMemo<DayRow[]>(() => {
+    if (!session) return [];
+    const closes = session.closes ?? {};
+    const all = [...new Set([...Object.keys(closes), ...trades.map(t => t.closed.day)])].sort();
+    let prev: number | null = session.startCash;
+    return all.map(day => {
+      const mine = trades.filter(t => t.closed.day === day);
+      const c = closes[day];
+      const row: DayRow = { day, n: mine.length, net: mine.reduce((a, t) => a + t.pnl, 0), equity: c ? c.equity : null, move: c && prev != null ? c.equity - prev : null, held: c ? c.held : null };
+      prev = c ? c.equity : null;
+      return row;
+    });
+  }, [session, trades]);
+  /* the account's deepest fall from a high, bell to bell, open contracts marked */
+  const bellFall = useMemo(() => {
+    if (!session) return null;
+    const eq = days.filter(d => d.equity != null).map(d => d.equity as number);
+    if (!eq.length) return null;
+    let peak = session.startCash;
+    let fall = 0;
+    for (const v of eq) {
+      peak = Math.max(peak, v);
+      fall = Math.max(fall, peak - v);
+    }
+    return { fall, pct: peak > 0 ? fall / peak : 0 };
+  }, [days, session]);
   const newest = useMemo(() => [...trades].reverse(), [trades]);
   const cap = useRestCap(newest);
 
@@ -61,7 +108,7 @@ const Report = () => {
       { key: 'delta', header: 'Delta, in', align: 'right', sortValue: t => Math.abs(t.deltaIn), render: t => <span className="text-textSecondary">{t.deltaIn.toFixed(2)}</span> },
       { key: 'held', header: 'Held', align: 'right', sortValue: t => t.heldMin, render: t => <span className="text-textSecondary">{heldWords(t.heldMin)}</span> },
       { key: 'decay', header: 'Decay a day', align: 'right', sortValue: t => decayPerDay(t), render: t => <span className="text-textSecondary">{usd(decayPerDay(t))}</span> },
-      { key: 'how', header: 'Ended', sortValue: t => t.how, render: t => <span className="text-textSecondary">{ENDED[t.how]}</span> },
+      { key: 'how', header: 'Ended', sortValue: t => t.how, render: t => <span className="text-textSecondary">{endedWords(t)}</span> },
       { key: 'pnl', header: 'Made or lost', align: 'right', sortValue: t => t.pnl, render: t => <span className={`font-semibold ${dirInk(t.pnl)}`}>{usdSigned(t.pnl)} <span className="text-t10 font-normal opacity-80">{rWords(t.r)}</span></span> },
     ],
     []
@@ -69,13 +116,19 @@ const Report = () => {
 
   if (!session)
     return (
-      <div className="border border-borderSubtle rounded-md bg-panel px-6 py-14 text-center" data-review-report="missing">
-        <p className="text-t13 text-textPrimary">That session is not on this machine.</p>
-        <Link to="/practice/backtest" className="mt-3 inline-block font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors">
-          Your sessions
-        </Link>
+      <div className="border border-borderSubtle rounded-md bg-panel" data-review-report="missing">
+        <EmptyBox
+          title="No such session"
+          reason="Sessions are kept in this browser — that one is not on this machine, or it was deleted."
+          action={
+            <Link to="/practice/backtest" className="inline-block font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors">
+              Your sessions
+            </Link>
+          }
+        />
       </div>
     );
+  const fees = feesOf(session);
 
   /* the rules the session was run under — chosen at its start, hard blocks on a way in (data/review/engine) */
   const r = session.rules;
@@ -102,7 +155,9 @@ const Report = () => {
           </Fact>
           <Fact label="A trade has been worth" title="After the spread and the fees: every fill was at the recorded bid or ask">{stats.n ? `${usdSigned(stats.expectancy)} · ${rWords(stats.expectancyR)}` : '—'}</Fact>
           <Fact label="95% range a trade" title="The mean trade's 95% range: ± 1.96 standard errors. While it includes zero, there is no edge yet.">{range ? `${usdSigned(range.lo, 0)} to ${usdSigned(range.hi, 0)}` : '—'}</Fact>
-          <Fact label="Deepest fall">{usd(stats.maxDrawdown)}</Fact>
+          <Fact label="Deepest fall" title="The running total of the closed trades, from its high to its low — each trade's own open dip counted">{usd(stats.maxDrawdown)}</Fact>
+          <Fact label="Account's deepest fall" title="Bell to bell, the account with its open contracts marked — from its high">{bellFall ? `${usd(bellFall.fall)} · ${(bellFall.pct * 100).toFixed(1)}%` : '—'}</Fact>
+          <Fact label="Fees paid" title="Every fill's fee, each way — the figures above are after them">{usd(fees)}</Fact>
           <Fact label="Longest losing run">{stats.losingRun}</Fact>
           <Fact label="Time in a trade">{stats.n ? heldWords(stats.avgHeldMin) : '—'}</Fact>
         </>
@@ -116,25 +171,52 @@ const Report = () => {
     >
       {curve.length > 1 && (
         <div className="px-5 pb-4 border-t border-borderSubtle/70 pt-3" data-report-curve>
-          <div className="font-mono text-t10 font-semibold uppercase tracking-widest text-textPrimary">The running total</div>
-          <p className="mt-0.5 mb-2 text-t11 text-textMuted">What the closed trades had made or lost by the end of each day a trade closed on</p>
+          <div className="font-mono text-t10 font-semibold uppercase tracking-widest text-textPrimary">The running total · ET</div>
+          <p className="mt-0.5 mb-2 text-t11 text-textMuted">What the closed trades had made or lost, after fees, at each minute one closed</p>
           <SessionsChart
             points={curve}
             kind="baseline"
             ink="rgb(var(--bull))"
             inkBelow="rgb(var(--bear))"
             height={200}
-            clock="day"
+            clock={oneDay ? 'clock' : 'span'}
+            zone="ny"
             scale="pnl"
             testId="review-curve"
             card={h => (
               <div className="font-mono text-t11 tnum">
                 <div className="text-textMuted text-t10">The running total</div>
                 <div className={`mt-0.5 text-t13 font-semibold ${dirInk(h.point?.value ?? 0)}`}>{usdSigned(h.point?.value ?? 0)}</div>
-                {h.prev && <div className="mt-0.5 text-textSecondary">{usdSigned((h.point?.value ?? 0) - h.prev.value)} that day</div>}
+                {h.prev && <div className="mt-0.5 text-textSecondary">{usdSigned((h.point?.value ?? 0) - h.prev.value)} on that close</div>}
               </div>
             )}
           />
+        </div>
+      )}
+
+      {days.length > 0 && (
+        <div className="px-5 pb-4 pt-3 border-t border-borderSubtle/70 min-w-0" data-report-days>
+          <div className="font-mono text-t10 font-semibold uppercase tracking-widest text-textPrimary">By day</div>
+          <div className="mt-1.5 overflow-x-auto">
+            <div className="grid grid-cols-[minmax(84px,1fr)_auto_auto_auto_auto] gap-x-4 font-mono text-t11 tnum min-w-[360px]">
+              <span className="text-t9 uppercase tracking-widest text-textMuted pb-1">Day</span>
+              <span className="text-t9 uppercase tracking-widest text-textMuted text-right pb-1">Closed</span>
+              <span className="text-t9 uppercase tracking-widest text-textMuted text-right pb-1" title="What the trades that closed that day made or lost">Their P&amp;L</span>
+              <span className="text-t9 uppercase tracking-widest text-textMuted text-right pb-1" title="The account's move from the bell before, open contracts marked at the bell">Account</span>
+              <span className="text-t9 uppercase tracking-widest text-textMuted text-right pb-1" title="What the account was worth at 16:00 ET">At the bell</span>
+              {days.map(d => (
+                <div key={d.day} className="contents" data-report-day={d.day}>
+                  <span className="py-1 border-t border-borderSubtle/70 text-textPrimary">{dayWords(d.day)}</span>
+                  <span className="py-1 border-t border-borderSubtle/70 text-right text-textSecondary">{d.n || '—'}</span>
+                  <span className={`py-1 border-t border-borderSubtle/70 text-right ${d.n ? `font-semibold ${dirInk(d.net)}` : 'text-textMuted'}`}>{d.n ? usdSigned(d.net) : '—'}</span>
+                  <span className={`py-1 border-t border-borderSubtle/70 text-right ${d.move != null ? dirInk(d.move) : 'text-textMuted'}`}>{d.move != null ? usdSigned(d.move) : '—'}</span>
+                  <span className="py-1 border-t border-borderSubtle/70 text-right text-textSecondary" title={d.held ? `${d.held} ${d.held === 1 ? 'position' : 'positions'} carried over the night` : undefined}>
+                    {d.equity != null ? usd(d.equity) : <span className="text-textMuted" title="The bell has not rung on this day yet">—</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

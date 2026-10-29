@@ -4,7 +4,7 @@
    days a move walks must be loaded first (store.ts does that). */
 
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from './ladder';
-import { contractKey, dteAt, legsOf, quoteAt, quoteWith, spotForBid, type ContractId, type Quote } from './quotes';
+import { contractKey, dteAt, legsOf, markAt, quoteAt, quoteWith, settlementAt, spotForBid, type ContractId, type Quote, type SettleStyle } from './quotes';
 import { LAST_MIN, dateOf, dayNumber, sessionAfter } from './history';
 import { sessionsBetween } from '../../core/calendar';
 import type { DayNote, JournalEntry } from './journal';
@@ -76,6 +76,8 @@ export interface Fill {
   plannedStop?: number;
   /** On the sell that closed a trade: the lowest open P&L it marked, at each minute's bid, fees in */
   lowOpen?: number;
+  /** An expiry's fill: settled in cash on an index's close, or exercised at a stock's or a fund's close */
+  settle?: SettleStyle;
 }
 /** The reader's own rules for a session — hard blocks on a way in, set at its start (see the head note) */
 export interface SessionRules {
@@ -90,6 +92,18 @@ export interface SessionRules {
 export const OPEN_CEILING = 10;
 /** Names a session may trade */
 export const MAX_NAMES = 2;
+
+/** The account at a day's bell, marked at that minute (the engine writes one each day it rings) — the report's curve */
+export interface DayClose {
+  equity: number;
+  cash: number;
+  /** Banked since the session began: closed trades and the pieces sold of open ones, fees in */
+  realized: number;
+  /** What the contracts still held were up or down, at the bell's marks */
+  open: number;
+  /** Positions carried over the night */
+  held: number;
+}
 
 export interface Session {
   id: string;
@@ -114,6 +128,10 @@ export interface Session {
       The engine never reads them. */
   journal?: Record<string, JournalEntry>;
   days?: Record<string, DayNote>;
+  /** The account at each bell that rang, by day */
+  closes?: Record<string, DayClose>;
+  /** Copied from another session's book at its clock (store.duplicateSession) — its id */
+  copiedFrom?: string;
   createdAt: number;
   touchedAt: number;
   seq: number;
@@ -142,6 +160,8 @@ export interface Position {
   avg: number;
   /** Fees paid on the buys still held */
   fees: number;
+  /** What the contracts still held cost, premium and fees, unrounded per share — the base open P&L is measured from */
+  cost: number;
   opened: Moment;
   /** Where the name stood when it was entered — the chart draws the position there */
   spotIn: number;
@@ -180,6 +200,8 @@ export interface Trade {
   tag?: string;
   /** The lowest the trade marked while open, fees in, at the bid each minute (0 or below) */
   lowOpen?: number;
+  /** Ended at the bell of its expiry: in cash (an index), or exercised at the close (a stock or a fund) */
+  settle?: SettleStyle;
 }
 
 export interface TradeLeg {
@@ -294,6 +316,7 @@ export function bookOf(s: Session): Book {
       plannedStop: o.first.plannedStop,
       tag: o.first.tag,
       lowOpen: Math.min(cents(pnl), f.lowOpen ?? 0),
+      ...(f.how === 'expired' && f.settle ? { settle: f.settle } : {}),
     });
     open.delete(key);
   }
@@ -303,6 +326,7 @@ export function bookOf(s: Session): Book {
     qty: o.qty,
     avg: cents(o.paid / o.bought),
     fees: cents((o.feesIn * o.qty) / o.bought),
+    cost: cents(((o.paid * MULT + o.feesIn) * o.qty) / o.bought),
     opened: o.first.at,
     spotIn: o.first.spot,
     tradeId: o.first.id,
@@ -324,9 +348,10 @@ export interface Account {
   /** Cash + what the open contracts are marked at */
   equity: number;
   openPnl: number;
-  /** Closed trades, and the closed share of the open ones */
+  /** Closed trades, and the closed share of the open ones, fees in — known even while a mark is not */
   realized: number;
-  positions: (Position & { quote: Quote; value: number; pnl: number; r: number })[];
+  /** `mark`: the mid a position is valued at; `staleFrom`: the earlier minute it is from, in a minute that is no market */
+  positions: (Position & { quote: Quote; mark: number; staleFrom?: number; value: number; pnl: number; r: number })[];
   trades: Trade[];
 }
 export function accountOf(s: Session): Account {
@@ -334,15 +359,18 @@ export function accountOf(s: Session): Account {
   const cash = cashOf(s);
   const marked = positions.map(p => {
     const quote = quoteAt(p.contract, s.cursor.day, s.cursor.minute);
-    const value = quote.mark * MULT * p.qty;
-    const cost = p.avg * MULT * p.qty + p.fees;
-    return { ...p, quote, value: cents(value), pnl: cents(value - cost), r: cost > 0 ? (value - cost) / cost : 0 };
+    const m = markAt(p.contract, s.cursor.day, s.cursor.minute);
+    const value = m.mark * MULT * p.qty;
+    return { ...p, quote, mark: m.mark, ...(m.staleFrom != null ? { staleFrom: m.staleFrom } : {}), value: cents(value), pnl: cents(value - p.cost), r: p.cost > 0 ? (value - p.cost) / p.cost : 0 };
   });
   const held = marked.reduce((a, p) => a + p.value, 0);
   const openPnl = marked.reduce((a, p) => a + p.pnl, 0);
   const equity = cents(cash + held);
-  return { cash, equity, openPnl: cents(openPnl), realized: cents(equity - s.startCash - openPnl), positions: marked, trades };
+  const realized = cents(trades.reduce((a, t) => a + t.pnl, 0) + positions.reduce((a, p) => a + p.banked, 0));
+  return { cash, equity, openPnl: cents(openPnl), realized, positions: marked, trades };
 }
+/** Fees paid over the session, every fill's */
+export const feesOf = (s: Pick<Session, 'fills'>): number => cents(s.fills.reduce((a, f) => a + f.fee, 0));
 
 /* ---- orders ---- */
 export interface Draft {
@@ -427,9 +455,9 @@ function afterSell(s: Session, sold: Order, q: Quote, at: Moment): Session {
   return next;
 }
 
-function fillNow(s: Session, o: Order, price: number, how: FillHow, q: Quote, at: Moment): Session {
+function fillNow(s: Session, o: Order, price: number, how: FillHow, q: Quote, at: Moment, settle?: SettleStyle): Session {
   let [id, next] = nextId(s, 'f');
-  const fill: Fill = { id, orderId: o.id || null, at, contract: o.contract, side: o.side, qty: o.qty, price: cents(price), fee: how === 'expired' ? 0 : cents(s.fee * o.qty * legsOf(o.contract)), how, spot: q.spot, delta: q.delta, iv: q.iv, theta: q.theta, tag: o.tag, plannedStop: plannedStopOf(o, at) };
+  const fill: Fill = { id, orderId: o.id || null, at, contract: o.contract, side: o.side, qty: o.qty, price: cents(price), fee: how === 'expired' ? 0 : cents(s.fee * o.qty * legsOf(o.contract)), how, spot: q.spot, delta: q.delta, iv: q.iv, theta: q.theta, tag: o.tag, plannedStop: plannedStopOf(o, at), ...(settle ? { settle } : {}) };
   /* a sell that leaves the position flat closes the trade: its lowest mark is read now, while its days are loaded */
   if (o.side === 'sell') {
     const pos = bookOf(s).positions.find(p => p.key === contractKey(o.contract));
@@ -438,7 +466,7 @@ function fillNow(s: Session, o: Order, price: number, how: FillHow, q: Quote, at
       fill.lowOpen = lowOpenOf(o.contract, legs);
     }
   }
-  next = { ...next, fills: [...next.fills, fill], orders: next.orders.map(x => (x.id === o.id ? { ...x, status: 'filled' as const, done: at, fillPrice: fill.price } : x)) };
+  next = { ...next, fills: [...next.fills, fill], orders: next.orders.map(x => (x.id === o.id ? { ...x, qty: o.qty, status: 'filled' as const, done: at, fillPrice: fill.price } : x)) };
   /* a sell: the ladder it belongs to — or stands beside — is made to fit what is still held */
   if (o.side === 'sell') next = afterSell(next, o, q, at);
   /* a buy that carried ways out leaves them working, as one group */
@@ -522,7 +550,7 @@ function ruleRefusal(s: Session, d: Draft, cost: number): string | null {
     const worth = accountOf(s).equity;
     if (!Number.isFinite(worth)) return 'A held contract has no quote this minute, so the account cannot be valued against your rule — wait a minute';
     const mine = positions.find(p => p.key === key);
-    const inIt = (mine ? mine.avg * MULT * mine.qty + mine.fees : 0) + cost;
+    const inIt = (mine ? mine.cost : 0) + cost;
     if (inIt > worth * risk + 1e-9) return `Your session’s rule: no more than ${pctWords(risk)} of the account on one trade — this would be ${money(inIt)} of ${money(worth * risk)}`;
   }
   const limit = s.rules?.dailyLossPct;
@@ -545,15 +573,22 @@ export function refusal(s: Session, d: Draft): string | null {
     if (right === 'C' ? short < strike : short > strike) return 'A spread here is bought for a debit — the strike you sell has to be further out than the one you buy';
   }
   if (d.kind !== 'market' && !(d.price && d.price > 0)) return 'Enter a price';
-  if (d.kind === 'stop' && d.side === 'buy') return 'A stop is a way out — it sells';
   if (d.on === 'name' && (d.side === 'buy' || d.kind === 'market')) return 'Only a sell that waits can be set on the name’s price';
   /* 16:00 HAS RUNG: contracts have no overnight session. Nothing fills at the market until the next open; an order that
      waits (a limit, a stop) is taken and waits for it. */
   if (d.kind === 'market' && s.cursor.minute >= LAST_MIN) return 'The market is shut — 16:00 has rung. Open the next day, or leave a limit that waits for it';
   const q = quoteAt(d.contract, s.cursor.day, s.cursor.minute);
   const name = d.contract.ticker;
+  /* A STOP waits on the far side of the market: a buy stop over the ask (it buys the minute the ask comes up to it — a
+     breakout), a sell stop under the bid. One already through the market would only fill on the next minute. */
+  if (d.kind === 'stop' && !d.on && !q.dead) {
+    if (d.side === 'buy' && d.price! <= q.ask) return `A buy stop waits over the ask (${q.ask.toFixed(2)}) — at or under it, buy at the market or leave a limit`;
+    if (d.side === 'sell' && d.price! >= q.bid) return `A stop waits under the bid (${q.bid.toFixed(2)}) — at or over it, sell at the market`;
+  }
   if (d.side === 'buy') {
-    const px = d.kind === 'limit' ? Math.min(d.price!, q.ask) : q.ask;
+    /* what it would pay: a limit no more than its price, a stop at least its, a market the ask (a dead quote: the price typed) */
+    const ask = q.ask > 0 ? q.ask : (d.price ?? 0);
+    const px = d.kind === 'limit' ? Math.min(d.price!, ask) : d.kind === 'stop' ? Math.max(d.price!, ask) : ask;
     const need = px * MULT * d.qty + s.fee * d.qty * legsOf(d.contract);
     if (need > cashOf(s) + 1e-9) return `Not enough cash — this needs $${need.toFixed(2)}`;
     if (d.kind === 'market' && q.dead) return 'No market in that contract right now';
@@ -589,9 +624,16 @@ export function place(s: Session, d: Draft, now: number): Session {
   const base: Order = { id, placed: s.cursor, contract: d.contract, side: d.side, qty: d.qty, kind: d.kind, price: d.kind === 'market' ? undefined : d.price, on: d.kind === 'market' ? undefined : d.on, tif: d.tif ?? (d.kind === 'market' ? 'day' : 'gtc'), status: 'working', bracket: d.side === 'buy' ? d.bracket : undefined, tag: d.tag };
   const why = refusal(s, d);
   next = { ...next, touchedAt: now, orders: [...next.orders, why ? { ...base, status: 'refused', why, done: s.cursor } : base] };
-  if (why || d.kind !== 'market') return next;
+  if (why || d.kind === 'stop') return next;
   const q = quoteAt(d.contract, s.cursor.day, s.cursor.minute);
-  return fillNow(next, base, d.side === 'buy' ? q.ask : q.bid, 'market', q, s.cursor);
+  if (d.kind === 'market') return fillNow(next, base, d.side === 'buy' ? q.ask : q.bid, 'market', q, s.cursor);
+  /* A MARKETABLE LIMIT — a buy at or over the ask, a sell at or under the bid — is the market at this minute, capped at
+     its price: it fills now, at the recorded ask or bid, like a market order would. Not at the bell (the market is shut),
+     not in a minute that is no market, and not one that waits on the name. */
+  if (d.on || q.dead || s.cursor.minute >= LAST_MIN) return next;
+  if (d.side === 'buy' && q.ask <= d.price!) return fillNow(next, base, q.ask, 'limit', q, s.cursor);
+  if (d.side === 'sell' && q.bid >= d.price!) return fillNow(next, base, q.bid, 'limit', q, s.cursor);
+  return next;
 }
 
 export function cancel(s: Session, orderId: string, now: number): Session {
@@ -613,7 +655,8 @@ export function amend(s: Session, orderId: string, price: number, now: number): 
   }
   if (o.side === 'sell' && o.kind === 'limit' && price <= q.bid) return s;
   if (o.side === 'sell' && o.kind === 'stop' && price >= q.bid) return s;
-  if (o.side === 'buy' && o.kind === 'limit' && price * MULT * o.qty + s.fee * o.qty * legsOf(o.contract) > cashOf(s)) return s;
+  if (o.side === 'buy' && o.kind === 'stop' && !q.dead && price <= q.ask) return s;
+  if (o.side === 'buy' && price * MULT * o.qty + s.fee * o.qty * legsOf(o.contract) > cashOf(s)) return s;
   return { ...s, touchedAt: now, orders: s.orders.map(x => (x.id === orderId ? { ...x, price: cents(price), ...trail } : x)) };
 }
 
@@ -715,26 +758,39 @@ export function floorOf(s: Session): Moment {
   return at;
 }
 
+const heldOf = (s: Session, c: ContractId): number => bookOf(s).positions.find(p => p.key === contractKey(c))?.qty ?? 0;
+const cancelled = (s: Session, id: string, at: Moment, why: string): Session => ({ ...s, orders: s.orders.map(x => (x.id === id ? { ...x, status: 'cancelled' as const, done: at, why } : x)) });
+
 function minuteOrders(s: Session, at: Moment): Session {
   let next = s;
-  for (const o of s.orders) {
-    if (o.status !== 'working' || stampOf(o.placed) >= stampOf(at)) continue;
-    const live = next.orders.find(x => x.id === o.id);
-    if (!live || live.status !== 'working') continue;
+  for (const first of s.orders) {
+    if (first.status !== 'working' || stampOf(first.placed) >= stampOf(at)) continue;
+    /* the order as it stands NOW: an earlier fill this minute may have resized it, or taken it away */
+    const o = next.orders.find(x => x.id === first.id);
+    if (!o || o.status !== 'working') continue;
     const q = quoteAt(o.contract, at.day, at.minute);
     if (q.dead) continue;
-    if (o.on === 'name') {
+    if (o.side === 'sell') {
       /* waits on the NAME: the minute it is there, the contracts are sold at that minute's bid — whatever it is */
-      if (o.side === 'sell' && nameHit(o, q.spot)) next = fillNow(next, o, q.bid, o.kind, q, at);
+      const hit = o.on === 'name' ? nameHit(o, q.spot) : o.kind === 'limit' ? q.bid >= o.price! : o.kind === 'stop' ? q.bid <= o.price! : false;
+      if (!hit) continue;
+      /* never more than is held: what is left of the position is what it sells */
+      const held = heldOf(next, o.contract);
+      if (held <= 0) {
+        next = cancelled(next, o.id, at, 'nothing was held by then');
+        continue;
+      }
+      next = fillNow(next, held < o.qty ? { ...o, qty: held } : o, o.on === 'name' || o.kind === 'stop' ? q.bid : Math.max(o.price!, q.bid), o.kind, q, at);
       continue;
     }
-    if (o.kind === 'limit' && o.side === 'buy' && q.ask <= o.price!) {
-      /* the reader's daily stop was reached while this order rested: it does not open a position on a day that is over */
-      if (dayStateOf({ ...next, cursor: at }).stopped) next = { ...next, orders: next.orders.map(x => (x.id === o.id ? { ...x, status: 'cancelled', done: at, why: 'your session’s rule: the day’s stop had been reached' } : x)) };
-      else if (o.price! * MULT * o.qty + next.fee * o.qty * legsOf(o.contract) > cashOf(next)) next = { ...next, orders: next.orders.map(x => (x.id === o.id ? { ...x, status: 'cancelled', done: at, why: 'the cash was gone by then' } : x)) };
-      else next = fillNow(next, o, Math.min(o.price!, q.ask), 'limit', q, at);
-    } else if (o.kind === 'limit' && o.side === 'sell' && q.bid >= o.price!) next = fillNow(next, o, Math.max(o.price!, q.bid), 'limit', q, at);
-    else if (o.kind === 'stop' && o.side === 'sell' && q.bid <= o.price!) next = fillNow(next, o, q.bid, 'stop', q, at);
+    /* a buy that waits: a limit when the ask comes down to it, a stop when the ask comes up to it — at that ask */
+    const hit = o.kind === 'limit' ? q.ask <= o.price! : o.kind === 'stop' ? q.ask >= o.price! : false;
+    if (!hit) continue;
+    const px = o.kind === 'limit' ? Math.min(o.price!, q.ask) : q.ask;
+    /* the reader's daily stop was reached while this order rested: it does not open a position on a day that is over */
+    if (dayStateOf({ ...next, cursor: at }).stopped) next = cancelled(next, o.id, at, 'your session’s rule: the day’s stop had been reached');
+    else if (px * MULT * o.qty + next.fee * o.qty * legsOf(o.contract) > cashOf(next) + 1e-9) next = cancelled(next, o.id, at, 'the cash was gone by then');
+    else next = fillNow(next, o, px, o.kind, q, at);
   }
   /* Trailing stops, after the check: each was tried where it stood; only now is it moved by this minute's price —
      the good part of a minute is never assumed to have come before the bad part */
@@ -766,11 +822,20 @@ function bell(s: Session, day: string): Session {
   let next: Session = { ...s, orders: s.orders.map(o => (o.status === 'working' && (o.tif === 'day' || o.contract.expiry <= day) ? { ...o, status: 'cancelled' as const, done: at, why: o.contract.expiry <= day ? 'the contract expired' : 'the day ended' } : o)) };
   for (const p of bookOf(next).positions) {
     if (p.contract.expiry > day) continue;
+    /* settled on the name's close of its expiry day; while that close is not known the contract is not settled at a
+       guess — it waits, held, and the next bell tries again (pendingSettlement says so) */
+    const st = settlementAt(p.contract, p.contract.expiry);
+    if (!st) continue;
     const q = quoteAt(p.contract, day, LAST_MIN);
-    next = fillNow(next, { id: '', placed: at, contract: p.contract, side: 'sell', qty: p.qty, kind: 'market', tif: 'day', status: 'working', tag: p.tag }, q.intrinsic, 'expired', q, at);
+    next = fillNow(next, { id: '', placed: at, contract: p.contract, side: 'sell', qty: p.qty, kind: 'market', tif: 'day', status: 'working', tag: p.tag }, st.price, 'expired', { ...q, spot: st.spot }, at, st.style);
   }
+  /* the account as the bell left it — the report's curve and its days */
+  const a = accountOf({ ...next, cursor: at });
+  if (Number.isFinite(a.equity)) next = { ...next, closes: { ...next.closes, [day]: { equity: a.equity, cash: a.cash, realized: a.realized, open: a.openPnl, held: a.positions.length } } };
   return next;
 }
+/** Held contracts past their expiry that the bell could not settle yet — the name's close that day is not loaded */
+export const pendingSettlement = (s: Session): Position[] => bookOf(s).positions.filter(p => p.contract.expiry < s.cursor.day || (p.contract.expiry === s.cursor.day && s.cursor.minute >= LAST_MIN));
 
 /** Move the clock forward to a moment, running every minute between. Backward moves never touch the book. */
 export function advance(s: Session, to: Moment, now: number): Session {

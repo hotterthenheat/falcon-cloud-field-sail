@@ -16,11 +16,12 @@ import { ChainOrder } from '../../components/paper/OptionsChain';
 import { BellCard, ClosingLine, type BellFacts } from '../../components/review/BellNotice';
 import type { ChartBracket, ChartEntry, ChartPosition } from '../../components/review/PositionLayer';
 import { dirInk, momentWords, pct, rWords, usd, usdSigned } from '../../components/review/words';
-import { accountOf, bankedOf, dayStateOf, floorOf, ladderRoom, ladderTake, nameGoesUp, namesOf, refusal, statsOf, type Account, type Order, type Trade } from '../../data/review/engine';
+import { accountOf, bankedOf, dayStateOf, feesOf, floorOf, ladderRoom, ladderTake, nameGoesUp, namesOf, pendingSettlement, refusal, statsOf, type Account, type Order, type Trade } from '../../data/review/engine';
 import PnlBadges from '../../components/review/PnlBadges';
-import { chainAt, contractDay, contractKey, contractWords, dteAt, expiriesAt, longLeg, quoteAt, quoteWith, spotForAsk, spotForBid, type ContractId, type Right } from '../../data/review/quotes';
+import StopOrders, { type Tif } from '../../components/review/StopOrders';
+import { chainAt, contractDay, contractKey, contractWords, dteAt, expiriesAt, longLeg, quoteAt, quoteWith, settleStyleOf, spotForAsk, spotForBid, type ContractId, type Right } from '../../data/review/quotes';
 import { amendOrder, attachBracket, breakevenOrder, cancelOrder, closePosition, legsHeld, moveClock, placeOrder, rebaseOrder, renameSession, trailOrder, useMoving, useSession } from '../../data/review/store';
-import { DAY_MIN, LAST_MIN, barsNeed, chainNeed, clockWords, dayBars, dayWords, ensureBars, ensureBarsRange, ensureChainDay, ensureLeg, ensureListing, ensureTrades, historyOffline, historyRev, listingNeed, nextDay, prevDay, spotAt, subscribeHistory } from '../../data/review/history';
+import { DAY_MIN, LAST_MIN, underOf, barsNeed, chainNeed, clockWords, dayBars, dayWords, ensureBars, ensureBarsRange, ensureChainDay, ensureLeg, ensureListing, ensureTrades, historyOffline, historyRev, listingNeed, nextDay, prevDay, spotAt, subscribeHistory } from '../../data/review/history';
 import { companyName } from '../../data/tickers';
 import ThetaLine from '../../components/review/ThetaLine';
 import { EmptyBox, LoadingBox } from '../../components/ui/states';
@@ -73,6 +74,8 @@ const Desk = () => {
   const [drillOpen, setDrillOpen] = useState(true);
   /** The desk's one size — the Order card's (the paper desk's grammar) */
   const [q, setQ] = useState(1);
+  /** How long an order that waits is good for — every limit and stop placed from this desk */
+  const [tif, setTif] = useState<Tif>('gtc');
   /** The takeover is up — the shell's, held here because the chain's window reads it */
   const [full, setFull] = useState(false);
   const cursor = session?.cursor ?? null;
@@ -215,9 +218,9 @@ const Desk = () => {
     () => [
       { key: 'contract', header: 'Contract', render: p => <ContractLabel contract={contractWords(p.contract)} right={p.contract.right} logo={p.contract.ticker} size="sm" /> },
       { key: 'qty', header: 'Held', align: 'right', render: p => <span className="text-textPrimary">{p.qty}</span> },
-      { key: 'exp', header: 'Expires', render: p => <span className="text-textSecondary">{dayWords(p.contract.expiry)} · {session ? dteAt(session.cursor.day, p.contract.expiry) : 0}d</span> },
+      { key: 'exp', header: 'Expires', render: p => (session && p.contract.expiry < session.cursor.day ? <span className="text-warn" title={`Expired ${dayWords(p.contract.expiry)} — it settles on ${underOf(p.contract.ticker)}’s close that day, which ThetaData has not answered yet`}>settling…</span> : <span className="text-textSecondary">{dayWords(p.contract.expiry)} · {session ? dteAt(session.cursor.day, p.contract.expiry) : 0}d</span>) },
       { key: 'avg', header: 'Paid', align: 'right', render: p => <span className="text-textSecondary">{p.avg.toFixed(2)}</span> },
-      { key: 'mark', header: 'Bid · ask', align: 'right', render: p => <span className="text-textPrimary">{p.quote.dead ? '— · —' : `${p.quote.bid.toFixed(2)} · ${p.quote.ask.toFixed(2)}`}</span> },
+      { key: 'mark', header: 'Bid · ask', align: 'right', render: p => (p.quote.dead ? <span className="text-textMuted" title={Number.isFinite(p.mark) ? `No two-sided quote this minute — marked at ${p.mark.toFixed(2)}, the mid it last had${p.staleFrom != null ? ` (${clockWords(p.staleFrom)} ET)` : ''}` : 'No two-sided quote yet today — not marked'}>{Number.isFinite(p.mark) ? `mid ${p.mark.toFixed(2)}${p.staleFrom != null ? ` · ${clockWords(p.staleFrom)}` : ''}` : '— · —'}</span> : <span className="text-textPrimary">{`${p.quote.bid.toFixed(2)} · ${p.quote.ask.toFixed(2)}`}</span>) },
       { key: 'theta', header: 'Decay a day', align: 'right', render: p => <span className="text-textSecondary">{p.quote.iv > 0 ? usd(Math.abs(p.quote.theta) * 100 * p.qty) : '—'}</span> },
       { key: 'pnl', header: 'Up or down', align: 'right', render: p => (Number.isFinite(p.pnl) ? <span className={`font-semibold ${dirInk(p.pnl)}`}>{usdSigned(p.pnl)} <span className="text-t10 font-normal opacity-80">{rWords(p.r)}</span></span> : <span className="text-textMuted" title="No quote stood this minute">—</span>) },
       {
@@ -236,7 +239,7 @@ const Desk = () => {
   const orderCols = useMemo<Column<Order>[]>(
     () => [
       { key: 'contract', header: 'Contract', render: o => <ContractLabel contract={contractWords(o.contract)} right={o.contract.right} logo={o.contract.ticker} size="sm" /> },
-      { key: 'what', header: 'Order', render: o => <span className="text-textPrimary">{o.side === 'buy' ? 'Buy' : 'Sell'} {o.qty} · {o.kind === 'market' ? 'market' : o.on === 'name' ? `${o.kind === 'limit' ? 'when' : 'if'} ${o.contract.ticker} ${o.kind === 'limit' ? 'reaches' : nameGoesUp(o.kind, o.contract.right) ? 'rises to' : 'falls to'} ${o.price?.toFixed(2)}` : o.kind === 'limit' ? `limit ${o.price?.toFixed(2)}` : `stop ${o.price?.toFixed(2)}`}{o.oco ? <span className="text-textMuted"> · rides the buy</span> : null}{o.trail != null ? <span className="text-textMuted"> · trails by {o.trail.toFixed(2)}</span> : null}{o.breakeven ? <span className="text-textMuted"> · to what you paid after the first target</span> : null}{o.moved ? <span className="text-textMuted"> · moved to what you paid</span> : null}</span> },
+      { key: 'what', header: 'Order', render: o => <span className="text-textPrimary">{o.side === 'buy' ? 'Buy' : 'Sell'} {o.qty} · {o.kind === 'market' ? 'market' : o.side === 'buy' && o.kind === 'stop' ? `stop ${o.price?.toFixed(2)} · at the ask` : o.on === 'name' ? `${o.kind === 'limit' ? 'when' : 'if'} ${o.contract.ticker} ${o.kind === 'limit' ? 'reaches' : nameGoesUp(o.kind, o.contract.right) ? 'rises to' : 'falls to'} ${o.price?.toFixed(2)}` : o.kind === 'limit' ? `limit ${o.price?.toFixed(2)}` : `stop ${o.price?.toFixed(2)}`}{o.oco ? <span className="text-textMuted"> · rides the buy</span> : null}{o.trail != null ? <span className="text-textMuted"> · trails by {o.trail.toFixed(2)}</span> : null}{o.breakeven ? <span className="text-textMuted"> · to what you paid after the first target</span> : null}{o.moved ? <span className="text-textMuted"> · moved to what you paid</span> : null}</span> },
       { key: 'placed', header: 'Placed', render: o => <span className="text-textSecondary">{momentWords(o.placed)}</span> },
       {
         key: 'status',
@@ -264,7 +267,7 @@ const Desk = () => {
       { key: 'qty', header: 'Size', align: 'right', render: t => <span className="text-textPrimary">{t.qty}</span> },
       { key: 'in', header: 'In', render: t => <span className="text-textSecondary">{momentWords(t.opened)} · {t.avgIn.toFixed(2)}</span> },
       { key: 'out', header: 'Out', render: t => <span className="text-textSecondary">{momentWords(t.closed)} · {t.avgOut.toFixed(2)}</span> },
-      { key: 'how', header: 'Ended', render: t => <span className="text-textSecondary">{t.how === 'scaled' ? 'Scaled out' : t.how === 'sold' ? 'Sold by you' : t.how === 'target' ? 'Target hit' : t.how === 'stopped' ? 'Stopped out' : 'Held to the bell'}</span> },
+      { key: 'how', header: 'Ended', render: t => <span className="text-textSecondary">{t.how === 'scaled' ? 'Scaled out' : t.how === 'sold' ? 'Sold by you' : t.how === 'target' ? 'Target hit' : t.how === 'stopped' ? 'Stopped out' : t.settle === 'cash' ? 'Cash-settled' : t.avgOut > 0 ? 'Exercised at the close' : 'Expired worthless'}</span> },
       { key: 'pnl', header: 'Made or lost', align: 'right', render: t => <span className={`font-semibold ${dirInk(t.pnl)}`}>{usdSigned(t.pnl)} <span className="text-t10 font-normal opacity-80">{rWords(t.r)}</span></span> },
     ],
     []
@@ -311,8 +314,9 @@ const Desk = () => {
     ? {
         dayWords: dayWords(cursor.day, true).split(',').slice(0, 2).join(','),
         dayOrders: session.orders.filter(o => o.status === 'cancelled' && o.why === 'the day ended' && rungNow(o.done)).length,
-        settled: session.fills.filter(f => f.how === 'expired' && rungNow(f.at)).map(f => ({ contract: contractWords(f.contract), price: f.price, pnl: account.trades.find(t => t.how === 'expired' && rungNow(t.closed) && contractKey(t.contract) === contractKey(f.contract))?.pnl ?? null })),
+        settled: session.fills.filter(f => f.how === 'expired' && rungNow(f.at)).map(f => ({ contract: contractWords(f.contract), price: f.price, how: f.price <= 0 ? 'expired worthless' : (f.settle ?? settleStyleOf(f.contract.ticker)) === 'cash' ? `cash-settled on ${underOf(f.contract.ticker)}’s close, ${f.spot.toFixed(2)}` : `exercised at ${f.contract.ticker}’s close, ${f.spot.toFixed(2)}`, pnl: account.trades.find(t => t.how === 'expired' && rungNow(t.closed) && contractKey(t.contract) === contractKey(f.contract))?.pnl ?? null })),
         carried: account.positions.length,
+        unsettled: pendingSettlement(session).length,
         working: working.length,
       }
     : null;
@@ -447,7 +451,7 @@ const Desk = () => {
               strikes: picked.ticker === ticker && picked.expiry === exp ? (chain?.rows.map(r => r.strike) ?? []) : [],
               onShort: k => setPicked(k ? { ...longLeg(picked), short: k } : longLeg(picked)),
               onPlace: d => {
-                placeOrder(session.id, d);
+                placeOrder(session.id, d.kind === 'market' ? d : { ...d, tif });
                 setTab(d.kind === 'market' ? (d.side === 'buy' ? 'open' : 'closed') : 'orders');
               },
               onClose: (c, n) => {
@@ -457,6 +461,21 @@ const Desk = () => {
             }}
           />
         </div>
+      ) : null}
+      {picked && pickedQuote ? (
+        <StopOrders
+          contract={account.positions.find(p => contractKey(longLeg(p.contract)) === contractKey(longLeg(picked)))?.contract ?? picked}
+          held={account.positions.find(p => contractKey(longLeg(p.contract)) === contractKey(longLeg(picked)))?.qty ?? 0}
+          qty={q}
+          quote={pickedQuote}
+          tif={tif}
+          onTif={setTif}
+          refuse={d => refusal(session, d)}
+          onPlace={d => {
+            placeOrder(session.id, d);
+            setTab('orders');
+          }}
+        />
       ) : (
         <div className="h-full min-h-[180px] flex items-center justify-center px-6 text-center font-mono text-t10 uppercase tracking-widest text-textMuted" data-review-ticket="empty">
           Pick a contract in the chain — its order opens here
@@ -474,7 +493,7 @@ const Desk = () => {
         { label: 'Worth now', testId: 'equity', node: Number.isFinite(account.equity) ? usd(account.equity) : '—' },
         { label: 'Cash', testId: 'cash', node: usd(account.cash) },
         { label: 'Open, up or down', testId: 'open-pnl', node: Number.isFinite(account.openPnl) ? <span className={dirInk(account.openPnl)}>{usdSigned(account.openPnl)}</span> : '—' },
-        { label: 'Closed, made or lost', testId: 'realized', node: <span className={dirInk(stats.net)}>{usdSigned(stats.net)}</span> },
+        { label: 'Banked, made or lost', testId: 'realized', node: <span className={dirInk(account.realized)} title={`Closed trades ${usdSigned(stats.net)}, and the pieces sold of what is still open — after ${usd(feesOf(session))} of fees. With the open figure it is the account’s whole move.`}>{usdSigned(account.realized)}</span> },
         ...(rulesLine ? [{ label: 'Your rules', testId: 'rules', node: <span className="text-t12 font-medium">{rulesLine}</span> }] : []),
         {
           label: 'Closed trades',

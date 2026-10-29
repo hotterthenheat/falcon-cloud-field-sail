@@ -1,29 +1,31 @@
 /* The journal's front page: the month first, the period's figures beside it, what each day made, the lanes, and a
-   day opened under the month. */
+   day opened under the month — for ONE journal: every paper account, one of them, every backtest session, or one
+   (`?journal=…`, data/review/journalBooks.ts). A journal of the reader's own entries is JournalManual.tsx. */
 
 import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import type { UTCTimestamp } from 'lightweight-charts';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Download } from 'lucide-react';
 import TraceBox, { Fact, RestFoot, TraceGrid, useRestCap } from '../../components/trace/TraceBox';
 import SessionsChart, { type ChartPoint } from '../../components/record/SessionsChart';
 import ContractLabel from '../../components/ui/ContractLabel';
-import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
-import FilterTabs from '../../components/ui/FilterTabs';
 import type { Column } from '../../components/ui/DataTable';
-import JournalMonth from '../../components/review/JournalMonth';
+import JournalCalendar from './JournalCalendar';
+import JournalBars from './JournalBars';
+import { EndDoors, JournalPicker, PeriodPick, saveFile } from './JournalPicker';
+import { EmptyBox } from '../../components/ui/states';
 import JournalStats from '../../components/review/JournalStats';
 import JournalDay, { type DayHolder } from '../../components/review/JournalDay';
 import JournalLanes from '../../components/review/JournalLanes';
-import JournalDayBars from '../../components/review/JournalDayBars';
 import { card, headWord } from '../../components/review/DeskShell';
 import { fmtStampLocal } from '../../components/gex/chartTime';
 import { dirInk, heldWords, pct, rWords, usd, usdSigned } from '../../components/review/words';
 import { statsOf } from '../../data/review/engine';
 import { excursionOf } from '../../data/review/excursion';
 import { ENDED, csvOf, dayMinOf, instantOf, priceWordsOf, titleOf, whenWords, type DayNote, type JournalRow } from '../../data/review/journal';
-import { PERIODS, byHour, byName, bySetup, bySide, bySize, byWeekday, calendarDayOf, dayTotals, isPeriod, monthOf, monthWords, runningOf, rowsIn, spanOf, type Period } from '../../data/review/journalFigures';
+import { PERIODS, byAccount, byHour, byName, bySetup, bySide, bySize, byWeekday, calendarDayOf, dayTotals, isPeriod, monthOf, monthWords, runningOf, rowsIn, spanOf, type Period } from '../../data/review/journalFigures';
 import { useJournalSource, type JournalKind } from '../../data/review/journalSource';
+import { pickOf, searchWithPick, useSeen, type JournalPick } from '../../data/review/journalBooks';
+import { asOfText } from '../../components/ui/states';
 import { contractWords } from '../../data/review/quotes';
 import { MONTHS } from '../../core/calendar';
 
@@ -60,12 +62,6 @@ const FutLabel = ({ r }: { r: Extract<JournalRow, { fut: true }> }) => (
 );
 const Contract = ({ r }: { r: JournalRow }) => (r.fut ? <FutLabel r={r} /> : <ContractLabel contract={contractWords(r.t.contract)} right={r.t.contract.right} logo={r.t.contract.ticker} size="sm" />);
 
-/** The two books, as the switch names them */
-const BOOKS: readonly { value: JournalKind; label: string }[] = [
-  { value: 'paper', label: 'Paper Trade' },
-  { value: 'backtest', label: 'Backtest' },
-];
-
 /** What the page is drawn from — the book and the address's picks, as one snapshot (the soft swap) */
 interface Drawn {
   key: string;
@@ -75,14 +71,15 @@ interface Drawn {
   picked: string | null;
 }
 
-export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKind; books?: boolean }) => {
+export const JournalHome = ({ kind: liveKind }: { kind: JournalKind }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
   /* ---- what the address says, live: the controls show it at once ---- */
   const q = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const livePeriod: Period = isPeriod(q.get('period')) ? (q.get('period') as Period) : 'month';
-  const liveSession = q.get('session');
+  const livePick = pickOf(location.search);
+  const liveSession = livePick.id;
   const livePicked = ISO_DAY.test(q.get('day') ?? '') ? q.get('day') : null;
 
   /* The soft swap (the head comment): the page is drawn from ONE SNAPSHOT that trails the address by the fade */
@@ -112,6 +109,10 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
   const source = useJournalSource(kind);
   const today = source.today;
   const account = source.containers.some(c => c.id === drawn.session) ? drawn.session : null;
+  /* a journal the address names that is not here: deleted on its own page since (the register remembers it), or never
+     in this browser */
+  const seen = useSeen();
+  const missing = drawn.session && !account ? { id: drawn.session, was: kind === 'paper' || kind === 'backtest' ? (seen[kind][drawn.session] ?? null) : null } : null;
   const liveAccount = source.containers.some(c => c.id === liveSession) ? liveSession : null;
   /* the regions, keyed by what they are drawn from — a region fades only when its own key is about to change */
   const monthKey = `${kind}|${account ?? ''}`;
@@ -132,6 +133,12 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
     }
     const s = next.toString();
     navigate({ search: s ? `?${s}` : '' }, { replace: true });
+  };
+  const pickJournal = (p: JournalPick) => navigate({ search: searchWithPick(location.search, p, ['day', 'month']) }, { replace: true });
+  const openNew = () => {
+    const next = new URLSearchParams(searchWithPick(location.search, { book: 'manual', id: null }, ['day', 'month']));
+    next.set('new', '1');
+    navigate({ search: `?${next}` });
   };
   const openDay = (day: string | null) => set({ day, month: day && monthOf(day) !== home ? monthOf(day) : day ? null : q.get('month') });
   const openTrade = (r: JournalRow) => navigate(`${source.base}/${r.s.id}/${r.t.id}${location.search}`);
@@ -169,26 +176,19 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
   const sides = useMemo(() => bySide(rows), [rows]);
   const sizes = useMemo(() => bySize(rows), [rows]);
   const setups = useMemo(() => bySetup(rows).slice(0, 8), [rows]);
+  const perAccount = useMemo(() => (account || source.containers.length < 2 ? null : byAccount(rows).slice(0, 8)), [rows, account, source.containers.length]);
 
   /* ---- the words of the head ---- */
   const periodLabel = PERIODS.find(p => p.value === period)!.label;
   const title = period === 'today' ? 'Today' : period === 'week' ? 'This week' : period === 'month' ? monthWords(home) : period === 'year' ? today.slice(0, 4) : 'All time';
   const spanWords = !span ? 'Every trade kept in this browser' : period === 'today' ? `${shortDay(today)} · New York’s day` : period === 'week' ? `${shortDay(span.from)} to ${shortDay(span.to <= today ? span.to : today)}` : period === 'month' ? `${MONTHS[Number(home.slice(5)) - 1]} 1 to ${shortDay(today).split(', ')[1]}` : `Jan 1 to ${shortDay(today).split(', ')[1]}, ${today.slice(0, 4)}`;
-  const whose = account ? `on ${nameOfAccount(account)}` : source.containers.length > 1 ? `on every ${source.containerWord}` : '';
+  const whose = account ? `on ${nameOfAccount(account)}` : source.containers.length > 1 ? `on all ${source.containers.length} ${source.containerWord}s` : '';
   /* the backtest's book counts by its own clock: its "today" is the last day replayed */
   const clockWords = kind === 'backtest' ? ' · by the backtest’s clock' : '';
   const lead = period === 'today' ? 'Today' : period === 'week' ? 'This week' : period === 'month' ? `In ${monthWords(home).split(' ')[0]}` : period === 'year' ? `In ${today.slice(0, 4)}` : 'In all';
   const ranked = [...periodDays.values()].sort((a, b) => b.net - a.net);
   const best = ranked[0];
   const worst = ranked[ranked.length - 1];
-
-  const accountOptions = useMemo<DropdownOption<string>[]>(
-    () => [
-      { value: 'all', label: `Every ${source.containerWord}`, hint: `${source.rows.length} closed` },
-      ...source.containers.map(c => ({ value: c.id, label: c.name, hint: `${source.rows.filter(r => r.s.id === c.id).length} closed` })),
-    ],
-    [source]
-  );
 
   /* ---- the day, when one is open ---- */
   const pickedTotal = picked ? (days.get(picked) ?? null) : null;
@@ -246,13 +246,15 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
       const e = excursionOf(r);
       return { best: e.best.pnl, worst: e.worst.pnl };
     });
-    const url = URL.createObjectURL(new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `slayer-${kind === 'paper' ? 'paper-' : ''}journal-${period}-${today}.csv`;
-    a.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+    const who = account ? `-${nameOfAccount(account).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}` : '';
+    saveFile(`slayer-${kind}-journal${who}-${period}-${today}.csv`, csv);
   };
+  /* the day's notes: today's (the plan before it, the review after), or the open day's, brought into view */
+  const openNotes = () => {
+    if (livePicked !== today) openDay(today);
+    window.setTimeout(() => document.querySelector('[data-journal-day-notes]')?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' }), SWAP_OUT_MS + 80);
+  };
+  const csvWhyNot = rows.length ? null : source.rows.length ? 'none this period — nothing closed in it to put in a file' : 'nothing yet — nothing has closed on this journal';
   const deskPath = kind === 'paper' ? '/practice/paper' : '/practice/backtest';
   const deskWord = kind === 'paper' ? 'Paper page' : 'Backtest page';
   const testId = kind === 'paper' ? 'paper-journal' : 'review-journal';
@@ -279,25 +281,16 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
         }
         controls={
           <>
-            {/* THE BOOK: the paper accounts' trades or the backtest sessions' — one page, never mixed */}
-            {books && (
-              <>
-                <FilterTabs options={BOOKS} value={liveKind} onChange={v => set({ book: v === 'paper' ? null : v, session: null, day: null, month: null })} ariaLabel="Which book" />
-                <span className="w-px h-5 bg-borderSubtle max-sm:hidden" aria-hidden="true" />
-              </>
-            )}
-            {/* on a phone the five periods take the row to themselves and scroll inside it, clear of the account card */}
-            <span className="min-w-0 max-sm:col-span-2 max-sm:overflow-x-auto max-sm:pb-0.5" data-journal-periods>
-              <FilterTabs options={PERIODS} value={livePeriod} onChange={v => set({ period: v === 'month' ? null : v })} ariaLabel="Which period" />
-            </span>
-            {source.containers.length > 1 && <DropdownSelect label={source.containerWord === 'account' ? 'Account' : 'Session'} value={liveAccount ?? 'all'} options={accountOptions} onChange={v => set({ session: v === 'all' ? null : v, day: null })} title={`Which ${source.containerWord}’s trades`} testId="journal-account" />}
-            <button type="button" onClick={exportCsv} disabled={!rows.length} title="This period’s trades as a file a spreadsheet opens — with your tags and your words" className={`ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-30 transition-colors`} data-journal-export>
-              <Download className="w-3 h-3" /> CSV
-            </button>
+            {/* WHICH JOURNAL: the book (paper, backtest, your own) and the account or session in it — never mixed */}
+            <JournalPicker pick={livePick} onPick={pickJournal} onNew={openNew} />
+            <PeriodPick value={livePeriod} onChange={v => set({ period: v === 'month' ? null : v })} />
+            <EndDoors onNotes={missing ? undefined : openNotes} onCsv={exportCsv} csvWhyNot={missing ? 'nothing — this journal is gone' : csvWhyNot} csvTitle="This period’s trades as a file a spreadsheet opens — with your tags and your words" />
           </>
         }
         sentence={
-          source.rows.length === 0 ? (
+          missing ? (
+            <>{missing.was ? `${missing.was.name} is gone.` : 'This journal is not in this browser.'}</>
+          ) : source.rows.length === 0 ? (
             <>
               Nothing closed yet. Trade on the{' '}
               <Link to={deskPath} className="text-textPrimary font-semibold hover:text-silver transition-colors">
@@ -325,13 +318,17 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
         {null}
       </TraceBox>
 
+      {missing ? (
+        <GoneJournal kind={kind} id={missing.id} was={missing.was} notes={source.notesOf(missing.id)} onBack={() => pickJournal({ book: kind, id: null })} />
+      ) : (
+      <>
       {/* THE MONTH, and the period's figures beside it — ONE ROW, the two ending level: the calendar's weeks grow
           to the figures' height, the figures' groups spread to the calendar's */}
       {/* side by side only from 1400px: at lg the calendar had ~430px for eight columns (33px a day), at xl 638px (69px a
           day — a four-figure day is 60px wide at 14px and spilled); from 1400 a day has 86px+, at 1440 the 92px he saw */}
       <div className="grid gap-3 items-stretch min-[1400px]:grid-cols-[minmax(0,1fr)_340px]">
         <Swap key={monthKey} out={monthOut} late={alive.current} className="min-w-0 min-h-0" data-journal-month-region>
-          <JournalMonth month={month} onMonth={m => set({ month: m === home ? null : m })} home={home} days={days} today={today} picked={livePicked} onPick={openDay} noted={noted} />
+          <JournalCalendar month={month} onMonth={m => set({ month: m === home ? null : m })} home={home} days={days} today={today} picked={livePicked} onPick={openDay} noted={noted} />
         </Swap>
         <Swap key={periodKey} out={periodOut} late={alive.current} className="min-w-0 min-h-0" data-journal-stats-region>
           <JournalStats rows={rows} periodDays={periodDays} periodLabel={periodLabel} />
@@ -404,7 +401,7 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
             <div className="px-5 pb-5 h-[260px] flex items-center justify-center text-center font-mono text-t10 text-textMuted">Nothing closed in this period</div>
           ) : (
             <div className="px-5 pb-4 pt-2" data-journal-daily>
-              <JournalDayBars days={daily} picked={livePicked} onPick={openDay} height={260} />
+              <JournalBars days={daily} picked={livePicked} onPick={openDay} height={260} />
             </div>
           )}
         </div>
@@ -418,6 +415,7 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
         <JournalLanes title="Long or short" lanes={sides} rest="Longs and calls needed it up; shorts and puts, down" testId="side" />
         <JournalLanes title="Sizes of wins and losses" lanes={sizes.lanes} measure="count" labelW={122} rest={`How often a trade is a big one — cut at ${usd(sizes.step, 0)} steps`} testId="size" />
         <JournalLanes title="By setup" lanes={setups} labelW={122} rest="Your own tags, counted — the setup each trade was written down as" testId="setup" />
+        {perAccount && <JournalLanes title={`By ${source.containerWord}`} lanes={perAccount} labelW={122} rest={`What each ${source.containerWord} made in the period — pick one above for its own journal`} testId="account" />}
       </div>
 
       {/* Every trade in the period */}
@@ -431,8 +429,53 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
         <RestFoot cap={cap} noun="trades" testId={testId} />
       </div>
       </Swap>
+      </>
+      )}
       <p className="px-1 font-mono text-t10 text-textMuted">{source.foot}</p>
     </div>
   );
 };
 
+
+/** A journal whose account or session was deleted on its own page: what the journal last saw of it, and the reader's day
+    notes on it, which the journal keeps */
+const GoneJournal = ({ kind, id, was, notes, onBack }: { kind: JournalKind; id: string; was: { name: string; n: number; net: number; at: number } | null; notes: Record<string, DayNote>; onBack: () => void }) => {
+  const word = kind === 'paper' ? 'paper account' : 'backtest session';
+  const kept = Object.entries(notes)
+    .filter(([, n]) => (n.plan ?? '').trim() || (n.review ?? '').trim())
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  return (
+    <div className={`${card} flex flex-col min-w-0`} data-journal-gone={id}>
+      <EmptyBox
+        title={was ? `${was.name} was deleted` : `No such ${word} here`}
+        reason={
+          was ? (
+            <>
+              This {word} was deleted on the {kind === 'paper' ? 'Paper' : 'Backtest'} page, and its trades went with it. When the journal last saw it ({asOfText(was.at, '')}) it had {was.n} closed {was.n === 1 ? 'trade' : 'trades'}
+              {was.n ? <>, <span className={dirInk(was.net)}>{usdSigned(was.net)}</span> in all</> : null}.{kept.length ? ' Your day notes on it are kept below.' : ''}
+            </>
+          ) : (
+            <>The link names a {word} this browser does not hold — it may have been made in another browser, or deleted before the journal saw it.</>
+          )
+        }
+        action={
+          <button type="button" onClick={onBack} className="tap-40 inline-flex items-center h-8 px-3 rounded-md border border-borderMuted text-t12 font-medium text-textPrimary hover:bg-ink/[0.05]" data-journal-gone-back>
+            {kind === 'paper' ? 'All paper accounts' : 'All backtest sessions'}
+          </button>
+        }
+      />
+      {kept.length > 0 && (
+        <div className="border-t border-borderSubtle/70 px-5 py-4 flex flex-col gap-3" data-journal-gone-notes={kept.length}>
+          <span className={headWord}>Your day notes on it</span>
+          {kept.map(([day, n]) => (
+            <div key={day} className="flex flex-col gap-1 min-w-0">
+              <span className="font-mono text-t11 text-textSecondary">{shortDay(day)}</span>
+              {n.plan?.trim() && <p className="text-t12 text-textPrimary break-words"><span className="text-textMuted">Plan · </span>{n.plan}</p>}
+              {n.review?.trim() && <p className="text-t12 text-textPrimary break-words"><span className="text-textMuted">Review · </span>{n.review}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};

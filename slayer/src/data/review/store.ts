@@ -68,6 +68,20 @@ export function runAgain(id: string): Session | null {
   const runs = list.filter(s => s.name === stem || s.name.startsWith(`${stem} · run `)).length;
   return createSession({ name: `${stem} · run ${runs + 1}`, ticker: from.ticker, tickers: from.tickers, rules: from.rules, startCash: from.startCash, fee: from.fee, startDay: from.startDay });
 }
+/** A copy of a session AS IT STANDS — the book, the working orders, the clock, the notes — to try another way from here
+    while the first is kept. "SPY from Jun 22" → "SPY from Jun 22 · copy" (· copy 2, …). */
+export function duplicateSession(id: string): Session | null {
+  const from = list.find(s => s.id === id);
+  if (!from) return null;
+  const now = Date.now();
+  const stem = from.name.replace(/ · copy( \d+)?$/, '');
+  const taken = new Set(list.map(s => s.name));
+  let name = `${stem} · copy`;
+  for (let n = 2; taken.has(name) && n < 100; n++) name = `${stem} · copy ${n}`;
+  const copy: Session = { ...structuredClone(from), id: newId(now), name, copiedFrom: from.id, createdAt: now, touchedAt: now };
+  commit([copy, ...list], true);
+  return copy;
+}
 export const deleteSession = (id: string) => commit(list.filter(s => s.id !== id), true);
 export const renameSession = (id: string, name: string) => commit(list.map(s => (s.id === id ? { ...s, name: name.trim() || s.name } : s)), true);
 
@@ -114,6 +128,8 @@ function needsOf(s: Session, to: Moment): (() => Promise<boolean>)[] {
     for (const n of s.tickers?.length ? s.tickers : [s.ticker]) if (!barsKnown(n, d)) out.push(() => ensureBars(n, d));
     for (const l of legs) if (l.expiry >= d && !legKnown(l, d)) out.push(() => ensureLeg(l, d));
   }
+  /* a contract the bell could not settle yet: its expiry day's close */
+  for (const p of bookOf(s).positions) if (p.contract.expiry < s.cursor.day && !barsKnown(p.contract.ticker, p.contract.expiry)) out.push(() => ensureBars(p.contract.ticker, p.contract.expiry));
   return out;
 }
 /** Move the clock. Backward, or inside what is loaded, it is at once; otherwise the days load first (four at a time). */

@@ -1,28 +1,28 @@
-/* The reader's paper accounts, kept in localStorage and synced when signed in: one tab holds them at a time, a
-   beat works the orders against the live quotes, and every change goes through the engine. */
+/* The reader's paper accounts, kept in localStorage: one tab holds them at a time, a beat works every open account's
+   orders against the live quotes, and every change goes through the engine. Any number of accounts run side by side
+   — plain practice ones and prop-firm evaluations (rules.ts) — each opened at its own address
+   (/practice/paper/:accountId). Options only.
+
+   The public face the journal reads: `usePaper()` / `readPaper()` → { accounts: PaperAccount[], inHand, holding,
+   elsewhere }, each account with id, name, kind ('practice' | 'evaluation'), plan (an evaluation's PaperPlan: firm,
+   label, size, rules), status ('open' | 'passed' | 'failed' | 'ended') and archived. */
 
 import { useSyncExternalStore } from 'react';
 import { EMBEDDED, PHOTO } from '../../embed';
 import { chime } from '../../core/sound';
 import { contractKey, type ContractId, type Quote } from '../review/quotes';
 import type { DayNote, JournalEntry } from '../review/journal';
-import { FUTURES_LIVE, LIFE, SIM_FEED, barNowOf, candlesOf, futCandles, futNow, isPaperFuture, optionQuote, optionQuoteAt, optionsOpen, paperFut, spotForBidNow } from './feed';
-import { bellOf, dayWords, nyAt } from './clock';
+import { LIFE, SIM_FEED, barNowOf, candlesOf, optionFresh, optionQuote, optionQuoteAt, optionsOpen, spotForBidNow } from './feed';
+import { bellOf, nyAt } from './clock';
 import { LAST_MIN, ensureBars, spotAt } from '../review/history';
 import { canCatchUp, fetchGaps, hasGaps, replayGaps } from './catchUp';
+import { whalesEarnings } from '../whales';
 import {
   afterHand,
   closeStale,
-  endEvaluation,
+  endAccount,
   flattenAll,
   flattenByHand,
-  futAmend,
-  futAttach,
-  futCancel,
-  futClose,
-  futPlace,
-  futSetBreakeven,
-  futSetTrail,
   newAccount,
   optAmend,
   optAttach,
@@ -32,14 +32,15 @@ import {
   optRebase,
   optSetBreakeven,
   optSetTrail,
+  retireFutures,
   tick,
-  type EvalPlan,
-  type FutDraft,
   type OptDraft,
   type PaperAccount,
   type PaperEvent,
   type PaperMarket,
 } from './engine';
+import { NO_RULES, rulesOf, type EarningsWhen, type PaperPlan } from './rules';
+import { sizeWords } from './propFirms';
 
 const KEY = 'slayer_paper_v1';
 /* How often working orders are checked against the live quotes */
@@ -52,6 +53,34 @@ const LEASE_MS = 8_000;
 const RENEW_MS = 2_500;
 /** A tick that only moved what is open is written a moment later; a fill, at once */
 const SAVE_SOON_MS = 2_000;
+
+/* ================================================================== */
+/* The earnings calendar a plan that forbids holding through a report reads (Unusual Whales: ThetaData carries none) */
+/* ================================================================== */
+
+const earnings = new Map<string, EarningsWhen>();
+const earnAsked = new Map<string, number>();
+const EARN_RETRY_MS = 10 * 60_000;
+/** When a name next reports — undefined until the calendar has answered (asked once, on first want) */
+function earningsOf(ticker: string): EarningsWhen | undefined {
+  const t = ticker.toUpperCase();
+  if (earnings.has(t)) return earnings.get(t);
+  const now = Date.now();
+  if (typeof window !== 'undefined' && now - (earnAsked.get(t) ?? 0) > EARN_RETRY_MS) {
+    earnAsked.set(t, now);
+    const today = nyAt(now).date;
+    whalesEarnings(t)
+      .then(rows => {
+        const next = (Array.isArray(rows) ? rows : [])
+          .map(r => ({ date: String(r.report_date ?? '').slice(0, 10), time: String(r.report_time ?? '') }))
+          .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.date >= today)
+          .sort((x, y) => x.date.localeCompare(y.date))[0];
+        earnings.set(t, next ? { date: next.date, slot: /pre|bmo|before/i.test(next.time) ? 'BMO' : /post|after|amc/i.test(next.time) ? 'AMC' : null } : null);
+      })
+      .catch(() => undefined);
+  }
+  return undefined;
+}
 
 /* ================================================================== */
 /* The live market */
@@ -71,10 +100,11 @@ export function liveMarket(now = Date.now()): PaperMarket {
       return q;
     },
     optQuoteAt: (c: ContractId, spot: number) => optionQuoteAt(c, now, spot),
-    fut: (symbol: string) => futNow(symbol),
-    bar: (ticker: string) => barNowOf(isPaperFuture(ticker) ? paperFut(ticker).fund : ticker),
-    candles: (ticker: string) => (isPaperFuture(ticker) ? futCandles(ticker) : candlesOf(ticker)),
-    open: kind => (kind === 'option' ? optionsOpen(now) : FUTURES_LIVE),
+    bar: (ticker: string) => barNowOf(ticker),
+    candles: (ticker: string) => candlesOf(ticker),
+    open: () => optionsOpen(now),
+    fresh: (c: ContractId) => optionFresh(c, now),
+    earnings: earningsOf,
     /* ThetaData's recorded minute bars for the day: the last bar's close is the 16:00 print (13:00 on an early close) */
     closeOf: (ticker: string, day: string) => {
       if (now < bellOf(day) + 90_000) return NaN;
@@ -90,7 +120,7 @@ export function liveMarket(now = Date.now()): PaperMarket {
 
 interface PaperState {
   accounts: PaperAccount[];
-  /** The account on the desk */
+  /** The account last opened on a desk (the journal's default) */
   inHand: string | null;
   /** This tab holds the accounts (and so may trade them) */
   holding: boolean;
@@ -100,15 +130,23 @@ interface PaperState {
 const isAccount = (v: unknown): v is PaperAccount => {
   if (typeof v !== 'object' || v === null) return false;
   const a = v as Record<string, unknown>;
-  return typeof a.id === 'string' && typeof a.startCash === 'number' && typeof a.opt === 'object' && typeof a.fut === 'object' && typeof a.ledger === 'object';
+  return typeof a.id === 'string' && typeof a.startCash === 'number' && typeof a.opt === 'object' && typeof a.ledger === 'object';
 };
+/** An account as saved by an older version, made to fit this one: a futures plan (no `rules`) is kept as a legacy plan,
+    and what it held in futures is closed at the last price it saw (engine.ts retireFutures) */
+function migrate(a: PaperAccount): PaperAccount {
+  let x: PaperAccount = { ...a, fut: a.fut && typeof a.fut === 'object' ? { orders: a.fut.orders ?? [], fills: a.fut.fills ?? [] } : { orders: [], fills: [] } };
+  const plan = x.plan as (PaperPlan & { target?: number }) | undefined;
+  if (plan && !plan.rules) x = { ...x, plan: { id: `legacy-${plan.label ?? 'futures'}`, label: plan.label ?? '', firm: null, program: 'A futures evaluation', size: plan.size ?? x.startCash, rules: NO_RULES, source: null, legacy: 'futures' } };
+  return retireFutures(x, Date.now());
+}
 function load(): Pick<PaperState, 'accounts' | 'inHand'> {
   if (typeof localStorage === 'undefined' || EMBEDDED) return { accounts: [], inHand: null };
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null') as { accounts?: unknown[]; inHand?: string | null } | null;
     const kept = Array.isArray(raw?.accounts) ? raw!.accounts.filter(isAccount) : [];
     /* an account traded on the old simulated feed is not kept: its prices were never the market's */
-    const accounts = kept.filter(a => a.feed === 'live' && !a.name.endsWith(SIMULATED_TAG));
+    const accounts = kept.filter(a => a.feed === 'live' && !a.name.endsWith(SIMULATED_TAG)).map(migrate);
     const inHand = typeof raw?.inHand === 'string' && accounts.some(a => a.id === raw.inHand) ? raw.inHand : (accounts.find(a => a.status === 'open')?.id ?? null);
     return { accounts, inHand };
   } catch {
@@ -152,7 +190,7 @@ const subscribe = (fn: () => void) => {
   };
 };
 const snapshot = () => state;
-/** Every paper account, the one in hand, and whether this tab holds them */
+/** Every paper account, the one last on a desk, and whether this tab holds them */
 export const usePaper = (): PaperState => useSyncExternalStore(subscribe, snapshot, snapshot);
 export const readPaper = (): PaperState => state;
 
@@ -197,8 +235,7 @@ const releaseLease = () => {
     /* nothing to release into */
   }
 };
-/** Take the accounts over from the tab that holds them: what it left open is closed at the last price it saw, on the
-    next tick here (its market is not this one) */
+/** Take the accounts over from the tab that holds them: what it left open stays open, judged here from the next tick */
 export function takeHere(): void {
   if (EMBEDDED) return;
   const fresh = load();
@@ -318,7 +355,7 @@ export function startPaperRunner(): () => void {
       if (l && l.tab !== TAB && l.until > Date.now()) commit({ holding: false, elsewhere: true, ...load() });
       else holdLease();
     } else if (holdLease()) {
-      /* the other tab let go (it closed): this one holds them now — fresh from storage, and what that tab left is closed */
+      /* the other tab let go (it closed): this one holds them now — fresh from storage */
       staleDone = false;
       commit({ ...load(), holding: true, elsewhere: false }, true);
     }
@@ -330,7 +367,7 @@ export function startPaperRunner(): () => void {
       journalListeners.forEach(fn => fn());
     }
   };
-  /* The page closes (the simulated feed): what is open is closed at the market it saw, and the lease is let go */
+  /* The page closes: what is kept is written, and the lease is let go (the simulated feed also closed what was open) */
   const onHide = () => {
     if (!state.holding) return;
     if (SIM_FEED) {
@@ -353,7 +390,7 @@ export function startPaperRunner(): () => void {
 }
 
 /* ================================================================== */
-/* What the reader does */
+/* What the reader does on a desk */
 /* ================================================================== */
 
 /** A change by the reader's hand, through the engine, on the live market — nothing when this tab does not hold the accounts */
@@ -368,54 +405,108 @@ function act(id: string, fn: (a: PaperAccount, m: PaperMarket) => PaperAccount):
   return true;
 }
 export const placeOptOrder = (id: string, d: OptDraft) => act(id, (a, m) => optPlace(a, m, d));
-export const placeFutOrder = (id: string, d: FutDraft) => act(id, (a, m) => futPlace(a, m, d));
-/** Every working order at once — the Order card's Cancel orders (one future's, or one contract's) and Cancel all
-    (the account's); what a cancel takes with it (the other side of a group) goes the way a single cancel would take
-    it */
-export const cancelWorking = (id: string, only?: { symbol?: string; contract?: string }) =>
+/** Every working order at once — the account's, or one contract's (what a cancel takes with it goes the way a single
+    cancel would take it) */
+export const cancelWorking = (id: string, only?: { contract?: string }) =>
   act(id, (a, m) => {
     let x = a;
     for (const o of a.opt.orders) if (o.status === 'working' && (!only || (only.contract != null && contractKey(o.contract) === only.contract))) x = optCancel(x, m, o.id);
-    for (const o of a.fut.orders) if (o.status === 'working' && (!only || (only.symbol != null && o.symbol === only.symbol))) x = futCancel(x, m, o.id);
     return x;
   });
-/** A working order goes — either book's */
-export const cancelOrder = (id: string, orderId: string) => act(id, (a, m) => (a.opt.orders.some(o => o.id === orderId) ? optCancel(a, m, orderId) : futCancel(a, m, orderId)));
-export const amendOrder = (id: string, orderId: string, price: number) => act(id, (a, m) => (a.opt.orders.some(o => o.id === orderId) ? optAmend(a, m, orderId, price) : futAmend(a, m, orderId, price)));
+export const cancelOrder = (id: string, orderId: string) => act(id, (a, m) => optCancel(a, m, orderId));
+export const amendOrder = (id: string, orderId: string, price: number) => act(id, (a, m) => optAmend(a, m, orderId, price));
 export const attachOpt = (id: string, c: ContractId, kind: 'target' | 'stop', price: number, on?: 'name') => act(id, (a, m) => optAttach(a, m, c, kind, price, on));
-export const attachFut = (id: string, symbol: string, kind: 'target' | 'stop', price: number) => act(id, (a, m) => futAttach(a, m, symbol, kind, price));
-export const trailOrder = (id: string, orderId: string, on: boolean, by?: number) => act(id, (a, m) => (a.opt.orders.some(o => o.id === orderId) ? optSetTrail(a, m, orderId, on, by) : futSetTrail(a, m, orderId, on, by)));
-export const breakevenOrder = (id: string, orderId: string, on: boolean) => act(id, (a, m) => (a.opt.orders.some(o => o.id === orderId) ? optSetBreakeven(a, m, orderId, on) : futSetBreakeven(a, m, orderId, on)));
+export const trailOrder = (id: string, orderId: string, on: boolean, by?: number) => act(id, (a, m) => optSetTrail(a, m, orderId, on, by));
+export const breakevenOrder = (id: string, orderId: string, on: boolean) => act(id, (a, m) => optSetBreakeven(a, m, orderId, on));
 export const rebaseOrder = (id: string, orderId: string, to: 'name' | 'contract') => act(id, (a, m) => optRebase(a, m, orderId, to, (c, bid) => spotForBidNow(c, m.now, bid)));
 export const closeOpt = (id: string, c: ContractId, qty: number) => act(id, (a, m) => optClose(a, m, c, qty));
-export const closeFut = (id: string, symbol: string) => act(id, (a, m) => futClose(a, m, symbol));
 /** Flat, now: everything open closed at the market, everything working cancelled */
 export const flattenAccount = (id: string) => act(id, (a, m) => flattenByHand(a, m));
-export const endEval = (id: string) => act(id, (a, m) => endEvaluation(a, m));
+
+/* ================================================================== */
+/* The accounts themselves: start, name, start over, archive, end, delete */
+/* ================================================================== */
 
 const newId = () => `a${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-/** A practice account of the size chosen. One is open at a time: starting another closes the last one (its trades
-    stay in the journal under its name). */
+/** The next free "#n" after a base name — "Practice $25K #2" — counting every account kept, archived ones too */
+export function nextName(base: string, accounts: PaperAccount[] = state.accounts): string {
+  const re = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} #(\\d+)$`);
+  let n = 0;
+  for (const a of accounts) {
+    const m = re.exec(a.name);
+    if (m) n = Math.max(n, Number(m[1]));
+    else if (a.name === base) n = Math.max(n, 1);
+  }
+  return `${base} #${n + 1}`;
+}
+/** What an account on a plan is called before the number */
+export const baseNameOf = (plan: PaperPlan | null, size: number): string => (plan ? `${plan.firm ?? 'Your rules'} ${plan.label}` : `Practice ${sizeWords(size)}`);
+
+/** A practice account of the size chosen — beside every other one. Returns its id (null where this tab cannot). */
 export function startPractice(size: number): string | null {
   if (!state.holding) return null;
   const now = Date.now();
-  const m = liveMarket(now);
-  const accounts = state.accounts.map(a => (a.kind === 'practice' && a.status === 'open' ? { ...flattenAll(a, m, 'rule', 'the account was started over'), status: 'ended' as const, statusAt: now, statusWhy: 'Started over' } : a));
-  const a = newAccount({ id: newId(), kind: 'practice', name: `Practice · from ${dayWords(nyAt(now).date).split(', ')[1]}`, startCash: size, now });
-  commit({ accounts: [a, ...accounts], inHand: a.id }, true);
-  return a.id;
-}
-/** AN EVALUATION on a plan. One runs at a time — the page asks for the running one to be ended first. */
-export function startEvaluation(plan: EvalPlan): string | null {
-  if (!FUTURES_LIVE) return null;
-  if (!state.holding || state.accounts.some(a => a.kind === 'evaluation' && a.status === 'open')) return null;
-  const now = Date.now();
-  const same = state.accounts.filter(a => a.kind === 'evaluation' && a.plan?.label === plan.label).length;
-  const a = newAccount({ id: newId(), kind: 'evaluation', name: `${plan.label} evaluation${same ? ` · ${same + 1}` : ''}`, startCash: plan.size, plan, now });
+  const a = newAccount({ id: newId(), kind: 'practice', name: nextName(baseNameOf(null, size)), startCash: size, now });
   commit({ accounts: [a, ...state.accounts], inHand: a.id }, true);
   return a.id;
 }
-export const setInHand = (id: string) => state.accounts.some(a => a.id === id) && commit({ inHand: id }, true);
+/** An evaluation on a firm's plan, or on the reader's own rules — beside every other account */
+export function startPlan(plan: PaperPlan): string | null {
+  if (!state.holding || plan.legacy) return null;
+  const now = Date.now();
+  const a = newAccount({ id: newId(), kind: 'evaluation', name: nextName(baseNameOf(plan, plan.size)), startCash: plan.size, plan, now });
+  commit({ accounts: [a, ...state.accounts], inHand: a.id }, true);
+  return a.id;
+}
+export const setInHand = (id: string) => state.accounts.some(a => a.id === id) && state.inHand !== id && commit({ inHand: id }, true);
+
+const patch = (id: string, fn: (a: PaperAccount) => PaperAccount): boolean => {
+  if (!state.holding) return false;
+  const a = state.accounts.find(x => x.id === id);
+  if (!a) return false;
+  const next = fn(a);
+  if (next === a) return false;
+  commit({ accounts: replace(next) }, true);
+  return true;
+};
+export const renameAccount = (id: string, name: string) => patch(id, a => (name.trim() && name.trim() !== a.name ? { ...a, name: name.trim().slice(0, 60) } : a));
+/** Off the main list (still kept, still in the journal) — or back on it. An open account is ended first: nothing
+    trades out of sight. */
+export const archiveAccount = (id: string, on = true) => patch(id, a => (on ? { ...(a.status === 'open' ? endAccount(a, liveMarket(), 'Archived') : a), archived: true } : { ...a, archived: undefined }));
+/** Ended by the reader: everything open closed at the market, written down as ended */
+export const endAccountNow = (id: string) => act(id, (a, m) => endAccount(a, m));
+/** Start over: this one is ended (its trades stay in the journal) and a fresh one on the same size and plan takes its
+    place in the list, under the next number. Returns the new one's id. */
+export function resetAccount(id: string): string | null {
+  if (!state.holding) return null;
+  const a = state.accounts.find(x => x.id === id);
+  if (!a || a.plan?.legacy) return null;
+  const now = Date.now();
+  const m = liveMarket(now);
+  const ended = a.status === 'open' ? endAccount(a, m, 'Started over') : a;
+  const plan = a.kind === 'evaluation' && a.plan ? a.plan : null;
+  const fresh = newAccount({ id: newId(), kind: a.kind, name: nextName(baseNameOf(plan, a.startCash)), startCash: plan ? plan.size : a.startCash, plan: plan ?? undefined, now, fee: plan ? undefined : a.fee, sandbox: a.sandbox });
+  const accounts = state.accounts.flatMap(x => (x.id === id ? [fresh, { ...ended, archived: true }] : [x]));
+  commit({ accounts, inHand: fresh.id }, true);
+  return fresh.id;
+}
+/** Gone for good, with its journal notes */
+export function deleteAccount(id: string): boolean {
+  if (!state.holding || !state.accounts.some(a => a.id === id)) return false;
+  const accounts = state.accounts.filter(a => a.id !== id);
+  commit({ accounts, inHand: state.inHand === id ? (accounts.find(a => a.status === 'open')?.id ?? null) : state.inHand }, true);
+  writeJournal(j => {
+    const entries = { ...j.entries };
+    const days = { ...j.days };
+    delete entries[id];
+    delete days[id];
+    return { entries, days };
+  });
+  return true;
+}
+/** Does the account run on a plan's rules */
+export const hasRules = (a: PaperAccount): boolean => rulesOf(a) != null;
+
 /* ================================================================== */
 /* The journal's own key */
 /* ================================================================== */

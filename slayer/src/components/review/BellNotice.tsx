@@ -10,11 +10,13 @@ export interface BellFacts {
   /** Day orders that went unfilled and were cancelled at 16:00 */
   dayOrders: number;
   /** Contracts that expired today: their words, what a share settled at, what the trade made or lost */
-  settled: { contract: string; price: number; pnl: number | null }[];
+  settled: { contract: string; price: number; pnl: number | null; how?: string }[];
   /** Positions still open — they carry over */
   carried: number;
   /** Working orders that carry over with them */
   working: number;
+  /** Expired contracts still waiting on the close they settle on */
+  unsettled?: number;
 }
 
 interface ClosingProps {
@@ -65,14 +67,15 @@ export const BellCard = ({ facts, onNextDay, onDismiss }: BellProps) => (
     </div>
     <p className="mt-1.5 text-t12 leading-snug text-textPrimary">{facts.dayWords}’s market is shut.</p>
     <p className="mt-0.5 text-t11 leading-snug text-textSecondary">Contracts trade 09:30 to 16:00 — nothing can be bought or sold at the market until the next open. A limit or a stop left now waits for it.</p>
-    {(facts.dayOrders > 0 || facts.settled.length > 0 || facts.carried > 0) && (
+    {(facts.dayOrders > 0 || facts.settled.length > 0 || facts.carried > 0 || (facts.unsettled ?? 0) > 0) && (
       <ul className="mt-2 pt-2 border-t border-borderSubtle/70 flex flex-col gap-1 font-mono text-t10 text-textSecondary">
         {facts.settled.map(s => (
           <li key={s.contract} className="flex items-baseline gap-1.5">
-            <span className="text-textPrimary">{s.contract}</span> expired — settled at {s.price.toFixed(2)} a share
+            <span className="text-textPrimary">{s.contract}</span> {s.how ?? 'expired'} — {s.price.toFixed(2)} a share
             {s.pnl != null && <span className={`ml-auto font-semibold ${s.pnl >= 0 ? 'text-bull' : 'text-bear'}`}>{usdSigned(s.pnl)}</span>}
           </li>
         ))}
+        {(facts.unsettled ?? 0) > 0 && <li className="text-warn">{facts.unsettled} expired {facts.unsettled === 1 ? 'contract waits' : 'contracts wait'} on the close {facts.unsettled === 1 ? 'it settles' : 'they settle'} on — ThetaData has not answered it yet</li>}
         {facts.dayOrders > 0 && (
           <li>
             {facts.dayOrders} day {facts.dayOrders === 1 ? 'order' : 'orders'} went unfilled and {facts.dayOrders === 1 ? 'was' : 'were'} cancelled

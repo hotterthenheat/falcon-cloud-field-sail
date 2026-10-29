@@ -237,3 +237,10 @@ export function bySize(rows: JournalRow[]): { lanes: Lane[]; step: number } {
   ];
   return { lanes, step };
 }
+
+/** BY ACCOUNT — what each account (or session) of the journal made in the period, the busiest first: the one cut that
+    only the every-account journal has */
+export function byAccount(rows: JournalRow[]): Lane[] {
+  const by = groupBy(rows, r => r.s.id);
+  return [...by.entries()].map(([id, list]) => laneOf(id, list[0].s.name, `Closed on ${list[0].s.name}`, list)).sort((a, b) => b.n - a.n || (a.label < b.label ? -1 : 1));
+}
