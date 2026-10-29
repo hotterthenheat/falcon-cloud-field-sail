@@ -443,7 +443,7 @@ const StockName = () => {
   /* the levels named INSIDE the plot at their left end — the axis keeps the figures alone (four named tags collided there) */
   const sessionLines = [...(trend.ema20 != null ? [{ price: trend.ema20, color: SILVER, title: '20-day EMA', style: 'dashed' as const, name: 'plot' as const }] : [])];
   /* the scale holds the line and any level near it (within a quarter of the line's own span past either end), with a
-     little air — a wall far from the line is left off the scale rather than flattening thirty sessions into a thread */
+     little air — a level far from the line is left off the scale rather than flattening thirty sessions into a thread */
   const sessionRange = ((): readonly [number, number] | undefined => {
     if (sessionPoints.length < 2) return undefined;
     const vs = sessionPoints.map(p => p.value);
@@ -700,8 +700,8 @@ const StockName = () => {
               </Fact>
             </dl>
           </div>
-          {/* The sessions on hand as one line in the page's ink, the 20-day EMA and the walls named inside the plot, the
-             timeline's marks on the line; the chart fills the box's spare height. */}
+          {/* The sessions on hand as one line in the page's ink, the 20-day EMA named inside the plot, the timeline's
+             marks on the line; the chart fills the box's spare height. The walls are on Pinpoint. */}
           {sessionPoints.length > 2 && (
             <div className="px-5 pb-3 flex-1 min-h-[220px] flex flex-col" data-stock-sessions>
               <SessionsChart
@@ -741,7 +741,7 @@ const StockName = () => {
               />
             </div>
           )}
-          {/* the structure and its four flags; the walls are named on the chart now, not repeated here */}
+          {/* the structure and its four flags */}
           <div className="px-5 pb-3 flex items-center gap-3 text-t11 text-textSecondary">
             <span className="truncate">
               The structure: <span className="text-textPrimary">{trend.structure}</span>
