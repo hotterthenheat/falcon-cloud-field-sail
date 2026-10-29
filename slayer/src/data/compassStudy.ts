@@ -1,0 +1,660 @@
+/*
+  After a session: the review of every trade Compass took (and every one a late mark would have taken), and the
+  study of what it missed, both from ThetaData's recorded quotes and the rows the scan scored that day.
+
+  The review (one per trade): the entry snapshot (the 56 inputs, Model 1 and Model 2, and the inputs that pushed the
+  score most, by tree path attribution), what happened after (the underlying's path, the contract's implied vol at
+  the fill and at the exit, the mid, the spread paid, the decay), and a verdict with its cause.
+
+  The study (one per session): every contract in the scan's strike band, on both sleeves, that made a 50%+ move by the
+  books' own definitions (the ask at a mark against a later bid, before the flat); for each, the row the scan scored at
+  that mark and the gate that stopped it; the miss reasons and the inputs most often holding scores down; a label on
+  every scored row with what actually happened; Model 1's calibration on those labels; and suggested changes with
+  their evidence. Nothing is applied: the owner decides.
+
+  Reads go through compassHost (the hub and its eight-request cap on the server; the dev proxy from the script).
+*/
+
+import { compassHost } from './compassHost';
+import { bsStates, ivStates } from './compassFeatures';
+import { FLAT_T, P1_MIN, SPAN_INDEX, STOP_KEEP, spreadPass, strikeDistance, strikeSpan, thetaBurns, weekdayDte } from './compassParams';
+import { settleSignal, optionFees, type PathBar, type PathQuote } from './compassOutcome';
+import { readQuotes, type Signal } from './compassLedger';
+import { underCloses } from './compassModel';
+import { explain, sigmoid, type ExplainTree } from './lgbmExplain';
+import { nyParts, nyWallTime } from '../core/nyTime';
+import type { MarkRow } from './compassScan';
+
+/** One scored row as the server logged it (data/compassServer.ts). */
+export interface ScoredLine {
+  /** minute of the day, New York */
+  t: number;
+  d: string;
+  /** contract, "SPY 770C" */
+  k: string;
+  /** expiry YYYY-MM-DD */
+  e: string;
+  b: number;
+  a: number;
+  q: number;
+  s: number | null;
+  late?: boolean;
+  x: (number | null)[];
+  p1: number;
+  p2: number;
+}
+
+export const INPUT_NAMES = [
+  't (minutes after 09:30)', 'return from the open', '5-minute return', '15-minute return', '60-minute return', 'place in the day range',
+  'day range / open', 'realised vol, 30 min', 'rv30 / prior rv', 'range compression', 'opening-range break', 'opening-range break size',
+  'vs prior high', 'vs prior low', 'open gap', 'minutes left', 'VWAP z', 'volume vs curve', 'last-5 volume vs curve',
+  'SPY 5-minute', 'SPY 15-minute', 'SPY from open', 'sector 15-minute', 'sector from open', 'ATM IV', 'skew',
+  'IV / RV', 'net gamma', 'call wall distance', 'put wall distance', 'moneyness', 'side', 'mid', 'spread / mid',
+  'mid 5-minute change', 'mid 15-minute change', 'contract IV', 'delta', 'gamma', 'theta / day', 'vega', 'gamma / |theta|',
+  'theta / mid', 'contract open interest', 'index class', 'high-beta class', 'signed return from open', 'signed 5-minute',
+  'signed 15-minute', 'signed 60-minute', 'signed VWAP z', 'signed OR break', 'signed SPY 15-minute', 'signed sector 15-minute',
+  'signed vs prior high', 'signed vs prior low',
+];
+
+const FLAT_MIN = 15 * 60 + 55;
+const two = (n: number) => String(n).padStart(2, '0');
+const clockOf = (m: number) => `${two(Math.floor(m / 60))}:${two(m % 60)}`;
+const minuteOf = (ms: number) => {
+  const p = nyParts(ms);
+  return p.hour * 60 + p.minute;
+};
+const ymd = (iso: string) => iso.replace(/-/g, '');
+const markMs = (day: string, minute: number) => nyWallTime(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10)), Math.floor(minute / 60), minute % 60);
+const r4 = (v: number) => (Number.isFinite(v) ? Number(v.toFixed(4)) : null);
+const r2 = (v: number) => (Number.isFinite(v) ? Number(v.toFixed(2)) : null);
+const xs = (row: ScoredLine) => row.x.map(v => (v == null ? NaN : v));
+const tickerOf = (contract: string) => contract.split(' ')[0];
+
+/** One contract's quotes from a chain read, by "strike|C". */
+type Chain = Map<string, PathQuote[]>;
+
+/** One expiry's one-minute NBBO for every strike in the band, the whole session, in one read. */
+export async function chainDay(ticker: string, expiry: string, day: string, range: number): Promise<Chain | null> {
+  const got = await compassHost().theta(`/option/history/quote?symbol=${encodeURIComponent(ticker)}&expiration=${ymd(expiry)}&start_date=${ymd(day)}&end_date=${ymd(day)}&strike_range=${range}&interval=1m&format=json`);
+  if (got.error && got.error !== 'no_data') return null;
+  const out: Chain = new Map();
+  for (const item of Array.isArray(got.data) ? got.data : []) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as { contract?: Record<string, unknown>; data?: unknown };
+    const c = row.contract;
+    if (!c || !Array.isArray(row.data)) continue;
+    const strike = Number(c.strike);
+    const side = String(c.right ?? '').toUpperCase().slice(0, 1);
+    if (!(strike > 0) || (side !== 'C' && side !== 'P')) continue;
+    out.set(`${strike}|${side}`, readQuotes(row.data));
+  }
+  return out;
+}
+
+const keyOf = (contract: string) => {
+  const word = contract.split(' ')[1] ?? '';
+  return `${Number(word.slice(0, -1))}|${word.slice(-1)}`;
+};
+
+/** The underlying at an instant: the close of the last minute that started before it. */
+function underAtMs(bars: readonly PathBar[], at: number): number {
+  let px = NaN;
+  for (const b of bars) {
+    if (b.t + 60_000 <= at) px = b.c;
+    else break;
+  }
+  return px;
+}
+
+/** Years to the 16:00 close of the expiry, counting the trading minutes left (390 a session, 252 sessions). */
+function yearsTo(at: number, day: string, expiry: string): number {
+  const left = Math.max(1, 16 * 60 - minuteOf(at));
+  const sessions = Math.max(0, weekdayDte(ymd(day), expiry));
+  return (left + sessions * 390) / (390 * 252);
+}
+
+/* ---- the review ---- */
+
+export type Cause =
+  | 'direction wrong'
+  | 'reversal right after entry'
+  | 'IV crush'
+  | 'decay'
+  | 'spread or fill cost'
+  | 'direction right'
+  | 'IV expansion'
+  | 'not filled'
+  | 'still open';
+
+export interface Driver {
+  col: number;
+  name: string;
+  value: number | null;
+  /** log-odds this input added to the score along the trees' paths */
+  credit: number;
+}
+
+export interface TradeReview {
+  key: string;
+  contract: string;
+  book: 'A' | 'B' | 'C';
+  how: 'live' | 'late';
+  /** a late mark's "would have called": never a call */
+  would: boolean;
+  mark: string;
+  p1: number | null;
+  p2: number | null;
+  snapshot: {
+    bid: number;
+    ask: number;
+    spot: number | null;
+    /** the 56 inputs as the trees read them (null: missing) */
+    x: (number | null)[] | null;
+    up: Driver[];
+    down: Driver[];
+    runnerUp: Driver[];
+    runnerDown: Driver[];
+  };
+  after: {
+    fill: number | null;
+    fillAt: string | null;
+    exit: number | null;
+    exitAt: string | null;
+    why: string;
+    heldMin: number | null;
+    pnl: number | null;
+    /** the underlying from the fill to the exit, signed for the side (+ is the call's or put's way), percent */
+    underMove: number | null;
+    /** best and worst of the underlying for the side while held, percent */
+    underBest: number | null;
+    underWorst: number | null;
+    /** the underlying's first 10 minutes after the fill, signed for the side, percent */
+    underFirst10: number | null;
+    ivFill: number | null;
+    ivExit: number | null;
+    midFill: number | null;
+    midExit: number | null;
+    /** per contract, dollars: what each part of the mid's move came to (Black-Scholes, repriced step by step) */
+    parts: { direction: number | null; decay: number | null; iv: number | null; spreadIn: number | null; spreadOut: number | null; fees: number | null };
+    /** the best bid between the fill and the flat, and whether the 1.5× target stood after the exit */
+    bestBid: number | null;
+    targetLater: boolean;
+    /** the mid each minute from the fill to the exit */
+    mids: number[];
+  };
+  verdict: { cause: Cause; flags: string[]; line: string };
+}
+
+function drivers(trees: readonly ExplainTree[] | null, x: number[] | null): { up: Driver[]; down: Driver[] } {
+  if (!trees || !x) return { up: [], down: [] };
+  const e = explain(trees, x);
+  const all = e.credit.map((credit, col) => ({ col, name: INPUT_NAMES[col], value: Number.isFinite(x[col]) ? r4(x[col]) : null, credit: Number(credit.toFixed(4)) }));
+  return {
+    up: all.filter(d => d.credit > 0).sort((a, b) => b.credit - a.credit).slice(0, 5),
+    down: all.filter(d => d.credit < 0).sort((a, b) => a.credit - b.credit).slice(0, 5),
+  };
+}
+
+export interface ReviewDeps {
+  day: string;
+  rows: readonly ScoredLine[];
+  entry: readonly ExplainTree[] | null;
+  runner: readonly ExplainTree[] | null;
+  /** chains already read, by "ticker|expiry" (the study shares them) */
+  chains?: Map<string, Chain | null>;
+}
+
+/** One trade, reviewed. */
+export async function reviewTrade(sig: Signal, deps: ReviewDeps): Promise<TradeReview> {
+  const markMin = minuteOf(sig.mark ?? sig.firedAt);
+  const row = deps.rows.find(r => r.t === markMin && r.k === sig.contract && r.e === sig.expiry && !!r.late === (sig.how === 'late'))
+    ?? deps.rows.find(r => r.t === markMin && r.k === sig.contract && r.e === sig.expiry)
+    ?? null;
+  const x = row ? xs(row) : null;
+  const ent = drivers(deps.entry ?? null, x);
+  const run = drivers(deps.runner ?? null, x);
+  const o = sig.outcome;
+  const dir = sig.right === 'C' ? 1 : -1;
+  const chainKey = `${sig.ticker}|${sig.expiry}`;
+  let chain = deps.chains?.get(chainKey);
+  if (chain === undefined) {
+    chain = await chainDay(sig.ticker, sig.expiry, sig.day, sig.expiry === sig.day ? 16 : 4);
+    deps.chains?.set(chainKey, chain);
+  }
+  const quotes = chain?.get(`${sig.strike}|${sig.right}`) ?? [];
+  const bars = await underCloses(sig.ticker, ymd(sig.day));
+  const base: TradeReview = {
+    key: sig.key,
+    contract: sig.contract,
+    book: sig.book,
+    how: sig.how ?? 'live',
+    would: !!sig.would,
+    mark: clockOf(markMin),
+    p1: sig.p1,
+    p2: sig.prun,
+    snapshot: { bid: sig.bid, ask: sig.ask, spot: sig.spot, x: row ? row.x : null, up: ent.up, down: ent.down, runnerUp: run.up, runnerDown: run.down },
+    after: { fill: null, fillAt: null, exit: null, exitAt: null, why: '', heldMin: null, pnl: null, underMove: null, underBest: null, underWorst: null, underFirst10: null, ivFill: null, ivExit: null, midFill: null, midExit: null, parts: { direction: null, decay: null, iv: null, spreadIn: null, spreadOut: null, fees: null }, bestBid: null, targetLater: false, mids: [] },
+    verdict: { cause: 'still open', flags: [], line: '' },
+  };
+  if (!o || !o.fill) {
+    base.verdict = { cause: 'not filled', flags: [], line: o?.status === 'unavailable' ? 'No valid quote stood a minute after the call: never filled.' : 'Not filled yet.' };
+    return base;
+  }
+  if (o.status !== 'closed' || !o.exit) {
+    base.verdict = { cause: 'still open', flags: [], line: 'Still open: reviewed after it closes.' };
+    return base;
+  }
+  const fill = o.fill;
+  const exit = o.exit;
+  const K = sig.strike;
+  const call = sig.right === 'C';
+  const S0 = underAtMs(bars, fill.at);
+  const S1 = underAtMs(bars, exit.at);
+  const held = bars.filter(b => b.t >= fill.at - 60_000 && b.t < exit.at);
+  const signed = (px: number) => (S0 > 0 && px > 0 ? (px / S0 - 1) * 100 * dir : NaN);
+  const moves = held.map(b => signed(b.c)).filter(Number.isFinite);
+  const first10 = bars.filter(b => b.t >= fill.at - 60_000 && b.t < fill.at + 10 * 60_000).map(b => signed(b.c)).filter(Number.isFinite);
+  const exitQuote = quotes.find(q => q.t === exit.at) ?? o.last ?? null;
+  const mid0 = (fill.bid + fill.ask) / 2;
+  const mid1 = exitQuote ? (exitQuote.bid + exitQuote.ask) / 2 : NaN;
+  const T0 = yearsTo(fill.at, sig.day, sig.expiry);
+  const T1 = yearsTo(exit.at, sig.day, sig.expiry);
+  const iv0 = ivStates(mid0, S0, K, T0, call);
+  const iv1 = Number.isFinite(mid1) ? ivStates(mid1, S1, K, T1, call) : NaN;
+  const px = (S: number, T: number, v: number) => bsStates(S, K, T, v, call).px;
+  let direction = NaN;
+  let decay = NaN;
+  let iv = NaN;
+  if (Number.isFinite(iv0) && Number.isFinite(iv1)) {
+    direction = (px(S1, T0, iv0) - mid0) * 100;
+    decay = (px(S1, T1, iv0) - px(S1, T0, iv0)) * 100;
+    iv = (mid1 - px(S1, T1, iv0)) * 100;
+  } else if (Number.isFinite(mid1)) {
+    direction = (mid1 - mid0) * 100;
+  }
+  const spreadIn = (fill.ask - mid0) * 100;
+  const spreadOut = Number.isFinite(mid1) ? (mid1 - exit.px) * 100 : NaN;
+  const fees = o.fees ?? optionFees(exit.px);
+  const flatAt = markMs(sig.day, FLAT_MIN);
+  const afterFill = quotes.filter(q => q.t > fill.at && q.t <= flatAt);
+  const bestBid = afterFill.reduce((m, q) => Math.max(m, q.bid), 0);
+  const target = sig.book === 'C' ? fill.ask * 2 : fill.ask * 1.5;
+  const targetLater = quotes.some(q => q.t > exit.at && q.t <= flatAt && q.bid >= target);
+  const mids = quotes.filter(q => q.t >= fill.at && q.t <= exit.at && q.t % 60_000 === 0).map(q => Number(((q.bid + q.ask) / 2).toFixed(3)));
+  base.after = {
+    fill: fill.ask,
+    fillAt: clockOf(minuteOf(fill.at)),
+    exit: exit.px,
+    exitAt: clockOf(minuteOf(exit.at)),
+    why: exit.why,
+    heldMin: o.heldMin,
+    pnl: o.pnl,
+    underMove: r4(signed(S1)),
+    underBest: moves.length ? r4(Math.max(...moves)) : null,
+    underWorst: moves.length ? r4(Math.min(...moves)) : null,
+    underFirst10: first10.length ? r4(first10.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a), 0)) : null,
+    ivFill: r4(iv0),
+    ivExit: r4(iv1),
+    midFill: r4(mid0),
+    midExit: r4(mid1),
+    parts: { direction: r2(direction), decay: r2(decay), iv: r2(iv), spreadIn: r2(spreadIn), spreadOut: r2(spreadOut), fees: r2(fees) },
+    bestBid: bestBid > 0 ? bestBid : null,
+    targetLater,
+    mids,
+  };
+  base.verdict = verdictOf(sig, base.after, markMin);
+  return base;
+}
+
+/** The cause in one class, and the line that says it. */
+export function verdictOf(sig: Pick<Signal, 'book' | 'right'>, a: TradeReview['after'], markMin: number): TradeReview['verdict'] {
+  const flags: string[] = [];
+  if (markMin > 15 * 60) flags.push('late in session');
+  if (markMin - 570 < 15 || markMin - 570 > 330) flags.push('outside the minutes the model was trained on');
+  if (a.targetLater) flags.push('stop too tight: the target stood later, before the flat');
+  const pnl = a.pnl ?? 0;
+  const p = a.parts;
+  const cost = (p.spreadIn ?? 0) + (p.spreadOut ?? 0);
+  const side = sig.right === 'C' ? 'up' : 'down';
+  const pct = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}%`);
+  const usd = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : '−'}$${Math.abs(v).toFixed(2)}`);
+  const parts = `Direction ${usd(p.direction)}, decay ${usd(p.decay)}, IV ${usd(p.iv)}, spread ${usd(-cost)}, fees ${usd(-(p.fees ?? 0))}.`;
+  if (pnl > 0) {
+    const best = (p.iv ?? 0) > (p.direction ?? 0) ? 'IV expansion' : 'direction right';
+    return { cause: best, flags, line: `Won ${usd(pnl)}. The underlying went ${pct(a.underMove)} its way while held (best ${pct(a.underBest)}). ${parts}` };
+  }
+  const neg: [Cause, number][] = [
+    ['direction wrong', Math.min(0, p.direction ?? 0)],
+    ['decay', Math.min(0, p.decay ?? 0)],
+    ['IV crush', Math.min(0, p.iv ?? 0)],
+    ['spread or fill cost', -Math.max(0, cost)],
+  ];
+  neg.sort((x, y) => x[1] - y[1]);
+  let cause = neg[0][1] < 0 ? neg[0][0] : 'direction wrong';
+  /* a move its way first and then against it inside ten minutes, or the reversal exit itself */
+  if (cause === 'direction wrong' && (/reversed/i.test(a.why) || ((a.underFirst10 ?? 0) < 0 && (a.underBest ?? 0) > 0.05))) cause = 'reversal right after entry';
+  const lines: Record<string, string> = {
+    'direction wrong': `The underlying went ${pct(a.underMove)} against the ${sig.right === 'C' ? 'call' : 'put'} (it needed to go ${side}); best ${pct(a.underBest)} while held.`,
+    'reversal right after entry': `The underlying turned against the ${sig.right === 'C' ? 'call' : 'put'} right after the entry (${pct(a.underFirst10)} in the first ten minutes); it left on “${a.why.replace(/\.$/, '')}”.`,
+    'IV crush': `Implied vol fell from ${a.ivFill == null ? '—' : `${(a.ivFill * 100).toFixed(1)}%`} to ${a.ivExit == null ? '—' : `${(a.ivExit * 100).toFixed(1)}%`} while held; that took more than the move gave.`,
+    decay: `Time decay took the most: the underlying barely moved (${pct(a.underMove)}) over ${a.heldMin ?? '—'} minutes.`,
+    'spread or fill cost': `The spread paid in and out (${usd(-cost)}) was the biggest part of the loss: the fill was ${a.fill?.toFixed(2)} on a mid of ${a.midFill?.toFixed(2)}.`,
+  };
+  return { cause, flags, line: `Lost ${usd(pnl)}. ${lines[cause] ?? ''} ${parts}` };
+}
+
+/* ---- the study ---- */
+
+export type Gate =
+  | 'called'
+  | 'would have called (late mark)'
+  | 'Model 1 under the threshold'
+  | 'outside the books’ strike band'
+  | 'seats full'
+  | 'theta burns the stop before the flat'
+  | 'side or drive rule'
+  | 'bid at or under $0.15'
+  | 'spread over 8%'
+  | 'not scored: no quote at the mark'
+  | 'not scored: outside the scanned band'
+  | 'not scored: the name was not read at the mark';
+
+export interface Mover {
+  sleeve: 'odte' | 'weekly';
+  contract: string;
+  expiry: string;
+  /** the first mark it made the move from */
+  mark: string;
+  ask: number;
+  /** the best bid later, before the flat */
+  bestBid: number;
+  bestAt: string;
+  /** best bid against the ask */
+  ratio: number;
+  /** the book's stop (0.4678 × the ask) stood first */
+  stopFirst: boolean;
+  scored: boolean;
+  p1: number | null;
+  p2: number | null;
+  gate: Gate;
+  /** the inputs that held Model 1 down the most at that mark */
+  heldDown: Driver[];
+}
+
+export interface Label {
+  t: number;
+  k: string;
+  e: string;
+  late?: boolean;
+  p1: number;
+  p2: number;
+  /** the books' fill (the ask a full minute after the mark) and Book A's exit by its rules, non-runner */
+  fill: number | null;
+  exit: number | null;
+  why: string | null;
+  ret: number | null;
+  /** take-profit 1 (1.50×) before the stop, the reversal or the flat */
+  tp1: boolean | null;
+  /** any bid at 1.50× the fill before the flat */
+  hit50: boolean | null;
+  /** best bid before the flat against the fill */
+  best: number | null;
+}
+
+export interface StudyResult {
+  day: string;
+  builtAt: number;
+  sleeves: Record<'odte' | 'weekly', { names: number; marks: number; contractMarks: number; movers: number; moverMarks: number; scored: number; aboveThreshold: number; called: number }>;
+  movers: Mover[];
+  missReasons: { gate: Gate; n: number }[];
+  heldDownMost: { col: number; name: string; n: number }[];
+  falsePositives: { contract: string; book: string; would: boolean; pnl: number | null; cause: string }[];
+  calibration: { bucket: string; lo: number; hi: number; n: number; tp1: number; hit50: number; inWindowN: number; inWindowTp1: number }[];
+  thresholds: { p1: number; n: number; tp1: number; meanRet: number | null }[];
+  suggestions: { change: string; evidence: string; n: number; applied: false }[];
+  labels: number;
+  notes: string[];
+}
+
+const BUCKETS: [number, number][] = [[0, 0.3], [0.3, 0.4], [0.4, 0.5], [0.5, 0.6], [0.6, 0.65], [0.65, P1_MIN], [P1_MIN, 0.75], [0.75, 0.8], [0.8, 1.01]];
+
+export interface StudyDeps extends ReviewDeps {
+  marks: readonly MarkRow[];
+  calls: readonly Signal[];
+  would: readonly Signal[];
+  reviews: readonly TradeReview[];
+  /** called with each label as it is made (the server writes them out) */
+  onLabel?: (label: Label) => void;
+}
+
+export async function runStudy(deps: StudyDeps): Promise<StudyResult> {
+  const { day } = deps;
+  const chains = deps.chains ?? new Map<string, Chain | null>();
+  const notes: string[] = [];
+  const rowsAt = new Map<string, ScoredLine[]>();
+  for (const r of deps.rows) {
+    if (r.d !== day) continue;
+    const key = `${r.t}|${tickerOf(r.k)}|${r.e}`;
+    const list = rowsAt.get(key) ?? [];
+    list.push(r);
+    rowsAt.set(key, list);
+  }
+  const rowOf = (t: number, contract: string, expiry: string) => {
+    const list = rowsAt.get(`${t}|${tickerOf(contract)}|${expiry}`) ?? [];
+    return list.find(r => r.k === contract && !r.late) ?? list.find(r => r.k === contract) ?? null;
+  };
+  /* which expiry each name's weekly scan read: the most common non-same-day expiry among its rows */
+  const weeklyExp = new Map<string, Map<string, number>>();
+  for (const r of deps.rows) {
+    if (r.d !== day || r.e === day) continue;
+    const t = tickerOf(r.k);
+    const m = weeklyExp.get(t) ?? new Map<string, number>();
+    m.set(r.e, (m.get(r.e) ?? 0) + 1);
+    weeklyExp.set(t, m);
+  }
+  const callAt = (list: readonly Signal[], ticker: string, minute: number) => list.find(s => s.ticker === ticker && minuteOf(s.mark ?? s.firedAt) === minute);
+  /* the roots the official book held before each minute */
+  const heldBefore = (minute: number) => new Set(deps.calls.filter(s => s.book !== 'C' && minuteOf(s.firedAt) < minute).map(s => s.ticker));
+  const entryTrees = deps.entry ?? null;
+  const sleeves: StudyResult['sleeves'] = { odte: { names: 0, marks: 0, contractMarks: 0, movers: 0, moverMarks: 0, scored: 0, aboveThreshold: 0, called: 0 }, weekly: { names: 0, marks: 0, contractMarks: 0, movers: 0, moverMarks: 0, scored: 0, aboveThreshold: 0, called: 0 } };
+  const movers: Mover[] = [];
+  for (const sleeve of ['odte', 'weekly'] as const) {
+    const sleeveMarks = deps.marks.filter(m => m.sleeve === sleeve && m.at > 0).sort((a, b) => a.at - b.at);
+    const names = [...new Set(sleeveMarks.flatMap(m => Object.keys(m.names)))];
+    sleeves[sleeve].names = names.length;
+    sleeves[sleeve].marks = sleeveMarks.length;
+    for (const name of names) {
+      const expiry = sleeve === 'odte' ? day : [...(weeklyExp.get(name) ?? new Map<string, number>()).entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      if (!expiry) continue;
+      const ck = `${name}|${expiry}`;
+      if (!chains.has(ck)) chains.set(ck, await chainDay(name, expiry, day, sleeve === 'odte' ? 16 : 4));
+      const chain = chains.get(ck);
+      if (!chain) {
+        notes.push(`${name} ${sleeve === 'odte' ? '0DTE' : expiry}: ThetaData did not answer the session's quotes; not studied.`);
+        continue;
+      }
+      const seen = new Set<string>();
+      for (const m of sleeveMarks) {
+        const state = m.names[name];
+        if (!state) continue;
+        const minute = minuteOf(m.at);
+        if (minute >= FLAT_MIN) continue;
+        const at = markMs(day, minute);
+        const flatAt = markMs(day, FLAT_MIN);
+        for (const [ckey, quotes] of chain) {
+          const i0 = quotes.findIndex(q => q.t === at);
+          const entry = i0 >= 0 ? quotes[i0] : null;
+          if (!entry || !(entry.ask > 0) || !(entry.bid >= 0)) continue;
+          sleeves[sleeve].contractMarks += 1;
+          let best = 0;
+          let bestT = 0;
+          let stopFirst = false;
+          let moved = false;
+          for (let i = i0 + 1; i < quotes.length; i++) {
+            const q = quotes[i];
+            if (q.t > flatAt) break;
+            if (!moved && q.bid <= entry.ask * STOP_KEEP) stopFirst = true;
+            if (q.bid > best) {
+              best = q.bid;
+              bestT = q.t;
+            }
+            if (q.bid >= entry.ask * 1.5) moved = true;
+          }
+          if (!moved) continue;
+          sleeves[sleeve].moverMarks += 1;
+          if (seen.has(ckey)) continue;
+          seen.add(ckey);
+          const [k, side] = ckey.split('|');
+          const contract = `${name} ${Number(k) % 1 === 0 ? Number(k).toFixed(0) : Number(k).toFixed(2)}${side}`;
+          const row = rowOf(minute, contract, expiry);
+          let gate: Gate;
+          if (row) {
+            const called = callAt(deps.calls, name, minute);
+            const would = callAt(deps.would, name, minute);
+            if (called?.contract === contract) gate = 'called';
+            else if (would?.contract === contract) gate = 'would have called (late mark)';
+            else if (row.p1 + 1e-12 < P1_MIN) gate = 'Model 1 under the threshold';
+            else {
+              const mates = rowsAt.get(`${minute}|${name}|${expiry}`) ?? [];
+              const strikes = mates.map(r => Number(r.k.split(' ')[1].slice(0, -1)));
+              const spot = row.s ?? NaN;
+              const dist = strikeDistance(strikes, spot, Number(k));
+              const span = strikeSpan(spot, strikes, SPAN_INDEX.includes(name as (typeof SPAN_INDEX)[number]));
+              const held = heldBefore(minute);
+              if (!(dist <= span) && !(dist >= Math.max(8, span + 1) && dist <= Math.max(8, span + 1) + 4 && entry.ask <= 1)) gate = 'outside the books’ strike band';
+              else if (held.size >= 5 || held.has(name)) gate = 'seats full';
+              else if (thetaBurns(row.x[39] ?? NaN, row.x[38] ?? NaN, row.a, Math.max(0, FLAT_T - (minute - 570 + 1)) / (390 * 252))) gate = 'theta burns the stop before the flat';
+              else gate = 'side or drive rule';
+            }
+          } else if (state === 'none' || state === 'pending') gate = 'not scored: the name was not read at the mark';
+          else if (!(entry.bid > 0.15)) gate = 'bid at or under $0.15';
+          else if (!spreadPass(entry.bid, entry.ask)) gate = 'spread over 8%';
+          else if ((rowsAt.get(`${minute}|${name}|${expiry}`) ?? []).length) gate = 'not scored: outside the scanned band';
+          else gate = 'not scored: no quote at the mark';
+          const held = row && gate === 'Model 1 under the threshold' ? drivers(entryTrees, xs(row)).down.slice(0, 3) : [];
+          if (row) sleeves[sleeve].scored += 1;
+          if (row && row.p1 + 1e-12 >= P1_MIN) sleeves[sleeve].aboveThreshold += 1;
+          if (gate === 'called') sleeves[sleeve].called += 1;
+          sleeves[sleeve].movers += 1;
+          movers.push({
+            sleeve,
+            contract,
+            expiry,
+            mark: clockOf(minute),
+            ask: entry.ask,
+            bestBid: best,
+            bestAt: clockOf(minuteOf(bestT)),
+            ratio: Number((best / entry.ask).toFixed(2)),
+            stopFirst,
+            scored: !!row,
+            p1: row ? Number(row.p1.toFixed(4)) : null,
+            p2: row ? Number(row.p2.toFixed(4)) : null,
+            gate,
+            heldDown: held,
+          });
+        }
+      }
+    }
+  }
+  const reasons = new Map<Gate, number>();
+  for (const m of movers) reasons.set(m.gate, (reasons.get(m.gate) ?? 0) + 1);
+  const heldCount = new Map<number, number>();
+  for (const m of movers) for (const d of m.heldDown) heldCount.set(d.col, (heldCount.get(d.col) ?? 0) + 1);
+
+  /* every scored row, labelled with what the books would have done from its mark */
+  const labels: Label[] = [];
+  const barsOf = new Map<string, PathBar[]>();
+  for (const r of deps.rows) {
+    if (r.d !== day) continue;
+    const name = tickerOf(r.k);
+    const ck = `${name}|${r.e}`;
+    if (!chains.has(ck)) chains.set(ck, await chainDay(name, r.e, day, r.e === day ? 16 : 4));
+    const quotes = chains.get(ck)?.get(keyOf(r.k)) ?? null;
+    if (!barsOf.has(name)) barsOf.set(name, await underCloses(name, ymd(day)));
+    const right = r.k.trim().slice(-1) === 'C' ? 'C' : 'P';
+    const firedAt = markMs(day, r.t);
+    let label: Label = { t: r.t, k: r.k, e: r.e, ...(r.late ? { late: true } : {}), p1: r.p1, p2: r.p2, fill: null, exit: null, why: null, ret: null, tp1: null, hit50: null, best: null };
+    if (quotes?.length) {
+      const out = settleSignal({ book: 'A', right, runner: false, firedAt }, quotes, barsOf.get(name) ?? [], firedAt + 86_400_000);
+      if (out.fill) {
+        const flatAt = markMs(day, FLAT_MIN);
+        const best = quotes.filter(q => q.t > out.fill!.at && q.t <= flatAt).reduce((mx, q) => Math.max(mx, q.bid), 0);
+        label = { ...label, fill: out.fill.ask, exit: out.exit?.px ?? null, why: out.exit?.why ?? null, ret: out.ret, tp1: out.exit?.why === 'Take profit 1.50×', hit50: best >= out.fill.ask * 1.5, best: best > 0 ? Number((best / out.fill.ask).toFixed(3)) : null };
+      }
+    }
+    labels.push(label);
+    deps.onLabel?.(label);
+  }
+  const done = labels.filter(l => l.tp1 != null);
+  const inWin = (l: Label) => l.t - 570 >= 15 && l.t - 570 <= 330;
+  const calibration = BUCKETS.map(([lo, hi]) => {
+    const inB = done.filter(l => l.p1 >= lo && l.p1 < hi);
+    const w = inB.filter(inWin);
+    return {
+      bucket: `${(lo * 100).toFixed(lo === P1_MIN ? 2 : 0)}–${hi > 1 ? '100' : (hi * 100).toFixed(hi === P1_MIN ? 2 : 0)}%`,
+      lo,
+      hi,
+      n: inB.length,
+      tp1: inB.length ? Number((inB.filter(l => l.tp1).length / inB.length).toFixed(3)) : 0,
+      hit50: inB.length ? Number((inB.filter(l => l.hit50).length / inB.length).toFixed(3)) : 0,
+      inWindowN: w.length,
+      inWindowTp1: w.length ? Number((w.filter(l => l.tp1).length / w.length).toFixed(3)) : 0,
+    };
+  });
+  /* the same labels cut at other thresholds (inside the trained minutes, one row per contract per mark) */
+  const thresholds = [0.6, 0.65, 0.7, P1_MIN, 0.75, 0.8, 0.85].map(th => {
+    const pass = done.filter(l => inWin(l) && l.p1 >= th);
+    const rets = pass.map(l => l.ret ?? 0);
+    return { p1: th, n: pass.length, tp1: pass.length ? Number((pass.filter(l => l.tp1).length / pass.length).toFixed(3)) : 0, meanRet: rets.length ? Number((rets.reduce((a, b) => a + b, 0) / rets.length).toFixed(2)) : null };
+  });
+  const falsePositives = deps.reviews.filter(r => (r.after.pnl ?? 0) < 0).map(r => ({ contract: r.contract, book: r.book, would: r.would, pnl: r.after.pnl, cause: r.verdict.cause }));
+  return {
+    day,
+    builtAt: Date.now(),
+    sleeves,
+    movers,
+    missReasons: [...reasons].map(([gate, n]) => ({ gate, n })).sort((a, b) => b.n - a.n),
+    heldDownMost: [...heldCount].map(([col, n]) => ({ col, name: INPUT_NAMES[col], n })).sort((a, b) => b.n - a.n).slice(0, 10),
+    falsePositives,
+    calibration,
+    thresholds,
+    suggestions: suggest(calibration, thresholds, movers, deps.reviews, labels),
+    labels: labels.length,
+    notes,
+  };
+}
+
+/** Changes the day's numbers point at, each with its evidence and sample size. None is applied. */
+function suggest(cal: StudyResult['calibration'], th: StudyResult['thresholds'], movers: readonly Mover[], reviews: readonly TradeReview[], labels: readonly Label[]): StudyResult['suggestions'] {
+  const out: StudyResult['suggestions'] = [];
+  const MIN_N = 200;
+  const cur = th.find(t => Math.abs(t.p1 - P1_MIN) < 1e-9);
+  const best = th.filter(t => t.n >= MIN_N && t.meanRet != null).sort((a, b) => (b.meanRet ?? 0) - (a.meanRet ?? 0))[0];
+  if (best && cur && (best.meanRet ?? 0) <= 0) {
+    out.push({ change: 'No threshold change: no Model 1 cut made money on this session', evidence: `Inside the trained minutes, every cut with ${MIN_N}+ rows had a negative mean Book A return (best ${(best.p1 * 100).toFixed(2)}%: ${best.meanRet}% on ${best.n} rows; at ${(P1_MIN * 100).toFixed(2)}%: ${cur.meanRet ?? '—'}% on ${cur.n}). Raising or lowering the bar does not fix that; the review's causes do.`, n: cur.n, applied: false });
+  } else if (best && cur && Math.abs(best.p1 - P1_MIN) > 1e-9 && (best.meanRet ?? 0) > (cur.meanRet ?? 0)) {
+    out.push({ change: `Model 1 threshold ${(P1_MIN * 100).toFixed(2)}% → ${(best.p1 * 100).toFixed(2)}%`, evidence: `Rows at or over ${(best.p1 * 100).toFixed(2)}% inside the trained minutes: ${best.n}, take-profit rate ${(best.tp1 * 100).toFixed(1)}%, mean Book A return ${best.meanRet}%. At ${(P1_MIN * 100).toFixed(2)}%: ${cur.n} rows, ${(cur.tp1 * 100).toFixed(1)}%, ${cur.meanRet}%. One session: weigh it with more.`, n: best.n, applied: false });
+  } else if (cur) {
+    out.push({ change: 'Keep the Model 1 threshold', evidence: `No other cut with ${MIN_N}+ rows beat ${(P1_MIN * 100).toFixed(2)}% on mean Book A return (${cur.n} rows, take-profit ${(cur.tp1 * 100).toFixed(1)}%, mean ${cur.meanRet ?? '—'}%).`, n: cur.n, applied: false });
+  }
+  const top = cal.filter(c => c.lo >= P1_MIN);
+  const topN = top.reduce((a, c) => a + c.n, 0);
+  const topRate = topN ? top.reduce((a, c) => a + c.tp1 * c.n, 0) / topN : 0;
+  const lower = cal.filter(c => c.hi <= P1_MIN && c.n >= 100).sort((x, y) => y.tp1 - x.tp1)[0];
+  if (topN) out.push({ change: 'Do not read Model 1 as a probability yet', evidence: `Rows scored at or over ${(P1_MIN * 100).toFixed(2)}% reached the 1.50× take-profit ${(topRate * 100).toFixed(1)}% of the time (${topN} rows)${lower ? `; the ${lower.bucket} bucket reached it ${(lower.tp1 * 100).toFixed(1)}% (${lower.n} rows)` : ''}. A higher score did not mean a likelier target on this session; the training rows are needed to say whether that is this day or the model.`, n: topN, applied: false });
+  const spreadMiss = movers.filter(m => m.gate === 'spread over 8%' || m.gate === 'bid at or under $0.15').length;
+  if (movers.length) out.push({ change: 'Spread and minimum-bid gates: review, do not loosen on one day', evidence: `${spreadMiss} of ${movers.length} contracts that made a 50%+ move were stopped by the spread or $0.15 bid gate before the model read them; most cheap wings that double also fail the spread.`, n: movers.length, applied: false });
+  const early = labels.filter(l => l.t - 570 < 60 && l.t - 570 >= 15 && l.p1 >= P1_MIN && l.tp1 != null);
+  const later = labels.filter(l => l.t - 570 >= 60 && l.t - 570 <= 330 && l.p1 >= P1_MIN && l.tp1 != null);
+  if (early.length && later.length) {
+    const rate = (xs2: readonly Label[]) => (xs2.filter(l => l.tp1).length / xs2.length) * 100;
+    out.push({ change: 'Hold Book A/B before 10:30 ET until the range-compression input is defined there', evidence: `Before 10:30 the compression input is missing and the trees read it as 0. Over the threshold, before 10:30: ${early.length} rows, take-profit ${rate(early).toFixed(1)}%; 10:30 to 15:00: ${later.length} rows, ${rate(later).toFixed(1)}%.`, n: early.length, applied: false });
+  }
+  const lost = reviews.filter(r => (r.after.pnl ?? 0) < 0 && r.book !== 'C');
+  const byCause = new Map<string, number>();
+  for (const r of lost) byCause.set(r.verdict.cause, (byCause.get(r.verdict.cause) ?? 0) + 1);
+  if (lost.length) out.push({ change: 'Look at the losing Book A/B calls by cause before changing the exits', evidence: [...byCause].map(([c, n]) => `${c}: ${n}`).join(', '), n: lost.length, applied: false });
+  return out;
+}
+
+export { sigmoid };

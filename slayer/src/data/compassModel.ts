@@ -118,6 +118,26 @@ const seen = new Set<string>();
 const seenRootA = new Set<string>();
 const seenRootB = new Set<string>();
 const seenRootC = new Set<string>();
+/* A mark scored late is never an official call and never takes a seat. What it would have called is kept apart, one
+   per contract and one per root and book a session, for the review and the study. */
+const wouldSeen = new Set<string>();
+const wouldRoot = { A: new Set<string>(), B: new Set<string>(), C: new Set<string>() };
+const wouldPicks = new Map<string, Setup>();
+
+/** The calls late marks would have made (never official), not yet taken by the ledger. */
+export function takeWouldPicks(): Setup[] {
+  const out = [...wouldPicks.values()];
+  wouldPicks.clear();
+  return out;
+}
+
+function noteWould(setup: Setup, book: 'A' | 'B' | 'C'): boolean {
+  if (wouldSeen.has(setup.id) || wouldRoot[book].has(setup.ticker)) return false;
+  wouldSeen.add(setup.id);
+  wouldRoot[book].add(setup.ticker);
+  wouldPicks.set(setup.id, setup);
+  return true;
+}
 
 export interface LeftRow { id: string; ticker: string; contract: string; why: string; at: number }
 
@@ -590,6 +610,8 @@ export type ModelPack = {
   left?: LeftRow[];
   passed?: [string, string[]][];
   reports?: { odte?: ScanReport; weekly?: ScanReport };
+  wouldSeen?: string[];
+  wouldRoot?: { A?: string[]; B?: string[]; C?: string[] };
 };
 
 /** The session the engine's state belongs to: after 20:15 ET it is the next trading day's. */
@@ -637,12 +659,15 @@ export function exportModelState(): ModelPack {
     left: [...left.values()],
     passed: [...passed.entries()],
     reports: { odte: reports.odte, weekly: reports.weekly },
+    wouldSeen: [...wouldSeen],
+    wouldRoot: { A: [...wouldRoot.A], B: [...wouldRoot.B], C: [...wouldRoot.C] },
   };
 }
 
 function clearState(): void {
   for (const m of [picks, wingPicks, lotteryPicks, kept, nearPicks, passBook, misses, left, passed]) m.clear();
-  for (const set of [seen, seenRootA, seenRootB, seenRootC]) set.clear();
+  for (const set of [seen, seenRootA, seenRootB, seenRootC, wouldSeen, wouldRoot.A, wouldRoot.B, wouldRoot.C]) set.clear();
+  wouldPicks.clear();
   scannedAt.odte = 0;
   scannedAt.weekly = 0;
   reports.odte = emptyReport();
@@ -672,6 +697,22 @@ export function importModelState(pack: ModelPack | null, earlierScanned: { day: 
   if (pack.reports?.weekly) reports.weekly = pack.reports.weekly;
   scannedAt.odte = pack.scanned?.odte ?? 0;
   scannedAt.weekly = pack.scanned?.weekly ?? 0;
+  for (const id of pack.wouldSeen ?? []) wouldSeen.add(id);
+  for (const b of ['A', 'B', 'C'] as const) for (const t of pack.wouldRoot?.[b] ?? []) wouldRoot[b].add(t);
+}
+
+/** Calls once made from a late mark (before late marks stopped calling): they are what a late mark would have
+    called. Their seats and contracts go back to the official book. */
+export function demoteLate(calls: readonly { id: string; ticker: string; book: 'A' | 'B' | 'C' }[], liveRoots: { A: Set<string>; B: Set<string>; C: Set<string> }): void {
+  for (const c of calls) {
+    seen.delete(c.id);
+    const roots = c.book === 'A' ? seenRootA : c.book === 'B' ? seenRootB : seenRootC;
+    if (!liveRoots[c.book].has(c.ticker)) roots.delete(c.ticker);
+    for (const m of [picks, wingPicks, lotteryPicks, nearPicks]) for (const [k, v] of m) if (v.id === c.id) m.delete(k);
+    wouldSeen.add(c.id);
+    wouldRoot[c.book].add(c.ticker);
+  }
+  persistCalls();
 }
 
 /** A new session: nothing called, every seat free. The session that ended is kept to show until the first pass. */
@@ -1067,6 +1108,23 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     const drive = Number.isFinite(row.retOpen) && Math.abs(row.retOpen) >= DRIVE;
     if (anyDrive && !drive) continue;
     if (seats >= SEAT_CAP || heldRoots.has(row.setup.ticker) || seen.has(row.setup.id)) continue;
+    if (late) {
+      /* it clears every gate the official book stood at, but a late mark calls nothing and takes no seat */
+      const run = row.book === 'B' || runnerFlag(row.prun);
+      noteWould({
+        ...row.setup,
+        p1: row.p1,
+        prun: row.prun,
+        runner: run,
+        band: row.book === 'A' ? 'top' : 'wing',
+        seenAt: now,
+        mark,
+        late: true,
+        verdict: 'WATCH',
+        whyText: `Would have called (Book ${row.book}), scored late from recorded quotes. Not a call.`,
+      }, row.book);
+      continue;
+    }
     heldRoots.add(row.setup.ticker);
     seats += 1;
     if (row.book === 'A') {
@@ -1216,6 +1274,10 @@ export async function scoreLottery(setups: Setup[], now = Date.now(), late = fal
   let open = lotteryPicks.size;
   for (const setup of ranked) {
     if (open >= LOTTERY_CAP || seenRootC.has(setup.ticker)) continue;
+    if (late) {
+      noteWould({ ...setup, runner: false, band: 'lottery', seenAt: now, mark: Math.floor(now / 60_000) * 60_000, late: true, verdict: 'WATCH', whyText: 'Would have called (Book C), scored late from recorded quotes. Not a call.' }, 'C');
+      continue;
+    }
     seen.add(setup.id);
     seenRootC.add(setup.ticker);
     open += 1;

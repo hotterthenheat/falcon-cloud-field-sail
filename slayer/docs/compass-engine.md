@@ -23,10 +23,16 @@ Compass scans, calls and settles on the server, once for every viewer. Browsers 
   snapshot of every name on the sleeve (0DTE: the roots with a same-day contract; 1–7 DTE: the twenty roots with the
   full feature row) and scores Books A and B. Book C sweeps once from 15:20 ET.
 - A name the terminal does not answer inside the mark's minute (the terminal down, the session lost, the previous
-  pass still running) is scored afterwards from the quotes that stood at that exact instant (`option/at_time/quote`),
-  marked "scored late from recorded quotes (HH:MM ET mark)". A name ThetaData has no quotes for at that mark is
-  recorded as not scored. When the engine starts after the open, it fills the session's marks from 09:30 ET the
-  same way, oldest first, and always behind the live pass.
+  pass still running) is scored afterwards from the quotes that stood at that exact instant (`option/at_time/quote`).
+  **Live calls only:** a late mark is never an official call and never takes a seat. What it would have called is
+  kept as a "would have called" entry (`would` in the record), settled by the same rules, for the review and the
+  study. A name ThetaData has no quotes for at that mark is recorded as not scored. When the engine starts after the
+  open, it fills the session's marks from 09:30 ET the same way, oldest first, and always behind the live pass.
+  A record written before this rule, with a late call in `calls`, is read with that call moved to `would` and its
+  seat given back.
+- After the close (from 16:20 ET, once every call has settled and no mark is pending) it builds the session's review
+  and study once, and a day it missed the next time it runs (`src/data/compassReview.ts`, `compassStudy.ts`).
+  `npm run compass:study -- YYYYMMDD` builds them for any day on record, through the dev server's `/api/theta`.
 - Between marks it refreshes the cards' quotes every 15 seconds and settles every open call once a minute on the
   contract's own one-minute NBBO.
 - On an early-close day (ThetaData's calendar) nothing is scored after the close and the flats move with it.
@@ -42,7 +48,8 @@ One file per session date, `.cache/compass/YYYY-MM-DD.json` (git-ignored):
   "day": "2026-10-29",
   "savedAt": 1793297290023,
   "close": null,                      // the early close, minute of the day, or null
-  "calls": [ Signal ],                // every Book A, B and C call, newest first, with its settlement
+  "calls": [ Signal ],                // every call the live scan fired, newest first, with its settlement
+  "would": [ Signal ],                // what late marks would have called: never calls, never seats
   "marks": [ { "at", "clock": "10:15", "sleeve": "odte" | "weekly" | "lottery",
                "names": { "SPY": "live" | "late" | "quiet" | "none" | "pending" }, "scored", "ranAt" } ],
   "lottery": true,                    // Book C swept this session
@@ -56,12 +63,21 @@ Model 1 and Model 2, `how` (`live` or `late`), `mark`, and `outcome` (fill, exit
 contract after fees). Every scored row's 56 inputs are also logged to `.cache/compass/rows/YYYY-MM-DD.jsonl` for
 `scripts/compass-validate.ts` and `scripts/compass-validate.py`.
 
+After the session: `.cache/compass/review/YYYY-MM-DD.json` (every trade: the entry snapshot with the inputs that
+pushed Model 1 up and held it down, by tree path attribution; the underlying, IV, mid and spread after; the cause),
+`.cache/compass/study/YYYY-MM-DD.json` (the 50%+ movers on both sleeves and what stopped each, the miss reasons, the
+calibration table, the suggested changes, none applied) and `.cache/compass/labels/YYYY-MM-DD.jsonl` (every scored
+row with what the books would have done from its mark: the fill, the exit, take-profit before the stop, whether the
+bid ever reached 1.50× before the flat). The labels are the training and validation set the "Unvalidated" label
+needs, built from the live inputs.
+
 ## The API (read-only)
 
 - `GET /api/compass/state[?rev=N]`: the board, the record (this session and the four before) and the engine's state;
   `{ rev, same: true }` when the browser already holds `rev`.
 - `GET /api/compass/record?day=YYYY-MM-DD`: one session's official record.
 - `GET /api/compass/days`: the sessions on record and their call counts.
+- `GET /api/compass/review?day=YYYY-MM-DD` and `GET /api/compass/study?day=YYYY-MM-DD`: a session's review and study.
 
 The gate is the data proxies' (`server/auth.mjs`): open on local work, a signed-in plan when accounts are on.
 

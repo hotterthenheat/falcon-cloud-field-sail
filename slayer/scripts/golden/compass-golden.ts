@@ -275,7 +275,7 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   });
   const { atMark } = await import('../../src/data/compassScan');
   const { scoreBook, onScoredRow, currentPicks } = await import('../../src/data/compassModel');
-  const { recordPicks, contractPath } = await import('../../src/data/compassLedger');
+  const { recordPicks, contractPath, wouldSignals, signals } = await import('../../src/data/compassLedger');
   const { underCloses } = await import('../../src/data/compassModel');
   const mark = nyWallTime(2026, 10, 29, 10, 15);
   const snap = await atMark('RUTW', mark, 'odte');
@@ -283,11 +283,14 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   const off = onScoredRow(r => scored.push({ contract: r.setup.contract, p1: r.p1, bid: r.setup.bid, ask: r.setup.ask, q: r.setup.quotedAt ?? 0 }));
   await scoreBook(snap.setups, mark, true, true);
   off();
-  const fired = recordPicks(mark);
+  recordPicks(mark);
   const latest = Math.max(...snap.setups.map(s => s.quotedAt ?? 0));
+  /* a late mark calls nothing: no card, no official signal, no seat; it is a "would have called" entry */
   const pick = currentPicks().find(s => s.contract === 'RUTW 2845C') ?? null;
   const row = scored.find(r => r.contract === 'RUTW 2845C') ?? null;
-  const sig = fired.find(r => r.contract === 'RUTW 2845C') ?? null;
+  const sig = wouldSignals().find(r => r.contract === 'RUTW 2845C') ?? null;
+  const { seatsNow } = await import('../../src/data/compassModel');
+  expectEqual('late: no official call, no card, no seat', [signals().length, pick, seatsNow().seats], [0, null, 0]);
   let outcome: ReturnType<typeof settleSignal> | null = null;
   if (sig) {
     const quotes = await contractPath(sig, null);
@@ -303,7 +306,7 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
     ask: row?.ask ?? null,
     quotedAt: row?.q ?? null,
     p1: row ? Number(row.p1.toFixed(6)) : null,
-    called: pick?.band ?? null,
+    called: sig?.would ? `would:${sig.book}` : null,
     late: sig?.how ?? null,
     firedAt: sig?.firedAt ?? null,
     fill: outcome?.fill?.ask ?? null,
@@ -317,7 +320,7 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
     expectEqual('late: no quote stamped after the 10:15:00 mark', got.latestQuoteAt <= mark, true);
     expectEqual('late: RUTW 2845C quote that stood at the mark', [got.bid, got.ask, got.quotedAt], [want.bid, want.ask, want.quotedAt]);
     expectNear('late: RUTW 2845C Model 1', got.p1 ?? NaN, want.p1 ?? NaN, 1e-6);
-    expectEqual('late: RUTW 2845C called, marked late, at its mark', [got.called, got.late, got.firedAt], [want.called, want.late, mark]);
+    expectEqual('late: RUTW 2845C would have called (Book A), marked late, at its mark', [got.called, got.late, got.firedAt], [want.called, want.late, mark]);
     expectEqual('late: fill at the first quote a full minute after the mark', [got.fill, got.fillAt], [want.fill, want.fillAt]);
     expectEqual('late: exit by the same rules from its mark', got.exit, want.exit);
   } else {
@@ -375,15 +378,90 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
     return { status: res.statusCode, body: JSON.parse(body) as Record<string, unknown> };
   };
   const rec = ask('/api/compass/record?day=2026-10-29');
-  expectEqual('record: served as written, without the engine state', Object.keys(rec.body).sort(), ['calls', 'close', 'day', 'format', 'lottery', 'marks', 'savedAt']);
-  expectEqual('record: the late call and its mark', [(rec.body.calls as { how: string; contract: string }[])[0].how, (rec.body.marks as { names: Record<string, string> }[])[0].names], ['late', { RUTW: 'late', SPY: 'live', XLF: 'none' }]);
+  expectEqual('record: served as written, without the engine state', Object.keys(rec.body).sort(), ['calls', 'close', 'day', 'format', 'lottery', 'marks', 'savedAt', 'would']);
+  /* a call written from a late mark (before the live-only rule) reads back as "would have called" */
+  expectEqual('record: a late call is not a call', [(rec.body.calls as unknown[]).length, (rec.body.would as { how: string; would: boolean }[])[0].how, (rec.body.would as { would: boolean }[])[0].would], [0, 'late', true]);
+  expectEqual('record: its mark', (rec.body.marks as { names: Record<string, string> }[])[0].names, { RUTW: 'late', SPY: 'live', XLF: 'none' });
   const st = ask('/api/compass/state');
   expectEqual('state: format, session, a reader', [st.body.format, st.body.day, (st.body.engine as { readOnly: boolean }).readOnly], [RECORD_FORMAT, '2026-10-29', true]);
-  expectEqual('state: the record in every browser', (st.body.signals as { key: string }[]).map(r => r.key), [call.key]);
+  expectEqual('state: no official call; the would-have in its own list', [(st.body.signals as { key: string }[]).map(r => r.key), (st.body.would as { key: string }[]).map(r => r.key)], [[], [call.key]]);
   expectEqual('state: an unchanged rev answers same', ask(`/api/compass/state?rev=${st.body.rev}`).body.same, true);
-  expectEqual('days: sessions and calls', ask('/api/compass/days').body.days, [{ day: '2026-10-29', calls: 1 }]);
+  expectEqual('days: sessions and calls', ask('/api/compass/days').body.days, [{ day: '2026-10-29', calls: 0 }]);
   expectEqual('record: a bad day is refused', ask('/api/compass/record?day=yesterday').status, 400);
   engine.stop();
+}
+
+/* ---- 8. the session review and study, on recorded ThetaData ------------------------------------------------- */
+/* XSP 0DTE on 2026-10-29: the 09:45 would-have call XSP 772P reviewed, and the study of XSP's band (its scored rows,
+   its marks). The rows and the would-have call were taken from that day's record when the set was recorded. */
+{
+  const SET8 = 'compass-review-2026-10-29';
+  const dir8 = join(here, '..', 'fixtures', 'golden', SET8);
+  const want8 = join(dir8, 'expected.json');
+  const { gunzipSync, gzipSync } = await import('node:zlib');
+  const { mkdirSync, writeFileSync: write8 } = await import('node:fs');
+  if (process.env.GOLDEN_RECORD === '1' && !existsSync(join(dir8, 'inputs.json.gz'))) {
+    const cache = join(here, '..', '..', '.cache', 'compass');
+    const rows = readFileSync(join(cache, 'rows', '2026-10-29.jsonl'), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter((r: { k: string; e: string }) => r.k.startsWith('XSP ') && r.e === '2026-10-29');
+    const rec = JSON.parse(readFileSync(join(cache, '2026-10-29.json'), 'utf8'));
+    const all = [...(rec.calls ?? []), ...(rec.would ?? [])];
+    const sig = all.find((c: { contract: string }) => c.contract === 'XSP 772P');
+    const marks = (rec.marks as { sleeve: string; names: Record<string, string> }[]).filter(m => m.sleeve === 'odte' && m.names.XSP).map(m => ({ ...m, names: { XSP: m.names.XSP } }));
+    mkdirSync(dir8, { recursive: true });
+    write8(join(dir8, 'inputs.json.gz'), gzipSync(JSON.stringify({ rows, sig: { ...sig, would: true, how: 'late' }, marks })));
+  }
+  if (existsSync(join(dir8, 'inputs.json.gz'))) {
+    installUwFixtures(SET8);
+    freezeClock('2026-10-29T21:00:00Z');
+    const { openFeeds } = await import('../../src/data/feedGate');
+    openFeeds();
+    const { thetaCall } = await import('../../src/data/theta');
+    const { setCompassHost } = await import('../../src/data/compassHost');
+    setCompassHost({ server: true, theta: (p, j) => thetaCall(p, j), asset: async p => { const b = readFileSync(join(here, '..', '..', 'public', p.replace(/^\/+/, ''))); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer; }, econ: () => [] });
+    const { reviewTrade, runStudy } = await import('../../src/data/compassStudy');
+    const { parseExplainTrees, explain, sigmoid } = await import('../../src/data/lgbmExplain');
+    const inputs = JSON.parse(gunzipSync(readFileSync(join(dir8, 'inputs.json.gz'))).toString('utf8'));
+    const entry = parseExplainTrees(readFileSync(join(here, '..', '..', 'public', 'models', 'model_entry_all6months.txt'), 'utf8'));
+    const runner = parseExplainTrees(readFileSync(join(here, '..', '..', 'public', 'models', 'model_runner_all6months.txt'), 'utf8'));
+    /* tree path attribution: the base plus every credit is the model's own log-odds, so its sigmoid is Model 1 */
+    const row0 = inputs.rows.find((r: { k: string; t: number }) => r.k === 'XSP 772P' && r.t === 585);
+    const x0 = row0.x.map((v: number | null) => (v == null ? NaN : v));
+    const ex = explain(entry ?? [], x0);
+    expectNear('attribution: sigmoid(base + credits) = Model 1 at the row', sigmoid(ex.base + ex.credit.reduce((a: number, b: number) => a + b, 0)), predict(ENTRY, x0), 1e-12);
+    const chains = new Map();
+    const deps = { day: '2026-10-29', rows: inputs.rows, entry, runner, chains };
+    const review = await reviewTrade(inputs.sig, deps);
+    const study = await runStudy({ ...deps, marks: inputs.marks, calls: [], would: [inputs.sig], reviews: [review] });
+    const xspMover = study.movers.find(m => m.contract === 'XSP 772P') ?? null;
+    const got8 = {
+      fill: [review.after.fill, review.after.fillAt],
+      exit: [review.after.exit, review.after.exitAt, review.after.why],
+      midFill: review.after.midFill,
+      spreadIn: review.after.parts.spreadIn,
+      cause: review.verdict.cause,
+      targetLater: review.after.targetLater,
+      movers: study.sleeves.odte.movers,
+      moverMarks: study.sleeves.odte.moverMarks,
+      labels: study.labels,
+      calibrationRows: study.calibration.reduce((a, c) => a + c.n, 0),
+      first: study.movers.slice().sort((a, b) => a.mark.localeCompare(b.mark) || a.contract.localeCompare(b.contract))[0] ?? null,
+      xsp772p: xspMover,
+      parts: review.after,
+    };
+    if (existsSync(want8)) {
+      const w = JSON.parse(readFileSync(want8, 'utf8')) as typeof got8;
+      expectEqual('review: fill at the 09:46 ask', got8.fill, w.fill);
+      expectEqual('review: exit, its minute and why', got8.exit, w.exit);
+      expectEqual('review: mid at the fill and the spread paid in (dollars)', [got8.midFill, got8.spreadIn], [w.midFill, w.spreadIn]);
+      expectEqual('review: cause', got8.cause, w.cause);
+      expectEqual('review: the 1.50× target stood after the stop', got8.targetLater, w.targetLater);
+      expectEqual('study: XSP 0DTE 50%+ movers and their contract-marks', [got8.movers, got8.moverMarks], [w.movers, w.moverMarks]);
+      expectEqual('study: the earliest mover', got8.first, w.first);
+      expectEqual('study: every scored row labelled; the calibration covers the labelled ones', [got8.labels, got8.calibrationRows], [w.labels, w.calibrationRows]);
+    } else {
+      console.log(`RECORDED ${SET8}: ${JSON.stringify(got8)}. Check it against the raw rows, then write ${want8}.`);
+    }
+  }
 }
 
 done();

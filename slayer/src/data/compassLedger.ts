@@ -6,7 +6,7 @@
 
 import { useSyncExternalStore } from 'react';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
-import { currentPicks, noteLeft, underCloses } from './compassModel';
+import { currentPicks, noteLeft, takeWouldPicks, underCloses } from './compassModel';
 import { settleSignal, type Outcome, type PathQuote, type SignalBook } from './compassOutcome';
 import { stopAfter } from './compassParams';
 import { compassHost } from './compassHost';
@@ -48,9 +48,13 @@ export interface Signal {
   mark?: number;
   /** The session's last regular minute when it closes early (13:00 ET is 780); absent on a full day */
   closeMin?: number;
+  /** Not a call: what a mark scored late would have called, settled by the same rules for the review and study */
+  would?: true;
 }
 
 let rows: Signal[] = [];
+/** What late marks would have called: never official, never a seat */
+let wouldRows: Signal[] = [];
 let rev = 0;
 const listeners = new Set<() => void>();
 const changeFns = new Set<() => void>();
@@ -82,6 +86,17 @@ export function importSignals(next: readonly unknown[]): void {
   emit();
 }
 
+/** Replace the "would have called" list (late marks), newest first. */
+export function importWould(next: readonly unknown[]): void {
+  wouldRows = next.filter(validRow).map(r => ({ ...r, would: true as const })).sort((a, b) => b.firedAt - a.firedAt);
+  emit();
+}
+
+/** What late marks would have called, newest first. Not calls. */
+export function wouldSignals(): Signal[] {
+  return wouldRows;
+}
+
 /** The session's early close for the calls recorded from now on (minute of the day), or null on a full day. */
 let closeMinNow: number | null = null;
 export function setSessionClose(minute: number | null): void {
@@ -108,46 +123,57 @@ export function paidOf(id: string): number {
 
 /** Record the picks the scan just fired. Only a pick still holding its fire-time quote is written: a quote stamped
     after the call is not the one the model read. */
+function signalOfPick(pick: Setup, book: SignalBook): Signal | null {
+  if (!pick.seenAt || !(pick.ask > 0) || !(pick.bid >= 0)) return null;
+  if (!pick.quotedAt || pick.quotedAt > pick.seenAt + 5_000) return null;
+  const day = nyIsoDate(pick.seenAt);
+  return {
+    key: `${day}|${pick.id}`,
+    id: pick.id,
+    day,
+    book,
+    ticker: pick.ticker,
+    contract: pick.contract,
+    right: pick.right,
+    strike: pick.strike,
+    expiry: (pick.expiryDate || '').slice(0, 10),
+    sleeve: pick.sleeve,
+    firedAt: pick.seenAt,
+    quoteAt: pick.quotedAt,
+    bid: pick.bid,
+    ask: pick.ask,
+    spot: pick.spot && pick.spot > 0 ? pick.spot : null,
+    p1: pick.p1 ?? null,
+    prun: pick.prun ?? null,
+    runner: book === 'B' || pick.runner === true,
+    outcome: null,
+    pathAt: 0,
+    spark: [],
+    how: pick.late ? 'late' : 'live',
+    mark: pick.mark ?? Math.floor(pick.seenAt / 60_000) * 60_000,
+    ...(closeMinNow != null ? { closeMin: closeMinNow } : {}),
+  };
+}
+
+/** Record the picks the scan just fired. Only a pick still holding its fire-time quote is written: a quote stamped
+    after the call is not the one the model read. What a late mark would have called goes to its own list. */
 export function recordPicks(now = Date.now()): Signal[] {
   const fresh: Signal[] = [];
   let added = false;
   for (const pick of currentPicks()) {
     const book = bookOf(pick);
-    if (!book || !pick.seenAt || !(pick.ask > 0) || !(pick.bid >= 0)) continue;
-    const day = nyIsoDate(pick.seenAt);
-    const key = `${day}|${pick.id}`;
-    if (rows.some(r => r.key === key)) continue;
-    if (!pick.quotedAt || pick.quotedAt > pick.seenAt + 5_000) continue;
-    rows = [
-      {
-        key,
-        id: pick.id,
-        day,
-        book,
-        ticker: pick.ticker,
-        contract: pick.contract,
-        right: pick.right,
-        strike: pick.strike,
-        expiry: (pick.expiryDate || '').slice(0, 10),
-        sleeve: pick.sleeve,
-        firedAt: pick.seenAt,
-        quoteAt: pick.quotedAt,
-        bid: pick.bid,
-        ask: pick.ask,
-        spot: pick.spot && pick.spot > 0 ? pick.spot : null,
-        p1: pick.p1 ?? null,
-        prun: pick.prun ?? null,
-        runner: book === 'B' || pick.runner === true,
-        outcome: null,
-        pathAt: 0,
-        spark: [],
-        how: pick.late ? 'late' : 'live',
-        mark: pick.mark ?? Math.floor(pick.seenAt / 60_000) * 60_000,
-        ...(closeMinNow != null ? { closeMin: closeMinNow } : {}),
-      },
-      ...rows,
-    ];
-    fresh.push(rows[0]);
+    if (!book || pick.late) continue;
+    const sig = signalOfPick(pick, book);
+    if (!sig || rows.some(r => r.key === sig.key)) continue;
+    rows = [sig, ...rows];
+    fresh.push(sig);
+    added = true;
+  }
+  for (const pick of takeWouldPicks()) {
+    const book = bookOf(pick);
+    const sig = book ? signalOfPick(pick, book) : null;
+    if (!sig || wouldRows.some(r => r.key === sig.key)) continue;
+    wouldRows = [{ ...sig, would: true }, ...wouldRows];
     added = true;
   }
   if (added) {
@@ -217,7 +243,7 @@ export async function settleOpen(now = Date.now()): Promise<void> {
   if (reading || !compassHost().server) return;
   reading = true;
   try {
-    for (const sig of rows) {
+    for (const sig of [...rows, ...wouldRows]) {
       if (sig.outcome && (sig.outcome.status === 'closed' || sig.outcome.status === 'unavailable')) continue;
       if (now - sig.pathAt < 50_000) continue;
       const quotes = await contractPath(sig, sig.outcome?.fill?.at ?? null);
@@ -230,6 +256,12 @@ export async function settleOpen(now = Date.now()): Promise<void> {
       }
       const after = quotes.filter(q => q.t > sig.firedAt && q.t % 60_000 === 0 && (!out.exit || q.t <= out.exit.at));
       const next: Signal = { ...sig, outcome: out, pathAt: Date.now(), spark: after.map(q => q.bid).filter(b => b >= 0) };
+      if (sig.would) {
+        wouldRows = wouldRows.map(r => (r.key === sig.key ? next : r));
+        save();
+        emit();
+        continue;
+      }
       rows = rows.map(r => (r.key === sig.key ? next : r));
       if (out.status === 'closed' || out.status === 'unavailable') {
         noteLeft({ id: sig.id, ticker: sig.ticker, contract: sig.contract }, out.status === 'unavailable' ? 'Unavailable' : out.exit?.why ?? 'Closed');
@@ -265,4 +297,17 @@ export function activeStop(paid: number, peak: number, runner: boolean): { stop:
   else if (runner && peak >= paid * 1.5) name = 'TP1';
   else if (peak >= paid * 1.25) name = 'Breakeven';
   return { stop, name };
+}
+
+/** What late marks would have called (never calls), newest first, as the last state read handed it over. */
+export function useWould(): Signal[] {
+  useSyncExternalStore(
+    fn => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    () => rev,
+    () => rev,
+  );
+  return wouldRows;
 }

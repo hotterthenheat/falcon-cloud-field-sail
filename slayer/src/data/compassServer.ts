@@ -17,10 +17,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { setCompassHost, type EconRow, type ThetaAnswer } from './compassHost';
-import { exportModelState, importModelState, lockReason, modelDay, onModelChange, onScoredRow, rollModelDay, type ModelPack } from './compassModel';
-import { importSignals, onSignalsChange, setSessionClose, signals, type Signal } from './compassLedger';
+import { demoteLate, exportModelState, importModelState, lockReason, modelDay, onModelChange, onScoredRow, rollModelDay, type ModelPack } from './compassModel';
+import { importSignals, importWould, onSignalsChange, setSessionClose, signals, wouldSignals, type Signal } from './compassLedger';
 import { exportMarks, importMarks, lotterySwept, onMarks, onScanMeta, scanMeta, sessionClose, setLotteryDay, setScanMeta, startScan, stopScan, type MarkRow, type ScanMeta } from './compassScan';
 import { sessionIso } from './compassSession';
+import { buildSession, reviewFile, studyFile } from './compassReview';
+import { nyParts } from '../core/nyTime';
 import type { Setup } from '../types/compass';
 
 export const RECORD_FORMAT = 'compass-record/1';
@@ -33,8 +35,10 @@ export interface DayFile {
   savedAt: number;
   /** The session's early close (minute of the day), or null on a full day */
   close: number | null;
-  /** Every Book A, B and C call of the session, newest first, with its settlement */
+  /** Every Book A, B and C call the live scan fired this session, newest first, with its settlement */
   calls: Signal[];
+  /** What marks scored late would have called, settled by the same rules. Never calls, never seats. */
+  would?: Signal[];
   /** Every mark of the session and what happened to each name at it */
   marks: MarkRow[];
   /** Book C swept this session */
@@ -59,6 +63,8 @@ export interface CompassState {
   earlier: { day: string; at: number; setups: Setup[] } | null;
   /** The record: this session's calls and the four sessions before it, newest first */
   signals: Signal[];
+  /** What late marks would have called, the same sessions; not calls */
+  would: Signal[];
   marks: MarkRow[];
 }
 
@@ -157,10 +163,19 @@ function econRows(body: string): EconRow[] {
 
 const dayFile = (dir: string, day: string) => path.join(dir, `${day}.json`);
 
-function readDay(dir: string, day: string): DayFile | null {
+/** A call recorded from a late mark is what that mark would have called: it moves to `would` on every read. */
+function splitLate(f: DayFile): DayFile & { demoted: Signal[] } {
+  const demoted = f.calls.filter(c => c.how === 'late');
+  if (!demoted.length) return { ...f, would: f.would ?? [], demoted };
+  const would = [...(f.would ?? []), ...demoted.map(c => ({ ...c, would: true as const }))];
+  return { ...f, calls: f.calls.filter(c => c.how !== 'late'), would, demoted };
+}
+
+/** One session's record, with any call made from a late mark moved to `would`. */
+export function readDay(dir: string, day: string): (DayFile & { demoted: Signal[] }) | null {
   try {
     const got = JSON.parse(fs.readFileSync(dayFile(dir, day), 'utf8')) as DayFile;
-    return got && got.format === RECORD_FORMAT && got.day === day ? got : null;
+    return got && got.format === RECORD_FORMAT && got.day === day ? splitLate(got) : null;
   } catch {
     return null;
   }
@@ -209,6 +224,8 @@ const sessionOf = (s: Signal) => sessionIso(s.firedAt);
 export interface Engine {
   state: (rev?: number) => CompassState | null;
   record: (day: string) => DayFile | null;
+  /** the record folder (the review and the study live beside the record) */
+  dir: string;
   days: () => { day: string; calls: number }[];
   stop: () => void;
 }
@@ -269,6 +286,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
   let day = sessionIso(Date.now());
   let dirty = false;
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  let cached: { rev: number; state: CompassState } | null = null;
 
   /** The previous session's cards, to show (stamped) until today's first pass. */
   const earlierOf = (today: string) => {
@@ -289,12 +307,24 @@ export function startCompassEngine(o: EngineOptions): Engine {
     const mine = readDay(o.dir, today)?.calls ?? [];
     return [...mine, ...older];
   };
+  const recentWould = (today: string): Signal[] => {
+    const days = [...recordDays(o.dir).filter(d => d < today).slice(-4), today];
+    return days.flatMap(d => readDay(o.dir, d)?.would ?? []);
+  };
 
   const load = (today: string) => {
     const f = readDay(o.dir, today);
     importModelState(f?.state ?? null, earlierOf(today));
     if (!f) rollModelDay(today.replace(/-/g, ''));
     importSignals(recentCalls(today));
+    importWould(recentWould(today));
+    if (f?.demoted.length) {
+      /* their seats go back: only a root a live call holds stays taken */
+      const live = { A: new Set<string>(), B: new Set<string>(), C: new Set<string>() };
+      for (const c of f.calls) live[c.book].add(c.ticker);
+      demoteLate(f.demoted, live);
+      changed();
+    }
     importMarks(f?.marks ?? []);
     setLotteryDay(f?.lottery ? today : '');
     if (f) setScanMeta({ spots: f.meta?.spots ?? {}, sparks: f.meta?.sparks ?? {}, line: f.meta?.line ?? '', ...(readOnly && f.meta?.theta ? { theta: f.meta.theta, downSince: f.meta.downSince ?? 0 } : {}) });
@@ -309,6 +339,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
       savedAt: Date.now(),
       close: sessionClose(),
       calls: signals().filter(s => sessionOf(s) === day),
+      would: wouldSignals().filter(s => sessionOf(s) === day),
       marks: exportMarks(),
       lottery: lotterySwept() === day,
       state: exportModelState(),
@@ -374,7 +405,6 @@ export function startCompassEngine(o: EngineOptions): Engine {
     }
   };
   const rowTimer = readOnly ? null : setInterval(flushRows, 2_000);
-  let cached: { rev: number; state: CompassState } | null = null;
 
   let lockTimer: ReturnType<typeof setInterval> | null = null;
   let reloadTimer: ReturnType<typeof setInterval> | null = null;
@@ -393,6 +423,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
         rollModelDay(next.replace(/-/g, ''));
         importModelState(exportModelState(), earlierOf(next));
         importSignals(recentCalls(next));
+        importWould(recentWould(next));
         importMarks([]);
         changed();
         log(`[compass] session ${next}`);
@@ -419,6 +450,29 @@ export function startCompassEngine(o: EngineOptions): Engine {
     log(`[compass] ${why}`);
   }
 
+  /* After a session settles, its review and study are built once: the trades reviewed, the movers counted, every
+     scored row labelled. A day the engine missed after its close is built the next time it runs. */
+  let building = false;
+  const reviewTimer = readOnly ? null : setInterval(() => {
+    if (building) return;
+    const p = nyParts(Date.now());
+    const mins = p.hour * 60 + p.minute;
+    const days = recordDays(o.dir).filter(d => !fs.existsSync(studyFile(o.dir, d)) || !fs.existsSync(reviewFile(o.dir, d)));
+    const todo = days.filter(d => d < day || (d === day && mins >= 16 * 60 + 20 && mins < 20 * 60 + 15)).pop();
+    if (!todo) return;
+    const f = todo === day ? snapshotFile() : readDay(o.dir, todo);
+    if (!f) return;
+    const open = [...f.calls, ...(f.would ?? [])].some(c => !c.outcome || c.outcome.status === 'open' || c.outcome.status === 'waiting');
+    const pending = f.marks.some(m => Object.values(m.names).includes('pending'));
+    if ((open || pending) && todo === day) return;
+    building = true;
+    void buildSession(o.dir, todo, f, log)
+      .catch(e => log(`[compass] the review of ${todo} did not build: ${(e as Error).message}`))
+      .finally(() => {
+        building = false;
+      });
+  }, 60_000);
+
   const state = (): CompassState => {
     if (cached && cached.rev === rev) return cached.state;
     const s: CompassState = {
@@ -433,6 +487,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
       model: exportModelState(),
       earlier: null,
       signals: signals(),
+      would: wouldSignals(),
       marks: exportMarks(),
     };
     s.earlier = s.model.day === modelDay() && (s.model.picks?.length || s.model.scanned?.odte || s.model.scanned?.weekly) ? null : earlierOf(day);
@@ -442,12 +497,14 @@ export function startCompassEngine(o: EngineOptions): Engine {
 
   return {
     state: () => state(),
+    dir: o.dir,
     record: (d: string) => (d === day ? snapshotFile() : readDay(o.dir, d)),
     days: () => recordDays(o.dir).map(d => ({ day: d, calls: (d === day ? signals().filter(s => sessionOf(s) === day) : readDay(o.dir, d)?.calls ?? []).length })),
     stop: () => {
       stopScan();
       for (const off of offs) off();
       if (lockTimer) clearInterval(lockTimer);
+      if (reviewTimer) clearInterval(reviewTimer);
       if (rowTimer) clearInterval(rowTimer);
       flushRows();
       if (reloadTimer) clearInterval(reloadTimer);
@@ -522,8 +579,29 @@ export function compassRoute(engine: Engine, req: Req, res: Res): void {
       send(req, res, 404, { error: 'No record for that session.', code: 'no_record' });
       return;
     }
-    const { state: _state, meta: _meta, ...record } = f;
+    const { state: _state, meta: _meta, ...rest } = f;
+    const { demoted: _demoted, ...record } = rest as typeof rest & { demoted?: unknown };
     send(req, res, 200, record);
+    return;
+  }
+  if (route === '/review' || route === '/study') {
+    const d = url.searchParams.get('day') || '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      send(req, res, 400, { error: 'day must be YYYY-MM-DD' });
+      return;
+    }
+    const file = route === '/review' ? reviewFile(engine.dir, d) : studyFile(engine.dir, d);
+    let body: unknown = null;
+    try {
+      body = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      body = null;
+    }
+    if (!body) {
+      send(req, res, 404, { error: route === '/review' ? 'No review for that session yet.' : 'No study for that session yet.', code: 'not_built' });
+      return;
+    }
+    send(req, res, 200, body);
     return;
   }
   if (route === '/days') {

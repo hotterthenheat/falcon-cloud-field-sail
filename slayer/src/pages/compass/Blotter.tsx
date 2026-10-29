@@ -15,6 +15,9 @@ import { heldWords, usd, dirInk } from '../../components/review/words';
 import { useSignals, type Signal } from '../../data/compassLedger';
 import { daySummary } from '../../data/compassOutcome';
 import { backlogLine, useCompassFeed } from '../../data/compassFeed';
+import { useCompassDoc } from '../../data/compassReviewFeed';
+import TradeReviewCard from '../../components/compass/TradeReviewCard';
+import { Link } from 'react-router-dom';
 import { EmptyBox, ErrorBox, LoadingBox, asOfText } from '../../components/ui/states';
 import { useThetaStatus } from '../../data/thetaQuote';
 import { Tip } from '../../components/ui/Tooltip';
@@ -177,6 +180,7 @@ const Blotter = () => {
   const [side, setSide] = useState<'all' | 'call' | 'put'>('all');
   const [q, setQ] = useState('');
   const [openDay, setOpenDay] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
   const record = useSignals();
   const theta = useThetaStatus();
   const lines = useMemo(() => record.map(lineOf), [record]);
@@ -218,8 +222,6 @@ const Blotter = () => {
           <Fact label="Won · lost · open" testId="won" title="Closed with a gain after fees, closed at or under the fill after fees, and still held. Filling and unavailable calls are in neither.">
             <span className="text-bull">{day.won}</span> · <span className="text-bear">{day.lost}</span> · {day.open}
           </Fact>
-          <Fact label="Net" testId="pnl" title="Per contract: the closed calls, one contract each, after an estimated $1.08 round trip plus the SEC fee.">{day.won + day.lost ? <span className={dirInk(day.net)}>{signed(day.net)}</span> : '—'}</Fact>
-          <Fact label="Open at bid" testId="open-mark" title="The open calls marked at their last bid, after the same round-trip cost.">{day.open ? <span className={dirInk(day.openMark)}>{signed(day.openMark)}</span> : '—'}</Fact>
           <Fact label="Avg win · loss" testId="avg-win" title="Average return of the closed calls that won, and of those that lost.">{cut.avgWin == null && cut.avgLoss == null ? '—' : `${cut.avgWin == null ? '—' : pctWords(cut.avgWin, 1)} · ${cut.avgLoss == null ? '—' : pctWords(cut.avgLoss, 1)}`}</Fact>
           <Fact label="Avg hold" testId="hold" title="Average time from the fill to the exit.">{cut.avgHold == null ? '—' : heldWords(cut.avgHold)}</Fact>
         </>
@@ -265,6 +267,8 @@ const Blotter = () => {
           tooltips={TOOLTIPS}
           lockColumns
           rowKey={r => r.key}
+          onRowClick={r => setPicked(k => (k === r.key ? null : r.key))}
+          selectedKey={picked}
           autoHeight
           initialSort={{ key: 'fired', dir: 'desc' }}
           animate={false}
@@ -283,7 +287,28 @@ const Blotter = () => {
           )}
         />
       )}
+      {picked && <ReviewPanel signalKey={picked} day={lines.find(l => l.key === picked)?.sig.day ?? null} onClose={() => setPicked(null)} />}
     </TraceBox>
+  );
+};
+
+/** The picked call's review, under the grid: built after the session settles. */
+const ReviewPanel = ({ signalKey, day, onClose }: { signalKey: string; day: string | null; onClose: () => void }) => {
+  const { doc, status } = useCompassDoc('review', day);
+  const trade = doc?.trades.find(t => t.key === signalKey) ?? null;
+  return (
+    <div className="border-t border-borderSubtle px-4 sm:px-5 py-4" data-blotter-review>
+      <div className="flex items-center gap-3 mb-2">
+        <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">Review</span>
+        {day && <Link to={`/compass/review?day=${day}#${encodeURIComponent(signalKey)}`} className="font-mono text-t10 text-textSecondary underline decoration-borderMuted underline-offset-4">The session review</Link>}
+        <button type="button" onClick={onClose} className="ml-auto slayer-chip uppercase tracking-wider tap-40">Close</button>
+      </div>
+      {trade ? (
+        <TradeReviewCard r={trade} />
+      ) : (
+        <EmptyBox compact title={status === 'loading' ? 'Reading the review' : 'Not reviewed yet'} reason={status === 'loading' ? undefined : 'A call is reviewed once the session has settled, after 16:20 ET.'} />
+      )}
+    </div>
   );
 };
 
