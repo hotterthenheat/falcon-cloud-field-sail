@@ -18,6 +18,7 @@ import { readRegime } from './flipLevel';
 import { levelsFor } from './levelsFor';
 import type { ExposureExpiry, ExposureLevels, ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, GexLevel, MarketSnapshot } from '../types/market';
+import { fmtStrike } from '../core/format';
 
 /** Thirty strikes each side: the whole book */
 export const WINDOW = 30;
@@ -131,8 +132,6 @@ export interface Compare {
   wider: { ticker: string; ratio: number };
   sentence: string;
 }
-
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
 /** The name a comparison opens against: the index twin when there is one, else the next name on the list */
 export function partnerFor(ticker: string): string {

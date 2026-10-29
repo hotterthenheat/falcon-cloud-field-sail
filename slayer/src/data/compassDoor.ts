@@ -2,7 +2,7 @@
    session. Five open. The blotter is not this book. */
 
 import { useEffect, useMemo, useState } from 'react';
-import { isoDate, isTradingDay, nextSession } from '../core/calendar';
+import { isoDate, isTradingDay, nextSession, MONTHS } from '../core/calendar';
 import { now } from '../core/clock';
 import { nyParts, type At } from '../core/nyTime';
 import type { TrackedSetup } from '../types/tracker';
@@ -13,7 +13,6 @@ import type { OptionPhase } from './compassSession';
 export const OPEN_CAP = 5;
 
 const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 interface ScanClock {
   /** A tape that can take a ticket is open. The halt and the shut hours are not. */

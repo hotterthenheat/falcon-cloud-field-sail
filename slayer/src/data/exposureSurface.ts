@@ -34,7 +34,7 @@ import { buildExposureProfile, type StrikeWindow } from './exposure';
 import { buildDeskChain, DESK_DTES } from './weigherDesk';
 import { blackScholesGreeks } from '../core/greeks';
 import { spotChangePct } from './gex';
-import { bookToday, isoDate, nextSession } from '../core/calendar';
+import { bookToday, isoDate, nextSession, MONTHS } from '../core/calendar';
 import { expiryOpen } from '../core/tradingYear';
 import { expiryLabel, peekIv } from './uwBook';
 import { HIGHER_KEYS, contractHigher, strikeHigher, yearsLeft, type HigherKey } from './liveHigher';
@@ -154,7 +154,6 @@ export interface ExposureSurface {
     deduped below, so two horizons on one Friday are one column. */
 export const CALENDAR_DTES = [0, 1, 2, 3, 4, 7, 14, 21, 28, 35, 42, 49, 63, 77, 91] as const;
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const EPS = 1e-6;
 /** The dealers' side of each leg — the simulator's own numbers (core/simulator.ts, the chain builder) */
 const DEALER_CALL = -0.55;

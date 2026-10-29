@@ -14,12 +14,11 @@
 */
 
 import type { ExpiryChoice } from '../ui/ExpiryCard';
-import { bookToday, expiryFor, isoDate, sessionsBetween, today } from '../../core/calendar';
+import { bookToday, expiryFor, isoDate, sessionsBetween, today, MONTHS } from '../../core/calendar';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import { expiryDateFor } from '../../data/uwBook';
 import type { ExposureExpiry } from '../../types/gex';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const fmtDay = (d: Date) => `${MONTHS[d.getMonth()]} ${d.getDate()}`;
 /** The monthly expiration: the third Friday of this month, or next month's once it has passed */
 const monthlyExpiry = (from: Date): Date => {

@@ -8,8 +8,8 @@ import { statsOf } from '../../data/review/engine';
 import { keptOf } from '../../data/review/excursion';
 import { dayMinOf, type JournalRow } from '../../data/review/journal';
 import { grossOf, runsOf, type DayTotal } from '../../data/review/journalFigures';
+import { MONTHS } from '../../core/calendar';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const dayWords = (day: string) => {
   const d = new Date(`${day}T12:00:00`);
   return `${MONTHS[d.getMonth()]} ${d.getDate()}`;

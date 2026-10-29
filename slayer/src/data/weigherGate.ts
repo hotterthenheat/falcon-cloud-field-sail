@@ -8,6 +8,7 @@ import { econReleases } from './monthCalendar';
 import { COMPASS_SET } from './compassUniverse';
 import type { OptionRight } from '../types/compass';
 import type { DeskChain, DeskContract } from './weigherDesk';
+import { normCdf as ncdf } from '../core/math';
 
 export const WEIGHER_R = 0.042;
 export const WEIGHER_Q = 0;
@@ -15,13 +16,6 @@ export const WEIGHER_Q = 0;
 export const THETA_DAYS = 365;
 /** A calendar-day theta as the decay over one hour of the cash session (6.5 hours, 252 sessions a year). */
 export const thetaPerSessionHour = (thetaPerDay: number): number => (thetaPerDay * THETA_DAYS) / (252 * 6.5);
-
-function ncdf(x: number): number {
-  const k = 1 / (1 + 0.2316419 * Math.abs(x));
-  const d = 0.3989422804 * Math.exp((-x * x) / 2);
-  const p = k * (0.31938153 + k * (-0.356563782 + k * (1.781477937 + k * (-1.821255978 + k * 1.330274429))));
-  return x >= 0 ? 1 - d * p : d * p;
-}
 
 /** Weekday sessions left, including what is left of today, over 390 × 252, plus 1e−6. */
 export function yearFracLeft(expiryYmd: string, now = Date.now()): number {

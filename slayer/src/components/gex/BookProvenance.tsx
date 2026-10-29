@@ -26,9 +26,9 @@ import { peekEntry, peekGammaPriced, peekOiChange } from '../../data/uwBook';
 import { levelsForName } from '../../data/levelsScope';
 import { nyClock, nyDay, nyIsoDate, nySessionPhase } from '../../core/nyTime';
 import { LEVEL_ORDER } from '../../core/walls';
+import { fmtStrikeOrDash as fmtStrike } from '../../core/format';
 
 const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'vega $', vanna: 'VANNA', charm: 'CHARM', color: 'COLOR', vomma: 'VOMMA', speed: 'SPEED', veta: 'VETA', zomma: 'ZOMMA' };
-const fmtStrike = (v: number) => (!Number.isFinite(v) ? '—' : v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
 /** The book on screen is the vendor's live one (data/uwBook.ts) — not the house's own chain */
 const isLive = (ticker?: string): boolean => {

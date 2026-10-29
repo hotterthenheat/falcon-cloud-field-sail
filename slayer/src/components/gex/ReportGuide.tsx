@@ -13,6 +13,7 @@
 */
 
 import { longDay, recordDay } from '../../data/bookWindow';
+import { fmtStrike } from '../../core/format';
 const INK = 'rgb(var(--text-primary))';
 const INK_2 = 'rgb(var(--text-secondary))';
 const INK_3 = 'rgb(var(--text-muted))';
@@ -21,8 +22,6 @@ const GREEN = 'rgb(var(--bull))';
 const RED = 'rgb(var(--bear))';
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = '"Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
 /* THE DRAWINGS AT THEIR OWN SIZE (the re-audit's M1, 2026-10-13): 400 wide, 11px throughout; a phone scrolls them */
 const FIG_W = 400;

@@ -2,7 +2,7 @@
    market, so Backtest is paused (BACKTEST_LIVE) until real history is wired in; the tape stays only to redraw the
    sessions already in the Journal. It ends at a fixed session, so a saved session reopens on the same prices. */
 
-import { isTradingDay, isoDate } from '../../core/calendar';
+import { isTradingDay, isoDate, MONTHS } from '../../core/calendar';
 import { UNIVERSE } from '../universe';
 import type { Candle } from '../../types/market';
 
@@ -109,7 +109,6 @@ function openEpoch(iso: string): number {
 export function barTime(iso: string, minute: number): number {
   return openEpoch(iso) + minute * 60;
 }
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /** "Mar 14" · "Fri, Mar 14, 2025" */
 export const dayWords = (iso: string, long = false): string => {

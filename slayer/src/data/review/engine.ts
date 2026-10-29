@@ -5,6 +5,7 @@ import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, 
 import { contractKey, dteAt, legsOf, quoteAt, quoteWith, spotForBid, type ContractId, type Quote } from './quotes';
 import { LAST_MIN, dayIndex, tapeDays } from './tape';
 import type { DayNote, JournalEntry } from './journal';
+import { usd2 as money } from '../../core/format';
 
 /** A cursor: the END of minute `minute` (0…389) of a day */
 export interface Moment {
@@ -499,7 +500,6 @@ const pendingNew = (s: Session, held: Set<string>): Set<string> => {
   return out;
 };
 const pctWords = (v: number) => `${+(v * 100).toFixed(1)}%`;
-const money = (v: number) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 /** Why the reader's rules (or our ceiling) stop this BUY, or null */
 function ruleRefusal(s: Session, d: Draft, cost: number): string | null {
   const positions = bookOf(s).positions;

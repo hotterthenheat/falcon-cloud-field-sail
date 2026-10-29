@@ -3,7 +3,7 @@
    watchlist, positions and the paper account mark their contracts here. */
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { expiryFor, isoDate, isTradingDay, today as nyToday } from '../core/calendar';
+import { expiryFor, isoDate, isTradingDay, today as nyToday, MONTHS } from '../core/calendar';
 import { nyIsoDate, nyMinutes } from '../core/nyTime';
 import { ensureQuote, peekQuote } from './liveQuote';
 import { ensureBook, peekSpot } from './uwBook';
@@ -13,7 +13,6 @@ import { weekdayDte } from './compassParams';
 import type { DeskChain, DeskContract, ListedExpiry } from './weigherDesk';
 import type { OptionRight } from '../types/compass';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const INDEX = new Set(['SPX', 'NDX', 'RUT', 'VIX', 'XSP']);
 const WEEKLY_ROOT: Record<string, string> = { SPX: 'SPXW', NDX: 'NDXP', RUT: 'RUTW' };
 

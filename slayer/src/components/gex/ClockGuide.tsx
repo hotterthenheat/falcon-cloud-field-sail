@@ -1,6 +1,7 @@
 import { useLedgerPalette } from '../../data/ledgerPalette';
 import { bellDay } from '../../data/bookWindow';
 import { pressureInks } from './paletteInk';
+import { fmtStrike } from '../../core/format';
 /*
 ==================================================
   SLAYER TERMINAL - HOW TO READ THE TRADER'S CLOCK
@@ -24,8 +25,6 @@ const LIVE = 'rgb(var(--select))';
    palette's own pair (paletteInk.ts pressureInks), read in the figure that draws them */
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = '"Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
 /* The schedule as the clock draws it: 78 five-minute blocks, 09:30 to 16:00 */
 const BLOCKS = 78;

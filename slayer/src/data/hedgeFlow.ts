@@ -5,6 +5,7 @@
 */
 
 import type { ExposureProfileData } from '../types/gex';
+import { fmtStrike } from '../core/format';
 
 export interface FlowRung {
   strike: number;
@@ -24,8 +25,6 @@ export interface FlowLadder {
   /** The largest |flow| on the ladder — the bar scale */
   maxAbs: number;
 }
-
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
 /** "$1.4B" · "$180M" · "$40K" — the flow's own rounding, coarser than fmtUsd's */
 export function fmtFlow(mag: number): string {

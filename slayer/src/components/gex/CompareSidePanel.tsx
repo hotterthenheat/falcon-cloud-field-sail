@@ -23,6 +23,7 @@ import { Change, READ_WINDOWS } from './ChangeMark';
 import { toneBadge, type Tone } from '../ui/tones';
 import Fact from '../ui/Fact';
 import { levelRoles, wallPlace, type LevelRole } from '../../core/walls';
+import { fmtStrike, pctWhole as pct } from '../../core/format';
 
 const ROLE_TONE: Record<LevelRole, Tone> = { supreme: 'supreme', 'call wall': 'bull', 'put wall': 'bear', flip: 'white' };
 
@@ -39,8 +40,6 @@ const SIDE_TIPS: Record<string, string> = {
 };
 
 const SILVER = 'rgb(var(--silver))';
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
-const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 type Side = 'a' | 'b';
 

@@ -51,7 +51,7 @@ import { paintLive, useWeigherContract, useWeigherSpot, useWeigherTape } from '.
 import { useDeskSession, sessionOfMinute } from '../../data/deskSession';
 import { nyMinutes } from '../../core/nyTime';
 import { blackScholesPrice } from '../../core/greeks';
-import { expiryFor, isoDate, today } from '../../core/calendar';
+import { expiryFor, isoDate, today, MONTHS } from '../../core/calendar';
 import { addToWatchlist, closeWatched, hasOpenWatched, removeWatched, restampWatch, tickWatchlist, useWatchlist, watchedFor } from '../../data/watchlist';
 import type { WatchedContract } from '../../types/watchlist';
 import { costOf } from '../../data/positionCurve';
@@ -128,7 +128,6 @@ const KIND_OPTIONS: DropdownOption<ListKind>[] = [
 ];
 /** Names the gainers and losers are read from. The price and the day's change are the screener's. */
 const SCAN_NAMES = ['SPY', 'QQQ', 'IWM', 'DIA', 'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'TSLA', 'AMD', 'AVGO', 'GOOGL', 'NFLX', 'MU', 'INTC', 'AMAT', 'ARM', 'SMCI', 'PLTR', 'HOOD', 'COIN', 'ORCL', 'CRM', 'UBER', 'BA', 'JPM', 'XLF', 'GLD', 'TLT', 'SMH'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const fmtDay = (d: Date) => `${MONTHS[d.getMonth()]} ${d.getDate()}`;
 
 interface DeskState {

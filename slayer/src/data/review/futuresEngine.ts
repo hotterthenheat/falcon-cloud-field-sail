@@ -7,6 +7,7 @@ import { FUT_DAY_MIN, FUT_LAST_MIN, frontContract, futBarAt, futPriceAt, futProd
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from './ladder';
 import { dayIndex, tapeDays } from './tape';
 import type { DayNote, JournalEntry } from './journal';
+import { usd2 as money } from '../../core/format';
 
 type FutFillHow = OrderKind | 'roll';
 /** What rides an entry: a ladder's rungs (or the single target and stop) and its two switches — data/review/ladder.ts */
@@ -288,7 +289,6 @@ export function futDayStateOf(s: FutSession): { pct: number; stopped: boolean } 
   return { pct, stopped: limit != null && limit > 0 && pct <= -limit + 1e-9 };
 }
 const pctWords = (v: number) => `${+(v * 100).toFixed(1)}%`;
-const money = (v: number) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /* ---- orders ---- */
 export interface FutDraft {

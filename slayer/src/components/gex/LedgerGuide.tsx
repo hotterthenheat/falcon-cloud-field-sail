@@ -21,6 +21,7 @@ import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import type { ExposureSurface, Greek } from '../../data/exposureSurface';
 import { todayColumn } from '../../data/exposureSurface';
 import { heatCellStyle, type HeatMode } from './heatmap';
+import { fmtStrike } from '../../core/format';
 
 const INK = 'rgb(var(--text-primary))';
 const INK_2 = 'rgb(var(--text-secondary))';
@@ -32,8 +33,6 @@ const CALL_WALL = 'rgb(var(--bull))';
 const GRID = 'rgb(var(--ink) / 0.07)'; /* the ink token: on paper the white hairline was none */
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = '"Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
 /* THE DRAWINGS IN THE PALETTE ON THE SCREEN (the paying-user audit's H3, 2026-10-13): the figures were painted in the
    thermal ramp's blue and red while the calendar beside them wore the house's ember and glacier — the picture that

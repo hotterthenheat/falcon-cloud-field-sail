@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react';
+import { fmtStrike } from '../../core/format';
 
 /*
 ==================================================
@@ -626,13 +627,6 @@ export function useUnseenAll(): number {
   return useSyncExternalStore(subscribeAll, getUnseenAll, getUnseenAll);
 }
 
-/*
-  ── THE PLAIN VOICE (moved here from Pinpoint's WatchMenu, 2026-09-10) ──
-  `alertLabel` is the chart's terse voice for a rail row; these are the
-  sentences a reader gets on Targets and in the drawer — the same words
-  everywhere an alert is written out (the rule: one row, one shape).
-*/
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 const LEVEL_WORDS = { callWall: 'the call wall', putWall: 'the put wall', flip: 'the gamma flip', supreme: 'the supreme', coneHigh: 'the cone high', coneLow: 'the cone low' } as const;
 const AVERAGE_WORDS = { vwap: 'VWAP', ema9: '9-bar average', ema21: '21-bar average', ema50: '50-bar average' } as const;
 const money = (v: number) => `$${v >= 1e6 ? `${(v / 1e6).toFixed(v % 1e6 ? 1 : 0)}M` : `${Math.round(v / 1e3)}K`}`;

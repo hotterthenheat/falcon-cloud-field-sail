@@ -14,6 +14,8 @@ import type { Candle, MarketSnapshot } from '../types/market';
 import { putWallWords } from '../core/walls';
 import { monDayOf, peekDaySigma, peekMoveToClose, peekScopeMove } from './uwBook';
 import { datesOf, levelNetPath } from './flipLevel';
+import { pctWhole as pct } from '../core/format';
+import { clamp } from '../core/math';
 
 /** The one expiry a snapshot's levels chain reads, or null for several / the whole book */
 export const scopeDateOf = (snapshot: MarketSnapshot): string | null => {
@@ -125,8 +127,6 @@ export interface WallOdds {
 
 /* ---- helpers --------------------------------------------------------------------- */
 
-const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-const pct = (v: number) => `${Math.round(v * 100)}%`;
 /** The wall reading as printed: its size against the heaviest strike on the same chain, to the nearest 5% */
 export const holdLabel = (v: number): string => `${holdShort(v)} of the top wall`;
 /** The same reading for a cell under a "Wall size" heading */
@@ -502,5 +502,4 @@ export function buildWallContext(
 
 /** The odds at one strike, walls and trapdoors alike */
 export const oddsAt = (strike: number, ctx: WallContext): WallOdds => wallOdds(strike, ctx);
-
 

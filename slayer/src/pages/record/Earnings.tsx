@@ -26,6 +26,7 @@ import { macroWindow, type MacroDate } from '../../data/events';
 import { useBoardNames } from '../../data/boardNames';
 import { phonePin, usePagedGrid } from '../../components/record/pagedGrid';
 import { Fact as RecordFact } from '../../components/record/ui';
+import { MONTHS } from '../../core/calendar';
 
 const Fact = (p: Omit<Parameters<typeof RecordFact>[0], 'scope'>) => <RecordFact scope="earnings" {...p} />;
 
@@ -62,7 +63,6 @@ const LAYOUT_OPTIONS: DropdownOption<Layout>[] = [
 ];
 
 const WEEKDAYS = [1, 2, 3, 4, 5] as const;
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /** The largest names reporting today, as chips in the head */
 const TODAY_CHIPS = 8;
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -89,7 +89,6 @@ export const SlotMark = ({ slot, className = 'w-3 h-3', timeKnown }: { slot: Ear
 
 /** Set by the company, or still an analyst's estimate — the same two words everywhere on the page */
 const SetTag = ({ confirmed }: { confirmed: boolean }) => <span className={`font-mono text-t8 uppercase tracking-widest ${confirmed ? 'text-textMuted' : 'text-warn'}`} title={confirmed ? 'The company has set the date' : "The date is Unusual Whales' estimate — the company has not set it"}>{confirmed ? 'confirmed' : 'date estimated'}</span>;
-
 
 /* ---- the list's doors and chips ---------------------------------------------------- */
 
