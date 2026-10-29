@@ -26,6 +26,7 @@ import {
   setScanBusy,
   setScanReport,
   underAt,
+  type ScoreResult,
 } from './compassModel';
 import { recordPicks, settleOpen } from './compassLedger';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
@@ -524,11 +525,14 @@ async function liveMark(markAt: number, sleeve: 'odte' | 'weekly'): Promise<void
       answered = true;
       snaps.push({ symbol, spot: snap.spot });
       if (snap.setups.length) {
+        let result: ScoreResult = 'fault';
         try {
-          await scoreBook(snap.setups, scanAt, true);
+          result = await scoreBook(snap.setups, scanAt, true);
         } catch {
           /* this name, not the rest */
         }
+        /* an input the terminal did not answer: the name is scored late from the mark's recorded quotes */
+        if (result === 'fault') return;
       }
       recordPicks(scanAt);
       row.names[symbol] = snap.setups.length ? 'live' : snap.rows ? 'quiet' : 'none';
@@ -563,13 +567,16 @@ async function lateName(row: MarkRow, symbol: string): Promise<void> {
     row.names[symbol] = 'quiet';
   } else {
     const report = { ...scanReport(sleeve) };
+    let result: ScoreResult = 'fault';
     try {
-      await scoreBook(snap.setups, row.at, true, true);
+      result = await scoreBook(snap.setups, row.at, true, true);
     } catch {
       /* this name, not the rest */
     } finally {
       setScanReport(sleeve, report);
     }
+    /* an input did not answer: still pending, asked again on the next pass */
+    if (result === 'fault') return;
     recordPicks(row.at);
     row.names[symbol] = 'late';
     row.scored += snap.setups.length;
