@@ -77,6 +77,20 @@ const CHECKS = [
   [`contract 1m bars (${strike}C)`, `/option/history/ohlc?symbol=SPY&expiration=${exp}&strike=${strike}&right=call&start_date=${lastDay}&end_date=${lastDay}&interval=1m&format=json`],
   [`contract NBBO history`, `/option/history/quote?symbol=SPY&expiration=${exp}&strike=${strike}&right=call&start_date=${lastDay}&end_date=${lastDay}&interval=1m&format=json`],
   ['calendar', '/calendar/today?format=json'],
+  /* Compass's scan */
+  ['weekly greeks (all expiries ≤11 DTE)', `/option/snapshot/greeks/first_order?symbol=SPY&expiration=*&right=both&strike_range=4&max_dte=11&format=json`],
+  [`one contract's greeks (${strike}C)`, `/option/snapshot/greeks/first_order?symbol=SPY&expiration=${exp}&strike=${strike}&right=call&format=json`],
+  [`open interest, whole expiry`, `/option/snapshot/open_interest?symbol=SPY&expiration=${exp}&format=json`],
+  [`chain NBBO history, 1m`, `/option/history/quote?symbol=SPY&expiration=${exp}&start_date=${lastDay}&end_date=${lastDay}&strike_range=16&interval=1m&start_time=10:00:00&end_time=10:30:00&format=json`],
+  [`contract NBBO history, 1s`, `/option/history/quote?symbol=SPY&expiration=${exp}&strike=${strike}&right=call&start_date=${lastDay}&end_date=${lastDay}&interval=1s&start_time=10:30:00&end_time=10:32:00&format=json`],
+  [`stock 5m bars (${lastDay})`, `/stock/history/ohlc?symbol=SPY&start_date=${lastDay}&end_date=${lastDay}&interval=5m&format=json`],
+  /* Practice: Paper and the Backtest replay */
+  [`chain quotes, whole expiry`, `/option/snapshot/quote?symbol=SPY&expiration=${exp}&format=json`],
+  [`contracts quoted on ${lastDay}`, `/option/list/contracts/quote?symbol=SPY&date=${lastDay}&max_dte=120&format=json`],
+  [`chain NBBO for a day (date=)`, `/option/history/quote?symbol=SPY&expiration=${exp}&right=both&strike_range=14&date=${lastDay}&interval=1m&format=json`],
+  [`dates quoted for ${exp}`, `/option/list/dates/quote?symbol=SPY&expiration=${exp}&format=json`],
+  [`index 1m bars (date=)`, `/index/history/ohlc?symbol=SPX&date=${lastDay}&interval=1m&format=json`],
+  [`stock 1m bars (date=)`, `/stock/history/ohlc?symbol=SPY&date=${lastDay}&interval=1m&format=json`],
 ];
 
 console.log(`ThetaData terminal at ${BASE} · SPY ${spot ? spot.toFixed(2) : '?'} · nearest expiry ${exp}\n`);
