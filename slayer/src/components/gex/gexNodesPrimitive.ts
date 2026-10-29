@@ -1,4 +1,4 @@
-import { MismatchDirection, type ISeriesPrimitive, type SeriesAttachedParameter, type Time, type IChartApi, type ISeriesApi } from 'lightweight-charts';
+import { MismatchDirection, type Logical, type ISeriesPrimitive, type SeriesAttachedParameter, type Time, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { GexSnapshot } from '../../types/market';
 import { nyIsoDate, nySession } from '../../core/nyTime';
 import { nodeMark, peakStrikes, priceTag, type NodeMark, type PriceTag } from '../../data/nodeScore';
@@ -190,7 +190,7 @@ class TrailsPaneRenderer {
   private rRev = -1;
   private rHr = 1;
   private rVr = 1;
-  private rRefTime = 0;
+  private rRefLogical = 0;
   private rXRef = 0;
   private rBar = 0;
   private rPrice = 0;
@@ -337,9 +337,11 @@ class TrailsPaneRenderer {
          heights keep the raster's scale until the rebuild). The rebuild runs once the gesture rests (SETTLE_MS), or
          now when the view leaves the raster or the scale drifts too far. A resting view re-rasters, so it is exact. */
       let scrolled = false;
+      const __st = ((window as unknown as { __tr?: Record<string, number> }).__tr ??= {}); // TEMP-PERF
+      __st[cached ? 'cached' : 'drawn'] = (__st[cached ? 'cached' : 'drawn'] ?? 0) + 1; // TEMP-PERF
       const bmp0 = this.bmp;
       if (!cached && bmp0 && this.rRev === src.rev && this.rHr === hr && this.rVr === vr && this.rBar > 0 && this.rYb !== this.rYa) {
-        const xRef = ts.timeToCoordinate(this.rRefTime as Time);
+        const xRef = ts.logicalToCoordinate(this.rRefLogical as Logical);
         const yA = series.priceToCoordinate(this.rPrice);
         const yB = series.priceToCoordinate(this.rPrice + 1);
         if (xRef !== null && yA !== null && yB !== null) {
@@ -350,9 +352,11 @@ class TrailsPaneRenderer {
           const dW = bmp0.width * sx;
           const dH = bmp0.height * sy;
           const covers = dX <= 0.5 && dX + dW >= scope.bitmapSize.width - 0.5 && dY <= 0.5 && dY + dH >= scope.bitmapSize.height - 0.5;
+          if (!(covers && sx > 0.5 && sx < 2.5 && sy > 0.5 && sy < 2)) { const k = !covers ? `nocover dX${Math.round(dX)} dY${Math.round(dY)} r${Math.round(dX + dW - scope.bitmapSize.width)} b${Math.round(dY + dH - scope.bitmapSize.height)}` : `scale sx${sx.toFixed(2)} sy${sy.toFixed(2)}`; __st[k.slice(0, 12)] = (__st[k.slice(0, 12)] ?? 0) + 1; } // TEMP-PERF
           if (covers && sx > 0.5 && sx < 2.5 && sy > 0.5 && sy < 2) {
             ctx.drawImage(bmp0, dX, dY, dW, dH);
             scrolled = true;
+            __st.blit = (__st.blit ?? 0) + 1; // TEMP-PERF
             this.armSettle(src);
           }
         }
@@ -570,6 +574,7 @@ class TrailsPaneRenderer {
         }
       };
       if (!cached && !scrolled) {
+        __st.rebuild = (__st.rebuild ?? 0) + 1; // TEMP-PERF
         const mxPx = Math.round(scope.bitmapSize.width * RASTER_MX);
         const myPx = Math.round(scope.bitmapSize.height * RASTER_MY);
         const bw = rasterW;
@@ -626,8 +631,9 @@ class TrailsPaneRenderer {
           this.rRev = src.rev;
           this.rHr = hr;
           this.rVr = vr;
-          this.rRefTime = firstBucket;
-          this.rXRef = x0 == null ? 0 : Number(x0);
+          /* the view's middle, as a logical index — it maps anywhere, on screen or off */
+          this.rRefLogical = ts.coordinateToLogical(wCss / 2) ?? 0;
+          this.rXRef = ts.logicalToCoordinate(this.rRefLogical as Logical) ?? wCss / 2;
           this.rBar = barSpacing;
           this.rPrice = col0.top[0]?.strike ?? 0;
           this.rYa = probeA;
