@@ -80,7 +80,15 @@ async function slot(p, fn) {
 }
 
 async function load(reqPath) {
-  return slot(reqPath, () => loadNow(reqPath));
+  return slot(reqPath, async () => {
+    /* the terminal refusing for a moment (429, its own count of requests in flight) is asked again twice */
+    let got = await loadNow(reqPath);
+    for (let i = 0; i < 2 && got.status === 429; i++) {
+      await new Promise((r) => setTimeout(r, 300 * 2 ** i));
+      got = await loadNow(reqPath);
+    }
+    return got;
+  });
 }
 
 async function loadNow(reqPath) {
