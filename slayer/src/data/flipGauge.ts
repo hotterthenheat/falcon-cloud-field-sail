@@ -41,13 +41,19 @@ const tooEarly = (bars: readonly Candle[]): boolean => coveredMinutes(bars) < GA
 
 /** Times price crossed the flip, one definition for the Board and the Map: a one-minute close on the other side from the last close
     not on it. A close exactly on the flip changes nothing. The Map's report counts tests beside this. */
+/** A close within this share of the flip has not crossed it */
+const CROSS_BAND = 0.0002;
+
 export function flipCrossings(bars: readonly Candle[], flip: number): number {
-  /* Counted at the printed flip (to the cent), so a recount matches the page. */
+  /* Counted at the printed flip (to the cent); a close inside ±0.02% of it is on neither side, so a chop on the flip is
+     one crossing, not dozens. */
   const level = Math.round(flip * 100) / 100;
+  const band = level * CROSS_BAND;
   let side = 0;
   let n = 0;
   for (const b of bars) {
-    const s = Math.sign(Math.round(b.close * 100) / 100 - level);
+    const c = Math.round(b.close * 100) / 100;
+    const s = c > level + band ? 1 : c < level - band ? -1 : 0;
     if (s === 0) continue;
     if (side !== 0 && s !== side) n++;
     side = s;

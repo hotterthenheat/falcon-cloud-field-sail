@@ -50,7 +50,7 @@ import { attachScrollMore } from '../ui/scrollMore';
 import { FLAT_DOOR, FLAT_ON } from '../ui/flatDoor';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Crosshair, Maximize2, Minimize2, Plus, X } from 'lucide-react';
-import { bookDatesIn, bookRevision, ensureBook, liveBars, snapshotOf, useBookRev } from '../../data/uwBook';
+import { bookDatesIn, bookRevision, ensureBook, liveBars, snapshotOf, useBookRev, wantDateFacts } from '../../data/uwBook';
 import TickerLookup from '../ui/TickerLookup';
 import useFocusTrap from '../ui/useFocusTrap';
 import { useAnchoredMenu } from '../ui/useAnchoredMenu';
@@ -1878,6 +1878,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
             dates = namePick.length ? namePick : chosenDates;
             colWindow = same(`e:${c.ticker}:${dates.join(',')}`, indicesFor(book.surface, book.snapshot, dates, colGreeks.length));
           }
+          /* vega and the higher greeks are the contracts' own: the dates shown read theirs (once) */
+          if (colGreeks.some(isContractGreek)) wantDateFacts(book.snapshot.ticker, dates);
           const ownFit = fitRef.current.get(c.ticker);
           const colShown = lens ? colWindow.slice(0, Math.max(1, ownFit ?? colWindow.length)) : same(`s:${c.ticker}:${dates.join(',')}:${fitDepth}`, colWindow.slice(0, Math.max(1, fitDepth)));
           const colLvDate = levelsDate(book.snapshot, colScope);

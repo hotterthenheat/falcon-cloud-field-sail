@@ -584,7 +584,8 @@ async function pullInsiders() {
     await Promise.all([rest, extend(buys), extend(bigSales)]);
   } catch {
     restReading = false;
-    if (!insiderLive) patch({ insiders: { status: 'sim', trades: [] } });
+    /* a failed read keeps a kept book on screen */
+    if (snap.insiders.status !== 'live') patch({ insiders: { status: 'sim', trades: [] } });
   }
 }
 

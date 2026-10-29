@@ -800,6 +800,7 @@ function ensureOneFund(etf: string): void {
     .then(reads => {
       const common = [...flowDates(reads[2])].sort().reverse().slice(0, 5);
       const got = fundRow(e, reads, common);
+      if (!got && oneFund.get(etf)?.keptAt) return;
       oneFund.set(etf, got ? { status: 'live', row: got.row, holdings: got.held, cover: { lines: got.held.length, weight: got.held.reduce((a, h) => a + h.weight, 0), fundCount: got.row.holdingsCount > 0 ? got.row.holdingsCount : null } } : { status: 'error', row: null, holdings: [], cover: null });
       emit({});
     })

@@ -608,7 +608,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                   </div>
                 )}
                 {/* the column says something on every row: the strike's own net gamma, signed, the wall's share of the top wall as its bar */}
-                <div className="flex items-center justify-end gap-1.5 whitespace-nowrap font-mono text-t11 tnum font-semibold" style={{ color: kindOf(t) === 'thin' ? 'rgb(var(--text-muted))' : t.net > 0 ? LONG_GAMMA : SHORT_GAMMA }} title={t.isShelf ? `${holdShort(t.hold)} of the top wall` : undefined} data-target-net={Math.round(t.net)}>
+                <div className="flex items-center justify-end gap-1.5 whitespace-nowrap font-mono text-t11 tnum font-semibold" style={{ color: kindOf(t) === 'thin' ? 'rgb(var(--text-muted))' : t.net > 0 ? LONG_GAMMA : SHORT_GAMMA }} title={t.isShelf ? `Size: ${holdLabel(t.hold)}` : undefined} data-target-net={Math.round(t.net)}>
                   {t.net > 0 ? '+' : t.net < 0 ? '−' : ''}
                   {fmtDollars(Math.abs(t.net))}
                   {wide && <HoldBeam t={t} w={28} />}

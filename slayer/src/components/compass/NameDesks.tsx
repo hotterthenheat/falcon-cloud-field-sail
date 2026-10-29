@@ -1,20 +1,20 @@
 /* The four desks, on the name Compass is holding. The top is the tape: what is printing. The bottom is what is
    about to. None of it is in the score. */
 
-import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { deskTape, ensureBook, ensureBookMinutes, useBookRev, usePinpointFeed } from '../../data/uwBook';
+import { ensureBook, useBookRev, usePinpointFeed } from '../../data/uwBook';
 import { levelsFor } from '../../data/levelsFor';
 import { levelsForName } from '../../data/levelsScope';
-import { sessionMeta, useDeskSession } from '../../data/deskSession';
 import { useNameTape } from '../../data/traceLive';
 import { useTickerNews } from '../../data/liveRecord';
 import { ensureEarnings, useEarningsFailed, useEarningsHistories, useEveryReport } from '../../data/earningsFeed';
-import { passLines } from '../../data/compassModel';
+import { passLines, sessionBars } from '../../data/compassModel';
+import { useThetaPrice } from '../../data/thetaQuote';
 import ContractLabel from '../ui/ContractLabel';
 import { useScanClock } from '../../data/compassDoor';
 import { dayKeyOf, econReleases, fdaStamp, subscribeFda, type CalEvent } from '../../data/monthCalendar';
-import { nyIsoDate } from '../../core/nyTime';
+import { nyClock, nyDay, nyIsoDate, nyWallTime } from '../../core/nyTime';
 import { companyName } from '../../data/tickers';
 import PageGlyph, { type GlyphName } from '../ui/PageGlyph';
 
@@ -54,6 +54,37 @@ const Desk = ({ to, glyph, name, note, className = '', children }: { to: string;
   </Link>
 );
 
+type Range = { day: string; high: number; low: number; close: number; at: number };
+
+/** The name's regular session from the terminal: high, low and last close, read once a minute while shown. */
+function useSessionRange(ticker: string): Range | null {
+  const [range, setRange] = useState<Range | null>(null);
+  useEffect(() => {
+    let dead = false;
+    setRange(null);
+    const pull = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      const got = await sessionBars(ticker);
+      if (dead || !got || !got.bars.length) return;
+      let high = 0;
+      let low = Infinity;
+      for (const b of got.bars) {
+        if (b.h > high) high = b.h;
+        if (b.l < low) low = b.l;
+      }
+      const last = got.bars[got.bars.length - 1];
+      setRange({ day: got.day, high, low, close: last.c, at: last.t });
+    };
+    void pull();
+    const id = window.setInterval(() => void pull(), 60_000);
+    return () => {
+      dead = true;
+      window.clearInterval(id);
+    };
+  }, [ticker]);
+  return range;
+}
+
 const nextRelease = (): CalEvent | null => {
   const today = nyIsoDate();
   const rows = econReleases()
@@ -68,12 +99,10 @@ const NameDesks = ({ ticker, sleeve }: { ticker: string; sleeve: 'odte' | 'weekl
   const sameDay = sleeve === 'odte';
   usePinpointFeed(cash);
   const rev = useBookRev();
-  const session = useDeskSession();
   const tape = useNameTape(option, 40);
   const news = useTickerNews(cash);
   useEffect(() => {
     ensureBook(cash);
-    ensureBookMinutes(cash);
     ensureEarnings();
   }, [cash]);
   useSyncExternalStore(subscribeFda, fdaStamp, () => 0);
@@ -85,14 +114,12 @@ const NameDesks = ({ ticker, sleeve }: { ticker: string; sleeve: 'odte' | 'weekl
   const name = companyName(cash);
 
   const levels = levelsFor(cash, levelsForName(cash));
-  const bars = deskTape(cash, session);
-  const last = bars.bars.length ? bars.bars[bars.bars.length - 1] : null;
-  let high = 0;
-  let low = Infinity;
-  for (const b of bars.bars) {
-    if (b.high > high) high = b.high;
-    if (b.low < low) low = b.low;
-  }
+  const range = useSessionRange(cash);
+  const price = useThetaPrice(cash);
+  const offline = price.status === 'down';
+  const lastPx = price.held ? price.held.value.price : range ? range.close : 0;
+  const lastAt = price.held ? price.held.value.at : range ? range.at : 0;
+  const rangeDay = range ? nyDay(nyWallTime(Number(range.day.slice(0, 4)), Number(range.day.slice(4, 6)), Number(range.day.slice(6, 8)), 12), { weekday: true }) : '';
   const prints = tape.rows;
   let ask = 0;
   let bid = 0;
@@ -135,16 +162,21 @@ const NameDesks = ({ ticker, sleeve }: { ticker: string; sleeve: 'odte' | 'weekl
           )}
         </Desk>
         <Desk to="/terrain" glyph="terrain" name="Terrain" note={cash} className="border-b border-borderSubtle/60">
-          {last ? (
-            <>
-              <p className="mt-1 font-mono text-t12 text-textPrimary tnum">Last {px(last.close)}</p>
-              <p className="mt-1 font-mono text-t11 text-textSecondary tnum">
-                {sessionMeta(bars.drawn).label} · {px(low)} – {px(high)}
-              </p>
-            </>
+          {lastPx > 0 ? (
+            <p className="mt-1 font-mono text-t12 text-textPrimary tnum">
+              Last {px(lastPx)}
+              {lastAt > 0 && <span className="text-textMuted"> · {nyClock(lastAt, { zone: true })}</span>}
+            </p>
           ) : (
-            <p className="mt-1 text-t12 text-textSecondary">No bars in hand.</p>
+            <p className="mt-1 text-t12 text-textSecondary">{offline ? 'ThetaData offline — reconnecting.' : 'No print in hand yet.'}</p>
           )}
+          {range ? (
+            <p className="mt-1 font-mono text-t11 text-textSecondary tnum">
+              {range.day === nyIsoDate().replace(/-/g, '') ? 'Regular session' : rangeDay} · {px(range.low)} – {px(range.high)}
+            </p>
+          ) : lastPx > 0 && offline ? (
+            <p className="mt-1 font-mono text-t11 text-warn">ThetaData offline — reconnecting. Kept print.</p>
+          ) : null}
         </Desk>
         <Desk to="/trace/live-tape" glyph="trace" name="Trace" note="The name" className="border-b sm:border-b-0 sm:border-r border-borderSubtle/60">
           {tape.waiting && !prints.length ? (

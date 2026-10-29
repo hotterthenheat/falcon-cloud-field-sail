@@ -6,10 +6,16 @@
 */
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { thetaCall, uwOnlyRoute } from './theta';
+import { thetaAllowedHere, thetaCall } from './theta';
+
+/* what the page in view may ask the terminal (data/theta.ts): a price, an option's quote, the daily closes */
+const pricesHere = () => thetaAllowedHere('/stock/snapshot/trade');
+const marksHere = () => thetaAllowedHere('/option/snapshot/quote');
+const closesHere = () => thetaAllowedHere('/stock/history/eod');
 import { nyIsoDate, nyMinutes, nyWallStamp } from '../core/nyTime';
 import { isTradingDay, today as nyToday } from '../core/calendar';
 import type { OptionRight } from '../types/compass';
+import type { Candle } from '../types/market';
 
 const INDEX = new Set(['SPX', 'NDX', 'RUT', 'VIX', 'XSP', 'DJX']);
 const WEEKLY_ROOT: Record<string, string> = { SPX: 'SPXW', NDX: 'NDXP', RUT: 'RUTW' };
@@ -34,7 +40,8 @@ export interface ThetaMark {
   ask: number;
   /** The NBBO mid */
   mark: number;
-  at: number;
+  /** The quote's own instant; null when the terminal sent none (such a quote is never shown as live) */
+  at: number | null;
   read: number;
 }
 
@@ -125,11 +132,11 @@ export function readPrint(data: unknown): { price: number; at: number } | null {
 }
 
 /** An option quote snapshot's two-sided NBBO and its mid, or null */
-export function readNbbo(data: unknown): { bid: number; ask: number; mark: number; at: number } | null {
+export function readNbbo(data: unknown): { bid: number; ask: number; mark: number; at: number | null } | null {
   for (const r of rowsOf(data)) {
     const bid = num(r.bid);
     const ask = num(r.ask);
-    if (bid >= 0 && ask > 0 && ask >= bid) return { bid, ask, mark: Number(((bid + ask) / 2).toFixed(4)), at: nyWallStamp(r.timestamp) || Date.now() };
+    if (bid >= 0 && ask > 0 && ask >= bid) return { bid, ask, mark: Number(((bid + ask) / 2).toFixed(4)), at: nyWallStamp(r.timestamp) || null };
   }
   return null;
 }
@@ -172,6 +179,8 @@ async function readCloseRows(sym: string): Promise<{ date: string; close: number
   const hit = closesFor.get(sym);
   /* once a New York day, and again after the bell for today's own row */
   if (hit && hit.day === day && (nyMinutes() < 960 || hit.closes.some(c => c.date === day))) return hit.closes;
+  /* a page that may not ask for daily rows keeps what an earlier page read */
+  if (!closesHere()) return hit?.closes ?? null;
   const root = INDEX.has(sym) ? 'index' : 'stock';
   const start = nyIsoDate(Date.now() - 12 * 86_400_000);
   const got = await thetaCall(`/${root}/history/eod?symbol=${encodeURIComponent(sym)}&start_date=${ymd(start)}&end_date=${ymd(day)}&format=json`);
@@ -246,8 +255,8 @@ export function ensureThetaPrice(ticker: string): void {
   const sym = symbolOf(ticker);
   if (!sym || typeof window === 'undefined') return;
   const hit = live.get(`S:${sym}`);
-  /* the Unusual Whales rooms ask the terminal nothing (data/theta.ts uwOnlyRoute) */
-  if ((hit && Date.now() - hit.read < ttl()) || hidden() || uwOnlyRoute()) return;
+  /* a page that may not ask the terminal for prices (data/theta.ts) asks nothing */
+  if ((hit && Date.now() - hit.read < ttl()) || hidden() || !pricesHere()) return;
   void readPrice(sym);
 }
 
@@ -256,7 +265,7 @@ export function ensureThetaMark(ticker: string, expiry: string, strike: number, 
   if (typeof window === 'undefined') return;
   const key = markKey(ticker, expiry, strike, right);
   const hit = live.get(key);
-  if ((hit && Date.now() - hit.read < Math.max(5_000, ttl())) || hidden() || uwOnlyRoute()) return;
+  if ((hit && Date.now() - hit.read < Math.max(5_000, ttl())) || hidden() || !marksHere()) return;
   void readMark(ticker, expiry, strike, right);
 }
 
@@ -272,7 +281,7 @@ export function peekThetaPrice(ticker: string): Held<ThetaPrice> | null {
 export function peekThetaMark(ticker: string, expiry: string, strike: number, right: OptionRight): Held<ThetaMark> | null {
   const key = markKey(ticker, expiry, strike, right);
   const l = live.get(key) as ThetaMark | undefined;
-  if (l && status !== 'down') return { value: l, live: true };
+  if (l && status !== 'down' && l.at != null) return { value: l, live: true };
   const k = (l ?? kept[key]) as ThetaMark | undefined;
   return k && k.mark > 0 ? { value: k, live: false } : null;
 }
@@ -285,7 +294,7 @@ const closeAsked = new Set<string>();
 export function ensureThetaCloseOn(ticker: string, iso: string): void {
   const sym = symbolOf(ticker);
   const key = `${sym}|${iso}`;
-  if (closeOn.has(key) || closeAsked.has(key) || typeof window === 'undefined' || hidden() || uwOnlyRoute()) return;
+  if (closeOn.has(key) || closeAsked.has(key) || typeof window === 'undefined' || hidden() || !closesHere()) return;
   const k = kept[`C:${key}`] as ThetaPrice | undefined;
   if (k && k.price > 0) {
     closeOn.set(key, k.price);
@@ -308,6 +317,46 @@ export function ensureThetaCloseOn(ticker: string, iso: string): void {
 
 export function peekThetaCloseOn(ticker: string, iso: string): number | null {
   return closeOn.get(`${symbolOf(ticker)}|${iso}`) ?? null;
+}
+
+/* today's one-minute bars of a name, for the alerts that read an indicator or run a script */
+const barsOf = new Map<string, { read: number; bars: Candle[] }>();
+const barsAsked = new Set<string>();
+const barsHere = () => thetaAllowedHere('/stock/history/ohlc');
+
+/** Ask for a name's one-minute bars of today's session (refreshed once a minute) */
+export function ensureThetaBars(ticker: string): void {
+  const sym = symbolOf(ticker);
+  if (!sym || typeof window === 'undefined' || hidden() || !barsHere() || barsAsked.has(sym)) return;
+  const hit = barsOf.get(sym);
+  if (hit && Date.now() - hit.read < 60_000) return;
+  barsAsked.add(sym);
+  const day = ymd(nyIsoDate());
+  const root = INDEX.has(sym) ? 'index' : 'stock';
+  void thetaCall(`/${root}/history/ohlc?symbol=${encodeURIComponent(sym)}&start_date=${day}&end_date=${day}&interval=1m&start_time=09:30:00&end_time=16:00:00&format=json`)
+    .then(got => {
+      if (got.error) {
+        if (got.error === 'terminal_down') setStatus('down');
+        return;
+      }
+      const bars: Candle[] = [];
+      for (const r of rowsOf(got.data)) {
+        const at = nyWallStamp(r.timestamp);
+        const close = num(r.close);
+        if (!(at > 0) || !(close > 0)) continue;
+        bars.push({ time: Math.floor(at / 1000), open: num(r.open) || close, high: num(r.high) || close, low: num(r.low) || close, close, volume: num(r.volume) || 0 });
+      }
+      bars.sort((a, b) => a.time - b.time);
+      barsOf.set(sym, { read: Date.now(), bars });
+      status = 'up';
+      emit();
+    })
+    .finally(() => barsAsked.delete(sym));
+}
+
+/** Today's one-minute bars off the terminal, or null until they land */
+export function peekThetaBars(ticker: string): Candle[] | null {
+  return barsOf.get(symbolOf(ticker))?.bars ?? null;
 }
 
 export const thetaStatus = (): ThetaStatus => status;

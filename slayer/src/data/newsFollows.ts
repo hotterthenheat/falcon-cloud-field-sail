@@ -1,6 +1,7 @@
 /* The names the reader follows on the wire and which ring the bell, kept in this browser; a bell arms the shell's own
    news alert (alertStore.armNews). */
 
+import { createStore } from './feedStore';
 import { useSyncExternalStore } from 'react';
 import { armNews, getAlerts, removeAlert } from '../components/gex/alertStore';
 import { DEFAULT_BOARD_NAMES } from './boardNames';
@@ -40,8 +41,8 @@ function load(): NewsFollow[] {
   return DEFAULT_BOARD_NAMES.slice(0, 3).map(ticker => ({ ticker, alerts: false }));
 }
 
-let current: NewsFollow[] = load();
-const listeners = new Set<() => void>();
+const store = createStore<NewsFollow[]>(load());
+let current: NewsFollow[] = store.get();
 const commit = (next: NewsFollow[]) => {
   current = next;
   try {
@@ -49,14 +50,9 @@ const commit = (next: NewsFollow[]) => {
   } catch {
     /* storage may be off — the list still lives for the session */
   }
-  for (const l of listeners) l();
+  store.set(next);
 };
-const subscribe = (fn: () => void) => {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-};
+const subscribe = (fn: () => void) => store.subscribe(fn);
 
 const getFollows = (): NewsFollow[] => current;
 export const useFollows = (): NewsFollow[] => useSyncExternalStore(subscribe, getFollows, getFollows);

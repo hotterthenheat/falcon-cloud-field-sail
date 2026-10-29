@@ -1298,6 +1298,23 @@ function readLegs(id: string, low: boolean) {
       pumpLegs();
     });
 }
+/* A structure's legs never change: the answer this browser kept for its legs route stands in for a read */
+const legKeptTried = new Set<string>();
+async function primeKeptLegs(ids: string[]): Promise<void> {
+  const want = ids.filter(id => legOpen(id) && !legKeptTried.has(id));
+  if (!want.length) return;
+  for (const id of want) legKeptTried.add(id);
+  const got = await Promise.all(want.map(id => readSaved(`/option-trades/multi-leg/${encodeURIComponent(id)}/legs`).then(k => [id, k] as const)));
+  let any = false;
+  for (const [id, k] of got) {
+    const rows = k ? rowsOf(k.data) : [];
+    if (rows.length && !legRaw.has(id)) {
+      legRaw.set(id, rows);
+      any = true;
+    }
+  }
+  if (any) legNotify();
+}
 /** One structure's raw legs, read straight (no queue, no keep) */
 export async function readLegRows(id: string): Promise<Record<string, unknown>[]> {
   return getRows(`/option-trades/multi-leg/${encodeURIComponent(id)}/legs`);
@@ -1342,14 +1359,16 @@ function pumpLegs() {
 }
 /** An opened card's structure: read ahead of the page */
 function wantLegsNow(ids: string[]) {
-  for (const id of ids) if (legOpen(id) && !legCard.includes(id)) legCard.unshift(id);
-  pumpLegs();
+  void primeKeptLegs(ids).then(() => {
+    for (const id of ids) if (legOpen(id) && !legCard.includes(id)) legCard.unshift(id);
+    pumpLegs();
+  });
 }
 /** One asker's list of structures, in its order — it replaces that asker's last list; null withdraws it */
 function askLegs(asker: string, ids: string[] | null, rank: number) {
   if (!ids || !ids.length) legAsks.delete(asker);
   else legAsks.set(asker, { order: rank * 1_000_000 + (legAsks.get(asker)?.order ?? ++legAskSeq) % 1_000_000, ids });
-  pumpLegs();
+  void primeKeptLegs(ids ?? []).then(pumpLegs);
 }
 /** A stable asker id for one hook */
 function useLegAsker(ids: string[], rank: number): void {

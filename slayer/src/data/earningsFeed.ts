@@ -738,11 +738,12 @@ const subscribe = (fn: () => void) => {
 /* a name's page reads its own rows only; the name hooks listen without starting the fortnight */
 const subscribeQuiet = (fn: () => void) => store.subscribe(fn);
 
+const readHistory = (sym: string) => Array.isArray(history.get(sym));
 function paintKeptHistory(sym: string): void {
-  if (history.has(sym) || keptHistory.has(sym)) return;
+  if (readHistory(sym) || keptHistory.has(sym)) return;
   const k = keptRead();
   void k.get(`/earnings/${encodeURIComponent(sym)}`).then(res => {
-    if (history.has(sym) || !Array.isArray(res.data) || !res.data.length || k.at == null) return;
+    if (readHistory(sym) || !Array.isArray(res.data) || !res.data.length || k.at == null) return;
     keptHistory.set(sym, { rows: res.data as SlotRow[], at: k.at });
     emit();
   });
@@ -750,8 +751,9 @@ function paintKeptHistory(sym: string): void {
 /** A name's report rows as they stand: its own read, else the kept answer with its instant */
 const rowsOf = (sym: string): { rows: SlotRow[] | 'miss' | undefined; keptAt: number | null } => {
   const own = history.get(sym);
-  if (own) return { rows: own, keptAt: null };
   const kept = keptHistory.get(sym);
+  /* a failed read keeps the kept rows on screen */
+  if (own && !(own === 'miss' && kept)) return { rows: own, keptAt: null };
   return kept ? { rows: kept.rows, keptAt: kept.at } : { rows: undefined, keptAt: null };
 };
 

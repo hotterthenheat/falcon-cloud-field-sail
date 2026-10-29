@@ -3,7 +3,6 @@
    pushes are hand-set context. If it breaks: the next shelf and the dealer flow along the path (data/hedgeFlow.ts). */
 
 import { daySigmaOfIv, sigmaFracOver, sigmaOverMinutes, touchOdds } from './expectedMove';
-import { blackScholesGreeks } from '../core/greeks';
 import { findAirPockets, SHELF_SHARE, type AirPocket } from './airPockets';
 import { buildHedgeFlowLadder, type FlowLadder } from './hedgeFlow';
 import { SESSION_MIN, fmtDollars, fmtStrike, wholeBookVanna, type AheadClock } from './ahead';
@@ -61,8 +60,6 @@ const A_TESTS = 0.048;
 const A_BUILD = 0.8;
 /** Logits AGAINST, per unit of speed over the priced pace (back-tested: negative — a fast arrival holds more) */
 const A_SPEED = -0.458;
-/** Logits against, for prints handing dealers a wall's worth of stock to push through it — not back-testable, hand-set */
-const A_PRINTS = 0.6;
 /** Logits against, for a one-point vol drop forcing a wall's worth of dealer stock through it (vanna) — hand-set */
 const A_VOL = 0.6;
 /** How much of a wall's expiring-today part still counts at the close */
@@ -128,12 +125,11 @@ export interface WallOdds {
 
 /* ---- helpers --------------------------------------------------------------------- */
 
-/** The wall reading as printed: its size against the heaviest strike on the same chain, to the nearest 5% */
-export const holdLabel = (v: number): string => `${holdShort(v)} of the top wall`;
-/** The same reading for a cell under a "Wall size" heading */
-/* rounded DOWN to 5%, so only the top wall itself reads 100% (a neighbour at 98% of it read "100%" beside it) */
-/* under 5% prints "<5%" — a floor of "5%" claimed a size the wall does not have */
-export const holdShort = (v: number): string => (v >= 0.999 ? '100%' : v < 0.05 ? '<5%' : `${Math.floor(v * 20) * 5}%`);
+/** The wall reading as printed: its size against the heaviest wall on the same chain, as a multiple (a size, so never a
+    percent — a percent on these pages is a chance) */
+export const holdLabel = (v: number): string => (v >= 0.995 ? 'the top wall' : `${holdShort(v)} the top wall`);
+/** The same reading for a cell under a "Wall size" heading: "0.85×", "top" for the heaviest, "<0.05×" for the thinnest */
+export const holdShort = (v: number): string => (v >= 0.995 ? 'top' : v < 0.05 ? '<0.05×' : `${v.toFixed(2)}×`);
 /** A chance as printed: "<1%" for the tiny ones (a floor of 2% made strikes five expected moves out read "2% reached") */
 export const chanceLabel = (v: number): string => (v < 0.005 ? '<1%' : v > 0.995 ? '>99%' : `${Math.round(v * 100)}%`);
 const signedDollars = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
@@ -192,25 +188,6 @@ export function speedRatio(bars: readonly Candle[], iv: number, n = 30): number 
   return implied > 0 ? realized / implied : null;
 }
 
-/** Dollars of stock today's option prints hand dealers to buy (positive) or sell — this name's prints only */
-function printsDemand(snapshot: MarketSnapshot, iv: number): number {
-  let up = 0;
-  for (const o of snapshot.tape) {
-    if (o.ticker !== snapshot.ticker) continue;
-    const strike = Number(o.strike);
-    if (!(strike > 0)) continue;
-    const g = blackScholesGreeks(snapshot.spot, strike, 1 / 252, iv);
-    const delta = o.type === 'C' ? g.deltaCall : g.deltaPut; // put delta is negative
-    const shares = o.size * 100 * delta;
-    /* A customer BUYING (at the ask) leaves the dealer short the option, so the
-       dealer buys stock for a call's delta and sells for a put's; selling to the
-       dealer (at the bid) is the mirror. Dollars, in the direction dealers trade. */
-    const dealerBuys = o.side === 'ASK' ? shares : -shares;
-    up += dealerBuys * snapshot.spot;
-  }
-  return up;
-}
-
 /* ---- the model ------------------------------------------------------------------- */
 
 interface Ctx {
@@ -235,7 +212,6 @@ interface Ctx {
   /** "by Nov 20" when the odds run to a later expiry than the coming session (scopeSigma) — null for the close */
   horizon: string | null;
   speed: number | null;
-  printsUp: number;
   /** Dollars of stock dealers must BUY if vol drops a point — the window's net vanna */
   volDrop: number;
 }
@@ -307,8 +283,8 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   /* THE SPEED and THE PRINTS */
   const speed = ctx.speed ?? 1;
   const speedExcess = clamp(speed - 1, -0.6, 1.5);
-  const prints = side === 'call' ? ctx.printsUp : -ctx.printsUp;
-  const printsScore = weightEff > 0 ? clamp(prints / weightEff, -1, 1) : 0;
+  /* the option tape is not read into the book, so no prints factor */
+  const prints = 0;
   /* A VOL DROP — VANNA: the stock a one-point drop makes dealers trade, read
      toward the wall like the prints: buying leans through a call wall, selling
      through a put wall */
@@ -323,7 +299,6 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   /* The speed is the pace price ARRIVES at, measured in the session (the back-test read it at the touch). Outside the
      session the tape is the thin after-hours one, so it does not move the hold until the bell */
   const zSpeed = clock.inSession ? -A_SPEED * speedExcess : 0;
-  const zPrints = -A_PRINTS * printsScore;
   const zVol = -A_VOL * volScore;
   /* the reading: this wall's weight against the heaviest strike on the same chain (1 = the top wall) */
   const hold = weight <= 0 ? 0 : clamp(weight / Math.max(1, ctx.topWall), 0, 1);
@@ -421,13 +396,6 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
       words: !clock.inSession ? 'the pace price arrives at counts once the session opens' : speed > 1.3 ? 'running faster than its options priced — fast arrivals tend to turn back more often' : speed < 0.7 ? 'a quiet market — slow arrivals tend to push through more often' : 'about the pace the options priced',
     },
     {
-      key: 'prints',
-      label: 'Today’s prints',
-      fact: `${fmtDollars(prints)} of forced dealer ${prints >= 0 ? (side === 'call' ? 'buying' : 'selling') : side === 'call' ? 'selling' : 'buying'}`,
-      push: clamp(zPrints / A_PRINTS, -1, 1),
-      words: prints > 0 ? 'today’s prints lean through this wall' : prints < 0 ? 'today’s prints lean away from it' : 'no lean from today’s prints',
-    },
-    {
       key: 'vol',
       label: 'A one-point vol drop · vanna',
       fact: `${fmtDollars(ctx.volDrop)} of forced dealer ${ctx.volDrop >= 0 ? 'buying' : 'selling'}`,
@@ -493,7 +461,6 @@ export function buildWallContext(
     topWall,
     sigmaLeft,
     speed: speedRatio(todayBars, iv),
-    printsUp: printsDemand(snapshot, iv),
     /* Across every expiry when the calendar is here — today's contracts carry
        almost no vanna; the further dates do, and a vol crush moves all of them */
     volDrop: dealerOf(surface ? wholeBookVanna(surface) : strikes.reduce((a, s) => a + (s.vanna?.net ?? 0), 0)),

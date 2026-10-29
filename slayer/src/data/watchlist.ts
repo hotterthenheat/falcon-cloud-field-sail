@@ -7,7 +7,7 @@ import { useSyncExternalStore } from 'react';
 import { isoDate, sessionsBetween, today } from '../core/calendar';
 import { now } from '../core/clock';
 import { ensureThetaCloseOn, ensureThetaMark, ensureThetaPrice, peekThetaCloseOn, peekThetaMark, peekThetaPrice, subscribeTheta } from './thetaQuote';
-import { uwOnlyRoute } from './theta';
+import { thetaAllowedHere } from './theta';
 import { ensureMarks, liveSpotOf, peekMark, subscribeMarks } from './weigherChain';
 import type { OptionRight } from '../types/compass';
 import type { WatchRequest, WatchedContract } from '../types/watchlist';
@@ -65,9 +65,9 @@ const commit = (next: WatchedContract[]) => {
 /* ---- pricing --------------------------------------------------------------------- */
 
 /** The underlying's real-time price (or the last one the terminal gave), or NaN with none. On the Unusual Whales rooms
-    (data/theta.ts uwOnlyRoute) the vendor's price. */
+    (where the page may not ask the terminal: data/theta.ts) the vendor's price. */
 function spotOf(ticker: string): number {
-  if (uwOnlyRoute()) return liveSpotOf(ticker) ?? NaN;
+  if (!thetaAllowedHere('/stock/snapshot/trade')) return liveSpotOf(ticker) ?? NaN;
   ensureThetaPrice(ticker);
   return peekThetaPrice(ticker)?.value.price ?? NaN;
 }
@@ -75,7 +75,7 @@ function spotOf(ticker: string): number {
 type MarkRead = { mark: number; live: boolean; at: number | null };
 /** The contract's NBBO mid: this session's while the terminal answers, else the last one kept (with its instant) */
 function readMark(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right' | 'expiry'>): MarkRead {
-  if (uwOnlyRoute()) {
+  if (!thetaAllowedHere('/option/snapshot/quote')) {
     void ensureMarks(w.ticker, w.expiry);
     const u = peekMark(w.ticker, w.expiry, w.strike, w.right);
     return u && u.mark > 0 ? { mark: Number(u.mark.toFixed(2)), live: true, at: null } : { mark: NaN, live: false, at: null };
@@ -83,7 +83,8 @@ function readMark(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right' | 'expi
   ensureThetaMark(w.ticker, w.expiry, w.strike, w.right);
   const m = peekThetaMark(w.ticker, w.expiry, w.strike, w.right);
   if (!m || !(m.value.mark > 0)) return { mark: NaN, live: false, at: null };
-  return { mark: Number(m.value.mark.toFixed(2)), live: m.live, at: m.live ? null : m.value.read };
+  /* a kept mark carries the quote's own instant; one the terminal sent without an instant carries none */
+  return { mark: Number(m.value.mark.toFixed(2)), live: m.live, at: m.live ? null : m.value.at };
 }
 /** A mark only the live terminal gave: what a close or a day's record may lock at */
 function markOf(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right' | 'expiry'>): number {
@@ -237,7 +238,7 @@ export function tickWatchlist(): void {
     if (w.status !== 'open') return w;
     if (w.expiry < todayKey) {
       /* settled at the expiry day's regular close (ThetaData), not at today's price; the Unusual Whales rooms leave it */
-      if (uwOnlyRoute()) return w;
+      if (!thetaAllowedHere('/stock/history/eod')) return w;
       ensureThetaCloseOn(w.ticker, w.expiry);
       const spot = peekThetaCloseOn(w.ticker, w.expiry) ?? NaN;
       if (!(spot > 0)) return w;

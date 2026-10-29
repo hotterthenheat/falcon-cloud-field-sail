@@ -109,7 +109,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
   };
   /* net GEX in the retail sign: positive = dealers long gamma = absorbs; the other greeks keep the ladder's own sign */
   const shownThen = (v: number | null): number | null => (v == null ? null : shownGreek(greek, v));
-  const net = greek === 'gex' ? s.netGex : s.rows[greek].reduce((acc, r) => acc + r.value, 0);
+  const net = greek === 'gex' ? s.netGex : shownGreek(greek, s.rows[greek].reduce((acc, r) => acc + r.value, 0));
   const flipAt = s.flip;
   /* The regime is the net's sign (data/flipLevel.ts), never the side of the flip. */
   const regimeWord = flipAt != null && flipAt > 0 && Math.abs(s.spot - flipAt) / flipAt <= 0.0005 ? 'either way' : s.netGex >= 0 ? 'absorbs' : 'amplifies';
@@ -245,11 +245,12 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         </span>
         <span className="text-t11 text-textMuted whitespace-nowrap">net {L}</span>
         {/* the tag is the regime at spot (the read's), "either way" within a hair of the flip, and only for gamma */}
-        {greek === 'gex' && <Tag tone="holo">{regimeWord}</Tag>}
+        {greek === 'gex' && (
+          <span title={s.read} className="cursor-help" data-side-read>
+            <Tag tone="holo">{regimeWord}</Tag>
+          </span>
+        )}
       </div>
-      <p className="pb-1.5 text-t11 leading-snug text-textSecondary" data-side-read>
-        {s.read}
-      </p>
       <div className="flex flex-col" data-side-levels>
         {/* Levels in LEVEL_ORDER (core/walls.ts): supreme, call wall, put wall, flip. */}
         {(greeks && greeks.length > 1 ? greeks : [greek]).map(g => (

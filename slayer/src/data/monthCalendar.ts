@@ -1,6 +1,7 @@
 /* The day's calendar as a month, all off the vendor: the economic calendar, the catalysts, the earnings fortnight, the
    FDA calendar, the schedule and the posts; monthly expiration (third Friday) is the one date known by rule. */
 
+import { createStore } from './feedStore';
 import { now } from '../core/clock';
 import { type ReportSlot } from './earnings';
 import { uwCall } from './whales';
@@ -134,12 +135,10 @@ let liveSchedule: CalEvent[] = [];
 let livePosts: CalEvent[] = [];
 let liveCatalysts: CalEvent[] = [];
 let liveEarnings: CalEvent[] = [];
-let fdaRev = 0;
-const fdaListeners = new Set<() => void>();
+const calendarStore = createStore(0);
 
 function bumpCalendar(): void {
-  fdaRev += 1;
-  fdaListeners.forEach(fn => fn());
+  calendarStore.set(n => n + 1);
 }
 
 export function setLiveFda(events: CalEvent[]): void {
@@ -177,12 +176,11 @@ export function setLiveEarnings(events: CalEvent[]): void {
 }
 
 export function fdaStamp(): number {
-  return fdaRev;
+  return calendarStore.get();
 }
 
 export function subscribeFda(fn: () => void): () => void {
-  fdaListeners.add(fn);
-  return () => fdaListeners.delete(fn);
+  return calendarStore.subscribe(fn);
 }
 
 function fileEvents(year: number, month: number): CalEvent[] {

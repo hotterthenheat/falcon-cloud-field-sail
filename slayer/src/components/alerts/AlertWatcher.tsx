@@ -1,12 +1,13 @@
 /* The shell's alert watcher: every armed alert, on every name that holds one, judged against the live feeds — the
-   name's real-time price off the ThetaData terminal, its vendor dealer book (walls, flip, supreme, net exposure),
-   today's minute bars for the indicator and script kinds, the name's option prints and the wire. Nothing is judged
-   on a kept price: with the terminal down the alerts wait. */
+   name's real-time price and today's minute bars off the ThetaData terminal (or both off Unusual Whales where the page
+   may not ask the terminal: data/theta.ts, never one of each), its vendor dealer book (walls, flip, supreme, net
+   exposure), the name's option prints and the wire. Nothing is judged on a kept price: with the terminal down the
+   alerts wait. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { readExposureNow, type ExposureNow } from '../../data/gex';
 import { bookCandles, bookHistory, ensureBook } from '../../data/uwBook';
-import { peekThetaPrice, useThetaPrices } from '../../data/thetaQuote';
+import { ensureThetaBars, peekThetaBars, peekThetaPrice, useThetaPrices } from '../../data/thetaQuote';
 import { ensureQuote, peekQuote, useDayMoves } from '../../data/liveQuote';
 import { useUwOnlyRoute } from '../layout/NavQuote';
 import { uwCall } from '../../data/whales';
@@ -24,10 +25,13 @@ const last = (pts: readonly (number | null)[]): number | null => {
   return typeof p === 'number' && Number.isFinite(p) ? p : null;
 };
 
-/** The name's live minute bars on a timeframe; a seconds timeframe has no live bars, so its alerts wait */
-const barsFor = (ticker: string, tf: string) => {
+/** The name's live minute bars on a timeframe, from the same feed as its price (the terminal's, or the vendor's where
+    the page may not ask the terminal); a seconds timeframe has no live bars, so its alerts wait */
+const barsFor = (ticker: string, tf: string, uw: boolean) => {
   const mins = tfMinutes(tf as Timeframe);
-  return mins < 1 ? [] : aggregateCandles(bookCandles(ticker) ?? [], mins);
+  if (mins < 1) return [];
+  if (!uw) ensureThetaBars(ticker);
+  return aggregateCandles((uw ? bookCandles(ticker) : peekThetaBars(ticker)) ?? [], mins);
 };
 
 /** The live book as an alert reads it: the newest strike snapshot against the live price */
@@ -105,7 +109,7 @@ const AlertWatcher = () => {
         const head = group[0];
         const compiled = compileOf(head.scriptId, poke);
         if (!compiled) continue;
-        const bars = barsFor(sym, head.tf);
+        const bars = barsFor(sym, head.tf, uwOnly);
         if (bars.length === 0) continue;
         /* a script is run once per new bar, not on every beat */
         const runKey = `${sym}|${key}`;
@@ -167,7 +171,7 @@ const AlertWatcher = () => {
       const byTf = new Map<string, Alert[]>();
       for (const a of waiting) if (a.kind === 'indicator') (byTf.get(a.tf) ?? byTf.set(a.tf, []).get(a.tf)!).push(a);
       for (const [tf, group] of byTf) {
-        const bars = barsFor(sym, tf);
+        const bars = barsFor(sym, tf, uwOnly);
         if (bars.length === 0) continue;
         const mins = tfMinutes(tf as Timeframe);
         const values: Partial<Record<IndicatorSource, number | null>> = {};

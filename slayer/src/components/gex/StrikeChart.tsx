@@ -57,6 +57,7 @@ import { nyClock, nyMinutes } from '../../core/nyTime';
 import { beepAlert } from '../../data/alertSound';
 import { oiDoubled } from '../../data/oiWatch';
 import { chartGrain, thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
+import { usePrintRev } from '../../data/thetaTape';
 import { nodeScore } from '../../data/nodeScore';
 import { fmtStrike } from '../../data/ahead';
 import PaneFoot from './PaneFoot';
@@ -803,7 +804,10 @@ const StrikeChart = ({
     : '';
   /* No tick rebuild under the hand: while a pointer is down on the chart the revision is held (every tick-driven
      effect keys on it) and the newest one is applied on release. */
-  const [revision, setRevision] = useState(revisionProp);
+  /* ThetaData's live print moves the forming bar between the host's ticks (every desk but Pinpoint and the Dossier) */
+  const printRev = usePrintRev(!tape && !uwOnlyDesk());
+  const liveRev = revisionProp + printRev;
+  const [revision, setRevision] = useState(liveRev);
   const keepViewRef = useRef(keepView);
   keepViewRef.current = keepView;
   /** The price scale's resolved mode — a compare in scale mode locks it, otherwise the prop. A string, so effects can
@@ -812,9 +816,9 @@ const StrikeChart = ({
   const panRef = useRef(false); // a pointer is down on the plot (the drawing tools own `dragRef` below)
   const pendingRef = useRef<number | null>(null);
   useEffect(() => {
-    if (panRef.current) pendingRef.current = revisionProp;
-    else setRevision(revisionProp);
-  }, [revisionProp]);
+    if (panRef.current) pendingRef.current = liveRev;
+    else setRevision(liveRev);
+  }, [liveRev]);
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -1044,7 +1048,8 @@ const StrikeChart = ({
   const quote = useSessionQuote(ticker, session, quiet && session !== 'rth');
   useEffect(() => {
     const id = window.setTimeout(() => {
-      if (barCountRef.current === 0) setQuiet(true);
+      /* a ThetaData tape still being read (this browser's copy included) is not an empty one */
+      if (barCountRef.current === 0 && (tapeRef.current || uwOnlyDesk() || thetaChartNote(ticker, tfMinutes(timeframe), getDeskSession()) != null)) setQuiet(true);
     }, 1200);
     return () => window.clearTimeout(id);
   }, [ticker, timeframe, barClock]);
@@ -2518,7 +2523,11 @@ const StrikeChart = ({
     if (!tapeRef.current) {
       const note = uwOnlyDesk() ? deskTape(ticker, session).note : thetaChartNote(ticker, tfMinutes(timeframe), session);
       setSessionNote(prev => (prev === note ? prev : note));
-    } else setSessionNote(prev => (prev == null ? prev : null));
+    } else {
+      /* a host's tape that is kept or offline says so over its bars */
+      const note = tapeRef.current.bars.length ? tapeRef.current.note ?? null : null;
+      setSessionNote(prev => (prev === note ? prev : note));
+    }
     if (!base || base.length === 0) {
       /* A host tape that has not answered yet is empty on purpose. Waiting on the book here left the previous
          session's candles up, which is another session wearing this one's name. */
@@ -4081,7 +4090,7 @@ const StrikeChart = ({
         <canvas ref={hoverCanvasRef} aria-hidden className="absolute left-0 top-0 z-[3] pointer-events-none" />
         <div ref={containerRef} className={`absolute inset-0 ${picking ? 'cursor-crosshair' : ''}`} onPointerDownCapture={onSleepingMarkDown} data-pick-time={picking ? '' : undefined} data-replay-idx={replay ? replayIdx : undefined} data-replay-len={replay ? (replayDataRef.current?.bars.length ?? 0) : undefined} data-replay-time={replay && replayTime != null ? replayTime : undefined} data-replay-debug={replay ? replayDebug : undefined} />
         {sessionNote && !replay && !quiet && (
-          <p className="absolute top-2 left-1/2 z-[4] -translate-x-1/2 max-w-[360px] truncate rounded-md border border-borderSubtle bg-canvas/85 px-2 py-1 font-mono text-t10 text-textSecondary pointer-events-none" data-session-note>
+          <p className="absolute left-1/2 z-[4] -translate-x-1/2 max-w-[360px] truncate rounded-md border border-borderSubtle bg-canvas/85 px-2 py-1 font-mono text-t10 text-textSecondary pointer-events-none" style={{ top: chromeInset > 0 ? chromeInset + 6 : 8 }} data-session-note>
             {sessionNote}
           </p>
         )}

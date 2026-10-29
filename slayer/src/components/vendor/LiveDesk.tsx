@@ -143,6 +143,7 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
       const widest = Math.max(...[...labels.values()].map(v => v.length));
       opts.timeScale = { ...opts.timeScale, tickMarkFormatter: fmt, tickMarkMaxCharacterLength: widest + 1 };
     }
+    opts.layout = { ...opts.layout, attributionLogo: false };
     const chart: IChartApi = createChart(host, opts);
     const formatter = (p: number) => (format === 'pct' ? `${p.toFixed(1)}%` : format === 'num' ? (Math.abs(p) >= 100 ? p.toFixed(0) : p.toFixed(2)) : compact(p));
     const series: ISeriesApi<'Line'>[] = [];

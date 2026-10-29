@@ -705,6 +705,19 @@ export function scopeDatesPending(ticker: string, scope: LevelsScope = readLevel
   return !!e && e.status === 'live' && scope === 'ALL' && !datesComplete(e);
 }
 
+/** A page shows contract greeks (vega, the higher greeks) on these dates: read their contracts once, the dates not read yet */
+const factsAsked = new Set<string>();
+export function wantDateFacts(ticker: string, dates: readonly string[]): void {
+  const e = cache.get(sameName(ticker));
+  if (!e || e.status !== 'live') return;
+  const need = dates.filter(d => e.byDate[d]?.length && !e.factsDates?.has(d) && !factsAsked.has(`${e.ticker}|${d}`));
+  if (!need.length) return;
+  for (const d of need) factsAsked.add(`${e.ticker}|${d}`);
+  void fillExpiryFacts(e, gen.get(e.ticker) ?? 0, need).finally(() => {
+    for (const d of need) factsAsked.delete(`${e.ticker}|${d}`);
+  });
+}
+
 /* One full walk a name at a time, never abandoned by a refresh: it lays what it reads onto the current copy of the book;
    a failed date is asked once more at the end, and an empty answer is taken as empty. */
 const expWalking = new Set<string>();
@@ -746,10 +759,11 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
   const dates = listed.map(r => r.date).slice(0, 40);
   const near = dates.slice(0, 6);
   /* null: the read failed (asked again); []: the vendor has no strikes on that date */
-  const pull = (list: string[], first = list === near) =>
+  /* the near dates with their greek rows; a far date's gamma, delta, vanna and charm are the walk's rows (no call of its own) */
+  const pull = (list: string[], first = list === near, greeks = true) =>
     mapLimit(list, 3, async date => {
       try {
-        return [date, await within(dateChain(entry.ticker, date, entry.spot, true, isHot(entry.ticker) && first), DATE_READ_MS)] as const;
+        return [date, await within(dateChain(entry.ticker, date, entry.spot, greeks, isHot(entry.ticker) && first), DATE_READ_MS)] as const;
       } catch {
         return [date, null] as const;
       }
@@ -803,7 +817,7 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
   if (dates.length > 6) {
     await walk;
     if (!still()) return;
-    const farGot = await pull(dates.slice(6));
+    const farGot = await pull(dates.slice(6), false, false);
     if (!still()) return;
     /* a far date whose read failed is asked once more before the walk calls the book whole */
     const retry = [...nearGot, ...farGot].filter(([, c]) => c == null).map(([d]) => d);
@@ -813,7 +827,10 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
       if (!still()) return;
     }
     const current = cache.get(entry.ticker);
-    if (current) void fillExpiryFacts(current, liveToken(), dates.slice(6));
+    /* a far date's contracts are read when the flip needs its own vols (ownIvDates) or a page shows its contract greeks
+       (wantDateFacts) */
+    const far = new Set(dates.slice(6));
+    if (current) void fillExpiryFacts(current, liveToken(), horizonFactsMissing(current).filter(d => far.has(d)));
   }
   await frontFacts;
 }

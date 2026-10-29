@@ -199,6 +199,18 @@ async function loadPrior(name: string, day: string): Promise<{ h: number; l: num
   return { h, l, c: bars[bars.length - 1].c };
 }
 
+/** A name's regular-session one-minute bars from the terminal: today's, or the last session's before the open. The
+    same read (and memo) the scan uses. */
+export async function sessionBars(ticker: string, now = Date.now()): Promise<{ day: string; bars: { t: number; h: number; l: number; c: number }[] } | null> {
+  const name = UNDER[ticker] ?? printOf(ticker);
+  const today = sessionYmd(now);
+  for (const day of [today, priorSessionYmd(today)]) {
+    const got = await loadBars(name, day);
+    if (got.length) return { day, bars: got.map(b => ({ t: nyWallTime(Number(b.d.slice(0, 4)), Number(b.d.slice(4, 6)), Number(b.d.slice(6, 8)), Math.floor(b.m / 60), b.m % 60), h: b.h, l: b.l, c: b.c })) };
+  }
+  return null;
+}
+
 /** The underlying's one-minute closes on a session day (YYYYMMDD), from the scan's own bar read. */
 export async function underCloses(ticker: string, day: string): Promise<PathBar[]> {
   const bars = await loadBars(UNDER[ticker] ?? printOf(ticker), day);
@@ -348,22 +360,23 @@ function midThen(id: string, minute: number): number {
 
 const seededAt = new Map<string, number>();
 
-/** The last 31 minutes of one expiry's NBBO, one reading a minute (one ask for every strike of the name and
-    expiry): the mids 5 and 15 minutes back and Book B's ask 30 minutes back come from the quotes that stood then,
-    not only from the scans this tab happened to run. */
+/** One expiry's NBBO, one reading a minute, from 30 minutes before the scan's 5-minute mark through the mark (one ask
+    for every strike of the name and expiry): the mids 5 and 15 minutes back and Book B's ask 30 minutes back come
+    from the quotes that stood then, not only from the scans this tab happened to run. The window is fixed to the
+    mark, so every viewer scanning the same slot asks the same path and the server shares one answer. */
 async function seedQuotes(list: Setup[], now: number): Promise<void> {
   const first = list[0];
   if (!first?.expiryDate) return;
-  const key = `${first.ticker}|${first.expiryDate}|${Math.floor(now / 60_000)}`;
+  const clock = nyParts(now);
+  const mark = Math.floor((clock.hour * 60 + clock.minute) / 5) * 5;
+  const key = `${first.ticker}|${first.expiryDate}|${ymd(now)}|${mark}`;
   if (seededAt.has(key)) return;
   seededAt.set(key, now);
   if (seededAt.size > 400) for (const k of [...seededAt.keys()].slice(0, 200)) seededAt.delete(k);
   const byContract = new Map<string, string>();
   for (const s of list) byContract.set(`${s.strike}|${s.right}`, s.id);
-  const two = (v: number) => String(v).padStart(2, '0');
-  const from = nyParts(now - 31 * 60_000);
-  const to = nyParts(now);
-  const got = await thetaCall(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&strike_range=16&interval=1m&start_time=${two(from.hour)}:${two(from.minute)}:00&end_time=${two(to.hour)}:${two(to.minute)}:00&format=json`);
+  const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:00`;
+  const got = await thetaCall(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&strike_range=16&interval=1m&start_time=${hm(Math.max(0, mark - 30))}&end_time=${hm(mark)}&format=json`);
   if (got.error) return;
   for (const item of Array.isArray(got.data) ? got.data : []) {
     if (!item || typeof item !== 'object') continue;

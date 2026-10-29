@@ -169,7 +169,8 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
         </span>
       ) : !local ? (
         <img
-          src={`https://assets.parqet.com/logos/symbol/${encodeURIComponent(sym)}`}
+          /* through our own server (server/logoProxy.mjs): a symbol with no mark answers 204, so the miss logs nothing */
+          src={`/api/logo/${encodeURIComponent(sym)}`}
           alt=""
           draggable={false}
           onError={() => {

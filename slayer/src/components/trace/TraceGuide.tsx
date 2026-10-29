@@ -659,6 +659,9 @@ export const OdteGuide = () => (
       <p>One to four panes of the same-day book, each with its own cut of the book or one name, its own money and clock; a pane's arrow opens it full screen.</p>
       <DeskFigure />
     </Section>
+    <Section title="One name">
+      <p>The search opens a name's own contracts expiring that session under the desk, by the day's premium, with its same-day net calls and puts from the vendor's flow by expiry. Type and Premium cut the list; it pages on as you scroll.</p>
+    </Section>
     <Section title="A pane">
       <p>The spot, the net calls and puts, and the volume on the floor, through the session.</p>
       <PaneLinesFigure />
@@ -742,6 +745,7 @@ export const LiveTapeGuide = () => (
     </Section>
     <Section title="Side, lean and window">
       <p>A print's side is its own tag — at the ask, on the bid, or mid — the same on the tape, the card and every count; a tag the quote at the print contradicts gives way to the quote, and a fill through the quote says "under bid" or "over ask". The day lean is the contract's whole day so far: its contracts at the ask, on the bid, and at the mid or with no side — a lean is called only when at least half the day traded on a side. The head and the sentence count the prints in hand — the newest unbroken stretch of the tape, up to 20,000 — and the Window fact says from when to when; with one name typed, its biggest contracts of the whole day stand beside them.</p>
+      <p>Type (calls or puts), Side (at the ask or on the bid), Premium, Kind and Expiry ask the vendor for that cut, so the tape refills with it from the whole session and pages on as you scroll; Lean, mid fills and single prints cut the prints in hand.</p>
     </Section>
     <Section title="The inks">
       <p>Premium quiet below $250K, bold above, the largest print on the tape in magenta.</p>

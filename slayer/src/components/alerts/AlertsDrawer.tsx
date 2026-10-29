@@ -208,7 +208,9 @@ const AlertsDrawer = () => {
   };
 
   const armAgain = (ticker: string, r: FiredRecord) => {
-    const spot = liveSpotOf(ticker) ?? 0;
+    /* the price the watcher judges on: the terminal's live print, or the vendor's where the page may not ask it */
+    const held = thetaAllowedHere('/stock/snapshot/trade') ? peekThetaPrice(ticker) : null;
+    const spot = thetaAllowedHere('/stock/snapshot/trade') ? (held?.live ? held.value.price : 0) : peekQuote(ticker)?.spot ?? 0;
     if (!(spot > 0)) {
       setRefused(`No live price for ${ticker} yet — try again in a moment`);
       return;
