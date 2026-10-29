@@ -40,7 +40,7 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
-  Activity, ArrowUpRight, Bell, BellOff, Code2, Crosshair, Crown, Droplets, Layers, MoveHorizontal, Newspaper, Repeat, RotateCcw, X,
+  Activity, ArrowUpRight, Bell, BellOff, Code2, Crosshair, Crown, Droplets, Gauge, Layers, MoveHorizontal, Newspaper, Pin, Repeat, RotateCcw, X,
   type LucideIcon,
 } from 'lucide-react';
 import Simulator from '../../core/simulator';
@@ -65,6 +65,8 @@ export const KIND_ICON: Record<AlertKind, LucideIcon> = {
   flow: Droplets,
   news: Newspaper,
   script: Code2,
+  charmPin: Pin,
+  oiJump: Gauge,
 };
 
 /** Where an alert shows — the surface a row's door opens */
@@ -82,6 +84,9 @@ const doorOf = (a: Alert): { label: string; to: string } => {
       return { label: 'Tape', to: '/trace/live-tape' };
     case 'news':
       return { label: 'News', to: '/dossier/news' };
+    case 'charmPin':
+    case 'oiJump':
+      return { label: 'Map', to: '/pinpoint' };
     /* a script's alert opens the pane it was armed on */
     case 'script':
       return a.paneId.startsWith('terrain') ? { label: 'Terrain', to: '/terrain' }
@@ -101,10 +106,10 @@ const ALL = 'all';
 const Shelf = ({ label, count, action, onAction, children }: { label: string; count: number; action?: string; onAction?: () => void; children: React.ReactNode }) => (
   <section className="px-3.5 pt-4" data-alerts-shelf={label.toLowerCase()}>
     <div className="flex items-baseline gap-1.5 pb-2">
-      <span className="text-[12px] font-semibold text-textPrimary">{label}</span>
-      <span className="font-mono text-[10px] tnum text-textSecondary">{count}</span>
+      <span className="text-t12 font-semibold text-textPrimary">{label}</span>
+      <span className="font-mono text-t10 tnum text-textSecondary">{count}</span>
       {action && count > 0 && (
-        <button onClick={onAction} className="ml-auto font-mono text-[9px] uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors">
+        <button onClick={onAction} className="ml-auto font-mono text-t9 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors">
           {action}
         </button>
       )}
@@ -123,8 +128,8 @@ const Card = ({ children, testId }: { children: React.ReactNode; testId?: string
 const NameHead = ({ ticker, note }: { ticker: string; note: string }) => (
   <div className="flex items-center gap-2 h-8 px-3 border-b border-borderSubtle/70 bg-ink/[0.02]" data-alert-name={ticker}>
     <CompanyLogo ticker={ticker} size={14} />
-    <span className="font-mono text-[11px] font-bold text-textPrimary">{ticker}</span>
-    <span className="font-mono text-[9px] tnum text-textMuted">{note}</span>
+    <span className="font-mono text-t11 font-bold text-textPrimary">{ticker}</span>
+    <span className="font-mono text-t9 tnum text-textMuted">{note}</span>
   </div>
 );
 
@@ -133,7 +138,7 @@ const Door = ({ label, onClick }: { label: string; onClick: () => void }) => (
   <button
     onClick={onClick}
     title={`Open the ${label.toLowerCase()} on this name`}
-    className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-chip/70 font-mono text-[9px] uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors"
+    className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-chip/70 font-mono text-t9 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors"
     data-alert-door
   >
     {label}
@@ -157,10 +162,10 @@ const Row = ({ kind, alerted, ticker, words, state, door, action, testId }: { ki
       </span>
       <span className="flex-1 min-w-0 flex flex-col gap-[2px]">
         <span className="flex items-center gap-1.5 min-w-0">
-          {ticker && <span className="shrink-0 font-mono text-[10px] font-bold text-textPrimary">{ticker}</span>}
-          <span className="truncate text-[12px] text-textPrimary">{words}</span>
+          {ticker && <span className="shrink-0 font-mono text-t10 font-bold text-textPrimary">{ticker}</span>}
+          <span className="truncate text-t12 text-textPrimary">{words}</span>
         </span>
-        <span className={`font-mono text-[9px] tnum ${alerted ? '' : 'text-textMuted'}`} style={alerted ? { color: ALERT } : undefined}>
+        <span className={`font-mono text-t9 tnum ${alerted ? '' : 'text-textMuted'}`} style={alerted ? { color: ALERT } : undefined}>
           {state}
         </span>
       </span>
@@ -173,7 +178,7 @@ const Row = ({ kind, alerted, ticker, words, state, door, action, testId }: { ki
 const Empty = ({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) => (
   <div className="rounded-md border border-dashed border-borderSubtle/70 px-4 py-5 flex flex-col items-center gap-2 text-center">
     <Icon className="w-4 h-4 text-textMuted" strokeWidth={1.5} />
-    <p className="text-[11px] leading-snug text-textMuted max-w-[280px]">{children}</p>
+    <p className="text-t11 leading-snug text-textMuted max-w-[280px]">{children}</p>
   </div>
 );
 
@@ -263,8 +268,8 @@ const AlertsDrawer = () => {
           <span className="w-6 h-6 rounded-md border border-borderSubtle bg-ink/[0.03] flex items-center justify-center shrink-0" aria-hidden>
             <Bell className="w-3.5 h-3.5 text-textSecondary" strokeWidth={1.75} />
           </span>
-          <span className="text-[14px] font-semibold text-textPrimary">Alerts</span>
-          <span className="font-mono text-[10px] tnum text-textMuted" data-alerts-facts>
+          <span className="text-t14 font-semibold text-textPrimary">Alerts</span>
+          <span className="font-mono text-t10 tnum text-textMuted" data-alerts-facts>
             <span className="text-textSecondary">{setTotal}</span> set · <span className={firedTotal ? 'text-textSecondary' : ''}>{firedTotal}</span> alerted
           </span>
           <button onClick={closeAlertsDrawer} aria-label="Close the alerts" title="Close (Esc)" className="ml-auto shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" data-alerts-close>
@@ -341,14 +346,14 @@ const AlertsDrawer = () => {
               </Card>
             )}
             {refused && (
-              <p role="status" className="pt-2 font-mono text-[9px] text-bear" data-alerts-refused>
+              <p role="status" className="pt-2 font-mono text-t9 text-bear" data-alerts-refused>
                 {refused}
               </p>
             )}
           </Shelf>
         </div>
 
-        <p className="shrink-0 px-3.5 py-2 border-t border-borderSubtle/70 font-mono text-[9px] leading-snug text-textMuted">
+        <p className="shrink-0 px-3.5 py-2 border-t border-borderSubtle/70 font-mono text-t9 leading-snug text-textMuted">
           Runs while this tab is open. Nothing is sent anywhere.
         </p>
       </motion.aside>

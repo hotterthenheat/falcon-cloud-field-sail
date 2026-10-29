@@ -100,7 +100,7 @@ const printLine = (offset: number, yAxisId: string, withLabel: boolean, windowMi
 const axisTick = { fill: AXIS, fontSize: 10, fontFamily: "'Inter', sans-serif" };
 
 const Box = ({ children }: { children: React.ReactNode }) => (
-  <div className="rounded border border-borderMuted bg-panel px-2.5 py-1.5 shadow-2xl shadow-black/60 font-mono text-[11px]">
+  <div className="rounded border border-borderMuted bg-panel px-2.5 py-1.5 shadow-2xl shadow-black/60 font-mono text-t11">
     {children}
   </div>
 );
@@ -114,7 +114,7 @@ export const SideSplit = ({ bid, mid, ask, unit, caption, className = '' }: { bi
   const fmt = (v: number) => (unit === '$' ? fmtUsd(v) : v.toLocaleString('en-US'));
   return (
     <div className={`flex flex-col gap-1 ${className}`} title={`${fmt(bid)} on the bid · ${fmt(mid)} at the mid or no side · ${fmt(ask)} at the ask${unit === '$' ? '' : ` ${unit}`}`}>
-      <div className="flex items-baseline justify-between gap-3 font-mono text-[11px] uppercase tracking-wider">
+      <div className="flex items-baseline justify-between gap-3 font-mono text-t11 uppercase tracking-wider">
         <span className="text-textSecondary">Bid {sh.bid}%</span>
         <span className="text-textMuted">Mid {sh.mid}%</span>
         <span className="text-textSecondary">Ask {sh.ask}%</span>
@@ -124,7 +124,7 @@ export const SideSplit = ({ bid, mid, ask, unit, caption, className = '' }: { bi
         <span className="h-full bg-ink/25" style={{ width: `${sh.mid}%` }} />
         <span className="h-full bg-bull" style={{ width: `${sh.ask}%` }} />
       </span>
-      {caption && <span className="font-mono text-[11px] text-textMuted normal-case">{caption}</span>}
+      {caption && <span className="font-mono text-t11 text-textMuted normal-case">{caption}</span>}
     </div>
   );
 };
@@ -135,8 +135,8 @@ export { default as Chip } from '../ui/Chip';
 /** One figure in a panel's stat strip. */
 const Stat = ({ label, value, tone = 'text-textPrimary' }: { label: string; value: string; tone?: string }) => (
   <span className="flex flex-col gap-0.5 min-w-0">
-    <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted truncate">{label}</span>
-    <span className={`font-mono text-[12px] font-semibold tnum ${tone} truncate`}>{value}</span>
+    <span className="font-mono text-t11 uppercase tracking-wider text-textMuted truncate">{label}</span>
+    <span className={`font-mono text-t12 font-semibold tnum ${tone} truncate`}>{value}</span>
   </span>
 );
 
@@ -161,7 +161,7 @@ const TugBar = ({
   className?: string;
 }) => (
   <div className={`flex flex-col gap-1 ${className}`}>
-    <div className="flex items-baseline justify-between gap-3 font-mono text-[11px] uppercase tracking-wider">
+    <div className="flex items-baseline justify-between gap-3 font-mono text-t11 uppercase tracking-wider">
       <span className={leftPct >= 50 ? 'text-bear font-semibold' : 'text-textSecondary'}>
         {leftLabel} {Math.round(leftPct)}%
       </span>
@@ -301,8 +301,8 @@ export const FlowPanel = ({ tape, intervalMin, showAvg, onShowAvg, showIv, onSho
   return (
     <div className={`flex flex-col gap-2 min-w-0 rounded-md px-2 py-1.5 ${paper ? '' : 'bg-panel'}`} data-theme={paper ? 'light' : 'dark'} data-flow-strip>
       <div className="flex items-baseline gap-2.5 flex-wrap">
-        <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The contract's session</span>
-        <span className="font-mono text-[11px] text-textMuted tnum" data-flow-summary>
+        <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">The contract's session</span>
+        <span className="font-mono text-t11 text-textMuted tnum" data-flow-summary>
           <RichRead text={summary} />
         </span>
         <span className="ml-auto flex items-center gap-0.5">
@@ -319,7 +319,7 @@ export const FlowPanel = ({ tape, intervalMin, showAvg, onShowAvg, showIv, onSho
 
       <div className="h-[200px] -ml-2">
         {bins.length === 0 ? (
-          <div className="h-full flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted">{w.source === 'prints' ? 'No prints this session' : 'No prints in the regular session'}</div>
+          <div className="h-full flex items-center justify-center font-mono text-t11 uppercase tracking-widest text-textMuted">{w.source === 'prints' ? 'No prints this session' : 'No prints in the regular session'}</div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={binRows} syncId={syncId} syncMethod="value" margin={{ top: 6, right: showAvg ? RIGHT_PAD : RIGHT_PAD + Y_RIGHT_W, bottom: 0, left: 0 }}>
@@ -341,20 +341,20 @@ export const FlowPanel = ({ tape, intervalMin, showAvg, onShowAvg, showIv, onSho
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary">
+        <span className="inline-flex items-center gap-1.5 font-mono text-t11 uppercase tracking-wider text-textSecondary">
           <span className="w-2 h-2" style={{ background: ASK }} /> Paid the offer · stacks up
         </span>
-        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary">
+        <span className="inline-flex items-center gap-1.5 font-mono text-t11 uppercase tracking-wider text-textSecondary">
           <span className="w-2 h-2" style={{ background: BID }} /> Hit the bid · stacks down
         </span>
-        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary">
+        <span className="inline-flex items-center gap-1.5 font-mono text-t11 uppercase tracking-wider text-textSecondary">
           <span className="w-2 h-2" style={{ background: FENCE }} /> Mid or no side · on the line
         </span>
-        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary">
+        <span className="inline-flex items-center gap-1.5 font-mono text-t11 uppercase tracking-wider text-textSecondary">
           <span className="w-2 h-2" style={{ background: SUPREME }} /> Heaviest bar
         </span>
         {printMin !== null && (
-          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary">
+          <span className="inline-flex items-center gap-1.5 font-mono text-t11 uppercase tracking-wider text-textSecondary">
             <span className="w-3 h-[2px]" style={{ background: PRICE_LINE }} /> This print
           </span>
         )}
@@ -425,8 +425,8 @@ const MetricPicker = ({ value, onChange }: { value: NetMetric; onChange: (v: Net
             >
               <span className="w-3.5 pt-0.5 shrink-0">{m.value === value && <Check className="w-3 h-3 text-select" />}</span>
               <span className="flex flex-col min-w-0">
-                <span className={`font-mono text-[11px] ${m.value === value ? 'text-textPrimary font-semibold' : 'text-textSecondary'}`}>{m.label}</span>
-                <span className="font-mono text-[11px] text-textMuted">{m.hint}</span>
+                <span className={`font-mono text-t11 ${m.value === value ? 'text-textPrimary font-semibold' : 'text-textSecondary'}`}>{m.label}</span>
+                <span className="font-mono text-t11 text-textMuted">{m.hint}</span>
               </span>
             </button>
           ))}
@@ -483,8 +483,8 @@ export const NetPanel = ({ tape, ticker, intervalMin, metric, onMetric, showCall
   if (!n) {
     return (
       <div className={`flex flex-col gap-2 min-w-0 rounded-md px-2 py-1.5 ${paper ? '' : 'bg-panel'}`} data-theme={paper ? 'light' : 'dark'} data-flow-strip>
-        <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">{ticker} net premium</span>
-        <div className="h-[120px] flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted">No minutes for {ticker} in this session</div>
+        <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">{ticker} net premium</span>
+        <div className="h-[120px] flex items-center justify-center font-mono text-t11 uppercase tracking-widest text-textMuted">No minutes for {ticker} in this session</div>
       </div>
     );
   }
@@ -492,16 +492,16 @@ export const NetPanel = ({ tape, ticker, intervalMin, metric, onMetric, showCall
   return (
     <div className={`flex flex-col gap-2 min-w-0 rounded-md px-2 py-1.5 ${paper ? '' : 'bg-panel'}`} data-theme={paper ? 'light' : 'dark'} data-flow-strip>
       <div className="flex items-center gap-2.5 flex-wrap">
-        <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">{ticker} net premium · every expiry · the same window</span>
+        <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">{ticker} net premium · every expiry · the same window</span>
         <MetricPicker value={metric} onChange={onMetric} />
         {metric === 'netPremium' ? (
-          <span className="font-mono text-[11px] text-textMuted tnum" data-net-summary title="Net premium is premium at the ask less premium at the bid. Net calls bought lean bullish; net puts bought lean bearish. The net is net calls less net puts.">
+          <span className="font-mono text-t11 text-textMuted tnum" data-net-summary title="Net premium is premium at the ask less premium at the bid. Net calls bought lean bullish; net puts bought lean bearish. The net is net calls less net puts.">
             net <span className={net >= 0 ? 'text-bull font-semibold' : 'text-bear font-semibold'}>{signedUsd(net)}</span> · net calls{' '}
             <span className={n.netCall >= 0 ? 'text-bull font-semibold' : 'text-bear font-semibold'}>{signedUsd(n.netCall)}</span> · net puts{' '}
             <span className={n.netPut >= 0 ? 'text-bear font-semibold' : 'text-bull font-semibold'}>{signedUsd(n.netPut)}</span>
           </span>
         ) : (
-          <span className="font-mono text-[11px] text-textMuted tnum">
+          <span className="font-mono text-t11 text-textMuted tnum">
             {(n.callVol + n.putVol).toLocaleString('en-US')} contracts · calls {n.callVol.toLocaleString('en-US')} · puts {n.putVol.toLocaleString('en-US')}
           </span>
         )}

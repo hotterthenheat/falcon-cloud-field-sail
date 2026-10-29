@@ -34,10 +34,35 @@ export interface CompassView {
 }
 
 let view: CompassView = { sleeve: 'odte', scanner: 'top-setups', layout: 'cards', tickerFilter: null, selectedId: null, chosenId: null, right: 'BOTH' };
+
+const VIEW_KEY = 'slayer_compass_view';
+
+function readView(): CompassView {
+  if (typeof sessionStorage === 'undefined') return view;
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(VIEW_KEY) || 'null') as Partial<CompassView> | null;
+    if (!raw || typeof raw !== 'object') return view;
+    return {
+      ...view,
+      sleeve: raw.sleeve === 'weekly' || raw.sleeve === 'odte' || raw.sleeve === 'swing' ? raw.sleeve : view.sleeve,
+      layout: raw.layout === 'table' ? 'table' : 'cards',
+      tickerFilter: typeof raw.tickerFilter === 'string' ? raw.tickerFilter : null,
+      selectedId: typeof raw.selectedId === 'string' ? raw.selectedId : null,
+      chosenId: typeof raw.chosenId === 'string' ? raw.chosenId : null,
+      right: raw.right === 'C' || raw.right === 'P' ? raw.right : 'BOTH',
+    };
+  } catch {
+    return view;
+  }
+}
+
+view = readView();
+
 const subs = new Set<() => void>();
 
 export const setCompassView = (patch: Partial<CompassView>): void => {
   view = { ...view, ...patch };
+  try { sessionStorage.setItem(VIEW_KEY, JSON.stringify(view)); } catch { /* the view still holds this tab */ }
   subs.forEach(fn => fn());
 };
 

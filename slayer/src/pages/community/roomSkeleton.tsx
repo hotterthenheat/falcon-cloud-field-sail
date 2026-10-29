@@ -33,10 +33,10 @@ export const RoomRouteSkeleton = () => (
           <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0">
             <Users className="w-3.5 h-3.5" />
           </span>
-          <span className="text-[15px] font-semibold leading-tight text-textPrimary">Community</span>
-          <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">· the room</span>
+          <span className="text-t15 font-semibold leading-tight text-textPrimary">Community</span>
+          <span className="font-mono text-t9 uppercase tracking-widest text-textMuted">· the room</span>
         </div>
-        <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Traders, their setups and the record they build — every $name a door, every @handle a person</p>
+        <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">Traders, their setups and the record they build — every $name a door, every @handle a person</p>
       </div>
     </header>
     <div className={ROOM_GRID} aria-hidden data-skeleton="room">

@@ -83,7 +83,7 @@ const WayBack = () => {
       data-way-back={to}
       style={{ left: low ? at.edge + 12 : at.centre }}
       data-way-back-at={low ? 'foot' : 'head'}
-      className={`group fixed ${low ? 'bottom-2.5' : 'top-[60px] md:top-3 -translate-x-1/2'} z-[70] inline-flex items-center gap-1.5 h-8 pl-2.5 pr-3 rounded-full border border-borderMuted bg-panel/90 backdrop-blur-sm font-mono text-[11px] font-semibold text-textSecondary hover:text-textPrimary hover:bg-panelHover shadow-lg shadow-black/40 transition-colors animate-soft-in`}
+      className={`group fixed ${low ? 'bottom-2.5' : 'top-[60px] md:top-3 -translate-x-1/2'} z-[70] inline-flex items-center gap-1.5 h-8 pl-2.5 pr-3 rounded-full border border-borderMuted bg-panel/90 backdrop-blur-sm font-mono text-t11 font-semibold text-textSecondary hover:text-textPrimary hover:bg-panelHover shadow-lg shadow-black/40 transition-colors animate-soft-in`}
     >
       <ArrowLeft className="w-3.5 h-3.5 transition-transform duration-200 ease-out group-hover:-translate-x-0.5" />
       {name ? `Back to ${name}` : 'Back'}

@@ -25,9 +25,9 @@ export const CompassHeadSkeleton = () => (
         <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0">
           <CompassIcon className="w-3.5 h-3.5" />
         </span>
-        <span className="text-[15px] font-semibold leading-tight text-textPrimary">Compass</span>
+        <span className="text-t15 font-semibold leading-tight text-textPrimary">Compass</span>
       </div>
-      <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">The setups found this sweep, the strongest first — Active while the structure holds, Watch while it proves itself</p>
+      <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">The setups found this sweep, the strongest first — Active while the structure holds, Watch while it proves itself</p>
     </div>
   </header>
 );

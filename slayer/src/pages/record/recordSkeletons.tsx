@@ -56,9 +56,9 @@ export const RecordShellSkeleton = ({ pathname }: { pathname: string }) => {
           <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0">
             <PageIcon className="w-3.5 h-3.5" />
           </span>
-          <span className="text-[15px] font-semibold leading-tight text-textPrimary">{page.label}</span>
+          <span className="text-t15 font-semibold leading-tight text-textPrimary">{page.label}</span>
         </div>
-        <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{page.subtitle}</p>
+        <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">{page.subtitle}</p>
       </div>
       <Facts widths={[260]} />
     </header>

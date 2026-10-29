@@ -25,9 +25,9 @@
 import { useSyncExternalStore } from 'react';
 
 export const NAME_WATCH_KEY = 'slayer_watch_names';
-/** A list a reader can still read at a glance */
+/** A list a reader can still read at a glance. Eight sections ship filled; four are left so a reader can add their own. */
 export const MAX_NAMES = 60;
-export const MAX_SECTIONS = 8;
+export const MAX_SECTIONS = 12;
 
 export interface WatchedName {
   symbol: string;
@@ -44,6 +44,33 @@ export interface NameWatch {
 }
 
 const FIRST: NameWatch = { sections: [{ id: 'names', name: 'Names', names: [] }] };
+
+/** The book a new desk opens on. Names only, one name once, the ones a desk actually watches.
+    A reader removes, renames, and reorders from here; this is not written back over a list they have already changed. */
+const STANDARD: NameWatch = {
+  sections: [
+    { id: 'index', name: 'Index', names: ['SPY', 'QQQ', 'IWM', 'DIA'] },
+    { id: 'chips', name: 'Chips', names: ['NVDA', 'AMD', 'AVGO', 'MU', 'TSM', 'INTC'] },
+    { id: 'mega', name: 'Mega cap', names: ['AAPL', 'MSFT', 'AMZN', 'GOOGL', 'META', 'TSLA'] },
+    { id: 'financials', name: 'Financials', names: ['JPM', 'GS', 'BAC', 'MS', 'V'] },
+    { id: 'energy', name: 'Energy', names: ['XOM', 'CVX', 'COP'] },
+    { id: 'health', name: 'Health', names: ['LLY', 'UNH', 'JNJ', 'PFE'] },
+    { id: 'consumer', name: 'Consumer', names: ['WMT', 'COST', 'HD', 'NKE'] },
+    { id: 'high-beta', name: 'High beta', names: ['PLTR', 'NFLX', 'COIN', 'HOOD', 'MSTR'] },
+  ].map(s => ({ id: s.id, name: s.name, names: s.names.map(symbol => ({ symbol, flagged: false, addedAt: 0 })) })),
+};
+
+/** The empty "Names" section is the desk before anyone has touched it. A renamed or emptied section of their own is not. */
+const untouched = (w: NameWatch): boolean => w.sections.length === 1 && w.sections[0].id === 'names' && w.sections[0].name === 'Names' && w.sections[0].names.length === 0;
+
+const writeStandard = (): NameWatch => {
+  try {
+    localStorage.setItem(NAME_WATCH_KEY, JSON.stringify(STANDARD));
+  } catch {
+    /* storage blocked — the book still shows for the visit */
+  }
+  return STANDARD;
+};
 const SYMBOL = /^[A-Z][A-Z0-9.^-]{0,9}$/;
 
 const clean = (raw: unknown): NameWatch => {
@@ -69,9 +96,11 @@ const clean = (raw: unknown): NameWatch => {
 const load = (): NameWatch => {
   try {
     const raw = localStorage.getItem(NAME_WATCH_KEY);
-    return raw ? clean(JSON.parse(raw)) : FIRST;
+    if (!raw) return writeStandard();
+    const parsed = clean(JSON.parse(raw));
+    return untouched(parsed) ? writeStandard() : parsed;
   } catch {
-    return FIRST;
+    return writeStandard();
   }
 };
 

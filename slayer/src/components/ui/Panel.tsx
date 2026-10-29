@@ -58,12 +58,12 @@ const Panel = ({
         <header className={`flex items-center justify-between gap-3 px-4 h-10 border-b ${toneDivider[tone]} shrink-0`}>
           <div className="flex items-baseline gap-2 min-w-0">
             {title && (
-              <h3 className="font-mono text-[11px] font-semibold uppercase tracking-widest text-textPrimary truncate">
+              <h3 className="font-mono text-t11 font-semibold uppercase tracking-widest text-textPrimary truncate">
                 {title}
               </h3>
             )}
             {subtitle && (
-              <span className="font-mono text-[10px] text-textSecondary uppercase tracking-wider truncate">{subtitle}</span>
+              <span className="font-mono text-t10 text-textSecondary uppercase tracking-wider truncate">{subtitle}</span>
             )}
           </div>
           {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}

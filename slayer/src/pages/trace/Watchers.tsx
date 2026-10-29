@@ -125,7 +125,7 @@ const phoneRow = (a: Catch) => (
         <span className="font-bold">{a.row.ticker}</span>
         <span className="font-bold tnum">{a.row.strike}</span>
         <span className={a.row.right === 'C' ? 'text-bull' : 'text-bear'}>{a.row.right === 'C' ? 'call' : 'put'}</span>
-        <span className="text-[11px] text-textSecondary tnum">{a.row.expiry.slice(0, 5)}</span>
+        <span className="text-t11 text-textSecondary tnum">{a.row.expiry.slice(0, 5)}</span>
       </>
     }
     aside={a.time}
@@ -290,7 +290,7 @@ const Watchers = () => {
         render: a => (
           <span className="inline-flex items-center gap-1.5">
             <WatchStar k={contractKey(a.row)} make={() => watchContract(a.row, 'watchers')} />
-            <span className="text-[11px] text-textPrimary">{a.time}</span>
+            <span className="text-t11 text-textPrimary">{a.time}</span>
           </span>
         ),
       },
@@ -338,7 +338,7 @@ const Watchers = () => {
           if (!said.length) return <span className="text-textSecondary">—</span>;
           return (
             /* TWO LINES, NEVER CUT MID-WORD */
-            <span className="inline-flex items-center gap-1.5 text-[11px] leading-tight text-textPrimary whitespace-normal" title={said.map(x => x.text).join(' · ')}>
+            <span className="inline-flex items-center gap-1.5 text-t11 leading-tight text-textPrimary whitespace-normal" title={said.map(x => x.text).join(' · ')}>
               <span className="inline-flex gap-0.5 shrink-0">
                 {said.map(x => (x.mine ? <span key={x.k} className="w-1.5 h-1.5 rounded-full border border-textSecondary" /> : <span key={x.k} className="w-1.5 h-1.5 rounded-full" style={{ background: RULE_DOT[x.k as WatcherKey] }} />))}
               </span>
@@ -354,7 +354,7 @@ const Watchers = () => {
         sortValue: a => a.last,
         render: a => (
           <span className="text-textPrimary" title="The contract's last fill, and its New York time">
-            ${a.last.toFixed(2)} <span className="text-[11px] text-textSecondary">{a.time}</span>
+            ${a.last.toFixed(2)} <span className="text-t11 text-textSecondary">{a.time}</span>
           </span>
         ),
       },
@@ -372,7 +372,7 @@ const Watchers = () => {
         sortValue: a => a.row.askPct,
         // The tape's rule: the side in one ink
         /* THE LEAN PRINTS ITS FIGURE (audit round 7: "bid", "ask", "even" with no share) — the house lean cell, the one rule */
-        render: a => (a.row.sideVol ? <LeanCell askPct={a.row.askPct} split={a.row.sideVol} legsPct={a.row.multiPct} crossPct={a.row.crossPct} /> : <span className={`text-[11px] ${a.side === 'EVEN' || a.side === 'MID' || a.side === 'LEGS' ? 'text-textMuted' : 'text-textPrimary'}`}>{leanText(a.row)}</span>),
+        render: a => (a.row.sideVol ? <LeanCell askPct={a.row.askPct} split={a.row.sideVol} legsPct={a.row.multiPct} crossPct={a.row.crossPct} /> : <span className={`text-t11 ${a.side === 'EVEN' || a.side === 'MID' || a.side === 'LEGS' ? 'text-textMuted' : 'text-textPrimary'}`}>{leanText(a.row)}</span>),
       },
       {
         key: 'vol',
@@ -507,7 +507,7 @@ const Watchers = () => {
           <>
             <SavedCutsList store={WATCHER_CUTS} query="" onOpen={addr.open} noun="cut" testId="watchers" onSay={cuts.say} open={cuts.open} />
             {cuts.said && (
-              <p role="status" className="mb-2 font-mono text-[11px] text-textSecondary">
+              <p role="status" className="mb-2 font-mono text-t11 text-textSecondary">
                 {cuts.said}
               </p>
             )}

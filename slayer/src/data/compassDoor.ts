@@ -11,6 +11,8 @@ import { now } from '../core/clock';
 import { nyParts, type At } from '../core/nyTime';
 import type { TrackedSetup } from '../types/tracker';
 import type { SleeveKey } from '../types/compass';
+import { deskPhase } from './compassSession';
+import type { OptionPhase } from './compassSession';
 
 /** First minute the loaded scan looks. Last minute it looks. */
 export const SCAN_OPEN_MIN = 9 * 60 + 30;
@@ -21,8 +23,9 @@ const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export interface ScanClock {
-  /** Inside 09:30–15:00 ET on a session day. Nothing else. */
+  /** A tape that can take a ticket is open. The halt and the shut hours are not. */
   open: boolean;
+  phase: OptionPhase;
   /** The session a new entry belongs to. ISO date. */
   session: string;
   /** "Monday Oct 26" */
@@ -49,7 +52,8 @@ export function scanClock(at: At = now()): ScanClock {
   const p = nyParts(at);
   const day = dayOf(p);
   const mins = p.hour * 60 + p.minute;
-  const open = isTradingDay(day) && mins >= SCAN_OPEN_MIN && mins < SCAN_FLAT_MIN;
+  const phase = deskPhase(at);
+  const open = phase === 'overnight' || phase === 'pre' || phase === 'open' || phase === 'curb';
   const sessionDate = (() => {
     if (!isTradingDay(day) || mins >= 16 * 60) {
       const from = new Date(day);
@@ -60,12 +64,18 @@ export function scanClock(at: At = now()): ScanClock {
   })();
   const session = isoDate(sessionDate);
   const label = `${WEEKDAY[sessionDate.getDay()]} ${MONTHS[sessionDate.getMonth()]} ${sessionDate.getDate()}`;
-  return {
-    open,
-    session,
-    label,
-    line: open ? 'Scan window is open until 15:00 ET.' : `Scan closed. Next open ${label}, 09:30 ET.`,
-  };
+  const line = phase === 'overnight'
+    ? 'Overnight. SPX, NDX, RUT, and VIX only. A name with no overnight tape is not on this scan.'
+    : phase === 'pre'
+      ? 'Pre-market. Index roots, the extended single names, and GLD, IWM, QQQ, SPY, XLF.'
+      : phase === 'halt'
+        ? 'Halted, 09:25 to 09:30 ET. No new ticket.'
+        : phase === 'open'
+          ? 'Regular session. Every name.'
+          : phase === 'curb'
+            ? 'Curb. Extended names until 16:15 ET. Index weeklies until 17:00 ET.'
+            : `Options are shut. Next tape ${label}.`;
+  return { open, phase, session, label, line };
 }
 
 export function useScanClock(): ScanClock {
@@ -103,7 +113,7 @@ export type TrackAnswer =
 
 export function gateTrack(tracked: readonly TrackedSetup[], setup: { id: string; ticker: string; sleeve?: SleeveKey }, at: At = now()): TrackAnswer {
   if (tracked.some(t => t.id === setup.id)) return { ok: true };
-  if (setup.sleeve !== 'weekly' && !scanClock(at).open) return { ok: false, why: 'closed' };
+  if (!scanClock(at).open) return { ok: false, why: 'closed' };
   const mine = sessionBook(tracked, at);
   if (nameUsed(setup.ticker, at)) {
     const taken = mine.find(t => t.ticker === setup.ticker);

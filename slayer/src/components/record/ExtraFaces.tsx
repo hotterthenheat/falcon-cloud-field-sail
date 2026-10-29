@@ -22,28 +22,28 @@ const defaultColDef = { sortable: true, resizable: true, suppressMovable: true }
 const MemberCell = ({ data }: ICellRendererParams<HoldingRow>) =>
   data ? (
     <span className="flex flex-col leading-tight min-w-0 text-left" data-open-member={data.memberId}>
-      <span className="text-[12px] font-semibold text-textPrimary truncate">{data.member}</span>
-      <span className="font-mono text-[10px] text-textMuted">{data.seat}</span>
+      <span className="text-t12 font-semibold text-textPrimary truncate">{data.member}</span>
+      <span className="font-mono text-t10 text-textMuted">{data.seat}</span>
     </span>
   ) : null;
 
 const HoldName = ({ data }: ICellRendererParams<HoldingRow>) =>
   data && !data.ticker ? (
     <span className="flex items-center min-w-0 w-full h-full overflow-hidden" title={data.asset}>
-      <span className="text-[12px] text-textPrimary truncate">{data.asset}</span>
+      <span className="text-t12 text-textPrimary truncate">{data.asset}</span>
     </span>
   ) : data ? (
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
-        <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
+        <span className="font-mono text-t12 font-bold text-textPrimary">{data.ticker}</span>
         <CoSub ticker={data.ticker} vendor={false} />
       </span>
     </span>
   ) : null;
 
-const BracketCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.bracket}</span> : null);
-const OwnerCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span className={`font-mono text-[8px] uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{ownerWord(data.owner as ReportOwner)}</span> : null);
+const BracketCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{data.bracket}</span> : null);
+const OwnerCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span className={`font-mono text-t8 uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{ownerWord(data.owner as ReportOwner)}</span> : null);
 
 export const CongressHoldings = ({ since }: { since?: string | null } = {}) => {
   const navigate = useNavigate();
@@ -68,9 +68,9 @@ export const CongressHoldings = ({ since }: { since?: string | null } = {}) => {
   return (
     <div data-congress-holdings>
       <div className="px-5 border-t border-borderSubtle/60">
-        <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
+        <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>Bought, no sale reported since</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">{/* (round 9) which window it covers — every report read, not the window above */}over every report read{since ? `, trades since ${since.slice(5, 7)}/${since.slice(8, 10)}/${since.slice(2, 4)}` : ''} — not only the window above · purchases with no later sale of the same asset in them (a filing rarely says full or partial) · not a holdings disclosure · a row opens that member’s book</span>
+          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">{/* (round 9) which window it covers — every report read, not the window above */}over every report read{since ? `, trades since ${since.slice(5, 7)}/${since.slice(8, 10)}/${since.slice(2, 4)}` : ''} — not only the window above · purchases with no later sale of the same asset in them (a filing rarely says full or partial) · not a holdings disclosure · a row opens that member’s book</span>
         </div>
       </div>
       <div className="slayer-board border-t border-borderSubtle">
@@ -106,10 +106,10 @@ interface SectorRow {
   soldM: number;
   netM: number;
 }
-const SectorCell = ({ data }: ICellRendererParams<SectorRow>) => (data ? <span className="text-[12px] font-semibold text-textPrimary">{data.sector}</span> : null);
-const BuysCell = ({ data }: ICellRendererParams<SectorRow>) => (data ? <span className="font-mono text-[11px] tnum text-bull">{data.buys.toLocaleString('en-US')} <span className="text-textMuted">· {fmtM(data.boughtM)}</span></span> : null);
-const SalesCell = ({ data }: ICellRendererParams<SectorRow>) => (data ? <span className="font-mono text-[11px] tnum text-bear">{data.sales.toLocaleString('en-US')} <span className="text-textMuted">· {fmtM(data.soldM)}</span></span> : null);
-const NetCell = ({ data }: ICellRendererParams<SectorRow>) => (data ? <span className={`font-mono text-[11px] tnum ${data.netM > 0 ? 'text-bull' : data.netM < 0 ? 'text-bear' : 'text-textMuted'}`}>{data.netM > 0 ? '+' : data.netM < 0 ? '−' : ''}{fmtM(Math.abs(data.netM))}</span> : null);
+const SectorCell = ({ data }: ICellRendererParams<SectorRow>) => (data ? <span className="text-t12 font-semibold text-textPrimary">{data.sector}</span> : null);
+const BuysCell = ({ data }: ICellRendererParams<SectorRow>) => (data ? <span className="font-mono text-t11 tnum text-bull">{data.buys.toLocaleString('en-US')} <span className="text-textMuted">· {fmtM(data.boughtM)}</span></span> : null);
+const SalesCell = ({ data }: ICellRendererParams<SectorRow>) => (data ? <span className="font-mono text-t11 tnum text-bear">{data.sales.toLocaleString('en-US')} <span className="text-textMuted">· {fmtM(data.soldM)}</span></span> : null);
+const NetCell = ({ data }: ICellRendererParams<SectorRow>) => (data ? <span className={`font-mono text-t11 tnum ${data.netM > 0 ? 'text-bull' : data.netM < 0 ? 'text-bear' : 'text-textMuted'}`}>{data.netM > 0 ? '+' : data.netM < 0 ? '−' : ''}{fmtM(Math.abs(data.netM))}</span> : null);
 const fmtM = (m: number) => (m >= 1000 ? `$${(m / 1000).toFixed(1)}B` : m >= 1 ? `$${m.toFixed(1)}M` : `$${Math.round(m * 1000)}K`);
 
 /** The vendor's sector words, said the house way; a filing without one is "Not stated", never folded into a catch-all */
@@ -162,14 +162,14 @@ export const InsiderSectorFlow = ({ trades, windowDays, state = 'read' }: { trad
   return (
     <div data-insider-sectors>
       <div className="px-5 border-t border-borderSubtle/60">
-        <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
+        <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>By sector</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">the open-market rows on this cut, last {windowDays} days, added up by sector · the net is dollars bought minus dollars sold, a planned sale counted like a chosen one</span>
+          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">the open-market rows on this cut, last {windowDays} days, added up by sector · the net is dollars bought minus dollars sold, a planned sale counted like a chosen one</span>
         </div>
       </div>
       {/* an empty cut says so in a sentence — never a grid of headers over nothing (the retail test, 2026-10-23: GME) */}
       {rows.length === 0 ? (
-        <p className="px-5 py-3 border-t border-borderSubtle text-[12px] text-textSecondary" data-insider-sectors-empty>
+        <p className="px-5 py-3 border-t border-borderSubtle text-t12 text-textSecondary" data-insider-sectors-empty>
           {state === 'reading'
             ? 'Reading the filings — the sectors add up once the open-market rows land.'
             : state === 'failed'

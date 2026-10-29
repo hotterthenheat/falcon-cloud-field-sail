@@ -178,7 +178,7 @@ const DayStrip = ({
             bars (a 352px strip under a 300px readout), so there it stands under the axis instead (below). */}
         {readout && (
           <span
-            className={`max-sm:hidden pointer-events-none absolute top-0.5 z-10 px-1.5 py-0.5 rounded border border-borderSubtle bg-panel/70 backdrop-blur-sm font-mono text-[11px] tnum whitespace-nowrap text-textSecondary ${
+            className={`max-sm:hidden pointer-events-none absolute top-0.5 z-10 px-1.5 py-0.5 rounded border border-borderSubtle bg-panel/70 backdrop-blur-sm font-mono text-t11 tnum whitespace-nowrap text-textSecondary ${
               /* pinned at the end AWAY from the window it reads, so it never sits on that capsule's head */
               shown && shown.idx >= slots * 0.7 ? 'left-0' : 'right-0'
             }`}
@@ -190,7 +190,7 @@ const DayStrip = ({
       </div>
 
       {/* The axis: every mark at its own x, the open and close brighter, "now" in the status ink. */}
-      <div ref={axisRef} className="relative h-4 font-mono text-[11px] text-textMuted tnum">
+      <div ref={axisRef} className="relative h-4 font-mono text-t11 text-textMuted tnum">
         {TICKS.map(t => {
           // "now" owns its neighbourhood: a fixed mark within a label's width of it steps aside.
           const near = nowMin !== null && Math.abs(t.min - nowMin) < berth;
@@ -219,7 +219,7 @@ const DayStrip = ({
       </div>
       {/* ON A PHONE the readout stands under the axis, a line of its own, never over the bars */}
       {readout && (
-        <span className="sm:hidden block mt-1 font-mono text-[11px] tnum truncate text-silver" data-strip-readout-phone={shown?.idx}>
+        <span className="sm:hidden block mt-1 font-mono text-t11 tnum truncate text-silver" data-strip-readout-phone={shown?.idx}>
           {readout}
         </span>
       )}

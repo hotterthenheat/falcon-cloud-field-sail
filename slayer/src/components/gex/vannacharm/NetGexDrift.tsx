@@ -86,7 +86,7 @@ const NetGexDrift = ({ series }: NetGexDriftProps) => {
         </LegendKey>
         <LegendKey ink={SPOT}>Spot</LegendKey>
         {zeroCrossings.length > 0 && (
-          <span className="ml-auto font-mono text-[9px] uppercase tracking-wider text-textMuted tnum">
+          <span className="ml-auto font-mono text-t9 uppercase tracking-wider text-textMuted tnum">
             flipped {zeroCrossings.length}× today
           </span>
         )}

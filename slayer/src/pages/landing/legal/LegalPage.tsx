@@ -116,19 +116,19 @@ const Page = ({ kind, title, updated, intro, sections, sibling }: Props) => {
               Legal <span className="text-textMuted/60">·</span> {kind}
             </Eyebrow>
             <TwoTone first={`${title}.`} second={`Last updated ${updated}.`} />
-            <div className="arrive-line [--i:2] max-w-[64ch] flex flex-col gap-4 text-[16px] sm:text-[17px] leading-relaxed text-textSecondary">{intro}</div>
+            <div className="arrive-line [--i:2] max-w-[64ch] flex flex-col gap-4 text-t16 sm:text-t17 leading-relaxed text-textSecondary">{intro}</div>
           </Arrive>
 
           <div className="mt-14 sm:mt-16 grid grid-cols-1 lg:grid-cols-12 gap-x-16 gap-y-10">
             {/* THE SECTIONS BY NAME — a column that stays while the text scrolls; on a phone, the list above the text */}
             <Arrive atMount className="lg:col-span-3 lg:sticky lg:top-28 lg:self-start">
               <nav className="arrive-line [--i:4]" aria-label="The sections">
-                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-textMuted">In this page</p>
+                <p className="font-mono text-t10 uppercase tracking-[0.2em] text-textMuted">In this page</p>
                 <ol className="mt-3 flex flex-col gap-1.5 border-l border-borderSubtle">
                   {sections.map((s, i) => (
                     <li key={s.id}>
-                      <a href={`#${s.id}`} className="-ml-px flex items-baseline gap-2.5 border-l border-transparent pl-3.5 py-0.5 text-[13px] leading-snug text-textSecondary hover:text-textPrimary hover:border-textPrimary/60 transition-colors">
-                        <span className="font-mono text-[10px] tnum text-textMuted w-4 shrink-0">{i + 1}</span>
+                      <a href={`#${s.id}`} className="-ml-px flex items-baseline gap-2.5 border-l border-transparent pl-3.5 py-0.5 text-t13 leading-snug text-textSecondary hover:text-textPrimary hover:border-textPrimary/60 transition-colors">
+                        <span className="font-mono text-t10 tnum text-textMuted w-4 shrink-0">{i + 1}</span>
                         {s.title}
                       </a>
                     </li>
@@ -148,21 +148,21 @@ const Page = ({ kind, title, updated, intro, sections, sibling }: Props) => {
                 return (
                   <Arrive key={s.id} atMount={i === 0}>
                     <section id={s.id} className="scroll-mt-28" data-legal-section={s.id}>
-                      <h2 className="arrive-line -ml-9 flex items-baseline gap-3 text-[21px] sm:text-[23px] font-medium tracking-tight text-textPrimary" style={step(0)}>
-                        <span className="w-6 shrink-0 text-right font-mono text-[12px] tnum font-normal text-textMuted" aria-hidden="true">
+                      <h2 className="arrive-line -ml-9 flex items-baseline gap-3 text-t21 sm:text-t23 font-medium tracking-tight text-textPrimary" style={step(0)}>
+                        <span className="w-6 shrink-0 text-right font-mono text-t12 tnum font-normal text-textMuted" aria-hidden="true">
                           {i + 1}
                         </span>
                         {s.title}
                       </h2>
                       {/* the line that explains, before the text that governs */}
-                      <p className="arrive-line mt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-textMuted" style={step(1)}>
+                      <p className="arrive-line mt-3 font-mono text-t10 uppercase tracking-[0.2em] text-textMuted" style={step(1)}>
                         In plain words
                       </p>
-                      <p className="arrive-line mt-1.5 max-w-[60ch] text-[15.5px] leading-relaxed text-textPrimary" style={step(1)}>
+                      <p className="arrive-line mt-1.5 max-w-[60ch] text-t155 leading-relaxed text-textPrimary" style={step(1)}>
                         {s.plain}
                       </p>
                       <div
-                        className={`arrive-line mt-5 flex flex-col gap-4 max-w-[66ch] text-[15px] leading-relaxed ${
+                        className={`arrive-line mt-5 flex flex-col gap-4 max-w-[66ch] text-t15 leading-relaxed ${
                           s.conspicuous ? 'rounded-[10px] border border-borderMuted bg-ink/[0.03] p-5 text-textPrimary' : 'text-textSecondary'
                         }`}
                         style={step(2)}
@@ -178,14 +178,14 @@ const Page = ({ kind, title, updated, intro, sections, sibling }: Props) => {
 
           {/* ── THE DOOR to the other page ── */}
           <Arrive className="mt-[14vh] pt-[8vh] pb-[12vh] border-t border-borderSubtle flex flex-wrap items-center gap-x-8 gap-y-4">
-            <Link to={sibling.to} className={`${DOOR_GROUP} inline-flex items-center gap-1.5 text-[15px] text-textPrimary`} data-legal-sibling>
+            <Link to={sibling.to} className={`${DOOR_GROUP} inline-flex items-center gap-1.5 text-t15 text-textPrimary`} data-legal-sibling>
               Read the {sibling.name}
               <ArrowRight className={`w-4 h-4 ${DOOR_ARROW}`} aria-hidden="true" />
             </Link>
-            <Link to="/" className="text-[15px] text-textSecondary hover:text-textPrimary transition-colors">
+            <Link to="/" className="text-t15 text-textSecondary hover:text-textPrimary transition-colors">
               Front page
             </Link>
-            <span className="text-[13px] text-textMuted">
+            <span className="text-t13 text-textMuted">
               Questions about this page: <Mail />
             </span>
           </Arrive>

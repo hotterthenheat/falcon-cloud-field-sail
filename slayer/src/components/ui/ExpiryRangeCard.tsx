@@ -146,10 +146,10 @@ const ExpiryRangeCard = ({ label = 'Expiries', days, from, through, onChange, ce
           className={flat ? `${FLAT_DOOR} ${FLAT_OPEN} group` : 'group inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted data-[state=open]:border-silver/50 transition-colors font-mono select-none'}
         >
           <CalendarDays className="w-3 h-3 shrink-0 text-textMuted" aria-hidden="true" data-dropdown-icon />
-          {!bare && <span className={flat ? 'text-[11px] text-textMuted' : 'text-[9px] uppercase tracking-widest text-textMuted'}>{label}</span>}
-          <span className="text-[11px] font-semibold text-textPrimary whitespace-nowrap">{words}</span>
+          {!bare && <span className={flat ? 'text-t11 text-textMuted' : 'text-t9 uppercase tracking-widest text-textMuted'}>{label}</span>}
+          <span className="text-t11 font-semibold text-textPrimary whitespace-nowrap">{words}</span>
           {isCut && (
-            <span className="text-[11px] tnum text-textMuted whitespace-nowrap" data-expiry-cut={`${cut!.shown}/${cut!.wanted}`}>
+            <span className="text-t11 tnum text-textMuted whitespace-nowrap" data-expiry-cut={`${cut!.shown}/${cut!.wanted}`}>
               · {cut!.shown} of {cut!.wanted}
             </span>
           )}
@@ -158,7 +158,7 @@ const ExpiryRangeCard = ({ label = 'Expiries', days, from, through, onChange, ce
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align={align} sideOffset={6} collisionPadding={12} className={`${CARD} p-3 outline-none w-[300px]`} data-dropdown-card={testId ?? label} data-date-picker>
-          <div className="px-0.5 pb-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">{title ?? label}</div>
+          <div className="px-0.5 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">{title ?? label}</div>
           {/* the shortcuts: a window in one press */}
           <div className="flex flex-wrap items-center gap-1.5 pb-2" data-range-shortcuts>
             {shortcuts.map(s => {
@@ -173,7 +173,7 @@ const ExpiryRangeCard = ({ label = 'Expiries', days, from, through, onChange, ce
                   }}
                   aria-pressed={on}
                   title={s.hint}
-                  className="shrink-0 h-6 px-2 rounded-full border text-[10px] font-medium transition-colors"
+                  className="shrink-0 h-6 px-2 rounded-full border text-t10 font-medium transition-colors"
                   style={on ? { background: SILVER_FILL, color: '#0a0a0a', borderColor: SILVER_FILL } : { color: 'rgb(var(--text-secondary))', borderColor: 'rgb(var(--border-muted))' }}
                   data-range-shortcut={s.label}
                 >
@@ -197,8 +197,8 @@ const ExpiryRangeCard = ({ label = 'Expiries', days, from, through, onChange, ce
                   data-range-side={s}
                   data-range-armed={on || undefined}
                 >
-                  <span className="text-[8px] uppercase tracking-widest text-textMuted">{s}</span>
-                  <span className={`text-[11px] font-semibold ${on ? 'text-silver' : 'text-textPrimary'}`}>{day.label}</span>
+                  <span className="text-t8 uppercase tracking-widest text-textMuted">{s}</span>
+                  <span className={`text-t11 font-semibold ${on ? 'text-silver' : 'text-textPrimary'}`}>{day.label}</span>
                 </button>
               );
             })}
@@ -222,7 +222,7 @@ const ExpiryRangeCard = ({ label = 'Expiries', days, from, through, onChange, ce
               root: 'relative select-none',
               months: 'flex',
               month: 'w-full',
-              month_caption: 'h-8 flex items-center px-1 text-[12px] font-semibold text-textPrimary',
+              month_caption: 'h-8 flex items-center px-1 text-t12 font-semibold text-textPrimary',
               caption_label: '',
               nav: 'absolute top-0 right-0 h-8 flex items-center gap-1',
               button_previous: 'w-7 h-7 inline-flex items-center justify-center rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors disabled:opacity-30',
@@ -230,12 +230,12 @@ const ExpiryRangeCard = ({ label = 'Expiries', days, from, through, onChange, ce
               chevron: '',
               month_grid: 'w-full border-collapse mt-1',
               weekdays: '',
-              weekday: 'h-7 text-[10px] font-normal text-textMuted text-center',
+              weekday: 'h-7 text-t10 font-normal text-textMuted text-center',
               weeks: '',
               week: '',
               day: 'p-0 text-center',
-              day_button: 'w-9 h-8 rounded-md font-mono text-[12px] tnum text-textPrimary hover:bg-ink/[0.06] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-silver/60',
-              selected: '[&>button]:bg-silverFill [&>button]:text-[#0a0a0a] [&>button]:font-semibold [&>button:hover]:bg-silverFill',
+              day_button: 'w-9 h-8 rounded-md font-mono text-t12 tnum text-textPrimary hover:bg-ink/[0.06] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-silver/60',
+              selected: '[&>button]:bg-silverFill [&>button]:text-onfoil [&>button]:font-semibold [&>button:hover]:bg-silverFill',
               today: '[&>button]:shadow-[inset_0_0_0_1px_rgba(199,211,232,0.45)]',
               outside: '[&>button]:text-textMuted/40',
               disabled: '[&>button]:text-textMuted/30 [&>button]:cursor-not-allowed [&>button:hover]:bg-transparent',
@@ -244,15 +244,15 @@ const ExpiryRangeCard = ({ label = 'Expiries', days, from, through, onChange, ce
             }}
           />
           {note && (
-            <p className="mt-2 text-[10px] leading-snug text-textSecondary" data-expiry-card-note>
+            <p className="mt-2 text-t10 leading-snug text-textSecondary" data-expiry-card-note>
               {note}
             </p>
           )}
           <div className="mt-2 pt-2 border-t border-borderSubtle/70 flex items-center justify-between gap-3">
-            <p className="text-[10px] text-textMuted">
+            <p className="text-t10 text-textMuted">
               {count} {count === 1 ? 'expiry' : 'expiries'} · {ceilingWhy}
             </p>
-            <p className="text-[10px] text-textMuted whitespace-nowrap">The lit days are the book's expiries.</p>
+            <p className="text-t10 text-textMuted whitespace-nowrap">The lit days are the book's expiries.</p>
           </div>
         </Popover.Content>
       </Popover.Portal>

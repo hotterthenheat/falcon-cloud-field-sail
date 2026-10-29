@@ -32,6 +32,7 @@ import { expiryOpen, tradingYears } from '../core/tradingYear';
 import { carryFor } from '../core/carry';
 import { dealerInventory, flowFirm, flowImbalance, flowWindow, ivOnTradingClock, markGap, quoteMaxAge, smoothSmile, unsignedShare } from '../core/volClock';
 import { noteClose, noteNodes, peakStrikes, type CloseRow } from './nodeScore';
+import { SIM_DESK } from './deskMode';
 import {
   uwCall,
   whalesBars,
@@ -126,16 +127,26 @@ async function thetaTape(symbol: string, index: boolean): Promise<UwBar[]> {
   const end = ymdNY(Date.now());
   const back = symbol.toUpperCase() === 'SPX' ? 8 : 4;
   const start = ymdNY(Date.now() - back * 86400000);
-  const histPath = index
-    ? `/index/history/ohlc?symbol=${symbol}&start_date=${start}&end_date=${end}&interval=1m&format=json`
-    : `/stock/history/ohlc?symbol=${symbol}&start_date=${start}&end_date=${end}&interval=1m&format=json`;
+  const root = index ? 'index' : 'stock';
+  /* The vendor's default window is the cash session. Premarket, the curb and the overnight book are separate asks. */
+  const windows = [
+    { start: '09:30:00', end: '16:15:00' },
+    { start: '04:00:00', end: '09:29:59' },
+    { start: '16:00:00', end: '19:59:59' },
+    { start: '20:00:00', end: '23:59:59' },
+    { start: '00:00:00', end: '03:59:59' },
+  ];
+  const got = await Promise.all(
+    windows.map(w => thetaCall(`/${root}/history/ohlc?symbol=${symbol}&start_date=${start}&end_date=${end}&interval=1m&start_time=${w.start}&end_time=${w.end}&format=json`)),
+  );
+  const rows = got.flatMap(g => (Array.isArray(g.data) ? (g.data as Record<string, unknown>[]) : []));
   const snapPath = index
     ? `/index/snapshot/price?symbol=${symbol}&format=json`
     : `/stock/snapshot/trade?symbol=${symbol}&format=json`;
-  const [hist, snap] = await Promise.all([thetaCall(histPath), thetaCall(snapPath)]);
-  const rows = Array.isArray(hist.data) ? hist.data as Record<string, unknown>[] : [];
+  const snap = await thetaCall(snapPath);
   const out: UwBar[] = [];
   const seen: { at: number; priced: boolean }[] = [];
+  const kept = new Set<number>();
   for (const b of rows) {
     const at = nyWallStamp(b.timestamp);
     const open = num(b.open);
@@ -145,6 +156,9 @@ async function thetaTape(symbol: string, index: boolean): Promise<UwBar[]> {
     const priced = barPriced(open, high, low, close);
     if (at) seen.push({ at, priced });
     if (!at || !priced) continue;
+    const minuteKey = Math.floor(at / 60000);
+    if (kept.has(minuteKey)) continue;
+    kept.add(minuteKey);
     const iso = new Date(at).toISOString();
     const minute = nyMinutes(at);
     out.push({
@@ -868,8 +882,6 @@ export function sessionChartBars(ticker: string, session: DeskSession = getDeskS
   return rows.filter(c => keep.has(nyIsoDate(c.time * 1000)));
 }
 
-const TAPE_FALLBACK: readonly DeskSession[] = ['rth', 'post', 'pre', 'overnight'];
-
 /** The bars the chart should draw. The asked session wins. If it has no prints, the last session that does is used and named — never a silent swap.
     A strike book priced on a different day, or more than 1.5% away from the last candle, is named too. The nodes and the candles are not two prices. */
 export function deskTape(ticker: string, session: DeskSession = getDeskSession()): { bars: Candle[]; drawn: DeskSession; note: string | null } {
@@ -878,16 +890,8 @@ export function deskTape(ticker: string, session: DeskSession = getDeskSession()
   let note: string | null = null;
   let bars: Candle[] = own ?? [];
   if (!own || own.length < 1) {
-    for (const next of TAPE_FALLBACK) {
-      if (next === session) continue;
-      const rows = sessionChartBars(ticker, next);
-      if (rows && rows.length >= 1) {
-        bars = rows;
-        drawn = next;
-        note = `${sessionMeta(session).label} has no prints. Showing ${sessionMeta(next).label}.`;
-        break;
-      }
-    }
+    bars = [];
+    note = `${sessionMeta(session).label} has no prints.`;
   }
   const last = bars[bars.length - 1];
   const priced = peekGammaPriced(ticker, null);
@@ -1651,7 +1655,7 @@ export function peekPriceAt(ticker: string): number | null {
 const pricedAsk = new Map<string, number>();
 const PRICES_MS = 10_000;
 export function refreshBoardPrices(tickers: readonly string[]): void {
-  if (typeof window === 'undefined') return;
+  if (SIM_DESK || typeof window === 'undefined') return;
   const now = Date.now();
   /* per name: a name asked in the last ten seconds (by the Board or the page on it) is not asked again */
   const live = tickers.map(t => t.toUpperCase()).filter(t => {
@@ -2127,6 +2131,7 @@ function publishMinutes(ticker: string, rows: BookMinute[]) {
     from today's volume in historyFrom. Directional gamma only when volume has
     not printed yet. */
 export function ensureBookMinutes(ticker: string): void {
+  if (SIM_DESK) return;
   const t = ticker.toUpperCase();
   if (!t || minuteCache.has(t) || minuteWait.has(t)) return;
   const job = (async () => {
@@ -3163,6 +3168,7 @@ export function ensureBook(ticker: string, mode: BookMode = 'board', force = fal
   if (typeof window === 'undefined') return;
   const t = sameName(ticker);
   if (!t) return;
+  if (SIM_DESK) return;
   const e = cache.get(t);
   if (e?.status === 'loading') {
     if (mode === 'full') e.wantFull = true;

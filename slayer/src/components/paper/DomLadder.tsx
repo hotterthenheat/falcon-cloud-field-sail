@@ -132,7 +132,7 @@ const DomLadder = ({ symbol, last, bars, position, orders, q, locked, onBuyAt, o
     setFollow(false);
   };
   const pnlAt = (px: number) => (position ? (px - position.avg) * (position.long ? 1 : -1) * p.pointValue * position.qty : null);
-  const cell = 'h-full inline-flex items-center justify-center font-mono text-[10px] tnum';
+  const cell = 'h-full inline-flex items-center justify-center font-mono text-t10 tnum';
   /* A SIDE'S CELL is a press of its own — a div that answers as a button (the keyboard too), since the reader's orders on it
      are buttons and a button cannot hold a button */
   const pressable = (onPress: () => void) => ({
@@ -151,7 +151,7 @@ const DomLadder = ({ symbol, last, bars, position, orders, q, locked, onBuyAt, o
 
   return (
     <div className="flex flex-col min-h-0 flex-1" data-paper-dom={symbol}>
-      <div className={`grid ${cols} px-3 h-7 items-center border-b border-borderSubtle/70 font-mono text-[9px] font-semibold uppercase tracking-widest text-[rgb(var(--grid-head))]`}>
+      <div className={`grid ${cols} px-3 h-7 items-center border-b border-borderSubtle/70 font-mono text-t9 font-semibold uppercase tracking-widest text-gridHead`}>
         <span className="text-center text-bull">Buy</span>
         <span className="text-center">Price</span>
         <span className="text-center text-bear">Sell</span>
@@ -185,7 +185,7 @@ const DomLadder = ({ symbol, last, bars, position, orders, q, locked, onBuyAt, o
                 }}
                 disabled={!!locked}
                 title={`${o.side === 'buy' ? 'Buy' : 'Sell'} ${o.qty} ${o.kind} at ${futWords(symbol, o.price)}${o.exit ? ' — a way out' : ''}. Press to cancel it`}
-                className={`h-[15px] min-w-[26px] px-1 rounded text-[9px] font-bold leading-none ${side === 'buy' ? 'bg-bull/[0.18] text-bull hover:bg-bull/30' : 'bg-bear/[0.18] text-bear hover:bg-bear/30'} ${o.kind === 'stop' ? 'ring-1 ring-inset ring-current' : ''} transition-colors`}
+                className={`h-[15px] min-w-[26px] px-1 rounded text-t9 font-bold leading-none ${side === 'buy' ? 'bg-bull/[0.18] text-bull hover:bg-bull/30' : 'bg-bear/[0.18] text-bear hover:bg-bear/30'} ${o.kind === 'stop' ? 'ring-1 ring-inset ring-current' : ''} transition-colors`}
                 data-paper-dom-order={o.id}
               >
                 {o.qty}
@@ -221,7 +221,7 @@ const DomLadder = ({ symbol, last, bars, position, orders, q, locked, onBuyAt, o
           );
         })}
       </div>
-      <div className="min-h-8 px-3 py-1.5 flex items-center gap-2 border-t border-borderSubtle/70 font-mono text-[10px] leading-snug text-textMuted">
+      <div className="min-h-8 px-3 py-1.5 flex items-center gap-2 border-t border-borderSubtle/70 font-mono text-t10 leading-snug text-textMuted">
         {notice ? (
           <span className="text-warn" data-paper-dom-notice>
             {notice}
@@ -256,7 +256,7 @@ export const LadderDock = ({ contract, onClose, children }: { contract: string; 
   >
     <div className={head}>
       <span className={headWord}>Ladder</span>
-      <span className="font-mono text-[11px] font-bold text-textPrimary">{contract}</span>
+      <span className="font-mono text-t11 font-bold text-textPrimary">{contract}</span>
       <button type="button" onClick={onClose} title="Close the ladder (Esc)" aria-label="Close the ladder" className="ml-auto -mr-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" data-paper-ladder-close>
         <X className="w-4 h-4" />
       </button>

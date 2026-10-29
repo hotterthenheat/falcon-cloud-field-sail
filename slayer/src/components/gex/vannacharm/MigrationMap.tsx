@@ -66,23 +66,23 @@ const ShiftHoverCard = ({
       style={{ top: Math.max(4, y - 90) }}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-[11px] font-bold text-textPrimary tnum">
+        <span className="font-mono text-t11 font-bold text-textPrimary tnum">
           Strike {strikeLabel}
-          {row.pin && <span className="ml-1.5 font-mono text-[8px] font-bold uppercase tracking-wider text-textSecondary">pin</span>}
+          {row.pin && <span className="ml-1.5 font-mono text-t8 font-bold uppercase tracking-wider text-textSecondary">pin</span>}
         </span>
         <SignalBadge tone="neutral">{scenario}</SignalBadge>
       </div>
 
       <div className="mt-2 grid grid-cols-2 gap-2">
         <div>
-          <div className="font-mono text-[8px] uppercase tracking-widest text-textMuted">Now</div>
+          <div className="font-mono text-t8 uppercase tracking-widest text-textMuted">Now</div>
           <div className={`font-mono text-sm font-bold tnum ${row.current >= 0 ? 'text-bull' : 'text-bear'}`}>
             {row.current >= 0 ? '+' : ''}
             {fmtUsd(row.current)}
           </div>
         </div>
         <div>
-          <div className="font-mono text-[8px] uppercase tracking-widest text-textMuted">Projected</div>
+          <div className="font-mono text-t8 uppercase tracking-widest text-textMuted">Projected</div>
           <div className={`font-mono text-sm font-bold tnum ${row.projected >= 0 ? 'text-bull' : 'text-bear'}`}>
             {row.projected >= 0 ? '+' : ''}
             {fmtUsd(row.projected)}
@@ -90,7 +90,7 @@ const ShiftHoverCard = ({
         </div>
       </div>
 
-      <div className={`mt-1 font-mono text-[10px] tnum font-semibold ${up ? 'text-bull' : 'text-bear'}`}>
+      <div className={`mt-1 font-mono text-t10 tnum font-semibold ${up ? 'text-bull' : 'text-bear'}`}>
         {up ? '↗' : '↘'} {up ? '+' : '−'}
         {fmtUsd(Math.abs(delta))} ({up ? '+' : '−'}
         {Math.abs(pct).toFixed(1)}%) under {data.mode === 'CHARM' ? 'charm decay' : 'the vol shift'}
@@ -98,9 +98,9 @@ const ShiftHoverCard = ({
 
       {series.length > 1 && (
         <div className="mt-2 pt-2 border-t border-borderSubtle/60">
-          <div className="font-mono text-[8px] uppercase tracking-widest text-textMuted mb-1">Value over time</div>
+          <div className="font-mono text-t8 uppercase tracking-widest text-textMuted mb-1">Value over time</div>
           <TrendLine points={series} />
-          <div className="flex justify-between font-mono text-[8px] text-textMuted">
+          <div className="flex justify-between font-mono text-t8 text-textMuted">
             <span>15m ago</span>
             <span>now</span>
           </div>
@@ -114,7 +114,7 @@ const FlipMark = ({ price, projected }: { price: number; projected?: boolean }) 
   <div className="flex items-center gap-1.5 px-2 py-[2px]">
     <span className={`h-0 flex-grow border-t border-dashed ${projected ? 'border-flip/35' : 'border-flip/70'}`} />
     <span
-      className={`inline-flex items-center rounded-[3px] border bg-canvas px-1.5 py-px font-mono text-[8px] font-bold uppercase tracking-wider whitespace-nowrap ${
+      className={`inline-flex items-center rounded-[3px] border bg-canvas px-1.5 py-px font-mono text-t8 font-bold uppercase tracking-wider whitespace-nowrap ${
         projected ? 'border-flip/40 text-flip/70' : 'border-flip/60 text-flip'
       }`}
     >
@@ -152,12 +152,12 @@ const MigrationMap = ({ data }: MigrationMapProps) => {
           { label: 'Current', cls: 'bg-ink/80' },
           { label: 'Projected', cls: 'bg-ink/30' },
         ].map(item => (
-          <span key={item.label} className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-textSecondary">
+          <span key={item.label} className="flex items-center gap-1.5 font-mono text-t9 uppercase tracking-wider text-textSecondary">
             <span className={`inline-block w-2.5 h-[5px] rounded-[2px] ${item.cls}`} />
             {item.label}
           </span>
         ))}
-        <span className="ml-auto font-mono text-[9px] uppercase tracking-wider text-textMuted">{ticker} · net GEX</span>
+        <span className="ml-auto font-mono text-t9 uppercase tracking-wider text-textMuted">{ticker} · net GEX</span>
       </div>
 
       {/* Rows */}
@@ -180,9 +180,9 @@ const MigrationMap = ({ data }: MigrationMapProps) => {
                 hoverRow?.strike === row.strike ? 'bg-ink/[0.04]' : ''
               }`}
             >
-              <span className="w-14 shrink-0 px-2 py-[4px] bg-inset border-r border-borderSubtle/40 font-mono text-[10px] font-semibold tnum text-textSecondary">
+              <span className="w-14 shrink-0 px-2 py-[4px] bg-inset border-r border-borderSubtle/40 font-mono text-t10 font-semibold tnum text-textSecondary">
                 {row.strike % 1 === 0 ? row.strike.toFixed(0) : row.strike.toFixed(2)}
-                {row.pin && <span className="ml-1 font-mono text-[7px] font-bold uppercase text-textPrimary">pin</span>}
+                {row.pin && <span className="ml-1 font-mono text-t7 font-bold uppercase text-textPrimary">pin</span>}
               </span>
               <div className="relative flex-1 h-[15px]">
                 <span className="absolute left-1/4 top-0 bottom-0 w-px bg-ink/[0.04]" />
@@ -201,7 +201,7 @@ const MigrationMap = ({ data }: MigrationMapProps) => {
       {/* Hover readout — opposite side of the bar, clear of the cursor */}
       {hoverRow && <ShiftHoverCard row={hoverRow} data={data} y={hoverY} />}
 
-      <div className="px-2.5 py-1.5 border-t border-borderSubtle font-mono text-[9px] text-textMuted leading-relaxed select-none">
+      <div className="px-2.5 py-1.5 border-t border-borderSubtle font-mono text-t9 text-textMuted leading-relaxed select-none">
         Bright = positioning now · Dim = after {data.mode === 'CHARM' ? 'charm decay into the close' : `an IV ${data.ivShift > 0 ? '+' : ''}${data.ivShift} vol move`}
       </div>
     </div>

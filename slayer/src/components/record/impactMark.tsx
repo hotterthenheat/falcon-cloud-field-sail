@@ -42,7 +42,7 @@ export const ImpactMark = ({ tier }: { tier: ImpactTier }) => (
 
 /** The legend, one thin line: ■ high ■ medium ■ low impact */
 export const ImpactLegend = ({ className = '' }: { className?: string }) => (
-  <span className={`inline-flex items-center gap-3 normal-case tracking-normal text-[10px] text-textSecondary ${className}`} data-impact-legend>
+  <span className={`inline-flex items-center gap-3 normal-case tracking-normal text-t10 text-textSecondary ${className}`} data-impact-legend>
     {IMPACT_TIERS.map(t => (
       <span key={t} className="inline-flex items-center gap-1.5" title={IMPACT_WORD[t]}>
         <ImpactMark tier={t} />
@@ -62,7 +62,7 @@ export const NEWS_FLAG_TIP = 'MAJOR: Unusual Whales flags the headline as major,
 export const NewsFlag = ({ major, onBoard, lean, className = '' }: { major?: boolean; onBoard?: boolean; lean?: 'positive' | 'negative' | null; className?: string }) => {
   if (!major && !onBoard && !lean) return <span className={`text-textMuted ${className}`}>—</span>;
   return (
-    <span className={`inline-flex items-center gap-1.5 font-mono text-[9px] font-semibold uppercase tracking-widest ${className}`} title={NEWS_FLAG_TIP} data-news-flag={major ? 'major' : onBoard ? 'board' : lean ?? ''}>
+    <span className={`inline-flex items-center gap-1.5 font-mono text-t9 font-semibold uppercase tracking-widest ${className}`} title={NEWS_FLAG_TIP} data-news-flag={major ? 'major' : onBoard ? 'board' : lean ?? ''}>
       {lean && <span className={lean === 'positive' ? 'text-bull' : 'text-bear'}>{lean}</span>}
       {major && <span className="text-warn">major</span>}
       {onBoard && <span className="text-silver">board</span>}

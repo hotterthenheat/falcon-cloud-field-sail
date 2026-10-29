@@ -187,23 +187,23 @@ const ComingSoonWall = ({ kicker, blurb, foot }: Props) => {
             dark on black, white on paper (the theme's --wall-pool) */}
         <div aria-hidden className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[560px] pointer-events-none" style={{ background: 'var(--wall-pool)' }} data-room-wall-pool />
         <div className="relative flex flex-col items-center text-center px-6 animate-soft-in-slow">
-          <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-textMuted">{kicker}</p>
+          <p className="font-mono text-t9 uppercase tracking-[0.3em] text-textMuted">{kicker}</p>
           {/* pb-2: the holo fill paints only inside the box, and at leading-none the g's tail fell
               outside it and went transparent (Noah: "the g looks like it is bleeding into the
               border under it"); mt-2 lifts the wordmark a touch */}
-          <h2 className="room-lit mt-2 pb-2 text-[64px] font-bold tracking-tight leading-none holo-text paper-galaxy" data-room-wall-title>
+          <h2 className="room-lit mt-2 pb-2 text-t64 font-bold tracking-tight leading-none holo-text paper-galaxy" data-room-wall-title>
             Coming soon
           </h2>
-          <p className="mt-5 max-w-lg text-[13px] leading-relaxed text-textSecondary">{blurb}</p>
-          <p className="mt-9 font-mono text-[9px] uppercase tracking-widest text-textMuted">Opens in</p>
+          <p className="mt-5 max-w-lg text-t13 leading-relaxed text-textSecondary">{blurb}</p>
+          <p className="mt-9 font-mono text-t9 uppercase tracking-widest text-textMuted">Opens in</p>
           <div className="mt-2 flex items-start gap-3" data-room-countdown>
             {countdown.map(([v, label], i) => (
               <Fragment key={label}>
                 <div className="w-16">
-                  <div className="font-mono text-[32px] font-bold tnum leading-none text-textPrimary">{String(v).padStart(2, '0')}</div>
-                  <div className="mt-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">{label}</div>
+                  <div className="font-mono text-t32 font-bold tnum leading-none text-textPrimary">{String(v).padStart(2, '0')}</div>
+                  <div className="mt-2 font-mono text-t9 uppercase tracking-widest text-textMuted">{label}</div>
                 </div>
-                {i < countdown.length - 1 && <span className="font-mono text-[28px] leading-none text-textMuted pt-0.5">:</span>}
+                {i < countdown.length - 1 && <span className="font-mono text-t28 leading-none text-textMuted pt-0.5">:</span>}
               </Fragment>
             ))}
           </div>
@@ -216,7 +216,7 @@ const ComingSoonWall = ({ kicker, blurb, foot }: Props) => {
             data-room-notify
           >
             {noted ? (
-              <span className="text-[12px] text-textSecondary">
+              <span className="text-t12 text-textSecondary">
                 We will write to <span className="font-mono text-textPrimary">{noted}</span> the day it opens.
               </span>
             ) : (
@@ -226,10 +226,10 @@ const ComingSoonWall = ({ kicker, blurb, foot }: Props) => {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="you@somewhere.com"
-                  className="w-64 h-8 bg-inputBg border border-borderSubtle rounded-md px-3 font-mono text-[12px] text-textPrimary placeholder:text-textMuted focus:border-borderMuted outline-none transition-colors"
+                  className="w-64 h-8 bg-inputBg border border-borderSubtle rounded-md px-3 font-mono text-t12 text-textPrimary placeholder:text-textMuted focus:border-borderMuted outline-none transition-colors"
                   aria-label="Your email"
                 />
-                <button type="submit" disabled={!emailOk} className="h-8 px-3 rounded-md border border-silver/50 bg-silver/[0.08] font-mono text-[10px] uppercase tracking-wider text-silver hover:bg-silver/[0.14] transition-colors disabled:opacity-40 disabled:pointer-events-none">
+                <button type="submit" disabled={!emailOk} className="h-8 px-3 rounded-md border border-silver/50 bg-silver/[0.08] font-mono text-t10 uppercase tracking-wider text-silver hover:bg-silver/[0.14] transition-colors disabled:opacity-40 disabled:pointer-events-none">
                   Notify me
                 </button>
               </>

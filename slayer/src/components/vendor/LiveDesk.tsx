@@ -220,7 +220,7 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
   return (
     <>
     {legend.length > 1 && (
-      <div className="px-5 pb-1 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px] tnum" data-house-legend>
+      <div className="px-5 pb-1 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-t11 tnum" data-house-legend>
         {legend.map(l => (
           <span key={l.name} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
             <span aria-hidden className="inline-block w-2.5 h-[2px] rounded-full self-center" style={{ background: l.ink }} />
@@ -247,7 +247,7 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
       <div ref={hostRef} className="absolute inset-0" />
       {hover && (
         <div
-          className="pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-[11px] text-textSecondary"
+          className="pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 text-textSecondary"
           style={{ ...besideDot(hover.x, hover.y, hover.x > plotW / 2), background: 'rgba(8,8,10,0.88)', backdropFilter: 'blur(3px)' }}
           data-theme="dark"
           data-chart-glass
@@ -343,16 +343,16 @@ function show(v: unknown): string {
 function Head({ title, rest }: { title: string; rest?: string }) {
   return (
     <div className="px-5 border-t border-borderSubtle/60">
-      <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary min-w-0 max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
+      <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary min-w-0 max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
         <span className="shrink-0">{title}</span>
-        {rest ? <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary truncate">{rest}</span> : null}
+        {rest ? <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary truncate">{rest}</span> : null}
       </div>
     </div>
   );
 }
 
 function Quiet({ children }: { children: ReactNode }) {
-  return <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-widest text-textMuted">{children}</p>;
+  return <p className="px-5 py-3 font-mono text-t10 uppercase tracking-widest text-textMuted">{children}</p>;
 }
 
 /** Hairline rows — the name file and the news wire, not a second table. */
@@ -363,7 +363,7 @@ function Rows({ cols, rows, max = 8 }: { cols: { key: string; label: string; rig
   return (
     <div className="overflow-x-auto">
       <div className="min-w-[360px]">
-        <div className="px-5 h-[20px] grid items-center gap-x-3 font-mono text-[9px] uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: template }}>
+        <div className="px-5 h-[20px] grid items-center gap-x-3 font-mono text-t9 uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: template }}>
           {cols.map(c => (
             <span key={c.key} className={c.right ? 'text-right truncate' : 'truncate'}>
               {c.label}
@@ -375,7 +375,7 @@ function Rows({ cols, rows, max = 8 }: { cols: { key: string; label: string; rig
             {cols.map(c => {
               const text = show(r[c.key]);
               return (
-                <span key={c.key} title={text} className={`min-w-0 truncate ${c.right ? 'text-right font-mono text-[11px] tnum text-textSecondary' : 'font-mono text-[12px] text-textPrimary'}`}>
+                <span key={c.key} title={text} className={`min-w-0 truncate ${c.right ? 'text-right font-mono text-t11 tnum text-textSecondary' : 'font-mono text-t12 text-textPrimary'}`}>
                   {text}
                 </span>
               );
@@ -552,15 +552,15 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
   return (
     <div className="min-w-0 border border-borderSubtle rounded-md bg-panel overflow-hidden" data-reading="session" data-scope-ticker={ticker} data-reading-window={span ?? 'all'}>
       <div className="px-4 min-h-9 py-1 flex items-center gap-x-4 gap-y-1 flex-wrap">
-        <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">{ticker}</h3>
+        <h3 className="text-t16 font-semibold leading-tight text-textPrimary">{ticker}</h3>
         {/* MAX PAIN IS ONE EXPIRY'S — named for the date it is (it read "Window Oct 22" as if it were the window's) */}
         <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={`${pain ? `Max pain for the ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry — the nearest one in the window; each expiry has its own (the chart below). ` : ''}${GLOSSARY.maxPain}`}>
-          <span className="text-[11px] uppercase tracking-wider text-textMuted">Max pain{pain ? ` · ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry` : ''}</span>
-          <span className="text-[12px] font-semibold tnum text-textPrimary">{pain ? String(pain.max_pain ?? '—') : waiting ? '…' : '—'}</span>
+          <span className="text-t11 uppercase tracking-wider text-textMuted">Max pain{pain ? ` · ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry` : ''}</span>
+          <span className="text-t12 font-semibold tnum text-textPrimary">{pain ? String(pain.max_pain ?? '—') : waiting ? '…' : '—'}</span>
         </span>
         <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={`The vendor's NOPE for the whole name (every expiry), as printed — not split by the window. ${GLOSSARY.nope}`}>
-          <span className="text-[11px] uppercase tracking-wider text-textMuted">NOPE · whole name</span>
-          <span className="text-[12px] font-semibold tnum" style={{ color: lastNope != null && lastNope < 0 ? PUT_WALL : lastNope != null ? BULL : undefined }}>{lastNope != null ? compact(lastNope) : nopeWaiting || waiting ? '…' : '—'}</span>
+          <span className="text-t11 uppercase tracking-wider text-textMuted">NOPE · whole name</span>
+          <span className="text-t12 font-semibold tnum" style={{ color: lastNope != null && lastNope < 0 ? PUT_WALL : lastNope != null ? BULL : undefined }}>{lastNope != null ? compact(lastNope) : nopeWaiting || waiting ? '…' : '—'}</span>
         </span>
       </div>
       {flowWaiting ? <Quiet>Reading this window.</Quiet> : chartable(flow) ? (
@@ -587,7 +587,7 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
       {expiryFlow.length === 1 ? (
         <>
           <Head title="Volume by expiry" rest={dayOf(expiryFlow[0])} />
-          <p className="px-5 pb-3 font-mono text-[12px] tnum text-textSecondary">
+          <p className="px-5 pb-3 font-mono text-t12 tnum text-textSecondary">
             Calls {compact(num(expiryFlow[0].call_volume) ?? 0)} · Puts {compact(num(expiryFlow[0].put_volume) ?? 0)}
           </p>
         </>
@@ -649,9 +649,9 @@ function parseOcc(symbol: string): { root: string; when: string; right: 'Call' |
 
 function ContractName({ symbol }: { symbol: string }) {
   const parsed = parseOcc(symbol);
-  if (!parsed) return <span className="font-mono text-[12px] text-textPrimary truncate">{symbol}</span>;
+  if (!parsed) return <span className="font-mono text-t12 text-textPrimary truncate">{symbol}</span>;
   return (
-    <span className="min-w-0 truncate font-mono text-[12px]">
+    <span className="min-w-0 truncate font-mono text-t12">
       <span className="font-semibold text-textPrimary">{parsed.root}</span>
       <span className="tnum text-textPrimary"> {parsed.strike}</span>
       <span className={parsed.right === 'Call' ? 'text-bull' : 'text-bear'}> {parsed.right}</span>
@@ -677,7 +677,7 @@ function ContractBoard({ title, rest, rows, testId, volume }: { title: string; r
       <Head title={title} rest={rest} />
       <div className="overflow-x-auto">
         <div className="min-w-[360px]">
-          <div className="px-5 h-[20px] grid items-center gap-x-3 font-mono text-[9px] uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: template }}>
+          <div className="px-5 h-[20px] grid items-center gap-x-3 font-mono text-t9 uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: template }}>
             <span>Contract</span>
             {volume ? <span className="text-right">Volume</span> : null}
             <span className="text-right">OI</span>
@@ -686,9 +686,9 @@ function ContractBoard({ title, rest, rows, testId, volume }: { title: string; r
           {body.map((r, i) => (
             <div key={`${r.symbol}-${i}`} className="px-5 h-[34px] grid items-center gap-x-3 border-t border-borderSubtle/40" style={{ gridTemplateColumns: template }}>
               <ContractName symbol={r.symbol} />
-              {volume ? <span className="text-right font-mono text-[11px] tnum text-textSecondary">{figureOf(r.volume)}</span> : null}
-              <span className="text-right font-mono text-[11px] tnum text-textSecondary">{figureOf(r.oi)}</span>
-              <span className={`text-right font-mono text-[11px] tnum ${r.change.startsWith('+') ? 'text-bull' : r.change.startsWith('−') || r.change.startsWith('-') ? 'text-bear' : 'text-textSecondary'}`}>{r.change}</span>
+              {volume ? <span className="text-right font-mono text-t11 tnum text-textSecondary">{figureOf(r.volume)}</span> : null}
+              <span className="text-right font-mono text-t11 tnum text-textSecondary">{figureOf(r.oi)}</span>
+              <span className={`text-right font-mono text-t11 tnum ${r.change.startsWith('+') ? 'text-bull' : r.change.startsWith('−') || r.change.startsWith('-') ? 'text-bear' : 'text-textSecondary'}`}>{r.change}</span>
             </div>
           ))}
         </div>
@@ -778,8 +778,8 @@ export function EarningsVol({ ticker }: { ticker: string }) {
   return (
     <section className="border border-borderSubtle rounded-md bg-panel flex flex-col min-w-0 overflow-hidden" data-earnings-box="vol">
       <div className="px-5 pt-4 pb-3">
-        <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">The volatility</h3>
-        <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{ticker} · implied against what the name has done, and the term</p>
+        <h3 className="text-t15 font-semibold leading-tight text-textPrimary">The volatility</h3>
+        <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">{ticker} · implied against what the name has done, and the term</p>
       </div>
       {facts.length > 0 ? (
         <dl className="px-5 pb-4 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3">
@@ -803,8 +803,8 @@ export function EarningsVol({ ticker }: { ticker: string }) {
 function FactDl({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[10px] text-textMuted whitespace-nowrap truncate">{label}</dt>
-      <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap truncate">{children}</dd>
+      <dt className="text-t10 text-textMuted whitespace-nowrap truncate">{label}</dt>
+      <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap truncate">{children}</dd>
     </div>
   );
 }

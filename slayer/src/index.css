@@ -1039,7 +1039,9 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
   transition: opacity 120ms ease-out;
 }
 .slayer-chain .ag-row:hover [data-chain-watch],
+.slayer-chain .ag-row-hover [data-chain-watch],
 .slayer-chain .ag-row-selected [data-chain-watch],
+.slayer-chain .ag-pinned-right-cols-container [data-chain-watch],
 .slayer-chain [data-chain-watch]:focus-visible {
   opacity: 1;
 }
@@ -1880,13 +1882,6 @@ html[data-theme='light'] [data-paper-chain-side-pick='P']:not([aria-pressed='tru
 .slayer-mark[data-state='offline'] .sm-cursor { animation: none; opacity: 0; }
 /* the pointer within 80 px: the S brightens */
 .slayer-mark[data-near] .sm-s { filter: brightness(1.22); }
-/* THE FOLDED RAIL'S MARK HOLDS ITS CURSOR (Noah, 2026-10-03: "the s isnt fully visible on the side bar"): alone at 24px
-   with the rail's notch right beside it, the S| read as a cut S whenever the cursor blinked off. Folded, the cursor stands
-   lit; an alert's flash and offline still rule it. Everywhere else the cursor blinks on the page's beat. */
-[data-sidenav][data-collapsed] [data-brand] .slayer-mark:not([data-state='offline']):not([data-state='alert']) .sm-cursor:not(.sm-cursor-warn) {
-  animation: none;
-  opacity: 1;
-}
 @media (prefers-reduced-motion: reduce) {
   .slayer-mark .sm-foil,
   .slayer-mark .sm-cursor,

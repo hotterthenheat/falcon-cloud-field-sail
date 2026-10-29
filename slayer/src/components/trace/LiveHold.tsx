@@ -119,7 +119,7 @@ export const LiveHold = ({ paused, onToggle, heldAt, waitingFirst = false }: { p
       <span
         role="status"
         title={PHASE_HINT[phase]}
-        className={`inline-flex items-center gap-1.5 px-2 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap ${live ? 'text-textPrimary' : 'text-textSecondary'}`}
+        className={`inline-flex items-center gap-1.5 px-2 py-1.5 font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap ${live ? 'text-textPrimary' : 'text-textSecondary'}`}
         data-session-badge
       >
         {live && <span className="w-1.5 h-1.5 rounded-full bg-silver animate-live-breathe" aria-hidden />}
@@ -129,12 +129,12 @@ export const LiveHold = ({ paused, onToggle, heldAt, waitingFirst = false }: { p
         onClick={onToggle}
         aria-pressed={paused}
         title={paused ? (waitingFirst ? 'Paused before the first read landed — the page keeps reading until it does, then holds there' : heldAt ? `Held as of ${clock(heldAt)} — resume and the page follows again` : 'Resume — the page follows the feed again') : 'Pause — hold the page; nothing moves under you until you resume'}
-        className={`inline-grid place-items-center px-3 py-1.5 rounded-md border font-mono text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+        className={`inline-grid place-items-center px-3 py-1.5 rounded-md border font-mono text-t11 font-semibold uppercase tracking-wider transition-colors ${
           paused
             ? 'border-warn/40 bg-warn/[0.06] text-warn hover:bg-warn/[0.1]'
             : paper
               ? 'galaxy-bg border-transparent'
-              : 'holo-bg text-[#0a0a0a] border-transparent hover:opacity-90'
+              : 'holo-bg text-onfoil border-transparent hover:opacity-90'
         }`}
         data-hold-button
       >

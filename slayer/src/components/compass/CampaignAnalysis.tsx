@@ -24,21 +24,21 @@ import { SetupGuide } from './SetupGuide';
 import ContractTrack from './ContractTrack';
 import ContractFlow from './ContractFlow';
 import { choiceRight } from '../../data/compass';
-import { activeStop, bookLine, closeOf, lockFill, notePeak, noteRung, peakBefore, remember, rungsOf, stampClose, useCompassBook, flatNow } from '../../data/compassLedger';
-import { liveSetup, liveSetups, liveSpark, useContractBars, useSecondGreek } from '../../data/thetaBook';
-import { leftOf, noteLeft, passedOver } from '../../data/compassModel';
-import { entryGate, formatAge, quoteContract, quoteMissing, quoteStale, spreadOk, maxSpread } from '../../data/contractQuote';
+import { activeStop, bookLine, closeOf, flatNow, lockFill, lotteryFlatNow, notePeak, noteRung, peakBefore, remember, ret5Of, rungsOf, stampClose, useCompassBook } from '../../data/compassLedger';
+import { liveSetups, liveSpark, useContractBars, useContractLive, useSecondGreek } from '../../data/thetaBook';
+import { entryAsk, leftOf, noteLeft, passedOver } from '../../data/compassModel';
+import { entryGate, formatAge, quoteContract, quoteMissing, quoteStale } from '../../data/contractQuote';
+import { SPREAD_MAX, STOP_KEEP, spreadPass, weekdayDte } from '../../data/compassParams';
 import { BLOCK_MIN_PREMIUM, BLOCK_MIN_SIZE } from '../../data/tape';
 import { useShelfPrints } from '../../data/traceLive';
 import type { FlowPrint } from '../../types/trace';
-import { useScanClock } from '../../data/compassDoor';
-import { nameTape, printInSession, sessionEmpty } from '../../data/compassSession';
+import { nameTape, optionScanOpen, printInSession, sessionEmpty, sessionYmd } from '../../data/compassSession';
 import { useDeskSession } from '../../data/deskSession';
 import { nyClock } from '../../core/nyTime';
 import ContractPick, { type ConPickRow } from './ContractPick';
+import { Tip } from '../ui/Tooltip';
 import { useTracker } from '../../context/TrackerContext';
 import {
-  SCANNERS,
   SLEEVES,
   isScannerEligible,
   type OptionRight,
@@ -99,34 +99,6 @@ function tapeChange(prints: FlowPrint[]): { word: string; why: string } | null {
 function isoOf(label: string): string {
   const m = label.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   return m ? `${m[3]}-${m[1]}-${m[2]}` : label.slice(0, 10);
-}
-
-function candlesOf(prints: FlowPrint[], minutes: number): { time: number; open: number; high: number; low: number; close: number }[] {
-  const usable = prints.filter(p => p.fill > 0 && (p.epochMs ?? 0) > 0).sort((a, b) => (a.epochMs ?? 0) - (b.epochMs ?? 0));
-  if (!usable.length) return [];
-  if (minutes >= 1440) {
-    let high = usable[0].fill;
-    let low = usable[0].fill;
-    for (const p of usable) {
-      high = Math.max(high, p.fill);
-      low = Math.min(low, p.fill);
-    }
-    const last = usable[usable.length - 1];
-    return [{ time: Math.floor((usable[0].epochMs ?? 0) / 1000), open: usable[0].fill, high, low, close: last.fill }];
-  }
-  const step = Math.max(1, Math.round(minutes * 60));
-  const buckets = new Map<number, { time: number; open: number; high: number; low: number; close: number }>();
-  for (const p of usable) {
-    const time = Math.floor((p.epochMs ?? 0) / 1000 / step) * step;
-    const bar = buckets.get(time);
-    if (!bar) buckets.set(time, { time, open: p.fill, high: p.fill, low: p.fill, close: p.fill });
-    else {
-      bar.high = Math.max(bar.high, p.fill);
-      bar.low = Math.min(bar.low, p.fill);
-      bar.close = p.fill;
-    }
-  }
-  return [...buckets.values()];
 }
 
 /* The lens said out loud (Noah, 2026-08-30: cards "dont state wether
@@ -208,8 +180,10 @@ export interface CampaignBreak {
 /** The board card's stat — 13px figure, a whispered label. Not the Weigher's cell. */
 const RailStat = ({ label, value, ink = 'text-textPrimary' }: { label: string; value: string; ink?: string }) => (
   <span className="flex flex-col gap-0.5 min-w-0">
-    <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">{label}</span>
-    <span className={`font-mono text-[13px] font-semibold tnum truncate ${ink}`} title={value}>{value}</span>
+    <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">{label}</span>
+    <Tip label={value}>
+      <span className={`font-mono text-t13 font-semibold tnum truncate ${ink}`}>{value}</span>
+    </Tip>
   </span>
 );
 
@@ -230,7 +204,6 @@ const CampaignAnalysis = ({
   useEffect(() => {
     setTrackNo(null);
   }, [setup.id]);
-  const clock = useScanClock();
   const desk = useDeskSession();
   const quoteSig = `${setup.id}|${spot}|${setup.bid}|${setup.ask}`;
   const stampRef = useRef({ sig: '', at: 0 });
@@ -305,13 +278,6 @@ const CampaignAnalysis = ({
       tapeRef.current = { id: setup.id, scanned: entry.time, hits: new Map(), brk: null };
     }
     const st = tapeRef.current;
-    if (!st.brk && c.invalidationPrice > 0 && spot > 0) {
-      const under = nameTape(setup.ticker, false).under;
-      if (under === 'pre' || under === 'open' || under === 'after') {
-        const through = setup.right === 'C' ? spot < c.invalidationPrice : spot > c.invalidationPrice;
-        if (through) st.brk = { time: Math.floor(Date.now() / 1000), price: spot, floor: c.invalidationPrice };
-      }
-    }
     return {
       tpHits: [...st.hits.entries()].map(([level, time]) => ({ level, time })).sort((a, b) => a.level - b.level),
       floorBreak: st.brk,
@@ -357,104 +323,96 @@ const CampaignAnalysis = ({
     [shelf, setup.right, setup.strike, setup.expiryDate],
   );
   const sessionPrints = useMemo(
-    () => mine.filter(p => printInSession(p, setup.ticker, desk)),
-    [mine, setup.ticker, desk],
+    () => (setup.expiry === '0DTE' ? mine : mine.filter(p => printInSession(p, setup.ticker, desk))),
+    [mine, setup.ticker, setup.expiry, desk],
   );
-  const lastPrint = mine[0];
-  const fromTheta = setup.whyChips.includes('LIVE') || liveSetup(setup.id) != null;
-  const second = useSecondGreek(setup.ticker, setup.expiryDate, setup.strike, setup.right, fromTheta);
-  const simQuote = quoteContract({
+  const live = useContractLive(setup.ticker, setup.expiryDate, setup.strike, setup.right, true);
+  const second = useSecondGreek(setup.ticker, setup.expiryDate, setup.strike, setup.right, true);
+  const quoteAt = live?.at || setup.quotedAt || quotedAt;
+  const spotPx = live && live.under > 0 ? live.under : spot;
+  const ivPct = live && Number.isFinite(live.iv) ? live.iv : !live && Number.isFinite(setup.greeks.iv) ? setup.greeks.iv : NaN;
+  const q = quoteContract({
     ticker: setup.ticker,
     contract: setup.contract,
     strike: setup.strike,
     right: setup.right,
-    spot,
-    bid: setup.bid,
-    ask: setup.ask > 0 ? setup.ask : setup.mid,
-    ivPct: setup.greeks.iv,
-    quotedAt,
+    spot: spotPx,
+    bid: live && live.ask >= live.bid ? live.bid : !live && setup.bid > 0 ? setup.bid : 0,
+    ask: live && live.ask > 0 ? live.ask : !live && setup.ask > 0 ? setup.ask : 0,
+    ivPct: Number.isFinite(ivPct) ? ivPct : 0,
+    quotedAt: quoteAt,
     source: 'theta',
   });
-  const q = fromTheta || !lastPrint || !(lastPrint.fill > 0)
-    ? simQuote
-    : quoteContract({
-        ticker: setup.ticker,
-        contract: setup.contract,
-        strike: setup.strike,
-        right: setup.right,
-        spot,
-        bid: lastPrint.bid > 0 && lastPrint.ask >= lastPrint.bid && lastPrint.ask <= lastPrint.fill * 4 && lastPrint.bid >= lastPrint.fill * 0.15 ? lastPrint.bid : lastPrint.fill,
-        ask: lastPrint.bid > 0 && lastPrint.ask >= lastPrint.bid && lastPrint.ask <= lastPrint.fill * 4 && lastPrint.bid >= lastPrint.fill * 0.15 ? lastPrint.ask : lastPrint.fill,
-        ivPct: lastPrint.iv > 0 ? lastPrint.iv : setup.greeks.iv,
-        quotedAt: lastPrint.epochMs || quotedAt,
-        source: 'tape',
-      });
-  const liveBars = useContractBars(setup.ticker, setup.expiryDate, setup.strike, setup.right, fromTheta, chartTf);
-  const traded = useMemo(() => {
-    if (fromTheta) return liveBars && liveBars.length ? liveBars : null;
-    const printed = candlesOf(sessionPrints, tfMinutes(chartTf));
-    return printed.length ? printed : null;
-  }, [sessionPrints, chartTf, fromTheta, liveBars]);
-  const pathFromStock = false;
+  const gDelta = live && Number.isFinite(live.delta) ? live.delta : !live ? setup.greeks.delta : NaN;
+  const gTheta = live && Number.isFinite(live.theta) ? live.theta : !live ? setup.greeks.theta : NaN;
+  const gVega = live && Number.isFinite(live.vega) ? live.vega : !live ? setup.greeks.vega : NaN;
+  const gRho = live && Number.isFinite(live.rho) ? live.rho : !live && Number.isFinite(setup.greeks.rho ?? NaN) ? (setup.greeks.rho as number) : NaN;
+  const liveBars = useContractBars(setup.ticker, setup.expiryDate, setup.strike, setup.right, true, chartTf);
+  const painted = useMemo(() => {
+    const base = liveBars && liveBars.length ? liveBars : [];
+    const px = q.bid > 0 && q.ask >= q.bid ? (q.bid + q.ask) / 2 : 0;
+    if (!(px > 0)) return base.length ? base : null;
+    const step = Math.max(60, tfMinutes(chartTf) * 60);
+    const bucket = Math.floor(Date.now() / 1000 / step) * step;
+    if (!base.length) return [{ time: bucket, open: px, high: px, low: px, close: px }];
+    const next = base.slice();
+    const last = next[next.length - 1];
+    if (bucket < last.time) return next;
+    if (bucket === last.time) next[next.length - 1] = { ...last, high: Math.max(last.high, px), low: Math.min(last.low, px), close: px };
+    else next.push({ time: bucket, open: last.close, high: Math.max(last.close, px), low: Math.min(last.close, px), close: px });
+    return next;
+  }, [liveBars, chartTf, q.bid, q.ask]);
+  const traded = painted;
   const askPx = q.entryPremium;
   const bidPx = q.bid;
   const midPx = q.mark;
   const spreadFrac = midPx > 0 ? (q.ask - q.bid) / midPx : 1;
-  const scalp = setup.band === 'scalp';
-  const wing = setup.band === 'wing';
-  const tpRows = wing
-    ? [{ level: 1, gain: 200, price: Number((askPx * 3).toFixed(2)) }]
-    : scalp
-    ? [
-        { level: 1, gain: 10, price: Number((askPx * 1.1).toFixed(2)) },
-        { level: 2, gain: 20, price: Number((askPx * 1.2).toFixed(2)) },
-        { level: 3, gain: 30, price: Number((askPx * 1.3).toFixed(2)) },
-      ]
-    : [
-        { level: 1, gain: 50, price: Number((askPx * 1.5).toFixed(2)) },
-        { level: 2, gain: 100, price: Number((askPx * 2).toFixed(2)) },
-        { level: 3, gain: 200, price: Number((askPx * 3).toFixed(2)) },
-      ];
-  const shownStop = wing ? Number((askPx * 0.5).toFixed(2)) : scalp ? Number((askPx * 0.85).toFixed(2)) : q.stopPremium;
+  const ticket = setup.band === 'top' || setup.band === 'wing' || setup.band === 'lottery';
+  const paidAsk = entryAsk(setup.id);
+  const basis = paidAsk > 0 ? paidAsk : 0;
+  const tpRows = [
+    { level: 1, gain: 50, price: Number((basis * 1.5).toFixed(2)) },
+    { level: 2, gain: 100, price: Number((basis * 2).toFixed(2)) },
+    { level: 3, gain: 200, price: Number((basis * 3).toFixed(2)) },
+    { level: 4, gain: 300, price: Number((basis * 4).toFixed(2)) },
+  ];
+  const shownStop = ticket && setup.band !== 'lottery' && basis > 0 ? Number((basis * STOP_KEEP).toFixed(2)) : 0;
   const indexRoot = setup.ticker === 'SPXW' || setup.ticker === 'SPX' || setup.ticker === 'XSP' || setup.ticker === 'RUT' || setup.ticker === 'RUTW';
   const atmStep = setup.ticker === 'VIX' ? 0.5 : indexRoot ? 5 : setup.strike >= 200 ? 1 : 0.5;
-  const atm = Math.round(spot / atmStep) * atmStep;
-  const strikeOff = Math.abs(Math.round((setup.strike - atm) / atmStep));
-  const higher = useMemo(() => {
-    if (second && Number.isFinite(second.vanna)) return { vanna: second.vanna, charm: second.charm };
-    if (Number.isFinite(setup.vanna ?? NaN)) return { vanna: setup.vanna as number, charm: Number.isFinite(setup.charm ?? NaN) ? (setup.charm as number) / 252 : NaN };
-    return { vanna: NaN, charm: NaN };
-  }, [setup.vanna, setup.charm, second]);
+  const higher = { vanna: second?.vanna ?? NaN, charm: second?.charm ?? NaN };
   const tape = nameTape(setup.ticker, setup.expiry === '0DTE');
   const expired = setup.expiry === '0DTE' ? tape.done : setup.sessionsLeft <= 0;
   const dayOver = tape.done;
   const missing = quoteMissing(q);
-  const stale = tape.option === 'open' && quoteStale(quotedAt, Date.now(), missing);
-  const strikeCap = setup.expiry === '0DTE' ? 16 : 4;
-  const spreadCap = maxSpread(midPx);
-  const quoteOk = !missing && !stale && spreadOk(bidPx, q.ask);
-  const gate = entryGate({ sessionOpen: clock.open, expired, quoteOk, executionQuote: false });
-  const checkFail = !(bidPx > 0.15) ? 'Bid is at or under 0.15' : spreadFrac > spreadCap ? `Spread is over ${Math.round(spreadCap * 100)}%` : strikeOff > strikeCap ? `Strike is outside ±${strikeCap}` : missing ? 'Quote missing' : stale ? 'Quote stale' : null;
+  const quoting = tape.option === 'open' || tape.option === 'overnight' || tape.option === 'pre' || tape.option === 'curb';
+  const stale = quoting && quoteStale(quoteAt, Date.now(), missing);
+  const spreadCap = SPREAD_MAX;
+  const quoteOk = !missing && !stale && spreadPass(bidPx, q.ask);
+  const tapeOpen = optionScanOpen(setup.ticker, setup.expiry === '0DTE' ? 0 : 1) || (ticket && tape.option !== 'closed');
+  const gate = entryGate({ sessionOpen: tapeOpen, expired, quoteOk, executionQuote: false });
+  const line = basis > 0 ? basis : setup.ask > 0 ? setup.ask : 0;
+  const captured = line > 0 && q.bid > 0 ? ((q.bid - line) / line) * 100 : NaN;
+  const capWord = Number.isFinite(captured) ? `${captured >= 0 ? '+' : '−'}${Math.abs(captured).toFixed(1)}%` : '—';
+  const chartQuote = line > 0 ? { ...q, entryPremium: line, stopPremium: Number((line * STOP_KEEP).toFixed(2)) } : q;
+  const checkFail = ticket
+    ? null
+    : setup.band === 'closest'
+      ? (setup.whyText || 'Not a ticket.')
+      : !(bidPx > 0.15) ? 'Bid is at or under 0.15' : spreadFrac > spreadCap + 1e-9 ? 'Spread is over 8%' : missing ? 'Quote missing' : stale ? 'Quote stale' : null;
   const trackedRow = trackedSetups.find(t => t.id === setup.id);
   const fill = tracked && trackedRow ? lockFill(setup.id, trackedRow.trackedAt, quotedAt ? { bid: q.bid, ask: q.ask, at: quotedAt } : null, Date.now(), setup.ticker) : null;
   const paidNow = fill?.status === 'filled' ? fill.ask : 0;
   const priorPeak = tracked ? peakBefore(setup.id) : 0;
   const peakNow = tracked ? notePeak(setup.id, q.bid) : 0;
-  if (tracked && paidNow > 0) noteRung(setup.id, wing || scalp ? 'Stop' : activeStop(paidNow, peakNow, setup.runner === true).name);
-  const liveStop = paidNow > 0
-    ? wing
-      ? { stop: Number((paidNow * 0.5).toFixed(2)), name: 'Stop' }
-      : scalp
-        ? { stop: Number((paidNow * 0.85).toFixed(2)), name: 'Stop' }
-        : activeStop(paidNow, priorPeak > 0 ? priorPeak : 0, setup.runner === true)
-    : null;
-  const stopHit = q.bid > 0 && liveStop != null && q.bid <= liveStop.stop;
-  const runner = setup.runner === true;
-  const tp1Mult = wing ? 3 : scalp ? 1.2 : 1.5;
-  const tp1Hit = wing ? q.bid > 0 && q.bid >= askPx * 3 : !runner && q.bid > 0 && q.bid >= askPx * tp1Mult;
+  const runner = setup.band === 'wing' || setup.runner === true;
+  if (tracked && paidNow > 0 && setup.band !== 'closest') noteRung(setup.id, activeStop(paidNow, peakNow, runner).name);
+  const liveStop = paidNow > 0 && setup.band !== 'lottery' && setup.band !== 'closest' ? activeStop(paidNow, priorPeak > 0 ? priorPeak : 0, runner) : null;
+  const stopHit = !missing && liveStop != null && q.bid >= 0 && q.bid <= liveStop.stop;
+  const tp1Mult = 1.5;
+  const tp1Hit = ticket && !runner && setup.band !== 'lottery' && basis > 0 && q.bid >= basis * tp1Mult;
   const changed = !stopHit && !retired && !tp1Hit ? tapeChange(sessionPrints) : null;
   const sessionOpenPx = liveSpark(setup.ticker)[0] ?? 0;
-  const choice = choiceRight(setup.right === 'C', tape.option === 'open' ? spot : 0, tape.option === 'open' ? sessionOpenPx : 0);
+  const choice = choiceRight(setup.right === 'C', tape.option === 'open' ? spotPx : 0, tape.option === 'open' ? sessionOpenPx : 0);
   const flipped = tracked && choice !== setup.right;
   const killed = stopHit || retired || tp1Hit || dayOver || flipped;
   const liveVerdict = stopHit
@@ -462,15 +420,17 @@ const CampaignAnalysis = ({
     : retired && floorBreak
       ? { word: 'Level broke', why: `${SPOT_NAME[setup.ticker] ?? setup.ticker} went through ${money(floorBreak.floor)}. The level is gone.`, ink: 'text-bear' }
       : tp1Hit
-        ? { word: wing ? '3×' : 'TP1', why: `Bid ${money(q.bid)} is through ${money(askPx * tp1Mult)}. ${wing ? 'A wing sells at 3×.' : scalp ? 'A scalp sells there.' : 'A non-runner sells there.'}`, ink: 'text-bull' }
+        ? { word: 'TP1', why: `Bid ${money(q.bid)} is through ${money(basis * tp1Mult)}. A non-runner sells there.`, ink: 'text-bull' }
         : changed
             ? { word: changed.word, why: changed.why, ink: 'text-textPrimary' }
             : dayOver
               ? { word: "Day's over", why: tape.doneWhy, ink: 'text-bear' }
               : flipped
                 ? { word: 'Take caution', why: `The book would take the ${choice === 'P' ? 'puts' : 'calls'}. Exit here, even under +25%. This is the choice, not an order. It is not a loss.`, ink: 'text-warn' }
-                : checkFail
-                  ? { word: 'Rejected', why: checkFail, ink: 'text-bear' }
+                : ticket && line > 0 && q.bid > 0
+                  ? { word: 'Called', why: `In at ${money(line)}. Bid ${money(q.bid)}. ${capWord}. The line holds.`, ink: q.bid >= line ? 'text-bull' : 'text-textPrimary' }
+                  : checkFail
+                    ? { word: 'Rejected', why: checkFail, ink: 'text-bear' }
                   : tape.option !== 'closed' && tape.option !== 'open'
                     ? { word: tape.word, why: tape.liveWhy, ink: 'text-textPrimary' }
                     : !tape.option || tape.option === 'closed'
@@ -479,16 +439,19 @@ const CampaignAnalysis = ({
                         ? { word: 'Open paper', why: 'On the book. Paper only. Nothing is sent.', ink: 'text-textPrimary' }
                         : { word: 'Candidate', why: 'Paper only. Track it to watch it. Nothing is sent.', ink: 'text-textPrimary' };
   const booked = book.find(l => l.id === setup.id) ?? null;
-  const verdict = booked
-    ? booked.result === 'caution'
-      ? { word: 'Take caution', why: `The book would take the ${booked.right === 'C' ? 'puts' : 'calls'}. Exit here, even under +25%. This is the choice, not an order. It is not a loss.`, ink: 'text-warn' }
-      : booked.result === 'unavailable'
+  const closed = booked && booked.result !== 'open' ? booked : null;
+  const verdict = setup.band === 'closest'
+    ? { word: 'Closest', why: setup.whyText || 'It did not clear a book.', ink: 'text-textSecondary' }
+    : closed
+    ? closed.result === 'caution'
+      ? { word: 'Take caution', why: `The book would take the ${closed.right === 'C' ? 'puts' : 'calls'}. Exit here, even under +25%. This is the choice, not an order. It is not a loss.`, ink: 'text-warn' }
+      : closed.result === 'unavailable'
         ? { word: 'Unavailable', why: 'The quote one minute later was missing or invalid. No price was substituted.', ink: 'text-textSecondary' }
-        : booked.result === 'win'
-        ? { word: 'Win', why: `${booked.why}. Left at ${money(booked.exitPx)}. On the blotter. Paper only.`, ink: 'text-bull' }
-        : { word: 'Loss', why: `${booked.why}. Left at ${money(booked.exitPx)}. On the blotter. Paper only.`, ink: 'text-bear' }
+        : closed.result === 'win'
+        ? { word: 'Win', why: `${closed.why}. Left at ${money(closed.exitPx)}. On the blotter. Paper only.`, ink: 'text-bull' }
+        : { word: 'Loss', why: `${closed.why}. Left at ${money(closed.exitPx)}. On the blotter. Paper only.`, ink: 'text-bear' }
     : liveVerdict;
-  const badgeTone = killed || verdict.word === 'Rejected' || verdict.word === 'Loss' ? 'bear' : verdict.word === 'Win' ? 'bull' : 'white';
+  const badgeTone = killed || verdict.word === 'Rejected' || verdict.word === 'Loss' ? 'bear' : verdict.word === 'Win' || (verdict.word === 'Called' && q.bid >= line) ? 'bull' : 'white';
 
   useEffect(() => {
     if (!tracked) return;
@@ -520,20 +483,24 @@ const CampaignAnalysis = ({
       return;
     }
     const paid = fill.ask;
+    if (setup.band === 'closest') return;
     const call = closeOf({
       paid,
       bid: q.bid,
       peak: priorPeak,
       heldMin: Math.max(0, Math.round((Date.now() - row.trackedAt) / 60000)),
-      runner: setup.runner === true,
-      scalp: setup.band === 'scalp',
+      heldSec: Math.max(0, Math.round((Date.now() - row.trackedAt) / 1000)),
+      runner: setup.band === 'wing' || setup.runner === true,
+      lottery: setup.band === 'lottery',
+      scalp: false,
       wing: setup.band === 'wing',
       side: setup.right,
-      choice,
-      dayOver: setup.expiry === '0DTE' && dayOver,
-      flat: setup.expiry === '0DTE' && flatNow(),
-      levelBroke: !!(retired && floorBreak),
-      rejected: !!checkFail,
+      choice: setup.right,
+      dayOver: false,
+      flat: setup.band === 'lottery' ? lotteryFlatNow() : setup.expiry === '0DTE' && flatNow(),
+      levelBroke: false,
+      rejected: false,
+      ret5: ret5Of(setup.ticker, spot, Date.now()),
     });
     if (!call) return;
     remember(stampClose({
@@ -558,13 +525,18 @@ const CampaignAnalysis = ({
     untrackSetup(setup.id);
   }, [tracked, trackedSetups, setup.id, setup.ticker, setup.contract, setup.right, setup.strike, setup.expiry, q.bid, q.ask, quotedAt, q.entryPremium, dayOver, checkFail, choice, retired, floorBreak, untrackSetup]);
 
+  const sessionsLeft = weekdayDte(sessionYmd(), setup.expiryDate);
   const tenorWord =
     setup.expiry === '0DTE'
       ? tape.done
         ? `${dayStamp(setup.expiryDate)} · done`
-        : tape.word
-      : `${dayStamp(setup.expiryDate)} · ${Math.max(1, Math.round(setup.sessionsLeft))} ${Math.round(setup.sessionsLeft) === 1 ? 'session' : 'sessions'} left`;
-  const kindLabel = SCANNERS.find(s => s.key === scanner)?.label ?? scanner;
+        : `${dayStamp(setup.expiryDate)} · ${tape.word}`
+      : `${dayStamp(setup.expiryDate)}${Number.isFinite(sessionsLeft) ? ` · ${sessionsLeft} ${sessionsLeft === 1 ? 'session' : 'sessions'} left` : ''}`;
+  const cashName = setup.ticker === 'SPXW' || setup.ticker === 'XSP' ? 'SPX' : setup.ticker === 'NDXP' ? 'NDX' : setup.ticker === 'RUTW' ? 'RUT' : setup.ticker;
+  const greekOk = Number.isFinite(ivPct) && ivPct > 0;
+  const pts = spotPx > 0 ? (setup.right === 'C' ? spotPx - setup.strike : setup.strike - spotPx) : NaN;
+  const place = !Number.isFinite(pts) ? '' : Math.abs(pts) / spotPx < 0.0015 ? 'ATM' : `${Math.abs(pts).toFixed(0)} pts ${pts > 0 ? 'ITM' : 'OTM'}`;
+  const kindLabel = setup.band === 'closest' ? 'Closest' : setup.band === 'lottery' ? 'Book C' : setup.band === 'wing' ? 'Book B' : setup.band === 'top' ? 'Book A' : '';
   const [guideOpen, setGuideOpen] = useState(false);
 
   const left = leftOf(setup.id);
@@ -572,8 +544,8 @@ const CampaignAnalysis = ({
     <div className="flex flex-col gap-4">
       {left && (
         <div className="border border-bear/30 bg-bear/[0.04] rounded-md px-4 py-3" data-setup-left={left.why}>
-          <span className="block font-mono text-[12px] font-bold uppercase tracking-wider text-bear">{left.why}</span>
-          <p className="mt-1 text-[12px] text-textPrimary">This contract left the board at {nyClock(left.at, { seconds: true, zone: true })}. It is off the list.</p>
+          <span className="block font-mono text-t12 font-bold uppercase tracking-wider text-bear">{left.why}</span>
+          <p className="mt-1 text-t12 text-textPrimary">This contract left the board at {nyClock(left.at, { seconds: true, zone: true })}. It is off the list.</p>
         </div>
       )}
       {/* THE SETUP'S HEAD — the name's page grammar (EarningsName): the logo, the
@@ -606,54 +578,45 @@ const CampaignAnalysis = ({
             <CompanyLogo ticker={setup.ticker} size={34} />
             <div className="min-w-0">
               <div className="h-6 flex items-center gap-2.5">
-                <h3 className={`min-w-0 truncate text-[15px] font-semibold leading-tight text-textPrimary`}>{setup.ticker} <span className={setup.right === 'C' ? 'text-bull' : 'text-bear'}>{setup.contract}</span></h3>
-                <SignalBadge tone={badgeTone} dot>
-                  {verdict.word}
-                </SignalBadge>
-                <span className="px-1.5 py-0.5 rounded border border-borderSubtle bg-ink/[0.05] font-mono text-[9px] font-semibold uppercase tracking-wider text-textPrimary whitespace-nowrap">{SLEEVE_LABEL[sleeve] ?? sleeve}</span>
-                <span className="font-mono text-[9px] tracking-wider text-textMuted whitespace-nowrap">{kindLabel}</span>
+                <h3 className="min-w-0 truncate text-t15 font-semibold leading-tight text-textPrimary">{setup.ticker} <span className={setup.right === 'C' ? 'text-bull' : 'text-bear'}>{setup.contract}</span></h3>
+                {kindLabel ? (
+                  <span className="px-1.5 py-0.5 rounded border border-silver/40 font-mono text-t9 font-semibold uppercase tracking-wider text-textPrimary whitespace-nowrap">{kindLabel}</span>
+                ) : null}
                 <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the chart, the targets and the case mean" testId="setup-guide" />
               </div>
-              <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-                {setup.right === 'C' ? 'Call' : 'Put'} · strike {money(setup.strike)} · {tenorWord}
-                {setup.spot && setup.spot > 0 ? (Math.abs((setup.right === 'C' ? setup.spot - setup.strike : setup.strike - setup.spot)) / setup.spot < 0.0015 ? ' · ATM' : ` · ${Math.abs((setup.right === 'C' ? setup.spot - setup.strike : setup.strike - setup.spot)).toFixed(0)} pts ${(setup.right === 'C' ? setup.spot - setup.strike : setup.strike - setup.spot) > 0 ? 'ITM' : 'OTM'}`) : ''}
-                {occOf(setup) ? ` · ${occOf(setup)}` : ''}
+              <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
+                {setup.right === 'C' ? 'Call' : 'Put'} · {tenorWord}
+                {spotPx > 0 ? ` · ${cashName} ${money(spotPx)}` : ''}
+                {place ? ` · ${place}` : ''}
               </p>
+              <p className="mt-0.5 text-t11 text-textSecondary truncate">{verdict.why}</p>
               {passedOver(setup.ticker).length > 0 && (
-                <p className="mt-1 text-[11px] text-textMuted truncate" title={passedOver(setup.ticker).join(' · ')}>
-                  Passed over · {passedOver(setup.ticker).join(' · ')}
-                </p>
+                <Tip label={passedOver(setup.ticker).join(' · ')}>
+                  <p className="mt-1 text-t11 text-textMuted truncate">
+                    Passed over · {passedOver(setup.ticker).join(' · ')}
+                  </p>
+                </Tip>
               )}
               {rungsOf(setup.id).length > 0 && (
-                <p className="mt-1 font-mono text-[10px] text-textMuted truncate">
+                <p className="mt-1 font-mono text-t10 text-textMuted truncate">
                   {rungsOf(setup.id).map(rung => `${rung.name} ${nyClock(rung.at)}`).join(' · ')}
                 </p>
               )}
             </div>
           </div>
-          <dl className="flex flex-wrap gap-x-5 gap-y-2" data-setup-facts data-quote-at={quotedAt}>
-            <Fact label="Bid" testId="bid">{money(q.bid)}</Fact>
-            <Fact label="Ask" testId="premium">{money(q.ask)}</Fact>
-            <Fact label="Spread" testId="liquidity">
-              <span className={spreadFrac <= spreadCap ? 'text-textPrimary' : 'text-bear'}>{(spreadFrac * 100).toFixed(1)}%</span>
-            </Fact>
-            <Fact label="Delta" testId="delta">{setup.greeks.delta.toFixed(2)}</Fact>
-            <Fact label="IV" testId="iv">{`${q.ivPct.toFixed(0)}%`}</Fact>
-            <Fact label="Quote" testId="quote-age" title={quotedAt ? nyClock(quotedAt, { seconds: true, zone: true }) : ''}>
-              <QuoteAge at={quotedAt} missing={missing} />
-            </Fact>
-            <Fact label="Quote time" testId="quote-time">{quotedAt ? nyClock(quotedAt, { seconds: true, zone: true }) : '—'}</Fact>
-            <Fact label="P(TP1)" testId="p1">{setup.p1 != null ? `${(setup.p1 * 100).toFixed(1)}%` : '—'}</Fact>
-            <Fact label="P(run)" testId="prun">{setup.prun != null ? `${(setup.prun * 100).toFixed(0)}%` : '—'}</Fact>
-            <Fact
-              label="Hold"
-              testId="hold"
-              title={setup.modelAgree ? 'Both models picked this contract. It is listed once. The runner hold is the better of the two, because +50% is already likely and the rest is extra.' : setup.better === 'runner' ? 'The runner model wanted this contract, and its chance of +50% was within two points of the best. One line.' : 'The entry model had the higher chance of paying +50%. One line. Out there.'}
-            >
-              {setup.p1 == null ? '—' : setup.runner ? 'Runner' : 'Out at +50%'}
-            </Fact>
-            <Fact label="Called" testId="listed" title="The scan that picked this contract. It does not move until the next scan.">{setup.seenAt ? nyClock(setup.seenAt, { seconds: true, zone: true }) : '—'}</Fact>
-            <Fact label="Session" testId="session">{tape.word}</Fact>
+          <dl className="flex flex-wrap gap-x-5 gap-y-2" data-setup-facts data-quote-at={quoteAt}>
+            <Fact label="Bid" testId="bid">{q.bid > 0 ? money(q.bid) : 'No bid'}</Fact>
+            <Fact label="Ask" testId="premium">{q.ask > 0 ? money(q.ask) : '—'}</Fact>
+            {q.bid > 0 && q.ask >= q.bid ? (
+              <Fact label="Spread" testId="liquidity">
+                <span className={spreadFrac <= spreadCap ? 'text-textPrimary' : 'text-bear'}>{(spreadFrac * 100).toFixed(1)}%</span>
+              </Fact>
+            ) : null}
+            <Fact label="Delta" testId="delta">{greekOk && Number.isFinite(gDelta) ? gDelta.toFixed(2) : '—'}</Fact>
+            <Fact label="IV" testId="iv">{greekOk ? `${ivPct.toFixed(0)}%` : '—'}</Fact>
+            <Fact label="Model 1" testId="p1">{setup.p1 != null ? `${(setup.p1 * 100).toFixed(1)}%` : '—'}</Fact>
+            {setup.prun != null ? <Fact label="Model 2" testId="prun">{`${(setup.prun * 100).toFixed(0)}%`}</Fact> : null}
+            <Fact label="Quote" testId="quote-time">{quoteAt ? nyClock(quoteAt, { seconds: true, zone: true }) : '—'}</Fact>
           </dl>
         </div>
       </div>
@@ -665,8 +628,8 @@ const CampaignAnalysis = ({
         <div className="border border-bear/30 bg-bear/[0.04] rounded-md p-3 flex items-center gap-3 animate-soft-in" data-setup-retired>
           <ShieldAlert className="w-5 h-5 text-bear/90 shrink-0" />
           <div>
-            <span className="block font-mono text-[12px] font-bold uppercase tracking-wider text-bear">Floor broken — setup retired</span>
-            <p className="text-[12px] text-textPrimary leading-snug">
+            <span className="block font-mono text-t12 font-bold uppercase tracking-wider text-bear">Floor broken — setup retired</span>
+            <p className="text-t12 text-textPrimary leading-snug">
               <RichRead
                 text={`${SPOT_NAME[setup.ticker] ?? setup.ticker} closed ${setup.right === 'C' ? 'below' : 'above'} ${money(floorBreak.floor)} at ${breakTimeLabel}. The level is gone. ${
                   hitCount > 0 ? `${hitCount} of ${c.takeProfits.length} targets hit before the break.` : 'No target was hit.'
@@ -684,69 +647,94 @@ const CampaignAnalysis = ({
             revision={revision}
             retired={retired}
             tracked={tracked}
-            spot={spot}
-            quotedAt={quotedAt}
+            spot={spotPx}
+            quotedAt={quoteAt}
             loadPickRows={loadTickerCons}
             onOpenContract={onOpenContract}
             part="chart"
             timeframe={chartTf}
             onTimeframe={setChartTf}
-            quote={q}
+            quote={chartQuote}
             traded={traded}
             volume={sessionPrints.reduce((sum, p) => sum + p.size, 0)}
             emptyNote={traded && traded.length === 0 ? sessionEmpty(setup.ticker, desk) : ''}
-            pathNote={fromTheta && (!traded || traded.length === 0) ? 'No print this session. Bid and ask are the live quote.' : pathFromStock ? 'No print on this contract. Candles are the premium off the stock.' : ''}
+            pathNote={!liveBars || liveBars.length === 0 ? 'History has not landed. The bar on the chart is the live mark.' : ''}
           />
         </div>
         <div className="min-w-0 flex flex-col gap-3">
           <div className="rounded-md border border-silver/40 bg-ink/[0.015] overflow-hidden flex flex-col shrink-0" data-setup-card>
             <div className="px-3.5 pt-3 pb-2 flex items-center gap-2 flex-wrap">
               <ContractLabel contract={setup.contract} right={setup.right} logo={setup.ticker} />
-              <span className="font-mono text-[10px] text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">{setup.expiry}</span>
+              <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">{setup.expiry}</span>
               <span className="ml-auto">
                 <SignalBadge tone={badgeTone} dot>
                   {verdict.word}
                 </SignalBadge>
               </span>
             </div>
-            <p className="px-3.5 pb-2.5 text-[11px] text-textMuted truncate" title={verdict.why}>{verdict.why}</p>
+            <Tip label={verdict.why}>
+              <p className="px-3.5 pb-2.5 text-t11 text-textMuted truncate">{verdict.why}</p>
+            </Tip>
 
             <div className="px-3.5 h-7 flex items-center border-y border-borderSubtle/60 paper-band">
-              <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary">What it costs</span>
+              <span className="font-mono text-t9 uppercase tracking-widest text-textPrimary">What it costs</span>
             </div>
             <div className="px-3.5 py-2.5 grid grid-cols-3 gap-x-3 gap-y-2.5">
-              <RailStat label="Ask" value={money(q.entryPremium)} />
-              <RailStat label="Bid" value={money(q.bid)} />
-              <RailStat label="Mark" value={money(q.mark)} />
-              <RailStat label="Spread" value={`${(spreadFrac * 100).toFixed(1)}% wide`} ink={spreadFrac <= spreadCap ? 'text-textPrimary' : 'text-bear'} />
-              <RailStat label="Intrinsic" value={money(q.intrinsic)} />
-              <RailStat label="Extrinsic" value={money(q.extrinsic)} />
+              <RailStat label="Entry" value={line > 0 ? money(line) : '—'} />
+              <RailStat label="Bid" value={q.bid > 0 ? money(q.bid) : '—'} />
+              <RailStat label="Captured" value={capWord} ink={!Number.isFinite(captured) ? 'text-textMuted' : captured >= 0 ? 'text-bull' : 'text-bear'} />
+              <RailStat label="Ask" value={q.ask > 0 ? money(q.ask) : '—'} />
+              <RailStat label="Mark" value={q.mark > 0 ? money(q.mark) : '—'} />
+              <RailStat label="Spread" value={q.bid > 0 && q.ask >= q.bid ? `${(spreadFrac * 100).toFixed(1)}% wide` : 'No bid'} ink={q.bid > 0 && spreadFrac <= spreadCap ? 'text-textPrimary' : 'text-textSecondary'} />
+              <RailStat label="Quote" value={quoteAt ? nyClock(quoteAt, { seconds: true, zone: true }) : '—'} />
             </div>
 
-            <div className="px-3.5 h-7 flex items-center border-y border-borderSubtle/60 paper-band">
-              <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary">What it pays</span>
-            </div>
-            <div className="px-3.5 py-2.5 grid grid-cols-4 gap-x-3 gap-y-2.5">
-              <RailStat label="TP1" value={`${money(tpRows[0].price)} · +50%`} ink="text-bull" />
-              <RailStat label="TP2" value={`${money(tpRows[1].price)} · +100%`} ink="text-bull" />
-              <RailStat label="TP3" value={`${money(tpRows[2].price)} · +200%`} ink="text-bull" />
-              <RailStat label="Breakeven" value={money(q.breakeven)} ink="text-warn" />
-            </div>
-
-            <div className="px-3.5 h-7 flex items-center border-y border-borderSubtle/60 paper-band">
-              <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary">What kills it</span>
-            </div>
-            <div className="px-3.5 py-2.5 grid grid-cols-2 gap-x-3 gap-y-2.5">
-              <RailStat label="Stop" value={liveStop ? `${liveStop.name} ${money(liveStop.stop)}` : paidNow > 0 ? `Bid ≤ ${money(shownStop)}` : 'After the next ask'} ink="text-bear" />
-              <RailStat label="Level" value={setup.invalidationPrice > 0 ? money(setup.invalidationPrice) : '—'} ink="text-bear" />
-            </div>
-            <div className="px-3.5 h-7 flex items-center gap-x-3 border-t border-borderSubtle/60 font-mono text-[10px] text-textMuted overflow-x-auto whitespace-nowrap">
-              <span>Delta <span className={`tnum ${setup.greeks.delta >= 0 ? 'text-bull' : 'text-bear'}`}>{Number.isFinite(setup.greeks.delta) ? setup.greeks.delta.toFixed(2) : '—'}</span></span>
-              <span>Theta <span className="tnum text-warn">{Number.isFinite(setup.greeks.theta) ? dayDollars(setup.greeks.theta) : '—'}</span></span>
-              <span>IV <span className="tnum text-textPrimary">{q.ivPct.toFixed(0)}%</span></span>
-              <span>Gamma <span className="tnum text-textSecondary">{Number.isFinite(second?.gamma ?? setup.greeks.gamma) ? (second?.gamma ?? setup.greeks.gamma).toFixed(4) : '—'}</span></span>
-              <span>Vega <span className="tnum text-textSecondary">{Number.isFinite(setup.greeks.vega) ? setup.greeks.vega.toFixed(3) : '—'}</span></span>
-              <span>Rho <span className="tnum text-textSecondary">{Number.isFinite(setup.greeks.rho ?? NaN) ? (setup.greeks.rho as number).toFixed(3) : '—'}</span></span>
+            {setup.band === 'lottery' ? (
+              <p className="px-3.5 py-3 text-t12 text-textSecondary border-t border-borderSubtle/60">No stop. A bid at 3× the ask within 120 seconds sells at 3× the ask. A bid at 2× the ask within 30 seconds sells at 2× the ask. A bid of 0 is held. Flat at 15:50 ET on the bid.</p>
+            ) : setup.band === 'closest' ? (
+              <div className="px-3.5 py-3 border-t border-borderSubtle/60">
+                <RailStat label="Stop if you take it" value={line > 0 ? money(line * STOP_KEEP) : '—'} ink="text-bear" />
+                <p className="mt-2 text-t12 text-textSecondary">Not a call. It did not clear 70.67%, or the seat was taken. The ask, the stop at 0.4678 × that ask, and the captured percent are the same numbers a call uses. You decide.</p>
+              </div>
+            ) : ticket ? (
+              <>
+                <div className="px-3.5 h-7 flex items-center border-y border-borderSubtle/60 paper-band">
+                  <span className="font-mono text-t9 uppercase tracking-widest text-textPrimary">{runner ? 'The ratchet' : 'What it pays'}</span>
+                </div>
+                <div className="px-3.5 py-2.5 grid grid-cols-4 gap-x-3 gap-y-2.5">
+                  {runner ? (
+                    <>
+                      <RailStat label="1.25×" value={basis > 0 ? money(basis) : '—'} />
+                      <RailStat label="1.50×" value={basis > 0 ? money(basis * 1.25) : '—'} />
+                      <RailStat label="2×" value={basis > 0 ? money(basis * 1.5) : '—'} />
+                      <RailStat label="3×" value={basis > 0 ? money(basis * 2.25) : '—'} />
+                    </>
+                  ) : (
+                    <RailStat label="Sell" value={basis > 0 ? `${money(tpRows[0].price)} · +50%` : '—'} ink="text-bull" />
+                  )}
+                </div>
+                <div className="px-3.5 h-7 flex items-center border-y border-borderSubtle/60 paper-band">
+                  <span className="font-mono text-t9 uppercase tracking-widest text-textPrimary">What kills it</span>
+                </div>
+                <div className="px-3.5 py-2.5">
+                  <RailStat label="Stop" value={shownStop > 0 ? money(shownStop) : '—'} ink="text-bear" />
+                  <p className="mt-2 text-t12 text-textSecondary">
+                    {runner
+                      ? 'Stop starts at 0.4678 × the entry ask and never moves down. It lifts to the entry at 1.25×, then 1.25× at +50%, 1.50× at +100%, 2.25× at +200%, and 0.75 × the peak after 4×. A 0.40% reversal over 5 minutes sells the bid. Flat at 15:55 ET.'
+                      : 'Stop starts at 0.4678 × the entry ask and never moves down. A non-runner sells at 1.50 × the ask. A 0.40% reversal over 5 minutes sells the bid. Flat at 15:55 ET.'}
+                  </p>
+                </div>
+              </>
+            ) : (
+              <p className="px-3.5 py-3 text-t12 text-textSecondary border-t border-borderSubtle/60">{setup.whyText || 'Not a ticket. No entry, no stop, no captured percent.'}</p>
+            )}
+            <div className="px-3.5 h-7 flex items-center gap-x-3 border-t border-borderSubtle/60 font-mono text-t10 text-textMuted overflow-x-auto whitespace-nowrap">
+              <span>Delta <span className={`tnum ${greekOk && gDelta >= 0 ? 'text-bull' : 'text-bear'}`}>{greekOk && Number.isFinite(gDelta) ? gDelta.toFixed(2) : '—'}</span></span>
+              <span>Theta <span className="tnum text-warn">{greekOk && Number.isFinite(gTheta) ? dayDollars(gTheta) : '—'}</span></span>
+              <span>IV <span className="tnum text-textPrimary">{greekOk ? `${ivPct.toFixed(0)}%` : '—'}</span></span>
+              <span>Gamma <span className="tnum text-textSecondary">{greekOk && Number.isFinite(second?.gamma ?? NaN) ? (second?.gamma as number).toFixed(4) : '—'}</span></span>
+              <span>Vega <span className="tnum text-textSecondary">{greekOk && Number.isFinite(gVega) ? gVega.toFixed(3) : '—'}</span></span>
+              <span>Rho <span className="tnum text-textSecondary">{greekOk && Number.isFinite(gRho) ? gRho.toFixed(3) : '—'}</span></span>
               <span>Vanna <span className="tnum text-textSecondary">{Number.isFinite(higher.vanna) ? higher.vanna.toFixed(3) : '—'}</span></span>
               <span>Charm <span className="tnum text-textSecondary">{Number.isFinite(higher.charm) ? higher.charm.toFixed(3) : '—'}</span></span>
               <span>Vomma <span className="tnum text-textSecondary">{Number.isFinite(setup.vomma ?? NaN) ? (setup.vomma as number).toFixed(3) : '—'}</span></span>
@@ -755,26 +743,35 @@ const CampaignAnalysis = ({
               <span>Zomma <span className="tnum text-textSecondary">{Number.isFinite(setup.zomma ?? NaN) ? (setup.zomma as number).toFixed(4) : '—'}</span></span>
               <span>Color <span className="tnum text-textSecondary">{Number.isFinite(setup.color ?? NaN) ? ((setup.color as number) / 365).toFixed(4) : '—'}</span></span>
               <span>Ultima <span className="tnum text-textSecondary">{Number.isFinite(setup.ultima ?? NaN) ? (setup.ultima as number).toFixed(4) : '—'}</span></span>
-              <span className="ml-auto">{tape.word}</span>
+              <span className="ml-auto">{setup.expiry === '0DTE' ? '' : tape.word}</span>
             </div>
             <div className="border-t border-borderSubtle p-2" data-setup-action={verdict.word}>
-              {checkFail && !tracked && clock.open && !expired ? (
+              {!ticket ? (
                 <button
                   type="button"
                   disabled
-                  className="w-full h-8 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textMuted font-mono text-[11px] font-semibold uppercase tracking-wider cursor-not-allowed"
+                  className="w-full h-8 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textMuted font-mono text-t11 font-semibold uppercase tracking-wider cursor-not-allowed"
+                  data-setup-track="blocked"
+                >
+                  {setup.whyText || 'Not a ticket.'}
+                </button>
+              ) : checkFail && !tracked && tapeOpen && !expired ? (
+                <button
+                  type="button"
+                  disabled
+                  className="w-full h-8 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textMuted font-mono text-t11 font-semibold uppercase tracking-wider cursor-not-allowed"
                   data-setup-track="blocked"
                 >
                   {checkFail}
                 </button>
-              ) : booked ? (
+              ) : closed ? (
                 <button
                   type="button"
                   onClick={() => navigate('/compass/blotter')}
-                  className="w-full h-8 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textPrimary font-mono text-[11px] font-semibold uppercase tracking-wider"
+                  className="w-full h-8 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textPrimary font-mono text-t11 font-semibold uppercase tracking-wider"
                   data-setup-track="closed"
                 >
-                  {booked.result === 'caution' ? 'Take caution' : booked.result === 'win' ? 'Win · on the blotter' : 'Loss · on the blotter'}
+                  {closed.result === 'caution' ? 'Take caution' : closed.result === 'win' ? 'Win · on the blotter' : 'Loss · on the blotter'}
                 </button>
               ) : (
                 <div className="flex h-8 rounded-md overflow-hidden" data-setup-track={tracked ? 'on' : 'off'}>
@@ -789,27 +786,28 @@ const CampaignAnalysis = ({
                       const ans = trackSetup(setup, scanner, { mark: q.mark, stop: shownStop, ask: q.entryPremium });
                       setTrackNo(ans.ok ? null : ans.why === 'full' ? '5 open. Untrack one first.' : ans.why === 'closed' ? 'Scan is closed. 0DTE entries run 09:30 to 15:00 ET.' : `Already tracking ${ans.contract}.`);
                     }}
-                    className="flex-1 min-w-0 inline-flex items-center justify-center gap-2 px-2 holo-bg text-[#0a0a0a] hover:brightness-105 font-mono text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap"
+                    className="flex-1 min-w-0 inline-flex items-center justify-center gap-2 px-2 holo-bg text-onfoil hover:brightness-105 font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap"
                   >
                     <Bookmark className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate">{trackNo ?? (tracked ? (expired ? 'Kept' : 'Tracking') : expired ? 'Keep the close' : 'Track')}</span>
                   </button>
-                  <button
-                    type="button"
-                    disabled={!tracked}
-                    onClick={() => tracked && navigate('/compass/tracker', { state: { focus: setup.id } })}
-                    className={`w-9 shrink-0 inline-flex items-center justify-center border-l border-black/25 holo-bg text-[#0a0a0a] ${tracked ? 'hover:brightness-105' : 'opacity-40'}`}
-                    title="Open in Tracker"
-                    aria-label="Open in Tracker"
-                    data-setup-track="open"
-                  >
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                  </button>
+                  <Tip label="Open in Tracker">
+                    <button
+                      type="button"
+                      disabled={!tracked}
+                      onClick={() => tracked && navigate('/compass/tracker', { state: { focus: setup.id } })}
+                      className={`w-9 shrink-0 inline-flex items-center justify-center border-l border-black/25 holo-bg text-onfoil ${tracked ? 'hover:brightness-105' : 'opacity-40'}`}
+                      aria-label="Open in Tracker"
+                      data-setup-track="open"
+                    >
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </button>
+                  </Tip>
                 </div>
               )}
             </div>
           </div>
-          <ContractFlow ticker={setup.ticker} strike={setup.strike} right={setup.right} expiryDate={setup.expiryDate} step={atmStep} session={desk} />
+          <ContractFlow ticker={setup.ticker} strike={setup.strike} right={setup.right} expiryDate={setup.expiryDate} step={atmStep} session={desk} allSessions={setup.expiry === '0DTE'} />
         </div>
       </div>
     </div>

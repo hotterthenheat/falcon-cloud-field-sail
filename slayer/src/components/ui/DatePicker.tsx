@@ -79,7 +79,7 @@ const DatePicker = ({ selected, onPick, onClose }: DatePickerProps) => {
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
-        <span className="font-mono text-[13px] font-semibold text-textPrimary">
+        <span className="font-mono text-t13 font-semibold text-textPrimary">
           {MONTHS[cursor.getMonth()]} {cursor.getFullYear()}
         </span>
         <button
@@ -93,7 +93,7 @@ const DatePicker = ({ selected, onPick, onClose }: DatePickerProps) => {
 
       <div className="grid grid-cols-7 gap-1 mb-1.5">
         {DOW.map((d, i) => (
-          <span key={i} className="text-center font-mono text-[10px] uppercase text-textMuted">
+          <span key={i} className="text-center font-mono text-t10 uppercase text-textMuted">
             {d}
           </span>
         ))}
@@ -112,7 +112,7 @@ const DatePicker = ({ selected, onPick, onClose }: DatePickerProps) => {
               key={i}
               disabled={disabled}
               onClick={() => pick(d)}
-              className={`h-8 rounded font-mono text-[12px] tnum transition-colors ${
+              className={`h-8 rounded font-mono text-t12 tnum transition-colors ${
                 disabled
                   ? 'text-textMuted/25 cursor-not-allowed'
                   : isSelected
@@ -133,7 +133,7 @@ const DatePicker = ({ selected, onPick, onClose }: DatePickerProps) => {
           onPick(0);
           onClose();
         }}
-        className="mt-2.5 w-full py-2 rounded border border-borderSubtle font-mono text-[11px] uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors"
+        className="mt-2.5 w-full py-2 rounded border border-borderSubtle font-mono text-t11 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors"
       >
         Jump to today
       </button>

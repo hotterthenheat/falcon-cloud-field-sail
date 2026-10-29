@@ -49,6 +49,8 @@ export default defineConfig(({ mode }) => {
     host: '0.0.0.0',
     port: 8080,
     strictPort: true,
+    /* A hidden tab drops this socket. The client then reloads the page. That is the restart. */
+    hmr: false,
     /* THE FIRST LOAD AFTER `npm run dev` (Noah, 2026-09-20: "a white screen for about 5-7 seconds"). Measured: the very first
        visit painted at 4.2s, the second at 0.2s — the same page, the same browser. The dev server compiles nothing until it is
        asked: on the first visit every file is transformed on demand, and Tailwind's first pass over the whole source takes

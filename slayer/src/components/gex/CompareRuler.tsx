@@ -893,7 +893,7 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
         /* EACH NAME AT ITS OWN END of every lane (Noah, 2026-09-10: "quite hard
            to distinguish the respected tickers here") — the left name and its
            scale, the greek, the right scale and its name */
-        <div className="px-2 flex items-center justify-between font-mono text-[9px] tnum whitespace-nowrap" style={{ height: 22 }} data-lane-caption>
+        <div className="px-2 flex items-center justify-between font-mono text-t9 tnum whitespace-nowrap" style={{ height: 22 }} data-lane-caption>
           <span className="truncate">
             <span className="font-bold text-textPrimary">{cmp.a.ticker}</span> <span className="text-textMuted">{fmtDollars(scale.a)}</span>
           </span>
@@ -942,10 +942,10 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
                 const alignRight = (which === 's') === (myCard.side === 'a');
                 return (
                   <span key={which} className={`min-w-0 flex flex-col leading-tight ${alignRight ? 'items-end text-right' : 'items-start'}`} style={{ gridRow: 1, gridColumn: (which === 's') === (myCard.side === 'a') ? 2 : 3 }} data-card-head={which}>
-                    <span className="font-mono text-[12px] font-bold tnum text-textPrimary whitespace-nowrap">
+                    <span className="font-mono text-t12 font-bold tnum text-textPrimary whitespace-nowrap">
                       {L.side.ticker} {r ? fmtStrike(r.strike) : '—'}
                     </span>
-                    <span className="text-[9.5px] whitespace-nowrap">
+                    <span className="text-t95 whitespace-nowrap">
                       {r ? (
                         <>
                           <span className={`font-mono tnum ${r.d > 0 ? 'text-bull' : r.d < 0 ? 'text-bear' : 'text-textMuted'}`}>{tickWords(r.d, lay.U)}</span>
@@ -961,7 +961,7 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
               })}
               {/* THE FIVE GREEKS, the lane's lit */}
               {GREEKS.map(g => (
-                <span key={g} className={`font-mono text-[9px] uppercase tracking-widest self-start pt-[1px] ${g === greek ? 'text-textPrimary font-bold' : 'text-textMuted'}`} style={{ gridRow: GREEKS.indexOf(g) + 2, gridColumn: 1 }}>
+                <span key={g} className={`font-mono text-t9 uppercase tracking-widest self-start pt-[1px] ${g === greek ? 'text-textPrimary font-bold' : 'text-textMuted'}`} style={{ gridRow: GREEKS.indexOf(g) + 2, gridColumn: 1 }}>
                   {GREEK_LABEL[g]}
                 </span>
               ))}
@@ -979,13 +979,13 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
                       return (
                         <span key={g} className={`min-w-0 flex flex-col leading-tight ${alignRight ? 'items-end text-right' : 'items-start'}`} style={{ gridRow: GREEKS.indexOf(g) + 2, gridColumn: ci + 2 }} data-card-cell={`${which}:${g}`}>
                           {v == null || v === 0 ? (
-                            <span className="font-mono text-[11px] text-textMuted">—</span>
+                            <span className="font-mono text-t11 text-textMuted">—</span>
                           ) : (
                             <>
-                              <span className={`font-mono text-[11px] tnum ${lit ? 'font-bold' : ''}`} style={{ color: thermal(v, L.side.heaviest[g] || 1, heat).fill }}>
+                              <span className={`font-mono text-t11 tnum ${lit ? 'font-bold' : ''}`} style={{ color: thermal(v, L.side.heaviest[g] || 1, heat).fill }}>
                                 {fmtDollars(Math.abs(v))}
                               </span>
-                              <span className={`text-[9.5px] whitespace-nowrap truncate max-w-full ${lit ? 'text-textSecondary' : 'text-textMuted'}`}>{v > 0 ? GREEK_WORDS[g].pos : GREEK_WORDS[g].neg}</span>
+                              <span className={`text-t95 whitespace-nowrap truncate max-w-full ${lit ? 'text-textSecondary' : 'text-textMuted'}`}>{v > 0 ? GREEK_WORDS[g].pos : GREEK_WORDS[g].neg}</span>
                             </>
                           )}
                         </span>
@@ -995,11 +995,11 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
                 );
               })}
             </div>
-            <div className="mt-2 pt-1.5 border-t border-ink/[0.06] text-[9px] text-textMuted whitespace-nowrap truncate">a click anywhere or Esc closes · the capsule again lets the strike go</div>
+            <div className="mt-2 pt-1.5 border-t border-ink/[0.06] text-t9 text-textMuted whitespace-nowrap truncate">a click anywhere or Esc closes · the capsule again lets the strike go</div>
           </div>
         )}
       </div>
-      <div className={`${compact ? 'px-2 text-[10px]' : 'px-5 text-[10.5px]'} border-t border-ink/[0.06] flex items-center gap-3 whitespace-nowrap overflow-hidden text-textSecondary`} style={{ height: AXIS_READ_H }} data-axis-read data-read-strike={row ? row.strike : undefined}>
+      <div className={`${compact ? 'px-2 text-t10' : 'px-5 text-t105'} border-t border-ink/[0.06] flex items-center gap-3 whitespace-nowrap overflow-hidden text-textSecondary`} style={{ height: AXIS_READ_H }} data-axis-read data-read-strike={row ? row.strike : undefined}>
         {row && S && readSide ? (
           compact ? (
             <>
@@ -1012,7 +1012,7 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
             </>
           ) : (
             <>
-              <span className="font-mono text-[11px] font-bold tnum text-textPrimary">
+              <span className="font-mono text-t11 font-bold tnum text-textPrimary">
                 {S.side.ticker} {fmtStrike(row.strike)}
               </span>
               <span className={`font-mono tnum ${row.d > 0 ? 'text-bull' : row.d < 0 ? 'text-bear' : 'text-textMuted'}`}>{tickWords(row.d, lay.U)}</span>

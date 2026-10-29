@@ -55,7 +55,7 @@ export const TERMS: Record<TermKey, { word: string; plain: string }> = {
 /** The page's words in one line; opened, one plain sentence each */
 const TermLine = ({ keys, testId }: { keys: TermKey[]; testId?: string }) => (
   <details className="mt-2 group" data-term-line={testId ?? true}>
-    <summary className="cursor-pointer list-none font-mono text-[10.5px] text-textMuted hover:text-textSecondary select-none [&::-webkit-details-marker]:hidden">
+    <summary className="cursor-pointer list-none font-mono text-t105 text-textMuted hover:text-textSecondary select-none [&::-webkit-details-marker]:hidden">
       <span className="uppercase tracking-wider">The words</span>{' '}
       {keys.map((k, i) => (
         <span key={k} title={TERMS[k].plain}>
@@ -67,7 +67,7 @@ const TermLine = ({ keys, testId }: { keys: TermKey[]; testId?: string }) => (
         — what they mean ▸
       </span>
     </summary>
-    <dl className="mt-1.5 grid gap-1 text-[11.5px] leading-snug text-textSecondary">
+    <dl className="mt-1.5 grid gap-1 text-t115 leading-snug text-textSecondary">
       {keys.map(k => (
         <div key={k}>
           <dt className="inline font-semibold text-textPrimary">{TERMS[k].word}</dt> <dd className="inline">— {TERMS[k].plain}</dd>

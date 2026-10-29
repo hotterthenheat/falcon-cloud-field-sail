@@ -53,6 +53,8 @@ interface SlayerMarkProps {
   state?: MarkState;
   /** no tile: the S| alone */
   bare?: boolean;
+  /** bare, but with the ">" — ">S|", the folded rail */
+  prompt?: boolean;
   /** brighten the S when the pointer comes within 80 px */
   near?: boolean;
   className?: string;
@@ -62,12 +64,17 @@ interface SlayerMarkProps {
 
 type Box = { x: number; y: number; side: number };
 
-const boxFor = (size: number, bare: boolean): Box => {
+const boxFor = (size: number, bare: boolean, prompt: boolean): Box => {
   if (!bare && size >= 64) return { x: 0, y: 0, side: 64 };
-  const w = MARK_CONTENT.x1 - MARK_CONTENT.x0;
-  const h = MARK_CONTENT.y1 - MARK_CONTENT.y0;
-  const side = Math.max(w, h) * (bare ? 1.1 : 1.5);
-  return { x: (MARK_CONTENT.x0 + MARK_CONTENT.x1) / 2 - side / 2, y: (MARK_CONTENT.y0 + MARK_CONTENT.y1) / 2 - side / 2, side };
+  /* air under the S: a box that ended on the stroke clipped the last row (the folded rail, 26px) */
+  const x0 = prompt ? 9.5 : MARK_CONTENT.x0 - 2;
+  const y0 = MARK_CONTENT.y0 - 3;
+  const x1 = MARK_CONTENT.x1 + 3;
+  const y1 = MARK_CONTENT.y1 + 5;
+  const w = x1 - x0;
+  const h = y1 - y0;
+  const side = Math.max(w, h);
+  return { x: x0 - (side - w) / 2, y: y0 - (side - h) / 2, side };
 };
 
 /** a rectangle in tile units, as percentages of the box */
@@ -81,7 +88,7 @@ const place = (b: Box, x: number, y: number, w: number, h: number): CSSPropertie
 /* The S's outline as a mask image, built once: its own viewBox is the S's box WITH A MARGIN round it, and the masked box
    carries the same margin — a box whose edge landed mid-pixel clipped the S's last row flat at one device pixel a point
    (Noah, 2026-10-03: "look how the s is cut off at the bottom"); with the margin, a rounded edge cuts nothing but air */
-const S_PAD = 1.5;
+const S_PAD = 3;
 const [sx0, sy0, sx1, sy1] = MARK.sBox;
 const S_BOX = [sx0 - S_PAD, sy0 - S_PAD, sx1 - sx0 + S_PAD * 2, sy1 - sy0 + S_PAD * 2] as const;
 const S_MASK = `url("data:image/svg+xml,${encodeURIComponent(
@@ -132,7 +139,7 @@ const LiveMark = (props: Omit<SlayerMarkProps, 'state'>) => {
 /** The mark: the terminal's state unless one is given */
 const SlayerMark = (props: SlayerMarkProps) => (props.state ? <MarkFace {...props} state={props.state} /> : <LiveMark {...props} />);
 
-const MarkFace = ({ size, state, bare = false, near = false, className = '', label }: SlayerMarkProps & { state: MarkState }) => {
+const MarkFace = ({ size, state, bare = false, prompt = false, near = false, className = '', label }: SlayerMarkProps & { state: MarkState }) => {
   const ref = useRef<HTMLSpanElement | null>(null);
   useEffect(() => {
     if (!near || !ref.current) return;
@@ -143,7 +150,7 @@ const MarkFace = ({ size, state, bare = false, near = false, className = '', lab
     alignBrandLoops(ref.current);
   }, [state]);
 
-  const b = boxFor(size, bare);
+  const b = boxFor(size, bare, prompt);
   const full = !bare && size >= 64;
   const radius = full ? 3 : b.side * 0.075;
   const [cx, cy, cw, ch] = MARK.cursor;
@@ -174,12 +181,8 @@ const MarkFace = ({ size, state, bare = false, near = false, className = '', lab
             />
           </>
         )}
-        {full && (
-          <>
-            <path d={MARK.brackets} style={{ fill: 'none', stroke: 'rgb(var(--bracket))', strokeWidth: 0.7 }} />
-            <path d={MARK.chevron} style={{ fill: 'rgb(var(--chevron))' }} />
-          </>
-        )}
+        {full && <path d={MARK.brackets} style={{ fill: 'none', stroke: 'rgb(var(--bracket))', strokeWidth: 0.7 }} />}
+        {(full || prompt) && <path d={MARK.chevron} style={{ fill: 'rgb(var(--chevron))' }} />}
       </svg>
       <span className="sm-s" style={{ ...place(b, S_BOX[0], S_BOX[1], S_BOX[2], S_BOX[3]), WebkitMaskImage: S_MASK, maskImage: S_MASK }} aria-hidden>
         <span className="sm-foil" />

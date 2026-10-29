@@ -202,14 +202,14 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3 flex-wrap">
             {full && (
-              <button type="button" onClick={() => onFull(false)} className="inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-borderSubtle hover:border-borderMuted font-mono text-[10px] text-textSecondary hover:text-textPrimary transition-colors" title="Back to the page (Esc)" data-axis-back>
+              <button type="button" onClick={() => onFull(false)} className="inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-borderSubtle hover:border-borderMuted font-mono text-t10 text-textSecondary hover:text-textPrimary transition-colors" title="Back to the page (Esc)" data-axis-back>
                 <ArrowLeft className="w-3 h-3" /> Back
               </button>
             )}
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">The two books on one ruler</h3>
+            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">The two books on one ruler</h3>
             <GuideDoor open={guideOpen} onClick={onGuide} title="What the two sides and the ruler mean" testId="compare-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
             {all ? (
               <>Each strike at its distance from its own spot · {cmp.a.ticker} grows left, {cmp.b.ticker} right · one lane per greek, one window for all {greeks.length} · dashed is each flip</>
             ) : (
@@ -223,22 +223,22 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
             lane heads and the controls line — the head had more chrome than drawing */}
         <dl className="grid grid-cols-3 gap-x-6">
           <div>
-            <dt className="text-[10px] text-textMuted">Shown</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum tabular-nums text-textPrimary whitespace-nowrap" data-axis-shown>
+            <dt className="text-t10 text-textMuted">Shown</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum tabular-nums text-textPrimary whitespace-nowrap" data-axis-shown>
               {Math.abs(target) < 1e-6 ? `±${tickWords(lay.R, lay.U).replace(/^[+−]/, '')}` : `${tickWords(target - lay.R, lay.U)} to ${tickWords(target + lay.R, lay.U)}`}
             </dd>
           </div>
           {reachFacts.length === 1 ? (
             <>
               <div title={reachFacts[0].up.tail ? `${GREEK_LABEL[greek]} above spot within reach · ${cmp.a.ticker} vs ${cmp.b.ticker} · ${reachFacts[0].up.tail}` : undefined}>
-                <dt className="text-[10px] text-textMuted whitespace-nowrap">Overhead</dt>
-                <dd className="mt-0.5 font-mono text-[12px] tnum tabular-nums text-textPrimary whitespace-nowrap" data-axis-reach-up>
+                <dt className="text-t10 text-textMuted whitespace-nowrap">Overhead</dt>
+                <dd className="mt-0.5 font-mono text-t12 tnum tabular-nums text-textPrimary whitespace-nowrap" data-axis-reach-up>
                   {reachFacts[0].up.lead}
                 </dd>
               </div>
               <div title={reachFacts[0].down.tail ? `${GREEK_LABEL[greek]} below spot within reach · ${cmp.a.ticker} vs ${cmp.b.ticker} · ${reachFacts[0].down.tail}` : undefined}>
-                <dt className="text-[10px] text-textMuted whitespace-nowrap">Below</dt>
-                <dd className="mt-0.5 font-mono text-[12px] tnum tabular-nums text-textPrimary whitespace-nowrap" data-axis-reach-down>
+                <dt className="text-t10 text-textMuted whitespace-nowrap">Below</dt>
+                <dd className="mt-0.5 font-mono text-t12 tnum tabular-nums text-textPrimary whitespace-nowrap" data-axis-reach-down>
                   {reachFacts[0].down.lead}
                 </dd>
               </div>
@@ -246,8 +246,8 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
           ) : (
             <>
               <div>
-                <dt className="text-[10px] text-textMuted whitespace-nowrap">Overhead</dt>
-                <dd className="mt-0.5 font-mono text-[11px] leading-snug tnum tabular-nums text-textPrimary" data-axis-reach-up>
+                <dt className="text-t10 text-textMuted whitespace-nowrap">Overhead</dt>
+                <dd className="mt-0.5 font-mono text-t11 leading-snug tnum tabular-nums text-textPrimary" data-axis-reach-up>
                   {reachFacts.map(f => (
                     <span key={f.g} className="block whitespace-nowrap" title={f.up.tail || undefined}>
                       <span className="text-textMuted">{GREEK_LABEL[f.g]} </span>
@@ -257,8 +257,8 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
                 </dd>
               </div>
               <div>
-                <dt className="text-[10px] text-textMuted whitespace-nowrap">Below</dt>
-                <dd className="mt-0.5 font-mono text-[11px] leading-snug tnum tabular-nums text-textPrimary" data-axis-reach-down>
+                <dt className="text-t10 text-textMuted whitespace-nowrap">Below</dt>
+                <dd className="mt-0.5 font-mono text-t11 leading-snug tnum tabular-nums text-textPrimary" data-axis-reach-down>
                   {reachFacts.map(f => (
                     <span key={f.g} className="block whitespace-nowrap" title={f.down.tail || undefined}>
                       <span className="text-textMuted">{GREEK_LABEL[f.g]} </span>
@@ -273,8 +273,8 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
               chip beside its capsules, so the lane keeps only the dashed line and the head says which strike it is */}
           {(cmp.a.flip != null || cmp.b.flip != null) && (
             <div className="md:hidden col-span-3 mt-2">
-              <dt className="text-[10px] text-textMuted">Flips · the dashed lines</dt>
-              <dd className="mt-0.5 font-mono text-[12px] tnum tabular-nums text-textPrimary whitespace-nowrap" data-axis-flips>
+              <dt className="text-t10 text-textMuted">Flips · the dashed lines</dt>
+              <dd className="mt-0.5 font-mono text-t12 tnum tabular-nums text-textPrimary whitespace-nowrap" data-axis-flips>
                 {cmp.a.ticker} {cmp.a.flip != null ? fmtStrike(cmp.a.flip) : '—'} <span className="text-textMuted">·</span> {cmp.b.ticker} {cmp.b.flip != null ? fmtStrike(cmp.b.flip) : '—'}
               </dd>
             </div>
@@ -305,7 +305,7 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
         <DropdownMulti label="Greek" values={greekPick} groups={greekGroups} onChange={onGreekPick} emptyWord="All" title="One, some, or all four — a lane each, on one ruler" testId="compare-greek" align="start" />
         {/* no Colours card on paper (2026-10-04): the paper ramps are one journey whatever the palette */}
         {!paper && <DropdownSelect label="Colours" value={palette} options={PALETTE_OPTIONS} onChange={onPalette} title="What the colours mean" testId="compare-colours" />}
-        <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted whitespace-nowrap" title={unit === '$' ? 'Dollars do not compare across names, so the ruler reads percent here' : undefined} data-axis-ruler-words>
+        <span className="ml-auto font-mono text-t9 uppercase tracking-widest text-textMuted whitespace-nowrap" title={unit === '$' ? 'Dollars do not compare across names, so the ruler reads percent here' : undefined} data-axis-ruler-words>
           {rulerWords(lay.U)}
           {lay.U === '%' && unit === '$' ? ' · not dollars' : ''}
         </span>
@@ -334,7 +334,7 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
           {/* THE LANE HEADS — each name at its own end: the name, its spot, what its longest capsule is and what lies
               beyond the ruler (one line each; the caption that stood between them is gone; the count of strikes too
               light to draw went with the tick rule, 2026-10-18 — every strike draws) */}
-          <div className="sticky top-0 z-10 bg-panel px-5 flex items-center justify-between gap-4 font-mono text-[10px] tnum tabular-nums shrink-0 whitespace-nowrap" style={{ height: AXIS_HEADS_H }} data-axis-heads>
+          <div className="sticky top-0 z-10 bg-panel px-5 flex items-center justify-between gap-4 font-mono text-t10 tnum tabular-nums shrink-0 whitespace-nowrap" style={{ height: AXIS_HEADS_H }} data-axis-heads>
             {/* SHORT ENOUGH TO READ WHOLE (the second re-audit, 2026-10-22: "longest capsule $702M GEX · …" was cut): the
                 longest capsule as "max", the strikes past the ruler as "+N off" — the full words on the hover */}
             <span className="min-w-0 truncate text-textSecondary" data-axis-head="a" title={`${cmp.a.ticker} at ${cmp.a.spot.toFixed(2)} · its longest capsule is ${fmtDollars(scale.a)} of ${GREEK_LABEL[greek]}${view.off.a > 0 ? ` · ${view.off.a} strikes lie beyond the ruler` : ''}`}>

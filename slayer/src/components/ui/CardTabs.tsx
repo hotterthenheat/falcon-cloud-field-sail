@@ -38,7 +38,7 @@ const CardTabs = <V extends string>({
               key={opt.value}
               aria-pressed={active}
               onClick={() => onChange(opt.value)}
-              className={size === 'title' ? 'relative pb-0.5 text-[15px] font-semibold leading-tight transition-colors' : 'relative py-1 font-mono text-[10px] uppercase tracking-widest transition-colors'}
+              className={size === 'title' ? 'relative pb-0.5 text-t15 font-semibold leading-tight transition-colors' : 'relative py-1 font-mono text-t10 uppercase tracking-widest transition-colors'}
             >
               <span className={active ? 'text-textPrimary' : 'text-tabRest hover:text-textPrimary'}>{opt.label}</span>
               {active && (

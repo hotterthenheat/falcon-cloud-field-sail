@@ -840,7 +840,7 @@ export function evaluateAlert(a: Alert, ctx: AlertContext): AlertVerdict {
 
     case 'level': {
       const ref = ctx.levels[a.level];
-      if (ref === null) return NONE;
+      if (ref == null) return NONE;
       if (a.side === 0) {
         const side = sideOf(ctx.close, ref);
         return side === 0 ? NONE : { fire: false, armed: { ...a, side } };

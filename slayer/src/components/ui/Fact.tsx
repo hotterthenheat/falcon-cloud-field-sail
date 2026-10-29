@@ -21,10 +21,10 @@ const Fact = ({
   big?: boolean;
 }) => (
   <span className={`flex items-baseline gap-2 min-w-0 font-mono ${big ? 'py-1' : ''}`}>
-    <span className={`${big ? 'text-[10.5px]' : 'text-[10px]'} uppercase tracking-wider text-textSecondary shrink-0`}>{label}</span>
+    <span className={`${big ? 'text-t105' : 'text-t10'} uppercase tracking-wider text-textSecondary shrink-0`}>{label}</span>
     <span className="flex-1 self-center border-b border-dotted border-ink/15" />
     {/* the big row's figure a notch larger than the house's, semibold not bold (Noah, 2026-10-10: "slightly too big and bold") */}
-    <span className={`${big ? 'text-[14px] font-semibold' : 'text-[13px] font-bold'} tnum ${valueCls}`}>{value}</span>
+    <span className={`${big ? 'text-t14 font-semibold' : 'text-t13 font-bold'} tnum ${valueCls}`}>{value}</span>
   </span>
 );
 

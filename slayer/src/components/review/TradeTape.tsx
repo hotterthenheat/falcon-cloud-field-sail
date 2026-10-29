@@ -220,17 +220,17 @@ const TradeTape = ({ row, excursion, height = 380 }: { row: JournalRow; excursio
   return (
     <div className="flex flex-col min-w-0" data-journal-tape={row.key}>
       <div className="min-h-9 px-4 py-1 flex items-center gap-3 border-b border-borderSubtle/70">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-textPrimary whitespace-nowrap">{row.fut ? 'The contract while it was on' : 'The name while it was on'}</span>
+        <span className="font-mono text-t10 font-semibold uppercase tracking-widest text-textPrimary whitespace-nowrap">{row.fut ? 'The contract while it was on' : 'The name while it was on'}</span>
         {/* a phone's head has room for the title and the card, not for the line between them */}
-        <span className="min-w-0 font-mono text-[9px] uppercase tracking-widest text-textMuted truncate max-sm:hidden">{row.paper ? 'the hour before · the trade · as the desk drew it' : 'the day before · the trade · the rest of its last day'}</span>
+        <span className="min-w-0 font-mono text-t9 uppercase tracking-widest text-textMuted truncate max-sm:hidden">{row.paper ? 'the hour before · the trade · as the desk drew it' : 'the day before · the trade · the rest of its last day'}</span>
         <span className="ml-auto">
           <DropdownSelect label="Candles" value={frame} options={FRAMES} onChange={setFrame} title="How long a candle is" align="end" size="sm" testId="journal-frame" />
         </span>
       </div>
       {row.paper && !path ? (
         <div className="px-6 flex flex-col items-center justify-center text-center bg-panel" style={{ height }} data-journal-tape-gone>
-          <p className="text-[13px] text-textPrimary">This trade’s chart was not kept.</p>
-          <p className="mt-1 max-w-[420px] text-[11px] leading-snug text-textMuted">A paper trade’s candles are written down when it closes, and the journal keeps them for the last {PATHS_KEPT} trades. Its figures, its tags and your words are all still here.</p>
+          <p className="text-t13 text-textPrimary">This trade’s chart was not kept.</p>
+          <p className="mt-1 max-w-[420px] text-t11 leading-snug text-textMuted">A paper trade’s candles are written down when it closes, and the journal keeps them for the last {PATHS_KEPT} trades. Its figures, its tags and your words are all still here.</p>
         </div>
       ) : (
       <div className="relative bg-panel" style={{ height }} data-theme="dark" data-chart-ground={chartGround(themeKey)}>

@@ -9,8 +9,8 @@ const HigherBook = ({ snapshot }: { snapshot: MarketSnapshot | null }) => {
   return (
     <div className="border border-borderSubtle rounded-md bg-panel px-4 py-2.5" data-higher-greeks={snapshot.ticker}>
       <div className="flex items-baseline gap-x-3 gap-y-1 flex-wrap">
-        <h3 className="text-[13px] font-semibold text-textPrimary">Higher greeks</h3>
-        <p className="text-[10.5px] text-textMuted">
+        <h3 className="text-t13 font-semibold text-textPrimary">Higher greeks</h3>
+        <p className="text-t105 text-textMuted">
           {read
             ? `${snapshot.ticker} · ${read.expiries} ${read.expiries === 1 ? 'expiry' : 'expiries'} · ${read.legs} contracts${read.leftOut > 0 ? ` · ${read.leftOut} ${read.leftOut === 1 ? 'leg' : 'legs'} skipped, no vol` : ''} · at current spot · ${read.carry}. Not a morning snapshot.`
             : `${snapshot.ticker} · contract vol is still being read. Color, vomma, speed, veta and zomma fill in from each contract's own vol — nothing is copied from a morning greek.`}
@@ -20,9 +20,9 @@ const HigherBook = ({ snapshot }: { snapshot: MarketSnapshot | null }) => {
       <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1.5">
         {read.rows.map(row => (
           <div key={row.key} className="min-w-[7.5rem]" title={`${row.about} Heaviest strike ${row.strike || '—'}. ${row.unit}. ${read.carry}.`}>
-            <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted">{row.label}</div>
-            <div className="font-mono text-[12px] font-semibold tnum text-textPrimary">{fmtGexUsd(row.net)}</div>
-            <div className="font-mono text-[9px] text-textMuted tnum">{row.unit}{row.strike ? ` · ${row.strike}` : ''}</div>
+            <div className="font-mono text-t9 uppercase tracking-widest text-textMuted">{row.label}</div>
+            <div className="font-mono text-t12 font-semibold tnum text-textPrimary">{fmtGexUsd(row.net)}</div>
+            <div className="font-mono text-t9 text-textMuted tnum">{row.unit}{row.strike ? ` · ${row.strike}` : ''}</div>
           </div>
         ))}
       </div>

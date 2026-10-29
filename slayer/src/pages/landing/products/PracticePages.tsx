@@ -49,8 +49,8 @@ const Film = ({ path, eyebrow, first, second, lines }: { path: string; eyebrow: 
       <ul className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-5 border-t border-borderSubtle">
         {lines.map(l => (
           <li key={l.word} className="pt-4 max-w-[40ch]">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-textMuted">{l.word}</p>
-            <p className="mt-2 text-[14.5px] leading-relaxed text-textSecondary">{l.says}</p>
+            <p className="font-mono text-t11 uppercase tracking-[0.2em] text-textMuted">{l.word}</p>
+            <p className="mt-2 text-t145 leading-relaxed text-textSecondary">{l.says}</p>
           </li>
         ))}
       </ul>
@@ -60,7 +60,7 @@ const Film = ({ path, eyebrow, first, second, lines }: { path: string; eyebrow: 
 
 /** a door from one practice page to another's */
 const To = ({ to, children }: { to: string; children: string }) => (
-  <Link to={to} className={`${DOOR_GROUP} inline-flex items-center gap-1.5 text-[14.5px] text-textPrimary hover:text-textSecondary transition-colors`} data-product-door={to}>
+  <Link to={to} className={`${DOOR_GROUP} inline-flex items-center gap-1.5 text-t145 text-textPrimary hover:text-textSecondary transition-colors`} data-product-door={to}>
     {children}
     <ArrowRight className={`w-3.5 h-3.5 ${DOOR_ARROW}`} aria-hidden="true" />
   </Link>
@@ -133,8 +133,8 @@ export const PracticePage = () => (
           { word: 'The journal', says: 'Every closed trade from either book lands in the same journal, with the account it came from on the row.' },
         ].map(l => (
           <li key={l.word} className="pt-4 max-w-[40ch]">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-textMuted">{l.word}</p>
-            <p className="mt-2 text-[14.5px] leading-relaxed text-textSecondary">{l.says}</p>
+            <p className="font-mono text-t11 uppercase tracking-[0.2em] text-textMuted">{l.word}</p>
+            <p className="mt-2 text-t145 leading-relaxed text-textSecondary">{l.says}</p>
           </li>
         ))}
       </ul>
@@ -312,7 +312,7 @@ export const JournalPage = () => (
       <div className="max-w-[62ch]">
         <Eyebrow>A trade’s own page</Eyebrow>
         <Head className="mt-5" first="A trade’s own page." second="Look at it again and write what you see." />
-        <p className="mt-6 text-[15.5px] leading-relaxed text-textSecondary">
+        <p className="mt-6 text-t155 leading-relaxed text-textSecondary">
           Press a trade and it opens as a page, not a pop-up. The chart it was on with the way in and the way out marked, what it was worth each minute it was open, the trade’s facts, and the two things a journal is for: the
           shape of it, and your words. The arrows walk the trades of the cut you came from.
         </p>
@@ -321,16 +321,16 @@ export const JournalPage = () => (
       <div className="mt-10 grid grid-cols-1 lg:grid-cols-12 gap-x-10 gap-y-10 items-start">
         <div className="lg:col-span-7">
           <Picture src={`${SHOTS}/journal-shape`} alt="The shape of it: six reads of the trade drawn as a hexagon over your usual shape" ratio="908 / 425" />
-          <p className="mt-4 text-[15px] font-medium text-textPrimary">The shape of it</p>
-          <p className="mt-1.5 max-w-[60ch] text-[14px] leading-relaxed text-textSecondary">
+          <p className="mt-4 text-t15 font-medium text-textPrimary">The shape of it</p>
+          <p className="mt-1.5 max-w-[60ch] text-t14 leading-relaxed text-textSecondary">
             Six reads of the trade, drawn as one shape: how much of the best it kept, the heat it took, the result, where the entry sat in its run, whether there was a plan, and how many of the three questions you answered.
             Your usual shape stands behind it in grey, so a trade that looks nothing like your others shows it at a glance. One line under it says the same in words.
           </p>
         </div>
         <div className="lg:col-span-5">
           <Picture src={`${SHOTS}/journal-words`} alt="Your tags and your words: the setup, the mistakes, whether you followed the plan, and the three questions" ratio="426 / 556" />
-          <p className="mt-4 text-[15px] font-medium text-textPrimary">Your tags, your words</p>
-          <p className="mt-1.5 max-w-[60ch] text-[14px] leading-relaxed text-textSecondary">
+          <p className="mt-4 text-t15 font-medium text-textPrimary">Your tags, your words</p>
+          <p className="mt-1.5 max-w-[60ch] text-t14 leading-relaxed text-textSecondary">
             The setup, the mistakes and whether you followed the plan come from your own lists, so the words are yours. Then three questions instead of one blank box: why I took it, what I saw while in it, and what I would do
             again. What you type is kept exactly as typed, marked Kept, and counted — the page says how many of the three you’ve answered.
           </p>

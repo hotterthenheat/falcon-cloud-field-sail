@@ -45,7 +45,7 @@ const ScriptsWall = () => {
   return (
     <aside className="fixed right-0 top-0 bottom-0 z-40 w-[360px] max-w-full border-l border-borderSubtle bg-panel flex flex-col animate-soft-in" data-scripts-wall>
       <header className="flex items-center justify-between gap-3 px-4 h-10 border-b border-borderSubtle shrink-0">
-        <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-textSecondary">
+        <span className="inline-flex items-center gap-1.5 font-mono text-t10 uppercase tracking-wider text-textSecondary">
           <Lock className="w-3 h-3" aria-hidden="true" /> Scripts · Tape
         </span>
         <button type="button" onClick={closeEditor} aria-label="Close" className="inline-flex items-center justify-center w-7 h-7 rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" data-scripts-wall-close>
@@ -53,23 +53,23 @@ const ScriptsWall = () => {
         </button>
       </header>
       <div className="p-5 flex flex-col gap-4">
-        <p className="text-[13px] leading-relaxed text-textPrimary">
+        <p className="text-t13 leading-relaxed text-textPrimary">
           Your own scripts on the chart — Pine, written here and drawn on the bars — are part of Tape.{holds ? ` You are on ${holds.name}.` : ''}
         </p>
         <div className="rounded-md border border-silver/40 bg-silver/[0.06] p-3.5" data-scripts-wall-desk>
           <p className="flex items-baseline gap-2">
-            <span className="text-[14px] font-semibold text-textPrimary">Desk</span>
-            <span className="font-mono text-[11px] tnum text-textMuted">
+            <span className="text-t14 font-semibold text-textPrimary">Desk</span>
+            <span className="font-mono text-t11 tnum text-textMuted">
               {desk.price} {desk.period}
             </span>
-            <span className="ml-auto h-4 px-1.5 inline-flex items-center rounded-full bg-textPrimary text-canvas font-mono text-[8px] font-bold uppercase tracking-widest">All of it</span>
+            <span className="ml-auto h-4 px-1.5 inline-flex items-center rounded-full bg-textPrimary text-canvas font-mono text-t8 font-bold uppercase tracking-widest">All of it</span>
           </p>
-          <p className="mt-1 text-[12px] leading-snug text-textSecondary">Scripts, Trace and Dossier, and Compass, the Weigher, Practice and Community.</p>
-          <Link to={to('desk')} className={`mt-3 h-10 w-full rounded-full inline-flex items-center justify-center text-[13.5px] font-medium ${theme === 'dark' ? 'holo-bg text-[#0a0a0a]' : 'galaxy-bg'}`} data-scripts-wall-go="desk">
+          <p className="mt-1 text-t12 leading-snug text-textSecondary">Scripts, Trace and Dossier, and Compass, the Weigher, Practice and Community.</p>
+          <Link to={to('desk')} className={`mt-3 h-10 w-full rounded-full inline-flex items-center justify-center text-t135 font-medium ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`} data-scripts-wall-go="desk">
             {holds ? 'Upgrade to Desk' : 'Choose Desk'}
           </Link>
         </div>
-        <p className="text-[12px] leading-relaxed text-textSecondary">
+        <p className="text-t12 leading-relaxed text-textSecondary">
           Or just Tape, {tape.price} {tape.period}:{' '}
           <Link to={to('tape')} className="text-textPrimary hover:underline underline-offset-2" data-scripts-wall-go="tape">
             {holds ? 'upgrade to Tape' : 'choose Tape'}

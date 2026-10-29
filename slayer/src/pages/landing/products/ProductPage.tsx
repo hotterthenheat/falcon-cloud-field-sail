@@ -42,7 +42,7 @@ import TerminalWindow from '../TerminalWindow';
 
 /** A SECTION'S HEAD: smaller than the page's, the same two tones */
 export const Head = ({ first, second, className = '' }: { first: string; second: string; className?: string }) => (
-  <h2 className={`arrive-line arrive-settle [--i:1] font-light tracking-[-0.035em] leading-[1.04] text-[32px] sm:text-[40px] lg:text-[46px] [text-wrap:balance] ${className}`}>
+  <h2 className={`arrive-line arrive-settle [--i:1] font-light tracking-[-0.035em] leading-[1.04] text-t32 sm:text-t40 lg:text-t46 [text-wrap:balance] ${className}`}>
     {first} <span className="block text-textMuted">{second}</span>
   </h2>
 );
@@ -65,7 +65,7 @@ export const Aside = ({ eyebrow, first, second, flip = false, narrow = false, pi
     <Arrive className={`${narrow ? 'lg:col-span-7' : 'lg:col-span-5'} ${flip ? 'lg:order-2' : ''}`}>
       <Eyebrow>{eyebrow}</Eyebrow>
       <Head className="mt-5" first={first} second={second} />
-      <div className={`arrive-line [--i:2] mt-6 flex flex-col gap-4 ${narrow ? 'max-w-[62ch]' : 'max-w-[52ch]'} text-[15.5px] leading-relaxed text-textSecondary`}>{children}</div>
+      <div className={`arrive-line [--i:2] mt-6 flex flex-col gap-4 ${narrow ? 'max-w-[62ch]' : 'max-w-[52ch]'} text-t155 leading-relaxed text-textSecondary`}>{children}</div>
     </Arrive>
     <div className={`${narrow ? 'lg:col-span-5' : 'lg:col-span-7'} ${flip ? 'lg:order-1' : ''}`}>{picture}</div>
   </div>
@@ -77,8 +77,8 @@ export const Pair = ({ items, cols = 2 }: { items: { src: string; ratio: string;
     {items.map(a => (
       <li key={a.src} className="min-w-0" data-product-piece={a.src.split('/').pop()}>
         <Picture src={a.src} alt={a.name} ratio={a.ratio} />
-        <p className="mt-4 text-[15px] font-medium text-textPrimary">{a.name}</p>
-        <p className="mt-1.5 max-w-[60ch] text-[14px] leading-relaxed text-textSecondary">{a.says}</p>
+        <p className="mt-4 text-t15 font-medium text-textPrimary">{a.name}</p>
+        <p className="mt-1.5 max-w-[60ch] text-t14 leading-relaxed text-textSecondary">{a.says}</p>
       </li>
     ))}
   </ul>
@@ -90,7 +90,7 @@ export const Room = ({ eyebrow, first, second, children, pictures }: { eyebrow: 
     <Arrive className="max-w-[72ch]">
       <Eyebrow>{eyebrow}</Eyebrow>
       <Head className="mt-5" first={first} second={second} />
-      <div className="arrive-line [--i:2] mt-6 flex flex-col gap-4 max-w-[64ch] text-[15.5px] leading-relaxed text-textSecondary">{children}</div>
+      <div className="arrive-line [--i:2] mt-6 flex flex-col gap-4 max-w-[64ch] text-t155 leading-relaxed text-textSecondary">{children}</div>
     </Arrive>
     {pictures}
   </div>
@@ -137,11 +137,11 @@ const Page = ({ name, glyph, group, head, intro, path, plan, children }: Props) 
             </Eyebrow>
             <div className="arrive-line [--i:1] flex items-center gap-3" data-product-name>
               <PageGlyph name={glyph} size={28} />
-              <span className="text-[22px] font-medium tracking-tight text-textPrimary">{name}</span>
+              <span className="text-t22 font-medium tracking-tight text-textPrimary">{name}</span>
             </div>
             <TwoTone first={head[0]} second={head[1]} />
             <div className="flex flex-col lg:flex-row lg:items-end gap-x-16 gap-y-6">
-              <p className="arrive-line [--i:2] max-w-[64ch] text-[16px] sm:text-[17px] leading-relaxed text-textSecondary">{intro}</p>
+              <p className="arrive-line [--i:2] max-w-[64ch] text-t16 sm:text-t17 leading-relaxed text-textSecondary">{intro}</p>
               <div className="arrive-line [--i:3] lg:ml-auto shrink-0 lg:pb-1">
                 <Pill href={path} onClick={() => launch(path)} testId="hero">
                   Open {name}
@@ -169,7 +169,7 @@ const Page = ({ name, glyph, group, head, intro, path, plan, children }: Props) 
                   e.preventDefault();
                   navigate('/#everything');
                 }}
-                className={`${DOOR_GROUP} inline-flex items-center gap-1.5 h-12 px-2 text-[15px] text-textSecondary hover:text-textPrimary transition-colors`}
+                className={`${DOOR_GROUP} inline-flex items-center gap-1.5 h-12 px-2 text-t15 text-textSecondary hover:text-textPrimary transition-colors`}
                 data-product-every
               >
                 Every page, by room

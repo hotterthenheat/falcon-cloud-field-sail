@@ -128,7 +128,7 @@ const NameCell = ({ data }: ICellRendererParams<StockPick>) =>
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
-        <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
+        <span className="font-mono text-t12 font-bold text-textPrimary">{data.ticker}</span>
         <CoSub ticker={data.ticker} fallback={filedName(data.ticker, data.name)} />
       </span>
     </span>
@@ -139,12 +139,12 @@ const SectorCell = ({ data }: ICellRendererParams<StockPick>) => {
   const house = lookup(data.ticker);
   const sector = house?.sector ?? (data.listedOnly ? null : data.sector);
   return sector ? (
-    <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-textSecondary" title={sector}>
+    <span className="flex items-center gap-1.5 min-w-0 text-t11 text-textSecondary" title={sector}>
       <SectorMark sector={sector} />
       <span className="min-w-0 truncate">{sector}</span>
     </span>
   ) : (
-    <span className="font-mono text-[10px] text-textMuted" title="Sector is not filed for this name">—</span>
+    <span className="font-mono text-t10 text-textMuted" title="Sector is not filed for this name">—</span>
   );
 };
 
@@ -182,15 +182,15 @@ const LastCell = ({ data }: ICellRendererParams<StockPick>) => {
   /* until the read lands, the screener's REGULAR price from the list's own read — its after-hours print apart.
      A listed name with no price yet is a dash, not $0.00. */
   const px = words?.lead ?? (data.price > 0 ? data.price : 0);
-  if (!(px > 0)) return <span className="font-mono text-[11px] text-textMuted" title="No price on the feed">—</span>;
+  if (!(px > 0)) return <span className="font-mono text-t11 text-textMuted" title="No price on the feed">—</span>;
   const fallbackTitle = data.extPrice != null ? `${data.price.toFixed(2)} close · ${data.extPrice.toFixed(2)} outside the session (the screener's)` : 'the screener’s price';
-  return <span className="font-mono text-[11px] tnum text-textPrimary" title={words?.line ?? fallbackTitle}>${px.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+  return <span className="font-mono text-t11 tnum text-textPrimary" title={words?.line ?? fallbackTitle}>${px.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
 };
 const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
   const b = useBatchQuote(data?.ticker);
   const q = useLiveQuote(data && !b && batchMisses(data.ticker) ? data.ticker : null);
   if (!data) return null;
-  if (data.listedOnly && !b && !q) return <span className="font-mono text-[11px] text-textMuted" title="No session change on the feed">—</span>;
+  if (data.listedOnly && !b && !q) return <span className="font-mono text-t11 text-textMuted" title="No session change on the feed">—</span>;
   /* before the open the session has not moved: the last session's change, dated */
   const pre = b ? !b.live : q?.phase === 'pre' && q.lastSessionPct != null;
   const chg = b ? b.pct ?? data.changePct : pre ? q!.lastSessionPct! : q?.spot && q.spot > 0 ? q.changePct : data.changePct;
@@ -199,20 +199,20 @@ const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
   const day = b && !b.live ? ` (${b.date})` : q?.regDate ? ` (${q.regDate})` : '';
   return (
     <span className="flex flex-col items-end justify-center h-full leading-tight" title={`${pre ? `The last session's change${day}` : "The regular session's change"}${ext ? ` · ${ext}, kept apart` : ''}`}>
-      <span className={`font-mono text-[11px] tnum ${dirInk(chg)}`}>{signedPct(chg, 2)}</span>
-      {ext ? <span className="font-mono text-[8px] tnum text-textMuted whitespace-nowrap">{ext.replace('after hours', 'AH').replace('pre-market', 'pre')}</span> : null}
+      <span className={`font-mono text-t11 tnum ${dirInk(chg)}`}>{signedPct(chg, 2)}</span>
+      {ext ? <span className="font-mono text-t8 tnum text-textMuted whitespace-nowrap">{ext.replace('after hours', 'AH').replace('pre-market', 'pre')}</span> : null}
     </span>
   );
 };
 const TrendCell = ({ data }: ICellRendererParams<StockPick>) => {
-  if (!data || data.trend.length < 2) return <span className="font-mono text-[10px] text-textMuted">—</span>;
+  if (!data || data.trend.length < 2) return <span className="font-mono text-t10 text-textMuted">—</span>;
   const first = data.trend[0];
   const last = data.trend[data.trend.length - 1];
   const chg = first > 0 ? ((last - first) / first) * 100 : 0;
   return (
     <span className="flex items-center gap-1.5 cursor-help" title={`The closes a year ago, six, three and one month ago, a week ago and now: ${data.trend.map(v => v.toFixed(2)).join(' → ')} — ${signedPct(chg)} over the span`}>
       <Sparkline data={data.trend} up={last >= first} width={56} height={20} />
-      <span className={`font-mono text-[9px] tnum ${dirInk(chg)}`}>{signedPct(chg, 1)}</span>
+      <span className={`font-mono text-t9 tnum ${dirInk(chg)}`}>{signedPct(chg, 1)}</span>
     </span>
   );
 };
@@ -222,7 +222,7 @@ const sleeveCell =
   (key: keyof StockSleeves) =>
   ({ data }: ICellRendererParams<StockPick>) => {
     if (!data) return null;
-    if (data.quiet.includes(key)) return <span className="font-mono text-[10px] text-textMuted" title="Not on this feed — left out of the screen">—</span>;
+    if (data.quiet.includes(key)) return <span className="font-mono text-t10 text-textMuted" title="Not on this feed — left out of the screen">—</span>;
     const v = data.sleeves[key];
     const g = gradeOfComposite(v);
     /* A BAR WITH ITS WORD AND ITS FIGURES (the fourth audit's retail test, 2026-10-23: the bars carried no value or label)
@@ -233,7 +233,7 @@ const sleeveCell =
         <span className="relative flex-1 h-[4px] rounded-full bg-ink/[0.06] overflow-hidden">
           <span className={`absolute left-0 top-0 h-full rounded-full ${v > 50 ? 'bg-bull' : 'bg-bear/70'}`} style={{ width: `${v}%` }} />
         </span>
-        <span className={`shrink-0 font-mono text-[8px] uppercase tracking-widest ${GRADE_WORD_INK[g]}`}>{g}</span>
+        <span className={`shrink-0 font-mono text-t8 uppercase tracking-widest ${GRADE_WORD_INK[g]}`}>{g}</span>
       </span>
     );
   };
@@ -241,9 +241,9 @@ const sleeveCell =
 const ScreenCell = ({ data }: ICellRendererParams<StockPick>) =>
   data ? (
     data.listedOnly ? (
-      <span className="font-mono text-[10px] text-textMuted" title="Listed. No screen — the sleeves were not scored">No screen</span>
+      <span className="font-mono text-t10 text-textMuted" title="Listed. No screen — the sleeves were not scored">No screen</span>
     ) : (
-    <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-textPrimary">
+    <span className="inline-flex items-center gap-1.5 font-mono text-t10 font-semibold uppercase tracking-wider text-textPrimary">
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SCREEN_DOT[gradeOfPick(data)]}`} />
       {gradeOfPick(data).toUpperCase()}
     </span>
@@ -252,7 +252,7 @@ const ScreenCell = ({ data }: ICellRendererParams<StockPick>) =>
 
 const WhyCell = ({ data }: ICellRendererParams<StockPick>) =>
   data ? (
-    <span className="block py-1.5 text-[11px] leading-snug text-textSecondary whitespace-normal break-words" title={data.thesis}>
+    <span className="block py-1.5 text-t11 leading-snug text-textSecondary whitespace-normal break-words" title={data.thesis}>
       {data.thesis}
     </span>
   ) : null;
@@ -273,7 +273,7 @@ const StockCard = (p: StockPick) => {
           <span className="inline-flex items-center gap-2 min-w-0">
             <CompanyLogo ticker={p.ticker} size={16} />
             <span className="font-mono font-bold">{p.ticker}</span>
-            <span className="text-[10.5px] text-textMuted truncate"><CoSub ticker={p.ticker} fallback={filedName(p.ticker, p.name)} className="text-[10.5px] text-textMuted truncate" /></span>
+            <span className="text-t105 text-textMuted truncate"><CoSub ticker={p.ticker} fallback={filedName(p.ticker, p.name)} className="text-t105 text-textMuted truncate" /></span>
           </span>
         }
         right={
@@ -286,18 +286,18 @@ const StockCard = (p: StockPick) => {
       <CardLine
         muted
         left={
-          <span className="inline-flex flex-wrap gap-x-2 font-mono text-[9px] uppercase tracking-widest">
+          <span className="inline-flex flex-wrap gap-x-2 font-mono text-t9 uppercase tracking-widest">
             {[sleeve('momentum', 'trend'), sleeve('quality', 'numbers'), sleeve('flow', 'money')].filter(Boolean)}
           </span>
         }
         right={
-          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-textPrimary">
+          <span className="inline-flex items-center gap-1.5 font-mono text-t10 font-semibold uppercase tracking-wider text-textPrimary">
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SCREEN_DOT[g]}`} />
             {g}
           </span>
         }
       />
-      <CardLine muted left={<span className="text-[10.5px]">{(lookup(p.ticker)?.sector ?? (p.listedOnly ? null : p.sector)) ?? '—'} · {p.thesis}</span>} />
+      <CardLine muted left={<span className="text-t105">{(lookup(p.ticker)?.sector ?? (p.listedOnly ? null : p.sector)) ?? '—'} · {p.thesis}</span>} />
     </>
   );
 };
@@ -316,23 +316,23 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
     data-on={on || undefined}
   >
     <span className="flex items-center gap-1.5 min-w-0 h-[18px]">
-      <span className="font-mono text-[9px] text-textMuted tnum">{String(rank).padStart(2, '0')}</span>
+      <span className="font-mono text-t9 text-textMuted tnum">{String(rank).padStart(2, '0')}</span>
       <SectorMark sector={s.sector} />
-      <span className="text-[11px] font-bold text-textPrimary truncate">{SHORT_SECTOR[s.sector] ?? s.sector}</span>
+      <span className="text-t11 font-bold text-textPrimary truncate">{SHORT_SECTOR[s.sector] ?? s.sector}</span>
     </span>
     <span className="mt-1.5 block h-[4px] rounded-full bg-ink/[0.06] overflow-hidden">
       <span className={`block h-full rounded-full ${leader ? 'bg-supreme' : PHASE_BAR[s.phase]}`} style={{ width: `${Math.round((s.score / top) * 100)}%` }} />
     </span>
-    <span className={`mt-1 block h-[12px] font-mono text-[8px] uppercase tracking-widest whitespace-nowrap ${leader ? 'text-supreme' : PHASE_INK[s.phase]}`}>{leader ? 'LEADING' : PHASE_WORD[s.phase]}</span>
+    <span className={`mt-1 block h-[12px] font-mono text-t8 uppercase tracking-widest whitespace-nowrap ${leader ? 'text-supreme' : PHASE_INK[s.phase]}`}>{leader ? 'LEADING' : PHASE_WORD[s.phase]}</span>
     {/* THE REAL RETURN, AND THE RELATIVE ONE SAID AS RELATIVE (the re-audit, 2026-10-22: "1w +3.4% · 1m +13.1%" was the
         sector against the board's average, read as a return; Utilities is one name) */}
-    <span className="mt-0.5 block h-[12px] font-mono text-[9px] tnum whitespace-nowrap overflow-hidden">
+    <span className="mt-0.5 block h-[12px] font-mono text-t9 tnum whitespace-nowrap overflow-hidden">
       <span className="text-textMuted">1w </span>
       <span className={s.ret1w != null ? dirInk(s.ret1w) : 'text-textMuted'}>{s.ret1w != null ? signedPct(s.ret1w) : '—'}</span>
       <span className="text-textMuted"> · 1m </span>
       <span className={s.ret1m != null ? dirInk(s.ret1m) : 'text-textMuted'}>{s.ret1m != null ? signedPct(s.ret1m) : '—'}</span>
     </span>
-    <span className="mt-0.5 block h-[12px] font-mono text-[8px] tnum whitespace-nowrap overflow-hidden text-textMuted">
+    <span className="mt-0.5 block h-[12px] font-mono text-t8 tnum whitespace-nowrap overflow-hidden text-textMuted">
       <span className={dirInk(s.rs1m)}>{s.rs1m > 0 ? '+' : s.rs1m < 0 ? '−' : ''}{Math.abs(s.rs1m).toFixed(1)} pts</span> vs board, 1m · {s.count} {s.count === 1 ? 'name' : 'names'}
     </span>
   </button>
@@ -554,30 +554,30 @@ const Stocks = () => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">How every name screens</h3>
+            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">How every name screens</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the measures, the screen and the rotation mean" testId="stocks-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" title={unscreened.length ? `${unscreened.join(', ')} ${unscreened.length === 1 ? 'is' : 'are'} on the house list and ${unscreened.length === 1 ? 'has' : 'have'} no row on this screen` : undefined}>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate" title={unscreened.length ? `${unscreened.join(', ')} ${unscreened.length === 1 ? 'is' : 'are'} on the house list and ${unscreened.length === 1 ? 'has' : 'have'} no row on this screen` : undefined}>
             The {picks.length || 'house list’s'} names with a screen. The list under the rotation keeps going through every listed stock — scroll and it grows. Search finds a name that is not on the screen. A row opens the name.
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Names")}>Names</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-stocks-names>
+            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Names")}>Names</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-stocks-names>
               {quiet ? '—' : <>{facts.names} <span className="text-textMuted">·</span> <span className="text-bull font-semibold">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-bull">{facts.good} good</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.mixed} caution</span> <span className="text-textMuted">·</span> <span className="text-bear">{facts.weak} poor</span></>}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="The share of the names on the grid whose last price is above their 50-day simple average (the screener's)">Above their 50-day</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${quiet ? 'text-textMuted' : facts.breadth >= 55 ? 'text-bull' : facts.breadth <= 40 ? 'text-bear' : 'text-textPrimary'}`} data-stocks-breadth>
+            <dt className="text-t10 text-textMuted cursor-help" title="The share of the names on the grid whose last price is above their 50-day simple average (the screener's)">Above their 50-day</dt>
+            <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${quiet ? 'text-textMuted' : facts.breadth >= 55 ? 'text-bull' : facts.breadth <= 40 ? 'text-bear' : 'text-textPrimary'}`} data-stocks-breadth>
               {quiet ? '—' : `${facts.breadth}%`}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Leading sector")}>Leading sector</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Leading sector")}>Leading sector</dt>
             <dd className="mt-0.5 whitespace-nowrap" data-stocks-leader>
-              {quiet ? <span className="font-mono text-[12px] text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(top.sector)} title={`Keep the grid to ${top.sector}`} className="font-mono text-[12px] tnum text-supreme font-semibold hover:underline underline-offset-2">
+              {quiet ? <span className="font-mono text-t12 text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(top.sector)} title={`Keep the grid to ${top.sector}`} className="font-mono text-t12 tnum text-supreme font-semibold hover:underline underline-offset-2">
                 {top.sector}
               </button>}
             </dd>
@@ -586,9 +586,9 @@ const Stocks = () => {
             {/* RANKED LAST, WITH ITS DIRECTION (the retail pass, 2026-10-22): "Trailing sector: Consumer Discretionary" sat over
                 that sector's own card reading TURNING UP while Communication read FALLING — the rank is by its names'
                 screens, the direction by the two windows against the tape; the fact says both */}
-            <dt className="text-[10px] text-textMuted cursor-help" title="The sector whose names screen worst, by rank — its direction against the tape (the card's word) beside it. A sector can rank last and still be turning up">Ranked last</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title="The sector whose names screen worst, by rank — its direction against the tape (the card's word) beside it. A sector can rank last and still be turning up">Ranked last</dt>
             <dd className="mt-0.5 whitespace-nowrap" data-stocks-trailer>
-              {quiet ? <span className="font-mono text-[12px] text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="font-mono text-[12px] tnum text-bear hover:underline underline-offset-2">
+              {quiet ? <span className="font-mono text-t12 text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="font-mono text-t12 tnum text-bear hover:underline underline-offset-2">
                 {bottom.sector} <span className="text-textMuted font-normal">· {PHASE_WORD[bottom.phase].toLowerCase()}</span>
               </button>}
             </dd>
@@ -605,30 +605,30 @@ const Stocks = () => {
           onChange={e => setFind(e.target.value)}
           placeholder="Find any listed stock"
           aria-label="Find any listed stock"
-          className="h-7 w-44 rounded border border-borderMuted bg-transparent px-2 font-mono text-[11px] text-textPrimary placeholder:text-textMuted"
+          className="h-7 w-44 rounded border border-borderMuted bg-transparent px-2 font-mono text-t11 text-textPrimary placeholder:text-textMuted"
         />
         <DropdownMulti label="Filter" values={filter} groups={filterGroups} onChange={setFilter} title="The names on the page right now — tick any number; only those stay" testId="stocks-filter" />
       </div>
       {failed ? (
         <FeedFallback />
       ) : (
-        <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-stocks-sentence>
+        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-stocks-sentence>
           {waiting ? 'Reading the screens.' : sentence}
         </p>
       )}
       {/* THE ROTATION */}
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-stocks-rotation>
         {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
-        <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
+        <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The rotation</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">every sector ranked by its names' screens, leader first · its names' average return over a week and a month, and the month against the board's average · click a sector to keep the grid to its names</span>
+          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">every sector ranked by its names' screens, leader first · its names' average return over a week and a month, and the month against the board's average · click a sector to keep the grid to its names</span>
         </div>
         {/* every sector across from 1280; six on a small laptop, four on a tablet, two on a phone (the device sweep,
             2026-10-18: eleven across at 360 left a card 30px wide and cut its two windows, and at 1024 still 70px) */}
         {/* five across from a laptop up (the dossier sweep, 2026-10-22: ten across left each card ~105px, the names cut to
             "Tech…" and the 1m figure past the card's edge) — two rows of five, ranked left to right */}
         {quiet ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : 'Reading the screens'}</div>
+          <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : 'Reading the screens'}</div>
         ) : (
         <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-5" data-sectors={ROTATION_SECTORS}>
           {sectors.map((s, i) => (
@@ -664,7 +664,7 @@ const Stocks = () => {
         )}
       </div>
       {rows.length > 0 && (
-        <div ref={moreRef} className="px-5 py-2 border-t border-borderSubtle/60 font-mono text-[10px] text-textMuted" data-stocks-more>
+        <div ref={moreRef} className="px-5 py-2 border-t border-borderSubtle/60 font-mono text-t10 text-textMuted" data-stocks-more>
           {rows.length.toLocaleString()} on this page
           {listedCount('equity') > rows.length ? ` · ${listedCount('equity').toLocaleString()} listed stocks · scroll for more` : ''}
         </div>

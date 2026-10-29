@@ -14,10 +14,10 @@
 */
 
 /** A door: the words in tracked capitals, the figure beside them in the page's ink */
-export const FLAT_DOOR = 'hit inline-flex items-center gap-1.5 h-7 px-2 rounded font-mono text-[11px] uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] transition-colors select-none whitespace-nowrap';
+export const FLAT_DOOR = 'hit inline-flex items-center gap-1.5 h-7 px-2 rounded font-mono text-t11 uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] transition-colors select-none whitespace-nowrap';
 /** …while its card is open (a Radix trigger) */
 export const FLAT_OPEN = 'data-[state=open]:bg-ink/[0.06] data-[state=open]:text-textPrimary';
 /** …while it is armed: the replay running, the read up */
 export const FLAT_ON = 'bg-silver/[0.12] text-silver hover:text-silver';
 /** The figure on a door */
-export const FLAT_VALUE = 'text-[11px] font-semibold text-textPrimary';
+export const FLAT_VALUE = 'text-t11 font-semibold text-textPrimary';

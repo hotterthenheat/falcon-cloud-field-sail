@@ -88,7 +88,7 @@ const MoreDoor = ({ surface, greeks, expiries, onData, compact = false }: Props)
       {open &&
         placed &&
         createPortal(
-          <div ref={menuRef} role="menu" aria-label="More" style={{ position: 'fixed', ...placed.box }} className="z-[120] w-[272px] border border-borderMuted bg-panel/90 backdrop-blur-xl rounded-md shadow-2xl shadow-black/60 p-1.5 font-mono text-[11px]" data-ledger-more-menu>
+          <div ref={menuRef} role="menu" aria-label="More" style={{ position: 'fixed', ...placed.box }} className="z-[120] w-[272px] border border-borderMuted bg-panel/90 backdrop-blur-xl rounded-md shadow-2xl shadow-black/60 p-1.5 font-mono text-t11" data-ledger-more-menu>
             <button
               type="button"
               role="menuitem"

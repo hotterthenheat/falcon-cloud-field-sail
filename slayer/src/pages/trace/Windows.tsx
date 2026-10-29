@@ -115,7 +115,7 @@ const TOOLTIPS: Record<string, string> = {
 const SideSplit = ({ ask, bid, total }: { ask: number; bid: number; total: number }) => (
   <span className="inline-flex flex-col items-end leading-none gap-[3px] align-middle">
     <span className="font-mono tnum text-textPrimary">{num(total)}</span>
-    <span className="font-mono text-[11px] tnum text-textSecondary whitespace-nowrap">
+    <span className="font-mono text-t11 tnum text-textSecondary whitespace-nowrap">
       ask {num(ask)} · bid {num(bid)}
     </span>
   </span>
@@ -195,7 +195,7 @@ const Windows = () => {
         render: q => (
           <span className="inline-flex items-center gap-2 font-mono tnum text-textPrimary">
             {q.label}
-            {q.live && <span className="text-[11px] text-select animate-live-breathe">filling</span>}
+            {q.live && <span className="text-t11 text-select animate-live-breathe">filling</span>}
           </span>
         ),
       },
@@ -266,7 +266,7 @@ const Windows = () => {
                 <>
                   {sel.label} <span className="text-textSecondary">·</span> {num(sel.vol)} <span className="text-textSecondary">contracts</span>
                   {sel.live && (
-                    <span className="ml-2 inline-grid text-[11px]">
+                    <span className="ml-2 inline-grid text-t11">
                       <span className="invisible col-start-1 row-start-1" aria-hidden>still filling</span>
                       <span className={`col-start-1 row-start-1 ${hold.paused ? 'text-warn' : 'text-select animate-live-breathe'}`}>{hold.paused ? 'held' : 'still filling'}</span>
                     </span>
@@ -303,7 +303,7 @@ const Windows = () => {
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
               <span className="inline-flex items-center gap-2 h-7 px-2.5 rounded-md border border-borderSubtle bg-chip font-mono">
-                <span className="text-[11px] font-semibold tnum text-textPrimary">{sel ? `${sel.label} ET` : '—'}</span>
+                <span className="text-t11 font-semibold tnum text-textPrimary">{sel ? `${sel.label} ET` : '—'}</span>
               </span>
               <button type="button" onClick={() => pos >= 0 && pos < quarters.length - 1 && setWin(quarters[pos + 1].idx)} disabled={pos < 0 || pos >= quarters.length - 1} aria-label="Next quarter hour" className={stepBtn}>
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -313,7 +313,7 @@ const Windows = () => {
                 onClick={() => setWin('live')}
                 aria-pressed={addr.cut.win === 'live'}
                 title="Follow the newest quarter hour — the one the clock is in, still filling"
-                className={`h-7 px-2.5 rounded-md border font-mono text-[11px] uppercase tracking-widest transition-colors ${addr.cut.win === 'live' ? 'border-silver/50 bg-silver/[0.06] text-textPrimary' : 'border-borderSubtle bg-chip text-textSecondary hover:text-textPrimary hover:border-borderMuted'}`}
+                className={`h-7 px-2.5 rounded-md border font-mono text-t11 uppercase tracking-widest transition-colors ${addr.cut.win === 'live' ? 'border-silver/50 bg-silver/[0.06] text-textPrimary' : 'border-borderSubtle bg-chip text-textSecondary hover:text-textPrimary hover:border-borderMuted'}`}
                 data-windows-latest
               >
                 Newest

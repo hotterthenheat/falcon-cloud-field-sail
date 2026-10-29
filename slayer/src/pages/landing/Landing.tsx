@@ -395,7 +395,7 @@ const Hero = ({ onLaunch, onPick }: { onLaunch: () => void; onPick: (id: string)
       <div className="flex flex-col">
         <div className="order-1">
           <Eyebrow>For traders</Eyebrow>
-          <h1 className="mt-5 font-light tracking-[-0.045em] leading-[0.98] text-[clamp(2.7rem,6.3vw,5.7rem)] [text-wrap:balance]" data-landing-headline>
+          <h1 className="mt-5 font-light tracking-[-0.045em] leading-[0.98] text-displaySm [text-wrap:balance]" data-landing-headline>
             Trade what you can{' '}
             <span className="relative inline-block whitespace-nowrap">
               <span className={`inline-block px-[0.07em] -mx-[0.07em] ${ground === 'dark' ? 'holo-text' : 'galaxy-text'}`}>see.</span>
@@ -405,7 +405,7 @@ const Hero = ({ onLaunch, onPick }: { onLaunch: () => void; onPick: (id: string)
         </div>
         {/* the paragraph at the left, the door at the right, on one line from `lg` */}
         <div className="order-3 lg:order-2 mt-8 lg:mt-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-x-12 gap-y-6">
-          <p className="max-w-[35rem] lg:max-w-[52rem] text-[16px] sm:text-[17px] leading-[1.55] text-textSecondary">
+          <p className="max-w-[35rem] lg:max-w-[52rem] text-t16 sm:text-t17 leading-[1.55] text-textSecondary">
             Most of what moves a price is public, just scattered. Slayer gathers it into one terminal: the prints, the positions, the levels, the filings. Every page explains itself in plain English.
           </p>
           {/* the door alone. A line stood beside it ("No sign-up. It opens on simulated data.") until 2026-10-01 — Noah: "i
@@ -436,7 +436,7 @@ const PlanRooms = ({ planKey, onPick }: { planKey: PlanKey; onPick: (id: string)
   const n = WALL_ROOMS.filter(r => lit(r.id)).length;
   return (
     <div data-plan-rooms={planKey}>
-      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-textMuted">{n === WALL_ROOMS.length ? `All ${n} rooms` : `${n} of the ${WALL_ROOMS.length} rooms`}</p>
+      <p className="font-mono text-t10 uppercase tracking-[0.2em] text-textMuted">{n === WALL_ROOMS.length ? `All ${n} rooms` : `${n} of the ${WALL_ROOMS.length} rooms`}</p>
       <ul className="mt-3 grid grid-cols-4 gap-x-2 gap-y-2.5">
         {WALL_ROOMS.map(r => {
           const name = r.name.replace(/^The /, '');
@@ -447,12 +447,12 @@ const PlanRooms = ({ planKey, onPick }: { planKey: PlanKey; onPick: (id: string)
                   <span className="block aspect-[1440/1000] overflow-hidden rounded-[5px] border border-borderMuted bg-canvas transition-[transform,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-y-0.5 group-hover:border-textPrimary/40 motion-reduce:transition-none motion-reduce:group-hover:translate-y-0">
                     <img src={wallStill(r.path, theme)} alt="" aria-hidden="true" loading="lazy" decoding="async" draggable={false} className="w-full h-full object-cover object-left-top select-none" />
                   </span>
-                  <span className="mt-1.5 block truncate text-[10.5px] leading-none text-textSecondary group-hover:text-textPrimary transition-colors">{name}</span>
+                  <span className="mt-1.5 block truncate text-t105 leading-none text-textSecondary group-hover:text-textPrimary transition-colors">{name}</span>
                 </button>
               ) : (
                 <div aria-label={`${r.name}: not in this plan`}>
                   <span className="block aspect-[1440/1000] rounded-[5px] border border-dashed border-borderMuted/70" />
-                  <span className="mt-1.5 block truncate text-[10.5px] leading-none text-textMuted/70">{name}</span>
+                  <span className="mt-1.5 block truncate text-t105 leading-none text-textMuted/70">{name}</span>
                 </div>
               )}
             </li>
@@ -484,10 +484,10 @@ const Plan = ({ planKey, period, onChoose, onPick }: { planKey: PlanKey; period:
   return (
     <div className={`flex flex-col lg:grid lg:row-span-7 lg:grid-rows-subgrid py-7 lg:py-8 lg:px-8 first:lg:pl-0 ${featured ? 'max-lg:-mx-4 max-lg:px-4 sm:max-lg:-mx-6 sm:max-lg:px-6 bg-ink/[0.025]' : ''}`} data-landing-plan={planKey}>
       <div className="flex items-center gap-2.5">
-        <h3 className="text-[19px] font-medium tracking-tight">{plan.name}</h3>
-        {featured && <span className="h-5 px-2 inline-flex items-center rounded-full bg-textPrimary text-canvas font-mono text-[9px] font-bold uppercase tracking-widest">All of it</span>}
+        <h3 className="text-t19 font-medium tracking-tight">{plan.name}</h3>
+        {featured && <span className="h-5 px-2 inline-flex items-center rounded-full bg-textPrimary text-canvas font-mono text-t9 font-bold uppercase tracking-widest">All of it</span>}
       </div>
-      <p className="mt-2 max-w-[34ch] text-[14px] leading-snug text-textSecondary" data-plan-for>
+      <p className="mt-2 max-w-[34ch] text-t14 leading-snug text-textSecondary" data-plan-for>
         {PLAN_FOR[planKey]}
       </p>
       {/* the page's big numbers are its prices — the only figures of ours it shows */}
@@ -495,10 +495,10 @@ const Plan = ({ planKey, period, onChoose, onPick }: { planKey: PlanKey; period:
           THE NUMBER ROLLS from one period's price to the other's (Noah, 2026-10-10: "the transition from monthly to yearly should
           be smooth for the numbers") — the house's AnimatedNumber; the period word crossfades beside it; the month line fades in */}
       <p className="mt-6 flex items-baseline gap-2" data-plan-price={period}>
-        <span className="text-[44px] sm:text-[52px] font-light leading-none tracking-[-0.045em] tnum" data-plan-amount={priced.amount ?? undefined}>
+        <span className="text-t44 sm:text-t52 font-light leading-none tracking-[-0.045em] tnum" data-plan-amount={priced.amount ?? undefined}>
           {priced.amount != null ? <AnimatedNumber value={priced.amount} format={fmtDollars} /> : priced.price}
         </span>
-        <span className="font-mono text-[11px] text-textMuted">
+        <span className="font-mono text-t11 text-textMuted">
           <AnimatePresence initial={false} mode="popLayout">
             <motion.span key={priced.period} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
               {priced.period}
@@ -506,7 +506,7 @@ const Plan = ({ planKey, period, onChoose, onPick }: { planKey: PlanKey; period:
           </AnimatePresence>
         </span>
       </p>
-      <p className={`mt-1.5 h-4 font-mono text-[11px] tnum text-textMuted transition-opacity duration-300 ${priced.aMonth ? 'opacity-100' : 'opacity-0'}`} aria-hidden={!priced.aMonth}>
+      <p className={`mt-1.5 h-4 font-mono text-t11 tnum text-textMuted transition-opacity duration-300 ${priced.aMonth ? 'opacity-100' : 'opacity-0'}`} aria-hidden={!priced.aMonth}>
         {priced.aMonth ?? ' '}
       </p>
       <div className="mt-5">
@@ -524,17 +524,17 @@ const Plan = ({ planKey, period, onChoose, onPick }: { planKey: PlanKey; period:
         <PlanRooms planKey={planKey} onPick={onPick} />
       </div>
       <div className="mt-7">
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-textMuted">{LIST_HEAD[planKey]}</p>
+        <p className="font-mono text-t10 uppercase tracking-[0.2em] text-textMuted">{LIST_HEAD[planKey]}</p>
         <ul className="mt-3 border-t border-borderSubtle">
           {adds.map(r => {
             const soon = r.in[planKey] === 'soon';
             return (
-              <li key={r.text} className="py-2.5 border-b border-borderSubtle grid grid-cols-[6.25rem_minmax(0,1fr)_auto] items-baseline gap-x-3 text-[13.5px] leading-snug" data-plan-soon={soon || undefined}>
+              <li key={r.text} className="py-2.5 border-b border-borderSubtle grid grid-cols-[6.25rem_minmax(0,1fr)_auto] items-baseline gap-x-3 text-t135 leading-snug" data-plan-soon={soon || undefined}>
                 <span className="font-medium text-textPrimary">{r.card[0]}</span>
                 <span className="text-textSecondary">{r.card[1]}</span>
                 {/* an ORANGE CAPSULE (Noah, 2026-09-19): a solid pill, the Map's capsules' shape, in the house's orange — `warn` follows the ground,
                     so it is a visible orange on paper too; the dark word on it is the same on both (4.6:1 on paper, 9:1 on black) */}
-                {soon && <span className="self-center h-[20px] px-2 inline-flex items-center rounded-full bg-warn font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#0a0a0a]">Soon</span>}
+                {soon && <span className="self-center h-[20px] px-2 inline-flex items-center rounded-full bg-warn font-mono text-t9 font-bold uppercase tracking-[0.14em] text-onfoil">Soon</span>}
               </li>
             );
           })}
@@ -557,7 +557,7 @@ const PlansSideBySide = () => {
   /* a reader that hears the table hears the words */
   const mark = (h: Holds) =>
     h === 'soon' ? (
-      <span className="h-[20px] px-2 inline-flex items-center rounded-full bg-warn font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#0a0a0a]">Soon</span>
+      <span className="h-[20px] px-2 inline-flex items-center rounded-full bg-warn font-mono text-t9 font-bold uppercase tracking-[0.14em] text-onfoil">Soon</span>
     ) : h ? (
       <>
         <Check className="w-4 h-4 text-silver" strokeWidth={2.25} aria-hidden="true" />
@@ -576,7 +576,7 @@ const PlansSideBySide = () => {
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         aria-controls="landing-plans-table"
-        className="inline-flex items-center gap-2 h-10 pl-4 pr-3.5 rounded-full border border-borderMuted text-[13.5px] font-medium text-textPrimary hover:border-textPrimary/70 hover:bg-ink/[0.06] transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver"
+        className="inline-flex items-center gap-2 h-10 pl-4 pr-3.5 rounded-full border border-borderMuted text-t135 font-medium text-textPrimary hover:border-textPrimary/70 hover:bg-ink/[0.06] transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver"
         data-landing-side-by-side-door
       >
         {open ? 'Fold the plans away' : 'See the plans side by side'}
@@ -597,13 +597,13 @@ const PlansSideBySide = () => {
               <caption className="sr-only">What each plan holds</caption>
               <thead>
                 <tr className="border-b border-borderSubtle">
-                  <th scope="col" className="py-3.5 pr-3 sm:pr-4 align-bottom font-mono text-[11px] font-normal uppercase tracking-[0.22em] text-textMuted">
+                  <th scope="col" className="py-3.5 pr-3 sm:pr-4 align-bottom font-mono text-t11 font-normal uppercase tracking-[0.22em] text-textMuted">
                     What it holds
                   </th>
                   {PLANS.map(p => (
                     <th key={p.key} scope="col" className={`py-3.5 px-1 sm:px-3 w-[62px] sm:w-[17%] text-center align-bottom rounded-t-lg ${wash(p.key)}`}>
-                      <span className="block text-[13px] sm:text-[15px] font-medium text-textPrimary">{p.name}</span>
-                      <span className="block mt-0.5 font-mono text-[10px] sm:text-[11px] font-normal text-textMuted tnum">
+                      <span className="block text-t13 sm:text-t15 font-medium text-textPrimary">{p.name}</span>
+                      <span className="block mt-0.5 font-mono text-t10 sm:text-t11 font-normal text-textMuted tnum">
                         {p.price}
                         {p.monthly != null && <span className="max-sm:hidden"> {p.period}</span>}
                       </span>
@@ -614,7 +614,7 @@ const PlansSideBySide = () => {
               {PLAN_GROUPS.map(g => (
                 <tbody key={g.key} data-plan-group={g.key}>
                   <tr>
-                    <th scope="colgroup" className="pt-5 pb-2 font-mono text-[10px] font-normal uppercase tracking-[0.2em] text-textMuted">
+                    <th scope="colgroup" className="pt-5 pb-2 font-mono text-t10 font-normal uppercase tracking-[0.2em] text-textMuted">
                       {g.says}
                     </th>
                     {PLAN_ORDER.map(k => (
@@ -624,7 +624,7 @@ const PlansSideBySide = () => {
                   {PLAN_ROWS.filter(r => firstPlanOf(r) === g.key).map(r => (
                     <tr key={r.text} className="border-t border-borderSubtle transition-colors hover:bg-ink/[0.025]">
                       <th scope="row" className="py-3 pr-3 sm:pr-4 font-normal">
-                        <span className="flex items-center gap-2.5 text-[13px] sm:text-[14px] leading-snug text-textSecondary">
+                        <span className="flex items-center gap-2.5 text-t13 sm:text-t14 leading-snug text-textSecondary">
                           {r.glyph ? <PageGlyph name={r.glyph} size={15} className="shrink-0" /> : <span className="w-[15px] shrink-0" aria-hidden="true" />}
                           {r.text}
                         </span>
@@ -745,7 +745,7 @@ const Page = () => {
               <Eyebrow>Everything in it</Eyebrow>
               <TwoTone className="mt-6" first="Every page, by room." second="Open any of them." />
             </div>
-            <p className="arrive-line [--i:2] lg:ml-auto max-w-[30rem] text-[16px] leading-relaxed text-textSecondary lg:pb-2" data-everything-count>
+            <p className="arrive-line [--i:2] lg:ml-auto max-w-[30rem] text-t16 leading-relaxed text-textSecondary lg:pb-2" data-everything-count>
               {FEATURE_COUNT} pages and tools in {ROOM_COUNT} rooms, and {SHARED_COUNT} things every room shares. Pick a room to see its pages. Each one opens in the terminal.
             </p>
           </Arrive>
@@ -768,10 +768,10 @@ const Page = () => {
                 { head: 'It never', rows: IT_NEVER, ink: 'text-textSecondary', headInk: 'text-textMuted' },
               ].map(col => (
                 <div key={col.head} className="sm:row-span-5 sm:grid sm:grid-rows-subgrid">
-                  <h3 className={`pb-4 border-b border-borderSubtle font-mono text-[11px] uppercase tracking-[0.22em] ${col.headInk}`}>{col.head}</h3>
+                  <h3 className={`pb-4 border-b border-borderSubtle font-mono text-t11 uppercase tracking-[0.22em] ${col.headInk}`}>{col.head}</h3>
                   <ul className="sm:row-span-4 sm:grid sm:grid-rows-subgrid">
                     {col.rows.map(t => (
-                      <li key={t} className={`py-3.5 border-b border-borderSubtle text-[15px] leading-snug ${col.ink}`}>
+                      <li key={t} className={`py-3.5 border-b border-borderSubtle text-t15 leading-snug ${col.ink}`}>
                         {t}
                       </li>
                     ))}
@@ -791,7 +791,7 @@ const Page = () => {
           <div className="mt-6 flex flex-col lg:flex-row lg:items-end gap-x-16 gap-y-6">
             {/* the refund policy left this headline for the Questions, said kindly (Noah, 2026-09-19) */}
             <TwoTone first="Pick your plan." second="Cancel any time." />
-            <p className="arrive-line [--i:2] lg:ml-auto max-w-[30rem] text-[16px] leading-relaxed text-textSecondary lg:pb-2">
+            <p className="arrive-line [--i:2] lg:ml-auto max-w-[30rem] text-t16 leading-relaxed text-textSecondary lg:pb-2">
               Book is the charts and the book. Tape adds the tape and the record. Desk is everything. Cancel whenever you like and you keep your access until the period you paid for ends.
               {!CHECKOUT_OPEN && ' Payments open at launch.'}
             </p>
@@ -807,14 +807,14 @@ const Page = () => {
                   type="button"
                   onClick={() => setPeriod(p)}
                   aria-pressed={period === p}
-                  className={`h-8 px-4 rounded-full text-[13px] font-medium transition-colors duration-200 ${period === p ? 'bg-textPrimary text-canvas' : 'text-textSecondary hover:text-textPrimary'}`}
+                  className={`h-8 px-4 rounded-full text-t13 font-medium transition-colors duration-200 ${period === p ? 'bg-textPrimary text-canvas' : 'text-textSecondary hover:text-textPrimary'}`}
                   data-landing-period-pick={p}
                 >
                   {p === 'month' ? 'Monthly' : 'Yearly'}
                 </button>
               ))}
             </div>
-            <span className="font-mono text-[11px] text-textMuted">Yearly: two months free</span>
+            <span className="font-mono text-t11 text-textMuted">Yearly: two months free</span>
           </div>
           {/* as many columns as plans on the page — two while the Seat is off it */}
           <div className={`mt-8 grid grid-cols-1 ${PLANS.length >= 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} lg:grid-rows-[repeat(6,auto)_1fr] border-y border-borderSubtle divide-y lg:divide-y-0 lg:divide-x divide-borderSubtle`}>
@@ -822,7 +822,7 @@ const Page = () => {
               <Plan key={p.key} planKey={p.key} period={period} onChoose={choose} onPick={toRoom} />
             ))}
           </div>
-          <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.2em] text-textMuted">Prices in US dollars</p>
+          <p className="mt-5 font-mono text-t10 uppercase tracking-[0.2em] text-textMuted">Prices in US dollars</p>
           <PlansSideBySide />
         </Wrap>
       </Block>
@@ -840,14 +840,14 @@ const Page = () => {
                 <Pill href={`mailto:${MAIL}`} kind="ghost" size="sm" testId="write">
                   {MAIL}
                 </Pill>
-                <span className="text-[13px] text-textMuted">Anything else, ask. A person reads it.</span>
+                <span className="text-t13 text-textMuted">Anything else, ask. A person reads it.</span>
               </div>
             </Arrive>
             <dl className="lg:col-span-7 border-t border-borderSubtle">
               {FAQ.map(f => (
                 <div key={f.q} className="py-7 border-b border-borderSubtle" data-landing-faq>
-                  <dt className="text-[19px] font-medium tracking-tight">{f.q}</dt>
-                  <dd className="mt-2.5 max-w-[62ch] text-[15.5px] leading-relaxed text-textSecondary">{f.a}</dd>
+                  <dt className="text-t19 font-medium tracking-tight">{f.q}</dt>
+                  <dd className="mt-2.5 max-w-[62ch] text-t155 leading-relaxed text-textSecondary">{f.a}</dd>
                 </div>
               ))}
             </dl>
@@ -883,7 +883,7 @@ const Page = () => {
                 { text: 'Seen enough?', ink: 'text-textPrimary' },
                 { text: 'Step inside.', ink: 'text-textMuted' },
               ]}
-              className="mx-auto font-light tracking-[-0.045em] leading-[0.96] text-[clamp(2.75rem,7.4vw,7rem)] [text-wrap:balance]"
+              className="mx-auto font-light tracking-[-0.045em] leading-[0.96] text-displayLg [text-wrap:balance]"
             />
             <div className="mt-10 flex justify-center">
               <Pill href={doorTo()} onClick={door} testId="close">

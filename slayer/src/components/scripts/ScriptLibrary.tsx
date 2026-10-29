@@ -77,7 +77,7 @@ const AlertSwitches = ({ script, chart, paneId }: { script: Script; chart: Chart
   };
   return (
     <div className="col-span-3 mt-1 pt-2 border-t border-borderSubtle/60" data-script-alerts>
-      <div className="pb-1 font-mono text-[8px] uppercase tracking-[0.14em] text-textMuted">
+      <div className="pb-1 font-mono text-t8 uppercase tracking-[0.14em] text-textMuted">
         Tell me when · {ticker} · {pane.timeframe}
       </div>
       {conditions.map(c => {
@@ -85,7 +85,7 @@ const AlertSwitches = ({ script, chart, paneId }: { script: Script; chart: Chart
         const id = `script-alert-${script.id}-${c.id}`;
         return (
           <label key={c.id} htmlFor={id} className="flex items-center gap-3 h-7 cursor-pointer" data-script-alert={c.id}>
-            <span className={`flex-1 min-w-0 truncate font-mono text-[11px] ${on ? 'font-semibold text-silver' : 'text-textPrimary'}`} title={c.message || undefined}>
+            <span className={`flex-1 min-w-0 truncate font-mono text-t11 ${on ? 'font-semibold text-silver' : 'text-textPrimary'}`} title={c.message || undefined}>
               {c.title}
             </span>
             <Switch.Root
@@ -111,12 +111,12 @@ const InputsForm = ({ inputs, chart, paneId, script }: { inputs: ScriptInput[]; 
   const reset = () => void updateOnPane(paneId, { ...chart, inputs: {} });
   const val = (i: ScriptInput): ScriptInputValue => chart.inputs[i.id] ?? i.default;
   const SOURCES = ['open', 'high', 'low', 'close', 'hl2', 'hlc3', 'ohlc4'];
-  const field = 'h-7 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-[11px] text-textPrimary outline-none focus:border-borderMuted';
+  const field = 'h-7 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-t11 text-textPrimary outline-none focus:border-borderMuted';
   return (
     <div className="mx-2 mb-2 px-3 py-2.5 rounded-md border border-borderSubtle/60 bg-chip grid grid-cols-3 gap-x-4 gap-y-2" data-script-inputs>
       {inputs.map(i => (
         <label key={i.id} className="flex items-center gap-2 min-w-0" title={i.tooltip}>
-          <span className="w-[120px] shrink-0 truncate text-[10px] text-textSecondary">{i.title}</span>
+          <span className="w-[120px] shrink-0 truncate text-t10 text-textSecondary">{i.title}</span>
           {i.kind === 'bool' ? (
             <input type="checkbox" checked={!!val(i)} onChange={e => set(i.id, e.target.checked)} className="accent-[rgb(var(--select))]" />
           ) : i.kind === 'color' ? (
@@ -146,7 +146,7 @@ const InputsForm = ({ inputs, chart, paneId, script }: { inputs: ScriptInput[]; 
       ))}
       {inputs.length > 0 && (
         <div className="col-span-3 flex justify-end">
-          <button onClick={reset} className="font-mono text-[9px] uppercase tracking-wider text-textMuted hover:text-textPrimary transition-colors">
+          <button onClick={reset} className="font-mono text-t9 uppercase tracking-wider text-textMuted hover:text-textPrimary transition-colors">
             Back to the script's defaults
           </button>
         </div>
@@ -381,11 +381,11 @@ const ScriptLibrary = ({
         widthClass="max-w-[1080px]"
         header={
           <div className="flex items-center gap-3 min-w-0">
-            <span className="holo-bg w-6 h-6 rounded-[6px] shrink-0 flex items-center justify-center font-mono text-[10px] font-bold text-[#0a0a0a]" aria-hidden>
+            <span className="holo-bg w-6 h-6 rounded-[6px] shrink-0 flex items-center justify-center font-mono text-t10 font-bold text-onfoil" aria-hidden>
               &gt;_
             </span>
-            <span className="text-[15px] font-semibold leading-tight text-textPrimary">Indicators and scripts</span>
-            <span className="font-mono text-[10px] text-textPrimary whitespace-nowrap" data-library-count>
+            <span className="text-t15 font-semibold leading-tight text-textPrimary">Indicators and scripts</span>
+            <span className="font-mono text-t10 text-textPrimary whitespace-nowrap" data-library-count>
               {onThisPane} on this pane
             </span>
           </div>
@@ -395,7 +395,7 @@ const ScriptLibrary = ({
             onClick={() => edit(null)}
             disabled={!fullscreen}
             title={fullscreen ? 'A new script on the template, in the editor beside the chart' : EDITOR_SHUT}
-            className="inline-flex items-center h-7 px-2.5 rounded-md border border-silver/40 bg-silver/[0.06] font-mono text-[10px] uppercase tracking-wider text-textPrimary hover:bg-silver/[0.1] transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-silver/[0.06]"
+            className="inline-flex items-center h-7 px-2.5 rounded-md border border-silver/40 bg-silver/[0.06] font-mono text-t10 uppercase tracking-wider text-textPrimary hover:bg-silver/[0.1] transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-silver/[0.06]"
             data-library-write
           >
             Write your own
@@ -411,7 +411,7 @@ const ScriptLibrary = ({
             placeholder="Search every shelf — a name, a word, a group"
             spellCheck={false}
             data-library-search
-            className="flex-1 min-w-0 bg-transparent font-mono text-[12px] text-textPrimary placeholder:text-textSecondary outline-none"
+            className="flex-1 min-w-0 bg-transparent font-mono text-t12 text-textPrimary placeholder:text-textSecondary outline-none"
           />
         </label>
 
@@ -424,7 +424,7 @@ const ScriptLibrary = ({
           <nav className="flex flex-col gap-1 pr-4 border-r border-borderSubtle overflow-y-auto" aria-label="Shelves">
             {(['Personal', 'Built in'] as const).map(section => (
               <div key={section} className="mb-2">
-                <div className="px-2 pb-1 font-mono text-[8px] uppercase tracking-widest text-textSecondary">{section}</div>
+                <div className="px-2 pb-1 font-mono text-t8 uppercase tracking-widest text-textSecondary">{section}</div>
                 {SHELVES.filter(s => s.section === section && (s.key !== 'chart' || !!onIndicators)).map(s => {
                   const on = shelf === s.key && !q;
                   return (
@@ -436,10 +436,10 @@ const ScriptLibrary = ({
                       }}
                       aria-pressed={on}
                       data-library-shelf={s.key}
-                      className={`w-full flex items-center justify-between h-8 px-2 rounded-md text-[12px] transition-colors ${on ? 'bg-silver/[0.08] text-textPrimary shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'text-textPrimary hover:bg-ink/[0.05]'}`}
+                      className={`w-full flex items-center justify-between h-8 px-2 rounded-md text-t12 transition-colors ${on ? 'bg-silver/[0.08] text-textPrimary shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'text-textPrimary hover:bg-ink/[0.05]'}`}
                     >
                       <span className={on ? 'font-semibold' : ''}>{s.label}</span>
-                      <span className="font-mono text-[10px] tnum text-textPrimary">{counts[s.key]}</span>
+                      <span className="font-mono text-t10 tnum text-textPrimary">{counts[s.key]}</span>
                     </button>
                   );
                 })}
@@ -451,7 +451,7 @@ const ScriptLibrary = ({
               new search fades its rows up softly (the house soft-in, keyed) instead of
               swapping them in a frame */}
           <div className="min-w-0 h-full flex flex-col" role="table" aria-label="Scripts">
-            <div className="grid grid-cols-[60px_minmax(0,1fr)_96px_28px_28px_40px] items-center h-7 px-2 font-mono text-[8px] uppercase tracking-widest text-textSecondary border-b border-borderSubtle shrink-0" role="row">
+            <div className="grid grid-cols-[60px_minmax(0,1fr)_96px_28px_28px_40px] items-center h-7 px-2 font-mono text-t8 uppercase tracking-widest text-textSecondary border-b border-borderSubtle shrink-0" role="row">
               <span>Kind</span>
               <span>Name</span>
               <span>Shelf</span>
@@ -462,19 +462,19 @@ const ScriptLibrary = ({
             <div key={`${q ? 'search' : shelf}|${q}`} className="flex-1 min-h-0 overflow-y-auto animate-soft-in" data-library-rows>
             {overlays && onOverlays && (shelf === 'chart' || !!q) && (
               <div>
-                <div className="px-2 pt-3 pb-1 font-mono text-[8px] uppercase tracking-widest text-textSecondary">On the chart</div>
+                <div className="px-2 pt-3 pb-1 font-mono text-t8 uppercase tracking-widest text-textSecondary">On the chart</div>
                 {OVERLAY_ROWS.filter(r => !q || `${r.label} ${r.hint}`.toLowerCase().includes(q)).map(r => {
                   const on = !!overlays[r.key];
                   const held = (barClock ?? 'time') !== 'time' && CLOCK_HELD.has(r.key);
                   return (
                     <div key={r.key}>
                       <div role="row" className={`grid grid-cols-[60px_minmax(0,1fr)_96px_28px_28px_40px] items-center h-[38px] px-2 rounded-md ${on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}>
-                        <span className="inline-flex w-fit items-center font-mono text-[8px] font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border bg-ink/[0.1] border-borderMuted text-textPrimary">chart</span>
+                        <span className="inline-flex w-fit items-center font-mono text-t8 font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border bg-ink/[0.1] border-borderMuted text-textPrimary">chart</span>
                         <span className="min-w-0 flex items-baseline gap-2">
-                          <span className="font-semibold text-[12px] text-textPrimary whitespace-nowrap">{r.label}</span>
-                          <span className="text-[10.5px] text-textPrimary truncate">{held ? 'Needs time bars' : r.hint}</span>
+                          <span className="font-semibold text-t12 text-textPrimary whitespace-nowrap">{r.label}</span>
+                          <span className="text-t105 text-textPrimary truncate">{held ? 'Needs time bars' : r.hint}</span>
                         </span>
-                        <span className="font-mono text-[10px] text-textPrimary whitespace-nowrap">{r.pane}</span>
+                        <span className="font-mono text-t10 text-textPrimary whitespace-nowrap">{r.pane}</span>
                         <span />
                         <span />
                         <span className="flex justify-end">
@@ -495,25 +495,25 @@ const ScriptLibrary = ({
                       </div>
                       {on && r.key === 'trails' && onTrailGreek && (
                         <div className="flex items-center gap-2 pl-16 pr-2 pb-1">
-                          <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">Greek</span>
+                          <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Greek</span>
                           {(['gex', 'dex', 'vex'] as const).map(g => (
-                            <button key={g} type="button" onClick={() => onTrailGreek(g)} aria-pressed={trailGreek === g} className={`px-1.5 py-0.5 rounded font-mono text-[10px] uppercase ${trailGreek === g ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{g}</button>
+                            <button key={g} type="button" onClick={() => onTrailGreek(g)} aria-pressed={trailGreek === g} className={`px-1.5 py-0.5 rounded font-mono text-t10 uppercase ${trailGreek === g ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{g}</button>
                           ))}
                         </div>
                       )}
                       {on && r.key === 'cone' && onConeHorizon && (
                         <div className="flex items-center gap-2 pl-16 pr-2 pb-1">
-                          <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">Horizon</span>
+                          <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Horizon</span>
                           {(['session', 'week', 'next'] as const).map(h => (
-                            <button key={h} type="button" onClick={() => onConeHorizon(h)} aria-pressed={coneHorizon === h} className={`px-1.5 py-0.5 rounded font-mono text-[10px] ${coneHorizon === h ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{h === 'session' ? 'Session' : h === 'week' ? 'Week' : 'Next'}</button>
+                            <button key={h} type="button" onClick={() => onConeHorizon(h)} aria-pressed={coneHorizon === h} className={`px-1.5 py-0.5 rounded font-mono text-t10 ${coneHorizon === h ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{h === 'session' ? 'Session' : h === 'week' ? 'Week' : 'Next'}</button>
                           ))}
                         </div>
                       )}
                       {on && r.key === 'session' && onSessionOr && (
                         <div className="flex items-center gap-2 pl-16 pr-2 pb-1">
-                          <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">Opening range</span>
+                          <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Opening range</span>
                           {OPENING_RANGES.map(m => (
-                            <button key={m} type="button" onClick={() => onSessionOr(m)} aria-pressed={sessionOr === m} className={`px-1.5 py-0.5 rounded font-mono text-[10px] tnum ${sessionOr === m ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{m}m</button>
+                            <button key={m} type="button" onClick={() => onSessionOr(m)} aria-pressed={sessionOr === m} className={`px-1.5 py-0.5 rounded font-mono text-t10 tnum ${sessionOr === m ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{m}m</button>
                           ))}
                         </div>
                       )}
@@ -523,15 +523,15 @@ const ScriptLibrary = ({
               </div>
             )}
             {rows.length === 0 && !(overlays && onOverlays && (shelf === 'chart' || !!q)) && (
-              <div className="h-[200px] flex items-center justify-center font-mono text-[10px] uppercase tracking-widest text-textMuted">
+              <div className="h-[200px] flex items-center justify-center font-mono text-t10 uppercase tracking-widest text-textMuted">
                 {q ? 'Nothing on any shelf matches' : shelf === 'mine' ? 'Nothing of your own yet — Write your own, or copy a built-in' : shelf === 'favourites' ? 'No favourites yet — the star on any row keeps it here' : shelf === 'recent' ? 'Nothing used yet — what you add to a chart or open lands here, newest first' : 'Nothing here'}
               </div>
             )}
             {groups.map(g => (
               <div key={g.title}>
-                <div className="px-2 pt-3 pb-1 font-mono text-[8px] uppercase tracking-widest text-textSecondary">{g.title}</div>
+                <div className="px-2 pt-3 pb-1 font-mono text-t8 uppercase tracking-widest text-textSecondary">{g.title}</div>
                 {g.title === 'Slayer' && (
-                  <p className="px-2 pb-1 font-mono text-[10px] text-textSecondary leading-snug">slayer.netGex is the minute net on the house sign. Negative is call-dominant. A bar with no snapshot is na.</p>
+                  <p className="px-2 pb-1 font-mono text-t10 text-textSecondary leading-snug">slayer.netGex is the minute net on the house sign. Negative is call-dominant. A bar with no snapshot is na.</p>
                 )}
                 {g.rows.map(r => {
                   const idx = rows.indexOf(r);
@@ -549,23 +549,23 @@ const ScriptLibrary = ({
                       >
                         {/* THE KIND AS A FILLED TAG (the partner, 2026-10-18: "too muted and ashy" — an outline in the muted ink on
                             a 28-grey hairline was near invisible): SLAYER the house's silver tag, PINE and CHART the chip ground */}
-                        <span className={`inline-flex w-fit items-center font-mono text-[8px] font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border ${r.kind === 'slayer' ? 'bg-silverFill border-silverFill text-[#0a0a0a]' : 'bg-ink/[0.1] border-borderMuted text-textPrimary'}`} data-library-kind={r.kind}>{KIND_WORD[r.kind]}</span>
+                        <span className={`inline-flex w-fit items-center font-mono text-t8 font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border ${r.kind === 'slayer' ? 'bg-silverFill border-silverFill text-onfoil' : 'bg-ink/[0.1] border-borderMuted text-textPrimary'}`} data-library-kind={r.kind}>{KIND_WORD[r.kind]}</span>
                         <span className="min-w-0 flex items-baseline gap-2">
                           {r.script && fullscreen ? (
-                            <button onClick={() => edit(r.script!)} className="font-semibold text-[12px] text-textPrimary hover:underline underline-offset-2 whitespace-nowrap" title="Open in the editor">
+                            <button onClick={() => edit(r.script!)} className="font-semibold text-t12 text-textPrimary hover:underline underline-offset-2 whitespace-nowrap" title="Open in the editor">
                               {r.title}
                             </button>
                           ) : r.script ? (
-                            <span className="font-semibold text-[12px] text-textPrimary whitespace-nowrap" title={EDITOR_SHUT}>
+                            <span className="font-semibold text-t12 text-textPrimary whitespace-nowrap" title={EDITOR_SHUT}>
                               {r.title}
                             </span>
                           ) : (
-                            <span className="font-semibold text-[12px] text-textPrimary whitespace-nowrap">{r.title}</span>
+                            <span className="font-semibold text-t12 text-textPrimary whitespace-nowrap">{r.title}</span>
                           )}
-                          <span className="text-[10.5px] text-textPrimary truncate">{r.description}</span>
-                          {r.script?.status === 'error' && <span className="font-mono text-[8px] uppercase tracking-widest text-bear">does not read</span>}
+                          <span className="text-t105 text-textPrimary truncate">{r.description}</span>
+                          {r.script?.status === 'error' && <span className="font-mono text-t8 uppercase tracking-widest text-bear">does not read</span>}
                         </span>
-                        <span className="font-mono text-[10px] text-textPrimary whitespace-nowrap" title={r.pane === 'own' ? 'Takes its own pane under the tape — two at most' : 'Draws on the tape itself'}>
+                        <span className="font-mono text-t10 text-textPrimary whitespace-nowrap" title={r.pane === 'own' ? 'Takes its own pane under the tape — two at most' : 'Draws on the tape itself'}>
                           {r.pane === 'own' ? 'own pane' : 'on the tape'}
                         </span>
                         <span>
@@ -607,7 +607,7 @@ const ScriptLibrary = ({
         </div>
 
         {/* THE FOOT */}
-        <div className="flex items-center gap-3 pt-3 border-t border-borderSubtle font-mono text-[10px] text-textSecondary" data-library-foot>
+        <div className="flex items-center gap-3 pt-3 border-t border-borderSubtle font-mono text-t10 text-textSecondary" data-library-foot>
           <span>
             <span className="text-textPrimary">{shipped}</span> shipped · <span className="text-textPrimary">{allRows.mine.length}</span> of your own
           </span>

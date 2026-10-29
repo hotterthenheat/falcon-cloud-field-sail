@@ -127,7 +127,7 @@ const LEG_MIN = 80;
 /* a bit smaller than it was (the owner, 2026-10-14) */
 export const CARD_W = 224;
 const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
-const head = 'font-mono text-[11px] font-semibold uppercase tracking-widest';
+const head = 'font-mono text-t11 font-semibold uppercase tracking-widest';
 
 interface Row {
   strike: number;
@@ -155,7 +155,7 @@ const Cell = ({ value, shown, leg, cap, mode, paper, gi, first, last, rowH = ROW
               just be the color of the strike and show on the hover card but not on the actual matrix view") — the words
               that stood here since 2026-10-14 are the strike's ink and the card's; the spacer keeps the figure at the right */}
           <span aria-hidden />
-          <span className={`font-mono text-[12px] tnum leading-none whitespace-nowrap ${leg === 'net' ? 'font-bold text-textPrimary' : 'font-medium text-textPrimary'} ${level ? 'underline decoration-dotted underline-offset-2' : ''}`} style={level ? { textDecorationColor: level.ink } : undefined}>{pending ? '—' : fmtUsd(shown)}</span>
+          <span className={`font-mono text-t12 tnum leading-none whitespace-nowrap ${leg === 'net' ? 'font-bold text-textPrimary' : 'font-medium text-textPrimary'} ${level ? 'underline decoration-dotted underline-offset-2' : ''}`} style={level ? { textDecorationColor: level.ink } : undefined}>{pending ? '—' : fmtUsd(shown)}</span>
         </div>
         {/* the track under every figure, the bar on it — the width with the data, the ink with the Colours switch */}
         <span className={`relative block w-full h-[3px] mt-[5px] rounded-full ${paper ? 'bg-ink/[0.1]' : 'bg-ink/[0.08]'}`} data-matrix-track>
@@ -338,12 +338,12 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
       <>
         {fmtStrike(r.strike)}
         {tag && (
-          <span className="text-[11px] uppercase tracking-widest font-normal" style={{ color: tag.ink }}>
+          <span className="text-t11 uppercase tracking-widest font-normal" style={{ color: tag.ink }}>
             {tag.word}
           </span>
         )}
         {you && (
-          <span className="text-[11px] uppercase tracking-widest font-normal" style={{ color: SILVER }}>
+          <span className="text-t11 uppercase tracking-widest font-normal" style={{ color: SILVER }}>
             you
           </span>
         )}
@@ -365,7 +365,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
     );
     const words = <span style={{ color: verdictInk }}>{verdict}</span>;
     return still ? (
-      <PointerCard x={start.x} y={start.y} still dense width={CARD_W} testId="data-matrix-card" testValue={r.strike} title={title} aside={aside} foot={<>{words}<span className="block mt-0.5 text-[11px] uppercase tracking-wider text-textMuted">kept · {letGo}</span></>}>
+      <PointerCard x={start.x} y={start.y} still dense width={CARD_W} testId="data-matrix-card" testValue={r.strike} title={title} aside={aside} foot={<>{words}<span className="block mt-0.5 text-t11 uppercase tracking-wider text-textMuted">kept · {letGo}</span></>}>
         {body}
       </PointerCard>
     ) : (
@@ -572,7 +572,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
         {/* the strike in the first ink (the owner, 2026-10-14: "strike numbers — what the row IS — are dim grey") */}
         {/* the extra foot room lifts the strike onto its figures' line — the cells stack a 3px beam under the figure, so a
             centred strike sat ~4px below the numbers it names (the UI sweep, 2026-10-22) */}
-        <td className={`pl-2 pr-1.5 ${rowH < 20 ? 'pt-0 pb-1' : 'pt-0.5 pb-2'} leading-tight bg-inset text-right font-mono text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap`}>
+        <td className={`pl-2 pr-1.5 ${rowH < 20 ? 'pt-0 pb-1' : 'pt-0.5 pb-2'} leading-tight bg-inset text-right font-mono text-t11 font-semibold tnum text-textPrimary whitespace-nowrap`}>
           {/* THE LEVEL IN THE STRIKE'S INK (strikeRole.ts, 2026-10-13): the words after it made the column as wide as its
               widest label, and every plain strike carried the gap */}
           <span
@@ -617,7 +617,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   return (
     <div className="h-full min-h-0 flex flex-col">
       {moveSet && (
-        <div className="shrink-0 h-7 flex items-center gap-2 px-3 border-b border-borderSubtle font-mono text-[11px] text-textSecondary whitespace-nowrap overflow-x-auto" data-matrix-moves={movePrices?.length ?? 0}>
+        <div className="shrink-0 h-7 flex items-center gap-2 px-3 border-b border-borderSubtle font-mono text-t11 text-textSecondary whitespace-nowrap overflow-x-auto" data-matrix-moves={movePrices?.length ?? 0}>
           {movePrices && movePrices.length > 0 ? `${movePrices.length} biggest ${movePrices.length === 1 ? 'move' : 'moves'} on the chart` : 'No swing on the chart yet'}
           {movePrices && movePrices.length > 0 && <span className="text-textMuted">· {movePrices.map(s => s.toFixed(2)).join(' · ')}</span>}
         </div>
@@ -654,7 +654,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
             <th className={`${head} !tracking-normal pl-2 pr-1.5 pt-2 pb-1 text-right text-textSecondary border-b border-borderSubtle bg-panel`}>
               {/* THE COLUMN'S WIDTH IS RESERVED (2026-10-12, the replay): the widest row this table can print, set
                   invisibly, so a wall's words moving from row to row never move the column or the cells beside it */}
-              <span ref={setReserve} aria-hidden className="invisible block h-0 w-max overflow-hidden whitespace-nowrap normal-case tracking-normal text-[11px] font-semibold tnum">
+              <span ref={setReserve} aria-hidden className="invisible block h-0 w-max overflow-hidden whitespace-nowrap normal-case tracking-normal text-t11 font-semibold tnum">
                 {cents ? `${Math.floor(Math.max(...rows.map(r => r.strike), 0))}.00` : rows.map(r => fmtStrike(r.strike)).reduce((a, b) => (b.length > a.length ? b : a), '')}
               </span>
               <span ref={setStrikeWord}>Strike</span>

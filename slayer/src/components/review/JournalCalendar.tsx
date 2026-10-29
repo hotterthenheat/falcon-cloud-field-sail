@@ -102,13 +102,13 @@ const JournalCalendar = ({ rows, onOpen, onDayNote = setDayNote }: Props) => {
         <button type="button" onClick={() => setMonth(months[at - 1])} disabled={at <= 0} title="The month before" aria-label="The month before" className={door} data-calendar-prev>
           <ChevronLeft className="w-3.5 h-3.5" />
         </button>
-        <span className="min-w-[132px] text-center text-[13px] font-semibold text-textPrimary" data-calendar-month>
+        <span className="min-w-[132px] text-center text-t13 font-semibold text-textPrimary" data-calendar-month>
           {MONTHS[m - 1]} {y}
         </span>
         <button type="button" onClick={() => setMonth(months[at + 1])} disabled={at < 0 || at >= months.length - 1} title="The month after" aria-label="The month after" className={door} data-calendar-next>
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
-        <span className="ml-auto font-mono text-[11px] tnum text-textSecondary whitespace-nowrap">
+        <span className="ml-auto font-mono text-t11 tnum text-textSecondary whitespace-nowrap">
           {inMonth.length} {inMonth.length === 1 ? 'trade' : 'trades'} · <span className={dirInk(net)}>{usdSigned(net, 0)}</span>
           {days.length > 0 && (
             <span className="text-textMuted">
@@ -122,7 +122,7 @@ const JournalCalendar = ({ rows, onOpen, onDayNote = setDayNote }: Props) => {
       <div className="border-t border-borderSubtle max-lg:overflow-x-auto">
         <div className="grid grid-cols-5 gap-px bg-borderSubtle/60 max-lg:min-w-[600px]">
           {WEEKDAYS.map(w => (
-            <div key={w} className="bg-panel px-3 h-7 flex items-center font-mono text-[9px] font-semibold uppercase tracking-widest text-[rgb(var(--grid-head))]">
+            <div key={w} className="bg-panel px-3 h-7 flex items-center font-mono text-t9 font-semibold uppercase tracking-widest text-gridHead">
               {w}
             </div>
           ))}
@@ -148,12 +148,12 @@ const JournalCalendar = ({ rows, onOpen, onDayNote = setDayNote }: Props) => {
                   data-calendar-day={d}
                   data-trades={trades.length}
                 >
-                  <span className={`font-mono text-[11px] font-bold tnum ${on ? 'text-silver' : trades.length ? 'text-textPrimary' : 'text-textMuted'}`}>{Number(d.slice(8))}</span>
+                  <span className={`font-mono text-t11 font-bold tnum ${on ? 'text-silver' : trades.length ? 'text-textPrimary' : 'text-textMuted'}`}>{Number(d.slice(8))}</span>
                   {noted && <span className="absolute top-2.5 right-3 w-1.5 h-1.5 rounded-full bg-silver" title="This day has words of its own" />}
                   {trades.length > 0 && (
                     <span className="mt-1.5 block">
-                      <span className={`block font-mono text-[13px] font-semibold tnum ${dirInk(made)}`}>{usdSigned(made, 0)}</span>
-                      <span className="block font-mono text-[9px] tnum text-textMuted">
+                      <span className={`block font-mono text-t13 font-semibold tnum ${dirInk(made)}`}>{usdSigned(made, 0)}</span>
+                      <span className="block font-mono text-t9 tnum text-textMuted">
                         {trades.length} {trades.length === 1 ? 'trade' : 'trades'} · {pct(won / trades.length)} won
                       </span>
                     </span>
@@ -168,8 +168,8 @@ const JournalCalendar = ({ rows, onOpen, onDayNote = setDayNote }: Props) => {
       {day && (
         <div key={day} className="border-t border-borderSubtle animate-soft-in" data-calendar-open={day}>
           <div className="px-5 py-2.5 flex items-center gap-3">
-            <span className="text-[13px] font-semibold text-textPrimary">{dateOf(day).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
-            <span className={`font-mono text-[12px] font-semibold tnum ${dirInk(open.reduce((a, r) => a + r.t.pnl, 0))}`}>{usdSigned(open.reduce((a, r) => a + r.t.pnl, 0))}</span>
+            <span className="text-t13 font-semibold text-textPrimary">{dateOf(day).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+            <span className={`font-mono text-t12 font-semibold tnum ${dirInk(open.reduce((a, r) => a + r.t.pnl, 0))}`}>{usdSigned(open.reduce((a, r) => a + r.t.pnl, 0))}</span>
           </div>
           {bySession.map(list => {
             const s = list[0].s;
@@ -177,23 +177,23 @@ const JournalCalendar = ({ rows, onOpen, onDayNote = setDayNote }: Props) => {
             return (
               <div key={s.id} className="border-t border-borderSubtle/70 px-5 py-3 grid gap-x-8 gap-y-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" data-calendar-session={s.id}>
                 <div className="min-w-0">
-                  <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted truncate">{s.name}</div>
+                  <div className="font-mono text-t9 uppercase tracking-widest text-textMuted truncate">{s.name}</div>
                   <div className="mt-1.5 flex flex-col">
                     {list.map(r => (
                       <button key={r.key} type="button" onClick={() => onOpen(r)} className="group flex items-center gap-3 h-9 border-b border-borderSubtle/60 text-left hover:bg-ink/[0.03] transition-colors" title="Open the trade" data-calendar-trade={r.key}>
                         {r.fut ? (
-                          <span className="inline-flex items-center gap-1.5 font-mono text-[11px]">
+                          <span className="inline-flex items-center gap-1.5 font-mono text-t11">
                             <span className="font-semibold text-textPrimary">{r.t.contract}</span>
                             <span className={`font-semibold ${r.t.long ? 'text-bull' : 'text-bear'}`}>{r.t.long ? 'long' : 'short'}</span>
                           </span>
                         ) : (
                           <ContractLabel contract={contractWords(r.t.contract)} right={r.t.contract.right} logo={r.t.contract.ticker} size="sm" />
                         )}
-                        <span className="font-mono text-[10px] tnum text-textMuted whitespace-nowrap">
+                        <span className="font-mono text-t10 tnum text-textMuted whitespace-nowrap">
                           {whenWords(r, r.t.closed).split(' · ')[1] ?? ''} · {ENDED[r.t.how]}
                         </span>
-                        <span className={`ml-auto font-mono text-[11px] font-semibold tnum whitespace-nowrap ${dirInk(r.t.pnl)}`}>
-                          {usdSigned(r.t.pnl)} <span className="text-[10px] font-normal opacity-80">{r.t.r != null ? rWords(r.t.r) : ''}</span>
+                        <span className={`ml-auto font-mono text-t11 font-semibold tnum whitespace-nowrap ${dirInk(r.t.pnl)}`}>
+                          {usdSigned(r.t.pnl)} <span className="text-t10 font-normal opacity-80">{r.t.r != null ? rWords(r.t.r) : ''}</span>
                         </span>
                         <ChevronRight className="w-3 h-3 text-textMuted group-hover:text-textPrimary transition-colors" />
                       </button>
@@ -208,10 +208,10 @@ const JournalCalendar = ({ rows, onOpen, onDayNote = setDayNote }: Props) => {
                     ] as const
                   ).map(([key, ask, hint]) => (
                     <label key={key} className="flex flex-col gap-1.5 min-w-0">
-                      <span className="text-[12px] font-medium text-textPrimary">{ask}</span>
+                      <span className="text-t12 font-medium text-textPrimary">{ask}</span>
                       <textarea
                         key={`${s.id}:${day}:${key}`}
-                        className="min-h-[84px] px-3 py-2 rounded-md border border-borderSubtle bg-panel text-[12px] leading-relaxed text-textPrimary placeholder:text-textMuted outline-none focus:border-silver/60 transition-colors resize-y"
+                        className="min-h-[84px] px-3 py-2 rounded-md border border-borderSubtle bg-panel text-t12 leading-relaxed text-textPrimary placeholder:text-textMuted outline-none focus:border-silver/60 transition-colors resize-y"
                         defaultValue={note[key] ?? ''}
                         onBlur={e => {
                           const v = e.target.value.trim();

@@ -228,7 +228,7 @@ export type TrendByTf = Partial<Record<Timeframe, TrendState | null>>;
     confluence's read for a timeframe, as a small glyph after its label — up in the bull ink, down in the bear, flat
     muted, no view a dash. The title says it in words. */
 const TrendGlyph = ({ state }: { state: TrendState | null }) => (
-  <span aria-hidden className={`text-[8px] leading-none ${state === 'up' ? 'text-bull' : state === 'down' ? 'text-bear' : 'text-textMuted'}`} data-tf-trend={state ?? 'none'}>
+  <span aria-hidden className={`text-t8 leading-none ${state === 'up' ? 'text-bull' : state === 'down' ? 'text-bear' : 'text-textMuted'}`} data-tf-trend={state ?? 'none'}>
     {state === null ? '–' : TREND_GLYPH[state]}
   </span>
 );
@@ -270,7 +270,7 @@ export const TimeframeStrip = ({
             aria-pressed={active}
             onClick={() => onChange(opt.value)}
             title={trendTitle(opt.label, state)}
-            className={`relative px-2 py-1 rounded-full font-mono text-[11px] transition-colors ${
+            className={`relative px-2 py-1 rounded-full font-mono text-t11 transition-colors ${
               active
                 ? 'text-textPrimary font-semibold'
                 : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.03]'
@@ -426,7 +426,7 @@ const Dropdown = ({
       aria-haspopup="menu"
       aria-expanded={open}
       aria-label={label ? undefined : title}
-      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-[10px] uppercase tracking-wider transition-colors ${
+      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors ${
         open
           ? 'bg-ink/[0.07] text-textPrimary'
           : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.03]'
@@ -667,7 +667,7 @@ const ChartToolbar = ({
                     onTimeframe(opt.value);
                     setOpenMenu(null);
                   }}
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-[11px] transition-colors ${
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-t11 transition-colors ${
                     active ? 'bg-ink/[0.06] text-textPrimary' : 'text-textSecondary hover:bg-ink/[0.03]'
                   }`}
                 >
@@ -732,7 +732,7 @@ const ChartToolbar = ({
                       onChartStyle(opt.value);
                       setOpenMenu(null);
                     }}
-                    className={`flex items-center gap-2.5 px-2.5 ${dense ? 'py-1' : 'py-1.5'} rounded font-mono text-[11px] transition-colors ${
+                    className={`flex items-center gap-2.5 px-2.5 ${dense ? 'py-1' : 'py-1.5'} rounded font-mono text-t11 transition-colors ${
                       opt.value === chartStyle
                         ? 'bg-ink/[0.06] text-textPrimary font-semibold'
                         : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.03]'
@@ -751,7 +751,7 @@ const ChartToolbar = ({
                     Opening range's grammar (a docked pane's menu) */}
                 {onPriceScale && dense && (
                   <div className="mt-1 pt-1.5 px-2.5 pb-1 border-t border-borderSubtle flex items-center gap-2">
-                    <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted shrink-0">Price scale</span>
+                    <span className="font-mono text-t9 uppercase tracking-widest text-textMuted shrink-0">Price scale</span>
                     <span
                       role="group"
                       aria-label="Price scale"
@@ -769,7 +769,7 @@ const ChartToolbar = ({
                             }}
                             aria-pressed={live}
                             title={priceScaleLock ? `${priceScaleLock.reason} — the axis is held` : `${opt.label} — ${opt.blurb}`}
-                            className={`px-1.5 py-0.5 rounded font-mono text-[10px] tnum transition-colors ${priceScaleLock ? 'cursor-not-allowed' : ''} ${
+                            className={`px-1.5 py-0.5 rounded font-mono text-t10 tnum transition-colors ${priceScaleLock ? 'cursor-not-allowed' : ''} ${
                               live
                                 ? 'bg-ink/[0.16] text-textPrimary font-semibold'
                                 : `text-textSecondary ${priceScaleLock ? '' : 'hover:text-textPrimary hover:bg-ink/[0.06]'}`
@@ -784,7 +784,7 @@ const ChartToolbar = ({
                 )}
                 {onPriceScale && !dense && (
                   <>
-                    <span className="mt-1 mb-0.5 px-2.5 pt-1.5 border-t border-borderSubtle font-mono text-[9px] uppercase tracking-widest text-textMuted">
+                    <span className="mt-1 mb-0.5 px-2.5 pt-1.5 border-t border-borderSubtle font-mono text-t9 uppercase tracking-widest text-textMuted">
                       Price scale
                     </span>
                     {PRICE_SCALES.map(opt => {
@@ -803,7 +803,7 @@ const ChartToolbar = ({
                             onPriceScale(opt.value);
                             setOpenMenu(null);
                           }}
-                          className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded font-mono text-[11px] text-left transition-colors ${
+                          className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded font-mono text-t11 text-left transition-colors ${
                             priceScaleLock ? 'cursor-not-allowed opacity-60' : ''
                           } ${
                             live
@@ -816,17 +816,17 @@ const ChartToolbar = ({
                           </span>
                           <span className="flex flex-col min-w-0">
                             <span className="truncate">{opt.label}</span>
-                            <span className="text-[9px] text-textMuted truncate">{opt.blurb}</span>
+                            <span className="text-t9 text-textMuted truncate">{opt.blurb}</span>
                           </span>
                           {live && <Check className="w-3 h-3 ml-auto shrink-0 text-select" />}
                           {!live && chosen && (
-                            <span className="ml-auto shrink-0 font-mono text-[8px] uppercase tracking-wider text-textMuted">yours</span>
+                            <span className="ml-auto shrink-0 font-mono text-t8 uppercase tracking-wider text-textMuted">yours</span>
                           )}
                         </button>
                       );
                     })}
                     {priceScaleLock && (
-                      <p className="px-2.5 pt-1.5 mt-0.5 border-t border-borderSubtle font-mono text-[9px] leading-relaxed text-textMuted">
+                      <p className="px-2.5 pt-1.5 mt-0.5 border-t border-borderSubtle font-mono text-t9 leading-relaxed text-textMuted">
                         {priceScaleLock.reason}, so the axis is held in{' '}
                         {(PRICE_SCALES.find(o => o.value === priceScaleLock.mode) ?? PRICE_SCALES[0]).label.toLowerCase()}. Remove
                         it and your pick comes back.
@@ -837,7 +837,7 @@ const ChartToolbar = ({
                 {/* DENSE: the five clocks as one row of chips, the same way */}
                 {onBarClock && dense && (
                   <div className="mt-1 pt-1.5 px-2.5 pb-1 border-t border-borderSubtle flex items-center gap-2">
-                    <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted shrink-0">Bar clock</span>
+                    <span className="font-mono text-t9 uppercase tracking-widest text-textMuted shrink-0">Bar clock</span>
                     <span role="group" aria-label="Bar clock" className="ml-auto inline-flex items-center gap-0.5 rounded border border-borderMuted p-0.5">
                       {BAR_CLOCKS.map(opt => {
                         const on = (barClock ?? 'time') === opt.key;
@@ -850,7 +850,7 @@ const ChartToolbar = ({
                             }}
                             aria-pressed={on}
                             title={`${opt.label} — ${opt.blurb}`}
-                            className={`px-1.5 py-0.5 rounded font-mono text-[10px] tnum transition-colors ${
+                            className={`px-1.5 py-0.5 rounded font-mono text-t10 tnum transition-colors ${
                               on ? 'bg-ink/[0.16] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'
                             }`}
                           >
@@ -862,13 +862,13 @@ const ChartToolbar = ({
                   </div>
                 )}
                 {onBarClock && dense && (barClock ?? 'time') !== 'time' && (
-                  <p className="px-2.5 pt-1 font-mono text-[9px] leading-relaxed text-textMuted">
+                  <p className="px-2.5 pt-1 font-mono text-t9 leading-relaxed text-textMuted">
                     Rule bars fold the live seconds tape — no history before connect, and the interval-based overlays sit out.
                   </p>
                 )}
                 {onBarClock && !dense && (
                   <>
-                    <span className="mt-1 mb-0.5 px-2.5 pt-1.5 border-t border-borderSubtle font-mono text-[9px] uppercase tracking-widest text-textMuted">
+                    <span className="mt-1 mb-0.5 px-2.5 pt-1.5 border-t border-borderSubtle font-mono text-t9 uppercase tracking-widest text-textMuted">
                       Bar clock
                     </span>
                     {BAR_CLOCKS.map(opt => {
@@ -880,7 +880,7 @@ const ChartToolbar = ({
                             onBarClock(opt.key);
                             setOpenMenu(null);
                           }}
-                          className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded font-mono text-[11px] text-left transition-colors ${
+                          className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded font-mono text-t11 text-left transition-colors ${
                             on
                               ? 'bg-ink/[0.06] text-textPrimary font-semibold'
                               : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.03]'
@@ -888,14 +888,14 @@ const ChartToolbar = ({
                         >
                           <span className="flex flex-col min-w-0">
                             <span className="truncate">{opt.label}</span>
-                            <span className="text-[9px] text-textMuted truncate">{opt.blurb}</span>
+                            <span className="text-t9 text-textMuted truncate">{opt.blurb}</span>
                           </span>
                           {on && <Check className="w-3 h-3 ml-auto shrink-0 text-select" />}
                         </button>
                       );
                     })}
                     {(barClock ?? 'time') !== 'time' && (
-                      <p className="px-2.5 pt-1 font-mono text-[9px] leading-relaxed text-textMuted">
+                      <p className="px-2.5 pt-1 font-mono text-t9 leading-relaxed text-textMuted">
                         Rule bars fold the live seconds tape — no history before
                         connect, and the interval-based overlays sit out.
                       </p>
@@ -908,11 +908,11 @@ const ChartToolbar = ({
                     <button
                       onClick={onExportPng}
                       title={dense ? 'This pane as an image — levels, drawings, watermark' : undefined}
-                      className={`flex items-center gap-2 w-full px-2.5 ${dense ? 'py-1' : 'py-1.5'} rounded font-mono text-[11px] text-left text-textSecondary hover:text-textPrimary hover:bg-ink/[0.03] transition-colors`}
+                      className={`flex items-center gap-2 w-full px-2.5 ${dense ? 'py-1' : 'py-1.5'} rounded font-mono text-t11 text-left text-textSecondary hover:text-textPrimary hover:bg-ink/[0.03] transition-colors`}
                     >
                       <span className="flex flex-col min-w-0">
                         <span>Export PNG</span>
-                        {!dense && <span className="text-[9px] text-textMuted">This pane as an image — levels, drawings, watermark</span>}
+                        {!dense && <span className="text-t9 text-textMuted">This pane as an image — levels, drawings, watermark</span>}
                       </span>
                     </button>
                   </>
@@ -928,7 +928,7 @@ const ChartToolbar = ({
                 aria-haspopup="dialog"
                 aria-expanded={libraryOpen}
                 aria-label={vertical || compact ? 'Indicators and scripts' : undefined}
-                className={`inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-[10px] uppercase tracking-wider transition-colors ${
+                className={`inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors ${
                   libraryOpen ? 'bg-ink/[0.07] text-textPrimary' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.03]'
                 }`}
                 data-scripts-door
@@ -937,7 +937,7 @@ const ChartToolbar = ({
                 {!(vertical || compact) && 'Indicators'}
                 {onPaneCount > 0 && (
                   /* how many draw on this pane — silver, a where-you-are count, not a status */
-                  <span className="min-w-[14px] h-[14px] px-1 rounded-full bg-silver/[0.15] text-silver font-mono text-[8px] font-bold leading-[14px] text-center" data-scripts-count>
+                  <span className="min-w-[14px] h-[14px] px-1 rounded-full bg-silver/[0.15] text-silver font-mono text-t8 font-bold leading-[14px] text-center" data-scripts-count>
                     {onPaneCount}
                   </span>
                 )}
@@ -991,13 +991,13 @@ const ChartToolbar = ({
                   return (
                     <div key={item.key} className="contents">
                     {item.group === 'book' && prev?.group !== 'book' && (
-                      <div className="px-2.5 pt-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">From the book</div>
+                      <div className="px-2.5 pt-1 font-mono text-t9 uppercase tracking-widest text-textMuted">From the book</div>
                     )}
                     {item.group !== 'book' && !item.sub && prev?.group === 'book' && (
-                      <div className="px-2.5 pt-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">On the tape</div>
+                      <div className="px-2.5 pt-2 font-mono text-t9 uppercase tracking-widest text-textMuted">On the tape</div>
                     )}
                     {idx === firstSub && (
-                      <div className="px-2.5 pt-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">
+                      <div className="px-2.5 pt-2 font-mono text-t9 uppercase tracking-widest text-textMuted">
                         Own pane — two at most{capped ? '' : ''}
                       </div>
                     )}
@@ -1022,7 +1022,7 @@ const ChartToolbar = ({
                           on ? 'bg-silverFill border-silverFill' : 'border-borderMuted'
                         }`}
                       >
-                        {on && <Check className="w-2.5 h-2.5 text-[#0a0a0a]" />}
+                        {on && <Check className="w-2.5 h-2.5 text-onfoil" />}
                       </span>
                       <span className="min-w-0">
                         <span className="flex items-center gap-1.5">
@@ -1031,11 +1031,11 @@ const ChartToolbar = ({
                             style={{ background: INDICATOR_INKS[item.key] }}
                             aria-hidden
                           />
-                          <span className={`font-mono text-[11px] font-semibold ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>
+                          <span className={`font-mono text-t11 font-semibold ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>
                             {item.label}
                           </span>
                         </span>
-                        <span className="block text-[10px] text-textSecondary leading-snug">{item.hint}</span>
+                        <span className="block text-t10 text-textSecondary leading-snug">{item.hint}</span>
                       </span>
                     </button>
                     </div>
@@ -1052,7 +1052,7 @@ const ChartToolbar = ({
             <button
               onClick={onToggleReplay}
               title={replay ? 'Exit replay — P' : 'Replay session history — P'}
-              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-[10px] uppercase tracking-wider transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors ${
                 /* Armed = the holo silver, never the live lime (Noah, 2026-09-08) */
                 replay ? 'bg-silver/[0.12] text-silver' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.03]'
               }`}
@@ -1166,14 +1166,14 @@ const ChartToolbar = ({
                     on && !heldByClock ? 'bg-silverFill border-silverFill' : 'border-borderMuted'
                   }`}
                 >
-                  {on && !heldByClock && <Check className="w-2.5 h-2.5 text-[#0a0a0a]" />}
+                  {on && !heldByClock && <Check className="w-2.5 h-2.5 text-onfoil" />}
                 </span>
                 <span className="min-w-0">
-                  <span className={`block font-mono text-[11px] font-semibold ${on && !heldByClock ? 'text-textPrimary' : 'text-textSecondary'}`}>
+                  <span className={`block font-mono text-t11 font-semibold ${on && !heldByClock ? 'text-textPrimary' : 'text-textSecondary'}`}>
                     {item.label}
                   </span>
                   {!dense && (
-                    <span className="block text-[10px] text-textSecondary leading-snug">
+                    <span className="block text-t10 text-textSecondary leading-snug">
                       {heldByClock ? 'Needs time bars — held while the rule clock is on' : item.hint}
                     </span>
                   )}
@@ -1196,7 +1196,7 @@ const ChartToolbar = ({
           */}
           {onTrailGreek && overlays.trails && overlayItems.some(i => i.key === 'trails') && (
             <div className="flex items-center gap-2 pl-[26px] pr-2.5 pb-2 -mt-1">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted shrink-0">Greek</span>
+              <span className="font-mono text-t9 uppercase tracking-wider text-textMuted shrink-0">Greek</span>
               <span role="group" aria-label="Trail greek" className="inline-flex items-center gap-0.5 rounded border border-borderMuted p-0.5">
                 {(['gex', 'dex', 'vex'] as const).map(g => (
                   <button
@@ -1204,7 +1204,7 @@ const ChartToolbar = ({
                     type="button"
                     onClick={() => onTrailGreek(g)}
                     aria-pressed={trailGreek === g}
-                    className={`px-1.5 py-0.5 rounded font-mono text-[10px] uppercase transition-colors ${
+                    className={`px-1.5 py-0.5 rounded font-mono text-t10 uppercase transition-colors ${
                       trailGreek === g ? 'bg-ink/[0.16] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'
                     }`}
                   >
@@ -1216,7 +1216,7 @@ const ChartToolbar = ({
           )}
           {onConeHorizon && overlays.cone && overlayItems.some(i => i.key === 'cone') && (
             <div className="flex items-center gap-2 pl-[26px] pr-2.5 pb-2 -mt-1">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted shrink-0">Horizon</span>
+              <span className="font-mono text-t9 uppercase tracking-wider text-textMuted shrink-0">Horizon</span>
               <span role="group" aria-label="Expected move horizon" className="inline-flex items-center gap-0.5 rounded border border-borderMuted p-0.5">
                 {(['session', 'week', 'next'] as const).map(h => (
                   <button
@@ -1224,7 +1224,7 @@ const ChartToolbar = ({
                     type="button"
                     onClick={() => onConeHorizon(h)}
                     aria-pressed={coneHorizon === h}
-                    className={`px-1.5 py-0.5 rounded font-mono text-[10px] transition-colors ${
+                    className={`px-1.5 py-0.5 rounded font-mono text-t10 transition-colors ${
                       coneHorizon === h ? 'bg-ink/[0.16] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'
                     }`}
                   >
@@ -1236,7 +1236,7 @@ const ChartToolbar = ({
           )}
           {onSessionOr && overlays.session && overlayItems.some(i => i.key === 'session') && (
             <div className="flex items-center gap-2 pl-[26px] pr-2.5 pb-2 -mt-1">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted shrink-0">Opening range</span>
+              <span className="font-mono text-t9 uppercase tracking-wider text-textMuted shrink-0">Opening range</span>
               <span role="group" aria-label="Opening range minutes" className="inline-flex items-center gap-0.5 rounded border border-borderMuted p-0.5">
                 {OPENING_RANGES.map(m => (
                   <button
@@ -1244,7 +1244,7 @@ const ChartToolbar = ({
                     onClick={() => onSessionOr(m)}
                     aria-pressed={sessionOr === m}
                     title={`The session's first ${m} minutes`}
-                    className={`px-1.5 py-0.5 rounded font-mono text-[10px] tnum transition-colors ${
+                    className={`px-1.5 py-0.5 rounded font-mono text-t10 tnum transition-colors ${
                       sessionOr === m
                         ? 'bg-ink/[0.16] text-textPrimary font-semibold'
                         : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'
@@ -1269,7 +1269,7 @@ const ChartToolbar = ({
            STYLE picker beside the timeframes (Noah, 2026-08-23) */
         label={vertical || compact ? '' : minimal ? 'Theme' : `Theme · ${activeCandleLabel}`}
         title={`Candle theme · ${activeCandleLabel}`}
-        icon={<Palette className="w-3 h-3 text-[#BBB2E8]" />}
+        icon={<Palette className="w-3 h-3 text-lilacline" />}
         open={openMenu === 'candles'}
         onToggle={() => setOpenMenu(m => (m === 'candles' ? null : 'candles'))}
         menuSide={menuSide} bounds={menuBounds}
@@ -1307,8 +1307,8 @@ const ChartToolbar = ({
                     <span className="w-[5px] h-[10px] rounded-[1px]" style={{ background: t.down }} />
                   </span>
                   <span className="flex flex-col min-w-0">
-                    <span className={`text-[12px] font-semibold ${opt.value === themeKey ? 'text-silver' : 'text-textPrimary'}`}>{opt.label}</span>
-                    {!dense && <span className="text-[10px] text-textMuted truncate">{opt.hint}</span>}
+                    <span className={`text-t12 font-semibold ${opt.value === themeKey ? 'text-silver' : 'text-textPrimary'}`}>{opt.label}</span>
+                    {!dense && <span className="text-t10 text-textMuted truncate">{opt.hint}</span>}
                   </span>
                   {opt.value === themeKey && <Check className="w-3 h-3 ml-auto shrink-0 text-silver" />}
                 </button>
@@ -1317,14 +1317,14 @@ const ChartToolbar = ({
           </div>
           <div className={`flex-1 min-w-0 flex flex-col ${dense ? 'p-2.5 gap-1.5' : 'p-3 gap-2'}`}>
             <ThemePreview ticker={previewTicker} timeframe={timeframe} themeKey={themePreview ?? themeKey} width={themePreviewW} height={themePreviewH} />
-            <span className={`font-semibold text-textPrimary ${dense ? 'text-[11px]' : 'text-[12px]'}`}>{shownTheme.label}</span>
-            <span className={`text-textSecondary leading-snug ${dense ? 'text-[9px]' : 'text-[10px]'}`}>
+            <span className={`font-semibold text-textPrimary ${dense ? 'text-t11' : 'text-t12'}`}>{shownTheme.label}</span>
+            <span className={`text-textSecondary leading-snug ${dense ? 'text-t9' : 'text-t10'}`}>
               {dense ? shownTheme.hint : `${shownTheme.hint} · today's bars on ${previewTicker}, drawn by the chart itself`}
             </span>
             <button
               onClick={() => pickTheme(shownTheme.value)}
-              className={`mt-auto w-full rounded holo-bg text-[#0a0a0a] hover:brightness-105 font-mono font-semibold uppercase tracking-wider transition-all ${
-                dense ? 'py-1 text-[9px]' : 'py-1.5 text-[10px]'
+              className={`mt-auto w-full rounded holo-bg text-onfoil hover:brightness-105 font-mono font-semibold uppercase tracking-wider transition-all ${
+                dense ? 'py-1 text-t9' : 'py-1.5 text-t10'
               }`}
               data-theme-use
             >
@@ -1374,7 +1374,7 @@ const ChartToolbar = ({
             menuSide={menuSide} bounds={menuBounds}
           >
             <div className="p-1.5 flex flex-col gap-0.5 min-w-[184px]" data-snapshot-menu>
-              <div className="px-2 pb-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">Snapshot · the tape as it stands</div>
+              <div className="px-2 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">Snapshot · the tape as it stands</div>
               {(
                 [
                   ['save', 'Save as a picture', 'A PNG to your downloads'],
@@ -1398,8 +1398,8 @@ const ChartToolbar = ({
                   className="w-full flex flex-col items-start px-2 py-1.5 rounded text-left hover:bg-ink/[0.05] transition-colors"
                   data-snapshot-do={how}
                 >
-                  <span className="font-mono text-[11px] text-textPrimary">{word}</span>
-                  <span className="text-[10px] text-textMuted">{hint}</span>
+                  <span className="font-mono text-t11 text-textPrimary">{word}</span>
+                  <span className="text-t10 text-textMuted">{hint}</span>
                 </button>
               ))}
               {onShareLink && (
@@ -1409,8 +1409,8 @@ const ChartToolbar = ({
                   className="w-full flex flex-col items-start px-2 py-1.5 rounded text-left hover:bg-ink/[0.05] transition-colors"
                   data-snapshot-do="link"
                 >
-                  <span className="font-mono text-[11px] text-textPrimary">Copy a link</span>
-                  <span className="text-[10px] text-textMuted">The levels and the overlays, no chain</span>
+                  <span className="font-mono text-t11 text-textPrimary">Copy a link</span>
+                  <span className="text-t10 text-textMuted">The levels and the overlays, no chain</span>
                 </button>
               )}
             </div>
@@ -1422,7 +1422,7 @@ const ChartToolbar = ({
         <button
           onClick={onToggleFullscreen}
           title={fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen chart'}
-          className="inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-[10px] uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.03] transition-colors"
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.03] transition-colors"
         >
           {fullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
         </button>
@@ -1432,7 +1432,7 @@ const ChartToolbar = ({
         <button
           onClick={onTotalFullscreen}
           title="Total fullscreen — the taskbar goes too; Esc brings it back"
-          className="inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-[10px] uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.03] transition-colors"
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.03] transition-colors"
         >
           <Fullscreen className="w-3.5 h-3.5" />
         </button>

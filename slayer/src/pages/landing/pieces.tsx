@@ -132,7 +132,7 @@ export const Arrive = ({ id, className = '', atMount = false, children }: { id?:
 };
 
 export const Eyebrow = ({ children }: { children: ReactNode }) => (
-  <p className="arrive-line [--i:0] flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.22em] text-textMuted">
+  <p className="arrive-line [--i:0] flex items-center gap-3 font-mono text-t11 uppercase tracking-[0.22em] text-textMuted">
     <span className="w-8 h-px bg-textMuted/60" aria-hidden="true" />
     {children}
   </p>
@@ -140,7 +140,7 @@ export const Eyebrow = ({ children }: { children: ReactNode }) => (
 
 /** EVERY HEAD IS TWO LINES IN TWO TONES: what it is in ink, the turn of the thought in grey */
 export const TwoTone = ({ first, second, className = '' }: { first: string; second: string; className?: string }) => (
-  <h2 className={`arrive-line arrive-settle [--i:1] font-light tracking-[-0.04em] leading-[1.02] text-[40px] sm:text-[56px] lg:text-[72px] [text-wrap:balance] ${className}`}>
+  <h2 className={`arrive-line arrive-settle [--i:1] font-light tracking-[-0.04em] leading-[1.02] text-t40 sm:text-t56 lg:text-t72 [text-wrap:balance] ${className}`}>
     {first} <span className="block text-textMuted">{second}</span>
   </h2>
 );
@@ -161,7 +161,7 @@ export const DOOR_ARROW = 'transition-transform duration-300 ease-[cubic-bezier(
 export const Pill = ({ children, onClick, href, kind = 'solid', size = 'lg', testId, busy = false }: { children: ReactNode; onClick?: () => void; href: string; kind?: 'solid' | 'ghost'; size?: 'lg' | 'sm'; testId?: string; busy?: boolean }) => {
   const ground = useBlockGround();
   const working = useWorking(busy);
-  const fill = kind === 'solid' ? (ground === 'dark' ? 'holo-bg text-[#0a0a0a]' : 'galaxy-bg') : 'border border-borderMuted text-textPrimary hover:border-textPrimary/70 hover:bg-ink/[0.06]';
+  const fill = kind === 'solid' ? (ground === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg') : 'border border-borderMuted text-textPrimary hover:border-textPrimary/70 hover:bg-ink/[0.06]';
   const glyph = size === 'lg' ? 'w-4 h-4' : 'w-3.5 h-3.5';
   return (
     <a
@@ -174,7 +174,7 @@ export const Pill = ({ children, onClick, href, kind = 'solid', size = 'lg', tes
       }}
       aria-busy={busy || undefined}
       data-landing-door={testId}
-      className={`${DOOR_GROUP} inline-flex items-center justify-center gap-2 rounded-full font-medium whitespace-nowrap transition-[background-color,border-color,color,transform] duration-200 ease-out active:scale-[0.98] active:duration-100 motion-reduce:transform-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-silver ${busy ? 'cursor-progress' : ''} ${size === 'lg' ? 'h-12 pl-6 pr-5 text-[15px]' : 'h-9 pl-4 pr-3.5 text-[13px]'} ${fill}`}
+      className={`${DOOR_GROUP} inline-flex items-center justify-center gap-2 rounded-full font-medium whitespace-nowrap transition-[background-color,border-color,color,transform] duration-200 ease-out active:scale-[0.98] active:duration-100 motion-reduce:transform-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-silver ${busy ? 'cursor-progress' : ''} ${size === 'lg' ? 'h-12 pl-6 pr-5 text-t15' : 'h-9 pl-4 pr-3.5 text-t13'} ${fill}`}
     >
       {children}
       {working ? <MorphingInfinity viewBox="4 4 16 16" className={glyph} /> : kind === 'solid' && <ArrowRight className={`${glyph} ${DOOR_ARROW}`} aria-hidden="true" />}
@@ -232,7 +232,7 @@ export const ProductsMenu = ({ onPick, onEvery, compact = false }: { onPick: (p:
     <div className={compact ? 'flex flex-col' : 'columns-2 gap-x-10'} data-landing-products>
       {PRODUCT_GROUPS.map(g => (
         <div key={g.caption} className={compact ? 'pt-3' : 'break-inside-avoid pb-5'}>
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-textMuted">{g.caption}</p>
+          <p className="font-mono text-t10 uppercase tracking-[0.2em] text-textMuted">{g.caption}</p>
           <ul className={compact ? 'mt-1' : 'mt-2 flex flex-col gap-0.5'}>
             {g.products.map(pr => (
               <li key={pr.name}>
@@ -247,8 +247,8 @@ export const ProductsMenu = ({ onPick, onEvery, compact = false }: { onPick: (p:
                 >
                   <PageGlyph name={pr.glyph} size={compact ? 16 : 18} className="shrink-0 mt-[3px]" />
                   <span className="min-w-0">
-                    <span className="block text-[14.5px] font-medium text-textPrimary leading-tight">{pr.name}</span>
-                    {!compact && <span className="mt-1 block text-[12.5px] leading-snug text-textSecondary max-w-[38ch]">{pr.line}</span>}
+                    <span className="block text-t145 font-medium text-textPrimary leading-tight">{pr.name}</span>
+                    {!compact && <span className="mt-1 block text-t125 leading-snug text-textSecondary max-w-[38ch]">{pr.line}</span>}
                   </span>
                 </a>
               </li>
@@ -263,7 +263,7 @@ export const ProductsMenu = ({ onPick, onEvery, compact = false }: { onPick: (p:
         e.preventDefault();
         onEvery();
       }}
-      className={`group mt-3 flex items-center justify-between gap-3 border-t border-borderSubtle text-[13px] text-textSecondary hover:text-textPrimary transition-colors ${compact ? 'pt-3 pb-1' : 'pt-4'}`}
+      className={`group mt-3 flex items-center justify-between gap-3 border-t border-borderSubtle text-t13 text-textSecondary hover:text-textPrimary transition-colors ${compact ? 'pt-3 pb-1' : 'pt-4'}`}
       data-landing-products-every
     >
       Every page, by room
@@ -380,7 +380,7 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
             onPointerLeave={closeSoon}
             aria-expanded={products}
             aria-controls="landing-products"
-            className={`h-8 pl-3.5 pr-2.5 inline-flex items-center gap-1 rounded-full text-[13.5px] transition-colors ${products ? 'text-textPrimary bg-ink/[0.06]' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'}`}
+            className={`h-8 pl-3.5 pr-2.5 inline-flex items-center gap-1 rounded-full text-t135 transition-colors ${products ? 'text-textPrimary bg-ink/[0.06]' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'}`}
             data-landing-products-door
           >
             Products
@@ -395,7 +395,7 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
                 setProducts(false);
                 site.section(l.href);
               }}
-              className="h-8 px-3.5 inline-flex items-center rounded-full text-[13.5px] text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
+              className="h-8 px-3.5 inline-flex items-center rounded-full text-t135 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
             >
               {l.label}
             </a>
@@ -450,7 +450,7 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
                     e.preventDefault();
                     launch(doorTo());
                   }}
-                  className={`${DOOR_GROUP} h-10 pl-4 pr-3.5 inline-flex items-center gap-1.5 rounded-full text-[13.5px] font-medium whitespace-nowrap ${ground === 'dark' ? 'holo-bg text-[#0a0a0a]' : 'galaxy-bg'}`}
+                  className={`${DOOR_GROUP} h-10 pl-4 pr-3.5 inline-flex items-center gap-1.5 rounded-full text-t135 font-medium whitespace-nowrap ${ground === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
                   data-landing-door="nav"
                 >
                   <span className="sm:hidden">Launch</span>
@@ -505,7 +505,7 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
                   setMenu(false);
                   site.section(l.href);
                 }}
-                className="flex items-center justify-between h-[52px] border-b border-borderSubtle text-[17px] text-textPrimary"
+                className="flex items-center justify-between h-[52px] border-b border-borderSubtle text-t17 text-textPrimary"
               >
                 {l.label}
                 <ArrowRight className="w-4 h-4 text-textMuted" aria-hidden="true" />
@@ -518,7 +518,7 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
                 setMenu(false);
                 launch(doorTo());
               }}
-              className={`${DOOR_GROUP} mt-4 h-12 flex items-center justify-center gap-2 rounded-full text-[15px] font-medium ${ground === 'dark' ? 'holo-bg text-[#0a0a0a]' : 'galaxy-bg'}`}
+              className={`${DOOR_GROUP} mt-4 h-12 flex items-center justify-center gap-2 rounded-full text-t15 font-medium ${ground === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
               data-landing-door="menu"
             >
               Launch the terminal

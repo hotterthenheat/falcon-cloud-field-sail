@@ -40,8 +40,8 @@ const DayCard = ({ label, value, onChange, min, title, testId, size = 'md' }: Pr
           className={`group inline-flex items-center gap-1.5 ${size === 'sm' ? 'h-6 px-2' : 'h-7 px-2.5'} rounded-md border border-borderSubtle bg-chip hover:border-borderMuted data-[state=open]:border-silver/50 transition-colors font-mono select-none`}
         >
           <CalendarDays className="w-3 h-3 shrink-0 text-textMuted" aria-hidden="true" />
-          {label && <span className="shrink-0 text-[9px] uppercase tracking-widest text-textMuted">{label}</span>}
-          <span className="text-[11px] font-semibold text-textPrimary whitespace-nowrap">{dayWords(value, true).replace(/, \d{4}$/, '')}</span>
+          {label && <span className="shrink-0 text-t9 uppercase tracking-widest text-textMuted">{label}</span>}
+          <span className="text-t11 font-semibold text-textPrimary whitespace-nowrap">{dayWords(value, true).replace(/, \d{4}$/, '')}</span>
         </button>
       </Popover.Trigger>
       <Popover.Portal>
@@ -68,7 +68,7 @@ const DayCard = ({ label, value, onChange, min, title, testId, size = 'md' }: Pr
               root: 'relative select-none',
               months: 'flex',
               month: 'w-full',
-              month_caption: 'h-8 flex items-center px-1 text-[12px] font-semibold text-textPrimary',
+              month_caption: 'h-8 flex items-center px-1 text-t12 font-semibold text-textPrimary',
               caption_label: '',
               nav: 'absolute top-0 right-0 h-8 flex items-center gap-1',
               button_previous: 'w-7 h-7 inline-flex items-center justify-center rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors disabled:opacity-30',
@@ -76,12 +76,12 @@ const DayCard = ({ label, value, onChange, min, title, testId, size = 'md' }: Pr
               chevron: '',
               month_grid: 'w-full border-collapse mt-1',
               weekdays: '',
-              weekday: 'h-7 text-[10px] font-normal text-textMuted text-center',
+              weekday: 'h-7 text-t10 font-normal text-textMuted text-center',
               weeks: '',
               week: '',
               day: 'p-0 text-center',
-              day_button: 'w-9 h-8 rounded-md font-mono text-[12px] tnum text-textPrimary hover:bg-ink/[0.06] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-silver/60',
-              selected: '[&>button]:bg-silverFill [&>button]:text-[#0a0a0a] [&>button]:font-semibold [&>button:hover]:bg-silverFill',
+              day_button: 'w-9 h-8 rounded-md font-mono text-t12 tnum text-textPrimary hover:bg-ink/[0.06] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-silver/60',
+              selected: '[&>button]:bg-silverFill [&>button]:text-onfoil [&>button]:font-semibold [&>button:hover]:bg-silverFill',
               today: '',
               outside: '[&>button]:text-textMuted/40',
               disabled: '[&>button]:text-textMuted/30 [&>button]:cursor-not-allowed [&>button:hover]:bg-transparent',
@@ -89,7 +89,7 @@ const DayCard = ({ label, value, onChange, min, title, testId, size = 'md' }: Pr
               focused: '',
             }}
           />
-          <p className="mt-2 pt-2 border-t border-borderSubtle/70 text-[10px] text-textMuted">Trading days on the tape{min ? ', from where the clock stands' : ''}.</p>
+          <p className="mt-2 pt-2 border-t border-borderSubtle/70 text-t10 text-textMuted">Trading days on the tape{min ? ', from where the clock stands' : ''}.</p>
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

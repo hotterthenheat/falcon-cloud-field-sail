@@ -153,7 +153,7 @@ type OrderRow = { key: string; fut: false; o: OptOrder } | { key: string; fut: t
 type ClosedRow = { key: string; fut: false; t: OptTrade; at: number } | { key: string; fut: true; t: FutTrade; at: number };
 
 const FutLabel = ({ contract, long, symbol }: { contract: string; long: boolean; symbol: string }) => (
-  <span className="inline-flex items-center gap-2 font-mono text-[11px]">
+  <span className="inline-flex items-center gap-2 font-mono text-t11">
     <CompanyLogo ticker={symbol} size={14} />
     <span className="font-semibold text-textPrimary">{contract}</span>
     <span className={`font-semibold ${long ? 'text-bull' : 'text-bear'}`}>{long ? 'long' : 'short'}</span>
@@ -568,7 +568,7 @@ const PaperDesk = () => {
     { key: 'avg', header: 'In at', align: 'right', render: r => <span className="text-textSecondary">{r.fut ? futWords(r.p.symbol, r.p.avg) : r.p.avg.toFixed(2)}</span> },
     { key: 'now', header: 'Now', align: 'right', render: r => <span className="text-textPrimary">{r.fut ? futWords(r.p.symbol, r.p.last) : `${r.p.quote.bid.toFixed(2)} · ${r.p.quote.ask.toFixed(2)}`}</span> },
     { key: 'carry', header: 'Holding it', align: 'right', render: r => <span className="text-textSecondary" title={r.fut ? 'The margin it sets aside' : 'What the contract loses a day, all else equal'}>{r.fut ? (r.p.margin ? `${usd(r.p.margin, 0)} margin` : '—') : `${usd(Math.abs(r.p.quote.theta) * 100 * r.p.qty)} a day`}</span> },
-    { key: 'pnl', header: 'Up or down', align: 'right', render: r => <span className={`font-semibold ${dirInk(r.p.pnl)}`}>{usdSigned(r.p.pnl)} {r.p.r != null && <span className="text-[10px] font-normal opacity-80">{rWords(r.p.r)}</span>}</span> },
+    { key: 'pnl', header: 'Up or down', align: 'right', render: r => <span className={`font-semibold ${dirInk(r.p.pnl)}`}>{usdSigned(r.p.pnl)} {r.p.r != null && <span className="text-t10 font-normal opacity-80">{rWords(r.p.r)}</span>}</span> },
     {
       key: 'close',
       header: '',
@@ -637,16 +637,16 @@ const PaperDesk = () => {
     { key: 'in', header: 'In', render: r => <span className="text-textSecondary">{nyMomentWords(r.t.opened.at)} · {r.fut ? futWords(r.t.symbol, r.t.avgIn) : r.t.avgIn.toFixed(2)}</span> },
     { key: 'out', header: 'Out', render: r => <span className="text-textSecondary">{nyMomentWords(r.t.closed.at)} · {r.fut ? futWords(r.t.symbol, r.t.avgOut) : r.t.avgOut.toFixed(2)}</span> },
     { key: 'how', header: 'Ended', render: r => <span className="text-textSecondary" title={r.t.note}>{r.fut ? FUT_ENDED[r.t.how] : OPT_ENDED[r.t.how]}</span> },
-    { key: 'pnl', header: 'Made or lost', align: 'right', render: r => <span className={`font-semibold ${dirInk(r.t.pnl)}`}>{usdSigned(r.t.pnl)} <span className="text-[10px] font-normal opacity-80">{r.t.r != null ? rWords(r.t.r) : 'no stop · no R'}</span></span> },
+    { key: 'pnl', header: 'Made or lost', align: 'right', render: r => <span className={`font-semibold ${dirInk(r.t.pnl)}`}>{usdSigned(r.t.pnl)} <span className="text-t10 font-normal opacity-80">{r.t.r != null ? rWords(r.t.r) : 'no stop · no R'}</span></span> },
   ];
 
   /* ---- THE HEAD'S PICKER: what is on the chart — the partner's grouped list, with one search over all of it
      (components/paper/TickerPicker) ---- */
   const picker = (
-    <span className="inline-flex items-center gap-2 font-mono text-[12px] tnum" data-paper-picker={name}>
+    <span className="inline-flex items-center gap-2 font-mono text-t12 tnum" data-paper-picker={name}>
       <TickerPicker value={name} onChange={n => setName(n)} futuresOnly={evaluation} day={account.day} futPrice={s => m.fut(s)} indexPrice={s => spotOf(s)} indexes={PAPER_INDEXES} />
       <span className="text-textPrimary">{deskName.priceWords}</span>
-      <span className={`text-[11px] font-semibold ${deskName.dayPct >= 0 ? 'text-bull' : 'text-bear'}`}>
+      <span className={`text-t11 font-semibold ${deskName.dayPct >= 0 ? 'text-bull' : 'text-bear'}`}>
         {deskName.dayPct >= 0 ? '▲ +' : '▼ '}
         {deskName.dayPct.toFixed(2)}%
       </span>
@@ -737,13 +737,13 @@ function futRefusalLive(id: string, d: Parameters<typeof futRefusal>[2]): string
 const MarkCard = ({ plan, qty, onQty, onCancel }: { plan: ReturnType<typeof planOfMark>; qty: number; onQty: (n: number) => void; onCancel: () => void }) => (
   /* under the drawing's own bar (StrikeChart's mark bar sits at the chart's top while the mark is selected) */
   <div className="mt-11 pointer-events-auto w-[min(560px,calc(100%-24px))] rounded-lg border border-borderMuted bg-panel/95 backdrop-blur-md p-3 shadow-[0_14px_40px_rgba(0,0,0,0.45)] animate-soft-in" data-theme="dark" data-paper-mark-card>
-    <p className="text-[12px] leading-snug text-textPrimary">{plan.words}</p>
-    {plan.money && <p className="mt-1 font-mono text-[10px] tnum text-textMuted">{plan.money}</p>}
-    {plan.refused && <p className="mt-1 text-[11px] text-warn">{plan.refused}</p>}
+    <p className="text-t12 leading-snug text-textPrimary">{plan.words}</p>
+    {plan.money && <p className="mt-1 font-mono text-t10 tnum text-textMuted">{plan.money}</p>}
+    {plan.refused && <p className="mt-1 text-t11 text-warn">{plan.refused}</p>}
     <div className="mt-2.5 flex items-center gap-2">
-      <label className="inline-flex items-center gap-1.5 font-mono text-[10px] text-textMuted">
+      <label className="inline-flex items-center gap-1.5 font-mono text-t10 text-textMuted">
         Contracts
-        <input value={qty} onChange={e => onQty(Math.max(1, Math.min(999, Number(e.target.value.replace(/[^0-9]/g, '')) || 1)))} inputMode="numeric" className="h-7 w-14 px-2 rounded-md border border-borderSubtle bg-panel font-mono text-[12px] tnum text-textPrimary outline-none focus:border-silver/60" data-paper-mark-qty />
+        <input value={qty} onChange={e => onQty(Math.max(1, Math.min(999, Number(e.target.value.replace(/[^0-9]/g, '')) || 1)))} inputMode="numeric" className="h-7 w-14 px-2 rounded-md border border-borderSubtle bg-panel font-mono text-t12 tnum text-textPrimary outline-none focus:border-silver/60" data-paper-mark-qty />
       </label>
       <button
         type="button"
@@ -752,13 +752,13 @@ const MarkCard = ({ plan, qty, onQty, onCancel }: { plan: ReturnType<typeof plan
           plan.place(qty);
           onCancel();
         }}
-        className="ml-auto h-8 px-4 rounded-full text-[12px] font-semibold disabled:opacity-35 transition-opacity hover:opacity-90"
+        className="ml-auto h-8 px-4 rounded-full text-t12 font-semibold disabled:opacity-35 transition-opacity hover:opacity-90"
         style={{ background: 'rgb(var(--silver-fill))', color: '#0a0a0a' }}
         data-paper-mark-place
       >
         Place it
       </button>
-      <button type="button" onClick={onCancel} className="h-8 px-3 rounded-md border border-borderSubtle font-mono text-[10px] text-textSecondary hover:text-textPrimary transition-colors">
+      <button type="button" onClick={onCancel} className="h-8 px-3 rounded-md border border-borderSubtle font-mono text-t10 text-textSecondary hover:text-textPrimary transition-colors">
         Not now
       </button>
     </div>
@@ -769,10 +769,10 @@ const MarkCard = ({ plan, qty, onQty, onCancel }: { plan: ReturnType<typeof plan
 const HeldElsewhere = () => (
   <div className={`${card} px-5 py-3 flex items-center gap-4 flex-wrap border-warn/40`} data-paper-elsewhere>
     <div className="min-w-0 flex-1">
-      <p className="text-[12px] font-medium text-textPrimary">Your paper accounts are open in another tab.</p>
-      <p className="mt-0.5 text-[11px] text-textMuted">This tab only reads them. Taking them here closes whatever is open there, at the last price that tab saw — its simulated market is not this one.</p>
+      <p className="text-t12 font-medium text-textPrimary">Your paper accounts are open in another tab.</p>
+      <p className="mt-0.5 text-t11 text-textMuted">This tab only reads them. Taking them here closes whatever is open there, at the last price that tab saw — its simulated market is not this one.</p>
     </div>
-    <button type="button" onClick={takeHere} className="h-8 px-4 rounded-full text-[12px] font-semibold transition-opacity hover:opacity-90" style={{ background: 'rgb(var(--silver-fill))', color: '#0a0a0a' }} data-paper-take-here>
+    <button type="button" onClick={takeHere} className="h-8 px-4 rounded-full text-t12 font-semibold transition-opacity hover:opacity-90" style={{ background: 'rgb(var(--silver-fill))', color: '#0a0a0a' }} data-paper-take-here>
       Take them here
     </button>
   </div>

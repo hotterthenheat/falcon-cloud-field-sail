@@ -123,13 +123,13 @@ export const SlotMark = ({ slot, className = 'w-3 h-3', timeKnown }: { slot: Ear
   timeKnown === false ? <span className={`${className} inline-block rounded-full border border-textMuted/60`} aria-label="time not set" title="The report's time is not set" /> : slot === 'BMO' ? <Sunrise className={`${className} text-warn`} aria-label="before the open" /> : <Moon className={`${className} text-moon`} aria-label="after the close" />;
 
 /** Set by the company, or still an analyst's estimate — the same two words everywhere on the page */
-const SetTag = ({ confirmed }: { confirmed: boolean }) => <span className={`font-mono text-[8px] uppercase tracking-widest ${confirmed ? 'text-textMuted' : 'text-warn'}`} title={confirmed ? 'The company has set the date' : "The date is Unusual Whales' estimate — the company has not set it"}>{confirmed ? 'confirmed' : 'date estimated'}</span>;
+const SetTag = ({ confirmed }: { confirmed: boolean }) => <span className={`font-mono text-t8 uppercase tracking-widest ${confirmed ? 'text-textMuted' : 'text-warn'}`} title={confirmed ? 'The company has set the date' : "The date is Unusual Whales' estimate — the company has not set it"}>{confirmed ? 'confirmed' : 'date estimated'}</span>;
 
-const Fact = ({ label, children, testId, clip }: { label: string; children: React.ReactNode; testId?: string; clip?: boolean }) => (
-  <div className={clip ? 'min-w-0 max-w-[320px]' : undefined}>
-    <dt className="text-[10px] text-textMuted whitespace-nowrap cursor-help" title={statHelp(label)}>{label}</dt>
-    {/* one line on a desk; on a phone a busy day wraps. A long today line truncates — the board holds the names. */}
-    <dd className={`mt-0.5 font-mono text-[12px] tnum text-textPrimary ${clip ? 'truncate' : 'sm:whitespace-nowrap'}`} data-earnings-fact={testId}>
+const Fact = ({ label, children, testId }: { label: string; children: React.ReactNode; testId?: string; clip?: boolean }) => (
+  <div className="min-w-0 max-w-full">
+    <dt className="text-t10 text-textMuted whitespace-nowrap cursor-help" title={statHelp(label)}>{label}</dt>
+    {/* The whole line, wrapping. A clipped today line was hiding names. */}
+    <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-normal break-words" data-earnings-fact={testId}>
       {children}
     </dd>
   </div>
@@ -154,18 +154,18 @@ const NameDoor = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) 
     <CompanyLogo ticker={e.ticker} size={22} />
     <span className="flex flex-col leading-tight">
       <span className="flex items-center gap-1.5">
-        <span className="font-mono text-[12px] font-bold text-textPrimary">{e.ticker}</span>
-        <span className={`font-mono text-[11px] tnum ${e.reported ? moveInk(e) : e.impliedMovePct > 0 ? priceInk(e) : 'text-textMuted'}`}>{moveText(e)}</span>
+        <span className="font-mono text-t12 font-bold text-textPrimary">{e.ticker}</span>
+        <span className={`font-mono text-t11 tnum ${e.reported ? moveInk(e) : e.impliedMovePct > 0 ? priceInk(e) : 'text-textMuted'}`}>{moveText(e)}</span>
         <SlotMark slot={e.slot} timeKnown={e.timeKnown} />
       </span>
-      <span className="text-[10px] text-textMuted truncate max-w-[180px]">{e.name}</span>
+      <span className="text-t10 text-textMuted truncate max-w-[180px]">{e.name}</span>
     </span>
   </button>
 );
 
 /** A macro date on the list — a quiet chip */
 const MacroChip = ({ m }: { m: MacroDate }) => (
-  <span title={m.detail} className="inline-flex items-center self-center h-6 rounded-md border border-borderSubtle bg-chip px-2 font-mono text-[9px] uppercase tracking-widest text-textSecondary whitespace-nowrap" data-earnings-macro>
+  <span title={m.detail} className="inline-flex items-center self-center h-6 rounded-md border border-borderSubtle bg-chip px-2 font-mono text-t9 uppercase tracking-widest text-textSecondary whitespace-nowrap" data-earnings-macro>
     {MACRO_WORD[m.label] ?? m.label}
   </span>
 );
@@ -252,8 +252,8 @@ const Card = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) => v
     data-asked={asked || undefined}
   >
     <CompanyLogo ticker={e.ticker} size={28} />
-    <span className="font-mono text-[12px] font-bold text-textPrimary leading-none mt-0.5">{e.ticker}</span>
-    <span className={`font-mono text-[11px] tnum leading-none ${e.reported ? moveInk(e) : pricedKnown(e) ? priceInk(e) : 'text-textMuted'}`}>{/* the move the options charge is known before the history lands; only rich/cheap waits on it */}{moveText(e)}</span>
+    <span className="font-mono text-t12 font-bold text-textPrimary leading-none mt-0.5">{e.ticker}</span>
+    <span className={`font-mono text-t11 tnum leading-none ${e.reported ? moveInk(e) : pricedKnown(e) ? priceInk(e) : 'text-textMuted'}`}>{/* the move the options charge is known before the history lands; only rich/cheap waits on it */}{moveText(e)}</span>
     <SetTag confirmed={e.confirmed} />
   </button>
   );
@@ -276,14 +276,14 @@ const NameAsk = ({ asked, onAsk }: { asked: string | null; onAsk: (t: string) =>
           className="group inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted data-[state=open]:border-silver/50 transition-colors font-mono select-none"
         >
           <Search className="w-3 h-3 shrink-0 text-textMuted" aria-hidden="true" />
-          <span className="shrink-0 text-[9px] uppercase tracking-widest text-textMuted">Name</span>
-          <span className={`min-w-0 truncate text-[11px] font-semibold ${asked ? 'text-textPrimary' : 'text-textSecondary'}`}>{asked ?? 'Any name'}</span>
+          <span className="shrink-0 text-t9 uppercase tracking-widest text-textMuted">Name</span>
+          <span className={`min-w-0 truncate text-t11 font-semibold ${asked ? 'text-textPrimary' : 'text-textSecondary'}`}>{asked ?? 'Any name'}</span>
           <ChevronDown className="w-3 h-3 shrink-0 text-textMuted" />
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="start" sideOffset={6} className={`${CARD} w-[272px] p-0 overflow-hidden`} data-dropdown-card="earnings-name">
-          <div className="px-3.5 pt-2.5 pb-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">When a name reports next</div>
+          <div className="px-3.5 pt-2.5 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">When a name reports next</div>
           <TickerLookup
             active={asked ?? undefined}
             onPick={t => {
@@ -302,9 +302,9 @@ const Answer = ({ next, inWindow, onOpen, onClear }: { next: NextReport; inWindo
   const navigate = useNavigate();
   const door = 'font-semibold text-textPrimary hover:text-silver transition-colors';
   return (
-    <p className="px-5 pb-2 flex items-center gap-x-2 gap-y-1 flex-wrap text-[12px] leading-relaxed text-textSecondary" data-earnings-answer={next.ticker} data-answer-set={next.confirmed ? 'confirmed' : 'estimated'} data-answer-in-window={next.event ? 'yes' : 'no'}>
+    <p className="px-5 pb-2 flex items-center gap-x-2 gap-y-1 flex-wrap text-t12 leading-relaxed text-textSecondary" data-earnings-answer={next.ticker} data-answer-set={next.confirmed ? 'confirmed' : 'estimated'} data-answer-in-window={next.event ? 'yes' : 'no'}>
       <CompanyLogo ticker={next.ticker} size={16} />
-      <span className="font-mono text-[12px] font-bold text-textPrimary">{next.ticker}</span>
+      <span className="font-mono text-t12 font-bold text-textPrimary">{next.ticker}</span>
       {next.name !== next.ticker && <span className="text-textMuted">{next.name}</span>}
       <span className="text-textMuted">·</span>
       <span>
@@ -366,8 +366,8 @@ const NameCellIn = ({ data }: { data: EarningsEvent }) => {
     <span ref={ref} className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
-        <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        <span className="text-[10px] text-textMuted truncate">{data.name}</span>
+        <span className="font-mono text-t12 font-bold text-textPrimary">{data.ticker}</span>
+        <span className="text-t10 text-textMuted truncate">{data.name}</span>
       </span>
     </span>
   );
@@ -376,10 +376,10 @@ const NameCellIn = ({ data }: { data: EarningsEvent }) => {
 const WhenCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
   data ? (
     <span className="flex flex-col leading-tight">
-      <span className="font-mono text-[11px] tnum text-textPrimary">
+      <span className="font-mono text-t11 tnum text-textPrimary">
         {data.dateLabel} <span className="text-textMuted">· {untilWords(data.daysOut)}</span>
       </span>
-      <span className="inline-flex items-center gap-1.5 text-[10px]">
+      <span className="inline-flex items-center gap-1.5 text-t10">
         <SlotMark slot={data.slot} timeKnown={data.timeKnown} className="w-2.5 h-2.5" />
         <span className="text-textSecondary">{slotWord(data)}</span>
         <SetTag confirmed={data.confirmed} />
@@ -387,7 +387,7 @@ const WhenCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
     </span>
   ) : null;
 
-const IvCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? pricedKnown(data) && data.ivRank > 0 ? <span className={`font-mono text-[11px] tnum ${data.ivRank >= 80 ? 'text-warn' : 'text-textPrimary'}`}>{data.ivRank}</span> : <span className="font-mono text-[11px] text-textMuted">—</span> : null);
+const IvCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? pricedKnown(data) && data.ivRank > 0 ? <span className={`font-mono text-t11 tnum ${data.ivRank >= 80 ? 'text-warn' : 'text-textPrimary'}`}>{data.ivRank}</span> : <span className="font-mono text-t11 text-textMuted">—</span> : null);
 /* a report with no straddle on the row (KARO's ±0.0%) is not priced — it says so; a report that is out shows the move the
    stock made, not the one the options had priced */
 const signedPct = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}%`;
@@ -414,18 +414,18 @@ const moveInk = (e: EarningsEvent) => (e.reported ? (e.actualMovePct == null ? '
 const MoveCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
   data ? (
     <span className="flex flex-col items-end leading-tight" title={data.reported ? `Reported — ${reactionLive(data) ? 'the move so far in the session reacting to it' : 'the move the stock made the session after'}; the options had priced ±${data.impliedMovePct.toFixed(1)}%` : 'The move the options charge for the print — the at-the-money straddle as a percent of the stock'}>
-      <span className={`font-mono text-[11px] tnum font-semibold ${data.reported ? moveInk(data) : data.impliedMovePct > 0 ? 'text-textPrimary' : 'text-textMuted'}`}>{moveCellText(data)}</span>
-      {data.reported && data.impliedMovePct > 0 ? <span className="font-mono text-[9px] tnum text-textMuted">priced ±{data.impliedMovePct.toFixed(1)}%</span> : null}
+      <span className={`font-mono text-t11 tnum font-semibold ${data.reported ? moveInk(data) : data.impliedMovePct > 0 ? 'text-textPrimary' : 'text-textMuted'}`}>{moveCellText(data)}</span>
+      {data.reported && data.impliedMovePct > 0 ? <span className="font-mono text-t9 tnum text-textMuted">priced ±{data.impliedMovePct.toFixed(1)}%</span> : null}
     </span>
   ) : null;
 const UsualCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
   if (!data) return null;
-  if (data.history === false) return data.known ? <span className="font-mono text-[11px] text-textMuted" title="Reading the name's past reports">…</span> : <span className="font-mono text-[11px] text-textMuted" title="The board reads the past reports of the known names; this name's are on its own page">—</span>;
-  if (!usualKnown(data)) return <span className="font-mono text-[11px] text-textMuted" title={data.classOf ? `A second share class — its reports are filed under ${data.classOf}` : 'No past move on file for this name'}>{data.classOf ? `see ${data.classOf}` : 'no history'}</span>;
+  if (data.history === false) return data.known ? <span className="font-mono text-t11 text-textMuted" title="Reading the name's past reports">…</span> : <span className="font-mono text-t11 text-textMuted" title="The board reads the past reports of the known names; this name's are on its own page">—</span>;
+  if (!usualKnown(data)) return <span className="font-mono text-t11 text-textMuted" title={data.classOf ? `A second share class — its reports are filed under ${data.classOf}` : 'No past move on file for this name'}>{data.classOf ? `see ${data.classOf}` : 'no history'}</span>;
   const n = histN(data);
   return (
-    <span className="font-mono text-[11px] tnum text-textSecondary" title={`The average move the session after its last ${n} ${n === 1 ? 'report' : 'reports'}`}>
-      ±{data.histAvgMovePct.toFixed(1)}%{n < 8 ? <span className="text-[9px] text-textMuted"> · {n} {n === 1 ? 'print' : 'prints'}</span> : null}
+    <span className="font-mono text-t11 tnum text-textSecondary" title={`The average move the session after its last ${n} ${n === 1 ? 'report' : 'reports'}`}>
+      ±{data.histAvgMovePct.toFixed(1)}%{n < 8 ? <span className="text-t9 text-textMuted"> · {n} {n === 1 ? 'print' : 'prints'}</span> : null}
     </span>
   );
 };
@@ -433,14 +433,14 @@ const PricedCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
   if (!data) return null;
   if (!pricedKnown(data))
     return (
-      <span className="font-mono text-[11px] text-textMuted" title={data.reported ? 'Reported — the move is in, so the premium is no longer priced' : usualKnown(data) ? `From ${histN(data)} ${histN(data) === 1 ? 'print' : 'prints'} — rich or cheap needs ${MIN_PRICED_PRINTS}` : 'No usual move to set the price against'}>
+      <span className="font-mono text-t11 text-textMuted" title={data.reported ? 'Reported — the move is in, so the premium is no longer priced' : usualKnown(data) ? `From ${histN(data)} ${histN(data) === 1 ? 'print' : 'prints'} — rich or cheap needs ${MIN_PRICED_PRINTS}` : 'No usual move to set the price against'}>
         —
       </span>
     );
   const s = stateOf(data);
   return (
-    <span className={`font-mono text-[11px] tnum ${PRICED_INK[s]}`}>
-      {richText(data.richness)}× <span className="text-[9px] uppercase tracking-widest">{PRICED_WORD[s]}</span>
+    <span className={`font-mono text-t11 tnum ${PRICED_INK[s]}`}>
+      {richText(data.richness)}× <span className="text-t9 uppercase tracking-widest">{PRICED_WORD[s]}</span>
     </span>
   );
 };
@@ -452,9 +452,9 @@ const BeatCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
   const i = data.inlineCount ?? 0;
   const m = data.missCount ?? 0;
   const n = b + i + m;
-  if (data.history === false || !n) return <span className="font-mono text-[11px] text-textMuted">—</span>;
+  if (data.history === false || !n) return <span className="font-mono text-t11 text-textMuted">—</span>;
   return (
-    <span className="font-mono text-[11px] tnum text-textPrimary" title={`Of the last ${n} reports with an estimate: ${b} beat, ${i} in line, ${m} missed`}>
+    <span className="font-mono text-t11 tnum text-textPrimary" title={`Of the last ${n} reports with an estimate: ${b} beat, ${i} in line, ${m} missed`}>
       <span className="text-bull">{b}</span>
       <span className="text-textMuted">·</span>
       {i}
@@ -512,6 +512,7 @@ const Earnings = () => {
   const [show, setShow] = useState<ShowPick>('all');
   const [layout, setLayout] = useState<Layout>('board');
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
+  const [todayOpen, setTodayOpen] = useState(true);
   const [guideOpen, setGuideOpen] = useState(false);
   /* THE NAME ASKED FOR, and its answer */
   const [asked, setAsked] = useState<string | null>(null);
@@ -575,6 +576,7 @@ const Earnings = () => {
   const pricedPool = sample.filter(e => e.impliedMovePct > 0);
   const biggest = pricedPool.reduce<EarningsEvent | null>((a, e) => (a === null || e.impliedMovePct > a.impliedMovePct ? e : a), null);
   const today = rankEvents(knownEvents.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()));
+  const todayAll = rankEvents(events.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()));
   const seen = useSeenNames();
   useEarningsHistories([...sample.map(e => e.ticker), ...seen, ...(show !== 'all' ? ahead.map(e => e.ticker) : [])]);
   const todayMore = events.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()).length - today.length;
@@ -635,10 +637,10 @@ const Earnings = () => {
         <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
           <div className="min-w-[min(18rem,100%)] flex-1">
             <div className="h-6 flex items-center gap-3">
-              <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">Who reports</h3>
+              <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">Who reports</h3>
               <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the doors, the price and the words mean" testId="earnings-guide" />
             </div>
-            <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">The fortnight's reports · the board holds the day's reports · the figure on a priced name is the move its options charge · click a name for its page</p>
+            <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">The fortnight's reports · the board holds the day's reports · the figure on a priced name is the move its options charge · click a name for its page</p>
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <Fact label="Reports" testId="reports">
@@ -666,7 +668,7 @@ const Earnings = () => {
               )}
               {/* the colours' key, whatever the count says (round 9) */}
               {!failed && !pending && (
-                <span className="block text-[9px] font-sans text-textMuted" data-earnings-legend>
+                <span className="block text-t9 font-sans text-textMuted" data-earnings-legend>
                   <span className="text-warn">rich</span> over 1.3× the usual move · fair between · <span className="text-bull">cheap</span> under 0.85×
                 </span>
               )}
@@ -681,21 +683,24 @@ const Earnings = () => {
               )}
             </Fact>
             <Fact label="Today" testId="today" clip>
-              {today.length ? (
+              {today.length || (todayOpen && todayAll.length) ? (
                 <>
-                  {today.slice(0, 3).map((e, i) => (
+                  {(todayOpen ? todayAll : today.slice(0, 3)).map((e, i) => (
                     <span key={e.ticker}>
                       {i > 0 && <span className="text-textMuted"> · </span>}
                       {e.ticker} <span className="text-textMuted">{slotWord(e)}</span>
                     </span>
                   ))}
-                  {today.length > 3 && <span className="text-textMuted"> · +{today.length - 3} more</span>}
+                  {todayAll.length > 3 && (
+                    <button type="button" onClick={() => setTodayOpen(v => !v)} className="text-textMuted hover:text-textPrimary" data-earnings-today-more={todayOpen ? 'open' : 'shut'}>
+                      {todayOpen ? ' · Hide' : ` · +${todayAll.length - Math.min(3, today.length)} more`}
+                    </button>
+                  )}
                 </>
               ) : (
                 /* NEVER A FALSE "NOTHING" WHILE THE LISTS LOAD (audit round 5: "Today: nothing reports" at 35s, Reports —) */
                 <span className="text-textMuted">{failed ? '—' : pending ? 'reading the day' : todayMore > 0 ? 'no known name' : 'nothing reports'}</span>
               )}
-              {!pending && todayMore > 0 && <span className="text-textMuted"> · {todayMore} more on the list</span>}
             </Fact>
           </dl>
         </div>
@@ -708,19 +713,19 @@ const Earnings = () => {
         </div>
         {next && <Answer next={next} inWindow={askedIn} onOpen={open} onClear={() => setAsked(null)} />}
         {asked && !next && (
-          <p className="px-5 pb-2 text-[12px] text-textSecondary" data-earnings-answer-pending>
+          <p className="px-5 pb-2 text-t12 text-textSecondary" data-earnings-answer-pending>
             {nextPending ? `Reading when ${asked} reports…` : `${asked} has no report dated today or later on file.`}
           </p>
         )}
         {failed ? (
           <FeedFallback />
         ) : (
-          <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-earnings-sentence>
+          <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-earnings-sentence>
             {pending ? 'Reading the fortnight.' : weekPending ? "Reading last week's lists." : sentence}
           </p>
         )}
         {!pending && !failed && autoNext && week === '1' && (
-          <p className="px-5 pb-3 -mt-1 text-[11px] text-textMuted" data-earnings-week-note>
+          <p className="px-5 pb-3 -mt-1 text-t11 text-textMuted" data-earnings-week-note>
             Every report this week is out, so the board opens on next week.{' '}
             <button type="button" onClick={() => setWeek('0')} className="font-semibold text-textSecondary hover:text-textPrimary transition-colors">
               See this week's results
@@ -729,7 +734,7 @@ const Earnings = () => {
         )}
         {/* THE WEEK JUST REPORTED, ON A WEEKEND (round 11): the board opens on the coming week; last week is a click away */}
         {!pending && !failed && weekend && week === '0' && (
-          <p className="px-5 pb-3 -mt-1 text-[11px] text-textMuted" data-earnings-week-note="weekend">
+          <p className="px-5 pb-3 -mt-1 text-t11 text-textMuted" data-earnings-week-note="weekend">
             On a weekend the board opens on the coming week.{' '}
             <button type="button" onClick={() => setWeek('-1')} className="font-semibold text-textSecondary hover:text-textPrimary transition-colors" data-earnings-last-week>
               See last week's results
@@ -737,7 +742,7 @@ const Earnings = () => {
           </p>
         )}
         {!pending && !failed && week === '-1' && (
-          <p className="px-5 pb-3 -mt-1 text-[11px] text-textMuted" data-earnings-week-note="last">
+          <p className="px-5 pb-3 -mt-1 text-t11 text-textMuted" data-earnings-week-note="last">
             {lastWeek === 'live' || lastWeek === 'sim' ? (lastWeek === 'sim' ? "Last week's lists did not answer." : 'Last week — every report is out, each with the move the stock made the session after.') : "Reading last week's lists…"}{' '}
             <button type="button" onClick={() => setWeek('0')} className="font-semibold text-textSecondary hover:text-textPrimary transition-colors">
               {weekend ? 'Back to the coming week' : 'Back to this week'}
@@ -745,7 +750,7 @@ const Earnings = () => {
           </p>
         )}
         {!pending && !failed && week === '0' && !weekend && thisWeekKnownLeft === 0 && nextWeekCount > 0 && (
-          <p className="px-5 pb-3 -mt-1 text-[11px] text-textMuted" data-earnings-week-note>
+          <p className="px-5 pb-3 -mt-1 text-t11 text-textMuted" data-earnings-week-note>
             Every known name this week has reported{thisWeekLeft.length ? ` — ${thisWeekLeft.length} smaller ${thisWeekLeft.length === 1 ? 'name is' : 'names are'} still to come` : ''}; next week holds {nextWeekCount.toLocaleString('en-US')} reports.{' '}
             <button type="button" onClick={() => setWeek('1')} className="font-semibold text-textSecondary hover:text-textPrimary transition-colors" data-earnings-next-week>
               Go to next week
@@ -780,12 +785,12 @@ const Earnings = () => {
                     data-today={isToday || undefined}
                   >
                     <div className="w-28 shrink-0 px-5 py-3 border-r border-borderSubtle/60 flex flex-col justify-center">
-                      <span className={`font-mono text-[14px] font-bold leading-none tnum ${isToday ? 'text-silver' : 'text-textPrimary'}`}>
+                      <span className={`font-mono text-t14 font-bold leading-none tnum ${isToday ? 'text-silver' : 'text-textPrimary'}`}>
                         {MONTHS[date.getMonth()]} {date.getDate()}
                       </span>
-                      <span className={`mt-1 font-mono text-[9px] uppercase tracking-widest ${isToday ? 'text-silver' : 'text-textMuted'}`}>{isToday ? 'today' : DAYS[date.getDay()]}</span>
+                      <span className={`mt-1 font-mono text-t9 uppercase tracking-widest ${isToday ? 'text-silver' : 'text-textMuted'}`}>{isToday ? 'today' : DAYS[date.getDay()]}</span>
                       {dayEvents.length > 0 && (
-                        <span className="mt-1 font-mono text-[9px] tnum text-textMuted" data-earnings-day-count>
+                        <span className="mt-1 font-mono text-t9 tnum text-textMuted" data-earnings-day-count>
                           {dayEvents.length} {dayEvents.length === 1 ? 'report' : 'reports'}
                         </span>
                       )}
@@ -795,19 +800,19 @@ const Earnings = () => {
                         <NameDoor key={e.ticker} e={e} onOpen={open} asked={e.ticker === asked} />
                       ))}
                       {more > 0 && (
-                        <button type="button" onClick={() => setOpenDays(d => ({ ...d, [dayKey]: true }))} className="px-1 font-mono text-[9px] uppercase tracking-widest text-textMuted hover:text-textPrimary" data-earnings-list-more={more}>
+                        <button type="button" onClick={() => setOpenDays(d => ({ ...d, [dayKey]: true }))} className="px-1 font-mono text-t9 uppercase tracking-widest text-textMuted hover:text-textPrimary" data-earnings-list-more={more}>
                           + {more} more
                         </button>
                       )}
                       {opened && dayEvents.length > LIST_CAP && (
-                        <button type="button" onClick={() => setOpenDays(d => ({ ...d, [dayKey]: false }))} className="px-1 font-mono text-[9px] uppercase tracking-widest text-textMuted hover:text-textPrimary">
+                        <button type="button" onClick={() => setOpenDays(d => ({ ...d, [dayKey]: false }))} className="px-1 font-mono text-t9 uppercase tracking-widest text-textMuted hover:text-textPrimary">
                           Show fewer
                         </button>
                       )}
                       {dayMacro.map(m => (
                         <MacroChip key={m.iso + m.label} m={m} />
                       ))}
-                      {dayEvents.length === 0 && dayMacro.length === 0 && <span className="px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">{show === 'all' ? 'nothing on the calendar' : 'none priced this way'}</span>}
+                      {dayEvents.length === 0 && dayMacro.length === 0 && <span className="px-2 font-mono text-t9 uppercase tracking-widest text-textMuted">{show === 'all' ? 'nothing on the calendar' : 'none priced this way'}</span>}
                     </div>
                   </div>
                 );
@@ -849,7 +854,7 @@ const Earnings = () => {
                   const shelf = (list: EarningsEvent[], slot: EarningsEvent['slot'], timed = true, hidden = 0) =>
                     list.length === 0 ? null : (
                       <div>
-                        <span className="flex items-center gap-1.5 px-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">
+                        <span className="flex items-center gap-1.5 px-1 font-mono text-t9 uppercase tracking-widest text-textMuted">
                           <SlotMark slot={slot} timeKnown={timed} className="w-2.5 h-2.5" /> {!timed ? 'time not set' : slot === 'BMO' ? 'before the open' : 'after the close'}
                         </span>
                         <div className="mt-1.5 grid grid-cols-2 max-sm:grid-cols-3 gap-1.5">
@@ -862,7 +867,7 @@ const Earnings = () => {
                             type="button"
                             onClick={() => setOpenDays(d => ({ ...d, [dayKey]: true }))}
                             title={`The rest of this day ${!timed ? 'with no time set' : slot === 'BMO' ? 'before the open' : 'after the close'}`}
-                            className="mt-1.5 px-1 font-mono text-[9px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors"
+                            className="mt-1.5 px-1 font-mono text-t9 uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors"
                             data-earnings-board-more={hidden}
                             data-shelf={!timed ? 'unset' : slot}
                           >
@@ -874,8 +879,8 @@ const Earnings = () => {
                   return (
                     <div key={wd} className={`bg-panel px-3 py-3 min-h-[176px] max-sm:min-h-0 flex flex-col ${isToday ? 'bg-silver/[0.04]' : ''}`} data-earnings-board-day={label} data-today={isToday || undefined} data-more={more || undefined}>
                       <div className="flex items-center justify-between">
-                        <span className={`font-mono text-[11px] font-bold tnum ${isToday ? 'text-silver' : 'text-textPrimary'}`}>{label}</span>
-                        {isToday && <span className="font-mono text-[8px] uppercase tracking-widest text-silver">today</span>}
+                        <span className={`font-mono text-t11 font-bold tnum ${isToday ? 'text-silver' : 'text-textPrimary'}`}>{label}</span>
+                        {isToday && <span className="font-mono text-t8 uppercase tracking-widest text-silver">today</span>}
                       </div>
                       <span className={`block h-px mt-1.5 ${isToday ? 'bg-silver' : 'bg-borderSubtle'}`} />
                       {dayMacro.length > 0 && (
@@ -886,7 +891,7 @@ const Earnings = () => {
                         </div>
                       )}
                       {bmo.list.length + amc.list.length + unset.list.length === 0 ? (
-                        dayMacro.length === 0 && more === 0 && <div className="mt-7 text-center font-mono text-[9px] uppercase tracking-widest text-textMuted">{show === 'all' ? 'no reports' : 'none priced this way'}</div>
+                        dayMacro.length === 0 && more === 0 && <div className="mt-7 text-center font-mono text-t9 uppercase tracking-widest text-textMuted">{show === 'all' ? 'no reports' : 'none priced this way'}</div>
                       ) : (
                         <div className="mt-2.5 flex flex-col gap-3">
                           {shelf(bmoList, 'BMO', true, bmo.hidden)}
@@ -899,7 +904,7 @@ const Earnings = () => {
                           type="button"
                           onClick={() => setOpenDays(d => ({ ...d, [dayKey]: false }))}
                           title="Back to the names that matter"
-                          className="mt-auto pt-3 self-start px-1 font-mono text-[9px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors"
+                          className="mt-auto pt-3 self-start px-1 font-mono text-t9 uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors"
                         >
                           Show fewer
                         </button>
@@ -916,8 +921,8 @@ const Earnings = () => {
       {/* BOX 2 — EVERY REPORT, the house grid */}
       <div className="border border-borderSubtle rounded-md overflow-hidden bg-panel" data-earnings-grid>
         <div className="px-5 pt-4 pb-3">
-          <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Every report</h3>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
+          <h3 className="text-t15 font-semibold leading-tight text-textPrimary">Every report</h3>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
             {week === 'both' ? 'Both weeks' : week === '-1' ? 'Last week' : week === '0' ? (weekend ? 'The coming week' : 'This week') : 'Next week'} · {show === 'all' ? 'every report, the known names and the rest' : `the reports still to come priced ${PRICED_WORD[show]}`} · still to report first, soonest first, then the ones already out with their move · click a row for the name's page
           </p>
         </div>

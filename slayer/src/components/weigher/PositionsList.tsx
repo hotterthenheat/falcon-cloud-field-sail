@@ -22,11 +22,11 @@ import type { ColDef, GridSizeChangedEvent, ICellRendererParams, RowClickedEvent
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { Trash2 } from 'lucide-react';
 import ContractLabel from '../ui/ContractLabel';
-import { When } from '../record/when';
 import { GRID_MODULES, GRID_THEME } from '../ui/houseGrid';
 import type { WatchReturns } from '../../data/watchlist';
 import type { WatchedContract } from '../../types/watchlist';
 import type { Position, Verdict } from '../../data/positions';
+import { nyIsoDate } from '../../core/nyTime';
 
 export type ListRow =
   | { kind: 'watch'; id: string; w: WatchedContract; r: WatchReturns }
@@ -34,15 +34,18 @@ export type ListRow =
       kind: 'own';
       id: string;
       p: Position;
-      /** The contract's value now, per share */
-      value: number;
+      /** The contract's value now, per share. Null until the live chain quotes it. */
+      value: number | null;
+      /** Dollars since yesterday's close. Null until both the live mark and that close are in. */
+      today: number | null;
+      todayR: number | null;
       /** Dollars since what was paid — null when the reader gave no cost */
       total: number | null;
       /** …and in R against what was paid */
       totalR: number | null;
     };
 
-export const usdSigned = (v: number) => `${v < 0 ? '−' : '+'}$${Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+export const usdSigned = (v: number) => `${v < 0 ? '−' : '+'}$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const rSigned = (v: number) => `${v < 0 ? '−' : '+'}${Math.abs(v).toFixed(2)}R`;
 export const dirInk = (v: number) => (v > 0 ? 'text-bull' : v < 0 ? 'text-bear' : 'text-textPrimary');
 export const monthDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -113,7 +116,7 @@ export const ListGrid = memo(function ListGrid({
           return (
             <span className="inline-flex items-center gap-1.5 min-w-0">
               <ContractLabel contract={`${c.ticker} ${fmtStrike(c.strike)}${c.right}`} right={c.right} logo={c.ticker} size="sm" />
-              <span className="font-mono text-[9px] text-textMuted whitespace-nowrap">
+              <span className="font-mono text-t9 text-textMuted whitespace-nowrap">
                 {size > 1 ? `× ${size} · ` : '· '}
                 {tag ? `${tag} · ` : ''}
                 {monthDay(c.expiry)}
@@ -129,23 +132,26 @@ export const ListGrid = memo(function ListGrid({
       },
       {
         colId: 'added',
-        headerName: 'Added',
-        width: 100,
-        headerTooltip: 'When it was added — a watched contract is marked then; a position you own carries what you paid',
-        cellRenderer: ({ data }: ICellRendererParams<ListRow>) =>
-          data ? (
-            <span className="font-mono text-[10px] tnum text-textSecondary whitespace-nowrap">
-              <When days={daysSince(contractOf(data).addedAt)} size={10} />
-            </span>
-          ) : null,
+        headerName: 'Entered',
+        width: 78,
+        headerTooltip: 'The session you entered. A watch is the day you marked it.',
+        cellRenderer: ({ data }: ICellRendererParams<ListRow>) => {
+          if (!data) return null;
+          const iso = data.kind === 'own' ? data.p.enteredOn ?? nyIsoDate(data.p.addedAt) : nyIsoDate(data.w.addedAt);
+          return <span className="font-mono text-t10 tnum text-textSecondary whitespace-nowrap">{monthDay(iso)}</span>;
+        },
       },
       {
         colId: 'mark',
-        headerName: 'Mark',
-        width: 72,
+        headerName: 'Live',
+        width: 68,
         type: 'rightAligned',
-        cellRenderer: ({ data }: ICellRendererParams<ListRow>) =>
-          data ? <span className={`font-mono text-[11px] tnum ${data.kind === 'watch' && data.w.status !== 'open' ? 'text-textSecondary' : 'text-textPrimary'}`}>${(data.kind === 'watch' ? data.r.mark : data.value).toFixed(2)}</span> : null,
+        cellRenderer: ({ data }: ICellRendererParams<ListRow>) => {
+          if (!data) return null;
+          const px = data.kind === 'watch' ? data.r.mark : data.value;
+          if (px == null || !Number.isFinite(px)) return <span className="font-mono text-t10 text-textMuted">—</span>;
+          return <span className={`font-mono text-t11 tnum ${data.kind === 'watch' && data.w.status !== 'open' ? 'text-textSecondary' : 'text-textPrimary'}`}>${px.toFixed(2)}</span>;
+        },
       },
       ...(hedgeOf && hedgeColumn
         ? [
@@ -158,11 +164,11 @@ export const ListGrid = memo(function ListGrid({
                 if (!data) return null;
                 const v = hedgeOf(data);
                 return v ? (
-                  <span className={`font-mono text-[9px] font-semibold uppercase tracking-wider ${HEDGE_INK[v]}`} title={HEDGE_SAYS[v]} data-list-hedge={v}>
+                  <span className={`font-mono text-t9 font-semibold uppercase tracking-wider ${HEDGE_INK[v]}`} title={HEDGE_SAYS[v]} data-list-hedge={v}>
                     {v}
                   </span>
                 ) : (
-                  <span className="font-mono text-[10px] text-textMuted">—</span>
+                  <span className="font-mono text-t10 text-textMuted">—</span>
                 );
               },
             } satisfies ColDef<ListRow>,
@@ -173,17 +179,18 @@ export const ListGrid = memo(function ListGrid({
         headerName: 'Today',
         width: 100,
         type: 'rightAligned',
-        headerTooltip: "Today's move against the last session's close — dollars, then R (watched contracts)",
-        cellRenderer: ({ data }: ICellRendererParams<ListRow>) =>
-          data ? (
-            data.kind === 'watch' && data.w.status === 'open' ? (
-              <span className={`font-mono text-[11px] tnum ${dirInk(data.r.todayDollars)}`}>
-                {usdSigned(data.r.todayDollars)} <span className="text-[9px] opacity-80">{rSigned(data.r.todayR)}</span>
-              </span>
-            ) : (
-              <span className="font-mono text-[10px] text-textMuted">—</span>
-            )
-          ) : null,
+        headerTooltip: "Since yesterday's close",
+        cellRenderer: ({ data }: ICellRendererParams<ListRow>) => {
+          if (!data) return null;
+          const d = data.kind === 'watch' ? data.r.todayDollars : data.today;
+          const r = data.kind === 'watch' ? data.r.todayR : data.todayR;
+          if (d == null || r == null || !Number.isFinite(d) || !Number.isFinite(r)) return <span className="font-mono text-t10 text-textMuted">—</span>;
+          return (
+            <span className={`font-mono text-t11 tnum ${dirInk(d)}`}>
+              {usdSigned(d)}
+            </span>
+          );
+        },
       },
       {
         colId: 'total',
@@ -195,10 +202,12 @@ export const ListGrid = memo(function ListGrid({
           if (!data) return null;
           const d = data.kind === 'watch' ? data.r.totalDollars : data.total;
           const r = data.kind === 'watch' ? data.r.totalR : data.totalR;
-          if (d == null || r == null) return <span className="font-mono text-[10px] text-textMuted">no cost given</span>;
+          if (data.kind === 'own' && data.value == null) return <span className="font-mono text-t10 text-textMuted">—</span>;
+          if (data.kind === 'watch' && !Number.isFinite(data.r.mark)) return <span className="font-mono text-t10 text-textMuted">—</span>;
+          if (d == null || r == null || !Number.isFinite(d) || !Number.isFinite(r)) return <span className="font-mono text-t10 text-textMuted">no cost given</span>;
           return (
-            <span className={`font-mono text-[11px] font-semibold tnum ${dirInk(d)}`}>
-              {usdSigned(d)} <span className="text-[9px] font-normal opacity-80">{rSigned(r)}</span>
+            <span className={`font-mono text-t11 font-semibold tnum ${dirInk(d)}`}>
+              {usdSigned(d)} <span className="text-t9 font-normal opacity-80">{rSigned(r)}</span>
             </span>
           );
         },
@@ -264,7 +273,7 @@ export const ListGrid = memo(function ListGrid({
           onFirstDataRendered={() => setReady(true)}
           onGridSizeChanged={onGridSizeChanged}
           tooltipShowDelay={350}
-          overlayNoRowsTemplate={`<span class="font-mono text-[10px] uppercase tracking-widest text-textMuted">${emptyText}</span>`}
+          overlayNoRowsTemplate={`<span class="font-mono text-t10 uppercase tracking-widest text-textMuted">${emptyText}</span>`}
         />
       </AgGridProvider>
     </div>

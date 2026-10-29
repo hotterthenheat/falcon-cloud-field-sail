@@ -19,7 +19,7 @@ export function WhyHere({ ticker, level }: { ticker: string; level: string }) {
     <span className="col-span-2 mt-1 flex flex-col items-start gap-1">
       <button
         type="button"
-        className="font-mono text-[10px] uppercase tracking-wider text-textMuted hover:text-textPrimary"
+        className="font-mono text-t10 uppercase tracking-wider text-textMuted hover:text-textPrimary"
         onClick={() => {
           setText(null);
           const ac = new AbortController();

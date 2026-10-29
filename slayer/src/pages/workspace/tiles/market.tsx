@@ -31,12 +31,11 @@ import { CAT_COLOR } from '../../../components/news/CatTag';
 import { ImpactMark, tierOf } from '../../../components/record/impactMark';
 import { agoWords, whenParts } from '../../../components/record/when';
 import { GRADE_INK } from '../../../components/ui/GradeMeter';
-import { bracketLabel, buildCongress, congressSentence } from '../../../data/congress';
+import { bracketLabel, congressSentence } from '../../../data/congress';
 import { buildEarningsCalendar } from '../../../data/earnings';
 import { stateOf, type VolState } from '../../../components/earnings/volState';
-import { OPEN_MARKET_CODES, TX_CODES, insiderFeed, insidersSentence } from '../../../data/insiders';
+import { OPEN_MARKET_CODES, TX_CODES, insidersSentence } from '../../../data/insiders';
 import type { NewsCategory } from '../../../data/news';
-import { buildGeoNews } from '../../../data/newsroom';
 import { useLiveRecord } from '../../../data/liveRecord';
 import { rollCongress } from '../../../data/whalesMap';
 import { gradeOfComposite, type Grade } from '../../../data/stockOverview';
@@ -64,7 +63,7 @@ export const NewsTile = ({ ctx, state, size }: TileProps) => {
   const door = useDoor();
   /* the wire drips by the minute — the desk's sweep is often enough */
   const record = useLiveRecord();
-  const events = useMemo(() => (record.news.status === 'sim' ? buildGeoNews() : record.news.events), [record.news]);
+  const events = useMemo(() => (record.news.status === 'live' ? record.news.events : []), [record.news]);
   const beat = String(state.beat ?? 'all');
   const rows = useMemo(() => (beat === 'all' ? events : events.filter(e => e.item.category === beat)), [events, beat]);
   if (record.news.status === 'loading') return <TileEmpty words="Reading the wire." />;
@@ -81,11 +80,11 @@ export const NewsTile = ({ ctx, state, size }: TileProps) => {
           const move = e.item.prediction.expMove1dPct;
           return (
             <TileRow key={e.id} columns={cols} height={34} testId={e.id} title={`${e.item.headline} — open it on the News page`} onClick={() => door('/dossier/news', { selectedId: e.id })}>
-              {wide && <span className="text-[10px] text-textSecondary">{e.item.time}</span>}
-              <span className="min-w-0 truncate text-[11px] font-bold text-textPrimary">{e.item.ticker ?? <span className="font-normal text-textSecondary">Macro</span>}</span>
+              {wide && <span className="text-t10 text-textSecondary">{e.item.time}</span>}
+              <span className="min-w-0 truncate text-t11 font-bold text-textPrimary">{e.item.ticker ?? <span className="font-normal text-textSecondary">Macro</span>}</span>
               <span className="min-w-0 flex items-center gap-2">
                 <ImpactMark tier={tierOf(e.severity)} />
-                <span className="min-w-0 truncate font-sans text-[12px] text-textSecondary">{e.item.headline}</span>
+                <span className="min-w-0 truncate font-sans text-t12 text-textSecondary">{e.item.headline}</span>
               </span>
               <span className={`text-right font-semibold ${dirInk(move)}`}>{signedPct(move, 1)}</span>
             </TileRow>
@@ -136,11 +135,11 @@ export const EarningsTile = ({ state, size }: TileProps) => {
               <CompanyLogo ticker={e.ticker} size={20} />
               <span className="min-w-0 flex flex-col leading-tight">
                 <span className="font-bold text-textPrimary">{e.ticker}</span>
-                <span className="font-sans text-[10px] text-textMuted truncate">{e.name}</span>
+                <span className="font-sans text-t10 text-textMuted truncate">{e.name}</span>
               </span>
               <span className="min-w-0 flex flex-col leading-tight">
                 <span className="text-textPrimary">{e.daysOut === 0 ? 'Today' : e.dateLabel}</span>
-                <span className={`text-[9px] ${e.slot === 'BMO' ? 'text-warn' : 'text-flip'}`}>{e.slot === 'BMO' ? 'before the open' : 'after the close'}</span>
+                <span className={`text-t9 ${e.slot === 'BMO' ? 'text-warn' : 'text-flip'}`}>{e.slot === 'BMO' ? 'before the open' : 'after the close'}</span>
               </span>
               <span className="text-right font-semibold text-textPrimary">±{e.impliedMovePct.toFixed(1)}%</span>
               {wide && (
@@ -198,11 +197,11 @@ export const StocksTile = ({ ctx, state, size }: TileProps) => {
               <CompanyLogo ticker={p.ticker} size={18} />
               <span className="min-w-0 flex flex-col leading-tight">
                 <span className="font-bold text-textPrimary">{p.ticker}</span>
-                <span className="font-sans text-[10px] text-textMuted truncate">{p.name}</span>
+                <span className="font-sans text-t10 text-textMuted truncate">{p.name}</span>
               </span>
               <span className={`text-right ${dirInk(p.changePct)}`}>{signedPct(p.changePct)}</span>
               {wide && <Sparkline data={p.trend} up={p.trend[p.trend.length - 1] >= p.trend[0]} width={70} height={18} />}
-              <span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold ${GRADE_INK[g]}`}>
+              <span className={`inline-flex items-center gap-1.5 text-t10 font-semibold ${GRADE_INK[g]}`}>
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SCREEN_DOT[g]}`} />
                 {g}
               </span>
@@ -243,13 +242,13 @@ export const FilingsTile = ({ ctx, state, size, open }: TileProps) => {
   const record = useLiveRecord();
   const insiders = useMemo(() => {
     if (congress) return [];
-    if (record.insiders.status === 'sim') return insiderFeed(WINDOW_DAYS);
+    if (record.insiders.status !== 'live') return [];
     const keep = new Set(OPEN_MARKET_CODES);
     return record.insiders.trades.filter(t => t.daysAgo <= WINDOW_DAYS && keep.has(t.code));
   }, [congress, record.insiders]);
   const feed = useMemo(() => {
     if (!congress) return null;
-    if (record.congress.status === 'sim') return buildCongress(WINDOW_DAYS);
+    if (record.congress.status !== 'live') return rollCongress([], WINDOW_DAYS);
     return rollCongress(record.congress.trades.filter(t => t.tradedDaysAgo <= WINDOW_DAYS), WINDOW_DAYS);
   }, [congress, record.congress]);
   const wide = size.room !== 'small';
@@ -268,16 +267,16 @@ export const FilingsTile = ({ ctx, state, size, open }: TileProps) => {
         <TileRows>
           {feed.trades.map(t => (
             <TileRow key={t.id} columns={cols} testId={t.id} onClick={open} title={`${t.member.name} · ${t.assetDescription} — open Congress`}>
-              <span className="text-[10px] text-textSecondary" title={agoWords(t.filedDaysAgo)}>
+              <span className="text-t10 text-textSecondary" title={agoWords(t.filedDaysAgo)}>
                 {whenParts(t.filedDaysAgo).date}
               </span>
-              <span className="min-w-0 truncate font-sans text-[12px] text-textPrimary">
-                {t.member.name} <span className="font-mono text-[9px] text-textMuted">{t.member.party}</span>
-                {t.committeeOverlap && <span className="ml-1.5 font-mono text-[8px] uppercase tracking-widest text-warn" title={`A trade in a sector the member's own committee oversees — ${t.committeeOverlap}`}>own committee</span>}
+              <span className="min-w-0 truncate font-sans text-t12 text-textPrimary">
+                {t.member.name} <span className="font-mono text-t9 text-textMuted">{t.member.party}</span>
+                {t.committeeOverlap && <span className="ml-1.5 font-mono text-t8 uppercase tracking-widest text-warn" title={`A trade in a sector the member's own committee oversees — ${t.committeeOverlap}`}>own committee</span>}
               </span>
               <span className="font-bold text-textPrimary">{t.ticker}</span>
               <span className={t.type === 'Purchase' ? 'text-bull' : t.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}>{t.type === 'Purchase' ? 'Bought' : t.type === 'Exchange' ? 'Exchanged' : 'Sold'}</span>
-              {wide && <span className="min-w-0 truncate text-[10px] text-textSecondary">{bracketLabel(t.bracket)}</span>}
+              {wide && <span className="min-w-0 truncate text-t10 text-textSecondary">{bracketLabel(t.bracket)}</span>}
             </TileRow>
           ))}
         </TileRows>
@@ -301,12 +300,12 @@ export const FilingsTile = ({ ctx, state, size, open }: TileProps) => {
           const buy = t.kind === 'BUY';
           return (
             <TileRow key={t.id} columns={cols} testId={t.id} onClick={open} title={`${t.person}, ${t.role} — ${TX_CODES[t.code].label.toLowerCase()} — open Insiders`}>
-              <span className="text-[10px] text-textSecondary" title={agoWords(t.daysAgo)}>
+              <span className="text-t10 text-textSecondary" title={agoWords(t.daysAgo)}>
                 {whenParts(t.daysAgo).date}
               </span>
               <span className="font-bold text-textPrimary">{t.ticker}</span>
-              <span className="min-w-0 truncate font-sans text-[12px] text-textPrimary">
-                {t.person} <span className="text-[10px] text-textMuted">{t.role}</span>
+              <span className="min-w-0 truncate font-sans text-t12 text-textPrimary">
+                {t.person} <span className="text-t10 text-textMuted">{t.role}</span>
               </span>
               {wide && <span className={buy ? 'text-bull' : 'text-bear'}>{buy ? 'Bought' : 'Sold'}</span>}
               <span className={`text-right font-semibold ${wide ? 'text-textPrimary' : buy ? 'text-bull' : 'text-bear'}`}>{fmtDollars(t.value)}</span>

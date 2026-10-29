@@ -80,7 +80,7 @@ const SideSwitch = ({ right, onRight }: { right: Right; onRight: (r: Right) => v
           aria-pressed={on}
           onClick={() => onRight(r)}
           title={r === 'C' ? 'Calls — they gain when the name rises' : 'Puts — they gain when the name falls'}
-          className={`px-3 rounded-[4px] font-mono text-[10px] font-bold uppercase tracking-wider transition-colors ${on ? fill : `text-textSecondary hover:text-[#0a0a0a] ${r === 'C' ? 'hover:bg-bull' : 'hover:bg-bear'}`}`}
+          className={`px-3 rounded-[4px] font-mono text-t10 font-bold uppercase tracking-wider transition-colors ${on ? fill : `text-textSecondary hover:text-onfoil ${r === 'C' ? 'hover:bg-bull' : 'hover:bg-bear'}`}`}
           data-paper-chain-side-pick={r}
         >
           {r === 'C' ? 'Calls' : 'Puts'}
@@ -129,7 +129,7 @@ const OptionsChain = ({ ticker, chain, right, onRight, expiry, expiryOptions, on
         {expiry && <DropdownSelect label="Expiry" bare value={expiry} options={expiryOptions} onChange={onExpiry} title="The expiry — those listed today; today’s leaves the list at 16:00" testId="paper-chain-expiry" />}
         <DropdownMulti label="Columns" values={cols} groups={COLUMN_GROUPS} onChange={setCols} emptyWord="Strike only" title="Which facts the chain shows" testId="paper-chain-columns" align="end" />
         {chain && (
-          <span className="ml-auto font-mono text-[10px] tnum text-textMuted" title="The move the chain is charging for by this expiry, either way">
+          <span className="ml-auto font-mono text-t10 tnum text-textMuted" title="The move the chain is charging for by this expiry, either way">
             ±{chain.expectedMovePct.toFixed(1)}%
           </span>
         )}
@@ -138,7 +138,7 @@ const OptionsChain = ({ ticker, chain, right, onRight, expiry, expiryOptions, on
         {chain ? (
           <ChainCard chain={chain} right={right} sel={sel} onSelect={onSelect} cols={shown} centerKey={`${ticker}|${expiry}|${right}`} inlineDrill drillExtra={order} held={held} />
         ) : (
-          <div className="h-full min-h-[200px] flex items-center justify-center font-mono text-[10px] uppercase tracking-widest text-textMuted">No expiry is listed right now</div>
+          <div className="h-full min-h-[200px] flex items-center justify-center font-mono text-t10 uppercase tracking-widest text-textMuted">No expiry is listed right now</div>
         )}
       </div>
     </div>
@@ -192,7 +192,7 @@ const intoView = (el: HTMLElement | null) => {
   if (by > 0) vp.scrollTo({ top: vp.scrollTop + by, behavior: 'smooth' });
 };
 
-const quiet = 'h-6 px-2 rounded-md border border-borderSubtle font-mono text-[10px] text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-35 disabled:cursor-not-allowed transition-colors';
+const quiet = 'h-6 px-2 rounded-md border border-borderSubtle font-mono text-t10 text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-35 disabled:cursor-not-allowed transition-colors';
 
 /** THE ORDER — inside a strike's dropdown on the live paper desk, and the backtest's Order card (2026-09-26, Noah: "make the
     contract orders look the same on the backtesting section for both options and futures"): one composition, two desks */
@@ -266,8 +266,8 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
     const whyLine = desk.locked ?? whyWords(null, why.sell);
     return (
       <div ref={rootRef} className="pt-2.5 border-t border-ink/[0.08] flex flex-col gap-2.5" data-chain-order="held">
-        <div className="flex items-center gap-2 flex-wrap font-mono text-[11px] tnum">
-          <span className="text-[9px] font-bold uppercase tracking-widest text-textSecondary">Your position</span>
+        <div className="flex items-center gap-2 flex-wrap font-mono text-t11 tnum">
+          <span className="text-t9 font-bold uppercase tracking-widest text-textSecondary">Your position</span>
           <span className="font-semibold text-bull">Long {pos.qty}</span>
           <span className="text-textPrimary">{contractWords(pos.contract)}</span>
           <span className="text-textMuted">@ {pos.avg.toFixed(2)}</span>
@@ -296,7 +296,7 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
             Buy {n} more @ {quote.ask.toFixed(2)}
           </button>
         </div>
-        <div className="font-mono text-[11px] tnum leading-relaxed" data-order-status>
+        <div className="font-mono text-t11 tnum leading-relaxed" data-order-status>
           <div className="text-textSecondary">
             {sellN} × {usd(quote.bid)} × 100 = <span className="text-textPrimary font-semibold">{usd(proceeds)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
           </div>
@@ -312,10 +312,10 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
   return (
     <div ref={rootRef} className="pt-2.5 border-t border-ink/[0.08] flex flex-col gap-2.5" data-chain-order="buy">
       <div className="flex items-center gap-2 flex-wrap">
-        {word && <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-textSecondary">Order</span>}
-        <span className="font-mono text-[11px] font-semibold text-textPrimary">{contractWords(contract)}</span>
+        {word && <span className="font-mono text-t9 font-bold uppercase tracking-widest text-textSecondary">Order</span>}
+        <span className="font-mono text-t11 font-semibold text-textPrimary">{contractWords(contract)}</span>
         {spreadOptions.length > 1 && <DropdownSelect label="Spread" value={short} options={spreadOptions} onChange={k => { setShort(k); desk.onShort?.(k); }} title="Sell a strike further out against it — a vertical spread, bought for a debit: cheaper, and capped at the distance between the two" testId="chain-order-spread" size="sm" />}
-        <span className="ml-auto font-mono text-[10px] tnum text-textMuted">
+        <span className="ml-auto font-mono text-t10 tnum text-textMuted">
           bid <span className="text-textPrimary">{quote.bid.toFixed(2)}</span> · mid <span className="text-textPrimary">{mid.toFixed(2)}</span> · ask <span className="text-textPrimary">{quote.ask.toFixed(2)}</span>
         </span>
       </div>
@@ -347,7 +347,7 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
           trail={{ placeholder: basis === 'name' ? (quote.spot * 0.004).toFixed(2) : (quote.ask * 0.2).toFixed(2), unit: basis === 'name' ? `of ${ticker}` : 'a share' }}
         />
       )}
-      <div className="font-mono text-[11px] tnum leading-relaxed" data-order-status>
+      <div className="font-mono text-t11 tnum leading-relaxed" data-order-status>
         <div className="text-textSecondary">
           {n} × {usd(px)} × 100 = <span className="text-textPrimary font-semibold">{usd(cost)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
         </div>

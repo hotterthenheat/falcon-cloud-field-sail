@@ -38,5 +38,5 @@ export function saveDeskTop(v: number): void {
   }
 }
 
-/** The frame's two rows: the window at its height, the bottom row as tall as its cards */
-export const deskRows = (top: number): string => `${top}px auto`;
+/** The frame's two rows: the chain window at its height, the cards under it one fixed pane that scrolls inside */
+export const deskRows = (top: number): string => `${top}px 460px`;

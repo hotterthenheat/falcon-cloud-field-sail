@@ -179,11 +179,11 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
         ) : (
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3 flex-wrap">
-              <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Where the walls are heading</h3>
+              <h3 className="text-t15 font-semibold leading-tight text-textPrimary">Where the walls are heading</h3>
               {scope}
               <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the dots, the rings and the diamonds mean" testId="heading-guide" />
             </div>
-            <p className="mt-0.5 text-[11px] text-textMuted">
+            <p className="mt-0.5 text-t11 text-textMuted">
               {data.overnight
                 ? `Each level on the strike axis: where it stood before ${oiWhen(data.oiDates).trade ?? 'the overnight count'} (the overnight open-interest count) and where it is now · the count is one step, so nothing is projected`
                 : <>Each level on the strike axis: where it stood at the open, where it is now, and where {clock.inSession ? "today's pace puts it by the close" : "the last session's pace puts it next session"} · a straight line, not a forecast</>}
@@ -194,10 +194,10 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
       )}
 
       {/* THE READ LINE — one fixed line for the level under the pointer; on a tile it is the foot */}
-      <div className={bare ? 'order-last shrink-0 px-3 py-2 border-t border-ink/[0.06] font-mono text-[11px] leading-snug select-none min-h-[34px] flex items-center gap-2' : 'mx-5 px-3 py-2 border-y border-borderSubtle/60 font-mono text-[11px] leading-snug select-none min-h-[34px] flex items-center gap-2'} data-heading-read>
+      <div className={bare ? 'order-last shrink-0 px-3 py-2 border-t border-ink/[0.06] font-mono text-t11 leading-snug select-none min-h-[34px] flex items-center gap-2' : 'mx-5 px-3 py-2 border-y border-borderSubtle/60 font-mono text-t11 leading-snug select-none min-h-[34px] flex items-center gap-2'} data-heading-read>
         {read ? (
           <>
-            <span className="text-[8px] uppercase tracking-widest shrink-0" style={{ color: NAME_INK[read.name] }}>
+            <span className="text-t8 uppercase tracking-widest shrink-0" style={{ color: NAME_INK[read.name] }}>
               {read.name}
             </span>
             <span className="text-textSecondary">{read.words}</span>
@@ -317,7 +317,7 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
         </svg>
         </div>
         {/* THE KEY — its own line, so nothing sits on the axis's prices */}
-        <div className="mt-1 pl-2 flex items-center gap-4 flex-wrap text-[9px] text-textMuted" data-heading-key>
+        <div className="mt-1 pl-2 flex items-center gap-4 flex-wrap text-t9 text-textMuted" data-heading-key>
           <Key kind="open">{data.overnight ? `before ${oiWhen(data.oiDates).trade ?? 'the overnight count'}` : 'at the open'}</Key>
           <Key kind="now">now</Key>
           {!data.overnight && <Key kind="close">{clock.inSession ? 'by the close, at this pace' : 'next session, at this pace'}</Key>}

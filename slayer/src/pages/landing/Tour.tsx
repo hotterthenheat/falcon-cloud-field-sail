@@ -411,10 +411,10 @@ const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
                   <div ref={band} className="relative h-[96svh] lg:h-[135svh]" data-tour-band>
                     {s.turnSays && (
                       <>
-                        <p data-theme={a} className="absolute inset-x-0 top-[6%] max-w-[11ch] text-textPrimary font-light text-[38px] lg:text-[52px] leading-[1.02] tracking-[-0.04em]">
+                        <p data-theme={a} className="absolute inset-x-0 top-[6%] max-w-[11ch] text-textPrimary font-light text-t38 lg:text-t52 leading-[1.02] tracking-[-0.04em]">
                           {s.turnSays[a]}
                         </p>
-                        <p data-theme={b} className="absolute inset-x-0 bottom-[6%] max-w-[11ch] text-textPrimary font-light text-[38px] lg:text-[52px] leading-[1.02] tracking-[-0.04em]">
+                        <p data-theme={b} className="absolute inset-x-0 bottom-[6%] max-w-[11ch] text-textPrimary font-light text-t38 lg:text-t52 leading-[1.02] tracking-[-0.04em]">
                           {s.turnSays[b]}
                         </p>
                       </>
@@ -426,16 +426,16 @@ const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
                   <div className="min-h-[64svh] lg:min-h-[90svh] pb-16">
                     {/* the step's words arrive as the step comes into view (pieces.tsx Arrive), a line at a time */}
                     <Arrive className={`transition-opacity duration-500 motion-reduce:transition-none ${on || (i === 0 && active === null) ? '' : 'opacity-[0.38]'}`}>
-                      <p className="arrive-line [--i:0] flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.22em] text-textMuted">
+                      <p className="arrive-line [--i:0] flex items-center gap-3 font-mono text-t11 uppercase tracking-[0.22em] text-textMuted">
                         <span className="w-8 h-px bg-textMuted/60" aria-hidden="true" />
                         {s.code && <span className="text-textPrimary tnum">{s.code}</span>}
                         {s.kind}
                       </p>
-                      <h3 className="arrive-line arrive-settle [--i:1] mt-5 flex items-center gap-3.5 text-[44px] sm:text-[56px] lg:text-[50px] xl:text-[54px] 2xl:text-[64px] font-light leading-[0.98] tracking-[-0.04em]" data-tour-head>
+                      <h3 className="arrive-line arrive-settle [--i:1] mt-5 flex items-center gap-3.5 text-t44 sm:text-t56 lg:text-t50 xl:text-t54 2xl:text-t64 font-light leading-[0.98] tracking-[-0.04em]" data-tour-head>
                         {s.glyph && <PageGlyph name={s.glyph} size={28} className="shrink-0 max-sm:w-6 max-sm:h-6 translate-y-[0.04em]" />}
                         {s.name}
                       </h3>
-                      <p className="arrive-line [--i:2] mt-6 max-w-[40ch] text-[17px] 2xl:text-[18px] leading-[1.5]">
+                      <p className="arrive-line [--i:2] mt-6 max-w-[40ch] text-t17 2xl:text-t18 leading-[1.5]">
                         <span className="font-medium text-textPrimary">{s.leadFor?.[ground] ?? s.lead}</span> <span className="text-textSecondary">{s.rest}</span>
                       </p>
                       <ul className="arrive-line [--i:3] mt-9 border-t border-borderSubtle">
@@ -443,8 +443,8 @@ const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
                           const here = !!r.path && r.path === shown;
                           const body = (
                             <>
-                              <span className={`text-[15px] font-medium ${here ? 'text-textPrimary' : r.path ? 'text-textSecondary group-hover:text-textPrimary' : 'text-textPrimary'}`}>{r.title}</span>
-                              <span className="mt-1 block text-[13.5px] leading-snug text-textMuted">{r.says}</span>
+                              <span className={`text-t15 font-medium ${here ? 'text-textPrimary' : r.path ? 'text-textSecondary group-hover:text-textPrimary' : 'text-textPrimary'}`}>{r.title}</span>
+                              <span className="mt-1 block text-t135 leading-snug text-textMuted">{r.says}</span>
                             </>
                           );
                           return (
@@ -479,7 +479,7 @@ const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
                         type="button"
                         onClick={() => onOpen(shown)}
                         /* the door's arrow glides under the pointer, like every door with an arrow on this page (Landing.tsx DOOR_ARROW) */
-                        className="group/door mt-8 inline-flex items-center gap-2 h-10 pl-4 pr-3.5 rounded-full border border-borderMuted text-[13.5px] font-medium text-textPrimary hover:border-textPrimary/70 hover:bg-ink/[0.06] transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver"
+                        className="group/door mt-8 inline-flex items-center gap-2 h-10 pl-4 pr-3.5 rounded-full border border-borderMuted text-t135 font-medium text-textPrimary hover:border-textPrimary/70 hover:bg-ink/[0.06] transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver"
                         data-tour-door={s.id}
                       >
                         Open {s.turn ? 'the terminal' : s.name}
@@ -493,10 +493,10 @@ const Tour = ({ head, steps, first, onOpen, onBarGround, endSays }: Props) => {
           })}
           {/* THE TURN BACK: the ground goes home and the terminal with it. The tour's last words stand here, one line on each ground. */}
           <div ref={bandBack} className="relative h-[84svh] lg:h-[112svh]" data-tour-band="back">
-            <p data-theme={b} className="absolute inset-x-0 top-[6%] max-w-[11ch] text-textPrimary font-light text-[38px] lg:text-[52px] leading-[1.02] tracking-[-0.04em]">
+            <p data-theme={b} className="absolute inset-x-0 top-[6%] max-w-[11ch] text-textPrimary font-light text-t38 lg:text-t52 leading-[1.02] tracking-[-0.04em]">
               {endSays[0]}
             </p>
-            <p data-theme={a} className="absolute inset-x-0 bottom-[6%] max-w-[11ch] text-textPrimary font-light text-[38px] lg:text-[52px] leading-[1.02] tracking-[-0.04em]">
+            <p data-theme={a} className="absolute inset-x-0 bottom-[6%] max-w-[11ch] text-textPrimary font-light text-t38 lg:text-t52 leading-[1.02] tracking-[-0.04em]">
               {endSays[1]}
             </p>
           </div>

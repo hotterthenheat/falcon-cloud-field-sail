@@ -32,7 +32,7 @@ const SubNav = ({ items, ariaLabel }: SubNavProps) => {
           className={({ isActive }) =>
             `relative px-3 py-1.5 font-mono text-xs whitespace-nowrap transition-colors ${
               isActive
-                ? 'text-[#0a0a0a] font-semibold'
+                ? 'text-onfoil font-semibold'
                 : 'text-textSecondary font-medium hover:text-textPrimary hover:bg-ink/[0.03] rounded-[5px]'
             }`
           }

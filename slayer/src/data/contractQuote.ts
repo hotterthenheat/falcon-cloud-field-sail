@@ -124,7 +124,7 @@ export function quoteContract(input: {
     maxPremiumLoss: maxPremiumLoss(entryPremium),
     fees: null,
     ivPct: input.ivPct,
-    source: input.source ?? 'simulator',
+    source: input.source ?? 'theta',
     quotedAt: input.quotedAt,
     spotAt: input.spotAt ?? input.quotedAt,
   };

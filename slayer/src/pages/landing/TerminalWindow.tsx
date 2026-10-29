@@ -103,7 +103,7 @@ const pageName = (path: string): string => crumbs(path).join(' ').replace(/-/g, 
 const Prompt = ({ path }: { path: string }) => {
   const cmd = `open ${crumbs(path).join('/')}`;
   return (
-    <span className="min-w-0 flex items-center font-mono text-[11.5px] leading-none whitespace-nowrap" data-window-path={path}>
+    <span className="min-w-0 flex items-center font-mono text-t115 leading-none whitespace-nowrap" data-window-path={path}>
       <span className="text-textMuted">slayer:~ $</span>
       <span key={cmd} className="window-typing ml-[0.6em] min-w-0 overflow-hidden text-textPrimary" aria-label={cmd}>
         {Array.from(cmd).map((ch, i) => (
@@ -331,7 +331,7 @@ const TerminalWindow = ({ path, theme, desk, natural = false, film, boot, bootSw
             since the switch to his partner's logo system (2026-10-03) */}
         <SlayerMark size={16} bare label="" />
         <Prompt path={drawn} />
-        <span className="ml-auto text-[9.5px] uppercase tracking-[0.16em] text-textMuted whitespace-nowrap">simulated data</span>
+        <span className="ml-auto text-t95 uppercase tracking-[0.16em] text-textMuted whitespace-nowrap">simulated data</span>
       </div>
 
       {/* THE SCREEN */}

@@ -20,7 +20,7 @@ export function PhoneCards<T>({ rows, rowKey, card, onOpen, empty, testId, reset
   useEffect(() => setPage(0), [resetKey]);
   const at = Math.min(page, pages - 1);
   const shown = rows.slice(at * PAGE, at * PAGE + PAGE);
-  if (!rows.length) return <div className="px-4 py-6 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-phone-cards={testId}>{empty}</div>;
+  if (!rows.length) return <div className="px-4 py-6 font-mono text-t10 uppercase tracking-widest text-textMuted" data-phone-cards={testId}>{empty}</div>;
   return (
     <div data-phone-cards={testId}>
       <ul className="divide-y divide-borderSubtle/60">
@@ -45,7 +45,7 @@ export function PhoneCards<T>({ rows, rowKey, card, onOpen, empty, testId, reset
 
 /** One card's line: the left words and the right figure, each allowed to wrap rather than run off the screen */
 export const CardLine = ({ left, right, muted = false }: { left: ReactNode; right?: ReactNode; muted?: boolean }) => (
-  <span className={`flex items-baseline justify-between gap-3 min-w-0 ${muted ? 'mt-0.5 text-[10.5px] text-textMuted' : 'text-[12px] text-textPrimary'}`}>
+  <span className={`flex items-baseline justify-between gap-3 min-w-0 ${muted ? 'mt-0.5 text-t105 text-textMuted' : 'text-t12 text-textPrimary'}`}>
     <span className="min-w-0 break-words">{left}</span>
     {right != null ? <span className="shrink-0 font-mono tnum text-right">{right}</span> : null}
   </span>

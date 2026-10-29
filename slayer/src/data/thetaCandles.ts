@@ -40,12 +40,20 @@ export function ensureThetaCandles(ticker: string): void {
   const end = new Date();
   const start = new Date(end.getTime() - 4 * 86400000);
   const ymd = (d: Date) => d.toISOString().slice(0, 10);
-  const path = index
-    ? `/index/history/ohlc?symbol=${t}&start_date=${ymd(start)}&end_date=${ymd(end)}&interval=1m&format=json`
-    : `/stock/history/ohlc?symbol=${t}&start_date=${ymd(start)}&end_date=${ymd(end)}&interval=1m&format=json`;
-  void thetaCall(path).then(res => {
+  const root = index ? 'index' : 'stock';
+  const windows = [
+    { start: '09:30:00', end: '16:15:00' },
+    { start: '04:00:00', end: '09:29:59' },
+    { start: '16:00:00', end: '19:59:59' },
+    { start: '20:00:00', end: '23:59:59' },
+    { start: '00:00:00', end: '03:59:59' },
+  ];
+  void Promise.all(
+    windows.map(w => thetaCall(`/${root}/history/ohlc?symbol=${t}&start_date=${ymd(start)}&end_date=${ymd(end)}&interval=1m&start_time=${w.start}&end_time=${w.end}&format=json`)),
+  ).then(got => {
     pending.delete(t);
-    const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
+    const rows = got.flatMap(g => (Array.isArray(g.data) ? (g.data as Record<string, unknown>[]) : []));
+    const seen = new Set<number>();
     const bars: Candle[] = [];
     for (const b of rows) {
       const at = nyWallStamp(b.timestamp);
@@ -54,8 +62,11 @@ export function ensureThetaCandles(ticker: string): void {
       const low = Number(b.low) || 0;
       const close = Number(b.close) || 0;
       if (!at || !barPriced(open, high, low, close)) continue;
+      const time = Math.floor(at / 1000);
+      if (seen.has(time)) continue;
+      seen.add(time);
       bars.push({
-        time: Math.floor(at / 1000),
+        time,
         open: open || close,
         high: high || close,
         low: low || close,

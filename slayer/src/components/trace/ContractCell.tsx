@@ -67,10 +67,10 @@ const ContractCell = ({
   const head = (
     <span className={`group/door inline-flex items-baseline gap-1.5 pb-[2px] leading-none align-middle ${DOOR}`}>
       <span className={`font-mono text-xs font-bold text-textPrimary tnum ${DOOR_GROUP_TEXT}`}>{strike}</span>
-      <span className={`font-mono text-[11px] font-semibold ${right === 'C' ? 'text-bull' : 'text-bear'} ${DOOR_GROUP_TEXT}`}>
+      <span className={`font-mono text-t11 font-semibold ${right === 'C' ? 'text-bull' : 'text-bear'} ${DOOR_GROUP_TEXT}`}>
         {right === 'C' ? 'call' : 'put'}
       </span>
-      <span className={`font-mono text-[11px] text-textMuted tnum ${DOOR_GROUP_TEXT}`}>{expiryLabel(expiry)}</span>
+      <span className={`font-mono text-t11 text-textMuted tnum ${DOOR_GROUP_TEXT}`}>{expiryLabel(expiry)}</span>
     </span>
   );
   /* Without context the cell is EXACTLY what it always was — one line, one
@@ -85,7 +85,7 @@ const ContractCell = ({
   return (
     <span className="inline-flex flex-col items-end gap-[3px] leading-none align-middle">
       {head}
-      <span className="inline-flex items-baseline gap-1 font-mono text-[11px] leading-none tnum text-textSecondary whitespace-nowrap">
+      <span className="inline-flex items-baseline gap-1 font-mono text-t11 leading-none tnum text-textSecondary whitespace-nowrap">
         {dte !== undefined && <span>{dte}d</span>}
         {dte !== undefined && (spot !== undefined || otmPct !== undefined) && <span aria-hidden>·</span>}
         {/* THE STOCK AT THE PRINT, SAID SO (audit round 5: "spot $704.72" on the Live Tape beside a $703.29 elsewhere read as

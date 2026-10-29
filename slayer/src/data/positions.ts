@@ -33,8 +33,6 @@
 
 import { useMemo, useSyncExternalStore } from 'react';
 import { expiryFor, isoDate, sessionsBetween, today } from '../core/calendar';
-import Simulator from '../core/simulator';
-import { valueOn } from './positionCurve';
 import { SLEEVE_BY_KEY } from '../types/compass';
 import type { ExposureProfileData } from '../types/gex';
 import type { TrackedSetup } from '../types/tracker';
@@ -52,14 +50,12 @@ export interface Position {
   contracts: number;
   /** YYYY-MM-DD */
   expiry: string;
-  /** What you paid (or collected) per contract, in premium points — optional;
-      without it the return reads from `addedMark` */
+  /** What you paid (or collected) per share. Absent until you type it, or until a live mark is stamped. */
   entry?: number;
-  /** THE MARK THE MOMENT IT WAS ADDED, premium points (2026-09-16) — the cost the return reads
-      from when none was typed, the way a watched contract is marked when watched. Noah: a
-      position added yesterday must show yesterday's decay; measured against TODAY'S value it
-      read flat, as if it had been added today. Absent on positions stored before this. */
+  /** The live mark at the moment it was added, when no price was typed. Never a model. */
   addedMark?: number;
+  /** The session you entered, YYYY-MM-DD. Absent on rows saved before this — those use the day they were added. */
+  enteredOn?: string;
   source: 'you' | 'tracker';
   addedAt: number;
 }
@@ -83,6 +79,7 @@ function isPosition(x: unknown): x is Position {
     ISO.test(p.expiry) &&
     (p.entry === undefined || (typeof p.entry === 'number' && Number.isFinite(p.entry) && p.entry >= 0)) &&
     (p.addedMark === undefined || (typeof p.addedMark === 'number' && Number.isFinite(p.addedMark) && p.addedMark >= 0)) &&
+    (p.enteredOn === undefined || (typeof p.enteredOn === 'string' && ISO.test(p.enteredOn))) &&
     (p.source === 'you' || p.source === 'tracker') &&
     typeof p.addedAt === 'number'
   );
@@ -137,19 +134,14 @@ export function useAllPositions(): Position[] {
 let seq = 0;
 const newId = () => `pos-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 
-/** The contract's mark right now, by the one estimator the cards price with (positionCurve's
-    `valueOn`) — pinned on a position the moment it is added, so a new position reads flat and
-    every day after reads the true move */
-const markNow = (p: Pick<Position, 'ticker' | 'strike' | 'right' | 'expiry'>): number =>
-  Number(valueOn(p, Simulator.TICKERS[Simulator.ensureTicker(p.ticker)].currentPrice, 0).toFixed(2));
-
-export function addPosition(p: Omit<Position, 'id' | 'addedAt' | 'source' | 'addedMark'> & { source?: Position['source']; addedMark?: number }): Position {
-  const pos: Position = { ...p, source: p.source ?? 'you', addedMark: p.addedMark ?? markNow(p), id: newId(), addedAt: Date.now() };
+export function addPosition(p: Omit<Position, 'id' | 'addedAt' | 'source' | 'addedMark'> & { source?: Position['source']; addedMark?: number; enteredOn?: string }): Position {
+  const pos: Position = { ...p, source: p.source ?? 'you', id: newId(), addedAt: Date.now() };
+  if (pos.addedMark == null) delete pos.addedMark;
   commit([...positions, pos]);
   return pos;
 }
 
-export function updatePosition(id: string, patch: Partial<Pick<Position, 'strike' | 'right' | 'side' | 'contracts' | 'expiry' | 'entry'>>): void {
+export function updatePosition(id: string, patch: Partial<Pick<Position, 'strike' | 'right' | 'side' | 'contracts' | 'expiry' | 'entry' | 'enteredOn' | 'addedMark'>>): void {
   commit(
     positions.map(p => {
       if (p.id !== id) return p;

@@ -125,7 +125,7 @@ const riskCell = (v: number | 'uncapped' | null, tone: 'loss' | 'profit', t?: Sp
   return <span className={tone === 'loss' ? 'text-bear' : 'text-bull'}>{fmtUsd(v)}</span>;
 };
 
-const doorBtn = 'inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-textSecondary hover:text-textPrimary border border-borderSubtle rounded px-2 py-1 hover:bg-ink/[0.04] transition-colors';
+const doorBtn = 'inline-flex items-center gap-1 font-mono text-t11 uppercase tracking-wider text-textSecondary hover:text-textPrimary border border-borderSubtle rounded px-2 py-1 hover:bg-ink/[0.04] transition-colors';
 
 /** One structure opened up — the legs, the risk box, and the plain-English
     line saying what the shape does. */
@@ -151,7 +151,7 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
 
   const fact = (label: string, value: React.ReactNode) => (
     <div className="flex items-baseline justify-between gap-3 py-1 border-b border-borderSubtle/50 last:border-0">
-      <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted">{label}</span>
+      <span className="font-mono text-t11 uppercase tracking-wider text-textMuted">{label}</span>
       <span className="font-mono text-xs tnum text-textPrimary text-right">{value}</span>
     </div>
   );
@@ -177,18 +177,18 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
         <span className="flex items-center gap-x-2.5 gap-y-1 min-w-0 flex-wrap">
           <CompanyLogo ticker={trade.ticker} size={20} />
           <span className="font-mono text-sm font-bold text-textPrimary">{trade.ticker}</span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-[11px] font-semibold text-textPrimary min-w-0 max-w-full">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-t11 font-semibold text-textPrimary min-w-0 max-w-full">
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[trade.kind] }} />
             <span className="truncate">{t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}</span>
           </span>
-          {trade.extended && <span className="font-mono text-[10px] uppercase tracking-wider text-textMuted whitespace-nowrap" title="Filled after hours against thin post-market quotes — the shape is shown, not read for direction">after hours · not read</span>}
-          {trade.compression && <span className="font-mono text-[10px] uppercase tracking-wider text-warn whitespace-nowrap" title={COMPRESSION_HINT}>compression · not a bet</span>}
-          {t.vendorShape && <span className="font-mono text-[10px] text-textMuted whitespace-nowrap" title="Listed under another name — the legs as they were bought and sold say otherwise">listed as {t.vendorShape}</span>}
-          {t.namedBy === 'vendor' && !t.compression && <span className="font-mono text-[10px] text-textMuted whitespace-nowrap" title={t.legsState === 'pending' ? 'The listed name — the legs are still being read' : 'The listed name — its legs could not be settled into buys and sells that add up to its net, so the app has not named it from them'}>as listed</span>}
+          {trade.extended && <span className="font-mono text-t10 uppercase tracking-wider text-textMuted whitespace-nowrap" title="Filled after hours against thin post-market quotes — the shape is shown, not read for direction">after hours · not read</span>}
+          {trade.compression && <span className="font-mono text-t10 uppercase tracking-wider text-warn whitespace-nowrap" title={COMPRESSION_HINT}>compression · not a bet</span>}
+          {t.vendorShape && <span className="font-mono text-t10 text-textMuted whitespace-nowrap" title="Listed under another name — the legs as they were bought and sold say otherwise">listed as {t.vendorShape}</span>}
+          {t.namedBy === 'vendor' && !t.compression && <span className="font-mono text-t10 text-textMuted whitespace-nowrap" title={t.legsState === 'pending' ? 'The listed name — the legs are still being read' : 'The listed name — its legs could not be settled into buys and sells that add up to its net, so the app has not named it from them'}>as listed</span>}
         </span>
       }
       headerActions={
-        <span className="font-mono text-[11px] text-textSecondary tnum whitespace-nowrap shrink-0">
+        <span className="font-mono text-t11 text-textSecondary tnum whitespace-nowrap shrink-0">
           {trade.time}
           {trade.spot > 0 ? (indexRoot(trade.ticker) ? ` · index ${Math.round(trade.spot).toLocaleString('en-US')}` : ` · spot $${trade.spot.toFixed(2)}`) : ''}
         </span>
@@ -196,7 +196,7 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
     >
       <div>
         {/* the structure in a sentence, from ITS legs — never the family's fixed line */}
-        <div className="text-[12px] text-textSecondary leading-snug mb-3" data-spread-read>
+        <div className="text-t12 text-textSecondary leading-snug mb-3" data-spread-read>
           <RichRead text={t.read ?? (own.waiting ? 'Reading the legs…' : KIND_META[trade.kind].read)} />
         </div>
 
@@ -204,7 +204,7 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
             its contract's card */}
         <div className="border border-borderSubtle rounded mb-3 overflow-hidden" data-spread-legs>
           {legs.length === 0 ? (
-            <div className="px-2.5 py-3 font-mono text-[11px] text-textMuted">{own.waiting ? 'Reading the legs…' : own.failed ? 'The legs did not load' : 'No legs on the record'}</div>
+            <div className="px-2.5 py-3 font-mono text-t11 text-textMuted">{own.waiting ? 'Reading the legs…' : own.failed ? 'The legs did not load' : 'No legs on the record'}</div>
           ) : (
             legs.map((l, i) => (
               <button
@@ -212,7 +212,7 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
                 type="button"
                 onClick={() => onLeg(legs, i)}
                 title="Open this leg's contract card"
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 border-b border-borderSubtle/60 last:border-0 font-mono text-[11px] text-left hover:bg-ink/[0.04]"
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 border-b border-borderSubtle/60 last:border-0 font-mono text-t11 text-left hover:bg-ink/[0.04]"
               >
                 {/* a leg's side in one ink (2026-10-13): a put sold is not bearish */}
                 <span className="font-bold text-textPrimary w-8">{l.side === 'BUY' ? 'Buy' : l.side === 'SELL' ? 'Sell' : 'Leg'}</span>
@@ -220,7 +220,7 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
                 {units != null && units > 1 && <span className="text-textMuted" title="This leg's share of one unit">({l.ratio} a unit)</span>}
                 <span className="font-bold text-textPrimary tnum">{l.strike}</span>
                 <span className={`font-semibold ${l.right === 'C' ? 'text-bull' : 'text-bear'}`}>{l.right === 'C' ? 'call' : 'put'}</span>
-                <span className="text-[11px] text-textSecondary">
+                <span className="text-t11 text-textSecondary">
                   {expiryLabel(l.expiry)} · {l.dte}d
                 </span>
                 <span className="ml-auto tnum text-textPrimary">@ ${l.fill.toFixed(2)}</span>
@@ -229,7 +229,7 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
           )}
         </div>
         {legs.length > 0 && !settled && t.netKnown !== false && (
-          <p className="-mt-2 mb-3 font-mono text-[11px] text-textMuted">No single set of buys and sells adds up to this structure's net, so its legs carry no direction here — and no theta or payoff.</p>
+          <p className="-mt-2 mb-3 font-mono text-t11 text-textMuted">No single set of buys and sells adds up to this structure's net, so its legs carry no direction here — and no theta or payoff.</p>
         )}
 
         <div className="grid grid-cols-2 gap-x-6 mb-3">
@@ -237,10 +237,10 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
             {fact(
               'Net a unit',
               <>
-                {t.net === 0 ? (t.netAbs != null && units ? <>${(t.netAbs / (units * 100)).toFixed(2)} <span className="text-[11px] text-textSecondary">direction not reported</span></> : '—') : <><span className="text-[11px] text-textSecondary">{t.net > 0 ? 'paid' : 'collected'}</span> ${Math.abs(t.net).toFixed(2)}</>}
+                {t.net === 0 ? (t.netAbs != null && units ? <>${(t.netAbs / (units * 100)).toFixed(2)} <span className="text-t11 text-textSecondary">direction not reported</span></> : '—') : <><span className="text-t11 text-textSecondary">{t.net > 0 ? 'paid' : 'collected'}</span> ${Math.abs(t.net).toFixed(2)}</>}
               </>
             )}
-            {fact('Size', units != null ? <span title={t.ratioLabel ? `${t.ratioLabel} a unit · ${plural(t.contracts ?? 0, 'contract')} in all` : undefined}>{num(units)}× {t.ratioLabel && <span className="text-[11px] text-textSecondary">{t.ratioLabel}</span>}</span> : '…')}
+            {fact('Size', units != null ? <span title={t.ratioLabel ? `${t.ratioLabel} a unit · ${plural(t.contracts ?? 0, 'contract')} in all` : undefined}>{num(units)}× {t.ratioLabel && <span className="text-t11 text-textSecondary">{t.ratioLabel}</span>}</span> : '…')}
             {fact(t.netKnown === false ? 'Net, direction not reported' : t.netPremium >= 0 ? 'Net paid' : 'Net collected', t.netKnown === false ? (t.netAbs != null ? fmtUsd(t.netAbs) : '—') : fmtUsd(Math.abs(t.netPremium)))}
             {fact('Strikes', t.strikesLabel)}
             {fact('Gross of the legs', fmtUsd(t.premium))}
@@ -305,7 +305,7 @@ const phoneRow = (t: SpreadTrade) => (
         <CompanyLogo ticker={t.ticker} size={15} />
         <span className="font-bold">{t.ticker}</span>
         <span className="truncate">{shapeWord(t)}</span>
-        {t.compression && <span className="text-[10px] uppercase text-warn shrink-0" title={COMPRESSION_HINT}>compression</span>}
+        {t.compression && <span className="text-t10 uppercase text-warn shrink-0" title={COMPRESSION_HINT}>compression</span>}
       </>
     }
     aside={t.extended ? `${t.time} · AH` : t.time}
@@ -513,9 +513,9 @@ const MultiLeg = () => {
         render: t => (
           <span className="inline-flex items-center gap-1.5">
             <WatchStar k={structureKey(t)} make={() => watchStructure(t, 'multi-leg')} noun="structure" />
-            <span className="text-[11px] text-textPrimary">{t.time}</span>
-            {t.extended && <span className="text-[10px] uppercase text-textMuted" title="After hours — filled outside the regular session: after the close (16:15 for index and ETF options, 16:00 for a stock's) or before the open">AH</span>}
-            {t.repeats ? <span className="text-[10px] text-textMuted" title={`This structure was sent ${t.repeats + 1} times under other ids — the same legs, size, money and second — shown once`}>×{t.repeats + 1}</span> : null}
+            <span className="text-t11 text-textPrimary">{t.time}</span>
+            {t.extended && <span className="text-t10 uppercase text-textMuted" title="After hours — filled outside the regular session: after the close (16:15 for index and ETF options, 16:00 for a stock's) or before the open">AH</span>}
+            {t.repeats ? <span className="text-t10 text-textMuted" title={`This structure was sent ${t.repeats + 1} times under other ids — the same legs, size, money and second — shown once`}>×{t.repeats + 1}</span> : null}
           </span>
         ),
       },
@@ -535,25 +535,25 @@ const MultiLeg = () => {
         header: 'Strategy',
         sortValue: t => t.kind,
         render: t => (
-          <span className="inline-flex max-w-full items-center gap-1.5 text-[11px] text-textPrimary whitespace-nowrap overflow-hidden" title={`${shapeWord(t)}${t.legsState === 'pending' ? ' (the listed name — reading its legs)' : ''} — ${t.read ?? KIND_META[t.kind].read}`}>
+          <span className="inline-flex max-w-full items-center gap-1.5 text-t11 text-textPrimary whitespace-nowrap overflow-hidden" title={`${shapeWord(t)}${t.legsState === 'pending' ? ' (the listed name — reading its legs)' : ''} — ${t.read ?? KIND_META[t.kind].read}`}>
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[t.kind] }} />
             <span className={`truncate ${t.legsState === 'pending' ? 'text-textSecondary' : ''}`}>{shapeWord(t)}</span>
             {t.namedBy === 'vendor' && !t.compression && t.legsState !== 'pending' && (
-              <span className="text-[10px] text-textMuted shrink-0" title={t.legsState === 'none' ? 'The listed name — its legs did not load, so the app could not name the shape from them' : 'The listed name — its legs could not be settled into buys and sells that add up to its net, so the app has not named it from them'} data-feed-name>
+              <span className="text-t10 text-textMuted shrink-0" title={t.legsState === 'none' ? 'The listed name — its legs did not load, so the app could not name the shape from them' : 'The listed name — its legs could not be settled into buys and sells that add up to its net, so the app has not named it from them'} data-feed-name>
                 as listed
               </span>
             )}
             {t.splitOf && (
-              <span className="text-[10px] text-textMuted shrink-0" title={`Printed in the same second, on the same strikes and expiry, under the same name (${t.vendorShape ?? t.shapeOfVendor}) as a ${t.splitOf} whose legs do make that shape — this one's own legs make ${t.shape}. Most likely one order split into pieces: shown as its legs read, never crowned the largest`} data-split-order>
+              <span className="text-t10 text-textMuted shrink-0" title={`Printed in the same second, on the same strikes and expiry, under the same name (${t.vendorShape ?? t.shapeOfVendor}) as a ${t.splitOf} whose legs do make that shape — this one's own legs make ${t.shape}. Most likely one order split into pieces: shown as its legs read, never crowned the largest`} data-split-order>
                 piece of a {t.splitOf}
               </span>
             )}
             {t.compression ? (
-              <span className="text-[10px] uppercase text-warn" title={COMPRESSION_HINT}>
+              <span className="text-t10 uppercase text-warn" title={COMPRESSION_HINT}>
                 compression · not a bet
               </span>
             ) : t.extended ? (
-              <span className="text-[10px] uppercase text-textMuted" title="Filled after hours against thin post-market quotes — the shape is shown, not read for direction">
+              <span className="text-t10 uppercase text-textMuted" title="Filled after hours against thin post-market quotes — the shape is shown, not read for direction">
                 not read
               </span>
             ) : null}
@@ -575,7 +575,7 @@ const MultiLeg = () => {
            up the tails and left the DATES ragged — the wrong thing anchored. */
         sortValue: t => t.dte,
         render: t => (
-          <span className="text-textPrimary text-[11px] whitespace-nowrap" title={t.farExpiry ? `Two expiries: the near leg ${expiryLabel(t.expiry)} (${t.dte}d), the far leg ${expiryLabel(t.farExpiry)} (${t.farDte}d)` : undefined}>
+          <span className="text-textPrimary text-t11 whitespace-nowrap" title={t.farExpiry ? `Two expiries: the near leg ${expiryLabel(t.expiry)} (${t.dte}d), the far leg ${expiryLabel(t.farExpiry)} (${t.farDte}d)` : undefined}>
             {t.farExpiry ? (
               <>
                 {expiryLabel(t.expiry)}
@@ -611,11 +611,11 @@ const MultiLeg = () => {
                 out is no figure, not "$0.00 debit" (its size, either way, when the shape's legs can say it) */}
             {t.net !== 0 ? (
               <>
-                <span className="text-[11px] text-textSecondary">{t.net > 0 ? 'paid' : 'collected'}</span> ${Math.abs(t.net).toFixed(2)}
+                <span className="text-t11 text-textSecondary">{t.net > 0 ? 'paid' : 'collected'}</span> ${Math.abs(t.net).toFixed(2)}
               </>
             ) : t.netAbs != null && t.netAbs > 0 && t.units ? (
               <span title="No net was printed and the legs cannot settle which way it went — this is the net's size, paid if bought, collected if sold">
-                ${(t.netAbs / (t.units * 100)).toFixed(2)} <span className="text-[11px] text-textMuted">either way</span>
+                ${(t.netAbs / (t.units * 100)).toFixed(2)} <span className="text-t11 text-textMuted">either way</span>
               </span>
             ) : t.legsState === 'pending' && t.netKnown !== false ? (
               <span className="text-textMuted">…</span>
@@ -638,7 +638,7 @@ const MultiLeg = () => {
               <span className="text-textMuted">—</span>
             ) : (
               <TickFigure value={t.netPremium}>
-                <span className="text-[11px] text-textSecondary">{t.netPremium > 0 ? 'paid ' : 'collected '}</span>
+                <span className="text-t11 text-textSecondary">{t.netPremium > 0 ? 'paid ' : 'collected '}</span>
                 {fmtUsd(Math.abs(t.netPremium))}
               </TickFigure>
             )}
@@ -776,7 +776,7 @@ const MultiLeg = () => {
           <>
             <SavedCutsList store={ML_CUTS} query="" onOpen={addr.open} noun="cut" testId="multi-leg" onSay={cuts.say} open={cuts.open} />
             {cuts.said && (
-              <p role="status" className="mb-2 font-mono text-[11px] text-textSecondary">
+              <p role="status" className="mb-2 font-mono text-t11 text-textSecondary">
                 {cuts.said}
               </p>
             )}

@@ -7,13 +7,13 @@ const num = (v: number | null | undefined) => (v != null && Number.isFinite(v) &
 export default function TerrainShare() {
   const payload = useMemo(() => decodeShare(window.location.hash), []);
   if (!payload) {
-    return <p className="p-6 font-mono text-[12px] text-textSecondary">This link has no desk in it.</p>;
+    return <p className="p-6 font-mono text-t12 text-textSecondary">This link has no desk in it.</p>;
   }
   const on = Object.entries(payload.overlays).filter(([, v]) => v === true).map(([k]) => k);
   const lv = payload.levels;
   return (
-    <div className="p-6 font-mono text-[12px] text-textSecondary" data-terrain-share="">
-      <p className="text-[13px] text-textPrimary">{payload.t} · {payload.tf}</p>
+    <div className="p-6 font-mono text-t12 text-textSecondary" data-terrain-share="">
+      <p className="text-t13 text-textPrimary">{payload.t} · {payload.tf}</p>
       <p className="mt-2">Shared read. No chain.</p>
       <p className="mt-3">Overlays: {on.length ? on.join(', ') : 'none'}</p>
       {lv ? (

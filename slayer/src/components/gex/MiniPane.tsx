@@ -208,14 +208,14 @@ const MiniPane = ({ ticker, spot, changePercent, prints, revision, onChangeTicke
         {onChangeTicker ? (
           <TickerQuickPick ticker={ticker} onPick={onChangeTicker} />
         ) : (
-          <span className="font-mono text-[11px] font-bold text-textPrimary">{ticker}</span>
+          <span className="font-mono text-t11 font-bold text-textPrimary">{ticker}</span>
         )}
-        <span className="font-mono text-[11px] font-semibold text-textPrimary tnum">${spot.toFixed(2)}</span>
-        <span className={`font-mono text-[10px] tnum ${up ? 'text-bull' : 'text-bear'}`}>
+        <span className="font-mono text-t11 font-semibold text-textPrimary tnum">${spot.toFixed(2)}</span>
+        <span className={`font-mono text-t10 tnum ${up ? 'text-bull' : 'text-bear'}`}>
           {up ? '+' : ''}
           {changePercent.toFixed(2)}%
         </span>
-        <span className="ml-auto flex items-center gap-1.5 font-mono text-[9px] text-textSecondary uppercase tracking-wider">
+        <span className="ml-auto flex items-center gap-1.5 font-mono text-t9 text-textSecondary uppercase tracking-wider">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-textPrimary" /> dark pool
         </span>
         {onExpand && (

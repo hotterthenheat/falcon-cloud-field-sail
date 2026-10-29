@@ -148,8 +148,8 @@ const ReportGuide = ({ rows, bars, from }: ReportGuideProps) => {
   return (
     <div className="px-3 py-3 flex flex-col gap-3" data-report-guide-card>
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">Each row · one of {recordDay().isToday ? "today's" : `${longDay(recordDay().date)}'s`} levels and how it did</p>
-        <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t12 font-semibold text-textPrimary">Each row · one of {recordDay().isToday ? "today's" : `${longDay(recordDay().date)}'s`} levels and how it did</p>
+        <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
           Every row is one of the levels: the call wall, the put wall, the flip, the pin, the supreme — read off this name's levels, the same numbers the Board and Compare show. Its price is on the left with a chip that sums up its day. The strip is the whole session, from its first bar to now, with price's path drawn around the level. Every time price reached the level in a one-minute bar, the strip gets a tick: green if the level held, red if price closed through it. The facts count those ticks and say how much hedging the level has gained or lost since the open.
         </p>
         <div className="mt-2 rounded-md border border-borderSubtle/60 bg-panel px-2 py-2 overflow-x-auto scroll-row">
@@ -157,8 +157,8 @@ const ReportGuide = ({ rows, bars, from }: ReportGuideProps) => {
         </div>
       </div>
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">What counts · a test and a break</p>
-        <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t12 font-semibold text-textPrimary">What counts · a test and a break</p>
+        <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
           A test is a one-minute bar whose range reaches the level. If the bar closes back on the near side, the level held. If it closes on the far side, it broke. A bar that never reaches the level is not a test at all. Hover a tick to see the minute and the close; click a level to make it the strike the rest of the page follows.
         </p>
         <div className="mt-2 rounded-md border border-borderSubtle/60 bg-panel px-2 py-2 overflow-x-auto scroll-row">
@@ -167,21 +167,21 @@ const ReportGuide = ({ rows, bars, from }: ReportGuideProps) => {
       </div>
       {told.length > 0 && (
         <div className="border-t border-borderSubtle/60 pt-2.5">
-          <p className="text-[11px] text-textMuted">Today's levels, in words</p>
+          <p className="text-t11 text-textMuted">Today's levels, in words</p>
           <ul className="mt-1 flex flex-col gap-1.5">
             {told.map(r => (
-              <li key={r.label} className="text-[11.5px] leading-relaxed text-textSecondary">
+              <li key={r.label} className="text-t115 leading-relaxed text-textSecondary">
                 The {r.label.toLowerCase()} at <span className="font-mono tnum text-textPrimary">{fmtStrike(r.price)}</span>{' '}
                 {r.tests === 0 ? 'has not been tested yet' : `was tested ${r.tests} time${r.tests === 1 ? '' : 's'} and ${r.grade}`}. Its hedging is {r.trend}.
               </li>
             ))}
-            <li className="text-[11.5px] leading-relaxed text-textSecondary">
+            <li className="text-t115 leading-relaxed text-textSecondary">
               The strips cover <span className="font-mono tnum text-textPrimary">{bars}</span> one-minute bars{from ? ` since ${from}` : ''}.
             </li>
           </ul>
         </div>
       )}
-      <p className="text-[11px] text-textMuted">{recordDay().isToday ? "The report reads today's session only. It starts over at the open." : `Before today's open the report reads the last session, ${longDay(recordDay().date)}, against the book that was live in it. It starts over at the open.`}</p>
+      <p className="text-t11 text-textMuted">{recordDay().isToday ? "The report reads today's session only. It starts over at the open." : `Before today's open the report reads the last session, ${longDay(recordDay().date)}, against the book that was live in it. It starts over at the open.`}</p>
     </div>
   );
 };

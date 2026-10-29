@@ -102,8 +102,8 @@ const appearanceFor = (theme: Theme): Appearance => ({
 /* the site's own Inter, for the frames — Stripe fetches it from our origin */
 const fontsFor = () => [{ family: 'Inter', src: `url(${window.location.origin}/fonts/InterVariable.woff2) format('woff2')`, weight: '100 900' }];
 
-const field = 'h-10 w-full rounded-[10px] border border-borderSubtle bg-chip px-3.5 text-[13.5px] text-textPrimary placeholder:text-textMuted outline-none transition-colors focus:border-borderMuted';
-const ghost = 'h-10 shrink-0 px-4 rounded-full border border-borderMuted text-[13px] font-medium text-textPrimary hover:border-textPrimary/70 hover:bg-ink/[0.06] transition-colors disabled:opacity-50';
+const field = 'h-10 w-full rounded-[10px] border border-borderSubtle bg-chip px-3.5 text-t135 text-textPrimary placeholder:text-textMuted outline-none transition-colors focus:border-borderMuted';
+const ghost = 'h-10 shrink-0 px-4 rounded-full border border-borderMuted text-t13 font-medium text-textPrimary hover:border-textPrimary/70 hover:bg-ink/[0.06] transition-colors disabled:opacity-50';
 
 /** a Stripe amount in the house's figure — whole dollars as the landing prints them, cents only when there are cents */
 const money = (a: { minorUnitsAmount: number; amount: string }): string => (a.minorUnitsAmount % 100 === 0 ? fmtDollars(a.minorUnitsAmount / 100) : a.amount);
@@ -134,17 +134,17 @@ const UpgradeFace = ({ planKey, period, upgrade }: { planKey: PlanKey; period: P
   return (
     <section data-checkout-upgrade={`${upgrade.from}>${planKey}`}>
       <div className="rounded-lg border border-borderSubtle bg-panel p-5">
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-textMuted">Your plan today</p>
-        <p className="mt-1.5 text-[15px] font-semibold text-textPrimary">
+        <p className="font-mono text-t10 uppercase tracking-[0.2em] text-textMuted">Your plan today</p>
+        <p className="mt-1.5 text-t15 font-semibold text-textPrimary">
           {from.name}, {upgrade.fromPeriod === 'year' ? 'by the year' : 'monthly'}
         </p>
-        <p className="mt-3 text-[13px] leading-relaxed text-textSecondary">
+        <p className="mt-3 text-t13 leading-relaxed text-textSecondary">
           Moving to {to.name} happens now: the rooms open the moment you press, and the card you have with us pays {fmtCents(upgrade.dueToday)} today for the rest of this period.
           {upgrade.nextOn ? ` From ${fmtWhen(upgrade.nextOn)} it is ${priceOf(planKey, period).price} ${priceOf(planKey, period).period}.` : ''}
         </p>
       </div>
       {problem && (
-        <p role="alert" className="mt-3 text-[12px] text-warn" data-checkout-problem>
+        <p role="alert" className="mt-3 text-t12 text-warn" data-checkout-problem>
           {problem}
         </p>
       )}
@@ -153,13 +153,13 @@ const UpgradeFace = ({ planKey, period, upgrade }: { planKey: PlanKey; period: P
         onClick={go}
         disabled={busy}
         aria-busy={busy || undefined}
-        className={`mt-5 h-12 w-full rounded-full inline-flex items-center justify-center gap-2 text-[15px] font-medium transition-opacity disabled:opacity-70 disabled:cursor-progress ${theme === 'dark' ? 'holo-bg text-[#0a0a0a]' : 'galaxy-bg'}`}
+        className={`mt-5 h-12 w-full rounded-full inline-flex items-center justify-center gap-2 text-t15 font-medium transition-opacity disabled:opacity-70 disabled:cursor-progress ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
         data-checkout-go="upgrade"
       >
         Upgrade to {to.name} — {fmtCents(upgrade.dueToday)} today
         {working && <MorphingInfinity viewBox="4 4 16 16" className="w-4 h-4" />}
       </button>
-      <p className="mt-3 text-[11.5px] leading-relaxed text-textMuted" data-checkout-fine>
+      <p className="mt-3 text-t115 leading-relaxed text-textMuted" data-checkout-fine>
         Cancel any time from Settings › Billing; the rooms stay open until the period paid for ends. Nothing is typed here; Stripe charges the card it already holds.
       </p>
     </section>
@@ -191,15 +191,15 @@ const Order = ({ planKey, period, checkout, upgrade = null }: { planKey: PlanKey
     });
   return (
     <section data-checkout-order>
-      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-textMuted">Your plan</p>
-      <h1 className="mt-2 text-[28px] font-medium tracking-tight leading-none">{plan.name}</h1>
-      <p className="mt-2 max-w-[36ch] text-[14px] leading-snug text-textSecondary">{plan.kicker}</p>
+      <p className="font-mono text-t10 uppercase tracking-[0.2em] text-textMuted">Your plan</p>
+      <h1 className="mt-2 text-t28 font-medium tracking-tight leading-none">{plan.name}</h1>
+      <p className="mt-2 max-w-[36ch] text-t14 leading-snug text-textSecondary">{plan.kicker}</p>
       <p className="mt-6 flex items-baseline gap-2" data-checkout-price>
-        <span className="text-[44px] sm:text-[52px] font-light leading-none tracking-[-0.045em] tnum">{priced.price}</span>
-        <span className="font-mono text-[11px] text-textMuted">{priced.period}</span>
+        <span className="text-t44 sm:text-t52 font-light leading-none tracking-[-0.045em] tnum">{priced.price}</span>
+        <span className="font-mono text-t11 text-textMuted">{priced.period}</span>
       </p>
-      {priced.aMonth && <p className="mt-1.5 font-mono text-[11px] tnum text-textMuted">{priced.aMonth}</p>}
-      <p className="mt-4 text-[12.5px] leading-relaxed text-textSecondary" data-checkout-period={period}>
+      {priced.aMonth && <p className="mt-1.5 font-mono text-t11 tnum text-textMuted">{priced.aMonth}</p>}
+      <p className="mt-4 text-t125 leading-relaxed text-textSecondary" data-checkout-period={period}>
         {period === 'month' ? 'Billed monthly. ' : 'Billed once a year, two months free. '}
         <Link to={`/checkout?plan=${planKey}&period=${other}`} className="text-textPrimary hover:underline underline-offset-2" data-checkout-other-period>
           {period === 'month' ? 'Pay for a year instead' : 'Pay monthly instead'}
@@ -212,10 +212,10 @@ const Order = ({ planKey, period, checkout, upgrade = null }: { planKey: PlanKey
       <div className={upgrade ? 'hidden' : 'mt-8'}>
         {applied ? (
           <div className="flex items-center justify-between gap-3 rounded-[10px] border border-borderSubtle bg-panel px-3.5 h-10" data-checkout-code-applied={applied.promotionCode ?? ''}>
-            <span className="text-[12.5px] text-textSecondary">
+            <span className="text-t125 text-textSecondary">
               Code <span className="font-mono text-textPrimary">{applied.promotionCode ?? applied.displayName}</span> applied
             </span>
-            <button type="button" onClick={remove} disabled={busy} className="text-[12px] text-textMuted hover:text-textPrimary transition-colors" data-checkout-code-remove>
+            <button type="button" onClick={remove} disabled={busy} className="text-t12 text-textMuted hover:text-textPrimary transition-colors" data-checkout-code-remove>
               Remove
             </button>
           </div>
@@ -243,7 +243,7 @@ const Order = ({ planKey, period, checkout, upgrade = null }: { planKey: PlanKey
           </div>
         )}
         {codeProblem && (
-          <p role="alert" className="mt-2 text-[12px] text-warn" data-checkout-code-problem>
+          <p role="alert" className="mt-2 text-t12 text-warn" data-checkout-code-problem>
             {codeProblem}
           </p>
         )}
@@ -255,7 +255,7 @@ const Order = ({ planKey, period, checkout, upgrade = null }: { planKey: PlanKey
       {upgrade ? (
         <div className="mt-8 flex flex-col gap-1.5 border-t border-borderSubtle pt-4" data-checkout-facts="upgrade">
           <Fact label="Due today" value={fmtCents(upgrade.dueToday)} big />
-          <p className="font-mono text-[10px] text-textMuted">the difference for the rest of this period, on the card you have with us</p>
+          <p className="font-mono text-t10 text-textMuted">the difference for the rest of this period, on the card you have with us</p>
           <Fact label={upgrade.nextOn ? `From ${fmtWhen(upgrade.nextOn)}` : 'Then'} value={`${priced.price} ${priced.period}`} />
         </div>
       ) : (
@@ -373,7 +373,7 @@ const Pay = ({ checkout, period }: { checkout: StripeCheckoutElementsValue; peri
           />
           <div className="my-5 flex items-center gap-3" aria-hidden="true">
             <span className="h-px flex-1 bg-borderSubtle" />
-            <span className="text-[11px] text-textMuted">or pay another way</span>
+            <span className="text-t11 text-textMuted">or pay another way</span>
             <span className="h-px flex-1 bg-borderSubtle" />
           </div>
         </div>
@@ -381,7 +381,7 @@ const Pay = ({ checkout, period }: { checkout: StripeCheckoutElementsValue; peri
       {/* the address the receipt goes to — already known from the account; asked only if Stripe has none */}
       {!checkout.email && (
         <label className="block mb-3">
-          <span className="block mb-1.5 text-[12px] text-textSecondary">Email</span>
+          <span className="block mb-1.5 text-t12 text-textSecondary">Email</span>
           <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" spellCheck={false} className={field} data-checkout-email />
         </label>
       )}
@@ -402,7 +402,7 @@ const Pay = ({ checkout, period }: { checkout: StripeCheckoutElementsValue; peri
         />
       </div>
       {problem && (
-        <p role="alert" className="mt-3 text-[12px] text-warn" data-checkout-problem>
+        <p role="alert" className="mt-3 text-t12 text-warn" data-checkout-problem>
           {problem}
         </p>
       )}
@@ -412,13 +412,13 @@ const Pay = ({ checkout, period }: { checkout: StripeCheckoutElementsValue; peri
         onClick={pay}
         disabled={busy}
         aria-busy={busy || undefined}
-        className={`mt-5 h-12 w-full rounded-full inline-flex items-center justify-center gap-2 text-[15px] font-medium transition-opacity disabled:opacity-70 disabled:cursor-progress ${theme === 'dark' ? 'holo-bg text-[#0a0a0a]' : 'galaxy-bg'}`}
+        className={`mt-5 h-12 w-full rounded-full inline-flex items-center justify-center gap-2 text-t15 font-medium transition-opacity disabled:opacity-70 disabled:cursor-progress ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
         data-checkout-go
       >
         Pay {due} {period === 'year' ? 'a year' : 'a month'}
         {working && <MorphingInfinity viewBox="4 4 16 16" className="w-4 h-4" />}
       </button>
-      <p className="mt-3 text-[11.5px] leading-relaxed text-textMuted" data-checkout-fine>
+      <p className="mt-3 text-t115 leading-relaxed text-textMuted" data-checkout-fine>
         Cancel any time from Settings › Billing; the rooms stay open until the period paid for ends. The card goes into Stripe’s own fields and never reaches us. By paying you agree to the{' '}
         <Link to="/terms" className="text-textSecondary hover:text-textPrimary hover:underline underline-offset-2">
           Terms
@@ -466,17 +466,17 @@ const Problem = ({ why, onRetry }: { why: string; onRetry?: () => void }) => {
   const theme = useResolvedTheme();
   return (
     <section data-checkout-state="problem">
-      <h2 className="text-[17px] font-semibold leading-tight">Stripe did not open</h2>
-      <p role="alert" className="mt-1.5 text-[13px] leading-relaxed text-warn" data-checkout-line>
+      <h2 className="text-t17 font-semibold leading-tight">Stripe did not open</h2>
+      <p role="alert" className="mt-1.5 text-t13 leading-relaxed text-warn" data-checkout-line>
         {why}
       </p>
       <div className="mt-6 flex flex-col gap-2.5">
         {onRetry && (
-          <button type="button" onClick={onRetry} className={`h-11 w-full rounded-[10px] inline-flex items-center justify-center text-[13.5px] font-medium ${theme === 'dark' ? 'holo-bg text-[#0a0a0a]' : 'galaxy-bg'}`} data-checkout-retry>
+          <button type="button" onClick={onRetry} className={`h-11 w-full rounded-[10px] inline-flex items-center justify-center text-t135 font-medium ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`} data-checkout-retry>
             Try again
           </button>
         )}
-        <Link to="/settings/billing" className="h-11 w-full rounded-[10px] border border-borderSubtle bg-panel hover:border-borderMuted inline-flex items-center justify-center text-[13px] text-textPrimary transition-colors" data-checkout-billing>
+        <Link to="/settings/billing" className="h-11 w-full rounded-[10px] border border-borderSubtle bg-panel hover:border-borderMuted inline-flex items-center justify-center text-t13 text-textPrimary transition-colors" data-checkout-billing>
           Back to Billing
         </Link>
       </div>
@@ -538,8 +538,8 @@ const Checkout = () => {
             <>
               <Order planKey={key} period={period} checkout={null} />
               <section>
-                <h2 className="text-[17px] font-semibold leading-tight">Payments open at launch</h2>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-textSecondary">The plans are on the page; the doors open the day we launch.</p>
+                <h2 className="text-t17 font-semibold leading-tight">Payments open at launch</h2>
+                <p className="mt-1.5 text-t13 leading-relaxed text-textSecondary">The plans are on the page; the doors open the day we launch.</p>
               </section>
             </>
           ) : problem ? (

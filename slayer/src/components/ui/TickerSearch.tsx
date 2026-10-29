@@ -103,9 +103,9 @@ const TickerSearch = ({ value, onChange }: TickerSearchProps) => {
           </div>
           <div className="max-h-72 overflow-y-auto py-1">
             {!mod ? (
-              <div className="px-3 py-6 text-center font-mono text-[11px] text-textMuted">Loading tickers…</div>
+              <div className="px-3 py-6 text-center font-mono text-t11 text-textMuted">Loading tickers…</div>
             ) : results.length === 0 ? (
-              <div className="px-3 py-6 text-center font-mono text-[11px] text-textMuted">No matches</div>
+              <div className="px-3 py-6 text-center font-mono text-t11 text-textMuted">No matches</div>
             ) : (
               results.map((t, i) => (
                 <button
@@ -124,7 +124,7 @@ const TickerSearch = ({ value, onChange }: TickerSearchProps) => {
                   >
                     {t.symbol}
                   </span>
-                  <span className="text-[11px] text-textSecondary truncate" title={(() => {
+                  <span className="text-t11 text-textSecondary truncate" title={(() => {
                     const label = companyName(t.symbol);
                     return label.toUpperCase() === t.symbol ? undefined : label;
                   })()}>{(() => {

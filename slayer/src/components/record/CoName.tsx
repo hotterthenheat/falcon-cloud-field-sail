@@ -45,7 +45,7 @@ export function useSeen<T extends Element>(): [React.RefObject<T>, boolean] {
 /** The company's name under a ticker. The vendor is asked once the cell is on screen even when a bundled or filing name
     is already in hand — that listing is years stale on some symbols. "…" while the ask is out. The vendor's name when it
     has one. The fallback only after the vendor answers without one. Never the ticker said twice. */
-export const CoSub = ({ ticker, fallback, className = 'text-[10px] text-textMuted truncate', vendor = true }: { ticker: string; fallback?: string | null; className?: string; /** the symbol came off a vendor feed, so the feed knows it */ vendor?: boolean }) => {
+export const CoSub = ({ ticker, fallback, className = 'text-t10 text-textMuted truncate', vendor = true }: { ticker: string; fallback?: string | null; className?: string; /** the symbol came off a vendor feed, so the feed knows it */ vendor?: boolean }) => {
   const [ref, seen] = useSeen<HTMLSpanElement>();
   const fallbackName = fallback && fallback.toUpperCase() !== ticker.toUpperCase() ? fallback : '';
   const n = useCompanyName(ticker, vendor, seen);

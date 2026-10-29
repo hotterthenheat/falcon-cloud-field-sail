@@ -106,7 +106,7 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
         className="z-[120] w-72 border border-borderMuted bg-panel/80 backdrop-blur-xl backdrop-saturate-150 rounded-md shadow-2xl shadow-black/60 overflow-x-hidden overflow-y-auto overscroll-contain animate-slide-in"
         data-ticker-tabs-menu
       >
-        <div className="px-2.5 py-1.5 border-b border-borderSubtle text-[10px] text-textMuted">
+        <div className="px-2.5 py-1.5 border-b border-borderSubtle text-t10 text-textMuted">
           A new tab on this pane — {tabs.length} of {max} open
         </div>
         <TickerLookup
@@ -123,7 +123,7 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
   return (
     <div ref={rootRef} className="shrink-0 flex items-stretch h-8 min-w-0 border-b border-borderSubtle/60 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="The names on this pane" data-ticker-tab-strip={tabs.length}>
       {paneLabel && (
-        <span className="shrink-0 inline-flex items-center px-2.5 border-r border-borderSubtle/60 font-mono text-[9px] uppercase tracking-widest text-textMuted whitespace-nowrap" title={`The tabs of pane ${paneLabel} — the one in hand`} data-ticker-tab-pane={paneLabel}>
+        <span className="shrink-0 inline-flex items-center px-2.5 border-r border-borderSubtle/60 font-mono text-t9 uppercase tracking-widest text-textMuted whitespace-nowrap" title={`The tabs of pane ${paneLabel} — the one in hand`} data-ticker-tab-pane={paneLabel}>
           Pane {paneLabel}
         </span>
       )}
@@ -144,11 +144,11 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
             {on && <span aria-hidden className="absolute inset-x-0 top-0 h-px bg-silver/70" />}
             <button type="button" onClick={() => onPick(t)} title={on ? `${t} — on the tape` : `Show ${t} on this pane`} className="pl-2.5 pr-1.5 inline-flex items-center gap-2 min-w-0">
               <CompanyLogo ticker={t} size={14} />
-              <span className="text-[11px] font-bold tracking-wide">{t}</span>
+              <span className="text-t11 font-bold tracking-wide">{t}</span>
               {!compact && price != null && change != null && (
                 <>
-                  <span className="text-[11px] tnum text-textPrimary">{fmtPrice(price)}</span>
-                  <DayMoveText ticker={t} short className="text-[10.5px]" />
+                  <span className="text-t11 tnum text-textPrimary">{fmtPrice(price)}</span>
+                  <DayMoveText ticker={t} short className="text-t105" />
                 </>
               )}
             </button>

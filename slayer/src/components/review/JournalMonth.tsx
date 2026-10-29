@@ -88,23 +88,23 @@ const JournalMonth = ({ month, onMonth, home, days, today, picked, onPick, noted
         <button type="button" onClick={() => onMonth(shiftMonth(month, -1))} title="The month before" aria-label="The month before" className={door} data-journal-month-prev>
           <ChevronLeft className="w-3.5 h-3.5" />
         </button>
-        <span className="min-w-[140px] text-center text-[15px] font-semibold text-textPrimary" data-journal-month-name>
+        <span className="min-w-[140px] text-center text-t15 font-semibold text-textPrimary" data-journal-month-name>
           {monthWords(month)}
         </span>
         <button type="button" onClick={() => onMonth(shiftMonth(month, 1))} title="The month after" aria-label="The month after" className={door} data-journal-month-next>
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
         {month !== home && (
-          <button type="button" onClick={() => onMonth(home)} className="h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-journal-month-home>
+          <button type="button" onClick={() => onMonth(home)} className="h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-journal-month-home>
             This month
           </button>
         )}
-        <span className="ml-auto font-mono text-[11px] tnum text-textSecondary whitespace-nowrap" data-journal-month-sum>
+        <span className="ml-auto font-mono text-t11 tnum text-textSecondary whitespace-nowrap" data-journal-month-sum>
           {trades === 0 ? (
             <span className="text-textMuted">Nothing closed this month</span>
           ) : (
             <>
-              <span className="text-textMuted">{monthName}</span> <span className={`text-[13px] font-semibold ${dirInk(net)}`}>{usdSigned(net, 0)}</span>
+              <span className="text-textMuted">{monthName}</span> <span className={`text-t13 font-semibold ${dirInk(net)}`}>{usdSigned(net, 0)}</span>
               <span className="text-textMuted">
                 {' '}
                 · {trades} {trades === 1 ? 'trade' : 'trades'} · {green} of {inMonth.length} {inMonth.length === 1 ? 'day' : 'days'} made money
@@ -118,7 +118,7 @@ const JournalMonth = ({ month, onMonth, home, days, today, picked, onPick, noted
         <div className="max-lg:min-w-[760px] flex flex-col gap-2 [container-type:inline-size]">
           <div className={GRID}>
             {[...WEEKDAYS, 'Week'].map(w => (
-              <div key={w} className={`px-2.5 h-6 flex items-center font-mono text-[9px] font-semibold uppercase tracking-widest text-[rgb(var(--grid-head))] ${w === 'Week' ? 'justify-end' : ''}`}>
+              <div key={w} className={`px-2.5 h-6 flex items-center font-mono text-t9 font-semibold uppercase tracking-widest text-gridHead ${w === 'Week' ? 'justify-end' : ''}`}>
                 {w}
               </div>
             ))}
@@ -152,15 +152,15 @@ const JournalMonth = ({ month, onMonth, home, days, today, picked, onPick, noted
                       data-on={on || undefined}
                     >
                       <span className="flex items-center gap-1.5">
-                        <span className={`font-mono text-[12px] font-bold tnum ${isToday || on ? 'text-silver' : t ? 'text-textPrimary' : future ? 'text-textMuted/50' : 'text-textSecondary'}`}>{date.getDate()}</span>
-                        {isToday && <span className="font-mono text-[8px] font-semibold uppercase tracking-widest text-silver">Today</span>}
+                        <span className={`font-mono text-t12 font-bold tnum ${isToday || on ? 'text-silver' : t ? 'text-textPrimary' : future ? 'text-textMuted/50' : 'text-textSecondary'}`}>{date.getDate()}</span>
+                        {isToday && <span className="font-mono text-t8 font-semibold uppercase tracking-widest text-silver">Today</span>}
                         {noted.has(d) && <PenLine className="ml-auto w-3 h-3 text-silver" strokeWidth={2} aria-label="This day has words of its own" data-journal-day-noted />}
                       </span>
                       {t && (
                         <span className="mt-1.5 block">
-                          <span className={`block font-mono text-[14px] font-semibold tnum leading-none ${dirInk(t.net)}`}>{usdSigned(t.net, 0)}</span>
+                          <span className={`block font-mono text-t14 font-semibold tnum leading-none ${dirInk(t.net)}`}>{usdSigned(t.net, 0)}</span>
                           {/* the two halves wrap as wholes on a narrow month */}
-                          <span className="mt-1 block font-mono text-[9px] tnum text-textMuted leading-snug">
+                          <span className="mt-1 block font-mono text-t9 tnum text-textMuted leading-snug">
                             <span className="whitespace-nowrap">
                               {t.n} {t.n === 1 ? 'trade' : 'trades'} ·
                             </span>{' '}
@@ -175,13 +175,13 @@ const JournalMonth = ({ month, onMonth, home, days, today, picked, onPick, noted
                 <div className="rounded-lg border border-borderSubtle bg-ink/[0.025] px-3 py-2 flex flex-col items-end justify-center text-right" title={`This week's days in ${monthName}`} data-journal-week-sum={wN}>
                   {wN > 0 ? (
                     <>
-                      <span className={`font-mono text-[14px] font-semibold tnum leading-none ${dirInk(wNet)}`}>{usdSigned(wNet, 0)}</span>
-                      <span className="mt-1.5 font-mono text-[9px] tnum text-textMuted">
+                      <span className={`font-mono text-t14 font-semibold tnum leading-none ${dirInk(wNet)}`}>{usdSigned(wNet, 0)}</span>
+                      <span className="mt-1.5 font-mono text-t9 tnum text-textMuted">
                         {wN} {wN === 1 ? 'trade' : 'trades'}
                       </span>
                     </>
                   ) : (
-                    <span className="font-mono text-[11px] text-textMuted/60">—</span>
+                    <span className="font-mono text-t11 text-textMuted/60">—</span>
                   )}
                 </div>
               </div>

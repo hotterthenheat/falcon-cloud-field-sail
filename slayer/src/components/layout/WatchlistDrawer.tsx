@@ -26,18 +26,17 @@
 ==================================================
 */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Eye, Flag, FolderPlus, MoreHorizontal, Plus, X } from 'lucide-react';
-import Simulator from '../../core/simulator';
-import { seedOffThread } from '../../core/seedPool';
 import { useMarketData } from '../../context/MarketDataContext';
 import { useWatch } from '../../context/WatchContext';
 import { useTracker } from '../../context/TrackerContext';
 import { useWatchlist } from '../../data/watchlist';
-import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
-import { spotChangePct } from '../../data/gex';
+import { peekBatchQuote, useScreenerQuotes } from '../../data/liveFiles';
+import { peekQuote, useDayMoves } from '../../data/liveQuote';
+import { peekEntry, useBookRev } from '../../data/uwBook';
 import {
   MAX_NAMES, MAX_SECTIONS, addSection, closeWatchlist, moveName, nudgeName, removeSection, renameSection, restoreName, restoreSection, setNameFlag,
   unwatchName, useNameWatch, useWatchlistOpen, watchName, type WatchSection, type WatchedName,
@@ -46,8 +45,7 @@ import CompanyLogo from '../ui/CompanyLogo';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import TickerLookup from '../ui/TickerLookup';
 
-/** The Map's default window — the walls and the flip read off the same book every Pinpoint page draws */
-const BOOK_WINDOW: StrikeWindow = 20;
+/** The Map's default window is not read here. A wall is shown only when that name's live book is already in. */
 const usd = (v: number) => `$${v.toFixed(2)}`;
 const pctSigned = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}%`;
 const fmtLevel = (v: number) => (!Number.isFinite(v) ? '—' : v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
@@ -65,39 +63,43 @@ const grow = {
 interface NameRead {
   spot: number | null;
   change: number | null;
-  /** The nearest of the walls and the flip, and how far in percent of price */
+  /** The nearest of the call wall and the put wall on the live book, and how far in percent of price. Null until that book is in. */
   near: { word: string; at: number; pct: number } | null;
-  /** The name's history is still being walked (core/seedPool.ts) — the book comes a breath later */
-  cold: boolean;
 }
 
-/** What the book says of a name — only for a name the simulator has on hand; a cold one is walked off the main
-    thread by the drawer (seedOffThread) and read on the next tick */
+/** The price and the day's change off the live tape. Never a stored price. A wall only when this name's book is already live. */
 function readName(symbol: string): NameRead {
-  if (!Simulator.isSeeded(symbol)) {
-    const cfg = Simulator.TICKERS[symbol];
-    return { spot: cfg?.currentPrice ?? null, change: null, near: null, cold: true };
-  }
-  const cfg = Simulator.TICKERS[symbol];
-  const spot = cfg?.currentPrice ?? null;
+  const bulk = peekBatchQuote(symbol);
+  const quote = peekQuote(symbol);
+  const spot = bulk && bulk.price > 0 ? bulk.price : quote && quote.regularPrice > 0 ? quote.regularPrice : null;
+  const change = bulk?.pct ?? quote?.changePct ?? null;
+  const book = peekEntry(symbol);
   let near: NameRead['near'] = null;
-  try {
-    const lv = buildExposureProfile(Simulator.snapshotFor(symbol), '0DTE', BOOK_WINDOW).levels;
-    if (spot != null && spot > 0) {
-      const marks = [
-        { word: 'call wall', at: lv.callWall },
-        { word: 'put wall', at: lv.putWall },
-        { word: 'flip', at: lv.flip },
-      ].filter(m => Number.isFinite(m.at) && m.at > 0);
-      if (marks.length) {
-        const n = marks.reduce((a, b) => (Math.abs(b.at - spot) < Math.abs(a.at - spot) ? b : a));
-        near = { ...n, pct: ((n.at - spot) / spot) * 100 };
+  if (spot != null && spot > 0 && book?.status === 'live' && book.all.length) {
+    let callAt = 0;
+    let callG = 0;
+    let putAt = 0;
+    let putG = 0;
+    for (const n of book.all) {
+      if (n.callGex > callG) {
+        callG = n.callGex;
+        callAt = n.strike;
+      }
+      if (n.putGex > putG) {
+        putG = n.putGex;
+        putAt = n.strike;
       }
     }
-  } catch {
-    near = null;
+    const marks = [
+      callG > 0 ? { word: 'call wall', at: callAt } : null,
+      putG > 0 ? { word: 'put wall', at: putAt } : null,
+    ].filter((m): m is { word: string; at: number } => !!m && m.at > 0);
+    if (marks.length) {
+      const n = marks.reduce((a, b) => (Math.abs(b.at - spot) < Math.abs(a.at - spot) ? b : a));
+      near = { ...n, pct: ((n.at - spot) / spot) * 100 };
+    }
   }
-  return { spot, change: spot != null ? spotChangePct(symbol) : null, near, cold: false };
+  return { spot, change: Number.isFinite(change) ? change : null, near };
 }
 
 const IconButton = ({ onClick, label, title, pressed, children, testId }: { onClick: () => void; label: string; title?: string; pressed?: boolean; children: ReactNode; testId?: string }) => (
@@ -134,7 +136,7 @@ const NameRow = ({
   const navigate = useNavigate();
   const index = section.names.indexOf(n);
   const sectionOptions: DropdownOption<string>[] = sections.map(s => ({ value: s.id, label: s.name, hint: `${s.names.length} name${s.names.length === 1 ? '' : 's'}` }));
-  const { spot, change, near, cold } = read;
+  const { spot, change, near } = read;
   return (
     <motion.li
       layout
@@ -152,30 +154,26 @@ const NameRow = ({
           type="button"
           onClick={() => onPick(n.symbol)}
           className="min-w-0 flex-1 flex items-center gap-2 pl-2 py-1.5 text-left rounded-md outline-none focus-visible:ring-2 focus-visible:ring-silver/60"
-          aria-label={`${n.symbol}${spot != null ? ` at ${usd(spot)}` : ''}${change != null ? `, ${pctSigned(change)} today` : ''}${near ? `, the ${near.word} ${fmtLevel(near.at)} ${pctSigned(near.pct)} away` : ''} — make it the name`}
+          aria-label={`${n.symbol}${spot != null ? ` at ${usd(spot)}` : ''}${change != null ? `, ${pctSigned(change)} today` : ''} — open it on Terrain`}
           data-watch-pick={n.symbol}
         >
           <CompanyLogo ticker={n.symbol} size={16} />
           <span className="min-w-0 flex flex-col leading-tight">
             <span className="flex items-center gap-1.5">
-              <span className={`font-mono text-[12px] font-bold ${on ? 'text-silver' : 'text-textPrimary'}`}>{n.symbol}</span>
+              <span className={`font-mono text-t12 font-bold ${on ? 'text-silver' : 'text-textPrimary'}`}>{n.symbol}</span>
               {n.flagged && <Flag className="w-3 h-3 text-silver" fill="currentColor" aria-label="flagged" />}
             </span>
-            <span className="font-mono text-[9px] text-textMuted truncate" data-watch-near>
+            <span className="font-mono text-t9 text-textMuted truncate" data-watch-near>
               {near ? (
                 <>
                   {near.word} {fmtLevel(near.at)} <span className="tnum">· {pctSigned(near.pct)}</span>
                 </>
-              ) : cold ? (
-                'reading the book…'
-              ) : (
-                'no book on hand'
-              )}
+              ) : null}
             </span>
           </span>
           <span className="ml-auto flex flex-col items-end leading-tight font-mono tnum">
-            <span className="text-[11px] text-textPrimary">{spot != null ? usd(spot) : '—'}</span>
-            {change != null && <span className={`text-[10px] ${change >= 0 ? 'text-bull' : 'text-bear'}`}>{pctSigned(change)}</span>}
+            <span className="text-t11 text-textPrimary">{spot != null ? usd(spot) : '—'}</span>
+            {change != null && <span className={`text-t10 ${change >= 0 ? 'text-bull' : 'text-bear'}`}>{pctSigned(change)}</span>}
           </span>
         </button>
         <span className="flex items-center opacity-70 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
@@ -191,7 +189,7 @@ const NameRow = ({
         </span>
       </div>
       {more && (
-        <div className="flex items-center gap-1 pl-8 pr-1.5 pb-1.5 font-mono text-[9px] text-textMuted" data-watch-move={n.symbol}>
+        <div className="flex items-center gap-1 pl-8 pr-1.5 pb-1.5 font-mono text-t9 text-textMuted" data-watch-move={n.symbol}>
           <IconButton onClick={() => nudgeName(n.symbol, -1)} label={`Move ${n.symbol} up`} testId="up">
             <ArrowUp className={`w-3 h-3 ${index <= 0 ? 'opacity-30' : ''}`} />
           </IconButton>
@@ -208,7 +206,7 @@ const NameRow = ({
         </div>
       )}
       {links.length > 0 && (
-        <div className="flex items-center gap-x-3 gap-y-1 flex-wrap pl-8 pr-1.5 pb-1.5 font-mono text-[9px] uppercase tracking-wider">
+        <div className="flex items-center gap-x-3 gap-y-1 flex-wrap pl-8 pr-1.5 pb-1.5 font-mono text-t9 uppercase tracking-wider">
           {links.map(l => (
             <button
               key={l.to}
@@ -257,14 +255,14 @@ const SectionHead = ({ s, removable, adding, onAdd, onRemove }: { s: WatchSectio
             }
           }}
           aria-label="The section's name"
-          className="h-6 w-40 px-1.5 rounded border border-borderMuted bg-transparent text-[12px] text-textPrimary outline-none focus:border-silver/60"
+          className="h-6 w-40 px-1.5 rounded border border-borderMuted bg-transparent text-t12 text-textPrimary outline-none focus:border-silver/60"
         />
       ) : (
-        <button type="button" onClick={() => setEditing(true)} title="Rename the section" className="text-[12px] font-semibold text-textPrimary hover:text-silver transition-colors">
+        <button type="button" onClick={() => setEditing(true)} title="Rename the section" className="text-t12 font-semibold text-textPrimary hover:text-silver transition-colors">
           {s.name}
         </button>
       )}
-      <span className="font-mono text-[10px] tnum text-textSecondary">{s.names.length}</span>
+      <span className="font-mono text-t10 tnum text-textSecondary">{s.names.length}</span>
       <span className="ml-auto flex items-center">
         <IconButton onClick={onAdd} pressed={adding} label={`Add a name to ${s.name}`} title={`Add a name to ${s.name}`} testId="section-add">
           <Plus className="w-3 h-3" />
@@ -282,7 +280,7 @@ const SectionHead = ({ s, removable, adding, onAdd, onRemove }: { s: WatchSectio
 const Empty = ({ children }: { children: ReactNode }) => (
   <div className="mx-2 mt-3 rounded-md border border-dashed border-borderSubtle/70 px-4 py-5 flex flex-col items-center gap-2 text-center">
     <Eye className="w-4 h-4 text-textMuted" strokeWidth={1.5} />
-    <p className="text-[11px] leading-snug text-textMuted max-w-[280px]">{children}</p>
+    <p className="text-t11 leading-snug text-textMuted max-w-[280px]">{children}</p>
   </div>
 );
 
@@ -319,30 +317,20 @@ const WatchlistDrawer = () => {
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
-  /* the book's reads move with the room's clock: every ten seconds while the drawer is open */
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    if (!open) return;
-    const id = window.setInterval(() => setTick(t => t + 1), 10_000);
-    return () => window.clearInterval(id);
-  }, [open]);
   const symbols = list.sections.flatMap(s => s.names.map(n => n.symbol));
-  /* a name the terminal has never walked is walked off the main thread while the drawer is open — the Board's way
-     (core/seedPool.ts) — and its row reads the book a breath after the bars land */
-  const asked = useRef(new Set<string>());
-  useEffect(() => {
-    if (!open) return;
-    for (const sym of symbols) {
-      if (Simulator.isSeeded(sym) || asked.current.has(sym)) continue;
-      asked.current.add(sym);
-      void seedOffThread(sym).then(() => window.setTimeout(() => setTick(t => t + 1), 1500));
-    }
+  const batch = useScreenerQuotes(open ? symbols : []);
+  const missing = useMemo(
+    () => (open && batch.settled ? symbols.filter(s => batch.missing.has(s)) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, symbols.join(',')]);
+    [open, batch.settled, batch.rev, symbols.join(',')],
+  );
+  useDayMoves(missing);
+  const bookRev = useBookRev();
+  const quoteRev = useMemo(() => missing.map(s => peekQuote(s)?.spot ?? 0).join(','), [missing]);
   const reads = useMemo(
     () => (open ? new Map(symbols.map(sym => [sym, readName(sym)] as const)) : new Map<string, NameRead>()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [open, tick, symbols.join(',')]
+    [open, batch.rev, bookRev, quoteRev, symbols.join(',')],
   );
 
   /* the contract lists, by name — the row links to the ones that hold something */
@@ -367,8 +355,13 @@ const WatchlistDrawer = () => {
 
   const total = symbols.length;
   const flagged = list.sections.reduce((n, s) => n + s.names.filter(x => x.flagged).length, 0);
+  const navigate = useNavigate();
+  const location = useLocation();
   const pick = (symbol: string) => {
-    if (symbol && symbol !== activeTicker) changeTicker(symbol);
+    if (!symbol) return;
+    if (symbol !== activeTicker) changeTicker(symbol);
+    navigate('/terrain', { state: { chart: { ticker: symbol }, wayBack: location.pathname } });
+    closeWatchlist();
   };
   const addInto = (symbol: string, sectionId: string | undefined) => {
     const sym = symbol.toUpperCase();
@@ -420,8 +413,8 @@ const WatchlistDrawer = () => {
             <span className="w-6 h-6 rounded-md border border-borderSubtle bg-ink/[0.03] flex items-center justify-center shrink-0" aria-hidden>
               <Eye className="w-3.5 h-3.5 text-textSecondary" strokeWidth={1.75} />
             </span>
-            <span className="text-[14px] font-semibold text-textPrimary">Watchlist</span>
-            <span className="font-mono text-[10px] tnum text-textMuted" data-watchlist-facts>
+            <span className="text-t14 font-semibold text-textPrimary">Watchlist</span>
+            <span className="font-mono text-t10 tnum text-textMuted" data-watchlist-facts>
               <span className="text-textSecondary">{total}</span> {total === 1 ? 'name' : 'names'} · <span className={flagged ? 'text-textSecondary' : ''}>{flagged}</span> flagged
             </span>
             <button onClick={closeWatchlist} aria-label="Close the watchlist" title="Close (Esc)" className="ml-auto shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" data-watchlist-close>
@@ -444,7 +437,7 @@ const WatchlistDrawer = () => {
               type="button"
               onClick={() => setAdding(v => !v)}
               aria-expanded={adding}
-              className={`ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border font-mono text-[9px] uppercase tracking-wider transition-colors ${adding ? 'border-silver/50 text-textPrimary' : 'border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted'}`}
+              className={`ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border font-mono text-t9 uppercase tracking-wider transition-colors ${adding ? 'border-silver/50 text-textPrimary' : 'border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted'}`}
               data-watchlist-add
             >
               <Plus className="w-3 h-3" /> Add a name
@@ -459,7 +452,7 @@ const WatchlistDrawer = () => {
             </div>
           )}
           {said && (
-            <p className="shrink-0 flex items-center gap-2 px-3.5 py-1.5 font-mono text-[9px] text-textMuted border-b border-borderSubtle/60" role="status" data-watchlist-said>
+            <p className="shrink-0 flex items-center gap-2 px-3.5 py-1.5 font-mono text-t9 text-textMuted border-b border-borderSubtle/60" role="status" data-watchlist-said>
               {said.words}
               {said.undo && (
                 <button type="button" onClick={said.undo} className="ml-auto uppercase tracking-wider text-textSecondary hover:text-textPrimary underline decoration-borderMuted underline-offset-2" data-watchlist-undo>
@@ -491,9 +484,9 @@ const WatchlistDrawer = () => {
                     )}
                     {shown.length === 0 ? (
                       only === 'flagged' ? (
-                        <p className="px-2 py-1.5 font-mono text-[9px] text-textMuted">Nothing flagged here</p>
+                        <p className="px-2 py-1.5 font-mono text-t9 text-textMuted">Nothing flagged here</p>
                       ) : addingIn !== s.id ? (
-                        <button type="button" onClick={() => setAddingIn(s.id)} className="px-2 py-1.5 font-mono text-[9px] text-textMuted hover:text-textPrimary transition-colors" data-watch-section-empty={s.id}>
+                        <button type="button" onClick={() => setAddingIn(s.id)} className="px-2 py-1.5 font-mono text-t9 text-textMuted hover:text-textPrimary transition-colors" data-watch-section-empty={s.id}>
                           Nothing here yet — add a name
                         </button>
                       ) : null
@@ -507,7 +500,7 @@ const WatchlistDrawer = () => {
                             section={s}
                             sections={list.sections}
                             on={n.symbol === activeTicker}
-                            read={reads.get(n.symbol) ?? { spot: null, change: null, near: null, cold: true }}
+                            read={reads.get(n.symbol) ?? { spot: null, change: null, near: null }}
                             onPick={pick}
                             onTake={() => take(n.symbol)}
                             links={linksFor(n.symbol)}
@@ -520,12 +513,12 @@ const WatchlistDrawer = () => {
                 );
               })}
             </AnimatePresence>
-            <button type="button" onClick={newSection} className="mt-3 mx-2 inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-textMuted hover:text-textPrimary transition-colors" data-watchlist-new-section>
+            <button type="button" onClick={newSection} className="mt-3 mx-2 inline-flex items-center gap-1.5 font-mono text-t9 uppercase tracking-wider text-textMuted hover:text-textPrimary transition-colors" data-watchlist-new-section>
               <FolderPlus className="w-3.5 h-3.5" /> New section
             </button>
           </div>
 
-          <p className="shrink-0 px-3.5 py-2 border-t border-borderSubtle/70 font-mono text-[9px] leading-snug text-textMuted">
+          <p className="shrink-0 px-3.5 py-2 border-t border-borderSubtle/70 font-mono text-t9 leading-snug text-textMuted">
             Names, not contracts — the Weigher keeps the contracts. Kept on this machine and carried by your account.
           </p>
         </motion.aside>

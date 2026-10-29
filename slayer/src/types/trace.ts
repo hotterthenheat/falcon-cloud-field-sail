@@ -33,6 +33,10 @@ export interface FlowPrint {
   /** Bid-side share of the contract's day, 0–100 */
   ratioBidPct: number;
   size: number;
+  /** Contracts on the bid at this print. Absent when the vendor did not send a size. */
+  nbboBidSize?: number;
+  /** Contracts on the ask at this print. Absent when the vendor did not send a size. */
+  nbboAskSize?: number;
   /** Total premium of the print, dollars */
   premium: number;
   volume: number;

@@ -14,20 +14,20 @@
 
 import { Suspense, useMemo } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
 import { Compass as CompassIcon } from 'lucide-react';
 import { CompassRouteSkeleton } from '../compassSkeleton';
-import ScrollHome from '../../components/layout/ScrollHome';
 import TapeRail from '../../components/compass/TapeRail';
+import NameDesks from '../../components/compass/NameDesks';
 import SessionBook from '../../components/ui/SessionBook';
 import { useMarketData } from '../../context/MarketDataContext';
 import { useCompassView } from '../../data/compassView';
 import { parseSetupId, setupIdOf } from '../../data/compass';
 import { COMPASS_SET } from '../../data/compassUniverse';
-import { liveSetup, useThetaBook } from '../../data/thetaBook';
+import { currentPicks } from '../../data/compassModel';
+import { useThetaBook } from '../../data/thetaBook';
 
 /* "graded and ranked" until 2026-09-19: we do not say we grade, anywhere a reader can see (Noah: "reword graded"; memory: no-public-grades) */
-export const COMPASS_LINE = 'Calls and puts. 0DTE and 1–7 DTE.';
+export const COMPASS_LINE = 'Book A and Book B, 0 to 7 days. Book C is same-day only.';
 /** The Tracker's line under the same head. Last page of Compass. */
 export const TRACKER_LINE = 'The contracts you keep. A row opens one.';
 /** Blotter — every fill the desk recorded. Sits before the Tracker. */
@@ -39,39 +39,43 @@ const CompassLayout = () => {
   const line = location.pathname.startsWith('/compass/blotter') ? BLOTTER_LINE : location.pathname.startsWith('/compass/tracker') ? TRACKER_LINE : COMPASS_LINE;
   const onBoard = location.pathname === '/compass' || location.pathname === '/compass/';
   const page = (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.div key={location.pathname} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.08 } }} transition={{ duration: 0.14 }} className="flex flex-col gap-4 min-w-0">
-        <ScrollHome />
-        <Suspense fallback={<CompassRouteSkeleton pathname={location.pathname} />}>{outlet}</Suspense>
-      </motion.div>
-    </AnimatePresence>
+    <div className={`flex flex-col min-w-0 ${onBoard ? 'xl:h-full xl:min-h-0' : 'gap-4'}`}>
+      <Suspense fallback={<CompassRouteSkeleton pathname={location.pathname} />}>{outlet}</Suspense>
+    </div>
   );
   return (
-    <>
-      <header className="flex items-start gap-6 flex-wrap pb-3 border-b border-borderSubtle" data-shell data-compass-shell>
+    <div className="flex flex-col xl:flex-1 xl:min-h-0">
+      <header className="flex items-start gap-6 flex-wrap pb-3 border-b border-borderSubtle shrink-0" data-shell data-compass-shell>
         <div className="min-w-0 flex-1">
           <div className="h-6 flex items-center gap-2.5" data-shell-page>
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0" aria-hidden="true">
               <CompassIcon className="w-3.5 h-3.5" />
             </span>
-            <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">Compass</h1>
+            <h1 className="text-t15 font-semibold leading-tight text-textPrimary">Compass</h1>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{line}</p>
+          <p className="mt-0.5 text-t11 text-textMuted break-words sm:whitespace-nowrap sm:truncate">{line}</p>
         </div>
         <SessionBook />
       </header>
       {/* The tape is the scan's rail. A contract's page is the contract — the prints stay loaded for the way back. */}
       {onBoard ? (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start" data-compass-row>
-          <div className="xl:col-span-8 min-w-0">{page}</div>
-          <div className="xl:col-span-4 min-w-0 xl:sticky xl:top-4 xl:h-[calc(100vh-6rem)] xl:min-h-[480px]">
-            <CompassTape pathname={location.pathname} />
+        <div className="mt-4 grid grid-cols-1 xl:grid-cols-12 gap-4 items-start xl:flex-1 xl:min-h-0 xl:items-stretch" data-compass-row>
+          <div className="xl:col-span-8 min-w-0 xl:min-h-0 xl:h-full">{page}</div>
+          <div className="xl:col-span-4 min-w-0 xl:min-h-0 xl:h-full">
+            <div className="flex flex-col gap-3 xl:h-full xl:min-h-0">
+              <div className="h-[46vh] min-h-[280px] xl:h-auto xl:flex-1 xl:min-h-0">
+                <CompassTape pathname={location.pathname} />
+              </div>
+              <div className="min-h-[280px] xl:h-auto xl:flex-1 xl:min-h-0 min-w-0">
+                <CompassName />
+              </div>
+            </div>
           </div>
         </div>
       ) : (
         page
       )}
-    </>
+    </div>
   );
 };
 
@@ -93,8 +97,8 @@ const CompassTape = ({ pathname }: { pathname: string }) => {
       sleeve={offered}
       focus={focus}
       canOpen={hit => {
-        const id = setupIdOf({ ticker: hit.ticker, strike: hit.strike, right: hit.right, scanner: 'top-setups', sleeve: offered });
-        return live.setups.some(s => s.id === id) || liveSetup(id) != null;
+        if (live.status === 'loading') return false;
+        return currentPicks().some(s => s.ticker === hit.ticker && s.right === hit.right && Math.abs(s.strike - hit.strike) < 0.01 && (offered === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE' && s.band !== 'lottery') && (s.band === 'top' || s.band === 'wing' || (s.band === 'lottery' && offered === 'odte')));
       }}
       onOpen={hit => {
         if (!COMPASS_SET.has(hit.ticker)) return;
@@ -102,6 +106,24 @@ const CompassTape = ({ pathname }: { pathname: string }) => {
         navigate(`/compass/${setupIdOf({ ticker: hit.ticker, strike: hit.strike, right: hit.right, scanner: 'top-setups', sleeve: offered })}`);
       }}
     />
+  );
+};
+
+const CompassName = () => {
+  const { sleeve, selectedId } = useCompassView();
+  const offered = sleeve === 'weekly' ? 'weekly' : 'odte';
+  const picked = selectedId ? parseSetupId(selectedId) : null;
+  if (!picked) {
+    return (
+      <div className="h-full border border-borderSubtle rounded-md bg-panel flex items-center justify-center px-6" data-compass-name>
+        <p className="font-mono text-t11 text-textMuted text-center">Select a name. The other desks and what it passed sit here.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="h-full min-h-0 overflow-y-auto" data-compass-name>
+      <NameDesks ticker={picked.ticker} sleeve={offered} />
+    </div>
   );
 };
 

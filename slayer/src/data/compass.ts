@@ -9,9 +9,7 @@
 
 import { blackScholesGreeks } from '../core/greeks';
 import { expiryFor } from '../core/calendar';
-import { now } from '../core/clock';
 import { isoDay } from '../core/journal';
-import { nyParts } from '../core/nyTime';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
 import { SLEEVE_BY_KEY, SCANNERS, isScannerEligible, scannerEligibility } from '../types/compass';
 import type { Grade } from './stockOverview';
@@ -360,8 +358,6 @@ export function makeSetup(
   const health = clamp(healthFor(spot, strike, right) + Math.round((rng() - 0.5) * 12), 5, 99);
   const momentum = momentumFromHealth(health);
 
-  // Opportunity score: near-the-money + aligned with the ticker's lean scores highest;
-  // far-OTM or opposed contracts score low, so verdict spans ENTER / WATCH / EXIT.
   const bullish = tickerLean(ticker, scanner);
   const aligned = bullish ? right === 'C' : right === 'P';
   const proximity = 1 - Math.min(1, Math.abs(strike - spot) / (spot * 0.03));
@@ -369,28 +365,14 @@ export function makeSetup(
     clamp(96 * (0.4 + 0.6 * proximity) * (aligned ? 1 : 0.55) + (rng() - 0.5) * 8, 8, 99)
   );
   const expectedMovePct = Number((profile.moveBias * moveMul * (24 + rng() * 22)).toFixed(1));
-
-  // Real time input — a LEAPS delta and a 0DTE delta are different animals.
   const greeks = blackScholesGreeks(spot, strike, sessionsLeft / 252, iv);
   const delta = right === 'C' ? greeks.deltaCall : greeks.deltaPut;
-  const verdict: Verdict = score >= 88 ? 'ENTER' : score >= 72 ? 'WATCH' : 'EXIT';
-
-  /* TPs ARE EARNED (Noah, 2026-08-30: "some cons only require 1 tp whilst
-     others the math ... can push to 3"). The ladder is as long as the math
-     supports — three rungs for the strongest, one for marginal, and NONE
-     for a fading thesis: a dead setup gets no trade furniture, so the
-     chart shows no TP and no floor either (the floor gates on rung count
-     downstream — one fact, every surface). */
-  const tpCount = score >= 94 ? 3 : score >= 80 ? 2 : score >= 72 ? 1 : 0;
+  // Not a ticket. The old 88 / 72 cut is not a model.
+  const verdict: Verdict = 'WATCH';
+  const tpCount = 0;
 
   const why = WHY_LIBRARY[scanner];
-  // States, not orders — the engine's ENTER/EXIT call stays internal.
-  const headline =
-    verdict === 'ENTER'
-      ? `ACTIVE — STRONG ${right === 'C' ? 'CALL' : 'PUT'} STRUCTURE`
-      : verdict === 'WATCH'
-        ? 'WATCH — BUILDING, NOT PROVEN'
-        : 'FADING — THESIS DEGRADING';
+  const headline = 'Not a ticket. Model 1 and Model 2 are the only scores, and they run on a live quote.';
 
   // Liquidity: derive from bid/ask spread
   const spreadPct = mid > 0 ? ((ask - bid) / mid) * 100 : 0;
@@ -446,10 +428,10 @@ export function makeSetup(
     sessionsLeft,
     sigmaMovePct,
     sleeve,
-    score,
+    score: 0,
     verdict,
-    topRated: score >= 93,
-    topOpportunity: score >= 90,
+    topRated: false,
+    topOpportunity: false,
     expectedMovePct,
     swingTarget: { price: Number((mid * (1 + profile.swingMul)).toFixed(2)), pct: Math.round(profile.swingMul * 100) },
     scalpExit: { price: Number((mid * (1 + profile.scalpMul)).toFixed(2)), pct: Math.round(profile.scalpMul * 100) },
@@ -467,7 +449,7 @@ export function makeSetup(
     ask,
     mid,
     liveMid,
-    confidence: Math.round(clamp((score - 55) * 2.1, 5, 98)),
+    confidence: 0,
     health,
     momentum,
     takeProfits,
@@ -475,8 +457,8 @@ export function makeSetup(
     priceTargets,
     liquidityLabel,
     liquiditySpread,
-    invalidationPrice,
-    invalidationReason,
+    invalidationPrice: 0,
+    invalidationReason: '',
   };
 }
 
@@ -517,13 +499,13 @@ export function choiceRight(calls: boolean, spot: number, open: number): OptionR
   return base;
 }
 
-const NEVER_NAME = new Set(['NDX', 'NDXP', 'XND', 'IDX']);
+const NEVER_NAME = new Set(['XND', 'IDX']);
 
-/** SPX and RUT stay on 0DTE every session. VIX only on Tuesday, the last day that contract trades. Nasdaq never. */
+/** SPX and RUT stay on the book. Their same-day contracts are SPXW and RUTW. NDX's daily is NDXP. VIX has no daily. */
 export function onCompassBook(ticker: string, sleeve: SleeveKey): boolean {
   const t = ticker.toUpperCase();
   if (!t || NEVER_NAME.has(t)) return false;
-  if (t === 'VIX' && sleeve === 'odte') return nyParts(now()).weekday === 2;
+  if (t === 'VIX' && sleeve === 'odte') return false;
   return true;
 }
 

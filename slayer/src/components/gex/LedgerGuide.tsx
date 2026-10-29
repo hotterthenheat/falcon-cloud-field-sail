@@ -318,7 +318,7 @@ const InWords = ({ surface, greek }: { surface: ExposureSurface; greek: Greek })
   const supreme = surface.supreme[greek];
   const supremeDate = surface.expiries[supreme.e]?.date ?? '';
   return (
-    <li className="text-[11.5px] leading-relaxed text-textSecondary">
+    <li className="text-t115 leading-relaxed text-textSecondary">
       The supreme is <span className="font-mono tnum font-semibold" style={{ color: SUPREME }}>{fmtStrike(supreme.strike)}</span>: <span className="font-mono tnum text-textPrimary">{fmtUsd(shownGreek(greek, supreme.total))}</span> of {label} hedging on the Levels card's contracts; on this calendar most of it sits on{' '}
       <span className="text-textPrimary">{supremeDate}</span>. The chart wears it in magenta.
     </li>
@@ -330,8 +330,8 @@ const MatrixWords = ({ surface, greek, mode }: { surface: ExposureSurface; greek
   return (
     <div className="px-3 py-3 flex flex-col gap-3" data-ledger-guide-card data-guide-view="matrix">
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">The matrix · one strike per row, a column per greek</p>
-        <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t12 font-semibold text-textPrimary">The matrix · one strike per row, a column per greek</p>
+        <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
           Each row is a strike, with the dates on the Expiries card added together. The figure is how much dealer hedging sits there, and the bar beside it is that figure drawn: the longer, the more. {w.absorb} pushes back against a move through the strike, {w.amplify} pushes it along. A strike's ink names its level, read off this name's levels — the same levels the Board, the Agenda and Compare show: magenta the supreme (the strike with the most hedging), blue the call wall, gold the put wall; a dotted underline marks the gamma pin, a silver one a strike you own. Spot is a row of its own, where price stands.
         </p>
         <FigureBox>
@@ -339,18 +339,18 @@ const MatrixWords = ({ surface, greek, mode }: { surface: ExposureSurface; greek
         </FigureBox>
       </div>
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">Legs · the net, one side, or both</p>
-        <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t12 font-semibold text-textPrimary">Legs · the net, one side, or both</p>
+        <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
           Legs, up on the band, draws the net alone, the calls or the puts alone, or both side by side: the put's bar grows left from the seam and the call's right. The card under the pointer always carries both legs, the net and the open interest.
         </p>
       </div>
       <div className="border-t border-borderSubtle/60 pt-2.5">
-        <p className="text-[11px] text-textMuted">Today's matrix, in words</p>
+        <p className="text-t11 text-textMuted">Today's matrix, in words</p>
         <ul className="mt-1 flex flex-col gap-1.5">
           <InWords surface={surface} greek={greek} />
         </ul>
       </div>
-      <p className="text-[11px] text-textMuted">Hover a row for its card · click to keep the strike on every box of the page · click it again, or Esc, to let go · ↑ ↓ or J K walk the rows once the matrix is focused.</p>
+      <p className="text-t11 text-textMuted">Hover a row for its card · click to keep the strike on every box of the page · click it again, or Esc, to let go · ↑ ↓ or J K walk the rows once the matrix is focused.</p>
     </div>
   );
 };
@@ -360,8 +360,8 @@ const ProfileWords = ({ surface, mode }: { surface: ExposureSurface; mode?: Heat
   return (
     <div className="px-3 py-3 flex flex-col gap-3" data-ledger-guide-card data-guide-view="profile">
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">The profile · the book's gamma at every price</p>
-        <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t12 font-semibold text-textPrimary">The profile · the book's gamma at every price</p>
+        <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
           Price runs left to right. The line is the dealers' total gamma if price stood at that level, every drawn expiry added together; the quiet lines are the expiries one by one. Above the zero line dealers are long gamma and their hedging absorbs a move; below it, it amplifies one. Where the line crosses zero is the zero-gamma level: the price where the book changes character. The flip on the band is the same idea read off the Levels card's contracts (its scope), each re-priced from the minute the feed priced it — so it can sit a little apart from this line, which adds up the drawn expiries.
         </p>
         <FigureBox>
@@ -369,15 +369,15 @@ const ProfileWords = ({ surface, mode }: { surface: ExposureSurface; mode?: Heat
         </FigureBox>
       </div>
       <div className="border-t border-borderSubtle/60 pt-2.5">
-        <p className="text-[11px] text-textMuted">Today's profile, in words</p>
+        <p className="text-t11 text-textMuted">Today's profile, in words</p>
         <ul className="mt-1 flex flex-col gap-1.5">
-          <li className="text-[11.5px] leading-relaxed text-textSecondary">
+          <li className="text-t115 leading-relaxed text-textSecondary">
             The put wall is <span className="font-mono tnum" style={{ color: PUT_WALL }}>{fmtStrike(surface.levels.putWall)}</span> and the call wall <span className="font-mono tnum" style={{ color: CALL_WALL }}>{fmtStrike(surface.levels.callWall)}</span>; price is at{' '}
             <span className="font-mono tnum text-textPrimary">{surface.spot.toFixed(2)}</span>.
           </li>
         </ul>
       </div>
-      <p className="text-[11px] text-textMuted">Hover the plot for the figures at a price · click to keep the nearest strike · ← → walk the curve once the plot is focused.</p>
+      <p className="text-t11 text-textMuted">Hover the plot for the figures at a price · click to keep the nearest strike · ← → walk the curve once the plot is focused.</p>
     </div>
   );
 };
@@ -410,8 +410,8 @@ const CalendarWords = ({ surface, greek, mode }: { surface: ExposureSurface; gre
   return (
     <div className="px-3 py-3 flex flex-col gap-3" data-ledger-guide-card data-guide-view="calendar">
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">The grid · one strike per row, one date per column</p>
-        <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t12 font-semibold text-textPrimary">The grid · one strike per row, one date per column</p>
+        <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
           Each row is a strike, a price level. Each column is an expiry date, today first and later dates to the right. Each cell is a capsule: the figure inside is how much dealer hedging sits at that strike for that date. Brighter means more. {w.absorb} pushes back against a move there, {w.amplify} pushes it along. The strike printed in magenta is the supreme: the strike with the most hedging on the Levels card's contracts, the same one the Board and Compare show. The cell with the star is the heaviest single cell on this calendar. A strike's ink names its level: blue the call wall, gold the put wall, magenta the supreme; a dotted underline marks the gamma pin, a silver one a strike you own. Hover a strike for the words.
         </p>
         <FigureBox>
@@ -419,8 +419,8 @@ const CalendarWords = ({ surface, greek, mode }: { surface: ExposureSurface; gre
         </FigureBox>
       </div>
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">Reading it · across for how long, down for what expires</p>
-        <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t12 font-semibold text-textPrimary">Reading it · across for how long, down for what expires</p>
+        <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
           Read across a row to see how long a level lasts. Heavy in every column means the level stays for weeks. Heavy today and empty after means it is a one-day wall that is gone at the bell. Read down today's column to see what expires at the close. The "After the close" choice up top shows the same grid with today's column removed, the calendar as it will stand tomorrow morning.
         </p>
         <FigureBox>
@@ -428,30 +428,30 @@ const CalendarWords = ({ surface, greek, mode }: { surface: ExposureSurface; gre
         </FigureBox>
       </div>
       <div className="border-t border-borderSubtle/60 pt-2.5">
-        <p className="text-[11px] text-textMuted">Today's calendar, in words</p>
+        <p className="text-t11 text-textMuted">Today's calendar, in words</p>
         <ul className="mt-1 flex flex-col gap-1.5">
-          <li className="text-[11.5px] leading-relaxed text-textSecondary">
+          <li className="text-t115 leading-relaxed text-textSecondary">
             The supreme is <span className="font-mono tnum font-semibold" style={{ color: SUPREME }}>{fmtStrike(supreme.strike)}</span>: <span className="font-mono tnum text-textPrimary">{fmtUsd(shownGreek(greek, supreme.total))}</span> of {label} hedging on the Levels card's contracts; on this calendar most of it sits on{' '}
             <span className="text-textPrimary">{supremeDate}</span>. The chart wears it in magenta.
           </li>
-          <li className="text-[11.5px] leading-relaxed text-textSecondary">
+          <li className="text-t115 leading-relaxed text-textSecondary">
             The heaviest cell is <span className="font-mono tnum text-textPrimary">{fmtStrike(king.strike)}</span> on <span className="text-textPrimary">{kingDate}</span>, with{' '}
             <span className="font-mono tnum text-textPrimary">{fmtUsd(Math.abs(king.value))}</span> of {label} hedging. That is the star.
           </li>
           {share != null && (
-            <li className="text-[11.5px] leading-relaxed text-textSecondary">
+            <li className="text-t115 leading-relaxed text-textSecondary">
               <span className="font-mono tnum text-textPrimary">{share}%</span> of the hedging on this calendar expires today at the close. The rest is still there tomorrow.
             </li>
           )}
           {wallIdx >= 0 && wallToday > 0 && (
-            <li className="text-[11.5px] leading-relaxed text-textSecondary">
+            <li className="text-t115 leading-relaxed text-textSecondary">
               The call wall at <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.callWall)}</span> holds <span className="font-mono tnum text-textPrimary">{fmtUsd(wallToday)}</span> today and{' '}
               <span className="font-mono tnum text-textPrimary">{fmtUsd(wallFar)}</span> on {surface.expiries[last]?.date}. {stays ? 'It stays on the calendar.' : 'Most of it is gone after today.'}
             </li>
           )}
         </ul>
       </div>
-      <p className="text-[11px] text-textMuted">Hover a cell for its card · click to keep it · click it again, Esc, or anywhere off the grid to let go · the arrows or J K walk the cells once the calendar is focused · Biggest moves, up on the band, keeps only the badged cells sharp — the biggest moves since the open.</p>
+      <p className="text-t11 text-textMuted">Hover a cell for its card · click to keep it · click it again, Esc, or anywhere off the grid to let go · the arrows or J K walk the cells once the calendar is focused · Biggest moves, up on the band, keeps only the badged cells sharp — the biggest moves since the open.</p>
     </div>
   );
 };

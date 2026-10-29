@@ -1164,7 +1164,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   }, [fitStamp, snapshot, surface, onNaturalWidth, onBandNeed]);
   if (!snapshot || !surface) {
     return (
-      <div className="h-full min-h-[300px] grid place-items-center font-mono text-[11px] text-textMuted uppercase tracking-widest">
+      <div className="h-full min-h-[300px] grid place-items-center font-mono text-t11 text-textMuted uppercase tracking-widest">
         No options book. Price history, walls and the strike field appear when the data feed is connected.
       </div>
     );
@@ -1361,8 +1361,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           a wider window here can name another strike (the UI sweep, 2026-10-22) */}
       {/* THE SCOPE NEVER FOLDS AWAY (the sixth audit's retail test: NVDA's Map "SUPREME 210" beside the Dossier's All
           expiries "230 SUPREME" read as a contradiction) — the compact door keeps a short scope word */}
-      <span className="text-[11px] text-textMuted">Supreme{supremeGreek === 'gex' && <span className="text-warn/90" data-supreme-scope> · {doorCompact('supreme') ? (levelsScope === 'ALL' ? 'All exp.' : todayScopeLabel()) : levelsLabel}</span>}</span>
-      <span className="text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap">
+      <span className="text-t11 text-textMuted">Supreme{supremeGreek === 'gex' && <span className="text-warn/90" data-supreme-scope> · {doorCompact('supreme') ? (levelsScope === 'ALL' ? 'All exp.' : todayScopeLabel()) : levelsLabel}</span>}</span>
+      <span className="text-t11 font-semibold tnum text-textPrimary whitespace-nowrap">
         {supremePending ? '…' : fmtStrike(supreme.strike)}
         {/* tight: the strike alone — the date and the amount stay in the title */}
         {!supremePending && !doorCompact('supreme') && (
@@ -1379,7 +1379,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           read as the matrix's figure while the row said −$657.5M): the amount is the Levels card's contracts, and the
           matrix row's own sum is named as the other window */}
       {scopeDiffers && supremeGreek === 'gex' && !doorCompact('supreme') && (
-        <span className="text-[10px] text-warn whitespace-nowrap" title={`The matrix rows add up ${expirySpan(chosenDates)} (the Expiries card); the supreme, the walls, the flip and this figure read ${levelsLabel} (the Levels card) — so the row's own figure can differ`} data-supreme-scope-differs>
+        <span className="text-t10 text-warn whitespace-nowrap" title={`The matrix rows add up ${expirySpan(chosenDates)} (the Expiries card); the supreme, the walls, the flip and this figure read ${levelsLabel} (the Levels card) — so the row's own figure can differ`} data-supreme-scope-differs>
           · {lvDate ? `${expirySpan([lvDate])} alone` : 'all expiries'} · matrix rows: {spanWords}
         </span>
       )}
@@ -1458,7 +1458,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
             <Plus className="w-3 h-3" />
             {/* the count is the book, one name or four — a blank Names control reads as broken */}
             <span>Names</span>
-            <span className="text-[11px] font-semibold text-textPrimary tnum">{1 + names.length}</span>
+            <span className="text-t11 font-semibold text-textPrimary tnum">{1 + names.length}</span>
           </button>
           {adding &&
             addPlaced &&
@@ -1471,7 +1471,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                 className="z-[120] w-72 border border-borderMuted bg-panel/80 backdrop-blur-xl backdrop-saturate-150 rounded-md shadow-2xl shadow-black/60 overflow-x-hidden overflow-y-auto overscroll-contain"
                 data-ledger-add-menu
               >
-                <div className="px-2.5 py-1.5 border-b border-borderSubtle text-[11px] text-textMuted">Show another name beside this one — up to four side by side, on the same choices</div>
+                <div className="px-2.5 py-1.5 border-b border-borderSubtle text-t11 text-textMuted">Show another name beside this one — up to four side by side, on the same choices</div>
                 <TickerLookup
                   onPick={sym => {
                     addName(sym);
@@ -1517,7 +1517,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       <div ref={bandRef} className="shrink-0 flex items-center gap-x-2 px-3 py-2 border-b border-borderSubtle/60 bg-panel" data-ledger-toolbar data-ledger-toolbar-rows="folded" data-ledger-toolbar-mode={bandMode} data-ledger-toolbar-scroll="">
         {backButton}
         {leadFold}
-        <button type="button" onClick={() => setPhoneBand(true)} aria-expanded={false} className="hit ml-auto inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-[10px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" title="View, greek, legs, expiries, strikes, names, replay and the read" data-band-controls>
+        <button type="button" onClick={() => setPhoneBand(true)} aria-expanded={false} className="hit ml-auto inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-t10 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" title="View, greek, legs, expiries, strikes, names, replay and the read" data-band-controls>
           Controls · {VIEW_OPTION[view]?.label ?? view} ▾
         </button>
       </div>
@@ -1541,7 +1541,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           {doors}
         </div>
         {bandScroll && (
-          <button type="button" onClick={() => setPhoneBand(false)} aria-expanded className="hit self-start mb-2 inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-[10px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-band-controls>
+          <button type="button" onClick={() => setPhoneBand(false)} aria-expanded className="hit self-start mb-2 inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-t10 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-band-controls>
             Fold the controls ▴
           </button>
         )}
@@ -1560,7 +1560,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       <>
         {strips}
         {fitNote && (
-          <p className="basis-full -mt-0.5 pb-0.5 text-[10.5px] leading-snug text-textSecondary" data-fit-note>
+          <p className="basis-full -mt-0.5 pb-0.5 text-t105 leading-snug text-textSecondary" data-fit-note>
             {fitNote}
           </p>
         )}
@@ -1570,7 +1570,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       <div className="shrink-0 border-b border-borderSubtle/60" data-ledger-toolbar-mode="panel">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 px-2 py-1.5">{strips}</div>
         {fitNote && (
-          <p className="px-2 pb-1.5 -mt-0.5 text-[10.5px] leading-snug text-textSecondary" data-fit-note>
+          <p className="px-2 pb-1.5 -mt-0.5 text-t105 leading-snug text-textSecondary" data-fit-note>
             {fitNote}
           </p>
         )}
@@ -1583,8 +1583,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
         {/* The name, its price, its change — the panel says whose book this is; the search changes whose. */}
         <span className="inline-flex items-center gap-2 font-mono">
           <CompanyLogo ticker={surface.ticker} size={18} />
-          <span className="text-[14px] font-bold text-textPrimary">{surface.ticker}</span>
-          <span className="text-[12px] tnum text-textPrimary">${snapshot.spot.toFixed(2)}</span>
+          <span className="text-t14 font-bold text-textPrimary">{surface.ticker}</span>
+          <span className="text-t12 tnum text-textPrimary">${snapshot.spot.toFixed(2)}</span>
           <DayMoveText snapshot={snapshot} />
         </span>
         {onTicker && <TickerSearch value={surface.ticker} onChange={onTicker} />}
@@ -1598,7 +1598,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           to either expand the gex view or decrease the amount of exp") — the Expiries card carries the same words
           inside; here they stand under the strips where the eye is */}
       {fitNote && (
-        <p className="px-3 pb-2 -mt-0.5 text-[11px] leading-snug text-textPrimary" data-fit-note>
+        <p className="px-3 pb-2 -mt-0.5 text-t11 leading-snug text-textPrimary" data-fit-note>
           {fitNote}
         </p>
       )}
@@ -1680,14 +1680,14 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {headOut && headSlot ? createPortal(head, headSlot) : head}
       {above && <div className="shrink-0 border-b border-borderSubtle/60 bg-panel" data-field-above>{above}</div>}
       {toolbar === 'band' && !noteSeen && (
-        <div className="shrink-0 flex items-start gap-3 px-4 py-2 border-b border-borderSubtle/60 bg-silver/[0.04] text-[11px] text-textSecondary" data-map-note>
+        <div className="shrink-0 flex items-start gap-3 px-4 py-2 border-b border-borderSubtle/60 bg-silver/[0.04] text-t11 text-textSecondary" data-map-note>
           <p className="min-w-0 flex-1 leading-relaxed">
             <span className="font-semibold text-textPrimary">First time here?</span> Each row is a strike. {palette === 'thermal' ? 'Red and orange mean' : 'Ember orange means'} dealer hedging pushes a move along there, {palette === 'thermal' ? 'green means' : 'glacier blue means'} it holds one back. A strike in magenta is the supreme, blue the call wall, gold the put wall. Click a row to keep it on every box.{' '}
             <button type="button" onClick={openFirstTime} className="underline decoration-dotted underline-offset-2 text-textPrimary hover:text-silver" data-map-note-words>
               Every word Pinpoint uses →
             </button>
           </p>
-          <button type="button" onClick={dismissNote} className="hit shrink-0 h-6 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-[11px] text-textPrimary hover:border-borderMuted transition-colors" data-map-note-close>
+          <button type="button" onClick={dismissNote} className="hit shrink-0 h-6 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-t11 text-textPrimary hover:border-borderMuted transition-colors" data-map-note-close>
             Got it
           </button>
         </div>
@@ -1783,7 +1783,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                 <Fold axis="y" open={many} className="shrink-0" testId="data-field-column-fold">
                   <div className="flex items-center gap-2 px-3 h-9 border-b border-borderSubtle/60 bg-ink/[0.03] font-mono min-w-0" data-field-column-head={c.ticker}>
                     <span className="shrink-0 inline-flex items-center">{chip}</span>
-                    <span className="ml-auto text-[11px] uppercase tracking-widest text-textMuted truncate">Reading the book…</span>
+                    <span className="ml-auto text-t11 uppercase tracking-widest text-textMuted truncate">Reading the book…</span>
                     {removeDoor}
                   </div>
                 </Fold>
@@ -1900,8 +1900,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     data-column-supreme={book.snapshot.liveBook && surfDrawn.levels?.complete === false ? undefined : sup.strike}
                   >
                     <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-supreme" />
-                    <span className="text-[11px] text-textMuted">Supreme <span className="text-warn/90">· {colScope === 'ALL' ? 'All exp.' : todayScopeLabel()}</span></span>
-                    <span className="text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap">
+                    <span className="text-t11 text-textMuted">Supreme <span className="text-warn/90">· {colScope === 'ALL' ? 'All exp.' : todayScopeLabel()}</span></span>
+                    <span className="text-t11 font-semibold tnum text-textPrimary whitespace-nowrap">
                       {/* nothing provisional (the seventh audit's retail blocker): "…" until the Levels card's scope is final */}
                       {book.snapshot.liveBook && (colGreeks[0] ?? 'gex') === 'gex' && surfDrawn.levels?.complete === false ? (
                         '…'
@@ -2048,7 +2048,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     still read "Loading SPY's expiries…" at 12s while the forty far dates landed behind a window of one) */}
                 {book.snapshot.liveBook && !fresh && (!(bookDatesIn(c.ticker) || (colView !== 'calendar' && colScope !== 'ALL' && !differs && dates.length === 1)) || roomLevels(levelsBook(book.snapshot, colScope), '0DTE')?.complete === false) && (
                   <div className="absolute inset-0 z-10 grid place-items-center bg-card/80 backdrop-blur-[2px]" data-ledger-loading={c.ticker}>
-                    <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted">Loading {c.ticker}'s expiries…</span>
+                    <span className="font-mono text-t11 uppercase tracking-widest text-textMuted">Loading {c.ticker}'s expiries…</span>
                   </div>
                 )}
                 {/* THE READ — this name's, glass over the right of its own book
@@ -2078,7 +2078,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {/* THE LEGEND (the owner, 2026-10-14: "the colours aren't explained"): one line under the grid saying what the two
           sides and the three strike inks mean — the capsules' own ramp, so the swatches match the board */}
       {toolbar === 'band' && view !== 'profile' && (
-        <div className="shrink-0 flex flex-wrap items-center gap-x-4 gap-y-0.5 px-3 py-1 border-t border-borderSubtle/60 bg-panel font-mono text-[11px] text-textMuted" data-ledger-legend>
+        <div className="shrink-0 flex flex-wrap items-center gap-x-4 gap-y-0.5 px-3 py-1 border-t border-borderSubtle/60 bg-panel font-mono text-t11 text-textMuted" data-ledger-legend>
           <span className="inline-flex items-center gap-1.5">
             <span aria-hidden className="h-[3px] w-4 rounded-full" style={{ background: palette === 'thermal' ? THERMAL_WARM : AMPLIFY }} />
             pushes a move along

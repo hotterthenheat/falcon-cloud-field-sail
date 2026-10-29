@@ -97,8 +97,8 @@ const Term = ({ k, children, className = '' }: TermProps) => {
               transform: `translate(-50%, ${pos.up ? '-100%' : '0'})`,
             }}
           >
-            <span className="block font-mono text-[11px] font-semibold uppercase tracking-wider text-textPrimary">{k}</span>
-            <span className="mt-0.5 block font-sans text-[11px] font-normal leading-relaxed text-textSecondary">
+            <span className="block font-mono text-t11 font-semibold uppercase tracking-wider text-textPrimary">{k}</span>
+            <span className="mt-0.5 block font-sans text-t11 font-normal leading-relaxed text-textSecondary">
               {TERMS[k]}
             </span>
           </span>,

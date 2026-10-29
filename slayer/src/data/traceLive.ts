@@ -734,6 +734,8 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
     ratioLabel: volSum > 0 ? (askVol >= bidVol ? `ASK ${Math.round((askVol / volSum) * 100)}%` : `BID ${Math.round((bidVol / volSum) * 100)}%`) : '—',
     ratioBidPct: volSum > 0 ? Math.round((bidVol / volSum) * 100) : NaN,
     size,
+    nbboBidSize: row.nbbo_bid_size != null && row.nbbo_bid_size !== '' ? num(row.nbbo_bid_size) : undefined,
+    nbboAskSize: row.nbbo_ask_size != null && row.nbbo_ask_size !== '' ? num(row.nbbo_ask_size) : undefined,
     premium,
     volume,
     oi,
@@ -2247,6 +2249,7 @@ export function useSearchBook(name: string | null | undefined): EndlessBook & { 
   const named = useMemo(() => ({ ...pack, rows, older }), [pack.at, pack.fault, pack.waiting, rows, older.state, older.loadOlder]); // eslint-disable-line react-hooks/exhaustive-deps
   return t ? { ...named, name: t } : { ...market, name: null };
 }
+
 function useLiveBookRaw(ticker?: string | null, enabled = true): LivePack<BookContract[]> {
   const name = (ticker || '').trim().toUpperCase();
   return useLive(

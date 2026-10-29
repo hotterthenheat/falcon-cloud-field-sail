@@ -70,7 +70,7 @@ const QUESTIONS: { key: 'why' | 'saw' | 'again'; ask: string; hint: string }[] =
   { key: 'saw', ask: 'What I saw while in it', hint: 'What it did, what you felt, what you did about it' },
   { key: 'again', ask: 'What I would do again — and what I would not', hint: 'The one line you would want to read before the next one like it' },
 ];
-const barDoor = 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-30 disabled:cursor-not-allowed transition-colors';
+const barDoor = 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-30 disabled:cursor-not-allowed transition-colors';
 
 /** A future's price in its own print — a paper future may be one the backtest does not list (the Russell pair) */
 const futAt = (row: JournalRow, v: number): string => (row.fut ? (row.paper ? futWords(row.t.symbol, v) : futPrice(futProduct(row.t.symbol), v)) : v.toFixed(2));
@@ -137,9 +137,9 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
   if (!row || !ex) {
     return (
       <div className={`${card} px-6 py-14 text-center`} data-journal-trade="missing">
-        <p className="text-[13px] text-textPrimary">That trade is not in this browser’s journal.</p>
-        <p className="mt-1 text-[11px] text-textMuted">{kind === 'paper' ? 'A trade lives with its paper account on this machine.' : 'A trade lives with its session — if the session was deleted, its trades went with it.'}</p>
-        <Link to={source.base} className="mt-4 inline-flex items-center gap-1.5 h-7 px-3 rounded-md border border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors">
+        <p className="text-t13 text-textPrimary">That trade is not in this browser’s journal.</p>
+        <p className="mt-1 text-t11 text-textMuted">{kind === 'paper' ? 'A trade lives with its paper account on this machine.' : 'A trade lives with its session — if the session was deleted, its trades went with it.'}</p>
+        <Link to={source.base} className="mt-4 inline-flex items-center gap-1.5 h-7 px-3 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors">
           The journal <ArrowRight className="w-3 h-3" />
         </Link>
       </div>
@@ -215,17 +215,17 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
         </Link>
         <div className="min-w-0 flex items-center gap-3 flex-wrap">
           {row.fut ? (
-            <span className="inline-flex items-center gap-1.5 font-mono text-[13px]">
+            <span className="inline-flex items-center gap-1.5 font-mono text-t13">
               <span className="font-semibold text-textPrimary">{row.t.contract}</span>
               <span className={`font-semibold ${row.t.long ? 'text-bull' : 'text-bear'}`}>{row.t.long ? 'long' : 'short'}</span>
             </span>
           ) : (
             <ContractLabel contract={contractWords(row.t.contract)} right={row.t.contract.right} logo={row.t.contract.ticker} />
           )}
-          <span className={`font-mono text-[22px] font-semibold tnum ${dirInk(row.t.pnl)}`} data-journal-result>
-            {usdSigned(row.t.pnl)} <span className="text-[11px] font-normal opacity-80">{row.t.r != null ? rWords(row.t.r) : 'no stop · no R'}</span>
+          <span className={`font-mono text-t22 font-semibold tnum ${dirInk(row.t.pnl)}`} data-journal-result>
+            {usdSigned(row.t.pnl)} <span className="text-t11 font-normal opacity-80">{row.t.r != null ? rWords(row.t.r) : 'no stop · no R'}</span>
           </span>
-          <span className="text-[11px] text-textMuted whitespace-nowrap">
+          <span className="text-t11 text-textMuted whitespace-nowrap">
             {ENDED[row.t.how]}
             {row.t.how === 'scaled' ? ` — ${piecesWords(row)}` : ''} · {whenWords(row, row.t.closed)}
           </span>
@@ -234,7 +234,7 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
           <button type="button" onClick={() => newer && navigate(pathOf(newer), { replace: true })} disabled={!newer} title="The trade closed after this one (←)" className={barDoor} data-journal-newer>
             <ChevronLeft className="w-3 h-3" /> Newer
           </button>
-          <span className="px-1 font-mono text-[10px] tnum text-textMuted whitespace-nowrap" data-journal-walk>
+          <span className="px-1 font-mono text-t10 tnum text-textMuted whitespace-nowrap" data-journal-walk>
             {index + 1} of {walk.length}
           </span>
           <button type="button" onClick={() => older && navigate(pathOf(older), { replace: true })} disabled={!older} title="The trade closed before this one (→)" className={barDoor} data-journal-older>
@@ -260,7 +260,7 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
           <div className={`${card} min-w-0 flex-1 flex flex-col`} data-journal-shape data-shape-area={shape.area.toFixed(2)}>
             <div className={`${head} flex-wrap h-auto min-h-9 py-1.5`}>
               <span className={headWord}>The shape of it</span>
-              <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">six reads of the trade · {row.paper ? 'as the ticks had it' : row.fut ? 'each minute’s close' : 'at the bid you could have sold into'}{usual ? ' · your usual behind it' : ''}</span>
+              <span className="font-mono text-t9 uppercase tracking-widest text-textMuted">six reads of the trade · {row.paper ? 'as the ticks had it' : row.fut ? 'each minute’s close' : 'at the bid you could have sold into'}{usual ? ' · your usual behind it' : ''}</span>
             </div>
             <div className="px-5 pt-3 pb-5 flex-1 flex flex-col justify-center gap-4">
               <div className="grid gap-x-8 gap-y-4 items-center md:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
@@ -269,7 +269,7 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
                   {shape.axes.map(a => (
                     <div key={a.key} className="min-w-0" data-shape-fact={a.key}>
                       <FactRow label={SHAPE_LABEL[a.key]} value={a.figure} valueCls={a.key === 'result' ? dirInk(row.t.pnl) : 'text-textPrimary'} />
-                      <span className="block mt-0.5 text-[10px] leading-snug text-textMuted truncate" title={a.words}>
+                      <span className="block mt-0.5 text-t10 leading-snug text-textMuted truncate" title={a.words}>
                         {a.words}
                       </span>
                     </div>
@@ -277,12 +277,12 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
                 </dl>
               </div>
               <div className="flex flex-col gap-1">
-                <p className="text-[12px] leading-relaxed text-textSecondary" data-shape-story>
+                <p className="text-t12 leading-relaxed text-textSecondary" data-shape-story>
                   {story} {versus}
                 </p>
                 {/* the ways out that rode it, named — the plan axis counts them, this line says which */}
                 {(ex.targets.length > 0 || ex.stops.length > 0) && (
-                  <p className="text-[10.5px] leading-relaxed text-textMuted" data-shape-rode>
+                  <p className="text-t105 leading-relaxed text-textMuted" data-shape-rode>
                     {ex.target ? `The target that rode it: ${wayOutWords(row, ex.target)}` : ex.targets.length > 0 ? `The targets that rode it: ${rungsWords(row, ex.targets)}` : ''}
                     {(ex.target || ex.targets.length > 0) && (ex.stop || ex.stops.length > 0) ? ' · ' : ''}
                     {ex.stop ? `The stop that rode it: ${wayOutWords(row, ex.stop)}` : ex.stops.length > 0 ? `The stops that rode it: ${rungsWords(row, ex.stops)}` : ''}
@@ -298,7 +298,7 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
           <div className={`${card} min-w-0`} data-journal-facts>
             <div className={head}>
               <span className={headWord}>The trade</span>
-              <Link to={source.containerPath(row.s.id)} className="ml-auto font-mono text-[10px] text-textMuted hover:text-silver transition-colors truncate" title={`Open its ${source.containerWord}`}>
+              <Link to={source.containerPath(row.s.id)} className="ml-auto font-mono text-t10 text-textMuted hover:text-silver transition-colors truncate" title={`Open its ${source.containerWord}`}>
                 {row.s.name}
               </Link>
             </div>
@@ -334,13 +334,13 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
             <div className={`${card} min-w-0`} data-journal-pieces>
               <div className={head}>
                 <span className={headWord}>The pieces</span>
-                <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted">every fill, in order</span>
+                <span className="ml-auto font-mono text-t9 uppercase tracking-widest text-textMuted">every fill, in order</span>
               </div>
               <div className="px-4 py-1.5 flex flex-col">
                 {row.t.legs.map((l, i) => {
                   const going = row.fut ? (l as { exit?: boolean }).exit === true : l.side === 'sell';
                   return (
-                    <div key={i} className="flex items-baseline gap-3 h-8 border-b border-borderSubtle/60 last:border-0 font-mono text-[11px] tnum">
+                    <div key={i} className="flex items-baseline gap-3 h-8 border-b border-borderSubtle/60 last:border-0 font-mono text-t11 tnum">
                       <span className="w-[112px] shrink-0 text-textMuted">{whenWords(row, l.at)}</span>
                       <span className="text-textPrimary">
                         {going ? 'Out' : 'In'} {l.qty} × <span className="text-textSecondary">{futAt(row, l.price)}</span>
@@ -356,7 +356,7 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
           <div className={`${card} min-w-0`} data-journal-tag-card>
             <div className={head}>
               <span className={headWord}>Your tags</span>
-              <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted">what the journal can count</span>
+              <span className="ml-auto font-mono text-t9 uppercase tracking-widest text-textMuted">what the journal can count</span>
             </div>
             <div className="px-4 py-3">
               <TagCards entry={entry} onChange={save} />
@@ -367,7 +367,7 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
             <div className={head}>
               <span className={headWord}>Your words</span>
               {/* the head counts what is kept — the card's own state, never a promise */}
-              <span className={`ml-auto font-mono text-[9px] uppercase tracking-widest ${answered ? 'text-silver' : 'text-textMuted'}`} data-journal-answered={answered}>
+              <span className={`ml-auto font-mono text-t9 uppercase tracking-widest ${answered ? 'text-silver' : 'text-textMuted'}`} data-journal-answered={answered}>
                 {answered === 0 ? 'nothing kept yet' : `${answered} of ${QUESTIONS.length} kept`} · on this machine
               </span>
             </div>
@@ -379,8 +379,8 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
                 return (
                   <label key={q.key} className="flex-1 min-h-0 flex flex-col gap-1.5">
                     <span className="flex items-baseline justify-between gap-3">
-                      <span className="text-[12px] font-medium text-textPrimary">{q.ask}</span>
-                      <span className={`inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-widest transition-colors ${mark === 'kept' ? 'text-silver' : 'text-textMuted'}`} data-journal-kept={mark} aria-live="polite">
+                      <span className="text-t12 font-medium text-textPrimary">{q.ask}</span>
+                      <span className={`inline-flex items-center gap-1 font-mono text-t9 uppercase tracking-widest transition-colors ${mark === 'kept' ? 'text-silver' : 'text-textMuted'}`} data-journal-kept={mark} aria-live="polite">
                         {mark === 'keeping' && 'Keeping…'}
                         {mark === 'kept' && (
                           <>
@@ -391,7 +391,7 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
                     </span>
                     <textarea
                       key={`${row.key}:${q.key}`}
-                      className={`flex-1 min-h-[72px] px-3 py-2 rounded-md border bg-chip text-[12px] leading-relaxed text-textPrimary placeholder:text-textMuted outline-none focus:border-silver/60 transition-colors resize-y ${has ? 'border-silver/35' : 'border-borderSubtle'}`}
+                      className={`flex-1 min-h-[72px] px-3 py-2 rounded-md border bg-chip text-t12 leading-relaxed text-textPrimary placeholder:text-textMuted outline-none focus:border-silver/60 transition-colors resize-y ${has ? 'border-silver/35' : 'border-borderSubtle'}`}
                       defaultValue={entry[q.key] ?? ''}
                       onChange={e => keepSoon(q.key, e.target.value)}
                       onBlur={e => keepNow(q.key, e.target.value)}
@@ -406,7 +406,7 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
           </div>
         </div>
       </div>
-      <p className="px-1 font-mono text-[10px] text-textMuted">{source.foot}</p>
+      <p className="px-1 font-mono text-t10 text-textMuted">{source.foot}</p>
     </div>
   );
 };

@@ -33,36 +33,37 @@
 ==================================================
 */
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Search, Check } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { useTracker } from '../../context/TrackerContext';
-import type { MarketSnapshot } from '../../types/market';
-import { buildCompassView, buildCompassUnion, buildMarketImpact, countCompass, setupIdOf } from '../../data/compass';
-import { COMPASS_TICKERS, COMPASS_SET, compassQuotes } from '../../data/compassUniverse';
+import { setupIdOf } from '../../data/compass';
+import { COMPASS_TICKERS, COMPASS_SET } from '../../data/compassUniverse';
 import { settleOpen, useCompassBook } from '../../data/compassLedger';
-import { liveSpark, useThetaBook } from '../../data/thetaBook';
-import { AVG_BAND, currentPicks, scanBusy, scanReport } from '../../data/compassModel';
+import { liveSpark, useThetaBook, alertUniverse } from '../../data/thetaBook';
+import { currentPicks, lockReason, scanBusy, scanReport } from '../../data/compassModel';
+import { P1_MIN } from '../../data/compassParams';
 import { setCompassView, useCompassView, type BoardLayout } from '../../data/compassView';
 import { OPEN_CAP, sessionBook, useScanClock } from '../../data/compassDoor';
-import { odteBoardDone } from '../../data/compassSession';
-import { SCANNERS, SLEEVES, SLEEVE_BY_KEY, isScannerEligible, scannerEligibility, type ImpactRow, type OptionRight, type ScannerKey, type Setup, type SleeveKey } from '../../types/compass';
+import { setCompassAlert, useCompassAlert } from '../../data/compassAlerts';
+import { odteAsleep, odteBoardDone, nextOdteOpen } from '../../data/compassSession';
+import { SCANNERS, SLEEVES, type OptionRight, type ScannerKey, type Setup, type SleeveKey } from '../../types/compass';
 import { expiryFor } from '../../core/calendar';
-import { companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
+import { companyName, companyNamesRev, subscribeCompanyNames, askCompanyNames } from '../../data/tickers';
 import { NAV_INK } from '../../components/layout/nav';
 import TraceBox, { Fact } from '../../components/trace/TraceBox';
 import RichRead from '../../components/ui/RichRead';
 import type { DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownSelect from '../../components/ui/DropdownSelect';
+import * as Popover from '@radix-ui/react-popover';
+import CompanyLogo from '../../components/ui/CompanyLogo';
+import { CARD } from '../../components/ui/DropdownSelect';
 import DropdownSearch, { type SearchOption } from '../../components/ui/DropdownSearch';
 import BackToTop from '../../components/ui/BackToTop';
 import { CompassGuide } from '../../components/compass/CompassGuide';
-import { processState } from '../../components/compass/setupProcess';
 import SetupScanBoard from '../../components/compass/SetupScanBoard';
-
-/** The scanner sweeps on its own cadence — the feed must not vibrate with every price tick. */
-const SCAN_INTERVAL_MS = 10_000;
+import FilterTabs from '../../components/ui/FilterTabs';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /** "Sep 16", or "Sep 10 '27" once the year turns */
@@ -76,15 +77,54 @@ const LAYOUT_OPTIONS: DropdownOption<BoardLayout>[] = [
   { value: 'table', label: 'Table', hint: 'One row per setup, sortable' },
 ];
 
+/** A card is a call, or one of the closest that did not clear. Closest does not need 70.67%. */
+function shownCard(s: Setup): boolean {
+  const dte = s.expiry === '0DTE' ? 0 : Number(/^(\d+)DTE$/.exec(s.expiry)?.[1]);
+  if (!(dte >= 0 && dte <= 7)) return false;
+  if (s.band === 'closest') return s.p1 != null;
+  if (s.band === 'lottery') return dte === 0;
+  if (s.band !== 'top' && s.band !== 'wing') return false;
+  return s.p1 != null && s.p1 + 1e-12 >= P1_MIN;
+}
+
+/** One side per name. Same-strike call and put never both sit on the board. The higher entry chance keeps the name. */
+function oneSide(rows: Setup[]): Setup[] {
+  const byRoot = new Map<string, Setup[]>();
+  for (const s of rows) {
+    if (!shownCard(s)) continue;
+    const list = byRoot.get(s.ticker) ?? [];
+    list.push(s);
+    byRoot.set(s.ticker, list);
+  }
+  const out: Setup[] = [];
+  const bandRank = (s: Setup) => (s.band === 'top' ? 3 : s.band === 'wing' ? 2 : 1);
+  for (const list of byRoot.values()) {
+    const published = list.filter(s => s.band !== 'closest');
+    const pool = published.length ? published : list;
+    const calls = pool.filter(s => s.right === 'C');
+    const puts = pool.filter(s => s.right === 'P');
+    const best = (xs: Setup[]) => xs.reduce((m, s) => Math.max(m, s.p1 ?? 0), 0);
+    const keep = calls.length && puts.length ? (best(calls) >= best(puts) ? calls : puts) : pool;
+    const strikes = new Map<string, Setup>();
+    for (const s of keep) {
+      const key = `${s.strike}|${s.expiryDate}`;
+      const had = strikes.get(key);
+      if (!had || (s.p1 ?? -1) > (had.p1 ?? -1) || ((s.p1 ?? -1) === (had.p1 ?? -1) && bandRank(s) > bandRank(had))) strikes.set(key, s);
+    }
+    out.push(...strikes.values());
+  }
+  return out.sort((a, b) => bandRank(b) - bandRank(a) || (b.p1 ?? 0) - (a.p1 ?? 0));
+}
+
 /* Each card's glyph wears its own ink on hover and while open — the sidebar's
    rule (Noah, 2026-09-11: "turn a colour like we have on our sidebar") */
 const CARD_INK = { expiry: NAV_INK.record, kind: NAV_INK.weigher, name: NAV_INK.compass, layout: NAV_INK.terrain } as const;
 
 const Board = () => {
-  const { activeTicker, marketData, changeTicker } = useMarketData();
+  const { activeTicker, changeTicker } = useMarketData();
   const location = useLocation();
   const navigate = useNavigate();
-  const { sleeve, scanner, layout, tickerFilter, selectedId, right } = useCompassView();
+  const { sleeve, layout, tickerFilter, selectedId, right } = useCompassView();
   const side: OptionRight | 'BOTH' = right === 'P' ? 'P' : right === 'C' ? 'C' : 'BOTH';
   const offered: SleeveKey = sleeve === 'weekly' ? 'weekly' : 'odte';
   const [guideOpen, setGuideOpen] = useState(false);
@@ -123,29 +163,11 @@ const Board = () => {
   }, []);
 
   // ---- two-tier cadence -----------------------------------------------------
-  // Scan tier (every SCAN_INTERVAL_MS): the board, the counts, the rail.
-  const [scanSnapshot, setScanSnapshot] = useState<MarketSnapshot | null>(null);
-  const scanRef = useRef<MarketSnapshot | null>(null);
-  const lastScanTimeRef = useRef(0);
+  // The calendar follows the session clock. It does not follow the simulator.
+  const sleeveDates = useMemo(() => {
+    return Object.fromEntries(SLEEVES.map(s => [s.key, expiryFor(s.dte)])) as Record<SleeveKey, ReturnType<typeof expiryFor>>;
+  }, [clock.session]);
 
-  useEffect(() => {
-    if (!marketData) return;
-    const now = Date.now();
-    const due =
-      !scanRef.current ||
-      now - lastScanTimeRef.current >= SCAN_INTERVAL_MS ||
-      scanRef.current.ticker !== marketData.ticker; // ticker switch refreshes immediately
-    if (due) {
-      scanRef.current = marketData;
-      lastScanTimeRef.current = now;
-      setScanSnapshot(marketData);
-    }
-  }, [marketData]);
-
-  // The live harness's market state for the whole board — the engine takes it
-  // as an argument (never reads the simulator itself), so replay and live run
-  // identical code. Scan-tier cadence: quotes refresh with the sweep.
-  const universe = useMemo(() => [] as ReturnType<typeof compassQuotes>, []);
   const opens = useMemo(() => {
     const m = new Map<string, number>();
     for (const [ticker, series] of Object.entries(live.sparks)) {
@@ -154,61 +176,14 @@ const Board = () => {
     return m;
   }, [live.sparks]);
 
-  // Scan tier: the groups, the counts, the rail — stable between sweeps
-  const data = useMemo(
-    () => (universe.length && scanSnapshot ? buildCompassView(scanSnapshot, 'top-setups', universe, offered, opens) : null),
-    [offered, universe, opens]
-  );
-  /* The clock says when THIS cut was built. A feed tick is not a new sweep. */
-  const foundAt = useMemo(() => (data ? new Date().toLocaleTimeString('en-GB') : ''), [data]);
-
-  // The groups under the Name card
-  const filteredGroups = useMemo(() => {
-    if (!data) return [];
-    if (!tickerFilter || !COMPASS_SET.has(tickerFilter)) return data.groups;
-    return data.groups.filter(g => g.ticker === tickerFilter);
-  }, [data, tickerFilter]);
-
-  // Counts per kind. One kind is the board. The rest are a score pass — building
-  // every kind's setups walked the whole book a dozen times after the first paint.
-  const restCounts = useMemo(() => {
-    if (universe.length === 0) return {} as Record<string, number>;
-    const counts: Record<string, number> = {};
-    for (const s of SCANNERS) {
-      if (s.key === 'all' || !isScannerEligible(s.key, sleeve)) continue;
-      counts[s.key] = countCompass(universe, s.key, sleeve, opens);
-    }
-    return counts;
-  }, [universe, sleeve, opens]);
-  const scannerCounts = useMemo(() => {
-    const counts: Record<string, number> = { ...restCounts };
-    let allCount = 0;
-    for (const s of SCANNERS) {
-      if (s.key === 'all' || !isScannerEligible(s.key, sleeve)) continue;
-      const n = s.key === scanner ? (data?.totalFound ?? 0) : (counts[s.key] ?? 0);
-      counts[s.key] = n;
-      allCount += n;
-    }
-    counts.all = scanner === 'all' && data ? data.totalFound : allCount;
-    return counts as Record<ScannerKey, number>;
-  }, [restCounts, data, scanner, sleeve]);
-
-  // Real expiry per tenor, through the clock-aware calendar — recomputed with
-  // each sweep so a session rollover moves the card.
-  const sleeveDates = useMemo(() => {
-    void scanSnapshot; // sweep dependency — the calendar reads the engine clock
-    return Object.fromEntries(SLEEVES.map(s => [s.key, expiryFor(s.dte)])) as Record<SleeveKey, ReturnType<typeof expiryFor>>;
-  }, [scanSnapshot]);
-
-  // The flat, globally-ranked board — rank is the organizing principle
+  // Published calls only. A raw quote is not a call, and a call and the same-strike put are not both sent.
   const rankedSetups = useMemo(() => {
-    if (offered === 'odte' && !clock.open) return [];
-    const ranked = currentPicks()
+    const pool = currentPicks().filter(s => (offered === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE' && s.band !== 'lottery'));
+    const ranked = oneSide(pool)
       .filter(s => !closed.has(s.id))
-      .filter(s => (offered === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE'))
-      .filter(s => !tickerFilter || s.ticker === tickerFilter || (tickerFilter === 'SPX' && (s.ticker === 'SPXW' || s.ticker === 'XSP')) || (tickerFilter === 'RUT' && s.ticker === 'RUTW'));
+      .filter(s => !tickerFilter || s.ticker === tickerFilter || (tickerFilter === 'SPX' && (s.ticker === 'SPXW' || s.ticker === 'XSP')) || (tickerFilter === 'NDX' && s.ticker === 'NDXP') || (tickerFilter === 'RUT' && s.ticker === 'RUTW'));
     return (side === 'BOTH' ? ranked : ranked.filter(s => s.right === side)).map(s => ({ ...s, spark: liveSpark(s.ticker) }));
-  }, [live.setups, live.sparks, side, closed, tickerFilter, offered, clock.open]);
+  }, [live.setups, live.sparks, side, closed, tickerFilter, offered]);
 
   useEffect(() => {
     const spotOf = new Map<string, number>();
@@ -224,62 +199,23 @@ const Board = () => {
     if (!selectedId || !rankedSetups.some(s => s.id === selectedId)) setCompassView({ selectedId: rankedSetups[0].id });
   }, [rankedSetups, selectedId]);
 
-  /* The rail is the whole allowed book, ranked together. A selected card does not change it. */
-  const railRows = useMemo(() => (universe.length ? buildMarketImpact(universe, sleeve) : []), [universe, sleeve]);
-
-  const activeScanner = SCANNERS.find(s => s.key === scanner)!;
   const activeSleeveExp = sleeveDates[sleeve];
 
   useEffect(() => {
     if (tickerFilter && !COMPASS_SET.has(tickerFilter)) setCompassView({ tickerFilter: null });
   }, [tickerFilter]);
-  const handleScanner = (next: ScannerKey) => setCompassView({ scanner: next, selectedId: null });
-  const handleSleeve = (next: SleeveKey) => {
-    // A kind the new tenor doesn't sell falls back to the ranking — landing
-    // on a Quick scalp that LEAPS doesn't have would strand the board.
-    setCompassView({ sleeve: next, scanner: isScannerEligible(scanner, next) ? scanner : 'top-setups', selectedId: null });
-  };
 
-  // The setup's page. The desk REPOINTS to the contract's underlying (a QQQ
-  // setup over an SPY chain was the monitor pricing the wrong market); the
-  // card stays selected underneath, so coming Back lands on it with the rail
-  // on its name.
   const openSetup = (setup: Setup) => {
     if (setup.ticker !== activeTicker) changeTicker(setup.ticker);
     setCompassView({ selectedId: setup.id });
     navigate(`/compass/${setup.id}`);
   };
 
-  // One click selects; a second click on the selected card opens it.
   const handleSelect = (setup: Setup) => {
     if (setup.id === selectedId) openSetup(setup);
     else setCompassView({ selectedId: setup.id });
   };
 
-  // A contract from the rail opens its OWN page (Mo, 2026-08-19) — the same
-  // door the cards use, pinned to that strike and side on the rail's name.
-  const handleOpenContract = (row: ImpactRow) => {
-    const ticker = row.contract.split(' ')[0];
-    if (!ticker || !COMPASS_SET.has(ticker)) return;
-    if (ticker !== activeTicker) changeTicker(ticker);
-    navigate(`/compass/${setupIdOf({ ticker, strike: row.strike, right: row.right, scanner: 'top-setups', sleeve })}`);
-  };
-
-  /* ---- the head's facts and the sentence ------------------------------------------ */
-
-  const counts = useMemo(() => {
-    let moving = 0;
-    for (const s of rankedSetups) if (processState(s) === 'MOVING') moving++;
-    return { moving };
-  }, [rankedSetups]);
-  const top = rankedSetups[0] ?? null;
-  const byName = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const s of rankedSetups) m.set(s.ticker, (m.get(s.ticker) ?? 0) + 1);
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  }, [rankedSetups]);
-
-  /* THE CARDS: Expiry, side, name, layout. The book under them is the scan. */
   const expiryOptions = useMemo<DropdownOption<SleeveKey>[]>(() => {
     const same = sleeveDates.odte;
     const week = sleeveDates.weekly;
@@ -287,30 +223,33 @@ const Board = () => {
       {
         value: 'odte',
         label: `0DTE · ${dayOf(same.date)}`,
-        hint: same.dte === 0 ? 'Stops today. The last names go to 16:15 ET.' : `Next session, ${same.weekday}.`,
+        hint: same.dte === 0 ? 'Stops today. Book C runs here.' : `Next session, ${same.weekday}.`,
       },
       {
         value: 'weekly',
         label: `1–7 DTE · ${dayOf(week.date)}`,
-        hint: `${week.weekday} · ${week.sessions} sessions.`,
+        hint: 'Same models as same-day. Book C does not run here.',
       },
     ];
   }, [sleeveDates]);
-  /* a kind that stands LIMITED on this sleeve (his partner's table, 2026-10-10) says so in its line — a stricter bar,
-     fewer candidates, the note to come with the math */
-  const kindOptions = useMemo<DropdownOption<ScannerKey>[]>(
-    () =>
-      SCANNERS.filter(s => isScannerEligible(s.key, sleeve)).map(s => {
-        const limited = scannerEligibility(s.key, sleeve) === 'limited';
-        return { value: s.key, label: `${s.label} · ${scannerCounts[s.key] ?? 0}${limited ? ' · limited' : ''}`, hint: limited ? `${s.blurb} — limited on ${SLEEVE_BY_KEY[sleeve].label}: a stricter bar, fewer candidates` : s.blurb };
-      }),
-    [sleeve, scannerCounts]
-  );
-  /* The Name card searches the locked 456 only — SPXW and SPX both stay. */
   const nameRev = useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
+  useEffect(() => {
+    askCompanyNames(COMPASS_TICKERS);
+  }, []);
+  const ALIAS: Record<string, string> = {
+    SPX: 'spx spxw xsp s&p sp500',
+    SPXW: 'spx spxw xsp',
+    XSP: 'xsp spx',
+    NDX: 'ndx ndxp nasdaq',
+    NDXP: 'ndx ndxp nasdaq',
+    RUT: 'rut rutw russell',
+    RUTW: 'rut rutw russell',
+    GOOG: 'google googl alphabet',
+    GOOGL: 'google goog alphabet',
+  };
   const nameOptions = useMemo<SearchOption<string>[]>(
     () => [
-      { value: 'ALL', label: 'All names', hint: `${COMPASS_TICKERS.length} names` },
+      { value: 'ALL', label: 'All names', hint: `${COMPASS_TICKERS.length} names`, keywords: 'all names every' },
       ...COMPASS_TICKERS.map(t => {
         const name = companyName(t);
         const shown = name.toUpperCase() === t ? '' : name;
@@ -318,7 +257,7 @@ const Board = () => {
           value: t,
           label: t,
           logo: t,
-          keywords: shown || name,
+          keywords: [shown, ALIAS[t] ?? ''].filter(Boolean).join(' '),
           hint: shown || undefined,
         };
       }),
@@ -328,61 +267,49 @@ const Board = () => {
   const matchName = (o: SearchOption<string>, query: string) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
-    if (o.value === 'ALL') return 'all names'.includes(q);
-    if (o.label.toLowerCase().startsWith(q)) return true;
-    return q.length >= 2 && (o.keywords ?? '').toLowerCase().includes(q);
+    if (o.value === 'ALL') return 'all'.startsWith(q) || 'all names'.startsWith(q);
+    const label = o.label.toLowerCase();
+    if (label.startsWith(q)) return true;
+    const words = (o.keywords ?? '').toLowerCase();
+    return q.length >= 2 && (label.includes(q) || words.includes(q));
   };
-
-  const expiryWords = useMemo(() => {
-    const day = dayOf(activeSleeveExp.date);
-    if (sleeve === 'odte') return activeSleeveExp.dte === 0 ? "today's contracts" : `the ${day} contracts`;
-    if (sleeve === 'weekly') return `this week's contracts (${day})`;
-    if (sleeve === 'swing') return `the ${day} contracts`;
-    if (sleeve === 'position') return `the ${day} contracts, a quarter out`;
-    return `the ${day} contracts, a year out`;
-  }, [sleeve, activeSleeveExp]);
-  const horizonWords = activeSleeveExp.dte === 0 ? 'by the bell' : sleeve === 'leaps' ? 'over the year' : `by ${dayOf(activeSleeveExp.date)}`;
 
   const sideWord = side === 'P' ? 'Puts' : side === 'C' ? 'Calls' : 'Calls and puts';
   const dayOver = offered === 'odte' && odteBoardDone(activeSleeveExp.dte === 0);
-  const scanOff = offered === 'odte' && !clock.open && !dayOver;
+  const scanOff = clock.phase === 'closed';
   const report = scanReport(offered === 'weekly' ? 'weekly' : 'odte');
   const bestLine = report.scored
-    ? `Nothing cleared. Closest is ${report.contract} at ${Math.round(report.best * 100)}%. Top pick is 70.67%. Average is ${Math.round(AVG_BAND * 100)}%, on the blotter.`
+    ? `Nothing cleared. Closest is ${report.contract} at ${Math.round(report.best * 100)}%.`
     : report.quiet
       ? 'Quotes are in. The minute tape did not load, so nothing was scored.'
       : '';
   const reading = 'Scoring the book. A call prints as soon as it clears.';
   const swings = rankedSetups.filter(s => s.band === 'top').length;
-  const band31 = rankedSetups.filter(s => s.band === 'average').length;
-  const scalps = rankedSetups.filter(s => s.band === 'scalp').length;
   const wings = rankedSetups.filter(s => s.band === 'wing').length;
-  const called = swings + band31 + scalps + wings;
+  const booksC = rankedSetups.filter(s => s.band === 'lottery').length;
+  const near = rankedSetups.filter(s => s.band === 'closest').length;
+  const called = swings + wings + booksC;
+  const calledLine = offered === 'odte'
+    ? `Book A ${swings}. Book B ${wings}. Book C ${booksC}.${near ? ` Closest ${near}.` : ''} Model 1 is the entry. Model 2 is the runner.`
+    : `Book A ${swings}. Book B ${wings}. Book C is same-day only.${near ? ` Closest ${near}.` : ''} Model 1 is the entry. Model 2 is the runner.`;
   const sentence = (
-    <RichRead text={dayOver ? "Day's over. No more 0DTE." : scanOff ? clock.line : scanBusy() && !called ? reading : called ? `${scalps} scalp. ${band31} at 31%. ${swings} at 70.67%. ${wings} wing.` : clock.open ? (bestLine || 'Nothing cleared a scalp, a wing, or a swing.') : live.line} />
+    <RichRead text={dayOver ? "Same-day calls are done for the session. Cards stay until a stop, a target, the reversal, or the 15:55 flat." : scanOff || clock.phase === 'halt' ? clock.line : !called && !near && lockReason() ? lockReason() : scanBusy() && !called && !near ? reading : called || near ? `${clock.line} ${calledLine}` : clock.open ? (bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.')) : clock.line} />
   );
-
-  if (live.status === 'loading' && rankedSetups.length === 0) {
-    return (
-      <div className="h-64 border border-borderSubtle rounded-md bg-panel flex items-center justify-center">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">Waiting for the feed…</span>
-      </div>
-    );
-  }
 
   return (
     <>
-      <div data-compass-scan>
+      <div data-compass-scan className="xl:h-full xl:min-h-0">
           <TraceBox
             title="The scan"
-            sub={`${offered === 'odte' ? '0DTE' : '1–7 DTE'} · ${dayOf(sleeveDates[offered].date)} · calls and puts`}
+            sub={offered === 'odte' ? `0DTE · ${dayOf(sleeveDates.odte.date)} · ${clock.line.split('.')[0]}` : `1–7 DTE · ${dayOf(sleeveDates.weekly.date)} · ${clock.line.split('.')[0]}`}
             testId="compass"
+            className="xl:h-full xl:min-h-0"
             data={{ expiry: offered, kind: 'top-setups', layout, rows: rankedSetups.length }}
             guide={{ title: 'How to read the scan', door: 'What this page is', body: <CompassGuide />, testId: 'compass-guide', open: guideOpen, onOpen: setGuideOpen }}
             facts={
               <>
-                <Fact label="Setups" testId="found">{dayOver ? 'Closed' : rankedSetups.length.toLocaleString('en-US')}</Fact>
-                <Fact label="Moving" testId="active">{dayOver ? '—' : counts.moving.toLocaleString('en-US')}</Fact>
+                <Fact label="Called" testId="found">{called.toLocaleString('en-US')}</Fact>
+                <Fact label="Closest" testId="active">{near.toLocaleString('en-US')}</Fact>
                 <Fact label="Type" testId="proving">{sideWord}</Fact>
                 <Fact label="Slots" testId="fading">
                   <span className={openN >= OPEN_CAP ? 'text-bear' : 'text-textPrimary'}>{openN} of {OPEN_CAP}</span>
@@ -396,7 +323,7 @@ const Board = () => {
                   value={offered}
                   options={expiryOptions}
                   onChange={next => setCompassView({ sleeve: next === 'weekly' ? 'weekly' : 'odte' })}
-                  title="0DTE or 1–7 DTE."
+                  title="0DTE includes Book C. 1–7 DTE uses Book A and Book B."
                   ink={CARD_INK.expiry}
                   testId="compass-expiry"
                 />
@@ -422,6 +349,7 @@ const Board = () => {
                   ink={CARD_INK.layout}
                   testId="compass-layout"
                 />
+                <CompassAlertControl />
                 <DropdownSearch
                 label="Name"
                 value={tickerFilter ?? 'ALL'}
@@ -445,23 +373,9 @@ const Board = () => {
             }
             sentence={sentence}
           >
-            <p className="px-5 pt-3 font-mono text-[10px] uppercase tracking-wider text-textMuted" data-scan-clock>{clock.line}</p>
-            {dayOver ? (
-              <div className="border-t border-borderSubtle px-5 py-8" data-scan-closed="odte">
-                <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">0DTE</span>
-                <p className="mt-1 text-[15px] font-semibold text-textPrimary">Day's over. No more 0DTE.</p>
-                <p className="mt-1 max-w-md text-[12px] text-textSecondary leading-relaxed">
-                  Today's contracts are done. The last of them stopped at 16:15 ET. The next 0DTE scan opens {clock.label}, 09:30 ET. 1–7 DTE is still on.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setCompassView({ sleeve: 'weekly', scanner: 'top-setups', selectedId: null })}
-                  className="mt-4 h-8 px-3 rounded-md holo-bg text-[#0a0a0a] hover:brightness-105 font-mono text-[11px] font-semibold uppercase tracking-wider"
-                  data-scan-open-weekly
-                >
-                  Open 1–7 DTE
-                </button>
-              </div>
+            <div className="xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
+            {offered === 'odte' && odteAsleep() ? (
+              <OdteOver />
             ) : (
             <SetupScanBoard
               setups={rankedSetups}
@@ -470,14 +384,126 @@ const Board = () => {
               onSelect={handleSelect}
               onAnalysis={openSetup}
               expiryChip={sleeveDates[offered].label}
-              emptyLabel={scanBusy() && !report.scored ? reading : bestLine || 'Nothing cleared the bar on this sweep'}
-              near={report.setup}
+              emptyLabel={bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.')}
             />
             )}
+            </div>
           </TraceBox>
       </div>
       <BackToTop testId="compass" />
     </>
+  );
+};
+
+const OdteOver = () => {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick(n => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const next = nextOdteOpen();
+  const left = Math.max(0, next.atMs - Date.now());
+  const hours = Math.floor(left / 3_600_000);
+  const mins = Math.floor((left % 3_600_000) / 60_000);
+  const secs = Math.floor((left % 60_000) / 1000);
+  const clock = `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  void tick;
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 h-[200px] border-t border-borderSubtle px-6" data-odte-over>
+      <p className="font-mono text-t10 uppercase tracking-widest text-textMuted">The tape opens again in</p>
+      <p className="holo-text font-mono text-t20 font-semibold tnum tracking-wide" data-odte-countdown>{clock}</p>
+    </div>
+  );
+};
+
+const CompassAlertControl = () => {
+  const pref = useCompassAlert();
+  const [tab, setTab] = useState<'odte' | 'swing'>('odte');
+  const [query, setQuery] = useState('');
+  const book = tab === 'odte' ? pref.odte : pref.swing;
+  const universe = alertUniverse(tab === 'odte' ? 'odte' : 'weekly');
+  const q = query.trim().toLowerCase();
+  const matched = universe.filter(t => {
+    if (!q) return true;
+    if (t.toLowerCase().includes(q)) return true;
+    return q.length >= 2 && companyName(t).toLowerCase().includes(q);
+  });
+  const shown = matched.slice(0, 48);
+  const on = (t: string) => book === 'all' || (Array.isArray(book) && book.includes(t));
+  const toggle = (t: string) => {
+    const next = book === 'all'
+      ? universe.filter(n => n !== t)
+      : book === 'off'
+        ? [t]
+        : book.includes(t)
+          ? book.filter(n => n !== t)
+          : [...book, t];
+    const value = next.length === 0 ? 'off' : next.length >= universe.length ? 'all' : next;
+    setCompassAlert(tab === 'odte' ? { odte: value } : { swing: value });
+  };
+  const word = (side: 'odte' | 'swing', label: string) => {
+    const b = side === 'odte' ? pref.odte : pref.swing;
+    if (b === 'off') return '';
+    if (b === 'all') return `${label} · all`;
+    return b.length === 1 ? `${label} · ${b[0]}` : `${label} · ${b.length}`;
+  };
+  const summary = [word('odte', '0DTE'), word('swing', '1–7')].filter(Boolean).join(' · ') || 'Off';
+  return (
+    <Popover.Root onOpenChange={open => { if (!open) setQuery(''); }}>
+      <Popover.Trigger asChild>
+        <button type="button" className="inline-flex items-center gap-1.5 h-7 max-w-[220px] px-2.5 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted data-[state=open]:border-silver/50 transition-colors font-mono" data-compass-alerts>
+          <span className="text-t9 uppercase tracking-widest text-textMuted">Alerts</span>
+          <span className={`text-t11 font-semibold truncate ${summary === 'Off' ? 'text-textSecondary' : 'text-textPrimary'}`}>{summary}</span>
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content align="start" sideOffset={6} collisionPadding={12} className={`${CARD} w-[280px] p-0 outline-none`} data-compass-alert-card>
+          <div className="px-2 pt-2">
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search this list…"
+              aria-label="Search the names that can chime"
+              className="w-full slayer-field"
+            />
+          </div>
+          <div className="px-2 pt-2">
+            <FilterTabs
+              ariaLabel="Which sleeve can chime"
+              value={tab}
+              onChange={next => { setTab(next); setQuery(''); }}
+              options={[{ value: 'odte', label: '0DTE' }, { value: 'swing', label: '1–7 DTE' }]}
+            />
+          </div>
+          <div className="px-2 pt-1 pb-2 max-h-[280px] overflow-y-auto">
+            <button type="button" onClick={() => setCompassAlert(tab === 'odte' ? { odte: book === 'all' ? 'off' : 'all' } : { swing: book === 'all' ? 'off' : 'all' })} className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-ink/[0.04] text-left">
+              <span className={`inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-[3px] border ${book === 'all' ? 'bg-silverFill border-silverFill' : 'border-borderMuted'}`}>
+                {book === 'all' && <Check className="w-2.5 h-2.5 text-onfoil" />}
+              </span>
+              <span className="font-mono text-t11 text-textPrimary">Every name</span>
+            </button>
+            {shown.map(t => {
+              const checked = on(t);
+              const name = companyName(t);
+              return (
+                <button key={t} type="button" onClick={() => toggle(t)} className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-ink/[0.04] text-left">
+                  <span className={`inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-[3px] border ${checked ? 'bg-silverFill border-silverFill' : 'border-borderMuted'}`}>
+                    {checked && <Check className="w-2.5 h-2.5 text-onfoil" />}
+                  </span>
+                  <CompanyLogo ticker={t} size={14} />
+                  <span className="min-w-0">
+                    <span className="block font-mono text-t11 font-semibold text-textPrimary">{t}</span>
+                    {name.toUpperCase() !== t && <span className="block text-t10 text-textMuted truncate">{name}</span>}
+                  </span>
+                </button>
+              );
+            })}
+            {matched.length > shown.length && <p className="px-2 py-1 font-mono text-t10 text-textMuted">Keep typing. {matched.length.toLocaleString('en-US')} names.</p>}
+            {shown.length === 0 && <p className="px-2 py-2 font-mono text-t10 text-textMuted">No name matches.</p>}
+          </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 };
 

@@ -981,6 +981,12 @@ export function ensureEarnings(): void {
   })();
 }
 
+export function peekEarningsEvent(ticker: string): EarningsEvent | null {
+  if (feed.status !== 'live') return null;
+  const sym = ticker.trim().toUpperCase();
+  return feed.events.find(e => e.ticker === sym) ?? null;
+}
+
 export function useEveryReport(): EarningsEvent[] {
   const version = useSyncExternalStore(subscribe, () => rev, () => rev);
   // eslint-disable-next-line react-hooks/exhaustive-deps

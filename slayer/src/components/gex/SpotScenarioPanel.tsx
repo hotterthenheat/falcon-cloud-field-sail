@@ -44,7 +44,7 @@ const SpotScenarioPanel = ({ snapshot }: { snapshot: MarketSnapshot }) => {
   );
 
   if (!bounds || !scenario) {
-    return <div className="font-mono text-[11px] uppercase tracking-widest text-textMuted">Awaiting the book…</div>;
+    return <div className="font-mono text-t11 uppercase tracking-widest text-textMuted">Awaiting the book…</div>;
   }
 
   const step = snapshot.chain.length > 1 ? Math.abs(snapshot.chain[1].strike - snapshot.chain[0].strike) : 1;
@@ -61,14 +61,14 @@ const SpotScenarioPanel = ({ snapshot }: { snapshot: MarketSnapshot }) => {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">
+        <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">
           <Term k="Spot scenario">If we get to</Term>
         </span>
-        <span className="font-mono text-[15px] font-bold tnum" style={{ color: moved ? FLIP : SPOT }}>
+        <span className="font-mono text-t15 font-bold tnum" style={{ color: moved ? FLIP : SPOT }}>
           {target.toFixed(2)}
         </span>
         {moved && (
-          <span className="font-mono text-[10px] tnum text-textSecondary">
+          <span className="font-mono text-t10 tnum text-textSecondary">
             {pct >= 0 ? '+' : ''}
             {pct.toFixed(2)}% from {snapshot.spot.toFixed(2)}
           </span>
@@ -76,7 +76,7 @@ const SpotScenarioPanel = ({ snapshot }: { snapshot: MarketSnapshot }) => {
         {moved && (
           <button
             onClick={() => setAt(null)}
-            className="ml-auto font-mono text-[9px] uppercase tracking-wider text-textMuted hover:text-textPrimary transition-colors"
+            className="ml-auto font-mono text-t9 uppercase tracking-wider text-textMuted hover:text-textPrimary transition-colors"
           >
             Reset to spot
           </button>
@@ -97,10 +97,10 @@ const SpotScenarioPanel = ({ snapshot }: { snapshot: MarketSnapshot }) => {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1">
         {facts.map(f => (
           <div key={f.k} className="flex flex-col">
-            <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">
+            <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">
               <Term k={f.k} />
             </span>
-            <span className="font-mono text-[12px] font-semibold tnum text-textPrimary">
+            <span className="font-mono text-t12 font-semibold tnum text-textPrimary">
               {f.v === null ? '—' : f.v.toFixed(2)}
             </span>
           </div>
@@ -109,18 +109,18 @@ const SpotScenarioPanel = ({ snapshot }: { snapshot: MarketSnapshot }) => {
 
       <div className="flex items-baseline gap-2 flex-wrap border-t border-borderSubtle/60 pt-2">
         <span
-          className="font-mono text-[11px] font-semibold"
+          className="font-mono text-t11 font-semibold"
           style={{ color: scenario.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }}
         >
           {scenario.regime} GAMMA there
         </span>
-        <span className="font-mono text-[11px] tnum text-textPrimary">
+        <span className="font-mono text-t11 tnum text-textPrimary">
           <Term k="Expected hedging flow">{flowWords(scenario)}</Term>
         </span>
-        {moved && <span className="font-mono text-[10px] tnum text-textMuted">({fmtUsd(scenario.hedgingFlow)})</span>}
+        {moved && <span className="font-mono text-t10 tnum text-textMuted">({fmtUsd(scenario.hedgingFlow)})</span>}
       </div>
 
-      <p className="font-mono text-[9px] leading-relaxed text-textMuted">{HEDGING_ASSUMPTION}</p>
+      <p className="font-mono text-t9 leading-relaxed text-textMuted">{HEDGING_ASSUMPTION}</p>
     </div>
   );
 };

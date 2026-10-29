@@ -76,13 +76,13 @@ const GexMatrix = ({ data, fill = false, strikeFormat, rowNotes, rowNotesLabel =
               {/* w-px + whitespace-nowrap = shrink to content. Without it the
                   auto table layout hands this column a share of the leftover
                   width, which at fullscreen left a ~320px gap before the data. */}
-              <th className="w-px px-2 py-1.5 text-left font-mono text-[9px] font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle whitespace-nowrap">
+              <th className="w-px px-2 py-1.5 text-left font-mono text-t9 font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle whitespace-nowrap">
                 Strike
               </th>
               {expiries.map((exp, i) => (
                 <th
                   key={exp}
-                  className={`px-2 py-1.5 text-right font-mono text-[9px] font-semibold uppercase tracking-widest border-b border-borderSubtle ${
+                  className={`px-2 py-1.5 text-right font-mono text-t9 font-semibold uppercase tracking-widest border-b border-borderSubtle ${
                     warnFirstColumn && i === 0 ? 'text-warn' : 'text-textMuted'
                   }`}
                 >
@@ -90,7 +90,7 @@ const GexMatrix = ({ data, fill = false, strikeFormat, rowNotes, rowNotesLabel =
                 </th>
               ))}
               {rowNotes && (
-                <th className="px-2 py-1.5 text-left font-mono text-[9px] font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle">
+                <th className="px-2 py-1.5 text-left font-mono text-t9 font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle">
                   {rowNotesLabel}
                 </th>
               )}
@@ -121,12 +121,12 @@ const GexMatrix = ({ data, fill = false, strikeFormat, rowNotes, rowNotesLabel =
                     isSpot ? 'shadow-[inset_2px_0_0_0_rgba(237,237,237,0.6)]' : ''
                   } ${onSelectStrike ? 'cursor-pointer hover:bg-ink/[0.02] transition-colors' : ''}`}
                 >
-                  <td className="w-px px-2 py-1 font-mono text-[11px] whitespace-nowrap">
+                  <td className="w-px px-2 py-1 font-mono text-t11 whitespace-nowrap">
                     <span className={isSpot ? 'text-textPrimary font-bold' : 'text-textPrimary font-semibold'}>
                       {strikeFormat ? strikeFormat(strike) : strike % 1 === 0 ? strike.toFixed(0) : strike.toFixed(2)}
                     </span>
                     {isSpot && (
-                      <span className="ml-1.5 font-mono text-[8px] font-bold uppercase tracking-wider text-textMuted">
+                      <span className="ml-1.5 font-mono text-t8 font-bold uppercase tracking-wider text-textMuted">
                         spot
                       </span>
                     )}
@@ -136,12 +136,12 @@ const GexMatrix = ({ data, fill = false, strikeFormat, rowNotes, rowNotesLabel =
                         amplify side = put-dominant). Poles come from
                         heatPoles so a mode switch re-inks them. */}
                     {isCallWall && !isSpot && (
-                      <span className="ml-1.5 font-mono text-[8px] font-bold uppercase tracking-wider" style={{ color: heatPoles.neg }}>
+                      <span className="ml-1.5 font-mono text-t8 font-bold uppercase tracking-wider" style={{ color: heatPoles.neg }}>
                         cw
                       </span>
                     )}
                     {isPutWall && !isSpot && (
-                      <span className="ml-1.5 font-mono text-[8px] font-bold uppercase tracking-wider" style={{ color: heatPoles.pos }}>
+                      <span className="ml-1.5 font-mono text-t8 font-bold uppercase tracking-wider" style={{ color: heatPoles.pos }}>
                         pw
                       </span>
                     )}
@@ -167,7 +167,7 @@ const GexMatrix = ({ data, fill = false, strikeFormat, rowNotes, rowNotesLabel =
                     </td>
                   ))}
                   {rowNotes && (
-                    <td className="px-2 py-1 font-mono text-[9px] text-textMuted whitespace-nowrap">
+                    <td className="px-2 py-1 font-mono text-t9 text-textMuted whitespace-nowrap">
                       {rowNotes[r] ?? ''}
                     </td>
                   )}
@@ -180,13 +180,13 @@ const GexMatrix = ({ data, fill = false, strikeFormat, rowNotes, rowNotesLabel =
 
       {/* Diverging color scale */}
       <div className="shrink-0 w-9 flex flex-col items-center py-1 select-none">
-        <span className={`font-mono text-[9px] tnum ${heatScaleLabels.pos}`}>+{fmtUsd(maxAbs).replace('$', '')}</span>
+        <span className={`font-mono text-t9 tnum ${heatScaleLabels.pos}`}>+{fmtUsd(maxAbs).replace('$', '')}</span>
         <div
           className="flex-grow w-2.5 my-1.5 rounded-full border border-borderSubtle"
           style={{ background: heatScaleGradient }}
         />
-        <span className={`font-mono text-[9px] tnum ${heatScaleLabels.neg}`}>−{fmtUsd(maxAbs).replace('$', '')}</span>
-        <span className="mt-1 font-mono text-[8px] text-textMuted uppercase">gex</span>
+        <span className={`font-mono text-t9 tnum ${heatScaleLabels.neg}`}>−{fmtUsd(maxAbs).replace('$', '')}</span>
+        <span className="mt-1 font-mono text-t8 text-textMuted uppercase">gex</span>
       </div>
     </div>
   );

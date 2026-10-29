@@ -36,8 +36,8 @@ import { TAPE_DAYS } from '../../data/review/tape';
 
 const Fact = ({ label, children, testId, title }: { label: string; children: React.ReactNode; testId?: string; title?: string }) => (
   <div className="min-w-0">
-    <dt className="text-[10px] text-textMuted whitespace-nowrap">{label}</dt>
-    <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-practice-fact={testId} title={title}>
+    <dt className="text-t10 text-textMuted whitespace-nowrap">{label}</dt>
+    <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-practice-fact={testId} title={title}>
       {children}
     </dd>
   </div>
@@ -62,9 +62,9 @@ const PracticeLayout = () => {
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0" aria-hidden="true">
               <PageIcon className="w-3.5 h-3.5" />
             </span>
-            <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">{page.label}</h1>
+            <h1 className="text-t15 font-semibold leading-tight text-textPrimary">{page.label}</h1>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{page.subtitle}</p>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">{page.subtitle}</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2" data-shell-facts>
           {which === 'paper' && (

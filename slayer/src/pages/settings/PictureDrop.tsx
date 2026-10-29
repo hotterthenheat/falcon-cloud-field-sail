@@ -127,13 +127,13 @@ const PictureDrop = () => {
         {/* the picture as it stands — or, the moment one is staged, as it WOULD stand */}
         <Avatar profile={ready && staged?.crop ? { ...p, avatar: staged.crop } : p} size={64} className={ready ? 'ring-2 ring-silver/70 ring-offset-2 ring-offset-panel' : ''} />
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[12px] text-textPrimary">
+          <div className="flex items-center gap-2 text-t12 text-textPrimary">
             Your picture
-            {ready && <span className="h-4 px-1.5 inline-flex items-center rounded bg-silverFill font-mono text-[8.5px] font-bold uppercase tracking-widest text-[#0a0a0a]" data-picture-preview>preview</span>}
+            {ready && <span className="h-4 px-1.5 inline-flex items-center rounded bg-silverFill font-mono text-t85 font-bold uppercase tracking-widest text-onfoil" data-picture-preview>preview</span>}
           </div>
-          <div className="text-[11px] text-textMuted">Signs your posts on Community, beside your name</div>
+          <div className="text-t11 text-textMuted">Signs your posts on Community, beside your name</div>
           {p.avatar && !staged && (
-            <button type="button" onClick={() => setProfile({ avatar: null })} className="mt-1.5 font-mono text-[10px] uppercase tracking-wider text-textSecondary hover:text-bear transition-colors" data-settings-door="avatar-remove">
+            <button type="button" onClick={() => setProfile({ avatar: null })} className="mt-1.5 font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-bear transition-colors" data-settings-door="avatar-remove">
               Remove it
             </button>
           )}
@@ -181,8 +181,8 @@ const PictureDrop = () => {
             </span>
           </span>
           <span className="min-w-0 flex flex-col gap-1">
-            <span className="text-[12px] font-medium text-textPrimary">{over ? 'Let go to add it' : p.avatar ? 'Drop a new picture here' : 'Drop your picture here'}</span>
-            <span className="text-[10.5px] leading-snug text-textMuted">
+            <span className="text-t12 font-medium text-textPrimary">{over ? 'Let go to add it' : p.avatar ? 'Drop a new picture here' : 'Drop your picture here'}</span>
+            <span className="text-t105 leading-snug text-textMuted">
               or press to choose one · a square works best · JPG, PNG or WebP · cropped to the centre and kept at {AVATAR_PX}px
             </span>
           </span>
@@ -198,10 +198,10 @@ const PictureDrop = () => {
                 <span className={`w-9 h-9 rounded-full border shrink-0 ${staged.error ? 'border-bear/40 bg-bear/10' : 'border-borderSubtle bg-ink/[0.05]'}`} aria-hidden="true" />
               )}
               <div className="min-w-0 flex-1">
-                <div className="text-[12px] font-medium text-textPrimary truncate" title={staged.name}>
+                <div className="text-t12 font-medium text-textPrimary truncate" title={staged.name}>
                   {staged.name}
                 </div>
-                <div className="font-mono text-[10px] text-textMuted truncate">
+                <div className="font-mono text-t10 text-textMuted truncate">
                   {staged.kind} · {staged.size} ·{' '}
                   {staged.error ? <span className="text-bear">{staged.error}</span> : ready ? <span className="text-textSecondary">cropped · ready to use</span> : 'reading…'}
                 </div>
@@ -219,14 +219,14 @@ const PictureDrop = () => {
 
         {staged && (
           <div className="flex items-center gap-2" data-picture-actions>
-            <button type="button" onClick={letGo} className="flex-1 h-8 rounded-md border border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-picture-cancel>
+            <button type="button" onClick={letGo} className="flex-1 h-8 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-picture-cancel>
               Cancel
             </button>
             <button
               type="button"
               onClick={commit}
               disabled={!ready}
-              className="flex-1 h-8 rounded-md bg-silverFill font-mono text-[10px] font-semibold uppercase tracking-wider text-[#0a0a0a] transition-opacity disabled:opacity-35 disabled:cursor-not-allowed hover:opacity-90"
+              className="flex-1 h-8 rounded-md bg-silverFill font-mono text-t10 font-semibold uppercase tracking-wider text-onfoil transition-opacity disabled:opacity-35 disabled:cursor-not-allowed hover:opacity-90"
               data-picture-use
             >
               Use this picture

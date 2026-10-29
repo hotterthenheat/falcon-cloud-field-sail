@@ -30,7 +30,8 @@ import { ListGrid, usdSigned, type ListRow } from '../../../components/weigher/P
 import { expiryFor, isoDate, today } from '../../../core/calendar';
 import Simulator from '../../../core/simulator';
 import { buildBook } from '../../../data/bookAtStrike';
-import { buildCompassView, setupIdOf } from '../../../data/compass';
+import { setupIdOf } from '../../../data/compass';
+import { currentPicks } from '../../../data/compassModel';
 import { costOf, valueOn } from '../../../data/positionCurve';
 import { readPosition, useAllPositions, type Position, type Verdict } from '../../../data/positions';
 import { returnsOf, spotOf, tickWatchlist, useWatchlist } from '../../../data/watchlist';
@@ -73,16 +74,7 @@ export const SetupsTile = ({ ctx, state }: TileProps) => {
   const door = useDoor();
   const sleeve = sleeveOfState(state);
   const scanner = scanOfState(state, sleeve);
-  const view = useMemo(() => {
-    if (scanner === 'top-setups' && sleeve === 'weekly') return ctx.setups;
-    try {
-      return buildCompassView(ctx.snapshot, scanner, Simulator.universeQuotes(ctx.snapshot.ticker), sleeve);
-    } catch {
-      return null;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx.snapshot, scanner, sleeve]);
-  const ranked = useMemo(() => (view ? view.groups.flatMap(g => g.setups).sort((a, b) => b.score - a.score) : []), [view]);
+  const ranked = useMemo(() => currentPicks().filter(s => (sleeve === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE')), [sleeve, ctx.revision]);
   const expiryChip = useMemo(() => expiryFor(SLEEVES.find(s => s.key === sleeve)?.dte ?? 5).label, [sleeve]);
   const open = useCallback((s: Setup) => door(`/compass/${setupIdOf({ ticker: s.ticker, strike: s.strike, right: s.right, scanner, sleeve })}`), [door, scanner, sleeve]);
   if (ranked.length === 0) return <TileEmpty words="Nothing cleared the bar on this scan and expiry." />;
@@ -195,7 +187,7 @@ export const PositionsTile = ({ ctx, state }: TileProps) => {
           const cost = costOf(p);
           const total = cost ? (value - cost.value) * sign * 100 * p.contracts : null;
           const totalR = cost && cost.value > 0 ? ((value - cost.value) / cost.value) * sign : null;
-          return { kind: 'own', id: p.id, p, value, total, totalR };
+          return { kind: 'own', id: p.id, p, value, total, totalR, today: null, todayR: null };
         }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [positions, ctx.snapshot]

@@ -111,7 +111,7 @@ const ListButton = ({ dock, on, title, listTitle, icon, onFace, onList, open, te
           if (swallow.current) return;
           onFace(wrap.current?.getBoundingClientRect() ?? null);
         }}
-        className={`w-[24px] shrink-0 inline-flex items-center justify-center rounded transition-colors text-[14px] ${face(on || open)}`}
+        className={`w-[24px] shrink-0 inline-flex items-center justify-center rounded transition-colors text-t14 ${face(on || open)}`}
       >
         {icon}
       </button>
@@ -201,15 +201,15 @@ const ToolList = ({ title, tools, anchor, dock, host, drawTool, favs, onPick, on
       className="absolute z-50 w-[232px] overflow-y-auto rounded-md border border-borderMuted bg-panel/95 backdrop-blur-md p-1 shadow-2xl shadow-black/60 select-none"
       style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, maxHeight: pos?.maxH, visibility: pos ? 'visible' : 'hidden' }}
     >
-      <div className="px-2 pt-1.5 pb-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">{title}</div>
-      {tools.length === 0 && empty && <div className="px-2 py-3 text-[11px] leading-snug text-textSecondary">{empty}</div>}
+      <div className="px-2 pt-1.5 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">{title}</div>
+      {tools.length === 0 && empty && <div className="px-2 py-3 text-t11 leading-snug text-textSecondary">{empty}</div>}
       {tools.map(t => {
         const head = t.sub !== lastSub && tools.some(o => o.sub !== tools[0].sub);
         lastSub = t.sub;
         const on = drawTool === t.tool;
         return (
           <div key={t.tool}>
-            {head && <div className="px-2 pt-2 pb-0.5 text-[10px] text-textMuted">{t.sub}</div>}
+            {head && <div className="px-2 pt-2 pb-0.5 text-t10 text-textMuted">{t.sub}</div>}
             <button
               type="button"
               role="menuitem"
@@ -217,10 +217,10 @@ const ToolList = ({ title, tools, anchor, dock, host, drawTool, favs, onPick, on
                 onPick(t.tool);
                 onClose();
               }}
-              className={`w-full flex items-center gap-2.5 h-7 pl-2 pr-1 rounded text-left text-[12px] transition-colors ${on ? 'bg-select/15 text-select' : 'text-textPrimary hover:bg-ink/[0.06]'}`}
+              className={`w-full flex items-center gap-2.5 h-7 pl-2 pr-1 rounded text-left text-t12 transition-colors ${on ? 'bg-select/15 text-select' : 'text-textPrimary hover:bg-ink/[0.06]'}`}
               data-draw-tool={t.tool}
             >
-              <span className={`text-[15px] inline-flex ${on ? '' : 'text-textSecondary'}`}>{t.icon}</span>
+              <span className={`text-t15 inline-flex ${on ? '' : 'text-textSecondary'}`}>{t.icon}</span>
               <span className="min-w-0 flex-1 truncate">{t.label}</span>
               <StarToggle kind={t.tool} on={favs.includes(t.tool)} className="w-6 h-6" />
             </button>
@@ -292,8 +292,8 @@ export const DrawSheet = ({ host, dock, drawTool, onPick, onClose }: SheetProps)
       }`}
     >
       <div className="shrink-0 flex items-center gap-2 px-3 pt-2.5 pb-2">
-        <span className="text-[13px] font-semibold text-textPrimary">Drawings</span>
-        <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">{searching ? `${shown.length} found` : `${DRAW_FAMILIES.reduce((n, f) => n + f.tools.length, 0)} tools`}</span>
+        <span className="text-t13 font-semibold text-textPrimary">Drawings</span>
+        <span className="font-mono text-t9 uppercase tracking-widest text-textMuted">{searching ? `${shown.length} found` : `${DRAW_FAMILIES.reduce((n, f) => n + f.tools.length, 0)} tools`}</span>
         <button type="button" onClick={onClose} title="Close" aria-label="Close" className="ml-auto inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06]">
           <X className="w-3.5 h-3.5" />
         </button>
@@ -315,7 +315,7 @@ export const DrawSheet = ({ host, dock, drawTool, onPick, onClose }: SheetProps)
           }}
           placeholder="Trendline, fib, long position"
           aria-label="Search the drawing tools"
-          className="min-w-0 flex-1 bg-transparent text-[12px] text-textPrimary placeholder:text-textMuted outline-none"
+          className="min-w-0 flex-1 bg-transparent text-t12 text-textPrimary placeholder:text-textMuted outline-none"
           data-draw-search
         />
       </label>
@@ -329,7 +329,7 @@ export const DrawSheet = ({ host, dock, drawTool, onPick, onClose }: SheetProps)
               aria-selected={tab === t.id}
               title={t.full}
               onClick={() => setTab(t.id)}
-              className={`shrink-0 h-6 px-2.5 rounded-full text-[11px] whitespace-nowrap transition-colors ${tab === t.id ? 'bg-ink/[0.1] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05]'}`}
+              className={`shrink-0 h-6 px-2.5 rounded-full text-t11 whitespace-nowrap transition-colors ${tab === t.id ? 'bg-ink/[0.1] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05]'}`}
               data-draw-tab={t.id}
             >
               {t.name}
@@ -339,7 +339,7 @@ export const DrawSheet = ({ host, dock, drawTool, onPick, onClose }: SheetProps)
       )}
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {shown.length === 0 ? (
-          <div className="py-8 text-center text-[11px] leading-snug text-textSecondary">{searching ? 'No tool by that name.' : 'Star a tool and it is kept here, and on the rail.'}</div>
+          <div className="py-8 text-center text-t11 leading-snug text-textSecondary">{searching ? 'No tool by that name.' : 'Star a tool and it is kept here, and on the rail.'}</div>
         ) : (
           <div className="grid grid-cols-3 gap-1.5">
             {shown.map(t => {
@@ -355,8 +355,8 @@ export const DrawSheet = ({ host, dock, drawTool, onPick, onClose }: SheetProps)
                   className={`relative flex flex-col items-center justify-center gap-1.5 h-[64px] px-1 rounded-md border transition-colors ${on ? 'border-select/50 bg-select/10 text-select' : 'border-transparent bg-ink/[0.04] text-textPrimary hover:bg-ink/[0.08]'}`}
                   data-draw-tile={t.tool}
                 >
-                  <span className={`text-[18px] inline-flex ${on ? '' : 'text-textSecondary'}`}>{t.icon}</span>
-                  <span className="text-[10.5px] leading-[1.15] text-center line-clamp-2">{t.label}</span>
+                  <span className={`text-t18 inline-flex ${on ? '' : 'text-textSecondary'}`}>{t.icon}</span>
+                  <span className="text-t105 leading-[1.15] text-center line-clamp-2">{t.label}</span>
                   <StarToggle kind={t.tool} on={prefs.favs.includes(t.tool)} className="absolute right-0.5 top-0.5 w-5 h-5" />
                 </button>
               );

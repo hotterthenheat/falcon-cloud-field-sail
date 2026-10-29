@@ -96,8 +96,8 @@ export const DataDoor = ({ ticker, open, onClick, compact = false }: DoorProps) 
       <Database className={`w-3 h-3 ${src.live ? 'text-silver' : 'text-textMuted'}`} />
       {!compact && (
         <>
-          <span className="text-[11px] text-textMuted">Data</span>
-          {src.live && <span className="text-[11px] font-semibold text-textPrimary">{src.short}</span>}
+          <span className="text-t11 text-textMuted">Data</span>
+          {src.live && <span className="text-t11 font-semibold text-textPrimary">{src.short}</span>}
         </>
       )}
     </button>
@@ -116,8 +116,8 @@ interface CardProps {
 
 const Formula = ({ greek, words, unit }: { greek: string; words: string; unit: string }) => (
   <li className="grid grid-cols-[52px_minmax(0,1fr)] gap-x-2 items-baseline">
-    <span className="font-mono text-[11px] font-semibold text-textPrimary">{greek}</span>
-    <span className="text-[11.5px] leading-relaxed text-textSecondary">
+    <span className="font-mono text-t11 font-semibold text-textPrimary">{greek}</span>
+    <span className="text-t115 leading-relaxed text-textSecondary">
       {words} <span className="text-textMuted">· per {unit}</span>
     </span>
   </li>
@@ -139,8 +139,8 @@ export const DataCard = ({ ticker, surface, greeks, expiries, rings, view }: Car
   return (
     <div className="px-3 py-3 flex flex-col gap-3" data-book-provenance-card data-book-source={src.live ? 'live' : 'house'}>
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">Where the figures come from</p>
-        <ul className="mt-1 flex flex-col gap-1 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t12 font-semibold text-textPrimary">Where the figures come from</p>
+        <ul className="mt-1 flex flex-col gap-1 text-t115 leading-relaxed text-textSecondary">
           <li>
             <span className="text-textMuted">Source · </span>
             {src.long}.
@@ -156,8 +156,8 @@ export const DataCard = ({ ticker, surface, greeks, expiries, rings, view }: Car
         </ul>
       </div>
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">What a figure is</p>
-        <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t12 font-semibold text-textPrimary">What a figure is</p>
+        <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
           Every cell is dollars of stock dealers must trade to stay hedged, for one unit of the thing named — summed over the contracts open at that strike and date: the greek per contract × open interest × 100 shares × the spot price, scaled to the unit.
         </p>
         <ul className="mt-1.5 flex flex-col gap-1">
@@ -169,24 +169,24 @@ export const DataCard = ({ ticker, surface, greeks, expiries, rings, view }: Car
         </ul>
       </div>
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">The sign, and the assumption under it</p>
-        <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t12 font-semibold text-textPrimary">The sign, and the assumption under it</p>
+        <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
           {ASSUMPTION_WORDS} Gamma prints in its own sign: call gamma <span className="text-textPrimary">positive</span>, put gamma <span className="text-textPrimary">negative</span>. A strike that nets positive is call-heavy — dealers are long gamma there and their hedging absorbs a move (cool ink); one that nets negative is put-heavy — they are short gamma and hedging amplifies it (warm ink). The net is the two legs added; the card on any cell shows the legs apart.
         </p>
       </div>
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">The levels, and what others call them</p>
+        <p className="text-t12 font-semibold text-textPrimary">The levels, and what others call them</p>
         <ul className="mt-1 flex flex-col gap-1.5">
           {LEVEL_NAMES.map(l => (
-            <li key={l.ours} className="text-[11.5px] leading-relaxed text-textSecondary">
+            <li key={l.ours} className="text-t115 leading-relaxed text-textSecondary">
               <span className="font-semibold text-textPrimary">{l.ours}</span> — {l.what.replace(/[.]\s*$/, '')}. <span className="text-textMuted">Elsewhere: {l.theirs}.</span>
             </li>
           ))}
         </ul>
       </div>
       <div className="border-t border-borderSubtle/60 pt-2.5">
-        <p className="text-[11px] text-textMuted">This box right now</p>
-        <ul className="mt-1 flex flex-col gap-1 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t11 text-textMuted">This box right now</p>
+        <ul className="mt-1 flex flex-col gap-1 text-t115 leading-relaxed text-textSecondary">
           <li>
             <span className="font-mono tnum text-textPrimary">{ticker}</span> at <span className="font-mono tnum text-textPrimary">{surface.spot.toFixed(2)}</span> · the {view} · {greeks.map(g => GREEK_LABEL[g]).join(', ')} · {rings} strikes each side of spot
           </li>

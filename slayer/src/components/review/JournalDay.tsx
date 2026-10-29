@@ -88,8 +88,8 @@ const NoteField = ({ ask, hint, value, onKeep, testId }: { ask: string; hint: st
   return (
     <label className="flex flex-col gap-1.5 min-w-0">
       <span className="flex items-baseline justify-between gap-3">
-        <span className="text-[12px] font-medium text-textPrimary">{ask}</span>
-        <span className={`inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-widest transition-colors ${mark === 'kept' ? 'text-silver' : 'text-textMuted'}`} data-journal-kept={mark} aria-live="polite">
+        <span className="text-t12 font-medium text-textPrimary">{ask}</span>
+        <span className={`inline-flex items-center gap-1 font-mono text-t9 uppercase tracking-widest transition-colors ${mark === 'kept' ? 'text-silver' : 'text-textMuted'}`} data-journal-kept={mark} aria-live="polite">
           {mark === 'keeping' && 'Keeping…'}
           {mark === 'kept' && (
             <>
@@ -99,7 +99,7 @@ const NoteField = ({ ask, hint, value, onKeep, testId }: { ask: string; hint: st
         </span>
       </span>
       <textarea
-        className={`min-h-[80px] px-3 py-2.5 rounded-md border bg-chip text-[12px] leading-relaxed text-textPrimary placeholder:text-textMuted outline-none focus:border-silver/60 transition-colors resize-y ${value.trim() ? 'border-silver/35' : 'border-borderSubtle'}`}
+        className={`min-h-[80px] px-3 py-2.5 rounded-md border bg-chip text-t12 leading-relaxed text-textPrimary placeholder:text-textMuted outline-none focus:border-silver/60 transition-colors resize-y ${value.trim() ? 'border-silver/35' : 'border-borderSubtle'}`}
         defaultValue={value}
         onChange={e => keepSoon(e.target.value)}
         onBlur={e => keepNow(e.target.value)}
@@ -148,11 +148,11 @@ const JournalDay = ({ day, total, holders, onDayNote, onOpen, onClose, today, co
   return (
     <div className={`${card} flex flex-col min-w-0 animate-soft-in`} data-journal-open-day={day}>
       <div className="px-5 pt-4 pb-3 flex items-center gap-x-5 gap-y-2 flex-wrap">
-        <span className="text-[15px] font-semibold text-textPrimary">{longDay(day)}</span>
-        <span className={`font-mono text-[22px] font-semibold tnum leading-none ${rows.length ? dirInk(total!.net) : 'text-textMuted'}`} data-journal-day-net>
+        <span className="text-t15 font-semibold text-textPrimary">{longDay(day)}</span>
+        <span className={`font-mono text-t22 font-semibold tnum leading-none ${rows.length ? dirInk(total!.net) : 'text-textMuted'}`} data-journal-day-net>
           {rows.length ? usdSigned(total!.net) : '$0.00'}
         </span>
-        <span className="font-mono text-[11px] tnum text-textSecondary" data-journal-day-sum>
+        <span className="font-mono text-t11 tnum text-textSecondary" data-journal-day-sum>
           {rows.length > 0 ? (
             <>
               {total!.n} closed · {total!.wins} won ({pct(total!.wins / total!.n)}){accounts > 1 ? ` · on ${accounts} accounts` : ''}
@@ -201,10 +201,10 @@ const JournalDay = ({ day, total, holders, onDayNote, onOpen, onClose, today, co
                   card={h => {
                     const p = curveBy.get(h.time);
                     if (!p) return null;
-                    if (!p.row) return <div className="font-mono text-[11px] text-textSecondary">Before the day’s first close</div>;
+                    if (!p.row) return <div className="font-mono text-t11 text-textSecondary">Before the day’s first close</div>;
                     return (
-                      <div className="font-mono text-[11px] tnum">
-                        <div className="text-[10px] text-textMuted">{fmtClockLocal(h.time as UTCTimestamp, 'ny')} New York</div>
+                      <div className="font-mono text-t11 tnum">
+                        <div className="text-t10 text-textMuted">{fmtClockLocal(h.time as UTCTimestamp, 'ny')} New York</div>
                         <div className="mt-0.5 text-textPrimary truncate">{titleOf(p.row)}</div>
                         <div className={`mt-0.5 font-semibold ${dirInk(p.row.t.pnl)}`}>{usdSigned(p.row.t.pnl)} on it</div>
                         <div className="mt-0.5 text-textSecondary">
@@ -223,7 +223,7 @@ const JournalDay = ({ day, total, holders, onDayNote, onOpen, onClose, today, co
               <div className="flex items-center gap-4 flex-wrap">
                 <span className={headWord}>Your words on the day</span>
                 {holders.length > 1 && <CardTabs options={holders.map(h => ({ value: h.id, label: h.name }))} value={shown.id} onChange={setHolder} ariaLabel="Whose words" />}
-                {holders.length === 1 && rows.length === 0 && <span className="font-mono text-[10px] text-textMuted truncate">{shown.name}</span>}
+                {holders.length === 1 && rows.length === 0 && <span className="font-mono text-t10 text-textMuted truncate">{shown.name}</span>}
               </div>
               <div className={`grid gap-4 ${rows.length ? '' : 'sm:grid-cols-2'}`} data-journal-day-holder={shown.id}>
                 {NOTES.map(n => (

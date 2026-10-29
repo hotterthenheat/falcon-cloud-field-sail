@@ -29,7 +29,7 @@ const figuresOf = (p: EvalPlan): { node: ReactNode; ink: string }[] => [
   { node: `up to ${p.contracts}`, ink: 'text-textSecondary' },
 ];
 
-const headClass = 'text-[9px] uppercase tracking-wider text-textMuted whitespace-nowrap';
+const headClass = 'text-t9 uppercase tracking-wider text-textMuted whitespace-nowrap';
 
 interface Props {
   onStart: (plan: EvalPlan) => void;
@@ -65,7 +65,7 @@ const PlanRows = ({ onStart, disabled = false, titleOf, compact = false, rowKey,
       disabled={disabled}
       onClick={() => onStart(p)}
       title={titleOf(p)}
-      className={`${compact ? 'h-6 px-2.5 text-[10px]' : 'h-7 px-3 text-[11px]'} rounded-full font-semibold disabled:opacity-35 disabled:cursor-not-allowed transition-opacity hover:opacity-90`}
+      className={`${compact ? 'h-6 px-2.5 text-t10' : 'h-7 px-3 text-t11'} rounded-full font-semibold disabled:opacity-35 disabled:cursor-not-allowed transition-opacity hover:opacity-90`}
       style={{ background: SILVER_FILL, color: '#0a0a0a' }}
       {...(attr ? { [`data-${startKey}`]: p.label } : {})}
     >
@@ -75,7 +75,7 @@ const PlanRows = ({ onStart, disabled = false, titleOf, compact = false, rowKey,
   return (
     <div ref={box} className="min-w-0" data-paper-plans-box={narrow ? 'narrow' : 'table'}>
       {/* the table, where four columns have room */}
-      <div className={`${narrow ? 'hidden' : 'grid'} items-center font-mono tnum ${compact ? 'grid-cols-[32px_repeat(4,minmax(0,1fr))_auto] gap-x-2 text-[10px]' : 'grid-cols-[40px_repeat(4,minmax(0,1fr))_auto] gap-x-3 text-[11px]'}`} data-paper-plans>
+      <div className={`${narrow ? 'hidden' : 'grid'} items-center font-mono tnum ${compact ? 'grid-cols-[32px_repeat(4,minmax(0,1fr))_auto] gap-x-2 text-t10' : 'grid-cols-[40px_repeat(4,minmax(0,1fr))_auto] gap-x-3 text-t11'}`} data-paper-plans>
         {/* the head row: what each figure is */}
         <span aria-hidden="true" />
         {HEADS.map(h => (
@@ -86,7 +86,7 @@ const PlanRows = ({ onStart, disabled = false, titleOf, compact = false, rowKey,
         <span aria-hidden="true" />
         {EVAL_PLANS.map(p => (
           <div key={p.label} className="contents" {...{ [`data-${rowKey}`]: p.label }}>
-            <span className={`${cell} ${compact ? 'text-[11px]' : 'text-[12px]'} font-semibold text-textPrimary`}>{p.label}</span>
+            <span className={`${cell} ${compact ? 'text-t11' : 'text-t12'} font-semibold text-textPrimary`}>{p.label}</span>
             {figuresOf(p).map((f, i) => (
               <span key={HEADS[i].word} className={`${cell} ${f.ink}`}>
                 {f.node}
@@ -97,11 +97,11 @@ const PlanRows = ({ onStart, disabled = false, titleOf, compact = false, rowKey,
         ))}
       </div>
       {/* a narrow box: a block a plan */}
-      <div className={`${narrow ? 'flex' : 'hidden'} flex-col font-mono tnum text-[11px]`} data-paper-plans-narrow>
+      <div className={`${narrow ? 'flex' : 'hidden'} flex-col font-mono tnum text-t11`} data-paper-plans-narrow>
         {EVAL_PLANS.map(p => (
           <div key={p.label} className="py-2.5 border-t border-borderSubtle/60 flex flex-col gap-2">
             <div className="flex items-center gap-3">
-              <span className="text-[12px] font-semibold text-textPrimary">{p.label}</span>
+              <span className="text-t12 font-semibold text-textPrimary">{p.label}</span>
               <span className="ml-auto">{start(p, false)}</span>
             </div>
             <div className="grid grid-cols-4 gap-x-2">

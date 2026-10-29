@@ -317,15 +317,15 @@ const sideWordOf = (p: FlowPrint) =>
 const QuoteCell = ({ print }: { print: FlowPrint }) => (
   <span className="inline-flex flex-col items-end gap-[2px] leading-none align-middle">
     <span className="inline-flex items-baseline gap-1">
-      <span className="font-mono text-[11px] font-bold tnum text-textPrimary">${print.fill.toFixed(2)}</span>
-      <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-textPrimary" title={print.extended ? 'After hours — set against a post-market quote' : undefined}>{sideWordOf(print)}</span>
+      <span className="font-mono text-t11 font-bold tnum text-textPrimary">${print.fill.toFixed(2)}</span>
+      <span className="font-mono text-t11 font-semibold uppercase tracking-wide text-textPrimary" title={print.extended ? 'After hours — set against a post-market quote' : undefined}>{sideWordOf(print)}</span>
     </span>
     <span className="inline-flex items-center gap-1">
-      <span className="font-mono text-[11px] tnum text-textSecondary">{print.bid.toFixed(2)}</span>
+      <span className="font-mono text-t11 tnum text-textSecondary">{print.bid.toFixed(2)}</span>
       <span className="relative w-8 h-[3px] rounded-full bg-ink/[0.07]">
         <span className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[6px] h-[6px] rounded-full bg-textPrimary" style={{ left: `${print.fillPos * 100}%` }} />
       </span>
-      <span className="font-mono text-[11px] tnum text-textSecondary">{print.ask.toFixed(2)}</span>
+      <span className="font-mono text-t11 tnum text-textSecondary">{print.ask.toFixed(2)}</span>
     </span>
   </span>
 );
@@ -337,8 +337,8 @@ const QuoteCell = ({ print }: { print: FlowPrint }) => (
    interest sit under it as the scale it is read against. */
 const SizeCell = ({ print }: { print: FlowPrint }) => (
   <span className="inline-flex flex-col items-end gap-[2px] leading-none align-middle">
-    <span className="font-mono text-[11px] font-bold tnum text-textPrimary">{num(print.size)}</span>
-    <span className="font-mono text-[11px] tnum text-textSecondary whitespace-nowrap" title="Open interest that stood at the session's open — counted after the session before traded">
+    <span className="font-mono text-t11 font-bold tnum text-textPrimary">{num(print.size)}</span>
+    <span className="font-mono text-t11 tnum text-textSecondary whitespace-nowrap" title="Open interest that stood at the session's open — counted after the session before traded">
       vol {num(print.volume)} <span aria-hidden>·</span> oi {num(print.oi)}
     </span>
   </span>
@@ -386,7 +386,7 @@ const phoneRow = (r: TapeRow) => {
           <span className="font-bold">{r.p.ticker}</span>
           <span className="font-bold tnum">{r.p.strike}</span>
           <span className={r.p.right === 'C' ? 'text-bull' : 'text-bear'}>{r.p.right === 'C' ? 'call' : 'put'}</span>
-          <span className="text-[11px] text-textSecondary tnum">{r.p.expiry.slice(0, 5)}</span>
+          <span className="text-t11 text-textSecondary tnum">{r.p.expiry.slice(0, 5)}</span>
         </>
       }
       aside={r.p.time}
@@ -981,8 +981,8 @@ const LiveTape = () => {
         render: r => (
           <span className="inline-flex items-center gap-1.5">
             <WatchStar k={printKey(r.p)} make={() => watchPrint(r.p, 'tape')} noun="print" />
-            {r.rank !== undefined && <span className="min-w-[30px] shrink-0 text-[11px] font-bold tnum text-textPrimary">#{r.rank}</span>}
-            <span className="text-[11px] tnum text-textPrimary whitespace-nowrap">{r.p.time}</span>
+            {r.rank !== undefined && <span className="min-w-[30px] shrink-0 text-t11 font-bold tnum text-textPrimary">#{r.rank}</span>}
+            <span className="text-t11 tnum text-textPrimary whitespace-nowrap">{r.p.time}</span>
           </span>
         ),
       },
@@ -1084,12 +1084,12 @@ const LiveTape = () => {
         render: r => {
           const s = sentimentOf(r.p);
           /* after the close a print is set against a thin post-market quote — labelled, never read */
-          if (r.p.compression) return <span className="text-[11px] font-semibold text-textSecondary" title="A compression package (OPRA cbmo / mctp, or an arbitrage tag) — it nets open interest down between members, so it is not a bet and is in no bullish or bearish total">compression</span>;
-          if (r.p.extended) return <span className="text-[11px] font-semibold text-textSecondary" title="Printed after hours — set against a post-market quote, so it carries no read">after hrs</span>;
-          if (isSpreadLeg(r.p)) return <span className="text-[11px] font-semibold text-textSecondary" title="One leg of a multi-leg order (its OPRA condition says so) — half of a structure, not a bet of its own; Multi-Leg reads which way the structure went">spread leg</span>;
-          if (r.p.cross) return <span className="text-[11px] font-semibold text-textSecondary" title="A cross trade — pre-arranged between two parties at one price, no side taken on the screen: no read, never crowned">cross</span>;
-          if (r.p.quoteNoRead) return <span className="inline-block text-[11px] leading-tight font-semibold text-textSecondary whitespace-normal" title={r.p.quoteNoRead === 'crossed' ? `The quote at the fill was crossed — bid ${r.p.bid.toFixed(2)} at or over ask ${r.p.ask.toFixed(2)} — so the fill cannot be read against it: no side, whatever was tagged, and the fill is not read` : 'One side of the quote at the fill was more than five minutes old — the fill cannot be read against it: no side, whatever was tagged'}>{quoteNoReadWords(r.p.quoteNoRead)}</span>;
-          return <span className={`text-[11px] font-semibold ${SENT_TEXT[s]}`}>{s}</span>;
+          if (r.p.compression) return <span className="text-t11 font-semibold text-textSecondary" title="A compression package (OPRA cbmo / mctp, or an arbitrage tag) — it nets open interest down between members, so it is not a bet and is in no bullish or bearish total">compression</span>;
+          if (r.p.extended) return <span className="text-t11 font-semibold text-textSecondary" title="Printed after hours — set against a post-market quote, so it carries no read">after hrs</span>;
+          if (isSpreadLeg(r.p)) return <span className="text-t11 font-semibold text-textSecondary" title="One leg of a multi-leg order (its OPRA condition says so) — half of a structure, not a bet of its own; Multi-Leg reads which way the structure went">spread leg</span>;
+          if (r.p.cross) return <span className="text-t11 font-semibold text-textSecondary" title="A cross trade — pre-arranged between two parties at one price, no side taken on the screen: no read, never crowned">cross</span>;
+          if (r.p.quoteNoRead) return <span className="inline-block text-t11 leading-tight font-semibold text-textSecondary whitespace-normal" title={r.p.quoteNoRead === 'crossed' ? `The quote at the fill was crossed — bid ${r.p.bid.toFixed(2)} at or over ask ${r.p.ask.toFixed(2)} — so the fill cannot be read against it: no side, whatever was tagged, and the fill is not read` : 'One side of the quote at the fill was more than five minutes old — the fill cannot be read against it: no side, whatever was tagged'}>{quoteNoReadWords(r.p.quoteNoRead)}</span>;
+          return <span className={`text-t11 font-semibold ${SENT_TEXT[s]}`}>{s}</span>;
         },
       },
       /* Volume and open interest ride in the Size cell; the columns survive
@@ -1140,7 +1140,7 @@ const LiveTape = () => {
         render: r => {
           const k = printKind(r.p);
           return (
-            <span className="text-[11px] text-textSecondary" title={k === 'COMPRESSION' ? 'A compression package — OPRA cbmo / mctp or the arbitrage tag: not a bet' : r.p.trades ? `A flow alert: ${r.p.trades} prints on this contract${k === 'BURST' ? ' — its largest single trade is not known to clear the block line, so it is not called a block' : ''}` : k === 'MULTI' ? "The print's OPRA condition marks it one leg of a multi-leg order" : undefined}>
+            <span className="text-t11 text-textSecondary" title={k === 'COMPRESSION' ? 'A compression package — OPRA cbmo / mctp or the arbitrage tag: not a bet' : r.p.trades ? `A flow alert: ${r.p.trades} prints on this contract${k === 'BURST' ? ' — its largest single trade is not known to clear the block line, so it is not called a block' : ''}` : k === 'MULTI' ? "The print's OPRA condition marks it one leg of a multi-leg order" : undefined}>
               {k === 'SWEEP' ? <span className="text-warn font-semibold">Sweep</span> : KIND_WORD[k]}
               {r.p.trades && r.p.trades > 1 ? <span className="text-textMuted"> · {r.p.trades} prints</span> : null}
             </span>
@@ -1372,7 +1372,7 @@ const LiveTape = () => {
           <>
             <SavedCutsList store={TAPE_CUTS} query="" onOpen={openCut} noun="cut" testId="tape" onSay={cuts.say} open={cuts.open} />
             {cuts.said && (
-              <p role="status" className="mb-2 font-mono text-[11px] text-textSecondary" data-tape-said>
+              <p role="status" className="mb-2 font-mono text-t11 text-textSecondary" data-tape-said>
                 {cuts.said}
               </p>
             )}
@@ -1391,12 +1391,12 @@ const LiveTape = () => {
           {showDay && (
             <div className="px-5 py-3 border-t border-borderSubtle flex flex-col gap-2" data-tape-day>
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="font-mono text-[10px] uppercase tracking-widest text-textPrimary">The whole day</span>
-                <span className="text-[11px] text-textMuted">
+                <span className="font-mono text-t10 uppercase tracking-widest text-textPrimary">The whole day</span>
+                <span className="text-t11 text-textMuted">
                   {dayAdv(dayIso) === 'today' ? 'Today' : shortDay(dayIso)} · {regularOnly ? (anchor ? `8:30 AM–3:15 PM CT, the regular session${dayNet ? ` (the tide's minutes ${nyClock(dayNet.first * 1000, { zone: true })}–${nyClock(dayNet.last * 1000, { zone: true })})` : ''}` : 'the regular session so far, from 8:30 AM CT') : 'outside the regular session'} — day-level figures from the day's tide, the screener and the flow alerts, not the {rows.length ? `${rows.length.toLocaleString('en-US')} ` : ''}prints below
                 </span>
               </div>
-              <div className="grid gap-x-8 gap-y-2 md:grid-cols-3 text-[11px]">
+              <div className="grid gap-x-8 gap-y-2 md:grid-cols-3 text-t11">
                 <div className="min-w-0" data-tape-day-tide>
                   <div className="text-textMuted" title={`The market tide. ${VENDOR_TOTAL_NOTE}`}>Market net premium · every name</div>
                   {dayNet ? (
@@ -1464,19 +1464,19 @@ const LiveTape = () => {
           )}
           {lane === 'alerts' && openAlert && (
             <div className="px-5 py-2 border-b border-borderSubtle flex items-center gap-3" data-alert-trades>
-              <span className="font-mono text-[11px] text-textSecondary">Trades inside {openAlert.ticker} {openAlert.strike}{openAlert.right}</span>
-              <button type="button" className="font-mono text-[10px] uppercase tracking-wider text-textMuted" onClick={() => setOpenAlert(null)}>Close</button>
+              <span className="font-mono text-t11 text-textSecondary">Trades inside {openAlert.ticker} {openAlert.strike}{openAlert.right}</span>
+              <button type="button" className="font-mono text-t10 uppercase tracking-wider text-textMuted" onClick={() => setOpenAlert(null)}>Close</button>
               {alertTrades.fault && alertTrades.rows.length === 0 ? (
                 <FeedFallback fault={alertTrades.fault} />
               ) : (
-                <span className="font-mono text-[11px] tabular-nums text-textPrimary">{alertTrades.waiting ? '…' : `${num(alertTrades.rows.length)} prints`}</span>
+                <span className="font-mono text-t11 tabular-nums text-textPrimary">{alertTrades.waiting ? '…' : `${num(alertTrades.rows.length)} prints`}</span>
               )}
             </div>
           )}
           {lane === 'alerts' && openAlert && alertTrades.rows.length > 0 && (
             <ul className="px-5 py-1 border-b border-borderSubtle" data-alert-trade-list>
               {alertTrades.rows.slice(0, 8).map(p => (
-                <li key={p.id} className="flex items-center gap-3 py-0.5 font-mono text-[11px] text-textSecondary">
+                <li key={p.id} className="flex items-center gap-3 py-0.5 font-mono text-t11 text-textSecondary">
                   <span className="text-textPrimary">{p.time}</span>
                   <span>{p.ticker} {p.strike}{p.right}</span>
                   <span className="ml-auto tabular-nums text-textPrimary"><TickFigure value={p.premium}>{fmtUsd(p.premium)}</TickFigure></span>
@@ -1493,7 +1493,7 @@ const LiveTape = () => {
                   setTopSignal(n => n + 1);
                   setAway(false);
                 }}
-                className="rounded-full border border-borderSubtle bg-chip px-3 py-1 font-mono text-[11px] text-textPrimary"
+                className="rounded-full border border-borderSubtle bg-chip px-3 py-1 font-mono text-t11 text-textPrimary"
               >
                 {stream.pending} new print{stream.pending === 1 ? '' : 's'} ↑
               </button>

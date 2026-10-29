@@ -125,7 +125,7 @@ const PositionGutter = ({ positions, reads, projection, focusPrice, onSelect }: 
               data-strike={s.strike}
               title={s.title}
               onClick={() => onSelect?.(s.strike)}
-              className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 px-1 h-[14px] rounded-[3px] font-mono text-[9px] font-bold tnum leading-none whitespace-nowrap transition-shadow"
+              className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 px-1 h-[14px] rounded-[3px] font-mono text-t9 font-bold tnum leading-none whitespace-nowrap transition-shadow"
               style={
                 s.allOwned
                   ? { background: SILVER, color: '#0a0a0a', boxShadow: isFocus ? `0 0 0 1.5px ${SILVER}, 0 0 0 3px #0a0a0a` : undefined }

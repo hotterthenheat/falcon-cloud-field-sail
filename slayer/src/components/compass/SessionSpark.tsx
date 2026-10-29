@@ -27,7 +27,8 @@ const SessionSpark = ({ width = 96, height = 26, points }: SessionSparkProps) =>
   const d = pts.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="shrink-0" aria-hidden data-spark="sweep">
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="shrink-0" aria-hidden data-spark="sweep" role="img">
+      <title>This contract's premium. Not the stock.</title>
       <line x1={0} x2={width} y1={y(base)} y2={y(base)} stroke="rgba(237,237,237,0.18)" strokeWidth={1} strokeDasharray="2 3" />
       <path d={d} fill="none" stroke={ink} strokeOpacity={0.9} strokeWidth={1.4} strokeLinejoin="round" strokeLinecap="round" />
     </svg>

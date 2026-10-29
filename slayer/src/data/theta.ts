@@ -5,6 +5,8 @@
   does not hand the server's sentence to a cell.
 */
 
+import { SIM_DESK } from './deskMode';
+
 let inflight = 0;
 const next: (() => void)[] = [];
 const first: (() => void)[] = [];
@@ -67,6 +69,7 @@ function faultText(status: number, parsed: unknown, text: string): string {
 }
 
 export async function thetaCall(path: string, jump = false): Promise<{ status: number; data: unknown; error: string | null }> {
+  if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
   await take(jump);
   try {
     const res = await fetch(`/api/theta${path}`);

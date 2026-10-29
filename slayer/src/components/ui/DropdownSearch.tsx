@@ -150,10 +150,10 @@ const DropdownSearch = <T extends string>({ label, value, options, onChange, tit
       >
         {o.logo ? <CompanyLogo ticker={o.logo} size={14} /> : <span className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
         <span className="flex flex-col gap-[1px] min-w-0">
-          <span className={`font-mono text-[11px] leading-snug ${on ? 'font-semibold' : ''}`} style={on ? { color: SILVER } : undefined}>
+          <span className={`font-mono text-t11 leading-snug ${on ? 'font-semibold' : ''}`} style={on ? { color: SILVER } : undefined}>
             {o.label}
           </span>
-          {o.hint && <span className="font-mono text-[9px] leading-snug text-textMuted truncate">{o.hint}</span>}
+          {o.hint && <span className="font-mono text-t9 leading-snug text-textMuted truncate">{o.hint}</span>}
         </span>
       </button>
     );
@@ -173,13 +173,13 @@ const DropdownSearch = <T extends string>({ label, value, options, onChange, tit
           >
             {Icon && (
               <Icon
-                className={`w-3 h-3 shrink-0 transition-colors duration-200 ${ink ? 'text-textMuted group-hover:text-[color:var(--ink)] group-data-[state=open]:text-[color:var(--ink)]' : 'text-textMuted'}`}
+                className={`w-3 h-3 shrink-0 transition-colors duration-200 ${ink ? 'text-textMuted group-hover:text-ink group-data-[state=open]:text-ink' : 'text-textMuted'}`}
                 aria-hidden="true"
                 data-dropdown-icon
               />
             )}
-            <span className="text-[9px] uppercase tracking-widest text-textMuted">{label}</span>
-            <span className="text-[11px] font-semibold text-textPrimary">{current?.label ?? '—'}</span>
+            <span className="text-t9 uppercase tracking-widest text-textMuted">{label}</span>
+            <span className="text-t11 font-semibold text-textPrimary">{current?.label ?? '—'}</span>
             <ChevronDown className="w-3 h-3 text-textMuted" />
           </button>
         </Popover.Trigger>
@@ -197,7 +197,7 @@ const DropdownSearch = <T extends string>({ label, value, options, onChange, tit
       </span>
       <Popover.Portal>
         <Popover.Content align={align} sideOffset={6} className={`${CARD} w-[272px] p-0 overflow-hidden`} data-dropdown-card={testId ?? label} onOpenAutoFocus={e => { e.preventDefault(); inputRef.current?.focus(); }}>
-          <div className="px-3.5 pt-2.5 pb-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">{title ?? label}</div>
+          <div className="px-3.5 pt-2.5 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">{title ?? label}</div>
           <div className="mx-1.5 flex items-center gap-1.5 px-2 rounded-md border border-borderSubtle bg-panel" onKeyDown={onKeyDown}>
             <Search className="w-3 h-3 text-textMuted shrink-0" aria-hidden="true" />
             <input
@@ -205,7 +205,7 @@ const DropdownSearch = <T extends string>({ label, value, options, onChange, tit
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder={placeholder}
-              className="w-full bg-transparent py-1.5 font-mono text-[11px] text-textPrimary placeholder:text-textMuted focus:outline-none"
+              className="w-full bg-transparent py-1.5 font-mono text-t11 text-textPrimary placeholder:text-textMuted focus:outline-none"
               data-dropdown-search-input
             />
           </div>
@@ -217,7 +217,7 @@ const DropdownSearch = <T extends string>({ label, value, options, onChange, tit
             onScroll={windowed ? e => setScrollTop(e.currentTarget.scrollTop) : undefined}
           >
             {rows.length === 0 ? (
-              <div className="px-2.5 py-4 text-center font-mono text-[10px] text-textMuted">Nothing matches</div>
+              <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">Nothing matches</div>
             ) : windowed ? (
               <div style={{ height: rest.length * ROW, position: 'relative' }}>
                 <div style={{ position: 'absolute', top: start * ROW, left: 0, right: 0 }}>

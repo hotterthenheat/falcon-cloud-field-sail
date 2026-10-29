@@ -27,7 +27,7 @@
 
 import { isTradingDay } from '../core/calendar';
 import { now } from '../core/clock';
-import { nyMinutes, nyParts, type At } from '../core/nyTime';
+import { nyMinutes, nyParts, nyWallTime, type At } from '../core/nyTime';
 import type { DeskSession } from './deskSession';
 import type { FlowPrint } from '../types/trace';
 
@@ -49,7 +49,7 @@ export interface NameTape {
   doneWhy: string;
 }
 
-const INDEX = new Set(['SPX', 'SPXW', 'XSP', 'VIX', 'RUT', 'RUTW']);
+const INDEX = new Set(['SPX', 'SPXW', 'XSP', 'NDX', 'NDXP', 'VIX', 'RUT', 'RUTW']);
 
 /** Single names whose options have the 07:30 pre-market and the 16:00 curb. */
 const EXT_STOCK = new Set([
@@ -80,7 +80,7 @@ const dayOf = (p: { year: number; month: number; day: number }) => new Date(p.ye
 const underOf = (ticker: string, mins: number, trading: boolean): UnderPhase => {
   if (!trading) return 'closed';
   if (ticker === 'VIX') return mins >= 3 * 60 + 15 && mins < 16 * 60 + 15 ? 'open' : 'closed';
-  if (ticker === 'SPX' || ticker === 'SPXW' || ticker === 'XSP' || ticker === 'RUT' || ticker === 'RUTW') {
+  if (ticker === 'SPX' || ticker === 'SPXW' || ticker === 'XSP' || ticker === 'NDX' || ticker === 'NDXP' || ticker === 'RUT' || ticker === 'RUTW') {
     return mins >= 9 * 60 + 30 && mins < 16 * 60 ? 'open' : 'closed';
   }
   if (mins >= 4 * 60 && mins < 9 * 60 + 30) return 'pre';
@@ -100,7 +100,8 @@ const indexOption = (mins: number, weekday: number, expiry: boolean, root: strin
   if (mins < 9 * 60 + 30) return 'halt';
   if (vixExpiry) return 'closed';
   if (pmExpiry && mins >= 16 * 60) return 'closed';
-  if (mins < 16 * 60 + 15) return 'open';
+  if (mins < 16 * 60) return 'open';
+  /* Not expiring today: the curb runs to 17:00. An expiring index is already closed. */
   if (mins < 17 * 60) return 'curb';
   return 'closed';
 };
@@ -117,7 +118,29 @@ const equityOption = (mins: number, trading: boolean, ticker: string): OptionPha
   return 'closed';
 };
 
-/** Last minute an expiring contract trades. The board waits for the latest of these. */
+/** The root's options are open for this sleeve. A shut name is not a blank book. It is not on the scan.
+    0 DTE runs until the minute before its own stop. 1–7 DTE runs through the session's own close. The halt sends nothing, except VIX 0 DTE's last look at 09:29. */
+export function optionScanOpen(ticker: string, dte: number, at: At = now()): boolean {
+  if (!Number.isFinite(dte) || dte < 0 || dte > 7) return false;
+  const root = ticker.toUpperCase();
+  const p = nyParts(at);
+  const mins = p.hour * 60 + p.minute;
+  const tape = nameTape(ticker, dte === 0, at);
+  if (tape.option === 'halt') return dte === 0 && root === 'VIX' && mins === 9 * 60 + 29;
+  if (tape.option === 'closed') return false;
+  if (dte === 0 && tape.done) return false;
+  return true;
+}
+
+/** Why this name is off the scan. The morning grid is not a reason. */
+export function scanShutWhy(ticker: string, dte: number, at: At = now()): string {
+  if (optionScanOpen(ticker, dte, at)) return 'This name is on this scan.';
+  const tape = nameTape(ticker, dte === 0, at);
+  if (tape.option === 'halt') return 'Halted, 09:25 to 09:30 ET. No new ticket.';
+  if (dte === 0 && tape.done) return tape.doneWhy;
+  if (tape.option === 'closed') return 'This name’s options are shut. A stock print is not a ticket.';
+  return 'This name is not on this scan.';
+}
 export const odteDoneMin = (ticker: string): number => {
   if (ticker === 'VIX') return 9 * 60 + 30;
   if (INDEX.has(ticker) || (!EXT_STOCK.has(ticker) && !EXT_ETF.has(ticker))) return 16 * 60;
@@ -165,6 +188,92 @@ export function nameTape(ticker: string, expiryToday: boolean, at: At = now()): 
   };
 }
 
+/** The clock the board speaks. Overnight and pre-market are open tapes, not a closed desk. */
+export function deskPhase(at: At = now()): OptionPhase {
+  const p = nyParts(at);
+  const mins = p.hour * 60 + p.minute;
+  if (p.weekday === 6) return 'closed';
+  if (p.weekday === 0 && mins < 20 * 60 + 15) return 'closed';
+  if (p.weekday === 5 && mins >= 17 * 60) return 'closed';
+  if (mins >= 9 * 60 + 25 && mins < 9 * 60 + 30) return 'halt';
+  if (mins >= 20 * 60 + 15 || mins < 7 * 60 + 30) return 'overnight';
+  if (mins < 9 * 60 + 25) return 'pre';
+  if (mins < 16 * 60) return 'open';
+  if (mins < 17 * 60) return 'curb';
+  return 'closed';
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const ymdOf = (p: { year: number; month: number; day: number }) => `${p.year}${pad2(p.month)}${pad2(p.day)}`;
+
+function shiftDay(year: number, month: number, day: number, add: number) {
+  return nyParts(nyWallTime(year, month, day, 12, 0) + add * 86_400_000);
+}
+
+function nextWeekday(year: number, month: number, day: number) {
+  let q = shiftDay(year, month, day, 1);
+  for (let i = 0; i < 6 && (q.weekday === 0 || q.weekday === 6); i++) q = shiftDay(q.year, q.month, q.day, 1);
+  return q;
+}
+
+/** The session this clock belongs to. After 8:15 PM ET the session is the next trading day. Wednesday night is Thursday's book. */
+export function sessionYmd(at: At = now()): string {
+  const p = nyParts(at);
+  const mins = p.hour * 60 + p.minute;
+  if (p.weekday === 6 || p.weekday === 0) return ymdOf(nextWeekday(p.year, p.month, p.day));
+  if (p.weekday === 5 && mins >= 17 * 60) return ymdOf(nextWeekday(p.year, p.month, p.day));
+  if (mins >= 20 * 60 + 15) return ymdOf(nextWeekday(p.year, p.month, p.day));
+  return ymdOf(p);
+}
+
+export function sessionIso(at: At = now()): string {
+  const y = sessionYmd(at);
+  return `${y.slice(0, 4)}-${y.slice(4, 6)}-${y.slice(6, 8)}`;
+}
+
+/** No 0DTE tape is open. Today's contracts have stopped and the next session has not started. */
+export function odteAsleep(at: At = now()): boolean {
+  const p = nyParts(at);
+  const mins = p.hour * 60 + p.minute;
+  if (p.weekday === 6) return true;
+  if (p.weekday === 0 && mins < 20 * 60 + 15) return true;
+  if (p.weekday === 5 && mins >= 16 * 60 + 15) return true;
+  if (p.weekday >= 1 && p.weekday <= 4 && mins >= 16 * 60 + 15 && mins < 20 * 60 + 15) return true;
+  return false;
+}
+
+const OPEN_WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const OPEN_MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** When the next 0DTE tape opens. That contract expires the next session, not the day that just stopped. */
+export function nextOdteOpen(at: At = now()): { atMs: number; line: string } {
+  const nowMs = typeof at === 'number' ? at : Date.now();
+  const p = nyParts(at);
+  let year = p.year;
+  let month = p.month;
+  let day = p.day;
+  for (let i = 0; i < 6; i++) {
+    const q = i === 0 ? p : shiftDay(year, month, day, 0);
+    year = q.year;
+    month = q.month;
+    day = q.day;
+    const open = nyWallTime(year, month, day, 20, 15);
+    if (open > nowMs && q.weekday <= 4) {
+      const trade = nextWeekday(year, month, day);
+      const when = `${OPEN_WEEKDAY[trade.weekday]} ${OPEN_MONTH[trade.month - 1]} ${trade.day}`;
+      return {
+        atMs: open,
+        line: `0DTE is over. The next one expires ${when}. Index options open at 8:15 PM ET. A contract bought then expires ${when}, not today. Extended names open at 7:30 AM ET. Every other name opens at 9:30 AM ET.`,
+      };
+    }
+    const n = shiftDay(year, month, day, 1);
+    year = n.year;
+    month = n.month;
+    day = n.day;
+  }
+  return { atMs: nowMs, line: '0DTE is over.' };
+}
+
 /** True once every 0DTE class has stopped. The last of them is 16:15 ET. */
 export function odteBoardDone(expiryIsToday: boolean, at: At = now()): boolean {
   if (!expiryIsToday) return false;
@@ -184,7 +293,7 @@ export function optionTapeIn(ticker: string, session: DeskSession): boolean {
   if (session === 'rth') return true;
   if (session === 'overnight') return INDEX.has(root);
   if (session === 'pre') return INDEX.has(root) || EXT_STOCK.has(root) || EXT_ETF.has(root);
-  return INDEX.has(root) || EXT_STOCK.has(root);
+  return INDEX.has(root) || EXT_STOCK.has(root) || EXT_ETF.has(root);
 }
 
 function minuteOf(p: FlowPrint): number {
@@ -207,7 +316,7 @@ export function printInSession(p: FlowPrint, ticker: string, session: DeskSessio
 
 export function sessionEmpty(ticker: string, session: DeskSession): string {
   if (!optionTapeIn(ticker, session)) {
-    if (session === 'overnight') return 'No overnight tape. Overnight is SPX, VIX, and RUT.';
+    if (session === 'overnight') return 'No overnight tape. Overnight is SPX, NDX, RUT, and VIX.';
     if (session === 'pre') return 'No pre-market option tape on this name.';
     return 'No after-hours option tape on this name.';
   }
@@ -241,7 +350,7 @@ export function resolveDeskSession(ticker: string, minutes: readonly number[] | 
   });
   if (!optionTapeIn(root, asked)) {
     const note = asked === 'overnight'
-      ? `${root} does not trade overnight. Overnight options are SPX, VIX, and RUT. Showing the cash session.`
+      ? `${root} does not trade overnight. Overnight options are SPX, NDX, RUT, and VIX. Showing the cash session.`
       : asked === 'pre'
         ? `${root} has no pre-market options. Showing the cash session.`
         : `${root} has no after-hours options. Showing the cash session.`;

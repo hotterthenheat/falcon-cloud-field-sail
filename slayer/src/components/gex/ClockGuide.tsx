@@ -166,8 +166,8 @@ interface ClockGuideProps {
 const ClockGuide = ({ nowBlock, line, bellShare, pin, supreme, charmStrike }: ClockGuideProps) => (
   <div className="px-3 py-3 flex flex-col gap-3" data-clock-guide-card>
     <div>
-      <p className="text-[12px] font-semibold text-textPrimary">The strip · the trading day, five minutes at a time</p>
-      <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+      <p className="text-t12 font-semibold text-textPrimary">The strip · the trading day, five minutes at a time</p>
+      <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
         The strip runs from 09:30 to 16:00 New York time, one block per five minutes. Brighter blocks are the parts of the day when dealer hedging pushes hardest on price: the open, the last ninety minutes, the close. Dim blocks are the quiet middle, when price tends to sit still. The silver block is right now. The names above are the day's phases, a rule of thumb; the numbers in them are today's.
       </p>
       <div className="mt-2 rounded-md border border-borderSubtle/60 bg-panel px-2 py-2 overflow-x-auto scroll-row">
@@ -175,8 +175,8 @@ const ClockGuide = ({ nowBlock, line, bellShare, pin, supreme, charmStrike }: Cl
       </div>
     </div>
     <div>
-      <p className="text-[12px] font-semibold text-textPrimary">Using it · hover, keep, and read the card</p>
-      <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+      <p className="text-t12 font-semibold text-textPrimary">Using it · hover, keep, and read the card</p>
+      <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
         Hover any block and a card tells you the minute, its phase, and what dealers tend to do then. Click the block to keep it. Click a phase name above the strip to keep the whole phase in focus and dim the rest. Click anywhere else to go back to now. The line under the strip always says what the kept minute, the kept phase, or right now means for today.
       </p>
       <div className="mt-2 rounded-md border border-borderSubtle/60 bg-panel px-2 py-2 overflow-x-auto scroll-row">
@@ -184,16 +184,16 @@ const ClockGuide = ({ nowBlock, line, bellShare, pin, supreme, charmStrike }: Cl
       </div>
     </div>
     <div className="border-t border-borderSubtle/60 pt-2.5">
-      <p className="text-[11px] text-textMuted">Today's clock, in words</p>
+      <p className="text-t11 text-textMuted">Today's clock, in words</p>
       <ul className="mt-1 flex flex-col gap-1.5">
-        <li className="text-[11.5px] leading-relaxed text-textSecondary">{line}</li>
+        <li className="text-t115 leading-relaxed text-textSecondary">{line}</li>
         {bellShare != null && (
-          <li className="text-[11.5px] leading-relaxed text-textSecondary">
+          <li className="text-t115 leading-relaxed text-textSecondary">
             <span className="font-mono tnum text-textPrimary">{bellShare}%</span> of all the name's hedging, every expiry counted, sits in contracts that expire at {bellDay().head === 'Expires today' ? "today's close" : `the close on ${bellDay().head.replace('Expires ', '')}, the next session`} — the same figure as the Board's "{bellDay().head}".
           </li>
         )}
         {(pin != null || supreme != null) && (
-          <li className="text-[11.5px] leading-relaxed text-textSecondary">
+          <li className="text-t115 leading-relaxed text-textSecondary">
             {pin != null && (
               <>
                 Through lunch price tends to stick to <span className="font-mono tnum text-textPrimary">{fmtStrike(pin)}</span>.{' '}
@@ -214,7 +214,7 @@ const ClockGuide = ({ nowBlock, line, bellShare, pin, supreme, charmStrike }: Cl
         )}
       </ul>
     </div>
-    <p className="text-[11px] text-textMuted">The clock is New York time, the real one, not the replayed day.</p>
+    <p className="text-t11 text-textMuted">The clock is New York time, the real one, not the replayed day.</p>
   </div>
 );
 

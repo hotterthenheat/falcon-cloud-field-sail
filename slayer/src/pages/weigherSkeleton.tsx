@@ -76,10 +76,10 @@ export const WeigherPageSkeleton = () => (
           <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0">
             <Scale className="w-3.5 h-3.5" />
           </span>
-          <span className="text-[15px] font-semibold leading-tight text-textPrimary">Weigher</span>
+          <span className="text-t15 font-semibold leading-tight text-textPrimary">Weigher</span>
           <Line w={72} h={12} />
         </div>
-        <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Chart, chain and watchlist on one desk — pick a name, pick a contract, watch it</p>
+        <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">Chart, chain and watchlist on one desk — pick a name, pick a contract, watch it</p>
       </div>
       <Facts widths={[110, 118]} />
     </header>

@@ -325,7 +325,7 @@ const DataTable = <T,>({
               <th
                 key={col.key}
                 style={col.width ? { width: col.width } : undefined}
-                className={`px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-wider text-textMuted whitespace-nowrap ${
+                className={`px-3 py-2 font-mono text-t10 font-semibold uppercase tracking-wider text-textMuted whitespace-nowrap ${
                   col.align === 'right' ? 'text-right' : 'text-left'
                 } ${col.sortValue ? 'cursor-pointer select-none hover:text-textSecondary' : ''}`}
                 onClick={() => toggleSort(col)}
@@ -346,7 +346,7 @@ const DataTable = <T,>({
         <tbody>
           {sortedRows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-8 text-center font-mono text-[11px] text-textMuted">
+              <td colSpan={columns.length} className="px-3 py-8 text-center font-mono text-t11 text-textMuted">
                 {emptyText}
               </td>
             </tr>

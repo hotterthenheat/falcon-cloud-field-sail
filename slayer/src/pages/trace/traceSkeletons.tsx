@@ -70,9 +70,9 @@ export const TraceStripSkeleton = ({ pathname }: { pathname: string }) => {
           <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0">
             <PageIcon className="w-3.5 h-3.5" />
           </span>
-          <span className="text-[15px] font-semibold leading-tight text-textPrimary">{active.label}</span>
+          <span className="text-t15 font-semibold leading-tight text-textPrimary">{active.label}</span>
         </div>
-        <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{active.subtitle}</p>
+        <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">{active.subtitle}</p>
       </div>
     </header>
   );

@@ -210,7 +210,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
                 const fam = twinFamilyFor(ctx.ticker);
                 if (!fam) return null;
                 return (
-                  <span className="font-mono text-[10px] text-textMuted tnum">
+                  <span className="font-mono text-t10 text-textMuted tnum">
                     {fam.index} {fmtTwin(twinPrice(fam, 'index', spot, spot))} · {fam.futures} {fmtTwin(twinPrice(fam, 'futures', spot, spot))}
                   </span>
                 );
@@ -262,9 +262,9 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
         {/* The FOCUS line's chip — a strike kept on a Pinpoint page. Says what the dashed line on the tape IS, and is the
             way to take it down by hand. */}
         {focus != null && (
-          <span className="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded border font-mono text-[9px] uppercase tracking-widest animate-soft-in" style={{ color: FOCUS, borderColor: alpha(FOCUS, 0.4), background: alpha(FOCUS, 0.06) }} data-chart-focus>
+          <span className="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded border font-mono text-t9 uppercase tracking-widest animate-soft-in" style={{ color: FOCUS, borderColor: alpha(FOCUS, 0.4), background: alpha(FOCUS, 0.06) }} data-chart-focus>
             Focus
-            <span className="text-[11px] font-bold tnum normal-case tracking-normal">{fmtStrike(focus)}</span>
+            <span className="text-t11 font-bold tnum normal-case tracking-normal">{fmtStrike(focus)}</span>
             {/* the strike's standing right now — it wears the supreme's magenta on the tape while it holds the crown */}
             {Math.abs(levels.supreme - focus) < 1e-9 && (
               <span className="font-bold" style={{ color: SUPREME }}>
@@ -274,7 +274,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
             {/* the level's read — the three things that decide whether a level is about to matter: distance, tests today,
                 gamma trend. Neutral ink: none of these is a market direction. */}
             {levelRead && (
-              <span className="inline-flex items-center gap-1.5 normal-case tracking-normal text-[10px] text-textSecondary tnum">
+              <span className="inline-flex items-center gap-1.5 normal-case tracking-normal text-t10 text-textSecondary tnum">
                 <span aria-hidden="true" className="text-textMuted">
                   ·
                 </span>
@@ -305,7 +305,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
         <button
           onClick={() => setSuperFull(false)}
           title="Back to fullscreen — the toolbar returns (Esc); or reach the top edge for it"
-          className="absolute top-2 right-2 z-20 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-ink/[0.08] bg-canvas/40 backdrop-blur-[3px] font-mono text-[9px] uppercase tracking-widest text-textSecondary opacity-40 hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+          className="absolute top-2 right-2 z-20 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-ink/[0.08] bg-canvas/40 backdrop-blur-[3px] font-mono text-t9 uppercase tracking-widest text-textSecondary opacity-40 hover:opacity-100 focus-visible:opacity-100 transition-opacity"
           data-total-esc
         >
           Esc · the toolbar
@@ -318,24 +318,24 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
             tape's top-left just under the taskbar. Facts only. pointer-events-none: the tape pans straight through it. */}
         <div className={`absolute left-2 z-10 pointer-events-none select-none flex flex-col gap-1 font-mono ${superFull ? 'top-2' : full ? 'top-12' : 'top-10'}`} data-chart-chrome>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-[11px] font-semibold text-textPrimary">{ctx.ticker}</span>
-            <span className="text-[10px] text-textMuted" aria-hidden>
+            <span className="text-t11 font-semibold text-textPrimary">{ctx.ticker}</span>
+            <span className="text-t10 text-textMuted" aria-hidden>
               ·
             </span>
-            <span className="text-[10px] text-textMuted">{timeframe}</span>
-            <span className="text-[10px] text-textMuted" aria-hidden>
+            <span className="text-t10 text-textMuted">{timeframe}</span>
+            <span className="text-t10 text-textMuted" aria-hidden>
               ·
             </span>
-            <SpotPrice value={spot} className="text-[11px] font-semibold tnum text-textPrimary" />
+            <SpotPrice value={spot} className="text-t11 font-semibold tnum text-textPrimary" />
           </div>
           {/* one quiet row per comparison — its line ink, its name, and the only hand-removal outside the + menu */}
           {compares.map(c => (
             <div key={`${c.ticker}:${c.mode}`} className="flex items-center gap-1.5">
               <span className="w-2 h-[3px] rounded-full" style={{ background: c.ink }} aria-hidden />
-              <span className="text-[10px] font-semibold" style={{ color: c.ink }}>
+              <span className="text-t10 font-semibold" style={{ color: c.ink }}>
                 {c.ticker}
               </span>
-              {Simulator.TICKERS[c.ticker] && <SpotPrice value={Simulator.TICKERS[c.ticker].currentPrice} className="text-[10px] tnum text-textSecondary" />}
+              {Simulator.TICKERS[c.ticker] && <SpotPrice value={Simulator.TICKERS[c.ticker].currentPrice} className="text-t10 tnum text-textSecondary" />}
               <button
                 onClick={() => removeCompare(c.ticker, c.mode)}
                 aria-label={`Remove ${c.ticker} comparison`}

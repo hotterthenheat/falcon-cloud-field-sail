@@ -63,7 +63,7 @@ const ChartLegend = ({ items, className = '', variant = 'square' }: ChartLegendP
         return (
           <span
             key={i}
-            className={`inline-flex items-center gap-1.5 font-mono text-[10px] ${
+            className={`inline-flex items-center gap-1.5 font-mono text-t10 ${
               line ? 'text-textSecondary' : 'uppercase tracking-wider text-textMuted'
             }`}
           >

@@ -66,7 +66,7 @@ export const SavedCutsControl = ({ store, query, noun, testId, onSay, open, onTo
     onSay(saved ? `Saved as "${saved.name}".` : 'That needs a name.');
     setNaming(false);
   };
-  const ITEM = 'w-full h-8 px-2.5 inline-flex items-center gap-2 rounded text-left text-[11px] text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05] transition-colors';
+  const ITEM = 'w-full h-8 px-2.5 inline-flex items-center gap-2 rounded text-left text-t11 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05] transition-colors';
   if (compact && !naming) {
     return (
       <span ref={menuRef} className="relative inline-flex" data-cut-doors data-cut-doors-compact>
@@ -111,7 +111,7 @@ export const SavedCutsControl = ({ store, query, noun, testId, onSay, open, onTo
             }}
             placeholder={`Name this ${noun}`}
             aria-label={`Name this ${noun}`}
-            className="w-[128px] bg-transparent text-[11px] text-textPrimary placeholder:text-textMuted focus:outline-none"
+            className="w-[128px] bg-transparent text-t11 text-textPrimary placeholder:text-textMuted focus:outline-none"
             data-cuts-name={testId}
           />
           <button type="button" onClick={save} aria-label={`Save this ${noun}`} className="p-1 rounded text-textSecondary hover:text-textPrimary">
@@ -159,7 +159,7 @@ export const SavedCutsList = ({ store, onOpen, noun, testId, onSay, open }: Save
               onOpen(v.query);
               onSay(`Opened "${v.name}".`);
             }}
-            className="h-6 px-2 text-[11px] text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04] transition-colors"
+            className="h-6 px-2 text-t11 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04] transition-colors"
             data-cuts-view={v.name}
           >
             {v.name}

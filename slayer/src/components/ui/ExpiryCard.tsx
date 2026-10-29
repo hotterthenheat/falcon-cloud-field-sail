@@ -107,12 +107,12 @@ const ExpiryCard = <T extends string | number>({ label = 'Expiry', value, choice
           style={ink ? ({ '--ink': ink } as CSSProperties) : undefined}
         >
           <Icon
-            className={`w-3 h-3 shrink-0 transition-colors duration-200 ${ink ? 'text-textMuted group-hover:text-[color:var(--ink)] group-data-[state=open]:text-[color:var(--ink)]' : 'text-textMuted'}`}
+            className={`w-3 h-3 shrink-0 transition-colors duration-200 ${ink ? 'text-textMuted group-hover:text-ink group-data-[state=open]:text-ink' : 'text-textMuted'}`}
             aria-hidden="true"
             data-dropdown-icon
           />
-          {!bare && <span className="text-[9px] uppercase tracking-widest text-textMuted">{label}</span>}
-          <span className="text-[11px] font-semibold text-textPrimary">{current?.label ?? '—'}</span>
+          {!bare && <span className="text-t9 uppercase tracking-widest text-textMuted">{label}</span>}
+          <span className="text-t11 font-semibold text-textPrimary">{current?.label ?? '—'}</span>
           <ChevronDown className="w-3 h-3 text-textMuted" />
         </button>
       </Popover.Trigger>
@@ -122,7 +122,7 @@ const ExpiryCard = <T extends string | number>({ label = 'Expiry', value, choice
               choices as pills above the grid: "over complicated, shouldn't it
               just be the calendar, that's it?") — the title, the grid with the
               desk's days lit, one line at the foot */}
-          <div className="px-0.5 pb-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">{title ?? label}</div>
+          <div className="px-0.5 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">{title ?? label}</div>
           <DayPicker
             mode="single"
             selected={selected}
@@ -139,7 +139,7 @@ const ExpiryCard = <T extends string | number>({ label = 'Expiry', value, choice
               root: 'relative select-none',
               months: 'flex',
               month: 'w-full',
-              month_caption: 'h-8 flex items-center px-1 text-[12px] font-semibold text-textPrimary',
+              month_caption: 'h-8 flex items-center px-1 text-t12 font-semibold text-textPrimary',
               caption_label: '',
               nav: 'absolute top-0 right-0 h-8 flex items-center gap-1',
               button_previous: 'w-7 h-7 inline-flex items-center justify-center rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors disabled:opacity-30',
@@ -147,12 +147,12 @@ const ExpiryCard = <T extends string | number>({ label = 'Expiry', value, choice
               chevron: '',
               month_grid: 'w-full border-collapse mt-1',
               weekdays: '',
-              weekday: 'h-7 text-[10px] font-normal text-textMuted text-center',
+              weekday: 'h-7 text-t10 font-normal text-textMuted text-center',
               weeks: '',
               week: '',
               day: 'p-0 text-center',
-              day_button: 'w-9 h-8 rounded-md font-mono text-[12px] tnum text-textPrimary hover:bg-ink/[0.06] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-silver/60',
-              selected: '[&>button]:bg-silverFill [&>button]:text-[#0a0a0a] [&>button]:font-semibold [&>button:hover]:bg-silverFill',
+              day_button: 'w-9 h-8 rounded-md font-mono text-t12 tnum text-textPrimary hover:bg-ink/[0.06] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-silver/60',
+              selected: '[&>button]:bg-silverFill [&>button]:text-onfoil [&>button]:font-semibold [&>button:hover]:bg-silverFill',
               today: '[&>button]:shadow-[inset_0_0_0_1px_rgba(199,211,232,0.45)]',
               outside: '[&>button]:text-textMuted/40',
               disabled: '[&>button]:text-textMuted/30 [&>button]:cursor-not-allowed [&>button:hover]:bg-transparent',
@@ -161,12 +161,12 @@ const ExpiryCard = <T extends string | number>({ label = 'Expiry', value, choice
             }}
           />
           {note && (
-            <p className="mt-2 text-[10px] leading-snug text-textSecondary" data-expiry-card-note>
+            <p className="mt-2 text-t10 leading-snug text-textSecondary" data-expiry-card-note>
               {note}
             </p>
           )}
           <div className="mt-2 pt-2 border-t border-borderSubtle/70 flex items-center justify-between gap-3">
-            <p className="text-[10px] text-textMuted">{free ? `Any trading day up to ${free.days} days out.` : 'The lit days are the expiries this desk prices.'}</p>
+            <p className="text-t10 text-textMuted">{free ? `Any trading day up to ${free.days} days out.` : 'The lit days are the expiries this desk prices.'}</p>
             {/* a choice that is not a day (the book's "Every expiry") sits at the foot, alone */}
             {choices
               .filter(c => !c.date)
@@ -180,7 +180,7 @@ const ExpiryCard = <T extends string | number>({ label = 'Expiry', value, choice
                     aria-pressed={on}
                     disabled={c.disabled}
                     title={c.hint}
-                    className="shrink-0 h-6 px-2 rounded-full border text-[10px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="shrink-0 h-6 px-2 rounded-full border text-t10 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     style={on ? { background: SILVER_FILL, color: '#0a0a0a', borderColor: SILVER_FILL } : { color: 'rgb(var(--text-secondary))', borderColor: 'rgb(var(--border-muted))' }}
                     data-expiry-choice={String(c.value)}
                   >

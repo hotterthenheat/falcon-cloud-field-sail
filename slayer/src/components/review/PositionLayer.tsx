@@ -346,15 +346,15 @@ const TrailDoor = ({ b, dp, onTrail }: { b: ChartBracket; dp: number; onTrail: (
             }}
           >
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] text-textMuted leading-snug">Trail by — the distance it keeps from the best price since{on ? '' : ' (it starts as where the stop stands now)'}</span>
-              <input ref={field} value={draft} onChange={e => setDraft(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" aria-label="Trail by" className="h-8 px-2 rounded-md border border-borderSubtle bg-panel font-mono text-[12px] tnum text-textPrimary outline-none focus:border-silver/60 transition-colors" data-chart-trail-field />
+              <span className="text-t10 text-textMuted leading-snug">Trail by — the distance it keeps from the best price since{on ? '' : ' (it starts as where the stop stands now)'}</span>
+              <input ref={field} value={draft} onChange={e => setDraft(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" aria-label="Trail by" className="h-8 px-2 rounded-md border border-borderSubtle bg-panel font-mono text-t12 tnum text-textPrimary outline-none focus:border-silver/60 transition-colors" data-chart-trail-field />
             </label>
             <div className="flex items-center gap-2">
-              <button type="submit" disabled={!(by > 0)} className="h-7 px-3 rounded-full text-[11px] font-semibold disabled:opacity-35 transition-opacity hover:opacity-90" style={{ background: SILVER_FILL, color: '#0a0a0a' }} data-chart-trail-apply>
+              <button type="submit" disabled={!(by > 0)} className="h-7 px-3 rounded-full text-t11 font-semibold disabled:opacity-35 transition-opacity hover:opacity-90" style={{ background: SILVER_FILL, color: '#0a0a0a' }} data-chart-trail-apply>
                 {on ? 'Trail by this' : 'Trail'}
               </button>
               {on && (
-                <button type="button" onClick={() => { onTrail(b.orderId, false); setOpen(false); }} className="h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-[10px] text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-chart-trail-off>
+                <button type="button" onClick={() => { onTrail(b.orderId, false); setOpen(false); }} className="h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-t10 text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-chart-trail-off>
                   Let it rest
                 </button>
               )}
@@ -734,7 +734,7 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
   const dp = plain?.decimals ?? 2;
   /* ONE BAR A CHIP (the head note): blocks of solid colour side by side, the dark words on them — index.css's `.fill-*`,
      which goes soft (the ink on a tint) over a light tape (2026-09-26); the words take the block's ink */
-  const chipBase = 'group absolute right-2 top-0 h-[20px] inline-flex items-stretch rounded-[3px] font-mono text-[11px] tnum whitespace-nowrap pointer-events-auto select-none shadow-[0_3px_10px_rgba(0,0,0,0.45)]';
+  const chipBase = 'group absolute right-2 top-0 h-[20px] inline-flex items-stretch rounded-[3px] font-mono text-t11 tnum whitespace-nowrap pointer-events-auto select-none shadow-[0_3px_10px_rgba(0,0,0,0.45)]';
   const chip = `${chipBase} ring-1 ring-black/40`;
   /* THE THREE CHIPS READ APART (Noah, 2026-09-26: "these cards need to look unique … having Stp and TP on them and having
      where you entered look different"): a way out says its word — TP · SL, TP2 for a second rung — before its money; THE
@@ -747,7 +747,7 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
   const grip = <span className="inline-flex items-center justify-center w-2.5 bg-black/15" aria-hidden="true"><span className="w-px h-2.5 bg-black/60" /></span>;
   /* the ✕ and the contracts wear inks the chart's ground re-scopes (index.css): on a light tape the silver turns steel, the
      grey dark, and the dark words on them light — never the fixed silver-fill, which stays pale under the pale words */
-  const xCell = 'inline-flex items-center justify-center w-5 bg-textSecondary text-[#0a0a0a] border-l border-black/25 hover:bg-bear disabled:opacity-40 transition-colors';
+  const xCell = 'inline-flex items-center justify-center w-5 bg-textSecondary text-onfoil border-l border-black/25 hover:bg-bear disabled:opacity-40 transition-colors';
   /** What a way out's switches sit in, beside its bar while the pointer is on it (or one of them has its card open) */
   const tray = 'hidden group-hover:inline-flex group-has-[[data-state=open]]:inline-flex items-center gap-0.5 mr-1 px-1 rounded-[3px] bg-panel border border-borderMuted shadow-[0_3px_10px_rgba(0,0,0,0.35)]';
   const bind = (id: string) => (el: HTMLDivElement | null) => {
@@ -806,7 +806,7 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
                 {usdSigned(pull.money, 0)}
               </span>
             </span>
-            {pull.room === null && <span className="ml-1 inline-flex items-center px-1.5 rounded-[3px] bg-panel text-textMuted text-[10px]">no level has two contracts to give, or the ladder is full</span>}
+            {pull.room === null && <span className="ml-1 inline-flex items-center px-1.5 rounded-[3px] bg-panel text-textMuted text-t10">no level has two contracts to give, or the ladder is full</span>}
           </div>
         )}
         {brackets.map(b => {
@@ -828,11 +828,11 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
                 {/* ITS SWITCHES, beside it while the pointer is on it: which of the ladder it is, the price it waits on, a stop's
                     trail and breakeven, an option's pin */}
                 <span className={tray} data-chip-tray>
-                  <span className={`px-0.5 text-[10px] font-semibold ${b.kind === 'target' ? 'text-bull' : 'text-bear'}`}>
+                  <span className={`px-0.5 text-t10 font-semibold ${b.kind === 'target' ? 'text-bull' : 'text-bear'}`}>
                     {b.kind === 'target' ? 'Target' : 'Stop'}
                     {b.nth ? ` ${b.nth}` : ''}
                   </span>
-                  <span className="px-0.5 text-[10px] text-textPrimary">{figure}</span>
+                  <span className="px-0.5 text-t10 text-textPrimary">{figure}</span>
                   {b.kind === 'stop' && onTrail && <TrailDoor b={b} dp={dp} onTrail={onTrail} />}
                   {b.kind === 'stop' && onBreakeven && (
                     <button
@@ -892,7 +892,7 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
                   <X className="w-3 h-3" />
                 </button>
                 {/* OUT OF THE PICTURE (shown by the frame loop): which way the line is, and where the name would have to be */}
-                <span hidden className="ml-1 self-center px-1 rounded-[3px] bg-panel text-[10px] text-textMuted" data-chip-off>
+                <span hidden className="ml-1 self-center px-1 rounded-[3px] bg-panel text-t10 text-textMuted" data-chip-off>
                   <span data-chip-arrow aria-hidden="true" />
                   {b.level == null ? ' out of reach' : pinned || plain ? '' : ` ${ticker} ${b.level.toFixed(2)}`}
                 </span>
@@ -911,7 +911,7 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
             <div
               key={id}
               ref={bind(id)}
-              className={`group absolute right-2 top-0 h-[20px] inline-flex items-stretch rounded-[3px] border bg-panel font-mono text-[11px] tnum whitespace-nowrap pointer-events-auto select-none shadow-[0_3px_10px_rgba(0,0,0,0.45)] ${buy ? 'border-bull text-bull' : 'border-bear text-bear'} ${held ? 'ring-2 ring-silver/70' : ''}`}
+              className={`group absolute right-2 top-0 h-[20px] inline-flex items-stretch rounded-[3px] border bg-panel font-mono text-t11 tnum whitespace-nowrap pointer-events-auto select-none shadow-[0_3px_10px_rgba(0,0,0,0.45)] ${buy ? 'border-bull text-bull' : 'border-bear text-bear'} ${held ? 'ring-2 ring-silver/70' : ''}`}
               style={{ visibility: 'hidden' }}
               data-chart-entry={`${x.side}-${x.kind}`}
             >
@@ -936,11 +936,11 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
                   {held && !x.label && <span className="ml-1 text-textPrimary">{priceWords}</span>}
                 </span>
               </span>
-              <button type="button" onClick={() => onCancelOrder(x.orderId)} title={`Cancel the ${what.toLowerCase()}`} aria-label={`Cancel the ${what.toLowerCase()}`} className={`inline-flex items-center justify-center w-5 border-l border-current rounded-r-[2px] transition-colors ${buy ? 'hover:bg-bull' : 'hover:bg-bear'} hover:text-[#0a0a0a]`} data-chart-entry-cancel>
+              <button type="button" onClick={() => onCancelOrder(x.orderId)} title={`Cancel the ${what.toLowerCase()}`} aria-label={`Cancel the ${what.toLowerCase()}`} className={`inline-flex items-center justify-center w-5 border-l border-current rounded-r-[2px] transition-colors ${buy ? 'hover:bg-bull' : 'hover:bg-bear'} hover:text-onfoil`} data-chart-entry-cancel>
                 <X className="w-3 h-3" />
               </button>
               {/* OUT OF THE PICTURE (shown by the frame loop): which way the line is */}
-              <span hidden className="ml-1 self-center px-1 rounded-[3px] bg-panel text-[10px] text-textMuted" data-chip-off>
+              <span hidden className="ml-1 self-center px-1 rounded-[3px] bg-panel text-t10 text-textMuted" data-chip-off>
                 <span data-chip-arrow aria-hidden="true" />
                 {x.level == null ? ' out of reach' : x.label ? ` ${ticker} ${x.level.toFixed(2)}` : ''}
               </span>
@@ -954,7 +954,7 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
           <div className="px-2 pt-1 pb-1.5">{open.card.head}</div>
           {[...open.card.sections, { items: [{ label: 'Reset chart view · Alt+R', hint: 'Back to how the chart first opened', run: () => api.reset(), testId: 'reset-view' }] } as ChartMenuSection].map((sec, si) => (
             <div key={si} className={si > 0 ? 'mt-1 pt-1 border-t border-borderSubtle' : ''}>
-              {sec.title && <div className="px-2 pt-0.5 pb-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">{sec.title}</div>}
+              {sec.title && <div className="px-2 pt-0.5 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">{sec.title}</div>}
               {sec.items.map(it => (
                 <button
                   key={it.label}
@@ -968,8 +968,8 @@ const PositionLayer = ({ api, ticker, minutes, fills, marks: hostMarks, plain, p
                   className={`w-full flex flex-col items-start px-2 py-1.5 rounded-md text-left transition-colors disabled:opacity-35 disabled:cursor-not-allowed ${it.tone === 'bull' ? 'hover:bg-bull/[0.12] hover:text-bull' : it.tone === 'bear' ? 'hover:bg-bear/[0.12] hover:text-bear' : 'hover:bg-ink/[0.06]'} text-textPrimary`}
                   data-chart-menu-item={it.testId ?? it.label}
                 >
-                  <span className="text-[12px] leading-snug">{it.label}</span>
-                  {it.hint && <span className="text-[10px] leading-snug text-textMuted">{it.hint}</span>}
+                  <span className="text-t12 leading-snug">{it.label}</span>
+                  {it.hint && <span className="text-t10 leading-snug text-textMuted">{it.hint}</span>}
                 </button>
               ))}
             </div>

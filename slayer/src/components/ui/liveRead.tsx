@@ -76,7 +76,7 @@ export function StaleMark({ at, ttlMs, fault = null }: { at?: number | null; ttl
   const label = down ? 'Quote desk is down' : 'Stale data';
   return (
     <span
-      className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-widest text-warn"
+      className="inline-flex items-center gap-1 font-mono text-t9 uppercase tracking-widest text-warn"
       title={down ? 'The quote desk did not answer. The last print stays up.' : 'This panel has not had a fresh print inside its window.'}
       data-stale={down ? 'down' : 'stale'}
     >
@@ -94,7 +94,7 @@ export const LeaveRead = () => {
     <button
       type="button"
       onClick={revertTicker}
-      className="slayer-chip uppercase tracking-widest text-[10px]"
+      className="slayer-chip uppercase tracking-widest text-t10"
       data-read-back={previousTicker}
     >
       <ArrowLeft className="w-3 h-3" /> {previousTicker}
@@ -107,7 +107,7 @@ export function FeedFallback({ fault = 'failed' }: { fault?: FeedFault | null })
   const down = fault === 'down';
   return (
     <div className="px-5 py-4 flex flex-col items-start gap-3" role="status" data-feed-fallback={down ? 'down' : 'empty'}>
-      <p className="font-mono text-[10px] uppercase tracking-widest text-textMuted">
+      <p className="font-mono text-t10 uppercase tracking-widest text-textMuted">
         {down ? 'Quote desk is down' : 'This read did not land'}
       </p>
       <LeaveRead />

@@ -258,18 +258,18 @@ const ThemeTile = ({ choice, current, onPick }: { choice: ThemeChoice; current: 
         )}
       </div>
       <div className="mt-2 flex items-center justify-between gap-2">
-        <span className={`text-[12px] ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>{name}</span>
+        <span className={`text-t12 ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>{name}</span>
         {/* Silver, where you are — never lime: THE HOUSE CHECKBOX (the menus'
             filled square with the dark tick), not a bare mark (Noah,
             2026-09-12: "make the checkmark a blue checkbox instead on the
             active theme") */}
         {on && (
           <span className="inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-[3px] border bg-silverFill border-silverFill" data-theme-check>
-            <Check className="w-2.5 h-2.5 text-[#0a0a0a]" strokeWidth={3} />
+            <Check className="w-2.5 h-2.5 text-onfoil" strokeWidth={3} />
           </span>
         )}
       </div>
-      <div className="text-[11px] text-textMuted">{line}</div>
+      <div className="text-t11 text-textMuted">{line}</div>
     </button>
   );
 };
@@ -304,25 +304,25 @@ const CvdTile = ({ choice, current }: { choice: ColourVision; current: ColourVis
       data-on={on || undefined}
     >
       {/* the pair as it will read, in the tile's own scope so it shows its own colours whatever is chosen */}
-      <span className="flex items-center gap-3 font-mono text-[12px] tnum" data-cvd-sample={choice} style={{ '--bull': CVD_PAIR[choice][theme][0], '--bear': CVD_PAIR[choice][theme][1] } as CSSProperties}>
+      <span className="flex items-center gap-3 font-mono text-t12 tnum" data-cvd-sample={choice} style={{ '--bull': CVD_PAIR[choice][theme][0], '--bear': CVD_PAIR[choice][theme][1] } as CSSProperties}>
         <span className="text-bull">{choice !== 'standard' ? '▲ ' : ''}+1.24%</span>
         <span className="text-bear">{choice !== 'standard' ? '▼ ' : ''}−0.87%</span>
       </span>
       <span className="flex items-center justify-between gap-2">
-        <span className={`text-[12px] ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>{name}</span>
+        <span className={`text-t12 ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>{name}</span>
         {on && (
           <span className="inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-[3px] border bg-silverFill border-silverFill" data-cvd-check>
-            <Check className="w-2.5 h-2.5 text-[#0a0a0a]" strokeWidth={3} />
+            <Check className="w-2.5 h-2.5 text-onfoil" strokeWidth={3} />
           </span>
         )}
       </span>
-      <span className="text-[11px] text-textMuted">{line}</span>
+      <span className="text-t11 text-textMuted">{line}</span>
     </button>
   );
 };
 
 const Key = ({ children }: { children: ReactNode }) => (
-  <kbd className="inline-flex items-center h-5 px-1.5 rounded border border-borderSubtle bg-chip font-mono text-[10px] text-textSecondary">{children}</kbd>
+  <kbd className="inline-flex items-center h-5 px-1.5 rounded border border-borderSubtle bg-chip font-mono text-t10 text-textSecondary">{children}</kbd>
 );
 
 /* ---- the page ----------------------------------------------------------------- */
@@ -374,17 +374,17 @@ const AccountPreview = () => {
       </Row>
       {/* WHERE YOU ARE SIGNED IN */}
       <div className="px-5 py-3 border-t border-borderSubtle/60" data-settings-row="devices">
-        <div className="text-[12px] text-textPrimary">Where you're signed in</div>
-        <div className="text-[11px] text-textMuted">Every machine with this account open — sign one out from here</div>
+        <div className="text-t12 text-textPrimary">Where you're signed in</div>
+        <div className="text-t11 text-textMuted">Every machine with this account open — sign one out from here</div>
         <ul className="mt-2.5 flex flex-col gap-1">
           {p.devices.map(d => (
             <li key={d.id} className="flex items-center gap-3 h-8 px-3 rounded-md bg-ink/[0.03]" data-settings-device={d.id}>
               <MonitorSmartphone className="w-3.5 h-3.5 text-textMuted shrink-0" />
-              <span className="font-mono text-[11px] text-textPrimary">{d.name}</span>
+              <span className="font-mono text-t11 text-textPrimary">{d.name}</span>
               {d.thisOne && <Tag tone="silver">this machine</Tag>}
-              <span className="ml-auto font-mono text-[10px] tnum text-textMuted">{d.lastSeen}</span>
+              <span className="ml-auto font-mono text-t10 tnum text-textMuted">{d.lastSeen}</span>
               {!d.thisOne && (
-                <button type="button" onClick={() => setProfile({ devices: p.devices.filter(x => x.id !== d.id) })} className="font-mono text-[10px] uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors" data-settings-device-out={d.id}>
+                <button type="button" onClick={() => setProfile({ devices: p.devices.filter(x => x.id !== d.id) })} className="font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors" data-settings-device-out={d.id}>
                   Sign out
                 </button>
               )}
@@ -394,7 +394,7 @@ const AccountPreview = () => {
       </div>
       {/* THE FOOT — leaving, and the one dangerous thing, set apart in the bear's ink */}
       <div className="px-5 py-3 border-t border-borderSubtle/60 flex items-center justify-between gap-6" data-settings-row="account-foot">
-        <div className="text-[11px] text-textMuted">Signing out keeps everything on the account · deleting it takes the board, the marks and the scripts with it</div>
+        <div className="text-t11 text-textMuted">Signing out keeps everything on the account · deleting it takes the board, the marks and the scripts with it</div>
         <div className="shrink-0 flex items-center gap-2">
           <Door title="Signs this machine out of the account" testId="sign-out">
             <LogOut className="w-3 h-3" /> Sign out
@@ -456,7 +456,7 @@ const PasswordChange = () => {
             if (e.key === 'Enter') go();
             if (e.key === 'Escape') setOpen(false);
           }}
-          className="h-7 w-[200px] rounded-md border border-borderSubtle bg-chip px-2 font-mono text-[11px] text-textPrimary outline-none focus:border-borderMuted"
+          className="h-7 w-[200px] rounded-md border border-borderSubtle bg-chip px-2 font-mono text-t11 text-textPrimary outline-none focus:border-borderMuted"
           data-account-field="change-password"
         />
         <Door onClick={go} tone="silver" testId="password-keep">
@@ -506,20 +506,20 @@ const DeleteAccount = ({ email, planName }: { email: string; planName: string | 
       <Door tone="bear" onClick={() => setOpen(true)} title="Asks first, then deletes the account and everything on it" testId="delete-account">
         <Trash2 className="w-3 h-3" /> Delete account
       </Door>
-      <Modal open={open} onClose={close} ariaLabel="Delete the account" header={<span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">Delete the account?</span>} widthClass="max-w-[480px]">
+      <Modal open={open} onClose={close} ariaLabel="Delete the account" header={<span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">Delete the account?</span>} widthClass="max-w-[480px]">
         {gone ? (
-          <p className="text-[12px] text-textPrimary" data-account-deleted>
+          <p className="text-t12 text-textPrimary" data-account-deleted>
             Deleted. Taking you to the front page.
           </p>
         ) : (
           <>
-            <p className="text-[12px] text-textPrimary">
+            <p className="text-t12 text-textPrimary">
               {planName ? `Your ${planName} plan ends now, with no refund of the rest of the period. ` : ''}
               Your picture, name and handle go, and everything the account carried between machines — the watchlist, the boards, the desks, the journal, these settings. It cannot be undone.
             </p>
-            <p className="text-[11px] text-textMuted">Receipts stay in our books, as the law asks. Nothing else of yours is kept.</p>
+            <p className="text-t11 text-textMuted">Receipts stay in our books, as the law asks. Nothing else of yours is kept.</p>
             <label className="flex flex-col gap-1.5">
-              <span className="text-[11px] text-textMuted">Type your email to confirm</span>
+              <span className="text-t11 text-textMuted">Type your email to confirm</span>
               <input
                 type="email"
                 value={typed}
@@ -533,7 +533,7 @@ const DeleteAccount = ({ email, planName }: { email: string; planName: string | 
                 onKeyDown={e => {
                   if (e.key === 'Enter') void go();
                 }}
-                className="h-8 w-full rounded-md border border-borderSubtle bg-chip px-2.5 font-mono text-[11px] text-textPrimary outline-none focus:border-borderMuted"
+                className="h-8 w-full rounded-md border border-borderSubtle bg-chip px-2.5 font-mono text-t11 text-textPrimary outline-none focus:border-borderMuted"
                 data-account-field="delete-email"
               />
             </label>
@@ -561,7 +561,7 @@ const AccountLive = () => {
   if (a.status === 'loading')
     return (
       <Section id="account" title="Account" line={line} aside={<Tag>signing in…</Tag>}>
-        <div className="px-5 py-6 flex items-center gap-2 text-[11px] text-textMuted border-t border-borderSubtle/60">
+        <div className="px-5 py-6 flex items-center gap-2 text-t11 text-textMuted border-t border-borderSubtle/60">
           <MorphingInfinity viewBox="4 4 16 16" className="w-3.5 h-3.5" /> Asking whether you are signed in
         </div>
       </Section>
@@ -582,7 +582,7 @@ const AccountLive = () => {
         {/* the sign-in itself is a page of its own (pages/signin/SignIn.tsx, Noah's picture of 2026-10-03); these two doors
             go there and come back here */}
         <div className="px-5 py-4 border-t border-borderSubtle/60 flex items-center justify-between gap-6 max-sm:flex-col max-sm:items-stretch max-sm:gap-3" data-account-signed-out>
-          <div className="text-[11px] text-textMuted">The terminal stays open without an account. Sign in, or create one, on its own page.</div>
+          <div className="text-t11 text-textMuted">The terminal stays open without an account. Sign in, or create one, on its own page.</div>
           <div className="shrink-0 flex items-center gap-2">
             <Door to="/signin?next=%2Fsettings%2Faccount" tone="silver" testId="account-sign-in">
               Sign in
@@ -610,7 +610,7 @@ const AccountLive = () => {
         <Field value={p.handle} prefix="@" onSave={v => setProfile({ handle: v.replace(/^@/, '').toLowerCase() })} check={checkHandle} testId="handle" />
       </Row>
       <Row name="Email" line="Where sign-in and reset links go — changing it will come with the account's own mail" testId="email">
-        <span className="font-mono text-[11px] text-textPrimary" data-account-email>
+        <span className="font-mono text-t11 text-textPrimary" data-account-email>
           {a.user.email}
         </span>
       </Row>
@@ -619,7 +619,7 @@ const AccountLive = () => {
       </Row>
       {/* THE FOOT — leaving, and the one dangerous thing, set apart in the bear's ink */}
       <div className="px-5 py-3 border-t border-borderSubtle/60 flex items-center justify-between gap-6 max-sm:flex-col max-sm:items-stretch max-sm:gap-3" data-settings-row="account-foot">
-        <div className="text-[11px] text-textMuted">Signing out keeps everything on the account · deleting it ends the plan and takes everything on the account with it</div>
+        <div className="text-t11 text-textMuted">Signing out keeps everything on the account · deleting it ends the plan and takes everything on the account with it</div>
         <div className="shrink-0 flex items-center gap-2">
           <Door onClick={() => signOut()} title="Signs this machine out of the account" testId="sign-out">
             <LogOut className="w-3 h-3" /> Sign out
@@ -694,7 +694,7 @@ const BillingLive = () => {
   if (a.status === 'loading')
     return (
       <Section id="billing" title="Billing" line={line} aside={<Tag>signing in…</Tag>}>
-        <div className="px-5 py-6 flex items-center gap-2 text-[11px] text-textMuted border-t border-borderSubtle/60">
+        <div className="px-5 py-6 flex items-center gap-2 text-t11 text-textMuted border-t border-borderSubtle/60">
           <MorphingInfinity viewBox="4 4 16 16" className="w-3.5 h-3.5" /> Asking whether you are signed in
         </div>
       </Section>
@@ -703,7 +703,7 @@ const BillingLive = () => {
     return (
       <Section id="billing" title="Billing" line="Sign in to pick a plan — the terminal stays open without one" aside={<Tag>signed out</Tag>}>
         <div className="px-5 py-4 border-t border-borderSubtle/60 flex items-center justify-between gap-6 max-sm:flex-col max-sm:items-stretch max-sm:gap-3" data-billing-signed-out>
-          <div className="text-[11px] text-textMuted">A plan belongs to an account. Sign in, or create one, and the plans are a press away.</div>
+          <div className="text-t11 text-textMuted">A plan belongs to an account. Sign in, or create one, and the plans are a press away.</div>
           <div className="shrink-0 flex items-center gap-2">
             <Door to="/signin?next=%2Fsettings%2Fbilling" tone="silver" testId="billing-sign-in">
               Sign in
@@ -731,15 +731,15 @@ const BillingLive = () => {
       <div className="px-5 py-4 border-t border-borderSubtle/60 flex items-center gap-6 flex-wrap" data-settings-plan={p.plan} data-plan-status={p.planStatus} data-settings-given={given ?? undefined}>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-3 flex-wrap">
-            <span className="text-[20px] font-semibold leading-tight text-textPrimary">{givenLeads ? lead.name : p.plan === 'none' ? 'No plan yet' : held.name}</span>
+            <span className="text-t20 font-semibold leading-tight text-textPrimary">{givenLeads ? lead.name : p.plan === 'none' ? 'No plan yet' : held.name}</span>
             {heldPrice && !givenLeads && (
-              <span className="font-mono text-[12px] tnum text-textSecondary">
+              <span className="font-mono text-t12 tnum text-textSecondary">
                 {heldPrice.price} {heldPrice.period}
               </span>
             )}
             {givenLeads ? <Tag tone="silver">with our thanks</Tag> : p.plan !== 'none' && <Tag tone="silver">{STATUS_WORD[p.planStatus]}</Tag>}
           </div>
-          <div className="mt-1 text-[11px] text-textMuted">
+          <div className="mt-1 text-t11 text-textMuted">
             {givenLeads
               ? `${lead.kicker} · given, with our thanks · until ${p.grantUntil ? fmtWhen(p.grantUntil) : '—'}${p.plan !== 'none' && stands ? ` · the ${held.name} you pay for stays` : ''}`
               : p.plan === 'none'
@@ -760,8 +760,8 @@ const BillingLive = () => {
       <div className="px-5 pb-4 border-t border-borderSubtle/60 pt-3" data-settings-row="plans">
         <div className="flex items-end justify-between gap-4 flex-wrap">
           <div>
-            <div className="text-[12px] text-textPrimary">Plans</div>
-            <div className="text-[11px] text-textMuted">Month to month, or a year at two months free — stopping at the end of the period paid for</div>
+            <div className="text-t12 text-textPrimary">Plans</div>
+            <div className="text-t11 text-textMuted">Month to month, or a year at two months free — stopping at the end of the period paid for</div>
           </div>
           <div data-billing-period={period}>
             <CardTabs<Period> options={PERIOD_TABS} value={period} onChange={setPeriod} ariaLabel="Billed" />
@@ -774,19 +774,19 @@ const BillingLive = () => {
             return (
               <div key={t.key} className={`rounded-md border p-3 flex flex-col gap-1 ${on ? 'border-silver/60 bg-ink/[0.02]' : 'border-borderSubtle'}`} data-settings-tier={t.key} data-on={on || undefined}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className={`text-[12px] ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>{t.name}</span>
+                  <span className={`text-t12 ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>{t.name}</span>
                   {on && (
                     <span className="inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-[3px] border bg-silverFill border-silverFill">
-                      <Check className="w-2.5 h-2.5 text-[#0a0a0a]" strokeWidth={3} />
+                      <Check className="w-2.5 h-2.5 text-onfoil" strokeWidth={3} />
                     </span>
                   )}
                 </div>
                 {/* the price rolls between the periods, as the landing's does */}
-                <div className="font-mono text-[14px] font-semibold tnum text-textPrimary">
+                <div className="font-mono text-t14 font-semibold tnum text-textPrimary">
                   {priced.amount != null ? <AnimatedNumber value={priced.amount} format={fmtDollars} /> : priced.price}
-                  <span className="text-[10px] font-normal text-textMuted"> {priced.period}</span>
+                  <span className="text-t10 font-normal text-textMuted"> {priced.period}</span>
                 </div>
-                <div className="text-[11px] text-textMuted">{priced.aMonth ?? t.kicker}</div>
+                <div className="text-t11 text-textMuted">{priced.aMonth ?? t.kicker}</div>
                 <div className="mt-2 h-7 flex items-center">
                   {on ? (
                     <Tag>your plan</Tag>
@@ -836,13 +836,13 @@ const BillingPreview = () => {
       <div className="px-5 py-4 border-t border-borderSubtle/60 flex items-center gap-6 flex-wrap" data-settings-plan={b.plan}>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-3 flex-wrap">
-            <span className="text-[20px] font-semibold leading-tight text-textPrimary">{plan.name}</span>
-            <span className="font-mono text-[12px] tnum text-textSecondary">
+            <span className="text-t20 font-semibold leading-tight text-textPrimary">{plan.name}</span>
+            <span className="font-mono text-t12 tnum text-textSecondary">
               {plan.price} {plan.period}
             </span>
             <Tag tone="silver">{SAMPLE_STATUS_WORD[b.status]}</Tag>
           </div>
-          <div className="mt-1 text-[11px] text-textMuted">
+          <div className="mt-1 text-t11 text-textMuted">
             {plan.kicker} · {b.status === 'canceled' ? 'ends' : 'renews'} {fmtDate(b.renewsOn)}
             {plan.monthly != null && ` · $${plan.monthly} then`}
           </div>
@@ -853,8 +853,8 @@ const BillingPreview = () => {
       </div>
       {/* THE TIERS — the landing's three, yours lit; up is Stripe's Checkout, down is the portal */}
       <div className="px-5 pb-4 border-t border-borderSubtle/60 pt-3" data-settings-row="plans">
-        <div className="text-[12px] text-textPrimary">Plans</div>
-        <div className="text-[11px] text-textMuted">Month to month, stopping at the end of the cycle</div>
+        <div className="text-t12 text-textPrimary">Plans</div>
+        <div className="text-t11 text-textMuted">Month to month, stopping at the end of the cycle</div>
         {/* as many columns as plans are sold — two while the Seat is off the page (data/billing.ts, 2026-10-05) */}
         <div className={`mt-3 grid ${PLANS.length >= 3 ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
           {PLANS.map(t => {
@@ -862,18 +862,18 @@ const BillingPreview = () => {
             return (
               <div key={t.key} className={`rounded-md border p-3 flex flex-col gap-1 ${on ? 'border-silver/60 bg-ink/[0.02]' : 'border-borderSubtle'}`} data-settings-tier={t.key} data-on={on || undefined}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className={`text-[12px] ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>{t.name}</span>
+                  <span className={`text-t12 ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>{t.name}</span>
                   {on && (
                     <span className="inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-[3px] border bg-silverFill border-silverFill">
-                      <Check className="w-2.5 h-2.5 text-[#0a0a0a]" strokeWidth={3} />
+                      <Check className="w-2.5 h-2.5 text-onfoil" strokeWidth={3} />
                     </span>
                   )}
                 </div>
-                <div className="font-mono text-[14px] font-semibold tnum text-textPrimary">
+                <div className="font-mono text-t14 font-semibold tnum text-textPrimary">
                   {t.price}
-                  <span className="text-[10px] font-normal text-textMuted"> {t.period}</span>
+                  <span className="text-t10 font-normal text-textMuted"> {t.period}</span>
                 </div>
-                <div className="text-[11px] text-textMuted">{t.kicker}</div>
+                <div className="text-t11 text-textMuted">{t.kicker}</div>
                 <div className="mt-2 h-7 flex items-center">
                   {on ? (
                     <Tag>your plan</Tag>
@@ -894,7 +894,7 @@ const BillingPreview = () => {
       </div>
       <Row name="Payment method" line="What Stripe holds — changed on its portal, never typed here" testId="card">
         {b.card ? (
-          <span className="inline-flex items-center gap-2 font-mono text-[11px] text-textPrimary">
+          <span className="inline-flex items-center gap-2 font-mono text-t11 text-textPrimary">
             <CreditCard className="w-3.5 h-3.5 text-textMuted" />
             {b.card.brand} •••• {b.card.last4}
             <span className="text-textMuted tnum">
@@ -902,7 +902,7 @@ const BillingPreview = () => {
             </span>
           </span>
         ) : (
-          <span className="font-mono text-[11px] text-textMuted">No card on file</span>
+          <span className="font-mono text-t11 text-textMuted">No card on file</span>
         )}
         <Door title="Opens Stripe's portal on the card" testId="update-card">
           Update
@@ -910,20 +910,20 @@ const BillingPreview = () => {
       </Row>
       {/* THE INVOICES — every charge, its receipt from Stripe */}
       <div className="px-5 py-3 border-t border-borderSubtle/60" data-settings-row="invoices">
-        <div className="text-[12px] text-textPrimary">Invoices</div>
-        <div className="text-[11px] text-textMuted">Every charge, with its receipt</div>
+        <div className="text-t12 text-textPrimary">Invoices</div>
+        <div className="text-t11 text-textMuted">Every charge, with its receipt</div>
         <table className="mt-2 w-full">
           <tbody>
             {b.invoices.map(inv => (
               <tr key={inv.id} className="h-8 border-t border-borderSubtle/40 first:border-t-0" data-settings-invoice={inv.id}>
-                <td className="font-mono text-[11px] tnum text-textPrimary">{fmtDate(inv.date)}</td>
-                <td className="font-mono text-[11px] text-textSecondary">{planOf(inv.plan).name}</td>
-                <td className="font-mono text-[11px] tnum text-textPrimary text-right">${inv.amount.toFixed(2)}</td>
+                <td className="font-mono text-t11 tnum text-textPrimary">{fmtDate(inv.date)}</td>
+                <td className="font-mono text-t11 text-textSecondary">{planOf(inv.plan).name}</td>
+                <td className="font-mono text-t11 tnum text-textPrimary text-right">${inv.amount.toFixed(2)}</td>
                 <td className="text-right">
                   <Tag>{inv.status}</Tag>
                 </td>
                 <td className="text-right w-16">
-                  <button type="button" className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors" title="The receipt, from Stripe">
+                  <button type="button" className="inline-flex items-center gap-1 font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors" title="The receipt, from Stripe">
                     <FileText className="w-3 h-3" /> PDF
                   </button>
                 </td>
@@ -1002,8 +1002,8 @@ const DataBox = () => {
     <Section id="data" title="Data" line="What's yours on this machine — the board, the marks, the alerts, the desks, these settings — and where the feed stands" aside={<Tag>preview · the feed is simulated</Tag>}>
       <Row name="The feed" line="Live options and quotes, the tape and the record — delayed while a payment is due" testId="feed">
         <span className="inline-flex items-center gap-2">
-          <span className="tone-live rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest font-semibold">live</span>
-          <span className="font-mono text-[11px] text-textMuted">every tick · the book every 10 seconds</span>
+          <span className="tone-live rounded-full border px-2 py-0.5 font-mono text-t9 uppercase tracking-widest font-semibold">live</span>
+          <span className="font-mono text-t11 text-textMuted">every tick · the book every 10 seconds</span>
         </span>
       </Row>
       <Row name="Your board, marks and settings" line="A file of everything kept here, to carry to another machine or keep safe · scripts stay in the library" testId="carry">
@@ -1018,7 +1018,7 @@ const DataBox = () => {
           }}
           data-settings-import-input
         />
-        {note && <span className="font-mono text-[10px] text-textMuted">{note}</span>}
+        {note && <span className="font-mono text-t10 text-textMuted">{note}</span>}
         <Door onClick={exportLocal} title="Downloads a file of what is kept here" testId="export">
           <Download className="w-3 h-3" /> Export
         </Door>
@@ -1027,16 +1027,16 @@ const DataBox = () => {
         </Door>
       </Row>
       <Row name="On this machine" line="What this browser holds for the terminal — cleared, it starts as new, the account untouched" testId="storage">
-        <span className="font-mono text-[11px] tnum text-textPrimary" data-settings-bytes={bytes}>
+        <span className="font-mono text-t11 tnum text-textPrimary" data-settings-bytes={bytes}>
           {fmtBytes(bytes)}
         </span>
         <Door tone="bear" onClick={() => setConfirm(true)} title="Asks first" testId="clear">
           <Trash2 className="w-3 h-3" /> Clear
         </Door>
       </Row>
-      <Modal open={confirm} onClose={() => setConfirm(false)} ariaLabel="Clear this machine's data" header={<span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">Clear this machine's data?</span>} widthClass="max-w-[460px]">
-        <p className="text-[12px] text-textPrimary">The board, the marks, the alerts, the desks, these settings and the sample account go. The theme stays; the scripts in the library stay.</p>
-        <p className="text-[11px] text-textMuted">Export first if any of it should come back.</p>
+      <Modal open={confirm} onClose={() => setConfirm(false)} ariaLabel="Clear this machine's data" header={<span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">Clear this machine's data?</span>} widthClass="max-w-[460px]">
+        <p className="text-t12 text-textPrimary">The board, the marks, the alerts, the desks, these settings and the sample account go. The theme stays; the scripts in the library stay.</p>
+        <p className="text-t11 text-textMuted">Export first if any of it should come back.</p>
         <div className="flex items-center justify-end gap-2">
           <Door onClick={() => setConfirm(false)} testId="clear-cancel">
             Keep it
@@ -1066,7 +1066,7 @@ const AboutBox = () => {
         <Mark size={40} />
         <div className="min-w-0">
           <Wordmark height={13} label="" />
-          <div className="mt-0.5 font-mono text-[11px] tnum text-textMuted">
+          <div className="mt-0.5 font-mono text-t11 tnum text-textMuted">
             v{VERSION} · {import.meta.env.MODE}
           </div>
         </div>
@@ -1084,8 +1084,8 @@ const AboutBox = () => {
         data-settings-row="licences"
       >
         <div>
-          <div className="text-[12px] text-textPrimary">Open-source licences</div>
-          <div className="text-[11px] text-textMuted">Whose work the terminal stands on</div>
+          <div className="text-t12 text-textPrimary">Open-source licences</div>
+          <div className="text-t11 text-textMuted">Whose work the terminal stands on</div>
         </div>
         <ChevronDown className={`w-3.5 h-3.5 text-textMuted shrink-0 transition-transform duration-200 ${licences ? 'rotate-180' : ''}`} />
       </button>
@@ -1132,27 +1132,27 @@ const Settings = () => {
         <div className="min-w-0 flex-1">
           <div className="h-6 flex items-center gap-2.5" data-shell-page>
             <Mark />
-            <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">Settings</h1>
+            <h1 className="text-t15 font-semibold leading-tight text-textPrimary">Settings</h1>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Your account and plan, how the terminal looks, what the desk opens on</p>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">Your account and plan, how the terminal looks, what the desk opens on</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2" data-shell-facts>
           <div className="min-w-0">
-            <dt className="text-[10px] text-textMuted whitespace-nowrap">Plan</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-settings-plan-fact={plan.key}>
+            <dt className="text-t10 text-textMuted whitespace-nowrap">Plan</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-settings-plan-fact={plan.key}>
               {plan.name}
             </dd>
           </div>
           <div className="min-w-0">
-            <dt className="text-[10px] text-textMuted whitespace-nowrap">Theme</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-settings-theme={theme}>
+            <dt className="text-t10 text-textMuted whitespace-nowrap">Theme</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-settings-theme={theme}>
               {THEME_WORDS[choice][0]}
               {choice === 'system' && <span className="text-textMuted"> · {theme}</span>}
             </dd>
           </div>
           <div className="min-w-0">
-            <dt className="text-[10px] text-textMuted whitespace-nowrap">Saved</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">as you go</dd>
+            <dt className="text-t10 text-textMuted whitespace-nowrap">Saved</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">as you go</dd>
           </div>
         </dl>
       </header>
@@ -1178,7 +1178,7 @@ const Settings = () => {
                 key={s.id}
                 to={`/settings/${s.id}`}
                 aria-current={on ? 'page' : undefined}
-                className={`flex items-center gap-2 px-2.5 h-8 rounded-md text-[12px] transition-colors text-left ${
+                className={`flex items-center gap-2 px-2.5 h-8 rounded-md text-t12 transition-colors text-left ${
                   on ? 'bg-ink/[0.05] text-textPrimary' : s.soon ? 'text-textMuted hover:text-textSecondary' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.03]'
                 } ${s.gap ? 'xl:mt-2' : ''}`}
                 data-settings-nav={s.id}
@@ -1213,10 +1213,10 @@ const Settings = () => {
               </div>
             </div>
             <div className="px-5 pb-4 border-t border-borderSubtle/60 pt-3" data-settings-row="colour-vision">
-              <div className="text-[12px] text-textPrimary" id="cvd-head">
+              <div className="text-t12 text-textPrimary" id="cvd-head">
                 Direction colours
               </div>
-              <div className="text-[11px] text-textMuted">What up and down are drawn in — and, in high contrast, how strongly the quieter words stand — on every page and chart</div>
+              <div className="text-t11 text-textMuted">What up and down are drawn in — and, in high contrast, how strongly the quieter words stand — on every page and chart</div>
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3" role="group" aria-labelledby="cvd-head">
                 {CVD_CHOICES.map(c => (
                   <CvdTile key={c} choice={c} current={cvd} />
@@ -1275,16 +1275,16 @@ const Settings = () => {
             {KEY_GROUPS.map(g => (
               <Fragment key={g.where}>
                 {/* THE GROUP'S NAME — a whisper head over its rows, the house's section label */}
-                <div className="px-5 pt-3 pb-1.5 border-t border-borderSubtle/60 font-mono text-[9px] leading-[13px] uppercase tracking-widest text-textMuted" data-settings-key-group={g.where}>
+                <div className="px-5 pt-3 pb-1.5 border-t border-borderSubtle/60 font-mono text-t9 leading-[13px] uppercase tracking-widest text-textMuted" data-settings-key-group={g.where}>
                   {g.where}
                 </div>
                 {g.keys.map(s => (
                   <div key={s.does} className="px-5 py-2.5 border-t border-borderSubtle/60 flex items-center justify-between gap-6" data-settings-key>
-                    <span className="text-[12px] text-textSecondary">{s.does}</span>
+                    <span className="text-t12 text-textSecondary">{s.does}</span>
                     <span className="inline-flex items-center gap-1 shrink-0">
                       {s.keys.map((k, i) => (
                         <span key={k} className="inline-flex items-center gap-1">
-                          {i > 0 && <span className="text-[10px] text-textMuted">{s.alt ? '/' : '+'}</span>}
+                          {i > 0 && <span className="text-t10 text-textMuted">{s.alt ? '/' : '+'}</span>}
                           <Key>{k}</Key>
                         </span>
                       ))}

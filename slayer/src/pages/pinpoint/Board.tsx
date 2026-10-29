@@ -119,7 +119,7 @@ const RemoveName = ({ ticker, remove }: { ticker: string; remove: (t: string) =>
 /* TODAY'S STRIKES NOT IN YET (the ship pass, 2026-10-22): until a name's front-date chain lands, its "Today" levels
    would be the whole book's — the cells say they are loading instead of printing the wrong book */
 const Pending = ({ data }: { data: BoardRow }) => (
-  <span className="font-mono text-[11px] text-textMuted" title={data.scope === 'ALL' ? `Still loading every expiry's contracts on ${data.ticker}` : `Still loading ${data.ticker}'s front expiry`} data-board-pending>
+  <span className="font-mono text-t11 text-textMuted" title={data.scope === 'ALL' ? `Still loading every expiry's contracts on ${data.ticker}` : `Still loading ${data.ticker}'s front expiry`} data-board-pending>
     …
   </span>
 );
@@ -128,7 +128,7 @@ const NameCell = ({ data, context }: ICellRendererParams<BoardRow, unknown, Boar
   data ? (
     <span className="flex items-center gap-2 font-mono w-full">
       <CompanyLogo ticker={data.ticker} size={16} />
-      <span className="text-[12px] font-bold text-textPrimary">{data.ticker}</span>
+      <span className="text-t12 font-bold text-textPrimary">{data.ticker}</span>
       {context?.remove && <RemoveName ticker={data.ticker} remove={context.remove} />}
     </span>
   ) : null;
@@ -139,16 +139,16 @@ const DayChange = ({ data, compact = false, lead = false, extOnly = false }: { d
   const w = dayMoveWords(data.day);
   if (!w) return null;
   const main = data.day?.dayPct;
-  if (extOnly) return w.ext ? <span className="font-mono text-[10px] text-textMuted whitespace-nowrap" title={w.title}>{w.ext}</span> : null;
+  if (extOnly) return w.ext ? <span className="font-mono text-t10 text-textMuted whitespace-nowrap" title={w.title}>{w.ext}</span> : null;
   if (lead)
     return (
-      <span className={`inline-flex items-baseline gap-1.5 font-mono ${compact ? 'text-[11px]' : 'text-[10px]'} whitespace-nowrap`} title={w.title} data-day-change>
+      <span className={`inline-flex items-baseline gap-1.5 font-mono ${compact ? 'text-t11' : 'text-t10'} whitespace-nowrap`} title={w.title} data-day-change>
         <span style={{ color: changeInk(main) }}>{w.main}</span>
         {w.when && <span className="text-textMuted">{w.when}</span>}
       </span>
     );
   return (
-    <span className={`inline-flex items-baseline gap-1.5 font-mono ${compact ? 'text-[11px]' : 'text-[10px]'} whitespace-nowrap`} title={w.title} data-day-change>
+    <span className={`inline-flex items-baseline gap-1.5 font-mono ${compact ? 'text-t11' : 'text-t10'} whitespace-nowrap`} title={w.title} data-day-change>
       <span style={{ color: changeInk(main) }}>{w.main}</span>
       {w.when && <span className="text-textMuted">{w.when}</span>}
       {w.ext && <span className="text-textMuted">· {w.ext}</span>}
@@ -164,14 +164,14 @@ const SpotCell = ({ data }: ICellRendererParams<BoardRow>) => {
   return (
     /* TWO LINES OUTSIDE THE SESSION (the sixth audit's m11: the key columns cut at 1440): the price and the day's change,
        then the pre-market or after-hours move under them — the words stay whole, the column narrows */
-    <TickFigure value={data.spot} title={ext ? `${data.spot.toFixed(2)} regular close · ${ext.price.toFixed(2)} ${ext.word}. The levels, and every distance here, are read at the close` : undefined} className="flex flex-col justify-center leading-[14px] font-mono text-[12px]">
+    <TickFigure value={data.spot} title={ext ? `${data.spot.toFixed(2)} regular close · ${ext.price.toFixed(2)} ${ext.word}. The levels, and every distance here, are read at the close` : undefined} className="flex flex-col justify-center leading-[14px] font-mono text-t12">
       <span className="inline-flex items-baseline gap-2 whitespace-nowrap">
         <span className="text-textPrimary">${data.spot.toFixed(2)}</span>
         <DayChange data={data} lead />
       </span>
       {/* THE PRICE'S OWN TIME (the ninth audit's m2) — when the price was printed, not when the board was built */}
       {!ext && data.priceAt != null && (
-        <span className="text-[10px] text-textMuted tnum whitespace-nowrap" title={`The price as printed at ${nyClock(data.priceAt, { seconds: true, zone: true})} — ${sessionDay().open ? 'the board refreshes prices every 10s and the levels every 90s' : `the levels and the prices are ${cadenceWords()}`}`} data-price-at={data.priceAt}>
+        <span className="text-t10 text-textMuted tnum whitespace-nowrap" title={`The price as printed at ${nyClock(data.priceAt, { seconds: true, zone: true})} — ${sessionDay().open ? 'the board refreshes prices every 10s and the levels every 90s' : `the levels and the prices are ${cadenceWords()}`}`} data-price-at={data.priceAt}>
           as of {nyClock(data.priceAt)}
         </span>
       )}
@@ -182,9 +182,9 @@ const SpotCell = ({ data }: ICellRendererParams<BoardRow>) => {
 
 const YoursCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
-  if (!data.yours.positions) return <span className="font-mono text-[10px] text-textMuted">—</span>;
+  if (!data.yours.positions) return <span className="font-mono text-t10 text-textMuted">—</span>;
   return (
-    <span className="font-mono text-[11px] tnum tabular-nums text-silver">
+    <span className="font-mono text-t11 tnum tabular-nums text-silver">
       {data.yours.contracts} contract{data.yours.contracts === 1 ? '' : 's'} · {data.yours.positions} position{data.yours.positions === 1 ? '' : 's'}
     </span>
   );
@@ -198,7 +198,7 @@ const ExpiryMark = ({ data }: { data: BoardRow }) => {
   const word = data.scope === 'ALL' ? 'all expiries' : dated && !dayWordOf(dated) ? (expirySpan([dated]) ?? dated) : null;
   if (!word) return null;
   return (
-    <span className="block font-mono text-[9px] leading-[11px] font-normal text-textMuted whitespace-nowrap" title={data.scope === 'ALL' ? `${data.ticker} is read off every listed expiry` : `${data.ticker} has no contracts expiring ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'} — this column reads its nearest expiry, ${word}`} data-board-expiry={data.scope === 'ALL' ? 'ALL' : dated}>
+    <span className="block font-mono text-t9 leading-[11px] font-normal text-textMuted whitespace-nowrap" title={data.scope === 'ALL' ? `${data.ticker} is read off every listed expiry` : `${data.ticker} has no contracts expiring ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'} — this column reads its nearest expiry, ${word}`} data-board-expiry={data.scope === 'ALL' ? 'ALL' : dated}>
       {word}
     </span>
   );
@@ -207,14 +207,14 @@ const ExpiryMark = ({ data }: { data: BoardRow }) => {
 const RegimeCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
   if (data.pending) return <Pending data={data} />;
-  if (!data.regime) return <span className="font-mono text-[10px] text-textMuted">balanced</span>;
+  if (!data.regime) return <span className="font-mono text-t10 text-textMuted">balanced</span>;
   const w = REGIME_WORDS[data.regime];
   /* a hair either side of the flip is neither regime (data/gex.ts readHeatPattern's AT_FLIP, 0.05%) */
-  if (data.flipDistPct != null && Math.abs(data.flipDistPct) < 0.05) return <span className="font-mono text-[11px] text-textSecondary" title="Price is on the flip — dealer hedging can tip either way">on the flip</span>;
+  if (data.flipDistPct != null && Math.abs(data.flipDistPct) < 0.05) return <span className="font-mono text-t11 text-textSecondary" title="Price is on the flip — dealer hedging can tip either way">on the flip</span>;
   /* The shell's words, not "LONG GAMMA" (2026-09-09): plain English on Pinpoint */
   return (
-    <span className="inline-flex flex-col justify-center leading-[14px] font-mono text-[11px] tnum tabular-nums" style={{ color: data.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }} title={`${w.label.toLowerCase()} — ${w.blurb}${data.flip != null ? `; the flip at ${fmtStrike(data.flip)} is where that changes` : '; no flip within ±10%'}`}>
-      {data.regime === 'SHORT' ? 'amplifies' : 'absorbs'}
+    <span className="inline-flex flex-col justify-center leading-[14px] font-mono text-t11 tnum tabular-nums" style={{ color: data.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }} title={`${w.label.toLowerCase()} — ${w.blurb}${data.flip != null ? `; the flip at ${fmtStrike(data.flip)} is where that changes` : '; no flip within ±10%'}`}>
+      {data.regime === 'SHORT' ? 'amplifying moves' : 'absorbing moves'}
       <ExpiryMark data={data} />
     </span>
   );
@@ -225,13 +225,13 @@ const FlipCell = ({ data }: ICellRendererParams<BoardRow>) =>
     <Pending data={data} />
   ) : data && data.flip != null ? (
     <TickFigure value={data.flip} className="inline-flex items-baseline gap-2 font-mono">
-      <span className="text-[11px] font-semibold" style={{ color: FLIP }}>
+      <span className="text-t11 font-semibold" style={{ color: FLIP }}>
         {fmtStrike(data.flip)}
       </span>
-      {data.flipDistPct != null && <span className="text-[10px] text-textSecondary"><Dist ticker={data.ticker} spot={data.spot} pct={data.flipDistPct} /></span>}
+      {data.flipDistPct != null && <span className="text-t10 text-textSecondary"><Dist ticker={data.ticker} spot={data.spot} pct={data.flipDistPct} /></span>}
     </TickFigure>
   ) : data ? (
-    <span className="font-mono text-[10px] text-textMuted" title={`No flip within ±10%: dealers are ${data.regime === 'LONG' ? 'long' : 'short'} gamma across the whole range`}>
+    <span className="font-mono text-t10 text-textMuted" title={`No flip within ±10%: dealers are ${data.regime === 'LONG' ? 'long' : 'short'} gamma across the whole range`}>
       none nearby
     </span>
   ) : null;
@@ -265,7 +265,7 @@ const WallCell = ({ data }: ICellRendererParams<BoardRow>) => {
     ...(roles.includes('supreme') ? ['Supreme: the strike with the most hedging of all — price is drawn to it near expiry.'] : []),
   ].join('\n');
   const label = (
-    <span className="text-[9px] font-bold uppercase tracking-wide leading-[11px] whitespace-normal" title={placeWords}>
+    <span className="text-t9 font-bold uppercase tracking-wide leading-[11px] whitespace-normal" title={placeWords}>
       {/* both walls on one strike read "call & put wall" — the three roles fit the column at 1440 (the ninth audit) */}
       {shortRoles(roles).map((r, i) => (
         <span key={r} style={{ color: ink(r === 'call & put wall' ? 'call wall' : r) }}>
@@ -277,8 +277,8 @@ const WallCell = ({ data }: ICellRendererParams<BoardRow>) => {
   );
   const figs = (
     <span className="inline-flex items-baseline gap-2 whitespace-nowrap" title={placeWords}>
-      <span className="text-[11px] font-semibold text-textPrimary">{fmtStrike(data.nearest.strike)}</span>
-      <span className="text-[10px] text-textSecondary"><Dist ticker={data.ticker} spot={data.spot} pct={data.nearest.distPct} /></span>
+      <span className="text-t11 font-semibold text-textPrimary">{fmtStrike(data.nearest.strike)}</span>
+      <span className="text-t10 text-textSecondary"><Dist ticker={data.ticker} spot={data.spot} pct={data.nearest.distPct} /></span>
     </span>
   );
   /* always two lines — the role words, then the strike and how far — so nothing cuts at 1440 (the sixth audit's m11) */
@@ -295,7 +295,7 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
   if (data.pending) return <Pending data={data} />;
   const w = data.watch;
-  if (!w) return <span className="font-mono text-[10px] text-textMuted">—</span>;
+  if (!w) return <span className="font-mono text-t10 text-textMuted">—</span>;
   /* every level the strike is, in the one order (the sixth audit's m5) */
   /* ONE CLASSIFIER, THE AGENDA'S (the eighth audit's M1: 759 "TRAPDOOR" here, "too thin to be a trapdoor" on the Agenda) */
   const kind = strikeTag(w);
@@ -304,14 +304,14 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
   return (
     <span className="flex flex-col justify-center leading-[14px] font-mono tnum tabular-nums min-w-0">
       <span className="inline-flex items-baseline gap-2">
-        <span className="text-[11px] font-semibold text-textPrimary">{fmtStrike(w.strike)}</span>
+        <span className="text-t11 font-semibold text-textPrimary">{fmtStrike(w.strike)}</span>
         {kind && (
-          <span className="text-[8px] uppercase tracking-wide leading-[10px] whitespace-normal" style={{ color: ink }} title={kindTip(w.roles?.[0] ?? kind)}>
+          <span className="text-t8 uppercase tracking-wide leading-[10px] whitespace-normal" style={{ color: ink }} title={kindTip(w.roles?.[0] ?? kind)}>
             {w.roles?.length ? shortRoles(w.roles).join(' · ') : kind}
           </span>
         )}
       </span>
-      <span className="text-[10px] leading-[12px] text-textSecondary whitespace-normal">
+      <span className="text-t10 leading-[12px] text-textSecondary whitespace-normal">
         {/* a strike the session already traded through is reached, not a chance (the eighth audit) */}
         {w.atPrice ? 'at price' : w.today ? <span title={`Today's session has already traded through ${fmtStrike(w.strike)}${w.today.tests != null ? ` — ${todayWords(w.today)}` : ''}; ${chanceLabel(w.reach)} to touch it again`}>reached today</span> : `${chanceLabel(w.reach)} ${w.horizon ? `reached ${w.horizon}` : 'reached'}`}
         {w.isShelf && (
@@ -330,7 +330,7 @@ const SupremeCell = ({ data }: ICellRendererParams<BoardRow>) =>
   data?.pending ? (
     <Pending data={data} />
   ) : data ? (
-    <span className="inline-flex flex-col justify-center leading-[14px] font-mono text-[11px] font-bold tnum tabular-nums" style={{ color: SUPREME }}>
+    <span className="inline-flex flex-col justify-center leading-[14px] font-mono text-t11 font-bold tnum tabular-nums" style={{ color: SUPREME }}>
       {fmtStrike(data.supreme)}
       <ExpiryMark data={data} />
     </span>
@@ -344,7 +344,7 @@ const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
   data?.pending ? (
     <Pending data={data} />
   ) : data ? (
-    <TickFigure value={data.netGex} title={netGexTitle(data.netGex, data.regime)} className={`inline-flex flex-col justify-center leading-[14px] font-mono text-[11px] font-semibold ${data.netGex > 0 ? 'text-bull' : data.netGex < 0 ? 'text-bear' : 'text-textMuted'}`}>
+    <TickFigure value={data.netGex} title={netGexTitle(data.netGex, data.regime)} className={`inline-flex flex-col justify-center leading-[14px] font-mono text-t11 font-semibold ${data.netGex > 0 ? 'text-bull' : data.netGex < 0 ? 'text-bear' : 'text-textMuted'}`}>
       <span>
         {data.netGex > 0 ? '+' : ''}
         {fmtUsd(data.netGex)}
@@ -356,14 +356,14 @@ const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
 const BellCell = ({ data }: ICellRendererParams<BoardRow>) =>
   !data ? null : data.bellShare != null ? (
     <span className="inline-flex items-center gap-2 font-mono tnum tabular-nums w-full" title={`${data.bellShare}% — ${bellDay().tip(data.ticker)}`}>
-      <span className="text-[11px] text-textPrimary w-8 text-right">{data.bellShare}%</span>
+      <span className="text-t11 text-textPrimary w-8 text-right">{data.bellShare}%</span>
       <span className="flex-1 h-[3px] rounded-full bg-ink/[0.06] overflow-hidden">
         <span className="block h-full rounded-full" style={{ width: `${data.bellShare}%`, background: SUPREME, opacity: 0.7 }} />
       </span>
     </span>
   ) : (
     data.bellWhy === 'none' ? (
-      <span className="inline-block whitespace-normal leading-[13px] font-mono text-[10px] text-textMuted" title={BELL_NONE_TITLE(data.ticker)}>
+      <span className="inline-block whitespace-normal leading-[13px] font-mono text-t10 text-textMuted" title={BELL_NONE_TITLE(data.ticker)}>
         {bellNone()}
       </span>
     ) : (
@@ -376,7 +376,7 @@ const CrossCell = ({ data }: ICellRendererParams<BoardRow>) =>
     <Pending data={data} />
   ) : data ? (
     <span
-      className="font-mono text-[11px] tnum tabular-nums text-textSecondary"
+      className="font-mono text-t11 tnum tabular-nums text-textSecondary"
       title={data.crossWhy ?? `${recordPossessive().replace(/^t/, 'T')} session against ${data.crossFlip != null ? `the ${fmtStrike(data.crossFlip)} flip of ` : ''}${data.crossLabel}`}
     >
       {data.crossWhy ? (data.crossWhy.startsWith('The session has not opened') ? 'opens 9:30' : 'not available') : data.crossings == null ? (data.crossEarly ? 'counts from 9:40' : '—') : data.crossFlip == null ? 'no flip' : `crossed ${data.crossings}×`}
@@ -385,7 +385,7 @@ const CrossCell = ({ data }: ICellRendererParams<BoardRow>) =>
 
 /** The session's closes as one quiet line — the day's shape, not a chart */
 const SparkCell = ({ data }: ICellRendererParams<BoardRow>) => {
-  if (!data || data.spark.length < 2) return <span className="font-mono text-[10px] text-textMuted">—</span>;
+  if (!data || data.spark.length < 2) return <span className="font-mono text-t10 text-textMuted">—</span>;
   const W = 56;
   const H = 26;
   const min = Math.min(...data.spark);
@@ -405,7 +405,7 @@ const SparkCell = ({ data }: ICellRendererParams<BoardRow>) => {
    price and the day's change, the regime, the flip and how far, the nearest wall, the supreme, net GEX. */
 const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: string) => void; onRemove: (t: string) => void }) => {
   const label = (t: string, title?: string) => (
-    <span className="text-[9px] uppercase tracking-widest text-textMuted" title={title}>
+    <span className="text-t9 uppercase tracking-widest text-textMuted" title={title}>
       {t}
     </span>
   );
@@ -427,8 +427,8 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
         <CompanyLogo ticker={row.ticker} size={18} />
         {/* the day's change wraps under the price rather than cut (the seventh audit's retail finding: "pre-market +") */}
         <span className="min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="text-[13px] font-bold text-textPrimary">{row.ticker}</span>
-          <span className="text-[13px] text-textPrimary tnum">${row.spot.toFixed(2)}</span>
+          <span className="text-t13 font-bold text-textPrimary">{row.ticker}</span>
+          <span className="text-t13 text-textPrimary tnum">${row.spot.toFixed(2)}</span>
           <span className="min-w-0">
             <DayChange data={row} compact />
           </span>
@@ -447,12 +447,12 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
         </button>
       </div>
       {row.pending ? (
-        <div className="mt-1 text-[11px] text-textMuted">Reading the levels…</div>
+        <div className="mt-1 text-t11 text-textMuted">Reading the levels…</div>
       ) : (
-        <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] tnum">
+        <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-t11 tnum">
           <div className="flex flex-col min-w-0">
             {label('Hedging', 'What dealer hedging does at the current price')}
-            <span style={{ color: row.regime === 'SHORT' ? SHORT_GAMMA : row.regime === 'LONG' ? LONG_GAMMA : undefined }} className="truncate">
+            <span style={{ color: row.regime === 'SHORT' ? SHORT_GAMMA : row.regime === 'LONG' ? LONG_GAMMA : undefined }} className="whitespace-normal break-words">
               {row.regime === 'SHORT' ? 'amplifying moves' : row.regime === 'LONG' ? 'absorbing moves' : 'balanced'}
             </span>
           </div>
@@ -484,7 +484,7 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
               <span>
                 <span className="font-semibold text-textPrimary">{fmtStrike(row.nearest.strike)}</span> <span className="text-textSecondary"><Dist ticker={row.ticker} spot={row.spot} pct={row.nearest.distPct} /></span>
               </span>
-              <span className="text-[9px] font-bold uppercase tracking-wider leading-tight flex flex-wrap gap-x-1">
+              <span className="text-t9 font-bold uppercase tracking-wider leading-tight flex flex-wrap gap-x-1">
                 {levelRoles(row.nearest.strike, { supreme: row.supreme, callWall: row.callWall, putWall: row.putWall }).map((r, i) => (
                   <span key={r} style={{ color: r === 'supreme' ? SUPREME : r === 'call wall' ? CALL_WALL : PUT_WALL }}>
                     {i > 0 && <span className="text-textMuted">· </span>}
@@ -631,7 +631,7 @@ const Board = () => {
     const cols: ColDef<BoardRow>[] = [
       { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 100, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
       { headerName: 'Price', field: 'spot', flex: 0.9, minWidth: 108, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: todayScopeLabel() === 'Today' ? "The last price and today's change" : "The regular-session close — the price the levels were read at, and every distance on the board is measured from it — and the session's change; the after-hours move is beside it, labelled" },
-      { headerName: 'Hedging', field: 'regime', flex: 0.6, minWidth: 82, cellRenderer: RegimeCell, headerTooltip: "What dealer hedging is doing at the current price on this name's own levels. The word under it says today or all expiries. Positive net GEX absorbs; negative amplifies. The flip is where that changes." },
+      { headerName: 'Hedging', field: 'regime', flex: 0.8, minWidth: 156, cellRenderer: RegimeCell, headerTooltip: "What dealer hedging is doing at the current price on this name's own levels. The word under it says today or all expiries. Positive net GEX absorbs; negative amplifies. The flip is where that changes." },
       { headerName: 'Net GEX', field: 'netGex', flex: 0.7, minWidth: 84, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: "Net GEX on this name's own levels, dollars per 1% move. Each name can be today or every expiry." },
       {
         headerName: 'Flip · how far',
@@ -668,7 +668,7 @@ const Board = () => {
       },
       { headerName: bellDay().head, field: 'bellShare', flex: 0.7, minWidth: 82, cellRenderer: BellCell, headerTooltip: `${bellDay().tip("the name")}. A dash means nothing on the name expires that day` },
       /* THE SESSION ON RECORD, NAMED (the fifth audit, 2026-10-23): before today's open these are the last session's */
-      { headerName: recordDay().isToday ? 'Flip crossed today' : `Flip crossed · ${longDay(recordDay().date)}`, field: 'crossings', flex: 0.6, minWidth: 92, cellRenderer: CrossCell, headerTooltip: `How many times price crossed the flip in ${recordPossessive()} session: one-minute closes changing side of it — the same count the Map's report prints on its flip row ("crossed N×"). The flip is the one of the contracts that were live in that session (after the close, or before the next open, that session's own book, not the next session's). The more crossings, the less either side of it means` },
+      { headerName: recordDay().isToday ? 'Flip crossed today' : `Flip crossed · ${longDay(recordDay().date)}`, field: 'crossings', flex: 0.9, minWidth: 168, cellRenderer: CrossCell, headerTooltip: `How many times price crossed the flip in ${recordPossessive()} session: one-minute closes changing side of it — the same count the Map's report prints on its flip row ("crossed N×"). The flip is the one of the contracts that were live in that session (after the close, or before the next open, that session's own book, not the next session's). The more crossings, the less either side of it means` },
       { headerName: recordDay().isToday ? (recordDay().done ? 'Today' : 'Today so far') : longDay(recordDay().date), field: 'spark', flex: 0.5, minWidth: 80, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: recordDay().isToday ? 'The price path since the open' : `The price path through ${longDay(recordDay().date)}'s session` },
       {
         headerName: 'Your positions',
@@ -691,7 +691,7 @@ const Board = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phone, recKey, anyMine]);
   /* a long head ("Supreme · all exp.", "Net GEX · today") wraps to two lines rather than cut (the sixth audit's m11) */
-  const defaultColDef = useMemo<ColDef<BoardRow>>(() => ({ sortable: true, resizable: true, suppressMovable: true, headerClass: 'bg-chip', wrapHeaderText: true, autoHeaderHeight: true }), []);
+  const defaultColDef = useMemo<ColDef<BoardRow>>(() => ({ sortable: true, resizable: true, suppressMovable: true, headerClass: 'bg-chip', wrapHeaderText: true, autoHeaderHeight: true, wrapText: true, autoHeight: true }), []);
 
   const open = (e: RowClickedEvent<BoardRow>) => {
     if (!e.data) return;
@@ -725,9 +725,9 @@ const Board = () => {
        at its foot and empty page under it. Every name shows; the page scrolls, never the grid. */
     <div className="border border-borderSubtle rounded-md overflow-clip flex flex-col" data-board>
       <div className="shrink-0 flex items-center gap-3 flex-wrap px-2 py-1.5 bg-panel border-b border-borderSubtle/70" data-board-toolbar>
-        <span className="font-mono text-[9px] uppercase tracking-widest text-textSecondary">The names on your board</span>
+        <span className="font-mono text-t9 uppercase tracking-widest text-textSecondary">The names on your board</span>
         <StaleMark at={bookAt} ttlMs={BOARD_TTL_MS} fault={bookDown ? 'failed' : null} />
-        <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted tnum tabular-nums" data-board-count>
+        <span className="font-mono text-t9 uppercase tracking-widest text-textMuted tnum tabular-nums" data-board-count>
           {rows.length < names.length ? `${rows.length} of ${names.length} in · ${names.length - rows.length} still loading` : `${names.length} names`} · closest to its flip (as a % of price) first · click a name to open it on the map
         </span>
         <input
@@ -750,7 +750,7 @@ const Board = () => {
             data-board-add
           >
             <Plus className="w-3 h-3 text-textMuted" />
-            <span className="text-[11px] font-semibold text-textPrimary">Add a name</span>
+            <span className="text-t11 font-semibold text-textPrimary">Add a name</span>
           </button>
           {adding &&
             addPlaced &&
@@ -763,7 +763,7 @@ const Board = () => {
                 className="z-[120] w-72 border border-borderMuted bg-panel/80 backdrop-blur-xl backdrop-saturate-150 rounded-md shadow-2xl shadow-black/60 overflow-x-hidden overflow-y-auto overscroll-contain animate-slide-in"
                 data-board-add-menu
               >
-                <div className="px-2.5 py-1.5 border-b border-borderSubtle text-[10px] text-textMuted">Add a name to the board — it stays until you take it off</div>
+                <div className="px-2.5 py-1.5 border-b border-borderSubtle text-t10 text-textMuted">Add a name to the board — it stays until you take it off</div>
                 <TickerLookup
                   onPick={sym => {
                     addBoardName(sym);
@@ -777,13 +777,13 @@ const Board = () => {
               document.body
             )}
         </span>
-        <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted tnum tabular-nums">updated {scanAt} · {cadenceWords()}</span>
+        <span className="font-mono text-t9 uppercase tracking-widest text-textMuted tnum tabular-nums">updated {scanAt} · {cadenceWords()}</span>
       </div>
       {bookDown && rows.length === 0 ? (
         <ReadMiss onRetry={() => names.forEach(t => ensureBook(t, 'full'))} />
       ) : phone ? (
         <div data-board-cards>
-          {rows.length === 0 && <p className="px-3 py-4 font-mono text-[11px] text-textSecondary">Still reading the book</p>}
+          {rows.length === 0 && <p className="px-3 py-4 font-mono text-t11 text-textSecondary">Still reading the book</p>}
           {[...rows]
             .filter(r => !tokens.length || tokens.some(tok => r.ticker.startsWith(tok) || tickerName(r.ticker).toUpperCase().includes(tok)))
             .sort((a, b) => Math.abs(a.flipDistPct ?? 1e9) - Math.abs(b.flipDistPct ?? 1e9))
@@ -819,7 +819,7 @@ const Board = () => {
               e.api.refreshCells({ force: true });
               e.api.onSortChanged();
             }}
-            overlayNoRowsTemplate='<span class="font-mono text-[11px] text-textSecondary">Still reading the book</span>'
+            overlayNoRowsTemplate='<span class="font-mono text-t11 text-textSecondary">Still reading the book</span>'
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             context={gridContext}

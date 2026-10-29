@@ -128,8 +128,8 @@ const MapFilm = () => {
       <ul className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-5 border-t border-borderSubtle">
         {MAP_FILM.map(l => (
           <li key={l.word} className="pt-4 max-w-[40ch]">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-textMuted">{l.word}</p>
-            <p className="mt-2 text-[14.5px] leading-relaxed text-textSecondary">{l.says}</p>
+            <p className="font-mono text-t11 uppercase tracking-[0.2em] text-textMuted">{l.word}</p>
+            <p className="mt-2 text-t145 leading-relaxed text-textSecondary">{l.says}</p>
           </li>
         ))}
       </ul>

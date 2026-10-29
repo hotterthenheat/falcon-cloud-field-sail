@@ -4,6 +4,8 @@
   token from UNUSUAL_WHALES_API_KEY and forwards to api.unusualwhales.com.
 */
 
+import { SIM_DESK } from './deskMode';
+
 export interface UwNews {
   created_at: string;
   headline: string;
@@ -131,6 +133,7 @@ const copyOf = (a: UwAnswer): UwAnswer => {
 
 /** One GET, with the vendor's status and message. Does not invent a body. */
 export async function uwCall(path: string, priority = false, low = false): Promise<UwAnswer> {
+  if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
   const now = Date.now();
   const hit = shared.get(path);
   const bare = path.split('?')[0];

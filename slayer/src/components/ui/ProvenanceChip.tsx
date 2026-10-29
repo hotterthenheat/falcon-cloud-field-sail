@@ -71,7 +71,7 @@ const ProvenanceChip = ({ sources, kind, state = 'ok', note, className = '' }: P
     <span
       title={title}
       aria-label={`Data provenance: ${word}${stateWord ? `, ${stateWord}` : ''} — ${title}`}
-      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
+      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-t9 uppercase tracking-wider ${
         state === 'stale' || state === 'partial'
           ? 'border-warn/40 text-warn'
           : `border-borderSubtle ${dim ? 'text-textMuted' : 'text-textSecondary'}`

@@ -45,13 +45,13 @@ const NamesDoor = ({ count, max = MAX_PANES, onPick, title, testId }: Props) => 
           data-names-door={testId}
         >
           <Plus className="w-3 h-3 text-textMuted" />
-          <span className="text-[9px] uppercase tracking-widest text-textMuted">Names</span>
-          <span className="text-[11px] font-semibold text-textPrimary tnum">{count}</span>
+          <span className="text-t9 uppercase tracking-widest text-textMuted">Names</span>
+          <span className="text-t11 font-semibold text-textPrimary tnum">{count}</span>
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="start" sideOffset={6} className={`${CARD} w-[272px] p-0 overflow-hidden`} data-names-menu={testId}>
-          <div className="px-3.5 pt-2.5 pb-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">Another name beside these</div>
+          <div className="px-3.5 pt-2.5 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">Another name beside these</div>
           <TickerLookup
             onPick={t => {
               onPick(t);

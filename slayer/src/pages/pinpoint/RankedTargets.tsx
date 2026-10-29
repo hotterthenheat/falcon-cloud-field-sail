@@ -160,7 +160,7 @@ const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count,
         </>
       )}
       {offScope && (
-            <span title={OFF_SCOPE_TITLE} className="inline-flex items-center h-6 px-1.5 rounded border border-borderSubtle font-mono text-[9px] uppercase tracking-widest text-textMuted cursor-help" data-off-scope>
+            <span title={OFF_SCOPE_TITLE} className="inline-flex items-center h-6 px-1.5 rounded border border-borderSubtle font-mono text-t9 uppercase tracking-widest text-textMuted cursor-help" data-off-scope>
               own expiry
             </span>
           )}
@@ -344,7 +344,7 @@ const RankedTargets = () => {
           <AgendaSwitch />
           <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the order, the cards and the rows mean" testId="targets-guide" />
         </div>
-        <p className="mt-0.5 text-[11px] text-textMuted lg:whitespace-nowrap lg:truncate">
+        <p className="mt-0.5 text-t11 text-textMuted lg:whitespace-nowrap lg:truncate">
           Every strike in the order it matters {todayScopeLabel() === 'Today' ? 'today' : 'next session'} — how likely price gets there × how much happens if it does
           {panes.length > 1 ? ' · one pane a name, each with its own expiry, rank and strikes' : ''}
         </p>

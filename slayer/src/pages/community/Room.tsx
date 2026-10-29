@@ -83,7 +83,7 @@ const Small = ({ children, onClick, armed = false, disabled = false, title, test
     onClick={onClick}
     disabled={disabled}
     title={title}
-    className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border font-mono text-[10px] uppercase tracking-wider whitespace-nowrap transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+    className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border font-mono text-t10 uppercase tracking-wider whitespace-nowrap transition-colors disabled:opacity-40 disabled:pointer-events-none ${
       armed ? 'border-silver/50 bg-silver/[0.08] text-silver hover:bg-silver/[0.14]' : 'border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted'
     } ${className}`}
     data-room-button={testId}
@@ -112,24 +112,24 @@ const SetupCard = ({ s }: { s: Setup }) => {
   const r = rMultiple(s);
   return (
     <div className="mt-2 rounded-md border border-borderSubtle bg-chip/40 px-3 py-2" data-room-setup={s.ticker} data-state={s.state}>
-      <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-[11px]">
+      <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-t11">
         <span className="inline-flex items-center gap-1.5">
           <CompanyLogo ticker={s.ticker} size={14} />
           <span className="font-mono font-bold text-textPrimary">{s.ticker}</span>
         </span>
-        <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">entry</span>
+        <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">entry</span>
         <span className="font-mono tnum text-textPrimary">{s.entry}</span>
-        <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">target</span>
+        <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">target</span>
         <span className="font-mono tnum text-bull">{s.target}</span>
-        <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">stop</span>
+        <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">stop</span>
         <span className="font-mono tnum text-bear">{s.stop}</span>
-        <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">over</span>
+        <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">over</span>
         <span className="text-textPrimary">{s.timeframe.toLowerCase()}</span>
-        <span className={`ml-auto inline-flex items-center h-5 px-1.5 rounded border font-mono text-[9px] font-semibold uppercase tracking-wider ${STATE_INK[s.state]}`}>{s.state === 'OPEN' ? 'open' : s.state}</span>
+        <span className={`ml-auto inline-flex items-center h-5 px-1.5 rounded border font-mono text-t9 font-semibold uppercase tracking-wider ${STATE_INK[s.state]}`}>{s.state === 'OPEN' ? 'open' : s.state}</span>
       </div>
       {s.settledAt != null && r != null && (
-        <div className="mt-1.5 flex items-center gap-2 text-[11px]">
-          <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">settled at</span>
+        <div className="mt-1.5 flex items-center gap-2 text-t11">
+          <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">settled at</span>
           <span className="font-mono tnum text-textPrimary">{s.settledAt}</span>
           <span className={`font-mono tnum font-semibold ${r >= 0 ? 'text-bull' : 'text-bear'}`} data-room-r>
             {fmtR(r)}
@@ -138,9 +138,9 @@ const SetupCard = ({ s }: { s: Setup }) => {
         </div>
       )}
       {s.events.map((e, i) => (
-        <div key={i} className="mt-1 flex items-center gap-3 text-[10.5px]">
+        <div key={i} className="mt-1 flex items-center gap-3 text-t105">
           <span className="font-mono tnum text-textMuted w-7 shrink-0">{timeAgo(e.at)}</span>
-          <span className="font-mono text-[9px] uppercase tracking-wider text-textSecondary shrink-0">{e.kind}</span>
+          <span className="font-mono text-t9 uppercase tracking-wider text-textSecondary shrink-0">{e.kind}</span>
           <span className="text-textSecondary truncate">{e.note}</span>
         </div>
       ))}
@@ -350,10 +350,10 @@ const Room = () => {
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0" aria-hidden="true">
               <Users className="w-3.5 h-3.5" />
             </span>
-            <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">Community</h1>
-            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">· the room</span>
+            <h1 className="text-t15 font-semibold leading-tight text-textPrimary">Community</h1>
+            <span className="font-mono text-t9 uppercase tracking-widest text-textMuted">· the room</span>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Traders, their setups and the record they build — every $name a door, every @handle a person</p>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">Traders, their setups and the record they build — every $name a door, every @handle a person</p>
         </div>
       </header>
 
@@ -365,8 +365,8 @@ const Room = () => {
               <div className="px-4 pt-4 pb-3 flex items-center gap-3">
                 <Avatar profile={profile} size={44} />
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 text-[13px] font-semibold text-textPrimary truncate">{profile.name}</div>
-                  <div className="font-mono text-[11px] text-textMuted truncate">@{profile.handle}</div>
+                  <div className="flex items-center gap-1.5 text-t13 font-semibold text-textPrimary truncate">{profile.name}</div>
+                  <div className="font-mono text-t11 text-textMuted truncate">@{profile.handle}</div>
                 </div>
               </div>
               <dl className="px-4 pb-3 flex gap-6">
@@ -376,13 +376,13 @@ const Room = () => {
                   ['Following', num(state.following.length)],
                 ].map(([k, v]) => (
                   <div key={k}>
-                    <dd className="font-mono text-[13px] font-bold tnum text-textPrimary">{v}</dd>
-                    <dt className="text-[10px] text-textMuted">{k}</dt>
+                    <dd className="font-mono text-t13 font-bold tnum text-textPrimary">{v}</dd>
+                    <dt className="text-t10 text-textMuted">{k}</dt>
                   </div>
                 ))}
               </dl>
               {/* THE RECORD the reader's settled setups build — the partner's subtitle promised it and his page never showed it */}
-              <div className="px-4 py-2.5 border-t border-borderSubtle/60 text-[11px] text-textSecondary" data-room-record>
+              <div className="px-4 py-2.5 border-t border-borderSubtle/60 text-t11 text-textSecondary" data-room-record>
                 {myRecord.settled === 0 ? (
                   <span className="text-textMuted">No setup settled yet.</span>
                 ) : (
@@ -393,10 +393,10 @@ const Room = () => {
                 )}
               </div>
               <div className="px-4 py-2.5 border-t border-borderSubtle/60 flex items-center gap-2">
-                <Link to="/settings/account" className="inline-flex items-center h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors">
+                <Link to="/settings/account" className="inline-flex items-center h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors">
                   Profile
                 </Link>
-                <Link to="/settings" className="inline-flex items-center h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors">
+                <Link to="/settings" className="inline-flex items-center h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors">
                   Settings
                 </Link>
               </div>
@@ -405,8 +405,8 @@ const Room = () => {
             {/* TRENDING — what the room is naming; the most mentioned wears the magenta */}
             <div className="border border-borderSubtle rounded-md bg-panel overflow-hidden" data-room-trending>
               <div className="px-4 h-10 flex items-center gap-2">
-                <h3 className="text-[12px] font-semibold text-textPrimary">Trending</h3>
-                <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted">last 24h</span>
+                <h3 className="text-t12 font-semibold text-textPrimary">Trending</h3>
+                <span className="ml-auto font-mono text-t9 uppercase tracking-widest text-textMuted">last 24h</span>
               </div>
               {trending.slice(0, 8).map((t, i) => {
                 const on = name === t.name;
@@ -421,17 +421,17 @@ const Room = () => {
                     data-room-trend={t.name}
                     data-on={on || undefined}
                   >
-                    <span className="font-mono text-[9px] tnum text-textMuted w-3">{i + 1}</span>
+                    <span className="font-mono text-t9 tnum text-textMuted w-3">{i + 1}</span>
                     <CompanyLogo ticker={t.name} size={15} />
-                    <span className={`font-mono text-[11px] font-bold ${i === 0 ? 'text-supreme' : 'text-textPrimary'}`}>${t.name}</span>
-                    {t.lean && <span className={`font-mono text-[8px] font-semibold uppercase tracking-wider ${leanInk(t.lean)}`}>{t.lean}</span>}
-                    <span className="ml-auto font-mono text-[10px] tnum text-textMuted whitespace-nowrap">
+                    <span className={`font-mono text-t11 font-bold ${i === 0 ? 'text-supreme' : 'text-textPrimary'}`}>${t.name}</span>
+                    {t.lean && <span className={`font-mono text-t8 font-semibold uppercase tracking-wider ${leanInk(t.lean)}`}>{t.lean}</span>}
+                    <span className="ml-auto font-mono text-t10 tnum text-textMuted whitespace-nowrap">
                       {t.posts} post{t.posts === 1 ? '' : 's'}
                     </span>
                   </button>
                 );
               })}
-              {trending.length === 0 && <div className="px-4 py-3 border-t border-borderSubtle/60 text-[11px] text-textMuted">Nothing named in the last day.</div>}
+              {trending.length === 0 && <div className="px-4 py-3 border-t border-borderSubtle/60 text-t11 text-textMuted">Nothing named in the last day.</div>}
             </div>
           </div>
 
@@ -447,12 +447,12 @@ const Room = () => {
                   onChange={e => setText(e.target.value.slice(0, 1000))}
                   rows={2}
                   placeholder="Share a read · $SPY, $NVDA and @handles are doors"
-                  className="w-full bg-inputBg border border-borderSubtle rounded-md px-3 py-2 text-[12.5px] text-textPrimary placeholder:text-textMuted focus:border-borderMuted outline-none transition-colors resize-y"
+                  className="w-full bg-inputBg border border-borderSubtle rounded-md px-3 py-2 text-t125 text-textPrimary placeholder:text-textMuted focus:border-borderMuted outline-none transition-colors resize-y"
                   data-room-field
                 />
                 {setupOpen && (
                   <div className="flex items-center gap-2 flex-wrap" data-room-setup-fields>
-                    <input value={sName} onChange={e => setSName(e.target.value.toUpperCase())} placeholder="Name" maxLength={6} className="w-20 h-7 bg-inputBg border border-borderSubtle rounded-md px-2 font-mono text-[11px] uppercase text-textPrimary placeholder:text-textMuted placeholder:normal-case focus:border-borderMuted outline-none" />
+                    <input value={sName} onChange={e => setSName(e.target.value.toUpperCase())} placeholder="Name" maxLength={6} className="w-20 h-7 bg-inputBg border border-borderSubtle rounded-md px-2 font-mono text-t11 uppercase text-textPrimary placeholder:text-textMuted placeholder:normal-case focus:border-borderMuted outline-none" />
                     <DropdownSelect label="Lean" value={sLean} options={SETUP_LEANS} onChange={setSLean} testId="room-setup-lean" />
                     {(
                       [
@@ -462,8 +462,8 @@ const Room = () => {
                       ] as const
                     ).map(([label, v, set]) => (
                       <label key={label} className="inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-borderSubtle bg-chip">
-                        <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">{label}</span>
-                        <input value={v} onChange={e => set(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-16 bg-transparent font-mono text-[11px] tnum text-textPrimary placeholder:text-textMuted outline-none" />
+                        <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">{label}</span>
+                        <input value={v} onChange={e => set(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-16 bg-transparent font-mono text-t11 tnum text-textPrimary placeholder:text-textMuted outline-none" />
                       </label>
                     ))}
                     <DropdownSelect label="Over" value={sFrame} options={TIMEFRAMES} onChange={setSFrame} testId="room-setup-frame" />
@@ -473,7 +473,7 @@ const Room = () => {
                   <Small onClick={() => setSetupOpen(v => !v)} armed={setupOpen} title="Post a trade with its levels — it settles on your record" testId="setup">
                     Trade setup
                   </Small>
-                  <span className="font-mono text-[10px] tnum text-textMuted">{text.length} / 1000</span>
+                  <span className="font-mono text-t10 tnum text-textMuted">{text.length} / 1000</span>
                   <Small onClick={post} armed={canPost} disabled={!canPost} className="ml-auto" testId="post">
                     <Send className="w-3 h-3" /> Post
                   </Small>
@@ -486,22 +486,22 @@ const Room = () => {
               <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
                 <div className="min-w-0 flex-1">
                   <div className="h-6 flex items-center gap-3">
-                    <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">The room</h3>
+                    <h3 className="text-t15 font-semibold leading-tight text-textPrimary">The room</h3>
                   </div>
-                  <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Every post, newest first · a click keeps a post and opens its replies · the cards cut the rows</p>
+                  <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">Every post, newest first · a click keeps a post and opens its replies · the cards cut the rows</p>
                 </div>
                 <dl className="flex flex-wrap gap-x-6 gap-y-2" data-room-facts>
                   <div>
-                    <dt className="text-[10px] text-textMuted">Posts</dt>
-                    <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{num(posts.length)}</dd>
+                    <dt className="text-t10 text-textMuted">Posts</dt>
+                    <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{num(posts.length)}</dd>
                   </div>
                   <div>
-                    <dt className="text-[10px] text-textMuted">People</dt>
-                    <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{PEOPLE.length + 1}</dd>
+                    <dt className="text-t10 text-textMuted">People</dt>
+                    <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{PEOPLE.length + 1}</dd>
                   </div>
                   <div>
-                    <dt className="text-[10px] text-supreme">Most named</dt>
-                    <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{top ? `$${top.name} · ${top.posts} posts` : '—'}</dd>
+                    <dt className="text-t10 text-supreme">Most named</dt>
+                    <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{top ? `$${top.name} · ${top.posts} posts` : '—'}</dd>
                   </div>
                 </dl>
               </div>
@@ -510,16 +510,16 @@ const Room = () => {
                 <DropdownSelect label="Lean" value={lean} options={LEAN_OPTIONS} onChange={setLean} title="Which way the posts lean" testId="room-lean" />
                 <DropdownSelect label="Name" value={name} options={nameOptions} onChange={setName} title="Only posts naming one name" testId="room-name" />
                 {person && (
-                  <span className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1 rounded-md border border-silver/50 bg-silver/[0.08] font-mono text-[10px] text-silver" data-room-person-chip>
+                  <span className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1 rounded-md border border-silver/50 bg-silver/[0.08] font-mono text-t10 text-silver" data-room-person-chip>
                     @{handleOf(person)}'s posts
                     <button type="button" onClick={() => setPerson(null)} className="inline-flex items-center justify-center w-5 h-5 rounded hover:bg-ink/[0.08]" aria-label="Every person again">
                       <X className="w-3 h-3" />
                     </button>
                   </span>
                 )}
-                <span className="ml-auto font-mono text-[10px] tnum text-textMuted whitespace-nowrap">{shown.length} shown</span>
+                <span className="ml-auto font-mono text-t10 tnum text-textMuted whitespace-nowrap">{shown.length} shown</span>
               </div>
-              <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-room-sentence>
+              <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-room-sentence>
                 {sentence}
               </p>
               <div className="relative border-t border-borderSubtle">
@@ -530,7 +530,7 @@ const Room = () => {
                   className={`pointer-events-none absolute inset-0 z-20 transition-opacity duration-[420ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${pinned ? 'opacity-100' : 'opacity-0'}`}
                   style={{ backdropFilter: `blur(${scrim ? 3 : 0}px)`, WebkitBackdropFilter: `blur(${scrim ? 3 : 0}px)`, background: 'rgba(10,10,10,0.66)' }}
                 />
-                {shown.length === 0 && <div className="px-5 py-6 text-[11.5px] text-textMuted">{emptyWords}</div>}
+                {shown.length === 0 && <div className="px-5 py-6 text-t115 text-textMuted">{emptyWords}</div>}
                 {shown.map(p => {
                   const who = personOf(p.handle);
                   const isKept = kept === p.id;
@@ -548,7 +548,7 @@ const Room = () => {
                     >
                       {p.handle === ME ? <Avatar profile={profile} size={32} /> : <Mark handle={p.handle} size={32} />}
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 text-[12px] min-w-0">
+                        <div className="flex items-center gap-1.5 text-t12 min-w-0">
                           <span className="font-semibold text-textPrimary truncate">{nameOf(p.handle)}</span>
                           {who?.verified && <Verified />}
                           <button
@@ -557,17 +557,17 @@ const Room = () => {
                               e.stopPropagation();
                               setPerson(p.handle);
                             }}
-                            className="font-mono text-[11px] text-textMuted hover:text-silver transition-colors truncate"
+                            className="font-mono text-t11 text-textMuted hover:text-silver transition-colors truncate"
                             title={`@${handleOf(p.handle)}'s posts`}
                           >
                             @{handleOf(p.handle)}
                           </button>
-                          <span className="font-mono text-[11px] tnum text-textMuted">· {timeAgo(p.at)}</span>
-                          {p.lean && <span className={`ml-auto font-mono text-[9px] font-semibold uppercase tracking-wider shrink-0 ${leanInk(p.lean)}`}>{p.lean}</span>}
+                          <span className="font-mono text-t11 tnum text-textMuted">· {timeAgo(p.at)}</span>
+                          {p.lean && <span className={`ml-auto font-mono text-t9 font-semibold uppercase tracking-wider shrink-0 ${leanInk(p.lean)}`}>{p.lean}</span>}
                         </div>
-                        <p className="mt-1 text-[12.5px] leading-relaxed text-textPrimary">{drawBody(p.body)}</p>
+                        <p className="mt-1 text-t125 leading-relaxed text-textPrimary">{drawBody(p.body)}</p>
                         {p.setup && <SetupCard s={p.setup} />}
-                        <div className="mt-2 flex items-center gap-4 text-[11px]">
+                        <div className="mt-2 flex items-center gap-4 text-t11">
                           <button
                             type="button"
                             onClick={e => {
@@ -598,18 +598,18 @@ const Room = () => {
                         </div>
                         {isKept && (
                           <div className="mt-3 border-t border-borderSubtle/60 pt-2.5 flex flex-col gap-2.5" data-room-replies>
-                            {p.replies.length === 0 && <span className="text-[11px] text-textMuted">No replies yet.</span>}
+                            {p.replies.length === 0 && <span className="text-t11 text-textMuted">No replies yet.</span>}
                             {p.replies.map(r => (
                               <div key={r.id} className="flex gap-2.5">
                                 <Mark handle={r.handle} size={22} />
                                 <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5 text-[11px]">
+                                  <div className="flex items-center gap-1.5 text-t11">
                                     <span className="font-semibold text-textPrimary">{nameOf(r.handle)}</span>
                                     {personOf(r.handle)?.verified && <Verified />}
                                     <span className="font-mono text-textMuted">@{r.handle}</span>
                                     <span className="font-mono tnum text-textMuted">· {timeAgo(r.at)}</span>
                                   </div>
-                                  <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">{drawBody(r.body)}</p>
+                                  <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">{drawBody(r.body)}</p>
                                 </div>
                               </div>
                             ))}
@@ -627,34 +627,34 @@ const Room = () => {
           <div className="flex flex-col gap-2.5 min-w-0">
             <div className="border border-borderSubtle rounded-md bg-panel overflow-hidden" data-room-notices>
               <div className="px-4 h-10 flex items-center gap-2">
-                <h3 className="text-[12px] font-semibold text-textPrimary">Notifications</h3>
+                <h3 className="text-t12 font-semibold text-textPrimary">Notifications</h3>
                 <Bell className="ml-auto w-3.5 h-3.5 text-textMuted" aria-hidden />
               </div>
               {SEED_NOTICES.map(n => (
                 <div key={n.id} className="px-4 flex items-center gap-3 border-t border-borderSubtle/60" style={{ height: ROOM_NOTICE_H }}>
                   <Mark handle={n.handle} size={24} />
                   <div className="min-w-0">
-                    <div className="text-[11.5px] text-textSecondary truncate">
+                    <div className="text-t115 text-textSecondary truncate">
                       <span className="font-semibold text-textPrimary">{nameOf(n.handle)}</span> {n.what}
                     </div>
-                    <div className="font-mono text-[10px] tnum text-textMuted">{timeAgo(n.at)} ago</div>
+                    <div className="font-mono text-t10 tnum text-textMuted">{timeAgo(n.at)} ago</div>
                   </div>
                 </div>
               ))}
             </div>
             <div className="border border-borderSubtle rounded-md bg-panel overflow-hidden" data-room-follow>
               <div className="px-4 h-10 flex items-center">
-                <h3 className="text-[12px] font-semibold text-textPrimary">Who to follow</h3>
+                <h3 className="text-t12 font-semibold text-textPrimary">Who to follow</h3>
               </div>
               {suggested.map(p => (
                 <div key={p.handle} className="px-4 flex items-center gap-3 border-t border-borderSubtle/60" style={{ height: ROOM_FOLLOW_H }} data-room-suggest={p.handle}>
                   <Mark handle={p.handle} size={28} />
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 text-[12px] font-semibold text-textPrimary truncate">
+                    <div className="flex items-center gap-1.5 text-t12 font-semibold text-textPrimary truncate">
                       {p.name}
                       {p.verified && <Verified />}
                     </div>
-                    <div className="font-mono text-[10px] text-textMuted truncate">
+                    <div className="font-mono text-t10 text-textMuted truncate">
                       @{p.handle} · {fmtFollowers(p.followers)}
                     </div>
                   </div>
@@ -666,14 +666,14 @@ const Room = () => {
               {state.following.length > 0 && (
                 <div className="px-4 py-2.5 border-t border-borderSubtle/60 flex flex-wrap gap-1.5" data-room-following>
                   {state.following.map(h => (
-                    <button key={h} type="button" onClick={() => toggleIn('following', h)} className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-silver/50 bg-silver/[0.08] font-mono text-[10px] text-silver hover:bg-silver/[0.14] transition-colors" title="Unfollow">
+                    <button key={h} type="button" onClick={() => toggleIn('following', h)} className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-silver/50 bg-silver/[0.08] font-mono text-t10 text-silver hover:bg-silver/[0.14] transition-colors" title="Unfollow">
                       @{h} <X className="w-3 h-3" />
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            <p className="px-1 text-[10px] leading-relaxed text-textMuted" data-room-rules>
+            <p className="px-1 text-t10 leading-relaxed text-textMuted" data-room-rules>
               New accounts read before they post · five posts in ten minutes at most · a report goes to the moderators and hides the post from your feed · block anyone · the silver mark is a verified member
             </p>
           </div>
@@ -697,11 +697,11 @@ const Room = () => {
                     </span>
                   ))}
                 </div>
-                <span className="font-mono text-[10px] text-textMuted whitespace-nowrap">{PEOPLE.length} traders already in</span>
+                <span className="font-mono text-t10 text-textMuted whitespace-nowrap">{PEOPLE.length} traders already in</span>
                 <span className="w-px h-4 bg-borderSubtle" />
                 <div className="flex items-center gap-1.5">
                   {['SPY', 'NVDA', 'META', 'AAPL'].map(t => (
-                    <span key={t} className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-[10px] font-bold text-textPrimary">
+                    <span key={t} className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-t10 font-bold text-textPrimary">
                       <CompanyLogo ticker={t} size={12} />${t}
                     </span>
                   ))}

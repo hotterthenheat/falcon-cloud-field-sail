@@ -51,9 +51,9 @@ export const Fact = ({ label, children, testId, title, wrap = false }: { label: 
   /* `wrap`: a fact that is a sentence takes the line's width and wraps at every width (retail, round 10: the Live Tape's
      "NVDA · biggest with a clear side today" ran past the card's right edge at 1440) */
   <div className={wrap ? 'min-w-0 basis-full' : 'min-w-0'} title={title}>
-    <dt className="text-[11px] text-textMuted whitespace-nowrap max-sm:whitespace-normal">{label}</dt>
+    <dt className="text-t11 text-textMuted whitespace-nowrap max-sm:whitespace-normal">{label}</dt>
     {/* ON A PHONE A FACT WRAPS, never clips (audit round 5: "close of 10…", "$101.5…") */}
-    <dd className={`mt-0.5 font-mono text-[12px] tnum text-textPrimary ${wrap ? 'whitespace-normal break-words' : 'whitespace-nowrap max-sm:whitespace-normal max-sm:break-words'}`} data-trace-fact={testId}>
+    <dd className={`mt-0.5 font-mono text-t12 tnum text-textPrimary ${wrap ? 'whitespace-normal break-words' : 'whitespace-nowrap max-sm:whitespace-normal max-sm:break-words'}`} data-trace-fact={testId}>
       {children}
     </dd>
   </div>
@@ -68,10 +68,10 @@ const INK: Record<Ink, string> = { supreme: 'text-supreme', bull: 'text-bull', b
 /** A champion: the label in its ink, the row's words as a door onto the row */
 export const Champion = ({ label, ink, onOpen, children, testId, title = "Open the contract's card" }: { label: string; ink: Ink; onOpen: () => void; children: ReactNode; testId?: string; title?: string }) => (
   <div className="min-w-0">
-    <dt className={`text-[11px] whitespace-nowrap max-sm:whitespace-normal ${INK[ink]}`}>{label}</dt>
+    <dt className={`text-t11 whitespace-nowrap max-sm:whitespace-normal ${INK[ink]}`}>{label}</dt>
     <dd className="mt-0.5 whitespace-nowrap max-sm:whitespace-normal" data-trace-champion={testId}>
       {/* the door's own hover, silver (door.ts) — it underlined on hover before 2026-09-16 */}
-      <button type="button" onClick={onOpen} title={title} className="font-mono text-[12px] tnum font-semibold text-textPrimary hover:text-silver transition-colors text-left max-sm:break-words">
+      <button type="button" onClick={onOpen} title={title} className="font-mono text-t12 tnum font-semibold text-textPrimary hover:text-silver transition-colors text-left max-sm:break-words">
         {children}
       </button>
     </dd>
@@ -125,10 +125,10 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, lead, detail, 
             broke over three lines into its own sub — now the facts wrap under it instead */}
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">{title}</h3>
+            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">{title}</h3>
             {guide && <GuideDoor open={guide.open} onClick={() => guide.onOpen(!guide.open)} title={guide.door} testId={guide.testId} />}
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted break-words sm:whitespace-nowrap sm:truncate">{sub}</p>
+          <p className="mt-0.5 text-t11 text-textMuted break-words sm:whitespace-nowrap sm:truncate">{sub}</p>
         </div>
         {/* THE FACTS WRAP (the phone pass, 2026-09-13 — Noah: "make sure every
             page and section ticks the box of mobile viewing"): a column-flow
@@ -155,7 +155,7 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, lead, detail, 
             type="button"
             onClick={() => setUnfolded(v => !v)}
             aria-expanded={!folded}
-            className="w-full h-8 rounded-md border border-borderSubtle bg-chip font-mono text-[11px] uppercase tracking-widest text-textSecondary hover:text-textPrimary"
+            className="w-full h-8 rounded-md border border-borderSubtle bg-chip font-mono text-t11 uppercase tracking-widest text-textSecondary hover:text-textPrimary"
             data-trace-fold
           >
             {folded ? 'Filters & cards ▾' : 'Hide filters ▴'}
@@ -170,14 +170,14 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, lead, detail, 
       {/* a div, not a p: the saved cuts' chips and the status line stand inside the sentence (2026-10-13) */}
       {/* no sentence, no line — a page whose body already says it (the Tracker's empty desk) never says it twice */}
       {lead != null ? (
-        <div className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-trace-sentence>
+        <div className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-trace-sentence>
           {sentence}
-          <p className="text-[13px] leading-snug text-textPrimary" data-trace-lead>
+          <p className="text-t13 leading-snug text-textPrimary" data-trace-lead>
             {lead}
             {detail != null && detail !== false && (
               <>
                 {' '}
-                <button type="button" onClick={() => setMore(v => !v)} aria-expanded={more} className="font-mono text-[11px] text-textSecondary underline decoration-dotted underline-offset-2 hover:text-textPrimary" data-trace-more>
+                <button type="button" onClick={() => setMore(v => !v)} aria-expanded={more} className="font-mono text-t11 text-textSecondary underline decoration-dotted underline-offset-2 hover:text-textPrimary" data-trace-more>
                   {more ? 'less' : 'more'}
                 </button>
               </>
@@ -192,7 +192,7 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, lead, detail, 
       ) : (
         sentence != null &&
         sentence !== false && (
-          <div className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-trace-sentence>
+          <div className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-trace-sentence>
             {sentence}
           </div>
         )
@@ -210,10 +210,10 @@ export const PhoneRow = ({ lead, title, aside, figures }: { lead?: ReactNode; ti
     <span className="flex items-center gap-2 min-w-0">
       {lead}
       {/* the title gives way to the time at its right — it clips, never runs under it */}
-      <span className="min-w-0 flex-1 overflow-hidden flex items-center gap-1.5 font-mono text-[12px] text-textPrimary whitespace-nowrap [&>*:first-child]:shrink-0">{title}</span>
-      {aside && <span className="ml-auto shrink-0 font-mono text-[11px] tnum text-textSecondary">{aside}</span>}
+      <span className="min-w-0 flex-1 overflow-hidden flex items-center gap-1.5 font-mono text-t12 text-textPrimary whitespace-nowrap [&>*:first-child]:shrink-0">{title}</span>
+      {aside && <span className="ml-auto shrink-0 font-mono text-t11 tnum text-textSecondary">{aside}</span>}
     </span>
-    <span className="flex items-center gap-x-3 gap-y-0.5 flex-wrap font-mono text-[11px] tnum text-textSecondary pl-5">
+    <span className="flex items-center gap-x-3 gap-y-0.5 flex-wrap font-mono text-t11 tnum text-textSecondary pl-5">
       {figures.map((f, i) => (
         <span key={i} className="whitespace-nowrap">
           {f}
@@ -290,7 +290,7 @@ export function useRestCap<T>(rows: T[]): RestCap<T> {
 }
 export const RestFoot = <T,>({ cap, noun = 'contracts', testId }: { cap: RestCap<T>; noun?: string; testId: string }) =>
   cap.door ? (
-    <div className="px-5 py-2.5 border-t border-borderSubtle flex items-center gap-2 text-[11px] text-textSecondary" data-rest-foot={testId} data-capped={cap.capped || undefined}>
+    <div className="px-5 py-2.5 border-t border-borderSubtle flex items-center gap-2 text-t11 text-textSecondary" data-rest-foot={testId} data-capped={cap.capped || undefined}>
       <span>{cap.capped ? `The first ${ROWS_AT_REST} of ${cap.total.toLocaleString('en-US')} ${noun}` : `All ${cap.total.toLocaleString('en-US')} ${noun}`}</span>
       <span className="text-textSecondary" aria-hidden>
         ·
@@ -698,7 +698,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
           onPaginationChanged={onPaginationChanged}
           tooltipShowDelay={350}
           tooltipHideDelay={8000}
-          overlayNoRowsTemplate={`<span class="font-mono text-[11px] text-textSecondary">${emptyText}</span>`}
+          overlayNoRowsTemplate={`<span class="font-mono text-t11 text-textSecondary">${emptyText}</span>`}
         />
       </AgGridProvider>
       {showTop && (!autoHeight || windowed) && (
@@ -715,7 +715,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
      </div>
       {paged && <PageBar page={pager.page} pages={Math.max(pager.pages, Math.ceil(gridRows.length / TRACE_PAGE))} onPage={n => gridRef.current?.api.paginationGoToPage(n)} testId={testId} />}
       {endless && (gridRows.length > 0 || endless.state === 'loading' || (endless.state === 'more' && (endless.loaded ?? 0) > 0)) && (
-        <div ref={footRef} className="relative z-[1] bg-panel px-3 min-h-10 border-t border-borderSubtle/50 flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[11px]" data-endless-foot={endless.state}>
+        <div ref={footRef} className="relative z-[1] bg-panel px-3 min-h-10 border-t border-borderSubtle/50 flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-t11" data-endless-foot={endless.state}>
           <span className="min-w-0 flex-1 basis-[12rem] truncate text-textMuted">{endless.note}</span>
           {endless.extra}
           {endless.state === 'more' && (

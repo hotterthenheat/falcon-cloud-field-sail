@@ -113,7 +113,7 @@ const planOf = (width: number, def: WidgetDef, controls: TileControl[], state: T
 
 const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
 const headBtn = 'inline-flex items-center justify-center w-7 h-7 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] data-[state=open]:text-textPrimary data-[state=open]:bg-ink/[0.06] transition-colors';
-const menuItem = 'flex items-center gap-2 rounded-md px-2 py-1.5 outline-none cursor-pointer font-mono text-[11px] text-textSecondary data-[highlighted]:bg-ink/[0.06] data-[highlighted]:text-textPrimary transition-colors';
+const menuItem = 'flex items-center gap-2 rounded-md px-2 py-1.5 outline-none cursor-pointer font-mono text-t11 text-textSecondary data-[highlighted]:bg-ink/[0.06] data-[highlighted]:text-textPrimary transition-colors';
 
 interface Props {
   def: WidgetDef;
@@ -151,7 +151,7 @@ const Tile = ({ def, ctx, state, onState, width, index, locked, scope, onOpen, o
       <div className={`${locked ? '' : 'widget-drag cursor-grab active:cursor-grabbing'} flex items-center gap-2 pl-2.5 pr-3 border-b border-borderSubtle shrink-0 select-none`} style={{ height: TILE_HEAD_H }} data-tile-head data-tile-controls={controls.length ? standing : undefined}>
         {!locked && !tight && <GripHorizontal className="w-3.5 h-3.5 text-textMuted shrink-0" aria-hidden />}
         {!tight && <Icon className="w-3.5 h-3.5 text-textSecondary shrink-0" aria-hidden />}
-        <span className="shrink min-w-0 truncate text-[12px] font-semibold text-textPrimary" title={def.says} data-tile-title>
+        <span className="shrink min-w-0 truncate text-t12 font-semibold text-textPrimary" title={def.says} data-tile-title>
           {def.title}
         </span>
         {inline > 0 && (
@@ -229,7 +229,7 @@ const Tile = ({ def, ctx, state, onState, width, index, locked, scope, onOpen, o
       </div>
       <div ref={bodyRef} className="flex-1 min-h-0 overflow-hidden" data-tile-body data-room={size?.room}>
         {!ctx ? (
-          <span className="flex h-full items-center justify-center font-mono text-[10px] text-textMuted uppercase tracking-widest">No data for {scope?.ticker ?? 'this name'} yet</span>
+          <span className="flex h-full items-center justify-center font-mono text-t10 text-textMuted uppercase tracking-widest">No data for {scope?.ticker ?? 'this name'} yet</span>
         ) : (
           size && (
             <Deferred index={index} fallback={def.skeleton()} className="h-full animate-fade-in">

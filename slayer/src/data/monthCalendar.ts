@@ -165,6 +165,16 @@ export function setLiveFda(events: CalEvent[]): void {
   bumpCalendar();
 }
 
+export function scheduleEvents(): readonly CalEvent[] {
+  return liveSchedule;
+}
+
+/** The economic calendar. High-impact releases block a new ticket. Loaded once a session. */
+export function econReleases(): readonly CalEvent[] {
+  ensureEcon();
+  return liveEcon;
+}
+
 export function setLiveSchedule(events: CalEvent[]): void {
   liveSchedule = events;
   bumpCalendar();

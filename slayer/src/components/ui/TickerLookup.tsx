@@ -99,14 +99,14 @@ const TickerLookup = ({ onPick, active, limit = 80 }: TickerLookupProps) => {
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder={room === 'equity' ? 'Search every listed stock…' : room === 'option' ? 'Search every name with options…' : room === 'compass' ? 'Search the 456…' : 'Search S&P 500 + more…'}
-          className="w-full bg-transparent py-1.5 font-mono text-[11px] text-textPrimary placeholder:text-textMuted focus:outline-none"
+          className="w-full bg-transparent py-1.5 font-mono text-t11 text-textPrimary placeholder:text-textMuted focus:outline-none"
         />
       </div>
       <div ref={listRef} onScroll={onListScroll} className="max-h-72 overflow-y-auto py-1">
         {!mod ? (
-          <div className="px-2.5 py-4 text-center font-mono text-[10px] text-textMuted">Loading tickers…</div>
+          <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">Loading tickers…</div>
         ) : results.length === 0 ? (
-          <div className="px-2.5 py-4 text-center font-mono text-[10px] text-textMuted">
+          <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">
             {room === 'option' ? 'No option root by that name.' : room === 'compass' ? 'Not one of the 456.' : room === 'equity' ? 'No listed stock by that name.' : `No listing — Enter picks “${query.trim().toUpperCase().slice(0, 6)}”`}
           </div>
         ) : (
@@ -125,13 +125,13 @@ const TickerLookup = ({ onPick, active, limit = 80 }: TickerLookupProps) => {
             >
               <CompanyLogo ticker={t.symbol} size={16} />
               <span
-                className={`font-mono text-[11px] font-semibold w-14 shrink-0 ${
+                className={`font-mono text-t11 font-semibold w-14 shrink-0 ${
                   t.symbol === active ? 'text-silver' : 'text-textPrimary'
                 }`}
               >
                 {t.symbol}
               </span>
-              <span className="text-[10px] text-textSecondary truncate">{(() => {
+              <span className="text-t10 text-textSecondary truncate">{(() => {
                 const label = companyName(t.symbol);
                 return label && label.toUpperCase() !== t.symbol ? label : '';
               })()}</span>
@@ -140,7 +140,7 @@ const TickerLookup = ({ onPick, active, limit = 80 }: TickerLookupProps) => {
         )}
       </div>
       {roomCount(room) > 0 && (
-        <div className="px-2.5 py-1 border-t border-borderSubtle font-mono text-[9px] text-textMuted" data-listed-count={roomCount(room)}>
+        <div className="px-2.5 py-1 border-t border-borderSubtle font-mono text-t9 text-textMuted" data-listed-count={roomCount(room)}>
           {roomCount(room).toLocaleString()} {room === 'option' ? 'option roots' : room === 'compass' ? 'names' : 'listed stocks'}
           {results.length < roomCount(room) ? ' · scroll for more' : ''}
         </div>

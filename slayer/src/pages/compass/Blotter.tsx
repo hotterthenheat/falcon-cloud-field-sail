@@ -17,6 +17,7 @@ import { isoDate, type Expiry } from '../../core/calendar';
 import { heldWords, usd, dirInk } from '../../components/review/words';
 import { COMPASS_SET } from '../../data/compassUniverse';
 import { useCompassBook, type BookLine } from '../../data/compassLedger';
+import { Tip } from '../../components/ui/Tooltip';
 
 type Rec = [string, string, string, string, number, number, number, string, number, string];
 type TakenRec = [string, string, string, string, number, number, string, number, string, number, number, number, number];
@@ -54,7 +55,7 @@ interface Line {
   held: number | null;
   ret: number;
   stamp: number;
-  result: 'win' | 'loss' | 'caution' | 'unavailable';
+  result: 'win' | 'loss' | 'caution' | 'unavailable' | 'open';
   why: string;
   fees: number | null;
 }
@@ -163,11 +164,11 @@ const COLUMNS: Column<Line>[] = [
   { key: 'contract', header: 'Contract', sortValue: r => r.label, render: r => <ContractLabel contract={r.label} right={r.right} logo={r.ticker} size="sm" /> },
   { key: 'paid', header: 'Paid', align: 'right', sortValue: r => r.ask, render: r => <span className="tnum text-textPrimary">{r.ask > 0 ? usd(r.ask) : '—'}</span> },
   { key: 'fees', header: 'Fees', align: 'right', sortValue: r => r.fees ?? -1, render: r => r.fees == null ? blank : <span className="tnum text-textSecondary">{usd(r.fees)}</span> },
-  { key: 'exitPx', header: 'Exit', align: 'right', sortValue: r => r.exitPx, render: r => <span className="tnum text-textPrimary">{usd(r.exitPx)}</span> },
-  { key: 'out', header: 'Out', align: 'right', sortValue: r => r.exit, render: r => <span className="tnum text-textSecondary">{r.exit}</span> },
+  { key: 'exitPx', header: 'Exit', align: 'right', sortValue: r => r.exitPx, render: r => r.result === 'open' ? blank : <span className="tnum text-textPrimary">{usd(r.exitPx)}</span> },
+  { key: 'out', header: 'Out', align: 'right', sortValue: r => r.exit, render: r => r.result === 'open' || !r.exit ? blank : <span className="tnum text-textSecondary">{r.exit}</span> },
   { key: 'held', header: 'Held', align: 'right', sortValue: r => r.held ?? -1, render: r => r.held == null ? blank : <span className="tnum text-textSecondary">{heldWords(r.held)}</span> },
-  { key: 'ret', header: 'Return', align: 'right', sortValue: r => r.ret, render: r => <span className={`tnum ${r.result === 'caution' ? 'text-textSecondary' : dirInk(r.ret)}`}>{pctWords(r.ret, 1)}</span> },
-  { key: 'result', header: 'Result', align: 'right', sortValue: r => r.result, render: r => <span title={r.why || undefined} className={r.result === 'win' ? 'text-bull' : r.result === 'loss' ? 'text-bear' : r.result === 'unavailable' ? 'text-textMuted' : 'text-warn'}>{r.result === 'win' ? 'Win' : r.result === 'loss' ? 'Loss' : r.result === 'unavailable' ? 'Unavailable' : 'Caution'}</span> },
+  { key: 'ret', header: 'Return', align: 'right', sortValue: r => r.ret, render: r => r.result === 'open' ? blank : <span className={`tnum ${r.result === 'caution' ? 'text-textSecondary' : dirInk(r.ret)}`}>{pctWords(r.ret, 1)}</span> },
+  { key: 'result', header: 'Result', align: 'right', sortValue: r => r.result, render: r => <Tip label={r.why || undefined}><span className={r.result === 'win' ? 'text-bull' : r.result === 'loss' ? 'text-bear' : r.result === 'open' ? 'text-textPrimary' : r.result === 'unavailable' ? 'text-textMuted' : 'text-warn'}>{r.result === 'win' ? 'Win' : r.result === 'loss' ? 'Loss' : r.result === 'open' ? 'Open' : r.result === 'unavailable' ? 'Unavailable' : 'Caution'}</span></Tip> },
 ];
 const WIDTHS: Record<string, number> = { day: 84, in: 88, contract: 200, paid: 84, exitPx: 88, out: 72, held: 88, ret: 88, result: 88 };
 const TOOLTIPS: Record<string, string> = {
@@ -197,7 +198,7 @@ for (const r of LINES) {
 const resultOf = (rows: Line[]) => {
   let wins = 0, winRet = 0, losses = 0, lossRet = 0, hold = 0, holdN = 0, scored = 0;
   for (const r of rows) {
-    if (r.result === 'caution' || r.result === 'unavailable') continue;
+    if (r.result === 'caution' || r.result === 'unavailable' || r.result === 'open') continue;
     scored += 1;
     if (r.held != null) { hold += r.held; holdN += 1; }
     if (r.result === 'win') { wins += 1; winRet += r.ret; }
@@ -284,7 +285,7 @@ const Blotter = () => {
       sentence={false}
     >
       {rows.length === 0 ? (
-        <div className="border-t border-borderSubtle px-5 py-10 font-mono text-[11px] text-textMuted">{q.trim() ? `No trade matches “${q.trim()}”.` : 'Nothing in the book on this cut.'}</div>
+        <div className="border-t border-borderSubtle px-5 py-10 font-mono text-t11 text-textMuted">{q.trim() ? `No trade matches “${q.trim()}”.` : 'Nothing in the book on this cut.'}</div>
       ) : (
         <TraceGrid
           rows={rows}
@@ -301,7 +302,7 @@ const Blotter = () => {
           phoneRow={r => (
             <PhoneRow
               title={<ContractLabel contract={r.label} right={r.right} logo={r.ticker} size="sm" />}
-              aside={<span className={r.result === 'caution' ? 'text-warn' : dirInk(r.ret)}>{r.result === 'caution' ? 'Caution' : pctWords(r.ret, 1)}</span>}
+              aside={<span className={r.result === 'caution' ? 'text-warn' : r.result === 'open' ? 'text-textPrimary' : dirInk(r.ret)}>{r.result === 'caution' ? 'Caution' : r.result === 'open' ? 'Open' : pctWords(r.ret, 1)}</span>}
               figures={[
                 <span key="i">{dayCell(r.date)} · {r.entry} · {usd(r.ask)}</span>,
                 <span key="p">Exit {usd(r.exitPx)} · out {r.exit}</span>,

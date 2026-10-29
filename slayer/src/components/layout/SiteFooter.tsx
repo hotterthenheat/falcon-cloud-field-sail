@@ -227,10 +227,10 @@ const SiteFooter = ({ home = false }: { home?: boolean }) => {
             <div className="self-start" data-footer-panel>
               {/* the wordmark with its cursor (his partner's logo system, 2026-10-03) */}
               <Wordmark height={13} cursor label="Slayer Terminal" />
-              <p className="footer-word mt-4 text-[16px] leading-[22px] font-medium tracking-tight text-textPrimary" data-footer-lit>
+              <p className="footer-word mt-4 text-t16 leading-[22px] font-medium tracking-tight text-textPrimary" data-footer-lit>
                 Trade what you can see.
               </p>
-              <p className="footer-word mt-1.5 max-w-[46ch] text-[12.5px] leading-relaxed text-textSecondary" data-footer-lit>
+              <p className="footer-word mt-1.5 max-w-[46ch] text-t125 leading-relaxed text-textSecondary" data-footer-lit>
                 Most of what moves a price is public, just scattered. Slayer gathers it into one terminal.
               </p>
             </div>
@@ -242,13 +242,13 @@ const SiteFooter = ({ home = false }: { home?: boolean }) => {
                 <div key={stack[0].title} className="flex flex-col gap-6">
                   {stack.map(col => (
                     <div key={col.title} className="footer-col" data-footer-panel>
-                      <span className="footer-word block font-mono text-[10px] font-bold uppercase tracking-widest text-textMuted" data-footer-lit>
+                      <span className="footer-word block font-mono text-t10 font-bold uppercase tracking-widest text-textMuted" data-footer-lit>
                         {col.title}
                       </span>
                       <ul className={`mt-3 grid gap-x-4 gap-y-2 ${col.wide ? 'grid-cols-4' : ''}`}>
                         {col.links.map(l => (
                           <li key={l.label}>
-                            <FooterLink to={l.to} home={home} gate={gate} className="footer-word footer-link whitespace-nowrap text-[12.5px] leading-[18px] text-textSecondary hover:text-textPrimary transition-colors">
+                            <FooterLink to={l.to} home={home} gate={gate} className="footer-word footer-link whitespace-nowrap text-t125 leading-[18px] text-textSecondary hover:text-textPrimary transition-colors">
                               <span data-footer-lit>{l.label}</span>
                             </FooterLink>
                           </li>
@@ -263,11 +263,11 @@ const SiteFooter = ({ home = false }: { home?: boolean }) => {
         </div>
         {/* THE STATUS LINE, at the screen's foot: the market's state on the real clock, what this is not, whose it is */}
         <div className="mx-auto w-full max-w-[1240px] px-6 lg:px-10 mt-10 lg:mt-12">
-          <div className="border-t border-borderSubtle/70 py-4 flex flex-wrap items-center gap-x-8 gap-y-2 font-mono text-[10.5px] tracking-wide text-textMuted">
+          <div className="border-t border-borderSubtle/70 py-4 flex flex-wrap items-center gap-x-8 gap-y-2 font-mono text-t105 tracking-wide text-textMuted">
             {/* the signature (his partner's logo system, 2026-10-03), the market's finer word after it where it adds one
                 (pre-market, after hours, the weekend), and the New York clock */}
             <span className="inline-flex items-center whitespace-nowrap" data-footer-market={market.words}>
-              <Signature rule={false} detail={`· ${market.words === 'market open' || market.words === 'closed' ? '' : `${market.words} · `}${market.clock} New York`} className="text-[10.5px]" />
+              <Signature rule={false} detail={`· ${market.words === 'market open' || market.words === 'closed' ? '' : `${market.words} · `}${market.clock} New York`} className="text-t105" />
             </span>
             <span className="footer-word order-last lg:order-none basis-full lg:basis-auto" data-footer-lit>
               For informational purposes only. Not investment advice.

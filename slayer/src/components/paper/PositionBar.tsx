@@ -21,6 +21,7 @@
 ==================================================
 */
 
+import { useState } from 'react';
 import { ArrowLeftRight, X } from 'lucide-react';
 import { dirInk, rWords, usdSigned } from '../review/words';
 
@@ -43,16 +44,17 @@ export interface BarLine {
 const MAX_LINES = 2;
 
 const PositionBar = ({ lines }: { lines: BarLine[] }) => {
+  const [open, setOpen] = useState(false);
   if (!lines.length) return null;
-  const shown = lines.slice(0, MAX_LINES);
-  const rest = lines.length - shown.length;
+  const shown = open ? lines : lines.slice(0, MAX_LINES);
+  const rest = lines.length - MAX_LINES;
   return (
     <div className="inline-flex flex-col gap-1 pointer-events-auto max-w-full" data-paper-position-bar={lines.length}>
       {shown.map(l => (
-        <div key={l.key} className="inline-flex items-center gap-3 h-8 pl-1.5 pr-1.5 max-w-full overflow-hidden rounded-lg border border-borderMuted bg-panel/80 backdrop-blur-md backdrop-saturate-150 shadow-[0_8px_24px_rgba(0,0,0,0.35)] font-mono text-[10px] tnum whitespace-nowrap" data-paper-position-line={l.key}>
-          <span className={`h-5 px-1.5 inline-flex items-center rounded font-bold text-[11px] ${l.tone === 'bull' ? 'bg-bull/[0.14] text-bull' : 'bg-bear/[0.14] text-bear'}`}>{l.label}</span>
-          <span className={`text-[12px] font-semibold ${dirInk(l.pnl)}`}>
-            {usdSigned(l.pnl)} {l.r != null && <span className="text-[10px] font-normal opacity-80">{rWords(l.r)}</span>}
+        <div key={l.key} className="inline-flex items-center gap-3 h-8 pl-1.5 pr-1.5 max-w-full overflow-hidden rounded-lg border border-borderMuted bg-panel/80 backdrop-blur-md backdrop-saturate-150 shadow-[0_8px_24px_rgba(0,0,0,0.35)] font-mono text-t10 tnum whitespace-nowrap" data-paper-position-line={l.key}>
+          <span className={`h-5 px-1.5 inline-flex items-center rounded font-bold text-t11 ${l.tone === 'bull' ? 'bg-bull/[0.14] text-bull' : 'bg-bear/[0.14] text-bear'}`}>{l.label}</span>
+          <span className={`text-t12 font-semibold ${dirInk(l.pnl)}`}>
+            {usdSigned(l.pnl)} {l.r != null && <span className="text-t10 font-normal opacity-80">{rWords(l.r)}</span>}
           </span>
           {l.facts.map(f => (
             <span key={f.label} className="min-w-0 truncate">
@@ -71,7 +73,11 @@ const PositionBar = ({ lines }: { lines: BarLine[] }) => {
           </span>
         </div>
       ))}
-      {rest > 0 && <span className="self-start px-2 h-5 inline-flex items-center rounded border border-borderSubtle bg-panel/80 font-mono text-[9px] text-textMuted">+{rest} more in the book</span>}
+      {rest > 0 && (
+        <button type="button" onClick={() => setOpen(v => !v)} className="self-start px-2 h-5 inline-flex items-center rounded border border-borderSubtle bg-panel/80 font-mono text-t9 text-textMuted hover:text-textPrimary" data-paper-position-more={open ? 'open' : 'shut'}>
+          {open ? 'Hide' : `+${rest} more in the book`}
+        </button>
+      )}
     </div>
   );
 };

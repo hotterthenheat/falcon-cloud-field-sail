@@ -223,17 +223,17 @@ const PulseBoard = ({ onBack }: { onBack?: () => void }) => {
           </Link>
         )}
         <div>
-          <h1 className="font-mono text-[13px] font-bold uppercase tracking-wider text-textPrimary">
+          <h1 className="font-mono text-t13 font-bold uppercase tracking-wider text-textPrimary">
             4-way board
           </h1>
-          <p className="font-mono text-[10px] text-textMuted uppercase tracking-widest">
+          <p className="font-mono text-t10 text-textMuted uppercase tracking-widest">
             four books · every chart its own controls
           </p>
         </div>
         {expanded !== null && (
           <button
             onClick={() => setExpanded(null)}
-            className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textSecondary"
+            className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary"
           >
             <Minimize2 className="w-3.5 h-3.5" /> Esc
           </button>

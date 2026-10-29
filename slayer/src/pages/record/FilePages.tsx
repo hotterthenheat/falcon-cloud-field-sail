@@ -56,9 +56,9 @@ const CARD = (on: boolean) => `group text-left rounded-md border px-3 py-2.5 tra
 
 const Strip = ({ title, rest, testId, children }: { title: string; rest: string; testId: string; children: ReactNode }) => (
   <div className="px-5 pb-3 border-t border-borderSubtle/60" data-file-strip={testId}>
-    <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
+    <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
       <span>{title}</span>
-      <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">{rest}</span>
+      <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">{rest}</span>
     </div>
     {children}
   </div>
@@ -117,9 +117,9 @@ const InstName = ({ data }: ICellRendererParams<InstitutionRow>) =>
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       {data.unlisted ? <span className="w-4 shrink-0" aria-hidden /> : <CompanyLogo ticker={data.ticker} size={16} />}
       <span className="flex flex-col leading-tight min-w-0" title={data.unlisted ? `${data.company ?? ''} — the filing gives no listed symbol` : undefined}>
-        <span className={`font-mono text-[12px] font-bold ${data.unlisted ? 'text-textSecondary' : 'text-textPrimary'}`}>{data.ticker}</span>
+        <span className={`font-mono text-t12 font-bold ${data.unlisted ? 'text-textSecondary' : 'text-textPrimary'}`}>{data.ticker}</span>
         {/* the listing's name, else the filing's; never the ticker said twice ("IVV · IVV") */}
-        {data.unlisted ? <span className="text-[10px] text-textMuted truncate">{data.company}</span> : <CoSub ticker={data.ticker} fallback={data.company} />}
+        {data.unlisted ? <span className="text-t10 text-textMuted truncate">{data.company}</span> : <CoSub ticker={data.ticker} fallback={data.company} />}
       </span>
     </span>
   ) : null;
@@ -130,30 +130,30 @@ const InstFiled = ({ data }: ICellRendererParams<InstitutionRow>) =>
   data ? (
     <span className="flex flex-col leading-tight">
       <When days={data.filedDaysAgo} />
-      {quarterEnd(data.report) ? <span className="font-mono text-[9px] text-textMuted">holdings as of {quarterEnd(data.report)}</span> : null}
+      {quarterEnd(data.report) ? <span className="font-mono text-t9 text-textMuted">holdings as of {quarterEnd(data.report)}</span> : null}
     </span>
   ) : null;
-const InstHouse = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="text-[12px] font-semibold text-textPrimary truncate">{displayName(data.name)}</span> : null);
-const InstBook = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] ${BOOK_INK[data.book]}`}>{data.book === 'stock' && data.security ? data.security : BOOK_WORD[data.book]}</span> : null);
-const InstShares = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.sharesM.toFixed(1)}M</span> : null);
-const InstValue = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{moneyB(data.valueB)}</span> : null);
+const InstHouse = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="text-t12 font-semibold text-textPrimary truncate">{displayName(data.name)}</span> : null);
+const InstBook = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-t11 ${BOOK_INK[data.book]}`}>{data.book === 'stock' && data.security ? data.security : BOOK_WORD[data.book]}</span> : null);
+const InstShares = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{data.sharesM.toFixed(1)}M</span> : null);
+const InstValue = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{moneyB(data.valueB)}</span> : null);
 /* no change reads "unchanged", never −0.0 (the retail test, round 6) */
-const InstChange = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? Math.abs(data.changePct) < 0.05 ? <span className="font-mono text-[10px] text-textMuted">unchanged</span> : <span className={`font-mono text-[11px] tnum ${ink(data.changePct)}`}>{signed(data.changePct)}%</span> : null);
-const InstStatus = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span title={data.status === 'held' ? `Held: ${data.changePct >= 0 ? '+' : data.changePct < 0 ? '−' : ''}${Math.abs(data.changePct).toFixed(1)}% units versus the prior 13F, inside the ±2% band` : undefined} className={`font-mono text-[11px] ${data.status === 'added' || data.status === 'new' ? 'text-bull' : data.status === 'cut' || data.status === 'closed' ? 'text-bear' : 'text-textSecondary'}`}>{positionWord(data.status)}</span> : null);
-const InstBookPct = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.pctOfBook.toFixed(1)}%</span> : null);
+const InstChange = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? Math.abs(data.changePct) < 0.05 ? <span className="font-mono text-t10 text-textMuted">unchanged</span> : <span className={`font-mono text-t11 tnum ${ink(data.changePct)}`}>{signed(data.changePct)}%</span> : null);
+const InstStatus = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span title={data.status === 'held' ? `Held: ${data.changePct >= 0 ? '+' : data.changePct < 0 ? '−' : ''}${Math.abs(data.changePct).toFixed(1)}% units versus the prior 13F, inside the ±2% band` : undefined} className={`font-mono text-t11 ${data.status === 'added' || data.status === 'new' ? 'text-bull' : data.status === 'cut' || data.status === 'closed' ? 'text-bear' : 'text-textSecondary'}`}>{positionWord(data.status)}</span> : null);
+const InstBookPct = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{data.pctOfBook.toFixed(1)}%</span> : null);
 
 const InstCard = ({ row, on, onToggle }: { row: InstitutionRow; on: boolean; onToggle: () => void }) => (
   <button type="button" onClick={onToggle} aria-pressed={on} title={on ? `Showing ${row.ticker} only — click to show every name` : `Keep the grid to ${row.ticker}`} className={CARD(on)} data-institutions-know={row.ticker} data-on={on || undefined}>
     <span className="flex items-center gap-2 min-w-0">
       {row.unlisted ? null : <CompanyLogo ticker={row.ticker} size={18} />}
-      <span className="font-mono text-[12px] font-bold text-textPrimary">{row.ticker}</span>
-      <span className="text-[10px] text-textSecondary truncate">{displayName(row.name)}</span>
+      <span className="font-mono text-t12 font-bold text-textPrimary">{row.ticker}</span>
+      <span className="text-t10 text-textSecondary truncate">{displayName(row.name)}</span>
     </span>
     <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
-      <span className="text-[13px] font-bold text-textPrimary">{moneyB(row.valueB)}</span>
-      <span className={`text-[10px] ${BOOK_INK[row.book]}`}>{BOOK_WORD[row.book]}</span>
+      <span className="text-t13 font-bold text-textPrimary">{moneyB(row.valueB)}</span>
+      <span className={`text-t10 ${BOOK_INK[row.book]}`}>{BOOK_WORD[row.book]}</span>
     </span>
-    <span className={`mt-1 block font-mono text-[9px] tnum ${ink(row.changePct)}`}>vs last filing {signed(row.changePct)}%</span>
+    <span className={`mt-1 block font-mono text-t9 tnum ${ink(row.changePct)}`}>vs last filing {signed(row.changePct)}%</span>
   </button>
 );
 
@@ -323,19 +323,19 @@ export const Institutions = () => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">What the houses reported</h3>
+            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">What the houses reported</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a line, a book and the change mean" testId="institutions-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" title="Each house's book is far longer than the lines read here: the largest 80 lines by value from its latest 13F, for the 40 largest houses. A 13F reports what a house held on the last day of the quarter, filed up to 45 days later — never today's positions">{periodWords ? <span className="text-textSecondary" data-institutions-period>{periodWords} — values as of that day · </span> : null}The largest {HOUSE_LINES} lines of each house's latest 13F, for the 40 largest houses — not every line · a row opens that house</p>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate" title="Each house's book is far longer than the lines read here: the largest 80 lines by value from its latest 13F, for the 40 largest houses. A 13F reports what a house held on the last day of the quarter, filed up to 45 days later — never today's positions">{periodWords ? <span className="text-textSecondary" data-institutions-period>{periodWords} — values as of that day · </span> : null}The largest {HOUSE_LINES} lines of each house's latest 13F, for the 40 largest houses — not every line · a row opens that house</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Lines")}>Lines</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-institutions-count>{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.lines.toLocaleString('en-US')}</>}</dd>
+            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Lines")}>Lines</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-institutions-count>{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.lines.toLocaleString('en-US')}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Houses")}>Houses</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">
+            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Houses")}>Houses</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">
               {failed ? '—' : live.held && live.progress ? (
                 <span className="text-textSecondary" title={`The ${live.progress.done} newest filers are read; the other ${live.progress.total - live.progress.done} are read when you go further — scroll the grid, pick a cut, or ask here`}>
                   {facts.houses.toLocaleString('en-US')} <span className="text-textMuted">newest of {live.progress.total} ·</span>{' '}
@@ -347,12 +347,12 @@ export const Institutions = () => {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Calls · puts")}>Calls · puts</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap text-textPrimary">{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.calls} calls <span className="text-textMuted">·</span> {facts.puts} puts</>}</dd>
+            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Calls · puts")}>Calls · puts</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum whitespace-nowrap text-textPrimary">{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.calls} calls <span className="text-textMuted">·</span> {facts.puts} puts</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Largest line")}>Largest line</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.lead ? `${facts.lead.ticker} ${moneyB(facts.lead.valueB)}` : '—'}{newestWords && facts.lead ? <span className="text-textMuted text-[10px]"> · {newestWords}</span> : null}</>}</dd>
+            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Largest line")}>Largest line</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.lead ? `${facts.lead.ticker} ${moneyB(facts.lead.valueB)}` : '—'}{newestWords && facts.lead ? <span className="text-textMuted text-t10"> · {newestWords}</span> : null}</>}</dd>
           </div>
         </dl>
       </div>
@@ -363,7 +363,7 @@ export const Institutions = () => {
         <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="institutions-names" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and houses on the page right now — tick any number; only those stay" testId="institutions-filter" />
       </div>
-      <p className={`px-5 pb-3 text-[12px] leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-institutions-sentence>
+      <p className={`px-5 pb-3 text-t12 leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-institutions-sentence>
         {facts.lead ? (
           <>
             <span className="text-textPrimary font-semibold">{displayName(facts.lead.name)}</span>’s largest line is <span className="text-textPrimary font-semibold">{facts.lead.ticker}</span>, {moneyB(facts.lead.valueB)}. {facts.houses.toLocaleString('en-US')} {facts.houses === 1 ? 'house' : 'houses'} filed {facts.lines.toLocaleString('en-US')} {facts.lines === 1 ? 'line' : 'lines'} on this cut — {facts.calls} marked call, {facts.puts} marked put, and no strike on any of them.
@@ -377,7 +377,7 @@ export const Institutions = () => {
       {failed && <FeedFallback />}
       <Strip title="The lines to know" rest={`the largest reported line in each name, biggest first${newestWords ? ` — ${newestWords}` : ''} · click one to keep the grid to that name`} testId="institutions">
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : instReading ? 'Reading the 13Fs…' : 'No line on this cut'}</div>
+          <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : instReading ? 'Reading the 13Fs…' : 'No line on this cut'}</div>
         ) : (
           <KnowGrid>
             {toKnow.map(r => (
@@ -437,7 +437,7 @@ const ShortName = ({ data }: ICellRendererParams<ShortRow>) =>
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
-        <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
+        <span className="font-mono text-t12 font-bold text-textPrimary">{data.ticker}</span>
         {/* the listing's name, else the vendor's; never the ticker said twice */}
         <CoSub ticker={data.ticker} fallback={data.name} />
       </span>
@@ -446,9 +446,9 @@ const ShortName = ({ data }: ICellRendererParams<ShortRow>) =>
 const ShortSector = ({ data }: ICellRendererParams<ShortRow>) =>
   data ? (
     data.sector === '—' ? (
-      <span className="text-[11px] text-textMuted" title="The feed's file does not name a sector">—</span>
+      <span className="text-t11 text-textMuted" title="The feed's file does not name a sector">—</span>
     ) : (
-      <span className="inline-flex items-center gap-1.5 text-[11px] text-textSecondary">
+      <span className="inline-flex items-center gap-1.5 text-t11 text-textSecondary">
         <SectorMark sector={data.sector} />
         {data.sector}
       </span>
@@ -459,17 +459,17 @@ const ShortInterest = ({ data }: ICellRendererParams<ShortRow>) => {
   const heavy = data.interestPct >= 30;
   return (
     <span className="flex items-center gap-2 h-full w-full pr-2" title={heavy ? 'Thirty percent or more of the float sold short' : 'Short interest as a percent of the float'}>
-      <span className={`font-mono text-[11px] tnum w-[52px] ${heavy ? 'text-bear font-semibold' : 'text-textPrimary'}`}>{data.interestPct.toFixed(2)}%</span>
+      <span className={`font-mono text-t11 tnum w-[52px] ${heavy ? 'text-bear font-semibold' : 'text-textPrimary'}`}>{data.interestPct.toFixed(2)}%</span>
       <span className="relative flex-1 h-[4px] rounded-full bg-ink/[0.06] overflow-hidden">
         <span className={`absolute left-0 top-0 h-full rounded-full ${heavy ? 'bg-bear' : 'bg-silver'}`} style={{ width: `${Math.min(100, data.interestPct * 2)}%` }} />
       </span>
     </span>
   );
 };
-const ShortDays = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.daysToCover.toFixed(1)}</span> : null);
-const ShortFloat = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textSecondary">{sharesM(data.floatM)}</span> : null);
-const ShortVol = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.shortVolRatio == null ? '—' : `${data.shortVolRatio.toFixed(0)}%`}</span> : null);
-const ShortBorrow = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.feeRate == null ? '—' : `${data.feeRate.toFixed(2)}%`}</span> : null);
+const ShortDays = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{data.daysToCover.toFixed(1)}</span> : null);
+const ShortFloat = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-t11 tnum text-textSecondary">{sharesM(data.floatM)}</span> : null);
+const ShortVol = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{data.shortVolRatio == null ? '—' : `${data.shortVolRatio.toFixed(0)}%`}</span> : null);
+const ShortBorrow = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{data.feeRate == null ? '—' : `${data.feeRate.toFixed(2)}%`}</span> : null);
 
 const ShortCard = ({ row, on, onToggle }: { row: ShortRow; on: boolean; onToggle: () => void }) => {
   /* the screen carries no company name; a card asks the name's own stock card for it */
@@ -479,18 +479,18 @@ const ShortCard = ({ row, on, onToggle }: { row: ShortRow; on: boolean; onToggle
   <button type="button" onClick={onToggle} aria-pressed={on} title={on ? `Showing ${row.ticker} only — click to show every name` : `Keep the grid to ${row.ticker}`} className={CARD(on)} data-shorts-know={row.ticker} data-on={on || undefined}>
     <span className="flex items-center gap-2 min-w-0">
       <CompanyLogo ticker={row.ticker} size={18} />
-      <span className="font-mono text-[12px] font-bold text-textPrimary">{row.ticker}</span>
-      {name && <span className="text-[10px] text-textSecondary truncate">{name}</span>}
+      <span className="font-mono text-t12 font-bold text-textPrimary">{row.ticker}</span>
+      {name && <span className="text-t10 text-textSecondary truncate">{name}</span>}
     </span>
     <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
-      <span className={`text-[13px] font-bold ${row.interestPct >= 30 ? 'text-bear' : 'text-textPrimary'}`}>{row.interestPct.toFixed(1)}%</span>
-      <span className="text-[9px] text-textSecondary">of the float</span>
+      <span className={`text-t13 font-bold ${row.interestPct >= 30 ? 'text-bear' : 'text-textPrimary'}`}>{row.interestPct.toFixed(1)}%</span>
+      <span className="text-t9 text-textSecondary">of the float</span>
     </span>
-    <span className="mt-1 block font-mono text-[9px] tnum text-textSecondary">{row.daysToCover.toFixed(1)} days to cover</span>
+    <span className="mt-1 block font-mono text-t9 tnum text-textSecondary">{row.daysToCover.toFixed(1)} days to cover</span>
     {(() => {
       const q = squeezeRead(row);
       return (
-        <span className="mt-1 block font-mono text-[9px] uppercase tracking-widest truncate" title={`${q.facts.map(f => f.text).join(' · ')}\n${SQUEEZE_TIP}`}>
+        <span className="mt-1 block font-mono text-t9 uppercase tracking-widest truncate" title={`${q.facts.map(f => f.text).join(' · ')}\n${SQUEEZE_TIP}`}>
           squeeze <span className={`font-semibold ${SQUEEZE_INK[q.word]}`}>{q.word}</span>
         </span>
       );
@@ -505,8 +505,8 @@ const ShortSqueeze = ({ data }: ICellRendererParams<ShortRow>) => {
   const q = squeezeRead(data);
   return (
     <span className="flex flex-col leading-tight min-w-0" title={`${q.facts.map(f => f.text).join(' · ')}\n${SQUEEZE_TIP}`} data-squeeze={q.word}>
-      <span className={`font-mono text-[10px] font-semibold uppercase tracking-widest ${SQUEEZE_INK[q.word]}`}>{q.word}</span>
-      <span className="text-[10px] text-textMuted truncate">{q.facts.map(f => f.text).slice(0, 2).join(' · ')}</span>
+      <span className={`font-mono text-t10 font-semibold uppercase tracking-widest ${SQUEEZE_INK[q.word]}`}>{q.word}</span>
+      <span className="text-t10 text-textMuted truncate">{q.facts.map(f => f.text).slice(0, 2).join(' · ')}</span>
     </span>
   );
 };
@@ -578,10 +578,10 @@ export const Shorts = () => {
       { headerName: 'Squeeze setup', colId: 'squeeze', flex: 1.4, minWidth: 200, cellRenderer: ShortSqueeze, valueGetter: p => (p.data ? squeezeRead(p.data).points : 0), headerTooltip: SQUEEZE_TIP },
       { headerName: 'Sector', field: 'sector', flex: 1, minWidth: 150, cellRenderer: ShortSector, headerTooltip: 'The sector the name files under' },
       { headerName: 'Short interest', field: 'interestPct', width: 168, cellRenderer: ShortInterest, headerTooltip: 'The share of the tradable stock (the float) that has been sold short and not bought back. Red at 30% and above' },
-      { headerName: 'Shares short', field: 'shortSharesM', width: 120, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{sharesM(data.shortSharesM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares sold short, in millions' },
+      { headerName: 'Shares short', field: 'shortSharesM', width: 120, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{sharesM(data.shortSharesM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares sold short, in millions' },
       { headerName: 'Days to cover', field: 'daysToCover', width: 120, cellRenderer: ShortDays, type: 'rightAligned', headerTooltip: 'How many days of normal trading it would take the shorts to buy back every share — shares short divided by average daily volume' },
       { headerName: 'Fee', field: 'feeRate', width: 80, cellRenderer: ShortBorrow, type: 'rightAligned', headerTooltip: 'The annualized fee to borrow the shares on the settlement day — the short file shows today’s. A dash means the feed did not price the borrow.' },
-      { headerName: 'Available', field: 'availableM', width: 110, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{borrowM(data.availableM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares available to borrow on the settlement day — the short file shows today’s. The feed caps the count at 10M — 10M+ means at least that many. A dash means the feed did not say.' },
+      { headerName: 'Available', field: 'availableM', width: 110, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{borrowM(data.availableM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares available to borrow on the settlement day — the short file shows today’s. The feed caps the count at 10M — 10M+ means at least that many. A dash means the feed did not say.' },
       { headerName: 'Float', field: 'floatM', flex: 0.7, minWidth: 90, cellRenderer: ShortFloat, type: 'rightAligned', headerTooltip: 'Shares free to trade (the float), in millions — insiders’ locked-up shares are not in it' },
     ];
     if (hasShortVol) cols.splice(5, 0, { headerName: 'Short vol', field: 'shortVolRatio', width: 100, cellRenderer: ShortVol, type: 'rightAligned', headerTooltip: 'Short volume as a percent of the session’s volume' });
@@ -609,10 +609,10 @@ export const Shorts = () => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">Where the short book sits</h3>
+            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">Where the short book sits</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What short interest, days to cover and the fee mean" testId="shorts-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" data-shorts-asof>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate" data-shorts-asof>
             <span className={facts.stale ? 'text-warn' : ''} title="Short interest settles twice a month and is published about ten days later — the figure is never today's">
               short interest as of {waiting ? '…' : asOfDay(facts.asOf)}{facts.stale ? ' (stale)' : ''}
             </span>{' '}
@@ -621,26 +621,26 @@ export const Shorts = () => {
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={`Names on the grid after the cards — of the screen's ${SHORTS_SCREEN}: the latest settlement's heaviest shorts by share of the float, floats of ${SHORTS_MIN_FLOAT / 1e6}M shares or more`}>Names</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-shorts-count>{failed ? '—' : waiting ? '…' : <>{facts.names}{facts.funds ? <span className="text-textMuted"> · {facts.funds} funds</span> : null}</>}</dd>
+            <dt className="text-t10 text-textMuted cursor-help" title={`Names on the grid after the cards — of the screen's ${SHORTS_SCREEN}: the latest settlement's heaviest shorts by share of the float, floats of ${SHORTS_MIN_FLOAT / 1e6}M shares or more`}>Names</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-shorts-count>{failed ? '—' : waiting ? '…' : <>{facts.names}{facts.funds ? <span className="text-textMuted"> · {facts.funds} funds</span> : null}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={`${SQUEEZE_TIP}\nOn this list the read uses the settlement's figures only; a name's file adds today's borrow, the last session's short volume and the fails to deliver, so it can read stronger there.`}>Squeeze setups</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-shorts-squeeze>
+            <dt className="text-t10 text-textMuted cursor-help" title={`${SQUEEZE_TIP}\nOn this list the read uses the settlement's figures only; a name's file adds today's borrow, the last session's short volume and the fails to deliver, so it can read stronger there.`}>Squeeze setups</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-shorts-squeeze>
               {failed ? '—' : waiting ? '…' : <><span className="text-bear">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.building} building</span> <span className="text-textMuted">of {facts.stocks}</span></>}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="Stocks on this screen (funds left out) with at least 20% of the float sold short — the rung the squeeze rule scores 2 points">At 20% or more</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.heavy ? 'text-bear' : 'text-textPrimary'}`}>{failed ? '—' : waiting ? '…' : <>{facts.heavy}</>}</dd>
+            <dt className="text-t10 text-textMuted cursor-help" title="Stocks on this screen (funds left out) with at least 20% of the float sold short — the rung the squeeze rule scores 2 points">At 20% or more</dt>
+            <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${facts.heavy ? 'text-bear' : 'text-textPrimary'}`}>{failed ? '—' : waiting ? '…' : <>{facts.heavy}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="The stock (funds left out) with the largest share of its float sold short on this screen">Heaviest</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : waiting ? '…' : <>{facts.lead ? `${facts.lead.ticker} ${facts.lead.interestPct.toFixed(1)}%` : '—'}</>}</dd>
+            <dt className="text-t10 text-textMuted cursor-help" title="The stock (funds left out) with the largest share of its float sold short on this screen">Heaviest</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{failed ? '—' : waiting ? '…' : <>{facts.lead ? `${facts.lead.ticker} ${facts.lead.interestPct.toFixed(1)}%` : '—'}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="The median, across the stocks here (funds left out), of the days of normal volume the shorts would need to buy back — half need more, half less">Median days to cover</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : waiting ? '…' : <>{facts.stocks ? facts.days.toFixed(1) : '—'}</>}</dd>
+            <dt className="text-t10 text-textMuted cursor-help" title="The median, across the stocks here (funds left out), of the days of normal volume the shorts would need to buy back — half need more, half less">Median days to cover</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{failed ? '—' : waiting ? '…' : <>{facts.stocks ? facts.days.toFixed(1) : '—'}</>}</dd>
           </div>
         </dl>
       </div>
@@ -650,7 +650,7 @@ export const Shorts = () => {
         <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="shorts-names" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names on the page right now — tick any number; only those stay" testId="shorts-filter" />
       </div>
-      <p className={`px-5 pb-3 text-[12px] leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-shorts-sentence>
+      <p className={`px-5 pb-3 text-t12 leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-shorts-sentence>
         {facts.lead ? (
           <>
             <span className={`font-semibold ${facts.lead.interestPct >= 30 ? 'text-bear' : 'text-textPrimary'}`}>{facts.lead.ticker}</span> is the heaviest stock short on this screen, {facts.lead.interestPct.toFixed(1)}% of the float and {facts.lead.daysToCover.toFixed(1)} days to cover. <span className="text-bear font-semibold">{facts.heavy}</span> {facts.heavy === 1 ? 'stock sits' : 'stocks sit'} at 20% or more, and the lightest here is still {facts.floor.toFixed(1)}%{facts.funds ? `; ${facts.funds} ${facts.funds === 1 ? 'fund is' : 'funds are'} listed with no squeeze read` : ''}. The squeeze words here read the settlement alone; a name's file adds today's borrow, short volume and fails to deliver, and can read stronger.
@@ -664,7 +664,7 @@ export const Shorts = () => {
       {failed && <FeedFallback />}
       <Strip title="The names to know" rest="the heaviest short interest among the stocks on this cut (funds left out) · click a name to keep the grid to it" testId="shorts">
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the short book…' : 'No name on this cut'}</div>
+          <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the short book…' : 'No name on this cut'}</div>
         ) : (
           <KnowGrid>
             {toKnow.map(r => (
@@ -729,15 +729,15 @@ const EtfName = ({ data }: ICellRendererParams<EtfRow>) =>
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.etf} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
-        <span className="font-mono text-[12px] font-bold text-textPrimary">{data.etf}</span>
-        <span className="text-[10px] text-textMuted truncate">{data.name}</span>
+        <span className="font-mono text-t12 font-bold text-textPrimary">{data.etf}</span>
+        <span className="text-t10 text-textMuted truncate">{data.name}</span>
       </span>
     </span>
   ) : null;
-const EtfKindCell = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-[10px] uppercase tracking-widest text-textSecondary">{KIND_WORD[data.kind]}</span> : null);
-const EtfAum = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{assetsB(data.aumB)}</span> : null);
-const EtfFlow = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.flow5dM)}`}>{signedM(data.flow5dM)}</span> : null);
-const EtfFee = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.expensePct == null ? '—' : `${data.expensePct.toFixed(2)}%`}</span> : null);
+const EtfKindCell = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-t10 uppercase tracking-widest text-textSecondary">{KIND_WORD[data.kind]}</span> : null);
+const EtfAum = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{assetsB(data.aumB)}</span> : null);
+const EtfFlow = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className={`font-mono text-t11 tnum ${ink(data.flow5dM)}`}>{signedM(data.flow5dM)}</span> : null);
+const EtfFee = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{data.expensePct == null ? '—' : `${data.expensePct.toFixed(2)}%`}</span> : null);
 /* the fund's holdings are read once its cell is on screen (round 9 — liveFiles.wantFundHoldings) */
 const EtfTop = ({ data }: ICellRendererParams<EtfRow>) => {
   const [ref, seen] = useSeen<HTMLSpanElement>();
@@ -746,14 +746,14 @@ const EtfTop = ({ data }: ICellRendererParams<EtfRow>) => {
     if (seen && etf) wantFundHoldings(etf);
   }, [seen, etf]);
   if (!data) return null;
-  if (!fundHoldingsRead(data.etf)) return <span ref={ref} className="font-mono text-[11px] text-textMuted" title="Reading the fund's holdings">…</span>;
+  if (!fundHoldingsRead(data.etf)) return <span ref={ref} className="font-mono text-t11 text-textMuted" title="Reading the fund's holdings">…</span>;
   /* a fund with no line on the feed — a dash, not "— · 0.0%" */
-  if (!data.topHolding || data.topHolding === '—' || !(data.topWeight > 0)) return <span ref={ref} className="font-mono text-[11px] text-textMuted">—</span>;
+  if (!data.topHolding || data.topHolding === '—' || !(data.topWeight > 0)) return <span ref={ref} className="font-mono text-t11 text-textMuted">—</span>;
   return (
     <span ref={ref} className="inline-flex items-center gap-1.5 min-w-0" title={`${data.topHolding} · ${data.topWeight.toFixed(2)}% of the fund`}>
       {/* a bond fund's largest line is an issue name, not a symbol — no logo for it */}
       {/^[A-Z][A-Z0-9.]{0,5}$/.test(data.topHolding) && <CompanyLogo ticker={data.topHolding} size={14} />}
-      <span className="font-mono text-[11px] tnum text-textSecondary truncate">
+      <span className="font-mono text-t11 tnum text-textSecondary truncate">
         {data.topHolding} · {data.topWeight.toFixed(data.topWeight < 1 ? 2 : 1)}%
       </span>
     </span>
@@ -765,7 +765,7 @@ const HoldName = ({ data }: ICellRendererParams<EtfHolding>) =>
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
-        <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
+        <span className="font-mono text-t12 font-bold text-textPrimary">{data.ticker}</span>
         <CoSub ticker={data.ticker} />
       </span>
     </span>
@@ -777,7 +777,7 @@ const HoldWeight = ({ data }: ICellRendererParams<EtfHolding>) => {
       <span className="relative flex-1 h-[4px] rounded-full bg-ink/[0.06] overflow-hidden">
         <span className="absolute left-0 top-0 h-full rounded-full bg-silver" style={{ width: `${Math.min(100, data.weight * 4)}%` }} />
       </span>
-      <span className="font-mono text-[11px] tnum text-textPrimary w-[48px] text-right">{data.weight.toFixed(data.weight < 1 ? 2 : 1)}%</span>
+      <span className="font-mono text-t11 tnum text-textPrimary w-[48px] text-right">{data.weight.toFixed(data.weight < 1 ? 2 : 1)}%</span>
     </span>
   );
 };
@@ -786,14 +786,14 @@ const EtfCard = ({ row, on, onToggle }: { row: EtfRow; on: boolean; onToggle: ()
   <button type="button" onClick={onToggle} aria-pressed={on} title={on ? `Showing ${row.etf} only — click to show every fund` : `Keep the grid to ${row.etf}`} className={CARD(on)} data-etf-know={row.etf} data-on={on || undefined}>
     <span className="flex items-center gap-2 min-w-0">
       <CompanyLogo ticker={row.etf} size={18} />
-      <span className="font-mono text-[12px] font-bold text-textPrimary">{row.etf}</span>
-      <span className="text-[10px] text-textSecondary truncate">{row.name}</span>
+      <span className="font-mono text-t12 font-bold text-textPrimary">{row.etf}</span>
+      <span className="text-t10 text-textSecondary truncate">{row.name}</span>
     </span>
     <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
-      <span className={`text-[13px] font-bold ${ink(row.flow5dM)}`}>{signedM(row.flow5dM)}</span>
-      <span className="text-[9px] text-textSecondary">five days</span>
+      <span className={`text-t13 font-bold ${ink(row.flow5dM)}`}>{signedM(row.flow5dM)}</span>
+      <span className="text-t9 text-textSecondary">five days</span>
     </span>
-    <span className="mt-1 block font-mono text-[9px] uppercase tracking-widest text-textMuted">{KIND_WORD[row.kind]}</span>
+    <span className="mt-1 block font-mono text-t9 uppercase tracking-widest text-textMuted">{KIND_WORD[row.kind]}</span>
   </button>
 );
 
@@ -887,27 +887,27 @@ export const EtfBook = () => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">What the funds hold</h3>
+            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">What the funds hold</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a fund, a flow and a weight mean" testId="etfs-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Assets, the fee, and five-day flow · a row opens the fund</p>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">Assets, the fee, and five-day flow · a row opens the fund</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Funds")}>Funds</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-etf-count>{failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : <>{facts.funds}</>}</dd>
+            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Funds")}>Funds</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-etf-count>{failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : <>{facts.funds}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Assets")}>Assets</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : <>{assetsB(facts.aum)}</>}</dd>
+            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Assets")}>Assets</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : <>{assetsB(facts.aum)}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={`${statHelp("Five-day flow")} Every fund is summed over the same sessions${flowSpan ? ` (${flowSpan})` : ''}.`}>Five-day flow{flowSpan ? ` · ${flowSpan}` : ''}</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${etfReading ? 'text-textMuted' : ink(facts.net)}`}>{failed ? '—' : etfReading ? '…' : <>{signedM(facts.net)}</>}</dd>
+            <dt className="text-t10 text-textMuted cursor-help" title={`${statHelp("Five-day flow")} Every fund is summed over the same sessions${flowSpan ? ` (${flowSpan})` : ''}.`}>Five-day flow{flowSpan ? ` · ${flowSpan}` : ''}</dt>
+            <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${etfReading ? 'text-textMuted' : ink(facts.net)}`}>{failed ? '—' : etfReading ? '…' : <>{signedM(facts.net)}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("In the book")}>In the book</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : <>{focus ? focus.etf : '—'}</>}</dd>
+            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("In the book")}>In the book</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : <>{focus ? focus.etf : '—'}</>}</dd>
           </div>
         </dl>
       </div>
@@ -916,7 +916,7 @@ export const EtfBook = () => {
         <DropdownSelect label="Kind" value={kind} options={KIND_OPTIONS} onChange={setKind} title="Which funds" testId="etf-kind" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The funds on the page right now — tick any number; only those stay" testId="etf-filter" />
       </div>
-      <p className={`px-5 pb-3 text-[12px] leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-etf-sentence>
+      <p className={`px-5 pb-3 text-t12 leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-etf-sentence>
         {facts.inflow && facts.outflow ? (
           <>
             {facts.inflow.flow5dM > 0 ? (
@@ -950,7 +950,7 @@ export const EtfBook = () => {
       {failed && <FeedFallback />}
       <Strip title="The funds to know" rest="the largest five-day flow, either way · click a fund to keep the grid to it" testId="etfs">
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : etfReading ? 'Reading the funds…' : 'No fund on this cut'}</div>
+          <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : etfReading ? 'Reading the funds…' : 'No fund on this cut'}</div>
         ) : (
           <KnowGrid>
             {toKnow.map(r => (

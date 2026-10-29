@@ -61,11 +61,11 @@ const untilWords = (ms: number): string => {
 /** One figure of the card: its name, the figure, and — where it has one — a line under it */
 const Cell = ({ label, children, sub, title, testId }: { label: string; children: ReactNode; sub?: ReactNode; title?: string; testId?: string }) => (
   <div className="min-w-0" title={title}>
-    <div className="text-[10px] text-textMuted whitespace-nowrap">{label}</div>
-    <div className="mt-0.5 font-mono text-[13px] leading-tight tnum text-textPrimary whitespace-nowrap" data-trace-fact={testId}>
+    <div className="text-t10 text-textMuted whitespace-nowrap">{label}</div>
+    <div className="mt-0.5 font-mono text-t13 leading-tight tnum text-textPrimary whitespace-nowrap" data-trace-fact={testId}>
       {children}
     </div>
-    {sub && <div className="mt-0.5 font-mono text-[10px] tnum text-textMuted whitespace-nowrap">{sub}</div>}
+    {sub && <div className="mt-0.5 font-mono text-t10 tnum text-textMuted whitespace-nowrap">{sub}</div>}
   </div>
 );
 
@@ -90,7 +90,7 @@ const FloorBar = ({ ev, worth }: { ev: EvalRead; worth: number }) => {
         {dayFloorOn && <span className="absolute top-[5px] w-px h-[11px] bg-warn" style={{ left: at(ev.dayFloor) }} title="The day’s own floor" />}
         <span className="absolute top-[4px] w-[13px] h-[13px] -ml-[6.5px] rounded-full border-2 border-panel bg-textPrimary shadow-[0_0_0_1px_rgb(var(--silver)/0.5)]" style={{ left: at(worth) }} />
       </div>
-      <div className="flex justify-between font-mono text-[9px] tnum text-textMuted">
+      <div className="flex justify-between font-mono text-t9 tnum text-textMuted">
         <span>
           floor <span className="text-textSecondary">{usd(ev.floor, 0)}</span>
           {ev.floorStopped && <span> · stays there</span>}
@@ -119,7 +119,7 @@ const TiedBar = ({ v }: { v: PaperView }) => {
         <span className="h-full bg-silver/70" style={{ width: w(opt) }} />
         <span className="h-full bg-textMuted/60" style={{ width: w(margin) }} />
       </div>
-      <div className="mt-1 font-mono text-[9px] tnum text-textMuted">
+      <div className="mt-1 font-mono text-t9 tnum text-textMuted">
         tied up <span className="text-textSecondary">{usd(opt + margin, 0)}</span> of {usd(v.equity, 0)}
         {opt > 0 && <span> · options {usd(opt, 0)}</span>}
         {margin > 0 && <span> · margin {usd(margin, 0)}</span>}
@@ -128,7 +128,7 @@ const TiedBar = ({ v }: { v: PaperView }) => {
   );
 };
 
-const door = 'inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textSecondary transition-colors';
+const door = 'inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary transition-colors';
 
 interface Props {
   account: PaperAccount;
@@ -163,11 +163,11 @@ const AccountCard = ({ account: a, accounts, view: v, ev, now, onPick, onPractic
       <div className={`${head} px-3 gap-2`}>
         {/* bare: the head also holds Flatten and New — the word Account stays in the tooltip and the open card's heading */}
         <DropdownSelect label="Account" value={a.id} options={options} onChange={onPick} title="The account on the chart" testId="paper-account-pick" size="sm" bare />
-        <span className={`inline-flex items-center h-5 px-1.5 rounded border font-mono text-[9px] font-bold uppercase tracking-widest ${status.ink}`} data-paper-status-chip>
+        <span className={`inline-flex items-center h-5 px-1.5 rounded border font-mono text-t9 font-bold uppercase tracking-widest ${status.ink}`} data-paper-status-chip>
           {status.word}
         </span>
         {a.sandbox && (
-          <span className="inline-flex items-center h-5 px-1.5 rounded border border-borderSubtle font-mono text-[9px] uppercase tracking-widest text-textSecondary" title="Fees off, and futures fill at the price — practice with nothing in the way">
+          <span className="inline-flex items-center h-5 px-1.5 rounded border border-borderSubtle font-mono text-t9 uppercase tracking-widest text-textSecondary" title="Fees off, and futures fill at the price — practice with nothing in the way">
             Sandbox
           </span>
         )}
@@ -199,8 +199,8 @@ const AccountCard = ({ account: a, accounts, view: v, ev, now, onPick, onPractic
                 <Popover.Content align="end" sideOffset={6} collisionPadding={12} className="z-[95] w-[400px] max-w-[calc(100vw-24px)] rounded-md border border-borderMuted bg-panel p-3 shadow-[0_14px_40px_rgba(0,0,0,0.45)] outline-none animate-soft-in" data-paper-new-card>
                   {onPractice && (
                     <>
-                      <p className="text-[12px] font-medium text-textPrimary">A practice account</p>
-                      <p className="mt-1 text-[11px] leading-snug text-textMuted">Options and futures, from the size you pick. The practice account you have now is closed at the market first, and stays in the list.</p>
+                      <p className="text-t12 font-medium text-textPrimary">A practice account</p>
+                      <p className="mt-1 text-t11 leading-snug text-textMuted">Options and futures, from the size you pick. The practice account you have now is closed at the market first, and stays in the list.</p>
                       <div className="mt-2.5 grid grid-cols-4 gap-1.5">
                         {PRACTICE_SIZES.map(size => (
                           <button
@@ -210,7 +210,7 @@ const AccountCard = ({ account: a, accounts, view: v, ev, now, onPick, onPractic
                               setNewOpen(false);
                               onPractice(size);
                             }}
-                            className="h-8 rounded-md border border-borderSubtle font-mono text-[11px] tnum text-textPrimary hover:border-silver/60 hover:bg-silver/[0.06] transition-colors"
+                            className="h-8 rounded-md border border-borderSubtle font-mono text-t11 tnum text-textPrimary hover:border-silver/60 hover:bg-silver/[0.06] transition-colors"
                             data-paper-size={size}
                           >
                             {usd(size / 1000, 0)}K
@@ -221,8 +221,8 @@ const AccountCard = ({ account: a, accounts, view: v, ev, now, onPick, onPractic
                   )}
                   {onEvaluation && (
                     <div className={onPractice ? 'mt-3 pt-3 border-t border-borderSubtle/70' : ''}>
-                      <p className="text-[12px] font-medium text-textPrimary">An evaluation</p>
-                      <p className="mt-1 text-[11px] leading-snug text-textMuted">A prop firm’s test: futures only, a floor that follows the best close, a day’s limit, two trading days, no day more than half the profit, flat by 16:59 New York.</p>
+                      <p className="text-t12 font-medium text-textPrimary">An evaluation</p>
+                      <p className="mt-1 text-t11 leading-snug text-textMuted">A prop firm’s test: futures only, a floor that follows the best close, a day’s limit, two trading days, no day more than half the profit, flat by 16:59 New York.</p>
                       {/* the plans as a small table — a head row says what each figure is (PlanRows) */}
                       <div className="mt-2.5">
                         <PlanRows
@@ -239,7 +239,7 @@ const AccountCard = ({ account: a, accounts, view: v, ev, now, onPick, onPractic
                       </div>
                       {running && onEndEvaluation && (
                         <div className="mt-2 pt-2 border-t border-borderSubtle/70 flex items-center gap-2" data-paper-end-eval>
-                          <p className="flex-1 min-w-0 text-[11px] leading-snug text-textMuted">
+                          <p className="flex-1 min-w-0 text-t11 leading-snug text-textMuted">
                             {ending ? 'Everything open on it is closed at the market, and it is written down as ended — not passed, not failed.' : `${running.name} is running — one at a time.`}
                           </p>
                           <button
@@ -266,7 +266,7 @@ const AccountCard = ({ account: a, accounts, view: v, ev, now, onPick, onPractic
         </span>
       </div>
       <div className="px-4 py-3 flex flex-col gap-3">
-        <p className="text-[11px] leading-snug text-textMuted" data-paper-subline>
+        <p className="text-t11 leading-snug text-textMuted" data-paper-subline>
           {a.status !== 'open' && a.statusWhy ? (
             <span className={a.status === 'failed' ? 'text-bear' : a.status === 'passed' ? 'text-bull' : 'text-textSecondary'}>{a.statusWhy}</span>
           ) : ev ? (
@@ -279,8 +279,8 @@ const AccountCard = ({ account: a, accounts, view: v, ev, now, onPick, onPractic
           {ev ? (
             <>
               <div className="min-w-0">
-                <div className="text-[10px] text-textMuted whitespace-nowrap">Room to the floor</div>
-                <div className={`mt-0.5 font-mono text-[18px] leading-none font-semibold tnum whitespace-nowrap ${a.status !== 'open' ? 'text-textMuted' : tight ? 'text-warn' : 'text-textPrimary'}`} data-paper-room>
+                <div className="text-t10 text-textMuted whitespace-nowrap">Room to the floor</div>
+                <div className={`mt-0.5 font-mono text-t18 leading-none font-semibold tnum whitespace-nowrap ${a.status !== 'open' ? 'text-textMuted' : tight ? 'text-warn' : 'text-textPrimary'}`} data-paper-room>
                   {usd(Math.max(0, ev.room), 0)}
                 </div>
               </div>
@@ -305,8 +305,8 @@ const AccountCard = ({ account: a, accounts, view: v, ev, now, onPick, onPractic
           ) : (
             <>
               <div className="min-w-0">
-                <div className="text-[10px] text-textMuted whitespace-nowrap">Worth</div>
-                <div className="mt-0.5 font-mono text-[18px] leading-none font-semibold tnum text-textPrimary whitespace-nowrap" data-paper-worth>
+                <div className="text-t10 text-textMuted whitespace-nowrap">Worth</div>
+                <div className="mt-0.5 font-mono text-t18 leading-none font-semibold tnum text-textPrimary whitespace-nowrap" data-paper-worth>
                   {usd(v.equity)}
                 </div>
               </div>
@@ -326,7 +326,7 @@ const AccountCard = ({ account: a, accounts, view: v, ev, now, onPick, onPractic
           )}
         </div>
         {ev ? <FloorBar ev={ev} worth={v.equity} /> : <TiedBar v={v} />}
-        <span className="font-mono text-[10px] tnum text-textMuted" data-paper-counts>
+        <span className="font-mono text-t10 tnum text-textMuted" data-paper-counts>
           {open} open · {working} working · {v.optTrades.length + v.futTrades.length} closed · <span className={dirInk(v.closed)}>{usdSigned(v.closed, 0)}</span> closed
         </span>
       </div>

@@ -140,7 +140,7 @@ export const PaperTile = ({ ctx, state, size, open }: TileProps) => {
             {v.fut.map(p => (
               <TileRow key={p.key} columns={cols} testId={p.key} onClick={open} title="Open the paper desk">
                 <span className="min-w-0 truncate font-bold text-textPrimary">
-                  {p.contract} <span className={`text-[9px] uppercase tracking-widest ${p.long ? 'text-bull' : 'text-bear'}`}>{p.long ? 'long' : 'short'}</span>
+                  {p.contract} <span className={`text-t9 uppercase tracking-widest ${p.long ? 'text-bull' : 'text-bear'}`}>{p.long ? 'long' : 'short'}</span>
                 </span>
                 <span className="text-right text-textSecondary">{p.qty}</span>
                 {wide && <span className="text-right text-textSecondary">{p.avg.toFixed(2)}</span>}
@@ -251,9 +251,9 @@ export const JournalTile = ({ state, open }: TileProps) => {
           card={h => {
             const p = runBy.get(h.time);
             if (!p) return null;
-            if (!p.row) return <div className="font-mono text-[11px] text-textSecondary">Before the first close</div>;
+            if (!p.row) return <div className="font-mono text-t11 text-textSecondary">Before the first close</div>;
             return (
-              <div className="flex flex-col gap-1 font-mono text-[11px] tnum">
+              <div className="flex flex-col gap-1 font-mono text-t11 tnum">
                 <span className="font-bold text-textPrimary">{titleOf(p.row)}</span>
                 <span className="flex items-center justify-between gap-4">
                   <span className="text-textMuted">this trade</span>
@@ -300,11 +300,11 @@ export const ClockTile = ({ ctx, size }: TileProps) => {
     <div className="h-full min-h-0 flex flex-col" data-clock-tile={phase?.key ?? 'shut'}>
       <div className="flex-1 min-h-0 flex flex-col justify-center gap-3 px-3">
         <div className="flex items-baseline gap-3 flex-wrap">
-          <span className="font-mono text-[26px] leading-none font-semibold tnum text-textPrimary" data-clock-time>
+          <span className="font-mono text-t26 leading-none font-semibold tnum text-textPrimary" data-clock-time>
             {raw.etTime}
           </span>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">New York</span>
-          <span className="ml-auto font-mono text-[11px] tnum text-textSecondary whitespace-nowrap">{now != null ? `${leftWords(clock.minutesLeft)} to the close` : raw.label}</span>
+          <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">New York</span>
+          <span className="ml-auto font-mono text-t11 tnum text-textSecondary whitespace-nowrap">{now != null ? `${leftWords(clock.minutesLeft)} to the close` : raw.label}</span>
         </div>
         {/* THE SESSION — its phases end to end, as long as they last; the part behind us washed, now a silver rule */}
         <div>
@@ -320,7 +320,7 @@ export const ClockTile = ({ ctx, size }: TileProps) => {
             )}
           </div>
           {/* the hours under it, each where it falls on the strip */}
-          <div className="relative mt-1 h-3 font-mono text-[9px] tnum text-textMuted">
+          <div className="relative mt-1 h-3 font-mono text-t9 tnum text-textMuted">
             <span className="absolute left-0">09:30</span>
             {(wide ? [11 * 60 + 30, 14 * 60] : [14 * 60]).map(m => (
               <span key={m} className="absolute -translate-x-1/2" style={{ left: `${((m - OPEN_MIN) / SPAN) * 100}%` }}>
