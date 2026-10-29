@@ -12,6 +12,8 @@ export interface KeyLevels {
   pin?: number;
   /** Settlement that pays the least intrinsic on the open interest. Not a wall. Absent without open interest. */
   maxPain?: number;
+  /** Each wall's and the supreme's |net GEX| against the largest strike's on the same contracts, 0–1 */
+  shares?: { callWall?: number; putWall?: number; supreme?: number };
 }
 
 export interface DarkPoolPrint {

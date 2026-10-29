@@ -2,9 +2,9 @@ import type { ISeriesPrimitive, SeriesAttachedParameter, Time, IChartApi, ISerie
 import type { ExpectedMoveCone } from '../../data/expectedMove';
 
 /*
-  Expected move — a wedge from the last bar to the horizon.
-  ±1σ is the fill. ±2σ is the quieter outer line.
-  Nothing else is painted on the tape. The numbers live on the hover.
+  The forward cone — from the last bar over the rest of today's session and the next one (data/terrainCone.ts). A faint
+  fan fills ±2σ and ±1σ, the 1σ curves are solid and the 2σ curves dashed, and the host's marks name the curves' ends
+  (and today's close) with their prices. The hover reads the cone at the pointer.
 */
 
 const INK = '255,255,255';
@@ -46,8 +46,20 @@ interface ConeGeom {
   source: string;
 }
 
+/** A labelled point on the cone: where a curve ends (or crosses today's close), named with its price */
+export interface ConeMark {
+  minutesAhead: number;
+  price: number;
+  text: string;
+  /** 1σ marks draw brighter than 2σ marks */
+  strong?: boolean;
+}
+
 export interface ConeData {
   cone: ExpectedMoveCone;
+  marks?: ConeMark[];
+  /** Print the marks' words beside their dots (off where the key levels name the same prices at the edge) */
+  markWords?: boolean;
   barTimes: number[];
   barMinutes: number;
   anchor?: number;
@@ -134,47 +146,89 @@ class ExpectedMoveRenderer {
       if (pts.length < 2) return;
 
       ctx.save();
+      const x0 = pts[0].x;
+      const xN = pts[pts.length - 1].x;
+      /* the fan fades as it reaches forward */
+      const fan = (alpha: number) => {
+        const g = ctx.createLinearGradient(x0, 0, xN, 0);
+        g.addColorStop(0, `rgba(${INK},${alpha})`);
+        g.addColorStop(1, `rgba(${INK},${alpha * 0.35})`);
+        return g;
+      };
       const fill = (pickHi: (p: ConeGeom['pts'][number]) => number, pickLo: (p: ConeGeom['pts'][number]) => number, alpha: number) => {
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pickHi(pts[0]));
         for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pickHi(pts[i]));
         for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i].x, pickLo(pts[i]));
         ctx.closePath();
-        ctx.fillStyle = `rgba(${INK},${alpha})`;
+        ctx.fillStyle = fan(alpha);
         ctx.fill();
       };
-      const stroke = (pick: (p: ConeGeom['pts'][number]) => number, alpha: number, dashed: boolean) => {
+      const stroke = (pick: (p: ConeGeom['pts'][number]) => number, alpha: number, dashed: boolean, width: number) => {
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pick(pts[0]));
         for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pick(pts[i]));
         ctx.strokeStyle = `rgba(${INK},${alpha})`;
-        ctx.lineWidth = Math.max(1, vr);
-        ctx.setLineDash(dashed ? [4 * hr, 3 * hr] : []);
+        ctx.lineWidth = Math.max(1, width * vr);
+        ctx.lineJoin = 'round';
+        ctx.setLineDash(dashed ? [4 * hr, 4 * hr] : []);
         ctx.stroke();
         ctx.setLineDash([]);
       };
       fill(p => p.up2, p => p.dn2, 0.035);
-      fill(p => p.up1, p => p.dn1, 0.09);
-      stroke(p => p.up2, 0.28, true);
-      stroke(p => p.dn2, 0.28, true);
-      stroke(p => p.up1, 0.8, false);
-      stroke(p => p.dn1, 0.8, false);
+      fill(p => p.up1, p => p.dn1, 0.06);
+      stroke(p => p.up2, 0.32, true, 1);
+      stroke(p => p.dn2, 0.32, true, 1);
+      stroke(p => p.up1, 0.78, false, 1.25);
+      stroke(p => p.dn1, 0.78, false, 1.25);
 
-      const last = pts[pts.length - 1];
-      const dollars = tip.up1 - spot;
-      const label = dollars > 0 ? `±${dollars.toFixed(2)}` : '';
-      if (label && last.x < w - 4 && last.up1 > 0 && last.up1 < h) {
-        ctx.font = `${10 * vr}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+      /* the marks: a dot on the curve and its words beside it, pushed apart so no two overlap */
+      const marks = data.marks ?? [];
+      if (marks.length) {
+        const font = Math.round(9.5 * vr);
+        ctx.font = `${font}px ui-monospace, SFMono-Regular, Menlo, monospace`;
         ctx.textBaseline = 'middle';
-        ctx.textAlign = 'right';
-        const textW = ctx.measureText(label).width;
-        const x = Math.max(textW + 8 * hr, Math.min(w - 6 * hr, last.x - 6 * hr));
-        ctx.fillStyle = 'rgba(10,10,10,0.55)';
         const boxH = 14 * vr;
-        ctx.fillRect(x - textW - 4 * hr, last.up1 - boxH / 2, textW + 8 * hr, boxH);
-        ctx.fillStyle = `rgba(${INK},0.9)`;
-        ctx.fillText(label, x, last.up1);
-        ctx.textAlign = 'left';
+        const placed: { x: number; y: number; ty: number; w: number; m: ConeMark }[] = [];
+        for (const m of marks) {
+          const x = logicalToX(anchor + m.minutesAhead / barMinutes);
+          const y = priceToY(m.price);
+          if (x === null || y === null || y < 0 || y > h || x > w) continue;
+          placed.push({ x, y, ty: y, w: ctx.measureText(m.text).width + 8 * hr, m });
+        }
+        placed.sort((a, b) => a.y - b.y);
+        for (let i = 1; i < placed.length; i++) {
+          const prev = placed[i - 1];
+          const cur = placed[i];
+          /* only labels that would overlap side to side need pushing apart */
+          const sideBySide = Math.abs(prev.x - cur.x) < Math.max(prev.w, cur.w);
+          if (sideBySide && cur.ty - prev.ty < boxH + 2 * vr) cur.ty = prev.ty + boxH + 2 * vr;
+        }
+        for (const p of placed) {
+          const a = p.m.strong ? 0.95 : 0.7;
+          ctx.fillStyle = `rgba(${INK},${a})`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 2.2 * vr, 0, Math.PI * 2);
+          ctx.fill();
+          if (!data.markWords) continue;
+          /* the words sit left of the dot, inside the pane */
+          const right = Math.min(w - 4 * hr, p.x - 6 * hr);
+          const left = Math.max(2 * hr, right - p.w);
+          const ty = Math.max(boxH / 2, Math.min(h - boxH / 2, p.ty));
+          ctx.fillStyle = 'rgba(10,10,10,0.72)';
+          ctx.fillRect(left, ty - boxH / 2, p.w, boxH);
+          ctx.fillStyle = `rgba(${INK},${a})`;
+          ctx.textAlign = 'left';
+          ctx.fillText(p.m.text, left + 4 * hr, ty);
+          if (Math.abs(ty - p.y) > 2 * vr) {
+            ctx.strokeStyle = `rgba(${INK},0.35)`;
+            ctx.lineWidth = Math.max(1, vr * 0.75);
+            ctx.beginPath();
+            ctx.moveTo(right, ty);
+            ctx.lineTo(p.x - 2 * hr, p.y);
+            ctx.stroke();
+          }
+        }
       }
       ctx.restore();
     });

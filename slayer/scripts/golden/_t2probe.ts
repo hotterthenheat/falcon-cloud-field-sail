@@ -1,0 +1,22 @@
+import { freezeClock, installUwFixtures, recordedAt } from './uwFixtures';
+const SET = 'terrain-2026-10-29';
+const mem = new Map<string, string>();
+const g = globalThis as Record<string, unknown>;
+g.window = globalThis;
+g.location = { search: '', pathname: '/terrain', href: 'http://127.0.0.1/terrain', hostname: '127.0.0.1', origin: 'http://127.0.0.1' };
+g.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, String(v)), removeItem: (k: string) => void mem.delete(k), clear: () => mem.clear(), key: () => null, length: 0 };
+const { asked } = installUwFixtures(SET);
+freezeClock(recordedAt(SET, ''));
+const book = await import('../../src/data/uwBook');
+const { openFeeds } = await import('../../src/data/feedGate');
+openFeeds();
+book.ensureBook('SPY', 'board');
+const t0 = Date.now();
+while (Date.now() - t0 < 60000) { await new Promise(r => setTimeout(r, 300)); if (book.peekEntry('SPY')?.status === 'live' && Date.now() - t0 > 3000) break; }
+const log = await import('../../src/data/book/exposureLog');
+const { levelsFor } = await import('../../src/data/levelsFor');
+console.log('asked', asked.filter(p => p.includes('spot-exposures')));
+console.log('span', log.exposureLogSpan('SPY'), 'rev', log.exposureLogRev('SPY'));
+const lv = levelsFor('SPY', '0DTE')!;
+console.log('levels', lv.date, lv.netGex, 'net29', log.exposureNet('SPY', '2026-10-29', Date.parse('2026-10-28T20:30:00Z')));
+console.log('chain front', book.chainForDate('SPY', null)?.date, book.chainForDate('SPY', 'book')?.date);

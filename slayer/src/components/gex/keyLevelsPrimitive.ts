@@ -49,12 +49,12 @@
 
 import type { IChartApi, ISeriesApi, ISeriesPrimitive, SeriesAttachedParameter, Time } from 'lightweight-charts';
 import type { KeyLevels } from '../../types/gex';
-import { ladderPen, type DrawTarget } from './ladderPaint';
+import { LADDER_MONO, ladderPen, type DrawTarget } from './ladderPaint';
 
-export type KeyLevelKey = 'callWall' | 'putWall' | 'flip' | 'supreme' | 'pin' | 'maxPain' | 'coneHigh' | 'coneLow';
+export type KeyLevelKey = 'callWall' | 'putWall' | 'flip' | 'supreme' | 'pin' | 'maxPain' | 'coneHigh' | 'coneLow' | 'moveHigh' | 'moveLow' | 'sigmaHigh' | 'sigmaLow' | 'nextHigh' | 'nextLow' | 'twoHigh' | 'twoLow';
 /** Book rungs only. Cone edges are not on KeyLevels, so the tween must not index them. */
 export const KEY_LEVEL_KEYS = ['callWall', 'putWall', 'flip', 'supreme', 'pin', 'maxPain'] as const;
-const HOT_KEYS: KeyLevelKey[] = [...KEY_LEVEL_KEYS, 'coneHigh', 'coneLow'];
+const HOT_KEYS: KeyLevelKey[] = [...KEY_LEVEL_KEYS, 'coneHigh', 'coneLow', 'moveHigh', 'moveLow', 'sigmaHigh', 'sigmaLow', 'nextHigh', 'nextLow', 'twoHigh', 'twoLow'];
 
 export interface KeyLevelRung {
   key: KeyLevelKey;
@@ -65,12 +65,16 @@ export interface KeyLevelRung {
   weight?: 1 | 2;
   /** How many times today's range reached this price. Drawn as notches, off the candles. */
   touches?: number;
+  /** The strike's net GEX against the cut's largest strike's, 0–1 — printed beside the name where the host has it */
+  share?: number;
 }
 
 export interface KeyLevelsLadder {
   rungs: KeyLevelRung[];
   /** The rung under the pointer, if any */
   hot: KeyLevelKey | null;
+  /** The price the labels measure from. Set, each rung is named at the edge with its price and its distance from it. */
+  spot?: number;
 }
 
 /** What the pointer card says of each level — the name in the head, a short role beside it, one line under the figures */
@@ -83,6 +87,14 @@ export const KEY_LEVEL_WORDS: Record<KeyLevelKey, { name: string; aside: string;
   maxPain: { name: 'Max pain', aside: 'not a wall', line: 'The settlement that pays the least intrinsic on the open interest. It is not a wall and it is not the pin.' },
   coneHigh: { name: 'Cone high', aside: 'this horizon +1σ', line: 'The top of the expected move on the horizon this chart is drawing. A bell fires when price crosses it.' },
   coneLow: { name: 'Cone low', aside: 'this horizon −1σ', line: 'The bottom of the expected move on the horizon this chart is drawing. A bell fires when price crosses it.' },
+  moveHigh: { name: 'Move high', aside: "today's expected move", line: "Today's open plus one session's 1σ at the at-the-money vol: where the options price the day's move to reach, about two days in three." },
+  moveLow: { name: 'Move low', aside: "today's expected move", line: "Today's open less one session's 1σ at the at-the-money vol: where the options price the day's move to reach, about two days in three." },
+  sigmaHigh: { name: '1σ high', aside: 'to the close', line: 'The last price plus 1σ of the move left to the close (the next close once the bell has rung), off the at-the-money vol.' },
+  sigmaLow: { name: '1σ low', aside: 'to the close', line: 'The last price less 1σ of the move left to the close (the next close once the bell has rung), off the at-the-money vol.' },
+  nextHigh: { name: 'Next day 1σ high', aside: "the cone's end", line: "The last price plus 1σ of the move to the next session's close: the cone's upper 1σ curve where it ends." },
+  nextLow: { name: 'Next day 1σ low', aside: "the cone's end", line: "The last price less 1σ of the move to the next session's close: the cone's lower 1σ curve where it ends." },
+  twoHigh: { name: 'Next day 2σ high', aside: "the cone's end", line: "The last price plus 2σ of the move to the next session's close — about one move in forty-four ends above it." },
+  twoLow: { name: 'Next day 2σ low', aside: "the cone's end", line: "The last price less 2σ of the move to the next session's close — about one move in forty-four ends below it." },
 };
 
 /** The rung at rest, and reaching further in under the pointer — media px */
@@ -105,14 +117,20 @@ export interface EdgeChip {
 }
 
 /** Who draws when two levels share a price: the supreme, then a wall, then the flip */
-const RANK: Record<KeyLevelKey, number> = { supreme: 3, callWall: 2, putWall: 2, flip: 1, pin: 1, maxPain: 0, coneHigh: 0, coneLow: 0 };
+const RANK: Record<KeyLevelKey, number> = { supreme: 3, callWall: 2, putWall: 2, flip: 1, pin: 1, maxPain: 0, coneHigh: 0, coneLow: 0, moveHigh: 0, moveLow: 0, sigmaHigh: 0, sigmaLow: 0, nextHigh: 0, nextLow: 0, twoHigh: 0, twoLow: 0 };
 const samePrice = (a: number, b: number) => Math.abs(a - b) < 1e-6;
 
 class LadderRenderer {
   constructor(private readonly source: KeyLevelsPrimitive) {}
   draw(target: DrawTarget): void {
     const { series, data } = this.source;
-    if (!series || !data || data.rungs.length === 0) return;
+    if (!series || !data) return;
+    const spot = data.spot ?? this.source.namedSpot;
+    if (spot != null && spot > 0) {
+      drawNamed(this.source, target, spot);
+      return;
+    }
+    if (data.rungs.length === 0) return;
     const chips = this.source.chips?.() ?? [];
     target.useBitmapCoordinateSpace(scope => {
       const pen = ladderPen(scope);
@@ -187,6 +205,86 @@ class LadderRenderer {
   }
 }
 
+const signedPct = (v: number): string => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(Math.abs(v) < 10 ? 2 : 1)}%`;
+const priceWords = (p: number): string => (Math.abs(p - Math.round(p)) < 1e-9 ? p.toFixed(0) : p.toFixed(2));
+
+/** A rung's words at the edge: its name, its price, its share of the largest strike where it has one, its distance from
+    the price */
+export function rungLabel(r: KeyLevelRung, spot: number): string {
+  const name = KEY_LEVEL_WORDS[r.key].name;
+  const share = r.share != null && Number.isFinite(r.share) ? ` · ${r.key === 'supreme' && r.share >= 0.995 ? 'top node' : `${Math.round(r.share * 100)}% of top`}` : '';
+  return `${name} ${priceWords(r.price)}${share} · ${signedPct(((r.price - spot) / spot) * 100)}`;
+}
+
+/* The named form: a short rung at the edge in the level's ink, and left of it the level's words in a box of the same ink,
+   the boxes pushed apart top to bottom so none overlaps another — a box moved off its rung keeps a thin lead to it */
+function drawNamed(src: KeyLevelsPrimitive, target: DrawTarget, spot: number): void {
+  const series = src.series;
+  if (!series) return;
+  target.useBitmapCoordinateSpace(scope => {
+    const pen = ladderPen(scope);
+    const { ctx, hr, vr, H, right } = pen;
+    const edgeMedia = src.edge;
+    const end = edgeMedia != null ? edgeMedia * hr : right;
+    ctx.save();
+    ctx.font = `${Math.round(9.5 * vr)}px ${LADDER_MONO}`;
+    ctx.textBaseline = 'middle';
+    const boxH = Math.round(14 * vr);
+    const gap = Math.round(2 * vr);
+    const placed: { r: KeyLevelRung; y: number; ty: number; text: string; w: number; hot: number }[] = [];
+    for (const r of src.visible()) {
+      const yc = series.priceToCoordinate(r.price);
+      if (yc == null) continue;
+      const y = Math.round(yc * vr) + 0.5;
+      if (y < 2 * vr || y > H - 2 * vr) continue;
+      const text = rungLabel({ ...r, share: src.shareOf(r) }, spot);
+      placed.push({ r, y, ty: y, text, w: ctx.measureText(text).width + 10 * hr, hot: src.hotT(r.key) });
+    }
+    if (!placed.length) {
+      ctx.restore();
+      return;
+    }
+    for (const p of placed) {
+      const w = (RUNG_W + (RUNG_W_HOT - RUNG_W) * p.hot) * hr;
+      pen.rule(end - w, p.y, end, p.r.ink, 0.85 + 0.15 * p.hot, { trace: edgeMedia != null, dash: p.r.dash ? [3, 3] : undefined, width: p.r.weight ?? 1 });
+    }
+    placed.sort((a, b) => a.y - b.y);
+    const step = boxH + gap;
+    for (let i = 1; i < placed.length; i++) placed[i].ty = Math.max(placed[i].ty, placed[i - 1].ty + step);
+    const floor = H - boxH / 2 - 2 * vr;
+    if (placed[placed.length - 1].ty > floor) {
+      placed[placed.length - 1].ty = floor;
+      for (let i = placed.length - 2; i >= 0; i--) placed[i].ty = Math.min(placed[i].ty, placed[i + 1].ty - step);
+    }
+    const labelRight = end - RUNG_W * hr - 4 * hr;
+    for (const p of placed) {
+      const ty = Math.round(Math.max(boxH / 2, p.ty));
+      const left = Math.max(2 * hr, labelRight - p.w);
+      const a = 0.88 + 0.12 * p.hot;
+      if (Math.abs(ty - p.y) > 1.5 * vr) {
+        ctx.strokeStyle = p.r.ink;
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = Math.max(1, vr * 0.75);
+        ctx.beginPath();
+        ctx.moveTo(labelRight, ty);
+        ctx.lineTo(end - RUNG_W * hr, p.y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(10,10,10,0.8)';
+      ctx.fillRect(left, ty - boxH / 2, labelRight - left, boxH);
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = p.r.ink;
+      ctx.fillRect(left, ty - boxH / 2, Math.max(1, Math.round(2 * hr)), boxH);
+      ctx.globalAlpha = a;
+      ctx.textAlign = 'right';
+      ctx.fillText(p.text, labelRight - 4 * hr, ty + 0.5 * vr);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  });
+}
+
 class LadderPaneView {
   private readonly _renderer: LadderRenderer;
   constructor(source: KeyLevelsPrimitive) {
@@ -221,9 +319,36 @@ export class KeyLevelsPrimitive implements ISeriesPrimitive<Time> {
   constructor() {
     this._paneViews = [new LadderPaneView(this)];
   }
+  /** Set, the rungs are named at the edge, with their distance from this price (setNamed) */
+  namedSpot: number | null = null;
+  private shares: { callWall?: number; putWall?: number; supreme?: number } = {};
+  /** The named form's inputs: the price the distances measure from, each wall's share of the largest strike, and the
+      levels' max pain as a rung of its own */
+  setNamed(spot: number | null, shares: { callWall?: number; putWall?: number; supreme?: number } | undefined, maxPain: number | null, painInk: string): void {
+    const s = spot != null && Number.isFinite(spot) && spot > 0 ? spot : null;
+    const sh = shares ?? {};
+    const same = s === this.namedSpot && sh.callWall === this.shares.callWall && sh.putWall === this.shares.putWall && sh.supreme === this.shares.supreme;
+    this.namedSpot = s;
+    this.shares = sh;
+    this.setExtras('pain', maxPain != null && Number.isFinite(maxPain) && maxPain > 0 ? [{ key: 'maxPain', price: maxPain, ink: painInk, dash: true }] : []);
+    if (!same && this.data) this.requestUpdate?.();
+  }
+  /** A rung's share of the largest strike, from the host's levels */
+  shareOf(r: KeyLevelRung): number | undefined {
+    return r.share ?? (r.key === 'callWall' || r.key === 'putWall' || r.key === 'supreme' ? this.shares[r.key] : undefined);
+  }
+  /** Rungs the host adds beside the book's, by source (the cone's moves, max pain) */
+  private extras = new Map<string, KeyLevelRung[]>();
+  setExtras(group: string, rungs: KeyLevelRung[]): void {
+    const was = this.extras.get(group) ?? [];
+    if (was.length === rungs.length && was.every((r, i) => r.key === rungs[i].key && r.price === rungs[i].price && r.ink === rungs[i].ink)) return;
+    this.extras.set(group, rungs);
+    if (this.data) this.requestUpdate?.();
+  }
   /** The rungs that draw: finite prices, one a price, the higher rank keeping a shared one */
   visible(): KeyLevelRung[] {
-    const rungs = (this.data?.rungs ?? []).filter(r => Number.isFinite(r.price));
+    const all = this.data ? [...this.data.rungs, ...[...this.extras.values()].flat()] : [];
+    const rungs = all.filter(r => Number.isFinite(r.price));
     return rungs.filter(r => !rungs.some(o => o !== r && samePrice(o.price, r.price) && (RANK[o.key] > RANK[r.key] || (RANK[o.key] === RANK[r.key] && rungs.indexOf(o) < rungs.indexOf(r)))));
   }
   /** The levels a drawn rung stands on the price of — what its card says it shares the price with */
@@ -284,8 +409,9 @@ export class KeyLevelsPrimitive implements ISeriesPrimitive<Time> {
     if (!this.data) return;
     let moved = false;
     for (const r of this.data.rungs) {
-      if (r.key === 'coneHigh' || r.key === 'coneLow') continue;
-      const p = r.key === 'pin' ? levels.pin : r.key === 'maxPain' ? levels.maxPain : levels[r.key];
+      const k = r.key;
+      if (k !== 'callWall' && k !== 'putWall' && k !== 'flip' && k !== 'supreme' && k !== 'pin' && k !== 'maxPain') continue;
+      const p = levels[k];
       if (p == null || !Number.isFinite(p) || r.price === p) continue;
       r.price = p;
       moved = true;

@@ -26,7 +26,7 @@ import {
   type Time,
 } from 'lightweight-charts';
 import { chainForDate, deskTape, ensureBook, peekDaySigma, peekEntry, peekIv, snapshotFor, useBookMinutes, useBookRev } from '../../data/uwBook';
-import { exposureGrid, gridColumns } from '../../data/book/exposureLog';
+import { ensureFieldCloses, exposureGrid, gridColumns, useExposureLogRev } from '../../data/book/exposureLog';
 import { useFieldMode } from '../../data/fieldMode';
 import { useSessionQuote } from '../../data/sessionQuote';
 import { getDeskSession, minuteInSession, sessionMeta, sessionOfMinute, useDeskSession, type DeskSession } from '../../data/deskSession';
@@ -47,7 +47,9 @@ import {
 } from '../../data/timeframe';
 import { BEAD_INK_CSS, GexTrailsPrimitive, type BeadHit } from './gexNodesPrimitive';
 import { ExpectedMovePrimitive, type ConeHit } from './expectedMovePrimitive';
-import { coneFor, ensureCone } from '../../data/coneFeed';
+import { coneTerm, ensureCone } from '../../data/coneFeed';
+import { coneMarks, forwardCone, runwaySlots, todayOpenOf, tradingMinutesPerBar } from '../../data/terrainCone';
+import { EXTRA_INK, coneRungs } from './levelExtras';
 import { KeyLevelsPrimitive, KEY_LEVEL_KEYS, KEY_LEVEL_WORDS, type KeyLevelKey, type KeyLevelRung } from './keyLevelsPrimitive';
 import { LADDER_HIT_W, nearRule } from './ladderPaint';
 import PointerCard, { CardRow, PointerFollowCard, letGoWords } from '../ui/PointerCard';
@@ -82,17 +84,16 @@ import { barClockSpec, type AltBarSpec } from '../../data/altBars';
 import type { Candle, GexSnapshot } from '../../types/market';
 import type { DarkPoolPrint, KeyLevels } from '../../types/gex';
 import { bucketFlow, flowMaxLeg } from '../../data/flowBars';
-import { atrBarSeries, alignGamma, alignPremium, alignSides, bollingerSeries, emaSeries, flowVwapSeries, gammaEmaSeries, gammaVwapSeries, macdSeries, rsiSeries, sessionStarts, smaSeries, vwapSeries, vwapSigmaSeries } from '../../data/indicators';
+import { atrBarSeries, alignGamma, alignPremium, alignSides, bollingerSeries, emaSeries, flowVwapSeries, gammaEmaSeries, gammaVwapSeries, macdSeries, rsiSeries, smaSeries, vwapSeries, vwapSigmaSeries } from '../../data/indicators';
 import { buildSessionLevels, type OpeningRange } from '../../data/sessionLevels';
 import { SessionLevelsPrimitive, sessionLines } from './sessionLevelsPrimitive';
-import { buildExpectedMoveCone, daySigmaOfIv } from '../../data/expectedMove';
+import { daySigmaOfIv } from '../../data/expectedMove';
 import { buildTapeEvents, macroWindow, type MarketEvent, type MacroDate } from '../../data/events';
 import { sessionAtr } from '../../data/atr';
 import { thetaUseHere } from '../../data/theta';
 import { type EarningsEvent } from '../../data/earnings';
 import { ensureEarnings, peekEarningsEvent } from '../../data/earningsFeed';
 import { EventsPrimitive } from './eventsPrimitive';
-import { RTH_MINUTES } from '../../core/calendar';
 import { cumulativeDrift, driftPeak } from '../../data/driftSeries';
 import { impliedVolLine, realizedVol, volCeiling } from '../../data/volDrift';
 import type { FlowPrint } from '../../types/trace';
@@ -767,6 +768,8 @@ const StrikeChart = ({
   const bookRev = useBookRev();
   const bookMinutes = useBookMinutes(ticker);
   const session = useDeskSession();
+  const deskSessionRef = useRef(session);
+  deskSessionRef.current = session;
   /* Where the bars come from — the host's tape, or this session's prints. Another session is never left on screen. */
   const tapeRef = useRef<ChartTape | undefined>(tape);
   tapeRef.current = tape;
@@ -781,9 +784,12 @@ const StrikeChart = ({
   /* The exposure field's columns on these bars: the vendor's per-strike readings for the cut's expiries
      (data/book/exposureLog.ts), one column a bar, empty where no reading covers it */
   const fieldMode = useFieldMode();
+  const fieldRev = useExposureLogRev(ticker);
   const fieldColumns = (bars: readonly Candle[], mins: number): GexSnapshot[] => {
     if (tapeRef.current || !bars.length) return [];
     const cut = chainForDate(ticker, bookDate)?.date;
+    /* a day bar also reads the sessions before today, each as of its close */
+    if (cut && mins >= 1440) ensureFieldCloses(ticker, cut);
     const grid = cut ? exposureGrid(ticker, cut, bars.map(b => b.time), mins * 60, fieldMode) : null;
     return grid ? gridColumns(grid) : [];
   };
@@ -1264,8 +1270,8 @@ const StrikeChart = ({
     const want = Math.min(RUNWAY_MAX, Math.ceil(need / RUNWAY_STEP) * RUNWAY_STEP);
     if (cur.from === lastTime && cur.slots >= want) return;
 
-    const pts = [];
-    for (let i = 1; i <= want; i++) pts.push({ time: (lastTime + i * bucketSec) as UTCTimestamp });
+    /* trading time ahead on a regular-session chart, so a slot is what the cone's variance runs on */
+    const pts = runwaySlots(lastTime, bucketSec, want, deskSessionRef.current === 'rth').map(t => ({ time: t as UTCTimestamp }));
     series.setData(pts);
     runwayRef.current = { from: lastTime, slots: want };
   }, []);
@@ -2662,7 +2668,7 @@ const StrikeChart = ({
     };
     handTrails();
     return () => cancelAnimationFrame(armTimer);
-  }, [ticker, revision, timeframe, themeKey, overlays.trails, showRecent, reloadNonce, mainNonce, toMain, compact, altSpec, barClock, fullNonce, trailsGreek, levels.spot, levels.callWall, levels.putWall, levels.flip, levels.supreme, bookRev, session, bookDate, tapeStamp, fieldMode]);
+  }, [ticker, revision, timeframe, themeKey, overlays.trails, showRecent, reloadNonce, mainNonce, toMain, compact, altSpec, barClock, fullNonce, trailsGreek, levels.spot, levels.callWall, levels.putWall, levels.flip, levels.supreme, bookRev, session, bookDate, tapeStamp, fieldMode, fieldRev]);
 
   /* `compact` can change without the chart being rebuilt — a desktop window dragged across the phone line, a handset
      rotated. The mount effect read it once at create time, so apply later changes here. */
@@ -2679,6 +2685,8 @@ const StrikeChart = ({
     });
   }, [pageScroll]);
 
+  /* which levels are in: a level that arrives after the ladder was hung hangs its rung (the tween moves the rest) */
+  const levelsShape = [levels.callWall, levels.putWall, levels.flip, levels.supreme].map(v => (Number.isFinite(v) ? 1 : 0)).join('');
   // The key levels' ladder — hung and taken down when the switch, the ticker or the series changes
   useEffect(() => {
     const ladder = ladderRef.current;
@@ -2719,7 +2727,12 @@ const StrikeChart = ({
     ladder.marks = chain ? oiDoubled(ticker, peekEntry(ticker)?.at ?? 0, chain.chain) : [];
     shownLevelsRef.current = { ...L };
     levelTickerRef.current = ticker;
-  }, [ticker, overlays.levels, replay, replayIdx, mainNonce, themeKey, appTheme, boxEl]);
+  }, [ticker, overlays.levels, replay, replayIdx, mainNonce, themeKey, appTheme, boxEl, levelsShape]);
+
+  /* The ladder names each level at the edge with its distance from the price; max pain rides with the levels */
+  useEffect(() => {
+    ladderRef.current?.setNamed(levels.spot, levels.shares, levels.maxPain ?? null, EXTRA_INK.maxPain);
+  }, [levels.spot, levels.shares, levels.maxPain]);
 
   /* The pointer on a rung — within RULE_NEAR of a rule, in the ladder's band at the right edge: the rung brightens
      and reaches in, and the card says what it is (the Compass marks' hover, CampaignAnalysis). */
@@ -2794,32 +2807,37 @@ const StrikeChart = ({
     if (!prim) return;
     if (!overlays.cone || replay || altSpec) {
       prim.setData(null);
+      ladderRef.current?.setExtras('cone', []);
       return;
     }
+    /* From the last bar over the rest of today's session and the next one, off the at-the-money vols (data/terrainCone.ts) */
     const mins = tfMinutes(timeframe);
     const bars = barsFor(mins);
-    const starts = sessionStarts(bars, mins);
-    const sessStart = starts.length > 0 ? starts[starts.length - 1] : 0;
-    const sess = starts.length > 0 ? bars.slice(sessStart) : [];
-    const anchor = bars.length - 1;
-    const elapsed = sess.length > 0 ? (sess[sess.length - 1].time - sess[0].time) / 60 + mins : 0;
     ensureCone(ticker);
     const spot = bars.length ? bars[bars.length - 1].close : 0;
-    const live = spot > 0 ? coneFor(ticker, coneHorizon, spot) : null;
-    const iv = live?.iv || nameIv() || 0;
-    const left = live?.forwardMin ?? Math.max(0, RTH_MINUTES - elapsed);
-    const horizonWord = coneHorizon === 'week' ? 'Week' : coneHorizon === 'next' ? 'Next' : 'Session';
-    prim.setData({
-      cone: buildExpectedMoveCone(sess, iv, Math.max(0, left), mins),
-      barTimes: bars.map(b => b.time),
-      barMinutes: mins,
-      anchor,
-      oddsName: horizonWord,
-      iv,
-      source: live?.source ?? '',
-    });
+    const term = coneTerm(ticker);
+    const perBar = tradingMinutesPerBar(mins);
+    const fc = term && spot > 0 ? forwardCone(term.rows, spot, Date.now(), todayOpenOf(bars), Math.max(1, Math.min(5, perBar / 3))) : null;
+    prim.setData(
+      fc
+        ? {
+            cone: { past: [], forward: fc.points, crossings: [], openPrice: 0, openTime: null },
+            marks: coneMarks(fc),
+            /* the key levels name the cone's ends at the edge; without them the cone names its own */
+            markWords: !overlays.levels,
+            barTimes: bars.map(b => b.time),
+            barMinutes: perBar,
+            anchor: bars.length - 1,
+            oddsName: `To the ${fc.nextDay.slice(5)} close`,
+            iv: fc.ivNext,
+            source: term?.source === 'theta' ? 'ThetaData at-the-money IV' : 'Unusual Whales term structure',
+          }
+        : null,
+    );
+    /* the cone's numbers at the edge: today's expected move, and ±1σ to the close */
+    ladderRef.current?.setExtras('cone', coneRungs(fc));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, timeframe, revision, overlays.cone, replay, mainNonce, altSpec, coneHorizon]);
+  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, coneHorizon]);
 
   /* The event markers. The calendar half (this name's report, the macro dates) is cached per ticker and day; the
      prints half is live. */
