@@ -14,8 +14,9 @@ Every page in the terminal meets these rules. Read this with `docs/DATA_SOURCES.
 
 - **ThetaData powers** the real-time quotes, NBBO, chains, greeks, IV, intraday bars and history on Terrain, Weigher,
   Compass and Practice (Paper fills, Backtest replay), and live stock and index prices elsewhere in the shell.
-- **Unusual Whales powers** Pinpoint and Dossier (UW only, by the owner's rule), Trace's flow, and the exposure,
-  levels and flow data any page reads.
+- **Unusual Whales powers** Trace and the Dossier entirely, Pinpoint's greeks, exposure, levels and flow, and the
+  exposure, levels and flow data any page reads. ThetaData gives Pinpoint only its live price and chart candles.
+  `thetaCall` enforces this per page (`docs/DATA_SOURCES.md`).
 - No page substitutes one vendor for the other. With the terminal down, a ThetaData box shows "ThetaData offline —
   reconnecting" over the last data it had, stamped as of when it was taken, and stops calling until the breaker in
   `data/theta.ts` lets it try again.

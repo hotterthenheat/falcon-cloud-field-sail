@@ -133,18 +133,38 @@ const recent = [];
    Every upstream call takes a slot and the rest queue. The limit is per process (per Vercel instance). */
 const UPSTREAM_SLOTS = 3;
 let upstreamBusy = 0;
-/* a viewer waiting on an answer goes ahead of every background refresh */
+let refreshBusy = 0;
+/* a viewer waiting on an answer goes ahead of every background refresh, and refreshes never hold more than one of the
+   three slots, so a slow background walk can never keep a viewer waiting */
 const viewerQueue = [];
 const refreshQueue = [];
+const refreshMayGo = () => upstreamBusy < UPSTREAM_SLOTS && refreshBusy < 1 && viewerQueue.length === 0;
+function wake() {
+  while (upstreamBusy < UPSTREAM_SLOTS && viewerQueue.length) {
+    upstreamBusy += 1;
+    viewerQueue.shift()();
+  }
+  if (refreshQueue.length && refreshMayGo()) {
+    upstreamBusy += 1;
+    refreshBusy += 1;
+    refreshQueue.shift()();
+  }
+}
 async function upstreamSlot(fn, lane = 'viewer') {
-  if (upstreamBusy >= UPSTREAM_SLOTS) await new Promise((r) => (lane === 'viewer' ? viewerQueue : refreshQueue).push(r));
-  upstreamBusy += 1;
+  const refresh = lane !== 'viewer';
+  if (refresh ? refreshMayGo() : upstreamBusy < UPSTREAM_SLOTS) {
+    upstreamBusy += 1;
+    if (refresh) refreshBusy += 1;
+  } else {
+    /* the slot is counted for us when we are woken (wake), so no caller can slip in between */
+    await new Promise((r) => (refresh ? refreshQueue : viewerQueue).push(r));
+  }
   try {
     return await fn();
   } finally {
     upstreamBusy -= 1;
-    const next = viewerQueue.shift() ?? refreshQueue.shift();
-    if (next) next();
+    if (refresh) refreshBusy -= 1;
+    wake();
   }
 }
 /** A rate limit or a passing vendor error: worth a wait and another try. */
@@ -238,7 +258,7 @@ export async function proxyUw(req, res) {
     return;
   }
   if (/^(?:\/api\/uw)?\/__hub(?:\?|$)/.test(req.url || '') && process.env.VERCEL_ENV !== 'production') {
-    send(res, 200, JSON.stringify({ ...hub.stats(), slotsBusy: upstreamBusy, viewersQueued: viewerQueue.length, refreshesQueued: refreshQueue.length, recent }));
+    send(res, 200, JSON.stringify({ ...hub.stats(), slotsBusy: upstreamBusy, refreshSlots: refreshBusy, viewersQueued: viewerQueue.length, refreshesQueued: refreshQueue.length, recent }));
     return;
   }
   const path = forwardPath(req.url, /^\/api\/uw/, 400);

@@ -3,11 +3,19 @@
 Recorded from the owner on 2026-10-22. **Do not forget this.** Build against this list, not against what an
 endpoint name suggests.
 
-## The rule for Pinpoint and Dossier
+## Which vendor powers which page
 
-**Pinpoint and Dossier read Unusual Whales only.** No ThetaData calls on these two desks. Where the app needs a
-carry rate or the market holidays, it falls back to `src/core/carry.ts` (`DEFAULT_R`) and the holiday set in
-`src/core/calendar.ts`.
+- **Trace and the Dossier read Unusual Whales only.** No ThetaData call leaves their pages.
+- **Pinpoint** reads its greeks, exposure, levels and flow from Unusual Whales, and only its live price and chart
+  candles from ThetaData (stock and index snapshots and bars). No ThetaData greeks or open interest on Pinpoint.
+- **Terrain, Weigher, Compass and Practice** read ThetaData for real-time quotes, NBBO, chains, greeks, bars and
+  history, and Unusual Whales for what ThetaData does not carry (exposure, flow, levels).
+- `thetaCall` in `src/data/theta.ts` enforces this per page (`thetaUseHere`, `thetaAllowedHere`). Where the app needs
+  a carry rate or the market holidays without ThetaData, it falls back to `src/core/carry.ts` (`DEFAULT_R`) and the
+  holiday set in `src/core/calendar.ts`.
+
+Set by the owner on 2026-10-22 (Pinpoint and Dossier on Unusual Whales) and 2026-10-29 (Trace on Unusual Whales
+only; ThetaData for Pinpoint's live price and candles).
 
 ## Verified against the live key (2026-10-22)
 
