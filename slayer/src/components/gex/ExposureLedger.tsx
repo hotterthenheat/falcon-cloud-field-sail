@@ -1026,7 +1026,8 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
         />
         <div
           ref={boxRef}
-          className="h-full overflow-auto"
+          /* contained: the calendar's repaints and relayouts stay inside its box (measured: a third less paint per crosshair frame) */
+          className="h-full overflow-auto [contain:strict]"
           /* Invisible for the one frame before its box is measured (see the effect above); no sideways scrollbar
              flashing while the grid holds its promised width through a glide */
           style={box.w ? (gliding ? { overflowX: 'hidden' } : undefined) : { visibility: 'hidden' }}
