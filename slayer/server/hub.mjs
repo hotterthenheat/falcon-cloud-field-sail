@@ -170,7 +170,8 @@ export function createHub(o) {
         }
         /* refresh just before the next expected ask, and only if the copy would be stale by then */
         const nextAsk = w.last + gap;
-        if (now < nextAsk - Math.min(1_500, gap * 0.3)) continue;
+        /* early enough to land before the ask, late enough that the copy is still fresh when it does */
+        if (now < nextAsk - Math.min(1_500, gap * 0.3, ttl * 0.5)) continue;
         if (hit && hit.at + ttl > nextAsk) continue;
         due.push([key, w]);
       } else if (w.pinned) {
