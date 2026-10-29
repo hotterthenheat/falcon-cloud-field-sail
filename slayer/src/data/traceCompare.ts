@@ -6,7 +6,7 @@ import type { BookContract, FlowPrint } from '../types/trace';
 import { sleeveForDte } from './compass';
 import { floorPackaged, FRESH_VOL_OI, moneynessFilter, notABet, type MoneynessKey, type SpreadTrade } from './flowBook';
 import type { ExpiryFlow } from './traceLive';
-import { fmtCount as num, usd as fmtUsd } from './traceLive';
+import { fmtCount as num, usd as fmtUsd } from './traceRows';
 import { leanOfSides } from './traceLean';
 
 export interface TraceSide {

@@ -9,12 +9,11 @@ import { useAccess } from '../../data/access';
 import JingleBell from '../ui/JingleBell';
 import Fold from '../ui/Fold';
 import Avatar from '../ui/Avatar';
-import { useLiveQuote } from '../../data/liveQuote';
 import { SAMPLE_PROFILE, useProfile } from '../../data/profile';
 import { useAccount } from '../../data/account';
 import { useTicker } from '../../context/MarketDataContext';
-import { usePinpointFeed, dayMoveWords, changeInk } from '../../data/uwBook';
-import { dayMoveOfSnapshot } from '../gex/DayMoveText';
+import { NavOffline, NavPrice, quoteSymbolOf } from './NavQuote';
+import { peekThetaPrice } from '../../data/thetaQuote';
 import { warmPath } from '../../data/warmRooms';
 import CompanyLogo from '../ui/CompanyLogo';
 import { NAV_GROUPS, NAV_GROUP_META, NAV_INK, itemsByGroup } from './nav';
@@ -179,19 +178,12 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const hideTip = () => setTip(null);
 
   const name = lookup(activeTicker)?.name ?? null;
-  /* Every desk reads the live quote; there is no simulated price to fall back to. */
-  const live = usePinpointFeed(pathname.startsWith('/pinpoint') ? activeTicker : null);
-  /* A weekly root has no stock print. The rail quotes the index it tracks. */
-  const quoteTicker = activeTicker === 'SPXW' || activeTicker === 'XSP' ? 'SPX' : activeTicker === 'NDXP' ? 'NDX' : activeTicker === 'RUTW' ? 'RUT' : activeTicker;
-  const quoted = useLiveQuote(quoteTicker);
-  const spot = live?.spot ?? quoted?.regularPrice ?? null;
-  /* The regular session's change, not the after-hours move (that is in the hover); zero in the neutral ink. */
-  const move = live?.liveBook ? dayMoveOfSnapshot(live) : quoted ? { dayPct: quoted.changePct, extPct: quoted.extPct, phase: quoted.phase } : null;
-  const moveWords = dayMoveWords(move);
-  const change = move ? move.dayPct : null;
   const open = clock.phase === 'OPEN' || clock.phase === 'AUCTION';
-  const priceText = spot != null ? `$${spot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
-  const changeText = spot != null && change != null ? (moveWords ? moveWords.main : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change).toFixed(2)}%`) : '';
+  /* the price itself renders in NavPrice (its own subscription); the folded rail's hover reads it when shown */
+  const priceNow = () => {
+    const p = peekThetaPrice(quoteSymbolOf(activeTicker))?.value.price;
+    return p ? `$${p.toFixed(2)}` : '';
+  };
 
   /* the signature's word, read on the clock's own tick so the dot and the session line never disagree */
   const marketWord = readMarketState().word;
@@ -219,8 +211,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
       type="button"
       onClick={onOpenPalette}
       data-subject
-      aria-label={`Watching ${activeTicker} ${priceText} — switch`}
-      onMouseEnter={e => showTip(e, `${activeTicker} ${priceText} ${changeText} · ⌘K to switch`)}
+      aria-label={`Watching ${activeTicker} — switch`}
+      onMouseEnter={e => showTip(e, `${activeTicker} ${priceNow()} · ⌘K to switch`)}
       onMouseLeave={hideTip}
       className="ml-[10px] w-8 h-8 rounded-lg border border-ink/[0.08] bg-ink/[0.03] hover:border-silver/50 transition-colors flex items-center justify-center"
     >
@@ -239,14 +231,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
       <span className="shrink-0 text-t12 font-semibold text-textPrimary" data-subject-ticker>
         {activeTicker}
       </span>
-      <span className="shrink-0 font-mono text-t11 tnum text-textPrimary" data-subject-price>
-        {priceText}
-      </span>
-      {change != null && (
-        <span className="min-w-0 truncate font-mono text-t10 tnum" style={{ color: changeInk(change) }} title={moveWords ? `${moveWords.title}${moveWords.ext ? ` · ${moveWords.ext}` : ''}` : undefined} data-subject-change>
-          {changeText}
-        </span>
-      )}
+      <NavPrice ticker={activeTicker} />
       <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-textMuted group-hover:text-textSecondary transition-colors">
         <Search className="w-3 h-3" />
         <kbd className="font-mono text-t9 tracking-wide">⌘K</kbd>
@@ -500,6 +485,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
         {brand}
         <div className={`shrink-0 flex flex-col gap-1 pb-1 ${collapsed ? 'px-0' : 'px-3'}`}>
           {subject}
+          {!collapsed && <NavOffline ticker={activeTicker} />}
           <div className={collapsed ? '' : '-mx-1'}>
             {home}
             {alertsRow}
@@ -585,15 +571,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
         <button onClick={onOpenPalette} className="inline-flex items-center gap-2 rounded-md border border-borderMuted bg-chip px-2.5 py-1 min-w-0 overflow-hidden">
           <CompanyLogo ticker={activeTicker} size={16} />
           <span className="text-t12 font-semibold text-textPrimary">{activeTicker}</span>
-          {spot != null ? <span className="font-mono text-t11 tnum text-textPrimary">{priceText}</span> : <span className="font-mono text-t11 tnum text-textMuted">—</span>}
-          {/* The day's move on the phone too, in the rail's words. */}
-          {changeText && change != null && (
-            <span className="font-mono text-t10 tnum whitespace-nowrap truncate min-w-0" style={{ color: changeInk(change) }} title={moveWords?.title} data-phone-change>
-              {changeText}
-              {moveWords?.when && <span className="text-textMuted"> {moveWords.when}</span>}
-              {moveWords?.ext && <span className="text-textMuted"> · {moveWords.ext.replace('after hours', 'AH')}</span>}
-            </span>
-          )}
+          <NavPrice ticker={activeTicker} compact />
         </button>
         <button onClick={onOpenPalette} aria-label="Search or jump to…" className="ml-auto shrink-0 p-1.5 rounded-md border border-borderSubtle text-textMuted">
           <Search className="w-3.5 h-3.5" />

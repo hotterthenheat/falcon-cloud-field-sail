@@ -1,106 +1,271 @@
-/* The paper book. Every pick fills at the ask of the first quote a full minute after the call; a missing quote is
-   not replaced and a fill is never refused because the ask moved. Fees are a flat per-side estimate (see
-   optionFees), not a broker's schedule. */
+/* The record of Compass's signals: every Book A, B and C call the scan fired in this browser, with the quote it fired
+   on, kept in localStorage (slayer_compass_signals_v1). Its outcome is read off the contract's own one-minute NBBO
+   after the call (compassOutcome.ts) from ThetaData, and frozen once it closes. Nothing here is a stand-in: a signal
+   with no path yet says so. */
 
-import { useEffect, useState } from 'react';
-import type { OptionRight, Setup } from '../types/compass';
-import type { TrackedSetup } from '../types/tracker';
-import { currentPicks, entryAsk, noteLeft, pinFill } from './compassModel';
+import { useEffect, useSyncExternalStore } from 'react';
+import type { OptionRight, Setup, SleeveKey } from '../types/compass';
+import { currentPicks, noteLeft, underCloses } from './compassModel';
 import { noteCompassCall } from './compassAlerts';
-import { nyClock, nyMinutes, nyParts } from '../core/nyTime';
-import { lotteryExit, reversalLine, stopAfter, treeExit } from './compassParams';
+import { settleSignal, type Outcome, type PathQuote, type SignalBook } from './compassOutcome';
+import { stopAfter } from './compassParams';
+import { thetaCall } from './theta';
+import { nyIsoDate, nyParts, nyWallStamp } from '../core/nyTime';
 
-export type BookResult = 'win' | 'loss' | 'caution' | 'unavailable' | 'open';
-
-export interface BookLine {
+export interface Signal {
+  /** `${day}|${id}`: one contract can fire on more than one session */
+  key: string;
+  /** The setup's address (data/compass setupIdOf) */
   id: string;
-  date: string;
+  /** The New York date it fired on, YYYY-MM-DD */
+  day: string;
+  book: SignalBook;
   ticker: string;
   contract: string;
   right: OptionRight;
   strike: number;
-  paid: number;
-  exitPx: number;
-  exit: string;
-  why: string;
-  result: BookResult;
-  ret: number;
-  held: number | null;
-  at: number;
-  entered?: string;
-  fees?: number;
-  pnl?: number;
-  signalBid?: number;
-  signalAsk?: number;
-  signalMid?: number;
-  fillBid?: number;
-  fillAsk?: number;
-  fillMid?: number;
-}
-
-interface CloseInput {
-  paid: number;
-  bid: number;
-  peak: number;
-  heldMin: number;
-  runner: boolean;
-  lottery?: boolean;
-  heldSec?: number;
-  scalp?: boolean;
-  wing?: boolean;
-  side: OptionRight;
-  choice: OptionRight;
-  dayOver: boolean;
-  flat: boolean;
-  levelBroke: boolean;
-  rejected: boolean;
-  ret5?: number;
-}
-
-const KEY = 'slayer_compass_book';
-
-function nextAskDue(trackedAt: number, at: number = Date.now()): boolean {
-  const then = nyParts(trackedAt);
-  const nowP = nyParts(at);
-  const due = then.hour * 60 + then.minute + 1;
-  if (nowP.year !== then.year || nowP.month !== then.month || nowP.day !== then.day) return at > trackedAt;
-  return nowP.hour * 60 + nowP.minute >= due;
-}
-
-interface LockedFill {
-  status: 'filled' | 'unavailable' | 'wait';
+  /** The contract's expiration, YYYY-MM-DD */
+  expiry: string;
+  sleeve: SleeveKey;
+  firedAt: number;
+  /** The quote the model read: its own stamp, bid and ask, and the underlying */
+  quoteAt: number;
   bid: number;
   ask: number;
-  mid: number;
+  spot: number | null;
+  p1: number | null;
+  prun: number | null;
+  runner: boolean;
+  outcome: Outcome | null;
+  /** When the path was last read */
+  pathAt: number;
+  /** The bid each minute after the call, for the line on a row */
+  spark: number[];
 }
 
-const fills = new Map<string, LockedFill>();
-const peaks = new Map<string, number>();
-const rungs = new Map<string, { name: string; at: number }[]>();
+const KEY = 'slayer_compass_signals_v1';
+const MAX_ROWS = 600;
 
-interface LiveQuote { bid: number; ask: number; at: number }
+let rows: Signal[] = load();
+let rev = 0;
+const listeners = new Set<() => void>();
 
-export function noteRung(id: string, name: string, at = Date.now()): void {
-  const list = rungs.get(id) ?? [];
-  if (list[list.length - 1]?.name === name) return;
-  list.push({ name, at });
-  rungs.set(id, list);
+function emit(): void {
+  rev += 1;
+  for (const fn of listeners) fn();
 }
 
-export function rungsOf(id: string): { name: string; at: number }[] {
-  return rungs.get(id) ?? [];
+function load(): Signal[] {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(KEY) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((r): r is Signal => {
+      if (!r || typeof r !== 'object') return false;
+      const s = r as Signal;
+      return typeof s.key === 'string' && typeof s.id === 'string' && (s.book === 'A' || s.book === 'B' || s.book === 'C') && s.firedAt > 0 && s.ask > 0;
+    });
+  } catch {
+    return [];
+  }
 }
 
-export function peakBefore(id: string): number {
-  return peaks.get(id) ?? 0;
+function save(): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(rows.slice(0, MAX_ROWS)));
+  } catch {
+    /* the rows still stand in this tab */
+  }
 }
 
-export function notePeak(id: string, bid: number): number {
-  const next = Math.max(peaks.get(id) ?? 0, bid > 0 ? bid : 0);
-  peaks.set(id, next);
-  return next;
+const bookOf = (s: Setup): SignalBook | null => (s.band === 'top' ? 'A' : s.band === 'wing' ? 'B' : s.band === 'lottery' ? 'C' : null);
+
+/** Every signal, newest first. */
+export function signals(): Signal[] {
+  return rows;
 }
 
+/** Today's signal on a setup address, or null. */
+export function signalOf(id: string, at = Date.now()): Signal | null {
+  const day = nyIsoDate(at);
+  return rows.find(r => r.id === id && r.day === day) ?? null;
+}
+
+/** The ask a signal filled at (the first quote a full minute after the call), or 0 before it fills. */
+export function paidOf(id: string): number {
+  return signalOf(id)?.outcome?.fill?.ask ?? 0;
+}
+
+/** Record the picks the scan just fired. Only a pick still holding its fire-time quote is written: a quote stamped
+    after the call is not the one the model read. */
+export function recordPicks(now = Date.now()): void {
+  let added = false;
+  for (const pick of currentPicks()) {
+    const book = bookOf(pick);
+    if (!book || !pick.seenAt || !(pick.ask > 0) || !(pick.bid >= 0)) continue;
+    const day = nyIsoDate(pick.seenAt);
+    const key = `${day}|${pick.id}`;
+    if (rows.some(r => r.key === key)) continue;
+    if (!pick.quotedAt || pick.quotedAt > pick.seenAt + 5_000) continue;
+    rows = [
+      {
+        key,
+        id: pick.id,
+        day,
+        book,
+        ticker: pick.ticker,
+        contract: pick.contract,
+        right: pick.right,
+        strike: pick.strike,
+        expiry: (pick.expiryDate || '').slice(0, 10),
+        sleeve: pick.sleeve,
+        firedAt: pick.seenAt,
+        quoteAt: pick.quotedAt,
+        bid: pick.bid,
+        ask: pick.ask,
+        spot: pick.spot && pick.spot > 0 ? pick.spot : null,
+        p1: pick.p1 ?? null,
+        prun: pick.prun ?? null,
+        runner: book === 'B' || pick.runner === true,
+        outcome: null,
+        pathAt: 0,
+        spark: [],
+      },
+      ...rows,
+    ];
+    added = true;
+    noteCompassCall(pick);
+  }
+  if (added) {
+    save();
+    emit();
+    void readPaths(now);
+  }
+}
+
+/* ---- the path after the call ---- */
+
+function flat(data: unknown): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  for (const item of Array.isArray(data) ? data : []) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as { data?: unknown };
+    if (Array.isArray(row.data)) out.push(...(row.data as Record<string, unknown>[]));
+    else out.push(item as Record<string, unknown>);
+  }
+  return out;
+}
+
+const n = (v: unknown) => {
+  const x = typeof v === 'number' ? v : typeof v === 'string' && v !== '' ? Number(v) : NaN;
+  return Number.isFinite(x) ? x : NaN;
+};
+
+/** Theta's NBBO rows as path quotes: the row's own stamp, bid and ask. */
+export function readQuotes(data: unknown): PathQuote[] {
+  const out: PathQuote[] = [];
+  for (const r of flat(data)) {
+    const t = nyWallStamp(r.timestamp ?? r.ms_of_day ?? r.time);
+    const bid = n(r.bid);
+    const ask = n(r.ask);
+    if (!t || !Number.isFinite(bid) || !Number.isFinite(ask)) continue;
+    out.push({ t, bid, ask });
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+const ymd = (iso: string) => iso.replace(/-/g, '');
+const two = (v: number) => String(v).padStart(2, '0');
+const clockOf = (ms: number) => {
+  const p = nyParts(ms);
+  return `${two(p.hour)}:${two(p.minute)}:${two(p.second)}`;
+};
+
+/** The contract's NBBO after the call: one-minute readings for the day, and Book C's second readings for the two
+    minutes after its fill. */
+export async function contractPath(sig: Pick<Signal, 'ticker' | 'expiry' | 'strike' | 'right' | 'day' | 'book'>, fillAt: number | null): Promise<PathQuote[] | null> {
+  const base = `/option/history/quote?symbol=${encodeURIComponent(sig.ticker)}&expiration=${ymd(sig.expiry)}&strike=${sig.strike}&right=${sig.right === 'C' ? 'call' : 'put'}&start_date=${ymd(sig.day)}&end_date=${ymd(sig.day)}`;
+  const got = await thetaCall(`${base}&interval=1m&format=json`);
+  if (got.error) return null;
+  const minute = readQuotes(got.data);
+  if (sig.book !== 'C' || !fillAt) return minute;
+  const fine = await thetaCall(`${base}&interval=1s&start_time=${clockOf(fillAt)}&end_time=${clockOf(fillAt + 125_000)}&format=json`);
+  if (fine.error) return minute;
+  return [...minute, ...readQuotes(fine.data)].sort((a, b) => a.t - b.t);
+}
+
+let reading = false;
+
+/** Read the path of every signal still open and settle it. A closed outcome is frozen and never asked for again. */
+async function readPaths(now = Date.now()): Promise<void> {
+  if (reading) return;
+  reading = true;
+  try {
+    for (const sig of rows) {
+      if (sig.outcome && (sig.outcome.status === 'closed' || sig.outcome.status === 'unavailable')) continue;
+      if (now - sig.pathAt < 50_000) continue;
+      const quotes = await contractPath(sig, sig.outcome?.fill?.at ?? null);
+      if (!quotes) return;
+      const under = await underCloses(sig.ticker, ymd(sig.day));
+      let out = settleSignal(sig, quotes, under, Date.now());
+      if (sig.book === 'C' && out.fill && !sig.outcome?.fill) {
+        const fine = await contractPath(sig, out.fill.at);
+        if (fine) out = settleSignal(sig, fine, under, Date.now());
+      }
+      const after = quotes.filter(q => q.t > sig.firedAt && q.t % 60_000 === 0 && (!out.exit || q.t <= out.exit.at));
+      const next: Signal = { ...sig, outcome: out, pathAt: Date.now(), spark: after.map(q => q.bid).filter(b => b >= 0) };
+      rows = rows.map(r => (r.key === sig.key ? next : r));
+      if (out.status === 'closed' || out.status === 'unavailable') {
+        noteLeft({ id: sig.id, ticker: sig.ticker, contract: sig.contract }, out.status === 'unavailable' ? 'Unavailable' : out.exit?.why ?? 'Closed');
+      }
+      save();
+      emit();
+    }
+  } finally {
+    reading = false;
+  }
+}
+
+/* While a Compass page is open and the tab is showing, open signals are read once a minute. */
+let readers = 0;
+let timer: number | null = null;
+
+function arm(): void {
+  if (timer != null || typeof window === 'undefined') return;
+  void readPaths();
+  timer = window.setInterval(() => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    void readPaths();
+  }, 60_000);
+}
+
+function disarm(): void {
+  if (timer != null) window.clearInterval(timer);
+  timer = null;
+}
+
+/** The record, newest first. Mounting it keeps open signals' paths reading. */
+export function useSignals(): Signal[] {
+  useEffect(() => {
+    readers += 1;
+    arm();
+    return () => {
+      readers -= 1;
+      if (readers === 0) disarm();
+    };
+  }, []);
+  useSyncExternalStore(
+    fn => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    () => rev,
+    () => rev,
+  );
+  return rows;
+}
+
+/** The stop standing now and its rung's name. */
 export function activeStop(paid: number, peak: number, runner: boolean): { stop: number; name: string } {
   const stop = stopAfter(paid, peak, runner);
   let name = 'Stop';
@@ -111,349 +276,3 @@ export function activeStop(paid: number, peak: number, runner: boolean): { stop:
   else if (peak >= paid * 1.25) name = 'Breakeven';
   return { stop, name };
 }
-
-const moneyResult = (paid: number, exitPx: number): BookResult => (exitPx > paid ? 'win' : 'loss');
-
-export function closeOf(p: CloseInput): { result: BookResult; why: string; exitPx: number } | null {
-  const paid = p.paid;
-  const bid = p.bid;
-  if (!(paid > 0) || !Number.isFinite(bid) || bid < 0) return null;
-  if (p.lottery) {
-    const hit = lotteryExit(paid, bid, p.heldSec ?? 0);
-    if (hit) return { result: moneyResult(paid, hit.px), why: hit.why, exitPx: hit.px };
-    if (p.flat) return { result: moneyResult(paid, bid), why: '15:50', exitPx: bid };
-    return null;
-  }
-  const prior = p.peak;
-  const hit = treeExit(paid, bid, prior > 0 ? prior : 0, p.runner);
-  if (hit) return { result: moneyResult(paid, hit.px), why: hit.why, exitPx: hit.px };
-  if (p.heldMin >= 1 && Number.isFinite(p.ret5)) {
-    const line = reversalLine(paid, bid, p.side, p.ret5 as number);
-    if (line) return { result: moneyResult(paid, bid), why: line, exitPx: bid };
-  }
-  if (p.flat) return { result: moneyResult(paid, bid), why: 'end of day', exitPx: bid };
-  return null;
-}
-
-export function flatNow(at: number = Date.now()): boolean {
-  return nyMinutes(at) >= 15 * 60 + 55;
-}
-
-export function lotteryFlatNow(at: number = Date.now()): boolean {
-  return nyMinutes(at) >= 15 * 60 + 50;
-}
-
-function nyDay(at = Date.now()): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(at));
-}
-
-function optionFees(exitPx: number): number {
-  const sec = Math.max(0, exitPx) * 100 * 0.0000206;
-  return Number((0.5 * 2 + 0.04 * 2 + sec).toFixed(2));
-}
-
-export function stampClose(row: {
-  id: string;
-  ticker: string;
-  contract: string;
-  right: OptionRight;
-  strike: number;
-  paid: number;
-  exitPx: number;
-  why: string;
-  result: BookResult;
-  held: number | null;
-  signalBid?: number;
-  signalAsk?: number;
-  signalMid?: number;
-  fillBid?: number;
-  fillAsk?: number;
-  fillMid?: number;
-}): BookLine {
-  const at = Date.now();
-  const ret = row.paid > 0 ? Number(((row.exitPx / row.paid - 1) * 100).toFixed(1)) : 0;
-  const fees = row.result === 'unavailable' || row.result === 'open' ? 0 : optionFees(row.exitPx);
-  const pnl = row.paid > 0 && row.result !== 'open' ? Number(((row.exitPx - row.paid) * 100 - fees).toFixed(2)) : 0;
-  return {
-    ...row,
-    date: nyDay(at),
-    exit: nyClock(at),
-    ret,
-    at,
-    fees,
-    pnl,
-  };
-}
-
-let lines: BookLine[] = [];
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  for (const fn of listeners) fn();
-}
-
-function load(): BookLine[] {
-  try {
-    const raw = localStorage.getItem(KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((row): row is BookLine => {
-      if (!row || typeof row !== 'object') return false;
-      const r = row as BookLine;
-      return typeof r.id === 'string' && (r.result === 'win' || r.result === 'loss' || r.result === 'caution' || r.result === 'unavailable' || r.result === 'open');
-    });
-  } catch {
-    return [];
-  }
-}
-
-/* Rows an older build wrote into every visitor's book without a real fill. */
-const NOT_FILLED = /^avg-2026-10-27-SPXW-\d+-C$|^SPXW-7745-C-top-setups-odte$/;
-
-function dropUnfilled(): void {
-  const kept = lines.filter(row => !NOT_FILLED.test(row.id));
-  if (kept.length === lines.length) return;
-  lines = kept;
-  try { localStorage.setItem(KEY, JSON.stringify(lines)); } catch { /* this load is clean either way */ }
-}
-
-export function bookLine(id: string): BookLine | null {
-  return lines.find(row => row.id === id) ?? null;
-}
-
-/** A called ticket is on the blotter the moment it is called. The exit replaces this row. */
-export function syncOpenBook(now = Date.now()): void {
-  for (const pick of currentPicks()) {
-    if (pick.band !== 'top' && pick.band !== 'wing' && pick.band !== 'lottery') continue;
-    const paid = entryAsk(pick.id);
-    if (!(paid > 0) || bookLine(pick.id)) continue;
-    const at = pick.seenAt && pick.seenAt > 0 ? pick.seenAt : now;
-    remember({
-      id: pick.id,
-      date: nyDay(at),
-      ticker: pick.ticker,
-      contract: pick.contract,
-      right: pick.right,
-      strike: pick.strike,
-      paid,
-      exitPx: 0,
-      exit: '',
-      why: pick.band === 'lottery' ? 'Book C. Open.' : pick.band === 'wing' ? 'Book B. Open.' : 'Book A. Open.',
-      result: 'open',
-      ret: 0,
-      held: null,
-      at,
-      entered: nyClock(at),
-      fees: 0,
-      pnl: 0,
-    });
-    noteCompassCall(pick);
-  }
-}
-
-export function remember(line: BookLine): void {
-  const i = lines.findIndex(row => row.id === line.id);
-  if (i >= 0) {
-    if (lines[i].result !== 'open') return;
-    lines = lines.map(row => (row.id === line.id ? line : row));
-  } else {
-    lines = [line, ...lines];
-  }
-  try { localStorage.setItem(KEY, JSON.stringify(lines)); } catch { /* the row still stands */ }
-  emit();
-}
-
-export function useCompassBook(): BookLine[] {
-  const [rows, setRows] = useState(lines);
-  useEffect(() => {
-    const fn = () => setRows(lines);
-    listeners.add(fn);
-    return () => { listeners.delete(fn); };
-  }, []);
-  return rows;
-}
-
-const WAIT: LockedFill = { status: 'wait', bid: 0, ask: 0, mid: 0 };
-/* No quote from the fill minute within this long after the call, and the fill is unavailable. */
-const FILL_GIVE_UP_MS = 3 * 60_000;
-
-/** The one fill rule for a pick: the ask of the first valid quote stamped a full minute after the call. */
-export function lockFill(id: string, calledAt: number, quote: LiveQuote | null, now = Date.now()): LockedFill {
-  const held = fills.get(id);
-  if (held && held.status !== 'wait') return held;
-  const pinned = entryAsk(id);
-  if (pinned > 0) {
-    const restored = { status: 'filled' as const, bid: 0, ask: pinned, mid: 0 };
-    fills.set(id, restored);
-    return restored;
-  }
-  if (!nextAskDue(calledAt, now)) return WAIT;
-  const fresh = quote != null && quote.at > 0 && nextAskDue(calledAt, quote.at);
-  const valid = fresh && quote.ask > 0 && quote.bid >= 0 && quote.ask >= quote.bid;
-  if (!valid) {
-    if (fresh || now - calledAt > FILL_GIVE_UP_MS) {
-      const miss = { status: 'unavailable' as const, bid: 0, ask: 0, mid: 0 };
-      fills.set(id, miss);
-      return miss;
-    }
-    return WAIT;
-  }
-  const locked = { status: 'filled' as const, bid: quote.bid, ask: quote.ask, mid: (quote.bid + quote.ask) / 2 };
-  fills.set(id, locked);
-  pinFill(id, quote.ask);
-  return locked;
-}
-
-export function settleOpen(tracked: TrackedSetup[], setups: Setup[], spots: Map<string, number>, opens: Map<string, number>): string[] {
-  const gone: string[] = [];
-  for (const t of tracked) {
-    if (bookLine(t.id)) {
-      gone.push(t.id);
-      continue;
-    }
-    const setup = setups.find(s => s.id === t.id);
-    if (setup?.band === 'closest') continue;
-    const quote = setup && setup.quotedAt ? { bid: setup.bid, ask: setup.ask, at: setup.quotedAt } : null;
-    const lottery = setup?.band === 'lottery';
-    const fill = lockFill(t.id, t.trackedAt, quote);
-    if (fill.status === 'wait') continue;
-    if (fill.status === 'unavailable') {
-      remember(stampClose({
-        id: t.id, ticker: t.ticker, contract: t.contract, right: t.right, strike: t.strike,
-        paid: 0, exitPx: 0, why: 'Unavailable', result: 'unavailable', held: null,
-        signalBid: t.signalBid, signalAsk: t.signalAsk, signalMid: t.signalMid,
-      }));
-      noteLeft(t, 'Unavailable');
-      gone.push(t.id);
-      continue;
-    }
-    if (!setup) continue;
-    const paid = fill.ask;
-    const held = Math.max(0, Math.round((Date.now() - t.trackedAt) / 60000));
-    const heldSec = Math.max(0, Math.round((Date.now() - t.trackedAt) / 1000));
-    const prior = peakBefore(t.id);
-    const spot = spots.get(t.ticker) ?? 0;
-    const call = closeOf({
-      paid,
-      bid: setup.bid,
-      peak: prior,
-      heldMin: held,
-      heldSec,
-      runner: lottery ? false : setup.band === 'wing' || setup.runner === true,
-      lottery,
-      scalp: false,
-      wing: setup.band === 'wing',
-      side: t.right,
-      choice: t.right,
-      dayOver: false,
-      flat: lottery ? lotteryFlatNow() : setup.expiry === '0DTE' && flatNow(),
-      levelBroke: false,
-      rejected: false,
-      ret5: ret5Of(t.ticker, spot, Date.now()),
-    });
-    if (!call) {
-      notePeak(t.id, setup.bid);
-      continue;
-    }
-    remember(stampClose({
-      id: t.id, ticker: t.ticker, contract: t.contract, right: t.right, strike: t.strike,
-      paid, exitPx: call.exitPx, why: call.why, result: call.result, held,
-      signalBid: t.signalBid, signalAsk: t.signalAsk, signalMid: t.signalMid,
-      fillBid: fill.bid, fillAsk: fill.ask, fillMid: fill.mid,
-    }));
-    noteLeft(t, call.why);
-    gone.push(t.id);
-  }
-  return gone;
-}
-
-const spotMem = new Map<string, { t: number; px: number }[]>();
-
-export function ret5Of(ticker: string, spot: number, now: number): number {
-  const list = spotMem.get(ticker) ?? [];
-  if (spot > 0) {
-    const last = list[list.length - 1];
-    if (!last || now - last.t >= 15_000) list.push({ t: now, px: spot });
-  }
-  const kept = list.filter(p => now - p.t <= 12 * 60_000);
-  spotMem.set(ticker, kept);
-  const want = now - 5 * 60_000;
-  let ago = NaN;
-  for (const p of kept) if (p.t <= want) ago = p.px;
-  return ago > 0 && spot > 0 ? spot / ago - 1 : NaN;
-}
-export function settleBoard(live: Setup[], now = Date.now()): void {
-  const byId = new Map(live.map(s => [s.id, s]));
-  for (const pick of currentPicks()) {
-    if (pick.band === 'closest') continue;
-    const q = byId.get(pick.id);
-    const bid = q && q.ask > 0 && q.bid >= 0 && q.ask >= q.bid ? q.bid : pick.bid;
-    const spot = (q?.spot ?? pick.spot) || 0;
-    const calledAt = pick.seenAt && pick.seenAt > 0 ? pick.seenAt : now;
-    const quoted = q && q.quotedAt ? { bid: q.bid, ask: q.ask, at: q.quotedAt } : pick.quotedAt ? { bid: pick.bid, ask: pick.ask, at: pick.quotedAt } : null;
-    const fill = lockFill(pick.id, calledAt, quoted, now);
-    if (fill.status === 'wait') continue;
-    if (fill.status === 'unavailable') {
-      if (!bookLine(pick.id)) {
-        remember(stampClose({
-          id: pick.id, ticker: pick.ticker, contract: pick.contract, right: pick.right, strike: pick.strike,
-          paid: 0, exitPx: 0, why: 'Unavailable', result: 'unavailable', held: null,
-        }));
-        noteLeft(pick, 'Unavailable');
-      }
-      continue;
-    }
-    const paid = fill.ask;
-    if (!(paid > 0) || !(bid >= 0)) continue;
-    const heldMin = pick.seenAt ? Math.max(0, Math.round((now - pick.seenAt) / 60000)) : 0;
-    const heldSec = pick.seenAt ? Math.max(0, Math.round((now - pick.seenAt) / 1000)) : 0;
-    const prior = peakBefore(pick.id);
-    const call = closeOf({
-      paid,
-      bid,
-      peak: prior,
-      heldMin,
-      heldSec,
-      runner: pick.band === 'wing' || pick.runner === true,
-      lottery: pick.band === 'lottery',
-      scalp: false,
-      wing: pick.band === 'wing',
-      side: pick.right,
-      choice: pick.right,
-      dayOver: false,
-      flat: pick.band === 'lottery' ? lotteryFlatNow(now) : flatNow(now),
-      levelBroke: false,
-      rejected: false,
-      ret5: ret5Of(pick.ticker, spot, now),
-    });
-    if (!call) {
-      notePeak(pick.id, bid);
-      continue;
-    }
-    const why = call.why === 'TP1' ? 'Take profit' : call.why === 'Stop' ? 'Stop' : call.why;
-    const at = pick.seenAt && pick.seenAt > 0 ? pick.seenAt : now;
-    const had = bookLine(pick.id);
-    remember({
-      ...stampClose({
-        id: pick.id,
-        ticker: pick.ticker,
-        contract: pick.contract,
-        right: pick.right,
-        strike: pick.strike,
-        paid,
-        exitPx: call.exitPx,
-        why,
-        result: call.result,
-        held: heldMin,
-        fillBid: fill.bid || undefined,
-        fillAsk: fill.ask,
-        fillMid: fill.mid || undefined,
-      }),
-      entered: had?.entered || nyClock(at),
-    });
-    noteLeft(pick, why);
-  }
-}
-
-lines = load();
-dropUnfilled();

@@ -3,9 +3,10 @@
 
 import { useEffect, useState } from 'react';
 import { uwCall } from './whales';
+import { marketPhase } from '../core/marketPhase';
 import { isoDate, isTradingDay } from '../core/calendar';
 import { minuteLabel, nyClock } from '../core/nyTime';
-import { liveTrades, num, sideOfTags, printCondition, quoteNoReadOf, sessionEndMin, tapeSessionIso } from './traceLive';
+import { liveTrades, num, sideOfTags, printCondition, quoteNoReadOf, sessionEndMin, tapeSessionIso } from './traceRows';
 
 type FlowSide = 'BID' | 'MID' | 'ASK';
 
@@ -396,27 +397,40 @@ async function loadContractTape(occ: string, ticker: string, dateIso: string): P
   return { dateIso, window, prints, printsCapped: capped, minutes: panelMinutes, day, history: hist, net };
 }
 
-/** The card's tape: loaded on open and on a session change; the live session refreshes every 20s */
+/* the cards already opened, so one opened again stands at once while it refreshes */
+const tapeCache = new Map<string, ContractTape>();
+const TAPE_CACHE_MAX = 20;
+
+/** The card's tape: loaded on open and on a session change; while the session runs it refreshes every 20s (never in a
+    hidden tab, never once the day has closed) */
 export function useContractTape(occ: string | null | undefined, ticker: string | null | undefined, dateIso: string): TapeLoad {
-  const [box, setBox] = useState<{ key: string; tape: ContractTape | null; failed: boolean } | null>(null);
   const key = occ && ticker ? `${occ}|${ticker}|${dateIso}` : '';
+  const [box, setBox] = useState<{ key: string; tape: ContractTape | null; failed: boolean } | null>(() => (key && tapeCache.has(key) ? { key, tape: tapeCache.get(key)!, failed: false } : null));
   useEffect(() => {
     if (!key || !occ || !ticker) return;
     let stop = false;
+    const had = tapeCache.get(key);
+    if (had) setBox({ key, tape: had, failed: false });
     const run = async () => {
       try {
         const tape = await loadContractTape(occ, ticker, dateIso);
+        tapeCache.delete(key);
+        tapeCache.set(key, tape);
+        while (tapeCache.size > TAPE_CACHE_MAX) tapeCache.delete(tapeCache.keys().next().value as string);
         if (!stop) setBox({ key, tape, failed: false });
       } catch {
         if (!stop) setBox(prev => (prev && prev.key === key ? { ...prev, failed: !prev.tape } : { key, tape: null, failed: true }));
       }
     };
     void run();
-    const live = dateIso === tapeSessionIso();
-    const id = live ? window.setInterval(run, 20_000) : 0;
+    const id = window.setInterval(() => {
+      const ph = marketPhase();
+      if (dateIso !== tapeSessionIso() || (ph !== 'regular' && ph !== 'late') || document.visibilityState === 'hidden') return;
+      void run();
+    }, 20_000);
     return () => {
       stop = true;
-      if (id) window.clearInterval(id);
+      window.clearInterval(id);
     };
   }, [key, occ, ticker, dateIso]);
   const mine = box && box.key === key ? box : null;

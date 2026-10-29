@@ -88,6 +88,15 @@ export function printOf(root: string): string {
   return PRINT_OF[root] ?? root;
 }
 
+/** The minutes after 09:30 the trees were trained on (column 0 spans 15 to 330 in both models): Book A and Book B
+    score 09:45 to 15:00 ET and nothing outside it. */
+export const MODEL_T_MIN = 15;
+export const MODEL_T_MAX = 330;
+
+export function inModelWindow(t: number): boolean {
+  return Number.isFinite(t) && t >= MODEL_T_MIN && t <= MODEL_T_MAX;
+}
+
 /** Every 5 minutes while an option tape is open, plus the last minute before a 0 DTE stop.
  *  09:29 is VIX. 15:59 is a 16:00 stop. 16:14 is a 16:15 stop. The halt sends nothing else. */
 function scanMark(minuteOfDay: number): boolean {

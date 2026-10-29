@@ -15,9 +15,9 @@ import { SetupGuide } from './SetupGuide';
 import ContractTrack from './ContractTrack';
 import ContractFlow from './ContractFlow';
 import { choiceRight } from '../../data/compass';
-import { activeStop, bookLine, closeOf, flatNow, lockFill, lotteryFlatNow, notePeak, noteRung, peakBefore, remember, ret5Of, rungsOf, stampClose, useCompassBook } from '../../data/compassLedger';
+import { activeStop, signalOf, useSignals } from '../../data/compassLedger';
 import { liveSetups, liveSpark, useContractBars, useContractLive, useSecondGreek } from '../../data/thetaBook';
-import { entryAsk, leftOf, noteLeft, passedOver } from '../../data/compassModel';
+import { leftOf, passedOver } from '../../data/compassModel';
 import { entryGate, quoteContract, quoteMissing, quoteStale } from '../../data/contractQuote';
 import { MODELS_VALIDATED, SPREAD_MAX, STOP_KEEP, UNVALIDATED_WORD, spreadPass, weekdayDte } from '../../data/compassParams';
 import { BLOCK_MIN_PREMIUM, BLOCK_MIN_SIZE } from '../../data/tape';
@@ -29,6 +29,7 @@ import { nyClock } from '../../core/nyTime';
 import { type ConPickRow } from './ContractPick';
 import { Tip } from '../ui/Tooltip';
 import { useTracker } from '../../context/TrackerContext';
+import { useThetaStatus } from '../../data/thetaQuote';
 import {
   type OptionRight,
   type ScannerKey,
@@ -154,8 +155,11 @@ const CampaignAnalysis = ({
   gradedAt,
   onOpenContract,
 }: CampaignAnalysisProps) => {
-  const { trackSetup, untrackSetup, isTracked, trackedSetups } = useTracker();
-  const book = useCompassBook();
+  const { trackSetup, untrackSetup, isTracked } = useTracker();
+  const record = useSignals();
+  const thetaDown = useThetaStatus() === 'down';
+  const signal = useMemo(() => signalOf(setup.id), [record, setup.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const outcome = signal?.outcome ?? null;
   const navigate = useNavigate();
   const tracked = isTracked(setup.id);
   const [trackNo, setTrackNo] = useState<string | null>(null);
@@ -308,7 +312,7 @@ const CampaignAnalysis = ({
   const midPx = q.mark;
   const spreadFrac = midPx > 0 ? (q.ask - q.bid) / midPx : 1;
   const ticket = setup.band === 'top' || setup.band === 'wing' || setup.band === 'lottery';
-  const paidAsk = entryAsk(setup.id);
+  const paidAsk = outcome?.fill?.ask ?? 0;
   const basis = paidAsk > 0 ? paidAsk : 0;
   const tpRows = [
     { level: 1, gain: 50, price: Number((basis * 1.5).toFixed(2)) },
@@ -339,14 +343,8 @@ const CampaignAnalysis = ({
     : setup.band === 'closest'
       ? (setup.whyText || 'Not a ticket.')
       : !(bidPx > 0.15) ? 'Bid is at or under 0.15' : spreadFrac > spreadCap + 1e-9 ? 'Spread is over 8%' : missing ? 'Quote missing' : stale ? 'Quote stale' : null;
-  const trackedRow = trackedSetups.find(t => t.id === setup.id);
-  const fill = tracked && trackedRow ? lockFill(setup.id, trackedRow.trackedAt, quotedAt ? { bid: q.bid, ask: q.ask, at: quotedAt } : null) : null;
-  const paidNow = fill?.status === 'filled' ? fill.ask : 0;
-  const priorPeak = tracked ? peakBefore(setup.id) : 0;
-  const peakNow = tracked ? notePeak(setup.id, q.bid) : 0;
   const runner = setup.band === 'wing' || setup.runner === true;
-  if (tracked && paidNow > 0 && setup.band !== 'closest') noteRung(setup.id, activeStop(paidNow, peakNow, runner).name);
-  const liveStop = paidNow > 0 && setup.band !== 'lottery' && setup.band !== 'closest' ? activeStop(paidNow, priorPeak > 0 ? priorPeak : 0, runner) : null;
+  const liveStop = basis > 0 && setup.band !== 'lottery' && setup.band !== 'closest' ? activeStop(basis, outcome?.peak ?? 0, runner) : null;
   const stopHit = !missing && liveStop != null && q.bid >= 0 && q.bid <= liveStop.stop;
   const tp1Mult = 1.5;
   const tp1Hit = ticket && !runner && setup.band !== 'lottery' && basis > 0 && q.bid >= basis * tp1Mult;
@@ -378,92 +376,21 @@ const CampaignAnalysis = ({
                       : tracked
                         ? { word: 'Open paper', why: 'On the book. Paper only. Nothing is sent.', ink: 'text-textPrimary' }
                         : { word: 'Candidate', why: 'Paper only. Track it to watch it. Nothing is sent.', ink: 'text-textPrimary' };
-  const booked = book.find(l => l.id === setup.id) ?? null;
-  const closed = booked && booked.result !== 'open' ? booked : null;
+  const closed = outcome && outcome.status === 'closed' && outcome.exit && outcome.fill
+    ? { result: outcome.exit.px > outcome.fill.ask ? 'win' as const : 'loss' as const, why: outcome.exit.why, exitPx: outcome.exit.px }
+    : outcome && outcome.status === 'unavailable'
+      ? { result: 'unavailable' as const, why: 'Unavailable', exitPx: 0 }
+      : null;
   const verdict = setup.band === 'closest'
     ? { word: 'Closest', why: setup.whyText || 'It did not clear a book.', ink: 'text-textSecondary' }
     : closed
-    ? closed.result === 'caution'
-      ? { word: 'Take caution', why: `The book would take the ${closed.right === 'C' ? 'puts' : 'calls'}. Exit here, even under +25%. This is the choice, not an order. It is not a loss.`, ink: 'text-warn' }
-      : closed.result === 'unavailable'
-        ? { word: 'Unavailable', why: 'The quote one minute later was missing or invalid. No price was substituted.', ink: 'text-textSecondary' }
+    ? closed.result === 'unavailable'
+        ? { word: 'Unavailable', why: 'No valid quote stood a minute after the call. No price was substituted.', ink: 'text-textSecondary' }
         : closed.result === 'win'
         ? { word: 'Win', why: `${closed.why}. Left at ${money(closed.exitPx)}. On the blotter. Paper only.`, ink: 'text-bull' }
         : { word: 'Loss', why: `${closed.why}. Left at ${money(closed.exitPx)}. On the blotter. Paper only.`, ink: 'text-bear' }
     : liveVerdict;
   const badgeTone = killed || verdict.word === 'Rejected' || verdict.word === 'Loss' ? 'bear' : verdict.word === 'Win' || (verdict.word === 'Called' && q.bid >= line) ? 'bull' : 'white';
-
-  useEffect(() => {
-    if (!tracked) return;
-    const row = trackedSetups.find(t => t.id === setup.id);
-    if (!row || bookLine(setup.id)) {
-      if (bookLine(setup.id)) untrackSetup(setup.id);
-      return;
-    }
-    const fill = lockFill(setup.id, row.trackedAt, quotedAt ? { bid: q.bid, ask: q.ask, at: quotedAt } : null);
-    if (fill.status === 'wait') return;
-    if (fill.status === 'unavailable') {
-      remember(stampClose({
-        id: setup.id,
-        ticker: setup.ticker,
-        contract: setup.contract,
-        right: setup.right,
-        strike: setup.strike,
-        paid: 0,
-        exitPx: 0,
-        why: 'Unavailable',
-        result: 'unavailable',
-        held: null,
-        signalBid: row.signalBid,
-        signalAsk: row.signalAsk,
-        signalMid: row.signalMid,
-      }));
-      noteLeft(setup, 'Unavailable');
-      untrackSetup(setup.id);
-      return;
-    }
-    const paid = fill.ask;
-    if (setup.band === 'closest') return;
-    const call = closeOf({
-      paid,
-      bid: q.bid,
-      peak: priorPeak,
-      heldMin: Math.max(0, Math.round((Date.now() - row.trackedAt) / 60000)),
-      heldSec: Math.max(0, Math.round((Date.now() - row.trackedAt) / 1000)),
-      runner: setup.band === 'wing' || setup.runner === true,
-      lottery: setup.band === 'lottery',
-      scalp: false,
-      wing: setup.band === 'wing',
-      side: setup.right,
-      choice: setup.right,
-      dayOver: false,
-      flat: setup.band === 'lottery' ? lotteryFlatNow() : setup.expiry === '0DTE' && flatNow(),
-      levelBroke: false,
-      rejected: false,
-      ret5: ret5Of(setup.ticker, spot, Date.now()),
-    });
-    if (!call) return;
-    remember(stampClose({
-      id: setup.id,
-      ticker: setup.ticker,
-      contract: setup.contract,
-      right: setup.right,
-      strike: setup.strike,
-      paid,
-      exitPx: call.exitPx,
-      why: call.why,
-      result: call.result,
-      held: Math.max(0, Math.round((Date.now() - row.trackedAt) / 60000)),
-      signalBid: row.signalBid,
-      signalAsk: row.signalAsk,
-      signalMid: row.signalMid,
-      fillBid: fill.bid,
-      fillAsk: fill.ask,
-      fillMid: fill.mid,
-    }));
-    noteLeft(setup, call.why);
-    untrackSetup(setup.id);
-  }, [tracked, trackedSetups, setup.id, setup.ticker, setup.contract, setup.right, setup.strike, setup.expiry, q.bid, q.ask, quotedAt, q.entryPremium, dayOver, checkFail, choice, retired, floorBreak, untrackSetup]);
 
   const sessionsLeft = weekdayDte(sessionYmd(), setup.expiryDate);
   const tenorWord =
@@ -517,8 +444,8 @@ const CampaignAnalysis = ({
           <div className="min-w-0 flex-1 flex items-center gap-3">
             <CompanyLogo ticker={setup.ticker} size={34} />
             <div className="min-w-0">
-              <div className="h-6 flex items-center gap-2.5">
-                <h3 className="min-w-0 truncate text-t15 font-semibold leading-tight text-textPrimary">{setup.ticker} <span className={setup.right === 'C' ? 'text-bull' : 'text-bear'}>{setup.contract}</span></h3>
+              <div className="min-h-6 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                <h3 className="min-w-0 text-t15 font-semibold leading-tight text-textPrimary">{setup.ticker} <span className={setup.right === 'C' ? 'text-bull' : 'text-bear'}>{setup.contract}</span></h3>
                 {kindLabel ? (
                   <span className="px-1.5 py-0.5 rounded border border-silver/40 font-mono text-t9 font-semibold uppercase tracking-wider text-textPrimary whitespace-nowrap">{kindLabel}</span>
                 ) : null}
@@ -530,17 +457,17 @@ const CampaignAnalysis = ({
                 {place ? ` · ${place}` : ''}
               </p>
               <p className="mt-0.5 text-t11 text-textSecondary truncate">{verdict.why}</p>
+              {thetaDown && (
+                <p className="mt-0.5 text-t11 text-warn" data-setup-offline>
+                  ThetaData offline — reconnecting.{quoteAt ? ` Quote as of ${nyClock(quoteAt, { seconds: true, zone: true })}.` : ''}
+                </p>
+              )}
               {passedOver(setup.ticker).length > 0 && (
                 <Tip label={passedOver(setup.ticker).join(' · ')}>
                   <p className="mt-1 text-t11 text-textMuted truncate">
                     Passed over · {passedOver(setup.ticker).join(' · ')}
                   </p>
                 </Tip>
-              )}
-              {rungsOf(setup.id).length > 0 && (
-                <p className="mt-1 font-mono text-t10 text-textMuted truncate">
-                  {rungsOf(setup.id).map(rung => `${rung.name} ${nyClock(rung.at)}`).join(' · ')}
-                </p>
               )}
             </div>
           </div>
@@ -598,7 +525,7 @@ const CampaignAnalysis = ({
             traded={traded}
             volume={sessionPrints.reduce((sum, p) => sum + p.size, 0)}
             emptyNote={traded && traded.length === 0 ? sessionEmpty(setup.ticker, desk) : ''}
-            pathNote={!liveBars || liveBars.length === 0 ? 'History has not landed. The bar on the chart is the live mark.' : ''}
+            pathNote={!liveBars || liveBars.length === 0 ? (thetaDown ? 'ThetaData offline. The line is the last mark.' : 'No bars yet. The line is the live mark.') : ''}
           />
         </div>
         <div className="min-w-0 flex flex-col gap-3">
@@ -711,7 +638,7 @@ const CampaignAnalysis = ({
                   className="w-full h-8 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textPrimary font-mono text-t11 font-semibold uppercase tracking-wider"
                   data-setup-track="closed"
                 >
-                  {closed.result === 'caution' ? 'Take caution' : closed.result === 'win' ? 'Win · on the blotter' : 'Loss · on the blotter'}
+                  {closed.result === 'unavailable' ? 'Unavailable · on the blotter' : closed.result === 'win' ? 'Win · on the blotter' : 'Loss · on the blotter'}
                 </button>
               ) : (
                 <div className="flex h-8 rounded-md overflow-hidden" data-setup-track={tracked ? 'on' : 'off'}>

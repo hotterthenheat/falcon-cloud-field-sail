@@ -19,7 +19,8 @@ const render = () =>
   ReactDOM.createRoot(document.getElementById('root')!).render(
     /* the outermost boundary: the landing, the rail and the providers have no page boundary of their own */
     <AppBoundary>
-      <BrowserRouter>
+      {/* a navigation is a transition: a page whose code is still on its way leaves the current one on screen */}
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <App />
       </BrowserRouter>
     </AppBoundary>

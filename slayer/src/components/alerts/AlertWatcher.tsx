@@ -1,56 +1,20 @@
 /* The shell's alert watcher: every armed alert, on every name that holds one, judged against the live feeds — the
-   name's price, its vendor dealer book (walls, flip, supreme, net exposure), today's minute bars for the indicator
-   and script kinds, the name's option prints and the wire. */
+   name's real-time price off the ThetaData terminal, its vendor dealer book (walls, flip, supreme, net exposure),
+   today's minute bars for the indicator and script kinds, the name's option prints and the wire. Nothing is judged
+   on a kept price: with the terminal down the alerts wait. */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { readExposureNow, type ExposureNow } from '../../data/gex';
-import { bookCandles, bookHistory, ensureBook, useBookRev } from '../../data/uwBook';
-import { liveSpotOf } from '../../data/weigherChain';
+import { bookCandles, bookHistory, ensureBook } from '../../data/uwBook';
+import { peekThetaPrice, useThetaPrices } from '../../data/thetaQuote';
 import { uwCall } from '../../data/whales';
 import { newsPulse } from '../../data/news';
 import { emaSeries, rsiSeries, vwapSeries } from '../../data/indicators';
 import { aggregateCandles, tfMinutes, type Timeframe } from '../../data/timeframe';
-import { builtinScripts } from '../../data/builtinScripts';
-import { scriptStore } from '../../data/scriptStore';
-import { compile, run as runScript, type Compiled } from '../../core/pine';
+import { run as runScript } from '../../core/pine';
+import { compileOf } from './scriptCompiles';
 import { SCRIPT_CAPS } from '../../types/scripts';
 import { commitArm, evaluateAlert, markFired, scriptBarCounts, useAllAlerts, type Alert, type AlertContext, type IndicatorSource, type ScriptAlert } from '../gex/alertStore';
-
-/* A script alert runs the script the way its pane does — over the name's bars on its timeframe, with the
-   placement's inputs and the book in `slayer.*` — and reads the condition's flag on the last bar. Compiles are
-   cached by id; a script that does not compile is remembered as null and left alone. */
-const compiledById = new Map<string, Compiled | null>();
-const fetching = new Set<string>();
-const compileOf = (scriptId: string, poke: () => void): Compiled | null | undefined => {
-  if (compiledById.has(scriptId)) return compiledById.get(scriptId);
-  const builtin = builtinScripts().find(s => s.id === scriptId);
-  if (builtin) {
-    try {
-      compiledById.set(scriptId, compile(builtin.source));
-    } catch {
-      compiledById.set(scriptId, null);
-    }
-    return compiledById.get(scriptId);
-  }
-  if (!fetching.has(scriptId)) {
-    fetching.add(scriptId);
-    void scriptStore.get(scriptId).then(s => {
-      try {
-        compiledById.set(scriptId, s ? compile(s.source) : null);
-      } catch {
-        compiledById.set(scriptId, null);
-      }
-      fetching.delete(scriptId);
-      poke();
-    });
-  }
-  return undefined;
-};
-
-/** A saved script changed under an alert — forget its compile so the next tick re-reads it */
-export const forgetCompiled = (scriptId: string): void => {
-  compiledById.delete(scriptId);
-};
 
 /** The last real value of a series, or null while it cannot be read */
 const last = (pts: readonly (number | null)[]): number | null => {
@@ -90,7 +54,9 @@ const BEAT_MS = 15_000;
 
 const AlertWatcher = () => {
   const names = useAllAlerts();
-  const bookRev = useBookRev();
+  /* the names with an alert still waiting: their prices are polled on the session's clock, and each landing judges */
+  const watched = useMemo(() => names.filter(n => n.alerts.some(a => !a.firedAt)).map(n => n.ticker.toUpperCase()), [names]);
+  const priceRev = useThetaPrices(watched);
   /* bumped by the beat, a landed script compile or a landed tape read */
   const [beat, setBeat] = useState(0);
   const ranOn = useRef(new Map<string, number>());
@@ -106,11 +72,13 @@ const AlertWatcher = () => {
       const waiting = alerts.filter(a => !a.firedAt);
       if (waiting.length === 0) continue;
       const sym = ticker.toUpperCase();
-      ensureBook(sym);
-      const close = liveSpotOf(sym);
-      if (close == null || !(close > 0)) continue;
+      const needsBook = waiting.some(a => a.kind === 'level' || a.kind === 'gexflip' || a.kind === 'newsupreme' || a.kind === 'wallmove' || a.kind === 'script' || a.kind === 'indicator');
+      if (needsBook) ensureBook(sym);
+      const held = peekThetaPrice(sym);
+      if (!held?.live) continue;
+      const close = held.value.price;
+      if (!(close > 0)) continue;
 
-      const needsBook = waiting.some(a => a.kind === 'level' || a.kind === 'gexflip' || a.kind === 'newsupreme' || a.kind === 'wallmove' || a.kind === 'script');
       const exp = needsBook ? exposureOf(sym, close) : null;
       if (waiting.some(a => a.kind === 'flow')) void readPrints(sym).then(poke);
 
@@ -201,7 +169,7 @@ const AlertWatcher = () => {
         for (const a of group) judge(a, ctx);
       }
     }
-  }, [names, bookRev, beat]);
+  }, [names, priceRev, beat]);
 
   return null;
 };

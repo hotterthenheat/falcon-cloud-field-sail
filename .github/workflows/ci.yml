@@ -43,3 +43,11 @@ jobs:
             echo "::endgroup::"
           done
           node scripts/proxy-auth-proof.mjs
+      - name: Golden tests
+        run: |
+          set -e
+          for f in scripts/golden/*-golden.ts; do
+            echo "::group::$f"
+            npx tsx "$f"
+            echo "::endgroup::"
+          done

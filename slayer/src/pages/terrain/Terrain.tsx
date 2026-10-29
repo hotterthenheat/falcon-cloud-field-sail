@@ -6,6 +6,8 @@ import { DOCK_ROOM, openEditor } from '../../data/editorDock';
 import { useDeskSession } from '../../data/deskSession';
 import { chainForDate, deskTape, expiryLabel, peekChange, peekEntry, peekSpot, useBookRev } from '../../data/uwBook';
 import { useSessionQuote } from '../../data/sessionQuote';
+import { useTapeRev, useThetaPrint, useThetaTape } from '../../data/thetaTape';
+import { thetaChartBars } from '../../data/thetaCandles';
 import { fmtUsd } from '../../data/gex';
 import { CALENDAR_DTES } from '../../data/exposureSurface';
 import { expiryFor, futuresPhaseAt, FUTURES_PHASE_WORDS } from '../../core/calendar';
@@ -57,6 +59,7 @@ import { ChartSkeleton, Deferred } from '../../components/ui/Skeleton';
 import SpotPrice from '../../components/gex/SpotPrice';
 import { CANDLE_THEMES, chartGround, pageDefaultCandleKey, usePageDefaultCandleKey, type CandleThemeKey } from '../../components/gex/candleTheme';
 import { TIMEFRAMES, type Timeframe } from '../../data/timeframe';
+import FrameMeter, { frameMeterOn } from '../../components/gex/FrameMeter';
 import { buildConfluence, type TrendState } from '../../data/confluence';
 import { OPENING_RANGES, type OpeningRange } from '../../data/sessionLevels';
 import { isBarClock } from '../../data/altBars';
@@ -704,25 +707,15 @@ const Pane = ({
     const n = (v: number | null) => (v == null ? Number.NaN : v);
     return { spot: own.spot, callWall: n(house.callWall), putWall: n(house.putWall), flip: n(house.flip), supreme: house.supreme };
   }, [railData, house]);
-  const changePct = useMemo(
-    () => peekChange(ticker),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ticker, revision]
-  );
   // Deterministic per ticker, so the dark-pool lines do not wander on a tick
   const prints = useMemo(() => [] as { price: number; notional: number; date: string; size: number; time: string }[], []);
   /* The rail's rows come off the same snapshot `levels` was reduced from. The header's three-strike read uses them
      too, so the line and the column can never name different strikes. */
   const rail = railData;
   /* The five timeframes' trend state. */
-  const confluence = useMemo(
-    () => {
-      const held = peekEntry(ticker);
-      return buildConfluence(held?.status === 'live' ? held.candles : []);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ticker, revision]
-  );
+  /* the regular session's one-minute tape: the trends read it, and after the bell its last bar is the close */
+  const cashTape = useThetaTape(ticker, '1m', 'rth');
+  const confluence = useMemo(() => buildConfluence(cashTape.bars), [cashTape.bars]);
   /* …as the glyphs on the timeframe pills: one state a timeframe the confluence reads */
   const trendByTf = useMemo(() => {
     const out: Partial<Record<Timeframe, TrendState | null>> = {};
@@ -802,21 +795,25 @@ const Pane = ({
   const strip = 'rgb(var(--panel) / 0.55)';
 
   const session = useDeskSession();
-  const offTape = useMemo(
-    () => (session === 'rth' ? null : deskTape(ticker, session)),
+  /* The head's price is ThetaData's: the session's last bar with the live print painted on it, and its move off the
+     regular close it follows (the prior session's before and during the day, today's after the bell) */
+  const print = useThetaPrint(ticker);
+
+  const sessionBars = useMemo(
+    () => thetaChartBars(ticker, 1, session),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [session, ticker, revision],
   );
-  const sessionPrint = offTape && offTape.bars.length ? offTape.bars[offTape.bars.length - 1].close : null;
+  const sessionPrint = sessionBars.length ? sessionBars[sessionBars.length - 1].close : null;
   const quote = useSessionQuote(ticker, session, session !== 'rth' && sessionPrint == null);
-  const headPx = session === 'rth' ? levels.spot : sessionPrint;
-  const headChange = session === 'rth'
-    ? changePct
-    : headPx != null && levels.spot > 0
-      ? ((headPx - levels.spot) / levels.spot) * 100
-      : quote && levels.spot > 0
-        ? ((((quote.bid + quote.ask) / 2) - levels.spot) / levels.spot) * 100
-        : null;
+  const headPx = sessionPrint;
+  const regularClose = session === 'post' || session === 'overnight' ? cashTape.bars[cashTape.bars.length - 1]?.close ?? null : print && print.prev > 0 ? print.prev : null;
+  const headChange = headPx != null && regularClose != null && regularClose > 0
+    ? ((headPx - regularClose) / regularClose) * 100
+    : quote && regularClose != null && regularClose > 0
+      ? ((((quote.bid + quote.ask) / 2) - regularClose) / regularClose) * 100
+      : null;
+  const changePct = headChange;
   const headUp = (headChange ?? 0) >= 0;
 
 
@@ -988,7 +985,7 @@ const Pane = ({
     return composeSnapshot(
       chart,
       panel,
-      { ticker, timeframe, price: Number.isFinite(levels.spot) ? levels.spot.toFixed(2) : '—', change: changePct == null ? '—' : `${changePct >= 0 ? '+' : '−'}${Math.abs(changePct).toFixed(2)}%`, up: (changePct ?? 0) >= 0, when },
+      { ticker, timeframe, price: headPx != null && Number.isFinite(headPx) ? headPx.toFixed(2) : '—', change: changePct == null ? '—' : `${changePct >= 0 ? '+' : '−'}${Math.abs(changePct).toFixed(2)}%`, up: (changePct ?? 0) >= 0, when },
       panelEl ?? chartEl ?? box,
       { chart: ground(chartEl), panel: ground(panelEl) }
     );
@@ -1477,10 +1474,12 @@ export interface TerrainArrival {
 
 /** Terrain — the charts-only desk. */
 const Terrain = () => {
-  const revision = useBookRev();
+  /* the exposure book and ThetaData's bars both move the panes */
+  const revision = useBookRev() + useTapeRev();
   /* The arrival, read once: the first pane takes its name and interval (and keeps them — it is the reader's pane
      now) */
   const location = useLocation();
+  const [meterOn] = useState(frameMeterOn);
   const arrive = useRef<TerrainArrival | null>((location.state as { chart?: TerrainArrival } | null)?.chart ?? null).current;
 
   const [cfg, setCfg] = useState<TerrainCfg>(() => {
@@ -2204,6 +2203,7 @@ const Terrain = () => {
           )
         )}
       </div>
+      {meterOn && <FrameMeter />}
     </div>
   );
 };

@@ -17,8 +17,8 @@ import { useThetaBook } from '../../data/thetaBook';
 
 export const COMPASS_LINE = 'Book A and Book B, 0 to 7 days. Book C is same-day only.';
 /** The Tracker's line under the same head. Last page of Compass. */
-export const TRACKER_LINE = 'The contracts you keep. A row opens one.';
-export const BLOTTER_LINE = 'Paper fills recorded in this browser, newest first — exit against what was paid';
+export const TRACKER_LINE = 'The signals in play, each on its own quotes since the call.';
+export const BLOTTER_LINE = 'Every signal fired in this browser: the quote it fired on, the fill, the exit.';
 
 const CompassLayout = () => {
   const location = useLocation();
@@ -26,7 +26,7 @@ const CompassLayout = () => {
   const line = location.pathname.startsWith('/compass/blotter') ? BLOTTER_LINE : location.pathname.startsWith('/compass/tracker') ? TRACKER_LINE : COMPASS_LINE;
   const onBoard = location.pathname === '/compass' || location.pathname === '/compass/';
   const page = (
-    <div className={`flex flex-col min-w-0 ${onBoard ? 'xl:h-full xl:min-h-0' : 'gap-4'}`}>
+    <div className={`flex flex-col min-w-0 ${onBoard ? 'xl:h-full xl:min-h-0' : 'gap-4 mt-4'}`}>
       <Suspense fallback={<CompassRouteSkeleton pathname={location.pathname} />}>{outlet}</Suspense>
     </div>
   );

@@ -7,7 +7,7 @@ import CompanyLogo from '../ui/CompanyLogo';
 import LadderFields, { LADDER_AT_REST, bracketOf, type LadderDraft } from '../review/LadderFields';
 import { dirInk, usd, usdSigned } from '../review/words';
 import type { OrderKind, Side } from '../../data/review/engine';
-import { onTick, type FutProduct } from '../../data/review/futuresTape';
+import { onTick, type FutProduct } from '../../data/paper/products';
 import type { FutDraft } from '../../data/paper/engine';
 
 const SILVER_FILL = 'rgb(var(--silver-fill))';

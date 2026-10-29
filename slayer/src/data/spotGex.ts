@@ -1,8 +1,6 @@
 /* Spot gamma as Unusual Whales states it: Σ OI × gamma × price², puts negated; with session volume it is the _vol figure.
    Dollars of gamma for a 1% move off the chain's per-share gamma; contracts without OI or gamma are skipped. */
 
-import { pickFlip, pickLegWalls } from '../core/walls';
-
 export type OptionSide = 'C' | 'P';
 
 export interface SpotGexLeg {
@@ -31,9 +29,6 @@ export interface SpotGex {
   netVol: number;
   /** netOi / 1e9. Compass feature 27, in billions of dollars. This is the UW sum, not the older spec's extra 0.01. */
   netGexBn: number;
-  callWall: number | null;
-  putWall: number | null;
-  flip: number | null;
   strikes: SpotGexStrike[];
   used: number;
   skipped: number;
@@ -75,7 +70,7 @@ export function spotGex(ticker: string, spot: number, legs: readonly SpotGexLeg[
   const price = index ? atm : spot;
   const empty: SpotGex = {
     price, priceKind: index ? 'atm' : 'spot', netOi: 0, netVol: 0, netGexBn: Number.NaN,
-    callWall: null, putWall: null, flip: null, strikes: [], used: 0, skipped: legs.length,
+    strikes: [], used: 0, skipped: legs.length,
   };
   if (!(price > 0)) return empty;
   const px2 = price * price;
@@ -106,17 +101,12 @@ export function spotGex(ticker: string, spot: number, legs: readonly SpotGexLeg[
     netOi += row.netOi;
     netVol += row.netVol;
   }
-  const walls = pickLegWalls(rows, r => r.callOi, r => r.putOi);
-  const flip = pickFlip(rows.filter(r => r.netOi !== 0), spot > 0 ? spot : price, r => r.netOi);
   return {
     price,
     priceKind: index ? 'atm' : 'spot',
     netOi,
     netVol: volUsed > 0 ? netVol : Number.NaN,
     netGexBn: used > 0 ? netOi / 1e9 : Number.NaN,
-    callWall: walls.callWall,
-    putWall: walls.putWall,
-    flip,
     strikes: rows.sort((a, b) => a.strike - b.strike),
     used,
     skipped,

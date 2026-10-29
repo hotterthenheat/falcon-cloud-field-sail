@@ -53,7 +53,7 @@ export function useJournalSource(kind: JournalKind): JournalSource {
             notesOf: id => ({ ...accounts.find(a => a.id === id)?.days, ...words.days[id] }),
             today: nyAt(Date.now()).date,
             current: paper.inHand,
-            foot: 'Paper trades fill at each contract’s live bid and ask — practice, not advice. Accounts named “· simulated prices” were traded on the old simulated feed. Every time on this page is New York’s.',
+            foot: 'Paper trades fill at each contract’s live NBBO — practice, not advice. Every time on this page is New York’s (ET).',
       };
     }
     const rows = rowsOf(sessions);
@@ -70,7 +70,7 @@ export function useJournalSource(kind: JournalKind): JournalSource {
               /* a replayed journal has no today of its own: its newest day stands in */
               today: rows[0] ? calendarDayOf(rows[0]) : new Date().toISOString().slice(0, 10),
               current: null,
-              foot: 'Played on a seeded synthetic tape, not a past market — practice, not advice. Backtest is paused until real history is wired in. Every time on this page is New York’s.',
+              foot: 'Backtest trades fill at ThetaData’s recorded NBBO at the end of each minute — practice, not advice. Every time on this page is New York’s (ET).',
     };
   }, [kind, kind === 'paper' ? paper.accounts : sessions, words, paper.inHand]); // eslint-disable-line react-hooks/exhaustive-deps
 }

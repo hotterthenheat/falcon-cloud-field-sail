@@ -9,6 +9,7 @@ import DropdownSelect, { CARD } from '../../components/ui/DropdownSelect';
 import ScopeChip from '../../components/ui/ScopeChip';
 import { Deferred } from '../../components/ui/Skeleton';
 import type { TileControl, TileSize, TileState, WidgetDef, WorkspaceCtx } from './tile';
+import { TileNoBook } from './tiles/parts';
 
 export const TILE_HEAD_H = 38;
 
@@ -81,6 +82,10 @@ interface Props {
   def: WidgetDef;
   /** The context for the name this tile is on — null while the feed has none for it */
   ctx: WorkspaceCtx | null;
+  /** The name's book failed to load (null ctx): the tile says so instead of standing in its skeleton */
+  bookFailed?: boolean;
+  /** The desk's name, for a bookless tile with no scope of its own */
+  deskTicker?: string;
   /** The instance's settings over the widget's defaults */
   state: TileState;
   onState: (patch: TileState) => void;
@@ -97,11 +102,16 @@ interface Props {
   onRemove: () => void;
 }
 
-const Tile = ({ def, ctx, state, onState, width, index, locked, scope, onOpen, onDuplicate, onResetSize, onRemove }: Props) => {
+/** What a bookless tile is handed before the book lands: the name alone (see WidgetDef.bookless) */
+const booklessCtx = (ticker: string): WorkspaceCtx => ({ ticker, revision: 0 }) as unknown as WorkspaceCtx;
+
+const Tile = ({ def, ctx, state, onState, width, index, locked, scope, onOpen, onDuplicate, onResetSize, onRemove, bookFailed = false, deskTicker }: Props) => {
+  /* a bookless tile draws on the desk's name before the book lands */
+  const bodyCtx = ctx ?? (def.bookless ? booklessCtx(scope?.ticker ?? deskTicker ?? 'SPY') : null);
   const [bodyRef, size] = useTileSize();
   /* the head's fullscreen button, counted — the body lifts its own fullscreen each time it changes */
   const [lift, setLift] = useState(0);
-  const controls = ctx && def.controls ? def.controls({ ctx, state }) : [];
+  const controls = bodyCtx && def.controls ? def.controls({ ctx: bodyCtx, state }) : [];
   const { standing, inline, tight } = planOf(width, def, controls, state, !!scope, !!onOpen, locked);
   const Icon = def.icon;
   const card = (c: TileControl, bare: boolean, big = false) => (
@@ -190,12 +200,13 @@ const Tile = ({ def, ctx, state, onState, width, index, locked, scope, onOpen, o
         </span>
       </div>
       <div ref={bodyRef} className="flex-1 min-h-0 overflow-hidden" data-tile-body data-room={size?.room}>
-        {!ctx ? (
-          <span className="flex h-full items-center justify-center font-mono text-t10 text-textMuted uppercase tracking-widest">No data for {scope?.ticker ?? 'this name'} yet</span>
+        {!bodyCtx ? (
+          /* the name's book is on its way (the tile's own shape holds the box), or it failed and says so */
+          bookFailed ? <TileNoBook ticker={scope?.ticker ?? 'this name'} why="Unusual Whales did not answer for this name's dealer book. The desk asks again on its next sweep." /> : def.skeleton()
         ) : (
           size && (
             <Deferred index={index} fallback={def.skeleton()} className="h-full animate-fade-in">
-              <def.Body ctx={ctx} state={state} set={onState} size={size} open={onOpen ?? (() => undefined)} lift={lift} pickTicker={scope?.onPick} />
+              <def.Body ctx={bodyCtx} state={state} set={onState} size={size} open={onOpen ?? (() => undefined)} lift={lift} pickTicker={scope?.onPick} />
             </Deferred>
           )
         )}

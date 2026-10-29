@@ -1025,7 +1025,7 @@ const LiveTape = () => {
           <>
             <LiveHold paused={paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={paused && !frozen} />
             {/* a closed session's stretch is complete, not stale */}
-            {!(lane === 'prints' && anchor) && <SessionMark at={(lane === 'alerts' ? alerts : stream).at} fault={(lane === 'alerts' ? alerts : stream).fault} paused={paused} />}
+            {(!(lane === 'prints' && anchor) || stream.kept) && <SessionMark at={(lane === 'alerts' ? alerts : stream).at} fault={(lane === 'alerts' ? alerts : stream).fault} paused={paused} kept={(lane === 'alerts' ? alerts : stream).kept} />}
             <span data-tape-lane>
               <DropdownSelect label="Tape" value={lane} options={LANE_OPTIONS} onChange={setLane} title="Every trade, or flow alerts" testId="tape-lane" />
             </span>

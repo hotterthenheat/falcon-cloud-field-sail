@@ -4,8 +4,9 @@
 import { useCallback, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SpotPrice from '../../../components/gex/SpotPrice';
-import { useLiveQuote } from '../../../data/liveQuote';
+import { useThetaPrice } from '../../../data/thetaQuote';
 import { fmtStrike } from '../../../core/format';
+import { EmptyBox, asOfText } from '../../../components/ui/states';
 
 /** A row's own door: the page it leads to, carrying the way back to Pulse (components/layout/WayBack) */
 export const useDoor = () => {
@@ -13,15 +14,22 @@ export const useDoor = () => {
   return useCallback((path: string, state?: Record<string, unknown>) => navigate(path, { state: { ...state, wayBack: '/pulse' } }), [navigate]);
 };
 
-/** A name's live regular-session price (the vendor quote), else `fallback`, else nothing */
-export const LiveSpot = ({ ticker, fallback, className }: { ticker: string; fallback?: number; className?: string }) => {
-  const q = useLiveQuote(ticker);
-  const v = q && q.regularPrice > 0 ? q.regularPrice : fallback;
-  return v != null && v > 0 ? <SpotPrice value={v} className={className} /> : null;
+/** A name's real-time price off the ThetaData terminal; with the terminal down, the last one it gave, dimmed and
+    stamped with when (the amber dot says it is not live), else a dash */
+export const LiveSpot = ({ ticker, className }: { ticker: string; className?: string }) => {
+  const { held, status } = useThetaPrice(ticker);
+  if (held?.live) return <SpotPrice value={held.value.price} className={className} />;
+  const stamp = held ? asOfText(held.value.read) : null;
+  return (
+    <span className="inline-flex items-center gap-1" title={status === 'down' ? `ThetaData offline${stamp ? ` · ${stamp}` : ''}` : stamp ?? 'Waiting on ThetaData'} data-live-spot={held ? 'kept' : 'none'}>
+      <span className={`${className ?? ''} !text-textMuted`}>{held ? `$${held.value.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</span>
+      {status === 'down' && <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-warn" />}
+    </span>
+  );
 };
 
 /** A tile with no book to read for its name */
-export const TileNoBook = ({ ticker }: { ticker: string }) => <div className="h-full grid place-items-center font-mono text-t10 text-textMuted uppercase tracking-widest">No book for {ticker} yet</div>;
+export const TileNoBook = ({ ticker, why }: { ticker: string; why?: string }) => <EmptyBox title={`No book for ${ticker} yet`} reason={why ?? 'The dealer book has not landed from Unusual Whales.'} />;
 
 /** The one read line at the tile's foot */
 export const TileRead = ({ children, testId }: { children: ReactNode; testId?: string }) => (

@@ -19,7 +19,7 @@ import { AGENDA_ORDERS, type AgendaOrder, type Target } from '../../../data/agen
 import { fmtDollars } from '../../../data/ahead';
 import { buildCompare, buildCompareSide, partnerFor, regimeWord, type CompareSide } from '../../../data/compare';
 import type { StrikeWindow } from '../../../data/exposure';
-import { fmtTwin, twinFamilyFor, twinLabel, twinPrice, type TwinLensKey } from '../../../data/indexTwins';
+import { fmtTwin, measuredRatio, twinFamilyFor, twinLabel, twinPrice, useTwinRatio, type TwinLensKey } from '../../../data/indexTwins';
 import { useResolvedTheme } from '../../../theme/theme';
 import type { ExposureExpiry } from '../../../types/gex';
 import type { TileControl, TileProps, TileState, WorkspaceCtx } from '../tile';
@@ -120,35 +120,33 @@ export const BookTile = ({ ctx, state, set }: TileProps) => {
 
 /* ------------------------------------------------------------------ key levels */
 
-const LENSES: TwinLensKey[] = ['etf', 'index', 'futures'];
+const LENSES: TwinLensKey[] = ['etf', 'index'];
 export const levelsControls = ({ ctx }: { ctx: WorkspaceCtx; state: TileState }): TileControl[] => {
   const fam = twinFamilyFor(ctx.ticker);
   if (!fam) return [];
   const spot = ctx.exposure.levels.spot;
-  return [{ id: 'lens', label: 'Prices in', options: LENSES.map(k => ({ value: k, label: twinLabel(fam, k), hint: fmtTwin(twinPrice(fam, k, spot, spot)) })), title: 'The instrument the levels are priced in' }];
+  const ratio = measuredRatio(fam);
+  return [{ id: 'lens', label: 'Prices in', options: LENSES.map(k => ({ value: k, label: twinLabel(fam, k), hint: k === 'index' && ratio == null ? 'Waits on both live prices (ThetaData)' : fmtTwin(twinPrice(k, spot, ratio)) })), title: 'The instrument the levels are priced in' }];
 };
 
 export const LevelsTile = ({ ctx, state }: TileProps) => {
   const rows = keyLevelsOf(ctx.snapshot);
   const fam = twinFamilyFor(ctx.ticker);
+  /* a desk saved on the old futures lens reads in the ETF */
   const lens: TwinLensKey = fam && LENSES.includes(state.lens as TwinLensKey) ? (state.lens as TwinLensKey) : 'etf';
+  const ratio = useTwinRatio(fam && lens === 'index' ? fam : null);
   const shown = useMemo(() => {
     if (!rows) return [];
-    if (!fam || lens === 'etf') return rows;
-    const etfSpot = rows.find(r => r.kind === 'spot')?.price ?? ctx.exposure.levels.spot;
-    const spotTwin = twinPrice(fam, lens, etfSpot, etfSpot);
-    return rows.map(r => {
-      const price = twinPrice(fam, lens, r.price, etfSpot);
-      return { ...r, price, distPct: r.kind === 'spot' ? 0 : ((price - spotTwin) / (spotTwin || 1)) * 100 };
-    });
-  }, [rows, fam, lens, ctx.exposure.levels.spot]);
+    if (!fam || lens === 'etf' || ratio == null) return rows;
+    return rows.map(r => ({ ...r, price: twinPrice(lens, r.price, ratio) }));
+  }, [rows, fam, lens, ratio]);
   if (!rows) return <TileNoBook ticker={ctx.ticker} />;
   const { spot, callWall, putWall, flip } = ctx.exposure.levels;
   const above = spot >= flip;
   return (
     <div className="h-full min-h-0 flex flex-col" data-levels-tile>
       <TileRows>
-        <KeyLevelsRail rows={shown} maxPressure={rows.reduce((a, l) => Math.max(a, l.pressure), 1)} priceFormat={fam && lens !== 'etf' ? fmtTwin : undefined} />
+        <KeyLevelsRail rows={shown} maxPressure={rows.reduce((a, l) => Math.max(a, l.pressure), 1)} priceFormat={fam && lens !== 'etf' && ratio != null ? fmtTwin : undefined} />
       </TileRows>
       <TileRead testId="levels">
         {ctx.ticker} is {above ? 'above' : 'below'} the flip at {fmtStrike(flip)}, where dealer hedging {above ? 'slows moves down' : 'pushes moves along'}. The call wall is {fmtStrike(callWall)}, the put wall {fmtStrike(putWall)}.
@@ -170,7 +168,7 @@ export const TargetsTile = ({ ctx, state, size }: TileProps) => {
   const agenda = agendaOf(ctx.snapshot, order);
   const door = useDoor();
   const { focusOn } = useFocus();
-  if (!agenda) return <TileNoBook ticker={ctx.ticker} />;
+  if (!agenda) return <TileNoBook ticker={ctx.ticker} why={surface30(ctx.snapshot) ? 'The ranking waits on the name’s at-the-money IV from Unusual Whales.' : undefined} />;
   const wide = size.room !== 'small';
   /** # · strike · reached · holds · at stake (the stake's lane only where there is room for it) */
   const cols = wide ? '26px minmax(0,1fr) 46px 86px 104px' : '26px minmax(0,1fr) 46px 60px';

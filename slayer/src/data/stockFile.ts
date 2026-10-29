@@ -11,6 +11,7 @@ import { alertSides, darkPrintKey } from './sidesRule';
 import { uwCall, whalesAnalysts, whalesBars, whalesDailyLong, whalesEarnings, whalesFinancials, whalesOptionContracts, whalesScreener, whalesStock, type UwDaily } from './whales';
 import { nyClock, nyIsoDate, nyMinutes as nyMinuteOf, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
 import { noteBarCloses, peekRegularCloses, regularCloses } from './dayChange';
+import { BoundedMap, body, createStore, keepFresh, keptRead, type Get, type KeptRead } from './feedStore';
 
 /* Five regular closes need about fifteen daily rows (pre, regular and post a day), not two years of them. */
 const CLOSES_ROWS = 18;
@@ -91,6 +92,8 @@ export interface StockFile {
   quarters: QuarterFiling[];
   /** The street's targets. Null when no firm has printed one in the last 180 days. */
   street: StreetBook | null;
+  /** The head is the answers this browser kept at this instant, until the fresh read lands */
+  keptAt?: number | null;
 }
 
 const EMPTY_EARN: EarnRow[] = [];
@@ -107,11 +110,12 @@ const FAILED: StockFile = { status: 'error', tapes: 'live', session: '', screen:
 
 const blank = (status: StockFile['status']): StockFile => (status === 'error' ? FAILED : LOADING);
 
-const files = new Map<string, StockFile>();
-const listeners = new Set<() => void>();
+/* the files of the last names opened; an older one is read again when it is opened again */
+const files = new BoundedMap<string, StockFile>(16);
+const store = createStore(0);
 const started = new Set<string>();
 
-const emit = () => listeners.forEach(fn => fn());
+const emit = () => store.set(n => n + 1);
 
 const num = (v: unknown): number => {
   const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
@@ -465,19 +469,36 @@ function streetFrom(rows: Record<string, unknown>[] | null | undefined): StreetB
   return { median: mid, low: vals[0], high: vals[vals.length - 1], firms: vals.length, asOf };
 }
 
-async function load(ticker: string): Promise<StockFile | null> {
+type Fin = { earnings?: Record<string, unknown>[]; income_statements?: Record<string, unknown>[]; cash_flows?: Record<string, unknown>[] };
+/** The head's seven reads, live or over the kept answers (the same paths) */
+function headReads(ticker: string, get: Get | null) {
+  const t = encodeURIComponent(ticker);
+  if (!get)
+    return Promise.all([
+      whalesScreener([ticker], true).catch(() => [] as Record<string, unknown>[]),
+      whalesEarnings(ticker, true).catch(() => [] as EarnRow[]),
+      whalesDailyLong(ticker).catch(() => [] as UwDaily[]),
+      /* the same call the earnings page makes, so the two pages' busiest contracts agree */
+      whalesOptionContracts(ticker, undefined, true).catch(() => [] as Record<string, unknown>[]),
+      whalesFinancials(ticker, true).catch(() => null),
+      whalesStock(ticker).catch(() => null),
+      whalesAnalysts(ticker, true).catch(() => [] as Record<string, unknown>[]),
+    ]);
+  return Promise.all([
+    body<Record<string, unknown>[]>(get, `/screener/stocks?ticker=${t}`).catch(() => [] as Record<string, unknown>[]),
+    body<EarnRow[]>(get, `/earnings/${t}`).catch(() => [] as EarnRow[]),
+    body<UwDaily[]>(get, `/stock/${t}/ohlc/1d?limit=900&timeframe=2Y`).then(rows => (Array.isArray(rows) ? rows.slice(0, 260) : [])).catch(() => [] as UwDaily[]),
+    body<Record<string, unknown>[]>(get, `/stock/${t}/option-contracts?limit=500`).catch(() => [] as Record<string, unknown>[]),
+    body<Fin>(get, `/stock/${t}/financials`).catch(() => null),
+    body<Record<string, unknown>>(get, `/stock/${t}/info`).catch(() => null),
+    body<Record<string, unknown>[]>(get, `/screener/analysts?ticker=${t}&limit=200`).catch(() => [] as Record<string, unknown>[]),
+  ]);
+}
+
+async function load(ticker: string, kept: KeptRead | null = null): Promise<StockFile | null> {
   const session = lastSessionIso();
   /* The head first: the screener row, the reports, the sessions and the chain open the page; the tapes land on their own. */
-  const headP = Promise.all([
-    whalesScreener([ticker], true).catch(() => [] as Record<string, unknown>[]),
-    whalesEarnings(ticker, true).catch(() => [] as EarnRow[]),
-    whalesDailyLong(ticker).catch(() => [] as UwDaily[]),
-    /* the same call the earnings page makes, so the two pages' busiest contracts agree */
-    whalesOptionContracts(ticker, undefined, true).catch(() => [] as Record<string, unknown>[]),
-    whalesFinancials(ticker, true).catch(() => null),
-    whalesStock(ticker).catch(() => null),
-    whalesAnalysts(ticker, true).catch(() => [] as Record<string, unknown>[]),
-  ]);
+  const headP = headReads(ticker, kept ? kept.get : null);
   const [screenR, earnR, dayR, contractR, finR, infoR, analystR] = await headP;
   const screen = Array.isArray(screenR) ? (screenR.find(r => String(r.ticker || '').toUpperCase() === ticker) ?? screenR[0] ?? null) : null;
   const days = daysFrom(Array.isArray(dayR) ? dayR : []);
@@ -495,6 +516,13 @@ async function load(ticker: string): Promise<StockFile | null> {
     });
   }
   const got = (Array.isArray(screenR) && screenR.length > 0) || days.length > 0 || earnings.length > 0 || quarters.length > 0;
+  if (kept) {
+    /* a kept head paints only while the fresh one is still out, and never as a failure */
+    if (!got || kept.at == null || files.peek(ticker)?.status !== 'loading') return null;
+  } else if (!got && files.peek(ticker)?.keptAt) {
+    /* the fresh read failed: the kept head stays on screen, still marked as kept */
+    return files.peek(ticker) ?? null;
+  }
   const head: StockFile = {
     status: got ? 'live' : 'error',
     tapes: 'loading',
@@ -509,11 +537,28 @@ async function load(ticker: string): Promise<StockFile | null> {
     contracts: Array.isArray(contractR) ? (contractR as Record<string, unknown>[]) : [],
     quarters,
     street,
-    at: got ? Date.now() : undefined,
+    at: got ? (kept?.at ?? Date.now()) : undefined,
+    keptAt: kept ? kept.at : null,
   };
-  files.set(ticker, head);
+  /* the tapes already in hand stay when a fresh head lands after them */
+  const had = files.peek(ticker);
+  files.set(ticker, had && had.tapes === 'live' && !kept ? { ...head, tapes: had.tapes, minutes: had.minutes, flow: had.flow, flowWindow: had.flowWindow, dark: had.dark, darkWindow: had.darkWindow, rangeAsOf: had.rangeAsOf, days: had.days.length >= head.days.length ? had.days : head.days } : head);
   emit();
   return head;
+}
+
+/* in the session the name's screener row (the grade's one input) is read again every two minutes while the page shows it */
+const SCREEN_EVERY = { open: 2 * 60_000, extended: 15 * 60_000, closed: null };
+const shownFiles = new Map<string, number>();
+async function refreshScreen(ticker: string): Promise<void> {
+  const cur = files.peek(ticker);
+  if (!cur || cur.status !== 'live') return;
+  const rows = await whalesScreener([ticker]).catch(() => null);
+  const row = Array.isArray(rows) ? rows.find(r => String(r.ticker || '').toUpperCase() === ticker) : null;
+  const now0 = files.peek(ticker);
+  if (!row || !now0) return;
+  files.set(ticker, { ...now0, screen: row, at: Date.now() });
+  emit();
 }
 
 async function loadTapes(ticker: string, headP: Promise<StockFile | null>): Promise<void> {
@@ -552,7 +597,7 @@ async function loadTapes(ticker: string, headP: Promise<StockFile | null>): Prom
     days2 = [...head.days.slice(0, -1), { ...lastDay, high: hi, low: lo, close: open ? lastMin.close : lastDay.close, open: minutes[0].open || lastDay.open }];
     if (open) rangeAsOf = clock(new Date((lastMin.time + 60) * 1000).toISOString());
   }
-  const now0 = files.get(ticker) ?? head;
+  const now0 = files.peek(ticker) ?? head;
   files.set(ticker, {
     ...now0,
     days: days2,
@@ -569,16 +614,23 @@ async function loadTapes(ticker: string, headP: Promise<StockFile | null>): Prom
 }
 
 export function peekStockFile(ticker: string): StockFile {
-  return files.get(ticker.toUpperCase()) ?? blank('loading');
+  return files.peek(ticker.toUpperCase()) ?? blank('loading');
 }
 
 function ensureStockFile(ticker: string, tapes = true): void {
   const t = ticker.toUpperCase();
   if (!t) return;
+  /* a file let go of (the cap) is read again */
+  if (started.has(t) && !files.has(t)) {
+    started.delete(t);
+    tapesAsked.delete(t);
+  }
   if (!started.has(t)) {
     started.add(t);
     files.set(t, blank('loading'));
     emit();
+    void load(t, keptRead()).catch(() => null);
+    keepFresh(`stockfile:${t}`, SCREEN_EVERY, () => refreshScreen(t), () => (shownFiles.get(t) ?? 0) > 0);
     heads.set(
       t,
       load(t).catch(() => {
@@ -601,12 +653,11 @@ export function useStockFile(ticker: string, opts: { tapes?: boolean } = {}): St
   const tapes = opts.tapes !== false;
   useEffect(() => {
     ensureStockFile(t, tapes);
+    shownFiles.set(t, (shownFiles.get(t) ?? 0) + 1);
+    return () => void shownFiles.set(t, Math.max(0, (shownFiles.get(t) ?? 1) - 1));
   }, [t, tapes]);
   return useSyncExternalStore(
-    fn => {
-      listeners.add(fn);
-      return () => listeners.delete(fn);
-    },
+    fn => store.subscribe(fn),
     () => peekStockFile(t),
     () => LOADING,
   );

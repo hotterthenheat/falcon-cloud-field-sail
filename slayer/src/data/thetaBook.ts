@@ -1,26 +1,33 @@
 /*
-  The live book. Theta's own quotes. No simulated price, no invented greek.
-  A contract is on the board only while its quote is from this session.
+  The live book. ThetaData's own quotes: no simulated price, no invented greek. A contract is on the board only while
+  its quote is from this session. The scan reads only the names on screen (the session's 0DTE roots, the weekly
+  focus list, or the one name the board is filtered to), one snapshot per name, and stops when Compass closes or the
+  tab is hidden. With the terminal down every read waits on data/theta.ts's breaker and the board keeps the last
+  scan, stamped.
 */
 
 import { useEffect, useState } from 'react';
 import { thetaCall } from './theta';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
-import { indexLevel, indexRoot, liveSpotOf, noteIndex, noteSpot } from './traceLive';
+import { indexLevel, indexRoot, liveSpotOf, noteIndex, noteSpot } from './traceRows';
 import { setupIdOf } from './compass';
-import { sessionScanOpen, weekdayDte } from './compassParams';
+import { GEX_CORE, inModelWindow, onScanGrid, weekdayDte } from './compassParams';
 import { deskPhase, odteAsleep, optionScanOpen, sessionIso, sessionYmd } from './compassSession';
 import { COMPASS_TICKERS } from './compassUniverse';
 import { SIM_DESK } from './deskMode';
-import { claimSlot, commitClosest, currentPicks, paintQuotes, releaseSlot, resetScanReport, scanReport, scoreBook, scoreLottery, setScanBusy, stampPickQuote } from './compassModel';
-import { settleBoard, syncOpenBook } from './compassLedger';
+import { claimSlot, commitClosest, currentPicks, earlierScan, noteScanned, paintQuotes, releaseSlot, resetScanReport, scanReport, scoreBook, scoreLottery, setScanBusy, stampPickQuote } from './compassModel';
+import { recordPicks } from './compassLedger';
+import { subscribeTheta, thetaStatus } from './thetaQuote';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import type { Timeframe } from './timeframe';
 import { nyYmd as ymd } from '../core/calendar';
 
 const INDEX_OF: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'XSP', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX', NDX: 'NDX', NDXP: 'NDX' };
-const OPTION_OF: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW' };
-const FRESH_MS = 30 * 1000;
+const OPTION_OF: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW', NDX: 'NDXP' };
+/** A snapshot quote older than this is not on the board */
+const FRESH_MS = 90 * 1000;
+
+export type ThetaState = 'unknown' | 'up' | 'down';
 
 interface ThetaBook {
   status: 'loading' | 'live' | 'down';
@@ -28,6 +35,9 @@ interface ThetaBook {
   spots: Record<string, number>;
   sparks: Record<string, number[]>;
   line: string;
+  /** The terminal as the last read found it, and since when it has been down */
+  theta: ThetaState;
+  downSince: number;
 }
 
 const heldNow = currentPicks();
@@ -37,6 +47,8 @@ const empty: ThetaBook = {
   spots: {},
   sparks: {},
   line: heldNow.length ? pickLine() : 'Reading the live book.',
+  theta: 'unknown',
+  downSince: 0,
 };
 
 let book: ThetaBook = empty;
@@ -45,6 +57,20 @@ const listeners = new Set<() => void>();
 
 function emit(): void {
   for (const fn of listeners) fn();
+}
+
+/** Every answer passes through here: a down terminal flips the book to its offline state, an answer flips it back. */
+async function theta(path: string, jump = false): Promise<{ status: number; data: unknown; error: string | null }> {
+  const got = await thetaCall(path, jump);
+  const down = got.error === 'terminal_down';
+  if (down && book.theta !== 'down') {
+    book = { ...book, theta: 'down', downSince: Date.now(), status: 'down' };
+    emit();
+  } else if (!got.error && book.theta !== 'up') {
+    book = { ...book, theta: 'up', downSince: 0, status: book.status === 'down' ? 'live' : book.status };
+    emit();
+  }
+  return got;
 }
 
 export function liveSetup(id: string): Setup | null {
@@ -99,10 +125,6 @@ function asRows(data: unknown): Record<string, unknown>[] {
   return [];
 }
 
-function stampMs(stamp: unknown): number {
-  return nyWallStamp(stamp);
-}
-
 function contractWord(symbol: string, strike: number, right: OptionRight): string {
   const k = strike % 1 === 0 ? strike.toFixed(0) : strike.toFixed(2);
   return `${symbol} ${k}${right}`;
@@ -111,8 +133,8 @@ function contractWord(symbol: string, strike: number, right: OptionRight): strin
 function sessionsAhead(expiration: string, now: number): number {
   const dte = Math.max(0, Math.round((Date.parse(`${expiration}T21:00:00Z`) - now) / 86400000));
   if (dte > 0) return dte;
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(now));
-  const mins = Number(parts.find(p => p.type === 'hour')?.value) * 60 + Number(parts.find(p => p.type === 'minute')?.value);
+  const p = nyParts(now);
+  const mins = p.hour * 60 + p.minute;
   if (mins < 9 * 60 + 30) return 1;
   return Math.max(16 * 60 - mins, 5) / (6.5 * 60);
 }
@@ -126,14 +148,6 @@ interface LiveGreeks {
   vega: number;
   iv: number;
   rho: number;
-  vanna: number;
-  charm: number;
-  vomma: number;
-  veta: number;
-  speed: number;
-  zomma: number;
-  color: number;
-  ultima: number;
   lambda: number;
   epsilon: number;
 }
@@ -198,29 +212,17 @@ function toSetup(
     spot,
     seenAt: listedAt.get(id) ?? Date.now(),
     quotedAt,
-    vanna: greeks.vanna,
-    charm: greeks.charm,
-    vomma: greeks.vomma,
-    veta: greeks.veta,
-    speed: greeks.speed,
-    zomma: greeks.zomma,
-    color: greeks.color,
-    ultima: greeks.ultima,
     lambda: greeks.lambda,
     epsilon: greeks.epsilon,
   };
 }
 
+/** A v3 row: either flat (contract fields and quote fields on one object) or `{ contract, data: [quote] }`. */
 function rowOf(item: Record<string, unknown>): { contract: Record<string, unknown>; quote: Record<string, unknown> } | null {
   const contract = item.contract && typeof item.contract === 'object' ? (item.contract as Record<string, unknown>) : item;
   const quote = Array.isArray(item.data) ? (item.data[0] as Record<string, unknown>) : item;
   if (!quote || typeof quote !== 'object') return null;
   return { contract, quote };
-}
-
-function nyISO(ms: number): string {
-  const day = ymd(ms);
-  return `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}`;
 }
 
 interface Draft {
@@ -244,6 +246,12 @@ const MWF_ETF = ['SLV', 'TLT', 'XLE', 'EEM', 'TQQQ', 'SOXL'];
 /** Wednesday and Friday. */
 const WF_0DTE = ['USO', 'UNG'];
 
+const ALL = [...new Set(COMPASS_TICKERS.map(t => OPTION_OF[t] ?? t))];
+const ALL_SET = new Set(ALL);
+/** The weekly scan's names when the board is not filtered to one: the roots with the full feature row (open
+    interest, net gamma and the walls). */
+const WEEKLY_FOCUS = GEX_CORE.filter(t => ALL_SET.has(t));
+
 function odteBook(now: number): string[] {
   const session = sessionYmd(now);
   const day = nyParts(nyWallTime(Number(session.slice(0, 4)), Number(session.slice(4, 6)), Number(session.slice(6, 8)), 12, 0)).weekday;
@@ -253,13 +261,32 @@ function odteBook(now: number): string[] {
   return names;
 }
 
+/* The board's name filter: the scan reads only that name while it is set. */
+let focus: string | null = null;
+
+/** Point the scan at one name, or back at the sleeve's list (null). */
+export function setScanFocus(ticker: string | null): void {
+  const next = ticker ? OPTION_OF[ticker] ?? ticker : null;
+  if (next === focus) return;
+  focus = next;
+  weeklyFinishedAt = 0;
+  emit();
+}
+
 function odteNames(now: number): string[] {
   if (odteAsleep(now)) return [];
-  return odteBook(now).filter(t => optionScanOpen(t, 0, now));
+  const names = odteBook(now).filter(t => optionScanOpen(t, 0, now));
+  return focus ? names.filter(t => t === focus) : names;
 }
 
 function weeklyNames(now: number): string[] {
-  return ALL.filter(t => optionScanOpen(t, 1, now));
+  const names = focus ? (ALL_SET.has(focus) ? [focus] : []) : WEEKLY_FOCUS;
+  return names.filter(t => optionScanOpen(t, 1, now));
+}
+
+/** The names a sleeve's scan reads now: the board lists them. */
+export function scanNames(sleeve: 'odte' | 'weekly', now = Date.now()): string[] {
+  return sleeve === 'odte' ? (focus ? odteBook(now).filter(t => t === focus) : odteBook(now)) : focus ? (ALL_SET.has(focus) ? [focus] : []) : WEEKLY_FOCUS;
 }
 
 /** The names a sleeve can call. 0DTE is the roots that list a same-day contract on this session, even while the tape is shut. */
@@ -267,23 +294,6 @@ export function alertUniverse(sleeve: 'odte' | 'weekly'): readonly string[] {
   if (sleeve === 'odte') return odteBook(Date.now());
   return ALL;
 }
-
-async function weeklyDate(symbol: string, today: string): Promise<string> {
-  const hit = weeklyMemo.get(symbol);
-  if (hit && Date.now() - hit.at < 30 * 60_000) return hit.date;
-  const got = await thetaCall(`/option/list/expirations?symbol=${symbol}&format=json`);
-  let best = '';
-  for (const row of asRows(got.data)) {
-    const exp = String(row.expiration ?? '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(exp)) continue;
-    const n = weekdayDte(today, exp);
-    if (n >= 1 && n <= 7 && (!best || exp < best)) best = exp;
-  }
-  weeklyMemo.set(symbol, { at: Date.now(), date: best });
-  return best;
-}
-
-const weeklyMemo = new Map<string, { at: number; date: string }>();
 
 /** Book A is four strikes from the money. Book B is twelve. Farther than that is not a call and not a closest, except a same-day contract cheap enough for Book C. */
 function kept(list: Draft[]): Draft[] {
@@ -304,66 +314,67 @@ function kept(list: Draft[]): Draft[] {
   return list.filter(d => near.has(d.strike));
 }
 
-/** One snapshot. `only` is today's date for 0DTE. The 1–7 day book asks for that one expiry, not the whole chain. */
-async function once(symbol: string, now: number, only: string, jump = false, freshMs = FRESH_MS): Promise<{ setups: Setup[]; spot: number }> {
-  const today = sessionIso(now);
-  let weeklyExp = '';
-  let asked = only.replace(/-/g, '');
-  if (only === '*') {
-    weeklyExp = await weeklyDate(symbol, today);
-    if (!weeklyExp) return { setups: [], spot: 0 };
-    asked = weeklyExp.replace(/-/g, '');
-  }
-  const range = only === '*' ? 4 : 16;
-  const got = await thetaCall(`/option/snapshot/greeks/first_order?symbol=${symbol}&expiration=${asked}&right=both&strike_range=${range}&format=json`, jump);
-  const drafts = new Map<string, Draft[]>();
-  let spot = 0;
-  if (!got.error && got.status !== 472) {
-    for (const item of asRows(got.data)) {
-      const row = rowOf(item);
-      if (!row) continue;
-      const bid = num(row.quote.bid);
-      const ask = num(row.quote.ask);
-      const at = stampMs(row.quote.timestamp);
-      if (!(bid > 0) || !(ask >= bid) || !at || now - at > freshMs) continue;
-      const strike = num(row.contract.strike);
-      const exp = String(row.contract.expiration || '').slice(0, 10);
-      const rightWord = String(row.contract.right || '').toLowerCase();
-      const right: OptionRight | null = rightWord.startsWith('c') ? 'C' : rightWord.startsWith('p') ? 'P' : null;
-      if (!right || !(strike > 0) || exp.length < 10) continue;
-      const under = num(row.quote.underlying_price);
-      if (under > 0) spot = under;
-      const iv = finite(row.quote.implied_vol);
-      const root = String(row.contract.symbol || row.contract.root || symbol).toUpperCase();
-      const empty = NaN;
-      const list = drafts.get(exp) ?? [];
-      list.push({
-        root, strike, right, exp, bid, ask, under, at,
-        greeks: {
-          delta: finite(row.quote.delta),
-          gamma: empty,
-          theta: perDay(finite(row.quote.theta)),
-          vega: perPoint(finite(row.quote.vega)),
-          rho: perPoint(finite(row.quote.rho)),
-          iv: iv > 0 && iv < 3 ? iv * 100 : iv,
-          vanna: empty, charm: empty, vomma: empty, veta: empty,
-          speed: empty, zomma: empty, color: empty, ultima: empty,
-          lambda: finite(row.quote.lambda),
-          epsilon: finite(row.quote.epsilon),
-        },
-      });
-      drafts.set(exp, list);
-    }
-  }
-  const build = (exp: string, sleeve: SleeveKey) => kept(drafts.get(exp) ?? []).map(d => toSetup(d.root, d.strike, d.right, d.exp, d.bid, d.ask, d.under, sleeve, d.at, d.greeks));
-  if (only !== '*') {
-    const sleeve: SleeveKey = only.replace(/-/g, '') === sessionYmd(now) ? 'odte' : 'weekly';
-    return { setups: build(only.slice(0, 10), sleeve), spot };
-  }
-  return { setups: weeklyExp ? build(weeklyExp, 'weekly') : [], spot };
+interface Snap {
+  setups: Setup[];
+  spot: number;
+  /** The terminal answered */
+  ok: boolean;
 }
 
-const ALL = [...new Set(COMPASS_TICKERS.map(t => OPTION_OF[t] ?? t))];
+/** One snapshot of one name: today's expiry (0DTE), one named expiry, or '*' for the nearest expiry 1 to 7 weekdays
+    out (every expiry within 11 calendar days in one ask, the nearest kept). */
+async function once(symbol: string, now: number, only: string, jump = false, freshMs = FRESH_MS): Promise<Snap> {
+  const today = sessionIso(now);
+  const weekly = only === '*';
+  const range = weekly ? 4 : 16;
+  const exp = weekly ? '*' : only.replace(/-/g, '');
+  const got = await theta(`/option/snapshot/greeks/first_order?symbol=${symbol}&expiration=${exp}&right=both&strike_range=${range}${weekly ? '&max_dte=11' : ''}&format=json`, jump);
+  const drafts = new Map<string, Draft[]>();
+  let spot = 0;
+  if (got.error) return { setups: [], spot: 0, ok: got.error !== 'terminal_down' };
+  for (const item of asRows(got.data)) {
+    const row = rowOf(item);
+    if (!row) continue;
+    const bid = num(row.quote.bid);
+    const ask = num(row.quote.ask);
+    const at = nyWallStamp(row.quote.timestamp);
+    if (!(bid > 0) || !(ask >= bid) || !at || now - at > freshMs) continue;
+    const strike = num(row.contract.strike);
+    const expiry = String(row.contract.expiration || '').slice(0, 10);
+    const rightWord = String(row.contract.right || '').toLowerCase();
+    const right: OptionRight | null = rightWord.startsWith('c') ? 'C' : rightWord.startsWith('p') ? 'P' : null;
+    if (!right || !(strike > 0) || expiry.length < 10) continue;
+    const under = num(row.quote.underlying_price);
+    if (under > 0) spot = under;
+    const iv = finite(row.quote.implied_vol);
+    const root = String(row.contract.symbol || row.contract.root || symbol).toUpperCase();
+    const list = drafts.get(expiry) ?? [];
+    list.push({
+      root, strike, right, exp: expiry, bid, ask, under, at,
+      greeks: {
+        delta: finite(row.quote.delta),
+        gamma: NaN,
+        theta: perDay(finite(row.quote.theta)),
+        vega: perPoint(finite(row.quote.vega)),
+        rho: perPoint(finite(row.quote.rho)),
+        iv: iv > 0 && iv < 3 ? iv * 100 : iv,
+        lambda: finite(row.quote.lambda),
+        epsilon: finite(row.quote.epsilon),
+      },
+    });
+    drafts.set(expiry, list);
+  }
+  const build = (expiry: string, sleeve: SleeveKey) => kept(drafts.get(expiry) ?? []).map(d => toSetup(d.root, d.strike, d.right, d.exp, d.bid, d.ask, d.under, sleeve, d.at, d.greeks));
+  if (!weekly) {
+    const sleeve: SleeveKey = only.replace(/-/g, '') === sessionYmd(now) ? 'odte' : 'weekly';
+    return { setups: build(only.slice(0, 10), sleeve), spot, ok: true };
+  }
+  const nearest = [...drafts.keys()].filter(e => {
+    const n = weekdayDte(today, e);
+    return n >= 1 && n <= 7;
+  }).sort()[0];
+  return { setups: nearest ? build(nearest, 'weekly') : [], spot, ok: true };
+}
 
 function pickLine(): string {
   const rows = currentPicks();
@@ -373,23 +384,23 @@ function pickLine(): string {
   return `Book A ${a}. Book B ${b}. Book C ${c}. Model 1 entry. Model 2 runner.`;
 }
 
-function writeBook(_next: Setup[], spots: Record<string, number>): void {
+function writeBook(spots: Record<string, number>): void {
   const next = currentPicks();
   byId.clear();
   for (const s of next) byId.set(s.id, s);
-  book = { ...book, setups: next, status: 'live', spots, line: pickLine() };
+  book = { ...book, setups: next, status: book.theta === 'down' ? 'down' : 'live', spots, line: pickLine() };
   publishSpots(spots, Date.now());
   emit();
 }
 
-async function scoreSlice(symbols: string[], only: string, jump: boolean, spots: Record<string, number>, found: Setup[], freshMs = FRESH_MS, at = Date.now()): Promise<void> {
-  const before = currentPicks().length;
+/** Score a slice of names. False when the terminal did not answer for any of them. */
+async function scoreSlice(symbols: string[], only: string, jump: boolean, spots: Record<string, number>, found: Setup[], freshMs = FRESH_MS, at = Date.now()): Promise<boolean> {
   const got = await Promise.all(symbols.map(symbol => once(symbol, at, only, jump, freshMs)));
   for (const row of got) {
     if (row.setups.length) {
       try { await scoreBook(row.setups, at, true); } catch { /* this name, not the rest */ }
     }
-    syncOpenBook(at);
+    recordPicks(at);
     const symbol = row.setups[0]?.ticker;
     if (symbol && row.spot > 0) {
       spots[symbol] = row.spot;
@@ -397,13 +408,11 @@ async function scoreSlice(symbols: string[], only: string, jump: boolean, spots:
     }
     for (const s of row.setups) found.push(s);
   }
-  if (currentPicks().length !== before) {
-    book = { ...book, status: 'live', spots, line: pickLine() };
-    emit();
-  }
+  writeBook(spots);
+  return got.some(row => row.ok);
 }
 
-/** One pass. Cards from it stay. A later slot does not walk the universe again. */
+/** One pass of the session's 0DTE roots. False when it could not run, so the slot may run again. */
 async function scanOdte(now: number): Promise<boolean> {
   setScanBusy(true);
   emit();
@@ -412,15 +421,16 @@ async function scanOdte(now: number): Promise<boolean> {
     resetScanReport('odte');
     const spots = { ...book.spots };
     const found: Setup[] = [];
+    let answered = false;
     for (let i = 0; i < symbols.length; i += 8) {
       if (!armed) return false;
-      await scoreSlice(symbols.slice(i, i + 8), sessionIso(now), true, spots, found, 90_000, now);
+      if (await scoreSlice(symbols.slice(i, i + 8), sessionIso(now), true, spots, found, FRESH_MS, now)) answered = true;
     }
+    if (!answered) return false;
     commitClosest('odte');
-    writeBook([...book.setups.filter(s => s.expiry !== '0DTE'), ...found], spots);
+    noteScanned('odte');
+    writeBook(spots);
     void fillSparks(symbols);
-    book = { ...book, line: pickLine() };
-    emit();
     return true;
   } catch {
     return false;
@@ -433,64 +443,50 @@ async function scanOdte(now: number): Promise<boolean> {
 let weeklyOn = false;
 let weeklyFinishedAt = 0;
 let weeklyCursor = 0;
-let weeklyFound: Setup[] = [];
-let weeklySeen = new Set<string>();
 let weeklyList: string[] = [];
+let weeklyAnswered = false;
 
 function startWeekly(names: string[]): void {
   weeklyOn = true;
   weeklyCursor = 0;
-  weeklyFound = [];
-  weeklySeen = new Set();
   weeklyList = names;
+  weeklyAnswered = false;
   resetScanReport('weekly');
 }
 
 /** Eight names, then yield so the next tick can run 0DTE again. */
 async function scanWeeklyWave(): Promise<boolean> {
   const slice = weeklyList.slice(weeklyCursor, weeklyCursor + 8);
-  if (!slice.length) {
-    weeklyOn = false;
-    return true;
-  }
   const spots = { ...book.spots };
-  const found: Setup[] = [];
-  try {
-    await scoreSlice(slice, '*', false, spots, found, 90_000);
-  } catch {
-    /* this wave, not the walk */
+  if (slice.length) {
+    try {
+      if (await scoreSlice(slice, '*', false, spots, [], FRESH_MS)) weeklyAnswered = true;
+    } catch {
+      /* this wave, not the walk */
+    }
+    weeklyCursor += slice.length;
+    if (weeklyCursor < weeklyList.length) return false;
   }
-  for (const symbol of slice) weeklySeen.add(symbol);
-  for (const s of found) weeklyFound.push(s);
-  weeklyCursor += slice.length;
-  const fresh = new Set(slice);
-  const kept = book.setups.filter(s => s.expiry === '0DTE' || !fresh.has(s.ticker));
-  writeBook([...kept, ...found], spots);
-  if (weeklyCursor < weeklyList.length) return false;
-  const done = book.setups.filter(s => s.expiry === '0DTE' || (weeklySeen.has(s.ticker) && weeklyFound.some(f => f.ticker === s.ticker)));
-  writeBook(done, spots);
-  commitClosest('weekly');
-  void fillSparks(weeklyList);
-  book = { ...book, line: pickLine() };
-  emit();
   weeklyOn = false;
   weeklyFinishedAt = Date.now();
+  if (!weeklyAnswered) return true;
+  commitClosest('weekly');
+  noteScanned('weekly');
+  writeBook(spots);
+  void fillSparks(weeklyList);
   return true;
 }
 
 const SPARK_UNDER: Record<string, string> = { SPXW: 'SPX', XSP: 'SPX', RUTW: 'RUT', SPX: 'SPX', RUT: 'RUT', VIX: 'VIX', NDX: 'NDX', NDXP: 'NDX' };
 
+/** Today's five-minute closes of the underlying (the session so far). */
 async function closesOf(symbol: string, index: boolean): Promise<number[]> {
-  for (let back = 0; back < 4; back++) {
-    const day = ymd(Date.now() - back * 86400000);
-    const path = index
-      ? `/index/history/ohlc?symbol=${symbol}&start_date=${day}&end_date=${day}&interval=5m&format=json`
-      : `/stock/history/ohlc?symbol=${symbol}&start_date=${day}&end_date=${day}&interval=5m&format=json`;
-    const got = await thetaCall(path);
-    const series = asRows(got.data).map(r => num(r.close)).filter(n => n > 0);
-    if (series.length >= 2) return series;
-  }
-  return [];
+  const day = ymd(Date.now());
+  const path = index
+    ? `/index/history/ohlc?symbol=${symbol}&start_date=${day}&end_date=${day}&interval=5m&format=json`
+    : `/stock/history/ohlc?symbol=${symbol}&start_date=${day}&end_date=${day}&interval=5m&format=json`;
+  const got = await theta(path);
+  return asRows(got.data).flatMap(r => (Array.isArray(r.data) ? asRows(r.data) : [r])).map(r => num(r.close)).filter(n => n > 0);
 }
 
 let sparkAt = 0;
@@ -516,12 +512,12 @@ const barCache = new Map<string, { at: number; bars: LiveBar[] }>();
 function barWindow(tf: Timeframe): { interval: string; days: number } {
   switch (tf) {
     case '1W': return { interval: '1d', days: 120 };
-    case '1D': return { interval: '1d', days: 40 };
+    case '1D': return { interval: '1d', days: 28 };
     case '1h': return { interval: '1h', days: 15 };
     case '30m': return { interval: '30m', days: 10 };
     case '15m': return { interval: '15m', days: 6 };
     case '5m': return { interval: '5m', days: 4 };
-    default: return { interval: '1m', days: 2 };
+    default: return { interval: '1m', days: 1 };
   }
 }
 
@@ -534,7 +530,7 @@ function readBars(data: unknown): LiveBar[] {
   }
   return flat
     .map(b => ({
-      time: Math.floor(stampMs(b.timestamp) / 1000),
+      time: Math.floor(nyWallStamp(b.timestamp) / 1000),
       open: num(b.open),
       high: num(b.high),
       low: num(b.low),
@@ -544,6 +540,9 @@ function readBars(data: unknown): LiveBar[] {
     .sort((a, b) => a.time - b.time);
 }
 
+const hidden = () => typeof document !== 'undefined' && document.hidden;
+
+/** The contract's own bars from the terminal. Polls while the page shows it and the tab is visible. */
 export function useContractBars(ticker: string, expiration: string, strike: number, right: OptionRight, on: boolean, tf: Timeframe = '1m'): LiveBar[] | null {
   const spec = barWindow(tf);
   const key = `${ticker}|${expiration}|${strike}|${right}|${spec.interval}`;
@@ -554,17 +553,13 @@ export function useContractBars(ticker: string, expiration: string, strike: numb
     const exp = expiration.replace(/-/g, '');
     const rightWord = right === 'C' ? 'call' : 'put';
     const pull = async () => {
+      if (hidden()) return;
       const end = ymd(Date.now());
-      const days = spec.interval === '1m' ? 1 : spec.days;
-      const start = ymd(Date.now() - days * 86400000);
+      const start = ymd(Date.now() - (spec.days - 1) * 86400000);
       const path = (interval: string, from: string) => `/option/history/ohlc?symbol=${encodeURIComponent(ticker)}&expiration=${exp}&strike=${strike}&right=${rightWord}&start_date=${from}&end_date=${end}&interval=${interval}&format=json`;
-      const got = await thetaCall(path(spec.interval, start), true);
+      const got = await theta(path(spec.interval, start), true);
       if (dead) return;
-      let rows = readBars(got.data);
-      if (!rows.length && spec.interval !== '1m') {
-        const again = await thetaCall(path('1m', ymd(Date.now())), true);
-        if (!dead) rows = readBars(again.data);
-      }
+      const rows = readBars(got.data);
       if (dead || !rows.length) return;
       barCache.set(key, { at: Date.now(), bars: rows });
       setBars(rows);
@@ -572,7 +567,7 @@ export function useContractBars(ticker: string, expiration: string, strike: numb
     const hit = barCache.get(key);
     if (hit) setBars(hit.bars);
     void pull();
-    const id = window.setInterval(() => void pull(), spec.interval === '1m' ? 8_000 : 20_000);
+    const id = window.setInterval(() => void pull(), spec.interval === '1m' ? 15_000 : 60_000);
     return () => {
       dead = true;
       window.clearInterval(id);
@@ -591,8 +586,6 @@ interface ContractLive {
   vega: number;
   rho: number;
   iv: number;
-  /** This contract's own premium closes, then the live mark. Not the underlying. */
-  prem: number[];
 }
 
 function field(v: unknown): number {
@@ -612,31 +605,16 @@ interface QuoteWant {
 const quoteBox = new Map<string, ContractLive>();
 const quoteWant = new Map<string, QuoteWant>();
 const quoteHeard = new Set<() => void>();
-const premAsked = new Set<string>();
 let quoteTimer: number | null = null;
 
 function quoteKey(ticker: string, expiration: string, strike: number, right: OptionRight): string {
   return `${ticker}|${expiration}|${strike}|${right}`;
 }
 
-async function seedPrem(key: string, ticker: string, expiration: string, strike: number, right: OptionRight): Promise<void> {
-  if (premAsked.has(key)) return;
-  premAsked.add(key);
-  const exp = expiration.replace(/-/g, '');
-  const rightWord = right === 'C' ? 'call' : 'put';
-  const day = ymd(Date.now());
-  const got = await thetaCall(`/option/history/ohlc?symbol=${encodeURIComponent(ticker)}&expiration=${exp}&strike=${strike}&right=${rightWord}&start_date=${day}&end_date=${day}&interval=1m&format=json`, true);
-  const closes = readBars(got.data).map(b => b.close).filter(n => n > 0);
-  const box = quoteBox.get(key);
-  if (!box || closes.length < 2) return;
-  box.prem = closes;
-  quoteHeard.forEach(fn => fn());
-}
-
 async function pullQuote(key: string, want: QuoteWant): Promise<void> {
   const exp = want.expiration.replace(/-/g, '');
   const rightWord = want.right === 'C' ? 'call' : 'put';
-  const got = await thetaCall(
+  const got = await theta(
     `/option/snapshot/greeks/first_order?symbol=${encodeURIComponent(want.ticker)}&expiration=${exp}&strike=${want.strike}&right=${rightWord}&format=json`,
     true,
   );
@@ -652,36 +630,25 @@ async function pullQuote(key: string, want: QuoteWant): Promise<void> {
     const nextAsk = num(parsed.quote.ask);
     if (!(nextAsk > 0) || nextBid < 0 || nextAsk < nextBid) continue;
     const rawIv = field(parsed.quote.implied_vol);
-    const mark = (nextBid + nextAsk) / 2;
-    const prev = quoteBox.get(key);
-    const prem = prev?.prem ? prev.prem.slice(-239) : [];
-    if (!(prem[prem.length - 1] > 0) || Math.abs(prem[prem.length - 1] - mark) >= 0.01) prem.push(mark);
     quoteBox.set(key, {
       bid: nextBid,
       ask: nextAsk,
-      at: stampMs(parsed.quote.timestamp) || Date.now(),
+      at: nyWallStamp(parsed.quote.timestamp) || Date.now(),
       under: field(parsed.quote.underlying_price),
       delta: field(parsed.quote.delta),
       theta: perDay(field(parsed.quote.theta)),
       vega: perPoint(field(parsed.quote.vega)),
       rho: perPoint(field(parsed.quote.rho)),
       iv: rawIv > 0 && rawIv < 3 ? rawIv * 100 : rawIv,
-      prem,
     });
-    const box = quoteBox.get(key)!;
-    stampPickQuote(want.ticker, want.expiration, want.strike, want.right, box);
+    stampPickQuote(want.ticker, want.expiration, want.strike, want.right, quoteBox.get(key)!);
     emit();
-    void seedPrem(key, want.ticker, want.expiration, want.strike, want.right);
     return;
   }
 }
 
 function pullQuotes(): void {
-  for (const s of armed ? currentPicks() : []) {
-    if (!s.expiryDate || !(s.strike > 0)) continue;
-    const key = quoteKey(s.ticker, s.expiryDate, s.strike, s.right);
-    if (!quoteWant.has(key)) quoteWant.set(key, { ticker: s.ticker, expiration: s.expiryDate, strike: s.strike, right: s.right, n: 0 });
-  }
+  if (hidden() || deskPhase() === 'closed') return;
   for (const [key, want] of quoteWant) void pullQuote(key, want).then(() => quoteHeard.forEach(fn => fn()));
 }
 
@@ -691,13 +658,11 @@ function stopQuotes(): void {
 }
 
 function armQuotes(): void {
-  if (typeof window === 'undefined') return;
-  pullQuotes();
-  if (quoteTimer != null) return;
-  quoteTimer = window.setInterval(pullQuotes, 2_000);
+  if (typeof window === 'undefined' || quoteTimer != null) return;
+  quoteTimer = window.setInterval(pullQuotes, 3_000);
 }
 
-/** One quote for the card and the contract page. Same bid, same premium line. */
+/** One contract's quote for the page that shows it: polled every 3 seconds while that page is open. */
 export function useContractLive(ticker: string, expiration: string, strike: number, right: OptionRight, on: boolean): ContractLive | null {
   const key = quoteKey(ticker, expiration, strike, right);
   const [row, setRow] = useState<ContractLive | null>(() => quoteBox.get(key) ?? null);
@@ -716,7 +681,7 @@ export function useContractLive(ticker: string, expiration: string, strike: numb
       if (!held) return;
       held.n -= 1;
       if (held.n <= 0) quoteWant.delete(key);
-      if (!armed && !quoteWant.size) stopQuotes();
+      if (!quoteWant.size) stopQuotes();
     };
   }, [key, on, ticker, expiration, strike, right]);
   return on ? row : null;
@@ -731,7 +696,8 @@ export function useSecondGreek(ticker: string, expiration: string, strike: numbe
     const exp = expiration.replace(/-/g, '');
     const rightWord = right === 'C' ? 'call' : 'put';
     const pull = () => {
-      void thetaCall(`/option/snapshot/greeks/second_order?symbol=${encodeURIComponent(ticker)}&expiration=${exp}&strike=${strike}&right=${rightWord}&format=json`, true).then(got => {
+      if (hidden()) return;
+      void theta(`/option/snapshot/greeks/second_order?symbol=${encodeURIComponent(ticker)}&expiration=${exp}&strike=${strike}&right=${rightWord}&format=json`, true).then(got => {
         if (dead || got.error) return;
         const item = asRows(got.data)[0];
         const quote = item ? rowOf(item)?.quote : null;
@@ -749,8 +715,14 @@ export function useSecondGreek(ticker: string, expiration: string, strike: numbe
 let users = 0;
 let stopTimer: number | null = null;
 
-export function useThetaBook(sleeve: SleeveKey): ThetaBook {
+export interface BookView extends ThetaBook {
+  /** The last session's scan, stamped, while today has none */
+  earlier: { day: string; at: number; setups: Setup[] } | null;
+}
+
+export function useThetaBook(sleeve: SleeveKey): BookView {
   const [snap, setSnap] = useState(book);
+  useEffect(() => subscribeTheta(() => setSnap({ ...book })), []);
   useEffect(() => {
     users += 1;
     if (stopTimer != null) window.clearTimeout(stopTimer);
@@ -758,6 +730,7 @@ export function useThetaBook(sleeve: SleeveKey): ThetaBook {
     bootCompass();
     const fn = () => setSnap(book);
     listeners.add(fn);
+    fn();
     return () => {
       listeners.delete(fn);
       users -= 1;
@@ -767,7 +740,10 @@ export function useThetaBook(sleeve: SleeveKey): ThetaBook {
   }, [sleeve]);
   const wanted = sleeve === 'weekly' ? 'weekly' : 'odte';
   const setups = snap.setups.filter(s => (wanted === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE'));
-  return { ...snap, setups };
+  /* before this book has asked the terminal anything, the shell's own reading of it stands */
+  const shell = thetaStatus();
+  const state: ThetaState = snap.theta !== 'unknown' ? snap.theta : shell === 'down' ? 'down' : shell === 'up' ? 'up' : 'unknown';
+  return { ...snap, theta: state, status: state === 'down' ? 'down' : snap.status, setups, earlier: currentPicks().length ? null : earlierScan() };
 }
 
 let armed = false;
@@ -775,41 +751,34 @@ let ticking = false;
 let tickTimer: number | null = null;
 
 let sweptDay = '';
-const swept = { odte: false, weekly: false, lottery: false };
+const swept = { lottery: false };
 
 function rollDay(now: number): void {
   const day = sessionYmd(now);
   if (day === sweptDay) return;
   sweptDay = day;
-  swept.odte = false;
-  swept.weekly = false;
   swept.lottery = false;
 }
 
-/** Quotes for the cards already up. No new universe walk. */
+/** Quotes for the cards already up: one snapshot per name and expiry. No new universe walk. */
 async function refreshHeld(now: number): Promise<void> {
-  const rows = currentPicks();
-  settleBoard(rows, now);
   const live = currentPicks();
-  if (!live.length) {
-    book = { ...book, line: pickLine() };
-    emit();
-    return;
-  }
+  if (!live.length) return;
   const byExp = new Map<string, string[]>();
   for (const s of live) {
-    const exp = s.expiryDate || nyISO(now);
-    const list = byExp.get(exp) ?? [];
+    if (!s.expiryDate) continue;
+    const dte = weekdayDte(sessionYmd(now), s.expiryDate);
+    if (!optionScanOpen(s.ticker, Number.isFinite(dte) ? Math.min(dte, 1) : 1, now)) continue;
+    const list = byExp.get(s.expiryDate) ?? [];
     if (!list.includes(s.ticker)) list.push(s.ticker);
-    byExp.set(exp, list);
+    byExp.set(s.expiryDate, list);
   }
   const spots = { ...book.spots };
   const found: Setup[] = [];
   for (const [exp, symbols] of byExp) {
     for (let i = 0; i < symbols.length; i += 8) {
       if (!armed) return;
-      const slice = symbols.slice(i, i + 8);
-      const got = await Promise.all(slice.map(symbol => once(symbol, now, exp, false, 90_000)));
+      const got = await Promise.all(symbols.slice(i, i + 8).map(symbol => once(symbol, now, exp, false)));
       for (const row of got) {
         const symbol = row.setups[0]?.ticker;
         if (symbol && row.spot > 0) spots[symbol] = row.spot;
@@ -817,74 +786,64 @@ async function refreshHeld(now: number): Promise<void> {
       }
     }
   }
-  settleBoard(found.length ? found : live, now);
   if (found.length) paintQuotes(found);
-  const ids = new Set(found.map(s => s.ticker + s.expiryDate));
-  const kept = book.setups.filter(s => !ids.has(s.ticker + s.expiryDate));
-  writeBook([...kept, ...found], spots);
-  book = { ...book, line: pickLine() };
-  emit();
+  writeBook(spots);
 }
 
-/** 0DTE and 1–7 DTE scan once a session. After that the cards stay and only their quotes move. */
+/** Book A and Book B score on the 5-minute grid from 09:45 to 15:00 ET (the minutes the trees were trained on).
+    Book C sweeps once at 15:20. Between scans only the cards' quotes move. */
 function bootCompass(): void {
   if (SIM_DESK || typeof window === 'undefined') return;
-  if (!armed && currentPicks().length) {
-    writeBook(currentPicks(), book.spots);
-    syncOpenBook();
-  }
-  const running = armed;
+  if (!armed && currentPicks().length) writeBook(book.spots);
+  if (armed) return;
   armed = true;
-  armQuotes();
-  if (running) return;
   const tick = async () => {
-    if (ticking) return;
+    if (ticking || hidden()) return;
     ticking = true;
     try {
       const now = Date.now();
       rollDay(now);
       const clock = nyParts(now);
       const mins = clock.hour * 60 + clock.minute;
-      const grid = sessionScanOpen(mins, clock.weekday);
+      const t = mins - (9 * 60 + 30);
+      const onGrid = onScanGrid(t) && inModelWindow(t) && clock.weekday >= 1 && clock.weekday <= 5;
       let scanned = false;
       if (!swept.lottery && mins >= 15 * 60 + 20 && mins < 15 * 60 + 50) {
         const symbols = odteNames(now);
         const spots = { ...book.spots };
         const found: Setup[] = [];
+        let answered = false;
         for (let i = 0; i < symbols.length && armed; i += 8) {
-          await scoreSlice(symbols.slice(i, i + 8), sessionIso(now), true, spots, found, 20_000);
+          if (await scoreSlice(symbols.slice(i, i + 8), sessionIso(now), true, spots, found, 20_000)) answered = true;
         }
         if (!armed) return;
-        await scoreLottery(found, now);
-        syncOpenBook(now);
-        writeBook([...book.setups.filter(s => s.expiry !== '0DTE'), ...found], spots);
-        book = { ...book, line: pickLine() };
-        emit();
-        swept.lottery = true;
-        scanned = true;
-      }
-      if (grid && !odteAsleep(now)) {
-        const odte = claimSlot(now, 'odte');
-        if (odte === 'scan') {
-          await scanOdte(now);
-          const report = scanReport('odte');
-          if (!armed || (report.scored === 0 && report.quiet > 0)) releaseSlot('odte');
-          scanned = report.scored > 0 || report.quiet === 0;
+        if (answered) {
+          await scoreLottery(found, now);
+          recordPicks(now);
+          writeBook(spots);
+          swept.lottery = true;
+          scanned = true;
         }
       }
-      const phase = deskPhase(now);
-      const tapeUp = phase === 'overnight' || phase === 'pre' || phase === 'open' || phase === 'curb';
-      const weeklyDue = !weeklyOn && tapeUp && (grid || Date.now() - weeklyFinishedAt > 5 * 60_000);
+      if (onGrid && !odteAsleep(now)) {
+        const odte = claimSlot(now, 'odte');
+        if (odte === 'scan') {
+          const ran = await scanOdte(now);
+          const report = scanReport('odte');
+          if (!ran || !armed || (report.scored === 0 && report.quiet > 0)) releaseSlot('odte');
+          scanned = ran;
+        }
+      }
+      const weeklyDue = !weeklyOn && onGrid && Date.now() - weeklyFinishedAt > 4 * 60_000;
       if (weeklyDue) {
         const names = weeklyNames(now);
         if (names.length) startWeekly(names);
-        else weeklyFinishedAt = Date.now();
       }
       if (weeklyOn) {
         const done = await scanWeeklyWave();
         if (done) scanned = true;
       }
-      if (!scanned && currentPicks().length) await refreshHeld(now);
+      if (!scanned) await refreshHeld(now);
     } finally {
       ticking = false;
     }
@@ -897,6 +856,7 @@ function bootCompass(): void {
 function stopCompass(): void {
   if (!armed) return;
   armed = false;
+  weeklyOn = false;
   if (tickTimer != null) window.clearInterval(tickTimer);
   tickTimer = null;
   for (const [key, want] of quoteWant) if (want.n <= 0) quoteWant.delete(key);

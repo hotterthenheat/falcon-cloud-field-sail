@@ -14,6 +14,12 @@ const GRID = 'grid grid-cols-[repeat(7,minmax(0,1fr))_minmax(84px,0.85fr)] gap-2
 const ROWS = '[grid-auto-rows:max(80px,calc((100cqw_-_56px)/7.85*0.5455))]';
 const door = 'inline-flex items-center justify-center w-7 h-7 rounded-md border border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors';
 
+/** "+1.2K" · "−340" — a day's result in the width of a phone's cell */
+const compact = (v: number): string => {
+  const a = Math.abs(v);
+  const sign = v > 0 ? '+' : v < 0 ? '−' : '';
+  return `${sign}${a >= 1000 ? `${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}K` : a.toFixed(0)}`;
+};
 /** How deep a day's wash is: a little for any day, most for the month's biggest — eased, so a small day still shows */
 const washOf = (net: number, biggest: number): number => (biggest > 0 ? 0.1 + 0.26 * Math.pow(Math.min(1, Math.abs(net) / biggest), 0.6) : 0);
 
@@ -71,8 +77,56 @@ const JournalMonth = ({ month, onMonth, home, days, today, picked, onPick, noted
           )}
         </span>
       </div>
-      {/* on a phone the board scrolls sideways inside its box at a readable width (the Earnings board's rule) */}
-      <div className="px-3 pb-3 flex-1 flex flex-col max-lg:overflow-x-auto">
+      {/* ON A PHONE: seven narrow days a row, each its date and what it made, the week's sum under the row */}
+      <div className="sm:hidden px-2 pb-3 flex flex-col gap-1" data-journal-month-phone>
+        <div className="grid grid-cols-7 gap-1">
+          {WEEKDAYS.map(w => (
+            <div key={w} className="h-5 flex items-center justify-center font-mono text-t8 font-semibold uppercase tracking-wider text-gridHead">
+              {w.slice(0, 2)}
+            </div>
+          ))}
+        </div>
+        {weeks.map((week, wi) => {
+          const wk = week.filter((d): d is string => !!d).map(d => days.get(d)).filter((d): d is DayTotal => !!d);
+          const wNet = wk.reduce((x, d) => x + d.net, 0);
+          const wN = wk.reduce((x, d) => x + d.n, 0);
+          return (
+            <div key={wi} className="flex flex-col gap-0.5">
+              <div className="grid grid-cols-7 gap-1">
+                {week.map((d, di) => {
+                  if (!d) return <div key={di} aria-hidden="true" />;
+                  const t = days.get(d);
+                  const on = d === picked;
+                  const ink = t ? (t.net > 0 ? 'bull' : t.net < 0 ? 'bear' : null) : null;
+                  const wash = t ? washOf(t.net, biggest) : 0;
+                  const date = new Date(`${d}T12:00:00`);
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => onPick(on ? null : d)}
+                      aria-pressed={on}
+                      aria-label={`${DAYS[date.getDay()]}, ${monthName} ${date.getDate()} — ${t ? `${t.n} closed, ${usdSigned(t.net)}` : 'nothing closed'}`}
+                      className={`h-11 min-w-0 rounded-md border flex flex-col items-center justify-center gap-0.5 ${on ? 'ring-2 ring-silver border-transparent' : d === today ? 'border-silver/60' : 'border-borderSubtle'}`}
+                      style={ink ? { background: `rgb(var(--${ink}) / ${wash.toFixed(3)})` } : undefined}
+                      data-journal-day={d}
+                    >
+                      <span className={`font-mono text-t10 font-bold tnum ${d === today || on ? 'text-silver' : t ? 'text-textPrimary' : 'text-textMuted'}`}>{date.getDate()}</span>
+                      {t && <span className={`font-mono text-t8 font-semibold tnum leading-none ${dirInk(t.net)}`}>{compact(t.net)}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {wN > 0 && (
+                <div className="px-1 flex justify-end font-mono text-t9 tnum text-textMuted" data-journal-week-sum={wN}>
+                  week <span className={`ml-1 font-semibold ${dirInk(wNet)}`}>{usdSigned(wNet, 0)}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="max-sm:hidden px-3 pb-3 flex-1 flex flex-col max-lg:overflow-x-auto">
         <div className="max-lg:min-w-[760px] flex flex-col gap-2 [container-type:inline-size]">
           <div className={GRID}>
             {[...WEEKDAYS, 'Week'].map(w => (

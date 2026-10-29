@@ -196,7 +196,7 @@ async function pull(ticker: string): Promise<SpotGexBook | null> {
   const absDiff = uw != null && Number.isFinite(book.netOi) ? Math.abs(book.netOi - uw) : null;
   if (uw != null) {
     console.info(
-      `[spot-gex] ${name} local ${book.netOi.toFixed(0)} bn ${Number.isFinite(book.netGexBn) ? book.netGexBn.toFixed(4) : 'nan'} uw ${uw.toFixed(0)} abs ${(absDiff ?? 0).toFixed(0)} call ${book.callWall ?? '—'} put ${book.putWall ?? '—'} flip ${book.flip ?? '—'}`,
+      `[spot-gex] ${name} local ${book.netOi.toFixed(0)} bn ${Number.isFinite(book.netGexBn) ? book.netGexBn.toFixed(4) : 'nan'} uw ${uw.toFixed(0)} abs ${(absDiff ?? 0).toFixed(0)}`,
     );
   }
   return { ...book, ticker: name, root, spot, at: Date.now(), uw, absDiff };

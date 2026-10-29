@@ -1,0 +1,221 @@
+/*
+  Pinpoint's book against recorded Unusual Whales answers (SPY and NVDA, the Oct 28 close read before the Oct 29 open).
+  The app's own loader (data/uwBook.ts) reads the fixtures exactly as the browser reads the proxy; every expected value
+  below is recomputed in this file straight from the raw vendor rows (rawSpy/rawNvda), never from the app's code.
+
+  Replay: npx tsx scripts/golden/pinpoint-golden.ts
+  Record: GOLDEN_RECORD=1 npx tsx scripts/golden/pinpoint-golden.ts   (then: npx tsx scripts/golden/slimFixtures.ts pinpoint-2026-10-29)
+*/
+import { done, expectEqual, expectNear, freezeClock, installUwFixtures, recordedAt } from './uwFixtures';
+import { dealerOf } from '../../src/core/dealerSign';
+import { bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, rawAnswers, rawFlip, rawFlowTo, rawLegs, yearsTrading } from './pinpointRaw';
+
+const SET = 'pinpoint-2026-10-29';
+const NAMES = ['SPY', 'NVDA'] as const;
+
+/* the browser bits the loader touches: a window, local storage, and the levels scope */
+const mem = new Map<string, string>();
+const g = globalThis as Record<string, unknown>;
+g.window = globalThis;
+g.location = { search: '', pathname: '/pinpoint/map', href: 'http://127.0.0.1/pinpoint/map', hostname: '127.0.0.1', origin: 'http://127.0.0.1' };
+g.localStorage = {
+  getItem: (k: string) => mem.get(k) ?? null,
+  setItem: (k: string, v: string) => void mem.set(k, String(v)),
+  removeItem: (k: string) => void mem.delete(k),
+  clear: () => mem.clear(),
+  key: () => null,
+  length: 0,
+};
+
+const { asked } = installUwFixtures(SET);
+freezeClock(recordedAt(SET, new Date().toISOString()));
+
+const book = await import('../../src/data/uwBook');
+const { openFeeds } = await import('../../src/data/feedGate');
+openFeeds();
+
+const settle = async (ticker: string, ok: () => boolean, ms = 600_000) => {
+  const t0 = Date.now();
+  let quiet = 0;
+  let last = asked.length;
+  while (Date.now() - t0 < ms) {
+    await new Promise(r => setTimeout(r, 250));
+    if (asked.length === last) quiet += 250;
+    else {
+      quiet = 0;
+      last = asked.length;
+    }
+    if (ok() && quiet >= (process.env.GOLDEN_RECORD === '1' ? 12000 : 1500)) return;
+  }
+  throw new Error(`golden: ${ticker} did not settle`);
+};
+
+for (const t of NAMES) {
+  book.ensureBook(t, 'full');
+  await settle(t, () => {
+    const e = book.peekEntry(t);
+    return !!e && e.status === 'live' && !!e.everFull;
+  });
+  book.ensureOiChange(t, 'top');
+  await settle(t, () => book.peekOiChange(t) != null);
+}
+
+const { levelsFor } = await import('../../src/data/levelsFor');
+const { buildExposureProfile } = await import('../../src/data/exposure');
+const { LEVELS_WINDOW } = await import('../../src/data/roomLevels');
+const { deskAgenda, buildBoardRow } = await import('../../src/data/board');
+const { aheadClock, buildCloseOdds } = await import('../../src/data/ahead');
+const { readSessionClock } = await import('../../src/data/moc');
+const { scopeSigma } = await import('../../src/data/wall');
+const { touchOdds } = await import('../../src/data/expectedMove');
+const { higherForStrikes } = await import('../../src/data/liveHigher');
+const { buildBuilding } = await import('../../src/data/building');
+const { buildHedgeFlowLadder } = await import('../../src/data/hedgeFlow');
+const { levelNetPath } = await import('../../src/data/flipLevel');
+
+const raw = rawAnswers(SET);
+const SQRT_PI_2 = Math.sqrt(Math.PI / 2);
+
+/* Golden values, each read off the raw rows (pinpointRaw.ts) and checked again below on every run:
+   net/walls/supreme = sums of spot-exposures/expiry-strike call_gamma_oi + put_gamma_oi over the scope's live dates;
+   flip = the app's re-priced crossing, and an independent sticky-strike re-pricing of the same rows (each contract's
+   vol solved off its quote mid on the session clock) must land within 0.02% of spot of it; move = term-structure implied_move × √(π/2). */
+const GOLD = {
+  SPY: {
+    front: '2026-10-29',
+    today: { net: 107_689_622.85, flip: 771.10993193321, call: 775, put: 758, supreme: 758 },
+    all: { net: -3_576_479_393.82, flip: 775.5471729662415, call: 800, put: 750, supreme: 750 },
+    straddle: 5.09247441828498,
+  },
+  NVDA: {
+    front: '2026-10-30',
+    today: { net: 280_962_174.09, flip: 209.4994357176802, call: 217.5, put: 210, supreme: 217.5 },
+    all: { net: 545_826_799.8, flip: 209.01183544036564, call: 220, put: 200, supreme: 220 },
+    straddle: 4.72607032383704,
+  },
+} as const;
+
+for (const t of NAMES) {
+  const gold = GOLD[t];
+  const clock = aheadClock(readSessionClock());
+  const lv0 = levelsFor(t, '0DTE')!;
+  const lvA = levelsFor(t, 'ALL')!;
+  const snap = book.snapshotFor(t, '0DTE', 'full')!;
+  const spot = snap.spot;
+  const rows = exposureRows(raw, t);
+  const ois = contractOi(raw, t);
+  const vols = contractVols(raw, t, spot, '2026-10-28');
+  const liveDates = new Set(rows.map(r => String(r.expiry)).filter(d => d >= '2026-10-29'));
+  const scopes = [
+    ['today', lv0, new Set([gold.front])],
+    ['all', lvA, liveDates],
+  ] as const;
+  for (const [name, lv, dates] of scopes) {
+    const want = gold[name];
+    const hand = levelsOfRows(byStrike(rows, dates));
+    expectNear(`${t} ${name}: hand net off the raw rows`, hand.net, want.net, 1e-9);
+    expectNear(`${t} ${name}: net GEX`, lv.netGex, want.net, 1e-9);
+    expectEqual(`${t} ${name}: call · put wall · supreme (raw ${hand.callWall} · ${hand.putWall} · ${hand.supreme})`, [lv.callWall, lv.putWall, lv.supreme], [want.call, want.put, want.supreme]);
+    expectEqual(`${t} ${name}: raw rows name the same levels`, [hand.callWall, hand.putWall, hand.supreme], [want.call, want.put, want.supreme]);
+    expectNear(`${t} ${name}: flip`, lv.flip ?? NaN, want.flip, 1e-9);
+    const rf = rawFlip(rawLegs(rows, dates, vols, ois), spot);
+    expectNear(`${t} ${name}: independent re-pricing of the rows puts the flip at ${rf?.toFixed(2)}`, rf ?? NaN, want.flip, (0.0002 * spot) / want.flip);
+    expectEqual(`${t} ${name}: final`, lv.complete, true);
+    expectEqual(`${t} ${name}: regime is the sign of the net`, lv.regime, want.net > 0 ? 'LONG' : 'SHORT');
+  }
+  expectEqual(`${t}: Today reads the front expiry`, lv0.date, gold.front);
+
+  /* the expected move, and the odds read off it */
+  const straddle = impliedMove(raw, t, gold.front);
+  expectNear(`${t}: the vendor's straddle into ${gold.front}`, straddle, gold.straddle, 1e-12);
+  const move = book.peekScopeMove(t)!;
+  expectNear(`${t}: 1σ = straddle × √(π/2)`, move.move, gold.straddle * SQRT_PI_2, 1e-9);
+  const iv = book.peekIv(t) ?? 0;
+  const ss = scopeSigma(snap, clock.minutesLeft, iv);
+  expectNear(`${t}: the odds' σ left is that 1σ (before the open, the whole horizon)`, ss.sigmaLeft, gold.straddle * SQRT_PI_2, 1e-9);
+  const reach = (k: number) => 2 * (1 - phiCdf(Math.abs(Math.log(k / spot)) / (ss.sigmaLeft / spot)));
+  for (const k of [lv0.callWall!, lv0.putWall!]) expectNear(`${t}: reach odds to ${k} = 2(1 − Φ(|ln K/S| ÷ σ/S))`, touchOdds(spot, k, ss.sigmaLeft), reach(k), 1e-6);
+  const agenda = deskAgenda(snap, '0DTE', clock)!;
+  for (const x of agenda.first) expectNear(`${t}: Agenda reach at ${x.strike}`, x.reach, reach(x.strike), 1e-6);
+
+  /* the close odds' lead row: its plain normal share of the strike's half-step band */
+  const profile = buildExposureProfile(snap, '0DTE', LEVELS_WINDOW);
+  const close = buildCloseOdds(profile, spot, ss.sigmaLeft, clock);
+  const lead = close.top[0];
+  const ks = profile.strikes.map(x => x.strike).sort((a, b) => a - b);
+  const li = ks.indexOf(lead.strike);
+  const plain = (phiCdf(((lead.strike + ks[li + 1]) / 2 - spot) / ss.sigmaLeft) - phiCdf(((lead.strike + ks[li - 1]) / 2 - spot) / ss.sigmaLeft)) * 100;
+  expectNear(`${t}: close-odds lead ${lead.strike} plain share ${plain.toFixed(2)}% (nearer it than either neighbour)`, lead.plain, Math.round(plain * 10) / 10, 1e-9);
+
+  /* Building: the overnight open-interest change at the busiest front strike, valued at each contract's own row gamma */
+  const building = buildBuilding(snap, book.bookHistory(t) ?? [], book.bookCandles(t) ?? [], profile, clock, book.peekOiChange(t));
+  const front = byStrike(rows, new Set([gold.front]));
+    const changes = oiChangeRows(raw, t).filter(r => r.expiry === gold.front);
+  const handChange = new Map<number, number>();
+  for (const r of changes) {
+    const v = front.get(r.strike);
+    const oi = ois.get(`${r.expiry}|${r.strike}|${r.right}`) ?? 0;
+    if (!v || !(oi > 0)) continue;
+    const per = (r.right === 'C' ? v.c : v.p) / oi;
+    handChange.set(r.strike, (handChange.get(r.strike) ?? 0) + r.diff * per);
+  }
+  const busiest = [...handChange].sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
+  const brow = building.rows.find(r => r.strike === busiest?.[0]);
+  expectNear(`${t}: Building's change at ${busiest?.[0]} = Σ oi_diff × row gamma ÷ OI (${(busiest?.[1] ?? 0).toFixed(0)})`, brow?.change ?? NaN, busiest?.[1] ?? NaN, 1e-6);
+
+  /* the hedge-flow ladder against a fine integral of the independently re-priced rows */
+  const legsFront = rawLegs(rows, new Set([gold.front]), vols, ois);
+  const chain = snap.uwChains?.['0DTE'] ?? [];
+  const ladder = buildHedgeFlowLadder(profile, prices => levelNetPath(snap, chain, prices)?.path.map(v => -v) ?? null);
+  for (const k of [lv0.callWall!, lv0.putWall!]) {
+    const got = ladder.rungs.find(r => r.strike === k)?.flow ?? NaN;
+    const hand = -rawFlowTo(legsFront, spot, k);
+    expectNear(`${t}: dealer flow to ${k} ${(got / 1e6).toFixed(1)}M against the raw integral ${(hand / 1e6).toFixed(1)}M`, got, hand, 0.01);
+  }
+  /* the one dealer model on every greek: each leg against the vendor's own figures for the same contract */
+  const se = new Map((raw.get(`/stock/${t}/spot-exposures/expiry-strike?expirations[]=${gold.front}&limit=500`) as Record<string, string>[]).map(r => [Number(r.strike), r]));
+  for (const [k, right] of [[lv0.callWall!, 'C'], [lv0.putWall!, 'P']] as const) {
+    const node = chain.find(x => x.strike === k)!;
+    const row = contractRow(raw, t, `${gold.front}|${k}|${right}`)!;
+    const sideSign = right === 'C' ? 1 : -1;
+    const oi = Number(row.open_interest);
+    const leg = right === 'C' ? { dex: node.callDex, vex: node.callVex, vanna: node.callVanna, charm: node.callCharm } : { dex: node.putDex, vex: node.putVex, vanna: node.putVanna, charm: node.putCharm };
+    const px = Number(se.get(k)!.price);
+    /* the vendor's charm is per calendar year: per session it is × T_cal/T_trade (from its 16:15 pricing to the 4:00 close) */
+    const tCal = (Date.parse(`${gold.front}T20:00:00Z`) - Date.parse(String(se.get(k)!.time))) / (365 * 86_400_000);
+    const share = tCal / yearsTrading('2026-10-28', gold.front);
+    const want = {
+      dex: sideSign * Number(row.delta) * oi * 100 * spot,
+      vex: sideSign * Number(row.vega) * oi * 100,
+      vanna: Number(se.get(k)![right === 'C' ? 'call_vanna_oi' : 'put_vanna_oi']) * px * 0.01,
+      charm: (Number(se.get(k)![right === 'C' ? 'call_charm_oi' : 'put_charm_oi']) / (0.01 * 365 * 252)) * share,
+    };
+    const tol = { dex: 0.1, vex: 0.06, vanna: 0.2, charm: 0.05 } as const;
+    for (const g of ['dex', 'vex', 'vanna', 'charm'] as const) {
+      const got = dealerOf(leg[g]);
+      expectEqual(`${t} ${k}${right} ${g}: the dealer sign is the vendor's (${(got / 1e6).toFixed(3)}M, vendor ${(want[g] / 1e6).toFixed(3)}M)`, Math.sign(got), Math.sign(want[g]));
+      expectNear(`${t} ${k}${right} ${g}: size against the vendor's own figure`, got, want[g], tol[g]);
+    }
+  }
+  /* the higher greeks of the same legs: vomma and veta as finite differences of an independent dealer vega (Black-Scholes at
+     the leg's vol on the session clock, per point of the quoted vol), and their sign by the model */
+  const higher = higherForStrikes(snap, '0DTE', [lv0.callWall!, lv0.putWall!]);
+  for (const [k, right] of [[lv0.callWall!, 'C'], [lv0.putWall!, 'P']] as const) {
+    const node = chain.find(x => x.strike === k)!;
+    const iv = (right === 'C' ? node.callIv : node.putIv)!;
+    const count = right === 'C' ? node.callOI : node.putOI;
+    const tt = yearsTrading('2026-10-28', gold.front);
+    const tc = (Date.parse(`${gold.front}T20:00:00Z`) - Date.parse(String(se.get(k)!.time))) / (365 * 86_400_000);
+    const volPt = Math.sqrt(tc / tt);
+    const vega = (sig: number, t0: number) => (right === 'C' ? 1 : -1) * count * 100 * bsVega(spot, k, t0, sig) * volPt;
+    const vommaFd = (vega(iv + 1e-4 * volPt, tt) - vega(iv - 1e-4 * volPt, tt)) / 0.02;
+    const day = 1 / 252;
+    const vetaFd = (vega(iv, tt - day / 100) - vega(iv, tt + day / 100)) / 0.02;
+    const h = higher.get(k)!;
+    const leg = right === 'C' ? 'call' : 'put';
+    expectNear(`${t} ${k}${right} vomma: $vega per quoted vol point per point (fd ${vommaFd.toFixed(2)})`, dealerOf(h.vomma[leg]), vommaFd, 0.02);
+    expectNear(`${t} ${k}${right} veta: $vega per session (fd ${vetaFd.toFixed(0)})`, dealerOf(h.veta[leg]), vetaFd, 0.02);
+  }
+}
+console.log(`asked ${asked.length} paths`);
+done();

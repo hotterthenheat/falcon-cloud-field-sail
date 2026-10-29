@@ -7,7 +7,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { Equal, Footprints, Pin, X } from 'lucide-react';
 import type { ChartLayerApi } from '../gex/StrikeChart';
 import { readToken } from '../../theme/theme';
-import { barTime } from '../../data/review/tape';
+import { barTime } from '../../data/review/history';
 import { contractKey, contractWords, type ContractId } from '../../data/review/quotes';
 import type { Fill } from '../../data/review/engine';
 import { usdSigned } from './words';

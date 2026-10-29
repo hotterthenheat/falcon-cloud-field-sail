@@ -3,10 +3,8 @@
 
 import { useSyncExternalStore } from 'react';
 import { accountOf, type Session, type Trade } from './engine';
-import { futAccountOf, type FutSession, type FutTrade } from './futuresEngine';
-import { futBarTime, futMomentWords, futPrice, futProduct } from './futuresTape';
 import { contractWords } from './quotes';
-import { barTime, clockWords, dayWords } from './tape';
+import { barTime, clockWords, dayWords } from './history';
 import { futBookOf as paperFutBookOf, optBookOf as paperOptBookOf, type FutTrade as PaperFutTrade, type OptTrade as PaperOptTrade, type PaperAccount, type PaperMoment } from '../paper/engine';
 import { nyMomentWords } from '../paper/clock';
 import { futWords } from '../paper/products';
@@ -32,15 +30,14 @@ export interface DayNote {
 
 export type JournalRow =
   | { key: string; s: Session; t: Trade; fut: false; paper?: undefined }
-  | { key: string; s: FutSession; t: FutTrade; fut: true; paper?: undefined }
   | { key: string; s: PaperAccount; t: PaperOptTrade; fut: false; paper: true }
   | { key: string; s: PaperAccount; t: PaperFutTrade; fut: true; paper: true };
 type Moment = Trade['closed'] | PaperMoment;
 
 /** Every closed trade of every session, newest first */
-export const rowsOf = (sessions: (Session | FutSession)[]): JournalRow[] =>
+export const rowsOf = (sessions: Session[]): JournalRow[] =>
   sessions
-    .flatMap<JournalRow>(s => ((s as FutSession).kind === 'futures' ? futAccountOf(s as FutSession).trades.map(t => ({ key: `${s.id}:${t.id}`, s: s as FutSession, t, fut: true as const })) : accountOf(s as Session).trades.map(t => ({ key: `${s.id}:${t.id}`, s: s as Session, t, fut: false as const }))))
+    .flatMap<JournalRow>(s => accountOf(s).trades.map(t => ({ key: `${s.id}:${t.id}`, s, t, fut: false as const })))
     .sort((a, b) => instantOf(b, b.t.closed) - instantOf(a, a.t.closed));
 
 /** Every closed trade of every PAPER account, newest first — with the words kept under the journal's own key put back on
@@ -54,18 +51,16 @@ export const paperRowsOf = (accounts: PaperAccount[], words: { entries: Record<s
     })
     .sort((a, b) => instantOf(b, b.t.closed) - instantOf(a, a.t.closed));
 
-/* WHEN, as a real New York instant. The two kinds of session count their minutes from different opens (an option's
-   from 09:30, a future's from 18:00 the evening before), so minute 319 of a futures day (23:19) sorted between two
-   afternoon option trades — "newest first" has to compare instants, not minutes. */
+/* WHEN, as a real New York instant: a paper trade's own, a replayed minute's end */
 export const instantOf = (r: JournalRow, m: Moment): number => {
   if (r.paper) return Math.floor((m as PaperMoment).at / 1000);
   const x = m as Trade['closed'];
-  return (r.fut ? futBarTime(x.day, x.minute) : barTime(x.day, x.minute)) + 60;
+  return barTime(x.day, x.minute) + 60;
 };
 export const whenWords = (r: JournalRow, m: Moment): string => {
   if (r.paper) return nyMomentWords((m as PaperMoment).at);
   const x = m as Trade['closed'];
-  return r.fut ? futMomentWords(x.day, x.minute) : `${dayWords(x.day)} · ${clockWords(x.minute)}`;
+  return `${dayWords(x.day)} · ${clockWords(x.minute)} ET`;
 };
 /** The minutes in a trading day of the row's kind — what "held" is counted against: an option's 390, a future's 1,380, a
     paper trade's real day */
@@ -76,16 +71,16 @@ export const nameOf = (r: JournalRow): string => (r.fut ? r.t.symbol : r.t.contr
 export const titleOf = (r: JournalRow): string => (r.fut ? `${r.t.contract} ${r.t.long ? 'long' : 'short'}` : contractWords(r.t.contract));
 /** The way it needed the name to go: a call and a long up, a put and a short down */
 export const directionOf = (r: JournalRow): 'up' | 'down' => (r.fut ? (r.t.long ? 'up' : 'down') : r.t.contract.right === 'C' ? 'up' : 'down');
-export const ENDED: Record<Trade['how'] | FutTrade['how'] | PaperOptTrade['how'] | PaperFutTrade['how'], string> = { sold: 'Sold by you', target: 'Target hit', stopped: 'Stopped out', expired: 'Held to the bell', closed: 'Closed by you', rolled: 'Closed at the roll', scaled: 'Scaled out', rule: 'Closed by the rules', page: 'Closed with the page' };
+export const ENDED: Record<Trade['how'] | PaperOptTrade['how'] | PaperFutTrade['how'], string> = { sold: 'Sold by you', target: 'Target hit', stopped: 'Stopped out', expired: 'Held to the bell', closed: 'Closed by you', scaled: 'Scaled out', rule: 'Closed by the rules', page: 'Closed with the page' };
 /** A piece a trade left in, in a word */
 export const OUT_WORD: Record<'target' | 'stop' | 'hand' | 'bell' | 'roll' | 'rule' | 'page', string> = { target: 'target', stop: 'stop', hand: 'by hand', bell: 'the bell', roll: 'the roll', rule: 'the rules', page: 'the page closing' };
 /** "Scaled out · target, target, stop" — how each piece left, in order */
 export const piecesWords = (r: JournalRow): string => r.t.legs.filter(l => l.out).map(l => OUT_WORD[l.out!]).join(', ');
 /** How it ended, in the three ways a reader sorts by: their own hand, the target, the stop — the bell and the roll are the market's */
 type EndedCut = 'hand' | 'target' | 'stop' | 'market' | 'pieces';
-const endedCutOf = (r: JournalRow): EndedCut => (r.t.how === 'scaled' ? 'pieces' : r.t.how === 'target' ? 'target' : r.t.how === 'stopped' ? 'stop' : r.t.how === 'expired' || r.t.how === 'rolled' || r.t.how === 'rule' || r.t.how === 'page' ? 'market' : 'hand');
+const endedCutOf = (r: JournalRow): EndedCut => (r.t.how === 'scaled' ? 'pieces' : r.t.how === 'target' ? 'target' : r.t.how === 'stopped' ? 'stop' : r.t.how === 'expired' || r.t.how === 'rule' || r.t.how === 'page' ? 'market' : 'hand');
 /** A price as its own desk prints it: a future on its tick, a contract to the cent */
-export const priceWordsOf = (r: JournalRow, v: number): string => (r.fut ? (r.paper ? futWords(r.t.symbol, v) : futPrice(futProduct(r.t.symbol), v)) : v.toFixed(2));
+export const priceWordsOf = (r: JournalRow, v: number): string => (r.fut ? futWords(r.t.symbol, v) : v.toFixed(2));
 
 /** A trade's entry — the first journal's one note is the first answer until that answer is written */
 export const entryOf = (r: JournalRow): JournalEntry => {

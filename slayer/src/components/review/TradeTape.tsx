@@ -1,18 +1,17 @@
 /* A closed trade on its chart: the days it was on, the day before and the rest of the last day, with arrows in and
    out and the price lines that applied. */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { LineStyle, createSeriesMarkers, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type SeriesType, type Time, type UTCTimestamp } from 'lightweight-charts';
 import StrikeChart, { DEFAULT_INDICATORS, DEFAULT_OVERLAYS, type ChartLayerApi, type ChartOverlays, type ChartTape } from '../gex/StrikeChart';
 import { chartGround, useCandleThemeKey } from '../gex/candleTheme';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import { readToken } from '../../theme/theme';
 import type { Excursion } from '../../data/review/excursion';
-import { futDayBars, futPrice, futProduct } from '../../data/review/futuresTape';
 import { instantOf, nameOf, type JournalRow } from '../../data/review/journal';
 import { PATHS_KEPT, candlesOfPath } from '../../data/paper/engine';
 import { futWords, paperFut } from '../../data/paper/products';
-import { baseIvAt, dayBars, dayIndex, nextDay, prevDay } from '../../data/review/tape';
+import { dayBars, dayNumber, ensureBars, historyRev, prevDay, sessionAfter, subscribeHistory } from '../../data/review/history';
 import { tfMinutes, type Timeframe } from '../../data/timeframe';
 import type { KeyLevels } from '../../types/gex';
 
@@ -123,29 +122,34 @@ const TradeTape = ({ row, excursion, height = 380 }: { row: JournalRow; excursio
 
   /* the days on the tape: the one before the way in, every day it was on, all of the last one */
   const path = row.paper ? (row.s.paths[row.t.id] ?? null) : null;
+  /* a backtest trade's days are its recorded bars: they load (the day before the way in too), and the tape is drawn as they land */
+  const hrev = useSyncExternalStore(subscribeHistory, historyRev, historyRev);
+  const days = useMemo(() => {
+    if (row.paper) return [];
+    const t = row.t as Extract<JournalRow, { paper?: undefined }>['t'];
+    const out = [prevDay(t.opened.day)];
+    for (let d = t.opened.day, n = 0; n < 60; d = sessionAfter(d), n++) {
+      out.push(d);
+      if (d >= t.closed.day) break;
+    }
+    return out;
+  }, [row.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    for (const d of days) void ensureBars(symbol, d);
+  }, [days, symbol]);
   const tape = useMemo<ChartTape>(() => {
+    /* the vol the reach scales read: the IV the trade went in on, where it is known */
+    const ivIn = 'ivIn' in row.t && typeof row.t.ivIn === 'number' ? row.t.ivIn : 0;
     if (row.paper) {
       const bars = path ? candlesOfPath(path) : [];
       if (row.fut) {
         const p = paperFut(symbol);
-        return { bars, iv: p.vol, key: `journal:${row.key}`, precision: { decimals: p.decimals, tick: p.tick } };
+        return { bars, iv: 0, key: `journal:${row.key}`, precision: { decimals: p.decimals, tick: p.tick } };
       }
-      return { bars, iv: 0.2, key: `journal:${row.key}` };
+      return { bars, iv: ivIn, key: `journal:${row.key}` };
     }
-    const days: string[] = [];
-    const before = prevDay(row.t.opened.day);
-    if (before) days.push(before);
-    const t = row.t as Extract<JournalRow, { paper?: undefined }>['t'];
-    for (let d: string | null = t.opened.day, n = 0; d && n < 60; d = nextDay(d), n++) {
-      days.push(d);
-      if (d === t.closed.day || dayIndex(d) >= dayIndex(t.closed.day)) break;
-    }
-    if (row.fut) {
-      const p = futProduct(symbol);
-      return { bars: days.flatMap(d => futDayBars(symbol, d)), iv: p.vol, key: `journal:${row.key}`, clock: 'ny', precision: { decimals: p.decimals, tick: p.tick } };
-    }
-    return { bars: days.flatMap(d => dayBars(symbol, d)), iv: baseIvAt(symbol, t.closed.day), key: `journal:${row.key}`, clock: 'ny' };
-  }, [row.key]); // eslint-disable-line react-hooks/exhaustive-deps
+    return { bars: days.flatMap(d => dayBars(symbol, d)), iv: ivIn, key: `journal:${row.key}`, clock: 'ny' };
+  }, [row.key, days, hrev]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const bucket = Math.max(1, tfMinutes(frame)) * 60;
   /* a moment is the END of its minute (journal.ts); an arrow sits on the candle the fill happened IN — the one that began a minute
@@ -156,7 +160,7 @@ const TradeTape = ({ row, excursion, height = 380 }: { row: JournalRow; excursio
   /* An arrow a fill (the ladder): every way in and every piece going out, on the candle it happened in */
   const marks = useMemo(() => {
     const onBar = (t: number) => t - (t % bucket);
-    const price = (v: number) => (row.fut ? (row.paper ? futWords(symbol, v) : futPrice(futProduct(symbol), v)) : v.toFixed(2));
+    const price = (v: number) => (row.fut ? futWords(symbol, v) : v.toFixed(2));
     const many = row.t.legs.length > 2;
     return row.t.legs.map(l => {
       const going = row.fut ? (l as { exit?: boolean }).exit === true : l.side === 'sell';
@@ -196,7 +200,7 @@ const TradeTape = ({ row, excursion, height = 380 }: { row: JournalRow; excursio
         <StrikeChart
           ticker={symbol}
           paneId="journal:trade"
-          revision={row.paper ? Math.floor(row.t.closed.at / 1000) : dayIndex((row.t as Extract<JournalRow, { paper?: undefined }>['t']).closed.day) * 2000 + (row.t as Extract<JournalRow, { paper?: undefined }>['t']).closed.minute}
+          revision={row.paper ? Math.floor(row.t.closed.at / 1000) : dayNumber((row.t as Extract<JournalRow, { paper?: undefined }>['t']).closed.day) * 2000 + (row.t as Extract<JournalRow, { paper?: undefined }>['t']).closed.minute + tape.bars.length}
           levels={keyLevels}
           timeframe={frame}
           tape={tape}

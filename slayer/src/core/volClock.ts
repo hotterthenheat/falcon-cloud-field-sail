@@ -24,6 +24,14 @@ export function vendorIvOnTradingClock(vendorIv: number, expiry: string, nowMs =
   return vendorIv * Math.sqrt(tCal / tTrade);
 }
 
+/** ∂σ_trading/∂σ_quoted = √(T_calendar/T_trading): a vega, vanna or zomma taken per trading-clock vol point, times this, is
+    per point of the vol the vendor quotes (the calendar vol a trader reads); vomma takes it twice. */
+export function quotedVolPoint(expiry: string, nowMs = Date.now()): number {
+  const tTrade = tradingYears(expiry, nowMs);
+  const tCal = calendarYears(expiry, nowMs);
+  return tTrade > 0 && tCal > 0 ? Math.sqrt(tCal / tTrade) : 1;
+}
+
 /** A 0DTE quote is stale after 2 minutes. A longer expiry keeps 15. */
 export function quoteMaxAge(expiry: string, nowMs = Date.now()): number {
   return expiry === nyIsoDate(nowMs) ? 2 * 60_000 : 15 * 60_000;

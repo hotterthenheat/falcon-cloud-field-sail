@@ -8,7 +8,7 @@ import { spotChangePct } from './gex';
 import { bookToday, isoDate, nextSession, MONTHS } from '../core/calendar';
 import { expiryOpen } from '../core/tradingYear';
 import { expiryLabel, peekIv } from './uwBook';
-import { HIGHER_KEYS, contractHigher, strikeHigher, yearsLeft, type HigherKey } from './liveHigher';
+import { HIGHER_KEYS, chainClock, contractHigher, strikeHigher, type HigherKey } from './liveHigher';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
 import type { ExposureLevels, ExposureProfileData } from '../types/gex';
 
@@ -34,10 +34,10 @@ export function contractsReady(snapshot: MarketSnapshot | null | undefined): boo
 /** The unit each greek is stated in — the matrix's own headers. */
 export const GREEK_UNIT: Record<Greek, string> = {
   gex: '1% move',
-  dex: '1σ move',
+  dex: '$ of stock',
   vex: '1 vol pt',
   vanna: '1 vol pt',
-  charm: '1 day',
+  charm: 'per session',
   color: 'per session',
   vomma: 'per vol pt',
   speed: 'per 1%',
@@ -176,7 +176,6 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow): ExposureSurf
   const king = {} as Record<Greek, KingNode>;
   const factCol = cols.map(c => columnFacts(c.chain, c.date, snapshot.uwFacts));
   const want = new Set(strikes);
-  const yearCache = new Map<string, number | null>();
   const closed: boolean[] = [];
   const miss: boolean[][] = [];
   let skipped = 0;
@@ -187,11 +186,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow): ExposureSurf
       closed.push(false);
       return null;
     }
-    let t = yearCache.get(col.date);
-    if (t === undefined) {
-      t = yearsLeft(col.date);
-      yearCache.set(col.date, t);
-    }
+    const { years: t, volPt } = chainClock(col.chain, col.date);
     /* No time left is not a zero. The column is marked closed and the cells stay blank. */
     if (t == null) {
       closed.push(true);
@@ -217,7 +212,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow): ExposureSurf
       }
       const si = at.get(node.strike);
       if (si != null && dropped) blankMiss[si] = true;
-      const h = strikeHigher(snapshot.spot, node.strike, t, node.callIv, node.putIv, callN, putN);
+      const h = strikeHigher(snapshot.spot, node.strike, t, node.callIv, node.putIv, callN, putN, volPt);
       if (h) m.set(node.strike, h);
     }
     return m;
@@ -382,7 +377,7 @@ export function buildExposureSurface(snapshot: MarketSnapshot, half: StrikeWindo
     for (const g of GREEKS) bag[g] = [];
     const oiRow: number[] = [];
     /* Vanna, charm and the higher greeks come from this expiry's own time and vol.
-       Higher greeks take −1 on both legs (dealers short the option), not the 0.55 participation. */
+       Higher greeks are signed by the one dealer model (core/dealerSign.ts), not the 0.55 participation. */
     const years = Math.max(0.5, chain.expiry.sessions) / 252;
     const blank = () => {
       for (const g of GREEKS) bag[g].push({ put: 0, call: 0 });
@@ -404,7 +399,7 @@ export function buildExposureSurface(snapshot: MarketSnapshot, half: StrikeWindo
       bag.vex.push({ put: vegaOf(r.put), call: vegaOf(r.call) });
       bag.vanna.push({ put: hp.vanna * 0.01 * r.put.oi * 100 * spot * DEALER_PUT, call: hc.vanna * 0.01 * r.call.oi * 100 * spot * DEALER_CALL });
       bag.charm.push({ put: (hp.charmPut * r.put.oi * 100 * spot * DEALER_PUT) / 252, call: (hc.charmCall * r.call.oi * 100 * spot * DEALER_CALL) / 252 });
-      const putH = contractHigher(spot, s, years, r.put.iv / 100, r.put.oi);
+      const putH = contractHigher(spot, s, years, r.put.iv / 100, r.put.oi, 'P');
       const callH = contractHigher(spot, s, years, r.call.iv / 100, r.call.oi);
       for (const k of HIGHER_KEYS) bag[k].push({ put: putH?.[k] ?? 0, call: callH?.[k] ?? 0 });
       oiRow.push(r.put.oi + r.call.oi);

@@ -10,15 +10,18 @@ import { nyDayOfUtcStamp, nyDaysAgo } from './nyDate';
 import { askCompanyNames, companyName, companyNamePending, companyNamesRev, displayName, hasVendorName, placeDisplay, isListed, rememberCompanyName, rememberCompanyNames, subscribeCompanyNames, tickerName } from './tickers';
 import { screenerNeedsCloses, screenerRead } from './liveQuote';
 import { loadCloses } from './stockFile';
+import { regularCloses } from './dayChange';
+import { body, createStore, keepFresh, keptRead, liveGet, type Cadence, type Get, type KeptRead } from './feedStore';
 import {
-  whalesEtfFlow,
   whalesEtfHoldings,
   whalesEtfInfo,
+  whalesEtfFlow,
   whalesHoldings,
   whalesInstitutions,
   whalesScreener,
   whalesStock,
   uwCall,
+  type UwDaily,
   type UwEtfFlow,
   type UwEtfHolding,
   type UwEtfInfo,
@@ -100,6 +103,8 @@ interface Snap {
   stockStatus: FileStatus;
   stocks: StockPick[];
   cards: Record<string, StockCard | null>;
+  /** Per book: the instant of the kept answers it shows until the fresh read lands, else null */
+  keptAt: Partial<Record<Part, number | null>>;
 }
 
 const empty: Snap = {
@@ -118,15 +123,18 @@ const empty: Snap = {
   stockStatus: 'loading',
   stocks: [],
   cards: {},
+  keptAt: {},
 };
 
+const store = createStore<Snap>(empty);
 let snap: Snap = empty;
-const listeners = new Set<() => void>();
-
 const emit = (next: Partial<Snap>) => {
   snap = { ...snap, ...next };
-  listeners.forEach(fn => fn());
+  store.set(snap);
 };
+/* a book read over the kept answers is shown only until the fresh read lands, and is marked with their instant */
+const keptMay = (part: Part, kept: KeptRead | null): boolean => !kept || (snap.keptAt[part] !== null && kept.at != null);
+const keptMark = (part: Part, kept: KeptRead | null): Pick<Snap, 'keptAt'> => ({ keptAt: { ...snap.keptAt, [part]: kept ? kept.at : null } });
 
 const num = (v: unknown): number => {
   const n = Number(v);
@@ -293,6 +301,8 @@ function houseFacts(list: readonly UwInstitution[]): Pick<Snap, 'houseTotals' | 
 /* One house's page reads the house list (its address, CIK and totals) and that house's own lines; only the
    Institutions page reads the whole book. */
 const houseList: { p: Promise<UwInstitution[]> | null } = { p: null };
+const HOUSES_PATH = '/institutions?limit=40&order=total_value';
+const holdingsPath = (who: string) => `/institution/${encodeURIComponent(who)}/holdings?limit=${HOUSE_LINES}`;
 const houseRead = new Map<string, { status: FileStatus; rows: InstitutionRow[]; name: string | null }>();
 function listHouses(): Promise<UwInstitution[]> {
   houseList.p ??= whalesInstitutions(40)
@@ -340,14 +350,14 @@ export function wantAllHouses(): void {
   instMore = null;
   go?.();
 }
-async function pullInstitutions() {
+async function pullInstitutions(get: Get = liveGet, kept: KeptRead | null = null) {
   try {
-    const houses = await listHouses();
+    const houses = kept ? await body<UwInstitution[]>(get, HOUSES_PATH) : await listHouses();
     if (!Array.isArray(houses) || houses.length === 0) throw new Error('shape');
     const rows: InstitutionRow[] = [];
     /* ten houses at a time, the book published once each batch is whole */
     const list = [...(houses as UwInstitution[])].sort((a, b) => (numOr(b.total_value) ?? 0) - (numOr(a.total_value) ?? 0));
-    emit(houseFacts(list));
+    if (!kept) emit(houseFacts(list));
     let done = 0;
     const readHouse = async (house: UwInstitution) => {
       done += 1;
@@ -355,15 +365,20 @@ async function pullInstitutions() {
       if (!name) return;
       const filed = house.filing_date || house.date || '';
       /* By the filer's CIK when it has one: some long names 404 by name. */
-      const got = await whalesHoldings(house.cik?.trim() || name, HOUSE_LINES).catch(() => [] as UwHolding[]);
+      const got = await body<UwHolding[]>(get, holdingsPath(house.cik?.trim() || name)).catch(() => [] as UwHolding[]);
       for (const h of Array.isArray(got) ? got : []) {
         const row = rowFromHolding(name, filed, h);
         if (row) rows.push(row);
       }
     };
+    if (kept) {
+      await inBatches(list.slice(0, INST_FIRST), 10, readHouse);
+      if (rows.length && keptMay('inst', kept) && snap.instStatus === 'loading') emit({ ...houseFacts(list), instStatus: 'live', institutions: rows.sort((a, b) => b.valueB - a.valueB), instProgress: null, instHeld: true, ...keptMark('inst', kept) });
+      return;
+    }
     const publish = (held: boolean) => {
       /* the rows land a batch at a time, so the grid fills in seconds; the head says how many houses are in */
-      if (rows.length) emit({ instStatus: 'live', institutions: rows.slice().sort((a, b) => b.valueB - a.valueB), instProgress: done < list.length ? { done, total: list.length } : null, instHeld: held });
+      if (rows.length) emit({ instStatus: 'live', institutions: rows.slice().sort((a, b) => b.valueB - a.valueB), instProgress: done < list.length ? { done, total: list.length } : null, instHeld: held, ...keptMark('inst', null) });
     };
     const first = list.slice(0, INST_FIRST);
     const rest = list.slice(INST_FIRST);
@@ -381,7 +396,7 @@ async function pullInstitutions() {
     if (rows.length === 0) throw new Error('no house landed');
     emit({ instStatus: 'live', institutions: rows.sort((a, b) => b.valueB - a.valueB), instProgress: null, instHeld: false });
   } catch {
-    if (snap.institutions.length === 0) emit({ instStatus: 'error' });
+    if (!kept && snap.institutions.length === 0) emit({ instStatus: 'error' });
   }
 }
 
@@ -539,13 +554,14 @@ export const SHORTS_MIN_FLOAT = 20_000_000;
 
 export const FUND_TYPES = /\b(?:etf|etn|fund|trust|closed[- ]end)\b/i;
 
-async function pullShorts() {
+const screenerPath = (tickers: readonly string[]) => `/screener/stocks?ticker=${tickers.map(t => encodeURIComponent(t)).join(',')}`;
+async function pullShorts(get: Get = liveGet, kept: KeptRead | null = null) {
   try {
     /* the latest settlement on file */
-    const head = await uwCall('/short_screener?order_by=market_date&order_direction=desc&limit=1');
+    const head = await get('/short_screener?order_by=market_date&order_direction=desc&limit=1');
     const newest = Array.isArray(head.data) ? String((head.data as UwShort[])[0]?.market_date ?? '').slice(0, 10) : '';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newest)) throw new Error(head.error || 'no settlement');
-    const rows = await uwCall(`/short_screener?order_by=si_float&order_direction=desc&limit=${SHORTS_SCREEN}&min_market_date=${newest}&max_si_float=1&min_total_float=${SHORTS_MIN_FLOAT}`);
+    const rows = await get(`/short_screener?order_by=si_float&order_direction=desc&limit=${SHORTS_SCREEN}&min_market_date=${newest}&max_si_float=1&min_total_float=${SHORTS_MIN_FLOAT}`);
     if (rows.error || !Array.isArray(rows.data)) throw new Error(rows.error || 'shape');
     const face = (rows.data as UwShort[]).map(shortFrom).filter((r): r is ShortRow => !!r).map(r => ({ ...r, borrowAsOf: newest }));
     let out = collapseShorts(face);
@@ -557,7 +573,7 @@ async function pullShorts() {
       Array.from({ length: Math.ceil(tickers.length / 40) }, (_, i) => tickers.slice(i * 40, i * 40 + 40)),
       2,
       async part => {
-        const got = await whalesScreener(part).catch(() => null);
+        const got = await body<Record<string, unknown>[]>(get, screenerPath(part)).catch(() => null);
         /* the same rows carry each name's full_name, kept so the name cells do not ask again */
         for (const r of Array.isArray(got) ? got : []) {
           const sym = String(r.ticker || '').toUpperCase();
@@ -583,8 +599,8 @@ async function pullShorts() {
     const older: ShortRow[] = [];
     for (let i = 0; i < tickers.length; i += 40) {
       const path = `/short_screener?tickers=${tickers.slice(i, i + 40).map(encodeURIComponent).join(',')}&min_market_date=${prior}&max_market_date=${before}&limit=200`;
-      let back = await uwCall(path).catch(() => null);
-      if (!back || back.error || !Array.isArray(back.data)) back = await uwCall(path).catch(() => null);
+      let back = await get(path).catch(() => null);
+      if (!kept && (!back || back.error || !Array.isArray(back.data))) back = await get(path).catch(() => null);
       if (back && !back.error && Array.isArray(back.data)) older.push(...(back.data as UwShort[]).map(shortFrom).filter((r): r is ShortRow => !!r));
     }
     if (older.length) {
@@ -593,10 +609,12 @@ async function pullShorts() {
       const byT = new Map(out.map(r => [r.ticker, r]));
       out = merged.map(r => ({ ...r, sector: byT.get(r.ticker)?.sector ?? r.sector, fund: byT.get(r.ticker)?.fund, borrowAsOf: newest }));
     }
-    out.sort((a, b) => b.interestPct - a.interestPct || a.ticker.localeCompare(b.ticker));
-    emit({ shortStatus: 'live', shorts: out });
+    /* the funds are listed after the stocks: they get no squeeze read */
+    out.sort((a, b) => Number(!!a.fund) - Number(!!b.fund) || b.interestPct - a.interestPct || a.ticker.localeCompare(b.ticker));
+    if (!keptMay('shorts', kept)) return;
+    emit({ shortStatus: 'live', shorts: out, ...keptMark('shorts', kept) });
   } catch {
-    if (snap.shorts.length === 0) emit({ shortStatus: 'error' });
+    if (!kept && snap.shorts.length === 0) emit({ shortStatus: 'error' });
   }
 }
 
@@ -696,24 +714,29 @@ const etfReads = new Map<string, FundReads>();
 let etfCommon: string[] = [];
 const etfHoldAsked = new Set<string>();
 const etfHoldRead = new Set<string>();
-async function pullEtfs() {
+async function pullEtfs(get: Get = liveGet, kept: KeptRead | null = null) {
   try {
     const rows: EtfRow[] = [];
     /* every fund asked at once — one by one, the head read "6 funds" for the half-minute the rest took to land */
     const reads: FundReads[] = await Promise.all(
       ETF_LIST.map(e =>
-        Promise.all([whalesEtfInfo(e.etf).catch(() => null as UwEtfInfo | null), Promise.resolve([] as UwEtfHolding[]), whalesEtfFlow(e.etf).catch(() => [] as UwEtfFlow[])]),
+        Promise.all([
+          body<UwEtfInfo>(get, `/etfs/${encodeURIComponent(e.etf)}/info`).catch(() => null as UwEtfInfo | null),
+          Promise.resolve([] as UwEtfHolding[]),
+          body<UwEtfFlow[]>(get, `/etfs/${encodeURIComponent(e.etf)}/in-outflow`).catch(() => [] as UwEtfFlow[]),
+        ]),
       ),
     );
+    if (!keptMay('etfs', kept)) return;
     const dateSets = reads.map(r => flowDates(r[2])).filter(d => d.size > 0);
     const common = dateSets.length ? [...dateSets[0]].filter(d => dateSets.every(set => set.has(d))).sort().reverse().slice(0, 5) : [];
-    etfCommon = common;
+    if (!kept) etfCommon = common;
     for (let k = 0; k < ETF_LIST.length; k++) {
       const read = reads[k];
       /* a fund whose holdings already landed (its own page, or an earlier ask) keeps them */
       const had = etfReads.get(ETF_LIST[k].etf);
       if (had && etfHoldRead.has(ETF_LIST[k].etf)) read[1] = had[1];
-      etfReads.set(ETF_LIST[k].etf, read);
+      if (!kept) etfReads.set(ETF_LIST[k].etf, read);
       const got = fundRow(ETF_LIST[k], read, common);
       if (!got) continue;
       rows.push(got.row);
@@ -721,9 +744,9 @@ async function pullEtfs() {
     if (rows.length === 0) throw new Error('no fund landed');
     const holdings: Snap['holdings'] = { ...snap.holdings };
     const holdingsCover: Snap['holdingsCover'] = { ...snap.holdingsCover };
-    emit({ etfStatus: 'live', etfs: rows, holdings, holdingsCover });
+    emit({ etfStatus: 'live', etfs: rows, holdings, holdingsCover, ...keptMark('etfs', kept) });
   } catch {
-    if (snap.etfs.length === 0) emit({ etfStatus: 'error' });
+    if (!kept && snap.etfs.length === 0) emit({ etfStatus: 'error' });
   }
 }
 /** Reads one fund's holdings for the index (once), and fills its row in */
@@ -779,22 +802,24 @@ const frac = (v: unknown): number | null => {
   return n == null ? null : n * 100;
 };
 
-async function pullStocks() {
+async function pullStocks(get: Get = liveGet, kept: KeptRead | null = null) {
   try {
     const tickers = UNIVERSE.map(u => u.ticker);
     const rows: Record<string, unknown>[] = [];
     for (let i = 0; i < tickers.length; i += 12) {
-      const part = await whalesScreener(tickers.slice(i, i + 12));
+      const part = kept ? await body<Record<string, unknown>[]>(get, screenerPath(tickers.slice(i, i + 12))).catch(() => null) : await whalesScreener(tickers.slice(i, i + 12));
       if (Array.isArray(part)) rows.push(...part);
     }
-    rememberCompanyNames(rows.map(r => [String(r.ticker || ''), String(r.full_name || '')] as const));
-    /* the screener carries no regular close outside the session, so each name's regular closes are read (once a day) */
+    if (!kept) rememberCompanyNames(rows.map(r => [String(r.ticker || ''), String(r.full_name || '')] as const));
+    /* the screener carries no regular close outside the session, so each name's regular closes are read (once a day);
+       a kept paint reads the closes kept with its rows */
     const closesOf = new Map<string, readonly { date: string; close: number }[] | null>();
     await Promise.all(
       rows.map(row => {
         const t = String(row.ticker || '').toUpperCase();
         if (!t || !screenerNeedsCloses(row)) return Promise.resolve();
-        return loadCloses(t)
+        const read = kept ? body<UwDaily[]>(get, `/stock/${encodeURIComponent(t)}/ohlc/1d?limit=18`).then(d => regularCloses(Array.isArray(d) ? d : []).slice(0, 5)) : loadCloses(t);
+        return read
           .then(c => void closesOf.set(t, c))
           .catch(() => void closesOf.set(t, null));
       }),
@@ -804,7 +829,7 @@ async function pullStocks() {
       const ticker = String(row.ticker || '').toUpperCase();
       const u = UNIVERSE.find(x => x.ticker === ticker);
       const read = screenerRead(row, closesOf.get(ticker) ?? null);
-      if (ticker && read) seedBatch(ticker, row, read);
+      if (ticker && read && !kept) seedBatch(ticker, row, read);
       /* the REGULAR price — the after-hours print kept apart, as every row and the quote read it */
       const price = read?.regular ?? null;
       if (!ticker || price == null || !(price > 0)) continue;
@@ -836,9 +861,12 @@ async function pullStocks() {
       picks.push({ ...pick, extPrice: read?.ext ?? null, extPct: read?.extPct ?? null });
     }
     picks.sort((a, b) => b.composite - a.composite);
-    emit({ stockStatus: picks.length ? 'live' : 'error', stocks: picks });
+    if (kept && (!picks.length || !keptMay('stocks', kept))) return;
+    /* a refresh that came back empty keeps the board on screen */
+    if (!picks.length && snap.stocks.length) return;
+    emit({ stockStatus: picks.length ? 'live' : 'error', stocks: picks, ...keptMark('stocks', kept) });
   } catch {
-    if (snap.stocks.length === 0) emit({ stockStatus: 'error' });
+    if (!kept && snap.stocks.length === 0) emit({ stockStatus: 'error' });
   }
 }
 
@@ -886,20 +914,29 @@ function ensureStockCard(ticker: string): void {
 /* Each part of the store starts when a hook that reads it mounts, never before, so a page reads only what it shows. */
 type Part = 'inst' | 'shorts' | 'etfs' | 'stocks';
 const partStarted = new Set<Part>();
+/* The board moves with the tape; the funds' flows once a day; the 13F houses and the short settlements are read once a
+   visit (they change by the quarter and the fortnight). */
+const CADENCE: Record<Part, Cadence> = {
+  stocks: { open: 2 * 60_000, extended: 10 * 60_000, closed: null },
+  etfs: { open: 30 * 60_000, extended: 60 * 60_000, closed: null },
+  inst: { open: Infinity, extended: null, closed: null },
+  shorts: { open: Infinity, extended: null, closed: null },
+};
+const PULL: Record<Part, (get?: Get, kept?: KeptRead | null) => Promise<void>> = { inst: pullInstitutions, shorts: pullShorts, etfs: pullEtfs, stocks: pullStocks };
 function ensurePart(part: Part) {
   if (partStarted.has(part) || typeof window === 'undefined') return;
   partStarted.add(part);
-  if (part === 'inst') void pullInstitutions();
-  else if (part === 'shorts') void pullShorts();
-  else if (part === 'etfs') void pullEtfs();
-  else void pullStocks();
+  /* the kept answers paint the book first, marked with their instant, until the fresh read lands */
+  const k = keptRead();
+  void PULL[part](k.get, k);
+  keepFresh(`files:${part}`, CADENCE[part], () => PULL[part](), () => store.readers() > 0);
 }
 
 function subscribeTo(parts: readonly Part[]): (fn: () => void) => () => void {
   return fn => {
-    listeners.add(fn);
+    const off = store.subscribe(fn);
     parts.forEach(ensurePart);
-    return () => listeners.delete(fn);
+    return off;
   };
 }
 const SUBS: Record<string, (fn: () => void) => () => void> = {};
@@ -912,11 +949,11 @@ function useFiles(...parts: Part[]): Snap {
   return useSyncExternalStore(subFor(parts), peek, peek);
 }
 
-export function useInstitutions(): { status: FileStatus; rows: InstitutionRow[]; houses: string[]; progress: { done: number; total: number } | null; held: boolean } {
+export function useInstitutions(): { status: FileStatus; rows: InstitutionRow[]; houses: string[]; progress: { done: number; total: number } | null; held: boolean; keptAt: number | null } {
   const s = useFiles('inst');
   /* every listed house, read or still held back */
   const houses = [...new Set([...s.institutions.map(r => r.name), ...Object.keys(s.houseTotals)])];
-  return { status: s.instStatus, rows: s.institutions, houses, progress: s.instProgress, held: s.instHeld };
+  return { status: s.instStatus, rows: s.institutions, houses, progress: s.instProgress, held: s.instHeld, keptAt: s.keptAt.inst ?? null };
 }
 
 export function houseNameFromSlug(slug: string): string | null {
@@ -941,9 +978,9 @@ export function useHouseBook(slug: string): { status: FileStatus; name: string |
   return { status, name, rows, totalB: total ? total / 1e9 : null, linesRead: HOUSE_LINES, optionsB: opts ? { calls: opts.calls / 1e9, puts: opts.puts / 1e9 } : null };
 }
 
-export function useShorts(): { status: FileStatus; rows: ShortRow[] } {
+export function useShorts(): { status: FileStatus; rows: ShortRow[]; keptAt: number | null } {
   const s = useFiles('shorts');
-  return { status: s.shortStatus, rows: s.shorts };
+  return { status: s.shortStatus, rows: s.shorts, keptAt: s.keptAt.shorts ?? null };
 }
 
 /* A name's short print is its own two newest settlements; the screen's row stands in only when the Shorts page has it. */
@@ -987,9 +1024,9 @@ export function useShortRow(ticker: string): { status: FileStatus; row: ShortRow
 }
 
 type HoldingsCover = { lines: number; weight: number; fundCount: number | null };
-export function useEtfs(): { status: FileStatus; rows: EtfRow[]; holdingsOf: (etf: string) => EtfHolding[]; coverOf: (etf: string) => HoldingsCover | null } {
+export function useEtfs(): { status: FileStatus; rows: EtfRow[]; holdingsOf: (etf: string) => EtfHolding[]; coverOf: (etf: string) => HoldingsCover | null; keptAt: number | null } {
   const s = useFiles('etfs');
-  return { status: s.etfStatus, rows: s.etfs, holdingsOf: etf => s.holdings[etf.toUpperCase()] ?? [], coverOf: etf => s.holdingsCover[etf.toUpperCase()] ?? null };
+  return { status: s.etfStatus, rows: s.etfs, holdingsOf: etf => s.holdings[etf.toUpperCase()] ?? [], coverOf: etf => s.holdingsCover[etf.toUpperCase()] ?? null, keptAt: s.keptAt.etfs ?? null };
 }
 
 export function useEtfFile(etf: string): { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[]; cover: HoldingsCover | null } {
@@ -1052,9 +1089,9 @@ export function useEtfWeights(etf: string): { status: FileStatus; sectors: { nam
   return got;
 }
 
-export function useLiveStocks(): { status: FileStatus; picks: StockPick[] } {
+export function useLiveStocks(): { status: FileStatus; picks: StockPick[]; keptAt: number | null } {
   const s = useFiles('stocks');
-  return { status: s.stockStatus, picks: s.stocks };
+  return { status: s.stockStatus, picks: s.stocks, keptAt: s.keptAt.stocks ?? null };
 }
 
 /* A name the listing lacks is asked of /stock/{t}/info once it is on screen (tickers.ts keeps it a fortnight). */

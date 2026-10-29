@@ -4,7 +4,7 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import type { BookContract } from '../types/trace';
 import { dayLean, LEAN_EDGE } from './traceLean';
-import { fmtCount as num } from './traceLive';
+import { fmtCount as num } from './traceRows';
 
 export type ReasonField =
   | 'premium'

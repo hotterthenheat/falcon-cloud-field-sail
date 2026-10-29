@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { thetaCall } from './theta';
+import { pageHidden, thetaGet } from './thetaFeed';
 import type { DeskSession } from './deskSession';
 
 const INDEX = new Set(['SPX', 'RUT', 'NDX', 'VIX', 'XSP']);
@@ -9,7 +9,8 @@ interface SessionQuote {
   ask: number;
 }
 
-/** The live stock quote. Used when a session has no prints, so the cash close is not shown in its place. */
+/** ThetaData's live bid and ask, every 15 s while the tab is in view. Used when a session has no prints, so the cash
+    close is not shown in its place. With the terminal down the last quote stays. */
 export function useSessionQuote(ticker: string, session: DeskSession, needed: boolean): SessionQuote | null {
   const [quote, setQuote] = useState<SessionQuote | null>(null);
   useEffect(() => {
@@ -18,17 +19,18 @@ export function useSessionQuote(ticker: string, session: DeskSession, needed: bo
       return;
     }
     const t = ticker.trim().toUpperCase();
-    if (!t) return;
+    /* an index has a price, not a bid and an ask */
+    if (!t || INDEX.has(t)) return;
     let dead = false;
     const pull = () => {
-      const root = INDEX.has(t) ? 'index' : 'stock';
-      void thetaCall(`/${root}/snapshot/quote?symbol=${encodeURIComponent(t)}&format=json`, true).then(res => {
+      if (pageHidden()) return;
+      void thetaGet(`/stock/snapshot/quote?symbol=${encodeURIComponent(t)}&format=json`, true).then(res => {
         if (dead) return;
         const row = Array.isArray(res.data) ? (res.data[0] as Record<string, unknown> | undefined) : undefined;
         const bid = Number(row?.bid);
         const ask = Number(row?.ask);
         if (bid > 0 && ask >= bid) setQuote({ bid, ask });
-        else setQuote(null);
+        else if (!res.error) setQuote(null);
       });
     };
     pull();

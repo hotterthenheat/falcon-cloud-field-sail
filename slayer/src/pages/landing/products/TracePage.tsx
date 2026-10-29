@@ -24,7 +24,7 @@ const TracePage = () => (
     head={['The options tape.', 'And the pages that read it.']}
     intro={
       <>
-        Trace is where the day’s options flow lands. The live tape streams the rich prints as they happen — sweeps, blocks, the side they were paid on — with the dark pool beside it. The other pages read the same book from
+        Trace is where the day’s options flow lands. The live tape lists the rich prints as Unusual Whales reports them, newest first — sweeps, blocks, the side they were paid on — with the dark pool beside it. The other pages read the same book from
         different angles: which way each name’s money leans, what was built overnight and still stands, which quarter hour a contract’s whole day happened in, the spreads reconstructed out of their legs, and two names
         side by side. A press on any row opens the contract’s card, where the one engine reads it.
       </>

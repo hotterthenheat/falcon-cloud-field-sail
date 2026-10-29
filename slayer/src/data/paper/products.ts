@@ -1,8 +1,47 @@
 /*
-  The futures and indexes the paper desk knows, as data the engine can read without the feed.
+  The futures and indexes the paper desk knows, as data the engine can read without the feed. Futures are not traded:
+  neither key carries a futures feed (FUTURES_LIVE in feed.ts); the contract specs stay for the engine's rules.
 */
 
-import { FUT_PRODUCTS, frontContractOf, onTick, type FutProduct } from '../review/futuresTape';
+export interface FutProduct {
+  symbol: string;
+  name: string;
+  /** Dollars a whole point is worth, a contract */
+  pointValue: number;
+  tick: number;
+  decimals: number;
+  /** The day margin a contract */
+  margin: number;
+  /** Dollars a contract, each way */
+  fee: number;
+  /** The contract months it lists, as month codes */
+  months: string;
+  /** The day of the month BEFORE the contract month (0) or OF it (1) the front month rolls on */
+  roll: { monthsBefore: 0 | 1; day: number };
+}
+export const FUT_PRODUCTS: FutProduct[] = [
+  { symbol: 'ES', name: 'S&P 500 futures', pointValue: 50, tick: 0.25, decimals: 2, margin: 1500, fee: 2, months: 'HMUZ', roll: { monthsBefore: 0, day: 10 } },
+  { symbol: 'MES', name: 'Micro S&P 500 futures', pointValue: 5, tick: 0.25, decimals: 2, margin: 150, fee: 0.5, months: 'HMUZ', roll: { monthsBefore: 0, day: 10 } },
+  { symbol: 'NQ', name: 'Nasdaq 100 futures', pointValue: 20, tick: 0.25, decimals: 2, margin: 2200, fee: 2, months: 'HMUZ', roll: { monthsBefore: 0, day: 10 } },
+  { symbol: 'MNQ', name: 'Micro Nasdaq 100 futures', pointValue: 2, tick: 0.25, decimals: 2, margin: 220, fee: 0.5, months: 'HMUZ', roll: { monthsBefore: 0, day: 10 } },
+];
+/** A price on the product's tick */
+export const onTick = (p: FutProduct, v: number): number => +(Math.round(v / p.tick) * p.tick).toFixed(p.decimals);
+const MONTH_CODES = 'FGHJKMNQUVXZ';
+const isoOf = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+/** The front month on a day ("ESZ6"): the first listed month whose roll day is still ahead */
+export function frontContractOf(p: FutProduct, day: string): string {
+  const d = new Date(`${day}T12:00:00`);
+  for (let i = 0; i < 26; i++) {
+    const y = d.getFullYear() + Math.floor((d.getMonth() + i) / 12);
+    const m = (d.getMonth() + i) % 12;
+    if (!p.months.includes(MONTH_CODES[m])) continue;
+    const rm = m - p.roll.monthsBefore;
+    const rollDay = isoOf(rm < 0 ? y - 1 : y, (rm + 12) % 12, p.roll.day);
+    if (rollDay > day) return `${p.symbol}${MONTH_CODES[m]}${String(y).slice(-1)}`;
+  }
+  return `${p.symbol}?`;
+}
 
 interface PaperFutProduct extends FutProduct {
   /** The fund it is priced off, the index's ratio to it, and the fixed carry in index points */
@@ -16,14 +55,14 @@ export const PAPER_FUTURES: PaperFutProduct[] = [
   { ...of('MES'), fund: 'SPY', ratio: 10, carry: 12 },
   { ...of('NQ'), fund: 'QQQ', ratio: 41, carry: 45 },
   { ...of('MNQ'), fund: 'QQQ', ratio: 41, carry: 45 },
-  { symbol: 'RTY', name: 'Russell 2000 futures', pointValue: 50, tick: 0.1, decimals: 2, margin: 1000, fee: 2, px: 2217, vol: 0.21, months: 'HMUZ', roll: { monthsBefore: 0, day: 10 }, fund: 'IWM', ratio: 10, carry: 6 },
-  { symbol: 'M2K', name: 'Micro Russell 2000 futures', pointValue: 5, tick: 0.1, decimals: 2, margin: 100, fee: 0.5, px: 2217, vol: 0.21, months: 'HMUZ', roll: { monthsBefore: 0, day: 10 }, fund: 'IWM', ratio: 10, carry: 6 },
+  { symbol: 'RTY', name: 'Russell 2000 futures', pointValue: 50, tick: 0.1, decimals: 2, margin: 1000, fee: 2, months: 'HMUZ', roll: { monthsBefore: 0, day: 10 }, fund: 'IWM', ratio: 10, carry: 6 },
+  { symbol: 'M2K', name: 'Micro Russell 2000 futures', pointValue: 5, tick: 0.1, decimals: 2, margin: 100, fee: 0.5, months: 'HMUZ', roll: { monthsBefore: 0, day: 10 }, fund: 'IWM', ratio: 10, carry: 6 },
 ];
 const BY_SYMBOL = new Map(PAPER_FUTURES.map(p => [p.symbol, p]));
 
-/* THE INDEXES. Each is made from its fund at the ratio its futures use and NO carry — a future trades over its
-   index by its carry, so ES less SPX is ES's 12 points, as it should be. Their options are listed the way the
-   funds' are (dailies, weeklies, monthlies) on the index's own strike spacing, and settle in cash at the bell. */
+/* THE INDEXES. Each is priced by ThetaData's index feed (thetaFeed.ts), its options read on their own root (SPXW,
+   NDXP, RUTW), settled in cash on the index's close. `step` is the strike spacing a strike near a price is rounded to
+   before the listing lands. */
 export interface PaperIndex {
   symbol: string;
   name: string;
@@ -41,8 +80,6 @@ export const PAPER_INDEXES: PaperIndex[] = [
 const INDEX_BY_SYMBOL = new Map(PAPER_INDEXES.map(x => [x.symbol, x]));
 export const isPaperIndex = (symbol: string): boolean => INDEX_BY_SYMBOL.has(symbol.toUpperCase());
 export const paperIndex = (symbol: string): PaperIndex | null => INDEX_BY_SYMBOL.get(symbol.toUpperCase()) ?? null;
-/** The index made from a price of its fund: fund × ratio, to the cent */
-export const indexOfFund = (x: PaperIndex, fund: number): number => Math.round(fund * x.ratio * 100) / 100;
 export const isPaperFuture = (symbol: string): boolean => BY_SYMBOL.has(symbol.toUpperCase());
 export const paperFut = (symbol: string): PaperFutProduct => BY_SYMBOL.get(symbol.toUpperCase()) ?? PAPER_FUTURES[0];
 /** A micro is a tenth of its big contract — what an evaluation's contract count reads */

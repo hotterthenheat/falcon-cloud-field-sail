@@ -38,6 +38,7 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     key: 'news',
+    bookless: true,
     title: 'News',
     group: 'Market',
     icon: Newspaper,
@@ -56,6 +57,7 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     key: 'earnings',
+    bookless: true,
     title: 'Earnings',
     group: 'Market',
     icon: CalendarClock,
@@ -74,6 +76,7 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     key: 'stocks',
+    bookless: true,
     title: 'Stocks',
     group: 'Market',
     icon: LineChart,
@@ -92,6 +95,7 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     key: 'filings',
+    bookless: true,
     title: 'Insiders & Congress',
     group: 'Market',
     icon: Landmark,
@@ -216,7 +220,7 @@ export const WIDGETS: WidgetDef[] = [
     minH: 3,
     maxH: 9,
     named: true,
-    defaults: { sleeve: 'weekly', scan: 'top-setups' },
+    defaults: { sleeve: 'weekly' },
     controls: setupsControls,
     page: { path: '/compass', label: 'Compass' },
     Body: SetupsTile,
@@ -243,6 +247,7 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     key: 'positions',
+    bookless: true,
     title: 'Positions & watchlist',
     group: 'Trade',
     icon: Briefcase,

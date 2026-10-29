@@ -685,7 +685,7 @@ const MultiLeg = () => {
         controls={
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
-            <SessionMark at={pack.at} fault={pack.fault} paused={hold.paused} ttlMs={45_000} />
+            <SessionMark at={pack.at} fault={pack.fault} paused={hold.paused} ttlMs={45_000} kept={pack.kept} />
             <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="structures" span />
             <DropdownSelect label="Screen" value={kind} options={SHAPE_OPTIONS} onChange={setKind} title="Which structures" testId="multi-leg-shape" />
             {/* not "Money": that means moneyness on every other page */}

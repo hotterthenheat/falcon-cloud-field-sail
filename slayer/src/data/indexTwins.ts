@@ -1,55 +1,49 @@
-/* One market, three prices: the ETF, the cash index (ETF × family ratio) and the futures (index + a carry basis), so a GEX surface
-   can read in the instrument traded. Ratios are fixed and the basis is a deterministic fair-value estimate, no wall clock. */
+/* One market, two prices: the ETF and the cash index it tracks, so a dealer book read in the ETF can be priced in
+   the index. The ratio is measured, the index's real-time price over the ETF's (ThetaData), never a constant. Futures
+   are not carried by either feed, so there is no futures lens. */
 
-export type TwinLensKey = 'etf' | 'index' | 'futures';
+import { peekThetaPrice, useThetaPrices } from './thetaQuote';
+
+export type TwinLensKey = 'etf' | 'index';
 
 interface TwinFamily {
   etf: string;
   index: string;
-  futures: string;
-  /** Cash index ≈ ETF × ratio (fixed in sim; measured live later). */
-  ratio: number;
-  /** Typical carry premium of the futures over cash, in index points. */
-  baseBasis: number;
 }
 
 const FAMILIES: Record<string, TwinFamily> = {
-  SPY: { etf: 'SPY', index: 'SPX', futures: 'ES', ratio: 10, baseBasis: 12 },
-  QQQ: { etf: 'QQQ', index: 'NDX', futures: 'NQ', ratio: 41, baseBasis: 45 },
-  IWM: { etf: 'IWM', index: 'RUT', futures: 'RTY', ratio: 10, baseBasis: 6 },
+  SPY: { etf: 'SPY', index: 'SPX' },
+  QQQ: { etf: 'QQQ', index: 'NDX' },
+  IWM: { etf: 'IWM', index: 'RUT' },
 };
 
 export const twinFamilyFor = (ticker: string): TwinFamily | null => FAMILIES[ticker.toUpperCase()] ?? null;
 
-// Tiny local hash — deterministic drift needs no import from gex.ts.
-function hash01(seed: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return ((h >>> 0) % 10000) / 10000;
+/** Two readings this far apart are not one moment: no ratio from them */
+const SAME_MOMENT_MS = 60_000;
+
+/** The index's price over the ETF's, from two readings taken together, or null */
+export function measuredRatio(fam: TwinFamily): number | null {
+  const i = peekThetaPrice(fam.index)?.value;
+  const e = peekThetaPrice(fam.etf)?.value;
+  if (!i || !e || !(i.price > 0) || !(e.price > 0)) return null;
+  if (Math.abs(i.read - e.read) > SAME_MOMENT_MS) return null;
+  return i.price / e.price;
 }
 
-/** Carry basis in index points — drifts deterministically with the tape
-    (seeded off the rounded ETF spot, so replays reproduce it exactly). */
-function twinBasis(fam: TwinFamily, etfSpot: number): number {
-  const drift = (hash01(`${fam.futures}-basis-${Math.round(etfSpot)}`) * 2 - 1) * fam.baseBasis * 0.25;
-  return Math.round((fam.baseBasis + drift) * 4) / 4;
+/** Keeps both prices of a family fresh while mounted; returns the ratio (null until both are in) */
+export function useTwinRatio(fam: TwinFamily | null): number | null {
+  useThetaPrices(fam ? [fam.etf, fam.index] : []);
+  return fam ? measuredRatio(fam) : null;
 }
 
-/** A price in the chosen instrument's terms. Futures round to their
-    quarter-point tick, the way the board actually prints them. */
-export function twinPrice(fam: TwinFamily, lens: TwinLensKey, etfPrice: number, etfSpot: number): number {
+/** A price in the chosen instrument's terms; NaN for the index lens until the ratio is measured */
+export function twinPrice(lens: TwinLensKey, etfPrice: number, ratio: number | null): number {
   if (lens === 'etf') return etfPrice;
-  const idx = etfPrice * fam.ratio;
-  if (lens === 'index') return idx;
-  return Math.round((idx + twinBasis(fam, etfSpot)) * 4) / 4;
+  return ratio != null && ratio > 0 ? etfPrice * ratio : NaN;
 }
 
-export const twinLabel = (fam: TwinFamily, lens: TwinLensKey): string =>
-  lens === 'etf' ? fam.etf : lens === 'index' ? fam.index : fam.futures;
+export const twinLabel = (fam: TwinFamily, lens: TwinLensKey): string => (lens === 'etf' ? fam.etf : fam.index);
 
-/** Index/futures prices print with thousands separators, no dollar sign. */
-export const fmtTwin = (v: number): string =>
-  v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** Index prices print with thousands separators, no dollar sign. */
+export const fmtTwin = (v: number): string => (Number.isFinite(v) ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—');

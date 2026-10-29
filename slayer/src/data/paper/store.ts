@@ -7,7 +7,8 @@ import { chime } from '../../core/sound';
 import { contractKey, type ContractId, type Quote } from '../review/quotes';
 import type { DayNote, JournalEntry } from '../review/journal';
 import { FUTURES_LIVE, LIFE, SIM_FEED, barNowOf, candlesOf, futCandles, futNow, isPaperFuture, optionQuote, optionQuoteAt, optionsOpen, paperFut, spotForBidNow } from './feed';
-import { dayWords, nyAt } from './clock';
+import { bellOf, dayWords, nyAt } from './clock';
+import { LAST_MIN, ensureBars, spotAt } from '../review/history';
 import {
   afterHand,
   closeStale,
@@ -73,6 +74,12 @@ export function liveMarket(now = Date.now()): PaperMarket {
     bar: (ticker: string) => barNowOf(isPaperFuture(ticker) ? paperFut(ticker).fund : ticker),
     candles: (ticker: string) => (isPaperFuture(ticker) ? futCandles(ticker) : candlesOf(ticker)),
     open: kind => (kind === 'option' ? optionsOpen(now) : FUTURES_LIVE),
+    /* ThetaData's recorded minute bars for the day: the last bar's close is the 16:00 print (13:00 on an early close) */
+    closeOf: (ticker: string, day: string) => {
+      if (now < bellOf(day) + 90_000) return NaN;
+      void ensureBars(ticker, day);
+      return spotAt(ticker, day, LAST_MIN);
+    },
   };
 }
 
@@ -99,8 +106,8 @@ function load(): Pick<PaperState, 'accounts' | 'inHand'> {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null') as { accounts?: unknown[]; inHand?: string | null } | null;
     const kept = Array.isArray(raw?.accounts) ? raw!.accounts.filter(isAccount) : [];
-    /* an account traded on the old simulated feed is ended and named for it: its prices were never the market's */
-    const accounts = kept.map(a => (a.feed === 'live' ? a : { ...a, feed: 'live' as const, name: a.name.endsWith(SIMULATED_TAG) ? a.name : `${a.name}${SIMULATED_TAG}`, status: a.status === 'open' ? ('ended' as const) : a.status, statusAt: a.status === 'open' ? Date.now() : a.statusAt, statusWhy: a.status === 'open' ? 'Ended: it was traded on the old simulated feed' : a.statusWhy }));
+    /* an account traded on the old simulated feed is not kept: its prices were never the market's */
+    const accounts = kept.filter(a => a.feed === 'live' && !a.name.endsWith(SIMULATED_TAG));
     const inHand = typeof raw?.inHand === 'string' && accounts.some(a => a.id === raw.inHand) ? raw.inHand : (accounts.find(a => a.status === 'open')?.id ?? null);
     return { accounts, inHand };
   } catch {

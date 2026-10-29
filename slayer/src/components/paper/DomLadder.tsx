@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Crosshair, X } from 'lucide-react';
 import { head, headWord } from '../review/DeskShell';
 import { dirInk, usdSigned } from '../review/words';
-import { onTick } from '../../data/review/futuresTape';
+import { onTick } from '../../data/paper/products';
 import { paperFut, futWords } from '../../data/paper/products';
 import type { Candle } from '../../types/market';
 

@@ -27,7 +27,7 @@ import {
 } from 'lightweight-charts';
 import { deskTape, ensureBook, historyForDate, peekDaySigma, peekEntry, peekIv, snapshotFor, useBookMinutes, useBookRev } from '../../data/uwBook';
 import { useSessionQuote } from '../../data/sessionQuote';
-import { getDeskSession, minuteInSession, sessionMeta, sessionOfMinute, useDeskSession } from '../../data/deskSession';
+import { getDeskSession, minuteInSession, sessionMeta, sessionOfMinute, useDeskSession, type DeskSession } from '../../data/deskSession';
 import { snapsAsOf } from '../../data/exposureScope';
 import { onGlide, promisedWidth } from '../../core/glide';
 import { compile, explain, run as runScript, type Compiled } from '../../core/pine';
@@ -56,7 +56,7 @@ import { CellView, makeCell } from './hoverCell';
 import { nyClock, nyMinutes } from '../../core/nyTime';
 import { beepAlert } from '../../data/alertSound';
 import { oiDoubled } from '../../data/oiWatch';
-import { bookFailed, ensureThetaCandles, markBookFailed, noteThetaDraw, thetaCandles } from '../../data/thetaCandles';
+import { chartGrain, thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
 import { nodeScore } from '../../data/nodeScore';
 import { fmtStrike } from '../../data/ahead';
 import PaneFoot from './PaneFoot';
@@ -335,27 +335,23 @@ const timeWords = (t: number) => {
 };
 
 export function displayBars(ticker: string, mins: number, alt?: AltBarSpec | null): Candle[] {
-  /* Sub-minute and rule bars have no live seconds tape — they stay empty. */
-  if (alt || mins < 1) return [];
-  ensureBook(ticker, 'board');
+  /* Rule bars have no live tape — they stay empty. */
+  if (alt) return [];
   const session = getDeskSession();
+  /* Pinpoint and the Dossier read Unusual Whales alone (docs/DATA_SOURCES.md); every other desk draws ThetaData's bars */
+  if (!uwOnlyDesk()) return thetaChartBars(ticker, mins, session);
+  if (mins < 1) return [];
+  ensureBook(ticker, 'board');
   const book = deskTape(ticker, session).bars;
-  if (book && book.length >= 1) {
-    noteThetaDraw(ticker, false);
-    return aggregateCandles(book, mins);
-  }
-  /* ThetaData stands in only off Pinpoint and the Dossier, which read Unusual Whales alone (docs/DATA_SOURCES.md) */
-  if (bookFailed(ticker) && !uwOnlyDesk()) {
-    const th = thetaCandles(ticker);
-    const rows = th?.filter(c => minuteInSession(nyMinutes(c.time * 1000), session)) ?? [];
-    if (rows.length >= 1) {
-      noteThetaDraw(ticker, true);
-      return aggregateCandles(rows, mins);
-    }
-  }
-  noteThetaDraw(ticker, false);
-  return [];
+  return book && book.length >= 1 ? aggregateCandles(book, mins) : [];
 }
+
+/** A session's window in New York time: "4:00 AM–9:30 AM ET" */
+const etWindow = (session: DeskSession): string => {
+  const { from, to } = sessionMeta(session);
+  const at = (m: number) => `${((Math.floor(m / 60) + 11) % 12) + 1}:${String(m % 60).padStart(2, '0')} ${m >= 720 ? 'PM' : 'AM'}`;
+  return `${at(from)}–${at(to)} ET`;
+};
 
 export const DEFAULT_OVERLAYS: ChartOverlays = {
   trails: true,
@@ -781,7 +777,7 @@ const StrikeChart = ({
     if (host) return aggregateCandles(host.bars, Math.max(1, mins));
     return displayBars(ticker, mins, alt);
   };
-  const baseBars = (): Candle[] => tapeRef.current?.bars ?? deskTape(ticker, session).bars;
+  const baseBars = (): Candle[] => tapeRef.current?.bars ?? (uwOnlyDesk() ? deskTape(ticker, session).bars : thetaChartBars(ticker, 1, session));
   /* HistoryForDate stamps the whole chain on every candle (candles × strikes objects) and the effects below ask for
      it several times a change: it is kept until the book emits (the rev), the chain or the candles move. */
   const bookRevRef = useRef(bookRev);
@@ -2520,8 +2516,8 @@ const StrikeChart = ({
 
     const base = baseBars();
     if (!tapeRef.current) {
-      const read = deskTape(ticker, session);
-      setSessionNote(prev => (prev === read.note ? prev : read.note));
+      const note = uwOnlyDesk() ? deskTape(ticker, session).note : thetaChartNote(ticker, tfMinutes(timeframe), session);
+      setSessionNote(prev => (prev === note ? prev : note));
     } else setSessionNote(prev => (prev == null ? prev : null));
     if (!base || base.length === 0) {
       /* A host tape that has not answered yet is empty on purpose. Waiting on the book here left the previous
@@ -2533,8 +2529,10 @@ const StrikeChart = ({
         setQuiet(true);
         return;
       }
-      const book = peekEntry(ticker);
-      if (!book || book.status === 'loading') return;
+      if (uwOnlyDesk()) {
+        const book = peekEntry(ticker);
+        if (!book || book.status === 'loading') return;
+      } else if (thetaChartNote(ticker, tfMinutes(timeframe), session) == null) return;
       candleSeries.setData([]);
       volumeSeries.setData([]);
       trails.setData([], 0, false, 60, trailsGreek);
@@ -2556,7 +2554,7 @@ const StrikeChart = ({
     if (bars.length > 0) setQuiet(false);
     /* A rule clock reads the seconds tape, so it wears the chip too. A host that brought real 15-second history is
        not "live since connect" — that chip would call two days of prints a gap. */
-    setLiveFrom(!tapeRef.current?.native && (altSpec || mins < 1) ? bars[0]?.time ?? 0 : null);
+    setLiveFrom(!tapeRef.current?.native && uwOnlyDesk() && (altSpec || mins < 1) ? bars[0]?.time ?? 0 : null);
     drawingsRef.current?.setBars(bars);
     /* The measure counts bars and annualizes off them, so the layer has to know what a bar is worth here — set
        beside the times it belongs with, so a timeframe change can never move one without the other. */
@@ -3227,12 +3225,16 @@ const StrikeChart = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [ticker]);
 
+  /* ThetaData's bars for this pane and its compares, kept fresh while it is mounted: the one-minute tape (the
+     session levels, the ATR and the cone read it) and the timeframe's own grain */
+  const compareNames = compares.map(c => c.ticker).join(',');
   useEffect(() => {
-    if (peekEntry(ticker)?.status === 'error' && !uwOnlyDesk()) {
-      markBookFailed(ticker);
-      ensureThetaCandles(ticker);
-    }
-  }, [ticker, revision]);
+    if (tape || uwOnlyDesk()) return;
+    const names = [ticker, ...compareNames.split(',').filter(Boolean)];
+    const grain = chartGrain(tfMinutes(timeframe));
+    const offs = names.flatMap(n => wantChartTape(n, grain, session));
+    return () => offs.forEach(off => off());
+  }, [ticker, compareNames, timeframe, session, !!tape]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
 
@@ -4087,7 +4089,7 @@ const StrikeChart = ({
           <div className="absolute inset-0 z-[4] flex items-center justify-center pointer-events-none" data-chart-empty>
             <div className="max-w-[280px] rounded-md border border-borderSubtle bg-canvas/85 px-4 py-3 text-center">
               <p className="font-mono text-t11 text-textPrimary">{tape?.note || sessionNote || 'No bars for this name'}</p>
-              <p className="mt-1 font-mono text-t10 text-textMuted">{quote ? `Quote ${quote.bid.toFixed(2)} × ${quote.ask.toFixed(2)}. No prints in this session.` : tape?.note ? `${sessionMeta(session).window}.` : 'This frame stays. Bars fill it when the tape answers.'}</p>
+              <p className="mt-1 font-mono text-t10 text-textMuted">{quote ? `Quote ${quote.bid.toFixed(2)} × ${quote.ask.toFixed(2)}. No prints in this session.` : tape?.note ? `${etWindow(session)}.` : 'This frame stays. Bars fill it when the tape answers.'}</p>
             </div>
           </div>
         )}
@@ -4534,7 +4536,7 @@ const StrikeChart = ({
           <span className="absolute bottom-12 left-2 z-10 pointer-events-none font-mono text-t9 uppercase tracking-wider text-textMuted bg-canvas/60 border border-borderSubtle/60 rounded px-1.5 py-0.5">
             {liveFrom === 0
               ? 'live only · awaiting first prints'
-              : `live only · from ${new Date(liveFrom * 1000).toLocaleTimeString('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' })}`}
+              : `live only · from ${new Date(liveFrom * 1000).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET`}
           </span>
         )}
 

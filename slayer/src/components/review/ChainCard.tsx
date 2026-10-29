@@ -1,7 +1,7 @@
 /* The chain beside the chart, shared by the backtest and the paper desk: a window that opens on the money, a
    strike that opens onto its stats, greeks and order. */
 
-import { useLayoutEffect, useRef, type CSSProperties } from 'react';
+import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
 import CompanyLogo from '../ui/CompanyLogo';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
@@ -52,9 +52,12 @@ interface Props {
   full: boolean;
   /** When this changes the window opens on the money again (a new expiry, side, day, session) */
   centreKey: string;
+  /** What the window shows while it has no rows (loading, nothing recorded, the terminal away) */
+  empty?: ReactNode;
 }
 
-const ChainCard = ({ ticker, title, spot, showName, stamp, right, onRight, expiry, expiryOptions, onExpiry, expiryTitle, rows, picked, drillOpen, onPick, drill, held, sold, full, centreKey }: Props) => {
+const px = (v: number) => (Number.isFinite(v) && v > 0 ? v.toFixed(2) : '—');
+const ChainCard = ({ ticker, title, spot, showName, stamp, right, onRight, expiry, expiryOptions, onExpiry, expiryTitle, rows, picked, drillOpen, onPick, drill, held, sold, full, centreKey, empty }: Props) => {
   const rowsRef = useRef<HTMLDivElement | null>(null);
   const pickedKey = picked ? contractKey(picked) : '';
   /* it opens with the money in its middle */
@@ -85,7 +88,7 @@ const ChainCard = ({ ticker, title, spot, showName, stamp, right, onRight, expir
           <span className="inline-flex items-center gap-1.5 h-5 pl-1 pr-1.5 rounded border border-silver/70 bg-silver/[0.12] font-mono text-t10 tnum" title={`${title}'s chain — touch the other chart, or its name at the head of the tape, for the other`} data-review-chain-name={ticker}>
             <CompanyLogo ticker={ticker} size={12} />
             <span className="font-bold text-silver">{ticker}</span>
-            <span className="text-textPrimary">{spot.toFixed(2)}</span>
+            <span className="text-textPrimary">{px(spot)}</span>
           </span>
         )}
         <span className="font-mono text-t9 uppercase tracking-widest text-textMuted">{stamp}</span>
@@ -107,6 +110,7 @@ const ChainCard = ({ ticker, title, spot, showName, stamp, right, onRight, expir
       {/* on the page the card is exactly as tall as the tape beside it (--tape-h, measured off the tape) and the window
           takes what its heads leave; in the takeover, what the ticket leaves; stacked on a phone, a fixed window */}
       <div ref={rowsRef} className="relative flex-1 min-h-0 max-lg:h-[402px] max-lg:flex-none overflow-y-auto overscroll-contain" role="listbox" aria-label="The chain" data-chain-window>
+        {!rows.length && empty}
         {rows.map((r, i) => {
           const q = right === 'C' ? r.call : r.put;
           const c: ContractId = { ticker, strike: r.strike, right, expiry: expiry! };
@@ -119,7 +123,7 @@ const ChainCard = ({ ticker, title, spot, showName, stamp, right, onRight, expir
               {line && (
                 <div className="flex items-center gap-2 px-4 h-5" aria-hidden="true" data-chain-money>
                   <span className="flex-1 h-px bg-borderMuted" />
-                  <span className="font-mono text-t9 tnum text-textSecondary">{spot.toFixed(2)}</span>
+                  <span className="font-mono text-t9 tnum text-textSecondary">{px(spot)}</span>
                   <span className="flex-1 h-px bg-borderMuted" />
                 </div>
               )}
@@ -138,11 +142,11 @@ const ChainCard = ({ ticker, title, spot, showName, stamp, right, onRight, expir
                   {mine && <span className="ml-1 text-t8 font-bold uppercase tracking-wider text-silver">held</span>}
                   {soldHere && <span className="ml-1 text-t8 font-bold uppercase tracking-wider text-textSecondary" title="The strike sold against the one bought — the other leg of a spread">sold</span>}
                 </span>
-                <span className="text-right text-textPrimary">{q.bid.toFixed(2)}</span>
-                <span className="text-right text-textPrimary">{q.ask.toFixed(2)}</span>
-                <span className="text-right text-textSecondary">{q.delta.toFixed(2)}</span>
-                <span className="text-right text-textSecondary">{q.theta.toFixed(2)}</span>
-                <span className="text-right text-textSecondary">{Math.round(q.iv * 100)}%</span>
+                <span className="text-right text-textPrimary">{q.dead ? '—' : q.bid.toFixed(2)}</span>
+                <span className="text-right text-textPrimary">{q.dead ? '—' : q.ask.toFixed(2)}</span>
+                <span className="text-right text-textSecondary">{q.iv > 0 ? q.delta.toFixed(2) : '—'}</span>
+                <span className="text-right text-textSecondary">{q.iv > 0 ? q.theta.toFixed(2) : '—'}</span>
+                <span className="text-right text-textSecondary">{q.iv > 0 ? `${Math.round(q.iv * 100)}%` : '—'}</span>
               </button>
               {on && drillOpen && drill && <ContractDrill contract={c} quote={q} day={drill} />}
             </div>

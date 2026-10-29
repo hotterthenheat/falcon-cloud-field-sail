@@ -1,9 +1,8 @@
-/* The options backtest desk: a replayed chart, the chain at the clock's minute, the order card, and the book. It
-   opens only while Backtest runs (BACKTEST_LIVE). */
+/* The options backtest desk: a replayed chart, the chain at the clock's minute, the order card, and the book — every
+   price is ThetaData's recorded session (data/review/history.ts). What the desk is looking at loads as the clock
+   reaches it; with the terminal away it says so and the clock waits. */
 
-import BacktestPaused from './BacktestPaused';
-import { BACKTEST_LIVE } from '../../data/review/tape';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useParams } from 'react-router-dom';
 import { X } from 'lucide-react';
 import type { ChartOverlays, ChartTape } from '../../components/gex/StrikeChart';
@@ -20,9 +19,11 @@ import { dirInk, momentWords, pct, rWords, usd, usdSigned } from '../../componen
 import { accountOf, bankedOf, dayStateOf, floorOf, ladderRoom, ladderTake, nameGoesUp, namesOf, refusal, statsOf, type Account, type Order, type Trade } from '../../data/review/engine';
 import PnlBadges from '../../components/review/PnlBadges';
 import { chainAt, contractDay, contractKey, contractWords, dteAt, expiriesAt, longLeg, quoteAt, quoteWith, spotForAsk, spotForBid, type ContractId, type Right } from '../../data/review/quotes';
-import { amendOrder, attachBracket, breakevenOrder, cancelOrder, closePosition, isFutures, moveClock, placeOrder, rebaseOrder, renameSession, trailOrder, useAnySession, useSession } from '../../data/review/store';
-import FuturesDesk from './FuturesDesk';
-import { DAY_MIN, LAST_MIN, baseIvAt, clockWords, dayBars, dayWords, nextDay, prevDay, reviewName } from '../../data/review/tape';
+import { amendOrder, attachBracket, breakevenOrder, cancelOrder, closePosition, legsHeld, moveClock, placeOrder, rebaseOrder, renameSession, trailOrder, useMoving, useSession } from '../../data/review/store';
+import { DAY_MIN, LAST_MIN, barsNeed, chainNeed, clockWords, dayBars, dayWords, ensureBars, ensureBarsRange, ensureChainDay, ensureLeg, ensureListing, ensureTrades, historyOffline, historyRev, listingNeed, nextDay, prevDay, spotAt, subscribeHistory } from '../../data/review/history';
+import { companyName } from '../../data/tickers';
+import ThetaLine from '../../components/review/ThetaLine';
+import { EmptyBox, LoadingBox } from '../../components/ui/states';
 import type { Timeframe } from '../../data/timeframe';
 import type { Candle } from '../../types/market';
 import type { KeyLevels } from '../../types/gex';
@@ -40,9 +41,27 @@ const CHAIN_EACH = 12;
 /** The last minutes of a session the desk counts down */
 const CLOSING_MIN = 15;
 
+/** The nearest strike's IV on a chain — the name's vol that minute, as its options priced it */
+const atmIv = (rows: { strike: number; call: { iv: number } }[], spot: number): number => {
+  let best: { strike: number; call: { iv: number } } | null = null;
+  for (const r of rows) if (r.call.iv > 0 && (!best || Math.abs(r.strike - spot) < Math.abs(best.strike - spot))) best = r;
+  return best?.call.iv ?? 0;
+};
+
 const Desk = () => {
   const { id } = useParams();
   const session = useSession(id);
+  const moving = useMoving(id);
+  /* the recorded days, as they land */
+  const hrev = useSyncExternalStore(subscribeHistory, historyRev, historyRev);
+  const offline = historyOffline();
+  /* while the terminal is away, what the desk needs is asked for again every 15 s (and never while the tab is hidden) */
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (!offline) return;
+    const t = window.setInterval(() => document.visibilityState === 'visible' && setRetry(n => n + 1), 15_000);
+    return () => window.clearInterval(t);
+  }, [offline]);
   /** The closing line and the bell's card, put away — for that day only */
   const [closingSeen, setClosingSeen] = useState('');
   const [bellSeen, setBellSeen] = useState('');
@@ -75,21 +94,42 @@ const Desk = () => {
       setDrillOpen(true);
     }
   };
-  const account = useMemo<Account | null>(() => (session ? accountOf(session) : null), [session]);
+  const account = useMemo<Account | null>(() => (session ? accountOf(session) : null), [session, hrev]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* THE DAY'S LOADS: each name's bars (and the sessions behind it, in one ask), the contracts quoted that day, and every
+     contract the book holds or waits on */
+  useEffect(() => {
+    if (!cursor) return;
+    let from = cursor.day;
+    for (let i = 0; i < CONTEXT_DAYS; i++) from = prevDay(from);
+    for (const n of names) {
+      void ensureBars(n, cursor.day);
+      void ensureListing(n, cursor.day);
+      void ensureBarsRange(n, from, prevDay(cursor.day));
+    }
+  }, [names, cursor?.day, retry]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!session) return;
+    for (const l of legsHeld(session)) if (l.expiry >= session.cursor.day) void ensureLeg(l, session.cursor.day);
+  }, [session?.orders, session?.fills, cursor?.day, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* the expiries listed today; the one in hand gives way to the next once it has passed */
-  const expiries = useMemo(() => (cursor ? expiriesAt(ticker, cursor.day) : []), [ticker, cursor?.day]); // eslint-disable-line react-hooks/exhaustive-deps
+  const expiries = useMemo(() => (cursor ? expiriesAt(ticker, cursor.day) : []), [ticker, cursor?.day, hrev]); // eslint-disable-line react-hooks/exhaustive-deps
   const exp = expiry && expiries.some(e => e.iso === expiry) ? expiry : (expiries.find(e => e.dte >= 5) ?? expiries[0])?.iso ?? null;
   const expiryOptions = useMemo<DropdownOption<string>[]>(() => expiries.map(e => ({ value: e.iso, label: `${e.label} · ${e.dte}d`, hint: e.dte === 0 ? 'Expires at today’s bell' : `${e.kind === 'monthly' ? 'The monthly' : e.kind === 'daily' ? 'A daily' : 'A weekly'} · ${dayWords(e.iso, true)}` })), [expiries]);
+  useEffect(() => {
+    if (cursor && exp) void ensureChainDay(ticker, exp, cursor.day);
+  }, [ticker, exp, cursor?.day, retry]); // eslint-disable-line react-hooks/exhaustive-deps
   /* laddered off the day's open (it stays put); only a name that has run most of the ladder away re-centres it */
   const chain = useMemo(() => {
     if (!cursor || !exp) return null;
     const open = dayBars(ticker, cursor.day)[0]?.open;
-    const now = dayBars(ticker, cursor.day)[cursor.minute]?.close;
-    const step = reviewName(ticker).step;
-    const centre = open != null && now != null && Math.abs(now - open) <= step * (CHAIN_EACH - 4) ? open : undefined;
+    const now = spotAt(ticker, cursor.day, cursor.minute);
+    const centre = open != null && now > 0 && Math.abs(now - open) / now <= 0.01 ? open : undefined;
     return chainAt(ticker, cursor.day, cursor.minute, exp, CHAIN_EACH, centre);
-  }, [ticker, cursor?.day, cursor?.minute, exp]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ticker, cursor?.day, cursor?.minute, exp, hrev]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* the name's vol this minute, as its at-the-money option priced it */
+  const ivNow = chain ? atmIv(chain.rows, chain.spot) : 0;
   /* The tape each chart draws: the sessions behind the clock's day, whole, then today up to the clock — never a
      bar past it. By name: one chart on the page, two side by side in the takeover. */
   const contextBy = useMemo<Record<string, Candle[]>>(() => {
@@ -98,12 +138,24 @@ const Desk = () => {
     for (let d = prevDay(cursor.day); d && days.length < CONTEXT_DAYS; d = prevDay(d)) days.push(d);
     days.reverse();
     return Object.fromEntries(names.map(n => [n, days.flatMap(d => dayBars(n, d))]));
-  }, [names, cursor?.day]); // eslint-disable-line react-hooks/exhaustive-deps
-  const tapeBy = useMemo<Record<string, ChartTape>>(() => (cursor ? Object.fromEntries(names.map(n => [n, { bars: [...(contextBy[n] ?? []), ...dayBars(n, cursor.day).slice(0, cursor.minute + 1)], iv: baseIvAt(n, cursor.day), key: `review:${n}`, clock: 'ny' as const }])) : {}), [contextBy, names, cursor?.day, cursor?.minute]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [names, cursor?.day, hrev]); // eslint-disable-line react-hooks/exhaustive-deps
+  const noteOf = (n: string): string | null => {
+    if (!cursor) return null;
+    const need = barsNeed(n, cursor.day);
+    return need === 'none' ? `ThetaData has no bars for ${n} on ${dayWords(cursor.day)}` : need === 'offline' ? 'ThetaData offline — reconnecting' : null;
+  };
+  const tapeBy = useMemo<Record<string, ChartTape>>(() => (cursor ? Object.fromEntries(names.map(n => [n, { bars: [...(contextBy[n] ?? []), ...dayBars(n, cursor.day).slice(0, cursor.minute + 1)], iv: n === ticker ? ivNow : 0, key: `review:${n}`, clock: 'ny' as const, note: noteOf(n) }])) : {}), [contextBy, names, cursor?.day, cursor?.minute, hrev, ivNow]); // eslint-disable-line react-hooks/exhaustive-deps
   const fillsBy = useMemo(() => Object.fromEntries(names.map(n => [n, session ? session.fills.filter(f => f.contract.ticker === n) : []])), [session?.fills, names]); // eslint-disable-line react-hooks/exhaustive-deps
-  const pickedQuote = useMemo(() => (cursor && picked ? quoteAt(picked, cursor.day, cursor.minute) : null), [picked, cursor?.day, cursor?.minute]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* the contract in hand: its legs' day, and its prints for the drop-down */
+  useEffect(() => {
+    if (!cursor || !picked) return;
+    void ensureLeg(longLeg(picked), cursor.day);
+    if (picked.short != null) void ensureLeg({ ...longLeg(picked), strike: picked.short }, cursor.day);
+    if (drillOpen) void ensureTrades(longLeg(picked), cursor.day);
+  }, [picked, drillOpen, cursor?.day, retry]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pickedQuote = useMemo(() => (cursor && picked ? quoteAt(picked, cursor.day, cursor.minute) : null), [picked, cursor?.day, cursor?.minute, hrev]); // eslint-disable-line react-hooks/exhaustive-deps
   /* a strike's drop-down is that strike's — the bought leg of a spread, not the pair */
-  const pickedDay = useMemo(() => (cursor && picked && drillOpen ? contractDay(longLeg(picked), cursor.day, cursor.minute) : null), [picked, drillOpen, cursor?.day, cursor?.minute]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pickedDay = useMemo(() => (cursor && picked && drillOpen ? contractDay(longLeg(picked), cursor.day, cursor.minute) : null), [picked, drillOpen, cursor?.day, cursor?.minute, hrev]); // eslint-disable-line react-hooks/exhaustive-deps
   /* The position on the chart: where it was entered, and — for what rides it — where the name would have to stand,
      at this minute, for the contract to bid the order's price */
   const positionsBy = useMemo<Record<string, ChartPosition[]>>(() => Object.fromEntries(names.map(n => [n, account ? account.positions.filter(p => p.contract.ticker === n).map(p => ({ key: p.key, contract: p.contract, qty: p.qty, spotIn: p.spotIn, pnl: p.pnl, r: p.r, avg: p.avg, bid: p.quote.bid, dead: p.quote.dead, room: session ? ladderRoom(session, p.contract) : undefined, take: session ? ladderTake(session, p.contract) : undefined })) : []])), [account, names]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -124,7 +176,7 @@ const Desk = () => {
       const sellsAt = onName ? quoteWith(o.contract, day, minute, o.price).bid : o.price;
       /* further off than the name's expected day (its vol that day, one sigma): no room on the scale for it */
       const here = pos.quote.spot;
-      const reach = here * (baseIvAt(o.contract.ticker, day) / Math.sqrt(252));
+      const reach = ivNow > 0 ? here * (ivNow / Math.sqrt(252)) : Infinity;
       list.push({ orderId: o.id, kind: o.kind === 'stop' ? 'stop' : 'target', on: onName ? 'name' : 'contract', contract: o.contract, qty: o.qty, price: o.price, level, money: (sellsAt - pos.avg) * 100 * o.qty, edge: nameGoesUp(o.kind, o.contract.right) ? 'up' : 'down', far: level == null || Math.abs(level - here) > reach, trail: o.kind === 'stop' ? (o.trail ?? null) : undefined, trailNow: o.kind === 'stop' ? Math.max(0.01, onName ? Math.abs(here - o.price) : pos.quote.bid - o.price) : undefined, breakeven: !!o.breakeven, canBreakeven: !!o.oco && session.orders.some(x => x.status === 'working' && x.oco === o.oco && x.kind === 'limit') });
     }
     const KEY = (b: ChartBracket) => contractKey(b.contract);
@@ -136,7 +188,7 @@ const Desk = () => {
       for (const g of groups.values()) if (g.length > 1) [...g].sort((x, y) => Math.abs(x.money) / x.qty - Math.abs(y.money) / y.qty).forEach((b, i) => (b.nth = i + 1));
     }
     return out;
-  }, [session, account, names]);
+  }, [session, account, names, ivNow]);
 
   /* The resting orders that are not ways out — a buy waiting at a price, said as such on the chart ("1 · Buy limit
      · 480C @ 1.20", PositionLayer): where the name would have to stand, this minute, for the contract's ask to
@@ -150,13 +202,13 @@ const Desk = () => {
       const list = out[o.contract.ticker];
       if (!list) continue;
       const c = o.contract;
-      const here = dayBars(c.ticker, day)[minute]?.close ?? reviewName(c.ticker).px;
+      const here = spotAt(c.ticker, day, minute);
       const level = spotForAsk(c, day, minute, o.price);
-      const reach = here * (baseIvAt(c.ticker, day) / Math.sqrt(252));
+      const reach = ivNow > 0 ? here * (ivNow / Math.sqrt(252)) : Infinity;
       list.push({ orderId: o.id, side: 'buy', kind: o.kind === 'stop' ? 'stop' : 'limit', qty: o.qty, price: o.price, level, label: contractWords(c).replace(`${c.ticker} `, ''), edge: (o.kind === 'stop') === (c.right === 'C') ? 'up' : 'down', far: level == null || Math.abs(level - here) > reach, priceAt: at => Math.max(0.01, Math.round(quoteWith(c, day, minute, at).ask * 100) / 100) });
     }
     return out;
-  }, [session, names]);
+  }, [session, names, ivNow, hrev]);
 
   /* ---- the blotter's columns ---- */
   const openCols = useMemo<Column<Account['positions'][number]>[]>(
@@ -165,9 +217,9 @@ const Desk = () => {
       { key: 'qty', header: 'Held', align: 'right', render: p => <span className="text-textPrimary">{p.qty}</span> },
       { key: 'exp', header: 'Expires', render: p => <span className="text-textSecondary">{dayWords(p.contract.expiry)} · {session ? dteAt(session.cursor.day, p.contract.expiry) : 0}d</span> },
       { key: 'avg', header: 'Paid', align: 'right', render: p => <span className="text-textSecondary">{p.avg.toFixed(2)}</span> },
-      { key: 'mark', header: 'Bid · ask', align: 'right', render: p => <span className="text-textPrimary">{p.quote.bid.toFixed(2)} · {p.quote.ask.toFixed(2)}</span> },
-      { key: 'theta', header: 'Decay a day', align: 'right', render: p => <span className="text-textSecondary">{usd(Math.abs(p.quote.theta) * 100 * p.qty)}</span> },
-      { key: 'pnl', header: 'Up or down', align: 'right', render: p => <span className={`font-semibold ${dirInk(p.pnl)}`}>{usdSigned(p.pnl)} <span className="text-t10 font-normal opacity-80">{rWords(p.r)}</span></span> },
+      { key: 'mark', header: 'Bid · ask', align: 'right', render: p => <span className="text-textPrimary">{p.quote.dead ? '— · —' : `${p.quote.bid.toFixed(2)} · ${p.quote.ask.toFixed(2)}`}</span> },
+      { key: 'theta', header: 'Decay a day', align: 'right', render: p => <span className="text-textSecondary">{p.quote.iv > 0 ? usd(Math.abs(p.quote.theta) * 100 * p.qty) : '—'}</span> },
+      { key: 'pnl', header: 'Up or down', align: 'right', render: p => (Number.isFinite(p.pnl) ? <span className={`font-semibold ${dirInk(p.pnl)}`}>{usdSigned(p.pnl)} <span className="text-t10 font-normal opacity-80">{rWords(p.r)}</span></span> : <span className="text-textMuted" title="No quote stood this minute">—</span>) },
       {
         key: 'close',
         header: '',
@@ -220,7 +272,7 @@ const Desk = () => {
 
   if (!session || !cursor || !account) return <DeskMissing />;
 
-  const spotOf = (n: string) => dayBars(n, cursor.day)[cursor.minute]?.close ?? reviewName(n).px;
+  const spotOf = (n: string) => spotAt(n, cursor.day, cursor.minute);
   const spot = spotOf(ticker);
   const stats = statsOf(account.trades);
   const floor = floorOf(session);
@@ -275,13 +327,13 @@ const Desk = () => {
   /* The names, as the shell reads them: each with its tape, and what is drawn over it */
   const deskNames: DeskName[] = names.map(n => {
     const px = spotOf(n);
-    const open = dayBars(n, cursor.day)[0]?.open ?? px;
+    const open = dayBars(n, cursor.day)[0]?.open ?? NaN;
     return {
       symbol: n,
-      title: reviewName(n).name,
+      title: companyName(n),
       label: n,
-      priceWords: px.toFixed(2),
-      dayPct: ((px - open) / open) * 100,
+      priceWords: px > 0 ? px.toFixed(2) : '—',
+      dayPct: px > 0 && open > 0 ? ((px - open) / open) * 100 : 0,
       held: account.positions.filter(q => q.contract.ticker === n).length,
       tape: tapeBy[n],
       levels: levelsOf(n),
@@ -305,7 +357,7 @@ const Desk = () => {
         <PnlBadges
           name={n}
           realized={bankedOf(session, n) - bankedOf(session, n, cursor.day)}
-          unrealized={account.positions.filter(q => q.contract.ticker === n).reduce((x, q) => x + q.pnl, 0)}
+          unrealized={account.positions.filter(q => q.contract.ticker === n).reduce((x, q) => x + (Number.isFinite(q.pnl) ? q.pnl : 0), 0)}
           dayWord={`on ${dayWords(cursor.day)}, the clock’s day`}
         />
       ),
@@ -315,13 +367,25 @@ const Desk = () => {
   /* The chain, as it stood — a strike opens onto its stats and its greeks (components/review/ChainCard) */
   /* held: the contract itself, or the bought leg of a spread; sold: the other leg of one (open, or on the ticket) */
   const legOf = (p: ContractId) => p.ticker === ticker && p.expiry === exp && p.right === right;
+  const listNeed = listingNeed(ticker, cursor.day);
+  const chainState = exp ? chainNeed(ticker, exp, cursor.day) : listNeed;
+  const chainEmpty =
+    listNeed === 'offline' || chainState === 'offline' ? (
+      <EmptyBox title="ThetaData offline — reconnecting" reason="The recorded quotes for this day load when the terminal answers." />
+    ) : listNeed === 'none' ? (
+      <EmptyBox title="No contracts recorded" reason={`ThetaData has no option quotes for ${ticker} on ${dayWords(cursor.day)}.`} />
+    ) : chainState === 'none' ? (
+      <EmptyBox title="No quotes recorded" reason={`Nothing was quoted near the money on the ${exp ? dayWords(exp) : ''} expiry that day.`} />
+    ) : (
+      <LoadingBox shape="table" rows={10} label="Loading the recorded chain" />
+    );
   const chainCard = (
     <ChainCard
       ticker={ticker}
-      title={reviewName(ticker).name}
+      title={companyName(ticker)}
       spot={chain?.spot ?? spot}
       showName={names.length > 1}
-      stamp={`as it stood · ${clockWords(cursor.minute)}`}
+      stamp={`NBBO as it stood · ${clockWords(cursor.minute)} ET`}
       right={right}
       onRight={setRight}
       expiry={exp}
@@ -336,7 +400,8 @@ const Desk = () => {
       held={k => account.positions.some(p => legOf(p.contract) && p.contract.strike === k)}
       sold={k => account.positions.some(p => legOf(p.contract) && p.contract.short === k) || (picked != null && legOf(picked) && picked.short === k)}
       full={full}
-      centreKey={`${exp}|${right}|${cursor.day}|${session.id}`}
+      centreKey={`${exp}|${right}|${cursor.day}|${session.id}|${chain?.rows.length ? 1 : 0}`}
+      empty={chainEmpty}
     />
   );
 
@@ -376,7 +441,7 @@ const Desk = () => {
               onQ: setQ,
               heldAt: strike => {
                 const p = account.positions.find(x => x.contract.ticker === picked.ticker && x.contract.expiry === picked.expiry && x.contract.right === picked.right && x.contract.strike === strike);
-                return p ? { contract: p.contract, qty: p.qty, avg: p.avg, pnl: p.pnl, decayDay: Math.abs(quoteAt(p.contract, cursor.day, cursor.minute).theta) * 100 * p.qty } : null;
+                return p ? { contract: p.contract, qty: p.qty, avg: p.avg, pnl: Number.isFinite(p.pnl) ? p.pnl : 0, decayDay: Math.abs(quoteAt(p.contract, cursor.day, cursor.minute).theta) * 100 * p.qty } : null;
               },
               strikes: picked.ticker === ticker && picked.expiry === exp ? (chain?.rows.map(r => r.strike) ?? []) : [],
               onShort: k => setPicked(k ? { ...longLeg(picked), short: k } : longLeg(picked)),
@@ -403,11 +468,11 @@ const Desk = () => {
     <DeskShell
       session={session}
       onRename={name => renameSession(session.id, name)}
-      subline={`${names.map(n => reviewName(n).name).join(' and ')} · long calls and puts, paid in cash · ${session.fee ? `${usd(session.fee)} a contract each way` : 'no fee'}`}
+      subline={`${names.map(companyName).join(' and ')} · ThetaData’s recorded NBBO: buys at the ask, sells at the bid, checked at each minute’s end · ${session.fee ? `${usd(session.fee)} a contract each way` : 'no fee'}`}
       facts={[
-        { label: 'Worth now', testId: 'equity', node: usd(account.equity) },
+        { label: 'Worth now', testId: 'equity', node: Number.isFinite(account.equity) ? usd(account.equity) : '—' },
         { label: 'Cash', testId: 'cash', node: usd(account.cash) },
-        { label: 'Open, up or down', testId: 'open-pnl', node: <span className={dirInk(account.openPnl)}>{usdSigned(account.openPnl)}</span> },
+        { label: 'Open, up or down', testId: 'open-pnl', node: Number.isFinite(account.openPnl) ? <span className={dirInk(account.openPnl)}>{usdSigned(account.openPnl)}</span> : '—' },
         { label: 'Closed, made or lost', testId: 'realized', node: <span className={dirInk(stats.net)}>{usdSigned(stats.net)}</span> },
         ...(rulesLine ? [{ label: 'Your rules', testId: 'rules', node: <span className="text-t12 font-medium">{rulesLine}</span> }] : []),
         {
@@ -445,7 +510,12 @@ const Desk = () => {
       nextDayTitle="Ring today’s bell and open the next session"
       /* THE BELL — the last fifteen minutes as a line, 16:00 as a card; both can be put away for the day */
       notice={({ seek }) =>
-        bellFacts ? (
+        moving ? (
+          /* a move waiting on its recorded days, or one the terminal could not load: said on a card over the tape */
+          <div className="pointer-events-auto mt-11 rounded-md border border-borderMuted bg-panel/95 backdrop-blur-md px-3 py-2 animate-soft-in" data-theme="dark" role="status" data-review-moving={moving.failed ? 'failed' : 'loading'}>
+            {moving.failed ? <ThetaLine since={offline || Date.now()} what={moving.failed} /> : <span className="font-mono text-t10 uppercase tracking-widest text-textSecondary">{moving.words} · to {dayWords(moving.to.day)} {clockWords(moving.to.minute)} ET</span>}
+          </div>
+        ) : bellFacts ? (
           bellSeen !== cursor.day ? (
             <BellCard facts={bellFacts} onNextDay={tomorrow ? () => seek(0, tomorrow) : null} onDismiss={() => setBellSeen(cursor.day)} />
           ) : null
@@ -480,12 +550,4 @@ const Desk = () => {
   );
 };
 
-/* A session is one kind or the other: the same address opens the desk of its kind, while Backtest runs */
-const DeskOfKind = () => {
-  const { id } = useParams();
-  const session = useAnySession(id);
-  if (!BACKTEST_LIVE) return <BacktestPaused />;
-  return isFutures(session) ? <FuturesDesk /> : <Desk />;
-};
-
-export default DeskOfKind;
+export default Desk;

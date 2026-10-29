@@ -5,37 +5,7 @@ interface Struck {
   readonly strike: number;
 }
 
-/** The heaviest call-dominant shelf above spot and the heaviest put-dominant shelf below. The sign is the option side
-    (netGex negative = call-dominant, the house sign); side of spot alone is wrong once a sticky book's shelf is crossed. Null where nothing qualifies. */
-export function pickWalls<T extends Struck>(
-  points: readonly T[],
-  spot: number,
-  valueOf: (p: T) => number
-): { callWall: number | null; putWall: number | null } {
-  let callWall: number | null = null;
-  let cwAbs = 0;
-  let putWall: number | null = null;
-  let pwAbs = 0;
-
-  for (const p of points) {
-    const v = valueOf(p);
-    const a = Math.abs(v);
-    // Same magnitude comparison as before, restricted to the half of the book
-    // the name actually claims. No new arithmetic.
-    if (p.strike > spot && v < 0 && a > cwAbs) {
-      cwAbs = a;
-      callWall = p.strike;
-    }
-    if (p.strike < spot && v > 0 && a > pwAbs) {
-      pwAbs = a;
-      putWall = p.strike;
-    }
-  }
-
-  return { callWall, putWall };
-}
-
-/** Pinpoint's walls: the strike with the most call-leg gamma and the one with the most put-leg gamma, anywhere on the book
+/** The walls, the one rule: the strike with the most call-leg gamma and the one with the most put-leg gamma, anywhere on the book
     (what most GEX tools print). No side-of-spot rule: a call wall below price is a real state. Null when no strike carries the leg. */
 export function pickLegWalls<T extends Struck>(
   points: readonly T[],
@@ -59,29 +29,6 @@ export function pickLegWalls<T extends Struck>(
     }
   }
   return { callWall, putWall };
-}
-
-/** The gamma flip: the sign-change midpoint nearest spot (a first-from-the-bottom walk can name a tail jitter the border).
-    Null when the field never changes sign: a one-sided book has no flip. */
-export function pickFlip<T extends Struck>(
-  points: readonly T[],
-  spot: number,
-  valueOf: (p: T) => number
-): number | null {
-  const asc = [...points].sort((a, b) => a.strike - b.strike);
-  let flip: number | null = null;
-  let flipDist = Infinity;
-  for (let i = 1; i < asc.length; i++) {
-    if (Math.sign(valueOf(asc[i - 1])) !== Math.sign(valueOf(asc[i]))) {
-      const mid = (asc[i - 1].strike + asc[i].strike) / 2;
-      const d = Math.abs(mid - spot);
-      if (d < flipDist) {
-        flipDist = d;
-        flip = mid;
-      }
-    }
-  }
-  return flip;
 }
 
 /* ---- One name per strike on every page: a strike that is several levels is all of them, in one order (supreme · call wall · put wall) ---- */

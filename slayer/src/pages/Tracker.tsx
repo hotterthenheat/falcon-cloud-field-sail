@@ -1,186 +1,141 @@
-/* The contracts you track from Compass, marked at their live vendor quote: what it was when you tracked it, what
-   it is now, and whether its expiry has passed. A contract with no live quote yet shows a dash, never a model
-   price. */
+/* The signals in play: every Compass signal still open, and today's that closed, each with the quote it fired on,
+   its fill a minute later, and its path since then off the contract's one-minute NBBO from ThetaData. A contract
+   you track is marked; nothing here is priced from a model or another feed. */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Bookmark, Trash2, ArrowUpRight } from 'lucide-react';
+import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Bookmark } from 'lucide-react';
 import { useTracker } from '../context/TrackerContext';
-import { isoDate, today } from '../core/calendar';
-import { peekMark, useMarks } from '../data/weigherChain';
-import type { SleeveKey } from '../types/compass';
-import type { TrackedSetup } from '../types/tracker';
-import PageHeader from '../components/ui/PageHeader';
-import SegmentedControl from '../components/ui/SegmentedControl';
-import Panel from '../components/ui/Panel';
-import SignalBadge from '../components/ui/SignalBadge';
-import DataTable, { type Column } from '../components/ui/DataTable';
+import { nyClock, nyIsoDate } from '../core/nyTime';
+import { useSignals, type Signal } from '../data/compassLedger';
+import { useThetaStatus } from '../data/thetaQuote';
+import TraceBox, { Fact } from '../components/trace/TraceBox';
+import ContractLabel from '../components/ui/ContractLabel';
+import SessionSpark from '../components/compass/SessionSpark';
+import { usd2 as money } from '../core/format';
 
-const TAB_OPTIONS = [
-  { value: 'setups', label: 'Cards' },
-  { value: 'contracts', label: 'Table' },
-] as const;
-
-type TabKey = (typeof TAB_OPTIONS)[number]['value'];
-
-/* Rows kept before the expiry was stored only know their tenor: 0DTE ends on its tracked day, a weekly within seven. */
-const DAYS_BY_SLEEVE: Partial<Record<SleeveKey, number>> = { odte: 0, weekly: 7 };
-
-const sleeveOf = (tracked: TrackedSetup): SleeveKey => tracked.sleeve ?? 'odte';
-
-function expiryOf(tracked: TrackedSetup): string | null {
-  if (tracked.expiry) return tracked.expiry;
-  const days = DAYS_BY_SLEEVE[sleeveOf(tracked)];
-  if (days == null) return null;
-  const d = new Date(tracked.trackedAt);
-  d.setDate(d.getDate() + days);
-  return isoDate(d);
-}
-
-interface Row {
-  tracked: TrackedSetup;
-  expiry: string | null;
-  expired: boolean;
-  /** The mark when tracked: the card's mark, else the ask */
-  then: number | null;
-  /** The live mark now */
-  now: number | null;
-  changePct: number | null;
-}
-
-const money = (v: number | null) => (v != null && v > 0 ? `$${v.toFixed(2)}` : '—');
 const pct = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`);
-const ink = (v: number | null) => (v == null || v === 0 ? 'text-textPrimary' : v > 0 ? 'text-bull' : 'text-bear');
+const ink = (v: number | null) => (v == null || Math.abs(v) < 0.05 ? 'text-textPrimary' : v > 0 ? 'text-bull' : 'text-bear');
 
-const TrackedCard = ({ row, onUntrack, onReview, spotlight = false }: { row: Row; onUntrack: () => void; onReview: () => void; spotlight?: boolean }) => {
-  const { tracked, expired } = row;
-  const cardRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (spotlight) cardRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [spotlight]);
+const Cell = ({ label, value, tone = 'text-textPrimary' }: { label: string; value: string; tone?: string }) => (
+  <div className="bg-panel px-3 py-2.5 min-w-0">
+    <div className="font-mono text-t9 uppercase tracking-widest text-textMuted">{label}</div>
+    <div className={`mt-0.5 font-mono text-t13 font-semibold tnum truncate ${tone}`}>{value}</div>
+  </div>
+);
+
+function stateOf(s: Signal): { word: string; tone: string; line: string } {
+  const o = s.outcome;
+  if (!o || o.status === 'waiting') return { word: 'Filling', tone: 'text-textSecondary', line: 'Fills at the ask of the first quote a full minute after the call.' };
+  if (o.status === 'unavailable') return { word: 'Unavailable', tone: 'text-textMuted', line: 'No valid quote stood a minute after the call. No price was substituted.' };
+  if (o.status === 'closed' && o.exit && o.fill) {
+    const win = o.exit.px > o.fill.ask;
+    return { word: win ? 'Win' : 'Loss', tone: win ? 'text-bull' : 'text-bear', line: `${o.exit.why}. Left at ${money(o.exit.px)}, ${nyClock(o.exit.at, { zone: true })}.` };
+  }
+  return { word: 'Open', tone: 'text-textPrimary', line: o.last ? `Last bid ${money(o.last.bid)} at ${nyClock(o.last.t, { zone: true })}.` : 'Filled. No later quote yet.' };
+}
+
+const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpen: () => void }) => {
+  const o = s.outcome;
+  const paid = o?.fill?.ask ?? 0;
+  const now = o?.exit?.px ?? o?.last?.bid ?? null;
+  const state = stateOf(s);
+  const lottery = s.book === 'C';
   return (
-    <div ref={cardRef} className={`border border-borderSubtle bg-panel rounded-lg overflow-hidden flex flex-col ${spotlight ? 'animate-focus-flash' : ''}`}>
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-borderSubtle">
-        <span className="font-mono text-sm font-bold text-textPrimary tracking-tight">{tracked.contract}</span>
-        {expired ? <SignalBadge tone="bear">EXPIRED</SignalBadge> : null}
-        <span className="ml-auto font-mono text-[9px] text-textMuted uppercase tracking-wider">Tracked {new Date(tracked.trackedAt).toLocaleDateString()}</span>
+    <button type="button" onClick={onOpen} className="text-left border border-borderSubtle bg-panel rounded-md overflow-hidden flex flex-col hover:border-borderMuted transition-colors" data-tracker-signal={s.key}>
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-borderSubtle">
+        <ContractLabel contract={s.contract} right={s.right} logo={s.ticker} size="sm" />
+        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">Book {s.book}</span>
+        {tracked && <Bookmark className="w-3.5 h-3.5 text-textSecondary" aria-label="Tracked" />}
+        <span className={`ml-auto font-mono text-t10 uppercase tracking-wider ${state.tone}`}>{state.word}</span>
       </div>
-      <div className={`grid grid-cols-3 gap-px bg-borderSubtle/30 ${expired ? 'opacity-50' : ''}`}>
-        <div className="bg-panel px-3 py-2.5">
-          <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted">When tracked</div>
-          <div className="mt-0.5 font-mono text-sm font-semibold text-textPrimary tnum">{money(row.then)}</div>
-        </div>
-        <div className="bg-panel px-3 py-2.5">
-          <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted">Now</div>
-          <div className="mt-0.5 font-mono text-sm font-semibold text-textPrimary tnum">{expired ? '—' : money(row.now)}</div>
-        </div>
-        <div className="bg-panel px-3 py-2.5">
-          <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted">Change</div>
-          <div className={`mt-0.5 font-mono text-sm font-semibold tnum ${ink(row.changePct)}`}>{expired ? '—' : pct(row.changePct)}</div>
-        </div>
+      <div className="grid grid-cols-3 gap-px bg-borderSubtle/30">
+        <Cell label="Model 1" value={s.p1 != null ? `${(s.p1 * 100).toFixed(1)}%` : 'No model'} />
+        <Cell label="Filled" value={paid > 0 ? money(paid) : '—'} />
+        <Cell label={o?.status === 'closed' ? 'Exit' : 'Bid'} value={now != null ? money(now) : '—'} />
+        <Cell label="Return" value={pct(o?.ret ?? null)} tone={ink(o?.ret ?? null)} />
+        <Cell label="Stop" value={lottery ? 'None' : o && o.stop > 0 ? money(o.stop) : '—'} tone={lottery ? 'text-textSecondary' : 'text-warn'} />
+        <Cell label="Peak bid" value={o && o.peak > 0 ? money(o.peak) : '—'} />
       </div>
-      <div className="px-4 py-2.5 font-mono text-[10px] text-textSecondary">
-        {expired
-          ? `Expired ${row.expiry ?? ''} — tracking ended.`
-          : row.now == null
-            ? 'Waiting for the contract’s live quote.'
-            : `Expires ${row.expiry ?? '—'}. Marked at the live quote.`}
+      <div className="px-3.5 py-2 flex items-center gap-3">
+        <p className="min-w-0 flex-1 font-mono text-t10 text-textSecondary whitespace-normal">
+          Called {nyClock(s.firedAt, { zone: true })} on {s.bid.toFixed(2)} × {s.ask.toFixed(2)}. {state.line}
+        </p>
+        <SessionSpark ticker={s.ticker} points={s.spark.length ? s.spark : undefined} width={80} height={28} />
       </div>
-      <div className="flex items-center gap-2 px-4 py-3 mt-auto border-t border-borderSubtle">
-        {expired ? (
-          <span className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-borderSubtle bg-ink/[0.02] font-mono text-[10px] text-textMuted uppercase tracking-wider cursor-not-allowed select-none">Expired</span>
-        ) : (
-          <button onClick={onReview} className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-borderSubtle bg-ink/[0.03] hover:bg-ink/[0.06] font-mono text-[10px] text-textSecondary hover:text-textPrimary uppercase tracking-wider transition-colors">
-            <ArrowUpRight className="w-3 h-3" /> Review
-          </button>
-        )}
-        <button onClick={onUntrack} className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-bear/20 bg-bear/5 hover:bg-bear/10 font-mono text-[10px] text-bear uppercase tracking-wider transition-colors ml-auto">
-          <Trash2 className="w-3 h-3" /> Untrack
-        </button>
-      </div>
-    </div>
+    </button>
   );
 };
 
-const TABLE_COLUMNS: Column<Row>[] = [
-  { key: 'contract', header: 'Contract', render: r => <span className="font-semibold text-textPrimary">{r.tracked.contract}</span> },
-  { key: 'expiry', header: 'Expiry', render: r => (r.expired ? <SignalBadge tone="bear">EXPIRED</SignalBadge> : <span className="text-textSecondary">{r.expiry ?? '—'}</span>) },
-  { key: 'then', header: 'When tracked', align: 'right', sortValue: r => r.then ?? -1, render: r => <span className="text-textPrimary tnum">{money(r.then)}</span> },
-  { key: 'now', header: 'Now', align: 'right', sortValue: r => r.now ?? -1, render: r => <span className="text-textPrimary tnum">{r.expired ? '—' : money(r.now)}</span> },
-  { key: 'change', header: 'Change', align: 'right', sortValue: r => r.changePct ?? -1e9, render: r => <span className={`tnum ${ink(r.changePct)}`}>{r.expired ? '—' : pct(r.changePct)}</span> },
-  { key: 'tracked', header: 'Tracked', render: r => <span className="text-textMuted">{new Date(r.tracked.trackedAt).toLocaleDateString()}</span> },
-];
-
 /** `embedded`: under the Compass shell, which wears the head */
 const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
+  void embedded;
   const navigate = useNavigate();
-  const location = useLocation();
-  const { trackedSetups, untrackSetup } = useTracker();
-  const [tab, setTab] = useState<TabKey>('setups');
-  const [focusId] = useState<string | null>(() => (location.state as { focus?: string } | null)?.focus ?? null);
-
-  const todayIso = isoDate(today());
-  const wanted = useMemo(
-    () => trackedSetups.flatMap(t => {
-      const e = expiryOf(t);
-      return e && e >= todayIso ? [{ ticker: t.ticker, expiry: e }] : [];
-    }),
-    [trackedSetups, todayIso]
-  );
-  const marksRev = useMarks(wanted);
-
-  const rows = useMemo<Row[]>(
-    () => trackedSetups.map(tracked => {
-      const expiry = expiryOf(tracked);
-      const expired = expiry != null && expiry < todayIso;
-      const then = tracked.markAtTrack && tracked.markAtTrack > 0 ? tracked.markAtTrack : tracked.askAtTrack && tracked.askAtTrack > 0 ? tracked.askAtTrack : null;
-      const live = expiry && !expired ? peekMark(tracked.ticker, expiry, tracked.strike, tracked.right) : null;
-      const now = live && live.mark > 0 ? live.mark : null;
-      const changePct = then != null && now != null ? (now / then - 1) * 100 : null;
-      return { tracked, expiry, expired, then, now, changePct };
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [trackedSetups, todayIso, marksRev]
-  );
-
-  const handleReview = (tracked: TrackedSetup) => {
-    navigate('/compass', { state: { monitor: { ticker: tracked.ticker, strike: tracked.strike, right: tracked.right, scanner: tracked.scanner, sleeve: sleeveOf(tracked) } } });
-  };
+  const { isTracked } = useTracker();
+  const record = useSignals();
+  const theta = useThetaStatus();
+  const today = nyIsoDate();
+  const rows = useMemo(() => {
+    const live = record.filter(s => !s.outcome || s.outcome.status === 'open' || s.outcome.status === 'waiting');
+    const done = record.filter(s => s.day === today && s.outcome && (s.outcome.status === 'closed' || s.outcome.status === 'unavailable'));
+    return { live, done };
+  }, [record, today]);
+  const readAt = rows.live.reduce((m, s) => Math.max(m, s.pathAt), 0);
+  const tracked = record.filter(s => isTracked(s.id)).length;
+  const sentence = theta === 'down' && rows.live.length
+    ? `ThetaData offline — reconnecting. Paths as of ${readAt ? nyClock(readAt, { zone: true }) : 'the call'}.`
+    : rows.live.length
+      ? `Paths read once a minute from the contract's own quotes${readAt ? `. Last read ${nyClock(readAt, { zone: true })}` : ''}.`
+      : false;
+  const open = (s: Signal) => navigate(`/compass/${s.id}`, { state: { from: 'Tracker' } });
 
   return (
-    <>
-      {!embedded && <PageHeader breadcrumb={['Terminal', 'Tracker']} title="Setup Tracker" subtitle="Every contract you track, marked at its live quote — as cards or as a table" />}
-      <div className="flex items-center gap-3">
-        <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-textMuted">View</span>
-        <SegmentedControl ariaLabel="Tracker view" options={TAB_OPTIONS} value={tab} onChange={setTab} />
-        <span className="font-mono text-[10px] text-textMuted uppercase tracking-wider">
-          {trackedSetups.length} tracked setup{trackedSetups.length === 1 ? '' : 's'}
-        </span>
-      </div>
-      {trackedSetups.length === 0 ? (
-        <Panel className="w-full" bodyClassName="flex flex-col items-center justify-center py-16 gap-4">
-          <Bookmark className="w-10 h-10 text-textMuted/40" />
-          <span className="font-mono text-[11px] text-textMuted uppercase tracking-widest">No tracked setups yet</span>
-          <p className="text-[12px] text-textSecondary text-center max-w-sm leading-relaxed">
-            Go to{' '}
-            <button onClick={() => navigate('/compass')} className="text-select hover:underline">
-              Compass
+    <TraceBox
+      title="Tracker"
+      sub="The signals in play and today's closes"
+      testId="tracker"
+      facts={
+        <>
+          <Fact label="Open" testId="open">{rows.live.filter(s => s.outcome?.status === 'open').length}</Fact>
+          <Fact label="Filling" testId="filling">{rows.live.filter(s => !s.outcome || s.outcome.status === 'waiting').length}</Fact>
+          <Fact label="Closed today" testId="closed">{rows.done.length}</Fact>
+          <Fact label="Tracked" testId="tracked" title="Signals you bookmarked from their page.">{tracked}</Fact>
+        </>
+      }
+      controls={
+        <button type="button" onClick={() => navigate('/compass/blotter')} className="slayer-chip uppercase tracking-wider" data-tracker-blotter>
+          The blotter
+        </button>
+      }
+      sentence={sentence ? <span data-tracker-line>{sentence}</span> : false}
+    >
+      {rows.live.length + rows.done.length === 0 ? (
+        <div className="border-t border-borderSubtle px-5 py-10 font-mono text-t11 text-textMuted" data-tracker-empty>
+          No signal is in play. When Compass fires a Book A, B or C call it shows here with the quote it fired on, its fill and its path, until it closes.
+          {record.length > 0 && (
+            <button type="button" onClick={() => navigate('/compass/blotter')} className="ml-1 text-textPrimary underline decoration-borderMuted underline-offset-4">
+              Every earlier signal is on the blotter.
             </button>
-            , pick a setup, and click <strong className="text-textPrimary">Track Setup +</strong> to bookmark it here.
-          </p>
-        </Panel>
-      ) : tab === 'setups' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 animate-view-in">
-          {rows.map(row => (
-            <TrackedCard key={row.tracked.id} row={row} onUntrack={() => untrackSetup(row.tracked.id)} onReview={() => handleReview(row.tracked)} spotlight={row.tracked.id === focusId} />
-          ))}
+          )}
         </div>
       ) : (
-        <Panel title="Tracked setups" flush className="w-full animate-view-in">
-          <DataTable columns={TABLE_COLUMNS} rows={rows} rowKey={r => r.tracked.id} maxHeight="520px" />
-        </Panel>
+        <div className="border-t border-borderSubtle px-4 sm:px-5 py-4 flex flex-col gap-4">
+          {rows.live.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3" data-tracker-open>
+              {rows.live.map(s => <SignalCard key={s.key} s={s} tracked={isTracked(s.id)} onOpen={() => open(s)} />)}
+            </div>
+          )}
+          {rows.done.length > 0 && (
+            <>
+              <p className="font-mono text-t9 uppercase tracking-widest text-textMuted">Closed today</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3" data-tracker-done>
+                {rows.done.map(s => <SignalCard key={s.key} s={s} tracked={isTracked(s.id)} onOpen={() => open(s)} />)}
+              </div>
+            </>
+          )}
+        </div>
       )}
-    </>
+    </TraceBox>
   );
 };
 

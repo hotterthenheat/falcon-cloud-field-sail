@@ -12,6 +12,7 @@ import { todayColumn, type ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, MarketSnapshot } from '../types/market';
 import { putWallWords } from '../core/walls';
+import { dealerOf } from '../core/dealerSign';
 import { monDayOf, peekDaySigma, peekMoveToClose, peekScopeMove } from './uwBook';
 import { datesOf, levelNetPath } from './flipLevel';
 import { pctWhole as pct } from '../core/format';
@@ -495,7 +496,7 @@ export function buildWallContext(
     printsUp: printsDemand(snapshot, iv),
     /* Across every expiry when the calendar is here — today's contracts carry
        almost no vanna; the further dates do, and a vol crush moves all of them */
-    volDrop: surface ? wholeBookVanna(surface) : strikes.reduce((a, s) => a + (s.vanna?.net ?? 0), 0),
+    volDrop: dealerOf(surface ? wholeBookVanna(surface) : strikes.reduce((a, s) => a + (s.vanna?.net ?? 0), 0)),
   };
 }
 

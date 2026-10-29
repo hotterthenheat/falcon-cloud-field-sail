@@ -9,7 +9,7 @@ import type { BarLine } from '../../components/paper/PositionBar';
 import { usd } from '../../components/review/words';
 import { MULT, nameGoesUp } from '../../data/review/engine';
 import { contractWords, type ContractId, type Quote } from '../../data/review/quotes';
-import { onTick } from '../../data/review/futuresTape';
+import { onTick } from '../../data/paper/products';
 import type { PaperAccount, PaperMarket, PaperView, FutDraft, OptDraft } from '../../data/paper/engine';
 import { isPaperFuture, paperFut, futWords, frontOn } from '../../data/paper/products';
 import { amendOrder, attachFut, attachOpt, cancelOrder, closeFut, closeOpt, placeFutOrder, placeOptOrder } from '../../data/paper/store';

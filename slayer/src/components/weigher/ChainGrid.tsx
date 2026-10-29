@@ -235,6 +235,7 @@ export const ChainCard = memo(function ChainCard({
   drillHead,
   held,
   book,
+  emptyText = 'No listed contracts',
 }: {
   chain: DeskChain;
   right: OptionRight;
@@ -263,6 +264,8 @@ export const ChainCard = memo(function ChainCard({
   /** Our two cents on every strike: the dealer book's read of it — the shape word and the net bar as a column, "The
       book" (data/bookAtStrike.ts); the desk hands it, Pulse's tile does not */
   book?: (strike: number) => BookAtStrike | null;
+  /** What the empty grid says: still reading, no contracts, or the terminal down */
+  emptyText?: string;
 }) {
   const gridRef = useRef<AgGridReact<ChainGridRow>>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -472,6 +475,7 @@ export const ChainCard = memo(function ChainCard({
           onBodyScroll={locate}
           onViewportChanged={locate}
           tooltipShowDelay={350}
+          overlayNoRowsTemplate={`<span class="font-mono text-[10px] uppercase tracking-widest text-textMuted">${emptyText.replace(/[<>&]/g, '')}</span>`}
         />
       </AgGridProvider>
       {away && (

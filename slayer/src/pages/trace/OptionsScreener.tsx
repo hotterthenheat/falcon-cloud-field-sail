@@ -9,7 +9,7 @@ import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/
 import { useTicker } from '../../context/MarketDataContext';
 import { fmtCount as num, pairOiFor, useContracts, usd as fmtUsd } from '../../data/traceLive';
 import { FeedFallback, TickFigure } from '../../components/ui/liveRead';
-import { applyFilters, bookLeanWords, crossDay, crossHint, doiTail, floorPackaged, SPREAD_LEG_PCT, FRESH_VOL_OI, notABet, spreadLegDay, spreadLegHint, stockLike, volOiText, FLOW_SCREENS, runScreen, type BookFilters, type ScreenKey } from '../../data/flowBook';
+import { applyFilters, bookFacts, bookLeanWords, crossHint, doiTail, floorPackaged, SPREAD_LEG_PCT, FRESH_VOL_OI, notABet, spreadLegHint, stockLike, volOiText, FLOW_SCREENS, runScreen, type BookFilters, type ScreenKey } from '../../data/flowBook';
 import { SLEEVES, type SleeveKey } from '../../types/compass';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
@@ -188,26 +188,7 @@ const OptionsScreener = () => {
   const marks = useMemo(() => ({ vol: earnMarks(rows, r => r.volume), oi: earnMarks(rows, r => r.oi), doi: earnMarks(rows, r => r.deltaOI), prem: earnMarks(rows, r => r.premium) }), [rows]);
 
   /* floor packages, days of spread legs and days of crosses are counted apart, never in the head's money */
-  const facts = useMemo(() => {
-    let prem = 0;
-    let callPrem = 0;
-    let fresh = 0;
-    let apartPrem = 0;
-    let apart = 0;
-    const names = new Set<string>();
-    for (const r of rows) {
-      if (floorPackaged(r) || spreadLegDay(r) || crossDay(r)) {
-        apartPrem += r.premium;
-        apart++;
-        continue;
-      }
-      prem += r.premium;
-      if (r.right === 'C') callPrem += r.premium;
-      names.add(r.ticker);
-      if (r.volOverOI >= FRESH_VOL_OI) fresh++;
-    }
-    return { prem, callPct: Math.round((callPrem / Math.max(1, prem)) * 100), fresh, names: names.size, apartPrem, apart, bets: rows.length - apart };
-  }, [rows]);
+  const facts = useMemo(() => bookFacts(rows), [rows]);
   const bookReading = (pack.waiting && liveBook.length === 0) || searchedName(query) !== askedName;
   const champs = useMemo(() => {
     const by = (pick: (r: BookContract) => boolean) => rows.filter(r => !notABet(r) && pick(r)).reduce<BookContract | null>((a, r) => (a === null || r.premium > a.premium ? r : a), null);
@@ -387,7 +368,7 @@ const OptionsScreener = () => {
         controls={
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
-            <SessionMark at={pack.at} fault={pack.fault} paused={hold.paused} />
+            <SessionMark at={pack.at} fault={pack.fault} paused={hold.paused} kept={pack.kept} />
             <FlowSearch value={query} onChange={setQuery} rows={book} countNoun="contracts" span />
             <DropdownSelect label="Screen" value={screen} options={screenOptions} onChange={setScreen} title="The question asked of the book" testId="screener-screen" />
             <DropdownSelect label="Side" value={filters.side} options={SIDE_OPTIONS} onChange={v => setFilters(f => ({ ...f, side: v }))} title="Calls, puts or both" testId="screener-side" />

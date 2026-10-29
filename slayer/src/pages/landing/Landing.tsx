@@ -1,5 +1,5 @@
 /* The landing page: the wall of tools, the tour with its window, the tape of names, every room, pricing and
-   questions. Every picture is the terminal itself; the recordings run on simulated data and say so. */
+   questions. Every picture is the terminal itself; the recordings say they are recordings, not live data. */
 
 import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -50,7 +50,7 @@ const STEPS: TourStep[] = [
     kind: 'The contracts',
     name: 'Compass',
     lead: 'Option contracts picked off today’s levels.',
-    rest: 'Every card is marked active, watch or fading, and the mark updates as price moves.',
+    rest: 'Same day and one to seven days out, scored on the terminal’s live quotes, each card with the reason it made the board.',
     path: '/compass',
     sweep: 'down',
     rows: [
@@ -167,7 +167,7 @@ const STEPS: TourStep[] = [
     id: 'practice',
     glyph: 'practice',
     code: '08',
-    kind: 'Paper trading and backtesting',
+    kind: 'Paper trading and the journal',
     name: 'Practice',
     /* the headline leads with paper trading, as the room's first row does */
     lead: 'Paper trade today’s live option quotes.',
@@ -222,7 +222,7 @@ const PLAN_ROWS: PlanRow[] = [
   { text: 'Compass, contracts that fit the levels', card: ['Compass', 'contracts that fit the levels'], glyph: 'compass', in: { book: false, tape: false, desk: true, seat: true } },
   { text: 'The Weigher, for any contract you name', card: ['The Weigher', 'for any contract you name'], glyph: 'weigher', in: { book: false, tape: false, desk: true, seat: true } },
   /* Practice is desk's */
-  { text: 'Practice: paper trading, backtesting and the journal', card: ['Practice', 'paper trading, backtesting and the journal'], glyph: 'practice', in: { book: false, tape: false, desk: true, seat: true } },
+  { text: 'Practice: paper trading and the journal', card: ['Practice', 'paper trading and the journal'], glyph: 'practice', in: { book: false, tape: false, desk: true, seat: true } },
   { text: "Community, the traders' room", card: ['Community', 'the traders’ room'], glyph: 'community', in: { book: false, tape: false, desk: 'soon', seat: 'soon' } },
   /* The seat's own three lines, kept for the day it returns to the page: { text: 'One payment, nothing recurring',
      card: ['One payment', 'nothing recurring'], in: { book: false, tape: false, desk: false, seat: true } }, {
@@ -257,7 +257,7 @@ const PLAN_GROUPS: { key: PlanKey; says: string }[] = [
 ];
 
 const FAQ: { q: string; a: string }[] = [
-  { q: 'Are the pictures on this page real?', a: 'Yes. Every picture and every recording is the terminal itself, taken from the real page, not a mock-up. The recordings run a little faster than real time, and the numbers in them are simulated data.' },
+  { q: 'Are the pictures on this page real?', a: 'Yes. Every picture and every recording is the terminal itself, taken from the real page, not a mock-up. The recordings are played back a little faster than real time; the numbers in them are from the day they were made, not live.' },
   { q: 'Does it tell me what to trade?', a: 'No. It shows where dealer hedging sits, and it reads a contract against that in a plain word: strong, good, caution or poor. What you do with that is yours. It is not a broker and it is not financial advice.' },
   { q: 'Do I need to be an expert?', a: 'No. Every page explains itself in plain English: what a wall is, why the flip matters, what dealers are forced to do at each level.' },
   { q: 'Can I get a refund?', a: 'We do not offer refunds, so please take your time and be sure before you subscribe. You can cancel whenever you like, and you keep your access until the end of the period you paid for. If a charge ever looks wrong, write to info@slayerterminal.com and a person will look into it.' },
@@ -288,8 +288,6 @@ const Hero = ({ onLaunch, onPick }: { onLaunch: () => void; onPick: (id: string)
           <p className="max-w-[35rem] lg:max-w-[52rem] text-t16 sm:text-t17 leading-[1.55] text-textSecondary">
             Most of what moves a price is public, just scattered. Slayer gathers it into one terminal: the prints, the positions, the levels, the filings. Every page explains itself in plain English.
           </p>
-          {/* the door alone. A line stood beside it ("No sign-up. It opens on simulated data."). It went from
-              every door it stood by. */}
           <div className="shrink-0">
             <Pill href={doorTo()} onClick={onLaunch} testId="hero">
               Launch the terminal

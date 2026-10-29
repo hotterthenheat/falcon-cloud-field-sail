@@ -20,7 +20,7 @@ import PositionLayer, { type PositionLayerProps } from './PositionLayer';
 import RenameDoor from './RenameDoor';
 import { dirInk, usd, usdSigned } from './words';
 import { DOCK_ROOM, useEditorDock } from '../../data/editorDock';
-import { dayIndex } from '../../data/review/tape';
+import { dayNumber, daysBetween } from '../../data/review/history';
 import type { OpeningRange } from '../../data/sessionLevels';
 import { tfMinutes, type Timeframe } from '../../data/timeframe';
 import type { KeyLevels } from '../../types/gex';
@@ -463,7 +463,7 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
       marks={clock.marks}
       words={clock.words}
       wordsAt={p => clock.wordsAt(Math.max(0, Math.round(p / 60) - 1))}
-      counter={`day ${dayIndex(clock.day) - dayIndex(session.startDay ?? clock.day) + 1}`}
+      counter={`day ${daysBetween(session.startDay ?? clock.day, clock.day).length}`}
       stateWord="New York"
       exitWords="Your sessions"
       playing={playing}
@@ -616,7 +616,7 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
                   <StrikeChart
                     ticker={p.name.symbol}
                     paneId={`${paneIds[0]}:${p.key}`}
-                    revision={clock ? dayIndex(clock.day) * 2000 + clock.minute : (revision ?? 0)}
+                    revision={clock ? dayNumber(clock.day) * 2000 + clock.minute : (revision ?? 0)}
                     levels={p.name.levels}
                     timeframe={p.timeframe}
                     tape={p.name.tape}
@@ -683,7 +683,7 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
                 <StrikeChart
                   ticker={n.symbol}
                   paneId={paneIdOf(n)}
-                  revision={clock ? dayIndex(clock.day) * 2000 + clock.minute : (revision ?? 0)}
+                  revision={clock ? dayNumber(clock.day) * 2000 + clock.minute : (revision ?? 0)}
                   levels={n.levels}
                   timeframe={prefs.timeframe}
                   tape={n.tape}
@@ -841,7 +841,7 @@ const DeskShell = ({ session, kind, onRename, subline = '', facts = [], strip: o
           </div>,
           document.body
         )}
-      <p className="px-1 font-mono text-t10 text-textMuted">{foot ?? 'Simulated prices on a seeded tape — practice, not advice. Past results, real or pretend, promise nothing.'}</p>
+      <p className="px-1 font-mono text-t10 text-textMuted">{foot ?? 'ThetaData’s recorded NBBO, minute by minute — practice, not advice. Past results, real or pretend, promise nothing. Every time is New York’s (ET).'}</p>
     </div>
   );
 };

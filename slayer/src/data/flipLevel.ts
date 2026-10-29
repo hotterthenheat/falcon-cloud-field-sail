@@ -6,7 +6,7 @@ import { bellDay, shortDay, todayScopeLabel } from './bookWindow';
 import { carryFor } from '../core/carry';
 import { tradingMinutesBetween, tradingYears } from '../core/tradingYear';
 import { vendorIvOnTradingClock } from '../core/volClock';
-import { cumulativeFlip, dollarGammaPerContract, netGammaAt, quietLegs, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
+import { dollarGammaPerContract, netGammaAt, quietLegs, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
 import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
 import { bookCandles, ownIvDates, peekEntry, peekGammaPriced } from './uwBook';
@@ -354,11 +354,11 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
 /** The flip of the contracts in `chain` (defaults to the snapshot's levels chain) — see the head of this file */
 export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[] = snapshot.chain, at?: number): LevelFlip {
   const spot = snapshot.spot;
-  /* On the live book the running-net fallback stands in while the dates land and is marked provisional. */
-  const fallback = (final = !snapshot.liveBook): LevelFlip => ({ ...cumulativeFlip(chain.map(n => ({ strike: n.strike, net: n.netGex })), spot), complete: final });
+  /* No re-priced profile yet (the dates' rows or any vol not in): no flip, provisional — never a second rule standing in. */
+  const fallback = (): LevelFlip => ({ flip: null, netAtSpot: chain.reduce((a, n) => a + n.netGex, 0), beyond: null, range: 0.1, method: 'repriced', complete: false });
   const set = legSet(snapshot, chain, at);
   if (!set) return fallback();
-  if (!set.withVol) return fallback(set.complete);
+  if (!set.withVol) return fallback();
   /* the re-pricing is cached on its inputs; the hold is applied on every call (it is cheap, and another page of this
      browser may have moved it) */
   let base = cache.get(set.key);

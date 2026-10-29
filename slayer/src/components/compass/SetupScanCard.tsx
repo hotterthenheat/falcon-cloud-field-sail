@@ -6,9 +6,9 @@ import type { Setup } from '../../types/compass';
 import { nyClock } from '../../core/nyTime';
 import ContractLabel from '../ui/ContractLabel';
 import SessionSpark from './SessionSpark';
-import { entryAsk } from '../../data/compassModel';
 import { MODELS_VALIDATED, UNVALIDATED_LINE, UNVALIDATED_WORD } from '../../data/compassParams';
-import { useContractLive } from '../../data/thetaBook';
+import { signalOf } from '../../data/compassLedger';
+import { P1_MIN } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
 import { Tip } from '../ui/Tooltip';
 import { usd2 as money } from '../../core/format';
@@ -73,10 +73,10 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const ticket = setup.band === 'top' || setup.band === 'wing' || setup.band === 'lottery';
   const closest = setup.band === 'closest';
   const priced = ticket || closest;
-  const pinned = entryAsk(setup.id);
-  const entry = pinned > 0 ? pinned : setup.ask > 0 ? setup.ask : 0;
-  const live = useContractLive(setup.ticker, setup.expiryDate, setup.strike, setup.right, priced && !!setup.expiryDate);
-  const liveBid = live ? (live.bid > 0 && live.ask >= live.bid ? live.bid : NaN) : priced && setup.bid > 0 ? setup.bid : NaN;
+  const signal = ticket ? signalOf(setup.id) : null;
+  const paid = signal?.outcome?.fill?.ask ?? 0;
+  const entry = paid > 0 ? paid : setup.ask > 0 ? setup.ask : 0;
+  const liveBid = priced && setup.bid > 0 && setup.ask >= setup.bid ? setup.bid : NaN;
   const captured = entry > 0 && Number.isFinite(liveBid) ? ((liveBid - entry) / entry) * 100 : NaN;
   const stopPx = priced && setup.band !== 'lottery' && entry > 0 ? Number((entry * STOP_KEEP).toFixed(2)) : 0;
   const place = placeWord(setup);
@@ -86,11 +86,11 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
       ? holdOf(setup)
       : '';
   const when = [
-    (live?.at || setup.quotedAt) ? `Quote ${nyClock(live?.at || setup.quotedAt, { seconds: true, zone: true })}` : '',
-    ticket && setup.seenAt ? `Called ${nyClock(setup.seenAt, { seconds: true, zone: true })}` : '',
+    ticket && setup.seenAt ? `Called ${nyClock(setup.seenAt, { zone: true })}` : '',
+    setup.quotedAt ? `Quote ${nyClock(setup.quotedAt, { seconds: true, zone: true })}` : '',
   ].filter(Boolean);
   const sigma = setup.greeks.iv > 0 && setup.sigmaMovePct > 0 ? `IV move ±${setup.sigmaMovePct}%` : '';
-  const status = priced ? [place, sigma, model, ...when].filter(Boolean).join(' ') : (setup.whyText || 'Not a ticket.');
+  const status = priced ? [place, sigma, ...when].filter(Boolean).join(' · ') : (setup.whyText || 'Not a ticket.');
   const capturedWord = Number.isFinite(captured) ? `${captured >= 0 ? '+' : '−'}${Math.abs(captured).toFixed(1)}%` : '—';
 
   return (
@@ -113,7 +113,9 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
           {ownExpiry(setup)}
         </span>
         {tagOf(setup) ? (
-          <span className="font-mono text-t10 uppercase tracking-wider text-textPrimary border border-silver/40 rounded px-1.5 py-0.5">{tagOf(setup)}</span>
+          <Tip label={model || undefined}>
+            <span className="font-mono text-t10 uppercase tracking-wider text-textPrimary border border-silver/40 rounded px-1.5 py-0.5">{tagOf(setup)}</span>
+          </Tip>
         ) : null}
         {ticket ? (
           <span className="ml-auto font-mono text-t10 uppercase tracking-wider text-textPrimary">Called</span>
@@ -124,20 +126,21 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
         )}
       </div>
       <p className="font-mono text-t10 text-textMuted whitespace-normal break-words" data-card-times>
-        {priced ? status : [place, status, ...when].filter(Boolean).join(' ')}
+        {priced ? status : [place, status, ...when].filter(Boolean).join(' · ')}
       </p>
 
       {priced ? (
         <div className="flex items-start justify-between gap-2">
-          <Stat label="Entry" value={entry > 0 ? money(entry) : '—'} />
-          <SessionSpark ticker={setup.ticker} points={live?.prem} width={96} height={30} />
+          <Stat label="Model 1" value={setup.p1 != null ? `${(setup.p1 * 100).toFixed(1)}%` : '—'} ink={setup.p1 != null && setup.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'} />
+          <Stat label={paid > 0 ? 'Filled' : 'Ask'} value={entry > 0 ? money(entry) : '—'} />
+          <span className="max-sm:hidden"><SessionSpark ticker={setup.ticker} points={signal?.spark.length ? signal.spark : undefined} width={72} height={30} /></span>
           <Stat label="Bid" value={Number.isFinite(liveBid) ? money(liveBid) : '—'} />
           <Stat label="Captured" value={capturedWord} ink={!Number.isFinite(captured) ? 'text-textMuted' : captured >= 0 ? 'text-bull' : 'text-bear'} right />
         </div>
       ) : (
         <div className="flex items-center justify-between gap-2">
           <p className="font-mono text-t11 text-textSecondary whitespace-normal" data-card-status>{setup.whyText || 'Not a ticket.'}</p>
-          <SessionSpark ticker={setup.ticker} points={live?.prem} width={96} height={30} />
+          <SessionSpark ticker={setup.ticker} width={72} height={30} />
         </div>
       )}
 

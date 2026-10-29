@@ -2,22 +2,18 @@
    the controls, the reports to know, then every report. */
 
 import { ownerWord } from '../../data/whalesMap';
-import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
-import { CONTROLS_LINE } from '../../components/trace/TraceBox';
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { CardLine } from '../../components/record/PhoneCards';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { type ColDef, type ICellRendererParams, type IRowNode, type RowClickedEvent } from 'ag-grid-community';
-import { AgGridProvider, AgGridReact } from 'ag-grid-react';
-import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
-import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
+import { type ColDef, type ICellRendererParams, type IRowNode } from 'ag-grid-community';
+import { Controls, HeadFact, PhoneFold, RecordGrid, RecordHead, RecordPanel, Summary, ToKnow } from '../../components/record/RecordFrame';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
-import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { CongressGuide } from '../../components/record/CongressGuide';
 import { When } from '../../components/record/when';
 import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, bracketShort, congressSentence, isBondReport, isTreasuryBill, seatLabel, summariseCongress } from '../../data/congress';
-import { useCongressCoverage, useCongressFeed, useCongressStatus, wantCongressWindow, type CongressCoverage } from '../../data/liveRecord';
+import { useCongressCoverage, useCongressFeed, useCongressStatus, useKeptAt, wantCongressWindow, type CongressCoverage } from '../../data/liveRecord';
 import { nyIsoDaysBack } from '../../data/nyDate';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { companyName, isListed, tickerName } from '../../data/tickers';
@@ -345,7 +341,6 @@ export const BillsSwitch = ({ hide, onToggle, hidden, testId, reading = false }:
 
 const Congress = () => {
   const navigate = useNavigate();
-  const phone = usePhoneCards();
   const [window, setWindowRaw] = useState<Window>(90);
   const [basis, setBasis] = useState<Basis>('traded');
   /* a short window opens on the filing day, a long one on the trade day; the menu changes it either way */
@@ -358,8 +353,6 @@ const Congress = () => {
   const [show, setShow] = useState<Show>('all');
   /* Treasury bills are hidden by default (parked cash, not equity trades); one switch shows them and the head counts them */
   const [hideBills, setHideBills] = useState(true);
-  const [phoneMore, setPhoneMore] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
 
   /* The feed is the live record when it answers; the reports are paged back by trade day until the window is covered */
   const feed = useCongressFeed(window, basis);
@@ -419,11 +412,11 @@ const Congress = () => {
       { title: 'Members', options: [...byMembers.entries()].sort(order).map(([m, c]) => ({ value: `member:${m}`, label: m, hint: seatOf(m), count: c })) },
     ];
   }, [cut, picks]);
-  const paged = usePagedGrid<CongressTrade>();
+  /* in the grid's own order (newest filing, then newest trade), so the phone's cards read the same */
   const rows = useMemo(() => {
-    if (picks.length === 0) return cut;
     const picked = new Set(picks);
-    return cut.filter(t => picked.has(`name:${t.ticker}`) || picked.has(`member:${t.member.name}`));
+    const out = picks.length === 0 ? [...cut] : cut.filter(t => picked.has(`name:${t.ticker}`) || picked.has(`member:${t.member.name}`));
+    return out.sort((a, b) => a.filedDaysAgo - b.filedDaysAgo || a.tradedDaysAgo - b.tradedDaysAgo || String(b.id).localeCompare(String(a.id)));
   }, [cut, picks]);
   const toggleMember = (name: string) => setPicks(p => (p.includes(`member:${name}`) ? p.filter(x => x !== `member:${name}`) : [...p, `member:${name}`]));
   const stats = useMemo(() => summariseCongress(rows, window), [rows, window]);
@@ -472,152 +465,87 @@ const Congress = () => {
     []
   );
   const defaultColDef = useMemo<ColDef<CongressTrade>>(() => ({ sortable: true, resizable: true, suppressMovable: true }), []);
-  const open = (e: RowClickedEvent<CongressTrade>) => {
-    if (!e.data) return;
-    navigate(`/dossier/congress/${e.data.member.id}`);
-  };
+
+  const kept = useKeptAt('congress');
+  const window90 = basis === 'filed' ? Math.max(window, 90) : window;
+  const summary = waiting
+    ? 'Reading the reports.'
+    : stats.trades.length === 0 && show === 'late'
+      ? `No late report among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.`
+      : `${bondStats.trades.length ? `Stocks, options and funds: ${congressSentence(equityStats).replace(/^No report on this cut/, 'none on this cut')} Bonds apart — ${bondStats.trades.length.toLocaleString('en-US')} ${bondStats.trades.length === 1 ? 'report' : 'reports'} of notes, munis and corporate bonds covering ${bondStats.totalHigh === null ? `at least ${dollars3(bondStats.totalLow)}` : `${dollars3(bondStats.totalLow)}–${dollars3(bondStats.totalHigh)}`}, on the grid but not in that total${bondStats.lateFilings ? `, ${bondStats.lateFilings.toLocaleString('en-US')} of them filed past the deadline` : ''}.` : congressSentence(stats)}${billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from every count here.` : ''}`;
 
   return (
-    <div className="relative border border-borderSubtle rounded-md overflow-hidden bg-panel flex flex-col" data-congress data-window={window}>
-      <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the reports" testId="congress-guide" viewport>
-        <CongressGuide />
-      </GuideFocus>
-      {/* THE HEAD */}
-      <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-[min(18rem,100%)] flex-1">
-          <div className="h-6 flex items-center gap-3">
-            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">What Congress reported</h3>
-            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a row, a bracket, an owner and the lag mean" testId="congress-guide" />
-          </div>
-          {/* on a phone the line wraps rather than cutting mid-word */}
-          <p className="mt-0.5 text-t11 text-textMuted sm:whitespace-nowrap sm:truncate">{basis === 'filed' ? `Every report filed in the last ${window} days, whenever the trade was made (its date on each row)` : 'Every report of a trade made in the window'}, newest filing first · a row opens that member’s book</p>
-          {!failed && <CongressProgress coverage={coverage} window={basis === 'filed' ? Math.max(window, 90) : window} waiting={waiting} />}
-        </div>
-        <dl className="flex flex-wrap gap-x-6 gap-y-2">
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="STOCK Act reports on the grid right now, after the cards — bought, sold (full or partial) and exchanged add up to the whole">Reports</dt>
-            <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${partial ? 'opacity-60' : ''} text-textPrimary`} data-congress-count data-partial={partial ? '' : undefined}>
-              {quiet ? '—' : (
-                <>
-                  {stats.trades.length.toLocaleString('en-US')}{' '}
-                  <span className="text-textMuted">
-                    · {stats.purchases.toLocaleString('en-US')} bought · {stats.sales.toLocaleString('en-US')} sold
-                    {stats.trades.length - stats.purchases - stats.sales > 0 ? ` · ${(stats.trades.length - stats.purchases - stats.sales).toLocaleString('en-US')} exchanged` : ''}
-                  </span>
-                  {soFar}
-                </>
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="The middle number of days between a trade and its report — half filed faster, half slower">Median lag</dt>
-            <dd className={`mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap ${partial ? 'opacity-60' : ''}`} data-congress-lag>
-              {quiet || stats.trades.length === 0 ? '—' : <>{stats.medianLag}d{soFar}</>}
-            </dd>
-          </div>
-          <div>
-            {/* a trade made under 45 days ago cannot be late yet — on the 30-day window the count is structurally nil, and says so */}
-            <dt className="text-t10 text-textMuted cursor-help" title={window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade. Every trade in the last ${window} days is younger than that, so none of them can be late yet — pick 90 or 180 days` : `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade, the STOCK Act's limit — among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days`}>Past the deadline</dt>
-            <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${equityStats.lateFilings ? 'text-bear' : 'text-textPrimary'} ${partial ? 'opacity-60' : ''}`} data-congress-late>
-              {quiet ? '—' : window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? <span className="text-textMuted">none can be yet</span> : (
-                /* the deadline count is the stocks', the bonds' said beside it, on the sentence's basis */
-                <>
-                  {equityStats.lateFilings.toLocaleString('en-US')}
-                  {bondStats.lateFilings > 0 ? <span className="text-textMuted"> · +{bondStats.lateFilings.toLocaleString('en-US')} {bondStats.lateFilings === 1 ? 'bond' : 'bonds'}</span> : null}
-                  {soFar}
-                </>
-              )}
-            </dd>
-          </div>
-        </dl>
-      </div>
-      {/* on a phone the controls and the prose fold behind one row, so the first report is on the first screen */}
-      {phone && (
-        <button
-          type="button"
-          onClick={() => setPhoneMore(v => !v)}
-          aria-expanded={phoneMore}
-          className="mx-5 mb-3 h-8 px-3 rounded border border-borderMuted font-mono text-t10 uppercase tracking-widest text-textSecondary flex items-center justify-between"
-          data-congress-phone-more={phoneMore ? 'open' : 'closed'}
-        >
-          <span>{phoneMore ? 'Hide' : 'Show'} the filters, the summary and the reports to know</span>
-          <span aria-hidden>{phoneMore ? '−' : '+'}</span>
-        </button>
-      )}
-      {(!phone || phoneMore) && (
-      <>
-      <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-congress-controls>
-        <DropdownSelect label="Window" value={window} options={WINDOW_OPTIONS} onChange={setWindow} title="How far back the reports run" testId="congress-window" />
-        <DropdownSelect label="Dated by" value={basis} options={BASIS_OPTIONS} onChange={setBasis} title="Count a report by the day it was filed, or the day of the trade" testId="congress-basis" />
-        <DropdownSelect label="Chamber" value={chamber} options={CHAMBER_OPTIONS} onChange={setChamber} title="Which chamber" testId="congress-chamber" />
-        <DropdownSelect label="Owner" value={owner} options={OWNER_OPTIONS} onChange={setOwner} title="Whose holding" testId="congress-owner" />
-        <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Which reports" testId="congress-show" />
-        <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and members on the page right now — tick any number; only those stay" testId="congress-filter" />
-        <BillsSwitch hide={hideBills} onToggle={() => setHideBills(v => !v)} hidden={billsHidden} testId="congress-bills" reading={waiting} />
-      </div>
-      {!failed && !waiting &&  <CongressCoverageLine coverage={coverage} window={basis === 'filed' ? Math.max(window, 90) : window} unread={feed.unreadTypes ?? 0} notMembers={feed.notMembers ?? 0} />}
-      {failed ? (
-        <FeedFallback />
-      ) : (
-        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden" data-congress-sentence>
-          {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : `${bondStats.trades.length ? `Stocks, options and funds: ${congressSentence(equityStats).replace(/^No report on this cut/, 'none on this cut')} Bonds apart — ${bondStats.trades.length.toLocaleString('en-US')} ${bondStats.trades.length === 1 ? 'report' : 'reports'} of notes, munis and corporate bonds covering ${bondStats.totalHigh === null ? `at least ${dollars3(bondStats.totalLow)}` : `${dollars3(bondStats.totalLow)}–${dollars3(bondStats.totalHigh)}`}, on the grid but not in that total${bondStats.lateFilings ? `, ${bondStats.lateFilings.toLocaleString('en-US')} of them filed past the deadline` : ''}.` : congressSentence(stats)}${billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from every count here.` : ''}`}
-        </p>
-      )}
-      <div className="px-5 pb-3 border-t border-borderSubtle/60" data-congress-to-know>
-        {/* on a phone the head stacks: the label over its words */}
-        <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
-          <span>The reports to know</span>
-          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">the biggest disclosed trades on this cut · a click keeps the grid to that member</span>
-        </div>
-        {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut'}</div>
+    <RecordPanel testId="congress" attrs={{ 'data-window': window }}>
+      <RecordHead
+        title="What Congress reported"
+        guide={{ title: 'How to read the reports', door: 'What a row, a bracket, an owner and the lag mean', testId: 'congress-guide', body: <CongressGuide /> }}
+        kept={kept}
+        line={`${basis === 'filed' ? `Filed in the last ${window} days` : `Traded in the last ${window} days`} · newest filing first · a row opens that member's book`}
+        status={!failed && <CongressProgress coverage={coverage} window={window90} waiting={waiting} />}
+        facts={
+          <>
+            <HeadFact label="Reports" testId="congress-count" partial={partial} tip="STOCK Act reports on the grid now: bought, sold and exchanged add up to the whole">
+              <span data-congress-count>
+                {quiet ? '—' : (
+                  <>
+                    {stats.trades.length.toLocaleString('en-US')} <span className="text-textMuted">· {stats.purchases.toLocaleString('en-US')} bought · {stats.sales.toLocaleString('en-US')} sold</span>
+                    {soFar}
+                  </>
+                )}
+              </span>
+            </HeadFact>
+            <HeadFact label="Median lag" testId="congress-lag" partial={partial} tip="The middle number of days between a trade and its report">
+              <span data-congress-lag>{quiet || stats.trades.length === 0 ? '—' : <>{stats.medianLag}d{soFar}</>}</span>
+            </HeadFact>
+            <HeadFact label="Past the deadline" testId="congress-late" partial={partial} tone={equityStats.lateFilings ? 'text-bear' : undefined} tip={`Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade, the STOCK Act's limit`}>
+              <span data-congress-late>
+                {quiet ? '—' : window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? <span className="text-textMuted">none can be yet</span> : (
+                  <>
+                    {equityStats.lateFilings.toLocaleString('en-US')}
+                    {bondStats.lateFilings > 0 ? <span className="text-textMuted"> · +{bondStats.lateFilings.toLocaleString('en-US')} {bondStats.lateFilings === 1 ? 'bond' : 'bonds'}</span> : null}
+                    {soFar}
+                  </>
+                )}
+              </span>
+            </HeadFact>
+          </>
+        }
+      />
+      <PhoneFold label="Filters, summary and the reports to know" testId="congress">
+        <Controls testId="congress">
+          <DropdownSelect label="Window" value={window} options={WINDOW_OPTIONS} onChange={setWindow} title="How far back the reports run" testId="congress-window" />
+          <DropdownSelect label="Dated by" value={basis} options={BASIS_OPTIONS} onChange={setBasis} title="Count a report by the day it was filed, or the day of the trade" testId="congress-basis" />
+          <DropdownSelect label="Chamber" value={chamber} options={CHAMBER_OPTIONS} onChange={setChamber} title="Which chamber" testId="congress-chamber" />
+          <DropdownSelect label="Owner" value={owner} options={OWNER_OPTIONS} onChange={setOwner} title="Whose holding" testId="congress-owner" />
+          <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Which reports" testId="congress-show" />
+          <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and members on the page right now — tick any number; only those stay" testId="congress-filter" />
+          <BillsSwitch hide={hideBills} onToggle={() => setHideBills(v => !v)} hidden={billsHidden} testId="congress-bills" reading={waiting} />
+        </Controls>
+        {failed ? (
+          <FeedFallback />
         ) : (
-          <div
-            /* every report across from 1280; six on a laptop, four on a tablet, two on a phone */
-            className="grid gap-2 grid-cols-2 max-sm:[&>*:nth-child(n+3)]:hidden sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--reports),minmax(0,1fr))]"
-            style={{ '--reports': REPORTS_TO_KNOW } as CSSProperties}
-          >
-            {toKnow.map(t => (
-              <ReportCard key={t.id} t={t} on={picks.includes(`member:${t.member.name}`)} onToggle={() => toggleMember(t.member.name)} />
-            ))}
-          </div>
+          <Summary testId="congress" more={!waiting && <CongressCoverageLine coverage={coverage} window={window90} unread={feed.unreadTypes ?? 0} notMembers={feed.notMembers ?? 0} />}>
+            {summary}
+          </Summary>
         )}
-      </div>
-      </>
-      )}
-      {/* the grid grows to its rows and the page scrolls */}
-      <div className="slayer-board border-t border-borderSubtle" data-congress-grid>
-        {phone ? (
-          <PhoneCards rows={rows} rowKey={t => t.id} card={t => CongressCard(t)} onOpen={t => navigate(`/dossier/congress/${t.member.id}`)} empty={gridEmpty} testId="congress" resetKey={rows} />
-        ) : (
-        <>
-        <AgGridProvider modules={GRID_MODULES}>
-          <AgGridReact<CongressTrade>
-            {...phonePin}
-            {...paged.props}
-            theme={GRID_THEME}
-            domLayout="autoHeight"
-            rowData={rows}
-            overlayNoRowsTemplate={noRows(gridEmpty)}
-            /* the overlay is read once, so a new state is a new grid */
-            key={gridEmpty}
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            getRowId={p => p.data.id}
-            onRowClicked={open}
-            rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
-            suppressCellFocus
-            animateRows
-            tooltipShowDelay={350}
-            tooltipHideDelay={8000}
-          />
-        </AgGridProvider>
-        {paged.bar(rows.length, 'congress-grid')}
-        </>
-        )}
-      </div>
+        <ToKnow title="The reports to know" sub="the biggest disclosed trades on this cut · a click keeps the grid to that member" testId="congress" count={REPORTS_TO_KNOW} empty={toKnow.length === 0 ? (failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut') : null}>
+          {toKnow.map(t => (
+            <ReportCard key={t.id} t={t} on={picks.includes(`member:${t.member.name}`)} onToggle={() => toggleMember(t.member.name)} />
+          ))}
+        </ToKnow>
+      </PhoneFold>
+      <RecordGrid<CongressTrade>
+        testId="congress"
+        rows={rows}
+        rowKey={t => t.id}
+        card={t => CongressCard(t)}
+        onOpen={t => navigate(`/dossier/congress/${t.member.id}`)}
+        empty={gridEmpty}
+        columnDefs={columnDefs}
+        defaultColDef={defaultColDef}
+      />
       <CongressHoldings since={coverage.since} />
-    </div>
+    </RecordPanel>
   );
 };
 

@@ -8,8 +8,10 @@
 
 import { addDays, dayBeginsAt, dayEndsAt, flatByOf, nyAt, nyInstant, tradingDayOf, yearsToExpiry } from '../src/data/paper/clock';
 import { EVAL_PLANS, bankedOf, closeStale, endEvaluation, evalRead, flattenAll, futBookOf, futClose, futPlace, futRefusal, newAccount, optBookOf, optPlace, optRefusal, tick, viewOf, type PaperAccount, type PaperMarket } from '../src/data/paper/engine';
-import { futOfFund, indexOfFund, isPaperIndex, paperFut, paperIndex } from '../src/data/paper/products';
-import { expiriesAt, priceWith, type ContractId } from '../src/data/review/quotes';
+import { futOfFund, isPaperIndex, paperFut } from '../src/data/paper/products';
+import { optionRootOf } from '../src/data/paper/thetaFeed';
+import type { ContractId } from '../src/data/review/quotes';
+import { priceWith } from './paper-test-pricer';
 import type { Candle } from '../src/types/market';
 
 let failed = 0;
@@ -36,6 +38,8 @@ const market = (): PaperMarket => ({
   bar: () => Math.floor(now / 1000),
   candles: (t: string) => bars[t] ?? [],
   open: () => true,
+  /* the name's 16:00 close: where it is set */
+  closeOf: (t: string) => px[t],
 });
 /** A second on, the names where they are set — and a candle for each, so a closed trade has something to be drawn on */
 const step = (ms = 1500) => {
@@ -117,9 +121,8 @@ ok('at 16:00 a same-day contract settles at what it is worth in the money', !!se
 ok('an expired contract can no longer be bought', optRefusal(a, market(), { contract: daily, side: 'buy', qty: 1, kind: 'market' }) === 'That contract has expired');
 
 /* ================= an index's options (2026-09-22) ================= */
-ok('SPX, NDX and RUT are the paper account’s indexes; SPX is SPY × 10, to the cent', isPaperIndex('spx') && isPaperIndex('NDX') && isPaperIndex('rut') && !isPaperIndex('SPY') && indexOfFund(paperIndex('SPX')!, 520.43) === 5204.3);
-ok('ES trades over SPX by its carry, exactly — the future and the index are made from the same fund', futOfFund(paperFut('ES'), 520) - indexOfFund(paperIndex('SPX')!, 520) === 12);
-ok('an index lists a contract every session, as its fund does', expiriesAt('SPX', '2026-09-21').filter(e => e.kind === 'daily').length === 5 && expiriesAt('NDX', '2026-09-21').filter(e => e.kind === 'daily').length === 5);
+ok('SPX, NDX and RUT are the paper account’s indexes', isPaperIndex('spx') && isPaperIndex('NDX') && isPaperIndex('rut') && !isPaperIndex('SPY'));
+ok('an index’s options are asked of ThetaData on their own roots (SPXW, NDXP, RUTW); a fund’s on its own', optionRootOf('SPX') === 'SPXW' && optionRootOf('ndx') === 'NDXP' && optionRootOf('RUT') === 'RUTW' && optionRootOf('spy') === 'SPY');
 px.SPX = 5000;
 let ix = newAccount({ id: 'p9', kind: 'practice', name: 'Index', startCash: 25_000, now });
 const spx: ContractId = { ticker: 'SPX', strike: 5000, right: 'C', expiry: EXP };
@@ -279,6 +282,26 @@ ok('…and cancels what it left working', g.fut.orders.every(o => o.status !== '
 g = futPlace(g, market(), { symbol: 'ES', side: 'buy', qty: 1, kind: 'market' });
 g = flattenAll(g, market(), 'page', 'the page closed');
 ok('the page closing flattens at the market, in its own words', futBookOf(g).trades[1]?.how === 'page' && futBookOf(g).trades[1]?.note === 'the page closed');
+
+/* ================= an expiry settles on its own day's close ================= */
+{
+  const WED = '2026-09-23';
+  now = nyInstant(WED, 15 * 60);
+  px.SPY = 505;
+  let e = newAccount({ id: 'p7', kind: 'practice', name: 'Expiry', startCash: 25_000, now });
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: WED };
+  e = optPlace(e, market(), { contract: c, side: 'buy', qty: 1, kind: 'market' });
+  /* the page is next open the morning after: the name is elsewhere now, and the close is not known yet */
+  now = nyInstant('2026-09-24', 9 * 60 + 45);
+  px.SPY = 490;
+  const blind: PaperMarket = { ...market(), closeOf: () => NaN };
+  e = tick(e, blind).account;
+  ok('an expired contract waits to settle until its day’s close is known — it never settles on the price of the next morning', optBookOf(e).positions.length === 1 && optBookOf(e).trades.length === 0);
+  /* the 16:00 close on the expiry day was 503.40: the 500 call settles at 3.40, with no fee */
+  e = tick(e, { ...market(), closeOf: (t, d) => (t === 'SPY' && d === WED ? 503.4 : NaN) }).account;
+  const done = optBookOf(e).trades[0];
+  ok('…and settles at what it was worth in the money at that close', done?.how === 'expired' && done.avgOut === 3.4 && e.opt.fills[1].fee === 0, `${done?.avgOut}`);
+}
 
 console.log(`\n${passed} held · ${failed} missed`);
 if (failed) process.exit(1);

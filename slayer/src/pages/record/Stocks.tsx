@@ -25,7 +25,8 @@ import { peekQuote } from '../../data/liveQuote';
 import { nyClock, nyIsoDate, nySessionPhase } from '../../core/nyTime';
 import { isTradingDay } from '../../core/calendar';
 import { shortDay as shortDayWord } from '../../data/nyDate';
-import { gradeOfComposite, type Grade } from '../../data/stockOverview';
+import { gradeHelp, gradeOfComposite, type Grade } from '../../data/stockOverview';
+import { Controls, HeadFact, PhoneFold, RecordHead, RecordPanel, Summary } from '../../components/record/RecordFrame';
 import { lookup, SECTORS, UNIVERSE, type Sector } from '../../data/universe';
 import { searchListed } from '../../data/listedNames';
 import { ROTATION_SECTORS } from './recordSkeletons';
@@ -186,12 +187,22 @@ const sleeveCell =
     );
   };
 
+/* the grade's ingredients in one hover */
+const pickHelp = (p: StockPick): string =>
+  gradeHelp({
+    composite: p.composite,
+    pillars: [
+      { key: 'trend', score: p.sleeves.momentum, inRead: !p.quiet.includes('momentum') },
+      { key: 'numbers', score: p.sleeves.quality, inRead: !p.quiet.includes('quality') },
+      { key: 'money', score: p.sleeves.flow, inRead: !p.quiet.includes('flow') },
+    ],
+  });
 const ScreenCell = ({ data }: ICellRendererParams<StockPick>) =>
   data ? (
     data.listedOnly ? (
       <span className="font-mono text-t10 text-textMuted" title="Listed. No screen — the sleeves were not scored">No screen</span>
     ) : (
-    <span className="inline-flex items-center gap-1.5 font-mono text-t10 font-semibold uppercase tracking-wider text-textPrimary">
+    <span className="inline-flex items-center gap-1.5 font-mono text-t10 font-semibold uppercase tracking-wider text-textPrimary cursor-help" title={pickHelp(data)}>
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SCREEN_DOT[gradeOfPick(data)]}`} />
       {gradeOfPick(data).toUpperCase()}
     </span>
@@ -292,10 +303,8 @@ const Stocks = () => {
   const phone = usePhoneCards();
   const boardNames = useBoardNames();
   const [screen, setScreen] = useState<ScreenPick>('all');
-  const [rotOpen, setRotOpen] = useState(false);
   const [sector, setSector] = useState<SectorPick>('all');
   const [names, setNames] = useState<NamesPick>('all');
-  const [guideOpen, setGuideOpen] = useState(false);
 
   /* The board is deterministic per session day; the rotation rolls it up */
   const liveBoard = useLiveStocks();
@@ -408,12 +417,12 @@ const Stocks = () => {
       { headerName: dayHead, field: 'changePct', width: 78, cellRenderer: TodayCell, valueGetter: p => (p.data ? peekBatchQuote(p.data.ticker)?.pct ?? p.data.changePct : 0), type: 'rightAligned', headerTooltip: "The regular session's change (the last session's outside it); the extended move sits under it" },
       { headerName: 'Year', field: 'trend', width: 116, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
       { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 96, cellRenderer: sleeveCell('momentum'), headerTooltip: "Price against its 20-day EMA, RSI, ADX with the week's direction, and the month. Hover for the figures." },
-      { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 96, cellRenderer: sleeveCell('quality'), headerTooltip: 'EPS growth over one and two years (capped at ±100%) and the change in share count. Hover for the figures.' },
+      { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 96, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth a year (the middle of the 1-, 2- and 3-year rates) and the change in share count. Hover for the figures.' },
       { headerName: 'Money', colId: 'flow', valueGetter: p => p.data?.sleeves.flow ?? 0, width: 96, cellRenderer: sleeveCell('flow'), headerTooltip: 'Relative volume and the side of the options premium. Under $1M of premium it is not scored.' },
     ];
     if (!newsQuiet) cols.push({ headerName: 'News', colId: 'news', valueGetter: p => p.data?.sleeves.news ?? 0, width: 88, cellRenderer: sleeveCell('news'), headerTooltip: "The wire's lean on the name. A dash stays out of the screen." });
     cols.push(
-      { headerName: 'Screen', field: 'verdict', width: 92, cellRenderer: ScreenCell, comparator: (_a: StockVerdict, _b: StockVerdict, na, nb) => GRADE_RANK.indexOf(na.data ? gradeOfPick(na.data) : 'poor') - GRADE_RANK.indexOf(nb.data ? gradeOfPick(nb.data) : 'poor'), headerTooltip: 'The measures that have a number, rolled into one word. What the data says, never an instruction.' },
+      { headerName: 'Screen', field: 'verdict', width: 92, cellRenderer: ScreenCell, comparator: (_a: StockVerdict, _b: StockVerdict, na, nb) => GRADE_RANK.indexOf(na.data ? gradeOfPick(na.data) : 'poor') - GRADE_RANK.indexOf(nb.data ? gradeOfPick(nb.data) : 'poor'), headerTooltip: 'The trend (32%), the numbers (24%) and the money (26%) in one word. Hover a cell for its sums. A state, never an instruction.' },
       { headerName: 'Why', field: 'thesis', flex: 2.4, minWidth: 230, cellRenderer: WhyCell, sortable: false, headerTooltip: 'What is for the name and what is against it' },
     );
     return cols;
@@ -438,54 +447,49 @@ const Stocks = () => {
   };
 
   return (
-    <div className="relative border border-borderSubtle rounded-md overflow-hidden bg-panel flex flex-col" data-stocks data-screen={screen} data-sector={sector} data-rows={rows.length}>
-      <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the screens" testId="stocks-guide" viewport>
-        <StocksGuide />
-      </GuideFocus>
-      {/* THE HEAD */}
-      <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-[min(18rem,100%)] flex-1">
-          <div className="h-6 flex items-center gap-3">
-            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">How every name screens</h3>
-            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the measures, the screen and the rotation mean" testId="stocks-guide" />
-          </div>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate" title={unscreened.length ? `${unscreened.join(', ')} ${unscreened.length === 1 ? 'is' : 'are'} on the house list and ${unscreened.length === 1 ? 'has' : 'have'} no row on this screen` : undefined}>
-            The {picks.length || 'house list’s'} names with a screen. The list under the rotation keeps going through every listed stock — scroll and it grows. Search finds a name that is not on the screen. A row opens the name.
-          </p>
-        </div>
-        <dl className="flex flex-wrap gap-x-6 gap-y-2">
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Names")}>Names</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-stocks-names>
-              {quiet ? '—' : <>{facts.names} <span className="text-textMuted">·</span> <span className="text-bull font-semibold">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-bull">{facts.good} good</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.mixed} caution</span> <span className="text-textMuted">·</span> <span className="text-bear">{facts.weak} poor</span></>}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="The share of the names on the grid whose last price is above their 50-day simple average (the screener's)">Above their 50-day</dt>
-            <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${quiet ? 'text-textMuted' : facts.breadth >= 55 ? 'text-bull' : facts.breadth <= 40 ? 'text-bear' : 'text-textPrimary'}`} data-stocks-breadth>
-              {quiet ? '—' : `${facts.breadth}%`}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Leading sector")}>Leading sector</dt>
-            <dd className="mt-0.5 whitespace-nowrap" data-stocks-leader>
-              {quiet ? <span className="font-mono text-t12 text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(top.sector)} title={`Keep the grid to ${top.sector}`} className="font-mono text-t12 tnum text-supreme font-semibold hover:underline underline-offset-2">
-                {top.sector}
-              </button>}
-            </dd>
-          </div>
-          <div>
-            {/* ranked last by its names' grades, with its direction beside it: a sector can rank last and still be turning up */}
-            <dt className="text-t10 text-textMuted cursor-help" title="The sector whose names grade worst, its direction beside it; it can rank last and still be turning up">Ranked last</dt>
-            <dd className="mt-0.5 whitespace-nowrap" data-stocks-trailer>
-              {quiet ? <span className="font-mono text-t12 text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="font-mono text-t12 tnum text-bear hover:underline underline-offset-2">
-                {bottom.sector} <span className="text-textMuted font-normal">· {PHASE_WORD[bottom.phase].toLowerCase()}</span>
-              </button>}
-            </dd>
-          </div>
-        </dl>
-      </div>
-      <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-stocks-controls>
+    <RecordPanel testId="stocks" attrs={{ 'data-screen': screen, 'data-sector': sector, 'data-rows': rows.length }}>
+      <RecordHead
+        title="How every name screens"
+        guide={{ title: 'How to read the screens', door: 'What the measures, the screen and the rotation mean', testId: 'stocks-guide', body: <StocksGuide /> }}
+        kept={liveBoard.keptAt}
+        line={
+          <span title={unscreened.length ? `${unscreened.join(', ')} ${unscreened.length === 1 ? 'is' : 'are'} on the house list with no row on the screener` : undefined}>
+            The house list, graded on the trend, the numbers and the money · search finds any listed stock · a row opens the name
+          </span>
+        }
+        facts={
+          <>
+            <HeadFact label="Names" testId="stocks-names" tip="The names with a screen, by grade. Hover a Screen cell for how a grade is made">
+              <span data-stocks-names>
+                {quiet ? '—' : <>{facts.names} <span className="text-textMuted">·</span> <span className="text-bull font-semibold">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-bull">{facts.good} good</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.mixed} caution</span> <span className="text-textMuted">·</span> <span className="text-bear">{facts.weak} poor</span></>}
+              </span>
+            </HeadFact>
+            <HeadFact label="Above their 50-day" testId="stocks-breadth" tone={quiet ? 'text-textMuted' : facts.breadth >= 55 ? 'text-bull' : facts.breadth <= 40 ? 'text-bear' : undefined} tip="The share of the names whose last price is above their 50-day simple average">
+              <span data-stocks-breadth>{quiet ? '—' : `${facts.breadth}%`}</span>
+            </HeadFact>
+            <HeadFact label="Leading sector" testId="stocks-leader">
+              <span data-stocks-leader>
+                {quiet ? '—' : (
+                  <button type="button" onClick={() => toggleSector(top.sector)} title={`Keep the grid to ${top.sector}`} className="text-supreme font-semibold hover:underline underline-offset-2">
+                    {top.sector}
+                  </button>
+                )}
+              </span>
+            </HeadFact>
+            <HeadFact label="Ranked last" testId="stocks-trailer" tip="The sector whose names grade worst, its direction beside it; it can rank last and still be turning up">
+              <span data-stocks-trailer>
+                {quiet ? '—' : (
+                  <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="text-bear hover:underline underline-offset-2">
+                    {bottom.sector} <span className="text-textMuted font-normal">· {PHASE_WORD[bottom.phase].toLowerCase()}</span>
+                  </button>
+                )}
+              </span>
+            </HeadFact>
+          </>
+        }
+      />
+      <PhoneFold label="Filters, summary and the rotation" testId="stocks">
+      <Controls testId="stocks">
         <DropdownSelect label="Screen" value={screen} options={SCREEN_OPTIONS} onChange={setScreen} title="Which screens" testId="stocks-screen" />
         <DropdownSelect label="Sector" value={sector} options={SECTOR_OPTIONS} onChange={setSector} title="Which sector" testId="stocks-sector" />
         <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="stocks-names" />
@@ -497,23 +501,15 @@ const Stocks = () => {
           className="h-7 w-44 rounded border border-borderMuted bg-transparent px-2 font-mono text-t11 text-textPrimary placeholder:text-textMuted"
         />
         <DropdownMulti label="Filter" values={filter} groups={filterGroups} onChange={setFilter} title="The names on the page right now — tick any number; only those stay" testId="stocks-filter" />
-      </div>
-      {failed ? (
-        <FeedFallback />
-      ) : (
-        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden" data-stocks-sentence>
-          {waiting ? 'Reading the screens.' : sentence}
-        </p>
-      )}
+      </Controls>
+      {failed ? <FeedFallback /> : <Summary testId="stocks">{waiting ? 'Reading the screens.' : sentence}</Summary>}
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-stocks-rotation>
-        {/* on a phone the rotation folds, so the first row of the grid is on the first screen */}
-        <button type="button" onClick={() => setRotOpen(o => !o)} disabled={!phone} aria-expanded={!phone || rotOpen} className="w-full h-[26px] flex items-center gap-3 text-left text-t10 font-semibold uppercase tracking-widest text-textPrimary disabled:cursor-default max-sm:h-auto max-sm:py-1.5" data-stocks-rotation-head>
+        <div className="w-full h-[26px] flex items-center gap-3 text-left text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:py-1.5" data-stocks-rotation-head>
           <span>The rotation</span>
           <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary max-sm:hidden">sectors ranked by their names' screens · a click keeps the grid to a sector</span>
-          {phone && <ChevronDown className={`ml-auto w-3.5 h-3.5 text-textMuted transition-transform ${rotOpen ? 'rotate-180' : ''}`} />}
-        </button>
+        </div>
         {/* two on a phone, four on a tablet, five across from a laptop */}
-        {phone && !rotOpen ? null : quiet ? (
+        {quiet ? (
           <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : 'Reading the screens'}</div>
         ) : (
         <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-5" data-sectors={ROTATION_SECTORS}>
@@ -523,6 +519,7 @@ const Stocks = () => {
         </div>
         )}
       </div>
+      </PhoneFold>
       {/* the grid scrolls inside a fixed window, so its rows virtualise */}
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-stocks-grid>
         {phone ? (
@@ -556,7 +553,7 @@ const Stocks = () => {
           {rows.length.toLocaleString()} {rows.length === 1 ? 'name' : 'names'}{find.trim() ? ' found' : ' with a screen · search finds any listed stock'}
         </div>
       )}
-    </div>
+    </RecordPanel>
   );
 };
 

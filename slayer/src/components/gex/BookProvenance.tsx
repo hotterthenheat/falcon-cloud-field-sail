@@ -106,16 +106,16 @@ export const DataCard = ({ ticker, surface, greeks, expiries, rings, view }: Car
         </p>
         <ul className="mt-1.5 flex flex-col gap-1">
           <Formula greek="GEX" words="gamma × OI × 100 × spot² × 1%" unit={GREEK_UNIT.gex} />
-          <Formula greek="DEX" words="|delta| × OI × 100 × spot × one expected daily move" unit={GREEK_UNIT.dex} />
-          <Formula greek="VEX" words={src.live ? 'vega repriced at the current spot, on the trading clock, times the same contract count as gamma' : 'vega × OI × 100'} unit={GREEK_UNIT.vex} />
-          <Formula greek="VANNA" words={src.live ? 'spot vanna × open interest, as dollars of delta per vol point' : '∂delta/∂vol × OI × 100 × spot, for one point of vol'} unit={GREEK_UNIT.vanna} />
-          <Formula greek="CHARM" words={src.live ? 'spot charm × open interest × 365, as dollars of delta per session' : '∂delta/∂time × OI × 100 × spot, for one calendar day'} unit={GREEK_UNIT.charm} />
+          <Formula greek="DEX" words="delta × OI × 100 × spot (dollars of stock)" unit={GREEK_UNIT.dex} />
+          <Formula greek="VEX" words="vega × OI × 100, each contract at its own vol on the trading clock" unit={GREEK_UNIT.vex} />
+          <Formula greek="VANNA" words="∂delta/∂vol × OI × 100 × spot × 1%" unit={GREEK_UNIT.vanna} />
+          <Formula greek="CHARM" words="∂delta/∂time × OI × 100 × spot ÷ 252" unit={GREEK_UNIT.charm} />
         </ul>
       </div>
       <div>
         <p className="text-t12 font-semibold text-textPrimary">The sign, and the assumption under it</p>
         <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
-          {ASSUMPTION_WORDS} Gamma prints in its own sign: call gamma <span className="text-textPrimary">positive</span>, put gamma <span className="text-textPrimary">negative</span>. A strike that nets positive is call-heavy — dealers are long gamma there and their hedging absorbs a move (cool ink); one that nets negative is put-heavy — they are short gamma and hedging amplifies it (warm ink). The net is the two legs added; the card on any cell shows the legs apart.
+          {ASSUMPTION_WORDS} Every greek prints as the dealers hold it: a call leg's figure is the greek of the calls they are long, a put leg's the negative of the puts they are short — so call gamma is <span className="text-textPrimary">positive</span> and put gamma <span className="text-textPrimary">negative</span>, and the same rule signs delta, vega, vanna and charm. A strike that nets positive is call-heavy — dealers are long gamma there and their hedging absorbs a move (cool ink); one that nets negative is put-heavy — they are short gamma and hedging amplifies it (warm ink). The net is the two legs added; the card on any cell shows the legs apart.
         </p>
       </div>
       <div>

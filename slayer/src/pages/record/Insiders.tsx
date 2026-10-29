@@ -2,24 +2,20 @@
    someone chose to buy, then every filing (open-market trades by default, the plumbing one control away). */
 
 import { CoSub } from '../../components/record/CoName';
-import { CONTROLS_LINE } from '../../components/trace/TraceBox';
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ChevronDown } from 'lucide-react';
-import { type ColDef, type ICellRendererParams, type IRowNode, type RowClickedEvent } from 'ag-grid-community';
-import { AgGridProvider, AgGridReact } from 'ag-grid-react';
-import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
-import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
+import { ArrowLeft } from 'lucide-react';
+import { type ColDef, type ICellRendererParams, type IRowNode } from 'ag-grid-community';
+import { Controls, HeadFact, PhoneFold, RecordGrid, RecordHead, RecordPanel, Summary, ToKnow } from '../../components/record/RecordFrame';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
-import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { InsidersGuide } from '../../components/record/InsidersGuide';
 import { When } from '../../components/record/when';
 import { dollars3 as fmtDollars } from './money';
 import { useBoardNames } from '../../data/boardNames';
 import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, isCorporateTrade, personSlug, bigWord, spanWords, splitWords, type SalesSplit } from '../../data/insiders';
-import { useInsiderBook, useInsiderBuyers, useInsiderCoverage, useInsidersStatus, useInsiderTrades, wantInsiderWindow, type InsiderCoverage } from '../../data/liveRecord';
+import { useInsiderBook, useInsiderBuyers, useInsiderCoverage, useInsidersStatus, useInsiderTrades, useKeptAt, wantInsiderWindow, type InsiderCoverage } from '../../data/liveRecord';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { personDisplay, tickerName } from '../../data/tickers';
 import { useCompanyName } from '../../data/liveFiles';
@@ -30,7 +26,7 @@ const titleCase = (raw: string) => titleCompany(raw.trim().toUpperCase());
 import type { InsiderFlow, InsiderRole, InsiderTrade } from '../../types/record';
 import { NAMES_TO_KNOW } from './recordSkeletons';
 import { InsiderSectorFlow } from '../../components/record/ExtraFaces';
-import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
+import { CardLine } from '../../components/record/PhoneCards';
 import { statHelp } from '../../components/record/statHelp';
 
 type Window = 7 | 30 | 90 | 180;
@@ -318,14 +314,11 @@ const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window:
 
 const Insiders = () => {
   const navigate = useNavigate();
-  const phone = usePhoneCards();
   const boardNames = useBoardNames();
   const [window, setWindow] = useState<Window>(90);
   const [show, setShow] = useState<Show>('market');
   const [role, setRole] = useState<RolePick>('any');
   const [names, setNames] = useState<NamesPick>('all');
-  const [guideOpen, setGuideOpen] = useState(false);
-  const [methodOpen, setMethodOpen] = useState(false);
 
   /* The feed is the live record when it answers; the cards cut it, the Filter keeps from the cut */
   const feed = useInsiderTrades(window, show === 'market' ? OPEN_MARKET_CODES : ALL_CODES);
@@ -374,11 +367,11 @@ const Insiders = () => {
       { title: 'Roles', options: [...byRoles.entries()].sort(order).map(([r, c]) => ({ value: `role:${r}`, label: r, count: c })) },
     ];
   }, [cut, picks]);
-  const paged = usePagedGrid<InsiderTrade>();
+  /* in the grid's own order (newest first), so the phone's cards read the same */
   const rows = useMemo(() => {
-    if (picks.length === 0) return cut;
     const picked = new Set(picks);
-    return cut.filter(t => picked.has(`name:${t.ticker}`) || picked.has(`person:${t.person}`) || picked.has(`role:${t.role}`));
+    const out = picks.length === 0 ? [...cut] : cut.filter(t => picked.has(`name:${t.ticker}`) || picked.has(`person:${t.person}`) || picked.has(`role:${t.role}`));
+    return out.sort((a, b) => -byRecency(a.daysAgo, b.daysAgo, { data: a } as never, { data: b } as never));
   }, [cut, picks]);
   const toggleName = (ticker: string) => setPicks(p => (p.includes(`name:${ticker}`) ? p.filter(x => x !== `name:${ticker}`) : [...p, `name:${ticker}`]));
 
@@ -431,28 +424,19 @@ const Insiders = () => {
     []
   );
   const defaultColDef = useMemo<ColDef<InsiderTrade>>(() => ({ sortable: true, resizable: true, suppressMovable: true }), []);
-  const open = (e: RowClickedEvent<InsiderTrade>) => {
-    if (!e.data) return;
-    navigate(`/dossier/insiders/${personSlug(e.data.person)}`);
-  };
 
+  const kept = useKeptAt('insiders');
+  const live = !failed && !waiting;
+  const soFar = reading && live ? <span className="text-t9 text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null;
   return (
-    <div className="relative border border-borderSubtle rounded-md overflow-hidden bg-panel flex flex-col" data-insiders data-window={window} data-show={show}>
-      <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the filings" testId="insiders-guide" viewport>
-        <InsidersGuide />
-      </GuideFocus>
-      {/* THE HEAD */}
-      <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-[min(18rem,100%)] flex-1">
-          <div className="h-6 flex items-center gap-3">
-            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">What insiders did</h3>
-            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a row, a chosen trade and a plan mean" testId="insiders-guide" />
-          </div>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
-            {show === 'market' ? 'Open-market purchases and sales only' : 'Every filing, the plumbing named for what it is'} · newest first · a row opens their book
-          </p>
-          {/* the read's progress, up front */}
-          {!failed && (
+    <RecordPanel testId="insiders" attrs={{ 'data-window': window, 'data-show': show }}>
+      <RecordHead
+        title="What insiders did"
+        guide={{ title: 'How to read the filings', door: 'What a row, a chosen trade and a plan mean', testId: 'insiders-guide', body: <InsidersGuide /> }}
+        kept={kept}
+        line={`${show === 'market' ? 'Open-market buys and sales' : 'Every filing'} · newest first · a row opens their book`}
+        status={
+          !failed && (
             <p className={`mt-1 font-mono text-t10 uppercase tracking-widest ${reading || waiting ? 'text-warn' : 'text-textSecondary'}`} data-insiders-progress={reading || waiting ? 'reading' : 'complete'}>
               {waiting
                 ? `Reading the filings · 0 of ${window} days so far`
@@ -460,137 +444,88 @@ const Insiders = () => {
                   ? `Reading · ${readBack ? Math.max(0, Math.min(window, Math.round((Date.parse(`${nyIsoDaysBack(0)}T12:00:00Z`) - Date.parse(`${readBack}T12:00:00Z`)) / 86_400_000))) : 0} of ${window} days so far · totals grow`
                   : `Complete · ${window} days read`}
             </p>
-          )}
-        </div>
-        {/* while the read pages back the figures are greyed, each marked "so far" */}
-        <dl className={`flex flex-wrap gap-x-6 gap-y-2 transition-opacity ${reading && !failed && !waiting ? 'opacity-60' : ''}`} data-insiders-provisional={reading && !failed && !waiting ? 'yes' : undefined} title={reading && !failed && !waiting ? 'Provisional — the filings are still being read back; these totals grow until the window is complete' : undefined}>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="Rows on the grid right now, after the window and the cards above">Filings</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-insiders-count>
-              {failed || waiting ? '—' : facts.filings.toLocaleString()}
-              {reading && !failed && !waiting ? <span className="text-t9 text-textMuted" title="The filings are still being paged back, newest first; the totals grow until the window is read">{readingWord}</span> : null}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="Code-P purchases a person chose to make, not on a 10b5-1 plan; company and fund buys are counted apart">Chosen buying</dt>
-            <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${facts.chosen > 0 ? 'text-bull' : 'text-textMuted'}`} data-insiders-chosen>
-              {failed || waiting ? '—' : facts.chosen > 0 ? fmtDollars(facts.chosen) : 'none'}
-              {reading && !failed && !waiting ? <span className="text-t9 text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="Code-P purchases by a company or fund: strategic stakes and placements, not an insider's choice">Company &amp; fund buys</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-insiders-corporate>
-              {failed || waiting ? '—' : facts.corporate > 0 ? fmtDollars(facts.corporate) : 'none'}
-              {reading && !failed && !waiting ? <span className="text-t9 text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={split ? `Dollars of shares insiders sold in the open market — planned or not. ${splitWords(split, window)}: the figure is the ${bigWord(split.big)}+ sales of the whole window; the smaller ones (${facts.smallCount.toLocaleString()} for ${fmtDollars(facts.smallSold)}) cover only those days and are kept out of it` : 'Dollars of shares insiders sold in the open market — planned or not'}>
-              {split ? `Sold · sales of ${bigWord(split.big)}+` : 'Sold in the market'}
-            </dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-insiders-sold>
-              {failed || waiting ? '—' : facts.sold > 0 ? fmtDollars(facts.sold) : 'none'}
-              {split && !failed && !waiting ? <span className="text-t9 text-textMuted"> · {window} days{facts.smallCount ? ` · + ${fmtDollars(facts.smallSold)} smaller, ${spanWords(split.from, split.to)}` : ''}</span> : null}
-              {reading && !failed && !waiting ? <span className="text-t9 text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`The share of those sales${split ? ` (the ${bigWord(split.big)}+ ones)` : ''} that ran off a 10b5-1 plan: a schedule set months earlier, so it says little about today`}>Sales on a plan</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-insiders-planned>
-              {facts.plannedPct == null ? '—' : `${facts.plannedPct}%`}
-              {reading && !failed && !waiting ? <span className="text-t9 text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
-            </dd>
-          </div>
-        </dl>
-      </div>
-      <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-insiders-controls>
-        <DropdownSelect label="Window" value={window} options={WINDOW_OPTIONS} onChange={setWindow} title="How far back the filings run" testId="insiders-window" />
-        <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Trades only, or every filing" testId="insiders-show" />
-        <DropdownSelect label="Role" value={role} options={ROLE_OPTIONS} onChange={setRole} title="Whose filings" testId="insiders-role" />
-        <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="insiders-names" />
-        <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names, people and roles on the page right now — tick any number; only those stay" testId="insiders-filter" />
-      </div>
-      {failed ? (
-        <FeedFallback />
-      ) : (
-        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden" data-insiders-sentence>
-          {waiting ? 'Reading the filings.' : `${reading ? 'So far: ' : ''}${insidersSentence(rows, window, split)}`}
-        </p>
-      )}
-      {!failed && (
-        <div className="px-5 pb-2 -mt-1" data-insiders-method={methodOpen ? 'open' : 'shut'}>
-          <button type="button" onClick={() => setMethodOpen(v => !v)} aria-expanded={methodOpen} className="inline-flex items-center gap-1 font-mono text-t9 uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors">
-            <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${methodOpen ? 'rotate-180' : ''}`} />
-            What the read covers
-          </button>
-          {methodOpen && (
-            <div className="mt-1 flex flex-col gap-1">
-              {!waiting && <CoverageLine coverage={coverage} window={window} />}
-              <p className="text-t11 leading-relaxed text-textMuted" data-insiders-words>
-                <span className="text-textSecondary">Planned · 10b5-1</span> — on a schedule fixed months earlier, so it says little about the day. <span className="text-textSecondary">Of that account</span> — a trust, fund or family account the insider reports; the percent is of that account alone.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-      <div className="px-5 pb-3 border-t border-borderSubtle/60" data-insiders-to-know>
-        {/* on a phone the head stacks: the label over its words */}
-        <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
-          <span>The names to know</span>
-          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">chosen buys over the last {window} days, heaviest first · a click keeps the grid to it</span>
-        </div>
-        {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No insider chose to buy in this window'}</div>
+          )
+        }
+        facts={
+          <>
+            <HeadFact label="Filings" testId="insiders-count" partial={reading && live} tip="Rows on the grid now, after the window and the filters">
+              <span data-insiders-count>{live ? facts.filings.toLocaleString() : '—'}</span>
+              {reading && live ? <span className="text-t9 text-textMuted">{readingWord}</span> : null}
+            </HeadFact>
+            <HeadFact label="Chosen buying" testId="insiders-chosen" partial={reading && live} tone={facts.chosen > 0 ? 'text-bull' : 'text-textMuted'} tip="Open-market purchases a person chose to make, not on a 10b5-1 plan; company and fund buys are counted apart">
+              <span data-insiders-chosen>{live ? (facts.chosen > 0 ? fmtDollars(facts.chosen) : 'none') : '—'}</span>
+              {soFar}
+            </HeadFact>
+            <HeadFact label="Company & fund buys" testId="insiders-corporate" partial={reading && live} tip="Purchases by a company or fund: strategic stakes and placements, not an insider's choice">
+              <span data-insiders-corporate>{live ? (facts.corporate > 0 ? fmtDollars(facts.corporate) : 'none') : '—'}</span>
+              {soFar}
+            </HeadFact>
+            <HeadFact
+              label={split ? `Sold · ${bigWord(split.big)}+ sales` : 'Sold in the market'}
+              testId="insiders-sold"
+              partial={reading && live}
+              tip={split ? `Open-market sales of ${bigWord(split.big)}+ over the whole window. Smaller sales (${facts.smallCount.toLocaleString()} for ${fmtDollars(facts.smallSold)}) are read for ${spanWords(split.from, split.to)} only and kept out` : 'Dollars of shares insiders sold in the open market, planned or not'}
+            >
+              <span data-insiders-sold>{live ? (facts.sold > 0 ? fmtDollars(facts.sold) : 'none') : '—'}</span>
+              {soFar}
+            </HeadFact>
+            <HeadFact label="Sales on a plan" testId="insiders-planned" partial={reading && live} tip="The share of those sales that ran off a 10b5-1 plan set months earlier — they say little about today">
+              <span data-insiders-planned>{facts.plannedPct == null ? '—' : `${facts.plannedPct}%`}</span>
+              {soFar}
+            </HeadFact>
+          </>
+        }
+      />
+      <PhoneFold label="Filters, summary and the names to know" testId="insiders">
+        <Controls testId="insiders">
+          <DropdownSelect label="Window" value={window} options={WINDOW_OPTIONS} onChange={setWindow} title="How far back the filings run" testId="insiders-window" />
+          <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Trades only, or every filing" testId="insiders-show" />
+          <DropdownSelect label="Role" value={role} options={ROLE_OPTIONS} onChange={setRole} title="Whose filings" testId="insiders-role" />
+          <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="insiders-names" />
+          <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names, people and roles on the page right now — tick any number; only those stay" testId="insiders-filter" />
+        </Controls>
+        {failed ? (
+          <FeedFallback />
         ) : (
-          <div
-            /* every name across from 1280; six on a laptop, four on a tablet, two on a phone */
-            className="grid gap-2 grid-cols-2 max-sm:[&>*:nth-child(n+3)]:hidden sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--names),minmax(0,1fr))]" style={{ '--names': NAMES_TO_KNOW } as CSSProperties}>
-            {toKnow.map(f => (
-              <NameCard key={f.ticker} f={f} on={picks.includes(`name:${f.ticker}`)} onToggle={() => toggleName(f.ticker)} />
-            ))}
-          </div>
+          <Summary
+            testId="insiders"
+            more={
+              !waiting && (
+                <>
+                  <CoverageLine coverage={coverage} window={window} />
+                  <span className="block mt-1" data-insiders-words>
+                    <span className="text-textSecondary">Planned · 10b5-1</span> — on a schedule fixed months earlier, so it says little about the day. <span className="text-textSecondary">Of that account</span> — a trust, fund or family account the insider reports; the percent is of that account alone.
+                  </span>
+                </>
+              )
+            }
+          >
+            {waiting ? 'Reading the filings.' : `${reading ? 'So far: ' : ''}${insidersSentence(rows, window, split)}`}
+          </Summary>
         )}
-      </div>
-      {/* the grid grows to its rows and pages itself */}
-      <div className="slayer-board border-t border-borderSubtle" data-insiders-grid>
-        {phone ? (
-          <PhoneCards rows={rows} rowKey={t => t.id} card={InsiderCard} onOpen={t => navigate(`/dossier/insiders/${personSlug(t.person)}`)} empty={gridEmpty} testId="insiders" resetKey={rows} />
-        ) : (
-        <>
-        <AgGridProvider modules={GRID_MODULES}>
-          <AgGridReact<InsiderTrade>
-            {...phonePin}
-            {...paged.props}
-            theme={GRID_THEME}
-            domLayout="autoHeight"
-            rowData={rows}
-            overlayNoRowsTemplate={noRows(gridEmpty)}
-            /* the overlay is read once, so a new state is a new grid */
-            key={gridEmpty}
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            getRowId={p => p.data.id}
-            onRowClicked={open}
-            rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
-            suppressCellFocus
-            animateRows
-            tooltipShowDelay={350}
-            tooltipHideDelay={8000}
-          />
-        </AgGridProvider>
-        {paged.bar(rows.length, 'insiders-grid')}
-        </>
-        )}
-      </div>
+        <ToKnow title="The names to know" sub={`chosen buys over the last ${window} days, heaviest first · a click keeps the grid to it`} testId="insiders" count={NAMES_TO_KNOW} empty={toKnow.length === 0 ? (failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No insider chose to buy in this window') : null}>
+          {toKnow.map(f => (
+            <NameCard key={f.ticker} f={f} on={picks.includes(`name:${f.ticker}`)} onToggle={() => toggleName(f.ticker)} />
+          ))}
+        </ToKnow>
+      </PhoneFold>
+      <RecordGrid<InsiderTrade>
+        testId="insiders"
+        rows={rows}
+        rowKey={t => t.id}
+        card={InsiderCard}
+        onOpen={t => navigate(`/dossier/insiders/${personSlug(t.person)}`)}
+        empty={gridEmpty}
+        columnDefs={columnDefs}
+        defaultColDef={defaultColDef}
+      />
       <InsiderSectorFlow trades={rows} windowDays={window} state={failed ? 'failed' : waiting || reading ? 'reading' : 'read'} />
-    </div>
+    </RecordPanel>
   );
 };
 
 export const InsiderFile = () => {
   const { person = '' } = useParams();
-  const phone = usePhoneCards();
   const book = useInsiderBook(decodeURIComponent(person));
   const [show, setShow] = useState<'all' | 'market'>('all');
   const rows = useMemo(() => {
@@ -651,40 +586,22 @@ export const InsiderFile = () => {
       <Link to="/dossier/insiders" className="group inline-flex items-center gap-1.5 font-mono text-t10 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-name-back>
         <ArrowLeft className="w-3.5 h-3.5 transition-transform duration-200 ease-out group-hover:-translate-x-0.5" /> Insiders
       </Link>
-      <div className="relative border border-borderSubtle rounded-md overflow-hidden bg-panel flex flex-col" data-insider-file={book.person}>
-        <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <h3 className="text-t15 font-semibold leading-tight text-textPrimary">{personDisplay(book.person)}</h3>
-            <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
-              {book.role} · {book.ticker} ·{' '}
-              {book.windowDays > 0
-                ? `${book.by === 'cik' ? 'every filing under their SEC id' : 'every filing under this name'} with a trade in the last year, the grants included${book.capped ? ' — the latest 500 only' : ''}`
-                : 'their filings in the market feed this page read — their own file did not answer'}
-            </p>
-            {book.by === 'name' && book.filers > 1 ? (
-              <p className="mt-0.5 text-t10 text-warn">{book.filers} SEC filers share this name; the rows may be more than one person.</p>
-            ) : null}
-          </div>
-          <dl className="flex flex-wrap gap-x-6 gap-y-2">
-            <div>
-              <dt className="text-t10 text-textMuted cursor-help" title="Rows on the grid right now, after the window and the cards above">Filings</dt>
-              <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{rows.length}</dd>
-            </div>
-            <div>
-              <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Bought")}>Bought</dt>
-              <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{bought > 0 ? fmtDollars(bought) : rows.some(t => t.foreignPrice && TX_CODES[t.code].openMarket && t.kind === 'BUY') ? 'not in USD' : 'none'}</dd>
-            </div>
-            <div>
-              <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Sold")}>Sold</dt>
-              <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{sold > 0 ? fmtDollars(sold) : rows.some(t => t.foreignPrice && TX_CODES[t.code].openMarket && t.kind === 'SELL') ? 'not in USD' : 'none'}</dd>
-            </div>
-            <div>
-              <dt className="text-t10 text-textMuted cursor-help" title={statHelp("On a plan")}>On a plan</dt>
-              <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{planned}</dd>
-            </div>
-          </dl>
-        </div>
-        <div className={`px-5 pb-2 ${CONTROLS_LINE}`}>
+      <RecordPanel testId="insider-file" attrs={{ 'data-insider-file': book.person }}>
+        <RecordHead
+          title={personDisplay(book.person)}
+          kept={book.keptAt}
+          line={`${book.role} · ${book.ticker} · ${book.windowDays > 0 ? `${book.by === 'cik' ? 'every filing under their SEC id' : 'every filing under this name'} in the last year${book.capped ? ' — the latest 500' : ''}` : 'their filings in the market feed — their own file did not answer'}`}
+          status={book.by === 'name' && book.filers > 1 ? <p className="mt-0.5 text-t10 text-warn">{book.filers} SEC filers share this name; the rows may be more than one person.</p> : null}
+          facts={
+            <>
+              <HeadFact label="Filings" tip="Rows on the grid now">{rows.length}</HeadFact>
+              <HeadFact label="Bought">{bought > 0 ? fmtDollars(bought) : rows.some(t => t.foreignPrice && TX_CODES[t.code].openMarket && t.kind === 'BUY') ? 'not in USD' : 'none'}</HeadFact>
+              <HeadFact label="Sold">{sold > 0 ? fmtDollars(sold) : rows.some(t => t.foreignPrice && TX_CODES[t.code].openMarket && t.kind === 'SELL') ? 'not in USD' : 'none'}</HeadFact>
+              <HeadFact label="On a plan">{planned}</HeadFact>
+            </>
+          }
+        />
+        <Controls testId="insider">
           <DropdownSelect
             label="Show"
             value={show}
@@ -696,44 +613,17 @@ export const InsiderFile = () => {
             title="Trades only, or every filing"
             testId="insider-show"
           />
-        </div>
-        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-insider-sentence>
+        </Controls>
+        <Summary testId="insider">
           {(() => {
             const names = [...new Set(book.trades.map(t => t.ticker))];
-            return `${personDisplay(book.person)} filed ${book.trades.length} ${book.trades.length === 1 ? 'row' : 'rows'}${book.windowDays > 0 ? ' in the last year' : ''}, at ${names.length === 1 ? names[0] : `${names.length} companies (${names.slice(0, 4).join(', ')}${names.length > 4 ? '…' : ''})`}.`;
-          })()}{' '}
-          {(() => {
-            /* "0 of them never reached the market" read as a double negative — say how many were grants, awards or
-               withholdings only when there were some */
             const off = book.trades.length - book.trades.filter(t => TX_CODES[t.code].openMarket).length;
-            return off === 0 ? (book.trades.length === 1 ? 'It was an open-market trade.' : 'Every one was an open-market trade.') : `${off} of them never reached the market — grants, awards or shares withheld for tax.`;
-          })()}
-          {(() => {
             const foreign = book.trades.filter(t => t.foreignPrice).length;
-            return foreign ? ` ${foreign} ${foreign === 1 ? 'row is' : 'rows are'} priced in the home market's currency, not dollars — flagged "not USD" and kept out of the dollar totals.` : '';
+            return `${personDisplay(book.person)} filed ${book.trades.length} ${book.trades.length === 1 ? 'row' : 'rows'}${book.windowDays > 0 ? ' in the last year' : ''}, at ${names.length === 1 ? names[0] : `${names.length} companies (${names.slice(0, 4).join(', ')}${names.length > 4 ? '…' : ''})`}. ${off === 0 ? (book.trades.length === 1 ? 'It was an open-market trade.' : 'Every one was an open-market trade.') : `${off} of them never reached the market — grants, awards or shares withheld for tax.`}${foreign ? ` ${foreign} ${foreign === 1 ? 'row is' : 'rows are'} priced in the home market's currency — marked "not USD" and kept out of the dollar totals.` : ''}`;
           })()}
-        </p>
-        <div className="slayer-board border-t border-borderSubtle" data-insider-trades>
-          {phone ? (
-            <PhoneCards rows={rows} rowKey={t => t.id} card={InsiderCard} empty="No filing on this book" testId="insider-trades" resetKey={show} />
-          ) : (
-          <AgGridProvider modules={GRID_MODULES}>
-            <AgGridReact<InsiderTrade>
-              {...phonePin}
-              theme={GRID_THEME}
-              domLayout="autoHeight"
-              rowData={rows}
-              overlayNoRowsTemplate={noRows('No filing on this book')}
-              columnDefs={cols}
-              defaultColDef={{ sortable: true, resizable: true, suppressMovable: true }}
-              getRowId={p => p.data.id}
-              suppressCellFocus
-              animateRows={false}
-            />
-          </AgGridProvider>
-          )}
-        </div>
-      </div>
+        </Summary>
+        <RecordGrid<InsiderTrade> testId="insider-trades" rows={rows} rowKey={t => t.id} card={InsiderCard} empty="No filing on this book" columnDefs={cols} gridProps={{ animateRows: false, rowSelection: undefined }} />
+      </RecordPanel>
     </>
   );
 };

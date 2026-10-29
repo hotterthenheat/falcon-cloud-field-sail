@@ -3,22 +3,11 @@
 
 import { parseBoosters, predict, type Tree } from './lgbm';
 import { thetaCall } from './theta';
-import { nyParts, nyWallStamp } from '../core/nyTime';
+import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { nyYmd as ymd, sessionBefore } from '../core/calendar';
-import { ensureBook, snapshotOf } from './uwBook';
 import { econReleases } from './monthCalendar';
 import {
-  R,
-  Q,
-  IV_LO,
-  IV_HI,
-  IV_BISECTS,
-  IV_FEATURE_MIN,
-  GEX_CORE,
   DO_NOT_REQUEST,
-  NO_SAME_DAY,
-  CLS_INDEX,
-  CLS_HIGHBETA,
   ENTRY_SHA,
   RUNNER_SHA,
   TREE_N,
@@ -26,15 +15,10 @@ import {
   UNIVERSE_N,
   printOf,
   weekdayDte,
-  yearFrac,
-  minutesLeftCol,
   sessionScanOpen,
   quoteValid,
   spreadPass,
-  ivFeature,
-  greekVol,
   f32,
-  atmStrike,
   strikeDistance,
   strikeSpan,
   SPAN_INDEX,
@@ -55,12 +39,14 @@ import {
   lotteryEntry,
   MODEL_1_NAME,
   MODEL_2_NAME,
+  P1_MIN,
+  inModelWindow,
 } from './compassParams';
 import { COMPASS_TICKERS } from './compassUniverse';
 import { optionScanOpen, sessionYmd } from './compassSession';
 import type { OptionRight, Setup } from '../types/compass';
-import type { StrikeNode } from '../types/market';
-import { normCdf as cdf } from './expectedMove';
+import type { PathBar } from './compassOutcome';
+import { CORE, INDEX, NO_DAILY, SECTOR_OF, UNDER, atmPair, curveFrom, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
 
 let ENTRY: Tree[] = [];
 let RUNNER: Tree[] = [];
@@ -137,61 +123,8 @@ const seenRootA = new Set<string>();
 const seenRootB = new Set<string>();
 const seenRootC = new Set<string>();
 
-const INDEX = new Set(['SPX', 'SPXW', 'RUT', 'RUTW', 'VIX', 'XSP', 'NDX', 'NDXP']);
-const CLS_INDEX_SET = new Set<string>(CLS_INDEX);
-const CLS_HIGH_SET = new Set<string>(CLS_HIGHBETA);
-const UNDER: Record<string, string> = { SPXW: 'SPX', NDXP: 'NDX', RUTW: 'RUT' };
-const CORE = new Set<string>(GEX_CORE);
-const NO_DAILY = new Set<string>(NO_SAME_DAY);
-const SMH = ['NVDA', 'AMD', 'AVGO', 'MU', 'TSM', 'ASML', 'AMAT', 'LRCX', 'KLAC', 'MRVL', 'QCOM', 'INTC', 'SMCI', 'ARM', 'ON', 'NXPI', 'ADI', 'TXN', 'SWKS', 'WOLF', 'COHR', 'STX', 'WDC', 'NTAP', 'SOXL', 'SOXS', 'NVDL'];
-const BITO = ['COIN', 'MSTR', 'MARA', 'RIOT', 'CLSK', 'IREN', 'HUT', 'CIFR', 'WULF', 'CORZ', 'BITX', 'HOOD'];
-const XLE = ['XOM', 'CVX', 'OXY', 'COP', 'DVN', 'EOG', 'APA', 'HAL', 'SLB', 'MPC', 'PSX', 'VLO', 'FANG', 'EQT', 'AR', 'BTU', 'OIH', 'XOP', 'USO', 'UCO'];
-const GDX = ['NEM', 'GOLD', 'AEM', 'WPM', 'PAAS', 'AG', 'GDXJ', 'NUGT', 'JNUG', 'SLV', 'GLD', 'AGQ'];
-const XLF = ['JPM', 'BAC', 'C', 'WFC', 'GS', 'MS', 'SCHW', 'AXP', 'COF', 'USB', 'TFC', 'KRE', 'FAS', 'DPST', 'ALLY', 'BLK', 'BX', 'KKR', 'APO'];
-const SECTOR_OF: Record<string, string> = {
-  ...Object.fromEntries(SMH.map(t => [t, 'SMH'])),
-  ...Object.fromEntries(BITO.map(t => [t, 'BITO'])),
-  ...Object.fromEntries(XLE.map(t => [t, 'XLE'])),
-  ...Object.fromEntries(GDX.map(t => [t, 'GDX'])),
-  ...Object.fromEntries(XLF.map(t => [t, 'XLF'])),
-};
-
-interface Bar { d: string; m: number; o: number; h: number; l: number; c: number; v: number }
-interface Curve { cum: Map<number, number[]>; five: Map<number, number[]> }
-interface PinBook { nodes: { strike: number; call: number; put: number }[]; oi: (strike: number, right: OptionRight) => number }
 interface LeftRow { id: string; ticker: string; contract: string; why: string; at: number }
 
-
-function bsStates(S: number, K: number, T: number, sig: number, call: boolean): { px: number; de: number; ga: number; th: number; ve: number } {
-  if (!(S > 0) || !(K > 0) || !(T > 0) || !(sig > 0)) return { px: NaN, de: NaN, ga: NaN, th: NaN, ve: NaN };
-  const vol = sig * Math.sqrt(T);
-  const d1 = (Math.log(S / K) + (R - Q + 0.5 * sig * sig) * T) / vol;
-  const d2 = d1 - vol;
-  const df = Math.exp(-R * T);
-  const pdf = Math.exp(-0.5 * d1 * d1) / Math.sqrt(2 * Math.PI);
-  const nd1 = cdf(d1);
-  const px = call ? S * nd1 - K * df * cdf(d2) : K * df * cdf(-d2) - S * cdf(-d1);
-  const de = call ? nd1 : nd1 - 1;
-  const ga = pdf / (S * vol);
-  const thetaYear = -(S * pdf * sig) / (2 * Math.sqrt(T)) - (call ? R * K * df * cdf(d2) : -R * K * df * cdf(-d2));
-  /* Theta per calendar day: the convention the trees were trained on and the one the app shows. */
-  return { px, de, ga, th: thetaYear / 365, ve: (S * pdf * Math.sqrt(T)) / 100 };
-}
-
-function ivStates(price: number, S: number, K: number, T: number, call: boolean): number {
-  if (!(price > 0) || !(S > 0) || !(K > 0) || !(T > 0)) return NaN;
-  let lo = IV_LO;
-  let hi = IV_HI;
-  const atLo = bsStates(S, K, T, lo, call).px;
-  const atHi = bsStates(S, K, T, hi, call).px;
-  if (!(atLo <= price) || !(atHi >= price)) return NaN;
-  for (let i = 0; i < IV_BISECTS; i++) {
-    const mid = (lo + hi) / 2;
-    if (bsStates(S, K, T, mid, call).px > price) hi = mid;
-    else lo = mid;
-  }
-  return (lo + hi) / 2;
-}
 
 function minuteOf(ms: number): number {
   const p = nyParts(ms);
@@ -241,7 +174,8 @@ const barMemo = new Map<string, { at: number; bars: Bar[] }>();
 async function loadBars(symbol: string, day: string): Promise<Bar[]> {
   const key = `${symbol}|${day}`;
   const hit = barMemo.get(key);
-  if (hit && Date.now() - hit.at < 60_000) return hit.bars;
+  /* a finished session's bars do not change; today's are read again after a minute */
+  if (hit && (Date.now() - hit.at < 60_000 || (hit.bars.length && day < ymd(Date.now())))) return hit.bars;
   const root = UNDER[symbol] ?? symbol;
   const index = INDEX.has(symbol) || INDEX.has(root);
   const path = index
@@ -265,18 +199,10 @@ async function loadPrior(name: string, day: string): Promise<{ h: number; l: num
   return { h, l, c: bars[bars.length - 1].c };
 }
 
-function stdev(xs: number[]): number {
-  if (xs.length < 2) return NaN;
-  const m = xs.reduce((a, b) => a + b, 0) / xs.length;
-  const v = xs.reduce((a, b) => a + (b - m) * (b - m), 0) / (xs.length - 1);
-  return Math.sqrt(v);
-}
-
-function median(s: number[]): number {
-  if (!s.length) return NaN;
-  const a = [...s].sort((x, y) => x - y);
-  const i = Math.floor(a.length / 2);
-  return a.length % 2 ? a[i] : (a[i - 1] + a[i]) / 2;
+/** The underlying's one-minute closes on a session day (YYYYMMDD), from the scan's own bar read. */
+export async function underCloses(ticker: string, day: string): Promise<PathBar[]> {
+  const bars = await loadBars(UNDER[ticker] ?? printOf(ticker), day);
+  return bars.map(b => ({ t: nyWallTime(Number(b.d.slice(0, 4)), Number(b.d.slice(4, 6)), Number(b.d.slice(6, 8)), Math.floor(b.m / 60), b.m % 60), c: b.c }));
 }
 
 const curves = new Map<string, Curve | null>();
@@ -303,37 +229,7 @@ async function fetchCurve(symbol: string, now: number): Promise<Curve | null> {
     ? `/index/history/ohlc?symbol=${root}&start_date=${start}&end_date=${end}&interval=1m&format=json`
     : `/stock/history/ohlc?symbol=${root}&start_date=${start}&end_date=${end}&interval=1m&format=json`;
   const got = await thetaCall(path);
-  const bars = got.error ? [] : barsOf(got.data);
-  const days = new Map<string, Bar[]>();
-  for (const b of bars) {
-    const list = days.get(b.d);
-    if (list) list.push(b);
-    else days.set(b.d, [b]);
-  }
-  const cum = new Map<number, number[]>();
-  const five = new Map<number, number[]>();
-  for (const list of days.values()) {
-    /* Cumulative volume by minute, and the volume of the last five minutes from a running window. */
-    let run = 0;
-    const totals: { m: number; total: number }[] = [];
-    let back = 0;
-    for (const b of list) {
-      run += b.v;
-      totals.push({ m: b.m, total: run });
-    }
-    for (let k = 0; k < totals.length; k++) {
-      const { m, total } = totals[k];
-      while (back + 1 <= k && totals[back + 1].m <= m - 5) back++;
-      const prior = totals[back].m <= m - 5 ? totals[back].total : 0;
-      const held = cum.get(m) ?? [];
-      held.push(total);
-      cum.set(m, held);
-      const bag5 = five.get(m) ?? [];
-      bag5.push(Math.max(0, total - prior));
-      five.set(m, bag5);
-    }
-  }
-  return cum.size ? { cum, five } : null;
+  return curveFrom(got.error ? [] : barsOf(got.data));
 }
 
 /** The name's intraday volume curve over the prior sessions; asked for in the background the first time it is wanted */
@@ -366,147 +262,45 @@ async function drain(now: number): Promise<void> {
   warming = false;
 }
 
+/** Open interest per strike of one expiry, from ThetaData's open-interest snapshot (one ask per name and expiry). */
 async function pinOf(ticker: string, expiry: string, spot: number): Promise<PinBook | null> {
   if (!CORE.has(ticker)) return null;
   const key = `${ticker}|${expiry}`;
   const hit = pinCache.get(key);
   if (hit && Date.now() - hit.at < 5 * 60_000) return hit.book;
-  const name = printOf(ticker);
-  const chain = await new Promise<StrikeNode[] | null>(resolve => {
-    const read = (): StrikeNode[] | null => {
-      ensureBook(name);
-      const snap = snapshotOf(name);
-      if (!snap) return null;
-      const dated = snap.uwByDate?.[expiry];
-      if (dated?.length) return dated;
-      return snap.chain.length ? snap.chain : null;
-    };
-    const got = read();
-    if (got) {
-      resolve(got);
-      return;
+  const got = await thetaCall(`/option/snapshot/open_interest?symbol=${encodeURIComponent(ticker)}&expiration=${expiry.replace(/-/g, '').slice(0, 8)}&format=json`);
+  const byStrike = new Map<number, { strike: number; call: number; put: number }>();
+  if (!got.error) {
+    for (const item of Array.isArray(got.data) ? got.data : []) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as { contract?: Record<string, unknown>; data?: unknown };
+      const contract = row.contract && typeof row.contract === 'object' ? row.contract : (item as Record<string, unknown>);
+      const quote = Array.isArray(row.data) ? (row.data[0] as Record<string, unknown> | undefined) : (item as Record<string, unknown>);
+      const strike = num(contract.strike);
+      const side = String(contract.right ?? '').toUpperCase().slice(0, 1);
+      const oi = num(quote?.open_interest);
+      if (!(strike > 0) || !(oi >= 0) || (side !== 'C' && side !== 'P')) continue;
+      const node = byStrike.get(strike) ?? { strike, call: 0, put: 0 };
+      if (side === 'C') node.call = oi;
+      else node.put = oi;
+      byStrike.set(strike, node);
     }
-    resolve(null);
-  });
-  if (!chain?.length || !(spot > 0)) {
-    pinCache.set(key, { at: Date.now(), book: null });
+  }
+  if (!byStrike.size || !(spot > 0)) {
+    if (!got.error) pinCache.set(key, { at: Date.now(), book: null });
     return null;
   }
+  const nodes = [...byStrike.values()].sort((a, b) => a.strike - b.strike);
   const book: PinBook = {
-    nodes: chain.map(node => ({ strike: node.strike, call: node.callOI, put: node.putOI })),
+    nodes,
     oi: (strike, right) => {
-      const node = chain.find(row => Math.abs(row.strike - strike) < 0.001);
+      const node = byStrike.get(strike) ?? nodes.find(row => Math.abs(row.strike - strike) < 0.001);
       if (!node) return NaN;
-      return right === 'C' ? node.callOI : node.putOI;
+      return right === 'C' ? node.call : node.put;
     },
   };
   pinCache.set(key, { at: Date.now(), book });
   return book;
-}
-
-function span(arr: number[], from: number, to: number, max: boolean): number {
-  let y = NaN;
-  const end = Math.min(to, arr.length);
-  for (let i = from; i < end; i++) {
-    if (!Number.isFinite(arr[i])) continue;
-    y = Number.isFinite(y) ? (max ? Math.max(y, arr[i]) : Math.min(y, arr[i])) : arr[i];
-  }
-  return y;
-}
-
-function tapeOf(rows: Bar[], index: boolean, minute: number, spot = NaN): { tt: number; S: number; op: number; H: number; L: number; orh: number; orl: number; rv30: number; rvPrev: number; compress: number; vwapZ: number; cum: number; last5: number; at: (back: number) => number } {
-  const tt = minute - (9 * 60 + 30);
-  const o = Array<number>(392).fill(NaN);
-  const h = Array<number>(392).fill(NaN);
-  const l = Array<number>(392).fill(NaN);
-  const v = Array<number>(392).fill(0);
-  let op = NaN;
-  for (const b of rows) {
-    const k = b.m - (9 * 60 + 30);
-    if (k < 0 || k > 390) continue;
-    /* Spot at minute t is that minute's first print. A missing minute stays missing. */
-    if (!(o[k] > 0) && b.o > 0) o[k] = b.o;
-    h[k] = b.h;
-    l[k] = b.l;
-    v[k] = b.v;
-    if (k === 0 && b.o > 0) op = b.o;
-  }
-  const S = (() => {
-    if (tt > 390 && spot > 0) return spot;
-    const last = Math.min(Math.max(tt, 0), o.length - 1);
-    for (let i = last; i >= 0; i--) if (o[i] > 0) return o[i];
-    return spot > 0 ? spot : NaN;
-  })();
-  const logs = (from: number, to: number) => {
-    const out: number[] = [];
-    for (let i = Math.max(from + 1, 1); i < to; i++) {
-      if (o[i] > 0 && o[i - 1] > 0) out.push(Math.log(o[i] / o[i - 1]));
-    }
-    return out;
-  };
-  const rv = (xs: number[]) => (xs.length >= 10 ? stdev(xs) : NaN);
-  const rv30 = rv(logs(Math.max(1, tt - 30), tt + 1));
-  const rvPrev = rv(logs(Math.max(1, tt - 60), tt - 29));
-  let compress = NaN;
-  if (tt >= 60) {
-    if (index) {
-      const changes = (n: number) => {
-        const d: number[] = [];
-        for (let i = Math.max(1, tt - n + 1); i <= tt; i++) if (o[i] > 0 && o[i - 1] > 0) d.push(o[i] - o[i - 1]);
-        return d;
-      };
-      const a = stdev(changes(5));
-      const b = stdev(changes(60));
-      compress = b > 0 ? a / b : NaN;
-    } else {
-      const meanRange = (n: number) => {
-        let sum = 0;
-        let count = 0;
-        for (let i = Math.max(1, tt - n + 1); i < tt; i++) {
-          if (Number.isFinite(h[i]) && Number.isFinite(l[i])) {
-            sum += h[i] - l[i];
-            count += 1;
-          }
-        }
-        return count ? sum / count : NaN;
-      };
-      const a = meanRange(5);
-      const b = meanRange(60);
-      compress = b > 0 ? a / b : NaN;
-    }
-  }
-  let pv = 0;
-  let vv = 0;
-  const devs: number[] = [];
-  for (let i = 1; i < tt && i < o.length; i++) {
-    if (!(v[i] > 0) || !(o[i] > 0)) continue;
-    pv += o[i] * v[i];
-    vv += v[i];
-    devs.push(o[i] - pv / vv);
-  }
-  const vwap = vv > 0 ? pv / vv : NaN;
-  const sd = stdev(devs);
-  const vwapZ = !index && sd > 0 && S > 0 && vwap > 0 ? (S - vwap) / sd : NaN;
-  const cum = index ? NaN : vv;
-  let last5 = 0;
-  for (let i = Math.max(1, tt - 4); i < tt && i < v.length; i++) last5 += v[i] || 0;
-  /* High and low of minute t-1 are known at t. The current minute's high, low, and close are not. */
-  return {
-    tt,
-    S,
-    op,
-    H: span(h, 0, tt, true),
-    L: span(l, 0, tt, false),
-    orh: span(h, 0, 30, true),
-    orl: span(l, 0, 30, false),
-    rv30,
-    rvPrev,
-    compress,
-    vwapZ,
-    cum,
-    last5,
-    at: (back: number) => (tt - back >= 0 && o[tt - back] > 0 ? o[tt - back] : NaN),
-  };
 }
 
 const seenAsks = new Map<string, { minute: number; bid: number; ask: number }[]>();
@@ -515,11 +309,14 @@ const seenMids = new Map<string, { minute: number; mid: number }[]>();
 function noteAsk(id: string, minute: number, bid: number, ask: number): void {
   if (!quoteValid(bid, ask) || !Number.isFinite(minute)) return;
   const list = seenAsks.get(id) ?? [];
-  const last = list[list.length - 1];
-  if (last && last.minute === minute) {
-    last.bid = bid;
-    last.ask = ask;
-  } else list.push({ minute, bid, ask });
+  const had = list.find(row => row.minute === minute);
+  if (had) {
+    had.bid = bid;
+    had.ask = ask;
+  } else {
+    list.push({ minute, bid, ask });
+    list.sort((x, y) => x.minute - y.minute);
+  }
   if (list.length > 80) list.splice(0, list.length - 80);
   seenAsks.set(id, list);
 }
@@ -533,9 +330,12 @@ function quoteAt(id: string, minute: number): { bid: number; ask: number } | nul
 function noteMid(id: string, minute: number, mid: number): void {
   if (!(mid > 0) || !Number.isFinite(minute)) return;
   const list = seenMids.get(id) ?? [];
-  const last = list[list.length - 1];
-  if (last && last.minute === minute) last.mid = mid;
-  else list.push({ minute, mid });
+  const had = list.find(row => row.minute === minute);
+  if (had) had.mid = mid;
+  else {
+    list.push({ minute, mid });
+    list.sort((x, y) => x.minute - y.minute);
+  }
   if (list.length > 40) list.splice(0, list.length - 40);
   seenMids.set(id, list);
 }
@@ -546,169 +346,43 @@ function midThen(id: string, minute: number): number {
   return NaN;
 }
 
-function yearsLeft(tt: number): number {
-  return yearFrac(tt);
-}
+const seededAt = new Map<string, number>();
 
-function features(
-  setup: Setup,
-  minute: number,
-  rows: Bar[],
-  spy: Bar[],
-  pd: { h: number; l: number; c: number } | null,
-  atmIv: number,
-  skew: number,
-  sec: Bar[],
-  curve: Curve | null,
-  pin: PinBook | null,
-  sessionDay: string,
-): number[] | null {
-  const indexName = INDEX.has(setup.ticker) || INDEX.has(UNDER[setup.ticker] ?? '');
-  const tape = tapeOf(rows, indexName, minute, setup.spot ?? NaN);
-  if (!(tape.S > 0)) return null;
-  const x = Array.from({ length: 56 }, () => NaN);
-  const s = tape.S;
-  const op = tape.op;
-  const ret = (back: number) => {
-    const prev = tape.at(back);
-    return s > 0 && prev > 0 ? s / prev - 1 : NaN;
-  };
-  const retOpen = s > 0 && op > 0 ? s / op - 1 : NaN;
-  const ret5 = ret(5);
-  const ret15 = ret(15);
-  const ret60 = ret(60);
-  const spyTape = tapeOf(spy, false, minute);
-  const secTape = sec.length ? tapeOf(sec, false, minute) : null;
-  const dir: number = setup.right === 'C' ? 1 : -1;
-  const mid = setup.mid > 0 ? setup.mid : NaN;
-  const was = (back: number) => midThen(setup.id, minute - back);
-  const T = yearsLeft(tape.tt);
-  const call = setup.right === 'C';
-  const solved = ivFeature(ivStates(mid, s, setup.strike, T, call));
-  const vol = greekVol(solved, ivFeature(atmIv));
-  const greek = bsStates(s, setup.strike, T, vol, call);
-  const clock = 9 * 60 + 30 + tape.tt - (indexName ? 0 : 1);
-  const hist = curve?.cum.get(clock) ?? [];
-  const hist5 = curve?.five.get(clock) ?? [];
-  const med = hist.length >= 5 ? median(hist) : NaN;
-  const med5 = hist5.length >= 5 ? median(hist5) : NaN;
-  const walls = pin ? oiWalls(pin, s) : { call: NaN, put: NaN };
-  const mineOi = pin ? pin.oi(setup.strike, setup.right) : NaN;
-
-  x[0] = tape.tt;
-  x[1] = retOpen;
-  x[2] = ret5;
-  x[3] = ret15;
-  x[4] = tape.tt >= 60 ? ret60 : NaN;
-  x[5] = tape.H > tape.L ? (s - tape.L) / (tape.H - tape.L) : NaN;
-  x[6] = tape.H > 0 && tape.L > 0 && op > 0 ? (tape.H - tape.L) / op : NaN;
-  x[7] = tape.rv30;
-  x[8] = tape.rv30 > 0 && tape.rvPrev > 0 ? tape.rv30 / tape.rvPrev : NaN;
-  x[9] = tape.compress;
-  x[10] = tape.tt < 30 || !Number.isFinite(tape.orh) ? NaN : s > tape.orh ? 1 : s < tape.orl ? -1 : 0;
-  x[11] = tape.tt < 30 || !(op > 0) || !Number.isFinite(tape.orh) ? NaN : s > tape.orh ? (s - tape.orh) / op : s < tape.orl ? (s - tape.orl) / op : 0;
-  x[12] = pd && pd.h > 0 ? s / pd.h - 1 : NaN;
-  x[13] = pd && pd.l > 0 ? s / pd.l - 1 : NaN;
-  x[14] = pd && pd.c > 0 && op > 0 ? op / pd.c - 1 : NaN;
-  x[15] = minutesLeftCol(tape.tt);
-  x[16] = indexName ? NaN : tape.vwapZ;
-  x[17] = indexName || !(med > 0) ? NaN : tape.cum / med;
-  x[18] = indexName || !(med5 > 0) ? NaN : tape.last5 / med5;
-  x[19] = spyTape.S > 0 && spyTape.at(5) > 0 ? spyTape.S / spyTape.at(5) - 1 : NaN;
-  x[20] = spyTape.S > 0 && spyTape.at(15) > 0 ? spyTape.S / spyTape.at(15) - 1 : NaN;
-  x[21] = spyTape.S > 0 && spyTape.op > 0 ? spyTape.S / spyTape.op - 1 : NaN;
-  x[22] = secTape && secTape.S > 0 && secTape.at(15) > 0 ? secTape.S / secTape.at(15) - 1 : NaN;
-  x[23] = secTape && secTape.S > 0 && secTape.op > 0 ? secTape.S / secTape.op - 1 : NaN;
-  x[24] = atmIv;
-  x[25] = skew;
-  x[26] = atmIv > 0 && tape.rv30 > 0 ? atmIv / (tape.rv30 * Math.sqrt(390 * 252)) : NaN;
-  const core = CORE.has(setup.ticker);
-  const net = core && pin ? netGexBn(pin, s, T, ivFeature(atmIv)) : NaN;
-  x[27] = core ? net : NaN;
-  x[28] = core ? walls.call : NaN;
-  x[29] = core ? walls.put : NaN;
-  x[30] = call ? setup.strike / s - 1 : 1 - setup.strike / s;
-  x[31] = dir;
-  x[32] = mid;
-  x[33] = mid > 0 ? (setup.ask - setup.bid) / mid : NaN;
-  x[34] = mid > 0 && was(5) > 0 ? mid / was(5) - 1 : NaN;
-  x[35] = mid > 0 && was(15) > 0 ? mid / was(15) - 1 : NaN;
-  x[36] = solved;
-  x[37] = greek.de;
-  x[38] = greek.ga;
-  x[39] = greek.th;
-  x[40] = greek.ve;
-  x[41] = Number.isFinite(greek.ga) && Number.isFinite(greek.th) && greek.th !== 0 ? greek.ga / Math.abs(greek.th) : NaN;
-  x[42] = Number.isFinite(greek.th) && mid > 0 ? greek.th / mid : NaN;
-  x[43] = core && Number.isFinite(mineOi) ? mineOi : NaN;
-  x[44] = CLS_INDEX_SET.has(setup.ticker) ? 1 : 0;
-  x[45] = CLS_HIGH_SET.has(setup.ticker) ? 1 : 0;
-  x[46] = retOpen * dir;
-  x[47] = ret5 * dir;
-  x[48] = ret15 * dir;
-  x[49] = Number.isFinite(x[4]) ? (x[4] as number) * dir : NaN;
-  x[50] = Number.isFinite(x[16]) ? (x[16] as number) * dir : NaN;
-  x[51] = Number.isFinite(x[11]) ? (x[11] as number) * dir : NaN;
-  x[52] = Number.isFinite(x[20]) ? (x[20] as number) * dir : NaN;
-  x[53] = Number.isFinite(x[22]) ? (x[22] as number) * dir : NaN;
-  x[54] = Number.isFinite(x[12]) ? (x[12] as number) * dir : NaN;
-  x[55] = Number.isFinite(x[13]) ? (x[13] as number) * dir : NaN;
-  return x;
-}
-
-function oiWalls(pin: PinBook, S: number): { call: number; put: number } {
-  if (!(S > 0)) return { call: NaN, put: NaN };
-  let callK = NaN;
-  let callOi = -1;
-  let callGap = Infinity;
-  let putK = NaN;
-  let putOi = -1;
-  let putGap = Infinity;
-  for (const n of pin.nodes) {
-    if (n.strike >= S && n.call > 0 && (n.call > callOi || (n.call === callOi && Math.abs(n.strike - S) < callGap))) {
-      callOi = n.call;
-      callK = n.strike;
-      callGap = Math.abs(n.strike - S);
-    }
-    if (n.strike <= S && n.put > 0 && (n.put > putOi || (n.put === putOi && Math.abs(n.strike - S) < putGap))) {
-      putOi = n.put;
-      putK = n.strike;
-      putGap = Math.abs(n.strike - S);
+/** The last 31 minutes of one expiry's NBBO, one reading a minute (one ask for every strike of the name and
+    expiry): the mids 5 and 15 minutes back and Book B's ask 30 minutes back come from the quotes that stood then,
+    not only from the scans this tab happened to run. */
+async function seedQuotes(list: Setup[], now: number): Promise<void> {
+  const first = list[0];
+  if (!first?.expiryDate) return;
+  const key = `${first.ticker}|${first.expiryDate}|${Math.floor(now / 60_000)}`;
+  if (seededAt.has(key)) return;
+  seededAt.set(key, now);
+  if (seededAt.size > 400) for (const k of [...seededAt.keys()].slice(0, 200)) seededAt.delete(k);
+  const byContract = new Map<string, string>();
+  for (const s of list) byContract.set(`${s.strike}|${s.right}`, s.id);
+  const two = (v: number) => String(v).padStart(2, '0');
+  const from = nyParts(now - 31 * 60_000);
+  const to = nyParts(now);
+  const got = await thetaCall(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&interval=1m&start_time=${two(from.hour)}:${two(from.minute)}:00&end_time=${two(to.hour)}:${two(to.minute)}:00&format=json`);
+  if (got.error) return;
+  for (const item of Array.isArray(got.data) ? got.data : []) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as { contract?: Record<string, unknown>; data?: unknown };
+    const contract = row.contract && typeof row.contract === 'object' ? row.contract : (item as Record<string, unknown>);
+    const strike = num(contract.strike);
+    const side = String(contract.right ?? '').toUpperCase().slice(0, 1);
+    const id = byContract.get(`${strike}|${side}`);
+    if (!id) continue;
+    const quotes = Array.isArray(row.data) ? (row.data as Record<string, unknown>[]) : [item as Record<string, unknown>];
+    for (const q of quotes) {
+      const at = nyWallStamp(q.timestamp);
+      const bid = num(q.bid);
+      const ask = num(q.ask);
+      if (!at || !quoteValid(bid, ask)) continue;
+      noteAsk(id, minuteOf(at), bid, ask);
+      noteMid(id, minuteOf(at), (bid + ask) / 2);
     }
   }
-  return {
-    call: callK > 0 ? callK / S - 1 : NaN,
-    put: putK > 0 ? putK / S - 1 : NaN,
-  };
-}
-
-function netGexBn(pin: PinBook, S: number, T: number, atmIv: number): number {
-  if (!(S > 0) || !(T > 0) || !(atmIv > IV_FEATURE_MIN)) return NaN;
-  let sum = 0;
-  for (const n of pin.nodes) {
-    const g = bsStates(S, n.strike, T, atmIv, true).ga;
-    if (!Number.isFinite(g)) continue;
-    if (n.call > 0) sum += n.call * g * S * S * 0.01;
-    if (n.put > 0) sum -= n.put * g * S * S * 0.01;
-  }
-  return sum / 1e9;
-}
-
-function atmPair(rows: Setup[], spot: number, T: number): { iv: number; skew: number } {
-  const strike = atmStrike(rows.map(s => s.strike), spot);
-  if (!Number.isFinite(strike)) return { iv: NaN, skew: NaN };
-  let call = NaN;
-  let put = NaN;
-  for (const s of rows) {
-    if (Math.abs(s.strike - strike) > 0.001) continue;
-    const iv = ivFeature(ivStates(s.mid, spot, s.strike, T, s.right === 'C'));
-    if (!Number.isFinite(iv)) continue;
-    if (s.right === 'C') call = iv;
-    else put = iv;
-  }
-  const iv = call > 0 && put > 0 ? (call + put) / 2 : call > 0 ? call : put;
-  const skew = call > 0 && put > 0 ? put - call : NaN;
-  return { iv, skew };
 }
 
 const passed = new Map<string, string[]>();
@@ -739,7 +413,6 @@ export function resetScanReport(sleeve: 'odte' | 'weekly'): void {
 }
 
 const nearPicks = new Map<string, Setup>();
-const pinnedAsk = new Map<string, number>();
 const misses = new Map<string, { setup: Setup; p1: number; prun: number }>();
 const kept = new Map<string, Setup>();
 const CALLS_KEY = 'slayer_compass_calls_v1';
@@ -777,76 +450,101 @@ function stampPassed(): void {
     const had = passBook.get(key);
     const foreign = !had || had.why.startsWith('Model 1') || /^[A-Z]{1,6}\s+\d/.test(had.why);
     const why = foreign
-      ? (row.p1 + 1e-12 < 0.7067 ? `Model 1 ${(row.p1 * 100).toFixed(1)}%. Needs 70.67%.` : 'No seat.')
+      ? (row.p1 + 1e-12 < P1_MIN ? `Model 1 ${(row.p1 * 100).toFixed(1)}%. Needs ${(P1_MIN * 100).toFixed(2)}%.` : 'No seat.')
       : had.why;
     passBook.set(key, { ticker: row.setup.ticker, contract: row.setup.contract, p1: row.p1, why, sleeve: row.setup.sleeve });
   }
 }
 
+/** When each sleeve's last full pass finished, epoch ms. */
+const scannedAt: Record<'odte' | 'weekly', number> = { odte: 0, weekly: 0 };
+
+export function lastScanAt(sleeve: 'odte' | 'weekly'): number {
+  return scannedAt[sleeve];
+}
+
+export function noteScanned(sleeve: 'odte' | 'weekly', at = Date.now()): void {
+  scannedAt[sleeve] = at;
+  persistCalls();
+}
+
+type Pack = {
+  day?: string;
+  picks?: [string, Setup][];
+  wings?: [string, Setup][];
+  lottery?: [string, Setup][];
+  kept?: [string, Setup][];
+  near?: [string, Setup][];
+  pass?: PassLine[];
+  seen?: string[];
+  rootA?: string[];
+  rootB?: string[];
+  rootC?: string[];
+  scanned?: { odte?: number; weekly?: number };
+};
+
+const dayKey = (at = Date.now()) => {
+  const p = nyParts(at);
+  return `${p.year}${String(p.month).padStart(2, '0')}${String(p.day).padStart(2, '0')}`;
+};
+
+/** The last session's scan, kept to show (stamped) until today's first pass lands. It is never scored or traded. */
+let earlier: { day: string; at: number; setups: Setup[] } | null = null;
+
+export function earlierScan(): { day: string; at: number; setups: Setup[] } | null {
+  return earlier;
+}
+
 function persistCalls(): void {
   if (typeof localStorage === 'undefined') return;
-  const p = nyParts(Date.now());
-  const day = `${p.year}${String(p.month).padStart(2, '0')}${String(p.day).padStart(2, '0')}`;
-  const pack = {
-    day,
+  const today = dayKey();
+  if (!picks.size && !wingPicks.size && !lotteryPicks.size && !nearPicks.size && !scannedAt.odte && !scannedAt.weekly && earlier) return;
+  const pack: Pack = {
+    day: today,
     picks: [...picks.entries()],
     wings: [...wingPicks.entries()],
     lottery: [...lotteryPicks.entries()],
     kept: [...kept.entries()],
-    filled: [...pinnedAsk.entries()],
     near: [...nearPicks.entries()],
     pass: [...passBook.values()],
     seen: [...seen],
     rootA: [...seenRootA],
     rootB: [...seenRootB],
     rootC: [...seenRootC],
+    scanned: { ...scannedAt },
   };
   try { localStorage.setItem(CALLS_KEY, JSON.stringify(pack)); } catch { /* the maps still hold this tab */ }
 }
 
 function restoreCalls(): void {
   if (typeof localStorage === 'undefined') return;
-  const p = nyParts(Date.now());
-  const day = `${p.year}${String(p.month).padStart(2, '0')}${String(p.day).padStart(2, '0')}`;
   let raw: unknown = null;
   try { raw = JSON.parse(localStorage.getItem(CALLS_KEY) || 'null'); } catch { raw = null; }
-  const pack = raw && typeof raw === 'object' ? raw as {
-    day?: string;
-    picks?: [string, Setup][];
-    wings?: [string, Setup][];
-    lottery?: [string, Setup][];
-    kept?: [string, Setup][];
-    filled?: [string, number][];
-    near?: [string, Setup][];
-    pass?: PassLine[];
-    seen?: string[];
-    rootA?: string[];
-    rootB?: string[];
-    rootC?: string[];
-  } : null;
-  if (pack && pack.day === day) {
-    for (const [k, v] of pack.picks ?? []) if (v && v.id) picks.set(k, v);
-    for (const [k, v] of pack.wings ?? []) if (v && v.id) wingPicks.set(k, v);
-    for (const [k, v] of pack.lottery ?? []) if (v && v.id) lotteryPicks.set(k, v);
-    for (const [k, v] of pack.kept ?? []) if (v && v.id) kept.set(k, v);
-    for (const [k, n] of pack.filled ?? []) if (k && n > 0) pinnedAsk.set(k, n);
-    for (const [k, v] of pack.near ?? []) if (v && v.id) nearPicks.set(k, v);
-    for (const row of pack.pass ?? []) if (row && row.ticker && row.contract) passBook.set(`${row.sleeve}|${row.contract}`, row);
-    for (const id of pack.seen ?? []) seen.add(id);
-    for (const t of pack.rootA ?? []) seenRootA.add(t);
-    for (const t of pack.rootB ?? []) seenRootB.add(t);
-    for (const t of pack.rootC ?? []) seenRootC.add(t);
+  const pack = raw && typeof raw === 'object' ? raw as Pack : null;
+  if (!pack) return;
+  if (pack.day !== dayKey()) {
+    const setups = [...(pack.picks ?? []), ...(pack.wings ?? []), ...(pack.lottery ?? []), ...(pack.near ?? [])].map(([, v]) => v).filter(v => v && v.id);
+    const at = Math.max(pack.scanned?.odte ?? 0, pack.scanned?.weekly ?? 0);
+    if (pack.day && (setups.length || at)) earlier = { day: pack.day, at, setups };
+    return;
   }
-  persistCalls();
+  for (const [k, v] of pack.picks ?? []) if (v && v.id) picks.set(k, v);
+  for (const [k, v] of pack.wings ?? []) if (v && v.id) wingPicks.set(k, v);
+  for (const [k, v] of pack.lottery ?? []) if (v && v.id) lotteryPicks.set(k, v);
+  for (const [k, v] of pack.kept ?? []) if (v && v.id) kept.set(k, v);
+  for (const [k, v] of pack.near ?? []) if (v && v.id) nearPicks.set(k, v);
+  for (const row of pack.pass ?? []) if (row && row.ticker && row.contract) passBook.set(`${row.sleeve}|${row.contract}`, row);
+  for (const id of pack.seen ?? []) seen.add(id);
+  for (const t of pack.rootA ?? []) seenRootA.add(t);
+  for (const t of pack.rootB ?? []) seenRootB.add(t);
+  for (const t of pack.rootC ?? []) seenRootC.add(t);
+  scannedAt.odte = pack.scanned?.odte ?? 0;
+  scannedAt.weekly = pack.scanned?.weekly ?? 0;
 }
 
 restoreCalls();
 
-export function entryAsk(id: string): number {
-  return pinnedAsk.get(id) ?? 0;
-}
-
-/** The card and the contract read this. A pick's fill does not move with later quotes. */
+/** The card and the contract read this. A pick's quote follows the live book; its signal keeps the one it fired on. */
 export function stampPickQuote(ticker: string, expiry: string, strike: number, right: string, q: { bid: number; ask: number; at: number; under: number; iv: number; delta: number; theta: number; vega: number }): void {
   const day = expiry.slice(0, 10);
   const touch = (book: Map<string, Setup>) => {
@@ -876,15 +574,22 @@ export function stampPickQuote(ticker: string, expiry: string, strike: number, r
   touch(nearPicks);
 }
 
-function pinEntry(_s: Setup): void {
-  persistCalls();
-}
-
-/** The ledger's fill for a pick: the ask quoted a full minute after the call. Set once. */
-export function pinFill(id: string, ask: number): void {
-  if (pinnedAsk.has(id) || !(ask > 0)) return;
-  pinnedAsk.set(id, ask);
-  persistCalls();
+/** Each scanned name's best Model 1 read on a sleeve this session: its highest-scoring contract. */
+export function bestByName(sleeve: 'odte' | 'weekly'): Map<string, { p1: number; contract: string; id: string }> {
+  const out = new Map<string, { p1: number; contract: string; id: string }>();
+  const take = (s: Setup, p1: number) => {
+    if (s.sleeve !== sleeve || !(p1 >= 0)) return;
+    const had = out.get(s.ticker);
+    if (!had || p1 > had.p1) out.set(s.ticker, { p1, contract: s.contract, id: s.id });
+  };
+  for (const row of misses.values()) take(row.setup, row.p1);
+  for (const s of [...picks.values(), ...wingPicks.values()]) take(s, s.p1 ?? -1);
+  for (const row of passBook.values()) {
+    if (row.sleeve !== sleeve || !(row.p1 > 0)) continue;
+    const had = out.get(row.ticker);
+    if (!had || row.p1 > had.p1) out.set(row.ticker, { p1: row.p1, contract: row.contract, id: had?.contract === row.contract ? had.id : '' });
+  }
+  return out;
 }
 
 /** Best scored miss per name. A later slice does not erase a higher one. */
@@ -927,11 +632,10 @@ export function commitClosest(sleeve: 'odte' | 'weekly'): void {
       priceTargets: [],
       invalidationPrice: 0,
       invalidationReason: '',
-      whyText: row.p1 + 1e-12 < 0.7067 ? `Model 1 ${(row.p1 * 100).toFixed(1)}%. Needs 70.67%.` : `Model 1 ${(row.p1 * 100).toFixed(1)}%. No seat.`,
+      whyText: row.p1 + 1e-12 < P1_MIN ? `Model 1 ${(row.p1 * 100).toFixed(1)}%. Needs ${(P1_MIN * 100).toFixed(2)}%.` : `Model 1 ${(row.p1 * 100).toFixed(1)}%. No seat.`,
     };
     nearPicks.set(s.id, card);
-    pinEntry(card);
-    taken.add(s.ticker);
+        taken.add(s.ticker);
     n += 1;
   }
   persistCalls();
@@ -990,6 +694,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
   const clock = nyParts(now);
   const minute = clock.hour * 60 + clock.minute;
   if (!merge && !sessionScanOpen(minute, clock.weekday)) return;
+  if (!inModelWindow(minute - (9 * 60 + 30))) return;
   if (releaseShut(now)) return;
   const blocked = new Set<string>(DO_NOT_REQUEST);
   const day = sessionYmd(now);
@@ -1020,6 +725,14 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
   await Promise.all([...wanted].map(async ([key, row]) => {
     pins.set(key, await pinOf(row.ticker, row.expiry, row.spot));
   }));
+  const groups = new Map<string, Setup[]>();
+  for (const s of rows) {
+    const key = `${s.ticker}|${s.expiryDate}`;
+    const list = groups.get(key) ?? [];
+    list.push(s);
+    groups.set(key, list);
+  }
+  await Promise.all([...groups.values()].map(list => seedQuotes(list, now)));
   const bySlot = new Map<string, Setup[]>();
   for (const s of rows) {
     const key = slotOf(s);
@@ -1071,7 +784,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
         notes.push(`${word} is outside 0 to 7 days`);
         continue;
       }
-      if (!s.quotedAt || s.quotedAt > now || now - s.quotedAt > QUOTE_MAX_AGE_MS) {
+      if (!s.quotedAt || s.quotedAt > now + 60_000 || now - s.quotedAt > QUOTE_MAX_AGE_MS) {
         notes.push(`${word} quote is older than 90 seconds`);
         continue;
       }
@@ -1086,7 +799,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
       const mid = (s.bid + s.ask) / 2;
       noteMid(s.id, qMin, mid);
       const pin = pins.get(`${s.ticker}|${s.expiryDate}`) ?? null;
-      const raw = features({ ...s, mid }, minute, book.get(under) ?? [], spy, pd.get(under) ?? null, iv, skew, sec, curve, pin, day);
+      const raw = features({ ...s, mid }, minute, book.get(under) ?? [], spy, pd.get(under) ?? null, iv, skew, sec, curve, pin, { m5: midThen(s.id, minute - 5), m15: midThen(s.id, minute - 15) });
       if (!raw) continue;
       const x = f32(raw);
       const p1 = predict(ENTRY, x);
@@ -1203,7 +916,6 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
         invalidationReason: '',
         whyText: 'Book A. Model 1 cleared.',
       });
-      pinEntry(next.get(slotOf(row.setup))!);
     } else {
       seen.add(row.setup.id);
       seenRootB.add(row.setup.ticker);
@@ -1225,7 +937,6 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
         invalidationReason: '',
         whyText: 'Book B. Model 1 cleared. The exit is the runner ratchet.',
       });
-      pinEntry(wingNext.get(row.setup.id)!);
     }
   }
   picks.clear();
@@ -1345,7 +1056,6 @@ export async function scoreLottery(setups: Setup[], now = Date.now()): Promise<v
       whyChips: [],
       whyText: 'Book C. No model.',
     });
-    pinEntry(lotteryPicks.get(setup.id)!);
   }
   persistCalls();
 }
@@ -1472,6 +1182,7 @@ export async function scoreLiveContract(input: {
     if (!(await ensureModels()) || !modelsLocked()) return blank;
     const clock = nyParts(now);
     const minute = clock.hour * 60 + clock.minute;
+    if (!inModelWindow(minute - (9 * 60 + 30))) return blank;
     const day = ymd(now);
     const ticker = input.ticker;
     const under = UNDER[ticker] ?? printOf(ticker);
@@ -1498,7 +1209,7 @@ export async function scoreLiveContract(input: {
     const { iv, skew } = atmPair(mates, tape.S, horizon);
     const pin = CORE.has(ticker) ? await pinOf(ticker, input.expiryIso, tape.S > 0 ? tape.S : input.spot) : null;
     noteMid(mine.id, minute, mine.mid);
-    const raw = features(mine, minute, bars, spy, prior, iv, skew, sec, curveOf(under), pin, day);
+    const raw = features(mine, minute, bars, spy, prior, iv, skew, sec, curveOf(under), pin, { m5: midThen(mine.id, minute - 5), m15: midThen(mine.id, minute - 15) });
     if (!raw) {
       const scored = { p1: null, prun: null, retOpen, gex: null };
       liveScoreMemo.set(key, { at: now, ...scored });

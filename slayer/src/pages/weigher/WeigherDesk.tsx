@@ -22,13 +22,14 @@ import { onGlide } from '../../core/glide';
 import { DOCK_ROOM } from '../../data/editorDock';
 import { useTicker } from '../../context/MarketDataContext';
 import { snapshotOf, useBookRev } from '../../data/uwBook';
-import { peekMark, useMarks } from '../../data/weigherChain';
-import { buildLevelsFor, buildPrints, fmtUsd } from '../../data/gex';
+import { buildPrints, fmtUsd } from '../../data/gex';
+import { useLevelsFor } from '../../data/levelsFor';
+import { useLevelsScope } from '../../data/levelsScope';
+import { etClock, keepTheta, keptTheta, offlineWords, useThetaDown } from '../../data/thetaFeed';
 import { wantSpotGex } from '../../data/spotGexBook';
 import {
   blankChain,
   dteForDate,
-  fallbackListed,
   listLiveExpiries,
   loadLiveChain,
   attachHistory,
@@ -36,8 +37,8 @@ import {
   attachSession,
   refreshLiveChain,
   keepSlow,
-  marketSession,
-  readLeg,
+  optionsOpen,
+  readLegs,
   type DeskChain,
   type DeskContract,
   type ListedExpiry,
@@ -48,10 +49,10 @@ import { scoreLiveContract, type LiveScore } from '../../data/compassModel';
 import { yearFracLeft, WEIGHER_Q, WEIGHER_R } from '../../data/weigherGate';
 import { printOf } from '../../data/compassParams';
 import { paintLive, useWeigherContract, useWeigherSpot, useWeigherTape } from '../../data/weigherTape';
-import { useDeskSession, sessionOfMinute } from '../../data/deskSession';
+import { useDeskSession, sessionMeta, sessionOfMinute } from '../../data/deskSession';
 import { nyMinutes } from '../../core/nyTime';
 import { blackScholesPrice } from '../../core/greeks';
-import { expiryFor, isoDate, today, MONTHS } from '../../core/calendar';
+import { expiryFor, isTradingDay, isoDate, today, MONTHS } from '../../core/calendar';
 import { addToWatchlist, closeWatched, hasOpenWatched, removeWatched, restampWatch, tickWatchlist, useWatchlist, watchedFor } from '../../data/watchlist';
 import type { WatchedContract } from '../../types/watchlist';
 import { costOf } from '../../data/positionCurve';
@@ -129,6 +130,7 @@ const KIND_OPTIONS: DropdownOption<ListKind>[] = [
 /** Names the gainers and losers are read from. The price and the day's change are the screener's. */
 const SCAN_NAMES = ['SPY', 'QQQ', 'IWM', 'DIA', 'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'TSLA', 'AMD', 'AVGO', 'GOOGL', 'NFLX', 'MU', 'INTC', 'AMAT', 'ARM', 'SMCI', 'PLTR', 'HOOD', 'COIN', 'ORCL', 'CRM', 'UBER', 'BA', 'JPM', 'XLF', 'GLD', 'TLT', 'SMH'];
 const fmtDay = (d: Date) => `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+const marketClosedToday = () => !isTradingDay(today());
 
 interface DeskState {
   ticker: string;
@@ -545,9 +547,10 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   }, [ticker]);
   const patch = (p: Partial<DeskState>) => setDesk(d => ({ ...d, ...p }));
 
-  const session = useMemo(() => marketSession(), [tick]);
+  /* The market's own session now: closed on a weekend or holiday, else the clock's window */
+  const session = useMemo(() => (marketClosedToday() ? 'closed' : sessionOfMinute(nyMinutes())), [tick]); // eslint-disable-line react-hooks/exhaustive-deps
   const [chain, setChain] = useState<DeskChain>(() => blankChain(ticker, dte));
-  const [listed, setListed] = useState<{ rows: ListedExpiry[]; down: boolean } | null>(null);
+  const [listed, setListed] = useState<{ rows: ListedExpiry[]; down: boolean; takenAt?: number } | null>(null);
   const [chainWait, setChainWait] = useState(true);
   const loadedKey = useRef('');
   const [liveScore, setLiveScore] = useState<LiveScore | null>(null);
@@ -560,50 +563,63 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     const high = c.low > 0 && c.high >= c.low ? c.high : null;
     return { listed: true, low, high, mark: c.mark > 0 ? c.mark : null };
   };
+  /* The terminal coming back re-lists and re-reads what it could not */
+  const thetaOff = useThetaDown();
   useEffect(() => {
     let dead = false;
-    setListed(null);
-    setChainWait(true);
-    loadedKey.current = '';
-    setChain(blankChain(ticker, dte));
+    setListed(prev => (prev && !prev.down ? prev : null));
     listLiveExpiries(ticker).then(rows => {
       if (!dead) setListed(rows);
     });
     return () => {
       dead = true;
     };
+  }, [ticker, thetaOff]);
+  /* a new name starts from an empty chain, never the last name's */
+  useEffect(() => {
+    setListed(null);
+    setChainWait(true);
+    loadedKey.current = '';
+    setChain(blankChain(ticker, dte));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker]);
   useEffect(() => {
     if (listed === null) return;
-    if (!listed.down && !listed.rows.length) {
-      const empty = blankChain(ticker, dte);
-      setChain({ ...empty, source: 'live', rows: [] });
+    if (!listed.rows.length) {
+      setChain({ ...blankChain(ticker, dte), source: 'live', rows: [], offline: listed.down });
       setChainWait(false);
       return;
     }
-    const row = !listed.down ? (listed.rows.find(e => e.dte === dte && (!optRoot || e.root === optRoot)) ?? listed.rows.find(e => e.dte === dte)) : undefined;
-    if (!listed.down && listed.rows.length && !optRoot) {
+    const row = listed.rows.find(e => e.dte === dte && (!optRoot || e.root === optRoot)) ?? listed.rows.find(e => e.dte === dte);
+    if (!optRoot) {
       const front = listed.rows.find(e => e.weekday === 0) ?? listed.rows[0];
       patch({ dte: front.dte, optRoot: front.root });
       return;
     }
-    if (!listed.down && listed.rows.length && !row) {
+    if (!row) {
       const next = listed.rows.find(e => e.weekday === 0) ?? listed.rows[0];
       patch({ dte: next.dte, optRoot: next.root });
       return;
     }
-    if (row && optRoot !== row.root) {
+    if (optRoot !== row.root) {
       patch({ optRoot: row.root });
       return;
     }
-    const root = row?.root || optRoot || ticker;
-    const key = `${ticker}|${dte}|${root}|${depth}|${listed.down ? 1 : 0}`;
+    const root = row.root || ticker;
+    const key = `${ticker}|${dte}|${root}|${depth}`;
+    const keptKey = `chain:${ticker}|${root}|${row.iso}`;
     const quiet = loadedKey.current === key;
+    let dead = false;
     if (!quiet) {
       setChainWait(true);
       setChain({ ...blankChain(ticker, dte), source: 'live', rows: [], optRoot: root });
+      /* the chain this browser kept paints first, stamped, until the terminal answers */
+      void keptTheta<DeskChain>(keptKey).then(kept => {
+        if (dead || !kept || !Array.isArray(kept.data?.rows) || !kept.data.rows.length) return;
+        setChain(prev => (prev.rows.length ? prev : { ...kept.data, takenAt: kept.at, kept: true, offline: thetaOff }));
+        setChainWait(false);
+      });
     }
-    let dead = false;
     const range = Math.min(40, Math.max(12, depth));
     const applySlow = (slow: DeskChain) => {
       if (dead || loadedKey.current !== key) return;
@@ -611,10 +627,16 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     };
     loadLiveChain(ticker, dte, range, root).then(next => {
       if (dead) return;
-      loadedKey.current = key;
       setChainWait(false);
-      setChain(next);
-      if (next.source !== 'live' || !next.rows.length) return;
+      if (next.offline) {
+        /* the terminal did not answer: whatever is on screen stays, marked offline */
+        setChain(prev => (prev.rows.length ? { ...prev, offline: true } : { ...next }));
+        return;
+      }
+      loadedKey.current = key;
+      setChain({ ...next, takenAt: Date.now() });
+      if (!next.rows.length) return;
+      keepTheta(keptKey, next);
       attachSession(next).then(applySlow);
       attachHistory(next).then(slow => {
         applySlow(slow);
@@ -635,26 +657,35 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   }, [ticker, dte, optRoot, depth, listed]);
   const chainRef = useRef(chain);
   chainRef.current = chain;
+  /* A new NBBO every second while the options trade and the tab is in view; once a minute outside the session */
   useEffect(() => {
     let dead = false;
     let n = 0;
+    let lastAt = 0;
     const busy = { current: false };
     const id = window.setInterval(() => {
       const cur = chainRef.current;
       const wantIso = isoDate(expiryFor(dte).date);
       const wantRoot = optRoot || cur.optRoot || ticker;
-      if (dead || busy.current || cur.source !== 'live' || !cur.rows.length) return;
+      if (dead || busy.current || cur.source !== 'live' || !cur.rows.length || document.visibilityState === 'hidden') return;
       if (cur.ticker !== ticker || cur.expiryIso !== wantIso) return;
       if (cur.optRoot && cur.optRoot !== wantRoot) return;
+      if (Date.now() - lastAt < (optionsOpen() ? 1000 : 60_000)) return;
+      lastAt = Date.now();
       busy.current = true;
       n += 1;
       const range = Math.min(40, Math.max(12, depth));
       const pass = n;
       refreshLiveChain(cur, range)
         .then(next => {
-          if (dead || !next || next.ticker !== ticker || next.expiryIso !== wantIso || (next.optRoot && next.optRoot !== wantRoot)) return null;
-          setChain(prev => (prev.ticker === ticker && prev.expiryIso === wantIso && (!prev.optRoot || prev.optRoot === wantRoot) ? keepSlow(next, prev) : prev));
-          if (pass % 4 !== 0) return null;
+          if (dead) return null;
+          if (next === 'offline') {
+            setChain(prev => (prev.offline ? prev : { ...prev, offline: true }));
+            return null;
+          }
+          if (!next || next.ticker !== ticker || next.expiryIso !== wantIso || (next.optRoot && next.optRoot !== wantRoot)) return null;
+          setChain(prev => (prev.ticker === ticker && prev.expiryIso === wantIso && (!prev.optRoot || prev.optRoot === wantRoot) ? { ...keepSlow(next, prev), takenAt: Date.now(), offline: false } : prev));
+          if (pass % 4 !== 0 && !cur.offline) return null;
           return attachSession(next);
         })
         .then(slow => {
@@ -698,7 +729,12 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     rows.sort((a, b) => (preset === 'losers' ? a.changePct - b.changePct : b.changePct - a.changePct));
     return rows;
   }, [preset, scanQuotes.rev, topNet.rows]);
-  const levels = useMemo(() => buildLevelsFor(ticker), [ticker, tick]);
+  /* The walls, flip and supreme are the house's (data/levelsFor.ts), the same as Pinpoint's and the Terrain's */
+  const house = useLevelsFor(ticker, useLevelsScope());
+  const levels = useMemo(() => {
+    const n = (v: number | null | undefined) => (v == null ? Number.NaN : v);
+    return { spot: n(house?.spot), callWall: n(house?.callWall), putWall: n(house?.putWall), flip: n(house?.flip), supreme: n(house?.supreme) };
+  }, [house]);
   const under = printOf(ticker);
   const bookSession = useDeskSession();
   const tape = useWeigherSpot(under);
@@ -724,7 +760,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const prints = useMemo(() => buildPrints(ticker, liveSpot || levels.spot), [ticker, liveSpot, levels.spot]); // eslint-disable-line react-hooks/exhaustive-deps
   /* The rail's expiries — and the one a deep link asked for when the rail
      does not list it (a contract's own Friday), in date order */
-  const expiries = useMemo(() => (listed && listed.rows.length ? listed.rows : listed?.down ? fallbackListed() : []), [listed]);
+  const expiries = useMemo(() => listed?.rows ?? [], [listed]);
   const expiryOptions = useMemo<ExpiryChoice<number>[]>(
     () =>
       expiries.map(e => ({
@@ -1145,13 +1181,25 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
      strike distance is a choice, not a cap) · Columns (the catalog, in catalog order), and the expected move as a
      fact. The head knows its room. */
   const chainName = <TickerQuickPick ticker={ticker} onPick={pickTicker} slim />;
+  const chainFeedWords = (() => {
+    const stamp = (at: number) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(at));
+    if (chain.offline) return offlineWords(chain.takenAt ?? listed?.takenAt ?? 0);
+    if (listed === null || (chainWait && !chain.rows.length)) return 'Pulling';
+    if (chain.kept && chain.takenAt) return `Kept · as of ${etClock(chain.takenAt)}`;
+    if (!listed.rows.length || !chain.rows.length) return 'No listed options';
+    const at = chain.quotedAt || chain.takenAt || 0;
+    if (!at) return fmtDay(chain.expiry.date);
+    return optionsOpen() ? `Live · ${fmtDay(chain.expiry.date)} · ${stamp(at)} ET` : `${fmtDay(chain.expiry.date)} · quotes as of ${etClock(at)}`;
+  })();
   const chainMove = (
     <span className="inline-flex items-center gap-2">
-      <span className="font-mono text-[9px] tnum text-textMuted whitespace-nowrap" title="The move the options are charging for by this expiry">
-        ±{chain.expectedMovePct.toFixed(1)}%
-      </span>
-      <span className={`font-mono text-[9px] uppercase tracking-widest whitespace-nowrap ${chain.source === 'live' ? 'text-textMuted' : 'text-bear'}`} data-chain-feed>
-        {listed === null || chainWait ? 'Pulling' : listed && !listed.down && !listed.rows.length ? 'No listed options' : chain.source === 'live' && chain.rows.length ? `Live · ${fmtDay(chain.expiry.date)}${chain.quotedAt ? ` · ${new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(chain.quotedAt))} ET` : ''}` : listed?.down || chain.rows.length === 0 ? 'Feed down' : 'Live'}
+      {chain.expectedMovePct > 0 && (
+        <span className="font-mono text-[9px] tnum text-textMuted whitespace-nowrap" title="The move the options are charging for by this expiry">
+          ±{chain.expectedMovePct.toFixed(1)}%
+        </span>
+      )}
+      <span className={`font-mono text-[9px] uppercase tracking-widest whitespace-nowrap ${chain.offline ? 'text-bear' : 'text-textMuted'}`} data-chain-feed={chain.offline ? 'offline' : chain.kept ? 'kept' : 'live'} title={chain.offline ? 'The ThetaData terminal is not answering. The chain is the last one it gave.' : undefined}>
+        {chainFeedWords}
       </span>
     </span>
   );
@@ -1199,24 +1247,30 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     for (const w of watchlist) if (w.status === 'open') keys.push(`${w.ticker}|${w.expiry}|${w.strike}|${w.right}`);
     return [...new Set(keys)].sort().join(',');
   }, [positions, watchlist]);
-  const [legBook, setLegBook] = useState<Map<string, { mark: number | null; prev: number | null }>>(new Map());
+  const [legBook, setLegBook] = useState<Map<string, { mark: number | null; prev: number | null; at: number; live: boolean }>>(new Map());
   useEffect(() => {
     if (!legKey || chainWait) return;
     let dead = false;
-    const legs = legKey.split(',');
+    const legs = legKey.split(',').map(key => {
+      const [sym, expiry, strike, side] = key.split('|');
+      return { ticker: sym, expiry, strike: Number(strike), right: (side === 'P' ? 'P' : 'C') as OptionRight };
+    });
     const pull = async () => {
-      const rows: [string, { mark: number | null; prev: number | null }][] = [];
-      for (const key of legs) {
-        if (dead) return;
-        const [sym, expiry, strike, right] = key.split('|');
-        try {
-          const q = await readLeg(sym, expiry, Number(strike), right === 'P' ? 'P' : 'C');
-          rows.push([key, { mark: q.mark, prev: q.prev }]);
-        } catch {
-          rows.push([key, { mark: null, prev: null }]);
+      if (document.visibilityState === 'hidden') return;
+      const got = await readLegs(legs).catch(() => null);
+      if (dead || !got) return;
+      setLegBook(prev => {
+        /* a leg the read did not quote keeps its last mark */
+        const next = new Map(prev);
+        const now = Date.now();
+        for (const [k, q] of got) {
+          const was = next.get(k);
+          if (q.mark != null) next.set(k, { mark: q.mark, prev: q.prev ?? was?.prev ?? null, at: now, live: true });
+          else if (was) next.set(k, { ...was, live: false });
+          else next.set(k, { mark: null, prev: q.prev, at: 0, live: false });
         }
-      }
-      if (!dead) setLegBook(new Map(rows));
+        return next;
+      });
     };
     void pull();
     const id = window.setInterval(() => void pull(), 8000);
@@ -1225,16 +1279,17 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       window.clearInterval(id);
     };
   }, [legKey, chainWait]);
-  const marksRev = useMarks(useMemo(() => [...positions.map(p => ({ ticker: p.ticker, expiry: p.expiry })), ...watchlist.filter(w => w.status === 'open').map(w => ({ ticker: w.ticker, expiry: w.expiry }))], [positions, watchlist]));
   const liveOf = (ticker: string, expiry: string, strike: number, right: 'C' | 'P') => {
     const onChain = chain.source === 'live' && chain.ticker === ticker && chain.expiryIso === expiry ? chain.rows.find(r => Math.abs(r.strike - strike) < 1e-6) : undefined;
     const leg = onChain ? (right === 'C' ? onChain.call : onChain.put) : null;
     const quoted = legBook.get(`${ticker}|${expiry}|${strike}|${right}`);
-    /* ThetaData's leg read first; the vendor's listed-contract quote when ThetaData has none */
-    const uw = peekMark(ticker, expiry, strike, right);
-    const mark = leg && leg.mark > 0 ? leg.mark : quoted?.mark ?? (uw && uw.mark > 0 ? uw.mark : null);
+    const onLive = !!leg && leg.mark > 0;
+    const mark = onLive ? leg!.mark : quoted?.mark ?? null;
     const prev = leg && leg.prevClose > 0 ? leg.prevClose : quoted?.prev ?? null;
-    return { mark, prev };
+    /* live: this read's quote; otherwise the last one, with when it was taken */
+    const live = onLive ? !chain.offline && !chain.kept : !!quoted?.live;
+    const markAt = live ? null : onLive ? chain.takenAt ?? null : quoted?.at || null;
+    return { mark, prev, live, markAt };
   };
   /* TWO CARDS: the positions you own or sold in one, the contracts you watch in the other — the same rows, priced
      on the sweep, newest first, a watched row's settled ones last */
@@ -1254,12 +1309,12 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         })
         .sort((a, b) => (b.kind === 'own' ? b.p.addedAt : 0) - (a.kind === 'own' ? a.p.addedAt : 0)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [positions, chain, legBook, marksRev]
+    [positions, chain, legBook]
   );
   const watchRows = useMemo<ListRow[]>(() => {
     const rank = (w: WatchedContract) => (w.status === 'open' ? 0 : 1);
     return [...watchlist].sort((a, b) => rank(a) - rank(b) || b.addedAt - a.addedAt).map<ListRow>(w => {
-      const { mark, prev } = w.status === 'open' ? liveOf(w.ticker, w.expiry, w.strike, w.right) : { mark: w.closedMark ?? null, prev: null };
+      const { mark, prev, live: quoteLive, markAt } = w.status === 'open' ? liveOf(w.ticker, w.expiry, w.strike, w.right) : { mark: w.closedMark ?? null, prev: null, live: true, markAt: null };
       const per = 100 * w.size;
       const live = mark != null && mark > 0 ? mark : null;
       const addedDay = isoDate(new Date(w.addedAt));
@@ -1284,10 +1339,12 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
           toBreakevenPct: NaN,
           spot: chain.ticker === w.ticker ? chain.spot : NaN,
           dte: 0,
+          live: quoteLive,
+          markAt,
         },
       };
     });
-  }, [watchlist, chain, legBook, marksRev]);
+  }, [watchlist, chain, legBook]);
   useEffect(() => {
     for (const w of watchlist) {
       if (w.status !== 'open') continue;
@@ -1505,6 +1562,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       onWatch={watchFromChain}
       book={bookAt}
       drillExtra={drillBook}
+      emptyText={chain.offline ? 'ThetaData offline — reconnecting' : listed === null || chainWait ? 'Reading the chain' : 'No listed contracts'}
     />
   );
 
@@ -1564,10 +1622,10 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         <dl
           className="flex flex-wrap gap-x-6 gap-y-2"
           data-shell-facts
-          title={session === 'overnight' ? 'New York is closed' : 'New York is open, 9:30 to 16:00 ET'}
+          title={session === 'rth' ? 'New York is open, 9:30 AM to 4:00 PM ET' : session === 'closed' ? 'New York is closed today' : 'Outside the regular session, 9:30 AM to 4:00 PM ET'}
         >
           <Fact label="Session" testId="session">
-            {session === 'overnight' ? <span className="text-moon">Overnight</span> : 'Regular session'}
+            {session === 'rth' ? 'Regular session' : <span className="text-moon">{session === 'closed' ? 'Closed' : sessionMeta(session).label}</span>}
           </Fact>
         </dl>
       </header>

@@ -2,15 +2,12 @@
    the names to know, then the grid. A row opens the name. */
 
 import { CoSub, useSeen } from '../../components/record/CoName';
-import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
-import { AgGridProvider, AgGridReact } from 'ag-grid-react';
-import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
+import { type ColDef, type ICellRendererParams } from 'ag-grid-community';
+import { Controls, HeadFact, PhoneFold, RecordGrid, RecordHead, RecordPanel, Summary, ToKnow } from '../../components/record/RecordFrame';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
-import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { SectorMark } from '../../components/trace/SectorMark';
 import { When } from '../../components/record/when';
@@ -24,9 +21,7 @@ import { FeedFallback } from '../../components/ui/liveRead';
 import { NAMES_TO_KNOW } from './recordSkeletons';
 import { asOfDay, borrowM, moneyB, moneyM, signedM, signedPct } from './money';
 import { SQUEEZE_INK, SQUEEZE_TIP, squeezeRead } from '../../data/squeeze';
-import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
-import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
-import { statHelp } from '../../components/record/statHelp';
+import { CardLine } from '../../components/record/PhoneCards';
 
 const ink = (n: number) => (n > 0 ? 'text-bull' : n < 0 ? 'text-bear' : 'text-textMuted');
 const assetsB = (b: number) => moneyM(b * 1000);
@@ -47,12 +42,6 @@ const Strip = ({ title, rest, testId, children }: { title: string; rest: string;
 
 const KnowGrid = ({ children }: { children: ReactNode }) => (
   <div className="grid gap-2 grid-cols-2 max-sm:[&>*:nth-child(n+3)]:hidden sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--know),minmax(0,1fr))]" style={{ '--know': NAMES_TO_KNOW } as CSSProperties}>
-    {children}
-  </div>
-);
-
-const Page = ({ testId, children, attrs }: { testId: string; children: ReactNode; attrs?: Record<string, string | number> }) => (
-  <div className="relative border border-borderSubtle rounded-md overflow-hidden bg-panel flex flex-col" {...{ [`data-${testId}`]: true, ...attrs }}>
     {children}
   </div>
 );
@@ -151,6 +140,7 @@ const ShortPhone = (r: ShortRow) => (
     <CardLine muted left={cellJsx(ShortSqueeze, r)} right={<span>{r.daysToCover.toFixed(1)} days to cover</span>} />
   </>
 );
+const HoldPhone = (h: EtfHolding) => <CardLine left={<span className="font-mono font-bold">{h.bond ? h.name : h.ticker}</span>} right={<span className="font-mono tnum">{h.weight.toFixed(2)}%</span>} />;
 const EtfPhone = (r: EtfRow) => (
   <>
     <CardLine left={cellJsx(EtfName, r)} right={cellJsx(EtfAum, r)} />
@@ -160,13 +150,11 @@ const EtfPhone = (r: EtfRow) => (
 
 export const Institutions = () => {
   const navigate = useNavigate();
-  const phone = usePhoneCards();
   const boardNames = useBoardNames();
   const [window, setWindow] = useState<Window>(365);
   const [book, setBook] = useState<BookPick>('any');
   const [house, setHouse] = useState<HousePick>('any');
   const [names, setNames] = useState<NamesPick>('all');
-  const [guideOpen, setGuideOpen] = useState(false);
   const live = useInstitutions();
   const feed = live.rows;
   /* the period the 13Fs cover */
@@ -215,10 +203,11 @@ export const Institutions = () => {
       { title: 'Houses', options: [...byHouse.entries()].sort(order).map(([n, c]) => ({ value: `house:${n}`, label: displayName(n), count: c })) },
     ];
   }, [cut, picks]);
+  /* in the grid's own order (largest value first), so the phone's cards read the same */
   const rows = useMemo(() => {
-    if (picks.length === 0) return cut;
     const on = new Set(picks);
-    return cut.filter(r => on.has(`name:${r.ticker}`) || on.has(`house:${r.name}`));
+    const out = picks.length === 0 ? [...cut] : cut.filter(r => on.has(`name:${r.ticker}`) || on.has(`house:${r.name}`));
+    return out.sort((a, b) => b.valueB - a.valueB);
   }, [cut, picks]);
   const toggleName = (ticker: string) => setPicks(p => (p.includes(`name:${ticker}`) ? p.filter(x => x !== `name:${ticker}`) : [...p, `name:${ticker}`]));
   const toKnow = useMemo(() => {
@@ -265,131 +254,82 @@ export const Institutions = () => {
     ],
     [],
   );
-  const gridRef = useRef<HTMLDivElement | null>(null);
-  /* fifty lines a page; the sort runs over every line */
-  const paged = usePagedGrid<InstitutionRow>();
   const cutKey = `${window}|${book}|${house}|${names}|${picks.join(',')}`;
   useEffect(() => {
     if (cutKey !== '365|any|any|all|') wantAllHouses();
   }, [cutKey]);
-  useEffect(() => {
-    const el = gridRef.current;
-    if (!el) return;
-    el.classList.remove('animate-soft-in');
-    void el.offsetWidth;
-    el.classList.add('animate-soft-in');
-  }, [cutKey]);
-  const open = (e: RowClickedEvent<InstitutionRow>) => {
-    if (!e.data) return;
-    navigate(`/dossier/institutions/${houseSlug(e.data.name)}?line=${e.data.ticker}`);
-  };
 
   /* reading, not nothing */
   const instReading = !failed && feed.length === 0 && (live.status === 'loading' || (!!live.progress && live.progress.done < live.progress.total));
   /* the cards and the largest line are over the houses read so far, said on them */
   const newestWords = live.held && live.progress ? `among the ${live.progress.done} newest filers` : '';
+  const empty = failed ? 'This read did not land' : instReading ? 'Reading the 13Fs…' : 'No line on this cut';
+  const pending = live.status === 'loading' && feed.length === 0;
   return (
-    <Page testId="institutions" attrs={{ 'data-window': window }}>
-      <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the filings" testId="institutions-guide" viewport>
-        <InstitutionsGuide />
-      </GuideFocus>
-      <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-[min(18rem,100%)] flex-1">
-          <div className="h-6 flex items-center gap-3">
-            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">What the houses reported</h3>
-            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a line, a book and the change mean" testId="institutions-guide" />
-          </div>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate" title="A 13F is what a house held at the quarter's end, filed up to 45 days later — never today's positions">{periodWords ? <span className="text-textSecondary" data-institutions-period>{periodWords} — values as of that day · </span> : null}The largest {HOUSE_LINES} lines of each house's latest 13F, for the 40 largest houses — not every line · a row opens that house</p>
-        </div>
-        <dl className="flex flex-wrap gap-x-6 gap-y-2">
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Lines")}>Lines</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-institutions-count>{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.lines.toLocaleString('en-US')}</>}</dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Houses")}>Houses</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">
+    <RecordPanel testId="institutions" attrs={{ 'data-window': window }}>
+      <RecordHead
+        title="What the houses reported"
+        guide={{ title: 'How to read the filings', door: 'What a line, a book and the change mean', testId: 'institutions-guide', body: <InstitutionsGuide /> }}
+        kept={live.keptAt}
+        line={<span title="A 13F is what a house held at the quarter's end, filed up to 45 days later — never today's positions">{periodWords ? <span className="text-textSecondary" data-institutions-period>{periodWords} · </span> : null}the largest {HOUSE_LINES} lines of the 40 largest houses · a row opens that house</span>}
+        facts={
+          <>
+            <HeadFact label="Lines" testId="institutions-count">
+              <span data-institutions-count>{failed ? '—' : pending ? '…' : facts.lines.toLocaleString('en-US')}</span>
+            </HeadFact>
+            <HeadFact label="Houses" testId="institutions-houses">
               {failed ? '—' : live.held && live.progress ? (
-                <span className="text-textSecondary" title={`The ${live.progress.done} newest filers are read; the other ${live.progress.total - live.progress.done} are read when you go further — scroll the grid, pick a cut, or ask here`}>
-                  {facts.houses.toLocaleString('en-US')} <span className="text-textMuted">newest of {live.progress.total} ·</span>{' '}
+                <span className="text-textSecondary" title={`The ${live.progress.done} largest houses are read; the other ${live.progress.total - live.progress.done} when you go further`}>
+                  {facts.houses.toLocaleString('en-US')} <span className="text-textMuted">of {live.progress.total} ·</span>{' '}
                   <button type="button" onClick={wantAllHouses} className="underline decoration-dotted underline-offset-2 hover:text-textPrimary" data-institutions-more>
                     read all
                   </button>
                 </span>
-              ) : live.progress ? <span className="text-textSecondary" title="The rest of the houses are still landing">{facts.houses.toLocaleString('en-US')} · reading {live.progress.done} of {live.progress.total}</span> : live.status === 'loading' ? <span className="text-textMuted">…</span> : <>{facts.houses.toLocaleString('en-US')}</>}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Calls · puts")}>Calls · puts</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum whitespace-nowrap text-textPrimary">{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.calls} calls <span className="text-textMuted">·</span> {facts.puts} puts</>}</dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Largest line")}>Largest line</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.lead ? `${facts.lead.ticker} ${moneyB(facts.lead.valueB)}` : '—'}{newestWords && facts.lead ? <span className="text-textMuted text-t10"> · {newestWords}</span> : null}</>}</dd>
-          </div>
-        </dl>
-      </div>
-      <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-institutions-controls>
-        <DropdownSelect label="Window" value={window} options={WINDOW_OPTIONS} onChange={setWindow} title="How far back the filings run" testId="institutions-window" />
-        <DropdownSelect label="Side" value={book} options={BOOK_OPTIONS} onChange={setBook} title="Shares, call, or put. Not a contract." testId="institutions-book" />
-        <DropdownSelect label="House" value={house} options={houseOptions} onChange={setHouse} title="Which filer" testId="institutions-house" />
-        <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="institutions-names" />
-        <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and houses on the page right now — tick any number; only those stay" testId="institutions-filter" />
-      </div>
-      <p className={`px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden ${failed ? 'hidden' : ''}`} data-institutions-sentence>
-        {facts.lead ? (
-          <>
-            <span className="text-textPrimary font-semibold">{displayName(facts.lead.name)}</span>’s largest line is <span className="text-textPrimary font-semibold">{facts.lead.ticker}</span>, {moneyB(facts.lead.valueB)}. {facts.houses.toLocaleString('en-US')} {facts.houses === 1 ? 'house' : 'houses'} filed {facts.lines.toLocaleString('en-US')} {facts.lines === 1 ? 'line' : 'lines'} on this cut — {facts.calls} marked call, {facts.puts} marked put, and no strike on any of them.
+              ) : live.progress ? <span className="text-textSecondary">{facts.houses.toLocaleString('en-US')} · reading {live.progress.done} of {live.progress.total}</span> : pending ? <span className="text-textMuted">…</span> : facts.houses.toLocaleString('en-US')}
+            </HeadFact>
+            <HeadFact label="Calls · puts">{failed ? '—' : pending ? '…' : <>{facts.calls} calls <span className="text-textMuted">·</span> {facts.puts} puts</>}</HeadFact>
+            <HeadFact label="Largest line">{failed ? '—' : pending ? '…' : facts.lead ? `${facts.lead.ticker} ${moneyB(facts.lead.valueB)}` : '—'}</HeadFact>
           </>
-        ) : live.status === 'loading' ? (
-          'Reading the 13Fs.'
-        ) : failed ? null : (
-          'Nothing filed on this cut.'
-        )}
-      </p>
-      {failed && <FeedFallback />}
-      <Strip title="The lines to know" rest={`the largest line in each name${newestWords ? ` ${newestWords}` : ''} · a click keeps the grid to it`} testId="institutions">
-        {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : instReading ? 'Reading the 13Fs…' : 'No line on this cut'}</div>
+        }
+      />
+      <PhoneFold label="Filters, summary and the lines to know" testId="institutions">
+        <Controls testId="institutions">
+          <DropdownSelect label="Window" value={window} options={WINDOW_OPTIONS} onChange={setWindow} title="How far back the filings run" testId="institutions-window" />
+          <DropdownSelect label="Side" value={book} options={BOOK_OPTIONS} onChange={setBook} title="Shares, call, or put. Not a contract." testId="institutions-book" />
+          <DropdownSelect label="House" value={house} options={houseOptions} onChange={setHouse} title="Which filer" testId="institutions-house" />
+          <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="institutions-names" />
+          <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and houses on the page right now — tick any number; only those stay" testId="institutions-filter" />
+        </Controls>
+        {failed ? (
+          <FeedFallback />
         ) : (
-          <KnowGrid>
-            {toKnow.map(r => (
-              <InstCard key={r.id} row={r} on={picks.includes(`name:${r.ticker}`)} onToggle={() => toggleName(r.ticker)} />
-            ))}
-          </KnowGrid>
+          <Summary testId="institutions">
+            {facts.lead ? (
+              <>
+                <span className="text-textPrimary font-semibold">{displayName(facts.lead.name)}</span>’s largest line is <span className="text-textPrimary font-semibold">{facts.lead.ticker}</span>, {moneyB(facts.lead.valueB)}. {facts.houses.toLocaleString('en-US')} {facts.houses === 1 ? 'house' : 'houses'} filed {facts.lines.toLocaleString('en-US')} {facts.lines === 1 ? 'line' : 'lines'} on this cut — {facts.calls} marked call, {facts.puts} marked put, and a 13F names no strike.
+              </>
+            ) : live.status === 'loading' ? 'Reading the 13Fs.' : 'Nothing filed on this cut.'}
+          </Summary>
         )}
-      </Strip>
-      <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-institutions-grid>
-        {phone ? (
-          <PhoneCards rows={rows} rowKey={r => r.id} card={InstPhone} onOpen={r => navigate(`/dossier/institutions/${houseSlug(r.name)}?line=${r.ticker}`)} empty={failed ? 'This read did not land' : instReading ? 'Reading the 13Fs…' : 'No line on this cut'} testId="institutions" resetKey={rows} />
-        ) : (
-        <>
-        <AgGridProvider modules={GRID_MODULES}>
-          <AgGridReact<InstitutionRow>
-            {...phonePin}
-            {...paged.props}
-            theme={GRID_THEME}
-            domLayout="autoHeight"
-            rowData={rows}
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            getRowId={p => p.data.id}
-            onRowClicked={open}
-            rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
-            suppressCellFocus
-            animateRows={false}
-            tooltipShowDelay={350}
-            tooltipHideDelay={8000}
-            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : instReading ? 'Reading the 13Fs…' : 'No line on this cut')}
-            key={failed ? 'failed' : instReading ? 'reading' : 'live'}
-          />
-        </AgGridProvider>
-        {paged.bar(rows.length, 'institutions')}
-        </>
-        )}
-        <div ref={allSentinel} aria-hidden className="h-px" />
-      </div>
-    </Page>
+        <ToKnow title="The lines to know" sub={`the largest line in each name${newestWords ? ` ${newestWords}` : ''} · a click keeps the grid to it`} testId="institutions" count={NAMES_TO_KNOW} empty={toKnow.length === 0 ? empty : null}>
+          {toKnow.map(r => (
+            <InstCard key={r.id} row={r} on={picks.includes(`name:${r.ticker}`)} onToggle={() => toggleName(r.ticker)} />
+          ))}
+        </ToKnow>
+      </PhoneFold>
+      <RecordGrid<InstitutionRow>
+        testId="institutions"
+        rows={rows}
+        rowKey={r => r.id}
+        card={InstPhone}
+        onOpen={r => navigate(`/dossier/institutions/${houseSlug(r.name)}?line=${r.ticker}`)}
+        empty={empty}
+        columnDefs={columnDefs}
+        defaultColDef={defaultColDef}
+        gridProps={{ animateRows: false }}
+      />
+      <div ref={allSentinel} aria-hidden className="h-px" />
+    </RecordPanel>
   );
 };
 
@@ -486,12 +426,10 @@ const ShortSqueeze = ({ data }: ICellRendererParams<ShortRow>) => {
 
 export const Shorts = () => {
   const navigate = useNavigate();
-  const phone = usePhoneCards();
   const boardNames = useBoardNames();
   const [show, setShow] = useState<Show>('all');
   const [sector, setSector] = useState<SectorPick>('all');
   const [names, setNames] = useState<NamesPick>('all');
-  const [guideOpen, setGuideOpen] = useState(false);
   const liveShorts = useShorts();
   const failed = liveShorts.status === 'error';
   /* while the book is read every figure is "…" and the empty lines say it is reading */
@@ -559,120 +497,79 @@ export const Shorts = () => {
     if (hasShortVol) cols.splice(5, 0, { headerName: 'Short vol', field: 'shortVolRatio', width: 100, cellRenderer: ShortVol, type: 'rightAligned', headerTooltip: 'Short volume as a percent of the session’s volume' });
     return cols;
   }, [hasShortVol]);
-  const gridRef = useRef<HTMLDivElement | null>(null);
-  const cutKey = `${show}|${sector}|${names}|${picks.join(',')}`;
-  useEffect(() => {
-    const el = gridRef.current;
-    if (!el) return;
-    el.classList.remove('animate-soft-in');
-    void el.offsetWidth;
-    el.classList.add('animate-soft-in');
-  }, [cutKey]);
-  const open = (e: RowClickedEvent<ShortRow>) => {
-    if (!e.data) return;
-    navigate(`/dossier/shorts/${e.data.ticker}`);
-  };
 
+  const empty = failed ? 'This read did not land' : waiting ? 'Reading the short book' : 'No name on this cut';
+  const dash = failed ? '—' : waiting ? '…' : null;
   return (
-    <Page testId="shorts" attrs={{ 'data-show': show }}>
-      <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the short book" testId="shorts-guide" viewport>
-        <ShortsGuide />
-      </GuideFocus>
-      <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-[min(18rem,100%)] flex-1">
-          <div className="h-6 flex items-center gap-3">
-            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">Where the short book sits</h3>
-            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What short interest, days to cover and the fee mean" testId="shorts-guide" />
-          </div>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate" data-shorts-asof>
-            <span className={facts.stale ? 'text-warn' : ''} title="Short interest settles twice a month and is published about ten days later — the figure is never today's">
-              short interest as of {waiting ? '…' : asOfDay(facts.asOf)}{facts.stale ? ' (stale)' : ''}
+    <RecordPanel testId="shorts" attrs={{ 'data-show': show }}>
+      <RecordHead
+        title="Where the short book sits"
+        guide={{ title: 'How to read the short book', door: 'What short interest, days to cover and the fee mean', testId: 'shorts-guide', body: <ShortsGuide /> }}
+        kept={liveShorts.keptAt}
+        line={
+          <span data-shorts-asof>
+            <span className={facts.stale ? 'text-warn' : ''} title={facts.stale ? 'Short interest settles twice a month and is published about ten days after; the next settlement is not published yet, so this is the latest there is' : 'Short interest settles twice a month and is published about ten days later — never today'}>
+              short interest as of {waiting ? '…' : asOfDay(facts.asOf)}{facts.stale ? ' · the next is not out yet' : ''}
             </span>{' '}
-            · the {SHORTS_SCREEN} heaviest by % of float, floats of {SHORTS_MIN_FLOAT / 1e6}M+ shares · fee and shares to borrow as of that settlement — a name’s file has today’s · a row opens the short file
-          </p>
-        </div>
-        <dl className="flex flex-wrap gap-x-6 gap-y-2">
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`Of the ${SHORTS_SCREEN} heaviest shorts by share of the float (floats of ${SHORTS_MIN_FLOAT / 1e6}M+ shares)`}>Names</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-shorts-count>{failed ? '—' : waiting ? '…' : <>{facts.names}{facts.funds ? <span className="text-textMuted"> · {facts.funds} funds</span> : null}</>}</dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={SQUEEZE_TIP}>Squeeze setups</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-shorts-squeeze>
-              {failed ? '—' : waiting ? '…' : <><span className="text-bear">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.building} building</span> <span className="text-textMuted">of {facts.stocks}</span></>}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="Stocks on this screen (funds left out) with at least 20% of the float sold short — the rung the squeeze rule scores 2 points">At 20% or more</dt>
-            <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${facts.heavy ? 'text-bear' : 'text-textPrimary'}`}>{failed ? '—' : waiting ? '…' : <>{facts.heavy}</>}</dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="The stock (funds left out) with the largest share of its float sold short on this screen">Heaviest</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{failed ? '—' : waiting ? '…' : <>{facts.lead ? `${facts.lead.ticker} ${facts.lead.interestPct.toFixed(1)}%` : '—'}</>}</dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="The median days of normal volume the shorts would need to buy back (funds left out)">Median days to cover</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{failed ? '—' : waiting ? '…' : <>{facts.stocks ? facts.days.toFixed(1) : '—'}</>}</dd>
-          </div>
-        </dl>
-      </div>
-      <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-shorts-controls>
-        <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Which short books" testId="shorts-show" />
-        <DropdownSelect label="Sector" value={sector} options={sectorOptions} onChange={setSector} title="Which sector" testId="shorts-sector" />
-        <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="shorts-names" />
-        <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names on the page right now — tick any number; only those stay" testId="shorts-filter" />
-      </div>
-      <p className={`px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden ${failed ? 'hidden' : ''}`} data-shorts-sentence>
-        {facts.lead ? (
+            · the {SHORTS_SCREEN} heaviest by % of float · a row opens the short file
+          </span>
+        }
+        facts={
           <>
-            <span className={`font-semibold ${facts.lead.interestPct >= 30 ? 'text-bear' : 'text-textPrimary'}`}>{facts.lead.ticker}</span> is the heaviest stock short on this screen, {facts.lead.interestPct.toFixed(1)}% of the float and {facts.lead.daysToCover.toFixed(1)} days to cover. <span className="text-bear font-semibold">{facts.heavy}</span> {facts.heavy === 1 ? 'stock sits' : 'stocks sit'} at 20% or more, and the lightest here is still {facts.floor.toFixed(1)}%{facts.funds ? `; ${facts.funds} ${facts.funds === 1 ? 'fund is' : 'funds are'} listed with no squeeze read` : ''}. The squeeze words here read the settlement alone; a name's file adds today's borrow, short volume and fails to deliver, and can read stronger.
+            <HeadFact label="Names" testId="shorts-count" tip={`Of the ${SHORTS_SCREEN} heaviest shorts by share of the float (floats of ${SHORTS_MIN_FLOAT / 1e6}M+ shares)`}>
+              <span data-shorts-count>{dash ?? <>{facts.names}{facts.funds ? <span className="text-textMuted"> · {facts.funds} funds</span> : null}</>}</span>
+            </HeadFact>
+            <HeadFact label="Squeeze setups" testId="shorts-squeeze" tip={SQUEEZE_TIP}>
+              <span data-shorts-squeeze>{dash ?? <><span className="text-bear">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.building} building</span> <span className="text-textMuted">of {facts.stocks}</span></>}</span>
+            </HeadFact>
+            <HeadFact label="At 20% or more" tone={facts.heavy ? 'text-bear' : undefined} tip="Stocks on this screen (funds left out) with at least 20% of the float sold short">
+              {dash ?? facts.heavy}
+            </HeadFact>
+            <HeadFact label="Heaviest" tip="The stock (funds left out) with the largest share of its float sold short">
+              {dash ?? (facts.lead ? `${facts.lead.ticker} ${facts.lead.interestPct.toFixed(1)}%` : '—')}
+            </HeadFact>
+            <HeadFact label="Median days to cover" tip="The middle of the stocks' days of normal volume needed to buy the shorts back">
+              {dash ?? (facts.stocks ? facts.days.toFixed(1) : '—')}
+            </HeadFact>
           </>
-        ) : liveShorts.status === 'loading' ? (
-          'Reading the short book.'
-        ) : failed ? null : (
-          'Nothing on this cut.'
-        )}
-      </p>
-      {failed && <FeedFallback />}
-      <Strip title="The names to know" rest="the heaviest short interest on this cut, funds left out · a click keeps the grid to it" testId="shorts">
-        {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the short book…' : 'No name on this cut'}</div>
+        }
+      />
+      <PhoneFold label="Filters, summary and the names to know" testId="shorts">
+        <Controls testId="shorts">
+          <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Which short books" testId="shorts-show" />
+          <DropdownSelect label="Sector" value={sector} options={sectorOptions} onChange={setSector} title="Which sector" testId="shorts-sector" />
+          <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="shorts-names" />
+          <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names on the page right now — tick any number; only those stay" testId="shorts-filter" />
+        </Controls>
+        {failed ? (
+          <FeedFallback />
         ) : (
-          <KnowGrid>
-            {toKnow.map(r => (
-              <ShortCard key={r.ticker} row={r} on={picks.includes(`name:${r.ticker}`)} onToggle={() => toggleName(r.ticker)} />
-            ))}
-          </KnowGrid>
+          <Summary testId="shorts" more="The squeeze words here read the settlement alone; a name's file adds today's borrow, short volume and fails to deliver, and can read stronger. Funds are listed last, with no squeeze read: their short interest is creation and hedging.">
+            {facts.lead ? (
+              <>
+                <span className={`font-semibold ${facts.lead.interestPct >= 30 ? 'text-bear' : 'text-textPrimary'}`}>{facts.lead.ticker}</span> is the heaviest stock short here, {facts.lead.interestPct.toFixed(1)}% of the float and {facts.lead.daysToCover.toFixed(1)} days to cover. <span className="text-bear font-semibold">{facts.heavy}</span> {facts.heavy === 1 ? 'stock sits' : 'stocks sit'} at 20% or more; the lightest is {facts.floor.toFixed(1)}%.
+              </>
+            ) : liveShorts.status === 'loading' ? 'Reading the short book.' : 'Nothing on this cut.'}
+          </Summary>
         )}
-      </Strip>
-      <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-shorts-grid>
-        {phone ? (
-          <PhoneCards rows={rows} rowKey={r => r.ticker} card={ShortPhone} onOpen={r => navigate(`/dossier/shorts/${r.ticker}`)} empty={failed ? 'This read did not land' : waiting ? 'Reading the short book' : 'No name on this cut'} testId="shorts" resetKey={rows} />
-        ) : (
-        <>
-        <AgGridProvider modules={GRID_MODULES}>
-          <AgGridReact<ShortRow>
-            {...phonePin}
-            theme={GRID_THEME}
-            domLayout="autoHeight"
-            rowData={rows}
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            getRowId={p => p.data.ticker}
-            onRowClicked={open}
-            rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
-            suppressCellFocus
-            animateRows={false}
-            tooltipShowDelay={350}
-            tooltipHideDelay={8000}
-            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : waiting ? 'Reading the short book' : 'No name on this cut')}
-            key={failed ? 'failed' : waiting ? 'waiting' : 'live'}
-          />
-        </AgGridProvider>
-        </>
-        )}
-      </div>
-    </Page>
+        <ToKnow title="The names to know" sub="the heaviest short interest on this cut, funds left out · a click keeps the grid to it" testId="shorts" count={NAMES_TO_KNOW} empty={toKnow.length === 0 ? empty : null}>
+          {toKnow.map(r => (
+            <ShortCard key={r.ticker} row={r} on={picks.includes(`name:${r.ticker}`)} onToggle={() => toggleName(r.ticker)} />
+          ))}
+        </ToKnow>
+      </PhoneFold>
+      <RecordGrid<ShortRow>
+        testId="shorts"
+        rows={rows}
+        rowKey={r => r.ticker}
+        card={ShortPhone}
+        onOpen={r => navigate(`/dossier/shorts/${r.ticker}`)}
+        empty={empty}
+        columnDefs={columnDefs}
+        defaultColDef={defaultColDef}
+        gridProps={{ animateRows: false }}
+      />
+    </RecordPanel>
   );
 };
 
@@ -771,10 +668,8 @@ const EtfCard = ({ row, on, onToggle }: { row: EtfRow; on: boolean; onToggle: ()
 
 export const EtfBook = () => {
   const navigate = useNavigate();
-  const phone = usePhoneCards();
   const [flow, setFlow] = useState<FlowPick>('any');
   const [kind, setKind] = useState<KindPick>('any');
-  const [guideOpen, setGuideOpen] = useState(false);
   const liveEtfs = useEtfs();
   const failed = liveEtfs.status === 'error';
   const feed = liveEtfs.rows;
@@ -824,7 +719,6 @@ export const EtfBook = () => {
     ],
     [],
   );
-  const holdPaged = usePagedGrid<EtfHolding>();
   const holdCols = useMemo<ColDef<EtfHolding>[]>(
     () => [
       { headerName: 'Name', field: 'ticker', flex: 1.4, minWidth: 180, cellRenderer: HoldName, headerTooltip: 'A holding. It stays on this page.' },
@@ -835,156 +729,85 @@ export const EtfBook = () => {
     ],
     [],
   );
-  const gridRef = useRef<HTMLDivElement | null>(null);
-  const cutKey = `${flow}|${kind}|${picks.join(',')}`;
-  useEffect(() => {
-    const el = gridRef.current;
-    if (!el) return;
-    el.classList.remove('animate-soft-in');
-    void el.offsetWidth;
-    el.classList.add('animate-soft-in');
-  }, [cutKey]);
-  const openFund = (e: RowClickedEvent<EtfRow>) => {
-    if (!e.data) return;
-    navigate(`/dossier/etfs/${e.data.etf}`);
-  };
 
   /* reading, not zero */
   const etfReading = !failed && liveEtfs.status === 'loading' && liveEtfs.rows.length === 0;
+  const empty = failed ? 'This read did not land' : etfReading ? 'Reading the funds…' : 'No fund on this cut';
+  const dash = failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : null;
+  const cover = focus ? liveEtfs.coverOf(focus.etf) : null;
   return (
-    <Page testId="etf-book">
-      <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the funds" testId="etfs-guide" viewport>
-        <EtfsGuide />
-      </GuideFocus>
-      <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-[min(18rem,100%)] flex-1">
-          <div className="h-6 flex items-center gap-3">
-            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">What the funds hold</h3>
-            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a fund, a flow and a weight mean" testId="etfs-guide" />
-          </div>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">Assets, the fee, and five-day flow · a row opens the fund</p>
-        </div>
-        <dl className="flex flex-wrap gap-x-6 gap-y-2">
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Funds")}>Funds</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-etf-count>{failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : <>{facts.funds}</>}</dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Assets")}>Assets</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : <>{assetsB(facts.aum)}</>}</dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`${statHelp("Five-day flow")} Every fund is summed over the same sessions${flowSpan ? ` (${flowSpan})` : ''}.`}>Five-day flow{flowSpan ? ` · ${flowSpan}` : ''}</dt>
-            <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${etfReading ? 'text-textMuted' : ink(facts.net)}`}>{failed ? '—' : etfReading ? '…' : <>{signedM(facts.net)}</>}</dd>
-          </div>
-          <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={statHelp("In the book")}>In the book</dt>
-            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : <>{focus ? focus.etf : '—'}</>}</dd>
-          </div>
-        </dl>
-      </div>
-      <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-etf-controls>
-        <DropdownSelect label="Flow" value={flow} options={FLOW_OPTIONS} onChange={setFlow} title="Money in, money out, or both" testId="etf-flow" />
-        <DropdownSelect label="Kind" value={kind} options={KIND_OPTIONS} onChange={setKind} title="Which funds" testId="etf-kind" />
-        <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The funds on the page right now — tick any number; only those stay" testId="etf-filter" />
-      </div>
-      <p className={`px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden ${failed ? 'hidden' : ''}`} data-etf-sentence>
-        {facts.inflow && facts.outflow ? (
+    <RecordPanel testId="etf-book">
+      <RecordHead
+        title="What the funds hold"
+        guide={{ title: 'How to read the funds', door: 'What a fund, a flow and a weight mean', testId: 'etfs-guide', body: <EtfsGuide /> }}
+        kept={liveEtfs.keptAt}
+        line="Assets, the fee and five-day flow · a row opens the fund"
+        facts={
           <>
-            {facts.inflow.flow5dM > 0 ? (
-              <>
-                <span className="text-bull font-semibold">{facts.inflow.etf}</span> took in the most over five sessions, {signedM(facts.inflow.flow5dM)}.
-              </>
-            ) : (
-              <>No fund took money in on this cut.</>
-            )}{' '}
-            {facts.outflow.flow5dM < 0 ? (
-              <>
-                <span className="text-bear font-semibold">{facts.outflow.etf}</span> gave back the most, {signedM(facts.outflow.flow5dM)}.
-              </>
-            ) : (
-              <>None gave money back.</>
-            )}
-            {focus ? (
-              <>
-                {' '}
-                The weights under the grid are <span className="text-textPrimary font-semibold">{focus.etf}</span>
-                {rows.length === 1 ? ', the fund this cut kept' : ', the largest fund on this cut'}.
-              </>
-            ) : null}
+            <HeadFact label="Funds" testId="etf-count">
+              <span data-etf-count>{dash ?? facts.funds}</span>
+            </HeadFact>
+            <HeadFact label="Assets">{dash ?? assetsB(facts.aum)}</HeadFact>
+            <HeadFact label={`Five-day flow${flowSpan ? ` · ${flowSpan}` : ''}`} tone={etfReading ? 'text-textMuted' : ink(facts.net)} tip={`Money in or out of the funds, summed over the same sessions${flowSpan ? ` (${flowSpan})` : ''} for every fund`}>
+              {dash ?? signedM(facts.net)}
+            </HeadFact>
+            <HeadFact label="In the book">{dash ?? (focus ? focus.etf : '—')}</HeadFact>
           </>
-        ) : liveEtfs.status === 'loading' ? (
-          'Reading the funds.'
-        ) : failed ? null : (
-          'No fund on this cut.'
-        )}
-      </p>
-      {failed && <FeedFallback />}
-      <Strip title="The funds to know" rest="the largest five-day flow, either way · a click keeps the grid to it" testId="etfs">
-        {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : etfReading ? 'Reading the funds…' : 'No fund on this cut'}</div>
+        }
+      />
+      <PhoneFold label="Filters, summary and the funds to know" testId="etfs">
+        <Controls testId="etf">
+          <DropdownSelect label="Flow" value={flow} options={FLOW_OPTIONS} onChange={setFlow} title="Money in, money out, or both" testId="etf-flow" />
+          <DropdownSelect label="Kind" value={kind} options={KIND_OPTIONS} onChange={setKind} title="Which funds" testId="etf-kind" />
+          <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The funds on the page right now — tick any number; only those stay" testId="etf-filter" />
+        </Controls>
+        {failed ? (
+          <FeedFallback />
         ) : (
-          <KnowGrid>
-            {toKnow.map(r => (
-              <EtfCard key={r.etf} row={r} on={picks.includes(`fund:${r.etf}`)} onToggle={() => toggleFund(r.etf)} />
-            ))}
-          </KnowGrid>
+          <Summary testId="etf">
+            {facts.inflow && facts.outflow ? (
+              <>
+                {facts.inflow.flow5dM > 0 ? (
+                  <>
+                    <span className="text-bull font-semibold">{facts.inflow.etf}</span> took in the most over five sessions, {signedM(facts.inflow.flow5dM)}.
+                  </>
+                ) : (
+                  <>No fund took money in on this cut.</>
+                )}{' '}
+                {facts.outflow.flow5dM < 0 ? (
+                  <>
+                    <span className="text-bear font-semibold">{facts.outflow.etf}</span> gave back the most, {signedM(facts.outflow.flow5dM)}.
+                  </>
+                ) : (
+                  <>None gave money back.</>
+                )}
+                {focus ? (
+                  <>
+                    {' '}
+                    The holdings under the grid are <span className="text-textPrimary font-semibold">{focus.etf}</span>'s{rows.length === 1 ? '' : ', the largest fund on this cut'}.
+                  </>
+                ) : null}
+              </>
+            ) : liveEtfs.status === 'loading' ? 'Reading the funds.' : 'No fund on this cut.'}
+          </Summary>
         )}
-      </Strip>
-      <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-etf-grid>
-        {phone ? (
-          <PhoneCards rows={rows} rowKey={r => r.etf} card={EtfPhone} onOpen={r => navigate(`/dossier/etfs/${r.etf}`)}  empty={failed ? 'This read did not land' : etfReading ? 'Reading the funds…' : 'No fund on this cut'} testId="etfs" resetKey={rows} />
-        ) : (
-        <>
-        <AgGridProvider modules={GRID_MODULES}>
-          <AgGridReact<EtfRow>
-            {...phonePin}
-            theme={GRID_THEME}
-            domLayout="autoHeight"
-            rowData={rows}
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            getRowId={p => p.data.etf}
-            onRowClicked={openFund}
-            rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
-            suppressCellFocus
-            animateRows={false}
-            tooltipShowDelay={350}
-            tooltipHideDelay={8000}
-            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : etfReading ? 'Reading the funds…' : 'No fund on this cut')}
-            key={failed ? 'failed' : etfReading ? 'reading' : 'live'}
-          />
-        </AgGridProvider>
-        </>
-        )}
-      </div>
+        <ToKnow title="The funds to know" sub="the largest five-day flow, either way · a click keeps the grid to it" testId="etfs" count={NAMES_TO_KNOW} empty={toKnow.length === 0 ? empty : null}>
+          {toKnow.map(r => (
+            <EtfCard key={r.etf} row={r} on={picks.includes(`fund:${r.etf}`)} onToggle={() => toggleFund(r.etf)} />
+          ))}
+        </ToKnow>
+      </PhoneFold>
+      <RecordGrid<EtfRow> testId="etf" rows={rows} rowKey={r => r.etf} card={EtfPhone} onOpen={r => navigate(`/dossier/etfs/${r.etf}`)} empty={empty} columnDefs={columnDefs} defaultColDef={defaultColDef} gridProps={{ animateRows: false }} />
       {focus && (
         <>
-          <Strip title={`What ${focus.etf} holds`} rest={`${(() => { const c = liveEtfs.coverOf(focus.etf); return c && c.lines ? `${c.fundCount != null && c.lines < c.fundCount ? `the top ${c.lines} of ${c.fundCount.toLocaleString('en-US')} holdings` : `all ${c.lines} holdings`}, ${c.weight.toFixed(0)}% of the fund` : 'no holdings on file'; })()} · as of ${asOfDay(focus.holdingsAsOf)}`} testId="etf-holdings">
+          <Strip title={`What ${focus.etf} holds`} rest={`${cover && cover.lines ? `${cover.fundCount != null && cover.lines < cover.fundCount ? `the top ${cover.lines} of ${cover.fundCount.toLocaleString('en-US')} holdings` : `all ${cover.lines} holdings`}, ${cover.weight.toFixed(0)}% of the fund` : 'no holdings on file'} · as of ${asOfDay(focus.holdingsAsOf)}`} testId="etf-holdings">
             <span className="sr-only">{focus.name}</span>
           </Strip>
-          <div className="slayer-board border-t border-borderSubtle" data-etf-holdings={focus.etf}>
-            <AgGridProvider modules={GRID_MODULES}>
-              <AgGridReact<EtfHolding>
-                {...phonePin}
-                {...holdPaged.props}
-                theme={GRID_THEME}
-                domLayout="autoHeight"
-                rowData={holdings}
-                columnDefs={holdCols}
-                defaultColDef={defaultColDef}
-                getRowId={p => p.data.ticker}
-                rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
-                suppressCellFocus
-                animateRows={false}
-                tooltipShowDelay={350}
-                tooltipHideDelay={8000}
-              />
-            </AgGridProvider>
-            {holdPaged.bar(holdings.length, 'etf-holdings')}
+          <div data-etf-holdings={focus.etf}>
+            <RecordGrid<EtfHolding> testId="etf-holdings-list" rows={holdings} rowKey={h => h.ticker} card={HoldPhone} empty={fundHoldingsRead(focus.etf) ? 'No holdings on file' : 'Reading the holdings…'} columnDefs={holdCols} defaultColDef={defaultColDef} gridProps={{ animateRows: false }} />
           </div>
         </>
       )}
-    </Page>
+    </RecordPanel>
   );
 };
