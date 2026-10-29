@@ -11,6 +11,7 @@ import { thetaChartBars } from '../../data/thetaCandles';
 import { fmtUsd } from '../../data/gex';
 import { CALENDAR_DTES } from '../../data/exposureSurface';
 import { expiryFor, futuresPhaseAt, FUTURES_PHASE_WORDS } from '../../core/calendar';
+
 import DistanceUnitPicker from '../../components/ui/DistanceUnitPicker';
 import SessionBook from '../../components/ui/SessionBook';
 import {
@@ -69,6 +70,16 @@ import {
   SETUP_KEYS, applySetup, captureSetup, evict, readSetups, symKey, type SetupMap,
 } from './setups';
 import { flipRing, stepSymbol, stepTf } from './paneKeys';
+
+/* The bottom bar's futures clock in plain words (core/calendar.ts has the long ones, on its hover) */
+const FUTURES_PHASE_SHORT: Record<ReturnType<typeof futuresPhaseAt>, string> = {
+  GLOBEX_ASIA: 'Asia hours',
+  GLOBEX_EUROPE: 'Europe hours',
+  RTH: 'cash session',
+  GLOBEX_POST: 'after the close',
+  MAINTENANCE: 'daily break 17–18 ET',
+  CLOSED: 'closed',
+};
 
 /* Terrain — one to four chart panes that own the viewport. Each pane is its own workspace: symbol, interval,
    overlays, indicators, style, theme and rail. */
@@ -1167,7 +1178,8 @@ const Pane = ({
             </Deferred>
             {/* The field's key: the model, its switch, the colour scale and the cut's net GEX */}
             {overlays.trails && !replay && (
-              <div className="absolute left-12 bottom-9 z-20" data-terrain-field-key>
+              /* above the chart's TradingView mark (bottom-left, over the time axis) rather than beside it */
+              <div className="absolute left-12 bottom-[62px] z-20" data-terrain-field-key>
                 <FieldKey
                   ticker={ticker}
                   cut={railCut === 'book' ? 'book' : shownBook?.date ?? null}
@@ -2094,17 +2106,23 @@ const Terrain = () => {
           </button>
         )}
 
-        {/* The first piece: where in the globex week the wall clock sits. */}
+        {/* The first piece: where in the Globex (futures) week the wall clock sits — a read-out, not a control, so it
+            names itself ("Futures · daily break", not a bare MAINTENANCE that read as a button) and wears no button edge. */}
         {(() => {
-          const words = FUTURES_PHASE_WORDS[futuresPhaseAt(new Date())];
+          const phase = futuresPhaseAt(new Date());
+          const words = FUTURES_PHASE_WORDS[phase];
+          const short = FUTURES_PHASE_SHORT[phase];
           return (
             <span
-              title={`${words.blurb}. Session shading over the tape arrives with the futures feed.`}
-              className={`pointer-events-auto inline-flex items-center px-2 py-1.5 rounded-md border border-ink/[0.08] bg-canvas/40 backdrop-blur-[3px] font-mono text-t10 uppercase tracking-wider ${
-                words.label === 'RTH' ? 'text-textPrimary' : 'text-textSecondary'
+              title={`Futures session (Globex): ${words.blurb}. A clock read-out — Terrain charts the cash market; futures are not on the desk.`}
+              className={`pointer-events-auto cursor-help inline-flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-canvas/40 backdrop-blur-[3px] font-mono text-t10 uppercase tracking-wider ${
+                phase === 'RTH' ? 'text-textPrimary' : 'text-textSecondary'
               }`}
+              aria-label={`Futures session: ${short}`}
+              data-terrain-futures-phase={phase}
             >
-              {words.label}
+              <span className="text-textMuted">Futures</span>
+              {short}
             </span>
           );
         })()}

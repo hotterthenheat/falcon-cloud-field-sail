@@ -196,6 +196,17 @@
   mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent);
 }
 
+/* A box that scrolls sideways WITH its bar (a table, a matrix) and still says so at the edge: the same marks
+   (ui/scrollMore.ts), a shorter fade, the scrollbar kept. */
+.scroll-fade[data-scroll-more='right'] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), rgb(0 0 0 / 0.25));
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), rgb(0 0 0 / 0.25));
+}
+.scroll-fade[data-scroll-more='left right'] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), rgb(0 0 0 / 0.25));
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), rgb(0 0 0 / 0.25));
+}
+
 /* A FINGER'S HIT AREA ON A TOUCH SCREEN (the partner's rule, taken with the Map 2026-10-14: "on a phone nothing takes
    less than a finger"): `.hit` adds an invisible box of at least 44 × 44 px round a small control, centred on it, on a
    coarse pointer only — nothing seen changes, and a mouse keeps the control's own size. A control whose ::before is

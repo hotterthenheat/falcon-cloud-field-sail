@@ -19,6 +19,7 @@ import { useResolvedTheme } from '../../theme/theme';
 import { nearestStrikes, strikeGap } from '../../data/chartMoves';
 import type { SurfaceCell } from './exposureView';
 import { fmtStrike } from '../../core/format';
+import { attachScrollMore } from '../ui/scrollMore';
 
 interface ExposureMatrixProps {
   surface: ExposureSurface;
@@ -227,6 +228,12 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   const [keptAt, setKeptAt] = useState<{ strike: number; dx: number; dy: number } | null>(null);
   const [keptPos, setKeptPos] = useState<{ x: number; y: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  /* a matrix wider than its box (a narrow pane's panel) fades the edge that has more columns behind it (.scroll-fade) */
+  useEffect(() => {
+    const el = scrollRef.current;
+    return el ? attachScrollMore(el) : undefined;
+    // the columns come and go with the greeks, the expiries and the legs shown
+  }, [greeks.length, expiries.length, legsPick]);
   useLayoutEffect(() => {
     if (keptStrike == null) {
       setKeptPos(null);
@@ -538,7 +545,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
       )}
     <div
       ref={scrollRef}
-      className="overflow-auto flex-1 min-h-0"
+      className="overflow-auto flex-1 min-h-0 scroll-fade"
       tabIndex={0}
       role="group"
       aria-label="The book by strike — the arrow keys walk the strikes, Enter keeps one"
