@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { done, expectEqual, expectNear, freezeClock, installUwFixtures } from './uwFixtures';
 import { CHAIN, CONTRACT, DAY, MINUTE, PRIOR, curveBars, pinBook, sessionBars } from './compassScenario';
 import { atmPair, curveFrom, features, yearsLeft } from '../../src/data/compassFeatures';
+import { optionScanOpen } from '../../src/data/compassSession';
 import { f32, bookAPass, bookBPass, onScanGrid, sessionScanOpen, spreadPass, strikeDistance, strikeSpan, thetaBurns, P1_MIN } from '../../src/data/compassParams';
 import { parseBoosters, predict } from '../../src/data/lgbm';
 import { settleSignal, type PathQuote } from '../../src/data/compassOutcome';
@@ -109,6 +110,18 @@ expectEqual('grid 21:00 overnight', onScanGrid(690), true);
 expectEqual('session open 09:30 Thu', sessionScanOpen(570, 4), true);
 expectEqual('session open 21:00 Thu', sessionScanOpen(1260, 4), true);
 expectEqual('session shut 12:00 Sat', sessionScanOpen(720, 6), false);
+/* pre-market: the index roots trade it as the tail of their overnight session; SPY/QQQ/IWM options open at 08:00 ET.
+   A name whose options are shut is never scored on a stock print. Thursday Oct 29, EDT (UTC-4). */
+{
+  const pm = (h: number, m: number) => Date.parse(`2026-10-29T${String(h + 4).padStart(2, '0')}:${String(m).padStart(2, '0')}:05Z`);
+  expectEqual('grid 04:00 pre-market', sessionScanOpen(240, 4), true);
+  expectEqual('grid 08:00 pre-market', sessionScanOpen(480, 4), true);
+  expectEqual('SPXW scanned at 04:00 ET', optionScanOpen('SPXW', 0, pm(4, 0)), true);
+  expectEqual('VIX scanned at 06:00 ET', optionScanOpen('VIX', 0, pm(6, 0)), true);
+  expectEqual('SPY not scanned at 06:00 ET (its options are shut)', optionScanOpen('SPY', 0, pm(6, 0)), false);
+  expectEqual('SPY scanned at 08:00 ET', optionScanOpen('SPY', 0, pm(8, 0)), true);
+  expectEqual('SPXW off in the 09:25 halt', optionScanOpen('SPXW', 0, pm(9, 27)), false);
+}
 /* Scored at those marks: the row builds and both models answer, with column 0 as it is (0, 5, 690), not clamped */
 for (const [label, minute, t] of [['09:30', 570, 0], ['09:35', 575, 5]] as const) {
   const row = features(stub(CONTRACT.strike, CONTRACT.right, CONTRACT.bid, CONTRACT.ask, S), minute, bars, bars, PRIOR, pair.iv, pair.skew, [], curve, pinBook(), { m5: NaN, m15: NaN });
