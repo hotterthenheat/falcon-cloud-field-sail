@@ -152,42 +152,80 @@ const noteTook = (path, ms) => {
 let slowBusy = 0;
 const slowMayGo = () => upstreamBusy < UPSTREAM_SLOTS && slowBusy < UPSTREAM_SLOTS - 1;
 const refreshMayGo = () => slowMayGo() && refreshBusy < 1 && quickQueue.length === 0 && viewerQueue.length === 0;
+/* a slot is counted for the lane its holder was let in from */
+function take(kind) {
+  upstreamBusy += 1;
+  if (kind !== 'quick') slowBusy += 1;
+  if (kind === 'refresh') refreshBusy += 1;
+}
+function give(kind) {
+  upstreamBusy -= 1;
+  if (kind !== 'quick') slowBusy -= 1;
+  if (kind === 'refresh') refreshBusy -= 1;
+}
 function wake() {
   while (upstreamBusy < UPSTREAM_SLOTS && quickQueue.length) {
-    upstreamBusy += 1;
-    quickQueue.shift()();
+    take('quick');
+    quickQueue.shift().go('quick');
   }
   while (viewerQueue.length && slowMayGo()) {
-    upstreamBusy += 1;
-    slowBusy += 1;
-    viewerQueue.shift()();
+    take('viewer');
+    viewerQueue.shift().go('viewer');
   }
   if (refreshQueue.length && refreshMayGo()) {
-    upstreamBusy += 1;
-    refreshBusy += 1;
-    slowBusy += 1;
-    refreshQueue.shift()();
+    take('refresh');
+    refreshQueue.shift().go('refresh');
   }
 }
-async function upstreamSlot(fn, lane = 'viewer', path = '') {
+/* the background refreshes still waiting for a slot, by path */
+const refreshWaiting = new Map();
+/** A viewer is waiting on this path's background refresh (server/hub.mjs): it leaves the refresh lane for the viewers'. */
+function promote(path) {
+  const entry = refreshWaiting.get(path);
+  const at = entry ? refreshQueue.indexOf(entry) : -1;
+  if (at < 0) return;
+  refreshQueue.splice(at, 1);
+  refreshWaiting.delete(path);
+  (slow(path) ? viewerQueue : quickQueue).push(entry);
+  wake();
+}
+/** Takes a waiting ask out of its queue (its job was given up): it never reaches the vendor. */
+function withdraw(entry) {
+  for (const q of [quickQueue, viewerQueue, refreshQueue]) {
+    const at = q.indexOf(entry);
+    if (at >= 0) {
+      q.splice(at, 1);
+      if (refreshWaiting.get(entry.path) === entry) refreshWaiting.delete(entry.path);
+      entry.go(null);
+      return;
+    }
+  }
+}
+async function upstreamSlot(fn, lane = 'viewer', path = '', ticket = {}) {
   const refresh = lane !== 'viewer';
   /* a refresh is slow work whatever its route; a viewer's ask is slow when its route has been taking long */
   const heavy = refresh || slow(path);
+  const want = refresh ? 'refresh' : heavy ? 'viewer' : 'quick';
   const free = refresh ? refreshMayGo() : heavy ? slowMayGo() && viewerQueue.length === 0 : upstreamBusy < UPSTREAM_SLOTS;
-  if (free) {
-    upstreamBusy += 1;
-    if (heavy) slowBusy += 1;
-    if (refresh) refreshBusy += 1;
-  } else {
+  let kind = want;
+  if (free) take(kind);
+  else {
     /* the slot is counted for us when we are woken (wake), so no caller can slip in between */
-    await new Promise((r) => (refresh ? refreshQueue : heavy ? viewerQueue : quickQueue).push(r));
+    const entry = { path, go: () => {} };
+    kind = await new Promise((r) => {
+      entry.go = r;
+      (refresh ? refreshQueue : heavy ? viewerQueue : quickQueue).push(entry);
+      if (refresh) refreshWaiting.set(path, entry);
+      ticket.entry = entry;
+    });
+    ticket.entry = null;
+    if (refreshWaiting.get(path) === entry) refreshWaiting.delete(path);
+    if (!kind) throw new Error('withdrawn');
   }
   try {
     return await fn();
   } finally {
-    upstreamBusy -= 1;
-    if (heavy) slowBusy -= 1;
-    if (refresh) refreshBusy -= 1;
+    give(kind);
     wake();
   }
 }
@@ -223,11 +261,13 @@ const send = (res, status, body, type = 'application/json') => {
 };
 
 async function load(path, key, lane) {
+  const ticket = { entry: null, dead: false };
   const job = (async () => {
     /* The vendor's 429s are waited out here (Retry-After, else 0.8 s, 1.6 s, 3.2 s), not in the browser. */
     let upstream;
     let buf;
     for (let attempt = 0; ; attempt++) {
+      if (ticket.dead) throw new Error('withdrawn');
       /* the body is read inside the slot, so a slot frees only once the vendor has finished answering */
       [upstream, buf] = await upstreamSlot(async () => {
         const t0 = Date.now();
@@ -238,8 +278,8 @@ async function load(path, key, lane) {
         const body = Buffer.from(await r.arrayBuffer());
         noteTook(path, Date.now() - t0);
         return [r, body];
-      }, lane, path).catch((e) => {
-        recent.push(`${e?.name || 'error'} ${path.slice(0, 60)}`);
+      }, lane, path, ticket).catch((e) => {
+        if (!ticket.dead) recent.push(`${e?.name || 'error'} ${path.slice(0, 60)}`);
         throw e;
       });
       recent.push(`${upstream.status} ${path.slice(0, 60)}`);
@@ -252,14 +292,19 @@ async function load(path, key, lane) {
     const type = upstream.headers.get('content-type') || 'application/json';
     return { status: upstream.status, body: buf, type };
   })();
-  /* A job is let go after JOB_MS so later asks for the path are not stuck behind it; its late failure is ignored. */
+  /* A job is let go after JOB_MS so later asks for the path are not stuck behind it; its late failure is ignored. A job
+     still waiting for a slot then is withdrawn, so a given-up ask never reaches the vendor later. */
   job.catch(() => {});
   let timer;
   try {
     return await Promise.race([
       job,
       new Promise((resolve) => {
-        timer = setTimeout(() => resolve({ status: 504, body: Buffer.from(JSON.stringify({ error: 'unusual whales timed out' })), type: 'application/json' }), JOB_MS);
+        timer = setTimeout(() => {
+          ticket.dead = true;
+          if (ticket.entry) withdraw(ticket.entry);
+          resolve({ status: 504, body: Buffer.from(JSON.stringify({ error: 'unusual whales timed out' })), type: 'application/json' });
+        }, JOB_MS);
       }),
     ]);
   } finally {
@@ -274,6 +319,7 @@ const hub = createHub({
   refreshPerSec: Number(process.env.UW_HUB_REFRESH_PER_SEC) || 3,
   /* the vendor refusing for a moment (429, a gateway error) keeps the last answer up to a minute old on screen */
   keepOnFail: (path, age) => age < Math.max(60_000, 4 * ttlFor(path)),
+  promote,
 });
 /** The hub's counts, for the load check (scripts/load-proof.mjs). */
 export const uwHubStats = () => hub.stats();
