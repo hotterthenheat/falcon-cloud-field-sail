@@ -244,7 +244,7 @@ const NameCard = ({ f, on, onToggle }: { f: InsiderFlow; on: boolean; onToggle: 
       <span className="flex items-center gap-2 min-w-0">
         <CompanyLogo ticker={f.ticker} size={18} />
         <span className="font-mono text-t12 font-bold text-textPrimary">{f.ticker}</span>
-        {company ? <span className="text-t10 text-textSecondary truncate">{company}</span> : null}
+        {company ? <span className="text-t10 text-textSecondary truncate" title={company}>{company}</span> : null}
       </span>
       <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
         <span className="text-t13 font-bold text-bull">{fmtDollars(f.openMarketBuys)}</span>

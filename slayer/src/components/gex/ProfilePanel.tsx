@@ -73,6 +73,7 @@ import type { PriceProjection } from './StrikeChart';
 import type { GexLevel, MarketSnapshot } from '../../types/market';
 import ExposureField from './ExposureField';
 import FilterTabs from '../ui/FilterTabs';
+import { attachScrollMore } from '../ui/scrollMore';
 import type { KeyLevels } from '../../types/gex';
 import { FONT_SANS } from '../../theme/fonts';
 import { readToken, useResolvedTheme } from '../../theme/theme';
@@ -1757,6 +1758,12 @@ const ProfilePanel = ({
       {guide}
     </>
   );
+  const tabsRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    return attachScrollMore(el);
+  }, [showSize, onField]);
   const closeDoor = onClose && (
     <button
       type="button"
@@ -1772,9 +1779,12 @@ const ProfilePanel = ({
   /* THE VIEW TABS in the Expiry card's own clothes — the dropdown trigger's chip, the one in
      hand wearing the silver edge (Noah, 2026-09-16: "those buttons should match the formatting
      of the expiry button") */
+  /* A narrow panel (a pane of a 2–4 layout) keeps every tab whole: the rail takes the row's room, scrolls sideways
+     inside it with a fade at the edge that has more (ui/scrollMore.ts), and never runs under the close door */
+  const narrowTabs = (shownW ?? rootRef.current?.clientWidth ?? 999) < 420;
   const viewTabs = showSize && (
-    <span className="pointer-events-auto shrink-0 inline-flex items-center" data-profile-views data-profile-view-now={view} title="Ladder: the put and call legs at each strike · Net: the matrix — put, call and net at every strike · GEX: the calendar — the book by expiry, every greek">
-      <FilterTabs options={VIEW_TABS} value={view} onChange={setView} ariaLabel="Ladder, Net or GEX" paper={paper} />
+    <span ref={tabsRef} className="pointer-events-auto min-w-0 max-w-full inline-flex items-center overflow-x-auto scroll-row" data-profile-views data-profile-view-now={view} title="Ladder: the put and call legs at each strike · Net: the matrix — put, call and net at every strike · GEX: the calendar — the book by expiry, every greek">
+      <FilterTabs options={VIEW_TABS} value={view} onChange={setView} ariaLabel="Ladder, Net or GEX" paper={paper} size={narrowTabs ? 'sm' : 'md'} />
     </span>
   );
 
@@ -1886,7 +1896,8 @@ const ProfilePanel = ({
           stop here starved it (Noah: "the hover effect … doesnt move with the mouse"); the panel's own handlers are
           gated on the view instead */}
       {onField && (
-        <div className="absolute inset-x-0 bottom-0 overflow-y-auto overflow-x-hidden pointer-events-auto select-text" style={{ top: headH }} data-profile-gex>
+        /* a matrix wider than a narrow pane's panel scrolls sideways (its bar shows) rather than cut its last column */
+        <div className="absolute inset-x-0 bottom-0 overflow-y-auto overflow-x-auto pointer-events-auto select-text" style={{ top: headH }} data-profile-gex>
           <ExposureField snapshot={gexSnap} toolbar="panel" viewLock={fieldView} legsLock={view === 'net' ? 'all' : undefined} selectedStrike={focusPrice ?? null} onSelectStrike={onSelect} fullMode="portal" narrowHint="widen the panel or pick fewer" headSlot={stripSlot} />
         </div>
       )}

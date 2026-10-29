@@ -14,7 +14,7 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import ContractLabel from '../../components/ui/ContractLabel';
 import type { DropdownOption } from '../../components/ui/DropdownSelect';
 import type { Column } from '../../components/ui/DataTable';
-import DeskShell, { card, head, headWord, smallDoor, type DeskName } from '../../components/review/DeskShell';
+import DeskShell, { smallDoor, type DeskName } from '../../components/review/DeskShell';
 import OptionsChain, { ChainOrder, type ChainOrderDesk } from '../../components/paper/OptionsChain';
 import type { ChartBracket, ChartEntry, ChartMark, ChartPosition } from '../../components/review/PositionLayer';
 import PnlChips from '../../components/paper/PnlChips';

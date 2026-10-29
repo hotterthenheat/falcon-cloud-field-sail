@@ -76,7 +76,7 @@ const FiledCell = ({ data }: ICellRendererParams<CongressTrade>) => (data ? <Whe
 const MemberCell = ({ data }: ICellRendererParams<CongressTrade>) =>
   data ? (
     <span className="flex flex-col leading-tight min-w-0 text-left" data-open-member={data.member.id}>
-      <span className="text-t12 font-semibold text-textPrimary truncate">
+      <span className="text-t12 font-semibold text-textPrimary truncate" title={`${data.member.name} ${seat(data)}`}>
         {data.member.name} <span className="font-mono text-t10 font-normal text-textMuted">{seat(data)}</span>
       </span>
       <span className="text-t10 text-textMuted truncate">{data.member.chamber}</span>
@@ -131,8 +131,8 @@ export const AssetCell = ({ data }: ICellRendererParams<CongressTrade>) => {
     <span ref={seenRef} className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden" title={line.sub ? `${line.title} · ${line.sub}` : line.title}>
       {line.sym ? <CompanyLogo ticker={line.sym} size={16} /> : null}
       <span className="flex flex-col leading-tight min-w-0 flex-1">
-        <span className={`text-t12 font-bold text-textPrimary truncate ${line.sym ? 'font-mono' : ''}`}>{line.title}</span>
-        {line.sub ? <span className="text-t10 text-textMuted truncate">{line.sub}</span> : null}
+        <span className={`text-t12 font-bold text-textPrimary truncate ${line.sym ? 'font-mono' : ''}`} title={line.title}>{line.title}</span>
+        {line.sub ? <span className="text-t10 text-textMuted truncate" title={line.sub}>{line.sub}</span> : null}
       </span>
     </span>
   );

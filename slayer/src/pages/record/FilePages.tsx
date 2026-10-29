@@ -82,7 +82,7 @@ const InstName = ({ data }: ICellRendererParams<InstitutionRow>) =>
       <span className="flex flex-col leading-tight min-w-0" title={data.unlisted ? `${data.company ?? ''} — the filing gives no listed symbol` : undefined}>
         <span className={`font-mono text-t12 font-bold ${data.unlisted ? 'text-textSecondary' : 'text-textPrimary'}`}>{data.ticker}</span>
         {/* the listing's name, else the filing's; never the ticker said twice ("IVV · IVV") */}
-        {data.unlisted ? <span className="text-t10 text-textMuted truncate">{data.company}</span> : <CoSub ticker={data.ticker} fallback={data.company} />}
+        {data.unlisted ? <span className="text-t10 text-textMuted truncate" title={data.company ?? undefined}>{data.company}</span> : <CoSub ticker={data.ticker} fallback={data.company} />}
       </span>
     </span>
   ) : null;
@@ -95,7 +95,7 @@ const InstFiled = ({ data }: ICellRendererParams<InstitutionRow>) =>
       {quarterEnd(data.report) ? <span className="font-mono text-t9 text-textMuted">as of {quarterEnd(data.report)}</span> : null}
     </span>
   ) : null;
-const InstHouse = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="text-t12 font-semibold text-textPrimary truncate">{displayName(data.name)}</span> : null);
+const InstHouse = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="text-t12 font-semibold text-textPrimary truncate" title={displayName(data.name)}>{displayName(data.name)}</span> : null);
 const InstBook = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-t11 ${BOOK_INK[data.book]}`}>{data.book === 'stock' && data.security ? data.security : BOOK_WORD[data.book]}</span> : null);
 const InstShares = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{data.sharesM.toFixed(1)}M</span> : null);
 const InstValue = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{moneyB(data.valueB)}</span> : null);
@@ -109,7 +109,7 @@ const InstCard = ({ row, on, onToggle }: { row: InstitutionRow; on: boolean; onT
     <span className="flex items-center gap-2 min-w-0">
       {row.unlisted ? null : <CompanyLogo ticker={row.ticker} size={18} />}
       <span className="font-mono text-t12 font-bold text-textPrimary">{row.ticker}</span>
-      <span className="text-t10 text-textSecondary truncate">{displayName(row.name)}</span>
+      <span className="text-t10 text-textSecondary truncate" title={displayName(row.name)}>{displayName(row.name)}</span>
     </span>
     <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
       <span className="text-t13 font-bold text-textPrimary">{moneyB(row.valueB)}</span>
@@ -387,7 +387,7 @@ const ShortCard = ({ row, on, onToggle }: { row: ShortRow; on: boolean; onToggle
     <span className="flex items-center gap-2 min-w-0">
       <CompanyLogo ticker={row.ticker} size={18} />
       <span className="font-mono text-t12 font-bold text-textPrimary">{row.ticker}</span>
-      {name && <span className="text-t10 text-textSecondary truncate">{name}</span>}
+      {name && <span className="text-t10 text-textSecondary truncate" title={name}>{name}</span>}
     </span>
     <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
       <span className={`text-t13 font-bold ${row.interestPct >= 30 ? 'text-bear' : 'text-textPrimary'}`}>{row.interestPct.toFixed(1)}%</span>
@@ -413,7 +413,8 @@ const ShortSqueeze = ({ data }: ICellRendererParams<ShortRow>) => {
   return (
     <span className="flex flex-col leading-tight min-w-0" title={`${q.facts.map(f => f.text).join(' · ')}\n${SQUEEZE_TIP}`} data-squeeze={q.word}>
       <span className={`font-mono text-t10 font-semibold uppercase tracking-widest ${SQUEEZE_INK[q.word]}`}>{q.word}</span>
-      <span className="text-t10 text-textMuted truncate">{q.facts.map(f => f.text).slice(0, 2).join(' · ')}</span>
+      {/* the setup sentence wraps to two lines rather than stop mid-sentence; the whole of it is on the hover */}
+      <span className="text-t10 leading-[13px] text-textMuted whitespace-normal break-words line-clamp-2">{q.facts.map(f => f.text).slice(0, 2).join(' · ')}</span>
     </span>
   );
 };
@@ -593,7 +594,7 @@ const EtfName = ({ data }: ICellRendererParams<EtfRow>) =>
       <CompanyLogo ticker={data.etf} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-t12 font-bold text-textPrimary">{data.etf}</span>
-        <span className="text-t10 text-textMuted truncate">{data.name}</span>
+        <span className="text-t10 text-textMuted truncate" title={data.name}>{data.name}</span>
       </span>
     </span>
   ) : null;
@@ -616,9 +617,9 @@ const EtfTop = ({ data }: ICellRendererParams<EtfRow>) => {
     <span ref={ref} className="inline-flex items-center gap-1.5 min-w-0" title={`${data.topHolding} · ${data.topWeight.toFixed(2)}% of the fund`}>
       {/* a bond fund's largest line is an issue name, not a symbol — no logo for it */}
       {/^[A-Z][A-Z0-9.]{0,5}$/.test(data.topHolding) && <CompanyLogo ticker={data.topHolding} size={14} />}
-      <span className="font-mono text-t11 tnum text-textSecondary truncate">
-        {data.topHolding} · {data.topWeight.toFixed(data.topWeight < 1 ? 2 : 1)}%
-      </span>
+      {/* the holding's name may give way; its weight, a number, never does */}
+      <span className="font-mono text-t11 text-textSecondary truncate min-w-0">{data.topHolding}</span>
+      <span className="shrink-0 font-mono text-t11 tnum text-textSecondary whitespace-nowrap">· {data.topWeight.toFixed(data.topWeight < 1 ? 2 : 1)}%</span>
     </span>
   );
 };
@@ -650,7 +651,7 @@ const EtfCard = ({ row, on, onToggle }: { row: EtfRow; on: boolean; onToggle: ()
     <span className="flex items-center gap-2 min-w-0">
       <CompanyLogo ticker={row.etf} size={18} />
       <span className="font-mono text-t12 font-bold text-textPrimary">{row.etf}</span>
-      <span className="text-t10 text-textSecondary truncate">{row.name}</span>
+      <span className="text-t10 text-textSecondary truncate" title={row.name}>{row.name}</span>
     </span>
     <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
       <span className={`text-t13 font-bold ${ink(row.flow5dM)}`}>{signedM(row.flow5dM)}</span>
