@@ -40,7 +40,7 @@ const rampAt = (stops: readonly (readonly [number, number, number])[], t: number
   return [Math.round(a[0] + (b[0] - a[0]) * f), Math.round(a[1] + (b[1] - a[1]) * f), Math.round(a[2] + (b[2] - a[2]) * f)];
 };
 /** A cell's alpha at strength t: quiet cells recede */
-const alphaAt = (t: number): number => 0.16 + 0.76 * Math.pow(Math.max(0, Math.min(1, t)), 0.7);
+const alphaAt = (t: number): number => 0.14 + 0.62 * Math.pow(Math.max(0, Math.min(1, t)), 0.75);
 const LUT: { pos: string[]; neg: string[]; posSolid: string[]; negSolid: string[] } = { pos: [], neg: [], posSolid: [], negSolid: [] };
 for (let s = 0; s < STEPS; s++) {
   const t = (s + 0.5) / STEPS;

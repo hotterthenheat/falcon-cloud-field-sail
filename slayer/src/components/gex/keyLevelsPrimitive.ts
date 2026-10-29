@@ -218,71 +218,94 @@ export function rungLabel(r: KeyLevelRung, spot: number): string {
 
 /* The named form: a short rung at the edge in the level's ink, and left of it the level's words in a box of the same ink,
    the boxes pushed apart top to bottom so none overlaps another — a box moved off its rung keeps a thin lead to it */
+/* The named ladder is drawn on the pane's top layer, which repaints on every crosshair move: it is painted once into its
+   own bitmap and blitted until a rung, a word, the scale or the hover changes */
+const namedCache = new WeakMap<KeyLevelsPrimitive, { key: string; canvas: HTMLCanvasElement }>();
 function drawNamed(src: KeyLevelsPrimitive, target: DrawTarget, spot: number): void {
   const series = src.series;
   if (!series) return;
   target.useBitmapCoordinateSpace(scope => {
-    const pen = ladderPen(scope);
-    const { ctx, hr, vr, H, right } = pen;
-    const edgeMedia = src.edge;
-    const end = edgeMedia != null ? edgeMedia * hr : right;
-    ctx.save();
-    ctx.font = `${Math.round(9.5 * vr)}px ${LADDER_MONO}`;
-    ctx.textBaseline = 'middle';
-    const boxH = Math.round(14 * vr);
-    const gap = Math.round(2 * vr);
-    const placed: { r: KeyLevelRung; y: number; ty: number; text: string; w: number; hot: number }[] = [];
+    const hr0 = scope.horizontalPixelRatio;
+    const vr0 = scope.verticalPixelRatio;
+    const W0 = Math.round(scope.mediaSize.width * hr0);
+    const H0 = Math.round(scope.mediaSize.height * vr0);
+    const items: { r: KeyLevelRung; y: number; text: string; hot: number }[] = [];
     for (const r of src.visible()) {
       const yc = series.priceToCoordinate(r.price);
       if (yc == null) continue;
-      const y = Math.round(yc * vr) + 0.5;
-      if (y < 2 * vr || y > H - 2 * vr) continue;
-      const text = rungLabel({ ...r, share: src.shareOf(r) }, spot);
-      placed.push({ r, y, ty: y, text, w: ctx.measureText(text).width + 10 * hr, hot: src.hotT(r.key) });
+      const y = Math.round(yc * vr0) + 0.5;
+      if (y < 2 * vr0 || y > H0 - 2 * vr0) continue;
+      items.push({ r, y, text: rungLabel({ ...r, share: src.shareOf(r) }, spot), hot: src.hotT(r.key) });
     }
-    if (!placed.length) {
-      ctx.restore();
-      return;
-    }
-    for (const p of placed) {
-      const w = (RUNG_W + (RUNG_W_HOT - RUNG_W) * p.hot) * hr;
-      pen.rule(end - w, p.y, end, p.r.ink, 0.85 + 0.15 * p.hot, { trace: edgeMedia != null, dash: p.r.dash ? [3, 3] : undefined, width: p.r.weight ?? 1 });
-    }
-    placed.sort((a, b) => a.y - b.y);
-    const step = boxH + gap;
-    for (let i = 1; i < placed.length; i++) placed[i].ty = Math.max(placed[i].ty, placed[i - 1].ty + step);
-    const floor = H - boxH / 2 - 2 * vr;
-    if (placed[placed.length - 1].ty > floor) {
-      placed[placed.length - 1].ty = floor;
-      for (let i = placed.length - 2; i >= 0; i--) placed[i].ty = Math.min(placed[i].ty, placed[i + 1].ty - step);
-    }
-    const labelRight = end - RUNG_W * hr - 4 * hr;
-    for (const p of placed) {
-      const ty = Math.round(Math.max(boxH / 2, p.ty));
-      const left = Math.max(2 * hr, labelRight - p.w);
-      const a = 0.88 + 0.12 * p.hot;
-      if (Math.abs(ty - p.y) > 1.5 * vr) {
-        ctx.strokeStyle = p.r.ink;
-        ctx.globalAlpha = 0.55;
-        ctx.lineWidth = Math.max(1, vr * 0.75);
-        ctx.beginPath();
-        ctx.moveTo(labelRight, ty);
-        ctx.lineTo(end - RUNG_W * hr, p.y);
-        ctx.stroke();
+    if (!items.length) return;
+    const key = `${W0}x${H0}|${hr0}|${vr0}|${src.edge}|${items.map(i => `${i.r.key}:${i.y}:${i.text}:${i.r.ink}:${i.hot.toFixed(3)}:${i.r.dash ? 1 : 0}:${i.r.weight ?? 1}`).join(',')}`;
+    let cache = namedCache.get(src);
+    if (!cache || cache.key !== key) {
+      const canvas = cache?.canvas ?? document.createElement('canvas');
+      if (canvas.width !== W0 || canvas.height !== H0) {
+        canvas.width = W0;
+        canvas.height = H0;
       }
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = 'rgba(10,10,10,0.8)';
-      ctx.fillRect(left, ty - boxH / 2, labelRight - left, boxH);
-      ctx.globalAlpha = 0.6;
-      ctx.fillStyle = p.r.ink;
-      ctx.fillRect(left, ty - boxH / 2, Math.max(1, Math.round(2 * hr)), boxH);
-      ctx.globalAlpha = a;
-      ctx.textAlign = 'right';
-      ctx.fillText(p.text, labelRight - 4 * hr, ty + 0.5 * vr);
-      ctx.globalAlpha = 1;
+      const off = canvas.getContext('2d');
+      if (!off) return;
+      off.clearRect(0, 0, W0, H0);
+      paintNamed(src, { ...scope, context: off }, items);
+      cache = { key, canvas };
+      namedCache.set(src, cache);
     }
-    ctx.restore();
+    scope.context.drawImage(cache.canvas, 0, 0);
   });
+}
+
+function paintNamed(src: KeyLevelsPrimitive, scope: Parameters<typeof ladderPen>[0], items: { r: KeyLevelRung; y: number; text: string; hot: number }[]): void {
+  const pen = ladderPen(scope);
+  const { ctx, hr, vr, H, right } = pen;
+  const edgeMedia = src.edge;
+  const end = edgeMedia != null ? edgeMedia * hr : right;
+  ctx.save();
+  ctx.font = `${Math.round(9.5 * vr)}px ${LADDER_MONO}`;
+  ctx.textBaseline = 'middle';
+  const boxH = Math.round(14 * vr);
+  const gap = Math.round(2 * vr);
+  const placed = items.map(i => ({ ...i, ty: i.y, w: ctx.measureText(i.text).width + 10 * hr }));
+  for (const p of placed) {
+    const w = (RUNG_W + (RUNG_W_HOT - RUNG_W) * p.hot) * hr;
+    pen.rule(end - w, p.y, end, p.r.ink, 0.85 + 0.15 * p.hot, { trace: edgeMedia != null, dash: p.r.dash ? [3, 3] : undefined, width: p.r.weight ?? 1 });
+  }
+  placed.sort((a, b) => a.y - b.y);
+  const step = boxH + gap;
+  for (let i = 1; i < placed.length; i++) placed[i].ty = Math.max(placed[i].ty, placed[i - 1].ty + step);
+  const floor = H - boxH / 2 - 2 * vr;
+  if (placed[placed.length - 1].ty > floor) {
+    placed[placed.length - 1].ty = floor;
+    for (let i = placed.length - 2; i >= 0; i--) placed[i].ty = Math.min(placed[i].ty, placed[i + 1].ty - step);
+  }
+  const labelRight = end - RUNG_W * hr - 4 * hr;
+  for (const p of placed) {
+    const ty = Math.round(Math.max(boxH / 2, p.ty));
+    const left = Math.max(2 * hr, labelRight - p.w);
+    const a = 0.88 + 0.12 * p.hot;
+    if (Math.abs(ty - p.y) > 1.5 * vr) {
+      ctx.strokeStyle = p.r.ink;
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = Math.max(1, vr * 0.75);
+      ctx.beginPath();
+      ctx.moveTo(labelRight, ty);
+      ctx.lineTo(end - RUNG_W * hr, p.y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(10,10,10,0.8)';
+    ctx.fillRect(left, ty - boxH / 2, labelRight - left, boxH);
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = p.r.ink;
+    ctx.fillRect(left, ty - boxH / 2, Math.max(1, Math.round(2 * hr)), boxH);
+    ctx.globalAlpha = a;
+    ctx.textAlign = 'right';
+    ctx.fillText(p.text, labelRight - 4 * hr, ty + 0.5 * vr);
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
 }
 
 class LadderPaneView {

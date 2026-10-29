@@ -466,16 +466,6 @@ export function chainForDate(ticker: string, date: string | 'book' | null): { no
   return { nodes, label, kind: kindOf(nodes), date: hit, movedFrom };
 }
 
-/** One book, stamped on the tape. The dollars are that chain's own net gamma. */
-export function historyForDate(ticker: string, date: string | 'book' | null): GexSnapshot[] | null {
-  const entry = peekEntry(ticker);
-  const picked = chainForDate(ticker, date);
-  if (!entry || entry.status !== 'live' || !picked) return null;
-  const histAll = entry.tape.length >= 2 ? entry.tape : entry.candles;
-  const candles = entry.wantFull ? histAll : histAll.filter((c, i) => i === histAll.length - 1 || Math.floor(c.time / 60) % 5 === 0);
-  return historyFrom(picked.nodes, candles, entry.ticker);
-}
-
 /** Share of the book's gamma that expires today, percent. `none`: nothing on this name expires today. `wait`: the
     listing is not in yet. One number for the Board, Compare, the Agenda and the Trader's Clock. */
 export function peekBellShare(ticker: string): { share: number } | { share: null; why: 'none' | 'wait' } {
