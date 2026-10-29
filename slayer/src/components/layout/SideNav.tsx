@@ -97,6 +97,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const navRef = useRef<HTMLElement | null>(null);
   const [bar, setBar] = useState<{ top: number } | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
+  /* the rail's list scrolls when a section's pages are open on a short window: each edge with more behind it says so */
+  const [edges, setEdges] = useState<{ above: boolean; below: boolean }>({ above: false, below: false });
   /* Every name's alerts: how many are set, how many fired unseen, and whether the drawer is open. */
   const allAlerts = useAllAlerts();
   const setTotal = allAlerts.reduce((n, a) => n + a.alerts.filter(x => !x.firedAt).length, 0);
@@ -168,6 +170,26 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
       window.removeEventListener('resize', measure);
     };
   }, [measure]);
+  const markEdges = useCallback(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const above = nav.scrollTop > 2;
+    const below = nav.scrollTop + nav.clientHeight < nav.scrollHeight - 2;
+    setEdges(e => (e.above === above && e.below === below ? e : { above, below }));
+  }, []);
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    markEdges();
+    nav.addEventListener('scroll', markEdges, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(markEdges) : null;
+    ro?.observe(nav);
+    for (const c of Array.from(nav.children)) ro?.observe(c);
+    return () => {
+      nav.removeEventListener('scroll', markEdges);
+      ro?.disconnect();
+    };
+  }, [markEdges, pathname, collapsed]);
 
   /* A hover tip for the rail — one fixed label beside the row, never clipped */
   const showTip = (e: MouseEvent<HTMLElement>, label: string) => {
@@ -492,9 +514,26 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
             {watchRow}
           </div>
         </div>
-        <nav ref={navRef} className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-1 flex flex-col ${collapsed ? 'px-0' : 'px-2'}`} aria-label="Terminal">
-          {groups}
-        </nav>
+        <div className="relative flex-1 min-h-0 flex flex-col" data-nav-scroll={edges.below ? (edges.above ? 'both' : 'below') : edges.above ? 'above' : undefined}>
+          <nav ref={navRef} className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-1 flex flex-col ${collapsed ? 'px-0' : 'px-2'}`} aria-label="Terminal">
+            {groups}
+          </nav>
+          {/* the list scrolls: a shade and a hairline at the edge that has more behind it; the bottom one is a door down */}
+          <span aria-hidden className={`pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-panel to-transparent border-t border-ink/[0.06] transition-opacity duration-200 ${edges.above ? 'opacity-100' : 'opacity-0'}`} />
+          <span aria-hidden className={`pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-panel via-panel/80 to-transparent transition-opacity duration-200 ${edges.below ? 'opacity-100' : 'opacity-0'}`} />
+          {edges.below && (
+            <button
+              type="button"
+              onClick={() => navRef.current?.scrollBy({ top: navRef.current.clientHeight * 0.8, behavior: 'smooth' })}
+              aria-label="More pages below — scroll the list"
+              title="More below"
+              className="absolute bottom-0.5 left-1/2 -translate-x-1/2 inline-flex items-center justify-center w-10 h-6 rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
+              data-nav-more-below
+            >
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
         {/* Who is at the desk: picture and name at the foot, a door to the account; the rail keeps the picture alone. */}
         <NavLink
           to={guest ? '/signin' : '/settings/account'}

@@ -88,7 +88,8 @@ const ExpiryCalendar = ({ value, expiries, onChange, label = 'Expiry', icon: Ico
   const floorMonth = floor ? Number(floor.slice(0, 4)) * 12 + Number(floor.slice(5, 7)) - 1 : null;
   const beforeFloor = floorMonth != null && cursor.getFullYear() * 12 + cursor.getMonth() <= floorMonth;
 
-  const stepBtn = 'inline-flex items-center justify-center w-6 h-7 rounded-md border border-borderSubtle bg-chip text-textMuted hover:text-textPrimary hover:border-borderMuted disabled:hover:text-textMuted disabled:hover:border-borderSubtle transition-colors';
+  /* never squeezed under 24px by a narrow row; a finger's 44px box on a touch screen (.hit) */
+  const stepBtn = 'hit shrink-0 inline-flex items-center justify-center w-6 min-w-[24px] h-7 rounded-md border border-borderSubtle bg-chip text-textMuted hover:text-textPrimary hover:border-borderMuted disabled:hover:text-textMuted disabled:hover:border-borderSubtle transition-colors';
 
   return (
     <span className="inline-flex items-center gap-1" data-expiry-calendar={testId ?? label}>

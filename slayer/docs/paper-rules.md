@@ -1,5 +1,13 @@
 # Paper — the rules of the live paper account
 
+> **Updated 2026-10-29.** Paper is options only. Futures and the futures-style evaluations (50K/100K/150K, "ten micros
+> are one") are gone, and every part of this page about futures or those plans is superseded. Accounts now live on an
+> Accounts page (`/practice/paper`) with one desk per account (`/practice/paper/:accountId`). Prop-firm accounts and
+> "your own rules" accounts are judged by the rule engine in `src/data/paper/rules.ts`, on the firms' published rules in
+> `src/data/paper/propFirms.ts` (each with its source and "rules as of" date; the firm's own site governs).
+> `scripts/paper-proof.ts` and `scripts/golden/paper-golden.ts` check the engine. Fills, fees, the clock and the
+> carry-over below still hold for options.
+
 Written 2026-09-22, **before the code** (Noah, on the partner's paper page: "he is basically making a 'propfirm' type
 field for users to trade paper money on instead of wasting their money buying a propfirm when they are not ready for
 it", and then: "this is meant to be live data like how propfirms work. so this is different then backtesting because you

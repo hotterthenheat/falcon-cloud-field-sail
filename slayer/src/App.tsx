@@ -10,6 +10,7 @@ import EmbedBridge from './components/layout/EmbedBridge';
 import PageMeta from './components/layout/PageMeta';
 import { EMBEDDED } from './embed';
 import { FaviconFollowsMark } from './brand/favicon';
+import { openAlertsDrawer } from './data/alertsDrawer';
 
 /* Every page is its own chunk, and so is the terminal's shell: the landing and the site pages never load it. */
 const loadShell = () => import('./components/layout/AppShell');
@@ -76,6 +77,23 @@ const HouseFile = lazy(() => import('./pages/record/BookFile').then(m => ({ defa
 const ShortFile = lazy(() => import('./pages/record/BookFile').then(m => ({ default: m.ShortFile })));
 const FundFile = lazy(() => import('./pages/record/BookFile').then(m => ({ default: m.FundFile })));
 const MemberFile = lazy(() => import('./pages/record/BookFile').then(m => ({ default: m.MemberFile })));
+
+/* /alerts is a drawer, not a page: the address opens the terminal on the last page shown in this tab (else Pulse) with
+   the alerts drawer open (data/alertsDrawer.ts; AppShell keeps the last page in sessionStorage 'slayer.lastPage') */
+const AlertsDoor = () => {
+  const { search } = useLocation();
+  useEffect(() => {
+    openAlertsDrawer();
+  }, []);
+  let back = '/pulse';
+  try {
+    const kept = sessionStorage.getItem('slayer.lastPage');
+    if (kept && kept.startsWith('/') && !kept.startsWith('/alerts')) back = kept;
+  } catch {
+    /* no storage: Pulse */
+  }
+  return <Navigate to={`${back}${back.includes('?') ? '' : search}`} replace />;
+};
 
 const EarningsRedirect = () => {
   const { ticker } = useParams();
@@ -246,6 +264,7 @@ const App = () => {
             <Route path="/earnings" element={<Navigate to="/dossier/earnings" replace />} />
             <Route path="/earnings/:ticker" element={<EarningsRedirect />} />
             <Route path="/watchlist" element={<Navigate to="/weigher" replace />} />
+            <Route path="/alerts" element={<AlertsDoor />} />
             <Route path="/tracker" element={<Navigate to="/compass/tracker" replace />} />
             <Route path="/settings/:section?" element={<Settings />} />
             <Route path="/pinpoint" element={<PinpointLayout />}>

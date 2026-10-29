@@ -68,7 +68,7 @@ export const Tag = ({ children, tone = 'plain' }: { children: ReactNode; tone?: 
 
 /** A text field in a row — the chip ground; saves on blur or Enter, Esc puts the value back */
 /* A field says why it did not save: `check` returns the reason or null; the reason shows in the alert ink, the typed value stays, nothing saves until it passes. */
-export const Field = ({ value, onSave, prefix, width = 200, type = 'text', testId, check }: { value: string; onSave: (v: string) => void; prefix?: string; width?: number; type?: 'text' | 'email'; testId: string; check?: (v: string) => string | null }) => {
+export const Field = ({ value, onSave, prefix, width = 200, type = 'text', testId, check, label }: { value: string; onSave: (v: string) => void; prefix?: string; width?: number; type?: 'text' | 'email'; testId: string; check?: (v: string) => string | null; /** the field's accessible name (its row's name); defaults to the test id in words */ label?: string }) => {
   const [v, setV] = useState(value);
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => setV(value), [value]);
@@ -80,6 +80,7 @@ export const Field = ({ value, onSave, prefix, width = 200, type = 'text', testI
         <input
           value={v}
           type={type}
+          aria-label={label ?? testId.replace(/[-_]/g, ' ')}
           spellCheck={false}
           aria-invalid={problem ? true : undefined}
           aria-describedby={problem ? errId : undefined}

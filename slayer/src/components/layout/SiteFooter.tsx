@@ -196,10 +196,10 @@ const SiteFooter = ({ home = false }: { home?: boolean }) => {
                       <span className="footer-word block font-mono text-t10 font-bold uppercase tracking-widest text-textMuted" data-footer-lit>
                         {col.title}
                       </span>
-                      <ul className={`mt-3 grid gap-x-4 gap-y-2 ${col.wide ? 'grid-cols-4' : ''}`}>
+                      <ul className={`mt-3 grid gap-x-4 gap-y-0 ${col.wide ? 'grid-cols-4' : ''}`}>
                         {col.links.map(l => (
                           <li key={l.label}>
-                            <FooterLink to={l.to} home={home} gate={gate} className="footer-word footer-link whitespace-nowrap text-t125 leading-[18px] text-textSecondary hover:text-textPrimary transition-colors">
+                            <FooterLink to={l.to} home={home} gate={gate} className="footer-word footer-link inline-flex items-center min-h-[26px] max-sm:min-h-[44px] whitespace-nowrap text-t125 leading-[18px] text-textSecondary hover:text-textPrimary transition-colors">
                               <span data-footer-lit>{l.label}</span>
                             </FooterLink>
                           </li>
