@@ -358,9 +358,9 @@ export function buildBuilding(
   for (const n of chain) unit.set(n.strike, { call: n.callOI ? n.callGex / n.callOI : 0, put: n.putOI ? n.putGex / n.putOI : 0, net: n.netGex });
 
   const openAt = new Map<number, { c: number; p: number }>();
-  if (hasOi) for (const l of first.levels) openAt.set(l.strike, { c: l.callOI ?? 0, p: l.putOI ?? 0 });
+  if (hasOi && !real && first) for (const l of first.levels) openAt.set(l.strike, { c: l.callOI ?? 0, p: l.putOI ?? 0 });
   const nowAt = new Map<number, { c: number; p: number }>();
-  if (hasOi) for (const l of last.levels) nowAt.set(l.strike, { c: l.callOI ?? 0, p: l.putOI ?? 0 });
+  if (hasOi && !real && last) for (const l of last.levels) nowAt.set(l.strike, { c: l.callOI ?? 0, p: l.putOI ?? 0 });
 
   /* Sampled OI through the day, per strike, for the shapes */
   const stepN = Math.max(1, Math.floor(today.length / SHAPE_POINTS));

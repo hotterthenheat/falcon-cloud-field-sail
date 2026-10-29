@@ -7,6 +7,8 @@ import { LEVELS_OPTIONS, setLevelsForName, useNameLevels, type LevelsScope } fro
 import { setUnitForName, useNameUnit } from '../../data/distanceUnits';
 import { todayScopeLabel } from '../../data/bookWindow';
 import { fmtGexUsd } from '../../data/gex';
+import { changeInk, dayMoveWords, peekDayMove, peekEntry, useBookRev } from '../../data/uwBook';
+import { nyStamp } from '../../core/nyTime';
 import type { DistanceUnit } from '../../data/atr';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import CompanyLogo from '../ui/CompanyLogo';
@@ -52,7 +54,12 @@ const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
   const scope = useNameLevels(ticker);
   const unit = useNameUnit(ticker);
   const lv = useLevelsFor(ticker, scope);
+  useBookRev();
   const said = regimeSentence(lv);
+  const entry = ticker ? peekEntry(ticker) : undefined;
+  const day = ticker ? dayMoveWords(peekDayMove(ticker)) : null;
+  const dayPct = ticker ? peekDayMove(ticker)?.dayPct ?? null : null;
+  const flipPct = lv?.flip != null && lv.spot > 0 ? ((lv.flip - lv.spot) / lv.spot) * 100 : null;
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const on = () => setOpen(true);
@@ -70,9 +77,19 @@ const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
   const title = [said ? `${said.lead}${said.rest}` : '', lv ? `${lv.scopeLabel}. ${GLOSSARY.flip}` : ''].filter(Boolean).join(' ');
   return (
     <div className="flex items-center gap-x-3 gap-y-2 flex-wrap min-w-0 py-2 -mt-1 border-b border-borderSubtle" data-regime-line={tone ?? 'pending'} data-name-strip={name || undefined}>
-      <div className="flex items-center gap-2 min-w-0" title={title || undefined}>
+      <div className="flex items-center gap-x-2 gap-y-0.5 flex-wrap min-w-0 [&>*]:whitespace-nowrap" title={title || undefined}>
         {name ? <CompanyLogo ticker={name} size={18} /> : null}
         <span className="font-mono text-t13 font-semibold text-textPrimary">{name || '—'}</span>
+        {lv && (
+          <span className="font-mono text-t12 tnum text-textPrimary" data-regime-price title={day?.title}>
+            {lv.spot.toFixed(2)}
+            {day && (
+              <span className="ml-1.5 text-t11" style={{ color: changeInk(dayPct) }}>
+                {day.main}
+              </span>
+            )}
+          </span>
+        )}
         <span className="font-mono text-t11 font-semibold" style={ink ? { color: ink } : undefined} data-regime-word={tone ?? 'pending'}>
           {said ? (tone === 'SHORT' ? 'Short gamma' : 'Long gamma') : name ? 'Reading…' : '…'}
         </span>
@@ -84,9 +101,16 @@ const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
         {lv?.flip != null && (
           <span className="font-mono text-t11 tnum text-textSecondary" data-regime-flip>
             flip {fmtK(lv.flip)}
+            {flipPct != null && <span className="text-textMuted"> ({flipPct > 0 ? '+' : '−'}{Math.abs(flipPct).toFixed(2)}%)</span>}
           </span>
         )}
+        {lv?.complete && lv.flip == null && <span className="font-mono text-t11 text-textMuted" title={GLOSSARY.flip}>no flip within 10%</span>}
         {lv?.complete && <span className="font-mono text-t10 uppercase tracking-wider text-textMuted">{lv.scopeLabel}</span>}
+        {entry?.keptAt && (
+          <span className="font-mono text-t9 uppercase tracking-widest text-warn" title="This browser's kept copy of the book, shown while the fresh read loads; it is replaced as soon as that lands" data-kept>
+            kept · {nyStamp(entry.at, { zone: true })}
+          </span>
+        )}
       </div>
       <div className="ml-auto flex items-center gap-1.5 flex-wrap">
         <DropdownSelect<LevelsScope>

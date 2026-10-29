@@ -3,7 +3,7 @@
 
 import { displayName, personDisplay } from '../../data/tickers';
 import { PublishMove } from '../../components/record/publishMove';
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, ChevronDown } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
@@ -936,7 +936,7 @@ const StockName = () => {
       </div>
       <button type="button" onClick={() => setMore(v => !v)} aria-expanded={more} className="w-full h-9 rounded-md border border-borderSubtle bg-panel flex items-center justify-center gap-2 font-mono text-t10 uppercase tracking-widest text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-stock-more={more ? 'open' : 'shut'}>
         <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${more ? 'rotate-180' : ''}`} />
-        {more ? 'Less' : 'More'} on {T} · the options book, the numbers, the read's workings, the timeline and the tape
+        {more ? 'Less' : 'More'} on {T} · the options, the numbers, how the read is made, the timeline and the tape
       </button>
       {more && (
         <>
@@ -1150,9 +1150,9 @@ const StockName = () => {
             </Fact>
             )}
             {growthFactor && (
-            <Fact label="Earnings growth a year" testId="growth" tip="The 1-, 2- and 3-year EPS changes, each as a rate a year; the slowest of them is the figure the numbers pillar scores">
-              <span className={growthFactor.context ? 'text-textSecondary' : growthFactor.lean >= 0 ? 'text-bull' : 'text-bear'}>{growthFactor.value.split(' · ')[0]}</span>
-              <span className="block text-t9 font-sans text-textMuted">{growthFactor.context ? growthFactor.note : growthFactor.value.split(' · ').slice(1).join(' · ')}</span>
+            <Fact label="Earnings growth" testId="growth" tip="The 1-, 2- and 3-year EPS changes, each as a rate a year; the slowest of them is the figure the numbers pillar scores">
+              <span className={growthFactor.context ? 'text-textSecondary' : growthFactor.lean >= 0 ? 'text-bull' : 'text-bear'}>{growthFactor.value}</span>
+              <span className="block text-t9 font-sans text-textMuted">{growthFactor.note}</span>
             </Fact>
             )}
             {numbers.beats != null && (

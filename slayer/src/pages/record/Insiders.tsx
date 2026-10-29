@@ -14,7 +14,7 @@ import { InsidersGuide } from '../../components/record/InsidersGuide';
 import { When } from '../../components/record/when';
 import { dollars3 as fmtDollars } from './money';
 import { useBoardNames } from '../../data/boardNames';
-import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, isCorporateTrade, personSlug, bigWord, spanWords, splitWords, type SalesSplit } from '../../data/insiders';
+import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, isCorporateTrade, personSlug, bigWord, spanWords, type SalesSplit } from '../../data/insiders';
 import { useInsiderBook, useInsiderBuyers, useInsiderCoverage, useInsidersStatus, useInsiderTrades, useKeptAt, wantInsiderWindow, type InsiderCoverage } from '../../data/liveRecord';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { personDisplay, tickerName } from '../../data/tickers';
@@ -27,7 +27,6 @@ import type { InsiderFlow, InsiderRole, InsiderTrade } from '../../types/record'
 import { NAMES_TO_KNOW } from './recordSkeletons';
 import { InsiderSectorFlow } from '../../components/record/ExtraFaces';
 import { CardLine } from '../../components/record/PhoneCards';
-import { statHelp } from '../../components/record/statHelp';
 
 type Window = 7 | 30 | 90 | 180;
 type Show = 'market' | 'all';
@@ -129,7 +128,7 @@ const PriceCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
         {data.price.toFixed(2)} <span className="text-t8 uppercase tracking-widest">not USD</span>
       </span>
     ) : (
-      <span className="font-mono text-t11 tnum text-textSecondary">${data.price.toFixed(2)}</span>
+      <span className="font-mono text-t11 tnum text-textSecondary" title={data.price > 0 ? undefined : 'No price on the filing — a grant or award is not bought'}>{data.price > 0 ? `$${data.price.toFixed(2)}` : '—'}</span>
     )
   ) : null;
 const ValueCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
@@ -139,7 +138,7 @@ const ValueCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
         not USD
       </span>
     ) : (
-      <span className="font-mono text-t11 tnum font-semibold text-textPrimary">{fmtDollars(data.value)}</span>
+      <span className="font-mono text-t11 tnum font-semibold text-textPrimary">{data.value > 0 ? fmtDollars(data.value) : '—'}</span>
     )
   ) : null;
 /** What the stake figure means for this row, in words — 100% on a buy is a first position, 100% on a sale an exit */
@@ -202,7 +201,7 @@ const InsiderCard = (t: InsiderTrade) => (
       }
       right={cellOf(ValueCell, t)}
     />
-    <CardLine muted left={<>{t.role === 'Officer' && t.title ? t.title : t.role === 'Other' ? 'Role not stated' : t.role} · {cellOf(TradeCell, t)} · {fmtInt(t.shares)} sh @ {t.foreignPrice ? `${t.price.toFixed(2)} (not USD)` : `$${t.price.toFixed(2)}`}</>} right={cellOf(PlanCell, t)} />
+    <CardLine muted left={<>{t.role === 'Officer' && t.title ? t.title : t.role === 'Other' ? 'Role not stated' : t.role} · {cellOf(TradeCell, t)} · {fmtInt(t.shares)} sh{t.price > 0 ? ` @ ${t.foreignPrice ? `${t.price.toFixed(2)} (not USD)` : `$${t.price.toFixed(2)}`}` : ''}</>} right={cellOf(PlanCell, t)} />
     <CardLine muted left={<When days={t.daysAgo} size={10} />} right={t.clusterCount >= 2 ? <span className="text-t10">{t.clusterCount} filers</span> : undefined} />
   </>
 );

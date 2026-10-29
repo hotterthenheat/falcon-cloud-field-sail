@@ -15,7 +15,8 @@ import { applyDay, needDay } from './day';
 import { historyFrom, noteSplit, vexOntoAll } from './levels';
 import { dayFracOf, dayIvOf, impliedMoveOf, termDteOf, termIvOf, termKOf, termMoveOf } from './move';
 import { carryFacts, chainFrom, flowMap, foldContracts, liveGammaRows, num, oiMap, paintLegs, pricedClockOf, type LiveGamma, withLiveGamma } from './scale';
-import { BOARD_MS, FULL_MS, LIVE_GAMMA_MS, cache, chartAll, chartSpan, closestDate, datesComplete, emit, emptyDates, gammaPriced, gen, horizonFactsMissing, hotGet, isHot, liveGammaCache, liveGammaWait, peekEntry, peekGammaPriced, recordAsked, recordIso, settledLive, type BookMode, type Entry } from './store';
+import { BOARD_MS, FULL_MS, LIVE_GAMMA_MS, cache, chartAll, chartSpan, closestDate, datesComplete, emit, emptyDates, gammaPriced, gen, horizonFactsMissing, hotGet, isHot, keptBooks, liveGammaCache, liveGammaWait, peekEntry, recordAsked, recordIso, settledLive, type BookMode, type Entry } from './store';
+import { readKept } from './kept';
 import { CLOSE_MIN, INDEX_TAPE, candlesFrom, cashToOf, closesFromTape, parseTape, quoteFromBars, regularCloseOf, thetaTape, twoCashSessions } from './tape';
 
 
@@ -293,11 +294,14 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   const still = () => gen.get(ticker) === token;
   const hot = isHot(ticker);
   const t = encodeURIComponent(ticker);
+  /* a name read for the Board alone skips what only the Map draws: the whole book's volume by strike, and its open
+     interest unless the name's levels read every expiry */
+  const boardOnly = mode === 'board' && !cache.get(ticker)?.wantFull;
   const [stateRaw, strikeRaw, oiRows, flowRows, ivRows, termRows, interpRows, stockBars, live] = await Promise.all([
     (hot ? hotGet<UwState>(`/stock/${t}/stock-state`, true) : whalesState(ticker)).catch(() => null),
     (hot ? hotGet<UwGreekStrike[]>(`/stock/${t}/greek-exposure/strike`, true) : whalesGreekStrike(ticker)).catch(() => [] as UwGreekStrike[]),
-    whalesOiStrike(ticker).catch(() => [] as UwGreekStrike[]),
-    whalesFlowStrike(ticker).catch(() => [] as UwFlowStrike[]),
+    boardOnly && levelsForName(ticker) !== 'ALL' ? Promise.resolve([] as UwGreekStrike[]) : whalesOiStrike(ticker).catch(() => [] as UwGreekStrike[]),
+    boardOnly ? Promise.resolve([] as UwFlowStrike[]) : whalesFlowStrike(ticker).catch(() => [] as UwFlowStrike[]),
     whalesIvRank(ticker, hot).catch(() => []),
     (hot ? hotGet<UwTerm[]>(`/stock/${t}/volatility/term-structure`, true) : whalesTermStructure(ticker)).catch(() => [] as UwTerm[]),
     whalesInterpIv(ticker).catch(() => [] as UwInterp[]),
@@ -330,7 +334,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
       strikes = [...live.keys()].filter(k => k > 0).map(strike => ({ strike }));
     }
     if (!state) {
-      const px = peekGammaPriced(ticker, null)?.price ?? 0;
+      const px = gammaPriced.get(`${ticker.toUpperCase()}|ALL`)?.price ?? 0;
       if (px > 0) {
         const phase = nySessionPhase();
         state = { close: px, prev_close: px, market_time: phase === 'open' ? 'regular' : phase === 'before' ? 'premarket' : 'postmarket' };
@@ -690,7 +694,7 @@ async function loadBoardDatesNow(ticker: string, token: number, listed?: { date:
 /** The Levels card reads "All expiries": a name read for the Board alone loads every live date's strikes (the flip
     re-prices each at its own clock). A no-op for a full book or one already complete. */
 export function ensureScopeDates(ticker: string, scope: LevelsScope = readLevelsScope()): void {
-  const e = peekEntry(ticker);
+  const e = cache.get(sameName(ticker));
   if (!e || e.status !== 'live' || e.full || scope !== 'ALL' || (datesComplete(e) && !horizonFactsMissing(e).length)) return;
   void loadBoardDates(e.ticker, gen.get(e.ticker) ?? 0);
 }
@@ -828,7 +832,7 @@ function load(ticker: string, mode: BookMode) {
       spot: 0,
       prev: 0,
       changePct: 0,
-      iv: 0.2,
+      iv: 0,
       impliedMove: 0,
       dayMoveFrac: 0,
       all: [],
@@ -840,6 +844,14 @@ function load(ticker: string, mode: BookMode) {
       history: [],
     });
     queueMicrotask(emit);
+    /* paint this browser's kept copy while the fresh read runs (store.ts peekEntry serves it until the front date is in) */
+    void readKept(ticker).then(kept => {
+      const fresh = cache.get(ticker);
+      if (!kept || (fresh?.status === 'live' && (fresh.frontFacts || fresh.everFull))) return;
+      kept.history = historyFrom(kept.all, kept.tape.length >= 2 ? kept.tape : kept.candles, kept.ticker);
+      keptBooks.set(ticker, kept);
+      emit();
+    });
   } else if (mode === 'full') prev.wantFull = true;
   void loadCore(ticker, mode, token).catch((err: unknown) => {
     if (gen.get(ticker) !== token) return;
@@ -857,7 +869,7 @@ function load(ticker: string, mode: BookMode) {
       spot: 0,
       prev: 0,
       changePct: 0,
-      iv: 0.2,
+      iv: 0,
       impliedMove: 0,
       dayMoveFrac: 0,
       all: [],

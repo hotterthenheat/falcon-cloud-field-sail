@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { CalendarDays } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
 import { bookLeanWords, buildCatches, notABetHint, notABetLabel, FRESH_VOL_OI, notABet, stockLike, volOiText, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
-import { fmtCount as num, pairOiFor, standing, useSearchBook, usd as fmtUsd } from '../../data/traceLive';
+import { fmtCount as num, pairOiFor, usd as fmtUsd } from '../../data/traceLive';
 import { dayAdv, earnWords } from '../../components/trace/dayWords';
 import { reasonSentence, useReasons } from '../../data/flowReasons';
 import type { BookContract } from '../../types/trace';
@@ -19,15 +19,15 @@ import RichRead from '../../components/ui/RichRead';
 import BookDrill from '../../components/trace/BookDrill';
 import ContractCell, { OtmCell, otmSortValue } from '../../components/trace/ContractCell';
 import { earnMarks, weightInk } from '../../components/trace/earnedInk';
-import { LiveHold, SessionMark, useHold } from '../../components/trace/LiveHold';
+import { LiveHold, SessionMark } from '../../components/trace/LiveHold';
 import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
-import { useExpiryCut } from '../../components/trace/bookExpiry';
 import { isoDate } from '../../core/calendar';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import ReasonDoor from '../../components/trace/ReasonDoor';
 import ReadDoor from '../../components/trace/ReadDoor';
-import FlowSearch, { searchMiss, matchesContract, normSymbol, searchedName, useSearchedName } from '../../components/trace/FlowSearch';
+import FlowSearch, { searchMiss, matchesContract, normSymbol } from '../../components/trace/FlowSearch';
 import TermLine from '../../components/trace/TermLine';
+import { useHeldBook } from '../../components/trace/useHeldBook';
 import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { WatchersGuide } from '../../components/trace/TraceGuide';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
@@ -80,7 +80,7 @@ const phoneRow = (a: Catch) => (
         <span className="text-t11 text-textSecondary tnum">{a.row.expiry.slice(0, 5)}</span>
       </>
     }
-    aside={a.time}
+    aside={`${a.time} ET`}
     figures={[
       <span key="p" className="font-semibold text-textPrimary">
         {fmtUsd(a.premium)}
@@ -115,17 +115,8 @@ const Watchers = () => {
   const [guideOpen, setGuideOpen] = useState(false);
 
   /* the market's book only; a searched name's own book, paged */
-  const askedName = useSearchedName(query);
-  const bookPack = useSearchBook(askedName);
-  const bookWord = bookPack.name ? `${bookPack.name}'s book` : "the market's book";
-  const liveBook = bookPack.rows;
-  const reading = (bookPack.waiting && liveBook.length === 0) || searchedName(query) !== askedName;
-  const hold = useHold(liveBook, activeTicker, !reading);
-  const heldBook = hold.value;
-  const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldBook, r => r.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
-  /* contracts that expired at the bell no longer stand */
-  const stand = useMemo(() => standing(cutExpiry(heldBook)), [heldBook, cutExpiry]);
-  const book = stand.rows;
+  const { bookPack, bookWord, reading, hold, heldBook, expiryCut, stand, book } = useHeldBook(query, activeTicker, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
+  const { expiry, setExpiry, expiries, chosen } = expiryCut;
   const keyOf = useCallback((a: { id: string }) => a.id, []);
   const openRow = useCallback((a: { row: { key: string } }) => setOpenKey(a.row.key), []);
   const catches = useMemo(() => buildCatches(book, myReasons), [book, myReasons]);

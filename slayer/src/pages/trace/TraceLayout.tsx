@@ -1,5 +1,4 @@
-/* Trace's shell: the page's icon, name and one line over the subpage, which alone cross-fades; the sidebar carries
-   the pages. */
+/* Trace's shell: the page's icon and name over the subpage, which alone cross-fades; the sidebar carries the pages. */
 
 import { Suspense } from 'react';
 import { useLocation, useOutlet } from 'react-router-dom';
@@ -42,13 +41,13 @@ const TraceLayout = () => {
     <>
       <header className="flex items-start gap-6 flex-wrap pb-3 border-b border-borderSubtle" data-shell data-trace-shell={active.label}>
         <div className="min-w-0 flex-1 basis-full sm:basis-auto">
-          <div className="h-6 flex items-center gap-2.5" data-shell-page>
+          {/* the page's line is its title's hover: the head is the name, the data comes first */}
+          <div className="h-6 flex items-center gap-2.5" data-shell-page title={subtitle}>
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0" aria-hidden="true">
               <PageIcon className="w-3.5 h-3.5" />
             </span>
             <h1 className="text-t15 font-semibold leading-tight text-textPrimary">{active.label}</h1>
           </div>
-          <p className="mt-0.5 text-t11 text-textMuted break-words sm:whitespace-nowrap sm:truncate">{subtitle}</p>
         </div>
         <div className="flex items-center gap-2 max-sm:w-full sm:shrink-0" data-trace-picker>
           {picker && <TickerSearch value={activeTicker} onChange={changeTicker} />}

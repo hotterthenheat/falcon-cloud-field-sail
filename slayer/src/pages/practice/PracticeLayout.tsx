@@ -14,8 +14,8 @@ import { useSyncExternalStore } from 'react';
 import { feedOffline, feedRev, subscribeFeed } from '../../data/paper/thetaFeed';
 import { historyOffline, historyRev, subscribeHistory } from '../../data/review/history';
 
-const Fact = ({ label, children, testId, title }: { label: string; children: React.ReactNode; testId?: string; title?: string }) => (
-  <div className="min-w-0">
+const Fact = ({ label, children, testId, title, className = '' }: { label: string; children: React.ReactNode; testId?: string; title?: string; className?: string }) => (
+  <div className={`min-w-0 ${className}`}>
     <dt className="text-t10 text-textMuted whitespace-nowrap">{label}</dt>
     <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-practice-fact={testId} title={title}>
       {children}
@@ -72,7 +72,7 @@ const PracticeLayout = () => {
               <Fact label="Clock">ET</Fact>
             </>
           )}
-          <Fact label="Money">Pretend — nothing reaches a broker</Fact>
+          <Fact label="Money" className="max-sm:hidden">Pretend — nothing reaches a broker</Fact>
         </dl>
       </header>
       <AnimatePresence mode="wait" initial={false}>

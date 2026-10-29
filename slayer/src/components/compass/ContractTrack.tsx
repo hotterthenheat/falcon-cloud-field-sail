@@ -203,10 +203,10 @@ const ContractTrack = ({
           <ReadoutCell k="H" v={shown ? px2(shown.high) : '—'} />
           <ReadoutCell k="L" v={shown ? px2(shown.low) : '—'} />
           <ReadoutCell k={markWord} v={px2(markPx)} />
-          {traded && traded.length === 0 && <span className="font-mono text-t10 text-textMuted">{emptyNote || 'No print on the tape'}</span>}
-          {traded == null && !pathNote && <span className="font-mono text-t10 text-textMuted">Not on the tape</span>}
-          {pathNote && <span className="font-mono text-t10 text-textMuted">{pathNote}</span>}
-          <span className="ml-auto flex items-center gap-2.5 min-w-0">
+          {traded && traded.length === 0 && <span className="min-w-0 truncate font-mono text-t10 text-textMuted">{emptyNote || 'No print on the tape'}</span>}
+          {traded == null && !pathNote && <span className="min-w-0 truncate font-mono text-t10 text-textMuted">Not on the tape</span>}
+          {pathNote && <span className="min-w-0 truncate font-mono text-t10 text-textMuted">{pathNote}</span>}
+          <span className="ml-auto flex items-center gap-2.5 min-w-0 max-sm:hidden">
             <ReadoutCell k="High" v={series ? px2(series.high) : '—'} />
             <ReadoutCell k="Low" v={series ? px2(series.low) : '—'} />
             <ReadoutCell k="Vol" v={volume > 0 ? count(volume) : '—'} />

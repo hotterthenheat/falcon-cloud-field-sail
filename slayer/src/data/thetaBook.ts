@@ -15,7 +15,7 @@ import { GEX_CORE, inModelWindow, onScanGrid, weekdayDte } from './compassParams
 import { deskPhase, odteAsleep, optionScanOpen, sessionIso, sessionYmd } from './compassSession';
 import { COMPASS_TICKERS } from './compassUniverse';
 import { SIM_DESK } from './deskMode';
-import { claimSlot, commitClosest, currentPicks, earlierScan, noteScanned, paintQuotes, releaseSlot, resetScanReport, scanReport, scoreBook, scoreLottery, setScanBusy, stampPickQuote } from './compassModel';
+import { claimSlot, commitClosest, currentPicks, earlierScan, lastScanAt, noteScanned, paintQuotes, releaseSlot, resetScanReport, scanReport, scoreBook, scoreLottery, setScanBusy, stampPickQuote } from './compassModel';
 import { recordPicks } from './compassLedger';
 import { subscribeTheta, thetaStatus } from './thetaQuote';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
@@ -746,7 +746,7 @@ export function useThetaBook(sleeve: SleeveKey): BookView {
   /* before this book has asked the terminal anything, the shell's own reading of it stands */
   const shell = thetaStatus();
   const state: ThetaState = snap.theta !== 'unknown' ? snap.theta : shell === 'down' ? 'down' : shell === 'up' ? 'up' : 'unknown';
-  return { ...snap, theta: state, status: state === 'down' ? 'down' : snap.status, setups, earlier: currentPicks().length ? null : earlierScan() };
+  return { ...snap, theta: state, status: state === 'down' ? 'down' : snap.status, setups, earlier: currentPicks().length || lastScanAt('odte') || lastScanAt('weekly') ? null : earlierScan() };
 }
 
 let armed = false;

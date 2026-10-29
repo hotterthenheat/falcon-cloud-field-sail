@@ -45,6 +45,8 @@ export interface StockPick {
   sleeveNotes?: Partial<Record<keyof StockSleeves, string>>;
   /** Listed, and not on the screener. No sleeve is invented. */
   listedOnly?: boolean;
+  /** The New York session the price and its change belong to */
+  sessionDate?: string;
 }
 
 export interface SectorRow {
@@ -89,8 +91,10 @@ export function pickFromLive(input: {
   sma50?: number | null;
   /** The vendor's screener row itself — the read is taken off it, by the same function the name's page uses */
   row: Record<string, unknown>;
+  /** The name's regular closes, read with the row */
+  closes?: readonly { date: string; close: number }[] | null;
 }): StockPick {
-  const read = readOfScreen(input.row);
+  const read = readOfScreen(input.row, input.closes);
   const at = (k: 'trend' | 'numbers' | 'money') => read.pillars.find(p => p.key === k);
   const quiet: (keyof StockSleeves)[] = ['news'];
   if (!at('trend')?.inRead) quiet.push('momentum');

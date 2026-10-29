@@ -60,7 +60,9 @@ const READ: Record<string, { pillars: number[]; composite: number; grade: string
 for (const t of ['NVDA', 'GME']) {
   const rows = await get<Record<string, unknown>[]>(`/screener/stocks?ticker=${t}`);
   const row = rows.find(r => String(r.ticker).toUpperCase() === t)!;
-  const read = readOfScreen(row);
+  /* the row is dated Oct 28 and read before the open: its regular price is that day's regular close */
+  const closes = regularCloses((await get<Record<string, unknown>[]>(`/stock/${t}/ohlc/1d?limit=18`)) as never).slice(0, 5);
+  const read = readOfScreen(row, closes);
   const pillars = Object.fromEntries(read.pillars.map(p => [p.key, { score: p.score, inRead: p.inRead, factors: p.factors.filter(f => !f.context).map(f => [f.key, round(f.lean), f.weight]) }]));
   say(`${t}.read`, { composite: read.composite, grade: read.grade, lean: read.lean, pillars });
   const growth = read.pillars.find(p => p.key === 'numbers')!.factors.find(f => f.key === 'growth');

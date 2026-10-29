@@ -264,7 +264,7 @@ const phoneRow = (t: SpreadTrade) => (
         {t.compression && <span className="text-t10 uppercase text-warn shrink-0" title={COMPRESSION_HINT}>compression</span>}
       </>
     }
-    aside={t.extended ? `${t.time} · AH` : t.time}
+    aside={t.extended ? `${t.time} ET · AH` : `${t.time} ET`}
     figures={[
       <span key="k" className="font-bold tnum text-textPrimary">
         {t.strikesLabel}

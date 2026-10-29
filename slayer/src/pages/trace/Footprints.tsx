@@ -5,7 +5,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
 import { FOOTPRINT_SCREENS, notABet, notABetHint, notABetLabel, notABetWord, runFootprintScreen, stockLike, type FootprintScreenKey } from '../../data/flowBook';
-import { fmtCount as num, pairOiFor, prevSessionIso, standing, useSearchBook } from '../../data/traceLive';
+import { fmtCount as num, pairOiFor, prevSessionIso } from '../../data/traceLive';
 import { dayLabel, earnWords, oiAfterWords, oiCoverOf, oiInWords, oiLags, oiPendingWords, oiRowTitle, shortDay, type OiCover } from '../../components/trace/dayWords';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
@@ -18,10 +18,11 @@ import BookDrill from '../../components/trace/BookDrill';
 import ContractCell, { OtmCell, otmSortValue } from '../../components/trace/ContractCell';
 import ReadDoor from '../../components/trace/ReadDoor';
 import { earnMarks, weightInk, type InkMarks } from '../../components/trace/earnedInk';
-import FlowSearch, { searchMiss, matchesContract, normSymbol, searchedName, useSearchedName } from '../../components/trace/FlowSearch';
-import { LiveHold, SessionMark, useHold } from '../../components/trace/LiveHold';
+import FlowSearch, { searchMiss, matchesContract, normSymbol } from '../../components/trace/FlowSearch';
+import { LiveHold, SessionMark } from '../../components/trace/LiveHold';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import TermLine from '../../components/trace/TermLine';
+import { useHeldBook } from '../../components/trace/useHeldBook';
 import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/addressCut';
@@ -29,7 +30,6 @@ import { PREM_FLOOR_OPTIONS, PREM_FLOORS, type PremFloor } from '../../component
 import { createViewStore } from '../../data/savedViews';
 import { FootprintsGuide } from '../../components/trace/TraceGuide';
 import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
-import { useExpiryCut } from '../../components/trace/bookExpiry';
 import { isoDate } from '../../core/calendar';
 
 const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
@@ -101,17 +101,8 @@ const Footprints = () => {
   const [guideOpen, setGuideOpen] = useState(false);
 
   /* the market's book only — the shell's ticker never joins it; a name is read through the search */
-  const askedName = useSearchedName(query);
-  const bookPack = useSearchBook(askedName);
-  const bookWord = bookPack.name ? `${bookPack.name}'s book` : "the market's book";
-  const liveBook = bookPack.rows;
-  const reading = (bookPack.waiting && liveBook.length === 0) || searchedName(query) !== askedName;
-  const hold = useHold(liveBook, activeTicker, !reading);
-  const heldBook = hold.value;
-  const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldBook, r => r.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
-  /* a contract that expired at the bell no longer stands */
-  const stand = useMemo(() => standing(cutExpiry(heldBook)), [heldBook, cutExpiry]);
-  const book = stand.rows;
+  const { bookPack, bookWord, reading, hold, heldBook, expiryCut, stand, book } = useHeldBook(query, activeTicker, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
+  const { expiry, setExpiry, expiries, chosen } = expiryCut;
   /* one session's builds: a row the vendor has not re-counted keeps its place, marked, out of every sum and crown */
   const cover = useMemo(() => oiCoverOf(book), [book]);
   const onCount = useCallback((r: BookContract) => !oiLags(r, cover), [cover]);

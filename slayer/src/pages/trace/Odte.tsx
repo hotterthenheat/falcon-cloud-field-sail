@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTicker } from '../../context/MarketDataContext';
-import { LiveHold, useHold } from '../../components/trace/LiveHold';
+import { LiveHold, SessionMark, useHold } from '../../components/trace/LiveHold';
 import { isNetSegment, VENDOR_TOTAL_NOTE, type MoneynessKey, type NetFlowSegment } from '../../data/flowBook';
 import { tapeSessionIso, usd as fmtUsd, usePaneFlow } from '../../data/traceLive';
 import { isLiveDay, sameDayWords, shortDay } from '../../components/trace/dayWords';
@@ -14,6 +14,12 @@ import RichRead from '../../components/ui/RichRead';
 import NetFlowPane from '../../components/trace/NetFlowPane';
 import TraceBox, { Fact } from '../../components/trace/TraceBox';
 import { OdteGuide } from '../../components/trace/TraceGuide';
+import FlowSearch, { useSearchedName } from '../../components/trace/FlowSearch';
+import SameDayName from '../../components/trace/SameDayName';
+import { useQParam } from '../../components/trace/addressCut';
+
+/* the searched name, kept across route changes within a visit */
+const nameMemory = { q: '' };
 
 const PANE_OPTIONS: DropdownOption<1 | 2 | 3 | 4>[] = [
   { value: 1, label: 'One pane', hint: 'One chart the width of the desk' },
@@ -102,6 +108,9 @@ const Odte = () => {
   }, [fsIdx]);
 
   const [guideOpen, setGuideOpen] = useState(false);
+  /* a name's same-day contracts: the search opens them under the desk */
+  const [query, setQuery] = useQParam(nameMemory);
+  const searched = useSearchedName(query);
 
   /* the head reads the same series as the "everything" pane; a hold stops every shared read, so the panes freeze too */
   const flow = usePaneFlow({ ticker: null, seg: 'all', mny: 'all', zeroDte: true, enabled: true });
@@ -189,7 +198,9 @@ const Odte = () => {
         controls={
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
+            <SessionMark at={flow.at} fault={flow.fault} paused={hold.paused} ttlMs={45_000} kept={flow.kept} />
             <DropdownSelect label="Panes" value={store.count} options={PANE_OPTIONS} onChange={n => setStore(s => ({ ...s, count: n }))} title="How many charts on the desk" testId="odte-panes" />
+            <FlowSearch value={query} onChange={setQuery} rows={[]} countNoun="contracts" span />
           </>
         }
         sentence={null}
@@ -204,6 +215,7 @@ const Odte = () => {
         </div>
       </TraceBox>
 
+      {searched && <SameDayName name={searched} iso={tapeSessionIso()} query={query} />}
       {fsIdx !== null && <div className="fixed inset-0 z-[80] bg-canvas p-3">{pane(fsIdx, true)}</div>}
     </>
   );

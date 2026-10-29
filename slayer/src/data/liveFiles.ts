@@ -373,7 +373,7 @@ async function pullInstitutions(get: Get = liveGet, kept: KeptRead | null = null
     };
     if (kept) {
       await inBatches(list.slice(0, INST_FIRST), 10, readHouse);
-      if (rows.length && keptMay('inst', kept) && snap.instStatus === 'loading') emit({ ...houseFacts(list), instStatus: 'live', institutions: rows.sort((a, b) => b.valueB - a.valueB), instProgress: null, instHeld: true, ...keptMark('inst', kept) });
+      if (rows.length && keptMay('inst', kept) && snap.institutions.length === 0) emit({ ...houseFacts(list), instStatus: 'live', institutions: rows.sort((a, b) => b.valueB - a.valueB), instProgress: null, instHeld: true, ...keptMark('inst', kept) });
       return;
     }
     const publish = (held: boolean) => {
@@ -870,8 +870,9 @@ async function pullStocks(get: Get = liveGet, kept: KeptRead | null = null) {
           bearish: numOr(row.bearish_premium),
           sma50: numOr(row.sma_50),
           row: row as Record<string, unknown>,
+          closes: closesOf.get(ticker) ?? null,
         });
-      picks.push({ ...pick, extPrice: read?.ext ?? null, extPct: read?.extPct ?? null });
+      picks.push({ ...pick, extPrice: read?.ext ?? null, extPct: read?.extPct ?? null, sessionDate: read?.date });
     }
     picks.sort((a, b) => b.composite - a.composite);
     if (kept && (!picks.length || !keptMay('stocks', kept))) return;
@@ -1173,19 +1174,10 @@ const batchSettled = new Map<string, number>();
 const batchAt = new Map<string, number>();
 const batchMissing = new Set<string>();
 const batchRunning = new Map<string, Promise<void>>();
-let batchRev = 0;
-const batchListeners = new Set<() => void>();
-const bumpBatch = () => {
-  batchRev += 1;
-  batchListeners.forEach(fn => fn());
-};
-const subscribeBatch = (fn: () => void) => {
-  batchListeners.add(fn);
-  return () => {
-    batchListeners.delete(fn);
-  };
-};
-const batchRevOf = () => batchRev;
+const batchStore = createStore(0);
+const bumpBatch = () => batchStore.set(n => n + 1);
+const subscribeBatch = (fn: () => void) => batchStore.subscribe(fn);
+const batchRevOf = () => batchStore.get();
 const sessionLive = (): boolean => {
   const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
   const wd = p.find(x => x.type === 'weekday')?.value ?? '';
@@ -1244,6 +1236,8 @@ export function useScreenerQuotes(tickers: readonly string[]): { settled: boolea
       const wait = Math.max(0, last + every - Date.now());
       id = window.setTimeout(() => {
         if (dead) return;
+        /* no read while the tab is hidden: look again in a moment */
+        if (document.hidden) return void (id = window.setTimeout(tick, 5_000));
         void readBatch(key).finally(tick);
       }, wait);
     };

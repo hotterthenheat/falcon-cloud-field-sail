@@ -305,7 +305,11 @@ const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'vega 
 /* The greeks are a MULTI pick now (Noah, 2026-09-10: "you can either choose 1
    or 2 or 3 or 4 or all") — the options and the pick rules live in
    exposureView.ts, shared with the Map's head. */
-const GREEK_GROUPS = [{ title: 'What the cells measure', options: GREEK_PICK_OPTIONS }];
+const HIGHER_VALUES = new Set(['color', 'vomma', 'speed', 'veta', 'zomma']);
+const GREEK_GROUPS = [
+  { title: 'What the cells measure', options: GREEK_PICK_OPTIONS.filter(o => !HIGHER_VALUES.has(o.value)) },
+  { title: 'Advanced · the higher greeks', options: GREEK_PICK_OPTIONS.filter(o => HIGHER_VALUES.has(o.value)) },
+];
 /* the five alone — a column beside another name shows one greek at a time */
 const SINGLE_GREEK_OPTIONS: DropdownOption<string>[] = GREEK_PICK_OPTIONS.filter(o => o.value !== 'all').map(o => ({ value: o.value, label: o.label, hint: o.hint }));
 /* THE COLOURS SWITCH is components/gex/ColoursSwitch.tsx */

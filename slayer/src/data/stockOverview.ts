@@ -431,15 +431,15 @@ export function numberFactors(row: ScreenRow): Factor[] {
     const split = rates.some(r => r > 0) && rates.some(r => r < 0);
     out.push({
       key: 'growth',
-      label: 'Earnings growth a year',
-      value: `${split ? 'mixed' : `${signedPct(rate * 100, 0)} a year`} · ${spanWords}`,
+      label: 'Earnings growth',
+      value: split ? 'mixed' : `${signedPct(rate * 100, 0)} a year`,
       lean: clamp(rate / GROWTH_FULL),
       /* one span alone is half the evidence */
       weight: rates.length >= 2 ? 0.7 : 0.35,
-      note: split ? 'the spans disagree — no lean' : rate >= 0.03 ? 'earnings are growing on every span' : rate <= -0.03 ? 'earnings are shrinking on every span' : 'earnings are about flat',
+      note: split ? `the spans disagree (${spanWords}) — no lean` : `the slowest of ${spanWords}`,
     });
   } else if (spans.length) {
-    out.push({ key: 'growth', label: 'Earnings growth a year', value: spanWords, lean: 0, weight: 0, context: true, note: 'earnings ran through a loss — no yearly rate to read' });
+    out.push({ key: 'growth', label: 'Earnings growth', value: 'through a loss', lean: 0, weight: 0, context: true, note: `${spanWords} — no yearly rate to read` });
   }
   const sh = rowNum(row, 'shares_outstanding_growth_4q');
   if (sh != null) out.push({ key: 'shares', label: 'Share count, one year', value: signedPct(sh * 100), lean: clamp(-sh / 0.05), weight: 0.3, note: sh <= -0.01 ? 'buying back shares' : sh >= 0.02 ? 'issuing shares — each one owns less' : 'about flat' });
@@ -449,10 +449,10 @@ export function numberFactors(row: ScreenRow): Factor[] {
 }
 
 /** The scored factors, from the screener row alone */
-function screenFactors(row: ScreenRow): ScreenPillars {
+function screenFactors(row: ScreenRow, closes?: readonly { date: string; close: number }[] | null): ScreenPillars {
   /* after the bell the screener's close is the post-market print, so the last regular close is used when read */
   const tk = typeof row?.ticker === 'string' ? (row.ticker as string) : '';
-  const regular = row ? screenerRead(row, tk ? peekRegularCloses(tk) : null)?.regular : undefined;
+  const regular = row ? screenerRead(row, closes ?? (tk ? peekRegularCloses(tk) : null))?.regular : undefined;
   const last = regular != null && regular > 0 ? regular : rowNum(row, 'close');
   const ema20 = rowNum(row, 'ema_20');
   const rsi14 = rowNum(row, 'rsi_14');
@@ -494,8 +494,9 @@ interface ScreenRead {
   lean: Lean;
   thesis: string;
 }
-export function readOfScreen(row: ScreenRow): ScreenRead {
-  const f = screenFactors(row);
+/** The read off one screener row; `closes` are the name's regular closes when the caller holds them (else the cache's) */
+export function readOfScreen(row: ScreenRow, closes?: readonly { date: string; close: number }[] | null): ScreenRead {
+  const f = screenFactors(row, closes);
   const pillars = (['trend', 'numbers', 'money'] as const).map(key => ({ key, score: scoreOf(f[key]), factors: f[key], inRead: scoredWeight(f[key]) > 0 }));
   const scored = pillars.filter(p => p.inRead);
   const w = scored.reduce((a, p) => a + PILLAR_WEIGHTS[p.key], 0);
@@ -1040,7 +1041,7 @@ const thesisOf = (pillars: readonly { key: PillarKey; score: number }[], screen:
     /* the trend's factors span weeks (20-day average, RSI, ADX, the month), so the words say so */
     trend: { name: 'the trend', good: 'the short-term trend (weeks, not the year) is up', bad: 'the short-term trend (weeks, not the year) has turned down' },
     numbers: { name: 'the numbers', good: 'the numbers are clean', bad: 'the numbers are slipping' },
-    money: { name: 'the money', good: 'the money is buying', bad: 'the money is selling' },
+    money: { name: 'the options flow', good: 'the options flow leans bullish', bad: 'the options flow leans bearish' },
     news: { name: 'the news', good: 'the news helps', bad: 'the news hurts' },
   };
   const ranked = [...pillars].sort((a, b) => b.score - a.score).map(p => ({ score: p.score, ...words[p.key] }));

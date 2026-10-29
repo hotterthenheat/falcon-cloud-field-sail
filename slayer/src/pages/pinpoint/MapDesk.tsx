@@ -111,6 +111,8 @@ const MapJumps = () => {
   );
 };
 
+const GREEK_PICK_KEY = 'pinpoint.mapGreeks';
+
 const MapDesk = () => {
   const { activeTicker, changeTicker } = useTicker();
   useListedRev();
@@ -151,7 +153,24 @@ const MapDesk = () => {
   /* One lens per page: the calendar's greek is the page's; the Map opens on all five (the pick is not stored). */
   /* Spot GEX, DEX, vanna and charm are on the book immediately. VEX, color, vomma, speed, veta and zomma
      are in the same greek control and draw once each expiry's contract vol is in — never as a separate card, never as $0. */
-  const [greekPick, setGreekPick] = useState<string[]>(['gex', 'dex', 'vex', 'vanna', 'charm', 'color', 'vomma', 'speed', 'veta', 'zomma']);
+  /* GEX, DEX and charm until the reader picks others (the pick is remembered on this machine) */
+  const [greekPick, setGreekPickState] = useState<string[]>(() => {
+    try {
+      const kept = JSON.parse(localStorage.getItem(GREEK_PICK_KEY) ?? 'null') as unknown;
+      if (Array.isArray(kept) && kept.length && kept.every(v => typeof v === 'string')) return kept as string[];
+    } catch {
+      /* no storage: the default pick */
+    }
+    return ['gex', 'dex', 'charm'];
+  });
+  const setGreekPick = (next: string[]) => {
+    setGreekPickState(next);
+    try {
+      localStorage.setItem(GREEK_PICK_KEY, JSON.stringify(next));
+    } catch {
+      /* no storage: the pick lives for this page */
+    }
+  };
 
   /* Replay: one position on the session, seconds from the open, and every box reads the book as it stood then
      (data/replay.ts). Esc, a name change or "Back to live" ends it; boxes pinned to another name stay live. */

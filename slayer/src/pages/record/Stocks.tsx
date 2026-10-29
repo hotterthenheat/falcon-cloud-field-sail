@@ -2,9 +2,7 @@
    year, the three pillars as bars with their words, the grade and the read). States, never orders. */
 
 import { companyName, displayName, searchTickers } from '../../data/tickers';
-import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
@@ -12,7 +10,6 @@ import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid'
 import { FeedFallback } from '../../components/ui/liveRead';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
-import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import { CoSub } from '../../components/record/CoName';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import Sparkline from '../../components/compass/Sparkline';
@@ -30,7 +27,6 @@ import { Controls, HeadFact, PhoneFold, RecordHead, RecordPanel, Summary } from 
 import { lookup, SECTORS, UNIVERSE, type Sector } from '../../data/universe';
 import { searchListed } from '../../data/listedNames';
 import { ROTATION_SECTORS } from './recordSkeletons';
-import { statHelp } from '../../components/record/statHelp';
 import { phonePin } from '../../components/record/pagedGrid';
 import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
 import { signedPct } from './money';
@@ -406,7 +402,8 @@ const Stocks = () => {
   const unscreened = useMemo(() => (liveBoard.status === 'live' && picks.length ? UNIVERSE.filter(u => !picks.some(p => p.ticker === u.ticker)).map(u => u.ticker) : []), [liveBoard.status, picks]);
   /* the day the rows' change belongs to, off the rows' own bulk read */
   const headBatch = useBatchQuote(picks[0]?.ticker);
-  const dayHead = headBatch && !headBatch.live ? shortDayWord(headBatch.date) : 'Today';
+  const headDate = headBatch ? (headBatch.live ? null : headBatch.date) : picks[0]?.sessionDate && picks[0].sessionDate !== nyIsoDate() ? picks[0].sessionDate : null;
+  const dayHead = headDate ? shortDayWord(headDate) : 'Today';
 
   const columnDefs = useMemo<ColDef<StockPick>[]>(() => {
     const cols: ColDef<StockPick>[] = [

@@ -114,7 +114,8 @@ function paintNews() {
   const times = rows.map(r => Date.parse(r.created_at)).filter(Number.isFinite);
   const from = times.length ? Math.min(...times) : null;
   const sameDay = newsCoverage.day === day;
-  newsCoverage = {
+  /* the kept pages say nothing about how far the fresh read reaches */
+  if (!kept) newsCoverage = {
     ...newsCoverage,
     day,
     today: day === nyIsoDaysBack(0),

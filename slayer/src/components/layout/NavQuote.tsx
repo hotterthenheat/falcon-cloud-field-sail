@@ -1,11 +1,21 @@
-/* The rail's live quote of the name on the desk: ThetaData's last trade and the move from the last regular close.
-   Its own component, re-rendering only when that name's reading changes, so nothing else on the rail moves with
-   the tape. With the terminal down it shows the last reading, stamped with when it was taken. */
+/* The rail's live quote of the name on the desk: ThetaData's last trade and the move from the last regular close, or
+   on the Unusual Whales rooms (Trace, Pinpoint, the Dossier: data/theta.ts uwOnlyRoute) the vendor's quote. Its own
+   component, re-rendering only when that name's reading changes, so nothing else on the rail moves with the tape. With
+   the terminal down it shows the last reading, stamped with when it was taken. */
 
 import { memo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { asOfText } from '../ui/states';
 import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
+import { uwOnlyRoute } from '../../data/theta';
+import { extendedLine, useLiveQuote } from '../../data/liveQuote';
 import { changeInk } from '../../data/uwBook';
+
+/** The page reads Unusual Whales only (re-read on every navigation) */
+export function useUwOnlyRoute(): boolean {
+  useLocation();
+  return uwOnlyRoute();
+}
 
 /** A weekly root has no stock print: the rail quotes the index it tracks */
 export const quoteSymbolOf = (t: string): string => (t === 'SPXW' || t === 'XSP' ? 'SPX' : t === 'NDXP' ? 'NDX' : t === 'RUTW' ? 'RUT' : t);
@@ -25,10 +35,29 @@ export interface NavQuoteRead {
   offline: boolean;
   /** When the shown reading was taken, while it is not live */
   asOf: number | null;
+  /** Which feed the price is from */
+  source: 'theta' | 'uw';
 }
 
 export function useNavQuote(ticker: string): NavQuoteRead {
-  const { held, status } = useThetaPrice(quoteSymbolOf(ticker));
+  const uwOnly = useUwOnlyRoute();
+  const sym = quoteSymbolOf(ticker);
+  const { held, status } = useThetaPrice(uwOnly ? null : sym);
+  const uw = useLiveQuote(uwOnly ? sym : null);
+  if (uwOnly) {
+    /* before the open the lead is the last session's change; the extended move rides beside it */
+    const change = uw ? (uw.phase === 'pre' ? uw.lastSessionPct : uw.changePct) : null;
+    return {
+      priceText: uw && uw.regularPrice > 0 ? money(uw.regularPrice) : '—',
+      changeText: change != null && Number.isFinite(change) ? signed(change) : '',
+      change: change != null && Number.isFinite(change) ? change : null,
+      extText: extendedLine(uw),
+      live: !!uw,
+      offline: false,
+      asOf: null,
+      source: 'uw',
+    };
+  }
   const v = held?.value ?? null;
   const move = thetaMove(v);
   return {
@@ -39,6 +68,7 @@ export function useNavQuote(ticker: string): NavQuoteRead {
     live: !!held?.live,
     offline: status === 'down',
     asOf: held && !held.live ? held.value.read : null,
+    source: 'theta',
   };
 }
 
@@ -56,7 +86,7 @@ export const NavPrice = memo(({ ticker, compact = false }: { ticker: string; com
   const q = useNavQuote(ticker);
   return (
     <>
-      <span className={`shrink-0 font-mono text-t11 tnum ${q.live ? 'text-textPrimary' : 'text-textSecondary'}`} data-subject-price title={q.asOf ? `ThetaData · ${asOfText(q.asOf)}` : 'ThetaData · last trade'}>
+      <span className={`shrink-0 font-mono text-t11 tnum ${q.live ? 'text-textPrimary' : 'text-textSecondary'}`} data-subject-price title={q.asOf ? `ThetaData · ${asOfText(q.asOf)}` : q.source === 'uw' ? 'Unusual Whales · last regular price' : 'ThetaData · last trade'}>
         {q.priceText}
       </span>
       {q.change != null && (

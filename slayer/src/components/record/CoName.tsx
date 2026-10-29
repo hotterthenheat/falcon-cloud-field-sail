@@ -46,7 +46,8 @@ export function useSeen<T extends Element>(): [React.RefObject<T>, boolean] {
 export const CoSub = ({ ticker, fallback, className = 'text-t10 text-textMuted truncate', vendor = true }: { ticker: string; fallback?: string | null; className?: string; /** the symbol came off a vendor feed, so the feed knows it */ vendor?: boolean }) => {
   const [ref, seen] = useSeen<HTMLSpanElement>();
   const fallbackName = fallback && fallback.toUpperCase() !== ticker.toUpperCase() ? fallback : '';
-  const n = useCompanyName(ticker, vendor, seen);
+  /* a feed row that names its company is not asked about again (one /info call per name saved) */
+  const n = useCompanyName(ticker, vendor, seen && !fallbackName);
   const asking = n === '';
   const fromBook = !asking && n.toUpperCase() !== ticker.toUpperCase() ? n : '';
   const v = fromBook || (!asking ? fallbackName : '');

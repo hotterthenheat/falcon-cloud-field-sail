@@ -438,7 +438,7 @@ const DarkPool = () => {
               <span className="font-bold tnum">${p.price.toFixed(2)}</span>
             </>
           }
-          aside={p.time}
+          aside={`${p.time} ET`}
           figures={[
             <span key="d" className="font-semibold text-textPrimary">
               {fmtUsd(p.notional)}

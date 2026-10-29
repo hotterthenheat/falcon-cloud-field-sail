@@ -1,4 +1,4 @@
-/* An alert firing, or a paper fill, shown wherever the reader is: one chip at the window's top right for five
+/* An alert firing, a Compass call the reader asked to hear, or a paper fill, shown wherever the reader is: one chip at the window's top right for five
    seconds; a click opens the alerts drawer. It is the only voice for a firing, so a chart of the name does not
    repeat it. */
 
@@ -12,6 +12,7 @@ import { dirInk, usdSigned } from '../review/words';
 import { chime } from '../../core/sound';
 import { ALERT, alpha } from '../gex/paletteInk';
 import { openAlertsDrawer } from '../../data/alertsDrawer';
+import { useCompassPings } from '../../data/compassAlerts';
 
 /** How long a chip stays — long enough to read on a page you were not looking at */
 export const TOAST_MS = 5000;
@@ -33,14 +34,15 @@ const AlertToasts = () => {
     .slice(0, AT_MOST);
   /* the paper account's, in the same column — a verdict stays twice as long as a fill */
   const paperShown = paper.filter(t => now - t.at < (t.kind === 'failed' || t.kind === 'passed' ? TOAST_MS * 2 : TOAST_MS)).slice(0, AT_MOST);
+  /* Compass's calls, on the sleeves and names switched on in Compass — a call stays twice as long, it is a decision */
+  const calls = useCompassPings().filter(p => now - p.at < TOAST_MS * 2).slice(0, AT_MOST);
 
   /* A NEW chip CHIMES, once (Settings › The desk, "Alerts out loud"): the
      keys already heard are kept, so a re-render never rings twice */
   const heard = useRef<Set<string>>(new Set());
   useEffect(() => {
     let fresh = false;
-    for (const x of shown) {
-      const k = `${x.ticker}:${x.r.key}`;
+    for (const k of [...shown.map(x => `${x.ticker}:${x.r.key}`), ...calls.map(c => `compass:${c.id}`)]) {
       if (!heard.current.has(k)) {
         heard.current.add(k);
         fresh = true;
@@ -55,8 +57,8 @@ const AlertToasts = () => {
 
   /* wake when the oldest chip on screen is due to leave */
   useEffect(() => {
-    if (shown.length === 0 && paperShown.length === 0) return;
-    const soonest = Math.min(...shown.map(x => x.r.at + TOAST_MS), ...paperShown.map(t => t.at + (t.kind === 'failed' || t.kind === 'passed' ? TOAST_MS * 2 : TOAST_MS))) - Date.now();
+    if (shown.length === 0 && paperShown.length === 0 && calls.length === 0) return;
+    const soonest = Math.min(...shown.map(x => x.r.at + TOAST_MS), ...paperShown.map(t => t.at + (t.kind === 'failed' || t.kind === 'passed' ? TOAST_MS * 2 : TOAST_MS)), ...calls.map(c => c.at + TOAST_MS * 2)) - Date.now();
     const id = window.setTimeout(() => wake(t => t + 1), Math.max(0, soonest) + 20);
     return () => window.clearTimeout(id);
   });
@@ -80,6 +82,20 @@ const AlertToasts = () => {
           <span className="text-textPrimary">{t.words}</span>
           {t.pnl != null && <span className={`font-semibold ${dirInk(t.pnl)}`}>{usdSigned(t.pnl)}</span>}
           <span className="text-[9px] uppercase tracking-wider text-textMuted">paper</span>
+        </button>
+      ))}
+      {calls.map(c => (
+        <button
+          key={`compass:${c.id}`}
+          onClick={() => navigate(`/compass/${c.id}`)}
+          title="Open the call on Compass"
+          className="shell-toast pointer-events-auto inline-flex items-center gap-2 h-7 pl-2.5 pr-3 rounded-md border border-silver/50 bg-canvas/85 backdrop-blur-md backdrop-saturate-150 shadow-lg shadow-black/40 font-mono text-[11px] select-none"
+          data-compass-toast={c.id}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-silver" aria-hidden />
+          <span className="font-bold text-textPrimary">{c.contract}</span>
+          <span className="text-textSecondary">{c.sleeve}</span>
+          <span className="text-[9px] uppercase tracking-wider text-textMuted">Compass call</span>
         </button>
       ))}
       {shown.map(x => (

@@ -9,7 +9,9 @@ import { useTicker } from '../../context/MarketDataContext';
 import { useWatch } from '../../context/WatchContext';
 import { useTracker } from '../../context/TrackerContext';
 import { useWatchlist } from '../../data/watchlist';
-import { peekBatchQuote, useScreenerQuotes } from '../../data/liveFiles';
+import { peekThetaPrice, thetaMove, useThetaPrices, useThetaStatus } from '../../data/thetaQuote';
+import { asOfText } from '../ui/states';
+import { OfflineLine, useUwOnlyRoute } from './NavQuote';
 import { peekQuote, useDayMoves } from '../../data/liveQuote';
 import { peekEntry, useBookRev } from '../../data/uwBook';
 import {
@@ -17,6 +19,7 @@ import {
   unwatchName, useNameWatch, useWatchlistOpen, watchName, type WatchSection, type WatchedName,
 } from '../../data/nameWatch';
 import CompanyLogo from '../ui/CompanyLogo';
+import { pickLegWalls } from '../../core/walls';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import TickerLookup from '../ui/TickerLookup';
 
@@ -36,43 +39,36 @@ const grow = {
 interface NameRead {
   spot: number | null;
   change: number | null;
+  /** The price is the terminal's this session; false: the last one it gave (stamped `at`) */
+  live: boolean;
+  at: number | null;
   /** The nearest of the call wall and the put wall on the live book, and how far in percent of price. Null until that book is in. */
   near: { word: string; at: number; pct: number } | null;
 }
 
-/** The price and the day's change off the live tape. Never a stored price. A wall only when this name's book is already live. */
-function readName(symbol: string): NameRead {
-  const bulk = peekBatchQuote(symbol);
-  const quote = peekQuote(symbol);
-  const spot = bulk && bulk.price > 0 ? bulk.price : quote && quote.regularPrice > 0 ? quote.regularPrice : null;
-  const change = bulk?.pct ?? quote?.changePct ?? null;
+/** The price and the move from the last regular close off the ThetaData terminal; with the terminal down, the last
+    reading it gave, stamped. A wall only when this name's book is already live (Unusual Whales). */
+function readName(symbol: string, uwOnly: boolean): NameRead {
+  /* the Unusual Whales rooms read the vendor's quote (data/theta.ts uwOnlyRoute) */
+  const q = uwOnly ? peekQuote(symbol) : null;
+  const held = uwOnly ? null : peekThetaPrice(symbol);
+  const spot = uwOnly ? (q && q.regularPrice > 0 ? q.regularPrice : null) : held ? held.value.price : null;
+  const change = uwOnly ? (q ? (q.phase === 'pre' ? q.lastSessionPct : q.changePct) : null) : thetaMove(held?.value)?.pct ?? null;
   const book = peekEntry(symbol);
   let near: NameRead['near'] = null;
   if (spot != null && spot > 0 && book?.status === 'live' && book.all.length) {
-    let callAt = 0;
-    let callG = 0;
-    let putAt = 0;
-    let putG = 0;
-    for (const n of book.all) {
-      if (n.callGex > callG) {
-        callG = n.callGex;
-        callAt = n.strike;
-      }
-      if (n.putGex > putG) {
-        putG = n.putGex;
-        putAt = n.strike;
-      }
-    }
+    /* the walls by the app's one rule (core/walls.ts): the most call-leg and the most put-leg gamma on the book */
+    const walls = pickLegWalls(book.all, x => x.callGex, x => x.putGex);
     const marks = [
-      callG > 0 ? { word: 'call wall', at: callAt } : null,
-      putG > 0 ? { word: 'put wall', at: putAt } : null,
+      walls.callWall != null ? { word: 'call wall', at: walls.callWall } : null,
+      walls.putWall != null ? { word: 'put wall', at: walls.putWall } : null,
     ].filter((m): m is { word: string; at: number } => !!m && m.at > 0);
     if (marks.length) {
       const n = marks.reduce((a, b) => (Math.abs(b.at - spot) < Math.abs(a.at - spot) ? b : a));
       near = { ...n, pct: ((n.at - spot) / spot) * 100 };
     }
   }
-  return { spot, change: Number.isFinite(change) ? change : null, near };
+  return { spot, change: change != null && Number.isFinite(change) ? change : null, near, live: uwOnly ? !!q : !!held?.live, at: held && !held.live ? held.value.read : null };
 }
 
 const IconButton = ({ onClick, label, title, pressed, children, testId }: { onClick: () => void; label: string; title?: string; pressed?: boolean; children: ReactNode; testId?: string }) => (
@@ -145,7 +141,7 @@ const NameRow = ({
             </span>
           </span>
           <span className="ml-auto flex flex-col items-end leading-tight font-mono tnum">
-            <span className="text-t11 text-textPrimary">{spot != null ? usd(spot) : '—'}</span>
+            <span className={`text-t11 ${read.live ? 'text-textPrimary' : 'text-textSecondary'}`} title={read.at ? `ThetaData · ${asOfText(read.at)}` : undefined}>{spot != null ? usd(spot) : '—'}</span>
             {change != null && <span className={`text-t10 ${change >= 0 ? 'text-bull' : 'text-bear'}`}>{pctSigned(change)}</span>}
           </span>
         </button>
@@ -289,19 +285,17 @@ const WatchlistDrawer = () => {
   }, [open]);
 
   const symbols = list.sections.flatMap(s => s.names.map(n => n.symbol));
-  const batch = useScreenerQuotes(open ? symbols : []);
-  const missing = useMemo(
-    () => (open && batch.settled ? symbols.filter(s => batch.missing.has(s)) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [open, batch.settled, batch.rev, symbols.join(',')],
-  );
-  useDayMoves(missing);
+  /* the names' real-time prices while the drawer is open */
+  const uwOnly = useUwOnlyRoute();
+  const priceRev = useThetaPrices(open && !uwOnly ? symbols : []);
+  const uwMoves = useDayMoves(open && uwOnly ? symbols : []);
+  const thetaNow = useThetaStatus();
+  const theta = uwOnly ? 'up' : thetaNow;
   const bookRev = useBookRev();
-  const quoteRev = useMemo(() => missing.map(s => peekQuote(s)?.spot ?? 0).join(','), [missing]);
   const reads = useMemo(
-    () => (open ? new Map(symbols.map(sym => [sym, readName(sym)] as const)) : new Map<string, NameRead>()),
+    () => (open ? new Map(symbols.map(sym => [sym, readName(sym, uwOnly)] as const)) : new Map<string, NameRead>()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [open, batch.rev, bookRev, quoteRev, symbols.join(',')],
+    [open, uwOnly, priceRev, uwMoves, bookRev, symbols.join(',')],
   );
 
   /* the contract lists, by name — the row links to the ones that hold something */
@@ -414,6 +408,12 @@ const WatchlistDrawer = () => {
               <Plus className="w-3 h-3" /> Add a name
             </button>
           </div>
+          {theta === 'down' && (
+            <div className="shrink-0 px-3.5 py-1.5 border-b border-borderSubtle/60">
+              <OfflineLine asOf={null} />
+              <p className="mt-0.5 text-t10 text-textMuted">Prices are the last the terminal gave, each stamped on hover.</p>
+            </div>
+          )}
           {adding && (
             <div className="shrink-0 px-3.5 py-2 border-b border-borderSubtle/60 flex flex-col gap-2" data-watchlist-adding>
               {list.sections.length > 1 && <DropdownSelect label="Into" value={into || list.sections[0].id} options={sectionOptions} onChange={setInto} />}
@@ -470,7 +470,7 @@ const WatchlistDrawer = () => {
                             section={s}
                             sections={list.sections}
                             on={n.symbol === activeTicker}
-                            read={reads.get(n.symbol) ?? { spot: null, change: null, near: null }}
+                            read={reads.get(n.symbol) ?? { spot: null, change: null, near: null, live: false, at: null }}
                             onPick={pick}
                             onTake={() => take(n.symbol)}
                             links={linksFor(n.symbol)}

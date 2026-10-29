@@ -68,7 +68,7 @@ import { buildExposureProfile } from '../../data/exposure';
 import type { ExposureProfileData } from '../../types/gex';
 import { useScreenerQuotes, peekBatchQuote } from '../../data/liveFiles';
 import { useTopNet } from '../../data/traceLive';
-import { useIsBelowXl, useIsPortraitDesk } from '../../components/ui/useMediaQuery';
+import { useIsBelowXl, useIsPhone, useIsPortraitDesk } from '../../components/ui/useMediaQuery';
 import { DESK_TOP_DEFAULT, clampDeskTop, deskRows, readDeskTop, saveDeskTop } from './deskSplit';
 import { readDeskPrefs } from '../../data/deskPrefs';
 import StrikeChart, {
@@ -1090,12 +1090,13 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
           {/* Its floor is its own row: this wrapper was `min-w-0`, so when the identity and the tabs left it less
               than a row's worth, it shrank to one icon's width and the toolbar's own wrap stacked its six controls
               into a COLUMN, with the identity centred beside it. */}
-          <div className="flex-1 min-w-fit flex items-center gap-1.5">
+          <div className={isPhone ? 'basis-full flex flex-wrap items-center gap-1.5' : 'flex-1 min-w-fit flex items-center gap-1.5'}>
             <SessionBook />
             <ChartToolbar
               minimal
               candles
-              spread
+              /* on a phone the controls sit packed on one row under the name; spread across a narrow strip they stacked into a column over the tape */
+              spread={!isPhone}
               alertTicker={ticker}
               alertSpot={levels.spot}
               compact={full !== 'chart'}
@@ -1508,6 +1509,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   );
 
   const belowLg = useIsBelowXl();
+  const isPhone = useIsPhone();
   const portraitDesk = useIsPortraitDesk();
   const [top, setTop] = useState<number>(readDeskTop);
   const frameRef = useRef<HTMLDivElement | null>(null);

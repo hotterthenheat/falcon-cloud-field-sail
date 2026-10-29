@@ -22,7 +22,7 @@ import BookDrill from '../../components/trace/BookDrill';
 import ContractCell from '../../components/trace/ContractCell';
 import LeanCell from '../../components/trace/LeanCell';
 import { PointerFollowCard } from '../../components/ui/PointerCard';
-import { LiveHold, useHold } from '../../components/trace/LiveHold';
+import { LiveHold, SessionMark, useHold } from '../../components/trace/LiveHold';
 import NetFlowPane, { CLOCK_OPTIONS, MONEY_OPTIONS } from '../../components/trace/NetFlowPane';
 import ReadDoor from '../../components/trace/ReadDoor';
 import TermLine from '../../components/trace/TermLine';
@@ -351,17 +351,20 @@ const Compare = () => {
   const hold = useHold(liveBook, activeTicker, liveBook.length > 0 || !!bookPack.fault);
   const book = hold.value;
 
-  /* only names on the session's book can be compared, busiest first */
+  /* the names on the session's book, busiest first: the default picks */
   const names = useMemo(() => {
     const vol = new Map<string, number>();
     for (const r of book) vol.set(r.ticker, (vol.get(r.ticker) ?? 0) + r.volume);
     return [...vol.entries()].sort((x, y) => y[1] - x[1]).map(e => e[0]);
   }, [book]);
   const onBook = (t: string | null | undefined): t is string => !!t && names.includes(t);
-  const aTicker = onBook(aPick) ? aPick : onBook(activeTicker) ? activeTicker : names[0] ?? 'SPY';
+  /* a picked name is compared whether or not it is on the market's book (each name reads its own book); unpicked, the
+     terminal's name when it trades, else the busiest */
+  const picked = (t: string | null | undefined): t is string => !!t && /^[A-Z][A-Z0-9.]{0,9}$/.test(t);
+  const aTicker = picked(aPick) ? aPick : onBook(activeTicker) ? activeTicker : names[0] ?? 'SPY';
   /* never the same name twice: the second falls to the first's twin, else the next busiest */
   const twin = TWINS[aTicker];
-  const bTicker = onBook(bPick) && bPick !== aTicker ? bPick : onBook(twin) && twin !== aTicker ? twin : names.find(t => t !== aTicker) ?? (twin ?? (aTicker === 'QQQ' ? 'SPY' : 'QQQ'));
+  const bTicker = picked(bPick) && bPick !== aTicker ? bPick : onBook(twin) && twin !== aTicker ? twin : names.find(t => t !== aTicker) ?? (twin ?? (aTicker === 'QQQ' ? 'SPY' : 'QQQ'));
 
   /* each name's own last prints and structures, cut to the stretch both cover: a longer reach is not a busier tape */
   const tapeA = useNameTape(aTicker, TAPE_N).rows;
@@ -882,6 +885,7 @@ const Compare = () => {
       controls={
         <>
           <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
+          <SessionMark at={bookPack.at} fault={bookPack.fault} paused={hold.paused} kept={bookPack.kept} />
           {/* on a phone the pair takes the whole row and a wide chip wraps inside itself; the extended-hours move hides */}
           <span className="flex items-center gap-1.5 max-sm:col-span-2 max-sm:flex-wrap max-sm:gap-y-2 [&_[data-scope]]:shrink-0 max-sm:[&_[data-scope]]:shrink max-sm:[&_[data-scope]]:max-w-[calc(100%-1rem)] max-sm:[&_[data-scope]]:h-auto max-sm:[&_[data-scope]]:min-h-6 max-sm:[&_[data-scope-pick]]:flex-wrap max-sm:[&_[data-scope-pick]]:py-1 max-sm:[&_[data-scope-pick]]:gap-y-1 max-sm:[&_[data-scope-ext]]:hidden" data-compare-names>
             <span className="inline-flex items-center gap-1.5 min-w-0 max-sm:flex-1" data-compare-pair="a">
@@ -1015,9 +1019,6 @@ const Compare = () => {
             <NameLists s={a} side="a" openKey={openKey} onOpen={setOpenKey} mny={mny} todayIso={todayIso} />
             <NameLists s={b} side="b" openKey={openKey} onOpen={setOpenKey} mny={mny} todayIso={todayIso} />
           </div>
-          <p className="px-5 flex items-center border-t border-borderSubtle text-t11 text-textMuted" style={{ height: 40 }} data-compare-foot>
-            Only names on the session's book ({shortDay(todayIso)}) can be compared; a name off it falls back to the frame's, or the busiest.
-          </p>
         </>
       )}
       <BookDrill list={listed} openKey={openKey} onOpen={setOpenKey} />

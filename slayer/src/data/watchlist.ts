@@ -7,6 +7,8 @@ import { useSyncExternalStore } from 'react';
 import { isoDate, sessionsBetween, today } from '../core/calendar';
 import { now } from '../core/clock';
 import { ensureThetaCloseOn, ensureThetaMark, ensureThetaPrice, peekThetaCloseOn, peekThetaMark, peekThetaPrice, subscribeTheta } from './thetaQuote';
+import { uwOnlyRoute } from './theta';
+import { ensureMarks, liveSpotOf, peekMark, subscribeMarks } from './weigherChain';
 import type { OptionRight } from '../types/compass';
 import type { WatchRequest, WatchedContract } from '../types/watchlist';
 
@@ -62,8 +64,10 @@ const commit = (next: WatchedContract[]) => {
 
 /* ---- pricing --------------------------------------------------------------------- */
 
-/** The underlying's real-time price (or the last one the terminal gave), or NaN with none */
+/** The underlying's real-time price (or the last one the terminal gave), or NaN with none. On the Unusual Whales rooms
+    (data/theta.ts uwOnlyRoute) the vendor's price. */
 function spotOf(ticker: string): number {
+  if (uwOnlyRoute()) return liveSpotOf(ticker) ?? NaN;
   ensureThetaPrice(ticker);
   return peekThetaPrice(ticker)?.value.price ?? NaN;
 }
@@ -71,6 +75,11 @@ function spotOf(ticker: string): number {
 type MarkRead = { mark: number; live: boolean; at: number | null };
 /** The contract's NBBO mid: this session's while the terminal answers, else the last one kept (with its instant) */
 function readMark(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right' | 'expiry'>): MarkRead {
+  if (uwOnlyRoute()) {
+    void ensureMarks(w.ticker, w.expiry);
+    const u = peekMark(w.ticker, w.expiry, w.strike, w.right);
+    return u && u.mark > 0 ? { mark: Number(u.mark.toFixed(2)), live: true, at: null } : { mark: NaN, live: false, at: null };
+  }
   ensureThetaMark(w.ticker, w.expiry, w.strike, w.right);
   const m = peekThetaMark(w.ticker, w.expiry, w.strike, w.right);
   if (!m || !(m.value.mark > 0)) return { mark: NaN, live: false, at: null };
@@ -227,7 +236,8 @@ export function tickWatchlist(): void {
   const next = list.map(w => {
     if (w.status !== 'open') return w;
     if (w.expiry < todayKey) {
-      /* settled at the expiry day's regular close, not at today's price */
+      /* settled at the expiry day's regular close (ThetaData), not at today's price; the Unusual Whales rooms leave it */
+      if (uwOnlyRoute()) return w;
       ensureThetaCloseOn(w.ticker, w.expiry);
       const spot = peekThetaCloseOn(w.ticker, w.expiry) ?? NaN;
       if (!(spot > 0)) return w;
@@ -252,11 +262,13 @@ export function tickWatchlist(): void {
 }
 
 /* a landed quote re-renders every list that shows the rows */
-subscribeTheta(() => {
+const relist = () => {
   if (!list.length) return;
   list = list.slice();
   emit();
-});
+};
+subscribeTheta(relist);
+subscribeMarks(relist);
 
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => save(list));

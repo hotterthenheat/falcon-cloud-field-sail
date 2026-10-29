@@ -12,7 +12,7 @@ import { type LevelsScope } from '../levelsScope';
 import { sameName } from '../spotGexBook';
 import { expiryOpen } from '../../core/tradingYear';
 import { emptyNode, mergeChains } from './scale';
-import { LADDER_DTE, cache, chartAll, chartSpan, closestDate, datesComplete, gammaPriced, peekEntry, peekGammaPriced, settledLive, type Entry } from './store';
+import { LADDER_DTE, chartAll, chartSpan, closestDate, datesComplete, gammaPriced, peekEntry, peekGammaPriced, settledLive, settledRows, type Entry } from './store';
 import { blankTapeDay } from './tape';
 
 
@@ -20,13 +20,13 @@ import { blankTapeDay } from './tape';
     1% — what the vendor's whole-book figures (spot-exposures/strike, the minute series) still count after the close.
     0 when nothing settled is listed; null while a settled date's live rows are not in yet. */
 export function peekSettledNet(ticker: string): number | null {
-  const e = cache.get(ticker.toUpperCase());
+  const e = peekEntry(ticker);
   if (!e) return null;
   const floor = isoDate(bookToday());
   const settled = (e.expiries ?? []).map(x => x.date).filter(d => d < floor);
   let sum = 0;
   for (const d of settled) {
-    const rows = settledLive.get(`${e.ticker}|${d}`);
+    const rows = settledRows(e, d);
     if (!rows) return null;
     for (const v of rows.values()) sum += v.c + v.p;
   }
@@ -194,7 +194,7 @@ function planFor(ticker: string, spot: number, chain: StrikeNode[], flipAt: numb
 /** The date an expiry choice reads on this name's book — the one chainsFor hands the pages — or null when the book is
     not in or the choice is not one date. The expiry cards label themselves with it. */
 export function expiryDateFor(ticker: string, choice: string): string | null {
-  const entry = cache.get(ticker);
+  const entry = peekEntry(ticker);
   if (!entry) return null;
   const dte = LADDER_DTE.find(([label]) => label === choice)?.[1];
   if (dte == null) return null;
@@ -269,12 +269,12 @@ function oneSnapshot(entry: Entry, base: StrikeNode[]): StrikeNode[] {
 /** The book a finished session ran on: the live dates' rows with that session's settled contracts put back — null until
     every date is in. */
 export function peekSessionAll(ticker: string, settledDate: string): StrikeNode[] | null {
-  const e = cache.get(ticker.toUpperCase());
+  const e = peekEntry(ticker);
   if (!e || e.status !== 'live' || !e.gammaLive) return null;
   const floor = isoDate(bookToday());
   if (!datesComplete(e) || e.expiries.filter(x => x.date >= floor).length > 40) return null;
   const live = liveAll(e);
-  const rows = settledLive.get(`${e.ticker}|${settledDate}`);
+  const rows = settledRows(e, settledDate);
   if (!rows?.size) return live;
   const seen = new Set<number>();
   const out = live.map(n => {
@@ -298,7 +298,7 @@ function liveAllOld(entry: Entry): StrikeNode[] {
   const liveOff = new Map<number, { c: number; p: number }>();
   if (entry.gammaLive)
     for (const d of settled) {
-      const rows = settledLive.get(`${entry.ticker}|${d}`);
+      const rows = settledRows(entry, d);
       if (rows) for (const [k, v] of rows) {
         const cur = liveOff.get(k) ?? { c: 0, p: 0 };
         cur.c += v.c;

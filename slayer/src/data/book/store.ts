@@ -9,6 +9,7 @@ import { type Candle, type GexSnapshot, type StrikeNode } from '../../types/mark
 import { uwCall } from '../whales';
 import { ownIvDates, type LiveGamma } from './scale';
 import { OPEN_MIN } from './tape';
+import { keepBook } from './kept';
 
 export const BOARD_MS = 90_000;
 export const FULL_MS = 45_000;
@@ -58,6 +59,12 @@ export interface Entry {
   closes?: GexSnapshot[];
   /** Same-day expiry, and everything after it. Absent until both books exist. */
   history0?: GexSnapshot[];
+  /** Served from this browser's kept copy (book/kept.ts): when that copy was saved. Absent on a fresh read. */
+  keptAt?: number;
+  /** A kept copy's own pricing stamps (ticker|date), settled dates' live rows, and dates that came back empty */
+  keptPriced?: Record<string, { price: number; at: number }>;
+  keptSettled?: Record<string, LiveGamma>;
+  keptEmpty?: string[];
   historyRest?: GexSnapshot[];
   /** When the per-expiry chains last landed. The aggregate refreshes without them. */
   expiriesAt?: number;
@@ -97,7 +104,19 @@ let rev = 0;
 export const emit = () => {
   rev += 1;
   listeners.forEach(fn => fn());
+  keepSoon();
 };
+
+/* Each name's book is kept (book/kept.ts) once it has its front date in, at most once every few seconds */
+const KEEP_QUIET_MS = 5_000;
+let keepTimer: ReturnType<typeof setTimeout> | null = null;
+function keepSoon(): void {
+  if (typeof window === 'undefined' || keepTimer) return;
+  keepTimer = setTimeout(() => {
+    keepTimer = null;
+    for (const e of cache.values()) if (e.status === 'live' && !e.keptAt && (e.frontFacts || e.everFull)) keepBook(e, gammaPriced, settledLive, emptyDates.get(e.ticker));
+  }, KEEP_QUIET_MS);
+}
 /** A settled date's live rows (ticker|date), kept only to come off the whole book's live total */
 export const settledLive = new Map<string, LiveGamma>();
 export const liveGammaCache = new Map<string, { at: number; rows: LiveGamma }>();
@@ -108,8 +127,16 @@ export const LIVE_GAMMA_MS = 60_000;
    shut market's flip stands still until the vendor prints a new minute. */
 export const gammaPriced = new Map<string, { price: number; at: number }>();
 /** The price and the instant the vendor priced a name's live gamma rows (one date, or the whole book) — null until in */
-export const peekGammaPriced = (ticker: string, date: string | null): { price: number; at: number } | null =>
-  gammaPriced.get(`${ticker.toUpperCase()}|${date ?? 'ALL'}`) ?? null;
+export function peekGammaPriced(ticker: string, date: string | null): { price: number; at: number } | null {
+  const key = `${ticker.toUpperCase()}|${date ?? 'ALL'}`;
+  const e = peekEntry(ticker);
+  return e?.keptAt ? (e.keptPriced?.[key] ?? null) : (gammaPriced.get(key) ?? null);
+}
+/** A settled date's live rows for the book being read — a kept copy's own, else the ones read this session */
+export function settledRows(e: Entry, date: string): LiveGamma | undefined {
+  const key = `${e.ticker}|${date}`;
+  return e.keptAt ? e.keptSettled?.[key] : settledLive.get(key);
+}
 
 /** Last two regular sessions, for the chart only. SPX keeps three so the prior closes can carry their own books. The book itself stays on today's cash bars. */
 export const chartSpan = new Map<string, Candle[]>();
@@ -143,8 +170,19 @@ export const LADDER_DTE: [string, number][] = [
   ['7D', 7],
 ];
 
+/** Each name's kept copy (book/kept.ts), served until its fresh read has its front date in */
+export const keptBooks = new Map<string, Entry>();
+/** A name's book as readers see it: the fresh read once its front date is in, else the kept copy while there is one */
 export function peekEntry(ticker: string): Entry | undefined {
-  return cache.get(ticker.toUpperCase());
+  const t = ticker.toUpperCase();
+  const fresh = cache.get(t);
+  const kept = keptBooks.get(t);
+  if (!kept) return fresh;
+  if (fresh?.status === 'live' && (fresh.frontFacts || fresh.everFull)) {
+    keptBooks.delete(t);
+    return fresh;
+  }
+  return kept;
 }
 
 export function bookStatus(ticker: string): Entry['status'] | 'idle' {
@@ -193,9 +231,9 @@ export async function hotGet<T>(path: string, hot: boolean): Promise<T> {
 /** The session on record's own date has been asked for — until then a page that needs that book says "…". */
 export const recordAsked = new Set<string>();
 export function peekRecordAsked(ticker: string, date: string): boolean {
-  const e = cache.get(ticker.toUpperCase());
+  const e = peekEntry(ticker);
   if (!e) return false;
-  return recordAsked.has(`${e.ticker}|${date}`) || !!e.byDate[date]?.length || !!emptyDates.get(e.ticker)?.has(date) || (e.status === 'live' && !!e.expiries.length && !e.expiries.some(x => x.date === date));
+  return recordAsked.has(`${e.ticker}|${date}`) || !!e.byDate[date]?.length || !!(e.keptAt ? e.keptEmpty?.includes(date) : emptyDates.get(e.ticker)?.has(date)) || (e.status === 'live' && !!e.expiries.length && !e.expiries.some(x => x.date === date));
 }
 
 /** The own-vol dates (ownIvDates) whose contracts are not read yet */
@@ -227,7 +265,7 @@ export function datesComplete(entry: Entry): boolean {
      lists it: its chain is what liveAll takes off the whole book's total, so without it a Board name's "All expiries"
      net carried the settled contracts (QQQ −$10.6B on the Board against −$9.3B on the Map after the bell) */
   const live = entry.expiries.slice(0, 40);
-  const empty = emptyDates.get(entry.ticker);
+  const empty = entry.keptAt ? new Set(entry.keptEmpty) : emptyDates.get(entry.ticker);
   return live.some(e => e.date >= today) && live.every(e => entry.byDate[e.date]?.length || empty?.has(e.date));
 }
 /** Listed dates whose strikes came back empty — asked once, not waited on forever */
