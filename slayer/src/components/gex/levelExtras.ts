@@ -20,12 +20,13 @@ const asked = new Map<string, number>();
 const listeners = new Set<() => void>();
 const PAIN_MS = 10 * 60_000;
 
-function ensurePain(ticker: string): void {
+/** Read a name's max pain (every expiry), at most once every ten minutes */
+export function ensureMaxPain(ticker: string): Promise<void> {
   const t = ticker.toUpperCase();
   const last = asked.get(t) ?? 0;
-  if (Date.now() - last < PAIN_MS) return;
+  if (Date.now() - last < PAIN_MS) return Promise.resolve();
   asked.set(t, Date.now());
-  void uwCall(`/stock/${encodeURIComponent(t)}/max-pain`).then(res => {
+  return uwCall(`/stock/${encodeURIComponent(t)}/max-pain`).then(res => {
     if (res.error || !Array.isArray(res.data)) return;
     const byExpiry = new Map<string, number>();
     for (const r of res.data as Record<string, unknown>[]) {
@@ -48,7 +49,7 @@ export function maxPainFor(ticker: string, expiry: string | null | undefined): n
 /** The hook: max pain for an expiry, read once every ten minutes */
 export function useMaxPain(ticker: string, expiry: string | null | undefined, on = true): number | null {
   useEffect(() => {
-    if (on && ticker) ensurePain(ticker);
+    if (on && ticker) void ensureMaxPain(ticker);
   }, [ticker, on]);
   return useSyncExternalStore(
     fn => {

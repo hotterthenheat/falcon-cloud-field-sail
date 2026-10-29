@@ -7,7 +7,7 @@ export { barPriced, tapeQuote } from './book/tape';
 export { bookRevision, bookStatus, peekEntry, peekGammaPriced, peekRecordAsked, subscribeBook, useBookRev } from './book/store';
 export { monDayOf, peekDaySigma, peekIv, peekMoveToClose, peekScopeMove } from './book/move';
 export { type DayMove, changeInk, dayMoveWords, peekChange, peekDayMove, peekExtLast, peekPriceAt, peekSpot, refreshBoardPrices } from './book/day';
-export { bookCandles, bookDatesIn, bookHistory, bookOfLevels, chainForDate, dayBars, deskBars, deskTape, expiryDateFor, expiryLabel, historyForDate, peekBellShare, peekSessionAll, peekSettledNet } from './book/levels';
+export { bookCandles, bookDatesIn, bookHistory, bookOfLevels, chainForDate, dayBars, deskBars, deskTape, expiryDateFor, expiryLabel, peekBellShare, peekSessionAll, peekSettledNet } from './book/levels';
 export { liveBars, snapshotFor, snapshotOf, usePinpointFeed, useResolvedSession } from './book/feed';
 export { bookFixed, ensureBook, ensureScopeDates, fixedAsOfWords, scopeDatesPending, wantDateFacts } from './book/load';
 export { bookMinuteKind, ensureBookMinutes, useBookMinutes } from './book/minutes';

@@ -5,6 +5,9 @@
     bar folding (one-minute bars into 5 and 30 minutes and into the day) is checked on SPY's real one-minute bars.
   - terrain-theta-2026-10-29 (ThetaData, recorded on a machine whose terminal answers): the same folding on ThetaData's
     own bars, read through data/thetaTape.ts. Skipped, and said so, until that set exists.
+  - terrain-2026-10-29-open (Unusual Whales, recorded in the session): two answers of SPY's Oct 29 rows a poll apart and
+    the vendor's max pain — the exposure field's open-interest and today's-flow cells across a bar, read by hand off them.
+  The exposure field's cells, the cut's net, the forward cone and the levels' words at the edge are checked by hand too.
 
   Replay: npx tsx scripts/golden/terrain-golden.ts
   Record: GOLDEN_RECORD=1 npx tsx scripts/golden/terrain-golden.ts   (the Theta set records only when the terminal answers)
@@ -140,6 +143,120 @@ expectEqual('Oct 28 10:00 half-hour, pinned', [f30.open, f30.high, f30.low, f30.
 const daily = (raw.get('/stock/SPY/ohlc/1d?limit=18') as Record<string, string>[]).find(r => r.date === '2026-10-28' && r.market_time === 'r')!;
 expectEqual('the vendor daily row has the same open and close', [Number(daily.open), Number(daily.close)], [day.open, day.close]);
 console.log(`  (Oct 28 SPY by hand: ${oct28.length} minutes, O ${oct28[0].open} H ${Math.max(...oct28.map(m => m.high))} L ${Math.min(...oct28.map(m => m.low))} C ${oct28[oct28.length - 1].close}; 10:00 30m O ${f30.open} H ${f30.high} L ${f30.low} C ${f30.close})`);
+
+/* ---- 4. the exposure field, read off the raw spot-exposure rows ---- */
+/* Hand values: summed off spot-exposures/expiry-strike?expirations[]=2026-10-29 (the Oct 28 close rows, time 20:15Z) in
+   Python — open interest = call_gamma_oi + put_gamma_oi, today's flow = call_gamma_ask + call_gamma_bid + put_gamma_ask
+   + put_gamma_bid (the vendor prints the ask legs negative: customers buying leave dealers short), dealer sign. */
+const field = await import('../../src/data/book/exposureLog');
+const FIELD_HAND = {
+  oi: { 770: -17915246.21, 772: 31039557.69, 775: 70661411.04 },
+  flow: { 770: 121728593.38, 772: -227842268.32, 775: 33774879.71 },
+  netOi: 107689622.85,
+  netFlow: 193783436.86,
+};
+const closeAt = Date.parse('2026-10-28T21:00:00Z');
+const dayBar = [Date.parse('2026-10-28T20:00:00Z') / 1000];
+const oiGrid = field.exposureGrid('SPY', GOLD.front, dayBar, 86_400, 'oi', closeAt)!;
+const flowGrid = field.exposureGrid('SPY', GOLD.front, dayBar, 86_400, 'flow', closeAt)!;
+const cellOf = (g: typeof oiGrid, k: number, c = 0) => g.values[c * g.strikes.length + g.strikes.indexOf(k)];
+for (const k of [770, 772, 775] as const) {
+  expectNear(`field, open interest, SPY ${k} Oct 29 = the row's call + put gamma_oi`, cellOf(oiGrid, k), FIELD_HAND.oi[k], 1e-9);
+  expectNear(`field, today's flow, SPY ${k} Oct 29 = the row's ask + bid legs`, cellOf(flowGrid, k), FIELD_HAND.flow[k], 1e-9);
+}
+const cols = field.gridColumns(oiGrid);
+expectNear('a column keeps the house sign: 775 kept = −dealer', cols[0].levels.find(l => l.strike === 775)!.value, -FIELD_HAND.oi[775], 1e-12);
+const netNow = field.exposureNet('SPY', GOLD.front, closeAt)!;
+expectNear("the cut's net, open interest = the house net GEX Pinpoint prints for SPY Today", netNow.oi, house.netGex, 1e-12);
+expectNear('… and the raw rows summed by hand', netNow.oi, FIELD_HAND.netOi, 1e-9);
+expectNear("the cut's net, today's flow, summed by hand", netNow.flow, FIELD_HAND.netFlow, 1e-9);
+
+/* ---- 5. two real polls an answer apart, recorded in the session (terrain-2026-10-29-open) ---- */
+const OPEN_SET = 'terrain-2026-10-29-open';
+const openDir = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'fixtures', 'golden', OPEN_SET);
+if (!(existsSync(openDir) && readdirSync(openDir).some(f => f.endsWith('.json.gz'))) && !RECORD) {
+  console.log(`SKIP  ${OPEN_SET} is not recorded: run GOLDEN_RECORD=1 npx tsx scripts/golden/terrain-golden.ts in the session`);
+} else {
+  installUwFixtures(OPEN_SET);
+  /* the same rows asked twice, a poll apart (the second carries page=0 so each answer has its own recording); asked
+     straight, past the app's own answer cache, which still holds the closing set's copy of the first path */
+  const ask = async (path: string) => ((await (await fetch(`/api/uw${path}`)).json()) as { data: Record<string, string>[] }).data;
+  const rowsA = await ask('/stock/SPY/spot-exposures/expiry-strike?expirations[]=2026-10-29&limit=500');
+  if (RECORD) await new Promise(r => setTimeout(r, 70_000));
+  const rowsB = await ask('/stock/SPY/spot-exposures/expiry-strike?expirations[]=2026-10-29&limit=500&page=0');
+  const answered = (rows: Record<string, string>[]) => Math.max(...rows.map(r => Date.parse(r.time)));
+  const tA = answered(rowsA);
+  const tB = answered(rowsB);
+  field.resetExposureLog('SPY');
+  field.noteExposureRows('SPY', rowsA);
+  field.noteExposureRows('SPY', rowsB);
+  /* one bar from poll A's answer to just past poll B's: open interest is B's reading, flow is B − A */
+  const a = Math.ceil(tA / 1000);
+  const span = Math.ceil((tB - tA) / 1000) + 1;
+  const now = tB + 5_000;
+  const og = field.exposureGrid('SPY', '2026-10-29', [a], span, 'oi', now)!;
+  const fg = field.exposureGrid('SPY', '2026-10-29', [a], span, 'flow', now)!;
+  /* Hand, off the two recorded answers: each answer's latest row time; poll B's call + put gamma_oi; poll B's ask + bid legs
+     less poll A's (770: 563,243,939.95 − 563,298,224.21; 775: 18,353,868.82 − 18,832,841.12) */
+  const OPEN_HAND = {
+    tA: Date.parse('2026-10-29T15:57:22.000Z'),
+    tB: Date.parse('2026-10-29T15:58:32.793Z'),
+    oiB: { 770: -445796038.47, 775: 144895773.02 },
+    flowDelta: { 770: -54284.26, 775: -478972.3 },
+  };
+  /* read off the recorded max-pain answer's 2026-10-29 row: max_pain "770" */
+  const OPEN_HAND_PAIN = 770;
+  expectEqual('the two polls were answered at', [new Date(tA).toISOString(), new Date(tB).toISOString()], [new Date(OPEN_HAND.tA).toISOString(), new Date(OPEN_HAND.tB).toISOString()]);
+  for (const k of [770, 775] as const) {
+    expectNear(`open interest across the bar, SPY ${k}: the last reading (poll B)`, cellOf(og, k), OPEN_HAND.oiB[k], 1e-9);
+    expectNear(`today's flow across the bar, SPY ${k}: poll B − poll A`, cellOf(fg, k), OPEN_HAND.flowDelta[k], 1e-9);
+  }
+  const gap = field.exposureGrid('SPY', '2026-10-29', [Math.ceil((tB + field.JOIN_MS) / 1000)], 60, 'oi', tB + 20 * 60_000)!;
+  expectEqual('a bar no reading reaches is empty', gap.values.every(Number.isNaN), true);
+  const before = field.exposureGrid('SPY', '2026-10-29', [Math.floor(tA / 1000) - 3 * 3600], 60, 'oi', now);
+  expectEqual('nothing before the first reading', before ? before.values.every(Number.isNaN) : true, true);
+  const { ensureMaxPain, maxPainFor } = await import('../../src/components/gex/levelExtras');
+  await ensureMaxPain('SPY');
+  expectEqual("max pain, SPY Oct 29: the vendor's own row", maxPainFor('SPY', '2026-10-29'), OPEN_HAND_PAIN);
+}
+
+/* ---- 6. the cone by hand ---- */
+/* σ_move = S × IV_trade × √(sessions/252), IV_trade the quoted (calendar) vol at the same variance; from the Oct 28 close to
+   the Oct 29 close that is S × IV × √(1/365). Vendor term structure for Oct 29: volatility 0.1619394046561459,
+   implied_move 5.09247441828498; spot 772.31 (the Oct 28 close). */
+const { forwardCone, sigmaMove } = await import('../../src/data/terrainCone');
+const { vendorIvOnTradingClock } = await import('../../src/core/volClock');
+const { sigmaFromStraddle } = await import('../../src/data/expectedMove');
+const CONE_HAND = { sigmaNext: 6.546328040734399, pinpoint: 6.382470182354093, mid: { today: 2.6015889068380207, next: 6.352619861882894, move: 4.18834402202155 } };
+const atClose = Date.parse('2026-10-28T20:00:00Z');
+const fc = forwardCone([{ expiry: '2026-10-29', iv: 0.1619394046561459 }], 772.31, atClose, null)!;
+expectNear('cone: 1σ to the Oct 29 close, S·IV·√(1/365)', fc.sigmaNext, CONE_HAND.sigmaNext, 1e-9);
+expectNear('cone: the same as S × IV_trade × √(1/252)', sigmaMove(772.31, vendorIvOnTradingClock(0.1619394046561459, '2026-10-29', atClose), 390), fc.sigmaNext, 1e-12);
+expectNear('cone: the curve ends at ±1σ and ±2σ', fc.points[fc.points.length - 1].up2 - 772.31, 2 * fc.sigmaNext, 1e-9);
+const pin = sigmaFromStraddle(5.09247441828498);
+expectNear("Pinpoint's 1σ for the same session: straddle × √(π/2)", pin, CONE_HAND.pinpoint, 1e-9);
+expectEqual('the two 1σ agree within 3% (ThetaData-style vol against the vendor straddle)', Math.abs(fc.sigmaNext / pin - 1) < 0.03, true);
+console.log(`  (cone vs Pinpoint, SPY Oct 29: ${fc.sigmaNext.toFixed(4)} against ${pin.toFixed(4)}, ${((fc.sigmaNext / pin - 1) * 100).toFixed(2)}%)`);
+/* mid-session: 13:30 ET, 150 minutes left; today's vol 20%, the next session's 15% (round inputs, hand-priced) */
+const mid = forwardCone([{ expiry: '2026-10-29', iv: 0.2 }, { expiry: '2026-10-30', iv: 0.15 }], 770, Date.parse('2026-10-29T17:30:00Z'), 768.79)!;
+expectEqual('mid-session: 150 minutes to today\'s close, 540 to the next', [mid.todayMin, mid.nextMin], [150, 540]);
+expectNear('mid-session: 1σ to the close = 770·0.20·√(150/525600)', mid.sigmaToday ?? NaN, CONE_HAND.mid.today, 1e-9);
+expectNear('mid-session: 1σ to the next close = 770·0.15·√(1590/525600)', mid.sigmaNext, CONE_HAND.mid.next, 1e-9);
+expectNear("mid-session: today's move = open × IV_trade × √(1/252)", mid.move?.sigma ?? NaN, CONE_HAND.mid.move, 1e-9);
+let widening = true;
+for (let i = 1; i < mid.points.length; i++) if (mid.points[i].up1 < mid.points[i - 1].up1 - 1e-9) widening = false;
+expectEqual('the cone never narrows', widening, true);
+
+/* ---- 7. the levels' words at the edge ---- */
+/* Hand: the largest |call_gamma_oi + put_gamma_oi| on Oct 29 is 758's, 101,287,487.45; 775's is 70,661,411.04, so 69.76% */
+/* spot 772.31: 775 is (775 − 772.31) ÷ 772.31 = +0.348% away, 758 is −1.853% */
+const LEVEL_HAND = { callShare: 70661411.04 / 101287487.45, callWords: 'Call wall 775 · 70% of top · +0.35%', supremeWords: 'Supreme 758 · top node · −1.85%' };
+const { rungLabel } = await import('../../src/components/gex/keyLevelsPrimitive');
+const top = Math.max(...rows.filter(r => r.expiry === GOLD.front).map(r => Math.abs(Number(r.call_gamma_oi) + Number(r.put_gamma_oi))));
+const lv = paneLevels(spot, house, { top });
+expectNear('call wall size: |net 775| ÷ the largest strike on Oct 29', lv.shares?.callWall ?? NaN, LEVEL_HAND.callShare, 1e-9);
+expectEqual('call wall words', rungLabel({ key: 'callWall', price: 775, ink: '#fff', share: lv.shares?.callWall }, spot), LEVEL_HAND.callWords);
+expectEqual('supreme words', rungLabel({ key: 'supreme', price: 758, ink: '#fff', share: lv.shares?.supreme }, spot), LEVEL_HAND.supremeWords);
 
 /* ---- 3. ThetaData's own bars, when that set has been recorded ---- */
 const thetaDir = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'fixtures', 'golden', THETA_SET);

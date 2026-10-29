@@ -72,21 +72,21 @@ export interface ConeData {
 class ExpectedMoveRenderer {
   constructor(private source: ExpectedMovePrimitive) {}
 
+  /* The cone is drawn once into its own bitmap, from its anchor rightward, and blitted at the anchor's x: a pan moves the
+     anchor only, so the frame is one drawImage until the bar spacing, the price scale, the size or the data change. */
+  private cache: { key: string; canvas: HTMLCanvasElement; pad: number; width: number } | null = null;
+
   draw(target: DrawTarget): void {
     const src = this.source;
     const chart = src.chart;
     const series = src.series;
     const data = src.data;
-    if (!chart || !series || !data) {
+    if (!chart || !series || !data || data.cone.forward.length < 2) {
       src.geom = null;
       return;
     }
     const { cone, barMinutes } = data;
     const fw = cone.forward;
-    if (fw.length < 2) {
-      src.geom = null;
-      return;
-    }
 
     target.useBitmapCoordinateSpace(scope => {
       const ctx = scope.context;
@@ -96,142 +96,157 @@ class ExpectedMoveRenderer {
       const h = scope.mediaSize.height * vr;
       const ts = chart.timeScale();
       const barTimes = data.barTimes;
-
-      const logicalToX = (logical: number): number | null => {
-        const lo = Math.floor(logical);
-        const frac = logical - lo;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const x0 = ts.logicalToCoordinate(lo as any);
-        if (x0 === null) return null;
-        if (frac === 0) return x0 * hr;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const x1 = ts.logicalToCoordinate((lo + 1) as any);
-        if (x1 === null) return x0 * hr;
-        return (x0 + (x1 - x0) * frac) * hr;
-      };
-      const priceToY = (price: number): number | null => {
-        const y = series.priceToCoordinate(price);
-        return y === null ? null : y * vr;
-      };
-
+      /* both axes are affine: two probes each place every point */
       const anchor = Math.max(0, Math.min(barTimes.length - 1, data.anchor ?? barTimes.length - 1));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const xa = ts.logicalToCoordinate(anchor as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const xb = ts.logicalToCoordinate((anchor + 1) as any);
+      const base = fw[0].up1;
+      const ya = series.priceToCoordinate(base);
+      const yb = series.priceToCoordinate(base + 1);
+      if (xa === null || xb === null || ya === null || yb === null || xb === xa) {
+        src.geom = null;
+        return;
+      }
+      const px = (xb - xa) * hr;
+      const py = (yb - ya) * vr;
+      const x0 = xa * hr;
+      const y0 = ya * vr;
+      const yOf = (price: number) => y0 + (price - base) * py;
+      /* the points, x from the anchor: no more than a point a pixel and a half, and no further than three panes on */
+      const reachMax = 3 * w;
+      const minStep = Math.max(1, 1.5 * hr);
       const pts: ConeGeom['pts'] = [];
-      for (const p of fw) {
-        const x = logicalToX(anchor + p.minutesAhead / barMinutes);
-        const up1 = priceToY(p.up1);
-        const dn1 = priceToY(p.dn1);
-        const up2 = priceToY(p.up2);
-        const dn2 = priceToY(p.dn2);
-        if (x === null || up1 === null || dn1 === null || up2 === null || dn2 === null) continue;
+      for (let i = 0; i < fw.length; i++) {
+        const p = fw[i];
+        const x = (p.minutesAhead / barMinutes) * px;
         const prev = pts[pts.length - 1];
-        if (prev && x <= prev.x) continue;
-        pts.push({ x, up1, dn1, up2, dn2 });
+        const last = i === fw.length - 1;
+        if (prev && (x <= prev.x || (!last && x - prev.x < minStep))) continue;
+        pts.push({ x, up1: yOf(p.up1), dn1: yOf(p.dn1), up2: yOf(p.up2), dn2: yOf(p.dn2) });
+        if (x > reachMax) break;
       }
       const tip = fw[fw.length - 1];
-      const spot = fw[0].up1;
-      src.geom = pts.length >= 2
-        ? {
-            pts: pts.map(p => ({ x: p.x / hr, up1: p.up1 / vr, dn1: p.dn1 / vr, up2: p.up2 / vr, dn2: p.dn2 / vr })),
-            spot,
-            tipUp1: tip.up1,
-            tipDn1: tip.dn1,
-            tipUp2: tip.up2,
-            tipDn2: tip.dn2,
-            horizon: data.oddsName ?? 'Session',
-            iv: data.iv ?? 0,
-            minutes: tip.minutesAhead,
-            source: data.source ?? '',
-          }
-        : null;
+      src.geom =
+        pts.length >= 2
+          ? {
+              pts: pts.map(p => ({ x: (p.x + x0) / hr, up1: p.up1 / vr, dn1: p.dn1 / vr, up2: p.up2 / vr, dn2: p.dn2 / vr })),
+              spot: base,
+              tipUp1: tip.up1,
+              tipDn1: tip.dn1,
+              tipUp2: tip.up2,
+              tipDn2: tip.dn2,
+              horizon: data.oddsName ?? 'Session',
+              iv: data.iv ?? 0,
+              minutes: tip.minutesAhead,
+              source: data.source ?? '',
+            }
+          : null;
       if (pts.length < 2) return;
-
-      ctx.save();
-      const x0 = pts[0].x;
-      const xN = pts[pts.length - 1].x;
-      /* the fan fades as it reaches forward */
-      const fan = (alpha: number) => {
-        const g = ctx.createLinearGradient(x0, 0, xN, 0);
-        g.addColorStop(0, `rgba(${INK},${alpha})`);
-        g.addColorStop(1, `rgba(${INK},${alpha * 0.35})`);
-        return g;
-      };
-      const fill = (pickHi: (p: ConeGeom['pts'][number]) => number, pickLo: (p: ConeGeom['pts'][number]) => number, alpha: number) => {
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pickHi(pts[0]));
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pickHi(pts[i]));
-        for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i].x, pickLo(pts[i]));
-        ctx.closePath();
-        ctx.fillStyle = fan(alpha);
-        ctx.fill();
-      };
-      const stroke = (pick: (p: ConeGeom['pts'][number]) => number, alpha: number, dashed: boolean, width: number) => {
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pick(pts[0]));
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pick(pts[i]));
-        ctx.strokeStyle = `rgba(${INK},${alpha})`;
-        ctx.lineWidth = Math.max(1, width * vr);
-        ctx.lineJoin = 'round';
-        ctx.setLineDash(dashed ? [4 * hr, 4 * hr] : []);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      };
-      fill(p => p.up2, p => p.dn2, 0.035);
-      fill(p => p.up1, p => p.dn1, 0.06);
-      stroke(p => p.up2, 0.32, true, 1);
-      stroke(p => p.dn2, 0.32, true, 1);
-      stroke(p => p.up1, 0.78, false, 1.25);
-      stroke(p => p.dn1, 0.78, false, 1.25);
-
-      /* the marks: a dot on the curve and its words beside it, pushed apart so no two overlap */
-      const marks = data.marks ?? [];
-      if (marks.length) {
-        const font = Math.round(9.5 * vr);
-        ctx.font = `${font}px ui-monospace, SFMono-Regular, Menlo, monospace`;
-        ctx.textBaseline = 'middle';
-        const boxH = 14 * vr;
-        const placed: { x: number; y: number; ty: number; w: number; m: ConeMark }[] = [];
-        for (const m of marks) {
-          const x = logicalToX(anchor + m.minutesAhead / barMinutes);
-          const y = priceToY(m.price);
-          if (x === null || y === null || y < 0 || y > h || x > w) continue;
-          placed.push({ x, y, ty: y, w: ctx.measureText(m.text).width + 8 * hr, m });
+      /* the cone left of the pane's right edge is all that is ever shown; the bitmap is rebuilt once a pan uncovers more */
+      const pad = Math.round(4 * hr);
+      const extent = Math.min(pts[pts.length - 1].x, reachMax);
+      const key = `${src.rev}|${px.toFixed(4)}|${py.toFixed(4)}|${y0.toFixed(2)}|${Math.round(w)}|${Math.round(h)}|${hr}|${vr}`;
+      let cache = this.cache;
+      if (!cache || cache.key !== key || x0 + cache.width < w - pad) {
+        const cw = Math.max(1, Math.ceil(extent + 2 * pad));
+        const ch = Math.max(1, Math.round(h));
+        const canvas = cache?.canvas ?? document.createElement('canvas');
+        if (canvas.width !== cw || canvas.height !== ch) {
+          canvas.width = cw;
+          canvas.height = ch;
         }
-        placed.sort((a, b) => a.y - b.y);
-        for (let i = 1; i < placed.length; i++) {
-          const prev = placed[i - 1];
-          const cur = placed[i];
-          /* only labels that would overlap side to side need pushing apart */
-          const sideBySide = Math.abs(prev.x - cur.x) < Math.max(prev.w, cur.w);
-          if (sideBySide && cur.ty - prev.ty < boxH + 2 * vr) cur.ty = prev.ty + boxH + 2 * vr;
-        }
-        for (const p of placed) {
-          const a = p.m.strong ? 0.95 : 0.7;
-          ctx.fillStyle = `rgba(${INK},${a})`;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 2.2 * vr, 0, Math.PI * 2);
-          ctx.fill();
-          if (!data.markWords) continue;
-          /* the words sit left of the dot, inside the pane */
-          const right = Math.min(w - 4 * hr, p.x - 6 * hr);
-          const left = Math.max(2 * hr, right - p.w);
-          const ty = Math.max(boxH / 2, Math.min(h - boxH / 2, p.ty));
-          ctx.fillStyle = 'rgba(10,10,10,0.72)';
-          ctx.fillRect(left, ty - boxH / 2, p.w, boxH);
-          ctx.fillStyle = `rgba(${INK},${a})`;
-          ctx.textAlign = 'left';
-          ctx.fillText(p.m.text, left + 4 * hr, ty);
-          if (Math.abs(ty - p.y) > 2 * vr) {
-            ctx.strokeStyle = `rgba(${INK},0.35)`;
-            ctx.lineWidth = Math.max(1, vr * 0.75);
-            ctx.beginPath();
-            ctx.moveTo(right, ty);
-            ctx.lineTo(p.x - 2 * hr, p.y);
-            ctx.stroke();
-          }
-        }
+        const g = canvas.getContext('2d');
+        if (!g) return;
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, cw, ch);
+        g.setTransform(1, 0, 0, 1, pad, 0);
+        this.paint(g, pts, data, hr, vr, (m: ConeMark) => ({ x: (m.minutesAhead / barMinutes) * px, y: yOf(m.price) }), ch);
+        cache = { key, canvas, pad, width: cw - pad };
+        this.cache = cache;
       }
-      ctx.restore();
+      ctx.drawImage(cache.canvas, Math.round(x0 - cache.pad), 0);
     });
+  }
+
+  private paint(ctx: CanvasRenderingContext2D, pts: ConeGeom['pts'], data: ConeData, hr: number, vr: number, at: (m: ConeMark) => { x: number; y: number }, h: number): void {
+    /* the fan: the 2σ ring and the 1σ band, each pixel filled once (the ring is the 2σ shape less the 1σ, even-odd) */
+    const outline = (path: Path2D, pickHi: (p: ConeGeom['pts'][number]) => number, pickLo: (p: ConeGeom['pts'][number]) => number) => {
+      path.moveTo(pts[0].x, pickHi(pts[0]));
+      for (let i = 1; i < pts.length; i++) path.lineTo(pts[i].x, pickHi(pts[i]));
+      for (let i = pts.length - 1; i >= 0; i--) path.lineTo(pts[i].x, pickLo(pts[i]));
+      path.closePath();
+    };
+    const ring = new Path2D();
+    outline(ring, p => p.up2, p => p.dn2);
+    outline(ring, p => p.up1, p => p.dn1);
+    ctx.fillStyle = `rgba(${INK},0.03)`;
+    ctx.fill(ring, 'evenodd');
+    const band = new Path2D();
+    outline(band, p => p.up1, p => p.dn1);
+    ctx.fillStyle = `rgba(${INK},0.065)`;
+    ctx.fill(band);
+    const stroke = (pick: (p: ConeGeom['pts'][number]) => number, alpha: number, dashed: boolean, width: number) => {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pick(pts[0]));
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pick(pts[i]));
+      ctx.strokeStyle = `rgba(${INK},${alpha})`;
+      ctx.lineWidth = Math.max(1, width * vr);
+      ctx.lineJoin = 'round';
+      ctx.setLineDash(dashed ? [4 * hr, 4 * hr] : []);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
+    stroke(p => p.up2, 0.32, true, 1);
+    stroke(p => p.dn2, 0.32, true, 1);
+    stroke(p => p.up1, 0.78, false, 1.25);
+    stroke(p => p.dn1, 0.78, false, 1.25);
+
+    /* the marks: a dot on the curve, and its words beside it where the key levels do not name it */
+    const marks = data.marks ?? [];
+    if (!marks.length) return;
+    ctx.font = `${Math.round(9.5 * vr)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    ctx.textBaseline = 'middle';
+    const boxH = 14 * vr;
+    const placed: { x: number; y: number; ty: number; w: number; m: ConeMark }[] = [];
+    for (const m of marks) {
+      const { x, y } = at(m);
+      if (y < 0 || y > h) continue;
+      placed.push({ x, y, ty: y, w: ctx.measureText(m.text).width + 8 * hr, m });
+    }
+    placed.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < placed.length; i++) {
+      const prev = placed[i - 1];
+      const cur = placed[i];
+      const sideBySide = Math.abs(prev.x - cur.x) < Math.max(prev.w, cur.w);
+      if (sideBySide && cur.ty - prev.ty < boxH + 2 * vr) cur.ty = prev.ty + boxH + 2 * vr;
+    }
+    for (const p of placed) {
+      const a = p.m.strong ? 0.95 : 0.7;
+      ctx.fillStyle = `rgba(${INK},${a})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.2 * vr, 0, Math.PI * 2);
+      ctx.fill();
+      if (!data.markWords) continue;
+      /* the words sit left of the dot */
+      const right = p.x - 6 * hr;
+      const left = Math.max(0, right - p.w);
+      const ty = Math.max(boxH / 2, Math.min(h - boxH / 2, p.ty));
+      ctx.fillStyle = 'rgba(10,10,10,0.72)';
+      ctx.fillRect(left, ty - boxH / 2, p.w, boxH);
+      ctx.fillStyle = `rgba(${INK},${a})`;
+      ctx.textAlign = 'left';
+      ctx.fillText(p.m.text, left + 4 * hr, ty);
+      if (Math.abs(ty - p.y) > 2 * vr) {
+        ctx.strokeStyle = `rgba(${INK},0.35)`;
+        ctx.lineWidth = Math.max(1, vr * 0.75);
+        ctx.beginPath();
+        ctx.moveTo(right, ty);
+        ctx.lineTo(p.x - 2 * hr, p.y);
+        ctx.stroke();
+      }
+    }
   }
 }
 
@@ -282,9 +297,13 @@ export class ExpectedMovePrimitive implements ISeriesPrimitive<Time> {
   /** Kept so older hosts compile. The wedge does not take a thermal ramp. */
   setInks(_next: unknown): void {}
 
+  /** Bumped on every hand-off — the renderer's bitmap keys on it */
+  rev = 0;
+
   setData(next: ConeData | null): void {
     const wasOff = this.data === null;
     this.data = next;
+    this.rev++;
     if (!next) this.geom = null;
     if (!(wasOff && next === null)) this.requestUpdate?.();
   }

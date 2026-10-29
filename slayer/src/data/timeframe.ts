@@ -189,14 +189,6 @@ const peaksMax = (p: Peaks) => {
   return m;
 };
 
-/** True when the store has already been folded to this interval — a cold
-    fold is the one cost worth moving off a mount frame. */
-export function isFolded(base: GexSnapshot[], minutes: number): boolean {
-  if (base.length === 0 || minutes <= 1) return true;
-  const f = snapFolds.get(base)?.get(minutes);
-  return !!f && f.folded > base.length - minutes * 2;
-}
-
 /** The fold for (base, minutes) — fresh when the store's front moved or the fold ran past it */
 function foldFor(base: GexSnapshot[], minutes: number): SnapFold {
   let byMin = snapFolds.get(base);
@@ -211,39 +203,6 @@ function foldFor(base: GexSnapshot[], minutes: number): SnapFold {
     byMin.set(minutes, fold);
   }
   return fold!;
-}
-
-/** Advance a cold fold by at most `maxSnaps` snapshots of closed buckets — a
-    slice of the work, for a chart that would rather not pay for the whole
-    store in one task. True when nothing but the open bucket remains. */
-export function foldSnapshotsSlice(base: GexSnapshot[], minutes: number, maxSnaps: number): boolean {
-  if (base.length === 0 || minutes <= 1) return true;
-  const bucketSec = minutes * 60;
-  const f = foldFor(base, minutes);
-  const stop = Math.min(base.length, f.folded + maxSnaps);
-  let curBucket = -1;
-  let peaks = newPeaks();
-  let start = f.folded;
-  for (let i = f.folded; i < stop; i++) {
-    const snap = base[i];
-    const bucket = Math.floor(snap.time / bucketSec) * bucketSec;
-    if (bucket !== curBucket) {
-      if (curBucket >= 0) {
-        f.closed.push({ time: curBucket, levels: peakLevels(peaks) });
-        f.closedMax = Math.max(f.closedMax, peaksMax(peaks));
-        f.folded = i;
-        f.lastRef = base[i - 1];
-      }
-      curBucket = bucket;
-      peaks = newPeaks();
-      start = i;
-    }
-    mergePeaks(peaks, snap.levels);
-  }
-  void start;
-  /* The last bucket seen in this slice may continue past `stop`; it is left
-     for the next slice (or the final call) to fold from `f.folded`. */
-  return f.folded >= base.length - minutes * 2;
 }
 
 /** One snapshot per bucket — the PEAK per strike inside it, re-stamped to the bucket start. */

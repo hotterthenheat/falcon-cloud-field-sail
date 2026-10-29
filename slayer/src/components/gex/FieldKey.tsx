@@ -34,7 +34,8 @@ function FieldKey({ ticker, cut, cutWords, scale, compact = false }: FieldKeyPro
   const netValue = net ? (mode === 'oi' ? net.oi : net.flow) : null;
   return (
     <div
-      className="pointer-events-auto select-none rounded-md border border-ink/[0.08] bg-canvas/70 backdrop-blur-[3px] px-2 py-1.5 font-mono text-t9 text-textMuted shadow-lg shadow-black/40"
+      className="pointer-events-auto select-none rounded-md border border-ink/[0.08] bg-canvas/85 px-2 py-1.5 font-mono text-t9 text-textMuted"
+      /* no backdrop blur: the tape repaints under it on every pointer move, and a blur would be re-rendered each time */
       data-field-key
       data-chart-chrome
       title={words.line}
@@ -44,25 +45,23 @@ function FieldKey({ ticker, cut, cutWords, scale, compact = false }: FieldKeyPro
         <FilterTabs paper={false} options={MODES} value={mode} onChange={setFieldMode} ariaLabel="Which model the exposure cells show" />
       </div>
       <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap" aria-label="Colour scale">
+        {!compact && <span>short</span>}
         <span className="tnum">{scale > 0 ? `−${fmtUsd(scale)}` : '—'}</span>
-        <span className="h-2 w-12 rounded-sm" style={{ background: FIELD_RAMP_CSS.neg, transform: 'scaleX(-1)' }} aria-hidden />
+        <span className="h-2 w-10 rounded-sm" style={{ background: FIELD_RAMP_CSS.neg, transform: 'scaleX(-1)' }} aria-hidden />
         <span>0</span>
-        <span className="h-2 w-12 rounded-sm" style={{ background: FIELD_RAMP_CSS.pos }} aria-hidden />
+        <span className="h-2 w-10 rounded-sm" style={{ background: FIELD_RAMP_CSS.pos }} aria-hidden />
         <span className="tnum">{scale > 0 ? `+${fmtUsd(scale)}` : '—'}</span>
+        {!compact && <span>long</span>}
       </div>
-      {!compact && (
-        <div className="mt-0.5 whitespace-nowrap">
-          <span className="text-textSecondary">dealers short</span> ← → <span className="text-textSecondary">dealers long</span>
-          {mode === 'flow' ? ' · per bar' : ' · last reading in the bar'}
-        </div>
-      )}
       <div className="mt-0.5 flex items-center gap-1.5 whitespace-nowrap">
         <span className={`tnum font-semibold ${netValue == null ? '' : netValue >= 0 ? 'text-goldline' : 'text-steelline'}`} data-field-net>
           {netValue == null ? '—' : `${netValue >= 0 ? '+' : ''}${fmtUsd(netValue)}`}
         </span>
-        <span>{mode === 'flow' ? "today's flow" : 'net GEX'} · {cutWords}</span>
+        <span>
+          {mode === 'flow' ? "today's flow" : 'net'} · {cutWords}
+          {!compact && (since ? ` · read since ${since} ET` : ' · waiting for the first reading')}
+        </span>
       </div>
-      {!compact && <div className="mt-0.5 whitespace-nowrap">{since ? `readings since ${since} ET` : 'waiting for the first reading'}</div>}
     </div>
   );
 }

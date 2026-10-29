@@ -4564,11 +4564,19 @@ const StrikeChart = ({
             const b = pinnedBead?.hit ?? beadCard!;
             const kept = !!pinnedBead;
             const tr = trailsRef.current;
-            const greekWord = trailsGreek === 'gex' ? 'Gamma' : trailsGreek === 'dex' ? 'Delta' : 'Vega $';
+            /* the cell is the open-interest book's last reading in the bar, or the change in today's flow gamma across it */
+            const greekWord = fieldMode === 'flow' ? 'Flow in bar' : trailsGreek === 'gex' ? 'Gamma' : trailsGreek === 'dex' ? 'Delta' : 'Vega $';
             /* The side as the figure's sub, what it does as a line of its own — on the value's line the words ran
                past the card's edge and dragged every figure with them */
             const side = b.value >= 0 ? 'positive' : 'negative';
-            const does = b.value >= 0 ? 'Positive gamma holds a move back.' : 'Negative gamma pushes a move along.';
+            const does =
+              fieldMode === 'flow'
+                ? b.value >= 0
+                  ? "Today's trades left dealers longer gamma across this bar."
+                  : "Today's trades left dealers shorter gamma across this bar."
+                : b.value >= 0
+                  ? 'Dealers long gamma: their hedging holds a move back.'
+                  : 'Dealers short gamma: their hedging pushes a move along.';
             const markWord = b.mark === 'born' ? 'Born' : b.mark === 'grew' ? 'Grew' : b.mark === 'flipped' ? 'Flipped' : b.mark === 'died' ? 'Died' : null;
             const tagWord = b.tag === 'absorbed' ? 'Held' : b.tag === 'rejected' ? 'Off' : b.tag === 'broke' ? 'Broke' : null;
             const ink = b.value >= 0 ? BEAD_INK_CSS.put : BEAD_INK_CSS.call;
@@ -4587,7 +4595,7 @@ const StrikeChart = ({
                 {tagWord && <CardRow k="Price" v={tagWord} sub="ten minutes" />}
                 {b.firm === false && <CardRow k="Flow" v="thin" sub="net under 2% of the volume" />}
                 <CardRow k="Of the book" v={`${(b.share * 100).toFixed(1)}%`} sub="then" />
-                <CardRow k="Since the open" v={since == null ? '—' : `${since >= 0 ? '+' : '−'}${fmtUsd(Math.abs(since))}`} />
+                {fieldMode === 'oi' && <CardRow k="Since the open" v={since == null ? '—' : `${since >= 0 ? '+' : '−'}${fmtUsd(Math.abs(since))}`} />}
                 {kept && rank && <CardRow k="Rank then" v={`${rank.rank} of ${rank.of}`} />}
                 {kept && closeThen != null && <CardRow k="Price then" v={closeThen.toFixed(2)} sub={dist != null ? `${dist >= 0 ? '+' : '−'}${Math.abs(dist).toFixed(2)}% away` : undefined} />}
                 {kept && before && <CardRow k="30 min before" v={`${b.value - before.value >= 0 ? '+' : '−'}${fmtUsd(Math.abs(b.value - before.value))}`} sub={`since ${nyClock(before.time * 1000)}`} />}
