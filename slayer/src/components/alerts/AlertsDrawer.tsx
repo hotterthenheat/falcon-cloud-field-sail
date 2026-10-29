@@ -10,7 +10,9 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
-import { liveSpotOf } from '../../data/weigherChain';
+import { thetaAllowedHere } from '../../data/theta';
+import { peekThetaPrice } from '../../data/thetaQuote';
+import { peekQuote } from '../../data/liveQuote';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import CompanyLogo from '../ui/CompanyLogo';
 import {

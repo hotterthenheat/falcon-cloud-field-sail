@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { pageHidden, thetaGet } from './thetaFeed';
+import { thetaUseHere } from './theta';
 import type { DeskSession } from './deskSession';
 
 const INDEX = new Set(['SPX', 'RUT', 'NDX', 'VIX', 'XSP']);
@@ -23,7 +24,7 @@ export function useSessionQuote(ticker: string, session: DeskSession, needed: bo
     if (!t || INDEX.has(t)) return;
     let dead = false;
     const pull = () => {
-      if (pageHidden()) return;
+      if (pageHidden() || thetaUseHere() === 'none') return;
       void thetaGet(`/stock/snapshot/quote?symbol=${encodeURIComponent(t)}&format=json`, true).then(res => {
         if (dead) return;
         const row = Array.isArray(res.data) ? (res.data[0] as Record<string, unknown> | undefined) : undefined;

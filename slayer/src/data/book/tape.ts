@@ -4,7 +4,7 @@
 import { nyIsoDate, nyMinutes, nyWallStamp } from '../../core/nyTime';
 import { noteBarCloses, peekRegularCloses } from '../dayChange';
 import { type Candle } from '../../types/market';
-import { uwOnlyDesk } from '../spotGexBook';
+import { thetaAllowedHere } from '../theta';
 import { thetaCall } from '../theta';
 import { type UwBar } from '../whales';
 import { num } from './scale';
@@ -78,7 +78,7 @@ function noteBlankDays(symbol: string, rows: readonly { at: number; priced: bool
 }
 /** One-minute bars off the ThetaData terminal (a name the vendor has no bars for) — none on the UW-only desks. */
 export async function thetaTape(symbol: string, index: boolean): Promise<UwBar[]> {
-  if (uwOnlyDesk()) return [];
+  if (!thetaAllowedHere(`/${index ? 'index' : 'stock'}/history/ohlc`)) return [];
   const end = ymdNY(Date.now());
   const back = symbol.toUpperCase() === 'SPX' ? 8 : 4;
   const start = ymdNY(Date.now() - back * 86400000);
@@ -168,10 +168,11 @@ export function quoteFromBars(symbol: string, bars: readonly UwBar[]): { close: 
     }
   }
   const tape_time = last.end_time || last.start_time || '';
-  if (vixLive(symbol, minute) && minute < OPEN_MIN) return { close, prev_close: prior || close, market_time: 'regular', tape_time };
-  if (last.market_time === 'r') return { close, prev_close: prior || close, market_time: 'regular', tape_time };
-  if (last.market_time === 'pr') return { close, prev_close: prior || todayReg || close, market_time: 'premarket', tape_time };
-  return { close, prev_close: todayReg || prior || close, market_time: 'postmarket', tape_time };
+  /* a close the tape does not reach is 0 (unknown): the day's change then reads "—" */
+  if (vixLive(symbol, minute) && minute < OPEN_MIN) return { close, prev_close: prior, market_time: 'regular', tape_time };
+  if (last.market_time === 'r') return { close, prev_close: prior, market_time: 'regular', tape_time };
+  if (last.market_time === 'pr') return { close, prev_close: prior || todayReg, market_time: 'premarket', tape_time };
+  return { close, prev_close: todayReg || prior, market_time: 'postmarket', tape_time };
 }
 
 /** Last regular close of each finished session on the tape. Today is included only after the index close window, so a mid-session print is not cached as the close. */

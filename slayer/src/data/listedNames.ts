@@ -2,7 +2,7 @@
    Pinpoint, Trace, Paper and Backtest, the 456 on Compass. Bundled lists stand; Theta refreshes them off Dossier and Pinpoint. */
 
 import { useSyncExternalStore } from 'react';
-import { thetaCall } from './theta';
+import { thetaCall, thetaUseHere } from './theta';
 import type { TickerListing } from './tickers';
 import { BUNDLED_OPTIONS, BUNDLED_STOCKS } from './listedBundle';
 import { COMPASS_TICKERS } from './compassUniverse';
@@ -126,8 +126,9 @@ async function pull(kind: 'equity' | 'option'): Promise<void> {
   emit();
 }
 
-/* Dossier and Pinpoint read Unusual Whales only (docs/DATA_SOURCES.md): there the bundled lists stand. */
-const unusualWhalesOnly = (path = typeof location !== 'undefined' ? location.pathname : ''): boolean => path.startsWith('/dossier') || path.startsWith('/pinpoint');
+/* The symbol lists are ThetaData list reads: only a page that may read all of ThetaData asks (data/theta.ts); elsewhere the
+   bundled lists stand. */
+const unusualWhalesOnly = (): boolean => thetaUseHere() !== 'all';
 
 /** Ask Theta once for both lists. Safe to call from every picker. A cached copy shows immediately. */
 export function ensureListed(): void {

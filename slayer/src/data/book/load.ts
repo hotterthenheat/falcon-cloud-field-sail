@@ -7,8 +7,7 @@ import { keptOf } from '../../core/dealerSign';
 import { dayChangeOf, noteBarCloses } from '../dayChange';
 import { type GexSnapshot, type StrikeNode } from '../../types/market';
 import { levelsForName, readLevelsScope, type LevelsScope } from '../levelsScope';
-import { awaitSpotGex, sameName, uwOnlyDesk } from '../spotGexBook';
-import { spxRead } from '../spxBook';
+import { sameName } from '../spotGexBook';
 import { SIM_DESK } from '../deskMode';
 import { uwCall, whalesBars, whalesFlowStrike, whalesGreekExpiry, whalesGreekStrike, whalesGreekStrikeExpiry, whalesIvRank, whalesInterpIv, whalesOiStrike, whalesOptionContractsPaged, whalesScreener, whalesState, whalesTermStructure, type UwBar, type UwFlowStrike, type UwGreekStrike, type UwInterp, type UwIv, type UwTerm, type UwState } from '../whales';
 import { applyDay, needDay } from './day';
@@ -313,7 +312,8 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     liveGamma(ticker, null, hot).catch(() => null),
   ]);
   if (!still()) return;
-  /* An index has no stock bars on this key (SPX /ohlc/1m is 422). A stock whose bars did not come back is read off the same terminal — the last trade, not a bid. */
+  /* An index has no stock bars on this key (SPX /ohlc/1m is 422): its price and bars are ThetaData's where the page may read
+     them (book/tape.ts thetaTape); a stock whose bars did not come back likewise — the last trade, not a bid. */
   let bars: UwBar[] = Array.isArray(stockBars) ? stockBars : [];
   let tapeKind: 'vendor' | 'index' | 'stock' = 'vendor';
   if (bars.length === 0 && INDEX_TAPE.has(ticker)) {
@@ -337,7 +337,8 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
       const px = gammaPriced.get(`${ticker.toUpperCase()}|ALL`)?.price ?? 0;
       if (px > 0) {
         const phase = nySessionPhase();
-        state = { close: px, prev_close: px, market_time: phase === 'open' ? 'regular' : phase === 'before' ? 'premarket' : 'postmarket' };
+        /* the price the rows were marked at; the close before it is unknown here (0), so the day's change reads "—" */
+        state = { close: px, prev_close: 0, market_time: phase === 'open' ? 'regular' : phase === 'before' ? 'premarket' : 'postmarket' };
       }
     }
   }
@@ -346,29 +347,9 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     const rows = await whalesScreener([ticker], true).catch(() => [] as Record<string, unknown>[]);
     const row = Array.isArray(rows) ? rows.find(r => String(r.ticker || '').toUpperCase() === ticker) ?? rows[0] : null;
     const px = num(row?.close) || num(row?.prev_close);
-    if (px > 0) state = { close: px, prev_close: num(row?.prev_close) || px, market_time: 'postmarket' };
+    if (px > 0) state = { close: px, prev_close: num(row?.prev_close), market_time: 'postmarket' };
   }
-  /* A name the vendor does not price any other way is read off the local chain.
-     SPX and SPXW are one book. Do not wait on a dead terminal — four seconds, then the book fails and can be asked again. */
-  if ((!state || strikes.length === 0) && !uwOnlyDesk()) {
-    const local = await Promise.race([
-      awaitSpotGex(ticker),
-      new Promise<null>(resolve => setTimeout(() => resolve(null), 4000)),
-    ]);
-    if (still() && local && local.used > 0 && local.spot > 0) {
-      const g = local.spot * local.spot * 0.01;
-      if (strikes.length === 0) {
-        strikes = local.strikes
-          .filter(s => s.callOi > 0 || s.putOi > 0)
-          .map(s => ({ strike: s.strike, call_gex: s.callOi / g, put_gex: -(s.putOi / g) }));
-      }
-      if (!state) {
-        const book = sameName(ticker) === 'SPX' ? spxRead() : null;
-        const prev = book && book.prevClose > 0 ? book.prevClose : local.spot;
-        state = { close: book?.spot || local.spot, prev_close: prev, market_time: 'postmarket' };
-      }
-    }
-  }
+  /* No strikes from the vendor: no book (never another vendor's open interest in their place). */
   /* No stock-state. The tape's own print is the price: today's close stays today's close, and yesterday is only the change. */
   if (tapeKind !== 'vendor' && !stateRaw && bars.length) {
     const quoted = quoteFromBars(ticker, bars);
@@ -404,7 +385,8 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   const spot = (offPhase === 'post' || offPhase === 'pre') && regClose > 0 ? regClose : last;
   /* the close before that session: the daily rows', else the state's own prev_close when its print is of that session */
   const prevOff = offRegular ? offRegular.prevClose || (Number.isFinite(tapeMs) && nyIsoDate(tapeMs) === nyIsoDate(offRegular.at - 60_000) ? num(state.prev_close) : 0) : 0;
-  const prev = (offRegular ? prevOff : num(state.prev_close)) || num(state.open) || spot;
+  /* unknown stays 0: the day's change then reads "—", never a made-up 0.00% */
+  const prev = offRegular ? prevOff : num(state.prev_close);
   if (!(spot > 0)) throw new Error('spot');
   const ivList = Array.isArray(ivRows) ? ivRows : [];
   const ivRow = ivList.reduce<UwIv | undefined>((best, row) => (!best || String(row.date ?? '') > String(best.date ?? '') ? row : best), undefined);

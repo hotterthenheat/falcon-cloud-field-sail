@@ -27,6 +27,7 @@ import { useLevelsFor } from '../../data/levelsFor';
 import { paneLevels } from '../terrain/paneLevels';
 import { useLevelsScope } from '../../data/levelsScope';
 import { etClock, keepTheta, keptTheta, offlineWords, useThetaDown } from '../../data/thetaFeed';
+import { thetaUseHere } from '../../data/theta';
 import { wantSpotGex } from '../../data/spotGexBook';
 import {
   blankChain,
@@ -568,6 +569,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   /* The terminal coming back re-lists and re-reads what it could not */
   const thetaOff = useThetaDown();
   useEffect(() => {
+    if (thetaUseHere() !== 'all') return;
     let dead = false;
     setListed(prev => (prev && !prev.down ? prev : null));
     listLiveExpiries(ticker).then(rows => {
@@ -696,7 +698,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       const cur = chainRef.current;
       const wantIso = isoDate(expiryFor(dte).date);
       const wantRoot = optRoot || cur.optRoot || ticker;
-      if (dead || busy.current || cur.source !== 'live' || !cur.rows.length || document.visibilityState === 'hidden') return;
+      /* nothing while the tab is hidden, or while this room is kept behind a page that reads Unusual Whales */
+      if (dead || busy.current || cur.source !== 'live' || !cur.rows.length || document.visibilityState === 'hidden' || thetaUseHere() !== 'all') return;
       if (cur.ticker !== ticker || cur.expiryIso !== wantIso) return;
       if (cur.optRoot && cur.optRoot !== wantRoot) return;
       if (Date.now() - lastAt < (optionsOpen() ? 1000 : 60_000)) return;
@@ -1283,7 +1286,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       return { ticker: sym, expiry, strike: Number(strike), right: (side === 'P' ? 'P' : 'C') as OptionRight };
     });
     const pull = async () => {
-      if (document.visibilityState === 'hidden') return;
+      if (document.visibilityState === 'hidden' || thetaUseHere() !== 'all') return;
       const got = await readLegs(legs).catch(() => null);
       if (dead || !got) return;
       setLegBook(prev => {

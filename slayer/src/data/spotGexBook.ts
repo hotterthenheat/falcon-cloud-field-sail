@@ -4,7 +4,7 @@
 */
 
 import { uwCall } from './whales';
-import { thetaCall } from './theta';
+import { thetaCall, thetaUseHere } from './theta';
 import { nyIsoDate } from '../core/nyTime';
 import { spotGex, usesAtmPrice, type SpotGex, type SpotGexLeg, type OptionSide } from './spotGex';
 
@@ -12,9 +12,10 @@ const CHAIN: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW', NDX: 'NDXP', V
 /** The weekly root is the same index. One book, one name. */
 const SAME: Record<string, string> = { SPXW: 'SPX', RUTW: 'RUT', NDXP: 'NDX', VIXW: 'VIX' };
 
-/** Pinpoint and the Dossier read Unusual Whales only (docs/DATA_SOURCES.md): no ThetaData read starts from their pages. */
+/** The page in view reads no ThetaData option data — greeks, open interest, chains (Trace, the Dossier, Pinpoint: data/theta.ts
+    thetaUseHere is the one rule) — so exposure, levels and vols come from Unusual Whales alone. */
 export function uwOnlyDesk(): boolean {
-  return typeof location !== 'undefined' && /(^|\/)(pinpoint|dossier)(\/|$)/.test(location.pathname);
+  return thetaUseHere() !== 'all';
 }
 
 export function sameName(ticker: string): string {

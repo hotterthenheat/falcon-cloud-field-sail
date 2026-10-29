@@ -9,6 +9,7 @@ import type { DayNote, JournalEntry } from '../review/journal';
 import { FUTURES_LIVE, LIFE, SIM_FEED, barNowOf, candlesOf, futCandles, futNow, isPaperFuture, optionQuote, optionQuoteAt, optionsOpen, paperFut, spotForBidNow } from './feed';
 import { bellOf, dayWords, nyAt } from './clock';
 import { LAST_MIN, ensureBars, spotAt } from '../review/history';
+import { canCatchUp, fetchGaps, hasGaps, replayGaps } from './catchUp';
 import {
   afterHand,
   closeStale,
@@ -270,6 +271,32 @@ function tickAll(m: PaperMarket): void {
   say(heard);
 }
 
+/* ---- the minutes a working order missed (catchUp.ts): fetched off the beat, replayed on the account as it then stands ---- */
+let catching = false;
+const triedAt = new Map<string, number>();
+const RETRY_MS = 30_000;
+async function catchUpAll(): Promise<void> {
+  if (catching || !state.holding || !canCatchUp()) return;
+  const now = Date.now();
+  const due = state.accounts.filter(a => hasGaps(a, now) && now - (triedAt.get(a.id) ?? 0) > RETRY_MS);
+  if (!due.length) return;
+  catching = true;
+  try {
+    for (const a of due) {
+      triedAt.set(a.id, now);
+      const fetched = await fetchGaps(a, now);
+      const live = state.accounts.find(x => x.id === a.id);
+      if (!live || !state.holding) continue;
+      const at = Date.now();
+      const m = liveMarket(at);
+      const next = afterHand(live, replayGaps(live, fetched, at, LIFE), m);
+      if (next !== live) commit({ accounts: replace(next) }, true);
+    }
+  } finally {
+    catching = false;
+  }
+}
+
 let started = false;
 /** Start the runner — once, from the app's shell. Returns the way to stop it. */
 export function startPaperRunner(): () => void {
@@ -281,6 +308,7 @@ export function startPaperRunner(): () => void {
   const beat = window.setInterval(() => {
     if (!state.holding || !state.accounts.length) return;
     tickAll(liveMarket());
+    void catchUpAll();
   }, TICK_MS);
   const offTick = () => window.clearInterval(beat);
   /* the lease: kept while this tab holds it; a tab that loses it (taken over) stops trading and reads what the other writes */

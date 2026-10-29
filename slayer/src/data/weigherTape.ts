@@ -10,6 +10,7 @@ import { nyMinutes } from '../core/nyTime';
 import { nyYmd } from '../core/calendar';
 import { sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { noData, offlineWords, pageHidden, thetaGet } from './thetaFeed';
+import { thetaUseHere } from './theta';
 import { dayClose, foldTo, grainStep, paintPrint, readEod, readOhlc, useThetaPrint, useThetaTape, tapeWords, weekClose, type TapeGrain } from './thetaTape';
 
 const GRAIN: Record<Timeframe, TapeGrain> = { '15s': '15s', '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h', '1D': 'day', '1W': 'week' };
@@ -99,7 +100,7 @@ export function useWeigherContract(
         if (!dead) setState({ key, bars: hit.bars, note: hit.bars.length ? null : `${sessionMeta(session).label} has no prints on this contract.` });
         return;
       }
-      if (pageHidden()) return;
+      if (pageHidden() || thetaUseHere() !== 'all') return;
       void contractBars(root, exp, Number(strike.toFixed(4)), right, tf, session).then(got => {
         if (dead) return;
         if (got.offline && !got.bars.length) {

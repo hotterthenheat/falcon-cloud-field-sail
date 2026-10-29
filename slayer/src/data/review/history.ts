@@ -164,6 +164,8 @@ async function load<T>(key: string, path: string, parse: (rows: Row[]) => T | nu
       if (!offlineSince) offlineSince = Date.now();
       return { value: null, offline: true };
     }
+    /* not asked at all (a page that may not read it, the feed gate shut): nothing is learned, nothing is kept */
+    if (got.status === 0 || got.error === 'closed' || got.error === 'signed_out') return { value: null, offline: true };
     offlineSince = 0;
     const value = got.error ? null : parse(flatRows(got.data));
     /* an empty answer is kept too: the contract did not quote that day, and asking again will not change it */
@@ -473,7 +475,12 @@ export function nbboAt(c: Leg, day: string, minute: number): { bid: number; ask:
   const m = Math.max(0, Math.min(LAST_MIN, minute));
   const last = closeMinOf(c.ticker, day);
   if (last >= 0 && m > last) return null;
-  for (let k = m; k >= 0; k--) {
+  return standingAt(d, m);
+}
+/** The quote standing at the end of minute `m` of a parsed day (parseQuotes): its own row, else the last before it;
+    null before the first, or where that minute's row was no market */
+export function standingAt(d: { bid: number[]; ask: number[] }, m: number): { bid: number; ask: number } | null {
+  for (let k = Math.min(LAST_MIN, m); k >= 0; k--) {
     if (d.ask[k] === NO_MARKET) return null;
     if (Number.isFinite(d.ask[k]) && Number.isFinite(d.bid[k])) return { bid: d.bid[k], ask: d.ask[k] };
   }
