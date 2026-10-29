@@ -20,16 +20,6 @@ export interface KeyLevels {
   maxPain?: number;
 }
 
-/** The heat field read as ONE regime — the engine names the configuration
-    (our vocabulary, not the street's): where spot sits against the flip and
-    how close the absorbing walls are decides what the map is saying. */
-export type HeatPatternKey = 'SPRINGBOARD' | 'TRAPDOOR' | 'PINNED' | 'WHIPSAW' | 'ON THE FLIP';
-export interface HeatPatternRead {
-  key: HeatPatternKey;
-  direction: 'BULLISH' | 'BEARISH' | 'RANGE' | 'VOLATILE';
-  read: string;
-}
-
 export interface DarkPoolPrint {
   price: number;
   /** Notional in $B */

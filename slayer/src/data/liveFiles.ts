@@ -1053,12 +1053,6 @@ export function useEtfWeights(etf: string): { status: FileStatus; sectors: { nam
   return got;
 }
 
-/** The house board as read so far; starts the read the first time it is asked */
-export function peekStockPicks(): StockPick[] {
-  ensurePart('stocks');
-  return snap.stocks;
-}
-
 export function useLiveStocks(): { status: FileStatus; picks: StockPick[] } {
   const s = useFiles('stocks');
   return { status: s.stockStatus, picks: s.stocks };

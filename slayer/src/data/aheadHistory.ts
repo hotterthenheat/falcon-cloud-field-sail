@@ -75,12 +75,6 @@ export function rangeFrom(s: SessionStat, minuteOfDay: number): number | null {
   return Math.max(...tail.map(b => b.high)) - Math.min(...tail.map(b => b.low));
 }
 
-/** A session's move over its last `minutes` — signed, close against the bar `minutes` before it */
-export function moveIntoClose(s: SessionStat, minutes: number): number | null {
-  if (s.bars.length <= minutes) return null;
-  return s.close - s.bars[s.bars.length - 1 - minutes].close;
-}
-
 /** The session under way — its bars so far — or null when the market is shut */
 export function sessionSoFar(ticker: string, inSession: boolean): SessionStat | null {
   if (!inSession) return null;

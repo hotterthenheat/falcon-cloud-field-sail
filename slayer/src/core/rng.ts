@@ -19,18 +19,8 @@ function hash(seed: string): number {
 }
 
 /** Uniform [0, 1) */
-export function h01(seed: string): number {
+function h01(seed: string): number {
   return (hash(seed) % 10000) / 10000;
-}
-
-/** Uniform [min, max) */
-export function hRange(seed: string, min: number, max: number): number {
-  return min + h01(seed) * (max - min);
-}
-
-/** Pick one element, weighted uniformly */
-export function hPick<T>(seed: string, arr: readonly T[]): T {
-  return arr[hash(seed) % arr.length];
 }
 
 /** Approximate standard normal (Irwin–Hall over 4 draws) */

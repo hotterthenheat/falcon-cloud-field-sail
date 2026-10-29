@@ -914,29 +914,11 @@ export function ensureEarnings(): void {
   })();
 }
 
-/** The fortnight's reports as read so far; never starts the read */
-export const liveCalendar = (): EarningsEvent[] => (feed.status === 'live' ? feed.events : []);
-
 /** The fortnight's reports for a list in a component, soonest first (starts the read) */
 export function useEarningsCalendar(): EarningsEvent[] {
   const version = useSyncExternalStore(subscribe, () => rev, () => rev);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => (feed.status === 'live' ? feed.events.filter(e => !e.reported) : []), [version]);
-}
-
-/** One name's next report off its own earnings rows, for a chart marker or a case; null until they land (reads them once) */
-export function peekNextReport(ticker: string): EarningsEvent | null {
-  const sym = ticker.trim().toUpperCase();
-  if (!sym || typeof window === 'undefined') return null;
-  const rows = history.get(sym);
-  if (rows === undefined) {
-    void pullHistory(sym).then(() => emit());
-    return null;
-  }
-  if (rows === 'miss') return null;
-  const next = nextReportRow(rows.map(r => ({ ...r, symbol: r.symbol || sym })));
-  if (!next?.report_date) return null;
-  return dossierFromRows(sym, rows)?.event ?? null;
 }
 
 export function peekEarningsEvent(ticker: string): EarningsEvent | null {
