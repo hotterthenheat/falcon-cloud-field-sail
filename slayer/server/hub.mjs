@@ -47,6 +47,7 @@ export function canonical(p) {
  * @param {number} [o.maxRefreshing]             background refreshes outstanding at once (default 2)
  * @param {(path: string, ageMs: number) => boolean} [o.keepOnFail]  may a failed refresh fall back to the last good
  *   answer of this age? (default: never, so a failure shows as one)
+ * @param {(path: string) => void} [o.promote]  a viewer is now waiting on this path's background refresh: move it ahead
  */
 export function createHub(o) {
   const MAX_BYTES = o.maxBytes ?? 300 * 1024 * 1024;
@@ -82,9 +83,19 @@ export function createHub(o) {
   let refreshing = 0;
   const MAX_REFRESHING = o.maxRefreshing ?? 2;
 
+  /* lanes of the jobs in flight: a viewer who joins a background refresh has it moved to the viewers' lane */
+  const laneOf = new Map();
+
   function upstream(key, lane) {
     const running = inflight.get(key);
-    if (running) return running;
+    if (running) {
+      if (lane === 'viewer' && laneOf.get(key) !== 'viewer') {
+        laneOf.set(key, 'viewer');
+        o.promote?.(key);
+      }
+      return running;
+    }
+    laneOf.set(key, lane);
     if (lane === 'viewer') stats.upstreamViewer += 1;
     else {
       stats.upstreamRefresh += 1;
@@ -118,6 +129,7 @@ export function createHub(o) {
       })
       .finally(() => {
         inflight.delete(key);
+        laneOf.delete(key);
         if (lane !== 'viewer') refreshing -= 1;
       });
     inflight.set(key, job);

@@ -108,5 +108,30 @@ check('500 viewers cost about what 1 does (within three calls)', counts[500] <= 
   check('a no-data answer is kept like any other', v.total() === 1, `${v.total()}`);
 }
 
+/* a viewer who has to wait on a background refresh moves it to the viewers' lane (once), so it is not stuck behind
+   the other refreshes */
+{
+  let n = 0;
+  const promoted = [];
+  const hub = createHub({
+    name: 'proof-promote',
+    fetch: async (p) => {
+      n += 1;
+      await sleep(n === 1 ? 10 : 2_500);
+      return { status: 200, body: Buffer.from(String(n)), type: 'text/plain' };
+    },
+    ttl: () => 50,
+    refreshPerSec: 50,
+    promote: (p) => promoted.push(p),
+  });
+  await hub.get('/slow');
+  await sleep(80);
+  await hub.get('/slow');
+  await sleep(2_100);
+  const [a, b] = await Promise.all([hub.get('/slow'), hub.get('/slow')]);
+  check('a viewer joining a background refresh promotes it once', promoted.length === 1 && promoted[0] === '/slow', JSON.stringify(promoted));
+  check('the joined refresh answers the viewers (no second vendor call)', n === 2 && String(a.body) === '2' && String(b.body) === '2', `calls ${n}`);
+}
+
 console.log(failed ? `\n${failed} check(s) failed` : '\nall hub checks passed');
 process.exit(failed ? 1 : 0);
