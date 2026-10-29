@@ -4,4 +4,3 @@
 */
 
 export const FONT_SANS = 'Inter, "Helvetica Neue", Helvetica, Arial, sans-serif';
-export const FONT_CODE = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';

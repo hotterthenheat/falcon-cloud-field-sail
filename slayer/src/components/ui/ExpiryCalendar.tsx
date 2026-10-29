@@ -17,7 +17,7 @@ const SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'O
 const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
 /** "Sep 14 · Mon", or "Today · Sep 14" on the same-day contract */
-export const expiryWords = (e: Expiry): string => {
+const expiryWords = (e: Expiry): string => {
   const day = `${SHORT[e.date.getMonth()]} ${e.date.getDate()}`;
   const year = e.date.getFullYear() === today().getFullYear() ? '' : ` '${String(e.date.getFullYear()).slice(2)}`;
   return e.dte === 0 ? `Today · ${day}` : `${day}${year} · ${e.weekday}`;

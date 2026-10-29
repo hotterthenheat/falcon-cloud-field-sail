@@ -49,7 +49,7 @@ import { SetupMarksPrimitive, type SetupMarks } from '../compass/setupMarksPrimi
 import ResetViewControl from './ResetViewControl';
 
 /** A neighboring strike, drawn as Terrain draws a node: a bead on each bar at that strike's premium. Height is its share of the gamma. Ice is a call, gold is a put, silver is this strike. */
-export interface PremiumNode {
+interface PremiumNode {
   premium: number;
   /** Share of the window's gamma, 0–1. */
   share: number;
@@ -150,7 +150,7 @@ class NodesPane {
 }
 
 /** A labeled rule on the premium tape — a TP, the stop, the reference. */
-export interface PremiumLevel {
+interface PremiumLevel {
   price: number;
   label: string;
   color: string;
@@ -158,7 +158,7 @@ export interface PremiumLevel {
 }
 
 /** A modeled projection drawn past NOW — theta held flat, spot at the stop. */
-export interface PremiumProjection {
+interface PremiumProjection {
   key: string;
   color: string;
   dashed?: boolean;

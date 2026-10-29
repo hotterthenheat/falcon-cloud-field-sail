@@ -28,7 +28,7 @@
 ==================================================
 */
 
-export type GlideKind = 'frame' | 'snap';
+type GlideKind = 'frame' | 'snap';
 
 /** WHERE THE FRAME IS GOING (2026-09-12): the sidebar knows the width the main
     column will have when its glide settles, and says so at the start, so a
@@ -36,7 +36,7 @@ export type GlideKind = 'frame' | 'snap';
     there — instead of holding its old shape and snapping when the frame stops
     (Noah: "the cards freeze and snap into frame... it changes the user's pov
     rapidly"). */
-export interface GlideTarget {
+interface GlideTarget {
   mainWidth: number;
 }
 
@@ -47,7 +47,6 @@ const starters = new Set<() => void>();
 const enders = new Set<() => void>();
 const once = new Set<() => void>();
 
-export const isGliding = (): boolean => gliding;
 /** The frame's destination for the glide under way, when the starter said it */
 export const glideTarget = (): GlideTarget | null => target;
 

@@ -84,7 +84,6 @@ function isoOf(label: string): string {
   return m ? `${m[3]}-${m[1]}-${m[2]}` : label.slice(0, 10);
 }
 
-
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -115,19 +114,19 @@ interface CampaignAnalysisProps {
 
 /** The campaign's story, stamped ON the tape: the entry premium on the bar it was graded, and each banked TP on the
     candle that actually crossed it. */
-export interface CampaignEntry {
+interface CampaignEntry {
   /** Bar time (UTC seconds) of the sweep that opened this review */
   time: number;
   /** The graded mid — frozen at open, like the provenance line */
   mid: number;
 }
-export interface CampaignHit {
+interface CampaignHit {
   /** TP rung, 1-based */
   level: number;
   /** Bar time (UTC seconds) of the candle that crossed the target */
   time: number;
 }
-export interface CampaignBreak {
+interface CampaignBreak {
   /** Bar time (UTC seconds) of the candle that CLOSED through the floor */
   time: number;
   /** That bar's close */

@@ -15,7 +15,7 @@ const urlFor = (state: MarkState): string => {
 };
 
 /** Keeps the tab icon on the mark's state; mounted once at the root. */
-export function useFaviconFollowsMark(): void {
+function useFaviconFollowsMark(): void {
   const state = useMarkState();
   useEffect(() => {
     const link = document.querySelector<HTMLLinkElement>('link[rel="icon"][type="image/svg+xml"]');

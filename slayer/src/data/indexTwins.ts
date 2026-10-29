@@ -21,7 +21,7 @@
 
 export type TwinLensKey = 'etf' | 'index' | 'futures';
 
-export interface TwinFamily {
+interface TwinFamily {
   etf: string;
   index: string;
   futures: string;
@@ -51,7 +51,7 @@ function hash01(seed: string): number {
 
 /** Carry basis in index points — drifts deterministically with the tape
     (seeded off the rounded ETF spot, so replays reproduce it exactly). */
-export function twinBasis(fam: TwinFamily, etfSpot: number): number {
+function twinBasis(fam: TwinFamily, etfSpot: number): number {
   const drift = (hash01(`${fam.futures}-basis-${Math.round(etfSpot)}`) * 2 - 1) * fam.baseBasis * 0.25;
   return Math.round((fam.baseBasis + drift) * 4) / 4;
 }

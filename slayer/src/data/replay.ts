@@ -46,7 +46,7 @@ import { peekEntry } from './uwBook';
 import type { Candle, GexLevel, GexSnapshot, MarketSnapshot, StrikeNode } from '../types/market';
 
 /** The book is read every five seconds of session time */
-export const FRAME_SEC = 5;
+const FRAME_SEC = 5;
 const BAR_SEC = 60;
 /** The simulator's dealer weights — the split of net gamma between the legs */
 const W_CALL = -0.55;
@@ -79,7 +79,7 @@ export function replayRange(ticker: string): ReplayRange | null {
   return bars && bars.length >= 2 ? rangeOf(ticker, bars) : null;
 }
 
-export interface ReplaySection {
+interface ReplaySection {
   /** Seconds from the first bar */
   start: number;
   end: number;
@@ -108,7 +108,7 @@ export function replaySections(range: ReplayRange): ReplaySection[] {
 }
 
 /** The section a position is standing in. */
-export function sectionAt(range: ReplayRange, pos: number): ReplaySection | null {
+function sectionAt(range: ReplayRange, pos: number): ReplaySection | null {
   const all = replaySections(range);
   if (!all.length) return null;
   return all.find(s => pos >= s.start && pos <= s.end) ?? all[all.length - 1];
@@ -165,7 +165,7 @@ function place(range: ReplayRange, pos: number): { k: number; u: number } {
 }
 
 /** The bars up to a position, the last one folded to where price was */
-export function barsAt(range: ReplayRange, pos: number): Candle[] {
+function barsAt(range: ReplayRange, pos: number): Candle[] {
   const { k, u } = place(range, pos);
   const out = range.bars.slice(0, k + 1);
   if (u > 0 && k + 1 < range.bars.length) {
@@ -177,7 +177,7 @@ export function barsAt(range: ReplayRange, pos: number): Candle[] {
   return out;
 }
 
-export function spotAt(range: ReplayRange, pos: number): number {
+function spotAt(range: ReplayRange, pos: number): number {
   const { k, u } = place(range, pos);
   const a = range.bars[k];
   const b = range.bars[k + 1];

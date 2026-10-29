@@ -127,7 +127,7 @@ const TestFigure = () => {
   );
 };
 
-export interface ReportGuideRow {
+interface ReportGuideRow {
   label: string;
   price: number;
   tests: number;

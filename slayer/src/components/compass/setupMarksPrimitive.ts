@@ -3,7 +3,6 @@
 
 import type { IChartApi, ISeriesApi, ISeriesPrimitive, SeriesAttachedParameter, Time, UTCTimestamp } from 'lightweight-charts';
 import { LADDER_MONO as MONO, ladderPen, type DrawTarget } from '../gex/ladderPaint';
-export { LADDER_W } from '../gex/ladderPaint';
 
 export interface SetupMarks {
   /** The entry: its candle's time, the stock price then, and the premium paid */

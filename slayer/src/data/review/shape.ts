@@ -6,8 +6,8 @@ import { ENDED, directionOf, entryOf, type JournalEntry, type JournalRow } from 
 import { excursionOf, type Excursion } from './excursion';
 import { pct, rWords, usd, usdSigned } from '../../components/review/words';
 
-export type ShapeKey = 'kept' | 'heat' | 'result' | 'entry' | 'plan' | 'words';
-export const SHAPE_KEYS: ShapeKey[] = ['kept', 'heat', 'result', 'entry', 'plan', 'words'];
+type ShapeKey = 'kept' | 'heat' | 'result' | 'entry' | 'plan' | 'words';
+const SHAPE_KEYS: ShapeKey[] = ['kept', 'heat', 'result', 'entry', 'plan', 'words'];
 export const SHAPE_LABEL: Record<ShapeKey, string> = { kept: 'Kept', heat: 'Heat', result: 'Result', entry: 'Entry', plan: 'Plan', words: 'Words' };
 /** What each axis asks, in one line */
 export const SHAPE_ASKS: Record<ShapeKey, string> = {

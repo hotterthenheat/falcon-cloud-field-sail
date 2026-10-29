@@ -14,15 +14,15 @@
 ==================================================
 */
 
-import { SESSION_CLOSE_MIN, SESSION_OPEN_MIN, nyClock, nyIsoDate, nyMinutes, nySession } from '../core/nyTime';
+import { SESSION_CLOSE_MIN, SESSION_OPEN_MIN, nyClock, nyIsoDate, nyMinutes } from '../core/nyTime';
 import { recordDay } from './bookWindow';
 import { bookCandles, bookHistory, peekEntry, peekSpot } from './uwBook';
-import type { Candle, MarketSnapshot } from '../types/market';
+import type { MarketSnapshot } from '../types/market';
 
 /** NONE: no book was kept at the open or now — nothing to compare */
-export type GexTrend = 'BUILDING' | 'BLEEDING' | 'FLAT' | 'NEW' | 'NONE';
+type GexTrend = 'BUILDING' | 'BLEEDING' | 'FLAT' | 'NEW' | 'NONE';
 
-export interface LevelRead {
+interface LevelRead {
   /** Signed distance from live spot, percent (+ above) */
   distPct: number;
   /** Times price has tested the level this session — a test is a contiguous
@@ -35,39 +35,11 @@ export interface LevelRead {
   trend: GexTrend;
 }
 
-/** Bars closer than this are the same session; a wider gap is overnight. */
-const SESSION_GAP_S = 90;
 /** Under ±15% since the open the gamma at a level is neither building nor bleeding. */
 const TREND_THRESHOLD = 15;
 
 /** A bar's time, New York's clock — the market's day, whatever zone the machine is in */
 const fmtTime = (t: number) => nyClock(t * 1000);
-
-/*
-  TODAY STARTS AT THE OPEN, NEW YORK'S (the partner's cut, taken with the Map 2026-10-14): the cut was "the last run
-  of bars with no overnight gap", which on a tape that runs before the bell put "today" at 07:55, and on the house's
-  tape — which rolls on after the close — drew the evening as the day's tail. The session is the cash session, 09:30
-  to 16:00 New York, so the run is cut to that day's session. A run with no bar inside a session (a tape read before
-  the bell) keeps the run, so a page still has its bars and prints their own times.
-*/
-export function sessionCut(bars: readonly Candle[]): Candle[] {
-  if (bars.length === 0) return [];
-  let start = bars.length - 1;
-  while (start > 0 && bars[start].time - bars[start - 1].time <= SESSION_GAP_S) start--;
-  const run = bars.slice(start);
-  let { open, close } = nySession(run[run.length - 1].time * 1000);
-  /* the day of the newest bar, or the latest day before it that the run has cash-session bars on: the house book's
-     bars keep rolling after the close, and once they pass midnight the new day's window held none and the "session"
-     became the whole run, evening and night included */
-  for (let k = 0; k < 7 && !run.some(b => b.time >= open / 1000 && b.time < close / 1000); k++) ({ open, close } = nySession(open - 86_400_000));
-  const lo = open / 1000;
-  const hi = close / 1000;
-  let a = 0;
-  while (a < run.length && run[a].time < lo) a++;
-  let b = run.length;
-  while (b > a && run[b - 1].time >= hi) b--;
-  return b - a >= 1 ? run.slice(a, b) : run;
-}
 
 /** The live session's bars — today's cash session (sessionCut). Exported for
     the Wall Report Card (2026-09-05), which grades every level on the same
@@ -161,7 +133,7 @@ export function snapshotAtOpen(ticker: string): MarketSnapshot | null {
   Every figure is grouped with commas by construction (`toLocaleString`),
   so a figure can never print as a run of digits even if a tier moves.
 */
-export interface SinceOpenRead {
+interface SinceOpenRead {
   /** The figure as printed — "+37%", "-12%", "4.2×" — or null when only the words apply */
   figure: string | null;
   /** Which way: 1 building, −1 bleeding, 0 flat or flipped */

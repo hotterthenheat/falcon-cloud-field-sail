@@ -22,7 +22,7 @@
 
 /* ---- a window over the last N values ------------------------------------------ */
 
-export class Ring {
+class Ring {
   private buf: number[] = [];
   push(v: number): void {
     this.buf.push(v);
@@ -52,7 +52,7 @@ const full = (r: Ring, len: number): number[] | null => {
 
 const mean = (w: number[]) => w.reduce((a, b) => a + b, 0) / w.length;
 
-export type State = Record<string, unknown>;
+type State = Record<string, unknown>;
 const ring = (s: State, key = 'r'): Ring => (s[key] as Ring) ?? (s[key] = new Ring());
 
 /* ---- averages ------------------------------------------------------------------ */

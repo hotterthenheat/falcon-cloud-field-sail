@@ -2,7 +2,6 @@
    sparkline, the line it breaks at, its state. */
 
 import {
-  FONT,
   bar,
   box,
   chip,
@@ -16,7 +15,6 @@ import {
   tag,
   type,
   type Box,
-  type Brush,
   type Frame,
   type Ink,
   type Part,
@@ -233,18 +231,3 @@ export const rows = (o: { kind: 'earnings' | 'heaviest'; seed?: number; gap?: nu
   };
 };
 
-/* ---- A PANEL'S TITLE ROW: the desk's own words (unused by broken pieces, kept for the sharp) ---------------------- */
-export const label = (text: string, o: { size?: number; hue?: keyof Omit<Ink, 'hues'>; share?: number } = {}): Part => {
-  let x = 0;
-  let y = 0;
-  return {
-    place(b) {
-      x = b.x0;
-      y = (b.y0 + b.y1) / 2;
-    },
-    still(b: Brush) {
-      b.c.font = `600 ${o.size ?? 8.5}px ${FONT}`;
-      type(b, text, x, y, { size: o.size ?? 8.5, hue: b.ink[o.hue ?? 'muted'], share: o.share ?? 0.4 });
-    },
-  };
-};

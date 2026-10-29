@@ -6,7 +6,7 @@ import type { OptionRight, ScannerKey, SleeveKey } from '../types/compass';
 
 export type BoardLayout = 'cards' | 'table';
 
-export interface CompassView {
+interface CompassView {
   sleeve: SleeveKey;
   scanner: ScannerKey;
   layout: BoardLayout;

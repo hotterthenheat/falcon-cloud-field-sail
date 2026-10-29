@@ -68,16 +68,6 @@ export const MARKET_HOLIDAYS = new Set([
    list above stays, so a replay that never hears from the terminal still
    refuses Good Friday 2019. An empty set changes nothing. */
 const LIVE_HOLIDAYS = new Set<string>();
-let holidayNote = '';
-
-export function noteLiveHolidays(dates: readonly string[], note: string): void {
-  for (const d of dates) if (/^\d{4}-\d{2}-\d{2}$/.test(d)) LIVE_HOLIDAYS.add(d);
-  holidayNote = note;
-}
-
-export function liveHolidayNote(): string {
-  return holidayNote;
-}
 
 /** Local-date ISO key (NOT toISOString — that shifts across the UTC boundary). */
 export function isoDate(d: Date): string {
@@ -159,7 +149,7 @@ export interface Expiry {
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export function fmtExpiry(d: Date): string {
+function fmtExpiry(d: Date): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`;
 }
 
@@ -227,7 +217,7 @@ export function expiryAt(on: Date, from: Date = today()): Expiry {
   open. (Ported from the partner tree, 2026-08-27, with the session-levels
   and expected-move work that reads it.)
 */
-export const RTH_HOURS = 6.5;
+const RTH_HOURS = 6.5;
 export const RTH_MINUTES = RTH_HOURS * 60;
 
 /*
@@ -257,7 +247,7 @@ export const RTH_MINUTES = RTH_HOURS * 60;
   product calendar. Early closes (day-after-Thanksgiving et al.) are out of
   scope for the same reason.
 */
-export type FuturesPhase = 'GLOBEX_ASIA' | 'GLOBEX_EUROPE' | 'RTH' | 'GLOBEX_POST' | 'MAINTENANCE' | 'CLOSED';
+type FuturesPhase = 'GLOBEX_ASIA' | 'GLOBEX_EUROPE' | 'RTH' | 'GLOBEX_POST' | 'MAINTENANCE' | 'CLOSED';
 
 export const FUTURES_PHASE_WORDS: Record<FuturesPhase, { label: string; blurb: string }> = {
   GLOBEX_ASIA: { label: 'GLOBEX · ASIA', blurb: 'The overnight session, Asia hours — the open is being decided out here' },

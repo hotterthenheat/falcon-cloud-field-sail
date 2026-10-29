@@ -64,7 +64,7 @@ const DARK_INKS: RulerInks = { wash: 'rgba(255,255,255,0.04)', col: 'rgba(255,25
 const PAPER_INKS: RulerInks = { wash: 'rgba(14,15,17,0.06)', col: 'rgba(14,15,17,0.04)', colEdge: 'rgba(14,15,17,0.16)', grid: 'rgba(14,15,17,0.09)', ink: '#0e0f11', ink2: '#26282d', ink3: '#40434a', spotRule: 'rgba(14,15,17,0.4)', onInk: '#ffffff', chipGround: '#ffffff', silver: '#3a4f7a', edge: 'rgba(14,15,17,0.3)', call: 'rgb(3,105,161)', put: 'rgb(146,86,4)', supreme: '#a300b3', flip: '#5b6472' }; /* the light page's glacier and ember (theme/tokens.css), not the sign's green and red — the seventh audit's m3 */
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = '"Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-export const PAD = 14;
+const PAD = 14;
 
 const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 const near = (x: number, y: number) => Math.abs(x - y) < 1e-9;
@@ -80,10 +80,10 @@ const thermal = (value: number, maxAbs: number, mode: HeatMode = 'thermal-yellow
   return { fill: String(s.backgroundColor ?? '#FFFFBF'), ink: String(s.color ?? '#0a0a0a') };
 };
 
-export type Unit = Exclude<DistanceUnit, '$'>;
+type Unit = Exclude<DistanceUnit, '$'>;
 export type SideKey = 'a' | 'b';
 
-export interface RulerRow {
+interface RulerRow {
   strike: number;
   value: number;
   /** Distance from spot on the ruler */
@@ -92,7 +92,7 @@ export interface RulerRow {
 interface PlacedRow extends RulerRow {
   y: number;
 }
-export interface SideLayout {
+interface SideLayout {
   side: CompareSide;
   /** Every strike of the book on the ruler, ascending — the frame decides which are in view */
   rows: RulerRow[];
@@ -102,7 +102,7 @@ export interface SideLayout {
   /** The heaviest strike in the chosen greek — the supreme the Map's follows */
   supreme: number;
 }
-export interface Layout {
+interface Layout {
   U: Unit;
   R: number;
   /** How far either book runs from spot — the window cannot leave it */
@@ -133,7 +133,7 @@ const REACH_MOVES: Record<Reach, number | null> = { one: 1, two: 2, three: 3, al
     expected moves) packs the capsules to touching rather than thinning them
     past what an 8px figure needs. The first cut let the pitch take them to 4px
     and every capsule on a tight pair stood empty. */
-export const barHFor = (pitch: number) => Math.max(11, Math.min(22, Math.round(pitch * 0.72)));
+const barHFor = (pitch: number) => Math.max(11, Math.min(22, Math.round(pitch * 0.72)));
 /* EVERY STRIKE SHOWS (the partner through Noah, 2026-10-18). From 2026-09-29 a strike under 8% of its side's heaviest
    IN VIEW was a hairline tick at the spine, never a capsule — and because the heaviest in view changes as the ruler
    scrolls, the light strikes grew into capsules when the spot's walls left the window and fell back to ticks on the
@@ -220,7 +220,7 @@ const CARD_W = 300;
 const roleOf = (L: SideLayout, k: number) => (near(k, L.side.levels.callWall) ? 'call wall' : near(k, L.side.levels.putWall) ? 'put wall' : near(k, L.supreme) ? 'supreme' : null);
 const valueOf = (s: CompareSide, g: Greek, strike: number) => s.rows[g].find(r => near(r.strike, strike))?.value ?? null;
 
-export interface RulerLaneProps {
+interface RulerLaneProps {
   cmp: Compare;
   unit: DistanceUnit;
   reach: Reach;

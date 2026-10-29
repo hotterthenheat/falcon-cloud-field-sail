@@ -16,14 +16,14 @@ const SECOND = 'rgb(var(--text-secondary))';
 const MONO = 'ui-monospace, Menlo, monospace';
 const SANS = 'ui-sans-serif, system-ui, sans-serif';
 
-export const Section = ({ title, children }: { title: string; children: ReactNode }) => (
+const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <section className="px-5 py-4 border-b border-borderSubtle/60 last:border-b-0">
     <h4 className="text-t13 font-semibold text-textPrimary">{title}</h4>
     <div className="mt-2 text-t12 leading-relaxed text-textSecondary">{children}</div>
   </section>
 );
 
-export const Figure = ({ children, label, h = 110 }: { children: ReactNode; label: string; h?: number }) => (
+const Figure = ({ children, label, h = 110 }: { children: ReactNode; label: string; h?: number }) => (
   <figure data-theme="dark" className="mt-3 rounded-md border border-borderSubtle/60 bg-panel p-2">
     <svg viewBox={`0 0 420 ${h}`} width="100%" role="img" aria-label={label} data-guide-figure>
       {children}
@@ -38,7 +38,7 @@ const Head = ({ x, y, children, anchor = 'start' }: { x: number; y: number; chil
 );
 
 /* Bought, sold, bullish, bearish: one rule across Trace, said once here and carried by every guide. */
-export const SidesRule = () => (
+const SidesRule = () => (
   <Section title="Bought, sold, bullish, bearish — one rule">
     <p>
       <b className="text-textPrimary">An option print</b> at the ask was <b className="text-textPrimary">bought</b> (the buyer paid the offer); on the bid it was <b className="text-textPrimary">sold</b>. Calls bought and puts sold read <span className="text-bull">bullish</span>; puts bought and calls sold read <span className="text-bear">bearish</span>; a mid print reads neither. So a put sold on the bid is a bullish print — "Top bull SPX 7350P sold".
@@ -70,7 +70,7 @@ export const SidesRule = () => (
 /* ---- the shared figures ---------------------------------------------------------- */
 
 /** A contract cell: the strike, call or put in its ink, the expiry; silver under the pointer is the door */
-export const ContractFigure = () => (
+const ContractFigure = () => (
   <Figure label="A contract cell drawn large: 505 call 09/10 at rest, then 497 put 09/11 with its strike in silver as under the pointer, and beside them the words that say a contract turns silver under the pointer and opens its card" h={54}>
     <text x={14} y={30} fontSize={13} fontWeight={700} fill={INK} fontFamily={MONO}>
       505
@@ -101,7 +101,7 @@ export const ContractFigure = () => (
 );
 
 /** The ink registers: quiet, heavy, direction, the one supreme */
-export const InkFigure = () => (
+const InkFigure = () => (
   <Figure label="Five sample figures in their inks: a quiet grey 8,412; a heavy white 48,210; a green +2,940; a red −8,113; a magenta 274,641 — each with the rule beside it" h={98}>
     {[
       { y: 18, sample: '8,412', ink: SECOND, bold: false, word: "the column's usual run" },
@@ -123,7 +123,7 @@ export const InkFigure = () => (
 );
 
 /** The lean bar: how much of a contract's volume printed at the ask against the bid */
-export const LeanFigure = () => (
+const LeanFigure = () => (
   <Figure label="Three lean bars in one ink: ASK 74% with the bar reaching most of the way from the right, MID half, BID 66% a short reach — with the words: at the ask means buyers paid up, at the bid means sellers hit; a side is not a direction" h={70}>
     {[
       { y: 18, ask: 74, word: 'ASK 74% — three quarters of the volume paid the offer: buyers lifting' },
@@ -145,7 +145,7 @@ export const LeanFigure = () => (
 );
 
 /** Sweep, floor, multi: the three shares of a contract's volume */
-export const FlowSharesFigure = () => (
+const FlowSharesFigure = () => (
   <Figure label="Three columns of shares: SWEEP 64% in white as heavy, FLOOR 23%, MULTI 31% — each with what it counts" h={62}>
     <Head x={14} y={12}>SWEEP</Head>
     <Head x={150} y={12}>FLOOR</Head>
@@ -181,7 +181,7 @@ export const FlowSharesFigure = () => (
 );
 
 /** Open interest against volume: what was built today */
-export const VolOverOiFigure = () => (
+const VolOverOiFigure = () => (
   <Figure label="Two contracts: one with volume 12,000 over open interest 5,400 reading 2.22 in bold, positions built today; one with 3,100 over 40,000 reading 0.08 grey, old positions" h={62}>
     {[
       { y: 22, vol: '12,000', oi: '5,400', ratio: '2.22', bold: true, word: 'volume past the interest — positions BUILT today' },
@@ -209,7 +209,7 @@ export const VolOverOiFigure = () => (
 );
 
 /** The watch star at the left of a row */
-export const WatchFigure = () => (
+const WatchFigure = () => (
   <Figure label="A row's left edge with a bookmark mark, hollow at rest and filled in silver when the contract is under watch" h={40}>
     <path d="M 16 12 h 8 v 18 l -4 -3 l -4 3 Z" fill="none" stroke={MUTED} strokeWidth={1} />
     <text x={34} y={24} fontSize={7} fill={SECOND} fontFamily={SANS}>
@@ -253,7 +253,7 @@ export const ScreenerGuide = () => (
 /* ---- footprints ----------------------------------------------------------------- */
 
 /** Open interest overnight: what stood, what stands, the change, who built it */
-export const OiChangeFigure = () => (
+const OiChangeFigure = () => (
   <Figure label="One contract's open interest: yesterday 576,487, today 681,730, the change +105,243 +18% in bold green, built on ASK 66% as a lean bar in one ink" h={58}>
     <Head x={14} y={12}>PREV OI</Head>
     <Head x={110} y={12}>OI</Head>
@@ -281,7 +281,7 @@ export const OiChangeFigure = () => (
 );
 
 /** A streak: sessions in a row the interest grew */
-export const StreakFigure = () => (
+const StreakFigure = () => (
   <Figure label="Two rows of small bars: one growing seven sessions in a row reading 7d in bold, one growing a single session reading 1d in grey" h={54}>
     {[
       { y: 18, n: 7, word: 'grew seven sessions running — a build with legs' },
@@ -330,7 +330,7 @@ export const FootprintsGuide = () => (
 /* ---- watchers ---------------------------------------------------------------- */
 
 /** A reason: the desk's dot in its kind's hue, yours as a hollow ring */
-export const ReasonFigure = () => (
+const ReasonFigure = () => (
   <Figure label="Three reasons: a purple dot 'One print carried outsized money', a teal dot 'Kept printing at higher and higher prices', a hollow ring 'Quiet AVGO' one you wrote" h={66}>
     {[
       { y: 18, dot: '#9B8FE8', hollow: false, text: 'One print carried outsized money', who: "the desk's — the hue says which kind" },
@@ -351,7 +351,7 @@ export const ReasonFigure = () => (
 );
 
 /** The print that tripped the reason, its money, its side */
-export const PrintFigure = () => (
+const PrintFigure = () => (
   <Figure label="One alert's print: 850 @ $1.24, $105.4K, on the BID in the plain ink — the words: the print that tripped the reason, and which side it printed on" h={54}>
     <Head x={14} y={12}>THE PRINT</Head>
     <Head x={130} y={12}>PRINT $</Head>
@@ -399,7 +399,7 @@ export const WatchersGuide = () => (
 /* ---- windows -------------------------------------------------------------------- */
 
 /** The session as one instrument: a bar a quarter hour, the busiest in magenta, the open one on a silver column */
-export const DayStripFigure = () => {
+const DayStripFigure = () => {
   const n = 26;
   const x0 = 14;
   const span = 392;
@@ -448,7 +448,7 @@ export const DayStripFigure = () => {
 };
 
 /** The share of a contract's day that landed in one window */
-export const ShareFigure = () => (
+const ShareFigure = () => (
   <Figure label="Two contracts' share-of-day bars: one at 61% in magenta reading burst, one at 3% in grey reading a trickle" h={54}>
     {[
       { y: 18, pct: 61, word: 'a BURST — most of its whole day landed right here', ink: SUPREME },
@@ -488,7 +488,7 @@ export const WindowsGuide = () => (
 /* ---- multi-leg ------------------------------------------------------------------ */
 
 /** A structure: the shape's dot, the strikes, the legs */
-export const StructureFigure = () => (
+const StructureFigure = () => (
   <Figure label="Three structures: a blue dot Vertical 72 / 73 ×2, a purple dot Iron condor 30.5 / 31 / 32 / 32.5 ×4, a teal dot Straddle 252.5 ×2" h={70}>
     {[
       { y: 18, dot: '#7EA6F0', kind: 'Vertical', strikes: '72 / 73', legs: '×2', word: 'two strikes, one side — a bounded bet' },
@@ -515,7 +515,7 @@ export const StructureFigure = () => (
 );
 
 /** Defined risk: the most it can lose in red, the most it can make in green, uncapped loudest */
-export const RiskFigure = () => (
+const RiskFigure = () => (
   <Figure label="Three risk pairs: max loss $3.1K red against max profit $35.7K green; max loss $120.4K red against Uncapped in bold green; max loss Uncapped in bold amber against $36.9K green" h={62}>
     <Head x={14} y={12}>MAX LOSS</Head>
     <Head x={110} y={12}>MAX PROFIT</Head>
@@ -560,7 +560,7 @@ export const StructureGuide = () => (
 /* ---- net flow and 0dte ---------------------------------------------------------- */
 
 /** A row of the board: rank, the name, its net in its ink, the C and P under it */
-export const BoardRowFigure = () => (
+const BoardRowFigure = () => (
   <Figure label="Two board rows: 01 GOOGL +$57.9M in magenta with a green bar and net bullish under it; 15 META −$923.1K in red with a short red bar and net bearish under it" h={70}>
     {[
       { y: 16, n: '01', t: 'GOOGL', net: '+$57.9M', ink: SUPREME, bar: 1, bull: true, c: '$52.2M', p: '−$5.6M' },
@@ -590,7 +590,7 @@ export const BoardRowFigure = () => (
 );
 
 /** The pane's lines: the spot in white, net calls in green, net puts in red, the volume floor */
-export const PaneLinesFigure = () => (
+const PaneLinesFigure = () => (
   <Figure label="A small chart: a white spot line drifting down, a green net-calls line rising, a red net-puts line flat, small volume bars along the floor with one in magenta" h={96}>
     <polyline points="14,30 60,26 100,34 150,40 200,44 250,52 300,50 350,60 400,58" fill="none" stroke={INK} strokeWidth={1.2} />
     <polyline points="14,64 60,60 100,58 150,52 200,48 250,42 300,40 350,34 400,32" fill="none" stroke={BULL} strokeWidth={1.4} />
@@ -632,7 +632,7 @@ export const NetFlowGuide = () => (
 );
 
 /** Four panes, each with its own cut */
-export const DeskFigure = () => (
+const DeskFigure = () => (
   <Figure label="Four small panes in a two-by-two grid, each labelled: Everything, SPY, QQQ, Stocks only" h={96}>
     {[
       { x: 14, y: 12, l: 'Everything' },
@@ -675,7 +675,7 @@ export const OdteGuide = () => (
 /** One row of the tape: when, the name, the contract, size at the fill, the dollars, the tag */
 /* the example contract expires on the tape's own session, never a date long gone */
 const exampleExpiry = () => expiryLabel(tapeSessionIso());
-export const TapeRowFigure = () => (
+const TapeRowFigure = () => (
   <Figure label={`One tape row: 14:52:07 · NVDA · 215C ${exampleExpiry()} · 850 @ $1.24 · $105.4K in bold · SWEEP in amber`} h={54}>
     <Head x={14} y={12}>TIME</Head>
     <Head x={74} y={12}>TICKER</Head>
@@ -705,7 +705,7 @@ export const TapeRowFigure = () => (
 );
 
 /** Where the fill landed between the bid and the ask */
-export const FillFigure = () => (
+const FillFigure = () => (
   <Figure label="Two fills in the spread, both dots in the plain ink: one near the ask, bought; one near the bid, sold — the dot's place is the tell, not a colour" h={64}>
     {[
       { y: 22, pos: 0.92, ink: INK, word: 'filled 1.27, near the ask — bought, someone wanted it now' },
@@ -753,7 +753,7 @@ export const LiveTapeGuide = () => (
 /* ---- tracker ------------------------------------------------------------------- */
 
 /** What a mark has done since: the fill then and now, the change in its ink */
-export const SinceFigure = () => (
+const SinceFigure = () => (
   <Figure label="Two marked contracts: NVDA 120C marked at $3.29 now $4.10 reading +24.6% in green; SPY 494P marked at $4.73 now $3.90 reading −17.5% in red" h={66}>
     <Head x={14} y={12}>MARKED AT</Head>
     <Head x={110} y={12}>NOW</Head>
@@ -781,7 +781,7 @@ export const SinceFigure = () => (
 );
 
 /** Two names on one row of the card: the first's figure lit at the left, the fact and its note in the middle, the second's quiet at the right */
-export const CardRowFigure = () => (
+const CardRowFigure = () => (
   <Figure label="One row of the card: SPY's premium $122.9M quiet on the left, the fact Premium over the note QQQ the heavier book in the middle, QQQ's $175.4M lit on the right" h={64}>
     <text x={150} y={30} textAnchor="end" fontSize={9} fill={SECOND} fontFamily={MONO}>
       $122.9M
@@ -830,7 +830,7 @@ export const CompareGuide = () => (
 );
 
 /** A shelf on the board: the role in its ink, the price, the distance, the dollars, the bar and the count */
-export const ShelfFigure = () => (
+const ShelfFigure = () => (
   <Figure label="Two shelf rows: RESISTANCE $492.27 +0.29% $177.6M with a red bar and 34% · 9 in hand under it; SUPPORT $488.40 −0.50% $96.1M with a green bar" h={78}>
     {[
       { y: 18, role: 'RESISTANCE', ink: BEAR, price: '$492.27', dist: '+0.29%', dInk: BULL, usd: '$177.6M', bar: 1, under: '34% · 9 in hand', note: 'dollars rested above the market — a seller waits there' },
@@ -863,7 +863,7 @@ export const ShelfFigure = () => (
 );
 
 /** The four reads, each in its ink, with the conviction as a word over four steps, never a figure */
-export const ReadFigure = () => (
+const ReadFigure = () => (
   <Figure label="Four reads in a row: ACCUMULATION green (over the mid), DISTRIBUTION red (under the mid), AT THE MID amber, NO READ grey" h={76}>
     {[
       { x: 14, w: 'ACCUMULATION', ink: BULL, note: 'size over the mid — bought up' },
@@ -928,4 +928,3 @@ export const TrackerGuide = () => (
   </div>
 );
 
-export default ScreenerGuide;

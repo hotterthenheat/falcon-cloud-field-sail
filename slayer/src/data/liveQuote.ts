@@ -294,12 +294,12 @@ export function useDayMoves(tickers: readonly string[]): Map<string, LiveQuote> 
    rows (data/dayChange.ts loadRegularCloses — the source the top bar, the quote and Pinpoint read), and the screener
    gives only the last print (the extended one, kept apart) and the reference closes. In the session `close` is the last
    regular print and `prev_close` the prior regular close, so the row is read as it stands. */
-export interface SetMove {
+interface SetMove {
   pct: number;
   /** The New York session the move belongs to */
   date: string;
 }
-export interface SetMoves {
+interface SetMoves {
   /** True once every name of the set is settled: read, or ruled out of the lead */
   complete: boolean;
   /** How many names were asked */
@@ -319,7 +319,7 @@ const inSessionRow = (date: string): boolean => isTradingDay(nyTodayDate()) && n
 /** One screener row read against the name's regular closes: the regular price, the regular session's move and its date,
     and the extended-hours print apart. Outside the session, without the closes there is no read (null) — the row's own
     close is an extended print and its intraday_change is off the open. */
-export interface ScreenerRead {
+interface ScreenerRead {
   /** The regular price: the last print in the session, the last regular close outside it */
   regular: number;
   /** The regular session's change, percent (null when the close before it is not in hand) */
@@ -352,15 +352,9 @@ export function screenerRead(row: Record<string, unknown>, closes: Closes | null
   return { regular: last.close, pct, date: last.date, ext, extPct: ext != null ? ((close - last.close) / last.close) * 100 : null };
 }
 /** The regular session's move off one screener row, given the name's regular closes (null when it cannot be read) */
-export function screenerDayMove(row: Record<string, unknown>, closes: Closes | null): SetMove | null {
+function screenerDayMove(row: Record<string, unknown>, closes: Closes | null): SetMove | null {
   const r = screenerRead(row, closes);
   return r && r.pct != null ? { pct: r.pct, date: r.date } : null;
-}
-/** The screener row's REGULAR price and its extended-hours print kept apart — the quote's convention (regularPrice /
-    extPrice) for a row whose quote has not landed */
-export function screenerPrices(row: Record<string, unknown>, closes: Closes | null): { regular: number; ext: number | null; extPct: number | null } | null {
-  const r = screenerRead(row, closes);
-  return r ? { regular: r.regular, ext: r.ext, extPct: r.extPct } : null;
 }
 /** Whether a screener row needs the daily rows for its regular price (every row outside the session) */
 export const screenerNeedsCloses = (row: Record<string, unknown>): boolean => !inSessionRow(String(row.date ?? '').slice(0, 10));

@@ -9,7 +9,7 @@ import { liveSpotOf } from '../core/liveSpots';
 
 const STORAGE_KEY = 'slayer_trace_watch';
 
-export type WatchKind = 'print' | 'contract' | 'structure' | 'cross';
+type WatchKind = 'print' | 'contract' | 'structure' | 'cross';
 export type WatchSource = 'tape' | 'screener' | 'footprints' | 'watchers' | 'windows' | 'multi-leg' | 'card' | 'dark-pool';
 
 interface WatchBase {
@@ -204,7 +204,6 @@ export const watchStructure = (t: SpreadTrade, from: WatchSource): WatchedStruct
   at: { spot: t.spot },
 });
 
-
 const KINDS = new Set<string>(['print', 'contract', 'structure', 'cross']);
 
 /** One malformed row must never take a page down — the Tracker's own rule. */
@@ -255,7 +254,6 @@ function save(items: WatchedItem[]): void {
     /* storage full or off: the session still works */
   }
 }
-
 
 interface WatchValue {
   watched: WatchedItem[];

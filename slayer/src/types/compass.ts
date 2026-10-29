@@ -6,7 +6,7 @@
 /* Five sleeves: 0DTE, Weekly, Swing, Position (a quarter) and Long-dated, whose key stays 'leaps' for stored data. */
 export type SleeveKey = 'odte' | 'weekly' | 'swing' | 'position' | 'leaps';
 
-export interface SleeveDef {
+interface SleeveDef {
   key: SleeveKey;
   label: string;
   /** Calendar days out, resolved to a real session through core/calendar. */
@@ -24,10 +24,6 @@ export const SLEEVES: SleeveDef[] = [
   { key: 'leaps', label: 'Long-dated', dte: 365, rungPct: 0.06, blurb: 'A year out — direction over days, not minutes' },
 ];
 
-export const SLEEVE_BY_KEY: Record<SleeveKey, SleeveDef> = Object.fromEntries(
-  SLEEVES.map(s => [s.key, s])
-) as Record<SleeveKey, SleeveDef>;
-
 /* Twelve kinds. Keys are the engine's and the journal's and never change ('top-setups', 'whale-sweeps' keep theirs). */
 export type ScannerKey =
   | 'top-setups'
@@ -43,7 +39,7 @@ export type ScannerKey =
   | 'earnings'
   | 'all';
 
-export interface ScannerDef {
+interface ScannerDef {
   key: ScannerKey;
   label: string;
   blurb: string;
@@ -84,12 +80,12 @@ export const SCANNERS: ScannerDef[] = [
     Earnings           limited  on       limited  off       off
     All setups         on       on       on       on        on
 */
-export type Eligibility = 'on' | 'limited' | 'off';
+type Eligibility = 'on' | 'limited' | 'off';
 const SLEEVE_ORDER: SleeveKey[] = ['odte', 'weekly', 'swing', 'position', 'leaps'];
 const row = (cells: string): Record<SleeveKey, Eligibility> =>
   Object.fromEntries(SLEEVE_ORDER.map((k, i) => [k, cells[i] === '+' ? 'on' : cells[i] === '~' ? 'limited' : 'off'])) as Record<SleeveKey, Eligibility>;
 /* one character a sleeve, in SLEEVE_ORDER: + on · ~ limited · - off */
-export const ELIGIBILITY: Record<ScannerKey, Record<SleeveKey, Eligibility>> = {
+const ELIGIBILITY: Record<ScannerKey, Record<SleeveKey, Eligibility>> = {
   'top-setups': row('+++++'),
   'quick-scalp': row('+~---'),
   discounted: row('-+++~'),
@@ -105,14 +101,9 @@ export const ELIGIBILITY: Record<ScannerKey, Record<SleeveKey, Eligibility>> = {
 };
 
 /** how a kind stands on a sleeve: on, limited, or off */
-export function scannerEligibility(scanner: ScannerKey, sleeve: SleeveKey): Eligibility {
+function scannerEligibility(scanner: ScannerKey, sleeve: SleeveKey): Eligibility {
   return ELIGIBILITY[scanner]?.[sleeve] ?? 'off';
 }
-
-/** the kinds a sleeve offers (on or limited), in board order: what the harness and the journal read */
-export const ELIGIBLE_SCANNERS: Record<SleeveKey, ScannerKey[]> = Object.fromEntries(
-  SLEEVE_ORDER.map(sleeve => [sleeve, SCANNERS.filter(s => scannerEligibility(s.key, sleeve) !== 'off').map(s => s.key)])
-) as Record<SleeveKey, ScannerKey[]>;
 
 export function isScannerEligible(scanner: ScannerKey, sleeve: SleeveKey): boolean {
   return scannerEligibility(scanner, sleeve) !== 'off';
@@ -121,21 +112,11 @@ export function isScannerEligible(scanner: ScannerKey, sleeve: SleeveKey): boole
 /** The engine's internal verdict, used for loop scoring; users only ever see a state (VERDICT_LABEL). */
 export type Verdict = 'ENTER' | 'EXIT' | 'WATCH';
 
-/** User-facing labels: the terminal shows states, not orders. */
-export const VERDICT_LABEL: Record<Verdict, string> = {
-  ENTER: 'ACTIVE',
-  WATCH: 'WATCH',
-  EXIT: 'FADING',
-};
-
 export type Momentum = 'STRENGTHENING' | 'NEUTRAL' | 'WEAKENING';
-
-/** Per-strike engine recommendation shown in the contract chain. */
-export type ChainAction = 'HOLD' | 'REDUCE' | 'SELL';
 
 /** Ladder invariant: statuses run HIT* then at most one 'IN PROGRESS' then PENDING*, in rung order, so the UI draws one
     live marker. On real data HIT means price crossed the target since the setup triggered. */
-export type TakeProfitStatus = 'PENDING' | 'IN PROGRESS' | 'HIT';
+type TakeProfitStatus = 'PENDING' | 'IN PROGRESS' | 'HIT';
 
 export type OptionRight = 'C' | 'P';
 
@@ -251,68 +232,3 @@ export interface UniverseQuote {
   step: number;
 }
 
-export interface SetupGroup {
-  ticker: string;
-  spot: number;
-  sparkline: number[];
-  changePct: number;
-  found: number;
-  setups: Setup[];
-}
-
-export interface ChainSide {
-  premium: number;
-  changePct: number;
-  health: number;
-  momentum: Momentum;
-  action: ChainAction;
-}
-
-export interface ChainRow {
-  strike: number;
-  call: ChainSide;
-  put: ChainSide;
-}
-
-export interface ContractChain {
-  ticker: string;
-  spot: number;
-  rows: ChainRow[];
-}
-
-/** The four reasons a contract carries weight: gamma, volume/OI, distance from spot, net exposure. */
-export type ImpactMetric = 'gamma' | 'voloi' | 'distance' | 'exposure';
-
-export interface ImpactRow {
-  rank: number;
-  contract: string;
-  strike: number;
-  right: OptionRight;
-  /** Display bucket matching the board's sleeve — the expiry the analysis page opens. */
-  expiry: string;
-  openInterest: number;
-  volume: number;
-  /** Today's volume over open interest; above 1x, more traded today than existed this morning. */
-  volOi: number;
-  /** Strike distance from spot, signed percent: + above, − below. */
-  distPct: number;
-  /** This contract's dealer gamma, signed dollars: negative absorbs moves, positive amplifies. */
-  exposureUsd: number;
-  /** Share of the whole book's gamma, percent. */
-  gamma: number;
-}
-
-/** Why a contract is on a setup's driver list: its part in the book the campaign trades through. */
-export type DriverRole = 'This contract' | 'Call wall' | 'Put wall' | 'Supreme' | 'Pin' | 'In the path';
-
-export interface DriverRow extends ImpactRow {
-  role: DriverRole;
-}
-
-export interface CompassView {
-  scanner: ScannerKey;
-  groups: SetupGroup[];
-  totalFound: number;
-  shown: number;
-  chain: ContractChain;
-}

@@ -7,7 +7,7 @@ import { DEFAULT_BOARD_NAMES } from './boardNames';
 
 const KEY = 'slayer_news_follows';
 
-export interface NewsFollow {
+interface NewsFollow {
   ticker: string;
   /** The bell rings on a new headline for the name */
   alerts: boolean;
@@ -58,7 +58,7 @@ const subscribe = (fn: () => void) => {
   };
 };
 
-export const getFollows = (): NewsFollow[] => current;
+const getFollows = (): NewsFollow[] => current;
 export const useFollows = (): NewsFollow[] => useSyncExternalStore(subscribe, getFollows, getFollows);
 export function followName(symbol: string): void {
   const t = symbol.trim().toUpperCase();

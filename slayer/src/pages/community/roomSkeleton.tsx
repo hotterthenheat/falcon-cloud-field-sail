@@ -9,7 +9,7 @@ import { Block, Line, SubLine, Trigger } from '../../components/ui/skeletonKit';
 export const ROOM_GRID = 'grid gap-2.5 items-start grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_300px]';
 export const ROOM_POST_H = 100;
 export const ROOM_TREND_H = 36;
-export const ROOM_NOTICE_H = 52;
+const ROOM_NOTICE_H = 52;
 export const ROOM_FOLLOW_H = 50;
 
 const Box = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => <div className={`border border-borderSubtle rounded-md bg-panel overflow-hidden ${className}`}>{children}</div>;

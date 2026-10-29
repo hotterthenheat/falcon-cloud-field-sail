@@ -5,7 +5,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTicker } from './MarketDataContext';
 
-export interface StrikeFocus {
+interface StrikeFocus {
   ticker: string;
   /** The strike — a price on the name's ladder */
   price: number;

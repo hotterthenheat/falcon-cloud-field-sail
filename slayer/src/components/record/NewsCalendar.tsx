@@ -27,8 +27,8 @@ const KIND_OPTIONS: { value: KindPick; label: string }[] = [
   { value: 'post', label: 'Posts' },
 ];
 /** The day panel's width, and a cell's height at rest */
-export const CAL_DAY_W = 340;
-export const CAL_CELL_H = 96;
+const CAL_DAY_W = 340;
+const CAL_CELL_H = 96;
 
 const SCHEDULE = 'rgb(var(--text-primary))';
 const POST = 'rgb(var(--text-secondary))';

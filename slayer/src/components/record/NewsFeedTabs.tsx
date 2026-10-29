@@ -18,8 +18,8 @@ import { ImpactLegend, ImpactMark, NEWS_FLAG_TIP, NewsFlag, tierOf } from './imp
 export const nameWord = (item: { ticker: string | null; category: string; mentions?: string[] }): string => item.ticker ?? (item.mentions?.length ? `mentions ${item.mentions[0]}` : item.category === 'Macro' ? 'MACRO' : 'NO NAME');
 import { useBoardNames } from '../../data/boardNames';
 
-export type FeedTab = 'all' | 'following' | 'earnings' | 'data' | 'analyst' | 'deals' | 'other';
-export const FEED_TABS = [
+type FeedTab = 'all' | 'following' | 'earnings' | 'data' | 'analyst' | 'deals' | 'other';
+const FEED_TABS = [
   { value: 'all', label: 'All finance news' },
   { value: 'following', label: 'Following' },
   { value: 'earnings', label: 'Earnings news' },
@@ -30,7 +30,7 @@ export const FEED_TABS = [
   { value: 'other', label: 'Other company news' },
 ] as const;
 /** The wire's columns — the same seven the rows under the map wear */
-export const FEED_COLS = '72px 104px 96px 72px minmax(0, 1fr) 76px 72px';
+const FEED_COLS = '72px 104px 96px 72px minmax(0, 1fr) 76px 72px';
 /** The tab in hand outlives the page — back from a story's page, the reader lands on the tab they left */
 /* it opens on a kind, not on All: the list above already holds every story */
 let tabMemory: FeedTab = 'earnings';

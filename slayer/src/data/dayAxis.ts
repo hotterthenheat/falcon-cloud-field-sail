@@ -43,20 +43,6 @@ export function dayAxisTo(lastTime: number | null | undefined, live = false, ope
   return Math.max(close, last + 1);
 }
 
-/** The marks under the axis: its start, the whole hours after it (the even ones on a narrow plot), its end — none
-    near enough to the start or the end for their labels to print over each other */
-export function dayHours(from: number, narrow: boolean, to: number = CLOSE_MIN): number[] {
-  const gap = narrow ? 90 : 20;
-  const out = [from];
-  for (let t = Math.ceil(from / 60) * 60; t < to; t += 60) {
-    if (t - from < gap || to - t < gap) continue;
-    if (narrow && (t / 60) % 2 !== 0) continue;
-    out.push(t);
-  }
-  out.push(to);
-  return out;
-}
-
 /** The clock both day charts share for the session the head is on. Overnight crosses midnight, so that window is measured from the first bar, not from midnight. */
 export function axisForSession(bars: readonly { time: number }[], session: DeskSession, live: boolean): { from: number; to: number; dayStart: number } {
   const w = sessionMeta(session);

@@ -31,8 +31,7 @@ import type { Candle } from '../types/market';
   — and every caller renders absence, never a guess.
 */
 
-export const ATR_PERIOD = 14;
-export const TRADING_DAYS = 252;
+const ATR_PERIOD = 14;
 
 /** One session's OHLC, folded from base bars. */
 interface SessionBar {
@@ -82,12 +81,6 @@ export function sessionAtr(bars1m: readonly Candle[], period = ATR_PERIOD): numb
     atr = (atr * (period - 1) + tr(done[i], done[i - 1].close)) / period;
   }
   return atr;
-}
-
-/** One trading day of the quoted annualized vol, in dollars. */
-export function impliedDaySigma(spot: number, iv: number): number | null {
-  if (!(spot > 0) || !(iv > 0)) return null;
-  return spot * iv * Math.sqrt(1 / TRADING_DAYS);
 }
 
 export type DistanceUnit = '$' | '%' | 'ATR' | 'σ';

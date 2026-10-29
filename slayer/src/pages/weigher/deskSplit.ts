@@ -16,8 +16,8 @@
 
 const KEY = 'slayer_weigher_top';
 export const DESK_TOP_DEFAULT = 560;
-export const DESK_TOP_MIN = 320;
-export const DESK_TOP_MAX = 1200;
+const DESK_TOP_MIN = 320;
+const DESK_TOP_MAX = 1200;
 
 export const clampDeskTop = (v: number): number => Math.round(Math.min(DESK_TOP_MAX, Math.max(DESK_TOP_MIN, v)));
 

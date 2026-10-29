@@ -25,7 +25,7 @@ export function sleeveForDte(dte: number): SleeveKey {
 /* A setup's id is its address: TICKER-strike-R-scanner-tenor, built and read back here. */
 const ID_RE = /^([A-Z][A-Z0-9.]{0,6})-(\d+(?:\.\d+)?)-([CP])-(top-setups|quick-scalp|discounted|rebounds|breakouts|trend|vol-expansion|mean-reversion|whale-sweeps|overpriced|earnings|all)-(odte|weekly|swing|position|leaps)$/;
 
-export interface SetupAddress {
+interface SetupAddress {
   ticker: string;
   strike: number;
   right: OptionRight;

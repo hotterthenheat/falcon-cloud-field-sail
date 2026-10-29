@@ -10,7 +10,7 @@ import { useOptionTape } from '../../data/traceLive';
 import type { OptionRight } from '../../types/compass';
 import type { FlowPrint } from '../../types/trace';
 
-export interface TapeHit {
+interface TapeHit {
   ticker: string;
   strike: number;
   right: OptionRight;
@@ -48,7 +48,7 @@ function contractOf(ticker: string, strike: number, right: OptionRight): string 
   return `${ticker} ${k}${right}`;
 }
 
-export interface TapeFocus {
+interface TapeFocus {
   ticker: string;
   strike: number;
   right: OptionRight;

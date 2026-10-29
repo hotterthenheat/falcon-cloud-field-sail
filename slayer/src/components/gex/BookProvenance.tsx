@@ -20,7 +20,6 @@
 */
 
 import { FLIP_RULE } from '../../data/flipLevel';
-import { Database } from 'lucide-react';
 import { ASSUMPTION_WORDS, freshnessOf } from '../../data/levelSureness';
 import { GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { peekEntry, peekGammaPriced, peekOiChange } from '../../data/uwBook';
@@ -69,40 +68,6 @@ export function bookFreshness(ticker: string): string {
     ? `${oiWords} · the gamma is re-priced each minute at the live price — last at ${p.price.toFixed(2)}, ${when}`
     : `${oiWords} · the gamma is priced at ${p.price.toFixed(2)}, ${when} — the last pricing; it re-prices each minute once the session opens`;
 }
-
-interface DoorProps {
-  ticker: string;
-  open: boolean;
-  onClick: () => void;
-  /** The icon alone, for a band that measured itself tight */
-  compact?: boolean;
-}
-
-/** THE DATA DOOR — first on the doors row: the source in a word, the rest on the card */
-export const DataDoor = ({ ticker, open, onClick, compact = false }: DoorProps) => {
-  const src = sourceWords(ticker);
-  const title = `${src.live ? 'Live · ' : ''}${bookFreshness(ticker)} · click for where the figures come from and how they are computed`;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={open}
-      aria-label={src.live ? `Data: ${src.short}` : 'Data'}
-      aria-haspopup="dialog"
-      title={title}
-      className={`hit inline-flex items-center gap-1.5 h-7 rounded-md border bg-chip transition-colors font-mono select-none ${compact ? 'w-7 justify-center' : 'px-2.5'} ${open ? 'border-silver/50' : 'border-borderSubtle hover:border-borderMuted hover:bg-ink/[0.04]'}`}
-      data-ledger-data-door={src.live ? 'live' : 'house'}
-    >
-      <Database className={`w-3 h-3 ${src.live ? 'text-silver' : 'text-textMuted'}`} />
-      {!compact && (
-        <>
-          <span className="text-t11 text-textMuted">Data</span>
-          {src.live && <span className="text-t11 font-semibold text-textPrimary">{src.short}</span>}
-        </>
-      )}
-    </button>
-  );
-};
 
 interface CardProps {
   ticker: string;

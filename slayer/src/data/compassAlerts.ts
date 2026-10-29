@@ -5,13 +5,13 @@ import { useEffect, useState } from 'react';
 
 const KEY = 'slayer_compass_alert_v1';
 
-export interface CompassAlertPref {
+interface CompassAlertPref {
   /** 'off' is quiet. 'all' is every name on that sleeve. A list is only those names. */
   odte: 'off' | 'all' | string[];
   swing: 'off' | 'all' | string[];
 }
 
-export interface CompassPing {
+interface CompassPing {
   id: string;
   ticker: string;
   contract: string;

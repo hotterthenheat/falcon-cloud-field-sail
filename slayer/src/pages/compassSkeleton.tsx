@@ -14,7 +14,7 @@
 */
 
 import { Compass as CompassIcon } from 'lucide-react';
-import { Block, ChartGround, Facts, Line, PanelHeader, SubLine, TitleRow, Trigger } from '../components/ui/skeletonKit';
+import { Block, ChartGround, Facts, Line, SubLine, TitleRow, Trigger } from '../components/ui/skeletonKit';
 import { PageSkeleton } from '../components/ui/Skeleton';
 
 /** The shell head as static chrome — the page's icon and name over its line (CompassLayout renders the real one) */
@@ -47,7 +47,7 @@ export const CompassRouteSkeleton = ({ pathname }: { pathname: string }) =>
     <CompassPageSkeleton />
   );
 
-export const CompassPageSkeleton = () => (
+const CompassPageSkeleton = () => (
   <>
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch" aria-hidden aria-busy="true" aria-label="Loading" data-skeleton="compass">
       <div className="xl:col-span-8 min-w-0">
@@ -137,7 +137,7 @@ export const CompassPageSkeleton = () => (
     head box (the logo, the contract, its state, the facts), the chart beside
     the trade card (7/5), the contracts around it as a grid. Measured
     2026-09-11: 77 · 649 · 257. */
-export const CampaignSkeleton = () => (
+const CampaignSkeleton = () => (
   <div className="flex flex-col gap-4" aria-hidden aria-busy="true" aria-label="Loading" data-skeleton="campaign">
     <div className="border border-borderSubtle rounded-md bg-panel h-[77px] px-5 flex items-center gap-6">
       <div className="min-w-0 flex-1 flex items-center gap-3">
@@ -232,4 +232,3 @@ export const CampaignSkeleton = () => (
   </div>
 );
 
-export default CompassPageSkeleton;

@@ -12,7 +12,6 @@
   expiry is the width, on the same scale. Nothing here is a guessed vol.
 */
 
-import { useSyncExternalStore } from 'react';
 import { RTH_MINUTES } from '../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase, SESSION_CLOSE_MIN } from '../core/nyTime';
 import { YEAR_MINUTES } from './measure';
@@ -20,9 +19,9 @@ import { thetaCall } from './theta';
 import { uwOnlyDesk } from './spotGexBook';
 import { uwCall } from './whales';
 
-export type ConeHorizon = 'session' | 'week' | 'next';
+type ConeHorizon = 'session' | 'week' | 'next';
 
-export interface ConeDraw {
+interface ConeDraw {
   iv: number;
   forwardMin: number;
   /** The session is over. Draw the day's band from the open, not a collapsed tip. */
@@ -278,21 +277,3 @@ export function coneFor(ticker: string, horizon: ConeHorizon, spot: number): Con
   return { iv, forwardMin: minutes, fromOpen: false, source: `${surface.source} ${row.expiry}` };
 }
 
-/** The ±1σ prices the cone is actually drawing, or null until a surface exists. */
-export function coneEdges(ticker: string, horizon: ConeHorizon, spot: number): { high: number; low: number } | null {
-  const live = coneFor(ticker, horizon, spot);
-  if (!live || !(live.iv > 0) || !(live.forwardMin > 0) || !(spot > 0)) return null;
-  const dollars = spot * live.iv * Math.sqrt(live.forwardMin / YEAR_MINUTES);
-  if (!(dollars > 0)) return null;
-  return { high: spot + dollars, low: spot - dollars };
-}
-
-export function useConeStamp(): number {
-  return useSyncExternalStore(
-    fn => {
-      listeners.add(fn);
-      return () => listeners.delete(fn);
-    },
-    () => rev,
-  );
-}

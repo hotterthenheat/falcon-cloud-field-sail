@@ -48,7 +48,7 @@ export const strikeWords = fmtK;
 /* ---- time left, in years of trading time ---- */
 const sessionsMemo = new Map<string, number>();
 /** Whole sessions AFTER `iso`, up to and including the expiry */
-export function sessionsLeft(iso: string, expiry: string): number {
+function sessionsLeft(iso: string, expiry: string): number {
   if (expiry <= iso) return 0;
   const key = `${iso}|${expiry}`;
   let n = sessionsMemo.get(key);
@@ -204,7 +204,7 @@ export function expiriesAt(ticker: string, iso: string): ListedExpiry[] {
   return out;
 }
 
-export interface ChainRow {
+interface ChainRow {
   strike: number;
   call: Quote;
   put: Quote;

@@ -59,10 +59,9 @@ function ownHeight(el: HTMLElement): number {
 
 /** A grid's shapes (Paper's layouts): how its panes are laid out, as the grid's classes */
 export type GridLayout = '1' | '2h' | '2v' | '3' | '4';
-export const GRID_PANES: Record<GridLayout, number> = { '1': 1, '2h': 2, '2v': 2, '3': 3, '4': 4 };
 const GRID_CLASS: Record<GridLayout, string> = { '1': 'grid-cols-1 grid-rows-1', '2h': 'grid-cols-2 grid-rows-1', '2v': 'grid-cols-1 grid-rows-2', '3': 'grid-cols-2 grid-rows-2', '4': 'grid-cols-2 grid-rows-2' };
 /** One pane of a grid: whose chart, at what interval — and what floats at its foot (a position's bar) */
-export interface GridPane {
+interface GridPane {
   key: string;
   name: DeskName;
   timeframe: Timeframe;
@@ -129,7 +128,7 @@ export interface DeskName {
 }
 
 /** The desk's hands, as this render has them — what a desk's own doors, keys and notices reach for */
-export interface DeskHands {
+interface DeskHands {
   /** Stop the clock and put it there (clamped to the day) */
   seek: (minute: number, day?: string) => void;
   /** The top row has shed its words */
@@ -139,7 +138,7 @@ export interface DeskHands {
   headW: number;
 }
 
-export interface DeskFact {
+interface DeskFact {
   label: string;
   testId: string;
   node: ReactNode;

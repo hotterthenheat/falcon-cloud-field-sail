@@ -49,7 +49,7 @@ const LIST_COL: ColDef<ListRow> = { sortable: false, resizable: false, suppressM
 
 const contractOf = (row: ListRow) => (row.kind === 'watch' ? row.w : row.p);
 /** The row's tag — only what differs INSIDE its card */
-export const tagOf = (row: ListRow): string => {
+const tagOf = (row: ListRow): string => {
   if (row.kind === 'watch') return row.w.status === 'open' ? '' : row.w.status === 'closed' ? 'closed' : 'settled';
   return row.p.source === 'tracker' ? 'from the Tracker' : row.p.side === 'long' ? '' : 'you sold';
 };

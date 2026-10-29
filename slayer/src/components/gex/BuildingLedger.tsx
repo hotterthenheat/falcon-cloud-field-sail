@@ -73,7 +73,6 @@ export const SHOW_OPTIONS: DropdownOption<BuildShow>[] = [
   { value: 'all', label: 'Every strike', hint: 'The whole window, steady strikes and all' },
 ];
 
-const signed = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 const contracts = (n: number) => (n === 0 ? '0' : `${n > 0 ? '+' : '−'}${Math.abs(n).toLocaleString('en-US')}`);
 
 /* THE VERDICT AS A CHIP — the report's three tones, plus silver for a change

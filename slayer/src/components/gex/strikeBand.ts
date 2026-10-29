@@ -19,7 +19,7 @@
 */
 
 /** One bar, already in SVG user units with y measured DOWN from the top. */
-export interface BandBar {
+interface BandBar {
   strike: number;
   value: number;
   x: number;

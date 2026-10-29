@@ -193,18 +193,6 @@ async function uwFetch(path: string, priority: boolean, low = false): Promise<Uw
   }
 }
 
-async function paged<T>(path: string, limit: number, pages: number, onPage?: (soFar: T[]) => void): Promise<T[]> {
-  const out: T[] = [];
-  for (let page = 0; page < pages; page++) {
-    const rows = await uw<T[]>(`${path}?limit=${limit}&page=${page}`, page === 0);
-    if (!Array.isArray(rows) || rows.length === 0) break;
-    out.push(...rows);
-    onPage?.([...out]);
-    if (rows.length < limit) break;
-  }
-  return out;
-}
-
 /* The vendor rejects limit=200 on headlines and 300 on congress; pages are zero-indexed. The first page is priority and
    handed up before the rest. */
 export const whalesPoliticians = () => uw<UwPolitician[]>('/congress/politicians?last_traded_within_months=24');
@@ -316,7 +304,7 @@ export interface UwContract {
 const enc = (ticker: string) => encodeURIComponent(ticker);
 export const whalesState = (ticker: string) => uw<UwState>(`/stock/${enc(ticker)}/stock-state`);
 /** The quote: the last trade (price, epoch-ms time) and the NBBO — read when the stock-state has stalled in the session */
-export interface UwQuote {
+interface UwQuote {
   last_trade?: { price?: string | number; time?: number };
   market_time?: string;
 }
@@ -330,7 +318,7 @@ export const whalesFlowStrike = (ticker: string) => uw<UwFlowStrike[]>(`/stock/$
 export const whalesIvRank = (ticker: string, priority = false) => uw<UwIv[]>(`/stock/${enc(ticker)}/iv-rank`, priority);
 export const whalesTermStructure = (ticker: string) => uw<UwTerm[]>(`/stock/${enc(ticker)}/volatility/term-structure`);
 export const whalesInterpIv = (ticker: string) => uw<UwInterp[]>(`/stock/${enc(ticker)}/interpolated-iv`);
-export const whalesBars = (ticker: string, size: '1m' | '5m', limit: number) =>
+export const whalesBars = (ticker: string, size: '1m' | '5m' | '15m' | '1h', limit: number) =>
   uw<UwBar[]>(`/stock/${enc(ticker)}/ohlc/${size}?limit=${limit}`);
 export interface UwDaily {
   date?: string;
@@ -504,14 +492,6 @@ export interface UwEtfInfo {
   expense_ratio?: string | number;
   holdings_count?: string | number;
   inception_date?: string;
-}
-
-export interface UwTide {
-  timestamp?: string;
-  date?: string;
-  net_call_premium?: string | number;
-  net_put_premium?: string | number;
-  net_volume?: string | number;
 }
 
 export const whalesInstitutions = (limit = 10) => uw<UwInstitution[]>(`/institutions?limit=${limit}&order=total_value`);

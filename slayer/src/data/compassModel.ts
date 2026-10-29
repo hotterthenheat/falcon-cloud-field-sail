@@ -739,7 +739,7 @@ const wingPicks = new Map<string, Setup>();
 const lotteryPicks = new Map<string, Setup>();
 const left = new Map<string, LeftRow>();
 
-export interface ScanReport { best: number; prun: number; contract: string; ticker: string; scored: number; quiet: number; setup: Setup | null }
+interface ScanReport { best: number; prun: number; contract: string; ticker: string; scored: number; quiet: number; setup: Setup | null }
 const emptyReport = (): ScanReport => ({ best: 0, prun: 0, contract: '', ticker: '', scored: 0, quiet: 0, setup: null });
 const reports: Record<'odte' | 'weekly', ScanReport> = { odte: emptyReport(), weekly: emptyReport() };
 
@@ -757,7 +757,7 @@ const misses = new Map<string, { setup: Setup; p1: number; prun: number }>();
 const kept = new Map<string, Setup>();
 const CALLS_KEY = 'slayer_compass_calls_v1';
 
-export interface PassLine {
+interface PassLine {
   ticker: string;
   contract: string;
   p1: number;
@@ -901,7 +901,7 @@ export function pinFill(id: string, ask: number): void {
 }
 
 /** Best scored miss per name. A later slice does not erase a higher one. */
-export function noteMiss(s: Setup, p1: number, prun: number): void {
+function noteMiss(s: Setup, p1: number, prun: number): void {
   if (!(p1 >= 0)) return;
   const key = `${s.sleeve}|${s.ticker}`;
   const had = misses.get(key);
@@ -955,13 +955,6 @@ export function currentPicks(): Setup[] {
   return [...picks.values(), ...wingPicks.values(), ...lotteryPicks.values(), ...nearPicks.values()].sort((a, b) => rank(b) - rank(a) || (b.p1 ?? 0) - (a.p1 ?? 0));
 }
 
-/* The scalp sleeve was retired; the scan still calls these two at each pass, and they do nothing. */
-export function commitScalps(_sleeve: string): boolean {
-  return false;
-}
-
-export function dropPending(_sleeve: string): void {}
-
 export function heldSetup(id: string): Setup | null {
   const held = currentPicks().find(s => s.id === id);
   if (held) return held;
@@ -971,10 +964,6 @@ export function heldSetup(id: string): Setup | null {
     if (report.setup?.id === id) return { ...report.setup, band: 'closest' };
   }
   return null;
-}
-
-export function setScanPace(_done: number, _total: number, _sleeve: 'odte' | 'weekly' = 'odte'): void {
-  /* the scan reports its pace; nothing reads it now */
 }
 
 export function noteLeft(row: { id: string; ticker: string; contract: string }, why: string): void {

@@ -463,7 +463,7 @@ export function markFired(ticker: string, id: string, at: number): void {
   a persisted log would quietly become the notification service the menu
   explicitly says this is not.
 */
-export const DISMISS_MS = 3000;
+const DISMISS_MS = 3000;
 const FIRED_LOG_CAP = 20;
 
 export interface FiredRecord {
@@ -481,15 +481,8 @@ const notifyTicker = (ticker: string) => {
   bumpAll();
 };
 
-export const getFiredLog = (ticker: string): FiredRecord[] => firedLogs.get(ticker) ?? EMPTY_FIRED;
-export const getUnseen = (ticker: string): number => unseenCounts.get(ticker) ?? 0;
-
-/** The bell was looked at — its count goes back to zero. The log stays. */
-export function markSeen(ticker: string): void {
-  if ((unseenCounts.get(ticker) ?? 0) === 0) return;
-  unseenCounts.set(ticker, 0);
-  notifyTicker(ticker);
-}
+const getFiredLog = (ticker: string): FiredRecord[] => firedLogs.get(ticker) ?? EMPTY_FIRED;
+const getUnseen = (ticker: string): number => unseenCounts.get(ticker) ?? 0;
 
 /** Put a fired-and-gone alert back on watch, from its log row — through the
     same cap and duplicate gates as arming it fresh. */
@@ -570,7 +563,7 @@ function noteName(ticker: string, holds: boolean): void {
   }
 }
 
-export interface NameAlerts {
+interface NameAlerts {
   ticker: string;
   alerts: Alert[];
   fired: FiredRecord[];
@@ -586,7 +579,7 @@ function bumpAll(): void {
 }
 
 /** Every name with an alert set or a firing logged, in name order. */
-export function getAllAlerts(): NameAlerts[] {
+function getAllAlerts(): NameAlerts[] {
   if (allSnapshot) return allSnapshot;
   const out: NameAlerts[] = [];
   for (const t of [...loadNames()].sort()) {
@@ -600,7 +593,7 @@ export function getAllAlerts(): NameAlerts[] {
 }
 
 /** Fired and not yet looked at, across every name — the bell's number. */
-export function getUnseenAll(): number {
+function getUnseenAll(): number {
   let n = 0;
   unseenCounts.forEach(v => { n += v; });
   return n;
@@ -773,14 +766,6 @@ function sameIdentity(a: Alert, b: Alert): boolean {
   }
 }
 
-export function rearmAlert(ticker: string, id: string, spot: number, now: number): void {
-  const list = read(ticker);
-  const hit = list.find(a => a.id === id);
-  if (!hit) return;
-  const next = list.map(a => (a.id === id ? { ...resetAlert(a, spot, now), setAt: now } : a));
-  if (next.some((a, i) => a !== list[i])) write(ticker, next);
-}
-
 /*
   ── FIRING ────────────────────────────────────────────────────────────────
 */
@@ -815,7 +800,7 @@ export interface AlertContext {
   news: readonly { atMs: number; graded: boolean }[];
 }
 
-export interface AlertVerdict {
+interface AlertVerdict {
   fire: boolean;
   /** The same alert with its lazy side/baseline filled in — returned only
       when something was established this evaluation. The caller stores it
@@ -935,67 +920,6 @@ export function evaluateAlert(a: Alert, ctx: AlertContext): AlertVerdict {
     the wall clock is a different clock. */
 export function scriptBarCounts(a: ScriptAlert, barTime: number): boolean {
   return barTime !== a.lastBar && barTime >= a.armedBar;
-}
-
-/** The words a rail row or a menu row prints for an alert — one place, so
-    the pane and the menu never describe the same alert differently. */
-export function alertLabel(a: Alert): string {
-  switch (a.kind) {
-    case 'price':
-      return `${a.price.toFixed(2)} ${a.above ? 'above' : 'below'}`;
-    case 'level':
-      return `${{ callWall: 'call wall', putWall: 'put wall', flip: 'flip', supreme: 'supreme', coneHigh: 'cone high', coneLow: 'cone low' }[a.level]} cross`;
-    case 'indicator':
-      return a.source === 'rsi'
-        ? `RSI ${a.threshold} · ${a.tf}`
-        : `${{ vwap: 'VWAP', ema9: 'EMA 9', ema21: 'EMA 21', ema50: 'EMA 50' }[a.source]} cross · ${a.tf}`;
-    case 'gexflip':
-      return 'net GEX flips sign';
-    case 'newsupreme':
-      return 'new supreme';
-    case 'wallmove':
-      return `wall moves ${a.strikes}+ strikes`;
-    case 'charmPin':
-      return 'charm pins into the close';
-    case 'oiJump':
-      return 'open interest doubles';
-    case 'flow':
-      return `print ≥ $${a.floor >= 1_000_000 ? `${(a.floor / 1_000_000).toFixed(a.floor % 1_000_000 ? 1 : 0)}M` : `${Math.round(a.floor / 1_000)}K`}`;
-    case 'news':
-      return 'a headline lands';
-    case 'script':
-      return a.title;
-  }
-}
-
-/** Shared subscribe — the log and the count ride the ticker's channel. */
-function useTickerChannel(ticker: string): (fn: () => void) => () => void {
-  return useCallback(
-    (fn: () => void) => {
-      let set = subs.get(ticker);
-      if (!set) {
-        set = new Set();
-        subs.set(ticker, set);
-      }
-      set.add(fn);
-      return () => {
-        set?.delete(fn);
-      };
-    },
-    [ticker]
-  );
-}
-
-export function useFiredLog(ticker: string): FiredRecord[] {
-  const subscribe = useTickerChannel(ticker);
-  const snapshot = useCallback(() => getFiredLog(ticker), [ticker]);
-  return useSyncExternalStore(subscribe, snapshot, snapshot);
-}
-
-export function useUnseen(ticker: string): number {
-  const subscribe = useTickerChannel(ticker);
-  const snapshot = useCallback(() => getUnseen(ticker), [ticker]);
-  return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
 export function useAlerts(ticker: string): Alert[] {

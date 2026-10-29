@@ -25,7 +25,6 @@
 ==================================================
 */
 
-import { Fragment } from 'react';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { readLedgerView } from '../../components/gex/ledgerView';
 import { Block, Box, Facts, Line, ScopeChipMark, SubLine, TitleRow, Trigger } from '../../components/ui/skeletonKit';
@@ -38,7 +37,7 @@ import { GEX_SUBPAGES } from './subnav';
 
 /** The shell's head — the page's real icon, name and words on the left; on the
     right the Ruler card (the four facts that stood beside it went on 2026-10-14) */
-export const PinpointShellSkeleton = ({ pathname }: { pathname: string }) => {
+const PinpointShellSkeleton = ({ pathname }: { pathname: string }) => {
   const page = GEX_SUBPAGES.find(p => pathname.startsWith(p.path)) ?? GEX_SUBPAGES[0];
   const PageIcon = page.icon;
   return (
@@ -171,7 +170,7 @@ export const CalendarInner = () => (
     )}
   </div>
 );
-export const CalendarBoxSkeleton = ({ className = 'h-[870px]' }: { className?: string }) => (
+const CalendarBoxSkeleton = ({ className = 'h-[870px]' }: { className?: string }) => (
   <div className={`border border-borderSubtle rounded-md overflow-hidden flex flex-col ${className}`}>
     <CalendarInner />
   </div>
@@ -204,7 +203,7 @@ export const DayInner = () => (
       </div>
     </section>
 );
-export const DayBoxSkeleton = () => (
+const DayBoxSkeleton = () => (
   <Box>
     <DayInner />
   </Box>
@@ -234,7 +233,7 @@ export const ReportInner = () => (
       </ul>
     </section>
 );
-export const ReportBoxSkeleton = () => (
+const ReportBoxSkeleton = () => (
   <Box className="overflow-hidden">
     <ReportInner />
   </Box>
@@ -242,7 +241,7 @@ export const ReportBoxSkeleton = () => (
 
 /** THE DAY (the partner's box, taken 2026-10-14): the tape over the book's net gamma, on one clock — the head, the two
     part words with their facts, two plots sharing the height */
-export const SessionInner = () => (
+const SessionInner = () => (
   <section className="relative flex-1 flex flex-col min-w-0 min-h-0" aria-hidden data-skeleton="session-box">
     <div className="px-5 pt-3 pb-1 flex items-center gap-3">
       <TitleRow title={64} />
@@ -297,13 +296,10 @@ export const MapPageSkeleton = () => (
 
 /* ---- Targets ------------------------------------------------------------------- */
 
-/** The agenda and the axis, in their own file (components/gex/targetsSkeletons.tsx) */
-export { TargetsPageSkeleton };
-
 /* ---- Board --------------------------------------------------------------------- */
 
 /** The board: its toolbar, the grid's head and its rows of 44 */
-export const BoardPageSkeleton = ({ rows = 12 }: { rows?: number }) => (
+const BoardPageSkeleton = ({ rows = 12 }: { rows?: number }) => (
   <div className="border border-borderSubtle rounded-md overflow-hidden flex flex-col" aria-hidden data-skeleton="board">
     <div className="shrink-0 flex items-center gap-3 flex-wrap px-2 py-1.5 bg-panel border-b border-borderSubtle/70 h-[38px]">
       <Line w={137} h={9} />

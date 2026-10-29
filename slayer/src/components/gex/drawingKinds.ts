@@ -48,8 +48,8 @@ const UP = '48,209,88';
 const DOWN = '255,59,48';
 const HIGHLIGHT = '245,197,66';
 
-export const FIBEXT_RATIOS = [0, 0.618, 1, 1.272, 1.618, 2.618] as const;
-export const FIBCHANNEL_RATIOS = [0, 0.382, 0.618, 1, 1.618] as const;
+const FIBEXT_RATIOS = [0, 0.618, 1, 1.272, 1.618, 2.618] as const;
+const FIBCHANNEL_RATIOS = [0, 0.382, 0.618, 1, 1.618] as const;
 
 /** Everything a kind needs to draw itself — bitmap pixels throughout */
 export interface KindRender {

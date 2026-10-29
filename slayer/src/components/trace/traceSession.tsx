@@ -5,7 +5,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import { marketPhase } from '../../data/traceLive';
 
-export type TraceSession = 'regular' | 'extended';
+type TraceSession = 'regular' | 'extended';
 
 const KEY = 'slayer_trace_session';
 const load = (): TraceSession => {
@@ -17,7 +17,7 @@ const load = (): TraceSession => {
 };
 let current: TraceSession = typeof localStorage === 'undefined' ? 'regular' : load();
 const listeners = new Set<() => void>();
-export function setTraceSession(next: TraceSession): void {
+function setTraceSession(next: TraceSession): void {
   if (next === current) return;
   current = next;
   try {

@@ -6,12 +6,11 @@ import { buildAgenda, type Agenda, type AgendaOrder, type Target } from './agend
 import { aheadClock, type AheadClock } from './ahead';
 import { buildBuilding } from './building';
 import { buildExposureProfile } from './exposure';
-import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
+import { buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
 import { buildFlipGauge, sessionFlipCrossings } from './flipGauge';
 import { sessionLive } from './flipLevel';
 import { nySessionPhase } from '../core/nyTime';
-import { getBoardNames } from './boardNames';
-import { peekDayMove, type DayMove, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare, peekEntry, peekPriceAt, ensureScopeDates, scopeDatesPending, peekRecordAsked } from './uwBook';
+import { peekDayMove, type DayMove, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare, peekPriceAt, ensureScopeDates, scopeDatesPending, peekRecordAsked } from './uwBook';
 import { levelsForName, type LevelsScope } from './levelsScope';
 import { levelsBook, recordDay } from './bookWindow';
 import { LEVELS_WINDOW } from './roomLevels';
@@ -20,7 +19,7 @@ import { readSessionClock } from './moc';
 import { getPositions } from './positions';
 import type { WallRole } from './wall';
 import type { ExposureExpiry } from '../types/gex';
-import type { Candle, MarketSnapshot } from '../types/market';
+import type { MarketSnapshot } from '../types/market';
 
 export interface BoardRow {
   ticker: string;
@@ -112,21 +111,6 @@ export const netGexTitle = (net: number, regime: 'LONG' | 'SHORT' | null): strin
   return `${base}.`;
 };
 
-/** Share of the surface's gamma that expires today, percent — null without a today column */
-export function bellShareOf(surface: ExposureSurface): number | null {
-  const todayIdx = todayColumn(surface);
-  if (todayIdx < 0) return null;
-  let dies = 0;
-  let total = 0;
-  for (let e = 0; e < surface.expiries.length; e++)
-    for (let s = 0; s < surface.strikes.length; s++) {
-      const v = Math.abs(surface.net.gex[e][s] ?? 0);
-      total += v;
-      if (e === todayIdx) dies += v;
-    }
-  return total > 0 ? Math.round((100 * dies) / total) : null;
-}
-
 /** The desk's agenda for a name — one build for the Agenda page, the Board and Compare: the same window, open-interest
     change, vol and bars (the Agenda's Strikes card only trims what it lists). */
 export function deskAgenda(snapshot: MarketSnapshot, expiry: ExposureExpiry, clock: AheadClock, order: AgendaOrder = 'matters', surface: ExposureSurface | null = null): Agenda | null {
@@ -159,7 +143,7 @@ export const watchSurface = (snapshot: MarketSnapshot): ExposureSurface | null =
 export const watchFrom = (lead: Target | null | undefined): BoardRow['watch'] =>
   lead ? { strike: lead.strike, role: lead.role, roles: lead.roles, isShelf: lead.isShelf, isWall: lead.isWall, flat: lead.flat, reach: lead.reach, today: lead.today, atPrice: !!lead.atPrice, hold: lead.hold, stake: lead.stake, horizon: lead.horizon } : null;
 
-export function watchOf(snapshot: MarketSnapshot, expiry: ExposureExpiry, clock: AheadClock): BoardRow['watch'] {
+function watchOf(snapshot: MarketSnapshot, expiry: ExposureExpiry, clock: AheadClock): BoardRow['watch'] {
   return watchFrom(deskAgenda(snapshot, expiry, clock, 'matters', watchSurface(snapshot))?.first[0]);
 }
 
@@ -212,12 +196,6 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
   /* The bell's share: the vendor's gamma per expiry, today's date against every live date — the same number Compare,
      the Agenda and the Trader's Clock print. */
   const bell = peekBellShare(ticker);
-  let surface: ExposureSurface | null = null;
-  try {
-    surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
-  } catch {
-    /* no surface for this name yet */
-  }
 
   const bars = bookCandles(ticker) ?? [];
   const mine = getPositions(snapshot.ticker);
@@ -268,16 +246,3 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
   };
 }
 
-/** The names on the board — the list the user keeps (data/boardNames.ts) */
-export function boardTickers(): string[] {
-  return getBoardNames();
-}
-
-export function buildBoard(tickers: string[] = boardTickers()): BoardRow[] {
-  const out: BoardRow[] = [];
-  for (const t of tickers) {
-    const row = buildBoardRow(t);
-    if (row) out.push(row);
-  }
-  return out;
-}

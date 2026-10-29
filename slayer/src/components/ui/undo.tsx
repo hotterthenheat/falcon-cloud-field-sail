@@ -11,7 +11,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
-export interface UndoOptions {
+interface UndoOptions {
   /** What happened, in the past tense: "Removed Live chart" */
   label: string;
   /** Put it back. Runs at most once. */
@@ -204,4 +204,3 @@ export const UndoToasts = () => {
   );
 };
 
-export default undoable;

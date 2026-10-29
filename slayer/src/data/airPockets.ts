@@ -43,11 +43,11 @@ import type { StrikeExposure, ZoneBand } from '../types/gex';
 */
 
 /** A strike under this share of the window's heaviest is "quiet". */
-export const QUIET_SHARE = 0.12;
+const QUIET_SHARE = 0.12;
 /** A strike over this share bounds a pocket. */
 export const SHELF_SHARE = 0.35;
 /** Fewer contiguous quiet strikes than this is texture, not a pocket. */
-export const MIN_STRIKES = 3;
+const MIN_STRIKES = 3;
 
 export interface AirPocket {
   /** Upper strike of the empty run (inclusive). */
@@ -116,9 +116,3 @@ export function airPocketZones(pockets: readonly AirPocket[]): ZoneBand[] {
   }));
 }
 
-/** What a pocket is worth saying, in the desk's own voice. */
-export function pocketWords(p: AirPocket, spot: number): string {
-  const span = Math.abs(p.ceiling - p.floor);
-  const where = spot > p.ceiling ? 'below' : spot < p.floor ? 'above' : 'around';
-  return `${p.floor}–${p.ceiling} is ${span.toFixed(2)} wide with almost no hedging in it — ${where} spot, price has nothing to lean on crossing it`;
-}

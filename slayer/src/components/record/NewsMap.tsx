@@ -35,7 +35,7 @@ export interface SessionDef {
   west: number;
   east: number;
 }
-export const SESSIONS: SessionDef[] = [
+const SESSIONS: SessionDef[] = [
   { key: 'tokyo', label: 'Tokyo', tz: 'Asia/Tokyo', open: 9 * 60, close: 15 * 60, west: 95, east: 150 },
   { key: 'london', label: 'London', tz: 'Europe/London', open: 8 * 60, close: 16 * 60 + 30, west: -12, east: 32 },
   { key: 'newyork', label: 'New York', tz: 'America/New_York', open: 9 * 60 + 30, close: 16 * 60, west: -128, east: -64 },

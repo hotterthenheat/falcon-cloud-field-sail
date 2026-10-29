@@ -6,7 +6,7 @@
 
 import { useSyncExternalStore } from 'react';
 
-export interface ChartSwing {
+interface ChartSwing {
   /** Unix seconds of the bar the run ended on */
   time: number;
   from: number;
@@ -150,7 +150,7 @@ export function publishSwings(ticker: string, next: ChartSwing[]): void {
 
 export const swingsFor = (ticker: string): ChartSwing[] => swings.get(ticker.toUpperCase()) ?? [];
 export const swingsKnown = (ticker: string): boolean => swings.has(ticker.toUpperCase());
-export const chartFocused = (ticker: string): boolean => focus.has(ticker.toUpperCase());
+const chartFocused = (ticker: string): boolean => focus.has(ticker.toUpperCase());
 
 export function useChartMovesRev(): number {
   return useSyncExternalStore(listen, () => rev, () => rev);

@@ -237,4 +237,3 @@ export const WeigherGuide = () => (
   </div>
 );
 
-export default WeigherGuide;

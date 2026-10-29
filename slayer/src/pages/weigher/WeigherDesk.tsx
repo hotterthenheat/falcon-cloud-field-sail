@@ -255,7 +255,7 @@ const SCAN_THEME = GRID_THEME.withParams({ rowHeight: 34, headerHeight: 28, font
 const SCAN_COL: ColDef<ScanRow> = { sortable: false, resizable: false, suppressMovable: true };
 const SCAN_EMPTY: Record<ScanPreset, string> = { gainers: 'No names up today', losers: 'No names down today', voliv: 'Nothing on the tape' };
 
-export const ScanGrid = memo(function ScanGrid({ rows, ticker, preset, onPick, waiting }: { rows: ScanRow[]; ticker: string; preset: ScanPreset; onPick: (t: string) => void; waiting?: boolean }) {
+const ScanGrid = memo(function ScanGrid({ rows, ticker, preset, onPick, waiting }: { rows: ScanRow[]; ticker: string; preset: ScanPreset; onPick: (t: string) => void; waiting?: boolean }) {
   const gridRef = useRef<AgGridReact<ScanRow>>(null);
   const columnDefs = useMemo<ColDef<ScanRow>[]>(
     () => [
@@ -419,7 +419,6 @@ const StrikePickInner = ({
     </div>
   );
 };
-
 
 /* The picker lists 301 strikes while open; memoised so a light tick does not
    re-render the whole list under the pointer. Its props are stable: the

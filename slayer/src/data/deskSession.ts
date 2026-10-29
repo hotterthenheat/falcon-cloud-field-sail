@@ -92,7 +92,7 @@ export function getDeskSession(): DeskSession {
   return current;
 }
 
-export function deskFollowsClock(): boolean {
+function deskFollowsClock(): boolean {
   return pin == null;
 }
 

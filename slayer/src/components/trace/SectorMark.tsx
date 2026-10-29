@@ -39,7 +39,7 @@ const GLYPH: Record<string, LucideIcon> = {
   Materials: FlaskConical,
 };
 
-export const sectorGlyph = (sector: string): LucideIcon => GLYPH[sector] ?? Tag;
+const sectorGlyph = (sector: string): LucideIcon => GLYPH[sector] ?? Tag;
 
 /** The glyph alone — for a menu row or a tight cell. */
 export const SectorMark = ({ sector, className = '' }: { sector: string; className?: string }) => {
@@ -58,4 +58,3 @@ export const SectorName = ({ sector }: { sector: string | null }) =>
     <span className="text-textSecondary">—</span>
   );
 
-export default SectorMark;

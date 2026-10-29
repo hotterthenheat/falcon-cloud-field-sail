@@ -14,7 +14,7 @@
 
 import type { ChartIndicators } from './StrikeChart';
 
-export interface IndicatorItem {
+interface IndicatorItem {
   key: keyof ChartIndicators;
   label: string;
   hint: string;
@@ -44,10 +44,3 @@ export const INDICATOR_ITEMS: IndicatorItem[] = [
   { key: 'atrPane', label: 'ATR 14', hint: 'Wilder average true range of the bars on this pane. Unit: price. Warmup: 14 bars. Source: this pane’s bars. Alert: no. Replay: the tape only.', sub: true },
 ];
 
-/** Short word on the crosshair row. The key itself is what the menu already says. */
-export const INDICATOR_WORD: Partial<Record<keyof ChartIndicators, string>> = {
-  flowVwap: 'flow',
-  sideVwap: 'sides',
-  gammaEma: 'gEMA',
-  gammaVwap: 'gVWAP',
-};

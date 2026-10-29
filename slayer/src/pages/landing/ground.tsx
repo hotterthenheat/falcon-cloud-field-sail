@@ -7,7 +7,7 @@ import { flushSync } from 'react-dom';
 import { THEME_KEY, getResolvedTheme, setThemeChoice, subscribeTheme, type Theme } from '../../theme/theme';
 
 export type Ground = Theme;
-export const other = (g: Ground): Ground => (g === 'dark' ? 'light' : 'dark');
+const other = (g: Ground): Ground => (g === 'dark' ? 'light' : 'dark');
 
 const media = typeof window !== 'undefined' && 'matchMedia' in window ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 const calm = typeof window !== 'undefined' && 'matchMedia' in window ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;

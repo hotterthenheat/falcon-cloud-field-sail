@@ -1,7 +1,7 @@
 import { ClipboardList, LayoutGrid, Map, Scale, type LucideIcon } from 'lucide-react';
 
 /** Pinpoint subpage registry — drives the sub-tab bar and command palette. */
-export interface GexSubpage {
+interface GexSubpage {
   path: string;
   label: string;
   subtitle: string;

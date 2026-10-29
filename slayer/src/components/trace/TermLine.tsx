@@ -3,9 +3,9 @@
 
 import { SPREAD_LEG_PCT } from '../../data/flowBook';
 
-export type TermKey = 'standing' | 'ownTerms' | 'floor' | 'spreadLegs' | 'volOi' | 'doi' | 'stockLike' | 'oiDay';
+type TermKey = 'standing' | 'ownTerms' | 'floor' | 'spreadLegs' | 'volOi' | 'doi' | 'stockLike' | 'oiDay';
 
-export const TERMS: Record<TermKey, { word: string; plain: string }> = {
+const TERMS: Record<TermKey, { word: string; plain: string }> = {
   standing: {
     word: 'standing contracts',
     plain: "Contracts that still exist — not yet expired. One that expired at today's bell is left out of the counts.",

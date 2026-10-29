@@ -3,7 +3,7 @@
 
 import { SECTORS, type Sector } from './universe';
 import { readOfScreen } from './stockOverview';
-import { peekStockPicks, useLiveStocks } from './liveFiles';
+import { useLiveStocks } from './liveFiles';
 
 export type StockVerdict = 'ACCUMULATE' | 'HOLD' | 'AVOID';
 export type RotationPhase = 'LEADING' | 'IMPROVING' | 'WEAKENING' | 'LAGGING';
@@ -130,8 +130,6 @@ export const aboveFifty = (p: StockPick): boolean | null => (p.sma50 != null && 
 
 /** The live board, strongest first — for any tile or page that shows it */
 export const useStockBoard = (): StockPick[] => useLiveStocks().picks;
-/** @deprecated The live board as read so far (starts the read); call useStockBoard in a component instead */
-export const buildStockBoard = (): StockPick[] => peekStockPicks();
 
 export function buildSectorBoard(picks: StockPick[]): SectorRow[] {
   const weeksOf = (xs: StockPick[]) => xs.map(p => p.weekPct).filter((n): n is number => n != null);

@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
  * widths never fall between this and `md:`) or `(pointer: coarse) and (max-height: 540px)`, a phone in landscape
  * (375-440px tall; the smallest landscape tablet is 744).
  */
-export const PHONE_QUERY = '(max-width: 767.98px), (pointer: coarse) and (max-height: 540px)';
+const PHONE_QUERY = '(max-width: 767.98px), (pointer: coarse) and (max-height: 540px)';
 
 /** Whether `query` matches now, kept current as the window changes. */
 export function useMediaQuery(query: string): boolean {
@@ -42,12 +42,12 @@ export function useMediaQuery(query: string): boolean {
 export const useIsPhone = (): boolean => useMediaQuery(PHONE_QUERY);
 
 /** Below Tailwind's `lg` (1024), where Terrain becomes a scrolling column; fractional bound as PHONE_QUERY. */
-export const BELOW_LG_QUERY = '(max-width: 1023.98px)';
+const BELOW_LG_QUERY = '(max-width: 1023.98px)';
 export const useIsBelowLg = (): boolean => useMediaQuery(BELOW_LG_QUERY);
 /** Under 1280 wide the desk pages (Terrain's panes, the Weigher's chain, Compare's wings) take their stacked shape;
     `lg` stays for everything else. */
-export const BELOW_XL_QUERY = '(max-width: 1279.98px)';
+const BELOW_XL_QUERY = '(max-width: 1279.98px)';
 export const useIsBelowXl = (): boolean => useMediaQuery(BELOW_XL_QUERY);
 /** A tall screen that is not a phone — the portrait monitor, a tablet upright: the desks say they stack on purpose */
-export const PORTRAIT_DESK_QUERY = '(orientation: portrait) and (min-width: 768px)';
+const PORTRAIT_DESK_QUERY = '(orientation: portrait) and (min-width: 768px)';
 export const useIsPortraitDesk = (): boolean => useMediaQuery(PORTRAIT_DESK_QUERY);

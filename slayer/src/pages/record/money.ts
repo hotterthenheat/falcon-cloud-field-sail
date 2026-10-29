@@ -37,13 +37,6 @@ export const signedPct = (v: number, d = 1): string => {
 /** The ink for a signedPct figure: muted when it reads 0.0% */
 export const pctInk = (v: number, d = 1): string => (Number(Math.abs(v).toFixed(d)) === 0 ? 'text-textMuted' : v > 0 ? 'text-bull' : 'text-bear');
 
-/** A vendor number field: a number, a numeric string, or null */
-export const numOr = (v: unknown): number | null => {
-  if (v == null || v === '') return null;
-  const n = typeof v === 'number' ? v : parseFloat(String(v));
-  return Number.isFinite(n) ? n : null;
-};
-
 /** A vendor date (YYYY-MM-DD) as "Oct 20" */
 export const asOfDay = (iso: string | null | undefined): string => {
   if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return '—';

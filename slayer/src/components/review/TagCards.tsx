@@ -52,7 +52,7 @@ const ListEditor = ({ list, title, placeholder, words }: { list: keyof TagLists;
 };
 
 /** The door to the reader's lists */
-export const TagListsDoor = () => {
+const TagListsDoor = () => {
   const tags = useTags();
   return (
     <Popover.Root>

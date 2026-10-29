@@ -157,7 +157,7 @@ export interface EtfHolding {
   asOf?: string;
 }
 
-export interface WeightSlice {
+interface WeightSlice {
   name: string;
   weight: number;
 }

@@ -4,7 +4,7 @@ import { GEX_SUBPAGES } from '../../pages/pinpoint/subnav';
 import { RECORD_SUBPAGES } from '../../pages/record/subnav';
 import { TRACE_SUBPAGES } from '../../pages/trace/subnav';
 
-export interface NavLeaf {
+interface NavLeaf {
   path: string;
   label: string;
 }

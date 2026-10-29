@@ -26,7 +26,7 @@ const nameFor = (to: string): string => {
   return '';
 };
 
-export type WayBackState = { wayBack?: string };
+type WayBackState = { wayBack?: string };
 
 /* The pill floats at the top centre of the content column, the one strip every page head leaves empty; measured off
    <main>, since the sidebar's width animates. */

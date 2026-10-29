@@ -76,7 +76,3 @@ export function decisionId(contract: ContractId, source: DecisionSource, decided
   return `${contract.occ}|${sourceKey(source)}|${decidedAtIso}`;
 }
 
-/** YYYY-MM-DD from a Date, local calendar — the journal's date format. */
-export function isoDay(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}

@@ -5,14 +5,12 @@
 import { daySigmaOfIv, normCdf, sigmaOverMinutes } from './expectedMove';
 import { peekDaySigma, peekMoveToClose } from './uwBook';
 import { datesOf } from './flipLevel';
-import { lastSessionSupreme, moveIntoClose, ofLast, rangeFrom, recentSessions, sessionSoFar } from './aheadHistory';
+import { lastSessionSupreme, ofLast, rangeFrom, recentSessions, sessionSoFar } from './aheadHistory';
 import { inCashSession, sessionBars } from './levelview';
 import { nyMinutes } from '../core/nyTime';
-import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
-import { buildVannaCharm } from './vannacharm';
-import { peekBellShare } from './uwBook';
+import { type ExposureSurface } from './exposureSurface';
 import type { SessionClock } from './moc';
-import type { ExposureProfileData, IvShift, LevelShift } from '../types/gex';
+import type { ExposureProfileData } from '../types/gex';
 import type { MarketSnapshot } from '../types/market';
 
 export const OPEN_MIN = 9 * 60 + 30;
@@ -20,7 +18,7 @@ export const CLOSE_MIN = 16 * 60;
 export const SESSION_MIN = CLOSE_MIN - OPEN_MIN; // 390
 
 export const fmtStrike = (v: number) => (!Number.isFinite(v) ? '—' : v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
-export const fmtPrice = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : '—');
+const fmtPrice = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : '—');
 export const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 /** "$48M" / "$1.2B" — the schedule's dollars */
 export const fmtDollars = (v: number): string => {
@@ -56,14 +54,14 @@ export function aheadClock(clock: SessionClock): AheadClock {
 
 // ---- the corridor --------------------------------------------------------------
 
-export type EdgeWhy = 'the expected move' | 'the call wall' | 'the put wall';
+type EdgeWhy = 'the expected move' | 'the call wall' | 'the put wall';
 
-export interface CorridorEdge {
+interface CorridorEdge {
   price: number;
   why: EdgeWhy;
 }
 
-export interface ConePoint {
+interface ConePoint {
   min: number;
   lo1: number;
   hi1: number;
@@ -73,7 +71,7 @@ export interface ConePoint {
   mid: number;
 }
 
-export interface Corridor {
+interface Corridor {
   spot: number;
   /** One standard deviation, in dollars, for the minutes left */
   sigma: number;
@@ -96,7 +94,7 @@ const WALL_REACH = 1.35;
 
 /** How strongly the strikes pull the close right now, 0..1 — at the open the whole
     range is in play and they barely matter; in the last hour they are most of the story */
-export const gravityFor = (minutesLeft: number) => 0.35 + 0.65 * (1 - minutesLeft / SESSION_MIN);
+const gravityFor = (minutesLeft: number) => 0.35 + 0.65 * (1 - minutesLeft / SESSION_MIN);
 
 /* The pulled centre: the close weights' centre of mass, so the corridor bends toward the strike the weights peak on. */
 function pulledCentre(profile: ExposureProfileData, spot: number, sigma: number, gravity: number): number {
@@ -224,9 +222,9 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
 
 // ---- where it closes -----------------------------------------------------------
 
-export type CloseRole = 'call wall' | 'put wall' | 'supreme' | 'pin' | null;
+type CloseRole = 'call wall' | 'put wall' | 'supreme' | 'pin' | null;
 
-export interface CloseOdd {
+interface CloseOdd {
   strike: number;
   /** Model weight, percent to one decimal: the normal's share at the strike times the book's pull, renormalised. The rows
       sum to the share inside the window (the tails past it are not rows). */
@@ -239,7 +237,7 @@ export interface CloseOdd {
 }
 
 /** A run of neighbouring strikes around the likeliest, and the odds they hold between them */
-export interface CloseBand {
+interface CloseBand {
   low: number;
   high: number;
   /** Percent of the odds inside it */
@@ -247,7 +245,7 @@ export interface CloseBand {
   strikes: number;
 }
 
-export interface CloseOdds {
+interface CloseOdds {
   rows: CloseOdd[];
   /** The three most likely, best first */
   top: CloseOdd[];
@@ -265,7 +263,7 @@ export interface CloseOdds {
   sentence: string;
 }
 
-export interface CloseReads {
+interface CloseReads {
   /** "345 at 17%, then 344 at 13% and 346 at 11%" */
   likely: string;
   /** "the model puts 50% of the close between 343 and 346 · 80% between 340 and 348" */
@@ -388,49 +386,6 @@ export function buildCloseOdds(profile: ExposureProfileData, spot: number, sigma
 
 // ---- the schedule ---------------------------------------------------------------
 
-export interface ScheduleBlock {
-  from: number;
-  to: number;
-  /** Signed dollars dealers must trade in this block — + buying, − selling; 0 when the block has passed */
-  flow: number;
-  past: boolean;
-  current: boolean;
-  /** The clock's phase name for the block, for the words */
-  phase: string;
-}
-
-/** A vol move as a scenario: points of implied vol, or 0 for none */
-export type VolPoints = IvShift | 0;
-export const VOL_OPTIONS: { value: VolPoints; label: string; hint: string }[] = [
-  { value: -2, label: 'Drops two points', hint: 'A hard vol crush into the close' },
-  { value: -1, label: 'Drops a point', hint: 'The usual crush as the day ends' },
-  { value: 0, label: 'Stays put', hint: 'No vol move — the clock alone' },
-  { value: 1, label: 'Rises a point', hint: 'A wobble that lifts vol' },
-  { value: 2, label: 'Rises two points', hint: 'A shock that lifts vol hard' },
-];
-
-/** What a vol move forces (vanna) */
-export interface VolMove {
-  points: VolPoints;
-  /** Signed dollars of stock dealers must trade on the move: positive = buying */
-  flow: number;
-  /** Where the levels go under it */
-  shifts: LevelShift[];
-  sentence: string;
-}
-
-export interface Schedule {
-  blocks: ScheduleBlock[];
-  /** Signed dollars still to trade before the bell — CHARM's story, the delta the clock takes */
-  toClose: number;
-  biggest: ScheduleBlock | null;
-  /** Percent of the calendar's hedging that expires at 4:00 */
-  bellShare: number | null;
-  /** The vol scenario in hand — null when it stays put */
-  vol: VolMove | null;
-  sentence: string;
-}
-
 /** The calendar's net vanna, every expiry and strike — dollars of dealer delta per point of vol */
 export function wholeBookVanna(surface: ExposureSurface): number {
   let v = 0;
@@ -438,99 +393,3 @@ export function wholeBookVanna(surface: ExposureSurface): number {
   return v;
 }
 
-export const volWords = (p: VolPoints) => (p === -2 ? 'drops two points' : p === -1 ? 'drops a point' : p === 1 ? 'rises a point' : p === 2 ? 'rises two points' : 'stays put');
-
-const BLOCK = 30;
-const phaseName = (min: number) =>
-  min < 10 * 60 ? 'the open' : min < 11 * 60 + 30 ? 'the morning' : min < 14 * 60 ? 'lunch' : min < 15 * 60 + 30 ? 'the charm window' : min < 15 * 60 + 50 ? 'the turn' : 'the close';
-
-export function buildSchedule(snapshot: MarketSnapshot, profile: ExposureProfileData, clock: AheadClock, volPoints: VolPoints = -1): Schedule {
-  /* The hedge that must come off by 4:00: the day's book's net delta exposure is the size of that trade, its sign the
-     direction. */
-  const toClose = profile.netDex;
-  const start = clock.nowMin ?? OPEN_MIN;
-  const blocks: ScheduleBlock[] = [];
-  const weights: number[] = [];
-  for (let t = OPEN_MIN; t < CLOSE_MIN; t += BLOCK) {
-    const to = Math.min(CLOSE_MIN, t + BLOCK);
-    const past = clock.inSession && to <= start;
-    const current = clock.inSession && t <= start && start < to;
-    /* Charm's shape: the delta bleeds faster the closer the bell is —
-       ∝ 1/√(time left) at the block's middle, the last block the loudest */
-    const mid = (Math.max(t, start) + to) / 2;
-    const left = Math.max(5, CLOSE_MIN - mid) / 60;
-    const w = past ? 0 : (to - Math.max(t, start)) * (1 / Math.sqrt(left + 0.25));
-    weights.push(w);
-    blocks.push({ from: t, to, flow: 0, past, current, phase: phaseName(t) });
-  }
-  const wSum = weights.reduce((a, b) => a + b, 0) || 1;
-  blocks.forEach((b, i) => {
-    b.flow = weights[i] > 0 ? (toClose * weights[i]) / wSum : 0;
-  });
-  const remaining = blocks.filter(b => !b.past);
-  const biggest = remaining.length ? remaining.reduce((a, b) => (Math.abs(b.flow) > Math.abs(a.flow) ? b : a)) : null;
-
-  /* the Board's share (uwBook peekBellShare — the vendor's gamma per expiry); the surface's stands in until it lands */
-  const vendorBell = peekBellShare(snapshot.ticker);
-  let bellShare: number | null = vendorBell.share;
-  let surface: ExposureSurface | null = null;
-  try {
-    surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
-    const today = todayColumn(surface);
-    if (today >= 0 && vendorBell.share == null && vendorBell.why === 'wait') {
-      let dies = 0;
-      let total = 0;
-      for (let e = 0; e < surface.expiries.length; e++)
-        for (let s = 0; s < surface.strikes.length; s++) {
-          const v = Math.abs(surface.net.gex[e][s] ?? 0);
-          total += v;
-          if (e === today) dies += v;
-        }
-      bellShare = total > 0 ? Math.round((100 * dies) / total) : null;
-    }
-  } catch {
-    /* no surface yet */
-  }
-
-  /* Net vanna is dollars of dealer delta per vol point: a move of p points changes their delta by vanna·p, read across
-     every expiry (today's contracts carry almost none). */
-  let vol: VolMove | null = null;
-  if (volPoints !== 0) {
-    const netVanna = surface ? wholeBookVanna(surface) : profile.strikes.reduce((a, s) => a + (s.vanna?.net ?? 0), 0);
-    const flow = -netVanna * volPoints;
-    let shifts: LevelShift[] = [];
-    try {
-      shifts = buildVannaCharm(snapshot, 'VANNA', volPoints).shifts.filter(s => Math.abs(s.projected - s.current) > 1e-9);
-    } catch {
-      /* no chain yet */
-    }
-    const moves = shifts.map(s => `the ${s.label.toLowerCase().replace(/\s*node\b/, '')} moves ${fmtStrike(s.current)} → ${fmtStrike(s.projected)}`);
-    /* against the clock's own figure */
-    const ratio = Math.abs(flow) / Math.max(1, Math.abs(toClose));
-    const span = clock.inSession ? 'the rest of the session' : 'the whole session';
-    const clockVerb = toClose >= 0 ? 'buys' : 'sells';
-    const fraction = ratio >= 0.45 ? 'half' : ratio >= 0.3 ? 'a third' : ratio >= 0.2 ? 'a quarter' : `${Math.max(1, Math.round(ratio * 100))}%`;
-    const rel = Math.abs(toClose) < 1 ? '' : ratio >= 1.15 ? `${ratio.toFixed(1)}× what the clock ${clockVerb} over ${span}` : ratio >= 0.85 ? `about what the clock ${clockVerb} over ${span}` : `${fraction} of what the clock ${clockVerb} over ${span}`;
-    const sameWay = flow >= 0 === toClose >= 0;
-    const relWords = rel ? ` — ${rel}, ${sameWay ? 'pushing the same way' : 'pushing the other way'}` : '';
-    const sentence = `If vol ${volWords(volPoints)}, dealers must ${flow >= 0 ? 'buy' : 'sell'} about ${fmtDollars(flow)} of stock to stay hedged${relWords}${moves.length ? `; ${moves.join(', ')}` : '; the levels stay where they are'}.`;
-    vol = { points: volPoints, flow, shifts, sentence };
-  }
-
-  /* why they trade at all, in the sentence: to stay neutral */
-  const verb = toClose >= 0 ? 'buy' : 'sell';
-  const lean = toClose >= 0 ? 'A tailwind for any rally into the close.' : 'A headwind for any rally into the close.';
-  /* what the last half hour did in the sessions on hand */
-  const past = recentSessions(snapshot.ticker, 5, clock.inSession);
-  const moves = past.map(s => moveIntoClose(s, 30)).filter((v): v is number => v != null);
-  let record = '';
-  if (moves.length >= 2) {
-    const fell = moves.filter(m => m < 0).length;
-    const rose = moves.length - fell;
-    const avg = moves.reduce((a, m) => a + Math.abs(m), 0) / moves.length;
-    record = ` In their last half hour the last ${moves.length} sessions ${fell > rose ? `fell ${fell} times and rose ${rose}` : rose > fell ? `rose ${rose} times and fell ${fell}` : `split ${rose} up and ${fell} down`}, moving ${fmtStrike(Number(avg.toFixed(2)))} on average.`;
-  }
-  const sentence = `${clock.inSession ? 'Into the close' : 'Over the next session'} dealers must ${verb} about ${fmtDollars(toClose)} of stock to stay hedged${biggest ? `, most of it ${hhmm(biggest.from)} to ${hhmm(biggest.to)}` : ''}. ${lean}${record}${bellShare != null ? ` ${bellShare}% of the hedging expires at 4:00.` : ''}`;
-
-  return { blocks, toClose, biggest, bellShare, vol, sentence };
-}

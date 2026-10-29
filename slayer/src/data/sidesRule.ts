@@ -19,7 +19,7 @@ export function darkPrintKey(row: Record<string, unknown>): string {
   return `${row.tracking_id ?? ''}|${row.executed_at ?? ''}|${row.size ?? ''}|${row.price ?? ''}|${row.volume ?? ''}`;
 }
 
-export interface AlertSides {
+interface AlertSides {
   side: 'ASK' | 'BID' | 'MID';
   /** dollars filled on the ask, on the bid, and neither (mid / no side) */
   ask: number;

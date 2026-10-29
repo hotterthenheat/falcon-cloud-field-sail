@@ -38,7 +38,7 @@ export interface BookLine {
   fillMid?: number;
 }
 
-export interface CloseInput {
+interface CloseInput {
   paid: number;
   bid: number;
   peak: number;
@@ -59,7 +59,7 @@ export interface CloseInput {
 
 const KEY = 'slayer_compass_book';
 
-export function nextAskDue(trackedAt: number, at: number = Date.now()): boolean {
+function nextAskDue(trackedAt: number, at: number = Date.now()): boolean {
   const then = nyParts(trackedAt);
   const nowP = nyParts(at);
   const due = then.hour * 60 + then.minute + 1;
@@ -78,7 +78,7 @@ const fills = new Map<string, LockedFill>();
 const peaks = new Map<string, number>();
 const rungs = new Map<string, { name: string; at: number }[]>();
 
-export interface LiveQuote { bid: number; ask: number; at: number }
+interface LiveQuote { bid: number; ask: number; at: number }
 
 export function noteRung(id: string, name: string, at = Date.now()): void {
   const list = rungs.get(id) ?? [];

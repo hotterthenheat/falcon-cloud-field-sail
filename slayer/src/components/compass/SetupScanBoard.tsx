@@ -10,7 +10,7 @@ import { TraceGrid, RestFoot, useRestCap, ROWS_AT_REST } from '../trace/TraceBox
 import SetupScanCard, { ownExpiry } from './SetupScanCard';
 import { STOP_KEEP } from '../../data/contractQuote';
 
-export type ScanLayout = 'cards' | 'table';
+type ScanLayout = 'cards' | 'table';
 
 type Ranked = Setup & { rank: number; spark?: number[] };
 

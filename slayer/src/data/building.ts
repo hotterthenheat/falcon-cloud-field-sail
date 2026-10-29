@@ -167,7 +167,7 @@ const monDay = (iso: string): string => {
   const [, m, d] = iso.split('-').map(Number);
   return m && d ? `${MON[m - 1]} ${d}` : iso;
 };
-export interface OiWhen {
+interface OiWhen {
   /** "Oct 21's trading" — null when the count's dates are not known */
   trade: string | null;
   /** "in Oct 21's trading" */
@@ -374,7 +374,7 @@ export const sideWords = (v: number) => (Math.abs(v) < 0.5 ? 'no gamma here' : v
 export const leanWord = (v: number) => (Math.abs(v) < 0.5 ? 'no gamma' : v < 0 ? 'call-heavy' : 'put-heavy');
 
 /** Today's snapshots by the bars' own session cut — the same cut every session feature uses */
-export function todaySnapshots(snaps: readonly GexSnapshot[], bars: readonly Candle[]): GexSnapshot[] {
+function todaySnapshots(snaps: readonly GexSnapshot[], bars: readonly Candle[]): GexSnapshot[] {
   if (!snaps.length || !bars.length) return [];
   const starts = sessionStarts(bars, 1);
   const dayStart = bars[starts[starts.length - 1]].time;

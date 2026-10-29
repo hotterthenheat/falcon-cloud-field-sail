@@ -3,12 +3,12 @@
 */
 
 import { MAX_NAMES, OPEN_CEILING, stampOf, type Moment, type OrderKind, type SessionRules, type Side } from './engine';
-import { FUT_DAY_MIN, FUT_LAST_MIN, frontContract, futBarAt, futPrice, futPriceAt, futProduct, isFutSymbol, onTick } from './futuresTape';
+import { FUT_DAY_MIN, FUT_LAST_MIN, frontContract, futBarAt, futPriceAt, futProduct, isFutSymbol, onTick } from './futuresTape';
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from './ladder';
 import { dayIndex, tapeDays } from './tape';
 import type { DayNote, JournalEntry } from './journal';
 
-export type FutFillHow = OrderKind | 'roll';
+type FutFillHow = OrderKind | 'roll';
 /** What rides an entry: a ladder's rungs (or the single target and stop) and its two switches — data/review/ladder.ts */
 export type FutBracket = LadderBracket;
 export interface FutOrder {
@@ -276,7 +276,7 @@ export function futAccountOf(s: FutSession): FutAccount {
 }
 
 /* ---- the reader's own rules ---- */
-export function futEquityAtOpen(s: FutSession): number {
+function futEquityAtOpen(s: FutSession): number {
   const before = s.fills.filter(f => f.at.day < s.cursor.day);
   if (!before.length) return s.startCash;
   return futAccountOf({ ...s, fills: before, cursor: { day: s.cursor.day, minute: 0 } }).equity;
@@ -679,7 +679,7 @@ export function futAdvance(s: FutSession, to: Moment, now: number): FutSession {
 }
 
 /* ---- the report's cuts ---- */
-export interface FutCut {
+interface FutCut {
   label: string;
   n: number;
   winRate: number;
@@ -707,4 +707,3 @@ export function futCutsOf(trades: FutTrade[]): { title: string; rows: FutCut[] }
     { title: 'With a stop against without', rows: cutBy(trades, [['A stop rode it', t => t.risk != null], ['No stop', t => t.risk == null]]) },
   ].filter(c => c.rows.length > 0);
 }
-export { futPrice };

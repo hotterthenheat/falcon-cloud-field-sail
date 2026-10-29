@@ -223,7 +223,7 @@ export function chartMenu(h: Hands, name: string): (price: number) => ChartMenu 
 /* A drawn long or short, as an order */
 /* ================================================================== */
 
-export interface MarkPlan {
+interface MarkPlan {
   /** What it will do, in a sentence */
   words: string;
   /** What it risks and could make, at this size */

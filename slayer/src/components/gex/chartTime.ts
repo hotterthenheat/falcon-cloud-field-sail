@@ -54,7 +54,7 @@ function inNewYork(d: Date): Date {
    settles at 16:00 New York, and a replay whose axis says 08:30 beside a bar that says 09:30 is two clocks for one minute. */
 export type ChartClock = 'reader' | 'ny';
 
-export function chartDate(t: Time, clock: ChartClock = 'reader'): Date {
+function chartDate(t: Time, clock: ChartClock = 'reader'): Date {
   if (typeof t === 'number') {
     const d = new Date(t * 1000);
     return clock === 'ny' || readDeskPrefs().clock === 'ny' ? inNewYork(d) : d;

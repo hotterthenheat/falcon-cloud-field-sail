@@ -35,12 +35,3 @@ export function useNameArriving(ticker: string | null | undefined): boolean {
   return true;
 }
 
-export function useSeeded(ticker: string | null | undefined): boolean {
-  const rev = useBookRev();
-  useEffect(() => {
-    if (ticker) ensureBook(ticker, 'board');
-  }, [ticker]);
-  void rev;
-  if (!ticker) return false;
-  return settled(ticker);
-}

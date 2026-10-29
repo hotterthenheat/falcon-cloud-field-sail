@@ -18,14 +18,14 @@ export const DEALER_CALL = -0.55;
 export const DEALER_PUT = -0.53;
 const YEAR = 252;
 
-export interface RawLeg {
+interface RawLeg {
   gamma: number;
   iv: number;
   oi: number;
   bid?: number;
   ask?: number;
 }
-export interface RawStrike {
+interface RawStrike {
   strike: number;
   call?: RawLeg;
   put?: RawLeg;

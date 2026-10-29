@@ -131,7 +131,7 @@ export const todayExpiry = (): string => isoDate(expiryFor(0).date);
 
 export type Verdict = 'with' | 'against' | 'mixed';
 
-export interface PositionRead {
+interface PositionRead {
   /** "on the put wall · the supreme · 0.20% below spot" */
   sits: string;
   verdict: Verdict;
@@ -159,7 +159,7 @@ export function contractWords(p: Position): string {
 }
 
 /** "Your 5 455 calls" · "Your 455 call" · "The 2 455 puts you sold" · "The 455 put you sold" */
-export function subjectWords(p: Position): string {
+function subjectWords(p: Position): string {
   const one = p.contracts === 1;
   const kind = `${fmtStrike(p.strike)} ${p.right === 'C' ? 'call' : 'put'}${one ? '' : 's'}`;
   const count = one ? '' : `${p.contracts} `;

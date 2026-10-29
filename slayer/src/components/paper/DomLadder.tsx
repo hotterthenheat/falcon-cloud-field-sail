@@ -9,7 +9,7 @@ import { onTick } from '../../data/review/futuresTape';
 import { paperFut, futWords } from '../../data/paper/products';
 import type { Candle } from '../../types/market';
 
-export interface LadderOrder {
+interface LadderOrder {
   id: string;
   side: 'buy' | 'sell';
   qty: number;

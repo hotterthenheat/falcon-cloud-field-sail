@@ -29,7 +29,7 @@ interface DesksState {
 
 const KEY = 'slayer_paper_desks_v1';
 const LEGACY = 'slayer_paper_desk_v1';
-export const PANES_OF: Record<GridLayout, number> = { '1': 1, '2h': 2, '2v': 2, '3': 3, '4': 4 };
+const PANES_OF: Record<GridLayout, number> = { '1': 1, '2h': 2, '2v': 2, '3': 3, '4': 4 };
 /** The intervals a growing layout hands out, after the pane on the desk's own */
 const LADDER: Timeframe[] = ['1m', '5m', '15m', '1h', '30m', '1D'];
 

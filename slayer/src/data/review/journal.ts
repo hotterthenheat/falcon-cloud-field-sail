@@ -82,8 +82,8 @@ export const OUT_WORD: Record<'target' | 'stop' | 'hand' | 'bell' | 'roll' | 'ru
 /** "Scaled out · target, target, stop" — how each piece left, in order */
 export const piecesWords = (r: JournalRow): string => r.t.legs.filter(l => l.out).map(l => OUT_WORD[l.out!]).join(', ');
 /** How it ended, in the three ways a reader sorts by: their own hand, the target, the stop — the bell and the roll are the market's */
-export type EndedCut = 'hand' | 'target' | 'stop' | 'market' | 'pieces';
-export const endedCutOf = (r: JournalRow): EndedCut => (r.t.how === 'scaled' ? 'pieces' : r.t.how === 'target' ? 'target' : r.t.how === 'stopped' ? 'stop' : r.t.how === 'expired' || r.t.how === 'rolled' || r.t.how === 'rule' || r.t.how === 'page' ? 'market' : 'hand');
+type EndedCut = 'hand' | 'target' | 'stop' | 'market' | 'pieces';
+const endedCutOf = (r: JournalRow): EndedCut => (r.t.how === 'scaled' ? 'pieces' : r.t.how === 'target' ? 'target' : r.t.how === 'stopped' ? 'stop' : r.t.how === 'expired' || r.t.how === 'rolled' || r.t.how === 'rule' || r.t.how === 'page' ? 'market' : 'hand');
 /** A price as its own desk prints it: a future on its tick, a contract to the cent */
 export const priceWordsOf = (r: JournalRow, v: number): string => (r.fut ? (r.paper ? futWords(r.t.symbol, v) : futPrice(futProduct(r.t.symbol), v)) : v.toFixed(2));
 
@@ -94,10 +94,10 @@ export const entryOf = (r: JournalRow): JournalEntry => {
 };
 /** Every word the reader wrote on it, as one line — the list's column, and what the search reads */
 export const wordsOf = (e: JournalEntry): string => [e.why, e.saw, e.again].map(w => (w ?? '').trim()).filter(Boolean).join(' · ');
-export const hasWords = (e: JournalEntry): boolean => wordsOf(e).length > 0;
+const hasWords = (e: JournalEntry): boolean => wordsOf(e).length > 0;
 
 /* ---- the cut: what the page's cards ask of a row ---- */
-export interface JournalCut {
+interface JournalCut {
   session: string;
   name: string;
   kind: 'all' | 'options' | 'futures';

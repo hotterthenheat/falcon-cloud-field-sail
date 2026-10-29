@@ -22,7 +22,6 @@ import {
   vwapSeries,
 } from '../src/data/indicators';
 import { buildExpectedMoveCone } from '../src/data/expectedMove';
-import { rollGross } from '../src/data/grossFlow';
 import type { Candle } from '../src/types/market';
 
 let pass = 0;
@@ -92,9 +91,6 @@ const moving = candles.map((_, i) => (i % 2 === 0 ? 1e6 : 4e6));
 const gEma = gammaEmaSeries(candles, moving);
 const gVwap = gammaVwapSeries(candles, 1, moving);
 check('a moving book draws gamma ema and gamma vwap', gEma.some(v => v != null) && gVwap.some(v => v != null));
-
-const rolled = rollGross([{ time: 60, call: 3, put: 1 }, { time: 120, call: 2, put: 4 }], 60);
-check('gross premium folds onto the bar', rolled.length === 2 && rolled[0].callPrem === 3 && rolled[1].putPrem === 4);
 
 const cone = buildExpectedMoveCone(candles.slice(0, 30), 0.2, 120, 1);
 check('cone has an envelope and a forward half', cone.past.length === 30 && cone.forward.length > 1 && cone.forward[0].up1 > 0);

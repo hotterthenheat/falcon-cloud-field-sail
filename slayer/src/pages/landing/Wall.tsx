@@ -9,7 +9,7 @@ import { useBlockGround } from './ground';
 import PageGlyph, { type GlyphName } from '../../components/ui/PageGlyph';
 import { INTENT_MS, onThemeIntent, savingData, useOnScreen, useTabInFront, wallFilm, wallStill } from './films';
 
-export interface WallRoom {
+interface WallRoom {
   id: string;
   /** the tour's number for it */
   code?: string;

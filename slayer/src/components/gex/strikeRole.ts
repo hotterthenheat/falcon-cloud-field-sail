@@ -16,7 +16,7 @@
 
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME } from './paletteInk';
 
-export interface StrikeRole {
+interface StrikeRole {
   /** Every level the strike is, in words — for the title, the label and the cards */
   words: string[];
   /** The ink the strike is printed in: the first of supreme, call wall, put wall, flip it is */

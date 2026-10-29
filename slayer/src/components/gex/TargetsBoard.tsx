@@ -9,7 +9,7 @@ import { ArrowUpRight, X } from 'lucide-react';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import JingleBell from '../ui/JingleBell';
 import { heatLaneColor } from './heatmap';
-import { ALERT, CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
+import { ALERT, CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_WARM } from './paletteInk';
 import { AGENDA_COLUMNS, AGENDA_MIN_W, CARD_H, ROW_H } from './targetsSkeletons';
 import { AGENDA_ORDERS, DRIVER_WORDS, buildWords, closeLeanWords, reachWords, strikeKind, targetName, thinWords, todayWords, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
 import { LONG_GAMMA, SHORT_GAMMA } from './paletteInk';
@@ -25,10 +25,9 @@ import { bookCandles, peekDaySigma, peekIv, useBookRev } from '../../data/uwBook
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal */
 /* an armed alert wears the alert ink (palette ALERT) and the bell jingles */
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
-export const ROLE_INK: Record<string, string> = { 'call wall': CALL_WALL, 'put wall': PUT_WALL, supreme: SUPREME, flip: FLIP };
+const ROLE_INK: Record<string, string> = { 'call wall': CALL_WALL, 'put wall': PUT_WALL, supreme: SUPREME, flip: FLIP };
 /** Breaks and trapdoors are the calendar's warm side; a wall's weight its cool side */
 const WARM = THERMAL_WARM;
-const COOL = THERMAL_COOL;
 /* "<1%" for the tiny chances — no floor */
 const pct = chanceLabel;
 export const ORDER_OPTIONS: DropdownOption<AgendaOrder>[] = AGENDA_ORDERS.map(o => ({ value: o.value, label: o.label, hint: o.hint }));

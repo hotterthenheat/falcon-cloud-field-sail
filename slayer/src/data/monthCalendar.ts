@@ -48,7 +48,7 @@ export interface CalDay {
   events: CalEvent[];
 }
 
-export interface MonthCalendar {
+interface MonthCalendar {
   year: number;
   month: number;
   label: string;
@@ -67,7 +67,6 @@ const nthWeekday = (year: number, month: number, weekday: number, nth: number): 
   const offset = (weekday - first.getDay() + 7) % 7;
   return new Date(year, month, 1 + offset + (nth - 1) * 7);
 };
-
 
 /** New York's wall clock for an instant: the calendar draws every date on New York's day */
 const nyParts = (iso: string): { y: number; m: number; d: number; hh: number; mm: number } | null => {

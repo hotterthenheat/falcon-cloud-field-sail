@@ -479,7 +479,7 @@ export function equityAtOpen(s: Session): number {
   if (!before.length) return s.startCash;
   return accountOf({ ...s, fills: before, cursor: { day: s.cursor.day, minute: 0 } }).equity;
 }
-export interface DayState {
+interface DayState {
   /** Today's result so far, as a share of what the account was worth at the open */
   pct: number;
   /** The reader's daily stop has been reached: no new positions until the next open */
@@ -787,7 +787,7 @@ export function advance(s: Session, to: Moment, now: number): Session {
 }
 
 /* ---- the report ---- */
-export interface Stats {
+interface Stats {
   n: number;
   wins: number;
   winRate: number;
@@ -805,7 +805,7 @@ export interface Stats {
 }
 /** What the report's figures need of a closed trade — an option's or a future's. A future entered without a stop has no R
     (futuresEngine.ts), and the R figures are taken over the trades that have one. */
-export interface Scored {
+interface Scored {
   pnl: number;
   r: number | null;
   /** A replayed moment — or a paper trade's real instant (data/paper/engine.ts), which carries `at` */
@@ -856,7 +856,7 @@ export function statsOf(trades: Scored[]): Stats {
   };
 }
 
-export interface Cut {
+interface Cut {
   label: string;
   n: number;
   winRate: number;

@@ -1,11 +1,11 @@
 /* The impact square before every headline and print: red high, orange medium (the thermal ramp's warm side, not the
    direction red), grey low; and its legend. */
 
-export type ImpactTier = 'high' | 'medium' | 'low';
-export const IMPACT_TIERS: ImpactTier[] = ['high', 'medium', 'low'];
+type ImpactTier = 'high' | 'medium' | 'low';
+const IMPACT_TIERS: ImpactTier[] = ['high', 'medium', 'low'];
 /* the warm side of the house thermal ramp for high and medium, the muted ink for low — never the direction red */
 export const IMPACT_INK: Record<ImpactTier, string> = { high: '#D73027', medium: '#FDAE61', low: 'rgb(var(--text-muted))' };
-export const IMPACT_WORD: Record<ImpactTier, string> = {
+const IMPACT_WORD: Record<ImpactTier, string> = {
   high: 'High impact — moves the market on its own',
   medium: 'Medium impact — moves a name, a sector or a currency',
   low: 'Low impact — noted, rarely moves anything',

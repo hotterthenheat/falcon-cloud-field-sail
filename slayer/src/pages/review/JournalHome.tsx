@@ -436,4 +436,3 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
   );
 };
 
-export default JournalHome;

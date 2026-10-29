@@ -9,7 +9,7 @@ import CompanyLogo from '../ui/CompanyLogo';
 import { CARD } from '../ui/DropdownSelect';
 
 /** The four facts a row must carry — FlowPrint and BookContract both do. */
-export interface FlowSearchRow {
+interface FlowSearchRow {
   ticker: string;
   strike: number;
   right: 'C' | 'P';
@@ -20,7 +20,7 @@ export const normSymbol = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '
 
 /* A contract typed the way people write it: "NVDA 220C 11/20", "NVDA 220 call 2026-11-20" or an OCC symbol; anything
    else keeps the plain letters-and-digits match. */
-export interface ContractQuery {
+interface ContractQuery {
   ticker: string;
   strike: number | null;
   right: 'C' | 'P' | null;
@@ -128,7 +128,7 @@ const HEADING = 'px-2 pt-1.5 pb-1 font-mono text-t11 uppercase tracking-widest t
 
 /** A door at the foot of the menu: the search offers only what its page carries, so its last row sends the name to
     the page that does. */
-export interface SearchDoor {
+interface SearchDoor {
   /** The row's words, given what is typed (upper-cased, may be empty) */
   label: (query: string) => string;
   onOpen: (query: string) => void;

@@ -32,7 +32,7 @@
 */
 
 export type LedgerView = 'calendar' | 'matrix' | 'profile';
-export type LedgerHost = 'map' | 'tile';
+type LedgerHost = 'map' | 'tile';
 
 const KEY: Record<LedgerHost, string> = { map: 'slayer_map_view', tile: 'slayer_ledger_view' };
 const FIRST: Record<LedgerHost, LedgerView> = { map: 'matrix', tile: 'calendar' };

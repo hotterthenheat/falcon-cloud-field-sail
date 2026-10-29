@@ -6,7 +6,7 @@
 
 import type { ReactNode } from 'react';
 
-export const FOLD_MS = 220;
+const FOLD_MS = 220;
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
 interface FoldProps {

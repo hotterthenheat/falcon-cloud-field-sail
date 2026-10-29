@@ -13,7 +13,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const noon = (day: string) => new Date(`${day}T12:00:00`);
 /** A date `n` days on (or back, below nothing) */
-export function shiftDay(day: string, n: number): string {
+function shiftDay(day: string, n: number): string {
   const d = noon(day);
   d.setDate(d.getDate() + n);
   return iso(d);
@@ -29,7 +29,7 @@ export const PERIODS: readonly { value: Period; label: string }[] = [
   { value: 'all', label: 'All time' },
 ];
 export const isPeriod = (v: unknown): v is Period => PERIODS.some(p => p.value === v);
-export interface Span {
+interface Span {
   from: string;
   to: string;
 }
@@ -44,7 +44,7 @@ export function spanOf(period: Period, today: string): Span | null {
   return { from: sunday, to: shiftDay(sunday, 6) };
 }
 /** Dates compare as written (ISO), so a month's "-31" is its end whatever its length */
-export const inSpan = (day: string, span: Span | null): boolean => !span || (day >= span.from && day <= span.to);
+const inSpan = (day: string, span: Span | null): boolean => !span || (day >= span.from && day <= span.to);
 /** What a page shows: the trades closed in the span, on one account (or every one) */
 export const rowsIn = (rows: JournalRow[], span: Span | null, account: string | null = null): JournalRow[] => rows.filter(r => inSpan(calendarDayOf(r), span) && (!account || r.s.id === account));
 
@@ -103,12 +103,9 @@ export function dayTotals(rows: JournalRow[]): Map<string, DayTotal> {
   }
   return out;
 }
-/** A calendar day as a moment on a day-clock chart: its noon in New York, in seconds (16:00 UTC is noon or 11:00 there — the
-    same date either way) */
-export const dayTime = (day: string): number => Math.floor(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)), 16) / 1000);
 
 /* ---- the running total ---- */
-export interface RunPoint {
+interface RunPoint {
   /** Seconds — never two the same (two closes in one second keep their order) */
   time: number;
   value: number;
@@ -216,7 +213,7 @@ export function bySetup(rows: JournalRow[]): Lane[] {
   return none ? [...tagged, laneOf('none', 'No setup', 'No setup written down', none)] : tagged;
 }
 /** A round step near a third of `x`: 1, 2 or 5 of a power of ten, never under a dollar */
-export function roundStep(x: number): number {
+function roundStep(x: number): number {
   const v = Math.max(1, x / 3);
   const p = 10 ** Math.floor(Math.log10(v));
   const m = v / p;

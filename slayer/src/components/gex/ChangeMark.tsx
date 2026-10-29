@@ -35,7 +35,7 @@ export const READ_WINDOWS: { key: string; min: number }[] = [
    scan lands as a slide, not a jump */
 const GLIDE_MS = 360;
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-export const useGlide = (target: number | null): number | null => {
+const useGlide = (target: number | null): number | null => {
   const [shown, setShown] = useState<number | null>(target);
   const from = useRef<number | null>(target);
   useEffect(() => {

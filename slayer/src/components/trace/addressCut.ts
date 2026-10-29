@@ -5,9 +5,9 @@ import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 /** A card's field: its default, and the values the address may carry (anything else falls back to the default) */
-export type CutSpec<K extends string> = Record<K, { def: string; valid: (v: string) => boolean }>;
+type CutSpec<K extends string> = Record<K, { def: string; valid: (v: string) => boolean }>;
 
-export interface AddressCut<K extends string> {
+interface AddressCut<K extends string> {
   /** Every field's value now — the address's, or the default */
   cut: Record<K, string>;
   /** Write some fields; a field set to its default leaves the address */

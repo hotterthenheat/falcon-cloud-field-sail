@@ -6,7 +6,6 @@
 */
 
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { useMotionValue, useSpring as useMotionSpring, useTransform, useVelocity } from 'framer-motion';
 import { RefreshCw } from 'lucide-react';
 
 /* Colours are generated in OKLCH (perceptually uniform, unlike HSL) as a lightness ramp within one hue family, with
@@ -42,7 +41,7 @@ function hex(L: number, C: number, H: number) {
   );
 }
 
-export type Swatch = { hex: string };
+type Swatch = { hex: string };
 
 /* A base hue, a 16-34 degree step and a lightness ramp. One set in three ends on an accent 150-175 degrees round the
    wheel (a split complement), continuing in the ramp's own direction. */
@@ -98,20 +97,7 @@ const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 /* Shared motion parts: one spring, one goo filter. The filter id comes from useId (duplicate SVG ids collide across
    mounts). The goo's hard alpha cut fuses nearby shapes, so it must never cover text. */
 
-/* zeta ~ 0.67: about 6% overshoot before settling */
-export const LIQUID = {
-  type: 'spring' as const,
-  stiffness: 220,
-  damping: 14,
-  mass: 0.5,
-};
-
-/* non-drag blocks use the same feel without overshoot */
-/* For animating corner radii, where overshoot reads as a wobble: stiffness raised with damping keeps zeta ~ 1.03, no
-   overshoot, settling in about 180 ms. */
-export const LIQUID_STILL = { ...LIQUID, stiffness: 420, damping: 30 };
-
-export function useGoo(blur = 7, cut = 28) {
+function useGoo(blur = 7, cut = 28) {
   /* useId yields ":r0:", which url(#...) cannot reference: strip the colons */
   const id = `goo-${useId().replace(/:/g, '')}`;
   const goo = (
@@ -127,132 +113,18 @@ export function useGoo(blur = 7, cut = 28) {
   return { id, url: `url(#${id})`, goo };
 }
 
-/* drag velocity -> skew: the element leans against its motion; the skew is sprung, since raw velocity jitters */
-export function useDragSkew(limit = 12, range = 1600) {
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-  const vx = useVelocity(x);
-  const vy = useVelocity(y);
-  const skewX = useMotionSpring(useTransform(vx, [-range, range], [limit, -limit]), LIQUID);
-  const skewY = useMotionSpring(useTransform(vy, [-range, range], [limit / 2, -limit / 2]), LIQUID);
-  return { x, y, skewX, skewY };
-}
-
-/* Framer interpolates only real colours, and tokens (often color-mix()) are not resolved by getPropertyValue, so a
-   hidden probe inheriting the component's custom properties lets the engine compute them. */
-export function useTokens(ref: React.RefObject<HTMLElement | null>, names: string[]): Record<string, string> {
-  const [vals, setVals] = useState<Record<string, string>>({});
-  const key = names.join('|');
-  const last = useRef('');
-
-  useEffect(() => {
-    const host = ref.current;
-    if (!host) return;
-
-    const read = () => {
-      const probe = document.createElement('span');
-      probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none';
-      host.appendChild(probe);
-      const next: Record<string, string> = {};
-      for (const n of names) {
-        /* a bare token is wrapped; a fallback chain or literal is already a colour expression */
-        probe.style.color = n.startsWith('--') ? `var(${n})` : n;
-        next[n] = getComputedStyle(probe).color;
-      }
-      probe.remove();
-      const sig = JSON.stringify(next);
-      if (sig !== last.current) {
-        last.current = sig;
-        setVals(next);
-      }
-    };
-
-    read();
-
-    /* every ancestor that can redefine the palette */
-    const mo = new MutationObserver(read);
-    const flags = ['data-theme', 'data-fill', 'data-surface', 'data-stroke'];
-    for (let el: HTMLElement | null = host; el; el = el.parentElement) {
-      mo.observe(el, { attributes: true, attributeFilter: flags });
-    }
-    return () => mo.disconnect();
-  }, [ref, key]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return vals;
-}
-
 /* Elastic knobs run 0..100 outside and real units inside; 50 is always the component's tuned value. */
 
 /* speed as a multiplier on the tuned duration: 0 is ~1.6x slower, 50 exactly 1, 100 is 2.5x faster */
-export const rate = (speed: number) => 1.6 - (speed / 100) * 1.2;
-
-/* landing hardness: the bezier's second control-point y is the overshoot (1 stops dead, above 1 overshoots); 50 returns
-   the tuned y */
-export const overshoot = (bounce: number, tuned: number) => Number((1 + (bounce / 100) * (tuned - 1) * 2).toFixed(3));
-
-/* the same, as a transition */
-export const curve = (bounce: number, tuned: number, x1 = 0.28, x2 = 0.36) => `cubic-bezier(${x1}, ${overshoot(bounce, tuned)}, ${x2}, 1)`;
+const rate = (speed: number) => 1.6 - (speed / 100) * 1.2;
 
 /* One spring for everything that settles: velocity toward a target, damped, snapping when delta and velocity fall
    under 0.02. */
 
-/* 0..100 into stiffness and decay; 50 is the tuned feel, and both ends still arrive */
-/* chosen by damping ratio, zeta = -ln(d) / (2 * sqrt(k)), then written back as stiffness and decay, since the ratio
-   is what a person is actually setting */
-const springOf = (tune: number) => ({
-  /* stiffness: how hard it is pulled toward the target */
-  k: 0.08 + (tune / 100) * 0.16,
-  /* decay, per frame: how much of the velocity survives */
-  d: 0.62 + (tune / 100) * 0.2,
-});
-
-/* the snap threshold is absolute: drive the spring in pixels or 0..100, never 0..1 */
-export function useSpring(target: number, tune = 50, instant = false) {
-  const [at, setAt] = useState(target);
-  const cur = useRef(target);
-  const vel = useRef(0);
-  const raf = useRef(0);
-
-  useEffect(() => {
-    if (instant) {
-      cur.current = target;
-      vel.current = 0;
-      setAt(target);
-      return;
-    }
-    const { k, d } = springOf(tune);
-    let prev = 0;
-    const tick = (t: number) => {
-      const dt = prev ? clamp((t - prev) / 16.67, 0, 2.5) : 1;
-      prev = t;
-      vel.current += (target - cur.current) * k * dt;
-      vel.current *= Math.pow(d, dt);
-      cur.current += vel.current * dt;
-      if (Math.abs(target - cur.current) < 0.02 && Math.abs(vel.current) < 0.02) {
-        cur.current = target;
-        vel.current = 0;
-        setAt(target);
-        raf.current = 0;
-        return;
-      }
-      setAt(cur.current);
-      raf.current = requestAnimationFrame(tick);
-    };
-    raf.current = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(raf.current);
-      raf.current = 0;
-    };
-    /* `tune` is a dependency so a knob turned mid-flight takes effect; the restart continues from the refs */
-  }, [target, tune, instant]);
-
-  return at;
-}
-
 /* read once: a preference, not a live input */
 const stillness = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-export interface PaletteProps {
+interface PaletteProps {
   /* colours per set, 3..5 (the generator's); with `sets` each set's own count stands */
   count?: number;
   /* the swatch corner, 0 to half the bar height (square to fully round) */
@@ -280,7 +152,7 @@ export interface PaletteProps {
   testId?: string;
 }
 
-export function Palette({ count = 4, corner = CORNER, morph = 50, sets, index = 0, onChange, label, title, edge = false, width = W, swatch, barH = BAR_H, pad = PAD, tool = TOOL, gap = GAP, seam = SEAM, testId }: PaletteProps = {}) {
+function Palette({ count = 4, corner = CORNER, morph = 50, sets, index = 0, onChange, label, title, edge = false, width = W, swatch, barH = BAR_H, pad = PAD, tool = TOOL, gap = GAP, seam = SEAM, testId }: PaletteProps = {}) {
   const given = sets && sets.length > 0 ? sets : null;
   const at = given ? ((index % given.length) + given.length) % given.length : 0;
   const n = given ? given[at].length : clamp(Math.round(count), 3, 5);

@@ -16,7 +16,7 @@ import { isTradingDay, today as nyToday } from '../core/calendar';
 
 export type MarketPhase = 'pre' | 'regular' | 'post' | 'closed';
 
-export interface DayChange {
+interface DayChange {
   /** The regular session's change: the move a reader means by "today" */
   dayPct: number;
   /** The move outside the session (pre-market before the open, post-market after the close), or null in the session */

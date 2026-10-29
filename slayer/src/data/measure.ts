@@ -34,12 +34,12 @@ import { RTH_MINUTES } from '../core/calendar';
 */
 
 /** Sessions in a year. The market's own count, not 365 and not 260. */
-export const TRADING_DAYS = 252;
+const TRADING_DAYS = 252;
 
 /** Trading minutes in a year — the denominator the annualization divides by. */
 export const YEAR_MINUTES = TRADING_DAYS * RTH_MINUTES;
 
-export interface MeasureSpan {
+interface MeasureSpan {
   /** Signed, in price. */
   deltaAbs: number;
   /** Signed, in percent of the FROM price. */

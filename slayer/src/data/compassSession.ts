@@ -9,9 +9,9 @@ import type { DeskSession } from './deskSession';
 import type { FlowPrint } from '../types/trace';
 
 export type OptionPhase = 'overnight' | 'pre' | 'halt' | 'open' | 'curb' | 'closed';
-export type UnderPhase = 'pre' | 'open' | 'after' | 'closed';
+type UnderPhase = 'pre' | 'open' | 'after' | 'closed';
 
-export interface NameTape {
+interface NameTape {
   option: OptionPhase;
   under: UnderPhase;
   /** This 0DTE has no session left today. */
@@ -264,7 +264,7 @@ export function underWord(ticker: string, at: At = now()): string {
 }
 
 /** This name's options print in that session. The stock tape is a different question. */
-export function optionTapeIn(ticker: string, session: DeskSession): boolean {
+function optionTapeIn(ticker: string, session: DeskSession): boolean {
   const raw = ticker.toUpperCase();
   const root = raw === 'VIXW' ? 'VIX' : raw;
   if (session === 'rth') return true;

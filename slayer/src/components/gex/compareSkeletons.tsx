@@ -1,4 +1,3 @@
-import { Fragment } from 'react';
 /*
 ==================================================
   SLAYER TERMINAL - THE COMPARE PAGE'S SKELETONS
@@ -24,8 +23,7 @@ import { Block, Box, ChartGround, Facts, Line, SubLine, TitleRow } from '../ui/s
 /* ---- geometry shared with HeadToHead.tsx / CompareAxis.tsx / CompareRuler.tsx / CompareTapes.tsx / ComparePair.tsx ---- */
 
 /** A NAME'S READ BESIDE THE RULER (2026-10-18): the panel open, and its tab folded */
-export const SIDE_W = 320;
-export const SIDE_TAB_W = 28;
+const SIDE_W = 320;
 /** The drawing's height (640 since 2026-09-09 — Noah: "needs to be taller, cover more of
     the capsules"), the lane heads over it and the read line under it */
 export const AXIS_H = 640;
@@ -36,16 +34,13 @@ export const AXIS_COL_W = 60;
 /** THE SPINE OF STRIKES (2026-09-29): a column of strike figures on each side of the ruler, so every capsule is named
     where the Map's ladder names its strikes — the first cut printed a strike only on hover */
 export const AXIS_STRIKE_W = 46;
-/** The caption over the four bands within reach */
-export const BANDS_CAP_H = 22;
-export const BAND_KEYS = ['up1', 'up2', 'dn1', 'dn2'] as const;
 /** Today's two lines, and the read line under them */
 export const TAPES_H = 300;
 export const TAPES_READ_H = 26;
 /** The pair over the sessions — the drawing's height and its margins — and its read line */
 /* 300 since 2026-10-15 — the pair stands as a chart, not a strip (Noah: "bland … like plain html") */
 export const PAIR_H = 300;
-export const PAIR_M = { l: 16, r: 84, t: 22, b: 28 };
+const PAIR_M = { l: 16, r: 84, t: 22, b: 28 };
 export const PAIR_READ_H = 26;
 
 /* ---- box 1 ---------------------------------------------------------------------- */

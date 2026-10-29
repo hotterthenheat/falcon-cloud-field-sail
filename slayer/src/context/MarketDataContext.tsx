@@ -1,12 +1,9 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { readDeskPrefs } from '../data/deskPrefs';
-import type { FlowPrint } from '../types/trace';
-import type { MarketSnapshot, TickerSymbol } from '../types/market';
+import type { TickerSymbol } from '../types/market';
 
 /* The name on the desk, and nothing else. Prices, books and prints come from the live feeds each page reads
    (liveQuote, uwBook, traceLive, ThetaData); this provider runs no market of its own and does not tick. */
-
-export type StampedPrint = FlowPrint & { at: number };
 
 interface TickerValue {
   activeTicker: TickerSymbol;
@@ -16,17 +13,8 @@ interface TickerValue {
   revertTicker: () => void;
 }
 
-interface MarketDataContextValue extends TickerValue {
-  /** Always null: there is no simulated snapshot. Kept so older readers compile while they move to live feeds. */
-  marketData: MarketSnapshot | null;
-  /** Always empty: the live tape is read per page (traceLive). */
-  flowTape: StampedPrint[];
-}
-
 const TickerContext = createContext<TickerValue | null>(null);
-const MarketDataContext = createContext<MarketDataContextValue | null>(null);
 
-const NO_PRINTS: StampedPrint[] = [];
 const DEFAULT_TICKER = 'SPY';
 
 const clean = (ticker: string): TickerSymbol => ticker.trim().toUpperCase() || DEFAULT_TICKER;
@@ -68,13 +56,8 @@ export const MarketDataProvider = ({ children }: { children: ReactNode }) => {
   }, [changeTicker]);
 
   const tickerValue = useMemo(() => ({ activeTicker, previousTicker, changeTicker, revertTicker }), [activeTicker, previousTicker, changeTicker, revertTicker]);
-  const marketValue = useMemo<MarketDataContextValue>(() => ({ ...tickerValue, marketData: null, flowTape: NO_PRINTS }), [tickerValue]);
 
-  return (
-    <TickerContext.Provider value={tickerValue}>
-      <MarketDataContext.Provider value={marketValue}>{children}</MarketDataContext.Provider>
-    </TickerContext.Provider>
-  );
+  return <TickerContext.Provider value={tickerValue}>{children}</TickerContext.Provider>;
 };
 
 export const useTicker = (): TickerValue => {
@@ -83,9 +66,5 @@ export const useTicker = (): TickerValue => {
   return v;
 };
 
-/** The desk's name, plus the retired simulator fields (null / empty) for readers not yet moved off them. */
-export const useMarketData = (): MarketDataContextValue => {
-  const v = useContext(MarketDataContext);
-  if (!v) throw new Error('useMarketData must be used within a MarketDataProvider');
-  return v;
-};
+/** Older name for useTicker. */
+export const useMarketData = useTicker;

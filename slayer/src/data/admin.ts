@@ -48,7 +48,7 @@ export interface LogRow {
   note: string | null;
 }
 
-export type Outcome = { ok: true } | { ok: false; why: string };
+type Outcome = { ok: true } | { ok: false; why: string };
 
 /** What a person's row amounts to, in one of four words */
 export const statusOf = (p: Person, now = Date.now()): PersonStatus => {
@@ -211,7 +211,7 @@ const sample = (n: number, p: Partial<Person> & { email: string; name: string })
   ...p,
 });
 
-export const SAMPLE_PEOPLE: Person[] = [
+const SAMPLE_PEOPLE: Person[] = [
   sample(1, { email: 'noah@slayerterminal.com', name: 'Noah', role: 'owner', plan: 'desk', providers: ['email', 'google'], createdAt: at(31) }),
   sample(2, { email: 'mo@slayerterminal.com', name: 'Mo', role: 'owner', plan: 'desk', createdAt: at(31) }),
   sample(3, { email: 'r.okafor@gmail.com', name: 'Rina Okafor', plan: 'tape', providers: ['google'] }),
@@ -224,7 +224,7 @@ export const SAMPLE_PEOPLE: Person[] = [
   sample(10, { email: 'sam@slayerterminal.com', name: 'Sam', role: 'team', createdAt: at(12) }),
 ];
 
-export const SAMPLE_LOG: LogRow[] = [
+const SAMPLE_LOG: LogRow[] = [
   { id: 9, at: at(0, 1), actor: 'sample-1', subject: 'sample-9', field: 'grant_until', old: null, new: at(-3652), note: 'Tested the book every morning for a month' },
   { id: 8, at: at(0, 1), actor: 'sample-1', subject: 'sample-9', field: 'grant_plan', old: null, new: 'desk', note: 'Tested the book every morning for a month' },
   { id: 5, at: at(0, 2), actor: 'sample-1', subject: 'sample-5', field: 'banned_until', old: null, new: at(-14), note: 'Shared screenshots of the book with the mark cropped out' },

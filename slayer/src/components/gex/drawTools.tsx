@@ -34,7 +34,7 @@ import { useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import type { DrawingKind } from './drawingsPrimitive';
 
-export type DrawFamilyId = 'trend' | 'fib' | 'measure' | 'shapes' | 'words';
+type DrawFamilyId = 'trend' | 'fib' | 'measure' | 'shapes' | 'words';
 
 export interface DrawToolDef {
   tool: DrawingKind;
@@ -46,7 +46,7 @@ export interface DrawToolDef {
   keys?: string;
 }
 
-export interface DrawFamily {
+interface DrawFamily {
   id: DrawFamilyId;
   name: string;
   /** The sheet's tab — six of them share one row, so each is a word */
@@ -338,7 +338,7 @@ export const DRAW_FAMILIES: DrawFamily[] = [
   },
 ];
 
-export const ALL_DRAW_TOOLS: DrawToolDef[] = DRAW_FAMILIES.flatMap(f => f.tools);
+const ALL_DRAW_TOOLS: DrawToolDef[] = DRAW_FAMILIES.flatMap(f => f.tools);
 const BY_KIND = new Map<DrawingKind, DrawToolDef>(ALL_DRAW_TOOLS.map(t => [t.tool, t]));
 const FAMILY_OF = new Map<DrawingKind, DrawFamilyId>(DRAW_FAMILIES.flatMap(f => f.tools.map(t => [t.tool, f.id] as const)));
 

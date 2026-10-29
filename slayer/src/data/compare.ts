@@ -4,7 +4,7 @@
 
 import { daySigmaOfIv, sigmaOverMinutes } from './expectedMove';
 import { wallPlace } from '../core/walls';
-import { bookCandles, peekBellShare, peekDaySigma, peekIv, peekSpot, scopeDatesPending } from './uwBook';
+import { bookCandles, peekBellShare, peekIv, peekSpot, scopeDatesPending } from './uwBook';
 import { scopeSigma } from './wall';
 import { UNIVERSE } from './universe';
 import type { AheadClock } from './ahead';
@@ -25,21 +25,7 @@ export const WINDOW = 30;
 
 export type { Greek };
 
-/* The greek the ruler, the reach sums and the Supreme row follow; the walls stay gamma's. Each greek has its own two
-   words for a strike's sign. */
-export const GREEK_OPTIONS: { value: Greek; label: string; hint: string }[] = [
-  { value: 'gex', label: 'GEX', hint: 'Gamma — how hard dealers must hedge a move' },
-  { value: 'dex', label: 'DEX', hint: 'Delta — which way dealers are leaning' },
-  { value: 'vex', label: 'vega $', hint: 'Dollar vega — what the book gains or loses if vol moves one point. Not vanna.' },
-  { value: 'vanna', label: 'VANNA', hint: 'How their hedges re-price when vol moves — the stock a vol drop makes them buy or sell' },
-  { value: 'charm', label: 'CHARM', hint: "The clock's pull on their hedges — the stock the passing day makes them buy or sell" },
-  { value: 'color', label: 'COLOR', hint: 'How gamma-per-1% itself changes as the session runs' },
-  { value: 'vomma', label: 'VOMMA', hint: 'How vega changes when vol moves one point' },
-  { value: 'speed', label: 'SPEED', hint: 'How gamma-per-1% changes when the underlying moves one dollar' },
-  { value: 'veta', label: 'VETA', hint: 'How vega changes as the session runs' },
-  { value: 'zomma', label: 'ZOMMA', hint: 'How gamma-per-1% changes when vol moves one point' },
-];
-export interface GreekWords {
+interface GreekWords {
   pos: string;
   neg: string;
   /** The same, said of two names at once */
@@ -312,48 +298,6 @@ export const REACH_OPTIONS: { value: Reach; label: string; hint: string }[] = [
   { value: 'all', label: 'Everything', hint: 'Every strike either name carries' },
 ];
 
-/** A strike's distance in the day's expected moves */
-export const movesAway = (s: CompareSide, strike: number) => (s.sigmaDay > 0 ? (strike - s.spot) / s.sigmaDay : 0);
-
-export interface ReachBand {
-  key: 'up1' | 'up2' | 'dn1' | 'dn2';
-  label: string;
-  /** Expected moves from spot, signed: the band runs from `from` to `to` */
-  from: number;
-  to: number;
-}
-export const REACH_BANDS: ReachBand[] = [
-  { key: 'up1', label: 'Overhead · within one expected move', from: 0, to: 1 },
-  { key: 'up2', label: 'Overhead · one to two moves out', from: 1, to: 2 },
-  { key: 'dn1', label: 'Below · within one expected move', from: -1, to: 0 },
-  { key: 'dn2', label: 'Below · one to two moves out', from: -2, to: -1 },
-];
-
-export interface BandSum {
-  /** The greek's negative side, summed — gamma that pushes back, delta that leans down, vega that gains as vol falls */
-  neg: number;
-  /** Its positive side — gamma that pushes along, delta that leans up, vega that gains as vol rises */
-  pos: number;
-  total: number;
-  strikes: number;
-}
-
-/** What sits in a band of the day's expected moves, for one name, in the chosen greek */
-export function withinReach(s: CompareSide, band: ReachBand, greek: Greek): BandSum {
-  let neg = 0;
-  let pos = 0;
-  let strikes = 0;
-  for (const r of s.rows[greek]) {
-    const m = movesAway(s, r.strike);
-    const inside = band.from < 0 ? m >= band.from && m < band.to : m > band.from && m <= band.to;
-    if (!inside) continue;
-    strikes++;
-    if (r.value < 0) neg += -r.value;
-    else pos += r.value;
-  }
-  return { neg, pos, total: neg + pos, strikes };
-}
-
 /* ---- the pair ------------------------------------------------------------------ */
 
 export interface PairPoint {
@@ -368,7 +312,7 @@ export interface PairPoint {
 
 /** Where a day sits against the usual range, in words a person can picture (never "+0.8σ"): how far toward an edge of
     the average ± one usual swing, or how far past. */
-export interface PairPlace {
+interface PairPlace {
   where: 'inside' | 'above' | 'below';
   /** Which name is further ahead than on an average day — neither, on the average */
   ahead: 'a' | 'b' | null;

@@ -34,9 +34,9 @@ import type { Candle } from '../types/market';
   of the bins that happen to hold it.
 */
 
-export const VALUE_AREA_FRACTION = 0.7;
+const VALUE_AREA_FRACTION = 0.7;
 /** Bin count the wrapper aims the session's range at. */
-export const TARGET_BINS = 48;
+const TARGET_BINS = 48;
 
 export interface VolumeProfileBin {
   /** Bin centre price. */
@@ -61,7 +61,7 @@ const EMPTY: VolumeProfile = { bins: [], binSize: 0, totalVolume: 0, vpoc: null,
  * The profile of the CURRENT session in `bars1m`, at an explicit bin size.
  * `sessionVolumeProfile` below picks the size; proofs pin this directly.
  */
-export function buildVolumeProfile(sessionBars: readonly Candle[], binSize: number): VolumeProfile {
+function buildVolumeProfile(sessionBars: readonly Candle[], binSize: number): VolumeProfile {
   if (sessionBars.length === 0 || !(binSize > 0)) return EMPTY;
   let lo = Infinity;
   let hi = -Infinity;

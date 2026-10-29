@@ -8,8 +8,6 @@ import { useTicker } from '../../context/MarketDataContext';
   pasting a vendor's error sentence into a cell.
 */
 
-/** A Theta quote that has not printed in this long is stale. */
-export const QUOTE_TTL_MS = 5_000;
 /** A flow print (Unusual Whales) that has not printed in this long is stale. */
 export const FLOW_TTL_MS = 20_000;
 /** The full GEX book refreshes on a 45s clock. Stale means a refresh was missed. */
@@ -35,7 +33,7 @@ export function quietText(text: string): string {
   return vendorFault(text) ? '—' : text;
 }
 
-export function isStale(at: number | null | undefined, ttlMs: number, now = Date.now()): boolean {
+function isStale(at: number | null | undefined, ttlMs: number, now = Date.now()): boolean {
   if (at == null || !(at > 0)) return false;
   return now - at > ttlMs;
 }

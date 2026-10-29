@@ -119,7 +119,7 @@ const ROW_MIN = 24;
    120px holds the level's word and "−$40.5M" at 12px with air; where nothing stands beside the panes (the day box
    under the book, fullscreen) the table fills its pane and the tracks take the room. The logic is untouched: the
    same rows, caps, inks and levels; only how a cell is drawn. */
-export const MATRIX_COL_W = 120;
+const MATRIX_COL_W = 120;
 /** The narrowest a leg's column is drawn: "−$93.2M" at 12px and the cell's padding */
 const LEG_MIN = 80;
 /* THE CARD (the owner, 2026-10-13: "the side panel thing is so damn big"): four rows, one line under them, and wide

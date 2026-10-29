@@ -58,13 +58,6 @@ export interface Post {
   replies: Reply[];
 }
 
-export interface Notice {
-  id: string;
-  handle: string;
-  what: string;
-  at: string;
-}
-
 /** What this browser keeps: the reader's own posts and their marks */
 export interface RoomState {
   posts: Post[];

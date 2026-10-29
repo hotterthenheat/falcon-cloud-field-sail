@@ -26,11 +26,7 @@
 ==================================================
 */
 
-import { pickFlip, pickWalls } from '../core/walls';
-import { nyDay } from '../core/nyTime';
-import { sessionStarts } from './indicators';
-import { YEAR_MINUTES } from './measure';
-import type { Candle, GexSnapshot } from '../types/market';
+import type { Candle } from '../types/market';
 
 export interface Tick {
   /** Index into the session's bars — the strip's x */
@@ -62,10 +58,9 @@ export function levelTicks(bars: readonly Candle[], strike: number, side: 'call'
 }
 
 export type RecordLevel = 'callWall' | 'putWall' | 'flip' | 'supreme';
-export const RECORD_LEVELS: RecordLevel[] = ['callWall', 'putWall', 'flip', 'supreme'];
-export const RECORD_WORDS: Record<RecordLevel, string> = { callWall: 'call wall', putWall: 'put wall', flip: 'flip', supreme: 'supreme' };
+const RECORD_LEVELS: RecordLevel[] = ['callWall', 'putWall', 'flip', 'supreme'];
 
-export interface LevelOutcome {
+interface LevelOutcome {
   price: number;
   tests: number;
   held: number;
@@ -74,7 +69,7 @@ export interface LevelOutcome {
   heldFirst: boolean | null;
 }
 
-export interface SessionRecord {
+interface SessionRecord {
   /** "Oct 9" */
   day: string;
   open: number;
@@ -85,34 +80,11 @@ export interface SessionRecord {
   insideMove: boolean | null;
 }
 
-export interface BaseRates {
+interface BaseRates {
   sessions: number;
   levels: Record<RecordLevel, { tested: number; heldFirst: number; neverBroke: number }>;
   insideMove: { n: number; inside: number };
 }
-
-/** The levels as the first book of a session read them — walls, flip and supreme off the per-strike net */
-function levelsAtOpen(snap: GexSnapshot, open: number): Partial<Record<RecordLevel, number>> {
-  const rows = snap.levels;
-  const walls = pickWalls(rows, open, l => l.value);
-  const flip = pickFlip(rows, open, l => l.value);
-  let supreme: number | null = null;
-  let best = 0;
-  for (const l of rows)
-    if (Math.abs(l.value) > best) {
-      best = Math.abs(l.value);
-      supreme = l.strike;
-    }
-  const out: Partial<Record<RecordLevel, number>> = {};
-  if (walls.callWall != null) out.callWall = walls.callWall;
-  if (walls.putWall != null) out.putWall = walls.putWall;
-  if (flip != null) out.flip = flip;
-  if (supreme != null) out.supreme = supreme;
-  return out;
-}
-
-/** A session is graded only when it has most of its bars — a stub (the tape's first minutes) says nothing */
-const MIN_BARS = 200;
 
 /** Every finished session on hand, oldest first — today's is left to the report.
     The feed keeps today's book, not the days before it. The simulator's seeded

@@ -35,7 +35,7 @@
 ==================================================
 */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronLeft, ChevronRight, Eye, Lock, Menu, Search, UserRound } from 'lucide-react';
@@ -46,7 +46,7 @@ import Avatar from '../ui/Avatar';
 import { useLiveQuote } from '../../data/liveQuote';
 import { SAMPLE_PROFILE, useProfile } from '../../data/profile';
 import { useAccount } from '../../data/account';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
 import { usePinpointFeed, dayMoveWords, changeInk } from '../../data/uwBook';
 import { dayMoveOfSnapshot } from '../gex/DayMoveText';
 import { warmPath } from '../../data/warmRooms';
@@ -74,8 +74,8 @@ import { readMarketState } from '../../data/marketState';
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
 const COLLAPSED_KEY = 'slayer_sidenav_collapsed';
 /** The panel's widths — open, and the icon rail */
-export const SIDENAV_W = 236;
-export const SIDENAV_RAIL_W = 52;
+const SIDENAV_W = 236;
+const SIDENAV_RAIL_W = 52;
 /** The edge bar's height */
 const BAR_H = 18;
 /** A nested page row's pitch — the tree fill is computed from it, not measured */
@@ -104,7 +104,7 @@ interface Tip {
 }
 
 const SideNav = ({ onOpenPalette }: SideNavProps) => {
-  const { activeTicker } = useMarketData();
+  const { activeTicker } = useTicker();
   /* the contract the reader is inside — Compass's tree keeps its row (see subpagesFor) */
   const { chosenId } = useCompassView();
   const profile = useProfile();

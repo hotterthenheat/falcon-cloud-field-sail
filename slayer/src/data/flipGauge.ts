@@ -1,9 +1,7 @@
-import { pickFlip } from '../core/walls';
-import { buildExposureProfile } from './exposure';
 import { sessionBars } from './levelview';
 import { levelFlip, regimeOfNet } from './flipLevel';
 import { recordDay, sessionBook } from './bookWindow';
-import type { Candle, GexSnapshot, MarketSnapshot } from '../types/market';
+import type { Candle, MarketSnapshot } from '../types/market';
 import { nyIsoDate, nyMinutes } from '../core/nyTime';
 
 /*
@@ -43,7 +41,7 @@ import { nyIsoDate, nyMinutes } from '../core/nyTime';
 
 export type GammaRegime = 'SHORT' | 'LONG';
 
-export interface FlipGauge {
+interface FlipGauge {
   spot: number;
   /** Null when the field never changes sign — a one-sided book has no flip. */
   flip: number | null;
@@ -60,60 +58,20 @@ export interface FlipGauge {
   bars: number;
 }
 
-/* One RTH session of 1-minute bars — the simulator's own session shape. */
-const SESSION_BARS = 390;
-
 /* A session has to be at least this old before "crossed 0× today" is a
    measurement rather than an absence of data. Two bars can cross at most
    once; ten minutes is the floor where a zero starts meaning something. */
-export const GAUGE_MIN_BARS = 10;
+const GAUGE_MIN_BARS = 10;
 
 /* TEN MINUTES, NOT TEN BARS (the eighth audit's m1: the Board's names read 5-minute bars, so ten bars was 10:20 and every
    name but the active one showed a bare "—" for the first fifty minutes). The floor is ten minutes of the session,
    whatever the bars' width. */
-export const coveredMinutes = (bars: readonly Candle[]): number => {
+const coveredMinutes = (bars: readonly Candle[]): number => {
   if (!bars.length) return 0;
   const step = bars.length >= 2 ? Math.max(60, bars[1].time - bars[0].time) : 60;
   return (bars[bars.length - 1].time - bars[0].time + step) / 60;
 };
 const tooEarly = (bars: readonly Candle[]): boolean => coveredMinutes(bars) < GAUGE_MIN_BARS;
-
-/**
- * Crossings of the per-bar flip, from bar-aligned candle and snapshot tails.
- *
- * Pure, so the proof can hand it a session it constructed — the composed
- * `buildFlipGauge` below reads the simulator, whose history cannot be staged.
- *
- * A bar whose SNAPSHOT TIME does not match its candle's is skipped and breaks
- * the streak: the two buffers push in lockstep (updateCandles appends both on
- * the same roll) with equal caps, so a mismatch means the tails are not the
- * same minutes and a count across them would be crossings of nothing.
- */
-export function countFlipCrossings(candles: readonly Candle[], snaps: readonly GexSnapshot[]): number {
-  const n = Math.min(candles.length, snaps.length);
-  let crossings = 0;
-  let prevSide = 0;
-  for (let i = 0; i < n; i++) {
-    const bar = candles[i];
-    const snap = snaps[i];
-    if (bar.time !== snap.time) {
-      prevSide = 0;
-      continue;
-    }
-    const barFlip = pickFlip(snap.levels, bar.close, l => l.value);
-    /* No flip that minute: price cannot cross a line that is not there, and
-       carrying the previous side across the gap would count a crossing
-       against a flip from minutes earlier. */
-    if (barFlip === null) {
-      prevSide = 0;
-      continue;
-    }
-    const side = Math.sign(bar.close - barFlip);
-    if (side !== 0 && prevSide !== 0 && side !== prevSide) crossings++;
-    if (side !== 0) prevSide = side;
-  }
-  return crossings;
-}
 
 /**
  * TIMES PRICE CROSSED THE FLIP — ONE DEFINITION FOR THE BOARD AND THE MAP (the ninth audit's M2, 2026-10-23: the Board
@@ -170,7 +128,7 @@ export function buildFlipGauge(snapshot: MarketSnapshot): FlipGauge {
  * nothing. The flip here is the one of the book the session ran on (data/bookWindow.ts sessionBook); null with `why`
  * when that book is no longer available.
  */
-export interface SessionCrossings {
+interface SessionCrossings {
   crossings: number | null;
   flip: number | null;
   label: string;
@@ -250,52 +208,3 @@ export const REGIME_WORDS: Record<GammaRegime, { label: string; blurb: string }>
   flip is not a number.
 */
 
-export interface ExpiryFlips {
-  d0: number | null;
-  weekly: number | null;
-  book: number | null;
-  /** book − d0. Positive = the structural flip sits above today's. */
-  spread: number | null;
-}
-
-/* The wider of the two windows the Exposure page offers — flips live near
-   spot, and ±15 strikes is far more room than one ever needs. */
-const FLIP_WINDOW = 15 as const;
-
-/*
-  WHAT THE THREE LENSES CAN AND CANNOT SAY, as of P-24B.
-
-  The expiry lens is a UNIFORM POSITIVE SCALAR over every strike
-  (`EXPIRY_DECAY` in data/exposure.ts: 0DTE 1, 7D 0.16, ALL 3.13). Scaling a
-  whole book by a positive constant cannot move a sign change — so on this
-  data source the three flips are the SAME PRICE, necessarily, and the panel
-  says so rather than implying three measurements happened to coincide.
-
-  They used to differ, and that difference was not real: the profile's
-  per-strike jitter was seeded with the expiry NAME, so a hash of the string
-  "7D" tilted near-balanced strikes and produced three numbers. The
-  divergence measured when this feature was built (6 of 22 names) was
-  measuring that hash. P-24B made the split net-preserving — levels are now
-  a property of the book, not of the seed — and the three lenses collapsed
-  onto one price, which is the honest reading of a book with no per-expiry
-  structure in it.
-
-  THE SHAPE STAYS because the seam is the point: a real chain carries its own
-  open interest per expiry, those are three genuinely different books, and
-  this function differentiates them the moment it is handed them. That is
-  proven with a staged per-expiry book in the proof rather than asserted
-  here.
-*/
-export function buildExpiryFlips(snapshot: MarketSnapshot): ExpiryFlips {
-  const flipOf = (expiry: '0DTE' | '7D' | 'ALL') =>
-    pickFlip(buildExposureProfile(snapshot, expiry, FLIP_WINDOW).strikes, snapshot.spot, s => s.gex.net);
-  const d0 = flipOf('0DTE');
-  const weekly = flipOf('7D');
-  const book = flipOf('ALL');
-  return {
-    d0,
-    weekly,
-    book,
-    spread: d0 !== null && book !== null ? book - d0 : null,
-  };
-}

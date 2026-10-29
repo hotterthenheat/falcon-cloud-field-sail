@@ -27,7 +27,7 @@ const STILL_PATH: Record<string, string> = {
 const DESK_LINE = 'Compass, the Weigher, Practice and Community, with every room in Tape and Book.';
 
 /** the rail's room for an address — the longest path it starts with */
-export const roomFor = (pathname: string): NavItem | null => {
+const roomFor = (pathname: string): NavItem | null => {
   let best: NavItem | null = null;
   for (const item of NAV_ITEMS) {
     if (pathname !== item.path && !pathname.startsWith(`${item.path}/`)) continue;
@@ -150,4 +150,3 @@ export const PlanGate = ({ children, fill = true }: { children: ReactNode; fill?
   return <PlanWall room={room} needed={needed} fill={fill} />;
 };
 
-export default PlanWall;

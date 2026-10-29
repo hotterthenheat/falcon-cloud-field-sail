@@ -1,4 +1,3 @@
-import type { Candle } from '../types/market';
 
 /*
 ==================================================
@@ -47,11 +46,6 @@ export interface AltBarSpec {
   size: number;
 }
 
-/** The gap that means "the session rolled" — far above any quarter spacing,
-    far below the overnight jump (the seconds-tape proof draws the same
-    line). */
-const SESSION_GAP_SECONDS = 3600;
-
 /**
  * The pane's bar-clock choices, keyed for persistence. One table, so the
  * pane validator, the menu and the chart can never disagree about what a
@@ -79,38 +73,3 @@ export const isBarClock = (v: unknown): v is string =>
 export const barClockSpec = (key: string): AltBarSpec | null =>
   BAR_CLOCKS.find(c => c.key === key)?.spec ?? null;
 
-/**
- * Fold the quarter tape into bars that close by rule. Every quarter is
- * consumed — the total volume of the output equals the input's — and the
- * final bar is the still-forming one.
- */
-export function buildAltBars(quarters: readonly Candle[], spec: AltBarSpec): Candle[] {
-  const out: Candle[] = [];
-  let cur: Candle | null = null;
-  let prevTime = 0;
-  for (const q of quarters) {
-    if (cur && q.time - prevTime > SESSION_GAP_SECONDS) {
-      /* The session rolled under the forming bar — close it where the tape
-         ended rather than handing it the overnight gap as movement. */
-      out.push(cur);
-      cur = null;
-    }
-    if (!cur) {
-      cur = { time: q.time, open: q.open, high: q.high, low: q.low, close: q.close, volume: q.volume };
-    } else {
-      cur.high = Math.max(cur.high, q.high);
-      cur.low = Math.min(cur.low, q.low);
-      cur.close = q.close;
-      cur.volume += q.volume;
-    }
-    prevTime = q.time;
-    const done =
-      spec.kind === 'range' ? cur.high - cur.low >= spec.size - 1e-9 : cur.volume >= spec.size;
-    if (done) {
-      out.push(cur);
-      cur = null;
-    }
-  }
-  if (cur) out.push(cur);
-  return out;
-}

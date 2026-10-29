@@ -393,4 +393,3 @@ export const BuildingGuide = ({ data, clock }: { data: Building; clock: AheadClo
   </div>
 );
 
-export default BuildingGuide;

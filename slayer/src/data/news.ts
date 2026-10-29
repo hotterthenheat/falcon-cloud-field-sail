@@ -56,5 +56,3 @@ export interface NewsItem {
 
 export { newsPulse } from './liveRecord';
 
-/** @deprecated The wire sends no usable sentiment (every headline 'neutral'), so there is no lean: always 0. */
-export const tickerSentiment = (_ticker: string): number => 0;
