@@ -471,7 +471,7 @@ const roll = (a: PaperAccount, day: string) => {
   ({ account: b } = run(b, 0));
   ok('no overnight, no flat-by time: closed at 15:59, a minute before the bell', optBookOf(b).positions.length === 0 && optBookOf(b).trades[0].how === 'rule');
   now = nyInstant(TUE, 15 * 60);
-  let c = newAccount({ id: 'f3', kind: 'evaluation', name: 'f', startCash: 0, plan: plan({ expiryClose: '15:55', fee: 0 }), now });
+  let c = newAccount({ id: 'f3', kind: 'evaluation', name: 'f', startCash: 0, plan: plan({ expiryClose: { at: '15:55', except: ['QQQ'] }, fee: 0 }), now });
   c = buy(c, 1, { ...atm, expiry: TUE });
   c = buy(c, 1);
   now = nyInstant(TUE, 15 * 60 + 55);
