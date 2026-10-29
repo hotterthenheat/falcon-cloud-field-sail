@@ -69,7 +69,7 @@ export const FaultView = ({ error, scope, back }: FaultViewProps) => {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-textPrimary text-canvas text-t125 font-medium"
+          className="inline-flex items-center gap-2 h-10 px-4 rounded-md bg-textPrimary text-canvas text-t125 font-medium"
           data-fault-reload
         >
           <RotateCcw className="w-3.5 h-3.5" aria-hidden /> {offline ? 'Try again' : 'Reload'}
@@ -121,7 +121,7 @@ export class AppBoundary extends Component<{ children: ReactNode }, { error: Err
         error={this.state.error}
         scope="app"
         back={
-          <a href="/" className="inline-flex items-center h-9 px-4 rounded-md border border-borderMuted text-t125 font-medium text-textPrimary hover:bg-ink/[0.05]">
+          <a href="/" className="inline-flex items-center h-10 px-4 rounded-md border border-borderMuted text-t125 font-medium text-textPrimary hover:bg-ink/[0.05]">
             Front page
           </a>
         }

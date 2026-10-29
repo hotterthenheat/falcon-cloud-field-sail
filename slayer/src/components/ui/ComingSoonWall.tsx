@@ -180,10 +180,10 @@ const ComingSoonWall = ({ kicker, blurb, foot }: Props) => {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="you@somewhere.com"
-                  className="w-64 h-8 bg-inputBg border border-borderSubtle rounded-md px-3 font-mono text-t12 text-textPrimary placeholder:text-textMuted focus:border-borderMuted outline-none transition-colors"
+                  className="w-64 h-8 max-sm:h-10 bg-inputBg border border-borderSubtle rounded-md px-3 font-mono text-t12 text-textPrimary placeholder:text-textMuted focus:border-borderMuted outline-none transition-colors"
                   aria-label="Your email"
                 />
-                <button type="submit" disabled={!emailOk} className="h-8 px-3 rounded-md border border-silver/50 bg-silver/[0.08] font-mono text-t10 uppercase tracking-wider text-silver hover:bg-silver/[0.14] transition-colors disabled:opacity-40 disabled:pointer-events-none">
+                <button type="submit" disabled={!emailOk} className="h-8 max-sm:h-10 px-3 rounded-md border border-silver/50 bg-silver/[0.08] font-mono text-t10 uppercase tracking-wider text-silver hover:bg-silver/[0.14] transition-colors disabled:opacity-40 disabled:pointer-events-none">
                   Notify me
                 </button>
               </>

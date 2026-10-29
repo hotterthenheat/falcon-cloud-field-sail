@@ -122,7 +122,7 @@ export const NotFoundInside = () => {
           <button
             type="button"
             onClick={openPalette}
-            className="w-full sm:w-auto inline-flex items-center gap-2.5 h-8 pl-2.5 pr-2 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted text-t12 text-textSecondary hover:text-textPrimary transition-colors"
+            className="w-full sm:w-auto inline-flex items-center gap-2.5 h-8 max-sm:h-10 pl-2.5 pr-2 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted text-t12 text-textSecondary hover:text-textPrimary transition-colors"
             data-not-found-search
           >
             <Search className="w-3.5 h-3.5" aria-hidden />

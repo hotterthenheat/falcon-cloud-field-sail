@@ -886,7 +886,7 @@ const Compare = () => {
           <span className="flex items-center gap-1.5 max-sm:col-span-2 max-sm:flex-wrap max-sm:gap-y-2 [&_[data-scope]]:shrink-0 max-sm:[&_[data-scope]]:shrink max-sm:[&_[data-scope]]:max-w-[calc(100%-1rem)] max-sm:[&_[data-scope]]:h-auto max-sm:[&_[data-scope]]:min-h-6 max-sm:[&_[data-scope-pick]]:flex-wrap max-sm:[&_[data-scope-pick]]:py-1 max-sm:[&_[data-scope-pick]]:gap-y-1 max-sm:[&_[data-scope-ext]]:hidden" data-compare-names>
             <span className="inline-flex items-center gap-1.5 min-w-0 max-sm:flex-1" data-compare-pair="a">
               <span className="font-mono text-t9 uppercase tracking-widest text-textMuted shrink-0">A</span>
-              <ScopeChip ticker={aTicker} linked={aFollows} full quote closeOutside onToggleLink={() => setAPick(aFollows ? aTicker : null)} onPick={next => (aFollows ? changeTicker(next) : setAPick(next))} />
+              <ScopeChip ticker={aTicker} linked={aFollows} full quote closeOutside arrive={false} onToggleLink={() => setAPick(aFollows ? aTicker : null)} onPick={next => (aFollows ? changeTicker(next) : setAPick(next))} />
             </span>
             <button
               type="button"
@@ -900,7 +900,7 @@ const Compare = () => {
             </button>
             <span className="inline-flex items-center gap-1.5 min-w-0 max-sm:w-full max-sm:pr-9" data-compare-pair="b">
               <span className="font-mono text-t9 uppercase tracking-widest text-textMuted shrink-0">B</span>
-              <ScopeChip ticker={bTicker} quote closeOutside onPick={next => setBPick(next)} title="The second name: pick another" />
+              <ScopeChip ticker={bTicker} quote closeOutside arrive={false} onPick={next => setBPick(next)} title="The second name: pick another" />
             </span>
           </span>
           <DropdownSelect label="Clock" value={tenor} options={CLOCK_OPTIONS} onChange={setTenor} title="How far out the contracts run, both names" testId="compare-clock" />

@@ -334,7 +334,7 @@ class TrailsPaneRenderer {
       const x0 = ts.timeToCoordinate(firstBucket as Time);
       const probeA = series.priceToCoordinate(col0.top[0]?.strike ?? 0) ?? -1;
       const probeB = series.priceToCoordinate((col0.top[0]?.strike ?? 0) + 1) ?? -1;
-      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${supreme}|${src.cwStrike}|${src.pwStrike}|${src.flipPrice}|${src.focusInk}`;
+      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${supreme}|${src.cwStrike}|${src.pwStrike}|${src.flipPrice}|${src.focusInk}|${src.chromeInset}`;
       const cached = key === this.cacheKey && !!this.bmp;
       /* A MOVED VIEW MAPS THE LAST RASTER. The raster was drawn with margins at another bar spacing, scroll and price
          scale; both axes are affine, so one drawImage puts every bead where this frame's scales want it (the beads'
@@ -371,6 +371,9 @@ class TrailsPaneRenderer {
       const flipPath = new Path2D();
       let flipDrawn = false;
       const glyphs: { x: number; y: number; mark?: NodeMark; tag?: PriceTag; word?: string }[] = [];
+      /* the field's own words sit just under the host's floating chrome, never under its controls */
+      const glyphTop = (src.chromeInset > 0 ? src.chromeInset + 12 : 14) * vr;
+      let lastGapX = -Infinity;
       const dashes: { x: number; y: number; w: number }[] = [];
       /* Zoomed out, one word per node stacks into noise. Count the window instead. */
       const tight = barSpacing < 8;
@@ -430,7 +433,11 @@ class TrailsPaneRenderer {
         if (xBar === null || xBar < -halfW - mxCss || xBar > wCss + halfW + mxCss) continue;
         const x = slots > 1 ? xBar - halfW + ((slot / stride + 0.5) / drawnSlots) * barSpacing : xBar;
         const cx = x * hr;
-        if (col.gap) glyphs.push({ x: cx, y: 16 * vr, word: 'gap' });
+        /* a gap is named once per run of empty columns, under the host's floating chrome */
+        if (col.gap && cx - lastGapX > 28 * hr) {
+          glyphs.push({ x: cx, y: glyphTop + 2 * vr, word: 'gap' });
+          lastGapX = cx;
+        }
 
         // The flip: ONE dotted blue line at TODAY'S flip — a tick per column
         // in the field's grammar, never a solid side line
@@ -568,7 +575,8 @@ class TrailsPaneRenderer {
         if (held) parts.push(`${held} held`);
         if (off) parts.push(`${off} off`);
         if (broke) parts.push(`${broke} broke`);
-        if (parts.length) glyphs.push({ x: 8 * hr, y: 14 * vr, word: parts.join(' · ') });
+        /* clear of the drawing rail at the left edge */
+        if (parts.length) glyphs.push({ x: 56 * hr, y: glyphTop, word: parts.join(' · ') });
       }
 
       const INKS: readonly (readonly [number, number, number])[] = [ink, SUPREME_RGB, CW_RGB, PW_RGB, PUT_RGB, CALL_RGB];

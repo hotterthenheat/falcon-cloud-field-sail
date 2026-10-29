@@ -331,7 +331,7 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
         <button
           type="button"
           onClick={() => (site.home ? window.scrollTo({ top: 0, behavior: 'smooth' }) : site.page('/'))}
-          className="shrink-0 inline-flex items-center select-none rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver"
+          className="tap-40 shrink-0 inline-flex items-center select-none rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver"
           aria-label={site.home ? 'Slayer Terminal, back to the top' : 'Slayer Terminal, the front page'}
           data-landing-brand
         >
@@ -385,7 +385,7 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
             onPointerEnter={themeIntent}
             onPointerDown={themeIntent}
             onFocus={themeIntent}
-            className="h-9 w-9 inline-flex items-center justify-center rounded-full text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-silver"
+            className="h-10 w-10 inline-flex items-center justify-center rounded-full text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-silver"
             aria-label={a === 'dark' ? 'Switch to the light theme' : 'Switch to the dark theme'}
             title={a === 'dark' ? 'Light theme' : 'Dark theme'}
             data-landing-theme={a}
@@ -395,7 +395,7 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
           <button
             type="button"
             onClick={() => setMenu(m => !m)}
-            className="md:hidden h-9 w-9 inline-flex items-center justify-center rounded-full text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-silver"
+            className="md:hidden h-10 w-10 inline-flex items-center justify-center rounded-full text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-silver"
             aria-label={menu ? 'Close the menu' : 'Menu'}
             aria-expanded={menu}
             aria-controls="landing-menu"

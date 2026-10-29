@@ -338,7 +338,7 @@ export async function ensureListing(ticker: string, day: string): Promise<boolea
   const key = `list|${t}|${day}`;
   if (listings.has(key)) return listings.get(key) != null;
   listWant.set(key, 'loading');
-  const got = await load(key, `/option/list/contracts/quote?symbol=${encodeURIComponent(t)}&date=${ymd(day)}&format=json`, rows => parseListing(day, rows));
+  const got = await load(key, `/option/list/contracts/quote?symbol=${encodeURIComponent(t)}&date=${ymd(day)}&max_dte=120&format=json`, rows => parseListing(day, rows));
   if (got.offline) {
     listWant.set(key, 'offline');
     emit();
@@ -526,45 +526,43 @@ export function tradesUpTo(c: Leg, day: string, minute: number): { volume: numbe
 
 /* ---- how far back the quotes reach ---- */
 let probing: Promise<void> | null = null;
-/** Find the oldest session SPY's quote history answers on (a binary search over listing answers, once per browser) */
+/** Find the oldest session SPY's quote history answers on, once per browser: the expirations SPY has listed (one small
+    answer), then a halving search over the last six years of them for the oldest whose quote dates answer — that
+    expiry's first quoted date is where the history starts for this key. */
 export function ensureWindow(): Promise<void> {
   if (firstDay) return Promise.resolve();
   if (probing) return probing;
   probing = (async () => {
-    const has = async (iso: string) => {
-      const got = await thetaCall(`/option/list/contracts/quote?symbol=SPY&date=${ymd(iso)}&format=json`, true);
-      if (got.error === 'terminal_down') throw new Error('offline');
-      return !got.error && flatRows(got.data).length > 0;
-    };
     try {
-      let hi = lastReplayDay();
-      if (!(await has(hi))) return;
-      /* back in steps of a year to the first miss, then halve the gap */
-      let lo = hi;
-      for (let y = 1; y <= 20; y++) {
-        const d = dateOf(hi);
-        d.setFullYear(d.getFullYear() - y);
-        const iso = isoDate(d);
-        if (await has(iso)) lo = iso;
-        else {
-          hi = lo;
-          lo = iso;
-          break;
-        }
-        if (y === 20) {
-          firstDay = iso;
-          return;
-        }
+      const list = await thetaCall('/option/list/expirations?symbol=SPY&format=json', true);
+      if (list.error) return;
+      const last = lastReplayDay();
+      const from = `${Number(last.slice(0, 4)) - 6}${last.slice(4)}`;
+      const exps = flatRows(list.data)
+        .map(r => String(r.expiration ?? '').slice(0, 10))
+        .filter(e => /^\d{4}-\d{2}-\d{2}$/.test(e) && e >= from && e <= last)
+        .sort();
+      if (!exps.length) return;
+      /* the oldest quote date of an expiry, or null where the key's history does not reach it */
+      const firstOf = async (e: string): Promise<string | null> => {
+        const got = await thetaCall(`/option/list/dates/quote?symbol=SPY&expiration=${ymd(e)}&format=json`, true);
+        if (got.error === 'terminal_down') throw new Error('offline');
+        const dates = got.error ? [] : flatRows(got.data).map(r => String(r.date ?? '').slice(0, 10)).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+        return dates[0] ?? null;
+      };
+      let lo = 0;
+      let hi = exps.length - 1;
+      let found = await firstOf(exps[hi]);
+      if (!found) return;
+      while (lo < hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        const f = await firstOf(exps[mid]);
+        if (f) {
+          hi = mid;
+          found = f;
+        } else lo = mid + 1;
       }
-      /* lo misses, hi answers */
-      let a = lo;
-      let b = hi;
-      while (dayNumber(b) - dayNumber(a) > 1) {
-        const mid = isoDate(new Date((dayNumber(a) + dayNumber(b)) / 2 * 86400000 + 12 * 3600000));
-        if (await has(mid)) b = mid;
-        else a = mid;
-      }
-      firstDay = isTradingDay(dateOf(b)) ? b : step(b, 1);
+      firstDay = isTradingDay(dateOf(found)) ? found : step(found, 1);
       try {
         localStorage.setItem(FIRST_KEY, firstDay);
       } catch {

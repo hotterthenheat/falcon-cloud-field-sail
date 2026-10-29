@@ -32,6 +32,7 @@ import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../
 import { WatchersGuide } from '../../components/trace/TraceGuide';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/addressCut';
+import { PREM_FLOOR_OPTIONS, PREM_FLOORS, type PremFloor } from '../../components/trace/premFloor';
 import { createViewStore } from '../../data/savedViews';
 import { expiryLabel } from '../../core/format';
 
@@ -100,8 +101,10 @@ const Watchers = () => {
     side: { def: 'ALL', valid: oneOf(['ALL', 'C', 'P']) },
     q: { def: '', valid: isQuery },
     exp: { def: '', valid: isIsoDay },
+    prem: { def: '0', valid: oneOf(PREM_FLOORS) },
   });
   const rule = addr.cut.reason;
+  const prem = addr.cut.prem as PremFloor;
   const setRule = (v: string) => addr.set({ reason: v });
   const side = addr.cut.side as 'ALL' | 'C' | 'P';
   const setSide = (v: 'ALL' | 'C' | 'P') => addr.set({ side: v });
@@ -146,8 +149,9 @@ const Watchers = () => {
 
   const rows = useMemo(() => {
     const nq = normSymbol(query);
-    return catches.filter(a => (rule === 'ALL' || a.rules.includes(rule)) && (side === 'ALL' || a.row.right === side) && (nq === '' || matchesContract(query, a.row)));
-  }, [catches, rule, side, query]);
+    const floor = Number(prem);
+    return catches.filter(a => (rule === 'ALL' || a.rules.includes(rule)) && (side === 'ALL' || a.row.right === side) && a.premium >= floor && (nq === '' || matchesContract(query, a.row)));
+  }, [catches, rule, side, query, prem]);
 
   /* one row per contract for the search's tallies */
   const searchRows = useMemo(() => {
@@ -352,6 +356,7 @@ const Watchers = () => {
             <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="contracts" span />
             <DropdownSelect label="Reason" value={rule} options={reasonOptions} onChange={setRule} title="Which watcher's catches" testId="watchers-reason" />
             <DropdownSelect label="Side" value={side} options={SIDE_OPTIONS} onChange={setSide} title="Calls, puts or both" testId="watchers-side" />
+            <DropdownSelect label="Premium" value={prem} options={PREM_FLOOR_OPTIONS} onChange={v => addr.set({ prem: v })} title="The least money a contract carried in the session" testId="watchers-premium" />
             <ExpiryCalendar value={chosen ? isoDate(chosen.date) : ''} expiries={expiries} onChange={e => setExpiry(isoDate(e.date))} onClear={() => setExpiry(null)} label="Expiry" icon={CalendarDays} steppers={false} title="One expiry, or every expiry" testId="watchers-expiry" />
             <ReasonDoor book={book} />
             <SavedCutsControl store={WATCHER_CUTS} query={addr.query} onOpen={addr.open} noun="cut" testId="watchers" onSay={cuts.say} open={cuts.open} onToggleOpen={cuts.toggle} />

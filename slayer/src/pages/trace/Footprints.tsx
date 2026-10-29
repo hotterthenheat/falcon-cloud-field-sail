@@ -25,6 +25,7 @@ import TermLine from '../../components/trace/TermLine';
 import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/addressCut';
+import { PREM_FLOOR_OPTIONS, PREM_FLOORS, type PremFloor } from '../../components/trace/premFloor';
 import { createViewStore } from '../../data/savedViews';
 import { FootprintsGuide } from '../../components/trace/TraceGuide';
 import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
@@ -86,6 +87,7 @@ const Footprints = () => {
     side: { def: 'ALL', valid: oneOf(['ALL', 'C', 'P']) },
     q: { def: '', valid: isQuery },
     exp: { def: '', valid: isIsoDay },
+    prem: { def: '0', valid: oneOf(PREM_FLOORS) },
   });
   const screen = addr.cut.screen as FootprintScreenKey;
   const setScreen = (v: FootprintScreenKey) => addr.set({ screen: v });
@@ -93,6 +95,7 @@ const Footprints = () => {
   const setSide = (v: 'ALL' | 'C' | 'P') => addr.set({ side: v });
   const query = addr.cut.q;
   const setQuery = (v: string) => addr.set({ q: v });
+  const prem = addr.cut.prem as PremFloor;
   const cuts = useSavedCuts();
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -116,9 +119,10 @@ const Footprints = () => {
   const openRow = useCallback((r: { key: string }) => setOpenKey(r.key), []);
 
   const filtered = useMemo(() => {
-    const sided = side === 'ALL' ? book : book.filter(r => r.right === side);
+    const floor = Number(prem);
+    const sided = book.filter(r => (side === 'ALL' || r.right === side) && r.premium >= floor);
     return normSymbol(query) === '' ? sided : sided.filter(r => matchesContract(query, r));
-  }, [book, side, query]);
+  }, [book, side, query, prem]);
   const rows = useMemo(() => runFootprintScreen(filtered, screen), [filtered, screen]);
   const cutWord = useMemo(() => [query ? `matching "${query}"` : '', side === 'C' ? 'calls only' : side === 'P' ? 'puts only' : ''].filter(Boolean).join(', '), [query, side]);
   /* floor packages, days of spread legs and days of crosses are not bets: out of the crowns and the sums */
@@ -312,6 +316,7 @@ const Footprints = () => {
             <FlowSearch value={query} onChange={setQuery} rows={book} countNoun="contracts" span />
             <DropdownSelect label="Screen" value={screen} options={screenOptions} onChange={setScreen} title="Which side of the overnight ledger" testId="footprints-cut" />
             <DropdownSelect label="Side" value={side} options={SIDE_OPTIONS} onChange={setSide} title="Calls, puts or both" testId="footprints-side" />
+            <DropdownSelect label="Premium" value={prem} options={PREM_FLOOR_OPTIONS} onChange={v => addr.set({ prem: v })} title="The least money a contract carried in the session" testId="footprints-premium" />
             <ExpiryCalendar value={chosen ? isoDate(chosen.date) : ''} expiries={expiries} onChange={e => setExpiry(isoDate(e.date))} onClear={() => setExpiry(null)} label="Expiry" icon={CalendarDays} steppers={false} title="One expiry, or every expiry" testId="footprints-expiry" />
             <SavedCutsControl store={FOOT_CUTS} query={addr.query} onOpen={addr.open} noun="cut" testId="footprints" onSay={cuts.say} open={cuts.open} onToggleOpen={cuts.toggle} />
             <div className="ml-auto">

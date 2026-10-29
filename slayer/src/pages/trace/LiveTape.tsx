@@ -60,6 +60,8 @@ const VIEW_META: Record<TapeView, { label: string; hint: string }> = {
 };
 type SentFilter = 'ALL' | PrintSentiment;
 type PremKey = '0' | '100000' | '500000' | '1000000';
+type RightKey = 'ALL' | 'C' | 'P';
+type SideKey = 'ALL' | 'ASK' | 'BID' | 'MID';
 
 /* only what differs from the default tape is written to the address */
 const TAPE_CUTS = createViewStore('slayer_tape_cuts_v1');
@@ -70,8 +72,10 @@ interface TapeCut {
   prem: PremKey;
   expiry: string | null;
   q: string;
+  right: RightKey;
+  side: SideKey;
 }
-const TAPE_CUT_DEFAULT: TapeCut = { view: 'STREAM', kind: 'ALL', lean: 'ALL', prem: '0', expiry: null, q: '' };
+const TAPE_CUT_DEFAULT: TapeCut = { view: 'STREAM', kind: 'ALL', lean: 'ALL', prem: '0', expiry: null, q: '', right: 'ALL', side: 'ALL' };
 const PREM_KEYS: PremKey[] = ['0', '100000', '500000', '1000000'];
 const LEAN_KEYS: SentFilter[] = ['ALL', 'BULLISH', 'BEARISH', 'NEUTRAL'];
 const KIND_KEYS: FlowFilter[] = ['ALL', 'SWEEP', 'BLOCK', 'MULTI', 'SINGLE', 'COMPRESSION', 'BURST'];
@@ -84,6 +88,8 @@ function cutToQuery(c: TapeCut): string {
   if (c.prem !== TAPE_CUT_DEFAULT.prem) p.set('prem', c.prem);
   if (c.expiry) p.set('exp', c.expiry);
   if (c.q.trim()) p.set('q', c.q.trim());
+  if (c.right !== 'ALL') p.set('type', c.right === 'C' ? 'calls' : 'puts');
+  if (c.side !== 'ALL') p.set('side', c.side.toLowerCase());
   return p.toString();
 }
 
@@ -103,8 +109,10 @@ function queryToCut(p: URLSearchParams): { cut: TapeCut; any: boolean } {
       prem: (PREM_KEYS as string[]).includes(prem) ? (prem as PremKey) : TAPE_CUT_DEFAULT.prem,
       expiry: exp && /^\d{4}-\d{2}-\d{2}$/.test(exp) ? exp : null,
       q: (p.get('q') ?? '').slice(0, 40),
+      right: up('type') === 'CALLS' ? 'C' : up('type') === 'PUTS' ? 'P' : 'ALL',
+      side: (['ASK', 'BID', 'MID'] as string[]).includes(up('side')) ? (up('side') as SideKey) : 'ALL',
     },
-    any: ['order', 'kind', 'lean', 'prem', 'exp', 'q'].some(k => p.has(k)),
+    any: ['order', 'kind', 'lean', 'prem', 'exp', 'q', 'type', 'side'].some(k => p.has(k)),
   };
 }
 
@@ -129,6 +137,17 @@ const LEAN_OPTIONS: DropdownOption<SentFilter>[] = [
   { value: 'BULLISH', label: 'Bullish', hint: 'Calls bought, puts sold' },
   { value: 'BEARISH', label: 'Bearish', hint: 'Puts bought, calls sold' },
   { value: 'NEUTRAL', label: 'No read', hint: 'Mid, spread legs, crosses, compression, after hours, stale quotes — of the prints in hand' },
+];
+const RIGHT_OPTIONS: DropdownOption<RightKey>[] = [
+  { value: 'ALL', label: 'Both', hint: 'Calls and puts' },
+  { value: 'C', label: 'Calls', hint: "Calls only — refills from the whole session" },
+  { value: 'P', label: 'Puts', hint: "Puts only — refills from the whole session" },
+];
+const SIDE_OPTIONS: DropdownOption<SideKey>[] = [
+  { value: 'ALL', label: 'Any side', hint: 'Every fill' },
+  { value: 'ASK', label: 'At the ask', hint: 'Filled at or over the ask — bought' },
+  { value: 'BID', label: 'On the bid', hint: 'Filled at or under the bid — sold' },
+  { value: 'MID', label: 'Mid', hint: 'Filled between the bid and ask, or no quote read' },
 ];
 const KIND_WORD: Record<PrintKind, string> = { SWEEP: 'Sweep', BLOCK: 'Block', MULTI: 'Multi-leg', SINGLE: 'Single', COMPRESSION: 'Compression', BURST: 'Burst' };
 
@@ -385,6 +404,10 @@ const LiveTape = () => {
   const [flowFilter, setFlowFilter] = useState<FlowFilter>('ALL');
   const [sentFilter, setSentFilter] = useState<SentFilter>('ALL');
   const [minPremKey, setMinPremKey] = useState<PremKey>('0');
+  const [rightKey, setRightKey] = useState<RightKey>('ALL');
+  const [sideKey, setSideKey] = useState<SideKey>('ALL');
+  /* the expiry is asked of the vendor too, so the tape refills with that expiry's prints from the whole session */
+  const [expiryPick, setExpiryPick] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [view, setView] = useState<TapeView>('STREAM');
   const [openPrint, setOpenPrint] = useState<FlowPrint | null>(null);
@@ -422,10 +445,11 @@ const LiveTape = () => {
       ticker: asked.t || undefined,
       contract: asked.c,
       strike: asked.k,
-      expiry: asked.e,
-      right: asked.r ?? null,
-      /* the lean is cut on the page: the vendor's mid_side tag misses most no-read prints (legs, crosses, after hours) */
-      side: null,
+      expiry: asked.e ?? expiryPick ?? undefined,
+      right: asked.r ?? (rightKey === 'ALL' ? null : rightKey),
+      /* the lean is cut on the page: the vendor's mid_side tag misses most no-read prints (legs, crosses, after hours);
+         a fill's side refills from the vendor's ask/bid tags and is checked against the quote here */
+      side: sideKey === 'ASK' || sideKey === 'BID' ? sideKey : null,
       multi: flowFilter === 'MULTI' ? true : undefined,
       /* a kind the vendor's codes can say refills the tape from the whole day; single prints and bursts cut the rows in hand */
       codes: flowFilter === 'SWEEP' ? ['isoi'] : flowFilter === 'COMPRESSION' ? ['cbmo', 'mctp'] : undefined,
@@ -433,7 +457,7 @@ const LiveTape = () => {
       minSize: flowFilter === 'BLOCK' ? BLOCK_MIN_SIZE : undefined,
       minPremium: Number(minPremKey) || undefined,
     }),
-    [asked, flowFilter, minPremKey]
+    [asked, flowFilter, minPremKey, rightKey, sideKey, expiryPick]
   );
   /* paused, the stream keeps the question it had; a card changed meanwhile goes out on resume */
   const heldQuery = useRef(tapeQuery);
@@ -529,12 +553,12 @@ const LiveTape = () => {
     };
   }, [lane, alertsOlder, stream, paused, sessionWord, jumpAt, jumpTo, anchor]);
 
-  const { expiry, setExpiry, expiries: tapeExpiries, cut: cutExpiry, chosen: chosenExpiry } = useExpiryCut(rows, r => r.expiry);
+  const { expiry, setExpiry, expiries: tapeExpiries, cut: cutExpiry, chosen: chosenExpiry } = useExpiryCut(rows, r => r.expiry, { value: expiryPick, onChange: setExpiryPick });
 
   /* the cut in the address: a link someone was sent wins over what this reader last had open (replace, never push) */
   const [params, setParams] = useSearchParams();
   const cuts = useSavedCuts();
-  const cut: TapeCut = { view, kind: flowFilter, lean: sentFilter, prem: minPremKey, expiry, q: searchQuery };
+  const cut: TapeCut = { view, kind: flowFilter, lean: sentFilter, prem: minPremKey, expiry, q: searchQuery, right: rightKey, side: sideKey };
   const cutQuery = cutToQuery(cut);
   const applyCut = useCallback(
     (c: TapeCut) => {
@@ -544,6 +568,8 @@ const LiveTape = () => {
       setMinPremKey(c.prem);
       setSearchQuery(c.q);
       setExpiry(c.expiry);
+      setRightKey(c.right);
+      setSideKey(c.side);
     },
     [setExpiry]
   );
@@ -574,17 +600,17 @@ const LiveTape = () => {
 
   /* each floor counts what it keeps, or says it refills from the vendor */
   const premOptions = useMemo<DropdownOption<PremKey>[]>(() => {
-    const base = cutExpiry(rows).filter(r => (flowFilter === 'ALL' || printKind(r) === flowFilter) && (sentFilter === 'ALL' || sentimentOf(r) === sentFilter) && matchesTape(r, searchQuery));
+    const base = cutExpiry(rows).filter(r => (flowFilter === 'ALL' || printKind(r) === flowFilter) && (sentFilter === 'ALL' || sentimentOf(r) === sentFilter) && (rightKey === 'ALL' || r.right === rightKey) && (sideKey === 'ALL' || r.side === sideKey) && matchesTape(r, searchQuery));
     return [
       { value: '0', label: 'Any', hint: `No floor · ${num(base.length)} prints` },
       ...PREM_CHIPS.map(c => ({ value: c.value, label: c.label, hint: `Prints of ${c.label.replace('≥', '')}+, newest first from ${anchor ? 'the close' : 'now'}` })),
     ];
-  }, [rows, flowFilter, sentFilter, searchQuery, cutExpiry, anchor]);
+  }, [rows, flowFilter, sentFilter, searchQuery, cutExpiry, anchor, rightKey, sideKey]);
 
   const filtered = useMemo(() => {
     const minPrem = Number(minPremKey);
-    return cutExpiry(rows).filter(r => (flowFilter === 'ALL' || printKind(r) === flowFilter) && (sentFilter === 'ALL' || sentimentOf(r) === sentFilter) && r.premium >= minPrem && matchesTape(r, searchQuery));
-  }, [rows, flowFilter, sentFilter, minPremKey, searchQuery, cutExpiry]);
+    return cutExpiry(rows).filter(r => (flowFilter === 'ALL' || printKind(r) === flowFilter) && (sentFilter === 'ALL' || sentimentOf(r) === sentFilter) && (rightKey === 'ALL' || r.right === rightKey) && (sideKey === 'ALL' || r.side === sideKey) && r.premium >= minPrem && matchesTape(r, searchQuery));
+  }, [rows, flowFilter, sentFilter, minPremKey, searchQuery, cutExpiry, rightKey, sideKey]);
 
   const displayRows = useMemo(() => {
     switch (view) {
@@ -617,7 +643,7 @@ const LiveTape = () => {
   const markedCount = useMemo(() => rows.reduce((n, r) => n + (isWatched(printKey(r)) ? 1 : 0), 0), [rows, isWatched]);
 
   /* the head reads the active cut, and renames itself to it */
-  const scopeActive = searchQuery.trim() !== '' || flowFilter !== 'ALL' || sentFilter !== 'ALL' || minPremKey !== '0' || expiry !== null;
+  const scopeActive = searchQuery.trim() !== '' || flowFilter !== 'ALL' || sentFilter !== 'ALL' || minPremKey !== '0' || expiry !== null || rightKey !== 'ALL' || sideKey !== 'ALL';
   const beamRows = scopeActive ? filtered : rows;
   const beamSummary = useMemo(() => (scopeActive ? summarizeTape(filtered) : summary), [scopeActive, filtered, summary]);
 
@@ -1036,6 +1062,8 @@ const LiveTape = () => {
             <DropdownSelect label="Order" value={view} options={ORDER_OPTIONS} onChange={setView} title="How the prints are ordered" testId="tape-order" />
             <DropdownSelect label="Kind" value={flowFilter} options={KIND_OPTIONS} onChange={setFlowFilter} title="Sweeps, blocks, multi-leg or single prints" testId="tape-kind" />
             <DropdownSelect label="Lean" value={sentFilter} options={LEAN_OPTIONS} onChange={setSentFilter} title="Bullish, bearish or no-read prints" testId="tape-lean" />
+            <DropdownSelect label="Type" value={rightKey} options={RIGHT_OPTIONS} onChange={setRightKey} title="Calls, puts or both" testId="tape-type" />
+            <DropdownSelect label="Side" value={sideKey} options={SIDE_OPTIONS} onChange={setSideKey} title="Where the fill sat against its quote" testId="tape-side" />
             <DropdownSelect label="Premium" value={minPremKey} options={premOptions} onChange={setMinPremKey} title="The smallest print shown" testId="tape-premium" />
             <ExpiryCalendar value={chosenExpiry ? isoDate(chosenExpiry.date) : ''} expiries={tapeExpiries} onChange={e => setExpiry(isoDate(e.date))} onClear={() => setExpiry(null)} label="Expiry" icon={CalendarDays} steppers={false} title="One expiry, or every expiry" testId="tape-expiry" />
             <SavedCutsControl store={TAPE_CUTS} query={cutQuery} onOpen={openCut} noun="cut" testId="tape" onSay={cuts.say} open={cuts.open} onToggleOpen={cuts.toggle} />

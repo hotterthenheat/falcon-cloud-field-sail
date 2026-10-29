@@ -14,7 +14,7 @@ import Fold from '../../components/ui/Fold';
 import { useTicker } from '../../context/MarketDataContext';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
-import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
+import { RecordHead } from '../../components/record/RecordFrame';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import RichRead from '../../components/ui/RichRead';
 import CatTag from '../../components/news/CatTag';
@@ -563,7 +563,6 @@ const News = () => {
     return h ? `${h}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m}m`;
   };
   const [hoverCity, setHoverCity] = useState<CityPing | null>(null);
-  const [guideOpen, setGuideOpen] = useState(false);
 
   /* the headline count keeps the folded near-duplicates */
   const storyCount = rows.length + [...similarRef.current.values()].reduce((a, n) => a + n, 0);
@@ -638,19 +637,13 @@ const News = () => {
     <>
       {/* BOX 1 — THE WIRE */}
       <div className="relative border border-borderSubtle rounded-md bg-panel" data-news data-news-wire>
-        <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the wire" testId="news-guide" viewport>
-          <NewsGuide />
-        </GuideFocus>
-        {/* THE HEAD */}
-        <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-          <div className="min-w-[min(18rem,100%)] flex-1">
-            <div className="h-6 flex items-center gap-3">
-              <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">The wire</h3>
-              <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the pins, the flags and the numbers mean" testId="news-guide" />
-            </div>
-            <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate" data-news-coverage>{coverText} · a pin on every city a story comes from · click a pin or a row and the story opens beside the map</p>
-          </div>
-          <dl className="flex flex-wrap gap-x-6 gap-y-2">
+        <RecordHead
+          title="The wire"
+          guide={{ title: 'How to read the wire', door: 'What the pins, the flags and the numbers mean', testId: 'news-guide', body: <NewsGuide /> }}
+          kept={news.keptAt}
+          line={<span data-news-coverage>{coverText} · a row opens the story beside the list</span>}
+          facts={
+            <>
             <Fact label="Stories" testId="stories" tip={`Headlines on the wire after the cards and the filter${coverage.reading ? ' — still reading back, the count grows' : ''}`} partial={coverage.reading && rows.length > 0}>
               {news.status === 'loading' && rows.length === 0 ? (
                 <span className="text-textMuted">Reading</span>
@@ -716,8 +709,9 @@ const News = () => {
                 )
               )}
             </Fact>
-          </dl>
-        </div>
+            </>
+          }
+        />
         {/* on a phone the controls are a grid of equal cells */}
         <div className={`px-5 pb-3 ${CONTROLS_LINE}`} data-news-controls>
           <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Whose stories" testId="news-names" />
