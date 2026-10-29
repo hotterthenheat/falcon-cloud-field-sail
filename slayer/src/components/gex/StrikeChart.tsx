@@ -25,7 +25,9 @@ import {
   type MouseEventParams,
   type Time,
 } from 'lightweight-charts';
-import { deskTape, ensureBook, historyForDate, peekDaySigma, peekEntry, peekIv, snapshotFor, useBookMinutes, useBookRev } from '../../data/uwBook';
+import { chainForDate, deskTape, ensureBook, peekDaySigma, peekEntry, peekIv, snapshotFor, useBookMinutes, useBookRev } from '../../data/uwBook';
+import { exposureGrid, gridColumns } from '../../data/book/exposureLog';
+import { useFieldMode } from '../../data/fieldMode';
 import { useSessionQuote } from '../../data/sessionQuote';
 import { getDeskSession, minuteInSession, sessionMeta, sessionOfMinute, useDeskSession, type DeskSession } from '../../data/deskSession';
 import { snapsAsOf } from '../../data/exposureScope';
@@ -39,11 +41,8 @@ import { LOCAL_TIME, NY_TIME, localTickMarks, nyTickMarks } from './chartTime';
 import {
   aggregateCandles,
   aggregateSnapshots,
-  foldSnapshotsSlice,
-  isFolded,
   snapshotsMaxAbs,
   tfMinutes,
-  INTRADAY_MAX_MINUTES,
   type Timeframe,
 } from '../../data/timeframe';
 import { BEAD_INK_CSS, GexTrailsPrimitive, type BeadHit } from './gexNodesPrimitive';
@@ -681,9 +680,6 @@ const toVolume = (b: Candle, t: CandleTheme) => ({
   color: b.close >= b.open ? t.volUp : t.volDown,
 });
 
-/** The field's clock: a bead every 5 minutes of real history, whatever the bar — a 30m bar carries six, an hour
-    twelve. */
-const TRAIL_TEXTURE_MINUTES = 5;
 /** Bars a chart opens with — more than a screen at any pitch; the rest of the store loads when the reader scrolls to
     their left edge (see onRange) */
 const INITIAL_BARS = 1000;
@@ -782,23 +778,14 @@ const StrikeChart = ({
     return displayBars(ticker, mins, alt);
   };
   const baseBars = (): Candle[] => tapeRef.current?.bars ?? (!thetaBars() ? deskTape(ticker, session).bars : thetaChartBars(ticker, 1, session));
-  /* HistoryForDate stamps the whole chain on every candle (candles × strikes objects) and the effects below ask for
-     it several times a change: it is kept until the book emits (the rev), the chain or the candles move. */
-  const bookRevRef = useRef(bookRev);
-  bookRevRef.current = bookRev;
-  const historyMemoRef = useRef<{ key: string; nodes: unknown; src: unknown; out: GexSnapshot[] } | null>(null);
-  const bookHistory = (): GexSnapshot[] => {
-    if (tapeRef.current) return [];
-    const entry = peekEntry(ticker);
-    if (!entry || entry.status !== 'live') return historyForDate(ticker, bookDate) ?? [];
-    const src = entry.tape.length >= 2 ? entry.tape : entry.candles;
-    const nodes = bookDate === 'book' ? entry.all : entry.byDate;
-    const key = `${ticker}|${bookDate}|${bookRevRef.current}|${src.length}|${src.length ? src[src.length - 1].time : 0}|${entry.wantFull}`;
-    const m = historyMemoRef.current;
-    if (m && m.key === key && m.nodes === nodes && m.src === src) return m.out;
-    const out = historyForDate(ticker, bookDate) ?? [];
-    historyMemoRef.current = { key, nodes, src, out };
-    return out;
+  /* The exposure field's columns on these bars: the vendor's per-strike readings for the cut's expiries
+     (data/book/exposureLog.ts), one column a bar, empty where no reading covers it */
+  const fieldMode = useFieldMode();
+  const fieldColumns = (bars: readonly Candle[], mins: number): GexSnapshot[] => {
+    if (tapeRef.current || !bars.length) return [];
+    const cut = chainForDate(ticker, bookDate)?.date;
+    const grid = cut ? exposureGrid(ticker, cut, bars.map(b => b.time), mins * 60, fieldMode) : null;
+    return grid ? gridColumns(grid) : [];
   };
   const nameIv = (): number | undefined => (tapeRef.current ? tapeRef.current.iv : peekIv(ticker) ?? undefined);
   const drawKey = tape?.key ?? ticker;
@@ -1094,15 +1081,12 @@ const StrikeChart = ({
     const rx = shape.rx * dpr;
     const ry = shape.ry * dpr;
     g.fillStyle = shape.fill;
-    g.beginPath();
-    g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    g.fill();
     const lw = Math.max(1, Math.round(1.5 * dpr));
     g.lineWidth = lw;
     g.strokeStyle = shape.ring;
-    g.beginPath();
-    g.ellipse(cx, cy, rx + lw, ry + lw, 0, 0, Math.PI * 2);
-    g.stroke();
+    /* the field's cell under the pointer, at full light, ringed */
+    g.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
+    g.strokeRect(cx - rx - lw / 2, cy - ry - lw / 2, rx * 2 + lw, ry * 2 + lw);
   };
   const boxRect = (el: HTMLElement) => (boxRectRef.current ??= el.getBoundingClientRect());
   useEffect(() => {
@@ -2668,37 +2652,17 @@ const StrikeChart = ({
     }
     altCountRef.current = bars.length;
 
-    // Led trails are intraday-only — dailies would smear the session structure.
-    const baseGex = bookHistory();
-    const trailMins = Math.min(mins, TRAIL_TEXTURE_MINUTES);
-    /* Trails place their beads by time on a five-minute texture; a rule clock's axis only carries the times its bars
-       happened to start at, so most beads would find no coordinate and the field would draw torn. */
-    const showTrails = overlays.trails && mins <= INTRADAY_MAX_MINUTES && !altSpec;
+    /* The exposure field on this timeframe's bars and the cut's expiries. A rule clock's axis only carries the times its
+       bars happened to start at, so the field stays off there. */
+    const showTrails = overlays.trails && !altSpec;
     trails.labelPx = compact ? 8.5 : 9.5;
     const handTrails = () => {
-      const front = aggregateSnapshots(bookHistory(), trailMins);
-      trails.setData(front, snapshotsMaxAbs(front), showTrails, mins * 60, trailsGreek, 0, [], bars.map(b => ({ time: b.time, close: b.close })));
+      const cols = showTrails ? fieldColumns(bars, mins) : [];
+      trails.setData(cols, 0, showTrails, mins * 60, trailsGreek, 0, [], bars.map(b => ({ time: b.time, close: b.close })));
     };
-    /* A cold fold leaves the mount frame: the first time a store is folded to the field's texture it is the single
-       biggest cost of opening a chart. */
-    if (baseGex && !isFolded(baseGex, trailMins)) {
-      /* In slices of ~400 snapshots (under ten milliseconds each — 1,200 measured as a 70ms task on the Map's open),
-         one task apart, so no frame pays for the whole store */
-      let id = 0;
-      const slice = () => {
-        if (chartRef.current !== chart) return;
-        if (foldSnapshotsSlice(baseGex, trailMins, 400)) handTrails();
-        else id = window.setTimeout(slice, 0);
-      };
-      id = window.setTimeout(slice, 0);
-      return () => {
-        window.clearTimeout(id);
-        cancelAnimationFrame(armTimer);
-      };
-    }
     handTrails();
     return () => cancelAnimationFrame(armTimer);
-  }, [ticker, revision, timeframe, themeKey, overlays.trails, showRecent, reloadNonce, mainNonce, toMain, compact, altSpec, barClock, fullNonce, trailsGreek, levels.spot, levels.callWall, levels.putWall, levels.flip, levels.supreme, bookRev, session, bookDate, tapeStamp]);
+  }, [ticker, revision, timeframe, themeKey, overlays.trails, showRecent, reloadNonce, mainNonce, toMain, compact, altSpec, barClock, fullNonce, trailsGreek, levels.spot, levels.callWall, levels.putWall, levels.flip, levels.supreme, bookRev, session, bookDate, tapeStamp, fieldMode]);
 
   /* `compact` can change without the chart being rebuilt — a desktop window dragged across the phone line, a handset
      rotated. The mount effect read it once at create time, so apply later changes here. */
@@ -3099,7 +3063,7 @@ const StrikeChart = ({
     if (focusPrice != null) {
       // With the trails drawn, the painted band IS the focus — a line across the whole tape under it read as a smear
       // joining the band to the label.
-      const trailsDrawn = overlays.trails && tfMinutes(timeframe) <= INTRADAY_MAX_MINUTES;
+      const trailsDrawn = overlays.trails;
       focusLineRef.current = candleSeries.createPriceLine({
         price: focusPrice,
         // The ink at creation too — a trails toggle recreates the line, and the ink effect below only re-runs when
@@ -3297,7 +3261,7 @@ const StrikeChart = ({
     if (replay) {
       const mins = tfMinutes(timeframe);
       const bars = barsFor(mins);
-      const snaps = aggregateSnapshots(bookHistory(), Math.min(mins, TRAIL_TEXTURE_MINUTES));
+      const snaps = fieldColumns(bars, mins);
       if (bars.length < 40) return;
       replayDataRef.current = { bars, snaps, maxAbs: snapshotsMaxAbs(snaps) };
       /* Driven from outside: start where the host's clock points, and never play on our own — the host's strip is
@@ -3484,7 +3448,7 @@ const StrikeChart = ({
     trails.setData(
       snapsAsOf(data.snaps, cutoff),
       data.maxAbs,
-      overlays.trails && mins <= INTRADAY_MAX_MINUTES,
+      overlays.trails,
       mins * 60,
       trailsGreek,
       0,

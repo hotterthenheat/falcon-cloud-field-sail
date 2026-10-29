@@ -412,6 +412,8 @@ function printLive(symbol: string): boolean {
    prior close once in 30 minutes. */
 let printsBusy = false;
 let printsDue = 0;
+/* every read failing for a reason other than a down terminal: 15 s before the next, doubling to a minute, cleared by an answer */
+let printsFailGap = 0;
 async function readPrints(): Promise<void> {
   if (printsBusy || thetaUseHere() === 'none') return;
   printsBusy = true;
@@ -432,6 +434,7 @@ async function readPrints(): Promise<void> {
       names.map(n => thetaGet(THETA_INDEX.has(n) ? `/index/snapshot/price?symbol=${encodeURIComponent(n)}&format=json` : `/stock/snapshot/trade?symbol=${encodeURIComponent(n)}&format=json`, true)),
     );
     let moved = false;
+    printsFailGap = reads.length && reads.every(got => got.error && got.error !== 'terminal_down') ? Math.min(60_000, printsFailGap ? printsFailGap * 2 : 15_000) : 0;
     reads.forEach((got, i) => {
       if (got.error) return;
       for (const row of flatRows(got.data).slice(-1)) {
@@ -455,7 +458,7 @@ async function readPrints(): Promise<void> {
     if (moved) emitPrint();
   } finally {
     printsBusy = false;
-    printsDue = Date.now() + (thetaDown() ? 15_000 : names.some(printLive) ? 1_000 : 60_000);
+    printsDue = Date.now() + (thetaDown() ? 15_000 : printsFailGap || (names.some(printLive) ? 1_000 : 60_000));
   }
 }
 

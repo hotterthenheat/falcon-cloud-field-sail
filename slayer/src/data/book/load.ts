@@ -16,6 +16,7 @@ import { dayFracOf, dayIvOf, impliedMoveOf, termDteOf, termIvOf, termKOf, termMo
 import { carryFacts, chainFrom, flowMap, foldContracts, liveGammaRows, num, oiMap, paintLegs, pricedClockOf, type LiveGamma, withLiveGamma } from './scale';
 import { BOARD_MS, FULL_MS, LIVE_GAMMA_MS, cache, chartAll, chartSpan, closestDate, datesComplete, emit, emptyDates, gammaPriced, gen, horizonFactsMissing, hotGet, isHot, keptBooks, liveGammaCache, liveGammaWait, peekEntry, recordAsked, recordIso, settledLive, type BookMode, type Entry } from './store';
 import { readKept } from './kept';
+import { noteExposureRows } from './exposureLog';
 import { CLOSE_MIN, INDEX_TAPE, candlesFrom, cashToOf, closesFromTape, parseTape, quoteFromBars, regularCloseOf, thetaTape, twoCashSessions } from './tape';
 
 
@@ -35,6 +36,7 @@ function liveGamma(ticker: string, date: string | null, priority = false): Promi
       const res = await uwCall(`/stock/${t}/spot-exposures/expiry-strike?expirations[]=${encodeURIComponent(date)}&limit=500`, priority);
       if (res.error) return hit?.rows ?? null;
       liveGammaRows(res.data, out, stamp);
+      noteExposureRows(ticker, res.data);
     } else {
       for (let page = 0; page < 6; page++) {
         const res = await uwCall(`/stock/${t}/spot-exposures/strike?limit=500&page=${page}`, priority);
@@ -97,6 +99,7 @@ async function liveGammaWalk(ticker: string, priority = false): Promise<Map<stri
     const res = await within(uwCall(`/stock/${t}/spot-exposures/expiry-strike?limit=500&page=${page}`, priority), WALK_PAGE_MS);
     if (!res || res.error || !Array.isArray(res.data)) return null;
     const rows = res.data as Record<string, unknown>[];
+    noteExposureRows(ticker, rows);
     for (const r of rows) {
       const d = String(r.expiry ?? '');
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
