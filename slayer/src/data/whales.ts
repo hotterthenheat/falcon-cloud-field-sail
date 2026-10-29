@@ -122,18 +122,40 @@ const copyOf = (a: UwAnswer): UwAnswer => {
   }
 };
 
+/* What the key does not carry is never asked: a CBOE index has no stock-state or stock bars (422
+   cboe_index_access_missing; its exposure routes answer), and a request that answers 422 is not asked again this session. */
+const NO_INDEX_PRICE = /^\/stock\/(SPX|RUT|NDX|VIX|XSP)\/(stock-state|ohlc\/)/i;
+const NOT_CARRIED_KEY = 'slayer_uw_not_carried';
+const notCarried: Set<string> = (() => {
+  try {
+    return new Set(JSON.parse(sessionStorage.getItem(NOT_CARRIED_KEY) ?? '[]') as string[]);
+  } catch {
+    return new Set<string>();
+  }
+})();
+const noteNotCarried = (path: string) => {
+  notCarried.add(path);
+  try {
+    sessionStorage.setItem(NOT_CARRIED_KEY, JSON.stringify([...notCarried]));
+  } catch {
+    /* storage off: held for this page */
+  }
+};
+
 /** One GET, with the vendor's status and message. Does not invent a body. */
 export async function uwCall(path: string, priority = false, low = false): Promise<UwAnswer> {
   if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
   const now = Date.now();
   const hit = shared.get(path);
   const bare = path.split('?')[0];
+  if (NO_INDEX_PRICE.test(bare) || notCarried.has(path)) return { status: 422, data: null, error: 'not carried on this key' };
   if (hit && (!hit.done || now - hit.at < (LIVE_PATH.test(bare) ? liveReuseMs(bare) : REUSE_MS))) return copyOf(await hit.p);
   const entry = { at: now, done: false, p: uwFetch(path, priority && !low, low) };
   shared.set(path, entry);
   const got = await entry.p;
   entry.done = true;
   entry.at = Date.now();
+  if (got.status === 422) noteNotCarried(path);
   if (got.error) shared.delete(path);
   else save(path, got.status, got.data);
   if (shared.size > 400) for (const [k, v] of shared) if (v.done && Date.now() - v.at > REUSE_MS) shared.delete(k);
