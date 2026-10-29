@@ -4,15 +4,34 @@ ThetaData is the real-time source for quotes, chains, greeks and history on Terr
 (Pinpoint and Dossier read Unusual Whales only). The data comes from ThetaData's own terminal, a Java program, and
 **the account allows one terminal at a time**: a second one anywhere ends the first one's session.
 
-So there is one always-on terminal, with the relay (`theta/relay.mjs`) beside it, and everything goes through it:
-the live site (Vercel's `/api/theta` forwards to the relay) and your own machine's dev server (set the same two
-variables locally and it forwards there too, instead of starting a terminal of its own).
+Today the app is hosted on your PC and the terminal runs there too. When the site is hosted elsewhere (Vercel), it
+cannot reach a terminal on a PC, so there is one always-on terminal with the relay (`theta/relay.mjs`) beside it and
+everything goes through it: the hosted site (its `/api/theta` forwards to the relay) and any dev machine (set the
+same two variables and it forwards there too, instead of starting a terminal of its own).
 
 ```
 browser -> /api/theta (Vercel or your dev server) -> relay (THETA_RELAY_URL, secret) -> terminal 127.0.0.1:25503
 ```
 
-## The always-on terminal
+## Today: the terminal on your PC
+
+The app is hosted locally for now, so the terminal runs on the same PC as the dev server and nothing else should
+ever run one with this account.
+
+1. Put `THETADATA_API_KEY=td1_...` in `slayer/.env.local` (git-ignored).
+2. **Keep it running across reboots** (Windows): from the `slayer` folder run
+   `powershell -ExecutionPolicy Bypass -File theta\install-autostart.ps1` once. It registers a task that starts the
+   supervised terminal (`npm run theta`) at every log-in and restarts it within a minute if it ever stops. Add
+   `THETA_AUTOSTART=0` to `slayer/.env.local` so `npm run dev` leaves the terminal to that task.
+3. **Keep the PC awake**: Settings → System → Power → put the device to sleep: Never (when plugged in).
+4. **Check it**: `npm run theta:check` asks the terminal for every kind of data the pages read, twice each, and
+   prints status, rows and the cold and warm time. A line naming "another ThetaData terminal" means a second terminal
+   took the session: close it.
+
+Start the terminal through `npm run theta` or `npm run dev`, not by double-clicking the jar: only a supervised
+terminal is restarted when it stops, and the warmer keeps any running terminal hot.
+
+## Later: the always-on terminal for a hosted site
 
 Any always-on Linux machine with Java 21, Node 22 and about 2 GB of free memory: a small cloud server (2 vCPU / 4 GB
 is comfortable), or a home machine that never sleeps.
@@ -63,10 +82,7 @@ What keeps it up and fast:
    line 1, password on line 2; git-ignored). The key is handed to the Java process through its environment, never on
    its command line, so it does not show up in `ps` or Task Manager's command-line column.
 
-## Running a terminal on your own machine instead
-
-Only when no always-on terminal is running (one per account).
-
+## How it starts
 
 - `npm run dev` starts the supervisor (`theta/supervisor.mjs`) inside the dev server. Set `THETA_AUTOSTART=0` to
   turn that off.
