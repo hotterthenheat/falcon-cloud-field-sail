@@ -167,7 +167,13 @@ function barsOf(data: unknown): Bar[] {
 
 const barMemo = new Map<string, { at: number; bars: Bar[] }>();
 
-async function loadBars(symbol: string, day: string): Promise<Bar[]> {
+/** An input the terminal did not answer (down, busy, a fault): the scan does not score on a partial row. */
+class InputFault extends Error {}
+
+/** A fault, as against an answer (rows, or ThetaData's "no data for this request"). */
+const faulted = (got: { error: string | null }) => !!got.error && got.error !== 'no_data';
+
+async function loadBars(symbol: string, day: string, strict = false): Promise<Bar[]> {
   const key = `${symbol}|${day}`;
   const hit = barMemo.get(key);
   /* a finished session's bars do not change; today's are read again after a minute */
@@ -178,13 +184,17 @@ async function loadBars(symbol: string, day: string): Promise<Bar[]> {
     ? `/index/history/ohlc?symbol=${root}&start_date=${day}&end_date=${day}&interval=1m&format=json`
     : `/stock/history/ohlc?symbol=${root}&start_date=${day}&end_date=${day}&interval=1m&format=json`;
   const got = await compassHost().theta(path);
+  if (faulted(got)) {
+    if (strict) throw new InputFault(path);
+    return hit?.bars ?? [];
+  }
   const bars = got.error ? [] : barsOf(got.data);
   barMemo.set(key, { at: Date.now(), bars });
   return bars;
 }
 
-async function loadPrior(name: string, day: string): Promise<{ h: number; l: number; c: number } | null> {
-  const bars = await loadBars(name, priorSessionYmd(day));
+async function loadPrior(name: string, day: string, strict = false): Promise<{ h: number; l: number; c: number } | null> {
+  const bars = await loadBars(name, priorSessionYmd(day), strict);
   if (!bars.length) return null;
   let h = 0;
   let l = Infinity;
@@ -250,6 +260,7 @@ async function fetchCurve(symbol: string, now: number): Promise<Curve | null> {
     ? `/index/history/ohlc?symbol=${root}&start_date=${start}&end_date=${end}&interval=1m&format=json`
     : `/stock/history/ohlc?symbol=${root}&start_date=${start}&end_date=${end}&interval=1m&format=json`;
   const got = await compassHost().theta(path);
+  if (faulted(got)) throw new InputFault(path);
   return curveFrom(got.error ? [] : barsOf(got.data));
 }
 
@@ -273,11 +284,15 @@ async function curveFor(symbol: string, now: number): Promise<Curve | null> {
   if (curves.has(key)) return curves.get(key) ?? null;
   let job = curveLoads.get(key);
   if (!job) {
-    job = fetchCurve(symbol, now).catch(() => null);
+    job = fetchCurve(symbol, now);
     curveLoads.set(key, job);
   }
-  const curve = await job;
-  curveLoads.delete(key);
+  let curve: Curve | null;
+  try {
+    curve = await job;
+  } finally {
+    curveLoads.delete(key);
+  }
   if (curve) curves.set(key, curve);
   return curve;
 }
@@ -313,12 +328,13 @@ async function drain(now: number): Promise<void> {
 }
 
 /** Open interest per strike of one expiry, from ThetaData's open-interest snapshot (one ask per name and expiry). */
-async function pinOf(ticker: string, expiry: string, spot: number): Promise<PinBook | null> {
+async function pinOf(ticker: string, expiry: string, spot: number, strict = false): Promise<PinBook | null> {
   if (!CORE.has(ticker)) return null;
   const key = `${ticker}|${expiry}`;
   const hit = pinCache.get(key);
   if (hit && Date.now() - hit.at < 5 * 60_000) return hit.book;
   const got = await compassHost().theta(`/option/snapshot/open_interest?symbol=${encodeURIComponent(ticker)}&expiration=${expiry.replace(/-/g, '').slice(0, 8)}&format=json`);
+  if (strict && faulted(got)) throw new InputFault('open interest');
   const byStrike = new Map<number, { strike: number; call: number; put: number }>();
   if (!got.error) {
     for (const item of Array.isArray(got.data) ? got.data : []) {
@@ -412,19 +428,24 @@ const seededAt = new Map<string, number>();
     for every strike of the name and expiry): the mids 5 and 15 minutes back and Book B's ask 30 minutes back come
     from the quotes that stood then, not only from the scans this tab happened to run. The window is fixed to the
     mark, so every viewer scanning the same slot asks the same path and the server shares one answer. */
-async function seedQuotes(list: Setup[], now: number): Promise<void> {
+async function seedQuotes(list: Setup[], now: number, strict = false): Promise<void> {
   const first = list[0];
   if (!first?.expiryDate) return;
   const clock = nyParts(now);
   const mark = Math.floor((clock.hour * 60 + clock.minute) / 5) * 5;
   const key = `${first.ticker}|${first.expiryDate}|${ymd(now)}|${mark}`;
   if (seededAt.has(key)) return;
-  seededAt.set(key, now);
-  if (seededAt.size > 400) for (const k of [...seededAt.keys()].slice(0, 200)) seededAt.delete(k);
   const byContract = new Map<string, string>();
   for (const s of list) byContract.set(`${s.strike}|${s.right}`, s.id);
   const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:00`;
   const got = await compassHost().theta(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&strike_range=16&interval=1m&start_time=${hm(Math.max(0, mark - 30))}&end_time=${hm(mark)}&format=json`);
+  if (faulted(got)) {
+    /* not marked as read: the next pass asks again, and a strict one does not score without it */
+    if (strict) throw new InputFault('quotes 30 minutes back');
+    return;
+  }
+  seededAt.set(key, now);
+  if (seededAt.size > 400) for (const k of [...seededAt.keys()].slice(0, 200)) seededAt.delete(k);
   if (got.error) return;
   for (const item of Array.isArray(got.data) ? got.data : []) {
     if (!item || typeof item !== 'object') continue;
@@ -795,15 +816,28 @@ function releaseShut(now: number): boolean {
   return false;
 }
 
-async function scoreAll(setups: Setup[], now: number, merge = false, late = false): Promise<void> {
-  if (!(await ensureModels()) || !modelsLocked()) return;
+/** 'scored' (the rows went through the books; a release window or a shut tape is also a pass), 'fault' (an input
+    the terminal did not answer: nothing was scored, the name is scored again), 'locked' (the model files failed). */
+export type ScoreResult = 'scored' | 'fault' | 'locked';
+
+async function scoreAll(setups: Setup[], now: number, merge = false, late = false): Promise<ScoreResult> {
+  try {
+    return await scoreRows(setups, now, merge, late);
+  } catch (e) {
+    if (e instanceof InputFault) return 'fault';
+    throw e;
+  }
+}
+
+async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boolean): Promise<ScoreResult> {
+  if (!(await ensureModels()) || !modelsLocked()) return 'locked';
   /* a live call is stamped when it is made; a late one at its mark. Both carry the mark they belong to. */
   const stamp = () => (late ? now : Date.now());
   const mark = Math.floor(now / 60_000) * 60_000;
   const clock = nyParts(now);
   const minute = clock.hour * 60 + clock.minute;
-  if (!merge && !sessionScanOpen(minute, clock.weekday)) return;
-  if (releaseShut(now)) return;
+  if (!merge && !sessionScanOpen(minute, clock.weekday)) return 'scored';
+  if (releaseShut(now)) return 'scored';
   const blocked = new Set<string>(DO_NOT_REQUEST);
   const day = sessionYmd(now);
   const rows = setups.filter(s => {
@@ -813,14 +847,14 @@ async function scoreAll(setups: Setup[], now: number, merge = false, late = fals
     if (dte === 0 && NO_DAILY.has(s.ticker)) return false;
     return optionScanOpen(s.ticker, dte, now);
   });
-  if (!rows.length) return;
+  if (!rows.length) return 'scored';
   const names = [...new Set(rows.map(s => UNDER[s.ticker] ?? printOf(s.ticker)))];
   const book = new Map<string, Bar[]>();
-  await Promise.all(names.map(async name => { book.set(name, await loadBars(name, day)); }));
-  const spy = await loadBars('SPY', day);
+  await Promise.all(names.map(async name => { book.set(name, await loadBars(name, day, true)); }));
+  const spy = await loadBars('SPY', day, true);
   const etfs = [...new Set(names.map(name => SECTOR_OF[name]).filter(Boolean))];
   const secBars = new Map<string, Bar[]>();
-  await Promise.all(etfs.map(async etf => { secBars.set(etf, await loadBars(etf, day)); }));
+  await Promise.all(etfs.map(async etf => { secBars.set(etf, await loadBars(etf, day, true)); }));
   /* a live scan reads SPY's and the sector ETFs' price at the mark: their minute bar is not in yet */
   const marks = new Map<string, number>();
   if (!late) {
@@ -830,7 +864,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false, late = fals
     }));
   }
   const pd = new Map<string, { h: number; l: number; c: number } | null>();
-  await Promise.all(names.map(async name => { pd.set(name, await loadPrior(name, day)); }));
+  await Promise.all(names.map(async name => { pd.set(name, await loadPrior(name, day, true)); }));
   const pins = new Map<string, PinBook | null>();
   const wanted = new Map<string, { ticker: string; expiry: string; spot: number }>();
   for (const s of rows) {
@@ -839,7 +873,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false, late = fals
     if (!wanted.has(key)) wanted.set(key, { ticker: s.ticker, expiry: s.expiryDate, spot: s.spot ?? 0 });
   }
   await Promise.all([...wanted].map(async ([key, row]) => {
-    pins.set(key, await pinOf(row.ticker, row.expiry, row.spot));
+    pins.set(key, await pinOf(row.ticker, row.expiry, row.spot, true));
   }));
   const groups = new Map<string, Setup[]>();
   for (const s of rows) {
@@ -848,7 +882,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false, late = fals
     list.push(s);
     groups.set(key, list);
   }
-  await Promise.all([...groups.values()].map(list => seedQuotes(list, now)));
+  await Promise.all([...groups.values()].map(list => seedQuotes(list, now, true)));
   const bySlot = new Map<string, Setup[]>();
   for (const s of rows) {
     const key = slotOf(s);
@@ -1066,6 +1100,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false, late = fals
   for (const [key, pick] of wingNext) wingPicks.set(key, pick);
   stampPassed();
   persistCalls();
+  return 'scored';
 }
 
 function quoteMinute(s: Setup, now: number): number {
@@ -1183,8 +1218,8 @@ export async function scoreLottery(setups: Setup[], now = Date.now(), late = fal
   persistCalls();
 }
 
-export async function scoreBook(setups: Setup[], now = Date.now(), merge = false, late = false): Promise<void> {
-  await scoreAll(setups, now, merge, late);
+export async function scoreBook(setups: Setup[], now = Date.now(), merge = false, late = false): Promise<ScoreResult> {
+  return scoreAll(setups, now, merge, late);
 }
 
 let claimedSlot = -2;
