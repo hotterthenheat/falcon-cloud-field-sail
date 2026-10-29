@@ -1,25 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE · THE TRADE TILES
-  (pages/workspace/tiles/trade.tsx)
-
-  What to trade, and what you already hold:
-
-    Compass setups   the ACTUAL scan cards (Noah,
-                     2026-08-17: "actual one of
-                     compass not a render"), ranked —
-                     a card opens that setup's own
-                     page, with the way back
-    Tracker          the setups you bookmarked, as
-                     they stand now
-    The chain        the Weigher's own chain; a strike
-                     unfolds its weigh-up under it,
-                     and carries the book's read
-    Positions & watchlist
-                     the Weigher's two lists — what
-                     you hold and what you watch —
-                     priced on the desk's sweep
-==================================================
+  The trade tiles: Compass's own calls (a card opens that setup's page), the live chain (a strike unfolds its
+  weigh-up and the book's read), and the Weigher's two lists — what you hold and what you watch — marked at the
+  live vendor quotes.
 */
 
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
@@ -28,14 +10,15 @@ import VerdictBadge from '../../../components/compass/VerdictBadge';
 import { CHAIN_COLUMNS, ChainCard, DEFAULT_COLS, type ChainCol } from '../../../components/weigher/ChainGrid';
 import { ListGrid, usdSigned, type ListRow } from '../../../components/weigher/PositionsList';
 import { expiryFor, isoDate, today } from '../../../core/calendar';
-import Simulator from '../../../core/simulator';
 import { buildBook } from '../../../data/bookAtStrike';
 import { setupIdOf } from '../../../data/compass';
 import { currentPicks } from '../../../data/compassModel';
-import { costOf, valueOn } from '../../../data/positionCurve';
+import { costOf } from '../../../data/positionCurve';
 import { readPosition, useAllPositions, type Position, type Verdict } from '../../../data/positions';
-import { returnsOf, spotOf, tickWatchlist, useWatchlist } from '../../../data/watchlist';
-import { buildDeskChain } from '../../../data/weigherDesk';
+import { returnsOf, tickWatchlist, useWatchlist } from '../../../data/watchlist';
+import { blankChain, loadLiveChain, type DeskChain } from '../../../data/weigherDesk';
+import { peekMark, useMarks } from '../../../data/weigherChain';
+import { snapshotOf } from '../../../data/uwBook';
 import { SCANNERS, SLEEVES, isScannerEligible, type OptionRight, type ScannerKey, type Setup, type SleeveKey } from '../../../types/compass';
 import type { ExposureProfileData } from '../../../types/gex';
 import type { WatchedContract } from '../../../types/watchlist';
@@ -121,14 +104,33 @@ export const chainControls = ({ state }: { ctx: WorkspaceCtx; state: TileState }
   ];
 };
 
+/* The listed chain, live (ThetaData, else the vendor's listed contracts), re-read every 20 seconds */
+const CHAIN_MS = 20_000;
+function useLiveChain(ticker: string, dte: number): DeskChain {
+  const [chain, setChain] = useState<DeskChain>(() => blankChain(ticker, dte));
+  useEffect(() => {
+    let dead = false;
+    setChain(blankChain(ticker, dte));
+    const pull = () => void loadLiveChain(ticker, dte, 20).then(next => {
+      if (!dead) setChain(next);
+    });
+    pull();
+    const id = window.setInterval(pull, CHAIN_MS);
+    return () => {
+      dead = true;
+      window.clearInterval(id);
+    };
+  }, [ticker, dte]);
+  return chain;
+}
+
 const COLS_BY_ROOM: Record<TileProps['size']['room'], string[]> = { small: ['mark', 'itm'], medium: ['mark', 'delta', 'iv', 'itm'], large: DEFAULT_COLS };
 
 export const ChainTile = ({ ctx, state, size }: TileProps) => {
   const right: OptionRight = state.right === 'P' ? 'P' : 'C';
   const dte = chainDteOf(state);
   const [sel, setSel] = useState<number | null>(null);
-  // the chain re-prices with the desk's sweep
-  const chain = useMemo(() => buildDeskChain(ctx.ticker, dte, 40), [ctx.ticker, dte, ctx.snapshot]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chain = useLiveChain(ctx.ticker, dte);
   const cols: ChainCol[] = useMemo(() => CHAIN_COLUMNS.filter(c => COLS_BY_ROOM[size.room].includes(c.key)), [size.room]);
   /* OUR TWO CENTS ON EVERY STRIKE — the dealer book's read, where the tile has the width for it */
   const book = useMemo(() => {
@@ -173,6 +175,7 @@ export const PositionsTile = ({ ctx, state }: TileProps) => {
   const door = useDoor();
   const watchlist = useWatchlist();
   const positions = useAllPositions();
+  const marksRev = useMarks(useMemo(() => [...positions.map(p => ({ ticker: p.ticker, expiry: p.expiry })), ...watchlist.filter(w => w.status === 'open').map(w => ({ ticker: w.ticker, expiry: w.expiry }))], [positions, watchlist]));
   /* the desk's sweep marks the watchlist's closes and settles what has expired */
   useEffect(() => {
     tickWatchlist();
@@ -182,21 +185,22 @@ export const PositionsTile = ({ ctx, state }: TileProps) => {
       [...positions]
         .sort((a, b) => b.addedAt - a.addedAt)
         .map<ListRow>(p => {
-          const value = valueOn(p, spotOf(p.ticker), 0);
+          const live = peekMark(p.ticker, p.expiry, p.strike, p.right);
+          const value = live && live.mark > 0 ? live.mark : null;
           const sign = p.side === 'long' ? 1 : -1;
           const cost = costOf(p);
-          const total = cost ? (value - cost.value) * sign * 100 * p.contracts : null;
-          const totalR = cost && cost.value > 0 ? ((value - cost.value) / cost.value) * sign : null;
+          const total = value != null && cost ? (value - cost.value) * sign * 100 * p.contracts : null;
+          const totalR = value != null && cost && cost.value > 0 ? ((value - cost.value) / cost.value) * sign : null;
           return { kind: 'own', id: p.id, p, value, total, totalR, today: null, todayR: null };
         }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [positions, ctx.snapshot]
+    [positions, ctx.snapshot, marksRev]
   );
   const watchRows = useMemo<ListRow[]>(() => {
     const rank = (w: WatchedContract) => (w.status === 'open' ? 0 : 1);
     return [...watchlist].sort((a, b) => rank(a) - rank(b) || b.addedAt - a.addedAt).map<ListRow>(w => ({ kind: 'watch', id: w.id, w, r: returnsOf(w) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchlist, ctx.snapshot]);
+  }, [watchlist, ctx.snapshot, marksRev]);
   const show = state.show === 'own' || state.show === 'watch' ? state.show : 'both';
   const rows = useMemo(() => (show === 'own' ? ownRows : show === 'watch' ? watchRows : [...ownRows, ...watchRows]), [show, ownRows, watchRows]);
 
@@ -210,7 +214,8 @@ export const PositionsTile = ({ ctx, state }: TileProps) => {
       let prof = books.get(c.ticker);
       if (prof === undefined) {
         try {
-          prof = c.ticker === ctx.ticker ? profile30(ctx.snapshot) : profile30(Simulator.snapshotFor(c.ticker));
+          const snap = c.ticker === ctx.ticker ? ctx.snapshot : snapshotOf(c.ticker);
+          prof = snap ? profile30(snap) : null;
         } catch {
           prof = null;
         }

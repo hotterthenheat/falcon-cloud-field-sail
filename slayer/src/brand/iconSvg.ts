@@ -1,16 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE MARK AS A FILE (brand/iconSvg.ts)
-
-  The mark drawn as one still SVG string — for the places that cannot run the living mark: the browser tab (the app
-  swaps the SVG favicon by state; the PNG fallbacks stay still), and the static files scripts/make-brand-assets.ts
-  renders (favicon.svg, the PNG icons, the maskable icon, the share image's corner). Pure strings, no DOM, so a Node
-  script can import it. The colours are written out here because a file has no theme to read: the dark run is the
-  foil, the light run THE GALAXY INK (Noah, 2026-10-03: "keep our galaxy color … i dont want plain white or black").
-
-  The tab's five frames: still, loading, live, alert, closed. Offline shows the still frame without its cursor. A tab
-  cannot pan, so closed is the foil caught still like the rest; no frame wears a glow round its cursor.
-==================================================
+  The mark as still SVG strings for the tab icon and the static assets scripts/make-brand-assets.ts renders.
+  No DOM, so Node scripts can import it; colours are literal (a file has no theme): the foil, or the galaxy ink.
+  Tab frames: still, loading, live, alert, closed; offline is the still frame without its cursor.
 */
 
 import { MARK, MARK_CONTENT } from './paths';
@@ -20,10 +11,10 @@ export type IconTheme = 'dark' | 'light';
 
 const FOIL: Record<IconTheme, string[]> = {
   dark: ['#eef1f8', '#c2d6f0', '#e4d8f4', '#ffffff', '#c8d8ec'],
-  /* the galaxy ink's five stops (theme/tokens.css --foil-1…5 on paper) */
+  /* the galaxy ink's five stops (tokens.css --foil-1..5 on paper) */
   light: ['#2b2d38', '#66718f', '#23232c', '#675d7e', '#2b2d38'],
 };
-/* the pan at speed, caught bright — the loading frame */
+/* the loading frame: the pan caught bright */
 const FOIL_FAST = ['#ffffff', '#dde8f8', '#f2ecfa', '#ffffff', '#e2ecf8'];
 const GROUND: Record<IconTheme, { tile: string; edge: string; bracket: string; chevron: string; cursor: string }> = {
   dark: { tile: '#111111', edge: '#1e1f22', bracket: '#3a3d42', chevron: '#6b7077', cursor: '#f4f5f7' },
@@ -33,12 +24,11 @@ const GROUND: Record<IconTheme, { tile: string; edge: string; bracket: string; c
 export interface MarkSvgOptions {
   state?: MarkState;
   theme?: IconTheme;
-  /** the whole 64-unit tile with its brackets and ">" — otherwise the S| centred on its tile */
+  /** The whole 64-unit tile with brackets and ">"; otherwise the S| centred on its tile. */
   full?: boolean;
-  /** one colour, no tile — print and mail */
+  /** One colour, no tile: print and mail. */
   solid?: 'black' | 'white';
-  /** the maskable icon: the tile fills the square edge to edge, ">S|" inside the middle 80% (the safe circle) — also
-      the iOS icon, which rounds its own corners */
+  /** The maskable icon (also iOS): the tile fills the square, ">S|" inside the middle 80% safe circle. */
   maskable?: boolean;
   /** square corners */
   square?: boolean;
@@ -51,7 +41,7 @@ export function markSvg({ state = 'idle', theme = 'dark', full = false, solid, m
   let vy = 0;
   let side = 64;
   if (maskable) {
-    /* ">S|" whole — 11.9 → 51.9 across — its diagonal inside the middle 80% of the square, so any mask's crop keeps it */
+    /* ">S|" spans 11.9 to 51.9, its diagonal inside the middle 80% so any mask keeps it */
     const x0 = 11.9;
     const w = MARK_CONTENT.x1 - x0;
     const h = MARK_CONTENT.y1 - MARK_CONTENT.y0;

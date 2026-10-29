@@ -1,33 +1,10 @@
-/*
-  THE SQUEEZE READ (the retail pass, 2026-10-22). A retail reader looking at a short book wants one question answered:
-  could the shorts be forced to buy back in a hurry? This file answers it with fixed, public rules on the fields
-  Unusual Whales already sends — nothing is modelled and nothing is guessed. Every threshold below is also printed in
-  the Shorts guide (components/record/FileGuides.tsx), so the page and the rule never drift apart.
-
-  POINTS (more points, more pressure on the shorts) — RECALIBRATED (the re-audit, 2026-10-22): the Shorts screen is the
-  200 heaviest names by share of the float, so every one already had 18%+ short and the old rungs (10% and 15%) called
-  60 "strong" and 130 "building" of about 190. The rungs now sit above the screen's own floor, and strong needs several
-  facts at once, including a tight borrow:
-    Short interest, % of float   ≥ 40% → 3    ≥ 30% → 2    ≥ 20% → 1
-    Days to cover                ≥ 10  → 2    ≥ 5   → 1
-    Borrow fee, % a year         ≥ 50% → 2    ≥ 10% → 1
-    Shares left to borrow        under 500K → 1
-    Shares short vs prior report up 20% or more → 1
-    Short volume, latest session ≥ 50% of the session's FULL volume → 1     (file page only; round 11: the 71% GME
-      scored on was FINRA's off-exchange figure, 2.83M of 4.01M — of the session's 8.37M it was 34%. The off-exchange
-      share is said for what it is, and the point stands on the full-volume share, or not at all)
-    Fails to deliver, last 30d   a day of ≥ 0.1% of the float → 1   (file page only)
-
-  THE WORD
-    strong    6 points or more from at least three different facts, with 20%+ of the float short AND a tight borrow
-              (a fee of 10%+ or under 500K shares left) — on the 2026-09-30 settlement, 2 of the 200
-    building  4 points or more from at least two facts
-    weak      anything else
-
-  Short interest settles twice a month (the 15th and month-end) and FINRA publishes it about seven business days later,
-  so the as-of date always rides with the read. It is marked stale only when a newer settlement should already be out
-  (settlement + 11 calendar days has passed) and the figure is older than that one.
-*/
+/* The squeeze setup: could the shorts be forced to buy back in a hurry? Fixed public rules on the vendor's fields,
+   one rule for the Shorts list and a name's file (the rungs are printed in the Shorts guide):
+     short interest of the float ≥40% 3 · ≥30% 2 · ≥20% 1     days to cover ≥10 2 · ≥5 1
+     borrow fee a year ≥50% 2 · ≥10% 1                          under 500K shares left to borrow 1
+     shares short up 20%+ since the prior report 1
+   strong: 6+ points from 3+ facts with 20%+ short and a tight borrow; building: 4+ points from 2+ facts; weak: the rest.
+   A file's short volume and fails to deliver are shown beside the read, never scored. */
 
 import type { ShortRow } from './fileBooks';
 
@@ -45,18 +22,19 @@ export interface SqueezeRead {
   points: number;
   /** The two or three facts that drive the word — the scoring ones first; for a weak read, what holds it back */
   facts: SqueezeFact[];
+  /** Facts a name's file adds beside the read (short volume, fails to deliver) — shown, not scored */
+  context: SqueezeFact[];
   /** The settlement date of the short-interest figure (YYYY-MM-DD), or null */
   asOf: string | null;
   /** True when a newer settlement should already be published */
   stale: boolean;
 }
 
-/** Extra facts only a name's own file carries */
+/** Facts only a name's own file carries; shown beside the read, never scored */
 export interface SqueezeExtras {
   /** Latest session's short volume as a percent of the OFF-EXCHANGE volume FINRA reports (its own ratio) */
   shortVolPct?: number | null;
-  /** The same short volume as a percent of the session's full volume (the screener's day volume, same session) — the
-      figure the point is scored on; null when it cannot be read, and then no point is given */
+  /** The same short volume as a percent of the session's full volume (the screener's day volume, same session) */
   shortVolFullPct?: number | null;
   /** The largest single fail-to-deliver day in the last 30 days, in shares */
   maxFtdShares?: number | null;
@@ -90,12 +68,11 @@ export function shortChangePct(row: ShortRow): number | null {
 
 export function squeezeRead(row: ShortRow, extras: SqueezeExtras = {}): SqueezeRead {
   const asOfFund = [...row.history].sort((a, b) => b.report.localeCompare(a.report))[0]?.report?.slice(0, 10) ?? null;
-  /* A FUND IS NOT A SQUEEZE (the data audit, 2026-10-22): HYG and KBE read "squeeze building" — an ETF's short interest
-     is market makers' creation and hedging, met by issuing new shares, so the rule does not apply to it at all */
+  /* a fund's short interest is creation and hedging, met by issuing new shares: no squeeze read */
   if (row.fund) {
     const expectedF = latestPublishedSettlement();
     const staleF = asOfFund ? Date.parse(`${asOfFund}T12:00:00Z`) < Date.parse(`${expectedF}T12:00:00Z`) - 3 * 86_400_000 : false;
-    return { word: 'fund', points: 0, facts: [{ text: 'a fund — new shares are created to meet shorts, so no squeeze read', points: 0 }], asOf: asOfFund, stale: staleF };
+    return { word: 'fund', points: 0, facts: [{ text: 'a fund — new shares are created to meet shorts, so no squeeze read', points: 0 }], context: [], asOf: asOfFund, stale: staleF };
   }
   const facts: SqueezeFact[] = [];
   const quiet: SqueezeFact[] = [];
@@ -113,13 +90,13 @@ export function squeezeRead(row: ShortRow, extras: SqueezeExtras = {}): SqueezeR
   if (row.availableM != null) add(row.availableM < 0.5 ? 1 : 0, `only ${row.availableM >= 0.1 ? `${row.availableM.toFixed(2)}M` : `${Math.round(row.availableM * 1000)}K`} shares left to borrow`, row.availableM >= 10 - 1e-9 ? 'plenty of shares left to borrow (10M+)' : undefined);
   const change = row.changePct ?? shortChangePct(row);
   if (change != null) add(change >= 20 ? 1 : 0, `shares short up ${pct(change, 0)} since the prior report`, change <= -10 ? `shares short down ${pct(Math.abs(change), 0)} since the prior report` : undefined);
+  const context: SqueezeFact[] = [];
   if (extras.shortVolFullPct != null) {
     const off = extras.shortVolPct != null ? `${pct(extras.shortVolPct, 0)} of off-exchange volume was short sales, ` : '';
-    add(extras.shortVolFullPct >= 50 ? 1 : 0, `${off}${pct(extras.shortVolFullPct, 0)} of the session's full volume`, `${off}${pct(extras.shortVolFullPct, 0)} of the session's full volume — under the 50% rung`);
+    context.push({ text: `${off}${pct(extras.shortVolFullPct, 0)} of the last session's full volume`, points: 0 });
   }
-  if (extras.maxFtdShares != null && row.floatM > 0) {
-    const ftdPct = (extras.maxFtdShares / (row.floatM * 1e6)) * 100;
-    add(ftdPct >= 0.1 ? 1 : 0, `a day of ${Math.round(extras.maxFtdShares / 1000).toLocaleString('en-US')}K shares failed to deliver in the last 30 days`);
+  if (extras.maxFtdShares != null && extras.maxFtdShares > 0 && row.floatM > 0) {
+    context.push({ text: `the largest fail-to-deliver day in 30 days: ${Math.round(extras.maxFtdShares / 1000).toLocaleString('en-US')}K shares`, points: 0 });
   }
   const points = facts.reduce((s, f) => s + f.points, 0);
   const tight = (row.feeRate != null && row.feeRate >= 10) || (row.availableM != null && row.availableM < 0.5);
@@ -131,10 +108,9 @@ export function squeezeRead(row: ShortRow, extras: SqueezeExtras = {}): SqueezeR
   /* settlement dates drift a day or two around weekends, so a figure within three days of the expected one is current */
   const expected = latestPublishedSettlement();
   const stale = asOf ? Date.parse(`${asOf}T12:00:00Z`) < Date.parse(`${expected}T12:00:00Z`) - 3 * 86_400_000 : false;
-  return { word, points, facts: shown, asOf, stale };
+  return { word, points, facts: shown, context, asOf, stale };
 }
 
 export const SQUEEZE_INK: Record<SqueezeWord, string> = { weak: 'text-textSecondary', building: 'text-warn', strong: 'text-bear', fund: 'text-textMuted' };
 
-export const SQUEEZE_TIP =
-  'A rule-based read, not a forecast. Points: short interest ≥40% of float 3 (≥30% 2, ≥20% 1) · days to cover ≥10 2 (≥5 1) · borrow fee ≥50%/yr 2 (≥10% 1) · under 500K shares left to borrow 1 · shares short up 20%+ since the prior report 1 (a name\'s file adds: short volume ≥50% of the last session\'s full volume — not FINRA\'s off-exchange share — 1, a fail-to-deliver day ≥0.1% of the float 1). Strong: 6+ points from three or more facts, 20%+ of the float short and a tight borrow (fee 10%+ or under 500K left). Building: 4+ points from two or more facts. Weak: the rest. A fund (an ETF) gets no read: its shorts are met by creating new shares.';
+export const SQUEEZE_TIP = 'A rule-based setup, not a forecast: short interest, days to cover, the borrow and the change in shares short. The rules are in the guide.';

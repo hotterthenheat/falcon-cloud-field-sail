@@ -934,21 +934,10 @@ function useToolbarGap(containerRef: MutableRefObject<HTMLDivElement | null>, on
 }
 
 /*
-  THE KEY LEVELS' LADDER (2026-10-04) — the four levels as rungs at the tape's
-  right edge, drawn by keyLevelsPrimitive.ts with the Compass marks' pen.
-
-  They were axis capsules first (gone 2026-08-23/25: nothing is named on the
-  price axis), then inks painted INTO the exposure field — green and red beads
-  for the walls, a blue tick trail for the flip, a magenta band for the
-  supreme. Noah, 2026-10-04: "the green and red thing we have on the compass
-  chart [should] be the call and put wall for the other charts like terrain
-  instead of mixing the color palettes for key levels + gex". So the field
-  keeps its thermal palette to itself, and the levels stand at the edge in
-  their own inks: call wall glacier (C), put wall ember (P), flip dashed silver (F).
-  Green and red are the regime, not the walls.
-  (dashed), supreme magenta one step heavier. The silver is read off the chart
-  box (focusInk) so it follows the tape's ground. Moves between scans are
-  TWEENED (rAF + easeOutCubic) so the rungs glide instead of jumping.
+  The four key levels as rungs at the tape's right edge (keyLevelsPrimitive.ts): call wall glacier (C), put wall ember
+  (P), flip dashed silver (F), supreme magenta and one step heavier. They stand apart from the exposure field so the
+  field keeps its thermal palette, and green/red stay the regime's. The silver is read off the chart box so it follows
+  the tape's ground; moves between scans are tweened so rungs glide rather than jump.
 */
 const ladderOf = (L: KeyLevels, silver: string): KeyLevelRung[] =>
   (
@@ -1106,15 +1095,9 @@ const StrikeChart = ({
   const tapeStamp = tape
     ? `${tape.key}|${tape.bars.length}|${tape.bars.length ? tape.bars[tape.bars.length - 1].time : 0}|${tape.bars.length ? tape.bars[tape.bars.length - 1].close : 0}|${tape.note ?? ''}`
     : '';
-  /* NO TICK UNDER THE HAND (Noah, 2026-08-30: "i was in the middle of a drag
-     and it practically ignored me and changed my view"). Measured with the
-     button held down on the chart: the 1.5s tick's rebuild — candles,
-     volume, indicators, compares, trails, session, cone, events, alerts —
-     landed as 52–82ms tasks and 49–104ms frame gaps, so the drag froze and
-     the queued pointer moves snapped the view afterwards. While a pointer is
-     down on this chart the revision is HELD: every tick-driven effect below
-     keys on this held value, so nothing rebuilds under a drag. The newest
-     revision is applied once, on release. Pan/zoom is never fought. */
+  /* No tick rebuild under the hand: while a pointer is down on the chart the revision is HELD (every tick-driven effect
+     keys on it) and the newest one is applied on release. The 1.5s rebuild landed as 52–82ms tasks mid-drag, froze the
+     pan and snapped the view when the queued moves replayed. */
   const [revision, setRevision] = useState(revisionProp);
   const keepViewRef = useRef(keepView);
   keepViewRef.current = keepView;
@@ -2779,22 +2762,10 @@ const StrikeChart = ({
   }, [overlays.volDrift, revision, timeframe, ticker, themeKey, remeasurePaneLabels, altSpec]);
 
   /*
-    THE INDICATOR SET — T-3/T-4 (grown from Noah's EMA/VWAP pair,
-    2026-08-23). Everything is computed from the SAME aggregated bars the
-    tape draws, in data/indicators.ts, so a strip summarising these lines
-    cannot disagree with them. Full rebuild when the set or the world
-    changes; per revision only the last point is pushed.
-
-    SUB-PANES are lightweight-charts' native panes, allocated AFTER the
-    compare pane when one is up (compares hold pane 1 by an older contract):
-    the first active sub-indicator in SUB_PANE_ORDER takes the base index,
-    the second the next. The third is REFUSED — the cap is enforced in the
-    menu and again here, so a hand-edited setup cannot shrink the tape below
-    its floor. Stretch factors put roughly two thirds of the height on the
-    tape and split the rest.
-
-    WARMUP NULLS map to WHITESPACE points — a gap on the left edge where the
-    window does not exist yet, never a zero.
+    Indicators are computed from the same aggregated bars the tape draws (data/indicators.ts), so nothing summarising
+    them can disagree. Full rebuild when the set or the world changes; per revision only the last point is pushed.
+    Sub-panes are native panes allocated after the compare pane (which holds pane 1); a third sub-pane is refused here
+    as well as in the menu, so a hand-edited setup cannot squeeze the tape. Warmup nulls become whitespace, never zero.
   */
   useEffect(() => {
     const chart = chartRef.current;

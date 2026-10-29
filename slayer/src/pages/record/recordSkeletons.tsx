@@ -1,20 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE RECORD'S SKELETONS
-  (pages/record/recordSkeletons.tsx)
-
-  What stands in for the Record's pages while their
-  code travels: the shell's head with the page's
-  real icon and words, then the page's own shape —
-  Insiders and Congress as the house table box (the
-  head, one line of cards, the sentence, the grid at
-  its 30px head and 44px rows); News as the wire (the
-  head, the cards, the map's 960:440 pane beside the
-  400px story column, 34px rows, the sentence) over
-  the day's two columns. Earnings keeps the one page
-  skeleton until its own walk. Imports nothing heavy.
-==================================================
-*/
+/* Stand-ins for the Dossier's pages while their code loads: the shell's head, then each page's own shape. Imports
+   nothing heavy. */
 
 import { PageSkeleton, Skeleton } from '../../components/ui/Skeleton';
 import { Block, Facts, Line, SubLine, TitleRow, Trigger } from '../../components/ui/skeletonKit';
@@ -25,15 +10,11 @@ export const GRID_HEAD_H = 30;
 export const GRID_ROW_H = 44;
 /** The wire's rows and the day's rows (News.tsx) */
 export const NEWS_ROW_H = 34;
-/** THE WIRE SCROLLS INSIDE ITS BOX past this many rows (Noah, 2026-10-13: the vendor feed "goes on forever") — the
-    rows under the map and the All news feed keep a window of this height, the head stays, the page keeps its length */
+/** the wire's list scrolls inside a window of this many rows */
 export const NEWS_WINDOW_ROWS = 20;
 /** The window: the rows plus the 22px column head */
 export const NEWS_WINDOW_H = NEWS_ROW_H * NEWS_WINDOW_ROWS + 22;
-/* The grids' stand-in heights: the rest of the first screen under each page's
-   head, cards, sentence and strip. The live grids grow with their rows since
-   2026-09-11 and run past the fold; above the fold the stand-in and the page
-   are the same shape, so each skeleton keeps a screen's worth. */
+/* The grids' stand-in heights: the rest of the first screen under each page's head, so stand-in and page share a shape. */
 /** Insiders: the names-to-know strip carries six cards */
 export const NAMES_TO_KNOW = 6;
 export const INSIDERS_GRID_H = 'calc(100vh - 367px)';
@@ -41,7 +22,6 @@ export const INSIDERS_GRID_H = 'calc(100vh - 367px)';
 export const REPORTS_TO_KNOW = 6;
 export const CONGRESS_GRID_H = 'calc(100vh - 367px)';
 /** The map's drawing: 960 × 440 at the box's width, beside a 400px story column */
-export const NEWS_STORY_W = 400;
 /** Stocks: the rotation strip carries the universe's ten sectors */
 export const ROTATION_SECTORS = 10;
 export const STOCKS_GRID_H = 'calc(100vh - 362px)';
@@ -131,7 +111,7 @@ export const NewsInner = ({ rows = NEWS_WINDOW_ROWS }: { rows?: number }) => (
       <Facts widths={[150, 70, 96, 130]} />
     </div>
     <div className="px-5 pb-3 flex items-center gap-2 flex-wrap">
-      {/* Lean · Names · Sort — the kinds are the pills at the map's foot (2026-09-13) */}
+      {/* Names · Sort */}
       <Trigger w={116} />
       <Trigger w={128} />
       <Trigger w={104} />
@@ -142,7 +122,7 @@ export const NewsInner = ({ rows = NEWS_WINDOW_ROWS }: { rows?: number }) => (
     </div>
     <div className="grid border-t border-borderSubtle" style={{ gridTemplateColumns: 'minmax(0, 1040px) minmax(340px, 1fr)' }}>
       <div className="min-w-0 flex flex-col border-r border-borderSubtle">
-        {/* the tape — the newest headlines crossing the top of the map (2026-09-13) */}
+        {/* the tape over the map */}
         <div className="px-4 h-[30px] border-b border-ink/[0.06] flex items-center gap-6 overflow-hidden">
           {[220, 180, 260, 200, 240].map((w, i) => (
             <span key={i} className="inline-flex items-center gap-2 shrink-0">
@@ -164,7 +144,7 @@ export const NewsInner = ({ rows = NEWS_WINDOW_ROWS }: { rows?: number }) => (
               ))}
             </div>
           </div>
-        {/* the read line under the map (the drip bar above it came off on 2026-09-13) */}
+        {/* the read line under the map */}
         <div className="px-4 h-[26px] border-t border-ink/[0.06] flex items-center">
           <Line w={420} h={9} />
           <Line w={90} h={9} className="ml-auto" />
@@ -226,7 +206,7 @@ export const NewsInner = ({ rows = NEWS_WINDOW_ROWS }: { rows?: number }) => (
   </div>
 );
 
-/** The All news box standing (2026-09-13): the head, the tabs line, the header, the wire's rows again — the afternoon's count */
+/** the All news box: the head, the tabs, the header and the rows */
 const NewsAllInner = ({ rows = NEWS_WINDOW_ROWS }: { rows?: number }) => (
   <div data-skeleton="news-all">
     <PlainHead title={64} sub={560} />
@@ -256,8 +236,7 @@ const NewsAllInner = ({ rows = NEWS_WINDOW_ROWS }: { rows?: number }) => (
   </div>
 );
 
-/** The month standing (2026-09-13): the month's head, the weekdays, six weeks of cells with their pills (a cell is 96 at rest,
-    a full one runs to 111 — six rows average 101 this month), the day panel at 340 beside it, the reads across under */
+/** the month: its head, the weekdays, six weeks of cells, the day panel beside it, the reads under */
 const NewsDayInner = () => (
   <div data-skeleton="news-day">
     <PlainHead title={60} sub={520} />
@@ -351,7 +330,7 @@ const PlainHead = ({ title = 120, sub = 420 }: { title?: number; sub?: number })
   </div>
 );
 
-/** The calendar standing: the head with four facts, three cards, the sentence, THE BOARD of five days (the default since 2026-09-10), then the grid of both weeks */
+/** the calendar: the head's facts, the controls, the sentence, the board of five days, then the grid */
 export const EarningsPageSkeleton = () => (
   <>
     <div className="border border-borderSubtle rounded-md bg-panel" data-skeleton="earnings">
@@ -718,9 +697,7 @@ const BarSk = ({ h }: { h: number }) => (
   </div>
 );
 
-/** The name's page standing (2026-09-13, the second pass): thirteen boxes, each at the pieces the page measured on NVDA at rest —
-    the name 164, why 247, the trend and the money 520, the news and the numbers 457, the score 627 (three columns of 524 and the method's door),
-    the timeline with two marks, the tape's two boxes empty, the busiest pairs, the record with one filing */
+/** the name's page: each box at the heights measured at rest */
 export const StockNameSkeleton = () => (
   <>
     <div className="border border-borderSubtle rounded-md bg-panel" data-skeleton="stock-name">
@@ -756,7 +733,7 @@ export const StockNameSkeleton = () => (
         <Line w={120} h={9} className="ml-auto" />
       </div>
     </div>
-    {/* WHY NOW: three paragraphs (one wrapping to two lines) and the agreement strip (measured 106 + 74) */}
+    {/* why now: three paragraphs and the agreement strip */}
     <div className="border border-borderSubtle rounded-md bg-panel">
       <PlainHead title={72} sub={520} />
       <div className="px-5 pb-3 flex flex-col gap-2">
@@ -781,7 +758,7 @@ export const StockNameSkeleton = () => (
         <Line w="46%" h={10} />
       </div>
     </div>
-    {/* THE TREND beside THE MONEY (measured 520 each) */}
+    {/* the trend beside the money */}
     <div className="grid grid-cols-2 gap-4 items-stretch">
       <div className="border border-borderSubtle rounded-md bg-panel flex flex-col">
         <PlainHead title={110} sub={300} />
@@ -847,7 +824,7 @@ export const StockNameSkeleton = () => (
         </div>
       </div>
     </div>
-    {/* THE NEWS beside THE NUMBERS (measured 457 each) */}
+    {/* the news beside the numbers */}
     <div className="grid grid-cols-2 gap-4 items-stretch">
       <div className="border border-borderSubtle rounded-md bg-panel flex flex-col">
         <PlainHead title={110} sub={300} />
@@ -912,7 +889,7 @@ export const StockNameSkeleton = () => (
         </div>
       </div>
     </div>
-    {/* HOW THE SCORE IS MADE: three columns of 524 — eighteen factors in points | the weights, the series, five moves | nine sources and the note — then the method's door */}
+    {/* how the read is made: three columns, then the method's door */}
     <div className="border border-borderSubtle rounded-md bg-panel">
       <PlainHead title={172} sub={640} />
       <div className="grid border-t border-borderSubtle/60" style={{ gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr)' }}>
@@ -988,7 +965,7 @@ export const StockNameSkeleton = () => (
         <Line w={420} h={8} />
       </div>
     </div>
-    {/* THE TIMELINE: five lane rows in the report's grammar — the name, the figure and the chip; the strip; four facts (measured 85 each) */}
+    {/* the timeline: five lane rows */}
     <div className="border border-borderSubtle rounded-md bg-panel">
       <PlainHead title={110} sub={620} />
       {Array.from({ length: 5 }, (_, k) => (
@@ -1016,7 +993,7 @@ export const StockNameSkeleton = () => (
         </div>
       ))}
     </div>
-    {/* THE TAPE: the biggest buys and sells, two prints each on an ordinary morning (measured 76), then the busiest pair */}
+    {/* the tape: the biggest buys and sells, then the busiest pair */}
     <div className="grid grid-cols-2 gap-4 items-stretch">
       {[0, 1].map(i => (
         <div key={i} className="border border-borderSubtle rounded-md bg-panel flex flex-col">
@@ -1052,7 +1029,7 @@ export const StockNameSkeleton = () => (
         </div>
       ))}
     </div>
-    {/* ON THE RECORD: one filing and its foot with the bought/sold bar (measured 22 + 38 + 48); Congress empty beside it */}
+    {/* the record: one filing and its foot; Congress empty beside it */}
     <div className="grid grid-cols-2 gap-4 items-stretch">
       {[1, 0].map((rows, i) => (
         <div key={i} className="border border-borderSubtle rounded-md bg-panel flex flex-col">

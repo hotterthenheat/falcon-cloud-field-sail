@@ -59,8 +59,8 @@ import { Play } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
 import { snapshotOf, useBookRev, usePinpointFeed, ensureBook } from '../../data/uwBook';
-import { isOptionRoot, useListedRev } from '../../data/listedNames';
-import { sameName, wantSpotGex } from '../../data/spotGexBook';
+import { useListedRev } from '../../data/listedNames';
+import { sameName } from '../../data/spotGexBook';
 import { useFocus } from '../../context/FocusContext';
 import ScopeChip from '../../components/ui/ScopeChip';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -177,10 +177,7 @@ const MapJumps = () => {
 
 const MapDesk = () => {
   const { activeTicker, changeTicker } = useTicker();
-  const listedRev = useListedRev();
-  useEffect(() => {
-    if (isOptionRoot(activeTicker)) wantSpotGex(activeTicker);
-  }, [activeTicker, listedRev]);
+  useListedRev();
   const marketData = usePinpointFeed(activeTicker);
   const bookRev = useBookRev();
   const { focus, toggleFocus, focusOn } = useFocus();

@@ -1,36 +1,10 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE BOOK AT A STRIKE (data/bookAtStrike.ts)
-
-  Our own two cents on the Weigher (Noah, 2026-09-28:
-  his partner "does want our own two sense into the
-  weigher or else it would just be a robinhood
-  watchlist all over again"). For every strike of a
-  name, what the dealer book says about it, read off
-  the same day's map every other surface reads:
-
-    THE SHAPE     wall · cliff · shelf · void — the
-                  Map's words, on the strike's net
-                  gamma against the heaviest ordinary
-                  strike (data/mapShape.ts)
-    THE LEAN      which way dealers push a move through
-                  it — back (call-heavy, they absorb)
-                  or along (put-heavy, they amplify)
-    ITS PART      the call wall, the put wall, the
-                  supreme, or how far from the flip
-    HELD TODAY    tests of the level as visits — held
-                  or broke (data/wall.ts testEvents)
-    THE CLOSE     the odds the 4:00 print lands at or
-                  past it, from Ahead's close model
-    SINCE THE OPEN what today added or took off the
-                  strike, Building's words
-
-  Built once per scan for the desk's name; the chain's
-  column and the strike's block read it by strike.
-==================================================
+  What the live dealer book says about each strike of a name: its shape (wall, cliff, shelf, void), which way
+  dealers lean on a move through it, its part (a wall, the supreme, distance from the flip), how it held today,
+  the close odds and what the day added. Built once per scan; the Weigher's chain and strike block read it.
 */
 
-import Simulator from '../core/simulator';
+import { bookCandles, bookHistory, peekIv, snapshotOf } from './uwBook';
 import { aheadClock, buildCloseOdds, buildCorridor, fmtDollars } from './ahead';
 import { buildBuilding, type BuildVerdict } from './building';
 import { readSessionClock } from './moc';
@@ -99,16 +73,19 @@ export function buildBook(ticker: string, profile: ExposureProfileData): Book {
   /* the close's odds, once — Ahead's model on this same profile */
   let odds: { strike: number; odds: number }[] | null = null;
   let building: ReturnType<typeof buildBuilding> | null = null;
+  /* The close odds and the day's change come from the live vendor book; without it they stay blank. */
   try {
-    const snap = Simulator.snapshotFor(ticker);
-    const clock = aheadClock(readSessionClock());
-    const iv = Simulator.TICKERS[ticker]?.iv ?? 0.2;
-    const corridor = buildCorridor(snap, profile, iv, clock);
-    odds = buildCloseOdds(profile, spot, corridor.sigma, clock).rows;
-    try {
-      building = buildBuilding(snap, Simulator.getGexHistory(ticker), Simulator.getCandles(ticker), profile, clock);
-    } catch {
-      building = null;
+    const snap = snapshotOf(ticker);
+    const iv = peekIv(ticker);
+    if (snap && iv != null) {
+      const clock = aheadClock(readSessionClock());
+      const corridor = buildCorridor(snap, profile, iv, clock);
+      odds = buildCloseOdds(profile, spot, corridor.sigma, clock).rows;
+      try {
+        building = buildBuilding(snap, bookHistory(ticker) ?? [], bookCandles(ticker) ?? [], profile, clock);
+      } catch {
+        building = null;
+      }
     }
   } catch {
     odds = null;

@@ -1,35 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - NEW YORK'S CLOCK (core/nyTime.ts)
-
-  The market keeps New York's time, so every session
-  time the terminal prints is New York's — whatever
-  zone the reader's machine is in (a Los Angeles or
-  UTC machine put trades before the open, windows
-  after the close and a "today" that began at 07:55).
-  Read and print every session time through here;
-  never format a session time with a bare
-  toLocaleTimeString() or getHours(). Taken from the
-  partner's build at Noah's word (2026-10-13) with
-  Trace's Windows strip; the book (data/flowBook.ts)
-  stands on it.
-
-    nyClock(at)               "14:03"     (seconds: true → "14:03:42"; zone: true → "14:03 ET")
-    deskClock(at)             "1:03 PM"   the desk's Central 12-hour clock, display only (zone: true → "1:03 PM CT")
-    nyDay(at)                 "Oct 9"     (weekday: true → "Fri Oct 9")
-    nyStamp(at)               "Oct 9, 14:03"
-    nyIsoDate(at)             "2026-10-09"
-    nyMinutes(at)             843         minutes since New York's midnight
-    nyParts(at)               { year, month, day, hour, minute, second, weekday }
-    nyWallTime(y, m, d, h, mi) the instant (ms) of a New York wall-clock time
-    nySession(at)             { open, close } — that New York day's 09:30 and 16:00, as instants (ms)
-    minuteLabel(570)          "09:30"     a minute-of-the-day index, labelled
-    nyTickMarks / nyTimeFormatter / NY_CHART_TIME   lightweight-charts on New York's clock
-
-  `at` is a Date or epoch milliseconds, and defaults to the engine clock (core/clock.ts), so a replay that pins the
-  clock reads its own moment.
-==================================================
-*/
+/* New York's clock: every session time the terminal prints is New York's, whatever zone the reader is in — never format
+   one with a bare toLocaleTimeString() or getHours(). nyClock "14:03" ("14:03:42", "14:03 ET"); deskClock "1:03 PM CT" (the
+   desk's Central display clock); nyDay, nyStamp, nyIsoDate, nyMinutes, nyParts, nyWallTime, nySession, chart formatters. */
 
 import type { Time, TickMarkFormatter } from 'lightweight-charts';
 import { now } from './clock';

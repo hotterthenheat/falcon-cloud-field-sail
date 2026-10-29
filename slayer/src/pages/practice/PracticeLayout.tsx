@@ -1,26 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - PRACTICE (pages/practice/PracticeLayout.tsx)
-
-  ONE SECTION for trading with pretend money (Noah,
-  2026-09-26: "should paper trading and backtesting be in
-  the same section and should they also carry the same
-  journal" — yes; "the live chart should be called paper
-  and the overhead can be called practice"). It holds
-  what were Paper (2026-09-22) and Review (2026-09-20):
-
-    Paper      today's prices, on the live feed
-    Backtest   a past market, replayed a minute at a time
-    Journal    every trade of either, on its day — one
-               page, two books, never mixed
-
-  The shell is the Record's: the page's own head over the
-  body, the child pages in the sidebar tree. WHAT THE HEAD
-  SAYS ABOUT THE DATA, per page: while the feed is the
-  simulator the Paper page says "Simulated feed" and the
-  Backtest page "Simulated tape" — never a figure on this
-  section without that in sight.
-==================================================
+  Practice: trading with pretend money. Paper trades today's live quotes, Backtest is paused until real history is
+  wired in, and the Journal holds every trade of either — two books, never mixed. The head says where each page's
+  prices come from.
 */
 
 import { Suspense } from 'react';
@@ -32,7 +13,6 @@ import BackToTop from '../../components/ui/BackToTop';
 import ScrollHome from '../../components/layout/ScrollHome';
 import { useGlideHold } from '../../components/ui/useGlideHold';
 import { SIM_FEED } from '../../data/paper/feed';
-import { TAPE_DAYS } from '../../data/review/tape';
 
 const Fact = ({ label, children, testId, title }: { label: string; children: React.ReactNode; testId?: string; title?: string }) => (
   <div className="min-w-0">
@@ -69,21 +49,20 @@ const PracticeLayout = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2" data-shell-facts>
           {which === 'paper' && (
             <>
-              <Fact label="Prices" testId="source" title={SIM_FEED ? 'The terminal’s simulator: it trades round the clock, and it is a new market every time the page loads — so what is open is closed when the page closes' : undefined}>
-                {SIM_FEED ? 'Simulated feed' : 'Live feed'}
+              <Fact label="Prices" testId="source" title="Each contract’s live bid and ask from Unusual Whales; orders fill only in the options session">
+                {SIM_FEED ? 'Simulated feed' : 'Live quotes'}
               </Fact>
               <Fact label="Clock">Today · New York</Fact>
             </>
           )}
           {which === 'backtest' && (
             <>
-              <Fact label="Prices" testId="source">Simulated tape</Fact>
-              <Fact label="History">{TAPE_DAYS} sessions · a minute a bar</Fact>
+              <Fact label="Prices" testId="source">Paused — no real history yet</Fact>
             </>
           )}
           {which === 'journal' && (
             <>
-              <Fact label="Prices" testId="source">{SIM_FEED ? 'Simulated' : 'Live feed · simulated tape'}</Fact>
+              <Fact label="Prices" testId="source">Paper: live quotes · Backtest: synthetic tape</Fact>
               <Fact label="Clock">New York</Fact>
             </>
           )}

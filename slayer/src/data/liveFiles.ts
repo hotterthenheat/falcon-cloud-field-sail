@@ -1,8 +1,5 @@
-/*
-  Institutions, shorts, ETFs, the stock screen and the day's option tide.
-  The browser asks /api/uw. Rows stay empty until the vendor answers.
-  Nothing here is filled from the house generator.
-*/
+/* The Institutions, Shorts, ETF and Stocks books, read off /api/uw; each part starts only when a page reads it, and
+   rows stay empty until the vendor answers. */
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { setDividend } from '../core/carry';
@@ -12,7 +9,7 @@ import { UNIVERSE, type Sector } from './universe';
 import { nyDayOfUtcStamp, nyDaysAgo } from './nyDate';
 import { companyName, displayName, hasVendorName, placeDisplay, isListed, rememberCompanyName, rememberCompanyNames, subscribeCompanyNames } from './tickers';
 import { screenerNeedsCloses, screenerRead } from './liveQuote';
-import { loadRegularCloses } from './dayChange';
+import { loadCloses } from './stockFile';
 import {
   whalesEtfFlow,
   whalesEtfHoldings,
@@ -21,7 +18,6 @@ import {
   whalesInstitutions,
   whalesScreener,
   whalesStock,
-  whalesTide,
   uwCall,
   type UwEtfFlow,
   type UwEtfHolding,
@@ -29,17 +25,9 @@ import {
   type UwHolding,
   type UwInstitution,
   type UwShort,
-  type UwTide,
 } from './whales';
 
 export type FileStatus = 'loading' | 'live' | 'error';
-
-export interface TidePrint {
-  call: number;
-  put: number;
-  net: number;
-  volume: number;
-}
 
 export interface StockCard {
   ticker: string;
@@ -73,7 +61,7 @@ const ETF_LIST: { etf: string; kind: EtfKind }[] = [
   { etf: 'XLRE', kind: 'sector' },
   { etf: 'SMH', kind: 'sector' },
   { etf: 'TLT', kind: 'rates' },
-  /* a high-yield corporate bond fund is credit, not rates; a gold trust holds bullion, not an index (the data audit) */
+  /* a high-yield corporate bond fund is credit, not rates; a gold trust holds bullion, not an index */
   { etf: 'HYG', kind: 'credit' },
   { etf: 'GLD', kind: 'commodity' },
 ];
@@ -96,7 +84,7 @@ interface Snap {
   institutions: InstitutionRow[];
   /** Houses read so far of those asked, while the book is still landing; null once whole */
   instProgress: { done: number; total: number } | null;
-  /** True while the book holds its first houses only, the rest waiting for the reader to want them (round 8) */
+  /** True while the book holds its first houses only, the rest waiting for the reader to want them */
   instHeld: boolean;
   shortStatus: FileStatus;
   shorts: ShortRow[];
@@ -111,7 +99,6 @@ interface Snap {
   houseOptions: Record<string, { calls: number; puts: number }>;
   stockStatus: FileStatus;
   stocks: StockPick[];
-  tide: TidePrint | null;
   cards: Record<string, StockCard | null>;
 }
 
@@ -130,7 +117,6 @@ const empty: Snap = {
   houseOptions: {},
   stockStatus: 'loading',
   stocks: [],
-  tide: null,
   cards: {},
 };
 
@@ -206,9 +192,7 @@ const quartersOf = (h: UwHolding, sharesM: number, report: string): InstitutionR
       })
       .filter((x): x is { period: string; unitsM: number } => !!x);
     if (rows.length) return rows.slice(-8);
-    /* A bare list of unit counts, NEWEST FIRST (the vendor's historical_units: [this filing, the quarter before, …]).
-       Each one was stamped with this filing's quarter, so eight quarters collapsed into one row and the sentence read
-       "1009.8M then, 945.7M now" — backwards. Each count now gets its own quarter, oldest to newest. */
+    /* The vendor's historical_units run newest first; each count gets its own quarter, oldest to newest. */
     const counts = raw.map(numOr).filter((n): n is number => n != null);
     const base = Date.parse(h.date ?? '');
     if (counts.length && Number.isFinite(base)) {
@@ -226,10 +210,8 @@ const quartersOf = (h: UwHolding, sharesM: number, report: string): InstitutionR
 };
 
 function rowFromHolding(house: string, filed: string, h: UwHolding): InstitutionRow | null {
-  /* A LINE WITH NO SYMBOL IS KEPT (the fourth audit, 2026-10-23): AMD's options lines filed as "00002488" and BlackRock's
-     $45.8B "9666655D" were dropped, so the page read 3,194 lines against the vendor's 3,200 and "79 largest" against 80.
-     Such a line is kept under the vendor's own identifier, named by the filing's issuer name when it gives one, and marked
-     unlisted — it opens no stock page and draws no logo. */
+  /* A line with no listed symbol is kept under the vendor's identifier, named by the filing's issuer when given, marked
+     unlisted: it opens no stock page and draws no logo. */
   const raw = (h.ticker || '').trim().toUpperCase();
   if (!raw) return null;
   const unlisted = !/^[A-Z][A-Z0-9.]{0,5}$/.test(raw);
@@ -244,12 +226,8 @@ function rowFromHolding(house: string, filed: string, h: UwHolding): Institution
   const book = bookOf(h);
   const sec = typeof h.security_type === 'string' ? h.security_type.trim() : '';
   const security = sec && !/^share/i.test(sec) ? sec : undefined;
-  /* A FIRST BUY THE FILING ITSELF CONTRADICTS IS NOT SHOWN (audit round 7: BlackRock's NVDA read "First buy 2026-06-30 ·
-     First price $15.14 · Avg price $15.14" — the house's change of CIK reset the vendor's history, while the same row's
-     eight quarters of units show it held NVDA all along, and NVDA's price on 06/30 was $200.09, the filing's own value
-     over units). A share line whose first buy is the filing's own quarter must have its first and average price at the
-     filing's price; when it does not, or when earlier quarters hold units, the first buy, its price and the average are
-     the vendor's artifact and read "—". */
+  /* A first buy the filing's own quarters contradict (earlier units held, or a first price off the filing's price) is the
+     vendor's artifact: the first buy, its price and the average read "—". */
   const filingPrice = book === 'stock' && units > 0 ? num(h.value) / units : 0;
   const counts = Array.isArray(h.historical_units) ? (h.historical_units as unknown[]).map(numOr).filter((n): n is number => n != null) : [];
   const heldBefore = counts.slice(1).some(n => n > 0);
@@ -312,9 +290,8 @@ function houseFacts(list: readonly UwInstitution[]): Pick<Snap, 'houseTotals' | 
   return { houseTotals: totals, houseOptions: options };
 }
 
-/* ONE HOUSE'S PAGE READS ONE HOUSE (audit round 7: opening BlackRock read all 40 houses' holdings, 46 calls). The house
-   list (one call — it maps the page's address to the house and its CIK, and carries its totals) and that house's own
-   lines; the whole book is read only by the Institutions page. */
+/* One house's page reads the house list (its address, CIK and totals) and that house's own lines; only the
+   Institutions page reads the whole book. */
 const houseList: { p: Promise<UwInstitution[]> | null } = { p: null };
 const houseRead = new Map<string, { status: FileStatus; rows: InstitutionRow[]; name: string | null }>();
 function listHouses(): Promise<UwInstitution[]> {
@@ -351,10 +328,8 @@ function ensureHouse(slug: string): void {
   })();
 }
 
-/* THE NEWEST FILERS FIRST, THE REST WHEN WANTED (round 8: the Institutions index made 40 house-holdings calls on open).
-   The grid opens on the newest filings, so the houses are read newest filing first: the first INST_FIRST of them, then
-   the book holds until the reader goes further — scrolls to the grid's pages, picks a house, a filter or a window, or
-   asks for the rest — and only then reads the other houses, ten at a time. */
+/* The largest houses first: the first INST_FIRST by reported value are read on open, the rest only when the reader
+   goes further (a page, a house, a filter or a window), ten at a time. */
 export const INST_FIRST = 10;
 let instMore: (() => void) | null = null;
 let instWanted = false;
@@ -370,9 +345,8 @@ async function pullInstitutions() {
     const houses = await listHouses();
     if (!Array.isArray(houses) || houses.length === 0) throw new Error('shape');
     const rows: InstitutionRow[] = [];
-    /* ten houses at a time, the book published once whole — one by one, the head counted "6 houses · 0 calls" for the
-       half-minute the rest took (the ship pass, 2026-10-22) */
-    const list = [...(houses as UwInstitution[])].sort((a, b) => String(b.filing_date || b.date || '').localeCompare(String(a.filing_date || a.date || '')));
+    /* ten houses at a time, the book published once each batch is whole */
+    const list = [...(houses as UwInstitution[])].sort((a, b) => (numOr(b.total_value) ?? 0) - (numOr(a.total_value) ?? 0));
     emit(houseFacts(list));
     let done = 0;
     const readHouse = async (house: UwInstitution) => {
@@ -433,7 +407,7 @@ const UW_SECTOR: Record<string, Sector> = {
 };
 const uwSector = (raw: string): Sector | null => UW_SECTOR[raw.trim().toLowerCase()] ?? null;
 /** "SOUNDHOUND AI" → "Soundhound AI": the file shouts; the page does not */
-/* the one display name (tickers.ts displayName, audit round 10: "ELI Lilly", "Spdr(r) S&p(r)…") */
+/* the one display name (tickers.ts displayName) */
 const titleName = (raw: string): string => displayName(raw);
 
 function shortFrom(r: UwShort): ShortRow | null {
@@ -465,10 +439,8 @@ function shortFrom(r: UwShort): ShortRow | null {
   };
 }
 
-/* A SHORT FILE FOR ANY NAME (the retail pass, 2026-10-22). The short book lists the 80 largest short positions by
-   share count, so GME, a name every squeeze reader asks for, read "That record is not on this book". The file's own
-   reads — /shorts/{t}/interest-float/v2 (every settlement), /shorts/{t}/data (today's borrow), the fails to deliver,
-   the short volume and the short volume by market — build the row instead, and fill what the screener row lacks. */
+/* A short file for any name, off its own reads (interest-float v2, today's borrow, the fails, the short volume and by
+   market), not only the screen's rows. */
 export function shortRowFromFile(
   ticker: string,
   base: ShortRow | null,
@@ -518,9 +490,7 @@ export function shortRowFromFile(
       .filter(v => String(v.date ?? '') === day)
       .map(v => ({ exchange: String(v.exchange_name || v.market_center || '—'), shortM: num(v.short_volume) / 1e6, totalM: num(v.total_volume) / 1e6 }));
   }
-  /* THE SOURCE ON THE CARD (audit round 6: WOLF's "Short volume 55% · Oct 22" was FINRA CNMS alone — the ratio read came
-     back empty and the by-market rows stood in, unsaid). When the ratio read is empty the by-market rows' latest day is
-     the figure, and the card names them */
+  /* when the short-volume ratio read is empty, the by-market rows' latest day is the figure, and the card names them */
   if (out.shortVolRatio == null && out.exchanges.length) {
     const short = out.exchanges.reduce((a, v) => a + v.shortM, 0);
     const total = out.exchanges.reduce((a, v) => a + v.totalM, 0);
@@ -562,17 +532,10 @@ function collapseShorts(rows: ShortRow[]): ShortRow[] {
   return [...by.values()].sort((a, b) => b.interestPct - a.interestPct);
 }
 
-/* THE SHORT BOOK AS A SCREEN (the data audit, 2026-10-22). It was /short_screener ordered by shares short — the
-   largest 40 positions by share count — so "HYG is the heaviest short" and "28 names at 8%+" described that slice and
-   GME (8.46% of its float) was not on it. It is now the screen the page names: the latest settlement's names ordered
-   by short interest as a share of the float, the SHORTS_SCREEN heaviest, among floats of SHORTS_MIN_FLOAT shares or
-   more (below that the vendor's ratios run past 100% on a few thousand shares), and none over 100% of the float. The
-   prior settlement is read for the same names (the change since), and the stock screener names each one's sector and
-   whether it is a fund. Every row is one settlement, so none carries an older figure under a newer date. */
+/* The short book is the latest settlement's names by short interest as a share of the float, the SHORTS_SCREEN heaviest
+   among floats of SHORTS_MIN_FLOAT or more; the prior settlement gives the change, each row one settlement. */
 export const SHORTS_SCREEN = 200;
 export const SHORTS_MIN_FLOAT = 20_000_000;
-let shortsSettlement: string | null = null;
-export const shortsSettlementDay = () => shortsSettlement;
 
 export const FUND_TYPES = /\b(?:etf|etn|fund|trust|closed[- ]end)\b/i;
 
@@ -582,7 +545,6 @@ async function pullShorts() {
     const head = await uwCall('/short_screener?order_by=market_date&order_direction=desc&limit=1');
     const newest = Array.isArray(head.data) ? String((head.data as UwShort[])[0]?.market_date ?? '').slice(0, 10) : '';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newest)) throw new Error(head.error || 'no settlement');
-    shortsSettlement = newest;
     const rows = await uwCall(`/short_screener?order_by=si_float&order_direction=desc&limit=${SHORTS_SCREEN}&min_market_date=${newest}&max_si_float=1&min_total_float=${SHORTS_MIN_FLOAT}`);
     if (rows.error || !Array.isArray(rows.data)) throw new Error(rows.error || 'shape');
     const face = (rows.data as UwShort[]).map(shortFrom).filter((r): r is ShortRow => !!r).map(r => ({ ...r, borrowAsOf: newest }));
@@ -596,8 +558,7 @@ async function pullShorts() {
       2,
       async part => {
         const got = await whalesScreener(part).catch(() => null);
-        /* the same rows carry each name's full_name — kept, so the name cells do not ask the screener for the same
-           ~190 names again in chunks of fifty (audit round 7: the Shorts page read the screener twice) */
+        /* the same rows carry each name's full_name, kept so the name cells do not ask again */
         for (const r of Array.isArray(got) ? got : []) {
           const sym = String(r.ticker || '').toUpperCase();
           facts.set(sym, r);
@@ -613,10 +574,8 @@ async function pullShorts() {
       const fund = FUND_TYPES.test(String(f.issue_type ?? ''));
       return { ...r, sector: uwSector(rawSector) ?? (houseSector(rawSector) || (fund ? 'Fund' : r.sector)), fund };
     });
-    /* ONE READ, SHOWN WHOLE (the retail test, 2026-10-23: "2 strong · 22 building", then "19 building" minutes apart on
-       a Sep 30 settlement). The book was shown before the prior settlement landed, so the change-in-shares point arrived
-       later for some names and not others. It is shown once the prior settlement has been read for every batch (each
-       asked twice before it is given up) — the same data, the same counts, every load. */
+    /* The book is shown once the prior settlement is read for every batch (each asked twice), so the counts are the same
+       every load. */
     /* the settlement before, for the same names — the change in shares short; forty names a call (the proxy takes
        paths under 400 characters) */
     const prior = new Date(Date.parse(`${newest}T12:00:00Z`) - 25 * 86_400_000).toISOString().slice(0, 10);
@@ -641,9 +600,7 @@ async function pullShorts() {
   }
 }
 
-/* ONE WINDOW FOR EVERY FUND (audit round 5, 2026-10-23: "Five-day flow −$6.14B" summed each fund's own latest five rows —
-   some funds' through 10/22, others' through 10/21 — so the total mixed windows). The five most recent dates every fund
-   with flows carries are the window; each fund's flow is summed over exactly those days. */
+/* One window for every fund: the five most recent dates every fund with flows carries; each fund's flow over those days. */
 const flow5 = (rows: UwEtfFlow[], days?: Set<string>): { flow5dM: number; flows: EtfRow['flows'] } => {
   const sorted = [...rows].filter(r => r.date && (!days || days.has(String(r.date).slice(0, 10)))).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const last = sorted.slice(0, 5);
@@ -651,8 +608,7 @@ const flow5 = (rows: UwEtfFlow[], days?: Set<string>): { flow5dM: number; flows:
   return { flow5dM: flows.reduce((s, f) => s + f.flowM, 0), flows };
 };
 
-/* A BOND FUND'S LINES CARRY NO SYMBOL (the ship pass, 2026-10-22: TLT's 47 Treasury lines and HYG's 250 issues were
-   all dropped, and the fund read "no holding on file"). They keep their name and face amount, keyed by position. */
+/* a bond fund's lines carry no symbol: they keep their name and face amount, keyed by position */
 /* an issue name in title case, with the short capitals that are names kept ("1261229 BC LTD SR SECURED 144A" →
    "1261229 BC Ltd Sr Secured 144A" — 1261229 B.C. Ltd. is a real issuer, Bausch Health's) */
 const KEEP_CAPS = new Set(['BC', 'US', 'USA', 'LP', 'LLC', 'PLC', 'NV', 'SA', 'AG', 'SE', 'AB', 'ASA', 'REIT', 'II', 'III', 'IV', 'UK', 'MLP', 'CO2']);
@@ -735,10 +691,8 @@ function fundRow(e: { etf: string; kind: EtfKind }, [infoR, holdR, flowR]: FundR
   };
   return { row, held };
 }
-/* THE HOLDINGS WHEN THEY ARE SHOWN (round 9: the index read /holdings for all 18 funds — up to 250 lines each — for one
-   "Largest holding" column; 63 requests at load). The index reads each fund's info and flows; a fund's holdings are read
-   when its largest-holding cell (or card) comes on screen, or it is the fund whose book the page shows, and the row's
-   largest line, equity share and as-of date are filled in then. */
+/* The index reads each fund's info and flows; a fund's holdings are read when its largest-holding cell or card comes on
+   screen, or it is the fund whose book the page shows. */
 const etfReads = new Map<string, FundReads>();
 let etfCommon: string[] = [];
 const etfHoldAsked = new Set<string>();
@@ -801,9 +755,7 @@ export function wantFundHoldings(etf: string): void {
 /** True once the index has this fund's holdings */
 export const fundHoldingsRead = (etf: string): boolean => etfHoldRead.has(etf.toUpperCase());
 
-/* ONE FUND'S PAGE READS ONE FUND (round 8: etfs/SPY read the info, the flows and the holdings of all 18 funds to draw
-   one). The fund's own three reads; its five-day flow is its own five newest dates (the index's common window is for
-   adding the funds up, which one fund's page does not do). */
+/* One fund's page reads its own info, flows and holdings; its five-day flow is its own five newest dates. */
 const oneFund = new Map<string, { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[]; cover: HoldingsCover | null }>();
 function ensureOneFund(etf: string): void {
   if (!etf || oneFund.has(etf) || typeof window === 'undefined') return;
@@ -822,8 +774,7 @@ function ensureOneFund(etf: string): void {
     });
 }
 
-/* THE FIELD'S OWN UNIT (the fourth audit, 2026-10-23): one_day_perc, one_week_perc and one_month_perc are fractions
-   (META 10/22 −0.074 = −7.4%); guessing by size (|v| ≤ 1.5 a fraction) would read a +200% month as +2% */
+/* one_day_perc, one_week_perc and one_month_perc are fractions, always; never guessed by size */
 const frac = (v: unknown): number | null => {
   const n = numOr(v);
   return n == null ? null : n * 100;
@@ -838,15 +789,13 @@ async function pullStocks() {
       if (Array.isArray(part)) rows.push(...part);
     }
     rememberCompanyNames(rows.map(r => [String(r.ticker || ''), String(r.full_name || '')] as const));
-    /* THE REGULAR CLOSE FROM THE DAILY ROWS (audit round 6): the screener has none — its close is the last print and its
-       intraday_change is off the OPEN — so outside the session each name's regular closes are read (loadRegularCloses,
-       the quote's and the top bar's source; the list's quotes read the same cached rows) */
+    /* the screener carries no regular close outside the session, so each name's regular closes are read (once a day) */
     const closesOf = new Map<string, readonly { date: string; close: number }[] | null>();
     await Promise.all(
       rows.map(row => {
         const t = String(row.ticker || '').toUpperCase();
         if (!t || !screenerNeedsCloses(row)) return Promise.resolve();
-        return loadRegularCloses(t)
+        return loadCloses(t)
           .then(c => void closesOf.set(t, c))
           .catch(() => void closesOf.set(t, null));
       }),
@@ -894,23 +843,6 @@ async function pullStocks() {
   }
 }
 
-async function pullTide() {
-  try {
-    const rows = await whalesTide();
-    if (!Array.isArray(rows) || rows.length === 0) return;
-    const list = rows as UwTide[];
-    const dates = list.map(r => r.date).filter((d): d is string => !!d).sort();
-    const day = dates[dates.length - 1];
-    const today = list.filter(r => !day || r.date === day);
-    const call = today.reduce((s, r) => s + num(r.net_call_premium), 0);
-    const put = today.reduce((s, r) => s + num(r.net_put_premium), 0);
-    const volume = today.reduce((s, r) => s + num(r.net_volume), 0);
-    emit({ tide: { call, put, net: call + put, volume } });
-  } catch {
-    /* the tide line stays a dash */
-  }
-}
-
 const cardInflight = new Set<string>();
 
 export function ensureStockCard(ticker: string): void {
@@ -935,7 +867,7 @@ export function ensureStockCard(ticker: string): void {
             ticker: t,
             name: displayName(String(row.full_name || row.short_name || '')) || t,
             sector: houseSector(String(row.sector || '')) || '—',
-            /* the vendor's copy, its one recurring slip mended ("Apple is the worlds largest…", the retail test round 7) */
+            /* the vendor's copy, its one recurring slip mended ("worlds") */
             description: String(row.short_description || '').replace(/\bworlds\b(?=\s+(?:largest|biggest|leading|first|most|top|second|third|largest|premier|only|best))/gi, m => `${m.slice(0, -1)}'s`),
             marketCap: numOr(row.marketcap),
             beta: numOr(row.beta),
@@ -952,10 +884,8 @@ export function ensureStockCard(ticker: string): void {
     .finally(() => cardInflight.delete(t));
 }
 
-/* ONLY WHAT THE PAGE SHOWS (Dossier audit round 6: every Dossier page fired 250–450 reads — a single name cell on the
-   Congress page started the institutions, the shorts screen, every fund's book, the stock screen and the tide). Each
-   part of the store starts when a hook that reads it is mounted, and never before. */
-type Part = 'inst' | 'shorts' | 'etfs' | 'stocks' | 'tide';
+/* Each part of the store starts when a hook that reads it mounts, never before, so a page reads only what it shows. */
+type Part = 'inst' | 'shorts' | 'etfs' | 'stocks';
 const partStarted = new Set<Part>();
 function ensurePart(part: Part) {
   if (partStarted.has(part) || typeof window === 'undefined') return;
@@ -963,8 +893,7 @@ function ensurePart(part: Part) {
   if (part === 'inst') void pullInstitutions();
   else if (part === 'shorts') void pullShorts();
   else if (part === 'etfs') void pullEtfs();
-  else if (part === 'stocks') void pullStocks();
-  else void pullTide();
+  else void pullStocks();
 }
 
 function subscribeTo(parts: readonly Part[]): (fn: () => void) => () => void {
@@ -984,14 +913,9 @@ function useFiles(...parts: Part[]): Snap {
   return useSyncExternalStore(subFor(parts), peek, peek);
 }
 
-/** Every part — kept for callers that read the whole store */
-export function useLiveFiles(): Snap {
-  return useFiles('inst', 'shorts', 'etfs', 'stocks', 'tide');
-}
-
 export function useInstitutions(): { status: FileStatus; rows: InstitutionRow[]; houses: string[]; progress: { done: number; total: number } | null; held: boolean } {
   const s = useFiles('inst');
-  /* every listed house, read or still held back (round 8) */
+  /* every listed house, read or still held back */
   const houses = [...new Set([...s.institutions.map(r => r.name), ...Object.keys(s.houseTotals)])];
   return { status: s.instStatus, rows: s.institutions, houses, progress: s.instProgress, held: s.instHeld };
 }
@@ -1023,10 +947,7 @@ export function useShorts(): { status: FileStatus; rows: ShortRow[] } {
   return { status: s.shortStatus, rows: s.shorts };
 }
 
-/* ONE NAME'S SHORT PRINT, NOT THE WHOLE SCREEN (the round-8 audit: the stock page and shorts/GME walked the whole
-   most-shorted screen — seven /short_screener calls and four screener batches — for one name's figure). The name's own
-   two newest settlements (/short_screener?tickers=T, newest first) are read; the screen's row stands in only when the
-   Shorts page has already read the screen. */
+/* A name's short print is its own two newest settlements; the screen's row stands in only when the Shorts page has it. */
 const oneShort = new Map<string, { status: FileStatus; row: ShortRow | null }>();
 const oneShortAsked = new Set<string>();
 function ensureOneShort(t: string): void {
@@ -1073,10 +994,10 @@ export function useEtfs(): { status: FileStatus; rows: EtfRow[]; holdingsOf: (et
 }
 
 export function useEtfFile(etf: string): { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[]; cover: HoldingsCover | null } {
-  /* the index's book when the ETFs page has read it; this one fund otherwise (round 8) */
+  /* the index's book when the ETFs page has read it; this one fund otherwise */
   const s = useFiles();
   const t = etf.toUpperCase();
-  /* (round 9) the index's row only once its holdings are read — the index reads them on demand */
+  /* the index's row only once its holdings are read */
   const fromBook = s.etfStatus === 'live' && etfHoldRead.has(t) ? s.etfs.find(r => r.etf === t) ?? null : null;
   useEffect(() => {
     if (!fromBook) ensureOneFund(t);
@@ -1108,12 +1029,8 @@ export function useEtfWeights(etf: string): { status: FileStatus; sectors: { nam
         }
         return [...sum.entries()].map(([name, weight]) => ({ name, weight })).filter(r => r.weight >= 0.05).sort((a, b) => b.weight - a.weight);
       };
-      /* ONE SECTOR SCHEME, NEVER THREE ADDED UP (round 9: SPY's table summed to 255% — the vendor sends the same fund
-         under three overlapping schemes in one list: "Technology" 32.6% and "Information Technology" 32.6%, a finer
-         "Electronic Technology" / "Technology Services" split, "Financial Services" and "Financials" both 12.5%…). The
-         page keeps one: the eleven-sector scheme that is complete on every fund read (it adds to 100%), said in the
-         house's sector words. The GICS-named rows are not used — the vendor sends no Consumer Staples or Health Care
-         under them, so they never cover the fund. The finer scheme is the fallback only when neither adds up. */
+      /* The vendor sends a fund's sectors under three overlapping schemes; the page keeps the eleven-sector one that adds to
+         100%, in the house's words, falling back to the finer one only when neither adds up. */
       const sectorsOf = (rows: { name?: string; weight?: string }[]) => {
         const at = (names: string[]) => rows.filter(r => names.includes(String(r.name || '').trim()));
         const total = (rs: { weight?: string }[]) => rs.reduce((a, r) => a + num(r.weight), 0);
@@ -1136,19 +1053,10 @@ export function useEtfWeights(etf: string): { status: FileStatus; sectors: { nam
   return got;
 }
 
-export function useFundsHolding(ticker: string): { etf: string; name: string; weight: number; sharesM: number }[] {
-  const s = useFiles('etfs');
-  const t = ticker.toUpperCase();
-  return s.etfs.flatMap(e => {
-    const hit = (s.holdings[e.etf] ?? []).find(h => h.ticker === t);
-    return hit ? [{ etf: e.etf, name: e.name, weight: hit.weight, sharesM: hit.sharesM }] : [];
-  });
-}
-
-export function useHousesOn(ticker: string): InstitutionRow[] {
-  const s = useFiles('inst');
-  const t = ticker.toUpperCase();
-  return s.institutions.filter(r => r.ticker === t).sort((a, b) => b.valueB - a.valueB);
+/** The house board as read so far; starts the read the first time it is asked */
+export function peekStockPicks(): StockPick[] {
+  ensurePart('stocks');
+  return snap.stocks;
 }
 
 export function useLiveStocks(): { status: FileStatus; picks: StockPick[] } {
@@ -1156,16 +1064,8 @@ export function useLiveStocks(): { status: FileStatus; picks: StockPick[] } {
   return { status: s.stockStatus, picks: s.stocks };
 }
 
-export function useLiveTide(): TidePrint | null {
-  return useFiles('tide').tide;
-}
-
-/* NAMES FROM THE STOCK'S OWN INFO (round 8: SERV still read "ServiceMaster Global Holdings, Inc." on the Shorts grid).
-   Round 6 asked the screener for names in bulk, but the screener's full_name now comes back empty for every row, so
-   the old bundled listing stood under every grid. The vendor's name is on /stock/{t}/info alone: it is asked only for a
-   name a reader can see (the name cells ask once they scroll into view), two at a time behind the page's own reads,
-   and remembered for a fortnight in this browser (tickers.ts). While a name is being asked the cell holds its name
-   rather than print the stale listing; the listing's name stands only when the vendor has none. */
+/* Names come from /stock/{t}/info, asked only for a name on screen, two at a time behind the page's own reads, and
+   remembered for a fortnight (tickers.ts); the listing's name stands only when the vendor has none. */
 let namesRev = 0;
 const companyNamesRev = () => namesRev;
 const nameAsked = new Set<string>();
@@ -1211,9 +1111,7 @@ const subscribeNames = (fn: () => void) => {
 };
 const askable = (t: string, fromVendorFeed: boolean) => /^[A-Z][A-Z0-9.]{0,6}$/.test(t) && (fromVendorFeed || isListed(t));
 
-/** The company's name as the vendor gives it (its stock info). `seen` gates the ask (a name cell asks once it is on
-    screen). While the ask is out the name is '' — never the stale listing's, which stands only once the vendor has
-    answered without one, or for a symbol the vendor is not asked about. */
+/** The company's name as the vendor gives it; `seen` gates the ask. While the ask is out the name is ''. */
 export function useCompanyName(ticker: string, fromVendorFeed = false, seen = true): string {
   const t = (ticker || '').toUpperCase();
   useSyncExternalStore(subscribeNames, companyNamesRev, companyNamesRev);
@@ -1236,13 +1134,9 @@ export function useStockCard(ticker: string): StockCard | null | undefined {
   return t in s.cards ? s.cards[t] : undefined;
 }
 
-/* ---- A SET'S PRICES IN BULK, FROM THE SCREENER (round 9) ----------------------------------------------------------
-   The Stocks index asked every row's quote on its own — the stock-state and the quote each fifteen seconds, one name at
-   a time (73 calls a minute with the stall rule, ~170 without). /screener/stocks answers a dozen names a call with the
-   live close, prev_close and quote_time, so the set is read in bulk (three calls for the index) and again every 45
-   seconds in the session, every five minutes outside it. Each row is read on liveQuote's own rule (screenerRead):
-   in the session the last print against the prior close; outside it the regular close off the name's daily rows, the
-   extended print apart. A name the screener has no row for is listed in `missing`, for the page to read alone. */
+/* ---- a set's prices in bulk, from the screener ----
+   A dozen names a call, every 45 seconds in the session and five minutes outside it, each row on liveQuote's
+   screenerRead rule; a name with no row is listed in `missing`. */
 export interface BatchQuote {
   /** the regular price: the last print in the session, the last regular close outside it */
   price: number;
@@ -1256,6 +1150,8 @@ export interface BatchQuote {
   extPct: number | null;
   /** epoch ms of the vendor's quote */
   tapeAt: number | null;
+  /** the screener row's own date: dated today before the open means a pre-market print exists */
+  rowDate: string;
 }
 const BATCH_LIVE_MS = 45_000;
 const BATCH_IDLE_MS = 5 * 60_000;
@@ -1295,7 +1191,7 @@ function seedBatch(t: string, row: Record<string, unknown>, r: NonNullable<Retur
   const qt = Number(row.quote_time);
   batchMissing.delete(t);
   batchAt.set(t, Date.now());
-  batchQuotes.set(t, { price: r.regular, pct: r.pct, date: r.date, live: !screenerNeedsCloses(row), ext: r.ext, extPct: r.extPct, tapeAt: Number.isFinite(qt) && qt > 0 ? qt : null });
+  batchQuotes.set(t, { price: r.regular, pct: r.pct, date: r.date, live: !screenerNeedsCloses(row), ext: r.ext, extPct: r.extPct, tapeAt: Number.isFinite(qt) && qt > 0 ? qt : null, rowDate: String(row.date ?? '').slice(0, 10) });
 }
 async function readBatchNow(key: string): Promise<void> {
   try {
@@ -1306,7 +1202,7 @@ async function readBatchNow(key: string): Promise<void> {
       for (const row of Array.isArray(part) ? part : []) {
         const t = String(row.ticker || '').toUpperCase();
         if (!t) continue;
-        const closes = screenerNeedsCloses(row) ? await loadRegularCloses(t).catch(() => null) : null;
+        const closes = screenerNeedsCloses(row) ? await loadCloses(t).catch(() => null) : null;
         const r = screenerRead(row, closes);
         if (!r) continue;
         got.add(t);

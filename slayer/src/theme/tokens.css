@@ -1,47 +1,11 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE TOKENS (theme/tokens.css)
-
-  ONE SOURCE OF TRUTH FOR EVERY COLOUR (2026-09-12).
-  Each token is a CSS custom property holding RGB
-  channels ("10 10 10"), never a hex: Tailwind's
-  config maps `bg-panel` to `rgb(var(--panel) /
-  <alpha-value>)`, so every existing class — and
-  every alpha modifier like `bg-panel/70` — keeps
-  working, and a theme is nothing more than a
-  different set of channels under one attribute.
-
-  HOW A THEME FLIPS: `<html data-theme="light">`.
-  That is the whole mechanism. No rebuild, no
-  restart, no class swap — the browser recomputes
-  the variables and everything that reads them
-  follows in the same frame. The attribute is set
-  before the first paint by index.html's boot
-  script and kept by theme/theme.ts.
-
-  SCOPING: the attribute works on ANY element, not
-  only <html>. A box that must stay dark on a light
-  page carries its own `data-theme="dark"` and its
-  subtree reads the dark set — the same rule, one
-  level down. THE CHARTS ARE ALWAYS BLACK (Noah,
-  2026-09-12): every chart host box is such an
-  island — the tape, its strip, its legend and its
-  ladder read the dark set whatever the page wears.
-
-  The dark values are the house's originals to the
-  channel; nothing on the dark terminal changes by
-  this file's existence. The light set is the first
-  cut, walked page by page like every surface.
-
-  Canvas and chart code cannot read CSS variables:
-  they go through theme/theme.ts `readToken()`.
-==================================================
+  Every colour token. Each holds RGB channels ("10 10 10") so Tailwind's `rgb(var(--x) / <alpha-value>)` keeps alpha
+  modifiers working. A theme is the `data-theme` attribute on any element: <html> for the page (set before first
+  paint by index.html, kept by theme/theme.ts), or a box that must stay dark on a light page (every chart host).
+  Canvas and chart code read tokens through theme/theme.ts readToken().
 */
 
-/* THE LANDING'S TURN (2026-09-19, pages/landing/ground.tsx): the page travels from one theme's
-   ground to the other's through steel — the two canvases by name, whatever the stamp, and the
-   five stops between them. A straight black-to-paper blend passes through a dead grey; this one
-   leans cool, the silver's side of the wheel. */
+/* the landing's theme transition: the two canvases and five cool stops between them, avoiding a dead mid-grey */
 :root {
   --night: 5 5 5;
   --day: 241 240 236;
@@ -62,7 +26,7 @@
   --panel-hover: 16 16 16;
   --inset: 7 7 7;
   --input-bg: 5 5 5;
-  /* The two recurring shades the pages drew by hand: a chip's ground and a card's */
+  /* a chip's ground and a card's */
   --chip: 12 12 12;
   --card: 18 18 18;
 
@@ -75,61 +39,39 @@
   --text-primary: 237 237 237;
   --text-secondary: 163 163 163;
   --text-muted: 125 125 125;
-  /* THE INKS THAT ARE GREY HERE AND BLACK ON PAPER (the light sweep, 2026-09-19 — Noah on Compass: "all need to be black
-     not gray"). On the dark terminal a tab at rest, a grid's head and a table's second-rank figure step back in grey and
-     the white one leads. On paper a grey that small reads as mute, so they are the page's black there and the lead is
-     told another way (the tab's rule is thicker, the head is already bold). Re-set in every block that re-scopes the text
-     tokens (index.css, the chart's chrome) — a var() alias would freeze at :root. */
+  /* Inks that are grey on black but the page's black on paper (tab at rest, grid head, second-rank figures).
+     Re-set in every block that re-scopes the text tokens: a var() alias would freeze at :root. */
   --tab-rest: 125 125 125;
   --grid-head: 163 163 163;
   --text-figure: 163 163 163;
   --tab-rule: 1px;
-  /* A DEEP BRAND FLIPS TO THE PAGE'S INK ON A DARK GROUND (ui/CompanyLogo.tsx, 2026-09-20): 1 = flip, 0 = the brand's own
-     colour. Bank of America's navy is right on paper and all but gone on black. Re-set in every block that re-scopes the
-     text tokens, like the inks above. */
+  /* 1 flips a deep brand logo to the page's ink on a dark ground (ui/CompanyLogo.tsx); re-set with the text tokens */
   --logo-flip: 1;
 
-  /* THE INK — what a wash is made of: white on the dark terminal, near-black on
-     the light one. `bg-ink/[0.06]` is the hover wash that used to be
-     `bg-white/[0.06]`; it darkens a light page the way it lightened a dark one. */
+  /* the wash ink: white on dark, near-black on light (`bg-ink/[0.06]` is the hover wash) */
   --ink: 255 255 255;
 
   /* Direction, status, the house accents */
   --bull: 48 209 88;
   --bear: 255 59 48;
   --warn: 255 149 0;
-  /* THE ACCENT IS THE SILVER (the partner's rule, taken at Noah's word 2026-10-13: "remove all lime/green accent
-     color it should be holographic silver"). The neon lime that was the interface's voice and the live ink until then
-     is gone: what was lime — the live control and badges, the tracked mark, the strip's "now", the Map's focus — wears
-     the holo family's flat silver. --select is the silver as an INK, cut per theme like --silver (the same channels);
-     the direction pair, the magenta and the rest keep their meanings. One line each way to put the lime back. */
+  /* The accent is the holo silver; --select is the silver as an ink, cut per theme like --silver. */
   --select: 199 211 232;
-  /* THE ACCENT AS A SURFACE never changes — a silver highlighter is the same on
-     either ground; only the accent as an INK is cut per theme (--select) */
+  /* the accent as a surface is the same on either ground */
   --select-fill: 199 211 232;
-  /* THE LIVE SIGNAL, a component token with its own form per theme: on the
-     dark terminal a glow (silver words on a 10% silver wash), on paper a
-     highlighter (the silver as the fill, near-black words). Full colours, not
-     channels — the alpha is part of the form. */
+  /* the live signal: a glow on dark, a highlighter on paper. Full colours, since the alpha is part of the form. */
   --live-bg: rgb(199 211 232 / 0.1);
   --live-ink: rgb(199 211 232);
   --live-edge: rgb(199 211 232 / 0.28);
-  /* THE SILVER AS A SURFACE never changes either — a filled silver pill with
-     the dark word on it is the holo family's flat form on either ground
-     (Noah, 2026-09-12: "the holographic silver was fine with this section");
-     only the silver as an INK is cut per theme (--silver) */
+  /* the silver as a surface (a filled pill with a dark word) is the same on either ground */
   --silver-fill: 199 211 232;
-  /* THE THERMAL RAMP'S TWO POLES AS WORDS — "breaks / pushes along" warm,
-     "a shelf / pushes back" cool: the exact inks heatLaneInks('thermal-yellow',
-     0.72) computes for the capsules, so a word and its bar agree on the dark
-     terminal; on paper each is cut deep enough to read as text */
+  /* the thermal ramp's poles as text inks, matching heatLaneInks('thermal-yellow', 0.72) on dark */
   --thermal-warm: 227 72 50;
-  --thermal-cool: 76 175 96; /* green: absorbs, the one sign rule (2026-10-23) */
-  /* The clock's pressure pair — a phase that pushes (ember) or absorbs (glacier) */
+  --thermal-cool: 76 175 96; /* green: absorbs (the one sign rule) */
+  /* the clock's pressure pair: pushes (ember) or absorbs (glacier) */
   --ember: 245 197 66;
   --glacier: 122 189 215;
-  /* THE WIRE'S BEATS (components/news/CatTag): a categorical set, deliberately muted so
-     it never impersonates the semantic set — tokens since 2026-09-16 so paper can cut them */
+  /* the news beats: a muted categorical set that never reads as the semantic inks */
   --cat-earnings: 232 196 104;
   --cat-guidance: 126 166 240;
   --cat-analyst: 155 143 232;
@@ -137,10 +79,7 @@
   --cat-ma: 232 154 192;
   --cat-product: 125 211 168;
   --cat-regulatory: 217 143 143;
-  /* THE COMING-SOON WALL'S PAINT (components/ui/ComingSoonWall, 2026-09-16 — Noah, on the
-     light theme: "what about this"): on black a dark scrim over the room, a dark pool behind
-     the words, a silver beam and glow, a white filament. Paper has its own set below: the
-     same picture as FROST. Whole paint strings, so the component paints nothing itself. */
+  /* the coming-soon wall's paint (ui/ComingSoonWall) as whole paint strings; paper has its own frosted set below */
   --wall-scrim: rgb(8 8 8 / 0.55);
   --wall-pool: radial-gradient(ellipse at center, rgb(8 8 8 / 0.78) 0%, rgb(8 8 8 / 0.42) 45%, rgb(8 8 8 / 0) 72%);
   --wall-beam: linear-gradient(to bottom, rgb(199 211 232 / 0.55), rgb(199 211 232 / 0.14) 55%, rgb(199 211 232 / 0));
@@ -151,24 +90,19 @@
   --moon: 185 169 244;
   --supreme: 234 0 255;
   --darkpool: 45 212 191;
-  /* THE SILVER — where you are (the flat holo-silver ink, #C7D3E8): a token
-     since 2026-09-12 so the light terminal can cut it to deep steel; the
-     holo GRADIENT (holo-bg, holo-text) is not this and stays as it is */
+  /* the flat holo-silver ink ("where you are"); the holo gradients are separate */
   --silver: 199 211 232;
-  /* the focus ring's strength (index.css, the matrix's walked row): the pale silver is bright on black, so a 55% ring */
+  /* focus ring strength: the pale silver is bright on black */
   --ring-a: 0.55;
 
-  /* THE PAGE ICONS' BODY (ui/PageGlyph.tsx, 2026-10-01): five stops of the house's foil across an icon — the silver
-     with its violet breath on black */
+  /* the page icons' foil (ui/PageGlyph.tsx) */
   --glyph-1: 238 241 248;
   --glyph-2: 194 214 240;
   --glyph-3: 228 216 244;
   --glyph-4: 255 255 255;
   --glyph-5: 200 216 236;
 
-  /* THE MARK (brand/SlayerMark.tsx, 2026-10-03 — his partner's logo system, taken whole at Noah's word): the tile, its
-     edge, the corner brackets and the ">", the wordmark's cursor ink, and THE FOIL's five stops — the glyphs' run above,
-     the S's sliding strip, the signature's live dot and the wordmark's lit letters all wear it */
+  /* the mark (brand/SlayerMark.tsx): tile, edge, brackets, prompt, cursor, and the five foil stops */
   --tile: 17 17 17;
   --tile-edge: 30 31 34;
   --bracket: 58 61 66;
@@ -181,24 +115,13 @@
   --foil-5: 200 216 236;
 }
 
-/* THE LIGHT TERMINAL — a warm paper ground, the inks cut deep enough to read at
-   the 9–11px the labels live at (AA on the ground), the direction pair and the
-   lime in their deep cuts, magenta held. First cut. */
+/* The light theme: a warm paper ground; inks cut to AA at the 9-11px label sizes. */
 [data-theme='light'] {
   color-scheme: light;
 
-  /* A near-white ground and WHITE panels (Noah, 2026-09-12, on the first cut:
-     "some of the page headers like the weigher have this weird gray that
-     makes it look totally different from the rest of the page" — the first
-     canvas was a grey the heads sat on; now the ground is a breath off white
-     and the boxes sit on it by their hairlines, not by a grey) */
-  /* THE STRUCTURE GETS WEIGHT (Noah, 2026-09-16, with six screenshots: "so many
-     grays practically blend in with the pages" — measured, the words were fine
-     at 7:1 and up; what had no contrast was every EDGE: the hairline at 1.3:1,
-     a white panel on this ground at 1.06:1, a chip or a track at 1.1:1. With no
-     edges the cards, rows and chips melt into one field and the eye reads that
-     as grey). The ground one step deeper so white panels stand on it, the
-     chips and insets a step below white, the hairlines two steps darker. */
+  /* a near-white ground with white panels standing on it by their hairlines */
+  /* edges carry the structure on paper: a deeper ground so white panels stand out, chips a step below white,
+     hairlines two steps darker */
   --canvas: 241 240 236;
   --panel: 255 255 255;
   --panel-hover: 243 242 238;
@@ -207,16 +130,14 @@
   --chip: 245 244 240;
   --card: 246 245 241;
 
-  /* 1.6:1 and 2.2:1 on white (were 1.3 and 1.6) — an edge you can see, not a line you feel */
+  /* 1.6:1 and 2.2:1 on white */
   --border-subtle: 205 203 197;
   --border-muted: 176 174 168;
   --border-focus: 14 15 17;
 
-  /* Near-black at three weights, not three greys (Noah, 2026-09-12, on the
-     first cut: "the gray reads as mute... making them black of a less
-     thickness") — the tiers still read as tiers, none of them mumbles */
+  /* text tiers are near-black at three weights, not three greys */
   --text-primary: 14 15 17;
-  /* the Weigher's price ruler on paper — absent on the dark terminal, where its own typed greys stand (PriceRuler.tsx) */
+  /* the Weigher's price ruler on paper; on dark it uses its own greys */
   --ruler-word: 64 67 74;
   --ruler-halo: 255 255 255;
   --tab-rest: 14 15 17;
@@ -225,38 +146,24 @@
   --tab-rule: 2px;
   --logo-flip: 0;
   --text-secondary: 38 40 45;
-  /* 9.9:1 (was 7.9) — the labels at 9px uppercase read as grey at 7.9; one step darker */
+  /* 9.9:1 for 9px uppercase labels */
   --text-muted: 64 67 74;
 
   --ink: 14 15 17;
 
-  /* The direction pair on paper: the same hues as the dark set, cut deep
-     enough to hold on white but kept vivid — the first cut (15 107 44 /
-     168 36 27) was a forest green and a brick red, and read as mute (Noah,
-     2026-09-12: "the green and red colors read too muted... a heavier red
-     and green") */
-  /* PURE HUES, NOT DARK ONES (Noah, 2026-09-16, with Robinhood's light mode: "our red and
-     greens seem to have a grayish undertone… making them lack high contrast"). The first
-     paper cut (16 120 56 / 185 28 28) passed 5.6:1 and 6.5:1 by going DARK, and dark green is
-     forest — grey to the eye. Robinhood's green is 2.3:1 on white and reads, because it is a
-     100% saturated hue in medium type. So: saturation first, then enough luminance contrast
-     for the tape's 9–11px figures — green 0 140 56 (4.4:1, pure), red 220 32 32 (4.9:1),
-     the fills (bg-bull, bg-bear) keep their own brighter surfaces. */
+  /* the direction pair on paper: the dark set's hues, cut to hold on white */
+  /* Saturated hues rather than dark ones (dark green reads grey): green 0 140 56 (4.4:1), red 220 32 32 (4.9:1);
+     the bg-bull/bg-bear fills keep brighter surfaces. */
   --bull: 0 140 56;
   --bear: 220 32 32;
-  /* A visible orange, not a brown (Noah, 2026-09-12: "the oranges like breaks
-     need to become a more visual orange... thicker") — Robinhood's orange family, pure,
-     4.3:1 on white (the brown 180 83 9 passed 5.0 and read as mud) */
+  /* a saturated orange, 4.3:1 on white */
   --warn: 220 70 0;
-  /* A visible orange for the thermal's warm pole too (breaks, a trapdoor,
-     outside the band) — one step redder than the alert's amber so the two
-     stay apart; the cool pole a deep steel-blue */
-  --thermal-warm: 196 62 10; /* 5.2:1 on white (was 3.6) */
+  /* the thermal's warm pole one step redder than the alert amber; the cool pole a deep steel-blue */
+  --thermal-warm: 196 62 10; /* 5.2:1 on white */
   --thermal-cool: 0 118 52; /* green on paper */
-  --ember: 146 86 4; /* 5.9:1 (was 4.9) — the put figures on the ladder tile read this on paper */
+  --ember: 146 86 4; /* 5.9:1: the put figures on the ladder tile */
   --glacier: 3 105 161;
-  /* the wire's beats cut for paper — the same seven hues, 5.6:1 to 7.3:1 on white (the dark
-     pastels printed at 1.5:1 to 1.9:1 here) */
+  /* the news beats cut for paper, 5.6:1 to 7.3:1 on white */
   --cat-earnings: 140 92 6;
   --cat-guidance: 40 82 168;
   --cat-analyst: 91 74 168;
@@ -264,45 +171,37 @@
   --cat-ma: 172 40 108;
   --cat-product: 20 118 70;
   --cat-regulatory: 166 50 50;
-  /* THE WALL AS FROST (2026-09-16): a lit room needs no lamp, a fogged one does — the scrim is
-     white so the page behind pales like frosted glass, the pool behind the words is white so
-     the ink reads, the beam and the glow are the silver INK (deep steel) at low alpha so the
-     cone shows on white, and the filament is steel too (white on white glass vanished) */
+  /* the coming-soon wall on paper as frost: a white scrim and pool, the beam, glow and filament in deep steel */
   --wall-scrim: rgb(255 255 255 / 0.62);
   --wall-pool: radial-gradient(ellipse at center, rgb(255 255 255 / 0.94) 0%, rgb(255 255 255 / 0.6) 45%, rgb(255 255 255 / 0) 72%);
   --wall-beam: linear-gradient(to bottom, rgb(58 79 122 / 0.34), rgb(58 79 122 / 0.1) 55%, rgb(58 79 122 / 0));
   --wall-glow: radial-gradient(circle, rgb(58 79 122 / 0.5) 0%, rgb(58 79 122 / 0.16) 40%, rgb(58 79 122 / 0) 70%);
   --wall-light: 58 79 122;
   --wall-filament: 58 79 122;
-  /* The accent as an ink on paper is the silver's own deep steel (--silver below), so "live" and "where you are" are
-     one family on white too — as a surface the silver itself stays (--select-fill, --live-bg) */
+  /* on paper the accent ink is the silver's deep steel, so live and "where you are" stay one family */
   --select: 58 79 122;
   --select-fill: 199 211 232;
   --live-bg: rgb(199 211 232);
   --live-ink: rgb(10 10 10);
   --live-edge: rgb(150 166 196);
-  --flip: 75 85 99; /* 7.6:1 (was 4.8) — the flip's price is read at 10px */
+  --flip: 75 85 99; /* 7.6:1: the flip price at 10px */
   --moon: 91 74 168;
   --supreme: 163 0 179;
   --darkpool: 15 138 122;
-  /* The silver on paper: a steel with a breath more blue than the first cut
-     (47 61 92), so "where you are" reads as the holo family's flat form and not
-     as a second black beside the near-black text — still dark enough for words
-     (Noah, 2026-09-12: "do what you think is best with the silver") */
+  /* the silver on paper: a blue-leaning steel, distinct from the near-black text yet dark enough for words */
   --silver: 58 79 122;
-  /* …and the steel whole on paper, where 55% of it fell under 3:1 */
+  /* the steel at full strength on paper, where 55% fell under 3:1 */
   --ring-a: 1;
   --silver-fill: 199 211 232;
 
-  /* …and on paper THE GALAXY INK's own run (index.css --galaxy-gradient): near-black, slate, violet */
+  /* on paper the galaxy ink (index.css --galaxy-gradient): near-black, slate, violet */
   --glyph-1: 43 45 56;
   --glyph-2: 102 113 143;
   --glyph-3: 35 35 44;
   --glyph-4: 103 93 126;
   --glyph-5: 43 45 56;
 
-  /* …and the mark on paper: a paper tile with a hairline edge, and THE FOIL IS THE GALAXY INK (Noah, 2026-10-03: "keep
-     our galaxy color if changing themes i dont want plain white or black") — never a flat black S or word */
+  /* the mark on paper: a paper tile, hairline edge, and the galaxy ink as its foil */
   --tile: 251 250 247;
   --tile-edge: 205 203 197;
   --bracket: 140 138 132;
@@ -315,19 +214,13 @@
   --foil-5: 43 45 56;
 }
 
-/* A SCOPE CARRIES ITS OWN BASE INK: an island's text without an ink class of
-   its own would otherwise inherit the page's colour across the boundary —
-   dark words on a dark chart box. The body sets the page's; every scope sets
-   its own the same way. */
+/* Every theme scope sets its own base text ink, so an island's text never inherits the page's across the boundary. */
 [data-theme] {
   color: rgb(var(--text-primary));
 }
 
-/* COLOUR VISION (2026-10-13, Settings › Appearance — the partner's setting, taken at Noah's word): the most common
-   colour blindness cannot tell the house's green from its red, so the reader may swap the direction pair for blue and
-   orange — `<html data-cvd="blue-orange">`, kept by theme/theme.ts. Only --bull and --bear move; every room follows,
-   the islands too (a dark chart on a light page keeps the dark pair, a light one the paper pair). The paper pair holds
-   the house's direction-ink rule: pure hues at about 4.3:1 or better on the paper ground (blue 4.8:1, orange 4.3:1). */
+/* Colour vision (`<html data-cvd="blue-orange">`, theme/theme.ts): swaps --bull/--bear for blue and orange in every
+   scope; the paper pair keeps the 4.3:1 direction-ink floor (blue 4.8:1, orange 4.3:1). */
 :root[data-cvd='blue-orange'],
 :root[data-cvd='blue-orange'] [data-theme='dark'] {
   --bull: 80 164 255;
@@ -338,10 +231,8 @@
   --bull: 0 104 200;
   --bear: 196 72 0;
 }
-/* HIGH CONTRAST: the house's green and red, stronger — 14:1 and 7.7:1 on black, 6.5:1 and 6.8:1 on paper (the house's
-   4.3:1 direction rule is the floor; this choice is for a reader who asks for more) — and the text tiers and hairlines
-   a step nearer the lead ink, so a second-rank figure and a muted word read at 7:1 or better. A choice the reader
-   makes; the house's own inks are unchanged. */
+/* High contrast: stronger direction inks (14:1 and 7.7:1 on black, 6.5:1 and 6.8:1 on paper) and text tiers and
+   hairlines nearer the lead ink, so secondary text reads at 7:1 or better. */
 :root[data-cvd='high-contrast'],
 :root[data-cvd='high-contrast'] [data-theme='dark'] {
   --bull: 110 245 140;
@@ -365,9 +256,8 @@
   --border-subtle: 150 148 142;
   --border-muted: 112 110 104;
 }
-/* …AND A MARK THAT IS NOT A COLOUR: a figure that carries its direction (`data-dir="up"` / `"down"`, or the `dir-up` /
-   `dir-down` class earnedInk and Lean put beside the ink) wears ▲ or ▼ before it while either choice is on (blue and
-   orange, or high contrast), so a direction never rests on hue alone */
+/* Under either choice a figure carrying its direction (`data-dir`, or `dir-up`/`dir-down`) gets a triangle, so
+   direction never rests on hue alone. */
 :root[data-cvd] [data-dir='up']::before,
 :root[data-cvd] [data-dir='down']::before,
 :root[data-cvd] .dir-up::before,
@@ -386,8 +276,7 @@
 :root[data-cvd] .dir-down::before {
   content: '▼';
 }
-/* …AND A DOT THAT IS NOT A COLOUR: a key's dot that carries its side by ink alone wears `cvd-hollow` on the down (put,
-   sold, bearish) side — under either choice it is drawn as a ring in its own ink, the up side stays filled */
+/* Under either choice a `cvd-hollow` key dot on the down side is drawn as a ring; the up side stays filled. */
 :root[data-cvd] .cvd-hollow {
   background-color: transparent !important;
   box-shadow: inset 0 0 0 1.5px currentColor;

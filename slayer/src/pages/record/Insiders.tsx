@@ -1,37 +1,11 @@
-/*
-==================================================
-  SLAYER TERMINAL - INSIDERS (pages/record/Insiders.tsx)
-
-  What the people who run these companies did with
-  their own shares — and whether they chose to. The
-  partner's "Keyhole" (2026-09-09) in the house, and
-  walked the same evening (Noah: "move onto the
-  insiders page"):
-
-    THE HEAD      four facts
-    THE CARDS     Window · Show · Role · Names, and
-                  the Filter as a card that reads the
-                  names, people and roles on the page
-    THE SENTENCE
-    THE NAMES     where someone chose to buy with
-    TO KNOW       their own money, heaviest first —
-                  the read the rows alone never gave;
-                  a card filters the grid to its name
-    THE GRID      in a window a screen tall that
-                  scrolls inside itself, its head
-                  pinned — the page stays one screen
-
-  Open-market trades by default; the plumbing one
-  card away, marked for what it is. A row's name
-  opens it on the Map.
-==================================================
-*/
+/* What insiders did with their own shares, and whether they chose to: the head's facts, the controls, the names where
+   someone chose to buy, then every filing (open-market trades by default, the plumbing one control away). */
 
 import { CoSub } from '../../components/record/CoName';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { type ColDef, type ICellRendererParams, type IRowNode, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
@@ -65,8 +39,8 @@ type RolePick = 'any' | InsiderRole;
 type NamesPick = 'all' | 'board';
 
 const WINDOW_OPTIONS: DropdownOption<Window>[] = [
-  /* THIS WEEK (round 8: the shortest window was 30 days) */
-  /* one word for it everywhere (round 9: the menu said "This week", the chip "7 days") */
+  /* this week */
+  /* one word for it everywhere */
   { value: 7, label: '7 days', hint: 'Filings in the last seven days' },
   { value: 30, label: '30 days', hint: 'Filings in the last month' },
   { value: 90, label: '90 days', hint: 'The last quarter' },
@@ -106,7 +80,7 @@ const fmtInt = (n: number) => Math.round(n).toLocaleString('en-US');
 
 /* ---- cells --------------------------------------------------------------------- */
 
-/* the date, then how far back (the partner's review: never "9d ago" alone) */
+/* the date, then how far back */
 const WhenCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <When days={data.daysAgo} /> : null);
 
 
@@ -184,18 +158,15 @@ const stakeWords = (t: InsiderTrade): string => {
   if (t.stakePct >= 99.95) return `${shares} shares sold — everything this filer reported holding before the sale`;
   return `${shares} shares sold out of the holding before the sale: ${t.stakePct.toFixed(1)}% of it`;
 };
-/* AN INDIRECT LINE'S STAKE IS THAT LINE'S (the fourth audit, 2026-10-23): "100.0%" on a sale held by a trust is the trust's
-   line alone — the filer's direct holding is another line of the filing. Said so on the cell and in its words. */
+/* an indirect line's stake is that line's alone (a trust's), said so on the cell */
 const stakeTip = (t: InsiderTrade): string => (t.indirect ? `${stakeWords(t)} — of the shares held indirectly (${t.indirect.toLowerCase()}) only; the filer's direct holding is a separate line and is not counted` : stakeWords(t));
-/* newest first under a "↓" (the retail test, round 7): recency descending, ties by the filing day, then the id */
+/* newest first: recency descending, ties by the filing day, then the id */
 const byRecency = (a: number, b: number, na: IRowNode<InsiderTrade>, nb: IRowNode<InsiderTrade>): number =>
   b - a || String(na.data?.filedOn ?? '').localeCompare(String(nb.data?.filedOn ?? '')) || String(nb.data?.id ?? '').localeCompare(String(na.data?.id ?? ''));
 const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
     <span className="font-mono text-t11 tnum text-textSecondary cursor-help" title={stakeTip(data)}>
-      {/* ONE FORMAT (the retail test, round 7: "first purchase", "sold all they held", "<0.1%" and "12.3% of account" in one
-          column read as four kinds of figure): always the share of the holding as a percent, the plain word for the ends
-          and the account mark beside it, small */}
+      {/* one format: the share of the holding as a percent, the plain word at the ends, the account mark beside it */}
       {data.stakePct < 0 ? '—' : data.stakePct >= 99.95 ? '100%' : data.stakePct < 0.1 ? '<0.1%' : `${data.stakePct.toFixed(1)}%`}
       {data.stakePct >= 99.95 ? <span className="text-t8 uppercase tracking-widest text-textMuted"> · {data.kind === 'BUY' ? 'first buy' : 'all sold'}</span> : null}
       {data.indirect && data.stakePct >= 0 ? <span className="text-t8 uppercase tracking-widest text-textMuted" title="An indirect holding — a trust, a fund or a family member's account the insider reports: the percent is of that account's shares alone, not of everything the insider holds"> · of that account</span> : null}
@@ -222,7 +193,7 @@ const PlanCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
   );
 };
 
-/* THE PHONE CARD — who, what, the value and whether they chose to, on three lines (components/record/PhoneCards.tsx) */
+/* the phone card: who, what, the value and whether they chose to */
 const cellOf = <C,>(Cell: (p: ICellRendererParams<InsiderTrade>) => C, t: InsiderTrade) => Cell({ data: t } as ICellRendererParams<InsiderTrade>);
 const InsiderCard = (t: InsiderTrade) => (
   <>
@@ -260,8 +231,7 @@ const NameCard = ({ f, on, onToggle }: { f: InsiderFlow; on: boolean; onToggle: 
   const company = co && co.toUpperCase() !== f.ticker ? co : '';
   /* the distinct people who chose to buy in the window (the engine's cluster counts thirty days only) */
   const buyers = new Set(f.trades.filter(t => isChosenBuy(t)).flatMap(t => t.owners ?? [t.person])).size;
-  /* THE POSTURE SAYS WHY (the retail pass, 2026-10-22: "AUGO $23M chosen buying · 1 buyer · DISTRIBUTING" read as a
-     contradiction): the word weighs chosen buying against chosen selling in the same window, so the selling is shown */
+  /* the posture weighs chosen buying against chosen selling in the window, so the selling is shown beside it */
   /* chosen selling on the rule chosen buying uses: what the filing marks chosen — unstated sales are neither */
   const chosenSold = f.chosenSold;
   const why = f.signal === 'distributing' ? ` · ${fmtDollars(chosenSold)} sold by choice outweighs it` : f.signal === 'accumulating' && chosenSold > 0 ? ` · against ${fmtDollars(chosenSold)} sold by choice` : f.signal === 'flat' ? ` · as much sold by choice (${fmtDollars(chosenSold)})` : '';
@@ -271,8 +241,7 @@ const NameCard = ({ f, on, onToggle }: { f: InsiderFlow; on: boolean; onToggle: 
       onClick={onToggle}
       aria-pressed={on}
       title={on ? `Showing ${f.ticker} only — click to show every name` : `Keep the grid to ${f.ticker}`}
-      /* Lifted a tier from the panel (Noah, 2026-09-09: "too many grays … practically invisible"):
-         the stronger border on a lighter ground, the words in the secondary and primary inks */
+      /* the stronger border on a lighter ground, so the card reads */
       className={`group text-left rounded-md border px-3 py-2.5 transition-colors ${on ? 'border-silver/60 bg-silver/[0.08]' : 'border-borderMuted bg-card hover:border-silver/40 hover:bg-silver/[0.05]'}`}
       data-insiders-name={f.ticker}
       data-on={on || undefined}
@@ -305,9 +274,7 @@ const shortDay = (iso: string | null): string => {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
 
-/** One honest line: what each of the three reads covers FOR THIS WINDOW — complete, still reading, or stopped at the
-    page cap short of it (the data audit, 2026-10-22: it said "reading further back" after the reading had stopped, and
-    kept saying it after the window was cut back to 30 days) */
+/** What each of the three reads covers for this window: complete, still reading, or stopped at the page cap short of it. */
 const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window: number }) => {
   const since = nyIsoDaysBack(window);
   /* complete from the day after the oldest filing read — so the window is covered when that day is on or before its first */
@@ -326,7 +293,7 @@ const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window:
             : `every ${what} filed since ${shortDay(from)}`;
   const setAside = coverage.notShares + coverage.implausible;
   return (
-    <p className="px-5 pb-2 text-t11 leading-relaxed text-textMuted" data-insiders-coverage title="Unusual Whales sends at most 500 filings a request, newest filed first">
+    <p className="text-t11 leading-relaxed text-textMuted" data-insiders-coverage title="The vendor sends at most 500 filings a request, newest filed first">
       <span className="text-textSecondary">Purchases:</span> {paged(coverage.buysSince, coverage.buysRanOut, coverage.buysReading, coverage.buysCapped, 'open-market buy')}
       {' · '}
       <span className="text-textSecondary">Sales:</span> {paged(coverage.bigSalesSince, coverage.bigSalesRanOut, coverage.bigSalesReading, coverage.bigSalesCapped, `open-market sale of ${big} or more`)}
@@ -358,6 +325,7 @@ const Insiders = () => {
   const [role, setRole] = useState<RolePick>('any');
   const [names, setNames] = useState<NamesPick>('all');
   const [guideOpen, setGuideOpen] = useState(false);
+  const [methodOpen, setMethodOpen] = useState(false);
 
   /* The feed is the live record when it answers; the cards cut it, the Filter keeps from the cut */
   const feed = useInsiderTrades(window, show === 'market' ? OPEN_MARKET_CODES : ALL_CODES);
@@ -368,11 +336,10 @@ const Insiders = () => {
   const status = useInsidersStatus();
   const failed = status === 'sim';
   const waiting = status === 'loading';
-  /* THE TOTALS ARE PARTIAL WHILE THE PAGES LOAD (the retail pass, 2026-10-22: Filings read 4685, then 4900) */
+  /* the totals are partial while the pages load */
   const reading = coverage.buysReading || coverage.bigSalesReading || coverage.restReading;
-  /* PROGRESS, SAID AS HOW FAR BACK (the retail test, 2026-10-23: "reading…" sat for 30s with nothing to say how far it
-     had come): the filings are paged newest first, so the totals are complete back to the oldest day both reads reach */
-  /* (round 9) "0 of 90 days" stood beside 970 filings: the parts still reading say how far they reach; a part done says its own */
+  /* filings page newest first, so the totals are complete back to the oldest day both reads reach */
+  /* the parts still reading say how far they reach; a part done says its own */
   const readBack = [coverage.buysReading ? coverage.buysSince : null, coverage.bigSalesReading ? coverage.bigSalesSince : null].filter((d): d is string => !!d).sort().reverse()[0] ?? [coverage.buysSince, coverage.bigSalesSince].filter((d): d is string => !!d).sort().reverse()[0] ?? null;
   const readingWord = readBack ? ` · read back to ${shortDay(readBack)} of ${window} days` : ' · reading the first pages';
   const gridEmpty = failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No filing on this cut';
@@ -381,8 +348,7 @@ const Insiders = () => {
     return feed.filter(t => (role === 'any' || t.role === role) && (names === 'all' || board.has(t.ticker)));
   }, [feed, role, names, boardNames]);
 
-  /* THE FILTER reads the names, people and roles on the cut (Noah: "it should read
-     whats on the current page … so user can select what to add"); any pick matching keeps the row */
+  /* the filter reads the names, people and roles on the cut; any pick keeps its rows */
   const [picks, setPicks] = useState<string[]>([]);
   const filterGroups = useMemo<MultiGroup[]>(() => {
     const count = (key: (t: InsiderTrade) => string) => {
@@ -416,9 +382,8 @@ const Insiders = () => {
   }, [cut, picks]);
   const toggleName = (ticker: string) => setPicks(p => (p.includes(`name:${ticker}`) ? p.filter(x => x !== `name:${ticker}`) : [...p, `name:${ticker}`]));
 
-  /* THE SALES' COVERAGE, ONE PER FIGURE (the fourth audit, 2026-10-23): $1M+ sales are paged over the whole window, the
-     smaller ones only in the latest filings read — when those stop short of the window the figure is the large sales'
-     alone and the smaller ones are stated apart, with their days */
+  /* $1M+ sales are paged over the whole window, smaller ones only in the latest filings; when those stop short the
+     figure is the large sales' and the smaller are stated apart */
   const split = useMemo<SalesSplit | null>(() => {
     const since = nyIsoDaysBack(window - 1);
     if (!coverage.restSince || !coverage.restNewest || coverage.restSince <= since) return null;
@@ -436,7 +401,7 @@ const Insiders = () => {
     return { filings: rows.length, chosen, corporate, sold, sales: sales.length, smallSold: small.reduce((s, t) => s + t.value, 0), smallCount: small.length, plannedPct: sales.length ? Math.round((planned / sales.length) * 100) : null };
   }, [rows, split]);
 
-  /* THE NAMES TO KNOW: chosen buying in the window, heaviest first, on the Names card's cut */
+  /* the names to know: chosen buying in the window, heaviest first */
   const buyers = useInsiderBuyers(window);
   const toKnow = useMemo(() => {
     const board = new Set(boardNames);
@@ -486,19 +451,18 @@ const Insiders = () => {
           <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
             {show === 'market' ? 'Open-market purchases and sales only' : 'Every filing, the plumbing named for what it is'} · newest first · a row opens their book
           </p>
-          {/* THE READ'S PROGRESS, UP FRONT (audit round 5: "read back to Aug 22 of 90 days · partial" was a quiet footnote) */}
+          {/* the read's progress, up front */}
           {!failed && (
             <p className={`mt-1 font-mono text-t10 uppercase tracking-widest ${reading || waiting ? 'text-warn' : 'text-textSecondary'}`} data-insiders-progress={reading || waiting ? 'reading' : 'complete'}>
               {waiting
                 ? `Reading the filings · 0 of ${window} days so far`
                 : reading
-                  ? `Reading · ${readBack ? Math.max(0, Math.min(window, Math.round((Date.parse(`${nyIsoDaysBack(0)}T12:00:00Z`) - Date.parse(`${readBack}T12:00:00Z`)) / 86_400_000))) : 0} of ${window} days so far — the totals beside are provisional and grow as older filings land`
-                  : `Complete · the read is done for ${window} days (what each part covers is under the controls)`}
+                  ? `Reading · ${readBack ? Math.max(0, Math.min(window, Math.round((Date.parse(`${nyIsoDaysBack(0)}T12:00:00Z`) - Date.parse(`${readBack}T12:00:00Z`)) / 86_400_000))) : 0} of ${window} days so far · totals grow`
+                  : `Complete · ${window} days read`}
             </p>
           )}
         </div>
-        {/* PROVISIONAL, SAID AND SHOWN (round 8: the totals moved under "READING · 71 OF 90 DAYS" with nothing on them to
-            say so) — while the read pages back the figures are greyed, each marked "so far" */}
+        {/* while the read pages back the figures are greyed, each marked "so far" */}
         <dl className={`flex flex-wrap gap-x-6 gap-y-2 transition-opacity ${reading && !failed && !waiting ? 'opacity-60' : ''}`} data-insiders-provisional={reading && !failed && !waiting ? 'yes' : undefined} title={reading && !failed && !waiting ? 'Provisional — the filings are still being read back; these totals grow until the window is complete' : undefined}>
           <div>
             <dt className="text-t10 text-textMuted cursor-help" title="Rows on the grid right now, after the window and the cards above">Filings</dt>
@@ -540,7 +504,6 @@ const Insiders = () => {
           </div>
         </dl>
       </div>
-      {/* THE ONE LINE OF CONTROLS */}
       <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-insiders-controls>
         <DropdownSelect label="Window" value={window} options={WINDOW_OPTIONS} onChange={setWindow} title="How far back the filings run" testId="insiders-window" />
         <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Trades only, or every filing" testId="insiders-show" />
@@ -548,7 +511,6 @@ const Insiders = () => {
         <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="insiders-names" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names, people and roles on the page right now — tick any number; only those stay" testId="insiders-filter" />
       </div>
-      {!failed && !waiting && <CoverageLine coverage={coverage} window={window} />}
       {failed ? (
         <FeedFallback />
       ) : (
@@ -557,13 +519,23 @@ const Insiders = () => {
         </p>
       )}
       {!failed && (
-        <p className="px-5 pb-3 -mt-1 text-t11 leading-relaxed text-textMuted" data-insiders-words>
-          <span className="text-textSecondary">Planned · 10b5-1</span> — sold or bought on a schedule the insider fixed months earlier, so it says little about the day. <span className="text-textSecondary">Of that account</span> — the trade was in a trust, a fund or a family member's account the insider reports; the percent is of that account alone.
-        </p>
+        <div className="px-5 pb-2 -mt-1" data-insiders-method={methodOpen ? 'open' : 'shut'}>
+          <button type="button" onClick={() => setMethodOpen(v => !v)} aria-expanded={methodOpen} className="inline-flex items-center gap-1 font-mono text-t9 uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors">
+            <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${methodOpen ? 'rotate-180' : ''}`} />
+            What the read covers
+          </button>
+          {methodOpen && (
+            <div className="mt-1 flex flex-col gap-1">
+              {!waiting && <CoverageLine coverage={coverage} window={window} />}
+              <p className="text-t11 leading-relaxed text-textMuted" data-insiders-words>
+                <span className="text-textSecondary">Planned · 10b5-1</span> — on a schedule fixed months earlier, so it says little about the day. <span className="text-textSecondary">Of that account</span> — a trust, fund or family account the insider reports; the percent is of that account alone.
+              </p>
+            </div>
+          )}
+        </div>
       )}
-      {/* THE NAMES TO KNOW */}
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-insiders-to-know>
-        {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
+        {/* on a phone the head stacks: the label over its words */}
         <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The names to know</span>
           <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">where a person chose to buy (not on a plan, not a company or fund) in the last {window} days, heaviest first · click a name to keep the grid to it</span>
@@ -572,8 +544,7 @@ const Insiders = () => {
           <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No insider chose to buy in this window'}</div>
         ) : (
           <div
-            /* every name across from 1280; six on a small laptop, four on a tablet, two on a phone (the device sweep,
-               2026-10-18: the cards' figures cut at 360 and 768) */
+            /* every name across from 1280; six on a laptop, four on a tablet, two on a phone */
             className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--names),minmax(0,1fr))]" style={{ '--names': NAMES_TO_KNOW } as CSSProperties}>
             {toKnow.map(f => (
               <NameCard key={f.ticker} f={f} on={picks.includes(`name:${f.ticker}`)} onToggle={() => toggleName(f.ticker)} />
@@ -581,7 +552,7 @@ const Insiders = () => {
           </div>
         )}
       </div>
-      {/* THE GRID — grown to its rows, the page scrolls (2026-09-11, the Compass board's rule) */}
+      {/* the grid grows to its rows and pages itself */}
       <div className="slayer-board border-t border-borderSubtle" data-insiders-grid>
         {phone ? (
           <PhoneCards rows={rows} rowKey={t => t.id} card={InsiderCard} onOpen={t => navigate(`/dossier/insiders/${personSlug(t.person)}`)} empty={gridEmpty} testId="insiders" resetKey={rows} />

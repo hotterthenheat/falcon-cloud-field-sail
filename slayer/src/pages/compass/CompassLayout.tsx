@@ -1,15 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - COMPASS'S SHELL (pages/compass/CompassLayout.tsx)
-
-  One head over the board and a setup's page (the
-  walk, 2026-09-11): the page's icon and name over
-  its one line — the house shell head, the way
-  Trace's and the Record's read. A setup has a
-  route of its own now (/compass/<id>) so the
-  Tracker's door and the browser's Back work; only
-  the body below the head cross-fades.
-==================================================
+  Compass's shell: one head over the board, the blotter, the tracker and a setup's page.
+  The scan engine starts with the first Compass page (useThetaBook), so a visitor who never opens Compass never runs it.
 */
 
 import { Suspense, useMemo } from 'react';
@@ -19,19 +10,17 @@ import { CompassRouteSkeleton } from '../compassSkeleton';
 import TapeRail from '../../components/compass/TapeRail';
 import NameDesks from '../../components/compass/NameDesks';
 import SessionBook from '../../components/ui/SessionBook';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
 import { useCompassView } from '../../data/compassView';
 import { parseSetupId, setupIdOf } from '../../data/compass';
 import { COMPASS_SET } from '../../data/compassUniverse';
 import { currentPicks } from '../../data/compassModel';
 import { useThetaBook } from '../../data/thetaBook';
 
-/* "graded and ranked" until 2026-09-19: we do not say we grade, anywhere a reader can see (Noah: "reword graded"; memory: no-public-grades) */
 export const COMPASS_LINE = 'Book A and Book B, 0 to 7 days. Book C is same-day only.';
 /** The Tracker's line under the same head. Last page of Compass. */
 export const TRACKER_LINE = 'The contracts you keep. A row opens one.';
-/** Blotter — every fill the desk recorded. Sits before the Tracker. */
-export const BLOTTER_LINE = 'Every trade recorded, newest first — exit against what was paid';
+export const BLOTTER_LINE = 'Paper fills recorded in this browser, newest first — exit against what was paid';
 
 const CompassLayout = () => {
   const location = useLocation();
@@ -81,7 +70,7 @@ const CompassLayout = () => {
 
 /** The same tape the scan is reading. Stays mounted across the board and a contract. */
 const CompassTape = ({ pathname }: { pathname: string }) => {
-  const { activeTicker, changeTicker } = useMarketData();
+  const { activeTicker, changeTicker } = useTicker();
   const { sleeve, selectedId } = useCompassView();
   const navigate = useNavigate();
   const offered = sleeve === 'weekly' ? 'weekly' : 'odte';

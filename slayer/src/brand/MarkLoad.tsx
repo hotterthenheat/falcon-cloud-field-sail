@@ -1,11 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - A LOAD THE MARK HEARS ABOUT (brand/MarkLoad.tsx)
-
-  Rendered inside a Suspense fallback: while it is on screen a page's code is travelling, and once that has run past
-  450 ms the mark goes to Loading ("any load over 450 ms" — brand/markState.ts). Draws nothing.
-==================================================
-*/
+/* Draws nothing. Rendered in a Suspense fallback, it reports a load so the mark shows Loading past 450 ms
+   (brand/markState.ts). */
 
 import { useEffect } from 'react';
 import { beginLoad } from './markState';

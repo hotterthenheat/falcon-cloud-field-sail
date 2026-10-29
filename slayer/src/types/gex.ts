@@ -146,6 +146,8 @@ export interface ZoneBand {
 }
 
 export type DealerBias = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+/** A book's gamma regime — about volatility (absorbs or amplifies moves), never direction */
+export type GammaBias = 'LONG_GAMMA' | 'SHORT_GAMMA' | 'NEUTRAL';
 
 export interface ExposureLevels {
   spot: number;
@@ -183,7 +185,7 @@ export interface ExposureProfileData {
   netVex: number;
   levels: ExposureLevels;
   zones: ZoneBand[];
-  bias: DealerBias;
+  bias: GammaBias;
   biasNote: string;
   /** Generated narrative — levels translated to English */
   insights: string[];

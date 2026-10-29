@@ -1,38 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE THEME (theme/theme.ts)
-
-  The reader's choice — dark, light, or the
-  machine's — kept in one place and applied as ONE
-  attribute on <html> (tokens.css does the rest).
-  index.html sets the same attribute before the
-  first paint from the same key, so a stored theme
-  never flashes the other one on load.
-
-  What a component needs from here:
-    useThemeChoice()    the choice, for the control
-    useResolvedTheme()  'dark' | 'light', for code
-                        that holds colours in JS
-                        (a chart's axis ink, a
-                        canvas fill) and must redo
-                        them when the theme moves
-    readToken(name)     a token as a CSS colour,
-                        for canvas and chart APIs
-                        that cannot read var()
-    subscribeTheme(fn)  the module-level hook the
-                        candle theme uses to
-                        re-stamp the chart ground
-    useColourVision()   the direction pair: the
-                        house's green and red, or
-                        blue and orange with ▲/▼,
-                        or high contrast (Settings
-                        › Appearance, 2026-10-13) —
-                        `data-cvd` on <html>,
-                        tokens.css does the rest
-
-  'system' follows prefers-color-scheme live — the
-  machine's own toggle moves the terminal too.
-==================================================
+  The theme choice (dark, light, system) applied as one `data-theme` attribute on <html>; tokens.css does the rest.
+  index.html sets it from the same key before first paint. 'system' follows prefers-color-scheme live.
+  readToken() serves canvas and chart code that cannot read var(); useColourVision() sets `data-cvd`.
 */
 
 import { useSyncExternalStore } from 'react';
@@ -41,7 +10,7 @@ import { EMBEDDED, EMBED_THEME } from '../embed';
 export type ThemeChoice = 'dark' | 'light' | 'system';
 export type Theme = 'dark' | 'light';
 
-/** The one key — index.html's boot script reads it too */
+/** The storage key; index.html's boot script reads it too. */
 export const THEME_KEY = 'slayer_theme';
 
 const CHOICES: ThemeChoice[] = ['dark', 'light', 'system'];
@@ -53,7 +22,7 @@ function loadChoice(): ThemeChoice {
     const raw = localStorage.getItem(THEME_KEY);
     if (raw && (CHOICES as string[]).includes(raw)) return raw as ThemeChoice;
   } catch {
-    /* storage blocked — the dark terminal */
+    /* storage blocked: dark */
   }
   return 'dark';
 }
@@ -65,13 +34,11 @@ const resolve = (choice: ThemeChoice): Theme => (choice === 'system' ? systemThe
 let choice: ThemeChoice = loadChoice();
 let resolved: Theme = resolve(choice);
 const listeners = new Set<() => void>();
-/** Colours read out of the tokens, per theme — a canvas asks once per frame, not the style engine */
+/** Token colours cached per theme, so a canvas does not query the style engine every frame. */
 const tokenCache = new Map<string, string>();
 
-/* ── COLOUR VISION (2026-10-13, the partner's setting at Noah's word) ─────────────────────────────────────────────
-   'blue-orange' swaps the direction pair for a reader who cannot tell the house's green from its red; 'high-contrast'
-   is the house's pair stronger and the text tiers nearer the lead ink (tokens.css). Kept in storage, stamped on <html>
-   as `data-cvd`; every token reader hears a change as a theme change, so a chart re-reads its inks. */
+/* Colour vision: 'blue-orange' swaps the direction pair, 'high-contrast' strengthens it (tokens.css). Stored and
+   stamped as `data-cvd`; token readers treat a change as a theme change. */
 export type ColourVision = 'standard' | 'blue-orange' | 'high-contrast';
 export const CVD_KEY = 'slayer_cvd';
 function loadCvd(): ColourVision {
@@ -102,8 +69,7 @@ function settle(): void {
   listeners.forEach(fn => fn());
 }
 
-/* The attribute is on <html> already (index.html) — this keeps it honest if
-   storage and the boot script ever disagree, and clears the reader's cache */
+/* re-applies the attribute in case storage and the boot script disagree, and clears the token cache */
 apply();
 media?.addEventListener('change', () => {
   if (choice === 'system') settle();
@@ -115,7 +81,7 @@ export const getResolvedTheme = (): Theme => resolved;
 export function setThemeChoice(next: ThemeChoice): void {
   if (next === choice) return;
   choice = next;
-  /* the landing's window shares the visitor's storage — a tour never rewrites their theme (embed.ts) */
+  /* the landing's window shares the visitor's storage: a tour never rewrites their theme (embed.ts) */
   if (!EMBEDDED) {
     try {
       localStorage.setItem(THEME_KEY, next);
@@ -126,7 +92,7 @@ export function setThemeChoice(next: ThemeChoice): void {
   const before = resolved;
   resolved = resolve(choice);
   apply();
-  /* The choice changed even when the theme did not (dark → system on a dark machine) */
+  /* the choice can change while the resolved theme does not (dark to system on a dark machine) */
   listeners.forEach(fn => fn());
   if (before !== resolved) tokenCache.clear();
 }
@@ -138,7 +104,7 @@ export function subscribeTheme(fn: () => void): () => void {
 
 export const getColourVision = (): ColourVision => cvd;
 
-/** Swap the direction pair — every token reader hears it as a theme change, so a chart re-reads its inks */
+/** Swap the direction pair; token readers hear it as a theme change. */
 export function setColourVision(next: ColourVision): void {
   if (next === cvd) return;
   cvd = next;
@@ -147,7 +113,7 @@ export function setColourVision(next: ColourVision): void {
       if (next === 'standard') localStorage.removeItem(CVD_KEY);
       else localStorage.setItem(CVD_KEY, next);
     } catch {
-      /* non-fatal — the choice lives for the visit */
+      /* non-fatal: the choice lives for the visit */
     }
   }
   apply();
@@ -163,16 +129,14 @@ const subscribeCvd = (fn: () => void) => {
 };
 export const useColourVision = (): ColourVision => useSyncExternalStore(subscribeCvd, getColourVision, getColourVision);
 
-/** The direction a signed figure carries, for its `data-dir` (tokens.css draws ▲/▼ from it under the colour-vision choices) */
+/** The direction a signed figure carries, for `data-dir` (tokens.css draws the triangles from it). */
 export const dirOf = (n: number): 'up' | 'down' | undefined => (n > 0 ? 'up' : n < 0 ? 'down' : undefined);
 
 export const useThemeChoice = (): ThemeChoice => useSyncExternalStore(subscribeTheme, getThemeChoice, getThemeChoice);
 export const useResolvedTheme = (): Theme => useSyncExternalStore(subscribeTheme, getResolvedTheme, getResolvedTheme);
 
-/** A token ("--text-muted") as a CSS colour string ("rgb(125 125 125)"), with an
-    optional alpha — for canvas fills and chart options that cannot read var().
-    Read from the document's computed style, so a scoped theme on an element
-    is NOT seen here; pass the element whose scope should answer. */
+/** A token ("--text-muted") as a CSS colour, with optional alpha, for canvas and chart APIs. Read from the
+    document by default; pass an element to read inside its theme scope. */
 export function readToken(name: string, alpha?: number, from?: Element | null): string {
   const key = `${name}|${alpha ?? ''}|${from ? 'el' : ''}`;
   if (!from) {

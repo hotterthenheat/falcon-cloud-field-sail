@@ -1,20 +1,9 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE ROOM (data/room.ts)
-  The community's one room (2026-09-13; Noah, with
-  his partner's page: "basically a community
-  chatroom… when users @ specific tickers it pops
-  up on a box of trending things"): the people,
-  the seeded posts, the reader's own posts and
-  marks in this browser, and the room's small
-  engines — what a post mentions, what is trending
-  in the last day, what a setup settled for and
-  the record a person builds. Plain data out; the
-  page draws the doors.
-==================================================
+  The community room's data: the reader's own posts and marks in this browser, and the small engines —
+  what a post mentions, what is trending, what a setup settled for and the record a person builds.
 */
 
-import type { Lean, Notice, Person, Post, RoomState, Setup } from '../types/room';
+import type { Lean, Person, Post, RoomState, Setup } from '../types/room';
 
 /** The reader's own posts carry this handle; the page draws the profile for it */
 export const ME = 'me';
@@ -22,190 +11,14 @@ export const ME = 'me';
 const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
 const hoursAgo = (h: number) => minutesAgo(h * 60);
 
-// ---- the people ----------------------------------------------------------------
-
-export const PEOPLE: Person[] = [
-  { handle: 'gamma_gwen', name: 'Gwen Tao', verified: true, followers: 12400, line: 'Same-day money, the flip first' },
-  { handle: 'zero_dte_zed', name: 'Zed Marlow', verified: true, followers: 8900, line: 'The index, nothing else' },
-  { handle: 'pin_risk', name: 'Priya Nair', verified: true, followers: 5200, line: 'Pins and the close' },
-  { handle: 'quant_iv', name: 'Marcus Feld', verified: false, followers: 3400, line: 'Vol surfaces, no opinions' },
-  { handle: 'terrain_ok', name: 'Lena Okafor', verified: false, followers: 2100, line: 'Dark pool shelves' },
-  { handle: 'swing_sam', name: 'Sam Reyes', verified: false, followers: 1900, line: 'Swings off the walls' },
-  { handle: 'earnings_eli', name: 'Eli Brandt', verified: false, followers: 1000, line: 'The report, not the rumour' },
-];
+/* No members or posts are invented: until the room has a backend, only this browser's own posts are in it. */
+export const PEOPLE: Person[] = [];
 
 const byHandle = new Map(PEOPLE.map(p => [p.handle, p]));
 /** Null for the reader — the page draws the profile instead */
 export const personOf = (handle: string): Person | null => byHandle.get(handle) ?? null;
 
 export const fmtFollowers = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
-
-// ---- the seeded room -----------------------------------------------------------
-
-const setup = (s: Setup): Setup => s;
-
-export const SEED_POSTS: Post[] = [
-  {
-    id: 's1',
-    handle: 'terrain_ok',
-    at: minutesAgo(58),
-    body: 'The dark pool printed 3M shares at 488.01 on $NVDA — that shelf has held twice this week.',
-    likes: 33,
-    replies: [],
-  },
-  {
-    id: 's2',
-    handle: 'zero_dte_zed',
-    at: minutesAgo(64),
-    body: 'Every wall on $IWM is inside one expected move today. That is not structure, that is noise. Trade the index instead.',
-    likes: 33,
-    replies: [{ id: 's2r1', handle: 'quant_iv', at: minutesAgo(40), body: 'Same read. The book is thin under 215 — nothing to lean on.' }],
-  },
-  {
-    id: 's3',
-    handle: 'gamma_gwen',
-    at: minutesAgo(71),
-    body: 'Every same-day trader should read the flip before the open. $SPY flip at 487.50, spot 488.01. That is the whole plan.',
-    likes: 35,
-    replies: [{ id: 's3r1', handle: 'swing_sam', at: minutesAgo(50), body: 'And the put wall at 485 under it. Two lines, one plan.' }],
-  },
-  {
-    id: 's4',
-    handle: 'swing_sam',
-    at: hoursAgo(3),
-    body: '$META put wall drained $180M since the open. If it goes, 480 is the next shelf.',
-    lean: 'BEARISH',
-    likes: 127,
-    replies: [
-      { id: 's4r1', handle: 'terrain_ok', at: hoursAgo(2.6), body: 'Dark prints under 486 all morning agree with you.' },
-      { id: 's4r2', handle: 'pin_risk', at: hoursAgo(2.1), body: 'Watch 485 into the close — the pin has not moved.' },
-      { id: 's4r3', handle: 'zero_dte_zed', at: hoursAgo(1.8), body: 'Same-day puts three to one on 485. The desk is leaning on it.' },
-    ],
-  },
-  {
-    id: 's5',
-    handle: 'gamma_gwen',
-    at: hoursAgo(3.2),
-    body: '$AVGO bullish two weeks. Buying the put wall hold at 173.75, target the call wall 180, out under 172.5.',
-    lean: 'BULLISH',
-    setup: setup({
-      ticker: 'AVGO',
-      lean: 'BULLISH',
-      entry: 173.75,
-      target: 180,
-      stop: 172.5,
-      timeframe: '2 weeks',
-      state: 'TARGET HIT',
-      settledAt: 180,
-      events: [
-        { at: hoursAgo(2), kind: 'STOP MOVED', note: 'Stop moved to breakeven.' },
-        { at: minutesAgo(17), kind: 'TARGET HIT', note: 'Target hit. Flat.' },
-      ],
-    }),
-    likes: 88,
-    replies: [
-      { id: 's5r1', handle: 'earnings_eli', at: hoursAgo(1), body: 'Clean. The call wall never moved once it printed.' },
-      { id: 's5r2', handle: 'quant_iv', at: minutesAgo(30), body: 'Five R on a two-week hold. That is the record talking.' },
-    ],
-  },
-  {
-    id: 's6',
-    handle: 'pin_risk',
-    at: hoursAgo(4),
-    body: '$AAPL pinned to 230 three Fridays running. The 232.5 call wall is where the pin lives this week.',
-    lean: 'BULLISH',
-    likes: 41,
-    replies: [],
-  },
-  {
-    id: 's7',
-    handle: 'quant_iv',
-    at: hoursAgo(5),
-    body: '$QQQ skew steepened into the close — puts bid, calls offered. Someone paid up for the downside.',
-    lean: 'BEARISH',
-    likes: 29,
-    replies: [],
-  },
-  {
-    id: 's8',
-    handle: 'earnings_eli',
-    at: hoursAgo(6),
-    body: '$MSFT reports Thursday after the bell. The implied move is 4.1%; the last eight averaged 3.2%. Rich.',
-    likes: 18,
-    replies: [],
-  },
-  {
-    id: 's9',
-    handle: 'swing_sam',
-    at: hoursAgo(7),
-    body: '$NVDA long off the 118 put wall, target the 124 call wall, stop 116. Two weeks.',
-    lean: 'BULLISH',
-    setup: setup({ ticker: 'NVDA', lean: 'BULLISH', entry: 118, target: 124, stop: 116, timeframe: '2 weeks', state: 'OPEN', events: [] }),
-    likes: 54,
-    replies: [{ id: 's9r1', handle: 'terrain_ok', at: hoursAgo(6), body: 'The 118 shelf has the dark dollars behind it. Agree.' }],
-  },
-  {
-    id: 's10',
-    handle: 'zero_dte_zed',
-    at: hoursAgo(9),
-    body: '$COIN same-day puts running three to one over calls at the 210 strike. The desk is leaning on it.',
-    lean: 'BEARISH',
-    likes: 22,
-    replies: [],
-  },
-  {
-    id: 's11',
-    handle: 'terrain_ok',
-    at: hoursAgo(11),
-    body: '$TSLA dark prints stacking under spot all morning. An accumulation shelf at 241.',
-    lean: 'BULLISH',
-    likes: 37,
-    replies: [],
-  },
-  {
-    id: 's12',
-    handle: 'pin_risk',
-    at: hoursAgo(14),
-    body: '$META short from 495 into the 480 shelf, stop 499. One week.',
-    lean: 'BEARISH',
-    setup: setup({
-      ticker: 'META',
-      lean: 'BEARISH',
-      entry: 495,
-      target: 480,
-      stop: 499,
-      timeframe: '1 week',
-      state: 'STOPPED',
-      settledAt: 499,
-      events: [{ at: hoursAgo(13), kind: 'STOPPED', note: 'Stopped at 499. The wall moved up.' }],
-    }),
-    likes: 19,
-    replies: [],
-  },
-  {
-    id: 's13',
-    handle: 'gamma_gwen',
-    at: hoursAgo(18),
-    body: '$GOOGL charm into the bell — dealers sell the last hour. Every day this week.',
-    lean: 'BEARISH',
-    likes: 44,
-    replies: [],
-  },
-  {
-    id: 's14',
-    handle: 'earnings_eli',
-    at: hoursAgo(22),
-    body: '$TSLA deliveries next week. The straddle already prices 7%.',
-    likes: 15,
-    replies: [],
-  },
-];
-
-export const SEED_NOTICES: Notice[] = [
-  { id: 'n1', handle: 'gamma_gwen', what: 'updated $AVGO: Target hit. Flat.', at: minutesAgo(17) },
-  { id: 'n2', handle: 'gamma_gwen', what: 'posted', at: minutesAgo(71) },
-  { id: 'n3', handle: 'swing_sam', what: 'followed you', at: hoursAgo(5) },
-];
 
 // ---- this browser's store ------------------------------------------------------
 

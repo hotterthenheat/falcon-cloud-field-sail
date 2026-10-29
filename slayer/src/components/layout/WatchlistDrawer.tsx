@@ -1,29 +1,9 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE WATCHLIST (components/layout/WatchlistDrawer.tsx)
-
-  One watchlist of NAMES for the whole shell, kept in
-  sections the reader names, a name flagged or not
-  (the partner's, taken across at Noah's word on
-  2026-10-13 — "add his watchlist section and its
-  functionality to our website"; the store is his,
-  data/nameWatch.ts; this drawer is ours, on the
-  alerts drawer's glass and grammar).
-
-  The rail's Watchlist door opens it at the right over
-  any page. A ROW is a name: its mark, its price and
-  the day's change, and where it stands against the
-  book — the nearest of the call wall, the put wall
-  and the flip, and how far. A press makes it the
-  terminal's name. A flag, a place, a section; the
-  contract lists stay where they are (the Weigher's
-  contracts, Trace's bookmarks, Compass's Tracker),
-  and the row links to them when they hold something
-  on the name.
-
-  Kept on this machine and carried by the account.
-  Esc and a click outside close it.
-==================================================
+  The shell's one watchlist of names, in sections the reader names, each name flagged or not (store:
+  data/nameWatch.ts). Opened from the rail over any page. A row shows the mark, price, day change and the nearest of
+  call wall, put wall and flip with its distance; a press makes it the terminal's name. Contract lists stay where
+  they live (Weigher, Trace bookmarks, Compass Tracker) and rows link to them. Kept locally and carried by the
+  account. Esc or an outside click closes it.
 */
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -49,9 +29,7 @@ import TickerLookup from '../ui/TickerLookup';
 const usd = (v: number) => `$${v.toFixed(2)}`;
 const pctSigned = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}%`;
 const fmtLevel = (v: number) => (!Number.isFinite(v) ? '—' : v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
-/* A SECTION OR A ROW GROWS IN AND FOLDS AWAY (Noah, 2026-10-13: "the adding and exiting of the different sections
-   should be smooth as well"): height from nothing to its own and back, the opacity with it, on the drawer's curve;
-   `layout` lets the rows around it glide into the space (and a row moved up or down glide to its place) */
+/* a section or row grows in and folds away (height and opacity on the drawer's curve); `layout` lets neighbours glide */
 const GROW_EASE: [number, number, number, number] = [0.4, 0, 0.2, 1];
 const grow = {
   initial: { opacity: 0, height: 0 },
@@ -228,9 +206,7 @@ const NameRow = ({
   );
 };
 
-/** A section's head: its name (a press renames it), its count, its own door to add a name into it, and the way to
-    take it off (Noah, 2026-10-13: names "keep being added to the first one with no way for me to add to the other
-    sections" — the Into dropdown above the search box was too easy to miss) */
+/** A section head: its name (press to rename), count, its own add door, and removal. */
 const SectionHead = ({ s, removable, adding, onAdd, onRemove }: { s: WatchSection; removable: boolean; adding: boolean; onAdd: () => void; onRemove: () => void }) => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(s.name);
@@ -469,8 +445,7 @@ const WatchlistDrawer = () => {
                 flip on its book; a press makes it the terminal's name.
               </Empty>
             )}
-            {/* EVERY SECTION IS DRAWN, names or none — a new one with nothing in it used to be hidden behind the words
-                above, so "New section" looked like it did nothing (Noah, 2026-10-13) */}
+            {/* every section is drawn, empty or not, so a new section visibly appears */}
             <AnimatePresence initial={false}>
               {list.sections.map(s => {
                 const shown = only === 'flagged' ? s.names.filter(n => n.flagged) : s.names;

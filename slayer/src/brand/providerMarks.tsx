@@ -1,20 +1,7 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE SIGN-IN PROVIDERS' MARKS (brand/providerMarks.tsx)
+/* The sign-in providers' own marks, drawn to their guidelines: Google's G keeps its four brand colours on any
+   ground (exempt from the theme audit); Apple's takes the page ink. */
 
-  Google's "G" in its four colours and Apple's
-  mark, for the sign-in page's two doors (Noah,
-  2026-10-03: "the google and apple being the
-  colored icons"). These are THEIR marks, drawn
-  to their guidelines: the G keeps its own four
-  colours on any ground, so the hex here is
-  theirs, not a theme colour (the theme audit
-  lets this file be); Apple's is one colour and
-  takes the page's ink.
-==================================================
-*/
-
-/** Google's G — the four colours are the brand's own */
+/** Google's G in its brand colours. */
 export const GoogleMark = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
   <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" className={className} focusable="false">
     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -24,7 +11,7 @@ export const GoogleMark = ({ size = 16, className = '' }: { size?: number; class
   </svg>
 );
 
-/** Apple's mark — one colour, the page's ink */
+/** Apple's mark in the page ink. */
 export const AppleMark = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
   <svg width={size} height={size} viewBox="0 0 814 1000" aria-hidden="true" className={className} focusable="false" fill="currentColor">
     <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57-155.5-127C46.7 790.7 0 663 0 541.8c0-194.4 126.4-297.5 250.8-297.5 66.1 0 121.2 43.4 162.7 43.4 39.5 0 101.1-46 176.3-46 28.5 0 130.9 2.6 198.3 99.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z" />

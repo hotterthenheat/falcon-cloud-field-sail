@@ -1,11 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - DARK POOL TYPES (darkpool.ts)
-  Off-exchange prints with the read attached: not
-  just "a block traded" but who is likely behind it
-  and what to do about the level it printed at.
-==================================================
-*/
+/* Off-exchange prints with the read attached: the likely intent behind a print and what the level means. */
 
 /** What the print is most likely doing — the read, not just the tape line. */
 export type DarkPoolIntent = 'ACCUMULATION' | 'DISTRIBUTION' | 'HEDGE FLOW' | 'ROTATION';
@@ -13,10 +6,10 @@ export type DarkPoolIntent = 'ACCUMULATION' | 'DISTRIBUTION' | 'HEDGE FLOW' | 'R
 export interface DarkPoolPrint {
   id: number;
   time: string;
-  /** The print's instant (epoch ms) and its New York calendar day — what a session filter and a sort read */
+  /** The print's instant (epoch ms) and its New York day, for session filters and sorting. */
   epochMs?: number;
   dateIso?: string;
-  /** An auction print (opening or closing cross, official open or close) — `special` names it; never read */
+  /** An auction print (opening or closing cross), named by `special`; never read. */
   auction?: boolean;
   ticker: string;
   price: number;
@@ -28,7 +21,7 @@ export interface DarkPoolPrint {
   vsSpotPct: number;
   /** Print landed on one of the session's tracked liquidity shelves */
   atLevel: boolean;
-  /** A sized print — the top quarter by shares, the prints the reads are built on (2026-09-13) */
+  /** A sized print: the top quarter by shares, which the reads are built on. */
   sized: boolean;
   intent: DarkPoolIntent;
   /** 0–100 — how confident the classifier is in the intent */
@@ -40,13 +33,13 @@ export interface DarkPoolPrint {
   /** The quote at the print, when the feed sent one. */
   bid?: number | null;
   ask?: number | null;
-  /** A print priced by its own terms, not the quote (average-price, contingent, derivative-priced…) — it carries no read */
+  /** Priced by its own terms (average-price, contingent, derivative-priced), not the quote: carries no read. */
   special?: string | null;
-  /** The facility the print was reported to (a FINRA trade reporting facility) — the dark venue itself is not disclosed */
+  /** The FINRA trade reporting facility the print was reported to; the dark venue itself is not disclosed. */
   facility?: string;
-  /** Reported outside the regular session (the vendor's ext_hour_sold_codes) — read against a post-market quote, no read */
+  /** Reported outside the regular session (ext_hour_sold_codes): no read. */
   extended?: boolean;
-  /** A LIT print (on an exchange, /lit-flow) shown in the same grammar — not a dark cross */
+  /** A lit print (on an exchange, /lit-flow) in the same shape; not a dark cross. */
   lit?: boolean;
 }
 
@@ -60,8 +53,7 @@ export interface DarkPoolLevel {
   /** Share of session dark-pool notional, 0–100 */
   sharePct: number;
   role: LevelRole;
-  /** Times intraday price reversed off this shelf — only where it is counted from real bars (Trace's live shelves carry
-      none, and say nothing; the third audit removed a hard-coded "defended 0×") */
+  /** Times intraday price reversed off this shelf, only where counted from real bars; absent otherwise. */
   defended?: number;
   /** Signed % distance from spot */
   distPct: number;

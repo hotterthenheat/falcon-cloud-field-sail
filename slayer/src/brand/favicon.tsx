@@ -1,12 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE TAB'S MARK (brand/favicon.tsx)
-
-  The app swaps the SVG favicon; the PNG fallbacks stay still. The tab shows the mark's state — still, loading, live,
-  alert, closed — the moment it changes, and only then: one attribute write per change, never per frame. The PNG and
-  the touch icon in index.html are never touched.
-==================================================
-*/
+/* Swaps the SVG favicon to the mark's state (one attribute write per change); the PNG and touch icons stay still. */
 
 import { useEffect } from 'react';
 import { useMarkState, type MarkState } from './markState';
@@ -22,7 +14,7 @@ const urlFor = (state: MarkState): string => {
   return url;
 };
 
-/** Keep the tab's SVG icon on the mark's state — mounted once, at the root */
+/** Keeps the tab icon on the mark's state; mounted once at the root. */
 export function useFaviconFollowsMark(): void {
   const state = useMarkState();
   useEffect(() => {
@@ -33,7 +25,7 @@ export function useFaviconFollowsMark(): void {
   }, [state]);
 }
 
-/** The hook as an element, for the root's list of providers */
+/** The hook as an element for the root's provider list. */
 export const FaviconFollowsMark = (): null => {
   useFaviconFollowsMark();
   return null;

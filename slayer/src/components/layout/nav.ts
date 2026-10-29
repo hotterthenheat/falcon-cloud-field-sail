@@ -16,29 +16,13 @@ import {
 } from 'lucide-react';
 import type { GlyphName } from '../ui/glyphPaths';
 
-/* THE RAIL, BY THE QUESTION A TRADER IS ASKING, IN THE ORDER THEY ASK IT (Noah, 2026-09-28: "the manage section should be
-   at the very bottom … if pulse is the first page a user is going to see then that should be at the very top … we need
-   to really fix the analyze, discover, and record sections and what belongs where"). The old captions said what you DO
-   (discover, analyze, manage) and the pages under them did not share a job. Now:
-
-     HOME       Pulse — the desk you land on — and Alerts under it, no caption
-     MARKET     what is happening and what happened: Terrain (the chart), Trace (the tape), Dossier (news, earnings,
-                insiders, Congress, stocks)
-     THE BOOK   Pinpoint — where dealer hedging pushes; the product's centre, under the house's own word for it
-     TRADE      the two pages that end in a contract: Compass (what to trade), Weigher (which contract, the watchlist,
-                your positions)
-     PRACTICE   Paper · Backtest · Journal — his name, his order
-     MORE       Community · Settings at the very bottom, no caption — doors, not work
-
-   No address moved. */
+/* The rail is grouped by the question a trader asks, in order: Home (Pulse, Alerts), Market (Terrain, Trace, Dossier),
+   The Book (Pinpoint), Trade (Compass, Weigher), Practice (Paper, Backtest, Journal), and More (Community, Settings)
+   at the bottom. */
 export type NavGroup = 'Home' | 'Market' | 'The book' | 'Trade' | 'Practice' | 'More';
 
-/* EACH DESK'S OWN INK (the lock walk, Noah, 2026-09-09: "i think these icons
-   can benefit from color"): a muted categorical hue per item, the News page's
-   and the sector dots' kind — identity, not meaning — so none of them is the
-   lime that means live, the silver that means where you are, the magenta of
-   the supreme or the red and green of direction. Neighbours in a group sit
-   apart on the wheel. */
+/* Each desk's own muted categorical ink: identity, not meaning, so none is the live, where-you-are, supreme or
+   direction ink; neighbours sit apart on the wheel. */
 export const NAV_INK = {
   alerts: '#E9A23B',
   compass: '#4FB8B8',
@@ -53,7 +37,7 @@ export const NAV_INK = {
   settings: '#C2B280',
   backtest: '#D4A5FF',
   journal: '#E6B566',
-  /* PAPER (2026-09-22): the Live Chart, apart on the wheel from its neighbours above */
+  /* Paper: apart on the wheel from its neighbours */
   paperDesk: '#62B6CB',
 } as const;
 
@@ -63,9 +47,8 @@ export interface NavItem {
   code: string;
   /** the line icon — the palette, a page's head, the sub-navs (and the rail for a page without a glyph: Settings) */
   icon: LucideIcon;
-  /** THE PAGE'S GLYPH (ui/PageGlyph.tsx) — the icon the landing draws for the page, and since 2026-10-03 the rail's and
-      the phone menu's too (Noah: "change this sidebar inside of the actual terminal to mimic the logos/icons we have on
-      the landing page for each page"). Settings has none: it keeps its line icon, as on the landing. */
+  /** The page's glyph (ui/PageGlyph.tsx), shared by the landing, the rail and the phone menu; Settings keeps its line
+      icon. */
   glyph?: GlyphName;
   /** The desk's own ink — its icon wears it (NAV_INK) */
   ink: string;
@@ -135,7 +118,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Compass,
     glyph: 'compass',
     ink: NAV_INK.compass,
-    /* "weighed and graded" until 2026-09-19 — the rail's tooltip and the palette's hint read this, and we do not say we grade */
+    /* the rail tooltip and palette hint read this: we do not say we grade */
     description: 'Contracts that fit the levels right now — 0DTE to long-dated, the strongest first',
     group: 'Trade',
   },
@@ -152,7 +135,7 @@ export const NAV_ITEMS: NavItem[] = [
   // ── Practice ──
   {
     path: '/practice/paper',
-    /* "Paper Trade", never "Paper" alone (Noah, 2026-10-10: "i dont like the word paper by itself") */
+    /* "Paper Trade", never "Paper" alone */
     label: 'Paper Trade',
     code: '08',
     icon: LineChart,

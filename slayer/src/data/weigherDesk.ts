@@ -13,12 +13,12 @@
 ==================================================
 */
 
-import Simulator from '../core/simulator';
 import { expiryFor, isoDate, type Expiry } from '../core/calendar';
 import { estimatePremium } from './compass';
-import { spotChangePct } from './gex';
 import { thetaCall } from './theta';
-import { bsOnMark, yearFracLeft } from './weigherGate';
+import { THETA_DAYS, bsOnMark, yearFracLeft } from './weigherGate';
+import { ivNear, listUwExpiries, liveSpotOf, loadUwChain } from './weigherChain';
+import { peekChange, peekIv, snapshotOf } from './uwBook';
 import { weekdayDte } from './compassParams';
 import { nameTape } from './compassSession';
 import { nyIsoDate, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
@@ -189,24 +189,28 @@ export function dteForDate(key: string): number | null {
 /** A single contract's IV on the same smile the chain prices with —
     exported so the premium pane and the chain can never disagree. */
 export function contractIvFor(ticker: string, strike: number, right: OptionRight): number {
-  const sym = Simulator.ensureTicker(ticker);
-  const spot = Simulator.TICKERS[sym].currentPrice;
-  return contractIv(Simulator.TICKERS[sym].iv, spot, strike, right);
+  const own = ivNear(ticker, strike, right);
+  if (own != null) return own;
+  /* no quote for this contract yet: the name's live at-the-money IV on the desk's smile, else a plain 30% */
+  const base = peekIv(ticker) ?? FALLBACK_IV;
+  const spot = liveSpotOf(ticker);
+  return spot != null && spot > 0 ? contractIv(base, spot, strike, right) : base;
 }
+const FALLBACK_IV = 0.3;
 
 /** `snap`: price the chain off THIS snapshot's spot and open interest instead of the live simulator's — the book at
     the session's open (levelview's `snapshotAtOpen`), for the calendar's "since the open" (2026-10-12) */
 export function buildDeskChain(ticker: string, dte: number, depth = 10, snap?: MarketSnapshot): DeskChain {
-  const snapshot = snap ?? Simulator.snapshotFor(ticker);
+  const snapshot = snap ?? snapshotOf(ticker);
+  if (!snapshot) return blankChain(ticker, dte);
   const { spot, chain } = snapshot;
   const expiry = expiryFor(dte);
   // Sessions, floored at half a day — a listed contract has at least that
   const t = Math.max(expiry.sessions, 0.5) / 252;
-  const baseIv = Simulator.TICKERS[Simulator.ensureTicker(ticker)].iv;
+  const baseIv = peekIv(ticker) ?? FALLBACK_IV;
 
-  /* Yesterday's close for every contract comes from yesterday's SPOT run
-     through the same estimator — a real relationship, not a random offset. */
-  const prevSpot = spot / (1 + spotChangePct(ticker) / 100);
+  /* Yesterday's close for every contract is yesterday's spot run through the same estimator. */
+  const prevSpot = spot / (1 + (peekChange(ticker) ?? 0) / 100);
 
   const sorted = [...chain].sort((a, b) => a.strike - b.strike);
   const spotIdx = Math.max(0, sorted.findIndex(n => n.strike >= spot));
@@ -296,7 +300,7 @@ export function buildDeskChain(ticker: string, dte: number, depth = 10, snap?: M
       mark,
       delta: Number((right === 'C' ? g.deltaCall : g.deltaPut).toFixed(4)),
       gamma: Number(g.gamma.toFixed(4)),
-      theta: Number((thetaYear / 252).toFixed(4)),
+      theta: Number((thetaYear / THETA_DAYS).toFixed(4)),
       vega: Number(g.vega.toFixed(4)),
       iv: Number((iv * 100).toFixed(2)),
       itmOdds: Number(((right === 'C' ? nd2 : 1 - nd2) * 100).toFixed(2)),
@@ -553,7 +557,11 @@ export async function listLiveExpiries(ticker: string): Promise<{ rows: ListedEx
   const roots = optionRoots(ticker);
   const got = await Promise.all(roots.map(root => thetaCall(`/option/list/expirations?symbol=${encodeURIComponent(root)}&format=json`)));
   const up = got.map(g => !g.error && g.status !== 472 && g.status !== 478 && g.status !== 0);
-  if (!up.some(Boolean)) return { rows: [], down: true };
+  if (!up.some(Boolean)) {
+    /* ThetaData did not answer: the expiries Unusual Whales lists stand in */
+    const uw = await listUwExpiries(ticker);
+    return uw && uw.length ? { rows: uw.filter(e => !(e.weekday === 0 && nameTape(e.root, true).done)), down: false } : { rows: [], down: true };
+  }
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const byIso = new Map<number, string>();
   for (let d = 0; d <= 240; d++) {
@@ -640,7 +648,9 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
   const ivs: number[] = [];
   const tYears = yearFracLeft(iso);
   const down = !!got.error || got.status === 472 || got.status === 478 || got.status === 0;
-  if (!down) {
+  /* ThetaData did not answer: the vendor's listed contracts (their NBBO and greeks) stand in */
+  if (down) return loadUwChain(ticker, dte, range, root);
+  {
     for (const item of snapRows(got.data)) {
       const strike = numOr(item.contract.strike);
       const word = String(item.contract.right || '').toLowerCase();
@@ -675,7 +685,7 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
         mark: Number.isFinite(mark) ? Number(mark.toFixed(2)) : NaN,
         delta: feedDelta != null ? Number(feedDelta.toFixed(4)) : solved ? Number(solved.delta.toFixed(4)) : NaN,
         gamma: feedGamma != null ? Number(feedGamma.toFixed(4)) : solved ? Number(solved.gamma.toFixed(4)) : NaN,
-        theta: feedTheta != null ? Number((feedTheta / 365).toFixed(4)) : solved ? Number(solved.theta.toFixed(4)) : NaN,
+        theta: feedTheta != null ? Number((feedTheta / THETA_DAYS).toFixed(4)) : solved ? Number(solved.theta.toFixed(4)) : NaN,
         vega: feedVega != null ? Number((feedVega / 100).toFixed(4)) : solved ? Number(solved.vega.toFixed(4)) : NaN,
         iv: Number.isFinite(ivPct) ? Number(ivPct.toFixed(2)) : NaN,
         itmOdds: solved ? Number(solved.itm.toFixed(2)) : NaN,
@@ -883,15 +893,8 @@ export function blankChain(ticker: string, dte: number): DeskChain {
   return { ticker, spot: 0, step: 1, rows: [], expiry, expectedMovePct: 0, source: 'simulated', quotedAt: 0, expiryIso: isoDate(expiry.date) };
 }
 
-// ---- the scanner ------------------------------------------------------------
-
+/** The Weigher's name lists: the session's movers and the busiest option tapes */
 export type ScanPreset = 'gainers' | 'losers' | 'voliv';
-
-export const SCAN_PRESETS: { key: ScanPreset; label: string; hint: string }[] = [
-  { key: 'gainers', label: 'Daily gainers', hint: 'Largest session gains first' },
-  { key: 'losers', label: 'Daily losers', hint: 'Largest session losses first' },
-  { key: 'voliv', label: 'Options volume · IV', hint: 'Busiest option tapes, priciest vol first' },
-];
 
 export interface ScanRow {
   ticker: string;
@@ -902,22 +905,6 @@ export interface ScanRow {
   ivPct: number;
 }
 
-export function buildScan(_preset: ScanPreset, _active: string): ScanRow[] {
-  return [];
-}
-
-// ---- the market's mood ------------------------------------------------------
-
-export type MarketMood = 'up' | 'down' | 'flat';
-
-/** The FLAT BAND keeps the tone honest: without it the tone would flip
-    up/down all day on noise. ±0.15% is a genuinely mixed tape. (The desk's
-    background wash that wore this tone is gone, 2026-09-03; the desk's head
-    reads only `changePct` now. The tone stays for any future consumer.) */
-export const MOOD_BAND_PCT = 0.15;
-
-/** The Nasdaq's session, read from QQQ — the name the twins already map to
-    NDX. Returns the tone and the number it was read from. */
 /** Whether New York is trading right now — 9:30 to 16:00 ET on a weekday.
     Everything else is the overnight session. */
 export function marketSession(): 'open' | 'overnight' {
@@ -934,8 +921,3 @@ export function marketSession(): 'open' | 'overnight' {
   return weekday && mins >= 570 && mins < 960 ? 'open' : 'overnight';
 }
 
-export function marketMood(): { mood: MarketMood; changePct: number } {
-  const changePct = Number(spotChangePct('QQQ').toFixed(2));
-  const mood: MarketMood = changePct > MOOD_BAND_PCT ? 'up' : changePct < -MOOD_BAND_PCT ? 'down' : 'flat';
-  return { mood, changePct };
-}

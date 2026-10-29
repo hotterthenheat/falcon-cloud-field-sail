@@ -245,6 +245,8 @@ export interface Trade {
   heldMin: number;
   plannedStop?: number;
   tag?: string;
+  /** The lowest the trade marked while open, fees in, at the bid each minute (0 or below) */
+  lowOpen?: number;
 }
 
 export interface TradeLeg {
@@ -266,6 +268,42 @@ export function cashOf(s: Session): number {
 interface Book {
   positions: Position[];
   trades: Trade[];
+}
+/* The trade's open P&L at each minute's bid, from the first fill to the close; the lowest is kept for the drawdown. */
+const lowMemo = new Map<string, number>();
+function lowOpenOf(id: string, contract: ContractId, legs: TradeLeg[]): number {
+  const first = legs[0];
+  const last = legs[legs.length - 1];
+  const key = `${id}|${last.at.day}|${last.at.minute}|${legs.length}`;
+  const hit = lowMemo.get(key);
+  if (hit != null) return hit;
+  const days = tapeDays();
+  let from = dayIndex(first.at.day);
+  const to = dayIndex(last.at.day);
+  let low = 0;
+  if (from >= 0 && to >= from) {
+    let held = 0;
+    let cash = 0;
+    let k = 0;
+    for (; from <= to; from++) {
+      const day = days[from];
+      const m0 = day === first.at.day ? first.at.minute : 0;
+      const m1 = day === last.at.day ? last.at.minute : LAST_MIN;
+      for (let m = m0; m <= m1; m++) {
+        while (k < legs.length && legs[k].at.day === day && legs[k].at.minute <= m) {
+          const l = legs[k++];
+          held += l.side === 'buy' ? l.qty : -l.qty;
+          cash += (l.side === 'buy' ? -1 : 1) * l.price * l.qty * MULT - l.fee;
+        }
+        if (held <= 0) continue;
+        const bid = quoteAt(contract, day, m).bid;
+        if (Number.isFinite(bid)) low = Math.min(low, cash + held * bid * MULT);
+      }
+    }
+  }
+  if (lowMemo.size > 2000) lowMemo.clear();
+  lowMemo.set(key, cents(low));
+  return cents(low);
 }
 const heldMinutes = (a: Moment, b: Moment) => Math.max(0, (dayIndex(b.day) - dayIndex(a.day)) * (LAST_MIN + 1) + (b.minute - a.minute));
 /** Every fill, in order, folded into the positions still open and the trades that closed */
@@ -332,6 +370,7 @@ export function bookOf(s: Session): Book {
       heldMin: heldMinutes(o.first.at, f.at),
       plannedStop: o.first.plannedStop,
       tag: o.first.tag,
+      lowOpen: Math.min(cents(pnl), lowOpenOf(o.first.id, f.contract, o.legs)),
     });
     open.delete(key);
   }
@@ -854,6 +893,8 @@ export interface Scored {
   /** A replayed moment — or a paper trade's real instant (data/paper/engine.ts), which carries `at` */
   closed: Moment | { at: number };
   heldMin: number;
+  /** The lowest open P&L while the trade was on, where the marks are known; the drawdown counts it */
+  lowOpen?: number;
 }
 /** A close, as one number for order: the instant where there is one, the replayed stamp where not (a journal is one kind or
     the other, so the two are never compared) */
@@ -870,6 +911,7 @@ export function statsOf(trades: Scored[]): Stats {
   let lr = 0;
   let cur = 0;
   for (const t of [...trades].sort((a, b) => closedStamp(a.closed) - closedStamp(b.closed))) {
+    if (t.lowOpen != null && t.lowOpen < 0) dd = Math.max(dd, peak - (run + t.lowOpen));
     run += t.pnl;
     peak = Math.max(peak, run);
     dd = Math.max(dd, peak - run);

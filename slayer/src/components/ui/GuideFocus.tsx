@@ -1,19 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE GUIDE IN FOCUS
-  (components/ui/GuideFocus.tsx)
-
-  The house pattern for "How to read this" (Noah,
-  2026-09-06: "i love this, keep it in the design
-  pattern style"): a small door in a surface's
-  head, and the guide as a CENTRED CARD OVER THE
-  SURFACE IT EXPLAINS, the surface blurred and
-  dimmed behind it — the trader's clock's focus-
-  and-blur, never a popover hanging off a button.
-  Esc (captured, so a fullscreen host stays) or a
-  click on the blur lets go. The host renders the
-  layer inside its own `relative` box.
-==================================================
+  The "How to read this" pattern: a small door in a surface's head opens the guide as a centred card over the
+  surface it explains, blurred and dimmed behind. Esc (captured, so a fullscreen host stays) or a click on the blur
+  closes it. The host renders the layer inside its own `relative` box.
 */
 
 import { useEffect, type ReactNode } from 'react';
@@ -24,8 +12,7 @@ import { CARD } from './DropdownSelect';
 import { Tip } from './Tooltip';
 
 interface GuideDoorProps {
-  /** The icon alone — for a toolbar that measured itself tight (the Map's band on a still, 2026-09-22); the words
-      stay in the title */
+  /** The icon alone, for a tight toolbar; the words stay in the title */
   compact?: boolean;
   open: boolean;
   onClick: () => void;

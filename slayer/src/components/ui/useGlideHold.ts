@@ -1,26 +1,8 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE WIDTH HOLD (components/ui/useGlideHold.ts)
-
-  The Weigher's rule (2026-09-11), made a hook: a
-  column whose content is heavy — a grid grown to
-  its rows, a strip of cards — holds its width for
-  the sidebar's glide and takes the new width once
-  when the glide ends. Without it every frame of
-  the 300ms glide re-lays every rendered row (the
-  lag Noah named first). main clips the overlap
-  (index.css [data-glide]).
-
-  The width only — NOT the Weigher's compositor
-  layer: the desk is a screen tall, but a grid
-  grown to 400 rows is sixteen screens, and
-  promoting that to a layer rasters the whole of it
-  before the first frame moves (measured 229ms).
-
-  A callback ref, so a wrapper that remounts on
-  navigation (the section shells' keyed cross-fade)
-  re-subscribes with its new element.
-==================================================
+  A heavy column (a grown grid, a strip of cards) holds its width during the sidebar's 300 ms glide and takes the new
+  width once it ends, instead of relaying every row each frame; main clips the overlap (index.css [data-glide]). Width
+  only, no compositor layer: promoting a sixteen-screen grid rasters all of it first. A callback ref, so a remounted
+  wrapper re-subscribes.
 */
 
 import { useEffect, useState } from 'react';

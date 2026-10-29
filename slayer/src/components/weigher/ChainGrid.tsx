@@ -89,7 +89,7 @@ export const CHAIN_COLUMNS: ChainCol[] = [
   { key: 'rho', label: 'Rho', head: 'Rho', term: 'Rho', render: c => ({ text: fixed(c.rho, 4) }) },
   /* what the contract loses a day in DOLLARS a contract — theta × 100, the figure a buyer feels (the Live Chart's chain,
      2026-09-22: "you would need the actual options chain to see the vol, decay etc") */
-  { key: 'decay', label: 'Decay a day', head: 'Decay/day', term: 'Theta', render: c => ({ text: Number.isFinite(c.theta) ? money(Math.abs(c.theta * 100)) : '—', ink: 'text-bear' }) },
+  { key: 'decay', label: 'Decay a calendar day', head: 'Decay/day', term: 'Theta', render: c => ({ text: Number.isFinite(c.theta) ? money(Math.abs(c.theta * 100)) : '—', ink: 'text-bear' }) },
   { key: 'iv', label: 'IV', head: 'IV', term: 'IV', render: c => ({ text: Number.isFinite(c.iv) ? `${grouped(c.iv, 1)}%` : '—' }) },
   { key: 'itm', label: 'Probability ITM (model)', head: 'ITM · model', term: 'ITM odds', render: c => ({ text: pct0(c.itmOdds) }) },
   { key: 'otm', label: 'Probability OTM (model)', head: 'OTM · model', term: 'OTM odds', render: c => ({ text: Number.isFinite(c.itmOdds) ? pct0(100 - c.itmOdds) : '—' }) },
@@ -575,7 +575,7 @@ export const WeighGrids = ({ c }: { c: DeskContract }) => (
           <div className="grid grid-cols-3 md:grid-cols-5 gap-x-4 gap-y-2.5">
             <StatCell label="Delta" term="Delta" value={fixed(c.delta, 4)} />
             <StatCell label="Gamma" term="Gamma" value={fixed(c.gamma, 4)} />
-            <StatCell label="Theta / day" term="Theta" value={fixed(c.theta, 4)} />
+            <StatCell label="Theta / calendar day" term="Theta" value={fixed(c.theta, 4)} />
             <StatCell label="Vega" term="Vega" value={fixed(c.vega, 4)} />
             <StatCell label="Rho" term="Rho" value={fixed(c.rho, 4)} />
           </div>

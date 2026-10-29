@@ -25,7 +25,7 @@ import { useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { setCompassView } from '../../data/compassView';
 import { ArrowLeft, LayoutGrid } from 'lucide-react';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
 import { suggest } from '../notFound/suggest';
 import { useNotFoundHead } from '../notFound/NotFound';
 import { parseSetupId, setupIdOf } from '../../data/compass';
@@ -45,7 +45,7 @@ const SetupPage = () => {
   }, [id]);
   const location = useLocation();
   const navigate = useNavigate();
-  const { activeTicker, changeTicker } = useMarketData();
+  const { activeTicker, changeTicker } = useTicker();
   const from = (location.state as { from?: string } | null)?.from ?? null;
   const address = useMemo(() => {
     const parsed = parseSetupId(id);

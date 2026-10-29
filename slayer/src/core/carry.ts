@@ -1,47 +1,13 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE CARRY SEAM (core/carry.ts)
-
-  The risk-free rate and the dividend yield every
-  greek is priced against — P-24A.
-==================================================
-
-  WHY THIS FILE EXISTS. `blackScholesGreeks` hardcoded `r = 0.05` and had no
-  dividend yield AT ALL. Both are wrong in ways that matter and in ways that
-  compound: 5% has not been the front-end rate for most of the terminal's
-  life, and a q of zero prices SPY's ~1.2% yield as zero carry — which puts
-  every index delta out by roughly q·t and every charm out by the whole
-  q-term. The directive's P-24A is explicit that P-11 through P-14 cannot be
-  built on that, because third-order greeks amplify first-order error.
-
-  WHAT IS AND IS NOT SOURCED, stated plainly rather than implied.
-
-  `r` IS THE FRONT-END BILL WHEN THETA ANSWERS. Pinpoint and Dossier call
-  `/interest_rate/history/eod?symbol=treasury_m3` and pass the latest print
-  through `setCarry`. Theta quotes the rate as a percent (4.2 means 4.2%);
-  the caller divides by 100 before it gets here. If that call fails, or
-  `setCarry` rejects the number, the previous rate stays and the feed row
-  says so. `q` IS STILL AN ASSUMPTION — this account has no dividend feed.
-
-
-  THE SEAM IS THE POINT. When the add-on lands, `setCarry` takes the live
-  figures and nothing downstream changes: the greeks already read r and q
-  through here, and the proof already pins the relationships (put-call
-  parity, the q-effect on delta, charm's q-term) that a real feed has to
-  keep satisfying.
-
-  WHY THESE DEFAULTS. `DEFAULT_R` is the front-end Treasury yield's
-  neighbourhood as of this file's writing, not a number chosen to be round;
-  `DEFAULT_Q` is roughly the S&P 500's trailing yield, which is the right
-  order for the index ETFs this desk trades and a deliberate OVERSTATEMENT
-  for a zero-yield name — better to be explicit and wrong in a documented
-  direction than silently zero.
+  The rate and dividend yield every greek is priced against. r is DEFAULT_R (the front-end bill's neighbourhood) until
+  a feed calls setCarry — Pinpoint and the Dossier read Unusual Whales only, so there it stays DEFAULT_R; q is 0 unless a
+  name's own yield is set (setDividend), never a blanket index yield.
 */
 
 export interface Carry {
   /** Continuously-compounded risk-free rate, annualized (0.042 = 4.2%). */
   r: number;
-  /** Continuous dividend yield, annualized (0.012 = 1.2%). */
+  /** Continuous dividend yield, annualized (0 unless the name's own yield is known). */
   q: number;
 }
 
@@ -88,14 +54,8 @@ export function carrySource(): CarrySource {
   return source;
 }
 
-/**
- * Point the seam at real figures.
- *
- * Rejects a non-finite or absurd input rather than poisoning every greek on
- * the desk with it: a feed hiccup that hands back NaN must leave the last
- * good carry standing, and a "rate" of 40% is a units error (percent handed
- * over where a fraction was meant), not a market.
- */
+/** Point the seam at real figures. Rejects a non-finite or absurd input (a 40% "rate" is a units error), leaving the
+    last good carry standing. */
 export function setCarry(next: Partial<Carry>, note?: string): boolean {
   const ok = (v: number | undefined) => v === undefined || (Number.isFinite(v) && v > -0.05 && v < 0.25);
   if (!ok(next.r) || !ok(next.q)) return false;

@@ -41,7 +41,7 @@ export const CMP_LIST_ROW_H = 39;
 export const CMP_LISTED = 6;
 /** The card's sections and their rows — the page draws exactly these */
 export const CMP_SECTIONS: { title: string; rows: number }[] = [
-  { title: 'Net flow', rows: 3 },
+  { title: 'Net flow', rows: 4 },
   { title: 'Same-day money', rows: 3 },
   { title: 'The book', rows: 8 },
   { title: 'Footprints', rows: 2 },

@@ -1,35 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE EXPIRY CARD
-  (components/ui/ExpiryCard.tsx)
-
-  Every Expiry choice on the terminal opens THE
-  CALENDAR (Noah, 2026-09-12: "for every exp
-  dropdown on the website i want it to be the
-  calendar we already have installed — the board
-  of Compass, and so on and so forth"). The trigger
-  is the dropdown card's, so a line of cards still
-  reads as one line; the card that opens is the
-  ExpiryPicker's calendar.
-
-  NOT THE COMPASS BOARD (2026-09-14): its Expiry is
-  four named tenors — 0DTE, Weekly, Swing, LEAPS —
-  and as lit days only the two inside the month on
-  screen showed; Swing and LEAPS were pages away.
-  A tenor with a name is a dropdown row, not a day;
-  the calendar stays wherever a DAY is the choice.
-
-  TWO KINDS OF HOST. A desk that prices a fixed set
-  of expiries (the book's buckets) hands its
-  choices with their real dates:
-  they sit above the grid as pills and their days
-  are the only lit days in the grid — the reader
-  sees at once which expiries the desk has. A desk
-  that prices any day (the Weigher's chain) opens
-  every trading day inside its reach and turns the
-  day into its own value. A choice with no date
-  ("Every expiry") is a pill alone.
-==================================================
+  Every expiry choice opens the calendar. The trigger is the dropdown card's; the card is ExpiryPicker's calendar.
+  A desk with a fixed set of expiries lights only those days; a desk that prices any day lights every trading day in
+  reach. A choice without a date ("Every expiry") is a pill. Named tenors (Compass) are dropdown rows, not days.
 */
 
 import { useState, type CSSProperties } from 'react';
@@ -44,8 +16,7 @@ const SILVER_FILL = 'rgb(var(--silver-fill))';
 /** A choice and the real day it resolves to — null for a choice that is not a day */
 export interface ExpiryChoice<T extends string | number> extends DropdownOption<T> {
   date: Date | null;
-  /** A choice the desk cannot draw right now (the calendar's columns past what fits, 2026-09-14):
-      its day stays dim, its pill inert; the hint says why */
+  /** A choice the desk cannot draw right now: its day stays dim, its pill inert, and the hint says why */
   disabled?: boolean;
 }
 
@@ -63,10 +34,9 @@ interface ExpiryCardProps<T extends string | number> {
   testId?: string;
   /** One line the card says about the choices right now — why some days are dim */
   note?: string;
-  /** The trigger's height: 28 by rest; `sm` is 24 — for a rail's head beside its view tabs (2026-09-16) */
+  /** Trigger height: 28 by default; `sm` is 24, beside a rail's view tabs */
   size?: 'md' | 'sm';
-  /** The card WITHOUT its printed name — for a line that measured itself too short for four named cards (the Weigher's
-      chain head on a laptop, 2026-09-20). The name stays in the tooltip, the aria-label and the open card's heading. */
+  /** Hide the printed name on a line too short for it; it stays in the tooltip, aria-label and open card heading. */
   bare?: boolean;
 }
 
@@ -118,10 +88,7 @@ const ExpiryCard = <T extends string | number>({ label = 'Expiry', value, choice
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align={align} sideOffset={6} collisionPadding={12} className={`${CARD} p-3 outline-none w-[300px]`} data-dropdown-card={testId ?? label} data-date-picker>
-          {/* JUST THE CALENDAR (Noah, 2026-09-12, on a first cut with the
-              choices as pills above the grid: "over complicated, shouldn't it
-              just be the calendar, that's it?") — the title, the grid with the
-              desk's days lit, one line at the foot */}
+          {/* just the calendar: the title, the grid with the desk's days lit, one line at the foot */}
           <div className="px-0.5 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">{title ?? label}</div>
           <DayPicker
             mode="single"

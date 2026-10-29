@@ -50,10 +50,10 @@ import { WeigherGuide } from '../../components/weigher/WeigherGuide';
 import { TimeframeStrip } from '../../components/gex/ChartToolbar';
 import SessionBook from '../../components/ui/SessionBook';
 import { chartGround, useCandleThemeKey } from '../../components/gex/candleTheme';
-import Simulator from '../../core/simulator';
 import { onGlide } from '../../core/glide';
 import { DOCK_ROOM } from '../../data/editorDock';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
+import { snapshotOf, useBookRev } from '../../data/uwBook';
 import { buildLevelsFor, buildPrints, fmtUsd } from '../../data/gex';
 import { wantSpotGex } from '../../data/spotGexBook';
 import {
@@ -128,6 +128,8 @@ const DESK_KEY = 'slayer_weigher_desk_v2';
     clock and hold still in between, the Pulse contract. Charts and prices
     stay on the 1s tick. */
 const SCAN_MS = 3000;
+/* The light tick's beat with no simulator behind it: the live chain refreshes on its own timer. */
+const PUMP_MS = 3000;
 
 /** How far the chain reaches each side of spot. The book maintains ~30; the
     ladder synthesizes honest wings beyond it (see buildDeskChain). Sized to
@@ -483,16 +485,17 @@ const StrikePickInner = ({
    side's contracts are memoised on the desk, onPick is the setter itself. */
 const StrikePick = memo(StrikePickInner);
 
-/* THE DESK'S ONLY EAR ON THE MARKET TICK, kept in a leaf. The context hands
-   every subscriber a new value each 1.5s; if the desk itself subscribed, a
-   tick it chose to STASH (pointer down) would still re-render the whole
-   desk for nothing. This null component takes the hit instead — the desk
-   renders once per APPLIED tick, through its own state, as a transition. */
+/* The desk's clock, kept in a leaf so the desk renders once per applied tick: a beat every few seconds, and
+   again whenever the live vendor book lands or refreshes. */
 const TickPump = memo(function TickPump({ onTick }: { onTick: () => void }) {
-  const { marketData } = useMarketData();
+  const rev = useBookRev();
   useEffect(() => {
     onTick();
-  }, [marketData, onTick]);
+  }, [rev, onTick]);
+  useEffect(() => {
+    const id = window.setInterval(onTick, PUMP_MS);
+    return () => window.clearInterval(id);
+  }, [onTick]);
   return null;
 });
 
@@ -500,7 +503,7 @@ const TickPump = memo(function TickPump({ onTick }: { onTick: () => void }) {
    and follows a palette pick back in, without the desk itself subscribing to
    the market tick (that would repaint the chain every snapshot). */
 const ShellFollow = memo(function ShellFollow({ ticker, onExternal }: { ticker: string; onExternal: (t: string) => void }) {
-  const { activeTicker, changeTicker } = useMarketData();
+  const { activeTicker, changeTicker } = useTicker();
   const echo = useRef(false);
   const activeRef = useRef(activeTicker);
   activeRef.current = activeTicker;
@@ -902,7 +905,6 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
 
   const pickTicker = (t: string) => {
     if (t === ticker) return;
-    Simulator.ensureTicker(t);
     setSel(null);
     setListSel(null);
     patch({ ticker: t, lens: 'stock', optRoot: '' });
@@ -924,7 +926,6 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const pointTo = useCallback(
     (req: WeighRequest) => {
       const t = req.ticker;
-      Simulator.ensureTicker(t);
       setSel(null);
       /* the contract's OWN expiry, as the desk's horizon for that date — listed
          on the rail when the rail has it, added to the rail when it does not */
@@ -1599,7 +1600,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
      position against the 0DTE book, thirty strikes each side); rebuilt on the sweep */
   const profile = useMemo<ExposureProfileData | null>(() => {
     try {
-      return buildExposureProfile(Simulator.snapshotFor(ticker), '0DTE', 30);
+      const snap = snapshotOf(ticker);
+      return snap ? buildExposureProfile(snap, '0DTE', 30) : null;
     } catch {
       return null;
     }

@@ -1,26 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE PHONE'S MENU
-  (components/layout/MobileMenu.tsx)
-
-  Under 768px the side rail is off, and until
-  2026-09-19 nothing stood in for it: the phone strip
-  held the subject and the search, so the ONLY way
-  from one page to another on a phone was to know the
-  command palette and type a page's name. The paid
-  traffic arrives on phones.
-
-  This is the rail, as a sheet from the left: the same
-  groups, the same products in the same order (nav.ts),
-  the same pages under each (navTree.ts) — read from
-  the same lists, so the phone cannot fall behind the
-  desk. A product with pages under it opens them with
-  its arrow; the one you are inside opens itself. The
-  bell is here too, with its count.
-
-  It closes on a pick, on the glass behind it, on
-  Escape, and whenever the page changes under it.
-==================================================
+  Below 768px the side rail is replaced by this sheet from the left: the same groups, products and pages (nav.ts,
+  navTree.ts), plus the bell with its count. It closes on a pick, on the backdrop, on Escape, and on navigation.
 */
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
@@ -81,7 +61,7 @@ const MobileMenu = ({ open, onClose }: Props) => {
   }, [open, onClose]);
 
   if (!open) return null;
-  /* ONE GROUP OF THE MENU — Home (Pulse) stands above the Alerts row, the captioned groups under it, More last (the rail's order, nav.ts) */
+  /* one menu group: Home above Alerts, the captioned groups, More last (the rail's order, nav.ts) */
   const groupBlock = (group: NavGroup) => (
         <div key={group} className={group === 'Home' ? '' : 'mt-4'} data-mobile-group={group}>
           {NAV_GROUP_META[group].caption && <span className="block px-3 pb-1 text-t10 uppercase tracking-[0.1em] text-textMuted">{NAV_GROUP_META[group].caption}</span>}
@@ -100,7 +80,7 @@ const MobileMenu = ({ open, onClose }: Props) => {
                     className={`min-w-0 flex-1 flex items-center gap-3 h-11 pl-3 text-t14 ${inside ? 'text-textPrimary font-medium' : 'text-textSecondary'}`}
                     data-mobile-item={item.path}
                   >
-                    {/* the page's glyph, as on the rail and the landing (2026-10-03); Settings keeps its line icon */}
+                    {/* the page's glyph, as on the rail; Settings keeps its line icon */}
                     {item.glyph ? (
                       <PageGlyph name={item.glyph} size={18} className={`shrink-0 ${inside ? '' : 'opacity-80'}`} />
                     ) : (
@@ -182,7 +162,7 @@ const MobileMenu = ({ open, onClose }: Props) => {
 
           {NAV_GROUPS.filter(g => g !== 'Home').map(groupBlock)}
         </nav>
-        {/* the menu's foot: the signature, in the market's own word (his partner's logo system, 2026-10-03) */}
+        {/* the menu's foot: the signature in the market's word */}
         <div className="shrink-0 px-4 py-3 border-t border-borderSubtle">
           <Signature rule={false} className="text-t11" />
         </div>

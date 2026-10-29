@@ -52,10 +52,6 @@ const EMPTY_BOOK: VendorBook = { key: '', rows: [] };
 const emit = () => listeners.forEach(fn => fn());
 const enc = (s: string) => encodeURIComponent(s);
 
-function ymd(d: Date): string {
-  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-}
-
 function asRows(data: unknown): unknown[] {
   if (Array.isArray(data)) return data;
   if (data && typeof data === 'object') return [data];
@@ -644,10 +640,6 @@ export function vendorKey(desk: 'pinpoint' | 'dossier', ticker: string, pathname
 
 export function stockBookKey(ticker: string): string {
   return vendorKey('dossier', ticker, `/dossier/stocks/${ticker}`);
-}
-
-export function congressBookKey(memberId: string): string {
-  return vendorKey('dossier', '', `/dossier/congress/${memberId}`);
 }
 
 async function after(key: string, ticker: string, pathname: string, got: Map<string, unknown>) {

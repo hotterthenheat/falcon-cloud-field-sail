@@ -16,6 +16,7 @@ import { nyClock } from '../../core/nyTime';
 import ContractLabel from '../ui/ContractLabel';
 import SessionSpark from './SessionSpark';
 import { entryAsk } from '../../data/compassModel';
+import { MODELS_VALIDATED, UNVALIDATED_LINE, UNVALIDATED_WORD } from '../../data/compassParams';
 import { useContractLive } from '../../data/thetaBook';
 import { STOP_KEEP } from '../../data/contractQuote';
 import { Tip } from '../ui/Tooltip';
@@ -43,8 +44,8 @@ interface SetupScanCardProps {
 const tagOf = (setup: Setup): string => {
   if (setup.band === 'closest') return 'Closest';
   if (setup.band === 'lottery') return 'Book C';
-  if (setup.band === 'wing') return 'Book B';
-  if (setup.band === 'top') return 'Book A';
+  if (setup.band === 'wing') return MODELS_VALIDATED ? 'Book B' : `Book B · ${UNVALIDATED_WORD}`;
+  if (setup.band === 'top') return MODELS_VALIDATED ? 'Book A' : `Book A · ${UNVALIDATED_WORD}`;
   if (setup.band === 'scalp') return 'Scalp';
   if (setup.band === 'average') return 'Average';
   return '';
@@ -90,7 +91,7 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const stopPx = priced && setup.band !== 'lottery' && entry > 0 ? Number((entry * STOP_KEEP).toFixed(2)) : 0;
   const place = placeWord(setup);
   const model = setup.p1 != null
-    ? `${holdOf(setup)} Model 1 ${(setup.p1 * 100).toFixed(1)}%.${setup.prun != null ? ` Model 2 ${(setup.prun * 100).toFixed(0)}%.` : ''}`
+    ? `${holdOf(setup)} Model 1 ${(setup.p1 * 100).toFixed(1)}%.${setup.prun != null ? ` Model 2 ${(setup.prun * 100).toFixed(0)}%.` : ''}${MODELS_VALIDATED ? '' : ` ${UNVALIDATED_LINE}`}`
     : setup.band === 'lottery'
       ? holdOf(setup)
       : '';

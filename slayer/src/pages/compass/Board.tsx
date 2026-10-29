@@ -36,14 +36,14 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, Check } from 'lucide-react';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
 import { useTracker } from '../../context/TrackerContext';
 import { setupIdOf } from '../../data/compass';
 import { COMPASS_TICKERS, COMPASS_SET } from '../../data/compassUniverse';
 import { settleOpen, useCompassBook } from '../../data/compassLedger';
 import { liveSpark, useThetaBook, alertUniverse } from '../../data/thetaBook';
 import { currentPicks, lockReason, scanBusy, scanReport } from '../../data/compassModel';
-import { P1_MIN } from '../../data/compassParams';
+import { MODELS_VALIDATED, P1_MIN, UNVALIDATED_LINE } from '../../data/compassParams';
 import { setCompassView, useCompassView, type BoardLayout } from '../../data/compassView';
 import { OPEN_CAP, sessionBook, useScanClock } from '../../data/compassDoor';
 import { setCompassAlert, useCompassAlert } from '../../data/compassAlerts';
@@ -121,7 +121,7 @@ function oneSide(rows: Setup[]): Setup[] {
 const CARD_INK = { expiry: NAV_INK.record, kind: NAV_INK.weigher, name: NAV_INK.compass, layout: NAV_INK.terrain } as const;
 
 const Board = () => {
-  const { activeTicker, changeTicker } = useMarketData();
+  const { activeTicker, changeTicker } = useTicker();
   const location = useLocation();
   const navigate = useNavigate();
   const { sleeve, layout, tickerFilter, selectedId, right } = useCompassView();
@@ -289,9 +289,10 @@ const Board = () => {
   const booksC = rankedSetups.filter(s => s.band === 'lottery').length;
   const near = rankedSetups.filter(s => s.band === 'closest').length;
   const called = swings + wings + booksC;
+  const caveat = MODELS_VALIDATED ? '' : ` ${UNVALIDATED_LINE}`;
   const calledLine = offered === 'odte'
-    ? `Book A ${swings}. Book B ${wings}. Book C ${booksC}.${near ? ` Closest ${near}.` : ''} Model 1 is the entry. Model 2 is the runner.`
-    : `Book A ${swings}. Book B ${wings}. Book C is same-day only.${near ? ` Closest ${near}.` : ''} Model 1 is the entry. Model 2 is the runner.`;
+    ? `Book A ${swings}. Book B ${wings}. Book C ${booksC}.${near ? ` Closest ${near}.` : ''} Model 1 is the entry. Model 2 is the runner.${caveat}`
+    : `Book A ${swings}. Book B ${wings}. Book C is same-day only.${near ? ` Closest ${near}.` : ''} Model 1 is the entry. Model 2 is the runner.${caveat}`;
   const sentence = (
     <RichRead text={dayOver ? "Same-day calls are done for the session. Cards stay until a stop, a target, the reversal, or the 15:55 flat." : scanOff || clock.phase === 'halt' ? clock.line : !called && !near && lockReason() ? lockReason() : scanBusy() && !called && !near ? reading : called || near ? `${clock.line} ${calledLine}` : clock.open ? (bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.')) : clock.line} />
   );

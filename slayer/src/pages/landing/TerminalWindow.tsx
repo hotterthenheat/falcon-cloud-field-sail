@@ -360,10 +360,8 @@ const TerminalWindow = ({ path, theme, desk, natural = false, film, boot, bootSw
             muted
             loop
             playsInline
-            /* METADATA, NOT THE WHOLE FILM (the speed pass, 2026-10-11): "auto" fetched every reel in full as it mounted —
-               a scroll down the landing pulled 17 MB of films. The header alone now; a reel streams when it is told to
-               play, and its poster stands until it can. */
-            preload="metadata"
+            /* nothing loads until play(); the poster stands until the reel can play */
+            preload="none"
             disablePictureInPicture
             aria-label={`The terminal's ${pageName(r.path)} page, in use`}
             onLoadedMetadata={e => onLength(r, e.currentTarget)}

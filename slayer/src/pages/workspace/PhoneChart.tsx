@@ -25,22 +25,23 @@ import { useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import ChartToolbar from '../../components/gex/ChartToolbar';
 import CompareControl from '../../components/gex/CompareControl';
-import SpotPrice from '../../components/gex/SpotPrice';
+import { LiveSpot } from './tiles/parts';
 import StrikeChart, { DEFAULT_INDICATORS, DEFAULT_OVERLAYS, type ChartIndicators, type ChartOverlays, type ChartStyle, type CompareEntry, type CompareMode } from '../../components/gex/StrikeChart';
 import StrikeExposureBand, { type BandMetric } from '../../components/gex/StrikeExposureBand';
 import TickerQuickPick from '../../components/gex/TickerQuickPick';
 import { chartGround, useCandleThemeKey } from '../../components/gex/candleTheme';
 import { FOCUS, alpha } from '../../components/gex/paletteInk';
 import { useFocus, useFocusedStrike } from '../../context/FocusContext';
-import { useMarketData } from '../../context/MarketDataContext';
-import Simulator from '../../core/simulator';
 import { readDeskPrefs } from '../../data/deskPrefs';
 import { buildExposureProfile } from '../../data/exposure';
-import { buildLevelsFor, buildPrints } from '../../data/gex';
+import { buildPrints } from '../../data/gex';
+import { levelsOf } from './tiles/derive';
 import type { Timeframe } from '../../data/timeframe';
 import type { MarketSnapshot } from '../../types/market';
 
 /* Compare-line inks, blue leading like TradingView's; four slots */
+/* No simulated prints are drawn; the live chart's flow markers come with the live tape (Terrain draws none either). */
+const NO_PRINTS: [] = [];
 const COMPARE_INKS = ['#5B9CF6', '#BBB2E8', '#EDE4CD', '#6BD3C7'];
 const fmtFocus = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
@@ -52,7 +53,6 @@ interface Props {
 
 const PhoneChart = ({ snapshot, revision, onPick }: Props) => {
   const ticker = snapshot.ticker;
-  const { flowTape } = useMarketData();
   const [timeframe, setTimeframe] = useState<Timeframe>(() => readDeskPrefs().opensOn.timeframe ?? '1m');
   const [overlays, setOverlays] = useState<ChartOverlays>(DEFAULT_OVERLAYS);
   const [compares, setCompares] = useState<CompareEntry[]>([]);
@@ -72,7 +72,7 @@ const PhoneChart = ({ snapshot, revision, onPick }: Props) => {
     });
   const removeCompare = (t: string, mode: CompareMode) => setCompares(cs => cs.filter(c => !(c.ticker === t && c.mode === mode)));
 
-  const levels = useMemo(() => buildLevelsFor(ticker), [ticker, snapshot]); // eslint-disable-line react-hooks/exhaustive-deps
+  const levels = useMemo(() => levelsOf(snapshot), [snapshot]); // eslint-disable-line react-hooks/exhaustive-deps
   const prints = useMemo(() => buildPrints(ticker, levels.spot), [ticker]); // eslint-disable-line react-hooks/exhaustive-deps
   /* the docked band's book — built only while the band is drawn */
   const bandData = useMemo(() => (overlays.dexStrike ? buildExposureProfile(snapshot, '0DTE', 10) : null), [overlays.dexStrike, snapshot]);
@@ -112,7 +112,7 @@ const PhoneChart = ({ snapshot, revision, onPick }: Props) => {
             <span className="text-t10 text-textMuted" aria-hidden>
               ·
             </span>
-            <SpotPrice value={Simulator.TICKERS[ticker]?.currentPrice ?? levels.spot} className="text-t11 font-semibold tnum text-textPrimary" />
+            <LiveSpot ticker={ticker} fallback={levels.spot} className="text-t11 font-semibold tnum text-textPrimary" />
           </div>
           {compares.map(c => (
             <div key={`${c.ticker}:${c.mode}`} className="flex items-center gap-1.5">
@@ -120,7 +120,7 @@ const PhoneChart = ({ snapshot, revision, onPick }: Props) => {
               <span className="text-t10 font-semibold" style={{ color: c.ink }}>
                 {c.ticker}
               </span>
-              {Simulator.TICKERS[c.ticker] && <SpotPrice value={Simulator.TICKERS[c.ticker].currentPrice} className="text-t10 tnum text-textSecondary" />}
+              <LiveSpot ticker={c.ticker} className="text-t10 tnum text-textSecondary" />
               <button onClick={() => removeCompare(c.ticker, c.mode)} aria-label={`Remove ${c.ticker} comparison`} title="Remove comparison" className="pointer-events-auto inline-flex items-center justify-center w-4 h-4 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.08] transition-colors">
                 <X className="w-2.5 h-2.5" />
               </button>
@@ -128,7 +128,7 @@ const PhoneChart = ({ snapshot, revision, onPick }: Props) => {
           ))}
         </div>
         <div key={ticker} className="min-h-0 flex-1 animate-soft-in-slow">
-          <StrikeChart ticker={ticker} paneId="pulse:main" revision={revision} flowPrints={flowTape} levels={levels} timeframe={timeframe} overlays={overlays} prints={prints} compares={compares} chartStyle={chartStyle} indicators={indicators} focusPrice={focus} height={180} compact frameless />
+          <StrikeChart ticker={ticker} paneId="pulse:main" revision={revision} flowPrints={NO_PRINTS} levels={levels} timeframe={timeframe} overlays={overlays} prints={prints} compares={compares} chartStyle={chartStyle} indicators={indicators} focusPrice={focus} height={180} compact frameless />
         </div>
         {bandData && <StrikeExposureBand data={bandData} metric={bandMetric} onMetric={setBandMetric} plotHeight={48} onClose={() => setOverlays(o => ({ ...o, dexStrike: false }))} />}
       </div>

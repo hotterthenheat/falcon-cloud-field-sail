@@ -1,32 +1,22 @@
 /*
-==================================================
-  SLAYER TERMINAL - TRACKER PAGE
-  Dedicated page for all bookmarked setups.
-  Live-updating metrics, two view tabs, and
-  quick actions to untrack or review in Compass.
-==================================================
+  The contracts you track from Compass, marked at their live vendor quote: what it was when you tracked it, what it
+  is now, and whether its expiry has passed. A contract with no live quote yet shows a dash, never a model price.
 */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bookmark, Trash2, ArrowUpRight } from 'lucide-react';
 import { useTracker } from '../context/TrackerContext';
-import { useMarketData } from '../context/MarketDataContext';
-import Simulator from '../core/simulator';
-import { gradeOfConfidence, makeSetup } from '../data/compass';
-import type { Setup, SleeveKey } from '../types/compass';
+import { isoDate, today } from '../core/calendar';
+import { peekMark, useMarks } from '../data/weigherChain';
+import type { SleeveKey } from '../types/compass';
 import type { TrackedSetup } from '../types/tracker';
 import PageHeader from '../components/ui/PageHeader';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import Panel from '../components/ui/Panel';
 import SignalBadge from '../components/ui/SignalBadge';
-import VerdictBadge from '../components/compass/VerdictBadge';
-import GradeMeter, { GRADE_INK } from '../components/ui/GradeMeter';
 import DataTable, { type Column } from '../components/ui/DataTable';
 
-/* ONE LIST, TWO VIEWS (Noah, 2026-09-28: "what is the difference of the compass tracker between the tracked setups and
-   the tracked cons i tried to distinguish them and i really couldnt" — there was none; both tabs drew the same tracked
-   setups, once as cards and once as a table). The switch now says what it is. Contracts you WATCH live on the Weigher. */
 const TAB_OPTIONS = [
   { value: 'setups', label: 'Cards' },
   { value: 'contracts', label: 'Table' },
@@ -34,139 +24,78 @@ const TAB_OPTIONS = [
 
 type TabKey = (typeof TAB_OPTIONS)[number]['value'];
 
-/** Days-to-expiry per SLEEVE — the tenor owns the clock now (2026-08-04).
-    Swings carry no calendar at all: they retire on level break, never a date. */
-const DTE_BY_SLEEVE: Record<SleeveKey, number> = {
-  odte: 0,
-  weekly: 5,
-  swing: Number.POSITIVE_INFINITY,
-  /* a quarter's hold (his partner's fifth sleeve, 2026-10-10) */
-  position: 90,
-  leaps: 365,
-};
+/* Rows kept before the expiry was stored only know their tenor: 0DTE ends on its tracked day, a weekly within seven. */
+const DAYS_BY_SLEEVE: Partial<Record<SleeveKey, number>> = { odte: 0, weekly: 7 };
 
-/** Rows tracked before the sleeve axis carry no sleeve — treat as same-day. */
 const sleeveOf = (tracked: TrackedSetup): SleeveKey => tracked.sleeve ?? 'odte';
 
-/** A 0DTE contract dies at the end of its tracked day; a weekly a few days
-    later. Swings never date-expire (Infinity DTE) — the floor is their clock. */
-function isExpired(tracked: TrackedSetup): boolean {
-  const dte = DTE_BY_SLEEVE[sleeveOf(tracked)] ?? 0;
-  if (!Number.isFinite(dte)) return false;
-  const expiryDay = new Date(tracked.trackedAt);
-  expiryDay.setHours(0, 0, 0, 0);
-  return Date.now() >= expiryDay.getTime() + (dte + 1) * 86_400_000;
+function expiryOf(tracked: TrackedSetup): string | null {
+  if (tracked.expiry) return tracked.expiry;
+  const days = DAYS_BY_SLEEVE[sleeveOf(tracked)];
+  if (days == null) return null;
+  const d = new Date(tracked.trackedAt);
+  d.setDate(d.getDate() + days);
+  return isoDate(d);
 }
 
-/** Rebuild a tracked setup's live data from the simulator. */
-function rebuildLive(tracked: TrackedSetup): Setup {
-  Simulator.ensureTicker(tracked.ticker);
-  const cfg = Simulator.TICKERS[tracked.ticker];
-  return makeSetup(
-    tracked.ticker,
-    cfg.currentPrice,
-    tracked.strike,
-    tracked.right,
-    tracked.scanner,
-    cfg.iv,
-    sleeveOf(tracked)
-  );
-}
-
-// ---- Tracked Setup Card (grid view) ----------------------------------------
-
-interface TrackedCardProps {
+interface Row {
   tracked: TrackedSetup;
-  live: Setup;
+  expiry: string | null;
   expired: boolean;
-  onUntrack: () => void;
-  onReview: () => void;
-  /** Arrived here via "Open in Tracker" — scroll to this card and flash it
-      once so the reader lands ON their campaign, not just on the page. */
-  spotlight?: boolean;
+  /** The mark when tracked: the card's mark, else the ask */
+  then: number | null;
+  /** The live mark now */
+  now: number | null;
+  changePct: number | null;
 }
 
-const TrackedCard = ({ tracked, live, expired, onUntrack, onReview, spotlight = false }: TrackedCardProps) => {
-  const moveUp = live.expectedMovePct >= 0;
-  const read = gradeOfConfidence(live.confidence);
+const money = (v: number | null) => (v != null && v > 0 ? `$${v.toFixed(2)}` : '—');
+const pct = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`);
+const ink = (v: number | null) => (v == null || v === 0 ? 'text-textPrimary' : v > 0 ? 'text-bull' : 'text-bear');
+
+const TrackedCard = ({ row, onUntrack, onReview, spotlight = false }: { row: Row; onUntrack: () => void; onReview: () => void; spotlight?: boolean }) => {
+  const { tracked, expired } = row;
   const cardRef = useRef<HTMLDivElement | null>(null);
-
   useEffect(() => {
-    if (!spotlight) return;
-    cardRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (spotlight) cardRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [spotlight]);
-
   return (
-    <div
-      ref={cardRef}
-      className={`border border-borderSubtle bg-panel rounded-lg overflow-hidden flex flex-col ${spotlight ? 'animate-focus-flash' : ''}`}
-    >
-      {/* Header */}
+    <div ref={cardRef} className={`border border-borderSubtle bg-panel rounded-lg overflow-hidden flex flex-col ${spotlight ? 'animate-focus-flash' : ''}`}>
       <div className="flex items-center gap-2 px-4 py-3 border-b border-borderSubtle">
-        <span className="font-mono text-sm font-bold text-textPrimary tracking-tight">{live.contract}</span>
-        {expired ? <SignalBadge tone="bear">EXPIRED</SignalBadge> : <VerdictBadge verdict={live.verdict} dot />}
-        <span className="ml-auto font-mono text-[9px] text-textMuted uppercase tracking-wider">
-          Tracked {new Date(tracked.trackedAt).toLocaleDateString()}
-        </span>
+        <span className="font-mono text-sm font-bold text-textPrimary tracking-tight">{tracked.contract}</span>
+        {expired ? <SignalBadge tone="bear">EXPIRED</SignalBadge> : null}
+        <span className="ml-auto font-mono text-[9px] text-textMuted uppercase tracking-wider">Tracked {new Date(tracked.trackedAt).toLocaleDateString()}</span>
       </div>
-
-      {/* Live metrics grid — the score cell is gone: grades are
-          engine-internal (Noah, 2026-08-16) */}
-      <div className={`grid grid-cols-2 gap-px bg-borderSubtle/30 ${expired ? 'opacity-50' : ''}`}>
+      <div className={`grid grid-cols-3 gap-px bg-borderSubtle/30 ${expired ? 'opacity-50' : ''}`}>
         <div className="bg-panel px-3 py-2.5">
-          <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted">Premium</div>
-          <div className="mt-0.5 font-mono text-sm font-semibold text-textPrimary tnum">${live.mid.toFixed(2)}</div>
+          <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted">When tracked</div>
+          <div className="mt-0.5 font-mono text-sm font-semibold text-textPrimary tnum">{money(row.then)}</div>
         </div>
         <div className="bg-panel px-3 py-2.5">
-          <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted">Exp. Move</div>
-          <div className={`mt-0.5 font-mono text-sm font-semibold tnum ${moveUp ? 'text-bull' : 'text-bear'}`}>
-            {moveUp ? '+' : ''}{live.expectedMovePct}%
-          </div>
+          <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted">Now</div>
+          <div className="mt-0.5 font-mono text-sm font-semibold text-textPrimary tnum">{expired ? '—' : money(row.now)}</div>
+        </div>
+        <div className="bg-panel px-3 py-2.5">
+          <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted">Change</div>
+          <div className={`mt-0.5 font-mono text-sm font-semibold tnum ${ink(row.changePct)}`}>{expired ? '—' : pct(row.changePct)}</div>
         </div>
       </div>
-
-      {/* THE READ — or the expiry notice once the contract is dead. It printed "Confidence 92%" over a green bar as long as the
-          figure: a score of ours, in public (Noah, 2026-09-19: "change the tracker confidence to the four words"). Now the
-          word and the four-step meter (ui/GradeMeter.tsx); the figure stays inside the engine and only SORTS the table. */}
-      {expired ? (
-        <div className="px-4 py-2.5">
-          <span className="font-mono text-[10px] text-textSecondary">
-            This contract expired {new Date(tracked.trackedAt).toLocaleDateString()} — tracking ended.
-          </span>
-        </div>
-      ) : (
-        <div className="px-4 py-2.5">
-          <div className="flex items-center justify-between mb-1.5" data-tracker-read={read}>
-            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted flex items-center gap-1.5">
-              Confidence <SignalBadge tone="select" dot pulse>Live</SignalBadge>
-            </span>
-            <span className={`font-mono text-[11px] font-semibold ${GRADE_INK[read]}`}>{read}</span>
-          </div>
-          <GradeMeter grade={read} />
-        </div>
-      )}
-
-      {/* Actions */}
+      <div className="px-4 py-2.5 font-mono text-[10px] text-textSecondary">
+        {expired
+          ? `Expired ${row.expiry ?? ''} — tracking ended.`
+          : row.now == null
+            ? 'Waiting for the contract’s live quote.'
+            : `Expires ${row.expiry ?? '—'}. Marked at the live quote.`}
+      </div>
       <div className="flex items-center gap-2 px-4 py-3 mt-auto border-t border-borderSubtle">
         {expired ? (
-          <span
-            title="Expired contracts have no live setup to review"
-            className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-borderSubtle bg-ink/[0.02] font-mono text-[10px] text-textMuted uppercase tracking-wider cursor-not-allowed select-none"
-          >
-            Expired
-          </span>
+          <span className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-borderSubtle bg-ink/[0.02] font-mono text-[10px] text-textMuted uppercase tracking-wider cursor-not-allowed select-none">Expired</span>
         ) : (
-          <button
-            onClick={onReview}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-borderSubtle bg-ink/[0.03] hover:bg-ink/[0.06] font-mono text-[10px] text-textSecondary hover:text-textPrimary uppercase tracking-wider transition-colors"
-          >
+          <button onClick={onReview} className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-borderSubtle bg-ink/[0.03] hover:bg-ink/[0.06] font-mono text-[10px] text-textSecondary hover:text-textPrimary uppercase tracking-wider transition-colors">
             <ArrowUpRight className="w-3 h-3" /> Review
           </button>
         )}
-        <button
-          onClick={onUntrack}
-          className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-bear/20 bg-bear/5 hover:bg-bear/10 font-mono text-[10px] text-bear uppercase tracking-wider transition-colors ml-auto"
-        >
+        <button onClick={onUntrack} className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-bear/20 bg-bear/5 hover:bg-bear/10 font-mono text-[10px] text-bear uppercase tracking-wider transition-colors ml-auto">
           <Trash2 className="w-3 h-3" /> Untrack
         </button>
       </div>
@@ -174,170 +103,82 @@ const TrackedCard = ({ tracked, live, expired, onUntrack, onReview, spotlight = 
   );
 };
 
-// ---- Table columns for the Table view ------------------------------------------
-
-const TABLE_COLUMNS: Column<{ tracked: TrackedSetup; live: Setup; expired: boolean }>[] = [
-  {
-    key: 'contract',
-    header: 'Contract',
-    render: r => <span className="font-semibold text-textPrimary">{r.live.contract}</span>,
-  },
-  {
-    key: 'verdict',
-    header: 'Verdict',
-    render: r => (r.expired ? <SignalBadge tone="bear">EXPIRED</SignalBadge> : <VerdictBadge verdict={r.live.verdict} />),
-  },
-  {
-    key: 'premium',
-    header: 'Premium',
-    align: 'right',
-    sortValue: r => r.live.mid,
-    render: r => <span className="text-textPrimary tnum">${r.live.mid.toFixed(2)}</span>,
-  },
-  {
-    key: 'confidence',
-    header: 'Confidence',
-    align: 'right',
-    sortValue: r => r.live.confidence,
-    /* the word, in its ink — the figure still sorts the column (it may order rows, never reach a digit) */
-    render: r => {
-      const g = gradeOfConfidence(r.live.confidence);
-      return <span className={`font-semibold ${GRADE_INK[g]}`}>{g}</span>;
-    },
-  },
-  {
-    key: 'expMove',
-    header: 'Exp. Move',
-    align: 'right',
-    sortValue: r => r.live.expectedMovePct,
-    render: r => {
-      const up = r.live.expectedMovePct >= 0;
-      return (
-        <span className={`tnum ${up ? 'text-bull' : 'text-bear'}`}>
-          {up ? '+' : ''}{r.live.expectedMovePct}%
-        </span>
-      );
-    },
-  },
-  {
-    key: 'tracked',
-    header: 'Tracked',
-    render: r => (
-      <span className="text-textMuted">
-        {new Date(r.tracked.trackedAt).toLocaleDateString()}
-      </span>
-    ),
-  },
+const TABLE_COLUMNS: Column<Row>[] = [
+  { key: 'contract', header: 'Contract', render: r => <span className="font-semibold text-textPrimary">{r.tracked.contract}</span> },
+  { key: 'expiry', header: 'Expiry', render: r => (r.expired ? <SignalBadge tone="bear">EXPIRED</SignalBadge> : <span className="text-textSecondary">{r.expiry ?? '—'}</span>) },
+  { key: 'then', header: 'When tracked', align: 'right', sortValue: r => r.then ?? -1, render: r => <span className="text-textPrimary tnum">{money(r.then)}</span> },
+  { key: 'now', header: 'Now', align: 'right', sortValue: r => r.now ?? -1, render: r => <span className="text-textPrimary tnum">{r.expired ? '—' : money(r.now)}</span> },
+  { key: 'change', header: 'Change', align: 'right', sortValue: r => r.changePct ?? -1e9, render: r => <span className={`tnum ${ink(r.changePct)}`}>{r.expired ? '—' : pct(r.changePct)}</span> },
+  { key: 'tracked', header: 'Tracked', render: r => <span className="text-textMuted">{new Date(r.tracked.trackedAt).toLocaleDateString()}</span> },
 ];
 
-// ---- Main Page Component ---------------------------------------------------
-
-/** `embedded`: under the Compass shell (2026-09-13) — the shell wears the head, the page starts at its tabs */
+/** `embedded`: under the Compass shell, which wears the head */
 const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { trackedSetups, untrackSetup } = useTracker();
-  const { marketData } = useMarketData();
   const [tab, setTab] = useState<TabKey>('setups');
-  /* The campaign "Open in Tracker" arrives with the setup id — captured once
-     so the flash doesn't replay on every later state change. */
   const [focusId] = useState<string | null>(() => (location.state as { focus?: string } | null)?.focus ?? null);
 
-  // Rebuild all tracked setups with live data
-  const liveData = useMemo(() => {
-    if (!marketData) return [];
-    return trackedSetups.map(tracked => ({
-      tracked,
-      live: rebuildLive(tracked),
-      expired: isExpired(tracked),
-    }));
-  }, [trackedSetups, marketData]);
+  const todayIso = isoDate(today());
+  const wanted = useMemo(
+    () => trackedSetups.flatMap(t => {
+      const e = expiryOf(t);
+      return e && e >= todayIso ? [{ ticker: t.ticker, expiry: e }] : [];
+    }),
+    [trackedSetups, todayIso]
+  );
+  const marksRev = useMarks(wanted);
 
-  // Straight into review mode on this exact setup — not the browse feed.
-  // The SLEEVE rides along (2026-08-29): a setup's id embeds scanner AND
-  // sleeve, so without it Compass rebuilt the campaign on its current tenor —
-  // the Analysis page opened on a DIFFERENT campaign (wrong targets, wrong
-  // clock) that didn't even read as tracked.
+  const rows = useMemo<Row[]>(
+    () => trackedSetups.map(tracked => {
+      const expiry = expiryOf(tracked);
+      const expired = expiry != null && expiry < todayIso;
+      const then = tracked.markAtTrack && tracked.markAtTrack > 0 ? tracked.markAtTrack : tracked.askAtTrack && tracked.askAtTrack > 0 ? tracked.askAtTrack : null;
+      const live = expiry && !expired ? peekMark(tracked.ticker, expiry, tracked.strike, tracked.right) : null;
+      const now = live && live.mark > 0 ? live.mark : null;
+      const changePct = then != null && now != null ? (now / then - 1) * 100 : null;
+      return { tracked, expiry, expired, then, now, changePct };
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [trackedSetups, todayIso, marksRev]
+  );
+
   const handleReview = (tracked: TrackedSetup) => {
-    navigate('/compass', {
-      state: {
-        monitor: {
-          ticker: tracked.ticker,
-          strike: tracked.strike,
-          right: tracked.right,
-          scanner: tracked.scanner,
-          sleeve: sleeveOf(tracked),
-        },
-      },
-    });
+    navigate('/compass', { state: { monitor: { ticker: tracked.ticker, strike: tracked.strike, right: tracked.right, scanner: tracked.scanner, sleeve: sleeveOf(tracked) } } });
   };
 
   return (
     <>
-      {!embedded && (
-        <PageHeader
-          breadcrumb={['Terminal', 'Tracker']}
-          title="Setup Tracker"
-          subtitle="Every setup you track, with its live figures — as cards or as a table"
-        />
-      )}
-
-      {/* Tabs */}
+      {!embedded && <PageHeader breadcrumb={['Terminal', 'Tracker']} title="Setup Tracker" subtitle="Every contract you track, marked at its live quote — as cards or as a table" />}
       <div className="flex items-center gap-3">
         <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-textMuted">View</span>
-        <SegmentedControl
-          ariaLabel="Tracker view"
-          options={TAB_OPTIONS}
-          value={tab}
-          onChange={setTab}
-        />
+        <SegmentedControl ariaLabel="Tracker view" options={TAB_OPTIONS} value={tab} onChange={setTab} />
         <span className="font-mono text-[10px] text-textMuted uppercase tracking-wider">
           {trackedSetups.length} tracked setup{trackedSetups.length === 1 ? '' : 's'}
         </span>
       </div>
-
-      {/* Empty state */}
       {trackedSetups.length === 0 ? (
         <Panel className="w-full" bodyClassName="flex flex-col items-center justify-center py-16 gap-4">
           <Bookmark className="w-10 h-10 text-textMuted/40" />
-          <span className="font-mono text-[11px] text-textMuted uppercase tracking-widest">
-            No tracked setups yet
-          </span>
+          <span className="font-mono text-[11px] text-textMuted uppercase tracking-widest">No tracked setups yet</span>
           <p className="text-[12px] text-textSecondary text-center max-w-sm leading-relaxed">
             Go to{' '}
-            <button
-              onClick={() => navigate('/compass')}
-              className="text-select hover:underline"
-            >
+            <button onClick={() => navigate('/compass')} className="text-select hover:underline">
               Compass
             </button>
             , pick a setup, and click <strong className="text-textPrimary">Track Setup +</strong> to bookmark it here.
           </p>
         </Panel>
       ) : tab === 'setups' ? (
-        /* ---- Grid of tracked setup cards ---- */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 animate-view-in">
-          {liveData.map(({ tracked, live, expired }) => (
-            <TrackedCard
-              key={tracked.id}
-              tracked={tracked}
-              live={live}
-              expired={expired}
-              onUntrack={() => untrackSetup(tracked.id)}
-              onReview={() => handleReview(tracked)}
-              spotlight={tracked.id === focusId}
-            />
+          {rows.map(row => (
+            <TrackedCard key={row.tracked.id} row={row} onUntrack={() => untrackSetup(row.tracked.id)} onReview={() => handleReview(row.tracked)} spotlight={row.tracked.id === focusId} />
           ))}
         </div>
       ) : (
-        /* ---- The same setups, as a table ---- */
         <Panel title="Tracked setups" flush className="w-full animate-view-in">
-          <DataTable
-            columns={TABLE_COLUMNS}
-            rows={liveData}
-            rowKey={r => r.tracked.id}
-            maxHeight="520px"
-          />
+          <DataTable columns={TABLE_COLUMNS} rows={rows} rowKey={r => r.tracked.id} maxHeight="520px" />
         </Panel>
       )}
     </>

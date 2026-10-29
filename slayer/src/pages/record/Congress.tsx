@@ -1,28 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - CONGRESS (pages/record/Congress.tsx)
-
-  What members of Congress reported trading under
-  the STOCK Act, and how long they took to say so.
-  The partner's "Disclosures" (2026-09-09) in the
-  house, and walked the same night as Insiders:
-
-    THE HEAD      four facts
-    THE CARDS     Window · Chamber · Owner · Show, and
-                  the Filter as a card that reads the
-                  names and members on the page
-    THE SENTENCE
-    THE REPORTS   the biggest disclosed brackets on
-    TO KNOW       the cut, the latest first among
-                  equals; a card keeps the grid to
-                  its member
-    THE GRID      in a window a screen tall that
-                  scrolls inside itself, its head
-                  pinned
-
-  A row's name opens it on the Map.
-==================================================
-*/
+/* What members of Congress reported trading under the STOCK Act, and how long they took to say so: the head's facts,
+   the controls, the reports to know, then every report. */
 
 import { ownerWord } from '../../data/whalesMap';
 import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
@@ -51,22 +28,21 @@ import { REPORTS_TO_KNOW } from './recordSkeletons';
 import { CongressHoldings } from '../../components/record/ExtraFaces';
 import { dollars3 } from './money';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 type Window = 7 | 30 | 90 | 180;
 type ChamberPick = 'both' | Chamber;
 type OwnerPick = 'any' | ReportOwner;
 type Show = 'all' | 'late' | 'purchases' | 'sales';
 
 const WINDOW_OPTIONS: DropdownOption<Window>[] = [
-  /* THIS WEEK (round 8: the shortest window was 30 days) */
+  /* this week */
   { value: 7, label: '7 days', hint: 'The last seven days — filed or traded, as the Dated-by menu says' },
   { value: 30, label: '30 days', hint: 'The last month' },
   { value: 90, label: '90 days', hint: 'The last quarter' },
   { value: 180, label: '180 days', hint: 'The last half year' },
 ];
 type Basis = 'filed' | 'traded';
-/* THE FILING DAY FOR THE SHORT WINDOWS (round 9: "This week" by trade date read "2 reports · 0 bought" while purchases
-   filed that week — Cleo Fields' TSM buy, filed 10/23 — sat outside it; a report is filed up to 45 days after the trade) */
+/* the short windows go by filing day: a report is filed up to 45 days after the trade */
 const BASIS_OPTIONS: DropdownOption<Basis>[] = [
   { value: 'filed', label: 'Filed', hint: 'Reports filed in the window — what is new on the record; the trade date is shown on each row' },
   { value: 'traded', label: 'Traded', hint: 'Trades made in the window, whenever they were filed' },
@@ -91,15 +67,14 @@ const SHOW_OPTIONS: DropdownOption<Show>[] = [
   { value: 'sales', label: 'Sales', hint: 'Sales only, full or partial', tone: 'bear' },
 ];
 
-/* a member the roster carries no party or state for (Alan Armstrong: party, chamber and district all null on
-   /congress/politicians) says so, never a blank tag (round 9) */
+/* a member the roster has no party or state for says so, never a blank tag */
 const seat = (t: CongressTrade) => seatLabel(t.member) || `${t.member.chamber === 'Senate' ? 'Senate' : t.member.chamber === 'House' ? 'House' : ''}${t.member.chamber ? ' · ' : ''}party n/a`;
 const typeWord = (t: CongressTrade) => (t.type === 'Purchase' ? 'Purchase' : t.type === 'Exchange' ? 'Exchange' : 'Sale');
 const typeInk = (t: CongressTrade) => (t.type === 'Purchase' ? 'text-bull' : t.type === 'Exchange' ? 'text-textMuted' : 'text-bear');
 
 /* ---- cells: the house grammar inside the grid ------------------------------------ */
 
-/* the dates, then how far back (the partner's review: never "9d ago" alone) */
+/* the dates, then how far back */
 const FiledCell = ({ data }: ICellRendererParams<CongressTrade>) => (data ? <When days={data.filedDaysAgo} /> : null);
 
 const MemberCell = ({ data }: ICellRendererParams<CongressTrade>) =>
@@ -114,8 +89,7 @@ const MemberCell = ({ data }: ICellRendererParams<CongressTrade>) =>
 
 const SYMBOL = /^[A-Z][A-Z.]{0,5}$/;
 /* an all-caps filing phrase ("US TREASURY BILLS") reads in sentence case, so it never shouts across a card */
-/* short capital words that are names or legal forms stay capitals ("REOF XXX, LLC", not "Reof Xxx, Llc" — the re-audit,
-   2026-10-22); the plain English short words are sentenced */
+/* short capital words that are names or legal forms stay capitals; plain English short words are sentence-cased */
 const PLAIN_SHORT = new Set(['THE', 'AND', 'OF', 'FOR', 'IN', 'ON', 'AT', 'TO', 'BY', 'BILL', 'BILLS', 'FUND', 'BOND', 'BONDS', 'NOTE', 'NOTES', 'CORP', 'INC', 'CO', 'TRUST', 'BANK', 'CITY', 'TOWN', 'GAS', 'OIL', 'NEW', 'YORK', 'WEST', 'EAST', 'SOUTH', 'NORTH', 'REAL', 'LAND', 'FARM', 'FARMS', 'HOME', 'LOAN', 'CASH', 'GOLD', 'WEEK', 'YEAR', 'DUE', 'SER', 'SR', 'JR', 'CL', 'CLASS', 'UNIT', 'UNITS', 'STOCK', 'SHS', 'COM']);
 const readable = (s: string) =>
   s.length > 6 && s === s.toUpperCase() && /[A-Z]{3}/.test(s)
@@ -129,10 +103,9 @@ export const assetLine = (t: CongressTrade) => {
   const rawDesc = t.assetDescription && t.assetDescription !== 'Stock' && t.assetDescription !== 'Undisclosed' && t.assetDescription.toUpperCase() !== sym ? t.assetDescription : '';
   const fallback = !named && sym && !/^(NONE|NA|N\/A)$/.test(sym) ? sym : '';
   const described = readable(rawDesc || fallback);
-  /* an option on a named stock says so on the row (audit round 6: Pelosi's AAPL [OP] read as a share purchase) */
+  /* an option on a named stock says so on the row */
   if (named) {
-    /* A LISTED STOCK GOES BY ITS LISTED NAME (the retail test, round 7: a filer's "ExxonMobil Holdings Corporation Common
-       Stock (XOM)" was shown as XOM's name) — the filer's own words only when the symbol is not a listed one */
+    /* a listed stock goes by its listed name; the filer's own words only when the symbol is not listed */
     const listedName = (t.assetKind === 'Stock' || t.assetKind === 'Stock Option') && isListed(sym) ? companyName(sym) : '';
     const base = (listedName && listedName !== sym ? listedName : '') || described || (t.assetKind === 'Stock' || t.assetKind === 'Stock Option' ? companyName(sym) : t.assetKind);
     return { sym, title: sym, sub: t.assetKind === 'Stock Option' ? `${base} · option` : base };
@@ -201,7 +174,7 @@ const AmountCell = ({ data }: ICellRendererParams<CongressTrade>) => {
   return (
     <span className="inline-flex items-center gap-2.5 min-w-0" title={`${bracketLabel(data.bracket)} · rung ${AMOUNT_BRACKETS[data.bracket].column} of ${AMOUNT_BRACKETS.length}`}>
       <Ladder bracket={data.bracket} />
-      {/* the short form fits the column (round 11: "$5,000,001 – $25,000,0" cut); the filed figures on hover */}
+      {/* the short form fits the column; the filed figures on hover */}
       <span className="font-mono text-t11 tnum text-textPrimary whitespace-nowrap">{bracketShort(data.bracket)}</span>
     </span>
   );
@@ -220,7 +193,7 @@ const LagCell = ({ data }: ICellRendererParams<CongressTrade>) => {
   );
 };
 
-/* THE PHONE CARD — the member, the asset, the side and the amount, the dates under them (components/record/PhoneCards.tsx) */
+/* the phone card: the member, the asset, the side and the amount, the dates under them */
 const amountShort = (t: CongressTrade): string =>
   t.bracket === null ? 'not disclosed' : t.amountOver != null ? `Over $${t.amountOver >= 1e6 ? `${t.amountOver / 1e6}M` : `${Math.round(t.amountOver / 1e3)}K`}` : bracketLabel(t.bracket);
 export const CongressCard = (t: CongressTrade, withMember = true) => {
@@ -272,10 +245,9 @@ const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onTogg
             </span>
           </span>
         ) : (
-          /* an unlisted asset ("Reof Xxx, Llc", "Bank of No…" cut on the card — the re-audit, 2026-10-22) takes the whole
-             line, the member under it, the full name on hover */
+          /* an unlisted asset takes the whole line, the member under it, the full name on hover */
           <span className="flex flex-col min-w-0 leading-tight">
-            {/* two lines before it cuts (round 11: "Not Fade Away LLC Co…") */}
+            {/* two lines before it cuts */}
             <span className="text-t12 font-bold text-textPrimary line-clamp-2 break-words" title={line.sub ? `${line.title} · ${line.sub}` : line.title}>{line.title}</span>
             <span className="min-w-0 text-t10 text-textSecondary truncate" title={`${t.member.name} ${seat(t)}`}>
               {t.member.name} <span className="font-mono text-textMuted">{seat(t)}</span>
@@ -285,7 +257,7 @@ const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onTogg
       );
     })()}
     {/* the bracket as its words — the ladder lives in the grid; at six across it pushed the label off the card */}
-    {/* the amount never cuts (audit round 5, phone: "Purchase $500K – $…") — at two across it wraps under the side */}
+    {/* the amount never cuts; at two across it wraps under the side */}
     <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono tnum">
       <span className={`text-t11 ${typeInk(t)}`}>{typeWord(t)}</span>
       <span className="text-t11 font-bold text-textPrimary whitespace-nowrap" title={t.amountOver != null ? `Over $${t.amountOver.toLocaleString('en-US')}, as filed` : bracketLabel(t.bracket)}>{t.amountOver != null ? `Over $${t.amountOver >= 1e6 ? `${t.amountOver / 1e6}M` : `${Math.round(t.amountOver / 1e3)}K`}` : bracketShort(t.bracket)}</span>
@@ -309,7 +281,7 @@ const CongressCoverageLine = ({ coverage, window, unread, notMembers }: { covera
   const start = nyIsoDaysBack(window);
   const covered = !!coverage.since && coverage.since <= start;
   const partial = coverage.partialDays.filter(d => d >= start);
-  /* "complete" only with no day read short (audit round 6) */
+  /* "complete" only with no day read short */
   const done = covered && !coverage.reading && partial.length === 0;
   return (
     <p className="px-5 pb-2 text-t11 leading-relaxed text-textMuted" data-congress-coverage title="Unusual Whales sends at most 200 reports a request, newest trade first; the page asks again from the oldest trade day it reached">
@@ -318,9 +290,7 @@ const CongressCoverageLine = ({ coverage, window, unread, notMembers }: { covera
         : coverage.since
           ? `Reports of trades made since ${shortDay(coverage.since)}${coverage.reading ? ' — reading further back' : coverage.capped ? ` — the read stops there, short of ${window} days` : ''}`
           : 'Reading'}
-      {/* every day stepped past is named (audit round 6): the route cannot page within a day, so its filings after the
-          first 200 are unseen, members' among them or not */}
-      {/* said plainly (round 8: "1 day with more than 200 filings (Jul 29, 0 of the first 200 members')…" read as noise) */}
+      {/* every day stepped past is named: the route cannot page within a day, so filings past its first 200 are unseen */}
       {partial.length
         ? ` · ${partial.map(d => shortDay(d)).join(', ')}: the feed held more than 200 filings for ${partial.length === 1 ? 'that day' : 'each of those days'} and answers only the first 200 of a day, so later filings from ${partial.length === 1 ? 'it' : 'them'} may be missing (of those first 200, ${partial.map(d => `${coverage.partialMembers[d] ?? 0}${partial.length > 1 ? ` on ${shortDay(d)}` : ''}`).join(', ')} ${partial.length === 1 && (coverage.partialMembers[partial[0]] ?? 0) === 1 ? 'was a member of Congress' : 'were members of Congress'} — the rest executive-branch filings)`
         : ''}
@@ -332,8 +302,7 @@ const CongressCoverageLine = ({ coverage, window, unread, notMembers }: { covera
   );
 };
 
-/** THE READ'S PROGRESS, UP FRONT (audit round 5: "since Aug 29 — reading further back" sat in a footnote): how many of
-    the window's days the reports reach while the read pages back, and a plain "complete" once it has */
+/** the read's progress, up front: how many of the window's days the reports reach, and "complete" once they do */
 export const CongressProgress = ({ coverage, window, waiting }: { coverage: CongressCoverage; window: number; waiting: boolean }) => {
   const start = nyIsoDaysBack(window);
   const covered = !!coverage.since && coverage.since <= start;
@@ -387,8 +356,7 @@ const Congress = () => {
   const [chamber, setChamber] = useState<ChamberPick>('both');
   const [owner, setOwner] = useState<OwnerPick>('any');
   const [show, setShow] = useState<Show>('all');
-  /* TREASURY BILLS HIDDEN BY DEFAULT (audit round 5): parked cash in 4- to 52-week bills filled the book and every
-     member's page, burying the equity trades — one switch shows them, and the head says how many it hid */
+  /* Treasury bills are hidden by default (parked cash, not equity trades); one switch shows them and the head counts them */
   const [hideBills, setHideBills] = useState(true);
   const [phoneMore, setPhoneMore] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -403,8 +371,7 @@ const Congress = () => {
   const failed = status === 'sim';
   const waiting = status === 'loading';
   const quiet = failed || waiting;
-  /* PARTIAL TOTALS SAY SO (round 11: "Reports 197 · Median lag 17d · Past the deadline 0" at 1.5s, settling at 723 / 23d
-     / 4) — while the read pages back the figures are greyed and marked "so far", as on Insiders */
+  /* while the read pages back the figures are greyed and marked "so far" */
   const partial = !quiet && coverage.reading;
   const soFar = partial ? <span className="text-t9 text-textMuted" title="Still paging back — the figures grow as older reports land"> · so far</span> : null;
   const gridEmpty = failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut';
@@ -423,7 +390,7 @@ const Congress = () => {
     [feed, chamber, owner, show, hideBills]
   );
 
-  /* THE FILTER reads the names and members on the cut; any pick matching keeps the row */
+  /* the filter reads the names and members on the cut; any pick keeps its rows */
   const [picks, setPicks] = useState<string[]>([]);
   const filterGroups = useMemo<MultiGroup[]>(() => {
     const count = (key: (t: CongressTrade) => string | null) => {
@@ -460,11 +427,11 @@ const Congress = () => {
   }, [cut, picks]);
   const toggleMember = (name: string) => setPicks(p => (p.includes(`member:${name}`) ? p.filter(x => x !== `member:${name}`) : [...p, `member:${name}`]));
   const stats = useMemo(() => summariseCongress(rows, window), [rows, window]);
-  /* the stock-focused figures leave the bond reports out; the bonds are said apart (round 8) */
+  /* the stock-focused figures leave the bond reports out; the bonds are said apart */
   const equityStats = useMemo(() => summariseCongress(rows.filter(t => !isBondReport(t)), window), [rows, window]);
   const bondStats = useMemo(() => summariseCongress(rows.filter(isBondReport), window), [rows, window]);
 
-  /* THE REPORTS TO KNOW: the biggest disclosed brackets on the cut, the latest first among equals */
+  /* the reports to know: the biggest disclosed brackets on the cut, the latest first among equals */
   const toKnow = useMemo(
     () =>
       cut
@@ -476,9 +443,7 @@ const Congress = () => {
 
   const columnDefs = useMemo<ColDef<CongressTrade>[]>(
     () => [
-      /* THE ARROW SAYS NEWEST FIRST (the retail test, round 7: "Filed ↑" on a newest-first grid, and rows of one filing day
-         in feed order as pages landed): the column sorts by recency, descending — newest filing first, and within a day
-         the newest trade first */
+      /* newest filing first, and within a day the newest trade first */
       {
         headerName: 'Filed',
         field: 'filedDaysAgo',
@@ -524,7 +489,7 @@ const Congress = () => {
             <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">What Congress reported</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a row, a bracket, an owner and the lag mean" testId="congress-guide" />
           </div>
-          {/* on a phone the line wraps rather than cutting off mid-word (the retail test, round 7) */}
+          {/* on a phone the line wraps rather than cutting mid-word */}
           <p className="mt-0.5 text-t11 text-textMuted sm:whitespace-nowrap sm:truncate">{basis === 'filed' ? `Every report filed in the last ${window} days, whenever the trade was made (its date on each row)` : 'Every report of a trade made in the window'}, newest filing first · a row opens that member’s book</p>
           {!failed && <CongressProgress coverage={coverage} window={basis === 'filed' ? Math.max(window, 90) : window} waiting={waiting} />}
         </div>
@@ -555,8 +520,7 @@ const Congress = () => {
             <dt className="text-t10 text-textMuted cursor-help" title={window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade. Every trade in the last ${window} days is younger than that, so none of them can be late yet — pick 90 or 180 days` : `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade, the STOCK Act's limit — among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days`}>Past the deadline</dt>
             <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${equityStats.lateFilings ? 'text-bear' : 'text-textPrimary'} ${partial ? 'opacity-60' : ''}`} data-congress-late>
               {quiet ? '—' : window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? <span className="text-textMuted">none can be yet</span> : (
-                /* ONE BASIS WITH THE SENTENCE (audit round 10: "Past the deadline 7" counted the bonds, the line under it said
-                   "4 missed the 45-day deadline" of the stocks) — the stocks' count, the bonds' said beside it */
+                /* the deadline count is the stocks', the bonds' said beside it, on the sentence's basis */
                 <>
                   {equityStats.lateFilings.toLocaleString('en-US')}
                   {bondStats.lateFilings > 0 ? <span className="text-textMuted"> · +{bondStats.lateFilings.toLocaleString('en-US')} {bondStats.lateFilings === 1 ? 'bond' : 'bonds'}</span> : null}
@@ -567,8 +531,7 @@ const Congress = () => {
           </div>
         </dl>
       </div>
-      {/* ON A PHONE THE CONTROLS AND THE PROSE FOLD BEHIND ONE ROW (round 11: ~1,500px of menus, sentences and cards stood
-          before the first trade) */}
+      {/* on a phone the controls and the prose fold behind one row, so the first report is on the first screen */}
       {phone && (
         <button
           type="button"
@@ -583,7 +546,6 @@ const Congress = () => {
       )}
       {(!phone || phoneMore) && (
       <>
-      {/* THE ONE LINE OF CONTROLS */}
       <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-congress-controls>
         <DropdownSelect label="Window" value={window} options={WINDOW_OPTIONS} onChange={setWindow} title="How far back the reports run" testId="congress-window" />
         <DropdownSelect label="Dated by" value={basis} options={BASIS_OPTIONS} onChange={setBasis} title="Count a report by the day it was filed, or the day of the trade" testId="congress-basis" />
@@ -601,9 +563,8 @@ const Congress = () => {
           {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : `${bondStats.trades.length ? `Stocks, options and funds: ${congressSentence(equityStats).replace(/^No report on this cut/, 'none on this cut')} Bonds apart — ${bondStats.trades.length.toLocaleString('en-US')} ${bondStats.trades.length === 1 ? 'report' : 'reports'} of notes, munis and corporate bonds covering ${bondStats.totalHigh === null ? `at least ${dollars3(bondStats.totalLow)}` : `${dollars3(bondStats.totalLow)}–${dollars3(bondStats.totalHigh)}`}, on the grid but not in that total${bondStats.lateFilings ? `, ${bondStats.lateFilings.toLocaleString('en-US')} of them filed past the deadline` : ''}.` : congressSentence(stats)}${billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from every count here.` : ''}`}
         </p>
       )}
-      {/* THE REPORTS TO KNOW */}
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-congress-to-know>
-        {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
+        {/* on a phone the head stacks: the label over its words */}
         <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The reports to know</span>
           <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">the biggest disclosed stock, option and fund trades on this cut, the latest first among equals — bonds are left to the grid · click one to keep the grid to that member</span>
@@ -612,8 +573,7 @@ const Congress = () => {
           <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut'}</div>
         ) : (
           <div
-            /* every report across from 1280; six on a small laptop, four on a tablet, two on a phone (the device sweep,
-               2026-10-19: six across at 390 left a card 50px wide with its words cut) */
+            /* every report across from 1280; six on a laptop, four on a tablet, two on a phone */
             className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--reports),minmax(0,1fr))]"
             style={{ '--reports': REPORTS_TO_KNOW } as CSSProperties}
           >
@@ -625,7 +585,7 @@ const Congress = () => {
       </div>
       </>
       )}
-      {/* THE GRID — grown to its rows, the page scrolls (2026-09-11, the Compass board's rule) */}
+      {/* the grid grows to its rows and the page scrolls */}
       <div className="slayer-board border-t border-borderSubtle" data-congress-grid>
         {phone ? (
           <PhoneCards rows={rows} rowKey={t => t.id} card={t => CongressCard(t)} onOpen={t => navigate(`/dossier/congress/${t.member.id}`)} empty={gridEmpty} testId="congress" resetKey={rows} />

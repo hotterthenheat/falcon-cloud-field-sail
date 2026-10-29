@@ -1,13 +1,10 @@
 /*
-  BLOTTER — one book.
-  Exit is the price it left at. Return is that price against what was paid,
-  the same sum on every trade.
+  The blotter shows only the paper fills this browser recorded from Compass's own calls.
+  Return is the exit against what was paid, the same sum on every trade.
 */
 
 import { useMemo, useState } from 'react';
 import { CalendarDays } from 'lucide-react';
-import RECORD from '../../data/odteRecord.json';
-import TAKEN from '../../data/oosTrades.json';
 import TraceBox, { Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import type { Column } from '../../components/ui/DataTable';
 import DropdownSelect from '../../components/ui/DropdownSelect';
@@ -15,15 +12,9 @@ import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
 import ContractLabel from '../../components/ui/ContractLabel';
 import { isoDate, type Expiry } from '../../core/calendar';
 import { heldWords, usd, dirInk } from '../../components/review/words';
-import { COMPASS_SET } from '../../data/compassUniverse';
 import { useCompassBook, type BookLine } from '../../data/compassLedger';
 import { Tip } from '../../components/ui/Tooltip';
 
-type Rec = [string, string, string, string, number, number, number, string, number, string];
-type TakenRec = [string, string, string, string, number, number, string, number, string, number, number, number, number];
-const FILE = RECORD as Rec[];
-const TAKEN_FILE = TAKEN as TakenRec[];
-const BOOK_FROM = '2026-07-24';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -38,8 +29,6 @@ const minutes = (hhmm: string) => {
   return h * 60 + m;
 };
 const blank = <span className="text-textMuted">—</span>;
-/** (exit − paid) / paid. The only return the book uses. */
-const exitReturn = (paid: number, exitPx: number) => (exitPx / paid - 1) * 100;
 
 interface Line {
   id: string;
@@ -60,74 +49,6 @@ interface Line {
   fees: number | null;
 }
 
-const sideOf = (contract: string) => {
-  const put = contract.endsWith('PUT');
-  const strike = Number(contract.replace(/ (CALL|PUT)$/, ''));
-  return { strike, right: (put ? 'P' : 'C') as 'C' | 'P' };
-};
-
-const LINES: Line[] = (() => {
-  const byKey = new Map<string, Line>();
-  const out: Line[] = [];
-  FILE.forEach((r, i) => {
-    if (r[0] < BOOK_FROM || !COMPASS_SET.has(r[1])) return;
-    const { strike, right } = sideOf(r[2]);
-    const held = minutes(r[9]) - minutes(r[3]);
-    const line: Line = {
-      id: `l${i}`,
-      date: r[0],
-      ticker: r[1],
-      strike,
-      label: `${r[1]} ${strike}${right}`,
-      right,
-      entry: r[3],
-      ask: r[4],
-      exitPx: r[6],
-      exit: r[9],
-      held: held >= 0 ? held : null,
-      ret: exitReturn(r[4], r[6]),
-      stamp: Number(r[0].replace(/-/g, '')) * 10000 + minutes(r[3]),
-      result: r[6] > r[4] ? 'win' : 'loss',
-      why: '',
-      fees: null,
-    };
-    out.push(line);
-    byKey.set(`${r[0]}|${r[1]}|${r[2]}|${r[3]}`, line);
-  });
-  TAKEN_FILE.forEach((r, i) => {
-    if (r[0] < BOOK_FROM || !COMPASS_SET.has(r[1])) return;
-    const hit = byKey.get(`${r[0]}|${r[1]}|${r[2]}|${r[3]}`);
-    if (hit) {
-      hit.exit = r[6];
-      hit.exitPx = r[7];
-      hit.held = r[9];
-      hit.ret = exitReturn(hit.ask, r[7]);
-      hit.result = r[7] > hit.ask ? 'win' : 'loss';
-      return;
-    }
-    const { strike, right } = sideOf(r[2]);
-    out.push({
-      id: `t${i}`,
-      date: r[0],
-      ticker: r[1],
-      strike,
-      label: `${r[1]} ${strike}${right}`,
-      right,
-      entry: r[3],
-      ask: r[4],
-      exitPx: r[7],
-      exit: r[6],
-      held: r[9],
-      ret: exitReturn(r[4], r[7]),
-      stamp: Number(r[0].replace(/-/g, '')) * 10000 + minutes(r[3]),
-      result: r[7] > r[4] ? 'win' : 'loss',
-      why: '',
-      fees: null,
-    });
-  });
-  return out;
-})();
-
 const bookExpiry = (iso: string): Expiry => {
   const date = new Date(`${iso}T12:00:00`);
   const base = new Date();
@@ -140,17 +61,6 @@ const bookExpiry = (iso: string): Expiry => {
     sessions: 0,
   };
 };
-const BOOK_DAYS: Expiry[] = (() => {
-  const seen = new Set<string>();
-  const out: Expiry[] = [];
-  for (const r of LINES) {
-    if (seen.has(r.date)) continue;
-    seen.add(r.date);
-    out.push(bookExpiry(r.date));
-  }
-  return out;
-})();
-
 const pctWords = (v: number, digits = 0) => {
   const s = digits ? Math.abs(v).toFixed(digits) : String(Math.round(Math.abs(v)));
   if (Number(s) === 0) return '0%';
@@ -187,13 +97,6 @@ const matchesQuery = (ticker: string, label: string, raw: string) => {
   if (names.length && !names.some(t => t === ticker)) return false;
   return rest.every(t => label.toUpperCase().includes(t));
 };
-
-const BY_DAY = new Map<string, Line[]>();
-for (const r of LINES) {
-  const list = BY_DAY.get(r.date);
-  if (list) list.push(r);
-  else BY_DAY.set(r.date, [r]);
-}
 
 const resultOf = (rows: Line[]) => {
   let wins = 0, winRet = 0, losses = 0, lossRet = 0, hold = 0, holdN = 0, scored = 0;
@@ -239,12 +142,12 @@ const Blotter = () => {
   const [openDay, setOpenDay] = useState<string | null>(null);
   const live = useCompassBook();
 
-  const iso = openDay && BY_DAY.has(openDay) ? openDay : null;
+  const bookDays = useMemo(() => [...new Set(live.map(l => l.date))].sort().reverse().map(bookExpiry), [live]);
+  const iso = openDay && live.some(l => l.date === openDay) ? openDay : null;
   const rows = useMemo(() => {
     const n = q.trim().toUpperCase();
-    const source = iso ? (BY_DAY.get(iso) ?? []) : LINES;
     const head = iso ? live.filter(l => l.date === iso).map(fromBook) : live.map(fromBook);
-    return [...head, ...source].filter(r => {
+    return head.filter(r => {
       if (side === 'put' && r.right !== 'P') return false;
       if (side === 'call' && r.right !== 'C') return false;
       if (n && !matchesQuery(r.ticker, r.label, n)) return false;
@@ -256,7 +159,7 @@ const Blotter = () => {
   return (
     <TraceBox
       title="Blotter"
-      sub={iso ? longDay(iso) : 'Every day, newest first'}
+      sub={iso ? longDay(iso) : 'Paper fills recorded in this browser, newest first'}
       testId="blotter"
       foldOnPhone
       facts={
@@ -271,7 +174,7 @@ const Blotter = () => {
       controls={
         <>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="SPY QQQ NVDA" aria-label="Find a name in the book" className="w-44 max-sm:w-full slayer-field" data-span data-blotter-search />
-          <ExpiryCalendar value={iso ?? ''} expiries={BOOK_DAYS} onChange={e => setOpenDay(isoDate(e.date))} onClear={() => setOpenDay(null)} anyLabel="Every day" clearLabel="Every day" steppers={iso != null} floor={BOOK_FROM} label="Day" icon={CalendarDays} title="Every day, or one day of the book" testId="blotter-day" />
+          <ExpiryCalendar value={iso ?? ''} expiries={bookDays} onChange={e => setOpenDay(isoDate(e.date))} onClear={() => setOpenDay(null)} anyLabel="Every day" clearLabel="Every day" steppers={iso != null} label="Day" icon={CalendarDays} title="Every day, or one day of the book" testId="blotter-day" />
           <DropdownSelect
             label="Side"
             value={side}
@@ -285,7 +188,7 @@ const Blotter = () => {
       sentence={false}
     >
       {rows.length === 0 ? (
-        <div className="border-t border-borderSubtle px-5 py-10 font-mono text-t11 text-textMuted">{q.trim() ? `No trade matches “${q.trim()}”.` : 'Nothing in the book on this cut.'}</div>
+        <div className="border-t border-borderSubtle px-5 py-10 font-mono text-t11 text-textMuted">{q.trim() ? `No trade matches “${q.trim()}”.` : live.length ? 'Nothing in the book on this cut.' : 'No paper fills yet. A Compass call lands here once it fills at the ask a minute after the call.'}</div>
       ) : (
         <TraceGrid
           rows={rows}

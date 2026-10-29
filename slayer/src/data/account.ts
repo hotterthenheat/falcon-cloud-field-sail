@@ -1,42 +1,9 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE ACCOUNT (data/account.ts)
-
-  Who is signed in, and the doors in and out
-  (2026-10-03, the first cut of auth at Noah's
-  word: email and password on Supabase Auth; the
-  terminal stays open while signed out until
-  billing exists). One store the shell and the
-  Account page read:
-
-    status     off — no account service on this
-                     build (the preview stays)
-               loading — asking whether a session
-                     is kept
-               out · in
-    user       the signed-in person's id and email
-    profile    their row in `profiles` — name,
-               handle, picture, ROLE (owner · team ·
-               member), plan, a ban, and since
-               2026-10-17 A GRANT (a plan given, until
-               a date) and the BETA door — the shape
-               the admin rooms read
-    recovering they arrived from a password-reset
-               link: the page asks for the new one
-
-  While someone is signed in THE TERMINAL'S OWN
-  PROFILE STORE (data/profile.ts — the rail's foot,
-  the room's ME, the Account rows) mirrors the
-  account's row, and a change saved there is
-  written back to the row (the sink), so nothing
-  that reads the profile had to learn about auth.
-
-  The database decides what a row may do
-  (supabase/migrations/…_profiles.sql): a member
-  reads and edits their own row and cannot touch
-  role, plan or the ban; an owner reads all. This
-  file never pretends otherwise.
-==================================================
+  Who is signed in (Supabase Auth), and the sign-in, sign-out and delete calls. One store read by the shell and the
+  Account page: status (off | loading | out | in), user, profile (the `profiles` row: name, handle, picture, role,
+  plan, ban, grant, beta) and `recovering` (arrived from a password-reset link). While signed in, the terminal's own
+  profile store (data/profile.ts) mirrors the row and writes changes back. Row-level security decides what a row
+  may do (supabase/migrations); this file never assumes more.
 */
 
 import { useSyncExternalStore } from 'react';
@@ -46,8 +13,8 @@ import { onProfileSaved, readAvatar, SAMPLE_PROFILE, setProfile, type Profile } 
 import { clearCarried, flushSync, settleSync, syncAfterSignIn } from './sync';
 
 export type AccountStatus = 'off' | 'loading' | 'out' | 'in';
-/** ROLES (2026-10-17): who someone is to the company — an owner runs the terminal, the team reads People and the log
-    and changes nothing, a member is a trader. What they can SEE is the plan's business, not the role's. */
+/** Roles: an owner runs the terminal, the team reads People and the log but changes nothing, a member is a trader.
+    What anyone can see is the plan's business, not the role's. */
 export type Role = 'owner' | 'team' | 'member';
 /** a plan that can be given — every sold plan */
 export type GrantPlan = Exclude<AccountPlan, 'none'>;
@@ -64,15 +31,14 @@ export interface AccountProfile {
   plan: AccountPlan;
   /** set by an owner; the app reads it to say so plainly */
   bannedUntil: string | null;
-  /** THE PLAN'S STANDING, from Stripe (2026-10-10): none until a payment lands; then Stripe's own word */
+  /** The plan's standing from Stripe: none until a payment lands, then Stripe's word */
   planStatus: PlanStatus;
   planPeriod: 'month' | 'year' | null;
-  /** when the plan renews — or, cancelled, when it ends */
+  /** when the plan renews, or (cancelled) when it ends */
   planRenewsOn: string | null;
   /** a Stripe customer exists for this person (the portal opens) */
   hasBilling: boolean;
-  /** THE GRANT (2026-10-17): a complimentary plan given by an owner — "legacy" — and when it ends; the gates read the
-      higher of this and anything paid while the end has not passed; the Account page says "with our thanks" */
+  /** A complimentary plan given by an owner, and when it ends; the gates read the higher of this and anything paid. */
   grantPlan: GrantPlan | null;
   grantUntil: string | null;
   grantNote: string | null;
@@ -89,7 +55,7 @@ export interface AccountState {
 }
 
 export type Outcome = { ok: true } | { ok: false; why: string };
-/** the two sign-ins beside the password (the sign-in page's doors); each is switched on in the project's dashboard */
+/** the sign-in providers beside the password, each enabled in the project's dashboard */
 export type Provider = 'google' | 'apple';
 
 let state: AccountState = { status: ACCOUNTS_ON ? 'loading' : 'off', user: null, profile: null, recovering: false };
@@ -139,7 +105,7 @@ const thisMachine = (): string => {
   return `${os} · ${browser}`;
 };
 
-/** the mirror is writing the profile store itself — the sink must not echo it back to the row */
+/** the mirror is writing the profile store itself: the sink must not echo it back to the row */
 let mirroring = false;
 
 const mirror = (p: AccountProfile): void => {
@@ -191,13 +157,8 @@ const loadProfile = async (user: User): Promise<void> => {
   if (profile.avatar && /^https?:\/\//.test(profile.avatar)) void keepProviderPicture(user.id, profile.avatar);
 };
 
-/* THE PROVIDER'S PICTURE IS COPIED IN (Noah, 2026-10-14, a bare ring on the Account page: "what happened to our
-   icon??"): the row held Google's picture as a URL (the sign-in's, supabase/migrations/20261011_avatar_from_provider.sql),
-   and Google's picture host rate-limits a site that keeps asking for it — a 429 with an HTML page the browser then refuses
-   as an image, so the rail and the Account page drew nothing. Once, while the row holds a URL: the picture is fetched
-   with CORS (the host allows any origin), cropped to the house's 128px data URL (profile.ts readAvatar, the drop's own
-   path) and saved — the store's sink writes the row — so no page asks Google for it again. A fetch that fails leaves the
-   URL; the mark falls back to the initials meanwhile (ui/Avatar). */
+/* A provider picture URL is copied in once as the house's 128px data URL (profile.ts readAvatar): the provider's image
+   host rate-limits repeat requests. A failed fetch keeps the URL and the initials show meanwhile (ui/Avatar). */
 const inlining = new Set<string>();
 async function keepProviderPicture(userId: string, url: string): Promise<void> {
   if (inlining.has(url)) return;
@@ -211,11 +172,11 @@ async function keepProviderPicture(userId: string, url: string): Promise<void> {
     if (state.user?.id !== userId || state.profile?.avatar !== url) return;
     setProfile({ avatar: data });
   } catch {
-    /* the host said no — the URL stays, the initials stand in */
+    /* the host refused: the URL stays and the initials stand in */
   }
 }
 
-/** The row read again — after Stripe has spoken (the Billing page, back from checkout) */
+/** Re-read the row, e.g. after returning from checkout */
 export async function reloadProfile(): Promise<void> {
   if (!supabase) return;
   const { data } = await supabase.auth.getUser();
@@ -223,8 +184,8 @@ export async function reloadProfile(): Promise<void> {
 }
 
 const STANDING = new Set<PlanStatus>(['active', 'trialing', 'past_due']);
-/** AFTER A PURCHASE (2026-10-10): Stripe's word lands on the row a breath after the card clears — the row is read again
-    every two seconds until the plan stands (or twelve tries), so the rail and Billing show it without a reload */
+/** After a purchase the row is re-read every two seconds (up to twelve tries) until the plan stands, so the rail and
+    Billing update without a reload. */
 export function settleAfterPurchase(): void {
   let tries = 0;
   const tick = async () => {
@@ -243,7 +204,7 @@ const onSession = (session: Session | null): void => {
   }
   const user = session.user;
   set({ status: 'in', user: { id: user.id, email: user.email ?? '' } });
-  /* never await another call inside the auth callback (the client's own rule) — the row is read on the next tick */
+  /* never await another call inside the auth callback (the client's rule): the row is read on the next tick */
   window.setTimeout(() => void loadProfile(user), 0);
 };
 
@@ -255,20 +216,18 @@ if (supabase) {
       set({ status: 'out', user: null, profile: null, recovering: false });
       return;
     }
-    /* A FRESH SIGN-IN on a page already running (not the session found at boot, not the SIGNED_IN the client repeats
-       when a tab comes back): the account's stores are pulled, and the page reloads once if anything landed
-       (data/sync.ts) — never awaited inside the callback, the client's rule */
+    /* A fresh sign-in on a running page (not the boot session, not the repeated SIGNED_IN on tab return): pull the
+       account's stores and reload once if anything landed (data/sync.ts). Never awaited inside the callback. */
     const fresh = event === 'SIGNED_IN' && state.status !== 'in' && !!session?.user;
     if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') onSession(session);
     if (session?.user) {
       const id = session.user.id;
-      /* the session found at boot (its pull ran before the stores read their keys): what the stores wrote since goes
-         up; a fresh sign-in pulls first, then settles */
+      /* the boot session: what the stores wrote since goes up; a fresh sign-in pulls first, then settles */
       window.setTimeout(() => (fresh ? void syncAfterSignIn(id) : settleSync(id)), 0);
     }
   });
-  /* THE SINK: a change saved to the terminal's profile store while signed in is written to the row — name, handle and
-     picture; the email moves only through the account service's own confirmation */
+  /* The sink: name, handle and picture saved to the profile store while signed in are written to the row. The email
+     changes only through the auth service's own confirmation. */
   onProfileSaved((patch: Partial<Profile>) => {
     if (mirroring || state.status !== 'in' || !state.user) return;
     const row: Partial<Pick<Row, 'name' | 'handle' | 'avatar'>> = {};
@@ -287,9 +246,9 @@ if (supabase) {
   });
 }
 
-/* ---- the words for what went wrong -------------------------------------------- */
+/* ---- error wording ---- */
 
-/** The service's messages, said plainly — never its codes */
+/** The service's messages in plain words, never its codes */
 export const plainWhy = (message: string): string => {
   const m = message.toLowerCase();
   if (m.includes('invalid login credentials') || m.includes('invalid_credentials')) return 'That email and password do not match.';
@@ -306,11 +265,11 @@ export const plainWhy = (message: string): string => {
 const OFF: Outcome = { ok: false, why: 'The account service is not set up on this build.' };
 const where = (path: string): string => `${window.location.origin}${path}`;
 
-/* ---- the doors ---------------------------------------------------------------- */
+/* ---- calls ---- */
 
 export const MIN_PASSWORD = 8;
 
-/** Create the account. With "confirm email" on in the project, the person has a link to open first — `confirm` says so. */
+/** Create the account; with email confirmation on, `confirm` says a link must be opened first. */
 export async function signUp(email: string, password: string, name: string): Promise<Outcome & { confirm?: boolean }> {
   if (!supabase) return OFF;
   const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name }, emailRedirectTo: where('/signin') } });
@@ -328,8 +287,8 @@ export async function signIn(email: string, password: string): Promise<Outcome> 
 
 export async function signOut(): Promise<Outcome> {
   if (!supabase) return OFF;
-  /* what this machine changed goes up first; after, it forgets the carried stores — the account keeps them, a shared
-     machine starts the next person clean, and the page reloads so every store reads the clean slate (data/sync.ts) */
+  /* pending changes go up first; then the carried stores are cleared (the account keeps them) and the page reloads so
+     every store reads the clean slate (data/sync.ts) */
   await flushSync();
   const { error } = await supabase.auth.signOut();
   if (error) return { ok: false, why: plainWhy(error.message) };
@@ -345,11 +304,8 @@ export async function signOut(): Promise<Outcome> {
   return { ok: true };
 }
 
-/** THE DOOR OUT FOR GOOD (2026-10-10, Noah: "build the delete account door"): the function (supabase/functions/
-    account-delete) checks the typed email is this account's, refuses the last owner, ends the billing on Stripe, then
-    deletes the user — the database cascades the profile, the carried stores and the log. Here, after it has: the
-    carried stores leave this machine, the dead session is dropped (the server has no user to sign out any more), and
-    the caller takes the person to the front page. */
+/** Delete the account through supabase/functions/account-delete (checks the typed email, refuses the last owner,
+    ends billing, deletes the user; the database cascades the rest). The caller then takes the person home. */
 export async function deleteAccount(emailTyped: string): Promise<Outcome> {
   if (!supabase || !state.user) return OFF;
   if (emailTyped.trim().toLowerCase() !== state.user.email.toLowerCase()) return { ok: false, why: 'Type the account’s email exactly to confirm.' };
@@ -370,9 +326,8 @@ export async function deleteAccount(emailTyped: string): Promise<Outcome> {
   return { ok: true };
 }
 
-/** AFTER THE DELETE, the leaving: the carried stores leave this machine, the rail goes back to the placeholder, the dead
-    session is dropped (the server has no user to sign out any more — only this machine's copy is left), and the front
-    page loads clean. Kept apart from deleteAccount so the page can show "Deleted" for a breath before it goes. */
+/** After a delete: clear the carried stores, reset the rail, drop the dead session locally and load the front page.
+    Separate from deleteAccount so the page can show "Deleted" first. */
 export async function leaveAfterDelete(): Promise<void> {
   clearCarried();
   mirroring = true;
@@ -392,10 +347,9 @@ export async function sendReset(email: string): Promise<Outcome> {
   return error ? { ok: false, why: plainWhy(error.message) } : { ok: true };
 }
 
-/** Google or Apple: the browser leaves for the provider and comes back to the sign-in page, signed in, which sends it
-    on to `next`. A provider not yet switched on in the project's dashboard says so in plain words. */
-/** WHICH DOORS OPEN: the providers the project has switched on, asked of the service once a page load (its settings are
-    public). When the service cannot say, every door is offered and a press says what the service says. */
+/** Google or Apple: leaves for the provider and returns to the sign-in page, which forwards to `next`. */
+/** The providers the project has enabled, asked once per page load (public settings). If unknown, every provider is
+    offered and a press reports the service's answer. */
 let providersAsked: Promise<Record<Provider, boolean>> | null = null;
 export function providersOn(): Promise<Record<Provider, boolean>> {
   if (!providersAsked) {
@@ -409,8 +363,7 @@ export function providersOn(): Promise<Record<Provider, boolean>> {
 
 export async function signInWithProvider(provider: Provider, next?: string | null): Promise<Outcome> {
   if (!supabase) return OFF;
-  /* a provider the project has not switched on is said here, on our page — the service's answer to the browser is a raw
-     error page, not a way back */
+  /* a provider that is not enabled is reported here: the service would answer with a raw error page */
   if (!(await providersOn())[provider]) return { ok: false, why: `${provider === 'google' ? 'Google' : 'Apple'} sign-in is not switched on yet.` };
   const back = next && next.startsWith('/') ? `/signin?next=${encodeURIComponent(next)}` : '/signin';
   const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: where(back) } });

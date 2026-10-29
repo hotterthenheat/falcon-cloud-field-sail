@@ -45,10 +45,9 @@ import RGL, { type Layout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { Check, Lock, LockOpen, Plus, RotateCcw, Save, Trash2, X } from 'lucide-react';
-import { useMarketData } from '../../context/MarketDataContext';
-import Simulator from '../../core/simulator';
+import { useTicker } from '../../context/MarketDataContext';
 import { buildExposureProfile } from '../../data/exposure';
-import { buildCompassView } from '../../data/compass';
+import { ensureBook, snapshotOf, useBookRev } from '../../data/uwBook';
 import Chip from '../../components/ui/Chip';
 import HoverReadout from '../../components/ui/HoverReadout';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
@@ -59,7 +58,6 @@ import Tile, { TILE_HEAD_H } from './TileFrame';
 import { widgetByKey } from './registry';
 import type { TileState, WidgetDef, WorkspaceCtx } from './tile';
 import { firstFit, isPreset, loadDesks, PRESET_BLURBS, PRESET_NAMES, presetTemplate, saveDesks, type DeskStore, type SavedWorkspace, type WidgetInstance } from './desks';
-import type { MarketSnapshot } from '../../types/market';
 
 /* THE GRID'S OWN ARITHMETIC (react-grid-layout calcGridItemWHPx): 12 columns, rows of 88, a 12px gutter, no padding */
 const GRID_COLS = 12;
@@ -133,6 +131,8 @@ const useHostWidth = () => {
 };
 
 const SCAN_INTERVAL_MS = 10_000;
+/* How often the desk asks the vendor book to refresh each name it shows */
+const BOOK_MS = 30_000;
 
 /** What a desk holds, on its tab's hover — its purpose and its tiles by name, read off the saved layout itself */
 const DeskPeek = ({ name, ws }: { name: string; ws: SavedWorkspace }) => (
@@ -158,7 +158,7 @@ const DeskPeek = ({ name, ws }: { name: string; ws: SavedWorkspace }) => (
 const barBtn = 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle bg-ink/[0.02] hover:bg-ink/[0.05] hover:border-borderMuted font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors';
 
 const Pulse = () => {
-  const { activeTicker, marketData, changeTicker } = useMarketData();
+  const { activeTicker, changeTicker } = useTicker();
   const isPhone = useIsPhone();
   const navigate = useNavigate();
 
@@ -249,57 +249,52 @@ const Pulse = () => {
     setLayout(prev => prev.filter(l => alive.some(w => w.id === l.i)));
   }, [instances]);
 
-  // ---- the feed: one snapshot a sweep, a count for the tape, a one-second tick ----
-  const revRef = useRef(0);
-  const revision = useMemo(() => ++revRef.current, [marketData]);
-  const [scanSnapshot, setScanSnapshot] = useState<MarketSnapshot | null>(null);
-  const scanRef = useRef<MarketSnapshot | null>(null);
-  const lastScanRef = useRef(0);
-  useEffect(() => {
-    if (!marketData) return;
-    const now = Date.now();
-    if (!scanRef.current || now - lastScanRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker) {
-      scanRef.current = marketData;
-      lastScanRef.current = now;
-      setScanSnapshot(marketData);
-    }
-  }, [marketData]);
-  const [pulseTick, setPulseTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setPulseTick(t => t + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-
+  // ---- the feed: the live vendor book, one snapshot a name a sweep ----
+  const bookRev = useBookRev();
   /* Every name a tile HOLDS (a linked tile is on the desk's). An untouched desk builds exactly one context. */
   const heldNames = useMemo(() => [...new Set(instances.filter(i => i.ticker && widgetByKey(i.key)?.named).map(i => i.ticker as string))].sort().join('|'), [instances]);
+  const names = useMemo(() => [...new Set([activeTicker, ...heldNames.split('|').filter(Boolean)])], [activeTicker, heldNames]);
+  useEffect(() => {
+    const ask = () => names.forEach(t => ensureBook(t));
+    ask();
+    const id = window.setInterval(ask, BOOK_MS);
+    return () => window.clearInterval(id);
+  }, [names]);
+  /* a sweep at most every ten seconds — the book can land more often than the tiles need to rebuild */
+  const [sweep, setSweep] = useState(0);
+  const lastSweep = useRef(0);
+  useEffect(() => {
+    const due = SCAN_INTERVAL_MS - (Date.now() - lastSweep.current);
+    if (due <= 0) {
+      lastSweep.current = Date.now();
+      setSweep(n => n + 1);
+      return;
+    }
+    const id = window.setTimeout(() => {
+      lastSweep.current = Date.now();
+      setSweep(n => n + 1);
+    }, due);
+    return () => window.clearTimeout(id);
+  }, [bookRev, names]);
 
-  /* ONE CONTEXT A NAME, A SWEEP. What a desk does not show is never built: the Compass board is a getter, made the
-     first time a tile asks and kept for the sweep. */
-  const bases = useMemo(() => {
-    const map = new Map<string, Omit<WorkspaceCtx, 'revision' | 'pulseTick'>>();
-    if (!scanSnapshot) return map;
-    const build = (snapshot: MarketSnapshot) => {
-      let setups: WorkspaceCtx['setups'] | undefined;
-      const base = { ticker: snapshot.ticker, snapshot, exposure: buildExposureProfile(snapshot, '0DTE', 10) } as Omit<WorkspaceCtx, 'revision' | 'pulseTick'>;
-      Object.defineProperty(base, 'setups', { get: () => (setups ??= buildCompassView(snapshot, 'top-setups', Simulator.universeQuotes(snapshot.ticker))), enumerable: true, configurable: true });
-      return base;
-    };
-    for (const t of new Set([scanSnapshot.ticker, ...heldNames.split('|').filter(Boolean)])) {
+  /* ONE CONTEXT A NAME, A SWEEP; a name whose live book has not landed has none yet, and its tile says so */
+  const contexts = useMemo(() => {
+    const map = new Map<string, WorkspaceCtx>();
+    for (const t of names) {
+      const snapshot = snapshotOf(t);
+      if (!snapshot) continue;
       try {
-        map.set(t, build(t === scanSnapshot.ticker ? scanSnapshot : Simulator.snapshotFor(t)));
+        map.set(t, { ticker: snapshot.ticker, snapshot, exposure: buildExposureProfile(snapshot, '0DTE', 10), revision: sweep });
       } catch {
-        /* a name the feed cannot build is skipped — its tile says so */
+        /* a name the book cannot build is skipped — its tile says so */
       }
     }
     return map;
-  }, [scanSnapshot, heldNames]);
-  /* …stamped with the tick: the base stays the prototype, so its getters stay lazy */
-  const contexts = useMemo(() => {
-    const map = new Map<string, WorkspaceCtx>();
-    for (const [t, base] of bases) map.set(t, Object.create(base, { revision: { value: revision, enumerable: true }, pulseTick: { value: pulseTick, enumerable: true } }) as WorkspaceCtx);
-    return map;
-  }, [bases, revision, pulseTick]);
-  const deskCtx = contexts.get(scanSnapshot?.ticker ?? '') ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sweep, names]);
+  const scanSnapshot = contexts.get(activeTicker)?.snapshot ?? null;
+  const revision = sweep;
+  const deskCtx = contexts.get(activeTicker) ?? null;
   const ctxOf = (def: WidgetDef, inst: WidgetInstance): WorkspaceCtx | null => (def.named && inst.ticker ? contexts.get(inst.ticker) ?? null : deskCtx);
   const stateOf = (def: WidgetDef, inst: WidgetInstance): TileState => {
     const merged = { ...def.defaults, ...inst.state };
@@ -385,7 +380,7 @@ const Pulse = () => {
           <PhoneChart key={scanSnapshot.ticker} snapshot={scanSnapshot} revision={revision} onPick={changeTicker} />
         ) : (
           <div className="flex h-full items-center justify-center">
-            <span className="font-mono text-t11 uppercase tracking-widest text-textMuted">Waiting for the first tick…</span>
+            <span className="font-mono text-t11 uppercase tracking-widest text-textMuted">Reading {activeTicker}’s live book…</span>
           </div>
         )}
       </div>
@@ -504,7 +499,7 @@ const Pulse = () => {
       {/* THE GRID — fades out on a switch, then the next desk mounts under a fresh key and breathes in */}
       {!deskCtx ? (
         <div className="h-64 border border-borderSubtle bg-panel rounded-md flex items-center justify-center">
-          <span className="font-mono text-t11 text-textMuted uppercase tracking-widest">Waiting for the first tick…</span>
+          <span className="font-mono text-t11 text-textMuted uppercase tracking-widest">Reading {activeTicker}’s live book…</span>
         </div>
       ) : (
         <div key={active} ref={deskRef} /* while a widget is dragged in from the picker the tiles let the pointer through: the library reads the drop's place

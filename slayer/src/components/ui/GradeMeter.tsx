@@ -1,25 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE FOUR WORDS, AS A METER
-  (components/ui/GradeMeter.tsx)
-
-  No score, grade or weight of ours reaches the screen
-  (Noah, 2026-09-19: "poor, caution, and good instead
-  of actual numbers", then "strong should be when its
-  really great"). A figure of ours is SAID as one of
-  four words — poor · caution · good · strong — and
-  drawn as four steps filled up to the word that
-  holds, in that word's ink: one step in red, two in
-  orange, three in green, all four in green for
-  STRONG. Four steps, never a position on a scale:
-  that would be the figure again.
-
-  It lived inside the stock page; the Tracker's
-  "Confidence 92%" needed it too (2026-09-19), so it
-  is shared. The word comes from the caller's own
-  cuts (data/stockOverview.ts `gradeOf`, data/compass.ts
-  `gradeOfConfidence`) — this only draws it.
-==================================================
+  Our scores never reach the screen as numbers: a figure is one of four words (poor, caution, good, strong) drawn as
+  four steps filled to that word in its ink. Steps, never a scale position. The caller supplies the word
+  (data/stockOverview.ts gradeOf, data/compass.ts gradeOfConfidence).
 */
 
 import { GRADES, type Grade } from '../../data/stockOverview';

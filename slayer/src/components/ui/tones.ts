@@ -1,22 +1,10 @@
 /*
-  Shared tone maps for directional/status color.
-  Full class strings kept static so Tailwind JIT picks them up.
-  Rule: a tone is never the only signal — always paired with a label or icon.
+  Shared tone maps for direction and status colour, as static class strings so Tailwind sees them.
+  A tone is never the only signal: always pair it with a label or icon.
 */
 
-/* THE ENGINE'S STANDOUT IS MAGENTA, RESTORED (Noah, 2026-08-29, ending
-   the day's odyssey magenta → silver → baby blue → neon → back: "i
-   reveried and skylit doesnt have those colors"). What the odyssey KEPT:
-
-   - `crown` — a BLACK BOX with magenta words (the grammar Noah chose
-               during the neon leg: "mainly black with the words being
-               [the accent]... that would really bring it out" — never a
-               filled card). The engine's #1 and nothing lesser: TOP PICK.
-   - `supreme`  — the magenta tint at chip scale: supreme tags, NET, the whale.
-   - `white` — bright neutral ink. Compass process states (ACTIVE/MOVING),
-               kept by Noah's explicit word.
-   - `holo`  — flat silver, TERMINAL HARDWARE only (counts, chrome,
-               navigation); the animated foil is nav/brand. */
+/* crown: a black box with magenta words, the engine's top pick only. supreme: the magenta tint at chip scale.
+   white: bright neutral ink (Compass process states). holo: flat silver for terminal hardware (counts, chrome). */
 export type Tone = 'bull' | 'bear' | 'warn' | 'select' | 'white' | 'crown' | 'supreme' | 'holo' | 'neutral';
 
 export const toneText: Record<Tone, string> = {
@@ -48,29 +36,17 @@ export const toneBadge: Record<Tone, string> = {
   bull: 'bg-bull/10 text-bull border-bull/20',
   bear: 'bg-bear/10 text-bear border-bear/20',
   warn: 'bg-warn/10 text-warn border-warn/20',
-  /* THE LIVE SIGNAL wears a component token (index.css .tone-live ← the
-     --live-* tokens): a silver glow on the dark terminal, a silver HIGHLIGHTER on
-     paper — the accent can be a surface on white, never an ink (2026-09-12) */
+  /* the live signal uses the --live-* tokens (index.css .tone-live): a glow on dark, a highlighter on paper */
   select: 'tone-live',
   /* Bright neutral — a rank BELOW the silvers: solid white ink, whisper tint.
      Compass process states wear this so the TOP PICK foil owns the shine. */
   white: 'bg-ink/[0.07] text-textPrimary border-ink/25',
-  /* The crown. A BLACK BOX whose words are the supreme magenta — the darkest
-     surface on the board carrying the engine's own ink, so the #1 is
-     findable from across the room without shouting a filled card. TOP PICK
-     only. */
+  /* the crown: the darkest surface carrying the magenta ink, findable without a filled card */
   crown: 'bg-panel text-supreme border-supreme/40',
   /* Supreme at chip scale — the standout family's tint+ink+border grammar. */
   supreme: 'bg-supreme/10 text-supreme border-supreme/25',
-  /* TINTED, not filled, and FLAT silver rather than the animated foil.
-     A filled .holo-bg chip weighs exactly as much as the section subtabs
-     (also .holo-bg) — same material at the same strength reads as the same
-     rank, and a group's count is a child of the nav above it. So holo follows
-     every other tone's badge grammar: tint + its own ink + faint border.
-     #C7D3E8 is the house flat silver (the holo foil family's flat form).
-     NB do NOT reach for .holo-text here: it sets background-clip:text, which
-     clips the chip's SURFACE to the glyphs too, so the tint silently vanishes.
-     Animated foil stays reserved for navigation and CTAs. */
+  /* Holo is tinted flat silver (#C7D3E8), like every other tone's badge, so a count never outranks the nav above it.
+     Not .holo-text: background-clip:text would clip the chip's tint to the glyphs. */
   holo: 'bg-silver/[0.09] text-silver border-silver/25',
   neutral: 'bg-ink/[0.04] text-textSecondary border-borderSubtle',
 };

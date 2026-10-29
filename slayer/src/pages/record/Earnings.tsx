@@ -1,44 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - EARNINGS (pages/record/Earnings.tsx)
-
-  Who reports when, and what the options charge for
-  it — the calendar page under the Record, walked
-  into the house grammar (2026-09-09; the old hub's
-  composition strip, chip rows and hand-rolled table
-  are gone). Two boxes, read top to bottom:
-
-    WHO REPORTS   the head with four facts, one line
-                  of cards (Week · Show · Layout ·
-                  Name), the sentence, then the week
-                  as THE BOARD of five days (the
-                  default since 2026-09-10, Noah) —
-                  every name a card with our expected
-                  move on its shelf, before the open or
-                  after the close — or as a list of
-                  days: dates down the left, every name
-                  a door, the macro calendar beside
-                  them, today on the silver rail. The
-                  fortnight ridge that sat at the cards'
-                  right is gone the same day ("glitchy
-                  and buggy … it moves awfully weird and
-                  i dont even know what it does"): its
-                  caption changed width on every hover
-                  and pushed the bars along, and the
-                  board already shows the fortnight day
-                  by day.
-    EVERY REPORT  the house grid: both weeks, every
-                  figure the calendar carries, a row
-                  opens the name's page
-
-  THE BOARD AND THE WEEK LIST show the names the room
-  would recognise first, then the largest implied
-  moves — four cards a shelf on the board, eight
-  doors on the list — and a "+ more" door opens the
-  rest of that day in place. Nothing is dropped.
-  EVERY REPORT holds the whole fortnight, paged.
-==================================================
-*/
+/* Who reports when, and what the options charge for it: the head's facts, one line of controls, the week as a board of
+   five days (or a list of days), then every report in a paged grid. */
 
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -57,7 +18,8 @@ import { EarningsGuide } from '../../components/record/EarningsGuide';
 import { TableSkeleton } from '../../components/ui/Skeleton';
 import { richText, stateOf, type VolState } from '../../components/earnings/volState';
 import { weekDayDate, weekDayLabel, type EarningsEvent, type NextReport } from '../../data/earnings';
-import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEveryReport, useLiveReactions, useNextReport, useNextReportPending, historyMissed, ensureLastWeek, useLastWeekStatus } from '../../data/earningsFeed';
+import { signedPct as signedPctOf } from './money';
+import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEveryReport, useLiveReactions, useNextReport, useNextReportPending, historyMissed, ensureLastWeek, useLastWeekStatus, reactionIsoOf } from '../../data/earningsFeed';
 import { nyTodayIso } from '../../data/nyDate';
 import { nyMinutes } from '../../core/nyTime';
 import { macroWindow, type MacroDate } from '../../data/events';
@@ -75,8 +37,7 @@ const LIST_CAP = 8;
 const rankEvents = (list: EarningsEvent[]) =>
   [...list].sort((a, b) => Number(b.known) - Number(a.known) || (b.marketCap ?? 0) - (a.marketCap ?? 0) || b.impliedMovePct - a.impliedMovePct);
 
-/* on a Saturday or a Sunday the board opens on the COMING week (data/nyDate.ts boardMondayIso) — the hint says so (the
-   third audit, 2026-10-23: it said "the current week" over next week's dates) */
+/* on a weekend the board opens on the coming week (nyDate.ts boardMondayIso), and the hint says so */
 const nyWeekend = (): boolean => {
   const d = new Date(`${nyTodayIso()}T12:00:00Z`).getUTCDay();
   return d === 0 || d === 6;
@@ -100,6 +61,8 @@ const LAYOUT_OPTIONS: DropdownOption<Layout>[] = [
 
 const WEEKDAYS = [1, 2, 3, 4, 5] as const;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** The largest names reporting today, as chips in the head */
+const TODAY_CHIPS = 8;
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 /** The macro calendar's words on the list — the event, not the engine's label */
@@ -108,7 +71,7 @@ const MACRO_WORD: Record<string, string> = { 'FOMC decision': 'FOMC', 'NFP relea
 /** The pricing in the page's words: how the options price sits against the usual move */
 export const PRICED_WORD: Record<VolState, string> = { RICH: 'rich', INLINE: 'fair', CHEAP: 'cheap' };
 export const PRICED_INK: Record<VolState, string> = { RICH: 'text-warn', INLINE: 'text-textPrimary', CHEAP: 'text-bull' };
-/* a report whose time the feed does not have ("unknown") is not "after the close" (the re-audit, 2026-10-22) */
+/* a report whose time the feed does not have is not "after the close" */
 export const slotWord = (e: { slot: EarningsEvent['slot']; timeKnown?: boolean }) => (e.timeKnown === false ? 'time not set' : e.slot === 'BMO' ? 'before the open' : 'after the close');
 /** How many past moves the usual move averages — the live feed says; the sample has eight */
 const histN = (e: EarningsEvent) => (e.history === false ? 0 : e.histCount ?? e.pastMoves.length);
@@ -171,8 +134,7 @@ const MacroChip = ({ m }: { m: MacroDate }) => (
 );
 
 /** The board's cell: the mark, the ticker, our move, whether the date is set */
-/* ON SCREEN, THEN READ (round 11: a cold visit read 284 /earnings/{T} histories, every known name in the week). A card or
-   a grid row asks for its name's past reports once it comes into the window — one observer for the page */
+/* a card or grid row asks for its name's past reports once it comes into view; one observer for the page */
 const seenNames = new Set<string>();
 let seenRev = 0;
 let seenTimer: number | null = null;
@@ -261,8 +223,7 @@ const Card = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) => v
 
 /* ---- the Name card -------------------------------------------------------------------- */
 
-/** ASK FOR A NAME: a card on the line in the cards' clothes; it opens on the full listing's search (TickerLookup, the
-    same body the chart's symbol button uses) and the answer stands under the line. */
+/** Ask for a name: it opens the full listing's search (TickerLookup) and the answer stands under the line. */
 const NameAsk = ({ asked, onAsk }: { asked: string | null; onAsk: (t: string) => void }) => {
   const [open, setOpen] = useState(false);
   return (
@@ -297,7 +258,7 @@ const NameAsk = ({ asked, onAsk }: { asked: string | null; onAsk: (t: string) =>
   );
 };
 
-/** THE ANSWER: the name, the date, the slot, set or estimated, the options price when the fortnight holds it */
+/** the answer: the name, the date, the slot, set or estimated, the options price when the fortnight holds it */
 const Answer = ({ next, inWindow, onOpen, onClear }: { next: NextReport; inWindow: boolean; onOpen: (t: string) => void; onClear: () => void }) => {
   const navigate = useNavigate();
   const door = 'font-semibold text-textPrimary hover:text-silver transition-colors';
@@ -390,17 +351,9 @@ const WhenCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
 const IvCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? pricedKnown(data) && data.ivRank > 0 ? <span className={`font-mono text-t11 tnum ${data.ivRank >= 80 ? 'text-warn' : 'text-textPrimary'}`}>{data.ivRank}</span> : <span className="font-mono text-t11 text-textMuted">—</span> : null);
 /* a report with no straddle on the row (KARO's ±0.0%) is not priced — it says so; a report that is out shows the move the
    stock made, not the one the options had priced */
-const signedPct = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}%`;
-/* THE REACTION'S OWN SESSION (round 8: Thursday's after-close names read "moved −3.1%" on Friday at 10:30, mid-move):
-   a report before the open reacts that session, one after the close (or with no time) the next weekday. While that
-   session trades the move is said as "so far". */
-const nextWeekday = (iso: string): string => {
-  const d = new Date(`${iso}T12:00:00Z`);
-  do d.setUTCDate(d.getUTCDate() + 1);
-  while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
-  return d.toISOString().slice(0, 10);
-};
-const reactionSession = (e: EarningsEvent): string => (e.slot === 'BMO' && e.timeKnown !== false ? e.iso ?? '' : e.iso ? nextWeekday(e.iso) : '');
+const signedPct = (v: number) => signedPctOf(v, 1);
+/* the session that reacts to a report, on the feed's one holiday-aware rule */
+const reactionSession = (e: EarningsEvent): string => e.reactionIso ?? (e.iso ? reactionIsoOf(e.iso, e.slot, e.timeKnown !== false) : '');
 const reactionLive = (e: EarningsEvent): boolean => {
   if (!e.reported || e.actualMovePct == null) return false;
   const m = nyMinutes();
@@ -444,8 +397,7 @@ const PricedCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
     </span>
   );
 };
-/* BEAT · IN LINE · MISS, over the reports that carry both an actual and an estimate (the re-audit, 2026-10-22: BBD read
-   "7 of 8" with six in line) */
+/* beat, in line and miss over the reports with both an actual and an estimate */
 const BeatCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
   if (!data) return null;
   const b = data.beatCount ?? 0;
@@ -468,10 +420,9 @@ const BeatCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
 const Earnings = () => {
   const navigate = useNavigate();
   const boardNames = useBoardNames();
-  /* EVERY REPORT, the known names marked — and the reader's own board names count as known: a name you follow is one
-     you recognise, whatever its size */
+  /* every report, the known names marked; a name on the reader's own board counts as known */
   const live = useEveryReport();
-  /* the reacting session's move so far, off the live price (round 9) */
+  /* the reacting session's move so far, off the live price */
   useLiveReactions(live);
   const pending = useEarningsPending();
   const failed = useEarningsFailed();
@@ -483,9 +434,7 @@ const Earnings = () => {
   /* the Fed's published FOMC dates and payrolls Friday; the CPI date the engine can only approximate stays off the board */
   const macro = useMemo(() => macroWindow(new Date(), 10, 20).filter(m => !/approximated/i.test(m.detail)), []);
   const [week, setWeekRaw] = useState<WeekPick>('0');
-  /* THE WEEK OPENS WHERE REPORTS ARE LEFT (round 8: on Friday the default "This week" showed a week already reported,
-     "113 known names, 0 still to report"). Once the lists are in, a this-week with no report left opens on next week;
-     a reader's own pick is never overridden. */
+  /* Once the lists are in, a this-week with no report left opens on next week; a reader's own pick is never overridden. */
   const [weekTouched, setWeekTouched] = useState(false);
   const setWeek = (w: WeekPick) => {
     setWeekTouched(true);
@@ -512,15 +461,13 @@ const Earnings = () => {
   const [show, setShow] = useState<ShowPick>('all');
   const [layout, setLayout] = useState<Layout>('board');
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
-  const [todayOpen, setTodayOpen] = useState(true);
   const [guideOpen, setGuideOpen] = useState(false);
-  /* THE NAME ASKED FOR, and its answer */
+  /* the name asked for, and its answer */
   const [asked, setAsked] = useState<string | null>(null);
   const next = useNextReport(asked);
   const nextPending = useNextReportPending(asked);
 
-  /* THE NAME FILTERS THE BOARD (the retail pass: NAME = AAPL did nothing visible) — a name in the fortnight keeps the
-     board, the list and the grid to it; a name outside it says so under the line, with its page */
+  /* a name in the fortnight keeps the board, the list and the grid to it; one outside it is said under the line */
   /* in the window only when its NEXT report is (TSLA reported on Wednesday; its next is 01/27, outside) */
   const askedIn = asked != null && !!next && events.some(e => e.ticker === asked && e.iso === next.iso);
   const inWeeks = (e: EarningsEvent) => week === 'both' || String(e.weekIdx) === week;
@@ -528,30 +475,13 @@ const Earnings = () => {
     const cut = (show === 'all' ? events : events.filter(e => pricedKnown(e) && stateOf(e) === show)).filter(e => week === 'both' || String(e.weekIdx) === week);
     const named = askedIn ? cut.filter(e => e.ticker === asked) : cut;
     /* still to report first, soonest first; the reports already out follow, newest first */
-    /* (round 9) within a day the known and the largest names first — page one opened on a run of obscure names with "—" */
-    /* (round 11) within a day: before the open, then after the close, then time not set — CX and MMYT sat among the
-       after-close names */
+    /* within a day the known and the largest names first */
+    /* within a day: before the open, then after the close, then time not set */
     const slotRank = (e: EarningsEvent) => (e.timeKnown === false ? 2 : e.slot === 'BMO' ? 0 : 1);
     return [...named].sort((a, b) => Number(!!a.reported) - Number(!!b.reported) || (a.reported ? b.daysOut - a.daysOut : a.daysOut - b.daysOut) || slotRank(a) - slotRank(b) || Number(b.known) - Number(a.known) || (b.marketCap ?? 0) - (a.marketCap ?? 0) || b.impliedMovePct - a.impliedMovePct);
   }, [events, show, askedIn, asked, week]);
-  /* THE GRID PAGES ITSELF (the third audit, 2026-10-23): it was handed a 40-row slice, so a header sort ordered only the
-     page in view. Every row goes in and the grid's own pagination pages it, as on Insiders and Congress — a sort runs
-     over every report. A new cut starts on the first page. */
+  /* every row goes into the grid and its own pagination pages it, so a sort runs over every report */
   const paged = usePagedGrid<EarningsEvent>();
-  /* the grid page in view names its rows, so their past reports are read (audit round 7: every known name's history
-     was read up front) */
-  const [onPage, setOnPage] = useState<string[]>([]);
-  const notePage = (api: { paginationGetCurrentPage: () => number; paginationGetPageSize: () => number; getDisplayedRowAtIndex: (i: number) => { data?: EarningsEvent } | undefined }) => {
-    const size = api.paginationGetPageSize();
-    const from = api.paginationGetCurrentPage() * size;
-    const out: string[] = [];
-    for (let i = from; i < from + size; i++) {
-      const d = api.getDisplayedRowAtIndex(i)?.data;
-      if (!d) break;
-      if (d.known) out.push(d.ticker);
-    }
-    setOnPage(prev => (prev.join(',') === out.join(',') ? prev : out));
-  };
   useEffect(() => {
     paged.props.ref.current?.api?.paginationGoToPage(0);
   }, [week, show, asked, paged.props.ref]);
@@ -561,10 +491,8 @@ const Earnings = () => {
   const weekEvents = events.filter(inWeeks);
   const weekKnown = knownEvents.filter(inWeeks);
   const ahead = weekKnown.filter(e => !e.reported);
-  /* the week's known names whose past reports have not landed — the same names the head counts, so the figure is the
-     progress of one stated set, never a fortnight-wide number that moved between loads (the retail test, 2026-10-23) */
-  /* THE PRICED TILE OVER A STATED SAMPLE (round 11): the largest known names still to report, read whether or not on
-     screen; a Show pick for rich, fair or cheap reads every name it filters on */
+  /* the week's known names whose past reports have not landed: one stated set, the same the head counts */
+  /* the priced counts are over a stated sample: the largest known names still to report */
   const sample = useMemo(() => [...ahead].sort((a, b) => (b.marketCap ?? 0) - (a.marketCap ?? 0)).slice(0, PRICED_SAMPLE), [ahead]);
   const sampled = ahead.length > sample.length;
   const weekHistOut = sample.filter(e => e.history === false && !historyMissed(e.ticker)).length;
@@ -575,11 +503,9 @@ const Earnings = () => {
   const fair = scored.length - rich - cheap;
   const pricedPool = sample.filter(e => e.impliedMovePct > 0);
   const biggest = pricedPool.reduce<EarningsEvent | null>((a, e) => (a === null || e.impliedMovePct > a.impliedMovePct ? e : a), null);
-  const today = rankEvents(knownEvents.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()));
   const todayAll = rankEvents(events.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()));
   const seen = useSeenNames();
   useEarningsHistories([...sample.map(e => e.ticker), ...seen, ...(show !== 'all' ? ahead.map(e => e.ticker) : [])]);
-  const todayMore = events.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()).length - today.length;
 
   const weeks: (-1 | 0 | 1)[] = week === 'both' ? [0, 1] : [Number(week) as -1 | 0 | 1];
   const weekWords = week === 'both' ? 'over two weeks' : week === '-1' ? 'last week' : week === '0' ? (weekend ? 'the coming week' : 'this week') : 'next week';
@@ -599,19 +525,16 @@ const Earnings = () => {
         : `of ${sampled ? `the ${sample.length} largest of them` : 'those'}, ${scored.length} with at least ${MIN_PRICED_PRINTS} past moves on file${weekHistOut ? ` (histories ${sample.length - weekHistOut} of ${sample.length} read so far)` : ''}: ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
     ];
     if (biggest) parts.push(`the biggest move priced among the largest known names is ${biggest.ticker} at ±${biggest.impliedMovePct.toFixed(1)}% on ${biggest.dateLabel}`);
-    parts.push(today.length ? `today: ${today.slice(0, 4).map(e => `${e.ticker} ${slotWord(e)}`).join(', ')}${today.length > 4 ? `, and ${today.length - 4} more known names` : ''}${todayMore > 0 ? `, ${todayMore} more on the list` : ''}` : todayMore > 0 ? `no known name reports today, ${todayMore} on the list do` : 'nothing reports today');
     if (cover.missed) parts.push(`${cover.missed} of the ${cover.slots} day lists did not answer, so the count is short`);
     return parts.join(' · ') + '.';
-  }, [weekEvents.length, weekKnown.length, weekWords, ahead.length, scored.length, sample.length, sampled, weekHistOut, cover, rich, fair, cheap, biggest, today, todayMore]);
+  }, [weekEvents.length, weekKnown.length, weekWords, ahead.length, scored.length, sample.length, sampled, weekHistOut, cover, rich, fair, cheap, biggest]);
 
   const columnDefs = useMemo<ColDef<EarningsEvent>[]>(
     () => [
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 180, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open its page' },
       { headerName: 'Reports', field: 'daysOut', width: 210, cellRenderer: WhenCell, headerTooltip: 'The date, before the open or after the close, and whether the company has confirmed it or it is still an estimate' },
       { headerName: 'Priced · or moved', colId: 'impliedMovePct', width: 140, cellRenderer: MoveCell,
-        /* THE CELL'S OWN TEXT AS ITS VALUE (audit round 10: the grid read plain "reported" for AXP, WDC, NEM while the board
-           said "−3.8% so far" — keyed on the unchanging implied move, the cell never re-rendered when the live reaction
-           landed); it sorts on the implied move as before */
+        /* the cell's own text is its value, so it re-renders when the live reaction lands; it sorts on the implied move */
         valueGetter: p => (p.data ? `${moveCellText(p.data)}|${p.data.impliedMovePct}` : ''),
         comparator: (_a, _b, na, nb) => (na.data?.impliedMovePct ?? 0) - (nb.data?.impliedMovePct ?? 0), type: 'rightAligned', headerTooltip: 'Before the print: the move the options charge — the at-the-money straddle as a percent of the stock ("priced"). Once the report is out: the move the stock made the session after ("moved"), or is making while that session trades ("so far"), with the price it had beside it' },
       { headerName: 'Usually moves', field: 'histAvgMovePct', width: 136, cellRenderer: UsualCell, type: 'rightAligned', headerTooltip: 'The average move the session after its last eight reports — or fewer, said beside it, when fewer are on file' },
@@ -652,13 +575,13 @@ const Earnings = () => {
               ) : weekPending ? (
                 <span className="text-textMuted">reading the lists…</span>
               ) : ahead.length === 0 ? (
-                /* nothing left to price is not "reading" (round 8: Friday's "reading the usual moves" stood all day) */
+                /* nothing left to price is not "reading" */
                 <span className="text-textMuted" title={`Every known name ${weekWords} has reported — a report that is out is not priced any more`}>nothing left to price {weekWords}</span>
               ) : scored.length === 0 ? (
                 <span className="text-textMuted">{weekHistOut > 0 ? `reading the usual moves · ${sample.length - weekHistOut} of ${sample.length}` : `none with ${MIN_PRICED_PRINTS}+ past moves on file`}</span>
               ) : (
                 <span title={`${sampled ? `The ${sample.length} largest of the ${ahead.length} known names` : 'Known names'} still to report ${weekWords}, with at least ${MIN_PRICED_PRINTS} past moves on file: ${scored.length} of ${sample.length}. A name with fewer, or none, is not called rich or cheap. Rich: the options charge more than 1.3× the usual move; cheap: under 0.85×; fair between`}>
-                  {/* THE COUNT SAYS IT IS STILL COUNTING (round 9: the counts ticked up with no cue) */}
+                  {/* the count says it is still counting */}
                   {weekHistOut > 0 && <span className="text-warn" title="The known names' past reports are read one by one (the feed allows three at a time); the counts grow as they land, and stop when every one is in" data-earnings-priced-reading>reading {sample.length - weekHistOut} of {sample.length} · so far </span>}
                   <span className={weekHistOut > 0 ? 'opacity-60' : ''}>
                     <span className="text-warn">{rich} rich</span> <span className="text-textMuted">·</span> {fair} fair <span className="text-textMuted">·</span> <span className="text-bull">{cheap} cheap</span>
@@ -666,7 +589,7 @@ const Earnings = () => {
                   </span>
                 </span>
               )}
-              {/* the colours' key, whatever the count says (round 9) */}
+              {/* the colours' key, whatever the count says */}
               {!failed && !pending && (
                 <span className="block text-t9 font-sans text-textMuted" data-earnings-legend>
                   <span className="text-warn">rich</span> over 1.3× the usual move · fair between · <span className="text-bull">cheap</span> under 0.85×
@@ -682,29 +605,28 @@ const Earnings = () => {
                 <span className="text-textMuted">—</span>
               )}
             </Fact>
-            <Fact label="Today" testId="today" clip>
-              {today.length || (todayOpen && todayAll.length) ? (
-                <>
-                  {(todayOpen ? todayAll : today.slice(0, 3)).map((e, i) => (
-                    <span key={e.ticker}>
-                      {i > 0 && <span className="text-textMuted"> · </span>}
-                      {e.ticker} <span className="text-textMuted">{slotWord(e)}</span>
-                    </span>
+            <Fact label="Today" testId="today">
+              {todayAll.length ? (
+                <span className="flex flex-wrap items-center gap-1.5 max-w-[34rem]" data-earnings-today={todayAll.length}>
+                  {todayAll.slice(0, TODAY_CHIPS).map(e => (
+                    <button key={e.ticker} type="button" onClick={() => open(e.ticker)} title={`${e.name} · ${slotWord(e)}`} className="inline-flex items-center gap-1 h-6 px-1.5 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted transition-colors" data-earnings-today-chip={e.ticker}>
+                      <CompanyLogo ticker={e.ticker} size={12} />
+                      <span className="font-bold text-textPrimary">{e.ticker}</span>
+                      {e.timeKnown !== false && <span className="text-t9 text-textMuted">{e.slot === 'BMO' ? 'pre' : 'post'}</span>}
+                    </button>
                   ))}
-                  {todayAll.length > 3 && (
-                    <button type="button" onClick={() => setTodayOpen(v => !v)} className="text-textMuted hover:text-textPrimary" data-earnings-today-more={todayOpen ? 'open' : 'shut'}>
-                      {todayOpen ? ' · Hide' : ` · +${todayAll.length - Math.min(3, today.length)} more`}
+                  {todayAll.length > TODAY_CHIPS && (
+                    <button type="button" onClick={() => setLayout('list')} className="text-t11 text-textMuted hover:text-textPrimary transition-colors" data-earnings-today-more>
+                      +{todayAll.length - TODAY_CHIPS} more →
                     </button>
                   )}
-                </>
+                </span>
               ) : (
-                /* NEVER A FALSE "NOTHING" WHILE THE LISTS LOAD (audit round 5: "Today: nothing reports" at 35s, Reports —) */
-                <span className="text-textMuted">{failed ? '—' : pending ? 'reading the day' : todayMore > 0 ? 'no known name' : 'nothing reports'}</span>
+                <span className="text-textMuted">{failed ? '—' : pending ? 'reading the day' : 'nothing reports'}</span>
               )}
             </Fact>
           </dl>
         </div>
-        {/* THE ONE LINE OF CONTROLS */}
         <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-earnings-controls>
           <DropdownSelect label="Week" value={week} options={WEEK_OPTIONS} onChange={setWeek} title="Which week" testId="earnings-week" />
           <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="How the options price sits" testId="earnings-show" />
@@ -732,7 +654,7 @@ const Earnings = () => {
             </button>
           </p>
         )}
-        {/* THE WEEK JUST REPORTED, ON A WEEKEND (round 11): the board opens on the coming week; last week is a click away */}
+        {/* on a weekend last week is a click away */}
         {!pending && !failed && weekend && week === '0' && (
           <p className="px-5 pb-3 -mt-1 text-t11 text-textMuted" data-earnings-week-note="weekend">
             On a weekend the board opens on the coming week.{' '}
@@ -758,7 +680,7 @@ const Earnings = () => {
           </p>
         )}
 
-        {/* THE WEEK — the board, or a list of days; a failed read shows no empty days */}
+        {/* the week: the board, or a list of days; a failed read shows no empty days */}
         {failed ? null : pending || (week === '-1' && (lastWeek === 'idle' || lastWeek === 'loading')) ? (
           <div className="border-t border-borderSubtle" data-earnings-pending>
             <TableSkeleton rows={6} />
@@ -822,12 +744,12 @@ const Earnings = () => {
         ) : (
           <div
             key={`board-${week}-${show}`}
-            /* On a phone the five-day board scrolls sideways inside its box at a readable width (the phone pass, 2026-09-13) */
+            /* on a phone the five-day board scrolls sideways at a readable width */
             className="border-t border-borderSubtle animate-soft-in max-lg:overflow-x-auto max-sm:overflow-x-visible min-w-0 max-w-full"
             data-earnings-board
           >
             {weeks.map(weekIdx => (
-              /* on a phone the five days stand one under the other, full width (round 8: at 390 the sideways board cut its cards at the right edge with no cue to scroll) */
+              /* on a phone the five days stand one under the other */
               <div key={weekIdx} className="grid grid-cols-5 gap-px bg-borderSubtle/60 border-b border-borderSubtle/60 last:border-0 max-lg:min-w-[1000px] max-sm:min-w-0 max-sm:grid-cols-1">
                 {WEEKDAYS.map(wd => {
                   const { label, isToday } = weekDayLabel(weekIdx, wd);
@@ -845,12 +767,11 @@ const Earnings = () => {
                   const unset = take('AMC', false);
                   const more = bmo.hidden + amc.hidden + unset.hidden;
                   const capped = bmo.list.length + bmo.hidden > SHELF || amc.list.length + amc.hidden > SHELF || unset.list.length + unset.hidden > SHELF;
-                  /* the macro calendar's dates under the day's head (2026-09-10 night: the list had them, the board did not) */
+                  /* the macro calendar's dates under the day's head */
                   const dayMacro = macro.filter(m => m.iso === isoOf(weekDayDate(weekIdx, wd)));
                   const bmoList = bmo.list;
                   const amcList = amc.list;
-                  /* EACH SHELF CARRIES ITS OWN "+ MORE" (round 8: Friday's "+13 more" sat under After the close, which held
-                     one name — the thirteen were before the open) */
+                  /* each shelf carries its own "+ more" */
                   const shelf = (list: EarningsEvent[], slot: EarningsEvent['slot'], timed = true, hidden = 0) =>
                     list.length === 0 ? null : (
                       <div>
@@ -934,10 +855,6 @@ const Earnings = () => {
             <AgGridReact<EarningsEvent>
               {...phonePin}
               {...paged.props}
-              onPaginationChanged={e => {
-                paged.props.onPaginationChanged(e);
-                notePage(e.api);
-              }}
               theme={GRID_THEME}
               domLayout="autoHeight"
               rowData={shown}

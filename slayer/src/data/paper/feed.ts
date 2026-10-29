@@ -1,289 +1,203 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · THE LIVE FEED'S SEAM
-  (data/paper/feed.ts)
-
-  Everything the paper account knows about the live
-  market comes through this file — the way tape.ts +
-  quotes.ts are the backtest's. TODAY IT READS THE
-  SIMULATOR; when the real feed is wired in, this file
-  changes and nothing above it does (docs/paper-
-  rules.md, "The prices").
-
-    a name's price         the simulator's last tick
-    an option's quote      the BACKTEST'S OWN PRICER
-                           (quotes.ts `priceWith`) on the
-                           real clock (clock.ts) and the
-                           name's live vol — the same bid,
-                           ask and greeks a backtest gets
-    what is listed         the backtest's expiry list,
-                           from today; today's leaves at
-                           16:00
-    a future's price       the fund × the index's ratio +
-                           a fixed carry, on its tick
-    an index               SPX · NDX · RUT (2026-09-22): the
-                           fund × the same ratio, no carry —
-                           its level, its candles, its vol and
-                           its strike spacing; its options are
-                           a name's, on the same pricer
-    a future's candles     the fund's own, turned into
-                           the future's price (for the
-                           chart), kept up a bar at a time
-    the chart's moment     the instant of the newest bar —
-                           where a fill's arrow is drawn
-
-  THE SIMULATOR IS A NEW MARKET ON EVERY PAGE LOAD
-  (core/simulator.ts: Math.random, a month seeded per
-  load). SIM_FEED says so to everything above, and
-  LIFE names this page load, so what was opened in
-  another one can be told apart (the rules page, "When
-  the page closes"). With the real feed SIM_FEED goes
-  false and that section of the rules goes away.
-==================================================
+  Everything the paper account knows about the market comes through this file, and all of it is live:
+    a name's price        the vendor's regular-session price (liveQuote; an index from the vendor book)
+    an option's quote     the contract's own NBBO from Unusual Whales' listed contracts (weigherChain)
+    what is listed        the vendor's listed expiries for the name
+    a name's candles      today's minute bars from the vendor book
+  An order fills only on a two-sided live quote during the options session; with no quote it waits. Futures are not
+  carried (the keys have no futures feed), so the paper desk does not trade them.
+  The one modelled number is a what-if: where the name would have to stand for a contract to bid a price, which is
+  Black-Scholes at the IV solved from the contract's live mark. It places lines on the chart; it never fills.
 */
 
-import Simulator from '../../core/simulator';
 import type { Candle } from '../../types/market';
-import type { DeskChain, DeskContract } from '../weigherDesk';
-import type { Expiry } from '../../core/calendar';
-import { dteAt, expiriesAt, priceWith, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
-import { bellOf, nyAt, sessionFrom, yearsToExpiry } from './clock';
-import { futOfFund, indexOfFund, paperFut, paperIndex } from './products';
+import type { DeskChain } from '../weigherDesk';
+import { isTradingDay } from '../../core/calendar';
+import { blackScholesGreeks, blackScholesPrice } from '../../core/greeks';
+import { expiriesAt, longLeg, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
+import { bookCandles, ensureBook, peekIv } from '../uwBook';
+import { ensureMarks, listedOf, liveSpotOf, peekMark, sheetChain } from '../weigherChain';
+import { solveIv } from '../weigherGate';
+import { bellOf, dateAt, nyAt, sessionFrom, yearsToExpiry, OPEN_MIN, BELL_MIN } from './clock';
+import { paperIndex } from './products';
 
-/** The feed is the simulator: a new market every page load, trading round the clock */
-export const SIM_FEED = true;
-/** This page load's name — what a position opened here carries, so the next load knows it is not its own */
+/** The feed is live: positions carry from one page load to the next */
+export const SIM_FEED = false;
+/** This page load's name — a fill carries it so the chart can tell this load's arrows from another's */
 export const LIFE = `${Date.now().toString(36)}${Math.floor(Math.random() * 46656).toString(36)}`;
+/** The keys carry no futures feed: the paper desk trades options only */
+export const FUTURES_LIVE = false;
+export const FUTURES_OFF_WORDS = 'Futures are paused: the app has no live futures feed, and it will not price them from a stock.';
+
+const cents = (v: number) => Math.round(v * 100) / 100;
 
 /* ---- a name ---- */
-/** The name as the simulator keys it — seeded the first time it is asked for */
-const sym = (ticker: string): string => Simulator.ensureTicker(ticker);
-/* AN INDEX IS NEVER ASKED OF THE SIMULATOR BY ITS OWN NAME — that would start a second, unrelated walk for it; it is its
-   fund's, turned (products.ts) */
-/** Where the name trades now — an index at its fund × the ratio */
-export const spotOf = (ticker: string): number => {
-  const x = paperIndex(ticker);
-  return x ? indexOfFund(x, Simulator.TICKERS[sym(x.fund)].currentPrice) : Simulator.TICKERS[sym(ticker)].currentPrice;
+/** Where the name trades now, or NaN until the live price lands */
+export const spotOf = (ticker: string): number => liveSpotOf(ticker) ?? NaN;
+/** The name's live at-the-money IV (decimal), else 20% — what the chart's reach is drawn with */
+export const baseIvOf = (ticker: string): number => peekIv(paperIndex(ticker)?.symbol ?? ticker) ?? 0.2;
+const stepGuess = (px: number) => (px < 25 ? 0.5 : px < 200 ? 1 : px < 500 ? 2.5 : 5);
+/** The distance between the name's listed strikes near the money */
+export const stepOf = (ticker: string): number => {
+  const idx = paperIndex(ticker);
+  if (idx) return idx.step;
+  const px = spotOf(ticker);
+  return Number.isFinite(px) ? stepGuess(px) : 1;
 };
-/** The name's own vol — what its chain is priced off (an index: its fund's) */
-export const baseIvOf = (ticker: string): number => Simulator.TICKERS[sym(paperIndex(ticker)?.fund ?? ticker)].iv;
-/** The distance between the name's listed strikes (an index: its own — SPX 5, NDX 25, RUT 5) */
-export const stepOf = (ticker: string): number => paperIndex(ticker)?.step ?? Simulator.TICKERS[sym(ticker)].step;
-/** The name's candles (one minute a bar, oldest first) — the simulator's own array, read-only; an index's, its fund's
-    turned into its level */
-export const candlesOf = (ticker: string): Candle[] => (paperIndex(ticker) ? indexCandles(ticker) : (Simulator.getCandles(ticker) ?? []));
-/** THE CHART'S MOMENT: the instant (seconds) of the newest bar of what the chart draws — a fill's arrow lands there. On the
-    simulator this is ITS clock, which runs faster than the wall's; with the real feed it is the wall's. */
+/** Today's minute bars for the name, oldest first (empty until the vendor book lands) */
+export const candlesOf = (ticker: string): Candle[] => {
+  ensureBook(ticker);
+  return bookCandles(ticker) ?? [];
+};
+/** The instant (seconds) of the newest bar of what the chart draws — a fill's arrow lands there */
 export const barNowOf = (ticker: string): number => {
-  const bars = Simulator.peekCandles(paperIndex(ticker)?.fund ?? ticker);
+  const bars = bookCandles(ticker);
   return bars?.length ? bars[bars.length - 1].time : Math.floor(Date.now() / 1000);
 };
 
+/** The options session: a trading day, 09:30 to 16:00 New York */
+export function optionsOpen(ms: number): boolean {
+  const t = nyAt(ms);
+  return isTradingDay(dateAt(t.date)) && t.minutes >= OPEN_MIN && t.minutes < BELL_MIN;
+}
+
 /* ---- an option ---- */
-/** The quote now — the backtest's pricer on the real clock */
-export const optionQuote = (c: ContractId, ms: number, spot = spotOf(c.ticker)): Quote => priceWith(c, spot, yearsToExpiry(c.expiry, ms), baseIvOf(c.ticker));
-/** The same contract with the name somewhere else, now — where a way out on the contract's price is drawn on the chart */
-export const optionQuoteAt = (c: ContractId, ms: number, spot: number): Quote => optionQuote(c, ms, spot);
-/** Where the name would have to stand NOW for the contract to bid `bid` — the nearest such place (quotes.ts spotForBid's
-    walk, on the live quote) */
-export const spotForBidNow = (c: ContractId, ms: number, bid: number): number | null => spotForQuoteNow(c, ms, bid, 'bid');
-/** …and to ASK `ask` — where a resting buy limit is drawn on the chart: it fills when the ask comes down to it */
-export const spotForAskNow = (c: ContractId, ms: number, ask: number): number | null => spotForQuoteNow(c, ms, ask, 'ask');
-function spotForQuoteNow(c: ContractId, ms: number, bid: number, which: 'bid' | 'ask'): number | null {
+const deadQuote = (spot: number): Quote => ({ bid: 0, ask: 0, mark: 0, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic: 0, dead: true, spot });
+
+function legQuote(c: ContractId, spot: number): Quote {
+  void ensureMarks(c.ticker, c.expiry);
+  const m = peekMark(c.ticker, c.expiry, c.strike, c.right);
+  const s = Number.isFinite(spot) ? spot : 0;
+  const intrinsic = s > 0 ? Math.max(0, c.right === 'C' ? s - c.strike : c.strike - s) : 0;
+  if (!m || !(m.ask > 0) || !(m.bid >= 0)) return { ...deadQuote(s), intrinsic: cents(intrinsic), mark: m && m.mark > 0 ? m.mark : 0 };
+  return {
+    bid: m.bid,
+    ask: m.ask,
+    mark: cents((m.bid + m.ask) / 2),
+    iv: m.iv,
+    delta: m.delta,
+    gamma: m.gamma,
+    theta: m.theta,
+    vega: m.vega,
+    rho: 0,
+    intrinsic: cents(intrinsic),
+    dead: m.bid <= 0,
+    spot: s,
+  };
+}
+
+/** The live quote now: the contract's NBBO (a spread from its two legs). Dead — orders wait — without a two-sided quote. */
+export const optionQuote = (c: ContractId, _ms: number, spot = spotOf(c.ticker)): Quote => {
+  if (c.short == null) return legQuote(c, spot);
+  const bought = legQuote(longLeg(c), spot);
+  const sold = legQuote({ ...longLeg(c), strike: c.short }, spot);
+  if (bought.dead || sold.dead) return { ...deadQuote(bought.spot), mark: bought.mark - sold.mark };
+  const width = Math.abs(c.short - c.strike);
+  const inside = (v: number) => Math.max(0, Math.min(width, v));
+  const bid = cents(inside(bought.bid - sold.ask));
+  const ask = cents(Math.max(bid + 0.01, inside(bought.ask - sold.bid)));
+  return {
+    bid,
+    ask,
+    mark: cents((bid + ask) / 2),
+    iv: bought.iv,
+    delta: bought.delta - sold.delta,
+    gamma: bought.gamma - sold.gamma,
+    theta: bought.theta - sold.theta,
+    vega: bought.vega - sold.vega,
+    rho: 0,
+    intrinsic: cents(inside(bought.intrinsic - sold.intrinsic)),
+    dead: bid <= 0,
+    spot: bought.spot,
+  };
+};
+
+/* The what-if: one leg's Black-Scholes value with the name at `spot`, at the IV its live mark implies */
+function legWhatIf(c: ContractId, ms: number, spot: number): number {
+  const live = legQuote(c, spotOf(c.ticker));
+  const here = live.spot;
+  const t = Math.max(yearsToExpiry(c.expiry, ms), 1 / (252 * 390));
+  const iv = live.mark > 0 && here > 0 ? solveIv(live.mark, here, c.strike, t, c.right) : null;
+  if (iv == null) return NaN;
+  return blackScholesPrice(spot, c.strike, t, iv, c.right);
+}
+/** The contract's model bid with the name at `spot` — for drawing a line, never for a fill */
+export const optionQuoteAt = (c: ContractId, ms: number, spot: number): Quote => {
+  const one = (k: ContractId) => legWhatIf(k, ms, spot);
+  const v = c.short == null ? one(c) : one(longLeg(c)) - one({ ...longLeg(c), strike: c.short });
+  const px = Number.isFinite(v) ? cents(Math.max(0, v)) : 0;
+  const t = Math.max(yearsToExpiry(c.expiry, ms), 1 / (252 * 390));
+  const g = blackScholesGreeks(spot, c.strike, t, Math.max(0.01, baseIvOf(c.ticker)));
+  return { bid: px, ask: px, mark: px, iv: 0, delta: c.right === 'C' ? g.deltaCall : g.deltaPut, gamma: g.gamma, theta: 0, vega: g.vega, rho: 0, intrinsic: 0, dead: !(px > 0), spot };
+};
+
+/** Where the name would have to stand now for the contract to bid `bid` — the nearest such place on the what-if */
+export const spotForBidNow = (c: ContractId, ms: number, bid: number): number | null => spotForQuoteNow(c, ms, bid);
+/** …and to ask `ask` — where a resting buy limit is drawn */
+export const spotForAskNow = (c: ContractId, ms: number, ask: number): number | null => spotForQuoteNow(c, ms, ask);
+function spotForQuoteNow(c: ContractId, ms: number, target: number): number | null {
   const here = spotOf(c.ticker);
-  const at = (s: number) => optionQuote(c, ms, s)[which];
+  if (!(here > 0) || !(target >= 0)) return null;
+  const at = (s: number) => optionQuoteAt(c, ms, s).bid;
   const now = at(here);
-  if (Math.abs(now - bid) < 0.005) return Math.round(here * 100) / 100;
-  const up = (bid > now) === (c.right === 'C');
+  if (!(now > 0)) return null;
+  if (Math.abs(now - target) < 0.005) return cents(here);
+  const up = (target > now) === (c.right === 'C');
   const end = up ? here * 1.8 : here * 0.4;
   const STEPS = 90;
   let a = here;
-  let fa = now - bid;
+  let fa = now - target;
   for (let i = 1; i <= STEPS; i++) {
     const b = here + (end - here) * Math.pow(i / STEPS, 2);
-    const fb = at(b) - bid;
+    const fb = at(b) - target;
     if (fa === 0 || fa * fb <= 0) {
       let lo = a;
       let hi = b;
       let flo = fa;
       for (let k = 0; k < 40; k++) {
         const mid = (lo + hi) / 2;
-        const fm = at(mid) - bid;
+        const fm = at(mid) - target;
         if (flo * fm <= 0) hi = mid;
         else {
           lo = mid;
           flo = fm;
         }
       }
-      return Math.round(((lo + hi) / 2) * 100) / 100;
+      return cents((lo + hi) / 2);
     }
     a = b;
     fa = fb;
   }
   return null;
 }
-/** The expiries listed now: the backtest's list from today — today's own is gone once 16:00 has rung */
+
+/** The expiries listed now: the vendor's list for the name; today's leaves at 16:00 */
 export function listedNow(ticker: string, ms: number): ListedExpiry[] {
   const t = nyAt(ms);
   const from = sessionFrom(t.date);
-  return expiriesAt(ticker.toUpperCase(), from).filter(e => bellOf(e.iso) > ms);
-}
-export interface LiveChainRow {
-  strike: number;
-  call: Quote;
-  put: Quote;
-}
-/** The strikes round the money, `each` a side, highest first. `centre` holds the ladder on a price that stays put. */
-export function liveChain(ticker: string, expiry: string, ms: number, each = 12, centre?: number): { spot: number; rows: LiveChainRow[] } {
-  const spot = spotOf(ticker);
-  const step = stepOf(ticker);
-  const mid = Math.round((centre ?? spot) / step) * step;
-  const rows: LiveChainRow[] = [];
-  for (let i = each; i >= -each; i--) {
-    const strike = Math.round((mid + i * step) * 100) / 100;
-    if (strike <= 0) continue;
-    rows.push({ strike, call: optionQuote({ ticker, strike, right: 'C', expiry }, ms, spot), put: optionQuote({ ticker, strike, right: 'P', expiry }, ms, spot) });
+  const name = ticker.toUpperCase();
+  const live = listedOf(name);
+  if (live) {
+    return live
+      .filter(e => e.iso >= from && bellOf(e.iso) > ms)
+      .slice(0, 24)
+      .map(e => ({ iso: e.iso, label: e.label || e.iso, dte: e.dte, kind: 'weekly' as const }));
   }
-  return { spot, rows };
-}
-/* ---- THE CHAIN AS THE WEIGHER DRAWS IT (the Live Chart's options, 2026-09-22 — Noah: "you would need the actual
-   options chain to see the vol, decay etc like we have for the dropdown of the weigher options chain"). The rows the paper
-   account trades, priced by the same pricer, dressed in every fact the Weigher's chain shows — so the price in the chain
-   is the price a press gets. The session's high, low and open are read ONCE for the whole chain. ---- */
-/** Abramowitz–Stegun N(x) — the same approximation the Weigher's chain uses */
-function normalCdf(x: number): number {
-  const k = 1 / (1 + 0.2316419 * Math.abs(x));
-  const d = 0.3989422804 * Math.exp((-x * x) / 2);
-  const p = k * (0.31938153 + k * (-0.356563782 + k * (1.781477937 + k * (-1.821255978 + k * 1.330274429))));
-  return x >= 0 ? 1 - d * p : d * p;
-}
-/** A seeded 0..1 — the day's sizes and interest hold still between ticks */
-function seeded(k: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < k.length; i++) {
-    h ^= k.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  h ^= h >>> 13;
-  h = Math.imul(h, 0x5bd1e995);
-  return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
-}
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-export function liveDeskChain(ticker: string, expiry: string, ms: number, each = 20, centre?: number): DeskChain {
-  const { spot, rows } = liveChain(ticker, expiry, ms, each, centre);
-  const bars = candlesOf(ticker).slice(-390);
-  const hi = bars.length ? Math.max(...bars.map(b => b.high)) : spot;
-  const lo = bars.length ? Math.min(...bars.map(b => b.low)) : spot;
-  const open = bars[0]?.open ?? spot;
-  const t = yearsToExpiry(expiry, ms);
-  const base = baseIvOf(ticker);
-  const today = nyAt(ms).date;
-  const big = ['SPY', 'QQQ', 'IWM'].includes(ticker) || !!paperIndex(ticker);
-  const dress = (c: ContractId, q: Quote): DeskContract => {
-    const at = (s: number, years = t) => priceWith(c, s, years, base).mark;
-    const a = at(hi);
-    const b = at(lo);
-    const prevClose = bars.length ? at(open, t + 1 / 252) : q.mark;
-    const sigma = Math.max(0.01, q.iv || base);
-    const sd = sigma * Math.sqrt(Math.max(t, 1 / (252 * 390)));
-    /* the odds the name finishes past a level at the expiry — N(d2), no drift */
-    const past = (level: number) => {
-      const d2 = (Math.log(spot / Math.max(0.01, level)) - (sigma * sigma * Math.max(t, 1 / (252 * 390))) / 2) / sd;
-      return c.right === 'C' ? normalCdf(d2) : normalCdf(-d2);
-    };
-    const key = `${ticker}|${expiry}|${c.strike}|${c.right}|${today}`;
-    const x = Math.log(c.strike / spot) / Math.max(0.01, sigma * Math.sqrt(Math.max(t, 1 / 252)));
-    const size = (big ? 9000 : 2400) * Math.exp(-(x * x) / 1.6);
-    const breakeven = c.right === 'C' ? c.strike + q.ask : c.strike - q.ask;
-    const itm = past(c.strike) * 100;
-    const profit = past(breakeven) * 100;
-    const netChange = q.mark - prevClose;
-    return {
-      strike: c.strike,
-      right: c.right,
-      mark: q.mark,
-      delta: q.delta,
-      gamma: q.gamma,
-      theta: q.theta,
-      vega: q.vega,
-      iv: sigma * 100,
-      itmOdds: itm,
-      rho: q.rho,
-      bid: q.bid,
-      ask: q.ask,
-      high: Math.max(a, b, q.mark),
-      low: Math.min(a, b, q.mark),
-      prevClose,
-      last: q.mark,
-      volume: Math.round(size * (0.6 + 0.8 * seeded(`${key}|v`))),
-      oi: Math.round(size * (2.2 + 4 * seeded(`${key}|oi`))),
-      breakeven: Math.round(breakeven * 100) / 100,
-      fromSpotPct: ((c.strike - spot) / spot) * 100,
-      bidSize: Math.round(10 + 190 * seeded(`${key}|bs`)),
-      askSize: Math.round(10 + 190 * seeded(`${key}|as`)),
-      netChange,
-      netChangePct: prevClose > 0 ? (netChange / prevClose) * 100 : 0,
-      toBreakevenPct: ((breakeven - spot) / spot) * 100,
-      intrinsic: q.intrinsic,
-      extrinsic: Math.max(0, q.mark - q.intrinsic),
-      touchOdds: Math.min(100, itm * 2),
-      profitOddsLong: profit,
-      profitOddsShort: 100 - profit,
-    };
-  };
-  const date = new Date(`${expiry}T12:00:00`);
-  const dte = dteAt(today, expiry);
-  const expiryFact: Expiry = { date, label: `${expiry.slice(5, 7)}/${expiry.slice(8, 10)}/${expiry.slice(2, 4)}`, weekday: WEEKDAYS[date.getDay()], dte, sessions: Math.max(0, Math.round(t * 252)) };
-  return {
-    ticker,
-    spot,
-    step: stepOf(ticker),
-    /* LOWEST STRIKE FIRST, the Weigher's order — its grid turns them over to put the high strikes on top and slots the
-       market's line between the two that bracket it (liveChain hands them highest first) */
-    rows: [...rows].sort((x, y) => x.strike - y.strike).map(r => ({ strike: r.strike, call: dress({ ticker, strike: r.strike, right: 'C', expiry }, r.call), put: dress({ ticker, strike: r.strike, right: 'P', expiry }, r.put) })),
-    expiry: expiryFact,
-    /* the move the chain charges for by the expiry, ± percent of the name */
-    expectedMovePct: base * Math.sqrt(Math.max(t, 1 / 252)) * 100,
-    source: 'simulated',
-    quotedAt: 0,
-    expiryIso: expiry,
-  };
+  /* until the vendor's list lands, the house calendar's dailies, weeklies and monthlies stand in for the picker */
+  return expiriesAt(name, from).filter(e => bellOf(e.iso) > ms);
 }
 
-/* ---- a future (the products: data/paper/products.ts) ---- */
+/** The chain the paper account trades, as the Weigher draws it: the vendor's contracts round the money, lowest first */
+export function liveDeskChain(ticker: string, expiry: string, _ms: number, each = 20, centre?: number): DeskChain {
+  void ensureMarks(ticker, expiry);
+  return sheetChain(ticker, expiry, each, undefined, centre);
+}
+
+/* ---- futures: not carried ---- */
 export { PAPER_FUTURES, PAPER_INDEXES, bigOf, frontOn, futOfFund, futWords, isMicro, isPaperFuture, isPaperIndex, paperFut, paperIndex, type PaperFutProduct } from './products';
-/** Where the future trades now */
-export const futNow = (symbol: string): number => {
-  const p = paperFut(symbol);
-  return futOfFund(p, spotOf(p.fund));
-};
-
-/* CANDLES MADE FROM A FUND'S (a future's, an index's), kept up a bar at a time: the simulator appends a bar and rewrites
-   the last one in place, so only the tail is turned again; a shifted buffer (its oldest bar dropped) is turned whole. A
-   fresh array each time — the chart compares what it is handed. */
-const turnedCache = new Map<string, { first: number; bars: Candle[] }>();
-function turned(key: string, fund: string, turn: (b: Candle) => Candle): Candle[] {
-  const src = Simulator.getCandles(fund) ?? [];
-  if (!src.length) return [];
-  const hit = turnedCache.get(key);
-  if (!hit || hit.first !== src[0].time || hit.bars.length > src.length) {
-    const bars = src.map(turn);
-    turnedCache.set(key, { first: src[0].time, bars });
-    return bars;
-  }
-  const bars = hit.bars.slice(0, Math.max(0, hit.bars.length - 1));
-  for (let i = bars.length; i < src.length; i++) bars.push(turn(src[i]));
-  turnedCache.set(key, { first: src[0].time, bars });
-  return bars;
-}
-/** THE FUTURE'S CANDLES: its fund's, at the future's price — the fund's volume scaled to a contract's, a stand-in like the rest */
-export function futCandles(symbol: string): Candle[] {
-  const p = paperFut(symbol);
-  return turned(`fut:${p.symbol}`, p.fund, b => ({ time: b.time, open: futOfFund(p, b.open), high: futOfFund(p, b.high), low: futOfFund(p, b.low), close: futOfFund(p, b.close), volume: Math.round(b.volume / 40) }));
-}
-/** AN INDEX'S CANDLES: its fund's, at the index's level — an index trades nothing itself, so the fund's volume stands in */
-export function indexCandles(symbol: string): Candle[] {
-  const x = paperIndex(symbol);
-  if (!x) return [];
-  return turned(`idx:${x.symbol}`, x.fund, b => ({ time: b.time, open: indexOfFund(x, b.open), high: indexOfFund(x, b.high), low: indexOfFund(x, b.low), close: indexOfFund(x, b.close), volume: b.volume }));
-}
+/** No live futures price */
+export const futNow = (_symbol: string): number => NaN;
+/** No live futures candles */
+export const futCandles = (_symbol: string): Candle[] => [];
+/** An index's own minute bars from the vendor book */
+export const indexCandles = (symbol: string): Candle[] => candlesOf(symbol);

@@ -1,35 +1,23 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE RECORD'S SHAPES (types/record.ts)
-
-  What is on the record about a name that never
-  appears on the tape: who inside a company traded
-  its shares (SEC Form 4) and what members of
-  Congress reported trading (the STOCK Act). These
-  are THE SEAM: the simulator fills them today
-  (data/insiders.ts, data/congress.ts), the live
-  feed fills them later, and nothing above them
-  changes. The two engines were the partner's
-  (2026-09-09, ported into the house's words); the
-  shapes are the real feeds' — brackets not figures,
-  a three-state plan flag, the owner on every row.
-==================================================
+  What is on the record about a name off the tape: insider trades (SEC Form 4) and members of Congress' reported trades
+  (STOCK Act). The shapes follow the real feeds: amount brackets rather than figures, a three-state plan flag, the
+  owner on every row.
 */
 
 /* ---- Congress ------------------------------------------------------------------ */
 
 export type Chamber = 'House' | 'Senate';
-/** '' when the roster does not have the member — never guessed as an independent */
+/** '' when the roster lacks the member (never guessed as independent) */
 export type Party = 'D' | 'R' | 'I' | '';
 /** The Senate keeps the partial/full split; the House feed collapses it */
-/** 'Sale' is a sale the filing does not mark full or partial (the vendor's bare "Sell") */
+/** 'Sale': a sale the filing marks neither full nor partial (the vendor's bare "Sell") */
 export type ReportType = 'Purchase' | 'Sale' | 'Sale (Full)' | 'Sale (Partial)' | 'Exchange';
-/** Whose holding the report covers — the member, their spouse, a joint account, a dependent */
-/** 'Undisclosed': the filing does not say whose holding it is (the vendor's issuer "undisclosed") — shown as "not stated" */
+/** Whose holding the report covers: the member, spouse, a joint account, a dependent */
+/** 'Undisclosed': the filing does not say whose holding (shown as "not stated") */
 export type ReportOwner = 'Self' | 'Spouse' | 'Joint' | 'Dependent' | 'Undisclosed';
 export type AssetKind = 'Stock' | 'Stock Option' | 'Corporate Bond' | 'Asset-Backed Security' | 'Municipal Security' | 'Fund' | 'Crypto' | 'Other';
 
-/** One of the ten statutory amount rungs, in the form's checkbox order A–J */
+/** One of the ten statutory amount rungs, in the form's order A-J */
 export interface AmountBracket {
   column: string;
   /** Lower bound in dollars, inclusive */
@@ -47,7 +35,7 @@ export interface Member {
   state: string;
   /** House members only */
   district?: string;
-  /** Committee seats — the join that carries the signal */
+  /** Committee seats: the join that carries the signal */
   committees: string[];
 }
 
@@ -62,7 +50,7 @@ export interface CongressTrade {
   owner: ReportOwner;
   /** Index into AMOUNT_BRACKETS, or null when the filing was unparsed */
   bracket: number | null;
-  /** Days between the trade and the filing — can be negative on a real feed */
+  /** Days from trade to filing; can be negative on a real feed */
   lagDays: number;
   tradedDaysAgo: number;
   filedDaysAgo: number;
@@ -70,16 +58,16 @@ export interface CongressTrade {
   late: boolean;
   /** The committee of the member's with jurisdiction over this sector, if any */
   committeeOverlap: string | null;
-  /** The trade and filing days as the vendor wrote them (New York calendar days, "YYYY-MM-DD") */
+  /** The trade and filing days as the vendor wrote them (New York days, "YYYY-MM-DD") */
   tradedOn?: string;
   filedOn?: string;
-  /** An open-ended amount as filed ("Over $1,000,000") — the bracket is its lowest rung, the label says the filing's words */
+  /** An open-ended amount as filed ("Over $1,000,000"): the bracket is its lowest rung, the label the filing's words */
   amountOver?: number;
 }
 
 export interface CongressFeed {
   trades: CongressTrade[];
-  /** The disclosed value as a RANGE: the bracket floors summed, and the ceilings */
+  /** The disclosed value as a range: bracket floors summed, and the ceilings */
   totalLow: number;
   /** Null when an open-ended top rung makes the ceiling unknowable */
   totalHigh: number | null;
@@ -90,9 +78,9 @@ export interface CongressFeed {
   overlaps: number;
   medianLag: number;
   windowDays: number;
-  /** Rows whose type could not be read at all, counted rather than dropped silently */
+  /** Rows whose type could not be read, counted rather than dropped */
   unreadTypes?: number;
-  /** Rows tagged house/senate whose person the politician list does not carry as a member — left out */
+  /** Rows tagged house/senate whose person the politician list does not carry as a member: left out */
   notMembers?: number;
   /** Each left-out executive-branch filing's trade age in days, so a window can count its own */
   notMemberAges?: number[];
@@ -102,16 +90,16 @@ export interface CongressFeed {
 
 export type InsiderRole = 'CEO' | 'CFO' | 'COO' | 'Director' | 'EVP' | 'Chief Legal Officer' | 'Officer' | '10% owner' | 'Other';
 export type InsiderKind = 'BUY' | 'SELL';
-/** The Form 4 transaction codes this desk models — the row's identity, not metadata */
+/** The Form 4 transaction codes modelled: the row's identity */
 export type TxCode = 'P' | 'S' | 'A' | 'M' | 'F' | 'G' | 'D';
-/** Under a 10b5-1 plan, chosen, or from a filing that never carried the box */
+/** Under a 10b5-1 plan, chosen, or from a filing without the box */
 export type PlanState = 'plan' | 'discretionary' | 'unknown';
 export type InsiderSignal = 'accumulating' | 'distributing' | 'flat' | 'scheduled selling' | 'quiet';
 
 export interface TxCodeMeta {
   code: TxCode;
   label: string;
-  /** Did the filer choose the trade — does its price and timing carry a view? */
+  /** Did the filer choose the trade, so its price and timing carry a view? */
   discretionary: boolean;
   /** Did shares change hands in the market? */
   openMarket: boolean;
@@ -130,13 +118,12 @@ export interface InsiderTrade {
   shares: number;
   /** The filed price per share */
   price: number;
-  /** Shares × price in dollars — 0 for a row whose price is not in dollars (see `foreignPrice`) */
+  /** Shares times price in dollars; 0 when the price is not in dollars (`foreignPrice`) */
   value: number;
-  /** THE PRICE IS NOT IN DOLLARS: a foreign issuer's ordinary-share filing in its home currency (Takeda's ¥4,931.20 against
-      its US listing's $20.36). Kept on the row, flagged, and its value kept out of every dollar total. `listed` is the US
-      listing's price, `filedValue` shares × the filed price in that currency. */
+  /** A foreign issuer's filing priced in its home currency: flagged and kept out of every dollar total. `listed` is the
+      US listing's price, `filedValue` shares times the filed price. */
   foreignPrice?: { listed: number; filedValue: number };
-  /** Held indirectly (a trust, a fund, a family member) — the stake is read against that line's holding only */
+  /** Held indirectly (a trust, fund or family member): the stake is read against that line's holding only */
   indirect?: string;
   daysAgo: number;
   plan: PlanState;
@@ -153,16 +140,15 @@ export interface InsiderTrade {
   /** The vendor's sector word ("Healthcare", "Financial Services") */
   sector?: string;
   marketCap?: number | null;
-  /** The reporting owner's SEC CIK — one insider across companies and filings */
+  /** The reporting owner's SEC CIK: one insider across companies and filings */
   cik?: string;
   /** The officer title as filed */
   title?: string;
   /** The trade day as filed, "YYYY-MM-DD" */
   tradedOn?: string;
-  /** Every reporting owner on a joint filing (one trade filed by several related owners is one row) */
+  /** Every reporting owner on a joint filing (one trade filed by related owners is one row) */
   owners?: string[];
-  /** The reporter is a company or a fund, not a person — a purchase by it is a corporate or strategic stake (a private
-      placement, an investment), not an insider choosing to buy */
+  /** The reporter is a company or fund: a purchase is a corporate or strategic stake, not an insider's choice */
   entity?: boolean;
   /** The day the filing (or its latest amendment) was filed, "YYYY-MM-DD" */
   filedOn?: string;
@@ -171,7 +157,7 @@ export interface InsiderTrade {
 export interface InsiderFlow {
   ticker: string;
   trades: InsiderTrade[];
-  /** The name's read: 'loading' until it lands — nothing is said to be "none" before then */
+  /** 'loading' until the read lands; nothing is reported as none before then */
   status?: 'loading' | 'live' | 'sim';
   /** Dollars bought and sold on the market in the window */
   bought: number;
@@ -179,14 +165,13 @@ export interface InsiderFlow {
   net: number;
   /** Dollars of selling that ran off a schedule rather than a decision */
   plannedValue: number;
-  /** Dollars of compensation plumbing — grants, conversions, withholdings — kept apart */
+  /** Dollars of compensation plumbing (grants, conversions, withholdings), kept apart */
   compValue: number;
   /** Distinct filers who bought on the market inside 30 days */
   buyerCluster: number;
-  /** Dollars of discretionary buying — the informative subset */
+  /** Dollars of discretionary buying: the informative subset */
   openMarketBuys: number;
-  /** Dollars of selling the filing marks chosen (not a 10b5-1 plan) — on the same rule as chosen buying: an unstated
-      sale is neither planned nor chosen */
+  /** Dollars of selling the filing marks chosen (not 10b5-1); an unstated sale is neither planned nor chosen */
   chosenSold: number;
   signal: InsiderSignal;
   windowDays: number;

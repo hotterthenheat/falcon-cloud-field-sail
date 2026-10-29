@@ -83,6 +83,7 @@ export const TrackerProvider = ({ children }: { children: React.ReactNode }) => 
         right: setup.right,
         scanner,
         sleeve: setup.sleeve,
+        expiry: setup.expiryDate ? setup.expiryDate.slice(0, 10) : undefined,
         trackedAt: Date.now(),
         scoreAtTrack: setup.score,
         verdictAtTrack: setup.verdict,

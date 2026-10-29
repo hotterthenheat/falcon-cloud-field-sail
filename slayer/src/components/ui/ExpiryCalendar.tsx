@@ -1,26 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - EXPIRY CALENDAR
-  (components/ui/ExpiryCalendar.tsx)
-
-  THE TRACE CALENDAR, for expiries: the same month
-  grid the print drilldown opens (DatePicker: the
-  month with its chevrons, the S·M·T·W·T·F·S row,
-  the days, one full-width button at the foot) —
-  turned to face forward. Where the session picker
-  deadens weekends and the future, this one deadens
-  EVERY DAY THE ROWS DO NOT LIST: a listed expiry is
-  bright and clickable, today wears the accent in a
-  ring, the chosen one wears the white selection,
-  and the rest cannot be picked. Taken from the
-  partner's build with his tape, at Noah's word
-  (2026-10-13).
-
-  The trigger is a card on the line of cards (the
-  DropdownSelect grammar) with ‹ › steppers, so an
-  expiry is one click away either way: step, or
-  open the month.
-==================================================
+  The month grid of DatePicker turned forward for expiries: only listed expiries are clickable, today wears the accent
+  ring and the choice the white selection. The trigger is a dropdown-style card with steppers, so the next or
+  previous expiry is one click away.
 */
 
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';

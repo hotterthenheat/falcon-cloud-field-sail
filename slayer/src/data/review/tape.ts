@@ -1,44 +1,17 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · THE TAPE
-  (data/review/tape.ts)
-
-  What a backtest replays: one name's past sessions,
-  a minute bar at a time. THIS FILE AND quotes.ts ARE
-  THE SEAM — today they are a seeded stand-in, and
-  when the real tape is wired in (ThetaData's history
-  on R2, docs/launch-costs.md ch. 12) only these two
-  files change. Nothing above them reads a simulator.
-
-  WHY NOT THE LIVE SIMULATOR'S HISTORY. It is rolled
-  with Math.random and anchored to the moment the app
-  opened, so it is a different past on every load — a
-  session saved on Tuesday would reopen on Wednesday
-  over prices that never were. A backtest needs a past
-  that STAYS PUT: this tape is seeded by the name and
-  the date, so the 14th of March is the same 14th of
-  March for every reader, every time.
-
-  THE SHAPE. A year of real trading days (the house
-  calendar, holidays and all) ending at the last
-  finished session. Each day is 390 minute bars, 09:30
-  to 16:00 New York. A bar's `time` is THE REAL
-  INSTANT that New York minute began (daylight saving
-  and all) — the backtest is drawn by the house chart
-  now (2026-09-20), and every chart in the house reads
-  real epochs through chartTime.ts, in the clock the
-  reader chose in Settings. (It was the wall-clock
-  minute written as UTC while the backtest drew a
-  small chart of its own.)
-  The daily path is walked BACK from the name's quote
-  today, so the last session ends where the terminal
-  says the name is.
-==================================================
+  The backtest's tape: one name's past sessions, a minute bar at a time. It is a seeded random walk, not a past
+  market, so Backtest is paused (BACKTEST_LIVE) until real history is wired in; the tape stays only to redraw the
+  sessions already in the Journal. It ends at a fixed session, so a saved session reopens on the same prices.
 */
 
-import { isTradingDay, isoDate, today } from '../../core/calendar';
+import { isTradingDay, isoDate } from '../../core/calendar';
 import { UNIVERSE } from '../universe';
 import type { Candle } from '../../types/market';
+
+/** No real minute-by-minute option history is wired in, so no new backtest starts */
+export const BACKTEST_LIVE = false;
+/** The tape's last session — fixed, so the walk (and every earlier day on it) never shifts */
+const TAPE_END = '2026-10-28';
 
 /** Minutes in a session, and the minute the bell rings on (the last bar's index) */
 export const DAY_MIN = 390;
@@ -100,13 +73,12 @@ export const gauss = (u: () => number) => Math.sqrt(-2 * Math.log(Math.max(1e-12
 export const dateOf = (iso: string): Date => new Date(`${iso}T12:00:00`);
 let daysFor = '';
 let days: string[] = [];
-/** The tape's trading days, oldest first — it ends at the last FINISHED session (never today: today is still live) */
+/** The tape's trading days, oldest first, ending at TAPE_END */
 export function tapeDays(): string[] {
-  const key = isoDate(today());
+  const key = TAPE_END;
   if (key === daysFor) return days;
-  const out: string[] = [];
-  const d = new Date(today());
-  d.setHours(12, 0, 0, 0);
+  const out: string[] = [TAPE_END];
+  const d = new Date(`${TAPE_END}T12:00:00`);
   while (out.length < TAPE_DAYS) {
     d.setDate(d.getDate() - 1);
     if (isTradingDay(d)) out.push(isoDate(d));

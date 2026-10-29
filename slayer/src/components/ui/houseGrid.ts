@@ -1,30 +1,53 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE HOUSE GRID (components/ui/houseGrid.ts)
-
-  One AG Grid theme for every table on the terminal
-  that is a grid: the Board first (2026-09-05), the
-  Record's Insiders and Congress since 2026-09-09.
-  Quartz on the house tokens — parameters, not CSS:
-  the grid injects what it needs and our inks ride
-  as values. THE VALUES ARE THE TOKENS (2026-09-12):
-  each is a var() the grid writes into its own
-  custom properties, so a theme flip re-inks every
-  grid in the same frame with no re-theme call.
-  Pair with the `slayer-board` class (index.css)
-  for the mono uppercase heads.
-==================================================
+  The one AG Grid setup for every grid: the modules the grids use, and a Quartz theme whose values are the house
+  CSS variables, so a theme flip re-inks every grid without a re-theme call. Pair with the `slayer-board` class.
+  A grid feature outside GRID_MODULES needs its module added here; the dev build's ValidationModule names it.
 */
 
-import { AllCommunityModule, themeQuartz } from 'ag-grid-community';
+import {
+  CellStyleModule,
+  ClientSideRowModelApiModule,
+  ClientSideRowModelModule,
+  ColumnApiModule,
+  ColumnAutoSizeModule,
+  EventApiModule,
+  ExternalFilterModule,
+  PaginationModule,
+  RenderApiModule,
+  RowApiModule,
+  RowAutoHeightModule,
+  RowSelectionModule,
+  RowStyleModule,
+  ScrollApiModule,
+  TooltipModule,
+  ValidationModule,
+  themeQuartz,
+  type Module,
+} from 'ag-grid-community';
 
-export const GRID_MODULES = [AllCommunityModule];
+export const GRID_MODULES: Module[] = [
+  ClientSideRowModelModule,
+  ClientSideRowModelApiModule,
+  RowApiModule,
+  ColumnApiModule,
+  ScrollApiModule,
+  RenderApiModule,
+  EventApiModule,
+  PaginationModule,
+  RowSelectionModule,
+  ExternalFilterModule,
+  RowStyleModule,
+  CellStyleModule,
+  TooltipModule,
+  RowAutoHeightModule,
+  ColumnAutoSizeModule,
+  ...(import.meta.env?.DEV ? [ValidationModule] : []),
+];
 
 export const GRID_THEME = themeQuartz.withParams({
   backgroundColor: 'rgb(var(--panel))',
   foregroundColor: 'rgb(var(--text-primary))',
   headerBackgroundColor: 'rgb(var(--chip))',
-  /* grey on the dark terminal, black on paper (tokens.css --grid-head, the light sweep 2026-09-19) */
   headerTextColor: 'rgb(var(--grid-head))',
   headerFontSize: 11,
   headerFontWeight: 600,
@@ -43,10 +66,10 @@ export const GRID_THEME = themeQuartz.withParams({
   accentColor: 'rgb(var(--silver))',
   cellHorizontalPadding: 12,
   iconSize: 12,
-  /* The grid's own scrollbars and form controls follow the page's color-scheme */
+  /* the grid's scrollbars and form controls follow the page's color-scheme */
   browserColorScheme: 'inherit',
 });
 
-/** The house empty line for a grid — the grid's own "No Rows To Show" never shows on the terminal */
+/** The house empty-grid line, in place of the grid's own "No Rows To Show". */
 export const noRows = (text: string): string =>
   `<span class="font-mono text-t10 uppercase tracking-widest text-textMuted">${text}</span>`;

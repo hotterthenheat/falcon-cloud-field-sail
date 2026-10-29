@@ -1,63 +1,7 @@
-/*
-==================================================
-  SLAYER TERMINAL - A NAME'S OVERVIEW (data/stockOverview.ts)
+/* A name's read for the stock page and the Stocks board. Four pillars (trend, numbers, money, news), each a few
+   factors with a lean from −1 to +1; the grade is scored off the screener row alone, the rest is shown as context. */
 
-  The stock overview page's engine (the partner's
-  review, 2026-09-13: a row on the Stocks board
-  should open "the stock overview… like the compass
-  analysis"). One name, read on the four pillars
-  the board screens by — THE TREND, THE NUMBERS,
-  THE MONEY, THE NEWS — each pillar a handful of
-  FACTORS the terminal can actually compute, each
-  factor a printed value and a lean between −1 and
-  +1, the pillar's score the leans' weighted mean on
-  a 0–100 scale, the composite the board's own four
-  weights, the screen the board's own cuts.
-
-  THE SECOND PASS (Noah, 2026-09-13, with the
-  partner's own overview page: "i need all the
-  information he has on there but formatted much
-  better"): everything his page carried, computed
-  from the same factor model rather than seeded —
-  every factor's CONTRIBUTION in points (they sum
-  to the score's distance from 50), the pillars'
-  AGREEMENT with the read and the main risk, the
-  trend's part SESSION BY SESSION, the TIMELINE of
-  what happened on the sessions on hand, the
-  METHOD (observed · derived · inferred), the
-  tape's biggest BUYS and SELLS, the moves that
-  would change the score with their deltas, and
-  one paragraph from the raw data to the signal.
-
-  WHAT IS REAL AND WHAT IS NOT, said on the page:
-    the trend   the name's own sessions (the
-                simulator keeps ~22) — the 20-day
-                average, RSI, ADX, the ATR
-                percentile, the structure; the 50-
-                and 200-day averages need more
-                sessions than are on hand (thin)
-    the money   the book (GEX · DEX · VEX · vanna ·
-                charm, the walls), the flow book's
-                calls against puts, the ask side,
-                sweeps, relative volume, the dark
-                pool's posture (live)
-    the news    the wire on the name (live)
-    the numbers a SAMPLE — the simulator has no
-                fundamentals; every figure is marked
-                so, and the feed replaces the file
-                (data/fundamentals.ts)
-
-  States, not orders: the page says what it sees
-  — the screen and the lean — never buy or sell.
-  The board's own sleeves are hashed stand-ins
-  (stocks.ts); this is the first real reading, so a
-  name's row and its page can disagree until the
-  board reads this engine for every name — 36 names
-  seeded at ~0.6s each is why it cannot today.
-==================================================
-*/
-
-import { dollars3 } from '../pages/record/money';
+import { dollars3, signedPct } from '../pages/record/money';
 import { regimeOfNet } from './flipLevel';
 import { levelsFor, type TickerLevels } from './levelsFor';
 import { now } from '../core/clock';
@@ -70,7 +14,7 @@ import { peekLive, peekTickerNews } from './liveRecord';
 import { darkReadable, peekStockFile, quarterFacts, type EarnRow, type StockFile } from './stockFile';
 import { lastSessionIso, nyTodayIso } from './nyDate';
 import { nyClock, nyIsoDate, nyMinutes, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
-import { peekRegularCloses, phaseOf } from './dayChange';
+import { peekRegularCloses } from './dayChange';
 import { epsResultOf, nextReportRow, reportDayLabel, reportDayLabelYear, tradingDaysUntil } from './earningsFeed';
 import type { GeoNewsEvent } from './newsroom';
 import { lookup } from './universe';
@@ -150,9 +94,8 @@ export interface MoneyRead {
   netVex: number | null;
   netVanna: number;
   netCharm: number;
-  /** The walls, the flip and the supreme over every listed expiry — Pinpoint's own levelsFor(t, 'ALL'), null until the
-      book is live. The flip is null when net gamma does not cross zero within ±10% (the third audit, 2026-10-23: GME
-      read "25.14 FLIP · 25.14 SPOT" where Pinpoint had none). */
+  /** The walls, flip and supreme over every listed expiry (Pinpoint's levelsFor 'ALL'), null until the book is live;
+      the flip is null when net gamma does not cross zero within ±10%. */
   levelsAll: TickerLevels | null;
   /** The same read on Pinpoint's Today scope (levelsFor(t, '0DTE')) — after the bell the next session's expiry, named by
       its scopeLabel ("Next session · Oct 23") */
@@ -206,9 +149,6 @@ export interface MoneyRead {
 
 export interface NewsRead {
   stories: GeoNewsEvent[];
-  sentiment: number;
-  positive: number;
-  negative: number;
   nextEarnings: { label: string; daysOut: number; impliedMovePct: number; confirmed: boolean; timeKnown: boolean } | null;
   /** The average absolute move the session after the last reports, and how many reports that is */
   reaction: { pct: number; reports: number } | null;
@@ -222,14 +162,6 @@ export interface Source {
   status: SourceStatus;
   /** "live · 21:14" · "sample until the feed lands" · "22 sessions on hand" */
   stamp: string;
-}
-
-export interface ScoreHistory {
-  /** The trend pillar as it stood N sessions ago (the other pillars held at today's) */
-  trend5: number | null;
-  trend20: number | null;
-  composite5: number | null;
-  composite20: number | null;
 }
 
 /** A factor's share of the score: the points it adds to or takes from 50 */
@@ -259,13 +191,12 @@ export interface Agreement {
   risk: string;
 }
 
-/** The trend's part as it stood `back` sessions ago, and the score with the rest held at today's */
+/** The trend pillar off the daily bars as it stood `back` sessions ago */
 export interface TrendPoint {
   back: number;
-  /** The session's first bar, unix seconds */
+  /** The session's bar, unix seconds */
   time: number;
   trend: number;
-  composite: number;
 }
 
 export type TimelineKind = 'earnings' | 'news' | 'volume' | 'breakout' | 'breakdown' | 'session';
@@ -327,45 +258,36 @@ export interface StockOverview {
   money: MoneyRead;
   news: NewsRead;
   numbers: Fundamentals;
-  history: ScoreHistory;
   sources: Source[];
   /** How much of the page is live, 0–100 */
   completeness: number;
-  /** The sources the read stands on that are still being read — while any is, the read is provisional and the page holds
-      its words (the round-8 audit: AAPL said "Reads strong · The money good" at "5 of 9 sources live", then "good · poor") */
+  /** Sources still being read; while any is, the read is provisional and the page holds its words */
   settling: string[];
 }
 
-/* the board's own weights and cuts (stocks.ts) */
+/* each pillar's weight in the grade; the news pillar is shown, never in it */
 export const PILLAR_WEIGHTS: Record<PillarKey, number> = { trend: 0.32, numbers: 0.24, money: 0.26, news: 0.18 };
 export const PILLAR_NAMES: Record<PillarKey, string> = { trend: 'The trend', numbers: 'The numbers', money: 'The money', news: 'The news' };
-/* THE PUBLIC WORDS (Noah, 2026-09-19: "we do NOT grade or score any of our cons in public. thats for our own
-   backtesting and backend information… i would rather have poor, caution, and good instead of actual numbers",
-   then "and strong should be when its really great").
-   The composite, the pillars' scores, the factors' points, the weights and the cuts all stay INSIDE the engine:
-   they sort, they decide the word, they feed the journal. What reaches a screen, a sentence or a DOM attribute
-   is one of four words. Nothing below this line may print a score, a weight, a point or a cut. */
+/* Only the four words reach the screen; the composite, scores, weights and cuts stay inside the engine. */
 export type Grade = 'strong' | 'good' | 'caution' | 'poor';
 /** Low to high — the meter's order */
 export const GRADES: Grade[] = ['poor', 'caution', 'good', 'strong'];
-const screenOf = (composite: number): Screen => (composite >= 68 ? 'STRONG' : composite <= 46 ? 'WEAK' : 'MIXED');
-/* THE FOUR WORDS' CUTS (Noah, 2026-09-19: "and strong should be when its really great"). STRONG is kept rare on
-   purpose: across the 36 names on 2026-09-19 three reached it (3 strong · 10 good · 13 caution · 10 poor). The
-   cuts are the engine's and are re-read against the live spread when real data lands; they never reach a screen. */
+/* One set of cuts: the grade, the screen and the lean all read off it. */
 const STRONG_FROM = 72;
 const GOOD_FROM = 60;
 const POOR_TO = 46;
-/** The word for any figure of ours, the whole read's or a pillar's: one vocabulary, one set of cuts */
+/** The word for any figure of ours, the whole read's or a pillar's */
 export const gradeOfComposite = (composite: number): Grade => (composite >= STRONG_FROM ? 'strong' : composite >= GOOD_FROM ? 'good' : composite <= POOR_TO ? 'poor' : 'caution');
-/** A pillar's word, on the SAME cuts as the whole read. With the figures hidden, two sets of cuts showed as a
-    contradiction on the page (three pillars "good" under a read of "caution", measured on AAPL 2026-09-19): one
-    vocabulary means one thing everywhere. The lean (bullish · neutral · bearish) keeps its own cuts; it is a
-    direction, not a grade. */
 export const gradeOf = (score: number): Grade => gradeOfComposite(score);
-/** A fundamental's health as a word — the figure is the engine's */
-export const healthWord = (healthScore: number): string => (healthScore >= 70 ? 'strong' : healthScore <= 40 ? 'stretched' : 'sound');
-/** The side a score is on: 55 and up reads for the name, 45 and down against it */
-export const leanOf = (score: number): Lean => (score >= 55 ? 'bullish' : score <= 45 ? 'bearish' : 'neutral');
+const screenOf = (composite: number): Screen => {
+  const g = gradeOfComposite(composite);
+  return g === 'strong' || g === 'good' ? 'STRONG' : g === 'poor' ? 'WEAK' : 'MIXED';
+};
+/** The side a score is on: good or strong is for the name, poor against it, caution neither */
+export const leanOf = (score: number): Lean => {
+  const s = screenOf(score);
+  return s === 'STRONG' ? 'bullish' : s === 'WEAK' ? 'bearish' : 'neutral';
+};
 const clamp = (v: number, lo = -1, hi = 1) => Math.max(lo, Math.min(hi, v));
 /** "82nd" — a percentile said as one */
 export const ordinal = (n: number): string => {
@@ -373,9 +295,7 @@ export const ordinal = (n: number): string => {
   const s = r >= 11 && r <= 13 ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th';
   return `${n}${s}`;
 };
-const pct = (v: number, d = 1) => `${v >= 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
-/* ONE MONEY FORMATTER ON THE DOSSIER (the fourth audit, 2026-10-23: Cohen's buy read "$23M" here and "$22.8M" on the
-   Insiders page) — three significant figures, pages/record/money.ts dollars3 */
+const pct = (v: number, d = 1) => signedPct(v, d);
 export const fmtMoney = (v: number): string => dollars3(v);
 const fmtCount = (v: number): string => (v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : `${Math.round(v)}`);
 /** A pillar's score from its factors: 50 + 50 × the leans' weighted mean */
@@ -384,13 +304,8 @@ const scoreOf = (factors: readonly Factor[]): number => {
   const w = scored.reduce((a, f) => a + f.weight, 0) || 1;
   return Math.round(50 + 50 * scored.reduce((a, f) => a + f.lean * f.weight, 0) / w);
 };
-/* ---- THE ONE READ, FOR THE BOARD AND THE PAGE ------------------------------------------------
-   The retail test (2026-10-23): the board said AAPL "GOOD — the money is selling — a catalyst decides" while its page
-   said "Reads strong … nothing against it", and NVDA "CAUTION" on the board, "poor" on its page. They were two engines
-   on two inputs — the board's RSI, earnings growth and bullish share off the screener row, the page's bars, earnings
-   rows, book and wire. Now the word is ONE function on ONE input: the vendor's screener row for the name
-   (/screener/stocks, the same row on both pages). The page shows its other reads beside the scored ones, marked as
-   context and never weighed. */
+/* ---- one read for the board and the page: the vendor's screener row (/screener/stocks) ----
+   The page's other reads sit beside the scored factors as context and are never weighed. */
 type ScreenRow = Record<string, unknown> | null | undefined;
 const rowNum = (row: ScreenRow, k: string): number | null => {
   const v = row?.[k];
@@ -405,14 +320,8 @@ export interface ScreenPillars {
   /** The close the trend factors set the averages against */
   refClose: number | null;
 }
-/* ---- RELATIVE VOLUME, PACED TO THE CLOCK ------------------------------------------------
-   The round-8 audit (2026-10-23): the screener's relative_volume is the session's volume SO FAR over a full day's
-   30-session average — AAPL read 0.22× "quiet" at 10:07, SPY 0.13× — and the lean (rvol − 1) × the day's sign then
-   called every morning up name bearish and every down name bullish. Now the session's volume is paced: set against the
-   share of a full day a typical session has traded by this minute (the U-shaped intraday curve — a heavy open, a quiet
-   midday, the close and its auction heaviest), so 1.00× means "on pace for an ordinary day". The first half hour is
-   too early to pace and is shown, never scored; a premarket row is not in the read either. And quiet volume is never
-   evidence for either side: it only says no conviction is behind the move, so only volume ABOVE pace leans. */
+/* Relative volume, paced: the volume so far against the share of a usual day traded by now (a U-shaped curve).
+   The first half hour and pre-market are shown, not scored; only volume above pace leans. */
 /** Each half hour's share of a typical session's volume, 09:30 to 16:00 (sums to 1) */
 const HALF_HOUR_SHARE = [0.11, 0.075, 0.065, 0.06, 0.055, 0.05, 0.045, 0.045, 0.05, 0.055, 0.065, 0.085, 0.24];
 /** The share of a typical full day traded by `minutes` into the regular session */
@@ -469,17 +378,13 @@ export function rvolFactor(pv: PacedVolume | null, up: boolean): Factor | null {
     key: 'rvol',
     label,
     value: pv.basis === 'paced' ? `${pv.label} · ${pv.raw.toFixed(2)}× of a full day so far` : pv.label,
-    /* ONLY HEAVY VOLUME LEANS (audit round 10: AAPL 1.07× paced read "ordinary — no conviction either way" and was scored
-       AGAINST) — what the note calls ordinary or quiet scores neutral */
+    /* ordinary or quiet volume is no evidence either way: it scores neutral */
     lean: heavy ? clamp((v - 1) * (up ? 1 : -1)) : 0,
     weight: 0.25,
     note: heavy ? `heavy for the name, ${up ? 'on an up day' : 'on a down day'}` : v <= 0.7 ? 'quiet — no conviction behind the move either way' : 'ordinary — no conviction either way',
   };
 }
-/* VOLUME AMPLIFIES THE SIDE, IT DOES NOT PICK ONE (round 9: TSLA's money read "poor" and counted as agreeing bearish
-   while its own evidence said "the two sides are about even — no lean (49%)" — heavy volume on a down day carried it).
-   Heavy volume leans only where the side of the trade leans the same way; with the side even (or the other way) it
-   is said and not weighed. */
+/* Heavy volume amplifies the side of the trade; with the side even or the other way it is shown and not weighed. */
 export function volumeFollowsSide(factors: Factor[]): Factor[] {
   const side = factors.find(f => f.key === 'side');
   return factors.map(f => {
@@ -491,10 +396,8 @@ export function volumeFollowsSide(factors: Factor[]): Factor[] {
 /** The side of the trade is a lean only past this distance from even (a 49/51 split is no lean) */
 const SIDE_DEADBAND = 0.05;
 
-/* THE SIDE LEADS, THE KIND FOLLOWS (the round-8 audit: GME read "The money: strong / leans bullish" beside "bullish
-   $1.02M vs bearish $1.07M · 49% bullish" — the call/put kind and a quiet down day carried it). Call premium counts calls
-   sold at the bid too, so the kind of contract says nothing on its own: it leans only where the side of the trade leans
-   the same way, and a split within five points of even is no lean at all. */
+/* Call premium counts calls sold at the bid too, so the kind of contract leans only where the side of the trade agrees;
+   a split within five points of even is no lean. */
 export function premiumFactors(bull: number, bear: number, calls: number, puts: number): Factor[] {
   const out: Factor[] = [];
   let sideDir = 0;
@@ -521,14 +424,31 @@ export function premiumFactors(bull: number, bear: number, calls: number, puts: 
   return out;
 }
 
+/** Below this much side-of-trade premium a day the money pillar is shown, never scored */
+export const MIN_READ_PREMIUM = 1_000_000;
+export function thinPremium(factors: Factor[], premium: number): Factor[] {
+  if (premium >= MIN_READ_PREMIUM) return factors;
+  return factors.map(f => ({ ...f, lean: 0, weight: 0, context: true, note: `${f.note} — only ${dollars3(premium)} of premium, too thin to read` }));
+}
+/* A one-year EPS change off a tiny base runs to four digits, so each growth figure is capped at ±100%. */
+const capGrowth = (g: number) => clamp(g, -1, 1);
+/** The numbers pillar: one-year and two-year EPS growth, and the share count's change */
+export function numberFactors(row: ScreenRow): Factor[] {
+  const out: Factor[] = [];
+  const g1 = rowNum(row, 'eps_growth_4q');
+  if (g1 != null) out.push({ key: 'growth', label: 'Earnings growth, one year', value: growthWords(g1), lean: clamp(capGrowth(g1) / 0.5), weight: 0.4, note: g1 >= 0 ? 'earnings are growing' : 'earnings are shrinking' });
+  const g2 = rowNum(row, 'eps_growth_8q');
+  if (g2 != null) out.push({ key: 'growth2', label: 'Earnings growth, two years', value: growthWords(g2), lean: clamp(capGrowth(g2) / 0.8), weight: 0.3, note: g2 >= 0 ? 'higher than two years ago' : 'lower than two years ago' });
+  const sh = rowNum(row, 'shares_outstanding_growth_4q');
+  if (sh != null) out.push({ key: 'shares', label: 'Share count, one year', value: pct(sh * 100), lean: clamp(-sh / 0.05), weight: 0.3, note: sh <= -0.01 ? 'buying back shares' : sh >= 0.02 ? 'issuing shares — each one owns less' : 'about flat' });
+  return out;
+}
+const growthWords = (g: number): string => (Math.abs(g) > 1 ? `${pct(g * 100, 0)} · read as ${g > 0 ? '+' : '−'}100%` : pct(g * 100));
+
 /** The scored factors, from the screener row alone */
 export function screenFactors(row: ScreenRow): ScreenPillars {
-  /* THE SESSION'S CLOSE, NOT THE AFTER-HOURS PRINT (the round-3 audit, 2026-10-22): after the bell the screener's
-     close is the post-market price, so the scored "price against its 20-day average" read GME −1.3% while the page's
-     trend box, from the regular bars, read −0.3%. The last regular close (dayChange's daily rows) is used when read. */
+  /* after the bell the screener's close is the post-market print, so the last regular close is used when read */
   const tk = typeof row?.ticker === 'string' ? (row.ticker as string) : '';
-  /* (round 6) on liveQuote's screenerRead rule: the row's own session's regular close off the daily rows outside the
-     session — before the open too, when the last session is yesterday's — and the row's close in it */
   const regular = row ? screenerRead(row, tk ? peekRegularCloses(tk) : null)?.regular : undefined;
   const last = regular != null && regular > 0 ? regular : rowNum(row, 'close');
   const ema20 = rowNum(row, 'ema_20');
@@ -548,23 +468,18 @@ export function screenFactors(row: ScreenRow): ScreenPillars {
   if (rsi14 != null) trend.push({ key: 'rsi', label: 'RSI, 14 sessions', value: rsi14.toFixed(0), lean: clamp((rsi14 - 50) / 20), weight: 0.2, note: rsi14 >= 70 ? 'stretched — strong, but late' : rsi14 >= 55 ? 'firm' : rsi14 <= 30 ? 'washed out' : rsi14 <= 45 ? 'soft' : 'in the middle' });
   if (adx14 != null && week != null) {
     const dir = week >= 0 ? 1 : -1;
-    trend.push({ key: 'adx', label: "ADX, the trend's strength", value: `${adx14.toFixed(0)} · ${week >= 0 ? 'up' : 'down'} on the week`, lean: clamp(((adx14 - 20) / 20) * dir), weight: 0.2, note: adx14 >= 25 ? `a trend with force, ${week >= 0 ? 'upward' : 'downward'}` : 'no trend with force behind it' });
+    trend.push({ key: 'adx', label: "ADX, the trend's strength", value: `${adx14.toFixed(0)} · ${week >= 0 ? 'up' : 'down'} on the week`, lean: clamp((Math.max(0, adx14 - 20) / 20) * dir), weight: 0.2, note: adx14 >= 25 ? `a trend with force, ${week >= 0 ? 'upward' : 'downward'}` : adx14 < 20 ? 'no trend — ADX under 20 says nothing about direction' : 'a weak trend' });
   }
   if (month != null) trend.push({ key: 'chg20', label: 'The last month', value: pct(month * 100), lean: clamp((month * 100) / 8), weight: 0.1, note: month >= 0 ? 'up over the month' : 'down over the month' });
-  const numbers: Factor[] = [];
-  const growth = rowNum(row, 'eps_growth_4q');
-  if (growth != null) numbers.push({ key: 'growth', label: 'Earnings growth, year over year', value: pct(growth * 100, 2), lean: clamp(growth / 0.25), weight: 0.4, note: growth >= 0 ? 'earnings are growing' : 'earnings are shrinking' });
+  const numbers = numberFactors(row);
   const money: Factor[] = [];
   const rv = rvolFactor(pacedRelVolume(rowNum(row, 'relative_volume'), typeof row?.date === 'string' ? (row.date as string) : null), (day ?? 0) >= 0);
   if (rv) money.push(rv);
-  /* THE MONEY'S SIDE, NOT ITS KIND (the third audit, 2026-10-23): a put sold at the bid is a bullish trade, so the side of
-     the trade (bullish against bearish premium) carries most of the weight; the call/put split is a smaller second read,
-     named for what it is — premium spent on calls, not "buying". It was read off bullish_premium alone and printed as
-     calls (WOLF "94% calls" on a 6%-calls day). */
+  /* the side of the trade carries most of the weight (a put sold at the bid is bullish); calls against puts is a smaller read */
   const bull = rowNum(row, 'bullish_premium') ?? 0;
   const bear = rowNum(row, 'bearish_premium') ?? 0;
   money.push(...premiumFactors(bull, bear, rowNum(row, 'call_premium') ?? 0, rowNum(row, 'put_premium') ?? 0));
-  return { trend, numbers, money: volumeFollowsSide(money), refClose: last };
+  return { trend, numbers, money: thinPremium(volumeFollowsSide(money), bull + bear), refClose: last };
 }
 /** The scored factors' weight — a pillar with none of it is left out of the read */
 const scoredWeight = (factors: readonly Factor[]): number => factors.reduce((a, f) => a + (f.context ? 0 : f.weight), 0);
@@ -576,7 +491,6 @@ export interface ScreenRead {
   lean: Lean;
   thesis: string;
 }
-/** THE READ — the board's row and the page's headline both come from here, on the screener row */
 export function readOfScreen(row: ScreenRow): ScreenRead {
   const f = screenFactors(row);
   const pillars = (['trend', 'numbers', 'money'] as const).map(key => ({ key, score: scoreOf(f[key]), factors: f[key], inRead: scoredWeight(f[key]) > 0 }));
@@ -585,10 +499,7 @@ export function readOfScreen(row: ScreenRow): ScreenRead {
   const composite = w > 0 ? Math.round(scored.reduce((a, p) => a + p.score * PILLAR_WEIGHTS[p.key], 0) / w) : 50;
   const screen = screenOf(composite);
   const grade = gradeOfComposite(composite);
-  /* THE SENTENCE ON THE GRADE SHOWN (round 11: AAPL S/S/P and NEE S/G/P both read "good", yet one had the strong form
-     and the other the mixed one — the sentence took the engine's screen, cut at 68, not the displayed grade, cut at 60) */
-  const shownScreen: Screen = grade === 'strong' || grade === 'good' ? 'STRONG' : grade === 'poor' ? 'WEAK' : 'MIXED';
-  return { pillars, composite, screen, grade, lean: leanOf(composite), thesis: thesisOf(scored.map(p => ({ key: p.key, score: p.score })), shownScreen) };
+  return { pillars, composite, screen, grade, lean: leanOf(composite), thesis: thesisOf(scored.map(p => ({ key: p.key, score: p.score })), screen) };
 }
 
 const mmdd = (t: number): string => {
@@ -699,17 +610,14 @@ const trendFor = (blocks: Candle[][], spot: number, uptoSessions?: number): { re
   if (rsi14 != null) factors.push({ key: 'rsi', label: 'RSI, 14 sessions', value: rsi14.toFixed(0), lean: clamp((rsi14 - 50) / 20), weight: 0.2, note: rsi14 >= 70 ? 'stretched — strong, but late' : rsi14 >= 55 ? 'firm' : rsi14 <= 30 ? 'washed out' : rsi14 <= 45 ? 'soft' : 'in the middle' });
   if (adx14 != null && change5Pct != null) {
     const dir = change5Pct >= 0 ? 1 : -1;
-    factors.push({ key: 'adx', label: "ADX, the trend's strength", value: `${adx14.toFixed(0)} · ${change5Pct >= 0 ? 'up' : 'down'}`, lean: clamp(((adx14 - 20) / 20) * dir), weight: 0.2, note: adx14 >= 25 ? `a trend with force, ${change5Pct >= 0 ? 'upward' : 'downward'}` : 'no trend with force behind it' });
+    factors.push({ key: 'adx', label: "ADX, the trend's strength", value: `${adx14.toFixed(0)} · ${change5Pct >= 0 ? 'up' : 'down'}`, lean: clamp((Math.max(0, adx14 - 20) / 20) * dir), weight: 0.2, note: adx14 >= 25 ? `a trend with force, ${change5Pct >= 0 ? 'upward' : 'downward'}` : adx14 < 20 ? 'no trend — ADX under 20 says nothing about direction' : 'a weak trend' });
   }
   if (sessions >= 10) factors.push({ key: 'structure', label: 'The structure', value: structure, lean: structLean, weight: 0.2, note: structLean > 0 ? 'the swings step up' : structLean < 0 ? 'the swings step down' : 'the swings disagree' });
   if (change20Pct != null) factors.push({ key: 'chg20', label: 'The last 20 sessions', value: pct(change20Pct), lean: clamp(change20Pct / 8), weight: 0.1, note: change20Pct >= 0 ? 'up over the month' : 'down over the month' });
   return { read, factors };
 };
 
-/* THE BUSIEST CONTRACTS, FROM THE CHAIN (the data audit, 2026-10-22). They were built from the last 40 flow alerts, the
-   dollars the alerts' premiums summed — AAPL's 350C read "$134K" against the contract's $6.56M day, and TSLA's 400C
-   (68,212 contracts) was missing. They are now the chain's own contracts by the day's volume, expired ones excluded,
-   with the day's whole premium — the same read and the same rule as the earnings page. */
+/* The busiest contracts are the chain's own by the day's volume (expired ones out), with the day's whole premium. */
 const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', ticker: string, spot: number): BookContract[] => {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
   const out: BookContract[] = [];
@@ -776,42 +684,31 @@ const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', ticker: st
 /* ---- the money, from the book, the flow and the dark pool ------------------------------- */
 
 const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], file: StockFile, allExpiries: boolean): { read: MoneyRead; factors: Factor[] } => {
-  /* EVERY LISTED DATE, NOT THE DESK'S SCOPE (the ship pass, 2026-10-22): the Pinpoint desk's Levels card defaults to
-     today's contracts, and a single stock with no same-day expiry (AAPL on a Thursday) then read an empty book — open
-     interest 0, "50% calls", a $44M net GEX against the whole book's −$573M. The name's page reads the whole book. */
+  /* the page reads the whole book: a name with no same-day expiry would read an empty book on today's scope */
   const profile = buildExposureProfile(snapshot, 'ALL', LEVELS_WINDOW);
-  /* THE TOTALS OVER EVERY STRIKE (round 11: Net DEX, vanna and charm summed the ±30-strike drawing window, so they sat
-     apart from the vendor's own /greek-exposure totals; VEX read "$1.10K" on AAPL and "$32" on GME — the vendor's
-     greek rows carry no vega, and what was left was rounding). On a live book the sums run over the whole book's
-     strikes; a vega total under $100K on a book is not a measured figure and reads "—" */
+  /* Sums over every strike of a live book, to match the vendor's totals; a vega total under $100K is not a measured
+     figure (the greek rows carry no vega) and reads "—". */
   const wholeChain = snapshot.liveBook ? (snapshot.uwChains?.ALL ?? snapshot.chain) : null;
   const sumOf = (pick: (n: (typeof snapshot.chain)[number]) => number): number => (wholeChain ?? []).reduce((a, n) => a + (Number.isFinite(pick(n)) ? pick(n) : 0), 0);
   const netVanna = wholeChain ? sumOf(n => (n.callVanna ?? 0) + (n.putVanna ?? 0)) : profile.strikes.reduce((a, s) => a + (s.vanna?.net ?? 0), 0);
   const netCharm = wholeChain ? sumOf(n => (n.callCharm ?? 0) + (n.putCharm ?? 0)) : profile.strikes.reduce((a, s) => a + (s.charm?.net ?? 0), 0);
   const netDexAll = wholeChain ? sumOf(n => (n.callDex ?? 0) + (n.putDex ?? 0)) : profile.netDex;
   const netVexAll = wholeChain ? sumOf(n => (n.callVex ?? 0) + (n.putVex ?? 0)) : profile.netVex;
-  /* NET GEX AND THE REGIME FROM PINPOINT'S OWN READ (the re-audit, 2026-10-22): the profile's netGex sums a ±30-strike
-     window (SPY −$11.6B against Pinpoint's −$14.69B on every strike). levelsFor is the one source both products read;
-     it is in the retail sign, the money read keeps the house sign (the page flips it for print). */
-  /* THE WHOLE BOOK ONLY WHEN IT IS LOOKED AT (the round-8 audit: 143 calls on AAPL's page, most of them the forty listed
-     dates' chains behind these levels). levelsFor(t, 'ALL') walks every date; the page asks for it once the All-expiries
-     panel is on screen (or the book is already whole — Pinpoint's cache is shared) */
+  /* Net GEX and the regime come from levelsFor, the source Pinpoint reads (retail sign; the money read keeps the house sign). */
+  /* levelsFor 'ALL' walks every listed date, so it is asked for only once the All-expiries panel is on screen */
   const pin = allExpiries ? levelsFor(ticker, 'ALL') : null;
   const pinToday = levelsFor(ticker, '0DTE');
   const houseNet = pin ? -pin.netGex : profile.netGex;
   const regime: MoneyRead['regime'] = regimeOfNet(houseNet) === 'SHORT' ? 'amplifying' : 'absorbing';
   const screen = file.screen;
-  /* CALLS AGAINST PUTS ARE call_premium AGAINST put_premium (the third audit, 2026-10-23). They were read off
-     bullish_premium / bearish_premium — WOLF printed "94% calls · the money is buying calls" on a day that was 6% calls
-     (puts sold at the bid count as bullish). Both are kept now, each under its own name. */
+  /* calls against puts is call_premium against put_premium; bullish against bearish is a separate read */
   const callPremium = nOr(screen?.call_premium) ?? 0;
   const putPremium = nOr(screen?.put_premium) ?? 0;
   const bullishPremium = nOr(screen?.bullish_premium) ?? 0;
   const bearishPremium = nOr(screen?.bearish_premium) ?? 0;
   const callVolume = nOr(screen?.call_volume) ?? 0;
   const putVolume = nOr(screen?.put_volume) ?? 0;
-  /* THE ASK SHARE IS THE DOLLARS PAID ON THE ASK (audit round 5: it summed whole alerts called ASK — 47% on AAPL against
-     44.6% actually filled on the ask): each alert's own ask-side premium, over the alerts' whole premium */
+  /* the ask share is each alert's own ask-side premium over the alerts' whole premium */
   const flowPrem = file.flow.reduce((a, p) => a + Math.max(p.premium, (p.alertSides?.ask ?? 0) + (p.alertSides?.bid ?? 0) + (p.alertSides?.other ?? 0)), 0);
   const askPrem = file.flow.reduce((a, p) => a + (p.alertSides ? p.alertSides.ask : p.side === 'ASK' ? p.premium : 0), 0);
   const sweepPrem = file.flow.filter(p => p.sweep).reduce((a, p) => a + p.premium, 0);
@@ -830,41 +727,30 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   const rvolPaced = pacedRelVolume(rawRvol, typeof screen?.date === 'string' ? (screen.date as string) : null);
   const rvol = rvolPaced?.value ?? null;
   const lastBlock = blocks[blocks.length - 1];
-  let closeInRange: number | null = null;
-  if (lastBlock && lastBlock.length > 1) {
-    const hi = Math.max(...lastBlock.map(c => c.high));
-    const lo = Math.min(...lastBlock.map(c => c.low));
-    closeInRange = hi > lo ? (lastBlock[lastBlock.length - 1].close - lo) / (hi - lo) : null;
-  }
   const callOI = snapshot.chain.reduce((a, s) => a + (s.callOI ?? 0), 0);
   const putOI = snapshot.chain.reduce((a, s) => a + (s.putOI ?? 0), 0);
-  /* OWN-TERMS PRINTS ARE OUT OF EVERY DARK FIGURE (the fourth audit, 2026-10-23): SPY's tape chart named 126K-share
-     contingent blocks ($97.8M each) its largest while the read said "the largest $24M" — average-price, reference-price,
-     contingent and derivative-priced prints are priced by their own terms, not the market, so the totals, the chart and
-     every "largest" leave them out alike (SidesRule); they are only counted, apart */
+  /* Prints priced by their own terms (average-price, contingent, derivative-priced) are left out of every dark figure,
+     counted apart. */
   const ownTermsOut = file.dark.filter(p => !p.special);
   const darkShares = ownTermsOut.reduce((a, p) => a + p.size, 0);
   const darkNotional = ownTermsOut.reduce((a, p) => a + p.notional, 0);
-  /* THE READ, ON TRACE'S CONVENTION (data/stockFile.ts darksFrom): the read prints' dollars paid over their own mid
-     (buyer-initiated) against sold under it (seller-initiated); average-price, reference-price, contingent and
-     extended-hours prints are on the tape but never in the read */
+  /* the read: dollars paid over the print's own mid (buyer-initiated) against sold under it, Trace's convention */
   const readPrints = file.dark.filter(darkReadable);
   const readNotional = readPrints.reduce((a, p) => a + p.notional, 0);
   const bought = readPrints.filter(p => p.intent === 'ACCUMULATION').reduce((a, p) => a + p.notional, 0);
   const sold = readPrints.filter(p => p.intent === 'DISTRIBUTION').reduce((a, p) => a + p.notional, 0);
   const netPosturePct = readNotional > 0 ? ((bought - sold) / readNotional) * 100 : 0;
-  /* the cut-off is the word bands' own (data/darkpool.ts gradeOfPosture: a lean under 18 is "poor", no lean) — at ±15 a
-     16% lean read "accumulating" beside a word that called it nothing (the third audit, 2026-10-23) */
+  /* the cut-off is gradeOfPosture's own: a lean under 18% is no lean */
   const posture: DarkPoolView['posture'] = netPosturePct >= 18 ? 'ACCUMULATING' : netPosturePct <= -18 ? 'DISTRIBUTING' : 'BALANCED';
   const largest = [...readPrints].sort((a, b) => b.notional - a.notional)[0] ?? null;
-  const clocks = readPrints.map(p => p.time).filter(Boolean).sort();
+  const instants = readPrints.map(p => p.epochMs ?? NaN).filter(Number.isFinite).sort((a, b) => a - b);
   const darkWindow = {
     read: readPrints.length,
     readNotional,
     outsideRead: ownTermsOut.filter(p => !darkReadable(p)).length,
     inHand: file.dark.length,
-    from: clocks[0] ?? null,
-    to: clocks[clocks.length - 1] ?? null,
+    from: instants.length ? nyClock(instants[0]) : null,
+    to: instants.length ? nyClock(instants[instants.length - 1]) : null,
     complete: file.darkWindow.complete,
     cover: file.darkWindow.complete ? null : file.darkWindow.from || null,
     ownTerms: file.dark.filter(p => p.special).length,
@@ -876,10 +762,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     dpSharePct: todayVol > 0 && darkShares > 0 ? Math.min(100, (100 * darkShares) / todayVol) : 0,
     netPosturePct,
     posture,
-    /* the note is the READ, not the rule: it is quoted inside the Why-now lines, where the bare definition ("A print
-       under the price counts as buying…") landed mid-sentence and read as the finding (the dossier sweep, 2026-10-22).
-       The read is Trace's: paid over its own mid is buyer-initiated, sold under it seller-initiated. Kept to
-       the verdict alone: the factor's own label and value already say where the money printed. */
+    /* the note is the verdict alone; it is quoted inside the Why-now lines */
     postureNote: !readPrints.length
       ? ''
       : posture === 'ACCUMULATING'
@@ -893,23 +776,27 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     largest,
   };
   const darkBlocks = ownTermsOut.filter(p => p.size >= 50_000).length;
-  /* THE SESSION'S OWN MINUTES (the retail test, round 6: NVDA's "Oct 22 tape" drew the one daily bar — a 212.10–212.25
-     axis on a 7.62 range, no line — because the blocks are daily bars once five sessions are in). The line is the book's
-     one-minute cash bars of the dark tape's session; the blocks only when they are minutes themselves. */
+  /* the session's own one-minute cash bars draw the line; daily blocks only when they are minutes themselves */
   const sessionMinutes = (file.minutes && file.minutes.length > 1 ? file.minutes : bookCandles(ticker) ?? []).filter(c => {
     const at = c.time * 1000;
     const m = nyMinutes(at);
     return (!file.session || nyIsoDate(at) === file.session) && m >= SESSION_OPEN_MIN && m <= SESSION_CLOSE_MIN;
   });
   const today = (sessionMinutes.length > 1 ? sessionMinutes : lastBlock && lastBlock.length > 1 ? lastBlock : []).map(c => ({ time: c.time, close: c.close }));
+  /* where the session's last regular minute sits in that session's own high–low */
+  let closeInRange: number | null = null;
+  if (sessionMinutes.length > 1) {
+    const hi = Math.max(...sessionMinutes.map(c => c.high));
+    const lo = Math.min(...sessionMinutes.map(c => c.low));
+    closeInRange = hi > lo ? (sessionMinutes[sessionMinutes.length - 1].close - lo) / (hi - lo) : null;
+  }
   const read: MoneyRead = {
     netGex: houseNet,
     netDex: netDexAll,
     netVex: Math.abs(netVexAll) >= 100_000 ? netVexAll : null,
     netVanna,
     netCharm,
-    /* BOTH SCOPES FROM levelsFor (the third audit, 2026-10-23) — the walls, the flip, the supreme, net GEX and the regime,
-       and the scope's own label, exactly as Pinpoint prints them */
+    /* both scopes from levelsFor, with each scope's own label, as Pinpoint prints them */
     levelsAll: pin,
     levelsToday: pinToday,
     levelsWindow: LEVELS_WINDOW,
@@ -941,9 +828,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   const factors: Factor[] = [];
   const rvf = rvolFactor(rvolPaced, snapshot.changePercent >= 0);
   if (rvf) factors.push(rvf);
-  /* THE MONEY'S SIDE, NOT ITS KIND (the third audit, 2026-10-23). A put sold at the bid is a bullish trade and a call
-     sold at the bid a bearish one, so the side of the trade (bullish against bearish premium) carries most of the weight;
-     the plain call/put split is a smaller second read, named for what it is — premium spent on calls, not buying. */
+  /* the side of the trade carries most of the weight; calls against puts is a smaller second read */
   factors.push(...premiumFactors(bullishPremium, bearishPremium, callPremium, putPremium));
   if (readPrints.length) factors.push({ key: 'dark', label: 'Off-exchange prints', value: posture === 'ACCUMULATING' ? 'over the mid' : posture === 'DISTRIBUTING' ? 'under the mid' : 'split', lean: clamp(netPosturePct / 40), weight: 0.3, note: dark.postureNote });
   return { read, factors: volumeFollowsSide(factors) };
@@ -960,13 +845,8 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
   const stories = (feed.status === 'live' ? feed.events : [])
     .slice()
     .sort((a, b) => a.item.minutesAgo - b.item.minutesAgo);
-  const positive = stories.filter(s => s.grade === 'ALLY').length;
-  const negative = stories.filter(s => s.grade === 'THREAT').length;
-  const marked = positive + negative;
-  const sentiment = marked ? (positive - negative) / marked : 0;
   const past = pastPrints(file.earnings);
-  /* a vendor estimate far off the name's own run of estimates (META's 3.45 for a quarter whose neighbours were 6.6–8.2,
-     against an actual of 7.40) is said to be off, not read as a 114% beat (the retail pass, 2026-10-22) */
+  /* an estimate far off the name's own run of estimates is said to be off, not read as a beat or miss */
   const ests = past.slice(0, 8).map(r => Math.abs(nOr(r.street_mean_est) ?? 0)).filter(v => v > 0).sort((a, b) => a - b);
   const medEst = ests.length >= 3 ? ests[Math.floor(ests.length / 2)] : 0;
   const reports: NewsRead['reports'] = past.slice(0, 8).map(r => {
@@ -981,9 +861,7 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
     /* the move is a fraction of the price, per the spec ("0.0724" is 7.24%) */
     return { label: reportDayLabelYear(String(r.report_date || '')), epsActual: actual, epsEst: est, beat: result === 'beat', result, movePct: move == null ? null : move * 100, estOff };
   });
-  /* THE USUAL MOVE ON ITS OWN ROWS: the latest eight reports with a next-session move, whether or not they carry an EPS
-     estimate (the re-audit, 2026-10-22: GME's four newest reports had no estimate and were skipped) */
-  /* (round 9) the same eight reports the table lists */
+  /* the usual move: the latest eight reports with a next-session move, estimate or not */
   const movedRows = past.slice(0, 8).filter(r => nOr(r.post_earnings_move_1d) != null);
   const reaction = movedRows.length ? { pct: movedRows.reduce((a, r) => a + Math.abs((nOr(r.post_earnings_move_1d) ?? 0) * 100), 0) / movedRows.length, reports: movedRows.length } : null;
   const last = reports[0];
@@ -999,11 +877,8 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
         timeKnown: /pre|post|after|before/i.test(String(upcoming.report_time ?? '')),
       }
     : null;
-  const read: NewsRead = { stories: stories.slice(0, 6), sentiment, positive, negative, nextEarnings, reaction, reports };
+  const read: NewsRead = { stories: stories.slice(0, 6), nextEarnings, reaction, reports };
   const factors: Factor[] = [];
-  if (marked > 0) {
-    factors.push({ key: 'lean', label: "The wire's lean", value: `${sentiment >= 0 ? '+' : sentiment < 0 ? '−' : ''}${Math.abs(sentiment).toFixed(2)} · ${positive} positive · ${negative} negative`, lean: clamp(sentiment), weight: 0.7, note: sentiment > 0.15 ? 'the stories read for the name' : sentiment < -0.15 ? 'the stories read against it' : 'no clear lean' });
-  }
   if (stories.length) factors.push({ key: 'fresh', label: 'Stories on the wire', value: `${stories.length}`, lean: 0, weight: 0.1, note: 'how many landed on this name' });
   const biggest = stories.reduce<GeoNewsEvent | null>((m, s) => {
     if (!s.item.prediction.measured) return m;
@@ -1048,9 +923,7 @@ const nOr = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-/* EVERY REPORT, ESTIMATE OR NOT (round 9: GME's page led with 09/09/25 — its 2026-09-08 report (EPS 0.27, +5.3%) and
-   2025-12-09 (0.24) carry no street_mean_est and were dropped). A report is a past row with an actual or a next-session
-   move; beat / in line / miss is read only where an estimate is on file (earningsFeed historyOf's rule). */
+/* A report is a past row with an actual or a next-session move; beat, in line or miss only where an estimate is on file. */
 const hasVal = (v: unknown) => v != null && v !== '';
 const pastPrints = (rows: EarnRow[]): EarnRow[] => {
   const today = nyTodayIso();
@@ -1070,8 +943,7 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
   const epsEstimate = last ? nOr(last.street_mean_est) : null;
   /* cents when the estimate is small or the two straddle zero — the same rule as the page's report table (StockName centsGap) */
   const tinyEst = epsEstimate != null && epsActual != null && (Math.abs(epsEstimate) < 0.25 || Math.sign(epsActual) !== Math.sign(epsEstimate));
-  /* an estimate far off the name's own run of estimates is a vendor slip, not a surprise to size (META's 3.45 against
-     neighbours of 6.6–8.2 read "beat by 114.5%" — the retail pass, 2026-10-22) */
+  /* an estimate far off the name's own run is a vendor slip, not a surprise to size */
   const runEsts = window.map(r => Math.abs(nOr(r.street_mean_est) ?? 0)).filter(v => v > 0).sort((a, b) => a - b);
   const runMed = runEsts.length >= 3 ? runEsts[Math.floor(runEsts.length / 2)] : 0;
   const estOff = epsEstimate != null && epsActual != null && runMed > 0.25 && Math.abs(epsEstimate) > 0 && (Math.abs(epsEstimate) < runMed * 0.55 || Math.abs(epsEstimate) > runMed * 1.8) && Math.abs(epsActual - epsEstimate) > Math.abs(epsEstimate) * 0.5;
@@ -1094,16 +966,6 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
       lean: tinyEst ? clamp(((epsActual! - epsEstimate!) * 100) / 8) : clamp(epsSurprisePct / 8),
       weight: 0.4,
       note: epsSurprisePct >= 0 ? 'the last print beat' : 'the last print missed',
-    });
-  }
-  if (growth != null) {
-    factors.push({
-      key: 'growth',
-      label: 'Earnings growth, year over year',
-      value: pct(growth * 100, 2),
-      lean: clamp(growth / 0.25),
-      weight: 0.4,
-      note: growth >= 0 ? 'earnings are growing' : 'earnings are shrinking',
     });
   }
   if (scored.length) {
@@ -1143,7 +1005,7 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
       valuation: null,
       healthScore: null,
       guidance: null,
-      dividendYieldPct: div != null ? (Math.abs(div) <= 1.5 ? div * 100 : div) : null,
+      dividendYieldPct: div != null ? div * 100 : null,
       marketCap: cap,
     },
     factors,
@@ -1153,7 +1015,7 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
 /* ---- the words and the sums ------------------------------------------------------ */
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-/** A factor's label inside a sentence: lower-cased, its initialisms kept ("20-day EMA", "RSI", "ADX" — round 11) */
+/** A factor's label inside a sentence: lower-cased, its initialisms kept ("20-day EMA", "RSI") */
 const lowerLabel = (label: string): string => label.split(' ').map(w => (/^[A-Z0-9-]*[A-Z]{2,}[A-Z0-9-]*$/.test(w) ? w : w.toLowerCase())).join(' ');
 const whyNowOf = (pillars: Pillar[]): string => {
   const all = pillars.flatMap(p => p.factors.filter(f => !f.context).map(f => ({ ...f, pull: Math.abs(f.lean) * f.weight * PILLAR_WEIGHTS[p.key] })));
@@ -1161,9 +1023,7 @@ const whyNowOf = (pillars: Pillar[]): string => {
   if (!top.length) return 'Nothing on the name stands out right now.';
   return top.map(f => `${cap(f.label)} ${f.value} — ${f.note}`).join(' · ') + '.';
 };
-/** A pillar's side in the read's sentences, on THE PILLAR LABELS' OWN CUTS (audit round 10: SPY "the money is selling"
-    beside a Money of caution, 50%; UNH Money poor beside "nothing against it" — the sentences cut at 45/55 and 65, the
-    labels at 46 and 60). For the name = good or strong, against it = poor, between = caution, said as neither. */
+/** A pillar's side in the sentences, on the grade's own cuts: good or strong is for the name, poor against it */
 export const pillarSide = (score: number): 'for' | 'against' | 'middle' => {
   const g = gradeOf(score);
   return g === 'good' || g === 'strong' ? 'for' : g === 'poor' ? 'against' : 'middle';
@@ -1186,15 +1046,14 @@ export function verdictSentence(ranked: readonly { score: number; name: string; 
   if (!goods.length && !bads.length) return 'Nothing on the name is decisive.';
   if (!goods.length) return cap(`${bads.slice(0, 2).map(p => p.bad).join(', ')}; ${help}.`);
   if (!bads.length) return cap(`${goods.slice(0, 2).map(p => p.good).join(', ')}; nothing against it, the rest in the middle.`);
-  /* every pillar against named (round 11: NIO and GOOGL, "1 pull for · 2 against", named the trend alone) */
+  /* every pillar against is named */
   const badWords = bads.length === 1 ? bads[0].bad : `${bads.slice(0, -1).map(p => p.bad).join(', ')} and ${bads[bads.length - 1].bad}`;
   const goodWords = goods.length === 1 ? goods[0].good : `${goods.slice(0, -1).map(p => p.good).join(', ')} and ${goods[goods.length - 1].good}`;
   return cap(`${goodWords} but ${badWords} — a catalyst decides.`);
 }
 const thesisOf = (pillars: readonly { key: PillarKey; score: number }[], screen: Screen): string => {
   const words: Record<PillarKey, { good: string; bad: string; name: string }> = {
-    /* the trend's span named (round 8: CRM "STRONG · the trend is up" while down 3.5% on the year) — its factors are
-       the 20-day average, the 14-session RSI, the week's ADX and the month */
+    /* the trend's factors span weeks (20-day average, RSI, ADX, the month), so the words say so */
     trend: { name: 'the trend', good: 'the short-term trend (weeks, not the year) is up', bad: 'the short-term trend (weeks, not the year) has turned down' },
     numbers: { name: 'the numbers', good: 'the numbers are clean', bad: 'the numbers are slipping' },
     money: { name: 'the money', good: 'the money is buying', bad: 'the money is selling' },
@@ -1204,17 +1063,20 @@ const thesisOf = (pillars: readonly { key: PillarKey; score: number }[], screen:
   return verdictSentence(ranked, screen);
 };
 /** Every factor's points: its lean × its share of the pillar × 50 × the pillar's weight — they sum to the score's distance from 50 */
-const contributionsOf = (pillars: Pillar[]): Contribution[] =>
-  pillars
+const contributionsOf = (pillars: Pillar[]): Contribution[] => {
+  const total = pillars.reduce((a, p) => a + PILLAR_WEIGHTS[p.key], 0) || 1;
+  return pillars
     .flatMap(p => {
       const own = p.factors.filter(f => !f.context);
       const w = own.reduce((a, f) => a + f.weight, 0) || 1;
-      return own.map(f => ({ key: `${p.key}:${f.key}`, pillar: p.key, label: f.label, value: f.value, points: Math.round(f.lean * (f.weight / w) * 50 * PILLAR_WEIGHTS[p.key] * 10) / 10 }));
+      return own.map(f => ({ key: `${p.key}:${f.key}`, pillar: p.key, label: f.label, value: f.value, points: Math.round(f.lean * (f.weight / w) * 50 * (PILLAR_WEIGHTS[p.key] / total) * 10) / 10 }));
     })
     .sort((a, b) => Math.abs(b.points) - Math.abs(a.points));
+};
 /** The factors whose flip would move the composite most — and by how much */
 const movesOf = (pillars: Pillar[], composite: number): Move[] => {
   const out: Move[] = [];
+  const total = pillars.reduce((a, q) => a + PILLAR_WEIGHTS[q.key], 0) || 1;
   for (const p of pillars) {
     const own = p.factors.filter(x => !x.context);
     const w = own.reduce((a, f) => a + f.weight, 0) || 1;
@@ -1223,23 +1085,15 @@ const movesOf = (pillars: Pillar[], composite: number): Move[] => {
       /* the factor turned the other way, the rest held */
       const flipped = own.map(x => (x === f ? { ...x, lean: -x.lean } : x));
       const pillarThen = Math.round(50 + 50 * flipped.reduce((a, x) => a + x.lean * x.weight, 0) / w);
-      const delta = Math.round((pillarThen - p.score) * PILLAR_WEIGHTS[p.key]);
+      const delta = Math.round((pillarThen - p.score) * (PILLAR_WEIGHTS[p.key] / total));
       if (delta === 0) continue;
       out.push({ key: `${p.key}:${f.key}`, label: f.label, delta, to: composite + delta });
     }
   }
   return out.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 5);
 };
-/* AGREE, ARGUE OR NEITHER — AND A NEUTRAL READ HAS NO SIDE TO AGREE WITH (the retail pass, 2026-10-22: NVDA read "0 OF 4
-   AGREE" with every pillar "ARGUES", "numbers strong ARGUES" among them, while the text said "the numbers carry it", and
-   "If the numbers are right … the neutral read fails there first"). A pillar's stance is its own side of 50 — for the
-   name (55+), against it (45−) or in the middle. Under a bullish or bearish read a pillar on that side agrees, one on
-   the other side argues, and one in the middle does neither. Under a neutral read nothing agrees or argues: each pillar
-   says which way it pulls, and the sentences say the read is split. */
-/* A PILLAR'S SIDE IS ITS GRADE'S (the fourth audit, 2026-10-23): AAPL read "3 of 3 agree … money caution AGREES … Every
-   pillar agrees" — the side cut at 55 while the word "caution" runs 47–59, so a caution pillar was counted as backing a
-   bullish read. A pillar is for the name when it grades good or strong, against it when poor, and a caution pillar is in
-   the middle — it neither agrees nor argues. */
+/* A pillar agrees, argues or sits in the middle by its own grade; under a neutral read nothing agrees or argues and
+   each pillar says which way it pulls. */
 const sideOf = pillarSide; /* one rule with the sentences above */
 const verbs = (p: Pillar, one: string, many: string) => (p.key === 'numbers' ? many : one);
 const lowerName = (p: Pillar) => p.name.toLowerCase();
@@ -1309,13 +1163,10 @@ const explanationOf = (name: string, composite: number, pillars: Pillar[], numbe
   const nextWord = next ? (sideOf(next.score) === side ? verbs(next, 'agrees', 'agree') : sideOf(next.score) === 'middle' ? verbs(next, 'sits in the middle', 'sit in the middle') : verbs(next, 'argues', 'argue')) : '';
   return `${lead}${next ? `; ${lowerName(next)} ${nextWord}` : ''}.${fair} ${agreement.risk}`;
 };
-/* THE DAY'S MOVE, SAID AGAINST THE WIRE AND THE MARKET (round 9: AAPL's "why" was technicals only on a down day). A move
-   of half a percent or more names today's story on the name when there is one, and the market's own move (SPY's), or
-   says plainly that no story on the wire explains it. */
+/* A move of half a percent or more is set against the name's story that day and SPY's own move. */
 const todayWhyOf = (ticker: string, dayPct: number | null | undefined, news: NewsRead): string => {
   if (dayPct == null || !Number.isFinite(dayPct) || Math.abs(dayPct) < 0.5 || ticker === 'SPY') return '';
-  /* THE SESSION NAMED (round 11: on a Saturday GME read "No story on the wire today explains the −2.2% move" — the move
-     is Friday's) — today once today's session has opened, else the last session's day */
+  /* the session named: today once it has opened, else the last session's day */
   const session = lastSessionIso();
   const isToday = session === nyIsoDate();
   const [sy, sm, sd] = session.split('-').map(Number);
@@ -1342,7 +1193,7 @@ const methodOf = (trend: TrendRead, money: MoneyRead, news: NewsRead, pillars: P
     `GEX · DEX · VEX · vanna · charm, and the walls, the flip and the supreme from them`,
     'bullish against bearish premium (the side of the trade) and calls against puts (the kind of contract), from the screener',
     money.darkWindow.read ? 'off-exchange prints over or under their own quote\'s mid, the regular session\'s sized prints only' : 'no regular-session off-exchange print to read',
-    `the wire's lean from the stories' reads and expected moves`,
+    `the wire's stories and each named stock's move at publish`,
   ],
   inferred: [
     `${pillars.reduce((a, p) => a + p.factors.length, 0)} factors, each leaning for the name or against it — a pillar is the balance of its factors`,
@@ -1400,32 +1251,27 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   if (file.status === 'loading') return null;
   const blocks = file.days.length >= 5 ? file.days.map(c => [c]) : minute.length >= 2 ? [minute] : [];
 
-  /* THE DAY'S CHANGE IS THE REGULAR SESSION'S (the re-audit, 2026-10-22): after the bell the book's change is the
-     after-hours move alone; the quote (data/liveQuote.ts) carries the session's change and the extended move apart */
+  /* the day's change is the regular session's; the quote keeps the extended move apart */
   const quote = peekQuote(ticker);
   const dayPct = quote ? quote.changePct : snapshot.changePercent;
   const extLine = extendedLine(quote);
   const trendBars = trendFor(blocks, snapshot.spot);
-  /* ONE SOURCE FOR EVERY TREND FIGURE ON THE PAGE (the fourth audit, 2026-10-23): the card computed its own ADX and RSI
-     off the bars (GME 52, SPY 19) beside factors that score the screener's adx_14 (54; SPY 13.5), and "5 · 20 sessions
-     +1.9% · +3.8%" sat beside "The last month +2.6%". The card now prints the screener row's own measures — the very
-     numbers the factors score — and the bars keep only what the screener does not carry (the range, the structure). */
+  /* the card prints the screener row's own measures, the figures the factors score; the bars keep the range and structure */
   const trend = { ...trendBars, read: screenTrend(trendBars.read, file.screen) };
   const money = moneyFor(ticker, { ...snapshot, changePercent: dayPct }, blocks, file, !!opts.allExpiries);
   const news = newsFor(ticker, file);
   const numbers = numbersFor(file);
-  /* THE WORD IS THE BOARD'S (readOfScreen, on the screener row the board reads too); the page's own reads — the swing
-     structure, the last print against its estimate, the dark pool, the wire — sit beside the scored factors as context */
+  /* the grade is readOfScreen's; the page's own reads sit beside it as context */
   const sr = readOfScreen(file.screen);
   const ctx = (fs: Factor[]): Factor[] => fs.map(f => ({ ...f, context: true }));
   const scoredOf = (k: PillarKey): Factor[] => sr.pillars.find(p => p.key === k)?.factors ?? [];
   const inReadOf = (k: PillarKey): boolean => sr.pillars.find(p => p.key === k)?.inRead ?? false;
   const trendFactors = [...scoredOf('trend'), ...ctx(trend.factors.filter(f => f.key === 'structure'))];
-  const numberFactors = [...scoredOf('numbers'), ...ctx(numbers.factors.filter(f => f.key !== 'growth'))];
+  const numberFactors = [...scoredOf('numbers'), ...ctx(numbers.factors)];
   const moneyFactors = [...scoredOf('money'), ...ctx(money.factors.filter(f => f.key === 'dark'))];
   const pillars: Pillar[] = [
     { key: 'trend', name: PILLAR_NAMES.trend, inRead: inReadOf('trend'), score: scoreOf(trendFactors), factors: trendFactors, status: file.screen ? 'live' : 'thin', from: 'the screener row · the swing structure from the sessions on hand' },
-    { key: 'numbers', name: PILLAR_NAMES.numbers, inRead: inReadOf('numbers'), score: scoreOf(numberFactors), factors: numberFactors, status: inReadOf('numbers') ? 'live' : 'sample', from: inReadOf('numbers') ? 'earnings growth, with the last print beside it' : 'not on this feed' },
+    { key: 'numbers', name: PILLAR_NAMES.numbers, inRead: inReadOf('numbers'), score: scoreOf(numberFactors), factors: numberFactors, status: inReadOf('numbers') ? 'live' : 'sample', from: inReadOf('numbers') ? 'EPS growth and the share count · the last print beside it' : 'not on this feed' },
     { key: 'money', name: PILLAR_NAMES.money, inRead: inReadOf('money'), score: scoreOf(moneyFactors), factors: moneyFactors, status: file.screen ? 'live' : 'thin', from: 'the screener row · the dark pool beside it' },
     { key: 'news', name: PILLAR_NAMES.news, inRead: false, score: 50, factors: ctx(news.factors), status: wireLive(ticker) || news.read.reports.length ? 'live' : 'thin', from: 'the wire — shown, not scored' },
   ];
@@ -1435,46 +1281,26 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   const lean = sr.lean;
   const livePillars = scored;
 
-  /* the trend as it stood N sessions ago — the other live pillars are held */
-  const held = scored.filter(p => p.key !== 'trend');
-  const heldRest = held.reduce((a, p) => a + p.score * PILLAR_WEIGHTS[p.key], 0);
-  const heldW = held.reduce((a, p) => a + PILLAR_WEIGHTS[p.key], 0);
-  const compositeAt = (trendScore: number | null): number => {
-    const useTrend = trendScore != null && trend.factors.length > 0;
-    const w = heldW + (useTrend ? PILLAR_WEIGHTS.trend : 0);
-    if (!(w > 0)) return 50;
-    return Math.round((heldRest + (useTrend ? trendScore * PILLAR_WEIGHTS.trend : 0)) / w);
-  };
-  /* the history reads the same four measures off the name's own bars (the structure is context, as on the page) */
+  /* The history is the trend pillar alone, every point off the name's daily bars, today's included. */
   const trendAt = (back: number): number | null => {
     const t = trendFor(blocks, snapshot.spot, back).factors.filter(f => f.key !== 'structure');
     return t.length ? scoreOf(t) : null;
   };
   const sessions = trend.read.sessions;
-  const trend5 = sessions > 5 ? trendAt(5) : null;
-  const trend20 = sessions > 20 ? trendAt(20) : null;
-  const history: ScoreHistory = {
-    trend5,
-    trend20,
-    composite5: trend5 == null ? null : compositeAt(trend5),
-    composite20: trend20 == null ? null : compositeAt(trend20),
-  };
-  /* session by session, as far back as the factors can still be read */
   const series: TrendPoint[] = [];
   for (let back = Math.min(20, Math.max(0, sessions - 1)); back >= 0; back--) {
-    const t = back === 0 ? pillars[0].score : trendAt(back);
+    const t = trendAt(back);
     const block = blocks[blocks.length - 1 - back];
     if (t == null || !block) continue;
-    series.push({ back, time: block[0].time, trend: t, composite: compositeAt(t) });
+    series.push({ back, time: block[0].time, trend: t });
   }
   const scoreAt = (back: number): number | null => series.find(s => s.back === back)?.trend ?? null;
 
-  /* THE TIMELINE — what happened on the sessions on hand, newest first */
+  /* the timeline: what happened on the sessions on hand, newest first */
   const timeline: TimelineEntry[] = [];
-  news.read.stories.slice(0, 3).forEach(s => timeline.push({ key: `news:${s.id}`, when: s.item.time, kind: 'news', text: s.item.headline, time: null, score: pillars[0].score }));
+  news.read.stories.slice(0, 3).forEach(s => timeline.push({ key: `news:${s.id}`, when: s.item.time, kind: 'news', text: s.item.headline, time: null, score: scoreAt(0) }));
   const n = blocks.length;
-  /* every session on hand, not the last ten — the box says "what happened on the 87 sessions on hand" and drew its lanes
-     across all of them, so a scan of ten read as "none on hand" (the Dossier sweep, 2026-10-22) */
+  /* every session on hand is scanned, since the lanes span them all */
   for (let i = n - 1; i >= 1; i--) {
     const b = blocks[i];
     const prev = blocks[i - 1];
@@ -1509,7 +1335,7 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   };
 
   const at = now();
-  /* New York's clock, said as ET — the machine's own clock read 23:25 beside a page clock of 19:25 ET (the retail test) */
+  /* New York's clock, said as ET */
   const stamp = nyClock(at, { zone: true });
   const record = peekLive();
   const insiderN = record.insiders.status === 'live' ? record.insiders.trades.filter(t => t.ticker === ticker).length : 0;
@@ -1517,13 +1343,9 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   const sources: Source[] = [
     { key: 'price', label: 'Price', status: quote ? 'live' : 'thin', stamp: quote ? `last print ${nyClock(quote.tapeAt, { zone: true })}` : 'reading the quote' },
     { key: 'book', label: 'The options book', status: 'live', stamp: `read ${stamp}` },
-    /* the tapes' own read, not the file's head (the retail test, round 6: "The flow book LIVE · no alerts on this name"
-       beside "READING THE FLOW ALERTS…") — nothing is "none" until the tapes are in */
+    /* nothing reads "none" until the tapes are in */
     { key: 'flow', label: 'The flow book', status: file.tapes === 'live' ? 'live' : 'thin', stamp: file.tapes === 'loading' ? 'reading…' : file.flow.length ? `${file.flow.length} ${file.flow.length === 1 ? 'alert' : 'alerts'}` : file.tapes === 'live' ? 'no alerts on this name' : 'the read did not land' },
-    /* COUNTS THAT SAY WHAT THEY COUNT (audit round 7: "The tape 990 prints" was the 990 flow alerts, and "Dark pool 699
-       prints" sat beside the card's 648 — the 51 own-terms prints are left out of the card). The biggest buys and sells
-       are read off the flow alerts, so the tape says alerts; the dark pool says how many the card reads and why the rest
-       are out. */
+    /* each count says what it counts: the tape is flow alerts; the dark pool says how many prints the card reads */
     { key: 'tape', label: 'The tape', status: file.tapes === 'live' ? 'live' : 'thin', stamp: file.tapes === 'loading' ? 'reading…' : file.flow.length ? `the biggest buys and sells, off the ${file.flow.length} flow ${file.flow.length === 1 ? 'alert' : 'alerts'}` : file.tapes === 'live' ? 'no alerts to read buys and sells off' : 'the read did not land' },
     {
       key: 'dark',
@@ -1552,7 +1374,7 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
     ticker,
     name,
     sector,
-    /* ONE QUOTE ACROSS THE DOSSIER: the headline is liveQuote's price, said as which price it is */
+    /* the headline is liveQuote's price, said as which price it is */
     price: priceWords(quote)?.lead ?? snapshot.spot,
     changePct: dayPct,
     extLine,
@@ -1583,7 +1405,6 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
     money: money.read,
     news: news.read,
     numbers: numbers.read,
-    history,
     sources,
     completeness,
     settling,

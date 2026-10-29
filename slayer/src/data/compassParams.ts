@@ -1,6 +1,6 @@
 /*
-  Compass parameters. One place. The entry and runner trees are not in this
-  repo. Scoring stays shut until those files hash to the values below.
+  Compass parameters, in one place. The entry and runner trees ship in public/models;
+  scoring stays shut until those files hash to the values below.
 */
 
 export const UNIVERSE_FILE = 'config/universe_458.json';
@@ -88,6 +88,11 @@ export const CLS_INDEX = ['SPXW', 'SPX', 'NDXP', 'NDX', 'XSP', 'RUTW', 'RUT', 'S
 export const CLS_HIGHBETA = ['AFRM', 'AGQ', 'AMC', 'BITX', 'BOIL', 'CLSK', 'COIN', 'CVNA', 'DJT', 'FAS', 'GME', 'HOOD', 'IREN', 'JNUG', 'KOLD', 'LABU', 'MARA', 'MSTR', 'NUGT', 'NVDA', 'NVDL', 'PLTR', 'RIOT', 'SMCI', 'SOXL', 'SOXS', 'SPXL', 'SPXS', 'SPXU', 'SQQQ', 'SVIX', 'SVXY', 'TNA', 'TQQQ', 'TSLA', 'TSLL', 'TZA', 'UPRO', 'UPST', 'UVIX', 'UVXY', 'VXX', 'YINN'] as const;
 
 export const MODEL_1_NAME = 'Model 1';
+/* The live inputs were rebuilt (volume curve, prior session) and have not been re-checked against the training rows,
+   so every Book A/B call is marked as unvalidated until that check is done. */
+export const MODELS_VALIDATED = false;
+export const UNVALIDATED_WORD = 'Unvalidated';
+export const UNVALIDATED_LINE = 'Unvalidated model: the live inputs have not yet been re-checked against the training data.';
 export const MODEL_2_NAME = 'Model 2';
 export const PUBLISHED_BOOSTERS = 2;
 

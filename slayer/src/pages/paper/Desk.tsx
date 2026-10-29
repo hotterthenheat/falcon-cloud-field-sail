@@ -67,7 +67,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import { useMarketData } from '../../context/MarketDataContext';
+import type { KeyLevels } from '../../types/gex';
 import type { ChartOverlays } from '../../components/gex/StrikeChart';
 import { TraceGrid } from '../../components/trace/TraceBox';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -91,7 +91,9 @@ import { currentDesk, quickOf, setActivePane, setPaneName, setPaneTimeframe, set
 import PositionBar from '../../components/paper/PositionBar';
 import type { TradeMark } from '../../components/gex/StrikeChart';
 import { chartMenu, planOfMark, positionLines, type Hands } from './deskHands';
-import { buildLevelsFor, spotChangePct } from '../../data/gex';
+import { buildExposureProfile } from '../../data/exposure';
+import { peekChange, snapshotOf, useBookRev } from '../../data/uwBook';
+import { useMarks } from '../../data/weigherChain';
 import { isOptionRoot } from '../../data/listedNames';
 import { wantSpotGex } from '../../data/spotGexBook';
 import { nameGoesUp } from '../../data/review/engine';
@@ -99,7 +101,7 @@ import { contractKey, contractWords, type ContractId, type Right } from '../../d
 import { REVIEW_NAMES } from '../../data/review/tape';
 import type { Timeframe } from '../../data/timeframe';
 import { bankedOf, evalRead, futLadderRoom, futLadderTake, futRefusal, optLadderRoom, optLadderTake, optRefusal, viewOf, type FutOrder, type FutTrade, type MarkedFut, type MarkedOpt, type OptOrder, type OptTrade } from '../../data/paper/engine';
-import { LIFE, PAPER_INDEXES, candlesOf, isPaperIndex, liveDeskChain, paperIndex, baseIvOf, futCandles, isPaperFuture, listedNow, paperFut, spotOf, spotForAskNow, spotForBidNow, stepOf } from '../../data/paper/feed';
+import { FUTURES_LIVE, LIFE, PAPER_INDEXES, isPaperIndex, liveDeskChain, paperIndex, baseIvOf, futCandles, isPaperFuture, listedNow, paperFut, spotOf, spotForAskNow, spotForBidNow, stepOf } from '../../data/paper/feed';
 import { frontOn, futWords } from '../../data/paper/products';
 import { dayBeginsAt, nyMomentWords } from '../../data/paper/clock';
 import { amendOrder, attachFut, attachOpt, breakevenOrder, cancelOrder, cancelWorking, closeFut, closeOpt, endEval, flattenAccount, liveMarket, placeFutOrder, placeOptOrder, readPaper, rebaseOrder, setInHand, startEvaluation, startPractice, takeHere, trailOrder, usePaper } from '../../data/paper/store';
@@ -162,13 +164,35 @@ const FutLabel = ({ contract, long, symbol }: { contract: string; long: boolean;
 
 const titleOf = (ticker: string): string => paperIndex(ticker)?.name ?? REVIEW_NAMES.find(n => n.ticker === ticker)?.name ?? ticker;
 
+/* The walls and flip the chart draws: today's live vendor book, else blank */
+function liveLevelsOf(name: string, spot: number): KeyLevels {
+  const snap = snapshotOf(name);
+  try {
+    if (snap) return buildExposureProfile(snap, '0DTE', 30).levels;
+  } catch {
+    /* a book that cannot be read draws no levels */
+  }
+  return { spot, callWall: NaN, putWall: NaN, flip: NaN, supreme: NaN };
+}
+
+/* The desk re-renders on a two-second beat, and whenever a live book or a contract quote lands */
+const BEAT_MS = 2_000;
+function useLiveBeat(): number {
+  const [n, setN] = useState(0);
+  const book = useBookRev();
+  const marks = useMarks([]);
+  useEffect(() => {
+    const id = window.setInterval(() => setN(x => x + 1), BEAT_MS);
+    return () => window.clearInterval(id);
+  }, []);
+  return n * 1_000_000 + book * 1000 + marks;
+}
+
 const PaperDesk = () => {
   const { accounts, inHand, holding, elsewhere } = usePaper();
   const account = accounts.find(a => a.id === inHand) ?? null;
   /* the desk moves with the feed: a render a tick (the live chart's revision, the book's marks, the chain's quotes) */
-  const { marketData } = useMarketData();
-  const revRef = useRef(0);
-  const revision = useMemo(() => ++revRef.current, [marketData]);
+  const revision = useLiveBeat();
   const [tab, setTab] = useState<Tab>('open');
   const [full, setFull] = useState(false);
   const saved = useMemo(readDesk, []);
@@ -207,7 +231,7 @@ const PaperDesk = () => {
 
   const evaluation = account?.kind === 'evaluation';
   /* an evaluation trades futures only: a pane on a name shows ES in one */
-  const shownName = (n: string) => (evaluation && !isPaperFuture(n) ? 'ES' : n);
+  const shownName = (n: string) => (!FUTURES_LIVE && isPaperFuture(n) ? 'SPY' : evaluation && !isPaperFuture(n) ? 'ES' : n);
   const panes = desk.panes.map(p => {
     const n = shownName(p.name);
     /* a future's candles are a minute each from its fund's, round the clock: no daily candle (the backtest's rule) */
@@ -359,13 +383,13 @@ const PaperDesk = () => {
     symbol: name,
     title: fut ? prod!.name : titleOf(name),
     label: fut ? frontOn(name, account.day) : name,
-    priceWords: fut ? futWords(name, spot) : spot.toFixed(2),
-    dayPct: spotChangePct(fut ? prod!.fund : (paperIndex(name)?.fund ?? name)),
+    priceWords: !(spot > 0) ? '—' : fut ? futWords(name, spot) : spot.toFixed(2),
+    dayPct: peekChange(name) ?? 0,
     held: positions.length,
     /* a future's chart, and an index's, are their own candles (made from the fund's) — an index is never asked of the
        simulator by its own name, and has no book of its own to draw walls from */
-    tape: fut ? { bars: futCandles(name), iv: prod!.vol, key: `paper:fut:${name}`, precision: { decimals: prod!.decimals, tick: prod!.tick } } : isPaperIndex(name) ? { bars: candlesOf(name), iv: baseIvOf(name), key: `paper:idx:${name}`, precision: { decimals: 2, tick: 0.01 } } : undefined,
-    levels: fut || isPaperIndex(name) ? { spot, callWall: NaN, putWall: NaN, flip: NaN, supreme: NaN } : buildLevelsFor(name),
+    tape: fut ? { bars: futCandles(name), iv: prod!.vol, key: `paper:fut:${name}`, precision: { decimals: prod!.decimals, tick: prod!.tick } } : undefined,
+    levels: liveLevelsOf(name, spot),
     layer: {
       fills: [],
       marks,
@@ -662,7 +686,7 @@ const PaperDesk = () => {
         /* no strip over the chart: the account is the right column's first card */
         strip={false}
         picker={picker}
-        foot="Simulated live prices — practice, not advice. What is open is closed when the page closes: the simulated market is a new one on every load."
+        foot="Live bid and ask from the vendor’s listed contracts — practice, not advice. Orders fill only on a two-sided quote in the options session; positions carry from one visit to the next."
         revision={revision}
         account={{ equity: v.equity, openPnl: v.openPnl, third: ev ? { label: 'room', value: usd(Math.max(0, ev.room), 0) } : { label: 'free', value: usd(v.free, 0) } }}
         names={[deskName]}
@@ -770,7 +794,7 @@ const HeldElsewhere = () => (
   <div className={`${card} px-5 py-3 flex items-center gap-4 flex-wrap border-warn/40`} data-paper-elsewhere>
     <div className="min-w-0 flex-1">
       <p className="text-t12 font-medium text-textPrimary">Your paper accounts are open in another tab.</p>
-      <p className="mt-0.5 text-t11 text-textMuted">This tab only reads them. Taking them here closes whatever is open there, at the last price that tab saw — its simulated market is not this one.</p>
+      <p className="mt-0.5 text-t11 text-textMuted">This tab only reads them. Taking them here moves the trading to this tab; what is open stays open.</p>
     </div>
     <button type="button" onClick={takeHere} className="h-8 px-4 rounded-full text-t12 font-semibold transition-opacity hover:opacity-90" style={{ background: 'rgb(var(--silver-fill))', color: '#0a0a0a' }} data-paper-take-here>
       Take them here

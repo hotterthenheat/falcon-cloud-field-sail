@@ -1,27 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE WORDMARK (brand/Wordmark.tsx)
-
-  ">slayer_terminal" — the ">" and "terminal" in the muted ink,
-  "slayer_" lit; with the prompt, "slayer:~ $" sits on the line
-  above. His partner's, taken whole (Noah, 2026-10-03: "all of it").
-
-  The letters are outlines (brand/wordmarkPaths.ts), not a font:
-  nothing is downloaded and every machine draws the same wordmark.
-
-  THE LIT LETTERS WEAR THE FOIL, NOT A FLAT INK (Noah, the same day:
-  "keep our galaxy color if changing themes i dont want plain white
-  or black"): "slayer_" is filled with the mark's five foil stops —
-  holographic silver on black, the galaxy ink on paper (--foil-1…5,
-  theme/tokens.css) — held still; only the S of the mark pans. The
-  solid forms (print, mail) are one colour and end on the cursor.
-
-  `typing` types it in at 28 ms a character and lands the cursor —
-  the launch gate; reduced motion shows the last frame. The cursor
-  blinks on the mark's beat: the same keyframes, pinned to the same
-  clock (brand/brandClock.ts), so a wordmark beside a mark never
-  blinks out of step with it.
-==================================================
+  The wordmark ">slayer_terminal": ">" and "terminal" muted, "slayer_" in the still foil (silver on dark, galaxy
+  ink on paper); `prompt` adds "slayer:~ $" above. Outlines, not a font (wordmarkPaths.ts). `typing` types it in at
+  28 ms a character; the cursor blinks on the shared brand clock (brandClock.ts).
 */
 
 import { useId, useLayoutEffect, useRef, type CSSProperties } from 'react';
@@ -41,7 +21,7 @@ interface WordmarkProps {
   typing?: boolean;
   className?: string;
   style?: CSSProperties;
-  /** the accessible name — "Slayer Terminal" when left out; an empty string makes it decorative */
+  /** The accessible name, "Slayer Terminal" by default; an empty string makes it decorative. */
   label?: string;
 }
 

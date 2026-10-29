@@ -1,18 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE SKELETON KIT
-  (components/ui/skeletonKit.tsx)
-
-  Small parts every page-shaped skeleton is built
-  from (Noah, 2026-09-08: a skeleton must "take the
-  shape of its container"). Each part is a real
-  piece of the house chrome at its real size — a
-  dropdown trigger is h-7, a panel header is h-10,
-  a table row is 39px with px-3 py-2 cells — so a
-  skeleton assembled from them lands where the page
-  lands. Imports nothing but Skeleton.
-==================================================
-*/
+/* Parts for page-shaped skeletons, each the real chrome's size (trigger h-7, panel header h-10, 39px table rows),
+   so a skeleton lands where the page will. Imports nothing but Skeleton. */
 
 import type { CSSProperties, ReactNode } from 'react';
 import { Skeleton } from './Skeleton';
@@ -30,7 +17,7 @@ export const Block = ({ w, h, className = '', style }: { w: number | string; h: 
 /** A DropdownSelect trigger's footprint: h-7 (28) by rest, rounded-md — h 24 for the small size a card head wears */
 export const Trigger = ({ w, h = 28, className = '' }: { w: number; h?: number; className?: string }) => <Skeleton className={`rounded-md ${className}`} style={{ width: w, height: h }} />;
 
-/** A ScopeChip's footprint (the mark · SPY · chevron | link, 2026-09-09): 103 × 24 */
+/** A ScopeChip's footprint: 103 x 24 */
 export const ScopeChipMark = ({ className = '' }: { className?: string }) => <Skeleton className={`h-6 w-[103px] rounded-md ${className}`} />;
 
 /** A section title row the house way: 15px title + the scope chip + the guide door, 24px tall */

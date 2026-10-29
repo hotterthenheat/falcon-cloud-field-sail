@@ -1,27 +1,9 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE PLAN WALL (components/layout/PlanWall.tsx)
-
-  What a locked room shows (Noah, 2026-10-10: "for
-  gated pages i would like a way to tease the user
-  so they can upgrade their plan to the highest
-  one"). Not a blank page and not a popup: the
-  room's own picture stands behind, dimmed through
-  the house glass, and one card sits on it — the
-  room's glyph and name, its line, which plan it
-  is part of, and DESK FIRST: the whole desk, its
-  price, and the door to our checkout. The room's
-  own plan, if lower, is a quiet line under it.
-  Signed out, the card says sign in, or choose.
-
-  PlanGate (below) stands between the shell's
-  Outlet and the page: it reads the room the
-  address names and the plan the account holds,
-  and shows the wall instead of the page when the
-  plan does not reach. While the account is still
-  being asked, the picture stands without a card —
-  never a flash of the real page.
-==================================================
+  What a locked room shows: its own picture dimmed behind glass with the room's glyph, name, line, the plan it is part
+  of, and the Desk offer with its price and a door to checkout (the room's own lower plan as a quiet line). Signed
+  out, it says sign in or choose. PlanGate sits between the shell's Outlet and the page and shows the wall when the
+  held plan does not reach; while the account loads, the picture shows without words, never the real page.
+  The server enforces the same plans on the data (shared/plans.mjs).
 */
 
 import { Link, useLocation } from 'react-router-dom';
@@ -54,10 +36,8 @@ export const roomFor = (pathname: string): NavItem | null => {
   return best;
 };
 
-/** the room's picture under the glass — with the words, or bare while the account is still being asked.
-    `fill`: the wall takes the whole visible screen, the footer one scroll below it (Noah, 2026-10-10: "they dont
-    stretch tall enough to cover the background… the footer cover[s] up the visible screen"); off, on a page framed to
-    the viewport, it fills the frame instead. The phone's top bar is 3rem; the column's own top padding 1.25rem. */
+/** The room's picture under the glass, with the words or bare while the account loads. `fill`: the wall covers the
+    visible screen with the footer one scroll below; off, on a viewport-framed page, it fills the frame. */
 const Ground = ({ room, fill = true, children }: { room: NavItem; fill?: boolean; children?: ReactNode }) => {
   const theme = useResolvedTheme();
   return (
@@ -91,9 +71,8 @@ const PlanWall = ({ room, needed, fill = true }: { room: NavItem; needed: PlanKe
   const doorTo = (plan: PlanKey) => (signedOut ? `/signin?face=up&next=${encodeURIComponent(`/checkout?plan=${plan}&period=month`)}` : `/checkout?plan=${plan}&period=month`);
   const solid = theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg';
   return (
-    /* NO CARD (Noah, 2026-10-10: "i like the blur but the card itself needs some work") — the Community wall's grammar:
-       the words stand on the glass with the page reading through, the pool behind them; the room's name in the foil,
-       its line, which plan it is part of; then the Desk offer in the landing's pricing type, one door; Tape quiet. */
+    /* no card: the words stand on the glass (as on the Community wall): the room's name in the foil, its line and plan,
+       then the Desk offer in the landing's pricing type with one door; Tape quieter */
     <Ground room={room} fill={fill}>
       <div className="relative flex flex-col items-center text-center px-6 max-w-[620px] animate-soft-in-slow" data-plan-wall-card data-plan-needed={needed}>
         <p className="inline-flex items-center gap-1.5 font-mono text-t9 uppercase tracking-[0.3em] text-textMuted" data-plan-wall-tag>

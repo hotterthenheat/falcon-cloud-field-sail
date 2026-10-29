@@ -124,33 +124,3 @@ export const PulsePageSkeleton = () => (
   </>
 );
 
-/** The board: the back button and the title, then the name cards two across */
-export const PulseBoardSkeleton = () => (
-  <>
-    <div className="flex items-center gap-3 h-[35px]" aria-hidden data-skeleton="pulse-board">
-      <Block w={32} h={32} className="rounded-md" />
-      <div className="flex flex-col justify-between h-[35px] py-[2px]">
-        <Line w={160} h={16} />
-        <Line w={286} h={10} />
-      </div>
-    </div>
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3" aria-hidden aria-busy="true" aria-label="Loading">
-      {[0, 1, 2, 3].map(i => (
-        <div key={i} className="relative flex flex-col min-h-0 overflow-hidden border border-borderSubtle rounded-md bg-panel">
-          <div className="shrink-0 w-full flex items-center gap-2.5 flex-wrap px-2.5 py-1.5 h-[69px]">
-            <Block w={78} h={28} className="rounded-md" />
-            <Line w={47} h={11} />
-            <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-              {[70, 80, 90, 70, 80].map((w, k) => (
-                <Line key={k} w={w} />
-              ))}
-            </div>
-          </div>
-          <div className="h-[38vh] min-h-[300px] relative">
-            <ChartGround />
-          </div>
-        </div>
-      ))}
-    </div>
-  </>
-);

@@ -1,41 +1,8 @@
 /*
-==================================================
-  SLAYER TERMINAL - WHEN SOMETHING BREAKS
-  (components/ui/Fault.tsx)
-
-  What a reader is told when a page, or the whole app,
-  stops — in plain words, with the way out first and
-  the engineer's line last (2026-09-19).
-
-  THREE FAULTS, AND THEY ARE NOT THE SAME NEWS:
-
-    THE TERMINAL WAS UPDATED   the commonest one a
-      single-page app has: a tab left open across a
-      deploy asks for a page's code by its OLD name,
-      and the server no longer has it. Nothing is
-      wrong; a reload fixes it — so it reloads ITSELF,
-      once (twice in half a minute would be a loop, so
-      the second time it asks instead).
-    YOU ARE OFFLINE   the same request failing because
-      there is no network. A reload will not help and
-      the page says so.
-    SOMETHING BROKE   a real error. It says so, offers
-      the reload and the way back, and gives the line
-      to send us.
-
-  TWO NETS:
-    the page's   AppShell's RouteBoundary — the rail
-                 stays up, the fault takes the page's
-                 place, and the next page gets a clean
-                 try.
-    the app's    AppBoundary, around everything
-                 (main.tsx). Until now an error in the
-                 landing, the not-found page, the rail
-                 or a provider had NO net: the screen
-                 went blank. It uses plain links, not
-                 the router's, because the router may
-                 be the thing that broke.
-==================================================
+  What a reader sees when a page or the app stops. A stale chunk after a deploy reloads itself once (a second time
+  within half a minute asks instead); offline says a reload will not help; a real error offers reload, the way back
+  and the line to send us. Two boundaries: AppShell's RouteBoundary (the rail stays) and AppBoundary around
+  everything (main.tsx), which uses plain links because the router may be what broke.
 */
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
@@ -45,7 +12,7 @@ import Wordmark from '../../brand/Wordmark';
 import BracketCard from '../../brand/BracketCard';
 
 const STALE = /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|ChunkLoadError|Unable to preload CSS/i;
-/** A page's code asked for by a name the server no longer has (a deploy happened under an open tab) — or no network at all */
+/** A chunk requested by a name the server no longer has (a deploy under an open tab), or no network at all */
 export const isLoadFault = (error: Error): boolean => STALE.test(`${error.name} ${error.message}`);
 
 const RELOADED_AT = 'slayer_fault_reloaded_at';
@@ -88,13 +55,12 @@ export const FaultView = ({ error, scope, back }: FaultViewProps) => {
       : scope === 'app'
         ? 'Something broke and the terminal could not carry on. Reloading usually fixes it. Your board, marks and settings are safe: this machine keeps them, and your account carries them when you are signed in.'
         : 'Something broke on this page and it could not carry on. The rest of the terminal is fine. Reload, or go back to Pulse.';
-  /* THE WHOLE ROOM (Noah, 2026-10-17: "the fault box should be the entire screen and the words are centered instead
-     of it being in the top left"): a page that stopped wears its fault across the room it had — the brackets at the
-     room's corners, the words centred and kept to a reading width. The terminal-wide fault keeps its centred card. */
+  /* a page fault fills the room it had: brackets at its corners, words centred at a reading width; the app-wide fault
+     keeps its centred card */
   const full = scope === 'page';
   const card = (
-    /* THE CARD WEARS THE TILE'S CORNERS, and the mark in the state it is reporting — loading while a newer build is
-       fetched, offline otherwise (his partner's logo system, 2026-10-03) */
+    /* the card wears the tile's corners and the mark in the state it reports (loading while a newer build loads, else
+       offline) */
     <BracketCard className={full ? 'flex-1 w-full min-h-[60svh] p-8 flex flex-col items-center justify-center text-center gap-3' : 'p-6 sm:p-8 flex flex-col items-center text-center gap-3 max-w-[640px]'} label="fault">
     <div role="alert" className="contents" data-fault={offline ? 'offline' : load ? 'stale' : 'error'} data-fault-scope={scope}>
       <span className="flex items-center gap-3">

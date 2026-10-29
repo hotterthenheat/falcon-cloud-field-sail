@@ -1,32 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - A PAGE'S ICON
-  (components/ui/PageGlyph.tsx)
-
-  The icons Noah's partner had drawn for the rooms of
-  the terminal, in our clothes (Noah, 2026-10-01: "i
-  need you to incoperate the icons he has for the
-  different pages but making them smaller, his look a
-  bit too large"). The outlines are his
-  (glyphPaths.ts); what is ours:
-
-    BARE      no tile, no brackets, no ">" — the icon
-              alone on whatever ground it stands on
-    SMALL     it sits at the size of the words beside
-              it (14 to 18px in a row, never the 26 to
-              44 his pages drew it at)
-    OUR INKS  the body is the house's foil — silver on
-              black, the galaxy ink on paper (tokens
-              --glyph-1…5, which follow the ground the
-              icon stands on) — and its one coloured
-              part is the room's own ink from the rail
-              (layout/nav.ts NAV_INK)
-
-  The gaps an icon cuts (round a dot, under a pencil)
-  are cut through with a mask, not painted in a
-  ground's colour, so it is right on any ground.
-  Nothing here moves.
-==================================================
+  A page's icon (outlines in glyphPaths.ts), bare and at text size (14-18px). The body wears the house foil
+  (--glyph-1..5: silver on dark, galaxy ink on paper) and its one coloured part the room's ink (layout/nav.ts
+  NAV_INK). Gaps are cut with a mask, not painted, so it is right on any ground. Nothing moves.
 */
 
 import { useId, type ReactNode } from 'react';
@@ -74,8 +49,7 @@ const PageGlyph = ({ name, size, className, label }: Props) => {
   const vy = (y0 + y1) / 2 - side / 2;
   const foil = `${uid}f`;
 
-  /* THE CUTS: a gap cuts what was drawn BEFORE it, never what comes after (a dot laid over its own cut-out ring). So the
-     parts are drawn in runs, and each run of cuts masks everything drawn up to it. */
+  /* a cut removes only what was drawn before it, so parts are drawn in runs and each run of cuts masks what precedes it */
   const runs: { parts: GlyphPart[]; cuts: GlyphPart[] }[] = [{ parts: [], cuts: [] }];
   for (const p of draw.parts) {
     const last = runs[runs.length - 1];

@@ -1,24 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE BOARD (data/board.ts)
-
-  Every name the desk covers, one row each — the
-  actual bird's-eye view (the Pinpoint roadmap,
-  2026-09-05). Each row is the same four reads the
-  Map makes for one name, made for all of them: the
-  regime and how far the flip is, the nearest wall,
-  the supreme, the net GEX on the Levels card's
-  contracts, and how much of the book dies at the
-  bell. Nothing is invented
-  here: the profile builder, the flip gauge and the
-  session tape are the ones every other surface
-  reads, pointed at each name in turn.
-
-  Built on the scan tier (the page re-runs it every
-  ten seconds) — two profiles and a gauge per name,
-  a few milliseconds each.
-==================================================
-*/
+/* The Board: one row per name with the Map's reads — regime and flip distance, the nearest wall, the supreme, net GEX
+   on the Levels card's contracts, and the share that expires at the bell — off the same builders every page reads. */
 
 import type { LevelRole } from '../core/walls';
 import Simulator from '../core/simulator';
@@ -28,6 +9,8 @@ import { buildBuilding } from './building';
 import { buildExposureProfile } from './exposure';
 import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
 import { buildFlipGauge, sessionFlipCrossings } from './flipGauge';
+import { sessionLive } from './flipLevel';
+import { nySessionPhase } from '../core/nyTime';
 import { getBoardNames } from './boardNames';
 import { peekDayMove, type DayMove, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare, peekEntry, peekPriceAt, ensureScopeDates, scopeDatesPending, peekRecordAsked } from './uwBook';
 import { levelsForName, type LevelsScope } from './levelsScope';
@@ -57,9 +40,9 @@ export interface BoardRow {
   crossLabel: string;
   /** The flip today's session ran against (may differ from `flip` after the close, which is the next session's) */
   crossFlip: number | null;
-  /** The count's book is still loading — the cell says "…", not "not available" (the seventh audit's m1) */
+  /** The count's book is still loading — the cell says "…", not "not available" */
   crossPending: boolean;
-  /** Under ten minutes of the session — the cell says the count starts at 9:40, never a bare dash (the eighth audit's m1) */
+  /** Under ten minutes of the session — the cell says the count starts at 9:40 */
   crossEarly: boolean;
   regime: 'LONG' | 'SHORT' | null;
   flip: number | null;
@@ -81,14 +64,13 @@ export interface BoardRow {
   bellShare: number | null;
   /** Why there is no share: nothing on the name expires today, or the listing is not in yet */
   bellWhy: 'none' | 'wait' | null;
-  /** The Levels card reads "Today" but this name's front-date strikes have not landed: the levels above would be the
-      whole book's, so the Board shows them as loading instead (the ship pass, 2026-10-22) */
+  /** The Levels card reads "Today" but this name's front-date strikes have not landed: shown as loading */
   pending: boolean;
   /** The session's closes, thinned for a sparkline */
   spark: number[];
   /** Your positions on the name: contracts owned or sold (0 = none) */
   yours: { positions: number; contracts: number };
-  /** The agenda's first strike for this name — what to watch first, and why (2026-09-08) */
+  /** The agenda's first strike for this name — what to watch first, and why */
   watch: {
     strike: number;
     role: WallRole;
@@ -106,8 +88,7 @@ export interface BoardRow {
     stake: number;
     horizon: string | null;
   } | null;
-  /** The expiry the "Today" scope reads for this name (YYYY-MM-DD) — a name with no same-day expiry reads a later one, and
-      the Board's "· today" columns say its date (the eighth audit's m3) */
+  /** The expiry the "Today" scope reads for this name (YYYY-MM-DD) — a later one when nothing expires that day */
   levelsDate: string | null;
 }
 
@@ -117,9 +98,7 @@ const SPARK_POINTS = 48;
     positive = dealers long gamma = hedging absorbs moves; negative = short gamma = it amplifies them */
 export const retailNet = (house: number): number => (house === 0 ? 0 : -house);
 
-/** NET GEX, ONE NUMBER (the ship pass, 2026-10-22): every strike of the contracts the levels are read from, in the
-    retail sign — the Board's column, Compare's book line and the Map's "Net now · every strike" are this one sum
-    (the profile's own net is its ±30-strike window, which on the whole book left the Board $1B short of the Map) */
+/** Net GEX, one number: every strike of the levels' contracts, retail sign (the profile's own net is its window). */
 export function netGexOf(chain: readonly { netGex: number }[]): number {
   let n = 0;
   for (const s of chain) n += s.netGex;
@@ -149,19 +128,15 @@ export function bellShareOf(surface: ExposureSurface): number | null {
   return total > 0 ? Math.round((100 * dies) / total) : null;
 }
 
-/**
- * THE DESK'S AGENDA FOR A NAME — ONE BUILD FOR EVERY PAGE (the retail test, 2026-10-22: "Watch first" read 765 on the
- * Agenda and 764 on the Board within 25s — the Agenda ranked its Strikes window, the Board thirty strikes, off two
- * different reads). The Agenda page, the Board and Compare all call this, with the same window, the same open-interest
- * change, the same vol and the same bars; the Agenda's Strikes card only trims what it lists (data/agenda.ts trimAgenda).
- */
+/** The desk's agenda for a name — one build for the Agenda page, the Board and Compare: the same window, open-interest
+    change, vol and bars (the Agenda's Strikes card only trims what it lists). */
 export function deskAgenda(snapshot: MarketSnapshot, expiry: ExposureExpiry, clock: AheadClock, order: AgendaOrder = 'matters', surface: ExposureSurface | null = null): Agenda | null {
   try {
     const t = snapshot.ticker;
     const iv = peekIv(t) ?? 0;
-    ensureOiChange(t);
+    ensureOiChange(t, 'top');
     const profile = buildExposureProfile(snapshot, expiry, LEVELS_WINDOW);
-    /* nothing provisional (the fourth audit's M1): an agenda waits for its levels' contracts */
+    /* nothing provisional: an agenda waits for its levels' contracts */
     if (snapshot.liveBook && profile.levels.complete === false) return null;
     const bars = bookCandles(t) ?? [];
     const building = buildBuilding(snapshot, bookHistory(t) ?? [], bars, profile, clock, peekOiChange(t));
@@ -172,9 +147,7 @@ export function deskAgenda(snapshot: MarketSnapshot, expiry: ExposureExpiry, clo
 }
 
 /** The agenda's #1 for a name — what to watch first (the Board and Compare read it) — the Agenda page's own */
-/* ONE WATCH-FIRST (the second re-audit, 2026-10-22: "Watch first 765" read 86% on the Agenda and the Board and 89% on
-   Compare): the Agenda page built its agenda with the 30-strike calendar surface, the Board and Compare with none, so the
-   wall context (what expires today, the whole book's vanna) differed. Every page now builds the same surface. */
+/* One watch-first: every page builds its agenda with the same 30-strike calendar surface. */
 export const watchSurface = (snapshot: MarketSnapshot): ExposureSurface | null => {
   try {
     return buildExposureSurface(snapshot, 30, CALENDAR_DTES);
@@ -199,17 +172,18 @@ const thin = (xs: number[], n: number): number[] => {
   return out;
 };
 
-/* ONE ROW PER STATE OF THE NAME'S BOOK (the sixth audit's M3, 2026-10-23): the Board rebuilt all twenty rows on every
-   book event while the dates landed, and the main thread's work held the next reads back. A row is rebuilt when its
-   own name's snapshot moves (data/uwBook.ts materialize), its scope or its overnight count changes, or every scan
-   (10s) — another name's book landing leaves it as it was. */
+/* One row per state of the name's book: rebuilt when its own snapshot, scope, open-interest count or the session's
+   minute moves — another name's book landing leaves it as it was. */
 const rowMemo = new Map<string, { snap: MarketSnapshot; key: string; oi: unknown; row: BoardRow | null }>();
 export function buildBoardRow(ticker: string): BoardRow | null {
   const snapshot = snapshotOf(ticker, 'board');
   if (!snapshot || !snapshot.chain.length) return null;
   const t = ticker.toUpperCase();
   const scope = levelsForName(t);
-  const key = `${scope}|${Math.floor(Date.now() / 10_000)}|${getPositions(t).length}|${scopeDatesPending(t)}|${JSON.stringify(peekBellShare(t))}`;
+  /* keyed by what the row is built from: the snapshot (content-memoised in uwBook), the open-interest count, and the
+     session clock's minute while it runs (the reach odds run on the minutes left) — a shut market's row holds */
+  const clock = sessionLive() ? `m${Math.floor(Date.now() / 60_000)}` : `${nySessionPhase()}|${recordDay().date}`;
+  const key = `${scope}|${clock}|${getPositions(t).length}|${scopeDatesPending(t)}|${JSON.stringify(peekBellShare(t))}`;
   const oi = peekOiChange(t);
   const hit = rowMemo.get(t);
   if (hit && hit.snap === snapshot && hit.key === key && hit.oi === oi) return hit.row;
@@ -227,8 +201,7 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
   }
   const gauge = buildFlipGauge(snapshot);
   const spot = snapshot.spot;
-  /* THE ONE SOURCE (data/levelsFor.ts — the Dossier's too, the fourth audit's m10): the supreme, the walls, the flip and
-     net GEX the Board prints are levelsFor's, and the row waits ("…") until it says they are final */
+  /* the one source: the supreme, walls, flip and net GEX are levelsFor's, and the row waits ("…") until they are final */
   const lv = levelsFor(ticker, scope);
   const callWall = lv?.callWall ?? today.levels.callWall;
   const putWall = lv?.putWall ?? today.levels.putWall;
@@ -237,10 +210,8 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
   const dPut = ((putWall - spot) / spot) * 100;
   const nearest = Math.abs(dCall) <= Math.abs(dPut) ? { kind: 'call' as const, strike: callWall, distPct: dCall } : { kind: 'put' as const, strike: putWall, distPct: dPut };
 
-  /* The bell's share: the vendor's own gamma per expiry (greek-exposure/expiry, kept on the book — data/uwBook.ts
-     peekBellShare): today's date against every live date. The SAME number Compare, the Agenda and the Trader's Clock
-     print, and it needs no per-expiry chains, so a name read for the Board alone has it too. The surface is still
-     built for the watch-first read. */
+  /* The bell's share: the vendor's gamma per expiry, today's date against every live date — the same number Compare,
+     the Agenda and the Trader's Clock print. */
   const bell = peekBellShare(ticker);
   let surface: ExposureSurface | null = null;
   try {
@@ -252,8 +223,7 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
   const bars = bookCandles(ticker) ?? [];
   const mine = getPositions(snapshot.ticker);
 
-  /* WHAT TO WATCH FIRST — the agenda's #1 for this name, so the board is the
-     morning list across every name (2026-09-08). ~2ms a name. */
+  /* what to watch first: the agenda's #1 for this name */
   const watch = watchOf(snapshot, scope, aheadClock(readSessionClock()));
   const cross = sessionFlipCrossings(snapshot, scope);
   /* "not available" only once the session's own book has been asked for and is not there; until then, and while the
@@ -263,10 +233,7 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
   /* PENDING UNTIL THE SCOPE'S CONTRACTS ARE IN: "Today" needs the front date's strikes and its contract rows (the flip
      re-prices each with its own vol); "All expiries" needs every live date's strikes */
   if (scope === 'ALL') ensureScopeDates(ticker);
-  /* ONE READINESS SIGNAL (the tenth audit's B3: SPY's row sat on "…" for 38 minutes while levelsFor said complete — the
-     active name is read in full, so it never carried the Board's `frontFacts` flag): a row is final exactly when
-     levelsFor says its levels are — the front date's chain and its own contracts' vols for "Today", every live date for
-     "All expiries" (data/levelsFor.ts complete) */
+  /* one readiness signal: a row is final exactly when levelsFor says its levels are */
   const pending = !!snapshot.liveBook && (!lv || !lv.complete);
   const flip = lv ? lv.flip : gauge.flip;
 
@@ -302,8 +269,7 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
   };
 }
 
-/** The names on the board — the list the user keeps (data/boardNames.ts), not
-    whatever the simulator happens to run (2026-09-09) */
+/** The names on the board — the list the user keeps (data/boardNames.ts) */
 export function boardTickers(): string[] {
   return getBoardNames();
 }

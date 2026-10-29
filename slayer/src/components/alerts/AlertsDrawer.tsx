@@ -43,8 +43,8 @@ import {
   Activity, ArrowUpRight, Bell, BellOff, Code2, Crosshair, Crown, Droplets, Gauge, Layers, MoveHorizontal, Newspaper, Pin, Repeat, RotateCcw, X,
   type LucideIcon,
 } from 'lucide-react';
-import Simulator from '../../core/simulator';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
+import { liveSpotOf } from '../../data/weigherChain';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import CompanyLogo from '../ui/CompanyLogo';
 import {
@@ -187,7 +187,7 @@ const Empty = ({ icon: Icon, children }: { icon: LucideIcon; children: React.Rea
 const AlertsDrawer = () => {
   const open = useAlertsDrawer();
   const names = useAllAlerts();
-  const { activeTicker, changeTicker } = useMarketData();
+  const { activeTicker, changeTicker } = useTicker();
   const navigate = useNavigate();
   const [name, setName] = useState<string>(ALL);
   const [refused, setRefused] = useState('');
@@ -244,7 +244,11 @@ const AlertsDrawer = () => {
   };
 
   const armAgain = (ticker: string, r: FiredRecord) => {
-    const spot = Simulator.TICKERS[ticker]?.currentPrice ?? 0;
+    const spot = liveSpotOf(ticker) ?? 0;
+    if (!(spot > 0)) {
+      setRefused(`No live price for ${ticker} yet — try again in a moment`);
+      return;
+    }
     if (rearmFromRecord(ticker, r.key, spot, Date.now())) setRefused('');
     else setRefused(`Already watching that on ${ticker}, or ${ticker} has its ${MAX_ALERTS} already`);
   };

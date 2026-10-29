@@ -1,36 +1,30 @@
-/*
-  THE contract cell (Noah, 2026-08-30, rounds 1+2): it speaks WORDS, never
-  abbreviations — "call" and "put" in their own ink, the C/P letter chips
-  are dead; every cell ENDS ON THE SAME POINT — one fixed shape, right-
-  aligned, a short strike starts later but finishes exactly where the long
-  ones do; and the click affordance was a SIMPLE LINE under each one (the
-  pill-with-hover read awkward — Noah killed it same day), white after the
-  moon blue it launched with (2026-08-30: "make all of my blue underlines
-  white"), then GONE (2026-09-16: "the con that shows a white underline, I
-  want it gone for them all but keep the holo silver hover effect") — the
-  silver hover alone is the door now, on every Trace page (see door.ts).
-
-  THE CELL IS COMPOUND WHERE THE CONTEXT IS GIVEN (the partner's tape, at
-  Noah's word 2026-10-13). A strike means nothing without the spot it is
-  measured from, and an expiry means nothing without the days left in it —
-  yet the tape carried Strike, Expiry, DTE, OTM % and Spot as five columns
-  the eye had to re-assemble on every row. They belong together, on one
-  sub-line under the contract they describe: this is what the print was,
-  and this is where the market was when it happened. Each fact is optional,
-  so the surfaces that have no spot to show are unchanged.
-*/
+/* The contract cell: strike, "call"/"put" and expiry, right-aligned so every cell ends on one edge; the silver hover is
+   the door to the card (door.ts). With a spot it adds a sub-line: days left, the spot at the print, the OTM distance. */
 
 import { DOOR, DOOR_GROUP_TEXT } from './door';
 import { expiryLabel, pctSigned } from '../../core/format';
 import { indexRoot } from '../../data/traceLive';
 
-/* The COLUMN is right-aligned (header included), so header and endings share
-   one edge and read as one parent — the cell itself just hugs its content.
-   Hover: ALL THREE take silver — the strike, the call/put word and the date
-   (Noah, 2026-09-16: "all three things in the con should have the holo
-   silver hover"); the side's ink returns as the pointer leaves. The 2px
-   under it stays: it held the line, and it keeps every door 21px in its
-   39px row. */
+const COARSE_TITLE = 'The index level comes in whole points — too coarse for a distance on a small index (XSP, VIX)';
+const OTM_TITLE = 'Out of the money by this much of the spot, calls and puts alike; negative is in the money';
+const INDEX_OTM_TITLE = "Against the vendor's whole-point index level — approximate";
+
+/** "+2.1%" out of the money, "−3.0%" in it; "≈" against an index level; "—" when no distance can be stated */
+export const OtmCell = ({ otmPct, ticker, spot, className = 'text-textPrimary' }: { otmPct: number; ticker: string; spot?: number; className?: string }) =>
+  Number.isFinite(otmPct) && (spot === undefined || spot > 0) ? (
+    <span className={className} title={indexRoot(ticker) ? INDEX_OTM_TITLE : OTM_TITLE}>
+      {indexRoot(ticker) ? '≈' : ''}
+      {pctSigned(otmPct, 1)}
+    </span>
+  ) : (
+    <span className="text-textMuted" title={spot === 0 ? 'No underlying price on this print' : COARSE_TITLE}>
+      —
+    </span>
+  );
+
+/** Sorts an unknown distance last */
+export const otmSortValue = (otmPct: number) => (Number.isFinite(otmPct) ? otmPct : Number.NEGATIVE_INFINITY);
+
 const ContractCell = ({
   strike,
   right,
@@ -40,60 +34,42 @@ const ContractCell = ({
   otmPct,
   ticker,
 }: {
-  /** The underlying's symbol — an index's level is whole points (its spot-exposure minutes), so it prints as one */
   ticker?: string;
   strike: number;
   right: 'C' | 'P';
   expiry: string;
-  /** Days to expiry — printed beside the date it belongs to */
+  /** Days to expiry, beside the date */
   dte?: number;
-  /** The underlying when the print crossed, so the strike has a reference */
+  /** The underlying at the print */
   spot?: number;
-  /** Signed distance of the strike from that spot, percent */
+  /** Distance past the spot, % (positive out of the money for calls and puts) */
   otmPct?: number;
 }) => {
-  /* No underlying on the print (the feed sends none for index options — SPXW, XSP): no spot and no distance, never
-     "spot $0.00 · 0.0%". The sub-line goes whole: left with only the days, it repeated the DTE column beside it. */
+  /* no underlying on the print (index options carry none): no sub-line at all, never "spot $0.00 · 0.0%" */
   if (spot !== undefined && !(spot > 0)) {
     spot = undefined;
     otmPct = undefined;
     dte = undefined;
   }
   const context = dte !== undefined || spot !== undefined || otmPct !== undefined;
-  /* leading-none + align-middle on the head too, not just on the compound
-     form: a table cell hands its children a 36px line height, so this one
-     line measured 42px in a 39px row and the door's hover line — the whole
-     click affordance — was cut off at the bottom on every Trace table. */
+  /* leading-none + align-middle: a grid cell hands its children a 36px line, which would push the door out of a 39px row */
   const head = (
     <span className={`group/door inline-flex items-baseline gap-1.5 pb-[2px] leading-none align-middle ${DOOR}`}>
       <span className={`font-mono text-xs font-bold text-textPrimary tnum ${DOOR_GROUP_TEXT}`}>{strike}</span>
-      <span className={`font-mono text-t11 font-semibold ${right === 'C' ? 'text-bull' : 'text-bear'} ${DOOR_GROUP_TEXT}`}>
-        {right === 'C' ? 'call' : 'put'}
-      </span>
+      <span className={`font-mono text-t11 font-semibold ${right === 'C' ? 'text-bull' : 'text-bear'} ${DOOR_GROUP_TEXT}`}>{right === 'C' ? 'call' : 'put'}</span>
       <span className={`font-mono text-t11 text-textMuted tnum ${DOOR_GROUP_TEXT}`}>{expiryLabel(expiry)}</span>
     </span>
   );
-  /* Without context the cell is EXACTLY what it always was — one line, one
-     line box, no wrapper. The surfaces that pass no spot see no change. */
   if (!context) return head;
-  /* Two load-bearing utilities. leading-none: a table cell hands its children
-     a 36px line height, and two stacked lines of THAT are 75px in a 39px row
-     — the second one lands under the clip and simply is not there.
-     align-middle: an inline-flex box sits on the line box's BASELINE, so a
-     27px stack hangs off it and loses its last line to the row's bottom edge;
-     middle centres it on the line instead. */
   return (
     <span className="inline-flex flex-col items-end gap-[3px] leading-none align-middle">
       {head}
       <span className="inline-flex items-baseline gap-1 font-mono text-t11 leading-none tnum text-textSecondary whitespace-nowrap">
         {dte !== undefined && <span>{dte}d</span>}
         {dte !== undefined && (spot !== undefined || otmPct !== undefined) && <span aria-hidden>·</span>}
-        {/* THE STOCK AT THE PRINT, SAID SO (audit round 5: "spot $704.72" on the Live Tape beside a $703.29 elsewhere read as
-            two prices for one QQQ — it is the underlying at the print's own instant, not the close) */}
-        {spot !== undefined && <span title={ticker && indexRoot(ticker) ? 'The index level, whole points, from its spot-exposure minutes' : "@ — the stock's price at the moment of this print, not the day's close, which the name's quote carries"}>{ticker && indexRoot(ticker) ? `@${Math.round(spot).toLocaleString('en-US')}` : `@$${spot.toFixed(2)}`}</span>}
+        {spot !== undefined && <span title={ticker && indexRoot(ticker) ? 'The index level, whole points' : 'The stock at the moment of this print'}>{ticker && indexRoot(ticker) ? `@${Math.round(spot).toLocaleString('en-US')}` : `@$${spot.toFixed(2)}`}</span>}
         {spot !== undefined && otmPct !== undefined && <span aria-hidden>·</span>}
-        {/* an index's level is whole points: its distance is about that, and says so; a small index's is not stated */}
-        {otmPct !== undefined && <span title={!Number.isFinite(otmPct) ? 'The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)' : ticker && indexRoot(ticker) ? 'Against a whole-point index level — approximate' : 'The strike vs the spot at the print: + above it, − below'}>{Number.isFinite(otmPct) ? `${ticker && indexRoot(ticker) ? '≈' : ''}${pctSigned(otmPct, 1)}` : '—'}</span>}
+        {otmPct !== undefined && <OtmCell otmPct={otmPct} ticker={ticker ?? ''} className="" />}
       </span>
     </span>
   );

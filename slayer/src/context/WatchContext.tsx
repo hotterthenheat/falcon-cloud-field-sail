@@ -33,7 +33,7 @@ import type { DarkPoolIntent, DarkPoolPrint } from '../types/darkpool';
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { BookContract, FlowPrint } from '../types/trace';
 import type { SpreadTrade } from '../data/flowBook';
-import { liveSpotOf } from '../data/traceLive';
+import { liveSpotOf } from '../core/liveSpots';
 
 const STORAGE_KEY = 'slayer_trace_watch';
 

@@ -1,56 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE DAY AHEAD (data/ahead.ts)
-
-  The Map says where the hedging sits now. This
-  file says what the rest of the day looks like
-  from here, in three answers a day trader lives
-  on, each derived from engines the desk already
-  runs (nothing here reads a new feed):
-
-    THE CORRIDOR    the range price is likely to
-                    hold until the bell — the
-                    expected move for the time
-                    left, bent by the walls; the
-                    flip splits it into a fast
-                    side and a slow side
-
-    WHERE IT CLOSES the odds for the 4:00 print,
-                    strike by strike — a bell
-                    curve on the expected move,
-                    pulled toward the strikes that
-                    absorb moves and pushed off
-                    the ones that amplify them,
-                    tightening as time runs out
-
-    THE SCHEDULE    what dealers must trade in each
-                    remaining half hour at today's
-                    prices — the delta hedge that
-                    unwinds as today's options lose
-                    their delta, loudest into the
-                    close — and what expires at 4:00
-
-  EVERY FIGURE IS A MODEL WITH ITS ASSUMPTIONS
-  STATED (the guide says them in plain words). The
-  expected move is implied volatility scaled to
-  the minutes left; the odds are that curve times
-  a pull from the book; the schedule is the 0DTE
-  delta exposure spread over the remaining blocks
-  on the shape charm takes. Not a prediction of
-  what price WILL do — the arithmetic of what the
-  book makes likely.
-==================================================
-
-  THE PAGE IS GONE, THE MODEL STAYS (the Ahead page is gone (Noah, 2026-10-14: "delete the ahead page and everything in it, its dead code")):
-  pages/pinpoint/Ahead.tsx is deleted; this module
-  is the session's words (the clock, the minutes,
-  fmtDollars, fmtStrike) and the close model that
-  the Map, Targets, Compare, the
-  Weigher's book block and the Pulse desk's Range
-  and Where-it-closes tiles read. Nothing here was
-  the page's alone.
-
-*/
+/* The day ahead, as models with their assumptions stated: the corridor (1σ to the close bent by the walls, split by the
+   flip), where it closes (a normal on 1σ to the close weighted by the book's pull — model weights, not measured chances),
+   and the session's words and clock the Map, Targets, Compare and the desk tiles share. */
 
 import { daySigmaOfIv, normCdf, sigmaOverMinutes } from './expectedMove';
 import { peekDaySigma, peekMoveToClose } from './uwBook';
@@ -148,12 +98,7 @@ const WALL_REACH = 1.35;
     range is in play and they barely matter; in the last hour they are most of the story */
 export const gravityFor = (minutesLeft: number) => 0.35 + 0.65 * (1 - minutesLeft / SESSION_MIN);
 
-/* THE PULLED CENTRE. The odds curve's centre of mass at a moment: where the
-   strikes, pulling and pushing on the bell curve, drag the middle of the
-   range to. The corridor's band is the expected move's width set around THIS
-   centre, so the corridor bends toward the same strike the odds peak on and
-   the two bands are one model (Noah, 2026-09-06: the corridor centred on
-   spot while the odds peaked on a wall read as two answers). */
+/* The pulled centre: the close weights' centre of mass, so the corridor bends toward the strike the weights peak on. */
 function pulledCentre(profile: ExposureProfileData, spot: number, sigma: number, gravity: number): number {
   if (sigma <= 1e-6) return spot;
   const curve = oddsCurve(profile, spot, sigma, gravity, 12);
@@ -194,13 +139,10 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
   const longHere = profile.levels.net != null ? profile.levels.net < 0 : spot >= flip;
   const fastSide: Corridor['fastSide'] = flipInside == null ? null : longHere === flipInside > spot ? 'above' : 'below';
 
-  /* The cone, five minutes at a time, from now (or the open) to the close:
-     the expected move for the minutes elapsed, around the centre the strikes
-     have pulled it to by then (their pull grows toward the close), clipped
-     by the walls that bend the band */
+  /* the cone, five minutes at a time: 1σ for the minutes elapsed around the pulled centre, clipped by the walls */
   const cone: ConePoint[] = [];
   const at = (t: number): ConePoint => {
-    /* ends on the corridor's own move to the close (the same move, scaled once — the tenth audit's B2) */
+    /* ends on the corridor's own 1σ to the close (scaled once) */
     const s = sigma * Math.sqrt(Math.max(0, t - start) / span);
     const g = gravityEnd * ((t - start) / span);
     const c = pulledCentre(profile, spot, s, g);
@@ -241,12 +183,8 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
     }
   }
 
-  /* THE SENTENCE SAYS WHAT THE DRAWING CANNOT (2026-09-13; the partner's
-     review: the words restated the chart's numbers): the range against what
-     price actually did — how often the last sessions stayed inside a range
-     this wide (from this minute on, in session), and where the last session's
-     high and low stopped against today's walls. The flip's split stays: it
-     is the drawing's one meaning, not a number on it. */
+  /* The sentence says what the drawing cannot: how often recent sessions stayed inside a range this wide, and where the
+     last session's high and low stopped against today's walls. */
   const splitWords =
     flipInside == null
       ? ''
@@ -318,11 +256,10 @@ export interface CloseOdds {
   sigma: number;
   /** How strongly the book pulls right now, 0..1 — grows into the close */
   gravity: number;
-  /** The tightest runs around the likeliest strike holding 50% of the odds, and 80% (2026-09-09) */
+  /** The tightest runs around the heaviest strike holding 50% and 80% of the weights */
   half: CloseBand;
   most: CloseBand;
-  /** The words under the drawing, one read per line (Noah, 2026-09-09: the one
-      paragraph was "not intuitive at all in terms of readability") */
+  /** The words under the drawing, one read per line */
   reads: CloseReads | null;
   /** The same as one paragraph, for the guide */
   sentence: string;
@@ -419,13 +356,8 @@ export function buildCloseOdds(profile: ExposureProfileData, spot: number, sigma
   const lead = top[0];
   const half = bandOf(rows, lead, 50);
   const most = bandOf(rows, lead, 80);
-  /* THE READS, one per line — the likeliest strikes, the two bands as odds,
-     then who is pulling and what the clock does (2026-09-09: "half the time"
-     and "four times in five" read as riddles — the bands are 50% and 80%) */
-  /* EACH READ CARRIES A COMPARISON THE DRAWING CANNOT (2026-09-13): where the
-     last close (or spot, in session) sits against the runs; how many of the
-     recent sessions a 50% run this wide would have caught, from their open;
-     how far the last session closed from its own heaviest strike. */
+  /* the reads, one per line: the heaviest strikes, the two bands, who is pulling and what the clock does */
+  /* each read carries a comparison the drawing cannot (the last close against the runs, the record, the last supreme) */
   let reads: CloseReads | null = null;
   if (lead) {
     const at = (r: CloseOdd) => `${fmtStrike(r.strike)} at ${r.odds.toFixed(0)}%`;
@@ -477,7 +409,7 @@ export const VOL_OPTIONS: { value: VolPoints; label: string; hint: string }[] = 
   { value: 2, label: 'Rises two points', hint: 'A shock that lifts vol hard' },
 ];
 
-/** What a vol move forces — VANNA spoken (2026-09-09) */
+/** What a vol move forces (vanna) */
 export interface VolMove {
   points: VolPoints;
   /** Signed dollars of stock dealers must trade on the move: positive = buying */
@@ -513,12 +445,8 @@ const phaseName = (min: number) =>
   min < 10 * 60 ? 'the open' : min < 11 * 60 + 30 ? 'the morning' : min < 14 * 60 ? 'lunch' : min < 15 * 60 + 30 ? 'the charm window' : min < 15 * 60 + 50 ? 'the turn' : 'the close';
 
 export function buildSchedule(snapshot: MarketSnapshot, profile: ExposureProfileData, clock: AheadClock, volPoints: VolPoints = -1): Schedule {
-  /* THE HEDGE THAT MUST COME OFF: today's options carry a delta the dealers
-     hedge in stock; by 4:00 that delta is gone (out-of-the-money to nothing,
-     in-the-money to a share), and the hedge against it is closed. The net
-     delta exposure of the day's book is the size of that trade; its sign is
-     the direction — dealers long delta through options hold short stock, so
-     they BUY it back as the delta bleeds. */
+  /* The hedge that must come off by 4:00: the day's book's net delta exposure is the size of that trade, its sign the
+     direction. */
   const toClose = profile.netDex;
   const start = clock.nowMin ?? OPEN_MIN;
   const blocks: ScheduleBlock[] = [];
@@ -564,13 +492,8 @@ export function buildSchedule(snapshot: MarketSnapshot, profile: ExposureProfile
     /* no surface yet */
   }
 
-  /* THE VOL MOVE — VANNA: net vanna is dollars of dealer delta per point of
-     vol, so a move of p points changes their delta by vanna·p and they trade
-     the opposite in stock to stay flat; a one-point DROP with positive vanna
-     is dealer buying. Read across EVERY expiry on the calendar — today's
-     contracts carry almost no vanna, the further dates carry it, and a vol
-     crush re-prices all of them at once. The levels' shifts are the
-     migration model's (data/vannacharm.ts). */
+  /* Net vanna is dollars of dealer delta per vol point: a move of p points changes their delta by vanna·p, read across
+     every expiry (today's contracts carry almost none). */
   let vol: VolMove | null = null;
   if (volPoints !== 0) {
     const netVanna = surface ? wholeBookVanna(surface) : profile.strikes.reduce((a, s) => a + (s.vanna?.net ?? 0), 0);
@@ -582,7 +505,7 @@ export function buildSchedule(snapshot: MarketSnapshot, profile: ExposureProfile
       /* no chain yet */
     }
     const moves = shifts.map(s => `the ${s.label.toLowerCase().replace(/\s*node\b/, '')} moves ${fmtStrike(s.current)} → ${fmtStrike(s.projected)}`);
-    /* against the clock's own figure — a relation, not a restatement (2026-09-13) */
+    /* against the clock's own figure */
     const ratio = Math.abs(flow) / Math.max(1, Math.abs(toClose));
     const span = clock.inSession ? 'the rest of the session' : 'the whole session';
     const clockVerb = toClose >= 0 ? 'buys' : 'sells';
@@ -594,14 +517,10 @@ export function buildSchedule(snapshot: MarketSnapshot, profile: ExposureProfile
     vol = { points: volPoints, flow, shifts, sentence };
   }
 
-  /* WHY THEY TRADE AT ALL, in the sentence (Noah, 2026-09-06: "sell $35M in
-     order to do what though?"): to stay neutral. The stock they hold against
-     today's options is too much once those options lose their delta, so it
-     has to go — forced, not a view, and it leans on price. */
+  /* why they trade at all, in the sentence: to stay neutral */
   const verb = toClose >= 0 ? 'buy' : 'sell';
   const lean = toClose >= 0 ? 'A tailwind for any rally into the close.' : 'A headwind for any rally into the close.';
-  /* what the last half hour actually did in the sessions on hand — the
-     clock's lean against the record (2026-09-13) */
+  /* what the last half hour did in the sessions on hand */
   const past = recentSessions(snapshot.ticker, 5, clock.inSession);
   const moves = past.map(s => moveIntoClose(s, 30)).filter((v): v is number => v != null);
   let record = '';

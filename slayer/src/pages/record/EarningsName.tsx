@@ -1,43 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - A NAME'S EARNINGS PAGE
-  (pages/record/EarningsName.tsx)
-
-  Everything on the record about one name before it
-  reports (/record/earnings/:ticker), in reading
-  order and in the house grammar (2026-09-09; the
-  old dossier's uppercase panels and dotted-leader
-  facts are gone, its charts kept):
-
-    THE NAME       the mark, the company, when and
-                   whether the date is set, the
-                   facts — the options price, the
-                   usual move, how it is priced, the
-                   beat count
-    TODAY'S PRICE, today's straddle replayed over
-    REPLAYED       the last eight real prints — money,
-                   not statistics — with the odds
-    BEATS AND      estimate against actual, and the
-    MISSES ·       stock's move after each of the
-    PAST MOVES     last eight reports
-    AFTER THE      what the options lose overnight
-    PRINT
-    THE CALENDAR   the next report, the expiry a calendar
-                   sells and the one it buys — the two
-                   at-the-money vols only when the
-                   vendor's curve has both
-    THE BUSIEST    the three busiest calls and puts
-    CONTRACTS      into the print, facts not picks
-    ON THE RECORD  what this name's insiders did and
-                   what Congress reported in it — the
-                   other two pages of the Record,
-                   read for one name
-
-  Everything speaks the engines that were here
-  (data/earnings.ts, data/insiders.ts,
-  data/congress.ts).
-==================================================
-*/
+/* One name's earnings page: the name and its facts, today's price replayed over the last eight reports, beats and moves,
+   what the options lose overnight, the calendar into the report, the busiest contracts, and the record. */
 
 import { useLiveQuote } from '../../data/liveQuote';
 import { lastSessionIso } from '../../data/nyDate';
@@ -65,7 +27,7 @@ import { TX_CODES, isChosenBuy } from '../../data/insiders';
 import { PRICED_INK, PRICED_WORD, SlotMark, slotWord } from './Earnings';
 import CompanyFile from '../../components/record/CompanyFile';
 import { EarningsVol } from '../../components/vendor/LiveDesk';
-import { statHelp } from '../../components/record/statHelp';
+import { Box as RecordBox, Door, Fact as RecordFact } from '../../components/record/ui';
 import { expiryOpen } from '../../core/tradingYear';
 import { peekIv, useBookRev } from '../../data/uwBook';
 import { whalesGreekExpiry, whalesTermStructure, type UwGreekStrike, type UwTerm } from '../../data/whales';
@@ -77,39 +39,12 @@ const WHITE_DIM = 'rgba(237,237,237,0.28)';
 
 const TooltipShell = ({ children }: { children: React.ReactNode }) => <div className="border border-borderMuted bg-panel rounded-md px-2.5 py-2 shadow-xl shadow-black/60 font-mono text-t11 text-textPrimary">{children}</div>;
 
-/** A box in the house grammar: the 15px title, the 11px line, whatever follows */
-const Box = ({ title, sub, children, testId, className = '' }: { title: string; sub?: React.ReactNode; children: React.ReactNode; testId: string; className?: string }) => (
-  <div className={`border border-borderSubtle rounded-md bg-panel flex flex-col ${className}`} data-earnings-box={testId}>
-    <div className="px-5 pt-4 pb-3">
-      <h3 className="text-t15 font-semibold leading-tight text-textPrimary">{title}</h3>
-      {sub && <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">{sub}</p>}
-    </div>
-    {children}
-  </div>
-);
-
-const Fact = ({ label, children, testId }: { label: string; children: React.ReactNode; testId?: string }) => (
-  <div>
-    <dt className="text-t10 text-textMuted whitespace-nowrap cursor-help" title={statHelp(label)}>{label}</dt>
-    <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-name-fact={testId}>
-      {children}
-    </dd>
-  </div>
-);
-
-/** A door out — small, labelled */
-const Door = ({ onClick, onWarm, children }: { onClick: () => void; onWarm?: () => void; children: React.ReactNode }) => (
-  <button type="button" onClick={onClick} onMouseEnter={onWarm} className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted font-mono text-t9 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">
-    <ArrowUpRight className="w-3 h-3" />
-    {children}
-  </button>
-);
+const Box = (p: Parameters<typeof RecordBox>[0]) => <RecordBox scope="earnings" {...p} />;
+const Fact = (p: Parameters<typeof RecordFact>[0]) => <RecordFact scope="name" {...p} />;
 
 /* ---- today's price, replayed ---------------------------------------------------- */
-/* The question a person asks is "is ±6.3% a fair price?" — answered with money: take
-   today's price for the move and replay it over the last eight real prints. One bar
-   per quarter, the actual move's dollar value minus today's cost. Green above the
-   line covered it; red below fell short. (Noah, 2026-08-19: "so simple yet unique") */
+/* Is the priced move fair? Today's price for the move replayed over the last eight reports, in dollars: each bar the
+   actual move's value minus today's cost, green above the line, red below. */
 /** Beat · in line · miss over the EPS quarters (equal to the cent is in line, never a beat) */
 const splitOf = (d: EarningsDossier) => {
   const r = d.quarters.map(q => q.epsResult ?? (q.epsBeat ? 'beat' : 'miss'));
@@ -119,6 +54,8 @@ const splitText = (d: EarningsDossier) => {
   const s = splitOf(d);
   return s.n ? `${s.beat} beat · ${s.inline} in line · ${s.miss} missed, of ${s.n}` : '—';
 };
+/** "3 of 8 reports" — a count, never odds */
+const upText = (d: EarningsDossier) => (d.up ? `${d.up.n} of ${d.up.of} reports` : '—');
 /** The usual move with the count it is the average of */
 const usualText = (e: EarningsDossier['event']) => {
   const n = e.histCount ?? e.pastMoves.length;
@@ -129,8 +66,7 @@ const usualText = (e: EarningsDossier['event']) => {
 
 const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean }) => {
   const e = d.event;
-  /* ONCE THE PRINT IS OUT THE PRICE IS THE ONE BEFORE IT (round 11: WDC and AXP still read "Today's price for the move
-     $23.20" — the pre-report expected move, presented as live) */
+  /* once the print is out, the price is the one before it */
   const priceWord = reported ? 'that price' : "today's price";
   const isPriced = e.impliedMovePct > 0 && e.price > 0;
   const cost = (e.price * e.impliedMovePct) / 100;
@@ -148,9 +84,7 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
   const avg = rows.reduce((a, r) => a + r.pl, 0) / (rows.length || 1);
   const [hover, setHover] = useState<{ r: (typeof rows)[number]; x: number; y: number } | null>(null);
   const H = 56;
-  /* NOT PRICED YET (the Dossier sweep, 2026-10-22): a print months out has no straddle on the vendor's row — the page
-     read "$0.00 · ±0.0% · covered 0 of 8 · 0.00× cheap". It says the print is not priced instead, and keeps the facts
-     that are real. */
+  /* a print months out has no straddle on the row: the page says it is not priced and keeps the facts that are real */
   if (!isPriced) {
     return (
       <div className="px-5 pb-4 flex flex-col gap-3" data-name-replay="unpriced">
@@ -162,7 +96,7 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
           <Fact label="Prints on file">{d.quarters.length}</Fact>
           <Fact label="Against the estimate">{splitText(d)}</Fact>
           <Fact label="Usual move">{usualText(e)}</Fact>
-          <Fact label="Up against down">{rows.length ? `${d.probUpPct}% up · ${100 - d.probUpPct}% down` : '—'}</Fact>
+          <Fact label="Moved up after">{upText(d)}</Fact>
         </dl>
       </div>
     );
@@ -215,26 +149,21 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
           avg {avg >= 0 ? '+' : '−'}${Math.abs(avg).toFixed(2)} per share
         </span>
       </div>
-      {/* THE ODDS the pricing implies, and the smaller facts */}
-      <dl className="grid grid-cols-5 gap-x-6 pt-3 border-t border-borderSubtle/60">
+      {/* the smaller facts under the replay */}
+      <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 pt-3 border-t border-borderSubtle/60">
         {rows.length > 0 ? (
           <>
-            <Fact label={`Closes inside ±${e.impliedMovePct.toFixed(1)}%`}>{d.probInsidePct}%</Fact>
-            <Fact label="Moves beyond it">
-              <span className="text-textSecondary">{d.probBeyondPct}%</span>
+            <Fact label="Inside its priced move" tip="Past reports whose next-session move stayed inside the move that report's own options priced">
+              {d.inside ? `${d.inside.n} of ${d.inside.of} reports` : '—'}
             </Fact>
-            <Fact label="Up against down" testId="updown">
-              <span className={d.probUpPct >= 56 ? 'text-bull' : d.probUpPct <= 44 ? 'text-bear' : 'text-textPrimary'}>{d.probUpPct}% up</span> <span className="text-textMuted">· {100 - d.probUpPct}% down</span>
+            <Fact label="Moved up after" testId="updown">
+              {upText(d)}
             </Fact>
-            <Fact label={d.live ? 'EPS estimate' : 'Estimates'}>
-              {d.live ? (
-                e.nextEpsEst != null ? (
-                  <span className="text-textPrimary" title="The street's mean EPS estimate for this report, as Unusual Whales carries it">${e.nextEpsEst.toFixed(2)}</span>
-                ) : (
-                  <span className="text-textMuted" title="Unusual Whales carries no street estimate on this report's row yet, and this key has no forward-estimate feed — the beat history counts past reports' own estimates">not on file</span>
-                )
+            <Fact label="EPS estimate">
+              {e.nextEpsEst != null ? (
+                <span className="text-textPrimary" title="The street's mean EPS estimate for this report">${e.nextEpsEst.toFixed(2)}</span>
               ) : (
-                <span className={e.revisionTrend > 0.15 ? 'text-bull' : e.revisionTrend < -0.15 ? 'text-bear' : 'text-textSecondary'}>{e.revisionTrend > 0.15 ? 'rising' : e.revisionTrend < -0.15 ? 'falling' : 'flat'}</span>
+                <span className="text-textMuted" title="No street estimate on this report's row yet">not on file</span>
               )}
             </Fact>
             <Fact label="IV rank">
@@ -270,13 +199,8 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
 };
 
 /* ---- a busy contract ------------------------------------------------------------ */
-/* Facts only — the contract's own arithmetic, no "why" (Noah, 2026-08-19: "we simply
-   provide information like bloomberg"). The volume bar ranks it against the busiest. */
-/* THE ROW IS A DOOR (Noah, 2026-09-12: "should these bring the user to another
-   page?") — to the Weigher with THE CONTRACT picked (name · strike · side ·
-   expiry), the house's workstation for one contract; the Weigher's own Compass
-   button is the next step, so the row stays one door. Silver on hover like
-   every door, the destination named at the row's end before the click. */
+/* facts only, the contract's own arithmetic; the volume bar ranks it against the busiest */
+/* the row is a door to the Weigher with the contract picked */
 const ActiveRow = ({ c, maxVol, onOpen, onWarm }: { c: ActiveContract; maxVol: number; onOpen: () => void; onWarm?: () => void }) => (
   <button
     type="button"
@@ -320,11 +244,8 @@ const ActiveRow = ({ c, maxVol, onOpen, onWarm }: { c: ActiveContract; maxVol: n
 );
 
 /* ---- the calendar into the report ---------------------------------------------------- */
-/* A calendar sells the first listed expiry on or after the report and buys the next
-   one. The two at-the-money vols are the vendor's term structure (volatility/term-structure),
-   the same curve the book keeps as termIv — each expiry's own ATM call and put. The
-   listing is the vendor's expiry book (greek-exposure/expiry); the curve's own dates
-   stand in only when that listing does not come back. Nothing here is a guessed vol. */
+/* A calendar sells the first listed expiry on or after the report and buys the next; the two ATM vols are the vendor's
+   term structure, the dates its expiry book. Nothing here is a guessed vol. */
 
 interface ListedCurve {
   status: 'loading' | 'live' | 'miss';
@@ -459,14 +380,13 @@ const EarningsName = () => {
   const liveFile = useLiveDossier(T);
   useWireCheck(T, liveFile.dossier?.event.iso, liveFile.dossier?.event.slot);
   const dossier = liveFile.status === 'live' ? liveFile.dossier : null;
-  /* the reacting session's move so far, off the live price — the board's own read (round 9: WDC) */
-  /* the name on its own page is always read, known name or not (audit round 10: WDC's page sat on "reading its move" after
-     the bell — the after-bell read takes the known names only, and the name's own rows carry no cap to know it by) */
+  /* the reacting session's move so far, off the live price */
+  /* the name on its own page is always read, known name or not */
   useLiveReactions(useMemo(() => (dossier ? [{ ...dossier.event, known: true, reported: reportedNow(dossier.event) }] : []), [dossier]));
   /* A busiest row → the Weigher with THE contract picked, this page as the way back */
   const weigh = (c: ActiveContract) =>
     navigate('/weigher', { state: { weigh: { ticker: T, strike: c.strike, right: c.right === 'CALL' ? 'C' : 'P', expiry: c.expiry }, wayBack: location.pathname } });
-  /* ON THE RECORD — the other two pages read for this one name */
+  /* the record, read for this one name */
   const insiders = useInsiderFlow(T, 90);
   const congressBook = useTickerCongress(T, 180);
   const congress = useMemo(() => [...congressBook.trades].sort((a, b) => a.filedDaysAgo - b.filedDaysAgo), [congressBook]);
@@ -517,12 +437,10 @@ const EarningsName = () => {
   const priced = stateOf(e);
   /* no expected move on the row (a print months out) — every straddle figure says so instead of $0.00 */
   const isPriced = e.impliedMovePct > 0 && e.price > 0;
-  /* THE PRINT IS OUT once its date has passed, or today once its slot has (the ship pass, 2026-10-22: TSLA still read
-     "Reports Wed 10/21" at 00:40 on the 22nd, its options price quoted as if the move were still to come) */
+  /* the print is out once its date has passed, or today once its slot has (reportedNow) */
   /* the stock NOW — the calendar row's price is the one the options were priced against, stale once the print is out
      (TSLA read $386.55 after closing the night at $373.63) */
-  /* THE REGULAR PRICE (audit round 6: NVDA read $214.81 here at 04:30, the pre-market print, unlabelled, against a
-     212.21 close) — the quote's regularPrice, the one every page leads with; the extended print beside it, named */
+  /* the regular price leads, the extended print beside it, named */
   const spotNow = quote?.regularPrice && quote.regularPrice > 0 ? quote.regularPrice : e.price;
   const extNow = quote?.extPrice != null && quote.extPrice > 0 ? { px: quote.extPrice, word: quote.phase === 'pre' ? 'pre-market' : 'after hours' } : null;
   /* the board's own rule (earningsFeed.reportedNow), so the two never disagree on whether a print is out */
@@ -530,9 +448,7 @@ const EarningsName = () => {
   const nQ = quarters.length || 0;
   const hasRev = quarters.some(q => q.revEstB > 0);
   const split = splitOf(dossier);
-  const epsBeats = split.beat;
-  const pricedOk = !reported && (e.histCount ?? e.pastMoves.length) >= MIN_PRICED_PRINTS && e.richness > 0;
-  /* the ratio of the two figures shown, once the print is out too (audit round 10: AXP "options ÷ usual —" beside ±3.2% and ±3.1%) */
+  /* the ratio of the two figures shown, once the print is out too */
   const ratioOk = (e.histCount ?? e.pastMoves.length) >= MIN_PRICED_PRINTS && e.richness > 0;
   const revBeats = quarters.filter(q => q.revBeat).length;
   const moveData = e.pastMoves.map(q => ({ label: q.label, move: q.movePct }));
@@ -543,7 +459,7 @@ const EarningsName = () => {
     changeTicker(e.ticker);
     navigate('/pinpoint/map');
   };
-  /* the session the chain's volume is from, by its date — overnight "today" was the session before (audit round 5) */
+  /* the session the chain's volume is from, by its date */
   const chainDay = (() => {
     const iso = lastSessionIso();
     return new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -563,7 +479,7 @@ const EarningsName = () => {
         ? `No volume on the chain on ${chainDay}`
         : 'Reading the chain';
 
-  /* newest trade first (the third audit, 2026-10-23: PG read 10/05, 08/20, 08/24, 08/21 — filing order) */
+  /* newest trade first */
   const marketInsiders = insiders.trades.filter(t => TX_CODES[t.code].openMarket).sort((a, b) => (b.tradedOn ?? '').localeCompare(a.tradedOn ?? '') || a.daysAgo - b.daysAgo).slice(0, 6);
 
   return (
@@ -580,7 +496,7 @@ const EarningsName = () => {
                 <h3 className="min-w-0 truncate text-t15 font-semibold leading-tight text-textPrimary">{e.name}</h3>
                 <span className="font-mono text-t11 font-bold text-textSecondary">{e.ticker}</span>
               </div>
-              {/* max-xl:flex-wrap — an inline-flex line does not truncate, it spills; on a phone it folds instead (the phone pass, 2026-09-13) */}
+              {/* an inline-flex line spills rather than truncates, so on a phone it folds */}
               <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate inline-flex items-center gap-1.5 max-xl:flex-wrap">
                 {reported ? 'Reported' : 'Reports'} {e.dateLabel} <SlotMark slot={e.slot} timeKnown={e.timeKnown} className="w-3 h-3" /> {slotWord(e)}
                 <span className="text-textMuted">·</span>
@@ -602,7 +518,7 @@ const EarningsName = () => {
                   </>
                 )}
               </p>
-              {/* the next report after the one that is out (audit round 10: WDC's page led with 02/04 and lost last night's print) */}
+              {/* the next report after the one that is out */}
               {reported && dossier.nextAfter ? (
                 <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate inline-flex items-center gap-1.5 max-xl:flex-wrap" data-earnings-next>
                   Next report {dossier.nextAfter.dateLabel} <SlotMark slot={dossier.nextAfter.slot} timeKnown={dossier.nextAfter.timeKnown} className="w-3 h-3" /> {slotWord(dossier.nextAfter)}
@@ -658,12 +574,10 @@ const EarningsName = () => {
         </div>
       </div>
 
-      {/* TODAY'S PRICE, REPLAYED */}
       <Box title={reported ? 'The price before the report, replayed' : "Today's price, replayed"} sub={`${reported ? 'What the options charged before the print' : 'What the options charge now'}, tested against the last ${nMoves || 'few'} real ${nMoves === 1 ? 'print' : 'prints'} with a move — hover a bar`} testId="replay">
         <PriceReplay d={dossier} reported={reported} />
       </Box>
 
-      {/* THE RECEIPTS */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
         <Box title="Beats and misses" sub={`Earnings per share, the estimate against the actual · ${split.beat} beat, ${split.inline} in line, ${split.miss} missed of ${nQ}${hasRev ? ` · revenue ${revBeats} of ${nQ}` : ''}`} testId="beats">
           <div className="px-5 pb-4">
@@ -741,11 +655,9 @@ const EarningsName = () => {
         </Box>
       </div>
 
-      {/* AFTER THE PRINT */}
       <Box title="After the print" sub="What the options lose overnight once the number is out — a long option has to beat the move and this" testId="after">
         <dl className="px-5 pb-4 grid grid-cols-4 gap-x-6">
-          {/* the figure is the median premium a long straddle gave back by the next open on the quiet prints (earningsFeed
-              crushOf) — the option's loss, not the implied vol's; it was labelled as an IV drop (the Dossier sweep, 2026-10-22) */}
+          {/* the median premium a long straddle gave back by the next open on the quiet prints: the option's loss, not an IV drop */}
           <Fact label="A quiet print takes" testId="crush">
             {!dossier.live || dossier.crushKnown ? <span className="text-warn">−{dossier.ivCrushPct}%</span> : <span className="text-textMuted">—</span>}
           </Fact>
@@ -768,9 +680,7 @@ const EarningsName = () => {
 
       <EarningsVol ticker={T} />
 
-      {/* THE BUSIEST CONTRACTS — a pair shares one bottom edge (Noah, 2026-09-09);
-          every row a door to the Weigher with the contract picked, and the way
-          back to this page on the shell's pill (2026-09-12) */}
+      {/* the busiest contracts: each row a door to the Weigher, this page the way back */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
         <Box title="Busiest calls" sub={callSub} testId="calls">
           <div className="pb-2">
@@ -792,18 +702,14 @@ const EarningsName = () => {
 
       <CompanyFile ticker={T} />
 
-      {/* ON THE RECORD — the other two pages, read for this name. The pair shares
-          one bottom edge: a name with two insider rows beside one Congress row
-          used to leave the boxes different lengths (Noah, 2026-09-09: "do you
-          think thats a design flaw to push publicly?" — it was). The rows sit at
-          the top, the door at the foot, the room between reads as room. */}
+      {/* the record's pair shares one bottom edge; rows at the top, the door at the foot */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch" data-name-record>
         <Box title="What its insiders did" sub={`Open-market trades in the last 90 days · ${insiders.status === 'loading' ? 'reading…' : insiders.status === 'sim' ? 'the read did not land' : insiders.trades.length ? insiders.signal : 'nothing filed'}`} testId="insiders">
           {marketInsiders.length === 0 ? (
             <div className="px-5 pb-5 pt-1 font-mono text-t10 uppercase tracking-widest text-textMuted">{insiders.status === 'loading' ? 'Reading the filings…' : insiders.status === 'sim' ? 'This read did not land' : 'Nothing on the record in 90 days'}</div>
           ) : (
             <>
-              {/* Below lg: when, who, the trade and its value — the shares and the plan go (the phone pass, 2026-09-13) */}
+              {/* below xl: when, who, the trade and its value */}
               <div className="px-5 h-[22px] grid items-center gap-x-3 text-t9 uppercase tracking-widest text-textMuted grid-cols-[96px_minmax(0,1fr)_44px_60px_60px_64px] max-xl:grid-cols-[96px_minmax(0,1fr)_44px_64px]">
                 <span>When</span>
                 <span>Who</span>
@@ -844,7 +750,7 @@ const EarningsName = () => {
             <div className="px-5 pb-5 pt-1 font-mono text-t10 uppercase tracking-widest text-textMuted">{congressBook.status === 'loading' ? 'Reading the reports' : congressBook.status === 'sim' ? 'This read did not land' : 'No trade in this stock reported in 180 days'}</div>
           ) : (
             <>
-              {/* On a phone: filed, member, type — the amount and the lag go (the phone pass, 2026-09-13) */}
+              {/* on a phone: filed, member and type */}
               <div className="px-5 h-[22px] grid items-center gap-x-3 text-t9 uppercase tracking-widest text-textMuted grid-cols-[96px_minmax(0,1fr)_76px_132px_56px] max-xl:grid-cols-[96px_minmax(0,1fr)_76px]">
                 <span>Filed</span>
                 <span>Member</span>

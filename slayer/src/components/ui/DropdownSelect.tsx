@@ -1,24 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - DROPDOWN SELECT
-  (components/ui/DropdownSelect.tsx)
-
-  One choice from a short list, as a DROPDOWN CARD
-  instead of a row of chips (Noah, 2026-09-05: "i
-  feel so clustered and claustrophobic, too many
-  choices on lines. we need more dropdown selection
-  cards that are nicely put together"). The trigger
-  is a small labelled control that prints the
-  current choice; the card lists every choice with
-  a check on the current one and, where it helps,
-  one line saying what the choice means.
-
-  Built on Radix DropdownMenu (the prebuilt-
-  libraries rule): keyboard navigation, focus
-  return, outside-click and Escape, typeahead,
-  portal and collision-aware placement all come
-  from the library; the house grammar is ours.
-==================================================
+  One choice from a short list as a dropdown card: a small labelled trigger printing the choice, and a card listing
+  every choice with a check on the current one and, where it helps, a line on what it means. Radix DropdownMenu
+  supplies keyboard, focus, dismissal, typeahead and placement.
 */
 
 import { Fragment, type CSSProperties } from 'react';
@@ -27,24 +10,19 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
 import { Tip } from './Tooltip';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))'; /* the silver token (deep steel on the light theme) */
 
 export interface DropdownOption<T extends string | number> {
   value: T;
   label: string;
   /** One line under the label — what picking this means */
   hint?: string;
-  /** A choice that IS a direction — calls or puts, bullish or bearish, building or leaving — wears it under the pointer:
-      the row washes green or red and its word takes the ink (Noah, 2026-09-19, on the Weigher's Side card: "these cards
-      should turn red or green on hover for directional visual understanding"). Red and green are direction and nothing
-      else in this house, so only a choice that is one gets a tone; "Both" and "Every read" stay the plain wash. At rest
-      the row is unchanged — silver's check still says where you are. */
+  /** A directional choice (calls/puts, bullish/bearish) washes green or red under the pointer and its word takes the
+      ink; non-directional choices keep the plain wash. */
   tone?: 'bull' | 'bear';
-  /** A choice that is the absence of one ("Not said") — the trigger prints it in the secondary ink, so a set choice
-      reads as set (the journal's tags, 2026-09-22) */
+  /** A choice meaning "none" ("Not said"): the trigger prints it in the secondary ink, so a set choice reads as set */
   quiet?: boolean;
-  /** A SECTION'S NAME — the rows that share it stand under one small heading, in the order given; a row with none
-      stands above the first section (the partner's card, taken with the Map 2026-10-14) */
+  /** A section name: rows sharing it stand under one heading, in order; rows without one stand above the first */
   group?: string;
   /** A row that belongs to the row above it — set in a step */
   indent?: boolean;
@@ -71,26 +49,19 @@ interface DropdownSelectProps<T extends string | number> {
   /** A heading inside the card; defaults to the label */
   title?: string;
   align?: 'start' | 'end';
-  /** A glyph before the label, in the muted ink — gives a card its own face
-      on a line of four (Noah, 2026-09-11: the cards "show no importance or
-      uniqueness than the rest making them look overlooked") */
+  /** A glyph before the label, in the muted ink */
   icon?: LucideIcon;
-  /** The glyph's own colour on hover and while open — the sidebar's rule, each
-      desk's icon wears its ink (Noah, 2026-09-11: "on hover the icon … turn a
-      colour like we have on our sidebar") */
+  /** The glyph's colour on hover and while open (the sidebar's rule) */
   ink?: string;
   /** A data-* hook for probes */
   testId?: string;
-  /** The trigger's height: 28 by rest; `sm` is 24 — for a card head's 32px line, where the
-      full size touched the borders (Noah, 2026-09-14) */
+  /** Trigger height: 28 by default; `sm` is 24, for a 32px card head */
   size?: 'md' | 'sm';
-  /** The card WITHOUT its printed name — for a line that measured itself too short for four named cards (the Weigher's
-      chain head on a laptop, 2026-09-20). The name stays in the tooltip, the aria-label and the open card's heading. */
+  /** Hide the printed name on a line too short for it; it stays in the tooltip, aria-label and open card heading. */
   bare?: boolean;
   /** The name shown only from this breakpoint up — a tight head keeps the choice and its icon, the name in the title */
   labelFrom?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
-  /** THE HOUSE'S FLAT CONTROL (ui/flatDoor.ts): tracked capitals, no edge, a wash under the pointer — the Map band's
-      and the Pinpoint head's grammar (the partner's, taken 2026-10-14) */
+  /** The flat control (ui/flatDoor.ts): tracked capitals, no edge, a wash under the pointer */
   flat?: boolean;
 }
 
@@ -126,7 +97,7 @@ const DropdownSelect = <T extends string | number>({ label, value, options, onCh
           )}
           {!bare && <span className={`shrink-0 ${flat ? 'text-t11' : 'text-t9 uppercase tracking-widest'} text-textMuted ${labelFrom ? LABEL_FROM[labelFrom] : ''}`}>{label}</span>}
           {/* min-w-0 + truncate: in a phone's two-column cards line the card is as wide as its cell, and a long value gives before the card does */}
-          {/* the trigger wears the choice's tone — a Yes reads green, a No red, the way its row did (2026-09-22) */}
+          {/* the trigger wears the choice's tone, as its row did */}
           <span className={`min-w-0 truncate text-t11 font-semibold ${current?.tone === 'bull' ? 'text-bull' : current?.tone === 'bear' ? 'text-bear' : current?.quiet ? 'text-textSecondary' : 'text-textPrimary'}`} data-tone={current?.tone ?? (current?.quiet ? 'quiet' : undefined)}>
             {current?.short ?? current?.label ?? '—'}
           </span>

@@ -1,48 +1,8 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE SCOPE CHIP (components/ui/ScopeChip.tsx)
-
-  The one control that says WHICH NAME a surface
-  reads, now that the frame owns the terminal's
-  subject (direction B, Noah, 2026-09-05). Two
-  states, one grammar, on every page:
-
-    FOLLOWS the frame — a quiet chip: a silver link
-      and the words "follows SPY". Nothing to read
-      twice: the name and its price are in the
-      sidebar. A pick here moves the frame, so every
-      following surface moves with it.
-
-    ITS OWN name — a bordered chip with the mark,
-      the name, and (when asked) the live price and
-      change: this surface has stepped off the
-      frame. A pick here stays here. The broken link
-      at its end puts it back on the frame.
-
-  A surface with no link model at all (a chart pane
-  on Terrain, a cell on the 4-way board) wears the
-  own-name chip without the broken link: every one
-  of them holds its own name by design.
-
-  ONE CONTROL, IN THE TRIGGERS' CLOTHES (the lock
-  walk, Noah, 2026-09-09: "the ticker selection
-  button. its damn near hiding. not easy to see on
-  any of the cards"): the following chip used to be
-  bare words — a small silver link and "follows SPY"
-  in the secondary ink, no ground, no border — and
-  it vanished on every head. Both states now wear
-  the same bordered chip every DropdownSelect
-  trigger wears (the #0c0c0c ground, the subtle
-  border; 24px tall, the title rows' height, where
-  the triggers are 28): the mark, the name, the quote
-  when asked, the chevron — and the link state as
-  the chip's own end, behind a hairline: the silver
-  link while it follows, the broken one when it
-  holds its own name.
-
-  Replaces WidgetTickerPicker (the pin) on Pulse and
-  the bare TickerQuickPick on the pane heads.
-==================================================
+  The chip that says which name a surface reads. Following the frame: "follows SPY" with a silver link, and a pick
+  moves the frame. Its own name: the mark, the name and optionally the quote, with a broken link that rejoins the
+  frame; a pick stays local. Surfaces with no link model (Terrain panes, board cells) show the own-name chip without
+  the link. Both states share the DropdownSelect trigger's bordered look, 24px tall.
 */
 
 import { useEffect, useRef, useState } from 'react';
@@ -70,7 +30,7 @@ import { useAnchoredMenu } from './useAnchoredMenu';
 import { MorphingInfinity, useWorking } from './Working';
 import { useNameArriving } from '../gex/useSeeded';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))'; /* the silver token (deep steel on the light theme) */
 /** Matches the `w-72` on the menu — the placement keeps its far edge on screen */
 const MENU_W = 288;
 
@@ -82,23 +42,19 @@ interface ScopeChipProps {
   linked?: boolean;
   /** Link ↔ unlink. Only meaningful with `linked`. */
   onToggleLink?: () => void;
-  /** A name was picked — the host decides whether that moves the frame
-      (linked) or only this surface (its own). */
+  /** A name was picked; the host decides whether it moves the frame or only this surface. */
   onPick: (ticker: string) => void;
   /** Print the live price and change on an own-name chip. Off where the
       host already prints its own price beside the chip. */
   quote?: boolean;
-  /** Outside the regular session print the REGULAR CLOSE as the price, the extended-hours move beside it (the Trace
-      pages, audit round 5: Compare's chip read QQQ's after-hours print, $703.29, beside the regular session's −2.86%) */
+  /** Outside the regular session, print the regular close as the price with the extended-hours move beside it */
   closeOutside?: boolean;
   /** Optionally controlled, like TickerQuickPick — a host with keys owns it */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   title?: string;
-  /** The FOLLOWING chip in the own-name chip's clothes — the mark, the name,
-      the quote — with the silver link at its end saying it follows. For a
-      surface where two chips stand side by side and must look alike (Compare,
-      Noah 2026-09-09: "make the left one look like the right one"). */
+  /** The following chip dressed as the own-name chip (mark, name, quote) with the link at its end, for surfaces where
+      two chips stand side by side. */
   full?: boolean;
 }
 
@@ -115,12 +71,8 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
   const { anchorRef, placed } = useAnchoredMenu<HTMLButtonElement>(open, 'bottom', MENU_W, 'start');
   useFocusTrap(open, menuRef);
 
-  /* Outside click and Escape close it — window-capture on the key so the
-     desk behind (an expanded pane on Escape) never sees it. POINTERDOWN, not
-     mousedown (Noah, 2026-09-06: "i shouldn't be able to open 2 dropdowns at
-     once"): a Radix trigger opens on pointerdown and prevents its default,
-     which cancels the compatibility mousedown — so a mousedown listener never
-     heard the click that opened the other menu, and both stayed open. */
+  /* Outside click and Escape close it; Escape is captured on window so the desk behind never sees it. pointerdown, not
+     mousedown: Radix triggers prevent the compatibility mousedown, so two menus could stay open. */
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
@@ -153,9 +105,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
   /* The live quote. A dash until stock-state answers. Never the simulator. */
   const live = useLiveQuote(quote && (!follows || full) ? ticker : null);
   const price = closeOutside ? priceWords(live)?.lead : live?.spot;
-  /* BEFORE THE OPEN THE LEAD IS THE LAST SESSION'S CHANGE (the sixth audit's M1, 2026-10-23: "$763.96 0.00% · pre
-     764.83" beside the Dossier's "−1.18% Oct 22"): dayMoveWords' lead — the last regular session's change, named by its
-     date, with the pre-market move beside it; "…" until the daily rows say it */
+  /* before the open, the lead is the last session's change named by its date, with the pre-market move beside it */
   const pre = live?.phase === 'pre';
   const change = pre ? live?.lastSessionPct ?? null : live?.changePct;
   const changeDay = pre && live?.regDate ? shortMonDay(live.regDate) : null;
@@ -181,13 +131,11 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
       document.body
     );
 
-  /* ONE CHIP FOR BOTH STATES, in the triggers' clothes: the picker, then the
-     link state as the chip's own end behind a hairline. */
+  /* one chip for both states: the picker, then the link state behind a hairline */
   return (
     <span
       ref={rootRef}
-      /* h-6, not the triggers' h-7: the chip lives on 24px title rows, and every
-         page's skeleton was measured with a 24px chip there */
+      /* h-6: the chip sits on 24px title rows, and the page skeletons assume it */
       className={`relative inline-flex items-stretch h-6 rounded-md border bg-chip overflow-hidden transition-colors font-mono select-none ${open ? 'border-silver/50' : 'border-borderSubtle hover:border-borderMuted'}`}
       data-scope={follows ? 'follows' : 'own'}
       data-scope-ticker={ticker}
@@ -208,9 +156,8 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
             <span className="text-t11 tnum text-textPrimary leading-none" data-scope-price>
               ${price.toFixed(2)}
             </span>
-            {/* the regular session's change; the move outside the session rides beside it, and zero is neutral — the
-                session named by its own date outside the session (the fifth audit: "Today's regular-session change" at
-                01:00 Friday over Thursday's close) */}
+            {/* the regular session's change, the extended move beside it (zero is neutral); outside the session it is named by
+                its date */}
             <span className={`text-t10 tnum leading-none whitespace-nowrap ${change == null || Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={`${sessionWord(live)} regular-session change (its 4:00 close against the close before)${pre ? ' — the session has not opened' : ''}${closeOutside && live?.phase !== 'regular' && live?.regClose != null ? ` · the price is that ${live.regClose.toFixed(2)} close` : ''}${extendedLine(live) ? ` · ${extendedLine(live)}${live?.extPrice != null ? ` at ${live.extPrice.toFixed(2)}` : ''}, kept apart` : ''}`} data-scope-change>
               {change == null ? '…' : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change).toFixed(2)}%`}
               {changeDay && <span className="text-textMuted"> {changeDay}</span>}
@@ -223,8 +170,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
             )}
           </>
         )}
-        {/* THE NAME IS STILL ARRIVING (ui/Working.tsx): the panel keeps its shape and its last numbers, and the chip that names
-            it says so — the mark takes the chevron's own 12px, so nothing on the head moves. Only if the wait lasts. */}
+        {/* the name is still loading (ui/Working.tsx): the mark takes the chevron's 12px, so nothing on the head moves */}
         {arriving ? (
           <MorphingInfinity viewBox="4 4 16 16" className="w-3 h-3 text-textSecondary" data-scope-arriving />
         ) : (

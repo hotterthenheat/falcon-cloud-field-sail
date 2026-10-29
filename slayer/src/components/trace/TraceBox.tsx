@@ -1,30 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE TRACE BOX (components/trace/TraceBox.tsx)
-
-  The house grammar for every Trace page (the walk,
-  2026-09-09): ONE box — the head (15px title, the
-  guide door, the 11px line, the facts as a dl with
-  the page's champions among them in their inks),
-  one line of cards, the sentence, then the body —
-  and THE GRID: AG Grid on the house theme at the
-  tape's 39px rows, fed by the same Column<T>
-  definitions the pages already carry (the adapter
-  below), so a page's cells, inks and doors are
-  untouched. Since 2026-09-11 the grid GROWS with
-  its rows and the page scrolls (Noah: "as long as
-  information is flowing then the page should keep
-  getting longer", the Compass board's rule) — the
-  door home is the page's (BackToTop in the shell);
-  a window a screen tall is still there for a host
-  that asks for one.
-
-  What it replaces: the composition strip and its
-  pills, the FlowTop control row and its filters
-  popover of chips, the read strip with its ink
-  key, and the hand-rolled table.
-==================================================
-*/
+/* The one box every Trace page stands in (title, facts, one line of cards, a plain lead, the body) and the grid it
+   holds: AG Grid fed by the pages' own Column<T> definitions. */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowUp } from 'lucide-react';
@@ -41,27 +16,22 @@ export const TRACE_GRID_THEME = GRID_THEME.withParams({ rowHeight: 39, headerHei
 /** A phone's row: two lines, the contract over its figures (see PhoneRow) */
 const TRACE_PHONE_THEME = GRID_THEME.withParams({ rowHeight: 58, headerHeight: 0, fontSize: 12 });
 
-/** THE CONTROLS LINE'S GRAMMAR, shared: a wrapping row at a desk; on a phone a grid of two equal cells (the Trace box's
-    own, below) — the Dossier pages draw their own lines and wear the same classes (2026-10-19) */
+/** The cards line: a wrapping row at a desk, a grid of two equal cells on a phone (Dossier wears it too) */
 export const CONTROLS_LINE = 'flex items-center gap-2 flex-wrap max-sm:grid max-sm:grid-cols-2 max-sm:[&>*]:min-w-0 max-sm:[&>*]:w-full max-sm:[&>[data-dropdown]]:justify-between max-sm:[&>[data-span]]:col-span-2 max-sm:[&>[data-span]]:order-first max-sm:[&>[data-cut-doors]]:col-span-2 max-sm:[&>[data-cut-doors]>*]:flex-1 max-sm:[&>[data-cut-doors]>*]:justify-center max-sm:[&>.ml-auto]:col-span-1 max-sm:[&>.ml-auto>*]:w-full max-sm:[&>.ml-auto>*>button]:w-full max-sm:[&>.ml-auto>*>button]:justify-between max-sm:[&>[data-scope]]:col-span-2 max-sm:[&>[data-scope]]:h-auto max-sm:[&>[data-scope]]:min-h-6 max-sm:[&>[data-scope]_[data-scope-pick]]:flex-wrap max-sm:[&>[data-scope]_[data-scope-pick]]:py-1 max-sm:[&>[data-scope]_[data-scope-pick]]:gap-y-1 max-sm:[&>[data-live-hold]]:order-last max-sm:[&>[data-live-hold]]:col-span-2 max-sm:[&>[data-live-hold]>button]:flex-1 max-sm:[&>[data-live-hold]>button]:w-full max-sm:[&>[data-live-hold]>button]:justify-center max-sm:[&>.ml-2]:col-span-2 max-sm:[&>.ml-2]:order-last';
 
 /* ---- the head's facts ------------------------------------------------------------ */
 
 export const Fact = ({ label, children, testId, title, wrap = false }: { label: string; children: ReactNode; testId?: string; title?: string; wrap?: boolean }) => (
-  /* `wrap`: a fact that is a sentence takes the line's width and wraps at every width (retail, round 10: the Live Tape's
-     "NVDA · biggest with a clear side today" ran past the card's right edge at 1440) */
+  /* `wrap`: a fact that is a sentence takes the line's width */
   <div className={wrap ? 'min-w-0 basis-full' : 'min-w-0'} title={title}>
     <dt className="text-t11 text-textMuted whitespace-nowrap max-sm:whitespace-normal">{label}</dt>
-    {/* ON A PHONE A FACT WRAPS, never clips (audit round 5: "close of 10…", "$101.5…") */}
     <dd className={`mt-0.5 font-mono text-t12 tnum text-textPrimary ${wrap ? 'whitespace-normal break-words' : 'whitespace-nowrap max-sm:whitespace-normal max-sm:break-words'}`} data-trace-fact={testId}>
       {children}
     </dd>
   </div>
 );
 
-/* 'plain' for a champion that is a MAGNITUDE with no direction — the most lifted, the most hit, the busiest name: a side
-   is not a direction (2026-10-13, the partner's rule at Noah's word), and the warn orange is SWEEP's, so orange would
-   mean two things on one screen */
+/* 'plain' for a champion with no direction (the busiest name): orange is the sweep's ink */
 type Ink = 'supreme' | 'bull' | 'bear' | 'warn' | 'plain';
 const INK: Record<Ink, string> = { supreme: 'text-supreme', bull: 'text-bull', bear: 'text-bear', warn: 'text-warn', plain: 'text-textSecondary' };
 
@@ -70,7 +40,6 @@ export const Champion = ({ label, ink, onOpen, children, testId, title = "Open t
   <div className="min-w-0">
     <dt className={`text-t11 whitespace-nowrap max-sm:whitespace-normal ${INK[ink]}`}>{label}</dt>
     <dd className="mt-0.5 whitespace-nowrap max-sm:whitespace-normal" data-trace-champion={testId}>
-      {/* the door's own hover, silver (door.ts) — it underlined on hover before 2026-09-16 */}
       <button type="button" onClick={onOpen} title={title} className="font-mono text-t12 tnum font-semibold text-textPrimary hover:text-silver transition-colors text-left max-sm:break-words">
         {children}
       </button>
@@ -87,10 +56,9 @@ interface TraceBoxProps {
   facts: ReactNode;
   /** The one line of cards */
   controls: ReactNode;
-  /** The page's sentence (RichRead + doors) — with `lead`, what always stands above the lead (the saved cuts) */
+  /** With `lead`, what stands above it (the saved cuts); without, the page's line */
   sentence: ReactNode;
-  /** ONE PLAIN LINE FIRST (retail, round 11: each page opened on ~120 words of desk-speak): what happened, in a retail
-      trader's words; the page's full read (`detail`) waits behind "more" */
+  /** One plain line of what happened; the full read (`detail`) waits behind "more" */
   lead?: ReactNode;
   detail?: ReactNode;
   guide?: { title: string; door: string; body: ReactNode; testId: string; open: boolean; onOpen: (v: boolean) => void };
@@ -99,8 +67,8 @@ interface TraceBoxProps {
   className?: string;
   /** Attributes for the probes */
   data?: Record<string, string | number | undefined>;
-  /** On a phone the cards line folds behind one Filters button (opt-in — the Live Tape and the Screener stood ~750px of
-      head and cards above their first row) */
+  /** On a phone: the cards fold behind one button, the sub hides and the facts take one scrolling line, so the first
+      row stands above the fold */
   foldOnPhone?: boolean;
 }
 
@@ -110,45 +78,29 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, lead, detail, 
   const [unfolded, setUnfolded] = useState(false);
   const [more, setMore] = useState(false);
   const folded = foldOnPhone && phone && !unfolded;
+  const tight = foldOnPhone && phone;
   return (
-    /* overflow-CLIP, not hidden: hidden makes the box a scroll container, and
-       a rail that should stick to the page while the grid runs past a screen
-       (the tape's) would stick to the box instead — which never scrolls */
+    /* overflow-clip, not hidden: hidden makes the box a scroll container and a sticky rail would stick to it */
     <div className={`relative border border-borderSubtle rounded-xs overflow-clip bg-panel flex flex-col ${className}`} {...attrs} data-trace-box={testId}>
       {guide && (
         <GuideFocus open={guide.open} onClose={() => guide.onOpen(false)} title={guide.title} testId={guide.testId} viewport>
           {guide.body}
         </GuideFocus>
       )}
-      <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        {/* the title keeps a floor: with five facts beside it the column was squeezed until "Which way the money leans"
-            broke over three lines into its own sub — now the facts wrap under it instead */}
+      <div className={`px-5 flex items-start flex-wrap ${tight ? 'pt-3 pb-2 gap-2' : 'pt-4 pb-3 gap-6'}`}>
+        {/* the title keeps a floor so the facts wrap under it rather than squeeze it */}
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
             <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">{title}</h3>
             {guide && <GuideDoor open={guide.open} onClick={() => guide.onOpen(!guide.open)} title={guide.door} testId={guide.testId} />}
           </div>
-          <p className="mt-0.5 text-t11 text-textMuted break-words sm:whitespace-nowrap sm:truncate">{sub}</p>
+          {!tight && <p className="mt-0.5 text-t11 text-textMuted break-words sm:whitespace-nowrap sm:truncate">{sub}</p>}
         </div>
-        {/* THE FACTS WRAP (the phone pass, 2026-09-13 — Noah: "make sure every
-            page and section ticks the box of mobile viewing"): a column-flow
-            grid had one row whatever the width, so on a phone the fourth fact
-            ran under the box's edge; a wrapping row keeps one line where it
-            fits and two where it does not. */}
-        <dl className="flex flex-wrap gap-x-6 gap-y-2" data-trace-facts>
+        {/* tight: one line that scrolls sideways inside itself, so the page never does */}
+        <dl className={tight ? 'w-full flex flex-nowrap gap-x-5 overflow-x-auto [&>div]:shrink-0 [&_dt]:!whitespace-nowrap [&_dd]:!whitespace-nowrap [scrollbar-width:none]' : 'flex flex-wrap gap-x-6 gap-y-2'} data-trace-facts>
           {facts}
         </dl>
       </div>
-      {/* THE CARDS LINE: one line where it fits; on a phone TWO COLUMNS, every
-          card a cell (a wrapping row put the cards wherever they landed —
-          Noah: "the buttons just randomly get compressed with no order"); the
-          right-hand group (Rail · Columns, `ml-auto`) takes a row of its own
-          at the end, still at the right. */}
-      {/* ON A PHONE THE LINE IS A GRID OF EQUAL CELLS (Noah, 2026-10-19, seven phone stills: "these button formats need to
-          change they look all over the place"): two columns, every control stretched to its cell — the search first on a
-          row of its own, the cards in rows of two in the page's order, then the doors: Link and Save on one row, Columns
-          and the live hold on the last. The cards had kept their own widths inside the cells, so a row read "Most active"
-          beside "Both" and Columns stood alone at the right. */}
       {controls != null && controls !== false && foldOnPhone && phone && (
         <div className="px-5 pb-2">
           <button
@@ -167,10 +119,9 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, lead, detail, 
           {controls}
         </div>
       )}
-      {/* a div, not a p: the saved cuts' chips and the status line stand inside the sentence (2026-10-13) */}
-      {/* no sentence, no line — a page whose body already says it (the Tracker's empty desk) never says it twice */}
+      {/* a div, not a p: the saved cuts' chips stand inside the sentence */}
       {lead != null ? (
-        <div className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-trace-sentence>
+        <div className={`px-5 text-t12 leading-relaxed text-textSecondary ${tight ? 'pb-2' : 'pb-3'}`} data-trace-sentence>
           {sentence}
           <p className="text-t13 leading-snug text-textPrimary" data-trace-lead>
             {lead}
@@ -202,9 +153,7 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, lead, detail, 
   );
 };
 
-/** A PHONE'S ROW (the partner's tape, at Noah's word 2026-10-13): every grid showed about two and a half columns on a
-    390px screen — the time, the ticker and part of the contract — and the premium and the side were a sideways swipe
-    away. On a phone a row is two lines: who and what on top, the figures that matter under it. */
+/** A phone's row: who and what on top, the figures that matter under it, so nothing needs a sideways swipe */
 export const PhoneRow = ({ lead, title, aside, figures }: { lead?: ReactNode; title: ReactNode; aside?: ReactNode; figures: ReactNode[] }) => (
   <span className="flex flex-col gap-1 py-1.5 w-full leading-none">
     <span className="flex items-center gap-2 min-w-0">
@@ -241,36 +190,23 @@ export function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, w
       resizable: true,
       suppressMovable: true,
     };
-    /* A SET WIDTH IS A SHARE, NOT A WALL (the audit, 2026-10-22): fixed widths summed past the box at a laptop width, so
-       the last column stood half under the box's edge ("W", "Prev $", "V") behind a scroll nobody saw. Each column now
-       takes its width as its floor and its share of the room — never narrower than its cells (a squeezed cell paints a
-       clipped ellipsis), growing to fill a wide box; the pages keep their widths inside a laptop's box. */
+    /* a set width is a floor and a share of the room, so fixed widths never run past the box */
     if (fixed) {
       def.width = fixed;
       def.minWidth = fixed;
       def.flex = fixed;
-      /* Locked: same shares as before, so the row stays full, but the reader
-         cannot drag a column to a new width or a new place. */
       if (lock) def.resizable = false;
     } else {
       def.flex = flexes[c.key] ?? 1;
-      /* 92, not 84: the house's widest standard cell (the Lean bar) is 64px and the grid's own padding is 24, so 84
-         guaranteed a four-pixel overflow — and an overflowing cell paints a CLIPPED ELLIPSIS, a stray ".." at the
-         cell's edge that reads as a rendering fault (the Screener's Lean column, 2026-10-13). */
+      /* the widest standard cell (the Lean bar, 64px) plus the grid's 24px padding, or the cell paints a clipped ".." */
       def.minWidth = 92;
     }
     return def;
   });
 }
 
-/* THE HEAVIEST AT REST, for every grid that grows (lifted from Intervals, 2026-09-20 — Noah, clearing the search on the
-   book: "the repositioning… seem to be quite delayed causing it to look like lagging"). A grid that GROWS WITH ITS ROWS
-   (autoHeight — the page scrolls, not the grid) draws EVERY row it holds: nothing is windowed. The book at rest is 403
-   rows × 17 columns = 6,851 cells, each a React cell, and clearing the search mounted them all in one go — measured, one
-   task of 625–668ms with the page frozen under it, and only THEN did the rows start to slide. So at rest a grid holds its
-   first 80 rows (they are already ranked — the screen's own order) and a foot says how many there are and opens the rest.
-   Never a door for fewer than 20 hidden rows: a door that hides a dozen is chrome. The reader's choice holds while the
-   page is open. The page's figures (premium, counts, the champions, the drill's list) still read EVERY row. */
+/* A grid that grows with the page draws every row it holds, so at rest it holds the first 80 and a foot opens the rest
+   (never for fewer than 20 hidden). The page's figures still read every row. */
 export const ROWS_AT_REST = 80;
 const CAP_SLACK = 20;
 export interface RestCap<T> {
@@ -339,9 +275,8 @@ interface TraceGridProps<T> {
   pinRight?: string[];
   /** The row on a phone, two lines (PhoneRow) — given, a phone shows it in place of the columns */
   phoneRow?: (row: T) => ReactNode;
-  /** ENDLESS SCROLL (the owner, 2026-10-23: "make it infinite"): no pages — the rows scroll in a window the height of the
-      screen, and near the bottom the grid asks for the next older page (`onNear`), once, while `state` is 'more'. The foot
-      under the rows says where the reading stands: loading, the start reached, the cap, or a button to ask by hand. */
+  /** No pages: the rows scroll in a screen-tall window and near the bottom ask for the next page (`onNear`) while
+      `state` is 'more'; the foot says where the reading stands */
   endless?: EndlessFeed;
   /** The reader has scrolled into the rows (past the first two) — new rows then wait in a pill instead of jumping */
   onDeep?: (deep: boolean) => void;
@@ -369,7 +304,7 @@ export interface EndlessFeed {
 export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColumns = false, tooltips, rowKey, onRowClick, selectedKey, height, autoHeight = false, initialSort, rowClass, animate = true, emptyText = 'Nothing on this cut', pinLeft, pinRight, phoneRow, endless, onDeep, topSignal, onVisible, testId }: TraceGridProps<T>) => {
   const gridRef = useRef<AgGridReact<T>>(null);
   const phone = useIsPhone() && !!phoneRow;
-  const hiddenSet = hidden ?? new Set<string>();
+  const hiddenSet = useMemo(() => hidden ?? new Set<string>(), [hidden]);
   const endlessOn = !!endless;
   const columnDefs = useMemo(() => {
     if (phone && phoneRow) {
@@ -381,8 +316,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
       if (pinLeft?.includes(d.colId ?? '')) d.pinned = 'left';
       else if (pinRight?.includes(d.colId ?? '')) {
         d.pinned = 'right';
-        /* an endless window carries a vertical scrollbar beside the right-pinned figure — room for it, so the figure is
-           never clipped ("$13.1K" read "$13.1") */
+        /* room for the endless window's scrollbar beside the right-pinned figure */
         if (endlessOn && d.width) {
           d.width += 14;
           d.minWidth = d.width;
@@ -398,22 +332,8 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columns, hiddenSet, widths, tooltips, flexes, lockColumns, phone, phoneRow, pinLeft, pinRight, endlessOn]);
   const defaultColDef = useMemo<ColDef<T>>(() => ({ sortable: true, resizable: true, suppressMovable: true }), []);
-  /* A CUT — the search cleared, a card turned, "Show all" — IS A CROSSFADE, NEVER A SLIDE AND NEVER A SWAP (2026-09-20).
-     Two complaints from Noah, the same afternoon, on the book:
-       · first the wait: clearing the search froze the page ~650ms and THEN two dozen rows slid out to their places among
-         hundreds ("the repositioning… seem to be quite delayed"). The slide is for a RE-RANK — the same rows in a new
-         order, the eye can follow one. For a cut there is nothing to follow, so a cut never glides (`animateRows` is read
-         when the grid redraws, and every changed option is set before the rows are, so turning it off on the render that
-         lands the cut is enough; the next re-rank glides again).
-       · then, with the wait gone, the opposite: "it just abruptly changes the tape very quickly" — one frame a name's
-         rows, the next frame eighty others.
-     So a cut is HELD for a moment: the rows the grid has STEP BACK (to 0.3 over 120ms), only then is the grid given the new
-     list, and once its rows are in they COME UP to full over 420ms. OPACITY ONLY, on the standard ease — the house rule
-     for anything that holds a table (index.css: travel re-rasterises every figure every frame, and the expo curve is at
-     0.87 by 90ms, a snap on a layer this large). THE MOUNT HIDES INSIDE THE STEP BACK: eighty rows × seventeen cells take
-     ~140ms of main thread, and they are spent while the rows stand still and dim — nothing on screen is moving, so
-     nothing can stutter. What is NOT a cut (the tape ticking, a re-rank, a few rows coming or going) passes straight
-     through, untouched. Reduced motion: no hold, no fade. Only the ROWS fade; the head stays put. */
+  /* A cut (the search cleared, a card turned) is a crossfade: the rows dim, the new list lands while they stand still,
+     then they come up. A re-rank still glides; a few rows coming or going pass straight through. */
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const calm = useMemo(() => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches, []);
   const landed = useRef(rows);
@@ -421,8 +341,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
   latest.current = rows;
   const landedAt = useRef(0);
   const [landN, setLandN] = useState(0);
-  /* AN OLDER PAGE JOINING UNDER THE ROWS IS NOT A CUT (audit round 11, major 2): the same head, more rows below — it passes
-     straight through, so an endless list never holds its old rows while a page lands */
+  /* an older page joining under the same head is not a cut */
   const sameHead = !!endless && rows.length > landed.current.length && landed.current.length > 0 && rowKey(rows[0]) === rowKey(landed.current[0]);
   const cutting = !calm && !sameHead && Math.abs(rows.length - landed.current.length) > Math.max(CUT_JUMP, landed.current.length * 0.15);
   /* what the grid holds: the rows it had, while they step back; else the page's rows as they come */
@@ -431,10 +350,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
     if (!cutting) landed.current = rows;
   });
   const rowsBody = () => wrapRef.current?.querySelector<HTMLElement>('.ag-grid-scrolling-rows') ?? null;
-  /* A CUT ALWAYS LANDS (audit round 11, major 1: typed "NVDA 220C 11/20" + Enter, the head read "6 of 2,426" while the grid
-     kept SOXL, SPXW and SPY rows for 16s+): the held rows land after the step back, and when the rows moved again by then
-     — still a cut against what landed — the next step back is set, rather than the grid waiting on an effect that had
-     already run (the hold re-arms on every landing, `landN`) */
+  /* a cut always lands: the hold re-arms on every landing (`landN`), so rows that moved again during it still land */
   useEffect(() => {
     if (!cutting) return;
     const body = rowsBody();
@@ -451,9 +367,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cutting, landN]);
-  /* THE COME-UP starts on the first frame AFTER the new rows are in — the grid mounts them in the tasks that follow the
-     commit, so the moment is read off the rows themselves (a mutation, then a frame), with a floor so an empty list that
-     never mutates still comes up */
+  /* the come-up starts once the new rows are mounted (a mutation, then quiet frames), with a floor for an empty list */
   useLayoutEffect(() => {
     if (landN === 0) return;
     const body = rowsBody();
@@ -469,8 +383,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
       body.getAnimations().forEach(a => a.cancel());
       body.animate([{ opacity: from }, { opacity: 1 }], { duration: CUT_IN_MS, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' });
     };
-    /* two quiet frames, not one: the grid mounts a long list in two passes (measured: 35 rows, then 80), and a come-up
-       begun between them lost its first 95ms to the second */
+    /* two quiet frames: the grid mounts a long list in two passes */
     const mo = new MutationObserver(() => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
@@ -494,21 +407,14 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
       if (n.isSelected() !== on) n.setSelected(on);
     });
   }, [selectedKey, rows, rowKey]);
-  /* A click on a control inside a cell (the watch mark, a door with its own
-     action) is that control's, not the row's — React's stopPropagation never
-     reaches the grid's native listener, so the row asks the target itself */
+  /* a click on a control inside a cell is the control's: React's stopPropagation never reaches the grid's listener */
   const onRow = (e: RowClickedEvent<T>) => {
     const target = e.event?.target as HTMLElement | null | undefined;
     if (target?.closest?.('button, a, [data-own-click]')) return;
     if (e.data && onRowClick) onRowClick(e.data);
   };
 
-  /* THE DOOR HOME (Noah, 2026-09-10: "the ability to glide back to the top if
-     user scrolls down too far"): the grid scrolls inside its own window, so
-     the door watches the grid's body and sits in the window's corner — shown
-     once the reader is a screen or so deep (the tape's 600px), gliding home
-     on the house curve with absolute writes each frame so a tick cannot
-     shove the scroll mid-glide; reduced motion jumps. */
+  /* back to top for a windowed grid, past 600px; absolute writes each frame so a tick cannot shove the glide */
   const [showTop, setShowTop] = useState(false);
   /* endless: a window the height of the screen once the rows overflow half a page; never the pager */
   const windowed = !!endless && gridRows.length > TRACE_PAGE / 2;
@@ -519,9 +425,14 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
   onDeepRef.current = onDeep;
   const rowPx = phone ? 58 : 39;
   const headPx = phone ? 0 : 32;
+  const windowedRef = useRef(windowed);
+  windowedRef.current = windowed;
+  const rowPxRef = useRef(rowPx);
+  rowPxRef.current = rowPx;
+  const headPxRef = useRef(headPx);
+  headPxRef.current = headPx;
   const [pager, setPager] = useState({ page: 0, pages: 1 });
-  /* A short page keeps the height of its rows. A fixed 40 left a black band
-     under the last page, and under any cut that did not fill one. */
+  /* a short page keeps the height of its rows */
   const onPage = paged ? Math.min(TRACE_PAGE, Math.max(1, gridRows.length - pager.page * TRACE_PAGE)) : TRACE_PAGE;
   const pageHeight = headPx + onPage * rowPx + 2;
   const onPaginationChanged = (e: PaginationChangedEvent) => {
@@ -540,20 +451,42 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
   const onVisibleRef = useRef(onVisible);
   onVisibleRef.current = onVisible;
   const visTimer = useRef(0);
-  const tellVisible = (api: { getFirstDisplayedRowIndex: () => number; getLastDisplayedRowIndex: () => number; getDisplayedRowAtIndex: (i: number) => { data?: T } | undefined }) => {
+  /* the rows on screen: a windowed grid by its own scroll, a grid that grows with the page by the page's scroll */
+  const tellVisible = (api: { getDisplayedRowCount: () => number; getDisplayedRowAtIndex: (i: number) => { data?: T } | undefined }) => {
     if (!onVisibleRef.current) return;
     window.clearTimeout(visTimer.current);
     visTimer.current = window.setTimeout(() => {
+      const wrap = wrapRef.current;
+      const n = api.getDisplayedRowCount();
+      if (!wrap || !n) return;
+      let a = 0;
+      let b = n - 1;
+      const vp = viewport();
+      if (windowedRef.current && vp) {
+        a = Math.floor(vp.scrollTop / rowPxRef.current);
+        b = a + Math.ceil(vp.clientHeight / rowPxRef.current);
+      } else {
+        const top = wrap.getBoundingClientRect().top + headPxRef.current;
+        a = Math.max(0, Math.floor(-top / rowPxRef.current));
+        b = Math.ceil((window.innerHeight - top) / rowPxRef.current);
+      }
       const out: T[] = [];
-      const a = Math.max(0, api.getFirstDisplayedRowIndex());
-      const b = api.getLastDisplayedRowIndex();
-      for (let i = a; i <= b && out.length < 60; i++) {
+      for (let i = Math.max(0, a); i <= Math.min(b, n - 1) && out.length < 60; i++) {
         const d = api.getDisplayedRowAtIndex(i)?.data;
         if (d) out.push(d);
       }
       onVisibleRef.current?.(out);
     }, 250);
   };
+  useEffect(() => {
+    if (!onVisible) return;
+    const onScroll = () => {
+      const api = gridRef.current?.api;
+      if (api && !windowedRef.current) tellVisible(api);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [!!onVisible]); // eslint-disable-line react-hooks/exhaustive-deps
   const onBodyScroll = (e: BodyScrollEvent<T>) => {
     if (e.direction !== 'vertical') return;
     setShowTop(e.top > 600);
@@ -562,10 +495,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
     nearEnd(e.api);
     tellVisible(e.api);
   };
-  /* ONLY ON DEMAND: a scroll near the bottom asks (onBodyScroll), or the foot's button. A page that LANDED under a reader
-     still at the bottom asks for the next one (audit round 11, major 2: "scrolled to the bottom, one page loaded, then it
-     stopped" — a page that added a few rows left the reader at the end with no scroll to come) — but only while each page
-     adds rows: a page that adds none stops there, so a cut that keeps few rows never walks the whole day unasked */
+  /* pages load on demand; a page that landed under a reader still at the bottom asks for the next, while pages add rows */
   const shownN = gridRows.length;
   const scrolled = useRef(false);
   const lastN = useRef(shownN);
@@ -613,8 +543,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
   useEffect(() => {
     setShowTop((viewport()?.scrollTop ?? 0) > 600);
   }, [rows]);
-  /* THE EMPTY LINE FOLLOWS THE READ (audit round 8: "Reading…" changed to the cut's empty line, or back, while the grid
-     kept the overlay it first drew) — a shown no-rows overlay is redrawn with the new words */
+  /* a shown no-rows overlay is redrawn when its words change */
   const firstEmpty = useRef(true);
   useEffect(() => {
     if (firstEmpty.current) {
@@ -622,8 +551,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
       return;
     }
     const api = gridRef.current?.api;
-    /* rows already in hand but held back for the cut's glide (cutting) are not "nothing" (audit round 9: "Nothing has
-       traded on the book" flashed for a frame as the Screener's first book landed) */
+    /* rows held back for the crossfade are not "nothing" */
     if (!api || gridRows.length || rows.length) return;
     api.hideOverlay();
     api.showNoRowsOverlay();
@@ -653,7 +581,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
     const step = (now: number) => {
       if (done) return;
       const t = Math.min(1, (now - t0) / DUR);
-      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic, the house curve
+      const eased = 1 - Math.pow(1 - t, 3);
       el.scrollTop = Math.round(start * (1 - eased));
       if (t < 1) requestAnimationFrame(step);
       else finish();
@@ -663,13 +591,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
   };
 
   return (
-    /* THE GRID LANDS AS ONE (Noah, 2026-10-13: "it shows half the height as the other half loads in … it should be a
-       smooth load in of the entire columns"). Measured on Footprints: the grid stood at its full height with 14 rows
-       drawn, and the other 66 landed in a second task ~230ms later — the grid draws rows in animation frames by
-       default, a scrolling grid's habit. Ours never scroll (autoHeight, 80 rows at rest), so suppressAnimationFrame
-       puts every row in the first paint, and the whole box comes up over the table curve (index.css grid-in). */
-    /* THE FOOT STANDS UNDER THE WINDOW, NEVER INSIDE IT (audit round 11, major 2: the window is a fixed height and the foot
-       sat in it, under the grid — pushed out of the box, behind the page, its "Load older" unclickable at 1440 and 390) */
+    /* suppressAnimationFrame puts every row in the first paint; the endless foot stands under the window, not in it */
     <div ref={wrapRef} className={`slayer-board relative border-t border-borderSubtle animate-grid-in ${windowed ? '[&_.ag-grid-pinned-right-cells_.ag-column-last]:!pr-[22px] [&_.ag-grid-pinned-right-cells_.ag-cell:last-child]:!pr-[22px] [&_.ag-header-cell.ag-column-last]:!pr-[22px]' : ''} ${windowed && phone ? '[&_.ag-cell]:!pr-[18px]' : ''}`} data-trace-grid={testId} data-lock={lockColumns || undefined} data-cutting={cutting || undefined} data-phone-rows={phone || undefined} data-paged={paged || undefined} data-endless={endless ? endless.state : undefined}>
      <div className="relative" style={windowed ? { height: `min(${pageHeight}px, calc(100dvh - 72px))`, minHeight: 360 } : autoHeight ? (paged ? { height: pageHeight } : undefined) : { height }} data-trace-window>
       <AgGridProvider modules={GRID_MODULES}>
@@ -684,6 +606,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
           getRowClass={rowClass ? p => (p.data ? rowClass(p.data) : undefined) : undefined}
           onRowClicked={onRow}
           onBodyScroll={onBodyScroll}
+          onModelUpdated={e => tellVisible(e.api)}
           rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
           suppressCellFocus
           suppressAnimationFrame
@@ -732,8 +655,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
 
 export default TraceBox;
 
-/** An endless grid's foot from a list's older pages (traceLive useOlderPages): how many are loaded, and why it stopped */
-/* `moreLabel`: a list walked down by size, not back in time, says "Load more ↓" (audit round 11, minor 3) */
+/** An endless grid's foot from a list's older pages: how many are loaded, and why it stopped */
 export function endlessOf(o: { state: EndlessFeed['state']; loaded: number; loadOlder: () => void } | undefined, noun: string, endWords: string, paused = false, moreLabel?: string): EndlessFeed | undefined {
   if (!o) return undefined;
   const n = `${o.loaded.toLocaleString('en-US')} ${noun} loaded`;

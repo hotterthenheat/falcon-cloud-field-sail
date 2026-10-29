@@ -1,21 +1,17 @@
-/*
-==================================================
-  SLAYER TERMINAL - TRACE TYPES (trace.ts)
-  Rich options-flow prints for the live tape.
-==================================================
-*/
+/* Trace's row types: one options print (FlowPrint) and one contract's day (BookContract). */
 
 export type StratTag = '—' | 'Vertical' | 'Butterfly' | 'Ratio' | 'Custom';
 
 export interface FlowPrint {
+  /** 53-bit hash of the vendor's id — for in-page maps; grids key on vendorId */
   id: number;
   time: string;
   ticker: string;
-  /** 1 = single leg; >1 renders the ×N multi-leg marker */
+  /** 1 = single leg; >1 marks a leg of a multi-leg order */
   legs: number;
   strike: number;
   right: 'C' | 'P';
-  /** Signed % distance of strike from spot */
+  /** Distance past the spot, % — positive out of the money for calls and puts alike */
   otmPct: number;
   /** MM/DD/YYYY */
   expiry: string;
@@ -26,22 +22,21 @@ export interface FlowPrint {
   /** Where the fill landed in the spread: 0 = at bid, 1 = at ask */
   fillPos: number;
   side: 'BID' | 'ASK' | 'MID';
-  /** −100…+100 aggressor conviction */
-  flowScore: number;
-  /** e.g. "ASK 61%" / "MID" — dominant execution side for the contract today */
-  ratioLabel: string;
+  /** Set only by data/stockFile.ts; no Trace page reads it */
+  flowScore?: number;
+  /** Set only by data/stockFile.ts; no Trace page reads it */
+  ratioLabel?: string;
   /** Bid-side share of the contract's day, 0–100 */
   ratioBidPct: number;
   size: number;
-  /** Contracts on the bid at this print. Absent when the vendor did not send a size. */
+  /** Contracts on the bid / ask at this print, when the vendor sent them */
   nbboBidSize?: number;
-  /** Contracts on the ask at this print. Absent when the vendor did not send a size. */
   nbboAskSize?: number;
-  /** Total premium of the print, dollars */
+  /** Premium of the print, dollars */
   premium: number;
   volume: number;
   oi: number;
-  /** vs prior session; 0 = unchanged/unknown */
+  /** vs prior session; 0 = unchanged or unknown */
   deltaOI: number;
   spot: number;
   /** % */
@@ -49,62 +44,52 @@ export interface FlowPrint {
   volOverOI: number;
   strat: StratTag;
   sweep: boolean;
-  /** Vendor id when the row is a flow alert — the door to the trades inside it. */
+  /** The flow alert this row is (or belongs to) */
   alertId?: string | null;
-  /** Unix seconds of the fill — the tape's cursor. Not drawn. */
+  /** Unix seconds of the fill */
   epoch?: number;
-  /** Vendor trade id, for dedupe. Not drawn. */
+  /** The vendor's trade id — the dedupe key and the grid's row id */
   vendorId?: string;
-  /** Milliseconds of the fill — the tape's lossless cursor. Not drawn. */
+  /** Milliseconds of the fill — the tape's paging cursor */
   epochMs?: number;
-  /** The vendor's OCC option symbol — the door to the contract's own tape (Trace's card) */
+  /** The vendor's OCC symbol */
   occ?: string;
-  /** A flow alert's prints — an alert is an aggregate of this many trades */
+  /** A flow alert's print count */
   trades?: number;
   /** A flow alert's premium by side, dollars */
   alertSides?: { ask: number; bid: number; other: number };
-  /** The vendor's name for the alert's rule (RepeatedHits, Sweeps…) */
+  /** The vendor's name for the alert's rule */
   alertRule?: string;
-  /** Printed outside the regular session (the vendor's report_flags "extended_hours", or its trading_hours) — read
-      against a post-market quote, so it carries no bullish/bearish read */
+  /** Printed outside the regular session — never read bullish or bearish */
   extended?: boolean;
-  /** A flow alert's own fill window, New York "HH:MM:SS" (its start_time … end_time) — `time` is the first fill */
+  /** A flow alert's last fill, New York "HH:MM:SS" (`time` is its first) */
   fillEnd?: string;
-  /** Per-share theta, as the vendor sends it on the print (null on most index prints) */
+  /** Per-share theta, as the vendor sends it */
   theta?: number;
-  /** The CONTRACT's day so far by side — at the ask, on the bid, at the mid or no side (the vendor's ask_vol, bid_vol,
-      mid_vol + no_side_vol on the print) */
+  /** The contract's day so far by side (mid includes no-side) */
   daySide?: { ask: number; bid: number; mid: number };
-  /** A compression package (OPRA cbmo / mctp, or the vendor's `arbitrage` tag) — not a bet; kept out of every
-      directional total (data/traceLive printCondition) */
+  /** A compression package (OPRA cbmo / mctp, or the arbitrage tag) — not a bet */
   compression?: boolean;
-  /** A cross trade (report_flags "cross_trade") — pre-arranged between two parties, no side taken; out of every crown */
+  /** A pre-arranged cross trade — no side, never crowned */
   cross?: boolean;
-  /** A flow alert's filing instant, ms (its created_at — the route's older_than cursor) */
+  /** A flow alert's filing instant, ms — the alerts route's older_than cursor */
   createdMs?: number;
-  /** The quote at the print gives no read: crossed (bid at or over the ask) or one side's quote minutes older than the
-      fill — the side is MID, whatever the vendor tagged */
+  /** The quote gives no read: crossed, or one side older than five minutes */
   quoteNoRead?: 'crossed' | 'stale';
-  /** A flow alert that is a floor package, not a bet (audit round 6): one leg of a no-side package filed in the same
-      millisecond as alerts on the root's other contracts, or a contract whose day was mostly floor-traded multi-leg
-      packages (flowBook floorPackaged) — set apart wherever alerts are ranked, never called a block */
+  /** One leg of a no-side floor package — never ranked or called a block */
   floorPackage?: boolean;
-  /** The card stands for the contract's DAY (a day-book row opened), its premium, size and side the day's — `last` is the
-      latest regular-session print it is anchored on, with the day's running volume at that print */
+  /** The card stands for a contract's day; `last` is the regular-session print it is anchored on */
   dayCard?: { last: { fill: number; size: number; time: string; side: 'ASK' | 'BID' | 'MID'; volume: number } | null; session: string };
-  /** A flow alert's largest single trade, when its trades have been read — the block test reads it, never total_size */
+  /** A flow alert's largest single trade, once its trades are read — the block test uses it */
   largestTrade?: { size: number; premium: number };
 }
 
-// ---- the day book (data/flowBook.ts) ----------------------------------------
-
-/** One contract's whole day rolled up — the shared row every flow surface
-    (screener, net flow, OI explorer, 0DTE, interval, multi-leg) reads. */
+/** One contract's whole day — the row every book page (Screener, Footprints, Watchers, Compare) reads */
 export interface BookContract {
-  /** TICKER-STRIKE-RIGHT-DTE — stable across the day */
-  /** The vendor's OCC option symbol, when the row came from the live screener — the door to the contract's own last trade */
-  optionSymbol?: string;
+  /** Stable across polls: the OCC symbol, else ticker-strike-right-expiry */
   key: string;
+  /** The vendor's OCC symbol */
+  optionSymbol?: string;
   ticker: string;
   sector: string | null;
   sectorColor: string | null;
@@ -114,77 +99,66 @@ export interface BookContract {
   expiry: string;
   dte: number;
   spot: number;
-  /** Signed % distance of strike from spot — FlowPrint's convention */
+  /** Distance past the spot, % — FlowPrint's convention */
   otmPct: number;
-  /** Latest fill on the contract */
+  /** Latest fill */
   last: number;
-  /** Latest fill vs the day's opening fill, % */
+  /** Latest fill vs the previous session's close, % */
   chgPct: number;
-  /** HH:MM of the contract's most recent print */
+  /** HH:MM New York of the latest print */
   lastAt: string;
-  /** Minute-of-day of that print — the recency sort key */
+  /** Minute of day of that print */
   lastAtMin: number;
-  /** Day-cumulative contracts traded */
   volume: number;
   oi: number;
-  /** vs prior session close */
   deltaOI: number;
   deltaOIPct: number;
-  /** Day-cumulative premium, dollars */
+  /** Day premium, dollars */
   premium: number;
   /** % */
   iv: number;
-  /** Signed IV points vs prior close */
+  /** IV points vs prior close */
   ivChg: number;
+  /** Volume over the open interest that stood at the session's open; 0 when there was none */
   volOverOI: number;
-  /** Share of day volume that arrived in sweeps, 0-100 */
+  /** Shares of the day's volume, 0–100: swept, in multi-leg orders, on the floor */
   sweepPct: number;
-  /** Share tied to multi-leg structures, 0-100 */
   multiPct: number;
-  /** Share executed on the floor — institutional crosses, 0-100 */
   floorPct: number;
-  /** Ask-side share of the day's volume, 0-100 — bid side is the remainder */
+  /** Ask share of the sided volume (ask + bid), 0–100 */
   askPct: number;
-  /** Share of the day's volume printed as cross trades (the vendor's cross_volume), 0-100 */
+  /** Share of the day printed as cross trades, 0–100 */
   crossPct?: number;
-
-  // -- the overnight ledger (Footprints reads these; day-stable) --
-  /** Prior session's OI — deltaOI's base */
+  /** Open interest the session opened on */
   prevOI: number;
-  /** Prior session's volume — the day the position was built or unwound */
-  prevVolume: number;
-  /** Prior session's average fill, dollars */
+  /** The previous session's close */
   prevAvgFill: number;
-  /** Prior session's premium total, dollars */
-  prevPremium: number;
-  /** Ask-side share of the PRIOR session's volume — which side built it */
-  prevAskPct: number;
-  /** Consecutive sessions OI has climbed; 0 = fell or flat yesterday */
+  /** Set only by data/stockOverview.ts; no Trace page reads them */
+  prevVolume?: number;
+  prevPremium?: number;
+  prevAskPct?: number;
+  prevSpark?: number[];
+  /** Consecutive sessions OI has climbed */
   oiStreak: number;
   /** Consecutive sessions volume ran past standing OI */
   volGtOiStreak: number;
-  /** Sessions until earnings, null = not reporting in the calendar window */
+  /** Sessions until earnings, null = none before expiry */
   earnDays: number | null;
-  /** The next report's date, YYYY-MM-DD, when earnDays is set — earnDays counts TRADING days (sessions) to it */
+  /** The next report's date, YYYY-MM-DD */
   earnIso?: string | null;
-  /** Prior session's volume by 15-min bucket, 26 values normalized 0-1 —
-      the shape of the build, not a second volume fact */
-  prevSpark: number[];
-  /** The day's contracts by where they traded: at the ask, on the bid, and at the mid or with no side (the vendor's
-      mid_volume + no_side_volume — a cross is no side). The three sum to the day's volume. */
+  /** The day's contracts at the ask, on the bid, and at the mid or no side — they sum to the volume */
   sideVol?: { ask: number; bid: number; mid: number };
-  /** The contract expired at the bell of the tape's session — it no longer stands */
+  /** Expired at the bell of the tape's session */
   expired?: boolean;
-  /** The vendor's per-share theta on the screener row */
+  /** Per-share theta, as the vendor sends it */
   theta?: number;
-  /** The contract's last fill as a New York date and minute, for display */
+  /** The last fill's New York date */
   lastDay?: string;
-  /** The session the row's volume is from, YYYY-MM-DD */
+  /** The session the volume is from */
   volDay?: string;
-  /** The session whose trading set the open interest shown (oi, prevOI → deltaOI), YYYY-MM-DD — the count is set the
-      morning after it */
+  /** The session whose trading set the open interest shown (the count is set the morning after) */
   oiDay?: string;
-  /** The count after volDay's trading is not out yet: oi/deltaOI are oiDay's (an earlier session's) */
+  /** The count after volDay's trading is not out yet */
   oiPending?: boolean;
 }
 
@@ -198,9 +172,8 @@ export interface LargestPrint {
 }
 
 export interface TapeSummary {
-  /** All premium on the tape, dollars */
   totalPremium: number;
-  /** Bullish-premium minus bearish-premium, dollars */
+  /** Bullish less bearish premium */
   netPremium: number;
   bullish: boolean;
   bullPremium: number;
@@ -209,21 +182,18 @@ export interface TapeSummary {
   callPremium: number;
   putCount: number;
   putPremium: number;
+  /** Put premium over call premium */
   pcRatio: number;
   sweeps: number;
-  /** One-leg prints of real size (data/tape printKind) */
+  /** One-leg prints of block size (data/tape printKind) */
   blocks: number;
-  /** Prints with legs */
   multi: number;
-  /** The rest: single prints under the block line, and alerts of several small prints */
+  /** Single prints under the block line, and alert bursts */
   other: number;
-  /** Compression packages, counted apart and in no other figure here */
+  /** Counted apart, in no other figure */
   compression: { count: number; premium: number };
-  /** Legs of multi-leg orders (OPRA multi-leg conditions) — each leg is half of a structure, not a bet of its own: counted
-      here and in the call/put money, kept out of the bullish/bearish totals and the largest */
+  /** In the call/put money, never in a side's total or the largest */
   spreadLegs: { count: number; premium: number };
-  /** Cross trades (report_flags "cross_trade") — pre-arranged at one price, no side: in the call/put money, never a
-      block, a side's total or the largest */
   crosses: { count: number; premium: number };
   largest: LargestPrint | null;
 }

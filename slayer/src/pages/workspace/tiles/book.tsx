@@ -50,7 +50,7 @@ import { ladderExpiryOptions, LADDER_RANGES } from '../../../components/gex/ladd
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_WARM } from '../../../components/gex/paletteInk';
 import { useFocus } from '../../../context/FocusContext';
 import { expiryFor } from '../../../core/calendar';
-import Simulator from '../../../core/simulator';
+import { snapshotOf } from '../../../data/uwBook';
 import { AGENDA_ORDERS, type AgendaOrder, type Target } from '../../../data/agenda';
 import { fmtDollars } from '../../../data/ahead';
 import { buildCompare, buildCompareSide, partnerFor, regimeWord, type CompareSide } from '../../../data/compare';
@@ -291,10 +291,13 @@ const againstOf = (ctx: WorkspaceCtx, state: TileState) => {
 export const pairAgainst = againstOf;
 export const pairControls = ({ ctx, state }: { ctx: WorkspaceCtx; state: TileState }): TileControl[] => {
   const partner = partnerFor(ctx.ticker);
-  const names = [...new Set([partner, ...Simulator.WATCHLIST])].filter(t => t !== ctx.ticker);
+  const names = [...new Set([partner, ...PAIR_NAMES])].filter(t => t !== ctx.ticker);
   const value = againstOf(ctx, state);
   return [{ id: 'against', label: 'Against', title: 'The second name', options: (names.includes(value) ? names : [value, ...names]).map(t => ({ value: t, label: t, hint: t === partner ? `${ctx.ticker}'s usual pair` : undefined })) }];
 };
+
+/* The names offered as the second side, beside the name's usual pair */
+const PAIR_NAMES = ['SPY', 'QQQ', 'IWM', 'AAPL', 'NVDA'];
 
 const levelWords = (l: { strike: number; distPct: number } | null) => (l ? `${fmtStrike(l.strike)} · ${signedPct(l.distPct)}` : '—');
 
@@ -304,7 +307,8 @@ export const PairTile = ({ ctx, state }: TileProps) => {
     try {
       const clock = clockNow();
       const sa = buildCompareSide(ctx.snapshot, clock);
-      const sb = buildCompareSide(Simulator.snapshotFor(b), clock);
+      const snapB = snapshotOf(b);
+      const sb = snapB ? buildCompareSide(snapB, clock) : null;
       return sa && sb ? buildCompare(sa, sb, clock) : null;
     } catch {
       return null;

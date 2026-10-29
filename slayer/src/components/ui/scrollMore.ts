@@ -1,19 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - A ROW THAT SAYS IT GOES ON
-  (components/ui/scrollMore.ts)
-
-  A row that scrolls sideways without a bar (the
-  `.scroll-row` class, index.css) marks the edge
-  with more behind it — data-scroll-more="left",
-  "right" or both — and the stylesheet fades that
-  edge. The Map's band on a phone had this (the
-  re-audit's H2); the guides' drawings, 400 wide in
-  a narrower card, scrolled with no sign of it (the
-  owner, 2026-10-14: "the caption ends at 'green:
-  the' … it looks broken"). One helper for both.
-==================================================
-*/
+/* A bar-less sideways scroller (`.scroll-row`, index.css) marks an edge with more behind it via
+   data-scroll-more="left" | "right", and the stylesheet fades that edge. */
 
 /** Marks `row` now and as it scrolls or resizes; the return takes the marks and the listeners away */
 export function attachScrollMore(row: HTMLElement): () => void {

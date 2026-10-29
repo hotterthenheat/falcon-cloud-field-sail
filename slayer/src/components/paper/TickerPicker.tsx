@@ -35,6 +35,7 @@ import { ChevronDown, Search } from 'lucide-react';
 import CompanyLogo from '../ui/CompanyLogo';
 import { CARD } from '../ui/DropdownSelect';
 import { PAPER_FUTURES, frontOn, type PaperIndex } from '../../data/paper/products';
+import { FUTURES_LIVE } from '../../data/paper/feed';
 import { REVIEW_NAMES } from '../../data/review/tape';
 import { ensureListed, isOptionRoot, optionSymbols, useListedRev } from '../../data/listedNames';
 import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
@@ -131,7 +132,7 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
   const q = query.trim().toLowerCase();
   const hit = (r: Row) => !q || r.code.toLowerCase().includes(q) || r.value.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) || r.keywords.toLowerCase().includes(q);
   const groups = [
-    { key: 'futures', title: 'Futures · front month', rows: futures.filter(hit) },
+    { key: 'futures', title: 'Futures · front month', rows: FUTURES_LIVE ? futures.filter(hit) : [] },
     { key: 'indexes', title: 'Index options · the chain', rows: futuresOnly ? [] : indexRows.filter(hit) },
     { key: 'stocks', title: 'Stocks & funds · their options', rows: futuresOnly ? [] : stocks.filter(hit) },
   ];

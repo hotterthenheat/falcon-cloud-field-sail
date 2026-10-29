@@ -1,24 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - DROPDOWN MULTI
-  (components/ui/DropdownMulti.tsx)
-
-  Any number of choices from what is on the page,
-  as the same dropdown card DropdownSelect opens —
-  the trigger prints what is picked, the card lists
-  every choice in groups with the Terrain overlay
-  menu's checkbox rows (a bordered square that fills
-  and takes a tick, every row independent; Noah,
-  2026-09-09: "it should read whats on the current
-  page and be a dropdown so user can select what to
-  add. like how we have our overlay dropdown on
-  terrain"). The card stays open while ticking; a
-  Clear row at the foot empties it.
-
-  Built on Radix DropdownMenu like its sibling:
-  keyboard navigation, focus return, outside-click
-  and Escape come from the library.
-==================================================
+  Any number of choices, in the same dropdown card as DropdownSelect: the trigger prints what is picked, the card
+  lists grouped checkbox rows (each independent), stays open while ticking, and ends with Clear. Built on Radix
+  DropdownMenu.
 */
 
 import { FLAT_DOOR, FLAT_OPEN } from './flatDoor';
@@ -50,13 +33,12 @@ interface DropdownMultiProps {
   title?: string;
   /** What the trigger says when nothing is picked */
   emptyWord?: string;
-  /** The summary's ink once something is picked — the journal's mistakes wear the warn ink (2026-09-22) */
+  /** The summary's ink once something is picked */
   tone?: 'warn' | 'bull' | 'bear';
   align?: 'start' | 'end';
   /** A data-* hook for probes */
   testId?: string;
-  /** The card WITHOUT its printed name — for a line that measured itself too short for four named cards (the Weigher's
-      chain head on a laptop, 2026-09-20). The name stays in the tooltip, the aria-label and the open card's heading. */
+  /** Hide the printed name on a line too short for it; it stays in the tooltip, aria-label and open card heading. */
   bare?: boolean;
   /** The house's flat control (ui/flatDoor.ts) — the Map band's */
   flat?: boolean;
@@ -114,7 +96,7 @@ const DropdownMulti = ({ label, values, groups, onChange, title, emptyWord = 'Ev
                         className="flex items-start gap-2.5 px-2 py-1.5 rounded outline-none cursor-pointer text-left transition-colors data-[highlighted]:bg-ink/[0.04]"
                         data-multi-option={o.value}
                       >
-                        {/* a tick is where-you-are, so it wears holo silver, never the neon (Noah, 2026-09-10) */}
+                        {/* a tick means where-you-are: holo silver */}
                         <span className={`mt-px inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-[3px] border ${on ? 'bg-silverFill border-silverFill' : 'border-borderMuted'}`}>
                           {on && <Check className="w-2.5 h-2.5 text-onfoil" />}
                         </span>

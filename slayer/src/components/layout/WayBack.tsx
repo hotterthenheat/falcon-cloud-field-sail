@@ -1,19 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE WAY BACK (components/layout/WayBack.tsx)
-
-  A page opened FROM somewhere else carries a way
-  back to it (Noah, 2026-09-12, on the Pulse desk:
-  "it should take user to the actual page with a
-  button allowing them to go back to the pulse page
-  from there"). The opener navigates with
-  `state: { wayBack: '/pulse' }`; this pill reads
-  it on whatever page it landed on and takes the
-  reader back on a click. It rides the route's
-  state, so a step deeper into the section (no
-  state) drops it and the browser's Back brings it
-  with the page. Mounted once, in the shell.
-==================================================
+  A page opened from elsewhere carries a way back: the opener navigates with `state: { wayBack: '/pulse' }` and this
+  pill reads it. It rides the route state, so going deeper drops it and the browser's Back restores it. Mounted once
+  in the shell.
 */
 
 import { useEffect, useState } from 'react';
@@ -29,11 +17,10 @@ const NAMES: Record<string, string> = {
   '/pinpoint/agenda': 'the Agenda',
   '/pinpoint/compare': 'Compare',
 };
-/* A name's page on the Record is named by the name (the busiest rows' way
-   back, 2026-09-12); any other origin is plainly "back" */
+/* a Dossier name page is named by the name; any other origin is plainly "back" */
 const nameFor = (to: string): string => {
   if (NAMES[to]) return NAMES[to];
-  /* a name's page under the Record — the earnings page or the stock overview (2026-09-13) */
+  /* a name's page under the Dossier: earnings or the stock overview */
   const m = to.match(/^\/(?:dossier|record)\/(?:earnings|stocks)\/([^/?#]+)/);
   if (m) return decodeURIComponent(m[1]).toUpperCase();
   return '';
@@ -41,10 +28,8 @@ const nameFor = (to: string): string => {
 
 export type WayBackState = { wayBack?: string };
 
-/* The pill floats at the TOP CENTRE of the content column — the one strip every
-   shell head leaves empty (the name at its left, the facts at its right); the
-   corners are not (the Map's foot, the door home). The column starts after the
-   sidebar, whose width glides, so the centre is measured off <main>. */
+/* The pill floats at the top centre of the content column, the one strip every page head leaves empty; measured off
+   <main>, since the sidebar's width animates. */
 const useMainCentre = () => {
   const [left, setLeft] = useState<{ centre: number; edge: number } | null>(null);
   useEffect(() => {
@@ -73,8 +58,7 @@ const WayBack = () => {
   const at = useMainCentre();
   if (!to || at == null) return null;
   const name = nameFor(to);
-  /* TERRAIN HAS NO HEAD (2026-09-30: Pulse's chart tile and the Focus chip's Chart door both land there): its panes run
-     to the top edge, and the top centre is the second pane's own name. Its one empty corner is the foot's left. */
+  /* Terrain has no head (its panes run to the top edge), so its pill sits at the foot's left */
   const low = location.pathname.startsWith('/terrain');
   return (
     <button

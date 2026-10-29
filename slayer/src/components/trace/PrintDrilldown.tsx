@@ -1,24 +1,8 @@
-/*
-==================================================
-  SLAYER TERMINAL - PRINT DRILLDOWN
-  The anatomy of one options print, in a wide
-  centred overlay so the tape still frames it.
-
-  Beyond the raw fields it does the thing only we
-  can: it runs the contract through the Compass
-  scale, so the drilldown does not just DESCRIBE the
-  print — it grades the contract and says what the
-  spread and the clock will take out of it.
-
-  Every window is steerable: the session, the range,
-  the bar interval, which overlays are drawn, and
-  whether spread legs count. And every label is
-  spelled out.
-==================================================
-*/
+/* One options print opened up in a wide overlay: its fill against the quote, its contract graded on the Compass scale,
+   its session on one clock with the stock, and the contract's prints and history. */
 
 import { expiryWords, isLiveDay, isoOf, shortDay } from './dayWords';
-import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { nyClock } from '../../core/nyTime';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Compass, Copy, Crosshair, Scale } from 'lucide-react';
@@ -37,7 +21,7 @@ import { printKind } from '../../data/tape';
 import { isTradingDay, isoDate } from '../../core/calendar';
 import type { NetMetric } from './ContractFlowChart';
 import DatePicker from '../ui/DatePicker';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
 import type { FlowPrint, PrintSentiment } from '../../types/trace';
 import type { Tone } from '../ui/tones';
 import SlayerMark from '../../brand/SlayerMark';
@@ -335,7 +319,7 @@ function printSessionIso(p: FlowPrint | null): string {
 
 const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPrev, hasNext, tapeRows, tapeNoun = 'prints', onOpenPrint }: PrintDrilldownProps) => {
   const navigate = useNavigate();
-  const { changeTicker } = useMarketData();
+  const { changeTicker } = useTicker();
 
   // Buffer order is newest-first; a filter keeps it, so index 0 = latest leg.
   const siblings = useMemo(
@@ -723,7 +707,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden" data-print-tape>
                 <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">The tape</span>
-                  <span className="font-mono text-t11 text-textMuted">the contract and {print.ticker} on one clock · {isLiveDay(dateIso) ? 'today' : dateLabel}, {cf ? cf.window.label : `8:30 AM–${sessionEndLabel(print.ticker)}`}</span>
+                  <span className="font-mono text-t11 text-textMuted">the contract and {print.ticker} on one clock · {isLiveDay(dateIso) ? 'today' : dateLabel}, {cf ? cf.window.label : `09:30–${sessionEndLabel(print.ticker)}`}</span>
                   <span className="ml-auto flex items-center gap-0.5">
                     {INTERVALS.map(m => (
                       <Chip key={m} active={m === intervalMin} onClick={() => setIntervalMin(m)} title={`${m}-minute bars`}>
@@ -845,14 +829,14 @@ const td = 'px-2 py-1.5 font-mono text-t11 tnum';
 
 /** The contract's real prints for the session, newest first — the largest of them is marked */
 const OrdersTable = ({ tape }: { tape: ContractTape }) => {
-  const largest = tape.prints.reduce<string | null>((a, p) => (a === null || p.premium > (tape.prints.find(x => x.id === a)?.premium ?? 0) ? p.id : a), null);
+  const largest = tape.prints.reduce<(typeof tape.prints)[number] | null>((a, p) => (a === null || p.premium > a.premium ? p : a), null)?.id ?? null;
   if (!tape.prints.length) return <div className="border border-borderSubtle rounded-md px-3 py-6 font-mono text-t11 text-textMuted uppercase tracking-widest text-center">No prints on this contract this session</div>;
   return (
     <div className="border border-borderSubtle rounded-md overflow-hidden max-h-[240px] overflow-y-auto">
       <table className="w-full border-collapse">
         <thead className="sticky top-0 z-10">
           <tr className="bg-inset">
-            <th className={`${th} text-left`}>Time</th>
+            <th className={`${th} text-left`}>Time ET</th>
             <th className={`${th} text-right`}>Price</th>
             <th className={`${th} text-right`}>Size</th>
             <th className={`${th} text-left`}>Side</th>

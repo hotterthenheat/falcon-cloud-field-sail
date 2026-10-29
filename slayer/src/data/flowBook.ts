@@ -23,6 +23,7 @@ import { reasonMatches, reasonsSignature, type UserReason } from './flowReasons'
 import type { SleeveKey } from '../types/compass';
 import type { BookContract } from '../types/trace';
 import { dayLean, usd } from './traceLive';
+import { leanWords } from './traceLean';
 
 /* THE BOOK KEEPS NEW YORK'S SESSION (2026-10-13, from the partner's build at Noah's word): every minute in here is New
    York's minute of the day, and the book's day is the cash session, 09:30 to 16:00. It used to be the machine's
@@ -98,8 +99,8 @@ export interface FlowScreen {
 
 export const FLOW_SCREENS: FlowScreen[] = [
   { key: 'active', label: 'Most active', hint: 'Heaviest volume first' },
-  { key: 'bullish', label: 'Unusually bullish', hint: 'Calls being bought and puts being sold, ranked by premium', tone: 'bull' },
-  { key: 'bearish', label: 'Unusually bearish', hint: 'Puts being bought and calls being sold, ranked by premium', tone: 'bear' },
+  { key: 'bullish', label: 'Unusually bullish', hint: 'Calls bought or puts sold, volume at least 0.8× open interest, by premium', tone: 'bull' },
+  { key: 'bearish', label: 'Unusually bearish', hint: 'Puts bought or calls sold, volume at least 0.8× open interest, by premium', tone: 'bear' },
   { key: 'fresh', label: 'New positioning', hint: 'Volume running past open interest — positions built in the session' },
   { key: 'conviction-calls', label: 'Conviction calls', hint: 'Out-of-the-money calls with heavy sweep share', tone: 'bull' },
   { key: 'conviction-puts', label: 'Conviction puts', hint: 'Out-of-the-money puts with heavy sweep share', tone: 'bear' },
@@ -121,14 +122,17 @@ function leansBear(r: BookContract): boolean {
   return r.right === 'P' ? l === 'ASK' : l === 'BID';
 }
 
+/** "Unusually" bullish or bearish also needs this much volume against open interest — said in the screens' hints */
+const UNUSUAL_VOL_OI = 0.8;
+
 export function runScreen(rows: BookContract[], key: ScreenKey): BookContract[] {
   switch (key) {
     case 'active':
       return [...rows].sort((a, b) => b.volume - a.volume); // heaviest volume first, as the screen says
     case 'bullish':
-      return rows.filter(r => leansBull(r) && r.volOverOI >= 0.8).sort((a, b) => b.premium - a.premium);
+      return rows.filter(r => leansBull(r) && r.volOverOI >= UNUSUAL_VOL_OI).sort((a, b) => b.premium - a.premium);
     case 'bearish':
-      return rows.filter(r => leansBear(r) && r.volOverOI >= 0.8).sort((a, b) => b.premium - a.premium);
+      return rows.filter(r => leansBear(r) && r.volOverOI >= UNUSUAL_VOL_OI).sort((a, b) => b.premium - a.premium);
     case 'fresh':
       return rows.filter(r => r.volOverOI >= FRESH_VOL_OI).sort((a, b) => b.volOverOI - a.volOverOI);
     case 'conviction-calls':
@@ -151,14 +155,7 @@ export function runScreen(rows: BookContract[], key: ScreenKey): BookContract[] 
 /* Footprints asks the OVERNIGHT questions — what stayed, who built it, what
    left. Same rule as the screener's screens: a filter and an ordering, never
    a judgment. */
-export type FootprintScreenKey =
-  | 'builds'
-  | 'fresh'
-  | 'bought'
-  | 'sold'
-  | 'carryover'
-  | 'unwinds'
-  | 'streaks';
+export type FootprintScreenKey = 'builds' | 'fresh' | 'unwinds' | 'streaks';
 
 export interface FootprintScreen {
   key: FootprintScreenKey;
@@ -169,9 +166,6 @@ export interface FootprintScreen {
 export const FOOTPRINT_SCREENS: FootprintScreen[] = [
   { key: 'builds', label: 'Biggest builds', hint: 'The most new interest standing since the session before' },
   { key: 'fresh', label: 'Fresh positions', hint: 'Built on near-empty contracts — the loudest percentage jumps' },
-  { key: 'bought', label: 'Bought to open', hint: 'Builds that lifted the ask — buyers opened these' },
-  { key: 'sold', label: 'Sold to open', hint: 'Builds that hit the bid — these were written, not bought' },
-  { key: 'carryover', label: 'Carryover', hint: "Yesterday's heaviest volume that became standing interest" },
   { key: 'unwinds', label: 'Unwinds', hint: 'Interest that left — positions closed out since the session before' },
   { key: 'streaks', label: 'Building streaks', hint: 'Interest climbing three sessions or more in a row' },
 ];
@@ -183,14 +177,6 @@ export function runFootprintScreen(rows: BookContract[], key: FootprintScreenKey
       return builds.sort((a, b) => b.deltaOI - a.deltaOI);
     case 'fresh':
       return builds.filter(r => r.prevOI <= 1000).sort((a, b) => b.deltaOIPct - a.deltaOIPct);
-    case 'bought':
-      return builds.filter(r => r.prevAskPct >= 58).sort((a, b) => b.deltaOI - a.deltaOI);
-    case 'sold':
-      return builds.filter(r => r.prevAskPct <= 42).sort((a, b) => b.deltaOI - a.deltaOI);
-    case 'carryover':
-      return builds
-        .filter(r => r.prevVolume >= 20000 && r.deltaOI >= r.prevVolume * 0.5)
-        .sort((a, b) => b.deltaOI - a.deltaOI);
     case 'unwinds':
       return rows.filter(r => r.deltaOI < 0).sort((a, b) => a.deltaOI - b.deltaOI);
     case 'streaks':
@@ -244,15 +230,15 @@ export const WATCHERS: WatcherRule[] = [
   },
   {
     key: 'climbing',
-    label: 'Climbing fills',
-    reason: 'Up 8% or more on the day, a quarter swept, leaning to the ask',
-    hint: 'Buying that keeps coming back, each fill higher — chasers',
+    label: 'Up and bought',
+    reason: 'Up 8% or more on the previous close, a quarter swept, leaning to the ask',
+    hint: 'Price up 8%+ on the previous close, 6,000+ contracts, a quarter swept, leaning to the ask',
   },
   {
     key: 'falling',
-    label: 'Falling fills',
-    reason: 'Down 8% or more on the day, a quarter swept, leaning to the bid',
-    hint: 'Fills stepping lower while the volume keeps coming',
+    label: 'Down and sold',
+    reason: 'Down 8% or more on the previous close, a quarter swept, leaning to the bid',
+    hint: 'Price down 8%+ on the previous close, 6,000+ contracts, a quarter swept, leaning to the bid',
   },
   {
     key: 'fresh-size',
@@ -301,9 +287,9 @@ export function reasonPhrase(key: WatcherKey, r: BookContract): string {
     case 'into-earnings':
       return `Reports in ${r.earnDays === 0 ? 'this session' : `${r.earnDays} session${r.earnDays === 1 ? '' : 's'}`}, open interest +${r.deltaOI.toLocaleString('en-US')} on ${r.volume.toLocaleString('en-US')} contracts`;
     case 'climbing':
-      return `Up ${r.chgPct.toFixed(0)}% on the day, ${Math.round(r.sweepPct)}% swept, leaning to the ask`;
+      return `Up ${r.chgPct.toFixed(0)}% on the previous close, ${Math.round(r.sweepPct)}% swept, leaning to the ask`;
     case 'falling':
-      return `Down ${Math.abs(r.chgPct).toFixed(0)}% on the day, ${Math.round(r.sweepPct)}% swept, leaning to the bid`;
+      return `Down ${Math.abs(r.chgPct).toFixed(0)}% on the previous close, ${Math.round(r.sweepPct)}% swept, leaning to the bid`;
     case 'fresh-size':
       return `Volume ${r.volOverOI >= 10 ? r.volOverOI.toFixed(0) : r.volOverOI.toFixed(1)}× its open interest, on ${usd(r.premium)}`;
     case 'hammering':
@@ -346,6 +332,11 @@ export const crossHint = (r: { crossPct?: number; volume?: number }) =>
 /** Not a single bet: a floor package, a day of spread legs or a day of crosses — set apart wherever the book crowns or leans */
 export function notABet(r: Pick<BookContract, 'floorPct' | 'multiPct'> & { crossPct?: number }): boolean {
   return floorPackaged(r) || r.multiPct >= SPREAD_LEG_PCT || crossDay(r);
+}
+/** A book row's day lean in words — a day that is not a bet says why it has none */
+export function bookLeanWords(r: BookContract): string {
+  if (notABet(r)) return floorPackaged(r) ? 'floor package · no lean' : r.multiPct >= SPREAD_LEG_PCT ? `spread legs ${Math.round(r.multiPct)}% · no lean` : `a cross ${Math.round(r.crossPct ?? 0)}% · no lean`;
+  return leanWords(dayLean(r));
 }
 /** Why a spread-leg day carries no read, in its own figure */
 export const spreadLegHint = (r: Pick<BookContract, 'multiPct'>) =>
@@ -415,7 +406,7 @@ function rulesFor(r: BookContract, bigLine = 25_000_000): WatcherKey[] {
   const lean = notABet(r) ? 'UNSIDED' : dayLean(r).lean;
   if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct >= 8 && lean === 'ASK') out.push('climbing');
   else if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct <= -8 && lean === 'BID') out.push('falling');
-  if (r.oi > 0 && r.volOverOI >= FRESH_VOL_OI && r.premium >= 300_000) out.push('fresh-size');
+  if (r.volOverOI >= FRESH_VOL_OI && r.premium >= 300_000) out.push('fresh-size');
   if (r.volume >= 12000 && r.sweepPct >= 30) out.push('hammering');
   return out;
 }
@@ -516,8 +507,6 @@ export interface NetSegmentMeta {
   group: 'The book' | 'Sectors';
 }
 
-const INDEX_FUNDS = new Set(['SPY', 'QQQ', 'IWM']);
-
 /* A sector is told by its glyph (components/trace/SectorMark), never a colour. */
 export const NET_SEGMENTS: NetSegmentMeta[] = [
   { key: 'all', label: 'Everything', group: 'The book' },
@@ -531,8 +520,6 @@ export const NET_SEGMENTS: NetSegmentMeta[] = [
 export const isNetSegment = (v: unknown): v is NetFlowSegment =>
   typeof v === 'string' && NET_SEGMENTS.some(s => s.key === v);
 
-export const segmentLabel = (seg: NetFlowSegment): string => NET_SEGMENTS.find(s => s.key === seg)?.label ?? seg;
-
 export type MoneynessKey = 'all' | 'itm' | 'otm' | 'atm';
 
 export const MONEYNESS: { key: MoneynessKey; label: string; hint: string }[] = [
@@ -542,22 +529,11 @@ export const MONEYNESS: { key: MoneynessKey; label: string; hint: string }[] = [
   { key: 'atm', label: 'ATM', hint: 'Within 1% of the spot' },
 ];
 
-export function segmentFilter(r: BookContract, seg: NetFlowSegment): boolean {
-  if (seg === 'all') return true;
-  if (seg === 'index-funds') return INDEX_FUNDS.has(r.ticker);
-  if (seg === 'indexes') return /^(SPXW?|NDXP?|XSP|RUTW?|VIXW?|XND|DJX|MRUT)$/.test(r.ticker);
-  if (seg === 'stocks') return !INDEX_FUNDS.has(r.ticker);
-  /* A sector is a cut of the STOCKS: the sector map files SPY/QQQ/IWM under
-     Financial Services, and they would swallow that sector on a 0DTE day. */
-  return r.sector === seg.slice('sector:'.length) && !INDEX_FUNDS.has(r.ticker);
-}
-
 /* MONEYNESS, ONE CONVENTION (audit round 7, the blocker: "Out of the money" returned CRWV 78P −40.3% and dropped the OTM
    NVDA 210P +1.0%): otmPct is the strike's distance PAST the stock — positive out of the money for calls AND puts (call:
    strike above spot; put: strike below spot; traceLive otmOf, spreadLegRow). So in the money is otmPct < 0 on both sides.
    A distance that is not known (NaN — a whole-point small index) is neither in nor out. */
 export const isInTheMoney = (r: Pick<BookContract, 'otmPct'>): boolean => Number.isFinite(r.otmPct) && r.otmPct < 0;
-export const isOutOfTheMoney = (r: Pick<BookContract, 'otmPct'>): boolean => Number.isFinite(r.otmPct) && r.otmPct > 0;
 
 /** A contract's or a print's place against the stock — both carry the same two fields */
 export function moneynessFilter(r: Pick<BookContract, 'otmPct' | 'right'>, m: MoneynessKey): boolean {
@@ -687,14 +663,18 @@ export interface SpreadTrade {
   ratioLabel?: string;
   /** Why the risk is not drawn: the legs did not settle, they run to two expiries, or the net is not known */
   riskNote?: 'unsettled' | 'expiries' | 'no-net';
+  /** The vendor's own family, direction and expiry risk (null loss when it gave none; 'uncapped' for a null profit) */
+  vendorKind?: SpreadKind;
+  vendorDirection?: 'long' | 'short' | 'unknown';
+  vendorRisk?: { loss: number; profit: number | 'uncapped' } | null;
+  /** The settled legs contradict the vendor's risk or (direction unknown) its family: shown, never crowned */
+  unverified?: boolean;
   /** The structure in a sentence, from its settled legs */
   read?: string;
   /** Whether its legs are in hand */
   legsState?: 'pending' | 'in' | 'none';
-  /** A PIECE OF A SPLIT ORDER (retail, round 10: MDB 290/430/490/640 Mar '28 stood as "long call condor, paid $23.92" and,
-      the same second, "calls bought · 4 strikes, paid $433.98, uncapped" — crowned Largest): the vendor printed it in the
-      same second, on the same strikes and expiry, under the same name as another structure whose legs DO make that shape,
-      while its own legs make another. The shape that structure's legs make; shown, explained, never crowned. */
+  /** A piece of a split order: printed in the same second, strikes, expiry and vendor name as a structure whose legs do
+      make that shape, while its own legs make another. That structure's shape; shown, never crowned. */
   splitOf?: string;
 }
 
@@ -757,14 +737,10 @@ export function spreadLegRow(trade: SpreadTrade, i: number): BookContract {
     floorPct: 0,
     askPct: NaN,
     prevOI: 0,
-    prevVolume: 0,
     prevAvgFill: 0,
-    prevPremium: 0,
-    prevAskPct: 0,
     oiStreak: 0,
     volGtOiStreak: 0,
     earnDays: null,
-    prevSpark: [],
   };
 }
 
@@ -801,4 +777,4 @@ export function applyFilters(rows: BookContract[], f: BookFilters): BookContract
 }
 
 /** Said on every figure the vendor sums for us (audit round 5, SidesRule): its totals carry spread legs and floor packages */
-export const VENDOR_TOTAL_NOTE = 'A summed total — it includes spread legs and floor packages (every print is in the sum; the legs cannot be taken back out without every print across the market). Only the totals Trace builds from prints — the Live Tape, the Dark Pool, Multi-Leg — leave them out';
+export const VENDOR_TOTAL_NOTE = 'A summed total: spread legs and floor packages are in it. Live Tape, Dark Pool and Multi-Leg leave them out';

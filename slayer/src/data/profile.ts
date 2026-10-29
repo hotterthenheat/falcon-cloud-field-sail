@@ -1,20 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE ACCOUNT'S SEAM (data/profile.ts)
-
-  Who the reader is to the terminal: the picture,
-  the name, the handle, the email, how they sign
-  in, where they are signed in. THE SHAPE the
-  account service will hand back once sign-in
-  exists (roadmap step 5); until then the profile
-  lives on this machine (localStorage) and starts
-  as a sample, so the Account page is the launch
-  page, not a placeholder (Noah, 2026-09-12: "i
-  just want the preview of how things would look
-  after apis are plugged in"). The picture is the
-  reader's own file, cropped to a square and kept
-  small (128px), stored with the profile.
-==================================================
+  The reader's profile as the terminal shows it: picture, name, handle, email, sign-in method and sessions. Kept in
+  localStorage (starting from a sample) and mirrored from the account row while signed in (data/account.ts). The
+  picture is cropped to a 128px square and stored with the profile.
 */
 
 import { useSyncExternalStore } from 'react';
@@ -43,9 +30,7 @@ export interface Profile {
 
 const KEY = 'slayer_profile';
 
-/** The sample the preview starts from — a real account replaces it at sign-in. A
-    placeholder person, not the owner (Noah, 2026-09-13: "make my tag name just john doe,
-    same as my name"); the handle is the name, run together. */
+/** The sample the preview starts from; a real account replaces it at sign-in. */
 export const SAMPLE_PROFILE: Profile = {
   name: 'John Doe',
   handle: 'johndoe',
@@ -63,8 +48,7 @@ let profile: Profile = (() => {
     const raw = localStorage.getItem(KEY);
     if (!raw) return SAMPLE_PROFILE;
     const p = JSON.parse(raw) as Partial<Profile>;
-    /* A profile saved under the old sample's name (an avatar added before the
-       placeholder became John Doe) takes the new placeholder's name and handle */
+    /* a profile saved under the old sample's name takes the current placeholder's name and handle */
     const oldSample = p.name === 'Noah' && p.handle === 'noah';
     return {
       ...SAMPLE_PROFILE,
@@ -86,8 +70,7 @@ const subscribe = (fn: () => void) => {
 
 type ProfileSink = (patch: Partial<Profile>) => void;
 let sink: ProfileSink | null = null;
-/** THE ACCOUNT LISTENS (data/account.ts, 2026-10-03): while someone is signed in, a change saved here is written to
-    their row — so the rail, the room and the Account page never had to learn about auth */
+/** While signed in, a change saved here is written to the account row (data/account.ts). */
 export const onProfileSaved = (fn: ProfileSink | null): void => {
   sink = fn;
 };
@@ -97,7 +80,7 @@ export function setProfile(patch: Partial<Profile>): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(profile));
   } catch {
-    /* storage full or off — the change lives for the session */
+    /* storage full or off: the change lives for the session */
   }
   listeners.forEach(fn => fn());
   sink?.(patch);
@@ -105,7 +88,7 @@ export function setProfile(patch: Partial<Profile>): void {
 
 export const useProfile = (): Profile => useSyncExternalStore(subscribe, () => profile, () => SAMPLE_PROFILE);
 
-/** "NB" for "Noah Barkat", "N" for "Noah" — the mark when there is no picture */
+/** Initials for the avatar when there is no picture: "JD" for "John Doe" */
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return '?';
@@ -115,9 +98,7 @@ export function initials(name: string): string {
     .join('');
 }
 
-/** The reader's file as the picture: drawn onto a square canvas, the shorter
-    side filling it (cover), at AVATAR_PX — a phone photo of several MB becomes
-    a few KB and never bloats the store. */
+/** The reader's file as the picture: a square cover crop at AVATAR_PX, so a multi-MB photo becomes a few KB. */
 export const AVATAR_PX = 128;
 export function readAvatar(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

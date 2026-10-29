@@ -1,32 +1,8 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE WALL (components/ui/ComingSoonWall.tsx)
-
-  The house glass over a page that opens after
-  launch — built for the Community room
-  (2026-09-13, Noah's two references: a gradient
-  wordmark over a dark page with a notify field,
-  and a spotlight cone over "Coming Soon" with a
-  countdown, "make the room in the background
-  seeable to some extent") and lifted out the same
-  night so it can stand over the Watchlist too —
-  the two pages that open after launch.
-
-  No card — the words stand on the glass with the
-  page reading through it; a lamp at the very top
-  of the page throws a silver beam that flickers
-  like something is wrong with the light (one clock
-  on the body, index.css `room-flicker`), the
-  wordmark in the terminal's holo gradient, the day
-  it opens counted down, a notify field, and
-  whatever the page wants at the foot.
-
-  A host wraps its body in a `relative` box, turns
-  the body's pointer events off while walled, and
-  renders <ComingSoonWall> after it. `useWalled`
-  reads the URL: `?wall` puts the wall up, `?open`
-  takes it down, otherwise the page's own default.
-==================================================
+  A coming-soon wall over a page that opens after launch: the page reads through the glass, a flickering silver lamp
+  at the top of the viewport, the holo wordmark, a countdown, a notify field and an optional foot. A host wraps its
+  body in a `relative` box, disables its pointer events while walled and renders this after it. `useWalled` reads
+  the URL: `?wall` shows the wall, `?open` hides it, otherwise the page's default.
 */
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -70,10 +46,8 @@ interface Props {
 }
 
 const ComingSoonWall = ({ kicker, blurb, foot }: Props) => {
-  /* Where the beam falls: the wall's centre, measured against the viewport — re-measured on a
-     window resize AND whenever the wall itself changes size, which is how the sidebar's glide
-     reaches it (Noah, 2026-09-13: "when the sidebar is expanded the light becomes off center" —
-     a resize observer fires through the glide, so the lamp rides it) */
+  /* where the beam falls: the wall's centre against the viewport, re-measured on resize and when the wall resizes (a
+     ResizeObserver follows the sidebar's animation) */
   const wallRef = useRef<HTMLDivElement | null>(null);
   const [beamX, setBeamX] = useState<number | null>(null);
   useLayoutEffect(() => {
@@ -90,10 +64,7 @@ const ComingSoonWall = ({ kicker, blurb, foot }: Props) => {
       ro.disconnect();
     };
   }, []);
-  /* ONE CLOCK for the lamp's flicker: the body animates the number the bulb, the beam and the
-     wordmark all read (index.css `room-flicker`) — three animations on three elements started on
-     three frames and drifted apart (Noah: "the flicker of the lightbulb and the flicker of the
-     actual light is not in sync") */
+  /* one clock for the flicker: the body animates the value the bulb, beam and wordmark read (index.css room-flicker) */
   useEffect(() => {
     document.body.classList.add('room-walled');
     return () => document.body.classList.remove('room-walled');
@@ -127,25 +98,14 @@ const ComingSoonWall = ({ kicker, blurb, foot }: Props) => {
   };
 
   return (
-    /* NO overflow-hidden on the glass (Noah, 2026-09-14: "the coming soon section should scroll
-       down with the light"): a clipped box is a scroll container in its own right, so the card's
-       `sticky` stuck to the glass — which never scrolls — and rode off with the page while the
-       lamp (fixed, on the body) stayed. With the glass unclipped the card sticks to the page's
-       scroller, the way the lamp holds the viewport; the glass keeps its corners on its own. */
-    /* THE PAINT IS THE THEME'S (2026-09-16): every wash and light here reads a --wall-* token
-       (theme/tokens.css) — a dark scrim, pool and silver beam on black; frost, a white pool and
-       a steel beam on paper (Noah, on the light theme: "what about this") */
+    /* no overflow-hidden on the glass: a clipped box becomes the sticky card's scroller and it would ride off with the page */
+    /* every wash and light reads a --wall-* token (theme/tokens.css): scrim and silver beam on dark, frost on paper */
     <div ref={wallRef} className="absolute inset-0 z-40 rounded-md" style={{ backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)', background: 'var(--wall-scrim)' }} data-room-wall={kicker}>
-      {/* THE BEAM falls from the very top of the page (Noah: "make the light shine from the absolute
-          top most section of the page and for it to flicker sometimes like something is wrong with
-          the light") — fixed to the viewport's top edge over the wall's centre, on the body so no
-          ancestor can hold it; its flicker is index.css's `room-beam` */}
+      {/* the beam: fixed to the viewport top over the wall's centre, on the body so no ancestor clips it (index.css room-beam) */}
       {beamX != null &&
         createPortal(
           <>
-            {/* THE LAMP (Noah: "add an actual lightbulb to make it look more realistic"): a cord
-                from the page's top edge, a cap, the glass with its filament and its glow — the
-                beam falls from the bulb, and the bulb flickers harder than the light it throws */}
+            {/* the lamp: cord, cap, glass, filament and glow; the bulb flickers harder than its beam */}
             <div aria-hidden className="fixed top-0 pointer-events-none z-[46]" style={{ left: beamX, transform: 'translateX(-50%)' }} data-room-lamp>
               <div className="room-bulb relative">
                 {/* the glow around the glass */}
@@ -188,9 +148,7 @@ const ComingSoonWall = ({ kicker, blurb, foot }: Props) => {
         <div aria-hidden className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[560px] pointer-events-none" style={{ background: 'var(--wall-pool)' }} data-room-wall-pool />
         <div className="relative flex flex-col items-center text-center px-6 animate-soft-in-slow">
           <p className="font-mono text-t9 uppercase tracking-[0.3em] text-textMuted">{kicker}</p>
-          {/* pb-2: the holo fill paints only inside the box, and at leading-none the g's tail fell
-              outside it and went transparent (Noah: "the g looks like it is bleeding into the
-              border under it"); mt-2 lifts the wordmark a touch */}
+          {/* pb-2: the holo fill paints only inside the box, and at leading-none the g's tail fell outside it */}
           <h2 className="room-lit mt-2 pb-2 text-t64 font-bold tracking-tight leading-none holo-text paper-galaxy" data-room-wall-title>
             Coming soon
           </h2>

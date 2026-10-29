@@ -1,22 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - EXPIRY PICKER
-  (components/ui/ExpiryPicker.tsx)
-
-  A date control in the house grammar, for the
-  browser's own calendar (Noah, 2026-09-05: "does
-  it look on par with the rest of the bottom
-  section of the page. i think not"). Built on
-  react-day-picker — the library under shadcn's
-  calendar — with every class ours and none of its
-  stylesheet, inside a Radix Popover.
-
-  MADE FOR EXPIRIES: weekends, market holidays and
-  past days cannot be picked, and the four dates an
-  options trader actually reaches for sit above the
-  grid as pills — today, this Friday, next Friday,
-  the monthly (third Friday).
-==================================================
+  A date control on react-day-picker (classes ours, none of its stylesheet) inside a Radix Popover, made for expiries:
+  weekends, holidays and past days are disabled, and today, this Friday, next Friday and the monthly sit above the grid.
 */
 
 import { useState } from 'react';

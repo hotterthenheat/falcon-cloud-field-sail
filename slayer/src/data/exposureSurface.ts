@@ -44,8 +44,6 @@ import type { ExposureLevels, ExposureProfileData } from '../types/gex';
 /** Gamma, delta, vega, vanna, charm, and the five higher greeks calculated off each contract's own vol. */
 export type Greek = 'gex' | 'dex' | 'vex' | 'vanna' | 'charm' | 'color' | 'vomma' | 'speed' | 'veta' | 'zomma';
 export const GREEKS: Greek[] = ['gex', 'dex', 'vex', 'vanna', 'charm', 'color', 'vomma', 'speed', 'veta', 'zomma'];
-/** The three the calendar shows side by side under the old "core" cut. All still means every greek. */
-export const CORE_GREEKS: Greek[] = ['gex', 'dex', 'vex'];
 /** Needs the option-contracts read. Spot GEX, DEX, vanna and charm do not. */
 const CONTRACT_GREEKS: ReadonlySet<Greek> = new Set<Greek>(['vex', 'color', 'vomma', 'speed', 'veta', 'zomma']);
 export const isContractGreek = (g: Greek): boolean => CONTRACT_GREEKS.has(g);

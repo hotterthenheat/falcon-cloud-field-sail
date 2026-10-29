@@ -27,7 +27,7 @@
 import { useEffect, useState } from 'react';
 import { uwCall } from './whales';
 import { isoDate, isTradingDay } from '../core/calendar';
-import { nyClock } from '../core/nyTime';
+import { minuteLabel, nyClock } from '../core/nyTime';
 import { liveTrades, sideOfTags, printCondition, quoteNoReadOf, sessionEndMin, tapeSessionIso } from './traceLive';
 
 export type FlowSide = 'BID' | 'MID' | 'ASK';
@@ -36,15 +36,8 @@ export type FlowSide = 'BID' | 'MID' | 'ASK';
 export const SESSION_MIN = 390;
 const OPEN_MIN = 9 * 60 + 30;
 
-/** Minutes since the 9:30 New York bell, labelled on the Central clock. 0 → "8:30 AM". */
-export function flowClock(min: number): string {
-  const total = OPEN_MIN + Math.round(min);
-  const ct = ((total - 60) % 1440 + 1440) % 1440;
-  const h24 = Math.floor(ct / 60);
-  const m = ct % 60;
-  const h = h24 % 12 || 12;
-  return `${h}:${String(m).padStart(2, '0')} ${h24 < 12 ? 'AM' : 'PM'}`;
-}
+/** Minutes since the 09:30 bell on New York's 24-hour clock: 0 → "09:30" */
+export const flowClock = (min: number): string => minuteLabel(OPEN_MIN + Math.round(min));
 
 const num = (v: unknown): number => {
   const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.replace(/,/g, '')) : NaN;
@@ -364,10 +357,10 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
     ? {
         from: Math.min(0, firstMin),
         to: Math.max(end, lastMin + 1),
-        label: firstMin < 0 || lastMin >= end ? `the whole day, ${clockOf(Math.min(0, firstMin))}–${clockOf(Math.max(end, lastMin + 1))} CT, every print` : `8:30 AM–${clockOf(end)} CT, every print`,
+        label: firstMin < 0 || lastMin >= end ? `the whole day, ${clockOf(Math.min(0, firstMin))}–${clockOf(Math.max(end, lastMin + 1))} ET, every print` : `09:30–${clockOf(end)} ET, every print`,
         source: 'prints',
       }
-    : { from: 0, to: end, label: `the regular session, 8:30 AM–${clockOf(end)} CT — the vendor's minutes`, source: 'minutes' };
+    : { from: 0, to: end, label: `the regular session, 09:30–${clockOf(end)} ET, the vendor's minutes`, source: 'minutes' };
   const panelMinutes = fromPrints ? minutesFromPrints(prints) : minutes;
 
   const hist = rows(histRaw, 'chains').map(dayRow).filter(d => d.iso).sort((a, b) => b.iso.localeCompare(a.iso));

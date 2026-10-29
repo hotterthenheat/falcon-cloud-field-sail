@@ -48,7 +48,6 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import ChartToolbar from '../../../components/gex/ChartToolbar';
 import CompareControl from '../../../components/gex/CompareControl';
-import SpotPrice from '../../../components/gex/SpotPrice';
 import StrikeChart, { DEFAULT_INDICATORS, DEFAULT_OVERLAYS, type ChartIndicators, type ChartOverlays, type ChartStyle, type CompareEntry, type CompareMode } from '../../../components/gex/StrikeChart';
 import StrikeExposureBand, { type BandMetric } from '../../../components/gex/StrikeExposureBand';
 import TickerQuickPick from '../../../components/gex/TickerQuickPick';
@@ -56,17 +55,16 @@ import { chartGround, useCandleThemeKey } from '../../../components/gex/candleTh
 import { FOCUS, SUPREME, alpha } from '../../../components/gex/paletteInk';
 import { useFadeClose } from '../../../components/ui/useFadeClose';
 import { useFocus, useFocusedStrike } from '../../../context/FocusContext';
-import { useMarketData } from '../../../context/MarketDataContext';
-import Simulator from '../../../core/simulator';
 import { readDeskPrefs } from '../../../data/deskPrefs';
 import { DOCK_ROOM } from '../../../data/editorDock';
 import { buildExposureProfile } from '../../../data/exposure';
-import { buildLevelsFor, buildPrints } from '../../../data/gex';
+import { buildPrints } from '../../../data/gex';
+import { levelsOf } from './derive';
 import { fmtTwin, twinFamilyFor, twinPrice } from '../../../data/indexTwins';
 import { buildLevelRead } from '../../../data/levelview';
 import { TIMEFRAMES, type Timeframe } from '../../../data/timeframe';
 import type { TileProps, TileState } from '../tile';
-import { fmtStrike } from './parts';
+import { LiveSpot, fmtStrike } from './parts';
 
 /** The tile's interval: its own pick, else the desk's (Settings › The desk), else one minute */
 export const chartTf = (state: TileState): Timeframe => {
@@ -76,10 +74,11 @@ export const chartTf = (state: TileState): Timeframe => {
 
 /* Compare-line inks, blue leading like TradingView's; four slots. None of these collide with the field (gold/steel), the
    levels (magenta/green/red/baby-blue), or the voices (lime/mint). */
+/* No simulated prints are drawn; the live chart's flow markers come with the live tape (Terrain draws none either). */
+const NO_PRINTS: [] = [];
 const COMPARE_INKS = ['#5B9CF6', '#BBB2E8', '#EDE4CD', '#6BD3C7'];
 
 const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
-  const { flowTape } = useMarketData();
   const timeframe = chartTf(state);
   const [overlays, setOverlays] = useState<ChartOverlays>(DEFAULT_OVERLAYS);
   const [compares, setCompares] = useState<CompareEntry[]>([]);
@@ -117,7 +116,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
   /* the chart's own levels — the rule Terrain's panes draw by */
-  const levels = useMemo(() => buildLevelsFor(ctx.ticker), [ctx.ticker, ctx.snapshot]); // eslint-disable-line react-hooks/exhaustive-deps
+  const levels = useMemo(() => levelsOf(ctx.snapshot), [ctx.snapshot]); // eslint-disable-line react-hooks/exhaustive-deps
   /* Dark-pool prints for the DP overlay, pinned to the name so the lines do not wander with the tick */
   const prints = useMemo(() => buildPrints(ctx.ticker, levels.spot), [ctx.ticker]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -171,7 +170,6 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
     if (!full) setSuperFull(false);
   }, [full]);
 
-  const spot = Simulator.TICKERS[ctx.ticker]?.currentPrice ?? levels.spot;
 
   const body = (
     <div
@@ -211,7 +209,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
                 if (!fam) return null;
                 return (
                   <span className="font-mono text-t10 text-textMuted tnum">
-                    {fam.index} {fmtTwin(twinPrice(fam, 'index', spot, spot))} · {fam.futures} {fmtTwin(twinPrice(fam, 'futures', spot, spot))}
+                    {fam.index} {fmtTwin(twinPrice(fam, 'index', levels.spot, levels.spot))} · {fam.futures} {fmtTwin(twinPrice(fam, 'futures', levels.spot, levels.spot))}
                   </span>
                 );
               })()}
@@ -326,7 +324,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
             <span className="text-t10 text-textMuted" aria-hidden>
               ·
             </span>
-            <SpotPrice value={spot} className="text-t11 font-semibold tnum text-textPrimary" />
+            <LiveSpot ticker={ctx.ticker} fallback={levels.spot} className="text-t11 font-semibold tnum text-textPrimary" />
           </div>
           {/* one quiet row per comparison — its line ink, its name, and the only hand-removal outside the + menu */}
           {compares.map(c => (
@@ -335,7 +333,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
               <span className="text-t10 font-semibold" style={{ color: c.ink }}>
                 {c.ticker}
               </span>
-              {Simulator.TICKERS[c.ticker] && <SpotPrice value={Simulator.TICKERS[c.ticker].currentPrice} className="text-t10 tnum text-textSecondary" />}
+              <LiveSpot ticker={c.ticker} className="text-t10 tnum text-textSecondary" />
               <button
                 onClick={() => removeCompare(c.ticker, c.mode)}
                 aria-label={`Remove ${c.ticker} comparison`}
@@ -353,7 +351,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
             ticker={ctx.ticker}
             paneId="pulse:main"
             revision={ctx.revision}
-            flowPrints={flowTape}
+            flowPrints={NO_PRINTS}
             levels={levels}
             timeframe={timeframe}
             overlays={overlays}

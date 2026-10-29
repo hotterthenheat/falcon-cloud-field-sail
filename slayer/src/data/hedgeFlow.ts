@@ -119,16 +119,4 @@ function ladderOf(strikes: readonly number[], spot: number, flowTo: (K: number) 
   return { spot, rungs, maxAbs };
 }
 
-/** The two-wall line for the rail's head: "↑485 sell $210M · ↓480 buy $90M" */
-export function wallFlowWords(ladder: FlowLadder, callWall: number, putWall: number): string {
-  const at = (k: number) => ladder.rungs.find(r => Math.abs(r.strike - k) < 1e-9);
-  const part = (r: FlowRung | undefined, k: number, arrow: string) => (r ? `${arrow}${fmtStrike(k)} ${r.flow >= 0 ? 'buy' : 'sell'} ${fmtFlow(r.flow)}` : `${arrow}${fmtStrike(k)} —`);
-  return `${part(at(callWall), callWall, '↑')} · ${part(at(putWall), putWall, '↓')}`;
-}
 
-/** The sentence for one strike, subject included: "A push up to 485 forces about $210M of dealer selling, which slows the move." */
-export function flowSentence(r: FlowRung): string {
-  if (r.flow === 0) return `A move to ${fmtStrike(r.strike)} forces no dealer flow.`;
-  const up = r.movePct > 0;
-  return `A ${up ? 'push up' : 'drop'} to ${fmtStrike(r.strike)} forces about ${fmtFlow(r.flow)} of dealer ${r.flow >= 0 ? 'buying' : 'selling'}, which ${r.amplifies ? 'speeds the move up' : 'slows the move'}.`;
-}

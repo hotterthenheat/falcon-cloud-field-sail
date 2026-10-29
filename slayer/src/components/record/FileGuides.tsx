@@ -34,9 +34,9 @@ export const ShortsGuide = () => (
         <li>Borrow fee ≥ 50% a year: 2 points · ≥ 10%: 1</li>
         <li>Under 500K shares left to borrow: 1</li>
         <li>Shares short up 20% or more since the prior report: 1</li>
-        <li>On a name’s own file: short volume ≥ 50% of the last session’s full volume (not FINRA’s off-exchange share, which runs about half on any name): 1 · a fail-to-deliver day of ≥ 0.1% of the float in the last 30 days: 1</li>
+
       </ul>
-      <p className="mt-1.5"><b>Strong</b> needs several facts at once: 6 points or more from at least three different facts, with 20% or more of the float short and a tight borrow (a fee of 10% or more, or under 500K shares left). It is rare on purpose — the screen is already the 200 heaviest shorts by share of the float, so a high short interest alone says little here. <b>Building</b> is 4 points or more from at least two facts. <b>Weak</b> is the rest. It is a setup, not a forecast: it says the shorts would be squeezed if buyers came, not that buyers will come.</p>
+      <p className="mt-1.5"><b>Strong</b> needs several facts at once: 6 points or more from at least three different facts, with 20% or more of the float short and a tight borrow (a fee of 10% or more, or under 500K shares left). It is rare on purpose — the screen is already the 200 heaviest shorts by share of the float, so a high short interest alone says little here. <b>Building</b> is 4 points or more from at least two facts. <b>Weak</b> is the rest. The list and a name’s file use the same rule; the file also shows the last session’s short volume and the fails to deliver, without scoring them. It is a setup, not a forecast.</p>
     </Section>
     <Section title="A row">A card keeps the grid to that name. A row opens the short file, with the session’s short volume by market and the fails to deliver.</Section>
   </>

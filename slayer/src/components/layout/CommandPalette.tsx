@@ -86,7 +86,7 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
       icon: <page.icon className="w-3.5 h-3.5" />,
       run: () => navigate(page.path),
     }));
-    /* Compass's second page (2026-09-13): the Tracker left the Manage group for the tree under Compass */
+    /* the Tracker sits under Compass */
     const compassSubs: PaletteAction[] = [
       { id: 'nav-/compass/blotter', group: 'Navigate', label: 'Compass → Blotter', hint: 'Every trade recorded, entry to exit', icon: <Activity className="w-3.5 h-3.5" />, run: () => navigate('/compass/blotter') },
       { id: 'nav-/compass/tracker', group: 'Navigate', label: 'Compass → Tracker', hint: 'The setups you keep, live', icon: <Activity className="w-3.5 h-3.5" />, run: () => navigate('/compass/tracker') },
@@ -139,9 +139,8 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
     if (rows.length) askCompanyNames(rows.map(r => r.symbol));
   }, [open, tickMod, room, query, listedRev, nameRev]);
 
-  /* THE DRAWING TOOLS, BY NAME (2026-09-19): "fib ext", Enter, and the tool is in hand on the chart the pointer was last over
-     (gex/drawTools.tsx). Only with a query — thirty-four more rows at rest would bury the pages — and only on a page that
-     has a chart to draw on. */
+  /* Drawing tools by name ("fib ext", Enter) arm the tool on the chart last hovered (gex/drawTools.tsx); only with a
+     query, and only on a page with a chart. */
   const drawActions = useMemo<PaletteAction[]>(() => {
     const q = query.trim();
     if (!open || !q || !canArmDrawTool()) return [];
@@ -159,9 +158,7 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
       }));
   }, [query, open]);
 
-  /* LEVELS AND THE CONE, BY NAME. They live in the overlay menu, not on the
-     desk bar, so ⌘K is the other door. The desk applies the command to the
-     pane that is active. Only while that desk is the page. */
+  /* Levels and the cone by name, applied to the active pane; only while that desk is the page */
   const chartActions = useMemo<PaletteAction[]>(() => {
     const q = query.trim().toLowerCase();
     if (!open || !onTerrain || !q) return [];

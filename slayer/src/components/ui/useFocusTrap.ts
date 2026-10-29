@@ -1,64 +1,14 @@
 import { useEffect, useRef, type RefObject } from 'react';
 
 /*
-==================================================
-  SLAYER TERMINAL - FOCUS TRAP (ui/useFocusTrap.ts)
-
-  Keeps the keyboard inside an open overlay, and
-  puts it back where it came from on the way out.
-==================================================
-
-  WHAT WAS ACTUALLY WRONG, MEASURED RATHER THAN ASSUMED.
-
-  An earlier sweep walked 457 tab stops and proved every one shows a focus
-  ring. That is a property of the RESTING page and it says nothing about the
-  part a keyboard user gets stuck in. Driving both overlays from the keyboard:
-
-      print drilldown   opening it did not move focus at all — focus stayed
-                        on the tape row behind, so the very first Tab went to
-                        that row's own "Mark this print" button, and kept
-                        walking the page underneath the card
-      command palette   focused its input correctly, and then the first Tab
-                        landed on "Compass Options chooser — week", a control
-                        on the desk behind it
-
-  Both overlays dim the page behind and neither hides it from the keyboard, so
-  a reader who cannot see the dim tabs into content that is not there for
-  them. That is the whole defect, and it is the same defect twice, which is
-  why this is a hook and not two copies.
-
-  WHAT IT DOES, in the order it matters:
-
-    1. Remembers what was focused when the overlay opened.
-    2. Moves focus INTO the overlay if it is not already there — first
-       focusable child, or the container itself as a fallback, which is why
-       callers put tabIndex={-1} on it.
-    3. Cycles Tab and Shift+Tab within the overlay, wrapping at both ends.
-    4. On close, returns focus to whatever opened it — but only if that
-       element is still in the document, since the overlay may have been what
-       removed it.
-
-  The opener is captured in a ref rather than a local, so that an effect that
-  re-runs for any other reason cannot quietly re-capture something INSIDE the
-  overlay as the thing to return to.
-
-  The keydown listener is on `document` in the CAPTURE phase: an overlay that
-  handles its own keys (the palette runs ArrowUp/ArrowDown/Enter through a
-  React handler on its container) must not be able to swallow Tab before the
-  trap sees it.
+  Keeps keyboard focus inside an open overlay and returns it on close. It remembers the opener (in a ref, so a re-run
+  effect cannot capture an element inside the overlay), moves focus in (first focusable child, else the container,
+  hence tabIndex={-1} on it), wraps Tab and Shift+Tab at both ends, and on close refocuses the opener if it is still
+  in the document. Keydown is captured on `document`, so an overlay's own key handlers cannot swallow Tab first.
 */
 
-/*
-  EVERY branch has to exclude tabindex="-1", not just the last one.
-
-  `button:not([disabled])` matches a button whatever its tabindex, so a
-  deliberately untabbable control still counted as trappable. Measured: with
-  the compare menu open, its 23 rows of scale buttons — all tabindex="-1" —
-  were collected here, which put `last` two hundred elements away from the
-  search box. Tab from the box was therefore never "at the end", the trap
-  stood aside, and focus walked out of the menu onto a control behind it. The
-  trap looked installed and did nothing.
-*/
+/* every branch excludes tabindex="-1": `button:not([disabled])` alone matches untabbable buttons, which pushed `last`
+  far from the real end and let focus escape */
 const FOCUSABLE = [
   'a[href]:not([tabindex="-1"])',
   'button:not([disabled]):not([tabindex="-1"])',

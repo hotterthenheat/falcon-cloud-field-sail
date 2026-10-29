@@ -1,23 +1,9 @@
-/*
-==================================================
-  SLAYER TERMINAL - COMPASS TYPES (compass.ts)
-  Advisory signal engine — ENTER/EXIT guidance only.
-  Four scanners, grouped setup feed, contract chain,
-  signal monitor & impact leaderboard.
-==================================================
-*/
+/* Compass: the advisory signal engine (enter/exit guidance only), its scanners, setup feed and contract chain. */
 
-/*
-  TWO AXES, one board (redesign 2026-08-04, docs/compass-redesign-port.md):
-  the SLEEVE is the contract tenor (how long the trade lives), the SCANNER is
-  the thesis lens (why the trade exists). Weeklies/Swings used to be scanner
-  keys — they were always tenors wearing a scanner's hat, and the backtest
-  spec's sleeves (Weekly/Swing/LEAPS/Lotto) confirm the split. Every scanner
-  runs on every sleeve.
-*/
+/* Two axes on one board (docs/compass-redesign-port.md): the sleeve is the contract tenor, the scanner the thesis.
+   Every scanner runs on every sleeve. */
 
-/* FIVE SLEEVES (his partner's table, 2026-10-10): 0DTE · Weekly · Swing · POSITION (new — a quarter) · Long-dated (the
-   LEAPS sleeve under its new name; the key stays, so every stored setup, deep link and journal entry still reads) */
+/* Five sleeves: 0DTE, Weekly, Swing, Position (a quarter) and Long-dated, whose key stays 'leaps' for stored data. */
 export type SleeveKey = 'odte' | 'weekly' | 'swing' | 'position' | 'leaps';
 
 export interface SleeveDef {
@@ -42,9 +28,7 @@ export const SLEEVE_BY_KEY: Record<SleeveKey, SleeveDef> = Object.fromEntries(
   SLEEVES.map(s => [s.key, s])
 ) as Record<SleeveKey, SleeveDef>;
 
-/* THE TWELVE KINDS (his partner's table, 2026-10-10 — "the new setups for compass"): the five that stood, with
-   Breakouts, Trend continuation, Volatility expansion, Mean reversion, Overpriced and Earnings beside them. The keys are
-   the engine's and the journal's; the two that stood under other words keep their keys ('top-setups', 'whale-sweeps'). */
+/* Twelve kinds. Keys are the engine's and the journal's and never change ('top-setups', 'whale-sweeps' keep theirs). */
 export type ScannerKey =
   | 'top-setups'
   | 'quick-scalp'
@@ -65,10 +49,7 @@ export interface ScannerDef {
   blurb: string;
 }
 
-/* THE KINDS, in plain words (the Compass walk, 2026-09-11): the reader picks
-   one on the board's Kind card. The keys are the engine's and the journal's —
-   they never change; only the words did ("Whale Sweeps" echoed the
-   reference's brand word, banned on Trace the same way). */
+/* The kinds in plain words, picked on the board's Kind card; only the words may change, never the keys. */
 export const SCANNERS: ScannerDef[] = [
   { key: 'top-setups', label: 'Top ranked', blurb: 'The strongest by trend and hedging' },
   { key: 'quick-scalp', label: 'Quick scalp', blurb: 'Fast intraday moves, held for minutes' },
@@ -85,12 +66,9 @@ export const SCANNERS: ScannerDef[] = [
 ];
 
 /*
-  WHICH KIND RUNS ON WHICH SLEEVE — HIS PARTNER'S TABLE (2026-10-10), replacing the 2026-08-07 map: on, LIMITED, or
-  off, a kind on a sleeve. A fully-crossed grid sells nonsense trades (a scalp's thesis is an intraday hold; a year-long
-  instrument for a two-week bounce is twelve months of premium for a fortnight of idea). "Limited" is the kind offered
-  on that sleeve with a stricter bar and fewer candidates — the partner's note names each; until the math is final the
-  board says "limited" beside the kind. This map IS the backtest spec's candidate-eligibility gate — the journal and
-  the harness inherit it, so we never evaluate a combination the product doesn't sell.
+  Which kind runs on which sleeve: on, limited (stricter bar, fewer candidates) or off. A fully crossed grid would sell
+  nonsense trades. This map is the backtest's candidate-eligibility gate, so the journal and the harness never
+  evaluate a combination the product does not sell.
 
                       0DTE     Weekly   Swing    Position  Long-dated
     Top ranked         on       on       on       on        on
@@ -131,7 +109,7 @@ export function scannerEligibility(scanner: ScannerKey, sleeve: SleeveKey): Elig
   return ELIGIBILITY[scanner]?.[sleeve] ?? 'off';
 }
 
-/** the kinds a sleeve offers (on or limited), in the board's order — the shape the harness and the journal read */
+/** the kinds a sleeve offers (on or limited), in board order: what the harness and the journal read */
 export const ELIGIBLE_SCANNERS: Record<SleeveKey, ScannerKey[]> = Object.fromEntries(
   SLEEVE_ORDER.map(sleeve => [sleeve, SCANNERS.filter(s => scannerEligibility(s.key, sleeve) !== 'off').map(s => s.key)])
 ) as Record<SleeveKey, ScannerKey[]>;
@@ -140,12 +118,10 @@ export function isScannerEligible(scanner: ScannerKey, sleeve: SleeveKey): boole
   return scannerEligibility(scanner, sleeve) !== 'off';
 }
 
-/** The engine's internal read on a contract. Kept to ourselves for loop
-    scoring — users never see a command, only a state (see VERDICT_LABEL). */
+/** The engine's internal verdict, used for loop scoring; users only ever see a state (VERDICT_LABEL). */
 export type Verdict = 'ENTER' | 'EXIT' | 'WATCH';
 
-/** User-facing labels: the engine grades itself with ENTER/EXIT internally,
-    but the terminal shows states, not orders. */
+/** User-facing labels: the terminal shows states, not orders. */
 export const VERDICT_LABEL: Record<Verdict, string> = {
   ENTER: 'ACTIVE',
   WATCH: 'WATCH',
@@ -157,11 +133,8 @@ export type Momentum = 'STRENGTHENING' | 'NEUTRAL' | 'WEAKENING';
 /** Per-strike engine recommendation shown in the contract chain. */
 export type ChainAction = 'HOLD' | 'REDUCE' | 'SELL';
 
-/** LADDER INVARIANT (any provider of this field must hold it): statuses run
-    HIT* → at most ONE 'IN PROGRESS' → PENDING*, in rung order. The frontier
-    rung is the only one working; the UI draws exactly one live marker from
-    it. On real data, HIT additionally means price actually crossed the target
-    since the setup triggered — never infer it from anything else. */
+/** Ladder invariant: statuses run HIT* then at most one 'IN PROGRESS' then PENDING*, in rung order, so the UI draws one
+    live marker. On real data HIT means price crossed the target since the setup triggered. */
 export type TakeProfitStatus = 'PENDING' | 'IN PROGRESS' | 'HIT';
 
 export type OptionRight = 'C' | 'P';
@@ -196,15 +169,14 @@ export interface Setup {
   contract: string;
   right: OptionRight;
   strike: number;
-  /** Display bucket, e.g. "0DTE" / "5DTE" — the sleeve's voice. */
+  /** Display bucket ("0DTE", "5DTE"). */
   expiry: string;
-  /** The REAL expiry session, YYYY-MM-DD, resolved through core/calendar —
-      never a weekend or holiday. This is what the journal writer records. */
+  /** The real expiry session, YYYY-MM-DD (core/calendar); what the journal records. */
   expiryDate: string;
   /** Trading sessions of runway at scan time (calendar-aware). */
   sessionsLeft: number;
-  /** Underlying 1σ move to expiry, percent — iv·√(sessions/252)·100. Real
-      math, unlike expectedMovePct which speaks premium-target language. */
+  /** Underlying 1-sigma move to expiry, percent: iv * sqrt(sessions/252) * 100 (unlike expectedMovePct, a premium
+      target). */
   sigmaMovePct: number;
   sleeve: SleeveKey;
   score: number;
@@ -222,10 +194,8 @@ export interface Setup {
   ask: number;
   mid: number;
   liveMid: number;
-  /** Highest premium reached since entry. INVARIANT with the ladder: a rung is
-      HIT if and only if its target ≤ highWater — the rail draws this as the
-      campaign's memory, so "banked, then faded" reads instead of contradicting
-      the chips. Real data must supply the true running max. */
+  /** Highest premium since entry. Invariant: a rung is HIT exactly when its target <= highWater; real data must supply
+      the true running max. */
   highWater: number;
   confidence: number;
   health: number;
@@ -255,7 +225,7 @@ export interface Setup {
   band?: 'scalp' | 'average' | 'top' | 'wing' | 'closest' | 'lottery';
   /** Same trade, held after the score climbed. */
   strength?: boolean;
-  /** Theta's higher-order greeks on this quote. Charm, color and veta are the annual partial. */
+  /** Theta's higher-order greeks on this quote; charm, color and veta are annual partials. */
   vanna?: number;
   charm?: number;
   vomma?: number;
@@ -270,9 +240,8 @@ export interface Setup {
   invalidationReason: string;
 }
 
-/** One name's market state as the scan sees it. The Compass engine takes the
-    whole universe as an ARGUMENT — live pages pass the simulator's quotes, a
-    replay harness passes historical ones, and the engine can't tell which. */
+/** One name's market state as a scan sees it. The engine takes the universe as an argument (live quotes or replayed
+    history) and cannot tell which. */
 export interface UniverseQuote {
   ticker: string;
   price: number;
@@ -311,8 +280,7 @@ export interface ContractChain {
   rows: ChainRow[];
 }
 
-/** The four reasons a contract carries weight (Mo, 2026-08-19: "show why
-    each one matters: Gamma, Volume/OI, Distance from spot, Net exposure"). */
+/** The four reasons a contract carries weight: gamma, volume/OI, distance from spot, net exposure. */
 export type ImpactMetric = 'gamma' | 'voloi' | 'distance' | 'exposure';
 
 export interface ImpactRow {
@@ -324,18 +292,17 @@ export interface ImpactRow {
   expiry: string;
   openInterest: number;
   volume: number;
-  /** Today's volume against open interest — above 1×, more traded today than existed this morning. */
+  /** Today's volume over open interest; above 1x, more traded today than existed this morning. */
   volOi: number;
   /** Strike distance from spot, signed percent: + above, − below. */
   distPct: number;
-  /** This contract's dealer gamma, signed dollars — negative absorbs moves, positive amplifies. */
+  /** This contract's dealer gamma, signed dollars: negative absorbs moves, positive amplifies. */
   exposureUsd: number;
   /** Share of the whole book's gamma, percent. */
   gamma: number;
 }
 
-/** Why a contract is on a setup's driver list — the part it plays in the
-    book the campaign trades through. */
+/** Why a contract is on a setup's driver list: its part in the book the campaign trades through. */
 export type DriverRole = 'This contract' | 'Call wall' | 'Put wall' | 'Supreme' | 'Pin' | 'In the path';
 
 export interface DriverRow extends ImpactRow {

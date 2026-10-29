@@ -7,7 +7,7 @@ import { useMemo, useState } from 'react';
 import CardTabs from '../ui/CardTabs';
 import Fact from '../ui/Fact';
 import ContractLabel from '../ui/ContractLabel';
-import { readGate, offsetOf, spanOf } from '../../data/weigherGate';
+import { readGate, offsetOf, spanOf, thetaPerSessionHour } from '../../data/weigherGate';
 import { seatsNow, type LiveScore } from '../../data/compassModel';
 import { STOP_KEEP, TP1_STOP, TP2_STOP, TP3_STOP, TP4_TRAIL, DRIVE, weekdayDte } from '../../data/compassParams';
 import { odteDoneMin } from '../../data/compassSession';
@@ -287,7 +287,7 @@ const StrikeCase = ({ ticker, c, right, chain, profile, book, tick, score, liste
               <Fact big label="Window" value={sleeve} />
               {dte === 0 && (
                 <>
-                  <Fact big label="Decay an hour" value={Number.isFinite(c.theta) && c.theta !== 0 ? show(Math.abs(c.theta) / 6.5) : '—'} />
+                  <Fact big label="Decay an hour" value={Number.isFinite(c.theta) && c.theta !== 0 ? show(Math.abs(thetaPerSessionHour(c.theta))) : '—'} />
                   <Fact big label="Volume" value={c.volume > 0 ? c.volume.toLocaleString('en-US') : '—'} />
                   <Fact big label="Open interest" value={c.oi > 0 ? c.oi.toLocaleString('en-US') : '—'} />
                   <Fact big label="Closes" value={clock(Math.max(0, stopMin - 1))} />

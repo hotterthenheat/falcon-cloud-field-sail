@@ -267,17 +267,13 @@ export const Institutions = () => {
   }, [rows]);
   const columnDefs = useMemo<ColDef<InstitutionRow>[]>(
     () => [
-      /* newest filing first, and inside one filing day the biggest line first — the tie fell to feed order, so the
-         grid opened on one house's small lines while the cards above led with another's biggest (2026-10-22) */
       {
         headerName: 'Filed',
         field: 'filedDaysAgo',
         width: 126,
         cellRenderer: InstFiled,
-        sort: 'desc',
-        /* newest filing first, the bigger line first within a filing — one sort, so the head carries no "1" and "2"; by
-           recency descending, so the arrow reads ↓ for newest first (the retail test, round 7) */
-        comparator: (a: number, b: number, na: IRowNode<InstitutionRow>, nb: IRowNode<InstitutionRow>) => b - a || (na.data?.valueB ?? 0) - (nb.data?.valueB ?? 0),
+        /* by recency descending, so the arrow reads ↓ for newest first */
+        comparator: (a: number, b: number) => b - a,
         headerTooltip: 'The day the 13F was filed, and how far back that is',
       },
       { headerName: 'House', field: 'name', flex: 1.2, minWidth: 140, cellRenderer: InstHouse, headerTooltip: 'The filer' },
@@ -285,7 +281,7 @@ export const Institutions = () => {
       { headerName: 'Side', field: 'book', width: 88, cellRenderer: InstBook, headerTooltip: 'Call, put, or the shares. The filing does not name a strike or an expiry.' },
       { headerName: 'Status', field: 'status', width: 88, cellRenderer: InstStatus, headerTooltip: 'Against the prior 13F: new, added (2% more units or over), cut (2% fewer or over), closed, or held — within 2% either way, so a +1.6% line reads held' },
       { headerName: 'Shares', field: 'sharesM', width: 96, cellRenderer: InstShares, type: 'rightAligned', headerTooltip: 'Shares reported, in millions' },
-      { headerName: 'Value', field: 'valueB', width: 100, cellRenderer: InstValue, type: 'rightAligned', headerTooltip: 'The reported value' },
+      { headerName: 'Value', field: 'valueB', width: 100, cellRenderer: InstValue, type: 'rightAligned', sort: 'desc', headerTooltip: 'The reported value; the grid opens on the largest lines' },
       { headerName: '% of 13F value', field: 'pctOfBook', width: 112, cellRenderer: InstBookPct, type: 'rightAligned', headerTooltip: 'This line’s reported value as a share of the total value of everything the house reported on its 13F (Unusual Whales’ perc_of_share_value) — measured over the whole filing, not only the lines read here' },
       { headerName: 'Vs last filing', field: 'changePct', width: 120, cellRenderer: InstChange, type: 'rightAligned', headerTooltip: 'Change versus the prior 13F, not versus yesterday' },
     ],
