@@ -42,10 +42,10 @@ const DayBox = ({ scope, note, children }: { scope?: ReactNode; /** a quiet word
   return (
     <section className="relative flex-1 flex flex-col min-w-0 min-h-0" data-day-box data-day-open="">
       <div className="px-4 min-h-9 py-1 flex items-center gap-x-4 gap-y-1 flex-wrap">
-        <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">The day</h3>
+        <h3 className="text-t16 font-semibold leading-tight text-textPrimary">The day</h3>
         {scope}
         {note && (
-          <span className="font-mono text-[11px] text-textMuted" data-day-note>
+          <span className="font-mono text-t11 text-textMuted" data-day-note>
             {note}
           </span>
         )}

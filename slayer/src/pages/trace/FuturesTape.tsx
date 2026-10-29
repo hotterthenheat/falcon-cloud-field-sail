@@ -43,9 +43,9 @@ const FuturesTape = () => {
         <div className="border-t border-borderSubtle" data-futures-unavailable>
           {WOULD_SHOW.map(w => (
             <div key={w.what} className="px-5 py-3 border-t border-borderSubtle/40 first:border-t-0 flex flex-col sm:flex-row sm:items-baseline gap-x-4 gap-y-0.5">
-              <span className="text-[12px] font-semibold text-textPrimary sm:w-40 shrink-0">{w.what}</span>
-              <span className="text-[12px] text-textSecondary">{w.why}</span>
-              <span className="sm:ml-auto font-mono text-[10px] uppercase tracking-widest text-textMuted shrink-0">not connected</span>
+              <span className="text-t12 font-semibold text-textPrimary sm:w-40 shrink-0">{w.what}</span>
+              <span className="text-t12 text-textSecondary">{w.why}</span>
+              <span className="sm:ml-auto font-mono text-t10 uppercase tracking-widest text-textMuted shrink-0">not connected</span>
             </div>
           ))}
         </div>

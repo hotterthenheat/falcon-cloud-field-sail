@@ -25,15 +25,15 @@ const SpotRule = ({ ticker, price, centre = false }: SpotRuleProps) => {
   return (
   <span className={`flex items-center gap-1.5 select-none ${centre ? 'w-full' : ''}`} aria-label={`${ticker} spot ${price.toFixed(2)}`}>
     <span className="h-px flex-grow bg-gradient-to-r from-textPrimary/10 via-textPrimary/40 to-textPrimary/50" />
-    <span className="font-mono text-[11px] uppercase tracking-wider text-textSecondary whitespace-nowrap">{ticker}</span>
-    <span className={`inline-flex items-center rounded-[3px] px-1.5 py-px font-mono text-[11px] font-bold tnum whitespace-nowrap ${paper ? 'galaxy-bg' : 'holo-bg text-[#0a0a0a]'}`} data-spot-pill>
+    <span className="font-mono text-t11 uppercase tracking-wider text-textSecondary whitespace-nowrap">{ticker}</span>
+    <span className={`inline-flex items-center rounded-[3px] px-1.5 py-px font-mono text-t11 font-bold tnum whitespace-nowrap ${paper ? 'galaxy-bg' : 'holo-bg text-onfoil'}`} data-spot-pill>
       {price.toFixed(2)}
     </span>
     {centre ? (
       <>
         {/* the ticker's width again, unseen, so the PILL is at the middle — not the pair (Noah, 2026-10-12: "centered
             in the middle in relation to the amount of nodes") */}
-        <span aria-hidden className="invisible font-mono text-[11px] uppercase tracking-wider whitespace-nowrap">{ticker}</span>
+        <span aria-hidden className="invisible font-mono text-t11 uppercase tracking-wider whitespace-nowrap">{ticker}</span>
         <span className="h-px flex-grow bg-gradient-to-l from-textPrimary/10 via-textPrimary/40 to-textPrimary/50" />
       </>
     ) : (

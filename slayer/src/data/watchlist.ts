@@ -194,13 +194,14 @@ export function recordOf(rows: WatchedContract[]): { settled: number; hit: numbe
 
 /* ---- the store's doors ------------------------------------------------------------ */
 
-/** Watch a contract — marked at this tick's mark and spot. Returns the row, or the one already watching it. */
-export function addToWatchlist(req: WatchRequest): WatchedContract {
+/** Watch a contract at the live quote. A model price is not a mark. Returns null when there is no quote. */
+export function addToWatchlist(req: WatchRequest): WatchedContract | null {
   const same = list.find(w => w.status === 'open' && w.ticker === req.ticker && w.strike === req.strike && w.right === req.right && w.expiry === req.expiry);
   if (same) return same;
-  const spot = spotOf(req.ticker);
+  const addedMark = req.mark != null && req.mark > 0 ? Number(req.mark.toFixed(2)) : null;
+  if (addedMark == null) return null;
+  const spot = req.spot != null && req.spot > 0 ? req.spot : 0;
   const at = now().getTime();
-  const addedMark = markOf(req, spot);
   const row: WatchedContract = {
     id: `${req.ticker}-${req.strike}-${req.right}-${req.expiry}-${at}`,
     ticker: req.ticker,
@@ -216,6 +217,28 @@ export function addToWatchlist(req: WatchRequest): WatchedContract {
   };
   commit([row, ...list]);
   return row;
+}
+
+/** A mark that came from the estimator, not a quote, is replaced by the live quote. Once. */
+export function restampWatch(id: string, live: number, spot: number): void {
+  const w = list.find(x => x.id === id);
+  if (!w || w.status !== 'open' || !(live > 0)) return;
+  const model = markOf(w);
+  const addedToday = isoDate(new Date(w.addedAt)) === isoDate(today());
+  const modelish = Math.abs(w.addedMark - model) <= 0.02;
+  const bogus = addedToday && w.addedMark < 1 && live > w.addedMark * 8;
+  if (!modelish && !bogus) return;
+  if (Math.abs(live - w.addedMark) < 0.05) return;
+  const quote = Number(live.toFixed(2));
+  const day = isoDate(today());
+  commit(list.map(x => (x.id === id
+    ? {
+        ...x,
+        addedMark: quote,
+        addedSpot: spot > 0 ? spot : x.addedSpot,
+        marks: x.marks.map(m => (m.day === day && Math.abs(m.close - model) < 0.02 ? { ...m, close: quote } : m)),
+      }
+    : x)));
 }
 
 /** Anything open on the list? — the Weigher's list card opens on the watchlist when there is */

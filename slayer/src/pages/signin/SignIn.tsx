@@ -54,7 +54,7 @@ const Field = ({ label, type, value, onChange, autoComplete, testId, onEnter, ey
         onKeyDown={e => {
           if (e.key === 'Enter' && onEnter) onEnter();
         }}
-        className={`h-11 w-full rounded-[10px] border border-borderSubtle bg-chip text-[13.5px] text-textPrimary placeholder:text-textMuted outline-none transition-colors focus:border-borderMuted ${eye ? 'pl-3.5 pr-11' : 'px-3.5'}`}
+        className={`h-11 w-full rounded-[10px] border border-borderSubtle bg-chip text-t135 text-textPrimary placeholder:text-textMuted outline-none transition-colors focus:border-borderMuted ${eye ? 'pl-3.5 pr-11' : 'px-3.5'}`}
         data-signin-field={testId}
       />
       {eye && (
@@ -82,7 +82,7 @@ const Solid = ({ children, onClick, busy, testId }: { children: ReactNode; onCli
       onClick={onClick}
       disabled={busy}
       aria-busy={busy || undefined}
-      className={`h-11 w-full rounded-[10px] inline-flex items-center justify-center gap-2 text-[13.5px] font-medium transition-opacity disabled:cursor-progress ${theme === 'dark' ? 'holo-bg text-[#0a0a0a]' : 'galaxy-bg'}`}
+      className={`h-11 w-full rounded-[10px] inline-flex items-center justify-center gap-2 text-t135 font-medium transition-opacity disabled:cursor-progress ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
       data-signin-go={testId}
     >
       {children}
@@ -96,7 +96,7 @@ const ProviderDoor = ({ provider, children, onClick, testId }: { provider: Provi
   <button
     type="button"
     onClick={onClick}
-    className="h-11 flex-1 rounded-[10px] border border-borderSubtle bg-panel hover:border-borderMuted inline-flex items-center justify-center gap-2 text-[13px] text-textPrimary transition-colors"
+    className="h-11 flex-1 rounded-[10px] border border-borderSubtle bg-panel hover:border-borderMuted inline-flex items-center justify-center gap-2 text-t13 text-textPrimary transition-colors"
     data-signin-provider={testId}
   >
     {provider === 'google' ? <GoogleMark size={16} /> : <AppleMark size={15} className="-mt-px" />}
@@ -104,7 +104,7 @@ const ProviderDoor = ({ provider, children, onClick, testId }: { provider: Provi
   </button>
 );
 
-const quiet = 'text-[12.5px] text-textSecondary';
+const quiet = 'text-t125 text-textSecondary';
 const act = 'text-textPrimary hover:underline underline-offset-2 transition-colors';
 
 const SignIn = () => {
@@ -206,11 +206,11 @@ const SignIn = () => {
         <Link to="/" className="inline-flex w-fit rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver" aria-label="Slayer Terminal, the front page">
           <SlayerMark size={44} label="" />
         </Link>
-        <h1 className="mt-6 text-[17px] font-semibold leading-tight">{title}</h1>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-textSecondary">{line}</p>
+        <h1 className="mt-6 text-t17 font-semibold leading-tight">{title}</h1>
+        <p className="mt-1.5 text-t13 leading-relaxed text-textSecondary">{line}</p>
 
         {!ACCOUNTS_ON ? (
-          <p className="mt-6 text-[12.5px] text-textMuted" data-signin-off>
+          <p className="mt-6 text-t125 text-textMuted" data-signin-off>
             The account service is not set up on this build.
           </p>
         ) : (
@@ -222,12 +222,12 @@ const SignIn = () => {
                 <Field label={recovering ? 'New password' : 'Password'} type="password" value={password} onChange={setPw} autoComplete={face === 'in' && !recovering ? 'current-password' : 'new-password'} testId="password" onEnter={go} eye />
               )}
               {problem && (
-                <p role="alert" className="text-[12px] text-warn" data-signin-problem>
+                <p role="alert" className="text-t12 text-warn" data-signin-problem>
                   {problem}
                 </p>
               )}
               {note && !problem && (
-                <p className="text-[12px] text-textSecondary" data-signin-note>
+                <p className="text-t12 text-textSecondary" data-signin-note>
                   {note}
                 </p>
               )}
@@ -237,7 +237,7 @@ const SignIn = () => {
             </div>
             {/* the agreement, named where the account is made (2026-10-05) */}
             {face === 'up' && !recovering && (
-              <p className={`${quiet} mt-3 text-center text-[11.5px] text-textMuted`} data-signin-agree>
+              <p className={`${quiet} mt-3 text-center text-t115 text-textMuted`} data-signin-agree>
                 Creating the account means you agree to the{' '}
                 <Link to="/terms" className={act}>
                   Terms
@@ -255,7 +255,7 @@ const SignIn = () => {
                 {/* OR CONTINUE WITH — their marks, the house's doors; only the providers the project has switched on */}
                 <div className="mt-6 flex items-center gap-3" aria-hidden="true">
                   <span className="h-px flex-1 bg-borderSubtle" />
-                  <span className="text-[11px] text-textMuted">or continue with</span>
+                  <span className="text-t11 text-textMuted">or continue with</span>
                   <span className="h-px flex-1 bg-borderSubtle" />
                 </div>
                 <div className="mt-4 flex items-center gap-2.5 animate-soft-in" data-signin-doors={open.join(',')}>
@@ -296,7 +296,7 @@ const SignIn = () => {
                   Back to sign in
                 </button>
               )}
-              <p className="mt-2 text-[11.5px] text-textMuted">The terminal stays open without an account.</p>
+              <p className="mt-2 text-t115 text-textMuted">The terminal stays open without an account.</p>
             </div>
           </>
         )}

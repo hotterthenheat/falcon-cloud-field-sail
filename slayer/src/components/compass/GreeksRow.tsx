@@ -31,10 +31,10 @@ const GreeksRow = ({ greeks, fourth = 'vega', flash = false }: GreeksRowProps) =
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3" data-greeks>
       {cells.map(c => (
         <div key={c.label} className="min-w-0">
-          <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted">
+          <div className="font-mono text-t9 uppercase tracking-widest text-textMuted">
             {c.label in TERMS ? <Term k={c.label as TermKey} /> : c.label}
           </div>
-          <div className={`mt-0.5 font-mono text-[13px] font-semibold tnum ${c.tone}`}>
+          <div className={`mt-0.5 font-mono text-t13 font-semibold tnum ${c.tone}`}>
             <AnimatedNumber value={c.value} format={c.format} flash={flash} />
           </div>
         </div>

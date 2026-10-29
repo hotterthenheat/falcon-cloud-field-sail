@@ -5,6 +5,9 @@
   boundary.
 */
 
+import type { ReactNode } from 'react';
+import { Tip } from './Tooltip';
+
 const Chip = ({
   active,
   onClick,
@@ -13,19 +16,21 @@ const Chip = ({
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
   title?: string;
-}) => (
-  <button
-    onClick={onClick}
-    title={title}
-    aria-pressed={active}
-    className={`px-2 py-0.5 rounded font-mono text-[10px] whitespace-nowrap transition-colors ${
-      active ? 'bg-ink/[0.09] text-textPrimary font-semibold' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.04]'
-    }`}
-  >
-    {children}
-  </button>
-);
+}) => {
+  const button = (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`px-2 py-0.5 rounded font-mono text-t10 whitespace-nowrap transition-colors ${
+        active ? 'bg-ink/[0.09] text-textPrimary font-semibold' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.04]'
+      }`}
+    >
+      {children}
+    </button>
+  );
+  return title ? <Tip label={title}>{button}</Tip> : button;
+};
 
 export default Chip;

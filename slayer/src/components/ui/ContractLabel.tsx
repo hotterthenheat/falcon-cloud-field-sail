@@ -40,7 +40,7 @@ const ContractLabel = ({ contract, right, logo, size = 'md', className = '' }: C
           row's 36px) and stood 40px tall in a 39px row, its border past the row's rules (Noah,
           2026-09-14: "the con cards are bleeding out of their respected row"); the pill's own line
           keeps it 21px (sm) / 24px (md) wherever it stands */}
-      <span className={`font-mono font-bold leading-normal rounded border whitespace-nowrap ${size === 'sm' ? 'text-[11px] px-1 py-px' : 'text-[12px] px-1.5 py-0.5'} ${isCall ? 'text-bull border-bull/30 bg-bull/[0.06]' : 'text-bear border-bear/30 bg-bear/[0.06]'}`}>{contract}</span>
+      <span className={`font-mono font-bold leading-normal rounded border whitespace-nowrap ${size === 'sm' ? 'text-t11 px-1 py-px' : 'text-t12 px-1.5 py-0.5'} ${isCall ? 'text-bull border-bull/30 bg-bull/[0.06]' : 'text-bear border-bear/30 bg-bear/[0.06]'}`}>{contract}</span>
     </span>
   );
 };

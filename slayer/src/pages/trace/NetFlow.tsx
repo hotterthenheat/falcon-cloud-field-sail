@@ -307,12 +307,12 @@ const NetFlow = () => {
           <span className="inline-flex items-center gap-2 flex-wrap" data-span>
             <FlowSearch value={query} onChange={onQuery} rows={book} countNoun="contracts" tickersOnly />
             {(unknown || (want && wantKnown === false)) && (
-              <span role="status" className="text-[11px] text-textSecondary" data-net-unknown>
+              <span role="status" className="text-t11 text-textSecondary" data-net-unknown>
                 No ticker “{unknown ? query : want}”{sel ? ` — the pane keeps ${sel}` : ''}
               </span>
             )}
             {want && wantKnown == null && (
-              <span role="status" className="text-[11px] text-textMuted" data-net-checking>
+              <span role="status" className="text-t11 text-textMuted" data-net-checking>
                 Looking up {want}…
               </span>
             )}
@@ -330,14 +330,14 @@ const NetFlow = () => {
         <div ref={boardRef} className="md:w-[304px] shrink-0 md:border-r max-md:border-b max-md:max-h-[306px] border-borderSubtle overflow-y-auto" data-net-board>
           {/* THE COLUMNS SAY THEMSELVES (the retail pass: "2%", "1%" with no word) */}
           {leaders.length > 0 && (
-            <div className="sticky top-0 z-10 bg-panel flex items-center gap-2 px-3 py-1.5 border-b border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textMuted" data-net-board-head>
+            <div className="sticky top-0 z-10 bg-panel flex items-center gap-2 px-3 py-1.5 border-b border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textMuted" data-net-board-head>
               <span className="w-5">#</span>
               <span className="flex-1">Name · share of the board's lean</span>
               <span title={`The day's own ranking — each name's whole day, pre-market included; the pane beside it, Compare's net and Intervals read the regular session only (09:30 on), so a name's figure there can differ. ${VENDOR_TOTAL_NOTE}`}>Day net · pre-mkt in</span>
             </div>
           )}
           {leaders.length === 0 && (
-            <p className="px-4 py-6 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-net-board-empty>
+            <p className="px-4 py-6 font-mono text-t10 uppercase tracking-widest text-textMuted" data-net-board-empty>
               {boardReading ? 'Reading the board…' : top.fault ? 'This read did not land' : `No name has leaned yet ${dayAdv()}`}
             </p>
           )}
@@ -353,25 +353,25 @@ const NetFlow = () => {
                 className={`w-full flex flex-col gap-1 px-3 py-2 border-b border-borderSubtle/60 text-left transition-colors ${isSel ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgb(var(--silver)/0.7)]' : 'hover:bg-silver/[0.04]'}`}
               >
                 <span className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-textPrimary tnum w-5">{String(i + 1).padStart(2, '0')}</span>
+                  <span className="font-mono text-t11 text-textPrimary tnum w-5">{String(i + 1).padStart(2, '0')}</span>
                   <CompanyLogo ticker={l.ticker} size={15} />
-                  <span className="font-mono text-[11px] font-bold text-textPrimary">{l.ticker}</span>
+                  <span className="font-mono text-t11 font-bold text-textPrimary">{l.ticker}</span>
                   {/* the name's share of the board's gross lean */}
-                  <span className="font-mono text-[11px] tnum text-textSecondary cursor-help" title={`${l.ticker}'s share of the board's gross lean: its net premium (${signed(l.net)}) against the sum of every board name's net, signs dropped (${fmtUsd(facts.gross)})`}>
+                  <span className="font-mono text-t11 tnum text-textSecondary cursor-help" title={`${l.ticker}'s share of the board's gross lean: its net premium (${signed(l.net)}) against the sum of every board name's net, signs dropped (${fmtUsd(facts.gross)})`}>
                     {Math.round((Math.abs(l.net) / facts.gross) * 100)}%
                   </span>
-                  <span className={`ml-auto font-mono text-[11px] tabular-nums ${directionInk(l.net, netMarks)}`}><TickFigure value={l.net}>{fmtUsd(l.net)}</TickFigure></span>
+                  <span className={`ml-auto font-mono text-t11 tabular-nums ${directionInk(l.net, netMarks)}`}><TickFigure value={l.net}>{fmtUsd(l.net)}</TickFigure></span>
                 </span>
                 <span className="flex items-center gap-2 pl-7">
                   <span className="relative h-0.5 flex-1 rounded-full bg-ink/[0.06] overflow-hidden">
                     <span className={`absolute left-0 top-0 h-full ${l.net >= 0 ? 'bg-bull/60' : 'bg-bear/60'}`} style={{ width: `${Math.round((Math.abs(l.net) / maxAbs) * 100)}%` }} />
                   </span>
                   {facts.hasVol ? (
-                    <span className="font-mono text-[11px] text-textPrimary tnum whitespace-nowrap" title={`Net calls, net puts, volume and the ${num(l.count)} contracts traded on ${l.ticker} ${dayAdv()}`}>
+                    <span className="font-mono text-t11 text-textPrimary tnum whitespace-nowrap" title={`Net calls, net puts, volume and the ${num(l.count)} contracts traded on ${l.ticker} ${dayAdv()}`}>
                       C {fmtUsd(l.netCall)} · P {fmtUsd(l.netPut)} · {num(l.volume)} vol · {num(l.count)} cons
                     </span>
                   ) : (
-                    <span className="font-mono text-[11px] text-textMuted whitespace-nowrap">{l.net >= 0 ? 'net bullish' : 'net bearish'}</span>
+                    <span className="font-mono text-t11 text-textMuted whitespace-nowrap">{l.net >= 0 ? 'net bullish' : 'net bearish'}</span>
                   )}
                 </span>
               </button>
@@ -381,7 +381,7 @@ const NetFlow = () => {
         {/* THE PANE — the picked name's session */}
         <div className="flex-1 min-w-0 p-2 max-md:h-[460px] max-md:flex-none">
           {sel == null ? (
-            <p className="px-4 py-6 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-net-pane-waiting>
+            <p className="px-4 py-6 font-mono text-t10 uppercase tracking-widest text-textMuted" data-net-pane-waiting>
               Reading the board — the pane opens on its first name
             </p>
           ) : (

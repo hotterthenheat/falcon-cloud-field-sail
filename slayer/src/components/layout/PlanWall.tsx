@@ -89,43 +89,43 @@ const PlanWall = ({ room, needed, fill = true }: { room: NavItem; needed: PlanKe
   const own = needed !== 'desk' ? need : null;
   const ownPrice = own ? priceOf(needed, 'month') : null;
   const doorTo = (plan: PlanKey) => (signedOut ? `/signin?face=up&next=${encodeURIComponent(`/checkout?plan=${plan}&period=month`)}` : `/checkout?plan=${plan}&period=month`);
-  const solid = theme === 'dark' ? 'holo-bg text-[#0a0a0a]' : 'galaxy-bg';
+  const solid = theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg';
   return (
     /* NO CARD (Noah, 2026-10-10: "i like the blur but the card itself needs some work") — the Community wall's grammar:
        the words stand on the glass with the page reading through, the pool behind them; the room's name in the foil,
        its line, which plan it is part of; then the Desk offer in the landing's pricing type, one door; Tape quiet. */
     <Ground room={room} fill={fill}>
       <div className="relative flex flex-col items-center text-center px-6 max-w-[620px] animate-soft-in-slow" data-plan-wall-card data-plan-needed={needed}>
-        <p className="inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-textMuted" data-plan-wall-tag>
+        <p className="inline-flex items-center gap-1.5 font-mono text-t9 uppercase tracking-[0.3em] text-textMuted" data-plan-wall-tag>
           <Lock className="w-3 h-3" aria-hidden="true" />
           Part of {need.name}
         </p>
         {room.glyph && <PageGlyph name={room.glyph} size={40} className="mt-6" />}
         {/* pb-2: the holo fill paints only inside the box, and a descender at leading-none fell outside it (the Community wall's lesson) */}
-        <h2 className="mt-3 pb-2 text-[56px] font-bold tracking-tight leading-none holo-text paper-galaxy" data-plan-wall-title>
+        <h2 className="mt-3 pb-2 text-t56 font-bold tracking-tight leading-none holo-text paper-galaxy" data-plan-wall-title>
           {room.label}
         </h2>
-        <p className="mt-3 max-w-md text-[14px] leading-relaxed text-textSecondary">{room.description}</p>
-        <p className="mt-3 text-[13px] leading-relaxed text-textPrimary" data-plan-wall-line>
+        <p className="mt-3 max-w-md text-t14 leading-relaxed text-textSecondary">{room.description}</p>
+        <p className="mt-3 text-t13 leading-relaxed text-textPrimary" data-plan-wall-line>
           {signedOut ? `Sign in, or choose a plan, and it opens.` : holds ? `You are on ${holds.name}.` : `A plan opens it.`}
         </p>
 
         {/* DESK FIRST — every wall sells the whole desk, in the pricing cards' own type */}
         <div className="mt-10 flex flex-col items-center" data-plan-wall-desk>
-          <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-textMuted">{desk.name} · all of it</p>
+          <p className="font-mono text-t9 uppercase tracking-[0.3em] text-textMuted">{desk.name} · all of it</p>
           <p className="mt-2 flex items-baseline gap-2">
-            <span className="text-[44px] font-light leading-none tracking-[-0.045em] tnum text-textPrimary">{deskPrice.price}</span>
-            <span className="font-mono text-[11px] text-textMuted">{deskPrice.period}</span>
+            <span className="text-t44 font-light leading-none tracking-[-0.045em] tnum text-textPrimary">{deskPrice.price}</span>
+            <span className="font-mono text-t11 text-textMuted">{deskPrice.period}</span>
           </p>
-          <p className="mt-2.5 max-w-sm text-[13px] leading-relaxed text-textSecondary">{DESK_LINE}</p>
-          <Link to={doorTo('desk')} className={`mt-6 h-12 pl-7 pr-6 rounded-full inline-flex items-center justify-center gap-2 text-[15px] font-medium ${solid}`} data-plan-wall-go="desk">
+          <p className="mt-2.5 max-w-sm text-t13 leading-relaxed text-textSecondary">{DESK_LINE}</p>
+          <Link to={doorTo('desk')} className={`mt-6 h-12 pl-7 pr-6 rounded-full inline-flex items-center justify-center gap-2 text-t15 font-medium ${solid}`} data-plan-wall-go="desk">
             {holds ? 'Upgrade to Desk' : 'Choose Desk'}
             <ArrowRight className="w-4 h-4" aria-hidden="true" />
           </Link>
         </div>
 
         {own && ownPrice && (
-          <p className="mt-6 text-[12.5px] leading-relaxed text-textSecondary" data-plan-wall-own={needed}>
+          <p className="mt-6 text-t125 leading-relaxed text-textSecondary" data-plan-wall-own={needed}>
             Or just {own.name}, {ownPrice.price} {ownPrice.period}:{' '}
             <Link to={doorTo(needed)} className="text-textPrimary hover:underline underline-offset-2" data-plan-wall-go={needed}>
               {holds ? `upgrade to ${own.name}` : `choose ${own.name}`}
@@ -134,7 +134,7 @@ const PlanWall = ({ room, needed, fill = true }: { room: NavItem; needed: PlanKe
           </p>
         )}
         {signedOut && (
-          <p className="mt-2 text-[12.5px] leading-relaxed text-textSecondary">
+          <p className="mt-2 text-t125 leading-relaxed text-textSecondary">
             Already on a plan?{' '}
             <Link to={`/signin?next=${encodeURIComponent(here)}`} className="text-textPrimary hover:underline underline-offset-2" data-plan-wall-signin>
               Sign in
@@ -144,7 +144,7 @@ const PlanWall = ({ room, needed, fill = true }: { room: NavItem; needed: PlanKe
         )}
         {/* an owner looking through a plan's eyes is told so, and where the switch is */}
         {access.owner && access.viewing !== 'self' && (
-          <p className="mt-8 font-mono text-[10px] text-textMuted" data-plan-wall-viewing={access.viewing}>
+          <p className="mt-8 font-mono text-t10 text-textMuted" data-plan-wall-viewing={access.viewing}>
             You are an owner seeing the terminal as {access.viewing === 'none' ? 'no plan' : planOf(access.viewing).name}.{' '}
             <Link to="/settings/billing" className="text-textSecondary hover:text-textPrimary hover:underline underline-offset-2">
               Settings › Billing

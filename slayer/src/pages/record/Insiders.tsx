@@ -115,7 +115,7 @@ const NameCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
-        <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
+        <span className="font-mono text-t12 font-bold text-textPrimary">{data.ticker}</span>
         <CoSub ticker={data.ticker} fallback={data.company ? titleCase(data.company) : null} />
       </span>
     </span>
@@ -124,11 +124,11 @@ const NameCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
 const WhoCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
     <span className="flex flex-col leading-tight min-w-0 text-left" data-open-person={personSlug(data.person)}>
-      <span className="text-[12px] font-semibold text-textPrimary truncate" title={data.owners && data.owners.length > 1 ? `One joint filing by ${data.owners.map(personDisplay).join(', ')} — counted once` : personDisplay(data.person)}>
+      <span className="text-t12 font-semibold text-textPrimary truncate" title={data.owners && data.owners.length > 1 ? `One joint filing by ${data.owners.map(personDisplay).join(', ')} — counted once` : personDisplay(data.person)}>
         {personDisplay(data.person)}
-        {data.owners && data.owners.length > 1 ? <span className="font-mono text-[9px] font-normal text-textMuted"> +{data.owners.length - 1} joint</span> : null}
+        {data.owners && data.owners.length > 1 ? <span className="font-mono text-t9 font-normal text-textMuted"> +{data.owners.length - 1} joint</span> : null}
       </span>
-      <span className="text-[10px] text-textMuted truncate" title={data.title ? `Filed as: ${data.title}` : undefined}>{data.role === 'Officer' && data.title ? data.title : data.role === 'Other' ? 'Role not stated' : data.role}</span>
+      <span className="text-t10 text-textMuted truncate" title={data.title ? `Filed as: ${data.title}` : undefined}>{data.role === 'Officer' && data.title ? data.title : data.role === 'Other' ? 'Role not stated' : data.role}</span>
     </span>
   ) : null;
 
@@ -138,38 +138,38 @@ const TradeCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
   const meta = TX_CODES[data.code];
   if (meta.openMarket)
     return (
-      <span className={`font-mono text-[11px] tnum ${data.kind === 'BUY' ? 'text-bull' : 'text-bear'}`} title={meta.note}>
+      <span className={`font-mono text-t11 tnum ${data.kind === 'BUY' ? 'text-bull' : 'text-bear'}`} title={meta.note}>
         {data.kind === 'BUY' ? 'Bought' : 'Sold'}
       </span>
     );
   return (
-    <span className="font-mono text-[10px] text-textMuted" title={meta.note}>
+    <span className="font-mono text-t10 text-textMuted" title={meta.note}>
       {meta.label}
     </span>
   );
 };
 
-const SharesCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{fmtInt(data.shares)}</span> : null);
+const SharesCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{fmtInt(data.shares)}</span> : null);
 const foreignTip = (t: InsiderTrade) =>
   t.foreignPrice ? `Filed at ${t.price.toFixed(2)} a share in the home market's currency, not dollars — the US listing trades at $${t.foreignPrice.listed.toFixed(2)}. The value (${Math.round(t.foreignPrice.filedValue).toLocaleString('en-US')} in that currency) is kept out of every dollar total` : undefined;
 const PriceCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
     data.foreignPrice ? (
-      <span className="font-mono text-[11px] tnum text-warn cursor-help" title={foreignTip(data)} data-insider-foreign>
-        {data.price.toFixed(2)} <span className="text-[8px] uppercase tracking-widest">not USD</span>
+      <span className="font-mono text-t11 tnum text-warn cursor-help" title={foreignTip(data)} data-insider-foreign>
+        {data.price.toFixed(2)} <span className="text-t8 uppercase tracking-widest">not USD</span>
       </span>
     ) : (
-      <span className="font-mono text-[11px] tnum text-textSecondary">${data.price.toFixed(2)}</span>
+      <span className="font-mono text-t11 tnum text-textSecondary">${data.price.toFixed(2)}</span>
     )
   ) : null;
 const ValueCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
     data.foreignPrice ? (
-      <span className="font-mono text-[10px] tnum text-textMuted cursor-help" title={foreignTip(data)}>
+      <span className="font-mono text-t10 tnum text-textMuted cursor-help" title={foreignTip(data)}>
         not USD
       </span>
     ) : (
-      <span className="font-mono text-[11px] tnum font-semibold text-textPrimary">{fmtDollars(data.value)}</span>
+      <span className="font-mono text-t11 tnum font-semibold text-textPrimary">{fmtDollars(data.value)}</span>
     )
   ) : null;
 /** What the stake figure means for this row, in words — 100% on a buy is a first position, 100% on a sale an exit */
@@ -192,31 +192,31 @@ const byRecency = (a: number, b: number, na: IRowNode<InsiderTrade>, nb: IRowNod
   b - a || String(na.data?.filedOn ?? '').localeCompare(String(nb.data?.filedOn ?? '')) || String(nb.data?.id ?? '').localeCompare(String(na.data?.id ?? ''));
 const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
-    <span className="font-mono text-[11px] tnum text-textSecondary cursor-help" title={stakeTip(data)}>
+    <span className="font-mono text-t11 tnum text-textSecondary cursor-help" title={stakeTip(data)}>
       {/* ONE FORMAT (the retail test, round 7: "first purchase", "sold all they held", "<0.1%" and "12.3% of account" in one
           column read as four kinds of figure): always the share of the holding as a percent, the plain word for the ends
           and the account mark beside it, small */}
       {data.stakePct < 0 ? '—' : data.stakePct >= 99.95 ? '100%' : data.stakePct < 0.1 ? '<0.1%' : `${data.stakePct.toFixed(1)}%`}
-      {data.stakePct >= 99.95 ? <span className="text-[8px] uppercase tracking-widest text-textMuted"> · {data.kind === 'BUY' ? 'first buy' : 'all sold'}</span> : null}
-      {data.indirect && data.stakePct >= 0 ? <span className="text-[8px] uppercase tracking-widest text-textMuted" title="An indirect holding — a trust, a fund or a family member's account the insider reports: the percent is of that account's shares alone, not of everything the insider holds"> · of that account</span> : null}
+      {data.stakePct >= 99.95 ? <span className="text-t8 uppercase tracking-widest text-textMuted"> · {data.kind === 'BUY' ? 'first buy' : 'all sold'}</span> : null}
+      {data.indirect && data.stakePct >= 0 ? <span className="text-t8 uppercase tracking-widest text-textMuted" title="An indirect holding — a trust, a fund or a family member's account the insider reports: the percent is of that account's shares alone, not of everything the insider holds"> · of that account</span> : null}
     </span>
   ) : null;
 
 /** Chosen, planned or unstated — the flag the whole page turns on */
 const PlanCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
   if (!data) return null;
-  if (!TX_CODES[data.code].openMarket) return <span className="font-mono text-[10px] text-textMuted">—</span>;
-  if (data.plan === 'plan') return <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted" title="Planned: the trade ran off a 10b5-1 plan — a schedule the insider fixed months earlier, so it carries no view on the day it happened">planned · 10b5-1</span>;
-  if (data.plan === 'unknown') return <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted" title="The filing carried no plan box either way — not counted as chosen buying in the sums above">unstated</span>;
+  if (!TX_CODES[data.code].openMarket) return <span className="font-mono text-t10 text-textMuted">—</span>;
+  if (data.plan === 'plan') return <span className="font-mono text-t8 uppercase tracking-widest text-textMuted" title="Planned: the trade ran off a 10b5-1 plan — a schedule the insider fixed months earlier, so it carries no view on the day it happened">planned · 10b5-1</span>;
+  if (data.plan === 'unknown') return <span className="font-mono text-t8 uppercase tracking-widest text-textMuted" title="The filing carried no plan box either way — not counted as chosen buying in the sums above">unstated</span>;
   if (isCorporateTrade(data))
     return (
-      <span className="font-mono text-[8px] uppercase tracking-widest text-textSecondary" title={data.kind === 'BUY' ? 'Bought by a company or a fund — a strategic stake or a private placement, not an insider choosing to buy. Not counted in chosen buying' : 'Sold by a company or a fund — the filer is an entity, not an insider choosing to sell. Not counted in selling by choice'}>
+      <span className="font-mono text-t8 uppercase tracking-widest text-textSecondary" title={data.kind === 'BUY' ? 'Bought by a company or a fund — a strategic stake or a private placement, not an insider choosing to buy. Not counted in chosen buying' : 'Sold by a company or a fund — the filer is an entity, not an insider choosing to sell. Not counted in selling by choice'}>
         corporate
       </span>
     );
   const loud = isChosenBuy(data);
   return (
-    <span className={`font-mono text-[8px] uppercase tracking-widest ${loud ? 'text-textPrimary font-bold' : 'text-textSecondary'}`} title={loud ? 'A purchase a person chose to make, not on a 10b5-1 plan — the loudest row here' : 'A trade the insider chose to make'}>
+    <span className={`font-mono text-t8 uppercase tracking-widest ${loud ? 'text-textPrimary font-bold' : 'text-textSecondary'}`} title={loud ? 'A purchase a person chose to make, not on a 10b5-1 plan — the loudest row here' : 'A trade the insider chose to make'}>
       chosen
     </span>
   );
@@ -230,21 +230,21 @@ const InsiderCard = (t: InsiderTrade) => (
       left={
         <>
           <span className="font-mono font-bold">{t.ticker}</span> <span className="font-semibold">{personDisplay(t.person)}</span>
-          {t.owners && t.owners.length > 1 ? <span className="font-mono text-[9px] text-textMuted"> +{t.owners.length - 1} joint</span> : null}
+          {t.owners && t.owners.length > 1 ? <span className="font-mono text-t9 text-textMuted"> +{t.owners.length - 1} joint</span> : null}
         </>
       }
       right={cellOf(ValueCell, t)}
     />
     <CardLine muted left={<>{t.role === 'Officer' && t.title ? t.title : t.role === 'Other' ? 'Role not stated' : t.role} · {cellOf(TradeCell, t)} · {fmtInt(t.shares)} sh @ {t.foreignPrice ? `${t.price.toFixed(2)} (not USD)` : `$${t.price.toFixed(2)}`}</>} right={cellOf(PlanCell, t)} />
-    <CardLine muted left={<When days={t.daysAgo} size={10} />} right={t.clusterCount >= 2 ? <span className="text-[10px]">{t.clusterCount} filers</span> : undefined} />
+    <CardLine muted left={<When days={t.daysAgo} size={10} />} right={t.clusterCount >= 2 ? <span className="text-t10">{t.clusterCount} filers</span> : undefined} />
   </>
 );
 
 const OthersCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
   if (!data) return null;
-  if (data.clusterCount < 2) return <span className="font-mono text-[10px] text-textMuted">—</span>;
+  if (data.clusterCount < 2) return <span className="font-mono text-t10 text-textMuted">—</span>;
   return (
-    <span className="font-mono text-[11px] tnum text-textPrimary" title={`${data.clusterCount} filers did the same in this name inside 30 days`}>
+    <span className="font-mono text-t11 tnum text-textPrimary" title={`${data.clusterCount} filers did the same in this name inside 30 days`}>
       {data.clusterCount} filers
     </span>
   );
@@ -279,17 +279,17 @@ const NameCard = ({ f, on, onToggle }: { f: InsiderFlow; on: boolean; onToggle: 
     >
       <span className="flex items-center gap-2 min-w-0">
         <CompanyLogo ticker={f.ticker} size={18} />
-        <span className="font-mono text-[12px] font-bold text-textPrimary">{f.ticker}</span>
-        {company ? <span className="text-[10px] text-textSecondary truncate">{company}</span> : null}
+        <span className="font-mono text-t12 font-bold text-textPrimary">{f.ticker}</span>
+        {company ? <span className="text-t10 text-textSecondary truncate">{company}</span> : null}
       </span>
       <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
-        <span className="text-[13px] font-bold text-bull">{fmtDollars(f.openMarketBuys)}</span>
-        <span className="text-[9px] text-textSecondary">chosen buying</span>
-        <span className="ml-auto text-[10px] text-textPrimary">
+        <span className="text-t13 font-bold text-bull">{fmtDollars(f.openMarketBuys)}</span>
+        <span className="text-t9 text-textSecondary">chosen buying</span>
+        <span className="ml-auto text-t10 text-textPrimary">
           {buyers} {buyers === 1 ? 'buyer' : 'buyers'}
         </span>
       </span>
-      <span className={`mt-1 block font-mono text-[8px] uppercase tracking-widest truncate ${s.ink}`} title={`${s.word}${why} — chosen buying against chosen (not planned) selling in the window`}>
+      <span className={`mt-1 block font-mono text-t8 uppercase tracking-widest truncate ${s.ink}`} title={`${s.word}${why} — chosen buying against chosen (not planned) selling in the window`}>
         {s.word}
         <span className="normal-case tracking-normal text-textMuted">{why}</span>
       </span>
@@ -326,7 +326,7 @@ const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window:
             : `every ${what} filed since ${shortDay(from)}`;
   const setAside = coverage.notShares + coverage.implausible;
   return (
-    <p className="px-5 pb-2 text-[11px] leading-relaxed text-textMuted" data-insiders-coverage title="Unusual Whales sends at most 500 filings a request, newest filed first">
+    <p className="px-5 pb-2 text-t11 leading-relaxed text-textMuted" data-insiders-coverage title="Unusual Whales sends at most 500 filings a request, newest filed first">
       <span className="text-textSecondary">Purchases:</span> {paged(coverage.buysSince, coverage.buysRanOut, coverage.buysReading, coverage.buysCapped, 'open-market buy')}
       {' · '}
       <span className="text-textSecondary">Sales:</span> {paged(coverage.bigSalesSince, coverage.bigSalesRanOut, coverage.bigSalesReading, coverage.bigSalesCapped, `open-market sale of ${big} or more`)}
@@ -480,15 +480,15 @@ const Insiders = () => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">What insiders did</h3>
+            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">What insiders did</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a row, a chosen trade and a plan mean" testId="insiders-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
             {show === 'market' ? 'Open-market purchases and sales only' : 'Every filing, the plumbing named for what it is'} · newest first · a row opens their book
           </p>
           {/* THE READ'S PROGRESS, UP FRONT (audit round 5: "read back to Aug 22 of 90 days · partial" was a quiet footnote) */}
           {!failed && (
-            <p className={`mt-1 font-mono text-[10px] uppercase tracking-widest ${reading || waiting ? 'text-warn' : 'text-textSecondary'}`} data-insiders-progress={reading || waiting ? 'reading' : 'complete'}>
+            <p className={`mt-1 font-mono text-t10 uppercase tracking-widest ${reading || waiting ? 'text-warn' : 'text-textSecondary'}`} data-insiders-progress={reading || waiting ? 'reading' : 'complete'}>
               {waiting
                 ? `Reading the filings · 0 of ${window} days so far`
                 : reading
@@ -501,41 +501,41 @@ const Insiders = () => {
             say so) — while the read pages back the figures are greyed, each marked "so far" */}
         <dl className={`flex flex-wrap gap-x-6 gap-y-2 transition-opacity ${reading && !failed && !waiting ? 'opacity-60' : ''}`} data-insiders-provisional={reading && !failed && !waiting ? 'yes' : undefined} title={reading && !failed && !waiting ? 'Provisional — the filings are still being read back; these totals grow until the window is complete' : undefined}>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="Rows on the grid right now, after the window and the cards above">Filings</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-count>
+            <dt className="text-t10 text-textMuted cursor-help" title="Rows on the grid right now, after the window and the cards above">Filings</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-insiders-count>
               {failed || waiting ? '—' : facts.filings.toLocaleString()}
-              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title="The filings are still being paged back, newest first; the totals grow until the window is read">{readingWord}</span> : null}
+              {reading && !failed && !waiting ? <span className="text-t9 text-textMuted" title="The filings are still being paged back, newest first; the totals grow until the window is read">{readingWord}</span> : null}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="Purchases (code P — on the open market or in a private placement) that a person chose to make, not on a 10b5-1 plan. Purchases by companies and funds — strategic stakes — are counted apart under Company & fund buys">Chosen buying</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.chosen > 0 ? 'text-bull' : 'text-textMuted'}`} data-insiders-chosen>
+            <dt className="text-t10 text-textMuted cursor-help" title="Purchases (code P — on the open market or in a private placement) that a person chose to make, not on a 10b5-1 plan. Purchases by companies and funds — strategic stakes — are counted apart under Company & fund buys">Chosen buying</dt>
+            <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${facts.chosen > 0 ? 'text-bull' : 'text-textMuted'}`} data-insiders-chosen>
               {failed || waiting ? '—' : facts.chosen > 0 ? fmtDollars(facts.chosen) : 'none'}
-              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
+              {reading && !failed && !waiting ? <span className="text-t9 text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="Code-P purchases by a company or a fund (Volkswagen buying Rivian, a bank buying into a broker): strategic stakes and private placements, not an insider choosing to buy">Company &amp; fund buys</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-corporate>
+            <dt className="text-t10 text-textMuted cursor-help" title="Code-P purchases by a company or a fund (Volkswagen buying Rivian, a bank buying into a broker): strategic stakes and private placements, not an insider choosing to buy">Company &amp; fund buys</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-insiders-corporate>
               {failed || waiting ? '—' : facts.corporate > 0 ? fmtDollars(facts.corporate) : 'none'}
-              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
+              {reading && !failed && !waiting ? <span className="text-t9 text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={split ? `Dollars of shares insiders sold in the open market — planned or not. ${splitWords(split, window)}: the figure is the ${bigWord(split.big)}+ sales of the whole window; the smaller ones (${facts.smallCount.toLocaleString()} for ${fmtDollars(facts.smallSold)}) cover only those days and are kept out of it` : 'Dollars of shares insiders sold in the open market — planned or not'}>
+            <dt className="text-t10 text-textMuted cursor-help" title={split ? `Dollars of shares insiders sold in the open market — planned or not. ${splitWords(split, window)}: the figure is the ${bigWord(split.big)}+ sales of the whole window; the smaller ones (${facts.smallCount.toLocaleString()} for ${fmtDollars(facts.smallSold)}) cover only those days and are kept out of it` : 'Dollars of shares insiders sold in the open market — planned or not'}>
               {split ? `Sold · sales of ${bigWord(split.big)}+` : 'Sold in the market'}
             </dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-sold>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-insiders-sold>
               {failed || waiting ? '—' : facts.sold > 0 ? fmtDollars(facts.sold) : 'none'}
-              {split && !failed && !waiting ? <span className="text-[9px] text-textMuted"> · {window} days{facts.smallCount ? ` · + ${fmtDollars(facts.smallSold)} smaller, ${spanWords(split.from, split.to)}` : ''}</span> : null}
-              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
+              {split && !failed && !waiting ? <span className="text-t9 text-textMuted"> · {window} days{facts.smallCount ? ` · + ${fmtDollars(facts.smallSold)} smaller, ${spanWords(split.from, split.to)}` : ''}</span> : null}
+              {reading && !failed && !waiting ? <span className="text-t9 text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={`The share of those sales${split ? ` (the ${bigWord(split.big)}+ ones)` : ''} that ran off a 10b5-1 plan: a schedule set months earlier, so it says little about today`}>Sales on a plan</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-planned>
+            <dt className="text-t10 text-textMuted cursor-help" title={`The share of those sales${split ? ` (the ${bigWord(split.big)}+ ones)` : ''} that ran off a 10b5-1 plan: a schedule set months earlier, so it says little about today`}>Sales on a plan</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-insiders-planned>
               {facts.plannedPct == null ? '—' : `${facts.plannedPct}%`}
-              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
+              {reading && !failed && !waiting ? <span className="text-t9 text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
             </dd>
           </div>
         </dl>
@@ -552,24 +552,24 @@ const Insiders = () => {
       {failed ? (
         <FeedFallback />
       ) : (
-        <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-insiders-sentence>
+        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-insiders-sentence>
           {waiting ? 'Reading the filings.' : `${reading ? 'So far: ' : ''}${insidersSentence(rows, window, split)}`}
         </p>
       )}
       {!failed && (
-        <p className="px-5 pb-3 -mt-1 text-[11px] leading-relaxed text-textMuted" data-insiders-words>
+        <p className="px-5 pb-3 -mt-1 text-t11 leading-relaxed text-textMuted" data-insiders-words>
           <span className="text-textSecondary">Planned · 10b5-1</span> — sold or bought on a schedule the insider fixed months earlier, so it says little about the day. <span className="text-textSecondary">Of that account</span> — the trade was in a trust, a fund or a family member's account the insider reports; the percent is of that account alone.
         </p>
       )}
       {/* THE NAMES TO KNOW */}
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-insiders-to-know>
         {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
-        <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
+        <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The names to know</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">where a person chose to buy (not on a plan, not a company or fund) in the last {window} days, heaviest first · click a name to keep the grid to it</span>
+          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">where a person chose to buy (not on a plan, not a company or fund) in the last {window} days, heaviest first · click a name to keep the grid to it</span>
         </div>
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No insider chose to buy in this window'}</div>
+          <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No insider chose to buy in this window'}</div>
         ) : (
           <div
             /* every name across from 1280; six on a small laptop, four on a tablet, two on a phone (the device sweep,
@@ -642,7 +642,7 @@ export const InsiderFile = () => {
           data ? (
             <span className="inline-flex items-center gap-2 min-w-0">
               <CompanyLogo ticker={data.ticker} size={16} />
-              <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
+              <span className="font-mono text-t12 font-bold text-textPrimary">{data.ticker}</span>
               <CoSub ticker={data.ticker} fallback={data.company ? titleCase(data.company) : null} />
             </span>
           ) : null,
@@ -658,58 +658,58 @@ export const InsiderFile = () => {
   if (book === undefined) {
     return (
       <>
-        <Link to="/dossier/insiders" className="group inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-name-back>
+        <Link to="/dossier/insiders" className="group inline-flex items-center gap-1.5 font-mono text-t10 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-name-back>
           <ArrowLeft className="w-3.5 h-3.5 transition-transform duration-200 ease-out group-hover:-translate-x-0.5" /> Insiders
         </Link>
-        <div className="border border-borderSubtle rounded-md bg-panel px-5 py-4 text-[12px] text-textSecondary">Reading the filings.</div>
+        <div className="border border-borderSubtle rounded-md bg-panel px-5 py-4 text-t12 text-textSecondary">Reading the filings.</div>
       </>
     );
   }
   if (!book) {
     return (
       <>
-        <Link to="/dossier/insiders" className="group inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-name-back>
+        <Link to="/dossier/insiders" className="group inline-flex items-center gap-1.5 font-mono text-t10 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-name-back>
           <ArrowLeft className="w-3.5 h-3.5 transition-transform duration-200 ease-out group-hover:-translate-x-0.5" /> Insiders
         </Link>
-        <div className="border border-borderSubtle rounded-md bg-panel px-5 py-4 text-[12px] text-textSecondary">That person is not on this book.</div>
+        <div className="border border-borderSubtle rounded-md bg-panel px-5 py-4 text-t12 text-textSecondary">That person is not on this book.</div>
       </>
     );
   }
   return (
     <>
-      <Link to="/dossier/insiders" className="group inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-name-back>
+      <Link to="/dossier/insiders" className="group inline-flex items-center gap-1.5 font-mono text-t10 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-name-back>
         <ArrowLeft className="w-3.5 h-3.5 transition-transform duration-200 ease-out group-hover:-translate-x-0.5" /> Insiders
       </Link>
       <div className="relative border border-borderSubtle rounded-md overflow-hidden bg-panel flex flex-col" data-insider-file={book.person}>
         <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
           <div className="min-w-0 flex-1">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">{personDisplay(book.person)}</h3>
-            <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
+            <h3 className="text-t15 font-semibold leading-tight text-textPrimary">{personDisplay(book.person)}</h3>
+            <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
               {book.role} · {book.ticker} ·{' '}
               {book.windowDays > 0
                 ? `${book.by === 'cik' ? 'every filing under their SEC id' : 'every filing under this name'} with a trade in the last year, the grants included${book.capped ? ' — the latest 500 only' : ''}`
                 : 'their filings in the market feed this page read — their own file did not answer'}
             </p>
             {book.by === 'name' && book.filers > 1 ? (
-              <p className="mt-0.5 text-[10px] text-warn">{book.filers} SEC filers share this name; the rows may be more than one person.</p>
+              <p className="mt-0.5 text-t10 text-warn">{book.filers} SEC filers share this name; the rows may be more than one person.</p>
             ) : null}
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <div>
-              <dt className="text-[10px] text-textMuted cursor-help" title="Rows on the grid right now, after the window and the cards above">Filings</dt>
-              <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{rows.length}</dd>
+              <dt className="text-t10 text-textMuted cursor-help" title="Rows on the grid right now, after the window and the cards above">Filings</dt>
+              <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{rows.length}</dd>
             </div>
             <div>
-              <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Bought")}>Bought</dt>
-              <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{bought > 0 ? fmtDollars(bought) : rows.some(t => t.foreignPrice && TX_CODES[t.code].openMarket && t.kind === 'BUY') ? 'not in USD' : 'none'}</dd>
+              <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Bought")}>Bought</dt>
+              <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{bought > 0 ? fmtDollars(bought) : rows.some(t => t.foreignPrice && TX_CODES[t.code].openMarket && t.kind === 'BUY') ? 'not in USD' : 'none'}</dd>
             </div>
             <div>
-              <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Sold")}>Sold</dt>
-              <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{sold > 0 ? fmtDollars(sold) : rows.some(t => t.foreignPrice && TX_CODES[t.code].openMarket && t.kind === 'SELL') ? 'not in USD' : 'none'}</dd>
+              <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Sold")}>Sold</dt>
+              <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{sold > 0 ? fmtDollars(sold) : rows.some(t => t.foreignPrice && TX_CODES[t.code].openMarket && t.kind === 'SELL') ? 'not in USD' : 'none'}</dd>
             </div>
             <div>
-              <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("On a plan")}>On a plan</dt>
-              <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{planned}</dd>
+              <dt className="text-t10 text-textMuted cursor-help" title={statHelp("On a plan")}>On a plan</dt>
+              <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{planned}</dd>
             </div>
           </dl>
         </div>
@@ -726,7 +726,7 @@ export const InsiderFile = () => {
             testId="insider-show"
           />
         </div>
-        <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-insider-sentence>
+        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-insider-sentence>
           {(() => {
             const names = [...new Set(book.trades.map(t => t.ticker))];
             return `${personDisplay(book.person)} filed ${book.trades.length} ${book.trades.length === 1 ? 'row' : 'rows'}${book.windowDays > 0 ? ' in the last year' : ''}, at ${names.length === 1 ? names[0] : `${names.length} companies (${names.slice(0, 4).join(', ')}${names.length > 4 ? '…' : ''})`}.`;

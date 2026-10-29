@@ -258,8 +258,8 @@ const Everything = ({ onOpen }: { onOpen: (path: string) => void }) => {
                 {/* silver is where you are, as in the tour's rows */}
                 <span aria-hidden="true" className={`max-lg:hidden absolute left-0 top-2.5 bottom-2.5 w-[2px] rounded-full transition-colors duration-200 ${on ? 'bg-silver' : 'bg-transparent'}`} />
                 <RoomIcon room={r} size={16} />
-                <span className="min-w-0 flex-1 text-[14px] font-medium whitespace-nowrap">{r.name}</span>
-                <span className={`max-lg:hidden font-mono text-[11px] tnum transition-colors ${on ? 'text-textSecondary' : 'text-textMuted'}`}>{r.features.length}</span>
+                <span className="min-w-0 flex-1 text-t14 font-medium whitespace-nowrap">{r.name}</span>
+                <span className={`max-lg:hidden font-mono text-t11 tnum transition-colors ${on ? 'text-textSecondary' : 'text-textMuted'}`}>{r.features.length}</span>
               </button>
             );
           })}
@@ -276,8 +276,8 @@ const Everything = ({ onOpen }: { onOpen: (path: string) => void }) => {
             >
               <div className="flex items-end justify-between gap-6 pb-5 border-b border-borderSubtle">
                 <div className="min-w-0">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-textMuted">{room.kind}</p>
-                  <h3 className="mt-2.5 flex items-center gap-3 text-[26px] sm:text-[30px] font-light tracking-[-0.03em] leading-tight">
+                  <p className="font-mono text-t11 uppercase tracking-[0.22em] text-textMuted">{room.kind}</p>
+                  <h3 className="mt-2.5 flex items-center gap-3 text-t26 sm:text-t30 font-light tracking-[-0.03em] leading-tight">
                     <RoomIcon room={room} size={22} />
                     <span>
                       {room.name} <span className="text-textMuted tnum">· {room.features.length}</span>
@@ -288,7 +288,7 @@ const Everything = ({ onOpen }: { onOpen: (path: string) => void }) => {
                   <button
                     type="button"
                     onClick={() => onOpen(room.path!)}
-                    className="group/door shrink-0 inline-flex items-center gap-2 h-10 pl-4 pr-3.5 rounded-full border border-borderMuted text-[13.5px] font-medium text-textPrimary hover:border-textPrimary/70 hover:bg-ink/[0.06] transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver"
+                    className="group/door shrink-0 inline-flex items-center gap-2 h-10 pl-4 pr-3.5 rounded-full border border-borderMuted text-t135 font-medium text-textPrimary hover:border-textPrimary/70 hover:bg-ink/[0.06] transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver"
                     data-everything-door={room.id}
                   >
                     Open {doorName(room.name)}
@@ -307,14 +307,14 @@ const Everything = ({ onOpen }: { onOpen: (path: string) => void }) => {
                         className="group relative w-full h-full flex flex-col items-start justify-start text-left py-4 pl-3 -ml-3 pr-9 rounded-sm transition-colors hover:bg-ink/[0.03] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-silver"
                         data-everything-page={f.path}
                       >
-                        <span className="block text-[15px] font-medium text-textPrimary">{f.title}</span>
-                        <span className="mt-1 block text-[13.5px] leading-snug text-textSecondary">{f.says}</span>
+                        <span className="block text-t15 font-medium text-textPrimary">{f.title}</span>
+                        <span className="mt-1 block text-t135 leading-snug text-textSecondary">{f.says}</span>
                         <ArrowRight aria-hidden="true" className="absolute right-2 top-[19px] w-3.5 h-3.5 text-textMuted opacity-0 -translate-x-1 transition duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:opacity-100 group-hover:translate-x-0 group-focus-visible:opacity-100 group-focus-visible:translate-x-0 motion-reduce:transition-none" />
                       </button>
                     ) : (
                       <div className="py-4 pr-9">
-                        <span className="block text-[15px] font-medium text-textPrimary">{f.title}</span>
-                        <span className="mt-1 block text-[13.5px] leading-snug text-textSecondary">{f.says}</span>
+                        <span className="block text-t15 font-medium text-textPrimary">{f.title}</span>
+                        <span className="mt-1 block text-t135 leading-snug text-textSecondary">{f.says}</span>
                       </div>
                     )}
                   </li>
@@ -327,7 +327,7 @@ const Everything = ({ onOpen }: { onOpen: (path: string) => void }) => {
 
       {/* ONE TERMINAL, IN PLACE OF */}
       <div className="mt-12 lg:mt-14 pt-7 border-t border-borderSubtle flex flex-col lg:flex-row lg:items-start gap-x-8 gap-y-4" data-landing-in-place-of>
-        <p className="shrink-0 font-mono text-[11px] uppercase tracking-[0.22em] text-textMuted lg:pt-[9px]">One terminal, in place of</p>
+        <p className="shrink-0 font-mono text-t11 uppercase tracking-[0.22em] text-textMuted lg:pt-[9px]">One terminal, in place of</p>
         <ul className="flex flex-wrap gap-2">
           {IN_PLACE_OF.map(t => (
             <li key={t.text}>
@@ -335,7 +335,7 @@ const Everything = ({ onOpen }: { onOpen: (path: string) => void }) => {
                 type="button"
                 onClick={() => pickRoom(t.room)}
                 title={`${ROOMS.find(r => r.id === t.room)?.name} does this`}
-                className="h-8 pl-2.5 pr-3.5 inline-flex items-center gap-2 rounded-full border border-borderSubtle text-[13px] text-textSecondary hover:text-textPrimary hover:border-borderMuted hover:bg-ink/[0.04] transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver"
+                className="h-8 pl-2.5 pr-3.5 inline-flex items-center gap-2 rounded-full border border-borderSubtle text-t13 text-textSecondary hover:text-textPrimary hover:border-borderMuted hover:bg-ink/[0.04] transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver"
                 data-in-place-of={t.room}
               >
                 <PageGlyph name={t.glyph} size={13} />

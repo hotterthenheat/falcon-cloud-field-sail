@@ -19,17 +19,17 @@ const SideCells = ({ side, significantAbs }: { side: PressureSide; significantAb
   const significant = significantAbs > 0 && Math.abs(side.deltaOI) >= significantAbs;
   return (
     <>
-      <td className="px-2 py-1 text-right font-mono text-[11px] tnum text-textPrimary border-l border-borderSubtle/40">
+      <td className="px-2 py-1 text-right font-mono text-t11 tnum text-textPrimary border-l border-borderSubtle/40">
         {fmtUsd(side.pressure)}
       </td>
       <td
-        className={`px-1.5 py-1 text-right font-mono text-[9px] tnum ${
+        className={`px-1.5 py-1 text-right font-mono text-t9 tnum ${
           significant ? (dOiUp ? 'text-bull font-semibold' : 'text-bear font-semibold') : 'text-textSecondary'
         }`}
       >
         {dOiUp ? '↑' : '↓'}{Math.abs(side.deltaOI).toLocaleString()}
       </td>
-      <td className="px-1.5 py-1 text-right font-mono text-[9px] tnum text-textMuted">
+      <td className="px-1.5 py-1 text-right font-mono text-t9 tnum text-textMuted">
         {side.volume.toLocaleString()}
       </td>
     </>
@@ -54,16 +54,16 @@ const PressureMatrix = ({ ticker, spot, rows, maxAbs, onSelectStrike }: Pressure
       <table className="w-full border-collapse">
         <thead className="sticky top-0 z-10">
           <tr className="bg-chip">
-            <th className="px-2 py-1.5 text-left font-mono text-[10px] font-semibold uppercase tracking-widest text-textSecondary border-b border-borderSubtle">
+            <th className="px-2 py-1.5 text-left font-mono text-t10 font-semibold uppercase tracking-widest text-textSecondary border-b border-borderSubtle">
               Strike
             </th>
-            <th colSpan={3} className="px-2 py-1.5 text-center font-mono text-[10px] font-bold uppercase tracking-widest text-bull border-b border-l border-borderSubtle">
+            <th colSpan={3} className="px-2 py-1.5 text-center font-mono text-t10 font-bold uppercase tracking-widest text-bull border-b border-l border-borderSubtle">
               Calls
             </th>
-            <th colSpan={3} className="px-2 py-1.5 text-center font-mono text-[10px] font-bold uppercase tracking-widest text-bear border-b border-l border-borderSubtle">
+            <th colSpan={3} className="px-2 py-1.5 text-center font-mono text-t10 font-bold uppercase tracking-widest text-bear border-b border-l border-borderSubtle">
               Puts
             </th>
-            <th className="px-2 py-1.5 text-right font-mono text-[10px] font-bold uppercase tracking-widest text-textPrimary border-b border-l border-borderSubtle">
+            <th className="px-2 py-1.5 text-right font-mono text-t10 font-bold uppercase tracking-widest text-textPrimary border-b border-l border-borderSubtle">
               Net
             </th>
           </tr>
@@ -72,7 +72,7 @@ const PressureMatrix = ({ ticker, spot, rows, maxAbs, onSelectStrike }: Pressure
             {(['Pressure', 'ΔOI', 'Vol', 'Pressure', 'ΔOI', 'Vol'] as const).map((label, i) => (
               <th
                 key={`${label}-${i}`}
-                className={`px-1.5 py-1 text-right font-mono text-[9px] font-semibold uppercase tracking-widest text-textSecondary border-b border-borderSubtle ${
+                className={`px-1.5 py-1 text-right font-mono text-t9 font-semibold uppercase tracking-widest text-textSecondary border-b border-borderSubtle ${
                   i % 3 === 0 ? 'border-l' : ''
                 }`}
               >
@@ -102,19 +102,19 @@ const PressureMatrix = ({ ticker, spot, rows, maxAbs, onSelectStrike }: Pressure
                     onSelectStrike ? 'cursor-pointer hover:bg-ink/[0.04]' : ''
                   }`}
                 >
-                  <td className="px-2 py-1 bg-inset border-r border-borderSubtle/40 font-mono text-[10px] font-semibold tnum text-textSecondary whitespace-nowrap">
+                  <td className="px-2 py-1 bg-inset border-r border-borderSubtle/40 font-mono text-t10 font-semibold tnum text-textSecondary whitespace-nowrap">
                     {row.strike % 1 === 0 ? row.strike.toFixed(0) : row.strike.toFixed(2)}
                     {row.pin && (
-                      <span className="ml-1.5 font-mono text-[8px] font-bold uppercase tracking-wider text-textPrimary">pin</span>
+                      <span className="ml-1.5 font-mono text-t8 font-bold uppercase tracking-wider text-textPrimary">pin</span>
                     )}
                     {row.flip && (
-                      <span className="ml-1.5 font-mono text-[8px] font-bold uppercase tracking-wider text-flip">flip</span>
+                      <span className="ml-1.5 font-mono text-t8 font-bold uppercase tracking-wider text-flip">flip</span>
                     )}
                   </td>
                   <SideCells side={row.call} significantAbs={significantAbs} />
                   <SideCells side={row.put} significantAbs={significantAbs} />
                   <td className="px-2 py-1 text-right border-l border-borderSubtle/40">
-                    <span className="block font-mono text-[10px] font-semibold tnum text-textPrimary">{fmtUsd(row.net)}</span>
+                    <span className="block font-mono text-t10 font-semibold tnum text-textPrimary">{fmtUsd(row.net)}</span>
                     <span className="mt-0.5 ml-auto block h-[3px] w-full max-w-[46px] rounded-full bg-ink/[0.04]">
                       <span
                         className="block h-full rounded-full"

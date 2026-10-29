@@ -113,17 +113,17 @@ const PinpointLayout = () => {
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0" aria-hidden="true">
               <PageIcon className="w-3.5 h-3.5" />
             </span>
-            <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">
+            <h1 className="text-t15 font-semibold leading-tight text-textPrimary">
               {page.label}
               {page.path === '/pinpoint/agenda' && agendaFaceOf(location.search) === 'building' && <span className="text-textMuted font-normal"> · Building</span>}
             </h1>
             {focused != null && (
               <span data-focus-chip className="inline-flex items-center gap-2 rounded-md border border-silver/40 bg-silver/[0.06] pl-2.5 pr-1 py-0.5 font-mono">
-                <span className="text-[9px] font-bold uppercase tracking-widest text-silver">Focus</span>
-                {focusTicker && focusTicker !== activeTicker && <span className="text-[11px] font-semibold text-textPrimary">{focusTicker}</span>}
-                <span className="text-[12px] font-semibold tnum text-textPrimary">{fmtStrike(focused)}</span>
+                <span className="text-t9 font-bold uppercase tracking-widest text-silver">Focus</span>
+                {focusTicker && focusTicker !== activeTicker && <span className="text-t11 font-semibold text-textPrimary">{focusTicker}</span>}
+                <span className="text-t12 font-semibold tnum text-textPrimary">{fmtStrike(focused)}</span>
                 {dist != null && (
-                  <span className={`text-[9px] tnum ${dist > 0 ? 'text-bull' : dist < 0 ? 'text-bear' : 'text-textMuted'}`}>
+                  <span className={`text-t9 tnum ${dist > 0 ? 'text-bull' : dist < 0 ? 'text-bear' : 'text-textMuted'}`}>
                     {dist > 0 ? '+' : ''}
                     {dist.toFixed(2)}%
                   </span>
@@ -133,7 +133,7 @@ const PinpointLayout = () => {
                      brings the reader here again (Noah, 2026-09-09) */
                   onClick={() => navigate('/terrain', { state: { chart: { ticker: focusTicker ?? activeTicker, focus: focused }, wayBack: location.pathname } })}
                   title="See this strike on the chart"
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-t9 font-semibold uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
                 >
                   Chart <ArrowUpRight className="w-3 h-3" />
                 </button>
@@ -143,13 +143,13 @@ const PinpointLayout = () => {
               </span>
             )}
             {replaying && (
-              <span data-replay-tag className="inline-flex items-center gap-1.5 h-6 rounded-md px-2 font-mono text-[9px] uppercase tracking-widest bg-silver/[0.12] text-silver" title="The boxes below are rewound to this minute; the head is live">
+              <span data-replay-tag className="inline-flex items-center gap-1.5 h-6 rounded-md px-2 font-mono text-t9 uppercase tracking-widest bg-silver/[0.12] text-silver" title="The boxes below are rewound to this minute; the head is live">
                 <span className="font-bold">Replaying</span>
-                <span className="text-[11px] tnum text-textPrimary normal-case tracking-normal">{replaying}</span>
+                <span className="text-t11 tnum text-textPrimary normal-case tracking-normal">{replaying}</span>
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted sm:whitespace-nowrap sm:truncate" title={[line, /\bbook\b/i.test(line) ? GLOSSARY.book : '', /supreme/i.test(line) ? GLOSSARY.supreme : ''].filter(Boolean).join('\n')}>{line}</p>
+          <p className="mt-0.5 text-t11 text-textMuted sm:whitespace-nowrap sm:truncate" title={[line, /\bbook\b/i.test(line) ? GLOSSARY.book : '', /supreme/i.test(line) ? GLOSSARY.supreme : ''].filter(Boolean).join('\n')}>{line}</p>
         </div>
 
         {/* THE SIDE: the Map's band where the row has its room (#pinpoint-head-band — the Map measures the room against
@@ -166,7 +166,7 @@ const PinpointLayout = () => {
         </div>
       </header>
       {sessionRead.note && (
-        <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-session-note>{sessionRead.note}</p>
+        <p className="mt-2 font-mono text-t10 uppercase tracking-widest text-textMuted" data-session-note>{sessionRead.note}</p>
       )}
       <RegimeLine ticker={activeTicker} />
       {/* the Agenda's Building face names itself in the tab (the eighth audit: /pinpoint/building read "Agenda") */}

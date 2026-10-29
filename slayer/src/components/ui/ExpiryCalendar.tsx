@@ -134,12 +134,12 @@ const ExpiryCalendar = ({ value, expiries, onChange, label = 'Expiry', icon: Ico
             style={ink ? ({ '--ink': ink } as CSSProperties) : undefined}
           >
             <Icon
-              className={`w-3 h-3 shrink-0 transition-colors duration-200 ${ink ? 'text-textMuted group-hover:text-[color:var(--ink)] group-data-[state=open]:text-[color:var(--ink)]' : 'text-textMuted'}`}
+              className={`w-3 h-3 shrink-0 transition-colors duration-200 ${ink ? 'text-textMuted group-hover:text-ink group-data-[state=open]:text-ink' : 'text-textMuted'}`}
               aria-hidden="true"
               data-dropdown-icon
             />
-            <span className="text-[11px] text-textMuted">{label}</span>
-            <span className="text-[11px] font-semibold text-textPrimary tnum whitespace-nowrap max-sm:whitespace-normal max-sm:text-left max-sm:leading-tight">
+            <span className="text-t11 text-textMuted">{label}</span>
+            <span className="text-t11 font-semibold text-textPrimary tnum whitespace-nowrap max-sm:whitespace-normal max-sm:text-left max-sm:leading-tight">
               {selected ? `${expiryWords(selected)}${valueNote ?? ''}` : onClear ? anyLabel : 'Pick a date'}
             </span>
             <ChevronDown className="w-3 h-3 text-textMuted" />
@@ -165,7 +165,7 @@ const ExpiryCalendar = ({ value, expiries, onChange, label = 'Expiry', icon: Ico
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="font-mono text-[13px] font-semibold text-textPrimary">
+              <span className="font-mono text-t13 font-semibold text-textPrimary">
                 {MONTHS[cursor.getMonth()]} {cursor.getFullYear()}
               </span>
               <button
@@ -180,7 +180,7 @@ const ExpiryCalendar = ({ value, expiries, onChange, label = 'Expiry', icon: Ico
 
             <div className="grid grid-cols-7 gap-1 mb-1.5">
               {DOW.map((d, i) => (
-                <span key={i} className="text-center font-mono text-[11px] uppercase text-textMuted">
+                <span key={i} className="text-center font-mono text-t11 uppercase text-textMuted">
                   {d}
                 </span>
               ))}
@@ -203,7 +203,7 @@ const ExpiryCalendar = ({ value, expiries, onChange, label = 'Expiry', icon: Ico
                     onClick={() => listed && pick(listed)}
                     title={listed ? `${expiryWords(listed)} · ${listed.dte === 0 ? 'expires at the bell' : `${listed.sessions} ${listed.sessions === 1 ? 'session' : 'sessions'}`}${dayNote?.(listed) ? ` · ${dayNote(listed)}` : ''}` : undefined}
                     data-expiry-day={listed ? isoDate(d) : undefined}
-                    className={`h-8 max-sm:h-10 rounded font-mono text-[12px] tnum transition-colors ${
+                    className={`h-8 max-sm:h-10 rounded font-mono text-t12 tnum transition-colors ${
                       !listed
                         ? 'text-textMuted/25 cursor-not-allowed'
                         : isSelected
@@ -226,7 +226,7 @@ const ExpiryCalendar = ({ value, expiries, onChange, label = 'Expiry', icon: Ico
                 type="button"
                 disabled={!nearest}
                 onClick={() => nearest && pick(nearest)}
-                className="w-full py-2 rounded border border-borderSubtle font-mono text-[11px] text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors"
+                className="w-full py-2 rounded border border-borderSubtle font-mono text-t11 text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors"
                 data-expiry-nearest
               >
                 {nearest ? (nearest.dte === 0 ? 'Jump to today · 0DTE' : `Jump to nearest · ${SHORT[nearest.date.getMonth()]} ${nearest.date.getDate()}`) : 'Nothing listed'}
@@ -239,14 +239,14 @@ const ExpiryCalendar = ({ value, expiries, onChange, label = 'Expiry', icon: Ico
                     setOpen(false);
                   }}
                   aria-pressed={!selected}
-                  className={`w-full py-2 rounded border font-mono text-[11px] transition-colors ${!selected ? 'border-silver/50 text-textPrimary bg-silver/[0.06]' : 'border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted'}`}
+                  className={`w-full py-2 rounded border font-mono text-t11 transition-colors ${!selected ? 'border-silver/50 text-textPrimary bg-silver/[0.06]' : 'border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted'}`}
                   data-expiry-clear
                 >
                   {clearLabel}
                 </button>
               )}
             </div>
-            <p className="mt-2 text-[11px] leading-snug text-textSecondary">
+            <p className="mt-2 text-t11 leading-snug text-textSecondary">
               {expiries.length} listed
               {listedThisMonth === 0 && expiries.length > 0 ? ' · nothing this month — step the month' : ''}
             </p>

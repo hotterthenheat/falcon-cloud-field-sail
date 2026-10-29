@@ -51,7 +51,7 @@ const Picture = ({ def, ctx, width, height }: { def: WidgetDef; ctx: WorkspaceCt
           <def.Body ctx={ctx} state={state} set={() => undefined} size={sizeOf(width, height)} open={() => undefined} />
         </div>
       ) : (
-        <span className="absolute inset-0 grid place-items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">Waiting for the first tick</span>
+        <span className="absolute inset-0 grid place-items-center font-mono text-t10 uppercase tracking-widest text-textMuted">Waiting for the first tick</span>
       )}
     </div>
   );
@@ -120,18 +120,18 @@ const Picker = ({ ctx, counts, boxFor, onAdd, onDragKey, onClose }: Props) => {
               if (e.key === 'Enter' && def) onAdd(def.key);
             }}
             placeholder="Find a widget"
-            className="flex-1 min-w-0 bg-transparent text-[12px] text-textPrimary placeholder:text-textMuted focus:outline-none"
+            className="flex-1 min-w-0 bg-transparent text-t12 text-textPrimary placeholder:text-textMuted focus:outline-none"
             data-picker-search
           />
         </label>
         <div className="flex-1 min-h-0 max-h-[404px] overflow-y-auto overscroll-contain py-1">
-          {shown.length === 0 && <p className="px-3 py-6 text-center text-[11px] text-textMuted">No widget by that name.</p>}
+          {shown.length === 0 && <p className="px-3 py-6 text-center text-t11 text-textMuted">No widget by that name.</p>}
           {WIDGET_GROUPS.map(group => {
             const items = shown.filter(w => w.group === group);
             if (items.length === 0) return null;
             return (
               <div key={group} className="pb-1">
-                <div className="px-3 pt-2 pb-1 font-mono text-[8.5px] uppercase tracking-[0.2em] text-silver/70 select-none">{group}</div>
+                <div className="px-3 pt-2 pb-1 font-mono text-t85 uppercase tracking-[0.2em] text-silver/70 select-none">{group}</div>
                 {items.map(w => {
                   const n = counts[w.key] ?? 0;
                   const on = def?.key === w.key;
@@ -159,9 +159,9 @@ const Picker = ({ ctx, counts, boxFor, onAdd, onDragKey, onClose }: Props) => {
                       data-picker-item={w.key}
                     >
                       <w.icon className={`w-3.5 h-3.5 shrink-0 ${on ? 'text-textPrimary' : 'text-textSecondary'}`} aria-hidden />
-                      <span className={`min-w-0 flex-1 truncate text-[12px] ${on ? 'text-textPrimary font-semibold' : 'text-textSecondary'}`}>{w.title}</span>
+                      <span className={`min-w-0 flex-1 truncate text-t12 ${on ? 'text-textPrimary font-semibold' : 'text-textSecondary'}`}>{w.title}</span>
                       {n > 0 && (
-                        <span className="shrink-0 font-mono text-[9px] tnum text-textMuted" title={`${n} on this desk`} data-picker-count={n}>
+                        <span className="shrink-0 font-mono text-t9 tnum text-textMuted" title={`${n} on this desk`} data-picker-count={n}>
                           {n} on desk
                         </span>
                       )}
@@ -182,11 +182,11 @@ const Picker = ({ ctx, counts, boxFor, onAdd, onDragKey, onClose }: Props) => {
             <Picture def={def} ctx={ctx} width={box.width} height={box.height} />
             <div className="flex items-center gap-2">
               <def.icon className="w-4 h-4 text-textSecondary" aria-hidden />
-              <span className="text-[13px] font-semibold text-textPrimary">{def.title}</span>
-              <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted">{def.group}</span>
+              <span className="text-t13 font-semibold text-textPrimary">{def.title}</span>
+              <span className="ml-auto font-mono text-t9 uppercase tracking-widest text-textMuted">{def.group}</span>
             </div>
-            <p className="text-[11.5px] leading-snug text-textSecondary">{def.says}.</p>
-            <p className="flex items-center gap-1.5 font-mono text-[10px] text-textMuted">
+            <p className="text-t115 leading-snug text-textSecondary">{def.says}.</p>
+            <p className="flex items-center gap-1.5 font-mono text-t10 text-textMuted">
               {def.page ? (
                 <>
                   <ArrowUpRight className="w-3 h-3" aria-hidden /> Its door opens {def.page.label}
@@ -197,12 +197,12 @@ const Picker = ({ ctx, counts, boxFor, onAdd, onDragKey, onClose }: Props) => {
               <span aria-hidden>·</span>
               {def.named ? 'follows the desk’s name, or holds its own' : 'the whole market'}
             </p>
-            <button type="button" onClick={() => onAdd(def.key)} className="mt-auto inline-flex items-center justify-center gap-1.5 h-8 rounded-md holo-bg text-[#0a0a0a] hover:brightness-105 font-mono text-[11px] font-semibold uppercase tracking-wider transition-all" data-picker-add={def.key}>
+            <button type="button" onClick={() => onAdd(def.key)} className="mt-auto inline-flex items-center justify-center gap-1.5 h-8 rounded-md holo-bg text-onfoil hover:brightness-105 font-mono text-t11 font-semibold uppercase tracking-wider transition-all" data-picker-add={def.key}>
               <Plus className="w-3.5 h-3.5" /> Add {def.title}
             </button>
           </>
         ) : (
-          <span className="m-auto text-[11px] text-textMuted">Nothing to show.</span>
+          <span className="m-auto text-t11 text-textMuted">Nothing to show.</span>
         )}
       </div>
     </div>

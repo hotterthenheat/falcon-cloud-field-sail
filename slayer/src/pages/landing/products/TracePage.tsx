@@ -103,7 +103,7 @@ const TracePage = () => (
     <div className="max-w-[72ch]" data-product-tracker>
       <Eyebrow>Under watch</Eyebrow>
       <Head className="mt-5" first="Mark a print." second="And see what it has done since." />
-      <p className="mt-6 max-w-[64ch] text-[15.5px] leading-relaxed text-textSecondary">
+      <p className="mt-6 max-w-[64ch] text-t155 leading-relaxed text-textSecondary">
         Any print or contract on any Trace page can be marked. The tracker is one grid of everything you marked — the name, the contract, when and where you marked it, its price then and now — so the one question a mark
         raises, what has it done since, is answered on one line.
       </p>
@@ -124,8 +124,8 @@ const TapeFilm = () => {
       <ul className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-5 border-t border-borderSubtle">
         {TAPE_FILM.map(l => (
           <li key={l.word} className="pt-4 max-w-[40ch]">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-textMuted">{l.word}</p>
-            <p className="mt-2 text-[14.5px] leading-relaxed text-textSecondary">{l.says}</p>
+            <p className="font-mono text-t11 uppercase tracking-[0.2em] text-textMuted">{l.word}</p>
+            <p className="mt-2 text-t145 leading-relaxed text-textSecondary">{l.says}</p>
           </li>
         ))}
       </ul>

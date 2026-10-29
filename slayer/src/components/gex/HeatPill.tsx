@@ -133,7 +133,7 @@ const HeatPill = ({
       title={title}
       onClick={onClick}
       style={{ ...heat, textShadow: halo, ...(selected ? { boxShadow: ring(ringColor ?? SELECTION_INK) } : null), ...(fontSize ? { fontSize } : null) }}
-      className={`relative flex min-w-0 items-center justify-end gap-1 rounded-full ${tight ? 'pl-px pr-1' : 'px-2'} font-mono text-[11px] font-bold tnum leading-none transition-colors duration-700 ${
+      className={`relative flex min-w-0 items-center justify-end gap-1 rounded-full ${tight ? 'pl-px pr-1' : 'px-2'} font-mono text-t11 font-bold tnum leading-none transition-colors duration-700 ${
         onClick ? 'cursor-pointer' : ''
       } ${className}`}
     >
@@ -166,7 +166,7 @@ export default memo(HeatPill);
 */
 export const HiddenStrikes = ({ count, cols }: { count: number; cols?: number }) => (
   <div
-    className="flex items-center gap-2 border-y border-dashed border-borderSubtle/50 px-2 py-[3px] font-mono text-[11px] uppercase tracking-wider text-textMuted"
+    className="flex items-center gap-2 border-y border-dashed border-borderSubtle/50 px-2 py-[3px] font-mono text-t11 uppercase tracking-wider text-textMuted"
     {...(cols ? { style: { gridColumn: `span ${cols}` } } : null)}
   >
     <span aria-hidden className="text-textMuted/60">

@@ -20,7 +20,7 @@ import type { DeskContract } from '../../data/weigherDesk';
 /** The shape as the Map's chip — WALL firmer, the rest quiet */
 export const ShapeChip = ({ shape }: { shape: NonNullable<BookAtStrike['shape']> }) => (
   <span
-    className={`inline-flex items-center h-[14px] px-1 rounded-[3px] border font-mono text-[7.5px] font-bold uppercase tracking-[0.14em] leading-none whitespace-nowrap ${shape === 'wall' ? 'border-textSecondary/60 text-textPrimary' : 'border-borderSubtle text-textMuted'}`}
+    className={`inline-flex items-center h-[14px] px-1 rounded-[3px] border font-mono text-t75 font-bold uppercase tracking-[0.14em] leading-none whitespace-nowrap ${shape === 'wall' ? 'border-textSecondary/60 text-textPrimary' : 'border-borderSubtle text-textMuted'}`}
     title={SHAPE_SAYS[shape]}
     data-book-shape={shape}
   >
@@ -40,7 +40,7 @@ const BookBlock = ({ read, c }: { read: BookAtStrike | null; c: DeskContract }) 
   return (
     <div className="flex flex-col gap-2" data-book-block={read.strike}>
       <span className="inline-flex items-center gap-2">
-        <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-textSecondary">The book at {fmtStrike(read.strike)}</span>
+        <span className="font-mono text-t9 font-bold uppercase tracking-widest text-textSecondary">The book at {fmtStrike(read.strike)}</span>
         {read.shape && <ShapeChip shape={read.shape} />}
       </span>
       {/* three across, two rows: these cells hold WORDS (Stats' five-across holds figures) — five across ran the words into

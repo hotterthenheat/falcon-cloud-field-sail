@@ -105,10 +105,10 @@ const FiledCell = ({ data }: ICellRendererParams<CongressTrade>) => (data ? <Whe
 const MemberCell = ({ data }: ICellRendererParams<CongressTrade>) =>
   data ? (
     <span className="flex flex-col leading-tight min-w-0 text-left" data-open-member={data.member.id}>
-      <span className="text-[12px] font-semibold text-textPrimary truncate">
-        {data.member.name} <span className="font-mono text-[10px] font-normal text-textMuted">{seat(data)}</span>
+      <span className="text-t12 font-semibold text-textPrimary truncate">
+        {data.member.name} <span className="font-mono text-t10 font-normal text-textMuted">{seat(data)}</span>
       </span>
-      <span className="text-[10px] text-textMuted truncate">{data.member.chamber}</span>
+      <span className="text-t10 text-textMuted truncate">{data.member.chamber}</span>
     </span>
   ) : null;
 
@@ -162,8 +162,8 @@ export const AssetCell = ({ data }: ICellRendererParams<CongressTrade>) => {
     <span ref={seenRef} className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden" title={line.sub ? `${line.title} · ${line.sub}` : line.title}>
       {line.sym ? <CompanyLogo ticker={line.sym} size={16} /> : null}
       <span className="flex flex-col leading-tight min-w-0 flex-1">
-        <span className={`text-[12px] font-bold text-textPrimary truncate ${line.sym ? 'font-mono' : ''}`}>{line.title}</span>
-        {line.sub ? <span className="text-[10px] text-textMuted truncate">{line.sub}</span> : null}
+        <span className={`text-t12 font-bold text-textPrimary truncate ${line.sym ? 'font-mono' : ''}`}>{line.title}</span>
+        {line.sub ? <span className="text-t10 text-textMuted truncate">{line.sub}</span> : null}
       </span>
     </span>
   );
@@ -171,14 +171,14 @@ export const AssetCell = ({ data }: ICellRendererParams<CongressTrade>) => {
 
 const TypeCell = ({ data }: ICellRendererParams<CongressTrade>) =>
   data ? (
-    <span className={`font-mono text-[11px] tnum ${typeInk(data)}`}>
+    <span className={`font-mono text-t11 tnum ${typeInk(data)}`}>
       {typeWord(data)}
       {data.type === 'Sale (Partial)' && <span className="text-textMuted"> · partial</span>}
     </span>
   ) : null;
 
 const OwnerCell = ({ data }: ICellRendererParams<CongressTrade>) =>
-  data ? <span className={`font-mono text-[8px] uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{ownerWord(data.owner)}</span> : null;
+  data ? <span className={`font-mono text-t8 uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{ownerWord(data.owner)}</span> : null;
 
 /** The ten rungs as a ladder, the disclosed one lit — never a midpoint */
 const Ladder = ({ bracket }: { bracket: number }) => (
@@ -190,19 +190,19 @@ const Ladder = ({ bracket }: { bracket: number }) => (
 );
 const AmountCell = ({ data }: ICellRendererParams<CongressTrade>) => {
   if (!data) return null;
-  if (data.bracket === null) return <span className="font-mono text-[10px] text-textMuted">not disclosed</span>;
+  if (data.bracket === null) return <span className="font-mono text-t10 text-textMuted">not disclosed</span>;
   if (data.amountOver != null)
     return (
       <span className="inline-flex items-center gap-2.5" title="An open-ended amount as filed — no upper bound">
         <Ladder bracket={data.bracket} />
-        <span className="font-mono text-[11px] tnum text-textPrimary whitespace-nowrap">Over ${data.amountOver.toLocaleString('en-US')}</span>
+        <span className="font-mono text-t11 tnum text-textPrimary whitespace-nowrap">Over ${data.amountOver.toLocaleString('en-US')}</span>
       </span>
     );
   return (
     <span className="inline-flex items-center gap-2.5 min-w-0" title={`${bracketLabel(data.bracket)} · rung ${AMOUNT_BRACKETS[data.bracket].column} of ${AMOUNT_BRACKETS.length}`}>
       <Ladder bracket={data.bracket} />
       {/* the short form fits the column (round 11: "$5,000,001 – $25,000,0" cut); the filed figures on hover */}
-      <span className="font-mono text-[11px] tnum text-textPrimary whitespace-nowrap">{bracketShort(data.bracket)}</span>
+      <span className="font-mono text-t11 tnum text-textPrimary whitespace-nowrap">{bracketShort(data.bracket)}</span>
     </span>
   );
 };
@@ -211,11 +211,11 @@ const TradedCell = ({ data }: ICellRendererParams<CongressTrade>) => (data ? <Wh
 
 const LagCell = ({ data }: ICellRendererParams<CongressTrade>) => {
   if (!data) return null;
-  if (data.lagDays < 0) return <span className="font-mono text-[10px] text-textMuted" title="Filed before the trade date — a filing artefact real feeds carry">before the trade</span>;
+  if (data.lagDays < 0) return <span className="font-mono text-t10 text-textMuted" title="Filed before the trade date — a filing artefact real feeds carry">before the trade</span>;
   return (
-    <span className="inline-flex items-center gap-2 font-mono text-[11px] tnum">
+    <span className="inline-flex items-center gap-2 font-mono text-t11 tnum">
       <span className={data.late ? 'text-bear font-semibold' : data.lagDays > 30 ? 'text-textPrimary' : 'text-textSecondary'}>{data.lagDays}d</span>
-      {data.late && <span className="text-[8px] uppercase tracking-widest text-bear">late</span>}
+      {data.late && <span className="text-t8 uppercase tracking-widest text-bear">late</span>}
     </span>
   );
 };
@@ -232,7 +232,7 @@ export const CongressCard = (t: CongressTrade, withMember = true) => {
           <>
             {withMember ? (
               <>
-                <span className="font-semibold">{t.member.name}</span> <span className="font-mono text-[10px] text-textMuted">{seat(t)}</span>{' '}
+                <span className="font-semibold">{t.member.name}</span> <span className="font-mono text-t10 text-textMuted">{seat(t)}</span>{' '}
               </>
             ) : null}
             <span className={line.sym ? 'font-mono font-bold' : 'font-semibold'}>{line.title}</span>
@@ -240,7 +240,7 @@ export const CongressCard = (t: CongressTrade, withMember = true) => {
         }
         right={<span className={typeInk(t)}>{typeWord(t)}</span>}
       />
-      <CardLine muted left={<>{ownerWord(t.owner)} · filed <When days={t.filedDaysAgo} size={10} /></>} right={<span className="text-[11px] text-textPrimary">{amountShort(t)}</span>} />
+      <CardLine muted left={<>{ownerWord(t.owner)} · filed <When days={t.filedDaysAgo} size={10} /></>} right={<span className="text-t11 text-textPrimary">{amountShort(t)}</span>} />
       <CardLine muted left={<>traded <When days={t.tradedDaysAgo} size={10} /></>} right={t.lagDays < 0 ? 'before the trade' : <span className={t.late ? 'text-bear' : undefined}>{t.lagDays}d lag{t.late ? ' · late' : ''}</span>} />
     </>
   );
@@ -266,8 +266,8 @@ const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onTogg
           <span className="flex items-center gap-2 min-w-0">
             <CompanyLogo ticker={line.sym} size={18} />
             {/* the symbol never gives way — the member's name is what truncates ("AP…" read as nothing) */}
-            <span className="text-[12px] font-bold text-textPrimary font-mono shrink-0">{line.title}</span>
-            <span className="min-w-0 text-[10px] text-textSecondary truncate" title={`${t.member.name} ${seat(t)}`}>
+            <span className="text-t12 font-bold text-textPrimary font-mono shrink-0">{line.title}</span>
+            <span className="min-w-0 text-t10 text-textSecondary truncate" title={`${t.member.name} ${seat(t)}`}>
               {t.member.name} <span className="font-mono text-textMuted">{seat(t)}</span>
             </span>
           </span>
@@ -276,8 +276,8 @@ const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onTogg
              line, the member under it, the full name on hover */
           <span className="flex flex-col min-w-0 leading-tight">
             {/* two lines before it cuts (round 11: "Not Fade Away LLC Co…") */}
-            <span className="text-[12px] font-bold text-textPrimary line-clamp-2 break-words" title={line.sub ? `${line.title} · ${line.sub}` : line.title}>{line.title}</span>
-            <span className="min-w-0 text-[10px] text-textSecondary truncate" title={`${t.member.name} ${seat(t)}`}>
+            <span className="text-t12 font-bold text-textPrimary line-clamp-2 break-words" title={line.sub ? `${line.title} · ${line.sub}` : line.title}>{line.title}</span>
+            <span className="min-w-0 text-t10 text-textSecondary truncate" title={`${t.member.name} ${seat(t)}`}>
               {t.member.name} <span className="font-mono text-textMuted">{seat(t)}</span>
             </span>
           </span>
@@ -287,11 +287,11 @@ const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onTogg
     {/* the bracket as its words — the ladder lives in the grid; at six across it pushed the label off the card */}
     {/* the amount never cuts (audit round 5, phone: "Purchase $500K – $…") — at two across it wraps under the side */}
     <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono tnum">
-      <span className={`text-[11px] ${typeInk(t)}`}>{typeWord(t)}</span>
-      <span className="text-[11px] font-bold text-textPrimary whitespace-nowrap" title={t.amountOver != null ? `Over $${t.amountOver.toLocaleString('en-US')}, as filed` : bracketLabel(t.bracket)}>{t.amountOver != null ? `Over $${t.amountOver >= 1e6 ? `${t.amountOver / 1e6}M` : `${Math.round(t.amountOver / 1e3)}K`}` : bracketShort(t.bracket)}</span>
-      {t.late && <span className="ml-auto text-[8px] uppercase tracking-widest text-bear">late</span>}
+      <span className={`text-t11 ${typeInk(t)}`}>{typeWord(t)}</span>
+      <span className="text-t11 font-bold text-textPrimary whitespace-nowrap" title={t.amountOver != null ? `Over $${t.amountOver.toLocaleString('en-US')}, as filed` : bracketLabel(t.bracket)}>{t.amountOver != null ? `Over $${t.amountOver >= 1e6 ? `${t.amountOver / 1e6}M` : `${Math.round(t.amountOver / 1e3)}K`}` : bracketShort(t.bracket)}</span>
+      {t.late && <span className="ml-auto text-t8 uppercase tracking-widest text-bear">late</span>}
     </span>
-    <span className="mt-1 block font-mono text-[8px] uppercase tracking-widest text-textSecondary truncate">
+    <span className="mt-1 block font-mono text-t8 uppercase tracking-widest text-textSecondary truncate">
       <span className="text-textMuted">{t.member.chamber}</span>
     </span>
   </button>
@@ -312,7 +312,7 @@ const CongressCoverageLine = ({ coverage, window, unread, notMembers }: { covera
   /* "complete" only with no day read short (audit round 6) */
   const done = covered && !coverage.reading && partial.length === 0;
   return (
-    <p className="px-5 pb-2 text-[11px] leading-relaxed text-textMuted" data-congress-coverage title="Unusual Whales sends at most 200 reports a request, newest trade first; the page asks again from the oldest trade day it reached">
+    <p className="px-5 pb-2 text-t11 leading-relaxed text-textMuted" data-congress-coverage title="Unusual Whales sends at most 200 reports a request, newest trade first; the page asks again from the oldest trade day it reached">
       {covered
         ? `${done ? 'Complete · ' : ''}Every report of a trade made since ${shortDay(start)}`
         : coverage.since
@@ -352,7 +352,7 @@ export const CongressProgress = ({ coverage, window, waiting }: { coverage: Cong
         : `Partial · ${reach} of ${window} days — the read stopped there`;
   const tone = covered && !coverage.reading ? 'text-textSecondary' : 'text-warn';
   return (
-    <p className={`mt-1 font-mono text-[10px] uppercase tracking-widest ${tone}`} data-congress-progress={covered && !coverage.reading ? 'complete' : coverage.reading || waiting ? 'reading' : 'partial'}>
+    <p className={`mt-1 font-mono text-t10 uppercase tracking-widest ${tone}`} data-congress-progress={covered && !coverage.reading ? 'complete' : coverage.reading || waiting ? 'reading' : 'partial'}>
       {text}
     </p>
   );
@@ -366,7 +366,7 @@ export const BillsSwitch = ({ hide, onToggle, hidden, testId, reading = false }:
     aria-pressed={hide}
     data-testid={testId}
     title={hide ? `${hidden.toLocaleString('en-US')} Treasury-bill ${hidden === 1 ? 'report is' : 'reports are'} hidden — parked cash, not an equity trade. Click to show them` : 'Treasury bills are shown. Click to hide them'}
-    className={`h-7 px-2.5 rounded border font-mono text-[10px] uppercase tracking-widest whitespace-nowrap transition-colors ${hide ? 'border-silver/50 bg-silver/[0.08] text-textPrimary' : 'border-borderMuted text-textSecondary hover:border-silver/40'}`}
+    className={`h-7 px-2.5 rounded border font-mono text-t10 uppercase tracking-widest whitespace-nowrap transition-colors ${hide ? 'border-silver/50 bg-silver/[0.08] text-textPrimary' : 'border-borderMuted text-textSecondary hover:border-silver/40'}`}
   >
     {hide ? `T-bills hidden · ${reading ? '…' : hidden.toLocaleString('en-US')}` : 'T-bills shown'}
   </button>
@@ -406,7 +406,7 @@ const Congress = () => {
   /* PARTIAL TOTALS SAY SO (round 11: "Reports 197 · Median lag 17d · Past the deadline 0" at 1.5s, settling at 723 / 23d
      / 4) — while the read pages back the figures are greyed and marked "so far", as on Insiders */
   const partial = !quiet && coverage.reading;
-  const soFar = partial ? <span className="text-[9px] text-textMuted" title="Still paging back — the figures grow as older reports land"> · so far</span> : null;
+  const soFar = partial ? <span className="text-t9 text-textMuted" title="Still paging back — the figures grow as older reports land"> · so far</span> : null;
   const gridEmpty = failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut';
   const billsHidden = useMemo(() => (hideBills ? feed.trades.filter(isTreasuryBill).length : 0), [feed, hideBills]);
   const cut = useMemo(
@@ -521,17 +521,17 @@ const Congress = () => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">What Congress reported</h3>
+            <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">What Congress reported</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a row, a bracket, an owner and the lag mean" testId="congress-guide" />
           </div>
           {/* on a phone the line wraps rather than cutting off mid-word (the retail test, round 7) */}
-          <p className="mt-0.5 text-[11px] text-textMuted sm:whitespace-nowrap sm:truncate">{basis === 'filed' ? `Every report filed in the last ${window} days, whenever the trade was made (its date on each row)` : 'Every report of a trade made in the window'}, newest filing first · a row opens that member’s book</p>
+          <p className="mt-0.5 text-t11 text-textMuted sm:whitespace-nowrap sm:truncate">{basis === 'filed' ? `Every report filed in the last ${window} days, whenever the trade was made (its date on each row)` : 'Every report of a trade made in the window'}, newest filing first · a row opens that member’s book</p>
           {!failed && <CongressProgress coverage={coverage} window={basis === 'filed' ? Math.max(window, 90) : window} waiting={waiting} />}
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="STOCK Act reports on the grid right now, after the cards — bought, sold (full or partial) and exchanged add up to the whole">Reports</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${partial ? 'opacity-60' : ''} text-textPrimary`} data-congress-count data-partial={partial ? '' : undefined}>
+            <dt className="text-t10 text-textMuted cursor-help" title="STOCK Act reports on the grid right now, after the cards — bought, sold (full or partial) and exchanged add up to the whole">Reports</dt>
+            <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${partial ? 'opacity-60' : ''} text-textPrimary`} data-congress-count data-partial={partial ? '' : undefined}>
               {quiet ? '—' : (
                 <>
                   {stats.trades.length.toLocaleString('en-US')}{' '}
@@ -545,15 +545,15 @@ const Congress = () => {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="The middle number of days between a trade and its report — half filed faster, half slower">Median lag</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap ${partial ? 'opacity-60' : ''}`} data-congress-lag>
+            <dt className="text-t10 text-textMuted cursor-help" title="The middle number of days between a trade and its report — half filed faster, half slower">Median lag</dt>
+            <dd className={`mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap ${partial ? 'opacity-60' : ''}`} data-congress-lag>
               {quiet || stats.trades.length === 0 ? '—' : <>{stats.medianLag}d{soFar}</>}
             </dd>
           </div>
           <div>
             {/* a trade made under 45 days ago cannot be late yet — on the 30-day window the count is structurally nil, and says so */}
-            <dt className="text-[10px] text-textMuted cursor-help" title={window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade. Every trade in the last ${window} days is younger than that, so none of them can be late yet — pick 90 or 180 days` : `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade, the STOCK Act's limit — among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days`}>Past the deadline</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${equityStats.lateFilings ? 'text-bear' : 'text-textPrimary'} ${partial ? 'opacity-60' : ''}`} data-congress-late>
+            <dt className="text-t10 text-textMuted cursor-help" title={window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade. Every trade in the last ${window} days is younger than that, so none of them can be late yet — pick 90 or 180 days` : `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade, the STOCK Act's limit — among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days`}>Past the deadline</dt>
+            <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${equityStats.lateFilings ? 'text-bear' : 'text-textPrimary'} ${partial ? 'opacity-60' : ''}`} data-congress-late>
               {quiet ? '—' : window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? <span className="text-textMuted">none can be yet</span> : (
                 /* ONE BASIS WITH THE SENTENCE (audit round 10: "Past the deadline 7" counted the bonds, the line under it said
                    "4 missed the 45-day deadline" of the stocks) — the stocks' count, the bonds' said beside it */
@@ -574,7 +574,7 @@ const Congress = () => {
           type="button"
           onClick={() => setPhoneMore(v => !v)}
           aria-expanded={phoneMore}
-          className="mx-5 mb-3 h-8 px-3 rounded border border-borderMuted font-mono text-[10px] uppercase tracking-widest text-textSecondary flex items-center justify-between"
+          className="mx-5 mb-3 h-8 px-3 rounded border border-borderMuted font-mono text-t10 uppercase tracking-widest text-textSecondary flex items-center justify-between"
           data-congress-phone-more={phoneMore ? 'open' : 'closed'}
         >
           <span>{phoneMore ? 'Hide' : 'Show'} the filters, the summary and the reports to know</span>
@@ -597,19 +597,19 @@ const Congress = () => {
       {failed ? (
         <FeedFallback />
       ) : (
-        <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-congress-sentence>
+        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-congress-sentence>
           {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : `${bondStats.trades.length ? `Stocks, options and funds: ${congressSentence(equityStats).replace(/^No report on this cut/, 'none on this cut')} Bonds apart — ${bondStats.trades.length.toLocaleString('en-US')} ${bondStats.trades.length === 1 ? 'report' : 'reports'} of notes, munis and corporate bonds covering ${bondStats.totalHigh === null ? `at least ${dollars3(bondStats.totalLow)}` : `${dollars3(bondStats.totalLow)}–${dollars3(bondStats.totalHigh)}`}, on the grid but not in that total${bondStats.lateFilings ? `, ${bondStats.lateFilings.toLocaleString('en-US')} of them filed past the deadline` : ''}.` : congressSentence(stats)}${billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from every count here.` : ''}`}
         </p>
       )}
       {/* THE REPORTS TO KNOW */}
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-congress-to-know>
         {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
-        <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
+        <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The reports to know</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">the biggest disclosed stock, option and fund trades on this cut, the latest first among equals — bonds are left to the grid · click one to keep the grid to that member</span>
+          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">the biggest disclosed stock, option and fund trades on this cut, the latest first among equals — bonds are left to the grid · click one to keep the grid to that member</span>
         </div>
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut'}</div>
+          <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut'}</div>
         ) : (
           <div
             /* every report across from 1280; six on a small laptop, four on a tablet, two on a phone (the device sweep,

@@ -56,7 +56,7 @@ const FilterTabs = <V extends string>({ options, value, onChange, ariaLabel, pap
                 />
               )}
               {/* a label never breaks in two inside its pill (the journal's periods at 375, 2026-09-26): a rail too wide for its row scrolls in the host's box */}
-              <span className={`relative z-10 whitespace-nowrap ${active ? `font-semibold ${paper ? 'text-panel' : 'text-[#0a0a0a]'}` : 'text-textSecondary hover:text-textPrimary'}`}>
+              <span className={`relative z-10 whitespace-nowrap ${active ? `font-semibold ${paper ? 'text-panel' : 'text-onfoil'}` : 'text-textSecondary hover:text-textPrimary'}`}>
                 {opt.label}
               </span>
             </button>

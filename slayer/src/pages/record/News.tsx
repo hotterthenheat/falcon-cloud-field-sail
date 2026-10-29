@@ -317,15 +317,15 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
                         screen reader copies, and the half is aria-hidden */}
                     {half === 0 ? (
                       <>
-                        <span className="font-mono text-[10px] font-bold text-textPrimary">{nameWord(e.item)}</span>
-                        <span className="text-[11px] whitespace-normal">{e.item.headline}</span>
-                        <span className="font-mono text-[9px] text-textMuted">{ago(e.item.minutesAgo)}</span>
+                        <span className="font-mono text-t10 font-bold text-textPrimary">{nameWord(e.item)}</span>
+                        <span className="text-t11 whitespace-normal">{e.item.headline}</span>
+                        <span className="font-mono text-t9 text-textMuted">{ago(e.item.minutesAgo)}</span>
                       </>
                     ) : (
                       <>
-                        <span className="font-mono text-[10px] font-bold text-textPrimary before:content-[attr(data-copy)]" data-copy={nameWord(e.item)} />
-                        <span className="text-[11px] whitespace-normal before:content-[attr(data-copy)]" data-copy={e.item.headline} />
-                        <span className="font-mono text-[9px] text-textMuted before:content-[attr(data-copy)]" data-copy={ago(e.item.minutesAgo)} />
+                        <span className="font-mono text-t10 font-bold text-textPrimary before:content-[attr(data-copy)]" data-copy={nameWord(e.item)} />
+                        <span className="text-t11 whitespace-normal before:content-[attr(data-copy)]" data-copy={e.item.headline} />
+                        <span className="font-mono text-t9 text-textMuted before:content-[attr(data-copy)]" data-copy={ago(e.item.minutesAgo)} />
                       </>
                     )}
                   </button>
@@ -348,7 +348,7 @@ const Door = ({ onClick, onWarm, children }: { onClick: () => void; onWarm?: () 
     type="button"
     onClick={onClick}
     onMouseEnter={onWarm}
-    className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted font-mono text-[9px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors"
+    className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted font-mono text-t9 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors"
   >
     <ArrowUpRight className="w-3 h-3" />
     {children}
@@ -369,7 +369,7 @@ const NewsAlertDoor = ({ ticker }: { ticker: string }) => {
       onClick={() => (set ? removeAlert(ticker, set.id) : armNews(ticker, Date.now()))}
       aria-pressed={!!set}
       title={set ? `The bell rings when a headline lands on ${ticker} · click to take it off` : `Ring the bell when a headline lands on ${ticker}`}
-      className={`inline-flex items-center gap-1 h-6 px-2 rounded-md border font-mono text-[9px] uppercase tracking-widest transition-colors ${set ? 'border-silver/50 text-silver bg-silver/[0.08]' : 'border-borderSubtle bg-chip hover:border-borderMuted text-textSecondary hover:text-textPrimary'}`}
+      className={`inline-flex items-center gap-1 h-6 px-2 rounded-md border font-mono text-t9 uppercase tracking-widest transition-colors ${set ? 'border-silver/50 text-silver bg-silver/[0.08]' : 'border-borderSubtle bg-chip hover:border-borderMuted text-textSecondary hover:text-textPrimary'}`}
       data-news-alert={set ? 'set' : 'off'}
     >
       <Bell className="w-3 h-3" />
@@ -388,8 +388,8 @@ const weekdayDay = (iso: string): string => {
 /** A head figure. `partial` greys it while the read is still landing — the count grows, said "so far" (round 11) */
 const Fact = ({ label, children, testId, tip, partial, wrap }: { label: string; children: React.ReactNode; testId?: string; tip?: string; partial?: boolean; wrap?: boolean }) => (
   <div>
-    <dt className="text-[10px] text-textMuted whitespace-nowrap cursor-help" title={tip}>{label}</dt>
-    <dd className={`mt-0.5 font-mono text-[12px] tnum ${partial ? 'text-textMuted' : 'text-textPrimary'} ${wrap ? 'max-sm:whitespace-normal sm:whitespace-nowrap sm:truncate max-w-[34ch]' : 'whitespace-nowrap max-w-[22ch] truncate'}`} data-news-fact={testId} data-partial={partial ? '' : undefined}>
+    <dt className="text-t10 text-textMuted whitespace-nowrap cursor-help" title={tip}>{label}</dt>
+    <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-normal break-words ${partial ? 'text-textMuted' : 'text-textPrimary'}`} data-news-fact={testId} data-partial={partial ? '' : undefined}>
       {children}
     </dd>
   </div>
@@ -399,19 +399,19 @@ const Fact = ({ label, children, testId, tip, partial, wrap }: { label: string; 
 /* the figure wraps inside its own column — "after hours +0.2% · 10/22 −4.6%" ran under the next figure (audit round 5) */
 const Figure = ({ label, tone = 'text-textPrimary', children, title }: { label: string; tone?: string; children: React.ReactNode; title?: string }) => (
   <div className="min-w-0 overflow-hidden" title={title}>
-    <div className="text-[9px] text-textMuted whitespace-nowrap truncate">{label}</div>
-    <div className={`mt-0.5 font-mono text-[12px] font-semibold tnum whitespace-normal break-words ${tone}`}>{children}</div>
+    <div className="text-t9 text-textMuted whitespace-nowrap truncate">{label}</div>
+    <div className={`mt-0.5 font-mono text-t12 font-semibold tnum whitespace-normal break-words ${tone}`}>{children}</div>
   </div>
 );
 
 /** The odds, Down against Up — NOT keyed by story, so the split slides between stories (the v1 contract) */
 const OddsBar = ({ probUp }: { probUp: number }) => (
   <div data-news-odds>
-    <div className="flex items-center justify-between font-mono text-[10px] tnum">
+    <div className="flex items-center justify-between font-mono text-t10 tnum">
       <span className={probUp < 50 ? 'text-bear font-semibold' : 'text-textSecondary'}>
         down <AnimatedNumber value={100 - probUp} format={v => `${Math.round(v)}%`} />
       </span>
-      <span className="text-[9px] uppercase tracking-widest text-textMuted">odds next session</span>
+      <span className="text-t9 uppercase tracking-widest text-textMuted">odds next session</span>
       <span className={probUp >= 50 ? 'text-bull font-semibold' : 'text-textSecondary'}>
         up <AnimatedNumber value={probUp} format={v => `${Math.round(v)}%`} />
       </span>
@@ -425,20 +425,20 @@ const OddsBar = ({ probUp }: { probUp: number }) => (
 
 /** The story's text: the first paragraph in the open, the rest behind "Read the whole story" (the house's fold), the source's door at the end */
 const StoryText = ({ storyId, body, source, url }: { storyId: string; body: string[]; source: string; url?: string }) => {
-  const [whole, setWhole] = useState(false);
-  /* a new story opens folded — the same element re-read, never remounted (a keyed remount left the old body standing) */
-  useEffect(() => setWhole(false), [storyId]);
+  const [whole, setWhole] = useState(true);
+  /* a new story opens with every paragraph. Fold is a choice, not the default. */
+  useEffect(() => setWhole(true), [storyId]);
   if (!body.length) return null;
   const [first, ...rest] = body;
   return (
     <div className="flex flex-col gap-2" data-news-body data-news-body-open={whole || undefined}>
-      <p className="text-[12.5px] leading-relaxed text-textSecondary">{first}</p>
+      <p className="text-t125 leading-relaxed text-textSecondary">{first}</p>
       {rest.length > 0 && (
         <>
           <Fold axis="y" open={whole} testId="data-news-body-fold">
             <div className="flex flex-col gap-2 pb-1">
               {rest.map((para, i) => (
-                <p key={i} className="text-[12.5px] leading-relaxed text-textSecondary">
+                <p key={i} className="text-t125 leading-relaxed text-textSecondary">
                   {para}
                 </p>
               ))}
@@ -448,7 +448,7 @@ const StoryText = ({ storyId, body, source, url }: { storyId: string; body: stri
             type="button"
             onClick={() => setWhole(w => !w)}
             aria-expanded={whole}
-            className="self-start inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors"
+            className="self-start inline-flex items-center gap-1 font-mono text-t10 uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors"
             data-news-body-door
           >
             {whole ? 'Fold the story' : 'Read the whole story'}
@@ -457,7 +457,7 @@ const StoryText = ({ storyId, body, source, url }: { storyId: string; body: stri
         </>
       )}
       {url && (
-        <a href={url} target="_blank" rel="noopener noreferrer" className="self-start inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-news-body-source>
+        <a href={url} target="_blank" rel="noopener noreferrer" className="self-start inline-flex items-center gap-1 font-mono text-t10 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-news-body-source>
           Read it at {source} <ArrowUpRight className="w-3 h-3" aria-hidden />
         </a>
       )}
@@ -721,14 +721,15 @@ const News = () => {
      RCBC after today's close and ~710 reports next week): with no economic release ahead, the next report still to come
      on the fortnight's lists — read once the calendar below asks for them, after the headlines */
   const reportsQ = useNearReports();
+  const [matesOpen, setMatesOpen] = useState(true);
   const nextReport = useMemo(() => {
     const today = nyTodayIso();
     const ahead = reportsQ.events.filter(e => !e.reported && (e.iso ?? '') >= today);
     if (!ahead.length) return null;
     const order = (e: (typeof ahead)[number]) => `${e.iso}|${e.slot === 'BMO' && e.timeKnown !== false ? 0 : 1}`;
     const first = [...ahead].sort((a, b) => order(a).localeCompare(order(b)) || Number(b.known) - Number(a.known) || (b.marketCap ?? 0) - (a.marketCap ?? 0))[0];
-    const same = ahead.filter(e => order(e) === order(first)).length;
-    return { e: first, same, total: ahead.length, today: first.iso === today, scope: reportsQ.fortnight ? "on the fortnight's lists" : 'today and next session' };
+    const mates = ahead.filter(e => order(e) === order(first)).map(e => e.ticker);
+    return { e: first, same: mates.length, mates, total: ahead.length, today: first.iso === today, scope: reportsQ.fortnight ? "on the fortnight's lists" : 'today and next session' };
   }, [reportsQ]);
   const unmarked = positive === 0 && negative === 0;
   const moodInk = mood.label === 'LEANS BULLISH' ? 'text-bull' : mood.label === 'LEANS BEARISH' ? 'text-bear' : 'text-textPrimary';
@@ -750,7 +751,7 @@ const News = () => {
           aria-pressed={on}
           title={o.hint}
           /* the silver SURFACE, not the silver ink (2026-09-16): on paper the ink is a deep steel and black on it was 2.4:1 */
-          className={`shrink-0 h-6 px-3 rounded-full font-mono text-[10px] tracking-wide transition-colors ${on ? 'bg-silverFill text-[#0a0a0a] font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'}`}
+          className={`shrink-0 h-6 px-3 rounded-full font-mono text-t10 tracking-wide transition-colors ${on ? 'bg-silverFill text-onfoil font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'}`}
           data-news-kind={o.value}
         >
           {o.label}
@@ -768,10 +769,10 @@ const News = () => {
         <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
           <div className="min-w-[min(18rem,100%)] flex-1">
             <div className="h-6 flex items-center gap-3">
-              <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">The wire</h3>
+              <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">The wire</h3>
               <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the pins, the flags and the numbers mean" testId="news-guide" />
             </div>
-            <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" data-news-coverage>{coverText} · a pin on every city a story comes from · click a pin or a row and the story opens beside the map</p>
+            <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate" data-news-coverage>{coverText} · a pin on every city a story comes from · click a pin or a row and the story opens beside the map</p>
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <Fact label="Stories" testId="stories" tip={`Headlines on the wire after the cards and the filter${coverage.reading ? ' — still reading back, the count grows' : ''}`} partial={coverage.reading && rows.length > 0}>
@@ -783,17 +784,17 @@ const News = () => {
                 <>
                   {storyCount.toLocaleString('en-US')}
                   {!unmarked && <span className="text-textMuted"> · {positive} positive · {negative} negative</span>}
-                  {coverage.reading && <span className="text-[9px]"> · so far</span>}
+                  {coverage.reading && <span className="text-t9"> · so far</span>}
                 </>
               )}
             </Fact>
             {mood.unmarked ? (
               <>
                 <Fact label="Major" testId="major" tip="Headlines Unusual Whales flags as major" partial={coverage.reading && rows.length > 0}>
-                  {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : <>{rows.filter(r => r.item.major).length}{coverage.reading && <span className="text-[9px]"> · so far</span>}</>}
+                  {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : <>{rows.filter(r => r.item.major).length}{coverage.reading && <span className="text-t9"> · so far</span>}</>}
                 </Fact>
                 <Fact label="On your Board" testId="board" tip="Headlines that name a stock on your Board" partial={coverage.reading && rows.length > 0}>
-                  {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : <>{rows.filter(onBoard).length}{coverage.reading && <span className="text-[9px]"> · so far</span>}</>}
+                  {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : <>{rows.filter(onBoard).length}{coverage.reading && <span className="text-t9"> · so far</span>}</>}
                 </Fact>
               </>
             ) : (
@@ -822,8 +823,24 @@ const News = () => {
                 nextReport ? (
                   <span title={`No economic release is ahead on the calendar; the next earnings report still to come — ${nextReport.total.toLocaleString('en-US')} ${nextReport.scope}`} data-news-next="earnings">
                     {/* "VZ and 11 more report Mon before the open" (round 11: "VZ reports +11 · before the open…" read as a move) */}
-                    {nextReport.e.ticker}
-                    <span className="text-textMuted">{nextReport.same > 1 ? ` and ${nextReport.same - 1} more report` : ' reports'} {nextReport.today ? 'today' : nextReport.e.iso ? weekdayDay(nextReport.e.iso).split(' ')[0] : nextReport.e.dateLabel} {nextReport.e.timeKnown === false ? '(time not set)' : nextReport.e.slot === 'BMO' ? 'before the open' : 'after the close'}</span>
+                    {matesOpen
+                      ? (nextReport.mates.length <= 1
+                        ? nextReport.mates[0]
+                        : `${nextReport.mates.slice(0, -1).join(', ')} and ${nextReport.mates[nextReport.mates.length - 1]}`)
+                      : nextReport.e.ticker}
+                    <span className="text-textMuted">
+                      {nextReport.same > 1 && !matesOpen ? (
+                        <button type="button" onClick={() => setMatesOpen(true)} className="hover:text-textPrimary" data-news-more="shut">
+                          {` and ${nextReport.same - 1} more report`}
+                        </button>
+                      ) : nextReport.same === 1 ? ' reports' : ' report'}
+                      {' '}{nextReport.today ? 'today' : nextReport.e.iso ? weekdayDay(nextReport.e.iso).split(' ')[0] : nextReport.e.dateLabel} {nextReport.e.timeKnown === false ? '(time not set)' : nextReport.e.slot === 'BMO' ? 'before the open' : 'after the close'}
+                      {nextReport.same > 1 && matesOpen && (
+                        <button type="button" onClick={() => setMatesOpen(false)} className="hover:text-textPrimary" data-news-more="open">
+                          {' '}· Hide
+                        </button>
+                      )}
+                    </span>
                   </span>
                 ) : (
                   <span className="text-textMuted">{econ.status === 'loading' || reportsQ.status === 'loading' ? 'reading the calendar' : econ.status === 'sim' && reportsQ.status === 'sim' ? 'the calendar did not answer' : 'nothing ahead on the calendar'}</span>
@@ -863,7 +880,7 @@ const News = () => {
                 </div>
               </div>
             </div>
-            <div className="px-4 min-h-[26px] py-1 border-t border-ink/[0.06] flex items-center gap-3 font-mono text-[10px] text-textSecondary whitespace-normal" data-news-map-read>
+            <div className="px-4 min-h-[26px] py-1 border-t border-ink/[0.06] flex items-center gap-3 font-mono text-t10 text-textSecondary whitespace-normal" data-news-map-read>
               {hoverCity ? (
                 <>
                   <span className="font-bold text-textPrimary">{hoverCity.city}</span>
@@ -910,18 +927,18 @@ const News = () => {
                   {selected.item.ticker ? (
                     <button type="button" onClick={() => openName(selected.item.ticker!)} className="inline-flex items-center gap-1.5 group" title={`Open ${selected.item.ticker} on the Map`}>
                       <CompanyLogo ticker={selected.item.ticker} size={16} />
-                      <span className="font-mono text-[12px] font-bold text-textPrimary group-hover:underline underline-offset-2">{selected.item.ticker}</span>
+                      <span className="font-mono text-t12 font-bold text-textPrimary group-hover:underline underline-offset-2">{selected.item.ticker}</span>
                     </button>
                   ) : (
-                    <span className="font-mono text-[12px] font-bold text-textPrimary">{nameWord(selected.item)}</span>
+                    <span className="font-mono text-t12 font-bold text-textPrimary">{nameWord(selected.item)}</span>
                   )}
                   <NewsFlag major={selected.item.major} onBoard={onBoard(selected)} lean={leanOf(selected.grade)} />
                   <CatTag category={selected.item.category} size={9} />
-                  <span className="ml-auto font-mono text-[9px] text-textMuted whitespace-nowrap">
+                  <span className="ml-auto font-mono text-t9 text-textMuted whitespace-nowrap">
                     {selected.item.source} · {ago(selected.item.minutesAgo)}
                   </span>
                 </div>
-                <p className="text-[13px] leading-snug text-textPrimary" data-news-headline>
+                <p className="text-t13 leading-snug text-textPrimary" data-news-headline>
                   {selected.item.headline}
                 </p>
                 {/* THE STORY (Noah, 2026-09-28: "some users actually want to read the story") — its opening paragraph, the
@@ -929,7 +946,7 @@ const News = () => {
                 <StoryText storyId={selected.id} body={selected.item.body} source={selected.item.source} url={selected.item.url} />
                 {/* the impact, as a meter, in the grade's ink */}
                 <div>
-                  <div className="flex items-center justify-between text-[9px] text-textMuted">
+                  <div className="flex items-center justify-between text-t9 text-textMuted">
                     <span className="inline-flex items-center gap-1.5">
                       <ImpactMark tier={tierOf(selected.severity)} />
                       <span>
@@ -961,9 +978,9 @@ const News = () => {
                   ) : null}
                 </div>
                 {selected.item.prediction.playbook ? (
-                <div key={selected.id} className="flex flex-col gap-2 animate-soft-in text-[11.5px] leading-relaxed text-textSecondary">
+                <div key={selected.id} className="flex flex-col gap-2 animate-soft-in text-t115 leading-relaxed text-textSecondary">
                   <div>
-                    <div className="text-[9px] uppercase tracking-widest text-textMuted">At publish</div>
+                    <div className="text-t9 uppercase tracking-widest text-textMuted">At publish</div>
                     <p className="mt-0.5">
                       <RichRead text={selected.item.prediction.playbook} />
                     </p>
@@ -996,7 +1013,7 @@ const News = () => {
                 </div>
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{news.status === 'loading' || coverage.reading ? 'Reading the wire' : news.status === 'sim' ? 'This read did not land' : 'Nothing on the wire for these cards'}</div>
+              <div className="flex-1 flex items-center justify-center font-mono text-t10 uppercase tracking-widest text-textMuted">{news.status === 'loading' || coverage.reading ? 'Reading the wire' : news.status === 'sim' ? 'This read did not land' : 'Nothing on the wire for these cards'}</div>
             )}
           </div>
         </div>
@@ -1008,7 +1025,7 @@ const News = () => {
             one list in the house that keeps a window (grids grow, the Compass board rule of 2026-09-11), because a day
             of the wire is hundreds of rows and the box is one of three on the page */}
         <div ref={rowsRef} className={`relative border-t border-borderSubtle overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ maxHeight: NEWS_WINDOW_H }} data-news-rows data-news-window={rows.length > NEWS_WINDOW_ROWS || undefined} data-news-stacked={stacked || undefined}>
-          {!stacked && <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}>
+          {!stacked && <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-t9 uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}>
             <span title="When the headline crossed, New York time">Time</span>
             <span title="The first stock the headline names — the wire's tag, or the listed company the headline names; MACRO for a story about the economy, markets, policy or the world that names none; NO NAME for a company-beat story that names no listed company">Name</span>
             <span title="What sort of story it is, read from the headline">Kind</span>
@@ -1023,7 +1040,7 @@ const News = () => {
             <span className="text-right" title="How the named stock had moved on the session when the story crossed — a snapshot at publish, not today's move now">At publish</span>
             <span className="text-right" title="The other stocks the headline names">Also</span>
           </div>}
-          {rows.length === 0 && <div className="px-5 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{news.status === 'loading' || coverage.reading ? 'Reading the wire' : news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>}
+          {rows.length === 0 && <div className="px-5 py-6 text-center font-mono text-t10 uppercase tracking-widest text-textMuted">{news.status === 'loading' || coverage.reading ? 'Reading the wire' : news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>}
           {rows.map(e => {
             const open = e.id === selectedId;
             const faded = freshnessOf(e) === 'faded';
@@ -1042,9 +1059,9 @@ const News = () => {
                     <span className="mt-[5px] shrink-0">
                       <ImpactMark tier={tierOf(e.severity)} />
                     </span>
-                    <span className={`min-w-0 line-clamp-2 text-[12.5px] leading-snug ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}{similarRef.current.get(e.id) ? <span className="ml-1.5 font-mono text-[9px] text-textMuted" data-news-similar={similarRef.current.get(e.id)}>+{similarRef.current.get(e.id)} similar</span> : null}</span>
+                    <span className={`min-w-0 line-clamp-2 text-t125 leading-snug ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}{similarRef.current.get(e.id) ? <span className="ml-1.5 font-mono text-t9 text-textMuted" data-news-similar={similarRef.current.get(e.id)}>+{similarRef.current.get(e.id)} similar</span> : null}</span>
                   </span>
-                  <span className="min-w-0 flex items-center gap-1.5 font-mono text-[10px] text-textMuted whitespace-nowrap overflow-hidden">
+                  <span className="min-w-0 flex items-center gap-1.5 font-mono text-t10 text-textMuted whitespace-nowrap overflow-hidden">
                     <span className="tnum text-textSecondary">{e.item.time}</span>
                     <span>·</span>
                     {e.item.ticker ? (
@@ -1073,8 +1090,8 @@ const News = () => {
                 data-news-row={e.id}
                 data-open={open || undefined}
               >
-                <span className="h-5 flex items-center font-mono text-[10px] tnum text-textSecondary">{e.item.time}</span>
-                <span className="min-w-0 h-5 inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-textPrimary">
+                <span className="h-5 flex items-center font-mono text-t10 tnum text-textSecondary">{e.item.time}</span>
+                <span className="min-w-0 h-5 inline-flex items-center gap-1.5 font-mono text-t11 font-bold text-textPrimary">
                   {e.item.ticker ? (
                     <>
                       <CompanyLogo ticker={e.item.ticker} size={14} />
@@ -1090,17 +1107,17 @@ const News = () => {
                 <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} lean={leanOf(e.grade)} /></span>
                 <span className="min-w-0 flex items-center gap-2">
                   <ImpactMark tier={tierOf(e.severity)} />
-                  <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-[12px] ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}{similarRef.current.get(e.id) ? <span className="ml-1.5 font-mono text-[9px] text-textMuted" title="Near-duplicate headlines within six hours, folded into this one" data-news-similar={similarRef.current.get(e.id)}>+{similarRef.current.get(e.id)} similar</span> : null}</span>
+                  <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-t12 ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}{similarRef.current.get(e.id) ? <span className="ml-1.5 font-mono text-t9 text-textMuted" title="Near-duplicate headlines within six hours, folded into this one" data-news-similar={similarRef.current.get(e.id)}>+{similarRef.current.get(e.id)} similar</span> : null}</span>
                 </span>
-                <span className="h-5 flex items-center justify-end font-mono text-[11px] font-semibold tnum whitespace-nowrap"><PublishMove p={e.item.prediction} short /></span>
-                <span className="h-5 flex items-center justify-end font-mono text-[10px] text-textSecondary truncate" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
+                <span className="h-5 flex items-center justify-end font-mono text-t11 font-semibold tnum whitespace-nowrap"><PublishMove p={e.item.prediction} short /></span>
+                <span className="h-5 flex items-center justify-end font-mono text-t10 text-textSecondary truncate" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
                   {(e.item.tickers ?? []).length > 1 ? `${e.item.tickers![1]}${e.item.tickers!.length > 2 ? ` +${e.item.tickers!.length - 2}` : ''}` : '—'}
                 </span>
               </button>
             );
           })}
         </div>
-        <p className="px-5 pb-4 pt-3 border-t border-borderSubtle/40 text-[12px] leading-relaxed text-textSecondary" data-news-sentence>
+        <p className="px-5 pb-4 pt-3 border-t border-borderSubtle/40 text-t12 leading-relaxed text-textSecondary" data-news-sentence>
           <RichRead text={mood.note} />
         </p>
       </div>
@@ -1108,8 +1125,8 @@ const News = () => {
       {/* BOX 2 — ALL NEWS: every headline as a feed with tabs, and the names you follow (the partner's box, ported 2026-09-13) */}
       <div className="border border-borderSubtle rounded-md bg-panel" data-news-all>
         <div className="px-5 pt-4 pb-3">
-          <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">All news</h3>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">The same wire as above, a tab per kind — it opens on the earnings stories; All repeats the list above · follow a name and ring the bell on it · a click opens the story beside the map</p>
+          <h3 className="text-t15 font-semibold leading-tight text-textPrimary">All news</h3>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">The same wire as above, a tab per kind — it opens on the earnings stories; All repeats the list above · follow a name and ring the bell on it · a click opens the story beside the map</p>
         </div>
         <div className="border-t border-borderSubtle">
           <NewsFeedTabs events={events} calendar={calendar} selectedId={selectedId} onPick={pick} wire={news.status === 'loading' || coverage.reading ? 'reading' : news.status === 'sim' ? 'failed' : 'read'} />
@@ -1119,14 +1136,14 @@ const News = () => {
       {/* BOX 3 — THE DAY: the month on the record beside the day in hand (the partner's, ported 2026-09-13), and what the wire adds up to */}
       <div className="border border-borderSubtle rounded-md bg-panel" data-news-day>
         <div className="px-5 pt-4 pb-3">
-          <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">The day</h3>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">The month — data, earnings, the FDA, the public schedule, the posts — and what the wire adds up to</p>
+          <h3 className="text-t15 font-semibold leading-tight text-textPrimary">The day</h3>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">The month — data, earnings, the FDA, the public schedule, the posts — and what the wire adds up to</p>
         </div>
         <div className="border-t border-borderSubtle">
           {/* HEADLINES FIRST (round 8: the fortnight's 23 earnings lists, the FDA calendar and the posts were asked before the
               first page of headlines, which then landed ~12s in) — the month is read once the wire's first page is in */}
           {news.status === 'loading' ? (
-            <div className="px-5 py-8 font-mono text-[10px] uppercase tracking-widest text-textMuted animate-pulse" data-news-day-pending>
+            <div className="px-5 py-8 font-mono text-t10 uppercase tracking-widest text-textMuted animate-pulse" data-news-day-pending>
               Reading the month after the headlines…
             </div>
           ) : (
@@ -1138,8 +1155,8 @@ const News = () => {
         <div className="grid border-t border-borderSubtle max-md:!grid-cols-2" style={{ gridTemplateColumns: `repeat(${Math.max(1, insights.length)}, minmax(0, 1fr))` }} data-news-reads>
           {insights.map((i, k) => (
             <div key={i.key} className={`px-5 py-3 ${k > 0 ? 'border-l border-borderSubtle/40' : ''} max-md:border-l-0 max-md:[&:nth-child(even)]:border-l max-md:[&:nth-child(n+3)]:border-t max-md:border-borderSubtle/40`} data-news-read={i.key}>
-              <div className={`text-[10px] font-semibold uppercase tracking-widest ${i.ink === 'bull' ? 'text-bull' : i.ink === 'bear' ? 'text-bear' : 'text-textPrimary'}`}>{i.title}</div>
-              <p className="mt-1 text-[11.5px] leading-relaxed text-textPrimary/85">
+              <div className={`text-t10 font-semibold uppercase tracking-widest ${i.ink === 'bull' ? 'text-bull' : i.ink === 'bear' ? 'text-bear' : 'text-textPrimary'}`}>{i.title}</div>
+              <p className="mt-1 text-t115 leading-relaxed text-textPrimary/85">
                 <RichRead text={i.read} />
               </p>
             </div>

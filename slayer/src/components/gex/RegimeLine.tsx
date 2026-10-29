@@ -82,21 +82,21 @@ const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
     <div className="flex items-center gap-x-3 gap-y-2 flex-wrap min-w-0 py-2 -mt-1 border-b border-borderSubtle" data-regime-line={tone ?? 'pending'} data-name-strip={name || undefined}>
       <div className="flex items-center gap-2 min-w-0" title={title || undefined}>
         {name ? <CompanyLogo ticker={name} size={18} /> : null}
-        <span className="font-mono text-[13px] font-semibold text-textPrimary">{name || '—'}</span>
-        <span className="font-mono text-[11px] font-semibold" style={ink ? { color: ink } : undefined} data-regime-word={tone ?? 'pending'}>
+        <span className="font-mono text-t13 font-semibold text-textPrimary">{name || '—'}</span>
+        <span className="font-mono text-t11 font-semibold" style={ink ? { color: ink } : undefined} data-regime-word={tone ?? 'pending'}>
           {said ? (tone === 'SHORT' ? 'Short gamma' : 'Long gamma') : name ? 'Reading…' : '…'}
         </span>
         {lv?.complete && (
-          <span className={`font-mono text-[11px] tnum ${lv.netGex > 0 ? 'text-bull' : lv.netGex < 0 ? 'text-bear' : 'text-textMuted'}`} data-regime-net>
+          <span className={`font-mono text-t11 tnum ${lv.netGex > 0 ? 'text-bull' : lv.netGex < 0 ? 'text-bear' : 'text-textMuted'}`} data-regime-net>
             {fmtGexUsd(lv.netGex)}
           </span>
         )}
         {lv?.flip != null && (
-          <span className="font-mono text-[11px] tnum text-textSecondary" data-regime-flip>
+          <span className="font-mono text-t11 tnum text-textSecondary" data-regime-flip>
             flip {fmtK(lv.flip)}
           </span>
         )}
-        {lv?.complete && <span className="font-mono text-[10px] uppercase tracking-wider text-textMuted">{lv.scopeLabel}</span>}
+        {lv?.complete && <span className="font-mono text-t10 uppercase tracking-wider text-textMuted">{lv.scopeLabel}</span>}
       </div>
       <div className="ml-auto flex items-center gap-1.5 flex-wrap">
         <DropdownSelect<LevelsScope>
@@ -121,7 +121,7 @@ const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
           type="button"
           onClick={() => setOpen(v => !v)}
           aria-pressed={open}
-          className="hit shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded-md text-[10px] text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] aria-pressed:text-textPrimary transition-colors"
+          className="hit shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded-md text-t10 text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] aria-pressed:text-textPrimary transition-colors"
           title="The words Pinpoint uses, one line each"
           data-first-time
         >
@@ -133,8 +133,8 @@ const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
         <dl className="px-3 py-2.5 grid gap-y-2" data-first-time-card>
           {FIRST_TIME.map(w => (
             <div key={w.term}>
-              <dt className="text-[11px] font-semibold text-textPrimary">{w.term}</dt>
-              <dd className="text-[11px] leading-snug text-textSecondary">{w.says}</dd>
+              <dt className="text-t11 font-semibold text-textPrimary">{w.term}</dt>
+              <dd className="text-t11 leading-snug text-textSecondary">{w.says}</dd>
             </div>
           ))}
         </dl>

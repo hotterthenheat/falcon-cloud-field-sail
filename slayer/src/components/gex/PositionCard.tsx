@@ -297,19 +297,19 @@ export const PayoffSketch = ({ curve, spot, levels, strike, wantsUp, labels = tr
           style={{ left: `${cardLeftPct}%`, transform: cardOnRight ? 'translateX(14px)' : 'translateX(calc(-100% - 14px))' }}
         >
           <div className="flex items-baseline gap-2">
-            <span className="font-mono text-[12px] font-semibold tnum text-textPrimary">{pt.price.toFixed(2)}</span>
-            <span className="font-mono text-[10px] tnum text-textMuted">
+            <span className="font-mono text-t12 font-semibold tnum text-textPrimary">{pt.price.toFixed(2)}</span>
+            <span className="font-mono text-t10 tnum text-textMuted">
               {pt.price >= spot ? '+' : ''}
               {(((pt.price - spot) / spot) * 100).toFixed(2)}% from now
             </span>
           </div>
           <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 items-baseline">
-            <dt className="text-[10px] text-textMuted">At expiry</dt>
-            <dd className={`font-mono text-[11px] font-semibold tnum text-right ${pt.expiry > 0 ? 'text-bull' : pt.expiry < 0 ? 'text-bear' : 'text-textPrimary'}`}>{fmtPnl(pt.expiry)}</dd>
-            <dt className="text-[10px] text-textMuted">Today</dt>
-            <dd className={`font-mono text-[11px] tnum text-right ${pt.now > 0 ? 'text-bull' : pt.now < 0 ? 'text-bear' : 'text-textPrimary'}`}>{fmtPnl(pt.now)}</dd>
+            <dt className="text-t10 text-textMuted">At expiry</dt>
+            <dd className={`font-mono text-t11 font-semibold tnum text-right ${pt.expiry > 0 ? 'text-bull' : pt.expiry < 0 ? 'text-bear' : 'text-textPrimary'}`}>{fmtPnl(pt.expiry)}</dd>
+            <dt className="text-t10 text-textMuted">Today</dt>
+            <dd className={`font-mono text-t11 tnum text-right ${pt.now > 0 ? 'text-bull' : pt.now < 0 ? 'text-bear' : 'text-textPrimary'}`}>{fmtPnl(pt.now)}</dd>
           </dl>
-          <p className="mt-1.5 pt-1.5 border-t border-ink/[0.06] text-[10px] leading-snug text-textSecondary whitespace-nowrap">
+          <p className="mt-1.5 pt-1.5 border-t border-ink/[0.06] text-t10 leading-snug text-textSecondary whitespace-nowrap">
             {words.dealers}
             <br />
             <span className={words.withYou ? 'text-bull' : 'text-bear'}>{words.withYou ? 'with you' : 'against you'}</span>
@@ -356,12 +356,12 @@ const PositionCard = ({ position: p, read, spot, levels, lo, hi, focused, onShow
     >
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h4 className="text-[14px] font-semibold leading-tight text-textPrimary truncate">{title}</h4>
-          <p className="mt-0.5 text-[11px] text-textMuted truncate">
+          <h4 className="text-t14 font-semibold leading-tight text-textPrimary truncate">{title}</h4>
+          <p className="mt-0.5 text-t11 text-textMuted truncate">
             {p.side === 'long' ? 'You own' : 'You sold'} · {cost} · {p.source === 'tracker' ? 'from the Tracker' : 'added by you'}
           </p>
         </div>
-        <span className={`shrink-0 inline-flex items-center h-6 px-2.5 rounded-full border text-[11px] font-medium ${v.cls}`} data-verdict={read.verdict}>
+        <span className={`shrink-0 inline-flex items-center h-6 px-2.5 rounded-full border text-t11 font-medium ${v.cls}`} data-verdict={read.verdict}>
           {v.label}
         </span>
       </header>
@@ -371,13 +371,13 @@ const PositionCard = ({ position: p, read, spot, levels, lo, hi, focused, onShow
       <dl className="grid grid-cols-5 gap-x-4 gap-y-1 border-t border-borderSubtle/50 pt-3">
         {facts.map(f => (
           <div key={f.k} className="min-w-0">
-            <dt className="text-[10px] text-textMuted truncate">{f.k}</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum leading-snug ${f.tone ?? 'text-textPrimary'}`}>{f.v}</dd>
+            <dt className="text-t10 text-textMuted truncate">{f.k}</dt>
+            <dd className={`mt-0.5 font-mono text-t12 tnum leading-snug ${f.tone ?? 'text-textPrimary'}`}>{f.v}</dd>
           </div>
         ))}
       </dl>
 
-      <p className="text-[12px] leading-relaxed text-textSecondary" data-position-sentence>
+      <p className="text-t12 leading-relaxed text-textSecondary" data-position-sentence>
         {subjectWords(p)} sit{p.contracts === 1 ? 's' : ''} {read.sits}. {read.hedging[0].toUpperCase()}
         {read.hedging.slice(1)}.
       </p>
@@ -385,7 +385,7 @@ const PositionCard = ({ position: p, read, spot, levels, lo, hi, focused, onShow
       <footer className="flex items-center gap-1 -mb-1 -ml-1">
         <button
           onClick={() => onShow(p.strike)}
-          className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-medium text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05] transition-colors"
+          className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-t11 font-medium text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05] transition-colors"
           title="Show this strike on the map"
         >
           Show on the map <ArrowUpRight className="w-3 h-3" />
@@ -396,14 +396,14 @@ const PositionCard = ({ position: p, read, spot, levels, lo, hi, focused, onShow
           defaultStrike={p.strike}
           align="start"
           trigger={
-            <button className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-medium text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05] transition-colors" data-edit-position>
+            <button className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-t11 font-medium text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05] transition-colors" data-edit-position>
               <Pencil className="w-3 h-3" /> Change
             </button>
           }
         />
         <button
           onClick={() => removePosition(p.id)}
-          className="ml-auto inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-medium text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] transition-colors"
+          className="ml-auto inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-t11 font-medium text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] transition-colors"
           title="Remove this position"
           aria-label={`Remove ${title}`}
         >

@@ -688,11 +688,11 @@ export const heatScaleLabels =
   HEAT_MODE === 'steel-gold'
     ? // Each end label wears its pole: + is the gold (amplify) end of the
       // bar, − the steel (absorb) end.
-      { pos: 'text-[#F5C542]', neg: 'text-[#E2EAF4]' }
+      { pos: 'text-goldline', neg: 'text-paleline' }
     : HEAT_MODE === 'ice-plasma'
     ? // Each end label wears its pole: + is the plasma (amplify) end of the
       // bar, − the ice (absorb) end.
-      { pos: 'text-[#FF5EA8]', neg: 'text-[#3DD6E8]' }
+      { pos: 'text-hotprint', neg: 'text-iceprint' }
     : HEAT_MODE === 'terminal'
       ? // Terminal's poles are inverted vs 'diverging' — see the ramp note:
         // positive is put-dominant (red) and negative call-dominant (green),

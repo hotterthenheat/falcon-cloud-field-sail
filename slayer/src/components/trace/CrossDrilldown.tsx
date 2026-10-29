@@ -38,7 +38,7 @@ const SEQ_SHOWN = 6;
 
 const INTENT_TAG: Record<DarkPoolIntent, string> = { ACCUMULATION: 'ACCUMULATION', DISTRIBUTION: 'DISTRIBUTION', 'HEDGE FLOW': 'AT THE MID', ROTATION: 'NO READ' };
 const IntentTag = ({ intent }: { intent: DarkPoolIntent }) => (
-  <span className={`font-mono text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{INTENT_TAG[intent]}</span>
+  <span className={`font-mono text-t10 font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{INTENT_TAG[intent]}</span>
 );
 const noReadWord = (p: DarkPoolPrint) => (p.special ? (p.auction ? 'no read · auction' : 'no read · terms') : p.extended ? 'no read · after hours' : 'no read · small');
 
@@ -264,19 +264,19 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
   return (
     <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden" data-cross-tape={print.ticker}>
       <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-center gap-2 flex-wrap">
-        <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The tape</span>
-        <span className="font-mono text-[11px] text-textMuted">the stock and its {print.lit ? 'lit prints' : 'dark crosses'} on one clock · New York · {extendedBars ? 'pre-market and after hours included' : 'the regular session'}</span>
+        <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">The tape</span>
+        <span className="font-mono text-t11 text-textMuted">the stock and its {print.lit ? 'lit prints' : 'dark crosses'} on one clock · New York · {extendedBars ? 'pre-market and after hours included' : 'the regular session'}</span>
       </div>
       <div className="px-3 pt-2.5 pb-1">
         <div className="flex items-baseline gap-2.5 flex-wrap">
-          <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The stock</span>
-          <span className="font-mono text-[11px] text-textMuted tnum">
+          <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">The stock</span>
+          <span className="font-mono text-t11 text-textMuted tnum">
             <RichRead text={`${print.ticker}${stockPx ? ` $${stockPx.toFixed(2)}${last?.at ? ` (last trade ${nyClock(last.at, { zone: true })})` : ''}` : ''}${view ? ` · ${fmtUsd(view.totalNotional)} dark · ${crosses.length} crosses in hand` : ''}`} />
           </span>
         </div>
         {sided > 0 ? (
           <div className="mt-2 flex flex-col gap-1 max-w-[460px]">
-            <div className="flex items-baseline justify-between gap-3 font-mono text-[11px] uppercase tracking-wider">
+            <div className="flex items-baseline justify-between gap-3 font-mono text-t11 uppercase tracking-wider">
               <span className={allAfter ? 'text-textSecondary' : underPct >= 50 ? 'text-bear font-semibold' : 'text-textSecondary'}>Under the mid {Math.round(underPct)}%</span>
               <span className="text-textMuted normal-case tracking-normal">{midN} at the mid{allAfter ? ' · after hours, no read' : ''}{leftOut ? ` · ${leftOut} own-terms or after-hours left out` : ''}</span>
               <span className={allAfter ? 'text-textSecondary' : underPct < 50 ? 'text-bull font-semibold' : 'text-textSecondary'}>Over the mid {100 - Math.round(underPct)}%</span>
@@ -287,26 +287,26 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
             </span>
           </div>
         ) : (
-          <p className="mt-2 font-mono text-[11px] text-textMuted">{placed.length ? 'Every cross priced at the quote printed at the mid.' : 'No cross in view is priced at the quote — nothing to split.'}</p>
+          <p className="mt-2 font-mono text-t11 text-textMuted">{placed.length ? 'Every cross priced at the quote printed at the mid.' : 'No cross in view is priced at the quote — nothing to split.'}</p>
         )}
-        {hasDay ? <div ref={priceRef} className="h-[220px] w-full" data-cross-price /> : <div className="h-[120px] flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted">No session bars for {print.ticker} yet</div>}
+        {hasDay ? <div ref={priceRef} className="h-[220px] w-full" data-cross-price /> : <div className="h-[120px] flex items-center justify-center font-mono text-t11 uppercase tracking-widest text-textMuted">No session bars for {print.ticker} yet</div>}
       </div>
       {hasDay && (
         <>
           <div className="mx-3 my-1.5 h-px bg-borderSubtle/60" />
           <div className="px-3 pt-1 pb-2.5">
             <div className="flex items-baseline gap-2.5 flex-wrap">
-              <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">Dark dollars</span>
-              <span className="font-mono text-[11px] text-textMuted">running off-exchange dollars · this cross marked</span>
+              <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">Dark dollars</span>
+              <span className="font-mono text-t11 text-textMuted">running off-exchange dollars · this cross marked</span>
             </div>
             <div ref={darkRef} className="h-[210px] w-full" />
           </div>
         </>
       )}
       <div className="px-3 pb-2.5 flex items-center gap-3 flex-wrap">
-        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-textPrimary" /> The stock</span>
-        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-silver" /> Dark dollars</span>
-        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-1.5 h-1.5 rounded-full bg-silver" /> This cross</span>
+        <span className="inline-flex items-center gap-1.5 font-mono text-t11 uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-textPrimary" /> The stock</span>
+        <span className="inline-flex items-center gap-1.5 font-mono text-t11 uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-silver" /> Dark dollars</span>
+        <span className="inline-flex items-center gap-1.5 font-mono text-t11 uppercase tracking-wider text-textSecondary"><span className="w-1.5 h-1.5 rounded-full bg-silver" /> This cross</span>
       </div>
     </div>
   );
@@ -325,14 +325,15 @@ const CrossSequence = ({ print, sequence, onOpen }: { print: DarkPoolPrint; sequ
     const newest = sequence[0]?.time ?? print.time;
     return `${n} crosses on ${print.ticker} among the prints in hand · ${fmtUsd(total)} total · ${bought} paid the offer / ${sold} hit the bid${mid ? ` / ${mid} inside the quote` : ''}${own ? ` / ${own} own terms` : ''} · ${oldest} → ${newest}.`;
   }, [sequence, n, print.ticker, print.time]);
-  const shown = sequence.slice(0, SEQ_SHOWN);
+  const [open, setOpen] = useState(false);
+  const shown = open ? sequence : sequence.slice(0, SEQ_SHOWN);
   return (
     <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden" data-cross-sequence>
       <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-baseline gap-2 flex-wrap">
-        <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The sequence</span>
-        <span className="font-mono text-[11px] text-textMuted">{print.ticker}'s crosses among the prints in hand — not the whole day</span>
+        <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">The sequence</span>
+        <span className="font-mono text-t11 text-textMuted">{print.ticker}'s crosses among the prints in hand — not the whole day</span>
       </div>
-      <p className="px-3 pt-2 text-[11px] text-textSecondary leading-snug tnum">
+      <p className="px-3 pt-2 text-t11 text-textSecondary leading-snug tnum">
         <RichRead text={read} />
       </p>
       {n > 1 && (
@@ -342,12 +343,12 @@ const CrossSequence = ({ print, sequence, onOpen }: { print: DarkPoolPrint; sequ
             const ink = p.exec === 'ASK' || p.exec === 'BID' ? 'text-textPrimary' : 'text-textMuted';
             const row = (
               <>
-                <span className="w-[86px] shrink-0 font-mono text-[11px] tnum text-textMuted">{p.time}</span>
-                <span className={`w-[88px] shrink-0 font-mono text-[11px] font-semibold uppercase tracking-wider ${ink}`}>{sideWord(p)}</span>
-                <span className="font-mono text-[11px] tnum text-textSecondary">{num(p.size)} × ${p.price.toFixed(2)}</span>
-                <span className="font-mono text-[11px] font-bold tnum text-textPrimary">{fmtUsd(p.notional)}</span>
-                {p.sized && <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-textPrimary">Sized</span>}
-                {self && <span className="ml-auto font-mono text-[11px] font-semibold uppercase tracking-wider text-silver">Viewing</span>}
+                <span className="w-[86px] shrink-0 font-mono text-t11 tnum text-textMuted">{p.time}</span>
+                <span className={`w-[88px] shrink-0 font-mono text-t11 font-semibold uppercase tracking-wider ${ink}`}>{sideWord(p)}</span>
+                <span className="font-mono text-t11 tnum text-textSecondary">{num(p.size)} × ${p.price.toFixed(2)}</span>
+                <span className="font-mono text-t11 font-bold tnum text-textPrimary">{fmtUsd(p.notional)}</span>
+                {p.sized && <span className="font-mono text-t11 font-semibold uppercase tracking-wider text-textPrimary">Sized</span>}
+                {self && <span className="ml-auto font-mono text-t11 font-semibold uppercase tracking-wider text-silver">Viewing</span>}
               </>
             );
             return self || !onOpen ? (
@@ -356,7 +357,11 @@ const CrossSequence = ({ print, sequence, onOpen }: { print: DarkPoolPrint; sequ
               <button key={p.id} type="button" onClick={() => onOpen(p)} title="Open this cross" className="flex items-baseline gap-2.5 px-1.5 py-1 rounded text-left hover:bg-ink/[0.04] transition-colors">{row}</button>
             );
           })}
-          {n > SEQ_SHOWN && <span className="px-1.5 py-1 font-mono text-[11px] text-textMuted tnum">…and {n - SEQ_SHOWN} more on the tape</span>}
+          {n > SEQ_SHOWN && (
+            <button type="button" onClick={() => setOpen(v => !v)} className="self-start px-1.5 py-1 font-mono text-t11 text-textMuted tnum hover:text-textPrimary" data-sequence-more={open ? 'open' : 'shut'}>
+              {open ? 'Hide' : `…and ${n - SEQ_SHOWN} more on the tape`}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -373,8 +378,8 @@ interface CrossDrilldownProps {
   onOpen?: (p: DarkPoolPrint) => void;
 }
 
-const th = 'px-2 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle';
-const td = 'px-2 py-1.5 font-mono text-[11px] tnum';
+const th = 'px-2 py-1.5 font-mono text-t11 font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle';
+const td = 'px-2 py-1.5 font-mono text-t11 tnum';
 const linkBtn =
   'slayer-chip uppercase tracking-wider justify-center';
 
@@ -429,11 +434,11 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
               <SlayerMark size={18} bare label="" />
               <Wordmark height={11} label="" />
             </span>
-            <span className="inline-flex items-center rounded-full border border-borderMuted bg-ink/[0.04] px-2.5 py-0.5 font-mono text-[13px] font-semibold text-textPrimary">{print.ticker}</span>
-            <span className="font-mono text-[11px] text-textSecondary tnum">{print.lit ? `lit print · ${print.venue}` : `cross · reported to ${print.facility ?? venueWord(print.venue)}`}</span>
-            {print.sized && !print.extended && !print.special ? <IntentTag intent={print.intent} /> : <span className="font-mono text-[11px] uppercase text-textMuted">{noReadWord(print)}</span>}
-            <span className="font-mono text-[11px] text-textSecondary tnum">{print.time}</span>
-            {print.sized && <span className="font-mono text-[11px] uppercase font-semibold text-textPrimary">Sized</span>}
+            <span className="inline-flex items-center rounded-full border border-borderMuted bg-ink/[0.04] px-2.5 py-0.5 font-mono text-t13 font-semibold text-textPrimary">{print.ticker}</span>
+            <span className="font-mono text-t11 text-textSecondary tnum">{print.lit ? `lit print · ${print.venue}` : `cross · reported to ${print.facility ?? venueWord(print.venue)}`}</span>
+            {print.sized && !print.extended && !print.special ? <IntentTag intent={print.intent} /> : <span className="font-mono text-t11 uppercase text-textMuted">{noReadWord(print)}</span>}
+            <span className="font-mono text-t11 text-textSecondary tnum">{print.time}</span>
+            {print.sized && <span className="font-mono text-t11 uppercase font-semibold text-textPrimary">Sized</span>}
           </div>
         )
       }
@@ -468,25 +473,25 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
           <div className="flex flex-col border border-borderSubtle rounded-md bg-inset overflow-hidden" data-cross-card={key} data-print-head>
             <div className="flex items-center gap-x-5 gap-y-2 flex-wrap px-4 py-3" data-print-money>
               <span className="flex items-baseline gap-2.5">
-                <span className={`font-mono text-[22px] font-bold tnum leading-none ${print.notional >= 1_000_000 ? 'text-supreme' : 'text-textPrimary'}`}>{fmtUsd(print.notional)}</span>
+                <span className={`font-mono text-t22 font-bold tnum leading-none ${print.notional >= 1_000_000 ? 'text-supreme' : 'text-textPrimary'}`}>{fmtUsd(print.notional)}</span>
                 {/* no side word beside "no read" (audit round 10, minor 7: BOUGHT beside NO READ · SMALL) */}
-                {print.intent !== 'ROTATION' && sideLabel(print) && <span className={`font-mono text-[13px] font-bold ${print.exec === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{sideLabel(print)}</span>}
-                {print.sized && <span className="font-mono text-[11px] uppercase font-semibold text-textPrimary">Sized</span>}
+                {print.intent !== 'ROTATION' && sideLabel(print) && <span className={`font-mono text-t13 font-bold ${print.exec === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{sideLabel(print)}</span>}
+                {print.sized && <span className="font-mono text-t11 uppercase font-semibold text-textPrimary">Sized</span>}
               </span>
               {frac != null && (
                 <span className="flex items-center gap-2 w-[220px] max-w-full" title="Where between the bid and the ask it filled">
-                  <span className="font-mono text-[11px] tnum text-textMuted">{print.bid != null ? print.bid.toFixed(2) : 'bid'}</span>
+                  <span className="font-mono text-t11 tnum text-textMuted">{print.bid != null ? print.bid.toFixed(2) : 'bid'}</span>
                   <span className="relative flex-1 h-[3px] rounded-full bg-ink/[0.08]">
                     <span className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[8px] h-[8px] rounded-full ${print.exec === 'MID' ? 'bg-ink/60' : 'bg-textPrimary'}`} style={{ left: `${frac * 100}%` }} />
                   </span>
-                  <span className="font-mono text-[11px] tnum text-textMuted">{print.ask != null ? print.ask.toFixed(2) : 'ask'}</span>
+                  <span className="font-mono text-t11 tnum text-textMuted">{print.ask != null ? print.ask.toFixed(2) : 'ask'}</span>
                 </span>
               )}
-              <span className="font-mono text-[11px] text-textSecondary tnum whitespace-nowrap">
+              <span className="font-mono text-t11 text-textSecondary tnum whitespace-nowrap">
                 <RichRead text={`${num(print.size)} shares @ $${print.price.toFixed(2)} · ${print.time}`} />
               </span>
             </div>
-            <p className="px-4 py-2.5 border-t border-borderSubtle/60 text-[12px] leading-relaxed text-textSecondary" data-cross-read>
+            <p className="px-4 py-2.5 border-t border-borderSubtle/60 text-t12 leading-relaxed text-textSecondary" data-cross-read>
               <RichRead text={print.read} />
             </p>
             <div className="px-4 pt-2.5 pb-3 border-t border-borderSubtle/60 grid gap-x-8 gap-y-1.5 md:grid-cols-2 xl:grid-cols-3" data-cross-facts>
@@ -540,8 +545,8 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The crosses</span>
-              <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted">{sequence.length} in hand{sequence.length ? ` · ${sequence[sequence.length - 1].time}–${sequence[0].time} ET` : ''}</span>
+              <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">The crosses</span>
+              <span className="font-mono text-t11 uppercase tracking-wider text-textMuted">{sequence.length} in hand{sequence.length ? ` · ${sequence[sequence.length - 1].time}–${sequence[0].time} ET` : ''}</span>
             </div>
             <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden max-h-[240px] overflow-y-auto" data-cross-orders>
               <table className="w-full border-collapse">
@@ -577,7 +582,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
                         <td className={`${td} text-right ${p.notional >= 1_000_000 ? 'text-textPrimary font-semibold' : 'text-textPrimary'}`}>{fmtUsd(p.notional)}</td>
                         <td className={`${td} ${p.exec === 'MID' || !p.exec || p.extended ? 'text-textMuted' : 'text-textPrimary'}`}>{sideWord(p)}</td>
                         <td className={`${td} text-right ${p.extended ? 'text-textSecondary' : place.cents > 0 ? 'text-bull' : place.cents < 0 ? 'text-bear' : 'text-textMuted'}`}>{place.text}</td>
-                        <td className={td}>{p.sized && !p.extended && !p.special ? <IntentTag intent={p.intent} /> : <span className="text-textMuted uppercase text-[10px]">{noReadWord(p)}</span>}</td>
+                        <td className={td}>{p.sized && !p.extended && !p.special ? <IntentTag intent={p.intent} /> : <span className="text-textMuted uppercase text-t10">{noReadWord(p)}</span>}</td>
                       </tr>
                     );
                   })}
@@ -587,7 +592,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary mr-1">Open in</span>
+            <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary mr-1">Open in</span>
             <button type="button" onClick={() => jump(() => navigate('/pinpoint', { state: { ticker: print.ticker } }))} className={linkBtn}>
               <Crosshair className="w-3.5 h-3.5" /> Dealer map
             </button>

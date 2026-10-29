@@ -84,7 +84,7 @@ const MobileMenu = ({ open, onClose }: Props) => {
   /* ONE GROUP OF THE MENU — Home (Pulse) stands above the Alerts row, the captioned groups under it, More last (the rail's order, nav.ts) */
   const groupBlock = (group: NavGroup) => (
         <div key={group} className={group === 'Home' ? '' : 'mt-4'} data-mobile-group={group}>
-          {NAV_GROUP_META[group].caption && <span className="block px-3 pb-1 text-[10px] uppercase tracking-[0.1em] text-textMuted">{NAV_GROUP_META[group].caption}</span>}
+          {NAV_GROUP_META[group].caption && <span className="block px-3 pb-1 text-t10 uppercase tracking-[0.1em] text-textMuted">{NAV_GROUP_META[group].caption}</span>}
           {itemsByGroup(group).map(item => {
             const inside = pathname.startsWith(item.path);
             const subs = subpagesFor(item.path, pathname, chosenId);
@@ -97,14 +97,14 @@ const MobileMenu = ({ open, onClose }: Props) => {
                   <NavLink
                     to={item.path}
                     onClick={onClose}
-                    className={`min-w-0 flex-1 flex items-center gap-3 h-11 pl-3 text-[14px] ${inside ? 'text-textPrimary font-medium' : 'text-textSecondary'}`}
+                    className={`min-w-0 flex-1 flex items-center gap-3 h-11 pl-3 text-t14 ${inside ? 'text-textPrimary font-medium' : 'text-textSecondary'}`}
                     data-mobile-item={item.path}
                   >
                     {/* the page's glyph, as on the rail and the landing (2026-10-03); Settings keeps its line icon */}
                     {item.glyph ? (
                       <PageGlyph name={item.glyph} size={18} className={`shrink-0 ${inside ? '' : 'opacity-80'}`} />
                     ) : (
-                      <item.icon className={`w-[18px] h-[18px] shrink-0 ${inside ? 'text-[color:var(--ink)]' : 'text-textMuted'}`} strokeWidth={inside ? 2 : 1.75} style={{ '--ink': item.ink } as CSSProperties} />
+                      <item.icon className={`w-[18px] h-[18px] shrink-0 ${inside ? 'text-ink' : 'text-textMuted'}`} strokeWidth={inside ? 2 : 1.75} style={{ '--ink': item.ink } as CSSProperties} />
                     )}
                     <span className="truncate">{item.label}</span>
                   </NavLink>
@@ -129,7 +129,7 @@ const MobileMenu = ({ open, onClose }: Props) => {
                         to={s.path}
                         onClick={onClose}
                         aria-current={i === activeIdx ? 'page' : undefined}
-                        className={`h-10 flex items-center px-2.5 rounded-md text-[13.5px] ${i === activeIdx ? 'text-textPrimary font-medium bg-ink/[0.05]' : 'text-textSecondary'}`}
+                        className={`h-10 flex items-center px-2.5 rounded-md text-t135 ${i === activeIdx ? 'text-textPrimary font-medium bg-ink/[0.05]' : 'text-textSecondary'}`}
                         data-mobile-sub={s.path}
                       >
                         {s.label}
@@ -172,19 +172,19 @@ const MobileMenu = ({ open, onClose }: Props) => {
               onClose();
               toggleAlertsDrawer();
             }}
-            className="w-full flex items-center gap-3 h-11 px-3 rounded-lg text-[14px] text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]"
+            className="w-full flex items-center gap-3 h-11 px-3 rounded-lg text-t14 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]"
             data-mobile-alerts
           >
             <JingleBell count={setTotal + unseen} lit={unseen > 0} glyph={18} className="shrink-0 opacity-80" />
             <span>Alerts</span>
-            {(unseen > 0 || setTotal > 0) && <span className={`ml-auto font-mono text-[11px] tnum ${unseen > 0 ? 'text-select' : 'text-textMuted'}`}>{unseen > 0 ? `${unseen} alerted` : `${setTotal} set`}</span>}
+            {(unseen > 0 || setTotal > 0) && <span className={`ml-auto font-mono text-t11 tnum ${unseen > 0 ? 'text-select' : 'text-textMuted'}`}>{unseen > 0 ? `${unseen} alerted` : `${setTotal} set`}</span>}
           </button>
 
           {NAV_GROUPS.filter(g => g !== 'Home').map(groupBlock)}
         </nav>
         {/* the menu's foot: the signature, in the market's own word (his partner's logo system, 2026-10-03) */}
         <div className="shrink-0 px-4 py-3 border-t border-borderSubtle">
-          <Signature rule={false} className="text-[11px]" />
+          <Signature rule={false} className="text-t11" />
         </div>
       </div>
     </div>,

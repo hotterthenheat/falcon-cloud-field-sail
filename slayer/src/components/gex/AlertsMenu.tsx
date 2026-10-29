@@ -118,7 +118,7 @@ const AlertsMenu = ({ ticker, spot, tf }: AlertsMenuProps) => {
   };
 
   const chipClass = (active: boolean) =>
-    `px-1.5 py-[3px] rounded border font-mono text-[9px] leading-[12px] transition-all ${
+    `px-1.5 py-[3px] rounded border font-mono text-t9 leading-[12px] transition-all ${
       active
         ? 'hover:opacity-70'
         : 'border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted'
@@ -127,7 +127,7 @@ const AlertsMenu = ({ ticker, spot, tf }: AlertsMenuProps) => {
     active ? { color: ALERT, borderColor: alpha(ALERT, 0.6) } : undefined;
 
   const section = (label: string) => (
-    <div className="px-2.5 pt-1.5 pb-1 font-mono text-[8px] uppercase tracking-[0.14em] text-textMuted">
+    <div className="px-2.5 pt-1.5 pb-1 font-mono text-t8 uppercase tracking-[0.14em] text-textMuted">
       {label}
     </div>
   );
@@ -153,20 +153,20 @@ const AlertsMenu = ({ ticker, spot, tf }: AlertsMenuProps) => {
           inputMode="decimal"
           placeholder={spot > 0 ? spot.toFixed(2) : 'Price'}
           aria-label={`Alert price for ${ticker}`}
-          className="w-full min-w-0 bg-inset border border-borderSubtle rounded px-1.5 py-1 font-mono text-[11px] tnum text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-borderMuted"
+          className="w-full min-w-0 bg-inset border border-borderSubtle rounded px-1.5 py-1 font-mono text-t11 tnum text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-borderMuted"
         />
         <button
           onClick={submit}
           disabled={full}
           title={full ? capMsg : `Alert me at this price`}
-          className="shrink-0 px-2 py-1 rounded border border-borderSubtle bg-inset font-mono text-[10px] text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-40 disabled:hover:text-textSecondary transition-colors"
+          className="shrink-0 px-2 py-1 rounded border border-borderSubtle bg-inset font-mono text-t10 text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-40 disabled:hover:text-textSecondary transition-colors"
         >
           Set
         </button>
       </div>
 
       {refused && (
-        <div role="status" className="px-2.5 pb-1 font-mono text-[9px] text-bear">
+        <div role="status" className="px-2.5 pb-1 font-mono text-t9 text-bear">
           {refused}
         </div>
       )}

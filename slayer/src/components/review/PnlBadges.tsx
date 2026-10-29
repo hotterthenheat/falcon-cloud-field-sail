@@ -12,7 +12,7 @@
 import { usdSigned } from './words';
 
 const tone = (v: number) => (v >= 0.005 ? 'fill-bull' : v <= -0.005 ? 'fill-bear' : 'bg-panel text-textSecondary border border-borderMuted');
-const badge = 'h-6 inline-flex items-center px-2 rounded-[3px] font-mono text-[11px] font-semibold tnum whitespace-nowrap shadow-[0_3px_10px_rgba(0,0,0,0.35)]';
+const badge = 'h-6 inline-flex items-center px-2 rounded-[3px] font-mono text-t11 font-semibold tnum whitespace-nowrap shadow-[0_3px_10px_rgba(0,0,0,0.35)]';
 
 interface Props {
   name: string;

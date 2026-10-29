@@ -7,13 +7,13 @@
 import { useEffect, useState } from 'react';
 import type { OptionRight, Setup } from '../types/compass';
 import type { TrackedSetup } from '../types/tracker';
-import { choiceRight } from './compass';
-import { noteLeft } from './compassModel';
+import { currentPicks, entryAsk, noteLeft } from './compassModel';
+import { noteCompassCall } from './compassAlerts';
 import { nyClock, nyMinutes, nyParts, nyWallTime } from '../core/nyTime';
-import { STOP_KEEP, spreadOk } from './contractQuote';
-import { odteBoardDone } from './compassSession';
+import { STOP_KEEP } from './contractQuote';
+import { lotteryExit, reversalLine, stopAfter, treeExit } from './compassParams';
 
-export type BookResult = 'win' | 'loss' | 'caution' | 'unavailable';
+export type BookResult = 'win' | 'loss' | 'caution' | 'unavailable' | 'open';
 
 export interface BookLine {
   id: string;
@@ -47,6 +47,8 @@ export interface CloseInput {
   peak: number;
   heldMin: number;
   runner: boolean;
+  lottery?: boolean;
+  heldSec?: number;
   scalp?: boolean;
   wing?: boolean;
   side: OptionRight;
@@ -55,6 +57,7 @@ export interface CloseInput {
   flat: boolean;
   levelBroke: boolean;
   rejected: boolean;
+  ret5?: number;
 }
 
 const KEY = 'slayer_compass_book';
@@ -102,20 +105,13 @@ export function notePeak(id: string, bid: number): number {
 }
 
 export function activeStop(paid: number, peak: number, runner: boolean): { stop: number; name: string } {
-  let stop = paid * STOP_KEEP;
+  const stop = stopAfter(paid, peak, runner);
   let name = 'Stop';
-  const raise = (level: number, word: string) => {
-    if (level > stop) {
-      stop = level;
-      name = word;
-    }
-  };
-  if (peak >= paid * 1.25) raise(paid, 'Breakeven');
-  if (!runner) return { stop, name };
-  if (peak >= paid * 1.5) raise(paid * 1.25, 'TP1');
-  if (peak >= paid * 2) raise(paid * 1.5, 'TP2');
-  if (peak >= paid * 3) raise(paid * 2.25, 'TP3');
-  if (peak >= paid * 4) raise(peak * 0.75, 'Trail');
+  if (runner && peak >= paid * 4) name = 'Trail';
+  else if (runner && peak >= paid * 3) name = 'TP3';
+  else if (runner && peak >= paid * 2) name = 'TP2';
+  else if (runner && peak >= paid * 1.5) name = 'TP1';
+  else if (peak >= paid * 1.25) name = 'Breakeven';
   return { stop, name };
 }
 
@@ -124,27 +120,21 @@ const moneyResult = (paid: number, exitPx: number): BookResult => (exitPx > paid
 export function closeOf(p: CloseInput): { result: BookResult; why: string; exitPx: number } | null {
   const paid = p.paid;
   const bid = p.bid;
-  if (!(paid > 0)) return null;
-  const prior = p.peak;
-  const peak = Math.max(prior, bid > 0 ? bid : 0);
-  if (p.wing) {
-    if (bid > 0 && bid <= paid * 0.5) return { result: moneyResult(paid, bid), why: 'Stop', exitPx: bid };
-    if (bid >= paid * 3) return { result: 'win', why: 'Wing', exitPx: Number((paid * 3).toFixed(2)) };
-  } else if (p.scalp) {
-    if (bid > 0 && bid <= paid * 0.85) return { result: moneyResult(paid, bid), why: 'Stop', exitPx: bid };
-    if (bid >= paid * 1.2) return { result: 'win', why: 'Scalp', exitPx: Number((paid * 1.2).toFixed(2)) };
-  } else {
-    const armed = activeStop(paid, prior > 0 ? prior : 0, p.runner);
-    const stopPx = prior > 0 ? armed.stop : paid * STOP_KEEP;
-    if (bid > 0 && bid <= stopPx) return { result: moneyResult(paid, bid), why: prior > 0 ? armed.name : 'Stop', exitPx: bid };
-    if (!p.runner && bid >= paid * 1.5) return { result: 'win', why: 'TP1', exitPx: Number((paid * 1.5).toFixed(2)) };
+  if (!(paid > 0) || !Number.isFinite(bid) || bid < 0) return null;
+  if (p.lottery) {
+    const hit = lotteryExit(paid, bid, p.heldSec ?? 0);
+    if (hit) return { result: moneyResult(paid, hit.px), why: hit.why, exitPx: hit.px };
+    if (p.flat) return { result: moneyResult(paid, bid), why: '15:50', exitPx: bid };
+    return null;
   }
-  if (p.heldMin >= 55 && peak < paid * (p.scalp ? 1.1 : 1.15) && bid > 0) return { result: moneyResult(paid, bid), why: 'Time', exitPx: bid };
-  if (p.flat && bid > 0) return { result: moneyResult(paid, bid), why: '15:55', exitPx: bid };
-  if (p.dayOver && bid > 0) return { result: moneyResult(paid, bid), why: "Day's over", exitPx: bid };
-  if (p.levelBroke && bid > 0) return { result: moneyResult(paid, bid), why: 'Level broke', exitPx: bid };
-  if (p.choice !== p.side) return { result: 'caution', why: 'Caution', exitPx: bid > 0 ? bid : paid };
-  if (p.rejected && bid > 0) return { result: moneyResult(paid, bid), why: 'Rejected', exitPx: bid };
+  const prior = p.peak;
+  const hit = treeExit(paid, bid, prior > 0 ? prior : 0, p.runner);
+  if (hit) return { result: moneyResult(paid, hit.px), why: hit.why, exitPx: hit.px };
+  if (p.heldMin >= 1 && Number.isFinite(p.ret5)) {
+    const line = reversalLine(paid, bid, p.side, p.ret5 as number);
+    if (line) return { result: moneyResult(paid, bid), why: line, exitPx: bid };
+  }
+  if (p.flat) return { result: moneyResult(paid, bid), why: 'end of day', exitPx: bid };
   return null;
 }
 
@@ -154,6 +144,10 @@ export function stopFromAsk(ask: number): number {
 
 export function flatNow(at: number = Date.now()): boolean {
   return nyMinutes(at) >= 15 * 60 + 55;
+}
+
+export function lotteryFlatNow(at: number = Date.now()): boolean {
+  return nyMinutes(at) >= 15 * 60 + 50;
 }
 
 function nyDay(at = Date.now()): string {
@@ -185,8 +179,8 @@ export function stampClose(row: {
 }): BookLine {
   const at = Date.now();
   const ret = row.paid > 0 ? Number(((row.exitPx / row.paid - 1) * 100).toFixed(1)) : 0;
-  const fees = row.result === 'unavailable' ? 0 : optionFees(row.exitPx);
-  const pnl = row.paid > 0 ? Number(((row.exitPx - row.paid) * 100 - fees).toFixed(2)) : 0;
+  const fees = row.result === 'unavailable' || row.result === 'open' ? 0 : optionFees(row.exitPx);
+  const pnl = row.paid > 0 && row.result !== 'open' ? Number(((row.exitPx - row.paid) * 100 - fees).toFixed(2)) : 0;
   return {
     ...row,
     date: nyDay(at),
@@ -213,7 +207,7 @@ function load(): BookLine[] {
     return parsed.filter((row): row is BookLine => {
       if (!row || typeof row !== 'object') return false;
       const r = row as BookLine;
-      return typeof r.id === 'string' && (r.result === 'win' || r.result === 'loss' || r.result === 'caution' || r.result === 'unavailable');
+      return typeof r.id === 'string' && (r.result === 'win' || r.result === 'loss' || r.result === 'caution' || r.result === 'unavailable' || r.result === 'open');
     });
   } catch {
     return [];
@@ -283,9 +277,44 @@ export function bookLine(id: string): BookLine | null {
   return lines.find(row => row.id === id) ?? null;
 }
 
+/** A called ticket is on the blotter the moment it is called. The exit replaces this row. */
+export function syncOpenBook(now = Date.now()): void {
+  for (const pick of currentPicks()) {
+    if (pick.band !== 'top' && pick.band !== 'wing' && pick.band !== 'lottery') continue;
+    const paid = entryAsk(pick.id);
+    if (!(paid > 0) || bookLine(pick.id)) continue;
+    const at = pick.seenAt && pick.seenAt > 0 ? pick.seenAt : now;
+    remember({
+      id: pick.id,
+      date: nyDay(at),
+      ticker: pick.ticker,
+      contract: pick.contract,
+      right: pick.right,
+      strike: pick.strike,
+      paid,
+      exitPx: 0,
+      exit: '',
+      why: pick.band === 'lottery' ? 'Book C. Open.' : pick.band === 'wing' ? 'Book B. Open.' : 'Book A. Open.',
+      result: 'open',
+      ret: 0,
+      held: null,
+      at,
+      entered: nyClock(at),
+      fees: 0,
+      pnl: 0,
+    });
+    noteCompassCall(pick);
+  }
+}
+
 export function remember(line: BookLine): void {
-  if (lines.some(row => row.id === line.id)) return;
-  lines = [line, ...lines];
+  const i = lines.findIndex(row => row.id === line.id);
+  if (i >= 0) {
+    if (lines[i].result !== 'open') return;
+    lines = lines.map(row => (row.id === line.id ? line : row));
+  } else {
+    lines = [line, ...lines];
+  }
   try { localStorage.setItem(KEY, JSON.stringify(lines)); } catch { /* the row still stands */ }
   emit();
 }
@@ -300,12 +329,17 @@ export function useCompassBook(): BookLine[] {
   return rows;
 }
 
-export function lockFill(id: string, trackedAt: number, quote: LiveQuote | null, now = Date.now(), _ticker = ''): LockedFill {
+export function lockFill(id: string, trackedAt: number, quote: LiveQuote | null, now = Date.now(), _ticker = '', signalAsk = 0, immediate = false): LockedFill {
   const held = fills.get(id);
   if (held && held.status !== 'wait') return held;
-  if (!nextAskDue(trackedAt, now)) return { status: 'wait', bid: 0, ask: 0, mid: 0 };
-  if (!quote || !(quote.ask > 0) || !(quote.bid > 0) || quote.ask < quote.bid) {
+  if (!immediate && !nextAskDue(trackedAt, now)) return { status: 'wait', bid: 0, ask: 0, mid: 0 };
+  if (!quote || !(quote.ask > 0) || quote.bid < 0 || quote.ask < quote.bid) {
     const miss = { status: 'unavailable' as const, bid: 0, ask: 0, mid: 0 };
+    fills.set(id, miss);
+    return miss;
+  }
+  if (signalAsk > 0 && quote.ask > signalAsk + 1e-6) {
+    const miss = { status: 'unavailable' as const, bid: quote.bid, ask: quote.ask, mid: 0 };
     fills.set(id, miss);
     return miss;
   }
@@ -322,8 +356,10 @@ export function settleOpen(tracked: TrackedSetup[], setups: Setup[], spots: Map<
       continue;
     }
     const setup = setups.find(s => s.id === t.id);
+    if (setup?.band === 'closest') continue;
     const quote = setup && setup.quotedAt ? { bid: setup.bid, ask: setup.ask, at: setup.quotedAt } : null;
-    const fill = lockFill(t.id, t.trackedAt, quote, Date.now(), t.ticker);
+    const lottery = setup?.band === 'lottery';
+    const fill = lockFill(t.id, t.trackedAt, quote, Date.now(), t.ticker, t.signalAsk ?? 0, lottery);
     if (fill.status === 'wait') continue;
     if (fill.status === 'unavailable') {
       remember(stampClose({
@@ -338,25 +374,31 @@ export function settleOpen(tracked: TrackedSetup[], setups: Setup[], spots: Map<
     if (!setup) continue;
     const paid = fill.ask;
     const held = Math.max(0, Math.round((Date.now() - t.trackedAt) / 60000));
-    const spot = spots.get(t.ticker) ?? spots.get(t.ticker === 'SPXW' ? 'SPX' : t.ticker) ?? 0;
-    const open = opens.get(t.ticker) ?? 0;
-    const choice = choiceRight(t.right === 'C', spot, open);
+    const heldSec = Math.max(0, Math.round((Date.now() - t.trackedAt) / 1000));
+    const prior = peakBefore(t.id);
+    const spot = spots.get(t.ticker) ?? 0;
     const call = closeOf({
       paid,
       bid: setup.bid,
-      peak: peakBefore(t.id),
+      peak: prior,
       heldMin: held,
-      runner: setup.runner === true,
-      scalp: setup.band === 'scalp',
+      heldSec,
+      runner: lottery ? false : setup.band === 'wing' || setup.runner === true,
+      lottery,
+      scalp: false,
       wing: setup.band === 'wing',
       side: t.right,
-      choice,
-      dayOver: setup.expiry === '0DTE' && odteBoardDone(true),
-      flat: setup.expiry === '0DTE' && flatNow(),
-      levelBroke: spot > 0 && setup.invalidationPrice > 0 && (t.right === 'C' ? spot <= setup.invalidationPrice : spot >= setup.invalidationPrice),
-      rejected: !spreadOk(setup.bid, setup.ask),
+      choice: t.right,
+      dayOver: false,
+      flat: lottery ? lotteryFlatNow() : setup.expiry === '0DTE' && flatNow(),
+      levelBroke: false,
+      rejected: false,
+      ret5: ret5Of(t.ticker, spot, Date.now()),
     });
-    if (!call) continue;
+    if (!call) {
+      notePeak(t.id, setup.bid);
+      continue;
+    }
     remember(stampClose({
       id: t.id, ticker: t.ticker, contract: t.contract, right: t.right, strike: t.strike,
       paid, exitPx: call.exitPx, why: call.why, result: call.result, held,
@@ -367,6 +409,77 @@ export function settleOpen(tracked: TrackedSetup[], setups: Setup[], spots: Map<
     gone.push(t.id);
   }
   return gone;
+}
+
+const spotMem = new Map<string, { t: number; px: number }[]>();
+
+export function ret5Of(ticker: string, spot: number, now: number): number {
+  const list = spotMem.get(ticker) ?? [];
+  if (spot > 0) {
+    const last = list[list.length - 1];
+    if (!last || now - last.t >= 15_000) list.push({ t: now, px: spot });
+  }
+  const kept = list.filter(p => now - p.t <= 12 * 60_000);
+  spotMem.set(ticker, kept);
+  const want = now - 5 * 60_000;
+  let ago = NaN;
+  for (const p of kept) if (p.t <= want) ago = p.px;
+  return ago > 0 && spot > 0 ? spot / ago - 1 : NaN;
+}
+export function settleBoard(live: Setup[], now = Date.now()): void {
+  const byId = new Map(live.map(s => [s.id, s]));
+  for (const pick of currentPicks()) {
+    if (pick.band === 'closest') continue;
+    const q = byId.get(pick.id);
+    const bid = q && q.ask > 0 && q.bid >= 0 && q.ask >= q.bid ? q.bid : pick.bid;
+    const spot = (q?.spot ?? pick.spot) || 0;
+    const paid = entryAsk(pick.id);
+    if (!(paid > 0) || !(bid >= 0)) continue;
+    const heldMin = pick.seenAt ? Math.max(0, Math.round((now - pick.seenAt) / 60000)) : 0;
+    const heldSec = pick.seenAt ? Math.max(0, Math.round((now - pick.seenAt) / 1000)) : 0;
+    const prior = peakBefore(pick.id);
+    const call = closeOf({
+      paid,
+      bid,
+      peak: prior,
+      heldMin,
+      heldSec,
+      runner: pick.band === 'wing' || pick.runner === true,
+      lottery: pick.band === 'lottery',
+      scalp: false,
+      wing: pick.band === 'wing',
+      side: pick.right,
+      choice: pick.right,
+      dayOver: false,
+      flat: pick.band === 'lottery' ? lotteryFlatNow(now) : flatNow(now),
+      levelBroke: false,
+      rejected: false,
+      ret5: ret5Of(pick.ticker, spot, now),
+    });
+    if (!call) {
+      notePeak(pick.id, bid);
+      continue;
+    }
+    const why = call.why === 'TP1' ? 'Take profit' : call.why === 'Stop' ? 'Stop' : call.why;
+    const at = pick.seenAt && pick.seenAt > 0 ? pick.seenAt : now;
+    const had = bookLine(pick.id);
+    remember({
+      ...stampClose({
+        id: pick.id,
+        ticker: pick.ticker,
+        contract: pick.contract,
+        right: pick.right,
+        strike: pick.strike,
+        paid,
+        exitPx: call.exitPx,
+        why,
+        result: call.result,
+        held: heldMin,
+      }),
+      entered: had?.entered || nyClock(at),
+    });
+    noteLeft(pick, why);
+  }
 }
 
 lines = load();

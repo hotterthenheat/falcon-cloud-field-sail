@@ -64,6 +64,7 @@ const ttlFor = (p) => {
   const path = p.split('?')[0];
   if (/^\/(calendar|interest_rate)\//.test(path)) return 300_000;
   if (/\/history\//.test(path)) return 15_000;
+  if (/\/snapshot\//.test(path)) return 0;
   return 1_000;
 };
 const allowed = (p) => p.length < 500 && !p.includes('..') && ALLOWED.some((re) => re.test(p));

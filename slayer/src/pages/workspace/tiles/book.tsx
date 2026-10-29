@@ -240,13 +240,13 @@ export const TargetsTile = ({ ctx, state, size }: TileProps) => {
                 #{t.rank}
               </span>
               <span className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-                <span className="text-[12px] font-bold text-textPrimary">{fmtStrike(t.strike)}</span>
+                <span className="text-t12 font-bold text-textPrimary">{fmtStrike(t.strike)}</span>
                 {kind !== 'thin' && (
-                  <span className="text-[8px] uppercase tracking-widest" style={{ color: t.role ? ROLE_INK[t.role] : t.isShelf ? 'rgb(var(--text-muted))' : THERMAL_WARM }}>
+                  <span className="text-t8 uppercase tracking-widest" style={{ color: t.role ? ROLE_INK[t.role] : t.isShelf ? 'rgb(var(--text-muted))' : THERMAL_WARM }}>
                     {t.role ?? (t.isShelf ? 'shelf' : 'trapdoor')}
                   </span>
                 )}
-                <span className="text-[9px] text-textMuted">{signedPct(t.distancePct)}</span>
+                <span className="text-t9 text-textMuted">{signedPct(t.distancePct)}</span>
               </span>
               <span className="text-right text-textPrimary">{pct(t.reach)}</span>
               <span className="flex items-center justify-end gap-1.5 font-semibold" style={{ color: t.isShelf ? SILVER : kind === 'trapdoor' ? THERMAL_WARM : 'rgb(var(--text-muted))' }}>
@@ -261,7 +261,7 @@ export const TargetsTile = ({ ctx, state, size }: TileProps) => {
                 <span className="relative h-[30px] flex items-center">
                   <span className="absolute inset-y-[12px] left-0 right-12 rounded-full bg-ink/[0.04]" />
                   <span className="absolute inset-y-[12px] left-0 rounded-full" style={{ width: `calc(${(t.stake / maxStake) * 100}% - ${(t.stake / maxStake) * 48}px)`, background: heatLaneColor(t.isWall ? -t.stake : t.stake, maxStake, 'thermal-yellow', 0.35) }} />
-                  <span className="absolute right-0 text-[10px] text-textPrimary">{fmtDollars(t.stake)}</span>
+                  <span className="absolute right-0 text-t10 text-textPrimary">{fmtDollars(t.stake)}</span>
                 </span>
               )}
             </TileRow>
@@ -332,7 +332,7 @@ export const PairTile = ({ ctx, state }: TileProps) => {
       <TileRows>
         {rows.map(r => (
           <TileRow key={r.read} columns={cols} height={28}>
-            <span className="font-sans text-[11px] text-textSecondary truncate">{r.read}</span>
+            <span className="font-sans text-t11 text-textSecondary truncate">{r.read}</span>
             <span className="text-right text-textPrimary truncate">{r.a}</span>
             <span className="text-right text-textPrimary truncate">{r.b}</span>
           </TileRow>

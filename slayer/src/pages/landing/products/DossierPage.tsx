@@ -156,7 +156,7 @@ const DossierPage = () => (
         <div className="max-w-[62ch]">
           <Eyebrow>The full analysis</Eyebrow>
           <Head className="mt-5" first="A name’s own page." second="Open a name and its page comes up." />
-          <p className="mt-6 text-[15.5px] leading-relaxed text-textSecondary">
+          <p className="mt-6 text-t155 leading-relaxed text-textSecondary">
             Everything the screen knows about a name, laid out top to bottom. Four of its sections are below. The same page also carries the wire on the name and its next report, a timeline of the sessions on hand, the
             tape’s biggest buys and sells and busiest contracts — each a door to the Weigher — and what its insiders and Congress did.
           </p>
@@ -165,8 +165,8 @@ const DossierPage = () => (
           {ANALYSIS.map(a => (
             <li key={a.file} className="min-w-0" data-product-analysis={a.file}>
               <Picture src={`${SHOTS}/${a.file}`} alt={`${a.name} — a section of a name's page`} ratio={a.ratio} />
-              <p className="mt-4 text-[15px] font-medium text-textPrimary">{a.name}</p>
-              <p className="mt-1.5 max-w-[60ch] text-[14px] leading-relaxed text-textSecondary">{a.says}</p>
+              <p className="mt-4 text-t15 font-medium text-textPrimary">{a.name}</p>
+              <p className="mt-1.5 max-w-[60ch] text-t14 leading-relaxed text-textSecondary">{a.says}</p>
             </li>
           ))}
         </ul>
@@ -182,14 +182,14 @@ const DossierPage = () => (
       <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-12">
         <div>
           <Picture src={`${SHOTS}/insiders`} alt="The insiders page: the names to know, then every filing" ratio="1440 / 1000" />
-          <p className="mt-5 max-w-[56ch] text-[15px] leading-relaxed text-textSecondary">
+          <p className="mt-5 max-w-[56ch] text-t15 leading-relaxed text-textSecondary">
             <span className="text-textPrimary">Insiders</span> is what the people running a company did with their own shares — open-market trades by default — and whether they chose to. A sale that ran off a 10b5-1 plan
             adopted months ago says nothing about today, and the page marks it as such. The names to know are the ones where someone paid their own money to buy, heaviest first.
           </p>
         </div>
         <div>
           <Picture src={`${SHOTS}/congress`} alt="The Congress page: the reports to know, then every report" ratio="1440 / 1000" />
-          <p className="mt-5 max-w-[56ch] text-[15px] leading-relaxed text-textSecondary">
+          <p className="mt-5 max-w-[56ch] text-t15 leading-relaxed text-textSecondary">
             <span className="text-textPrimary">Congress</span> is what members reported trading under the STOCK Act, and how long they took to file it. The reports worth your time are trades in a sector the member’s own
             committee oversees; those sort to the top, biggest bracket first.
           </p>
@@ -212,8 +212,8 @@ const WireFilm = () => {
       <ul className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-5 border-t border-borderSubtle">
         {WIRE_FILM.map(l => (
           <li key={l.word} className="pt-4 max-w-[40ch]">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-textMuted">{l.word}</p>
-            <p className="mt-2 text-[14.5px] leading-relaxed text-textSecondary">{l.says}</p>
+            <p className="font-mono text-t11 uppercase tracking-[0.2em] text-textMuted">{l.word}</p>
+            <p className="mt-2 text-t145 leading-relaxed text-textSecondary">{l.says}</p>
           </li>
         ))}
       </ul>

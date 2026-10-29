@@ -186,12 +186,12 @@ const Ways = ({ providers }: { providers: string[] }) => (
     {providers.includes('email') && <Mail className="w-3 h-3 text-textMuted" aria-label="email" />}
     {providers.includes('google') && <GoogleMark size={11} />}
     {providers.includes('apple') && <AppleMark size={11} className="text-textSecondary" />}
-    {!providers.length && <span className="font-mono text-[10px] text-textMuted">—</span>}
+    {!providers.length && <span className="font-mono text-t10 text-textMuted">—</span>}
   </span>
 );
 
 const StatusWord = ({ s }: { s: PersonStatus }) => (
-  <span className={`font-mono text-[10px] uppercase tracking-wider ${STATUS_INK[s]}`} data-people-status={s}>
+  <span className={`font-mono text-t10 uppercase tracking-wider ${STATUS_INK[s]}`} data-people-status={s}>
     {STATUS_WORD[s]}
   </span>
 );
@@ -199,10 +199,10 @@ const StatusWord = ({ s }: { s: PersonStatus }) => (
 /** the plan's chip — in the silver when it is a gift (2026-10-17), with the date it ends on the hover */
 const PlanChip = ({ plan, given = false, until = null }: { plan: AccountPlan; given?: boolean; until?: string | null }) =>
   plan === 'none' ? (
-    <span className="font-mono text-[10px] text-textMuted">—</span>
+    <span className="font-mono text-t10 text-textMuted">—</span>
   ) : (
     <span
-      className={`inline-flex items-center h-[18px] px-1.5 rounded border font-mono text-[9px] uppercase tracking-wider leading-normal ${given ? 'border-silver/50 bg-silver/[0.08] text-silver' : 'border-borderSubtle text-textPrimary'}`}
+      className={`inline-flex items-center h-[18px] px-1.5 rounded border font-mono text-t9 uppercase tracking-wider leading-normal ${given ? 'border-silver/50 bg-silver/[0.08] text-silver' : 'border-borderSubtle text-textPrimary'}`}
       title={given ? `Given — with our thanks${until ? `, until ${fmtDay(until)}` : ''}` : undefined}
       data-people-given={given || undefined}
     >
@@ -212,7 +212,7 @@ const PlanChip = ({ plan, given = false, until = null }: { plan: AccountPlan; gi
 
 /** the role's word, with a silver dot for someone in the beta */
 const RoleWord = ({ p }: { p: Person }) => (
-  <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider ${ROLE_INK[p.role]}`} data-people-role={p.role} data-people-beta={p.beta || undefined}>
+  <span className={`inline-flex items-center gap-1.5 font-mono text-t10 uppercase tracking-wider ${ROLE_INK[p.role]}`} data-people-role={p.role} data-people-beta={p.beta || undefined}>
     {p.role}
     {p.beta && <span className="w-1.5 h-1.5 rounded-full bg-silver shrink-0" title="In the beta — walks through the coming-soon wall" aria-label="in the beta" />}
   </span>
@@ -225,10 +225,10 @@ const Mid = ({ children }: { children: ReactNode }) => <span className="inline-f
 /** One line of the log: when · who → whom · what, old to new · why */
 const LogLine = ({ l, nameOf, dense = false }: { l: LogRow; nameOf: (id: string | null) => string; dense?: boolean }) => (
   <li className={`${dense ? 'py-1.5' : 'px-5 py-2.5 border-t border-borderSubtle/60'} flex items-baseline gap-3 min-w-0`} data-people-log={l.id}>
-    <span className="font-mono text-[10px] tnum text-textMuted shrink-0 w-[72px]" title={fmtWhen(l.at)}>
+    <span className="font-mono text-t10 tnum text-textMuted shrink-0 w-[72px]" title={fmtWhen(l.at)}>
       {ago(l.at)}
     </span>
-    <span className="min-w-0 flex-1 text-[11px] leading-snug text-textSecondary">
+    <span className="min-w-0 flex-1 text-t11 leading-snug text-textSecondary">
       <span className="text-textPrimary">{nameOf(l.actor)}</span>
       {!dense && (
         <>
@@ -237,7 +237,7 @@ const LogLine = ({ l, nameOf, dense = false }: { l: LogRow; nameOf: (id: string 
         </>
       )}
       {dense ? ' set ' : "'s "}
-      <span className="font-mono text-[10px] uppercase tracking-wider">{FIELD_WORD[l.field] ?? l.field}</span>
+      <span className="font-mono text-t10 uppercase tracking-wider">{FIELD_WORD[l.field] ?? l.field}</span>
       {': '}
       <span className="font-mono tnum">{logValue(l.field, l.old)}</span>
       {' → '}
@@ -307,11 +307,11 @@ const PersonCard = ({ p, me, canEdit, log, nameOf, onClose, onChanged }: { p: Pe
     <span className="flex items-center gap-3 min-w-0">
       <Disc p={p} size={28} />
       <span className="min-w-0 flex flex-col">
-        <span className="text-[13px] font-semibold text-textPrimary truncate">
+        <span className="text-t13 font-semibold text-textPrimary truncate">
           {p.name || p.email}
-          {p.handle && <span className="ml-2 font-mono text-[11px] font-normal text-textMuted">@{p.handle}</span>}
+          {p.handle && <span className="ml-2 font-mono text-t11 font-normal text-textMuted">@{p.handle}</span>}
         </span>
-        <span className="font-mono text-[10px] text-textMuted truncate">{p.email}</span>
+        <span className="font-mono text-t10 text-textMuted truncate">{p.email}</span>
       </span>
       {self && <Tag tone="silver">you</Tag>}
     </span>
@@ -335,7 +335,7 @@ const PersonCard = ({ p, me, canEdit, log, nameOf, onClose, onChanged }: { p: Pe
             <Fact label="Ways in" value={<Ways providers={p.providers} />} />
           </div>
           {p.grantNote && (
-            <p className="text-[11px] text-textMuted" data-people-grant-note>
+            <p className="text-t11 text-textMuted" data-people-grant-note>
               Given because: <span className="text-textSecondary">{p.grantNote}</span>
             </p>
           )}
@@ -344,7 +344,7 @@ const PersonCard = ({ p, me, canEdit, log, nameOf, onClose, onChanged }: { p: Pe
         {/* THE DOORS — plan, role, ban, given, until, beta; then the one line of reason. The team reads, so for them one
             line stands where the doors would */}
         {!canEdit ? (
-          <div className="rounded-md border border-borderSubtle bg-ink/[0.02] px-3 py-2.5 text-[11px] text-textMuted" data-people-readonly>
+          <div className="rounded-md border border-borderSubtle bg-ink/[0.02] px-3 py-2.5 text-t11 text-textMuted" data-people-readonly>
             Owners change things; you can look.
           </div>
         ) : (
@@ -369,7 +369,7 @@ const PersonCard = ({ p, me, canEdit, log, nameOf, onClose, onChanged }: { p: Pe
               }}
               placeholder={changed ? 'Why — one line, kept in the log' : 'Change something above, then say why'}
               spellCheck={false}
-              className="min-w-0 flex-1 h-7 rounded-md border border-borderSubtle bg-chip px-2 font-mono text-[11px] text-textPrimary outline-none focus:border-borderMuted placeholder:text-textMuted"
+              className="min-w-0 flex-1 h-7 rounded-md border border-borderSubtle bg-chip px-2 font-mono text-t11 text-textPrimary outline-none focus:border-borderMuted placeholder:text-textMuted"
               data-people-why
             />
             <Door onClick={save} tone="silver" disabled={!changed || saving} title="Saves the change, with its reason, in the log" testId="people-save">
@@ -385,7 +385,7 @@ const PersonCard = ({ p, me, canEdit, log, nameOf, onClose, onChanged }: { p: Pe
 
         {/* THEIR OWN HISTORY */}
         <div className="flex flex-col gap-1 min-w-0">
-          <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-textSecondary">Their history</span>
+          <span className="font-mono text-t9 font-bold uppercase tracking-widest text-textSecondary">Their history</span>
           {log.length ? (
             <ul className="flex flex-col divide-y divide-borderSubtle/60">
               {log.map(l => (
@@ -393,7 +393,7 @@ const PersonCard = ({ p, me, canEdit, log, nameOf, onClose, onChanged }: { p: Pe
               ))}
             </ul>
           ) : (
-            <span className="text-[11px] text-textMuted">Nothing changed on this account yet.</span>
+            <span className="text-t11 text-textMuted">Nothing changed on this account yet.</span>
           )}
         </div>
       </div>
@@ -415,8 +415,8 @@ const WhoCell = ({ data }: ICellRendererParams<PeopleRow>) =>
     <Mid>
       <span className="inline-flex items-center gap-2 min-w-0" data-people-who={data.id}>
         <Disc p={data} />
-        <span className="truncate text-[11px] font-semibold text-textPrimary">{data.name || data.email}</span>
-        {data.handle && <span className="truncate font-mono text-[10px] text-textMuted">@{data.handle}</span>}
+        <span className="truncate text-t11 font-semibold text-textPrimary">{data.name || data.email}</span>
+        {data.handle && <span className="truncate font-mono text-t10 text-textMuted">@{data.handle}</span>}
       </span>
     </Mid>
   ) : null;
@@ -424,7 +424,7 @@ const WhoCell = ({ data }: ICellRendererParams<PeopleRow>) =>
 /* the widths add to less than the Settings column at 1440 (886px of grid), so no sideways scroll takes the last row's room */
 const COLUMNS: ColDef<PeopleRow>[] = [
   { colId: 'who', headerName: 'Person', flex: 2.2, minWidth: 170, cellRenderer: WhoCell },
-  { colId: 'email', headerName: 'Email', flex: 2, minWidth: 150, valueGetter: p => p.data?.email ?? '', cellClass: 'font-mono text-[11px] text-textSecondary' },
+  { colId: 'email', headerName: 'Email', flex: 2, minWidth: 150, valueGetter: p => p.data?.email ?? '', cellClass: 'font-mono text-t11 text-textSecondary' },
   {
     colId: 'plan',
     headerName: 'Plan',
@@ -441,8 +441,8 @@ const COLUMNS: ColDef<PeopleRow>[] = [
   },
   { colId: 'role', headerName: 'Role', width: 88, cellRenderer: ({ data }: ICellRendererParams<PeopleRow>) => (data ? <Mid><RoleWord p={data} /></Mid> : null) },
   { colId: 'status', headerName: 'Status', width: 104, cellRenderer: ({ data }: ICellRendererParams<PeopleRow>) => (data ? <Mid><StatusWord s={data.status} /></Mid> : null) },
-  { colId: 'joined', headerName: 'Joined', width: 84, valueGetter: p => ago(p.data?.createdAt ?? null), cellClass: 'font-mono text-[10px] tnum text-textSecondary' },
-  { colId: 'seen', headerName: 'Last seen', width: 92, valueGetter: p => ago(p.data?.lastSignInAt ?? null), cellClass: 'font-mono text-[10px] tnum text-textSecondary' },
+  { colId: 'joined', headerName: 'Joined', width: 84, valueGetter: p => ago(p.data?.createdAt ?? null), cellClass: 'font-mono text-t10 tnum text-textSecondary' },
+  { colId: 'seen', headerName: 'Last seen', width: 92, valueGetter: p => ago(p.data?.lastSignInAt ?? null), cellClass: 'font-mono text-t10 tnum text-textSecondary' },
   { colId: 'ways', headerName: 'Ways in', width: 76, cellRenderer: ({ data }: ICellRendererParams<PeopleRow>) => (data ? <Mid><Ways providers={data.providers} /></Mid> : null) },
 ];
 
@@ -509,7 +509,7 @@ const PeopleBox = () => {
   if (ACCOUNTS_ON && a.status === 'loading')
     return (
       <Section id="people" title="People" line={line} aside={<Tag>signing in…</Tag>}>
-        <div className="px-5 py-6 flex items-center gap-2 text-[11px] text-textMuted border-t border-borderSubtle/60">
+        <div className="px-5 py-6 flex items-center gap-2 text-t11 text-textMuted border-t border-borderSubtle/60">
           <MorphingInfinity viewBox="4 4 16 16" className="w-3.5 h-3.5" /> Asking whether you are signed in
         </div>
       </Section>
@@ -518,7 +518,7 @@ const PeopleBox = () => {
     return (
       <Section id="people" title="People" line="The owners' room — every account, and the log of every change" aside={<Tag>owners and the team</Tag>}>
         <div className="px-5 py-4 border-t border-borderSubtle/60 flex items-center justify-between gap-6 max-sm:flex-col max-sm:items-stretch max-sm:gap-3" data-people-closed>
-          <div className="text-[11px] text-textMuted">This room opens to an owner or the team. Your own account is on the Account page.</div>
+          <div className="text-t11 text-textMuted">This room opens to an owner or the team. Your own account is on the Account page.</div>
           <Door to="/settings/account" tone="silver" testId="people-to-account">
             Account
           </Door>
@@ -533,12 +533,12 @@ const PeopleBox = () => {
       <Section id="people" title="People" line={line} aside={<Tag tone="silver">{!ACCOUNTS_ON ? 'preview · sample accounts' : canEdit ? 'owners change' : 'the team reads'}</Tag>}>
         {/* THE HEAD LINE, AND THE SEARCH */}
         <div className="px-5 py-3 border-t border-borderSubtle/60 flex items-center gap-x-4 gap-y-2 flex-wrap">
-          <p className="text-[11px] text-textMuted whitespace-nowrap" data-people-line>
+          <p className="text-t11 text-textMuted whitespace-nowrap" data-people-line>
             {people == null ? 'Reading…' : `${counts.n} ${counts.n === 1 ? 'account' : 'accounts'} · ${counts.onPlan} on a plan · ${counts.given} given one · ${counts.banned} banned`}
           </p>
           <label className="ml-auto inline-flex items-center h-7 rounded-md border border-borderSubtle bg-chip focus-within:border-borderMuted transition-colors" style={{ width: 220 }}>
             <Search className="ml-2 w-3 h-3 text-textMuted shrink-0" aria-hidden="true" />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Name, handle or email" spellCheck={false} className="min-w-0 flex-1 h-full bg-transparent px-2 font-mono text-[11px] text-textPrimary outline-none placeholder:text-textMuted" data-people-search />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Name, handle or email" spellCheck={false} className="min-w-0 flex-1 h-full bg-transparent px-2 font-mono text-t11 text-textPrimary outline-none placeholder:text-textMuted" data-people-search />
           </label>
         </div>
         {/* THE CARDS */}
@@ -567,7 +567,7 @@ const PeopleBox = () => {
                 suppressCellFocus
                 animateRows={false}
                 alwaysShowVerticalScroll
-                overlayNoRowsTemplate={people == null ? '<span class="font-mono text-[11px]">Reading…</span>' : '<span class="font-mono text-[11px]">Nobody matches</span>'}
+                overlayNoRowsTemplate={people == null ? '<span class="font-mono text-t11">Reading…</span>' : '<span class="font-mono text-t11">Nobody matches</span>'}
               />
             </AgGridProvider>
           </div>
@@ -583,7 +583,7 @@ const PeopleBox = () => {
             ))}
           </ul>
         ) : (
-          <div className="px-5 py-4 border-t border-borderSubtle/60 text-[11px] text-textMuted">Nothing has changed yet.</div>
+          <div className="px-5 py-4 border-t border-borderSubtle/60 text-t11 text-textMuted">Nothing has changed yet.</div>
         )}
       </Section>
 

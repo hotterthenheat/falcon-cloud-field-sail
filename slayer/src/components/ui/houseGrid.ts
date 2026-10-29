@@ -49,4 +49,4 @@ export const GRID_THEME = themeQuartz.withParams({
 
 /** The house empty line for a grid — the grid's own "No Rows To Show" never shows on the terminal */
 export const noRows = (text: string): string =>
-  `<span class="font-mono text-[10px] uppercase tracking-widest text-textMuted">${text}</span>`;
+  `<span class="font-mono text-t10 uppercase tracking-widest text-textMuted">${text}</span>`;

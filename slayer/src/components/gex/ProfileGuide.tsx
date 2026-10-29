@@ -233,7 +233,7 @@ const ProfileGuide = ({ rows, levels, flow }: ProfileGuideProps) => {
     const up = k > levels.spot;
     if (!v || !g || g.flow === 0) return null;
     return (
-      <li key={label} className="text-[11.5px] leading-relaxed text-textSecondary">
+      <li key={label} className="text-t115 leading-relaxed text-textSecondary">
         The {label} at <span className="font-mono tnum text-textPrimary">{fmtStrike(k)}</span> has{' '}
         <span className="font-mono tnum text-textPrimary">{fmtUsd(Math.abs(v))}</span> of hedging sitting on it, and it {v > 0 ? 'pushes moves along' : 'pushes back against moves'}. For price to{' '}
         {up ? 'climb' : 'fall'} to it, dealers would have to{' '}
@@ -249,8 +249,8 @@ const ProfileGuide = ({ rows, levels, flow }: ProfileGuideProps) => {
   return (
     <div className="px-3 py-3 flex flex-col gap-3" data-profile-guide-card>
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">Size · what sits at each strike</p>
-        <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t12 font-semibold text-textPrimary">Size · what sits at each strike</p>
+        <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
           Each row is one strike. The put hedging grows left from the centre line and the call hedging grows right: the more sits there, the longer the leg and the hotter its colour. That is why the walls are the longest. The put side pushes moves along at that strike; the call side pushes back. The line through the rows leans to whichever side wins each strike, and the dashed line is where it leaned at the open.
         </p>
         <div className="mt-2 rounded-md border border-borderSubtle/60 bg-panel px-2 py-2">
@@ -258,8 +258,8 @@ const ProfileGuide = ({ rows, levels, flow }: ProfileGuideProps) => {
         </div>
       </div>
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">What a move forces · what it costs to get there</p>
-        <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
+        <p className="text-t12 font-semibold text-textPrimary">What a move forces · what it costs to get there</p>
+        <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
           Pick a strike. To reach it, price has to cross every strike in between, and each one adds its hedging to the bill. The capsule shows the total dealers would have to buy or sell by the time price arrives, so it grows the further the strike is from where the market is now. Orange means that trading pushes the move along, so it speeds up. Blue means it pushes back, so it slows down.
         </p>
         <div className="mt-2 rounded-md border border-borderSubtle/60 bg-panel px-2 py-2">
@@ -268,11 +268,11 @@ const ProfileGuide = ({ rows, levels, flow }: ProfileGuideProps) => {
       </div>
       {examples.length > 0 && (
         <div className="border-t border-borderSubtle/60 pt-2.5">
-          <p className="text-[10px] text-textMuted">Today, read both ways</p>
+          <p className="text-t10 text-textMuted">Today, read both ways</p>
           <ul className="mt-1 flex flex-col gap-1.5">{examples}</ul>
         </div>
       )}
-      <p className="text-[10px] text-textMuted">Hover any strike to see both numbers in the line under the lanes · click to keep it there.</p>
+      <p className="text-t10 text-textMuted">Hover any strike to see both numbers in the line under the lanes · click to keep it there.</p>
     </div>
   );
 };

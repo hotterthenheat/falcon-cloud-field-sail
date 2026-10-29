@@ -25,8 +25,9 @@ import {
   type MouseEventParams,
   type Time,
 } from 'lightweight-charts';
-import { deskTape, ensureBook, historyForDate, peekDaySigma, peekEntry, peekIv, snapshotFor, useBookRev } from '../../data/uwBook';
-import { getDeskSession, useDeskSession } from '../../data/deskSession';
+import { deskTape, ensureBook, historyForDate, peekDaySigma, peekEntry, peekIv, snapshotFor, useBookMinutes, useBookRev } from '../../data/uwBook';
+import { useSessionQuote } from '../../data/sessionQuote';
+import { getDeskSession, minuteInSession, sessionMeta, sessionOfMinute, useDeskSession } from '../../data/deskSession';
 import { snapsAsOf } from '../../data/exposureScope';
 import { WhyHere } from './whyHere';
 import { onGlide, promisedWidth } from '../../core/glide';
@@ -81,13 +82,14 @@ import { barClockSpec, type AltBarSpec } from '../../data/altBars';
 import type { Candle } from '../../types/market';
 import type { DarkPoolPrint, KeyLevels } from '../../types/gex';
 import { bucketFlow, flowMaxLeg } from '../../data/flowBars';
-import { atrBarSeries, bollingerSeries, emaSeries, macdSeries, rsiSeries, sessionStarts, smaSeries, vwapSeries, vwapSigmaSeries } from '../../data/indicators';
+import { atrBarSeries, alignGamma, alignPremium, alignSides, bollingerSeries, emaSeries, flowVwapSeries, gammaEmaSeries, gammaVwapSeries, macdSeries, rsiSeries, sessionStarts, smaSeries, vwapSeries, vwapSigmaSeries } from '../../data/indicators';
 import { buildSessionLevels, type OpeningRange } from '../../data/sessionLevels';
 import { SessionLevelsPrimitive, sessionLines } from './sessionLevelsPrimitive';
 import { buildExpectedMoveCone } from '../../data/expectedMove';
 import { buildTapeEvents, macroWindow, type MarketEvent, type MacroDate } from '../../data/events';
 import { impliedDaySigma, sessionAtr } from '../../data/atr';
-import { buildEarningsCalendar, type EarningsEvent } from '../../data/earnings';
+import { type EarningsEvent } from '../../data/earnings';
+import { ensureEarnings, peekEarningsEvent } from '../../data/earningsFeed';
 import { EventsPrimitive } from './eventsPrimitive';
 import { RTH_MINUTES } from '../../core/calendar';
 import { cumulativeDrift, driftPeak } from '../../data/driftSeries';
@@ -271,6 +273,14 @@ export interface ChartIndicators {
   vwapBands: boolean;
   /** SMA 200 — the long classic the EMA trio does not cover. */
   sma: boolean;
+  /** Session price weighted by option premium, not shares. Blank until prints land. */
+  flowVwap: boolean;
+  /** Call premium and put premium, each as its own session price. */
+  sideVwap: boolean;
+  /** Close average that speeds up when minute gamma is heavy. Blank until that path moves. */
+  gammaEma: boolean;
+  /** Session price weighted by minute gamma. Blank until that path moves. */
+  gammaVwap: boolean;
   /* Sub-panes share the time axis below the tape (T-3, capped at two): */
   rsi: boolean;
   macd: boolean;
@@ -280,7 +290,7 @@ export interface ChartIndicators {
 
 export const DEFAULT_INDICATORS: ChartIndicators = {
   ema9: false, ema21: false, ema50: false, vwap: false,
-  bb: false, vwapBands: false, sma: false, rsi: false, macd: false, atrPane: false,
+  bb: false, vwapBands: false, sma: false, flowVwap: false, sideVwap: false, gammaEma: false, gammaVwap: false, rsi: false, macd: false, atrPane: false,
 };
 
 /* One categorical ink family for auxiliary lines (indicators here, compare
@@ -294,6 +304,10 @@ export const INDICATOR_INKS: Record<keyof ChartIndicators, string> = {
   bb: '#C7A9CF',
   vwapBands: '#6BD3C7',
   sma: '#D8BC8F',
+  flowVwap: '#E7C36A',
+  sideVwap: '#9ED4EA',
+  gammaEma: '#F0A07A',
+  gammaVwap: '#F0A07A',
   rsi: '#A9C77F',
   macd: '#8FB8D8',
   atrPane: '#C0C7CF',
@@ -343,6 +357,16 @@ const INDICATOR_PARTS: Record<keyof ChartIndicators, { pane: 'overlay' | 'sub'; 
     ],
   },
   sma: { pane: 'overlay', parts: [{ part: 'line', kind: 'line', ink: INDICATOR_INKS.sma }] },
+  flowVwap: { pane: 'overlay', parts: [{ part: 'line', kind: 'line', ink: INDICATOR_INKS.flowVwap }] },
+  sideVwap: {
+    pane: 'overlay',
+    parts: [
+      { part: 'call', kind: 'line', ink: INDICATOR_INKS.sideVwap },
+      { part: 'put', kind: 'line', ink: '#F5C542' },
+    ],
+  },
+  gammaEma: { pane: 'overlay', parts: [{ part: 'line', kind: 'line', ink: INDICATOR_INKS.gammaEma }] },
+  gammaVwap: { pane: 'overlay', parts: [{ part: 'line', kind: 'line', ink: INDICATOR_INKS.gammaVwap }] },
   rsi: { pane: 'sub', parts: [{ part: 'line', kind: 'line', ink: INDICATOR_INKS.rsi }] },
   macd: {
     pane: 'sub',
@@ -458,9 +482,10 @@ export function displayBars(ticker: string, mins: number, alt?: AltBarSpec | nul
   }
   if (bookFailed(ticker)) {
     const th = thetaCandles(ticker);
-    if (th && th.length >= 2) {
+    const rows = th?.filter(c => minuteInSession(nyMinutes(c.time * 1000), session)) ?? [];
+    if (rows.length >= 1) {
       noteThetaDraw(ticker, true);
-      return aggregateCandles(th, mins);
+      return aggregateCandles(rows, mins);
     }
   }
   noteThetaDraw(ticker, false);
@@ -551,7 +576,7 @@ export interface PriceProjection {
 }
 
 export interface ChartTape {
-  /** One-minute bars, oldest first, up to the host's clock */
+  /** One-minute bars, oldest first, up to the host's clock. `native` bars are already the timeframe on screen. */
   bars: Candle[];
   /** The name's annual vol on the tape's day — what the vol pane and the distance scales read */
   iv: number;
@@ -562,6 +587,10 @@ export interface ChartTape {
   clock?: 'ny';
   /** What a price is printed to, where cents are not it (a future: gold in tenths, silver in thousandths) */
   precision?: { decimals: number; tick: number };
+  /** These bars are already the selected timeframe. Folding them again would mash a day into the wrong bucket. */
+  native?: boolean;
+  /** Why the frame is empty — a session with no prints, or a tape that did not answer. */
+  note?: string | null;
 }
 /** What a host's layer is handed: the chart, and the series that carries price NOW (a style swap replaces it — ask each
     time, never keep it) */
@@ -958,9 +987,26 @@ const FULL_TRIGGER = 80;
 const windowOf = (all: Candle[], full: boolean): Candle[] =>
   full || all.length <= INITIAL_BARS + 200 ? all : all.slice(all.length - INITIAL_BARS);
 
-/** keepView: the reader's view per world, surviving a remount — see the
-    chart cleanup (save) and the data effect's new-world branch (restore). */
-const KEPT_VIEWS = new Map<string, { barSpacing: number; scroll: number }>();
+/** keepView: the reader's view per world, surviving a remount and a refresh. */
+type KeptView = { barSpacing: number; rightOffset: number; scroll: number };
+const VIEW_STORE = 'slayer.chartView';
+function loadKept(): Map<string, KeptView> {
+  const map = new Map<string, KeptView>();
+  try {
+    const raw = sessionStorage.getItem(VIEW_STORE);
+    if (!raw) return map;
+    const obj = JSON.parse(raw) as Record<string, KeptView>;
+    for (const [k, v] of Object.entries(obj)) {
+      if (v && typeof v.barSpacing === 'number') map.set(k, v);
+    }
+  } catch { /* private mode */ }
+  return map;
+}
+const KEPT_VIEWS = loadKept();
+function rememberView(key: string, view: KeptView) {
+  KEPT_VIEWS.set(key, view);
+  try { sessionStorage.setItem(VIEW_STORE, JSON.stringify(Object.fromEntries(KEPT_VIEWS))); } catch { /* ignore */ }
+}
 
 /** One empty array for the `compares` default — a literal [] default is a
     new identity per render, and an effect keyed on it fires every render. */
@@ -1022,15 +1068,25 @@ const StrikeChart = ({
   exportRef,
 }: StrikeChartProps) => {
   const bookRev = useBookRev();
+  const bookMinutes = useBookMinutes(ticker);
   const session = useDeskSession();
   /* WHERE THE BARS COME FROM — the host's tape, or this session's prints. Another session is never left on screen. */
   const tapeRef = useRef<ChartTape | undefined>(tape);
   tapeRef.current = tape;
-  const barsFor = (mins: number, alt?: AltBarSpec | null): Candle[] => (tapeRef.current ? aggregateCandles(tapeRef.current.bars, Math.max(1, mins)) : displayBars(ticker, mins, alt));
+  const tapeKeyRef = useRef('');
+  const barsFor = (mins: number, alt?: AltBarSpec | null): Candle[] => {
+    const host = tapeRef.current;
+    if (host?.native) return host.bars;
+    if (host) return aggregateCandles(host.bars, Math.max(1, mins));
+    return displayBars(ticker, mins, alt);
+  };
   const baseBars = (): Candle[] => tapeRef.current?.bars ?? deskTape(ticker, session).bars;
   const bookHistory = () => (tapeRef.current ? [] : (historyForDate(ticker, bookDate) ?? []));
   const nameIv = (): number | undefined => (tapeRef.current ? tapeRef.current.iv : peekIv(ticker) ?? undefined);
   const drawKey = tape?.key ?? ticker;
+  const tapeStamp = tape
+    ? `${tape.key}|${tape.bars.length}|${tape.bars.length ? tape.bars[tape.bars.length - 1].time : 0}|${tape.bars.length ? tape.bars[tape.bars.length - 1].close : 0}|${tape.note ?? ''}`
+    : '';
   /* NO TICK UNDER THE HAND (Noah, 2026-08-30: "i was in the middle of a drag
      and it practically ignored me and changed my view"). Measured with the
      button held down on the chart: the 1.5s tick's rebuild — candles,
@@ -1333,6 +1389,15 @@ const StrikeChart = ({
   const [noteAt, setNoteAt] = useState<{ time: number; price: number; x: number; y: number; kind: DrawingKind; base?: Drawing } | null>(null);
   /** Every tool, as a sheet (DrawRailTools) — the rail's search door, and the whole toolbar on a narrow pane */
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [quiet, setQuiet] = useState(false);
+  const [sessionNote, setSessionNote] = useState<string | null>(null);
+  const quote = useSessionQuote(ticker, session, quiet && session !== 'rth');
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      if (barCountRef.current === 0) setQuiet(true);
+    }, 1200);
+    return () => window.clearTimeout(id);
+  }, [ticker, timeframe, barClock]);
   /** The chart's box — what the rail's lists and the sheet are portalled into */
   const [boxEl, setBoxEl] = useState<HTMLDivElement | null>(null);
   /* THE FOCUS INK is the silver (where you are), read off the pane's own box so the chart gets a colour, never a CSS
@@ -1598,8 +1663,8 @@ const StrikeChart = ({
     followerRef.current = on;
     chartRef.current?.applyOptions({
       // The wheel belongs to the page when the page is the thing that scrolls.
-      handleScroll: { mouseWheel: !pageScrollRef.current },
-      handleScale: { mouseWheel: !pageScrollRef.current },
+      handleScroll: { mouseWheel: true },
+      handleScale: { mouseWheel: true },
       crosshair: { horzLine: { visible: !on, labelVisible: !on } },
     });
   }, []);
@@ -1948,7 +2013,9 @@ const StrikeChart = ({
       // it used to be held open at 74 for a 68px card, and the figures sat far
       // from the edge with the room on their right.
       rightPriceScale: { borderColor: s0.line, minimumWidth: 0 },
-      timeScale: { borderColor: s0.line, timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 7, tickMarkFormatter: tapeRef.current?.clock === 'ny' ? nyTickMarks : localTickMarks },
+      timeScale: { borderColor: s0.line, timeVisible: true, secondsVisible: false, rightOffset: 10, barSpacing: 6, minBarSpacing: 0.5, tickMarkFormatter: tapeRef.current?.clock === 'ny' ? nyTickMarks : localTickMarks },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+      handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true } },
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: { color: s0.crosshair, labelBackgroundColor: s0.label },
@@ -2016,7 +2083,21 @@ const StrikeChart = ({
     /* Zooming out reaches past the runway's end; extend it as they go. The
        handler reads refs rather than closing over the bar time, so it is
        installed once with the chart and never re-subscribed. */
+    let stamped = 0;
     const onRange = () => {
+      if (keepViewRef.current) {
+        const now = performance.now();
+        if (now - stamped > 400) {
+          stamped = now;
+          const w = loadedRef.current;
+          const ts = chart.timeScale();
+          rememberView(`${w.ticker}|${w.timeframe}|${w.clock}`, {
+            barSpacing: ts.options().barSpacing,
+            rightOffset: ts.options().rightOffset ?? 10,
+            scroll: ts.scrollPosition(),
+          });
+        }
+      }
       ensureRunway(lastBarTimeRef.current, bucketSecRef.current);
       /* THE HISTORY ARRIVES WHEN THE READER SCROLLS TO IT (2026-09-06, the
          perf sweep): only the recent bars are loaded on open; reaching the
@@ -2191,7 +2272,11 @@ const StrikeChart = ({
       if (keepViewRef.current) {
         const w = loadedRef.current;
         const ts = chart.timeScale();
-        KEPT_VIEWS.set(`${w.ticker}|${w.timeframe}|${w.clock}`, { barSpacing: ts.options().barSpacing, scroll: ts.scrollPosition() });
+        rememberView(`${w.ticker}|${w.timeframe}|${w.clock}`, {
+          barSpacing: ts.options().barSpacing,
+          rightOffset: ts.options().rightOffset ?? 10,
+          scroll: ts.scrollPosition(),
+        });
       }
       container.removeEventListener('wheel', freezeScale);
       container.removeEventListener('pointerdown', freezeScale);
@@ -2782,6 +2867,24 @@ const StrikeChart = ({
         }
         case 'atrPane':
           return { line: atrBarSeries(bars, 14) };
+        case 'flowVwap':
+        case 'sideVwap': {
+          const sec = (at: number) => (at > 1e12 ? Math.floor(at / 1000) : at);
+          const flow = (flowPrints ?? []).map(p => ({ time: sec(p.at), callPrem: p.right === 'C' ? p.premium : 0, putPrem: p.right === 'P' ? p.premium : 0 }));
+          if (key === 'sideVwap') {
+            const sides = alignSides(bars, flow, mins * 60);
+            return { call: flowVwapSeries(bars, mins, sides.call), put: flowVwapSeries(bars, mins, sides.put) };
+          }
+          return { line: flowVwapSeries(bars, mins, alignPremium(bars, flow, mins * 60)) };
+        }
+        case 'gammaEma': {
+          const gamma = alignGamma(bars, (bookMinutes ?? []).map(m => ({ time: m.time, levels: [{ value: m.net }] })), mins * 60);
+          return { line: gammaEmaSeries(bars, gamma) };
+        }
+        case 'gammaVwap': {
+          const gamma = alignGamma(bars, (bookMinutes ?? []).map(m => ({ time: m.time, levels: [{ value: m.net }] })), mins * 60);
+          return { line: gammaVwapSeries(bars, mins, gamma) };
+        }
         default:
           return { line: emaSeries(bars, key === 'ema9' ? 9 : key === 'ema21' ? 21 : 50) };
       }
@@ -2803,7 +2906,7 @@ const StrikeChart = ({
     }
     indAltCountRef.current = bars.length;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators, ticker, revision, timeframe, mainNonce, compares, altSpec, barClock, fullNonce]);
+  }, [indicators, ticker, revision, timeframe, mainNonce, compares, altSpec, barClock, fullNonce, flowPrints, bookMinutes]);
 
   /*
     THE SCRIPTS ON THIS PANE — the Pine runtime (2026-09-10). Every script the
@@ -3062,12 +3165,26 @@ const StrikeChart = ({
     if (!chart || !candleSeries || !volumeSeries || !trails) return;
 
     const base = baseBars();
+    if (!tapeRef.current) {
+      const read = deskTape(ticker, session);
+      setSessionNote(prev => (prev === read.note ? prev : read.note));
+    } else setSessionNote(prev => (prev == null ? prev : null));
     if (!base || base.length === 0) {
+      /* A host tape that has not answered yet is empty on purpose. Waiting on the book here left the previous
+         session's candles up, which is another session wearing this one's name. */
+      if (tapeRef.current) {
+        candleSeries.setData([]);
+        volumeSeries.setData([]);
+        trails.setData([], 0, false, 60, trailsGreek);
+        setQuiet(true);
+        return;
+      }
       const book = peekEntry(ticker);
       if (!book || book.status === 'loading') return;
       candleSeries.setData([]);
       volumeSeries.setData([]);
       trails.setData([], 0, false, 60, trailsGreek);
+      setQuiet(true);
       return;
     }
 
@@ -3082,8 +3199,10 @@ const StrikeChart = ({
     const bars = windowOf(all, full);
     const held = bars.length < all.length;
     barCountRef.current = bars.length;
-    /* A rule clock reads the seconds tape, so it wears T-14's chip too. */
-    setLiveFrom(altSpec || mins < 1 ? bars[0]?.time ?? 0 : null);
+    if (bars.length > 0) setQuiet(false);
+    /* A rule clock reads the seconds tape, so it wears T-14's chip too. A host that brought real 15-second history
+       is not "live since connect" — that chip would call two days of prints a gap. */
+    setLiveFrom(!tapeRef.current?.native && (altSpec || mins < 1) ? bars[0]?.time ?? 0 : null);
     drawingsRef.current?.setBars(bars);
     /* The measure counts BARS and annualizes off them, so the layer has to
        know what a bar is worth here — set beside the times it belongs with,
@@ -3100,7 +3219,8 @@ const StrikeChart = ({
     });
 
     const loaded = loadedRef.current;
-    const newWorld = loaded.ticker !== ticker || loaded.timeframe !== timeframe || loaded.clock !== barClock;
+    const tapeKey = tapeRef.current?.key ?? '';
+    const newWorld = loaded.ticker !== ticker || loaded.timeframe !== timeframe || loaded.clock !== barClock || tapeKeyRef.current !== tapeKey;
     const changed = newWorld || loaded.theme !== themeKey || loaded.full !== full;
     let armTimer = 0;
 
@@ -3151,7 +3271,7 @@ const StrikeChart = ({
         const kept = keepViewRef.current ? KEPT_VIEWS.get(`${ticker}|${timeframe}|${barClock}`) : undefined;
         if (kept) {
           // The reader's own view, carried across a remount (see the cleanup).
-          chart.timeScale().applyOptions({ barSpacing: kept.barSpacing });
+          chart.timeScale().applyOptions({ barSpacing: kept.barSpacing, rightOffset: kept.rightOffset ?? 10 });
           chart.timeScale().scrollToPosition(kept.scroll, false);
         } else {
           showRecent(); // theme swaps must not yank the user's pan/zoom
@@ -3178,6 +3298,7 @@ const StrikeChart = ({
         }
       }
       loadedRef.current = { ticker, timeframe, theme: themeKey, clock: barClock, full };
+      tapeKeyRef.current = tapeKey;
       /* ARMED A FRAME LATER: the library reports a range on the setData
          itself, before it has laid the view out (−83..6 was measured on a
          mount), and that would have asked for the whole store at once. */
@@ -3238,7 +3359,7 @@ const StrikeChart = ({
     }
     handTrails();
     return () => cancelAnimationFrame(armTimer);
-  }, [ticker, revision, timeframe, themeKey, overlays.trails, showRecent, reloadNonce, mainNonce, toMain, compact, altSpec, barClock, fullNonce, trailsGreek, levels.spot, levels.callWall, levels.putWall, levels.flip, levels.supreme, bookRev, session, bookDate]);
+  }, [ticker, revision, timeframe, themeKey, overlays.trails, showRecent, reloadNonce, mainNonce, toMain, compact, altSpec, barClock, fullNonce, trailsGreek, levels.spot, levels.callWall, levels.putWall, levels.flip, levels.supreme, bookRev, session, bookDate, tapeStamp]);
 
   /* `compact` can change without the chart being rebuilt — a desktop window
      dragged across the phone line, a handset rotated. The mount effect read it
@@ -3251,8 +3372,8 @@ const StrikeChart = ({
      once and a window drag changes which side of it the reader is on. */
   useEffect(() => {
     chartRef.current?.applyOptions({
-      handleScroll: { mouseWheel: !pageScroll },
-      handleScale: { mouseWheel: !pageScroll },
+      handleScroll: { mouseWheel: true },
+      handleScale: { mouseWheel: true },
     });
   }, [pageScroll]);
 
@@ -3468,12 +3589,13 @@ const StrikeChart = ({
     }
     const now = cut != null ? new Date(cut * 1000) : new Date();
     const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const key = `${ticker}|${todayIso}`;
+    ensureEarnings();
+    const key = `${ticker}|${todayIso}|${peekEarningsEvent(ticker)?.iso ?? ''}`;
     if (eventsCalRef.current?.key !== key) {
       eventsCalRef.current = {
         key,
-        earnings: buildEarningsCalendar().find(e => e.ticker === ticker.toUpperCase()) ?? null,
-        macro: macroWindow(now),
+        earnings: peekEarningsEvent(ticker),
+        macro: macroWindow(now).filter(m => !/approximated/i.test(m.detail)),
         todayIso,
       };
     }
@@ -3568,8 +3690,8 @@ const StrikeChart = ({
 
       const p = price.toFixed(2);
       const minute = nyMinutes((lastBarTimeRef.current || 0) * 1000);
-      const offCash = minute < 9 * 60 + 30 || minute > 16 * 60;
-      const label = offCash ? `${p} AH` : p;
+      const sess = sessionOfMinute(minute);
+      const label = sess === 'pre' ? `${p} pre` : sess === 'post' ? `${p} AH` : sess === 'overnight' ? `${p} ON` : p;
       if (label !== shownPrice) {
         priceEl.textContent = label;
         shownPrice = label;
@@ -4868,12 +4990,25 @@ const StrikeChart = ({
             <div ref={pickFadeRef} aria-hidden className="absolute top-0 z-[5] pointer-events-none" style={{ left: pickXRef.current, right: pickFade.right, bottom: pickFade.bottom, background: 'rgba(10,10,10,0.72)' }} data-pick-fade />
             <div ref={pickLineRef} aria-hidden className="absolute top-0 z-[6] w-px pointer-events-none" style={{ left: pickXRef.current, bottom: pickFade.bottom, background: 'rgba(199,211,232,0.9)' }} data-pick-line />
             {/* The bar's day and minute under the line — its text moves through the ref with the pointer */}
-            <div ref={pickLabelRef} aria-hidden className="absolute z-[6] -translate-x-1/2 px-1.5 py-0.5 rounded-[3px] font-mono text-[10px] tnum whitespace-nowrap pointer-events-none" style={{ left: pickXRef.current, bottom: pickFade.bottom + 4, background: '#C7D3E8', color: '#0a0a0a' }} data-pick-label>
+            <div ref={pickLabelRef} aria-hidden className="absolute z-[6] -translate-x-1/2 px-1.5 py-0.5 rounded-[3px] font-mono text-t10 tnum whitespace-nowrap pointer-events-none" style={{ left: pickXRef.current, bottom: pickFade.bottom + 4, background: '#C7D3E8', color: '#0a0a0a' }} data-pick-label>
               {ownLabelRef.current}
             </div>
           </>
         )}
         <div ref={containerRef} className={`absolute inset-0 ${picking ? 'cursor-crosshair' : ''}`} onPointerDownCapture={onSleepingMarkDown} data-pick-time={picking ? '' : undefined} data-replay-idx={replay ? replayIdx : undefined} data-replay-len={replay ? (replayDataRef.current?.bars.length ?? 0) : undefined} data-replay-time={replay && replayTime != null ? replayTime : undefined} data-replay-debug={replay ? replayDebug : undefined} />
+        {sessionNote && !replay && !quiet && (
+          <p className="absolute top-2 left-1/2 z-[4] -translate-x-1/2 max-w-[360px] truncate rounded-md border border-borderSubtle bg-canvas/85 px-2 py-1 font-mono text-t10 text-textSecondary pointer-events-none" data-session-note>
+            {sessionNote}
+          </p>
+        )}
+        {quiet && !replay && (
+          <div className="absolute inset-0 z-[4] flex items-center justify-center pointer-events-none" data-chart-empty>
+            <div className="max-w-[280px] rounded-md border border-borderSubtle bg-canvas/85 px-4 py-3 text-center">
+              <p className="font-mono text-t11 text-textPrimary">{tape?.note || sessionNote || 'No bars for this name'}</p>
+              <p className="mt-1 font-mono text-t10 text-textMuted">{quote ? `Quote ${quote.bid.toFixed(2)} × ${quote.ask.toFixed(2)}. No prints in this session.` : tape?.note ? `${sessionMeta(session).window}.` : 'This frame stays. Bars fill it when the tape answers.'}</p>
+            </div>
+          </div>
+        )}
         {/* THE HOST'S LAYER (Review's position, target and stop) — over the plot, under the chrome */}
         {layer?.({ chart: () => chartRef.current, series: () => candleSeriesRef.current as ISeriesApi<SeriesType> | null, host: () => containerRef.current, room: layerRoom, reset: resetView })}
         {/* The way home — pill, right-click card, Alt+R (2026-08-30) */}
@@ -4893,7 +5028,7 @@ const StrikeChart = ({
             <span
               key={l.key}
               aria-hidden
-              className="pointer-events-none absolute left-2 z-10 font-mono text-[9px] uppercase tracking-wider text-textMuted"
+              className="pointer-events-none absolute left-2 z-10 font-mono text-t9 uppercase tracking-wider text-textMuted"
               style={{ top: l.top }}
             >
               {text}
@@ -4933,8 +5068,8 @@ const StrikeChart = ({
             className="pointer-events-none absolute top-0 right-0 z-10 rounded-[2px] border border-ink/[0.07] border-l-2 border-l-ink/60 bg-panel/95 pl-[8px] pr-0.5 py-px text-left whitespace-nowrap opacity-0 shadow-sm shadow-black/40"
             data-price-tag
           >
-            <div className="font-mono text-[12px] font-bold leading-[14px] tnum text-textPrimary" />
-            <div className="hidden font-mono text-[9px] leading-[11px] tnum text-textMuted" />
+            <div className="font-mono text-t12 font-bold leading-[14px] tnum text-textPrimary" />
+            <div className="hidden font-mono text-t9 leading-[11px] tnum text-textMuted" />
           </div>
         )}
 
@@ -5216,7 +5351,7 @@ const StrikeChart = ({
                   ) : (
                     <>
                       <span className="w-4 border-t border-current" style={{ borderTopWidth: m.width ?? 2 }} />
-                      <span className="font-mono text-[9px] tnum">{m.width ?? 2}px</span>
+                      <span className="font-mono text-t9 tnum">{m.width ?? 2}px</span>
                     </>
                   )}
                 </button>
@@ -5238,14 +5373,14 @@ const StrikeChart = ({
                             <span className="w-8 text-textPrimary font-semibold leading-none" style={{ fontSize: 8 + wd * 2 }}>
                               Aa
                             </span>
-                            <span className="font-mono text-[10px] text-textPrimary">
+                            <span className="font-mono text-t10 text-textPrimary">
                               {['Small', 'Medium', 'Large', 'Huge'][wd - 1]}
                             </span>
                           </>
                         ) : (
                           <>
                             <span className="w-6 border-t border-current text-textPrimary" style={{ borderTopWidth: wd }} />
-                            <span className="font-mono text-[10px] tnum text-textPrimary">{wd}px</span>
+                            <span className="font-mono text-t10 tnum text-textPrimary">{wd}px</span>
                           </>
                         )}
                       </button>
@@ -5282,7 +5417,7 @@ const StrikeChart = ({
                         }`}
                       >
                         <span className="w-6 border-t-2 border-current text-textPrimary" style={{ borderTopStyle: o.css }} />
-                        <span className="font-mono text-[10px] text-textPrimary whitespace-nowrap">{o.label}</span>
+                        <span className="font-mono text-t10 text-textPrimary whitespace-nowrap">{o.label}</span>
                       </button>
                     ))}
                   </span>
@@ -5310,7 +5445,7 @@ const StrikeChart = ({
                   <button
                     onClick={() => onTradeMark({ kind: m.kind as 'long' | 'short', entry: m.p1.price, target: m.p2!.price, stop: m.p3 ? m.p3.price : defaultStop(m.p1.price, m.p2!.price) })}
                     title={`Place this ${m.kind} — an order at its entry, its target and its stop riding it`}
-                    className="inline-flex items-center h-6 px-2.5 rounded-full text-[11px] font-semibold transition-opacity hover:opacity-90"
+                    className="inline-flex items-center h-6 px-2.5 rounded-full text-t11 font-semibold transition-opacity hover:opacity-90"
                     style={{ background: 'rgb(var(--silver-fill))', color: '#0a0a0a' }}
                     data-chart-trade-mark={m.kind}
                   >
@@ -5327,7 +5462,7 @@ const StrikeChart = ({
              hears the hand change too. */
           <div
             aria-live="polite"
-            className={`absolute z-30 pointer-events-none rounded border border-borderMuted bg-panel/95 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-widest text-select shadow-lg shadow-black/40 ${
+            className={`absolute z-30 pointer-events-none rounded border border-borderMuted bg-panel/95 px-1.5 py-0.5 font-mono text-t9 font-semibold uppercase tracking-widest text-select shadow-lg shadow-black/40 ${
               rail.dock === 'left' || !rail.open ? 'left-[54px] top-1/2 -translate-y-1/2' : 'top-11 left-[calc(50%-48px)] -translate-x-1/2'
             }`}
           >
@@ -5362,7 +5497,7 @@ const StrikeChart = ({
               maxLength={80}
               placeholder={noteAt.kind === 'note' ? 'note, Enter to place' : 'words, Enter to place'}
               aria-label="The mark's words — Enter places them where you clicked"
-              className="w-[184px] px-2 py-1 rounded border border-select/60 bg-panel/95 font-mono text-[11px] text-textPrimary placeholder:text-textMuted shadow-xl shadow-black/50 outline-none"
+              className="w-[184px] px-2 py-1 rounded border border-select/60 bg-panel/95 font-mono text-t11 text-textPrimary placeholder:text-textMuted shadow-xl shadow-black/50 outline-none"
               onKeyDown={e => {
                 /* The desk's own keys (p, d, s, the arrows) must not fire
                    while typing — the desk's guard checks the target, but
@@ -5392,7 +5527,7 @@ const StrikeChart = ({
             actually printed since the app connected, and the empty region
             to the left is explained rather than silently blank. */}
         {liveFrom !== null && (
-          <span className="absolute bottom-12 left-2 z-10 pointer-events-none font-mono text-[9px] uppercase tracking-wider text-textMuted bg-canvas/60 border border-borderSubtle/60 rounded px-1.5 py-0.5">
+          <span className="absolute bottom-12 left-2 z-10 pointer-events-none font-mono text-t9 uppercase tracking-wider text-textMuted bg-canvas/60 border border-borderSubtle/60 rounded px-1.5 py-0.5">
             {liveFrom === 0
               ? 'live only · awaiting first prints'
               : `live only · from ${new Date(liveFrom * 1000).toLocaleTimeString('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' })}`}
@@ -5503,10 +5638,10 @@ const StrikeChart = ({
                 : { left: Math.max(4, eventCard.x + 6) }
             }
           >
-            <div className="font-mono text-[10px] font-semibold uppercase tracking-wider text-textPrimary whitespace-nowrap">
+            <div className="font-mono text-t10 font-semibold uppercase tracking-wider text-textPrimary whitespace-nowrap">
               {eventCard.e.label}
             </div>
-            <div className="font-mono text-[9px] text-textSecondary mt-0.5">{eventCard.e.detail}</div>
+            <div className="font-mono text-t9 text-textSecondary mt-0.5">{eventCard.e.detail}</div>
           </div>
         )}
 
@@ -5546,7 +5681,7 @@ const StrikeChart = ({
           ON A NARROW PANE THE KEY SCROLLS SIDEWAYS under the finger rather than cutting its last words (the device sweep,
           2026-10-18: the reference at the row's end ran off at 360 to 1024); the bar is hidden, the row still moves */}
       {trailKey && overlays.trails && trailRef > 0 && !replay && (
-        <div className="shrink-0 h-5 px-2 flex items-center gap-x-3 font-mono text-[9px] text-textMuted whitespace-nowrap overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-trail-key>
+        <div className="shrink-0 h-5 px-2 flex items-center gap-x-3 font-mono text-t9 text-textMuted whitespace-nowrap overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-trail-key>
           <span>Flow · same dollars as the strike rail</span>
           <span>size = {trailsGreek === 'gex' ? 'net gamma' : trailsGreek === 'dex' ? 'net delta' : 'net vega'} at the strike</span>
           <span className="inline-flex items-center gap-1">

@@ -69,11 +69,11 @@ import type { FutDraft } from '../../data/paper/engine';
 const SILVER_FILL = 'rgb(var(--silver-fill))';
 /** The sizes a press away — TopstepX's row */
 const SIZES = [1, 3, 5, 10, 15];
-export const labelCls = 'text-[10px] text-textMuted whitespace-nowrap';
+export const labelCls = 'text-t10 text-textMuted whitespace-nowrap';
 const HOVER = { plain: 'hover:text-textPrimary hover:bg-ink/[0.05]', bull: 'hover:text-bull hover:bg-bull/[0.12]', bear: 'hover:text-bear hover:bg-bear/[0.12]' } as const;
 /** The smaller buttons under the two: quiet, one line each */
 export const grey =
-  'h-[26px] min-w-0 px-2 rounded-md border border-borderSubtle bg-ink/[0.03] font-mono text-[10px] font-semibold uppercase tracking-wider text-textSecondary whitespace-nowrap overflow-hidden text-ellipsis enabled:hover:text-textPrimary enabled:hover:border-borderMuted enabled:hover:bg-ink/[0.06] disabled:opacity-35 disabled:cursor-not-allowed transition-colors';
+  'h-[26px] min-w-0 px-2 rounded-md border border-borderSubtle bg-ink/[0.03] font-mono text-t10 font-semibold uppercase tracking-wider text-textSecondary whitespace-nowrap overflow-hidden text-ellipsis enabled:hover:text-textPrimary enabled:hover:border-borderMuted enabled:hover:bg-ink/[0.06] disabled:opacity-35 disabled:cursor-not-allowed transition-colors';
 const stepBtn = 'w-7 inline-flex items-center justify-center text-textSecondary enabled:hover:text-textPrimary enabled:hover:bg-ink/[0.06] disabled:opacity-35 disabled:cursor-not-allowed transition-colors';
 const num = (v: string) => (v.trim() === '' ? undefined : Number(v));
 
@@ -87,7 +87,7 @@ export const Pills = <T extends string>({ value, options, onChange, label }: { v
         disabled={o.off}
         aria-pressed={o.value === value}
         onClick={() => onChange(o.value)}
-        className={`px-2.5 rounded-[4px] text-[11px] font-medium whitespace-nowrap transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${o.value === value ? '' : `text-textSecondary ${o.off ? '' : HOVER[o.tone ?? 'plain']}`}`}
+        className={`px-2.5 rounded-[4px] text-t11 font-medium whitespace-nowrap transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${o.value === value ? '' : `text-textSecondary ${o.off ? '' : HOVER[o.tone ?? 'plain']}`}`}
         style={o.value === value ? { background: SILVER_FILL, color: '#0a0a0a' } : undefined}
         data-ticket-pill={o.value}
       >
@@ -103,7 +103,7 @@ export const PriceBox = ({ value, onChange, step, label, placeholder }: { value:
     <button type="button" onClick={() => step(-1)} aria-label="A tick lower" className={stepBtn}>
       <Minus className="w-3 h-3" />
     </button>
-    <input value={value} onChange={e => onChange(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" aria-label={label} placeholder={placeholder} className="w-[96px] border-x border-borderSubtle bg-panel px-2 text-center font-mono text-[12px] tnum text-textPrimary outline-none focus:bg-ink/[0.04]" data-ticket-field="price" />
+    <input value={value} onChange={e => onChange(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" aria-label={label} placeholder={placeholder} className="w-[96px] border-x border-borderSubtle bg-panel px-2 text-center font-mono text-t12 tnum text-textPrimary outline-none focus:bg-ink/[0.04]" data-ticket-field="price" />
     <button type="button" onClick={() => step(1)} aria-label="A tick higher" className={stepBtn}>
       <Plus className="w-3 h-3" />
     </button>
@@ -132,7 +132,7 @@ export const SizeRow = ({ q, onQ }: { q: number; onQ: (n: number) => void }) => 
           inputMode="numeric"
           aria-label="Contracts"
           title="Contracts a press — the chart's right-click card uses the same"
-          className="w-11 border-x border-borderSubtle bg-panel text-center font-mono text-[12px] font-semibold tnum text-textPrimary outline-none focus:bg-ink/[0.04]"
+          className="w-11 border-x border-borderSubtle bg-panel text-center font-mono text-t12 font-semibold tnum text-textPrimary outline-none focus:bg-ink/[0.04]"
           data-ticket-field="qty"
         />
         <button type="button" onClick={() => set(q + 1)} disabled={q >= 999} aria-label="One contract more" className={stepBtn}>
@@ -146,7 +146,7 @@ export const SizeRow = ({ q, onQ }: { q: number; onQ: (n: number) => void }) => 
             type="button"
             onClick={() => set(n)}
             aria-pressed={n === q}
-            className={`h-7 min-w-[30px] px-2 rounded-full font-mono text-[11px] font-semibold tnum transition-colors ${n === q ? '' : 'border border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted'}`}
+            className={`h-7 min-w-[30px] px-2 rounded-full font-mono text-t11 font-semibold tnum transition-colors ${n === q ? '' : 'border border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted'}`}
             style={n === q ? { background: SILVER_FILL, color: '#0a0a0a' } : undefined}
             data-order-size-pick={n}
           >
@@ -165,7 +165,7 @@ export const Act = ({ side, count, at, why, onPress }: { side: Side; count: numb
     onClick={onPress}
     disabled={!!why}
     title={why ?? undefined}
-    className={`group h-10 min-w-0 px-2 rounded-md border border-borderMuted bg-ink/[0.04] font-mono text-[11px] font-semibold uppercase tracking-wider text-textPrimary whitespace-nowrap overflow-hidden text-ellipsis transition-colors disabled:opacity-40 disabled:cursor-not-allowed enabled:hover:text-[#0a0a0a] ${side === 'buy' ? 'enabled:hover:bg-bull enabled:hover:border-bull' : 'enabled:hover:bg-bear enabled:hover:border-bear'}`}
+    className={`group h-10 min-w-0 px-2 rounded-md border border-borderMuted bg-ink/[0.04] font-mono text-t11 font-semibold uppercase tracking-wider text-textPrimary whitespace-nowrap overflow-hidden text-ellipsis transition-colors disabled:opacity-40 disabled:cursor-not-allowed enabled:hover:text-onfoil ${side === 'buy' ? 'enabled:hover:bg-bull enabled:hover:border-bull' : 'enabled:hover:bg-bear enabled:hover:border-bear'}`}
     data-order-act={side}
   >
     {side === 'buy' ? 'Buy' : 'Sell'}{' '}
@@ -179,7 +179,7 @@ export const Act = ({ side, count, at, why, onPress }: { side: Side; count: numb
 
 /** Where the position stands, in one line */
 const PositionLine = ({ pos, price }: { pos: { long: boolean; qty: number; avg: number; pnl: number } | null; price: (v: number) => string }) => (
-  <div className="flex items-center gap-2 h-5 font-mono text-[11px] tnum" data-order-position={pos ? (pos.long ? 'long' : 'short') : 'none'}>
+  <div className="flex items-center gap-2 h-5 font-mono text-t11 tnum" data-order-position={pos ? (pos.long ? 'long' : 'short') : 'none'}>
     {pos ? (
       <>
         <span className={`font-semibold ${pos.long ? 'text-bull' : 'text-bear'}`}>
@@ -256,8 +256,8 @@ const TheRest = ({ join, close, reverse, common, hands }: { join: { bid: string;
 /** THE BRACKETS' HEADING — handed to LadderFields, which puts it on its counts' row */
 export const BracketsHead = ({ words, says }: { words: string; says?: string }) => (
   <span className="inline-flex items-baseline gap-2 min-w-0 grow basis-[120px] overflow-hidden" title={says ?? words}>
-    <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-textPrimary">Brackets</span>
-    <span className="text-[10px] text-textMuted truncate">{words}</span>
+    <span className="font-mono text-t10 font-semibold uppercase tracking-widest text-textPrimary">Brackets</span>
+    <span className="text-t10 text-textMuted truncate">{words}</span>
   </span>
 );
 const Brackets = ({ children }: { children: React.ReactNode }) => (
@@ -270,7 +270,7 @@ export const RiskSize = ({ shares, riskEach, onPick, words }: { shares: number[]
   <div className="flex items-center gap-1.5 flex-wrap">
     <span className={labelCls}>{riskEach ? words : 'Size to risk — type a stop first'}</span>
     {shares.map(r => (
-      <button key={r} type="button" disabled={!riskEach} onClick={() => onPick(r)} className="h-6 px-2 rounded-md border border-borderSubtle font-mono text-[10px] text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-30 disabled:cursor-not-allowed transition-colors" data-ticket-risk={r}>
+      <button key={r} type="button" disabled={!riskEach} onClick={() => onPick(r)} className="h-6 px-2 rounded-md border border-borderSubtle font-mono text-t10 text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-30 disabled:cursor-not-allowed transition-colors" data-ticket-risk={r}>
         {+(r * 100).toFixed(1)}%
       </button>
     ))}
@@ -401,11 +401,11 @@ export const FutOrderPanel = ({ desk, symbol, q, onQ, onPlace, onClose, onCancel
       {/* the contract, where it stands with you, and where it trades — one row */}
       <div className="flex items-center gap-2 min-w-0" title={`$${prod.pointValue.toLocaleString('en-US')} a point · a tick is ${usd(prod.tick * prod.pointValue)}`}>
         <CompanyLogo ticker={symbol} size={16} />
-        <span className="font-mono text-[12px] font-bold text-textPrimary">{desk.contract}</span>
+        <span className="font-mono text-t12 font-bold text-textPrimary">{desk.contract}</span>
         <span className="min-w-0 flex-1">
           <PositionLine pos={pos} price={f} />
         </span>
-        <span className="font-mono text-[11px] tnum whitespace-nowrap">
+        <span className="font-mono text-t11 tnum whitespace-nowrap">
           <span className="text-textMuted">last</span> <span className="text-textPrimary">{f(lastT)}</span>
         </span>
       </div>
@@ -439,7 +439,7 @@ export const FutOrderPanel = ({ desk, symbol, q, onQ, onPlace, onClose, onCancel
         />
         <RiskSize shares={[0.005, 0.01, 0.02]} riskEach={riskEach} onPick={share => riskEach && onQ(Math.max(1, Math.floor((desk.equity * share) / riskEach)))} words="Size to a share of the account at risk" />
       </Brackets>
-      <div className="mt-auto pt-2.5 border-t border-borderSubtle/70 font-mono text-[11px] tnum leading-relaxed" data-order-status>
+      <div className="mt-auto pt-2.5 border-t border-borderSubtle/70 font-mono text-t11 tnum leading-relaxed" data-order-status>
         <div className="text-textSecondary">
           {desk.margin == null ? <span className="text-textPrimary font-semibold">{desk.capWords ?? 'no margin held'}</span> : (
             <>

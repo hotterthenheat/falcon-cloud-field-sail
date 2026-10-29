@@ -252,11 +252,11 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
       <div className="px-5 pt-4 pb-3 flex items-start gap-6">
         <div className="min-w-0 flex-1">
           <div className="h-6 flex items-center gap-3 min-w-0">
-            <h3 className="shrink-0 text-[15px] font-semibold leading-tight text-textPrimary">The pair</h3>
-            <span className="min-w-0 truncate text-[11px] text-textSecondary">which of the two has been stronger, and whether {lastWord === 'Today' ? "today's" : `${lastWord}'s`} gap is normal</span>
+            <h3 className="shrink-0 text-t15 font-semibold leading-tight text-textPrimary">The pair</h3>
+            <span className="min-w-0 truncate text-t11 text-textSecondary">which of the two has been stronger, and whether {lastWord === 'Today' ? "today's" : `${lastWord}'s`} gap is normal</span>
             {onGuide && <GuideDoor open={guideOpen} onClick={onGuide} title="What the line, the range and the marks mean" testId="pair-guide" />}
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
             {a}'s price divided by {b}'s, one point a day · above the average <span style={{ color: aInk }}>{a}</span> is ahead of usual, below it <span style={{ color: bInk }}>{b}</span> is · the band is the usual range · a warm mark closed outside it · hover any day
           </p>
         </div>
@@ -276,18 +276,18 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
           <>
             <div ref={hostRef} className="absolute inset-0" data-pair-host />
             {/* the two halves, named where they lie — the first name's above the average, the second's below */}
-            <span className="absolute top-2 z-10 pointer-events-none font-mono text-[10px] font-semibold uppercase tracking-widest" style={{ right: 72, color: aInk }} data-pair-half="a">
+            <span className="absolute top-2 z-10 pointer-events-none font-mono text-t10 font-semibold uppercase tracking-widest" style={{ right: 72, color: aInk }} data-pair-half="a">
               ▲ {a} ahead
             </span>
-            <span className="absolute z-10 pointer-events-none font-mono text-[10px] font-semibold uppercase tracking-widest" style={{ right: 72, bottom: 34, color: bInk }} data-pair-half="b">
+            <span className="absolute z-10 pointer-events-none font-mono text-t10 font-semibold uppercase tracking-widest" style={{ right: 72, bottom: 34, color: bInk }} data-pair-half="b">
               ▼ {b} ahead
             </span>
             {shown && shownTime != null && (
-              <div className="absolute top-2 left-3 z-10 pointer-events-none flex items-center gap-2 font-mono text-[11px] tnum whitespace-nowrap" data-pair-legend data-legend-time={shownTime}>
+              <div className="absolute top-2 left-3 z-10 pointer-events-none flex items-center gap-2 font-mono text-t11 tnum whitespace-nowrap" data-pair-legend data-legend-time={shownTime}>
                 <span className="font-semibold text-textPrimary">{shown.today ? lastWord : dayWords(shownTime)}</span>
                 {/* "still moving" only while the session is — after the bell today's ratio is a close like any other day's */}
                 {shown.today && readMarketState().word === 'live' && (
-                  <span className="text-[9px] uppercase tracking-widest" style={{ color: SILVER }}>
+                  <span className="text-t9 uppercase tracking-widest" style={{ color: SILVER }}>
                     still moving
                   </span>
                 )}
@@ -314,15 +314,15 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
             )}
           </>
         ) : (
-          <div className="h-full flex items-center justify-center text-[11px] text-textMuted">not enough sessions on the tape yet</div>
+          <div className="h-full flex items-center justify-center text-t11 text-textMuted">not enough sessions on the tape yet</div>
         )}
       </div>
 
       {/* THE READ LINE — where today stands, at rest: the ratio, the usual range, where today sits, the days outside */}
-      <div className="px-5 border-t border-ink/[0.06] flex items-center gap-3 whitespace-nowrap overflow-hidden text-[10.5px] text-textSecondary" style={{ height: PAIR_READ_H }} data-pair-read>
+      <div className="px-5 border-t border-ink/[0.06] flex items-center gap-3 whitespace-nowrap overflow-hidden text-t105 text-textSecondary" style={{ height: PAIR_READ_H }} data-pair-read>
         {pair.now != null ? (
           <>
-            <span className="font-mono text-[11px] font-bold tnum text-textPrimary">now</span>
+            <span className="font-mono text-t11 font-bold tnum text-textPrimary">now</span>
             <span className="font-mono tnum text-textPrimary" data-pair-now>
               {a} ÷ {b} {fmtRatio(pair.now)}
             </span>
@@ -352,7 +352,7 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
         )}
       </div>
 
-      <p className="px-5 pb-4 pt-2 min-h-[44px] text-[12px] leading-relaxed text-textSecondary" data-pair-sentence>
+      <p className="px-5 pb-4 pt-2 min-h-[44px] text-t12 leading-relaxed text-textSecondary" data-pair-sentence>
         {pair.sentence}
       </p>
     </section>

@@ -66,9 +66,9 @@ export const letGoWords = (): string => (typeof globalThis.matchMedia === 'funct
 export const CardRow = ({ k, v, sub, ink }: { k: string; v: ReactNode; sub?: ReactNode; ink?: string }) => (
   <>
     <span className="text-textMuted whitespace-nowrap">{k}</span>
-    <span className="text-right font-mono text-[11px] tnum whitespace-nowrap" style={{ color: ink ?? 'rgb(var(--text-primary))' }}>
+    <span className="text-right font-mono text-t11 tnum whitespace-nowrap" style={{ color: ink ?? 'rgb(var(--text-primary))' }}>
       {v}
-      {sub != null && <span className="text-[11px] text-textMuted"> {sub}</span>}
+      {sub != null && <span className="text-t11 text-textMuted"> {sub}</span>}
     </span>
   </>
 );
@@ -106,13 +106,13 @@ const PointerCard = ({ x, y, width = 196, title, aside, children, foot, still = 
       {...{ [testId]: testValue }}
     >
       <div className="flex items-baseline gap-2">
-        <span className="font-mono text-[11px] font-semibold tnum inline-flex items-baseline gap-1.5" style={{ color: SILVER }}>
+        <span className="font-mono text-t11 font-semibold tnum inline-flex items-baseline gap-1.5" style={{ color: SILVER }}>
           {title}
         </span>
-        {aside != null && <span className="ml-auto text-[11px] text-textMuted whitespace-nowrap">{aside}</span>}
+        {aside != null && <span className="ml-auto text-t11 text-textMuted whitespace-nowrap">{aside}</span>}
       </div>
-      <div className={`${dense ? 'mt-1 gap-y-0.5' : 'mt-1.5 gap-y-1'} grid grid-cols-[auto_1fr] gap-x-3 text-[11px]`}>{children}</div>
-      {foot != null && <div className={`${dense ? 'mt-1' : 'mt-1.5'} text-[11px] leading-snug`}>{foot}</div>}
+      <div className={`${dense ? 'mt-1 gap-y-0.5' : 'mt-1.5 gap-y-1'} grid grid-cols-[auto_1fr] gap-x-3 text-t11`}>{children}</div>
+      {foot != null && <div className={`${dense ? 'mt-1' : 'mt-1.5'} text-t11 leading-snug`}>{foot}</div>}
     </div>,
     document.body
   );

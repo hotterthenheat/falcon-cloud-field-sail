@@ -29,7 +29,7 @@ export function PageBar({ page, pages, onPage, testId }: { page: number; pages: 
     setJump(null);
   };
   return (
-    <div className="bg-panel px-3 min-h-10 border-t border-borderSubtle/50 flex items-center gap-1 font-mono text-[11px] tnum" data-page-bar={testId} data-page={page + 1} data-pages={pages}>
+    <div className="bg-panel px-3 min-h-10 border-t border-borderSubtle/50 flex items-center gap-1 font-mono text-t11 tnum" data-page-bar={testId} data-page={page + 1} data-pages={pages}>
       <button type="button" onClick={() => go(page - 1)} disabled={page === 0} className="inline-flex items-center justify-center w-7 h-7 rounded text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] disabled:opacity-30 disabled:pointer-events-none" aria-label="Previous page">
         <ChevronLeft className="w-3.5 h-3.5" />
       </button>

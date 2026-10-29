@@ -127,7 +127,7 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
 
   return (
     <div className="shrink-0 flex items-baseline gap-x-2.5 px-3 h-8 pt-2 border-b border-borderSubtle/60 font-mono whitespace-nowrap overflow-hidden" data-field-column-facts={ticker} data-facts-shed={shed || undefined}>
-      <span className="text-[14px] font-semibold tnum text-textPrimary leading-none" data-facts-price>
+      <span className="text-t14 font-semibold tnum text-textPrimary leading-none" data-facts-price>
         {spot.toFixed(2)}
       </span>
       {shed < 4 && (
@@ -136,24 +136,24 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
         </span>
       )}
       <span className={`inline-flex items-baseline gap-1.5 ${SEP}`} title={flip != null ? `The gamma flip: the price where the book's net gamma crosses zero — dealers ${absorb ? 'are long gamma on this side and turn short' : 'are short gamma on this side and turn long'} past it` : "No flip within ±10%: the book's net gamma keeps one sign across the whole range"}>
-        <span className="text-[11px] uppercase tracking-wider text-textMuted">Flip</span>
-        <span className="text-[12px] font-semibold tnum" style={{ color: flip != null ? (shed >= 5 ? regimeInk : FLIP) : undefined }}>
+        <span className="text-t11 uppercase tracking-wider text-textMuted">Flip</span>
+        <span className="text-t12 font-semibold tnum" style={{ color: flip != null ? (shed >= 5 ? regimeInk : FLIP) : undefined }}>
           {pending ? '…' : flip != null ? fmt(flip) : 'none nearby'}
         </span>
-        {!pending && flip != null && shed < 3 && lead && <span className="text-[11px] tnum text-textMuted">{atSpot ? 'at spot' : `${lead} ${away! > 0 ? 'above' : 'below'}`}</span>}
+        {!pending && flip != null && shed < 3 && lead && <span className="text-t11 tnum text-textMuted">{atSpot ? 'at spot' : `${lead} ${away! > 0 ? 'above' : 'below'}`}</span>}
       </span>
       {hasRegime && !pending && shed < 5 && (
         <span className={`inline-flex items-baseline gap-1.5 ${SEP}`} title={onFlip ? 'Price is on the flip — dealer hedging can tip either way' : absorb ? 'Net gamma is positive here: dealers are long gamma, so their hedging absorbs a move' : 'Net gamma is negative here: dealers are short gamma, so their hedging amplifies a move'}>
-          {shed < 2 && <span className="text-[11px] uppercase tracking-wider text-textMuted">Dealers</span>}
-          <span className={`text-[11px] font-semibold uppercase tracking-wider ${onFlip ? 'text-textSecondary' : ''}`} style={onFlip ? undefined : { color: absorb ? ABSORB : AMPLIFY }}>
+          {shed < 2 && <span className="text-t11 uppercase tracking-wider text-textMuted">Dealers</span>}
+          <span className={`text-t11 font-semibold uppercase tracking-wider ${onFlip ? 'text-textSecondary' : ''}`} style={onFlip ? undefined : { color: absorb ? ABSORB : AMPLIFY }}>
             {onFlip ? 'either way' : absorb ? 'absorb' : 'amplify'}
           </span>
         </span>
       )}
       {heldWords && !pending && shed < 1 && (
         <span className={`inline-flex items-baseline gap-1.5 ${SEP}`} title={held!.tests === 0 ? 'No bar has reached the flip yet today' : `${held!.tests} bars reached the flip today; price closed through it ${held!.broke === 0 ? 'never' : `${held!.broke} times`} — the report's own count`} data-facts-held>
-          <span className="text-[11px] uppercase tracking-wider text-textMuted">Flip today</span>
-          <span className={`text-[12px] font-semibold tnum ${held!.tests === 0 ? 'text-textMuted' : 'text-textPrimary'}`}>{heldWords}</span>
+          <span className="text-t11 uppercase tracking-wider text-textMuted">Flip today</span>
+          <span className={`text-t12 font-semibold tnum ${held!.tests === 0 ? 'text-textMuted' : 'text-textPrimary'}`}>{heldWords}</span>
         </span>
       )}
     </div>

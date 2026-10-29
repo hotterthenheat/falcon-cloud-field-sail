@@ -25,8 +25,8 @@ export const StartRouteSkeleton = () => (
       <div className="min-w-0 flex-1">
         <div className="h-6 flex items-center gap-2.5">
           <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle shrink-0" />
-          <span className="text-[15px] font-semibold leading-tight text-textPrimary">Start</span>
-          <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">· where to begin</span>
+          <span className="text-t15 font-semibold leading-tight text-textPrimary">Start</span>
+          <span className="font-mono text-t9 uppercase tracking-widest text-textMuted">· where to begin</span>
         </div>
         <div className="h-[17px] flex items-center">
           <Line w={420} h={10} />

@@ -108,14 +108,14 @@ interface Props {
 
 const Cap = ({ children, aside, tip }: { children: ReactNode; aside?: ReactNode; tip?: string }) => (
   <div className="flex items-end justify-between gap-2 pt-3 pb-1 border-b border-borderSubtle/60">
-    <span className="min-w-0 font-mono text-[10px] uppercase tracking-[0.14em] text-textMuted whitespace-nowrap truncate" title={tip}>{children}</span>
+    <span className="min-w-0 font-mono text-t10 uppercase tracking-[0.14em] text-textMuted whitespace-nowrap truncate" title={tip}>{children}</span>
     {aside}
   </div>
 );
 
 /** A name's tag — a level's family at chip scale (the house's tone badge), the net's word in silver */
 const Tag = ({ tone, children }: { tone: Tone; children: ReactNode }) => (
-  <span className={`inline-flex w-fit shrink-0 items-center rounded px-1 h-[14px] border font-mono text-[8px] font-semibold uppercase tracking-widest whitespace-nowrap ${toneBadge[tone]}`}>
+  <span className={`inline-flex w-fit shrink-0 items-center rounded px-1 h-[14px] border font-mono text-t8 font-semibold uppercase tracking-widest whitespace-nowrap ${toneBadge[tone]}`}>
     {children}
   </span>
 );
@@ -224,7 +224,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       type="button"
       onClick={() => onPick(k, s.ticker)}
       title={focus === k ? 'Let go of this strike' : 'Keep this strike on the ruler'}
-      className="font-mono text-[12px] font-semibold tnum tabular-nums leading-none hover:underline underline-offset-2 decoration-ink/30 text-textPrimary"
+      className="font-mono text-t12 font-semibold tnum tabular-nums leading-none hover:underline underline-offset-2 decoration-ink/30 text-textPrimary"
       style={focus === k ? { color: SILVER } : undefined}
       data-side-strike={k}
       data-kept={focus === k || undefined}
@@ -239,13 +239,13 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     <div className={LEVEL_COLS} data-side-level={word} title={`${SIDE_TIPS[word] ?? `The strike with the most ${word} on these contracts`}. The figure is the strike's ${leg === 'net' ? 'net' : `${leg}-leg`} ${GREEK_LABEL[g]}${leg !== 'net' ? ` — the leg that makes it the ${word}` : ''}.`}>
       <Tag tone={tone}>{word}</Tag>
       {k == null ? (
-        <span className="col-span-3 font-mono text-[11px] text-textMuted">{word === 'flip' ? 'none nearby' : 'none'}</span>
+        <span className="col-span-3 font-mono text-t11 text-textMuted">{word === 'flip' ? 'none nearby' : 'none'}</span>
       ) : (
         <>
           <Door k={k} />
-          <span className="font-mono text-[10px] tnum tabular-nums text-textMuted text-right">{dist(k)}</span>
+          <span className="font-mono text-t10 tnum tabular-nums text-textMuted text-right">{dist(k)}</span>
           <span className="text-right whitespace-nowrap" data-side-level-leg={leg}>
-            <span className="mr-1 font-mono text-[9px] uppercase tracking-wider text-textMuted">{legWord}</span>
+            <span className="mr-1 font-mono text-t9 uppercase tracking-wider text-textMuted">{legWord}</span>
             <Money v={valueAt(k, leg === 'net' ? g : 'gex', leg)} g={leg === 'net' ? g : 'gex'} />
           </span>
         </>
@@ -267,7 +267,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
             aria-pressed={on}
             disabled={off}
             title={off ? 'Before the open' : `What the levels' contracts (${scopeWords}) did over the last ${w.key === 'open' ? 'session' : w.key}${rec.isToday ? '' : ` of ${longDay(rec.date)}'s session`}`}
-            className={`px-1 h-4 rounded font-mono text-[9px] tnum tabular-nums transition-colors ${on ? 'bg-ink/[0.1] text-textPrimary' : off ? 'text-textMuted/40 cursor-default' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.05]'}`}
+            className={`px-1 h-4 rounded font-mono text-t9 tnum tabular-nums transition-colors ${on ? 'bg-ink/[0.1] text-textPrimary' : off ? 'text-textMuted/40 cursor-default' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.05]'}`}
             data-side-win={w.key}
           >
             {w.key}
@@ -286,20 +286,20 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       </Cap>
       <div className="pt-2 flex items-center gap-2 min-w-0">
         <span
-          className={`font-mono text-[17px] font-bold tnum tabular-nums ${greek !== 'gex' ? 'text-textPrimary' : net > 0 ? 'text-bull' : net < 0 ? 'text-bear' : 'text-textPrimary'}`}
+          className={`font-mono text-t17 font-bold tnum tabular-nums ${greek !== 'gex' ? 'text-textPrimary' : net > 0 ? 'text-bull' : net < 0 ? 'text-bear' : 'text-textPrimary'}`}
           title={greek === 'gex' ? netGexTitle(net, s.regime) : undefined}
           data-side-net
         >
           {greek === 'gex' && net > 0 ? '+' : ''}
           {fmtUsd(net)}
         </span>
-        <span className="text-[11px] text-textMuted whitespace-nowrap">net {L}</span>
+        <span className="text-t11 text-textMuted whitespace-nowrap">net {L}</span>
         {/* THE TAG AGREES WITH THE READ (the ship pass, 2026-10-22): it was the net's sign alone, so AAPL wore AMPLIFIES
             over "dips get absorbed" — spot above its flip absorbs whatever the book nets to. It is the regime at spot
             (the read's), within a hair of the flip "either way", and only for gamma — amplify/absorb is gamma's word. */}
         {greek === 'gex' && <Tag tone="holo">{regimeWord}</Tag>}
       </div>
-      <p className="pb-1.5 text-[11px] leading-snug text-textSecondary" data-side-read>
+      <p className="pb-1.5 text-t11 leading-snug text-textSecondary" data-side-read>
         {s.read}
       </p>
       <div className="flex flex-col" data-side-levels>
@@ -314,7 +314,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       {/* WHY A WALL SITS WHERE IT DOES, IN ONE LINE (the eighth audit, QQQ: a 710 CALL WALL with net −$179.4M, the 711 put wall
           and supreme above price) — said only when the levels look odd */}
       {greek === 'gex' && wallWhy && (
-        <p className="pt-1 text-[10.5px] leading-snug text-textMuted" data-side-wall-why>
+        <p className="pt-1 text-t105 leading-snug text-textMuted" data-side-wall-why>
           {wallWhy}
         </p>
       )}
@@ -324,7 +324,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         Heaviest · {L}
       </Cap>
       <div className="flex flex-col" data-side-heaviest>
-        <div className={`${HEAVY_COLS} sticky top-0 z-10 bg-panel text-[9px] uppercase tracking-widest text-textMuted`}>
+        <div className={`${HEAVY_COLS} sticky top-0 z-10 bg-panel text-t9 uppercase tracking-widest text-textMuted`}>
           <span>#</span>
           <span>Strike</span>
           <span className="text-right tabular-nums">Net</span>
@@ -334,7 +334,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
           const roles = rolesOf(r.strike);
           return (
             <div key={r.strike} className={HEAVY_COLS} data-side-heavy={r.strike}>
-              <span className="font-mono text-[10px] tnum tabular-nums text-textMuted">{i + 1}</span>
+              <span className="font-mono text-t10 tnum tabular-nums text-textMuted">{i + 1}</span>
               <span className="min-w-0 flex items-center gap-1.5 whitespace-nowrap">
                 <Door k={r.strike} />
                 {roles.map(role => (
@@ -342,7 +342,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
                 ))}
               </span>
               <span className="text-right"><Money v={r[greek].net} /></span>
-              <span className="font-mono text-[10px] tnum tabular-nums text-right text-textPrimary whitespace-nowrap">
+              <span className="font-mono text-t10 tnum tabular-nums text-right text-textPrimary whitespace-nowrap">
                 <Change now={shownGreek(greek, r[greek].net)} then={shownThen(thenAt(winIdx, r.strike))} quiet />
               </span>
             </div>
@@ -355,15 +355,15 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         The strike · {fmtStrike(strike)} · {kept ? 'kept' : greeks && greeks.length > 1 ? `${GREEK_LABEL[greek]} supreme` : 'the supreme'}
       </Cap>
       {front ? (
-        <div className="pt-1.5 flex items-baseline gap-2 font-mono text-[11px] tnum tabular-nums whitespace-nowrap text-textPrimary" data-side-legs>
-          <span className="text-[9px] uppercase tracking-wider text-textMuted">{L}</span>
+        <div className="pt-1.5 flex items-baseline gap-2 font-mono text-t11 tnum tabular-nums whitespace-nowrap text-textPrimary" data-side-legs>
+          <span className="text-t9 uppercase tracking-wider text-textMuted">{L}</span>
           <span>
             <span className="text-textMuted">puts</span> {fmtUsd(shownGreek(greek, front[greek].put))}
           </span>
           <span>
             <span className="text-textMuted">calls</span> {fmtUsd(shownGreek(greek, front[greek].call))}
           </span>
-          <span className={`ml-auto font-bold text-[12px] ${greek === 'gex' ? (shownGreek(greek, front[greek].net) > 0 ? 'text-bull' : 'text-bear') : ''}`}>{fmtUsd(shownGreek(greek, front[greek].net))}</span>
+          <span className={`ml-auto font-bold text-t12 ${greek === 'gex' ? (shownGreek(greek, front[greek].net) > 0 ? 'text-bull' : 'text-bear') : ''}`}>{fmtUsd(shownGreek(greek, front[greek].net))}</span>
         </div>
       ) : greek === 'gex' && sideChain.some(x => Math.abs(x.strike - strike) < 1e-9) ? (
         /* OFF THE DRAWN WINDOW, STILL ON THE BOOK (the sixth audit's B1: META's All-expiries supreme 750 read "Off the
@@ -371,20 +371,20 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         (() => {
           const n = sideChain.find(x => Math.abs(x.strike - strike) < 1e-9)!;
           return (
-            <div className="pt-1.5 flex items-baseline gap-2 font-mono text-[11px] tnum tabular-nums whitespace-nowrap text-textPrimary" data-side-legs>
-              <span className="text-[9px] uppercase tracking-wider text-textMuted">{L}</span>
+            <div className="pt-1.5 flex items-baseline gap-2 font-mono text-t11 tnum tabular-nums whitespace-nowrap text-textPrimary" data-side-legs>
+              <span className="text-t9 uppercase tracking-wider text-textMuted">{L}</span>
               <span>
                 <span className="text-textMuted">puts</span> {fmtUsd(shownGreek(greek, n.putGex))}
               </span>
               <span>
                 <span className="text-textMuted">calls</span> {fmtUsd(shownGreek(greek, n.callGex))}
               </span>
-              <span className={`ml-auto font-bold text-[12px] ${shownGreek(greek, n.netGex) > 0 ? 'text-bull' : 'text-bear'}`}>{fmtUsd(shownGreek(greek, n.netGex))}</span>
+              <span className={`ml-auto font-bold text-t12 ${shownGreek(greek, n.netGex) > 0 ? 'text-bull' : 'text-bear'}`}>{fmtUsd(shownGreek(greek, n.netGex))}</span>
             </div>
           );
         })()
       ) : (
-        <p className="pt-1.5 text-[11px] text-textMuted">Off the book's window.</p>
+        <p className="pt-1.5 text-t11 text-textMuted">Off the book's window.</p>
       )}
       <div className="pt-1 grid grid-cols-2 gap-x-3 gap-y-0.5" data-side-greeks>
         {others.map(g => (
@@ -399,8 +399,8 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       <div className="pt-1 grid grid-cols-7 font-mono tnum tabular-nums" data-side-windows>
         {READ_WINDOWS.map((w, i) => (
           <span key={w.key} className="flex flex-col leading-tight min-w-0">
-            <span className="text-[9px] text-textMuted">{w.key}</span>
-            <span className="text-[10px] text-textPrimary whitespace-nowrap">{front ? <Change now={shownGreek(greek, front[greek].net)} then={shownThen(thenAt(i, strike))} quiet /> : <span className="text-textMuted">—</span>}</span>
+            <span className="text-t9 text-textMuted">{w.key}</span>
+            <span className="text-t10 text-textPrimary whitespace-nowrap">{front ? <Change now={shownGreek(greek, front[greek].net)} then={shownThen(thenAt(i, strike))} quiet /> : <span className="text-textMuted">—</span>}</span>
           </span>
         ))}
       </div>
@@ -413,7 +413,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
           value={
             <span className="inline-flex items-baseline gap-1.5">
               <span className="font-bold">±${s.sigmaLeft.toFixed(2)}</span>
-              <span className="text-[10px] text-textMuted">±{s.sigmaLeftPct.toFixed(2)}%</span>
+              <span className="text-t10 text-textMuted">±{s.sigmaLeftPct.toFixed(2)}%</span>
             </span>
           }
         />
@@ -423,7 +423,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
             s.closes ? (
               <span className="inline-flex items-baseline gap-1.5">
                 <Door k={s.closes.strike} />
-                <span className="text-[10px] text-textMuted">{s.closes.odds.toFixed(0)}% of the time</span>
+                <span className="text-t10 text-textMuted">{s.closes.odds.toFixed(0)}% of the time</span>
               </span>
             ) : (
               <span className="text-textMuted" title={s.closeTop ? `No strike reaches ${LEAN_MIN}% — the best, ${s.closeTop.strike}, is ${s.closeTop.odds.toFixed(0)}%` : undefined}>{s.closeTop ? 'no clear lean' : '—'}</span>
@@ -437,7 +437,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
               /* wraps under its strike on a phone rather than run off the card ("supreme · put wal", the eighth audit) */
               <span className="inline-flex flex-wrap items-baseline justify-end gap-x-1.5 text-right max-w-[220px]">
                 <Door k={s.watch.strike} />
-                <span className="text-[10px] text-textMuted" title={kindTip(s.watch.roles?.[0] ?? watchKind)}>
+                <span className="text-t10 text-textMuted" title={kindTip(s.watch.roles?.[0] ?? watchKind)}>
                   {watchKind} · {s.watch.atPrice ? 'at price' : s.watch.today ? 'reached today' : `${pct(s.watch.reach)} reached${s.watch.horizon ? ` ${s.watch.horizon}` : ''}`}{s.watch.isShelf ? ` · ${holdLabel(s.watch.hold)}` : ''}
                 </span>
               </span>
@@ -446,9 +446,9 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
             )
           }
         />
-        <Fact label={bellDay().clock} value={s.bellShare != null ? <span title={`${s.bellShare}% — ${bellDay().tip(s.ticker)}`}>{s.bellShare}% <span className="text-[10px] text-textMuted">of the hedging</span></span> : <span title={s.bellWhy === 'none' ? BELL_NONE_TITLE(s.ticker) : 'Still reading the expiry list'}>{s.bellWhy === 'none' ? bellNone() : '…'}</span>} />
+        <Fact label={bellDay().clock} value={s.bellShare != null ? <span title={`${s.bellShare}% — ${bellDay().tip(s.ticker)}`}>{s.bellShare}% <span className="text-t10 text-textMuted">of the hedging</span></span> : <span title={s.bellWhy === 'none' ? BELL_NONE_TITLE(s.ticker) : 'Still reading the expiry list'}>{s.bellWhy === 'none' ? bellNone() : '…'}</span>} />
       </div>
-      <div className="pt-3 font-mono text-[9px] uppercase tracking-widest text-textMuted" data-side-foot>
+      <div className="pt-3 font-mono text-t9 uppercase tracking-widest text-textMuted" data-side-foot>
         {s.strikes.length} strikes · {s.expiry !== 'ALL' || s.levels.complete !== false || bookDatesIn(s.ticker) ? `${s.expiryCount} ${s.expiryCount === 1 ? 'expiry' : 'expiries'}` : '… expiries'}
       </div>
     </div>
@@ -502,7 +502,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
           data-side-tab
         >
           <Fold className="w-3.5 h-3.5 shrink-0" />
-          <span className="font-mono text-[10px] font-bold tracking-widest" style={{ writingMode: 'vertical-rl', transform: side === 'a' ? 'rotate(180deg)' : undefined }}>
+          <span className="font-mono text-t10 font-bold tracking-widest" style={{ writingMode: 'vertical-rl', transform: side === 'a' ? 'rotate(180deg)' : undefined }}>
             {s.ticker}
           </span>
         </button>

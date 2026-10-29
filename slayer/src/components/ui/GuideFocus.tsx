@@ -21,6 +21,7 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Info, X } from 'lucide-react';
 import { CARD } from './DropdownSelect';
+import { Tip } from './Tooltip';
 
 interface GuideDoorProps {
   /** The icon alone — for a toolbar that measured itself tight (the Map's band on a still, 2026-09-22); the words
@@ -39,19 +40,20 @@ interface GuideDoorProps {
 
 /** The door: a quiet "How to read" with the info mark, lit while the guide is open */
 export const GuideDoor = ({ open, onClick, title, testId, className = '', compact = false, size = 'sm' }: GuideDoorProps) => (
-  <button
-    type="button"
-    onClick={onClick}
-    aria-pressed={open}
-    title={compact ? `How to read${title ? ` — ${title}` : ''}` : title}
-    aria-label={compact ? 'How to read' : undefined}
-    data-guide-door={testId}
-    data-guide-door-compact={compact || undefined}
-    className={`hit shrink-0 inline-flex items-center gap-1 ${size === 'md' ? 'h-7 text-[11px]' : 'h-6 text-[10px]'} rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] aria-pressed:text-textPrimary transition-colors ${compact ? `${size === 'md' ? 'w-7' : 'w-6'} justify-center` : size === 'md' ? 'px-2' : 'px-1.5'} ${className}`}
-  >
-    <Info className="w-3 h-3" />
-    {!compact && ' How to read'}
-  </button>
+  <Tip label={compact ? `How to read${title ? ` — ${title}` : ''}` : title}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={open}
+      aria-label={compact ? 'How to read' : title}
+      data-guide-door={testId}
+      data-guide-door-compact={compact || undefined}
+      className={`hit shrink-0 inline-flex items-center gap-1 ${size === 'md' ? 'h-7 text-t11' : 'h-6 text-t10'} rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] aria-pressed:text-textPrimary transition-colors ${compact ? `${size === 'md' ? 'w-7' : 'w-6'} justify-center` : size === 'md' ? 'px-2' : 'px-1.5'} ${className}`}
+    >
+      <Info className="w-3 h-3" />
+      {!compact && ' How to read'}
+    </button>
+  </Tip>
 );
 
 interface GuideFocusProps {
@@ -107,7 +109,7 @@ const GuideFocus = ({ open, onClose, title, children, testId, width = 460, viewp
             onClick={e => e.stopPropagation()}
           >
             <div className="sticky top-0 z-10 flex items-center gap-2 px-3 pt-2.5 pb-2 border-b border-borderSubtle/70 bg-chip">
-              <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-textSecondary">{title}</span>
+              <span className="font-mono text-t9 font-semibold uppercase tracking-widest text-textSecondary">{title}</span>
               <button
                 type="button"
                 onClick={onClose}

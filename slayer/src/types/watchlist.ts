@@ -57,4 +57,8 @@ export interface WatchRequest {
   /** ISO date */
   expiry: string;
   size?: number;
+  /** The live quote at the press. A watch is not added without one. */
+  mark?: number;
+  /** The stock at the press. */
+  spot?: number;
 }

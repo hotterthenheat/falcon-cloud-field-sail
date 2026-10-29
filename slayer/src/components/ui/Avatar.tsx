@@ -43,7 +43,7 @@ const Avatar = ({ profile, size, className = '' }: { profile: Profile; size: num
     />
   ) : (
     <span
-      className={`holo-bg rounded-full shrink-0 inline-flex items-center justify-center font-mono font-bold text-[#0a0a0a] select-none ${className}`}
+      className={`holo-bg rounded-full shrink-0 inline-flex items-center justify-center font-mono font-bold text-onfoil select-none ${className}`}
       style={{ width: size, height: size, fontSize: Math.round(size * 0.34) }}
       data-avatar={profile.avatar ? 'initials-fallback' : 'initials'}
       aria-hidden

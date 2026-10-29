@@ -52,15 +52,15 @@ const RecordLayout = () => {
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0" aria-hidden="true">
               <PageIcon className="w-3.5 h-3.5" />
             </span>
-            <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">{page.label}</h1>
+            <h1 className="text-t15 font-semibold leading-tight text-textPrimary">{page.label}</h1>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted sm:whitespace-nowrap sm:truncate">{page.subtitle}</p>
+          <p className="mt-0.5 text-t11 text-textMuted sm:whitespace-nowrap sm:truncate">{page.subtitle}</p>
         </div>
         <div className="flex items-center gap-x-4 gap-y-2 flex-wrap max-sm:w-full min-w-0 max-w-full">
           <dl className="flex flex-wrap gap-x-6 gap-y-2 min-w-0 max-w-full" data-shell-facts>
           <div className="min-w-0 max-w-full">
-            <dt className="text-[10px] text-textMuted whitespace-nowrap cursor-help" title={statHelp("Source")}>Source</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary max-w-full whitespace-normal" data-record-source>
+            <dt className="text-t10 text-textMuted whitespace-nowrap cursor-help" title={statHelp("Source")}>Source</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary max-w-full whitespace-normal" data-record-source>
               {page.source}
             </dd>
           </div>

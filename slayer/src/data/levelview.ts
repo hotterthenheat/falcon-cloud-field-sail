@@ -75,13 +75,16 @@ export function sessionCut(bars: readonly Candle[]): Candle[] {
     session cut the focus chip's touches use. */
 export function sessionBars(ticker: string) {
   const live = bookCandles(ticker);
-  /* THE SESSION ON RECORD, DATE-CHECKED (the fifth audit, 2026-10-23): the vendor's bars are the last day's, so before
-     today's open they are the previous session's — they are returned only for the session on record (recordDay), and the
-     pages name that day; bars of any other day are not that session's */
-  if (live && live.length > 1) {
-    const day = recordDay().date;
-    const own = live.filter(b => nyIsoDate(b.time * 1000) === day);
-    return own.length > 1 ? own : [];
+  /* A live vendor book answers for this name. One bar, or none, is not a
+     session yet — the counts wait (uwBook candlesFrom). The simulator's tape
+     is not today's, and it is not drawn in the book's place. */
+  if (live) {
+    if (live.length > 1) {
+      const day = recordDay().date;
+      const own = live.filter(b => nyIsoDate(b.time * 1000) === day);
+      return own.length > 1 ? own : [];
+    }
+    return [];
   }
   const bars = Simulator.peekCandles(ticker);
   if (!bars || bars.length === 0) return null;
@@ -196,7 +199,7 @@ export function sinceOpenRead(ratio: number | null | undefined): SinceOpenRead |
 
 export function buildLevelRead(ticker: string, strike: number): LevelRead | null {
   const session = sessionBars(ticker);
-  if (!session) return null;
+  if (!session || session.length === 0) return null;
 
   let touches = 0;
   let lastTouch: number | null = null;

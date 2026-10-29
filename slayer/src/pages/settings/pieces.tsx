@@ -22,8 +22,8 @@ export const Section = ({ id, title, line, aside, children }: { id: string; titl
         sample account" took half the width and the section's one line ran to seven */}
     <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-x-6 gap-y-2 max-sm:flex-col">
       <div className="min-w-0">
-        <h2 className="text-[15px] font-semibold leading-tight text-textPrimary">{title}</h2>
-        <p className="mt-0.5 text-[11px] text-textMuted">{line}</p>
+        <h2 className="text-t15 font-semibold leading-tight text-textPrimary">{title}</h2>
+        <p className="mt-0.5 text-t11 text-textMuted">{line}</p>
       </div>
       {aside && <div className="shrink-0 pt-0.5">{aside}</div>}
     </div>
@@ -38,8 +38,8 @@ export const Row = ({ name, line, children, testId }: { name: string; line: stri
      the words into a one-word-a-line column */
   <div className="px-5 py-3 border-t border-borderSubtle/60 flex items-center justify-between gap-6 max-sm:flex-col max-sm:items-stretch max-sm:gap-3" data-settings-row={testId}>
     <div className="min-w-0">
-      <div className="text-[12px] text-textPrimary">{name}</div>
-      <div className="text-[11px] text-textMuted">{line}</div>
+      <div className="text-t12 text-textPrimary">{name}</div>
+      <div className="text-t11 text-textMuted">{line}</div>
     </div>
     <div className="shrink-0 flex items-center gap-2 max-sm:flex-wrap">{children}</div>
   </div>
@@ -51,7 +51,7 @@ export const Row = ({ name, line, children, testId }: { name: string; line: stri
 export const Door = ({ children, onClick, to, href, title, tone = 'plain', testId, disabled = false }: { children: ReactNode; onClick?: () => void | Promise<unknown>; to?: string; href?: string; title?: string; tone?: 'plain' | 'bear' | 'silver'; testId: string; disabled?: boolean }) => {
   const [busy, run] = useBusy();
   const working = useWorking(busy);
-  const cls = `inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border font-mono text-[10px] uppercase tracking-wider transition-colors whitespace-nowrap ${
+  const cls = `inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border font-mono text-t10 uppercase tracking-wider transition-colors whitespace-nowrap ${
     tone === 'bear' ? 'border-bear/40 text-bear hover:bg-bear/10' : tone === 'silver' ? 'border-silver/50 bg-silver/[0.08] text-silver hover:bg-silver/[0.14]' : 'border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted'
   }`;
   if (to)
@@ -76,7 +76,7 @@ export const Door = ({ children, onClick, to, href, title, tone = 'plain', testI
 
 /** A small mono word in a pill — a state, never a control */
 export const Tag = ({ children, tone = 'plain' }: { children: ReactNode; tone?: 'plain' | 'silver' }) => (
-  <span className={`font-mono text-[9px] uppercase tracking-widest rounded px-2 py-0.5 whitespace-nowrap border ${tone === 'silver' ? 'bg-silverFill border-silverFill text-[#0a0a0a]' : 'border-borderSubtle text-textMuted'}`}>
+  <span className={`font-mono text-t9 uppercase tracking-widest rounded px-2 py-0.5 whitespace-nowrap border ${tone === 'silver' ? 'bg-silverFill border-silverFill text-onfoil' : 'border-borderSubtle text-textMuted'}`}>
     {children}
   </span>
 );
@@ -93,7 +93,7 @@ export const Field = ({ value, onSave, prefix, width = 200, type = 'text', testI
   return (
     <span className="inline-flex flex-col items-end gap-1">
       <span className={`inline-flex items-center h-7 rounded-md border bg-chip transition-colors ${problem ? 'border-warn/70' : 'border-borderSubtle focus-within:border-borderMuted'}`} style={{ width }}>
-        {prefix && <span className="pl-2 font-mono text-[11px] text-textMuted select-none">{prefix}</span>}
+        {prefix && <span className="pl-2 font-mono text-t11 text-textMuted select-none">{prefix}</span>}
         <input
           value={v}
           type={type}
@@ -118,12 +118,12 @@ export const Field = ({ value, onSave, prefix, width = 200, type = 'text', testI
               setProblem(null);
             }
           }}
-          className={`min-w-0 flex-1 h-full bg-transparent ${prefix ? 'pl-0.5 pr-2' : 'px-2'} font-mono text-[11px] text-textPrimary outline-none`}
+          className={`min-w-0 flex-1 h-full bg-transparent ${prefix ? 'pl-0.5 pr-2' : 'px-2'} font-mono text-t11 text-textPrimary outline-none`}
           data-settings-field={testId}
         />
       </span>
       {problem && (
-        <span id={errId} role="alert" className="font-mono text-[10px] text-warn" data-settings-problem={testId}>
+        <span id={errId} role="alert" className="font-mono text-t10 text-warn" data-settings-problem={testId}>
           {problem}
         </span>
       )}
@@ -134,11 +134,11 @@ export const Field = ({ value, onSave, prefix, width = 200, type = 'text', testI
 /** What went wrong, in the alert ink — or what happened, in the quiet one */
 export const Said = ({ problem, note }: { problem: string | null; note: string | null }) =>
   problem ? (
-    <p role="alert" className="font-mono text-[10px] text-warn" data-account-problem>
+    <p role="alert" className="font-mono text-t10 text-warn" data-account-problem>
       {problem}
     </p>
   ) : note ? (
-    <p className="font-mono text-[10px] text-textMuted" data-account-note>
+    <p className="font-mono text-t10 text-textMuted" data-account-note>
       {note}
     </p>
   ) : null;

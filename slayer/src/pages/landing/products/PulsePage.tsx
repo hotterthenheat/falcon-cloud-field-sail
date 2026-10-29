@@ -107,7 +107,7 @@ const PulsePage = () => (
       <div className="max-w-[72ch]">
         <Eyebrow>The desks</Eyebrow>
         <Head className="mt-5" first="Five desks to start from." second="Or save one of your own." />
-        <p className="mt-6 text-[15.5px] leading-relaxed text-textSecondary">
+        <p className="mt-6 text-t155 leading-relaxed text-textSecondary">
           The bar at the top holds the house’s five desks, each laid out for a part of the day. Change one and it keeps your change; Reset puts the house’s back. Save as names the desk you have, and it takes its place on the bar
           beside them.
         </p>
@@ -116,8 +116,8 @@ const PulsePage = () => (
         {DESKS.map(d => (
           <li key={d.name} className="min-w-0" data-product-desk={d.name}>
             <Picture src={`${SHOTS}/desk-${d.file}`} alt={`The ${d.name} desk`} ratio="1440 / 1000" />
-            <p className="mt-3 text-[14px] font-medium text-textPrimary">{d.name}</p>
-            <p className="mt-1 text-[13px] leading-snug text-textSecondary">{d.says}</p>
+            <p className="mt-3 text-t14 font-medium text-textPrimary">{d.name}</p>
+            <p className="mt-1 text-t13 leading-snug text-textSecondary">{d.says}</p>
           </li>
         ))}
       </ul>
@@ -138,8 +138,8 @@ const Arrange = () => {
       <ul className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-5 border-t border-borderSubtle">
         {ARRANGE.map(l => (
           <li key={l.word} className="pt-4 max-w-[40ch]">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-textMuted">{l.word}</p>
-            <p className="mt-2 text-[14.5px] leading-relaxed text-textSecondary">{l.says}</p>
+            <p className="font-mono text-t11 uppercase tracking-[0.2em] text-textMuted">{l.word}</p>
+            <p className="mt-2 text-t145 leading-relaxed text-textSecondary">{l.says}</p>
           </li>
         ))}
       </ul>

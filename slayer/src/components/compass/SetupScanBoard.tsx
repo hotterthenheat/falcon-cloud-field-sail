@@ -20,25 +20,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import type { Setup } from '../../types/compass';
-import { SCANNERS } from '../../types/compass';
-import { timeIfSits } from '../../data/compass';
 import type { Column } from '../ui/DataTable';
-import SignalBadge from '../ui/SignalBadge';
 import ContractLabel from '../ui/ContractLabel';
 import { TraceGrid, RestFoot, useRestCap, ROWS_AT_REST } from '../trace/TraceBox';
-import SetupScanCard from './SetupScanCard';
-import { processState, PROCESS_META } from './setupProcess';
+import SetupScanCard, { ownExpiry } from './SetupScanCard';
+import { STOP_KEEP } from '../../data/contractQuote';
 
 export type ScanLayout = 'cards' | 'table';
 
 type Ranked = Setup & { rank: number; spark?: number[] };
-
-/** Which kind found a setup — the id carries it (`TICKER-strike-R-kind-sleeve`) */
-const kindOf = (s: Setup): string => {
-  const m = s.id.match(/-[CP]-(.+)-(odte|weekly|swing|position|leaps)(?:-\d+d)?$/);
-  const key = m?.[1];
-  return SCANNERS.find(k => k.key === key)?.label ?? '';
-};
 
 interface SetupScanBoardProps {
   /** Flat, already-ranked (rank = index + 1). */
@@ -51,24 +41,15 @@ interface SetupScanBoardProps {
   expiryChip: string;
   /** What the empty board says while a sweep is still reading. */
   emptyLabel?: string;
-  /** The closest contract when none cleared. Shown as a card, not a call. */
-  near?: Setup | null;
-  /** Under All kinds the grid says which kind found each row */
-  showKind?: boolean;
 }
 
-const WIDTHS: Record<string, number> = { rank: 56, expiry: 150, state: 110, sigma: 96, premium: 96, breaks: 110, kind: 120, open: 72 };
+const WIDTHS: Record<string, number> = { rank: 56, expiry: 150, book: 90, sigma: 110, premium: 96, breaks: 120, open: 72 };
 const TOOLTIPS: Record<string, string> = {
-  sigma: 'The one-sigma move of the stock to expiry — what the options price in',
-  premium: 'The contract at the bid/ask midpoint',
-  breaks: '0DTE: the bid that retires the trade. 1–7 DTE: what the ask gives up by expiry if the stock sits',
-  state: 'Watch · proving itself. Active · the structure is in place. Moving · the contract trades like its trade. Fading · retiring',
+  sigma: 'One standard deviation of the underlying to expiry, from the quote implied vol. A dash means the quote had no vol.',
+  premium: 'The ask on this quote.',
+  breaks: 'Book A and Book B: 0.4678 times the ask. Book C has no stop.',
+  book: 'Book A is the near book. Book B is the far book. Book C is the close lottery.',
 };
-
-/* A chip inside a grid cell keeps its OWN line height — the cell's is the
-   row's 39px, and a chip that inherits it stands taller than its row (Noah,
-   2026-09-11: "boxes bleeding into each other") */
-const Chip = ({ children }: { children: React.ReactNode }) => <span className="inline-flex leading-normal">{children}</span>;
 
 const STEP = 80;
 /** Past this, "show all" would mount every cell at once. Reveal a step at a time. */
@@ -78,7 +59,7 @@ const MoreFoot = ({ shown, total, onMore }: { shown: number; total: number; onMo
   const open = shown < total;
   const next = Math.min(STEP, total - shown);
   return (
-    <div className="px-5 py-2.5 border-t border-borderSubtle flex items-center gap-2 text-[11px] text-textSecondary">
+    <div className="px-5 py-2.5 border-t border-borderSubtle flex items-center gap-2 text-t11 text-textSecondary">
       <span>{open ? `The first ${shown.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} setups` : `All ${total.toLocaleString('en-US')} setups`}</span>
       <span className="text-textSecondary" aria-hidden>·</span>
       <button type="button" onClick={onMore} className="font-semibold text-textPrimary hover:text-silver transition-colors">
@@ -88,7 +69,7 @@ const MoreFoot = ({ shown, total, onMore }: { shown: number; total: number; onMo
   );
 };
 
-const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expiryChip, emptyLabel, near, showKind = false }: SetupScanBoardProps) => {
+const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expiryChip, emptyLabel }: SetupScanBoardProps) => {
   const ranked = useMemo<Ranked[]>(() => setups.map((s, i) => ({ ...s, rank: i + 1 })), [setups]);
   const cap = useRestCap(ranked);
   const huge = ranked.length > HUGE;
@@ -101,7 +82,7 @@ const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expi
 
   const columns = useMemo<Column<Ranked>[]>(() => {
     const cols: Column<Ranked>[] = [
-      { key: 'rank', header: '#', sortValue: r => r.rank, render: r => <span className="font-mono text-[10px] text-textMuted tnum">{r.rank}</span> },
+      { key: 'rank', header: '#', sortValue: r => r.rank, render: r => <span className="font-mono text-t10 text-textMuted tnum">{r.rank}</span> },
       {
         key: 'contract',
         header: 'Contract',
@@ -112,34 +93,21 @@ const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expi
           </span>
         ),
       },
-      { key: 'expiry', header: 'Expiry', render: r => <span className="font-mono text-[11px] text-textSecondary">{r.expiry} · {expiryChip}</span> },
+      { key: 'expiry', header: 'Expiry', render: r => <span className="font-mono text-t11 text-textSecondary whitespace-normal">{ownExpiry(r)}</span> },
       {
-        key: 'state',
-        header: 'State',
-        sortValue: r => processState(r),
-        render: r => {
-          const state = processState(r);
-          const meta = PROCESS_META[state];
-          return (
-            <Chip>
-              <SignalBadge tone={meta.tone} dot pulse={meta.pulse}>
-                {state}
-              </SignalBadge>
-            </Chip>
-          );
-        },
+        key: 'book',
+        header: 'Book',
+        sortValue: r => r.band ?? '',
+        render: r => <span className="font-mono text-t11 text-textPrimary">{r.band === 'top' ? 'A' : r.band === 'wing' ? 'B' : r.band === 'lottery' ? 'C' : '—'}</span>,
       },
-      { key: 'sigma', header: '1σ move', align: 'right', sortValue: r => r.sigmaMovePct, render: r => <span className="font-mono text-[11px] tnum text-textPrimary">±{r.sigmaMovePct}%</span> },
-      { key: 'premium', header: 'Ask', align: 'right', sortValue: r => (r.ask > 0 ? r.ask : r.mid), render: r => <span className="font-mono text-[11px] tnum text-textPrimary">${(r.ask > 0 ? r.ask : r.mid).toFixed(2)}</span> },
-      { key: 'breaks', header: setups[0]?.sleeve === 'odte' ? 'Stop' : 'If it sits', align: 'right', sortValue: r => (r.sleeve === 'odte' ? (r.ask > 0 ? r.ask : r.mid) * (r.band === 'wing' ? 0.5 : r.band === 'scalp' ? 0.85 : 1 - 0.5322) : timeIfSits(r.spot ?? 0, r.strike, r.right, r.ask > 0 ? r.ask : r.mid)), render: r => {
-        if (r.sleeve !== 'odte') {
-          const sit = timeIfSits(r.spot ?? 0, r.strike, r.right, r.ask > 0 ? r.ask : r.mid);
-          return <span className="font-mono text-[11px] tnum text-warn" title="The time in the ask, per contract. Gone by expiry if the stock is still here.">{sit > 0 ? `−$${sit.toFixed(0)}` : 'No time'}</span>;
-        }
-        return <span className="font-mono text-[11px] tnum text-warn">${((r.ask > 0 ? r.ask : r.mid) * (r.band === 'wing' ? 0.5 : r.band === 'scalp' ? 0.85 : 1 - 0.5322)).toFixed(2)}</span>;
+      { key: 'sigma', header: '1σ to expiry', align: 'right', sortValue: r => r.sigmaMovePct, render: r => <span className="font-mono text-t11 tnum text-textPrimary">{r.greeks.iv > 0 && r.sigmaMovePct > 0 ? `±${r.sigmaMovePct}%` : '—'}</span> },
+      { key: 'premium', header: 'Ask', align: 'right', sortValue: r => (r.ask > 0 ? r.ask : r.mid), render: r => <span className="font-mono text-t11 tnum text-textPrimary">${(r.ask > 0 ? r.ask : r.mid).toFixed(2)}</span> },
+      { key: 'breaks', header: 'Stop', align: 'right', sortValue: r => (r.band === 'lottery' ? 0 : (r.ask > 0 ? r.ask : r.mid) * STOP_KEEP), render: r => {
+        if (r.band === 'lottery') return <span className="font-mono text-t11 tnum text-warn">No stop</span>;
+        if (r.band !== 'top' && r.band !== 'wing') return <span className="font-mono text-t11 text-textMuted">Not a call</span>;
+        return <span className="font-mono text-t11 tnum text-warn">${((r.ask > 0 ? r.ask : r.mid) * STOP_KEEP).toFixed(2)}</span>;
       } },
     ];
-    if (showKind) cols.push({ key: 'kind', header: 'Kind', sortValue: r => kindOf(r), render: r => <span className="text-[11px] text-textSecondary">{kindOf(r)}</span> });
     cols.push({
       key: 'open',
       header: '',
@@ -151,7 +119,6 @@ const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expi
             e.stopPropagation();
             onAnalysis(r);
           }}
-          title="Open the setup's page"
           className="slayer-chip uppercase tracking-wider"
         >
           Open <ArrowUpRight className="w-3 h-3" />
@@ -159,22 +126,12 @@ const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expi
       ),
     });
     return cols;
-  }, [expiryChip, showKind, onAnalysis, setups]);
+  }, [onAnalysis]);
 
   if (setups.length === 0) {
-    if (near && near.p1 != null) {
-      const card: Setup = { ...near, band: 'closest' };
-      return (
-        <div className="border-t border-borderSubtle px-5 pt-4 pb-5" data-compass-board="near">
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            <SetupScanCard setup={card} rank={1} selected={card.id === selectedId} onSelect={onSelect} onAnalysis={onAnalysis} expiryChip={expiryChip} />
-          </div>
-        </div>
-      );
-    }
     return (
       <div className="flex items-center justify-center h-[200px] border-t border-borderSubtle px-6" data-compass-board="empty">
-        <span className="max-w-md text-center text-[12.5px] text-textSecondary leading-relaxed">{emptyLabel || 'Nothing cleared the bar on this sweep'}</span>
+        <span className="max-w-md text-center text-t125 text-textSecondary leading-relaxed">{emptyLabel || 'Nothing cleared the bar on this sweep'}</span>
       </div>
     );
   }

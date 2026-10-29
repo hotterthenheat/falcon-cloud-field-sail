@@ -37,11 +37,11 @@ const StabilityGauge = ({ snapshot, iv }: { snapshot: MarketSnapshot; iv: number
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">
+        <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">
           <Term k="Map stability">Does this map hold</Term>
         </span>
       </div>
-      <p className="font-mono text-[12px] leading-relaxed text-textPrimary">{stabilityWords(read)}</p>
+      <p className="font-mono text-t12 leading-relaxed text-textPrimary">{stabilityWords(read)}</p>
       <div className="overflow-x-auto">
         <table className="border-collapse">
           <thead>
@@ -49,7 +49,7 @@ const StabilityGauge = ({ snapshot, iv }: { snapshot: MarketSnapshot; iv: number
               {['Level', 'now', `−${(VOL_BUMP * 100).toFixed(0)} vol`, `+${(VOL_BUMP * 100).toFixed(0)} vol`].map(h => (
                 <th
                   key={h}
-                  className="px-2 py-0.5 text-left font-mono text-[9px] uppercase tracking-wider text-textMuted"
+                  className="px-2 py-0.5 text-left font-mono text-t9 uppercase tracking-wider text-textMuted"
                 >
                   {h}
                 </th>
@@ -61,12 +61,12 @@ const StabilityGauge = ({ snapshot, iv }: { snapshot: MarketSnapshot; iv: number
               const moved = r.base !== r.up || r.base !== r.down;
               return (
                 <tr key={r.label}>
-                  <td className="px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-textMuted">{r.label}</td>
-                  <td className="px-2 py-0.5 font-mono text-[11px] font-semibold tnum text-textPrimary">{num(r.base)}</td>
-                  <td className={`px-2 py-0.5 font-mono text-[11px] tnum ${moved ? 'text-textPrimary' : 'text-textMuted'}`}>
+                  <td className="px-2 py-0.5 font-mono text-t10 uppercase tracking-wider text-textMuted">{r.label}</td>
+                  <td className="px-2 py-0.5 font-mono text-t11 font-semibold tnum text-textPrimary">{num(r.base)}</td>
+                  <td className={`px-2 py-0.5 font-mono text-t11 tnum ${moved ? 'text-textPrimary' : 'text-textMuted'}`}>
                     {num(r.down)}
                   </td>
-                  <td className={`px-2 py-0.5 font-mono text-[11px] tnum ${moved ? 'text-textPrimary' : 'text-textMuted'}`}>
+                  <td className={`px-2 py-0.5 font-mono text-t11 tnum ${moved ? 'text-textPrimary' : 'text-textMuted'}`}>
                     {num(r.up)}
                   </td>
                 </tr>

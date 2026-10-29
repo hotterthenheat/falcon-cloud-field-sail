@@ -22,6 +22,10 @@
     PAST MOVES     last eight reports
     AFTER THE      what the options lose overnight
     PRINT
+    THE CALENDAR   the next report, the expiry a calendar
+                   sells and the one it buys — the two
+                   at-the-money vols only when the
+                   vendor's curve has both
     THE BUSIEST    the three busiest calls and puts
     CONTRACTS      into the print, facts not picks
     ON THE RECORD  what this name's insiders did and
@@ -38,7 +42,7 @@
 import { useLiveQuote } from '../../data/liveQuote';
 import { lastSessionIso } from '../../data/nyDate';
 import { personDisplay } from '../../data/tickers';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, LayoutGrid } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -53,7 +57,7 @@ import { bracketLabel, seatLabel } from '../../data/congress';
 import { useInsiderFlow, useTickerCongress } from '../../data/liveRecord';
 import { When } from '../../components/record/when';
 import { nyIsoDate } from '../../core/nyTime';
-import { MIN_PRICED_PRINTS, reportedNow, useLiveDossier, useLiveReactions, useWireCheck } from '../../data/earningsFeed';
+import { MIN_PRICED_PRINTS, reportDayLabel, reportedNow, useLiveDossier, useLiveReactions, useNextReport, useNextReportPending, useWireCheck } from '../../data/earningsFeed';
 import { useStockCard } from '../../data/liveFiles';
 import { FUND_TYPES } from '../../data/liveFiles';
 import { type ActiveContract, type EarningsDossier } from '../../data/earnings';
@@ -62,20 +66,23 @@ import { PRICED_INK, PRICED_WORD, SlotMark, slotWord } from './Earnings';
 import CompanyFile from '../../components/record/CompanyFile';
 import { EarningsVol } from '../../components/vendor/LiveDesk';
 import { statHelp } from '../../components/record/statHelp';
+import { expiryOpen } from '../../core/tradingYear';
+import { peekIv, useBookRev } from '../../data/uwBook';
+import { whalesGreekExpiry, whalesTermStructure, type UwGreekStrike, type UwTerm } from '../../data/whales';
 
 const AXIS = { stroke: 'transparent', tick: { fill: 'rgb(var(--text-secondary))', fontSize: 10, fontFamily: 'inherit' } };
 const GRID = { stroke: 'rgba(255,255,255,0.05)', vertical: false };
 const BEAR = 'rgb(var(--bear))';
 const WHITE_DIM = 'rgba(237,237,237,0.28)';
 
-const TooltipShell = ({ children }: { children: React.ReactNode }) => <div className="border border-borderMuted bg-panel rounded-md px-2.5 py-2 shadow-xl shadow-black/60 font-mono text-[11px] text-textPrimary">{children}</div>;
+const TooltipShell = ({ children }: { children: React.ReactNode }) => <div className="border border-borderMuted bg-panel rounded-md px-2.5 py-2 shadow-xl shadow-black/60 font-mono text-t11 text-textPrimary">{children}</div>;
 
 /** A box in the house grammar: the 15px title, the 11px line, whatever follows */
 const Box = ({ title, sub, children, testId, className = '' }: { title: string; sub?: React.ReactNode; children: React.ReactNode; testId: string; className?: string }) => (
   <div className={`border border-borderSubtle rounded-md bg-panel flex flex-col ${className}`} data-earnings-box={testId}>
     <div className="px-5 pt-4 pb-3">
-      <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">{title}</h3>
-      {sub && <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{sub}</p>}
+      <h3 className="text-t15 font-semibold leading-tight text-textPrimary">{title}</h3>
+      {sub && <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">{sub}</p>}
     </div>
     {children}
   </div>
@@ -83,8 +90,8 @@ const Box = ({ title, sub, children, testId, className = '' }: { title: string; 
 
 const Fact = ({ label, children, testId }: { label: string; children: React.ReactNode; testId?: string }) => (
   <div>
-    <dt className="text-[10px] text-textMuted whitespace-nowrap cursor-help" title={statHelp(label)}>{label}</dt>
-    <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-name-fact={testId}>
+    <dt className="text-t10 text-textMuted whitespace-nowrap cursor-help" title={statHelp(label)}>{label}</dt>
+    <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-name-fact={testId}>
       {children}
     </dd>
   </div>
@@ -92,7 +99,7 @@ const Fact = ({ label, children, testId }: { label: string; children: React.Reac
 
 /** A door out — small, labelled */
 const Door = ({ onClick, onWarm, children }: { onClick: () => void; onWarm?: () => void; children: React.ReactNode }) => (
-  <button type="button" onClick={onClick} onMouseEnter={onWarm} className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted font-mono text-[9px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">
+  <button type="button" onClick={onClick} onMouseEnter={onWarm} className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted font-mono text-t9 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">
     <ArrowUpRight className="w-3 h-3" />
     {children}
   </button>
@@ -147,7 +154,7 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
   if (!isPriced) {
     return (
       <div className="px-5 pb-4 flex flex-col gap-3" data-name-replay="unpriced">
-        <p className="text-[12px] text-textSecondary">
+        <p className="text-t12 text-textSecondary">
           The options do not price this print yet — the feed carries no expected move for {e.dateLabel}
           {e.confirmed ? '' : ', an estimated date'}. The replay fills in once the report is on the near calendar.
         </p>
@@ -163,11 +170,11 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
   return (
     <div className="px-5 pb-4 flex flex-col gap-3" data-name-replay>
       <div className="flex items-baseline gap-2.5 flex-wrap font-mono tnum">
-        <span className="text-[10px] text-textMuted">{reported ? 'What the options priced before the report' : "Today's price for the move"}</span>
-        <span className="text-[16px] font-bold text-textPrimary">${cost.toFixed(2)}</span>
-        <span className="text-[11px] text-textSecondary">per share · ±{e.impliedMovePct.toFixed(2)}%</span>
+        <span className="text-t10 text-textMuted">{reported ? 'What the options priced before the report' : "Today's price for the move"}</span>
+        <span className="text-t16 font-bold text-textPrimary">${cost.toFixed(2)}</span>
+        <span className="text-t11 text-textSecondary">per share · ±{e.impliedMovePct.toFixed(2)}%</span>
         {reported && e.actualMovePct != null && (
-          <span className="text-[11px] text-textSecondary" data-replay-moved>
+          <span className="text-t11 text-textSecondary" data-replay-moved>
             · the stock {e.moveLive ? 'is moving' : 'moved'} <span className={e.actualMovePct >= 0 ? 'text-bull' : 'text-bear'}>{e.actualMovePct >= 0 ? '+' : '−'}{Math.abs(e.actualMovePct).toFixed(2)}%</span>
             {e.moveLive ? ' so far' : ''} — {Math.abs(e.actualMovePct) > e.impliedMovePct ? 'more than priced' : 'inside the priced move'}
           </span>
@@ -176,8 +183,8 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
       <div className="mx-auto w-full max-w-[640px] select-none">
         <div className="relative" style={{ height: 2 * H }} onMouseLeave={() => setHover(null)}>
           <span className="absolute inset-x-0 top-1/2 h-px bg-ink/25" />
-          <span className="absolute left-0 -translate-y-full top-1/2 pb-0.5 font-mono text-[9px] uppercase tracking-widest text-textMuted">covered it</span>
-          <span className="absolute left-0 top-1/2 pt-0.5 font-mono text-[9px] uppercase tracking-widest text-textMuted">fell short</span>
+          <span className="absolute left-0 -translate-y-full top-1/2 pb-0.5 font-mono text-t9 uppercase tracking-widest text-textMuted">covered it</span>
+          <span className="absolute left-0 top-1/2 pt-0.5 font-mono text-t9 uppercase tracking-widest text-textMuted">fell short</span>
           <div className="absolute inset-y-0 left-24 right-0 flex items-stretch gap-1.5" data-touch-skip>
             {rows.map(r => (
               <button
@@ -196,15 +203,15 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
         </div>
         <div className="flex gap-1.5 mt-1 pl-24">
           {rows.map(r => (
-            <span key={r.label} className="flex-1 min-w-0 text-center font-mono text-[8px] sm:text-[9px] text-textMuted whitespace-nowrap">
+            <span key={r.label} className="flex-1 min-w-0 text-center font-mono text-t8 sm:text-t9 text-textMuted whitespace-nowrap">
               {r.label}
             </span>
           ))}
         </div>
       </div>
       <div className="flex items-center gap-2.5 flex-wrap font-mono tnum">
-        <span className="text-[13px] font-bold text-textPrimary">covered {priceWord} {winners} of {rows.length} times</span>
-        <span className={`text-[11px] font-semibold ${avg >= 0 ? 'text-bull' : 'text-bear'}`}>
+        <span className="text-t13 font-bold text-textPrimary">covered {priceWord} {winners} of {rows.length} times</span>
+        <span className={`text-t11 font-semibold ${avg >= 0 ? 'text-bull' : 'text-bear'}`}>
           avg {avg >= 0 ? '+' : '−'}${Math.abs(avg).toFixed(2)} per share
         </span>
       </div>
@@ -246,14 +253,14 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
       </dl>
       {hover && (
         <HoverReadout x={hover.x} y={hover.y}>
-          <div className="font-mono text-[11px] font-bold text-textPrimary tnum">
+          <div className="font-mono text-t11 font-bold text-textPrimary tnum">
             {hover.r.label} · moved {hover.r.movePct >= 0 ? '+' : ''}
             {hover.r.movePct.toFixed(1)}%
           </div>
-          <div className="font-mono text-[10px] text-textSecondary tnum">
+          <div className="font-mono text-t10 text-textSecondary tnum">
             that move was worth ${hover.r.moved.toFixed(2)} · {priceWord} ${cost.toFixed(2)}
           </div>
-          <div className={`font-mono text-[11px] font-bold tnum ${hover.r.pl >= 0 ? 'text-bull' : 'text-bear'}`}>
+          <div className={`font-mono text-t11 font-bold tnum ${hover.r.pl >= 0 ? 'text-bull' : 'text-bear'}`}>
             {hover.r.pl >= 0 ? '+' : '−'}${Math.abs(hover.r.pl).toFixed(2)} per share against {priceWord}
           </div>
         </HoverReadout>
@@ -283,34 +290,162 @@ const ActiveRow = ({ c, maxVol, onOpen, onWarm }: { c: ActiveContract; maxVol: n
     data-contract-right={c.right}
   >
     <div className="flex items-baseline gap-2">
-      <span className="font-mono text-[12px] font-bold text-textPrimary group-hover/door:text-silver group-focus-visible/door:text-silver transition-colors">{c.label}</span>
-      <span className="ml-auto font-mono text-[12px] font-semibold text-textPrimary tnum">
+      <span className="font-mono text-t12 font-bold text-textPrimary group-hover/door:text-silver group-focus-visible/door:text-silver transition-colors">{c.label}</span>
+      <span className="ml-auto font-mono text-t12 font-semibold text-textPrimary tnum">
         ~<AnimatedNumber value={c.mid} format={v => `$${v.toFixed(2)}`} />
       </span>
-      <span className="inline-flex items-center gap-1 pl-2 font-mono text-[9px] uppercase tracking-widest text-textMuted group-hover/door:text-silver group-focus-visible/door:text-silver transition-colors" data-contract-door>
+      <span className="inline-flex items-center gap-1 pl-2 font-mono text-t9 uppercase tracking-widest text-textMuted group-hover/door:text-silver group-focus-visible/door:text-silver transition-colors" data-contract-door>
         <ArrowUpRight className="w-3 h-3" />
         Weigh it
       </span>
     </div>
     <div className="flex items-center gap-2">
-      <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted shrink-0">vol</span>
+      <span className="font-mono text-t9 uppercase tracking-widest text-textMuted shrink-0">vol</span>
       <span className="relative w-24 h-[4px] rounded-full bg-ink/[0.06] shrink-0">
         <span className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-700 ease-out ${c.right === 'CALL' ? 'bg-bull/80' : 'bg-bear/70'}`} style={{ width: `${Math.max(6, (c.volume / maxVol) * 100)}%` }} />
       </span>
-      <span className="font-mono text-[11px] font-semibold text-textPrimary tnum">
+      <span className="font-mono text-t11 font-semibold text-textPrimary tnum">
         <AnimatedNumber value={c.volume} format={v => Math.round(v).toLocaleString()} />
       </span>
-      <span className="font-mono text-[10px] text-textSecondary tnum">
+      <span className="font-mono text-t10 text-textSecondary tnum">
         open interest {c.oi.toLocaleString()} · <AnimatedNumber value={c.volOverOi} format={v => `${v.toFixed(2)}×`} /> · IV {c.ivPct}%
       </span>
     </div>
-    <span className="font-mono text-[10px] text-textMuted tnum">
+    <span className="font-mono text-t10 text-textMuted tnum">
       {c.fromSpotPct === 0 ? 'at the money' : `${c.fromSpotPct > 0 ? '+' : c.fromSpotPct < 0 ? '−' : ''}${Math.abs(c.fromSpotPct)}% from ${c.spotWord ?? 'spot'}`} ·{' '}
       {/* already through its breakeven at today's price (the $385 put on a $373.63 TSLA) — not "breaks even −0%" */}
       {c.breakevenPct > 0 ? `breaks even ${c.right === 'CALL' ? '+' : '−'}${c.breakevenPct}% by expiry` : `past its breakeven at ${c.spotWord ?? "today's price"}`}
     </span>
   </button>
 );
+
+/* ---- the calendar into the report ---------------------------------------------------- */
+/* A calendar sells the first listed expiry on or after the report and buys the next
+   one. The two at-the-money vols are the vendor's term structure (volatility/term-structure),
+   the same curve the book keeps as termIv — each expiry's own ATM call and put. The
+   listing is the vendor's expiry book (greek-exposure/expiry); the curve's own dates
+   stand in only when that listing does not come back. Nothing here is a guessed vol. */
+
+interface ListedCurve {
+  status: 'loading' | 'live' | 'miss';
+  /** Still-open expiries, nearest first */
+  dates: string[];
+  /** Annualised ATM fraction, only where the curve printed one */
+  iv: Record<string, number>;
+}
+
+const isoOf = (raw: unknown): string => {
+  const d = String(raw ?? '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
+};
+
+const atmOf = (raw: unknown): number | null => {
+  const v = typeof raw === 'number' ? raw : parseFloat(String(raw ?? ''));
+  if (!Number.isFinite(v) || !(v > 0)) return null;
+  const annual = v > 3 ? v / 100 : v;
+  return annual > 0 && annual < 5 ? annual : null;
+};
+
+function useListedCurve(ticker: string): ListedCurve {
+  const [curve, setCurve] = useState<ListedCurve>({ status: 'loading', dates: [], iv: {} });
+  useEffect(() => {
+    let dead = false;
+    setCurve({ status: 'loading', dates: [], iv: {} });
+    void (async () => {
+      const [listed, term] = await Promise.all([
+        whalesGreekExpiry(ticker).catch(() => null as UwGreekStrike[] | null),
+        whalesTermStructure(ticker).catch(() => null as UwTerm[] | null),
+      ]);
+      if (dead) return;
+      const iv: Record<string, number> = {};
+      const termDates: string[] = [];
+      if (Array.isArray(term)) {
+        for (const row of term) {
+          const d = isoOf(row.expiry ?? row.date);
+          if (!d) continue;
+          termDates.push(d);
+          const vol = atmOf(row.volatility);
+          if (vol != null) iv[d] = vol;
+        }
+      }
+      const fromBook = Array.isArray(listed) ? listed.map(r => isoOf(r.expiry)).filter(Boolean) : [];
+      /* An empty listing came back — that is the chain. The curve's dates stand in only when the listing itself did not. */
+      const dates = [...new Set(listed == null ? termDates : fromBook)].filter(d => expiryOpen(d)).sort();
+      setCurve({ status: listed == null && term == null ? 'miss' : 'live', dates, iv });
+    })();
+    return () => {
+      dead = true;
+    };
+  }, [ticker]);
+  return curve;
+}
+
+const volPct = (v: number): string => `${(v * 100).toFixed(2)}%`;
+
+/** The calendar into the next report. Dates and vols only — no grade. */
+const CalendarSpread = ({ ticker }: { ticker: string }) => {
+  const next = useNextReport(ticker);
+  const pending = useNextReportPending(ticker);
+  const curve = useListedCurve(ticker);
+  /* The book's iv is the 30-day implied vol off iv-rank, and only when that book is already live.
+     Nothing on this page loads a 30-day realized vol — compass tape.rv30 is thirty minutes, not thirty days. */
+  useBookRev();
+  const iv30 = peekIv(ticker);
+  const when = next ? slotWord({ slot: next.slot, timeKnown: next.event?.timeKnown }) : '';
+  const onOrAfter = next ? curve.dates.filter(d => d >= next.iso) : [];
+  const front = onOrAfter[0];
+  const back = onOrAfter[1];
+  const frontIv = front ? curve.iv[front] : undefined;
+  const backIv = back ? curve.iv[back] : undefined;
+  const bothVols = frontIv != null && backIv != null;
+  const diffPts = bothVols ? (frontIv - backIv) * 100 : null;
+
+  let dates = '';
+  if (pending) dates = 'Reading the next report.';
+  else if (!next) dates = 'No coming report on this name.';
+  else if (curve.status === 'loading') dates = 'Reading the listed expiries.';
+  else if (curve.status === 'miss') dates = 'The listed expiries did not come back, so the two dates are not named.';
+  else if (!front || !back) dates = onOrAfter.length === 1
+    ? `A calendar needs two listed expiries on or after that report. This name lists one, ${reportDayLabel(onOrAfter[0])}, so it is not scored.`
+    : 'A calendar needs two listed expiries on or after that report. This name does not list both, so it is not scored.';
+  else dates = `A calendar sells ${reportDayLabel(front)} and buys ${reportDayLabel(back)}.`;
+
+  let richness = '';
+  if (next && !pending && curve.status === 'miss') {
+    richness = 'The richness is not scored because the curve is not on this page.';
+  } else if (next && !pending && front && back && curve.status === 'live') {
+    if (bothVols && diffPts != null) {
+      richness = Math.abs(diffPts) < 0.005
+        ? `The at-the-money vol is ${volPct(frontIv)} on both.`
+        : `The at-the-money vol on the one sold is ${volPct(frontIv)}. On the one bought it is ${volPct(backIv)}. The one sold is ${Math.abs(diffPts).toFixed(2)} points ${diffPts > 0 ? 'higher' : 'lower'}.`;
+    } else if (Object.keys(curve.iv).length === 0) {
+      richness = 'The richness is not scored because the curve is not on this page.';
+    } else {
+      const missing = [frontIv == null ? reportDayLabel(front) : '', backIv == null ? reportDayLabel(back) : ''].filter(Boolean).join(' and ');
+      richness = `The richness is not scored. The curve has no at-the-money vol for ${missing}.`;
+    }
+  }
+
+  return (
+    <Box title="The calendar" sub={`${ticker} · sell the first listed expiry on or after the report, buy the next one`} testId="calendar">
+      <div className="px-5 pb-4 flex flex-col gap-2" data-calendar-spread={ticker}>
+        {next && !pending ? (
+          <p className="text-t12 text-textPrimary">
+            {ticker} reports {next.dateLabel}, {when}{next.confirmed ? '' : ' · the date is estimated'}.
+          </p>
+        ) : null}
+        <p className="text-t12 text-textSecondary">{dates}</p>
+        {richness ? <p className="text-t12 text-textSecondary" data-calendar-richness>{richness}</p> : null}
+        {next && !pending ? (
+          <p className="text-t12 text-textMuted" data-calendar-ivrv>
+            {iv30 != null ? `The 30-day implied vol is ${volPct(iv30)}. ` : ''}
+            Implied against what the stock has done is not scored. {iv30 == null ? 'A 30-day implied vol and a 30-day realized vol are' : 'A 30-day realized vol is'} not loaded for this name.
+          </p>
+        ) : null}
+      </div>
+    </Box>
+  );
+};
 
 /* ---- the page ------------------------------------------------------------------- */
 
@@ -343,11 +478,11 @@ const EarningsName = () => {
 
   const back = (
     <div className="flex items-center gap-4" data-name-back>
-      <Link to="/dossier/earnings" className="group inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">
+      <Link to="/dossier/earnings" className="group inline-flex items-center gap-1.5 font-mono text-t10 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">
         <ArrowLeft className="w-3.5 h-3.5 transition-transform duration-200 ease-out group-hover:-translate-x-0.5" /> The calendar
       </Link>
       {fromDesk && (
-        <Link to="/pulse" className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">
+        <Link to="/pulse" className="inline-flex items-center gap-1.5 font-mono text-t10 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">
           <LayoutGrid className="w-3.5 h-3.5" /> The desk
         </Link>
       )}
@@ -359,8 +494,8 @@ const EarningsName = () => {
       <>
         {back}
         <div className="border border-borderSubtle rounded-md bg-panel h-40 flex flex-col items-center justify-center gap-2" data-name-missing>
-          <span className="font-mono text-[13px] font-bold text-textPrimary">{T}</span>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">Reading the prints</span>
+          <span className="font-mono text-t13 font-bold text-textPrimary">{T}</span>
+          <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">Reading the prints</span>
         </div>
       </>
     );
@@ -371,8 +506,8 @@ const EarningsName = () => {
       <>
         {back}
         <div className="border border-borderSubtle rounded-md bg-panel h-40 flex flex-col items-center justify-center gap-2" data-name-missing>
-          <span className="font-mono text-[13px] font-bold text-textPrimary">{T}</span>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">{isFund ? 'a fund — funds do not report earnings' : 'no report on file for this name'}</span>
+          <span className="font-mono text-t13 font-bold text-textPrimary">{T}</span>
+          <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">{isFund ? 'a fund — funds do not report earnings' : 'no report on file for this name'}</span>
         </div>
       </>
     );
@@ -442,11 +577,11 @@ const EarningsName = () => {
             <CompanyLogo ticker={e.ticker} size={34} />
             <div className="min-w-0">
               <div className="h-6 flex items-center gap-2.5">
-                <h3 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-textPrimary">{e.name}</h3>
-                <span className="font-mono text-[11px] font-bold text-textSecondary">{e.ticker}</span>
+                <h3 className="min-w-0 truncate text-t15 font-semibold leading-tight text-textPrimary">{e.name}</h3>
+                <span className="font-mono text-t11 font-bold text-textSecondary">{e.ticker}</span>
               </div>
               {/* max-xl:flex-wrap — an inline-flex line does not truncate, it spills; on a phone it folds instead (the phone pass, 2026-09-13) */}
-              <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate inline-flex items-center gap-1.5 max-xl:flex-wrap">
+              <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate inline-flex items-center gap-1.5 max-xl:flex-wrap">
                 {reported ? 'Reported' : 'Reports'} {e.dateLabel} <SlotMark slot={e.slot} timeKnown={e.timeKnown} className="w-3 h-3" /> {slotWord(e)}
                 <span className="text-textMuted">·</span>
                 {reported ? (
@@ -469,7 +604,7 @@ const EarningsName = () => {
               </p>
               {/* the next report after the one that is out (audit round 10: WDC's page led with 02/04 and lost last night's print) */}
               {reported && dossier.nextAfter ? (
-                <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate inline-flex items-center gap-1.5 max-xl:flex-wrap" data-earnings-next>
+                <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate inline-flex items-center gap-1.5 max-xl:flex-wrap" data-earnings-next>
                   Next report {dossier.nextAfter.dateLabel} <SlotMark slot={dossier.nextAfter.slot} timeKnown={dossier.nextAfter.timeKnown} className="w-3 h-3" /> {slotWord(dossier.nextAfter)}
                   <span className="text-textMuted">·</span>
                   <span className={dossier.nextAfter.confirmed ? 'text-textMuted' : 'text-warn'}>{dossier.nextAfter.confirmed ? 'the company has confirmed the date' : 'date estimated — the company has not set it'}</span>
@@ -493,7 +628,7 @@ const EarningsName = () => {
             <Fact label="Priced · options ÷ usual" testId="priced">
               {!ratioOk || !isPriced ? <span className="text-textMuted" title={reported ? 'Reported — the move is in' : `Rich or cheap needs ${MIN_PRICED_PRINTS} past moves on file`}>—</span> : (
               <span className={PRICED_INK[priced]} title={`The options' ±${e.impliedMovePct.toFixed(1)}% over the usual ±${e.histAvgMovePct.toFixed(1)}% — rich above 1.3×, cheap below 0.85×`}>
-                {richText(e.richness)}× {PRICED_WORD[priced]} <span className="text-textMuted text-[10px]">(±{e.impliedMovePct.toFixed(1)} ÷ ±{e.histAvgMovePct.toFixed(1)})</span>
+                {richText(e.richness)}× {PRICED_WORD[priced]} <span className="text-textMuted text-t10">(±{e.impliedMovePct.toFixed(1)} ÷ ±{e.histAvgMovePct.toFixed(1)})</span>
               </span>
               )}
             </Fact>
@@ -560,7 +695,7 @@ const EarningsName = () => {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="mt-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">
+            <p className="mt-2 font-mono text-t9 uppercase tracking-widest text-textMuted">
               grey the estimate · <span className="text-bull">green beat</span> · <span className="text-warn">amber in line</span> · <span className="text-bear">red missed</span>
             </p>
           </div>
@@ -599,7 +734,7 @@ const EarningsName = () => {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="mt-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">
+            <p className="mt-2 font-mono text-t9 uppercase tracking-widest text-textMuted">
               {isPriced ? `the dashed lines are the ±${e.impliedMovePct.toFixed(1)}% priced for this print` : 'the options do not price this print yet'}
             </p>
           </div>
@@ -620,7 +755,7 @@ const EarningsName = () => {
             {spotNow > 0 ? (
               <>
                 ${spotNow.toFixed(2)}
-                {extNow ? <span className="block text-[10px] text-textMuted" data-name-fact="ext">{extNow.word} ${extNow.px.toFixed(2)}</span> : null}
+                {extNow ? <span className="block text-t10 text-textMuted" data-name-fact="ext">{extNow.word} ${extNow.px.toFixed(2)}</span> : null}
               </>
             ) : (
               <span className="text-textMuted">—</span>
@@ -628,6 +763,8 @@ const EarningsName = () => {
           </Fact>
         </dl>
       </Box>
+
+      <CalendarSpread ticker={T} />
 
       <EarningsVol ticker={T} />
 
@@ -637,7 +774,7 @@ const EarningsName = () => {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
         <Box title="Busiest calls" sub={callSub} testId="calls">
           <div className="pb-2">
-            {dossier.activeCalls.length === 0 ? <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-widest text-textMuted">{dossier.live ? (dossier.contractsReady ? `No volume on the chain on ${chainDay}` : 'Reading the chain') : 'Nothing trading'}</p> : null}
+            {dossier.activeCalls.length === 0 ? <p className="px-5 py-3 font-mono text-t10 uppercase tracking-widest text-textMuted">{dossier.live ? (dossier.contractsReady ? `No volume on the chain on ${chainDay}` : 'Reading the chain') : 'Nothing trading'}</p> : null}
             {dossier.activeCalls.map(c => (
               <ActiveRow key={c.id} c={c} maxVol={maxActiveVol} onOpen={() => weigh(c)} />
             ))}
@@ -645,7 +782,7 @@ const EarningsName = () => {
         </Box>
         <Box title="Busiest puts" sub={putSub} testId="puts">
           <div className="pb-2">
-            {dossier.activePuts.length === 0 ? <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-widest text-textMuted">{dossier.live ? (dossier.contractsReady ? `No volume on the chain on ${chainDay}` : 'Reading the chain') : 'Nothing trading'}</p> : null}
+            {dossier.activePuts.length === 0 ? <p className="px-5 py-3 font-mono text-t10 uppercase tracking-widest text-textMuted">{dossier.live ? (dossier.contractsReady ? `No volume on the chain on ${chainDay}` : 'Reading the chain') : 'Nothing trading'}</p> : null}
             {dossier.activePuts.map(c => (
               <ActiveRow key={c.id} c={c} maxVol={maxActiveVol} onOpen={() => weigh(c)} />
             ))}
@@ -663,11 +800,11 @@ const EarningsName = () => {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch" data-name-record>
         <Box title="What its insiders did" sub={`Open-market trades in the last 90 days · ${insiders.status === 'loading' ? 'reading…' : insiders.status === 'sim' ? 'the read did not land' : insiders.trades.length ? insiders.signal : 'nothing filed'}`} testId="insiders">
           {marketInsiders.length === 0 ? (
-            <div className="px-5 pb-5 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{insiders.status === 'loading' ? 'Reading the filings…' : insiders.status === 'sim' ? 'This read did not land' : 'Nothing on the record in 90 days'}</div>
+            <div className="px-5 pb-5 pt-1 font-mono text-t10 uppercase tracking-widest text-textMuted">{insiders.status === 'loading' ? 'Reading the filings…' : insiders.status === 'sim' ? 'This read did not land' : 'Nothing on the record in 90 days'}</div>
           ) : (
             <>
               {/* Below lg: when, who, the trade and its value — the shares and the plan go (the phone pass, 2026-09-13) */}
-              <div className="px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted grid-cols-[96px_minmax(0,1fr)_44px_60px_60px_64px] max-xl:grid-cols-[96px_minmax(0,1fr)_44px_64px]">
+              <div className="px-5 h-[22px] grid items-center gap-x-3 text-t9 uppercase tracking-widest text-textMuted grid-cols-[96px_minmax(0,1fr)_44px_60px_60px_64px] max-xl:grid-cols-[96px_minmax(0,1fr)_44px_64px]">
                 <span>When</span>
                 <span>Who</span>
                 <span>Trade</span>
@@ -679,23 +816,23 @@ const EarningsName = () => {
                 <div key={t.id} className="px-5 h-[38px] grid items-center gap-x-3 border-t border-borderSubtle/40 grid-cols-[96px_minmax(0,1fr)_44px_60px_60px_64px] max-xl:grid-cols-[96px_minmax(0,1fr)_44px_64px]" data-name-insider={t.id}>
                   <When days={t.daysAgo} size={10} />
                   <span className="min-w-0 flex flex-col leading-tight">
-                    <span className="text-[11px] font-semibold text-textPrimary truncate">{personDisplay(t.person)}</span>
-                    <span className="text-[9px] text-textMuted truncate">{t.role}</span>
+                    <span className="text-t11 font-semibold text-textPrimary truncate">{personDisplay(t.person)}</span>
+                    <span className="text-t9 text-textMuted truncate">{t.role}</span>
                   </span>
-                  <span className={`font-mono text-[10px] ${t.kind === 'BUY' ? 'text-bull' : 'text-bear'}`}>{t.kind === 'BUY' ? 'Bought' : 'Sold'}</span>
-                  <span className="text-right font-mono text-[10px] tnum text-textPrimary max-xl:hidden">{Math.round(t.shares).toLocaleString('en-US')}</span>
-                  <span className="text-right font-mono text-[10px] tnum font-semibold text-textPrimary">{fmtDollars(t.value)}</span>
-                  <span className={`text-right font-mono text-[8px] uppercase tracking-widest max-xl:hidden ${t.plan === 'discretionary' ? (isChosenBuy(t) ? 'text-textPrimary font-bold' : 'text-textSecondary') : 'text-textMuted'}`}>
+                  <span className={`font-mono text-t10 ${t.kind === 'BUY' ? 'text-bull' : 'text-bear'}`}>{t.kind === 'BUY' ? 'Bought' : 'Sold'}</span>
+                  <span className="text-right font-mono text-t10 tnum text-textPrimary max-xl:hidden">{Math.round(t.shares).toLocaleString('en-US')}</span>
+                  <span className="text-right font-mono text-t10 tnum font-semibold text-textPrimary">{fmtDollars(t.value)}</span>
+                  <span className={`text-right font-mono text-t8 uppercase tracking-widest max-xl:hidden ${t.plan === 'discretionary' ? (isChosenBuy(t) ? 'text-textPrimary font-bold' : 'text-textSecondary') : 'text-textMuted'}`}>
                     {t.entity && t.plan !== 'plan' ? 'corporate' : t.plan === 'discretionary' ? 'chosen' : t.plan === 'plan' ? 'planned' : 'unstated'}
                   </span>
                 </div>
               ))}
-              <div className="mt-auto px-5 py-2.5 border-t border-borderSubtle/40 flex items-center gap-4 font-mono text-[10px] tnum" data-name-foot="insiders">
+              <div className="mt-auto px-5 py-2.5 border-t border-borderSubtle/40 flex items-center gap-4 font-mono text-t10 tnum" data-name-foot="insiders">
                 <span className="text-textSecondary">
                   bought <span className={insiders.bought > 0 ? 'text-bull' : 'text-textMuted'}>{insiders.bought > 0 ? fmtDollars(insiders.bought) : 'nothing'}</span> · sold{' '}
                   <span className={insiders.sold > 0 ? 'text-bear' : 'text-textMuted'}>{insiders.sold > 0 ? fmtDollars(insiders.sold) : 'nothing'}</span>
                 </span>
-                <Link to="/dossier/insiders" className="ml-auto inline-flex items-center gap-1 text-[9px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">
+                <Link to="/dossier/insiders" className="ml-auto inline-flex items-center gap-1 text-t9 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">
                   <ArrowUpRight className="w-3 h-3" /> every insider
                 </Link>
               </div>
@@ -704,11 +841,11 @@ const EarningsName = () => {
         </Box>
         <Box title="What Congress reported" sub={`STOCK Act reports of trades in this stock made in the last 180 days${congressBook.complete ? '' : ' — the latest 200 reports only'}`} testId="congress">
           {congress.length === 0 ? (
-            <div className="px-5 pb-5 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{congressBook.status === 'loading' ? 'Reading the reports' : congressBook.status === 'sim' ? 'This read did not land' : 'No trade in this stock reported in 180 days'}</div>
+            <div className="px-5 pb-5 pt-1 font-mono text-t10 uppercase tracking-widest text-textMuted">{congressBook.status === 'loading' ? 'Reading the reports' : congressBook.status === 'sim' ? 'This read did not land' : 'No trade in this stock reported in 180 days'}</div>
           ) : (
             <>
               {/* On a phone: filed, member, type — the amount and the lag go (the phone pass, 2026-09-13) */}
-              <div className="px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted grid-cols-[96px_minmax(0,1fr)_76px_132px_56px] max-xl:grid-cols-[96px_minmax(0,1fr)_76px]">
+              <div className="px-5 h-[22px] grid items-center gap-x-3 text-t9 uppercase tracking-widest text-textMuted grid-cols-[96px_minmax(0,1fr)_76px_132px_56px] max-xl:grid-cols-[96px_minmax(0,1fr)_76px]">
                 <span>Filed</span>
                 <span>Member</span>
                 <span>Type</span>
@@ -719,20 +856,20 @@ const EarningsName = () => {
                 <div key={t.id} className="px-5 h-[38px] grid items-center gap-x-3 border-t border-borderSubtle/40 grid-cols-[96px_minmax(0,1fr)_76px_132px_56px] max-xl:grid-cols-[96px_minmax(0,1fr)_76px]" data-name-congress={t.id}>
                   <When days={t.filedDaysAgo} size={10} />
                   <span className="min-w-0 flex flex-col leading-tight">
-                    <span className="text-[11px] font-semibold text-textPrimary truncate">{t.member.name}</span>
-                    <span className="text-[9px] text-textMuted truncate">
+                    <span className="text-t11 font-semibold text-textPrimary truncate">{t.member.name}</span>
+                    <span className="text-t9 text-textMuted truncate">
                       {seatLabel(t.member)} · {t.member.chamber}
                     </span>
                   </span>
-                  <span className={`font-mono text-[10px] ${t.type === 'Purchase' ? 'text-bull' : t.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{t.type === 'Purchase' ? 'Purchase' : t.type === 'Exchange' ? 'Exchange' : t.type === 'Sale (Partial)' ? 'Sale · partial' : 'Sale'}</span>
-                  <span className="font-mono text-[10px] tnum text-textPrimary truncate max-xl:hidden">{bracketLabel(t.bracket)}</span>
-                  <span className={`text-right font-mono text-[10px] tnum max-xl:hidden ${t.late ? 'text-bear' : 'text-textSecondary'}`}>
+                  <span className={`font-mono text-t10 ${t.type === 'Purchase' ? 'text-bull' : t.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{t.type === 'Purchase' ? 'Purchase' : t.type === 'Exchange' ? 'Exchange' : t.type === 'Sale (Partial)' ? 'Sale · partial' : 'Sale'}</span>
+                  <span className="font-mono text-t10 tnum text-textPrimary truncate max-xl:hidden">{bracketLabel(t.bracket)}</span>
+                  <span className={`text-right font-mono text-t10 tnum max-xl:hidden ${t.late ? 'text-bear' : 'text-textSecondary'}`}>
                     {t.lagDays}d{t.late ? ' late' : ''}
                   </span>
                 </div>
               ))}
-              <div className="mt-auto px-5 py-2.5 border-t border-borderSubtle/40 flex items-center font-mono text-[10px]" data-name-foot="congress">
-                <Link to="/dossier/congress" className="ml-auto inline-flex items-center gap-1 text-[9px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">
+              <div className="mt-auto px-5 py-2.5 border-t border-borderSubtle/40 flex items-center font-mono text-t10" data-name-foot="congress">
+                <Link to="/dossier/congress" className="ml-auto inline-flex items-center gap-1 text-t9 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">
                   <ArrowUpRight className="w-3 h-3" /> every report
                 </Link>
               </div>

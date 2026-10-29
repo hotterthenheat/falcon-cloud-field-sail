@@ -172,7 +172,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
         className="z-[120] w-72 border border-borderMuted bg-panel/80 backdrop-blur-xl backdrop-saturate-150 rounded-md shadow-2xl shadow-black/60 overflow-x-hidden overflow-y-auto overscroll-contain animate-slide-in"
       >
         {hasLink && (
-          <div className="px-2.5 py-1.5 border-b border-borderSubtle text-[10px] text-textMuted">
+          <div className="px-2.5 py-1.5 border-b border-borderSubtle text-t10 text-textMuted">
             {follows ? 'Follows the frame — a name picked here moves the whole terminal' : 'Its own name — a name picked here stays on this panel'}
           </div>
         )}
@@ -202,21 +202,21 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
         data-scope-pick
       >
         <CompanyLogo ticker={ticker} size={14} />
-        <span className="text-[12px] font-semibold text-textPrimary leading-none">{ticker}</span>
+        <span className="text-t12 font-semibold text-textPrimary leading-none">{ticker}</span>
         {price != null && live != null && (
           <>
-            <span className="text-[11px] tnum text-textPrimary leading-none" data-scope-price>
+            <span className="text-t11 tnum text-textPrimary leading-none" data-scope-price>
               ${price.toFixed(2)}
             </span>
             {/* the regular session's change; the move outside the session rides beside it, and zero is neutral — the
                 session named by its own date outside the session (the fifth audit: "Today's regular-session change" at
                 01:00 Friday over Thursday's close) */}
-            <span className={`text-[10px] tnum leading-none whitespace-nowrap ${change == null || Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={`${sessionWord(live)} regular-session change (its 4:00 close against the close before)${pre ? ' — the session has not opened' : ''}${closeOutside && live?.phase !== 'regular' && live?.regClose != null ? ` · the price is that ${live.regClose.toFixed(2)} close` : ''}${extendedLine(live) ? ` · ${extendedLine(live)}${live?.extPrice != null ? ` at ${live.extPrice.toFixed(2)}` : ''}, kept apart` : ''}`} data-scope-change>
+            <span className={`text-t10 tnum leading-none whitespace-nowrap ${change == null || Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={`${sessionWord(live)} regular-session change (its 4:00 close against the close before)${pre ? ' — the session has not opened' : ''}${closeOutside && live?.phase !== 'regular' && live?.regClose != null ? ` · the price is that ${live.regClose.toFixed(2)} close` : ''}${extendedLine(live) ? ` · ${extendedLine(live)}${live?.extPrice != null ? ` at ${live.extPrice.toFixed(2)}` : ''}, kept apart` : ''}`} data-scope-change>
               {change == null ? '…' : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change).toFixed(2)}%`}
               {changeDay && <span className="text-textMuted"> {changeDay}</span>}
             </span>
             {extendedLine(live) && (
-              <span className="text-[10px] tnum leading-none text-textMuted whitespace-nowrap" data-scope-ext>
+              <span className="text-t10 tnum leading-none text-textMuted whitespace-nowrap" data-scope-ext>
                 {/* the chip's room is a title row's: "pre" and "AH" stand for the words, which the hover spells out */}
                 · {pre ? extendedLine(live)!.replace('pre-market', 'pre') : closeOutside && live?.extPrice != null ? `AH ${live.extPrice.toFixed(2)}` : extendedLine(live)!.replace('after hours', 'AH')}
               </span>

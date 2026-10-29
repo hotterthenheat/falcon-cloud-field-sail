@@ -25,6 +25,7 @@ import { Fragment, type CSSProperties } from 'react';
 import { FLAT_DOOR, FLAT_OPEN } from './flatDoor';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
+import { Tip } from './Tooltip';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
 
@@ -100,15 +101,16 @@ export const CARD = 'z-[90] rounded-lg border border-borderSubtle bg-chip shadow
 
 const DropdownSelect = <T extends string | number>({ label, value, options, onChange, title, align = 'start', icon: Icon, ink, testId, size = 'md', bare = false, labelFrom, flat = false }: DropdownSelectProps<T>) => {
   const current = options.find(o => o.value === value);
+  const tip = bare || labelFrom ? (title ? `${label} — ${title}` : label) : title;
   return (
     <DropdownMenu.Root modal={false}>
-      <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          data-dropdown={testId ?? label}
-          aria-label={`${label}: ${current?.short ?? current?.label ?? ''}`}
-          title={bare || labelFrom ? (title ? `${label} — ${title}` : label) : title}
-          className={
+      <Tip label={tip}>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            data-dropdown={testId ?? label}
+            aria-label={`${label}: ${current?.short ?? current?.label ?? ''}`}
+            className={
             flat
               ? `${FLAT_DOOR} ${FLAT_OPEN} group max-w-full text-left`
               : `group inline-flex items-center gap-1.5 ${size === 'sm' ? 'h-6 px-2' : 'h-7 px-2.5'} rounded-md border border-borderSubtle bg-chip hover:border-borderMuted data-[state=open]:border-silver/50 transition-colors font-mono select-none`
@@ -117,24 +119,25 @@ const DropdownSelect = <T extends string | number>({ label, value, options, onCh
         >
           {Icon && (
             <Icon
-              className={`w-3 h-3 shrink-0 transition-colors duration-200 ${ink ? 'text-textMuted group-hover:text-[color:var(--ink)] group-data-[state=open]:text-[color:var(--ink)]' : 'text-textMuted'}`}
+              className={`w-3 h-3 shrink-0 transition-colors duration-200 ${ink ? 'text-textMuted group-hover:text-ink group-data-[state=open]:text-ink' : 'text-textMuted'}`}
               aria-hidden="true"
               data-dropdown-icon
             />
           )}
-          {!bare && <span className={`shrink-0 ${flat ? 'text-[11px]' : 'text-[9px] uppercase tracking-widest'} text-textMuted ${labelFrom ? LABEL_FROM[labelFrom] : ''}`}>{label}</span>}
+          {!bare && <span className={`shrink-0 ${flat ? 'text-t11' : 'text-t9 uppercase tracking-widest'} text-textMuted ${labelFrom ? LABEL_FROM[labelFrom] : ''}`}>{label}</span>}
           {/* min-w-0 + truncate: in a phone's two-column cards line the card is as wide as its cell, and a long value gives before the card does */}
           {/* the trigger wears the choice's tone — a Yes reads green, a No red, the way its row did (2026-09-22) */}
-          <span className={`min-w-0 truncate text-[11px] font-semibold ${current?.tone === 'bull' ? 'text-bull' : current?.tone === 'bear' ? 'text-bear' : current?.quiet ? 'text-textSecondary' : 'text-textPrimary'}`} data-tone={current?.tone ?? (current?.quiet ? 'quiet' : undefined)}>
+          <span className={`min-w-0 truncate text-t11 font-semibold ${current?.tone === 'bull' ? 'text-bull' : current?.tone === 'bear' ? 'text-bear' : current?.quiet ? 'text-textSecondary' : 'text-textPrimary'}`} data-tone={current?.tone ?? (current?.quiet ? 'quiet' : undefined)}>
             {current?.short ?? current?.label ?? '—'}
           </span>
           <ChevronDown className="w-3 h-3 shrink-0 text-textMuted" />
         </button>
       </DropdownMenu.Trigger>
+      </Tip>
       <DropdownMenu.Portal>
         {/* a long list scrolls inside the card rather than running off a short screen */}
         <DropdownMenu.Content align={align} sideOffset={6} collisionPadding={12} className={`${CARD} min-w-[220px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto p-1.5`} data-dropdown-card={testId ?? label}>
-          <DropdownMenu.Label className="px-2 pt-1 pb-1.5 font-mono text-[9px] uppercase tracking-widest text-textMuted">{title ?? label}</DropdownMenu.Label>
+          <DropdownMenu.Label className="px-2 pt-1 pb-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted">{title ?? label}</DropdownMenu.Label>
           <DropdownMenu.RadioGroup
             value={String(value)}
             onValueChange={v => {
@@ -145,7 +148,7 @@ const DropdownSelect = <T extends string | number>({ label, value, options, onCh
             {options.map((o, i) => (
               <Fragment key={String(o.value)}>
                 {o.group && o.group !== options[i - 1]?.group && (
-                  <DropdownMenu.Label className={`px-2 pt-2 pb-1 text-[11px] font-semibold text-textSecondary ${i > 0 ? 'mt-1 border-t border-borderSubtle' : ''}`} data-dropdown-group={o.group}>
+                  <DropdownMenu.Label className={`px-2 pt-2 pb-1 text-t11 font-semibold text-textSecondary ${i > 0 ? 'mt-1 border-t border-borderSubtle' : ''}`} data-dropdown-group={o.group}>
                     {o.group}
                   </DropdownMenu.Label>
                 )}
@@ -161,8 +164,8 @@ const DropdownSelect = <T extends string | number>({ label, value, options, onCh
                   </DropdownMenu.ItemIndicator>
                 </span>
                 <span className="flex flex-col gap-[1px] min-w-0">
-                  <span className="font-mono text-[11px] leading-snug group-data-[state=checked]:font-semibold">{o.label}</span>
-                  {o.hint && <span className="font-mono text-[9px] leading-snug text-textMuted">{o.hint}</span>}
+                  <span className="font-mono text-t11 leading-snug group-data-[state=checked]:font-semibold">{o.label}</span>
+                  {o.hint && <span className="font-mono text-t9 leading-snug text-textMuted">{o.hint}</span>}
                 </span>
               </DropdownMenu.RadioItem>
               </Fragment>

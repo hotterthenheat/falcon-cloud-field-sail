@@ -238,7 +238,7 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
             NO_LOGO.add(sym);
             setFailedFor(sym);
           }}
-          className={`block h-full w-full ${probe === 'opaque' ? 'rounded-[4px]' : probe === 'dark' ? 'rounded-[4px] bg-[#f2f2f2] p-[1.5px]' : ''}`}
+          className={`block h-full w-full ${probe === 'opaque' ? 'rounded-[4px]' : probe === 'dark' ? 'rounded-[4px] bg-paper p-[1.5px]' : ''}`}
         />
       )}
     </span>

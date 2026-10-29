@@ -48,33 +48,46 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import { Fact } from '../../components/trace/TraceBox';
 import { WeigherGuide } from '../../components/weigher/WeigherGuide';
 import { TimeframeStrip } from '../../components/gex/ChartToolbar';
+import SessionBook from '../../components/ui/SessionBook';
 import { chartGround, useCandleThemeKey } from '../../components/gex/candleTheme';
 import Simulator from '../../core/simulator';
 import { onGlide } from '../../core/glide';
 import { DOCK_ROOM } from '../../data/editorDock';
 import { useMarketData } from '../../context/MarketDataContext';
-import { buildLevelsFor, buildPrints, fmtUsd, spotChangePct } from '../../data/gex';
+import { buildLevelsFor, buildPrints, fmtUsd } from '../../data/gex';
 import { wantSpotGex } from '../../data/spotGexBook';
-import { estimatePremium } from '../../data/compass';
 import {
-  SCAN_PRESETS,
-  buildDeskChain,
-  buildScan,
-  contractIvFor,
+  blankChain,
   dteForDate,
-  deskExpiries,
-  marketMood,
+  fallbackListed,
+  listLiveExpiries,
+  loadLiveChain,
+  attachHistory,
+  attachPrior,
+  attachSession,
+  refreshLiveChain,
+  keepSlow,
   marketSession,
+  readLeg,
   type DeskChain,
   type DeskContract,
+  type ListedExpiry,
   type ScanPreset,
   type ScanRow,
 } from '../../data/weigherDesk';
+import { scoreLiveContract, type LiveScore } from '../../data/compassModel';
+import { yearFracLeft, WEIGHER_Q, WEIGHER_R } from '../../data/weigherGate';
+import { printOf } from '../../data/compassParams';
+import { useTerrainTape } from '../../data/terrainTape';
+import { paintLive, useWeigherContract, useWeigherTape } from '../../data/weigherTape';
+import { useDeskSession, sessionOfMinute } from '../../data/deskSession';
+import { nyMinutes } from '../../core/nyTime';
+import { blackScholesPrice } from '../../core/greeks';
 import { expiryFor, isoDate, today } from '../../core/calendar';
-import { addToWatchlist, closeWatched, hasOpenWatched, removeWatched, returnsOf, spotOf, tickWatchlist, useWatchlist, watchedFor } from '../../data/watchlist';
+import { addToWatchlist, closeWatched, hasOpenWatched, removeWatched, restampWatch, tickWatchlist, useWatchlist, watchedFor } from '../../data/watchlist';
 import type { WatchedContract } from '../../types/watchlist';
-import { costOf, valueOn } from '../../data/positionCurve';
-import { readPosition, removePosition, useAllPositions, type Position, type Verdict } from '../../data/positions';
+import { costOf } from '../../data/positionCurve';
+import { removePosition, useAllPositions } from '../../data/positions';
 import { buildBook } from '../../data/bookAtStrike';
 import BookBlock from '../../components/weigher/BookBlock';
 import StrikeCase from '../../components/weigher/StrikeCase';
@@ -83,6 +96,8 @@ import PositionDeskCard, { CARD_VIEWS, type CardView } from '../../components/we
 import { monthDay, ListGrid, type ListRow } from '../../components/weigher/PositionsList';
 import { buildExposureProfile } from '../../data/exposure';
 import type { ExposureProfileData } from '../../types/gex';
+import { useScreenerQuotes, peekBatchQuote } from '../../data/liveFiles';
+import { useTopNet } from '../../data/traceLive';
 import { useIsBelowXl, useIsPortraitDesk } from '../../components/ui/useMediaQuery';
 import { DESK_TOP_DEFAULT, clampDeskTop, deskRows, readDeskTop, saveDeskTop } from './deskSplit';
 import { readDeskPrefs } from '../../data/deskPrefs';
@@ -122,23 +137,20 @@ const SCAN_MS = 3000;
     coat: his stored depth (30) was still on the previous list, so it
     validated and never fell forward. No old value (10/15/20/30/50/80) is on
     THIS list, so every stored depth migrates to the new default. */
-const DESK_DEPTHS = [100, 150, 250, 400] as const;
-
-/* THE CARDS (the walk, 2026-09-11): the chain's chip rows — Calls/Puts, eight
-   expiries, four reaches, the columns door — and the scanner's three chips
-   became one line of labelled cards each, the house grammar (Noah, 2026-09-05:
-   dropdown cards, never chip rows). */
+/** Listed strikes each side of the price. Not the Compass span. */
+const DESK_DEPTHS = [12, 20, 40] as const;
+/* THE CHAIN HEAD'S ROOM, in px of card. One row where the four cards fit; otherwise they drop to their own row. */
+const CHAIN_ONE_ROW_PX = 790;
+const CHAIN_NAMED_ROW_PX = 610;
 const SIDE_OPTIONS: DropdownOption<OptionRight>[] = [
   { value: 'C', label: 'Calls', hint: 'The right to buy', tone: 'bull' },
   { value: 'P', label: 'Puts', hint: 'The right to sell', tone: 'bear' },
 ];
-/* THE CHAIN HEAD'S ROOM, in px of card (measured 2026-09-20 with the longest everyday values — a five-letter name, a
-   "Sep 22 · Tue" expiry, "Mark, Delta +4"): the whole line on one row needs ~760; the four NAMED cards on a row of their
-   own need ~590; under that they go bare (~395). A little air on each so a longer value does not break the row. */
-const CHAIN_ONE_ROW_PX = 790;
-const CHAIN_NAMED_ROW_PX = 610;
-
-const REACH_OPTIONS: DropdownOption<number>[] = DESK_DEPTHS.map(d => ({ value: d, label: `±${d}`, hint: `${d} strikes each side of the market` }));
+const REACH_OPTIONS: DropdownOption<number>[] = [
+  { value: 12, label: '±12', hint: 'Up to twelve listed strikes each side of the price. Fewer if that chain lists fewer.' },
+  { value: 20, label: '±20', hint: 'Up to twenty listed strikes each side of the price. Fewer if that chain lists fewer.' },
+  { value: 40, label: '±40', hint: 'Up to forty listed strikes each side of the price. Fewer if that chain lists fewer.' },
+];
 /** What the desk's list card lists: THE WATCHLIST first (Noah, 2026-09-14 — Robinhood's list
     on the desk: every watched contract, marked when added, tracked as if bought), then the
     scanner's three cuts. The card opens on the watchlist whenever anything is watched. */
@@ -152,12 +164,16 @@ const KIND_OPTIONS: DropdownOption<ListKind>[] = [
   { value: 'losers', label: 'Losers today', hint: 'The largest losses this session first', tone: 'bear' },
   { value: 'voliv', label: 'Busiest options', hint: 'The most contracts traded, the priciest vol first' },
 ];
+/** Names the gainers and losers are read from. The price and the day's change are the screener's. */
+const SCAN_NAMES = ['SPY', 'QQQ', 'IWM', 'DIA', 'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'TSLA', 'AMD', 'AVGO', 'GOOGL', 'NFLX', 'MU', 'INTC', 'AMAT', 'ARM', 'SMCI', 'PLTR', 'HOOD', 'COIN', 'ORCL', 'CRM', 'UBER', 'BA', 'JPM', 'XLF', 'GLD', 'TLT', 'SMH'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const fmtDay = (d: Date) => `${MONTHS[d.getMonth()]} ${d.getDate()}`;
 
 interface DeskState {
   ticker: string;
   dte: number;
+  /** Option symbol for this expiration. Empty until the listed chain says which root. */
+  optRoot: string;
   lens: 'stock' | 'contract';
   right: OptionRight;
   preset: ListKind;
@@ -169,7 +185,7 @@ interface DeskState {
 /* An old record may still carry `layout`/`rowsV`/`colsV` from the movable
    era — parsed and ignored here, and the next save sheds them for good. */
 function loadDesk(): DeskState {
-  const def: DeskState = { ticker: 'SPY', dte: 2, lens: 'stock', right: 'C', preset: 'watchlist', depth: 150, cols: DEFAULT_COLS };
+  const def: DeskState = { ticker: 'SPY', dte: 0, optRoot: '', lens: 'stock', right: 'C', preset: 'watchlist', depth: 20, cols: DEFAULT_COLS };
   /* the list card opens on the watchlist whenever anything is watched — Robinhood's list is
      always the first thing on the page; the reader's cut holds for the session after that */
   const opensOnList = (d: DeskState): DeskState => (hasOpenWatched() ? { ...d, preset: 'watchlist' } : d);
@@ -186,10 +202,11 @@ function loadDesk(): DeskState {
       /* any horizon inside ninety days — a contract's own expiry, carried in
          by a deep link, is kept across a refresh (2026-09-12) */
       dte: typeof c.dte === 'number' && Number.isInteger(c.dte) && c.dte >= 0 && c.dte <= 90 ? c.dte : def.dte,
+      optRoot: typeof c.optRoot === 'string' ? c.optRoot.trim().toUpperCase() : '',
       lens: c.lens === 'contract' ? 'contract' : 'stock',
       right: c.right === 'P' ? 'P' : 'C',
       preset: c.preset === 'losers' || c.preset === 'voliv' || c.preset === 'gainers' || c.preset === 'watchlist' ? c.preset : def.preset,
-      depth: typeof c.depth === 'number' && (DESK_DEPTHS as readonly number[]).includes(c.depth) ? c.depth : def.depth,
+      depth: typeof c.depth === 'number' && (DESK_DEPTHS as readonly number[]).includes(c.depth) ? c.depth : 20,
       cols: cols.length ? cols : [...def.cols],
     });
   } catch {
@@ -284,7 +301,7 @@ const SCAN_THEME = GRID_THEME.withParams({ rowHeight: 34, headerHeight: 28, font
 const SCAN_COL: ColDef<ScanRow> = { sortable: false, resizable: false, suppressMovable: true };
 const SCAN_EMPTY: Record<ScanPreset, string> = { gainers: 'No names up today', losers: 'No names down today', voliv: 'Nothing on the tape' };
 
-export const ScanGrid = memo(function ScanGrid({ rows, ticker, preset, onPick }: { rows: ScanRow[]; ticker: string; preset: ScanPreset; onPick: (t: string) => void }) {
+export const ScanGrid = memo(function ScanGrid({ rows, ticker, preset, onPick, waiting }: { rows: ScanRow[]; ticker: string; preset: ScanPreset; onPick: (t: string) => void; waiting?: boolean }) {
   const gridRef = useRef<AgGridReact<ScanRow>>(null);
   const columnDefs = useMemo<ColDef<ScanRow>[]>(
     () => [
@@ -303,22 +320,24 @@ export const ScanGrid = memo(function ScanGrid({ rows, ticker, preset, onPick }:
             </span>
           ) : null,
       },
-      { colId: 'last', headerName: 'Last', width: 88, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">${data.last.toFixed(2)}</span> : null) },
+      { colId: 'last', headerName: 'Last', width: 88, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data && data.last > 0 ? <span className="font-mono text-[11px] tnum text-textPrimary">${data.last.toFixed(2)}</span> : <span className="font-mono text-[10px] text-textMuted">—</span>) },
       {
         colId: 'change',
         headerName: 'Change',
         width: 88,
         type: 'rightAligned',
         cellRenderer: ({ data }: ICellRendererParams<ScanRow>) =>
-          data ? (
+          data && Number.isFinite(data.changePct) ? (
             <span className={`font-mono text-[11px] font-semibold tnum ${data.changePct >= 0 ? 'text-bull' : 'text-bear'}`}>
               {data.changePct >= 0 ? '+' : ''}
               {data.changePct.toFixed(2)}%
             </span>
-          ) : null,
+          ) : (
+            <span className="font-mono text-[10px] text-textMuted">—</span>
+          ),
       },
-      { colId: 'optvol', headerName: 'Opt vol', width: 88, type: 'rightAligned', headerTooltip: "Contracts traded today across the name's chain", cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data ? <span className="font-mono text-[10px] tnum text-textSecondary">{fmtUsd(data.optVolume).replace('$', '')}</span> : null) },
-      { colId: 'iv', headerName: 'IV', width: 64, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data ? <span className="font-mono text-[10px] tnum text-textSecondary">{data.ivPct.toFixed(0)}%</span> : null) },
+      { colId: 'optvol', headerName: 'Opt vol', width: 88, type: 'rightAligned', headerTooltip: "Contracts traded today across the name's chain", cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data && data.optVolume > 0 ? <span className="font-mono text-[10px] tnum text-textSecondary">{data.optVolume.toLocaleString('en-US')}</span> : <span className="font-mono text-[10px] text-textMuted">—</span>) },
+      { colId: 'iv', headerName: 'IV', width: 64, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data && data.ivPct > 0 ? <span className="font-mono text-[10px] tnum text-textSecondary">{data.ivPct.toFixed(0)}%</span> : <span className="font-mono text-[10px] text-textMuted">—</span>) },
     ],
     []
   );
@@ -349,7 +368,7 @@ export const ScanGrid = memo(function ScanGrid({ rows, ticker, preset, onPick }:
           animateRows={false}
           onFirstDataRendered={() => setReady(true)}
           tooltipShowDelay={350}
-          overlayNoRowsTemplate={`<span class="font-mono text-[10px] uppercase tracking-widest text-textMuted">${SCAN_EMPTY[preset]}</span>`}
+          overlayNoRowsTemplate={`<span class="font-mono text-[10px] uppercase tracking-widest text-textMuted">${waiting ? 'Reading the session' : SCAN_EMPTY[preset]}</span>`}
         />
       </AgGridProvider>
     </div>
@@ -477,6 +496,32 @@ const TickPump = memo(function TickPump({ onTick }: { onTick: () => void }) {
   return null;
 });
 
+/* The rail's subject is the app's name. This leaf pushes the desk's name out
+   and follows a palette pick back in, without the desk itself subscribing to
+   the market tick (that would repaint the chain every snapshot). */
+const ShellFollow = memo(function ShellFollow({ ticker, onExternal }: { ticker: string; onExternal: (t: string) => void }) {
+  const { activeTicker, changeTicker } = useMarketData();
+  const echo = useRef(false);
+  const activeRef = useRef(activeTicker);
+  activeRef.current = activeTicker;
+  const externalRef = useRef(onExternal);
+  externalRef.current = onExternal;
+  useEffect(() => {
+    if (activeRef.current === ticker) return;
+    echo.current = true;
+    changeTicker(ticker);
+  }, [ticker, changeTicker]);
+  useEffect(() => {
+    if (echo.current) {
+      echo.current = false;
+      return;
+    }
+    if (activeTicker === ticker) return;
+    externalRef.current(activeTicker);
+  }, [activeTicker, ticker]);
+  return null;
+});
+
 /* ---- the desk -------------------------------------------------------------- */
 /** What a deep link may carry: a name alone (Trace's "Weigh it"), or THE
     contract — the Record's busiest rows (2026-09-12): the side and the
@@ -572,37 +617,200 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     }
   }, [desk]);
 
-  const { ticker, dte, lens, right, preset, depth, cols } = desk;
+  const { ticker, dte, optRoot, lens, right, preset, depth, cols } = desk;
   useEffect(() => {
     wantSpotGex(ticker);
   }, [ticker]);
   const patch = (p: Partial<DeskState>) => setDesk(d => ({ ...d, ...p }));
 
-  const mood = useMemo(() => marketMood(), [tick]);
   const session = useMemo(() => marketSession(), [tick]);
-  const chain = useMemo(() => buildDeskChain(ticker, dte, depth), [ticker, dte, depth, scanTick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const scan = useMemo(() => (preset === 'watchlist' ? [] : buildScan(preset, ticker)), [preset, ticker, scanTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [chain, setChain] = useState<DeskChain>(() => blankChain(ticker, dte));
+  const [listed, setListed] = useState<{ rows: ListedExpiry[]; down: boolean } | null>(null);
+  const [chainWait, setChainWait] = useState(true);
+  const loadedKey = useRef('');
+  const [liveScore, setLiveScore] = useState<LiveScore | null>(null);
+  const quoteFor = (strike: number, leg: 'C' | 'P', expiry: string) => {
+    if (!chain.expiryIso || chain.expiryIso !== expiry || chain.source !== 'live') return { listed: false, low: null, high: null };
+    const row = chain.rows.find(r => Math.abs(r.strike - strike) < 1e-6);
+    if (!row) return { listed: false, low: null, high: null };
+    const c = leg === 'C' ? row.call : row.put;
+    const low = c.low > 0 && c.high >= c.low ? c.low : null;
+    const high = c.low > 0 && c.high >= c.low ? c.high : null;
+    return { listed: true, low, high, mark: c.mark > 0 ? c.mark : null };
+  };
+  useEffect(() => {
+    let dead = false;
+    setListed(null);
+    setChainWait(true);
+    loadedKey.current = '';
+    setChain(blankChain(ticker, dte));
+    listLiveExpiries(ticker).then(rows => {
+      if (!dead) setListed(rows);
+    });
+    return () => {
+      dead = true;
+    };
+  }, [ticker]);
+  useEffect(() => {
+    if (listed === null) return;
+    if (!listed.down && !listed.rows.length) {
+      const empty = blankChain(ticker, dte);
+      setChain({ ...empty, source: 'live', rows: [] });
+      setChainWait(false);
+      return;
+    }
+    const row = !listed.down ? (listed.rows.find(e => e.dte === dte && (!optRoot || e.root === optRoot)) ?? listed.rows.find(e => e.dte === dte)) : undefined;
+    if (!listed.down && listed.rows.length && !optRoot) {
+      const front = listed.rows.find(e => e.weekday === 0) ?? listed.rows[0];
+      patch({ dte: front.dte, optRoot: front.root });
+      return;
+    }
+    if (!listed.down && listed.rows.length && !row) {
+      const next = listed.rows.find(e => e.weekday === 0) ?? listed.rows[0];
+      patch({ dte: next.dte, optRoot: next.root });
+      return;
+    }
+    if (row && optRoot !== row.root) {
+      patch({ optRoot: row.root });
+      return;
+    }
+    const root = row?.root || optRoot || ticker;
+    const key = `${ticker}|${dte}|${root}|${depth}|${listed.down ? 1 : 0}`;
+    const quiet = loadedKey.current === key;
+    if (!quiet) {
+      setChainWait(true);
+      setChain({ ...blankChain(ticker, dte), source: 'live', rows: [], optRoot: root });
+    }
+    let dead = false;
+    const range = Math.min(40, Math.max(12, depth));
+    const applySlow = (slow: DeskChain) => {
+      if (dead || loadedKey.current !== key) return;
+      setChain(prev => (prev.ticker === slow.ticker && prev.expiryIso === slow.expiryIso && prev.optRoot === slow.optRoot ? keepSlow(prev, slow) : prev));
+    };
+    loadLiveChain(ticker, dte, range, root).then(next => {
+      if (dead) return;
+      loadedKey.current = key;
+      setChainWait(false);
+      setChain(next);
+      if (next.source !== 'live' || !next.rows.length) return;
+      attachSession(next).then(applySlow);
+      attachHistory(next).then(slow => {
+        applySlow(slow);
+        const painted = slow.rows.some(r => Number.isFinite(r.call.prevClose) || Number.isFinite(r.put.prevClose));
+        if (painted || dead) return;
+        window.setTimeout(() => {
+          if (dead || loadedKey.current !== key) return;
+          attachHistory(next).then(applySlow);
+        }, 2000);
+      });
+      attachPrior(next).then(applySlow);
+    });
+    return () => {
+      dead = true;
+    };
+    // patch only writes state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker, dte, optRoot, depth, listed]);
+  const chainRef = useRef(chain);
+  chainRef.current = chain;
+  useEffect(() => {
+    let dead = false;
+    let n = 0;
+    const busy = { current: false };
+    const id = window.setInterval(() => {
+      const cur = chainRef.current;
+      const wantIso = isoDate(expiryFor(dte).date);
+      const wantRoot = optRoot || cur.optRoot || ticker;
+      if (dead || busy.current || cur.source !== 'live' || !cur.rows.length) return;
+      if (cur.ticker !== ticker || cur.expiryIso !== wantIso) return;
+      if (cur.optRoot && cur.optRoot !== wantRoot) return;
+      busy.current = true;
+      n += 1;
+      const range = Math.min(40, Math.max(12, depth));
+      const pass = n;
+      refreshLiveChain(cur, range)
+        .then(next => {
+          if (dead || !next || next.ticker !== ticker || next.expiryIso !== wantIso || (next.optRoot && next.optRoot !== wantRoot)) return null;
+          setChain(prev => (prev.ticker === ticker && prev.expiryIso === wantIso && (!prev.optRoot || prev.optRoot === wantRoot) ? keepSlow(next, prev) : prev));
+          if (pass % 4 !== 0) return null;
+          return attachSession(next);
+        })
+        .then(slow => {
+          if (!slow || dead) return;
+          setChain(prev => (prev.ticker === slow.ticker && prev.expiryIso === slow.expiryIso && prev.optRoot === slow.optRoot ? keepSlow(prev, slow) : prev));
+        })
+        .finally(() => {
+          busy.current = false;
+        });
+    }, 1000);
+    return () => {
+      dead = true;
+      window.clearInterval(id);
+    };
+  }, [ticker, dte, optRoot, depth]);
+  const topNet = useTopNet(30);
+  const quoteNames = useMemo(() => {
+    if (preset === 'watchlist') return [] as string[];
+    const extra = topNet.rows.map(r => r.ticker).filter(Boolean);
+    return [...new Set([...SCAN_NAMES, ...extra])];
+  }, [preset, topNet.rows]);
+  const scanQuotes = useScreenerQuotes(quoteNames);
+  const scan = useMemo(() => {
+    if (preset === 'watchlist') return [];
+    if (preset === 'voliv') {
+      return topNet.rows
+        .filter(r => r.ticker && r.volume > 0)
+        .slice(0, 24)
+        .map(r => {
+          const q = peekBatchQuote(r.ticker);
+          return { ticker: r.ticker, last: q?.price ?? 0, changePct: q?.pct ?? Number.NaN, optVolume: r.volume, ivPct: 0 };
+        });
+    }
+    const rows: ScanRow[] = [];
+    for (const name of SCAN_NAMES) {
+      const q = peekBatchQuote(name);
+      if (!q || q.pct == null || !(q.price > 0)) continue;
+      rows.push({ ticker: name, last: q.price, changePct: q.pct, optVolume: 0, ivPct: 0 });
+    }
+    rows.sort((a, b) => (preset === 'losers' ? a.changePct - b.changePct : b.changePct - a.changePct));
+    return rows;
+  }, [preset, scanQuotes.rev, topNet.rows]);
   const levels = useMemo(() => buildLevelsFor(ticker), [ticker, tick]);
-  const changePct = useMemo(() => spotChangePct(ticker), [ticker, tick]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const prints = useMemo(() => buildPrints(ticker, levels.spot), [ticker]); // eslint-disable-line react-hooks/exhaustive-deps
+  const under = printOf(ticker);
+  const bookSession = useDeskSession();
+  const tape = useTerrainTape(under);
+  const weighed = useWeigherTape(under, timeframe, bookSession);
+  const liveSpot = chain.source === 'live' && chain.spot > 0 ? chain.spot : tape && tape.spot > 0 ? tape.spot : 0;
+  const dayPct = tape && tape.prev > 0 && liveSpot > 0 ? (liveSpot / tape.prev - 1) * 100 : null;
+  const chartTape = useMemo(() => {
+    const ivs = chain.rows
+      .flatMap(r => [r.call.iv, r.put.iv])
+      .map(v => (v > 3 ? v / 100 : v))
+      .filter(v => v >= 0.01 && v <= 8)
+      .sort((a, b) => a - b);
+    const bars = weighed.ready && weighed.note == null && sessionOfMinute(nyMinutes()) === bookSession && liveSpot > 0 ? paintLive(weighed.bars, liveSpot, Math.floor(Date.now() / 1000), timeframe, bookSession) : weighed.bars;
+    return {
+      bars,
+      iv: ivs.length ? ivs[Math.floor(ivs.length / 2)] : 0.2,
+      key: `weigher:${under}:${timeframe}:${bookSession}`,
+      clock: 'ny' as const,
+      native: true as const,
+      note: weighed.ready ? weighed.note : 'Loading this session.',
+    };
+  }, [weighed, chain.rows, under, timeframe, bookSession, liveSpot]);
+  const prints = useMemo(() => buildPrints(ticker, liveSpot || levels.spot), [ticker, liveSpot, levels.spot]); // eslint-disable-line react-hooks/exhaustive-deps
   /* The rail's expiries — and the one a deep link asked for when the rail
      does not list it (a contract's own Friday), in date order */
-  const expiries = useMemo(() => {
-    const rail = deskExpiries();
-    if (rail.some(e => e.dte === dte)) return rail;
-    return [...rail, expiryFor(dte)].sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [dte]);
-  /* The expiries as dates (Noah, 2026-09-08 on the Map: "it just says 1d 2d 3d") */
+  const expiries = useMemo(() => (listed && listed.rows.length ? listed.rows : listed?.down ? fallbackListed() : []), [listed]);
   const expiryOptions = useMemo<ExpiryChoice<number>[]>(
     () =>
       expiries.map(e => ({
         value: e.dte,
-        label: e.dte === 0 ? `Today · ${fmtDay(e.date)}` : `${fmtDay(e.date)} · ${e.weekday}`,
-        hint: e.dte === 0 ? 'The contracts that expire at the bell' : `${e.dte} days out · ${e.sessions} ${e.sessions === 1 ? 'session' : 'sessions'}`,
-        date: e.date,
+        label: e.label,
+        hint: e.iso,
+        date: new Date(`${e.iso}T12:00:00`),
       })),
-    [expiries]
+    [expiries],
   );
   const shownCols = useMemo(() => CHAIN_COLUMNS.filter(c => cols.includes(c.key)), [cols]);
   // One array per chain per side — the picker's memo depends on this identity.
@@ -658,13 +866,46 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     const row = chain.rows.find(r => Math.abs(r.strike - sel) < 1e-9);
     return row ? (right === 'C' ? row.call : row.put) : null;
   }, [chain, sel, right]);
+  const contractTape = useWeigherContract(chain.optRoot || ticker, chain.expiryIso || '', selected?.strike ?? 0, right, timeframe, bookSession, lens === 'contract' && selected != null);
+  const tradedBars = useMemo(() => {
+    if (!contractTape.bars) return null;
+    if (contractTape.note || !selected || !Number.isFinite(selected.mark) || selected.mark <= 0) return contractTape.bars;
+    if (sessionOfMinute(nyMinutes()) !== bookSession) return contractTape.bars;
+    return paintLive(contractTape.bars, selected.mark, Math.floor(Date.now() / 1000), timeframe, bookSession);
+  }, [contractTape, selected, bookSession, timeframe]);
+  useEffect(() => {
+    if (!selected || chain.source !== 'live') {
+      setLiveScore(null);
+      return;
+    }
+    let dead = false;
+    const rows = chain.rows.flatMap(r => [
+      { strike: r.strike, right: 'C' as const, bid: r.call.bid, ask: r.call.ask },
+      { strike: r.strike, right: 'P' as const, bid: r.put.bid, ask: r.put.ask },
+    ]);
+    scoreLiveContract({
+      ticker,
+      strike: selected.strike,
+      right: selected.right,
+      expiryIso: chain.expiryIso,
+      bid: selected.bid,
+      ask: selected.ask,
+      spot: chain.spot,
+      rows,
+    }).then(s => {
+      if (!dead) setLiveScore(s);
+    });
+    return () => {
+      dead = true;
+    };
+  }, [ticker, selected, chain.source, chain.expiryIso, chain.spot, chain.rows]);
 
   const pickTicker = (t: string) => {
     if (t === ticker) return;
     Simulator.ensureTicker(t);
     setSel(null);
     setListSel(null);
-    patch({ ticker: t, lens: 'stock' });
+    patch({ ticker: t, lens: 'stock', optRoot: '' });
   };
 
   /* A deep link arrives with a name (Trace's "Weigh it") — or with a CONTRACT
@@ -689,7 +930,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
          on the rail when the rail has it, added to the rail when it does not */
       const near = req.expiry ? dteForDate(req.expiry) : null;
       setPendingPick(req.strike == null ? null : { ticker: t, dte: near ?? dte, strike: req.strike });
-      patch({ ticker: t, lens: 'stock', ...(req.right ? { right: req.right } : {}), ...(near != null ? { dte: near } : {}) });
+      patch({ ticker: t, lens: 'stock', ...(req.right ? { right: req.right } : {}), ...(near != null ? { dte: near, optRoot: t } : { optRoot: '' }) });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [dte]
@@ -706,19 +947,21 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
      chain for that expiry opens on the strike, its dropdown unfolded; another strike on this expiry is picked and
      revealed outright. */
   const pointToContract = useCallback(
-    (strike: number, toDte: number) => {
+    (strike: number, toDte: number, nextRight?: OptionRight) => {
       setListSel(null);
       setCardView('read');
+      if (nextRight) patch({ right: nextRight });
       if (toDte !== dte) {
+        const row = expiries.find(e => e.dte === toDte);
         setPendingPick({ ticker, dte: toDte, strike });
-        patch({ dte: toDte });
+        patch({ dte: toDte, ...(row ? { optRoot: row.root } : {}) });
       } else {
         setSel(strike);
         setReveal(r => ({ strike, n: (r?.n ?? 0) + 1 }));
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ticker, dte]
+    [ticker, dte, expiries]
   );
   /* THE LIGHT WHEN THE CHART TURNS TO A PREMIUM (Noah, 2026-10-07: "a double click should show the flickering light
      for a short moment when changing to the premium not the actual focus" — his picture: the Tracker's card, the lime
@@ -789,7 +1032,16 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const tYears = Math.max(chain.expiry.sessions, 0.5) / 252;
+  const tYears = yearFracLeft(chain.expiryIso || isoDate(chain.expiry.date));
+  const priceAt = useMemo(() => {
+    if (!selected || !(selected.iv > 0)) return undefined;
+    const v = selected.iv > 3 ? selected.iv / 100 : selected.iv;
+    if (!(v >= 0.01 && v <= 8)) return undefined;
+    const strike = selected.strike;
+    const leg = selected.right;
+    const years = tYears;
+    return (s: number) => blackScholesPrice(s, strike, years, v, leg, WEIGHER_R, WEIGHER_Q);
+  }, [selected, tYears]);
 
   /* Floating identity, defined once and rendered inside EACH lens's chart
      box — over the plot, below the toolbar (it was landing on the Tools
@@ -804,11 +1056,13 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
           for a tick of the same number and a lie between two different ones — unkeyed, React kept this element
           when the strip turned to the contract, and the mark rolled down from the stock's $512 through every
           number between on the way to its $0.55. A new subject mounts at its own value. */}
-      <SpotPrice key={`spot:${ticker}`} value={Simulator.TICKERS[ticker]?.currentPrice ?? chain.spot} />
-      <span className={`font-mono text-[11px] font-semibold tnum ${changePct >= 0 ? 'text-bull' : 'text-bear'}`}>
-        {changePct >= 0 ? '\u25b2' : '\u25bc'} {changePct >= 0 ? '+' : ''}
-        {changePct.toFixed(2)}%
-      </span>
+      {liveSpot > 0 && <SpotPrice key={`spot:${ticker}`} value={liveSpot} />}
+      {dayPct != null && (
+        <span className={`font-mono text-[11px] font-semibold tnum ${dayPct >= 0 ? 'text-bull' : 'text-bear'}`}>
+          {dayPct >= 0 ? '\u25b2' : '\u25bc'} {dayPct >= 0 ? '+' : ''}
+          {dayPct.toFixed(2)}%
+        </span>
+      )}
     </span>
   );
 
@@ -821,16 +1075,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   /* The chain sweeps every few seconds, but the capsule's price must tick
      with the tape — one contract re-priced per second is cheap; 602 are
      not. Same estimator, same smile, so the sweep never disagrees with it. */
-  const liveMark = useMemo(() => {
-    if (sel == null || !selected) return null;
-    const spotNow = Simulator.TICKERS[ticker]?.currentPrice ?? chain.spot;
-    return Number(estimatePremium(spotNow, sel, right, contractIvFor(ticker, sel, right), tYears).toFixed(2));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel, right, ticker, selected, tick]);
-
-  const shownMark = liveMark ?? selected?.mark ?? 0;
-  const contractChg = selected ? shownMark - selected.prevClose : 0;
-  const contractChgPct = selected && selected.prevClose > 0 ? (contractChg / selected.prevClose) * 100 : 0;
+  const shownMark = selected && Number.isFinite(selected.mark) ? selected.mark : null;
+  const contractChg = shownMark != null && selected && Number.isFinite(selected.prevClose) ? shownMark - selected.prevClose : null;
+  const contractChgPct = contractChg != null && selected && selected.prevClose > 0 ? (contractChg / selected.prevClose) * 100 : null;
   const contractIdentity = selected != null && sel != null && (
     <span className="inline-flex items-center gap-2 select-none shrink-0">
       <StrikePick
@@ -840,10 +1087,12 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         onPick={setSel}
       />
       {/* keyed by the contract: another strike is another number, not a move of this one (see `identity`) */}
-      <SpotPrice key={`mark:${ticker}:${sel}${right}:${dte}`} value={shownMark} />
-      <span className={`font-mono text-[11px] font-semibold tnum ${contractChg >= 0 ? 'text-bull' : 'text-bear'}`}>
-        {contractChg >= 0 ? '\u25b2' : '\u25bc'} ${Math.abs(contractChg).toFixed(2)} ({Math.abs(contractChgPct).toFixed(2)}%)
-      </span>
+      {shownMark != null && <SpotPrice key={`mark:${ticker}:${sel}${right}:${dte}`} value={shownMark} />}
+      {contractChg != null && contractChgPct != null && (
+        <span className={`font-mono text-[11px] font-semibold tnum ${contractChg >= 0 ? 'text-bull' : 'text-bear'}`}>
+          {contractChg >= 0 ? '\u25b2' : '\u25bc'} ${Math.abs(contractChg).toFixed(2)} ({Math.abs(contractChgPct).toFixed(2)}%)
+        </span>
+      )}
     </span>
   );
 
@@ -911,6 +1160,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
           {contractIdentity}
           {lensTabs}
           <TimeframeStrip value={timeframe} onChange={setTimeframe} />
+          <SessionBook />
           {/* The premium lens has no toolbar to carry the door, so it stands alone at the end */}
           <span className="ml-auto flex items-center gap-1.5">
             {full === 'chart' ? (
@@ -945,7 +1195,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
               it. `min-w-fit` keeps the floor at the toolbar's one-row width
               (capped at the strip's own), so it wraps to a row of its own
               under the identity instead — two tidy rows, then one again. */}
-          <div className="flex-1 min-w-fit">
+          <div className="flex-1 min-w-fit flex items-center gap-1.5">
+            <SessionBook />
             <ChartToolbar
               minimal
               candles
@@ -980,7 +1231,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const chartBody = (
     /* A dark island on any page (2026-09-12): the tape and its strip read the dark tokens —
        and the strip the ground of the tape's theme (2026-09-13) */
-    <div className="relative h-full bg-panel" data-theme="dark" data-chart-ground={chartGround(chartThemeKey)}>
+    <div className="relative h-full bg-panel" data-theme="dark" data-chart-ground={chartGround(chartThemeKey)} data-tape-session={bookSession} data-tape-tf={timeframe} data-tape-bars={chartTape.bars.length} data-tape-first={chartTape.bars[0]?.time ?? 0} data-tape-note={chartTape.note ?? ''}>
       {/* THE RING when the chart turns to a premium, fullscreen — the Tracker's card flash, once (`arrived`); just inside
           the screen's edge, where an outset ring would fall off it. Docked, the ring stands round the card (the frame) */}
       {arrived && full === 'chart' && <div key={arrived.n} className="absolute inset-0.5 z-30 pointer-events-none rounded-md animate-focus-flash" data-weigher-flash />}
@@ -994,10 +1245,15 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
               strike={selected.strike}
               right={right}
               tYears={tYears}
+              iv={selected.iv > 3 ? selected.iv / 100 : selected.iv}
+              priceAt={priceAt}
+              spot={chain.spot}
               timeframe={timeframe}
               revision={tick}
               /* the wheel is the page's over the docked pane, as over the stock chart beside it */
               pageScroll={full !== 'chart'}
+              traded={tradedBars}
+              tradedAsIs
             />
           </div>
         ) : (
@@ -1019,6 +1275,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
               chartStyle={chartStyle}
               indicators={indicators}
               prints={prints}
+              tape={chartTape}
               height={180}
               frameless
             />
@@ -1044,14 +1301,19 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
      names (`bare` — the name stays in the tooltip and the open card's heading) rather than break again. */
   const chainName = <TickerQuickPick ticker={ticker} onPick={pickTicker} slim />;
   const chainMove = (
-    <span className="font-mono text-[9px] tnum text-textMuted whitespace-nowrap" title="The move the options are charging for by this expiry">
-      ±{chain.expectedMovePct.toFixed(1)}%
+    <span className="inline-flex items-center gap-2">
+      <span className="font-mono text-[9px] tnum text-textMuted whitespace-nowrap" title="The move the options are charging for by this expiry">
+        ±{chain.expectedMovePct.toFixed(1)}%
+      </span>
+      <span className={`font-mono text-[9px] uppercase tracking-widest whitespace-nowrap ${chain.source === 'live' ? 'text-textMuted' : 'text-bear'}`} data-chain-feed>
+        {listed === null || chainWait ? 'Pulling' : listed && !listed.down && !listed.rows.length ? 'No listed options' : chain.source === 'live' && chain.rows.length ? `Live · ${fmtDay(chain.expiry.date)}${chain.quotedAt ? ` · ${new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(chain.quotedAt))} ET` : ''}` : listed?.down || chain.rows.length === 0 ? 'Feed down' : 'Live'}
+      </span>
     </span>
   );
   const chainCards = (bare: boolean) => (
     <>
       <DropdownSelect label="Side" value={right} options={SIDE_OPTIONS} onChange={v => patch({ right: v })} title="Calls or puts" testId="weigher-side" bare={bare} />
-      <ExpiryCard label="Expiry" value={chain.expiry.dte} choices={expiryOptions} onChange={v => patch({ dte: v })} free={{ days: 90, toValue: d => dteForDate(isoDate(d)) }} title="Which contracts the chain lists" testId="weigher-expiry" bare={bare} />
+      <ExpiryCard label="Expiry" value={dte} choices={expiryOptions} onChange={v => { const row = expiries.find(e => e.dte === v); patch({ dte: v, ...(row ? { optRoot: row.root } : {}) }); }} title="Which contracts the chain lists. Only a day that has contracts." testId="weigher-expiry" bare={bare} />
       <DropdownSelect label="Reach" value={depth} options={REACH_OPTIONS} onChange={v => patch({ depth: v })} title="How many strikes each side of the market" testId="weigher-reach" bare={bare} />
       <DropdownMulti
         label="Columns"
@@ -1089,6 +1351,46 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
      or sold (the Map's "Your positions", moved here) — priced on the sweep, open rows first,
      newest first */
   const positions = useAllPositions();
+  const legKey = useMemo(() => {
+    const keys: string[] = [];
+    for (const p of positions) keys.push(`${p.ticker}|${p.expiry}|${p.strike}|${p.right}`);
+    for (const w of watchlist) if (w.status === 'open') keys.push(`${w.ticker}|${w.expiry}|${w.strike}|${w.right}`);
+    return [...new Set(keys)].sort().join(',');
+  }, [positions, watchlist]);
+  const [legBook, setLegBook] = useState<Map<string, { mark: number | null; prev: number | null }>>(new Map());
+  useEffect(() => {
+    if (!legKey || chainWait) return;
+    let dead = false;
+    const legs = legKey.split(',');
+    const pull = async () => {
+      const rows: [string, { mark: number | null; prev: number | null }][] = [];
+      for (const key of legs) {
+        if (dead) return;
+        const [sym, expiry, strike, right] = key.split('|');
+        try {
+          const q = await readLeg(sym, expiry, Number(strike), right === 'P' ? 'P' : 'C');
+          rows.push([key, { mark: q.mark, prev: q.prev }]);
+        } catch {
+          rows.push([key, { mark: null, prev: null }]);
+        }
+      }
+      if (!dead) setLegBook(new Map(rows));
+    };
+    void pull();
+    const id = window.setInterval(() => void pull(), 8000);
+    return () => {
+      dead = true;
+      window.clearInterval(id);
+    };
+  }, [legKey, chainWait]);
+  const liveOf = (ticker: string, expiry: string, strike: number, right: 'C' | 'P') => {
+    const onChain = chain.source === 'live' && chain.ticker === ticker && chain.expiryIso === expiry ? chain.rows.find(r => Math.abs(r.strike - strike) < 1e-6) : undefined;
+    const leg = onChain ? (right === 'C' ? onChain.call : onChain.put) : null;
+    const quoted = legBook.get(`${ticker}|${expiry}|${strike}|${right}`);
+    const mark = leg && leg.mark > 0 ? leg.mark : quoted?.mark ?? null;
+    const prev = leg && leg.prevClose > 0 ? leg.prevClose : quoted?.prev ?? null;
+    return { mark, prev };
+  };
   /* TWO CARDS (Noah, 2026-09-14: "one is just a random watchlist position whilst the other is
      YOUR position"): the positions you own or sold in one, the contracts you watch in the other
      — the same rows, priced on the sweep, newest first, a watched row's settled ones last */
@@ -1096,23 +1398,60 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     () =>
       positions
         .map<ListRow>(p => {
-          const value = valueOn(p, spotOf(p.ticker), 0);
+          const { mark, prev } = liveOf(p.ticker, p.expiry, p.strike, p.right);
           const sign = p.side === 'long' ? 1 : -1;
-          /* against what was typed, else the mark when it was added (positionCurve costOf, 2026-09-16) */
+          const per = 100 * p.contracts;
           const cost = costOf(p);
-          const total = cost ? (value - cost.value) * sign * 100 * p.contracts : null;
-          const totalR = cost && cost.value > 0 ? ((value - cost.value) / cost.value) * sign : null;
-          return { kind: 'own', id: p.id, p, value, total, totalR };
+          const total = mark != null && cost ? (mark - cost.value) * sign * per : null;
+          const totalR = mark != null && cost && cost.value > 0 ? ((mark - cost.value) / cost.value) * sign : null;
+          const today = mark != null && prev != null ? (mark - prev) * sign * per : null;
+          const todayR = mark != null && prev != null && prev > 0 ? ((mark - prev) / prev) * sign : null;
+          return { kind: 'own', id: p.id, p, value: mark, today, todayR, total, totalR };
         })
         .sort((a, b) => (b.kind === 'own' ? b.p.addedAt : 0) - (a.kind === 'own' ? a.p.addedAt : 0)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [positions, scanTick]
+    [positions, chain, legBook]
   );
   const watchRows = useMemo<ListRow[]>(() => {
     const rank = (w: WatchedContract) => (w.status === 'open' ? 0 : 1);
-    return [...watchlist].sort((a, b) => rank(a) - rank(b) || b.addedAt - a.addedAt).map<ListRow>(w => ({ kind: 'watch', id: w.id, w, r: returnsOf(w) }));
+    return [...watchlist].sort((a, b) => rank(a) - rank(b) || b.addedAt - a.addedAt).map<ListRow>(w => {
+      const { mark, prev } = w.status === 'open' ? liveOf(w.ticker, w.expiry, w.strike, w.right) : { mark: w.closedMark ?? null, prev: null };
+      const per = 100 * w.size;
+      const live = mark != null && mark > 0 ? mark : null;
+      const addedDay = isoDate(new Date(w.addedAt));
+      const todayKey = isoDate(today());
+      const since = live != null ? (live - w.addedMark) * per : NaN;
+      const todayMove = addedDay === todayKey ? since : live != null && prev != null ? (live - prev) * per : NaN;
+      const todayRate = addedDay === todayKey
+        ? (live != null && w.addedMark > 0 ? (live - w.addedMark) / w.addedMark : NaN)
+        : live != null && prev != null && prev > 0 ? (live - prev) / prev : NaN;
+      return {
+        kind: 'watch',
+        id: w.id,
+        w,
+        r: {
+          mark: live ?? NaN,
+          prevClose: prev ?? NaN,
+          todayDollars: todayMove,
+          todayR: todayRate,
+          totalDollars: since,
+          totalR: live != null && w.addedMark > 0 ? (live - w.addedMark) / w.addedMark : NaN,
+          breakeven: Number((w.right === 'C' ? w.strike + w.addedMark : w.strike - w.addedMark).toFixed(2)),
+          toBreakevenPct: NaN,
+          spot: chain.ticker === w.ticker ? chain.spot : NaN,
+          dte: 0,
+        },
+      };
+    });
+  }, [watchlist, chain, legBook]);
+  useEffect(() => {
+    for (const w of watchlist) {
+      if (w.status !== 'open') continue;
+      const { mark } = liveOf(w.ticker, w.expiry, w.strike, w.right);
+      if (mark != null && mark > 0) restampWatch(w.id, mark, chain.ticker === w.ticker && chain.spot > 0 ? chain.spot : 0);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchlist, scanTick]);
+  }, [watchlist, chain, legBook]);
   const listRows = useMemo<ListRow[]>(() => [...ownRows, ...watchRows], [ownRows, watchRows]);
   const watchReq = useMemo(() => (sel != null ? { ticker, strike: sel, right, expiry: isoDate(chain.expiry.date) } : null), [ticker, sel, right, chain.expiry.date]);
   /* the picked contract's watched row — open, or its latest settled one */
@@ -1143,7 +1482,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
      longer carries has none, and the card says so. */
   const cardRowId = cardRow ? cardRow.id : null;
   useEffect(() => {
-    setCardView(cardRowId ? 'returns' : 'read');
+    if (!cardRowId) setCardView('read');
   }, [cardRowId]);
   const caseForRow = useMemo(() => {
     if (!cardRow) return true;
@@ -1170,12 +1509,21 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   }, [caseArrived]);
   /* THE DOOR: watch the picked contract — the store marks it at this tick's price — and the
      list card turns to the watchlist, where its row now stands selected */
+  const quoteAt = useCallback((strike: number): number | null => {
+    const row = chain.rows.find(r => Math.abs(r.strike - strike) < 1e-6);
+    const leg = row ? (right === 'C' ? row.call : row.put) : null;
+    if (!leg) return null;
+    if (leg.mark > 0) return leg.mark;
+    if (leg.bid > 0 && leg.ask >= leg.bid) return Number(((leg.bid + leg.ask) / 2).toFixed(2));
+    return null;
+  }, [chain.rows, right]);
   const watchIt = useCallback(() => {
     if (!watchReq) return;
-    if (!watching) addToWatchlist(watchReq);
+    const mark = quoteAt(watchReq.strike);
+    if (!watching && mark != null) addToWatchlist({ ...watchReq, mark, spot: chain.spot > 0 ? chain.spot : undefined });
     patch({ preset: 'watchlist' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchReq, watching]);
+  }, [watchReq, watching, quoteAt, chain.spot]);
   const pickRow = useCallback(
     (row: ListRow) => {
       const c = row.kind === 'watch' ? row.w : row.p;
@@ -1238,11 +1586,12 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const watchFromChain = useCallback(
     (strike: number) => {
       setSel(strike);
-      if (!watchedStrikes.has(strike)) addToWatchlist({ ticker, strike, right, expiry: expiryIso });
+      const mark = quoteAt(strike);
+      if (!watchedStrikes.has(strike) && mark != null) addToWatchlist({ ticker, strike, right, expiry: expiryIso, mark, spot: chain.spot > 0 ? chain.spot : undefined });
       patch({ preset: 'watchlist' });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [watchedStrikes, ticker, right, expiryIso]
+    [watchedStrikes, ticker, right, expiryIso, quoteAt, chain.spot]
   );
 
   /* THE DAY'S DEALER MAP for the name — the position card's sketch draws its walls and flip
@@ -1274,41 +1623,10 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
      stats, the greeks and the book; the card makes the case while the contract is not on the list, and turns to the
      returns the moment it is. */
   const drillCase = useCallback(
-    (c: DeskContract) => <StrikeCase ticker={ticker} c={c} right={right} chain={chain} profile={profile} book={book} tick={scanTick} onPickAlt={pointToContract} />,
-    [ticker, right, chain, profile, book, scanTick, pointToContract]
-  );
-  const profilesRef = useRef(new Map<string, ExposureProfileData | null>());
-  useEffect(() => {
-    profilesRef.current.clear();
-  }, [scanTick]);
-  const hedgeOf = useCallback(
-    (row: ListRow): Verdict | null => {
-      const c = row.kind === 'watch' ? row.w : row.p;
-      const open = row.kind === 'watch' ? row.w.status === 'open' : c.expiry >= isoDate(today());
-      if (!open) return null;
-      let prof: ExposureProfileData | null | undefined = c.ticker === ticker ? profile : profilesRef.current.get(c.ticker);
-      if (prof === undefined) {
-        try {
-          prof = buildExposureProfile(Simulator.snapshotFor(c.ticker), '0DTE', 30);
-        } catch {
-          prof = null;
-        }
-        profilesRef.current.set(c.ticker, prof);
-      }
-      if (!prof) return null;
-      const pos: Position = row.kind === 'own' ? row.p : { id: row.w.id, ticker: row.w.ticker, strike: row.w.strike, right: row.w.right, side: 'long', contracts: row.w.size, expiry: row.w.expiry, entry: row.w.addedMark, source: 'you', addedAt: row.w.addedAt };
-      return readPosition(pos, prof).verdict;
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ticker, profile, scanTick]
+    (c: DeskContract) => <StrikeCase ticker={ticker} c={c} right={right} chain={chain} profile={profile} book={book} tick={scanTick} score={liveScore} listed={expiries.map(e => ({ dte: e.weekday ?? e.dte, label: e.label }))} onPickAlt={pointToContract} />,
+    [ticker, right, chain, profile, book, scanTick, pointToContract, liveScore, expiries]
   );
 
-  /* THE SASH (Noah, 2026-09-14: "build it with the sash"): the WINDOW's height — the chart and
-     the chain — dragged on a sash in the gap under it, double-click to reset, kept in this
-     browser in pixels (deskSplit.ts — the skeleton reads the same number); the row under it
-     grows with its cards and the page scrolls. Only where the desk is a frame; on a phone the
-     cards stack at their own heights. The desk already stashes its ticks while a pointer is
-     down, so the drag is never re-rendered under the hand. */
   const belowLg = useIsBelowXl();
   const portraitDesk = useIsPortraitDesk();
   const [top, setTop] = useState<number>(readDeskTop);
@@ -1339,15 +1657,24 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     saveDeskTop(DESK_TOP_DEFAULT);
   }, []);
 
+  const windowed = useMemo(() => {
+    if (!chain.rows.length || !(chain.spot > 0)) return chain;
+    const above = chain.rows.map(r => r.strike).filter(k => k > chain.spot).sort((a, b) => a - b).slice(0, depth);
+    const below = chain.rows.map(r => r.strike).filter(k => k < chain.spot).sort((a, b) => b - a).slice(0, depth);
+    const keep = new Set<number>([...above, ...below, ...chain.rows.map(r => r.strike).filter(k => k === chain.spot)]);
+    const rows = chain.rows.filter(r => keep.has(r.strike));
+    return rows.length === chain.rows.length ? chain : { ...chain, rows };
+  }, [chain, depth]);
+
   const chainBody = (
     <ChainCard
       inlineDrill
-      chain={chain}
+      chain={windowed}
       right={right}
       sel={sel}
       onSelect={pickStrike}
       cols={shownCols}
-      centerKey={`${ticker}:${dte}:${depth}`}
+      centerKey={`${ticker}:${dte}:${optRoot}:${depth}:${windowed.rows.length}`}
       reveal={reveal}
       watched={watchedStrikes}
       onWatch={watchFromChain}
@@ -1390,11 +1717,18 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     []
   );
 
+  const onShellName = useCallback((t: string) => {
+    setSel(null);
+    setListSel(null);
+    setDesk(d => (d.ticker === t ? d : { ...d, ticker: t, lens: 'stock', optRoot: '' }));
+  }, []);
+
   return (
     /* The desk is the first screenful's remainder: the shell hands /weigher
        exactly one viewport of height (the footer waits one slight scroll
        below), and this column absorbs it — the "100%" the 60/40 splits. */
     <div ref={deskRef} className="relative flex-1 min-h-0 flex flex-col" data-weigher-desk>
+      <ShellFollow ticker={ticker} onExternal={onShellName} />
       <TickPump onTick={onTick} />
 
       {/* ONE strip of chrome, the Trace verdict applied here (Noah,
@@ -1431,27 +1765,10 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         <dl
           className="flex flex-wrap gap-x-6 gap-y-2"
           data-shell-facts
-          title={session === 'overnight' ? 'Overnight — New York is closed; the read follows the Nasdaq session (QQQ)' : 'Trading hours — the read follows the Nasdaq session (QQQ)'}
+          title={session === 'overnight' ? 'New York is closed' : 'New York is open, 9:30 to 16:00 ET'}
         >
           <Fact label="Session" testId="session">
-            {session === 'overnight' ? <span className="text-moon">Overnight · Nasdaq</span> : 'Regular session · Nasdaq'}
-          </Fact>
-          <Fact label="NDX" testId="ndx">
-            <span className="inline-flex items-center gap-2">
-              <span className={mood.changePct > 0 ? 'text-bull' : mood.changePct < 0 ? 'text-bear' : 'text-textSecondary'}>
-                {mood.changePct >= 0 ? '+' : ''}
-                {mood.changePct.toFixed(2)}%
-              </span>
-              <span className="relative w-16 h-[3px] rounded-full bg-ink/[0.06] overflow-hidden" aria-hidden>
-                <span
-                  className={`absolute inset-y-0 rounded-full transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${
-                    mood.changePct >= 0 ? 'left-1/2 bg-bull/70' : 'right-1/2 bg-bear/70'
-                  }`}
-                  style={{ width: `${Math.min(50, (Math.abs(mood.changePct) / 2) * 50)}%` }}
-                />
-                <span className="absolute inset-y-0 left-1/2 w-px bg-ink/30" />
-              </span>
-            </span>
+            {session === 'overnight' ? <span className="text-moon">Overnight</span> : 'Regular session'}
           </Fact>
         </dl>
       </header>
@@ -1542,9 +1859,10 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
                 /* ADD A POSITION — the Map's form, here now: strike · call or put · own or sold · contracts · expires · what you paid */
                 <PositionForm
                   ticker={ticker}
+                  quoteFor={quoteFor}
                   /* a strike THE CHAIN LISTS: the money rounded to a dollar (244 on a name that steps by 2.50) made positions
                      no chain row could answer to */
-                  defaultStrike={sel ?? (chain.rows.length ? chain.rows.reduce((best, r) => (Math.abs(r.strike - levels.spot) < Math.abs(best.strike - levels.spot) ? r : best), chain.rows[0]).strike : Math.round(levels.spot))}
+                  defaultStrike={sel ?? (chain.rows.length ? chain.rows.reduce((best, r) => (Math.abs(r.strike - (liveSpot || levels.spot)) < Math.abs(best.strike - (liveSpot || levels.spot)) ? r : best), chain.rows[0]).strike : Math.round(liveSpot || levels.spot))}
                   align="end"
                   trigger={
                     /* the small size — a 28px control filled the head's 32px line to the borders (Noah, 2026-09-14) */
@@ -1556,7 +1874,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
                 />
               }
             >
-              <ListGrid rows={ownRows} selectedId={cardRow?.id ?? null} onPick={pickRow} onRemove={removeRow} hedgeOf={hedgeOf} emptyText="No positions yet — add one you own or sold" testId="positions" />
+              <ListGrid rows={ownRows} selectedId={cardRow?.id ?? null} onPick={pickRow} onRemove={removeRow} emptyText="No positions yet — add one you own or sold" testId="positions" />
             </DeskCard>
           </div>
           <div className="min-h-0" data-watchlist-card>
@@ -1572,7 +1890,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
                   puts that CONTRACT on the desk. */}
               {/* the swap between the list and a scanner's cut lands on the house's soft fade (Noah: "smooth as butter") */}
               <div key={preset} className="h-full animate-soft-in-slow" data-list-view={preset}>
-                {preset === 'watchlist' ? <ListGrid rows={watchRows} selectedId={cardRow?.id ?? null} onPick={pickRow} onRemove={removeRow} hedgeOf={hedgeOf} emptyText="Nothing watched yet — press + on a strike in the chain" testId="watchlist" /> : <ScanGrid rows={scan} ticker={ticker} preset={preset} onPick={pickTicker} />}
+                {preset === 'watchlist' ? <ListGrid rows={watchRows} selectedId={cardRow?.id ?? null} onPick={pickRow} onRemove={removeRow} emptyText="Nothing watched yet — press + on a strike in the chain" testId="watchlist" /> : <ScanGrid rows={scan} ticker={ticker} preset={preset} onPick={pickTicker} waiting={!scanQuotes.settled && scan.length === 0} />}
               </div>
             </DeskCard>
           </div>
@@ -1612,6 +1930,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
               picked={selected}
               row={cardRow}
               profile={profile}
+              ticker={ticker}
+              expiryIso={chain.expiryIso}
+              chainSpot={chain.spot}
               onWatch={watchIt}
               onClose={cardRow?.kind === 'watch' ? () => closeWatched(cardRow.w.id) : undefined}
               onRemove={cardRow?.kind === 'watch' ? () => removeWatched(cardRow.w.id) : undefined}
@@ -1620,6 +1941,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
               theCase={selected && sel != null ? drillCase(selected) : undefined}
               face={cardView}
               caseForRow={caseForRow}
+              quoteFor={quoteFor}
             />
           </DeskCard>
         </div>

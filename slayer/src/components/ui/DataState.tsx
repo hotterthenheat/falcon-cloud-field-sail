@@ -86,14 +86,14 @@ const DataState = ({ kind, title, body, onRetry, pad = 'md', className = '' }: D
       className={`flex flex-col items-center justify-center gap-2 px-6 text-center ${PAD[pad]} ${className}`}
     >
       {Icon ? <Icon size={18} strokeWidth={1.5} className={TONE[kind]} aria-hidden /> : <MorphingInfinity className={`w-7 h-7 ${TONE.loading}`} />}
-      <span className={`font-mono text-[11px] uppercase tracking-widest ${TONE[kind]}`}>
+      <span className={`font-mono text-t11 uppercase tracking-widest ${TONE[kind]}`}>
         {title ?? DEFAULT_TITLE[kind]}
       </span>
-      {body && <span className="text-[11px] text-textMuted leading-snug max-w-[52ch]">{body}</span>}
+      {body && <span className="text-t11 text-textMuted leading-snug max-w-[52ch]">{body}</span>}
       {onRetry && (
         <button
           onClick={onRetry}
-          className="mt-1 font-mono text-[10px] uppercase tracking-wider text-textSecondary hover:text-textPrimary border border-borderSubtle rounded px-2 py-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          className="mt-1 font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary border border-borderSubtle rounded px-2 py-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
         >
           Try again
         </button>

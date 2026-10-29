@@ -261,31 +261,9 @@ function buildLadder(ticker: string, spot: number, step: number): { ladder: Ladd
   return { ladder: rows, maxAbs };
 }
 
-/** Deterministic dark-pool prints for a ticker — exported for the 4-way board,
-    which charts tickers outside the flow board's scan. */
-export function buildPrints(ticker: string, spot: number): DarkPoolPrint[] {
-  const count = 2 + (hash(`${ticker}-dp-count`) % 2);
-  const prints: DarkPoolPrint[] = [];
-  const now = new Date();
-  for (let i = 0; i < count; i++) {
-    const n1 = h01(`${ticker}-dp-${i}-p`);
-    const n2 = h01(`${ticker}-dp-${i}-n`);
-    const daysAgo = 1 + (hash(`${ticker}-dp-${i}-d`) % 12);
-    const when = new Date(now.getTime() - daysAgo * 86400000);
-    const price = Number((spot * (0.995 + n1 * 0.01)).toFixed(2));
-    const notional = Number((0.8 + n2 * 3.4).toFixed(2));
-    const hh = 9 + (hash(`${ticker}-dp-${i}-h`) % 7);
-    const mm = hash(`${ticker}-dp-${i}-m`) % 60;
-    const ss = hash(`${ticker}-dp-${i}-s`) % 60;
-    prints.push({
-      price,
-      notional,
-      date: `${when.getMonth() + 1}/${when.getDate()}`,
-      size: Math.round((notional * 1e9) / price / 100) * 100,
-      time: `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`,
-    });
-  }
-  return prints;
+/** Dark-pool prints come from the live tape. This used to hash a few blocks. It does not. */
+export function buildPrints(_ticker: string, _spot: number): DarkPoolPrint[] {
+  return [];
 }
 
 function buildBoard(tickers?: string[]): BoardTicker[] {

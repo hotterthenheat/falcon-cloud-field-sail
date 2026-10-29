@@ -314,22 +314,22 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
               r.px == null ? null : (
                 <div key={r.key} data-profile-rule={r.key}>
                   <div className="absolute" style={{ left: r.px, top: tagRows * TAG_ROW + 2, bottom: 0, borderLeft: `1px ${r.dash ? 'dashed' : 'solid'} ${r.ink}`, opacity: r.key === 'spot' ? 0.9 : 0.6 }} />
-                  <div className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] font-bold leading-none" style={{ left: r.px, top: rowOf[i] * TAG_ROW + 2, color: r.ink }}>
+                  <div className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-t11 font-bold leading-none" style={{ left: r.px, top: rowOf[i] * TAG_ROW + 2, color: r.ink }}>
                     {r.word}
                   </div>
                 </div>
               )
             )}
             {/* the sides, named where the scale's figures are (the plot's own words) */}
-            <div className="absolute left-2 font-mono text-[11px]" style={{ top: tagRows * TAG_ROW + 6, color: ABSORB }}>
+            <div className="absolute left-2 font-mono text-t11" style={{ top: tagRows * TAG_ROW + 6, color: ABSORB }}>
               absorbs
             </div>
             {/* over the library's attribution mark in the corner, not on it */}
-            <div className="absolute left-2 bottom-8 font-mono text-[11px]" style={{ color: AMPLIFY }}>
+            <div className="absolute left-2 bottom-8 font-mono text-t11" style={{ color: AMPLIFY }}>
               amplifies
             </div>
             {dateTags.map(t => (
-              <div key={t.e} className="absolute right-1 -translate-y-1/2 font-mono text-[11px] text-textMuted" style={{ top: t.y }} data-profile-date={t.word}>
+              <div key={t.e} className="absolute right-1 -translate-y-1/2 font-mono text-t11 text-textMuted" style={{ top: t.y }} data-profile-date={t.word}>
                 {t.word}
               </div>
             ))}
@@ -338,7 +338,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
         {/* the figures under the pointer — the day box's glass, beside the point it reads */}
         {hp && hover && (
           <div
-            className="pointer-events-none absolute z-10 w-[220px] rounded-md border border-borderSubtle px-2.5 py-2 font-mono text-[11px] text-textSecondary"
+            className="pointer-events-none absolute z-10 w-[220px] rounded-md border border-borderSubtle px-2.5 py-2 font-mono text-t11 text-textSecondary"
             style={{ ...cardStyle, background: 'rgba(8,8,10,0.88)', backdropFilter: 'blur(3px)' }}
             data-theme="dark"
             data-chart-glass
@@ -366,10 +366,10 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
             <div className="mt-1 text-textMuted">click to keep {fmtStrike(nearestStrike(hp.spot))}</div>
           </div>
         )}
-        {points.length < 2 && <div className="absolute inset-0 grid place-items-center font-mono text-[11px] uppercase tracking-widest text-textMuted">No curve for this book yet</div>}
+        {points.length < 2 && <div className="absolute inset-0 grid place-items-center font-mono text-t11 uppercase tracking-widest text-textMuted">No curve for this book yet</div>}
       </div>
       {/* what this is, in one line — short enough to stand whole (the paying-user audit's M5) */}
-      <p className="shrink-0 truncate px-3 py-1 text-[11px] text-textMuted border-t border-borderSubtle/60">
+      <p className="shrink-0 truncate px-3 py-1 text-t11 text-textMuted border-t border-borderSubtle/60">
         {W >= 760 ? 'Dealer gamma re-priced across spot · above zero hedging amplifies a move, below it absorbs · zero gamma is where it crosses — the flip in the head is read off the strikes, so the two differ' : W >= 420 ? 'Gamma across spot · above zero amplifies, below absorbs' : 'Gamma across spot'}
       </p>
     </div>

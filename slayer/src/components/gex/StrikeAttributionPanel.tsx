@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { attributionWords, buildStrikeAttribution } from '../../data/attribution';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { CALL_SIDE, PUT_SIDE } from './paletteInk';
@@ -40,19 +40,21 @@ const StrikeAttributionPanel = ({
   step: number;
 }) => {
   const attr = useMemo(() => buildStrikeAttribution(prints, strike, step), [prints, strike, step]);
+  const [open, setOpen] = useState(false);
+  const rows = open ? attr.prints : attr.prints.slice(0, MAX_ROWS);
 
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">
+        <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">
           <Term k="Attribution">Built by</Term>
         </span>
-        <span className="font-mono text-[11px] text-textPrimary">{attributionWords(attr)}</span>
+        <span className="font-mono text-t11 text-textPrimary">{attributionWords(attr)}</span>
       </div>
 
       {attr.prints.length > 0 && (
         <>
-          <div className="flex items-baseline gap-3 flex-wrap font-mono text-[10px] tnum">
+          <div className="flex items-baseline gap-3 flex-wrap font-mono text-t10 tnum">
             <span className="text-textMuted">
               calls <span style={{ color: CALL_SIDE }}>{fmtUsd(attr.callPremium)}</span>
             </span>
@@ -71,7 +73,7 @@ const StrikeAttributionPanel = ({
                   {['Time', 'R', 'Size', 'Premium', 'Fill'].map(h => (
                     <th
                       key={h}
-                      className="px-1.5 py-0.5 text-left font-mono text-[9px] uppercase tracking-wider text-textMuted"
+                      className="px-1.5 py-0.5 text-left font-mono text-t9 uppercase tracking-wider text-textMuted"
                     >
                       {h}
                     </th>
@@ -79,20 +81,20 @@ const StrikeAttributionPanel = ({
                 </tr>
               </thead>
               <tbody>
-                {attr.prints.slice(0, MAX_ROWS).map(p => (
+                {rows.map(p => (
                   <tr key={p.id}>
-                    <td className="px-1.5 py-0.5 font-mono text-[10px] tnum text-textSecondary">{p.time}</td>
+                    <td className="px-1.5 py-0.5 font-mono text-t10 tnum text-textSecondary">{p.time}</td>
                     <td
-                      className="px-1.5 py-0.5 font-mono text-[10px] font-bold"
+                      className="px-1.5 py-0.5 font-mono text-t10 font-bold"
                       style={{ color: p.right === 'C' ? CALL_SIDE : PUT_SIDE }}
                     >
                       {p.right}
                     </td>
-                    <td className="px-1.5 py-0.5 font-mono text-[10px] tnum text-textSecondary">
+                    <td className="px-1.5 py-0.5 font-mono text-t10 tnum text-textSecondary">
                       {p.size.toLocaleString()}
                     </td>
-                    <td className="px-1.5 py-0.5 font-mono text-[10px] tnum text-textPrimary">{fmtUsd(p.premium)}</td>
-                    <td className="px-1.5 py-0.5 font-mono text-[10px] text-textMuted">{p.side}</td>
+                    <td className="px-1.5 py-0.5 font-mono text-t10 tnum text-textPrimary">{fmtUsd(p.premium)}</td>
+                    <td className="px-1.5 py-0.5 font-mono text-t10 text-textMuted">{p.side}</td>
                   </tr>
                 ))}
               </tbody>
@@ -100,9 +102,9 @@ const StrikeAttributionPanel = ({
           </div>
 
           {attr.prints.length > MAX_ROWS && (
-            <span className="font-mono text-[9px] text-textMuted">
-              +{attr.prints.length - MAX_ROWS} more on the tape
-            </span>
+            <button type="button" onClick={() => setOpen(v => !v)} className="self-start font-mono text-t9 text-textMuted hover:text-textPrimary" data-attr-more={open ? 'open' : 'shut'}>
+              {open ? 'Hide' : `+${attr.prints.length - MAX_ROWS} more on the tape`}
+            </button>
           )}
         </>
       )}

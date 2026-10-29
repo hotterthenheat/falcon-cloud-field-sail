@@ -158,7 +158,7 @@ const Chip = ({ e }: { e: Entry }) => {
   return (
     <div
       ref={box}
-      className="undo-toast pointer-events-auto relative overflow-hidden inline-flex items-center gap-2 h-8 pl-3 pr-1 rounded-md border border-borderMuted bg-canvas/90 backdrop-blur-md backdrop-saturate-150 shadow-lg shadow-black/40 text-[12px] text-textPrimary select-none"
+      className="undo-toast pointer-events-auto relative overflow-hidden inline-flex items-center gap-2 h-8 pl-3 pr-1 rounded-md border border-borderMuted bg-canvas/90 backdrop-blur-md backdrop-saturate-150 shadow-lg shadow-black/40 text-t12 text-textPrimary select-none"
       onPointerEnter={() => hold(e.id, true)}
       onPointerLeave={() => {
         if (!box.current?.contains(document.activeElement)) hold(e.id, false);
@@ -184,7 +184,7 @@ const Chip = ({ e }: { e: Entry }) => {
         Undo
       </button>
       {/* the countdown: words for a glance, a hairline for the eye — hidden from a screen reader, which hears the chip once */}
-      <span className="w-6 pr-1 text-right font-mono text-[11px] tnum text-textMuted" aria-hidden>
+      <span className="w-6 pr-1 text-right font-mono text-t11 tnum text-textMuted" aria-hidden>
         {seconds}s
       </span>
       <span

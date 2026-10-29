@@ -76,8 +76,8 @@ const CARD_OUT_MS = 160;
     in tracked capitals, the figure beside it — the page head's grammar, one row, so the chart has the height */
 const PartFact = ({ label, children, title }: { label: string; children: ReactNode; title?: string }) => (
   <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={title}>
-    <span className="text-[11px] uppercase tracking-wider text-textMuted">{label}</span>
-    <span className="text-[12px] font-semibold tnum text-textPrimary">{children}</span>
+    <span className="text-t11 uppercase tracking-wider text-textMuted">{label}</span>
+    <span className="text-t12 font-semibold tnum text-textPrimary">{children}</span>
   </span>
 );
 /** The thermal ramp's yellow halfway out (heatmap.ts 'thermal-yellow' at 0.2) — the one ink the tokens do not carry */
@@ -667,7 +667,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const partHead = part ? (
     <>
       {headSlot && <span className="h-4 w-px bg-borderSubtle shrink-0" aria-hidden />}
-      <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap" data-tape-part-word data-tape-day={barDay ?? undefined}>
+      <span className="text-t12 font-semibold text-textPrimary whitespace-nowrap" data-tape-part-word data-tape-day={barDay ?? undefined}>
         {priceWord}
       </span>
       {bars.length > 0 && session && (
@@ -700,40 +700,40 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
         {(
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3 flex-wrap">
-              <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">The tape</h3>
+              <h3 className="text-t16 font-semibold leading-tight text-textPrimary">The tape</h3>
               {scope}
               <button
                 type="button"
                 onClick={toggle}
                 aria-expanded={open}
                 title={open ? 'Fold the tape away' : 'Show the tape'}
-                className="hit inline-flex items-center gap-1 h-6 px-1.5 rounded-md text-[11px] text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] transition-colors"
+                className="hit inline-flex items-center gap-1 h-6 px-1.5 rounded-md text-t11 text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] transition-colors"
                 data-tape-fold
               >
                 <ChevronDown className={`w-3 h-3 transition-transform ${open ? '' : '-rotate-90'}`} />
                 {open ? 'Fold' : 'Unfold'}
               </button>
             </div>
-            <p className="mt-0.5 text-[11px] text-textMuted">{priceWord === 'Price today' ? "Today's price" : `${longDay(barDay!)}'s price`} with the book's levels on it</p>
+            <p className="mt-0.5 text-t11 text-textMuted">{priceWord === 'Price today' ? "Today's price" : `${longDay(barDay!)}'s price`} with the book's levels on it</p>
           </div>
         )}
         {bars.length > 0 && session && (
           <dl className="grid grid-cols-3 gap-x-6">
             <div>
-              <dt className="text-[11px] text-textMuted">Last</dt>
-              <dd className="mt-0.5 font-mono text-[14px] tnum text-textPrimary whitespace-nowrap" data-tape-last={last.toFixed(2)}>
+              <dt className="text-t11 text-textMuted">Last</dt>
+              <dd className="mt-0.5 font-mono text-t14 tnum text-textPrimary whitespace-nowrap" data-tape-last={last.toFixed(2)}>
                 {last.toFixed(2)}
               </dd>
             </div>
             <div>
-              <dt className="text-[11px] text-textMuted">Session</dt>
-              <dd className="mt-0.5 font-mono text-[14px] tnum text-textPrimary whitespace-nowrap">
+              <dt className="text-t11 text-textMuted">Session</dt>
+              <dd className="mt-0.5 font-mono text-t14 tnum text-textPrimary whitespace-nowrap">
                 {session.lo.toFixed(2)} – {session.hi.toFixed(2)}
               </dd>
             </div>
             <div>
-              <dt className="text-[11px] text-textMuted">One move to the close</dt>
-              <dd className="mt-0.5 font-mono text-[14px] tnum text-textPrimary whitespace-nowrap" data-tape-move={movePending ? undefined : w1.toFixed(2)}>
+              <dt className="text-t11 text-textMuted">One move to the close</dt>
+              <dd className="mt-0.5 font-mono text-t14 tnum text-textPrimary whitespace-nowrap" data-tape-move={movePending ? undefined : w1.toFixed(2)}>
                 {movePending ? '…' : minLeft > 0 && fieldLast ? `${fieldLast.lo1.toFixed(2)}–${fieldLast.hi1.toFixed(2)}` : shutMove}
               </dd>
             </div>
@@ -759,8 +759,8 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
           >
             <div ref={hostRef} className="absolute inset-0" data-tape-chart />
             {fieldLast && minLeft > 0 && !movePending && (
-              <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[280px] rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-[11px] leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-ahead-read>
-                <span className="block text-[10px] uppercase tracking-wider text-textMuted">Ahead to the close</span>
+              <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[280px] rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-ahead-read>
+                <span className="block text-t10 uppercase tracking-wider text-textMuted">Ahead to the close</span>
                 <span className="block tnum text-textPrimary">One move {fieldLast.lo1.toFixed(2)} – {fieldLast.hi1.toFixed(2)}</span>
                 <span className="block tnum">Two moves {fieldLast.lo2.toFixed(2)} – {fieldLast.hi2.toFixed(2)}</span>
                 <span className="block tnum">
@@ -769,15 +769,15 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
               </div>
             )}
             {!fieldLast && shutBand && (
-              <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[260px] rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-[11px] leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-ahead-read>
-                <span className="block text-[10px] uppercase tracking-wider text-textMuted">{aheadWord === 'today' ? 'Today' : 'Next session'}</span>
+              <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[260px] rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-ahead-read>
+                <span className="block text-t10 uppercase tracking-wider text-textMuted">{aheadWord === 'today' ? 'Today' : 'Next session'}</span>
                 <span className="block tnum text-textPrimary">One move {shutBand.replace('–', ' – ')}</span>
                 <span className="block tnum">Nothing left in this session. This is the whole move around the close.</span>
               </div>
             )}
             {markMoves && swings.length > 0 && (
-              <div className="pointer-events-none absolute right-14 top-2 z-10 rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-[11px] leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-chart-moves={swings.length}>
-                <span className="block text-[10px] uppercase tracking-wider text-textMuted">Biggest moves</span>
+              <div className="pointer-events-none absolute right-14 top-2 z-10 rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-chart-moves={swings.length}>
+                <span className="block text-t10 uppercase tracking-wider text-textMuted">Biggest moves</span>
                 {swings.map(s => (
                   <span key={s.time} className="block tnum text-textPrimary">
                     {hhmm(nyMinutes(s.time * 1000))} {s.delta >= 0 ? '+' : '−'}${Math.abs(s.delta).toFixed(2)} to {s.to.toFixed(2)}
@@ -788,7 +788,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
             {/* the pointer's minute — Compare's glass, beside the point it reads */}
             {hb && hover && (
               <div
-                className="pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-[11px] text-textSecondary"
+                className="pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 text-textSecondary"
                 style={{ ...besideDot(hover.x, hover.y, hover.x > plotW / 2), background: 'rgba(8,8,10,0.88)', backdropFilter: 'blur(3px)' }}
                 data-theme="dark"
                 data-chart-glass
@@ -830,7 +830,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
                 return (
                   <div key={levelHot.key} className="absolute z-20" style={{ right: scaleW + LADDER_HIT_W + 6, top: levelHot.y, transform: 'translateY(-50%)' }}>
                   <div
-                    className={`w-[224px] rounded-md border border-borderSubtle px-2.5 py-2 font-mono text-[11px] text-textSecondary ${levelClosing ? 'animate-chart-card-out' : 'animate-soft-in'}`}
+                    className={`w-[224px] rounded-md border border-borderSubtle px-2.5 py-2 font-mono text-t11 text-textSecondary ${levelClosing ? 'animate-chart-card-out' : 'animate-soft-in'}`}
                     style={{ background: 'rgba(8,8,10,0.92)', backdropFilter: 'blur(3px)' }}
                     data-theme="dark"
                     data-chart-glass
@@ -858,7 +858,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
                     </div>
                     <p className="mt-1 leading-snug text-textSecondary">{w.line}</p>
                     <div className="mt-1.5 flex items-center gap-1">
-                      <button type="button" onClick={() => onPick(levelHot.price)} aria-pressed={kept} className={`hit h-6 px-2 rounded-md text-[11px] transition-colors ${kept ? 'bg-silver/[0.12] text-silver' : 'text-textPrimary hover:bg-ink/[0.06]'}`} data-tape-tag={levelHot.key}>
+                      <button type="button" onClick={() => onPick(levelHot.price)} aria-pressed={kept} className={`hit h-6 px-2 rounded-md text-t11 transition-colors ${kept ? 'bg-silver/[0.12] text-silver' : 'text-textPrimary hover:bg-ink/[0.06]'}`} data-tape-tag={levelHot.key}>
                         {kept ? 'Kept · let go' : 'Keep the strike'}
                       </button>
                       <button
@@ -866,7 +866,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
                         onClick={toggleBell}
                         aria-pressed={armed.length > 0}
                         title={armed.length ? `Watching the ${words} — click to stop` : `Tell me when price crosses the ${words}`}
-                        className={`hit ml-auto inline-flex h-6 items-center gap-1 px-2 rounded-md text-[11px] transition-colors ${armed.length ? 'bg-silver/[0.1] text-silver' : 'text-textMuted hover:bg-ink/[0.06] hover:text-textPrimary'}`}
+                        className={`hit ml-auto inline-flex h-6 items-center gap-1 px-2 rounded-md text-t11 transition-colors ${armed.length ? 'bg-silver/[0.1] text-silver' : 'text-textMuted hover:bg-ink/[0.06] hover:text-textPrimary'}`}
                         data-tape-alert={keys.join('+')}
                         data-watching={armed.length ? '' : undefined}
                       >
@@ -881,14 +881,14 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
             {/* the kept strike's tag at the edge it lies beyond, beside the scale — silver, the line's own ink */}
             {focus != null && keptOff && (
               <div
-                className="pointer-events-none absolute z-10 whitespace-nowrap rounded-sm border border-silver/50 bg-panel/90 px-1.5 py-0.5 font-mono text-[11px] text-silver"
+                className="pointer-events-none absolute z-10 whitespace-nowrap rounded-sm border border-silver/50 bg-panel/90 px-1.5 py-0.5 font-mono text-t11 text-silver"
                 style={{ right: scaleW + 8, ...(keptOff === 'up' ? { top: 4 } : { bottom: 4 }) }}
                 data-tape-kept-edge={keptOff}
               >
                 {keptOff === 'up' ? '▲' : '▼'} Kept {fmtStrike(focus)} · {Math.abs(focus - spot).toFixed(2)} {keptOff === 'up' ? 'above' : 'below'}
               </div>
             )}
-            {bars.length === 0 && <div className="absolute inset-0 grid place-items-center font-mono text-[11px] uppercase tracking-widest text-textMuted">No bars yet this session</div>}
+            {bars.length === 0 && <div className="absolute inset-0 grid place-items-center font-mono text-t11 uppercase tracking-widest text-textMuted">No bars yet this session</div>}
           </div>
         </div>
       )}

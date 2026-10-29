@@ -196,20 +196,20 @@ const CompareControl = ({
               aria-activedescendant={results[highlight] ? `${uid}-opt-${highlight}` : undefined}
               placeholder={room === 'compass' ? 'Compare one of the 456…' : room === 'option' ? 'Compare a name with options…' : 'Compare symbols…'}
               title="Up and down to choose a symbol, left and right for the scale, Enter to add"
-              className="w-full bg-transparent py-1.5 font-mono text-[11px] text-textPrimary placeholder:text-textMuted focus:outline-none"
+              className="w-full bg-transparent py-1.5 font-mono text-t11 text-textPrimary placeholder:text-textMuted focus:outline-none"
             />
           </div>
 
           {compares.length > 0 && (
             <div className="border-b border-borderSubtle/60 py-1">
-              <div className="px-2.5 pt-1 pb-0.5 font-mono text-[9px] uppercase tracking-wider text-textMuted">
+              <div className="px-2.5 pt-1 pb-0.5 font-mono text-t9 uppercase tracking-wider text-textMuted">
                 Added symbols
               </div>
               {compares.map(c => (
                 <div key={`${c.ticker}:${c.mode}`} className="flex items-center gap-2 px-2.5 py-1">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ background: c.ink }} aria-hidden />
-                  <span className="font-mono text-[11px] font-semibold text-textPrimary w-14 shrink-0">{c.ticker}</span>
-                  <span className="font-mono text-[10px] text-textMuted">{MODE_LABEL[c.mode]}</span>
+                  <span className="font-mono text-t11 font-semibold text-textPrimary w-14 shrink-0">{c.ticker}</span>
+                  <span className="font-mono text-t10 text-textMuted">{MODE_LABEL[c.mode]}</span>
                   <button
                     onClick={() => onRemove(c.ticker, c.mode)}
                     aria-label={`Remove ${c.ticker} comparison`}
@@ -227,9 +227,9 @@ const CompareControl = ({
               container focusable, which showed up as an unnamed tab stop. */}
           <div id={`${uid}-list`} role="listbox" tabIndex={-1} aria-label="Symbols to compare" className="max-h-64 overflow-y-auto py-1">
             {!mod ? (
-              <div className="px-2.5 py-4 text-center font-mono text-[10px] text-textMuted">Loading tickers…</div>
+              <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">Loading tickers…</div>
             ) : results.length === 0 ? (
-              <div className="px-2.5 py-4 text-center font-mono text-[10px] text-textMuted">No matches</div>
+              <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">No matches</div>
             ) : (
               results.map((t, i) => (
                 <div
@@ -244,8 +244,8 @@ const CompareControl = ({
                   }`}
                 >
                   <CompanyLogo ticker={t.symbol} size={16} />
-                  <span className="font-mono text-[11px] font-semibold text-textPrimary w-14 shrink-0">{t.symbol}</span>
-                  <span className="text-[10px] text-textSecondary truncate" title={companyName(t.symbol) !== t.symbol ? companyName(t.symbol) : undefined}>{companyName(t.symbol).toUpperCase() === t.symbol ? '' : companyName(t.symbol)}</span>
+                  <span className="font-mono text-t11 font-semibold text-textPrimary w-14 shrink-0">{t.symbol}</span>
+                  <span className="text-t10 text-textSecondary truncate" title={companyName(t.symbol) !== t.symbol ? companyName(t.symbol) : undefined}>{companyName(t.symbol).toUpperCase() === t.symbol ? '' : companyName(t.symbol)}</span>
                   {/* The TV move: the row's right side becomes the three
                       scale choices on hover — how the line joins the chart */}
                   {!full && (
@@ -273,7 +273,7 @@ const CompareControl = ({
                                always adds exactly what the ring marks. */
                             onMouseEnter={() => setModeIdx(mi)}
                             aria-label={`Add ${t.symbol} — ${MODE_LABEL[mode]}`}
-                            className={`relative px-1.5 py-0.5 rounded border bg-inset font-mono text-[9px] whitespace-nowrap transition-colors duration-150 ${
+                            className={`relative px-1.5 py-0.5 rounded border bg-inset font-mono text-t9 whitespace-nowrap transition-colors duration-150 ${
                               ringed
                                 ? 'border-transparent text-textPrimary'
                                 : 'border-borderSubtle text-textSecondary hover:text-textPrimary'

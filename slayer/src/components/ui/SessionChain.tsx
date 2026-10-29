@@ -19,31 +19,31 @@ const SessionChain = ({ ticker }: { ticker: string }) => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <h3 className="text-[15px] font-semibold text-textPrimary">{meta.label} book</h3>
-            <span className="font-mono text-[8px] uppercase tracking-widest text-warn">sample</span>
+            <h3 className="text-t15 font-semibold text-textPrimary">{meta.label} book</h3>
+            <span className="font-mono text-t8 uppercase tracking-widest text-warn">sample</span>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted">{book.note}</p>
+          <p className="mt-0.5 text-t11 text-textMuted">{book.note}</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted">{book.quote.root}</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{book.quote.last.toFixed(2)}</dd>
+            <dt className="text-t10 text-textMuted">{book.quote.root}</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{book.quote.last.toFixed(2)}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Bid · ask</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">
+            <dt className="text-t10 text-textMuted">Bid · ask</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">
               {book.quote.bid.toFixed(2)} · {book.quote.ask.toFixed(2)}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Session volume</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{num(book.quote.volume)}</dd>
+            <dt className="text-t10 text-textMuted">Session volume</dt>
+            <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{num(book.quote.volume)}</dd>
           </div>
         </dl>
       </div>
       <div className="overflow-x-auto border-t border-borderSubtle/60">
         <div className="min-w-[640px]">
-          <div className="px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: '64px 88px 72px 36px 64px 64px 52px 52px 72px 64px' }}>
+          <div className="px-5 h-[22px] grid items-center gap-x-3 text-t9 uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: '64px 88px 72px 36px 64px 64px 52px 52px 72px 64px' }}>
             <span>Root</span>
             <span>Expiry</span>
             <span className="text-right">Strike</span>
@@ -56,7 +56,7 @@ const SessionChain = ({ ticker }: { ticker: string }) => {
             <span className="text-right">Vol</span>
           </div>
           {book.prints.map(p => (
-            <div key={p.id} className="px-5 h-[32px] grid items-center gap-x-3 border-t border-borderSubtle/40 font-mono text-[11px] tnum" style={{ gridTemplateColumns: '64px 88px 72px 36px 64px 64px 52px 52px 72px 64px' }} data-session-print={p.id}>
+            <div key={p.id} className="px-5 h-[32px] grid items-center gap-x-3 border-t border-borderSubtle/40 font-mono text-t11 tnum" style={{ gridTemplateColumns: '64px 88px 72px 36px 64px 64px 52px 52px 72px 64px' }} data-session-print={p.id}>
               <span className="font-bold text-textPrimary">{p.root}</span>
               <span className="text-textMuted">{p.expiry.slice(5)}</span>
               <span className="text-right text-textPrimary">{p.strike.toLocaleString('en-US')}</span>
@@ -71,7 +71,7 @@ const SessionChain = ({ ticker }: { ticker: string }) => {
           ))}
         </div>
       </div>
-      <p className="px-5 py-3 text-[11px] text-textMuted">The map and the tape under this stay the regular-hours book. This strip is the session the head is set to.</p>
+      <p className="px-5 py-3 text-t11 text-textMuted">The map and the tape under this stay the regular-hours book. This strip is the session the head is set to.</p>
     </section>
   );
 };

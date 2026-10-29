@@ -8,8 +8,8 @@ import type { ReactNode } from 'react';
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <section className="px-5 py-4 border-b border-borderSubtle/60 last:border-b-0">
-    <h4 className="text-[13px] font-semibold text-textPrimary">{title}</h4>
-    <div className="mt-2 text-[12px] leading-relaxed text-textSecondary">{children}</div>
+    <h4 className="text-t13 font-semibold text-textPrimary">{title}</h4>
+    <div className="mt-2 text-t12 leading-relaxed text-textSecondary">{children}</div>
   </section>
 );
 

@@ -237,6 +237,7 @@ const SequenceStrip = ({
   noun?: 'prints' | 'alerts';
 }) => {
   const n = siblings.length;
+  const [open, setOpen] = useState(false);
   const read = useMemo(() => {
     if (n <= 1) return 'Isolated — the only row on this contract in the list you were watching.';
     if (noun === 'alerts') {
@@ -260,15 +261,15 @@ const SequenceStrip = ({
     return `${parts.join(' · ')}.`;
   }, [siblings, n, noun]);
 
-  const shown = siblings.slice(0, SEQ_SHOWN);
+  const shown = open ? siblings : siblings.slice(0, SEQ_SHOWN);
 
   return (
     <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden">
       <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-baseline gap-2 flex-wrap">
-        <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The sequence</span>
-        <span className="font-mono text-[11px] text-textMuted">same contract in the tape's buffer — not the whole session</span>
+        <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">The sequence</span>
+        <span className="font-mono text-t11 text-textMuted">same contract in the tape's buffer — not the whole session</span>
       </div>
-      <p className="px-3 pt-2 text-[11px] text-textSecondary leading-snug tnum">
+      <p className="px-3 pt-2 text-t11 text-textSecondary leading-snug tnum">
         <RichRead text={read} />
       </p>
       {n > 1 && (
@@ -280,15 +281,15 @@ const SequenceStrip = ({
             const ink = p.side === 'MID' ? 'text-textMuted' : 'text-textPrimary';
             const row = (
               <>
-                <span className="w-[86px] shrink-0 font-mono text-[11px] tnum text-textMuted">{p.time}</span>
-                <span className={`w-[74px] shrink-0 font-mono text-[11px] font-semibold uppercase tracking-wider ${ink}`}>{word}</span>
-                <span className="font-mono text-[11px] tnum text-textSecondary">
+                <span className="w-[86px] shrink-0 font-mono text-t11 tnum text-textMuted">{p.time}</span>
+                <span className={`w-[74px] shrink-0 font-mono text-t11 font-semibold uppercase tracking-wider ${ink}`}>{word}</span>
+                <span className="font-mono text-t11 tnum text-textSecondary">
                   {p.size.toLocaleString()} × ${p.fill.toFixed(2)}
                 </span>
-                <span className="font-mono text-[11px] font-bold tnum text-textPrimary">{fmtUsd(p.premium)}</span>
-                {p.sweep && <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-warn">Sweep</span>}
+                <span className="font-mono text-t11 font-bold tnum text-textPrimary">{fmtUsd(p.premium)}</span>
+                {p.sweep && <span className="font-mono text-t11 font-semibold uppercase tracking-wider text-warn">Sweep</span>}
                 {self && (
-                  <span className="ml-auto font-mono text-[11px] font-semibold uppercase tracking-wider text-silver">Viewing</span>
+                  <span className="ml-auto font-mono text-t11 font-semibold uppercase tracking-wider text-silver">Viewing</span>
                 )}
               </>
             );
@@ -313,7 +314,9 @@ const SequenceStrip = ({
             );
           })}
           {n > SEQ_SHOWN && (
-            <span className="px-1.5 py-1 font-mono text-[11px] text-textMuted tnum">…and {num(n - SEQ_SHOWN)} more {noun === 'alerts' ? 'alerts' : 'on the tape'}</span>
+            <button type="button" onClick={() => setOpen(v => !v)} className="self-start px-1.5 py-1 font-mono text-t11 text-textMuted tnum hover:text-textPrimary" data-sequence-more={open ? 'open' : 'shut'}>
+              {open ? 'Hide' : `…and ${num(n - SEQ_SHOWN)} more ${noun === 'alerts' ? 'alerts' : 'on the tape'}`}
+            </button>
           )}
         </div>
       )}
@@ -468,7 +471,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
         /* The whole session box wears the holo foil — navigation hardware,
            dark ink on the bright material (Noah: "the entire box"). The label
            carries today-vs-past, so the material stays constant. */
-        <div className="group relative flex items-center gap-0.5 rounded holo-bg text-[#0a0a0a] px-1 py-0.5">
+        <div className="group relative flex items-center gap-0.5 rounded holo-bg text-onfoil px-1 py-0.5">
             {/* ONE hover for the WHOLE box (Noah, 2026-08-23: "the entire
                 button and not just the inner section") — a full-box wash on
                 group hover instead of per-segment tints */}
@@ -486,7 +489,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
             <button
               onClick={() => setCalendarOpen(o => !o)}
               title="Pick a session"
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[11px] font-semibold tnum transition-colors"
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-t11 font-semibold tnum transition-colors"
             >
               <CalendarDays className="w-3 h-3" />
               {isLiveDay(dateIso) ? 'Today' : dateLabel}
@@ -562,19 +565,19 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               <Wordmark height={11} label="" />
             </span>
             <span
-              className={`inline-flex items-center rounded-full border px-2.5 py-0.5 font-mono text-[13px] font-semibold ${
+              className={`inline-flex items-center rounded-full border px-2.5 py-0.5 font-mono text-t13 font-semibold ${
                 print.right === 'C' ? 'border-bull/30 bg-bull/10 text-bull' : 'border-bear/30 bg-bear/10 text-bear'
               }`}
             >
               {print.ticker} {print.strike}
               {print.right}
             </span>
-            <span className="font-mono text-[11px] text-textSecondary tnum">
+            <span className="font-mono text-t11 text-textSecondary tnum">
               {print.expiry} · {print.dte}d
             </span>
             {/* White: a leg count is a fact, not a status — the tape's own rule (2026-08-30). */}
             {print.legs > 1 && (
-              <span className="font-mono text-[11px] text-textPrimary" title={print.trades ? 'The alert held multi-leg prints' : print.dayCard ? 'Half or more of the day traded as legs of multi-leg orders' : "The print's OPRA condition marks it a leg of a multi-leg order — how many legs it had is not on the print"}>
+              <span className="font-mono text-t11 text-textPrimary" title={print.trades ? 'The alert held multi-leg prints' : print.dayCard ? 'Half or more of the day traded as legs of multi-leg orders' : "The print's OPRA condition marks it a leg of a multi-leg order — how many legs it had is not on the print"}>
                 multi-leg
               </span>
             )}
@@ -591,8 +594,8 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
             ) : (
               <SignalBadge tone={SENT_TONE[sent]}>{sent}</SignalBadge>
             )}
-            <span className="font-mono text-[11px] text-textSecondary tnum">{print.time}</span>
-            <span className={`font-mono text-[11px] uppercase ${print.sweep ? 'text-warn font-semibold' : 'text-textMuted'}`}>
+            <span className="font-mono text-t11 text-textSecondary tnum">{print.time}</span>
+            <span className={`font-mono text-t11 uppercase ${print.sweep ? 'text-warn font-semibold' : 'text-textMuted'}`}>
               {print.dayCard
                 ? `The day · ${print.dayCard.last ? `last ${print.dayCard.session} print ${print.dayCard.last.time}` : 'no print in hand'}`
                 : print.trades && print.trades > 1
@@ -600,7 +603,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                 : { SWEEP: 'Sweep', MULTI: 'Multi-leg', BLOCK: 'Block', SINGLE: 'Single print', COMPRESSION: 'Compression', BURST: 'Alert' }[printKind(print)]}
             </span>
             {print.spot > 0 && (
-              <span className="font-mono text-[11px] text-textMuted tnum">
+              <span className="font-mono text-t11 text-textMuted tnum">
                 {print.ticker} {indexRoot(print.ticker) ? `≈${Math.round(print.spot).toLocaleString('en-US')}` : `$${fixed(print.spot)}`}
               </span>
             )}
@@ -617,22 +620,22 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
             {/* THE MONEY — the premium, the side, where between bid and ask it filled, the fill */}
             <div className="flex items-center gap-x-5 gap-y-2 flex-wrap px-4 py-3" data-print-money>
               <span className="flex items-baseline gap-2.5">
-                <span className={`font-mono text-[22px] font-bold tnum leading-none ${print.premium >= 1_000_000 ? 'text-supreme' : 'text-textPrimary'}`}>{usd(print.premium)}</span>
-                <span className={`font-mono text-[13px] font-bold ${sideTone}`}>{sideLabel}</span>
-                {print.sweep && <span className="font-mono text-[11px] uppercase font-semibold text-warn">Sweep</span>}
+                <span className={`font-mono text-t22 font-bold tnum leading-none ${print.premium >= 1_000_000 ? 'text-supreme' : 'text-textPrimary'}`}>{usd(print.premium)}</span>
+                <span className={`font-mono text-t13 font-bold ${sideTone}`}>{sideLabel}</span>
+                {print.sweep && <span className="font-mono text-t11 uppercase font-semibold text-warn">Sweep</span>}
               </span>
               {/* the clearest aggressor tell — where between bid and ask it printed */}
               <span className="flex items-center gap-2 w-[220px] max-w-full" title="Where between the bid and the ask it filled — who was in a hurry">
-                <span className="font-mono text-[11px] tnum text-textMuted">{fixed(print.bid)}</span>
+                <span className="font-mono text-t11 tnum text-textMuted">{fixed(print.bid)}</span>
                 <span className="relative flex-1 h-[3px] rounded-full bg-ink/[0.08]">
                   <span
                     className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[8px] h-[8px] rounded-full ${print.side === 'MID' ? 'bg-ink/60' : 'bg-textPrimary'}`}
                     style={{ left: `${print.fillPos * 100}%` }}
                   />
                 </span>
-                <span className="font-mono text-[11px] tnum text-textMuted">{fixed(print.ask)}</span>
+                <span className="font-mono text-t11 tnum text-textMuted">{fixed(print.ask)}</span>
               </span>
-              <span className="font-mono text-[11px] text-textSecondary tnum whitespace-nowrap">
+              <span className="font-mono text-t11 text-textSecondary tnum whitespace-nowrap">
                 <RichRead
                   text={
                     print.dayCard
@@ -647,7 +650,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               </span>
             </div>
             {/* THE READ — one sentence, the terminal talks first */}
-            <p className="px-4 py-2.5 border-t border-borderSubtle/60 text-[12px] leading-relaxed text-textSecondary" data-print-read>
+            <p className="px-4 py-2.5 border-t border-borderSubtle/60 text-t12 leading-relaxed text-textSecondary" data-print-read>
               <RichRead text={printRead(print, sent, day)} />
             </p>
             {/* THE EVIDENCE — the house's dot-leader rows; the Compass scale folded in, in words (no figure of ours in public) */}
@@ -712,15 +715,15 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
           <ErrorBoundary label="The flow panels" resetKey={`${print.id}-${intervalMin}-${dateIso}`}>
             <Suspense
               fallback={
-                <div className="h-[520px] rounded-md border border-borderSubtle bg-inset flex items-center justify-center font-mono text-[11px] text-textMuted uppercase tracking-widest">
+                <div className="h-[520px] rounded-md border border-borderSubtle bg-inset flex items-center justify-center font-mono text-t11 text-textMuted uppercase tracking-widest">
                   Loading flow…
                 </div>
               }
             >
               <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden" data-print-tape>
                 <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The tape</span>
-                  <span className="font-mono text-[11px] text-textMuted">the contract and {print.ticker} on one clock · {isLiveDay(dateIso) ? 'today' : dateLabel}, {cf ? cf.window.label : `8:30 AM–${sessionEndLabel(print.ticker)}`}</span>
+                  <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">The tape</span>
+                  <span className="font-mono text-t11 text-textMuted">the contract and {print.ticker} on one clock · {isLiveDay(dateIso) ? 'today' : dateLabel}, {cf ? cf.window.label : `8:30 AM–${sessionEndLabel(print.ticker)}`}</span>
                   <span className="ml-auto flex items-center gap-0.5">
                     {INTERVALS.map(m => (
                       <Chip key={m} active={m === intervalMin} onClick={() => setIntervalMin(m)} title={`${m}-minute bars`}>
@@ -730,9 +733,9 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                   </span>
                 </div>
                 {!print.occ ? (
-                  <div className="h-[160px] flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted">This row carries no contract symbol to read</div>
+                  <div className="h-[160px] flex items-center justify-center font-mono text-t11 uppercase tracking-widest text-textMuted">This row carries no contract symbol to read</div>
                 ) : !cf ? (
-                  <div className="h-[420px] flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted" data-print-tape-state={load.failed ? 'down' : 'reading'}>
+                  <div className="h-[420px] flex items-center justify-center font-mono text-t11 uppercase tracking-widest text-textMuted" data-print-tape-state={load.failed ? 'down' : 'reading'}>
                     {load.failed ? 'This read did not land — the tape fills when the feed answers' : "Reading the contract's session…"}
                   </div>
                 ) : (
@@ -775,7 +778,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                   while it did. */}
               <span key={tableTab} className="animate-soft-in min-w-0">
                 {tableTab === 'orders' ? (
-                  <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted" data-orders-note>
+                  <span className="font-mono text-t11 uppercase tracking-wider text-textMuted" data-orders-note>
                     {cf ? (cf.prints.length ? `${cf.printsCapped ? 'the newest ' : ''}${cf.prints.length.toLocaleString('en-US')} prints · ${cf.prints[cf.prints.length - 1].time}–${cf.prints[0].time} ET${cf.printsCapped && cf.day ? ` of ${cf.day.trades.toLocaleString('en-US')} in the session` : ''}` : 'no prints this session') : '…'}
                   </span>
                 ) : verdict ? (
@@ -784,7 +787,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                       {verdict.state}
                     </SignalBadge>
                     {/* Numbers in sentences wear the house code — RichRead, not flat gray */}
-                    <span className="font-mono text-[11px] text-textSecondary tnum truncate">
+                    <span className="font-mono text-t11 text-textSecondary tnum truncate">
                       <RichRead text={verdict.read} />
                     </span>
                   </span>
@@ -805,7 +808,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
 
           {/* Actions */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary mr-1">Open in</span>
+            <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary mr-1">Open in</span>
             <button onClick={() => jump(() => { changeTicker(print.ticker); navigate('/pinpoint'); })} className={linkBtn}>
               <Crosshair className="w-3.5 h-3.5" /> Dealer map
             </button>
@@ -837,13 +840,13 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
   );
 };
 
-const th = 'px-2 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle';
-const td = 'px-2 py-1.5 font-mono text-[11px] tnum';
+const th = 'px-2 py-1.5 font-mono text-t11 font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle';
+const td = 'px-2 py-1.5 font-mono text-t11 tnum';
 
 /** The contract's real prints for the session, newest first — the largest of them is marked */
 const OrdersTable = ({ tape }: { tape: ContractTape }) => {
   const largest = tape.prints.reduce<string | null>((a, p) => (a === null || p.premium > (tape.prints.find(x => x.id === a)?.premium ?? 0) ? p.id : a), null);
-  if (!tape.prints.length) return <div className="border border-borderSubtle rounded-md px-3 py-6 font-mono text-[11px] text-textMuted uppercase tracking-widest text-center">No prints on this contract this session</div>;
+  if (!tape.prints.length) return <div className="border border-borderSubtle rounded-md px-3 py-6 font-mono text-t11 text-textMuted uppercase tracking-widest text-center">No prints on this contract this session</div>;
   return (
     <div className="border border-borderSubtle rounded-md overflow-hidden max-h-[240px] overflow-y-auto">
       <table className="w-full border-collapse">
@@ -887,7 +890,7 @@ const OrdersTable = ({ tape }: { tape: ContractTape }) => {
     history; the session on the card wears the selection edge. */
 const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: string; unusual: boolean }) => {
   const premSum = rows.reduce((a, r) => a + r.premium, 0) || 1;
-  if (!rows.length) return <div className="border border-borderSubtle rounded-md px-3 py-6 font-mono text-[11px] text-textMuted uppercase tracking-widest text-center">No history for this contract</div>;
+  if (!rows.length) return <div className="border border-borderSubtle rounded-md px-3 py-6 font-mono text-t11 text-textMuted uppercase tracking-widest text-center">No history for this contract</div>;
   return (
     <div className="border border-borderSubtle rounded-md overflow-hidden max-h-[240px] overflow-y-auto">
       <table className="w-full border-collapse">
@@ -925,7 +928,7 @@ const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: st
                 </td>
                 <td className={`${td} text-right text-textPrimary whitespace-nowrap`} title={d.closeBasis === 'regular' ? `The regular session's last print${d.extLast ? `; after the close it last printed $${fixed(d.extLast.price)} at ${d.extLast.time} ET (extended hours)` : ''}` : "The feed's last price for the session — it can be an after-hours fill"}>
                   {d.close > 0 ? `${d.closeBasis === 'regular' ? '' : '≈'}$${fixed(d.close)}` : '—'}
-                  {d.extLast && <span className="block text-[10px] text-textMuted">ext ${fixed(d.extLast.price)} · {d.extLast.time.slice(0, 5)}</span>}
+                  {d.extLast && <span className="block text-t10 text-textMuted">ext ${fixed(d.extLast.price)} · {d.extLast.time.slice(0, 5)}</span>}
                 </td>
                 <td className={`${td} text-right text-textPrimary`}>{d.avg > 0 ? `$${fixed(d.avg)}` : '—'}</td>
                 <td className="px-2 py-1.5">

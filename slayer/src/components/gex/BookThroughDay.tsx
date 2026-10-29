@@ -64,8 +64,8 @@ import type { Candle, MarketSnapshot } from '../../types/market';
     in tracked capitals, the figure beside it — the page head's grammar, one row, so the chart has the height */
 const PartFact = ({ label, children, title }: { label: string; children: ReactNode; title?: string }) => (
   <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={title}>
-    <span className="text-[11px] uppercase tracking-wider text-textMuted">{label}</span>
-    <span className="text-[12px] font-semibold tnum text-textPrimary">{children}</span>
+    <span className="text-t11 uppercase tracking-wider text-textMuted">{label}</span>
+    <span className="text-t12 font-semibold tnum text-textPrimary">{children}</span>
   </span>
 );
 
@@ -492,15 +492,15 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
             {part ? (
               /* NAMED FOR WHAT IT SHOWS (Noah, 2026-10-15: "'the book' … give me informative names as to what they do"):
                  the dealers' hedging through the day — amplifying or absorbing, as the figure beside it says */
-              <span className="text-[12px] font-semibold text-textPrimary sm:whitespace-nowrap min-w-0" data-through-part-word title={kindTitle}>
+              <span className="text-t12 font-semibold text-textPrimary sm:whitespace-nowrap min-w-0" data-through-part-word title={kindTitle}>
                 {kindWord}
               </span>
             ) : (
-              <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">The book through the day</h3>
+              <h3 className="text-t16 font-semibold leading-tight text-textPrimary">The book through the day</h3>
             )}
             {!part && scope}
           </div>
-          {!part && <p className="mt-0.5 text-[11px] text-textMuted">The book’s net gamma through the session, spot faint beside it</p>}
+          {!part && <p className="mt-0.5 text-t11 text-textMuted">The book’s net gamma through the session, spot faint beside it</p>}
         </div>
             {part && (
           <>
@@ -520,7 +520,7 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
             {last && <PartFact label="Line changed sign" title={`How many times through the session the line${scoped ? '' : ' (every expiry)'} flipped between absorbing and amplifying`}>{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</PartFact>}
             <button
               type="button"
-              className="inline-flex items-baseline gap-1 font-mono text-[11px] uppercase tracking-wider text-textMuted hover:text-textPrimary underline-offset-2 hover:underline"
+              className="inline-flex items-baseline gap-1 font-mono text-t11 uppercase tracking-wider text-textMuted hover:text-textPrimary underline-offset-2 hover:underline"
               aria-expanded={showDetails}
               onClick={() => setShowDetails(v => !v)}
               data-through-details-toggle
@@ -554,24 +554,24 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
         {!part && last && (
           <dl className="grid grid-cols-3 gap-x-6">
             <div>
-              <dt className="text-[11px] text-textMuted">Net now</dt>
-              <dd className="mt-0.5 font-mono text-[14px] tnum whitespace-nowrap" style={{ color: last.net >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-net={Math.round(last.net)}>
+              <dt className="text-t11 text-textMuted">Net now</dt>
+              <dd className="mt-0.5 font-mono text-t14 tnum whitespace-nowrap" style={{ color: last.net >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-net={Math.round(last.net)}>
                 {last.net > 0 ? '+' : ''}
                 {fmtUsd(last.net)} · {last.net >= 0 ? 'absorbs' : 'amplifies'}
               </dd>
             </div>
             <div>
-              <dt className="text-[11px] text-textMuted">Net changed sign</dt>
-              <dd className="mt-0.5 font-mono text-[14px] tnum text-textPrimary whitespace-nowrap">{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</dd>
+              <dt className="text-t11 text-textMuted">Net changed sign</dt>
+              <dd className="mt-0.5 font-mono text-t14 tnum text-textPrimary whitespace-nowrap">{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</dd>
             </div>
             <div>
-              <dt className="text-[11px] text-textMuted">Books kept</dt>
-              <dd className="mt-0.5 font-mono text-[14px] tnum text-textPrimary whitespace-nowrap">{minutes.length} {minutes.length === 1 ? 'minute' : 'minutes'}</dd>
+              <dt className="text-t11 text-textMuted">Books kept</dt>
+              <dd className="mt-0.5 font-mono text-t14 tnum text-textPrimary whitespace-nowrap">{minutes.length} {minutes.length === 1 ? 'minute' : 'minutes'}</dd>
             </div>
           </dl>
         )}
         {!part && !last && (
-          <p className="font-mono text-[12px] text-textMuted">The hedging path is not in yet.</p>
+          <p className="font-mono text-t12 text-textMuted">The hedging path is not in yet.</p>
         )}
       </div>
       <div className={part ? 'flex-1 min-h-0 flex flex-col border-t border-borderSubtle/60' : 'border-t border-borderSubtle/60'}>
@@ -587,14 +587,14 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
               siblings and never clip */}
           <div ref={hostRef} className={part ? 'absolute inset-0 overflow-hidden rounded-b-[5px]' : 'absolute inset-0'} data-through-chart />
           {minutes.length === 0 && (
-            <p className="absolute inset-0 flex items-center justify-center px-6 text-center font-mono text-[11px] text-textMuted" data-through-empty>
+            <p className="absolute inset-0 flex items-center justify-center px-6 text-center font-mono text-t11 text-textMuted" data-through-empty>
               No hedging path for {ticker} on this feed.
             </p>
           )}
           {hm && hover && (
             /* Compare's glass, beside the point it reads (components/gex/besideDot.ts) */
             <div
-              className="pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-[11px] text-textSecondary"
+              className="pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 text-textSecondary"
               style={{ ...besideDot(hover.x, hover.y, hover.x > plotW / 2), background: 'rgba(8,8,10,0.88)', backdropFilter: 'blur(3px)' }}
               data-theme="dark"
               data-chart-glass
@@ -610,7 +610,7 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
           )}
           {ahead && !hover && (
             <div
-              className="pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-[11px] text-textSecondary"
+              className="pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 text-textSecondary"
               style={{ ...besideDot(ahead.x, ahead.y, ahead.x > plotW / 2), background: 'rgba(8,8,10,0.88)', backdropFilter: 'blur(3px)' }}
               data-theme="dark"
               data-chart-glass

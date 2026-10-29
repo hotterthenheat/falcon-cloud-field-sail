@@ -97,7 +97,7 @@ const phoneRow = (r: BookContract) => (
         <span className="font-bold">{r.ticker}</span>
         <span className="font-bold tnum">{r.strike}</span>
         <span className={r.right === 'C' ? 'text-bull' : 'text-bear'}>{r.right === 'C' ? 'call' : 'put'}</span>
-        <span className="text-[11px] text-textSecondary tnum">{r.expiry.slice(0, 5)}</span>
+        <span className="text-t11 text-textSecondary tnum">{r.expiry.slice(0, 5)}</span>
       </>
     }
     aside={`${r.dte}d`}
@@ -364,7 +364,7 @@ const Footprints = () => {
            times its size. */
         render: r => {
           /* a row still on the count before says whose day it is, in plain ink — never ranked with the rest */
-          const lag = oiLags(r, cover) && r.oiDay ? <span className="mr-1 text-[10px] text-textMuted">{shortDay(r.oiDay)}</span> : notABet(r) ? <span className="mr-1 text-[10px] text-warn" title={`${notABetHint(r)} — not ranked, and out of the totals above`}>{notABetWord(r) === 'floor package' ? 'pkg' : notABetWord(r) === 'a cross' ? 'cross' : 'legs'}</span> : null;
+          const lag = oiLags(r, cover) && r.oiDay ? <span className="mr-1 text-t10 text-textMuted">{shortDay(r.oiDay)}</span> : notABet(r) ? <span className="mr-1 text-t10 text-warn" title={`${notABetHint(r)} — not ranked, and out of the totals above`}>{notABetWord(r) === 'floor package' ? 'pkg' : notABetWord(r) === 'a cross' ? 'cross' : 'legs'}</span> : null;
           if (r.deltaOI === 0) return <span className="text-textSecondary" title={oiRowTitle(r)}>{lag}—</span>;
           const a = Math.abs(r.deltaOI);
           const ink = lag || notABet(r) ? 'text-textPrimary' : a >= marks.doi.top ? 'text-supreme font-bold' : a >= marks.doi.bar ? `font-bold ${r.deltaOI > 0 ? 'text-bull dir-up' : 'text-bear dir-down'}` : 'text-textPrimary';
@@ -552,7 +552,7 @@ const Footprints = () => {
           <>
             <SavedCutsList store={FOOT_CUTS} query="" onOpen={addr.open} noun="cut" testId="footprints" onSay={cuts.say} open={cuts.open} />
             {cuts.said && (
-              <p role="status" className="mb-2 font-mono text-[11px] text-textSecondary">
+              <p role="status" className="mb-2 font-mono text-t11 text-textSecondary">
                 {cuts.said}
               </p>
             )}

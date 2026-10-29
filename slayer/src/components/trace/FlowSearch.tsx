@@ -185,7 +185,7 @@ type Suggestion =
 /* One wash under the pointer whatever the row's side (2026-10-13): the call/put WORD carries the side; a green or red
    wash read as a direction */
 const WASH = { plain: 'bg-ink/[0.06]', C: 'bg-ink/[0.06]', P: 'bg-ink/[0.06]' } as const;
-const HEADING = 'px-2 pt-1.5 pb-1 font-mono text-[11px] uppercase tracking-widest text-textMuted';
+const HEADING = 'px-2 pt-1.5 pb-1 font-mono text-t11 uppercase tracking-widest text-textMuted';
 
 /** A DOOR at the foot of the menu (the 0DTE desk, 2026-09-03): the search
     can only offer what its page carries, so its last row sends the typed
@@ -423,20 +423,20 @@ const FlowSearch = ({
         </span>
         {s.kind === 'contract' ? (
           /* written the way the tape under it writes a contract: the name, the strike, the side in its ink */
-          <span className="min-w-0 truncate font-mono text-[11px] leading-snug">
+          <span className="min-w-0 truncate font-mono text-t11 leading-snug">
             <span className={`font-semibold ${on ? 'text-silver' : 'text-textPrimary'}`}>
               {s.ticker} {s.strike}
             </span>{' '}
             <span className={s.right === 'C' ? 'text-bull' : 'text-bear'}>{s.right === 'C' ? 'call' : 'put'}</span>
           </span>
         ) : (
-          <span className={`min-w-0 truncate font-mono text-[11px] leading-snug ${quiet ? 'text-textSecondary' : `font-semibold ${on ? 'text-silver' : 'text-textPrimary'}`}`}>{s.primary}</span>
+          <span className={`min-w-0 truncate font-mono text-t11 leading-snug ${quiet ? 'text-textSecondary' : `font-semibold ${on ? 'text-silver' : 'text-textPrimary'}`}`}>{s.primary}</span>
         )}
         {!quiet && (
           <span className="ml-auto shrink-0 flex items-center gap-2 pl-2 font-mono tnum">
-            {s.count && <span className="text-[11px] text-textMuted whitespace-nowrap">{s.count}</span>}
+            {s.count && <span className="text-t11 text-textMuted whitespace-nowrap">{s.count}</span>}
             {/* one column of money down the card — the figures line up whatever stands before them */}
-            <span className={`w-[50px] text-right text-[11px] ${lit ? 'text-textPrimary' : 'text-textSecondary'}`}>{s.money}</span>
+            <span className={`w-[50px] text-right text-t11 ${lit ? 'text-textPrimary' : 'text-textSecondary'}`}>{s.money}</span>
             <span className="w-3 h-3 flex items-center justify-center">
               {on ? <Check className="w-3 h-3 text-silver" /> : s.kind === 'ticker' && !tickersOnly ? <ChevronRight className="w-3 h-3 text-textMuted" /> : null}
             </span>
@@ -489,7 +489,7 @@ const FlowSearch = ({
             role="combobox"
             aria-expanded={open}
             aria-autocomplete="list"
-            className={`${compact ? 'w-[68px]' : 'w-[132px]'} bg-transparent text-[11px] font-semibold uppercase tracking-wider text-textPrimary placeholder:text-textMuted placeholder:font-normal placeholder:normal-case placeholder:tracking-normal focus:outline-none`}
+            className={`${compact ? 'w-[68px]' : 'w-[132px]'} bg-transparent text-t11 font-semibold uppercase tracking-wider text-textPrimary placeholder:text-textMuted placeholder:font-normal placeholder:normal-case placeholder:tracking-normal focus:outline-none`}
           />
           {active && (
             <button
@@ -524,7 +524,7 @@ const FlowSearch = ({
           data-flow-search-card={scope ?? 'all'}
         >
           {nothing && !doorRow ? (
-            <div className="px-2.5 py-4 text-center font-mono text-[11px] text-textMuted" data-flow-search-none>
+            <div className="px-2.5 py-4 text-center font-mono text-t11 text-textMuted" data-flow-search-none>
               {noneWords}
             </div>
           ) : scope ? (
@@ -554,7 +554,7 @@ const FlowSearch = ({
                 </>
               )}
               {nothing && doorRow && (
-                <div className="px-2 pt-2 pb-1.5 font-mono text-[11px] text-textMuted" data-flow-search-none>
+                <div className="px-2 pt-2 pb-1.5 font-mono text-t11 text-textMuted" data-flow-search-none>
                   {noneWords}
                 </div>
               )}

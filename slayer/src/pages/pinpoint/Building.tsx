@@ -275,7 +275,7 @@ const Building = () => {
           <AgendaSwitch />
           <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the bar, the chip and the line mean" testId="build-guide" />
         </div>
-        <p className="mt-0.5 text-[11px] text-textMuted lg:whitespace-nowrap lg:truncate" title={first.overnight ? `The overnight open-interest count · ${oiWhen(first.oiDates).long}` : undefined}>
+        <p className="mt-0.5 text-t11 text-textMuted lg:whitespace-nowrap lg:truncate" title={first.overnight ? `The overnight open-interest count · ${oiWhen(first.oiDates).long}` : undefined}>
           {first.overnight
             ? `The overnight open-interest count, contract by contract · the hedging ${oiWhen(first.oiDates).long} added or took off, each contract valued at the same pricing as the wall now (the live book's own price and minute)${oiWhen(first.oiDates).pending ? ` · ${oiWhen(first.oiDates).pending}` : ''} · every strike, the steady ones too — Show · What moved folds them away`
             : `${clock.inSession ? "Today's trading" : 'The last session'}, strike by strike · estimated from the day's volume until the overnight open-interest count loads · every strike, the steady ones too — Show · What moved folds them away`}
@@ -313,7 +313,7 @@ const Building = () => {
                 </>
               )}
               {p.expiry !== levelsForName(t) && (
-            <span title={OFF_SCOPE_TITLE} className="inline-flex items-center h-6 px-1.5 rounded border border-borderSubtle font-mono text-[9px] uppercase tracking-widest text-textMuted cursor-help" data-off-scope>
+            <span title={OFF_SCOPE_TITLE} className="inline-flex items-center h-6 px-1.5 rounded border border-borderSubtle font-mono text-t9 uppercase tracking-widest text-textMuted cursor-help" data-off-scope>
               own expiry
             </span>
           )}

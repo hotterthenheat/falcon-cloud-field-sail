@@ -125,7 +125,7 @@ function inkLine(pts: { time: UTCTimestamp; value: number }[], line: 'calls' | '
   const down = full ? k.puts : k.putsDim;
   return pts.map(p => ({ ...p, color: line === 'calls' ? (p.value >= 0 ? up : down) : p.value > 0 ? down : up }));
 }
-const TIP_VOL_BASE = 'ml-auto font-mono text-[11px] tnum';
+const TIP_VOL_BASE = 'ml-auto font-mono text-t11 tnum';
 
 /** Today's bars for the pane's reference name — falls back to the last 240
     when the session is young, so the pane never opens empty. */
@@ -695,7 +695,7 @@ const NetFlowPane = ({
             <CompanyLogo ticker={ticker} size={16} />
             {/* With a search in the head, the field already holds the name —
                 the mark alone stands beside it; the label would say it twice. */}
-            {!onTicker && <span className="font-mono text-[11px] font-bold text-textPrimary">{ticker}</span>}
+            {!onTicker && <span className="font-mono text-t11 font-bold text-textPrimary">{ticker}</span>}
           </span>
         ) : (
           <SegPick seg={seg} onSeg={onSeg} allowed={segments} />
@@ -720,7 +720,7 @@ const NetFlowPane = ({
         {cutCards && (live != null || (!ticker && !seg.startsWith('sector:'))) && <DropdownSelect label="Moneyness" value={mny} options={MONEY_OPTIONS} onChange={onMny} title={sharedNote ? `Which strikes against the stock — ${sharedNote}` : 'Which strikes against the stock'} testId="pane-money" />}
         {cutCards && live != null && ticker && onTenor && <DropdownSelect label="Tenor" value={tenor} options={CLOCK_OPTIONS} onChange={onTenor} title={sharedNote ? `How far out the contracts run — ${sharedNote}` : 'How far out the contracts run'} testId="pane-clock" />}
         {/* the figures wrap on a phone rather than run off the pane (the device sweep, 2026-10-18: the volume cut at 360) */}
-        <span className="ml-auto min-w-0 flex items-center justify-end gap-2.5 flex-wrap font-mono text-[11px] tnum [&>span]:whitespace-nowrap">
+        <span className="ml-auto min-w-0 flex items-center justify-end gap-2.5 flex-wrap font-mono text-t11 tnum [&>span]:whitespace-nowrap">
           {/* on a cut (Everything, Stocks only…) the white line is the reference name's price, not the pane's subject */}
           {/* AN INDEX-ONLY PANE SAYS ITS LINE IS NOT AN INDEX (audit round 4: "Index options only" over a line labelled "SPY
               price"): the feed's minutes carry SPY's price on every cut, so the line is SPY's, said as a reference */}
@@ -732,40 +732,40 @@ const NetFlowPane = ({
           {/* WHOSE MONEY (audit round 9: "SPY … net calls −$2.0M, net puts −$5.8M" read as SPY's own 0DTE flow — Compare showed
               SPY's −$3.7M / −$0.1M): on a cut the figures are every name in the cut, said beside them */}
           {!ticker && (
-            <span className="text-textSecondary uppercase text-[11px] tracking-wider" data-pane-scope title="The net call and put premium below are every name in this cut — not the reference name's own; the price line is only a clock to read them against">
+            <span className="text-textSecondary uppercase text-t11 tracking-wider" data-pane-scope title="The net call and put premium below are every name in this cut — not the reference name's own; the price line is only a clock to read them against">
               {seg === 'all' ? "all names'" : "the cut's names'"} {dteMax <= 1 ? '0DTE flow' : 'flow'}
             </span>
           )}
           {/* a picked name on the same-day desk draws its money across EVERY expiry — the vendor has no same-day-only
               series per name per minute (the ship pass, 2026-10-22); the cut panes are exact, this one says what it is */}
           {ticker && uncutNote && live == null && (
-            <span className="text-warn uppercase text-[11px] tracking-wider" title={`This pane is the name's money across ${uncutNote}`} data-pane-uncut>
+            <span className="text-warn uppercase text-t11 tracking-wider" title={`This pane is the name's money across ${uncutNote}`} data-pane-uncut>
               every expiry · not cut
             </span>
           )}
           {ticker && dteMax <= 1 && live == null && (
-            <span className="text-textMuted uppercase text-[11px] tracking-wider" title="The feed has no same-day-only series for one name minute by minute — this pane is the name's money across every expiry, from the bell">
+            <span className="text-textMuted uppercase text-t11 tracking-wider" title="The feed has no same-day-only series for one name minute by minute — this pane is the name's money across every expiry, from the bell">
               every expiry
             </span>
           )}
           <span title={`${ticker ? "The minute ticks for the name (/stock/{t}/net-prem-ticks), 09:30 to the close" : "The net flow by expiry (/net-flow/expiry)"}. ${VENDOR_TOTAL_NOTE}`}>
             <span aria-hidden data-pane-legend="calls" className="inline-block align-middle w-3.5 mr-1 border-t-2" style={{ borderColor: inksNow.calls }} title="The solid line — net call premium, running from the bell" />
-            <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net calls</span>
+            <span className="text-textMuted uppercase text-t11 tracking-wider mr-1">net calls</span>
             <span className={ncp >= 0 ? 'text-bull' : 'text-bear'}>{tail ? fmtUsd(ncp) : '—'}</span>
           </span>
           <span title={VENDOR_TOTAL_NOTE}>
             <span aria-hidden data-pane-legend="puts" className="inline-block align-middle w-3.5 mr-1 border-t-2 border-dashed" style={{ borderColor: inksNow.puts }} title="The dashed line — net put premium, running from the bell" />
-            <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net puts</span>
+            <span className="text-textMuted uppercase text-t11 tracking-wider mr-1">net puts</span>
             <span className={npp >= 0 ? 'text-bear' : 'text-bull'}>{tail ? fmtUsd(npp) : '—'}</span>
           </span>
           {/* THE NET, SAID (audit round 5): the figure Compare's headline and Intervals print for the same name and window */}
           {ticker && tail && (
             <span title="Net calls less net puts, 09:30 to the close — the feed's minute ticks; the same figure as Compare's net and Intervals' lean">
-              <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net</span>
+              <span className="text-textMuted uppercase text-t11 tracking-wider mr-1">net</span>
               <span className={ncp - npp >= 0 ? 'text-bull' : 'text-bear'}>{ncp - npp < 0 ? '−' : '+'}{fmtUsd(Math.abs(ncp - npp))}</span>
               {/* THE WINDOW UNDER THE FIGURE (audit round 6: BAC +$19.8M here beside +$19.7M on the board, the windows said only
                   on a hover) */}
-              <span className="text-textSecondary text-[11px] ml-1" data-pane-window>· {windowWords}{isLiveDay() ? '' : `, ${shortDay(tapeSessionIso())}`}</span>
+              <span className="text-textSecondary text-t11 ml-1" data-pane-window>· {windowWords}{isLiveDay() ? '' : `, ${shortDay(tapeSessionIso())}`}</span>
             </span>
           )}
           {headVol != null && tail && <span className="text-textSecondary">{headVol.toLocaleString('en-US')} vol</span>}
@@ -785,7 +785,7 @@ const NetFlowPane = ({
         <div ref={containerRef} className="absolute inset-0" />
         {emptyNote && (
           <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-            <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted" data-pane-empty>{emptyNote}</span>
+            <span className="font-mono text-t11 uppercase tracking-widest text-textMuted" data-pane-empty>{emptyNote}</span>
           </div>
         )}
         {/* The glide readout — pinned top-left past the price axis, glass
@@ -798,29 +798,29 @@ const NetFlowPane = ({
           style={{ visibility: 'hidden' }}
           className="pointer-events-none absolute top-2 left-14 z-20 w-[168px] opacity-0 transition-opacity duration-100 border border-borderSubtle bg-panel/60 backdrop-blur-md rounded-md shadow-lg shadow-black/30 px-2.5 py-2"
         >
-          <span ref={tipTimeRef} className="block font-mono text-[11px] uppercase tracking-widest text-textMuted mb-1">
+          <span ref={tipTimeRef} className="block font-mono text-t11 uppercase tracking-widest text-textMuted mb-1">
             --:--
           </span>
           <span className="flex items-center gap-1.5 py-0.5">
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: inksNow.spot }} />
-            <span ref={tipSpotLabelRef} className="font-mono text-[11px] uppercase tracking-wider text-textMuted">
+            <span ref={tipSpotLabelRef} className="font-mono text-t11 uppercase tracking-wider text-textMuted">
               {ref}
             </span>
-            <span ref={tipSpotRef} className="ml-auto font-mono text-[11px] tnum text-textPrimary">
+            <span ref={tipSpotRef} className="ml-auto font-mono text-t11 tnum text-textPrimary">
               —
             </span>
           </span>
           <span className="flex items-center gap-1.5 py-0.5">
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: inksNow.calls }} />
-            <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted">Net calls</span>
-            <span ref={tipCallRef} className="ml-auto font-mono text-[11px] tnum text-bull">
+            <span className="font-mono text-t11 uppercase tracking-wider text-textMuted">Net calls</span>
+            <span ref={tipCallRef} className="ml-auto font-mono text-t11 tnum text-bull">
               —
             </span>
           </span>
           <span className="flex items-center gap-1.5 py-0.5">
             <span className="w-1.5 h-1.5 rounded-full shrink-0 cvd-hollow" style={{ background: inksNow.puts, color: inksNow.puts }} />
-            <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted">Net puts</span>
-            <span ref={tipPutRef} className="ml-auto font-mono text-[11px] tnum text-bear">
+            <span className="font-mono text-t11 uppercase tracking-wider text-textMuted">Net puts</span>
+            <span ref={tipPutRef} className="ml-auto font-mono text-t11 tnum text-bear">
               —
             </span>
           </span>
@@ -828,7 +828,7 @@ const NetFlowPane = ({
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: inksNow.volLoud }} />
             {/* A CUT'S BAR IS THE CHANGE IN NET VOLUME (audit round 9, minor 4): the net-flow and sector-tide minutes
                 carry a running net volume, not contracts traded — the bar is |Δ net volume| that minute, named so */}
-            <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted" title={ticker ? "Contracts traded that minute — the name's calls and puts" : "The change in the feed's running net volume that minute (calls less puts), sign dropped — not contracts traded"}>{ticker ? 'Volume' : 'Net vol chg'}</span>
+            <span className="font-mono text-t11 uppercase tracking-wider text-textMuted" title={ticker ? "Contracts traded that minute — the name's calls and puts" : "The change in the feed's running net volume that minute (calls less puts), sign dropped — not contracts traded"}>{ticker ? 'Volume' : 'Net vol chg'}</span>
             <span ref={tipVolRef} className={`${TIP_VOL_BASE} text-textSecondary`}>
               —
             </span>

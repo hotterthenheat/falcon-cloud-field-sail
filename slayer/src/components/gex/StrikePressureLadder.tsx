@@ -185,12 +185,12 @@ const findTails = (strikes: StrikeExposure[], spot: number, maxNet: number): Set
 const FlipRule = ({ price }: { price: number }) => (
   <span className="flex items-center gap-1.5 select-none" aria-label={`gamma flip ${price.toFixed(2)}`}>
     <span className="h-px flex-grow border-t border-dashed" style={{ borderColor: alpha(FLIP, 0.6) }} />
-    <span className="font-mono text-[9px] uppercase tracking-wider whitespace-nowrap" style={{ color: FLIP }}>
+    <span className="font-mono text-t9 uppercase tracking-wider whitespace-nowrap" style={{ color: FLIP }}>
       flip
     </span>
     {/* white ink on the flip's grey — 4.6:1 on black's flip, 7.6:1 on paper's (black ink was 4.1 and 2.6, 2026-09-16) */}
     <span
-      className="inline-flex items-center rounded-[3px] px-1.5 py-px font-mono text-[10px] font-bold tnum whitespace-nowrap"
+      className="inline-flex items-center rounded-[3px] px-1.5 py-px font-mono text-t10 font-bold tnum whitespace-nowrap"
       style={{ background: FLIP, color: '#ffffff' }}
     >
       {price.toFixed(2)}
@@ -437,8 +437,8 @@ const StrikePressureLadder = ({ data, strikeFormat = fmtStrikeDefault, fill = fa
   const cols = compact
     ? 'grid-cols-[52px_50px_minmax(160px,1fr)_68px]'
     : 'grid-cols-[56px_52px_minmax(260px,1fr)_76px_60px_60px_80px]';
-  const cell = 'font-mono text-[10px] tnum whitespace-nowrap';
-  const head = 'font-mono text-[9px] uppercase tracking-widest text-textSecondary whitespace-nowrap';
+  const cell = 'font-mono text-t10 tnum whitespace-nowrap';
+  const head = 'font-mono text-t9 uppercase tracking-widest text-textSecondary whitespace-nowrap';
   /* Row height as a NUMBER: in fill mode the rows share the list's height
      (the rules take their own), floored at 16px so the tail scrolls; the
      height glides between window sizes. No glide until the first real
@@ -455,7 +455,7 @@ const StrikePressureLadder = ({ data, strikeFormat = fmtStrikeDefault, fill = fa
           2026-08-22: "this should be explained at the top"). */}
       {/* One line at full width (Noah, 2026-08-22) — 9px, short meanings;
           the long form lives on the term explainers. */}
-      <div className="shrink-0 flex items-center gap-x-5 gap-y-1 flex-wrap px-3 py-1.5 border-b border-borderSubtle/60 font-mono text-[9px] select-none">
+      <div className="shrink-0 flex items-center gap-x-5 gap-y-1 flex-wrap px-3 py-1.5 border-b border-borderSubtle/60 font-mono text-t9 select-none">
         <LegendItem
           glyph={
             <span className="inline-flex items-center" aria-hidden="true">
@@ -606,8 +606,8 @@ const StrikePressureLadder = ({ data, strikeFormat = fmtStrikeDefault, fill = fa
                 {/* Strike, distance and the leg figures wear the PRIMARY ink at
                     11px (Noah, 2026-08-22: "really muted") — the numbers a
                     trader reads must never sit in the whisper register. */}
-                <span className="font-mono text-[11px] font-semibold tnum whitespace-nowrap text-textPrimary">{strikeFormat(row.strike)}</span>
-                <span className="font-mono text-[10px] tnum whitespace-nowrap text-right text-textPrimary">{fmtDist(distPct)}</span>
+                <span className="font-mono text-t11 font-semibold tnum whitespace-nowrap text-textPrimary">{strikeFormat(row.strike)}</span>
+                <span className="font-mono text-t10 tnum whitespace-nowrap text-right text-textPrimary">{fmtDist(distPct)}</span>
 
                 {/* THE LANE: the legs from the centre line, the leg's figure
                     riding each bar's end, and the spine contour drawn over it */}
@@ -625,13 +625,13 @@ const StrikePressureLadder = ({ data, strikeFormat = fmtStrikeDefault, fill = fa
                       <LegBar px={callEnd} strength={callStrength} side="call" />
                       {/* figures at the bar ends — axis labels on the bars themselves */}
                       <span
-                        className="absolute top-1/2 -translate-y-1/2 text-right font-mono text-[11px] font-medium tnum whitespace-nowrap text-textPrimary transition-[right] duration-700"
+                        className="absolute top-1/2 -translate-y-1/2 text-right font-mono text-t11 font-medium tnum whitespace-nowrap text-textPrimary transition-[right] duration-700"
                         style={{ right: `calc(50% + ${putEnd + 6}px)`, transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
                       >
                         {fmtUsd(Math.abs(row.gex.put))}
                       </span>
                       <span
-                        className="absolute top-1/2 -translate-y-1/2 font-mono text-[11px] font-medium tnum whitespace-nowrap text-textPrimary transition-[left] duration-700"
+                        className="absolute top-1/2 -translate-y-1/2 font-mono text-t11 font-medium tnum whitespace-nowrap text-textPrimary transition-[left] duration-700"
                         style={{ left: `calc(50% + ${callEnd + 6}px)`, transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
                       >
                         {fmtUsd(Math.abs(row.gex.call))}
@@ -650,7 +650,7 @@ const StrikePressureLadder = ({ data, strikeFormat = fmtStrikeDefault, fill = fa
                     <span className={`${cell} text-right text-textPrimary`}>{row.volume.toLocaleString()}</span>
                     <span className="flex items-center justify-end gap-1.5 min-w-0 overflow-hidden">
                       {roles.slice(0, 2).map((r, ri) => (
-                        <span key={r.label} className="font-mono text-[8px] font-bold uppercase tracking-wider whitespace-nowrap" style={{ color: r.color }}>
+                        <span key={r.label} className="font-mono text-t8 font-bold uppercase tracking-wider whitespace-nowrap" style={{ color: r.color }}>
                           {ri === 0 ? r.label : SHORT_ROLE[r.label] ?? r.label}
                         </span>
                       ))}
@@ -717,23 +717,23 @@ const StrikeCard = ({
   const sinceOpen = sinceOpenRead(openRatio?.get(row.strike));
   const leg = (label: string, amt: number, side: 'put' | 'call') => (
     <div className="flex items-center gap-2">
-      <span className="w-9 font-mono text-[9px] uppercase tracking-wider text-textSecondary">{label}</span>
+      <span className="w-9 font-mono text-t9 uppercase tracking-wider text-textSecondary">{label}</span>
       <span className="relative flex-1 h-[5px] rounded-full bg-ink/[0.06] overflow-hidden">
         <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${(Math.abs(amt) / maxLeg) * 100}%`, background: legGradient(side, Math.abs(amt) / maxLeg, mode) }} />
       </span>
-      <span className="w-16 text-right font-mono text-[11px] font-semibold tnum text-textPrimary">{fmtUsd(Math.abs(amt))}</span>
+      <span className="w-16 text-right font-mono text-t11 font-semibold tnum text-textPrimary">{fmtUsd(Math.abs(amt))}</span>
     </div>
   );
   return (
     <div className="flex flex-col gap-2 min-w-[236px]">
       <div className="flex items-baseline gap-2">
-        <span className="font-mono text-[13px] font-bold tnum text-textPrimary">
+        <span className="font-mono text-t13 font-bold tnum text-textPrimary">
           {ticker} {strikeFormat(row.strike)}
         </span>
-        <span className={`font-mono text-[10px] tnum ${distPct > 0 ? 'text-textSecondary' : 'text-textSecondary'}`}>{fmtDist(distPct)} from spot</span>
+        <span className={`font-mono text-t10 tnum ${distPct > 0 ? 'text-textSecondary' : 'text-textSecondary'}`}>{fmtDist(distPct)} from spot</span>
         <span className="ml-auto inline-flex items-center gap-1.5">
           {roles.map(r => (
-            <span key={r.label} className="font-mono text-[8px] font-bold uppercase tracking-wider" style={{ color: r.color }}>
+            <span key={r.label} className="font-mono text-t8 font-bold uppercase tracking-wider" style={{ color: r.color }}>
               {r.label}
             </span>
           ))}
@@ -745,25 +745,25 @@ const StrikeCard = ({
       </div>
       <div className="grid grid-cols-3 gap-x-3 pt-1.5 border-t border-borderSubtle/60">
         <span className="flex flex-col">
-          <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted">Net</span>
-          <span className="font-mono text-[11px] font-semibold tnum" style={{ color: v < 0 ? inks.call : v > 0 ? inks.put : undefined }}>
+          <span className="font-mono text-t8 uppercase tracking-widest text-textMuted">Net</span>
+          <span className="font-mono text-t11 font-semibold tnum" style={{ color: v < 0 ? inks.call : v > 0 ? inks.put : undefined }}>
             {fmtUsd(v)}
           </span>
         </span>
         <span className="flex flex-col">
-          <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted">Open int</span>
-          <span className="font-mono text-[11px] tnum text-textPrimary">{row.oi.toLocaleString()}</span>
+          <span className="font-mono text-t8 uppercase tracking-widest text-textMuted">Open int</span>
+          <span className="font-mono text-t11 tnum text-textPrimary">{row.oi.toLocaleString()}</span>
         </span>
         <span className="flex flex-col">
-          <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted">Volume</span>
-          <span className="font-mono text-[11px] tnum text-textPrimary">{row.volume.toLocaleString()}</span>
+          <span className="font-mono text-t8 uppercase tracking-widest text-textMuted">Volume</span>
+          <span className="font-mono text-t11 tnum text-textPrimary">{row.volume.toLocaleString()}</span>
         </span>
       </div>
       {sinceOpen && (
         <div className="flex items-center gap-2 pt-1.5 border-t border-borderSubtle/60">
-          <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted">Since open</span>
-          {sinceOpen.figure && <span className="font-mono text-[11px] tnum text-textPrimary">{sinceOpen.figure}</span>}
-          <span className="font-mono text-[9px] text-textSecondary">{sinceOpen.text}</span>
+          <span className="font-mono text-t8 uppercase tracking-widest text-textMuted">Since open</span>
+          {sinceOpen.figure && <span className="font-mono text-t11 tnum text-textPrimary">{sinceOpen.figure}</span>}
+          <span className="font-mono text-t9 text-textSecondary">{sinceOpen.text}</span>
         </div>
       )}
     </div>

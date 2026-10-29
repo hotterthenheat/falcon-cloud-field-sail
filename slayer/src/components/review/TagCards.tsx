@@ -34,17 +34,17 @@ const ListEditor = ({ list, title, placeholder, words }: { list: keyof TagLists;
   const field = useRef<HTMLInputElement | null>(null);
   return (
     <div className="min-w-0 flex-1" data-tag-list={list}>
-      <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted">{title}</div>
+      <div className="font-mono text-t9 uppercase tracking-widest text-textMuted">{title}</div>
       <div className="mt-1.5 flex flex-col">
         {words.map(w => (
-          <div key={w} className="group flex items-center gap-2 h-7 border-b border-borderSubtle/60 text-[12px] text-textPrimary">
+          <div key={w} className="group flex items-center gap-2 h-7 border-b border-borderSubtle/60 text-t12 text-textPrimary">
             <span className="min-w-0 flex-1 truncate">{w}</span>
             <button type="button" onClick={() => removeTag(list, w)} title={`Take “${w}” off the list — trades that carry it keep it`} aria-label={`Take ${w} off the list`} className="inline-flex items-center justify-center w-5 h-5 rounded text-textMuted hover:text-bear hover:bg-ink/[0.06] transition-colors" data-tag-remove={w}>
               <X className="w-3 h-3" />
             </button>
           </div>
         ))}
-        {words.length === 0 && <div className="h-7 flex items-center text-[11px] text-textMuted">Nothing on this list yet</div>}
+        {words.length === 0 && <div className="h-7 flex items-center text-t11 text-textMuted">Nothing on this list yet</div>}
       </div>
       <form
         className="mt-2 flex items-center gap-1.5"
@@ -55,7 +55,7 @@ const ListEditor = ({ list, title, placeholder, words }: { list: keyof TagLists;
           field.current?.focus();
         }}
       >
-        <input ref={field} value={draft} onChange={e => setDraft(e.target.value)} maxLength={40} placeholder={placeholder} aria-label={placeholder} className="h-7 min-w-0 flex-1 px-2 rounded-md border border-borderSubtle bg-panel text-[12px] text-textPrimary placeholder:text-textMuted outline-none focus:border-silver/60 transition-colors" data-tag-add={list} />
+        <input ref={field} value={draft} onChange={e => setDraft(e.target.value)} maxLength={40} placeholder={placeholder} aria-label={placeholder} className="h-7 min-w-0 flex-1 px-2 rounded-md border border-borderSubtle bg-panel text-t12 text-textPrimary placeholder:text-textMuted outline-none focus:border-silver/60 transition-colors" data-tag-add={list} />
         <button type="submit" disabled={!draft.trim()} title="Add it to the list" aria-label="Add it to the list" className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-30 transition-colors">
           <Plus className="w-3.5 h-3.5" />
         </button>
@@ -70,14 +70,14 @@ export const TagListsDoor = () => {
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
-        <button type="button" title="Your own lists of setups and mistakes — add to them, take from them" className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-dashed border-borderMuted font-mono text-[10px] text-textMuted hover:text-textPrimary hover:border-textSecondary data-[state=open]:text-silver data-[state=open]:border-silver/50 transition-colors" data-tag-lists-door>
+        <button type="button" title="Your own lists of setups and mistakes — add to them, take from them" className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-dashed border-borderMuted font-mono text-t10 text-textMuted hover:text-textPrimary hover:border-textSecondary data-[state=open]:text-silver data-[state=open]:border-silver/50 transition-colors" data-tag-lists-door>
           <ListPlus className="w-3 h-3" /> Your lists
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="end" sideOffset={6} collisionPadding={12} className="z-[95] w-[min(520px,calc(100vw-24px))] rounded-md border border-borderMuted bg-panel p-4 shadow-[0_14px_40px_rgba(0,0,0,0.45)] outline-none animate-soft-in" data-tag-lists-card>
-          <div className="text-[13px] font-semibold text-textPrimary">Your lists</div>
-          <p className="mt-0.5 text-[11px] text-textMuted">The words you tag a trade with. They are yours — name what you actually trade, and what you actually get wrong.</p>
+          <div className="text-t13 font-semibold text-textPrimary">Your lists</div>
+          <p className="mt-0.5 text-t11 text-textMuted">The words you tag a trade with. They are yours — name what you actually trade, and what you actually get wrong.</p>
           <div className="mt-3 flex flex-col sm:flex-row gap-5">
             <ListEditor list="setups" title="Setups" placeholder="Add a setup…" words={tags.setups} />
             <ListEditor list="mistakes" title="Mistakes" placeholder="Add a mistake…" words={tags.mistakes} />

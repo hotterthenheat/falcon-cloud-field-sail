@@ -49,8 +49,15 @@ const STALE = /Failed to fetch dynamically imported module|error loading dynamic
 export const isLoadFault = (error: Error): boolean => STALE.test(`${error.name} ${error.message}`);
 
 const RELOADED_AT = 'slayer_fault_reloaded_at';
-/** Reload once for a stale build. False when it already did so moments ago — then the reader is asked, not looped. */
+let lastHidden = 0;
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') lastHidden = Date.now();
+  });
+}
+/** Reload once for a stale build. A tab switch is not a stale build, and it does not reload the page. */
 export function reloadOnceForStaleBuild(): boolean {
+  if (typeof document !== 'undefined' && (document.visibilityState === 'hidden' || Date.now() - lastHidden < 8000)) return false;
   try {
     const last = Number(sessionStorage.getItem(RELOADED_AT) ?? 0);
     if (Date.now() - last < 30_000) return false;
@@ -92,15 +99,15 @@ export const FaultView = ({ error, scope, back }: FaultViewProps) => {
     <div role="alert" className="contents" data-fault={offline ? 'offline' : load ? 'stale' : 'error'} data-fault-scope={scope}>
       <span className="flex items-center gap-3">
         <SlayerMark size={32} bare state={load && !offline ? 'loading' : 'offline'} label="" />
-        <span className={`font-mono text-[10px] font-bold uppercase tracking-widest ${load ? 'text-textMuted' : 'text-warn'}`}>{load ? 'One moment' : 'A fault'}</span>
+        <span className={`font-mono text-t10 font-bold uppercase tracking-widest ${load ? 'text-textMuted' : 'text-warn'}`}>{load ? 'One moment' : 'A fault'}</span>
       </span>
-      <h1 className="text-[20px] font-semibold tracking-tight text-textPrimary leading-tight">{head}</h1>
-      <p className="max-w-[560px] text-[13.5px] text-textSecondary leading-relaxed">{says}</p>
+      <h1 className="text-t20 font-semibold tracking-tight text-textPrimary leading-tight">{head}</h1>
+      <p className="max-w-[560px] text-t135 text-textSecondary leading-relaxed">{says}</p>
       <div className="mt-2 flex items-center justify-center gap-2.5 flex-wrap">
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-textPrimary text-canvas text-[12.5px] font-medium"
+          className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-textPrimary text-canvas text-t125 font-medium"
           data-fault-reload
         >
           <RotateCcw className="w-3.5 h-3.5" aria-hidden /> {offline ? 'Try again' : 'Reload'}
@@ -108,13 +115,13 @@ export const FaultView = ({ error, scope, back }: FaultViewProps) => {
         {back}
       </div>
       {!load && (
-        <p className="mt-2 max-w-[560px] text-[12px] text-textMuted leading-relaxed">
+        <p className="mt-2 max-w-[560px] text-t12 text-textMuted leading-relaxed">
           If it keeps happening, send this line to{' '}
           <a href={`mailto:info@slayerterminal.com?subject=${encodeURIComponent('A fault in the terminal')}&body=${encodeURIComponent(`${error.name}: ${error.message}\n${typeof location !== 'undefined' ? location.href : ''}`)}`} className="text-textSecondary underline decoration-borderMuted underline-offset-4 hover:text-textPrimary">
             info@slayerterminal.com
           </a>
           :
-          <code className="mt-1.5 block font-mono text-[11px] text-textSecondary break-all select-all" data-fault-line>
+          <code className="mt-1.5 block font-mono text-t11 text-textSecondary break-all select-all" data-fault-line>
             {error.name}: {error.message}
           </code>
         </p>
@@ -152,7 +159,7 @@ export class AppBoundary extends Component<{ children: ReactNode }, { error: Err
         error={this.state.error}
         scope="app"
         back={
-          <a href="/" className="inline-flex items-center h-9 px-4 rounded-md border border-borderMuted text-[12.5px] font-medium text-textPrimary hover:bg-ink/[0.05]">
+          <a href="/" className="inline-flex items-center h-9 px-4 rounded-md border border-borderMuted text-t125 font-medium text-textPrimary hover:bg-ink/[0.05]">
             Front page
           </a>
         }

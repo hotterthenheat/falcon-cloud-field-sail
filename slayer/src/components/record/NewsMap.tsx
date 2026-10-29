@@ -453,7 +453,7 @@ const HEAT_RUNGS: [string, number][] = [
 ];
 export const HeatLegend = ({ className = '' }: { className?: string }) => (
   <span
-    className={`inline-flex items-center gap-3 font-mono text-[10px] text-textSecondary whitespace-nowrap ${className}`}
+    className={`inline-flex items-center gap-3 font-mono text-t10 text-textSecondary whitespace-nowrap ${className}`}
     title="The land warms where the day's news lands — every story's zones, summed over what the cards leave. Not where it was written."
     data-heat-legend
   >
@@ -775,7 +775,7 @@ const SvgNewsMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reac
         <button
           type="button"
           onClick={() => glideTo(homeView)}
-          className="absolute right-2 top-2 inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-borderSubtle bg-chip/90 hover:border-borderMuted font-mono text-[9px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors"
+          className="absolute right-2 top-2 inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-borderSubtle bg-chip/90 hover:border-borderMuted font-mono text-t9 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors"
           title="Back to where the news is"
           data-news-map-fit
         >

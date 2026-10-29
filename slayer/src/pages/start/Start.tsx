@@ -87,10 +87,10 @@ const Start = () => {
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle shrink-0" aria-hidden="true">
               <SlayerMark size={13} bare label="" />
             </span>
-            <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">Start</h1>
-            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">· where to begin</span>
+            <h1 className="text-t15 font-semibold leading-tight text-textPrimary">Start</h1>
+            <span className="font-mono text-t9 uppercase tracking-widest text-textMuted">· where to begin</span>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted" data-start-line={paid ? 'paid' : undefined}>
+          <p className="mt-0.5 text-t11 text-textMuted" data-start-line={paid ? 'paid' : undefined}>
             {paid
               ? plan
                 ? `Thank you — ${plan.name} is yours. Every page of the terminal, one picture and one line each: pick where to begin.`
@@ -123,7 +123,7 @@ const Start = () => {
                 />
               </div>
               <div className="px-3.5 pt-3 pb-3.5 border-t border-borderSubtle/60">
-                <p className="flex items-center font-mono text-[9px] uppercase tracking-widest text-textMuted">
+                <p className="flex items-center font-mono text-t9 uppercase tracking-widest text-textMuted">
                   {card.group}
                   {/* a room outside the plan held says which plan it is part of (2026-10-10) — the card still opens, onto the wall */}
                   {access.on && !access.can(card.path) && (
@@ -133,19 +133,19 @@ const Start = () => {
                     </span>
                   )}
                 </p>
-                <p className="mt-1.5 flex items-center gap-2 text-[14px] font-semibold leading-tight text-textPrimary">
+                <p className="mt-1.5 flex items-center gap-2 text-t14 font-semibold leading-tight text-textPrimary">
                   <PageGlyph name={card.glyph!} size={17} className="shrink-0" />
                   {card.label}
                   <ArrowRight className="ml-auto w-3.5 h-3.5 shrink-0 text-textMuted transition-[transform,color] group-hover:translate-x-0.5 group-hover:text-textPrimary" aria-hidden="true" />
                 </p>
-                <p className="mt-1.5 text-[12.5px] leading-snug text-textSecondary">{LINES[card.path]}</p>
+                <p className="mt-1.5 text-t125 leading-snug text-textSecondary">{LINES[card.path]}</p>
               </div>
             </Link>
           </li>
         ))}
       </ul>
 
-      <p className="text-[11px] text-textMuted" data-start-foot>
+      <p className="text-t11 text-textMuted" data-start-foot>
         Community opens after launch. Where the terminal opens next time is yours to set in{' '}
         <Link to="/settings/desk" className="text-textSecondary hover:text-textPrimary transition-colors underline-offset-2 hover:underline">
           Settings

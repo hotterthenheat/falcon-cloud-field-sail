@@ -104,7 +104,7 @@ const PickMenu = <V extends string>({
                 onPick(o.value);
                 setOpen(false);
               }}
-              className={`w-full px-2.5 py-1.5 text-left text-[11px] transition-colors ${
+              className={`w-full px-2.5 py-1.5 text-left text-t11 transition-colors ${
                 o.value === value ? 'bg-ink/[0.06] text-textPrimary font-semibold' : 'text-textSecondary hover:bg-ink/[0.04] hover:text-textPrimary'
               }`}
             >
@@ -273,16 +273,16 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
           {!draft && (
             <>
               <div className="flex items-baseline justify-between mb-2">
-                <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted">
+                <span className="font-mono text-t11 uppercase tracking-widest text-textMuted">
                   Reasons you wrote
                 </span>
-                <span className="font-mono text-[11px] text-textMuted tnum">
+                <span className="font-mono text-t11 text-textMuted tnum">
                   {reasons.length} of {MAX_REASONS}
                 </span>
               </div>
 
               {reasons.length === 0 && (
-                <p className="text-[11px] text-textSecondary leading-snug mb-2.5">
+                <p className="text-t11 text-textSecondary leading-snug mb-2.5">
                   The desk watches for six things. Write your own and every contract that meets it joins the
                   feed, under your words.
                 </p>
@@ -294,12 +294,12 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
                     <div className="flex items-center justify-between gap-2">
                       <button
                         onClick={() => setDraft({ id: r.id, name: r.name, right: r.right, terms: r.terms })}
-                        className="font-bold text-[11px] text-textPrimary hover:text-select transition-colors truncate text-left"
+                        className="font-bold text-t11 text-textPrimary hover:text-select transition-colors truncate text-left"
                       >
                         {r.name}
                       </button>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="font-mono text-[11px] text-textMuted tnum">
+                        <span className="font-mono text-t11 text-textMuted tnum">
                           {reasonMatchCount(r, book)} today
                         </span>
                         <button
@@ -311,7 +311,7 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
                         </button>
                       </div>
                     </div>
-                    <div className="text-[11px] text-textSecondary leading-snug mt-0.5">{reasonSentence(r)}</div>
+                    <div className="text-t11 text-textSecondary leading-snug mt-0.5">{reasonSentence(r)}</div>
                   </div>
                 ))}
               </div>
@@ -333,7 +333,7 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
           {draft && (
             <>
               <div className="flex items-center justify-between mb-2">
-                <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted">
+                <span className="font-mono text-t11 uppercase tracking-widest text-textMuted">
                   {draft.id ? 'Edit reason' : 'New reason'}
                 </span>
                 <button onClick={() => setDraft(null)} className="text-textMuted hover:text-textPrimary">
@@ -342,7 +342,7 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
               </div>
 
               <label className="block mb-2.5">
-                <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted">Call it</span>
+                <span className="font-mono text-t11 uppercase tracking-widest text-textMuted">Call it</span>
                 <input
                   type="text"
                   value={draft.name}
@@ -354,7 +354,7 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
               </label>
 
               <div className="mb-2.5">
-                <div className="font-mono text-[11px] uppercase tracking-widest text-textMuted mb-1">Side</div>
+                <div className="font-mono text-t11 uppercase tracking-widest text-textMuted mb-1">Side</div>
                 <div className="flex flex-wrap gap-1">
                   {(['ANY', 'C', 'P'] as const).map(s => (
                     <Chip
@@ -368,7 +368,7 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
                 </div>
               </div>
 
-              <div className="font-mono text-[11px] uppercase tracking-widest text-textMuted mb-1">
+              <div className="font-mono text-t11 uppercase tracking-widest text-textMuted mb-1">
                 All of these are true
               </div>
               <div className="flex flex-col gap-1.5 mb-2">
@@ -436,7 +436,7 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
                   setDraft(d => (d && d.terms.length < MAX_TERMS ? { ...d, terms: [...d.terms, freshTerm()] } : d))
                 }
                 disabled={draft.terms.length >= MAX_TERMS}
-                className={`inline-flex items-center gap-1 mb-2.5 font-mono text-[11px] transition-colors ${
+                className={`inline-flex items-center gap-1 mb-2.5 font-mono text-t11 transition-colors ${
                   draft.terms.length >= MAX_TERMS
                     ? 'text-textMuted cursor-not-allowed'
                     : 'text-textSecondary hover:text-textPrimary'
@@ -448,10 +448,10 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
 
               {/* What it will say in the feed, and what it catches — live. */}
               <div className="border-t border-borderSubtle pt-2 mb-2.5">
-                <div className="font-mono text-[11px] uppercase tracking-widest text-textMuted mb-1">
+                <div className="font-mono text-t11 uppercase tracking-widest text-textMuted mb-1">
                   Reads as
                 </div>
-                <div className={`text-[11px] leading-snug ${incomplete ? 'text-textMuted' : 'text-textPrimary'}`}>
+                <div className={`text-t11 leading-snug ${incomplete ? 'text-textMuted' : 'text-textPrimary'}`}>
                   {!preview || preview.terms.length === 0
                     ? 'Add a condition to begin.'
                     : incomplete
@@ -459,7 +459,7 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
                       : reasonSentence(preview)}
                 </div>
                 {previewCount !== null && !incomplete && (
-                  <div className="text-[11px] text-textSecondary mt-1 tnum">
+                  <div className="text-t11 text-textSecondary mt-1 tnum">
                     Catches <span className="font-bold text-textPrimary">{previewCount}</span> of today&apos;s{' '}
                     {book.length.toLocaleString('en-US')} contracts
                     {previewCount === 0

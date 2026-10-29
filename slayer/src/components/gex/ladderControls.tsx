@@ -117,7 +117,7 @@ export const LadderPatternStrip = ({ pattern, after, right }: { pattern: HeatPat
     <SignalBadge tone={PATTERN_TONE[pattern.direction]} dot>
       {pattern.key}
     </SignalBadge>
-    <p className="min-w-0 text-[11px] text-textSecondary leading-snug">
+    <p className="min-w-0 text-t11 text-textSecondary leading-snug">
       <RichRead text={pattern.read} />
     </p>
     {/* Two slots a host can fill (the Map, 2026-09-05): `after` sits right

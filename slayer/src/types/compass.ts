@@ -245,15 +245,15 @@ export interface Setup {
   p1?: number;
   /** P(runner) from the runner model at that same scan. */
   prun?: number;
-  /** prun ≥ 0.50. A non-runner leaves at 1.50 × the fill. */
+  /** Runner probability at the signal minute was at least 0.50. */
   runner?: boolean;
   /** Both models named this exact contract. It is listed once. */
   modelAgree?: boolean;
   /** The hold kept after the two models were compared. */
   better?: 'runner' | 'entry';
-  /** Scalp is its own bet. 31% and 70.67% are swings. Wing is the cheap reversal. Closest is not a call. */
-  band?: 'scalp' | 'average' | 'top' | 'wing' | 'closest';
-  /** An average call that later cleared 70.67%. Same trade. Hold longer. */
+  /** Which book the contract landed in. The bars that sort these are not set. */
+  band?: 'scalp' | 'average' | 'top' | 'wing' | 'closest' | 'lottery';
+  /** Same trade, held after the score climbed. */
   strength?: boolean;
   /** Theta's higher-order greeks on this quote. Charm, color and veta are the annual partial. */
   vanna?: number;

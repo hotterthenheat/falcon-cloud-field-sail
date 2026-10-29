@@ -64,10 +64,10 @@ export const LayoutDoors = ({ compact }: { compact: boolean }) => {
 /** The house's tick-box (LadderFields' CheckRow): a bordered square that fills silver and takes a tick */
 const Tick = ({ on, onChange, label, hint, testId }: { on: boolean; onChange: (v: boolean) => void; label: string; hint: string; testId: string }) => (
   <button type="button" role="checkbox" aria-checked={on} onClick={() => onChange(!on)} title={hint} className="flex items-start gap-2 w-full text-left px-2 py-1.5 rounded-md hover:bg-ink/[0.05] transition-colors" data-paper-sync={testId}>
-    <span className={`mt-0.5 inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-[3px] border ${on ? 'bg-silverFill border-silverFill' : 'border-borderMuted'}`}>{on && <Check className="w-2.5 h-2.5 text-[#0a0a0a]" />}</span>
+    <span className={`mt-0.5 inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-[3px] border ${on ? 'bg-silverFill border-silverFill' : 'border-borderMuted'}`}>{on && <Check className="w-2.5 h-2.5 text-onfoil" />}</span>
     <span className="min-w-0">
-      <span className={`block text-[11px] ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>{label}</span>
-      <span className="block text-[10px] leading-snug text-textMuted">{hint}</span>
+      <span className={`block text-t11 ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>{label}</span>
+      <span className="block text-t10 leading-snug text-textMuted">{hint}</span>
     </span>
   </button>
 );
@@ -102,7 +102,7 @@ export const DeskMenu = ({ compact }: { compact: boolean }) => {
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="end" sideOffset={6} collisionPadding={12} className={`${CARD} w-[280px] p-1.5 z-[95]`} data-paper-desk-card>
-          <div className="px-2 pt-1 pb-1.5 font-mono text-[9px] uppercase tracking-widest text-textMuted">Your desks</div>
+          <div className="px-2 pt-1 pb-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted">Your desks</div>
           {s.desks.map(d => (
             <div key={d.id} className="group flex items-center gap-1">
               {naming?.id === d.id ? (
@@ -114,8 +114,8 @@ export const DeskMenu = ({ compact }: { compact: boolean }) => {
                     setNaming(null);
                   }}
                 >
-                  <input ref={field} value={draft} onChange={e => setDraft(e.target.value.slice(0, 32))} aria-label="The desk's name" className="flex-1 h-7 px-2 rounded-md border border-silver/50 bg-panel text-[12px] text-textPrimary outline-none" data-paper-desk-name-field />
-                  <button type="submit" className="h-7 px-2 rounded-md text-[10px] font-mono uppercase tracking-wider text-silver hover:bg-silver/[0.08]">
+                  <input ref={field} value={draft} onChange={e => setDraft(e.target.value.slice(0, 32))} aria-label="The desk's name" className="flex-1 h-7 px-2 rounded-md border border-silver/50 bg-panel text-t12 text-textPrimary outline-none" data-paper-desk-name-field />
+                  <button type="submit" className="h-7 px-2 rounded-md text-t10 font-mono uppercase tracking-wider text-silver hover:bg-silver/[0.08]">
                     Keep
                   </button>
                 </form>
@@ -125,8 +125,8 @@ export const DeskMenu = ({ compact }: { compact: boolean }) => {
                     <span className={`w-3.5 shrink-0 ${d.id === desk.id ? 'text-silver' : 'text-transparent'}`}>
                       <Check className="w-3.5 h-3.5" />
                     </span>
-                    <span className="min-w-0 truncate text-[12px]">{d.name}</span>
-                    <span className="ml-auto font-mono text-[9px] text-textMuted whitespace-nowrap">
+                    <span className="min-w-0 truncate text-t12">{d.name}</span>
+                    <span className="ml-auto font-mono text-t9 text-textMuted whitespace-nowrap">
                       {d.panes.length} · {[...new Set(d.panes.map(p => p.name))].join(', ')}
                     </span>
                   </button>
@@ -140,15 +140,15 @@ export const DeskMenu = ({ compact }: { compact: boolean }) => {
             </div>
           ))}
           <div className="flex items-center gap-1 px-1 pt-1">
-            <button type="button" onClick={() => newDesk()} className="flex-1 inline-flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04] transition-colors" data-paper-desk-new>
+            <button type="button" onClick={() => newDesk()} className="flex-1 inline-flex items-center gap-1.5 px-2 py-1.5 rounded-md text-t11 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04] transition-colors" data-paper-desk-new>
               <Plus className="w-3 h-3" /> A new desk — this one, copied
             </button>
-            <button type="button" onClick={() => setNaming(desk)} className="px-2 py-1.5 rounded-md text-[11px] text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04] transition-colors" data-paper-desk-rename>
+            <button type="button" onClick={() => setNaming(desk)} className="px-2 py-1.5 rounded-md text-t11 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04] transition-colors" data-paper-desk-rename>
               Rename
             </button>
           </div>
           <div className="mt-1.5 pt-1.5 border-t border-borderSubtle">
-            <div className="px-2 pb-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">Keep the charts in step</div>
+            <div className="px-2 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">Keep the charts in step</div>
             <Tick on={desk.sync.name} onChange={v => setSync('name', v)} label="The name" hint="Every chart shows the name the chart on the desk shows — one name at several intervals" testId="name" />
             <Tick on={desk.sync.timeframe} onChange={v => setSync('timeframe', v)} label="The interval" hint="Every chart at the interval of the chart on the desk — several names side by side" testId="timeframe" />
             <Tick on={desk.sync.crosshair} onChange={v => setSync('crosshair', v)} label="The crosshair" hint="A moment you point at on one chart is marked on the others" testId="crosshair" />

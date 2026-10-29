@@ -62,7 +62,6 @@ import ContractCell from '../../components/trace/ContractCell';
 import { DOOR, DOOR_GROUP_TEXT } from '../../components/trace/door';
 import { directionInk, earnMarks, weightInk } from '../../components/trace/earnedInk';
 import FlowSearch, { searchMiss, matchesContract, normSymbol, parseContractQuery } from '../../components/trace/FlowSearch';
-import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ReadDoor from '../../components/trace/ReadDoor';
 import WatchStar from '../../components/trace/WatchStar';
 import TraceBox, { Champion, Fact, TraceGrid } from '../../components/trace/TraceBox';
@@ -280,7 +279,7 @@ const FlowTracker = () => {
         header: 'Read',
         sortValue: w => w.intent,
         render: w => (
-          <span className={`font-mono text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${w.intent === 'ACCUMULATION' ? 'text-bull' : w.intent === 'DISTRIBUTION' ? 'text-bear' : w.intent === 'HEDGE FLOW' ? 'text-warn' : 'text-textMuted'}`}>
+          <span className={`font-mono text-t10 font-semibold uppercase tracking-wider whitespace-nowrap ${w.intent === 'ACCUMULATION' ? 'text-bull' : w.intent === 'DISTRIBUTION' ? 'text-bear' : w.intent === 'HEDGE FLOW' ? 'text-warn' : 'text-textMuted'}`}>
             {w.intent}
           </span>
         ),
@@ -289,7 +288,7 @@ const FlowTracker = () => {
         key: 'says',
         header: 'What it says',
         render: w => (
-          <span className="block text-[11px] text-textSecondary truncate" title={w.read}>
+          <span className="block text-t11 text-textSecondary truncate" title={w.read}>
             {w.read}
           </span>
         ),
@@ -316,9 +315,8 @@ const FlowTracker = () => {
   }, [markNames]);
   const bookRev = useBookRev();
   const liveBook = contractPack.rows;
-  // The shared hold (see LiveHold): the SINCE columns freeze with the tick.
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !(contractPack.waiting && contractPack.rows.length === 0));
-  const { book, tick } = hold.value;
+  const book = liveBook;
+  const tick = marketData;
   const [guideOpen, setGuideOpen] = useState(false);
 
   /* Today's book by contract key — the "now" every row is measured against when the book carries it */
@@ -487,8 +485,8 @@ const FlowTracker = () => {
             /* all three parts take the silver under the pointer, as the contract cell's do (2026-09-16) */
             <span className={`group/door inline-flex items-baseline gap-1.5 pb-[2px] ${DOOR}`}>
               <span className={`font-mono text-xs font-bold text-textPrimary tnum ${DOOR_GROUP_TEXT}`}>{r.w.strikesLabel}</span>
-              <span className={`font-mono text-[11px] font-semibold text-textPrimary ${DOOR_GROUP_TEXT}`}>{r.w.spreadKind}</span>
-              <span className={`font-mono text-[11px] text-textSecondary tnum ${DOOR_GROUP_TEXT}`}>{r.w.expiry}</span>
+              <span className={`font-mono text-t11 font-semibold text-textPrimary ${DOOR_GROUP_TEXT}`}>{r.w.spreadKind}</span>
+              <span className={`font-mono text-t11 text-textSecondary tnum ${DOOR_GROUP_TEXT}`}>{r.w.expiry}</span>
             </span>
           ) : (
             <ContractCell strike={r.w.strike} right={r.w.right} expiry={r.w.expiry} />
@@ -499,7 +497,7 @@ const FlowTracker = () => {
         header: 'Marked',
         sortValue: r => r.w.watchedAt,
         render: r => (
-          <span className="text-[11px] text-textPrimary whitespace-nowrap">
+          <span className="text-t11 text-textPrimary whitespace-nowrap">
             {markedAt(r.w.watchedAt)} <span className="text-textSecondary">· {SOURCE_LABEL[r.w.from]}</span>
           </span>
         ),
@@ -516,14 +514,14 @@ const FlowTracker = () => {
           if (w.kind === 'contract')
             return (
               <span className="text-textSecondary">
-                last <span className="text-textPrimary">${w.at.last.toFixed(2)}</span> <span className="text-[11px]">{w.at.lastAt ? `${w.at.lastAt} fill` : `as of ${markedAt(w.watchedAt)}`}</span>
+                last <span className="text-textPrimary">${w.at.last.toFixed(2)}</span> <span className="text-t11">{w.at.lastAt ? `${w.at.lastAt} fill` : `as of ${markedAt(w.watchedAt)}`}</span>
               </span>
             );
           if (w.kind === 'print')
             return (
               <span className="text-textSecondary">
                 <span className="text-textPrimary">{num(w.size)}</span> @ <span className="text-textPrimary">${w.fill.toFixed(2)}</span>{' '}
-                <span className={`text-[11px] ${w.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>
+                <span className={`text-t11 ${w.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>
                   {w.side === 'ASK' ? 'BUY' : w.side === 'BID' ? 'SELL' : 'MID'}
                   {w.sweep ? ' · SWEEP' : ''}
                 </span>
@@ -532,7 +530,7 @@ const FlowTracker = () => {
           return (
             <span className="text-textSecondary" title={w.units == null ? 'Marked before the structure was read from its legs — the size and price are as listed' : `${w.units} units at the net a unit`}>
               <span className="text-textPrimary">{num(w.size)}×</span> @ <span className="text-textPrimary">{w.net === 0 ? '—' : `$${Math.abs(w.net).toFixed(2)}`}</span>{' '}
-              <span className="text-[11px]">{w.net === 0 ? '' : w.net > 0 ? 'debit' : 'credit'}</span>
+              <span className="text-t11">{w.net === 0 ? '' : w.net > 0 ? 'debit' : 'credit'}</span>
             </span>
           );
         },
@@ -548,8 +546,8 @@ const FlowTracker = () => {
           const w = r.w;
           if (w.kind === 'structure') {
             /* the net that changed hands; a mark taken before the structure was settled carried only the gross */
-            if (w.netPremium != null) return <span className="text-textPrimary" title={w.gross != null ? `${fmtUsd(w.gross)} across every leg` : undefined}>{fmtUsd(Math.abs(w.netPremium))} <span className="text-[11px] text-textSecondary">{w.netPremium > 0 ? 'paid' : 'collected'}</span></span>;
-            return <span className="text-textSecondary" title="Marked before the net was kept — this is the gross of every leg, not what changed hands">{fmtUsd(w.premium)} <span className="text-[11px]">gross</span></span>;
+            if (w.netPremium != null) return <span className="text-textPrimary" title={w.gross != null ? `${fmtUsd(w.gross)} across every leg` : undefined}>{fmtUsd(Math.abs(w.netPremium))} <span className="text-t11 text-textSecondary">{w.netPremium > 0 ? 'paid' : 'collected'}</span></span>;
+            return <span className="text-textSecondary" title="Marked before the net was kept — this is the gross of every leg, not what changed hands">{fmtUsd(w.premium)} <span className="text-t11">gross</span></span>;
           }
           return <span className="text-textPrimary">{fmtUsd(w.kind === 'contract' ? w.at.premium : w.premium)}</span>;
         },
@@ -562,12 +560,12 @@ const FlowTracker = () => {
         render: r =>
           r.nowPrice != null ? (
             <span className="text-textPrimary" title={r.nowSrc === 'close' ? "The screener's close for this contract now, against its close when you marked it" : "The contract's newest trade, against the print you marked — a fill against a fill"}>
-              ${r.nowPrice.toFixed(2)} {r.nowAt && <span className="text-[11px] text-textSecondary">{r.nowAt}</span>} <span className={`text-[11px] ${directionInk(r.chg ?? 0, marks.chg)}`}>{signedPct(r.chg ?? 0)}</span>
+              ${r.nowPrice.toFixed(2)} {r.nowAt && <span className="text-t11 text-textSecondary">{r.nowAt}</span>} <span className={`text-t11 ${directionInk(r.chg ?? 0, marks.chg)}`}>{signedPct(r.chg ?? 0)}</span>
             </span>
           ) : r.w.kind === 'structure' ? (
             <Dash />
           ) : (
-            <span className="text-[11px] text-textMuted" title={r.nowNote === 'expired' ? 'The contract expired at its bell — it no longer trades' : r.nowNote ? 'The contract has not printed in today’s session' : 'Its day is still being read'}>
+            <span className="text-t11 text-textMuted" title={r.nowNote === 'expired' ? 'The contract expired at its bell — it no longer trades' : r.nowNote ? 'The contract has not printed in today’s session' : 'Its day is still being read'}>
               {r.nowNote ?? '…'}
             </span>
           ),
@@ -583,7 +581,7 @@ const FlowTracker = () => {
           ) : (
             <span className="text-textPrimary">
               ${r.spotThen.toFixed(2)} <span className="text-textSecondary">→</span> <span className="text-textPrimary">${r.spotNow.toFixed(2)}</span>{' '}
-              <span className={`text-[11px] ${directionInk(r.spotChg ?? 0, marks.spot)}`}>{signedPct(r.spotChg ?? 0)}</span>
+              <span className={`text-t11 ${directionInk(r.spotChg ?? 0, marks.spot)}`}>{signedPct(r.spotChg ?? 0)}</span>
             </span>
           ),
       },
@@ -610,7 +608,7 @@ const FlowTracker = () => {
         sortValue: r => r.oiDelta ?? -Infinity,
         render: r =>
           r.oiNext && !r.oiDelta ? (
-            <span className="text-[11px] text-textMuted whitespace-nowrap" title={`Open interest is counted once a day, the morning after the trading — the count after this session's trading is set the morning of ${r.oiNext}`}>
+            <span className="text-t11 text-textMuted whitespace-nowrap" title={`Open interest is counted once a day, the morning after the trading — the count after this session's trading is set the morning of ${r.oiNext}`}>
               next count {r.oiNext}
             </span>
           ) : r.oiDelta == null ? (
@@ -629,7 +627,7 @@ const FlowTracker = () => {
           const then = r.leanThen != null || r.sideThen ? leanWord(r.leanThen ?? NaN, r.sideThen) : null;
           const now = r.leanNow != null || r.sideNow ? leanWord(r.leanNow ?? NaN, r.sideNow) : null;
           return (
-            <span className="font-mono text-[11px] font-semibold uppercase tracking-wide tnum whitespace-nowrap">
+            <span className="font-mono text-t11 font-semibold uppercase tracking-wide tnum whitespace-nowrap">
               {then ? <span className={then.ink}>{then.text}</span> : <span className="text-textSecondary">—</span>}
               <span className="text-textSecondary"> → </span>
               {now ? <span className={now.ink}>{now.text}</span> : <span className="text-textSecondary">—</span>}
@@ -745,15 +743,14 @@ const FlowTracker = () => {
         }
         controls={
           <>
-            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
-            <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="marks" />
+            <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="marks" tickersOnly />
           </>
         }
         sentence={read}
       >
         {total === 0 ? (
           /* The empty state is a sentence with doors, not a grid */
-          <div className="border-t border-borderSubtle px-5 pt-5 pb-6 text-[12px] text-textSecondary leading-relaxed" data-tracker-empty>
+          <div className="border-t border-borderSubtle px-5 pt-5 pb-6 text-t12 text-textSecondary leading-relaxed" data-tracker-empty>
             Nothing is under watch. The mark at the left of any row on the <ReadDoor onOpen={() => navigate('/trace/live-tape')}>Live Tape</ReadDoor>, the <ReadDoor onOpen={() => navigate('/trace/screener')}>Screener</ReadDoor> or any other Trace page keeps it here, with what it has done since.
           </div>
         ) : (

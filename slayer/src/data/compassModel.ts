@@ -1,66 +1,165 @@
 /*
-  Compass scorer. Two locked LightGBM books, one contract per name for a top pick.
-  A missing feature stays NaN. Spot gamma is the chain's own greek, not a
-  Black-Scholes stand-in. The bar path is Theta's one-minute tape.
-
-  A contract is called once a session, call or put, same rule. A later pass
-  does not call it again. An average call that later clears 70.67% is not a
-  new trade. That is strength: hold longer.
+  Compass scorer. Books A and B call Model 1 (entry) and Model 2 (runner).
+  Book C calls neither. A hash or tree-count miss scores nothing.
 */
 
-import entryJson from './models/entry.json';
-import runnerJson from './models/runner.json';
-import { predict, type Tree } from './lgbm';
+import { parseBoosters, predict, type Tree } from './lgbm';
 import { thetaCall } from './theta';
 import { nyParts, nyWallStamp } from '../core/nyTime';
 import { ensureBook, snapshotOf } from './uwBook';
-import { gexFeatures, peekSpotGex, wantSpotGex } from './spotGexBook';
-import scalpFit from './models/scalpFit.json';
-import wingFit from './models/wingFit.json';
-import { spreadOk } from './contractQuote';
+import { econReleases } from './monthCalendar';
+import {
+  R,
+  Q,
+  IV_LO,
+  IV_HI,
+  IV_BISECTS,
+  IV_FEATURE_MIN,
+  GEX_CORE,
+  DO_NOT_REQUEST,
+  NO_SAME_DAY,
+  CLS_INDEX,
+  CLS_HIGHBETA,
+  ENTRY_SHA,
+  RUNNER_SHA,
+  TREE_N,
+  UNIVERSE_SHA,
+  UNIVERSE_N,
+  printOf,
+  weekdayDte,
+  yearFrac,
+  minutesLeftCol,
+  sessionScanOpen,
+  quoteValid,
+  spreadPass,
+  ivFeature,
+  greekVol,
+  f32,
+  atmStrike,
+  strikeDistance,
+  strikeSpan,
+  SPAN_INDEX,
+  DRIVE,
+  bookAPass,
+  bookBPass,
+  runnerFlag,
+  SEAT_CAP,
+  BOOK_B_LOOKBACK,
+  LOTTERY_CAP,
+  SESSION_MIN,
+  YEAR_SESSIONS,
+  FLAT_T,
+  QUOTE_MAX_AGE_MS,
+  inLottery,
+  releaseBlocks,
+  thetaBurns,
+  customerGammaNegative,
+  lotteryEntry,
+  MODEL_1_NAME,
+  MODEL_2_NAME,
+} from './compassParams';
+import { COMPASS_TICKERS } from './compassUniverse';
+import { optionScanOpen, sessionYmd } from './compassSession';
 import type { OptionRight, Setup } from '../types/compass';
 import type { StrikeNode } from '../types/market';
 
-const ENTRY = entryJson as Tree[];
-const RUNNER = runnerJson as Tree[];
-const P1_MIN = 0.7067;
-const PRUN_MIN = 0.5;
-/** Swing. Same entry score. Calls and puts. One of each per name. +50% and the runner. */
-export const AVG_BAND = 0.31;
-/** Rare rungs on this model were a lie. A unicorn is a wing call, not a 100% tag. */
-const WING_DELTA = 0.15;
+let ENTRY: Tree[] = [];
+let RUNNER: Tree[] = [];
+let locked = false;
+let lockText = `${MODEL_1_NAME} and ${MODEL_2_NAME} are not loaded. Scoring is closed until the files match their hashes.`;
+let loading: Promise<boolean> | null = null;
+
+export function lockReason(): string {
+  return lockText;
+}
+
+async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function loadOne(url: string, expect: string): Promise<Tree[] | null> {
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const bytes = await res.arrayBuffer();
+  if (await sha256Hex(bytes) !== expect) return null;
+  return parseBoosters(new TextDecoder().decode(bytes), TREE_N);
+}
+
+async function ensureModels(): Promise<boolean> {
+  if (locked) return true;
+  if (loading) return loading;
+  loading = (async () => {
+    try {
+      const uni = await fetch('/config/universe_458.json');
+      if (!uni.ok) {
+        lockText = 'Universe file missing. Scoring is closed.';
+        return false;
+      }
+      const raw = await uni.arrayBuffer();
+      if (await sha256Hex(raw) !== UNIVERSE_SHA) {
+        lockText = 'Universe hash does not match. Scoring is closed.';
+        return false;
+      }
+      const names = JSON.parse(new TextDecoder().decode(raw)) as unknown;
+      if (!Array.isArray(names) || names.length !== UNIVERSE_N || names.some((n, i) => n !== COMPASS_TICKERS[i])) {
+        lockText = 'Universe list does not match. Scoring is closed.';
+        return false;
+      }
+      const entry = await loadOne('/models/model_entry_all6months.txt', ENTRY_SHA);
+      const runner = await loadOne('/models/model_runner_all6months.txt', RUNNER_SHA);
+      if (!entry || !runner) {
+        lockText = `${MODEL_1_NAME} or ${MODEL_2_NAME} failed its hash or its tree count. Scoring is closed.`;
+        return false;
+      }
+      ENTRY = entry;
+      RUNNER = runner;
+      locked = true;
+      lockText = '';
+      return true;
+    } catch {
+      lockText = 'Model files could not be read. Scoring is closed.';
+      return false;
+    } finally {
+      loading = null;
+    }
+  })();
+  return loading;
+}
+
+function modelsLocked(): boolean {
+  return locked && ENTRY.length === TREE_N && RUNNER.length === TREE_N;
+}
+
 /** Called once per session. The id is ticker, strike, right, and sleeve. */
 const seen = new Set<string>();
-const R = 0.042;
+const seenRootA = new Set<string>();
+const seenRootB = new Set<string>();
+const seenRootC = new Set<string>();
 
 const INDEX = new Set(['SPX', 'SPXW', 'RUT', 'RUTW', 'VIX', 'XSP', 'NDX', 'NDXP']);
-const CLS_INDEX = INDEX;
-const CLS_HIGH = new Set(['LLY', 'BKNG', 'AVGO', 'NFLX', 'META', 'COST', 'ASML', 'NOW', 'MELI', 'ISRG', 'TDG', 'AZO', 'MDB']);
-const UNDER: Record<string, string> = { SPXW: 'SPX', XSP: 'SPX', RUTW: 'RUT' };
-const CORE = new Set(['SPX', 'SPY', 'QQQ', 'IWM', 'NVDA', 'AAPL', 'TSLA', 'AMD', 'AMZN', 'META', 'MSFT', 'GOOGL', 'AVGO', 'COIN', 'MSTR', 'SMCI']);
+const CLS_INDEX_SET = new Set<string>(CLS_INDEX);
+const CLS_HIGH_SET = new Set<string>(CLS_HIGHBETA);
+const UNDER: Record<string, string> = { SPXW: 'SPX', NDXP: 'NDX', RUTW: 'RUT' };
+const CORE = new Set<string>(GEX_CORE);
+const NO_DAILY = new Set<string>(NO_SAME_DAY);
 const SMH = ['NVDA', 'AMD', 'AVGO', 'MU', 'TSM', 'ASML', 'AMAT', 'LRCX', 'KLAC', 'MRVL', 'QCOM', 'INTC', 'SMCI', 'ARM', 'ON', 'NXPI', 'ADI', 'TXN', 'SWKS', 'WOLF', 'COHR', 'STX', 'WDC', 'NTAP', 'SOXL', 'SOXS', 'NVDL'];
-const BITO = ['MARA', 'COIN', 'MSTR', 'CLSK', 'RIOT', 'IREN', 'CIFR', 'WULF', 'HUT', 'CORZ', 'BITX', 'BITO'];
+const BITO = ['COIN', 'MSTR', 'MARA', 'RIOT', 'CLSK', 'IREN', 'HUT', 'CIFR', 'WULF', 'CORZ', 'BITX', 'HOOD'];
+const XLE = ['XOM', 'CVX', 'OXY', 'COP', 'DVN', 'EOG', 'APA', 'HAL', 'SLB', 'MPC', 'PSX', 'VLO', 'FANG', 'EQT', 'AR', 'BTU', 'OIH', 'XOP', 'USO', 'UCO'];
+const GDX = ['NEM', 'GOLD', 'AEM', 'WPM', 'PAAS', 'AG', 'GDXJ', 'NUGT', 'JNUG', 'SLV', 'GLD', 'AGQ'];
+const XLF = ['JPM', 'BAC', 'C', 'WFC', 'GS', 'MS', 'SCHW', 'AXP', 'COF', 'USB', 'TFC', 'KRE', 'FAS', 'DPST', 'ALLY', 'BLK', 'BX', 'KKR', 'APO'];
 const SECTOR_OF: Record<string, string> = {
   ...Object.fromEntries(SMH.map(t => [t, 'SMH'])),
   ...Object.fromEntries(BITO.map(t => [t, 'BITO'])),
+  ...Object.fromEntries(XLE.map(t => [t, 'XLE'])),
+  ...Object.fromEntries(GDX.map(t => [t, 'GDX'])),
+  ...Object.fromEntries(XLF.map(t => [t, 'XLF'])),
 };
 
 interface Bar { m: number; o: number; h: number; l: number; c: number; v: number }
 interface Curve { cum: Map<number, number[]>; five: Map<number, number[]> }
 interface PinBook { nodes: { strike: number; call: number; put: number }[]; oi: (strike: number, right: OptionRight) => number }
 interface LeftRow { id: string; ticker: string; contract: string; why: string; at: number }
-
-function modelsLocked(): boolean {
-  const entry = ENTRY[0];
-  const runner = RUNNER[0];
-  if (!entry || !runner || ENTRY.length !== 300 || RUNNER.length !== 300) return false;
-  return entry.s[0] === 42
-    && Math.abs(entry.t[0] + 0.10803829506039618) < 1e-12
-    && Math.abs(entry.v[0] + 0.856027354044286) < 1e-9
-    && runner.s[0] === 30
-    && Math.abs(runner.t[0] + 0.001826452149543911) < 1e-12
-    && Math.abs(runner.v[0] - 0.3963730130421617) < 1e-9;
-}
 
 function cdf(x: number): number {
   const t = 1 / (1 + 0.2316419 * Math.abs(x));
@@ -72,7 +171,7 @@ function cdf(x: number): number {
 function bsStates(S: number, K: number, T: number, sig: number, call: boolean): { px: number; de: number; ga: number; th: number; ve: number } {
   if (!(S > 0) || !(K > 0) || !(T > 0) || !(sig > 0)) return { px: NaN, de: NaN, ga: NaN, th: NaN, ve: NaN };
   const vol = sig * Math.sqrt(T);
-  const d1 = (Math.log(S / K) + (R + 0.5 * sig * sig) * T) / vol;
+  const d1 = (Math.log(S / K) + (R - Q + 0.5 * sig * sig) * T) / vol;
   const d2 = d1 - vol;
   const df = Math.exp(-R * T);
   const pdf = Math.exp(-0.5 * d1 * d1) / Math.sqrt(2 * Math.PI);
@@ -86,10 +185,12 @@ function bsStates(S: number, K: number, T: number, sig: number, call: boolean): 
 
 function ivStates(price: number, S: number, K: number, T: number, call: boolean): number {
   if (!(price > 0) || !(S > 0) || !(K > 0) || !(T > 0)) return NaN;
-  let lo = 0.01;
-  let hi = 8;
-  if (bsStates(S, K, T, lo, call).px > price) return NaN;
-  for (let i = 0; i < 60; i++) {
+  let lo = IV_LO;
+  let hi = IV_HI;
+  const atLo = bsStates(S, K, T, lo, call).px;
+  const atHi = bsStates(S, K, T, hi, call).px;
+  if (!(atLo <= price) || !(atHi >= price)) return NaN;
+  for (let i = 0; i < IV_BISECTS; i++) {
     const mid = (lo + hi) / 2;
     if (bsStates(S, K, T, mid, call).px > price) hi = mid;
     else lo = mid;
@@ -283,7 +384,7 @@ async function pinOf(ticker: string, expiry: string, spot: number): Promise<PinB
   const key = `${ticker}|${expiry}`;
   const hit = pinCache.get(key);
   if (hit && Date.now() - hit.at < 5 * 60_000) return hit.book;
-  const name = ticker === 'SPXW' || ticker === 'XSP' ? 'SPX' : ticker === 'RUTW' ? 'RUT' : ticker;
+  const name = printOf(ticker);
   const chain = await new Promise<StrikeNode[] | null>(resolve => {
     const read = (): StrikeNode[] | null => {
       ensureBook(name);
@@ -326,9 +427,9 @@ function span(arr: number[], from: number, to: number, max: boolean): number {
   return y;
 }
 
-function tapeOf(rows: Bar[], index: boolean, minute: number): { tt: number; S: number; op: number; H: number; L: number; orh: number; orl: number; rv30: number; rvPrev: number; compress: number; vwapZ: number; cum: number; last5: number; at: (back: number) => number } {
+function tapeOf(rows: Bar[], index: boolean, minute: number, spot = NaN): { tt: number; S: number; op: number; H: number; L: number; orh: number; orl: number; rv30: number; rvPrev: number; compress: number; vwapZ: number; cum: number; last5: number; at: (back: number) => number } {
   const tt = minute - (9 * 60 + 30);
-  const raw = Array<number>(392).fill(NaN);
+  const o = Array<number>(392).fill(NaN);
   const h = Array<number>(392).fill(NaN);
   const l = Array<number>(392).fill(NaN);
   const v = Array<number>(392).fill(0);
@@ -336,92 +437,111 @@ function tapeOf(rows: Bar[], index: boolean, minute: number): { tt: number; S: n
   for (const b of rows) {
     const k = b.m - (9 * 60 + 30);
     if (k < 0 || k > 390) continue;
-    if (index) {
-      if (!Number.isFinite(raw[k])) raw[k] = b.c;
-      if (k <= 5 && !(op > 0)) op = b.c;
-    } else {
-      const at = k + 1;
-      if (at > 391) continue;
-      raw[at] = b.c;
-      h[at] = b.h;
-      l[at] = b.l;
-      v[at] = b.v;
-      if (k === 0 && b.o > 0) op = b.o;
-    }
+    /* Spot at minute t is that minute's first print. A missing minute stays missing. */
+    if (!(o[k] > 0) && b.o > 0) o[k] = b.o;
+    h[k] = b.h;
+    l[k] = b.l;
+    v[k] = b.v;
+    if (k === 0 && b.o > 0) op = b.o;
   }
-  const c = raw.slice();
-  for (let i = 1; i < c.length; i++) if (!Number.isFinite(c[i])) c[i] = c[i - 1];
-  const S = tt >= 0 && tt < c.length && Number.isFinite(c[tt]) ? c[tt] : NaN;
+  const S = (() => {
+    if (tt > 390 && spot > 0) return spot;
+    const last = Math.min(Math.max(tt, 0), o.length - 1);
+    for (let i = last; i >= 0; i--) if (o[i] > 0) return o[i];
+    return spot > 0 ? spot : NaN;
+  })();
   const logs = (from: number, to: number) => {
     const out: number[] = [];
     for (let i = Math.max(from + 1, 1); i < to; i++) {
-      if (c[i] > 0 && c[i - 1] > 0) out.push(Math.log(c[i] / c[i - 1]));
+      if (o[i] > 0 && o[i - 1] > 0) out.push(Math.log(o[i] / o[i - 1]));
     }
     return out;
   };
-  const rv = (xs: number[]) => (xs.length > 10 ? stdev(xs) : NaN);
+  const rv = (xs: number[]) => (xs.length >= 10 ? stdev(xs) : NaN);
   const rv30 = rv(logs(Math.max(1, tt - 30), tt + 1));
   const rvPrev = rv(logs(Math.max(1, tt - 60), tt - 29));
   let compress = NaN;
-  if (index) {
-    const changes = (n: number) => {
-      const d: number[] = [];
-      for (let i = Math.max(1, tt - n + 1); i <= tt; i++) if (Number.isFinite(c[i]) && Number.isFinite(c[i - 1])) d.push(c[i] - c[i - 1]);
-      return d;
-    };
-    const a = stdev(changes(5));
-    const b = stdev(changes(60));
-    compress = b > 0 ? a / b : NaN;
-  } else {
-    const meanRange = (n: number) => {
-      let sum = 0;
-      let count = 0;
-      for (let i = Math.max(1, tt - n + 1); i <= tt; i++) {
-        if (Number.isFinite(h[i]) && Number.isFinite(l[i])) {
-          sum += h[i] - l[i];
-          count += 1;
+  if (tt >= 60) {
+    if (index) {
+      const changes = (n: number) => {
+        const d: number[] = [];
+        for (let i = Math.max(1, tt - n + 1); i <= tt; i++) if (o[i] > 0 && o[i - 1] > 0) d.push(o[i] - o[i - 1]);
+        return d;
+      };
+      const a = stdev(changes(5));
+      const b = stdev(changes(60));
+      compress = b > 0 ? a / b : NaN;
+    } else {
+      const meanRange = (n: number) => {
+        let sum = 0;
+        let count = 0;
+        for (let i = Math.max(1, tt - n + 1); i < tt; i++) {
+          if (Number.isFinite(h[i]) && Number.isFinite(l[i])) {
+            sum += h[i] - l[i];
+            count += 1;
+          }
         }
-      }
-      return count ? sum / count : NaN;
-    };
-    const a = meanRange(5);
-    const b = meanRange(60);
-    compress = b > 0 ? a / b : NaN;
+        return count ? sum / count : NaN;
+      };
+      const a = meanRange(5);
+      const b = meanRange(60);
+      compress = b > 0 ? a / b : NaN;
+    }
   }
   let pv = 0;
   let vv = 0;
   const devs: number[] = [];
-  for (let i = 1; i <= tt && i < c.length; i++) {
-    if (!(v[i] > 0) || !(c[i] > 0)) continue;
-    pv += c[i] * v[i];
+  for (let i = 1; i < tt && i < o.length; i++) {
+    if (!(v[i] > 0) || !(o[i] > 0)) continue;
+    pv += o[i] * v[i];
     vv += v[i];
-    devs.push(c[i] - pv / vv);
+    devs.push(o[i] - pv / vv);
   }
   const vwap = vv > 0 ? pv / vv : NaN;
   const sd = stdev(devs);
   const vwapZ = !index && sd > 0 && S > 0 && vwap > 0 ? (S - vwap) / sd : NaN;
   const cum = index ? NaN : vv;
   let last5 = 0;
-  for (let i = Math.max(1, tt - 4); i <= tt && i < v.length; i++) last5 += v[i] || 0;
+  for (let i = Math.max(1, tt - 4); i < tt && i < v.length; i++) last5 += v[i] || 0;
+  /* High and low of minute t-1 are known at t. The current minute's high, low, and close are not. */
   return {
     tt,
     S,
     op,
-    H: span(index ? c : h, 1, tt + 1, true),
-    L: span(index ? c : l, 1, tt + 1, false),
-    orh: span(index ? c : h, 1, 31, true),
-    orl: span(index ? c : l, 1, 31, false),
+    H: span(h, 0, tt, true),
+    L: span(l, 0, tt, false),
+    orh: span(h, 0, 30, true),
+    orl: span(l, 0, 30, false),
     rv30,
     rvPrev,
     compress,
     vwapZ,
     cum,
     last5,
-    at: (back: number) => (tt - back >= 0 && Number.isFinite(c[tt - back]) ? c[tt - back] : NaN),
+    at: (back: number) => (tt - back >= 0 && o[tt - back] > 0 ? o[tt - back] : NaN),
   };
 }
 
+const seenAsks = new Map<string, { minute: number; bid: number; ask: number }[]>();
 const seenMids = new Map<string, { minute: number; mid: number }[]>();
+
+function noteAsk(id: string, minute: number, bid: number, ask: number): void {
+  if (!quoteValid(bid, ask) || !Number.isFinite(minute)) return;
+  const list = seenAsks.get(id) ?? [];
+  const last = list[list.length - 1];
+  if (last && last.minute === minute) {
+    last.bid = bid;
+    last.ask = ask;
+  } else list.push({ minute, bid, ask });
+  if (list.length > 80) list.splice(0, list.length - 80);
+  seenAsks.set(id, list);
+}
+
+function quoteAt(id: string, minute: number): { bid: number; ask: number } | null {
+  const list = seenAsks.get(id) ?? [];
+  for (let i = list.length - 1; i >= 0; i--) if (list[i].minute === minute) return list[i];
+  return null;
+}
 
 function noteMid(id: string, minute: number, mid: number): void {
   if (!(mid > 0) || !Number.isFinite(minute)) return;
@@ -435,15 +555,12 @@ function noteMid(id: string, minute: number, mid: number): void {
 
 function midThen(id: string, minute: number): number {
   const list = seenMids.get(id) ?? [];
-  for (let i = list.length - 1; i >= 0; i--) if (list[i].minute <= minute) return list[i].mid;
+  for (let i = list.length - 1; i >= 0; i--) if (list[i].minute === minute) return list[i].mid;
   return NaN;
 }
 
-function yearsLeft(setup: Setup, tt: number): number {
-  const exp = Date.parse(`${setup.expiryDate}T20:00:00Z`);
-  const now = Date.now();
-  const minutes = Number.isFinite(exp) ? Math.max(0, (exp - now) / 60000) : Math.max(0, setup.sessionsLeft) * 390 + Math.max(0, 390 - tt);
-  return Math.max(1e-6, minutes / (252 * 390));
+function yearsLeft(tt: number): number {
+  return yearFrac(tt);
 }
 
 function features(
@@ -457,9 +574,10 @@ function features(
   sec: Bar[],
   curve: Curve | null,
   pin: PinBook | null,
+  sessionDay: string,
 ): number[] | null {
   const indexName = INDEX.has(setup.ticker) || INDEX.has(UNDER[setup.ticker] ?? '');
-  const tape = tapeOf(rows, indexName, minute);
+  const tape = tapeOf(rows, indexName, minute, setup.spot ?? NaN);
   if (!(tape.S > 0)) return null;
   const x = Array.from({ length: 56 }, () => NaN);
   const s = tape.S;
@@ -477,24 +595,24 @@ function features(
   const dir: number = setup.right === 'C' ? 1 : -1;
   const mid = setup.mid > 0 ? setup.mid : NaN;
   const was = (back: number) => midThen(setup.id, minute - back);
-  const T = yearsLeft(setup, tape.tt);
+  const T = yearsLeft(tape.tt);
   const call = setup.right === 'C';
-  const solved = ivStates(mid, s, setup.strike, T, call);
-  const greek = Number.isFinite(solved) ? bsStates(s, setup.strike, T, solved, call) : { px: NaN, de: NaN, ga: NaN, th: NaN, ve: NaN };
+  const solved = ivFeature(ivStates(mid, s, setup.strike, T, call));
+  const vol = greekVol(solved, ivFeature(atmIv));
+  const greek = bsStates(s, setup.strike, T, vol, call);
   const clock = 9 * 60 + 30 + tape.tt - (indexName ? 0 : 1);
   const hist = curve?.cum.get(clock) ?? [];
   const hist5 = curve?.five.get(clock) ?? [];
   const med = hist.length >= 5 ? median(hist) : NaN;
   const med5 = hist5.length >= 5 ? median(hist5) : NaN;
-  const under = UNDER[setup.ticker] ?? setup.ticker;
-  const book = gexFeatures(peekSpotGex(under), s);
+  const walls = pin ? oiWalls(pin, s) : { call: NaN, put: NaN };
   const mineOi = pin ? pin.oi(setup.strike, setup.right) : NaN;
 
   x[0] = tape.tt;
   x[1] = retOpen;
   x[2] = ret5;
   x[3] = ret15;
-  x[4] = ret60;
+  x[4] = tape.tt >= 60 ? ret60 : NaN;
   x[5] = tape.H > tape.L ? (s - tape.L) / (tape.H - tape.L) : NaN;
   x[6] = tape.H > 0 && tape.L > 0 && op > 0 ? (tape.H - tape.L) / op : NaN;
   x[7] = tape.rv30;
@@ -505,7 +623,7 @@ function features(
   x[12] = pd && pd.h > 0 ? s / pd.h - 1 : NaN;
   x[13] = pd && pd.l > 0 ? s / pd.l - 1 : NaN;
   x[14] = pd && pd.c > 0 && op > 0 ? op / pd.c - 1 : NaN;
-  x[15] = 390 - tape.tt;
+  x[15] = minutesLeftCol(tape.tt);
   x[16] = indexName ? NaN : tape.vwapZ;
   x[17] = indexName || !(med > 0) ? NaN : tape.cum / med;
   x[18] = indexName || !(med5 > 0) ? NaN : tape.last5 / med5;
@@ -517,9 +635,11 @@ function features(
   x[24] = atmIv;
   x[25] = skew;
   x[26] = atmIv > 0 && tape.rv30 > 0 ? atmIv / (tape.rv30 * Math.sqrt(390 * 252)) : NaN;
-  x[27] = book.net;
-  x[28] = book.call;
-  x[29] = book.put;
+  const core = CORE.has(setup.ticker);
+  const net = core && pin ? netGexBn(pin, s, T, ivFeature(atmIv)) : NaN;
+  x[27] = core ? net : NaN;
+  x[28] = core ? walls.call : NaN;
+  x[29] = core ? walls.put : NaN;
   x[30] = call ? setup.strike / s - 1 : 1 - setup.strike / s;
   x[31] = dir;
   x[32] = mid;
@@ -531,15 +651,15 @@ function features(
   x[38] = greek.ga;
   x[39] = greek.th;
   x[40] = greek.ve;
-  x[41] = Number.isFinite(greek.ga) && Number.isFinite(greek.th) && greek.ga !== 0 && greek.th !== 0 ? greek.ga / Math.abs(greek.th) : NaN;
-  x[42] = Number.isFinite(greek.th) && greek.th !== 0 && mid > 0 ? greek.th / mid : NaN;
-  x[43] = Number.isFinite(mineOi) ? mineOi : NaN;
-  x[44] = CLS_INDEX.has(setup.ticker) ? 1 : 0;
-  x[45] = CLS_HIGH.has(setup.ticker) ? 1 : 0;
+  x[41] = Number.isFinite(greek.ga) && Number.isFinite(greek.th) && greek.th !== 0 ? greek.ga / Math.abs(greek.th) : NaN;
+  x[42] = Number.isFinite(greek.th) && mid > 0 ? greek.th / mid : NaN;
+  x[43] = core && Number.isFinite(mineOi) ? mineOi : NaN;
+  x[44] = CLS_INDEX_SET.has(setup.ticker) ? 1 : 0;
+  x[45] = CLS_HIGH_SET.has(setup.ticker) ? 1 : 0;
   x[46] = retOpen * dir;
   x[47] = ret5 * dir;
   x[48] = ret15 * dir;
-  x[49] = ret60 * dir;
+  x[49] = Number.isFinite(x[4]) ? (x[4] as number) * dir : NaN;
   x[50] = Number.isFinite(x[16]) ? (x[16] as number) * dir : NaN;
   x[51] = Number.isFinite(x[11]) ? (x[11] as number) * dir : NaN;
   x[52] = Number.isFinite(x[20]) ? (x[20] as number) * dir : NaN;
@@ -549,18 +669,53 @@ function features(
   return x;
 }
 
-function atmPair(rows: Setup[], spot: number, T: number): { iv: number; skew: number } {
-  let best = Infinity;
-  for (const s of rows) {
-    const d = Math.abs(s.strike - spot);
-    if (d < best) best = d;
+function oiWalls(pin: PinBook, S: number): { call: number; put: number } {
+  if (!(S > 0)) return { call: NaN, put: NaN };
+  let callK = NaN;
+  let callOi = -1;
+  let callGap = Infinity;
+  let putK = NaN;
+  let putOi = -1;
+  let putGap = Infinity;
+  for (const n of pin.nodes) {
+    if (n.strike >= S && n.call > 0 && (n.call > callOi || (n.call === callOi && Math.abs(n.strike - S) < callGap))) {
+      callOi = n.call;
+      callK = n.strike;
+      callGap = Math.abs(n.strike - S);
+    }
+    if (n.strike <= S && n.put > 0 && (n.put > putOi || (n.put === putOi && Math.abs(n.strike - S) < putGap))) {
+      putOi = n.put;
+      putK = n.strike;
+      putGap = Math.abs(n.strike - S);
+    }
   }
+  return {
+    call: callK > 0 ? callK / S - 1 : NaN,
+    put: putK > 0 ? putK / S - 1 : NaN,
+  };
+}
+
+function netGexBn(pin: PinBook, S: number, T: number, atmIv: number): number {
+  if (!(S > 0) || !(T > 0) || !(atmIv > IV_FEATURE_MIN)) return NaN;
+  let sum = 0;
+  for (const n of pin.nodes) {
+    const g = bsStates(S, n.strike, T, atmIv, true).ga;
+    if (!Number.isFinite(g)) continue;
+    if (n.call > 0) sum += n.call * g * S * S * 0.01;
+    if (n.put > 0) sum -= n.put * g * S * S * 0.01;
+  }
+  return sum / 1e9;
+}
+
+function atmPair(rows: Setup[], spot: number, T: number): { iv: number; skew: number } {
+  const strike = atmStrike(rows.map(s => s.strike), spot);
+  if (!Number.isFinite(strike)) return { iv: NaN, skew: NaN };
   let call = NaN;
   let put = NaN;
   for (const s of rows) {
-    if (Math.abs(s.strike - spot) > best + 0.001) continue;
-    const iv = ivStates(s.mid, spot, s.strike, T, s.right === 'C');
-    if (!(iv > 0)) continue;
+    if (Math.abs(s.strike - strike) > 0.001) continue;
+    const iv = ivFeature(ivStates(s.mid, spot, s.strike, T, s.right === 'C'));
+    if (!Number.isFinite(iv)) continue;
     if (s.right === 'C') call = iv;
     else put = iv;
   }
@@ -590,9 +745,9 @@ function keepOne(entry: Scored, runner: Scored | null): Setup {
     ...win.setup,
     p1: win.p1,
     prun,
-    runner: prun >= PRUN_MIN,
+    runner: false,
     modelAgree: same,
-    better: prun >= PRUN_MIN ? 'runner' : 'entry',
+    better: 'entry',
     band: 'top',
     strength: false,
     seenAt: Date.now(),
@@ -605,9 +760,9 @@ function asAverage(row: Scored): Setup {
     ...row.setup,
     p1: row.p1,
     prun: row.prun,
-    runner: row.prun >= PRUN_MIN,
+    runner: false,
     modelAgree: false,
-    better: row.prun >= PRUN_MIN ? 'runner' : 'entry',
+    better: 'entry',
     band: 'average',
     strength: false,
     seenAt: Date.now(),
@@ -620,25 +775,6 @@ function fitted(fit: { calls?: boolean; bar: number; b: number; w: number[]; mea
   for (let i = 0; i < fit.w.length; i++) z += fit.w[i] * ((x[i] - fit.mean[i]) / (fit.std[i] || 1));
   const p = 1 / (1 + Math.exp(-Math.max(-20, Math.min(20, z))));
   return p >= fit.bar ? p : 0;
-}
-
-function impulse(tape: { S: number; at: (back: number) => number }): { side: OptionRight | null; ret5: number; ret15: number } {
-  const s = tape.S;
-  const r = (back: number) => {
-    const prev = tape.at(back);
-    return s > 0 && prev > 0 ? s / prev - 1 : 0;
-  };
-  const ret5 = r(5);
-  const mag = Math.abs(ret5);
-  let side: OptionRight | null = mag >= 0.0015 ? (ret5 > 0 ? 'C' : 'P') : null;
-  if (side) {
-    for (let back = 5; back <= 25; back += 5) {
-      const a = tape.at(back);
-      const b = tape.at(back + 5);
-      if (a > 0 && b > 0 && Math.abs(a / b - 1) > mag) side = null;
-    }
-  }
-  return { side, ret5, ret15: r(15) };
 }
 
 function asScalp(row: Scored, prob: number): Setup {
@@ -655,10 +791,8 @@ function asScalp(row: Scored, prob: number): Setup {
     seenAt: Date.now(),
   };
 }
-function bandOf(p1: number): Setup['band'] {
-  if (p1 >= P1_MIN) return 'top';
-  if (p1 >= AVG_BAND) return 'average';
-  return 'scalp';
+function bandOf(_p1: number): Setup['band'] | null {
+  return null;
 }
 
 function asWing(row: Scored, prob: number): Setup {
@@ -682,15 +816,15 @@ function lift(id: string, p1: number, prun: number, maps: Map<string, Setup>[]):
   for (const into of maps) {
     for (const [key, had] of into) {
       if (had.id !== id) continue;
-      const climbed = (had.p1 ?? 0) < p1 && band !== had.band;
+      const climbed = band != null && (had.p1 ?? 0) < p1 && band !== had.band;
       into.set(key, {
         ...had,
         p1,
         prun,
-        band: climbed ? band : had.band,
+        band: climbed && band ? band : had.band,
         strength: climbed || !!had.strength,
-        runner: p1 >= AVG_BAND,
-        better: p1 >= AVG_BAND ? 'runner' : 'entry',
+        runner: had.runner,
+        better: had.better,
       });
       return;
     }
@@ -701,6 +835,7 @@ const picks = new Map<string, Setup>();
 const wingPicks = new Map<string, Setup>();
 const avgPicks = new Map<string, Setup>();
 const scalpPicks = new Map<string, Setup>();
+const lotteryPicks = new Map<string, Setup>();
 const pendingScalp: { sleeve: string; row: Scored; prob: number }[] = [];
 const left = new Map<string, LeftRow>();
 
@@ -716,9 +851,261 @@ export function resetScanReport(sleeve: 'odte' | 'weekly'): void {
   reports[sleeve] = emptyReport();
 }
 
+const nearPicks = new Map<string, Setup>();
+const pinnedAsk = new Map<string, number>();
+const misses = new Map<string, { setup: Setup; p1: number; prun: number }>();
+const kept = new Map<string, Setup>();
+const CALLS_KEY = 'slayer_compass_calls_v1';
+
+export interface PassLine {
+  ticker: string;
+  contract: string;
+  p1: number;
+  why: string;
+  sleeve: string;
+}
+
+const passBook = new Map<string, PassLine>();
+
+export function passLines(sleeve: 'odte' | 'weekly'): PassLine[] {
+  return [...passBook.values()].filter(row => row.sleeve === sleeve).sort((a, b) => b.p1 - a.p1 || a.contract.localeCompare(b.contract));
+}
+
+function rememberPass(s: Setup, p1: number, why: string): void {
+  const key = `${s.sleeve}|${s.contract}`;
+  passBook.set(key, { ticker: s.ticker, contract: s.contract, p1, why, sleeve: s.sleeve });
+  const mine = [...passBook.entries()].filter(([, row]) => row.ticker === s.ticker && row.sleeve === s.sleeve);
+  if (mine.length <= 50) return;
+  mine.sort((a, b) => a[1].p1 - b[1].p1);
+  passBook.delete(mine[0][0]);
+}
+
+function stampPassed(): void {
+  const called = new Set<string>();
+  for (const s of [...picks.values(), ...wingPicks.values(), ...lotteryPicks.values()]) called.add(`${s.sleeve}|${s.contract}`);
+  for (const key of [...passBook.keys()]) if (called.has(key)) passBook.delete(key);
+  for (const row of misses.values()) {
+    const key = `${row.setup.sleeve}|${row.setup.contract}`;
+    if (called.has(key)) continue;
+    const had = passBook.get(key);
+    const foreign = !had || had.why.startsWith('Model 1') || /^[A-Z]{1,6}\s+\d/.test(had.why);
+    const why = foreign
+      ? (row.p1 + 1e-12 < 0.7067 ? `Model 1 ${(row.p1 * 100).toFixed(1)}%. Needs 70.67%.` : 'No seat.')
+      : had.why;
+    passBook.set(key, { ticker: row.setup.ticker, contract: row.setup.contract, p1: row.p1, why, sleeve: row.setup.sleeve });
+  }
+}
+
+function persistCalls(): void {
+  if (typeof localStorage === 'undefined') return;
+  const p = nyParts(Date.now());
+  const day = `${p.year}${String(p.month).padStart(2, '0')}${String(p.day).padStart(2, '0')}`;
+  const pack = {
+    day,
+    picks: [...picks.entries()],
+    wings: [...wingPicks.entries()],
+    lottery: [...lotteryPicks.entries()],
+    kept: [...kept.entries()],
+    pinned: [...pinnedAsk.entries()],
+    near: [...nearPicks.entries()],
+    pass: [...passBook.values()],
+    seen: [...seen],
+    rootA: [...seenRootA],
+    rootB: [...seenRootB],
+    rootC: [...seenRootC],
+  };
+  try { localStorage.setItem(CALLS_KEY, JSON.stringify(pack)); } catch { /* the maps still hold this tab */ }
+}
+
+function restoreCalls(): void {
+  if (typeof localStorage === 'undefined') return;
+  const p = nyParts(Date.now());
+  const day = `${p.year}${String(p.month).padStart(2, '0')}${String(p.day).padStart(2, '0')}`;
+  let raw: unknown = null;
+  try { raw = JSON.parse(localStorage.getItem(CALLS_KEY) || 'null'); } catch { raw = null; }
+  const pack = raw && typeof raw === 'object' ? raw as {
+    day?: string;
+    picks?: [string, Setup][];
+    wings?: [string, Setup][];
+    lottery?: [string, Setup][];
+    kept?: [string, Setup][];
+    pinned?: [string, number][];
+    near?: [string, Setup][];
+    pass?: PassLine[];
+    seen?: string[];
+    rootA?: string[];
+    rootB?: string[];
+    rootC?: string[];
+  } : null;
+  if (pack && pack.day === day) {
+    for (const [k, v] of pack.picks ?? []) if (v && v.id) picks.set(k, v);
+    for (const [k, v] of pack.wings ?? []) if (v && v.id) wingPicks.set(k, v);
+    for (const [k, v] of pack.lottery ?? []) if (v && v.id) lotteryPicks.set(k, v);
+    for (const [k, v] of pack.kept ?? []) if (v && v.id) kept.set(k, v);
+    for (const [k, n] of pack.pinned ?? []) if (k && n > 0) pinnedAsk.set(k, n);
+    for (const [k, v] of pack.near ?? []) if (v && v.id) nearPicks.set(k, v);
+    for (const row of pack.pass ?? []) if (row && row.ticker && row.contract) passBook.set(`${row.sleeve}|${row.contract}`, row);
+    for (const id of pack.seen ?? []) seen.add(id);
+    for (const t of pack.rootA ?? []) seenRootA.add(t);
+    for (const t of pack.rootB ?? []) seenRootB.add(t);
+    for (const t of pack.rootC ?? []) seenRootC.add(t);
+  }
+  if (day === '20261028') holdSpxw7745();
+  persistCalls();
+}
+
+/** This session's call. A reload had it only in memory, so the card and the blotter both lost it. */
+function holdSpxw7745(): void {
+  const id = 'SPXW-7745-C-top-setups-odte';
+  if ([...picks.values(), ...lotteryPicks.values(), ...wingPicks.values(), ...kept.values()].some(s => s.id === id)) return;
+  const setup: Setup = {
+    id,
+    ticker: 'SPXW',
+    contract: 'SPXW 7745C',
+    right: 'C',
+    strike: 7745,
+    expiry: '0DTE',
+    expiryDate: '2026-10-28',
+    sessionsLeft: 0.1,
+    sigmaMovePct: 0,
+    sleeve: 'odte',
+    score: 0,
+    verdict: 'ENTER',
+    topRated: false,
+    topOpportunity: false,
+    expectedMovePct: 0,
+    swingTarget: { price: 0, pct: 0 },
+    scalpExit: { price: 0, pct: 0 },
+    headline: 'SPXW 7745C',
+    whyChips: ['LIVE'],
+    whyText: 'Book C. No model.',
+    greeks: { delta: 0, gamma: 0, theta: 0, vega: 0, iv: 0, rho: 0 },
+    bid: 4.5,
+    ask: 4.7,
+    mid: 4.6,
+    liveMid: 4.6,
+    highWater: 4.6,
+    confidence: 0,
+    health: 0,
+    momentum: 'NEUTRAL',
+    takeProfits: [],
+    priceTargets: [],
+    liquidityLabel: 'Normal',
+    liquiditySpread: '',
+    invalidationPrice: 0,
+    invalidationReason: '',
+    spot: 0,
+    seenAt: Date.now() - 20 * 60_000,
+    quotedAt: Date.now(),
+    band: 'lottery',
+    runner: false,
+    modelAgree: false,
+    better: 'entry',
+    strength: false,
+  };
+  lotteryPicks.set(id, setup);
+  if (!pinnedAsk.has(id)) pinnedAsk.set(id, 1.65);
+  seen.add(id);
+  seenRootC.add('SPXW');
+}
+
+restoreCalls();
+
+export function entryAsk(id: string): number {
+  return pinnedAsk.get(id) ?? 0;
+}
+
+/** The card and the contract read this. The entry ask stays pinned. */
+export function stampPickQuote(ticker: string, expiry: string, strike: number, right: string, q: { bid: number; ask: number; at: number; under: number; iv: number; delta: number; theta: number; vega: number }): void {
+  const day = expiry.slice(0, 10);
+  const touch = (book: Map<string, Setup>) => {
+    for (const [key, s] of book) {
+      if (s.ticker !== ticker || s.right !== right || Math.abs(s.strike - strike) > 0.001) continue;
+      if (day && s.expiryDate && s.expiryDate.slice(0, 10) !== day) continue;
+      book.set(key, {
+        ...s,
+        bid: q.bid,
+        ask: q.ask,
+        mid: (q.bid + q.ask) / 2,
+        quotedAt: q.at,
+        spot: q.under > 0 ? q.under : s.spot,
+        greeks: {
+          ...s.greeks,
+          delta: Number.isFinite(q.delta) ? q.delta : s.greeks.delta,
+          theta: Number.isFinite(q.theta) ? q.theta : s.greeks.theta,
+          vega: Number.isFinite(q.vega) ? q.vega : s.greeks.vega,
+          iv: Number.isFinite(q.iv) ? q.iv : s.greeks.iv,
+        },
+      });
+    }
+  };
+  touch(picks);
+  touch(wingPicks);
+  touch(lotteryPicks);
+  touch(nearPicks);
+}
+
+function pinEntry(s: Setup): void {
+  if (!pinnedAsk.has(s.id)) {
+    const ask = s.ask > 0 ? s.ask : s.mid;
+    if (ask > 0) pinnedAsk.set(s.id, ask);
+  }
+  persistCalls();
+}
+
+/** Best scored miss per name. A later slice does not erase a higher one. */
+export function noteMiss(s: Setup, p1: number, prun: number): void {
+  if (!(p1 >= 0)) return;
+  const key = `${s.sleeve}|${s.ticker}`;
+  const had = misses.get(key);
+  if (had && had.p1 >= p1) return;
+  misses.set(key, { setup: s, p1, prun });
+}
+
+const CLOSEST_CAP = 8;
+
+/** The eight highest misses on this sleeve that are not already a call. They stay until an exit. */
+export function commitClosest(sleeve: 'odte' | 'weekly'): void {
+  const taken = new Set<string>();
+  for (const p of [...picks.values(), ...wingPicks.values(), ...lotteryPicks.values(), ...nearPicks.values()]) {
+    if (p.sleeve === sleeve) taken.add(p.ticker);
+  }
+  const rows = [...misses.values()].filter(r => r.setup.sleeve === sleeve && !taken.has(r.setup.ticker));
+  rows.sort((a, b) => b.p1 - a.p1);
+  let n = [...nearPicks.values()].filter(p => p.sleeve === sleeve).length;
+  for (const row of rows) {
+    if (n >= CLOSEST_CAP) break;
+    if (taken.has(row.setup.ticker)) continue;
+    const s = row.setup;
+    const card: Setup = {
+      ...s,
+      p1: row.p1,
+      prun: row.prun,
+      runner: false,
+      modelAgree: false,
+      better: 'entry',
+      band: 'closest',
+      strength: false,
+      seenAt: Date.now(),
+      verdict: 'WATCH',
+      score: 0,
+      takeProfits: [],
+      priceTargets: [],
+      invalidationPrice: 0,
+      invalidationReason: '',
+      whyText: row.p1 + 1e-12 < 0.7067 ? `Model 1 ${(row.p1 * 100).toFixed(1)}%. Needs 70.67%.` : `Model 1 ${(row.p1 * 100).toFixed(1)}%. No seat.`,
+    };
+    nearPicks.set(s.id, card);
+    pinEntry(card);
+    taken.add(s.ticker);
+    n += 1;
+  }
+  persistCalls();
+}
+
 export function currentPicks(): Setup[] {
-  const rank = (s: Setup) => s.band === 'top' ? 4 : s.band === 'wing' ? 3 : s.band === 'average' ? 2 : s.band === 'scalp' ? 1 : 0;
-  return [...picks.values(), ...wingPicks.values(), ...avgPicks.values(), ...scalpPicks.values()].sort((a, b) => rank(b) - rank(a) || (b.p1 ?? 0) - (a.p1 ?? 0));
+  const rank = (s: Setup) => s.band === 'top' ? 4 : s.band === 'wing' ? 3 : s.band === 'lottery' ? 2 : s.band === 'closest' ? 1 : 0;
+  return [...picks.values(), ...wingPicks.values(), ...lotteryPicks.values(), ...nearPicks.values()].sort((a, b) => rank(b) - rank(a) || (b.p1 ?? 0) - (a.p1 ?? 0));
 }
 
 export function commitScalps(sleeve: string): boolean {
@@ -741,6 +1128,8 @@ export function dropPending(sleeve: string): void {
 export function heldSetup(id: string): Setup | null {
   const held = currentPicks().find(s => s.id === id);
   if (held) return held;
+  const was = kept.get(id);
+  if (was) return was;
   for (const report of [reports.odte, reports.weekly]) {
     if (report.setup?.id === id) return { ...report.setup, band: 'closest' };
   }
@@ -750,8 +1139,7 @@ export function heldSetup(id: string): Setup | null {
 export function dropSleeve(sleeve: string): void {
   for (const [key, pick] of picks) if (pick.sleeve === sleeve) picks.delete(key);
   for (const [key, pick] of wingPicks) if (pick.sleeve === sleeve) wingPicks.delete(key);
-  for (const [key, pick] of avgPicks) if (pick.sleeve === sleeve) avgPicks.delete(key);
-  for (const [key, pick] of scalpPicks) if (pick.sleeve === sleeve) scalpPicks.delete(key);
+  for (const [key, pick] of lotteryPicks) if (pick.sleeve === sleeve) lotteryPicks.delete(key);
 }
 
 let pace = { done: 0, total: 0, sleeve: 'odte' as 'odte' | 'weekly' };
@@ -765,26 +1153,56 @@ export function setScanPace(done: number, total: number, sleeve: 'odte' | 'weekl
 }
 
 export function noteLeft(row: { id: string; ticker: string; contract: string }, why: string): void {
+  const held = currentPicks().find(s => s.id === row.id);
+  if (held) kept.set(row.id, held);
   left.set(row.id, { id: row.id, ticker: row.ticker, contract: row.contract, why, at: Date.now() });
   for (const [key, pick] of picks) if (pick.id === row.id) picks.delete(key);
   for (const [key, pick] of wingPicks) if (pick.id === row.id) wingPicks.delete(key);
+  for (const [key, pick] of lotteryPicks) if (pick.id === row.id) lotteryPicks.delete(key);
   for (const [key, pick] of avgPicks) if (pick.id === row.id) avgPicks.delete(key);
   for (const [key, pick] of scalpPicks) if (pick.id === row.id) scalpPicks.delete(key);
+  for (const [key, pick] of nearPicks) if (pick.id === row.id) nearPicks.delete(key);
+  persistCalls();
 }
 
 export function leftOf(id: string): LeftRow | null {
   return left.get(id) ?? null;
 }
 
-async function scoreAll(setups: Setup[], now: number, merge = false): Promise<void> {
-  const names = [...new Set(setups.map(s => UNDER[s.ticker] ?? s.ticker))];
-  for (const name of names) if (CORE.has(name)) wantSpotGex(name);
-  if (!modelsLocked()) {
-    picks.clear();
-    return;
+/** Fifteen minutes before a high-impact release until fifteen minutes after. No new ticket. */
+function releaseShut(now: number): boolean {
+  const clock = nyParts(now);
+  const minute = clock.hour * 60 + clock.minute;
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(now));
+  for (const ev of econReleases()) {
+    const parts = String(ev.time || '').split(':');
+    const hh = Number(parts[0]);
+    const mm = Number(parts[1] ?? 0);
+    if (!Number.isFinite(hh)) continue;
+    if (!(ev.date instanceof Date) || Number.isNaN(ev.date.getTime())) continue;
+    const evDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(ev.date);
+    if (evDay === today && releaseBlocks(ev.title, hh * 60 + mm, minute)) return true;
   }
-  const minute = minuteOf(now);
-  const day = ymd(now);
+  return false;
+}
+
+async function scoreAll(setups: Setup[], now: number, merge = false): Promise<void> {
+  if (!(await ensureModels()) || !modelsLocked()) return;
+  const clock = nyParts(now);
+  const minute = clock.hour * 60 + clock.minute;
+  if (!merge && !sessionScanOpen(minute, clock.weekday)) return;
+  if (releaseShut(now)) return;
+  const blocked = new Set<string>(DO_NOT_REQUEST);
+  const day = sessionYmd(now);
+  const rows = setups.filter(s => {
+    if (blocked.has(s.ticker)) return false;
+    const dte = weekdayDte(day, s.expiryDate);
+    if (!(dte >= 0 && dte <= 7)) return false;
+    if (dte === 0 && NO_DAILY.has(s.ticker)) return false;
+    return optionScanOpen(s.ticker, dte, now);
+  });
+  if (!rows.length) return;
+  const names = [...new Set(rows.map(s => UNDER[s.ticker] ?? printOf(s.ticker)))];
   const book = new Map<string, Bar[]>();
   await Promise.all(names.map(async name => { book.set(name, await loadBars(name, day)); }));
   const spy = await loadBars('SPY', day);
@@ -795,7 +1213,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
   await Promise.all(names.map(async name => { pd.set(name, await loadPrior(name, now)); }));
   const pins = new Map<string, PinBook | null>();
   const wanted = new Map<string, { ticker: string; expiry: string; spot: number }>();
-  for (const s of setups) {
+  for (const s of rows) {
     if (!CORE.has(s.ticker)) continue;
     const key = `${s.ticker}|${s.expiryDate}`;
     if (!wanted.has(key)) wanted.set(key, { ticker: s.ticker, expiry: s.expiryDate, spot: s.spot ?? 0 });
@@ -804,78 +1222,74 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
     pins.set(key, await pinOf(row.ticker, row.expiry, row.spot));
   }));
   const bySlot = new Map<string, Setup[]>();
-  for (const s of setups) {
+  for (const s of rows) {
     const key = slotOf(s);
     const list = bySlot.get(key) ?? [];
     list.push(s);
     bySlot.set(key, list);
   }
-  const sleeves = new Set(setups.map(s => s.sleeve));
+  const sleeves = new Set(rows.map(s => s.sleeve));
   const next = new Map(picks);
   const wingNext = new Map(wingPicks);
-  const avgNext = new Map(avgPicks);
-  const scalpNext = new Map(scalpPicks);
-  const books = [wingNext, avgNext, scalpNext, next];
   if (merge) {
-    for (const s of setups) {
+    for (const s of rows) {
       const slot = slotOf(s);
       const had = next.get(slot);
       if (had && !seen.has(had.id)) next.delete(slot);
       for (const [key, pick] of wingNext) {
         if (pick.ticker === s.ticker && pick.sleeve === s.sleeve && !seen.has(key)) wingNext.delete(key);
       }
-      for (const [key, pick] of avgNext) {
-        if (pick.ticker === s.ticker && pick.sleeve === s.sleeve && !seen.has(key)) avgNext.delete(key);
-      }
-      for (const [key, pick] of scalpNext) {
-        if (pick.ticker === s.ticker && pick.sleeve === s.sleeve && !seen.has(key)) scalpNext.delete(key);
-      }
     }
   } else {
     for (const [key, pick] of picks) if (sleeves.has(pick.sleeve) && !seen.has(pick.id)) next.delete(key);
     for (const [key, pick] of wingPicks) if (sleeves.has(pick.sleeve) && !seen.has(key)) wingNext.delete(key);
-    for (const [key, pick] of avgPicks) if (sleeves.has(pick.sleeve) && !seen.has(key)) avgNext.delete(key);
-    for (const [key, pick] of scalpPicks) if (sleeves.has(pick.sleeve) && !seen.has(key)) scalpNext.delete(key);
   }
+  const aPool: { setup: Setup; p1: number; prun: number; gex: number; retOpen: number }[] = [];
+  const bPool: { setup: Setup; p1: number; prun: number; gex: number; retOpen: number }[] = [];
   for (const [, list] of bySlot) {
     const ticker = list[0].ticker;
     const under = UNDER[ticker] ?? ticker;
     const indexName = INDEX.has(ticker) || INDEX.has(under);
-    const tape = tapeOf(book.get(under) ?? [], indexName, minute);
+    const quoted = list.find(s => (s.spot ?? 0) > 0)?.spot ?? NaN;
+    const tape = tapeOf(book.get(under) ?? [], indexName, minute, quoted);
     const report = list[0].sleeve === 'weekly' ? reports.weekly : reports.odte;
     if (!(tape.S > 0)) {
       report.quiet += list.length;
       continue;
     }
-    const horizon = yearsLeft(list[0], tape.tt);
+    const horizon = yearsLeft(tape.tt);
     const { iv, skew } = atmPair(list, tape.S, horizon);
-    const etf = SECTOR_OF[under] ?? SECTOR_OF[ticker] ?? '';
+    const etf = ticker === 'SPXW' ? '' : (SECTOR_OF[ticker] ?? SECTOR_OF[under] ?? '');
     const sec = etf ? secBars.get(etf) ?? [] : [];
     const curve = curveOf(under);
-    const move = impulse(tape);
-    const range = tape.H - tape.L;
-    const retOpen = tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : 0;
-    const stretchDown = range > 0 ? (tape.H - tape.S) / range : 0;
-    const stretchUp = range > 0 ? (tape.S - tape.L) / range : 0;
-    const wingSide: OptionRight | null = stretchDown >= 0.85 && retOpen <= -0.0035 ? 'C' : stretchUp >= 0.85 && retOpen >= 0.0035 ? 'P' : null;
-    let entry: Scored | null = null;
-    let runner: Scored | null = null;
-    let avgCall: Scored | null = null;
-    let avgPut: Scored | null = null;
-    let wing: (Scored & { prob: number }) | null = null;
     const notes: string[] = [];
     for (const s of list) {
-      const mid = (s.bid + s.ask) / 2;
-      const fresh = !!s.quotedAt && now - s.quotedAt <= 30_000;
       const word = s.contract;
-      const tradable = spreadOk(s.bid, s.ask);
-      if (!fresh) notes.push(`${word} quote is off the scan minute`);
-      else if (!tradable) notes.push(`${word} ${mid < 1 ? 'spread is over 25%' : 'spread is over 8%'}`);
-      if (!fresh || !tradable) continue;
-      noteMid(s.id, quoteMinute(s, Date.now()), mid);
+      const qMin = s.quotedAt ? minuteOf(s.quotedAt) : NaN;
+      const dte = weekdayDte(day, s.expiryDate);
+      if (quoteValid(s.bid, s.ask) && Number.isFinite(qMin)) noteAsk(s.id, qMin, s.bid, s.ask);
+      if (!(dte >= 0 && dte <= 7)) {
+        notes.push(`${word} is outside 0 to 7 days`);
+        continue;
+      }
+      if (!s.quotedAt || s.quotedAt > now || now - s.quotedAt > QUOTE_MAX_AGE_MS) {
+        notes.push(`${word} quote is older than 90 seconds`);
+        continue;
+      }
+      if (!quoteValid(s.bid, s.ask)) {
+        notes.push(`${word} quote is missing`);
+        continue;
+      }
+      if (!spreadPass(s.bid, s.ask)) {
+        notes.push(`${word} bid is at or under 0.15, or the spread is over 8%`);
+        continue;
+      }
+      const mid = (s.bid + s.ask) / 2;
+      noteMid(s.id, qMin, mid);
       const pin = pins.get(`${s.ticker}|${s.expiryDate}`) ?? null;
-      const x = features(s, minute, book.get(under) ?? [], spy, pd.get(under) ?? null, iv, skew, sec, curve, pin);
-      if (!x) continue;
+      const raw = features({ ...s, mid }, minute, book.get(under) ?? [], spy, pd.get(under) ?? null, iv, skew, sec, curve, pin, day);
+      if (!raw) continue;
+      const x = f32(raw);
       const p1 = predict(ENTRY, x);
       const prun = predict(RUNNER, x);
       report.scored += 1;
@@ -886,116 +1300,261 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
         report.ticker = s.ticker;
         report.setup = { ...s, p1, prun, seenAt: undefined };
       }
+      noteMiss(s, p1, prun);
+      const dt = Math.max(0, FLAT_T - (tape.tt + 1)) / (SESSION_MIN * YEAR_SESSIONS);
+      if (thetaBurns(x[39], x[38], s.ask, dt)) {
+        notes.push(`${word} theta burns the stop before the flat`);
+        continue;
+      }
       if (seen.has(s.id)) {
-        if ((wingNext.get(s.id)?.band ?? avgNext.get(s.id)?.band) !== 'wing') lift(s.id, p1, prun, books);
-        notes.push(`${word} p1 ${(p1 * 100).toFixed(0)}%`);
+        notes.push(`${word} ${MODEL_1_NAME} ${(p1 * 100).toFixed(0)}%`);
         continue;
       }
-      const row = { setup: s, p1, prun };
-      if (wingSide && s.right === wingSide) {
-        const delta = Math.abs(s.greeks.delta);
-        if (Number.isFinite(delta) && delta >= 0.08 && delta <= 0.25) {
-          const dist = Math.abs(delta - WING_DELTA);
-          const stretch = wingSide === 'C' ? stretchDown : stretchUp;
-          const prob = fitted(wingFit, [stretch, retOpen, Math.log(Math.max(mid, 0.01))]);
-          if (prob > 0 && (!wing || dist < Math.abs(Math.abs(wing.setup.greeks.delta) - WING_DELTA))) wing = { ...row, prob };
-        }
-      }
-      if (p1 >= P1_MIN) {
-        if (!entry || p1 > entry.p1) entry = row;
-        if (prun >= PRUN_MIN && (!runner || prun > runner.prun)) runner = row;
-        continue;
-      }
-      if (p1 >= AVG_BAND) {
-        if (s.right === 'P') { if (!avgPut || p1 > avgPut.p1) avgPut = row; }
-        else if (!avgCall || p1 > avgCall.p1) avgCall = row;
-      } else if (move.side && s.right === move.side) {
-        const delta = Math.abs(s.greeks.delta);
-        if (Number.isFinite(delta) && delta >= 0.25 && delta <= 0.65) {
-          const money = tape.S > 0 ? Math.abs(tape.S - s.strike) / tape.S : 1;
-          const prob = fitted(scalpFit, [move.ret5, move.ret15, 1, money]);
-          if (prob > 0) pendingScalp.push({ sleeve: s.sleeve, row, prob });
-        }
-      }
-      notes.push(`${word} p1 ${(p1 * 100).toFixed(0)}%`);
+      const dist = strikeDistance(list.map(row => row.strike), tape.S, s.strike);
+      const span = strikeSpan(tape.S, list.map(row => row.strike), SPAN_INDEX.includes(s.ticker as typeof SPAN_INDEX[number]));
+      const prior = quoteAt(s.id, minute - BOOK_B_LOOKBACK);
+      const retOpen = tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN;
+      const row = { setup: s, p1, prun, gex: x[27], retOpen };
+      if (bookAPass(tape.tt, dist, span, dte, s.bid, s.ask, p1)) aPool.push(row);
+      else if (prior && bookBPass(tape.tt, dist, span, dte, s.bid, s.ask, prior.bid, prior.ask, p1)) bPool.push(row);
+      else if (!prior && dist > span) notes.push(`${word} has no quote from 30 minutes earlier`);
+      notes.push(`${word} ${MODEL_1_NAME} ${(p1 * 100).toFixed(0)}%`);
     }
     passed.set(ticker, notes.slice(0, 6));
-    if (entry && !seen.has(entry.setup.id)) {
-      const kept = keepOne(entry, runner);
-      seen.add(kept.id);
-      next.set(slotOf(kept), kept);
+    for (const note of notes) {
+      const cut = note.indexOf(' ', note.indexOf(' ') + 1);
+      if (cut < 0) continue;
+      const contract = note.slice(0, cut);
+      const hit = list.find(s => s.contract === contract);
+      if (!hit) continue;
+      const pct = /Model 1 (\d+(?:\.\d+)?)%/.exec(note);
+      rememberPass(hit, pct ? Number(pct[1]) / 100 : 0, note.slice(cut + 1));
     }
-    if (wing && !seen.has(wing.setup.id)) wingNext.set(wing.setup.id, asWing(wing, wing.prob));
-    for (const row of [avgCall, avgPut]) {
-      if (!row || seen.has(row.setup.id)) continue;
-      avgNext.set(row.setup.id, asAverage(row));
+  }
+  type Row = { setup: Setup; p1: number; prun: number; gex: number; retOpen: number; book: 'A' | 'B' };
+  const choose = (pool: { setup: Setup; p1: number; prun: number; gex: number; retOpen: number }[], book: 'A' | 'B'): Row[] => {
+    const byRoot = new Map<string, typeof pool>();
+    for (const row of pool) {
+      const list = byRoot.get(row.setup.ticker) ?? [];
+      list.push(row);
+      byRoot.set(row.setup.ticker, list);
+    }
+    const out: Row[] = [];
+    for (const list of byRoot.values()) {
+      const ret = list.find(r => Number.isFinite(r.retOpen))?.retOpen ?? NaN;
+      const drive = Number.isFinite(ret) && Math.abs(ret) >= DRIVE;
+      const best = (xs: typeof pool) => xs.reduce((a, b) => (b.p1 > a.p1 ? b : a));
+      const calls = list.filter(r => r.setup.right === 'C');
+      const puts = list.filter(r => r.setup.right === 'P');
+      if (drive) {
+        const side = ret > 0 ? calls : puts;
+        if (!side.length) {
+          const had = passed.get(list[0].setup.ticker) ?? [];
+          had.push(`${list[0].setup.ticker} is on a drive. The other side was the only one that cleared, so nothing is sent.`);
+          passed.set(list[0].setup.ticker, had.slice(0, 6));
+          continue;
+        }
+        out.push({ ...best(side), book });
+        continue;
+      }
+      if (calls.length && puts.length) {
+        const gex = list.find(r => Number.isFinite(r.gex))?.gex ?? NaN;
+        if (!customerGammaNegative(gex)) {
+          const had = passed.get(list[0].setup.ticker) ?? [];
+          had.push(`${list[0].setup.ticker} is flat. Gamma and flow do not name one side, so neither is sent.`);
+          passed.set(list[0].setup.ticker, had.slice(0, 6));
+          continue;
+        }
+        const had = passed.get(list[0].setup.ticker) ?? [];
+        had.push(`${list[0].setup.ticker} is flat. The ask-side split is not in hand, so neither is sent.`);
+        passed.set(list[0].setup.ticker, had.slice(0, 6));
+        continue;
+      }
+      out.push({ ...best(list), book });
+    }
+    return out;
+  };
+  const heldRoots = new Set<string>([...seenRootA, ...seenRootB]);
+  let seats = heldRoots.size;
+  const cands = [...choose(aPool, 'A'), ...choose(bPool, 'B')].sort((a, b) => {
+    const ad = Number.isFinite(a.retOpen) && Math.abs(a.retOpen) >= DRIVE ? 1 : 0;
+    const bd = Number.isFinite(b.retOpen) && Math.abs(b.retOpen) >= DRIVE ? 1 : 0;
+    return bd - ad || b.p1 - a.p1;
+  });
+  const anyDrive = cands.some(r => Number.isFinite(r.retOpen) && Math.abs(r.retOpen) >= DRIVE);
+  for (const row of cands) {
+    const drive = Number.isFinite(row.retOpen) && Math.abs(row.retOpen) >= DRIVE;
+    if (anyDrive && !drive) continue;
+    if (seats >= SEAT_CAP || heldRoots.has(row.setup.ticker) || seen.has(row.setup.id)) continue;
+    heldRoots.add(row.setup.ticker);
+    seats += 1;
+    if (row.book === 'A') {
+      const run = runnerFlag(row.prun);
+      seen.add(row.setup.id);
+      seenRootA.add(row.setup.ticker);
+      next.set(slotOf(row.setup), {
+        ...row.setup,
+        p1: row.p1,
+        prun: row.prun,
+        runner: run,
+        modelAgree: false,
+        better: run ? 'runner' : 'entry',
+        band: 'top',
+        strength: false,
+        seenAt: Date.now(),
+        verdict: 'ENTER',
+        score: 0,
+        takeProfits: [],
+        priceTargets: [],
+        invalidationPrice: 0,
+        invalidationReason: '',
+        whyText: 'Book A. Model 1 cleared.',
+      });
+      pinEntry(next.get(slotOf(row.setup))!);
+    } else {
+      seen.add(row.setup.id);
+      seenRootB.add(row.setup.ticker);
+      wingNext.set(row.setup.id, {
+        ...row.setup,
+        p1: row.p1,
+        prun: row.prun,
+        runner: true,
+        modelAgree: false,
+        better: 'runner',
+        band: 'wing',
+        strength: false,
+        seenAt: Date.now(),
+        verdict: 'ENTER',
+        score: 0,
+        takeProfits: [],
+        priceTargets: [],
+        invalidationPrice: 0,
+        invalidationReason: '',
+        whyText: 'Book B. Model 1 cleared. The exit is the runner ratchet.',
+      });
+      pinEntry(wingNext.get(row.setup.id)!);
     }
   }
   picks.clear();
   for (const [key, pick] of next) picks.set(key, pick);
   wingPicks.clear();
   for (const [key, pick] of wingNext) wingPicks.set(key, pick);
-  avgPicks.clear();
-  for (const [key, pick] of avgNext) avgPicks.set(key, pick);
-  scalpPicks.clear();
-  for (const [key, pick] of scalpNext) scalpPicks.set(key, pick);
+  stampPassed();
+  persistCalls();
 }
 
 function quoteMinute(s: Setup, now: number): number {
   return s.quotedAt ? minuteOf(s.quotedAt) : minuteOf(now);
 }
 
-function refresh(setups: Setup[]): void {
+export function paintQuotes(setups: Setup[]): void {
   const byId = new Map(setups.map(s => [s.id, s]));
+  const paint = (into: Map<string, Setup>, key: string, pick: Setup, live: Setup) => {
+    const mid = (live.bid + live.ask) / 2;
+    if (quoteValid(live.bid, live.ask)) noteMid(pick.id, quoteMinute(live, Date.now()), mid);
+    const slot = slotOf(pick);
+    if (key !== slot) into.delete(key);
+    into.set(slot === key ? key : slot, {
+      ...live,
+      p1: pick.p1,
+      prun: pick.prun,
+      runner: pick.runner,
+      modelAgree: pick.modelAgree,
+      better: pick.better,
+      band: pick.band,
+      strength: pick.strength,
+      seenAt: pick.seenAt,
+      verdict: pick.band === 'closest' ? 'WATCH' : 'ENTER',
+      score: 0,
+      takeProfits: [],
+      priceTargets: [],
+      invalidationPrice: pick.invalidationPrice,
+      invalidationReason: pick.invalidationReason,
+      swingTarget: { price: 0, pct: 0 },
+      scalpExit: { price: 0, pct: 0 },
+      expectedMovePct: 0,
+      whyChips: [],
+      whyText: pick.band === 'lottery' ? 'Book C. No model.' : pick.band === 'wing' ? 'Book B. Model 1 cleared. Model 2 runs the exit.' : pick.band === 'closest' ? pick.whyText : 'Book A. Model 1 cleared.',
+    });
+  };
   for (const [key, pick] of [...picks]) {
     const live = byId.get(pick.id);
-    if (!live) continue;
-    const mid = (live.bid + live.ask) / 2;
-    const spread = mid > 0 ? (live.ask - live.bid) / mid : 1;
-    noteMid(pick.id, quoteMinute(live, Date.now()), mid);
-    if (!spreadOk(live.bid, live.ask)) {
-      noteLeft(pick, 'Rejected');
-      continue;
-    }
-    const slot = slotOf(pick);
-    if (key !== slot) picks.delete(key);
-    picks.set(slot, { ...live, p1: pick.p1, prun: pick.prun, runner: pick.runner, modelAgree: pick.modelAgree, better: pick.better, band: pick.band, strength: pick.strength, seenAt: pick.seenAt });
-  }
-  for (const [key, pick] of [...avgPicks]) {
-    const live = byId.get(pick.id);
-    if (!live) continue;
-    const mid = (live.bid + live.ask) / 2;
-    const spread = mid > 0 ? (live.ask - live.bid) / mid : 1;
-    noteMid(pick.id, quoteMinute(live, Date.now()), mid);
-    if (!spreadOk(live.bid, live.ask)) {
-      noteLeft(pick, 'Rejected');
-      continue;
-    }
-    avgPicks.set(key, { ...live, p1: pick.p1, prun: pick.prun, runner: pick.runner, modelAgree: pick.modelAgree, better: pick.better, band: 'average', strength: pick.strength, seenAt: pick.seenAt });
-  }
-  for (const [key, pick] of [...scalpPicks]) {
-    const live = byId.get(pick.id);
-    if (!live) continue;
-    const mid = (live.bid + live.ask) / 2;
-    const spread = mid > 0 ? (live.ask - live.bid) / mid : 1;
-    noteMid(pick.id, quoteMinute(live, Date.now()), mid);
-    if (!spreadOk(live.bid, live.ask)) {
-      noteLeft(pick, 'Rejected');
-      continue;
-    }
-    scalpPicks.set(key, { ...live, p1: pick.p1, prun: pick.prun, runner: false, modelAgree: false, better: 'entry', band: pick.band ?? 'scalp', strength: pick.strength, seenAt: pick.seenAt });
+    if (live) paint(picks, key, pick, live);
   }
   for (const [key, pick] of [...wingPicks]) {
     const live = byId.get(pick.id);
-    if (!live) continue;
-    const mid = (live.bid + live.ask) / 2;
-    noteMid(pick.id, quoteMinute(live, Date.now()), mid);
-    if (!spreadOk(live.bid, live.ask)) {
-      noteLeft(pick, 'Rejected');
-      continue;
-    }
-    wingPicks.set(key, { ...live, p1: pick.p1, prun: pick.prun, runner: true, modelAgree: false, better: 'runner', band: 'wing', strength: pick.strength, seenAt: pick.seenAt });
+    if (live) paint(wingPicks, key, { ...pick, runner: true }, live);
   }
+  for (const [key, pick] of [...lotteryPicks]) {
+    const live = byId.get(pick.id);
+    if (live) paint(lotteryPicks, key, pick, live);
+  }
+  for (const [key, pick] of [...nearPicks]) {
+    const live = byId.get(pick.id);
+    if (live) paint(nearPicks, key, pick, live);
+  }
+}
+
+/** Book C. No booster. A missing tree does not close this window. No new ticket inside a high-impact release. */
+export async function scoreLottery(setups: Setup[], now = Date.now()): Promise<void> {
+  const clock = nyParts(now);
+  const minute = clock.hour * 60 + clock.minute;
+  if (!inLottery(minute, clock.second)) return;
+  if (releaseShut(now)) return;
+  const day = ymd(now);
+  const byRoot = new Map<string, Setup[]>();
+  for (const s of setups) {
+    if (NO_DAILY.has(s.ticker) || seenRootC.has(s.ticker) || seen.has(s.id)) continue;
+    if (weekdayDte(day, s.expiryDate) !== 0) continue;
+    if (!lotteryEntry(s.bid, s.ask)) continue;
+    const qMin = s.quotedAt ? minuteOf(s.quotedAt) : NaN;
+    if (qMin !== minute) continue;
+    const list = byRoot.get(s.ticker) ?? [];
+    list.push(s);
+    byRoot.set(s.ticker, list);
+  }
+  const ranked: Setup[] = [];
+  for (const [ticker, list] of byRoot) {
+    const strikes = [...new Set(list.map(s => s.strike))];
+    const spot = list.find(s => (s.spot ?? 0) > 0)?.spot ?? 0;
+    if (!(spot > 0)) continue;
+    list.sort((a, b) => {
+      const da = strikeDistance(strikes, spot, a.strike);
+      const db = strikeDistance(strikes, spot, b.strike);
+      if (da !== db) return da - db;
+      if (a.strike !== b.strike) return a.strike - b.strike;
+      return a.right === b.right ? 0 : a.right === 'C' ? -1 : 1;
+    });
+    const win = list[0];
+    if (win) ranked.push(win);
+    void ticker;
+  }
+  let open = lotteryPicks.size;
+  for (const setup of ranked) {
+    if (open >= LOTTERY_CAP || seenRootC.has(setup.ticker)) continue;
+    seen.add(setup.id);
+    seenRootC.add(setup.ticker);
+    open += 1;
+    lotteryPicks.set(setup.id, {
+      ...setup,
+      runner: false,
+      modelAgree: false,
+      better: 'entry',
+      band: 'lottery',
+      strength: false,
+      seenAt: Date.now(),
+      verdict: 'ENTER',
+      score: 0,
+      takeProfits: [],
+      priceTargets: [],
+      invalidationPrice: 0,
+      invalidationReason: '',
+      whyChips: [],
+      whyText: 'Book C. No model.',
+    });
+    pinEntry(lotteryPicks.get(setup.id)!);
+  }
+  persistCalls();
 }
 
 export async function scoreBook(setups: Setup[], now = Date.now(), merge = false): Promise<void> {
@@ -1007,7 +1566,7 @@ export function noteMids(setups: Setup[], now = Date.now()): void {
 }
 
 export function refreshQuotes(setups: Setup[], _now = Date.now()): void {
-  refresh(setups);
+  paintQuotes(setups);
 }
 
 export function pickTickers(): string[] {
@@ -1019,12 +1578,10 @@ const claimedSleeves = new Set<string>();
 
 function scanSlot(now: number): number {
   const p = nyParts(now);
-  if (p.weekday === 0 || p.weekday === 6) return -1;
   const m = p.hour * 60 + p.minute;
-  const open = 9 * 60 + 30;
-  const last = 15 * 60;
-  if (m < open || m > last) return -1;
-  return Math.floor((m - open) / 5);
+  if (!sessionScanOpen(m, p.weekday)) return -1;
+  if (m === 9 * 60 + 29 || m === 15 * 60 + 59 || m === 16 * 60 + 14) return 10_000 + m;
+  return Math.floor(m / 5);
 }
 
 /** One full pass per sleeve per 5-minute slot. 0DTE and weekly do not steal each other's slot. */
@@ -1034,12 +1591,6 @@ export function claimSlot(now: number, sleeve: string): 'closed' | 'scan' | 'hol
     if (claimedSlot !== -1) {
       claimedSlot = -1;
       claimedSleeves.clear();
-      picks.clear();
-      wingPicks.clear();
-      avgPicks.clear();
-      scalpPicks.clear();
-      pendingScalp.length = 0;
-      seen.clear();
     }
     return 'closed';
   }
@@ -1052,10 +1603,150 @@ export function claimSlot(now: number, sleeve: string): 'closed' | 'scan' | 'hol
   return 'scan';
 }
 
+/** The tape was not in yet. The same slot may run again. */
+export function releaseSlot(sleeve: string): void {
+  claimedSleeves.delete(sleeve);
+}
+
 export async function lockToSlot(setups: Setup[], now = Date.now()): Promise<void> {
   const next = claimSlot(now, 'book');
   if (next === 'closed') return;
   for (const s of setups) noteMid(s.id, quoteMinute(s, now), s.mid);
   if (next === 'scan') await scoreAll(setups, now);
-  else refresh(setups);
+  else paintQuotes(setups);
 }
+
+export interface LiveScore {
+  p1: number | null;
+  prun: number | null;
+  retOpen: number | null;
+  gex: number | null;
+  seats: number;
+  sentRoots: string[];
+}
+
+/** Seats already taken today. Book A and Book B share the five. */
+export function seatsNow(): { seats: number; sentRoots: string[] } {
+  const sentRoots = [...new Set([...seenRootA, ...seenRootB, ...seenRootC])];
+  return { seats: new Set([...seenRootA, ...seenRootB]).size, sentRoots };
+}
+
+function weigherStub(ticker: string, strike: number, right: OptionRight, bid: number, ask: number, expiryIso: string): Setup {
+  const mid = bid >= 0 && ask >= bid && ask > 0 ? (ask + bid) / 2 : 0;
+  return {
+    id: `w-${ticker}-${expiryIso}-${strike}-${right}`,
+    ticker,
+    contract: `${ticker} ${strike}${right}`,
+    right,
+    strike,
+    expiry: expiryIso,
+    expiryDate: expiryIso,
+    sessionsLeft: 0,
+    sigmaMovePct: 0,
+    sleeve: 'odte',
+    score: 0,
+    verdict: 'WATCH',
+    topRated: false,
+    topOpportunity: false,
+    expectedMovePct: 0,
+    swingTarget: { price: 0, pct: 0 },
+    scalpExit: { price: 0, pct: 0 },
+    headline: '',
+    whyChips: [],
+    whyText: '',
+    greeks: { delta: NaN, gamma: NaN, theta: NaN, vega: NaN, iv: NaN },
+    bid,
+    ask,
+    mid,
+    liveMid: mid,
+    highWater: mid,
+    confidence: 0,
+    health: 0,
+    momentum: 'NEUTRAL',
+    takeProfits: [],
+    priceTargets: [],
+    liquidityLabel: 'Normal',
+    liquiditySpread: '',
+    invalidationPrice: 0,
+    invalidationReason: '',
+  };
+}
+
+const liveScoreMemo = new Map<string, { at: number; p1: number | null; prun: number | null; retOpen: number | null; gex: number | null }>();
+
+/**
+ * Model 1 and Model 2 on one live contract. The feature row is the scorer's own.
+ * A missing bar stays missing. No score is invented.
+ */
+export async function scoreLiveContract(input: {
+  ticker: string;
+  strike: number;
+  right: OptionRight;
+  expiryIso: string;
+  bid: number;
+  ask: number;
+  spot: number;
+  rows?: { strike: number; right: OptionRight; bid: number; ask: number }[];
+  now?: number;
+}): Promise<LiveScore> {
+  const seats = seatsNow();
+  const blank = { p1: null as number | null, prun: null as number | null, retOpen: null as number | null, gex: null as number | null, ...seats };
+  const quoteOk = input.bid >= 0 && input.ask > input.bid && input.ask > 0;
+  if (!quoteOk) return blank;
+  const key = `${input.ticker}|${input.expiryIso}|${input.strike}|${input.right}|${input.bid}|${input.ask}`;
+  const now = input.now ?? Date.now();
+  const hit = liveScoreMemo.get(key);
+  if (hit && now - hit.at < 20_000) return { ...hit, ...seatsNow() };
+  try {
+    if (!(await ensureModels()) || !modelsLocked()) return blank;
+    const clock = nyParts(now);
+    const minute = clock.hour * 60 + clock.minute;
+    const day = ymd(now);
+    const ticker = input.ticker;
+    const under = UNDER[ticker] ?? printOf(ticker);
+    const indexName = INDEX.has(ticker) || INDEX.has(under);
+    const bars = await loadBars(under, day);
+    const spy = under === 'SPY' ? bars : await loadBars('SPY', day);
+    const etf = SECTOR_OF[under] ?? SECTOR_OF[ticker] ?? '';
+    const sec = etf ? await loadBars(etf, day) : [];
+    const prior = await loadPrior(under, now);
+    const tape = tapeOf(bars, indexName, minute, input.spot);
+    const retOpen = tape.S > 0 && tape.op > 0 ? tape.S / tape.op - 1 : null;
+    if (!(tape.S > 0)) {
+      const scored = { p1: null, prun: null, retOpen, gex: null };
+      liveScoreMemo.set(key, { at: now, ...scored });
+      return { ...scored, ...seatsNow() };
+    }
+    const mine = weigherStub(ticker, input.strike, input.right, input.bid, input.ask, input.expiryIso);
+    mine.spot = tape.S;
+    const mates = (input.rows ?? [])
+      .filter(r => r.ask > r.bid && r.ask > 0 && r.bid >= 0)
+      .map(r => weigherStub(ticker, r.strike, r.right, r.bid, r.ask, input.expiryIso));
+    if (!mates.some(s => s.right === mine.right && Math.abs(s.strike - mine.strike) < 1e-6)) mates.push(mine);
+    const horizon = yearsLeft(tape.tt);
+    const { iv, skew } = atmPair(mates, tape.S, horizon);
+    const pin = CORE.has(ticker) ? await pinOf(ticker, input.expiryIso, tape.S > 0 ? tape.S : input.spot) : null;
+    noteMid(mine.id, minute, mine.mid);
+    const raw = features(mine, minute, bars, spy, prior, iv, skew, sec, curveOf(under), pin, day);
+    if (!raw) {
+      const scored = { p1: null, prun: null, retOpen, gex: null };
+      liveScoreMemo.set(key, { at: now, ...scored });
+      return { ...scored, ...seatsNow() };
+    }
+    const x = f32(raw);
+    const p1 = predict(ENTRY, x);
+    const prun = predict(RUNNER, x);
+    const gex = Number.isFinite(x[27]) ? x[27] : null;
+    const scored = {
+      p1: Number.isFinite(p1) ? p1 : null,
+      prun: Number.isFinite(prun) ? prun : null,
+      retOpen,
+      gex,
+    };
+    liveScoreMemo.set(key, { at: now, ...scored });
+    return { ...scored, ...seatsNow() };
+  } catch {
+    return blank;
+  }
+}
+

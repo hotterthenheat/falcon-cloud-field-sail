@@ -48,8 +48,8 @@ const SPOT_NAME: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'SPX',
 
 const ReadoutCell = ({ k, v }: { k: string; v: string }) => (
   <span className="shrink-0 whitespace-nowrap">
-    <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">{k}</span>
-    <span className="ml-1 font-mono text-[10px] tnum text-textPrimary">{v}</span>
+    <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">{k}</span>
+    <span className="ml-1 font-mono text-t10 tnum text-textPrimary">{v}</span>
   </span>
 );
 
@@ -190,7 +190,7 @@ const ContractTrack = ({
               onPick={onOpenContract}
             />
           ) : (
-            <span className="inline-flex items-center h-7 px-3 rounded-full bg-ink/[0.06] font-mono text-[11px] font-bold text-textPrimary shrink-0">
+            <span className="inline-flex items-center h-7 px-3 rounded-full bg-ink/[0.06] font-mono text-t11 font-bold text-textPrimary shrink-0">
               {setup.contract} · {setup.expiry}
             </span>
           )}
@@ -206,9 +206,9 @@ const ContractTrack = ({
           <ReadoutCell k="H" v={shown ? px2(shown.high) : '—'} />
           <ReadoutCell k="L" v={shown ? px2(shown.low) : '—'} />
           <ReadoutCell k={markWord} v={px2(markPx)} />
-          {traded && traded.length === 0 && <span className="font-mono text-[10px] text-textMuted">{emptyNote || 'No print on the tape'}</span>}
-          {traded == null && !pathNote && <span className="font-mono text-[10px] text-textMuted">Not on the tape</span>}
-          {pathNote && <span className="font-mono text-[10px] text-textMuted">{pathNote}</span>}
+          {traded && traded.length === 0 && <span className="font-mono text-t10 text-textMuted">{emptyNote || 'No print on the tape'}</span>}
+          {traded == null && !pathNote && <span className="font-mono text-t10 text-textMuted">Not on the tape</span>}
+          {pathNote && <span className="font-mono text-t10 text-textMuted">{pathNote}</span>}
           <span className="ml-auto flex items-center gap-2.5 min-w-0">
             <ReadoutCell k="High" v={series ? px2(series.high) : '—'} />
             <ReadoutCell k="Low" v={series ? px2(series.low) : '—'} />

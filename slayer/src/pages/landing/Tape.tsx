@@ -101,9 +101,9 @@ const Item = ({ q }: { q: Quote }) => {
     /* the room after each name is the name's own — both halves of the track come out the same width, so the loop has no seam */
     <span className="shrink-0 inline-flex items-center gap-3 pr-12" data-tape-name={q.ticker}>
       <CompanyLogo ticker={q.ticker} size={24} />
-      <span className="font-mono text-[15px] font-semibold tracking-tight text-textPrimary">{q.ticker}</span>
-      <span className="font-mono text-[13px] tnum text-textSecondary">${q.price.toFixed(2)}</span>
-      <span className={`font-mono text-[13px] font-semibold tnum ${up ? 'text-bull' : 'text-bear'}`}>{signed(q.changePct)}</span>
+      <span className="font-mono text-t15 font-semibold tracking-tight text-textPrimary">{q.ticker}</span>
+      <span className="font-mono text-t13 tnum text-textSecondary">${q.price.toFixed(2)}</span>
+      <span className={`font-mono text-t13 font-semibold tnum ${up ? 'text-bull' : 'text-bear'}`}>{signed(q.changePct)}</span>
       <Sparkline data={q.line} up={up} width={46} height={18} />
     </span>
   );
@@ -135,7 +135,7 @@ const Tape = () => {
         <Row quotes={one} seconds={95} />
         <Row quotes={two} back seconds={115} />
       </div>
-      <p className="mt-6 text-center font-mono text-[11px] text-textMuted">Any name on the market. Preview prices are simulated.</p>
+      <p className="mt-6 text-center font-mono text-t11 text-textMuted">Any name on the market. Preview prices are simulated.</p>
     </div>
   );
 };

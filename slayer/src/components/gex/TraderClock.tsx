@@ -265,8 +265,8 @@ const CLOCK_TIPS: Record<string, string> = {
 };
 const ClockFact = ({ label, children, tip }: { label: string; children: ReactNode; tip?: string }) => (
   <span className="inline-flex items-baseline gap-2 whitespace-nowrap pr-3 [&:not(:first-child)]:border-l [&:not(:first-child)]:border-borderSubtle [&:not(:first-child)]:pl-3" title={tip ?? CLOCK_TIPS[label]}>
-    <span className="text-[11px] uppercase tracking-wider text-textMuted">{label}</span>
-    <span className="text-[13px] font-semibold text-textPrimary">{children}</span>
+    <span className="text-t11 uppercase tracking-wider text-textMuted">{label}</span>
+    <span className="text-t13 font-semibold text-textPrimary">{children}</span>
   </span>
 );
 
@@ -503,7 +503,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
           the facts on one mono line, tracked capitals for their names and the figures beside them. On the box beside the
           report the facts take the line under the name. */}
       <div className="px-5 pt-4 pb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
-        <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">The trader's clock</h3>
+        <h3 className="text-t16 font-semibold leading-tight text-textPrimary">The trader's clock</h3>
         {scope}
         <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the strip and the phases mean" testId="clock-guide" />
         <FoldDoor open={open} onToggle={toggleOpen} what="the clock" testId="clock" />
@@ -513,7 +513,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
               <span className="tnum" style={{ color: SILVER }} data-clock-looking>
                 {lookingAt}
               </span>
-              <button onClick={() => setPin(null)} className="hit ml-3 text-[11px] font-medium uppercase tracking-wider text-textMuted hover:text-textPrimary transition-colors" data-back-to-now>
+              <button onClick={() => setPin(null)} className="hit ml-3 text-t11 font-medium uppercase tracking-wider text-textMuted hover:text-textPrimary transition-colors" data-back-to-now>
                 Back to now
               </button>
             </ClockFact>
@@ -588,7 +588,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
                    phone's strip from its own start, so the phone pass of 2026-09-13 hid it) */
                 /* ONE WORD EACH, AND THE CLOSE ON THE EDGE AT EVERY WIDTH (the paying-user audit's M3, 2026-10-13): "The close"
                    from its own start ran 4px past a 1440 desk's box; on one row the turn stands just left of it */
-                className={`hit absolute font-mono text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap ${nameCls} ${narrow && i % 2 === 1 ? 'top-[18px]' : 'top-0'} ${last ? '!left-auto !right-0 !translate-x-0' : ''} ${turn && !narrow ? '!left-auto !right-[52px] !translate-x-0' : ''}`}
+                className={`hit absolute font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap ${nameCls} ${narrow && i % 2 === 1 ? 'top-[18px]' : 'top-0'} ${last ? '!left-auto !right-0 !translate-x-0' : ''} ${turn && !narrow ? '!left-auto !right-[52px] !translate-x-0' : ''}`}
                 style={{
                   left: `${pctAt(turn ? p.to : p.from)}%`,
                   transform: turn ? 'translateX(calc(-100% - 6px))' : last ? 'translateX(2px)' : undefined,
@@ -672,7 +672,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
               <span
                 key={t}
                 /* a phone's strip holds four hours, not eight: 09:30 overprinted 10:00 (the audit's C1) */
-                className={`absolute top-0 font-mono text-[11px] tnum text-textMuted ${twoRows && (cash ? t === 10 * 60 || t === 11 * 60 || t === 13 * 60 || t === 15 * 60 : false) ? 'hidden' : ''}`}
+                className={`absolute top-0 font-mono text-t11 tnum text-textMuted ${twoRows && (cash ? t === 10 * 60 || t === 11 * 60 || t === 13 * 60 || t === 15 * 60 : false) ? 'hidden' : ''}`}
                 style={{ left: `${pctAt(t)}%`, transform: pctAt(t) > 96 ? 'translateX(-100%)' : pctAt(t) < 4 ? undefined : 'translateX(-50%)' }}
               >
                 {hhmm(t)}
@@ -692,21 +692,21 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
               style={{ ...(cardAbove ? { bottom: 'calc(100% + 22px)' } : { top: 'calc(100% + 4px)' }), ...(narrow ? {} : { left: `${cardPct}%`, transform: cardOnRight ? 'translateX(12px)' : 'translateX(calc(-100% - 12px))' }) }}
             >
               <div className="flex items-baseline gap-2">
-                <span className="font-mono text-[12px] font-semibold tnum" style={{ color: keptBlock === shownBlock ? SILVER : undefined }}>
+                <span className="font-mono text-t12 font-semibold tnum" style={{ color: keptBlock === shownBlock ? SILVER : undefined }}>
                   {hhmm(shownMin)}
                 </span>
-                <span className="text-[11px] font-medium text-textPrimary">{shownPhase.name}</span>
-                <span className="ml-auto font-mono text-[11px] tnum text-textMuted">
+                <span className="text-t11 font-medium text-textPrimary">{shownPhase.name}</span>
+                <span className="ml-auto font-mono text-t11 tnum text-textMuted">
                   {hhmm(shownPhase.from)}–{hhmm(shownPhase.to)}
                 </span>
               </div>
-              <p className="mt-1 text-[11px] leading-snug text-textSecondary">{shownPhase.words(facts)}.</p>
+              <p className="mt-1 text-t11 leading-snug text-textSecondary">{shownPhase.words(facts)}.</p>
               {shownPhase.pressure && (
-                <span className="mt-1 block font-mono text-[11px] font-semibold uppercase tracking-wider" data-pressure={shownPhase.pressure} style={{ color: PRESSURE_INK[shownPhase.pressure] }}>
+                <span className="mt-1 block font-mono text-t11 font-semibold uppercase tracking-wider" data-pressure={shownPhase.pressure} style={{ color: PRESSURE_INK[shownPhase.pressure] }}>
                   {PRESSURE_WORDS[shownPhase.pressure]}
                 </span>
               )}
-              <span className="block mt-1 text-[11px] text-textMuted">{onSeek ? 'click to move the replay here' : keptBlock === shownBlock ? 'kept · click anywhere else to let go' : 'click to keep · the phase names above keep a whole phase'}</span>
+              <span className="block mt-1 text-t11 text-textMuted">{onSeek ? 'click to move the replay here' : keptBlock === shownBlock ? 'kept · click anywhere else to let go' : 'click to keep · the phase names above keep a whole phase'}</span>
             </div>
           )}
         </div>

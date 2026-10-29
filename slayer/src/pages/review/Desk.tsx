@@ -258,7 +258,7 @@ const Desk = () => {
       { key: 'avg', header: 'Paid', align: 'right', render: p => <span className="text-textSecondary">{p.avg.toFixed(2)}</span> },
       { key: 'mark', header: 'Bid · ask', align: 'right', render: p => <span className="text-textPrimary">{p.quote.bid.toFixed(2)} · {p.quote.ask.toFixed(2)}</span> },
       { key: 'theta', header: 'Decay a day', align: 'right', render: p => <span className="text-textSecondary">{usd(Math.abs(p.quote.theta) * 100 * p.qty)}</span> },
-      { key: 'pnl', header: 'Up or down', align: 'right', render: p => <span className={`font-semibold ${dirInk(p.pnl)}`}>{usdSigned(p.pnl)} <span className="text-[10px] font-normal opacity-80">{rWords(p.r)}</span></span> },
+      { key: 'pnl', header: 'Up or down', align: 'right', render: p => <span className={`font-semibold ${dirInk(p.pnl)}`}>{usdSigned(p.pnl)} <span className="text-t10 font-normal opacity-80">{rWords(p.r)}</span></span> },
       {
         key: 'close',
         header: '',
@@ -304,7 +304,7 @@ const Desk = () => {
       { key: 'in', header: 'In', render: t => <span className="text-textSecondary">{momentWords(t.opened)} · {t.avgIn.toFixed(2)}</span> },
       { key: 'out', header: 'Out', render: t => <span className="text-textSecondary">{momentWords(t.closed)} · {t.avgOut.toFixed(2)}</span> },
       { key: 'how', header: 'Ended', render: t => <span className="text-textSecondary">{t.how === 'scaled' ? 'Scaled out' : t.how === 'sold' ? 'Sold by you' : t.how === 'target' ? 'Target hit' : t.how === 'stopped' ? 'Stopped out' : 'Held to the bell'}</span> },
-      { key: 'pnl', header: 'Made or lost', align: 'right', render: t => <span className={`font-semibold ${dirInk(t.pnl)}`}>{usdSigned(t.pnl)} <span className="text-[10px] font-normal opacity-80">{rWords(t.r)}</span></span> },
+      { key: 'pnl', header: 'Made or lost', align: 'right', render: t => <span className={`font-semibold ${dirInk(t.pnl)}`}>{usdSigned(t.pnl)} <span className="text-t10 font-normal opacity-80">{rWords(t.r)}</span></span> },
     ],
     []
   );
@@ -437,7 +437,7 @@ const Desk = () => {
       <div className={head}>
         <span className={headWord}>Order</span>
         {picked && (
-          <button type="button" onClick={() => setPicked(null)} className="ml-auto font-mono text-[10px] text-textMuted hover:text-textPrimary transition-colors">
+          <button type="button" onClick={() => setPicked(null)} className="ml-auto font-mono text-t10 text-textMuted hover:text-textPrimary transition-colors">
             Clear
           </button>
         )}
@@ -484,7 +484,7 @@ const Desk = () => {
           />
         </div>
       ) : (
-        <div className="h-full min-h-[180px] flex items-center justify-center px-6 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted" data-review-ticket="empty">
+        <div className="h-full min-h-[180px] flex items-center justify-center px-6 text-center font-mono text-t10 uppercase tracking-widest text-textMuted" data-review-ticket="empty">
           Pick a contract in the chain — its order opens here
         </div>
       )}
@@ -501,7 +501,7 @@ const Desk = () => {
         { label: 'Cash', testId: 'cash', node: usd(account.cash) },
         { label: 'Open, up or down', testId: 'open-pnl', node: <span className={dirInk(account.openPnl)}>{usdSigned(account.openPnl)}</span> },
         { label: 'Closed, made or lost', testId: 'realized', node: <span className={dirInk(stats.net)}>{usdSigned(stats.net)}</span> },
-        ...(rulesLine ? [{ label: 'Your rules', testId: 'rules', node: <span className="text-[12px] font-medium">{rulesLine}</span> }] : []),
+        ...(rulesLine ? [{ label: 'Your rules', testId: 'rules', node: <span className="text-t12 font-medium">{rulesLine}</span> }] : []),
         {
           label: 'Closed trades',
           testId: 'trades',

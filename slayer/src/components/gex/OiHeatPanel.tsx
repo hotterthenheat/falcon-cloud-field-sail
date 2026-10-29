@@ -77,7 +77,7 @@ const OiHeatPanel = ({
 
   if (!heat.hasOi || heat.rows.length === 0) {
     return (
-      <div className="font-mono text-[10px] leading-relaxed text-textMuted">
+      <div className="font-mono text-t10 leading-relaxed text-textMuted">
         No position flow recorded yet this session — the grid needs at least two snapshots of the book to
         have a change to show.
       </div>
@@ -110,10 +110,10 @@ const OiHeatPanel = ({
   return (
     <div className={`flex flex-col gap-2 ${fill ? 'flex-grow min-h-0' : ''}`}>
       <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">
+        <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">
           <Term k="ΔOI heat">Built and unwound</Term>
         </span>
-        <span className="font-mono text-[9px] text-textMuted">
+        <span className="font-mono text-t9 text-textMuted">
           {heat.hasFlex ? 'with the FLEX transfer split' : 'no FLEX transfer on these strikes — shown as —'}
         </span>
       </div>
@@ -122,18 +122,18 @@ const OiHeatPanel = ({
         <table className={`w-full border-collapse ${fill ? 'h-full' : ''}`}>
           <thead className="sticky top-0 z-10">
             <tr className="bg-chip">
-              <th className="w-px px-2 py-1.5 text-left font-mono text-[9px] font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle whitespace-nowrap">
+              <th className="w-px px-2 py-1.5 text-left font-mono text-t9 font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle whitespace-nowrap">
                 Strike
               </th>
               {heat.columns.map(c => (
-                <th key={c} className="px-2 py-1.5 text-right font-mono text-[9px] font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle tnum">
+                <th key={c} className="px-2 py-1.5 text-right font-mono text-t9 font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle tnum">
                   {hhmm(c)}
                 </th>
               ))}
-              <th className="px-2 py-1.5 text-right font-mono text-[9px] font-semibold uppercase tracking-widest text-textPrimary border-b border-l border-borderSubtle">
+              <th className="px-2 py-1.5 text-right font-mono text-t9 font-semibold uppercase tracking-widest text-textPrimary border-b border-l border-borderSubtle">
                 Net
               </th>
-              <th className="px-2 py-1.5 text-right font-mono text-[9px] font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle">
+              <th className="px-2 py-1.5 text-right font-mono text-t9 font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle">
                 FLEX
               </th>
             </tr>
@@ -152,7 +152,7 @@ const OiHeatPanel = ({
                 <td
                   onClick={onSelectStrike ? () => onSelectStrike(r.strike) : undefined}
                   title={onSelectStrike ? 'Flash on chart' : undefined}
-                  className={`w-px px-2 py-1 font-mono text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap ${
+                  className={`w-px px-2 py-1 font-mono text-t11 font-semibold tnum text-textPrimary whitespace-nowrap ${
                     onSelectStrike ? 'cursor-pointer hover:text-white' : ''
                   }`}
                 >
@@ -162,18 +162,18 @@ const OiHeatPanel = ({
                   <td
                     key={c.time}
                     title={`${r.strike} · ${hhmm(c.time)} · calls ${c.deltaCall >= 0 ? '+' : ''}${c.deltaCall} · puts ${c.deltaPut >= 0 ? '+' : ''}${c.deltaPut}`}
-                    className={`px-1.5 py-0.5 text-right font-mono text-[10px] tnum ${cellClass(c.deltaOi)}`}
+                    className={`px-1.5 py-0.5 text-right font-mono text-t10 tnum ${cellClass(c.deltaOi)}`}
                   >
                     {c.deltaOi === 0 ? '·' : `${c.deltaOi > 0 ? '↑' : '↓'}${Math.abs(c.deltaOi).toLocaleString()}`}
                   </td>
                 ))}
-                <td className="px-1.5 py-0.5 text-right font-mono text-[10px] font-semibold tnum text-textPrimary border-l border-borderSubtle/40">
+                <td className="px-1.5 py-0.5 text-right font-mono text-t10 font-semibold tnum text-textPrimary border-l border-borderSubtle/40">
                   {r.netToday > 0 ? '+' : ''}
                   {r.netToday.toLocaleString()}
                 </td>
                 {/* Null, not zero — "we cannot see transfers" is not "there
                     were none". The em-dash is the honest render. */}
-                <td className="px-1.5 py-0.5 text-right font-mono text-[10px] tnum text-textMuted">
+                <td className="px-1.5 py-0.5 text-right font-mono text-t10 tnum text-textMuted">
                   {r.cells.every(c => c.flexTransfer === null)
                     ? '—'
                     : r.cells.reduce((a, c) => a + (c.flexTransfer ?? 0), 0).toLocaleString()}
@@ -192,7 +192,7 @@ const OiHeatPanel = ({
         </table>
       </div>
 
-      <p className="font-mono text-[9px] leading-relaxed text-textMuted">
+      <p className="font-mono text-t9 leading-relaxed text-textMuted">
         Change, not level: a strike parked at the same open interest all day is blank here, and should be.
         ↑ builds in green, ↓ unwinds in red — and only the deltas that matter carry ink, the same
         top-quintile rule the pressure matrix uses.

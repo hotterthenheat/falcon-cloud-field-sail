@@ -26,6 +26,7 @@
 */
 
 import SignalBadge from '../ui/SignalBadge';
+import { Tip } from '../ui/Tooltip';
 import type { Setup } from '../../types/compass';
 import type { Tone } from '../ui/tones';
 
@@ -90,18 +91,21 @@ const StageBadge = ({
   if (stage === 'PRIMED') {
     if (!showWorking) return null;
     return (
-      <span title={meta.hint} className={`font-mono text-[10px] text-textMuted ${className}`}>
-        working
-      </span>
+      <Tip label={meta.hint}>
+        <span className={`font-mono text-t10 text-textMuted ${className}`}>working</span>
+      </Tip>
     );
   }
   const named = stage === 'LIVE' && hitLevel != null;
+  const hint = named ? `Take-profit ${hitLevel} has been hit — this one is paying` : meta.hint;
   return (
-    <span title={named ? `Take-profit ${hitLevel} has been hit — this one is paying` : meta.hint} className="inline-flex">
-      <SignalBadge tone={meta.tone} dot={dot} pulse={meta.pulse} className={className}>
-        {named ? `TP${hitLevel} HIT` : meta.label}
-      </SignalBadge>
-    </span>
+    <Tip label={hint}>
+      <span className="inline-flex">
+        <SignalBadge tone={meta.tone} dot={dot} pulse={meta.pulse} className={className}>
+          {named ? `TP${hitLevel} HIT` : meta.label}
+        </SignalBadge>
+      </span>
+    </Tip>
   );
 };
 

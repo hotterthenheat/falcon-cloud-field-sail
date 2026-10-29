@@ -111,7 +111,7 @@ const INTENT_WORD: Record<DarkPoolIntent, string> = { ACCUMULATION: 'accumulatio
 const INTENT_TAG: Record<DarkPoolIntent, string> = { ACCUMULATION: 'ACCUMULATION', DISTRIBUTION: 'DISTRIBUTION', 'HEDGE FLOW': 'AT THE MID', ROTATION: 'NO READ' };
 
 /** The read as a tag — the word in its ink, the house's uppercase mono */
-const IntentTag = ({ intent }: { intent: DarkPoolIntent }) => <span className={`font-mono text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{INTENT_TAG[intent]}</span>;
+const IntentTag = ({ intent }: { intent: DarkPoolIntent }) => <span className={`font-mono text-t10 font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{INTENT_TAG[intent]}</span>;
 /** The read cell's word for a print with none */
 const noReadWord = (p: DarkPoolPrint) => (p.special ? (p.auction ? 'no read · auction' : 'no read · terms') : p.extended ? 'no read · after hrs' : 'no read · small');
 
@@ -464,7 +464,7 @@ const DarkPool = () => {
       { key: 'vs', header: 'vs mid', align: 'right', sortValue: p => p.vsSpotPct, render: p => { const place = quotePlace(p.vsSpotPct, p.price); return <span className={`font-mono tnum ${placeInk(p, place.cents)}`}>{place.text}</span>; } },
       { key: 'shares', header: 'Shares', align: 'right', sortValue: p => p.size, render: p => <span className={`font-mono tnum ${weightInk(p.size, marks.size)}`}>{num(p.size)}</span> },
       { key: 'dollars', header: 'Dollars', align: 'right', sortValue: p => p.notional, render: p => <span className={`font-mono tnum ${weightInk(p.notional, marks.notional)}`}>{fmtUsd(p.notional)}</span> },
-      { key: 'exec', header: 'Print', sortValue: p => p.exec ?? '', render: p => <span className={`font-mono text-[10px] ${execInk(p)}`} title={p.extended ? 'After hours — where it sat in a thin post-market quote, not a side' : undefined}>{execWord(p) ?? '—'}{p.extended ? <span className="text-textMuted"> · AH</span> : null}</span> },
+      { key: 'exec', header: 'Print', sortValue: p => p.exec ?? '', render: p => <span className={`font-mono text-t10 ${execInk(p)}`} title={p.extended ? 'After hours — where it sat in a thin post-market quote, not a side' : undefined}>{execWord(p) ?? '—'}{p.extended ? <span className="text-textMuted"> · AH</span> : null}</span> },
       /* a shelf is a name's (its day by price) — the market's tape has none, so the column stands only on a name */
       ...(view
         ? [
@@ -481,14 +481,14 @@ const DarkPool = () => {
         key: 'read',
         header: 'Read',
         sortValue: p => (p.sized ? p.intent : p.special ? 'zz' : 'zzz'),
-        render: p => (p.sized && !p.extended && !p.special ? <IntentTag intent={p.intent} /> : <span className="font-mono text-[10px] uppercase tracking-wider text-textMuted" title={p.read}>{noReadWord(p)}</span>),
+        render: p => (p.sized && !p.extended && !p.special ? <IntentTag intent={p.intent} /> : <span className="font-mono text-t10 uppercase tracking-wider text-textMuted" title={p.read}>{noReadWord(p)}</span>),
       },
       {
         key: 'says',
         header: 'What it says',
         /* two lines, never cut mid-sentence (the retail pass: "Size printe…" at 1440) */
         render: p => (
-          <span className="block text-[11px] leading-tight text-textSecondary whitespace-normal line-clamp-2" title={p.read}>
+          <span className="block text-t11 leading-tight text-textSecondary whitespace-normal line-clamp-2" title={p.read}>
             {p.read}
           </span>
         ),
@@ -522,7 +522,7 @@ const DarkPool = () => {
             <span key="v" className={placeInk(p, place.cents)}>
               {place.text}
             </span>,
-            p.sized && !p.extended && !p.special ? <IntentTag key="r" intent={p.intent} /> : <span key="r" className="text-textMuted uppercase text-[10px]">{noReadWord(p)}</span>,
+            p.sized && !p.extended && !p.special ? <IntentTag key="r" intent={p.intent} /> : <span key="r" className="text-textMuted uppercase text-t10">{noReadWord(p)}</span>,
           ]}
         />
       );
@@ -604,7 +604,7 @@ const DarkPool = () => {
               <span className="flex flex-1 h-[3px] rounded-full overflow-hidden bg-ink/[0.06]">
                 <span className="h-full rounded-full bg-silver/70" style={{ width: `${pct}%` }} />
               </span>
-              <span className="font-mono text-[10px] tnum text-textSecondary w-9 text-right shrink-0">{pct}%</span>
+              <span className="font-mono text-t10 tnum text-textSecondary w-9 text-right shrink-0">{pct}%</span>
             </span>
           );
         },
@@ -780,7 +780,7 @@ const DarkPool = () => {
             {/* A CLOSED SESSION IS CLOSED, NOT STALE (audit round 7: Lit read "STALE DATA" on a session read once after its
                 close) — the mark says the session closed; a fault still says so */}
             {regularView && !(named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault) ? (
-              <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-widest text-textMuted" title={`The ${closed ? shortDay(closed.iso) : ''} session has closed — its prints are read once and do not change`} data-stale="closed">
+              <span className="inline-flex items-center gap-1 font-mono text-t9 uppercase tracking-widest text-textMuted" title={`The ${closed ? shortDay(closed.iso) : ''} session has closed — its prints are read once and do not change`} data-stale="closed">
                 <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-textMuted" />
                 Closed{closed ? ` · ${shortDay(closed.iso)}` : ''}
               </span>
@@ -818,9 +818,9 @@ const DarkPool = () => {
             has no shelf of its own (2026-10-19) */}
         {levels.length > 0 && (
         <div className="border-t border-borderSubtle" data-dark-pool-shelves>
-          <div className="px-5 flex items-center gap-2 border-b border-borderSubtle/60 font-mono text-[9px] uppercase tracking-widest" style={{ height: DP_STRIP_HEAD_H }}>
+          <div className="px-5 flex items-center gap-2 border-b border-borderSubtle/60 font-mono text-t9 uppercase tracking-widest" style={{ height: DP_STRIP_HEAD_H }}>
             <span className="text-textPrimary">The shelves</span>
-            <span className="text-textMuted normal-case tracking-normal font-sans text-[10px]">· where the day's dark shares rested, by price level — a shelf holds 3% or more of the day's dark dollars within 5% of the market · {shelfWords} · lowest at the left</span>
+            <span className="text-textMuted normal-case tracking-normal font-sans text-t10">· where the day's dark shares rested, by price level — a shelf holds 3% or more of the day's dark dollars within 5% of the market · {shelfWords} · lowest at the left</span>
           </div>
           {/* Two across on a phone, three rows (the phone pass, 2026-09-13): six cells in 350px ran their figures into each other, and three still did */}
           {/* six shelves across from 1024, three from 640 (the device sweep, 2026-10-18: six at 768 left each shelf 110px and
@@ -843,19 +843,19 @@ const DarkPool = () => {
                     data-picked={picked || undefined}
                   >
                     <span className="flex items-center gap-2">
-                      <span className={`font-mono text-[9px] font-semibold uppercase tracking-wider ${ROLE_INK[l.role]}`}>{l.role}</span>
-                      <span className={`ml-auto min-w-0 truncate font-mono text-[11px] tnum ${l.notional >= shelfMax ? 'font-bold text-textPrimary' : 'text-textSecondary'}`}>{fmtUsd(l.notional)}</span>
+                      <span className={`font-mono text-t9 font-semibold uppercase tracking-wider ${ROLE_INK[l.role]}`}>{l.role}</span>
+                      <span className={`ml-auto min-w-0 truncate font-mono text-t11 tnum ${l.notional >= shelfMax ? 'font-bold text-textPrimary' : 'text-textSecondary'}`}>{fmtUsd(l.notional)}</span>
                     </span>
                     <span className="flex items-baseline gap-2">
-                      <span className="font-mono text-[13px] font-bold tnum text-textPrimary">${l.price.toFixed(2)}</span>
-                      <span className={`font-mono text-[10px] tnum ${dirInk(l.distPct)}`}>{signedPct(l.distPct)}</span>
-                      <span className="ml-auto min-w-0 truncate font-mono text-[9px] text-textMuted tnum whitespace-nowrap" title="The name's dark prints in hand that landed on this price — the day's shares by price carry no count">{l.prints} in hand</span>
+                      <span className="font-mono text-t13 font-bold tnum text-textPrimary">${l.price.toFixed(2)}</span>
+                      <span className={`font-mono text-t10 tnum ${dirInk(l.distPct)}`}>{signedPct(l.distPct)}</span>
+                      <span className="ml-auto min-w-0 truncate font-mono text-t9 text-textMuted tnum whitespace-nowrap" title="The name's dark prints in hand that landed on this price — the day's shares by price carry no count">{l.prints} in hand</span>
                     </span>
                     <span className="flex items-center gap-2">
                       <span className="relative h-0.5 flex-1 rounded-full bg-ink/[0.06] overflow-hidden">
                         <span className={`absolute left-0 top-0 h-full ${ROLE_BAR[l.role]}`} style={{ width: `${Math.round((l.notional / shelfMax) * 100)}%` }} />
                       </span>
-                      <span className="font-mono text-[9px] text-textMuted tnum w-7 text-right">{l.sharePct.toFixed(0)}%</span>
+                      <span className="font-mono text-t9 text-textMuted tnum w-7 text-right">{l.sharePct.toFixed(0)}%</span>
                     </span>
                   </button>
                 );
@@ -891,7 +891,7 @@ const DarkPool = () => {
         }
         controls={
           <>
-            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted whitespace-nowrap" data-dark-leaders-updated>
+            <span className="font-mono text-t9 uppercase tracking-widest text-textMuted whitespace-nowrap" data-dark-leaders-updated>
               updated {leaders.updated}
             </span>
             <div className="ml-auto">

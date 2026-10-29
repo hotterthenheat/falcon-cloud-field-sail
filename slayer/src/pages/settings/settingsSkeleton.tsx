@@ -20,10 +20,10 @@ const Head = () => (
   <header className="flex items-start gap-6 flex-wrap pb-3 border-b border-borderSubtle" aria-hidden data-skeleton="settings-head">
     <div className="min-w-0 flex-1">
       <div className="h-6 flex items-center gap-2.5">
-        <span className="holo-bg w-6 h-6 rounded-[7px] shrink-0 inline-flex items-center justify-center font-mono text-[10px] font-bold text-[#0a0a0a]">&gt;_</span>
-        <span className="text-[15px] font-semibold leading-tight text-textPrimary">Settings</span>
+        <span className="holo-bg w-6 h-6 rounded-[7px] shrink-0 inline-flex items-center justify-center font-mono text-t10 font-bold text-onfoil">&gt;_</span>
+        <span className="text-t15 font-semibold leading-tight text-textPrimary">Settings</span>
       </div>
-      <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">How the terminal looks, what the desk opens on, what it says out loud</p>
+      <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">How the terminal looks, what the desk opens on, what it says out loud</p>
     </div>
     <Facts widths={[60, 72]} />
   </header>

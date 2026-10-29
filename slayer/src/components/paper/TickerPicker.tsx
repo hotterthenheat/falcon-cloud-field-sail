@@ -185,7 +185,7 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
           data-paper-ticker={value}
         >
           <CompanyLogo ticker={value} size={14} />
-          <span className="text-[12px] font-bold text-textPrimary">{current?.code ?? value}</span>
+          <span className="text-t12 font-bold text-textPrimary">{current?.code ?? value}</span>
           <ChevronDown className="w-3 h-3 text-textMuted transition-transform duration-200 group-data-[state=open]:rotate-180" />
         </button>
       </Popover.Trigger>
@@ -210,7 +210,7 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
                 onChange={e => setQuery(e.target.value)}
                 placeholder={futuresOnly ? 'Search a future…' : 'Search a ticker, a company or a future…'}
                 aria-label="Search what to put on the chart"
-                className="w-full bg-transparent font-mono text-[12px] text-textPrimary placeholder:text-textMuted focus:outline-none"
+                className="w-full bg-transparent font-mono text-t12 text-textPrimary placeholder:text-textMuted focus:outline-none"
                 data-paper-ticker-search
               />
             </div>
@@ -227,16 +227,16 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
             }}
           >
             {flat.length === 0 && !(futuresOnly && !q) ? (
-              <div className="px-4 py-6 text-center font-mono text-[10px] text-textMuted" data-paper-ticker-none>
+              <div className="px-4 py-6 text-center font-mono text-t10 text-textMuted" data-paper-ticker-none>
                 Nothing matches — try a ticker, a company or a future
               </div>
             ) : (
               groups.map(g =>
                 g.rows.length === 0 && !(g.key === 'stocks' && futuresOnly) ? null : (
                   <div key={g.key} className="pb-1" data-paper-ticker-group={g.key}>
-                    <div className="px-4 pt-2 pb-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">{g.title}</div>
+                    <div className="px-4 pt-2 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">{g.title}</div>
                     {g.key === 'stocks' && futuresOnly ? (
-                      <div className="px-4 pb-2 text-[11px] text-textMuted">An evaluation trades futures only — no index options, no stocks.</div>
+                      <div className="px-4 pb-2 text-t11 text-textMuted">An evaluation trades futures only — no index options, no stocks.</div>
                     ) : (
                       g.rows.map(r => {
                         index += 1;
@@ -255,11 +255,11 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
                             data-ticker-row-index={i}
                           >
                             <CompanyLogo ticker={r.value} size={14} />
-                            <span className={`font-mono text-[12px] font-bold ${on ? '' : 'text-textPrimary'}`} style={on ? { color: SILVER } : undefined}>
+                            <span className={`font-mono text-t12 font-bold ${on ? '' : 'text-textPrimary'}`} style={on ? { color: SILVER } : undefined}>
                               {r.code}
                             </span>
-                            <span className="text-[11px] text-textSecondary truncate">{r.name}</span>
-                            <span className="font-mono text-[11px] tnum text-textPrimary">{r.price != null ? r.price.toLocaleString('en-US', { minimumFractionDigits: r.decimals, maximumFractionDigits: r.decimals }) : ''}</span>
+                            <span className="text-t11 text-textSecondary truncate">{r.name}</span>
+                            <span className="font-mono text-t11 tnum text-textPrimary">{r.price != null ? r.price.toLocaleString('en-US', { minimumFractionDigits: r.decimals, maximumFractionDigits: r.decimals }) : ''}</span>
                           </button>
                         );
                       })

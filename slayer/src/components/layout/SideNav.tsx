@@ -50,7 +50,6 @@ import { useMarketData } from '../../context/MarketDataContext';
 import { usePinpointFeed, dayMoveWords, changeInk } from '../../data/uwBook';
 import { dayMoveOfSnapshot } from '../gex/DayMoveText';
 import { warmPath } from '../../data/warmRooms';
-import { useLaunch } from './LaunchTransition';
 import CompanyLogo from '../ui/CompanyLogo';
 import { NAV_GROUPS, NAV_GROUP_META, NAV_INK, itemsByGroup } from './nav';
 import { subpagesFor } from './navTree';
@@ -115,7 +114,6 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const signedOut = account.status === 'out' || account.status === 'loading';
   const placeholder = profile.name === SAMPLE_PROFILE.name && profile.handle === SAMPLE_PROFILE.handle && profile.email === SAMPLE_PROFILE.email;
   const guest = signedOut || placeholder;
-  const { launch } = useLaunch();
   const { pathname } = useLocation();
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -214,10 +212,12 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const hideTip = () => setTip(null);
 
   const name = lookup(activeTicker)?.name ?? null;
-  /* Trace reads the live tape too — the simulated quote never belongs beside a live print */
-  const onLiveDesk = pathname.startsWith('/pinpoint') || pathname.startsWith('/dossier') || pathname.startsWith('/trace') || pathname.startsWith('/terrain');
+  /* Trace, Terrain, and Weigher read the live tape — the simulated quote never belongs beside a live print */
+  const onLiveDesk = pathname.startsWith('/pinpoint') || pathname.startsWith('/dossier') || pathname.startsWith('/trace') || pathname.startsWith('/terrain') || pathname.startsWith('/weigher') || pathname.startsWith('/compass');
   const live = usePinpointFeed(pathname.startsWith('/pinpoint') ? activeTicker : null);
-  const quoted = useLiveQuote(onLiveDesk ? activeTicker : null);
+  /* A weekly root has no stock print. The rail quotes the index it tracks. */
+  const quoteTicker = activeTicker === 'SPXW' || activeTicker === 'XSP' ? 'SPX' : activeTicker === 'NDXP' ? 'NDX' : activeTicker === 'RUTW' ? 'RUT' : activeTicker;
+  const quoted = useLiveQuote(onLiveDesk ? quoteTicker : null);
   const spot = onLiveDesk ? (live?.spot ?? quoted?.regularPrice ?? null) : (live?.spot ?? marketData?.spot ?? null);
   /* THE DAY'S CHANGE, NOT THE AFTER-HOURS MOVE (the second re-audit, 2026-10-22): the regular session's change, the
      move outside the session in the hover; zero in the neutral ink */
@@ -225,7 +225,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const moveWords = onLiveDesk ? dayMoveWords(move) : null;
   const change = onLiveDesk ? (move ? move.dayPct : null) : (live?.changePercent ?? marketData?.changePercent ?? 0);
   const open = clock.phase === 'OPEN' || clock.phase === 'AUCTION';
-  const priceText = spot != null ? `$${spot.toFixed(2)}` : '—';
+  const priceText = spot != null ? `$${spot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
   const changeText = spot != null && change != null ? (moveWords ? moveWords.main : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change).toFixed(2)}%`) : '';
 
   /* the signature's word, read on the clock's own tick so the dot and the session line never disagree */
@@ -236,26 +236,18 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
      ">slayer_terminal" drawn as outlines beside it; folded, the S| alone — with its cursor held lit (index.css: a lone S
      beside the rail's notch read as cut whenever the cursor blinked off; Noah, 2026-10-03). The S brightens as the pointer
      nears it. (The S on the holo tile and the word that typed itself on, 2026-09-30, went with the switch.) */
+  /* Open, the long word. Shut, the S. The click folds and opens the rail — there is no notch beside it. */
   const brand = (
-    <a
-      href="/"
-      onClick={e => {
-        e.preventDefault();
-        launch('/');
-      }}
+    <NavLink
+      to="/"
       onMouseEnter={e => showTip(e, 'Home')}
       onMouseLeave={hideTip}
-      /* ONE LEFT INSET, open or shut (the anchor rule): 14 centres the 24px mark in the 52px rail, and the row clips to
-         the panel's own width; the word fades rather than cuts while the panel glides */
-      className="shrink-0 w-full overflow-hidden flex items-center gap-2.5 h-[52px] select-none pl-[14px] pr-0"
+      className="shrink-0 w-fit overflow-hidden flex items-center h-[52px] select-none pl-[14px]"
       aria-label="Slayer Terminal — the front page"
       data-brand
     >
-      <SlayerMark size={24} bare near label="" />
-      <span className={`inline-flex transition-opacity duration-200 ${collapsed ? 'opacity-0' : 'opacity-100'}`} aria-hidden={collapsed || undefined} data-brand-word>
-        <Wordmark height={12} label="" className="translate-y-[1px]" />
-      </span>
-    </a>
+      {collapsed ? <SlayerMark size={26} bare prompt near label="" /> : <Wordmark height={14} cursor label="" />}
+    </NavLink>
   );
 
   /* THE SUBJECT, dressed as the search field under the mark: the name you
@@ -279,29 +271,24 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
       data-subject
       aria-label={`Watching ${activeTicker} — switch`}
       title={name ? `${name} · ⌘K to switch` : '⌘K to switch'}
-      className="group w-full h-[34px] rounded-lg border border-ink/[0.08] bg-ink/[0.03] hover:border-silver/50 hover:bg-ink/[0.05] transition-colors flex items-center gap-2 pl-2 pr-2 text-left"
+      className="group w-full min-w-0 h-[34px] overflow-hidden rounded-lg border border-ink/[0.08] bg-ink/[0.03] hover:border-silver/50 hover:bg-ink/[0.05] transition-colors flex items-center gap-1.5 pl-2 pr-2 text-left"
     >
       <CompanyLogo ticker={activeTicker} size={16} />
-      <span className="text-[12px] font-semibold text-textPrimary" data-subject-ticker>
+      <span className="shrink-0 text-t12 font-semibold text-textPrimary" data-subject-ticker>
         {activeTicker}
       </span>
-      <span className="font-mono text-[11px] tnum text-textPrimary" data-subject-price>
+      <span className="shrink-0 font-mono text-t11 tnum text-textPrimary" data-subject-price>
         {priceText}
       </span>
       {change != null && (
-        <span className="font-mono text-[10px] tnum whitespace-nowrap" style={{ color: changeInk(change) }} title={moveWords ? `${moveWords.title}${moveWords.ext ? ` (${moveWords.ext})` : ''}` : undefined} data-subject-change>
+        <span className="min-w-0 truncate font-mono text-t10 tnum" style={{ color: changeInk(change) }} title={moveWords ? `${moveWords.title}${moveWords.ext ? ` · ${moveWords.ext}` : ''}` : undefined} data-subject-change>
           {changeText}
-          {moveWords?.when && <span className="text-textMuted"> {moveWords.when}</span>}
-          {moveWords?.ext && move?.extPct != null && <span className="text-textMuted"> · {moveWords.ext.replace('after hours', 'AH')}</span>}
         </span>
       )}
-      {/* the after-hours figure takes the search mark's room — ⌘K still switches */}
-      {!(moveWords?.ext && move?.extPct != null) && (
-        <span className="ml-auto inline-flex items-center gap-1 text-textMuted group-hover:text-textSecondary transition-colors">
-          <Search className="w-3 h-3" />
-          <kbd className="font-mono text-[9px] tracking-wide">⌘K</kbd>
-        </span>
-      )}
+      <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-textMuted group-hover:text-textSecondary transition-colors">
+        <Search className="w-3 h-3" />
+        <kbd className="font-mono text-t9 tracking-wide">⌘K</kbd>
+      </span>
     </button>
   );
 
@@ -323,7 +310,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
          2026-09-10: "the alerts button doesnt look like the rest"). Open
          wears the nav rows' own current-desk look: the pill, primary
          medium text, the bell in its ink. */
-      className={`group relative flex items-center gap-2.5 h-[30px] rounded-lg text-[13px] text-left transition-colors ${
+      className={`group relative flex items-center gap-2.5 h-[30px] rounded-lg text-t13 text-left transition-colors ${
         collapsed ? 'w-8 ml-[10px] justify-center' : 'w-full px-2.5'
       } ${drawerOpen ? 'bg-ink/[0.06] text-textPrimary font-medium' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]'}`}
       aria-label="Alerts"
@@ -345,16 +332,16 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
           row's end when open. */}
       {collapsed
         ? unseen > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-[4px] bg-bear text-white font-mono text-[8px] font-bold leading-[14px] text-center tnum" data-alerts-count>
+            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-[4px] bg-bear text-white font-mono text-t8 font-bold leading-[14px] text-center tnum" data-alerts-count>
               {unseen > 9 ? '9+' : unseen}
             </span>
           )
         : unseen > 0 ? (
-            <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-md bg-bear text-white font-mono text-[10px] font-bold leading-[18px] text-center tnum" data-alerts-count>
+            <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-md bg-bear text-white font-mono text-t10 font-bold leading-[18px] text-center tnum" data-alerts-count>
               {unseen > 99 ? '99+' : unseen}
             </span>
           ) : setTotal > 0 ? (
-            <span className="ml-auto font-mono text-[10px] tnum text-textMuted" data-alerts-count>
+            <span className="ml-auto font-mono text-t10 tnum text-textMuted" data-alerts-count>
               {setTotal} set
             </span>
           ) : null}
@@ -375,7 +362,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
       aria-expanded={watchOpen}
       onMouseEnter={e => showTip(e, watchLabel)}
       onMouseLeave={hideTip}
-      className={`group relative flex items-center gap-2.5 h-[30px] rounded-lg text-[13px] text-left transition-colors ${
+      className={`group relative flex items-center gap-2.5 h-[30px] rounded-lg text-t13 text-left transition-colors ${
         collapsed ? 'w-8 ml-[10px] justify-center' : 'w-full px-2.5'
       } ${watchOpen ? 'bg-ink/[0.06] text-textPrimary font-medium' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]'}`}
       aria-label={watchLabel}
@@ -383,7 +370,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
       <Eye className={`w-[17px] h-[17px] shrink-0 transition-opacity duration-200 ${watchOpen ? 'opacity-100' : 'opacity-80 group-hover:opacity-100'}`} strokeWidth={1.75} aria-hidden />
       {!collapsed && <span>Watchlist</span>}
       {!collapsed && watchCount > 0 && (
-        <span className="ml-auto font-mono text-[10px] tnum text-textMuted" data-watchlist-count>
+        <span className="ml-auto font-mono text-t10 tnum text-textMuted" data-watchlist-count>
           {watchCount}
         </span>
       )}
@@ -414,7 +401,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
       <div key={group} className={`flex flex-col gap-[2px] ${gi === 0 ? '' : first ? 'mt-1' : last ? 'mt-auto pt-5' : 'mt-5'}`} data-nav-group={group}>
         {!collapsed ? (
           meta.caption && (
-            <span className="px-2.5 pb-1 text-[10px] uppercase tracking-[0.1em] text-textMuted" title={meta.hint}>
+            <span className="px-2.5 pb-1 text-t10 uppercase tracking-[0.1em] text-textMuted" title={meta.hint}>
               {meta.caption}
             </span>
           )
@@ -447,7 +434,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
                 setFolded(f => ({ ...f, [item.path]: !f[item.path] }));
               }}
               aria-expanded={tree ? open : undefined}
-              className={`group relative flex items-center gap-2.5 h-[30px] rounded-lg text-[13px] transition-colors ${
+              className={`group relative flex items-center gap-2.5 h-[30px] rounded-lg text-t13 transition-colors ${
                 collapsed ? 'w-8 ml-[10px] justify-center' : 'px-2.5'
               } ${inside ? 'bg-ink/[0.06] text-textPrimary font-medium' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]'}`}
               title={collapsed ? undefined : tree ? `${item.description} — click to ${open ? 'fold' : 'unfold'} its pages` : item.description}
@@ -462,7 +449,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
                 <PageGlyph name={item.glyph} size={17} className={`shrink-0 transition-opacity duration-200 ${inside ? 'opacity-100' : 'opacity-80 group-hover:opacity-100'}`} />
               ) : (
                 <item.icon
-                  className={`w-4 h-4 shrink-0 transition-colors duration-200 ${inside ? 'text-[color:var(--ink)]' : 'text-textMuted group-hover:text-[color:var(--ink)]'}`}
+                  className={`w-4 h-4 shrink-0 transition-colors duration-200 ${inside ? 'text-ink' : 'text-textMuted group-hover:text-ink'}`}
                   strokeWidth={inside ? 2 : 1.75}
                   style={{ '--ink': item.ink } as CSSProperties}
                   data-nav-icon
@@ -519,7 +506,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
                         to={s.path}
                         data-nav-sub={s.path}
                         style={{ height: SUB_H }}
-                        className={`flex items-center px-2 rounded-md text-[12px] transition-colors ${
+                        className={`flex items-center px-2 rounded-md text-t12 transition-colors ${
                           active ? 'text-textPrimary font-medium' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]'
                         }`}
                         onMouseEnter={() => warmPath(s.path)}
@@ -562,12 +549,11 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
              frame after the aside settles and lays its items out on the next */
           if (e.target === asideRef.current && e.propertyName === 'width') requestAnimationFrame(() => requestAnimationFrame(endGlide));
         }}
-        className="relative hidden md:flex shrink-0 h-full flex-col bg-panel border-r border-ink/[0.07] transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+        className="relative hidden md:flex shrink-0 h-full flex-col overflow-visible bg-panel border-r border-ink/[0.07] transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
         style={{ width }}
         data-sidenav
         data-collapsed={collapsed || undefined}
       >
-        {/* The collapse notch, on the edge */}
         <button
           type="button"
           onClick={toggleCollapsed}
@@ -578,7 +564,6 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
         >
           {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
         </button>
-
         {/* The edge bar — one, on the edge, gliding to the current product */}
         {bar && (
           <span
@@ -624,8 +609,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
           )}
           {!collapsed && (
             <span className="min-w-0 flex-1 leading-tight">
-              <span className="block truncate text-[12px] font-semibold text-textPrimary">{guest ? 'Sign in' : profile.name}</span>
-              <span className="block truncate font-mono text-[10px] text-textMuted">{guest ? 'or create an account' : `@${profile.handle}`}</span>
+              <span className="block truncate text-t12 font-semibold text-textPrimary">{guest ? 'Sign in' : profile.name}</span>
+              <span className="block truncate font-mono text-t10 text-textMuted">{guest ? 'or create an account' : `@${profile.handle}`}</span>
             </span>
           )}
         </NavLink>
@@ -644,8 +629,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
             <SignatureDot state={marketWord} className="w-2 h-2" label={`slayer:~ $ ${marketWord}`} />
           ) : (
             <>
-              <Signature state={marketWord} rule={false} className="text-[10.5px]" />
-              <span className="mt-1.5 flex items-center gap-2 font-mono text-[10px] tnum">
+              <Signature state={marketWord} rule={false} className="text-t105" />
+              <span className="mt-1.5 flex items-center gap-2 font-mono text-t10 tnum">
                 <span className="min-w-0 truncate text-textSecondary" title={clock.label} data-session-line>
                   {/* 16:00–16:15 on Trace: stock options are shut, index and ETF options still trade (the tenth Trace audit) */}
                   {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'stocks closed · index & ETF options trade to 3:15 PM CT' : open ? clock.label : clock.label.toLowerCase()}
@@ -665,7 +650,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
             data-nav-tip
             role="tooltip"
             style={{ position: 'fixed', left: tip.x, top: tip.y }}
-            className="z-[90] -translate-y-1/2 pointer-events-none whitespace-nowrap px-2 py-1 rounded-md border border-ink/[0.1] bg-card/95 backdrop-blur-md text-[11px] text-textPrimary shadow-lg shadow-black/50 animate-fade-in"
+            className="z-[90] -translate-y-1/2 pointer-events-none whitespace-nowrap px-2 py-1 rounded-md border border-ink/[0.1] bg-card/95 backdrop-blur-md text-t11 text-textPrimary shadow-lg shadow-black/50 animate-fade-in"
           >
             {tip.label}
           </div>,
@@ -682,12 +667,12 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
         {/* the name's chip gives way, never the search door (the seventh audit's m8: the door's right edge at 396px of 390) */}
         <button onClick={onOpenPalette} className="inline-flex items-center gap-2 rounded-md border border-borderMuted bg-chip px-2.5 py-1 min-w-0 overflow-hidden">
           <CompanyLogo ticker={activeTicker} size={16} />
-          <span className="text-[12px] font-semibold text-textPrimary">{activeTicker}</span>
-          {spot != null ? <span className="font-mono text-[11px] tnum text-textPrimary">${spot.toFixed(2)}</span> : <span className="font-mono text-[11px] tnum text-textMuted">—</span>}
+          <span className="text-t12 font-semibold text-textPrimary">{activeTicker}</span>
+          {spot != null ? <span className="font-mono text-t11 tnum text-textPrimary">{priceText}</span> : <span className="font-mono text-t11 tnum text-textMuted">—</span>}
           {/* THE DAY'S MOVE ON THE PHONE TOO (the retail test, 2026-10-23: the strip showed the price and no change) — the
               same words as the rail's: the session's change, "pre-market +x%" before the open */}
           {changeText && change != null && (
-            <span className="font-mono text-[10px] tnum whitespace-nowrap truncate min-w-0" style={{ color: changeInk(change) }} title={moveWords?.title} data-phone-change>
+            <span className="font-mono text-t10 tnum whitespace-nowrap truncate min-w-0" style={{ color: changeInk(change) }} title={moveWords?.title} data-phone-change>
               {changeText}
               {moveWords?.when && <span className="text-textMuted"> {moveWords.when}</span>}
               {moveWords?.ext && <span className="text-textMuted"> · {moveWords.ext.replace('after hours', 'AH')}</span>}

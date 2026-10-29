@@ -138,15 +138,15 @@ const SCAN_INTERVAL_MS = 10_000;
 const DeskPeek = ({ name, ws }: { name: string; ws: SavedWorkspace }) => (
   <>
     <div className="flex items-baseline justify-between gap-3">
-      <span className="font-mono text-[11px] font-semibold text-textPrimary">{name}</span>
-      <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted tnum">
+      <span className="font-mono text-t11 font-semibold text-textPrimary">{name}</span>
+      <span className="font-mono text-t9 uppercase tracking-wider text-textMuted tnum">
         {ws.instances.length} {ws.instances.length === 1 ? 'tile' : 'tiles'}
       </span>
     </div>
-    {PRESET_BLURBS[name] && <p className="mt-1 text-[10px] leading-snug text-textSecondary">{PRESET_BLURBS[name]}</p>}
+    {PRESET_BLURBS[name] && <p className="mt-1 text-t10 leading-snug text-textSecondary">{PRESET_BLURBS[name]}</p>}
     <ul className="mt-2 flex flex-col gap-0.5">
       {ws.instances.map((i, n) => (
-        <li key={`${i.id}-${n}`} className="font-mono text-[10px] text-textSecondary">
+        <li key={`${i.id}-${n}`} className="font-mono text-t10 text-textSecondary">
           <span className="text-textMuted">· </span>
           {widgetByKey(i.key)?.title ?? i.key}
         </li>
@@ -155,7 +155,7 @@ const DeskPeek = ({ name, ws }: { name: string; ws: SavedWorkspace }) => (
   </>
 );
 
-const barBtn = 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle bg-ink/[0.02] hover:bg-ink/[0.05] hover:border-borderMuted font-mono text-[10px] uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors';
+const barBtn = 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle bg-ink/[0.02] hover:bg-ink/[0.05] hover:border-borderMuted font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors';
 
 const Pulse = () => {
   const { activeTicker, marketData, changeTicker } = useMarketData();
@@ -385,7 +385,7 @@ const Pulse = () => {
           <PhoneChart key={scanSnapshot.ticker} snapshot={scanSnapshot} revision={revision} onPick={changeTicker} />
         ) : (
           <div className="flex h-full items-center justify-center">
-            <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted">Waiting for the first tick…</span>
+            <span className="font-mono text-t11 uppercase tracking-widest text-textMuted">Waiting for the first tick…</span>
           </div>
         )}
       </div>
@@ -415,7 +415,7 @@ const Pulse = () => {
     <>
       {/* THE DESK BAR — one row: where you are, the desks (the house's, then yours), and what you can do to this one */}
       <div className="flex items-center gap-x-3 gap-y-2 flex-wrap min-h-9" data-desk-bar>
-        <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">Pulse</h1>
+        <h1 className="text-t15 font-semibold leading-tight text-textPrimary">Pulse</h1>
         <span className="w-px h-4 bg-borderSubtle" aria-hidden />
         <span className="flex items-center gap-0.5 flex-wrap" data-desk-presets>
           {PRESET_NAMES.map(n => deskTab(n, false))}
@@ -448,7 +448,7 @@ const Pulse = () => {
                   }
                 }}
                 placeholder="Name this desk…"
-                className="w-40 h-7 bg-inset border border-borderSubtle rounded-md px-2 font-mono text-[11px] text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-borderMuted"
+                className="w-40 h-7 bg-inset border border-borderSubtle rounded-md px-2 font-mono text-t11 text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-borderMuted"
                 data-desk-name
               />
               <button type="submit" disabled={!newName.trim() || isPreset(newName.trim())} title={isPreset(newName.trim()) ? 'That name is one of the house’s desks' : 'Save'} className="p-1 rounded text-textSecondary hover:text-textPrimary disabled:opacity-30 transition-colors">
@@ -487,7 +487,7 @@ const Pulse = () => {
             {locked ? <Lock className="w-3.5 h-3.5" /> : <LockOpen className="w-3.5 h-3.5" />}
           </button>
           <span className="relative">
-            <button onClick={() => setPickerOpen(o => !o)} aria-expanded={pickerOpen} className="inline-flex items-center gap-1.5 h-7 px-3 rounded-md holo-bg text-[#0a0a0a] hover:brightness-105 font-mono text-[11px] font-semibold uppercase tracking-wider transition-all" data-picker-open>
+            <button onClick={() => setPickerOpen(o => !o)} aria-expanded={pickerOpen} className="inline-flex items-center gap-1.5 h-7 px-3 rounded-md holo-bg text-onfoil hover:brightness-105 font-mono text-t11 font-semibold uppercase tracking-wider transition-all" data-picker-open>
               <Plus className="w-3.5 h-3.5" /> Add widget
             </button>
             {pickerOpen && <Picker ctx={deskCtx} counts={counts} boxFor={boxFor} onAdd={addWidget} onDragKey={setDragKey} onClose={closePicker} />}
@@ -504,7 +504,7 @@ const Pulse = () => {
       {/* THE GRID — fades out on a switch, then the next desk mounts under a fresh key and breathes in */}
       {!deskCtx ? (
         <div className="h-64 border border-borderSubtle bg-panel rounded-md flex items-center justify-center">
-          <span className="font-mono text-[11px] text-textMuted uppercase tracking-widest">Waiting for the first tick…</span>
+          <span className="font-mono text-t11 text-textMuted uppercase tracking-widest">Waiting for the first tick…</span>
         </div>
       ) : (
         <div key={active} ref={deskRef} /* while a widget is dragged in from the picker the tiles let the pointer through: the library reads the drop's place
@@ -513,7 +513,7 @@ const Pulse = () => {
           data-desk={active} data-desk-locked={locked || undefined}>
           {instances.length === 0 && !dragKey && (
             <div className="h-64 border border-dashed border-borderMuted rounded-md flex flex-col items-center justify-center gap-3" data-desk-empty>
-              <span className="text-[12px] text-textSecondary">This desk is empty.</span>
+              <span className="text-t12 text-textSecondary">This desk is empty.</span>
               <button onClick={() => setPickerOpen(true)} className={barBtn} data-picker-open>
                 <Plus className="w-3 h-3" /> Add a widget
               </button>

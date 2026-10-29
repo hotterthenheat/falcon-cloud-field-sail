@@ -91,9 +91,9 @@ const PhoneChart = ({ snapshot, revision, onPick }: Props) => {
           <ChartToolbar minimal candles menuSide="top" compact dense menuBounds={bodyRef} spread timeframe={timeframe} onTimeframe={setTimeframe} overlays={overlays} onOverlays={setOverlays} chartStyle={chartStyle} onChartStyle={setChartStyle} indicators={indicators} onIndicators={setIndicators} paneId="pulse:main" alertTicker={ticker} alertSpot={levels.spot} />
         </div>
         {focus != null && (
-          <span className="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded border font-mono text-[9px] uppercase tracking-widest animate-soft-in" style={{ color: FOCUS, borderColor: alpha(FOCUS, 0.4), background: alpha(FOCUS, 0.06) }}>
+          <span className="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded border font-mono text-t9 uppercase tracking-widest animate-soft-in" style={{ color: FOCUS, borderColor: alpha(FOCUS, 0.4), background: alpha(FOCUS, 0.06) }}>
             Focus
-            <span className="text-[11px] font-bold tnum normal-case tracking-normal">{fmtFocus(focus)}</span>
+            <span className="text-t11 font-bold tnum normal-case tracking-normal">{fmtFocus(focus)}</span>
             <button onClick={clearFocus} aria-label="Let go of the strike" title="Let go of the strike" className="inline-flex items-center justify-center w-4 h-4 rounded hover:bg-ink/[0.08] transition-colors">
               <X className="w-3 h-3" />
             </button>
@@ -104,23 +104,23 @@ const PhoneChart = ({ snapshot, revision, onPick }: Props) => {
         {/* the legend: name · interval · the live tick; the tape pans straight through it */}
         <div className="absolute left-2 top-2 z-10 pointer-events-none select-none flex flex-col gap-1 font-mono" data-chart-chrome>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-[11px] font-semibold text-textPrimary">{ticker}</span>
-            <span className="text-[10px] text-textMuted" aria-hidden>
+            <span className="text-t11 font-semibold text-textPrimary">{ticker}</span>
+            <span className="text-t10 text-textMuted" aria-hidden>
               ·
             </span>
-            <span className="text-[10px] text-textMuted">{timeframe}</span>
-            <span className="text-[10px] text-textMuted" aria-hidden>
+            <span className="text-t10 text-textMuted">{timeframe}</span>
+            <span className="text-t10 text-textMuted" aria-hidden>
               ·
             </span>
-            <SpotPrice value={Simulator.TICKERS[ticker]?.currentPrice ?? levels.spot} className="text-[11px] font-semibold tnum text-textPrimary" />
+            <SpotPrice value={Simulator.TICKERS[ticker]?.currentPrice ?? levels.spot} className="text-t11 font-semibold tnum text-textPrimary" />
           </div>
           {compares.map(c => (
             <div key={`${c.ticker}:${c.mode}`} className="flex items-center gap-1.5">
               <span className="w-2 h-[3px] rounded-full" style={{ background: c.ink }} aria-hidden />
-              <span className="text-[10px] font-semibold" style={{ color: c.ink }}>
+              <span className="text-t10 font-semibold" style={{ color: c.ink }}>
                 {c.ticker}
               </span>
-              {Simulator.TICKERS[c.ticker] && <SpotPrice value={Simulator.TICKERS[c.ticker].currentPrice} className="text-[10px] tnum text-textSecondary" />}
+              {Simulator.TICKERS[c.ticker] && <SpotPrice value={Simulator.TICKERS[c.ticker].currentPrice} className="text-t10 tnum text-textSecondary" />}
               <button onClick={() => removeCompare(c.ticker, c.mode)} aria-label={`Remove ${c.ticker} comparison`} title="Remove comparison" className="pointer-events-auto inline-flex items-center justify-center w-4 h-4 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.08] transition-colors">
                 <X className="w-2.5 h-2.5" />
               </button>

@@ -18,8 +18,8 @@ import { useSeen } from './CoName';
 
 const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
   <div className="min-w-0">
-    <dt className="text-[10px] text-textMuted cursor-help" title={statHelp(label)}>{label}</dt>
-    <dd className="mt-0.5 font-mono text-[12px] tabular-nums text-textPrimary whitespace-nowrap truncate">{children}</dd>
+    <dt className="text-t10 text-textMuted cursor-help" title={statHelp(label)}>{label}</dt>
+    <dd className="mt-0.5 font-mono text-t12 tabular-nums text-textPrimary whitespace-nowrap truncate">{children}</dd>
   </div>
 );
 
@@ -27,7 +27,7 @@ const COLS = 'minmax(0,1.4fr) 104px 104px';
 
 /** A book's own head: its name, then the two figures it carries */
 const Head = ({ cols }: { cols: [string, string, string] }) => (
-  <div className="px-5 h-7 grid items-center gap-x-3 border-t border-borderSubtle text-[10px] uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: COLS }}>
+  <div className="px-5 h-7 grid items-center gap-x-3 border-t border-borderSubtle text-t10 uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: COLS }}>
     <span className="text-textPrimary font-semibold">{cols[0]}</span>
     <span className="text-right">{cols[1]}</span>
     <span className="text-right">{cols[2]}</span>
@@ -43,7 +43,7 @@ const Row = ({ onClick, testId, cells }: { onClick: () => void; testId: string; 
     data-name-who={testId}
   >
     {cells.map((c, i) => (
-      <span key={i} className={i === 0 ? 'truncate text-[12px] text-textPrimary' : 'text-right font-mono text-[11px] tabular-nums text-textSecondary truncate'}>
+      <span key={i} className={i === 0 ? 'truncate text-t12 text-textPrimary' : 'text-right font-mono text-t11 tabular-nums text-textSecondary truncate'}>
         {c}
       </span>
     ))}
@@ -145,11 +145,11 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
     <section id="stock-who" className="border border-borderSubtle rounded-md bg-panel scroll-mt-4" data-name-books={ticker}>
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-0 flex-1">
-          <h3 className="text-[15px] font-semibold leading-tight text-textPrimary inline-flex items-center gap-2">
+          <h3 className="text-t15 font-semibold leading-tight text-textPrimary inline-flex items-center gap-2">
             Who is in it
             <StaleMark at={at} ttlMs={FILE_TTL_MS} fault={fault} />
           </h3>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Who reported the shares, and which funds hold the name</p>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">Who reported the shares, and which funds hold the name</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <Fact label="Largest house">{largest ? largest.name : state(own) === 'wait' ? pending : state(own) === 'error' ? failedWord : '—'}</Fact>

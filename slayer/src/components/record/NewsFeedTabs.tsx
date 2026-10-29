@@ -176,10 +176,10 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
       {/* THE NAMES YOU FOLLOW — on the Following tab: a chip per name with its bell, and the door to add one */}
       {tab === 'following' && (
         <div className="px-5 h-[44px] border-b border-borderSubtle/60 flex items-center gap-2 flex-wrap" data-news-follows={follows.length}>
-          <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted mr-1">Following</span>
-          {follows.length === 0 && <span className="text-[11px] text-textSecondary">no names yet — add one and its stories gather here</span>}
+          <span className="font-mono text-t9 uppercase tracking-widest text-textMuted mr-1">Following</span>
+          {follows.length === 0 && <span className="text-t11 text-textSecondary">no names yet — add one and its stories gather here</span>}
           {follows.map(f => (
-            <span key={f.ticker} className="inline-flex items-center gap-1 h-7 pl-2 pr-1 rounded-md border border-borderSubtle bg-chip font-mono text-[11px] font-semibold text-textPrimary" data-follow={f.ticker} data-alerts={f.alerts || undefined}>
+            <span key={f.ticker} className="inline-flex items-center gap-1 h-7 pl-2 pr-1 rounded-md border border-borderSubtle bg-chip font-mono text-t11 font-semibold text-textPrimary" data-follow={f.ticker} data-alerts={f.alerts || undefined}>
               <CompanyLogo ticker={f.ticker} size={12} />
               {f.ticker}
               <button
@@ -206,11 +206,11 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
               data-follow-add
             >
               <Plus className="w-3 h-3 text-textMuted" />
-              <span className="text-[11px] font-semibold text-textPrimary">Follow a name</span>
+              <span className="text-t11 font-semibold text-textPrimary">Follow a name</span>
             </button>
             {adding && (
               <div role="dialog" aria-label="Follow a name" className="absolute left-0 top-full mt-1 z-[60] w-72 max-h-[320px] border border-borderMuted bg-panel/95 backdrop-blur-xl rounded-md shadow-2xl shadow-black/60 overflow-y-auto overscroll-contain animate-slide-in" data-follow-menu>
-                <div className="px-2.5 py-1.5 border-b border-borderSubtle text-[10px] text-textSecondary">Its stories gather on this tab — ring the bell to be told of each one</div>
+                <div className="px-2.5 py-1.5 border-b border-borderSubtle text-t10 text-textSecondary">Its stories gather on this tab — ring the bell to be told of each one</div>
                 <TickerLookup
                   onPick={sym => {
                     followName(sym);
@@ -220,14 +220,14 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
               </div>
             )}
           </div>
-          <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted">the bell rings in the alerts drawer when a headline lands</span>
+          <span className="ml-auto font-mono text-t9 uppercase tracking-widest text-textMuted">the bell rings in the alerts drawer when a headline lands</span>
         </div>
       )}
 
       {/* THE ROWS — the wire's grammar; below lg they scroll sideways inside the box at a readable width (the phone pass, 2026-09-13) */}
       {/* THE FEED SCROLLS INSIDE ITS BOX past twenty rows (Noah, 2026-10-13) — the same window as the rows under the map */}
       <div ref={windowRef} className={`relative overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ maxHeight: NEWS_WINDOW_H }} data-news-feed-window={rows.length + printed.length > NEWS_WINDOW_ROWS || undefined} data-news-feed-stacked={stacked || undefined}>
-      {!stacked && <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: FEED_COLS }}>
+      {!stacked && <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-t9 uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: FEED_COLS }}>
         <span title="When the headline crossed, New York time">Time</span>
         <span title="The first stock the headline names; MACRO for an economy or market story that names none; NO TICKER for a company story the wire left untagged">Name</span>
         <span title="What sort of story it is, read from the headline">Kind</span>
@@ -243,15 +243,15 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
       </div>}
       {printed.map(p => (
         <div key={p.id} className="px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 max-lg:min-w-[900px]" style={{ minHeight: NEWS_ROW_H, gridTemplateColumns: FEED_COLS }} data-news-print-row={p.id}>
-          <span className="font-mono text-[10px] tnum text-textSecondary">{p.timeLabel}</span>
-          <span className="font-mono text-[11px] font-bold text-textSecondary">{p.region}</span>
-          <span className="font-mono text-[9px] uppercase tracking-widest text-textSecondary">print</span>
-          <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-textSecondary">landed</span>
+          <span className="font-mono text-t10 tnum text-textSecondary">{p.timeLabel}</span>
+          <span className="font-mono text-t11 font-bold text-textSecondary">{p.region}</span>
+          <span className="font-mono text-t9 uppercase tracking-widest text-textSecondary">print</span>
+          <span className="font-mono text-t9 font-semibold uppercase tracking-widest text-textSecondary">landed</span>
           <span className="min-w-0 flex items-center gap-2">
             <ImpactMark tier={p.impact} />
-            <span className="min-w-0 break-words whitespace-normal leading-relaxed text-[12px] text-textPrimary">{p.title}</span>
+            <span className="min-w-0 break-words whitespace-normal leading-relaxed text-t12 text-textPrimary">{p.title}</span>
             {p.forecast && (
-              <span className="font-mono text-[10px] tnum text-textSecondary whitespace-nowrap">
+              <span className="font-mono text-t10 tnum text-textSecondary whitespace-nowrap">
                 fcst <span className="text-textPrimary">{p.forecast}</span>
                 {p.previous ? (
                   <>
@@ -267,7 +267,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
         </div>
       ))}
       {rows.length === 0 && printed.length === 0 && (
-        <div className="px-5 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted" data-news-feed-empty>
+        <div className="px-5 py-6 text-center font-mono text-t10 uppercase tracking-widest text-textMuted" data-news-feed-empty>
           {wire === 'reading' ? 'Reading the wire' : wire === 'failed' ? 'This read did not land' : tab === 'following' ? 'Nothing yet on the names you follow' : 'Nothing on the wire here today'}
         </div>
       )}
@@ -288,9 +288,9 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
                 <span className="mt-[5px] shrink-0">
                   <ImpactMark tier={tierOf(e.severity)} />
                 </span>
-                <span className={`min-w-0 line-clamp-2 text-[12.5px] leading-snug ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
+                <span className={`min-w-0 line-clamp-2 text-t125 leading-snug ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
               </span>
-              <span className="min-w-0 flex items-center gap-1.5 font-mono text-[10px] text-textMuted whitespace-nowrap overflow-hidden">
+              <span className="min-w-0 flex items-center gap-1.5 font-mono text-t10 text-textMuted whitespace-nowrap overflow-hidden">
                 <span className="tnum text-textSecondary">{e.item.time}</span>
                 <span>·</span>
                 {e.item.ticker ? (
@@ -320,8 +320,8 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
             data-news-feed-row={e.id}
             data-open={open || undefined}
           >
-            <span className="h-5 flex items-center font-mono text-[10px] tnum text-textSecondary">{e.item.time}</span>
-            <span className="min-w-0 h-5 inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-textPrimary">
+            <span className="h-5 flex items-center font-mono text-t10 tnum text-textSecondary">{e.item.time}</span>
+            <span className="min-w-0 h-5 inline-flex items-center gap-1.5 font-mono text-t11 font-bold text-textPrimary">
               {e.item.ticker ? (
                 <>
                   <CompanyLogo ticker={e.item.ticker} size={14} />
@@ -338,12 +338,12 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
             <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} lean={leanOf(e.grade)} /></span>
             <span className="min-w-0 flex items-center gap-2">
               <ImpactMark tier={tierOf(e.severity)} />
-              <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-[12px] ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
-              <span className="font-mono text-[9px] text-textMuted whitespace-nowrap">{e.item.source}</span>
+              <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-t12 ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
+              <span className="font-mono text-t9 text-textMuted whitespace-nowrap">{e.item.source}</span>
             </span>
             {/* an unmeasured story carries no move — the same "—" the wire's own rows show, never "+0.0% · poor" */}
-            <span className="h-5 flex items-center justify-end font-mono text-[11px] font-semibold tnum whitespace-nowrap"><PublishMove p={e.item.prediction} short /></span>
-            <span className="h-5 flex items-center justify-end font-mono text-[10px] text-textSecondary truncate" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
+            <span className="h-5 flex items-center justify-end font-mono text-t11 font-semibold tnum whitespace-nowrap"><PublishMove p={e.item.prediction} short /></span>
+            <span className="h-5 flex items-center justify-end font-mono text-t10 text-textSecondary truncate" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
               {(e.item.tickers ?? []).length > 1 ? `${e.item.tickers![1]}${e.item.tickers!.length > 2 ? ` +${e.item.tickers!.length - 2}` : ''}` : '—'}
             </span>
           </button>

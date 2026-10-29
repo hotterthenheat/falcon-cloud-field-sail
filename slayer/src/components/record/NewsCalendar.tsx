@@ -73,7 +73,7 @@ const Pill = ({ e, onOpen }: { e: CalEvent; onOpen: () => void }) => {
         ev.stopPropagation();
         onOpen();
       }}
-      className="w-full flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] text-left font-mono text-[9.5px] font-semibold overflow-hidden transition-[filter] hover:brightness-110"
+      className="w-full flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] text-left font-mono text-t95 font-semibold overflow-hidden transition-[filter] hover:brightness-110"
       style={{ background: alpha(ink, 0.13), color: ink, boxShadow: `inset 2px 0 0 0 ${ink}` }}
       title={e.kind === 'earnings' ? `${e.ticker} ${e.reported ? 'reported' : 'reports'} ${e.time}${e.reported && e.movePct != null ? ` · ${moveWords(e)}` : ''}${e.impliedMovePct ? ` · ±${e.impliedMovePct.toFixed(1)}% priced` : ''}` : e.kind === 'post' ? e.title : e.kind === 'schedule' ? `${e.time} · ${e.title}${e.note ? ` · ${e.note}` : ''}` : e.kind === 'fda' ? `${e.title}` : `${e.time} · ${e.title}${e.forecast ? ` · fcst ${e.forecast}` : ''}`}
       data-cal-pill={e.id}
@@ -83,28 +83,28 @@ const Pill = ({ e, onOpen }: { e: CalEvent; onOpen: () => void }) => {
         <>
           <CompanyLogo ticker={e.ticker} size={10} />
           <span className="truncate">{e.ticker}</span>
-          <span className="ml-auto text-[8px] font-normal opacity-80 shrink-0">{e.timeKnown === false ? '—' : e.slot}</span>
+          <span className="ml-auto text-t8 font-normal opacity-80 shrink-0">{e.timeKnown === false ? '—' : e.slot}</span>
         </>
       ) : e.kind === 'fda' && e.ticker ? (
         <>
           <CompanyLogo ticker={e.ticker} size={10} />
           <span className="truncate">{e.ticker}</span>
-          <span className="ml-auto text-[8px] font-normal opacity-80 shrink-0">FDA</span>
+          <span className="ml-auto text-t8 font-normal opacity-80 shrink-0">FDA</span>
         </>
       ) : e.kind === 'schedule' ? (
         <>
           <span className="truncate">{e.title}</span>
-          <span className="ml-auto text-[8px] font-normal opacity-80 shrink-0">{e.time}</span>
+          <span className="ml-auto text-t8 font-normal opacity-80 shrink-0">{e.time}</span>
         </>
       ) : e.kind === 'post' ? (
         <>
           <span className="truncate">{e.title}</span>
-          <span className="ml-auto text-[8px] font-normal opacity-80 shrink-0">{e.time}</span>
+          <span className="ml-auto text-t8 font-normal opacity-80 shrink-0">{e.time}</span>
         </>
       ) : (
         <>
           <span className="truncate">{e.title}</span>
-          <span className="ml-auto text-[8px] font-normal opacity-80 shrink-0">{e.time}</span>
+          <span className="ml-auto text-t8 font-normal opacity-80 shrink-0">{e.time}</span>
         </>
       )}
     </button>
@@ -216,19 +216,19 @@ const NewsCalendar = () => {
           <button type="button" onClick={() => shift(1)} className="inline-flex items-center justify-center w-6 h-6 rounded text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" title="The month after" aria-label="The month after" data-cal-next>
             <ChevronRight className="w-4 h-4" />
           </button>
-          <span className="text-[14px] font-semibold text-textPrimary" data-cal-label>
+          <span className="text-t14 font-semibold text-textPrimary" data-cal-label>
             {cal.label}
           </span>
-          <button type="button" onClick={home} className="inline-flex items-center h-6 px-2 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted font-mono text-[9px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-cal-today>
+          <button type="button" onClick={home} className="inline-flex items-center h-6 px-2 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted font-mono text-t9 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-cal-today>
             Today
           </button>
-          <span className="font-mono text-[10px] tnum text-textSecondary ml-2 truncate" data-cal-counts>
+          <span className="font-mono text-t10 tnum text-textSecondary ml-2 truncate" data-cal-counts>
             {highCount} high · {erCount} reports · {fdaCount} FDA{schedCount ? ` · ${schedCount} on the schedule` : ''}{postCount ? ` · ${postCount} posts` : ''}
           </span>
         </div>
         <div className="grid grid-cols-7 border-b border-borderSubtle/60">
           {WEEKDAYS.map(w => (
-            <div key={w} className="px-2 h-[22px] flex items-center font-mono text-[9px] uppercase tracking-widest text-textMuted">
+            <div key={w} className="px-2 h-[22px] flex items-center font-mono text-t9 uppercase tracking-widest text-textMuted">
               {w}
             </div>
           ))}
@@ -254,11 +254,11 @@ const NewsCalendar = () => {
                   data-today={day.today || undefined}
                   aria-pressed={isPicked}
                 >
-                  <span className={`self-start inline-flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full font-mono text-[11px] tnum ${day.today ? 'bg-textPrimary text-panel font-bold' : 'text-textPrimary'}`}>{day.date.getDate()}</span>
+                  <span className={`self-start inline-flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full font-mono text-t11 tnum ${day.today ? 'bg-textPrimary text-panel font-bold' : 'text-textPrimary'}`}>{day.date.getDate()}</span>
                   {events.slice(0, 3).map(e => (
                     <Pill key={e.id} e={e} onOpen={() => setPickedKey(day.key)} />
                   ))}
-                  {events.length > 3 && <span className="font-mono text-[9px] text-textMuted pl-1">{events.length - 3} more</span>}
+                  {events.length > 3 && <span className="font-mono text-t9 text-textMuted pl-1">{events.length - 3} more</span>}
                 </div>
               );
             })}
@@ -269,39 +269,39 @@ const NewsCalendar = () => {
       {/* THE DAY IN HAND */}
       <div className="min-w-0 flex flex-col" data-cal-day-panel={picked.key}>
         <div className="px-4 h-[40px] flex items-center gap-2 border-b border-borderSubtle">
-          <span className="text-[13px] font-semibold text-textPrimary">{longDay(picked.date)}</span>
-          {picked.today && <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-select">today</span>}
-          <span className="ml-auto font-mono text-[10px] tnum text-textSecondary">
+          <span className="text-t13 font-semibold text-textPrimary">{longDay(picked.date)}</span>
+          {picked.today && <span className="font-mono text-t9 font-bold uppercase tracking-widest text-select">today</span>}
+          <span className="ml-auto font-mono text-t10 tnum text-textSecondary">
             {dayEvents.length} {dayEvents.length === 1 ? 'event' : 'events'}
           </span>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto max-h-[560px]">
           {dayEvents.length === 0 ? (
-            <div className="px-4 py-8 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{reportsPending ? 'Reading the calendar' : 'Nothing on the record for this day'}</div>
+            <div className="px-4 py-8 text-center font-mono text-t10 uppercase tracking-widest text-textMuted">{reportsPending ? 'Reading the calendar' : 'Nothing on the record for this day'}</div>
           ) : (
             dayEvents.map(e => (
               <div key={e.id} className="px-4 py-2 border-b border-borderSubtle/40" data-cal-event={e.id} data-kind={e.kind}>
                 <div className="flex items-start gap-2">
                   {e.kind === 'earnings' ? <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: SILVER }} /> : e.kind === 'market' ? <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: SUPREME }} /> : e.kind === 'fda' ? <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: WARN }} /> : e.kind === 'schedule' ? <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: SCHEDULE }} /> : e.kind === 'post' ? <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: POST }} /> : <ImpactMark tier={e.impact} />}
-                  <span className="font-mono text-[10px] tnum text-textSecondary w-[54px] shrink-0">{e.kind === 'earnings' ? (e.timeKnown === false ? 'time —' : e.slot === 'BMO' ? 'pre' : 'post') : e.kind === 'fda' ? 'FDA' : e.time}</span>
+                  <span className="font-mono text-t10 tnum text-textSecondary w-[54px] shrink-0">{e.kind === 'earnings' ? (e.timeKnown === false ? 'time —' : e.slot === 'BMO' ? 'pre' : 'post') : e.kind === 'fda' ? 'FDA' : e.time}</span>
                   {e.kind === 'earnings' && e.ticker ? (
-                    <span className="min-w-0 flex items-center gap-1.5 text-[12px] text-textPrimary">
+                    <span className="min-w-0 flex items-center gap-1.5 text-t12 text-textPrimary">
                       <CompanyLogo ticker={e.ticker} size={14} />
                       <span className="font-mono font-bold">{e.ticker}</span> {e.reported ? 'reported' : 'reports'} {e.time}
                     </span>
                   ) : e.kind === 'fda' && e.ticker ? (
-                    <span className="min-w-0 flex items-center gap-1.5 text-[12px] text-textPrimary">
+                    <span className="min-w-0 flex items-center gap-1.5 text-t12 text-textPrimary">
                       <CompanyLogo ticker={e.ticker} size={14} />
                       <span className="font-mono font-bold">{e.ticker}</span>
                       <span className="break-words whitespace-normal leading-relaxed">{e.note}</span>
                     </span>
                   ) : (
-                    <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-[12px] text-textPrimary ${e.kind === 'post' ? '' : e.impact === 'high' ? 'font-semibold' : ''}`}>{e.title}</span>
+                    <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-t12 text-textPrimary ${e.kind === 'post' ? '' : e.impact === 'high' ? 'font-semibold' : ''}`}>{e.title}</span>
                   )}
-                  {e.region && <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted">{e.region}</span>}
+                  {e.region && <span className="ml-auto font-mono text-t9 uppercase tracking-widest text-textMuted">{e.region}</span>}
                 </div>
                 {e.kind !== 'post' && (
-                <div className="mt-1 pl-[72px] flex items-center gap-x-4 font-mono text-[10px] tnum text-textPrimary">
+                <div className="mt-1 pl-[72px] flex items-center gap-x-4 font-mono text-t10 tnum text-textPrimary">
                   {e.kind === 'earnings' ? (
                     <>
                       {e.reported && e.movePct != null ? <span className={e.movePct >= 0 ? 'text-bull' : 'text-bear'}>{moveWords(e)}</span> : e.reported ? <span className="text-textMuted">{e.reactionIso === nyIsoDate() ? 'out — reading the move' : e.reactionIso && e.reactionIso > nyIsoDate() ? `out — the move is the ${new Date(`${e.reactionIso}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })} session's` : 'out'}</span> : null}

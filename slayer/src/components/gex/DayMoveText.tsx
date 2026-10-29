@@ -31,7 +31,7 @@ interface Props {
   extClassName?: string;
 }
 
-const DayMoveText = ({ ticker, snapshot, short = false, className = 'text-[11px]', extClassName = 'text-textMuted' }: Props) => {
+const DayMoveText = ({ ticker, snapshot, short = false, className = 'text-t11', extClassName = 'text-textMuted' }: Props) => {
   useBookRev();
   const move = snapshot?.liveBook ? dayMoveOfSnapshot(snapshot) : ticker ? peekDayMove(ticker) : snapshot ? { dayPct: snapshot.changePercent, extPct: null, phase: 'regular' as const } : null;
   const w = dayMoveWords(move);

@@ -96,7 +96,7 @@ const phoneRow = (r: BookContract) => (
         <span className="font-bold">{r.ticker}</span>
         <span className="font-bold tnum">{r.strike}</span>
         <span className={r.right === 'C' ? 'text-bull' : 'text-bear'}>{r.right === 'C' ? 'call' : 'put'}</span>
-        <span className="text-[11px] text-textSecondary tnum">{r.expiry.slice(0, 5)}</span>
+        <span className="text-t11 text-textSecondary tnum">{r.expiry.slice(0, 5)}</span>
       </>
     }
     aside={r.lastAt}
@@ -331,7 +331,7 @@ const OptionsScreener = () => {
         render: r => (
           <span className="inline-flex items-center gap-1.5">
             <WatchStar k={contractKey(r)} make={() => watchContract(r, 'screener')} />
-            <span className="text-[11px] text-textPrimary">{r.lastAt}</span>
+            <span className="text-t11 text-textPrimary">{r.lastAt}</span>
           </span>
         ),
       },
@@ -370,8 +370,8 @@ const OptionsScreener = () => {
           <span className="text-textPrimary">
             ${r.last.toFixed(2)}{' '}
             {/* THE PRICE'S TIME (the third audit: prices differ by cents across pages with no time) — the last fill's */}
-            {r.lastAt && r.lastAt !== '—' && <span className="text-[11px] text-textSecondary" title="New York time of the last fill this price is">{r.lastAt}</span>}{' '}
-            {Number.isFinite(r.chgPct) ? <span className={`text-[11px] ${r.chgPct >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>{pctSigned(r.chgPct, 1)}</span> : <span className="text-[11px] text-textMuted">new</span>}
+            {r.lastAt && r.lastAt !== '—' && <span className="text-t11 text-textSecondary" title="New York time of the last fill this price is">{r.lastAt}</span>}{' '}
+            {Number.isFinite(r.chgPct) ? <span className={`text-t11 ${r.chgPct >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>{pctSigned(r.chgPct, 1)}</span> : <span className="text-t11 text-textMuted">new</span>}
           </span>
         ),
       },
@@ -384,7 +384,7 @@ const OptionsScreener = () => {
         sortValue: r => r.deltaOI,
         render: r => {
           /* a row still on the count before names its day, in plain ink (audit round 7) */
-          const lag = oiLags(r, oiCover) && r.oiDay ? <span className="mr-1 text-[10px] text-textMuted">{shortDay(r.oiDay)}</span> : null;
+          const lag = oiLags(r, oiCover) && r.oiDay ? <span className="mr-1 text-t10 text-textMuted">{shortDay(r.oiDay)}</span> : null;
           if (r.deltaOI === 0) return <span className="text-textSecondary" title={oiRowTitle(r)}>{lag}—</span>;
           const a = Math.abs(r.deltaOI);
           const tone = lag ? 'text-textPrimary' : a >= marks.doi.top ? 'text-supreme font-bold' : a >= marks.doi.bar ? (r.deltaOI > 0 ? 'text-bull dir-up' : 'text-bear dir-down') : 'text-textPrimary';
@@ -394,7 +394,7 @@ const OptionsScreener = () => {
               {r.deltaOI > 0 ? '+' : '−'}
               {num(Math.abs(r.deltaOI))} {/* a tier down, never opacity */}
               {/* a percentage of next to nothing is no figure ("+4564800%" on an open interest of 1) */}
-              <span className="text-[11px]">{doiTail(r)}</span>
+              <span className="text-t11">{doiTail(r)}</span>
             </span>
           );
         },
@@ -410,7 +410,7 @@ const OptionsScreener = () => {
           r.iv > 0 ? (
             <span className="text-textPrimary">
               {r.iv.toFixed(0)}%{' '}
-              <span className={`text-[11px] ${r.ivChg >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>
+              <span className={`text-t11 ${r.ivChg >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>
                 {r.ivChg >= 0 ? '+' : '−'}
                 {Math.abs(r.ivChg).toFixed(Math.abs(r.ivChg) >= 100 ? 0 : 1)}
               </span>
@@ -529,7 +529,7 @@ const OptionsScreener = () => {
           <>
             <SavedCutsList store={screenerCuts} query="" onOpen={openCut} noun="screen" testId="screener" onSay={cuts.say} open={cuts.open} />
             {cuts.said && (
-              <p role="status" className="mb-2 font-mono text-[11px] text-textSecondary" data-screener-said>
+              <p role="status" className="mb-2 font-mono text-t11 text-textSecondary" data-screener-said>
                 {cuts.said}
               </p>
             )}

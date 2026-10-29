@@ -14,6 +14,7 @@ import { setFlexBook } from './oiHeat';
 import { thetaCall } from './theta';
 import { uwCall } from './whales';
 import { nyIsoDaysBack } from './nyDate';
+import { SIM_DESK } from './deskMode';
 
 export type VendorState = 'loading' | 'live' | 'empty' | 'error';
 
@@ -718,7 +719,7 @@ function start(desk: 'pinpoint' | 'dossier', ticker: string, pathname: string) {
 
 /** Pinpoint's book starts the same feed the ledger renders. */
 export function startPinpoint(ticker: string) {
-  if (!ticker) return;
+  if (SIM_DESK || !ticker) return;
   start('pinpoint', ticker, '/pinpoint/map');
 }
 

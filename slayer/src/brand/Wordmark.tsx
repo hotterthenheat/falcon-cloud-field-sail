@@ -45,7 +45,6 @@ interface WordmarkProps {
   label?: string;
 }
 
-/** the foil's five stops, as the glyphs and the mark's S carry them */
 const STOPS: [number, string][] = [
   [0, '--foil-1'],
   [0.3, '--foil-2'],
@@ -57,17 +56,17 @@ const STOPS: [number, string][] = [
 const Wordmark = ({ height, prompt = false, cursor = false, solid, typing = false, className = '', style, label }: WordmarkProps) => {
   const scale = height / WORDMARK.height;
   const muted = solid ? (solid === 'black' ? '#000' : '#fff') : 'rgb(var(--chevron))';
-  /* a gradient's id must be the page's only one — several wordmarks share a page */
   const foilId = `wm-foil-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
-  const lit = solid ? muted : `url(#${foilId})`;
+  const still = solid ? muted : `url(#${foilId})`;
   const cursorInk = solid ? muted : 'rgb(var(--wordmark))';
   const name = label ?? 'Slayer Terminal';
-  const cursorRef = useRef<HTMLSpanElement | null>(null);
+  const rootRef = useRef<HTMLSpanElement | null>(null);
   useLayoutEffect(() => {
-    alignBrandLoops(cursorRef.current);
+    alignBrandLoops(rootRef.current);
   }, [cursor, solid, typing]);
   return (
     <span
+      ref={rootRef}
       className={`inline-flex flex-col items-start leading-none ${className}`}
       style={style}
       role={name ? 'img' : undefined}
@@ -99,14 +98,12 @@ const Wordmark = ({ height, prompt = false, cursor = false, solid, typing = fals
               </linearGradient>
             </defs>
           )}
-          <path d={WORDMARK.chevron} fill={muted} />
-          <path d={WORDMARK.slayer} fill={lit} />
-          <path d={WORDMARK.terminal} fill={muted} />
+          <path d={WORDMARK.chevron} fill={solid ? muted : 'rgb(var(--wordmark))'} />
+          <path d={WORDMARK.slayer} fill={solid ? muted : 'rgb(var(--wordmark))'} />
+          <path d={WORDMARK.terminal} fill={solid ? muted : still} />
         </svg>
-        {/* the cursor is a box beside the letters, not a part of their SVG: its blink is an opacity the compositor runs */}
         {cursor && (
           <span
-            ref={cursorRef}
             className="wordmark-cursor"
             style={{ left: WORDMARK.cursorX * scale, width: WORDMARK.cursorW * scale, background: cursorInk, ...(solid ? { animation: 'none', opacity: 1 } : null) }}
             aria-hidden

@@ -105,7 +105,7 @@ const DAY_COLS: Record<number, string> = { 2: 'lg:grid-cols-2', 3: 'lg:grid-cols
 const NameMark = ({ t }: { t: string }) => (
   <span className="inline-flex items-center gap-1.5 h-6 pl-2 pr-2.5 rounded-md border border-borderSubtle bg-chip font-mono select-none" data-day-name={t}>
     <CompanyLogo ticker={t} size={14} />
-    <span className="text-[12px] font-semibold text-textPrimary leading-none">{t}</span>
+    <span className="text-t12 font-semibold text-textPrimary leading-none">{t}</span>
   </span>
 );
 
@@ -601,7 +601,7 @@ const MapDesk = () => {
               keepTyped(strikeInput.current?.value ?? '');
             }}
           >
-            <label htmlFor="strike-ask" className="text-[11px] text-textMuted">
+            <label htmlFor="strike-ask" className="text-t11 text-textMuted">
               Keep a strike
             </label>
             <input
@@ -619,7 +619,7 @@ const MapDesk = () => {
               }}
               onBlur={() => setStrikeAsk(false)}
             />
-            <span className="text-[11px] text-textMuted">Enter keeps it · Esc</span>
+            <span className="text-t11 text-textMuted">Enter keeps it · Esc</span>
           </form>
         </div>
       )}
@@ -678,7 +678,7 @@ const MapDesk = () => {
             pack={!split && bookW > 0}
           />
           ) : (
-            <div className="px-4 py-6 font-mono text-[11px] text-textMuted">Still reading {scopes.calendar}</div>
+            <div className="px-4 py-6 font-mono text-t11 text-textMuted">Still reading {scopes.calendar}</div>
           )}
         </Deferred>
       </div>
@@ -699,7 +699,7 @@ const MapDesk = () => {
           <BookThroughDay part snapshot={lv(tapeBook)} bars={playing && tapeTicker === ticker ? reportBars : undefined} at={playing && tapeTicker === ticker ? replayMinute(framePos, range) : undefined} dates={lvDates(tapeBook)} bookLabel={lvWords(tapeBook)} />
             </>
           ) : (
-            <div className="px-4 py-6 font-mono text-[11px] text-textMuted">Still reading {scopes.tape}</div>
+            <div className="px-4 py-6 font-mono text-t11 text-textMuted">Still reading {scopes.tape}</div>
           )}
         </DayBox>
       </div>
@@ -713,7 +713,7 @@ const MapDesk = () => {
             const snap = raw ? lv(raw) : null;
             if (!snap) {
               return (
-                <div key={t} className="min-w-0 flex flex-col border border-borderSubtle rounded-md bg-panel px-4 py-6 font-mono text-[11px] text-textMuted" data-session-box={t}>
+                <div key={t} className="min-w-0 flex flex-col border border-borderSubtle rounded-md bg-panel px-4 py-6 font-mono text-t11 text-textMuted" data-session-box={t}>
                   Still reading {t}
                 </div>
               );
@@ -752,7 +752,7 @@ const MapDesk = () => {
               const base = columnSnap(t);
               if (!base) {
                 return (
-                  <div key={t} className="min-w-0 border border-borderSubtle rounded-md bg-panel px-4 py-6 font-mono text-[11px] text-textMuted">
+                  <div key={t} className="min-w-0 border border-borderSubtle rounded-md bg-panel px-4 py-6 font-mono text-t11 text-textMuted">
                     Still reading {t}
                   </div>
                 );
@@ -783,14 +783,14 @@ const MapDesk = () => {
         {dayBook ? (
         <TraderClock snapshot={lv(dayBook)} scope={chipFor('day', dayTicker)} dates={lvDates(dayBook)} at={playing && dayTicker === ticker ? replayMinute(framePos, range) : undefined} onSeek={playing && range && dayTicker === ticker ? (min) => setReplay(r => (r ? { ...r, playing: false, pos: posAtMinute(r.range, min) } : r)) : undefined} />
         ) : (
-          <div className="px-4 py-6 font-mono text-[11px] text-textMuted">Still reading {scopes.day}</div>
+          <div className="px-4 py-6 font-mono text-t11 text-textMuted">Still reading {scopes.day}</div>
         )}
       </div>
       <div ref={reportRef} id="map-report" className="border border-borderSubtle rounded-md overflow-hidden bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12" data-report data-scope-ticker={reportTicker} data-on-screen={reportOn}>
         {reportBook ? (
         <WallReportCard snapshot={sessionBook(reportBook, scopeOf(reportBook)).book ?? lv(reportBook)} unavailable={sessionBook(reportBook, scopeOf(reportBook)).why} focus={focusFor(reportTicker)} onPick={price => toggleFocus(price, reportTicker)} scope={chipFor('report', reportTicker)} span={sessionBook(reportBook, scopeOf(reportBook)).label} bars={playing && reportTicker === ticker ? reportBars : undefined} />
         ) : (
-          <div className="px-4 py-6 font-mono text-[11px] text-textMuted">Still reading {scopes.report}</div>
+          <div className="px-4 py-6 font-mono text-t11 text-textMuted">Still reading {scopes.report}</div>
         )}
       </div>
       </div>

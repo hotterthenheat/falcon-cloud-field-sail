@@ -31,7 +31,7 @@ const stateDot: Record<VolState, string> = {
 };
 
 export const StateTag = ({ state }: { state: VolState }) => (
-  <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textPrimary whitespace-nowrap">
+  <span className="inline-flex items-center gap-1.5 font-mono text-t11 uppercase tracking-wider text-textPrimary whitespace-nowrap">
     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${stateDot[state]}`} />
     {STATE_LABEL[state]}
   </span>

@@ -238,7 +238,7 @@ const sinceInk = (dir: 1 | -1 | 0) => (dir === 1 ? 'rgb(var(--bull))' : dir === 
 /* at the house's 11px floor (the audit's H5b, 2026-10-13 — it was 7.5px); the chip stands only where the column has room
    for its own words (`laneFor` below), the dot everywhere else */
 export const SinceBadge = ({ text, dir }: { text: string; dir: 1 | -1 | 0 }) => (
-  <span className="rounded-full px-1 py-0 font-mono text-[11px] font-semibold tnum tabular-nums leading-none whitespace-nowrap" style={{ background: 'rgb(var(--panel) / 0.88)', color: sinceInk(dir), textShadow: 'none' }} data-since={dir}>
+  <span className="rounded-full px-1 py-0 font-mono text-t11 font-semibold tnum tabular-nums leading-none whitespace-nowrap" style={{ background: 'rgb(var(--panel) / 0.88)', color: sinceInk(dir), textShadow: 'none' }} data-since={dir}>
     {text}
   </span>
 );
@@ -285,17 +285,9 @@ const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, r
 
 const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn = false, movePrices, greeks: greeksWanted, leg = 'net', expiries, rings, hoverStrike, palette = 'house', afterBell = false, selectedStrike, marks, onPointer, onSelectStrike, onExpiry, fitKey, onFit, paper = false, wantCols, onNatural }: ExposureLedgerProps) => {
   const [box, setBox] = useState({ w: 0, h: 0 });
-  /* NEVER A CELL WITHOUT ITS FIGURE (Noah, 2026-10-17, the panel narrowed until the capsules went blank: "stopping a
-     user from making the screen so small to the point where the node numbers disappear"): the expiries were already
-     cut to what fits at CELL_MIN_W, but a box narrower than ONE expiry of the greeks picked still had to print them
-     all — three greeks in two columns' width, the short figure gone. The greeks are cut the same way the expiries are,
-     the first ones kept, and the field is told (onFit) so its note says so. Unmeasured, every greek (that frame is
-     never drawn). */
-  const greeks = useMemo(() => {
-    if (box.w <= 0) return greeksWanted;
-    const fit = Math.max(1, Math.min(greeksWanted.length, columnsThatFit(box.w)));
-    return fit < greeksWanted.length ? greeksWanted.slice(0, fit) : greeksWanted;
-  }, [greeksWanted, box.w]);
+  /* Every greek and every expiry the reader picked. A narrow pane scrolls.
+     It does not drop a column or clip a letter. */
+  const greeks = greeksWanted;
   const mode = palette === 'thermal' ? ('thermal-yellow' as const) : undefined;
   /* one leg alone is painted against its own heaviest cell — the net's scale would read a call leg against puts it
      never had */
@@ -363,8 +355,8 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
   /* ONLY THE COLUMNS THAT FIT (Noah, 2026-09-14): the expiries this box can print at CELL_MIN_W
      with its greeks side by side — the cut every other count below rides on. Unmeasured, no cut
      (the grid is invisible for that frame anyway). */
-  const fitExpiries = box.w > 0 ? Math.max(1, Math.floor(columnsThatFit(box.w) / Math.max(1, greeks.length))) : null;
-  const greeksDrawn = box.w > 0 ? greeks.length : null;
+  const fitExpiries = expiries.length;
+  const greeksDrawn = greeksWanted.length;
   useEffect(() => {
     if (!onFit || !fitKey) return;
     onFit(fitKey, fitExpiries, greeksDrawn);
@@ -377,9 +369,8 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
   const shownIdx = useMemo(() => {
     if (surface.waiting && surface.expiries.length === 0) return [];
     const live = expiries.filter(i => i >= 0 && i < surface.expiries.length);
-    const list = live.length ? live : [Math.max(0, todayIdx)];
-    return list.slice(0, Math.max(1, fitExpiries ?? Infinity));
-  }, [surface, expiries, todayIdx, fitExpiries]);
+    return live.length ? live : [Math.max(0, todayIdx)];
+  }, [surface, expiries, todayIdx]);
   /* FOCUS: the pinned cell holds, else the hovered, else the supreme */
   const [hovered, setHovered] = useState<Focus | null>(null);
   const [pinned, setPinned] = useState<Focus | null>(null);
@@ -482,7 +473,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
     ro.observe(strikeHead);
     return () => ro.disconnect();
   }, [strikeHead]);
-  const cellW = (box.w - strikeW) / Math.max(1, cols);
+  const cellW = Math.max(128, (box.w - strikeW) / Math.max(1, cols));
   /* THE PANE'S NATURAL WIDTH, told to the host (2026-10-13): the strike column as measured, the wanted columns at
      CELL_MAX, the grid's 4px of right padding */
   const natural = strikeW > 0 ? strikeW + Math.max(cols, wantCols ?? 0) * CELL_MAX + 4 : 0;
@@ -494,22 +485,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
   /* …AND 11 SINCE 2026-10-13 (the audit's M10): the terminal's floor, which every other word on the page keeps — the
      short figure at 11px bold is 35px in a 48px cell; the full one switches to the short one a little earlier */
   const fontSize = clamp(Math.min(rowH * 0.46, (cellW - 22) / (8 * 0.68)), 11, 13);
-  /* Under 71px the full figure no longer fits at 9px (All at forty columns
-     on a page-width calendar): print the short one on half the padding. Under
-     CELL_MIN_W the colour would stand alone — unreachable now that the columns
-     are cut to the width (the branch stays for the unmeasured frame). The date
-     heads lose their "· 2d" the same way. */
-  const figure: Figure = cellW >= 71 ? 'full' : cellW >= CELL_MIN_W ? 'short' : 'none';
-  /* THE DATE HEAD'S "· 2d" ONLY WHERE IT FITS (2026-10-13): the cut was a fixed 60px from before the 11px floor, and the
-     full head is ~100px at 11px — "OCT 14 · TODAY" ran over its neighbours and back over the strike column. Measured off
-     the widest full head among the columns drawn (11px mono, wider tracking: ~7.2px a character, and the 16px padding). */
-  const widestHead = shownIdx.reduce((m, e) => {
-    const ex = surface.expiries[e];
-    return ex ? Math.max(m, `${ex.date} · ${e === todayIdx ? 'today' : ex.short}`.length) : m;
-  }, 0);
-  const narrowHead = cellW < widestHead * 7.2 + 16;
-  /* a greek's group head too narrow for its unit (a phone's five groups of one column) prints the greek alone */
-  const narrowGroup = cellW * shownIdx.length < 96;
+  const figure: Figure = 'full';
   const rowsTemplate = [
     `${HEAD_H / 2}px ${HEAD_H / 2}px`,
     above.length ? `repeat(${above.length}, minmax(${ROW_MIN}px, 1fr))` : '',
@@ -860,7 +836,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
      lane after that); under it the dot rides the capsule's edge wherever a figure prints at all */
   /* …at 11px the chip's width is its words' ("−45%" 35px, "flipped sides" 96): the chip where the column holds the figure,
      the chip and their air, the dot where it does not (the audit's H5b) */
-  const laneFor = (text: string | null): 'figure' | 'dot' | 'none' => (text && cellW >= 60 + text.length * 6.8 + 8 + 24 ? 'figure' : figure !== 'none' ? 'dot' : 'none');
+  const laneFor = (text: string | null): 'figure' | 'dot' | 'none' => (text && cellW >= 60 + text.length * 6.8 + 8 + 24 ? 'figure' : 'dot');
   /* the dot beside the figure from 56px — under that the short figure fills the capsule and the dot rides the edge */
   const dotBeside = cellW >= 56;
   /* THE FULL FIGURE ONLY WHERE IT FITS BESIDE WHAT THE CELL ALSO WEARS (the paying-user audit's H1, 2026-10-13): one
@@ -891,7 +867,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
     <>
       {/* THE TAGS WRAP BY TAG (Noah, 2026-10-17: "i found heaviest bleeding again" — PUT WALL · SUPREME · ★ HEAVIEST CELL
           ran past the card's edge on one line): each tag is whole, the line breaks between them */}
-      {cardTags.length > 0 && <span className="col-span-2 -mt-0.5 mb-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] uppercase tracking-widest">{cardTags}</span>}
+      {cardTags.length > 0 && <span className="col-span-2 -mt-0.5 mb-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-t11 uppercase tracking-widest">{cardTags}</span>}
       <CardRow k="Put" v={fmtUsd(shownGreek(focus.greek, putV))} sub={pct(putV)} ink={PUT_INK} />
       <CardRow k="Call" v={fmtUsd(shownGreek(focus.greek, callV))} sub={pct(callV)} ink={CALL_INK} />
       <CardRow k={`Net · ${GREEK_LABEL[focus.greek]}`} v={fmtUsd(shownGreek(focus.greek, netV))} sub={dead ? 'expired' : missed ? 'no vol' : empty ? 'nothing' : netV >= 0 ? 'put-heavy' : 'call-heavy'} ink={empty || dead || missed ? 'rgb(var(--text-muted))' : heatLaneColor(netV, surface.maxAbs[focus.greek], mode ?? HEAT_MODE, 0.35, paper)} />
@@ -904,7 +880,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
     <>
       <span style={{ color: verdictInk }}>{verdict}</span>
       <span className="block mt-0.5 text-textMuted">at current spot</span>
-      {pinned && <span className="block mt-0.5 text-[11px] uppercase tracking-wider text-textMuted">kept · {letGo}</span>}
+      {pinned && <span className="block mt-0.5 text-t11 uppercase tracking-wider text-textMuted">kept · {letGo}</span>}
     </>
   );
   /* While a node is in focus the pointer stops washing rows and columns — two
@@ -940,12 +916,12 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
           keep — ONE LINE ABOVE THE GRID (the owner, 2026-10-13: laid over the grid's foot it wrapped to three lines, hid
           the last rows and sat at a different height in every column); past the width it scrolls sideways */}
       {(surface.skipped ?? 0) > 0 && (
-        <div className={`shrink-0 h-6 flex items-center px-3 border-b border-borderSubtle ${ground} font-mono text-[11px] text-textMuted`} data-legs-skipped={surface.skipped}>
+        <div className={`shrink-0 h-6 flex items-center px-3 border-b border-borderSubtle ${ground} font-mono text-t11 text-textMuted`} data-legs-skipped={surface.skipped}>
           {surface.skipped} {surface.skipped === 1 ? 'leg' : 'legs'} skipped, no vol
         </div>
       )}
       {focusOn && (
-        <div className={`shrink-0 h-7 flex items-center gap-x-2 px-3 border-b border-borderSubtle ${ground} font-mono text-[11px] whitespace-nowrap overflow-x-auto scroll-row`} data-ledger-focus-summary={chartMode ? (movePrices?.length ?? 0) : exceptional.size}>
+        <div className={`shrink-0 h-7 flex items-center gap-x-2 px-3 border-b border-borderSubtle ${ground} font-mono text-t11 whitespace-nowrap overflow-x-auto scroll-row`} data-ledger-focus-summary={chartMode ? (movePrices?.length ?? 0) : exceptional.size}>
           <span className="shrink-0 text-textSecondary">
             {chartMode
               ? (movePrices && movePrices.length > 0 ? `${movePrices.length} biggest ${movePrices.length === 1 ? 'move' : 'moves'} on the chart` : 'No swing on the chart yet')
@@ -967,7 +943,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
         </div>
       )}
       {surface.waiting && surface.expiries.length === 0 ? (
-        <div className="flex-1 min-h-0 flex items-center justify-center px-4 text-center font-mono text-[12px] text-textMuted" data-rail-waiting>
+        <div className="flex-1 min-h-0 flex items-center justify-center px-4 text-center font-mono text-t12 text-textMuted" data-rail-waiting>
           {surface.waiting}
         </div>
       ) : (
@@ -1036,14 +1012,14 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
           /* …AND PAINTED ONCE: `will-change: transform` through the glide gives the pinned grid a layer of its own, so
              the frames in between only composite it as the pane clips it — a trace of a name leaving put PAINT first
              (135ms in 700ms: four panes of shadowed capsules repainted every frame), style recalc second, layout third */
-          style={{ gridTemplateColumns: `max-content repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: rowsTemplate, ...(gliding && box.w > 0 ? { width: box.w, willChange: 'transform' } : null) }}
+          style={{ gridTemplateColumns: `max-content repeat(${cols}, minmax(128px, 1fr))`, gridTemplateRows: rowsTemplate, ...(gliding && box.w > 0 ? { width: box.w, willChange: 'transform' } : null) }}
         >
           {/* HEAD — sticky under scroll */}
-          <div ref={setStrikeHead} className={`sticky top-0 z-10 ${ground} pl-2 pr-1.5 flex flex-col items-end justify-end pb-1 font-mono text-[11px] font-semibold uppercase tracking-normal text-textSecondary border-b border-borderSubtle`} style={{ gridRow: 'span 2' }}>
+          <div ref={setStrikeHead} className={`sticky top-0 z-10 ${ground} pl-2 pr-1.5 flex flex-col items-end justify-end pb-1 font-mono text-t11 font-semibold uppercase tracking-normal text-textSecondary border-b border-borderSubtle`} style={{ gridRow: 'span 2' }}>
             {/* THE COLUMN'S WIDTH IS RESERVED (2026-10-12, the replay): the widest row this book can print — its
                 longest strike with the two widest tags — set invisibly here, so a wall tag moving from row to row
                 never moves the column, and the cells beside it keep their width while the replay runs */}
-            <span aria-hidden className="invisible block h-0 w-max overflow-hidden whitespace-nowrap normal-case tracking-normal text-[11px] font-bold tnum tabular-nums">
+            <span aria-hidden className="invisible block h-0 w-max overflow-hidden whitespace-nowrap normal-case tracking-normal text-t11 font-bold tnum tabular-nums">
               {widestStrike}
             </span>
             Strike
@@ -1052,14 +1028,13 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
             <div
               key={`g-${g}`}
               /* min-w-0 and a cut: on a phone five groups of one 45px column overprinted each other's words (the audit's 2.13) */
-              className={`sticky top-0 z-10 ${ground} ${narrowGroup ? 'px-0.5 tracking-wider' : 'px-2 tracking-widest'} flex items-center justify-center min-w-0 overflow-hidden font-mono text-[11px] font-bold uppercase text-textPrimary border-l border-borderSubtle`}
+              className={`sticky top-0 z-10 ${ground} px-2 tracking-widest flex items-center justify-center overflow-visible font-mono text-t11 font-bold uppercase text-textPrimary border-l border-borderSubtle whitespace-nowrap`}
               style={{ gridColumn: `span ${shownIdx.length}` }}
               title={`${GREEK_LABEL[g]} · ${GREEK_UNIT[g]} — ${GREEK_EXPLAIN[g]}`}
             >
-              <span className="truncate">
+              <span>
                 {GREEK_LABEL[g]}
-                {/* normal-case: the head's capitals turned DEX's "1σ" into "1Σ" (the paying-user audit's M9) */}
-                {!narrowGroup && <span className="ml-1 font-normal normal-case tracking-normal text-textMuted">· {GREEK_UNIT[g]}</span>}
+                <span className="ml-1 font-normal normal-case tracking-normal text-textMuted">· {GREEK_UNIT[g]}</span>
               </span>
             </div>
           ))}
@@ -1075,7 +1050,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
                   /* narrow: the date at its natural tracking in 2px of padding — 40px in a 48px column (the audit's H3) */
                   /* THE DATE OVER THE MIDDLE OF ITS COLUMN (Noah, 2026-10-15: "i want the dates to be centered in the middle not on
                      the right") — the capsules under it are centred in the column, so the head stands over them */
-                  className={`sticky z-10 ${ground} ${narrowHead ? 'px-0.5 tracking-normal' : 'px-2 tracking-wider'} overflow-hidden flex items-center justify-center font-mono text-[11px] uppercase text-textSecondary border-b border-borderSubtle whitespace-nowrap ${
+                  className={`sticky z-10 ${ground} px-2 tracking-wider overflow-visible flex items-center justify-center font-mono text-t11 uppercase text-textSecondary border-b border-borderSubtle whitespace-nowrap ${
                     ci === 0 ? 'border-l' : ''
                   } ${(pinned ? pinned.greek === g && pinned.e === e : hovered && hovered.greek === g && hovered.e === e) ? 'text-textPrimary' : ''}`}
                   style={{ top: HEAD_H / 2 }}
@@ -1090,12 +1065,12 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
                       className={`bg-transparent border-0 p-0 font-inherit uppercase cursor-pointer hover:text-textPrimary ${e === todayIdx || (expiries.length === 1 && expiries[0] === e) ? 'text-textPrimary font-bold' : ''}`}
                     >
                       {exp.date}
-                      {!narrowHead && <span className="text-textMuted">&nbsp;· {e === todayIdx ? 'today' : exp.short}</span>}
+                      <span className="text-textMuted">&nbsp;· {e === todayIdx ? 'today' : exp.short}</span>
                     </button>
                   ) : (
                     <>
                       <span className={e === todayIdx ? 'text-textPrimary font-bold' : ''}>{exp.date}</span>
-                      {!narrowHead && <span className="text-textMuted">&nbsp;· {e === todayIdx ? 'today' : exp.short}</span>}
+                      <span className="text-textMuted">&nbsp;· {e === todayIdx ? 'today' : exp.short}</span>
                     </>
                   )}
                 </div>
@@ -1127,7 +1102,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
                 data-pinned-row={isPinnedRow ? '' : undefined}
                 data-kept-row={keptRows.has(strike) ? '' : undefined}
                 onClick={() => onSelectStrike?.(strike)}
-                className={`pl-2 pr-1.5 flex items-center justify-end overflow-hidden font-mono text-[11px] tnum tabular-nums cursor-pointer whitespace-nowrap ${rowWash} ${
+                className={`pl-2 pr-1.5 flex items-center justify-end overflow-hidden font-mono text-t11 tnum tabular-nums cursor-pointer whitespace-nowrap ${rowWash} ${
                   isPinnedRow ? `text-silver font-bold ${paper ? '' : 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]'}` : role.ink ? 'font-bold' : 'text-textPrimary'
                 }`}
                 style={!isPinnedRow && role.ink ? { color: role.ink } : undefined}

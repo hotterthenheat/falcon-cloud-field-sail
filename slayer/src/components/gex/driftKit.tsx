@@ -56,7 +56,7 @@ export const fiveTicks = (times: readonly number[]): number[] =>
 /** The hover card every drift chart floats — one markup, one voice. */
 export const TipCard = ({ title, children }: { title: ReactNode; children: ReactNode }) => (
   <div className="border border-borderSubtle bg-chip/95 rounded-md px-2.5 py-2 shadow-lg min-w-[132px]">
-    <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted tnum mb-1.5">{title}</div>
+    <div className="font-mono text-t9 uppercase tracking-widest text-textMuted tnum mb-1.5">{title}</div>
     <div className="flex flex-col gap-1">{children}</div>
   </div>
 );
@@ -65,9 +65,9 @@ export const TipCard = ({ title, children }: { title: ReactNode; children: React
 export const TipRow = ({ ink, label, value, valueInk }: { ink: string; label: ReactNode; value: ReactNode; valueInk?: string }) => (
   <div className="flex items-center gap-2">
     <span className="inline-block w-2 h-[2px] rounded-full shrink-0" style={{ background: ink }} />
-    <span className="font-mono text-[9px] uppercase tracking-wider text-textSecondary">{label}</span>
+    <span className="font-mono text-t9 uppercase tracking-wider text-textSecondary">{label}</span>
     <span
-      className={`ml-auto pl-3 font-mono text-[10px] font-semibold tnum ${valueInk ? '' : 'text-textPrimary'}`}
+      className={`ml-auto pl-3 font-mono text-t10 font-semibold tnum ${valueInk ? '' : 'text-textPrimary'}`}
       style={valueInk ? { color: valueInk } : undefined}
     >
       {value}
@@ -77,7 +77,7 @@ export const TipRow = ({ ink, label, value, valueInk }: { ink: string; label: Re
 
 /** A legend key — the little rule-and-word pair above every drift chart. */
 export const LegendKey = ({ ink, dash = false, swatch = false, children }: { ink: string; dash?: boolean; swatch?: boolean; children: ReactNode }) => (
-  <span className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-textSecondary">
+  <span className="flex items-center gap-1.5 font-mono text-t9 uppercase tracking-wider text-textSecondary">
     {swatch ? (
       <span className="inline-block w-3 h-2 rounded-sm" style={{ background: ink, opacity: 0.25 }} />
     ) : (
@@ -90,7 +90,7 @@ export const LegendKey = ({ ink, dash = false, swatch = false, children }: { ink
 /** The family's empty state — a chart that has nothing yet says so in the
     same words at the same height, instead of collapsing. */
 export const AwaitingState = ({ children, tall = true }: { children: ReactNode; tall?: boolean }) => (
-  <div className={`${tall ? 'h-40' : 'h-36'} flex items-center justify-center font-mono text-[11px] text-textMuted uppercase tracking-widest`}>
+  <div className={`${tall ? 'h-40' : 'h-36'} flex items-center justify-center font-mono text-t11 text-textMuted uppercase tracking-widest`}>
     {children}
   </div>
 );

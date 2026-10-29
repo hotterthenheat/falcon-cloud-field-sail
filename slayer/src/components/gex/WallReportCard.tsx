@@ -155,9 +155,9 @@ const SessionStrip = ({ row, bars }: { row: Row; bars: readonly Candle[] }) => {
           className="absolute -top-1 z-10 pointer-events-none rounded-md border border-borderMuted bg-card/95 backdrop-blur-sm shadow-[0_8px_24px_rgba(0,0,0,0.5)] px-2.5 py-1.5 whitespace-nowrap"
           style={{ left: `${cardLeft}%`, transform: onRight ? 'translate(12px, -100%)' : 'translate(calc(-100% - 12px), -100%)' }}
         >
-          <span className="font-mono text-[11px] font-semibold tnum text-textPrimary">{hhmm(hover.time)}</span>
-          <span className={`ml-2 text-[11px] font-medium ${hover.kind === 'broke' ? 'text-bear' : 'text-bull'}`}>{hover.kind === 'broke' ? 'broke' : 'tested, held'}</span>
-          <span className="ml-2 font-mono text-[11px] tnum text-textMuted">close {hover.close.toFixed(2)}</span>
+          <span className="font-mono text-t11 font-semibold tnum text-textPrimary">{hhmm(hover.time)}</span>
+          <span className={`ml-2 text-t11 font-medium ${hover.kind === 'broke' ? 'text-bear' : 'text-bull'}`}>{hover.kind === 'broke' ? 'broke' : 'tested, held'}</span>
+          <span className="ml-2 font-mono text-t11 tnum text-textMuted">close {hover.close.toFixed(2)}</span>
         </div>
       )}
     </div>
@@ -350,14 +350,14 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
         {/* …AND ITS BOOK, ONCE THE SESSION HAS CLOSED (the eleventh audit's retail finding: the head read "Supreme · next
             session 755" over this table's "SUPREME · PUT WALL 760" — two books, read as a contradiction): a finished
             session is graded against its own book, said by its date beside the table */}
-        <h3 className="text-[16px] font-semibold leading-tight text-textPrimary" data-report-day={rec.date}>How the levels held {rec.isToday && !rec.done ? 'today' : `· ${longDay(rec.date)}`}</h3>
+        <h3 className="text-t16 font-semibold leading-tight text-textPrimary" data-report-day={rec.date}>How the levels held {rec.isToday && !rec.done ? 'today' : `· ${longDay(rec.date)}`}</h3>
         {scope}
         {rec.done && (
-          <span className="font-mono text-[11px] text-textSecondary whitespace-nowrap" title={`The levels in this table are the ones ${longDay(rec.date)}'s session ran on — this name's levels read ${aheadWord() === 'today' ? "today's" : "the next session's"} contracts, so its walls and supreme can differ`} data-report-book>
+          <span className="font-mono text-t11 text-textSecondary whitespace-nowrap" title={`The levels in this table are the ones ${longDay(rec.date)}'s session ran on — this name's levels read ${aheadWord() === 'today' ? "today's" : "the next session's"} contracts, so its walls and supreme can differ`} data-report-book>
             {longDay(rec.date)}'s book · the head reads {aheadWord() === 'today' ? "today's" : "the next session's"}
           </span>
         )}
-        {span && <span className="font-mono text-[11px] text-textMuted whitespace-nowrap" title="The contracts these levels are read from — this name's levels, the same as the Board's" data-report-span>{span}</span>}
+        {span && <span className="font-mono text-t11 text-textMuted whitespace-nowrap" title="The contracts these levels are read from — this name's levels, the same as the Board's" data-report-span>{span}</span>}
         <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the rows, the strips and the ticks mean" testId="report-guide" />
         <FoldDoor open={open} onToggle={toggleOpen} what="the report" testId="report" />
         {rates.insideMove.n > 0 && (
@@ -367,22 +367,22 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
             data-base-rate="close"
             data-base-rates={rates.sessions}
           >
-            <span className="text-[11px] uppercase tracking-wider text-textMuted">Closed inside the expected move</span>
-            <span className="text-[13px] font-semibold tnum text-textPrimary">
+            <span className="text-t11 uppercase tracking-wider text-textMuted">Closed inside the expected move</span>
+            <span className="text-t13 font-semibold tnum text-textPrimary">
               {rates.insideMove.inside} of {rates.insideMove.n}
             </span>
           </span>
         )}
       </div>
       {open && unavailable && (
-        <p className="px-5 pb-4 font-mono text-[12px] text-textSecondary border-t border-borderSubtle/60 pt-3" data-report-unavailable>
+        <p className="px-5 pb-4 font-mono text-t12 text-textSecondary border-t border-borderSubtle/60 pt-3" data-report-unavailable>
           {unavailable}
         </p>
       )}
       {open && !unavailable && (
         <div className="font-mono" role="table" aria-label={`${rec.isToday ? "Today's" : `${longDay(rec.date)}'s`} levels and how each held`} data-level-rows>
           {/* THE COLUMNS, NAMED ONCE (the matrix's own head): a row per level under them */}
-          <div className={`${grid} h-8 items-center border-t border-borderSubtle/60 text-[11px] uppercase tracking-wider text-textMuted`} role="row">
+          <div className={`${grid} h-8 items-center border-t border-borderSubtle/60 text-t11 uppercase tracking-wider text-textMuted`} role="row">
             <span role="columnheader" title="Which level the row is: call wall, put wall, flip, pin or supreme — hover a row for what it means">Level</span>
             <span role="columnheader" className={`${desk} text-right`} title="The level's price">Strike</span>
             <span role="columnheader" className={desk}>
@@ -412,7 +412,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
                   data-level-pick
                 >
                   <span className="min-w-0 flex items-baseline gap-x-2 flex-wrap" role="cell">
-                    <span className="flex flex-wrap items-baseline gap-x-1.5 text-[11px] font-semibold uppercase tracking-wider" data-level-labels={r.labels.length}>
+                    <span className="flex flex-wrap items-baseline gap-x-1.5 text-t11 font-semibold uppercase tracking-wider" data-level-labels={r.labels.length}>
                       {r.labels.map((l, i) => (
                         <span key={l.label} style={{ color: l.ink }}>
                           {i > 0 && <span className="font-normal text-textMuted">· </span>}
@@ -421,23 +421,23 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
                       ))}
                     </span>
                     {/* on a phone the strike rides beside the name; on the desk it has its own column */}
-                    <span className={`${phone} text-[13px] font-semibold tnum ${isFocus ? 'text-silver' : 'text-textPrimary'}`}>{fmtStrike(r.price)}</span>
+                    <span className={`${phone} text-t13 font-semibold tnum ${isFocus ? 'text-silver' : 'text-textPrimary'}`}>{fmtStrike(r.price)}</span>
                   </span>
-                  <span role="cell" className={`${desk} text-right text-[13px] font-semibold tnum ${isFocus ? 'text-silver' : 'text-textPrimary group-hover:text-silver'}`}>
+                  <span role="cell" className={`${desk} text-right text-t13 font-semibold tnum ${isFocus ? 'text-silver' : 'text-textPrimary group-hover:text-silver'}`}>
                     {fmtStrike(r.price)}
                   </span>
                   <span role="cell" className={`${desk} min-w-0`}>
                     <SessionStrip row={r} bars={bars} />
                   </span>
-                  <span role="cell" className="text-right text-[12px] tnum text-textPrimary">{r.tests}</span>
-                  <span role="cell" className={`text-right text-[12px] tnum ${r.held > 0 ? 'text-bull' : 'text-textMuted'}`}>{r.held}</span>
-                  <span role="cell" className={`text-right text-[12px] tnum ${r.broke > 0 ? 'text-bear' : 'text-textMuted'}`}>{r.broke}</span>
-                  <span role="cell" className={`text-right text-[12px] tnum ${r.last ? 'text-textPrimary' : 'text-textMuted'}`}>{r.last ?? '—'}</span>
-                  <span role="cell" className={`${desk} min-w-0 whitespace-nowrap text-[12px]`}>
+                  <span role="cell" className="text-right text-t12 tnum text-textPrimary">{r.tests}</span>
+                  <span role="cell" className={`text-right text-t12 tnum ${r.held > 0 ? 'text-bull' : 'text-textMuted'}`}>{r.held}</span>
+                  <span role="cell" className={`text-right text-t12 tnum ${r.broke > 0 ? 'text-bear' : 'text-textMuted'}`}>{r.broke}</span>
+                  <span role="cell" className={`text-right text-t12 tnum ${r.last ? 'text-textPrimary' : 'text-textMuted'}`}>{r.last ?? '—'}</span>
+                  <span role="cell" className={`${desk} min-w-0 whitespace-nowrap text-t12`}>
                     {r.trendFig && <span className="tnum font-semibold text-textPrimary mr-1.5">{r.trendFig}</span>}
                     <span className="text-textSecondary">{r.trendWord}</span>
                   </span>
-                  <span role="cell" className={`${desk} text-right text-[12px] tnum ${rate ? 'text-textPrimary' : 'text-textMuted'}`} data-base-rate={r.rate ?? undefined}>
+                  <span role="cell" className={`${desk} text-right text-t12 tnum ${rate ? 'text-textPrimary' : 'text-textMuted'}`} data-base-rate={r.rate ?? undefined}>
                     {rate ? `${rate.heldFirst} of ${rate.tested}` : '—'}
                   </span>
                 </button>

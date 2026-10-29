@@ -274,7 +274,7 @@ const Compare = () => {
             {!belowLg && (solo.side === 'b' ? panel(false) : <CompareSideInner side="b" />)}
           </div>
           <div className="shrink-0 px-5 py-2.5 border-t border-borderSubtle/60 flex items-baseline gap-4 flex-wrap" data-compare-sentence>
-            <p className="min-w-[min(18rem,100%)] flex-1 text-[12px] leading-relaxed text-textSecondary" data-compare-waiting={solo.waiting}>
+            <p className="min-w-[min(18rem,100%)] flex-1 text-t12 leading-relaxed text-textSecondary" data-compare-waiting={solo.waiting}>
               Still reading {solo.waiting}'s levels — {solo.s.ticker}'s are in; the ruler draws both once {solo.waiting}'s contracts have landed.
             </p>
           </div>
@@ -331,12 +331,12 @@ const Compare = () => {
         {/* THE SENTENCE — what the two say against each other, once, under the ruler (the old table's verdicts) */}
         <div className="shrink-0 px-5 py-2.5 border-t border-borderSubtle/60 flex items-baseline gap-4 flex-wrap" data-compare-sentence>
           {/* a floor, so on a phone the doors wrap under the sentence instead of squeezing it to two words a line */}
-          <p className="min-w-[min(18rem,100%)] flex-1 text-[12px] leading-relaxed text-textSecondary">{cmp.sentence}</p>
+          <p className="min-w-[min(18rem,100%)] flex-1 text-t12 leading-relaxed text-textSecondary">{cmp.sentence}</p>
           <span className="shrink-0 flex items-center gap-3">
-            <button type="button" onClick={onSwap} className="font-mono text-[9px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors" title="Swap the two names" data-compare-swap>
+            <button type="button" onClick={onSwap} className="font-mono text-t9 uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors" title="Swap the two names" data-compare-swap>
               swap
             </button>
-            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted whitespace-nowrap tabular-nums" data-compare-updated>
+            <span className="font-mono text-t9 uppercase tracking-widest text-textMuted whitespace-nowrap tabular-nums" data-compare-updated>
               updated {scan.at} · {cadenceWords()}
             </span>
             <StaleMark at={bookAt} ttlMs={BOOK_TTL_MS} fault={bookFault} />

@@ -244,6 +244,9 @@ export function liveDeskChain(ticker: string, expiry: string, ms: number, each =
     expiry: expiryFact,
     /* the move the chain charges for by the expiry, ± percent of the name */
     expectedMovePct: base * Math.sqrt(Math.max(t, 1 / 252)) * 100,
+    source: 'simulated',
+    quotedAt: 0,
+    expiryIso: expiry,
   };
 }
 

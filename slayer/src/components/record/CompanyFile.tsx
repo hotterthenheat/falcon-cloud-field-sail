@@ -12,8 +12,8 @@ import { statHelp } from './statHelp';
 
 const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
   <div className="min-w-0">
-    <dt className="text-[10px] text-textMuted truncate cursor-help" title={statHelp(label)}>{label}</dt>
-    <dd className="mt-0.5 font-mono text-[12px] tabular-nums text-textPrimary whitespace-nowrap truncate">{children}</dd>
+    <dt className="text-t10 text-textMuted truncate cursor-help" title={statHelp(label)}>{label}</dt>
+    <dd className="mt-0.5 font-mono text-t12 tabular-nums text-textPrimary whitespace-nowrap truncate">{children}</dd>
   </div>
 );
 
@@ -66,19 +66,19 @@ const CompanyFile = ({ ticker }: { ticker: string }) => {
   return (
     <section className="border border-borderSubtle rounded-md bg-panel" data-company-file-root={ticker}>
       <div className="px-5 pt-4 pb-3">
-        <h3 className="text-[15px] font-semibold leading-tight text-textPrimary inline-flex items-center gap-2">
+        <h3 className="text-t15 font-semibold leading-tight text-textPrimary inline-flex items-center gap-2">
           The company
           <StaleMark at={file.at} ttlMs={FILE_TTL_MS} fault={fault} />
         </h3>
-        <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{industry ? `${quietText(line)} · ${quietText(industry)}` : quietText(line)}</p>
+        <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">{industry ? `${quietText(line)} · ${quietText(industry)}` : quietText(line)}</p>
       </div>
       {reading ? (
-        <p className="px-5 pb-4 font-mono text-[10px] uppercase tracking-widest text-textMuted">Reading the company</p>
+        <p className="px-5 pb-4 font-mono text-t10 uppercase tracking-widest text-textMuted">Reading the company</p>
       ) : card === null ? (
-        fault ? <FeedFallback fault={fault} /> : <p className="px-5 pb-4 font-mono text-[10px] uppercase tracking-widest text-textMuted">The company file is not on this feed</p>
+        fault ? <FeedFallback fault={fault} /> : <p className="px-5 pb-4 font-mono text-t10 uppercase tracking-widest text-textMuted">The company file is not on this feed</p>
       ) : (
         <>
-          <p className="px-5 pb-4 text-[12px] leading-relaxed text-textSecondary" data-company-file="profile">{profile}</p>
+          <p className="px-5 pb-4 text-t12 leading-relaxed text-textSecondary" data-company-file="profile">{profile}</p>
           <dl className="px-5 pb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-3">
             <Fact label="Market cap"><TickFigure value={card.marketCap}>{money(card.marketCap)}</TickFigure></Fact>
             <Fact label="Shares out"><TickFigure value={card.outstanding}>{count(card.outstanding)}</TickFigure></Fact>
@@ -95,7 +95,7 @@ const CompanyFile = ({ ticker }: { ticker: string }) => {
             <Fact label="Street target">{file.street ? <TickFigure value={file.street.median}>{`$${file.street.median.toFixed(2)}`}</TickFigure> : file.status === 'loading' ? '…' : '—'}</Fact>
             <Fact label="Target range">{file.street ? `$${file.street.low.toFixed(0)}–$${file.street.high.toFixed(0)} · ${file.street.firms}` : file.status === 'loading' ? '…' : '—'}</Fact>
           </dl>
-          <p className="px-5 pb-4 text-[11px] text-textMuted">{file.street ? `Fair value is the median of ${file.street.firms} street targets since ${file.street.asOf}.` : 'No street target in the last 180 days.'}</p>
+          <p className="px-5 pb-4 text-t11 text-textMuted">{file.street ? `Fair value is the median of ${file.street.firms} street targets since ${file.street.asOf}.` : 'No street target in the last 180 days.'}</p>
         </>
       )}
     </section>

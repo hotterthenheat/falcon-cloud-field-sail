@@ -1,6 +1,5 @@
 import { Component, Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { Link, useLocation } from 'react-router-dom';
 import SideNav from './SideNav';
 import CommandPalette from './CommandPalette';
 import SiteFooter from './SiteFooter';
@@ -18,6 +17,7 @@ const AlertWatcher = lazy(() => import('../alerts/AlertWatcher'));
 const AlertToasts = lazy(() => import('../alerts/AlertToasts'));
 const PaperRunner = lazy(() => import('../paper/PaperRunner'));
 import ScrollHome from './ScrollHome';
+import DeskKeep from './DeskKeep';
 import WayBack from './WayBack';
 import { useIsBelowLg } from '../ui/useMediaQuery';
 import { OPEN_PALETTE_EVENT } from './paletteDoor';
@@ -53,7 +53,7 @@ class RouteBoundary extends Component<{ children: ReactNode; resetKey: string },
         error={this.state.error}
         scope="page"
         back={
-          <Link to="/pulse" onClick={() => this.setState({ error: null })} className="inline-flex items-center h-9 px-4 rounded-md border border-borderMuted text-[12.5px] font-medium text-textPrimary hover:bg-ink/[0.05]">
+          <Link to="/pulse" onClick={() => this.setState({ error: null })} className="inline-flex items-center h-9 px-4 rounded-md border border-borderMuted text-t125 font-medium text-textPrimary hover:bg-ink/[0.05]">
             Back to Pulse
           </Link>
         }
@@ -62,29 +62,9 @@ class RouteBoundary extends Component<{ children: ReactNode; resetKey: string },
   }
 }
 
-/** Full-page detours that live under a section prefix but share none of its
-    layout — they get their own transition key so the changeover animates
-    instead of snapping (subtabs inside section layouts stay key-stable). */
-const FULL_PAGE_DETOURS = ['/pulse/board'];
-
-/* THE PLANET IS NO LONGER WARMED ON EVERY PAGE (Noah, 2026-08-30: "i was in
-   the middle of a drag and it practically ignored me"). A PlanetWarmer used
-   to fire 4s after the shell mounted, on every load of every page: a
-   dynamic import of the News Room's globe (three.js + react-globe.gl —
-   fetched, compiled and evaluated, geometry built at module scope, a GC
-   pause behind it), an 8K night texture, a day texture and three JSON
-   files. A CPU profile of a chart drag on the Weigher found sphere
-   geometry and polar math in the samples with no globe on screen. The
-   News section is paused and the room carries its own "spinning up the
-   planet" fallback; warming belongs behind intent (a hover on the News
-   nav), never behind a timer. */
-
 const AppShell = () => {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const location = useLocation();
-  const transitionKey = FULL_PAGE_DETOURS.includes(location.pathname)
-    ? location.pathname
-    : `/${location.pathname.split('/')[1] ?? ''}`;
 
   const openPalette = useCallback(() => setPaletteOpen(true), []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
@@ -172,61 +152,29 @@ const AppShell = () => {
             head and its skeleton boxes already in place, the boxes filling
             one per frame (Deferred); a 100ms fade keeps it from being a
             hard cut. */}
-        <AnimatePresence initial={false}>
-          <motion.div
-            key={transitionKey}
-            /* Cross-fade, no travel — the same verdict as the Trace subpage
-               switch (Noah, 2026-08-30, the open-time hop): a section arriving
-               6px low and sliding home re-rasterises every row on the way. */
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.1 }}
-            className={`w-full min-w-0 max-w-full flex flex-col ${framePage ? 'h-full' : 'min-h-full'}`}
-          >
-            {/* A section opens at its head, not where the last page's scroll was (2026-09-11) */}
+        <div className={`w-full min-w-0 max-w-full flex flex-col ${framePage ? 'h-full' : 'min-h-full'}`}>
             <ScrollHome />
-            {/* A page opened from the Pulse desk carries its way back (2026-09-12) */}
             <WayBack />
-            {/* pb-16: pages breathe at the bottom (Noah, 2026-08-17 —
-                "everything ends very close to the bottom"); flex-grow keeps
-                short pages' footer at the viewport floor, not mid-screen.
-                EXCEPTION (Noah, 2026-08-30): the Trace flow pages are
-                FULL-BLEED — no side gutters, no bottom pad, tight top. */}
             <div
-              /* The Weigher tier: exactly one screenful (h-full off main's
-                 definite height), shrink-0 so the footer below cannot squeeze
-                 it — the overflow IS the slight scroll. Tight top like Trace
-                 (Noah, 2026-08-30: "way too much space up top"). */
               className={`${bleedPage ? 'px-4 lg:px-6 2xl:px-8 pt-5 pb-0 gap-4 h-full min-h-0 overflow-hidden' : 'px-4 lg:px-6 2xl:px-8 pt-5 pb-16 gap-4'} flex flex-col flex-grow min-w-0 max-w-full`}
             >
               <RouteBoundary resetKey={location.pathname}>
-                {/* A page's code travels on its first visit (App's lazy routes);
-                    its skeleton holds the shape meanwhile */}
                 <Suspense
                   fallback={
                     <>
-                      {/* the mark goes to Loading once the wait runs past 450 ms (brand/MarkLoad.tsx) */}
                       <MarkLoad />
                       <RouteSkeleton pathname={location.pathname} />
                     </>
                   }
                 >
-                  {/* THE PLAN GATE (2026-10-10): a room outside the plan held shows its wall instead of itself */}
                   <PlanGate fill={!bleedPage}>
-                    <Outlet />
+                    <DeskKeep />
                   </PlanGate>
                 </Suspense>
               </RouteBoundary>
             </div>
-            {/* The landing's footer ends every main page (Noah, 2026-08-23) —
-                except Trace (Noah, 2026-08-30: "the trace page shouldnt have
-                a footer at all"): the tape runs to the floor — and Terrain
-                (Noah, 2026-09-13: "for the terrain page remove the footer"):
-                the chart runs to the floor. The Weigher keeps its footer one
-                slight scroll past the fold (Noah, 2026-08-30). */}
             {!location.pathname.startsWith('/trace') && !location.pathname.startsWith('/terrain') && <SiteFooter />}
-          </motion.div>
-        </AnimatePresence>
+        </div>
       </main>
       {/* THE SCRIPT EDITOR (2026-09-10): docked at the right of a full-screen
           chart, the takeover narrowed to leave it room — see data/editorDock.ts */}

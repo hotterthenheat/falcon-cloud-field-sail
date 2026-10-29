@@ -171,6 +171,8 @@ interface ContractPremiumPaneProps {
   right: OptionRight;
   /** Years to expiry, fixed at selection — the curve shows the session, not decay */
   tYears: number;
+  /** When set, this prices the tape instead of the desk's estimator. */
+  priceAt?: (spot: number) => number;
   timeframe: Timeframe;
   revision: number;
   /** The pricing vol. Omitted, the desk's smile (contractIvFor) — the
@@ -232,6 +234,8 @@ interface ContractPremiumPaneProps {
    * a premium. Null keeps the last draw. An empty list clears it.
    */
   traded?: { time: number; open: number; high: number; low: number; close: number }[] | null;
+  /** The rows are already this timeframe. Folding them again pulls a daily bar onto the wrong day. */
+  tradedAsIs?: boolean;
 }
 
 const LEVEL_STYLE: Record<NonNullable<PremiumLevel['style']>, LineStyle> = {
@@ -240,7 +244,7 @@ const LEVEL_STYLE: Record<NonNullable<PremiumLevel['style']>, LineStyle> = {
   dotted: LineStyle.SparseDotted,
 };
 
-const ContractPremiumPane = ({ ticker, strike, right, tYears, timeframe, revision, iv: ivProp, levels, projections, topMargin, rules = true, marks = null, nodes = [], beadInset = 48, bars: barsProp = null, spot = 0, framePrices = [], pageScroll = false, bound = false, onBar, stockPane = false, scenarios = [], traded }: ContractPremiumPaneProps) => {
+const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe, revision, iv: ivProp, levels, projections, topMargin, rules = true, marks = null, nodes = [], beadInset = 48, bars: barsProp = null, spot = 0, framePrices = [], pageScroll = false, bound = false, onBar, stockPane = false, scenarios = [], traded, tradedAsIs = false }: ContractPremiumPaneProps) => {
   const bookRev = useBookRev();
   const pageScrollRef = useRef(pageScroll);
   pageScrollRef.current = pageScroll;
@@ -536,7 +540,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, timeframe, revisio
         close: b.close,
         volume: 0,
       }));
-      const folded = aggregateCandles(raw, mins);
+      const folded = tradedAsIs ? raw : aggregateCandles(raw, mins);
       const pts = folded.map(b => ({
         time: b.time as UTCTimestamp,
         open: b.open,
@@ -568,7 +572,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, timeframe, revisio
     const bars = aggregateCandles(src, mins);
     if (bars.length === 0) return;
     const iv = ivProp ?? contractIvFor(ticker, strike, right);
-    const px = (s: number) => estimatePremium(s, strike, right, iv, tYears);
+    const px = (s: number) => (priceAt ? priceAt(s) : estimatePremium(s, strike, right, iv, tYears));
     const point = (b: (typeof bars)[number], live: boolean) => {
       const o = px(b.open);
       const c = px(live ? spot : b.close);
@@ -582,7 +586,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, timeframe, revisio
         low: Number(Math.min(o, c, a, z).toFixed(2)),
       };
     };
-    const sig = `${ticker}|${strike}|${right}|${timeframe}|${tYears.toFixed(4)}|${themeKey}|${owned ? 'own' : 'book'}`;
+    const sig = `${ticker}|${strike}|${right}|${timeframe}|${tYears.toFixed(4)}|${iv.toFixed(4)}|${priceAt ? 'bs' : 'est'}|${themeKey}|${owned ? 'own' : 'book'}`;
     const pushStock = () => {
       const ss = stockSeriesRef.current;
       if (!ss) return;
@@ -656,7 +660,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, timeframe, revisio
       clampTimeRef.current();
     }
     if (!hoverRef.current) onBarRef.current?.(pts[pts.length - 1] ?? null);
-  }, [ticker, strike, right, timeframe, tYears, revision, themeKey, ivProp, bookRev, barsProp, spot, traded, (framePrices ?? []).map(p => (Number.isFinite(p) ? p.toFixed(4) : '')).join('|')]);
+  }, [ticker, strike, right, timeframe, tYears, revision, themeKey, ivProp, bookRev, barsProp, spot, traded, tradedAsIs, (framePrices ?? []).map(p => (Number.isFinite(p) ? p.toFixed(4) : '')).join('|')]);
 
   /* The level rules — recreated whole when they change; lightweight-charts
      price lines carry the label on the line and the price on the axis, which

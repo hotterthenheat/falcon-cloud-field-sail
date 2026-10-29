@@ -176,7 +176,7 @@ const FuturesDesk = () => {
       { key: 'avg', header: 'In at', align: 'right', render: p => <span className="text-textSecondary">{futPrice(futProduct(p.symbol), p.avg)}</span> },
       { key: 'last', header: 'Last', align: 'right', render: p => <span className="text-textPrimary">{futPrice(futProduct(p.symbol), p.last)}</span> },
       { key: 'margin', header: 'Margin held', align: 'right', render: p => <span className="text-textSecondary">{usd(marginOf(p.symbol) * p.qty, 0)}</span> },
-      { key: 'pnl', header: 'Up or down', align: 'right', render: p => <span className={`font-semibold ${dirInk(p.pnl)}`}>{usdSigned(p.pnl)} {p.r != null && <span className="text-[10px] font-normal opacity-80">{rWords(p.r)}</span>}</span> },
+      { key: 'pnl', header: 'Up or down', align: 'right', render: p => <span className={`font-semibold ${dirInk(p.pnl)}`}>{usdSigned(p.pnl)} {p.r != null && <span className="text-t10 font-normal opacity-80">{rWords(p.r)}</span>}</span> },
       {
         key: 'close',
         header: '',
@@ -218,7 +218,7 @@ const FuturesDesk = () => {
       { key: 'in', header: 'In', render: t => <span className="text-textSecondary">{futMomentWords(t.opened.day, t.opened.minute)} · {futPrice(futProduct(t.symbol), t.avgIn)}</span> },
       { key: 'out', header: 'Out', render: t => <span className="text-textSecondary">{futMomentWords(t.closed.day, t.closed.minute)} · {futPrice(futProduct(t.symbol), t.avgOut)}</span> },
       { key: 'how', header: 'Ended', render: t => <span className="text-textSecondary">{ENDED[t.how]}</span> },
-      { key: 'pnl', header: 'Made or lost', align: 'right', render: t => <span className={`font-semibold ${dirInk(t.pnl)}`}>{usdSigned(t.pnl)} <span className="text-[10px] font-normal opacity-80">{t.r != null ? rWords(t.r) : 'no stop · no R'}</span></span> },
+      { key: 'pnl', header: 'Made or lost', align: 'right', render: t => <span className={`font-semibold ${dirInk(t.pnl)}`}>{usdSigned(t.pnl)} <span className="text-t10 font-normal opacity-80">{t.r != null ? rWords(t.r) : 'no stop · no R'}</span></span> },
     ],
     []
   );
@@ -313,20 +313,20 @@ const FuturesDesk = () => {
   const settle = yesterday ? futDayBars(symbol, yesterday)[FUT_LAST_MIN]?.close : undefined;
   const riskShare = rules?.maxRiskPct || 0.01;
   const fact = 'flex flex-col gap-0.5 min-w-0';
-  const factLabel = 'font-mono text-[9px] uppercase tracking-widest text-textMuted';
-  const factValue = 'font-mono text-[12px] tnum text-textPrimary';
+  const factLabel = 'font-mono text-t9 uppercase tracking-widest text-textMuted';
+  const factValue = 'font-mono text-t12 tnum text-textPrimary';
   const contractCard = (
     <div className={`${card} flex flex-col min-w-0 ${full ? 'flex-1 min-h-0' : 'lg:flex-1 lg:min-h-0'}`} data-review-contract={symbol}>
       <div className={head}>
         <span className={headWord}>The contract</span>
-        <span className="inline-flex items-center gap-1.5 h-5 px-1.5 rounded border border-silver/70 bg-silver/[0.12] font-mono text-[10px] tnum" data-review-chain-name={symbol}>
+        <span className="inline-flex items-center gap-1.5 h-5 px-1.5 rounded border border-silver/70 bg-silver/[0.12] font-mono text-t10 tnum" data-review-chain-name={symbol}>
           <span className="font-bold text-silver">{frontContract(symbol, cursor.day)}</span>
           <span className="text-textPrimary">{futPrice(prod, last)}</span>
         </span>
-        <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted">as it stood · {futClockWords(cursor.minute)}</span>
+        <span className="ml-auto font-mono text-t9 uppercase tracking-widest text-textMuted">as it stood · {futClockWords(cursor.minute)}</span>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 flex flex-col gap-3.5">
-        <p className="text-[11px] leading-snug text-textSecondary">{prod.name} — the front month on this day. One price, no bid and ask: a market order fills a tick against you.</p>
+        <p className="text-t11 leading-snug text-textSecondary">{prod.name} — the front month on this day. One price, no bid and ask: a market order fills a tick against you.</p>
         <div className="grid grid-cols-3 gap-x-4 gap-y-3">
           <div className={fact}><span className={factLabel}>A point</span><span className={factValue}>{usd(prod.pointValue, 0)}</span></div>
           <div className={fact}><span className={factLabel}>A tick · {prod.tick}</span><span className={factValue}>{usd(prod.tick * prod.pointValue)}</span></div>
@@ -339,7 +339,7 @@ const FuturesDesk = () => {
           <div className={`${factLabel} mb-1.5`}>The day so far, by its sessions</div>
           <div className="flex flex-col">
             {sessions.map(([label, r]) => (
-              <div key={label} className="flex items-baseline gap-3 py-1.5 border-t border-borderSubtle/60 font-mono text-[11px] tnum">
+              <div key={label} className="flex items-baseline gap-3 py-1.5 border-t border-borderSubtle/60 font-mono text-t11 tnum">
                 <span className={r ? 'text-textSecondary' : 'text-textMuted'}>{label}</span>
                 {r ? (
                   <span className="ml-auto text-textPrimary">
@@ -351,7 +351,7 @@ const FuturesDesk = () => {
               </div>
             ))}
             {whole && (
-              <div className="flex items-baseline gap-3 py-1.5 border-t border-borderSubtle/60 font-mono text-[11px] tnum">
+              <div className="flex items-baseline gap-3 py-1.5 border-t border-borderSubtle/60 font-mono text-t11 tnum">
                 <span className="text-textSecondary font-semibold">The whole day</span>
                 <span className="ml-auto text-textPrimary">
                   {futPrice(prod, whole.lo)} – {futPrice(prod, whole.hi)} <span className="text-textMuted">· {futPrice(prod, whole.pts)} pts a contract is {usd(whole.pts * prod.pointValue, 0)}</span>
@@ -369,9 +369,9 @@ const FuturesDesk = () => {
               const pts = t * prod.tick;
               const each = pts * prod.pointValue;
               return (
-                <div key={t} className="rounded-md border border-borderSubtle px-2 py-1.5 font-mono text-[10px] tnum">
+                <div key={t} className="rounded-md border border-borderSubtle px-2 py-1.5 font-mono text-t10 tnum">
                   <div className="text-textMuted">{futPrice(prod, pts)} pts away</div>
-                  <div className="text-[12px] text-textPrimary font-semibold">{Math.floor((account.equity * riskShare) / each)} <span className="font-normal text-textMuted text-[10px]">· {usd(each, 0)} each</span></div>
+                  <div className="text-t12 text-textPrimary font-semibold">{Math.floor((account.equity * riskShare) / each)} <span className="font-normal text-textMuted text-t10">· {usd(each, 0)} each</span></div>
                 </div>
               );
             })}
@@ -443,7 +443,7 @@ const FuturesDesk = () => {
         { label: 'Free, after margin', testId: 'free', node: usd(account.free) },
         { label: 'Open, up or down', testId: 'open-pnl', node: <span className={dirInk(account.openPnl)}>{usdSigned(account.openPnl)}</span> },
         { label: 'Closed, made or lost', testId: 'realized', node: <span className={dirInk(stats.net)}>{usdSigned(stats.net)}</span> },
-        ...(rulesLine ? [{ label: 'Your rules', testId: 'rules', node: <span className="text-[12px] font-medium">{rulesLine}</span> }] : []),
+        ...(rulesLine ? [{ label: 'Your rules', testId: 'rules', node: <span className="text-t12 font-medium">{rulesLine}</span> }] : []),
         {
           label: 'Closed trades',
           testId: 'trades',

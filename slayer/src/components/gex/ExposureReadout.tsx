@@ -48,38 +48,38 @@ const ExposureReadout = ({ surface, cell, depth, openRatio, caption }: ExposureR
   };
   const distPct = ((cell.strike - surface.spot) / surface.spot) * 100;
   const line = (greek: Greek) => (
-    <div key={greek} className="flex items-baseline gap-2 font-mono text-[10px] tnum whitespace-nowrap">
+    <div key={greek} className="flex items-baseline gap-2 font-mono text-t10 tnum whitespace-nowrap">
       <span className="w-8 text-textMuted uppercase tracking-wider">{greek}</span>
-      <span className="w-14 text-[8px] text-textMuted/70 uppercase tracking-wider">{GREEK_UNIT[greek]}</span>
+      <span className="w-14 text-t8 text-textMuted/70 uppercase tracking-wider">{GREEK_UNIT[greek]}</span>
       <span style={{ color: PUT_INK }}>{fmtUsd(shownGreek(greek, surface.put[greek][cell.e][s]))}</span>
       <span style={{ color: CALL_INK }}>{fmtUsd(shownGreek(greek, surface.call[greek][cell.e][s]))}</span>
       <span className="ml-auto font-bold" style={{ color: netInk(greek, surface.net[greek][cell.e][s]) }}>
         {fmtUsd(shownGreek(greek, surface.net[greek][cell.e][s]))}
         {/* the star = the heaviest single cell; the supreme (the book's heaviest strike) wears its word in magenta */}
         {surface.king[greek].e === cell.e && surface.king[greek].strike === cell.strike && <span className="ml-1 text-textPrimary">★</span>}
-        {surface.supreme[greek].strike === cell.strike && <span className="ml-1 text-[8px] uppercase tracking-widest text-[#EA00FF]">supreme</span>}
+        {surface.supreme[greek].strike === cell.strike && <span className="ml-1 text-t8 uppercase tracking-widest text-supreme">supreme</span>}
       </span>
     </div>
   );
   return (
     <div className="flex flex-col gap-1 min-w-[280px]">
       <div className="flex items-baseline gap-2 font-mono">
-        <span className="text-[12px] font-bold text-textPrimary tnum">
+        <span className="text-t12 font-bold text-textPrimary tnum">
           {surface.ticker} {fmtStrike(cell.strike)}
         </span>
-        <span className="text-[9px] uppercase tracking-widest text-textSecondary">
+        <span className="text-t9 uppercase tracking-widest text-textSecondary">
           {ex.date} <span className="text-textMuted">· {cell.e === 0 ? 'today' : ex.short}</span>
         </span>
-        <span className="ml-auto text-[9px] text-textMuted tnum">
+        <span className="ml-auto text-t9 text-textMuted tnum">
           {distPct >= 0 ? '+' : ''}
           {distPct.toFixed(2)}% · OI {surface.oi[cell.e][s].toLocaleString('en-US')}
         </span>
       </div>
-      {caption && <div className="font-mono text-[8px] uppercase tracking-widest text-textMuted">{caption}</div>}
-      <div className="font-mono text-[9px] tracking-wide" style={{ color: g >= 0 ? SHORT_GAMMA : LONG_GAMMA }}>
+      {caption && <div className="font-mono text-t8 uppercase tracking-widest text-textMuted">{caption}</div>}
+      <div className="font-mono text-t9 tracking-wide" style={{ color: g >= 0 ? SHORT_GAMMA : LONG_GAMMA }}>
         {g >= 0 ? 'peak' : 'well'} — dealer hedging {g >= 0 ? 'amplifies a move' : 'absorbs one'} here
       </div>
-      <div className="flex items-baseline gap-2 font-mono text-[8px] uppercase tracking-wider text-textMuted/70">
+      <div className="flex items-baseline gap-2 font-mono text-t8 uppercase tracking-wider text-textMuted/70">
         <span className="w-8" />
         <span className="w-14" />
         <span>put</span>
@@ -89,15 +89,15 @@ const ExposureReadout = ({ surface, cell, depth, openRatio, caption }: ExposureR
       {GREEKS.map(line)}
       {/* The strike's ring: the same strike netted across every expiry drawn — its own rows, so it never bleeds */}
       <div className="pt-1 border-t border-borderSubtle/60 font-mono tnum">
-        <div className="text-[8px] uppercase tracking-wider text-textMuted">
+        <div className="text-t8 uppercase tracking-wider text-textMuted">
           {fmtStrike(cell.strike)} across {shown === 1 ? 'today' : `${shown} expiries`}
         </div>
-        <div className="mt-0.5 flex items-baseline gap-3 text-[10px]">
+        <div className="mt-0.5 flex items-baseline gap-3 text-t10">
           {GREEKS.map(greek => {
             const t = acrossCalendar(greek);
             return (
               <span key={greek} className="inline-flex items-baseline gap-1">
-                <span className="text-[8px] uppercase tracking-wider text-textMuted/70">{greek}</span>
+                <span className="text-t8 uppercase tracking-wider text-textMuted/70">{greek}</span>
                 <span className="font-semibold" style={{ color: netInk(greek, t) }}>
                   {fmtUsd(shownGreek(greek, t))}
                 </span>
@@ -107,7 +107,7 @@ const ExposureReadout = ({ surface, cell, depth, openRatio, caption }: ExposureR
         </div>
       </div>
       {since && (
-        <div className="pt-1 border-t border-borderSubtle/60 font-mono text-[9px] text-textMuted tnum">
+        <div className="pt-1 border-t border-borderSubtle/60 font-mono text-t9 text-textMuted tnum">
           net gamma since the open:{' '}
           <span className={since.dir >= 0 ? 'text-textPrimary' : 'text-textSecondary'}>
             {since.figure ? `${since.figure} · ${since.short}` : since.text}
