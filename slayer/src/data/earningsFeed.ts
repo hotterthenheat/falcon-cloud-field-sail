@@ -182,7 +182,7 @@ const wireOut = new Set<string>();
 const wireAt = new Map<string, number>();
 const RESULTS = /\b(q[1-4]|quarter(ly)?|results|earnings|eps)\b/i;
 const WIRE_EVERY = 5 * 60_000;
-export function checkWire(tickers: readonly string[], iso: string): Promise<boolean> {
+function checkWire(tickers: readonly string[], iso: string): Promise<boolean> {
   const today = nyToday();
   const minutes = nyMinutesNow();
   /* only on the day, before the open, from 04:00 — outside that window the slot rule and the dates answer */
@@ -261,7 +261,7 @@ const liveMoves = new Map<string, { pct: number; live: boolean; at: number }>();
 const liveMoveAsked = new Map<string, number>();
 const LIVE_MOVE_EVERY = 60_000;
 /** Reads the move so far of reports whose reacting session is today (deduped, a minute apart a name) */
-export async function refreshReactions(items: readonly { ticker: string; iso?: string; slot: ReportSlot; timeKnown?: boolean; reported?: boolean; known?: boolean }[]): Promise<boolean> {
+async function refreshReactions(items: readonly { ticker: string; iso?: string; slot: ReportSlot; timeKnown?: boolean; reported?: boolean; known?: boolean }[]): Promise<boolean> {
   const today = nyToday();
   if (!reactionSessionOn(today, today)) return false;
   const now = Date.now();
@@ -615,7 +615,7 @@ export const reportDayLabelYear = (iso: string): string => {
   return day.slice(0, 4) === nyToday().slice(0, 4) ? labelFor(day) : `${labelFor(day)}/${day.slice(2, 4)}`;
 };
 
-export function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossier | null {
+function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossier | null {
   const today = nyToday();
   const sym = ticker.toUpperCase();
   const stamped = rows.map(r => ({ ...r, symbol: r.symbol || sym }));

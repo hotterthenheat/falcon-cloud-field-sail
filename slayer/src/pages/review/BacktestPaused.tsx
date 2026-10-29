@@ -5,7 +5,7 @@ import { History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSessions } from '../../data/review/store';
 
-export const BACKTEST_PAUSED_WORDS =
+const BACKTEST_PAUSED_WORDS =
   'Backtest is paused. A replay needs the option bid and ask that stood each minute of a past session, and the app has no source for that history yet. The old tape was a seeded random walk, so it is not offered as a past market.';
 
 const BacktestPaused = () => {

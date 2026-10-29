@@ -202,7 +202,7 @@ interface Row {
 
 /** pull the account's state; returns how many carried keys CHANGED on this machine. Uploads what the account has
     never seen, or has older. */
-export async function pullState(): Promise<number> {
+async function pullState(): Promise<number> {
   if (!supabase) return 0;
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user?.id;
@@ -292,5 +292,3 @@ export function clearCarried(): void {
   pending.clear();
 }
 
-/** the keys the account carries — for the Data page's words */
-export const CARRIED_KEYS: readonly string[] = CARRIED;

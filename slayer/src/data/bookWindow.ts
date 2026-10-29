@@ -55,7 +55,7 @@ const add = (into: StrikeNode, n: StrikeNode): void => {
 };
 
 /** The strikes of these expiry dates, summed. One date is that date’s own chain. */
-export function chainForDates(snapshot: MarketSnapshot, dates: readonly string[]): StrikeNode[] | null {
+function chainForDates(snapshot: MarketSnapshot, dates: readonly string[]): StrikeNode[] | null {
   const by = snapshot.uwByDate;
   if (!by) return null;
   const chains = dates.map(d => by[d]).filter((c): c is StrikeNode[] => !!c?.length);
@@ -226,7 +226,7 @@ export function levelsWords(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE', tod
    Thursday's bars against Friday's levels — 21 tests on NVDA's flip, last 13:26, all of them Oct 22's). The session a
    report, a count or a price range is of: today's while it runs and after its close; before today's open, or on a day
    with no session, the last one that ran — and that is a different day, named by its date, never "today". */
-export interface RecordDay {
+interface RecordDay {
   /** The session's date, YYYY-MM-DD (New York) */
   date: string;
   /** True when it is today's own session (running, or closed this afternoon) */
@@ -278,7 +278,7 @@ export const recordPossessive = (): string => {
   return r.isToday ? "today's" : `${longDay(r.date)}'s`;
 };
 
-export interface SessionBook {
+interface SessionBook {
   /** The book the session's levels are read off — null when it is no longer available */
   book: MarketSnapshot | null;
   /** "Today · Oct 22", "Oct 23 · today's front expiry", "All expiries · at today's close" */

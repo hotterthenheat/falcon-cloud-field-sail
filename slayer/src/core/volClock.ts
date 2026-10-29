@@ -3,7 +3,7 @@ import { tradingMinutes, tradingYears } from './tradingYear';
 import { nyIsoDate, nyMinutes } from './nyTime';
 
 /** The vendor's year. Their own implied move is k·S·σ·√(dte/365). */
-export const CALENDAR_YEAR_MIN = 365 * 24 * 60;
+const CALENDAR_YEAR_MIN = 365 * 24 * 60;
 const CLOSE_MIN = 16 * 60;
 const FLOOR_MIN = 5;
 
@@ -33,7 +33,7 @@ export function quoteMaxAge(expiry: string, nowMs = Date.now()): number {
 }
 
 /** Mid only when the spread is at most 40% of it. Wider than that, the mid is the spread. */
-export const SPREAD_OF_MID = 0.4;
+const SPREAD_OF_MID = 0.4;
 
 export function usableMid(bid: number, ask: number): number {
   if (!(ask > 0) || bid < 0 || ask + 1e-6 < bid) return 0;
@@ -68,7 +68,7 @@ export function ivOnTradingClock(
   return vendorIvOnTradingClock(vendorIv, expiry, nowMs);
 }
 
-export interface SmilePoint {
+interface SmilePoint {
   strike: number;
   iv: number;
 }
@@ -144,7 +144,7 @@ export function flowImbalance(askVol: number, bidVol: number, multiVol: number, 
 }
 
 /** Below this, the classified net is smaller than the noise in the side label. Tuned when the morning miss is in. */
-export const FLOW_FIRM = 0.02;
+const FLOW_FIRM = 0.02;
 
 /** Net as a share of gross volume, reduced by the share that printed at mid or with no side. */
 export function flowConfidence(net: number, volume: number, unsigned: number): number {

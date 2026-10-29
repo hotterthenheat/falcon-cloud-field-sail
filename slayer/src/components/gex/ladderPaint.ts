@@ -34,18 +34,16 @@ export interface DrawTarget {
 }
 
 export const LADDER_MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
-/** The ladder's room at the right edge, media px */
-export const LADDER_W = 34;
 /** How far left of the right edge a pointer still counts as "on the ladder", media px — room for a rung that ends at a
     strike chip (the house chart's exposure field names its heaviest strikes at the edge) */
 export const LADDER_HIT_W = 120;
 /** A pointer this close to a rule, either side, is on it — media px */
-export const RULE_NEAR = 6;
+const RULE_NEAR = 6;
 
 /** Within RULE_NEAR of a rule's y, in media px */
 export const nearRule = (ruleY: number | null | undefined, pointerY: number): boolean => ruleY != null && Math.abs(ruleY - pointerY) <= RULE_NEAR;
 
-export interface LadderPen {
+interface LadderPen {
   ctx: CanvasRenderingContext2D;
   hr: number;
   vr: number;

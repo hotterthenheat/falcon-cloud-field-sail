@@ -15,9 +15,9 @@ const TAPE_END = '2026-10-28';
 export const DAY_MIN = 390;
 export const LAST_MIN = DAY_MIN - 1;
 /** How far back the tape goes, in trading days */
-export const TAPE_DAYS = 252;
+const TAPE_DAYS = 252;
 
-export interface ReviewName {
+interface ReviewName {
   ticker: string;
   name: string;
   /** Where the name is quoted today — the tape's last close */

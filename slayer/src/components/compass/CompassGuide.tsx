@@ -22,4 +22,3 @@ export const CompassGuide = () => (
   </div>
 );
 
-export default CompassGuide;

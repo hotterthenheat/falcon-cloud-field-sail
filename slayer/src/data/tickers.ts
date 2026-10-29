@@ -12,7 +12,7 @@ export interface TickerListing {
 /* a few bundled names carry HTML entities ("McDonald&#39;s"); they are decoded once here */
 const ENTITY: Record<string, string> = { '&#39;': "'", '&apos;': "'", '&amp;': '&', '&quot;': '"', '&#34;': '"' };
 const plain = (s: string) => s.replace(/&(?:#39|apos|amp|quot|#34);/g, m => ENTITY[m] ?? m);
-export const NASDAQ_TICKERS = (raw as TickerListing[]).map(t => (/&(?:#\d+|\w+);/.test(t.name) ? { ...t, name: plain(t.name) } : t));
+const NASDAQ_TICKERS = (raw as TickerListing[]).map(t => (/&(?:#\d+|\w+);/.test(t.name) ? { ...t, name: plain(t.name) } : t));
 
 const bySymbol = new Map(NASDAQ_TICKERS.map(t => [t.symbol, t]));
 // NYSE S&P members fill the json's gap; the json wins where both know a name.

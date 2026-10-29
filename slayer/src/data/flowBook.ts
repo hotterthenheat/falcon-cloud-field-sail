@@ -1,9 +1,7 @@
 /* The shared vocabulary of Trace's day book: screens, footprints, reasons and catches, net-flow cuts, moneyness,
    spread shapes and the quarter-hour clock. Nothing here makes a figure. */
 
-import { now } from '../core/clock';
-import { isTradingDay } from '../core/calendar';
-import { minuteLabel, nyParts, nyWallTime, SESSION_CLOSE_MIN, SESSION_LENGTH_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
+import { minuteLabel, SESSION_LENGTH_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
 import { SECTOR_LIST, sectorOf } from './darkpool';
 import { sleeveForDte } from './compass';
 import { reasonMatches, reasonsSignature, type UserReason } from './flowReasons';
@@ -11,48 +9,6 @@ import type { SleeveKey } from '../types/compass';
 import type { BookContract } from '../types/trace';
 import { dayLean, usd } from './traceLive';
 import { leanWords } from './traceLean';
-
-/* Every minute here is New York's minute of the day and the book's day is the cash session; outside it the book is
-   the last session, whole. */
-export interface BookSession {
-  /** The session's New York date */
-  year: number;
-  month: number;
-  day: number;
-  /** Its 09:30 and 16:00 New York, as instants (ms) */
-  open: number;
-  close: number;
-  /** New York's minute of the day the book stands at — SESSION_OPEN_MIN up to SESSION_CLOSE_MIN */
-  minute: number;
-  /** The session is under way: the clock is inside it */
-  live: boolean;
-}
-
-export function bookSession(at: Date | number = now()): BookSession {
-  const p = nyParts(at);
-  const m = p.hour * 60 + p.minute;
-  /* the calendar's checks read a date's own fields, so New York's date goes in as a plain date */
-  const d = new Date(p.year, p.month - 1, p.day);
-  const today = isTradingDay(d) && m >= SESSION_OPEN_MIN;
-  if (!today) {
-    for (let i = 0; i < 10; i++) {
-      d.setDate(d.getDate() - 1);
-      if (isTradingDay(d)) break;
-    }
-  }
-  const y = d.getFullYear();
-  const mo = d.getMonth() + 1;
-  const dd = d.getDate();
-  return {
-    year: y,
-    month: mo,
-    day: dd,
-    open: nyWallTime(y, mo, dd, 9, 30),
-    close: nyWallTime(y, mo, dd, 16, 0),
-    minute: today ? Math.min(m, SESSION_CLOSE_MIN) : SESSION_CLOSE_MIN,
-    live: today && m < SESSION_CLOSE_MIN,
-  };
-}
 
 /** A New York minute of the day, spoken — "14:30" */
 const clockOf = (minute: number) => minuteLabel(minute);
@@ -69,7 +25,7 @@ export type ScreenKey =
   | 'cheap'
   | 'long-term';
 
-export interface FlowScreen {
+interface FlowScreen {
   key: ScreenKey;
   label: string;
   /** Whispered under the chip row — what the cut means, in plain English */
@@ -135,7 +91,7 @@ export function runScreen(rows: BookContract[], key: ScreenKey): BookContract[] 
    judgment. */
 export type FootprintScreenKey = 'builds' | 'fresh' | 'unwinds' | 'streaks';
 
-export interface FootprintScreen {
+interface FootprintScreen {
   key: FootprintScreenKey;
   label: string;
   hint: string;
@@ -170,7 +126,7 @@ export function runFootprintScreen(rows: BookContract[], key: FootprintScreenKey
 /* The word on the page is "reason": the reader's question is "why is this in front of me". */
 export type WatcherKey = 'big-money' | 'into-earnings' | 'climbing' | 'falling' | 'fresh-size' | 'hammering';
 
-export interface WatcherRule {
+interface WatcherRule {
   key: WatcherKey;
   /** Short chip handle */
   label: string;
@@ -332,14 +288,14 @@ export function doiTail(r: Pick<BookContract, 'prevOI' | 'deltaOI' | 'deltaOIPct
   return `${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p)}%`;
 }
 /** 25% or more in the money with a month or more to run trades like the stock, not a view; flagged wherever bets are crowned */
-export const STOCK_LIKE_DTE = 30;
+const STOCK_LIKE_DTE = 30;
 export function stockLike(r: { otmPct: number; dte: number }): boolean {
   return Number.isFinite(r.otmPct) && r.otmPct <= -25 && r.dte >= STOCK_LIKE_DTE;
 }
 export const STOCK_LIKE_HINT = '25% or more in the money with a month or more to run: it trades like the stock, likely a replacement or roll, not a bet';
 
 /** The book's big-money line: its 90th-percentile premium, $25M at the least */
-export function bigMoneyLine(rows: BookContract[]): number {
+function bigMoneyLine(rows: BookContract[]): number {
   if (!rows.length) return 25_000_000;
   const s = rows.map(r => r.premium).sort((a, b) => a - b);
   return Math.max(25_000_000, s[Math.min(s.length - 1, Math.floor(s.length * 0.9))]);
@@ -413,7 +369,7 @@ const WINDOW_MIN = 15;
 /** 26: the session's quarter hours. Window 0 is 09:30–09:45 New York. */
 export const WINDOWS_PER_DAY = SESSION_LENGTH_MIN / WINDOW_MIN;
 /** The New York minute window `idx` opens on */
-export const windowStart = (idx: number) => SESSION_OPEN_MIN + idx * WINDOW_MIN;
+const windowStart = (idx: number) => SESSION_OPEN_MIN + idx * WINDOW_MIN;
 
 export interface IntervalWindow {
   idx: number;
@@ -439,7 +395,7 @@ export function windowLabel(idx: number): string {
    not a cut. */
 export type NetFlowSegment = 'all' | 'stocks' | 'index-funds' | 'indexes' | `sector:${string}`;
 
-export interface NetSegmentMeta {
+interface NetSegmentMeta {
   key: NetFlowSegment;
   label: string;
   group: 'The book' | 'Sectors';
@@ -469,7 +425,7 @@ export const MONEYNESS: { key: MoneynessKey; label: string; hint: string }[] = [
 
 /* otmPct is the strike's distance past the stock, positive out of the money for calls and puts; a NaN distance is
    neither in nor out. */
-export const isInTheMoney = (r: Pick<BookContract, 'otmPct'>): boolean => Number.isFinite(r.otmPct) && r.otmPct < 0;
+const isInTheMoney = (r: Pick<BookContract, 'otmPct'>): boolean => Number.isFinite(r.otmPct) && r.otmPct < 0;
 
 /** A contract's or a print's place against the stock — both carry the same two fields */
 export function moneynessFilter(r: Pick<BookContract, 'otmPct' | 'right'>, m: MoneynessKey): boolean {
@@ -481,7 +437,7 @@ export function moneynessFilter(r: Pick<BookContract, 'otmPct' | 'right'>, m: Mo
 
 export type SpreadKind = 'vertical' | 'diagonal' | 'condor' | 'butterfly' | 'straddle' | 'strangle' | 'calendar' | 'ratio' | 'synthetic' | 'riskReversal' | 'custom';
 
-export interface SpreadKindDef {
+interface SpreadKindDef {
   key: SpreadKind;
   label: string;
   /** What the shape does, in plain English — information, never advice */

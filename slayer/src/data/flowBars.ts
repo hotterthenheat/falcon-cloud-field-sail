@@ -4,7 +4,7 @@ import type { FlowPrint } from '../types/trace';
    flow pane reads the same prints the tape does. */
 
 /** One bucket of the option tape, aligned to a chart bar. */
-export interface FlowBar {
+interface FlowBar {
   /** Bar-aligned epoch seconds — the same unit lightweight-charts takes. */
   time: number;
   /** Call premium in the bucket, dollars. Always >= 0. */
@@ -16,7 +16,7 @@ export interface FlowBar {
   count: number;
 }
 
-export interface BucketOptions {
+interface BucketOptions {
   /** Bar width in seconds. Must match the chart's own interval. */
   barSec: number;
   /** Only prints on this symbol. Omit to take every print given. */

@@ -185,19 +185,18 @@ export interface Agenda {
 /* ---- helpers --------------------------------------------------------------------- */
 
 const pct = chanceLabel;
-const signed = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 /** A wall in reach is one the day can plausibly get to */
 const IN_REACH = 0.15;
 /* ONE THRESHOLD EACH SIDE (the sixth audit, 2026-10-23: −$27M at 766 was a TRAPDOOR while +$27M at 771 and +$68M at
    772 carried no tag — the trapdoor's bar was 3% of the heaviest strike, the shelf's 35%). A strike is a shelf or a
    trapdoor only with SHELF_SHARE of the heaviest strike's net gamma, whichever its sign; under that it is too thin to be
    either and carries no tag. */
-export const FLAT_SHARE = SHELF_SHARE;
+const FLAT_SHARE = SHELF_SHARE;
 /* ---- ONE CLASSIFIER, ONE INPUT, EVERYWHERE (the eighth audit's M1: 759 was "TRAPDOOR" on the Board and Compare and "too
    thin to be a trapdoor" on the Agenda — the Board's and Compare's copy never saw `flat`). The Agenda's rows, the Board's
    watch-first and Compare's all read the kind here, off the same Target fields. ---- */
-export type StrikeKind = 'named' | 'shelf' | 'trapdoor' | 'thin';
-export type KindInput = Pick<Target, 'isShelf' | 'role' | 'isWall' | 'flat'>;
+type StrikeKind = 'named' | 'shelf' | 'trapdoor' | 'thin';
+type KindInput = Pick<Target, 'isShelf' | 'role' | 'isWall' | 'flat'>;
 /** What a strike is: a named level, a shelf (a wall the Map does not name), a trapdoor (its hedging pushes the move
     along), or too thin to be any of them */
 export const strikeKind = (t: KindInput): StrikeKind => (t.isShelf ? (t.role ? 'named' : 'shelf') : t.isWall || t.flat ? 'thin' : 'trapdoor');
@@ -469,11 +468,6 @@ export function trimAgenda(agenda: Agenda, half: number): Agenda {
   return { ...agenda, targets };
 }
 
-/** "The smallest wall in reach" — or "the only wall in reach" when it is alone */
-export const weakestLabel = (a: Pick<Agenda, 'wallsInReach'>): string => (a.wallsInReach === 1 ? 'Only wall in reach' : 'Smallest wall in reach');
-
-/** The head's wall fact: the nearest wall in reach, with every level it is — "769 · supreme · put wall" */
-export const nearestWallLabel = (a: Pick<Agenda, 'wallsInReach'>): string => (a.wallsInReach === 1 ? 'Only wall in reach' : a.wallsInReach > 1 ? 'Nearest wall in reach' : 'Walls in reach');
 export const targetName = (t: Pick<Target, 'strike' | 'roles' | 'isShelf'>): string => `${fmtStrike(t.strike)}${t.roles.length ? ` · ${t.roles.join(' · ')}` : t.isShelf ? ' · shelf' : ''}`;
 /** The close in words: a lean only past LEAN_MIN, else "no clear lean" */
 export const closeLeanWords = (a: Pick<Agenda, 'closesNear' | 'closeTop'>): string =>

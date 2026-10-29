@@ -75,14 +75,12 @@ export function liveMarket(now = Date.now()): PaperMarket {
     open: kind => (kind === 'option' ? optionsOpen(now) : FUTURES_LIVE),
   };
 }
-/** Where the name would have to stand now for a contract to bid this — the chart's lines, and a pin's level */
-export const spotForBid = (c: ContractId, bid: number): number | null => spotForBidNow(c, Date.now(), bid);
 
 /* ================================================================== */
 /*  THE ACCOUNTS                                                       */
 /* ================================================================== */
 
-export interface PaperState {
+interface PaperState {
   accounts: PaperAccount[];
   /** The account on the desk */
   inHand: string | null;
@@ -387,7 +385,7 @@ export const setInHand = (id: string) => state.accounts.some(a => a.id === id) &
 /* The journal's own key */
 /* ================================================================== */
 
-export interface PaperJournal {
+interface PaperJournal {
   /** By account, by trade */
   entries: Record<string, Record<string, JournalEntry>>;
   /** By account, by trading day */

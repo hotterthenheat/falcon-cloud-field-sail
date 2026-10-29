@@ -40,7 +40,7 @@ const tokenCache = new Map<string, string>();
 /* Colour vision: 'blue-orange' swaps the direction pair, 'high-contrast' strengthens it (tokens.css). Stored and
    stamped as `data-cvd`; token readers treat a change as a theme change. */
 export type ColourVision = 'standard' | 'blue-orange' | 'high-contrast';
-export const CVD_KEY = 'slayer_cvd';
+const CVD_KEY = 'slayer_cvd';
 function loadCvd(): ColourVision {
   try {
     const kept = localStorage.getItem(CVD_KEY);
@@ -75,7 +75,7 @@ media?.addEventListener('change', () => {
   if (choice === 'system') settle();
 });
 
-export const getThemeChoice = (): ThemeChoice => choice;
+const getThemeChoice = (): ThemeChoice => choice;
 export const getResolvedTheme = (): Theme => resolved;
 
 export function setThemeChoice(next: ThemeChoice): void {
@@ -102,7 +102,7 @@ export function subscribeTheme(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
-export const getColourVision = (): ColourVision => cvd;
+const getColourVision = (): ColourVision => cvd;
 
 /** Swap the direction pair; token readers hear it as a theme change. */
 export function setColourVision(next: ColourVision): void {
@@ -128,9 +128,6 @@ const subscribeCvd = (fn: () => void) => {
   };
 };
 export const useColourVision = (): ColourVision => useSyncExternalStore(subscribeCvd, getColourVision, getColourVision);
-
-/** The direction a signed figure carries, for `data-dir` (tokens.css draws the triangles from it). */
-export const dirOf = (n: number): 'up' | 'down' | undefined => (n > 0 ? 'up' : n < 0 ? 'down' : undefined);
 
 export const useThemeChoice = (): ThemeChoice => useSyncExternalStore(subscribeTheme, getThemeChoice, getThemeChoice);
 export const useResolvedTheme = (): Theme => useSyncExternalStore(subscribeTheme, getResolvedTheme, getResolvedTheme);

@@ -34,7 +34,7 @@ import { fromHex, isColor, named, rgb, toCss, withTransp } from './colors';
 import type { Value } from './types';
 
 /** The house's line ink when a plot's colour is decided bar by bar */
-export const DYNAMIC_INK = '#5B9CF6';
+const DYNAMIC_INK = '#5B9CF6';
 
 export interface OutputPlan {
   plots: number[];
@@ -161,7 +161,7 @@ export function planOutputs(program: Program): OutputPlan {
 /* ---- constants ------------------------------------------------------------------ */
 
 /** A value the script fixed in its text — a literal, a named constant, a colour built from constants — or undefined */
-export function constEval(e: Expr): Value | undefined {
+function constEval(e: Expr): Value | undefined {
   switch (e.t) {
     case 'num':
       return e.v;

@@ -6,7 +6,6 @@ import type { BookContract } from '../types/trace';
 import { dayLean, LEAN_EDGE } from './traceLean';
 import { fmtCount as num } from './traceLive';
 
-
 export type ReasonField =
   | 'premium'
   | 'volume'
@@ -347,7 +346,7 @@ const save = (list: UserReason[]) => {
 let cache: UserReason[] | null = null;
 const subs = new Set<() => void>();
 
-export const getReasons = (): UserReason[] => {
+const getReasons = (): UserReason[] => {
   if (!cache) cache = load();
   return cache;
 };

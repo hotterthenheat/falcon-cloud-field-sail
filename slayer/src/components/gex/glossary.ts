@@ -23,7 +23,7 @@ const WORDS = {
 
 /* EVERY TERM'S HOVER POINTS AT THE ONE CARD (the eleventh audit's retail finding: GEX, DEX, VEX, vanna, charm, NOPE, supreme,
    trapdoor and flip were defined only where each stood) — the card ("First time here?", on Pinpoint's head) holds them all */
-export const FIRST_TIME_HINT = ' · Every term in one place: “First time here?” at the top of Pinpoint’s pages';
+const FIRST_TIME_HINT = ' · Every term in one place: “First time here?” at the top of Pinpoint’s pages';
 export const GLOSSARY = Object.fromEntries(Object.entries(WORDS).map(([k, v]) => [k, `${v}${FIRST_TIME_HINT}`])) as { readonly [K in keyof typeof WORDS]: string };
 
 /** Ask the "First time here?" card to open (RegimeLine listens) — the Map's colour note and any page can link to it */

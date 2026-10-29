@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Eye, Flag, FolderPlus, MoreHorizontal, Plus, X } from 'lucide-react';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
 import { useWatch } from '../../context/WatchContext';
 import { useTracker } from '../../context/TrackerContext';
 import { useWatchlist } from '../../data/watchlist';
@@ -265,7 +265,7 @@ const Empty = ({ children }: { children: ReactNode }) => (
 const WatchlistDrawer = () => {
   const open = useWatchlistOpen();
   const list = useNameWatch();
-  const { activeTicker, changeTicker } = useMarketData();
+  const { activeTicker, changeTicker } = useTicker();
   const [only, setOnly] = useState<'all' | 'flagged'>('all');
   const [adding, setAdding] = useState(false);
   const [into, setInto] = useState<string>('');

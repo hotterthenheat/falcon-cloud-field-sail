@@ -43,7 +43,7 @@ const STATES: [number, number, number][] = [
 export const STATE_COUNT = STATES.length;
 
 /** what a picture is drawn with, read where it stands */
-export interface Inks {
+interface Inks {
   /** the ground's channels, and whether it is black */
   ground: string;
   dark: boolean;
@@ -54,7 +54,7 @@ export const inksAt = (el: Element): Inks => {
   return { ground, dark: 0.2126 * r + 0.7152 * g + 0.0722 * b < 128 };
 };
 
-export interface Piece {
+interface Piece {
   /** the piece's own size (CSS px) */
   W: number;
   H: number;

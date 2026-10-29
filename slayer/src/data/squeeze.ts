@@ -4,15 +4,15 @@
 import type { ShortRow } from './fileBooks';
 
 /** 'fund': an ETF or other fund — not a squeeze candidate at all */
-export type SqueezeWord = 'weak' | 'building' | 'strong' | 'fund';
+type SqueezeWord = 'weak' | 'building' | 'strong' | 'fund';
 
-export interface SqueezeFact {
+interface SqueezeFact {
   /** Plain words, e.g. "24% of the float is short" */
   text: string;
   points: number;
 }
 
-export interface SqueezeRead {
+interface SqueezeRead {
   word: SqueezeWord;
   points: number;
   /** The two or three facts that drive the word — the scoring ones first; for a weak read, what holds it back */
@@ -26,7 +26,7 @@ export interface SqueezeRead {
 }
 
 /** Facts only a name's own file carries; shown beside the read, never scored */
-export interface SqueezeExtras {
+interface SqueezeExtras {
   /** Latest session's short volume as a percent of the OFF-EXCHANGE volume FINRA reports (its own ratio) */
   shortVolPct?: number | null;
   /** The same short volume as a percent of the session's full volume (the screener's day volume, same session) */
@@ -42,7 +42,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 const PUBLISH_LAG_DAYS = 11;
 
 /** The newest settlement date whose figures should already be published, on New York's today */
-export function latestPublishedSettlement(today = nyToday()): string {
+function latestPublishedSettlement(today = nyToday()): string {
   const t = Date.parse(`${today}T12:00:00Z`);
   const [y, m] = today.split('-').map(Number);
   const candidates: string[] = [];
@@ -55,7 +55,7 @@ export function latestPublishedSettlement(today = nyToday()): string {
 }
 
 /** The prior report's change in shares short, percent — from the two settlements the screener sends */
-export function shortChangePct(row: ShortRow): number | null {
+function shortChangePct(row: ShortRow): number | null {
   const prints = [...row.history].sort((a, b) => b.report.localeCompare(a.report));
   if (prints.length < 2 || !(prints[1].sharesM > 0)) return null;
   return ((prints[0].sharesM - prints[1].sharesM) / prints[1].sharesM) * 100;

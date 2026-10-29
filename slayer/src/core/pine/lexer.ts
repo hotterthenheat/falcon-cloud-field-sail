@@ -37,12 +37,12 @@ export interface LogicalLine {
   tokens: Token[];
 }
 
-export interface Pragma {
+interface Pragma {
   version: number | null;
   line: number;
 }
 
-export const KEYWORDS = new Set([
+const KEYWORDS = new Set([
   'if', 'else', 'for', 'to', 'by', 'in', 'while', 'switch', 'and', 'or', 'not', 'var', 'varip', 'true', 'false', 'na',
   'break', 'continue', 'import', 'export', 'method', 'type', 'enum',
   /* type words, allowed before a name and otherwise ignored */
@@ -97,7 +97,7 @@ const bracketDepth = (s: string): number => {
 };
 
 /** Tokenise one logical line's text; `line` is the physical line it began on */
-export function tokenize(text: string, line: number): Token[] {
+function tokenize(text: string, line: number): Token[] {
   const out: Token[] = [];
   let i = 0;
   const n = text.length;

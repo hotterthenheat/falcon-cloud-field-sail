@@ -3,11 +3,8 @@
   weekends, holidays and past days are disabled, and today, this Friday, next Friday and the monthly sit above the grid.
 */
 
-import { useState } from 'react';
-import * as Popover from '@radix-ui/react-popover';
 import { DayPicker } from 'react-day-picker';
-import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
-import { CARD } from './DropdownSelect';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { isoDate, isTradingDay, nextSession, today } from '../../core/calendar';
 
 const SILVER_FILL = 'rgb(var(--silver-fill))'; /* the silver as a SURFACE — a filled pill with the dark word on it, the holo flat form on either ground */
@@ -31,7 +28,7 @@ const thirdFriday = (year: number, month: number) => {
 };
 
 /** The four dates a trader reaches for, each a real session */
-export function quickExpiries(from: Date = today()): { label: string; date: Date }[] {
+function quickExpiries(from: Date = today()): { label: string; date: Date }[] {
   const thisFri = backToSession(fridayOnOrAfter(from));
   const nextFri = backToSession(addDays(fridayOnOrAfter(from), 7));
   let monthly = backToSession(thirdFriday(from.getFullYear(), from.getMonth()));
@@ -46,15 +43,6 @@ export function quickExpiries(from: Date = today()): { label: string; date: Date
   ];
   // Two picks that land on the same day keep the first name only
   return out.filter((q, i) => out.findIndex(o => isoDate(o.date) === isoDate(q.date)) === i);
-}
-
-interface ExpiryPickerProps {
-  /** YYYY-MM-DD */
-  value: string;
-  onChange: (iso: string) => void;
-  /** A data-* hook for probes and forms */
-  testId?: string;
-  width?: number;
 }
 
 interface DateBoardProps {
@@ -175,30 +163,3 @@ export function DateBoard({ mode, value, onChange, floor, ceiling }: DateBoardPr
   );
 }
 
-const ExpiryPicker = ({ value, onChange, testId, width = 150 }: ExpiryPickerProps) => {
-  const [open, setOpen] = useState(false);
-  const selected = parse(value);
-  return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          data-field={testId}
-          data-date-trigger
-          className="h-8 px-2 rounded-md border border-borderSubtle bg-panel font-mono text-t12 tnum text-textPrimary text-left inline-flex items-center gap-2 outline-none focus-visible:border-silver/60 data-[state=open]:border-silver/60 transition-colors"
-          style={{ width }}
-        >
-          <span className="flex-1 min-w-0 truncate">{selected ? fmt(selected) : 'Pick a date'}</span>
-          <CalendarDays className="w-3.5 h-3.5 text-textMuted shrink-0" />
-        </button>
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content align="start" side="bottom" sideOffset={6} collisionPadding={12} className={`${CARD} p-3 outline-none w-[288px]`} data-date-picker>
-          <DateBoard mode="expiry" value={value} onChange={iso => { onChange(iso); setOpen(false); }} />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
-  );
-};
-
-export default ExpiryPicker;

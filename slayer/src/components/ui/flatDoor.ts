@@ -7,5 +7,3 @@ export const FLAT_DOOR = 'hit inline-flex items-center gap-1.5 h-7 px-2 rounded 
 export const FLAT_OPEN = 'data-[state=open]:bg-ink/[0.06] data-[state=open]:text-textPrimary';
 /** …while it is armed: the replay running, the read up */
 export const FLAT_ON = 'bg-silver/[0.12] text-silver hover:text-silver';
-/** The figure on a door */
-export const FLAT_VALUE = 'text-t11 font-semibold text-textPrimary';

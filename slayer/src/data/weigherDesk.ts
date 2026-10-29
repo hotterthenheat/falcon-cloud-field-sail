@@ -137,7 +137,7 @@ function contractIv(baseIv: number, spot: number, strike: number, right: OptionR
     two horizons that land on the same Friday are one door, not two. */
 export const DESK_DTES = [0, 2, 4, 7, 14, 21, 30, 45] as const;
 
-export function deskExpiries(): Expiry[] {
+function deskExpiries(): Expiry[] {
   const seen = new Set<string>();
   const out: Expiry[] = [];
   for (const dte of DESK_DTES) {
@@ -355,7 +355,7 @@ function snapRows(data: unknown): { contract: Record<string, unknown>; data: Rec
   return out;
 }
 
-export interface LegQuote {
+interface LegQuote {
   mark: number | null;
   prev: number | null;
   low: number | null;

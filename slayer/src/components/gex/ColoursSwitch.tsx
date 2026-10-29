@@ -25,8 +25,8 @@ export type LedgerPalette = 'house' | 'thermal';
 
 /* The order is the switch's: house, then thermal (Noah, 2026-09-21, with Bencho's block: "i want the thermal to house
    switch to be this as well") */
-export const PALETTE_ORDER = ['house', 'thermal'] as const;
-export const PALETTE_WORDS: Record<LedgerPalette, { name: string; hint: string }> = {
+const PALETTE_ORDER = ['house', 'thermal'] as const;
+const PALETTE_WORDS: Record<LedgerPalette, { name: string; hint: string }> = {
   thermal: { name: 'Thermal', hint: 'yellow in the middle, red where hedging amplifies a move, blue where it absorbs one' },
   house: { name: 'House', hint: 'gold where hedging amplifies, ice where it absorbs' },
 };

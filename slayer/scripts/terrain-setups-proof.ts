@@ -79,7 +79,10 @@ const withJunk = readSetup(
 );
 check(
   'and an extra key is dropped rather than carried',
-  !!withJunk?.overlays && !('ghost' in withJunk.overlays) && Object.keys(withJunk.overlays).length === 4
+  !!withJunk?.overlays &&
+    !('ghost' in withJunk.overlays) &&
+    (['trails', 'levels', 'darkpool', 'volume'] as const).every(k => withJunk.overlays![k] === true) &&
+    Object.entries(withJunk.overlays).every(([k, v]) => v === (['trails', 'levels', 'darkpool', 'volume'].includes(k)))
 );
 
 // 5. a symbol cannot compare against itself

@@ -154,27 +154,6 @@ export interface ScriptFavourite {
 
 /* ---- the limits ------------------------------------------------------------------ */
 
-/** The pricing tiers (Book, Tape, Desk; the Seat is off the page, data/billing.ts) */
-export type Tier = 'book' | 'tape' | 'desk' | 'seat';
-
-/** What a tier may hold: pane count is the real cost, the rest are guards */
-export interface ScriptLimits {
-  /** Scripts drawn on one pane at once */
-  onPane: number;
-  /** Saved scripts of your own; null = no cap */
-  saved: number | null;
-  /** Publishes a day */
-  publishesPerDay: number;
-}
-
-/* scripts are sold from Tape up; Book's row is the guard a lower plan still needs */
-export const SCRIPT_LIMITS: Record<Tier, ScriptLimits> = {
-  book: { onPane: 5, saved: 200, publishesPerDay: 10 },
-  tape: { onPane: 15, saved: 1000, publishesPerDay: 10 },
-  desk: { onPane: 25, saved: null, publishesPerDay: 10 },
-  seat: { onPane: 25, saved: null, publishesPerDay: 10 },
-};
-
 /** The caps every script lives under, whoever wrote it */
 export const SCRIPT_CAPS = {
   /** Source text, in bytes */

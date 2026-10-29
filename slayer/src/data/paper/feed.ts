@@ -191,7 +191,7 @@ export function liveDeskChain(ticker: string, expiry: string, _ms: number, each 
 }
 
 /* ---- futures: not carried ---- */
-export { PAPER_FUTURES, PAPER_INDEXES, bigOf, frontOn, futOfFund, futWords, isMicro, isPaperFuture, isPaperIndex, paperFut, paperIndex, type PaperFutProduct } from './products';
+export { PAPER_INDEXES, isPaperFuture, isPaperIndex, paperFut, paperIndex,  } from './products';
 /** No live futures price */
 export const futNow = (_symbol: string): number => NaN;
 /** No live futures candles */

@@ -217,7 +217,7 @@ const Strip = ({ height, from, to, yDomain, yFmt, right, xLabels, syncId, hoverM
 const linePath = (pts: [number, number][]) => pts.map(([a, b], i) => `${i ? 'L' : 'M'}${a.toFixed(1)},${b.toFixed(1)}`).join('');
 
 /** Bid, mid and ask as three named parts of one bar, never a two-way split that folds the mid into a side */
-export const SideSplit = ({ bid, mid, ask, unit, caption, className = '' }: { bid: number; mid: number; ask: number; unit: string; caption?: string; className?: string }) => {
+const SideSplit = ({ bid, mid, ask, unit, caption, className = '' }: { bid: number; mid: number; ask: number; unit: string; caption?: string; className?: string }) => {
   /* one rounding with the card's own side figure (traceLive sideShares) */
   const sh = sideShares(bid, mid, ask);
 
@@ -239,7 +239,6 @@ export const SideSplit = ({ bid, mid, ask, unit, caption, className = '' }: { bi
   );
 };
 
-
 /** One figure in a panel's stat strip. */
 const Stat = ({ label, value, tone = 'text-textPrimary' }: { label: string; value: string; tone?: string }) => (
   <span className="flex flex-col gap-0.5 min-w-0">
@@ -250,7 +249,7 @@ const Stat = ({ label, value, tone = 'text-textPrimary' }: { label: string; valu
 
 // ---- the contract's minutes -----------------------------------------------------------------------------------
 
-export interface FlowPanelProps {
+interface FlowPanelProps {
   tape: ContractTape;
   intervalMin: number;
   showAvg: boolean;
@@ -422,7 +421,7 @@ export const FlowPanel = ({ tape, intervalMin, showAvg, onShowAvg, showIv, onSho
 /* Two ways to read the underlying's session — both straight off /stock/{t}/net-prem-ticks */
 export type NetMetric = 'netPremium' | 'contracts';
 
-export const NET_METRICS: { value: NetMetric; label: string; hint: string }[] = [
+const NET_METRICS: { value: NetMetric; label: string; hint: string }[] = [
   { value: 'netPremium', label: 'Net premium', hint: 'running net call and net put premium — at the ask less at the bid' },
   { value: 'contracts', label: 'Contracts traded', hint: 'calls against puts, by count' },
 ];
@@ -473,7 +472,7 @@ const MetricPicker = ({ value, onChange }: { value: NetMetric; onChange: (v: Net
   );
 };
 
-export interface NetPanelProps {
+interface NetPanelProps {
   tape: ContractTape;
   ticker: string;
   intervalMin: number;

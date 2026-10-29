@@ -12,7 +12,7 @@ import GuideFocus, { GuideDoor } from '../ui/GuideFocus';
 import type { Column } from '../ui/DataTable';
 
 /** The tape's rows: 39px on a 32px head (the house grid's feed pages run 44 on 30) */
-export const TRACE_GRID_THEME = GRID_THEME.withParams({ rowHeight: 39, headerHeight: 32, fontSize: 12 });
+const TRACE_GRID_THEME = GRID_THEME.withParams({ rowHeight: 39, headerHeight: 32, fontSize: 12 });
 /** A phone's row: two lines, the contract over its figures (see PhoneRow) */
 const TRACE_PHONE_THEME = GRID_THEME.withParams({ rowHeight: 58, headerHeight: 0, fontSize: 12 });
 
@@ -72,7 +72,7 @@ interface TraceBoxProps {
   foldOnPhone?: boolean;
 }
 
-export const TraceBox = ({ title, sub, facts, controls, sentence, lead, detail, guide, children, testId, className = '', data, foldOnPhone = false }: TraceBoxProps) => {
+const TraceBox = ({ title, sub, facts, controls, sentence, lead, detail, guide, children, testId, className = '', data, foldOnPhone = false }: TraceBoxProps) => {
   const attrs = Object.fromEntries(Object.entries(data ?? {}).map(([k, v]) => [`data-${k}`, v]));
   const phone = useIsPhone();
   const [unfolded, setUnfolded] = useState(false);
@@ -175,7 +175,7 @@ export const PhoneRow = ({ lead, title, aside, figures }: { lead?: ReactNode; ti
 /* ---- the grid in its window ------------------------------------------------------ */
 
 /** A page's Column<T> definitions as AG Grid columns — the cells, inks and doors untouched */
-export function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: Record<string, number> = {}, tooltips: Record<string, string> = {}, flexes: Record<string, number> = {}, lock = false): ColDef<T>[] {
+function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: Record<string, number> = {}, tooltips: Record<string, string> = {}, flexes: Record<string, number> = {}, lock = false): ColDef<T>[] {
   return columns.map(c => {
     const fixed = widths[c.key] ?? (c.width ? parseInt(c.width, 10) : undefined);
     const def: ColDef<T> = {
@@ -209,7 +209,7 @@ export function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, w
    (never for fewer than 20 hidden). The page's figures still read every row. */
 export const ROWS_AT_REST = 80;
 const CAP_SLACK = 20;
-export interface RestCap<T> {
+interface RestCap<T> {
   shown: T[];
   capped: boolean;
   /** Is there a foot at all */
@@ -288,7 +288,7 @@ interface TraceGridProps<T> {
 }
 
 /** The state of an endless grid's older pages */
-export interface EndlessFeed {
+interface EndlessFeed {
   onNear: () => void;
   state: 'more' | 'loading' | 'end' | 'cap' | 'idle';
   /** What the rows loaded are, and why it stopped — the foot's words */

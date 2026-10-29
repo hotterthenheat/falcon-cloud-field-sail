@@ -25,7 +25,7 @@
 import { blackScholesGreeks } from '../core/greeks';
 import type { ExposureSurface } from './exposureSurface';
 
-export interface CurvePoint {
+interface CurvePoint {
   spot: number;
   /** The whole book's dealer gamma at this spot, the house's sign (positive amplifies, negative absorbs) */
   total: number;
@@ -33,7 +33,7 @@ export interface CurvePoint {
   byExpiry: number[];
 }
 
-export interface ExposureCurve {
+interface ExposureCurve {
   points: CurvePoint[];
   /** The spot the book was figured at */
   spot: number;

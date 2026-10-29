@@ -48,7 +48,6 @@ export const HEADING_ROW_H = 40;
 export const HEADING_AXIS_H = 20;
 /** Highest first — the way every strike surface on the terminal reads */
 export const HEADING_ORDER = ['Call wall', 'Supreme', 'Flip', 'Put wall'] as const;
-export const HEADING_H = HEADING_TOP + HEADING_ORDER.length * HEADING_ROW_H + HEADING_AXIS_H;
 
 /* ---- box 1 ---------------------------------------------------------------------- */
 

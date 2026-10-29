@@ -12,17 +12,16 @@ import { sessionScanOpen, weekdayDte } from './compassParams';
 import { deskPhase, odteAsleep, optionScanOpen, sessionIso, sessionYmd } from './compassSession';
 import { COMPASS_TICKERS } from './compassUniverse';
 import { SIM_DESK } from './deskMode';
-import { claimSlot, commitClosest, commitScalps, currentPicks, dropPending, paintQuotes, releaseSlot, resetScanReport, scanReport, scoreBook, scoreLottery, setScanBusy, setScanPace, stampPickQuote } from './compassModel';
+import { claimSlot, commitClosest, currentPicks, paintQuotes, releaseSlot, resetScanReport, scanReport, scoreBook, scoreLottery, setScanBusy, stampPickQuote } from './compassModel';
 import { settleBoard, syncOpenBook } from './compassLedger';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import type { Timeframe } from './timeframe';
 
-const OPEN_ROOTS = ['SPXW', 'RUTW', 'VIX', 'XSP'] as const;
 const INDEX_OF: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'XSP', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX', NDX: 'NDX', NDXP: 'NDX' };
 const OPTION_OF: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW' };
 const FRESH_MS = 30 * 1000;
 
-export interface ThetaBook {
+interface ThetaBook {
   status: 'loading' | 'live' | 'down';
   setups: Setup[];
   spots: Record<string, number>;
@@ -410,19 +409,15 @@ async function scanOdte(now: number): Promise<boolean> {
   try {
     const symbols = odteNames(now);
     resetScanReport('odte');
-    dropPending('odte');
-    setScanPace(0, symbols.length, 'odte');
     const spots = { ...book.spots };
     const found: Setup[] = [];
     for (let i = 0; i < symbols.length; i += 8) {
-      const slice = symbols.slice(i, i + 8);
-      await scoreSlice(slice, sessionIso(now), true, spots, found, 90_000, now);
-      setScanPace(Math.min(symbols.length, i + slice.length), symbols.length, 'odte');
+      if (!armed) return false;
+      await scoreSlice(symbols.slice(i, i + 8), sessionIso(now), true, spots, found, 90_000, now);
     }
     commitClosest('odte');
     writeBook([...book.setups.filter(s => s.expiry !== '0DTE'), ...found], spots);
     void fillSparks(symbols);
-    commitScalps('odte');
     book = { ...book, line: pickLine() };
     emit();
     return true;
@@ -448,8 +443,6 @@ function startWeekly(names: string[]): void {
   weeklySeen = new Set();
   weeklyList = names;
   resetScanReport('weekly');
-  dropPending('weekly');
-  setScanPace(0, names.length, 'weekly');
 }
 
 /** Eight names, then yield so the next tick can run 0DTE again. */
@@ -469,7 +462,6 @@ async function scanWeeklyWave(): Promise<boolean> {
   for (const symbol of slice) weeklySeen.add(symbol);
   for (const s of found) weeklyFound.push(s);
   weeklyCursor += slice.length;
-  setScanPace(Math.min(weeklyCursor, weeklyList.length), weeklyList.length, 'weekly');
   const fresh = new Set(slice);
   const kept = book.setups.filter(s => s.expiry === '0DTE' || !fresh.has(s.ticker));
   writeBook([...kept, ...found], spots);
@@ -477,35 +469,12 @@ async function scanWeeklyWave(): Promise<boolean> {
   const done = book.setups.filter(s => s.expiry === '0DTE' || (weeklySeen.has(s.ticker) && weeklyFound.some(f => f.ticker === s.ticker)));
   writeBook(done, spots);
   commitClosest('weekly');
-  commitScalps('weekly');
   void fillSparks(weeklyList);
   book = { ...book, line: pickLine() };
   emit();
   weeklyOn = false;
   weeklyFinishedAt = Date.now();
   return true;
-}
-
-let closedRead = 0;
-
-/** The entry window is shut. Still read the chain so the desk is not a spinner. No new call. */
-async function readClosed(now: number): Promise<void> {
-  if (Date.now() - closedRead < 60_000 && book.status === 'live') return;
-  closedRead = Date.now();
-  const symbols = odteNames(now);
-  const spots = { ...book.spots };
-  const found: Setup[] = [];
-  const lastQuote = 18 * 60 * 60 * 1000;
-  for (let i = 0; i < symbols.length; i += 8) {
-    await scoreSlice(symbols.slice(i, i + 8), sessionIso(now), true, spots, found, lastQuote);
-  }
-  writeBook([...book.setups.filter(s => s.expiry !== '0DTE'), ...found], spots);
-  book = {
-    ...book,
-    status: 'live',
-    line: found.length ? 'Last quotes are in. Not a call until a book sends one.' : 'No quote on the chain.',
-  };
-  emit();
 }
 
 const SPARK_UNDER: Record<string, string> = { SPXW: 'SPX', XSP: 'SPX', RUTW: 'RUT', SPX: 'SPX', RUT: 'RUT', VIX: 'VIX', NDX: 'NDX', NDXP: 'NDX' };
@@ -543,7 +512,7 @@ async function fillSparks(symbols: string[]): Promise<void> {
   emit();
 }
 
-export interface LiveBar { time: number; open: number; high: number; low: number; close: number }
+interface LiveBar { time: number; open: number; high: number; low: number; close: number }
 
 const barCache = new Map<string, { at: number; bars: LiveBar[] }>();
 
@@ -615,7 +584,7 @@ export function useContractBars(ticker: string, expiration: string, strike: numb
   return bars;
 }
 
-export interface ContractLive {
+interface ContractLive {
   bid: number;
   ask: number;
   at: number;
@@ -711,12 +680,17 @@ async function pullQuote(key: string, want: QuoteWant): Promise<void> {
 }
 
 function pullQuotes(): void {
-  for (const s of currentPicks()) {
+  for (const s of armed ? currentPicks() : []) {
     if (!s.expiryDate || !(s.strike > 0)) continue;
     const key = quoteKey(s.ticker, s.expiryDate, s.strike, s.right);
-    if (!quoteWant.has(key)) quoteWant.set(key, { ticker: s.ticker, expiration: s.expiryDate, strike: s.strike, right: s.right, n: 1 });
+    if (!quoteWant.has(key)) quoteWant.set(key, { ticker: s.ticker, expiration: s.expiryDate, strike: s.strike, right: s.right, n: 0 });
   }
   for (const [key, want] of quoteWant) void pullQuote(key, want).then(() => quoteHeard.forEach(fn => fn()));
+}
+
+function stopQuotes(): void {
+  if (quoteTimer != null) window.clearInterval(quoteTimer);
+  quoteTimer = null;
 }
 
 function armQuotes(): void {
@@ -745,6 +719,7 @@ export function useContractLive(ticker: string, expiration: string, strike: numb
       if (!held) return;
       held.n -= 1;
       if (held.n <= 0) quoteWant.delete(key);
+      if (!armed && !quoteWant.size) stopQuotes();
     };
   }, [key, on, ticker, expiration, strike, right]);
   return on ? row : null;
@@ -774,14 +749,23 @@ export function useSecondGreek(ticker: string, expiration: string, strike: numbe
   return row;
 }
 
+let users = 0;
+let stopTimer: number | null = null;
+
 export function useThetaBook(sleeve: SleeveKey): ThetaBook {
   const [snap, setSnap] = useState(book);
   useEffect(() => {
+    users += 1;
+    if (stopTimer != null) window.clearTimeout(stopTimer);
+    stopTimer = null;
     bootCompass();
     const fn = () => setSnap(book);
     listeners.add(fn);
     return () => {
       listeners.delete(fn);
+      users -= 1;
+      /* a beat of grace: moving between Compass pages remounts the hook */
+      if (users === 0) stopTimer = window.setTimeout(() => { stopTimer = null; if (users === 0) stopCompass(); }, 1_000);
     };
   }, [sleeve]);
   const wanted = sleeve === 'weekly' ? 'weekly' : 'odte';
@@ -791,69 +775,7 @@ export function useThetaBook(sleeve: SleeveKey): ThetaBook {
 
 let armed = false;
 let ticking = false;
-
-/** 1–7 DTE. Same grid as same-day. One pass per slot, not a drip. */
-async function scanWeekly(now: number): Promise<boolean> {
-  setScanBusy(true);
-  emit();
-  try {
-    const symbols = weeklyNames(now);
-    resetScanReport('weekly');
-    dropPending('weekly');
-    setScanPace(0, symbols.length, 'weekly');
-    const spots = { ...book.spots };
-    const found: Setup[] = [];
-    for (let i = 0; i < symbols.length; i += 8) {
-      const slice = symbols.slice(i, i + 8);
-      await scoreSlice(slice, '*', false, spots, found, 90_000, now);
-      setScanPace(Math.min(symbols.length, i + slice.length), symbols.length, 'weekly');
-    }
-    writeBook([...book.setups.filter(s => s.expiry === '0DTE'), ...found], spots);
-    commitClosest('weekly');
-    book = { ...book, line: pickLine() };
-    emit();
-    return true;
-  } catch {
-    return false;
-  } finally {
-    setScanBusy(false);
-    emit();
-  }
-}
-
-let lookCursor = 0;
-let lookWeekly = false;
-
-/** Quotes only. No model, no call. Eight names a pass, around the clock. */
-async function lookTick(now: number): Promise<void> {
-  const symbols = lookWeekly ? weeklyNames(now) : odteNames(now);
-  if (!symbols.length) {
-    lookWeekly = !lookWeekly;
-    lookCursor = 0;
-    return;
-  }
-  const slice = symbols.slice(lookCursor, lookCursor + 8);
-  if (!slice.length) {
-    lookCursor = 0;
-    lookWeekly = !lookWeekly;
-    return;
-  }
-  const fresh = 90_000;
-  const only = lookWeekly ? '*' : sessionIso(now);
-  const spots = { ...book.spots };
-  const got = await Promise.all(slice.map(symbol => once(symbol, now, only, false, fresh)));
-  for (const row of got) {
-    const symbol = row.setups[0]?.ticker;
-    if (symbol && row.spot > 0) {
-      spots[symbol] = row.spot;
-      if (INDEX_OF[symbol]) spots[INDEX_OF[symbol]] = row.spot;
-    }
-  }
-  lookCursor += slice.length;
-  writeBook(currentPicks(), spots);
-  book = { ...book, line: pickLine() };
-  emit();
-}
+let tickTimer: number | null = null;
 
 let sweptDay = '';
 const swept = { odte: false, weekly: false, lottery: false };
@@ -888,6 +810,7 @@ async function refreshHeld(now: number): Promise<void> {
   const found: Setup[] = [];
   for (const [exp, symbols] of byExp) {
     for (let i = 0; i < symbols.length; i += 8) {
+      if (!armed) return;
       const slice = symbols.slice(i, i + 8);
       const got = await Promise.all(slice.map(symbol => once(symbol, now, exp, false, 90_000)));
       for (const row of got) {
@@ -907,15 +830,16 @@ async function refreshHeld(now: number): Promise<void> {
 }
 
 /** 0DTE and 1–7 DTE scan once a session. After that the cards stay and only their quotes move. */
-export function bootCompass(): void {
+function bootCompass(): void {
   if (SIM_DESK || typeof window === 'undefined') return;
   if (!armed && currentPicks().length) {
     writeBook(currentPicks(), book.spots);
     syncOpenBook();
   }
-  armQuotes();
-  if (armed) return;
+  const running = armed;
   armed = true;
+  armQuotes();
+  if (running) return;
   const tick = async () => {
     if (ticking) return;
     ticking = true;
@@ -930,9 +854,10 @@ export function bootCompass(): void {
         const symbols = odteNames(now);
         const spots = { ...book.spots };
         const found: Setup[] = [];
-        for (let i = 0; i < symbols.length; i += 8) {
+        for (let i = 0; i < symbols.length && armed; i += 8) {
           await scoreSlice(symbols.slice(i, i + 8), sessionIso(now), true, spots, found, 20_000);
         }
+        if (!armed) return;
         await scoreLottery(found, now);
         syncOpenBook(now);
         writeBook([...book.setups.filter(s => s.expiry !== '0DTE'), ...found], spots);
@@ -946,7 +871,7 @@ export function bootCompass(): void {
         if (odte === 'scan') {
           await scanOdte(now);
           const report = scanReport('odte');
-          if (report.scored === 0 && report.quiet > 0) releaseSlot('odte');
+          if (!armed || (report.scored === 0 && report.quiet > 0)) releaseSlot('odte');
           scanned = report.scored > 0 || report.quiet === 0;
         }
       }
@@ -968,5 +893,15 @@ export function bootCompass(): void {
     }
   };
   void tick();
-  window.setInterval(() => void tick(), 8_000);
+  tickTimer = window.setInterval(() => void tick(), 8_000);
+}
+
+/** Leaving Compass: the walk stops at its next slice, and only quotes a page still holds keep polling. */
+function stopCompass(): void {
+  if (!armed) return;
+  armed = false;
+  if (tickTimer != null) window.clearInterval(tickTimer);
+  tickTimer = null;
+  for (const [key, want] of quoteWant) if (want.n <= 0) quoteWant.delete(key);
+  if (!quoteWant.size) stopQuotes();
 }

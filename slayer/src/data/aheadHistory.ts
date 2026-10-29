@@ -25,7 +25,7 @@ import type { Candle } from '../types/market';
 const SESSION_GAP_S = 90;
 const OPEN_MIN = 9 * 60 + 30;
 
-export interface SessionStat {
+interface SessionStat {
   open: number;
   close: number;
   high: number;
@@ -42,7 +42,7 @@ const statOf = (bars: Candle[]): SessionStat => ({
 });
 
 /** Every session on hand, oldest first */
-export function sessionBlocks(ticker: string): Candle[][] {
+function sessionBlocks(ticker: string): Candle[][] {
   const all = bookCandles(ticker);
   if (!all || all.length < 2) return [];
   const out: Candle[][] = [];

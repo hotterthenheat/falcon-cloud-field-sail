@@ -26,7 +26,7 @@
 import { useSyncExternalStore } from 'react';
 import type { PaneId, Script } from '../types/scripts';
 
-export interface DockState {
+interface DockState {
   open: boolean;
   /** null = a new script on the template */
   script: Script | null;
@@ -39,11 +39,11 @@ export interface DockState {
 const WIDTH_KEY = 'slayer_editor_dock_w';
 const RECENT_KEY = 'slayer_scripts_recent';
 export const DOCK_MIN = 360;
-export const DOCK_DEFAULT = 520;
+const DOCK_DEFAULT = 520;
 /** The dock never takes more than this share of the window */
 export const DOCK_MAX_SHARE = 0.7;
 /** The variable the full-screen takeovers read for their right edge */
-export const DOCK_VAR = '--editor-w';
+const DOCK_VAR = '--editor-w';
 
 const readWidth = (): number => {
   try {
@@ -105,12 +105,10 @@ export function useEditorDock(): DockState {
   );
 }
 
-export const getEditorDock = (): DockState => state;
-
 /* ---- drafts: what a closed dock keeps ---------------------------------------------- */
 
 const drafts = new Map<string, { title: string; source: string }>();
-export const draftKey = (script: Script | null) => script?.id ?? 'new';
+const draftKey = (script: Script | null) => script?.id ?? 'new';
 export const getDraft = (script: Script | null) => drafts.get(draftKey(script));
 export const setDraft = (script: Script | null, draft: { title: string; source: string }) => drafts.set(draftKey(script), draft);
 export const clearDraft = (script: Script | null) => drafts.delete(draftKey(script));

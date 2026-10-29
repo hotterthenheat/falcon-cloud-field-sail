@@ -5,7 +5,7 @@
  * Each morning, yesterday's closing flow inventory is set against the new open interest.
  */
 
-export interface NodeScore {
+interface NodeScore {
   flowHeld: number;
   flowBroke: number;
   oiHeld: number;
@@ -28,18 +28,18 @@ export interface CloseRow {
   oi: number;
 }
 
-export interface SideMiss {
+interface SideMiss {
   rate: number;
   strikes: number;
 }
 
-export interface ExpiryMiss {
+interface ExpiryMiss {
   expiry: string;
   call: SideMiss | null;
   put: SideMiss | null;
 }
 
-export interface MorningMiss {
+interface MorningMiss {
   rate: number;
   strikes: number;
   day: string;

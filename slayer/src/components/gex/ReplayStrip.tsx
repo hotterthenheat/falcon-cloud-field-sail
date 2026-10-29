@@ -92,7 +92,7 @@ const BAR_PACES: { value: number; label: string }[] = [
 const COUNT = ['', 'A', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
 const num = (v: number) => (Math.abs(v - Math.round(v)) < 0.05 ? String(Math.round(v)) : v.toFixed(1));
 /** How fast the tape moves, in candles: the few words beside the card, and the sentence on a row of its menu */
-export function candlePace(perSecond: number): { short: string; long: string } {
+function candlePace(perSecond: number): { short: string; long: string } {
   if (perSecond >= 1) {
     const n = Math.round(perSecond);
     const whole = Math.abs(perSecond - n) < 0.05;

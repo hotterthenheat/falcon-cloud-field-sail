@@ -87,7 +87,7 @@ interface MetaBar {
   date?: string;
   mt?: string;
 }
-export interface PublishMove {
+interface PublishMove {
   /** The regular session's move when the story crossed, or null when it cannot be read (or the session had not opened) */
   day: number | null;
   /** The pre-market or after-hours move at publish, or null in the session */
@@ -101,7 +101,7 @@ export interface PublishMove {
 const pctOf = (a: number, b: number): number => Number((((a - b) / b) * 100).toFixed(2));
 /* A story that crossed after its meta's last regular session and before the open has no session move yet: it carries
    the extended move and the last session's change, dated. */
-export function publishMove(meta: UwNews['meta'], ticker: string | null, priorClose: (ticker: string, before: string) => number | null, publishedAt?: string): PublishMove {
+function publishMove(meta: UwNews['meta'], ticker: string | null, priorClose: (ticker: string, before: string) => number | null, publishedAt?: string): PublishMove {
   const none: PublishMove = { day: null, ext: null, extWord: null, last: null, needs: null };
   if (!ticker || !meta) return none;
   const node = meta[ticker] as { curr?: MetaBar; prev?: MetaBar } | undefined;
@@ -194,7 +194,7 @@ const firstWordOf = (t: string): RegExp | null => {
 const SPONSORED_DATA_RE = /\b(?:pmi|purchasing managers'?(?: index)?)\b/i;
 const BROKER_LEAD_RE = /^\s*(?:[A-Z][\w&.'-]*\s+){1,4}?(?:raises|lifts|boosts|cuts|lowers|trims|reduces|reiterates|maintains|keeps|initiates|starts|resumes|upgrades|downgrades|assumes|sets|hikes|ups)\b(?=[^.;]{0,60}\b(?:target|rating|coverage|price objective|pt|to (?:buy|sell|hold|neutral|outperform|underperform|overweight|underweight|equal[- ]weight|market perform))\b)/i;
 /* An index's level or points is the market's move: no company is its subject, it is Macro and never major. */
-export const INDEX_MOVE_RE =
+const INDEX_MOVE_RE =
   /^\W*(?:breaking:\s*)?(?:(?:u\.?s\.?|britain'?s|uk'?s|germany'?s|france'?s|japan'?s|europe'?s|hong kong'?s|china'?s)\s+)?(?:the\s+)?(?:nasdaq(?: composite| 100)?|dow(?: jones)?(?: industrials| industrial average)?|s&p(?: 500)?(?: e-?mini)?|nyse composite|russell (?:2000|1000|3000)|djia|spx|ndx|ftse(?: 100| 250| mib)?|dax|cac(?: 40)?|nikkei(?: 225)?|topix|hang seng|stoxx(?: 600| europe 600| 50)?|euro stoxx(?: 50)?|kospi|asx(?: 200)?|sensex|nifty(?: 50)?|shanghai composite|csi 300|ibex(?: 35)?|tsx|smi|aex)\b(?:[^.;]|\.(?=\d)){0,40}?\b(?:up|down|rises?|rose|falls?|fell|gains?|loses?|drops?|dropped|climbs?|slips?|jumps?|sinks?|closes?|opens?|ends?|extends?|pares?|turns?|hits?|tops?|record)\b(?:[^.;]|\.(?=\d)){0,40}?(?:\bpoints?\b|\bpts\b|%|\brecord\b|\bhigh\b|\blow\b)/i;
 /* A Macro story keeps the vendor's major flag only when it moves prices: central banks and rates, the big data prints,
    tariffs, the fiscal calendar, sanctions, and war or supply news touching oil. Tape ticks never. */
@@ -219,7 +219,7 @@ const MACRO_MOVING_RE = new RegExp(
   'i',
 );
 const MACRO_TICK_RE = /\b(?:e-?mini|futures)\b[^.]{0,40}\b(?:fell|rose|up|down|gain|lost|drop)|\bspot (?:gold|silver)\b|\bimbalance\b|\bcurrency strength\b|\byen index\b|\beffective federal funds rate\b|\bfinancial stability report\b|^\W*boj:/i;
-export const macroMoves = (headline: string): boolean => MACRO_MOVING_RE.test(headline) && !MACRO_TICK_RE.test(headline);
+const macroMoves = (headline: string): boolean => MACRO_MOVING_RE.test(headline) && !MACRO_TICK_RE.test(headline);
 const INDEX_TAGS = new Set(['NDAQ', 'ICE', 'SPGI', 'CME', 'DJI', 'DIA', 'QQQ', 'SPY', 'IWM', 'CBOE', 'MSCI']);
 function storyTickers(headline: string, tags: readonly string[] | undefined): { tickers: string[]; mentions: string[] } {
   if (/\$MACRO\b/i.test(headline)) return { tickers: [], mentions: [] };
@@ -256,7 +256,7 @@ const SPAM_RE =
 /* token-price bot posts and adverts are noise on the wire */
 const NOISE_RE =
   /\bon binance\b[^.]{0,80}?(?:macd|stochastic|bollinger|moving averages?|rsi|pivot|oversold|overbought)|\b(?:macd|stochastic|bollinger)\b[^.]{0,80}\bbinance\b|\bmarket worth \$?[\d.,]+ ?(?:billion|million) by 20\d\d\b|\|\s*marketsandmarkets|\bessay writing service\b|\b(?:marathon|athletics integrity|olympic) (?:champion|unit|gold)/i;
-export const isNewsSpam = (headline: string): boolean => SPAM_RE.test(headline) || NOISE_RE.test(headline);
+const isNewsSpam = (headline: string): boolean => SPAM_RE.test(headline) || NOISE_RE.test(headline);
 
 /* A story is major when the vendor says so, it is about a listed company or the economy, and it is not house-keeping
    (results dates, calls, dividends, conference slots); a figure's decimal point is not a sentence end. */
@@ -270,7 +270,7 @@ const PROMO_RE =
   /\b(?:expands?|extends?|renews?|announces?|launches?|unveils?|debuts?)\b(?![^.]{0,50}\b(?:strategic|research|licens\w*|clinical|development)\b)[^.]{0,50}\b(?:collaboration|campaign|sponsorship|brand ambassador|co-?branded|limited[- ]edition)\b|\bfuels? (?:resilience|growth|innovation|success|transformation|creativity)\b/i;
 
 /** The regular close before a date, from the name's regular closes when they are in hand — or null */
-export type PriorClose = (ticker: string, before: string) => number | null;
+type PriorClose = (ticker: string, before: string) => number | null;
 const noPrior: PriorClose = () => null;
 
 export function newsFromWhales(rows: UwNews[], priorClose: PriorClose = noPrior): NewsItem[] {
@@ -506,7 +506,7 @@ const TAG_KIND: Record<string, AssetKind> = {
   ET: 'Fund',
   CT: 'Crypto',
 };
-export const assetTagOf = (notes?: string): string | null => {
+const assetTagOf = (notes?: string): string | null => {
   const head = (notes || '').split(/FILING STATUS:|SUBHOLDING OF:|DESCRIPTION:/i)[0];
   const tags = [...head.matchAll(/\[([A-Za-z]{2})\]?/g)].map(m => m[1].toUpperCase());
   return tags.length ? tags[tags.length - 1] : null;
@@ -652,9 +652,6 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
   return { ...summariseCongress(trades, windowDays), unreadTypes: unread, notMembers, notMemberAges };
 }
 
-/** @deprecated One roll-up for the congress book: congress.ts summariseCongress */
-export const rollCongress = summariseCongress;
-
 const CODES = new Set<TxCode>(['P', 'S', 'A', 'M', 'F', 'G', 'D']);
 
 /* The role as filed: a named office first, any other officer title "Officer", then the 10% box, then the board;
@@ -686,7 +683,7 @@ const MAX_CAP_SHARE = 0.25;
 type UwInsiderRow = { amount?: number; filing_date?: string; formtype?: string | null; is_10b5_1?: boolean | null; is_director?: boolean; is_officer?: boolean; is_ten_percent_owner?: boolean; officer_title?: string | null; owner_name?: string; price?: string | number | null; shares_owned_after?: number | null; shares_owned_before?: number | null; stock_price?: string | number | null; ticker?: string; transaction_code?: string; transaction_date?: string; id?: string; security_title?: string | null; marketcap?: string | number | null; sector?: string | null; reporter_cik?: string | null; full_name?: string | null; reporter_is_public_company?: boolean | string | null; director_indirect?: string | null; natureofownership?: string | null };
 
 /** What the insider feed read: the rows, and how many it set aside and why — counted, never silent */
-export interface InsiderRead {
+interface InsiderRead {
   trades: InsiderTrade[];
   /** Open-market rows that were swaps, preferreds or other non-share securities */
   notShares: number;

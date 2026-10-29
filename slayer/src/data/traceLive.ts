@@ -13,7 +13,7 @@ import { nyParts, nyWallTime } from '../core/nyTime';
 import type { MoneynessKey, NetFlowSegment, SpreadKind, SpreadLeg, SpreadTrade } from './flowBook';
 import { leanOfSides, postureOfNet } from './traceLean';
 
-export { dayLean, LEAN_EDGE, sideShares, type DayLean } from './traceLean';
+export { dayLean, LEAN_EDGE, sideShares,  } from './traceLean';
 
 const POLL_MS = 4_000;
 
@@ -42,7 +42,7 @@ const COUNT = new Intl.NumberFormat('en-US');
 /** A count with thousands separators — the one formatter every Trace page uses */
 export const fmtCount = (v: number): string => COUNT.format(v);
 
-export function rowsOf(data: unknown): Record<string, unknown>[] {
+function rowsOf(data: unknown): Record<string, unknown>[] {
   if (Array.isArray(data)) return data.filter((r): r is Record<string, unknown> => !!r && typeof r === 'object');
   if (data && typeof data === 'object' && Array.isArray((data as { data?: unknown }).data)) {
     return rowsOf((data as { data: unknown }).data);
@@ -64,7 +64,7 @@ export function sessionEndMin(ticker?: string | null): number {
 }
 /** "16:15 ET" or "16:00 ET" */
 export const sessionEndLabel = (ticker?: string | null) => (sessionEndMin(ticker) === 975 ? '16:15 ET' : '16:00 ET');
-export { marketPhase, sessionPhase, type MarketPhase, type SessionPhase } from '../core/marketPhase';
+export { marketPhase, sessionPhase, type MarketPhase,  } from '../core/marketPhase';
 
 /** The last session that has ended at `endMin` (New York minute) — its day, open and close — or null while it runs */
 function lastCloseAt(at: Date, endMin: number): { iso: string; closeMs: number; openMs: number } | null {
@@ -107,7 +107,7 @@ export function nyDateOf(ms: number): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(ms));
 }
 /** Newest first by the full instant, never by the time of day alone (two days' prints can share a clock) */
-export const byNewest = (a: { epochMs?: number; time: string }, b: { epochMs?: number; time: string }) => (b.epochMs ?? 0) - (a.epochMs ?? 0) || b.time.localeCompare(a.time);
+const byNewest = (a: { epochMs?: number; time: string }, b: { epochMs?: number; time: string }) => (b.epochMs ?? 0) - (a.epochMs ?? 0) || b.time.localeCompare(a.time);
 
 function clock(iso: unknown): { time: string; minute: number; epoch: number; ms: number } {
   const raw = typeof iso === 'number' ? iso : typeof iso === 'string' ? Date.parse(iso) : NaN;
@@ -219,16 +219,16 @@ export const traceHeld = () => holdsPaused > 0;
 
 /* The poll follows the clock: a day read is read once after the session and held to the next (re-read pre-market,
    when the next day and OI arrive); a live read keeps moving slowly outside it. */
-export type ReadKind = 'day' | 'live';
+type ReadKind = 'day' | 'live';
 const SETTLE_MS = 5 * 60_000;
 const PRE_POLL_MS = 120_000;
 const QUIET_POLL_MS = 30_000;
 /** In the session the book-like reads (the screener, a name's expiries, contract days) every 8s — they were 4s */
 const READ_POLL_MS = 8_000;
-export const tabHidden = (): boolean => typeof document !== 'undefined' && document.visibilityState === 'hidden';
+const tabHidden = (): boolean => typeof document !== 'undefined' && document.visibilityState === 'hidden';
 /** The ended session's close (ms) while the market stands closed after it — after 16:15, overnight, a weekend or a
     holiday; null in the session and in the pre-market */
-export function heldCloseMs(at: Date = new Date()): number | null {
+function heldCloseMs(at: Date = new Date()): number | null {
   const ph = marketPhase(at);
   if (ph !== 'after' && ph !== 'closed') return null;
   return lastRegularClose(at)?.closeMs ?? null;
@@ -239,7 +239,7 @@ export function heldFresh(atMs: number | null | undefined): boolean {
   return c != null && atMs != null && atMs >= c + SETTLE_MS;
 }
 /** Is a read stamped `atMs` (null: never read) due again, on a beat of `pollMs`, for its kind */
-export function readDue(atMs: number | null | undefined, pollMs: number, kind: ReadKind, faulted = false): boolean {
+function readDue(atMs: number | null | undefined, pollMs: number, kind: ReadKind, faulted = false): boolean {
   if (atMs == null) return true;
   if (tabHidden()) return false;
   const age = Date.now() - atMs;
@@ -252,7 +252,7 @@ export function readDue(atMs: number | null | undefined, pollMs: number, kind: R
   return age >= pollMs - 250;
 }
 
-export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enabled = true, pollMs = READ_POLL_MS, kind: ReadKind = 'day'): LivePack<T> {
+function useLive<T>(key: string, load: () => Promise<T>, empty: T, enabled = true, pollMs = READ_POLL_MS, kind: ReadKind = 'day'): LivePack<T> {
   const [, force] = useState(0);
   useEffect(() => {
     if (!enabled) return;
@@ -458,7 +458,7 @@ export function noteSpot(ticker: string, spot: number, at: number): void {
   if (!had || at >= had.at) spotSeen.set(t, { spot, at });
 }
 /** The newest live price we hold for a name, with its time; null when none (an index reads its level instead) */
-export function liveSpotAt(ticker: string): SeenSpot | null {
+function liveSpotAt(ticker: string): SeenSpot | null {
   const t = (ticker || '').toUpperCase();
   if (!t || indexRoot(t)) return null;
   const seen = spotSeen.get(t) ?? null;
@@ -684,7 +684,7 @@ function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
 
 /** A floor package filed as alerts: no-side alerts on one root whose fills started in the same millisecond, known by
     shape since the route carries no floor flag. */
-export function markAlertPackages(rows: FlowPrint[]): FlowPrint[] {
+function markAlertPackages(rows: FlowPrint[]): FlowPrint[] {
   const rootOf = (p: FlowPrint) => (indexRoot(p.ticker) ?? p.ticker).toUpperCase();
   const by = new Map<string, Set<string>>();
   for (const p of rows) {
@@ -726,7 +726,7 @@ export function useNameTape(ticker: string | null, limit = 200): LivePack<FlowPr
 
 /** One name's structures on the session: the vendor's newest `limit` a page, paged back to the session's start (at
     most `pages`); `complete` says it got there. Legs are read only for the heaviest `legsFor` by net. */
-export interface NameSpreads extends LivePack<SpreadTrade[]> {
+interface NameSpreads extends LivePack<SpreadTrade[]> {
   session: string;
   complete: boolean;
   from: string | null;
@@ -770,7 +770,7 @@ export function useNameSpreads(ticker: string | null, limit = 80, pages = 3, leg
 }
 
 /** One contract's real last trade (/option-contract/{occ}/flow): the card anchors on it. */
-export interface ContractLast {
+interface ContractLast {
   size: number;
   fill: number;
   side: 'ASK' | 'BID' | 'MID';
@@ -829,7 +829,6 @@ const LATE_MS = 2_000;
 const STREAM_BUSY_MS = 8_000;
 const STREAM_IDLE_MS = 10_000;
 const STREAM_IDLE_PAGE = 100;
-export { TAPE_CAP };
 
 export interface TapeQuery {
   ticker?: string;
@@ -855,7 +854,7 @@ export interface TapeQuery {
 
 /** The query string the option tape accepts: sweeps and compression go as OPRA codes (trade_codes[]), a block as
     min_size with is_multi_leg=false. Cursors are milliseconds, since the market prints 150–300 a second. */
-export function tapeQueryString(q: TapeQuery, extra?: { newerThan?: number; olderThan?: number; limit?: number }): string {
+function tapeQueryString(q: TapeQuery, extra?: { newerThan?: number; olderThan?: number; limit?: number }): string {
   const p = new URLSearchParams();
   p.set('limit', String(extra?.limit ?? TAPE_PAGE));
   if (q.contract) p.append('option_contracts[]', q.contract.toUpperCase());
@@ -934,7 +933,7 @@ const tapeShelf = new Map<string, FlowPrint[]>();
 const shelfListeners = new Set<() => void>();
 const SHELF_CAP = 2_000;
 
-export function publishPrints(rows: readonly FlowPrint[]): void {
+function publishPrints(rows: readonly FlowPrint[]): void {
   if (!rows.length) return;
   const by = new Map<string, FlowPrint[]>();
   for (const p of rows) {
@@ -971,7 +970,7 @@ export function useShelfPrints(ticker: string | null | undefined): FlowPrint[] {
   }, []);
   return (name && tapeShelf.get(name)) || EMPTY_PRINTS;
 }
-export interface PrintStream extends LivePack<FlowPrint[]> {
+interface PrintStream extends LivePack<FlowPrint[]> {
   pending: number;
   loadingOlder: boolean;
   hasOlder: boolean;
@@ -1248,7 +1247,7 @@ function execOf(price: number, bid: number, ask: number): 'ASK' | 'BID' | 'MID' 
 /* The dark-pool read, one rule across Trace: a sized regular-session print over the mid was paid up (accumulation),
    under it sold down (distribution), at the mid neither. Only sized prints at the quote carry a read. */
 /** A sized cross is dollars, not shares: $250K and up carries a read, below it none. */
-export const DARK_SIZED_USD = 250_000;
+const DARK_SIZED_USD = 250_000;
 function intentOf(cents: number, sized: boolean): DarkPoolIntent {
   if (!sized) return 'ROTATION';
   if (cents > 0) return 'ACCUMULATION';
@@ -1375,9 +1374,9 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
 
 /* A price the lit tape never traded is not a shelf: such a bucket holds only own-terms prints, so it is counted
    apart, out of the shelves and the day's dark dollars. */
-export const offMarketBucket = (r: Record<string, unknown>) => num(r.dark_pool_volume) > 0 && r.regular_volume != null && num(r.regular_volume) === 0;
+const offMarketBucket = (r: Record<string, unknown>) => num(r.dark_pool_volume) > 0 && r.regular_volume != null && num(r.regular_volume) === 0;
 
-export function darkLevels(allRows: Record<string, unknown>[], spot: number, allPrints: DarkPoolPrint[] = []): DarkPoolLevel[] {
+function darkLevels(allRows: Record<string, unknown>[], spot: number, allPrints: DarkPoolPrint[] = []): DarkPoolLevel[] {
   const rows = allRows.filter(r => !offMarketBucket(r));
   /* own-terms prints are priced by their terms, not the market — they never count toward a shelf */
   const prints = allPrints.filter(p => !p.special);
@@ -1592,7 +1591,7 @@ export function useLitRegularDay(close: { iso: string; closeMs: number } | null,
 
 /** A name's whole day off-exchange (/darkpool/{t}/price-levels): dark dollars are each bucket's shares at its price
     (≈); the share is dark shares over the day's whole volume from the quote. */
-export interface DarkDay {
+interface DarkDay {
   /** The session the figures are for, YYYY-MM-DD, when asked by date */
   iso?: string;
   /** Dark shares at prices the lit tape also traded */
@@ -1626,7 +1625,7 @@ function darkDayOf(levels: Record<string, unknown>[], dayVolume: number): DarkDa
   return dark + off > 0 ? { darkShares: dark, litShares: lit, darkDollars: dollars, offShares: off, offDollars, sharePct: dayVolume >= dark ? (dark / dayVolume) * 100 : NaN } : null;
 }
 /** The stock's last trade and the day's volume — /stock/{t}/quote */
-export interface StockLast {
+interface StockLast {
   price: number;
   vol: number;
   /** epoch ms of the last trade */
@@ -1683,7 +1682,7 @@ export function useDarkDay(ticker: string | null, dateIso: string | null = null)
 /** Is there such a ticker: the vendor's stock state answers empty for a name it does not carry; an index root is
     always known. Asked once per name, kept. */
 const knownTickers = new Map<string, Promise<boolean>>();
-export function tickerKnown(name: string): Promise<boolean> {
+function tickerKnown(name: string): Promise<boolean> {
   const t = name.trim().toUpperCase();
   if (!t) return Promise.resolve(false);
   if (indexRoot(t) || ['SPX', 'SPXW', 'NDX', 'NDXP', 'RUT', 'RUTW', 'VIX', 'VIXW', 'XSP', 'DJX', 'OEX', 'XEO'].includes(t)) return Promise.resolve(true);
@@ -1995,7 +1994,7 @@ export function pairOiFor(rows: readonly BookContract[]): void {
 }
 
 /** The rows with the open interest of their volume's session wherever it is out (see above) */
-export function usePairedOi(rows: BookContract[]): BookContract[] {
+function usePairedOi(rows: BookContract[]): BookContract[] {
   const [ver, setVer] = useState(newestOiVer);
   useEffect(() => {
     const f = () => setVer(newestOiVer);
@@ -2032,7 +2031,7 @@ export function usePairedOi(rows: BookContract[]): BookContract[] {
 }
 
 const bookIdOf = (r: BookContract) => r.key;
-export interface EndlessBook extends LivePack<BookContract[]> {
+interface EndlessBook extends LivePack<BookContract[]> {
   /** The screener's older pages, read as the reader scrolls */
   older?: OlderPages<BookContract>;
 }
@@ -2193,14 +2192,9 @@ function resolveLegs(raw: Record<string, unknown>[], structSize: number, netPrem
   return base;
 }
 
-/** The position's theta in dollars a day: Σ ± theta × contracts × 100 over legs whose direction is settled; null when any
-    is not (the vendor's net_theta mixes units — "−$8607.55/day" on a 5-lot SPX vertical risking $675) */
-export function positionTheta(legs: SpreadLeg[]): number | null {
-  return positionThetaCapped(legs)?.value ?? null;
-}
 /* A day of theta cannot take more than the position is worth: each leg's day is capped at its own fill, and the
    position's at the debit paid or credit collected. */
-export function positionThetaCapped(legs: SpreadLeg[], netPremium?: number): { value: number; capped: boolean } | null {
+function positionThetaCapped(legs: SpreadLeg[], netPremium?: number): { value: number; capped: boolean } | null {
   if (!legs.length || legs.some(l => l.side == null || l.theta == null)) return null;
   let capped = false;
   let v = legs.reduce((a, l) => {
@@ -2226,7 +2220,7 @@ export function positionThetaCapped(legs: SpreadLeg[], netPremium?: number): { v
 
 /** Profit and loss at expiry from settled legs on ONE expiry: the payoff is piecewise straight between strikes, so its
     extremes sit at a strike, at zero, or run off past the top strike (the slope there). */
-export function payoffRange(legs: SpreadLeg[], netPremium: number): { maxLoss: number | 'uncapped'; maxProfit: number | 'uncapped' } | null {
+function payoffRange(legs: SpreadLeg[], netPremium: number): { maxLoss: number | 'uncapped'; maxProfit: number | 'uncapped' } | null {
   if (!legs.length || legs.some(l => l.side == null) || new Set(legs.map(l => l.expiry)).size !== 1) return null;
   const at = (S: number) =>
     legs.reduce((a, l) => {
@@ -2357,7 +2351,7 @@ function useLegRev(): number {
 }
 
 /** The P&L at expiry of settled legs on one expiry, at underlying S, dollars */
-export function payoffAt(legs: SpreadLeg[], netPremium: number): (S: number) => number {
+function payoffAt(legs: SpreadLeg[], netPremium: number): (S: number) => number {
   return (S: number) =>
     legs.reduce((a, l) => {
       const intrinsic = l.right === 'C' ? Math.max(0, S - l.strike) : Math.max(0, l.strike - S);
@@ -2409,11 +2403,11 @@ function whereOf(at: { kind: 'below' | 'above' | 'strikes' | 'falls' | 'rises' |
    worst, and which way it gains. */
 /** A shape's name without its directional verdict — "bull put spread" → "put spread", "bullish risk reversal" → "risk
     reversal" — for a structure that is shown but not read (a compression package, an after-hours fill) */
-export function neutralShape(name: string): string {
+function neutralShape(name: string): string {
   return name.replace(/\b(bullish|bearish|bull|bear)\s+/gi, '').trim();
 }
 
-export function describeStructure(legs: SpreadLeg[], netPremium: number, units: number, unread = false): string {
+function describeStructure(legs: SpreadLeg[], netPremium: number, units: number, unread = false): string {
   if (!legs.length) return '';
   if (legs.some(l => l.side == null)) return 'The record does not say which legs were bought and which were sold — no single set of buys and sells adds up to its net — so its risk is not drawn. Read the legs.';
   const word = (l: SpreadLeg) => `${l.contracts ?? 1} ${strikeWord(l.strike)} ${l.right === 'C' ? 'call' : 'put'}${(l.contracts ?? 1) === 1 ? '' : 's'}`;
@@ -2498,7 +2492,7 @@ export function describeStructure(legs: SpreadLeg[], netPremium: number, units: 
 
 /* The name comes from settled legs on one expiry (or a two-leg calendar / diagonal); otherwise the vendor's, kept
    beside the legs' name when the two disagree. */
-export function nameFromLegs(legs: SpreadLeg[]): { name: string; kind: SpreadKind } | null {
+function nameFromLegs(legs: SpreadLeg[]): { name: string; kind: SpreadKind } | null {
   if (!legs.length || legs.some(l => l.side == null)) return null;
   const B = (l: SpreadLeg) => l.side === 'BUY';
   const by = (xs: SpreadLeg[]) => [...xs].sort((a, b) => a.strike - b.strike);
@@ -2806,9 +2800,9 @@ export function useSpreadTrade(trade: SpreadTrade | null): { trade: SpreadTrade 
   return { trade: out, waiting: !!id && out?.legsState === 'pending', failed: out?.legsState === 'none' };
 }
 
-export type TideKind = 'market' | 'sector' | 'etf';
+type TideKind = 'market' | 'sector' | 'etf';
 
-export interface TidePoint {
+interface TidePoint {
   /** Unix seconds — the pane's chart stamps the point. */
   time: number;
   callPrem: number;
@@ -2874,7 +2868,7 @@ export function useFlowPerExpiry(ticker: string | null): LivePack<ExpiryFlow[]> 
   );
 }
 
-export interface TopNet {
+interface TopNet {
   ticker: string;
   net: number;
   volume: number;
@@ -2891,7 +2885,6 @@ export function useTopNet(limit = 40): LivePack<TopNet[]> {
     }));
   }, [], true, MINUTE_POLL_MS);
 }
-
 
 /* ---- one name's session, minute by minute (the Intervals page) ---------------------------------------------- */
 
@@ -3036,7 +3029,6 @@ export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; 
   return name ? { rows: named, at: ticks.at, fault: ticks.fault, waiting: ticks.waiting } : cut;
 }
 
-
 /* One name's biggest contracts today: the tape is a window, the question is the day, so the screener for the one
    name by the day's premium */
 export function useNameTopContracts(ticker: string | null, limit = 3): LivePack<BookContract[]> {
@@ -3089,7 +3081,7 @@ export function tideBetween(rows: { time: number; callPrem: number; putPrem: num
 }
 
 /* ---- a stock's whole day of one-minute bars, extended hours included (the cross card) --------------------------- */
-export interface StockMinute {
+interface StockMinute {
   /** epoch seconds */
   time: number;
   close: number;
@@ -3177,7 +3169,7 @@ export function useContractDays(occs: string[]): LivePack<Record<string, Contrac
 
 /* What a mark is now, like with like: a contract marked off a screener row is read again off that row (close against
    close); a marked print against the contract's newest real trade (fill against fill). */
-export interface MarkNow {
+interface MarkNow {
   /** The contract's screener row now (close, volume, open interest, sides) */
   book: BookContract | null;
   /** The contract's newest real trade (cancelled ones skipped) */
@@ -3245,7 +3237,7 @@ export function occOf(root: string, strike: number, right: 'C' | 'P', expiry: st
 
 /* Endless lists: the newest page is polled; older pages are asked only near the bottom, one at a time in the low
    lane, appended and kept to `cap` until the question changes. */
-export interface OlderPages<T> {
+interface OlderPages<T> {
   rows: T[];
   state: 'more' | 'loading' | 'end' | 'cap' | 'idle';
   loaded: number;
@@ -3303,7 +3295,7 @@ export async function olderAlerts(inHand: FlowPrint[], sinceMs: number | null, s
 }
 
 /** The older structures of the session, walked back from the oldest in hand */
-export async function olderSpreads(inHand: SpreadTrade[], sinceMs: number | null, session: 'regular' | 'extended' | null, ticker?: string | null, limit = 200): Promise<{ rows: SpreadTrade[]; end: boolean }> {
+async function olderSpreads(inHand: SpreadTrade[], sinceMs: number | null, session: 'regular' | 'extended' | null, ticker?: string | null, limit = 200): Promise<{ rows: SpreadTrade[]; end: boolean }> {
   const oldest = inHand.reduce((m, t) => Math.min(m, t.epochMs ?? Infinity), Infinity);
   if (!Number.isFinite(oldest) || (sinceMs != null && oldest <= sinceMs)) return { rows: [], end: true };
   /* The cursor takes in the oldest's whole second (the vendor keeps finer than it shows); the overlap is dropped by
@@ -3316,7 +3308,7 @@ export async function olderSpreads(inHand: SpreadTrade[], sinceMs: number | null
 }
 
 /** The next page of the screener's book (the route's `page`, 0 first), `limit` a page */
-export async function olderBook(pageNo: number, query: string, limit: number): Promise<{ rows: BookContract[]; end: boolean }> {
+async function olderBook(pageNo: number, query: string, limit: number): Promise<{ rows: BookContract[]; end: boolean }> {
   const got = await getRowsLow(`/screener/option-contracts?${query}&limit=${limit}&page=${pageNo}`);
   return { rows: await mapBook(got), end: got.length < limit };
 }

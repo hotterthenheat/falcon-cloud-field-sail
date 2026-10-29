@@ -19,7 +19,7 @@ const loading = new Set<PaneId>();
 const notify = (paneId: PaneId) => listeners.get(paneId)?.forEach(fn => fn());
 
 /** Re-read a pane from the store and tell every reader */
-export async function refreshPane(paneId: PaneId): Promise<void> {
+async function refreshPane(paneId: PaneId): Promise<void> {
   const rows = await scriptStore.onPane(paneId);
   const out: PaneScript[] = [];
   for (const chart of rows) {

@@ -1,7 +1,7 @@
 /* Pinpoint's book: strikes down the side, exposure bars across (puts warm, calls cool), walls bright, the supreme
    magenta, the flip grey dashes, the drifting spot with a clock tag, and beside it the range into the close. */
 
-import { FONT, PIX, bar, box, clock, frame, keep, rgb, rng, type, walk, type Box, type Frame, type Part, type Pen, type Pill, type Stage } from '../kit';
+import { FONT, PIX, bar, box, clock, keep, rgb, rng, type, walk, type Box, type Frame, type Part, type Pen, type Pill, type Stage } from '../kit';
 
 interface Row {
   y: number;
@@ -304,13 +304,3 @@ export const cone = (o: { seed?: number; now?: number } = {}): Part => {
   };
 };
 
-/* the frame for a book's panel title (kept with the book: its words are the Map's) */
-export const bookPanel = (title: string): Part => {
-  let at: Box = box(0, 0, 0, 0);
-  return {
-    place: b => {
-      at = b;
-    },
-    still: b => frame(b, at, { title, grip: false }),
-  };
-};

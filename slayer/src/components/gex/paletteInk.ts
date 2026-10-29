@@ -20,7 +20,7 @@
 import { readToken } from '../../theme/theme';
 
 export const BULL = 'rgb(var(--bull))';
-export const LIME = 'rgb(var(--select))';
+const LIME = 'rgb(var(--select))';
 /* THE WALLS ARE MARKERS, NOT SIGNS (the third audit, 2026-10-23: the Map said red for "pushes a move along" and red for
    "put wall"). Green and red are the sign — absorbs and amplifies — everywhere; the walls wear the legs' own inks, the
    call side's glacier and the put side's ember (CALL_SIDE / PUT_SIDE), so a wall marker never reads as a sign. */
@@ -28,7 +28,6 @@ export const CALL_WALL = 'rgb(var(--glacier))';
 export const PUT_WALL = 'rgb(var(--ember))';
 export const FLIP = 'rgb(var(--flip))';
 export const SUPREME = 'rgb(var(--supreme))';
-export const DARK_POOL = 'rgb(var(--darkpool))';
 export const SPOT = 'rgb(var(--text-primary))';
 export const FOCUS = LIME;
 export const SHORT_GAMMA = 'rgb(var(--bear))';
@@ -45,8 +44,6 @@ export const SILVER_FILL = 'rgb(var(--silver-fill))';
 /* The clock's pressure pair */
 export const EMBER = 'rgb(var(--ember))';
 export const GLACIER = 'rgb(var(--glacier))';
-/* the house accent by its own name — the silver since 2026-10-13 (LIME stays for the readers that say it) */
-export const ACCENT = LIME;
 /* ONE PAIR FOR HEDGING'S TWO SIDES ACROSS THE MAP (the partner's rule, taken 2026-10-14: "one colour code across all
    views"): the capsules and the bars said amplify in ember and absorb in glacier while the profile, the book through
    the day and the facts said the same two things in red and green — the inks of the walls and of direction. The Map's
@@ -61,7 +58,7 @@ export const ABSORB = LONG_GAMMA;
 export const pressureInks = (palette: 'house' | 'thermal'): { absorbs: string; amplifies: string } =>
   palette === 'thermal' ? { absorbs: THERMAL_COOL, amplifies: THERMAL_WARM } : { absorbs: LONG_GAMMA, amplifies: SHORT_GAMMA };
 /* Categorical side inks — identity, the same on both grounds (palette.ts) */
-export { CALL_SIDE, PUT_SIDE, CHART_MINT } from './palette';
+export {  } from './palette';
 
 /** An ink at an alpha. The hex trick (`${ink}55`) breaks on a token — the
     string becomes `rgb(var(--x))55`, the whole declaration is dropped and the

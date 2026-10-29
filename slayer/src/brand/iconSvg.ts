@@ -7,7 +7,7 @@
 import { MARK, MARK_CONTENT } from './paths';
 import type { MarkState } from './markState';
 
-export type IconTheme = 'dark' | 'light';
+type IconTheme = 'dark' | 'light';
 
 const FOIL: Record<IconTheme, string[]> = {
   dark: ['#eef1f8', '#c2d6f0', '#e4d8f4', '#ffffff', '#c8d8ec'],
@@ -21,7 +21,7 @@ const GROUND: Record<IconTheme, { tile: string; edge: string; bracket: string; c
   light: { tile: '#fbfaf7', edge: '#cdcbc5', bracket: '#8c8a84', chevron: '#6b6e75', cursor: '#0e0f11' },
 };
 
-export interface MarkSvgOptions {
+interface MarkSvgOptions {
   state?: MarkState;
   theme?: IconTheme;
   /** The whole 64-unit tile with brackets and ">"; otherwise the S| centred on its tile. */

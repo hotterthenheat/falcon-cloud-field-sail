@@ -186,4 +186,3 @@ export const StocksGuide = () => (
   </div>
 );
 
-export default StocksGuide;

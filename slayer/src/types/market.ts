@@ -175,32 +175,3 @@ export interface MarketSnapshot {
   levelsPending?: boolean;
 }
 
-export type TradeStatus = 'OPEN' | 'WIN' | 'LOSS';
-
-export interface TradeRecord {
-  id: string;
-  ticker: string;
-  direction: TradeDirection;
-  entryPrice: number;
-  stopLoss: number;
-  target: number;
-  exitPrice?: number;
-  status: TradeStatus;
-  pnl: number;
-  accuracy: number;
-  time: string;
-}
-
-export interface LedgerStats {
-  winRate: number;
-  profitFactor: number;
-  avgAccuracy: number;
-  totalPnL: number;
-  count: number;
-}
-
-export interface ExecuteResult {
-  success: boolean;
-  message?: string;
-  trade?: TradeRecord;
-}

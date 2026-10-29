@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { uwCall } from './whales';
 
-export interface ShortReads {
+interface ShortReads {
   si?: unknown;
   rebate?: unknown;
   ftd?: unknown;

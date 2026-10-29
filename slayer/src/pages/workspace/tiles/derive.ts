@@ -33,10 +33,10 @@ const once = <T,>(build: (s: MarketSnapshot) => T) => {
 /** New York's clock now — what the agenda and the building run on */
 export const clockNow = (): AheadClock => aheadClock(readSessionClock());
 /** The name's live at-the-money IV from the vendor book, else a plain 20% for the range model */
-export const ivOf = (ticker: string) => peekIv(ticker) ?? 0.2;
+const ivOf = (ticker: string) => peekIv(ticker) ?? 0.2;
 
 /** Today's book, fifteen strikes each side — the agenda */
-export const profile15 = once<ExposureProfileData>(s => buildExposureProfile(s, '0DTE', 15));
+const profile15 = once<ExposureProfileData>(s => buildExposureProfile(s, '0DTE', 15));
 /** …and thirty — the walls, the agenda, the chain's read */
 export const profile30 = once<ExposureProfileData>(s => buildExposureProfile(s, '0DTE', 30));
 /** The whole calendar's book — the Map's */

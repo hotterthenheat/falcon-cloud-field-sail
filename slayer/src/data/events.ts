@@ -1,7 +1,6 @@
 import { RTH_MINUTES, isTradingDay } from '../core/calendar';
 import { sessionStarts } from './indicators';
 import type { EarningsEvent } from './earnings';
-import { peekNextReport } from './earningsFeed';
 import type { Candle } from '../types/market';
 import type { FlowPrint } from '../types/trace';
 
@@ -61,10 +60,10 @@ export interface MarketEvent {
 }
 
 /** Below this premium a print is tape texture, not an event. */
-export const PRINT_PREMIUM_FLOOR = 1_000_000;
+const PRINT_PREMIUM_FLOOR = 1_000_000;
 /** The largest N prints get marks — a busy session over the floor is still
     a readable tape, not a picket fence. */
-export const PRINT_CAP = 12;
+const PRINT_CAP = 12;
 
 export interface MacroDate {
   iso: string; // YYYY-MM-DD, real calendar
@@ -79,14 +78,14 @@ const isoOf = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** First Friday of a month — the NFP rule. */
-export function firstFriday(year: number, month0: number): string {
+function firstFriday(year: number, month0: number): string {
   const d = new Date(year, month0, 1);
   while (d.getDay() !== 5) d.setDate(d.getDate() + 1);
   return isoOf(d);
 }
 
 /** Second Wednesday — the CPI approximation (see the header). */
-export function secondWednesday(year: number, month0: number): string {
+function secondWednesday(year: number, month0: number): string {
   const d = new Date(year, month0, 1);
   while (d.getDay() !== 3) d.setDate(d.getDate() + 1);
   d.setDate(d.getDate() + 7);
@@ -116,7 +115,7 @@ export function macroWindow(today: Date, daysBack = 45, daysAhead = 45): MacroDa
 }
 
 /** Signed trading-day distance from `fromIso` to `toIso` (negative = past). */
-export function tradingDaysSigned(fromIso: string, toIso: string): number {
+function tradingDaysSigned(fromIso: string, toIso: string): number {
   const parse = (iso: string) => new Date(`${iso}T12:00:00`);
   const a = parse(fromIso < toIso ? fromIso : toIso);
   const b = parse(fromIso < toIso ? toIso : fromIso);
@@ -129,7 +128,7 @@ export function tradingDaysSigned(fromIso: string, toIso: string): number {
   return fromIso <= toIso ? n : -n;
 }
 
-export interface TapeEventsInput {
+interface TapeEventsInput {
   /** 1-minute base bars, oldest first. */
   bars: readonly Candle[];
   /** The session's option prints, stamped with their bar time. */
@@ -211,18 +210,3 @@ export function buildTapeEvents(input: TapeEventsInput): MarketEvent[] {
   return [...past, ...future];
 }
 
-/** The chart-side wrapper: same stores every other surface reads. */
-export function tapeEventsFor(
-  ticker: string,
-  bars: readonly Candle[],
-  prints: readonly (FlowPrint & { at: number })[],
-  now: Date = new Date()
-): MarketEvent[] {
-  return buildTapeEvents({
-    bars,
-    prints,
-    earnings: peekNextReport(ticker),
-    macro: macroWindow(now),
-    todayIso: isoOf(now),
-  });
-}

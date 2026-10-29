@@ -4,7 +4,7 @@
 
 import { useSyncExternalStore } from 'react';
 
-export const NAME_WATCH_KEY = 'slayer_watch_names';
+const NAME_WATCH_KEY = 'slayer_watch_names';
 /** A list a reader can still read at a glance. Eight sections ship filled; four are left so a reader can add their own. */
 export const MAX_NAMES = 60;
 export const MAX_SECTIONS = 12;
@@ -19,7 +19,7 @@ export interface WatchSection {
   name: string;
   names: WatchedName[];
 }
-export interface NameWatch {
+interface NameWatch {
   sections: WatchSection[];
 }
 
@@ -113,11 +113,11 @@ const subscribe = (fn: () => void) => {
 const get = () => state;
 export const useNameWatch = (): NameWatch => useSyncExternalStore(subscribe, get, get);
 const count = (w: NameWatch) => w.sections.reduce((n, s) => n + s.names.length, 0);
-export const isWatchedName = (symbol: string, w: NameWatch = state): boolean => w.sections.some(s => s.names.some(n => n.symbol === symbol.toUpperCase()));
+const isWatchedName = (symbol: string, w: NameWatch = state): boolean => w.sections.some(s => s.names.some(n => n.symbol === symbol.toUpperCase()));
 /** The section a name stands in, or null */
-export const sectionOf = (symbol: string, w: NameWatch = state): WatchSection | null => w.sections.find(s => s.names.some(n => n.symbol === symbol.toUpperCase())) ?? null;
+const sectionOf = (symbol: string, w: NameWatch = state): WatchSection | null => w.sections.find(s => s.names.some(n => n.symbol === symbol.toUpperCase())) ?? null;
 
-export type WatchResult = 'added' | 'already' | 'full' | 'invalid';
+type WatchResult = 'added' | 'already' | 'full' | 'invalid';
 
 /** Put a name on the list — into `sectionId` when given, else the first section. A name already on the list stays where it is. */
 export function watchName(symbol: string, sectionId?: string): WatchResult {
@@ -225,7 +225,7 @@ export function restoreSection(back: { section: WatchSection; index: number }): 
 let open = false;
 const openSubs = new Set<() => void>();
 const notifyOpen = () => openSubs.forEach(fn => fn());
-export const openWatchlist = (): void => {
+const openWatchlist = (): void => {
   if (open) return;
   open = true;
   notifyOpen();

@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Working from '../ui/Working';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Activity, ArrowRightLeft, CornerDownLeft, Crosshair, Users } from 'lucide-react';
+import { Activity, ArrowRightLeft, CornerDownLeft, Crosshair } from 'lucide-react';
 import CompanyLogo from '../ui/CompanyLogo';
 import { NAV_ITEMS } from './nav';
 import { GEX_SUBPAGES } from '../../pages/pinpoint/subnav';
 import { TRACE_SUBPAGES } from '../../pages/trace/subnav';
 import { RECORD_SUBPAGES } from '../../pages/record/subnav';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
 import { armDrawTool, canArmDrawTool, searchDrawTools } from '../gex/drawTools';
 import { ensureListed, roomOf, searchRoom, useListedRev } from '../../data/listedNames';
 import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
@@ -35,7 +35,7 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const onTerrain = location.pathname === '/terrain' || location.pathname.startsWith('/terrain/');
-  const { changeTicker, activeTicker } = useMarketData();
+  const { changeTicker, activeTicker } = useTicker();
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
   const [tickMod, setTickMod] = useState<TickerModule | null>(null);

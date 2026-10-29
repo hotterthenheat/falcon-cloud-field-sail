@@ -1,6 +1,5 @@
-/* The Weigher's tape. One timeframe, one session, the vendor's own bars. A 15-second chart is 15-second prints. A
-   daily chart is the day's open, high, low and close. Premarket is not the cash session wearing another name.
-   Nothing here is the simulator, and an empty session stays empty. */
+/* The Weigher's tape: one timeframe, one session, the vendor's own bars; an empty session stays empty.
+   ThetaData first; when it does not answer, Unusual Whales' stock bars (no index prices, no 15s, no overnight). */
 
 import { useEffect, useState } from 'react';
 import type { Candle } from '../types/market';
@@ -9,6 +8,8 @@ import type { OptionRight } from '../types/compass';
 import { nyMinutes, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { minuteInSession, sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { thetaCall } from './theta';
+import { whalesBars, whalesDailyLong, type UwBar, type UwDaily } from './whales';
+import { ensureQuote, peekQuote } from './liveQuote';
 
 const INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
 
@@ -92,7 +93,7 @@ function weekClose(timeSec: number): number {
   return Math.floor(nyWallTime(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate(), 16, 0) / 1000);
 }
 
-export function foldTo(bars: Candle[], keyOf: (timeSec: number) => number): Candle[] {
+function foldTo(bars: Candle[], keyOf: (timeSec: number) => number): Candle[] {
   const map = new Map<number, Candle>();
   for (const b of bars) {
     const k = keyOf(b.time);
@@ -235,7 +236,72 @@ export function paintLive(bars: Candle[], price: number, atSec: number, tf: Time
   return next;
 }
 
-export interface WeigherTape {
+const UW_SIZE: Partial<Record<Timeframe, { size: '1m' | '5m' | '15m' | '1h'; limit: number; fold?: number }>> = {
+  '1m': { size: '1m', limit: 2500 },
+  '5m': { size: '5m', limit: 2500 },
+  '15m': { size: '15m', limit: 2500 },
+  '30m': { size: '15m', limit: 2500, fold: 1800 },
+  '1h': { size: '1h', limit: 1000 },
+};
+
+function readUwBars(rows: UwBar[], session: DeskSession): Candle[] {
+  const bars: Candle[] = [];
+  for (const b of rows) {
+    const at = Date.parse(b.start_time ?? '');
+    const close = num(b.close);
+    if (!Number.isFinite(at) || !(close > 0) || !minuteInSession(nyMinutes(at), session)) continue;
+    bars.push({ time: Math.floor(at / 1000), open: num(b.open) || close, high: num(b.high) || close, low: num(b.low) || close, close, volume: num(b.volume) });
+  }
+  return bars.sort((a, b) => a.time - b.time);
+}
+
+/** Unusual Whales' stock bars when ThetaData is down. Regular-session dailies are the vendor's `r` rows. */
+async function loadUwBars(symbol: string, tf: Timeframe, session: DeskSession): Promise<{ bars: Candle[]; error: boolean }> {
+  if (INDEX.has(symbol) || session === 'overnight') return { bars: [], error: true };
+  try {
+    const kind = specOf(tf);
+    if ((kind === 'day' || kind === 'week') && session === 'rth') {
+      const rows = (await whalesDailyLong(symbol)) as UwDaily[];
+      const days: Candle[] = [];
+      for (const r of Array.isArray(rows) ? rows : []) {
+        if (r.market_time !== 'r' || !r.date) continue;
+        const [y, m, d] = r.date.split('-').map(Number);
+        const close = num(r.close);
+        if (!(close > 0)) continue;
+        days.push({ time: Math.floor(nyWallTime(y, m, d, 16, 0) / 1000), open: num(r.open) || close, high: num(r.high) || close, low: num(r.low) || close, close, volume: num(r.volume) });
+      }
+      days.sort((a, b) => a.time - b.time);
+      return { bars: kind === 'week' ? foldTo(days, weekClose) : days, error: false };
+    }
+    const want = kind === 'day' || kind === 'week' ? { size: '5m' as const, limit: 2500 } : UW_SIZE[tf];
+    if (!want) return { bars: [], error: true };
+    const bars = readUwBars((await whalesBars(symbol, want.size, want.limit)) ?? [], session);
+    if (kind === 'day' || kind === 'week') {
+      const days = foldTo(bars, dayClose);
+      return { bars: kind === 'week' ? foldTo(days, weekClose) : days, error: false };
+    }
+    const step = 'fold' in want ? want.fold : undefined;
+    return { bars: step ? foldTo(bars, t => { const open = openSec(t, session); return open + Math.floor((t - open) / step) * step; }) : bars, error: false };
+  } catch {
+    return { bars: [], error: true };
+  }
+}
+
+async function loadTape(symbol: string, tf: Timeframe, session: DeskSession): Promise<{ bars: Candle[]; error: boolean; uw: boolean }> {
+  const theta = await loadBars(symbol, tf, session);
+  if (!theta.error || theta.bars.length) return { ...theta, uw: false };
+  const uw = await loadUwBars(symbol, tf, session);
+  return uw.error ? { ...theta, uw: false } : { ...uw, uw: true };
+}
+
+function uwPrint(symbol: string): { price: number; at: number } | null {
+  ensureQuote(symbol);
+  const q = peekQuote(symbol);
+  if (!q || !(q.spot > 0) || !(q.tapeAt > 0)) return null;
+  return { price: q.spot, at: Math.floor(q.tapeAt / 1000) };
+}
+
+interface WeigherTape {
   bars: Candle[];
   /** null while the first answer is still out */
   ready: boolean;
@@ -243,7 +309,7 @@ export interface WeigherTape {
 }
 
 const EMPTY: WeigherTape = { bars: [], ready: false, note: null };
-const hist = new Map<string, { at: number; bars: Candle[] }>();
+const hist = new Map<string, { at: number; bars: Candle[]; uw: boolean }>();
 
 function noteFor(session: DeskSession, bars: Candle[], error: boolean): string | null {
   if (error && bars.length === 0) return 'The tape did not answer.';
@@ -271,6 +337,7 @@ export function useWeigherTape(ticker: string, tf: Timeframe, session: DeskSessi
   useEffect(() => {
     if (!symbol) return;
     let dead = false;
+    let fromUw = false;
     const apply = (bars: Candle[], error: boolean) => {
       if (dead) return;
       setState({ key, tape: { bars, ready: true, note: noteFor(session, bars, error) } });
@@ -279,16 +346,18 @@ export function useWeigherTape(ticker: string, tf: Timeframe, session: DeskSessi
       const hit = hist.get(key);
       const live = sessionOfMinute(nyMinutes()) === session;
       if (hit && Date.now() - hit.at < (live ? 20_000 : 5 * 60_000)) {
+        fromUw = hit.uw;
         apply(hit.bars, false);
         return;
       }
-      void loadBars(symbol, tf, session).then(got => {
+      void loadTape(symbol, tf, session).then(got => {
         if (dead) return;
         if (got.error && got.bars.length === 0) {
           apply(hit?.bars ?? [], true);
           return;
         }
-        hist.set(key, { at: Date.now(), bars: got.bars });
+        fromUw = got.uw;
+        hist.set(key, { at: Date.now(), bars: got.bars, uw: got.uw });
         apply(got.bars, false);
       });
     };
@@ -296,7 +365,7 @@ export function useWeigherTape(ticker: string, tf: Timeframe, session: DeskSessi
     const history = window.setInterval(run, 20_000);
     const spot = window.setInterval(() => {
       if (sessionOfMinute(nyMinutes()) !== session) return;
-      void pullPrint(symbol).then(print => {
+      void (fromUw ? Promise.resolve(uwPrint(symbol)) : pullPrint(symbol)).then(print => {
         if (dead || !print) return;
         setState(prev => {
           if (prev.key !== key || !prev.tape.ready) return prev;

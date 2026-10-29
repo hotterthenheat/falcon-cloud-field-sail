@@ -1,7 +1,7 @@
 import { BarChart3, Building2, CalendarClock, Landmark, Library, Newspaper, Percent, PieChart, type LucideIcon } from 'lucide-react';
 
 /* The Dossier's pages: what never shows on the tape — the wire, the reports, insiders, Congress, holders, shorts. */
-export interface RecordSubpage {
+interface RecordSubpage {
   path: string;
   label: string;
   subtitle: string;

@@ -7,11 +7,11 @@ import { nyClock } from '../../core/nyTime';
 /** The minutes after midnight New York's clock names: the open, the bell, the flat-by and the roll */
 export const OPEN_MIN = 9 * 60 + 30;
 export const BELL_MIN = 16 * 60;
-export const FLAT_MIN = 16 * 60 + 59;
-export const ROLL_MIN = 17 * 60;
-export const SESSION_MIN = BELL_MIN - OPEN_MIN;
+const FLAT_MIN = 16 * 60 + 59;
+const ROLL_MIN = 17 * 60;
+const SESSION_MIN = BELL_MIN - OPEN_MIN;
 
-export interface NyTime {
+interface NyTime {
   /** New York's date, YYYY-MM-DD */
   date: string;
   /** Minutes after New York's midnight */

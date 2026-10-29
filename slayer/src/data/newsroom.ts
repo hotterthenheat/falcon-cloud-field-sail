@@ -184,7 +184,6 @@ const MACRO_ORIGINS: { re: RegExp; lat: number; lng: number; city: string }[] = 
   { re: /\b(?:crude|oil prices?|brent)\b/i, lat: 48.21, lng: 16.37, city: 'Vienna' },
 ];
 
-
 /** Internal 1–10 from the wire's own numbers — deterministic, never shown raw. */
 const severityOf = (n: NewsItem): number =>
   Math.max(1, Math.min(10, Math.round(Math.abs(n.prediction.expMove1dPct) * 1.6 + n.magnitude * 5)));
@@ -261,7 +260,7 @@ export interface EconEvent {
 }
 
 /* The room's insights: a few sentences over the whole wire, every figure from the same events. */
-export interface RoomInsight {
+interface RoomInsight {
   key: string;
   title: string;
   read: string;

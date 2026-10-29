@@ -24,4 +24,3 @@ export function useGlideHold<T extends HTMLElement>(): (el: T | null) => void {
   return setEl;
 }
 
-export default useGlideHold;

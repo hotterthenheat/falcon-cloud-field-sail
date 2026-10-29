@@ -6,7 +6,6 @@ import type { Lean, Person, Post, RoomState, Setup } from '../types/room';
 /** The reader's own posts carry this handle; the page draws the profile for it */
 export const ME = 'me';
 
-
 /* No members or posts are invented: until the room has a backend, only this browser's own posts are in it. */
 export const PEOPLE: Person[] = [];
 
@@ -54,7 +53,7 @@ export function timeAgo(iso: string): string {
 
 const NAME_RE = /\$([A-Z]{1,5})\b/g;
 
-export type Token = { kind: 'text'; text: string } | { kind: 'name'; text: string } | { kind: 'handle'; text: string };
+type Token = { kind: 'text'; text: string } | { kind: 'name'; text: string } | { kind: 'handle'; text: string };
 
 /** The body cut into text, $names and @handles — the page draws the doors */
 export function tokenize(body: string): Token[] {
@@ -73,13 +72,13 @@ export function tokenize(body: string): Token[] {
 }
 
 /** The names a post mentions, first first, once each */
-export function mentionsOf(body: string): string[] {
+function mentionsOf(body: string): string[] {
   const seen = new Set<string>();
   for (const m of body.matchAll(NAME_RE)) seen.add(m[1]!.toUpperCase());
   return [...seen];
 }
 
-export interface Trend {
+interface Trend {
   name: string;
   posts: number;
   bullish: number;
@@ -118,7 +117,7 @@ export function rMultiple(s: Setup): number | null {
 
 export const fmtR = (r: number) => `${r >= 0 ? '+' : '−'}${Math.abs(r).toFixed(2)}R`;
 
-export interface Record {
+interface Record {
   settled: number;
   hit: number;
   /** The sum of every settled setup's R */

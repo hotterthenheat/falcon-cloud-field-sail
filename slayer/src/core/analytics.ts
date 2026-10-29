@@ -29,7 +29,7 @@
 const named = (import.meta.env.VITE_PLAUSIBLE_DOMAIN as string | undefined)?.trim() ?? '';
 
 /** the site Plausible counts under — blank means the count is off on this build */
-export const PLAUSIBLE_DOMAIN: string = named;
+const PLAUSIBLE_DOMAIN: string = named;
 export const ANALYTICS_ON: boolean = named.length > 0;
 
 /** Loads the script once, at boot, when the build names the site. Plausible's script follows the router on its own

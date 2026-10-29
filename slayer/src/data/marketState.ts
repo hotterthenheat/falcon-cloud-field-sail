@@ -25,11 +25,11 @@
 import { MARKET_HOLIDAYS, isTradingDay, isoDate } from '../core/calendar';
 import { readSessionClock } from './moc';
 
-export const EARLY_CLOSES = new Set(['2025-07-03', '2025-11-28', '2025-12-24', '2026-11-27', '2026-12-24', '2027-11-26']);
+const EARLY_CLOSES = new Set(['2025-07-03', '2025-11-28', '2025-12-24', '2026-11-27', '2026-12-24', '2027-11-26']);
 
-export type MarketStateKind = 'open' | 'pre-market' | 'after-hours' | 'closed' | 'early-close' | 'holiday';
+type MarketStateKind = 'open' | 'pre-market' | 'after-hours' | 'closed' | 'early-close' | 'holiday';
 
-export interface MarketState {
+interface MarketState {
   kind: MarketStateKind;
   /** the state word the brand prints beside the dot */
   word: 'live' | 'closed';
@@ -57,7 +57,7 @@ const nextTradingDay = (from: Date): Date => {
 };
 
 /** The holiday's name, by where it falls — enough for the line, not a calendar of its own */
-export function holidayName(d: Date): string {
+function holidayName(d: Date): string {
   const m = d.getMonth() + 1;
   const day = d.getDate();
   if (m === 1 && day <= 2) return 'New Year’s Day';

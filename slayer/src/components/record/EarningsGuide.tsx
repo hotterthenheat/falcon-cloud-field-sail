@@ -249,4 +249,3 @@ export const EarningsGuide = () => (
   </div>
 );
 
-export default EarningsGuide;

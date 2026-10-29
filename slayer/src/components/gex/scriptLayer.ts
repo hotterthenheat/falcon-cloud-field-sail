@@ -145,7 +145,7 @@ class BandPaneView {
 }
 
 /** Fills between two of a script's plots and washes behind its bars — attached to one of the script's own series so it reads that pane's scale */
-export class BandPrimitive implements ISeriesPrimitive<Time> {
+class BandPrimitive implements ISeriesPrimitive<Time> {
   chart: IChartApi | null = null;
   series: ISeriesApi<'Line'> | ISeriesApi<'Histogram'> | ISeriesApi<'Area'> | null = null;
   requestUpdate?: () => void;

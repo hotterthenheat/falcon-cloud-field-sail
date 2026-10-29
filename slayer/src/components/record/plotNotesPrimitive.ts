@@ -15,7 +15,7 @@ interface DrawTarget {
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
-export interface PlotBand {
+interface PlotBand {
   from: number;
   to: number;
   /** The fill — a literal, the chart is its own island */
@@ -23,14 +23,14 @@ export interface PlotBand {
   /** A hairline at each edge, or none */
   edge: string | null;
 }
-export interface PlotNote {
+interface PlotNote {
   price: number;
   text: string;
   color: string;
   /** Under the line rather than over it */
   below?: boolean;
 }
-export interface PlotNotesData {
+interface PlotNotesData {
   bands: PlotBand[];
   notes: PlotNote[];
   /** The plot's own ground — a note stands on a pill of it, so the line passing under it leaves it legible */

@@ -12,7 +12,7 @@
 
 import type { PineColor } from './types';
 
-export const NAMED: Record<string, string> = {
+const NAMED: Record<string, string> = {
   aqua: '#00BCD4',
   black: '#363A45',
   blue: '#2962FF',

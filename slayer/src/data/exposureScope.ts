@@ -4,34 +4,15 @@
 */
 
 import { DEALER_CALL, DEALER_PUT } from './spxFacts';
-import type { DeskSession } from './deskSession';
 
-export type FigureStatus = 'OBSERVED' | 'CALCULATED' | 'MODELED' | 'STALE' | 'UNAVAILABLE';
+type FigureStatus = 'OBSERVED' | 'CALCULATED' | 'MODELED' | 'STALE' | 'UNAVAILABLE';
 
 export const STALE_MS = 90_000;
 
-export interface ScopedFigure {
+interface ScopedFigure {
   value: number | null;
   status: FigureStatus;
   note: string;
-}
-
-export interface ExposureScope {
-  ticker: string;
-  asOf: number | null;
-  session: DeskSession;
-  followsClock: boolean;
-  expiry: string;
-  greek: string;
-  units: string;
-  source: string;
-  calc: string;
-  spot: ScopedFigure;
-  callWall: ScopedFigure;
-  putWall: ScopedFigure;
-  flip: ScopedFigure;
-  supreme: ScopedFigure;
-  dealer: { status: 'MODELED'; call: number; put: number; note: string };
 }
 
 /** A price that was not found. Never the spot standing in for it. */

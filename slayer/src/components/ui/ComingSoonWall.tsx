@@ -10,7 +10,7 @@ import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 
 /** The day the walled pages open — a placeholder until launch is dated (a Monday's open, New York) */
-export const OPENS_AT = Date.UTC(2026, 10, 2, 14, 30);
+const OPENS_AT = Date.UTC(2026, 10, 2, 14, 30);
 const NOTIFY_KEY = 'slayer_room_notify';
 
 /** The time left to the day, in four figures — zeros once it has come */

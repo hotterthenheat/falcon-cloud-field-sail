@@ -63,5 +63,4 @@ export function explain(err: unknown): { line: number; message: string } {
   return { line: 0, message: String(err) };
 }
 
-export { PineError };
-export type { Bar, RunOptions, RunResult, PlotOut, HLineOut, FillOut, ShapeOut, AlertOut, SlayerFeed } from './types';
+export type { Bar, RunResult, PlotOut, ShapeOut,  } from './types';

@@ -16,7 +16,7 @@ export interface ChartPoint {
   /** A bar's own ink (histograms) */
   color?: string;
 }
-export interface ChartLine {
+interface ChartLine {
   price: number;
   color: string;
   title: string;
@@ -27,7 +27,7 @@ export interface ChartLine {
   line?: boolean;
 }
 /** A soft fill between two prices across the plot — the room a line lives in (the pair's usual range) */
-export interface ChartBand {
+interface ChartBand {
   from: number;
   to: number;
   color: string;
@@ -49,7 +49,7 @@ export interface ChartMark {
   text: string;
 }
 /** What sits under the pointer, or under the focus */
-export interface ChartHover {
+interface ChartHover {
   time: number;
   point: ChartPoint | null;
   prev: ChartPoint | null;

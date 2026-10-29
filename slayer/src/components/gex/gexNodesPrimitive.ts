@@ -354,7 +354,8 @@ class TrailsPaneRenderer {
       for (let ci = cached || scrolled ? last : first; ci < last; ci++) {
         const col = src.columnAt(ci);
         if (tight && !cached) {
-          for (const bead of col.top) {
+          for (let bi = 0; bi < col.top.length; bi++) {
+            const bead = col.top[bi];
             if (bead.mark === 'born') born += 1;
             else if (bead.mark === 'grew') grew += 1;
             else if (bead.mark === 'flipped') flipped += 1;
@@ -401,7 +402,8 @@ class TrailsPaneRenderer {
           }
         }
 
-        for (const bead of beads) {
+        for (let bi = 0; bi < beads.length; bi++) {
+          const bead = beads[bi];
           const isFocus = focus != null && bead.strike === focus;
           const y = yOf(bead.strike);
           if (y === null) continue;
@@ -877,7 +879,8 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
         const fb = col.all.get(focus);
         if (fb) beads = [...beads, fb];
       }
-      for (const bead of beads) {
+      for (let bi = 0; bi < beads.length; bi++) {
+        const bead = beads[bi];
         const by = series.priceToCoordinate(bead.strike);
         if (by === null) continue;
         const ry = beadHalfHeight(Math.max(focus != null && bead.strike === focus ? 0.08 : 0, bead.t), aMin, aMax);

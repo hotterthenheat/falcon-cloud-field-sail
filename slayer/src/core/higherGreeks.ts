@@ -58,20 +58,13 @@ import { getCarry } from './carry';
   sessions, and TRADING_DAYS is the one place that number lives.
 */
 
-export const TRADING_DAYS = 252;
-
-function normalCDF(x: number): number {
-  const t = 1 / (1 + 0.2316419 * Math.abs(x));
-  const d = 0.3989422804 * Math.exp((-x * x) / 2);
-  const p = t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
-  return x >= 0 ? 1 - d * p : d * p;
-}
+const TRADING_DAYS = 252;
 
 function normalPDF(x: number): number {
   return Math.exp((-x * x) / 2) / Math.sqrt(2 * Math.PI);
 }
 
-export interface HigherGreeks {
+interface HigherGreeks {
   /** ∂gamma/∂σ, per 1.00 of vol. */
   zomma: number;
   /** ∂gamma/∂t, per YEAR of calendar time. */
@@ -95,21 +88,6 @@ function core(S: number, K: number, t: number, v: number, r: number, q: number) 
   /* RAW vega — per 1.00. greeks.ts divides its own by 100; see the header. */
   const vega = S * dfQ * sqT * phi;
   return { sqT, dfQ, d1, d2, phi, gamma, vega };
-}
-
-/**
- * The five, at one contract.
- *
- * @param r risk-free rate — defaults to the carry seam
- * @param q dividend yield — same seam
- */
-export function higherGreeks(S: number, K: number, t: number, v: number, r?: number, q?: number): HigherGreeks {
-  const carry = getCarry();
-  const rate = r ?? carry.r;
-  const yld = q ?? carry.q;
-  if (t <= 0) t = 0.0001;
-  if (v <= 0) v = 0.01;
-  return higherRaw(S, K, t, v, rate, yld);
 }
 
 /** The same partials with no floor. Null when the inputs cannot be priced — a dead expiry, a missing vol, a bad spot.
@@ -176,23 +154,3 @@ export function perDay(raw: number): number {
   convention is exactly the failure core/walls.ts was extracted to prevent.
 */
 
-export const CONTRACT_MULTIPLIER = 100;
-
-export interface ExposureLeg {
-  callOI: number;
-  putOI: number;
-}
-
-/**
- * One strike's exposure for a per-contract greek.
- *
- * @param perContract the greek at one contract (same for calls and puts —
- *   all five here are second-or-higher derivatives of price with respect to
- *   S, σ or t, which are identical across rights)
- * @param callSign +1 or −1 — the house's dealer sign for the call side
- */
-export function exposureAt(perContract: number, leg: ExposureLeg, callSign: 1 | -1): { call: number; put: number; net: number } {
-  const call = perContract * leg.callOI * CONTRACT_MULTIPLIER * callSign;
-  const put = perContract * leg.putOI * CONTRACT_MULTIPLIER * -callSign;
-  return { call, put, net: call + put };
-}

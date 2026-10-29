@@ -59,13 +59,13 @@ import type { ExposureProfileData } from '../../types/gex';
 /** Which greek the band draws. The same three the exposure matrix carries. */
 export type BandMetric = 'gex' | 'dex' | 'vex';
 
-export const BAND_METRICS: { key: BandMetric; label: string; unit: string }[] = [
+const BAND_METRICS: { key: BandMetric; label: string; unit: string }[] = [
   { key: 'dex', label: 'Net delta exposure', unit: 'per $1 move' },
   { key: 'gex', label: 'Net gamma exposure', unit: 'per 1% move' },
   { key: 'vex', label: 'Net vega exposure', unit: 'per 1% vol' },
 ];
 
-export interface StrikeExposureBandProps {
+interface StrikeExposureBandProps {
   data: ExposureProfileData;
   metric: BandMetric;
   onMetric?: (m: BandMetric) => void;

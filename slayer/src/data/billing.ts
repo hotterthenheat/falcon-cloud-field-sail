@@ -55,7 +55,7 @@ export const planOf = (key: PlanKey): Plan => PLANS.find(p => p.key === key) ?? 
 
 export type SubscriptionStatus = 'active' | 'past_due' | 'canceled' | 'trialing';
 
-export interface Invoice {
+interface Invoice {
   id: string;
   /** ISO date */
   date: string;
@@ -64,7 +64,7 @@ export interface Invoice {
   status: 'paid' | 'open' | 'void';
 }
 
-export interface Billing {
+interface Billing {
   plan: PlanKey;
   status: SubscriptionStatus;
   /** ISO date: the next charge, or the end of a cancelled term */
@@ -84,7 +84,7 @@ const monthsFrom = (n: number) => {
 };
 
 /** The sample: on Desk for four months, renewing in a month, a Visa on file */
-export const SAMPLE_BILLING: Billing = {
+const SAMPLE_BILLING: Billing = {
   plan: 'desk',
   status: 'active',
   renewsOn: monthsFrom(1),
@@ -133,7 +133,7 @@ export const fmtWhen = (iso: string): string => new Date(iso).toLocaleDateString
 
 /* ---- live calls (Stripe through the project's functions) ---- */
 
-export type BillingOutcome = { ok: true } | { ok: false; why: string };
+type BillingOutcome = { ok: true } | { ok: false; why: string };
 
 /** Stripe's standing, in the page's words */
 export const STATUS_WORD: Record<PlanStatus, string> = {
@@ -192,7 +192,7 @@ const read = (data: CheckoutAnswer | null): CheckoutMade => {
 
 /** A client secret for /checkout to mount Stripe's framed fields (the card never reaches us). An upgrade gets its
     figures instead (confirmUpgrade applies it); the same or a lower plan gets the portal. */
-export async function makeCheckout(plan: PlanKey, period: Period): Promise<CheckoutMade> {
+async function makeCheckout(plan: PlanKey, period: Period): Promise<CheckoutMade> {
   if (!supabase || !BILLING_ON) return { ok: false, why: 'Billing is not switched on yet.' };
   const { data, error } = await supabase.functions.invoke<CheckoutAnswer>('stripe-checkout', { body: { plan, period } });
   if (error) return { ok: false, why: await whyOf(error) };

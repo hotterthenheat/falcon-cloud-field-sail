@@ -556,7 +556,7 @@ function jobsFor(desk: 'pinpoint' | 'dossier', ticker: string, pathname: string)
   return [];
 }
 
-export function vendorKey(desk: 'pinpoint' | 'dossier', ticker: string, pathname: string): string {
+function vendorKey(desk: 'pinpoint' | 'dossier', ticker: string, pathname: string): string {
   const path = pathname.split('?')[0];
   const parts = path.split('/').filter(Boolean);
   const t = routeTicker(path, ticker);

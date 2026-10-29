@@ -9,7 +9,7 @@
 
 import { now } from './clock';
 
-export function hash(seed: string): number {
+function hash(seed: string): number {
   let h = 2166136261;
   for (let i = 0; i < seed.length; i++) {
     h ^= seed.charCodeAt(i);

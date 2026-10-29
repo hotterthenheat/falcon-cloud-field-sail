@@ -161,4 +161,3 @@ export const NewsGuide = () => (
   </div>
 );
 
-export default NewsGuide;

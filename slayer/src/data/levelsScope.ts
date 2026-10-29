@@ -40,16 +40,6 @@ const bump = () => {
 };
 
 export const readLevelsScope = (): LevelsScope => scope;
-export function setLevelsScope(next: LevelsScope): void {
-  if (next === scope) return;
-  scope = next;
-  try {
-    localStorage.setItem(KEY, next);
-  } catch {
-    /* storage off — the choice lives for the session */
-  }
-  bump();
-}
 export const useLevelsScope = (): LevelsScope =>
   useSyncExternalStore(
     fn => {
@@ -79,7 +69,6 @@ export const LEVELS_OPTIONS: DropdownOption<LevelsScope>[] = [
   { value: '0DTE', label: 'Today', hint: "Only contracts that expire today (the next expiry if none do) — the day's walls and flip" },
   { value: 'ALL', label: 'All expiries', hint: 'Every listed expiry added together — the bigger, slower levels' },
 ];
-export const LEVELS_TITLE = "This name's levels. Another name keeps its own.";
 
 /* A NAME KEEPS ITS OWN (the desk used to force one Levels card on every name). The default above is what a name
    uses until it is set. Remembered on this machine. */

@@ -28,7 +28,7 @@ function usePhase(): MarketPhase {
   return phase;
 }
 
-export interface Hold<T> {
+interface Hold<T> {
   paused: boolean;
   toggle: () => void;
   /** `live` while playing; the last live value while paused */

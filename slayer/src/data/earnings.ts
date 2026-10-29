@@ -6,7 +6,6 @@ import { UNIVERSE } from './universe';
 import { SECTOR_UNIVERSE } from './darkpool';
 import { SP500_NYSE } from './sp500';
 import { boardMondayIso, nyTodayIso } from './nyDate';
-import { liveCalendar } from './earningsFeed';
 
 export type ReportSlot = 'BMO' | 'AMC';
 
@@ -159,7 +158,7 @@ export interface EarningsDossier {
 let knownNames: Set<string> | null = null;
 const KNOWN = (): Set<string> => (knownNames ??= new Set<string>([...UNIVERSE.map(u => u.ticker), ...SECTOR_UNIVERSE.flatMap(s => s.tickers), ...SP500_NYSE.map(t => t.symbol)]));
 /** The feed's floor for a name the board shows without being in the S&P: $10B */
-export const KNOWN_CAP_FLOOR = 10_000_000_000;
+const KNOWN_CAP_FLOOR = 10_000_000_000;
 
 export function isKnownName(ticker: string, facts?: { sp500?: boolean; marketCap?: number | null }): boolean {
   const t = ticker.toUpperCase();
@@ -183,6 +182,3 @@ export interface NextReport {
   event: EarningsEvent | null;
 }
 
-/** @deprecated The fortnight's reports as read so far (live, never started here). For one name use
-    earningsFeed.peekNextReport; for a list in a component, earningsFeed.useEarningsCalendar. */
-export const buildEarningsCalendar = (): EarningsEvent[] => liveCalendar();

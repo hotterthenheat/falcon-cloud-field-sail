@@ -7,7 +7,7 @@ import type { TickerListing } from './tickers';
 import { BUNDLED_OPTIONS, BUNDLED_STOCKS } from './listedBundle';
 import { COMPASS_TICKERS } from './compassUniverse';
 
-export type NameRoom = 'equity' | 'option' | 'compass' | 'listed';
+type NameRoom = 'equity' | 'option' | 'compass' | 'listed';
 
 const FEATURED = [
   'SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL',
@@ -158,7 +158,7 @@ export function roomOf(path = typeof location !== 'undefined' ? location.pathnam
 }
 
 /** Compass only. Both SPX and SPXW stay. The cash-index fold does not apply here. */
-export function searchCompass(query: string, limit: number, nameOf: (symbol: string) => string): TickerListing[] {
+function searchCompass(query: string, limit: number, nameOf: (symbol: string) => string): TickerListing[] {
   const q = query.trim().toUpperCase();
   const row = (symbol: string): TickerListing => ({ symbol, name: nameOf(symbol) });
   if (!q) return COMPASS_TICKERS.slice(0, limit).map(row);
@@ -237,7 +237,7 @@ export function searchListed(kind: 'equity' | 'option', query: string, limit: nu
   return [...prefix, ...contains, ...named].slice(0, limit).map(row);
 }
 
-export function listedCount(kind: 'equity' | 'option'): number {
+function listedCount(kind: 'equity' | 'option'): number {
   const set = kind === 'equity' ? stockSet : optionSet;
   let n = 0;
   for (const symbol of set) if (!SAME_AS[symbol]) n += 1;
@@ -249,10 +249,6 @@ export function roomCount(room: NameRoom): number {
   if (room === 'compass') return COMPASS_TICKERS.length;
   if (room === 'listed') return 0;
   return listedCount(room);
-}
-
-export function equitySymbols(): readonly string[] {
-  return stocks;
 }
 
 export function optionSymbols(): readonly string[] {

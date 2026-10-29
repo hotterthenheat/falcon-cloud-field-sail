@@ -6,7 +6,7 @@
 import { pickFlip, pickWalls } from '../core/walls';
 import { bookHistory, ensureBook, peekChange, peekSpot } from './uwBook';
 import type { GexSnapshot } from '../types/market';
-import type { DarkPoolPrint, HeatPatternRead, KeyLevels } from '../types/gex';
+import type { DarkPoolPrint, KeyLevels } from '../types/gex';
 
 // ---- formatting -------------------------------------------------------------
 export function fmtUsd(v: number): string {
@@ -26,63 +26,6 @@ export const fmtGexUsd = (v: number): string => {
   const s = fmtUsd(v);
   return s.startsWith('-') ? `−${s.slice(1)}` : s;
 };
-
-// ---- heat pattern read ------------------------------------------------------
-/** Name the field's configuration in the engine's own vocabulary (Noah,
-    2026-08-18 — the map should say what it means; nobody else's map names
-    the pattern). Deliberately levels-derived, NOT per-cell sign sums: sim
-    cells encode option-side dominance, so raw sign sums would print the
-    same pattern on every book — the flip/wall geometry is the engine's real
-    regime read and it genuinely moves with the tape. Vocabulary is OURS
-    (extract information, never grammar). */
-export function readHeatPattern(levels: KeyLevels): HeatPatternRead {
-  const { spot, flip, callWall, putWall } = levels;
-  const px = (v: number) => v.toFixed(2);
-  const aboveFlip = spot >= flip;
-  const cwPct = ((callWall - spot) / Math.max(spot, 1)) * 100;
-  const pwPct = ((spot - putWall) / Math.max(spot, 1)) * 100;
-  /** Walls this close (%) box price in; a floor past GONE might as well not exist. */
-  const TIGHT = 1.2;
-  const GONE = 2.6;
-  /** Within this (%) of the flip, price is on it, not above or below */
-  const AT_FLIP = 0.05;
-
-  /* ON THE FLIP (the Pinpoint sweep, 2026-10-22): SPY closed 0.04 under a 769.50 flip and the read said "the hedging
-     amplifies moves" beside a book whose net absorbed — a hair either side of the flip is neither regime */
-  if (Math.abs(spot - flip) / Math.max(spot, 1) * 100 < AT_FLIP) {
-    return {
-      key: 'ON THE FLIP',
-      direction: 'RANGE',
-      read: `Sitting on the ${px(flip)} flip — the hedging can tip either way from here; ${px(callWall)} overhead and ${px(putWall)} below are the walls that decide it.`,
-    };
-  }
-  if (aboveFlip && cwPct <= TIGHT && pwPct <= TIGHT) {
-    return {
-      key: 'PINNED',
-      direction: 'RANGE',
-      read: `Absorbing walls at ${px(putWall)} and ${px(callWall)} box price in above the ${px(flip)} flip — dips get bought, rallies get sold, and drift beats trend until one side gives.`,
-    };
-  }
-  if (aboveFlip) {
-    return {
-      key: 'SPRINGBOARD',
-      direction: 'BULLISH',
-      read: `Supportive field above the ${px(flip)} flip — dips into ${px(putWall)} get absorbed and the bounce carries; ${px(callWall)} overhead is the lid to beat.`,
-    };
-  }
-  if (pwPct >= GONE) {
-    return {
-      key: 'WHIPSAW',
-      direction: 'VOLATILE',
-      read: `Below the ${px(flip)} flip with no floor in reach — hedging around price accelerates whichever way price moves, and the nearest shelf sits all the way down at ${px(putWall)}.`,
-    };
-  }
-  return {
-    key: 'TRAPDOOR',
-    direction: 'BEARISH',
-    read: `Below the ${px(flip)} flip the hedging around price amplifies moves, whatever the book nets to — rallies get sold back under the ${px(callWall)} lid, and ${px(putWall)} is the only structure holding under price.`,
-  };
-}
 
 /** Dark-pool prints come from the live tape. This used to hash a few blocks. It does not. */
 export function buildPrints(_ticker: string, _spot: number): DarkPoolPrint[] {

@@ -26,7 +26,7 @@ export interface DeskStore {
   locked?: boolean;
 }
 
-export const DESKS_KEY = 'slayer_desks_v2';
+const DESKS_KEY = 'slayer_desks_v2';
 
 /** A preset cell — the size bounds come from the registry so a template can never break a widget's own floor. */
 const cell = (key: string, x: number, y: number, w: number, h: number, state?: TileState): { inst: WidgetInstance; l: Layout } => {
@@ -45,7 +45,7 @@ const assemble = (cells: { inst: WidgetInstance; l: Layout }[]): SavedWorkspace 
 
 /** The house's desks, in the order the bar shows them — built on first use (the registry and this file name each other) */
 let presets: Record<string, SavedWorkspace> | null = null;
-export const PRESETS = (): Record<string, SavedWorkspace> =>
+const PRESETS = (): Record<string, SavedWorkspace> =>
   (presets ??= {
     /* the range, where it closes and at the wall left the desks with their pages; the three desks that held them
        are refilled with the tiles that stand — where the walls are heading, the targets and the levels */
@@ -70,7 +70,7 @@ export const isPreset = (name: string) => PRESET_NAMES.includes(name);
 
 /** Drop tiles whose widget left the registry; ground off-grid coordinates; and re-apply every widget's size bounds, so
     the rule holds on disk as well as on the grid. */
-export function sanitize(ws: SavedWorkspace): SavedWorkspace {
+function sanitize(ws: SavedWorkspace): SavedWorkspace {
   const instances = (ws.instances ?? []).filter(w => w && widgetByKey(w.key));
   return {
     instances,
@@ -122,7 +122,7 @@ export function saveDesks(store: DeskStore): void {
 
 export const presetTemplate = (name: string): SavedWorkspace | null => (isPreset(name) ? clone(PRESETS()[name]) : null);
 
-export const GRID_COLS = 12;
+const GRID_COLS = 12;
 
 /** Where a new tile lands. Scans rows top-down and columns left-right; at each cell, the biggest size that fits —
     the widget's default first, shrinking toward its minimum when the hole is narrower or shorter. The first cell

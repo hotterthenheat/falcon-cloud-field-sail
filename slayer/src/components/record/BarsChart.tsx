@@ -3,13 +3,13 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-export interface BarSeries {
+interface BarSeries {
   values: (number | null)[];
   width: number;
   fill: (i: number) => string;
   opacity?: (i: number) => number;
 }
-export interface RefLine {
+interface RefLine {
   y: number;
   stroke: string;
   dash?: string;

@@ -1,5 +1,3 @@
-import { pickFlip, pickWalls } from '../core/walls';
-import type { StrikeNode } from '../types/market';
 
 /*
 ==================================================
@@ -49,91 +47,6 @@ import type { StrikeNode } from '../types/market';
   point — the translation layer that makes the page legible to someone who
   does not speak greek.
 */
-
-export interface SpotScenario {
-  /** The hypothetical spot. */
-  at: number;
-  /** Where it moved from. */
-  from: number;
-  callWall: number | null;
-  putWall: number | null;
-  flip: number | null;
-  supreme: number | null;
-  /** Signed dealer flow the move forces, in dollars. Positive = buying. */
-  hedgingFlow: number;
-  /** The whole book's net — the regime the scenario spot would sit in. */
-  netGex: number;
-  regime: 'SHORT' | 'LONG';
-}
-
-/** The strikes the walk crosses, both ends inclusive. */
-function crossed(chain: readonly StrikeNode[], from: number, to: number): StrikeNode[] {
-  const lo = Math.min(from, to);
-  const hi = Math.max(from, to);
-  return chain.filter(n => n.strike >= lo && n.strike <= hi);
-}
-
-/**
- * The book, read at a hypothetical spot.
- *
- * @param chain the CURRENT book — held fixed, see the header
- * @param from  today's spot
- * @param to    the hypothetical
- */
-export function buildSpotScenario(chain: readonly StrikeNode[], from: number, to: number): SpotScenario | null {
-  if (chain.length === 0 || !(from > 0) || !(to > 0)) return null;
-
-  const picked = pickWalls(chain, to, n => n.netGex);
-  const flip = pickFlip(chain, to, n => n.netGex);
-
-  /* The supreme is the whole book's argmax |gamma| — spot-independent, so it is
-     reported rather than recomputed against `to`. A scenario that "moved"
-     the supreme would be inventing a book change. */
-  let supreme: number | null = null;
-  let supremeMag = 0;
-  for (const n of chain) {
-    const m = Math.abs(n.netGex);
-    if (m > supremeMag) {
-      supremeMag = m;
-      supreme = n.strike;
-    }
-  }
-
-  /* Gamma crossed × the fractional move, signed so POSITIVE means dealers
-     must BUY: a put-dominant (positive) book is short gamma and chases, so
-     an up move forces buying and a down move selling; a call-dominant
-     (negative) book leans the other way. The product of the book's sign and
-     the move's direction carries that with no special-casing. */
-  const movePct = (to - from) / from;
-  let gammaCrossed = 0;
-  for (const n of crossed(chain, from, to)) gammaCrossed += n.netGex;
-  const hedgingFlow = gammaCrossed * movePct * 100;
-
-  const netGex = chain.reduce((a, n) => a + n.netGex, 0);
-
-  return {
-    at: to,
-    from,
-    callWall: picked.callWall ?? null,
-    putWall: picked.putWall ?? null,
-    flip,
-    supreme,
-    hedgingFlow,
-    netGex,
-    regime: flip !== null && to >= flip ? 'LONG' : 'SHORT',
-  };
-}
-
-/** The sentence P-18 exists to print. */
-export function flowWords(s: SpotScenario): string {
-  if (s.at === s.from) return 'No move, no forced flow';
-  const dir = s.at > s.from ? 'up' : 'down';
-  const side = s.hedgingFlow >= 0 ? 'buying' : 'selling';
-  const mag = Math.abs(s.hedgingFlow);
-  const dollars =
-    mag >= 1e9 ? `$${(mag / 1e9).toFixed(1)}B` : mag >= 1e6 ? `$${(mag / 1e6).toFixed(0)}M` : `$${(mag / 1e3).toFixed(0)}K`;
-  return `A move ${dir} to ${s.at.toFixed(2)} forces roughly ${dollars} of dealer ${side}`;
-}
 
 /** The assumption the panel must carry — load-bearing, so it is words. */
 export const HEDGING_ASSUMPTION =

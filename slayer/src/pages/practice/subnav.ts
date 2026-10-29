@@ -3,7 +3,7 @@ import { History, LineChart, NotebookPen, type LucideIcon } from 'lucide-react';
 /** PRACTICE's pages — drives the sidebar, the page's head, the palette and the page titles. ONE SECTION: what was
     Paper › Live Chart and Review › Backtest · Journal, under one head — the same engine, the same order card, the
     same chart, on two clocks (today's, and a replayed day's), with ONE journal that reads either book. */
-export interface PracticeSubpage {
+interface PracticeSubpage {
   path: string;
   label: string;
   subtitle: string;

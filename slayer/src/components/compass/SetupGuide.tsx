@@ -145,4 +145,3 @@ export const SetupGuide = ({ odte = true }: { odte?: boolean }) => (
   </div>
 );
 
-export default SetupGuide;

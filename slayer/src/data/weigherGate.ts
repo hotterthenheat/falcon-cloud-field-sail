@@ -54,7 +54,7 @@ export function solveIv(mark: number, spot: number, strike: number, t: number, r
   return (lo + hi) / 2;
 }
 
-export interface BsRead {
+interface BsRead {
   delta: number;
   gamma: number;
   theta: number;
@@ -68,7 +68,7 @@ export interface BsRead {
 }
 
 /** Chance the price touches `barrier` before `t`, under the risk-neutral lognormal walk (the reflection-principle formula). */
-export function touchProb(spot: number, barrier: number, t: number, vol: number, up: boolean, r = WEIGHER_R, q = WEIGHER_Q): number {
+function touchProb(spot: number, barrier: number, t: number, vol: number, up: boolean, r = WEIGHER_R, q = WEIGHER_Q): number {
   if (!(spot > 0) || !(barrier > 0) || !(t > 0) || !(vol > 0)) return NaN;
   if (up && spot >= barrier) return 1;
   if (!up && spot <= barrier) return 1;
@@ -128,7 +128,7 @@ export function bsOnMark(spot: number, strike: number, right: OptionRight, bid: 
   };
 }
 
-export interface GateInput {
+interface GateInput {
   chain: DeskChain;
   contract: DeskContract;
   now?: number;
@@ -142,7 +142,7 @@ export interface GateInput {
   gex?: number | null;
 }
 
-export interface GateRead {
+interface GateRead {
   status: string;
   passed: string[];
   failed: string | null;

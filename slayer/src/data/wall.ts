@@ -23,7 +23,7 @@ export const scopeDateOf = (snapshot: MarketSnapshot): string | null => {
 
 /* The reach odds' horizon and σ: the coming session's 1σ scaled to the minutes left, or for a later expiry the 1σ into
    it over its whole horizon ("by Nov 20"). One rule for the Agenda, the Board, Compare and the corridor. */
-export interface ScopeSigma {
+interface ScopeSigma {
   /** 1σ from now to the horizon, dollars */
   sigmaLeft: number;
   /** One session's 1σ, dollars (the ruler's σ) */
@@ -43,14 +43,13 @@ export function scopeSigma(snapshot: MarketSnapshot, minutesLeft: number, iv: nu
   return { sigmaLeft: left ?? sigmaOverMinutes(sigmaDay, minutesLeft), sigmaDay, horizon: null, words: m?.words ?? '1σ of the 30-day implied vol over one session' };
 }
 
-
 /* ---- the constants, named so they can be calibrated ------------------------------ */
 
 /* A wall's reading is its weight (the strike and its neighbours) against the heaviest wall on the same chain — a size,
    not a probability (the back-test found size does not predict a hold), so the pages say "of the top wall". */
 
 /** Kept for the size factor's words: a wall at this ratio of the typical wall reads as typical */
-export const PAR_RATIO = 1;
+const PAR_RATIO = 1;
 /** Logits per doubling of the wall's weight against the typical wall on its book — the factor list's push only */
 const A_WEIGHT = 1.0;
 /** Logits for a perfect record of holds today (and against for breaks) (back-tested) */
@@ -124,24 +123,6 @@ export interface WallOdds {
   sentence: string;
 }
 
-export interface WallBoard {
-  ticker: string;
-  spot: number;
-  /** Dollars of stock it took to move this name 1% today */
-  marketPer1Pct: number;
-  /** 1σ for the minutes left, dollars */
-  sigmaLeft: number;
-  minutesLeft: number;
-  inSession: boolean;
-  /** Every wall on the book, nearest first */
-  walls: WallOdds[];
-  /** The one in focus — the shared strike when set, else the nearest wall */
-  focus: WallOdds;
-  weakest: number | null;
-  strongest: number | null;
-  sentence: string;
-}
-
 /* ---- helpers --------------------------------------------------------------------- */
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -187,7 +168,7 @@ export function testEvents(bars: readonly Candle[], strike: number, side: WallSi
 }
 
 /** Dollars of stock it took to move price 1% today — today's dollar volume over today's travel */
-export function dollarsPer1Pct(bars: readonly Candle[]): number | null {
+function dollarsPer1Pct(bars: readonly Candle[]): number | null {
   if (bars.length < 5) return null;
   let dollars = 0;
   let travel = 0;
@@ -211,7 +192,7 @@ export function speedRatio(bars: readonly Candle[], iv: number, n = 30): number 
 }
 
 /** Dollars of stock today's option prints hand dealers to buy (positive) or sell — this name's prints only */
-export function printsDemand(snapshot: MarketSnapshot, iv: number): number {
+function printsDemand(snapshot: MarketSnapshot, iv: number): number {
   let up = 0;
   for (const o of snapshot.tape) {
     if (o.ticker !== snapshot.ticker) continue;
@@ -289,9 +270,6 @@ export const pathFlowWords = (side: WallSide, flow: number): string => {
   if (!lean) return '';
   return `${fmtDollars(flow)} of forced dealer ${flow > 0 ? 'buying' : 'selling'} on the way, which ${lean === 'along' ? 'pushes the move along' : 'leans against the move'}`;
 };
-
-/** The put wall in plain words — the most put hedging, and what a short-gamma floor does when it gives */
-export const PUT_WALL_WORDS = 'the most put hedging; dealers are short gamma there — below price it is support while it holds and a break can accelerate; above price it is overhead hedging, not a floor';
 
 function wallOdds(K: number, ctx: Ctx): WallOdds {
   const { spot, strikes, levels, clock } = ctx;
@@ -527,54 +505,4 @@ export const oddsAt = (strike: number, ctx: WallContext): WallOdds => wallOdds(s
 
 /** The shelves each name listed last time — a listed shelf stays while it holds this share of the line */
 const listedShelves = new Map<string, Set<number>>();
-const SHELF_STAY = 0.75;
-
-export function buildWallBoard(
-  snapshot: MarketSnapshot,
-  profile: ExposureProfileData,
-  building: Building,
-  surface: ExposureSurface | null,
-  bars: readonly Candle[],
-  clock: AheadClock,
-  iv: number,
-  focusStrike?: number | null
-): WallBoard {
-  const { ticker, spot } = snapshot;
-  const strikes = profile.strikes; // descending
-  const ctx = buildWallContext(snapshot, profile, building, surface, bars, clock, iv);
-  const { heaviest, marketPer1Pct, sigmaLeft } = ctx;
-
-  /* every shelf that pushes back, plus the named levels, nearest first (a trapdoor is read only when focused) */
-  const set = new Set<number>();
-  /* once listed, a shelf stays while it holds three quarters of the listing line (the book breathes a few percent a bar) */
-  const kept = listedShelves.get(ticker) ?? new Set<number>();
-  for (const s of strikes) {
-    const share = Math.abs(s.gex.net) / Math.max(1, heaviest);
-    if (share >= SHELF_SHARE || (kept.has(s.strike) && share >= SHELF_SHARE * SHELF_STAY)) set.add(s.strike);
-  }
-  for (const k of [profile.levels.callWall, profile.levels.putWall, profile.levels.supreme]) if (strikes.some(s => s.strike === k)) set.add(k);
-  listedShelves.set(ticker, new Set(set));
-  const walls = [...set]
-    .filter(k => Math.abs(k - spot) > 1e-9)
-    .map(k => wallOdds(k, ctx))
-    .filter(w => w.weight > 0)
-    .sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot));
-
-  const focusK = focusStrike != null && strikes.some(s => s.strike === focusStrike) ? focusStrike : null;
-  const focus = focusK != null ? (walls.find(w => w.strike === focusK) ?? wallOdds(focusK, ctx)) : (walls[0] ?? wallOdds(profile.levels.callWall, ctx));
-
-  const reachable = walls.filter(w => w.reach >= 0.15 && w.weight > 0);
-  const weakest = reachable.length ? reachable.reduce((a, b) => (b.hold < a.hold ? b : a)).strike : null;
-  const strongest = reachable.length ? reachable.reduce((a, b) => (b.hold > a.hold ? b : a)).strike : null;
-  const w = walls.find(x => x.strike === weakest);
-  const s = walls.find(x => x.strike === strongest);
-  const sentence =
-    w && s && w.strike !== s.strike
-      ? `The smallest wall in reach is ${fmtStrike(w.strike)}${w.role ? `, the ${w.role}` : ''} (${holdLabel(w.hold)}); the largest is ${fmtStrike(s.strike)}${s.role ? `, the ${s.role}` : ''} (${holdLabel(s.hold)}).`
-      : walls.length
-        ? `${walls.length} wall${walls.length === 1 ? '' : 's'} on the strikes shown, the nearest at ${fmtStrike(walls[0].strike)}.`
-        : 'No wall on the strikes shown.';
-
-  return { ticker, spot, marketPer1Pct, sigmaLeft, minutesLeft: clock.minutesLeft, inSession: clock.inSession, walls, focus, weakest, strongest, sentence };
-}
 

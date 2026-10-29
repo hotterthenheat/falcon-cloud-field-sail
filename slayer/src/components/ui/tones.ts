@@ -7,18 +7,6 @@
    white: bright neutral ink (Compass process states). holo: flat silver for terminal hardware (counts, chrome). */
 export type Tone = 'bull' | 'bear' | 'warn' | 'select' | 'white' | 'crown' | 'supreme' | 'holo' | 'neutral';
 
-export const toneText: Record<Tone, string> = {
-  bull: 'text-bull',
-  bear: 'text-bear',
-  warn: 'text-warn',
-  select: 'text-select',
-  white: 'text-textPrimary',
-  crown: 'text-supreme',
-  supreme: 'text-supreme',
-  holo: 'holo-text',
-  neutral: 'text-textPrimary',
-};
-
 export const toneDot: Record<Tone, string> = {
   bull: 'bg-bull',
   bear: 'bg-bear',
@@ -51,15 +39,3 @@ export const toneBadge: Record<Tone, string> = {
   neutral: 'bg-ink/[0.04] text-textSecondary border-borderSubtle',
 };
 
-export const toneBar: Record<Tone, string> = {
-  // The accent needs its luminance — element-level select never below /90
-  bull: 'bg-bull/90',
-  bear: 'bg-bear/80',
-  warn: 'bg-warn/70',
-  select: 'bg-select/70',
-  white: 'bg-ink/70',
-  crown: 'bg-supreme/90',
-  supreme: 'bg-supreme/70',
-  holo: 'holo-bar',
-  neutral: 'bg-ink/20',
-};

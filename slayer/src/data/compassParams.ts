@@ -12,55 +12,55 @@ export const R = 0.042;
 export const Q = 0;
 export const SESSION_MIN = 390;
 export const YEAR_SESSIONS = 252;
-export const T_EPS = 1e-6;
+const T_EPS = 1e-6;
 
 export const IV_LO = 0.01;
 export const IV_HI = 8;
 export const IV_BISECTS = 60;
 export const IV_FEATURE_MIN = 0.011;
-export const IV_FALLBACK = 0.3;
+const IV_FALLBACK = 0.3;
 
 export const BID_MIN = 0.15;
 export const SPREAD_MAX = 0.08;
-export const SPREAD_EPS = 1e-9;
+const SPREAD_EPS = 1e-9;
 
 export const P1_MIN = 0.7067;
-export const PRUN_MIN = 0.5;
+const PRUN_MIN = 0.5;
 
-export const BOOK_A_STEP = 5;
+const BOOK_A_STEP = 5;
 /** Book A and Book B. Weekdays from the session date, 0 through 7. Book C is same-day only. */
-export const DTE_MIN = 0;
-export const DTE_MAX = 7;
+const DTE_MIN = 0;
+const DTE_MAX = 7;
 
 /** Index roots stay 4 strikes from the money. Every other name uses the 6% span. */
 export const SPAN_INDEX = ['SPXW', 'SPX', 'NDXP', 'NDX', 'XSP', 'RUTW', 'RUT', 'SPY', 'QQQ', 'IWM', 'DIA', 'VOO', 'RSP'] as const;
 export const DRIVE = 0.0035;
-export const REVERSAL = 0.004;
+const REVERSAL = 0.004;
 export const QUOTE_MAX_AGE_MS = 90_000;
 export const SEAT_CAP = 5;
-export const BOOK_B_ASK = 1;
-export const BOOK_B_HALVE = 0.5;
+const BOOK_B_ASK = 1;
+const BOOK_B_HALVE = 0.5;
 export const BOOK_B_LOOKBACK = 30;
 
-export const STOP_HAIRCUT = 0.5322;
+const STOP_HAIRCUT = 0.5322;
 export const STOP_KEEP = 1 - STOP_HAIRCUT;
-export const BE_PEAK = 1.25;
-export const TP1_BID = 1.5;
+const BE_PEAK = 1.25;
+const TP1_BID = 1.5;
 export const TP1_STOP = 1.25;
-export const TP2_BID = 2;
+const TP2_BID = 2;
 export const TP2_STOP = 1.5;
-export const TP3_BID = 3;
+const TP3_BID = 3;
 export const TP3_STOP = 2.25;
-export const TP4_BID = 4;
+const TP4_BID = 4;
 export const TP4_TRAIL = 0.75;
 export const FLAT_T = 385;
 
 export const LOTTERY_ASK_MAX = 1.65;
 export const LOTTERY_CAP = 5;
-export const LOTTERY_X3_SEC = 120;
-export const LOTTERY_X2_SEC = 30;
-export const LOTTERY_X3 = 3;
-export const LOTTERY_X2 = 2;
+const LOTTERY_X3_SEC = 120;
+const LOTTERY_X2_SEC = 30;
+const LOTTERY_X3 = 3;
+const LOTTERY_X2 = 2;
 
 /** Open interest, net gamma, and the two walls. Everyone else is NaN. */
 export const GEX_CORE = ['SPXW', 'NVDA', 'SPY', 'QQQ', 'NDXP', 'IWM', 'TSLA', 'META', 'XSP', 'AVGO', 'MSFT', 'AAPL', 'TLT', 'RUTW', 'AMZN', 'SLV', 'GOOGL', 'GLD', 'SMH', 'XLF'] as const;
@@ -70,7 +70,7 @@ export const NO_SAME_DAY = ['SPX', 'NDX', 'RUT', 'VIX'] as const;
 export const DO_NOT_REQUEST: readonly string[] = [];
 
 /** SPXW reads SPX. NDXP reads NDX. RUTW reads RUT. XSP reads XSP. */
-export const PRINT_OF: Record<string, string> = { SPXW: 'SPX', NDXP: 'NDX', RUTW: 'RUT' };
+const PRINT_OF: Record<string, string> = { SPXW: 'SPX', NDXP: 'NDX', RUTW: 'RUT' };
 
 export const CLS_INDEX = ['SPXW', 'SPX', 'NDXP', 'NDX', 'XSP', 'RUTW', 'RUT', 'SPY', 'QQQ', 'IWM', 'DIA', 'VOO', 'RSP'] as const;
 /** NVDA is 1. META is 0. The old LLY/BKNG list is not this. */
@@ -84,17 +84,13 @@ export const UNVALIDATED_WORD = 'Unvalidated';
 export const UNVALIDATED_LINE = 'Unvalidated model: the live inputs have not yet been re-checked against the training data.';
 export const MODEL_2_NAME = 'Model 2';
 
-export function lockReason(): string {
-  return 'Model 1 and Model 2 are not loaded. Scoring is closed until the files match their hashes.';
-}
-
 export function printOf(root: string): string {
   return PRINT_OF[root] ?? root;
 }
 
 /** Every 5 minutes while an option tape is open, plus the last minute before a 0 DTE stop.
  *  09:29 is VIX. 15:59 is a 16:00 stop. 16:14 is a 16:15 stop. The halt sends nothing else. */
-export function scanMark(minuteOfDay: number): boolean {
+function scanMark(minuteOfDay: number): boolean {
   if (minuteOfDay === 9 * 60 + 29) return true;
   if (minuteOfDay === 15 * 60 + 59) return true;
   if (minuteOfDay === 16 * 60 + 14) return true;
@@ -248,7 +244,7 @@ export function runnerFlag(prun: number): boolean {
 }
 
 /** Hard stop. Later ratchets only move it up. */
-export function hardStop(entryAsk: number): number {
+function hardStop(entryAsk: number): number {
   return entryAsk * STOP_KEEP;
 }
 
@@ -293,11 +289,6 @@ export function lotteryExit(entryAsk: number, bid: number, seconds: number): { w
 
 export function lotteryEntry(bid: number, ask: number): boolean {
   return bid > BID_MIN && ask > 0 && ask <= LOTTERY_ASK_MAX && ask >= bid && spreadPass(bid, ask);
-}
-
-/** 09:30 through 16:00 ET, t = minutes after 09:30. The close itself is outside. */
-export function inSession(minuteOfDay: number): boolean {
-  return minuteOfDay >= 9 * 60 + 30 && minuteOfDay < 16 * 60;
 }
 
 /** Book C. 15:20:00 through 15:49:59 ET. */

@@ -18,10 +18,8 @@ export interface Box {
   y1: number;
 }
 export const box = (x0: number, y0: number, x1: number, y1: number): Box => ({ x0, y0, x1, y1 });
-export const grow = (b: Box, mx: number, my = mx): Box => ({ x0: b.x0 - mx, x1: b.x1 + mx, y0: b.y0 - my, y1: b.y1 + my });
-export const within = (b: Box, x: number, y: number, m = 0) => x >= b.x0 - m && x <= b.x1 + m && y >= b.y0 - m && y <= b.y1 + m;
-export const meets = (a: Box, b: Box) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
-export const union = (list: (Box | null | undefined)[]): Box | null => {
+const meets = (a: Box, b: Box) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+const union = (list: (Box | null | undefined)[]): Box | null => {
   let out: Box | null = null;
   for (const b of list) {
     if (!b) continue;
@@ -53,8 +51,6 @@ export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b
 /** smoothstep */
 export const ease = (t: number) => t * t * (3 - 2 * t);
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-/** a whole coarse pixel */
-export const snap = (v: number) => Math.round(v / PIX) * PIX;
 
 /* ---- THE INKS --------------------------------------------------------------------------------------------------- */
 
@@ -303,11 +299,6 @@ export const hair = (b: Brush, x0: number, x1: number, y: number, segs: [number,
   if (b.sharp) return b.c.fillRect(x0, Math.round(y) - 0.5, x1 - x0, 1);
   for (const [a, e] of segs) if (b.r() < share) b.c.fillRect(a, y - 1, e - a, 2);
 };
-/** a line down: sharp, a hairline; broken, pieces of it */
-export const hairDown = (b: Brush, x: number, y0: number, y1: number, share = 0.4) => {
-  if (b.sharp) return b.c.fillRect(Math.round(x) - 0.5, y0, 1, y1 - y0);
-  for (let y = y0 + b.r() * 8; y < y1; y += 6 + b.r() * 18) if (b.r() < share) b.c.fillRect(x - 1, y, 2, Math.min(y1 - y, 3 + b.r() * 12));
-};
 
 /** a bar (a strike's, a row's): sharp, whole; broken, a piece or two of itself, or gone (fill style set by the caller) */
 export const bar = (b: Brush, x: number, y: number, w: number, h: number, share = 0.45) => {
@@ -409,14 +400,6 @@ export const tag = (b: Brush, x: number, y: number, word: string, o: { edge: str
   type(b, word, x + 5, y + 0.5, { size: o.size ?? 8.5, hue: o.wordInk ?? o.edge, share: 0.55 });
   return w;
 };
-export const ring = (b: Brush, x: number, y: number, r: number, hue: string, a = 0.9, width = 1.5) => {
-  const { c } = b;
-  c.strokeStyle = rgb(hue, a);
-  c.lineWidth = width;
-  c.beginPath();
-  c.arc(x, y, r, 0, Math.PI * 2);
-  c.stroke();
-};
 /** a run of words as the broken screen keeps them: blocks the length of words, a line of text gone to marks */
 export const prose = (b: Brush, x: number, y: number, w: number, o: { hue?: string; a?: number; h?: number; share?: number; seed: number }) => {
   const r = rng(o.seed);
@@ -431,12 +414,11 @@ export const prose = (b: Brush, x: number, y: number, w: number, o: { hue?: stri
 
 /* ---- THE WALK --------------------------------------------------------------------------------------------------- */
 
-export interface Step {
+interface Step {
   val: number;
   vol: number;
   jit: number;
 }
-export type Walk = ReturnType<typeof walk>;
 /** THE WALK: a value with momentum, leaning back to where it began, a step every `step` ms and `gap` px apart, its newest
     step at the band's right end; its height eased after its range so it never jumps */
 export const walk = (seed: number, o: { step?: number; gap?: number; lean?: number; kick?: number; spike?: number; drift?: number } = {}) => {

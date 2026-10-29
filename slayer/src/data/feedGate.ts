@@ -26,7 +26,7 @@ if (supabase) {
   });
 }
 
-export type FeedHeaders = { ok: true; headers: Record<string, string> } | { ok: false; code: 'closed' | 'signed_out' };
+type FeedHeaders = { ok: true; headers: Record<string, string> } | { ok: false; code: 'closed' | 'signed_out' };
 
 /** The headers a proxy call needs, or why it must not be made. */
 export async function feedHeaders(): Promise<FeedHeaders> {

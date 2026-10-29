@@ -23,10 +23,6 @@ export function noteThetaDraw(ticker: string, on: boolean): void {
   else drawn.delete(t);
 }
 
-export function usingThetaCandles(ticker: string): boolean {
-  return drawn.has(ticker.toUpperCase());
-}
-
 export function thetaCandles(ticker: string): Candle[] | null {
   return cache.get(ticker.toUpperCase()) ?? null;
 }

@@ -163,9 +163,9 @@ export function buildTraceSide(
 }
 
 /** A name in the sentence — the page makes it a door */
-export type SentencePart = string | { name: string };
+type SentencePart = string | { name: string };
 
-export interface TraceCompare {
+interface TraceCompare {
   a: TraceSide;
   b: TraceSide;
   /** The name whose money leans the more bullish */

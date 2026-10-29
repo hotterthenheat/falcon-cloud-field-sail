@@ -4,7 +4,7 @@
 
 import { FUT_PRODUCTS, frontContractOf, onTick, type FutProduct } from '../review/futuresTape';
 
-export interface PaperFutProduct extends FutProduct {
+interface PaperFutProduct extends FutProduct {
   /** The fund it is priced off, the index's ratio to it, and the fixed carry in index points */
   fund: string;
   ratio: number;
@@ -41,10 +41,12 @@ export const PAPER_INDEXES: PaperIndex[] = [
 const INDEX_BY_SYMBOL = new Map(PAPER_INDEXES.map(x => [x.symbol, x]));
 export const isPaperIndex = (symbol: string): boolean => INDEX_BY_SYMBOL.has(symbol.toUpperCase());
 export const paperIndex = (symbol: string): PaperIndex | null => INDEX_BY_SYMBOL.get(symbol.toUpperCase()) ?? null;
+/** The index made from a price of its fund: fund × ratio, to the cent */
+export const indexOfFund = (x: PaperIndex, fund: number): number => Math.round(fund * x.ratio * 100) / 100;
 export const isPaperFuture = (symbol: string): boolean => BY_SYMBOL.has(symbol.toUpperCase());
 export const paperFut = (symbol: string): PaperFutProduct => BY_SYMBOL.get(symbol.toUpperCase()) ?? PAPER_FUTURES[0];
 /** A micro is a tenth of its big contract — what an evaluation's contract count reads */
-export const isMicro = (symbol: string): boolean => /^M(ES|NQ|2K)$/.test(symbol.toUpperCase());
+const isMicro = (symbol: string): boolean => /^M(ES|NQ|2K)$/.test(symbol.toUpperCase());
 /** Big contracts a position of this many is, for an evaluation's cap: ten micros are one */
 export const bigOf = (symbol: string, qty: number): number => (isMicro(symbol) ? qty / 10 : qty);
 /** The front month on a trading day ("ESZ6") */

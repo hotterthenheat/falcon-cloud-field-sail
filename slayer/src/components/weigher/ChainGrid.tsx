@@ -16,7 +16,7 @@ import type { OptionRight } from '../../types/compass';
 export const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 const grouped = (v: number, digits: number) => v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 /** Whole counts with commas. A missing count stays blank — never a zero that was not sent. */
-export const fmtCount = (v: number) => (Number.isFinite(v) ? Math.round(v).toLocaleString('en-US') : '—');
+const fmtCount = (v: number) => (Number.isFinite(v) ? Math.round(v).toLocaleString('en-US') : '—');
 const money = (v: number) => (Number.isFinite(v) ? `$${grouped(v, 2)}` : '—');
 const signedMoney = (v: number) => (Number.isFinite(v) ? `${v >= 0 ? '+' : '-'}$${grouped(Math.abs(v), 2)}` : '—');
 const signedPct = (v: number, dp = 1) => (Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${grouped(v, dp)}%` : '—');
@@ -491,7 +491,6 @@ export const ChainCard = memo(function ChainCard({
   );
 });
 
-
 /** One labeled figure in the drilldown - silver label, bright number. */
 export const StatCell = ({ label, value, term, ink }: { label: string; value: string; term?: string; ink?: string }) => (
   <span className="flex flex-col gap-0.5 min-w-0">
@@ -505,7 +504,7 @@ export const StatCell = ({ label, value, term, ink }: { label: string; value: st
 /** The weigh-up's two sections — Stats and The Greeks — shared verbatim by the desk's Strike card and Pulse's
     inline drilldown, so the two surfaces can never drift apart. A fragment on purpose: hosts that SPREAD the
     sections (justify-evenly) need them as direct children. */
-export const WeighGrids = ({ c }: { c: DeskContract }) => (
+const WeighGrids = ({ c }: { c: DeskContract }) => (
   <>
         <div className="flex flex-col gap-2">
           <span className="font-mono text-t9 font-bold uppercase tracking-widest text-textSecondary">Stats</span>

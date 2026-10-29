@@ -11,7 +11,7 @@ import { thetaCall } from './theta';
 const INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
 const UNDER: Record<string, string> = { SPXW: 'SPX', RUTW: 'RUT', XSP: 'SPX' };
 
-export interface TerrainTape {
+interface TerrainTape {
   bars: Candle[];
   spot: number;
   prev: number;
@@ -27,7 +27,7 @@ function emit(): void {
   listeners.forEach(fn => fn());
 }
 
-export function terrainRoot(ticker: string): string {
+function terrainRoot(ticker: string): string {
   return UNDER[ticker] ?? ticker;
 }
 
@@ -176,15 +176,11 @@ function arm(symbol: string): void {
 }
 
 /** Ask for yesterday and today, and the live print every second, ahead of the scan. */
-export function ensureTerrain(ticker: string): void {
+function ensureTerrain(ticker: string): void {
   arm(terrainRoot(ticker));
 }
 
-export function terrainTape(ticker: string): TerrainTape | null {
-  return tapes.get(terrainRoot(ticker)) ?? null;
-}
-
-export function subscribeTerrain(fn: () => void): () => void {
+function subscribeTerrain(fn: () => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }

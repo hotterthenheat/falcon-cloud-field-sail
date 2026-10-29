@@ -5,7 +5,7 @@
 import type { Time, TickMarkFormatter } from 'lightweight-charts';
 import { now } from './clock';
 
-export const NY_TZ = 'America/New_York';
+const NY_TZ = 'America/New_York';
 /** The cash session, in minutes since New York's midnight */
 export const SESSION_OPEN_MIN = 9 * 60 + 30;
 export const SESSION_CLOSE_MIN = 16 * 60;
@@ -18,7 +18,7 @@ const two = (n: number) => String(n).padStart(2, '0');
 export type At = Date | number;
 const ms = (at: At | undefined): number => (at === undefined ? now().getTime() : typeof at === 'number' ? at : at.getTime());
 
-export interface NyParts {
+interface NyParts {
   year: number;
   /** 1–12 */
   month: number;
@@ -57,40 +57,13 @@ export const nyMinutes = (at?: At): number => {
   return p.hour * 60 + p.minute;
 };
 
-const CT_TZ = 'America/Chicago';
-let ctFmt: Intl.DateTimeFormat | null = null;
 const ctByMinute = new Map<number, NyParts>();
-/** The same instant, read in Central time. Display only — the session is still New York's. */
-export function ctParts(at?: At): NyParts {
-  const t = ms(at);
-  const minute = Math.floor(t / 60_000);
-  let p = ctByMinute.get(minute);
-  if (!p) {
-    ctFmt ??= new Intl.DateTimeFormat('en-US', { timeZone: CT_TZ, hourCycle: 'h23', weekday: 'short', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' });
-    const r: Record<string, string> = {};
-    for (const x of ctFmt.formatToParts(new Date(minute * 60_000))) if (x.type !== 'literal') r[x.type] = x.value;
-    p = { year: Number(r.year), month: Number(r.month), day: Number(r.day), hour: Number(r.hour) % 24, minute: Number(r.minute), second: 0, weekday: WEEKDAYS.indexOf(r.weekday) };
-    if (ctByMinute.size > 5000) ctByMinute.clear();
-    ctByMinute.set(minute, p);
-  }
-  const second = Math.floor((t - minute * 60_000) / 1000);
-  return second === 0 ? p : { ...p, second };
-}
 
 /** New York's clock, 24-hour: "14:03", "14:03:42" with seconds, "14:03 ET" with the zone. */
 export function nyClock(at?: At, opts: { seconds?: boolean; zone?: boolean } = {}): string {
   const p = nyParts(at);
   const s = `${two(p.hour)}:${two(p.minute)}${opts.seconds ? `:${two(p.second)}` : ''}`;
   return opts.zone ? `${s} ET` : s;
-}
-
-/** The desk's local clock, Central and 12-hour: "1:03 PM", "1:03:42 PM CT" — display only, never session math. */
-export function deskClock(at?: At, opts: { seconds?: boolean; zone?: boolean } = {}): string {
-  const p = ctParts(at);
-  const h = p.hour % 12 || 12;
-  const ap = p.hour < 12 ? 'AM' : 'PM';
-  const s = `${h}:${two(p.minute)}${opts.seconds ? `:${two(p.second)}` : ''} ${ap}`;
-  return opts.zone ? `${s} CT` : s;
 }
 
 /** "Oct 9", or "Fri Oct 9" with the weekday — the one date style */
@@ -192,9 +165,3 @@ export const nyTimeFormatter = (time: Time): string => {
   return typeof time === 'number' ? `${day}, ${hm(p)}` : day;
 };
 
-/** Spread into createChart's options (or applyOptions): `createChart(el, { ...NY_CHART_TIME, ... })`. A chart that sets
-    its own `localization` or `timeScale` merges these into them instead. */
-export const NY_CHART_TIME = {
-  localization: { timeFormatter: nyTimeFormatter },
-  timeScale: { tickMarkFormatter: nyTickMarks },
-} as const;

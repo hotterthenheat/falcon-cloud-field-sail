@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, SlidersHorizontal } from 'lucide-react';
 
-export interface ChooserColumn {
+interface ChooserColumn {
   key: string;
   label: string;
   group?: string;

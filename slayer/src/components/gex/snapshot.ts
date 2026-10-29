@@ -25,7 +25,7 @@
 import { FONT_SANS } from '../../theme/fonts';
 import { readToken } from '../../theme/theme';
 
-export interface SnapshotMeta {
+interface SnapshotMeta {
   ticker: string;
   /** "15m" */
   timeframe: string;

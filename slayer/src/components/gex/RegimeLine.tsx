@@ -35,7 +35,7 @@ const RULER_OPTIONS: DropdownOption<DistanceUnit>[] = [
 ];
 
 /** The sentence, from the one source of levels — null while they are provisional. Hover only. */
-export function regimeSentence(lv: TickerLevels | null): { lead: string; rest: string; tone: 'LONG' | 'SHORT' } | null {
+function regimeSentence(lv: TickerLevels | null): { lead: string; rest: string; tone: 'LONG' | 'SHORT' } | null {
   if (!lv || !lv.complete || !lv.regime) return null;
   const t = lv.ticker;
   const flip = lv.flip;

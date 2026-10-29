@@ -6,9 +6,9 @@ import { Block, ChartGround, Facts, Line, SubLine, TitleRow, Trigger } from '../
 import { TRACE_SUBPAGES } from './subnav';
 
 /** The rest of the first screen under the box's head: above the fold the stand-in and the page are the same shape. */
-export const TRACE_GRID_H = 'calc(100vh - 247px)';
+const TRACE_GRID_H = 'calc(100vh - 247px)';
 /** Intervals carries the day strip above its box: 62px and the gap */
-export const WINDOWS_GRID_H = 'calc(100vh - 321px)';
+const WINDOWS_GRID_H = 'calc(100vh - 321px)';
 
 /* Compare's shape: the page and its stand-in read these */
 /** The card's three columns: the first name's figure · the fact and its note · the second name's */
@@ -22,7 +22,7 @@ export const CMP_LIST_ROW_H = 39;
 /** How many of a name's contracts and structures the lists show */
 export const CMP_LISTED = 6;
 /** The card's sections and their rows — the page draws exactly these */
-export const CMP_SECTIONS: { title: string; rows: number }[] = [
+const CMP_SECTIONS: { title: string; rows: number }[] = [
   { title: 'Net flow', rows: 4 },
   { title: 'Same-day money', rows: 3 },
   { title: 'The book', rows: 8 },
@@ -37,12 +37,12 @@ export const CMP_SECTIONS: { title: string; rows: number }[] = [
 export const DP_STRIP_HEAD_H = 26;
 export const DP_SHELF_H = 68;
 /** The engine's shelves per name */
-export const DP_SHELVES = 6;
+const DP_SHELVES = 6;
 
 /* ---- the head ------------------------------------------------------------------ */
 
 /** The shell's head as itself: the page's icon and name over its line */
-export const TraceStripSkeleton = ({ pathname }: { pathname: string }) => {
+const TraceStripSkeleton = ({ pathname }: { pathname: string }) => {
   const active = TRACE_SUBPAGES.find(p => pathname.startsWith(p.path)) ?? TRACE_SUBPAGES[0];
   const PageIcon = active.icon;
   return (
@@ -81,7 +81,7 @@ const GridWindow = ({ cols, rows, gridH }: { cols: number; rows: number; gridH: 
 );
 
 /** A walked page standing: the head with its facts, one line of cards (the hold 31px, the cards 28 — the line is 39), the sentence, then the page's body — the grid in its window unless the page brings its own */
-export const TraceBoxSkeleton = ({
+const TraceBoxSkeleton = ({
   title = 80,
   facts = [150, 110, 50, 140, 140, 140],
   triggers = [70, 170, 118, 96, 96, 118, 128, 118],

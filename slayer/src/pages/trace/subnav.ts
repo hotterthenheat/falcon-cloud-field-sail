@@ -1,7 +1,7 @@
 import { Radio, Bookmark, SlidersHorizontal, Footprints, Eye, EyeOff, Clock, Zap, Layers, Scale, Columns2, type LucideIcon } from 'lucide-react';
 
 /** Trace subpage registry: drives the sidebar tree and the command palette. */
-export interface TraceSubpage {
+interface TraceSubpage {
   path: string;
   label: string;
   subtitle: string;

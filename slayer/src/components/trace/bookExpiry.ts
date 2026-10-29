@@ -5,19 +5,19 @@ import { useCallback, useMemo, useState } from 'react';
 import { expiryAt, isoDate, type Expiry } from '../../core/calendar';
 
 /** MM/DD/YYYY (the tape's and the book's spelling) → a local Date */
-export function parseBookExpiry(s: string): Date | null {
+function parseBookExpiry(s: string): Date | null {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
   if (!m) return null;
   return new Date(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
 }
 
 /** MM/DD/YYYY → YYYY-MM-DD, the calendar's key */
-export function bookExpiryIso(s: string): string | null {
+function bookExpiryIso(s: string): string | null {
   const d = parseBookExpiry(s);
   return d ? isoDate(d) : null;
 }
 
-export interface ExpiryCut<T> {
+interface ExpiryCut<T> {
   /** The chosen expiry, YYYY-MM-DD; null = every expiry */
   expiry: string | null;
   setExpiry: (iso: string | null) => void;

@@ -167,8 +167,9 @@ const legB = quoteAt({ ...long, strike: spread.short }, day, 25);
 const sqd = quoteAt(spread, day, 25);
 ok('a spread is quoted at its natural prices: ask = bought ask − sold bid, bid = bought bid − sold ask', near(sqd.ask, legA.ask - legB.bid) && near(sqd.bid, legA.bid - legB.ask) && sqd.bid < sqd.ask, `${sqd.bid} / ${sqd.ask}`);
 ok('it is never worth more than its width, wherever the name goes', quoteWith(spread, day, 25, 9999).ask <= width + 1e-9 && quoteWith(spread, day, 25, 1).bid === 0);
-/* a spread's bid rises with the name and then falls away deep in the money: the level for a price is the NEAREST crossing */
-const wide = { ...spyCall, short: sc.rows[0].strike };
+/* a spread's bid rises with the name and then falls away deep in the money: the level for a price is the NEAREST crossing.
+   Struck at minute 25's money: one struck at minute 10 can already be in the money, where its bid tops out under +0.20. */
+const wide = { ...spyCall, strike: sc25.rows[3].strike, short: sc25.rows[0].strike };
 const wantBid = +(quoteAt(wide, day, 25).bid + 0.2).toFixed(2);
 const lvl = spotForBid(wide, day, 25, wantBid);
 ok('where the name must stand for a spread to bid a little more: found, just above where it stands, and true', lvl != null && lvl > spotAt('SPY', day, 25) && lvl < spotAt('SPY', day, 25) * 1.02 && near(quoteWith(wide, day, 25, lvl).bid, wantBid, 0.02), `${contractWords(wide)} ${wantBid} → SPY ${lvl}`);

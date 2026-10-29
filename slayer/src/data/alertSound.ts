@@ -1,6 +1,6 @@
 const KEY = 'slayer_alert_sound';
 
-export function alertSoundOn(): boolean {
+function alertSoundOn(): boolean {
   try {
     return localStorage.getItem(KEY) === '1';
   } catch {

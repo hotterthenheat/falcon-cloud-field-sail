@@ -256,7 +256,7 @@ const fmtNum = (v: number): string => (Number.isNaN(v) ? 'NaN' : Number.isIntege
 const tuple = (items: Value[]): Tuple => ({ tuple: items });
 
 /** Positional and named arguments into a map by parameter name */
-export function bind(callee: string, args: CallArg[], line: number): Record<string, Value> {
+function bind(callee: string, args: CallArg[], line: number): Record<string, Value> {
   const names = SIG[callee];
   const out: Record<string, Value> = {};
   if (!names) {

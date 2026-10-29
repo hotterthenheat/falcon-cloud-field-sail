@@ -7,7 +7,7 @@ import { carryFor } from '../core/carry';
 import { tradingMinutesBetween, tradingYears } from '../core/tradingYear';
 import { vendorIvOnTradingClock } from '../core/volClock';
 import { cumulativeFlip, dollarGammaPerContract, netGammaAt, quietLegs, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
-import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../core/nyTime';
+import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
 import { bookCandles, ownIvDates, peekEntry, peekGammaPriced } from './uwBook';
 import { registeredDates } from './chainDates';
@@ -110,7 +110,7 @@ const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, n
 
 /** The last regular session's 4:00 ET close, as an instant — the clock a closed market's book is priced at when the
     vendor's own pricing minute is not in hand */
-export function lastCloseAt(now: number = Date.now()): number {
+function lastCloseAt(now: number = Date.now()): number {
   const iso = nyIsoDate(now);
   const [y, m, d] = iso.split('-').map(Number);
   const todayClose = nyWallTime(y, m, d, 16, 0);
@@ -139,7 +139,7 @@ function priceAtMinute(ticker: string, at: number): number | null {
   return b && b.open > 0 ? b.open : null;
 }
 
-export interface LevelFlip extends FlipRead {
+interface LevelFlip extends FlipRead {
   /** False while some of the scope's expiries have not landed — the flip is then provisional */
   complete: boolean;
   /** Another price where the profile crosses zero inside the range, nearest the flip — null when it crosses once */
@@ -257,7 +257,7 @@ const cache = new Map<string, LevelFlip>();
 /** A chain's content as a short hash (memoised per array): the flip re-prices only when its inputs change, not on
     every refresh of the same rows. */
 const sigMemo = new WeakMap<readonly StrikeNode[], string>();
-export function chainSig(chain: readonly StrikeNode[] | undefined): string {
+function chainSig(chain: readonly StrikeNode[] | undefined): string {
   if (!chain) return '-';
   const hit = sigMemo.get(chain);
   if (hit) return hit;
@@ -427,26 +427,6 @@ export const regimeOfNet = (houseNet: number): 'LONG' | 'SHORT' | null => (house
 
 const fmtK = (v: number) => (Math.abs(v - Math.round(v)) < 1e-9 ? v.toFixed(0) : v.toFixed(2));
 
-/** The flip in a reader's words: "766.10" — or "no flip nearby" with what the book is across the whole range */
-export function flipWords(read: Pick<FlipRead, 'flip' | 'netAtSpot' | 'range'>): string {
-  if (read.flip != null) return fmtK(read.flip);
-  const pct = Math.round(read.range * 100);
-  return read.netAtSpot < 0 ? `no flip within ±${pct}% — dealers are long gamma across the whole range` : read.netAtSpot > 0 ? `no flip within ±${pct}% — dealers are short gamma across the whole range` : 'no flip nearby';
-}
-
-/** The short form for a cell: the flip, or "none nearby" */
-export const flipShort = (read: Pick<FlipRead, 'flip'>): string => (read.flip != null ? fmtK(read.flip) : 'none nearby');
-
-/** What the flip means here, one sentence: which side is which on THIS book */
-export function flipMeaning(read: Pick<FlipRead, 'flip' | 'netAtSpot' | 'range'>, spot: number): string {
-  if (read.flip == null) return flipWords(read);
-  const long = read.netAtSpot < 0;
-  const dir = read.flip > spot ? 'above' : 'below';
-  return long
-    ? `Dealers are long gamma here (their hedging absorbs moves); a move ${dir} ${fmtK(read.flip)} turns them short gamma, and their hedging starts to amplify moves.`
-    : `Dealers are short gamma here (their hedging amplifies moves); a move ${dir} ${fmtK(read.flip)} turns them long gamma, and their hedging starts to absorb moves.`;
-}
-
 /** Which side of the flip absorbs on THIS book: the side price is on wears the regime of the net, the far side the other. */
 export function flipSidesWords(flip: number, spot: number, houseNet: number): string {
   const long = houseNet < 0;
@@ -467,7 +447,7 @@ export const BELL_NONE_TITLE = (ticker: string): string => `Nothing on ${ticker}
 
 /* ---- the book in one sentence, on the one regime rule ----------------------------------------------------------- */
 
-export interface RegimeRead {
+interface RegimeRead {
   key: 'ON THE FLIP' | 'PINNED' | 'ABSORBING' | 'WHIPSAW' | 'AMPLIFYING';
   read: string;
 }

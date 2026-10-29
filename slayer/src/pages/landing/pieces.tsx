@@ -7,7 +7,7 @@ import { AnimatePresence, motion, useMotionValueEvent, useReducedMotion, useScro
 import { ArrowRight, ChevronDown, Menu, Moon, Sun, X } from 'lucide-react';
 import { useLaunch } from '../../components/layout/LaunchTransition';
 import { MorphingInfinity, useWorking } from '../../components/ui/Working';
-import { DOOR, START, doorTo } from '../../data/openDoor';
+import { DOOR, doorTo } from '../../data/openDoor';
 import { useBlockGround, useGround, type Ground } from './ground';
 import { themeIntent } from './films';
 import PageGlyph, { type GlyphName } from '../../components/ui/PageGlyph';
@@ -17,7 +17,7 @@ import Wordmark from '../../brand/Wordmark';
 export const MAIL = 'info@slayerterminal.com';
 /** Where every door into the terminal lands — data/openDoor.ts (the start page, every time, unless Settings › The
     desk › Opens on › Page names another; read at the click). Re-exported so the landing's pages keep one import. */
-export { DOOR, START, doorTo };
+export { DOOR, doorTo };
 /* The bar's three words. "Products" opens the menu of every product; Pricing and Questions are this page's own
    sections. */
 const NAV: { label: string; href: string }[] = [
@@ -30,7 +30,7 @@ const hrefOf = (hash: string, home: boolean) => (home ? hash : `/${hash}`);
 /* Every product, one line each — the Products menu. The groups are the terminal's rail's (layout/nav.ts), in its
    order; a pick opens that page in the terminal. The lines are written for this menu, each read against the
    terminal as it stands. Alerts is not on the menu: it is a drawer over every page of the terminal, not a product. */
-export interface Product {
+interface Product {
   name: string;
   glyph: GlyphName;
   line: string;
@@ -39,7 +39,7 @@ export interface Product {
       launch the terminal at their page. */
   page?: string;
 }
-export const PRODUCT_GROUPS: { caption: string; products: Product[] }[] = [
+const PRODUCT_GROUPS: { caption: string; products: Product[] }[] = [
   {
     caption: 'Home',
     products: [
@@ -75,7 +75,6 @@ export const PRODUCT_GROUPS: { caption: string; products: Product[] }[] = [
     ],
   },
 ];
-
 
 export const Wrap = ({ children, className = '' }: { children: ReactNode; className?: string }) => <div className={`mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-10 ${className}`}>{children}</div>;
 
@@ -209,7 +208,7 @@ export const useDoorSeen = (): boolean => {
 /** The products menu: the groups in the rail's order, each product beside its icon (small, bare) with its one line.
     On a desk the groups flow in two columns; on a phone they are names in one column, no lines. Its foot is the
     door to "Every page, by room" further down the page. */
-export const ProductsMenu = ({ onPick, onEvery, compact = false }: { onPick: (p: Product) => void; onEvery: () => void; compact?: boolean }) => (
+const ProductsMenu = ({ onPick, onEvery, compact = false }: { onPick: (p: Product) => void; onEvery: () => void; compact?: boolean }) => (
   <div>
     <div className={compact ? 'flex flex-col' : 'columns-2 gap-x-10'} data-landing-products>
       {PRODUCT_GROUPS.map(g => (

@@ -27,9 +27,9 @@ import {
   type UwShort,
 } from './whales';
 
-export type FileStatus = 'loading' | 'live' | 'error';
+type FileStatus = 'loading' | 'live' | 'error';
 
-export interface StockCard {
+interface StockCard {
   ticker: string;
   name: string;
   sector: string;
@@ -330,7 +330,7 @@ function ensureHouse(slug: string): void {
 
 /* The largest houses first: the first INST_FIRST by reported value are read on open, the rest only when the reader
    goes further (a page, a house, a filter or a window), ten at a time. */
-export const INST_FIRST = 10;
+const INST_FIRST = 10;
 let instMore: (() => void) | null = null;
 let instWanted = false;
 /** Read the houses the book is holding back */
@@ -845,7 +845,7 @@ async function pullStocks() {
 
 const cardInflight = new Set<string>();
 
-export function ensureStockCard(ticker: string): void {
+function ensureStockCard(ticker: string): void {
   const t = ticker.toUpperCase();
   if (!t || cardInflight.has(t) || t in snap.cards) return;
   cardInflight.add(t);
@@ -987,7 +987,7 @@ export function useShortRow(ticker: string): { status: FileStatus; row: ShortRow
   return oneShort.get(t) ?? { status: 'loading', row: null };
 }
 
-export type HoldingsCover = { lines: number; weight: number; fundCount: number | null };
+type HoldingsCover = { lines: number; weight: number; fundCount: number | null };
 export function useEtfs(): { status: FileStatus; rows: EtfRow[]; holdingsOf: (etf: string) => EtfHolding[]; coverOf: (etf: string) => HoldingsCover | null } {
   const s = useFiles('etfs');
   return { status: s.etfStatus, rows: s.etfs, holdingsOf: etf => s.holdings[etf.toUpperCase()] ?? [], coverOf: etf => s.holdingsCover[etf.toUpperCase()] ?? null };
@@ -1202,4 +1202,3 @@ export function useBatchQuote(ticker: string | null | undefined): BatchQuote | n
   return ticker ? batchQuotes.get(ticker.toUpperCase()) ?? null : null;
 }
 export const peekBatchQuote = (ticker: string): BatchQuote | null => batchQuotes.get(ticker.toUpperCase()) ?? null;
-export const batchMisses = (ticker: string): boolean => batchMissing.has(ticker.toUpperCase());

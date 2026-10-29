@@ -54,7 +54,7 @@ export interface AccountState {
   recovering: boolean;
 }
 
-export type Outcome = { ok: true } | { ok: false; why: string };
+type Outcome = { ok: true } | { ok: false; why: string };
 /** the sign-in providers beside the password, each enabled in the project's dashboard */
 export type Provider = 'google' | 'apple';
 
@@ -249,7 +249,7 @@ if (supabase) {
 /* ---- error wording ---- */
 
 /** The service's messages in plain words, never its codes */
-export const plainWhy = (message: string): string => {
+const plainWhy = (message: string): string => {
   const m = message.toLowerCase();
   if (m.includes('invalid login credentials') || m.includes('invalid_credentials')) return 'That email and password do not match.';
   if (m.includes('email not confirmed')) return 'Confirm your address first — the link is in your inbox.';
@@ -267,7 +267,7 @@ const where = (path: string): string => `${window.location.origin}${path}`;
 
 /* ---- calls ---- */
 
-export const MIN_PASSWORD = 8;
+const MIN_PASSWORD = 8;
 
 /** Create the account; with email confirmation on, `confirm` says a link must be opened first. */
 export async function signUp(email: string, password: string, name: string): Promise<Outcome & { confirm?: boolean }> {

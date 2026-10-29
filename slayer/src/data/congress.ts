@@ -16,8 +16,6 @@ export const AMOUNT_BRACKETS: AmountBracket[] = [
   { column: 'I', low: 25_000_001, high: 50_000_000, label: '$25,000,001 – $50,000,000' },
   { column: 'J', low: 50_000_001, high: null, label: 'Over $50,000,000' },
 ];
-/** The highest rung a spouse or dependent may report when not held jointly with the filer (5 U.S.C. 13104(d)(2)) */
-export const SPOUSE_CAP_INDEX = 5;
 /** The STOCK Act's outer bound: no later than 45 days after the trade */
 export const STOCK_ACT_DEADLINE_DAYS = 45;
 

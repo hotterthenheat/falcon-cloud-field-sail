@@ -247,7 +247,7 @@ export async function tapeQuote(symbol: string): Promise<{ close: number; prev_c
 const BOARD_MS = 90_000;
 const FULL_MS = 45_000;
 
-export type BookMode = 'board' | 'full';
+type BookMode = 'board' | 'full';
 
 interface Entry {
   ticker: string;
@@ -365,7 +365,7 @@ const emptyNode = (strike: number): StrikeNode => ({
 /** Both legs negated into the house sign (head of this file, core/walls.ts). */
 /* greek-exposure rows are shares (greek × OI × 100); scaled to the house's dollars: GEX per 1% × S²·1%, DEX × S, vanna
    per vol point × S·1%, charm per session × S/252. */
-export function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number }): StrikeNode {
+function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number }): StrikeNode {
   const g = spot > 0 ? spot * spot * 0.01 : 1;
   const d = spot > 0 ? spot : 1;
   const v = spot > 0 ? spot * 0.01 : 1;
@@ -504,7 +504,7 @@ function liveGammaRows(rows: unknown, into: LiveGamma, stamp?: { price: number; 
 
 /** The live open-interest gamma per strike (retail sign: calls +, puts −, dollars per 1%) — every expiry when `date` is
     null, else that one date. Null when the vendor has none. Kept a minute. */
-export function liveGamma(ticker: string, date: string | null, priority = false): Promise<LiveGamma | null> {
+function liveGamma(ticker: string, date: string | null, priority = false): Promise<LiveGamma | null> {
   const key = `${ticker}|${date ?? 'ALL'}`;
   const hit = liveGammaCache.get(key);
   if (hit && Date.now() - hit.at < LIVE_GAMMA_MS) return Promise.resolve(hit.rows);
@@ -780,7 +780,7 @@ function twoCashSessions(bars: UwBar[], cashTo: number, keepDays = 2): Candle[] 
 }
 
 /** The last two cash sessions once the book has landed. Null until then. */
-export function chartBars(ticker: string): Candle[] | null {
+function chartBars(ticker: string): Candle[] | null {
   const rows = chartSpan.get(sameName(ticker));
   return rows && rows.length >= 2 ? rows : null;
 }
@@ -806,7 +806,7 @@ function parseTape(bars: UwBar[]): Candle[] {
 }
 
 /** Bars in one session only. Null means that session has no prints. */
-export function sessionChartBars(ticker: string, session: DeskSession = getDeskSession()): Candle[] | null {
+function sessionChartBars(ticker: string, session: DeskSession = getDeskSession()): Candle[] | null {
   if (session === 'rth') {
     const span = chartBars(ticker);
     if (span && span.length >= 1) return span;
@@ -1546,16 +1546,6 @@ export function peekEntry(ticker: string): Entry | undefined {
   return cache.get(ticker.toUpperCase());
 }
 
-/** How old the live book is. Under 20s it is live. An error names the vendor and the seconds since the last try. */
-export function bookAgeLabel(ticker: string): string | null {
-  const e = peekEntry(ticker);
-  if (!e?.at) return null;
-  const s = Math.max(0, Math.round((Date.now() - e.at) / 1000));
-  if (e.status === 'error') return e.http ? `vendor ${e.http} · last try ${s}s` : `vendor · last try ${s}s`;
-  if (e.status !== 'live') return null;
-  return s < 20 ? 'live' : `book ${s}s old`;
-}
-
 /** Every listed date of a full book has landed once — the Map's matrix window is final */
 export const bookDatesIn = (ticker: string): boolean => {
   const e = peekEntry(ticker);
@@ -1670,7 +1660,7 @@ function needDay(entry: Entry): void {
 }
 
 /** "−1.18%" — the regular session's change; null while it is not known */
-export const fmtPct = (v: number, digits = 2): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(digits)}%`;
+const fmtPct = (v: number, digits = 2): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(digits)}%`;
 
 /** The day's move in words: "−1.18% · after hours +0.05%", "pre-market +0.40%", or "−1.18%" in the session */
 export function dayMoveWords(m: Pick<DayMove, 'dayPct' | 'extPct' | 'phase'> | null | undefined, digits = 2): { main: string; ext: string | null; title: string; when: string | null } | null {
@@ -1716,18 +1706,6 @@ export const changeInk = (v: number | null | undefined): string => (v == null ||
 export function peekIv(ticker: string): number | null {
   const e = peekEntry(ticker);
   return e?.status === 'live' && e.iv > 0 ? e.iv : null;
-}
-
-/** Dollars the book prices from here into today's expiry. Null when that row has not landed. */
-export function peekImpliedMove(ticker: string): number | null {
-  const e = peekEntry(ticker);
-  return e?.status === 'live' && e.impliedMove > 0 ? e.impliedMove : null;
-}
-
-/** One session's priced move, fraction of spot. Null until the 1-day surface lands. */
-export function peekDayMoveFrac(ticker: string): number | null {
-  const e = peekEntry(ticker);
-  return e?.status === 'live' && e.dayMoveFrac > 0 && e.dayMoveFrac < 0.2 ? e.dayMoveFrac : null;
 }
 
 /** Today's expiry, else nothing — a later expiry's move is not this session's. */
@@ -1792,7 +1770,7 @@ function termDteOf(rows: UwTerm[]): Record<string, number> | null {
   straddle·√(π/2) (data/expectedMove.ts); a date with no implied move takes the straddle off its ATM vol on the vendor's
   own scale, k·S·σ·√(dte/365) (k fitted off its rows, √(2/π) without them). Every odd and the cone read these.
 */
-export interface ScopeMove {
+interface ScopeMove {
   /** Dollars, one standard move (1σ) over the horizon */
   move: number;
   /** The vendor's straddle the move was read from, dollars (≈0.80σ) */
@@ -1920,19 +1898,6 @@ export function bookHistory(ticker: string): GexSnapshot[] | null {
   return e?.status === 'live' ? e.history : null;
 }
 
-/** Close-of-day strike books already fetched for sessions before today. Empty until they land. */
-export function bookCloses(ticker: string): GexSnapshot[] {
-  const e = peekEntry(ticker);
-  return e?.status === 'live' && e.closes?.length ? e.closes : [];
-}
-
-/** Same-day expiry in front, the rest of the book behind it. Null until both exist. */
-export function bookHistorySplit(ticker: string): { front: GexSnapshot[]; rest: GexSnapshot[] } | null {
-  const e = peekEntry(ticker);
-  if (!e || e.status !== 'live' || !e.history0?.length || !e.historyRest?.length) return null;
-  return { front: e.history0, rest: e.historyRest };
-}
-
 const BOOK_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export function expiryLabel(iso: string): string {
@@ -1971,11 +1936,6 @@ export function historyForDate(ticker: string, date: string | 'book' | null): Ge
   return historyFrom(picked.nodes, candles, entry.flow);
 }
 
-export function railBookWords(ticker: string, date: string | 'book' | null): string | null {
-  const picked = chainForDate(ticker, date);
-  return picked ? `${picked.label} · ${picked.kind}` : null;
-}
-
 /** Session bars once the book is live. Empty until then — never a made-up chain. */
 export function liveBars(ticker: string): Candle[] {
   const t = ticker?.toUpperCase();
@@ -1984,17 +1944,9 @@ export function liveBars(ticker: string): Candle[] {
   return bookCandles(t) ?? dayBars(t) ?? [];
 }
 
-/** The book's own gamma path. Empty until the live history lands. */
-export function liveHistory(ticker: string): GexSnapshot[] {
-  const t = ticker?.toUpperCase();
-  if (!t) return [];
-  ensureBook(t, 'board');
-  return bookHistory(t) ?? [];
-}
-
 /** One minute of the vendor's own gamma (spot-exposures).
     Positive dampens, the same way the book's net does — call positive, put negative. */
-export interface BookMinute {
+interface BookMinute {
   time: number;
   min: number;
   net: number;
@@ -2159,7 +2111,7 @@ export function usePinpointFeed(ticker: string | null | undefined): MarketSnapsh
 const hotNames = new Set<string>(['SPY']);
 let hotActive: string | null = null;
 /** The name the desk is on — its calls jump the key's queue (SPY's always do) */
-export function markHotName(ticker: string | null | undefined): void {
+function markHotName(ticker: string | null | undefined): void {
   const t = ticker?.trim().toUpperCase() || null;
   if (t === hotActive) return;
   if (hotActive && hotActive !== 'SPY') hotNames.delete(hotActive);
@@ -2490,7 +2442,7 @@ const FRONT_MS = 180_000;
 
 /* The dates that re-price with their contracts' own vols: the front date and every live date holding at least
    OWN_IV_SHARE of the dates' gross gamma — the Map and a Board-only name pick them by the same rule off the same chains. */
-export const OWN_IV_SHARE = 0.005;
+const OWN_IV_SHARE = 0.005;
 export function ownIvDates(byDate: Readonly<Record<string, readonly StrikeNode[] | undefined>>, dates: readonly string[], front: string | undefined): Set<string> {
   const gross = (d: string) => (byDate[d] ?? []).reduce((a, n) => a + Math.abs(n.callGex) + Math.abs(n.putGex), 0);
   const g = dates.map(d => [d, gross(d)] as const);
@@ -2952,7 +2904,7 @@ const BOOK_SETTLED_MIN = 16 * 60 + 30;
 const PREMARKET_MIN = 7 * 60;
 /** When a book read at `at` is next read: null in the live window (07:00 → 16:30 ET on a trading day), else the next
     trading day's 07:00 ET (epoch ms) */
-export function bookFixedUntil(at: number = Date.now()): number | null {
+function bookFixedUntil(at: number = Date.now()): number | null {
   const [y, m, d] = nyIsoDate(at).split('-').map(Number);
   const mins = nyMinutes(at);
   const trading = isTradingDay(new Date(y, m - 1, d));
@@ -3065,14 +3017,8 @@ function finishedSessionIso(): string {
    whole count is read again once it carries a newer date. */
 const OI_STALE_MS = 5 * 60_000;
 const oiChangeChecked = new Map<string, number>();
-/** When the open-interest count was last asked for (epoch ms), and whether it is behind the last finished session */
-export function peekOiChangeCheck(ticker: string): { at: number | null; behind: boolean } {
-  const t = ticker.toUpperCase();
-  const c = oiChangeCache.get(t);
-  return { at: oiChangeChecked.get(t) ?? oiChangeAt.get(t) ?? null, behind: !!c?.lastDate && c.lastDate < finishedSessionIso() };
-}
 /** A trading day between 07:00 ET and the close — when a new open-interest count can appear */
-export function oiCheckWindow(now: number = Date.now()): boolean {
+function oiCheckWindow(now: number = Date.now()): boolean {
   const [y, m, d] = nyIsoDate(now).split('-').map(Number);
   const mins = nyMinutes(now);
   return isTradingDay(new Date(y, m - 1, d)) && mins >= PREMARKET_MIN && mins < CLOSE_MIN;

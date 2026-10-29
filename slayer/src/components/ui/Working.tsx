@@ -15,7 +15,7 @@ const INFINITY_PATH = 'M 12 12 C 14 8.5 19 8.5 19 12 C 19 15.5 14 15.5 12 12 C 1
 const CIRCLE_B = 'M 12 16 C 14.21 16 16 14.21 16 12 C 16 9.79 14.21 8 12 8 C 9.79 8 8 9.79 8 12 C 8 14.21 9.79 16 12 16 Z';
 
 /** How long a wait must last before the mark appears */
-export const WORKING_DELAY = 300;
+const WORKING_DELAY = 300;
 
 /** The mark alone. Decorative by default — `Working` carries the words for a screen reader. */
 export const MorphingInfinity = ({ className = 'w-4 h-4', ...rest }: SVGProps<SVGSVGElement>) => {
@@ -47,24 +47,6 @@ export function useWorking(active: boolean, delay: number = WORKING_DELAY): bool
     return () => window.clearTimeout(t);
   }, [active, delay]);
   return active && shown;
-}
-
-/** One beat, so a swap that lands faster than the eye is seen (see the head: the one exception) */
-export const BEAT_MS = 600;
-/** True for `ms` after `key` changes — never on the first render */
-export function useBeat(key: unknown, ms: number = BEAT_MS): boolean {
-  const [on, setOn] = useState(false);
-  const first = useRef(true);
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    setOn(true);
-    const t = window.setTimeout(() => setOn(false), ms);
-    return () => window.clearTimeout(t);
-  }, [key, ms]);
-  return on;
 }
 
 /** Run an action; while a promise it returned is unsettled, `busy` is true. One action at a time. */

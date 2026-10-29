@@ -9,7 +9,7 @@ import { nyAt } from '../paper/clock';
 import { calendarDayOf } from './journalFigures';
 
 export type JournalKind = 'backtest' | 'paper';
-export interface JournalSource {
+interface JournalSource {
   kind: JournalKind;
   /** The journal's own address */
   base: string;

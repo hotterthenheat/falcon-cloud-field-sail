@@ -5,14 +5,12 @@
 import { useSyncExternalStore } from 'react';
 import { isoDate, sessionsBetween, today } from '../core/calendar';
 import { now } from '../core/clock';
-import { estimatePremium } from './compass';
-import { contractIvFor } from './weigherDesk';
 import { ensureMarks, liveSpotOf, peekMark, subscribeMarks } from './weigherChain';
 import type { OptionRight } from '../types/compass';
 import type { WatchRequest, WatchedContract } from '../types/watchlist';
 
 /** v2: the store's key moved once so the desk opened on a clean list for the walk */
-export const WATCHLIST_KEY = 'slayer_watchlist_v2';
+const WATCHLIST_KEY = 'slayer_watchlist_v2';
 
 /* ---- storage ------------------------------------------------------------------- */
 
@@ -63,34 +61,21 @@ const commit = (next: WatchedContract[]) => {
 
 /* ---- pricing --------------------------------------------------------------------- */
 
-/** Years to the expiry's session, floored at half a session — a listed contract has at least that (the Weigher's floor) */
-export function yearsToExpiry(expiry: string, from: Date = today()): number {
-  const sessions = sessionsBetween(from, new Date(`${expiry}T12:00:00`));
-  return Math.max(sessions, 0.5) / 252;
-}
-
 /** The underlying's live price, or NaN until it lands */
-export function spotOf(ticker: string): number {
+function spotOf(ticker: string): number {
   return liveSpotOf(ticker) ?? NaN;
 }
 
 /** The contract's live mark (NBBO mid, else last print), or NaN until its quote lands */
-export function markOf(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right' | 'expiry'>): number {
+function markOf(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right' | 'expiry'>): number {
   void ensureMarks(w.ticker, w.expiry);
   const m = peekMark(w.ticker, w.expiry, w.strike, w.right);
   return m && m.mark > 0 ? Number(m.mark.toFixed(2)) : NaN;
 }
 
 /** What the contract is worth at the bell — intrinsic, nothing else */
-export function intrinsicOf(strike: number, right: OptionRight, spot: number): number {
+function intrinsicOf(strike: number, right: OptionRight, spot: number): number {
   return Number(Math.max(0, right === 'C' ? spot - strike : strike - spot).toFixed(2));
-}
-
-/** The contract's value at a spot on a date — the what-if's pricer, the same one */
-export function valueAt(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right'>, spot: number, tYears: number): number {
-  if (tYears <= 0) return intrinsicOf(w.strike, w.right, spot);
-  const iv = contractIvFor(w.ticker, w.strike, w.right);
-  return Number(estimatePremium(spot, w.strike, w.right, iv, tYears).toFixed(2));
 }
 
 /* ---- the returns ------------------------------------------------------------------ */
@@ -134,20 +119,6 @@ export function returnsOf(w: WatchedContract, spot = spotOf(w.ticker)): WatchRet
     spot,
     dte: sessionsBetween(today(), new Date(`${w.expiry}T12:00:00`)),
   };
-}
-
-/** The record — the Tracker's own line: settled · hit · R */
-export function recordOf(rows: WatchedContract[]): { settled: number; hit: number; r: number } {
-  const done = rows.filter(w => w.status !== 'open');
-  let hit = 0;
-  let r = 0;
-  for (const w of done) {
-    const close = w.closedMark ?? w.addedMark;
-    const rr = (close - w.addedMark) / Math.max(0.01, w.addedMark);
-    if (close > w.addedMark) hit += 1;
-    r += rr;
-  }
-  return { settled: done.length, hit, r };
 }
 
 /* ---- the store's doors ------------------------------------------------------------ */

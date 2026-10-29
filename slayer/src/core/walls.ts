@@ -15,7 +15,7 @@
     `chain.map(n => ({ strike: n.strike, value: n.netGex }))` (simulator.ts).
     An accessor makes that identity visible at each call site and costs no
     per-tick array to convert between the two spellings. */
-export interface Struck {
+interface Struck {
   readonly strike: number;
 }
 
@@ -187,7 +187,7 @@ export function pickFlip<T extends Struck>(
 export type LevelRole = 'supreme' | 'call wall' | 'put wall' | 'flip';
 /** THE CANONICAL ORDER, every page (the sixth audit, 2026-10-23): supreme · call wall · put wall · flip */
 export const LEVEL_ORDER: readonly LevelRole[] = ['supreme', 'call wall', 'put wall', 'flip'];
-export interface NamedLevels {
+interface NamedLevels {
   supreme?: number | null;
   callWall?: number | null;
   putWall?: number | null;
@@ -204,16 +204,11 @@ export function levelRoles(strike: number, levels: NamedLevels): LevelRole[] {
   if (same(levels.flip, strike)) out.push('flip');
   return out;
 }
-/** "769 · supreme · put wall" — the strike and every level it is (the strike alone when it is none) */
-export function strikeWithRoles(strike: number, levels: NamedLevels, fmt: (k: number) => string = k => String(k)): string {
-  const roles = levelRoles(strike, levels);
-  return roles.length ? `${fmt(strike)} · ${roles.join(' · ')}` : fmt(strike);
-}
 
 /* ---- A WALL IN WORDS, BY WHERE IT SITS (the retail test, 2026-10-23: "the 769.00 put wall above … dealers buy dips
    into it" — a level above price cannot be bought into on a dip). The description is written from the wall's side of
    price. */
-export type WallPlace = 'above' | 'below' | 'at';
+type WallPlace = 'above' | 'below' | 'at';
 export const wallPlace = (strike: number, spot: number): WallPlace => (Math.abs(strike - spot) < spot * 0.0005 ? 'at' : strike > spot ? 'above' : 'below');
 /* THE BEHAVIOUR WORDS FOLLOW THE STRIKE'S NET SIGN (the ninth audit, 2026-10-23: Compare called SPY's 762 call wall "a
    lid: dealers long gamma there sell into rallies" and, a line later, "its puts are heavier still, so its net is

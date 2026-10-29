@@ -4,7 +4,7 @@ import type { DeskSession } from './deskSession';
 
 const INDEX = new Set(['SPX', 'RUT', 'NDX', 'VIX', 'XSP']);
 
-export interface SessionQuote {
+interface SessionQuote {
   bid: number;
   ask: number;
 }

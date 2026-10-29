@@ -182,7 +182,7 @@ export interface Move {
 }
 
 /** A pillar against the read: agrees · argues · in the middle; under a neutral read, the way it pulls — for · against · middle */
-export type AgreeStance = 'agrees' | 'argues' | 'middle' | 'for' | 'against';
+type AgreeStance = 'agrees' | 'argues' | 'middle' | 'for' | 'against';
 export interface Agreement {
   lean: Lean;
   pillars: { key: PillarKey; name: string; score: number; agrees: boolean; stance: AgreeStance }[];
@@ -266,8 +266,8 @@ export interface StockOverview {
 }
 
 /* each pillar's weight in the grade; the news pillar is shown, never in it */
-export const PILLAR_WEIGHTS: Record<PillarKey, number> = { trend: 0.32, numbers: 0.24, money: 0.26, news: 0.18 };
-export const PILLAR_NAMES: Record<PillarKey, string> = { trend: 'The trend', numbers: 'The numbers', money: 'The money', news: 'The news' };
+const PILLAR_WEIGHTS: Record<PillarKey, number> = { trend: 0.32, numbers: 0.24, money: 0.26, news: 0.18 };
+const PILLAR_NAMES: Record<PillarKey, string> = { trend: 'The trend', numbers: 'The numbers', money: 'The money', news: 'The news' };
 /* Only the four words reach the screen; the composite, scores, weights and cuts stay inside the engine. */
 export type Grade = 'strong' | 'good' | 'caution' | 'poor';
 /** Low to high — the meter's order */
@@ -284,7 +284,7 @@ const screenOf = (composite: number): Screen => {
   return g === 'strong' || g === 'good' ? 'STRONG' : g === 'poor' ? 'WEAK' : 'MIXED';
 };
 /** The side a score is on: good or strong is for the name, poor against it, caution neither */
-export const leanOf = (score: number): Lean => {
+const leanOf = (score: number): Lean => {
   const s = screenOf(score);
   return s === 'STRONG' ? 'bullish' : s === 'WEAK' ? 'bearish' : 'neutral';
 };
@@ -312,7 +312,7 @@ const rowNum = (row: ScreenRow, k: string): number | null => {
   const n = typeof v === 'number' ? v : parseFloat(String(v));
   return Number.isFinite(n) ? n : null;
 };
-export interface ScreenPillars {
+interface ScreenPillars {
   trend: Factor[];
   numbers: Factor[];
   money: Factor[];
@@ -324,7 +324,7 @@ export interface ScreenPillars {
 /** Each half hour's share of a typical session's volume, 09:30 to 16:00 (sums to 1) */
 const HALF_HOUR_SHARE = [0.11, 0.075, 0.065, 0.06, 0.055, 0.05, 0.045, 0.045, 0.05, 0.055, 0.065, 0.085, 0.24];
 /** The share of a typical full day traded by `minutes` into the regular session */
-export const sessionVolumeShare = (minutes: number): number => {
+const sessionVolumeShare = (minutes: number): number => {
   if (minutes <= 0) return 0;
   if (minutes >= 390) return 1;
   let cum = 0;
@@ -336,8 +336,8 @@ export const sessionVolumeShare = (minutes: number): number => {
   return 1;
 };
 /** Minutes into the session before relative volume is paced and scored */
-export const RVOL_PACE_FROM_MIN = 30;
-export interface PacedVolume {
+const RVOL_PACE_FROM_MIN = 30;
+interface PacedVolume {
   /** The figure the read uses: paced in the session, the whole day's after it; null when it is not read */
   value: number | null;
   /** The vendor's own figure: the volume so far over a full day's average */
@@ -351,7 +351,7 @@ export interface PacedVolume {
   label: string;
 }
 /** The screener row's relative volume, made fair to the time of day */
-export function pacedRelVolume(raw: number | null | undefined, rowDate: string | null | undefined, at: Date | number = now()): PacedVolume | null {
+function pacedRelVolume(raw: number | null | undefined, rowDate: string | null | undefined, at: Date | number = now()): PacedVolume | null {
   if (raw == null || !(raw > 0)) return null;
   const today = nyIsoDate(at);
   const m = nyMinutes(at);
@@ -365,7 +365,7 @@ export function pacedRelVolume(raw: number | null | undefined, rowDate: string |
   return { value: v, raw, basis: 'paced', share, inRead: true, label: `${v.toFixed(2)}× paced` };
 }
 /** The relative-volume factor: only volume above pace leans, in the day's direction; quiet volume is no evidence */
-export function rvolFactor(pv: PacedVolume | null, up: boolean): Factor | null {
+function rvolFactor(pv: PacedVolume | null, up: boolean): Factor | null {
   if (!pv) return null;
   const label = pv.basis === 'paced' ? 'Relative volume, paced to the clock' : 'Relative volume';
   if (!pv.inRead || pv.value == null) {
@@ -384,7 +384,7 @@ export function rvolFactor(pv: PacedVolume | null, up: boolean): Factor | null {
   };
 }
 /* Heavy volume amplifies the side of the trade; with the side even or the other way it is shown and not weighed. */
-export function volumeFollowsSide(factors: Factor[]): Factor[] {
+function volumeFollowsSide(factors: Factor[]): Factor[] {
   const side = factors.find(f => f.key === 'side');
   return factors.map(f => {
     if (f.key !== 'rvol' || f.context || f.lean === 0) return f;
@@ -397,7 +397,7 @@ const SIDE_DEADBAND = 0.05;
 
 /* Call premium counts calls sold at the bid too, so the kind of contract leans only where the side of the trade agrees;
    a split within five points of even is no lean. */
-export function premiumFactors(bull: number, bear: number, calls: number, puts: number): Factor[] {
+function premiumFactors(bull: number, bear: number, calls: number, puts: number): Factor[] {
   const out: Factor[] = [];
   let sideDir = 0;
   if (bull + bear > 0) {
@@ -424,15 +424,15 @@ export function premiumFactors(bull: number, bear: number, calls: number, puts: 
 }
 
 /** Below this much side-of-trade premium a day the money pillar is shown, never scored */
-export const MIN_READ_PREMIUM = 1_000_000;
-export function thinPremium(factors: Factor[], premium: number): Factor[] {
+const MIN_READ_PREMIUM = 1_000_000;
+function thinPremium(factors: Factor[], premium: number): Factor[] {
   if (premium >= MIN_READ_PREMIUM) return factors;
   return factors.map(f => ({ ...f, lean: 0, weight: 0, context: true, note: `${f.note} — only ${dollars3(premium)} of premium, too thin to read` }));
 }
 /* A one-year EPS change off a tiny base runs to four digits, so each growth figure is capped at ±100%. */
 const capGrowth = (g: number) => clamp(g, -1, 1);
 /** The numbers pillar: one-year and two-year EPS growth, and the share count's change */
-export function numberFactors(row: ScreenRow): Factor[] {
+function numberFactors(row: ScreenRow): Factor[] {
   const out: Factor[] = [];
   const g1 = rowNum(row, 'eps_growth_4q');
   if (g1 != null) out.push({ key: 'growth', label: 'Earnings growth, one year', value: growthWords(g1), lean: clamp(capGrowth(g1) / 0.5), weight: 0.4, note: g1 >= 0 ? 'earnings are growing' : 'earnings are shrinking' });
@@ -445,7 +445,7 @@ export function numberFactors(row: ScreenRow): Factor[] {
 const growthWords = (g: number): string => (Math.abs(g) > 1 ? `${signedPct(g * 100, 0)} · read as ${g > 0 ? '+' : '−'}100%` : signedPct(g * 100));
 
 /** The scored factors, from the screener row alone */
-export function screenFactors(row: ScreenRow): ScreenPillars {
+function screenFactors(row: ScreenRow): ScreenPillars {
   /* after the bell the screener's close is the post-market print, so the last regular close is used when read */
   const tk = typeof row?.ticker === 'string' ? (row.ticker as string) : '';
   const regular = row ? screenerRead(row, tk ? peekRegularCloses(tk) : null)?.regular : undefined;
@@ -482,7 +482,7 @@ export function screenFactors(row: ScreenRow): ScreenPillars {
 }
 /** The scored factors' weight — a pillar with none of it is left out of the read */
 const scoredWeight = (factors: readonly Factor[]): number => factors.reduce((a, f) => a + (f.context ? 0 : f.weight), 0);
-export interface ScreenRead {
+interface ScreenRead {
   pillars: { key: PillarKey; score: number; factors: Factor[]; inRead: boolean }[];
   composite: number;
   screen: Screen;
@@ -1019,12 +1019,12 @@ const whyNowOf = (pillars: Pillar[]): string => {
   return top.map(f => `${cap(f.label)} ${f.value} — ${f.note}`).join(' · ') + '.';
 };
 /** A pillar's side in the sentences, on the grade's own cuts: good or strong is for the name, poor against it */
-export const pillarSide = (score: number): 'for' | 'against' | 'middle' => {
+const pillarSide = (score: number): 'for' | 'against' | 'middle' => {
   const g = gradeOf(score);
   return g === 'good' || g === 'strong' ? 'for' : g === 'poor' ? 'against' : 'middle';
 };
 /** The read in a sentence, from the pillars ranked best first — every clause from the pillars' own labels */
-export function verdictSentence(ranked: readonly { score: number; name: string; good: string; bad: string }[], screen: Screen): string {
+function verdictSentence(ranked: readonly { score: number; name: string; good: string; bad: string }[], screen: Screen): string {
   if (!ranked.length) return 'Nothing on the name stands out right now.';
   const be = (p: { name: string }) => (p.name === 'the numbers' ? 'are' : 'is');
   const goods = ranked.filter(p => pillarSide(p.score) === 'for');

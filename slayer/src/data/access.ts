@@ -9,10 +9,10 @@ import { useAccount, type AccountState } from './account';
 import { BILLING_ON, type PlanKey } from './billing';
 import { PLAN_RANK, grantHeld, opens, planFor, planHeld, type ViewAs } from '../../shared/plans.mjs';
 
-export { PLAN_RANK, grantHeld, opens, planFor, planHeld, type ViewAs };
+export { PLAN_RANK, grantHeld, planFor, type ViewAs };
 
 /* Automated browsers (navigator.webdriver) walk a signed-out dev server; a production build never reads this. */
-export const GATES_ON: boolean = BILLING_ON && !(import.meta.env?.DEV && typeof navigator !== 'undefined' && navigator.webdriver);
+const GATES_ON: boolean = BILLING_ON && !(import.meta.env?.DEV && typeof navigator !== 'undefined' && navigator.webdriver);
 
 /* An owner may look through a plan's eyes for this browser session; only what the gates open changes. */
 const VIEW_KEY = 'slayer_view_as';
@@ -26,7 +26,7 @@ const readView = (): ViewAs => {
 };
 let viewAs: ViewAs = typeof window !== 'undefined' ? readView() : 'self';
 const viewListeners = new Set<() => void>();
-export const getViewAs = (): ViewAs => viewAs;
+const getViewAs = (): ViewAs => viewAs;
 export function setViewAs(v: ViewAs): void {
   viewAs = v;
   try {
@@ -43,9 +43,9 @@ const subscribeView = (fn: () => void) => {
     viewListeners.delete(fn);
   };
 };
-export const useViewAs = (): ViewAs => useSyncExternalStore(subscribeView, getViewAs, getViewAs);
+const useViewAs = (): ViewAs => useSyncExternalStore(subscribeView, getViewAs, getViewAs);
 
-export interface Access {
+interface Access {
   /** gates exist on this build */
   on: boolean;
   status: AccountState['status'];

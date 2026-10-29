@@ -38,8 +38,6 @@ export interface Book {
   rows: Map<number, BookAtStrike>;
 }
 
-/** The lean, in words for a sentence */
-export const leanWords = (lean: Lean): string => (lean === 'push back' ? 'dealers push back on a move through it' : 'dealers push a move along through it');
 /** The change, in words */
 export const changeWords = (c: BookAtStrike['change']): string => {
   if (!c) return 'no record of today yet';

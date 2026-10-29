@@ -26,7 +26,7 @@ export function alignBrandLoops(root: Element | null | undefined): void {
 
 /* pins a brand loop that starts outside a brand component, or restarts after being hidden, on its first frame */
 let listening = false;
-export function listenForBrandLoops(): void {
+function listenForBrandLoops(): void {
   if (listening || typeof document === 'undefined') return;
   listening = true;
   document.addEventListener(

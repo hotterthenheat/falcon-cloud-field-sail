@@ -15,7 +15,7 @@ export const OPEN_CAP = 5;
 const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-export interface ScanClock {
+interface ScanClock {
   /** A tape that can take a ticket is open. The halt and the shut hours are not. */
   open: boolean;
   phase: OptionPhase;
@@ -29,7 +29,7 @@ export interface ScanClock {
 const dayOf = (p: { year: number; month: number; day: number }) => new Date(p.year, p.month - 1, p.day);
 
 /** The session an entry belongs to. After 16:00, or on a closed day, the next session. */
-export function entrySession(at: At = now()): string {
+function entrySession(at: At = now()): string {
   const p = nyParts(at);
   const day = dayOf(p);
   const mins = p.hour * 60 + p.minute;
@@ -41,7 +41,7 @@ export function entrySession(at: At = now()): string {
   return isoDate(day);
 }
 
-export function scanClock(at: At = now()): ScanClock {
+function scanClock(at: At = now()): ScanClock {
   const p = nyParts(at);
   const day = dayOf(p);
   const mins = p.hour * 60 + p.minute;
@@ -88,7 +88,7 @@ export function sessionBook(tracked: readonly TrackedSetup[], at: At = now()): T
 
 const usedNames = new Set<string>();
 
-export function nameUsed(ticker: string, at: At = now()): boolean {
+function nameUsed(ticker: string, at: At = now()): boolean {
   return usedNames.has(`${entrySession(at)}|${ticker.toUpperCase()}`);
 }
 

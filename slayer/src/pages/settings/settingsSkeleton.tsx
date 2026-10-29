@@ -255,4 +255,3 @@ export const SettingsPageSkeleton = ({ section = 'account' }: { section?: string
   </>
 );
 
-export default SettingsPageSkeleton;

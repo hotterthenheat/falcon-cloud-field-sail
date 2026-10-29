@@ -15,18 +15,18 @@ export interface MenuBox {
 }
 
 /** Space between the trigger and its menu. */
-export const MENU_OFFSET = 4;
+const MENU_OFFSET = 4;
 /** The least a menu may keep to the window's own edge. */
 export const MENU_EDGE = 8;
 /** Below this a side is not worth opening on; used only to decide a flip, never to refuse to open. */
-export const MENU_MIN_USEFUL = 160;
+const MENU_MIN_USEFUL = 160;
 /** A menu never runs taller than this share of the window. */
-export const MENU_MAX_SHARE = 0.7;
+const MENU_MAX_SHARE = 0.7;
 /** The menu's CSS min-width: a right-anchored menu's left edge is this far away and must stay on screen. */
-export const MENU_MIN_WIDTH = 210;
+const MENU_MIN_WIDTH = 210;
 
 /** Just the fields of a DOMRect this needs, so a test need not fake the rest. */
-export interface AnchorRect {
+interface AnchorRect {
   top: number;
   bottom: number;
   left: number;

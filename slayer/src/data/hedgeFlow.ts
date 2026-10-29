@@ -4,10 +4,7 @@
   re-priced at each price x (the flip's re-pricing). Positive = dealers buy. Continuous hedging at the modelled sign.
 */
 
-import { HEDGING_ASSUMPTION } from './spotScenario';
 import type { ExposureProfileData } from '../types/gex';
-
-export { HEDGING_ASSUMPTION };
 
 export interface FlowRung {
   strike: number;
@@ -41,7 +38,7 @@ export function fmtFlow(mag: number): string {
 
 /** House net gamma per 1% at each price — the book re-priced there (data/flipLevel.ts levelNetPath), null when the
     book cannot be re-priced */
-export type RepricedNet = (prices: readonly number[]) => number[] | null;
+type RepricedNet = (prices: readonly number[]) => number[] | null;
 
 /** The ladder over a profile's strikes. With `repriced` each rung integrates the re-priced profile from spot to the
     rung; without it the book's net at spot is carried along the path (the first-order flow). */
@@ -118,5 +115,4 @@ function ladderOf(strikes: readonly number[], spot: number, flowTo: (K: number) 
   rungs.sort((a, b) => b.strike - a.strike);
   return { spot, rungs, maxAbs };
 }
-
 

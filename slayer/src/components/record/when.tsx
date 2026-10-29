@@ -3,7 +3,7 @@
 import { now } from '../../core/clock';
 import { nyParts } from '../../core/nyTime';
 
-export interface WhenParts {
+interface WhenParts {
   /** "09/11" */
   date: string;
   /** "today" · "yesterday" · "2d ago" */
@@ -17,7 +17,7 @@ const two = (n: number) => String(n).padStart(2, '0');
 
 /** The calendar day `daysAgo` days before today — NEW YORK's today, the same calendar the offsets are counted on
     (data/nyDate.ts). Read off the machine's local date, a UTC browser after 20:00 New York put every row a day late. */
-export const dayBefore = (daysAgo: number, from: Date = now()): Date => {
+const dayBefore = (daysAgo: number, from: Date = now()): Date => {
   const p = nyParts(from);
   return new Date(p.year, p.month - 1, p.day - Math.max(0, Math.round(daysAgo)), 12);
 };

@@ -71,13 +71,6 @@ export const TileEmpty = ({ words, door, onDoor }: { words: string; door?: strin
   </div>
 );
 
-/** A short bar on the house's track: `share` 0..1, in an ink class or a colour */
-export const TileBar = ({ share, ink, color, width = 56 }: { share: number; ink?: string; color?: string; width?: number }) => (
-  <span className="relative inline-block h-[4px] rounded-full bg-ink/[0.07] overflow-hidden align-middle" style={{ width }} aria-hidden>
-    <span className={`absolute inset-y-0 left-0 rounded-full ${ink ?? ''}`} style={{ width: `${Math.max(3, Math.min(1, share) * 100)}%`, background: color, transition: 'width 520ms cubic-bezier(0.16, 1, 0.3, 1)' }} />
-  </span>
-);
-
 export const signedPct = (v: number, d = 2) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
 export const dirInk = (v: number) => (v > 0 ? 'text-bull' : v < 0 ? 'text-bear' : 'text-textSecondary');
 export const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));

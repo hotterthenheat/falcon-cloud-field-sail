@@ -7,7 +7,7 @@ import { isoDate, isTradingDay } from '../core/calendar';
 import { minuteLabel, nyClock } from '../core/nyTime';
 import { liveTrades, num, sideOfTags, printCondition, quoteNoReadOf, sessionEndMin, tapeSessionIso } from './traceLive';
 
-export type FlowSide = 'BID' | 'MID' | 'ASK';
+type FlowSide = 'BID' | 'MID' | 'ASK';
 
 /** 09:30 → 16:00 New York */
 export const SESSION_MIN = 390;
@@ -178,13 +178,11 @@ export interface ContractTape {
   } | null;
 }
 
-export interface TapeLoad {
+interface TapeLoad {
   tape: ContractTape | null;
   waiting: boolean;
   failed: boolean;
 }
-
-const pad = (n: number) => String(n).padStart(2, '0');
 
 function dayRow(r: Record<string, unknown>): CardDay {
   const iso = String(r.date || '').slice(0, 10);
@@ -256,7 +254,7 @@ function minutesFromPrints(prints: CardPrint[]): CardMinute[] {
   return [...by.values()].map(({ dollars, ...m }) => ({ ...m, avg: m.vol > 0 ? dollars / m.vol : 0 })).sort((a, b) => a.min - b.min);
 }
 
-export async function loadContractTape(occ: string, ticker: string, dateIso: string): Promise<ContractTape> {
+async function loadContractTape(occ: string, ticker: string, dateIso: string): Promise<ContractTape> {
   const sym = encodeURIComponent(occ.toUpperCase());
   const q = `date=${dateIso}`;
   const [flowRaw, minuteRaw, histRaw, ticksRaw] = await Promise.all([
@@ -465,7 +463,7 @@ export function runningAvg(minutes: CardMinute[]): { min: number; price: number;
   });
 }
 
-export interface UnderBar {
+interface UnderBar {
   min: number;
   callVol: number;
   /** negative, so the puts stack below the axis */
@@ -483,5 +481,3 @@ export function bucketTicks(series: NetTick[], step: number): UnderBar[] {
   return [...by.values()].sort((a, b) => a.min - b.min);
 }
 
-/** "MM/DD" of an ISO day */
-export const shortDay = (iso: string) => `${pad(Number(iso.slice(5, 7)))}/${pad(Number(iso.slice(8, 10)))}`;

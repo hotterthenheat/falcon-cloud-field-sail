@@ -12,7 +12,7 @@ import { useSyncExternalStore } from 'react';
 ==================================================
 */
 
-export type DayHover = { min: number; from: 'tape' | 'through'; ticker: string } | null;
+type DayHover = { min: number; from: 'tape' | 'through'; ticker: string } | null;
 
 let current: DayHover = null;
 const subs = new Set<() => void>();

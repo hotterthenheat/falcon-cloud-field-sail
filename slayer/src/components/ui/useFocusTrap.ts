@@ -18,7 +18,7 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
-export function useFocusTrap(active: boolean, ref: RefObject<HTMLElement | null>): void {
+function useFocusTrap(active: boolean, ref: RefObject<HTMLElement | null>): void {
   const openerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {

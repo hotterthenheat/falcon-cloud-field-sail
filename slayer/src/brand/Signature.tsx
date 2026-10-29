@@ -8,7 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { readMarketState } from '../data/marketState';
 import { alignBrandLoops } from './brandClock';
 
-export type SignatureState = 'live' | 'delayed' | 'closed';
+type SignatureState = 'live' | 'delayed' | 'closed';
 
 /** Each state's flat dot; live has none, its dot is the moving foil (SignatureDot). */
 const FLAT_DOT: Record<Exclude<SignatureState, 'live'>, string> = {
@@ -22,7 +22,7 @@ const WORD: Record<SignatureState, string> = {
 };
 
 /** The market's word: live while open, closed when shut. */
-export const useMarketWord = (): SignatureState => {
+const useMarketWord = (): SignatureState => {
   const [word, setWord] = useState<SignatureState>(() => readMarketState().word);
   useEffect(() => {
     const id = window.setInterval(() => setWord(readMarketState().word), 30_000);

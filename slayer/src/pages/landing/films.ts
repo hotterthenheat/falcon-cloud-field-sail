@@ -29,7 +29,7 @@ export const FILMS = LENGTHS as Record<string, number>;
 
 export type Form = 'desk' | 'phone';
 
-export const slug = (path: string): string => path.replace(/^\//, '').replace(/\//g, '-');
+const slug = (path: string): string => path.replace(/^\//, '').replace(/\//g, '-');
 export const filmKey = (path: string, theme: Theme, form: Form): string => `${slug(path)}-${theme}-${form}`;
 export const stillFor = (path: string, theme: Theme, form: Form): string => `/landing/${filmKey(path, theme, form)}.webp`;
 /** a film's own first frame, by the film's full key */

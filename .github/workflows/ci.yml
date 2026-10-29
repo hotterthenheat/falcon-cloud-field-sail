@@ -35,11 +35,11 @@ jobs:
       - name: Proof scripts
         run: |
           set -e
-          for f in trace-moneyness-proof gamma-sign-proof lgbm-parity-proof; do
-            if [ -f "scripts/$f.ts" ]; then
-              echo "::group::$f"
-              npx tsx "scripts/$f.ts"
-              echo "::endgroup::"
-            fi
+          for f in trace-moneyness-proof gamma-sign-proof lgbm-parity-proof chart-proof clock-proof contract-quote-proof \
+            fixture-proof higher-proof paper-proof replay-proof review-engine-proof review-futures-proof \
+            review-journal-proof spx-book-proof terrain-contract-proof terrain-setups-proof; do
+            echo "::group::$f"
+            npx tsx "scripts/$f.ts"
+            echo "::endgroup::"
           done
           node scripts/proxy-auth-proof.mjs

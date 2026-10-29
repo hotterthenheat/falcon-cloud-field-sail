@@ -53,7 +53,7 @@ import type { Candle } from '../types/market';
  *
  * Replaceable wholesale. Everything downstream reads these three fields.
  */
-export const RV_MODEL = {
+const RV_MODEL = {
   /** Bars in the rolling sample. 30 on a 1m clock is half an hour. */
   window: 30,
   /** Trading sessions per year. */
@@ -63,7 +63,7 @@ export const RV_MODEL = {
 } as const;
 
 /** One instant on a volatility line. */
-export interface VolPoint {
+interface VolPoint {
   /** Bar-aligned epoch SECONDS — lightweight-charts' unit. */
   time: number;
   /** Volatility as a PERCENT (7.68 means 7.68%), the axis's unit. */
@@ -85,7 +85,7 @@ export interface VolPoint {
  * The 5/7 turns calendar days into sessions. `Math.max(1, …)` holds the daily
  * bar at exactly one session, which is what it is.
  */
-export function periodsPerYear(barSec: number): number {
+function periodsPerYear(barSec: number): number {
   const sec = Math.max(1, barSec);
   if (sec < RV_MODEL.sessionSeconds) {
     return RV_MODEL.sessionsPerYear * (RV_MODEL.sessionSeconds / sec);

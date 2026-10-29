@@ -14,9 +14,9 @@ import { peekRegularCloses } from './dayChange';
 import { loadCloses } from './stockFile';
 import { congressFromWhales, econFromWhales, foreignSuspects, insidersFromWhales, markForeignIssuers, newsFromWhales, readInsiders, storyLeadTicker } from './whalesMap';
 
-export type FeedStatus = 'loading' | 'live' | 'sim';
+type FeedStatus = 'loading' | 'live' | 'sim';
 
-export interface LiveSnapshot {
+interface LiveSnapshot {
   news: { status: FeedStatus; events: GeoNewsEvent[] };
   econ: { status: FeedStatus; events: EconEvent[] };
   congress: { status: FeedStatus; trades: CongressTrade[]; notMemberAges?: number[] };
@@ -47,7 +47,7 @@ const NEWS_PAGE_CAP = 16;
 let newsRows: UwNews[] = [];
 let newsBackfilled = false;
 let newsPulling = false;
-export interface NewsCoverage {
+interface NewsCoverage {
   /** The earliest story read, epoch ms, or null before the first answer */
   fromMs: number | null;
   /** True once the read reached back past the wire day's New York midnight */
@@ -576,12 +576,6 @@ const ensureEcon = () => every('econ', 60_000, pullEcon);
 const ensureCongress = () => every('congress', 5 * 60_000, pullCongress);
 const ensureInsiders = () => every('insiders', 5 * 60_000, pullInsiders);
 
-/** News opens on the wire and the calendar. The other books wait until their page. */
-export function warmNews() {
-  ensureNews();
-  ensureEcon();
-}
-
 function ensure() {
   ensureNews();
   ensureEcon();
@@ -597,7 +591,7 @@ const listen = (fn: () => void) => {
 
 export const peekLive = (): LiveSnapshot => snap;
 
-export function subscribeLive(fn: () => void): () => void {
+function subscribeLive(fn: () => void): () => void {
   const off = listen(fn);
   ensure();
   return off;
@@ -812,7 +806,7 @@ function ensurePerson(slug: string, cik: string | undefined, name: string | unde
   return key;
 }
 
-export interface InsiderPersonBook {
+interface InsiderPersonBook {
   person: string;
   role: InsiderTrade['role'];
   ticker: string;
@@ -855,7 +849,6 @@ export function useInsiderBook(slug: string): InsiderPersonBook | null | undefin
     };
   }, [box, seen, insiders, slug]);
 }
-
 
 /* One name's own Congress reports (/congress/recent-trades?ticker=), which reach back years; the window's are kept. */
 interface TickerCongress {
@@ -925,7 +918,7 @@ export function useTickerCongress(ticker: string, windowDays: number): TickerCon
 }
 
 /* One member's year: the trades of the last year (/congress/congress-trader?date_from=), paged 200 at a time. */
-export const MEMBER_DAYS = 365;
+const MEMBER_DAYS = 365;
 const MEMBER_LIMIT = 200;
 const MEMBER_PAGE_CAP = 6;
 interface MemberBook {
@@ -939,7 +932,7 @@ const MEMBER_WAIT: MemberBook = { status: 'loading', trades: [], complete: false
 const members = new Map<string, MemberBook>();
 
 /** The first page's address — the vendor desk asks the same, so the two share one call */
-export const memberReportsPath = (name: string, page = 1) =>
+const memberReportsPath = (name: string, page = 1) =>
   `/congress/congress-trader?name=${encodeURIComponent(name)}&date_from=${nyIsoDaysBack(MEMBER_DAYS)}&limit=${MEMBER_LIMIT}${page > 1 ? `&page=${page}` : ''}`;
 
 function ensureMember(id: string, name: string) {
@@ -989,7 +982,7 @@ export function memberFromRoster(id: string): UwPolitician | null {
 
 /* ---- one name's own headlines ----
    /news/headlines?ticker= answers the name's latest fifty, read like the wire and refreshed each minute while shown. */
-export interface TickerNews {
+interface TickerNews {
   status: FeedStatus;
   events: GeoNewsEvent[];
 }

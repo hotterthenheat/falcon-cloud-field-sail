@@ -38,7 +38,7 @@ const useKept = () => {
 
 /* ------------------------------------------------------------------ the book */
 
-export type BookView = 'matrix' | 'calendar';
+type BookView = 'matrix' | 'calendar';
 /** The view a tile's settings name — anything that is not the calendar is the matrix (a desk saved with the old ladder) */
 export const bookViewOf = (view: unknown): BookView => (view === 'calendar' ? 'calendar' : 'matrix');
 const VIEW_OPTIONS: TileControl['options'] = [

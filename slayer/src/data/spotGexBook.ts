@@ -23,7 +23,7 @@ export function sameName(ticker: string): string {
 }
 const TTL = 15 * 60 * 1000;
 
-export interface SpotGexBook extends SpotGex {
+interface SpotGexBook extends SpotGex {
   ticker: string;
   root: string;
   spot: number;
@@ -262,17 +262,3 @@ export function awaitSpotGex(ticker: string): Promise<SpotGexBook | null> {
   return job;
 }
 
-export function peekSpotGex(ticker: string): SpotGexBook | null {
-  const hit = cache.get(sameName(ticker));
-  return hit ?? null;
-}
-
-/** Distances the feature store already stores: wall / spot − 1. NaN until the chain has been read. */
-export function gexFeatures(book: SpotGexBook | null, spot: number): { net: number; call: number; put: number } {
-  if (!book || !(spot > 0) || !book.used) return { net: Number.NaN, call: Number.NaN, put: Number.NaN };
-  return {
-    net: book.netGexBn,
-    call: book.callWall != null ? book.callWall / spot - 1 : Number.NaN,
-    put: book.putWall != null ? book.putWall / spot - 1 : Number.NaN,
-  };
-}

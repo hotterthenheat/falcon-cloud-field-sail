@@ -17,7 +17,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const INDEX = new Set(['SPX', 'NDX', 'RUT', 'VIX', 'XSP']);
 const WEEKLY_ROOT: Record<string, string> = { SPX: 'SPXW', NDX: 'NDXP', RUT: 'RUTW' };
 
-export interface ContractMark {
+interface ContractMark {
   bid: number;
   ask: number;
   /** The NBBO mid when the quote is two-sided, else the last print */
@@ -43,7 +43,7 @@ const num = (v: unknown): number => {
 };
 
 /** "SPY261030C00770000" → root, expiry ISO, right, strike */
-export function parseOcc(symbol: string): { root: string; expiry: string; right: OptionRight; strike: number } | null {
+function parseOcc(symbol: string): { root: string; expiry: string; right: OptionRight; strike: number } | null {
   const m = /^([A-Z.]{1,6})(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/.exec(symbol.trim().toUpperCase());
   if (!m) return null;
   return { root: m[1], expiry: `20${m[2]}-${m[3]}-${m[4]}`, right: m[5] as OptionRight, strike: Number(m[6]) / 1000 };

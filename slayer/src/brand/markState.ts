@@ -79,7 +79,7 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-export const getMarkState = (): MarkState => state;
+const getMarkState = (): MarkState => state;
 
 /** The mark's state, for anything that draws it. */
 export function useMarkState(): MarkState {

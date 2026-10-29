@@ -9,23 +9,10 @@ import type { OptionRight } from '../types/compass';
 export const OPTION_MULTIPLIER = 100;
 
 /** A quote older than this is stale. The sim ticks about every 1.5s. */
-export const STALE_MS = 8_000;
+const STALE_MS = 8_000;
 
 /** The 0DTE premium stop: ask × (1 − 0.5322). An option price, not a stock price. */
 export const STOP_KEEP = 1 - 0.5322;
-/** A scalp risks 15% to make 10–30%. The stop is ask × 0.85. */
-export const SCALP_STOP_KEEP = 0.85;
-
-/** Under $1 the market is wider than 8%. A $0.60 contract can still be a fill. */
-export function maxSpread(mid: number): number {
-  return mid < 1 ? 0.25 : 0.08;
-}
-
-export function spreadOk(bid: number, ask: number): boolean {
-  const mid = (bid + ask) / 2;
-  if (!(bid > 0.15) || !(ask >= bid) || !(mid > 0)) return false;
-  return (ask - bid) / mid <= maxSpread(mid);
-}
 
 export interface ContractQuote {
   ticker: string;
@@ -137,15 +124,6 @@ export function quoteMissing(q: Pick<ContractQuote, 'bid' | 'ask' | 'spot'>): bo
 export function quoteStale(quotedAt: number, now: number, missing: boolean): boolean {
   if (missing || !(quotedAt > 0)) return true;
   return now - quotedAt > STALE_MS;
-}
-
-export function formatAge(ms: number): string {
-  if (!(ms >= 0)) return '—';
-  if (ms < 1000) return 'now';
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  return `${m}m`;
 }
 
 /**

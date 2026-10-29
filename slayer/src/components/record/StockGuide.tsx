@@ -218,4 +218,3 @@ export const StockGuide = ({ view }: { view: StockOverview }) => (
   </div>
 );
 
-export default StockGuide;

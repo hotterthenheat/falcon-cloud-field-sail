@@ -38,7 +38,7 @@ import { bucketFlow } from './flowBars';
 */
 
 /** One instant on the two running totals. */
-export interface DriftPoint {
+interface DriftPoint {
   /** Bar-aligned epoch SECONDS — lightweight-charts' unit. */
   time: number;
   /** Call premium since the first print, dollars. Non-decreasing. */
@@ -47,7 +47,7 @@ export interface DriftPoint {
   puts: number;
 }
 
-export interface DriftOptions {
+interface DriftOptions {
   /** Bar width in seconds. Must match the chart's own interval. */
   barSec: number;
   /** Only prints on this symbol. Omit to take every print given. */

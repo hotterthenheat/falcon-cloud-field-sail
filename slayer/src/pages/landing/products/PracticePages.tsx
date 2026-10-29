@@ -296,4 +296,3 @@ export const JournalPage = () => (
   </ProductPage>
 );
 
-export default PracticePage;

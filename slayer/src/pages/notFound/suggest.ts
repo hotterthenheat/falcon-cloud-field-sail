@@ -53,7 +53,7 @@ const SETTINGS: [string, string][] = [
 ];
 
 /** Every address the terminal can point at */
-export const KNOWN: Suggestion[] = [
+const KNOWN: Suggestion[] = [
   { path: '/', label: 'Front page' },
   ...NAV_ITEMS.map(i => ({ path: i.path, label: i.label })),
   { path: '/compass/blotter', label: 'Blotter', where: 'Compass' },

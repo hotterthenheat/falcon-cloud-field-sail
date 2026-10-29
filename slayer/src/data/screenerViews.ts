@@ -1,4 +1,4 @@
-import { createViewStore, type SavedView } from './savedViews';
+import { createViewStore } from './savedViews';
 import { DEFAULT_FILTERS, type BookFilters } from './flowBook';
 import type { SleeveKey } from '../types/compass';
 
@@ -25,8 +25,6 @@ import type { SleeveKey } from '../types/compass';
   behind, so an untouched screener has a clean URL and a shared one carries
   exactly the decisions that were made.
 */
-
-export type { SavedView };
 
 // ---- the codec ------------------------------------------------------------
 

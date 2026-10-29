@@ -19,7 +19,7 @@ import type { Timeframe } from './timeframe';
 
 export type ClockZone = 'local' | 'ny';
 
-export interface DeskPrefs {
+interface DeskPrefs {
   opensOn: {
     /** null = where you left off (the simulator's last active name) */
     ticker: string | null;
@@ -36,7 +36,7 @@ export interface DeskPrefs {
 }
 
 const KEY = 'slayer_desk_prefs';
-export const DEFAULT_DESK_PREFS: DeskPrefs = { opensOn: { ticker: null, timeframe: null, page: null }, alertsSound: true, clock: 'local' };
+const DEFAULT_DESK_PREFS: DeskPrefs = { opensOn: { ticker: null, timeframe: null, page: null }, alertsSound: true, clock: 'local' };
 
 let prefs: DeskPrefs = (() => {
   try {
@@ -61,7 +61,7 @@ const subscribe = (fn: () => void) => {
 };
 
 /** A patch — `opensOn` may name only the name or only the timeframe */
-export type DeskPrefsPatch = Partial<Omit<DeskPrefs, 'opensOn'>> & { opensOn?: Partial<DeskPrefs['opensOn']> };
+type DeskPrefsPatch = Partial<Omit<DeskPrefs, 'opensOn'>> & { opensOn?: Partial<DeskPrefs['opensOn']> };
 export function setDeskPrefs(patch: DeskPrefsPatch): void {
   prefs = { ...prefs, ...patch, opensOn: { ...prefs.opensOn, ...(patch.opensOn ?? {}) } };
   try {

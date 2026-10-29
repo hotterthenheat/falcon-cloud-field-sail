@@ -6,8 +6,8 @@ import { Block, Facts, Line, SubLine, TitleRow, Trigger } from '../../components
 import { RECORD_SUBPAGES } from './subnav';
 
 /** The grid's geometry, shared with the pages so the two cannot drift */
-export const GRID_HEAD_H = 30;
-export const GRID_ROW_H = 44;
+const GRID_HEAD_H = 30;
+const GRID_ROW_H = 44;
 /** The wire's rows and the day's rows (News.tsx) */
 export const NEWS_ROW_H = 34;
 /** the wire's list scrolls inside a window of this many rows */
@@ -17,16 +17,16 @@ export const NEWS_WINDOW_H = NEWS_ROW_H * NEWS_WINDOW_ROWS + 22;
 /* The grids' stand-in heights: the rest of the first screen under each page's head, so stand-in and page share a shape. */
 /** Insiders: the names-to-know strip carries six cards */
 export const NAMES_TO_KNOW = 6;
-export const INSIDERS_GRID_H = 'calc(100vh - 367px)';
+const INSIDERS_GRID_H = 'calc(100vh - 367px)';
 /** Congress: the reports-to-know strip, the same shape */
 export const REPORTS_TO_KNOW = 6;
-export const CONGRESS_GRID_H = 'calc(100vh - 367px)';
+const CONGRESS_GRID_H = 'calc(100vh - 367px)';
 /** The map's drawing: 960 × 440 at the box's width, beside a 400px story column */
 /** Stocks: the rotation strip carries the universe's ten sectors */
 export const ROTATION_SECTORS = 10;
-export const STOCKS_GRID_H = 'calc(100vh - 362px)';
+const STOCKS_GRID_H = 'calc(100vh - 362px)';
 
-export const RecordShellSkeleton = ({ pathname }: { pathname: string }) => {
+const RecordShellSkeleton = ({ pathname }: { pathname: string }) => {
   const page = RECORD_SUBPAGES.find(p => pathname.startsWith(p.path)) ?? RECORD_SUBPAGES[0];
   const PageIcon = page.icon;
   return (
@@ -47,7 +47,7 @@ export const RecordShellSkeleton = ({ pathname }: { pathname: string }) => {
 
 /** A feed page standing: the head with four facts, four cards, the sentence, the grid.
     `bare` is the Earnings grid box: a plain head (title + line, no facts, cards or sentence) over the grid */
-export const RecordTableInner = ({ rows = 12, cols = 8, title = 120, bare = false }: { rows?: number; cols?: number; title?: number; bare?: boolean }) => (
+const RecordTableInner = ({ rows = 12, cols = 8, title = 120, bare = false }: { rows?: number; cols?: number; title?: number; bare?: boolean }) => (
   <section className="flex flex-col min-w-0" aria-hidden data-skeleton="record-table">
     {bare ? (
       <div className="px-5 pt-4 pb-3">
@@ -93,7 +93,7 @@ export const RecordTableInner = ({ rows = 12, cols = 8, title = 120, bare = fals
   </section>
 );
 
-export const RecordTableBoxSkeleton = (props: { rows?: number; cols?: number; title?: number; bare?: boolean }) => (
+const RecordTableBoxSkeleton = (props: { rows?: number; cols?: number; title?: number; bare?: boolean }) => (
   <div className="border border-borderSubtle rounded-md overflow-hidden bg-panel">
     <RecordTableInner {...props} />
   </div>
@@ -101,7 +101,7 @@ export const RecordTableBoxSkeleton = (props: { rows?: number; cols?: number; ti
 
 /** The wire standing: the head with four facts, four cards, the map beside the story card, the rows, the sentence.
     The wire drips 24 stories through a day (news.ts FEED_SIZE) — 21 is an afternoon's count */
-export const NewsInner = ({ rows = NEWS_WINDOW_ROWS }: { rows?: number }) => (
+const NewsInner = ({ rows = NEWS_WINDOW_ROWS }: { rows?: number }) => (
   <div className="flex flex-col min-w-0" aria-hidden data-skeleton="news-wire">
     <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
       <div className="min-w-0 flex-1">
@@ -306,7 +306,7 @@ const NewsDayInner = () => (
   </div>
 );
 
-export const NewsPageSkeleton = () => (
+const NewsPageSkeleton = () => (
   <>
     <div className="border border-borderSubtle rounded-md bg-panel">
       <NewsInner />
@@ -331,7 +331,7 @@ const PlainHead = ({ title = 120, sub = 420 }: { title?: number; sub?: number })
 );
 
 /** the calendar: the head's facts, the controls, the sentence, the board of five days, then the grid */
-export const EarningsPageSkeleton = () => (
+const EarningsPageSkeleton = () => (
   <>
     <div className="border border-borderSubtle rounded-md bg-panel" data-skeleton="earnings">
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
@@ -401,7 +401,7 @@ export const EarningsPageSkeleton = () => (
 );
 
 /** A name's page standing: the way back, the name, the replay, the two charts, after the print, the contracts, the record */
-export const EarningsNameSkeleton = () => (
+const EarningsNameSkeleton = () => (
   <>
     <div className="h-[15px] flex items-center">
       <Line w={92} h={9} />
@@ -545,7 +545,7 @@ export const EarningsNameSkeleton = () => (
 /* The default window holds more rows than a first screen (about 45 Congress reports, 140 insider rows),
    so the stand-in draws one screen's worth. */
 /** A feed page with a to-know strip standing (Insiders, Congress): the head and cards, the sentence, six cards, the grid in its window */
-export const FeedStripPageSkeleton = ({ name, title, triggers, cols, widths, gridH }: { name: string; title: number; triggers: number[]; cols: number; widths: number[]; gridH: string }) => (
+const FeedStripPageSkeleton = ({ name, title, triggers, cols, widths, gridH }: { name: string; title: number; triggers: number[]; cols: number; widths: number[]; gridH: string }) => (
   <div className="border border-borderSubtle rounded-md overflow-hidden bg-panel flex flex-col" data-skeleton={name}>
     <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
       <div className="min-w-0 flex-1">
@@ -606,11 +606,11 @@ export const FeedStripPageSkeleton = ({ name, title, triggers, cols, widths, gri
   </div>
 );
 
-export const InsidersPageSkeleton = () => <FeedStripPageSkeleton name="insiders" title={110} triggers={[128, 182, 110, 130]} cols={9} widths={[46, 120, 90, 70, 60, 110, 60, 40, 50]} gridH={INSIDERS_GRID_H} />;
-export const CongressPageSkeleton = () => <FeedStripPageSkeleton name="congress" title={150} triggers={[128, 108, 100, 130]} cols={8} widths={[46, 150, 120, 70, 60, 180, 60, 40]} gridH={CONGRESS_GRID_H} />;
+const InsidersPageSkeleton = () => <FeedStripPageSkeleton name="insiders" title={110} triggers={[128, 182, 110, 130]} cols={9} widths={[46, 120, 90, 70, 60, 110, 60, 40, 50]} gridH={INSIDERS_GRID_H} />;
+const CongressPageSkeleton = () => <FeedStripPageSkeleton name="congress" title={150} triggers={[128, 108, 100, 130]} cols={8} widths={[46, 150, 120, 70, 60, 180, 60, 40]} gridH={CONGRESS_GRID_H} />;
 
 /** Stocks standing: the head with four facts, three cards, the sentence, the rotation's ten sector cards, the grid in its window */
-export const StocksPageSkeleton = () => (
+const StocksPageSkeleton = () => (
   <div className="border border-borderSubtle rounded-md overflow-hidden bg-panel flex flex-col" data-skeleton="stocks">
     <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
       <div className="min-w-0 flex-1">

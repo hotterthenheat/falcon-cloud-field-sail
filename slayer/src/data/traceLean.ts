@@ -3,13 +3,13 @@
 /** A side leans when it holds this share (%) of the sided volume or premium */
 export const LEAN_EDGE = 55;
 /** …and at least this share (%) of the whole traded on a side at all */
-export const LEAN_SIDED_MIN = 50;
+const LEAN_SIDED_MIN = 50;
 /** A dark posture leans past this net (%) of sized dollars; under it is Balanced, and the grade is "poor" */
-export const POSTURE_EDGE = 18;
-export const POSTURE_GOOD = 50;
-export const POSTURE_STRONG = 80;
+const POSTURE_EDGE = 18;
+const POSTURE_GOOD = 50;
+const POSTURE_STRONG = 80;
 
-export interface DayLean {
+interface DayLean {
   /** Shares of the whole, 0–100 */
   ask: number;
   bid: number;

@@ -9,7 +9,7 @@ import { undoable } from '../ui/undo';
 const BTN =
   'slayer-chip px-2';
 
-export interface SavedCutsProps {
+interface SavedCutsProps {
   store: ViewStore;
   /** This surface's cut, as a query string without the leading '?' */
   query: string;

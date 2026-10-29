@@ -10,8 +10,8 @@ import { FILMS, INTENT_MS, filmFor, filmKey, onThemeIntent, savingData, stillFor
 import Boot, { type Sweep } from './Boot';
 
 /** The desk picture's shape — what scripts/make-landing-clips.mjs films */
-export const SHOT_W = 1440;
-export const SHOT_H = 1000;
+const SHOT_W = 1440;
+const SHOT_H = 1000;
 export const SHOT_ASPECT = SHOT_W / SHOT_H;
 
 interface Props {

@@ -7,7 +7,7 @@ import type { DayNote, JournalEntry } from '../review/journal';
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from '../review/ladder';
 import { contractKey, contractWords, dteAt, legsOf, type ContractId, type Quote } from '../review/quotes';
 import type { Candle } from '../../types/market';
-import { bellOf, dayEndsAt, flatByOf, nyAt, nyClockWords, tradingDayOf } from './clock';
+import { bellOf, dayEndsAt, flatByOf, nyAt, tradingDayOf } from './clock';
 import { bigOf, frontOn, futWords, isPaperFuture, paperFut } from './products';
 
 /* ================================================================== */
@@ -64,7 +64,7 @@ export interface OptOrder {
   life: string;
 }
 /** How a fill came: an order's kind — or the market's (the bell), the rules' (an evaluation), the page's (it closed) */
-export type OptFillHow = OrderKind | 'expired' | 'rule' | 'page';
+type OptFillHow = OrderKind | 'expired' | 'rule' | 'page';
 export interface OptFill {
   id: string;
   orderId: string | null;
@@ -116,7 +116,7 @@ export interface FutOrder {
   moved?: PaperMoment;
   life: string;
 }
-export type FutFillHow = OrderKind | 'rule' | 'page';
+type FutFillHow = OrderKind | 'rule' | 'page';
 export interface FutFill {
   id: string;
   orderId: string | null;
@@ -243,20 +243,19 @@ export interface PaperAccount {
 /* ================================================================== */
 
 const cents = (v: number) => Math.round(v * 100) / 100;
-const pctWords = (v: number) => `${+(v * 100).toFixed(1)}%`;
-export const money = (v: number, dp = 2) => `${v < 0 ? '−' : ''}$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
-export const momentAt = (ms: number): PaperMoment => ({ at: ms, day: tradingDayOf(ms) });
+const money = (v: number, dp = 2) => `${v < 0 ? '−' : ''}$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
+const momentAt = (ms: number): PaperMoment => ({ at: ms, day: tradingDayOf(ms) });
 /** Ours, not the reader's: past this many positions a desk cannot be read */
-export const OPEN_CEILING = 10;
+const OPEN_CEILING = 10;
 /** At most this many points of a held trade are kept */
-export const HELD_POINTS = 240;
+const HELD_POINTS = 240;
 /** A point is written at most this often */
 const HELD_EVERY_MS = 5_000;
 /** At most this many candles of a closed trade are kept, and at most this many trades' candles */
-export const PATH_BARS = 150;
+const PATH_BARS = 150;
 export const PATHS_KEPT = 200;
 /** A closed trade keeps at most this many of its held points — enough to draw it, small enough to keep hundreds */
-export const HELD_KEPT = 80;
+const HELD_KEPT = 80;
 /** What the account's own log keeps */
 const LOG_KEPT = 60;
 
@@ -719,9 +718,9 @@ export interface EvalRead {
   inFlatWindow: boolean;
 }
 /** The floor: the high mark less the allowance — never above the starting balance, where it stops */
-export const floorOf = (a: PaperAccount): number => (a.plan ? Math.min(a.peak - a.plan.maxLoss, a.plan.size) : -Infinity);
+const floorOf = (a: PaperAccount): number => (a.plan ? Math.min(a.peak - a.plan.maxLoss, a.plan.size) : -Infinity);
 /** Trading days with a closed trade on them — what "days traded" counts */
-export function daysTradedOf(a: PaperAccount): string[] {
+function daysTradedOf(a: PaperAccount): string[] {
   const days = new Set<string>();
   for (const f of a.fut.fills) if (f.exit) days.add(f.at.day);
   for (const f of a.opt.fills) if (f.side === 'sell') days.add(f.at.day);
@@ -1548,7 +1547,7 @@ function keepHeld(a: PaperAccount, m: PaperMarket): PaperAccount {
 /** The candles a trade was on, written down as it closes: an hour before the way in to the way out, at a coarser
     candle when that is more than PATH_BARS of them — in whole units over a base, to keep a journal of hundreds
     small */
-export function pathOf(bars: Candle[], fromSec: number, toSec: number, unit: number): TradePath | null {
+function pathOf(bars: Candle[], fromSec: number, toSec: number, unit: number): TradePath | null {
   const inside = bars.filter(b => b.time >= fromSec && b.time <= toSec);
   if (!inside.length) return null;
   const minutes = Math.max(1, Math.ceil(inside.length / PATH_BARS));
@@ -1691,6 +1690,3 @@ export function afterHand(before: PaperAccount, after: PaperAccount, m: PaperMar
   return keepClosed(before, keepHeld(after, m), m);
 }
 
-/** "the day" and "the time" of an instant, for a line in the log */
-export const whenWords = (ms: number): string => nyClockWords(ms);
-export { pctWords };

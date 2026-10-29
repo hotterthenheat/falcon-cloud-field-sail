@@ -27,8 +27,8 @@ import { levelRoles, wallPlace, type LevelRole } from '../../core/walls';
 const ROLE_TONE: Record<LevelRole, Tone> = { supreme: 'supreme', 'call wall': 'bull', 'put wall': 'bear', flip: 'white' };
 
 /** The panel's width open, and its tab's width folded */
-export const SIDE_W = 320;
-export const SIDE_TAB_W = 28;
+const SIDE_W = 320;
+const SIDE_TAB_W = 28;
 
 /** Each level in one plain line — its hover */
 const SIDE_TIPS: Record<string, string> = {

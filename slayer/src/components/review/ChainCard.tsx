@@ -9,16 +9,16 @@ import ContractDrill from './ContractDrill';
 import { card, head, headWord } from './DeskShell';
 import { contractKey, longLeg, strikeWords, type ContractDay, type ContractId, type Quote, type Right } from '../../data/review/quotes';
 
-export const SIDES: DropdownOption<Right>[] = [
+const SIDES: DropdownOption<Right>[] = [
   { value: 'C', label: 'Calls', hint: 'The right to buy — they gain when the name rises', tone: 'bull' },
   { value: 'P', label: 'Puts', hint: 'The right to sell — they gain when the name falls', tone: 'bear' },
 ];
 /* the chain is never shorter than CHAIN_MIN_PX, however tall the ticket, and never taller than every strike it holds
    (CHAIN_MAX_PX: two heads and twenty-five rows) */
-export const CHAIN_MAX_PX = 714;
+const CHAIN_MAX_PX = 714;
 export const CHAIN_MIN_PX = 328;
 
-export interface ChainCardRow {
+interface ChainCardRow {
   strike: number;
   call: Quote;
   put: Quote;

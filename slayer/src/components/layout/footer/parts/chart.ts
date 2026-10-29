@@ -63,7 +63,7 @@ interface Level {
   segs: [number, number][];
   wide: [number, number][] | null;
 }
-export interface ChartOpts {
+interface ChartOpts {
   seed?: number;
   /** the name and the timeframe, boxed, top left */
   legend?: string;

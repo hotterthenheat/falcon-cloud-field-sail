@@ -236,8 +236,8 @@ function darksFrom(rows: Record<string, unknown>[], spot: number): DarkPoolPrint
 
 /* The tape is asked on the session the page names (to its 16:00 close once passed), as two asks merged on the print's
    identity: the $500K+ prints and the 10,000-share+ prints. */
-export const DARK_MIN_PREMIUM = 500_000;
-export const DARK_MIN_SIZE = 10_000;
+const DARK_MIN_PREMIUM = 500_000;
+const DARK_MIN_SIZE = 10_000;
 
 /** The window a paged read truly covers, as New York clocks. `complete` when the paging reached the session's start
     (or the vendor ran out of rows); otherwise `from` is the oldest print in hand and the read covers from there only. */
@@ -572,7 +572,7 @@ export function peekStockFile(ticker: string): StockFile {
   return files.get(ticker.toUpperCase()) ?? blank('loading');
 }
 
-export function ensureStockFile(ticker: string, tapes = true): void {
+function ensureStockFile(ticker: string, tapes = true): void {
   const t = ticker.toUpperCase();
   if (!t) return;
   if (!started.has(t)) {

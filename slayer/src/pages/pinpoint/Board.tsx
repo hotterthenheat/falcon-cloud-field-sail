@@ -13,7 +13,7 @@ import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
 import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
-import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, peekExtLast, peekPriceAt, refreshBoardPrices, ensureBook } from '../../data/uwBook';
+import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, peekExtLast, refreshBoardPrices, ensureBook } from '../../data/uwBook';
 import { useNameUnit } from '../../data/distanceUnits';
 import { fmtDistance } from '../../data/atr';
 import { bellDay, cadenceWords, dayWordOf, expirySpan, longDay, recordDay, recordPossessive, sessionDay, todayScopeLabel } from '../../data/bookWindow';
