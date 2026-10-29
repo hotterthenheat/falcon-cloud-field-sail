@@ -413,7 +413,7 @@ const CampaignAnalysis = ({
       {left && (
         <div className="border border-bear/30 bg-bear/[0.04] rounded-md px-4 py-3" data-setup-left={left.why}>
           <span className="block font-mono text-t12 font-bold uppercase tracking-wider text-bear">{left.why}</span>
-          <p className="mt-1 text-t12 text-textPrimary">This contract left the board at {nyClock(left.at, { seconds: true, zone: true })}. It is off the list.</p>
+          <p className="mt-1 text-t12 text-textPrimary">This contract left the board at {nyClock(signal?.outcome?.exit?.at ?? left.at, { zone: true })}{signal?.outcome?.exit ? `, at ${money(signal.outcome.exit.px)}` : ''}. It is off the list.</p>
         </div>
       )}
       {/* The setup's head — the name's page grammar (EarningsName): the logo, the contract in its side's ink, its
