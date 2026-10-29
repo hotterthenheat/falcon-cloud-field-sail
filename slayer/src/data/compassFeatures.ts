@@ -144,6 +144,8 @@ export function tapeOf(rows: Bar[], index: boolean, minute: number, spot = NaN):
   }
   const S = (() => {
     if (tt > 390 && spot > 0) return spot;
+    /* Live, minute t's bar is not published until the minute ends: the price read at the mark is its first print. */
+    if (tt >= 0 && tt <= 390 && !(o[tt] > 0) && spot > 0) return spot;
     const last = Math.min(Math.max(tt, 0), o.length - 1);
     for (let i = last; i >= 0; i--) if (o[i] > 0) return o[i];
     return spot > 0 ? spot : NaN;
@@ -240,6 +242,8 @@ export function features(
   curve: Curve | null,
   pin: PinBook | null,
   mids: { m5: number; m15: number },
+  /** SPY's and the sector ETF's price at the mark, for a live scan whose minute bar is not in yet */
+  marks: { spy?: number; sec?: number } = {},
 ): number[] | null {
   const indexName = INDEX.has(setup.ticker) || INDEX.has(UNDER[setup.ticker] ?? '');
   const tape = tapeOf(rows, indexName, minute, setup.spot ?? NaN);
@@ -255,8 +259,8 @@ export function features(
   const ret5 = ret(5);
   const ret15 = ret(15);
   const ret60 = ret(60);
-  const spyTape = tapeOf(spy, false, minute);
-  const secTape = sec.length ? tapeOf(sec, false, minute) : null;
+  const spyTape = tapeOf(spy, false, minute, marks.spy ?? NaN);
+  const secTape = sec.length ? tapeOf(sec, false, minute, marks.sec ?? NaN) : null;
   const dir: number = setup.right === 'C' ? 1 : -1;
   const mid = setup.mid > 0 ? setup.mid : NaN;
   const was = (back: number) => (back === 5 ? mids.m5 : back === 15 ? mids.m15 : NaN);
