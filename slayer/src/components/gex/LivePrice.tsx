@@ -2,7 +2,7 @@
    down it says so over the last print it kept, stamped; with none kept it is a dash. The levels keep the price the vendor
    marked them at (`levelsAt`), named as such, never shown as the live price. */
 
-import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
+import { thetaMove, useThetaPrice, useThetaStatus } from '../../data/thetaQuote';
 import { changeInk } from '../../data/uwBook';
 import { nyStamp } from '../../core/nyTime';
 
@@ -17,7 +17,7 @@ export function LivePrice({ ticker, levelsAt, compact = false }: { ticker: strin
     return (
       <span className="inline-flex items-baseline gap-1.5 font-mono tnum whitespace-nowrap" title={[offline ? 'ThetaData offline — reconnecting. No price kept on this browser yet.' : 'Reading the price…', levelsTitle].filter(Boolean).join(' ')} data-live-price={offline ? 'offline' : 'pending'}>
         <span className="text-textMuted">—</span>
-        {offline && <span className="text-t9 uppercase tracking-widest text-warn">ThetaData offline</span>}
+        {offline && !compact && <span className="text-t9 uppercase tracking-widest text-warn">ThetaData offline</span>}
         {!compact && levelsAt != null && levelsAt > 0 && <span className="text-t10 text-textMuted">levels at {levelsAt.toFixed(2)}</span>}
       </span>
     );
@@ -27,7 +27,18 @@ export function LivePrice({ ticker, levelsAt, compact = false }: { ticker: strin
     <span className="inline-flex items-baseline gap-1.5 font-mono tnum whitespace-nowrap" title={[held.live ? `ThetaData · printed ${nyStamp(p.at, { seconds: true, zone: true })}` : `ThetaData offline — reconnecting. Last print kept at ${nyStamp(p.read, { zone: true })}.`, levelsTitle].filter(Boolean).join(' ')} data-live-price={held.live ? 'live' : 'kept'}>
       <span className="text-textPrimary">{p.price.toFixed(2)}</span>
       {move && <span style={{ color: changeInk(move.pct) }}>{pctWords(move.pct)}</span>}
-      {!held.live && <span className="text-t9 uppercase tracking-widest text-warn">offline · {nyStamp(p.read, { zone: true })}</span>}
+      {!held.live && <span className="text-t9 uppercase tracking-widest text-warn">{compact ? nyStamp(p.read, { zone: true }) : `offline · ${nyStamp(p.read, { zone: true })}`}</span>}
+    </span>
+  );
+}
+
+/** One note for a list of compact prices: the terminal is down, so the prices are the last ones kept (or dashes) */
+export function ThetaOfflineNote() {
+  const status = useThetaStatus();
+  if (status !== 'down') return null;
+  return (
+    <span className="font-mono text-t9 uppercase tracking-widest text-warn" title="The prices come from ThetaData. With the terminal down each name shows its last kept print, stamped, or a dash." data-theta-offline>
+      ThetaData offline · prices are the last kept
     </span>
   );
 }

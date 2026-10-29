@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Link2, Unlink2 } from 'lucide-react';
 import { extendedLine, priceWords, useLiveQuote, type LiveQuote } from '../../data/liveQuote';
+import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
+import { thetaUseHere } from '../../data/theta';
 import { DayRef } from '../../data/bookWindow';
 
 /** "Oct 22" */
@@ -99,8 +101,12 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
   const hasLink = linked !== undefined;
   const follows = linked === true;
 
-  /* The live quote. A dash until stock-state answers. Never the simulator. */
-  const live = useLiveQuote(quote && (!follows || full) ? ticker : null);
+  /* The price: ThetaData's last print wherever the page may read it, Unusual Whales' quote where it may not (Trace,
+     the Dossier). A dash until it answers. Never the simulator. */
+  const shown = !!quote && (!follows || full);
+  const theta = thetaUseHere() !== 'none';
+  const thetaRead = useThetaPrice(shown && theta ? ticker : null).held;
+  const live = useLiveQuote(shown && !theta ? ticker : null);
   const price = closeOutside ? priceWords(live)?.lead : live?.spot;
   /* before the open, the lead is the last session's change named by its date, with the pre-market move beside it */
   const pre = live?.phase === 'pre';
@@ -148,7 +154,24 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
       >
         <CompanyLogo ticker={ticker} size={14} />
         <span className="text-t12 font-semibold text-textPrimary leading-none">{ticker}</span>
-        {price != null && live != null && (
+        {theta && thetaRead && (() => {
+          const p = thetaRead.value;
+          const mv = thetaMove(p);
+          const asOf = thetaRead.live ? '' : ` · last print kept from ${new Date(p.read).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET`;
+          return (
+            <>
+              <span className={`text-t11 tnum leading-none ${thetaRead.live ? 'text-textPrimary' : 'text-textSecondary'}`} title={`ThetaData last print${asOf}`} data-scope-price>
+                ${p.price.toFixed(2)}
+              </span>
+              {mv && (
+                <span className={`text-t10 tnum leading-none whitespace-nowrap ${Math.abs(mv.pct) < 0.005 ? 'text-textSecondary' : mv.pct > 0 ? 'text-bull' : 'text-bear'}`} title={`Against the prior regular close, ${mv.base.toFixed(2)}${mv.ext != null ? ` · after hours ${mv.ext >= 0 ? '+' : '−'}${Math.abs(mv.ext).toFixed(2)}%` : ''}`} data-scope-change>
+                  {`${mv.pct > 0 ? '+' : mv.pct < 0 ? '−' : ''}${Math.abs(mv.pct).toFixed(2)}%`}
+                </span>
+              )}
+            </>
+          );
+        })()}
+        {!theta && price != null && live != null && (
           <>
             <span className="text-t11 tnum text-textPrimary leading-none" data-scope-price>
               ${price.toFixed(2)}

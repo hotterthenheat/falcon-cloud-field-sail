@@ -511,6 +511,8 @@ const ProfilePanel = ({
     when the pane collapses and swallow its own chart.
   */
   const [dragW, setDragW] = useState<number | null>(null);
+  /* the width under the hand, written to the panel's box on each move: a drag is not a render per frame of every row */
+  const dragRef = useRef<number | null>(null);
   const [hostW, setHostW] = useState(0);
   const sized = width != null;
   useEffect(() => {
@@ -526,7 +528,7 @@ const ProfilePanel = ({
   }, [sized]);
   /* the 60% ceiling, and since 2026-10-18 the chart's floor beside it (panelCeiling) */
   const maxW = hostW > 0 ? panelCeiling(hostW, chartFloor) : Number.POSITIVE_INFINITY;
-  const shownW = sized ? Math.min(dragW ?? width, maxW) : undefined;
+  const shownW = sized ? Math.min(dragRef.current ?? dragW ?? width, maxW) : undefined;
   const onGripDown = (e: ReactPointerEvent<HTMLSpanElement>) => {
     if (!onWidth) return;
     e.preventDefault();
@@ -538,12 +540,16 @@ const ProfilePanel = ({
     const host = root.parentElement?.getBoundingClientRect().width ?? startW * 3;
     const max = panelCeiling(host, chartFloor);
     let last = startW;
+    dragRef.current = startW;
+    setDragW(startW);
     const move = (ev: PointerEvent) => {
       last = Math.round(Math.min(max, Math.max(PROFILE_MIN_W, startW + (startX - ev.clientX))));
-      setDragW(last);
+      dragRef.current = last;
+      root.style.width = `${last}px`;
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
+      dragRef.current = null;
       setDragW(null);
       onWidth(last);
     };

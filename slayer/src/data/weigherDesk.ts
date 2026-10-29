@@ -3,43 +3,12 @@
    with when it was read; nothing stands in for it. */
 
 import { expiryFor, isoDate, isTradingDay, type Expiry, MONTHS as MONTHS_SHORT } from '../core/calendar';
-import { estimatePremium } from './compass';
 import { keepTheta, keptTheta, noData, thetaGet } from './thetaFeed';
-import { THETA_DAYS, bsOnMark, yearFracLeft } from './weigherGate';
-import { ivNear, liveSpotOf } from './weigherChain';
-import { peekChange, peekIv, snapshotOf } from './uwBook';
+import { bsOnMark, yearFracLeft } from './weigherGate';
 import { weekdayDte } from './compassParams';
 import { nameTape } from './compassSession';
 import { nyIsoDate, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
-import { blackScholesGreeks } from '../core/greeks';
 import type { OptionRight } from '../types/compass';
-import type { MarketSnapshot } from '../types/market';
-import { normCdf as normalCDF } from '../core/math';
-
-// ---- deterministic hash noise (the house pattern) ---------------------------
-function hash(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-const h01 = (s: string) => hash(s) / 4294967295;
-
-/** Today's key, so day-stable noise rolls at midnight like the sim's quotes. Remembered for a second at a time: it
-    is asked ten times per contract, and a whole book of chains asked it ninety thousand times per build — a Date
-    and an ISO string each (5ms of every Ledger open, profiled). */
-let dayKeyAt = 0;
-let dayKeyMemo = '';
-const dayKey = () => {
-  const t = Date.now();
-  if (t - dayKeyAt > 1000) {
-    dayKeyAt = t;
-    dayKeyMemo = new Date(t).toISOString().slice(0, 10);
-  }
-  return dayKeyMemo;
-};
 
 // ---- the chain --------------------------------------------------------------
 
@@ -124,15 +93,6 @@ export interface DeskChain {
   kept?: boolean;
 }
 
-/** Contract IV off the name's base vol: a gentle smile plus put skew, all
-    deterministic so the chain doesn't shimmer between renders. */
-function contractIv(baseIv: number, spot: number, strike: number, right: OptionRight): number {
-  const m = (strike - spot) / spot;
-  const smile = 1 + 2.2 * m * m;
-  const skew = right === 'P' ? 1 + Math.max(0, -m) * 0.35 : 1 + Math.max(0, -m) * 0.15;
-  return baseIv * smile * skew;
-}
-
 /** The expiry rail: requested horizons resolved to REAL sessions, deduped —
     two horizons that land on the same Friday are one door, not two. */
 export const DESK_DTES = [0, 2, 4, 7, 14, 21, 30, 45] as const;
@@ -150,160 +110,6 @@ export function dteForDate(key: string): number | null {
     if (isoDate(e.date) === key) return e.dte;
   }
   return null;
-}
-
-/** A single contract's IV on the same smile the chain prices with —
-    exported so the premium pane and the chain can never disagree. */
-export function contractIvFor(ticker: string, strike: number, right: OptionRight): number {
-  const own = ivNear(ticker, strike, right);
-  if (own != null) return own;
-  /* no quote for this contract yet: the name's live at-the-money IV on the desk's smile, else a plain 30% */
-  const base = peekIv(ticker) ?? FALLBACK_IV;
-  const spot = liveSpotOf(ticker);
-  return spot != null && spot > 0 ? contractIv(base, spot, strike, right) : base;
-}
-const FALLBACK_IV = 0.3;
-
-/** `snap`: price the chain off THIS snapshot's spot and open interest instead of the live simulator's — the book at
-    the session's open (levelview's `snapshotAtOpen`), for the calendar's "since the open" */
-export function buildDeskChain(ticker: string, dte: number, depth = 10, snap?: MarketSnapshot): DeskChain {
-  const snapshot = snap ?? snapshotOf(ticker);
-  if (!snapshot) return blankChain(ticker, dte);
-  const { spot, chain } = snapshot;
-  const expiry = expiryFor(dte);
-  // Sessions, floored at half a day — a listed contract has at least that
-  const t = Math.max(expiry.sessions, 0.5) / 252;
-  const baseIv = peekIv(ticker) ?? FALLBACK_IV;
-
-  /* Yesterday's close for every contract is yesterday's spot run through the same estimator. */
-  const prevSpot = spot / (1 + (peekChange(ticker) ?? 0) / 100);
-
-  const sorted = [...chain].sort((a, b) => a.strike - b.strike);
-  const spotIdx = Math.max(0, sorted.findIndex(n => n.strike >= spot));
-  let step = Infinity;
-  for (let i = 1; i < sorted.length; i++) {
-    const d = sorted[i].strike - sorted[i - 1].strike;
-    if (d > 1e-9) step = Math.min(step, d);
-  }
-  if (!Number.isFinite(step) || step <= 0) step = 1;
-
-  /* The ladder is not capped by the book. The sim maintains ~30 strikes a side for the GEX machinery; a quote
-     table reaches further. */
-  const byStrike = new Map(sorted.map(n => [n.strike, n]));
-  const center = sorted[spotIdx]?.strike ?? Math.round(spot / step) * step;
-  const wingOI = (strike: number, right: OptionRight): number => {
-    const decay = Math.exp(-Math.abs(strike - spot) / (spot * 0.08));
-    return Math.round(h01(`${ticker}-${strike}-${right}-${dayKey()}-boi`) * 9000 * decay + 40);
-  };
-  const window: { strike: number; callOI: number; putOI: number }[] = [];
-  for (let i = -depth; i <= depth; i++) {
-    const strike = Number((center + i * step).toFixed(2));
-    if (strike <= 0) continue;
-    const node = byStrike.get(strike);
-    window.push({
-      strike,
-      callOI: node ? node.callOI : wingOI(strike, 'C'),
-      putOI: node ? node.putOI : wingOI(strike, 'P'),
-    });
-  }
-
-  const side = (strike: number, right: OptionRight, oi: number): DeskContract => {
-    const iv = contractIv(baseIv, spot, strike, right);
-    const mark = Number(estimatePremium(spot, strike, right, iv, t).toFixed(2));
-    const g = blackScholesGreeks(spot, strike, t, iv);
-    const r = 0.05;
-    const d1 = (Math.log(spot / strike) + (r + (iv * iv) / 2) * t) / (iv * Math.sqrt(t));
-    const d2 = d1 - iv * Math.sqrt(t);
-    const nd2 = normalCDF(d2);
-    // Black-Scholes theta, stated per SESSION day
-    const pdf = Math.exp((-d1 * d1) / 2) / Math.sqrt(2 * Math.PI);
-    const thetaYear =
-      -(spot * pdf * iv) / (2 * Math.sqrt(t)) -
-      (right === 'C' ? r * strike * Math.exp(-r * t) * nd2 : -r * strike * Math.exp(-r * t) * (1 - nd2));
-    // Day-stable, contract-deterministic volume that leans toward the money
-    const near = Math.exp(-Math.abs(strike - spot) / (spot * 0.03));
-    const seed = `${ticker}-${strike}-${right}-${dayKey()}`;
-    const volume = Math.round(h01(`${seed}-dvol`) * 40000 * near + 120 * near);
-    /* The spread widens as the contract leaves the money — a $12 ATM name is
-       penny-wide, a lotto is not. Floored at a cent. */
-    const m = Math.abs(strike - spot) / spot;
-    const spread = Math.max(0.01, mark * (0.015 + 0.06 * Math.min(1, m * 5)) * (0.6 + 0.8 * h01(`${seed}-spr`)));
-    const bid = Math.max(0, Number((mark - spread / 2).toFixed(2)));
-    const ask = Number((mark + spread / 2).toFixed(2));
-    const last = Number((bid + (ask - bid) * h01(`${seed}-fill`)).toFixed(2));
-    const prevClose = Math.max(0.01, Number(estimatePremium(prevSpot, strike, right, iv, t + 1 / 252).toFixed(2)));
-    const high = Number((Math.max(mark, last, prevClose) * (1 + 0.04 + 0.09 * h01(`${seed}-hi`))).toFixed(2));
-    const low = Math.max(0.01, Number((Math.min(mark, last) * (1 - 0.04 - 0.09 * h01(`${seed}-lo`))).toFixed(2)));
-    const rho = Number(
-      (((right === 'C' ? 1 : -1) * strike * t * Math.exp(-r * t) * (right === 'C' ? nd2 : 1 - nd2)) / 100).toFixed(4)
-    );
-
-    // ---- the column-catalog facts, all from the machinery already here ----
-    const breakeven = Number((right === 'C' ? strike + ask : strike - ask).toFixed(2));
-    // Size leans toward the money like volume does, on its own hash lane
-    const sizeDecay = Math.exp(-Math.abs(strike - spot) / (spot * 0.1));
-    const bidSize = Math.round(h01(`${seed}-bsz`) * 380 * sizeDecay + 3);
-    const askSize = Math.round(h01(`${seed}-asz`) * 380 * sizeDecay + 3);
-    const netChange = Number((last - prevClose).toFixed(2));
-    const netChangePct = prevClose > 0 ? Number(((netChange / prevClose) * 100).toFixed(1)) : 0;
-    const intrinsic = Number(Math.max(0, right === 'C' ? spot - strike : strike - spot).toFixed(2));
-    const extrinsic = Number(Math.max(0, mark - intrinsic).toFixed(2));
-    const solved = bsOnMark(spot, strike, right, bid, ask, t);
-    const touchOdds = solved ? Number(solved.touch.toFixed(2)) : NaN;
-    const profitOddsLong = solved ? Number(solved.profitLong.toFixed(2)) : NaN;
-    const profitOddsShort = solved ? Number(solved.profitShort.toFixed(2)) : NaN;
-
-    return {
-      strike,
-      right,
-      mark,
-      delta: Number((right === 'C' ? g.deltaCall : g.deltaPut).toFixed(4)),
-      gamma: Number(g.gamma.toFixed(4)),
-      theta: Number((thetaYear / THETA_DAYS).toFixed(4)),
-      vega: Number(g.vega.toFixed(4)),
-      iv: Number((iv * 100).toFixed(2)),
-      itmOdds: Number(((right === 'C' ? nd2 : 1 - nd2) * 100).toFixed(2)),
-      rho,
-      bid,
-      ask,
-      high,
-      low,
-      prevClose,
-      last,
-      volume,
-      oi,
-      breakeven,
-      fromSpotPct: Number((((strike - spot) / spot) * 100).toFixed(2)),
-      bidSize,
-      askSize,
-      netChange,
-      netChangePct,
-      toBreakevenPct: Number((((breakeven - spot) / spot) * 100).toFixed(2)),
-      intrinsic,
-      extrinsic,
-      touchOdds,
-      profitOddsLong,
-      profitOddsShort,
-    };
-  };
-
-  const rows: DeskChainRow[] = window.map(node => ({
-    strike: node.strike,
-    call: side(node.strike, 'C', node.callOI),
-    put: side(node.strike, 'P', node.putOI),
-  }));
-
-  return {
-    ticker,
-    spot,
-    step,
-    rows,
-    expiry,
-    expectedMovePct: Number((baseIv * Math.sqrt(t) * 100).toFixed(2)),
-    source: 'simulated',
-    quotedAt: 0,
-    expiryIso: isoDate(expiry.date),
-  };
 }
 
 function numOr(v: unknown): number | null {
@@ -570,6 +376,32 @@ function weekdayCount(todayIso: string, expIso: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** The factor that turns a feed's greek into the house unit: 1, 100 (per 1.00 of vol → per vol point) or 365 (per
+    year → per calendar day), read as the median ratio of feed to house value over the rows that carry both: the nearest
+    of the three, when within a factor of 1.9 (the two models' clocks differ, so the ratio is near one, not on it). Null
+    when nothing agrees. */
+export function unitScale(pairs: readonly (readonly [number | null, number | null])[]): number | null {
+  const ratios: number[] = [];
+  for (const [feed, house] of pairs) {
+    if (feed == null || house == null || !Number.isFinite(feed) || !Number.isFinite(house) || Math.abs(house) < 1e-9) continue;
+    const r = feed / house;
+    if (r > 0) ratios.push(r);
+  }
+  if (ratios.length < 3) return null;
+  ratios.sort((a, b) => a - b);
+  const mid = ratios[Math.floor(ratios.length / 2)];
+  let best: number | null = null;
+  let gap = Math.log(1.9);
+  for (const c of [1, 100, 365]) {
+    const d = Math.abs(Math.log(mid / c));
+    if (d < gap) {
+      gap = d;
+      best = c;
+    }
+  }
+  return best;
+}
+
 /** The listed chain for this name and expiry. `root` is the option symbol when it is not the name (SPX today is SPXW). Bid and ask are that contract's NBBO. A field the feed did not send stays blank. */
 export async function loadLiveChain(ticker: string, dte: number, range = 18, root?: string): Promise<DeskChain> {
   const expiry = expiryFor(dte);
@@ -605,6 +437,7 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
   let quotedAt = 0;
   const ivs: number[] = [];
   const tYears = yearFracLeft(iso);
+  const feedGreeks: { row: DeskContract; theta: number | null; vega: number | null; solved: ReturnType<typeof bsOnMark> }[] = [];
   /* The terminal did not answer: an empty chain that says so. The desk keeps the chain it had. */
   if (got.error && !noData(got)) return { ticker: name, spot: 0, step: 1, rows: [], expiry, expectedMovePct: 0, source: 'live', quotedAt: 0, expiryIso: iso, optRoot: symbol, offline: true };
   {
@@ -642,8 +475,8 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
         mark: Number.isFinite(mark) ? Number(mark.toFixed(2)) : NaN,
         delta: feedDelta != null ? Number(feedDelta.toFixed(4)) : solved ? Number(solved.delta.toFixed(4)) : NaN,
         gamma: feedGamma != null ? Number(feedGamma.toFixed(4)) : solved ? Number(solved.gamma.toFixed(4)) : NaN,
-        theta: feedTheta != null ? Number((feedTheta / THETA_DAYS).toFixed(4)) : solved ? Number(solved.theta.toFixed(4)) : NaN,
-        vega: feedVega != null ? Number((feedVega / 100).toFixed(4)) : solved ? Number(solved.vega.toFixed(4)) : NaN,
+        theta: solved ? Number(solved.theta.toFixed(4)) : NaN,
+        vega: solved ? Number(solved.vega.toFixed(4)) : NaN,
         iv: Number.isFinite(ivPct) ? Number(ivPct.toFixed(2)) : NaN,
         itmOdds: solved ? Number(solved.itm.toFixed(2)) : NaN,
         rho: feedRho != null ? Number((feedRho / 100).toFixed(4)) : solved ? Number(solved.rho.toFixed(4)) : NaN,
@@ -669,11 +502,20 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
         profitOddsShort: solved ? Number(solved.profitShort.toFixed(2)) : NaN,
         quotedAt: at,
       };
+      feedGreeks.push({ row, theta: feedTheta, vega: feedVega, solved });
       const slot = byStrike.get(strike) ?? {};
       if (right === 'C') slot.call = row;
       else slot.put = row;
       byStrike.set(strike, slot);
     }
+  }
+  /* The terminal's theta and vega in the chain's units (per calendar day, per vol point), the scale read off the chain
+     itself against Black-Scholes on each mark; with no agreement the mark's own greek stays */
+  const thetaScale = unitScale(feedGreeks.map(g => [g.theta, g.solved?.theta ?? null]));
+  const vegaScale = unitScale(feedGreeks.map(g => [g.vega, g.solved?.vega ?? null]));
+  for (const g of feedGreeks) {
+    if (g.theta != null && thetaScale) g.row.theta = Number((g.theta / thetaScale).toFixed(4));
+    if (g.vega != null && vegaScale) g.row.vega = Number((g.vega / vegaScale).toFixed(4));
   }
   const strikes = [...byStrike.keys()].sort((a, b) => a - b);
   if (!strikes.length) {

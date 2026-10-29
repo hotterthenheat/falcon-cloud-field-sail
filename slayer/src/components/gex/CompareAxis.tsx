@@ -270,11 +270,11 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
           {/* Each name at its own end: its spot, its longest capsule and what lies beyond the ruler. */}
           <div className="sticky top-0 z-10 bg-panel px-5 flex items-center justify-between gap-4 font-mono text-t10 tnum tabular-nums shrink-0 whitespace-nowrap" style={{ height: AXIS_HEADS_H }} data-axis-heads>
             {/* Short enough to read whole ("max", "+N off"); the full words on hover. */}
-            <span className="min-w-0 truncate text-textSecondary" data-axis-head="a" title={`${cmp.a.ticker} at ${cmp.a.spot.toFixed(2)} · its longest capsule is ${fmtDollars(scale.a)} of ${GREEK_LABEL[greek]}${view.off.a > 0 ? ` · ${view.off.a} strikes lie beyond the ruler` : ''}`}>
+            <span className="min-w-0 truncate text-textSecondary" data-axis-head="a" title={`${cmp.a.ticker}: the levels are read at ${cmp.a.spot.toFixed(2)}, the price the vendor marked its rows at · its longest capsule is ${fmtDollars(scale.a)} of ${GREEK_LABEL[greek]}${view.off.a > 0 ? ` · ${view.off.a} strikes lie beyond the ruler` : ''}`}>
               <span className="font-bold text-textPrimary">{cmp.a.ticker}</span> · <TickFigure value={cmp.a.spot}>{cmp.a.spot.toFixed(2)}</TickFigure> · <span className="text-textMuted">max {fmtDollars(scale.a)}</span>
               {view.off.a > 0 && <span className="text-textMuted"> · +{view.off.a} off</span>}
             </span>
-            <span className="min-w-0 truncate text-right text-textSecondary" data-axis-head="b" title={`${cmp.b.ticker} at ${cmp.b.spot.toFixed(2)} · its longest capsule is ${fmtDollars(scale.b)} of ${GREEK_LABEL[greek]}${view.off.b > 0 ? ` · ${view.off.b} strikes lie beyond the ruler` : ''}`}>
+            <span className="min-w-0 truncate text-right text-textSecondary" data-axis-head="b" title={`${cmp.b.ticker}: the levels are read at ${cmp.b.spot.toFixed(2)}, the price the vendor marked its rows at · its longest capsule is ${fmtDollars(scale.b)} of ${GREEK_LABEL[greek]}${view.off.b > 0 ? ` · ${view.off.b} strikes lie beyond the ruler` : ''}`}>
               {view.off.b > 0 && <span className="text-textMuted">+{view.off.b} off · </span>}
               <span className="text-textMuted">max {fmtDollars(scale.b)}</span> · <TickFigure value={cmp.b.spot}>{cmp.b.spot.toFixed(2)}</TickFigure> · <span className="font-bold text-textPrimary">{cmp.b.ticker}</span>
             </span>

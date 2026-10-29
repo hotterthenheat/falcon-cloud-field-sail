@@ -4,6 +4,7 @@
 import { isTradingDay } from '../../core/calendar';
 import { nyIsoDate, nyMinutes } from '../../core/nyTime';
 import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from '../dayChange';
+import { DEFAULT_BOARD_NAMES } from '../boardNames';
 import { SIM_DESK } from '../deskMode';
 import { uwCall } from '../whales';
 import { monDayOf } from './move';
@@ -18,27 +19,31 @@ export function peekPriceAt(ticker: string): number | null {
   return e?.status === 'live' && e.priceAt ? e.priceAt : null;
 }
 
-/* The Board's prices every ten seconds in one /screener/stocks call while the session runs; the levels refresh on their
-   own cadence. Names whose book is not live yet are left alone. */
-const pricedAsk = new Map<string, number>();
+/* The Board's prices every ten seconds while the session runs; the levels refresh on their own cadence. Names whose book
+   is not live yet are left alone. The ask is the same for every viewer, so the shared proxy answers it once: a name in the
+   default Board list is read with that whole list, sorted; any other name is read by itself. */
+const UNIVERSE = [...DEFAULT_BOARD_NAMES].sort();
+const UNIVERSE_SET = new Set(UNIVERSE);
+const askedAt = new Map<string, number>();
 export const PRICES_MS = 10_000;
 export function refreshBoardPrices(tickers: readonly string[]): void {
   if (SIM_DESK || typeof window === 'undefined') return;
   const now = Date.now();
-  /* per name: a name asked in the last ten seconds (by the Board or the page on it) is not asked again */
   const live = tickers.map(t => t.toUpperCase()).filter(t => {
     const e = cache.get(t);
-    return e?.status === 'live' && e.state?.market_time === 'regular' && now - (pricedAsk.get(t) ?? 0) >= PRICES_MS - 500;
+    return e?.status === 'live' && e.state?.market_time === 'regular';
   });
   if (!live.length) return;
   const [y, m, d] = nyIsoDate().split('-').map(Number);
   if (!isTradingDay(new Date(y, m - 1, d)) || nyMinutes() < OPEN_MIN || nyMinutes() >= CLOSE_MIN) return;
-  for (const t of live) pricedAsk.set(t, now);
+  /* one ask per group; a group asked in the last ten seconds (by the Board or the page on it) is not asked again */
+  const groups = [...new Set(live.map(t => (UNIVERSE_SET.has(t) ? UNIVERSE.join(',') : t)))].filter(g => now - (askedAt.get(g) ?? 0) >= PRICES_MS - 500);
+  if (!groups.length) return;
+  for (const g of groups) askedAt.set(g, now);
   void (async () => {
     let changed = false;
-    for (let i = 0; i < live.length; i += 50) {
-      const part = live.slice(i, i + 50);
-      const res = await uwCall(`/screener/stocks?ticker=${part.map(encodeURIComponent).join(',')}`);
+    for (const g of groups) {
+      const res = await uwCall(`/screener/stocks?ticker=${g.split(',').map(encodeURIComponent).join(',')}`);
       const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
       for (const r of rows) {
         const t = String(r.ticker ?? '').toUpperCase();

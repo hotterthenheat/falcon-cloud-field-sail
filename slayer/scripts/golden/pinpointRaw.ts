@@ -2,9 +2,10 @@
   The hand checks behind pinpoint-golden.ts: every figure here is computed straight from the recorded vendor rows with
   its own arithmetic (no app code), so the golden values are checked against the raw answers, not against themselves.
 */
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { gunzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 type Row = Record<string, string | number | null>;
@@ -280,4 +281,24 @@ export function contractRow(raw: Map<string, unknown>, t: string, key: string): 
     }
   }
   return null;
+}
+
+/** Keep only the answers a run asked for, and only the spot-exposure columns the book and these checks read */
+export function pruneSet(set: string, asked: readonly string[]): void {
+  const keyOf = (path: string) => createHash('sha1').update(path).digest('hex').slice(0, 16);
+  const want = new Set(asked.map(p => `${keyOf(p)}.json.gz`));
+  for (const f of readdirSync(DIR(set))) {
+    if (!f.endsWith('.json.gz')) continue;
+    const file = join(DIR(set), f);
+    if (!want.has(f)) {
+      unlinkSync(file);
+      continue;
+    }
+    const saved = JSON.parse(gunzipSync(readFileSync(file)).toString('utf8')) as { path: string; status: number; body: string; type?: string };
+    if (!saved.path.includes('/spot-exposures/')) continue;
+    const body = JSON.parse(saved.body) as { data?: Row[] };
+    if (!Array.isArray(body?.data)) continue;
+    body.data = body.data.map(r => Object.fromEntries(Object.entries(r).filter(([k]) => !/_(vol|ask|bid)$/.test(k))) as Row);
+    writeFileSync(file, gzipSync(JSON.stringify({ ...saved, body: JSON.stringify(body) })));
+  }
 }

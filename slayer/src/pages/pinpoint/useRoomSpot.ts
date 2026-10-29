@@ -1,8 +1,14 @@
-/* The one price on the page: every box on the Map prints a name's live spot from the vendor book (uwBook peekSpot),
-   re-rendering a reader only when the figure moves. */
+/* The one price on the page: every box on the Map prints a name's live price, re-rendering a reader only when the figure
+   moves. In the regular session it is ThetaData's last print where the page may read it (data/thetaQuote.ts); otherwise,
+   and while the terminal is down, the price the vendor book is marked at (uwBook peekSpot). */
 
 import { useRef, useSyncExternalStore } from 'react';
 import { bookStatus, ensureBook, peekSpot } from '../../data/uwBook';
+import { ensureThetaPrice, peekThetaPrice } from '../../data/thetaQuote';
+import { thetaAllowedHere } from '../../data/theta';
+import { isTradingDay } from '../../core/calendar';
+import { nyIsoDate, nyMinutes } from '../../core/nyTime';
+import { CLOSE_MIN, OPEN_MIN } from '../../data/book/tape';
 
 /** A read every half second: one property read a name, so a new spot shows within half a second of landing */
 const POLL_MS = 500;
@@ -10,8 +16,27 @@ const subs = new Map<string, Set<() => void>>();
 const last = new Map<string, number | null>();
 let timer = 0;
 
+const inSession = (): boolean => {
+  const m = nyMinutes();
+  if (m < OPEN_MIN || m >= CLOSE_MIN) return false;
+  const [y, mo, d] = nyIsoDate().split('-').map(Number);
+  return isTradingDay(new Date(y, mo - 1, d));
+};
+
+/* the terminal's print, when it is this session's and agrees with the book within a fifth (a different listing never does) */
+const thetaSpot = (ticker: string, book: number | null): number | null => {
+  if (!inSession() || !thetaAllowedHere('/stock/snapshot/trade')) return null;
+  ensureThetaPrice(ticker);
+  const held = peekThetaPrice(ticker);
+  const px = held?.live ? held.value.price : null;
+  if (px == null || !(px > 0)) return null;
+  return book == null || Math.abs(px - book) <= book * 0.2 ? px : null;
+};
+
 const readSpot = (ticker: string): number | null => {
   const live = peekSpot(ticker);
+  const theta = thetaSpot(ticker, live);
+  if (theta != null) return theta;
   if (live != null) return live;
   if (bookStatus(ticker) !== 'error') ensureBook(ticker, 'board');
   return null;
