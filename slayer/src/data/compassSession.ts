@@ -34,7 +34,16 @@ const EXT_STOCK = new Set([
 ]);
 
 /** ETFs on the same list. Regular session already runs to 16:15. Pre-market 07:30. No curb. */
-const EXT_ETF = new Set(['GLD', 'IWM', 'QQQ', 'SPY', 'XLF']);
+const EXT_ETF = new Set(['GLD', 'IWM', 'QQQ', 'SPY']);
+
+/** ETFs whose options trade to 16:15 with no pre-market (each traded 16:00-16:15 and never 07:30-09:25 in the
+    sessions scripts/compass-hours-check.ts read). */
+const LATE_ETF = new Set(['DIA', 'EWZ', 'KWEB', 'SLV', 'SMH', 'SOXL', 'SOXX', 'TLT', 'UNG', 'UVIX', 'UVXY', 'VOO', 'VXX', 'XLE', 'XLF']);
+
+/** Index roots with the overnight session (20:15-09:25 ET) and the curb to 17:00. RUT has the overnight session and
+    closes at 16:15; NDX has neither (no overnight trade, its curb ends at 16:15). */
+const GTH_INDEX = new Set(['SPX', 'SPXW', 'XSP', 'VIX']);
+const OVERNIGHT_INDEX = new Set(['SPX', 'SPXW', 'XSP', 'VIX', 'RUT', 'RUTW']);
 
 const WORD: Record<OptionPhase, string> = {
   overnight: 'Overnight',
@@ -69,17 +78,19 @@ const underOf = (ticker: string, mins: number, trading: boolean): UnderPhase => 
 const indexOption = (mins: number, weekday: number, expiry: boolean, root: string): OptionPhase => {
   const vixExpiry = expiry && root === 'VIX';
   const pmExpiry = expiry && root !== 'VIX';
+  const overnight = OVERNIGHT_INDEX.has(root);
   if (weekday === 6) return 'closed';
-  if (weekday === 0) return mins >= 20 * 60 + 15 ? 'overnight' : 'closed';
+  if (weekday === 0) return overnight && mins >= 20 * 60 + 15 ? 'overnight' : 'closed';
   if (weekday === 5 && mins >= 17 * 60) return 'closed';
-  if (mins >= 20 * 60 + 15) return 'overnight';
-  if (mins < 9 * 60 + 25) return 'overnight';
-  if (mins < 9 * 60 + 30) return 'halt';
+  if (mins >= 20 * 60 + 15) return overnight ? 'overnight' : 'closed';
+  if (mins < 9 * 60 + 25) return overnight ? 'overnight' : 'closed';
+  if (mins < 9 * 60 + 30) return overnight ? 'halt' : 'closed';
   if (vixExpiry) return 'closed';
   if (pmExpiry && mins >= 16 * 60) return 'closed';
   if (mins < 16 * 60) return 'open';
-  /* Not expiring today: the curb runs to 17:00. An expiring index is already closed. */
-  if (mins < 17 * 60) return 'curb';
+  /* Not expiring today: the curb runs to 17:00 on the GTH roots and to 16:15 on RUT and NDX. An expiring index is
+     already closed. */
+  if (mins < (GTH_INDEX.has(root) ? 17 * 60 : 16 * 60 + 15)) return 'curb';
   return 'closed';
 };
 
@@ -90,7 +101,7 @@ const equityOption = (mins: number, trading: boolean, ticker: string): OptionPha
   if (ext && mins >= 7 * 60 + 30 && mins < 9 * 60 + 25) return 'pre';
   if (ext && mins >= 9 * 60 + 25 && mins < 9 * 60 + 30) return 'halt';
   if (mins >= 9 * 60 + 30 && mins < 16 * 60) return 'open';
-  if (etf && mins >= 16 * 60 && mins < 16 * 60 + 15) return 'open';
+  if ((etf || LATE_ETF.has(ticker)) && mins >= 16 * 60 && mins < 16 * 60 + 15) return 'open';
   if (EXT_STOCK.has(ticker) && mins >= 16 * 60 && mins < 16 * 60 + 15) return 'curb';
   return 'closed';
 };
@@ -120,7 +131,7 @@ export function scanShutWhy(ticker: string, dte: number, at: At = now()): string
 }
 export const odteDoneMin = (ticker: string): number => {
   if (ticker === 'VIX') return 9 * 60 + 30;
-  if (INDEX.has(ticker) || (!EXT_STOCK.has(ticker) && !EXT_ETF.has(ticker))) return 16 * 60;
+  if (INDEX.has(ticker) || (!EXT_STOCK.has(ticker) && !EXT_ETF.has(ticker) && !LATE_ETF.has(ticker))) return 16 * 60;
   return 16 * 60 + 15;
 };
 

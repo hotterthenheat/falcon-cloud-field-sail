@@ -121,6 +121,17 @@ expectEqual('session shut 12:00 Sat', sessionScanOpen(720, 6), false);
   expectEqual('SPY not scanned at 06:00 ET (its options are shut)', optionScanOpen('SPY', 0, pm(6, 0)), false);
   expectEqual('SPY scanned at 08:00 ET', optionScanOpen('SPY', 0, pm(8, 0)), true);
   expectEqual('SPXW off in the 09:25 halt', optionScanOpen('SPXW', 0, pm(9, 27)), false);
+  /* per-root hours, each checked against real trades by scripts/compass-hours-check.ts (sessions of Oct 26-28) */
+  /* Wednesday Oct 28, EDT: Date.UTC rolls 21:00 ET into Thursday 01:00 UTC */
+  const pmPrev = (h: number, m: number) => Date.UTC(2026, 9, 28, h + 4, m, 5);
+  expectEqual('NDXP has no overnight session (21:00 ET)', optionScanOpen('NDXP', 1, pmPrev(21, 0)), false);
+  expectEqual('RUTW trades overnight (21:00 ET)', optionScanOpen('RUTW', 1, pmPrev(21, 0)), true);
+  expectEqual('SPXW 1DTE in the curb at 16:30', optionScanOpen('SPXW', 1, pmPrev(16, 30)), true);
+  expectEqual('RUTW 1DTE closed at 16:30 (its curb ends 16:15)', optionScanOpen('RUTW', 1, pmPrev(16, 30)), false);
+  expectEqual('SLV trades to 16:15 (16:10)', optionScanOpen('SLV', 1, pmPrev(16, 10)), true);
+  expectEqual('XLF has no pre-market (08:00)', optionScanOpen('XLF', 1, pm(8, 0)), false);
+  expectEqual('XLF trades to 16:15 (16:10)', optionScanOpen('XLF', 1, pmPrev(16, 10)), true);
+  expectEqual('KO closes at 16:00 (16:05)', optionScanOpen('KO', 1, pmPrev(16, 5)), false);
 }
 /* Scored at those marks: the row builds and both models answer, with column 0 as it is (0, 5, 690), not clamped */
 for (const [label, minute, t] of [['09:30', 570, 0], ['09:35', 575, 5]] as const) {
