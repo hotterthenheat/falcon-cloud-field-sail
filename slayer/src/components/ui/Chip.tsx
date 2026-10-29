@@ -1,9 +1,4 @@
-/*
-  Bare chip control — the house idiom for compact selectors that sit inside a
-  panel's own toolbar. Lives here (not in ContractFlowChart, where it was born)
-  so light callers can use it without pulling recharts through the lazy
-  boundary.
-*/
+/* Bare chip control: the house idiom for compact selectors inside a panel's own toolbar. */
 
 import type { ReactNode } from 'react';
 import { Tip } from './Tooltip';
