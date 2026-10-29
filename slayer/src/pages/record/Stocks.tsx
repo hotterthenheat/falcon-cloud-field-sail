@@ -409,7 +409,7 @@ const Stocks = () => {
     const cols: ColDef<StockPick>[] = [
       /* the fixed widths add to ~1130px so the Why column lands inside a laptop's grid instead of past its right edge */
       { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 124, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
-      { headerName: 'Sector', field: 'sector', width: 118, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
+      { headerName: 'Sector', field: 'sector', width: 156, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
       { headerName: 'Last', field: 'price', width: 84, cellRenderer: LastCell, valueGetter: p => (p.data ? peekBatchQuote(p.data.ticker)?.price || p.data.price : 0), type: 'rightAligned', headerTooltip: 'The last price in the session; the regular close outside it (hover for the extended print, ET)' },
       { headerName: dayHead, field: 'changePct', width: 78, cellRenderer: TodayCell, valueGetter: p => (p.data ? peekBatchQuote(p.data.ticker)?.pct ?? p.data.changePct : 0), type: 'rightAligned', headerTooltip: "The regular session's change (the last session's outside it); the extended move sits under it" },
       { headerName: 'Year', field: 'trend', width: 116, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },

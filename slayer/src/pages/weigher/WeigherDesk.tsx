@@ -223,7 +223,7 @@ const DeskCard = ({
           </button>
         )}
         {title && (
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-textPrimary whitespace-nowrap">{title}</span>
+          <span className="font-mono text-t10 font-semibold uppercase tracking-widest text-textPrimary whitespace-nowrap">{title}</span>
         )}
       </div>
       {/* NO overflow-x-auto here: overflow-x forces overflow-y clipping too, and it cut the chain's ticker
@@ -275,7 +275,7 @@ const ScanGrid = memo(function ScanGrid({ rows, ticker, preset, onPick, waiting 
             </span>
           ) : null,
       },
-      { colId: 'last', headerName: 'Last', width: 88, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data && data.last > 0 ? <span className="font-mono text-[11px] tnum text-textPrimary">${data.last.toFixed(2)}</span> : <span className="font-mono text-[10px] text-textMuted">—</span>) },
+      { colId: 'last', headerName: 'Last', width: 88, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data && data.last > 0 ? <span className="font-mono text-[11px] tnum text-textPrimary">${data.last.toFixed(2)}</span> : <span className="font-mono text-t10 text-textMuted">—</span>) },
       {
         colId: 'change',
         headerName: 'Change',
@@ -288,10 +288,10 @@ const ScanGrid = memo(function ScanGrid({ rows, ticker, preset, onPick, waiting 
               {data.changePct.toFixed(2)}%
             </span>
           ) : (
-            <span className="font-mono text-[10px] text-textMuted">—</span>
+            <span className="font-mono text-t10 text-textMuted">—</span>
           ),
       },
-      { colId: 'net', headerName: 'Net prem', width: 96, type: 'rightAligned', headerTooltip: 'Net option premium today: bought at the ask less sold at the bid', cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data && Number.isFinite(data.netPremium) ? <span className={`font-mono text-[10px] tnum ${data.netPremium >= 0 ? 'text-bull' : 'text-bear'}`}>{fmtUsd(data.netPremium)}</span> : <span className="font-mono text-[10px] text-textMuted">—</span>) },
+      { colId: 'net', headerName: 'Net prem', width: 96, type: 'rightAligned', headerTooltip: 'Net option premium today: bought at the ask less sold at the bid', cellRenderer: ({ data }: ICellRendererParams<ScanRow>) => (data && Number.isFinite(data.netPremium) ? <span className={`font-mono text-t10 tnum ${data.netPremium >= 0 ? 'text-bull' : 'text-bear'}`}>{fmtUsd(data.netPremium)}</span> : <span className="font-mono text-t10 text-textMuted">—</span>) },
     ],
     []
   );
@@ -322,7 +322,7 @@ const ScanGrid = memo(function ScanGrid({ rows, ticker, preset, onPick, waiting 
           animateRows={false}
           onFirstDataRendered={() => setReady(true)}
           tooltipShowDelay={350}
-          overlayNoRowsTemplate={`<span class="font-mono text-[10px] uppercase tracking-widest text-textMuted">${waiting ? 'Reading the session' : SCAN_EMPTY[preset]}</span>`}
+          overlayNoRowsTemplate={`<span class="font-mono text-t10 uppercase tracking-widest text-textMuted">${waiting ? 'Reading the session' : SCAN_EMPTY[preset]}</span>`}
         />
       </AgGridProvider>
     </div>
@@ -390,7 +390,7 @@ const StrikePickInner = ({
       </button>
       {open && (
         <div className="absolute left-0 top-full mt-1 z-40 w-52 border border-borderMuted bg-panel rounded-md shadow-2xl shadow-black/60 overflow-hidden animate-slide-in">
-          <div className="px-3 py-1.5 border-b border-borderSubtle flex items-center justify-between font-mono text-[9px] font-semibold uppercase tracking-widest text-textMuted select-none">
+          <div className="px-3 py-1.5 border-b border-borderSubtle flex items-center justify-between font-mono text-t9 font-semibold uppercase tracking-widest text-textMuted select-none">
             <span>Strike</span>
             <span>Mark</span>
           </div>
@@ -1220,11 +1220,11 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const chainMove = (
     <span className="inline-flex items-center gap-2">
       {chain.expectedMovePct > 0 && (
-        <span className="font-mono text-[9px] tnum text-textMuted whitespace-nowrap" title="The move the options are charging for by this expiry">
+        <span className="font-mono text-t9 tnum text-textMuted whitespace-nowrap" title="The move the options are charging for by this expiry">
           ±{chain.expectedMovePct.toFixed(1)}%
         </span>
       )}
-      <span className={`font-mono text-[9px] uppercase tracking-widest whitespace-nowrap ${chain.offline ? 'text-bear' : 'text-textMuted'}`} data-chain-feed={chain.offline ? 'offline' : chain.kept ? 'kept' : 'live'} title={chain.offline ? 'The ThetaData terminal is not answering. The chain is the last one it gave.' : undefined}>
+      <span className={`font-mono text-t9 uppercase tracking-widest whitespace-nowrap ${chain.offline ? 'text-bear' : 'text-textMuted'}`} data-chain-feed={chain.offline ? 'offline' : chain.kept ? 'kept' : 'live'} title={chain.offline ? 'The ThetaData terminal is not answering. The chain is the last one it gave.' : undefined}>
         {chainFeedWords}
       </span>
     </span>
@@ -1732,7 +1732,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
                   align="end"
                   trigger={
                     /* the small size — a 28px control filled the head's 32px line to the borders */
-                    <button className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-ink/[0.03] hover:bg-ink/[0.06] font-mono text-[9px] uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors" title="Add a position you own or sold — its simulated returns land in the card" data-add-position>
+                    <button className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-ink/[0.03] hover:bg-ink/[0.06] font-mono text-t9 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors" title="Add a position you own or sold — its simulated returns land in the card" data-add-position>
                       <Plus className="w-3 h-3" />
                       Add a position
                     </button>
@@ -1778,7 +1778,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
               cardRow || (selected && sel != null) ? (
                 /* the card's own contract where it draws a row — its strike AND its date, which the chain may not
                    list */
-                <span className="font-mono text-[10px] font-semibold tnum text-textSecondary whitespace-nowrap" data-position-head>
+                <span className="font-mono text-t10 font-semibold tnum text-textSecondary whitespace-nowrap" data-position-head>
                   {(() => {
                     const c = cardRow ? (cardRow.kind === 'watch' ? cardRow.w : cardRow.p) : null;
                     return c ? `${c.ticker} ${fmtStrike(c.strike)}${c.right} · ${monthDay(c.expiry)}` : `${ticker} ${fmtStrike(sel!)}${right} · ${chain.expiry.dte}d`;

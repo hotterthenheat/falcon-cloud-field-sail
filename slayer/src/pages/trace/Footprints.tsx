@@ -263,8 +263,9 @@ const Footprints = () => {
   const tooltips = useMemo(() => tooltipsFor(cover), [cover]);
   const pendingNote = oiPendingWords(cover);
   const pill = (r: BookContract, v: string) => `${r.ticker} ${r.strike}${r.right} · ${v}${stockLike(r) ? ' · stock-like' : ''}`;
-  const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_footprints_cols');
-  /* Earnings stands only when a row on the cut has a report coming: a column of dashes is noise */
+  /* Earnings opens closed (the picker turns it on): most rows have no report near, and a column of dashes is noise */
+  const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_footprints_cols', ['earn']);
+  /* …and even turned on, it stands only when a row on the cut has a report coming */
   const noEarn = useMemo(() => !rows.some(r => earnWords(r)), [rows]);
   const gridHidden = useMemo(() => (noEarn && !hidden.has('earn') ? new Set([...hidden, 'earn']) : hidden), [hidden, noEarn]);
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: c.key === 'earn' && noEarn ? 'Earnings · none on this cut' : typeof c.header === 'string' ? c.header : c.key })), [columns, noEarn]);

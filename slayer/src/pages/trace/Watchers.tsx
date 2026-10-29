@@ -298,8 +298,12 @@ const Watchers = () => {
   /* two SPX 7000 calls on different dates are two contracts: the expiry rides in the pill */
   const pill = (a: Catch) => `${a.row.ticker} ${a.row.strike}${a.row.right} ${expiryLabel(a.row.expiry)} · ${fmtUsd(a.premium)}${stockLike(a.row) ? ' · stock-like' : ''}`;
 
-  const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_flowalerts_cols');
-  const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
+  /* Earnings opens closed (the picker turns it on), and even on stands only when a caught row has a report coming:
+     a column of dashes is noise, and the figures need the room */
+  const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_flowalerts_cols', ['earn']);
+  const noEarn = useMemo(() => !rows.some(a => earnWords(a.row)), [rows]);
+  const gridHidden = useMemo(() => (noEarn && !hidden.has('earn') ? new Set([...hidden, 'earn']) : hidden), [hidden, noEarn]);
+  const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: c.key === 'earn' && noEarn ? 'Earnings · none on this cut' : typeof c.header === 'string' ? c.header : c.key })), [columns, noEarn]);
   const selectedId = openKey ? (rows.find(a => a.row.key === openKey)?.id ?? null) : null;
 
   return (
@@ -376,7 +380,7 @@ const Watchers = () => {
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} prose={PROSE} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight onVisible={vis => pairOiFor(vis.map(a => a.row))} endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts on the book', 'the list for the day is done', hold.paused, 'Load more ↓')} emptyText={query.trim() && book.some(r => matchesContract(query, r)) ? `${query.trim()} is on ${bookWord} but meets no reason ${dayAdv()}` : query.trim() && catches.length > 0 ? searchMiss(query, 'catch') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the watchers run when the book answers' : 'Nothing on the book meets a reason yet'} testId="watchers" />
+        <TraceGrid rows={rows} columns={columns} hidden={gridHidden} widths={WIDTHS} flexes={FLEXES} prose={PROSE} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight onVisible={vis => pairOiFor(vis.map(a => a.row))} endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts on the book', 'the list for the day is done', hold.paused, 'Load more ↓')} emptyText={query.trim() && book.some(r => matchesContract(query, r)) ? `${query.trim()} is on ${bookWord} but meets no reason ${dayAdv()}` : query.trim() && catches.length > 0 ? searchMiss(query, 'catch') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the watchers run when the book answers' : 'Nothing on the book meets a reason yet'} testId="watchers" />
       </TraceBox>
 
       <BookDrill list={drillList} openKey={openKey} onOpen={setOpenKey} />

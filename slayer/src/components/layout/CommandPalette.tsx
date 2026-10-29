@@ -246,7 +246,7 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
             return (
               <div key={action.id}>
                 {showGroup && (
-                  <div className="px-4 pt-2 pb-1 font-mono text-[10px] uppercase tracking-widest text-textMuted select-none">
+                  <div className="px-4 pt-2 pb-1 font-mono text-t10 uppercase tracking-widest text-textMuted select-none">
                     {action.group}
                   </div>
                 )}
@@ -259,13 +259,13 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
                 >
                   <span className={i === highlight ? 'text-select' : 'text-textMuted'}>{action.icon}</span>
                   <span className="text-[13px] text-textPrimary">{action.label}</span>
-                  <span className="ml-auto text-[10px] font-mono text-textMuted truncate max-w-[45%]">{action.hint}</span>
+                  <span className="ml-auto text-t10 font-mono text-textMuted truncate max-w-[45%]">{action.hint}</span>
                 </button>
               </div>
             );
           })}
         </div>
-        <div className="flex items-center gap-4 px-4 py-2 border-t border-borderSubtle font-mono text-[10px] text-textMuted select-none">
+        <div className="flex items-center gap-4 px-4 py-2 border-t border-borderSubtle font-mono text-t10 text-textMuted select-none">
           <span>↑↓ navigate</span>
           <span className="flex items-center gap-1">
             <CornerDownLeft className="w-3 h-3" /> select

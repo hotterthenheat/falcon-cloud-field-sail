@@ -481,7 +481,8 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
   const pad = wide ? 'px-5' : 'px-3';
   /* every head explains itself on hover, one plain sentence each */
   const headCell = (words: ReactNode, right = false, extra = '', tip?: string) => (
-    <div className={`h-[14px] text-t9 uppercase tracking-widest text-textMuted ${right ? 'text-right' : ''} ${tip ? 'cursor-help' : ''} ${extra}`} title={tip}>
+    /* at the 11px floor a head may take two lines rather than run into the next ("REACHED NEXTTODAY") */
+    <div className={`min-h-[14px] leading-[13px] text-t9 uppercase tracking-wider text-textMuted ${right ? 'text-right' : ''} ${tip ? 'cursor-help' : ''} ${extra}`} title={tip}>
       {words}
     </div>
   );
@@ -573,14 +574,14 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
           {wide && headCell('#', false, '', 'Its place in the order: how likely price gets there times how much happens if it does')}
           {headCell('Strike', false, '', 'The option strike price, with its role: call wall (the most call hedging), put wall (the most put hedging — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet), supreme (the most hedging of all), shelf (dealers long gamma: their hedging slows price, above or below) or trapdoor (dealers short gamma: their hedging speeds a move through it, above or below) — the Map\'s colours')}
           {wide && headCell('From spot', true, '', 'How far the strike is from the current price, in the Ruler at the top of the page ($, %, ATR or σ)')}
-          {headCell(agenda.horizon ? `Reached ${agenda.horizon}` : clock.inSession ? 'Reached' : aheadWord() === 'today' ? 'Reached today' : 'Reached next', true, 'whitespace-nowrap', agenda.horizon ? `The chance price touches this strike ${agenda.horizon} — the Levels card reads that expiry, so the odds run on the implied move into it` : clock.inSession ? 'The chance price touches this strike before the close' : `The chance price touches this strike ${aheadWord() === 'today' ? "in today's session" : 'next session'}`)}
-          {full && headCell('Today', false, 'whitespace-nowrap', recordDay().isToday && !recordDay().done ? "What today's session has already done at the strike: traded through it, and how often it held or broke (the Map's \"How the levels held\" count) — a dash where the session has not reached it" : recordDay().isToday ? `Today's session has closed — these targets are the next session's (${longDay(sessionDay().next)}); how today's levels held is on the Map` : 'The session has not opened yet — nothing has been reached today')}
+          {headCell(agenda.horizon ? `Reached ${agenda.horizon}` : clock.inSession ? 'Reached' : aheadWord() === 'today' ? 'Reached today' : 'Reached next', true, '', agenda.horizon ? `The chance price touches this strike ${agenda.horizon} — the Levels card reads that expiry, so the odds run on the implied move into it` : clock.inSession ? 'The chance price touches this strike before the close' : `The chance price touches this strike ${aheadWord() === 'today' ? "in today's session" : 'next session'}`)}
+          {full && headCell('Today', false, '', recordDay().isToday && !recordDay().done ? "What today's session has already done at the strike: traded through it, and how often it held or broke (the Map's \"How the levels held\" count) — a dash where the session has not reached it" : recordDay().isToday ? `Today's session has closed — these targets are the next session's (${longDay(sessionDay().next)}); how today's levels held is on the Map` : 'The session has not opened yet — nothing has been reached today')}
           {headCell('Net gamma', true, '', "The net gamma at this strike on the contracts the Levels card reads, dollars per 1% move — positive (green): dealers long gamma, their hedging slows price here; negative (red): short gamma, their hedging speeds a move through. The bar: a wall's size against the biggest wall on this ticker (100%); empty on a trapdoor or a thin strike")}
           {full && headCell('If it breaks', false, '', 'Where price runs next if it gets through, and how much stock dealers must buy or sell on the way')}
           {/* one short head */}
-          {full && headCell(builtHead(agenda, clock.inSession), false, 'whitespace-nowrap truncate', agenda.targets[0]?.buildOvernight ? `How much the wall at this strike grew (+) or shrank (−) ${agenda.targets[0].buildWhen} — the overnight open-interest count, the contracts the Levels card reads, each valued at its own gamma. The same figure as Building's CHANGE column` : 'Hedging added (building) or taken off (draining) at this strike, estimated from the day’s trades until the overnight count loads')}
+          {full && headCell(builtHead(agenda, clock.inSession), false, '', agenda.targets[0]?.buildOvernight ? `How much the wall at this strike grew (+) or shrank (−) ${agenda.targets[0].buildWhen} — the overnight open-interest count, the contracts the Levels card reads, each valued at its own gamma. The same figure as Building's CHANGE column` : 'Hedging added (building) or taken off (draining) at this strike, estimated from the day’s trades until the overnight count loads')}
           {wide && headCell('At stake', false, '', stakeTip(1, 0))}
-          {full && headCell('Why it ranks', false, 'whitespace-nowrap truncate', 'Why it ranks here: the two numbers behind its place — the chance it is reached times what is at stake')}
+          {full && headCell('Why it ranks', false, '', 'Why it ranks here: the two numbers behind its place — the chance it is reached times what is at stake')}
           {headCell(wide ? 'Actions' : '', true, '', 'Open the strike on the Map, or set a price alert on it')}
           {rest.map(t => {
             const kept = focus != null && Math.abs(focus - t.strike) < 1e-9;
@@ -599,7 +600,8 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
               >
                 {wide && <div className="font-mono text-t10 tnum text-textSecondary">#{t.rank}</div>}
                 {/* on a phone the tags wrap under the strike */}
-                <div className={`flex items-center gap-1.5 px-2 font-mono text-t11 tnum overflow-hidden ${wide ? 'whitespace-nowrap' : 'flex-wrap gap-y-0 leading-[12px] content-center'} ${kept ? 'text-silver font-bold shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)] h-full' : 'text-textPrimary'}`}>
+                {/* the role tags wrap under the strike rather than cut ("PUT W…") */}
+                <div className={`flex items-center gap-1.5 px-2 font-mono text-t11 tnum overflow-hidden ${wide ? 'flex-wrap gap-y-0 leading-[13px] content-center' : 'flex-wrap gap-y-0 leading-[12px] content-center'} ${kept ? 'text-silver font-bold shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)] h-full' : 'text-textPrimary'}`}>
                   <span className={wide ? '' : 'w-full'}>{fmtStrike(t.strike)}</span>
                   <Tags t={t} yours={yours?.get(t.strike)} />
                 </div>
@@ -620,8 +622,8 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                   {fmtDollars(Math.abs(t.net))}
                   {wide && <HoldBeam t={t} w={28} />}
                 </div>
-                {full && <div className="font-mono text-t10 leading-[13px] tnum line-clamp-2">{breakWords(t)}</div>}
-                {full && <div className={`font-mono text-t10 leading-[13px] tnum line-clamp-2 ${material ? 'text-textPrimary' : 'text-textMuted'}`}>{buildWords(t, clock.inSession)}</div>}
+                {full && <div className="font-mono text-t10 leading-[13px] tnum line-clamp-3">{breakWords(t)}</div>}
+                {full && <div className={`font-mono text-t10 leading-[13px] tnum line-clamp-3 ${material ? 'text-textPrimary' : 'text-textMuted'}`}>{buildWords(t, clock.inSession)}</div>}
                 {wide && (
                   <div className="relative h-full flex items-center">
                     <span className="absolute inset-y-[12px] left-0 right-14 rounded-full bg-ink/[0.04]" />
