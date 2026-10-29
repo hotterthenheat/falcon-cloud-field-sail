@@ -164,11 +164,13 @@ feat = lambda v: v if v > 0.011 else nan
 def curve(sym, d):
     if sym in INDEX:
         return None
-    end = prior_session(d)
-    start = (date.fromisoformat(d) - timedelta(days=21)).isoformat()
+    first = (date.fromisoformat(d) - timedelta(days=21)).isoformat()
     by = defaultdict(list)
-    for b in bars(sym, start, end):
-        by[b['d']].append(b)
+    day_ = prior_session(d)
+    while day_ >= first:  # one session a request: a busy name's three weeks of minutes outlast the terminal's answer time
+        for b in bars(sym, day_):
+            by[b['d']].append(b)
+        day_ = prior_session(day_)
     cum = defaultdict(list); five = defaultdict(list)
     for lst in by.values():
         run = 0; tot = []
