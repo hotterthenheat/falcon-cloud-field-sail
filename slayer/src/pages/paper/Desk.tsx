@@ -33,8 +33,6 @@ import type { TradeMark } from '../../components/gex/StrikeChart';
 import { chartMenu, planOfMark, positionLines, type Hands } from './deskHands';
 import { buildExposureProfile } from '../../data/exposure';
 import { peekChange, snapshotOf, useBookRev } from '../../data/uwBook';
-import { isOptionRoot } from '../../data/listedNames';
-import { wantSpotGex } from '../../data/spotGexBook';
 import { nameGoesUp } from '../../data/review/engine';
 import { contractKey, contractWords, type ContractId, type Right } from '../../data/review/quotes';
 import { companyName } from '../../data/tickers';
@@ -182,9 +180,6 @@ const PaperDesk = () => {
   });
   const active = Math.min(desk.active, panes.length - 1);
   const name = panes[active].name;
-  useEffect(() => {
-    if (!isPaperFuture(name) && isOptionRoot(name)) wantSpotGex(name);
-  }, [name]);
   const fut = isPaperFuture(name);
   const setName = (n: string, contract: ContractId | null = null) => {
     if (n !== name) {

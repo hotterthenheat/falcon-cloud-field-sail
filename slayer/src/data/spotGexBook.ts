@@ -18,8 +18,3 @@ export function sameName(ticker: string): string {
   const name = ticker.trim().toUpperCase();
   return SAME[name] ?? name;
 }
-
-/** Kept so existing callers compile; it asks nothing. */
-export function wantSpotGex(ticker: string): void {
-  void ticker;
-}

@@ -5,8 +5,8 @@ import { MONTHS } from './calendar';
 
 const DASH = '—';
 
-/** A strike as the chain prints it: whole strikes bare, the rest to the cent ("NaN" for no figure) */
-export const fmtStrike = (v: number): string => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
+/** A strike as the chain prints it: whole strikes bare, the rest to the cent, a dash for no figure (a missing wall is NaN) */
+export const fmtStrike = (v: number): string => (!Number.isFinite(v) ? DASH : v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 /** …and a dash for no figure */
 export const fmtStrikeOrDash = (v: number): string => (!Number.isFinite(v) ? DASH : fmtStrike(v));
 /** A fraction as a whole percent: 0.237 → "24%" */

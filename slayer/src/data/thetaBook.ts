@@ -11,7 +11,7 @@ import { thetaCall } from './theta';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { indexLevel, indexRoot, liveSpotOf, noteIndex, noteSpot } from './traceLive';
 import { setupIdOf } from './compass';
-import { GEX_CORE, inModelWindow, onScanGrid, weekdayDte } from './compassParams';
+import { GEX_CORE, sessionScanOpen, weekdayDte } from './compassParams';
 import { deskPhase, odteAsleep, optionScanOpen, sessionIso, sessionYmd } from './compassSession';
 import { COMPASS_TICKERS } from './compassUniverse';
 import { SIM_DESK } from './deskMode';
@@ -793,8 +793,9 @@ async function refreshHeld(now: number): Promise<void> {
   writeBook(spots);
 }
 
-/** Book A and Book B score on the 5-minute grid from 09:45 to 15:00 ET (the minutes the trees were trained on).
-    Book C sweeps once at 15:20. Between scans only the cards' quotes move. */
+/** Book A and Book B score at every mark of every session the roots trade (compassParams sessionScanOpen: the
+    overnight index session, VIX's 09:29, every 5 minutes from 09:30, the 15:59 and 16:14 stops, to 17:00), each name
+    only while its own option tape is open. Book C sweeps once from 15:20. Between scans only the cards' quotes move. */
 export function bootCompass(): void {
   if (SIM_DESK || typeof window === 'undefined') return;
   if (!armed && currentPicks().length) writeBook(book.spots);
@@ -808,8 +809,7 @@ export function bootCompass(): void {
       rollDay(now);
       const clock = nyParts(now);
       const mins = clock.hour * 60 + clock.minute;
-      const t = mins - (9 * 60 + 30);
-      const onGrid = onScanGrid(t) && inModelWindow(t) && clock.weekday >= 1 && clock.weekday <= 5;
+      const onGrid = sessionScanOpen(mins, clock.weekday);
       let scanned = false;
       if (!swept.lottery && mins >= 15 * 60 + 20 && mins < 15 * 60 + 50) {
         const symbols = odteNames(now);

@@ -6,7 +6,8 @@
      probabilities come from scripts/golden/compass-ref.py: an independent Python rebuild of the columns from their
      definitions, scored by LightGBM 4.7's own Booster.predict on public/models/*_all6months.txt. The simple columns
      are also checked by hand in the comment beside them.
-  2. The entry gate (compassParams): the window, the spread, Book A and Book B, the theta burn, by hand.
+  2. The entry gate (compassParams): the session marks (every session, 09:30 on, overnight), scoring at those marks,
+     the spread, Book A and Book B, the theta burn, by hand.
   3. A signal's outcome (compassOutcome.settleSignal) on hand-built minute quotes: fill, stop, take-profit, the
      ratchet, the reversal, the flat, Book C, and a missing fill.
   4. The same on recorded ThetaData (set compass-2026-10-29): one SPY contract's one-minute NBBO and SPY's bars, read
@@ -23,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { done, expectEqual, expectNear, freezeClock, installUwFixtures } from './uwFixtures';
 import { CHAIN, CONTRACT, DAY, MINUTE, PRIOR, curveBars, pinBook, sessionBars } from './compassScenario';
 import { atmPair, curveFrom, features, yearsLeft } from '../../src/data/compassFeatures';
-import { f32, bookAPass, bookBPass, inModelWindow, onScanGrid, spreadPass, strikeDistance, strikeSpan, thetaBurns, P1_MIN } from '../../src/data/compassParams';
+import { f32, bookAPass, bookBPass, onScanGrid, sessionScanOpen, spreadPass, strikeDistance, strikeSpan, thetaBurns, P1_MIN } from '../../src/data/compassParams';
 import { parseBoosters, predict } from '../../src/data/lgbm';
 import { settleSignal, type PathQuote } from '../../src/data/compassOutcome';
 import { nyWallTime } from '../../src/core/nyTime';
@@ -96,11 +97,35 @@ expectNear('Model 2 on the computed row', predict(RUNNER, x), ref.runner, 1e-6);
 
 /* ---- 2. the entry gate ------------------------------------------------------------------------------------- */
 
-/* Model window: column 0 spans 15–330 in the trees, so 09:45 and 15:00 score and 09:44 and 15:01 do not. */
-expectEqual('window 09:44 shut', inModelWindow(14), false);
-expectEqual('window 09:45 open', inModelWindow(15), true);
-expectEqual('window 15:00 open', inModelWindow(330), true);
-expectEqual('window 15:01 shut', inModelWindow(331), false);
+/* Every session mark scores: 09:30 and 09:35 (t = 0, 5), the 09:29 VIX mark, the 15:59 and 16:14 stops, and the
+   overnight index session (21:00 ET is t = 690; Thursday is weekday 4). 09:27 is the halt; Saturday is shut. */
+expectEqual('grid 09:30', onScanGrid(0), true);
+expectEqual('grid 09:35', onScanGrid(5), true);
+expectEqual('grid 09:29 (VIX)', onScanGrid(-1), true);
+expectEqual('grid 09:27 halt', onScanGrid(-3), false);
+expectEqual('grid 15:59 stop', onScanGrid(389), true);
+expectEqual('grid 16:14 stop', onScanGrid(404), true);
+expectEqual('grid 21:00 overnight', onScanGrid(690), true);
+expectEqual('session open 09:30 Thu', sessionScanOpen(570, 4), true);
+expectEqual('session open 21:00 Thu', sessionScanOpen(1260, 4), true);
+expectEqual('session shut 12:00 Sat', sessionScanOpen(720, 6), false);
+/* Scored at those marks: the row builds and both models answer, with column 0 as it is (0, 5, 690), not clamped */
+for (const [label, minute, t] of [['09:30', 570, 0], ['09:35', 575, 5]] as const) {
+  const row = features(stub(CONTRACT.strike, CONTRACT.right, CONTRACT.bid, CONTRACT.ask, S), minute, bars, bars, PRIOR, pair.iv, pair.skew, [], curve, pinBook(), { m5: NaN, m15: NaN });
+  expectEqual(`row builds at ${label}`, row != null, true);
+  const v = f32(row ?? []);
+  expectEqual(`column 0 at ${label}`, v[0], t);
+  expectEqual(`Model 1 answers at ${label}`, Number.isFinite(predict(ENTRY, v)), true);
+}
+{
+  /* SPXW 7740C overnight at 21:00 ET: no session bars yet, so the tape stands on the quote's spot (7740) */
+  const spxw = { ...stub(7740, 'C', 12.0, 12.4, 7740), id: 'SPXW-7740-C', ticker: 'SPXW', contract: 'SPXW 7740C' } as Setup;
+  const row = features(spxw, 21 * 60, [], bars, null, NaN, NaN, [], null, null, { m5: NaN, m15: NaN });
+  expectEqual('SPXW row builds at 21:00', row != null, true);
+  const v = f32(row ?? []);
+  expectEqual('SPXW column 0 at 21:00 is 690', v[0], 690);
+  expectEqual('SPXW Model 1 answers at 21:00', Number.isFinite(predict(ENTRY, v)), true);
+}
 /* The grid: every 5 minutes; 10:32 is not on it */
 expectEqual('grid 10:30', onScanGrid(60), true);
 expectEqual('grid 10:32', onScanGrid(62), false);

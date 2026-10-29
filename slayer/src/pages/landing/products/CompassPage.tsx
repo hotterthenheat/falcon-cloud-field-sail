@@ -24,7 +24,7 @@ const CompassPage = () => (
     head={['Contracts picked off today’s levels.', 'With the reason for each.']}
     intro={
       <>
-        Compass scores the option chains on the ThetaData terminal’s live quotes with two trained models, every five minutes from 09:45 to 15:00 ET, and keeps a board of the calls that clear the bar and the closest misses —
+        Compass scores the option chains on the ThetaData terminal’s live quotes with two trained models at every mark of every session a root trades — overnight, from the 09:30 open every five minutes, and through the close — and keeps a board of the calls that clear the bar and the closest misses —
         same day and one to seven days out. Every call goes to the blotter the moment it fires, with the quote it fired on, and is filled and closed by fixed rules on the quotes that follow. A call opens its own page:
         the live chart with the entry, the stop and the exits on it, the quote and its greeks.
       </>

@@ -40,7 +40,6 @@ import {
   MODEL_1_NAME,
   MODEL_2_NAME,
   P1_MIN,
-  inModelWindow,
 } from './compassParams';
 import { COMPASS_TICKERS } from './compassUniverse';
 import { optionScanOpen, sessionYmd } from './compassSession';
@@ -707,7 +706,6 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
   const clock = nyParts(now);
   const minute = clock.hour * 60 + clock.minute;
   if (!merge && !sessionScanOpen(minute, clock.weekday)) return;
-  if (!inModelWindow(minute - (9 * 60 + 30))) return;
   if (releaseShut(now)) return;
   const blocked = new Set<string>(DO_NOT_REQUEST);
   const day = sessionYmd(now);
@@ -1195,7 +1193,6 @@ export async function scoreLiveContract(input: {
     if (!(await ensureModels()) || !modelsLocked()) return blank;
     const clock = nyParts(now);
     const minute = clock.hour * 60 + clock.minute;
-    if (!inModelWindow(minute - (9 * 60 + 30))) return blank;
     const day = ymd(now);
     const ticker = input.ticker;
     const under = UNDER[ticker] ?? printOf(ticker);
