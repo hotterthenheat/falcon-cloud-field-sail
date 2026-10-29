@@ -70,11 +70,31 @@ const r2 = (v: number) => (Number.isFinite(v) ? Number(v.toFixed(2)) : null);
 const xs = (row: ScoredLine) => row.x.map(v => (v == null ? NaN : v));
 const tickerOf = (contract: string) => contract.split(' ')[0];
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/** A read the terminal may not answer for a minute (its session drops): asked again every 5 seconds, a minute at
+    most, until it gives an answer that `ok` accepts. */
+async function steady<T>(read: () => Promise<T>, ok: (v: T) => boolean, tries = 12): Promise<T> {
+  let v = await read();
+  for (let i = 0; i < tries && !ok(v); i++) {
+    await sleep(5_000);
+    v = await read();
+  }
+  return v;
+}
+
+/** The underlying's one-minute closes, waited for through a dropped session. */
+const closesOf = (ticker: string, day: string) => steady(() => underCloses(ticker, ymd(day)), b => b.length > 0);
+
 /** One contract's quotes from a chain read, by "strike|C". */
 type Chain = Map<string, PathQuote[]>;
 
 /** One expiry's one-minute NBBO for every strike in the band, the whole session, in one read. */
 export async function chainDay(ticker: string, expiry: string, day: string, range: number): Promise<Chain | null> {
+  return steady(() => chainOnce(ticker, expiry, day, range), c => c !== null);
+}
+
+async function chainOnce(ticker: string, expiry: string, day: string, range: number): Promise<Chain | null> {
   const got = await compassHost().theta(`/option/history/quote?symbol=${encodeURIComponent(ticker)}&expiration=${ymd(expiry)}&start_date=${ymd(day)}&end_date=${ymd(day)}&strike_range=${range}&interval=1m&format=json`);
   if (got.error && got.error !== 'no_data') return null;
   const out: Chain = new Map();
@@ -145,6 +165,8 @@ export interface TradeReview {
   p1: number | null;
   p2: number | null;
   snapshot: {
+    /** what Model 1 read on this contract at the mark, when the scan scored it (Book C calls carry no model) */
+    modelRead: number | null;
     bid: number;
     ask: number;
     spot: number | null;
@@ -222,7 +244,7 @@ export async function reviewTrade(sig: Signal, deps: ReviewDeps): Promise<TradeR
     deps.chains?.set(chainKey, chain);
   }
   const quotes = chain?.get(`${sig.strike}|${sig.right}`) ?? [];
-  const bars = await underCloses(sig.ticker, ymd(sig.day));
+  const bars = await closesOf(sig.ticker, sig.day);
   const base: TradeReview = {
     key: sig.key,
     contract: sig.contract,
@@ -232,7 +254,7 @@ export async function reviewTrade(sig: Signal, deps: ReviewDeps): Promise<TradeR
     mark: clockOf(markMin),
     p1: sig.p1,
     p2: sig.prun,
-    snapshot: { bid: sig.bid, ask: sig.ask, spot: sig.spot, x: row ? row.x : null, up: ent.up, down: ent.down, runnerUp: run.up, runnerDown: run.down },
+    snapshot: { modelRead: row ? Number(row.p1.toFixed(4)) : null, bid: sig.bid, ask: sig.ask, spot: sig.spot, x: row ? row.x : null, up: ent.up, down: ent.down, runnerUp: run.up, runnerDown: run.down },
     after: { fill: null, fillAt: null, exit: null, exitAt: null, why: '', heldMin: null, pnl: null, underMove: null, underBest: null, underWorst: null, underFirst10: null, ivFill: null, ivExit: null, midFill: null, midExit: null, parts: { direction: null, decay: null, iv: null, spreadIn: null, spreadOut: null, fees: null }, bestBid: null, targetLater: false, mids: [] },
     verdict: { cause: 'still open', flags: [], line: '' },
   };
@@ -303,6 +325,7 @@ export async function reviewTrade(sig: Signal, deps: ReviewDeps): Promise<TradeR
     mids,
   };
   base.verdict = verdictOf(sig, base.after, markMin);
+  if (!bars.length) base.verdict.flags.push('the underlying’s minutes did not load: the direction, decay and IV split is not drawn');
   return base;
 }
 
@@ -570,7 +593,7 @@ export async function runStudy(deps: StudyDeps): Promise<StudyResult> {
     const ck = `${name}|${r.e}`;
     if (!chains.has(ck)) chains.set(ck, await chainDay(name, r.e, day, r.e === day ? 16 : 4));
     const quotes = chains.get(ck)?.get(keyOf(r.k)) ?? null;
-    if (!barsOf.has(name)) barsOf.set(name, await underCloses(name, ymd(day)));
+    if (!barsOf.has(name)) barsOf.set(name, await closesOf(name, day));
     const right = r.k.trim().slice(-1) === 'C' ? 'C' : 'P';
     const firedAt = markMs(day, r.t);
     let label: Label = { t: r.t, k: r.k, e: r.e, ...(r.late ? { late: true } : {}), p1: r.p1, p2: r.p2, fill: null, exit: null, why: null, ret: null, tp1: null, hit50: null, best: null };

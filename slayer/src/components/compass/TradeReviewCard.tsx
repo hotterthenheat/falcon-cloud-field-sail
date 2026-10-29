@@ -69,7 +69,7 @@ const TradeReviewCard = ({ r, compact = false }: { r: TradeReview; compact?: boo
           <p className="font-mono text-t10 text-warn">{r.verdict.flags.join(' · ')}</p>
         )}
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-          <Num label="Model 1" value={r.p1 == null ? 'None' : `${(r.p1 * 100).toFixed(1)}%`} />
+          <Num label="Model 1" value={r.p1 != null ? `${(r.p1 * 100).toFixed(1)}%` : r.snapshot.modelRead != null ? `Read ${(r.snapshot.modelRead * 100).toFixed(1)}%` : 'None'} title={r.p1 == null && r.snapshot.modelRead != null ? 'Book C calls without a model; this is what Model 1 read on the contract at that mark.' : undefined} />
           <Num label="At call" value={`${r.snapshot.bid.toFixed(2)}×${r.snapshot.ask.toFixed(2)}`} />
           <Num label="Fill" value={a.fill == null ? '—' : `${px(a.fill)} ${a.fillAt ?? ''}`} />
           <Num label="Exit" value={a.exit == null ? '—' : `${px(a.exit)} ${a.exitAt ?? ''}`} title={a.why} />
