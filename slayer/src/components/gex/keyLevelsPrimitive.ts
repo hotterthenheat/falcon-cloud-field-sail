@@ -220,7 +220,7 @@ export function rungLabel(r: KeyLevelRung, spot: number): string {
    the boxes pushed apart top to bottom so none overlaps another — a box moved off its rung keeps a thin lead to it */
 /* The named ladder is drawn on the pane's top layer, which repaints on every crosshair move: it is painted once into its
    own bitmap and blitted until a rung, a word, the scale or the hover changes */
-const namedCache = new WeakMap<KeyLevelsPrimitive, { key: string; canvas: HTMLCanvasElement }>();
+const namedCache = new WeakMap<KeyLevelsPrimitive, { key: string; canvas: HTMLCanvasElement; at: number }>();
 function drawNamed(src: KeyLevelsPrimitive, target: DrawTarget, spot: number): void {
   const series = src.series;
   if (!series) return;
@@ -241,6 +241,14 @@ function drawNamed(src: KeyLevelsPrimitive, target: DrawTarget, spot: number): v
     const key = `${W0}x${H0}|${hr0}|${vr0}|${src.edge}|${items.map(i => `${i.r.key}:${i.y}:${i.text}:${i.r.ink}:${i.hot.toFixed(3)}:${i.r.dash ? 1 : 0}:${i.r.weight ?? 1}`).join(',')}`;
     let cache = namedCache.get(src);
     if (!cache || cache.key !== key) {
+      const now = performance.now();
+      /* rebuilt a moment ago and changed again (a zoom): this frame is drawn straight */
+      if (cache && now - cache.at < 150) {
+        paintNamed(src, scope, items);
+        cache.at = now;
+        cache.key = '';
+        return;
+      }
       const canvas = cache?.canvas ?? document.createElement('canvas');
       if (canvas.width !== W0 || canvas.height !== H0) {
         canvas.width = W0;
@@ -250,7 +258,7 @@ function drawNamed(src: KeyLevelsPrimitive, target: DrawTarget, spot: number): v
       if (!off) return;
       off.clearRect(0, 0, W0, H0);
       paintNamed(src, { ...scope, context: off }, items);
-      cache = { key, canvas };
+      cache = { key, canvas, at: now };
       namedCache.set(src, cache);
     }
     scope.context.drawImage(cache.canvas, 0, 0);

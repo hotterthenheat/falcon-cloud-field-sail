@@ -75,6 +75,8 @@ class ExpectedMoveRenderer {
   /* The cone is drawn once into its own bitmap, from its anchor rightward, and blitted at the anchor's x: a pan moves the
      anchor only, so the frame is one drawImage until the bar spacing, the price scale, the size or the data change. */
   private cache: { key: string; canvas: HTMLCanvasElement; pad: number; width: number } | null = null;
+  /** When the bitmap was last rebuilt: a view still changing (a zoom) is drawn straight, not rebuilt every frame */
+  private builtAt = 0;
 
   draw(target: DrawTarget): void {
     const src = this.source;
@@ -149,20 +151,34 @@ class ExpectedMoveRenderer {
       const extent = Math.min(pts[pts.length - 1].x, reachMax);
       const key = `${src.rev}|${px.toFixed(4)}|${py.toFixed(4)}|${y0.toFixed(2)}|${Math.round(w)}|${Math.round(h)}|${hr}|${vr}`;
       let cache = this.cache;
+      const at = (m: ConeMark) => ({ x: (m.minutesAhead / barMinutes) * px, y: yOf(m.price) });
       if (!cache || cache.key !== key || x0 + cache.width < w - pad) {
+        const now = performance.now();
+        if (cache && now - this.builtAt < 150) {
+          /* rebuilt a moment ago and changed again: draw this frame straight */
+          this.builtAt = now;
+          ctx.save();
+          ctx.translate(Math.round(x0), 0);
+          this.paint(ctx, pts, data, hr, vr, at, h);
+          ctx.restore();
+          this.cache = { ...cache, key: '' };
+          return;
+        }
+        this.builtAt = now;
+        /* the bitmap only grows (in steps), so a changing cone does not reallocate it */
         const cw = Math.max(1, Math.ceil(extent + 2 * pad));
         const ch = Math.max(1, Math.round(h));
         const canvas = cache?.canvas ?? document.createElement('canvas');
-        if (canvas.width !== cw || canvas.height !== ch) {
-          canvas.width = cw;
+        if (canvas.width < cw || canvas.height !== ch) {
+          canvas.width = Math.ceil(cw / 256) * 256;
           canvas.height = ch;
         }
         const g = canvas.getContext('2d');
         if (!g) return;
         g.setTransform(1, 0, 0, 1, 0, 0);
-        g.clearRect(0, 0, cw, ch);
+        g.clearRect(0, 0, canvas.width, canvas.height);
         g.setTransform(1, 0, 0, 1, pad, 0);
-        this.paint(g, pts, data, hr, vr, (m: ConeMark) => ({ x: (m.minutesAhead / barMinutes) * px, y: yOf(m.price) }), ch);
+        this.paint(g, pts, data, hr, vr, at, ch);
         cache = { key, canvas, pad, width: cw - pad };
         this.cache = cache;
       }
