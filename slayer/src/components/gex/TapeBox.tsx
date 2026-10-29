@@ -9,7 +9,10 @@ import { DayHeadSlot } from './DayBox';
 import { AreaSeries, createChart, createSeriesMarkers, LineSeries, LineStyle, type IChartApi, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type LineData, type SeriesMarker, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { Bell, BellRing, ChevronDown } from 'lucide-react';
 import { roomLevels } from '../../data/roomLevels';
-import { deskBars, liveBars, peekDaySigma, peekIv, peekMoveToClose, peekScopeMove, useBookRev, useResolvedSession } from '../../data/uwBook';
+import { peekDaySigma, peekIv, peekMoveToClose, peekScopeMove, useBookRev, useResolvedSession } from '../../data/uwBook';
+import { thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
+import { usePrintRev, useTapeRev } from '../../data/thetaTape';
+import { sessionOfMinute } from '../../data/deskSession';
 import { scopeDateOf } from '../../data/wall';
 import { readSessionClock } from '../../data/moc';
 import { CLOSE_MIN, aheadClock, buildCorridor, hhmm, type AheadClock } from '../../data/ahead';
@@ -112,7 +115,25 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const bookRev = useBookRev();
   const markMoves = useChartFocus(snapshot.ticker);
   const read = useResolvedSession(snapshot.ticker);
-  const bars = useMemo(() => barsProp ?? deskBars(snapshot.ticker, read.session) ?? liveBars(snapshot.ticker), [snapshot.ticker, barsProp, bookRev, read.session]);
+  /* the price drawn is ThetaData's one-minute tape (data/thetaTape.ts), never the book's bars; a replay cuts it to the
+     replayed window, in that window's session */
+  const tapeSession = barsProp?.length ? sessionOfMinute(nyMinutes(barsProp[0].time * 1000)) : read.session;
+  useEffect(() => {
+    const offs = wantChartTape(snapshot.ticker, '1m', tapeSession);
+    return () => offs.forEach(off => off());
+  }, [snapshot.ticker, tapeSession]);
+  const tapeRev = useTapeRev();
+  const printRev = usePrintRev(barsProp == null);
+  /* kept or offline: the bars stay, stamped as of when they were read */
+  const tapeNote = thetaChartNote(snapshot.ticker, 1, tapeSession);
+  const bars = useMemo(() => {
+    const all = thetaChartBars(snapshot.ticker, 1, tapeSession);
+    if (!barsProp) return all;
+    if (!barsProp.length) return [];
+    const from = barsProp[0].time;
+    const to = barsProp[barsProp.length - 1].time;
+    return all.filter(b => b.time >= from && b.time <= to);
+  }, [snapshot.ticker, barsProp, tapeSession, tapeRev, printRev]);
   /* the book handed in is already the Map's window, read as it stands (a dated book is read '0DTE') */
   const levelsScope = '0DTE' as const;
   const levels = useMemo<Level[]>(() => {
@@ -790,7 +811,16 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
                 {keptOff === 'up' ? '▲' : '▼'} Kept {fmtStrike(focus)} · {Math.abs(focus - spot).toFixed(2)} {keptOff === 'up' ? 'above' : 'below'}
               </div>
             )}
-            {bars.length === 0 && <div className="absolute inset-0 grid place-items-center font-mono text-t11 uppercase tracking-widest text-textMuted">No bars yet this session</div>}
+            {bars.length > 0 && tapeNote && (
+              <div className={`pointer-events-none absolute left-2 bottom-9 z-10 rounded-md border border-borderSubtle bg-panel/90 px-2 py-0.5 font-mono text-t11 ${/offline/i.test(tapeNote) ? 'text-warn' : 'text-textMuted'}`} data-tape-note>
+                {tapeNote}
+              </div>
+            )}
+            {bars.length === 0 && (
+              <div className="absolute inset-0 grid place-items-center px-4 text-center font-mono text-t11 uppercase tracking-widest text-textMuted" data-tape-note={tapeNote ? '' : undefined}>
+                {tapeNote ?? 'No bars yet this session'}
+              </div>
+            )}
           </div>
         </div>
       )}

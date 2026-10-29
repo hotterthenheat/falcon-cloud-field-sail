@@ -1,4 +1,4 @@
-/* A stock's or an index's bars and its live print from ThetaData, shared by the Terrain and the Weigher. One store per
+/* A stock's or an index's bars and its live print from ThetaData, shared by the Terrain, the Weigher and Pinpoint's tape. One store per
    name, grain and session: the first read paints the copy this browser kept (stamped with when it was taken), a
    timer re-reads only today's window while that session trades, and nothing is asked while the tab is hidden. With
    the terminal down the last bars stay on screen and say so; nothing stands in for them. */
@@ -238,8 +238,8 @@ function merge(old: Candle[], fresh: Candle[]): Candle[] {
 }
 
 async function read(s: Slot): Promise<void> {
-  /* a room kept mounted behind a page that reads Unusual Whales asks nothing */
-  if (s.busy || thetaUseHere() !== 'all') return;
+  /* a room kept mounted behind a page that reads Unusual Whales only asks nothing; Pinpoint reads bars and prints (theta.ts) */
+  if (s.busy || thetaUseHere() === 'none') return;
   s.busy = true;
   const key = keyOf(s.symbol, s.grain, s.session);
   try {
@@ -413,7 +413,7 @@ function printLive(symbol: string): boolean {
 let printsBusy = false;
 let printsDue = 0;
 async function readPrints(): Promise<void> {
-  if (printsBusy || thetaUseHere() !== 'all') return;
+  if (printsBusy || thetaUseHere() === 'none') return;
   printsBusy = true;
   const names = [...printWanted.keys()];
   try {
