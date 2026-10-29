@@ -2,6 +2,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { proxyUw } from './server/uwProxy.mjs';
 import { proxyTheta } from './server/thetaProxy.mjs';
+import { proxyLogo } from './server/logoProxy.mjs';
 import { superviseTheta } from './theta/supervisor.mjs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
@@ -11,6 +12,7 @@ const dataProxies = (): Plugin => {
   const mount = (use: (path: string, fn: (req: IncomingMessage, res: ServerResponse) => void) => void) => {
     use('/api/uw', (req, res) => void proxyUw(req, res));
     use('/api/theta', (req, res) => void proxyTheta(req, res));
+    use('/api/logo', (req, res) => void proxyLogo(req, res));
     use('/api', (_req, res) => {
       res.statusCode = 404;
       res.setHeader('content-type', 'application/json');

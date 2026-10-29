@@ -9,6 +9,6 @@ export { monDayOf, peekDaySigma, peekIv, peekMoveToClose, peekScopeMove } from '
 export { type DayMove, changeInk, dayMoveWords, peekChange, peekDayMove, peekExtLast, peekPriceAt, peekSpot, refreshBoardPrices } from './book/day';
 export { bookCandles, bookDatesIn, bookHistory, bookOfLevels, chainForDate, dayBars, deskBars, deskTape, expiryDateFor, expiryLabel, historyForDate, peekBellShare, peekSessionAll, peekSettledNet } from './book/levels';
 export { liveBars, snapshotFor, snapshotOf, usePinpointFeed, useResolvedSession } from './book/feed';
-export { bookFixed, ensureBook, ensureScopeDates, fixedAsOfWords, scopeDatesPending } from './book/load';
+export { bookFixed, ensureBook, ensureScopeDates, fixedAsOfWords, scopeDatesPending, wantDateFacts } from './book/load';
 export { bookMinuteKind, ensureBookMinutes, useBookMinutes } from './book/minutes';
 export { type OiChange, type OiChangeRow, ensureOiChange, peekOiChange } from './book/oiChange';

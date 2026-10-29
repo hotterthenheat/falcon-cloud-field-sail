@@ -22,7 +22,7 @@ export const AGENDA_LINES: Record<AgendaFace, string> = {
   get targets() {
     return `Every strike, in the order it matters ${todayScopeLabel() === 'Today' ? 'today' : 'next session'}`;
   },
-  building: 'What the last overnight open-interest count added to every strike — walls forming before they are the wall, draining before they break',
+  building: 'What the overnight open-interest count added to every strike, and what it took off',
 };
 /** The other face is mounted, unseen, this long after the page lands — past the shell's crossfade (200ms) and the
     first box's own fade (420ms), so its build never sits on the first paint */

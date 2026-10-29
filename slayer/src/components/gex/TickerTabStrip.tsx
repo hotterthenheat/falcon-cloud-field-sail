@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, X } from 'lucide-react';
 import { ensureBook } from '../../data/uwBook';
-import { peekPrint, useTapeRev, wantPrint } from '../../data/thetaTape';
+import { peekPrint, usePrintRev, wantPrint } from '../../data/thetaTape';
 import { etClock } from '../../data/thetaFeed';
 import CompanyLogo from '../ui/CompanyLogo';
 import TickerLookup from '../ui/TickerLookup';
@@ -68,7 +68,7 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
 
   const full = tabs.length >= max;
   /* each tab's price is ThetaData's print, read with the other panes' in one call */
-  useTapeRev();
+  usePrintRev();
   const tabKey = tabs.join(',');
   useEffect(() => {
     /* the exposure book of every tab is warmed, so a switch draws at once */

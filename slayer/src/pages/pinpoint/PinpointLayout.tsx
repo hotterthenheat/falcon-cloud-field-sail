@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { PinpointPageSkeleton } from './pinpointSkeletons';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -20,6 +20,8 @@ import { fmtStrike } from '../../core/format';
 /* Pinpoint's shell: one head (the page's icon, name and line, the focus chip, the Ruler and Levels cards, a REPLAYING tag while
    the Map is rewound), and the page under it. The Map draws its band into #pinpoint-head-band when the row has room. */
 
+const NOTE_KEY = 'pinpoint.sessionNoteSeen';
+
 const PinpointLayout = () => {
   const { activeTicker } = useTicker();
   const marketData = usePinpointFeed(activeTicker);
@@ -29,6 +31,22 @@ const PinpointLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const outlet = useOutlet();
+  /* the session note is said until the reader hides it; a different note shows again */
+  const [noteSeen, setNoteSeen] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem(NOTE_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const seeNote = (note: string | null) => {
+    setNoteSeen(note);
+    try {
+      if (note) sessionStorage.setItem(NOTE_KEY, note);
+    } catch {
+      /* no storage: hidden for this page */
+    }
+  };
 
   /* A kept strike is the one the reader pinned, on whichever name. The distance is the frame's, because that is the spot on hand. */
   const focusTicker = focus?.ticker ?? null;
@@ -108,8 +126,13 @@ const PinpointLayout = () => {
           </div>
         </div>
       </header>
-      {sessionRead.note && (
-        <p className="mt-2 font-mono text-t10 uppercase tracking-widest text-textMuted" data-session-note>{sessionRead.note}</p>
+      {sessionRead.note && noteSeen !== sessionRead.note && (
+        <p className="mt-2 flex items-center gap-2 font-mono text-t10 text-textMuted" data-session-note>
+          <span className="min-w-0">{sessionRead.note}</span>
+          <button type="button" onClick={() => seeNote(sessionRead.note)} className="shrink-0 inline-flex items-center rounded p-0.5 hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" aria-label="Hide this note" title="Hide this note">
+            <X className="w-3 h-3" />
+          </button>
+        </p>
       )}
       <RegimeLine ticker={activeTicker} />
       {/* The Agenda's Building face names itself in the tab. */}

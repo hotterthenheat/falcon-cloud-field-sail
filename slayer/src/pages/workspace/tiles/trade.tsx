@@ -260,7 +260,7 @@ export const PositionsTile = ({ ctx, state }: TileProps) => {
   const keptAt = theta === 'down' ? rows.reduce<number | null>((m, r) => {
     const c = r.kind === 'watch' ? r.w : r.p;
     const h = peekThetaMark(c.ticker, c.expiry, c.strike, c.right);
-    return h && !h.live ? Math.min(m ?? Infinity, h.value.read) : m;
+    return h && !h.live && h.value.at != null ? Math.min(m ?? Infinity, h.value.at) : m;
   }, null) : null;
   const against = rows.filter(r => hedgeOf(r) === 'against').length;
   const openWatch = watchRows.filter(r => r.kind === 'watch' && r.w.status === 'open').length;

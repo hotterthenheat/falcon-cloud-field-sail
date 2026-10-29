@@ -420,6 +420,19 @@ export function levelNetPath(snapshot: MarketSnapshot, chain: readonly StrikeNod
   return { path, complete: set.complete };
 }
 
+/** Each date's own net gamma at each price, house sign — the same legs the flip re-prices (legSet), one set a date;
+    null for a date whose rows cannot be re-priced. The profile's curve is these, added. */
+export function datesNetAt(snapshot: MarketSnapshot, dates: readonly string[], prices: readonly number[]): (number[] | null)[] {
+  const y = carryFor(snapshot.ticker);
+  return dates.map(d => {
+    const chain = snapshot.uwByDate?.[d];
+    const set = chain?.length ? legSet(snapshot, chain) : null;
+    if (!set || !set.withVol) return null;
+    const legs = quietLegs(set.legs);
+    return prices.map(S => netGammaAt(legs, snapshot.spot, S, y.r, y.q));
+  });
+}
+
 /* ---- the words ----------------------------------------------------------------------------------------------- */
 
 /** Long (absorbing) or short (amplifying) gamma at spot, off the house-signed net — the ONE regime rule */

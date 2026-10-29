@@ -3,10 +3,10 @@ import { useLocation } from 'react-router-dom';
 import { ChevronUp, Code2, Link2, Maximize2, Minimize2, Rows3, SlidersHorizontal, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
-import { useDeskSession } from '../../data/deskSession';
+import { useDeskSession, type DeskSession } from '../../data/deskSession';
 import { chainForDate, deskTape, expiryLabel, peekChange, peekEntry, peekSpot, useBookRev } from '../../data/uwBook';
 import { useSessionQuote } from '../../data/sessionQuote';
-import { useTapeRev, useThetaPrint, useThetaTape } from '../../data/thetaTape';
+import { peekPrint, usePrintRev, useTapeRev, useThetaTape, wantPrint } from '../../data/thetaTape';
 import { thetaChartBars } from '../../data/thetaCandles';
 import { fmtUsd } from '../../data/gex';
 import { CALENDAR_DTES } from '../../data/exposureSurface';
@@ -453,6 +453,38 @@ function useStable<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) 
 }
 const NO_FLOW_PRINTS: readonly never[] = [];
 
+/* The head's price and its move off the regular close, off ThetaData: the session's last bar with the live print on
+   it. The close is the prior session's before and during the day, today's after the bell. */
+function headRead(ticker: string, session: DeskSession, cashClose: number | null): { px: number | null; move: number | null } {
+  const bars = thetaChartBars(ticker, 1, session);
+  const px = bars.length ? bars[bars.length - 1].close : null;
+  const print = peekPrint(ticker);
+  const base = session === 'post' || session === 'overnight' ? cashClose : print && print.prev > 0 ? print.prev : null;
+  return { px, move: px != null && base != null && base > 0 ? ((px - base) / base) * 100 : null };
+}
+/* Leaves, so a print (every second in the session) re-renders the number and not the pane */
+const HeadPrice = ({ ticker, session, className }: { ticker: string; session: DeskSession; className?: string }) => {
+  usePrintRev();
+  useTapeRev();
+  const { px } = headRead(ticker, session, null);
+  const quote = useSessionQuote(ticker, session, session !== 'rth' && px == null);
+  if (px == null && quote) return <span className="font-mono text-t11 font-semibold tnum text-textPrimary" title="No prints in this session. Bid and ask.">{quote.bid.toFixed(2)} × {quote.ask.toFixed(2)}</span>;
+  if (px == null) return <span className="font-mono text-t11 text-textMuted">—</span>;
+  return <SpotPrice value={px} className={className} />;
+};
+const HeadMove = ({ ticker, session, cashClose, className = '' }: { ticker: string; session: DeskSession; cashClose: number | null; className?: string }) => {
+  usePrintRev();
+  useTapeRev();
+  const { move } = headRead(ticker, session, cashClose);
+  if (move == null) return null;
+  return (
+    <span className={`${className} ${move >= 0 ? 'text-bull' : 'text-bear'}`} title={session === 'rth' ? undefined : 'From the regular close'}>
+      {move >= 0 ? '+' : ''}
+      {move.toFixed(2)}%
+    </span>
+  );
+};
+
 /* The hovered bar lives in a cell, not the pane's state: the chart reports it on every pointer move, and as pane
    state each move re-rendered the whole pane — its toolbar and the rail's calendar (~500 cells). */
 /* The chrome's one read line: the hovered bar while the pointer is on the plot, else the heaviest strikes. */
@@ -763,26 +795,9 @@ const Pane = ({
   const strip = 'rgb(var(--panel) / 0.55)';
 
   const session = useDeskSession();
-  /* The head's price is ThetaData's: the session's last bar with the live print painted on it, and its move off the
-     regular close it follows (the prior session's before and during the day, today's after the bell) */
-  const print = useThetaPrint(ticker);
-
-  const sessionBars = useMemo(
-    () => thetaChartBars(ticker, 1, session),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [session, ticker, revision],
-  );
-  const sessionPrint = sessionBars.length ? sessionBars[sessionBars.length - 1].close : null;
-  const quote = useSessionQuote(ticker, session, session !== 'rth' && sessionPrint == null);
-  const headPx = sessionPrint;
-  const regularClose = session === 'post' || session === 'overnight' ? cashTape.bars[cashTape.bars.length - 1]?.close ?? null : print && print.prev > 0 ? print.prev : null;
-  const headChange = headPx != null && regularClose != null && regularClose > 0
-    ? ((headPx - regularClose) / regularClose) * 100
-    : quote && regularClose != null && regularClose > 0
-      ? ((((quote.bid + quote.ask) / 2) - regularClose) / regularClose) * 100
-      : null;
-  const changePct = headChange;
-  const headUp = (headChange ?? 0) >= 0;
+  /* The head's price is ThetaData's, drawn by leaves that alone re-render on a print (HeadPrice, HeadMove) */
+  useEffect(() => wantPrint(ticker), [ticker]);
+  const cashClose = session === 'post' || session === 'overnight' ? cashTape.bars[cashTape.bars.length - 1]?.close ?? null : null;
 
 
   /* Compact when the strip would not fit on one line, the phone's mode: the timeframes collapse into one trigger and
@@ -953,7 +968,10 @@ const Pane = ({
     return composeSnapshot(
       chart,
       panel,
-      { ticker, timeframe, price: headPx != null && Number.isFinite(headPx) ? headPx.toFixed(2) : '—', change: changePct == null ? '—' : `${changePct >= 0 ? '+' : '−'}${Math.abs(changePct).toFixed(2)}%`, up: (changePct ?? 0) >= 0, when },
+      (() => {
+        const { px, move } = headRead(ticker, session, cashClose);
+        return { ticker, timeframe, price: px != null ? px.toFixed(2) : '—', change: move == null ? '—' : `${move >= 0 ? '+' : '−'}${Math.abs(move).toFixed(2)}%`, up: (move ?? 0) >= 0, when };
+      })(),
       panelEl ?? chartEl ?? box,
       { chart: ground(chartEl), panel: ground(panelEl) }
     );
@@ -1191,19 +1209,8 @@ const Pane = ({
                   <span className="text-t10 text-textMuted" aria-hidden>·</span>
                   <span className="text-t10 text-textMuted">{timeframe}</span>
                   <span className="text-t10 text-textMuted" aria-hidden>·</span>
-                  {session !== 'rth' && quote && sessionPrint == null ? (
-                  <span className="font-mono text-t11 font-semibold tnum text-textPrimary" title="No prints in this session. Bid and ask.">{quote.bid.toFixed(2)} × {quote.ask.toFixed(2)}</span>
-                  ) : Number.isFinite(headPx) && headPx != null ? (
-                  <SpotPrice value={headPx} className="font-mono text-t11 font-semibold tnum text-textPrimary" />
-                  ) : (
-                  <span className="font-mono text-t11 text-textMuted">—</span>
-                  )}
-                  {headChange != null && (
-                  <span className={`text-t10 font-semibold tnum ${headUp ? 'text-bull' : 'text-bear'}`} title={session === 'rth' ? undefined : 'From the regular close'}>
-                    {headUp ? '+' : ''}
-                    {headChange.toFixed(2)}%
-                  </span>
-                  )}
+                  <HeadPrice ticker={ticker} session={session} className="font-mono text-t11 font-semibold tnum text-textPrimary" />
+                  <HeadMove ticker={ticker} session={session} cashClose={cashClose} className="text-t10 font-semibold tnum" />
                 </div>
               ) : (
               <div className={`chrome-hover relative z-30 pointer-events-auto max-w-full select-none flex items-center gap-2 rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 py-1 opacity-55 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 ${toolbarInline ? 'w-full' : 'w-fit'}`}>
@@ -1242,9 +1249,7 @@ const Pane = ({
                       already, and a letter reads at 9px where a fourth colour would need a legend. */}
                 </span>
                 <span className="shrink-0">
-                  {session !== 'rth' && quote && sessionPrint == null ? (
-                    <span className="font-mono text-t11 font-semibold tnum text-textPrimary" title="No prints in this session. Bid and ask.">{quote.bid.toFixed(2)} × {quote.ask.toFixed(2)}</span>
-                  ) : Number.isFinite(headPx) && headPx != null ? <SpotPrice value={headPx} /> : <span className="font-mono text-t11 text-textMuted">—</span>}
+                  <HeadPrice ticker={ticker} session={session} />
                 </span>
                 {shownBook?.movedFrom ? (
                   <span className="shrink-0 font-mono text-t10 text-textSecondary" data-book-roll title="The expiry you had open has settled">
@@ -1261,12 +1266,7 @@ const Pane = ({
                 ) : null}
                 {/* First thing the row gives up when the column is narrow (ID_ROW_FULL_PX) — the price it is a delta
                     of is directly to its left, and the chart draws the same move. */}
-                {showChangePct && headChange != null && (
-                  <span className={`shrink-0 font-mono text-t11 font-semibold tnum ${headUp ? 'text-bull' : 'text-bear'}`} title={session === 'rth' ? undefined : 'From the regular close'}>
-                    {headUp ? '+' : ''}
-                    {headChange.toFixed(2)}%
-                  </span>
-                )}
+                {showChangePct && <HeadMove ticker={ticker} session={session} cashClose={cashClose} className="shrink-0 font-mono text-t11 font-semibold tnum" />}
                 {/* The toolbar in the row: timeframes after the identity, the replay-to-theme cluster at the far
                     right, and the fullscreen door last. */}
                 {toolbarInline && (

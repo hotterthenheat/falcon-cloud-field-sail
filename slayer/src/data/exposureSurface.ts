@@ -60,6 +60,8 @@ export interface SurfaceExpiry {
   iv: number;
   /** Trading sessions until it expires — 0 on the day itself */
   sessions: number;
+  /** The expiry, YYYY-MM-DD, on a live book */
+  iso?: string;
 }
 
 export interface KingNode {
@@ -113,6 +115,8 @@ export interface ExposureSurface {
   miss?: boolean[][];
   /** The next chain is not in yet. The rail says so instead of going blank. */
   waiting?: string | null;
+  /** The live snapshot the surface was read off (the profile re-prices its dates with the flip's own legs) */
+  book?: MarketSnapshot;
 }
 
 /** The ledger's calendar: this week's dailies, Fridays out to seven weeks, monthlies to a quarter, each resolved to a real session and deduped. */
@@ -166,7 +170,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow): ExposureSurf
   const expiries: SurfaceExpiry[] = cols.map(c => {
     if (!c.date) return { dte: 0, short: 'Book', date: 'All', iv, sessions: 0 };
     const parts = c.date.split('-').map(Number);
-    return { dte: c.dte, short: c.dte === 0 ? '0DTE' : `${c.dte}d`, date: `${MONTHS[parts[1] - 1]} ${parts[2]}`, iv, sessions: c.dte };
+    return { dte: c.dte, short: c.dte === 0 ? '0DTE' : `${c.dte}d`, date: `${MONTHS[parts[1] - 1]} ${parts[2]}`, iv, sessions: c.dte, iso: c.date };
   });
 
   const put = {} as ExposureSurface['put'];
@@ -341,6 +345,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow): ExposureSurf
     closed,
     miss,
     waiting,
+    book: snapshot,
   };
 }
 

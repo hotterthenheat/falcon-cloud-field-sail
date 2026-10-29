@@ -49,7 +49,7 @@ interface NameRead {
 /** The price and the move from the last regular close off the ThetaData terminal; with the terminal down, the last
     reading it gave, stamped. A wall only when this name's book is already live (Unusual Whales). */
 function readName(symbol: string, uwOnly: boolean): NameRead {
-  /* the Unusual Whales rooms read the vendor's quote (data/theta.ts uwOnlyRoute) */
+  /* a page that may not ask the terminal for prices reads the vendor's quote (data/theta.ts) */
   const q = uwOnly ? peekQuote(symbol) : null;
   const held = uwOnly ? null : peekThetaPrice(symbol);
   const spot = uwOnly ? (q && q.regularPrice > 0 ? q.regularPrice : null) : held ? held.value.price : null;
@@ -68,7 +68,7 @@ function readName(symbol: string, uwOnly: boolean): NameRead {
       near = { ...n, pct: ((n.at - spot) / spot) * 100 };
     }
   }
-  return { spot, change: change != null && Number.isFinite(change) ? change : null, near, live: uwOnly ? !!q : !!held?.live, at: held && !held.live ? held.value.read : null };
+  return { spot, change: change != null && Number.isFinite(change) ? change : null, near, live: uwOnly ? !!q : !!held?.live, at: held && !held.live ? held.value.at : null };
 }
 
 const IconButton = ({ onClick, label, title, pressed, children, testId }: { onClick: () => void; label: string; title?: string; pressed?: boolean; children: ReactNode; testId?: string }) => (

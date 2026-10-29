@@ -72,7 +72,7 @@ const LEVEL_NAMES: { ours: string; what: string; theirs: string }[] = [
   { ours: 'Supreme', what: 'the strike with the most net gamma, either sign, on the Levels card’s contracts (Today’s expiry, or every listed one) — the one the chart and the matrix wear in magenta', theirs: 'Absolute Gamma strike (SpotGamma) · GEX 1 (Menthor Q) · King Node (Skylit)' },
   { ours: 'Call wall', what: 'the strike with the most call gamma on the Levels card’s contracts (Today’s expiry, or every listed one), either side of spot — while dealers are long gamma there, their hedging slows a rise', theirs: 'Call Wall (SpotGamma, Unusual Whales) · Call Resistance (Menthor Q)' },
   { ours: 'Put wall', what: 'the strike with the most put gamma on the Levels card’s contracts, either side of spot — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet', theirs: 'Put Wall (SpotGamma, Unusual Whales) · Put Support (Menthor Q)' },
-  { ours: 'Flip', what: FLIP_RULE, theirs: 'Gamma flip (Unusual Whales, GEXBot) · HVL (Menthor Q) — not the Vol Trigger. SpotGamma’s Zero Gamma is the profile’s ZERO GAMMA line: the book re-priced across spot, a different number' },
+  { ours: 'Flip', what: FLIP_RULE, theirs: 'Gamma flip (Unusual Whales, GEXBot) · HVL (Menthor Q) — not the Vol Trigger. SpotGamma’s Zero Gamma is the same idea: the book re-priced across spot, where it crosses zero (the profile’s ZERO GAMMA line)' },
   { ours: 'Pin', what: 'the strike with the most open interest in the window — where price tends to settle into expiry', theirs: 'max-OI strike — not max pain, which is a different calculation' },
 ];
 

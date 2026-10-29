@@ -183,7 +183,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
   if (inBand(levels.putWall)) rules.push({ key: 'pw', x: levels.putWall, ink: PUT_WALL, word: `PUT WALL ${fmtStrike(levels.putWall)}` });
   if (inBand(levels.callWall)) rules.push({ key: 'cw', x: levels.callWall, ink: CALL_WALL, word: `CALL WALL ${fmtStrike(levels.callWall)}` });
   if (inBand(levels.supreme)) rules.push({ key: 'sup', x: levels.supreme, ink: SUPREME, word: `SUPREME ${fmtStrike(levels.supreme)}` });
-  if (curve.flip != null && inBand(curve.flip)) rules.push({ key: 'flip', x: curve.flip, ink: FLIP, word: `ZERO GAMMA ${curve.flip.toFixed(2)}`, dash: true }); /* Not "flip": the band's flip is a strike, this is the curve's zero. */
+  if (curve.flip != null && inBand(curve.flip)) rules.push({ key: 'flip', x: curve.flip, ink: FLIP, word: `ZERO GAMMA ${curve.flip.toFixed(2)}`, dash: true }); /* the drawn dates' zero: the flip when they are the Levels card's dates */
   if (inBand(spot)) rules.push({ key: 'spot', x: spot, ink: SILVER, word: `SPOT ${spot.toFixed(2)}` });
   if (selectedStrike != null && inBand(selectedStrike)) rules.push({ key: 'kept', x: selectedStrike, ink: SILVER, word: `KEPT ${fmtStrike(selectedStrike)}`, dash: true });
   rules.sort((a, b) => a.x - b.x);
@@ -335,7 +335,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
       </div>
       {/* What this is, in one line short enough to stand whole. */}
       <p className="shrink-0 truncate px-3 py-1 text-t11 text-textMuted border-t border-borderSubtle/60">
-        {W >= 760 ? 'Dealer gamma re-priced across spot · above zero hedging amplifies a move, below it absorbs · zero gamma is where it crosses — the flip in the head is read off the strikes, so the two differ' : W >= 420 ? 'Gamma across spot · above zero amplifies, below absorbs' : 'Gamma across spot'}
+        {W >= 760 ? 'Dealer gamma re-priced across spot · above zero hedging amplifies a move, below it absorbs · zero gamma is where it crosses — on the Levels card’s dates it is the flip' : W >= 420 ? 'Gamma across spot · above zero amplifies, below absorbs' : 'Gamma across spot'}
       </p>
     </div>
   );

@@ -127,13 +127,17 @@ type LiveLeg = {
   pv: number;
   cc: number;
   pc: number;
-  /** The vendor row included its vanna fields, so a zero is a real zero */
+  /** delta_oi: the holder's delta × OI × 100 × S × (S × 1%) */
+  cd: number;
+  pd: number;
+  /** The vendor row included its vanna (charm, delta) fields, so a zero is a real zero */
   vanna: boolean;
   charm: boolean;
+  delta: boolean;
 };
 export type LiveGamma = Map<number, LiveLeg>;
 
-const blankLeg = (): LiveLeg => ({ c: 0, p: 0, cv: 0, pv: 0, cc: 0, pc: 0, vanna: false, charm: false });
+const blankLeg = (): LiveLeg => ({ c: 0, p: 0, cv: 0, pv: 0, cc: 0, pc: 0, cd: 0, pd: 0, vanna: false, charm: false, delta: false });
 
 export function liveGammaRows(rows: unknown, into: LiveGamma, stamp?: { price: number; at: number }): number {
   if (!Array.isArray(rows)) return 0;
@@ -160,6 +164,11 @@ export function liveGammaRows(rows: unknown, into: LiveGamma, stamp?: { price: n
       cur.cc += num(r.call_charm_oi);
       cur.pc += num(r.put_charm_oi);
       cur.charm = true;
+    }
+    if ('call_delta_oi' in r || 'put_delta_oi' in r) {
+      cur.cd += num(r.call_delta_oi);
+      cur.pd += num(r.put_delta_oi);
+      cur.delta = true;
     }
     if (own && (cur.at == null || at >= cur.at)) {
       cur.at = at;
@@ -194,6 +203,14 @@ export function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma, exp
       next.callVanna = callVanna;
       next.putVanna = putVanna;
       next.netVanna = callVanna + putVanna;
+    }
+    if (!painted && l?.delta && l.px != null && l.px > 0) {
+      /* $Δ = delta_oi ÷ (price × 1%) (SPY 10/29 772C: 387.9M ÷ 7.72 = 50.2M against Δ·OI·100·S = 50.8M) */
+      const callDex = keptVendorLeg('C', l.cd / (l.px * 0.01), false);
+      const putDex = keptVendorLeg('P', l.pd / (l.px * 0.01), false);
+      next.callDex = callDex;
+      next.putDex = putDex;
+      next.netDex = callDex + putDex;
     }
     if (!painted && l?.charm) {
       const share = expiry ? sessionShare(expiry, l.at ?? Date.now()) : 1;

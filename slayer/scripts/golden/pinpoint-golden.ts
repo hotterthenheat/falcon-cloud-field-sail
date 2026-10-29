@@ -84,13 +84,13 @@ const GOLD = {
   SPY: {
     front: '2026-10-29',
     today: { net: 107_689_622.85, flip: 771.10993193321, call: 775, put: 758, supreme: 758 },
-    all: { net: -3_576_479_393.82, flip: 775.5471729662415, call: 800, put: 750, supreme: 750 },
+    all: { net: -3_576_479_393.82, flip: 775.5505781162503, call: 800, put: 750, supreme: 750 },
     straddle: 5.09247441828498,
   },
   NVDA: {
     front: '2026-10-30',
     today: { net: 280_962_174.09, flip: 209.4994357176802, call: 217.5, put: 210, supreme: 217.5 },
-    all: { net: 545_826_799.8, flip: 209.01183544036564, call: 220, put: 200, supreme: 220 },
+    all: { net: 545_826_799.8, flip: 209.0106614193673, call: 220, put: 200, supreme: 220 },
     straddle: 4.72607032383704,
   },
 } as const;

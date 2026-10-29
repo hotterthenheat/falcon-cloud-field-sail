@@ -475,8 +475,14 @@ export const ChainCard = memo(function ChainCard({
           onBodyScroll={locate}
           onViewportChanged={locate}
           tooltipShowDelay={350}
-          overlayNoRowsTemplate={`<span class="font-mono text-[10px] uppercase tracking-widest text-textMuted">${emptyText.replace(/[<>&]/g, '')}</span>`}
+          overlayNoRowsTemplate="<span></span>"
         />
+        {/* the grid's own overlay is read once; the empty chain's words change (reading, offline, none listed) */}
+        {rows.length === 0 && (
+          <div className="absolute inset-0 top-8 flex items-center justify-center pointer-events-none font-mono text-[10px] uppercase tracking-widest text-textMuted" data-chain-empty>
+            {emptyText}
+          </div>
+        )}
       </AgGridProvider>
       {away && (
         <button

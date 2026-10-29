@@ -1,5 +1,5 @@
 /* The rail's live quote of the name on the desk: ThetaData's last trade and the move from the last regular close, or
-   on the Unusual Whales rooms (Trace, Pinpoint, the Dossier: data/theta.ts uwOnlyRoute) the vendor's quote. Its own
+   on a page that may not ask the terminal for prices (Trace, the Dossier: data/theta.ts) the vendor's quote. Its own
    component, re-rendering only when that name's reading changes, so nothing else on the rail moves with the tape. With
    the terminal down it shows the last reading, stamped with when it was taken. */
 
@@ -7,14 +7,14 @@ import { memo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { asOfText } from '../ui/states';
 import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
-import { uwOnlyRoute } from '../../data/theta';
+import { thetaAllowedHere } from '../../data/theta';
 import { extendedLine, useLiveQuote } from '../../data/liveQuote';
 import { changeInk } from '../../data/uwBook';
 
-/** The page reads Unusual Whales only (re-read on every navigation) */
+/** The page in view may not ask the terminal for prices: it reads Unusual Whales (re-read on every navigation) */
 export function useUwOnlyRoute(): boolean {
   useLocation();
-  return uwOnlyRoute();
+  return !thetaAllowedHere('/stock/snapshot/trade');
 }
 
 /** A weekly root has no stock print: the rail quotes the index it tracks */
@@ -67,7 +67,7 @@ export function useNavQuote(ticker: string): NavQuoteRead {
     extText: move?.ext != null ? `after hours ${signed(move.ext)}` : null,
     live: !!held?.live,
     offline: status === 'down',
-    asOf: held && !held.live ? held.value.read : null,
+    asOf: held && !held.live ? held.value.at : null,
     source: 'theta',
   };
 }

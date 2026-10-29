@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { proxyUw } from './server/uwProxy.mjs';
 import { proxyTheta } from './server/thetaProxy.mjs';
+import { proxyLogo } from './server/logoProxy.mjs';
 
 try {
   process.loadEnvFile('.env.local');
@@ -19,6 +20,9 @@ app.use('/api/uw', (req, res) => {
 });
 app.use('/api/theta', (req, res) => {
   void proxyTheta(req, res);
+});
+app.use('/api/logo', (req, res) => {
+  void proxyLogo(req, res);
 });
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'not found' });

@@ -170,18 +170,14 @@ const ExpiryMark = ({ data }: { data: BoardRow }) => {
   );
 };
 
-const RegimeCell = ({ data }: ICellRendererParams<BoardRow>) => {
-  if (!data) return null;
-  if (data.pending) return <Pending data={data} />;
-  if (!data.regime) return <span className="font-mono text-t10 text-textMuted">balanced</span>;
+/* the hedging in one word under the net: absorbs or amplifies, "on the flip" a hair either side of it (0.05%) */
+const RegimeWord = ({ data }: { data: BoardRow }) => {
+  if (!data.regime) return <span className="block text-t10 font-normal text-textMuted">balanced</span>;
+  if (data.flipDistPct != null && Math.abs(data.flipDistPct) < 0.05) return <span className="block text-t10 font-normal text-textSecondary" title="Price is on the flip — dealer hedging can tip either way">on the flip</span>;
   const w = REGIME_WORDS[data.regime];
-  /* a hair either side of the flip is neither regime (data/gex.ts readHeatPattern's AT_FLIP, 0.05%) */
-  if (data.flipDistPct != null && Math.abs(data.flipDistPct) < 0.05) return <span className="font-mono text-t11 text-textSecondary" title="Price is on the flip — dealer hedging can tip either way">on the flip</span>;
-  /* the shell's words, plain English */
   return (
-    <span className="inline-flex flex-col justify-center leading-[14px] font-mono text-t11 tnum tabular-nums" style={{ color: data.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }} title={`${w.label.toLowerCase()} — ${w.blurb}${data.flip != null ? `; the flip at ${fmtStrike(data.flip)} is where that changes` : '; no flip within ±10%'}`}>
-      {data.regime === 'SHORT' ? 'amplifying moves' : 'absorbing moves'}
-      <ExpiryMark data={data} />
+    <span className="block text-t10 font-normal" style={{ color: data.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }} title={`${w.label.toLowerCase()} — ${w.blurb}${data.flip != null ? `; the flip at ${fmtStrike(data.flip)} is where that changes` : '; no flip within ±10%'}`}>
+      {data.regime === 'SHORT' ? 'amplifies moves' : 'absorbs moves'}
     </span>
   );
 };
@@ -280,7 +276,7 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
         {w.isShelf && (
           <>
             {' · '}
-            <span style={{ color: SILVER }}>{holdShortOf(w.hold)} wall</span>
+            <span style={{ color: SILVER }}>{w.hold >= 0.995 ? 'top wall' : `${holdShortOf(w.hold)} top wall`}</span>
           </>
         )}
         <span className="text-textMuted"> · {fmtDollars(w.stake)}</span>
@@ -310,6 +306,7 @@ const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
         {data.netGex > 0 ? '+' : ''}
         {fmtUsd(data.netGex)}
       </span>
+      <RegimeWord data={data} />
       <ExpiryMark data={data} />
     </TickFigure>
   ) : null;
@@ -583,9 +580,8 @@ const Board = () => {
   const columnDefs = useMemo<ColDef<BoardRow>[]>(() => {
     const cols: ColDef<BoardRow>[] = [
       { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 100, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
-      { headerName: 'Price', field: 'spot', flex: 0.9, minWidth: 108, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: todayScopeLabel() === 'Today' ? "The last price and today's change" : "The regular-session close — the price the levels were read at, and every distance on the board is measured from it — and the session's change; the after-hours move is beside it, labelled" },
-      { headerName: 'Hedging', field: 'regime', flex: 0.8, minWidth: 156, cellRenderer: RegimeCell, headerTooltip: "What dealer hedging is doing at the current price on this name's own levels. The word under it says today or all expiries. Positive net GEX absorbs; negative amplifies. The flip is where that changes." },
-      { headerName: 'Net GEX', field: 'netGex', flex: 0.7, minWidth: 84, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: "Net GEX on this name's own levels, dollars per 1% move. Each name can be today or every expiry." },
+      { headerName: 'Price', field: 'spot', flex: 1.1, minWidth: 156, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: todayScopeLabel() === 'Today' ? "The last price and today's change" : "The regular-session close — the price the levels were read at, and every distance on the board is measured from it — and the session's change; the after-hours move is beside it, labelled" },
+      { headerName: 'Net GEX', field: 'netGex', flex: 0.8, minWidth: 112, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: "Net GEX on this name's own levels, dollars per 1% move, and what dealer hedging does at the current price: positive absorbs moves, negative amplifies them. Each name can be today or every expiry." },
       {
         headerName: 'Flip · how far',
         field: 'flipDistPct',
@@ -615,7 +611,7 @@ const Board = () => {
         minWidth: 168,
         cellRenderer: WatchCell,
         cellDataType: false,
-        headerTooltip: `The one price to watch first: the strike price is most likely to reach with the most hedging behind it. "Reached" is the chance price gets there ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'}; "% of the top wall" is its size against the biggest wall on this name; the dollar figure is the hedging parked there`,
+        headerTooltip: `The one price to watch first: the strike price is most likely to reach with the most hedging behind it. "Reached" is the chance price gets there ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'}; "0.85× top wall" is its size against the biggest wall on this name; the dollar figure is the hedging parked there`,
         // The name whose first target matters most, first
         comparator: (a: BoardRow['watch'], b: BoardRow['watch']) => (a ? a.reach * a.stake : -1) - (b ? b.reach * b.stake : -1),
       },
@@ -636,7 +632,7 @@ const Board = () => {
     ];
     /* every column on screen at 1440: narrower columns, long cells wrap, "Your positions" only once a name carries one */
     if (!phone) return anyMine ? cols : cols.filter(c => c.field !== 'yours');
-    const order = ['ticker', 'spot', 'regime', 'netGex', 'flipDistPct', 'nearest', 'supreme', 'bellShare'];
+    const order = ['ticker', 'spot', 'netGex', 'flipDistPct', 'nearest', 'supreme', 'bellShare'];
     return order.map(f => cols.find(c => c.field === f)).filter((c): c is ColDef<BoardRow> => !!c).map(c => (c.field === 'ticker' ? c : { ...c, flex: undefined, width: c.minWidth }));
     // the heads name the session on record and the bell's day — they roll at the open and the close (recKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -154,7 +154,7 @@ export async function readKept(ticker: string): Promise<Entry | null> {
       history: [],
       factsDates: new Set(k.factsDates),
       keptPriced: Object.fromEntries(book.priced),
-      keptSettled: Object.fromEntries(book.settled.map(([key, rows]) => [key, new Map(rows.map(([strike, l]) => [strike, { c: l.c, p: l.p, cv: 0, pv: 0, cc: 0, pc: 0, vanna: false, charm: false }]))])),
+      keptSettled: Object.fromEntries(book.settled.map(([key, rows]) => [key, new Map(rows.map(([strike, l]) => [strike, { c: l.c, p: l.p, cv: 0, pv: 0, cc: 0, pc: 0, cd: 0, pd: 0, vanna: false, charm: false, delta: false }]))])),
     };
     return entry.all.length && entry.spot > 0 ? entry : null;
   } catch {

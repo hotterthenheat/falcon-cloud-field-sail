@@ -19,7 +19,7 @@ export const useDoor = () => {
 export const LiveSpot = ({ ticker, className }: { ticker: string; className?: string }) => {
   const { held, status } = useThetaPrice(ticker);
   if (held?.live) return <SpotPrice value={held.value.price} className={className} />;
-  const stamp = held ? asOfText(held.value.read) : null;
+  const stamp = held ? asOfText(held.value.at) : null;
   return (
     <span className="inline-flex items-center gap-1" title={status === 'down' ? `ThetaData offline${stamp ? ` · ${stamp}` : ''}` : stamp ?? 'Waiting on ThetaData'} data-live-spot={held ? 'kept' : 'none'}>
       <span className={`${className ?? ''} !text-textMuted`}>{held ? `$${held.value.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</span>

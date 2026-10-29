@@ -63,6 +63,7 @@ const phoneRow = (r: BookContract) => (
         {num(Math.abs(r.deltaOI))} OI
       </span>,
       <span key="o">{num(r.oi)} standing</span>,
+      ...(notABet(r) ? [<span key="n" className="text-warn" title={notABetHint(r)}>{notABetWord(r)}</span>] : []),
     ]}
   />
 );

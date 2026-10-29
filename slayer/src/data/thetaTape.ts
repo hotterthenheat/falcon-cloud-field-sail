@@ -9,6 +9,7 @@ import { nyMinutes, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { isTradingDay, nyYmd } from '../core/calendar';
 import { minuteInSession, sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { etClock, keepTheta, keptTheta, noData, offlineWords, pageHidden, thetaDown, thetaGet } from './thetaFeed';
+import { thetaUseHere } from './theta';
 
 export const THETA_INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
 
@@ -193,6 +194,8 @@ interface Slot extends TapeRead {
   dueAt: number;
   busy: boolean;
   keptAsked: boolean;
+  /** When this browser last kept the bars */
+  keptAt: number;
 }
 
 const slots = new Map<string, Slot>();
@@ -220,7 +223,7 @@ function slotOf(symbol: string, grain: TapeGrain, session: DeskSession): Slot {
   const key = keyOf(symbol, grain, session);
   let s = slots.get(key);
   if (!s) {
-    s = { symbol, grain, session, bars: [], takenAt: 0, state: 'loading', fullAt: 0, dueAt: 0, busy: false, keptAsked: false };
+    s = { symbol, grain, session, bars: [], takenAt: 0, state: 'loading', fullAt: 0, dueAt: 0, busy: false, keptAsked: false, keptAt: 0 };
     slots.set(key, s);
   }
   return s;
@@ -235,7 +238,8 @@ function merge(old: Candle[], fresh: Candle[]): Candle[] {
 }
 
 async function read(s: Slot): Promise<void> {
-  if (s.busy) return;
+  /* a room kept mounted behind a page that reads Unusual Whales asks nothing */
+  if (s.busy || thetaUseHere() !== 'all') return;
   s.busy = true;
   const key = keyOf(s.symbol, s.grain, s.session);
   try {
@@ -269,7 +273,11 @@ async function read(s: Slot): Promise<void> {
     s.takenAt = Date.now();
     s.state = 'live';
     if (full) s.fullAt = s.takenAt;
-    keepTheta(`tape:${key}`, s.bars);
+    /* kept for the next visit at most once a minute */
+    if (s.takenAt - s.keptAt > 60_000) {
+      s.keptAt = s.takenAt;
+      keepTheta(`tape:${key}`, s.bars);
+    }
     emit();
   } finally {
     s.busy = false;
@@ -329,9 +337,28 @@ export function subscribeTape(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 export const tapeRev = (): number => rev;
+/** Re-renders when any tape's bars change (not on every print). */
 export function useTapeRev(): number {
   return useSyncExternalStore(subscribeTape, tapeRev, tapeRev);
 }
+
+/* The prints move every second in the session: their own listeners, so a reader of bars alone is not re-rendered by them */
+const printListeners = new Set<() => void>();
+let printRev = 0;
+const emitPrint = () => {
+  printRev += 1;
+  printListeners.forEach(fn => fn());
+};
+export function subscribePrints(fn: () => void): () => void {
+  printListeners.add(fn);
+  return () => printListeners.delete(fn);
+}
+export const printRevNow = (): number => printRev;
+/** Re-renders when any name's print changes. */
+export function usePrintRev(on = true): number {
+  return useSyncExternalStore(on ? subscribePrints : noSub, printRevNow, printRevNow);
+}
+const noSub = () => () => undefined;
 
 /** A tape, kept fresh while the caller is mounted. */
 export function useThetaTape(symbol: string, grain: TapeGrain, session: DeskSession, on = true): TapeRead {
@@ -381,11 +408,12 @@ function printLive(symbol: string): boolean {
   return THETA_INDEX.has(symbol) ? m >= 9 * 60 + 30 && m < 16 * 60 + 15 : m >= 4 * 60 && m < 20 * 60;
 }
 
-/* Every wanted name's print in one read per root (the snapshot takes a list); each name's prior close once in 30 minutes. */
+/* Every wanted name's print, one read a name (the same address for every viewer, so the server shares it); each name's
+   prior close once in 30 minutes. */
 let printsBusy = false;
 let printsDue = 0;
 async function readPrints(): Promise<void> {
-  if (printsBusy) return;
+  if (printsBusy || thetaUseHere() !== 'all') return;
   printsBusy = true;
   const names = [...printWanted.keys()];
   try {
@@ -400,18 +428,14 @@ async function readPrints(): Promise<void> {
         if (before.length) slot.prev = before[before.length - 1].close;
       }),
     );
-    const stocks = names.filter(n => !THETA_INDEX.has(n));
-    const indexes = names.filter(n => THETA_INDEX.has(n));
-    const reads = await Promise.all([
-      stocks.length ? thetaGet(`/stock/snapshot/trade?symbol=${stocks.map(encodeURIComponent).join(',')}&format=json`, true) : null,
-      indexes.length ? thetaGet(`/index/snapshot/price?symbol=${indexes.map(encodeURIComponent).join(',')}&format=json`, true) : null,
-    ]);
+    const reads = await Promise.all(
+      names.map(n => thetaGet(THETA_INDEX.has(n) ? `/index/snapshot/price?symbol=${encodeURIComponent(n)}&format=json` : `/stock/snapshot/trade?symbol=${encodeURIComponent(n)}&format=json`, true)),
+    );
     let moved = false;
     reads.forEach((got, i) => {
-      if (!got || got.error) return;
-      const asked = i === 0 ? stocks : indexes;
-      for (const row of flatRows(got.data)) {
-        const symbol = String(row.symbol ?? (asked.length === 1 ? asked[0] : '')).toUpperCase();
+      if (got.error) return;
+      for (const row of flatRows(got.data).slice(-1)) {
+        const symbol = names[i];
         const slot = prints.get(symbol);
         const price = num(row.price ?? row.last ?? row.close);
         const at = Math.floor(nyWallStamp(row.timestamp) / 1000);
@@ -428,7 +452,7 @@ async function readPrints(): Promise<void> {
         }
       }
     });
-    if (moved) emit();
+    if (moved) emitPrint();
   } finally {
     printsBusy = false;
     printsDue = Date.now() + (thetaDown() ? 15_000 : names.some(printLive) ? 1_000 : 60_000);
@@ -446,7 +470,7 @@ export function wantPrint(symbol: string): () => void {
     void keptTheta<Print>(`print:${name}`).then(kept => {
       if (!kept || slot.print || !(kept.data?.price > 0)) return;
       slot.print = { ...kept.data, kept: true };
-      emit();
+      emitPrint();
     });
   }
   printWanted.set(name, (printWanted.get(name) ?? 0) + 1);
@@ -469,7 +493,7 @@ export function peekPrint(symbol: string): Print | null {
 export function useThetaPrint(symbol: string, on = true): Print | null {
   const name = symbol.trim().toUpperCase();
   useEffect(() => (on && name ? wantPrint(name) : undefined), [name, on]);
-  useTapeRev();
+  usePrintRev();
   return on && name ? peekPrint(name) : null;
 }
 

@@ -527,6 +527,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   }, [applyTick]);
 
   const [desk, setDesk] = useState<DeskState>(loadDesk);
+  const isPhone = useIsPhone();
   const [sel, setSel] = useState<number | null>(null);
   /* opens on the desk's timeframe when the reader set one (Settings › The desk) */
   const [timeframe, setTimeframe] = useState<Timeframe>(() => readDeskPrefs().opensOn.timeframe ?? '1m');
@@ -582,6 +583,16 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     setChainWait(true);
     loadedKey.current = '';
     setChain(blankChain(ticker, dte));
+    /* the chain this browser kept for the desk's own expiry paints while the expiries are read */
+    let dead = false;
+    void keptTheta<DeskChain>(`chain:${ticker}|${optRoot || ticker}|${isoDate(expiryFor(dte).date)}`).then(kept => {
+      if (dead || !kept || !Array.isArray(kept.data?.rows) || !kept.data.rows.length) return;
+      setChain(prev => (prev.rows.length || prev.ticker !== kept.data.ticker ? prev : { ...kept.data, takenAt: kept.at, kept: true }));
+      setChainWait(false);
+    });
+    return () => {
+      dead = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker]);
   useEffect(() => {
@@ -637,7 +648,6 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       loadedKey.current = key;
       setChain({ ...next, takenAt: Date.now() });
       if (!next.rows.length) return;
-      keepTheta(keptKey, next);
       attachSession(next).then(applySlow);
       attachHistory(next).then(slow => {
         applySlow(slow);
@@ -658,6 +668,24 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   }, [ticker, dte, optRoot, depth, listed]);
   const chainRef = useRef(chain);
   chainRef.current = chain;
+  /* the live chain, with its slow fields, is kept for the next visit at most every 10 s */
+  const keepTimer = useRef(0);
+  const keptAt = useRef({ key: '', at: 0 });
+  useEffect(() => {
+    if (chain.source !== 'live' || chain.offline || chain.kept || !chain.rows.length || !chain.expiryIso || keepTimer.current) return;
+    const key = `chain:${chain.ticker}|${chain.optRoot || chain.ticker}|${chain.expiryIso}`;
+    if (keptAt.current.key === key && Date.now() - keptAt.current.at < 30_000) return;
+    /* a few seconds after a live read, so the session's volume and yesterday's close are on it */
+    keepTimer.current = window.setTimeout(() => {
+      keepTimer.current = 0;
+      const c = chainRef.current;
+      const at = `chain:${c.ticker}|${c.optRoot || c.ticker}|${c.expiryIso}`;
+      if (c.source !== 'live' || c.offline || c.kept || !c.rows.length || at !== key) return;
+      keptAt.current = { key, at: Date.now() };
+      keepTheta(key, c);
+    }, 4_000);
+  }, [chain]);
+  useEffect(() => () => window.clearTimeout(keepTimer.current), []);
   /* A new NBBO every second while the options trade and the tab is in view; once a minute outside the session */
   useEffect(() => {
     let dead = false;
@@ -1509,7 +1537,6 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   );
 
   const belowLg = useIsBelowXl();
-  const isPhone = useIsPhone();
   const portraitDesk = useIsPortraitDesk();
   const [top, setTop] = useState<number>(readDeskTop);
   const frameRef = useRef<HTMLDivElement | null>(null);
