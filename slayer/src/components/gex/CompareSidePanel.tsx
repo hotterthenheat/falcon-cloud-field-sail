@@ -217,7 +217,8 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
             aria-pressed={on}
             disabled={off}
             title={off ? 'Before the open' : `What the levels' contracts (${scopeWords}) did over the last ${w.key === 'open' ? 'session' : w.key}${rec.isToday ? '' : ` of ${longDay(rec.date)}'s session`}`}
-            className={`px-1 h-4 rounded font-mono text-t9 tnum tabular-nums transition-colors ${on ? 'bg-ink/[0.1] text-textPrimary' : off ? 'text-textMuted/40 cursor-default' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.05]'}`}
+            /* a window with nothing in it yet stays readable (AA): the muted ink, struck through, not a faded one */
+            className={`tap-40 px-1.5 h-5 rounded font-mono text-t9 tnum tabular-nums transition-colors ${on ? 'bg-ink/[0.1] text-textPrimary' : off ? 'text-textMuted line-through decoration-textMuted/60 cursor-default' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05]'}`}
             data-side-win={w.key}
           >
             {w.key}

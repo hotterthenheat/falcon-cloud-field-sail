@@ -202,12 +202,13 @@ const Footprints = () => {
       { key: 'prevoi', header: 'Prev OI', align: 'right', sortValue: r => r.prevOI, render: r => <span className={weightInk(r.prevOI, marks.prevOI)}>{num(r.prevOI)}</span> },
       {
         key: 'doi',
-        header: 'ΔOI',
+        /* two names for two figures: the contracts built or unwound, and that change against what stood before */
+        header: 'OI change',
         align: 'right',
         sortValue: r => r.deltaOI,
         render: r => {
           /* a row still on the count before names its day, in plain ink; a non-bet says what it is */
-          const lag = oiLags(r, cover) && r.oiDay ? <span className="mr-1 text-t10 text-textMuted">{shortDay(r.oiDay)}</span> : notABet(r) ? <span className="mr-1 text-t10 text-warn" title={notABetHint(r)}>{notABetWord(r) === 'floor package' ? 'pkg' : notABetWord(r) === 'a cross' ? 'cross' : 'legs'}</span> : null;
+          const lag = oiLags(r, cover) && r.oiDay ? <span className="mr-1 text-t11 text-textMuted">{shortDay(r.oiDay)}</span> : notABet(r) ? <span className="mr-1 text-t11 text-warn" title={notABetHint(r)}>{notABetWord(r) === 'floor package' ? 'pkg' : notABetWord(r) === 'a cross' ? 'cross' : 'legs'}</span> : null;
           if (r.deltaOI === 0) return <span className="text-textSecondary" title={oiRowTitle(r)}>{lag}—</span>;
           const a = Math.abs(r.deltaOI);
           const ink = lag ? 'text-textPrimary' : a >= marks.doi.top ? 'text-supreme font-bold' : a >= marks.doi.bar ? `font-bold ${r.deltaOI > 0 ? 'text-bull dir-up' : 'text-bear dir-down'}` : 'text-textPrimary';
@@ -222,7 +223,7 @@ const Footprints = () => {
       },
       {
         key: 'doipct',
-        header: 'ΔOI %',
+        header: '% of prior OI',
         align: 'right',
         sortValue: r => r.deltaOIPct,
         render: r =>
@@ -263,7 +264,10 @@ const Footprints = () => {
   const pendingNote = oiPendingWords(cover);
   const pill = (r: BookContract, v: string) => `${r.ticker} ${r.strike}${r.right} · ${v}${stockLike(r) ? ' · stock-like' : ''}`;
   const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_footprints_cols');
-  const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
+  /* Earnings stands only when a row on the cut has a report coming: a column of dashes is noise */
+  const noEarn = useMemo(() => !rows.some(r => earnWords(r)), [rows]);
+  const gridHidden = useMemo(() => (noEarn && !hidden.has('earn') ? new Set([...hidden, 'earn']) : hidden), [hidden, noEarn]);
+  const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: c.key === 'earn' && noEarn ? 'Earnings · none on this cut' : typeof c.header === 'string' ? c.header : c.key })), [columns, noEarn]);
   const activeScreen = FOOTPRINT_SCREENS.find(s => s.key === screen) ?? FOOTPRINT_SCREENS[0];
   const screenOptions = useMemo<DropdownOption<FootprintScreenKey>[]>(() => FOOTPRINT_SCREENS.map(s => ({ value: s.key, label: s.label, hint: s.hint })), []);
 
@@ -334,7 +338,7 @@ const Footprints = () => {
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight onVisible={pairOiFor} endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts', 'the list for the day is done', hold.paused, 'Load more ↓')} emptyText={query.trim() && book.length > 0 ? searchMiss(query, 'contract') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the footprints fill when the book answers' : 'No open interest moved on this cut'} testId="footprints" />
+        <TraceGrid rows={rows} columns={columns} hidden={gridHidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight onVisible={pairOiFor} endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts', 'the list for the day is done', hold.paused, 'Load more ↓')} emptyText={query.trim() && book.length > 0 ? searchMiss(query, 'contract') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the footprints fill when the book answers' : 'No open interest moved on this cut'} testId="footprints" />
       </TraceBox>
 
       <BookDrill list={loudest && !rows.some(r => r.key === loudest.key) ? [loudest, ...rows] : rows} openKey={openKey} onOpen={setOpenKey} />

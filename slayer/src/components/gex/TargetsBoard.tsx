@@ -205,9 +205,15 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
   );
 };
 
-/** The two actions; `icons` alone where a pane is a quarter of the screen (the tight density) */
-const Actions = ({ t, armed, onChart, onAlert, icons = false }: { t: Target; armed: boolean; onChart: (t: Target) => void; onAlert: (t: Target) => void; icons?: boolean }) => (
-  <span className="flex items-center justify-end gap-1" onClick={ev => ev.stopPropagation()}>
+/** The two actions; `icons` alone where a pane is a quarter of the screen (the tight density). `reveal`: in the list they
+    show on the row's hover or keyboard focus (always on a touch screen, and always once an alert is set), so the column
+    is not the same two words on every row. */
+const Actions = ({ t, armed, onChart, onAlert, icons = false, reveal = false }: { t: Target; armed: boolean; onChart: (t: Target) => void; onAlert: (t: Target) => void; icons?: boolean; reveal?: boolean }) => (
+  <span
+    className={`flex items-center justify-end gap-1 ${reveal && !armed ? 'opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 group-focus-within/row:opacity-100 group-data-[hover=true]/row:opacity-100 [@media(hover:none)]:opacity-100' : ''}`}
+    onClick={ev => ev.stopPropagation()}
+    data-row-actions={reveal ? 'reveal' : undefined}
+  >
     <button
       onClick={() => onChart(t)}
       title="See this strike on the Map"
@@ -498,7 +504,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             </dd>
           </div>
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`The strike price is most likely to touch ${agenda.horizon ?? (clock.inSession ? 'by the close' : aheadWord())}, and the chance — strikes price is already on, and strikes today's session has already traded through, are left out (they are reached, not likely)`}>Most likely reached <span className="text-textMuted/70">· {clock.inSession ? 'not yet today' : aheadWord() === 'today' ? 'today' : `next session, ${longDay(sessionDay().next)}`}</span></dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={`The strike price is most likely to touch ${agenda.horizon ?? (clock.inSession ? 'by the close' : aheadWord())}, and the chance — strikes price is already on, and strikes today's session has already traded through, are left out (they are reached, not likely)`}>Most likely reached <span className="text-textMuted">· {clock.inSession ? 'not yet today' : aheadWord() === 'today' ? 'today' : `next session, ${longDay(sessionDay().next)}`}</span></dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{agenda.mostReached ? `${fmtStrike(agenda.mostReached.strike)} · ${pct(agenda.mostReached.reach)}` : '—'}</dd>
           </div>
           {/* the nearest wall on each side, both named */}
@@ -583,7 +589,8 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             return (
               <div
                 key={t.strike}
-                className={`grid grid-cols-subgrid ${cols.span} items-center border-t border-borderSubtle/40 rounded cursor-pointer ${wash}`}
+                className={`group/row grid grid-cols-subgrid ${cols.span} items-center border-t border-borderSubtle/40 rounded cursor-pointer ${wash}`}
+                data-hover={kept || hover === t.strike || undefined}
                 style={full ? { minHeight: ROW_H } : { height: ROW_H }}
                 data-target-row={t.strike}
                 onPointerEnter={() => setHover(t.strike)}
@@ -627,7 +634,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                 )}
                 {/* the whole reason, wrapped — the row grows to hold it */}
                 {full && <div className="text-t10 leading-[13px] text-textMuted py-1 break-words">{t.why}</div>}
-                <Actions t={t} armed={armedAt(t.strike)} onChart={onChart} onAlert={onAlert} icons={!wide} />
+                <Actions t={t} armed={armedAt(t.strike)} onChart={onChart} onAlert={onAlert} icons={!wide} reveal />
               </div>
             );
           })}

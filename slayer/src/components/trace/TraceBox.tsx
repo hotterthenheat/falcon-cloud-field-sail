@@ -31,16 +31,19 @@ export const Fact = ({ label, children, testId, title, wrap = false }: { label: 
   </div>
 );
 
-/* 'plain' for a champion with no direction (the busiest name): orange is the sweep's ink */
+/* 'plain' for a champion with no direction (the busiest name): orange is the sweep's ink.
+   Magenta across Trace marks one figure that earned it (a column's top value), never a label: the standout
+   champion ('supreme' — the most premium, the largest cross) wears the neutral label, its value carries the weight. */
 type Ink = 'supreme' | 'bull' | 'bear' | 'warn' | 'plain';
-const INK: Record<Ink, string> = { supreme: 'text-supreme', bull: 'text-bull', bear: 'text-bear', warn: 'text-warn', plain: 'text-textSecondary' };
+const INK: Record<Ink, string> = { supreme: 'text-textSecondary', bull: 'text-bull', bear: 'text-bear', warn: 'text-warn', plain: 'text-textSecondary' };
 
 /** A champion: the label in its ink, the row's words as a door onto the row */
 export const Champion = ({ label, ink, onOpen, children, testId, title = "Open the contract's card" }: { label: string; ink: Ink; onOpen: () => void; children: ReactNode; testId?: string; title?: string }) => (
   <div className="min-w-0">
     <dt className={`text-t11 whitespace-nowrap max-sm:whitespace-normal ${INK[ink]}`}>{label}</dt>
     <dd className="mt-0.5 whitespace-nowrap max-sm:whitespace-normal" data-trace-champion={testId}>
-      <button type="button" onClick={onOpen} title={title} className="font-mono text-t12 tnum font-semibold text-textPrimary hover:text-silver transition-colors text-left max-sm:break-words">
+      {/* the padding is the hit area (24px at a desk, 44px on a phone); the negative margin keeps the line where it was */}
+      <button type="button" onClick={onOpen} title={title} className="inline-block py-[3px] -my-[3px] max-sm:py-[13px] max-sm:-my-[13px] font-mono text-t12 tnum font-semibold text-textPrimary hover:text-silver transition-colors text-left max-sm:break-words">
         {children}
       </button>
     </dd>
@@ -67,8 +70,8 @@ interface TraceBoxProps {
   className?: string;
   /** Attributes for the probes */
   data?: Record<string, string | number | undefined>;
-  /** On a phone: the cards fold behind one button, the sub hides and the facts take one scrolling line, so the first
-      row stands above the fold */
+  /** On a phone: the cards fold behind one button, the sub hides and the facts wrap two to a line, so every figure
+      shows and the first row still stands above the fold */
   foldOnPhone?: boolean;
 }
 
@@ -96,8 +99,8 @@ const TraceBox = ({ title, sub, facts, controls, sentence, lead, detail, guide, 
           </div>
           {!tight && <p className="mt-0.5 text-t11 text-textMuted break-words sm:whitespace-nowrap sm:truncate">{sub}</p>}
         </div>
-        {/* tight: one line that scrolls sideways inside itself, so the page never does */}
-        <dl className={tight ? 'w-full flex flex-nowrap gap-x-5 overflow-x-auto [&>div]:shrink-0 [&_dt]:!whitespace-nowrap [&_dd]:!whitespace-nowrap [scrollbar-width:none]' : 'flex flex-wrap gap-x-6 gap-y-2'} data-trace-facts>
+        {/* tight: two to a line, every figure whole — nothing runs off the right edge */}
+        <dl className={tight ? 'w-full grid grid-cols-2 gap-x-4 gap-y-3' : 'flex flex-wrap gap-x-6 gap-y-2'} data-trace-facts>
           {facts}
         </dl>
       </div>
@@ -128,7 +131,7 @@ const TraceBox = ({ title, sub, facts, controls, sentence, lead, detail, guide, 
             {detail != null && detail !== false && (
               <>
                 {' '}
-                <button type="button" onClick={() => setMore(v => !v)} aria-expanded={more} className="font-mono text-t11 text-textSecondary underline decoration-dotted underline-offset-2 hover:text-textPrimary" data-trace-more>
+                <button type="button" onClick={() => setMore(v => !v)} aria-expanded={more} className="inline-block px-1 -mx-1 py-[5px] -my-[5px] max-sm:py-[15px] max-sm:-my-[15px] font-mono text-t11 text-textSecondary underline decoration-dotted underline-offset-2 hover:text-textPrimary" data-trace-more>
                   {more ? 'less' : 'more'}
                 </button>
               </>
@@ -174,10 +177,15 @@ export const PhoneRow = ({ lead, title, aside, figures }: { lead?: ReactNode; ti
 
 /* ---- the grid in its window ------------------------------------------------------ */
 
-/** A page's Column<T> definitions as AG Grid columns — the cells, inks and doors untouched */
-function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: Record<string, number> = {}, tooltips: Record<string, string> = {}, flexes: Record<string, number> = {}, lock = false): ColDef<T>[] {
+/** A words column's floor: it gives way to the figures first, wrapping to two lines with its full words in a title */
+const PROSE_FLOOR = 140;
+
+/** A page's Column<T> definitions as AG Grid columns — the cells, inks and doors untouched. `fit` is the width a
+    column's widest figure or header was measured to need (TraceGrid's fit pass): a floor, so no figure is ever cut. */
+function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: Record<string, number> = {}, tooltips: Record<string, string> = {}, flexes: Record<string, number> = {}, lock = false, fit: Record<string, number> = {}, prose: Set<string> = new Set()): ColDef<T>[] {
   return columns.map(c => {
-    const fixed = widths[c.key] ?? (c.width ? parseInt(c.width, 10) : undefined);
+    const set = widths[c.key] ?? (c.width ? parseInt(c.width, 10) : undefined);
+    const fixed = set != null && fit[c.key] ? Math.max(set, fit[c.key]) : set;
     const def: ColDef<T> = {
       colId: c.key,
       headerName: typeof c.header === 'string' ? c.header : c.key.charAt(0).toUpperCase() + c.key.slice(1),
@@ -190,16 +198,17 @@ function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: 
       resizable: true,
       suppressMovable: true,
     };
-    /* a set width is a floor and a share of the room, so fixed widths never run past the box */
+    /* a set width is a floor and a share of the room, so fixed widths never run past the box; a words column's share
+       is its width times its flex, and its floor gives way first */
     if (fixed) {
       def.width = fixed;
-      def.minWidth = fixed;
-      def.flex = fixed;
+      def.minWidth = prose.has(c.key) ? Math.min(fixed, PROSE_FLOOR) : fixed;
+      def.flex = fixed * (flexes[c.key] ?? 1);
       if (lock) def.resizable = false;
     } else {
       def.flex = flexes[c.key] ?? 1;
       /* the widest standard cell (the Lean bar, 64px) plus the grid's 24px padding, or the cell paints a clipped ".." */
-      def.minWidth = 92;
+      def.minWidth = Math.max(92, prose.has(c.key) ? 0 : fit[c.key] ?? 0);
     }
     return def;
   });
@@ -254,6 +263,9 @@ interface TraceGridProps<T> {
   flexes?: Record<string, number>;
   /** Widths are walls, not shares — the columns do not grow, shrink, or slide */
   lockColumns?: boolean;
+  /** Words columns (a reason, a strategy, a read): they give way to the figures first, wrapping to two lines with their
+      full words in a title, and the fit pass never widens them */
+  prose?: string[];
   tooltips?: Record<string, string>;
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
@@ -301,17 +313,49 @@ interface EndlessFeed {
   extra?: ReactNode;
 }
 
-export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColumns = false, tooltips, rowKey, onRowClick, selectedKey, height, autoHeight = false, initialSort, rowClass, animate = true, emptyText = 'Nothing on this cut', pinLeft, pinRight, phoneRow, endless, onDeep, topSignal, onVisible, testId }: TraceGridProps<T>) => {
+export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColumns = false, prose, tooltips, rowKey, onRowClick, selectedKey, height, autoHeight = false, initialSort, rowClass, animate = true, emptyText = 'Nothing on this cut', pinLeft, pinRight, phoneRow, endless, onDeep, topSignal, onVisible, testId }: TraceGridProps<T>) => {
   const gridRef = useRef<AgGridReact<T>>(null);
   const phone = useIsPhone() && !!phoneRow;
   const hiddenSet = useMemo(() => hidden ?? new Set<string>(), [hidden]);
   const endlessOn = !!endless;
+  const proseKey = (prose ?? []).join(',');
+  const proseSet = useMemo(() => new Set(proseKey ? proseKey.split(',') : []), [proseKey]);
+  /* The fit pass: a figure or a header wider than its column raises that column's floor to fit it — never a "+83…".
+     It only grows (a live tick never makes the columns breathe), and words columns are left to wrap. */
+  const [fit, setFit] = useState<Record<string, number>>({});
+  const fitTimer = useRef(0);
+  const measureFit = () => {
+    window.clearTimeout(fitTimer.current);
+    fitTimer.current = window.setTimeout(() => {
+      const wrap = wrapRef.current;
+      if (!wrap || phone || lockColumns) return;
+      const need: Record<string, number> = {};
+      const want = (id: string | null, px: number) => {
+        if (id && id !== 'phone' && !proseSet.has(id)) need[id] = Math.max(need[id] ?? 0, Math.ceil(px));
+      };
+      wrap.querySelectorAll<HTMLElement>('.ag-cell[col-id]').forEach(cell => {
+        const over = cell.scrollWidth - cell.clientWidth;
+        if (over > 0) want(cell.getAttribute('col-id'), cell.offsetWidth + over + 2);
+      });
+      wrap.querySelectorAll<HTMLElement>('.ag-header-cell[col-id]').forEach(head => {
+        const text = head.querySelector<HTMLElement>('.ag-header-cell-text');
+        const over = text ? text.scrollWidth - text.clientWidth : 0;
+        if (over > 0) want(head.getAttribute('col-id'), head.offsetWidth + over + 2);
+      });
+      setFit(prev => {
+        let next: Record<string, number> | null = null;
+        for (const [k, v] of Object.entries(need)) if (v > (prev[k] ?? 0)) (next ??= { ...prev })[k] = v;
+        return next ?? prev;
+      });
+    }, 120);
+  };
+  useEffect(() => () => window.clearTimeout(fitTimer.current), []);
   const columnDefs = useMemo(() => {
     if (phone && phoneRow) {
       /* one column, the row in two lines */
       return [{ colId: 'phone', headerName: '', flex: 1, sortable: false, resizable: false, suppressMovable: true, cellRenderer: (p: ICellRendererParams<T>) => (p.data ? phoneRow(p.data) : null) } as ColDef<T>];
     }
-    const defs = columnsToColDefs(columns, hiddenSet, widths, tooltips, flexes, lockColumns);
+    const defs = columnsToColDefs(columns, hiddenSet, widths, tooltips, flexes, lockColumns, fit, proseSet);
     for (const d of defs) {
       if (pinLeft?.includes(d.colId ?? '')) d.pinned = 'left';
       else if (pinRight?.includes(d.colId ?? '')) {
@@ -324,13 +368,14 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
         }
       }
     }
+    /* the first sort only: a new set of defs (a fit, a column shown) keeps the reader's own sort */
     if (initialSort) {
       const d = defs.find(x => x.colId === initialSort.key);
-      if (d) d.sort = initialSort.dir;
+      if (d) d.initialSort = initialSort.dir;
     }
     return defs;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns, hiddenSet, widths, tooltips, flexes, lockColumns, phone, phoneRow, pinLeft, pinRight, endlessOn]);
+  }, [columns, hiddenSet, widths, tooltips, flexes, lockColumns, phone, phoneRow, pinLeft, pinRight, endlessOn, fit, proseSet]);
   const defaultColDef = useMemo<ColDef<T>>(() => ({ sortable: true, resizable: true, suppressMovable: true }), []);
   /* A cut (the search cleared, a card turned) is a crossfade: the rows dim, the new list lands while they stand still,
      then they come up. A re-rank still glides; a few rows coming or going pass straight through. */
@@ -609,7 +654,13 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
           getRowClass={rowClass ? p => (p.data ? rowClass(p.data) : undefined) : undefined}
           onRowClicked={onRow}
           onBodyScroll={onBodyScroll}
-          onModelUpdated={e => tellVisible(e.api)}
+          onModelUpdated={e => {
+            tellVisible(e.api);
+            measureFit();
+          }}
+          onFirstDataRendered={measureFit}
+          onVirtualColumnsChanged={measureFit}
+          onDisplayedColumnsChanged={measureFit}
           rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
           suppressCellFocus
           suppressAnimationFrame

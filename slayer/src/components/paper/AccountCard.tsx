@@ -107,12 +107,12 @@ const AccountCard = ({ account: a, accounts, view: v, rules, onPick, onFlatten, 
             </span>
           ) : (
             <>
-              {kindWords(a)} · ${a.fee.toFixed(2)} a contract each way
+              {kindWords(a)} · {a.fee > 0 ? `$${a.fee.toFixed(2)} a contract each way` : 'no commission'}
             </>
           )}
         </p>
-        <div className="grid grid-cols-3 gap-x-4 gap-y-3" data-paper-facts>
-          <div className="min-w-0">
+        <div className="grid grid-cols-3 max-[440px]:grid-cols-2 gap-x-4 gap-y-3" data-paper-facts>
+          <div className="min-w-0 max-[440px]:col-span-2">
             <div className="text-t10 text-textMuted whitespace-nowrap">Worth</div>
             <div className="mt-0.5 font-mono text-t18 leading-none font-semibold tnum text-textPrimary whitespace-nowrap truncate" data-paper-worth>
               {live ? usd(v.equity) : '—'}

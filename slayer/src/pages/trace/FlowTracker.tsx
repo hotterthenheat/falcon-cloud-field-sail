@@ -713,7 +713,7 @@ const FlowTracker = () => {
           controls={<></>}
           sentence={<RichRead text={`${num(crosses.length)} ${crosses.length === 1 ? 'cross' : 'crosses'} kept from the dark pool — the mark on a row or on the cross's card lets it go.`} />}
         >
-          <TraceGrid rows={crosses} columns={crossColumns} widths={CROSS_WIDTHS} flexes={{ says: 2 }} rowKey={crossRowKey} onRowClick={w => setOpenCross(crossOfWatch(w))} autoHeight emptyText="" testId="tracker-crosses" />
+          <TraceGrid rows={crosses} columns={crossColumns} widths={CROSS_WIDTHS} flexes={CROSS_FLEX} prose={CROSS_PROSE} rowKey={crossRowKey} onRowClick={w => setOpenCross(crossOfWatch(w))} autoHeight emptyText="" testId="tracker-crosses" />
         </TraceBox>
       )}
       <CrossDrilldown print={openCross} view={null} onClose={() => setOpenCross(null)} />
@@ -724,6 +724,8 @@ const FlowTracker = () => {
 };
 
 /* the kept crosses' columns: the name, the minute, the figures and the read as kept */
+const CROSS_FLEX: Record<string, number> = { says: 2 };
+const CROSS_PROSE = ['says'];
 const CROSS_WIDTHS: Record<string, number> = { mark: 40, name: 112, time: 80, price: 88, vs: 100, shares: 96, dollars: 96, venue: 108, read: 128 };
 
 export default FlowTracker;

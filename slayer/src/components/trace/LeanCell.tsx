@@ -13,7 +13,7 @@ const LeanCell = ({ askPct: raw, split, unit = 'contracts', legsPct, crossPct }:
   /* A day of crosses has no lean: pre-arranged, no side taken */
   if (crossPct != null && Number.isFinite(crossPct) && crossPct >= CROSS_PCT && !(legsPct != null && legsPct >= SPREAD_LEG_PCT)) {
     return (
-      <span className="inline-flex flex-col items-end gap-[3px] w-20" title={`${Math.round(crossPct)}% of the day in pre-arranged cross trades, no side taken, so no lean (${CROSS_PCT}% or more)`}>
+      <span className="inline-flex flex-col items-end gap-[3px] min-w-20" title={`${Math.round(crossPct)}% of the day in pre-arranged cross trades, no side taken, so no lean (${CROSS_PCT}% or more)`}>
         <span className="font-mono text-t11 tnum leading-[14px] text-textSecondary whitespace-nowrap">cross {Math.round(crossPct)}%</span>
         <span className="flex w-20 h-[3px] rounded-full overflow-hidden bg-ink/[0.14]" />
       </span>
@@ -23,7 +23,7 @@ const LeanCell = ({ askPct: raw, split, unit = 'contracts', legsPct, crossPct }:
   if (legsPct != null && Number.isFinite(legsPct) && legsPct >= SPREAD_LEG_PCT) {
     return (
       <span
-        className="inline-flex flex-col items-end gap-[3px] w-20"
+        className="inline-flex flex-col items-end gap-[3px] min-w-20"
         title={`${Math.round(legsPct)}% of the day in multi-leg orders: a leg's side says how a package filled, not a lean (${SPREAD_LEG_PCT}% or more)`}
       >
         <span className="font-mono text-t11 tnum leading-[14px] text-textSecondary">legs {Math.round(legsPct)}%</span>
@@ -35,7 +35,7 @@ const LeanCell = ({ askPct: raw, split, unit = 'contracts', legsPct, crossPct }:
     const l = dayLean({ askPct: raw, volume: split.ask + split.bid + split.mid, sideVol: split });
     if (!Number.isFinite(l.ask)) {
       return (
-        <span className="inline-flex flex-col items-end gap-[3px] w-20" title="No side volume on this row">
+        <span className="inline-flex flex-col items-end gap-[3px] min-w-20" title="No side volume on this row">
           <span className="font-mono text-t11 tnum leading-[14px] text-textMuted">—</span>
         </span>
       );
@@ -54,7 +54,7 @@ const LeanCell = ({ askPct: raw, split, unit = 'contracts', legsPct, crossPct }:
     const noun = unit === 'premium' ? 'premium' : `${total.toLocaleString('en-US')} contracts`;
     return (
       <span
-        className="inline-flex flex-col items-end gap-[3px] w-20"
+        className="inline-flex flex-col items-end gap-[3px] min-w-20"
         title={`${l.lean === 'ASK' || l.lean === 'BID' ? `${l.lean === 'ASK' ? 'At the ask' : 'On the bid'}: ${l.lean === 'ASK' ? askS : 100 - askS}% of the ${unit === 'premium' ? 'premium' : 'contracts'} that traded on a side — the share the lean is called on (${LEAN_EDGE}% or more, with at least half the ${unit === 'premium' ? 'premium' : 'day'} on a side). ` : l.lean === 'EVEN' ? `Even — ${askS >= 50 ? `${askS}% at the ask` : `${100 - askS}% on the bid`} of the ${unit === 'premium' ? 'premium' : 'contracts'} that traded on a side, short of the ${LEAN_EDGE}% a lean is called on. ` : ''}Of the ${unit === 'premium' ? "alert's whole" : "day's"} ${noun}: ${a}% at the ask, ${b}% on the bid, ${m}% at the mid or with no side${l.lean === 'UNSIDED' ? ' — under half traded on a side, so no lean is called' : ''}`}
       >
         <span className={`font-mono text-t11 ${l.lean === 'ASK' || l.lean === 'BID' ? 'font-semibold' : ''} tnum leading-[14px] whitespace-nowrap ${tone}`}>{label}</span>
@@ -69,7 +69,7 @@ const LeanCell = ({ askPct: raw, split, unit = 'contracts', legsPct, crossPct }:
   /* no side figure (a flow alert, a row the feed sent no side volume for): a dash, never "ASK 100%" */
   if (!Number.isFinite(raw)) {
     return (
-      <span className="inline-flex flex-col items-end gap-[3px] w-20" title="No side volume on this row">
+      <span className="inline-flex flex-col items-end gap-[3px] min-w-20" title="No side volume on this row">
         <span className="font-mono text-t11 tnum leading-[14px] text-textMuted">—</span>
       </span>
     );
@@ -83,7 +83,7 @@ const LeanCell = ({ askPct: raw, split, unit = 'contracts', legsPct, crossPct }:
   const label = even ? (askPct >= 50 ? `even · ask ${askPct}%` : `even · bid ${bidPct}%`) : l === 'BID' ? `bid ${bidPct}%` : `ask ${askPct}%`;
   const tone = even ? 'text-textSecondary' : 'text-textPrimary';
   return (
-    <span className="inline-flex flex-col items-end gap-[3px] w-20" title={`Of what traded at the bid or ask: ${askPct}% at the ask, ${bidPct}% on the bid. A lean from ${LEAN_EDGE}% on a side`}>
+    <span className="inline-flex flex-col items-end gap-[3px] min-w-20" title={`Of what traded at the bid or ask: ${askPct}% at the ask, ${bidPct}% on the bid. A lean from ${LEAN_EDGE}% on a side`}>
       <span className={`font-mono text-t11 ${even ? '' : 'font-semibold'} tnum leading-[14px] whitespace-nowrap ${tone}`}>{label}</span>
       <span className="flex w-20 h-[3px] rounded-full overflow-hidden bg-ink/[0.14]">
         <span className="h-full bg-textPrimary/80 ml-auto" style={{ width: `${askPct}%` }} />

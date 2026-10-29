@@ -55,7 +55,7 @@ const ddOf = (mode: 'eod' | 'intraday', lockAt: number | null = null, on: 'equit
    overnight, no weekend; no commission stated. The Buffer lock is the funded account's, not the evaluation's. */
 const VQ_SIZES = (t: number, dd: number): [number, number[], number][] => [10_000, 50_000, 75_000, 100_000, 150_000].map(n => [n, [(n * t) / 100], (n * dd) / 100]);
 const VQ_RULES: Partial<PropRules> = { targetOn: 'flat', markAt: 'mid', flatBy: '15:59', overnight: false, weekend: false, fee: null, spreads: false };
-const VQ_NOTES = ['the exploit policy (illiquid far-out-of-the-money fills, oversized positions, micro-scalping) is the firm’s judgment, not a number'];
+const VQ_NOTES = ['the exploit policy (illiquid far-out-of-the-money fills, oversized positions, micro-scalping) — the firm’s judgment, not a number'];
 const VANQUISH: PropFirm = {
   id: 'vanquish',
   name: 'Vanquish Trader',

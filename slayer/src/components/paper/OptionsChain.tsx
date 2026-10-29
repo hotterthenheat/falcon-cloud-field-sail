@@ -99,7 +99,7 @@ const OptionsChain = ({ ticker, chain, right, onRight, expiry, expiryOptions, on
           </span>
         )}
       </div>
-      <div className="relative flex-1 min-h-0 max-lg:h-[560px]" data-paper-chain-grid>
+      <div className="relative flex-1 min-h-0 max-lg:flex-none max-lg:h-[560px]" data-paper-chain-grid>
         {chain ? (
           <ChainCard chain={chain} right={right} sel={sel} onSelect={onSelect} cols={shown} centerKey={`${ticker}|${expiry}|${right}`} inlineDrill drillExtra={order} held={held} />
         ) : (

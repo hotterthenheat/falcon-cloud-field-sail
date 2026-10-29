@@ -1856,14 +1856,14 @@ const ProfilePanel = ({
             <span className="min-w-0 flex-1 flex items-center gap-2 text-t10 text-textMuted pl-1" data-lane-head="size">
               <Term k="Size at a strike" className="pointer-events-auto truncate">
                 Size · {greek}
-                <span className="text-textMuted/60"> · puts ◂ ▸ calls</span>
+                <span className="text-textMuted"> · puts ◂ ▸ calls</span>
               </Term>
             </span>
           )}
           {!twoRowHead && showFlow && !onField && (
             <span className="min-w-0 flex-1 flex items-center gap-2 text-t10 text-textMuted pl-1" data-lane-head="flow">
               <Term k="What a move forces" className="pointer-events-auto truncate">
-                What a move forces <span className="text-textMuted/60">· from gamma</span>
+                What a move forces <span className="text-textMuted">· from gamma</span>
               </Term>
             </span>
           )}

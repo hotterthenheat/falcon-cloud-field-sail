@@ -88,6 +88,9 @@ const TOOLTIPS: Record<string, string> = {
   says: 'The read in a sentence',
 };
 /* the share column flexes so the table fills its box */
+/* the read is words: it takes the room the figures leave and gives way first */
+const SAYS = ['says'];
+const SAYS_FLEX: Record<string, number> = { says: 2 };
 const LEADER_WIDTHS: Record<string, number> = { ticker: 140, price: 120, dark: 120, avg: 120, shares: 140, share: 168 };
 const LEADER_TOOLTIPS: Record<string, string> = {
   dark: 'Off-exchange dollars in the dark prints in hand',
@@ -391,7 +394,7 @@ const DarkPool = () => {
       { key: 'vs', header: 'vs mid', align: 'right', sortValue: p => p.vsSpotPct, render: p => { const place = quotePlace(p.vsSpotPct, p.price); return <span className={`font-mono tnum ${placeInk(p, place.cents)}`}>{place.text}</span>; } },
       { key: 'shares', header: 'Shares', align: 'right', sortValue: p => p.size, render: p => <span className={`font-mono tnum ${weightInk(p.size, marks.size)}`}>{num(p.size)}</span> },
       { key: 'dollars', header: 'Dollars', align: 'right', sortValue: p => p.notional, render: p => <span className={`font-mono tnum ${weightInk(p.notional, marks.notional)}`}>{fmtUsd(p.notional)}</span> },
-      { key: 'exec', header: 'Print', sortValue: p => p.exec ?? '', render: p => <span className={`font-mono text-t10 ${execInk(p)}`} title={p.extended ? 'After hours: where it sat in a thin quote, not a side' : undefined}>{execWord(p) ?? '—'}{p.extended ? <span className="text-textMuted"> · AH</span> : null}</span> },
+      { key: 'exec', header: 'Print', sortValue: p => p.exec ?? '', render: p => <span className={`font-mono text-t11 ${execInk(p)}`} title={p.extended ? 'After hours: where it sat in a thin quote, not a side' : undefined}>{execWord(p) ?? '—'}{p.extended ? <span className="text-textMuted"> · AH</span> : null}</span> },
       /* a shelf is a name's (its day by price) — the market's tape has none, so the column stands only on a name */
       ...(view
         ? [
@@ -408,15 +411,15 @@ const DarkPool = () => {
         key: 'read',
         header: 'Read',
         sortValue: p => (p.sized ? p.intent : p.special ? 'zz' : 'zzz'),
-        render: p => (p.sized && !p.extended && !p.special ? <IntentTag intent={p.intent} /> : <span className="font-mono text-t10 uppercase tracking-wider text-textMuted" title={p.read}>{noReadWord(p)}</span>),
+        render: p => (p.sized && !p.extended && !p.special ? <IntentTag intent={p.intent} /> : <span className="font-mono text-t11 uppercase tracking-wider text-textMuted" title={p.read}>{noReadWord(p)}</span>),
       },
       {
         key: 'says',
         header: 'What it says',
-        /* two lines, never cut mid-word */
+        /* two lines, never cut mid-word, centred in the row like every other cell; the whole read is the hover */
         render: p => (
-          <span className="block text-t11 leading-tight text-textSecondary whitespace-normal line-clamp-2" title={p.read}>
-            {p.read}
+          <span className="inline-flex items-center align-middle max-w-full" title={p.read}>
+            <span className="text-t11 leading-tight text-textSecondary whitespace-normal line-clamp-2">{p.read}</span>
           </span>
         ),
       },
@@ -447,7 +450,7 @@ const DarkPool = () => {
             <span key="v" className={placeInk(p, place.cents)}>
               {place.text}
             </span>,
-            p.sized && !p.extended && !p.special ? <IntentTag key="r" intent={p.intent} /> : <span key="r" className="text-textMuted uppercase text-t10">{noReadWord(p)}</span>,
+            p.sized && !p.extended && !p.special ? <IntentTag key="r" intent={p.intent} /> : <span key="r" className="text-textMuted uppercase text-t11">{noReadWord(p)}</span>,
           ]}
         />
       );
@@ -526,7 +529,7 @@ const DarkPool = () => {
               <span className="flex flex-1 h-[3px] rounded-full overflow-hidden bg-ink/[0.06]">
                 <span className="h-full rounded-full bg-silver/70" style={{ width: `${pct}%` }} />
               </span>
-              <span className="font-mono text-t10 tnum text-textSecondary w-9 text-right shrink-0">{pct}%</span>
+              <span className="font-mono text-t11 tnum text-textSecondary w-9 text-right shrink-0">{pct}%</span>
             </span>
           );
         },
@@ -688,7 +691,7 @@ const DarkPool = () => {
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
             {/* a closed session's prints are read once: closed, not stale; a fault still says so */}
             {regularView && !(named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault) ? (
-              <span className="inline-flex items-center gap-1 font-mono text-t9 uppercase tracking-widest text-textMuted" title={`The ${closed ? shortDay(closed.iso) : ''} session has closed; its prints no longer change`} data-stale="closed">
+              <span className="inline-flex items-center gap-1 font-mono text-t11 uppercase tracking-widest text-textMuted" title={`The ${closed ? shortDay(closed.iso) : ''} session has closed; its prints no longer change`} data-stale="closed">
                 <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-textMuted" />
                 Closed{closed ? ` · ${shortDay(closed.iso)}` : ''}
               </span>
@@ -724,9 +727,9 @@ const DarkPool = () => {
         {/* a name's shelves, lowest price at the left; a cell picked cuts the grid to its shelf */}
         {levels.length > 0 && (
         <div className="border-t border-borderSubtle" data-dark-pool-shelves>
-          <div className="px-5 flex items-center gap-2 border-b border-borderSubtle/60 font-mono text-t9 uppercase tracking-widest" style={{ height: DP_STRIP_HEAD_H }}>
+          <div className="px-5 flex items-center gap-2 border-b border-borderSubtle/60 font-mono text-t11 uppercase tracking-widest" style={{ height: DP_STRIP_HEAD_H }}>
             <span className="text-textPrimary">The shelves</span>
-            <span className="text-textMuted normal-case tracking-normal font-sans text-t10" title="A shelf holds 3% or more of the day's dark dollars within 5% of the market">· where the day's dark shares rested · {shelfWords}</span>
+            <span className="text-textMuted normal-case tracking-normal font-sans text-t11" title="A shelf holds 3% or more of the day's dark dollars within 5% of the market">· where the day's dark shares rested · {shelfWords}</span>
           </div>
           {/* two across on a phone, three from 640, six from 1024: narrower cells cut their figures */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-borderSubtle/60 max-sm:divide-y">
@@ -747,19 +750,19 @@ const DarkPool = () => {
                     data-picked={picked || undefined}
                   >
                     <span className="flex items-center gap-2">
-                      <span className={`font-mono text-t9 font-semibold uppercase tracking-wider ${ROLE_INK[l.role]}`}>{l.role}</span>
+                      <span className={`font-mono text-t11 font-semibold uppercase tracking-wider ${ROLE_INK[l.role]}`}>{l.role}</span>
                       <span className={`ml-auto min-w-0 truncate font-mono text-t11 tnum ${l.notional >= shelfMax ? 'font-bold text-textPrimary' : 'text-textSecondary'}`}>{fmtUsd(l.notional)}</span>
                     </span>
                     <span className="flex items-baseline gap-2">
                       <span className="font-mono text-t13 font-bold tnum text-textPrimary">${l.price.toFixed(2)}</span>
-                      <span className={`font-mono text-t10 tnum ${dirInk(l.distPct)}`}>{signedPct(l.distPct)}</span>
-                      <span className="ml-auto min-w-0 truncate font-mono text-t9 text-textMuted tnum whitespace-nowrap" title="The name's dark prints in hand at this price; the day's shares by price carry no count">{l.prints} in hand</span>
+                      <span className={`font-mono text-t11 tnum ${dirInk(l.distPct)}`}>{signedPct(l.distPct)}</span>
+                      <span className="ml-auto min-w-0 truncate font-mono text-t11 text-textMuted tnum whitespace-nowrap" title="The name's dark prints in hand at this price; the day's shares by price carry no count">{l.prints} in hand</span>
                     </span>
                     <span className="flex items-center gap-2">
                       <span className="relative h-0.5 flex-1 rounded-full bg-ink/[0.06] overflow-hidden">
                         <span className={`absolute left-0 top-0 h-full ${ROLE_BAR[l.role]}`} style={{ width: `${Math.round((l.notional / shelfMax) * 100)}%` }} />
                       </span>
-                      <span className="font-mono text-t9 text-textMuted tnum w-7 text-right">{l.sharePct.toFixed(0)}%</span>
+                      <span className="font-mono text-t11 text-textMuted tnum w-8 text-right">{l.sharePct.toFixed(0)}%</span>
                     </span>
                   </button>
                 );
@@ -767,7 +770,7 @@ const DarkPool = () => {
           </div>
         </div>
         )}
-        <TraceGrid rows={cut} columns={columns} hidden={gridHidden} widths={WIDTHS} flexes={{ says: 2 }} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={p => setOpenCross(p)} selectedKey={openCross ? keyOf(openCross) : null} initialSort={{ key: 'time', dir: 'desc' }} phoneRow={crossPhoneRow} autoHeight emptyText={srcReading ? 'Reading the tape…' : named && nameBook.rows.unknown ? `No ticker “${named}” — check the symbol` : !named && parseContractQuery(query) ? 'Dark-pool crosses are stock prints: search a ticker (NVDA), not a contract' : named ? `No ${litLane ? 'lit prints' : 'crosses'} for ${named} ${dayAdv(nameDayIso)}${terms === 'own' ? ' on own terms' : ''}` : litLane ? 'No lit prints on this cut' : 'No crosses on this cut'} endless={named && tapeKind !== 'lit' ? endlessOf(nameOlder, `${named} crosses`, `the start of ${named}'s day reached`, hold.paused) : regularView && tapeKind === 'dark' ? endlessOf(regOlder, 'crosses', "the day's crosses reached", hold.paused, 'Smaller crosses ↓') : { onNear: () => {}, state: 'end', note: `${num(cut.length)} ${tapeKind === 'lit' ? 'lit prints' : 'crosses'} in hand; the live feed grows as prints arrive. Type a name to page back through its day` }} testId="dark-pool" />
+        <TraceGrid rows={cut} columns={columns} hidden={gridHidden} widths={WIDTHS} flexes={SAYS_FLEX} prose={SAYS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={p => setOpenCross(p)} selectedKey={openCross ? keyOf(openCross) : null} initialSort={{ key: 'time', dir: 'desc' }} phoneRow={crossPhoneRow} autoHeight emptyText={srcReading ? 'Reading the tape…' : named && nameBook.rows.unknown ? `No ticker “${named}” — check the symbol` : !named && parseContractQuery(query) ? 'Dark-pool crosses are stock prints: search a ticker (NVDA), not a contract' : named ? `No ${litLane ? 'lit prints' : 'crosses'} for ${named} ${dayAdv(nameDayIso)}${terms === 'own' ? ' on own terms' : ''}` : litLane ? 'No lit prints on this cut' : 'No crosses on this cut'} endless={named && tapeKind !== 'lit' ? endlessOf(nameOlder, `${named} crosses`, `the start of ${named}'s day reached`, hold.paused) : regularView && tapeKind === 'dark' ? endlessOf(regOlder, 'crosses', "the day's crosses reached", hold.paused, 'Smaller crosses ↓') : { onNear: () => {}, state: 'end', note: `${num(cut.length)} ${tapeKind === 'lit' ? 'lit prints' : 'crosses'} in hand; the live feed grows as prints arrive. Type a name to page back through its day` }} testId="dark-pool" />
         {(named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault) && cut.length === 0 ? <FeedFallback fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} /> : null}
       </TraceBox>
 
@@ -793,7 +796,7 @@ const DarkPool = () => {
         }
         controls={
           <>
-            <span className="font-mono text-t9 uppercase tracking-widest text-textMuted whitespace-nowrap" data-dark-leaders-updated>
+            <span className="font-mono text-t11 uppercase tracking-widest text-textMuted whitespace-nowrap" data-dark-leaders-updated>
               updated {leaders.updated}
             </span>
             <div className="ml-auto">

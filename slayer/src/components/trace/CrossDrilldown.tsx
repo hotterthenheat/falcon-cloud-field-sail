@@ -29,7 +29,7 @@ const SEQ_SHOWN = 6;
 const INTENT_TAG: Record<DarkPoolIntent, string> = { ACCUMULATION: 'ACCUMULATION', DISTRIBUTION: 'DISTRIBUTION', 'HEDGE FLOW': 'AT THE MID', ROTATION: 'NO READ' };
 /** A cross's read as a tag, in its ink */
 export const IntentTag = ({ intent }: { intent: DarkPoolIntent }) => (
-  <span className={`font-mono text-t10 font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{INTENT_TAG[intent]}</span>
+  <span className={`font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{INTENT_TAG[intent]}</span>
 );
 /** Why a cross carries no read */
 export const noReadWord = (p: DarkPoolPrint) => (p.special ? (p.auction ? 'no read · auction' : 'no read · terms') : p.extended ? 'no read · after hrs' : 'no read · small');
@@ -561,7 +561,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
                         <td className={`${td} text-right ${p.notional >= 1_000_000 ? 'text-textPrimary font-semibold' : 'text-textPrimary'}`}>{fmtUsd(p.notional)}</td>
                         <td className={`${td} ${p.exec === 'MID' || !p.exec || p.extended ? 'text-textMuted' : 'text-textPrimary'}`}>{sideWord(p)}</td>
                         <td className={`${td} text-right ${p.extended ? 'text-textSecondary' : place.cents > 0 ? 'text-bull' : place.cents < 0 ? 'text-bear' : 'text-textMuted'}`}>{place.text}</td>
-                        <td className={td}>{p.sized && !p.extended && !p.special ? <IntentTag intent={p.intent} /> : <span className="text-textMuted uppercase text-t10">{noReadWord(p)}</span>}</td>
+                        <td className={td}>{p.sized && !p.extended && !p.special ? <IntentTag intent={p.intent} /> : <span className="text-textMuted uppercase text-t11">{noReadWord(p)}</span>}</td>
                       </tr>
                     );
                   })}

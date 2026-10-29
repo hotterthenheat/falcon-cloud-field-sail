@@ -1097,7 +1097,7 @@ const LiveTape = () => {
           {showDay && (
             <div className="px-5 py-3 border-t border-borderSubtle flex flex-col gap-2" data-tape-day>
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="font-mono text-t10 uppercase tracking-widest text-textPrimary">The whole day</span>
+                <span className="font-mono text-t11 uppercase tracking-widest text-textPrimary">The whole day</span>
                 <span className="text-t11 text-textMuted">
                   {dayAdv(dayIso) === 'today' ? 'Today' : shortDay(dayIso)} · {regularOnly ? (anchor ? '09:30–16:15 ET' : 'from 09:30 ET') : 'outside the regular session'} · the tide, the screener and the alerts, not the prints below
                 </span>
@@ -1194,7 +1194,7 @@ const LiveTape = () => {
                 Trades inside {openAlert.ticker} {openAlert.strike}
                 {openAlert.right}
               </span>
-              <button type="button" className="font-mono text-t10 uppercase tracking-wider text-textMuted" onClick={() => setOpenAlert(null)}>
+              <button type="button" className="font-mono text-t11 uppercase tracking-wider text-textMuted" onClick={() => setOpenAlert(null)}>
                 Close
               </button>
               {alertTrades.fault && alertTrades.rows.length === 0 ? <FeedFallback fault={alertTrades.fault} /> : <span className="font-mono text-t11 tabular-nums text-textPrimary">{alertTrades.waiting ? '…' : `${num(alertTrades.rows.length)} prints`}</span>}

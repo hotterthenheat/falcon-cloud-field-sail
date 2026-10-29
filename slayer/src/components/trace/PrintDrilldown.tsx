@@ -865,7 +865,7 @@ const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: st
                 </td>
                 <td className={`${td} text-right text-textPrimary whitespace-nowrap`} title={d.closeBasis === 'regular' ? `The regular session's last print${d.extLast ? `; after the close it last printed $${fixed(d.extLast.price)} at ${d.extLast.time} ET (extended hours)` : ''}` : "The feed's last price for the session — it can be an after-hours fill"}>
                   {d.close > 0 ? `${d.closeBasis === 'regular' ? '' : '≈'}$${fixed(d.close)}` : '—'}
-                  {d.extLast && <span className="block text-t10 text-textMuted">ext ${fixed(d.extLast.price)} · {d.extLast.time.slice(0, 5)}</span>}
+                  {d.extLast && <span className="block text-t11 text-textMuted">ext ${fixed(d.extLast.price)} · {d.extLast.time.slice(0, 5)}</span>}
                 </td>
                 <td className={`${td} text-right text-textPrimary`}>{d.avg > 0 ? `$${fixed(d.avg)}` : '—'}</td>
                 <td className="px-2 py-1.5">

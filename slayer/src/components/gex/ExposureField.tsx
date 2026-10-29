@@ -2125,7 +2125,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           {/* WHICH CONTRACTS, SAID (the ship pass, 2026-10-22): the figures are the Expiries card's dates summed; the
               supreme and the walls marked on them are the Levels card's — the Board's — so the two can differ */}
           {chosenDates.length > 0 && (
-            <span className={`inline-flex items-center gap-1.5 ${scopeDiffers ? 'text-textSecondary font-semibold' : 'text-textMuted/80'}`} title="The dollar figures add up the dates on the Expiries card. The supreme, call wall and put wall marked on them come from this name's levels — the same levels the Board, the Agenda and Compare show." data-legend-scope>
+            <span className={`inline-flex items-center gap-1.5 ${scopeDiffers ? 'text-textSecondary font-semibold' : 'text-textMuted'}`} title="The dollar figures add up the dates on the Expiries card. The supreme, call wall and put wall marked on them come from this name's levels — the same levels the Board, the Agenda and Compare show." data-legend-scope>
               {scopeDiffers && view !== 'calendar' ? <>figures and coloured rows: {spanWords} · the Levels card: {levelsLabel}</> : <>figures: {spanWords} · levels: {levelsLabel}</>}
             </span>
           )}
