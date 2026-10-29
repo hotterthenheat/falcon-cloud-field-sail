@@ -55,6 +55,7 @@
 ==================================================
 */
 
+import { daySigmaOfIv } from '../../data/expectedMove';
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUpRight, X } from 'lucide-react';
@@ -71,7 +72,7 @@ import { GLOSSARY, kindTip } from './glossary';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import { useNameUnit } from '../../data/distanceUnits';
 import { cadenceWords, longDay, recordDay, aheadWord, sessionDay } from '../../data/bookWindow';
-import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
+import { fmtDistance, sessionAtr } from '../../data/atr';
 import { bookCandles, peekDaySigma, peekIv, useBookRev } from '../../data/uwBook';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
@@ -225,7 +226,7 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
           {t.closes > 0 && (
             <span className="text-textMuted">
               {' '}
-              · closes here <span className="text-textPrimary">{t.closes.toFixed(0)}%</span>
+              · <span title="Model weight for the close at this strike: a normal on 1σ to the close, pulled by the book — not a measured chance">close weight</span> <span className="text-textPrimary">{t.closes.toFixed(0)}%</span>
             </span>
           )}
         </CardLine>
@@ -392,7 +393,7 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
         <span className={material ? 'text-textPrimary' : 'text-textMuted'}>{buildWords(t, inSession)}</span>
         {/* the session's tests on their own line-piece (the tenth audit: "held 10, broke 4" wrapped under the wall words) */}
         {t.today?.tests ? <span className="text-textSecondary whitespace-nowrap">held {t.today.held}, broke {t.today.broke} today</span> : null}
-        {t.closes > 0 && <span className="text-textSecondary">closes here {t.closes.toFixed(0)}%</span>}
+        {t.closes > 0 && <span className="text-textSecondary" title="Model weight for the close at this strike: a normal on 1σ to the close, pulled by the book — not a measured chance">close weight {t.closes.toFixed(0)}%</span>}
         <span className="text-textSecondary cursor-help" title={stakeTip(t.stake, marketPer1Pct)}>
           {fmtDollars(t.stake)} at stake{t.stake / Math.max(1, marketPer1Pct) >= 0.05 ? ` · ${(t.stake / Math.max(1, marketPer1Pct)).toFixed(1)}× the 1% move` : ''}
         </span>
@@ -529,7 +530,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
   const unit = useNameUnit(ticker);
   const rev = useBookRev();
   const fromSpot = useMemo(() => {
-    const scales = { atr: sessionAtr(bookCandles(ticker) ?? []), sigma: peekDaySigma(ticker) ?? impliedDaySigma(agenda.spot, peekIv(ticker) ?? 0) };
+    const scales = { atr: sessionAtr(bookCandles(ticker) ?? []), sigma: peekDaySigma(ticker) ?? daySigmaOfIv(agenda.spot, peekIv(ticker) ?? 0) };
     return (t: Target) => fmtDistance(t.strike - agenda.spot, agenda.spot, unit, scales);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker, agenda.spot, unit, rev]);
@@ -592,7 +593,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             </dd>
           </div>
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`The strike the close is most likely to land on, and the chance — named only when one strike reaches 15%; under that the close is spread too thin to lean anywhere${agenda.closeTop ? ` (the likeliest, ${fmtStrike(agenda.closeTop.strike)}, is ${agenda.closeTop.odds.toFixed(0)}%)` : ''}`}>{/* "the close leans to no clear lean" read as broken grammar (the retail test) — the label says what the figure is;
+            <dt className="text-t10 text-textMuted cursor-help" title={`The strike the model weights most for the close (a normal on 1σ to the close, pulled by the book — not a measured chance) — named only when one strike reaches 15%; under that the close is spread too thin to lean anywhere${agenda.closeTop ? ` (the likeliest, ${fmtStrike(agenda.closeTop.strike)}, is ${agenda.closeTop.odds.toFixed(0)}%)` : ''}`}>{/* "the close leans to no clear lean" read as broken grammar (the retail test) — the label says what the figure is;
                 after the bell the odds are the NEXT session's close, never the one that just happened (the tenth audit's M3) */}{clock.inSession || agenda.horizon ? 'Likeliest close' : aheadWord() === 'today' ? 'Likeliest close today' : 'Likeliest next close'}</dt>
             <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${agenda.closesNear ? 'text-textPrimary' : 'text-textMuted'}`} data-close-lean>{closeLeanWords(agenda)}</dd>
           </div>

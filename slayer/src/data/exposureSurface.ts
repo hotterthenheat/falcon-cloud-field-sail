@@ -71,7 +71,7 @@ export const GREEK_UNIT: Record<Greek, string> = {
   charm: '1 day',
   color: 'per session',
   vomma: 'per vol pt',
-  speed: 'per $1',
+  speed: 'per 1%',
   veta: 'per session',
   zomma: 'per vol pt',
 };

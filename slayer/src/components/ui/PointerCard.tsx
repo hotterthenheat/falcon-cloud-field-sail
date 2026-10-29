@@ -30,7 +30,7 @@
 ==================================================
 */
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type MutableRefObject, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 const SILVER = 'rgb(var(--silver))';
@@ -73,29 +73,35 @@ export const CardRow = ({ k, v, sub, ink }: { k: string; v: ReactNode; sub?: Rea
   </>
 );
 
-const PointerCard = ({ x, y, width = 196, title, aside, children, foot, still = false, testId = 'data-pointer-card', testValue = '', dense = false }: PointerCardProps) => {
-  const ref = useRef<HTMLDivElement>(null);
+/* NEVER OFF THE EDGE (the Map's re-audit H3, 2026-10-13): a card that could not sit to the right went left of the
+   pointer by its whole width, and on a phone that was past the edge of the screen — the left 22px of every line cut.
+   The card goes where it can and stops at the edge. */
+const leftFor = (x: number, width: number): number => {
   const vw = typeof globalThis.innerWidth === 'number' ? globalThis.innerWidth : null;
   const onRight = vw === null || x + GAP + width < vw - EDGE;
-  /* NEVER OFF THE EDGE (the Map's re-audit H3, 2026-10-13): a card that could not sit to the right went left of the
-     pointer by its whole width, and on a phone that was past the edge of the screen — the left 22px of every line cut.
-     The card goes where it can and stops at the edge. */
   const wanted = onRight ? x + GAP : x - GAP - width;
-  const left = vw === null ? wanted : Math.max(EDGE, Math.min(wanted, vw - EDGE - width));
-  /* The card's own height decides where it stops at the bottom edge — measured
-     before paint on every placement, so the card follows the pointer as far
-     down as it can and never jumps to a guess */
-  /* ABOVE THE POINTER, NEVER ON WHAT IT DESCRIBES (the paying-user audit's H5, 2026-10-13): the card hung from 12px
-     over the pointer, so it lay on the rest of the row it was reading and the rows under it. Its foot now stands 12px
-     over the pointer — the row, the cell and the column under the pointer stay in sight — and only where the head of
-     the screen has no room does it drop to the same distance under it. */
+  return vw === null ? wanted : Math.max(EDGE, Math.min(wanted, vw - EDGE - width));
+};
+/* ABOVE THE POINTER, NEVER ON WHAT IT DESCRIBES (the paying-user audit's H5, 2026-10-13): the card's foot stands 12px over
+   the pointer — the row, the cell and the column under it stay in sight — and only where the head of the screen has no
+   room does it drop to the same distance under it. `h` is the card's own height. */
+const topFor = (y: number, h: number): number => {
+  const above = y - LIFT - h;
+  const top = above >= EDGE ? above : Math.min(y + LIFT + 6, globalThis.innerHeight - EDGE - h);
+  return Math.max(EDGE, top);
+};
+
+const PointerCard = ({ x, y, width = 196, title, aside, children, foot, still = false, testId = 'data-pointer-card', testValue = '', dense = false, follow }: PointerCardProps & { follow?: MutableRefObject<{ el: HTMLDivElement | null; h: number }> }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const left = leftFor(x, width);
+  /* The card's own height decides where it stops at the bottom edge — measured before paint on every render (a render
+     is a change of content), so the card never jumps to a guess. A following card keeps the height for its moves. */
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || typeof globalThis.innerHeight !== 'number') return;
     const h = el.offsetHeight;
-    const above = y - LIFT - h;
-    const top = above >= EDGE ? above : Math.min(y + LIFT + 6, globalThis.innerHeight - EDGE - h);
-    el.style.top = `${Math.max(EDGE, top)}px`;
+    el.style.top = `${topFor(y, h)}px`;
+    if (follow) follow.current = { el, h };
   });
   return createPortal(
     <div
@@ -126,14 +132,25 @@ interface PointerFollowCardProps extends Omit<PointerCardProps, 'x' | 'y'> {
 /** The card that follows the pointer by itself: mount it once per hover, change
     its content as the pointer crosses rows, and only the card re-renders on a
     move — the host's rows never do */
+/* A move is placed straight onto the element — the same left and top a render would give it — with the height measured
+   at the last render: a React render per pointer move, and a forced layout to read the height, was the card's whole
+   cost. A render (new content) reads the latest position, so it never pulls the card back to where it appeared. */
 export const PointerFollowCard = ({ start, ...rest }: PointerFollowCardProps) => {
-  const [pos, setPos] = useState(start);
+  const pos = useRef(start);
+  const follow = useRef<{ el: HTMLDivElement | null; h: number }>({ el: null, h: 0 });
+  const width = rest.width ?? 196;
   useEffect(() => {
-    const onMove = (ev: PointerEvent) => setPos({ x: ev.clientX, y: ev.clientY });
+    const onMove = (ev: PointerEvent) => {
+      pos.current = { x: ev.clientX, y: ev.clientY };
+      const { el, h } = follow.current;
+      if (!el || typeof globalThis.innerHeight !== 'number') return;
+      el.style.left = `${leftFor(ev.clientX, width)}px`;
+      el.style.top = `${topFor(ev.clientY, h)}px`;
+    };
     window.addEventListener('pointermove', onMove, { passive: true });
     return () => window.removeEventListener('pointermove', onMove);
-  }, []);
-  return <PointerCard x={pos.x} y={pos.y} {...rest} />;
+  }, [width]);
+  return <PointerCard x={pos.current.x} y={pos.current.y} follow={follow} {...rest} />;
 };
 
 export default PointerCard;

@@ -45,8 +45,8 @@
 ==================================================
 */
 
+import { daySigmaOfIv, sigmaFracOver, sigmaOverMinutes, touchOdds } from './expectedMove';
 import Simulator from '../core/simulator';
-import { impliedDaySigma } from './atr';
 import { findAirPockets, SHELF_SHARE, type AirPocket } from './airPockets';
 import { buildHedgeFlowLadder, type FlowLadder } from './hedgeFlow';
 import { SESSION_MIN, fmtDollars, fmtStrike, wholeBookVanna, type AheadClock } from './ahead';
@@ -56,7 +56,7 @@ import type { ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, MarketSnapshot } from '../types/market';
 import { putWallWords } from '../core/walls';
 import { monDayOf, peekDaySigma, peekMoveToClose, peekScopeMove } from './uwBook';
-import { datesOf } from './flipLevel';
+import { datesOf, levelNetPath } from './flipLevel';
 
 /** The one expiry a snapshot's levels chain reads, or null for several / the whole book */
 export const scopeDateOf = (snapshot: MarketSnapshot): string | null => {
@@ -64,32 +64,26 @@ export const scopeDateOf = (snapshot: MarketSnapshot): string | null => {
   return Array.isArray(d) && d.length === 1 ? d[0] : null;
 };
 
-/*
-  THE REACH ODDS' HORIZON (the fifth audit, 2026-10-23: CROX's Today scope is Nov 20 and its odds ran on one session at
-  the ATM vol, $4.95, against the vendor's $14.98 into Nov 20). A scope whose expiry is the coming session reads that
-  session's move, scaled to the minutes left; a later expiry reads the vendor's implied move into it, over its whole
-  horizon — the odds are then "by Nov 20" and every label says so (`horizon`). One rule for the Agenda, the Board's
-  watch-first, Compare and the corridor.
-*/
+/* The reach odds' horizon and σ: the coming session's 1σ scaled to the minutes left, or for a later expiry the 1σ into
+   it over its whole horizon ("by Nov 20"). One rule for the Agenda, the Board, Compare and the corridor. */
 export interface ScopeSigma {
-  /** One standard move from now to the horizon, dollars */
+  /** 1σ from now to the horizon, dollars */
   sigmaLeft: number;
-  /** One session's move, dollars (the ruler's σ) */
+  /** One session's 1σ, dollars (the ruler's σ) */
   sigmaDay: number;
   /** "by Nov 20" for a multi-day scope — null when the horizon is the coming session's close */
   horizon: string | null;
-  /** Which number the move is, in words ("the vendor's implied move into Nov 20") */
+  /** Which number the move is, in words ("1σ = the vendor's straddle into Nov 20 × 1.25") */
   words: string;
 }
 export function scopeSigma(snapshot: MarketSnapshot, minutesLeft: number, iv: number, date: string | null = scopeDateOf(snapshot)): ScopeSigma {
   const spot = snapshot.spot;
-  const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, date) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
+  const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, date) : null) ?? daySigmaOfIv(spot, iv) ?? spot * 0.01;
   const m = snapshot.liveBook ? peekScopeMove(snapshot.ticker, date) : null;
   if (m?.multi && m.until && m.move > 0) return { sigmaLeft: m.move, sigmaDay, horizon: `by ${monDayOf(m.until)}`, words: m.words };
-  /* TIME-SCALED ONCE (the tenth audit's B2): the vendor's move into a same-day expiry, read in its session, is already the
-     move left to the close (uwBook peekMoveToClose); only a full session's figure is scaled by the minutes left */
+  /* a same-day expiry's straddle read in its session is already the move left; a full session's 1σ is scaled once */
   const left = snapshot.liveBook ? peekMoveToClose(snapshot.ticker, date, minutesLeft) : null;
-  return { sigmaLeft: left ?? sigmaDay * Math.sqrt(Math.max(0, minutesLeft) / SESSION_MIN), sigmaDay, horizon: null, words: m?.source === 'vendor' ? m.words : m?.words ?? 'the 30-day implied vol over one session' };
+  return { sigmaLeft: left ?? sigmaOverMinutes(sigmaDay, minutesLeft), sigmaDay, horizon: null, words: m?.words ?? '1σ of the 30-day implied vol over one session' };
 }
 
 
@@ -171,7 +165,7 @@ export interface WallOdds {
   distanceSigma: number;
   /** Odds price reaches it by the close, 0..1 */
   reach: number;
-  /** Odds it holds when reached, 0..1 */
+  /** The wall's size against the heaviest wall on the same chain, 0..1 (1 = the top wall) — a size, not a probability */
   hold: number;
   factors: WallFactor[];
   breakPath: WallPath;
@@ -184,7 +178,7 @@ export interface WallBoard {
   spot: number;
   /** Dollars of stock it took to move this name 1% today */
   marketPer1Pct: number;
-  /** One expected move for the minutes left, dollars */
+  /** 1σ for the minutes left, dollars */
   sigmaLeft: number;
   minutesLeft: number;
   inSession: boolean;
@@ -200,13 +194,6 @@ export interface WallBoard {
 /* ---- helpers --------------------------------------------------------------------- */
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-/** Φ via the Abramowitz–Stegun approximation — good to 1e-7 */
-const phi = (x: number) => {
-  const t = 1 / (1 + 0.2316419 * Math.abs(x));
-  const d = 0.3989422804 * Math.exp((-x * x) / 2);
-  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
-  return x >= 0 ? 1 - p : p;
-};
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 /** The wall reading as printed: its size against the heaviest strike on the same chain, to the nearest 5% */
 export const holdLabel = (v: number): string => `${holdShort(v)} of the top wall`;
@@ -271,7 +258,7 @@ export function speedRatio(bars: readonly Candle[], iv: number, n = 30): number 
   const mean = rets.reduce((a, r) => a + r, 0) / rets.length;
   const varr = rets.reduce((a, r) => a + (r - mean) ** 2, 0) / Math.max(1, rets.length - 1);
   const realized = Math.sqrt(varr) * Math.sqrt(n);
-  const implied = iv * Math.sqrt(n / (SESSION_MIN * 252));
+  const implied = sigmaFracOver(iv, n);
   return implied > 0 ? realized / implied : null;
 }
 
@@ -423,8 +410,8 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
 
   const distance = Math.abs(K - spot);
   const distanceSigma = ctx.sigmaLeft > 0 ? distance / ctx.sigmaLeft : 99;
-  /* no floor: a strike five expected moves out is reached well under 1% of the time, and says so */
-  const reach = clamp(2 * (1 - phi(distanceSigma)), 0, 1);
+  /* touch odds by the horizon (reflection principle on the 1σ left); no floor */
+  const reach = touchOdds(spot, K, ctx.sigmaLeft);
 
   /* THE PATHS */
   const beyond = side === 'call' ? strikes.filter(s => s.strike > K).sort((a, b) => a.strike - b.strike) : strikes.filter(s => s.strike < K).sort((a, b) => b.strike - a.strike);
@@ -567,7 +554,7 @@ export function buildWallContext(
   const marketPer1Pct = dollarsPer1Pct(todayBars) ?? 1;
   /* the expiry the levels read: its own implied move (data/uwBook.ts peekDaySigma), the 30-day IV only as a fallback */
   const ss = scopeSigma(snapshot, clock.minutesLeft, iv);
-  const sigmaLeft = snapshot.liveBook ? ss.sigmaLeft : (impliedDaySigma(spot, iv) ?? spot * 0.01) * Math.sqrt(clock.minutesLeft / SESSION_MIN);
+  const sigmaLeft = snapshot.liveBook ? ss.sigmaLeft : sigmaOverMinutes(daySigmaOfIv(spot, iv) ?? spot * 0.01, clock.minutesLeft);
   return {
     horizon: snapshot.liveBook ? ss.horizon : null,
     ticker: snapshot.ticker,
@@ -576,7 +563,7 @@ export function buildWallContext(
     heaviest,
     levels: profile.levels,
     pockets: findAirPockets(strikes),
-    ladder: buildHedgeFlowLadder(profile),
+    ladder: buildHedgeFlowLadder(profile, snapshot.liveBook ? prices => levelNetPath(snapshot, snapshot.uwChains?.[profile.expiry] ?? snapshot.chain, prices)?.path.map(v => -v) ?? null : undefined),
     building,
     surface,
     todayIdx: surface ? todayColumn(surface) : -1,

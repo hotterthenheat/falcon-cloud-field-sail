@@ -1051,17 +1051,34 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     }
     for (const [strike, list] of seen) {
       for (let i = 1; i < list.length; i++) {
-        const mark = nodeMark(list.slice(0, i + 1).map(p => ({ v: p.v, peak: p.peak })), list[i].floor);
+        /* nodeMark reads the last five buckets only; handing it the whole prefix made this quadratic in the session */
+        const mark = nodeMark(list.slice(Math.max(0, i - 4), i + 1), list[i].floor);
         if (!mark) continue;
         if (!list[i].firm && mark !== 'died') continue;
         out.set(`${list[i].time}|${strike}`, { mark });
       }
     }
     if (prices.length) {
+      /* the closes in [t, t + 600], by bisection when the bars are in order (they are: the series' own) */
+      let ordered = true;
+      for (let k = 1; k < prices.length && ordered; k++) ordered = prices[k].time >= prices[k - 1].time;
+      const windowFrom = (t: number): number[] => {
+        if (!ordered) return prices.filter(px => px.time >= t && px.time <= t + 600).map(px => px.close);
+        let lo = 0;
+        let hi = prices.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (prices[mid].time < t) lo = mid + 1;
+          else hi = mid;
+        }
+        const out: number[] = [];
+        for (let k = lo; k < prices.length && prices[k].time <= t + 600; k++) out.push(prices[k].close);
+        return out;
+      };
       for (const [strike, list] of seen) {
         for (const p of list) {
           if (!p.peak) continue;
-          const path = prices.filter(px => px.time >= p.time && px.time <= p.time + 600).map(px => px.close);
+          const path = windowFrom(p.time);
           const tag = priceTag(strike, path);
           if (!tag) continue;
           const key = `${p.time}|${strike}`;

@@ -17,6 +17,7 @@
 ==================================================
 */
 
+import { daySigmaOfIv } from '../../data/expectedMove';
 import { useMemo } from 'react';
 import type { MarketSnapshot } from '../../types/market';
 import { bookCandles, dayBars, ensureBook, peekDaySigma, peekIv, useBookRev } from '../../data/uwBook';
@@ -24,7 +25,7 @@ import { roomLevels } from '../../data/roomLevels';
 import type { LevelsScope } from '../../data/levelsScope';
 import { levelTicks } from '../../data/levelRecord';
 import { sessionBars } from '../../data/levelview';
-import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
+import { fmtDistance, sessionAtr } from '../../data/atr';
 import { useNameUnit } from '../../data/distanceUnits';
 import { useRoomSpot } from '../../pages/pinpoint/useRoomSpot';
 import { ABSORB, AMPLIFY, FLIP } from './paletteInk';
@@ -79,7 +80,7 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
       ? ''
       : unit === '%'
         ? `${Math.abs((away / spot) * 100).toFixed(2)}%`
-        : fmtDistance(away, spot, unit, { atr, sigma: unit === 'σ' ? peekDaySigma(ticker) ?? impliedDaySigma(spot, iv) : null }).replace(/^[+−]/, '');
+        : fmtDistance(away, spot, unit, { atr, sigma: unit === 'σ' ? peekDaySigma(ticker) ?? daySigmaOfIv(spot, iv) : null }).replace(/^[+−]/, '');
   /* HOW THE FLIP HELD TODAY — the report's own count (data/levelRecord.ts), the head's before it */
   const bars = (bookCandles(ticker) ?? dayBars(ticker))?.length ?? 0;
   const side: 'call' | 'put' = flip != null && flip >= spot ? 'call' : 'put';

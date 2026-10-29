@@ -1,14 +1,12 @@
 /*
-==================================================
-  SLAYER TERMINAL - VANNA & CHARM MODEL (vannacharm.ts)
-  Projects how dealer exposure migrates: CHARM decays
-  it into the close, VANNA shifts it under an IV move.
-  Derived from the simulator chain + its per-strike
-  vanna/charm greeks. Placeholder — real engine later.
-==================================================
+  Vanna and charm level shifts. On the live book vanna and charm change the delta hedge, not the gamma walls, so the
+  projected levels are the current ones, named with the pages' own rules (core/walls.ts pickLegWalls, data/flipLevel.ts
+  levelFlip). The simulator desk keeps its scenario projection.
 */
 
 import Simulator from '../core/simulator';
+import { pickFlip, pickLegWalls } from '../core/walls';
+import { levelFlip } from './flipLevel';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
 import type {
   IvShift,
@@ -43,7 +41,8 @@ interface LevelSet {
   supreme: number;
 }
 
-/** Walls / flip / supreme from a set of (strike, value) pairs, descending input. */
+/** Walls, flip and supreme off net rows (the simulator's projection): the most |net| above and below spot, the sign
+    change nearest spot (core/walls.ts pickFlip — never the first crossing from the bottom), the most |net|. */
 function levelsFrom(rows: { strike: number; value: number }[], spot: number): LevelSet {
   let callWall = spot;
   let putWall = spot;
@@ -66,15 +65,15 @@ function levelsFrom(rows: { strike: number; value: number }[], spot: number): Le
       supreme = r.strike;
     }
   }
-  const asc = [...rows].sort((a, b) => a.strike - b.strike);
-  let flip = spot;
-  for (let i = 1; i < asc.length; i++) {
-    if (Math.sign(asc[i - 1].value) !== Math.sign(asc[i].value)) {
-      flip = (asc[i - 1].strike + asc[i].strike) / 2;
-      break;
-    }
-  }
-  return { callWall, putWall, flip, supreme };
+  return { callWall, putWall, flip: pickFlip(rows, spot, r => r.value) ?? spot, supreme };
+}
+
+/** The live book's levels: the same walls, supreme and flip the levels card prints. */
+function liveLevels(snapshot: MarketSnapshot, chain: readonly StrikeNode[]): LevelSet {
+  const w = pickLegWalls(chain, n => n.callGex, n => n.putGex);
+  const supreme = chain.reduce((b, n) => (Math.abs(n.netGex) > Math.abs(b.netGex) ? n : b), chain[0])?.strike ?? snapshot.spot;
+  const flip = levelFlip(snapshot, chain).flip;
+  return { callWall: w.callWall ?? snapshot.spot, putWall: w.putWall ?? snapshot.spot, flip: flip ?? snapshot.spot, supreme };
 }
 
 // ---- scenario projection -------------------------------------------------------
@@ -159,8 +158,8 @@ export function buildVannaCharm(
     return { strike: n.strike, pin: n.strike === pinStrike, current: n.netGex, projected };
   });
 
-  const base = levelsFrom(rows.map(r => ({ strike: r.strike, value: r.current })), spot);
-  const proj = levelsFrom(rows.map(r => ({ strike: r.strike, value: r.projected })), spot);
+  const base = live ? liveLevels(snapshot, chain) : levelsFrom(rows.map(r => ({ strike: r.strike, value: r.current })), spot);
+  const proj = live ? base : levelsFrom(rows.map(r => ({ strike: r.strike, value: r.projected })), spot);
 
   const shifts: LevelShift[] = [
     { label: 'Call Wall', kind: 'call-wall', current: base.callWall, projected: proj.callWall },

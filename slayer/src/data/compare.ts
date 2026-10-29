@@ -21,13 +21,14 @@
 ==================================================
 */
 
+import { daySigmaOfIv, sigmaOverMinutes } from './expectedMove';
 import { wallPlace } from '../core/walls';
 import { bookCandles, peekBellShare, peekDaySigma, peekIv, peekSpot, scopeDatesPending } from './uwBook';
 import { scopeSigma } from './wall';
 import { UNIVERSE } from './universe';
-import { SESSION_MIN, type AheadClock } from './ahead';
+import type { AheadClock } from './ahead';
 import { sessionStarts } from './indicators';
-import { impliedDaySigma, sessionAtr, type DistanceScales, type DistanceUnit } from './atr';
+import { sessionAtr, type DistanceScales, type DistanceUnit } from './atr';
 import { deskAgenda, netGexOf, retailNet, watchFrom, watchSurface, type BoardRow } from './board';
 import { buildExposureProfile } from './exposure';
 import { buildExposureSurface, CALENDAR_DTES, GREEKS, type ExposureSurface, type Greek } from './exposureSurface';
@@ -224,8 +225,8 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   /* the expiry this side reads: its own implied move, not the 30-day IV (data/uwBook.ts peekDaySigma) */
   /* …over the scope's own horizon — "by Nov 20" for a later expiry (data/wall.ts scopeSigma, the fifth audit) */
   const ss = scopeSigma(lens, clock.minutesLeft, iv);
-  const sigmaDay = snapshot.liveBook ? ss.sigmaDay : impliedDaySigma(spot, iv) ?? spot * 0.01;
-  const sigmaLeft = snapshot.liveBook ? ss.sigmaLeft : sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
+  const sigmaDay = snapshot.liveBook ? ss.sigmaDay : daySigmaOfIv(spot, iv) ?? spot * 0.01;
+  const sigmaLeft = snapshot.liveBook ? ss.sigmaLeft : sigmaOverMinutes(sigmaDay, clock.minutesLeft);
   const horizon = snapshot.liveBook ? ss.horizon : null;
   const moveWords = snapshot.liveBook ? ss.words : 'the 30-day implied vol over one session';
   const scales: DistanceScales = { atr: sessionAtr(bookCandles(ticker) ?? []), sigma: sigmaDay };

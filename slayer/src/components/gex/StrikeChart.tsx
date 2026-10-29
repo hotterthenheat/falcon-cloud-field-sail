@@ -53,6 +53,7 @@ import { coneFor, ensureCone } from '../../data/coneFeed';
 import { KeyLevelsPrimitive, KEY_LEVEL_KEYS, KEY_LEVEL_WORDS, type KeyLevelKey, type KeyLevelRung } from './keyLevelsPrimitive';
 import { LADDER_HIT_W, nearRule } from './ladderPaint';
 import PointerCard, { CardRow, PointerFollowCard, letGoWords } from '../ui/PointerCard';
+import { CellView, makeCell } from './hoverCell';
 import { nyClock, nyMinutes } from '../../core/nyTime';
 import { beepAlert } from '../../data/alertSound';
 import { oiDoubled } from '../../data/oiWatch';
@@ -79,7 +80,7 @@ import {
 } from './candleTheme';
 import { useResolvedTheme, readToken } from '../../theme/theme';
 import { barClockSpec, type AltBarSpec } from '../../data/altBars';
-import type { Candle } from '../../types/market';
+import type { Candle, GexSnapshot } from '../../types/market';
 import type { DarkPoolPrint, KeyLevels } from '../../types/gex';
 import { bucketFlow, flowMaxLeg } from '../../data/flowBars';
 import { atrBarSeries, alignGamma, alignPremium, alignSides, bollingerSeries, emaSeries, flowVwapSeries, gammaEmaSeries, gammaVwapSeries, macdSeries, rsiSeries, sessionStarts, smaSeries, vwapSeries, vwapSigmaSeries } from '../../data/indicators';
@@ -1081,7 +1082,25 @@ const StrikeChart = ({
     return displayBars(ticker, mins, alt);
   };
   const baseBars = (): Candle[] => tapeRef.current?.bars ?? deskTape(ticker, session).bars;
-  const bookHistory = () => (tapeRef.current ? [] : (historyForDate(ticker, bookDate) ?? []));
+  /* historyForDate stamps the whole chain on every candle (candles × strikes objects) and the effects below ask for it
+     several times a change: it is kept until the book emits (the rev), the chain or the candles move. Handing back the
+     same snapshots also lets the trails' per-snapshot caches hit. */
+  const bookRevRef = useRef(bookRev);
+  bookRevRef.current = bookRev;
+  const historyMemoRef = useRef<{ key: string; nodes: unknown; src: unknown; out: GexSnapshot[] } | null>(null);
+  const bookHistory = (): GexSnapshot[] => {
+    if (tapeRef.current) return [];
+    const entry = peekEntry(ticker);
+    if (!entry || entry.status !== 'live') return historyForDate(ticker, bookDate) ?? [];
+    const src = entry.tape.length >= 2 ? entry.tape : entry.candles;
+    const nodes = bookDate === 'book' ? entry.all : entry.byDate;
+    const key = `${ticker}|${bookDate}|${bookRevRef.current}|${src.length}|${src.length ? src[src.length - 1].time : 0}|${entry.wantFull}`;
+    const m = historyMemoRef.current;
+    if (m && m.key === key && m.nodes === nodes && m.src === src) return m.out;
+    const out = historyForDate(ticker, bookDate) ?? [];
+    historyMemoRef.current = { key, nodes, src, out };
+    return out;
+  };
   const nameIv = (): number | undefined => (tapeRef.current ? tapeRef.current.iv : peekIv(ticker) ?? undefined);
   const drawKey = tape?.key ?? ticker;
   const tapeStamp = tape
@@ -1226,8 +1245,10 @@ const StrikeChart = ({
   const trailsRef = useRef<GexTrailsPrimitive | null>(null);
   /* THE FIELD'S HOVER (2026-10-15): the bead under the pointer (its card follows the pointer), the one kept by a click
      (its card stands still, with more), the size reference the legend line prints */
-  const [beadCard, setBeadCard] = useState<BeadHit | null>(null);
-  const [coneCard, setConeCard] = useState<ConeHit | null>(null);
+  /* The hover cards' reads live in cells, not state: a new bead or rung under the pointer re-renders its card, not this
+     component (see hoverCell.tsx) */
+  const [beadCell] = useState(() => makeCell<BeadHit | null>(null));
+  const [coneCell] = useState(() => makeCell<ConeHit | null>(null));
   const [pinnedBead, setPinnedBead] = useState<{ hit: BeadHit; x: number; y: number } | null>(null);
   const pinnedBeadRef = useRef(pinnedBead);
   pinnedBeadRef.current = pinnedBead;
@@ -1263,7 +1284,7 @@ const StrikeChart = ({
   const printLinesRef = useRef<IPriceLine[]>([]);
   /** The key levels' ladder at the tape's right edge, and the rung under the pointer with its card */
   const ladderRef = useRef<KeyLevelsPrimitive | null>(null);
-  const [levelCard, setLevelCard] = useState<{ key: KeyLevelKey; price: number; x: number; y: number } | null>(null);
+  const [levelCell] = useState(() => makeCell<{ key: KeyLevelKey; price: number; x: number; y: number } | null>(null));
   const shownLevelsRef = useRef<KeyLevels | null>(null);
   /** T-6's layer. One primitive for the life of the chart; what it draws is
       swapped, never the primitive itself — see the session effect below. */
@@ -1278,7 +1299,7 @@ const StrikeChart = ({
       without information. */
   const eventsCalRef = useRef<{ key: string; earnings: EarningsEvent | null; macro: MacroDate[]; todayIso: string } | null>(null);
   /** The hovered marker's card. */
-  const [eventCard, setEventCard] = useState<{ e: MarketEvent; x: number } | null>(null);
+  const [eventCell] = useState(() => makeCell<{ e: MarketEvent; x: number } | null>(null));
   const levelRafRef = useRef(0);
   /** Time of that bar, and the seconds one bar covers — what the runway is
       built from, kept in refs so the time-scale subscription can read them
@@ -1400,6 +1421,26 @@ const StrikeChart = ({
   }, [ticker, timeframe, barClock]);
   /** The chart's box — what the rail's lists and the sheet are portalled into */
   const [boxEl, setBoxEl] = useState<HTMLDivElement | null>(null);
+  /* The box's client rect for the per-move hit tests, read once and dropped when it can have moved. Read fresh on every
+     move it forced a layout each time, right after the pane's read line had written to the DOM. */
+  const boxRectRef = useRef<DOMRect | null>(null);
+  const boxRect = (el: HTMLElement) => (boxRectRef.current ??= el.getBoundingClientRect());
+  useEffect(() => {
+    if (!boxEl) return;
+    const drop = () => {
+      boxRectRef.current = null;
+    };
+    const ro = new ResizeObserver(drop);
+    ro.observe(boxEl);
+    window.addEventListener('scroll', drop, { capture: true, passive: true });
+    window.addEventListener('resize', drop);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('scroll', drop, true);
+      window.removeEventListener('resize', drop);
+      drop();
+    };
+  }, [boxEl]);
   /* THE FOCUS INK is the silver (where you are), read off the pane's own box so the chart gets a colour, never a CSS
      variable (2026-10-04, beside his partner's rail: ours drew the focus chip in the lime, the live ink). The box is
      reached through a ref so the line's effects need not re-run for it. */
@@ -3387,7 +3428,7 @@ const StrikeChart = ({
     // Live rungs are today's book. In replay the minute gamma at the bar is the book — walls and flip are not stored on it.
     if (!overlays.levels) {
       ladder.setData(null);
-      setLevelCard(null);
+      levelCell.set(null);
       return;
     }
     const silver = boxEl ? readToken('--silver', undefined, boxEl) : '#C7D3E8';
@@ -3407,7 +3448,7 @@ const StrikeChart = ({
       }
       const asOf = { spot: bar?.close ?? Number.NaN, callWall: Number.NaN, putWall: Number.NaN, flip: Number.NaN, supreme };
       ladder.setData(best > 0 ? { rungs: ladderOf(asOf, silver), hot: null } : null);
-      setLevelCard(null);
+      levelCell.set(null);
       return;
     }
     const L = levelsRef.current;
@@ -3430,7 +3471,7 @@ const StrikeChart = ({
       const series = candleSeriesRef.current;
       if (!p.point || !d || !series) {
         ladder.setHot(null);
-        setLevelCard(prev => (prev === null ? prev : null));
+        levelCell.set(prev => (prev === null ? prev : null));
         return;
       }
       const onLadder = p.point.x >= chart.timeScale().width() - LADDER_HIT_W;
@@ -3448,10 +3489,10 @@ const StrikeChart = ({
         }
       }
       ladder.setHot(hit?.key ?? null);
-      const rect = containerRef.current?.getBoundingClientRect();
       const px = p.point.x;
       const py = p.point.y;
-      setLevelCard(prev => {
+      levelCell.set(prev => {
+        const rect = hit ? containerRef.current?.getBoundingClientRect() : null;
         if (!hit || !rect) return prev === null ? prev : null;
         if (prev && prev.key === hit.key && prev.price === hit.price) return prev;
         return { key: hit.key, price: hit.price, x: rect.left + px, y: rect.top + py };
@@ -3461,7 +3502,7 @@ const StrikeChart = ({
     return () => {
       chart.unsubscribeCrosshairMove(onMove);
       ladder.setHot(null);
-      setLevelCard(null);
+      levelCell.set(null);
     };
   }, [overlays.levels, replay, mainNonce]);
 
@@ -3579,7 +3620,7 @@ const StrikeChart = ({
     if (!prim) return;
     if (!overlays.events || altSpec) {
       prim.setData(null);
-      setEventCard(null);
+      eventCell.set(null);
       return;
     }
     const cut = replay ? replayDataRef.current?.bars[Math.max(0, replayIdx - 1)]?.time : null;
@@ -4101,7 +4142,7 @@ const StrikeChart = ({
   /* a kept bead's card lets go on Esc, and with the world it was read in */
   useEffect(() => {
     setPinnedBead(null);
-    setBeadCard(null);
+    beadCell.set(null);
     trailsRef.current?.setHover(null);
   }, [ticker, timeframe, replay]);
   useEffect(() => {
@@ -4906,7 +4947,10 @@ const StrikeChart = ({
         }`}
         style={{ minHeight: height }}
         ref={setBoxEl}
-        onPointerEnter={() => touchDrawChart(chartId)}
+        onPointerEnter={() => {
+          boxRectRef.current = null;
+          touchDrawChart(chartId);
+        }}
         /* Everything in this box sits on the chart's ground — the dark island
            every chart is (data-theme, theme/tokens.css; Noah, 2026-09-12:
            "the charts to by default always be black"), and the box stamps
@@ -4938,7 +4982,7 @@ const StrikeChart = ({
           const hit = tr && tr.enabled && px >= 0 && px < plotW ? tr.beadAt(px, e.clientY - rect.top) : null;
           if (hit) {
             setPinnedBead({ hit, x: e.clientX, y: e.clientY });
-            setBeadCard(null);
+            beadCell.set(null);
             tr?.setHover(null);
             onKeepStrike?.(hit.strike);
           } else if (pinnedBeadRef.current) {
@@ -4946,18 +4990,18 @@ const StrikeChart = ({
           }
         }}
         onMouseMove={e => {
-          const rect = e.currentTarget.getBoundingClientRect();
+          const rect = boxRect(e.currentTarget);
           pointerAtRef.current = { x: e.clientX, y: e.clientY };
           /* THE FIELD'S BEAD under the pointer (2026-10-15): one hit test a move, the primitive's hover written only
              when the bead changes; nothing while a bead is kept or a rung's card is up */
           const tr = trailsRef.current;
           const plotW = chartRef.current?.paneSize(0).width ?? rect.width;
           const px = e.clientX - rect.left;
-          const bead = tr && tr.enabled && !pinnedBeadRef.current && !levelCard && px >= 0 && px < plotW ? tr.beadAt(px, e.clientY - rect.top) : null;
+          const bead = tr && tr.enabled && !pinnedBeadRef.current && !levelCell.get() && px >= 0 && px < plotW ? tr.beadAt(px, e.clientY - rect.top) : null;
           tr?.setHover(bead);
-          setBeadCard(prev => (bead === null ? (prev === null ? prev : null) : prev && prev.strike === bead.strike && prev.time === bead.time ? prev : bead));
+          beadCell.set(prev => (bead === null ? (prev === null ? prev : null) : prev && prev.strike === bead.strike && prev.time === bead.time ? prev : bead));
           const coneHit = !bead && overlays.cone ? conePrimRef.current?.probe(px, e.clientY - rect.top) ?? null : null;
-          setConeCard(prev => {
+          coneCell.set(prev => {
             if (!coneHit) return prev === null ? prev : null;
             if (prev && prev.up1 === coneHit.up1 && prev.band === coneHit.band && prev.horizon === coneHit.horizon) return prev;
             return coneHit;
@@ -4970,7 +5014,7 @@ const StrikeChart = ({
           const plotH = chartRef.current?.paneSize(0).height ?? rect.height;
           const hit = prim.eventAtX(e.clientX - rect.left, e.clientY - rect.top, plotH);
           prim.setHovered(hit);
-          setEventCard(prev => {
+          eventCell.set(prev => {
             if (hit === null) return prev === null ? prev : null;
             const x = prim.xOf(hit);
             if (x === null) return null;
@@ -4979,10 +5023,10 @@ const StrikeChart = ({
         }}
         onMouseLeave={() => {
           eventsPrimRef.current?.setHovered(null);
-          setEventCard(null);
+          eventCell.set(null);
           trailsRef.current?.setHover(null);
-          setBeadCard(null);
-          setConeCard(null);
+          beadCell.set(null);
+          coneCell.set(null);
         }}
       >
         {picking && pickFade && (
@@ -5536,7 +5580,8 @@ const StrikeChart = ({
 
         {/* THE CARD ON A RUNG of the key levels' ladder: the level's name, its price in its ink, how far from spot, and one
             line on what it does to price — the house's pointer card, as on the Compass marks */}
-        {levelCard &&
+        <CellView cell={levelCell}>{levelCard =>
+          levelCard &&
           (() => {
             const w = KEY_LEVEL_WORDS[levelCard.key];
             const ink = ladderRef.current?.data?.rungs.find(r => r.key === levelCard.key)?.ink;
@@ -5554,12 +5599,14 @@ const StrikeChart = ({
               </PointerFollowCard>
             );
           })()}
+        </CellView>
 
         {/* THE BEAD'S CARD (2026-10-15, the partner's Terrain read at Noah's word): the house's pointer card beside the bead
             under the pointer — the strike, its moment, the greek there with its side's word, its share of the book then,
             and the change since the open; kept by a click it stands still with its standing then, the price then and the
             change over the half hour before */}
-        {(pinnedBead?.hit ?? beadCard) &&
+        <CellView cell={beadCell}>{beadCard =>
+          (pinnedBead?.hit ?? beadCard) &&
           (() => {
             const b = pinnedBead?.hit ?? beadCard!;
             const kept = !!pinnedBead;
@@ -5607,8 +5654,10 @@ const StrikeChart = ({
               </PointerFollowCard>
             );
           })()}
+        </CellView>
 
-        {coneCard && !beadCard && !pinnedBead && (
+        <CellView cell={coneCell}>{coneCard => (
+        <CellView cell={beadCell}>{beadCard => coneCard && !beadCard && !pinnedBead && (
           <PointerFollowCard
             start={pointerAtRef.current}
             width={176}
@@ -5625,11 +5674,12 @@ const StrikeChart = ({
             <CardRow k="Left" v={coneCard.minutes > 0 ? `${Math.round(coneCard.minutes)}m` : '—'} />
             {coneCard.source && <span className="col-span-2 mt-0.5 text-textMuted leading-snug">{coneCard.source}</span>}
           </PointerFollowCard>
-        )}
+        )}</CellView>
+        )}</CellView>
 
         {/* T-11's hover card — floats above the lane at the marker's x,
             flipping to the left of it near the right edge. */}
-        {eventCard && (
+        <CellView cell={eventCell}>{eventCard => eventCard && (
           <div
             className="absolute bottom-9 z-30 pointer-events-none border border-borderMuted bg-panel/95 rounded px-2 py-1.5 shadow-xl shadow-black/50 max-w-[260px]"
             style={
@@ -5643,7 +5693,7 @@ const StrikeChart = ({
             </div>
             <div className="font-mono text-t9 text-textSecondary mt-0.5">{eventCard.e.detail}</div>
           </div>
-        )}
+        )}</CellView>
 
         {/* THE REPLAY STRIP — the chart's own, the same one the Map wears, along
             the foot of the plot (Noah, 2026-09-08: "every replay bar on the

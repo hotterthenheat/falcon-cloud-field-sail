@@ -1,46 +1,54 @@
-import { YEAR_MINUTES } from './measure';
 import type { Candle } from '../types/market';
 
 /*
-==================================================
-  SLAYER TERMINAL - THE EXPECTED-MOVE CONE (data/expectedMove.ts)
-
-  What the options were charging for today, drawn
-  on the tape — T-9.
-==================================================
-
-  Every other overlay on the chart desk is derived from the TAPE. This one is
-  derived from the BOOK, and it is the single most useful thing the options
-  side can hand the chart side: a 0DTE reader sizing a move is always asking
-  "is this already the whole move the options priced?", and the only place to
-  answer that is on the tape itself, in the tape's own units.
-
-  ONE σ, TWO HALVES — because the directive's sketch describes two different
-  cones and both are real objects:
-
-  THE ENVELOPE (the session so far). Anchored at the OPEN: at elapsed trading
-  time t the options' 1σ claim was S_open · σ · √t. Price can EXIT it — that
-  is the point of drawing it — and each crossing of the ±1σ edge is found and
-  handed back, because "the move left the implied band at 11:42" is a fact
-  worth marking where it happened.
-
-  THE FORWARD CONE (the session still to come). Re-anchored at NOW: from the
-  current bar to the close, spot ± spot · σ · √(remaining). This is the half
-  that COLLAPSES on 0DTE — by late afternoon the remaining claim is nearly
-  nothing, which is correct behaviour and reads as such because the edges
-  converge to a point at the bell rather than the object vanishing.
-
-  TRADING TIME THROUGHOUT, in the measure's own year (252 sessions of
-  RTH_MINUTES) — the same denominator T-1's annualization divides by, so the
-  cone and the measure cannot disagree about what a year is. The clock
-  arrives as MINUTES, passed in by the caller exactly as the charm clock is
-  (P-0): the engine never reads a wall clock, so a proof and a replay draw
-  the same cone.
-
-  σ IS THE FEED'S QUOTED IV for the name — annualized, the same figure every
-  other surface quotes. No term structure is invented for it: when the seam
-  carries a real front-expiry ATM vol, it drops into the same argument.
+  The expected-move cone and the one σ every Pinpoint odd reads. The vendor's implied move is the ATM straddle, which
+  for a normal move is σ·√(2/π) ≈ 0.80σ; a vendor vol is a calendar-year vol, so one session carries one calendar
+  day's variance. The cone, the reach odds, the corridor and the close odds all take their σ from here.
 */
+
+/** 1σ per dollar of ATM straddle: σ = straddle·√(π/2) ≈ 1.2533 (dollars → dollars; E|X| = σ·√(2/π) for a normal X;
+    UW SPY 10/29 implied_move 5.09 against the 772 straddle mid 5.26). */
+export const STRADDLE_TO_SIGMA = Math.sqrt(Math.PI / 2);
+/** Straddle ÷ (S·σ·√T) for a normal move, √(2/π) ≈ 0.798 — the straddle fit's k when the vendor's rows give none. */
+export const STRADDLE_K = Math.sqrt(2 / Math.PI);
+/** Session minutes, and the calendar days a vendor vol is annualised over (one session = one calendar day of variance). */
+const SESSION_MIN = 390;
+const VOL_YEAR_DAYS = 365;
+
+/** One standard move, dollars, from the vendor's straddle (its implied move), dollars. */
+export const sigmaFromStraddle = (straddle: number): number => (straddle > 0 ? straddle * STRADDLE_TO_SIGMA : 0);
+
+/** 1σ as a fraction of price over `minutes` session minutes, for an annualised calendar-year vol (0.2 = 20%). */
+export function sigmaFracOver(iv: number, minutes: number): number {
+  return iv > 0 && minutes > 0 ? iv * Math.sqrt(minutes / (SESSION_MIN * VOL_YEAR_DAYS)) : 0;
+}
+
+/** One session's 1σ, dollars, off an annualised calendar-year vol — null without a price or a vol. */
+export function daySigmaOfIv(spot: number, iv: number): number | null {
+  return spot > 0 && iv > 0 ? spot * sigmaFracOver(iv, SESSION_MIN) : null;
+}
+
+/** 1σ dollars over the session minutes left, from one full session's 1σ (variance spread evenly over the session). */
+export function sigmaOverMinutes(sigmaDay: number, minutes: number): number {
+  return sigmaDay > 0 ? sigmaDay * Math.sqrt(Math.min(SESSION_MIN, Math.max(0, minutes)) / SESSION_MIN) : 0;
+}
+
+/** Odds price touches `level` before the horizon, for a driftless move with 1σ `sigma` dollars over it: the reflection
+    principle, 2·(1 − Φ(z)), with z on log distance, |ln(level/spot)| ÷ (σ/spot). */
+export function touchOdds(spot: number, level: number, sigma: number): number {
+  if (!(spot > 0) || !(level > 0)) return 0;
+  if (!(sigma > 0)) return Math.abs(level - spot) < 1e-9 ? 1 : 0;
+  const z = Math.abs(Math.log(level / spot)) / (sigma / spot);
+  return Math.min(1, Math.max(0, 2 * (1 - normCdf(z))));
+}
+
+/** Standard normal CDF (Abramowitz–Stegun 26.2.17, error under 1e-7). */
+export function normCdf(x: number): number {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const d = 0.3989422804014327 * Math.exp((-x * x) / 2);
+  const p = d * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  return x >= 0 ? 1 - p : p;
+}
 
 export interface ConePastPoint {
   time: number;
@@ -82,7 +90,7 @@ const EMPTY: ExpectedMoveCone = { past: [], forward: [], crossings: [], openPric
  * @param sessionBars   today's 1-minute bars, oldest first — the caller cuts
  *                      the session (sessionStarts) so this cannot disagree
  *                      with the session-levels overlay about where today began
- * @param iv            annualized ATM vol, as the feed quotes it (0.2 = 20%)
+ * @param iv            annualized ATM vol on the calendar year, as the vendor quotes it (0.2 = 20%)
  * @param minutesToClose remaining trading minutes — 0 after the bell, and 0
  *                      is honest: the forward half collapses to nothing
  *                      because nothing remains implied
@@ -105,7 +113,7 @@ export function buildExpectedMoveCone(
   for (let i = 0; i < sessionBars.length; i++) {
     const b = sessionBars[i];
     const elapsedMin = ((b.time - openTime) / 60);
-    const w1 = openPrice * iv * Math.sqrt(Math.max(0, elapsedMin) / YEAR_MINUTES);
+    const w1 = openPrice * sigmaFracOver(iv, Math.max(0, elapsedMin));
     const p: ConePastPoint = {
       time: b.time,
       up1: openPrice + w1,
@@ -137,11 +145,11 @@ export function buildExpectedMoveCone(
   /* Every bar-step plus the exact close, so the tip lands ON the bell rather
      than one stride short of it. */
   for (let m = 0; m <= total; m += step) {
-    const w1 = spot * iv * Math.sqrt(m / YEAR_MINUTES);
+    const w1 = spot * sigmaFracOver(iv, m);
     forward.push({ minutesAhead: m, up1: spot + w1, dn1: spot - w1, up2: spot + 2 * w1, dn2: spot - 2 * w1 });
   }
   if (total > 0 && (total % step !== 0 || forward.length === 1)) {
-    const w1 = spot * iv * Math.sqrt(total / YEAR_MINUTES);
+    const w1 = spot * sigmaFracOver(iv, total);
     forward.push({ minutesAhead: total, up1: spot + w1, dn1: spot - w1, up2: spot + 2 * w1, dn2: spot - 2 * w1 });
   }
 

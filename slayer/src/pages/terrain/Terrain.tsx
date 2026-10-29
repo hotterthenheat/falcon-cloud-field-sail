@@ -34,6 +34,7 @@ import StrikeChart, {
   type PriceScale,
 } from '../../components/gex/StrikeChart';
 import ChartToolbar from '../../components/gex/ChartToolbar';
+import { makeCell, useCell, type Cell } from '../../components/gex/hoverCell';
 import { useFadeClose } from '../../components/ui/useFadeClose';
 import CompareControl from '../../components/gex/CompareControl';
 import TickerTabStrip, { TAB_MAX } from '../../components/gex/TickerTabStrip';
@@ -813,6 +814,56 @@ const ReadoutCell = ({ k, v, ink }: { k: string; v: string; ink?: string }) => (
   </span>
 );
 
+/* The hovered bar lives in a cell, not the pane's state: the chart reports it on every pointer move, and as pane state
+   each move re-rendered the whole pane — its toolbar and the rail's calendar (~500 cells). Only the read line reads it. */
+/* The chrome's one read line: the hovered bar while the pointer is on the plot, else the heaviest strikes. It sheds
+   cells to the strip's measured width rather than wrapping or clipping; `stripInner === 0` (not yet measured) shows
+   everything, because a full row that sheds reads as a fit and a short row that grows reads as a glitch. */
+const ChromeReadLine = ({ cell, stripInner, heavy }: { cell: Cell<CrosshairBar | null>; stripInner: number; heavy: { strike: number; value: number }[] }) => {
+  const readout = useCell(cell);
+  const roomFor = (px: number) => stripInner === 0 || stripInner >= px;
+  if (readout) {
+    const inds = readout.indicators.length;
+    const showInds = inds > 0 && roomFor(READOUT_C_PX + READOUT_OHL_PX + READOUT_VOL_PX + inds * READOUT_IND_PX);
+    const showVol = readout.volume != null && roomFor(READOUT_C_PX + READOUT_OHL_PX + READOUT_VOL_PX);
+    const showOhl = readout.open != null && roomFor(READOUT_C_PX + READOUT_OHL_PX);
+    return (
+      <div className="chrome-hover relative z-10 pointer-events-none hidden sm:flex items-center h-[23px] w-fit max-w-full rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 leading-none" data-readout-line>
+        <span className="flex items-center gap-2.5 whitespace-nowrap">
+          {showOhl && (
+            <>
+              <ReadoutCell k="O" v={readout.open!.toFixed(2)} />
+              <ReadoutCell k="H" v={readout.high!.toFixed(2)} />
+              <ReadoutCell k="L" v={readout.low!.toFixed(2)} />
+            </>
+          )}
+          {/* The one part that never goes. */}
+          <ReadoutCell k="C" v={readout.close.toFixed(2)} />
+          {showVol && <ReadoutCell k="V" v={fmtVol(readout.volume!)} />}
+          {showInds && readout.indicators.map(ind => <ReadoutCell key={ind.key} k={ind.key} v={ind.value.toFixed(2)} ink={ind.ink} />)}
+        </span>
+      </div>
+    );
+  }
+  if (heavy.length > 0) {
+    return (
+      <div className="chrome-hover relative z-10 pointer-events-none hidden sm:flex items-center h-[23px] w-fit max-w-full rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 leading-none opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100" data-heavy-line>
+        <span className="flex items-center gap-2.5 whitespace-nowrap">
+          <span className="shrink-0 font-mono text-t9 uppercase tracking-widest text-textMuted">Heaviest</span>
+          {heavy.map(row => (
+            <span key={row.strike} className="shrink-0 font-mono text-t10 tnum whitespace-nowrap">
+              <span className="text-textSecondary">{row.strike % 1 === 0 ? row.strike.toFixed(0) : row.strike.toFixed(2)}</span>
+              <span className={`ml-1.5 font-semibold ${row.value >= 0 ? 'text-goldline' : 'text-steelline'}`}>{fmtUsd(row.value)}</span>
+            </span>
+          ))}
+        </span>
+      </div>
+    );
+  }
+  /* nothing to read on this line — the slot keeps its height all the same */
+  return <div className="hidden sm:block h-[23px]" aria-hidden data-chrome-line-empty />;
+};
+
 interface PaneProps {
   /** A strike the pane opens focused on — the arrival's (see `TerrainArrival`) */
   arriveFocus?: number | null;
@@ -1160,8 +1211,8 @@ const Pane = ({
     otherwise leave the last name's prices in this row under the new name's
     tape. Same reason `focus` resets.
   */
-  const [readout, setReadout] = useState<CrosshairBar | null>(null);
-  useEffect(() => setReadout(null), [ticker, timeframe]);
+  const [readout] = useState(() => makeCell<CrosshairBar | null>(null));
+  useEffect(() => readout.set(null), [ticker, timeframe, readout]);
 
 
   /* THE CHROME WEARS THIS PANE'S THEME (Noah, 2026-09-13, three cuts in one night: "the
@@ -1198,19 +1249,6 @@ const Pane = ({
         : null;
   const headUp = (headChange ?? 0) >= 0;
 
-  /*
-    WHAT OF THE READOUT FITS — the same width budget the rows above spend, and
-    the same rule: the row does not wrap and it does not clip, so it sheds.
-
-    `stripInner === 0` is the frame before the first measurement, where the
-    honest default is everything — a shed row that then grows reads as a
-    glitch, a full row that then sheds reads as a fit.
-  */
-  const readoutInds = readout?.indicators.length ?? 0;
-  const roomForReadout = (px: number) => stripInner === 0 || stripInner >= px;
-  const showReadoutInds = readoutInds > 0 && roomForReadout(READOUT_C_PX + READOUT_OHL_PX + READOUT_VOL_PX + readoutInds * READOUT_IND_PX);
-  const showReadoutVol = readout?.volume != null && roomForReadout(READOUT_C_PX + READOUT_OHL_PX + READOUT_VOL_PX);
-  const showReadoutOhl = readout?.open != null && roomForReadout(READOUT_C_PX + READOUT_OHL_PX);
 
   /* COMPACT WHEN THE STRIP WOULD NOT FIT ON ONE LINE — the mode the phone
      already uses (ChartToolbar's `compact`): the seven timeframes collapse
@@ -1330,7 +1368,7 @@ const Pane = ({
         <span
           aria-hidden
           className={`shrink-0 w-4 h-4 rounded-[3px] font-mono text-t9 font-bold tnum inline-flex items-center justify-center ${
-            isActive ? 'holo-bg text-onfoil' : 'bg-ink/[0.08] text-textPrimary'
+            isActive ? 'relative holo-bg foil-glide text-onfoil' : 'bg-ink/[0.08] text-textPrimary'
           }`}
         >
           {index + 1}
@@ -1585,7 +1623,7 @@ const Pane = ({
         data-chart-frame
       >
         {!expanded && isActive && paneCount > 1 && (
-          <span aria-hidden className="holo-ring absolute inset-0 rounded-md z-30" />
+          <span aria-hidden className="holo-ring foil-glide absolute inset-0 rounded-md z-30" />
         )}
         {/* Chart and rail on ONE line, and that line is the WHOLE pane —
             `absolute inset-0`, not a flex row under a header. The header
@@ -1647,7 +1685,7 @@ const Pane = ({
               priceTag
               onCrosshair={onCrosshair}
               syncRegister={registerSync}
-              onReadout={setReadout}
+              onReadout={readout.set}
               projectionRef={projectionRef}
               exportRef={exportPngRef}
               pageScroll={belowLg}
@@ -1832,7 +1870,7 @@ const Pane = ({
                   <span
                     aria-hidden
                     className={`shrink-0 w-4 h-4 rounded-[3px] font-mono text-t9 font-bold tnum inline-flex items-center justify-center ${
-                      isActive ? 'holo-bg text-onfoil' : 'bg-ink/[0.08] text-textPrimary'
+                      isActive ? 'relative holo-bg foil-glide text-onfoil' : 'bg-ink/[0.08] text-textPrimary'
                     }`}
                   >
                     {index + 1}
@@ -1962,45 +2000,7 @@ const Pane = ({
                 now stand in a 23px line and an empty slot keeps the height, so
                 nothing the hover does changes where the chrome ends.
               */}
-              {readout ? (
-                <div className="chrome-hover relative z-10 pointer-events-none hidden sm:flex items-center h-[23px] w-fit max-w-full rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 leading-none" data-readout-line>
-                  <span className="flex items-center gap-2.5 whitespace-nowrap">
-                    {showReadoutOhl && (
-                      <>
-                        <ReadoutCell k="O" v={readout.open!.toFixed(2)} />
-                        <ReadoutCell k="H" v={readout.high!.toFixed(2)} />
-                        <ReadoutCell k="L" v={readout.low!.toFixed(2)} />
-                      </>
-                    )}
-                    {/* The one part that never goes. */}
-                    <ReadoutCell k="C" v={readout.close.toFixed(2)} />
-                    {showReadoutVol && <ReadoutCell k="V" v={fmtVol(readout.volume!)} />}
-                    {showReadoutInds &&
-                      readout.indicators.map(ind => (
-                        <ReadoutCell key={ind.key} k={ind.key} v={ind.value.toFixed(2)} ink={ind.ink} />
-                      ))}
-                  </span>
-                </div>
-              ) : heavy.length > 0 ? (
-                <div className="chrome-hover relative z-10 pointer-events-none hidden sm:flex items-center h-[23px] w-fit max-w-full rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 leading-none opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100" data-heavy-line>
-                  <span className="flex items-center gap-2.5 whitespace-nowrap">
-                    <span className="shrink-0 font-mono text-t9 uppercase tracking-widest text-textMuted">Heaviest</span>
-                    {heavy.map(row => (
-                      <span key={row.strike} className="shrink-0 font-mono text-t10 tnum whitespace-nowrap">
-                        <span className="text-textSecondary">
-                          {row.strike % 1 === 0 ? row.strike.toFixed(0) : row.strike.toFixed(2)}
-                        </span>
-                        <span className={`ml-1.5 font-semibold ${row.value >= 0 ? 'text-goldline' : 'text-steelline'}`}>
-                          {fmtUsd(row.value)}
-                        </span>
-                      </span>
-                    ))}
-                  </span>
-                </div>
-              ) : (
-                /* nothing to read on this line — the slot keeps its height all the same */
-                <div className="hidden sm:block h-[23px]" aria-hidden data-chrome-line-empty />
-              )}
+              <ChromeReadLine cell={readout} stripInner={stripInner} heavy={heavy} />
 
               {/* Its own, every one of them — and not there until you
                   reach. DOCKED ONLY: the expanded pane pins the same toolbar

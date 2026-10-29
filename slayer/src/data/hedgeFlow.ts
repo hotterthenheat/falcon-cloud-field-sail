@@ -1,41 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE HEDGE FLOW FORECAST
-  (data/hedgeFlow.ts)
-
-  "A push to 462 forces about $180M of dealer
-  selling." — the Pinpoint roadmap's flow ladder
-  beside the price ladder (2026-09-05). HOW HARD,
-  PER PATH: for every strike the map shows, the
-  dollars of stock dealers must trade to stay
-  hedged if price walks from here to there.
-
-  THE ARITHMETIC IS THE SPOT SCENARIO'S (P-18,
-  data/spotScenario.ts), pointed at every strike at
-  once instead of one slider position: net gamma at
-  a strike is dollars of dealer hedging per 1% move,
-  so the flow a path forces is the gamma crossed
-  along it times the size of the move —
-
-      flow(K) = Σ netGex(k) · (K − S) / S · 100
-                k between S and K, both ends in
-
-  — signed so POSITIVE means dealers must BUY. The
-  house convention carries the meaning: net gamma
-  above zero amplifies (dealers chase the move,
-  buying a rally and selling a drop), below zero
-  absorbs (they sell the rally, buy the drop). A row
-  whose forced flow points the SAME way as the move
-  speeds it up; one that points against it slows it.
-
-  Built on the LENS THE RAIL DRAWS — the expiry
-  profile's strikes, not the raw chain — so the flow
-  beside a bar is the flow of that bar's book.
-
-  THE ASSUMPTION IS LOAD-BEARING and every row
-  carries it: continuous delta hedging at the
-  modelled sign, over the book as it stands now.
-==================================================
+  The hedge-flow ladder: the dollars of stock dealers must trade to stay hedged if price walks from spot to each
+  strike — the change in their net delta, flow(K) = ∫ G(x)·dx/(0.01·x) from S to K, with G the book's net gamma per 1%
+  re-priced at each price x (the flip's re-pricing). Positive = dealers buy. Continuous hedging at the modelled sign.
 */
 
 import { HEDGING_ASSUMPTION } from './spotScenario';
@@ -73,28 +39,75 @@ export function fmtFlow(mag: number): string {
   return `$${a.toFixed(0)}`;
 }
 
-export function buildHedgeFlowLadder(profile: ExposureProfileData): FlowLadder {
-  return buildFlowFromRows(
-    profile.strikes.map(s => ({ strike: s.strike, value: s.gex.net })),
-    profile.levels.spot
-  );
+/** House net gamma per 1% at each price — the book re-priced there (data/flipLevel.ts levelNetPath), null when the
+    book cannot be re-priced */
+export type RepricedNet = (prices: readonly number[]) => number[] | null;
+
+/** The ladder over a profile's strikes. With `repriced` each rung integrates the re-priced profile from spot to the
+    rung; without it the book's net at spot is carried along the path (the first-order flow). */
+export function buildHedgeFlowLadder(profile: ExposureProfileData, repriced?: RepricedNet): FlowLadder {
+  const rows = profile.strikes.map(s => ({ strike: s.strike, value: s.gex.net }));
+  const spot = profile.levels.spot;
+  const flows = repriced ? integratedFlows(rows.map(r => r.strike), spot, repriced) : null;
+  const net0 = rows.reduce((a, r) => a + r.value, 0);
+  return ladderOf(rows.map(r => r.strike), spot, K => flows?.get(K) ?? net0 * ((K - spot) / spot) * 100);
 }
 
-/** The same arithmetic off bare rows — net gamma per strike — for a host that
-    holds the chain rather than an expiry profile (the Terrain panes' panel
-    reads the simulator's book straight). One sum, two callers. */
+/** Points per side of spot the path is integrated on (each rung's strike is one of them). */
+const PATH_POINTS = 160;
+
+/** Dealer flow to each target: trapezoids of G(x)·Δx/x·100 from spot out, each side on its own grid. */
+function integratedFlows(targets: readonly number[], spot: number, repriced: RepricedNet): Map<number, number> | null {
+  if (!(spot > 0)) return null;
+  const up = targets.filter(k => k > spot);
+  const dn = targets.filter(k => k < spot);
+  const grid = (to: number, keys: readonly number[]) => {
+    if (!keys.length) return [] as number[];
+    const pts = new Set<number>(keys);
+    for (let i = 1; i <= PATH_POINTS; i++) pts.add(spot + ((to - spot) * i) / PATH_POINTS);
+    return [...pts].sort((a, b) => Math.abs(a - spot) - Math.abs(b - spot));
+  };
+  const upPts = grid(Math.max(spot, ...up), up);
+  const dnPts = grid(Math.min(spot, ...dn), dn);
+  const g = repriced([spot, ...upPts, ...dnPts]);
+  if (!g || g.length !== 1 + upPts.length + dnPts.length || !g.every(Number.isFinite)) return null;
+  const out = new Map<number, number>();
+  const walk = (pts: number[], vals: number[]) => {
+    let x0 = spot;
+    let g0 = g[0];
+    let flow = 0;
+    pts.forEach((x, i) => {
+      const g1 = vals[i];
+      flow += ((g0 / x0 + g1 / x) / 2) * (x - x0) * 100;
+      out.set(x, flow);
+      x0 = x;
+      g0 = g1;
+    });
+  };
+  walk(upPts, g.slice(1, 1 + upPts.length));
+  walk(dnPts, g.slice(1 + upPts.length));
+  return out;
+}
+
+/** The old arithmetic off bare rows — each strike's net gamma counted once a path crosses it — kept for a host that
+    holds only the rows (Terrain's panes). Pinpoint's walls read the re-priced ladder above. */
 export function buildFlowFromRows(rows: readonly { strike: number; value: number }[], spot: number): FlowLadder {
-  const rungs: FlowRung[] = [];
-  let maxAbs = 0;
-  for (const s of rows) {
-    const K = s.strike;
-    if (Math.abs(K - spot) < 1e-9) continue;
+  return ladderOf(rows.map(r => r.strike), spot, K => {
     const lo = Math.min(spot, K);
     const hi = Math.max(spot, K);
     let crossed = 0;
     for (const t of rows) if (t.strike >= lo && t.strike <= hi) crossed += t.value;
+    return crossed * ((K - spot) / spot) * 100;
+  });
+}
+
+function ladderOf(strikes: readonly number[], spot: number, flowTo: (K: number) => number): FlowLadder {
+  const rungs: FlowRung[] = [];
+  let maxAbs = 0;
+  for (const K of strikes) {
+    if (Math.abs(K - spot) < 1e-9) continue;
     const movePct = ((K - spot) / spot) * 100;
-    const flow = crossed * movePct;
+    const flow = flowTo(K);
     const up = K > spot;
     const amplifies = flow !== 0 && (flow > 0) === up;
     const side = flow >= 0 ? 'buying' : 'selling';

@@ -51,7 +51,7 @@ const FilterTabs = <V extends string>({ options, value, onChange, ariaLabel, pap
                 <motion.span
                   layoutId="filter-pill"
                   layoutDependency={value}
-                  className={`absolute inset-0 rounded-md shadow-sm shadow-black/40 ${paper ? 'galaxy-bg' : 'holo-bg'}`}
+                  className={`absolute inset-0 rounded-md shadow-sm shadow-black/40 ${paper ? 'galaxy-bg' : 'holo-bg'} foil-glide`}
                   transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
                 />
               )}
