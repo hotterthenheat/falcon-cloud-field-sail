@@ -115,8 +115,11 @@ function rowsOf(data: unknown): Record<string, unknown>[] {
     if (!item || typeof item !== 'object') continue;
     const bag = item as Record<string, unknown>;
     const inner = Array.isArray(bag.data) ? bag.data : bag.data && typeof bag.data === 'object' ? [bag.data] : null;
-    if (inner) for (const r of inner) if (r && typeof r === 'object') out.push(r as Record<string, unknown>);
-    else out.push(bag);
+    if (!inner) {
+      out.push(bag);
+      continue;
+    }
+    for (const r of inner) if (r && typeof r === 'object') out.push(r as Record<string, unknown>);
   }
   return out;
 }

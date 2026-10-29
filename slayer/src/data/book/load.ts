@@ -296,8 +296,10 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   /* a name read for the Board alone skips what only the Map draws: the whole book's volume by strike, and its open
      interest unless the name's levels read every expiry */
   const boardOnly = mode === 'board' && !cache.get(ticker)?.wantFull;
+  /* a CBOE index has no stock-state or stock bars on this key (422 cboe_index_access_missing): neither is asked */
+  const index = INDEX_TAPE.has(ticker);
   const [stateRaw, strikeRaw, oiRows, flowRows, ivRows, termRows, interpRows, stockBars, live] = await Promise.all([
-    (hot ? hotGet<UwState>(`/stock/${t}/stock-state`, true) : whalesState(ticker)).catch(() => null),
+    index ? Promise.resolve(null) : (hot ? hotGet<UwState>(`/stock/${t}/stock-state`, true) : whalesState(ticker)).catch(() => null),
     (hot ? hotGet<UwGreekStrike[]>(`/stock/${t}/greek-exposure/strike`, true) : whalesGreekStrike(ticker)).catch(() => [] as UwGreekStrike[]),
     boardOnly && levelsForName(ticker) !== 'ALL' ? Promise.resolve([] as UwGreekStrike[]) : whalesOiStrike(ticker).catch(() => [] as UwGreekStrike[]),
     boardOnly ? Promise.resolve([] as UwFlowStrike[]) : whalesFlowStrike(ticker).catch(() => [] as UwFlowStrike[]),
@@ -308,7 +310,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     /* one-minute bars for every name, the same URL the full book and the Dossier read (one proxy copy) */
     /* Two cash sessions for the chart (yesterday and today). 1800 one-minute bars
        reach the prior open; the book's own candles stay today's session. */
-    whalesBars(ticker, '1m', 1800).catch(() => [] as UwBar[]),
+    index ? Promise.resolve([] as UwBar[]) : whalesBars(ticker, '1m', 1800).catch(() => [] as UwBar[]),
     liveGamma(ticker, null, hot).catch(() => null),
   ]);
   if (!still()) return;

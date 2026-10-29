@@ -128,7 +128,11 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const tapeNote = thetaChartNote(snapshot.ticker, 1, tapeSession);
   const bars = useMemo(() => {
     const all = thetaChartBars(snapshot.ticker, 1, tapeSession);
-    if (!barsProp) return all;
+    /* the tape holds several days: live, the box is the newest one */
+    if (!barsProp) {
+      const day = all.length ? nyIsoDate(all[all.length - 1].time * 1000) : '';
+      return all.filter(b => nyIsoDate(b.time * 1000) === day);
+    }
     if (!barsProp.length) return [];
     const from = barsProp[0].time;
     const to = barsProp[barsProp.length - 1].time;
@@ -812,7 +816,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
               </div>
             )}
             {bars.length > 0 && tapeNote && (
-              <div className={`pointer-events-none absolute left-2 bottom-9 z-10 rounded-md border border-borderSubtle bg-panel/90 px-2 py-0.5 font-mono text-t11 ${/offline/i.test(tapeNote) ? 'text-warn' : 'text-textMuted'}`} data-tape-note>
+              <div className={`pointer-events-none absolute left-14 bottom-8 z-10 rounded-md border border-borderSubtle bg-panel/90 px-2 py-0.5 font-mono text-t11 ${/offline/i.test(tapeNote) ? 'text-warn' : 'text-textMuted'}`} data-tape-note>
                 {tapeNote}
               </div>
             )}
