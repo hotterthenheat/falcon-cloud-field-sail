@@ -311,7 +311,7 @@ const Room = () => {
             <h1 className="text-t15 font-semibold leading-tight text-textPrimary">Community</h1>
             <span className="font-mono text-t9 uppercase tracking-widest text-textMuted">· the room</span>
           </div>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">Traders, their setups and the record they build — every $name a door, every @handle a person</p>
+          <p className="mt-0.5 text-t11 text-textMuted sm:whitespace-nowrap sm:truncate">Traders, their setups and the record they build — every $name a door, every @handle a person</p>
         </div>
       </header>
 
@@ -446,7 +446,7 @@ const Room = () => {
                   <div className="h-6 flex items-center gap-3">
                     <h3 className="text-t15 font-semibold leading-tight text-textPrimary">The room</h3>
                   </div>
-                  <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">Every post, newest first · a click keeps a post and opens its replies · the cards cut the rows</p>
+                  <p className="mt-0.5 text-t11 text-textMuted sm:whitespace-nowrap sm:truncate">Every post, newest first · a click keeps a post and opens its replies · the cards cut the rows</p>
                 </div>
                 <dl className="flex flex-wrap gap-x-6 gap-y-2" data-room-facts>
                   <div>
