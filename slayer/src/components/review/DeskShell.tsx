@@ -765,7 +765,8 @@ const DeskShell = ({ phoneSideFirst = false, session, kind, onRename, subline = 
       {/* THE ACCOUNT — what the session is worth as the clock stands (a desk's own strip, where it brings one) */}
       {ownStrip ?? (
       <div className={`${card} px-5 py-3 flex items-start gap-6 flex-wrap`} data-review-account>
-        <div className="min-w-0 flex-1">
+        {/* the name keeps room to be read: where the facts leave it less, they go under it */}
+        <div className="min-w-[min(100%,240px)] flex-1">
           <div className="h-6 flex items-center gap-2.5">
             {/* side by side: stacked, a dark badge and a four-colour mark bled into each other */}
             <span className="inline-flex items-center gap-1.5 shrink-0">

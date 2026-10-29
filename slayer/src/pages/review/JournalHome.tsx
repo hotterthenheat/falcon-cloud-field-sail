@@ -144,7 +144,8 @@ export const JournalHome = ({ kind: liveKind }: { kind: JournalKind }) => {
   const openTrade = (r: JournalRow) => navigate(`${source.base}/${r.s.id}/${r.t.id}${location.search}`);
 
   /* ---- the trades: the account's (the calendar), and the period's (everything else) ---- */
-  const accountRows = useMemo(() => (account ? source.rows.filter(r => r.s.id === account) : source.rows), [source.rows, account]);
+  /* a journal that is gone has no trades to show — never the rest of the book's in its place */
+  const accountRows = useMemo(() => (missing ? [] : account ? source.rows.filter(r => r.s.id === account) : source.rows), [source.rows, account, !!missing]); // eslint-disable-line react-hooks/exhaustive-deps
   const span = spanOf(period, today);
   const rows = useMemo(() => rowsIn(accountRows, span), [accountRows, period, today]); // eslint-disable-line react-hooks/exhaustive-deps
   const days = useMemo(() => dayTotals(accountRows), [accountRows]);
@@ -255,7 +256,8 @@ export const JournalHome = ({ kind: liveKind }: { kind: JournalKind }) => {
     window.setTimeout(() => document.querySelector('[data-journal-day-notes]')?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' }), SWAP_OUT_MS + 80);
   };
   const csvWhyNot = rows.length ? null : source.rows.length ? 'none this period — nothing closed in it to put in a file' : 'nothing yet — nothing has closed on this journal';
-  const deskPath = kind === 'paper' ? '/practice/paper' : '/practice/backtest';
+  /* a journal of one account opens that account's own desk */
+  const deskPath = account ? source.containerPath(account) : kind === 'paper' ? '/practice/paper' : '/practice/backtest';
   const deskWord = kind === 'paper' ? 'Paper page' : 'Backtest page';
   const testId = kind === 'paper' ? 'paper-journal' : 'review-journal';
 

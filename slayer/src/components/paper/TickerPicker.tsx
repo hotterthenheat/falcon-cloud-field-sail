@@ -1,30 +1,19 @@
-/* What is on the paper chart: index options and stocks (and futures, when a futures feed is live), with one search
-   over all of them; the arrow keys walk the matches and Enter picks. */
+/* What is on the paper chart: index options and stocks, with one search over all of them; the arrow keys walk the
+   matches and Enter picks. A plan that trades only some names offers only those. */
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Search } from 'lucide-react';
 import CompanyLogo from '../ui/CompanyLogo';
 import { CARD } from '../ui/DropdownSelect';
-import { PAPER_FUTURES, frontOn, type PaperIndex } from '../../data/paper/products';
-import { FUTURES_LIVE } from '../../data/paper/feed';
+import type { PaperIndex } from '../../data/paper/products';
 import { ensureListed, isOptionRoot, optionSymbols, useListedRev } from '../../data/listedNames';
 import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
 
 const SILVER = 'rgb(var(--silver))';
-/** The exchange's own names — what a futures trader reads on every platform (ours stay searchable) */
-const CME_NAMES: Record<string, string> = {
-  ES: 'E-mini S&P 500',
-  MES: 'Micro E-mini S&P 500',
-  NQ: 'E-mini Nasdaq-100',
-  MNQ: 'Micro E-mini Nasdaq-100',
-  RTY: 'E-mini Russell 2000',
-  M2K: 'Micro E-mini Russell 2000',
-};
-
 interface Row {
   value: string;
-  /** What the row is called — a future's front month ("ESZ6"), a stock's ticker */
+  /** What the row is called — the ticker */
   code: string;
   name: string;
   /** What else a search finds it by */
@@ -34,21 +23,17 @@ interface Row {
 }
 
 interface Props {
-  /** The name on the chart: a future's product ("ES") or a stock's ticker */
+  /** The name on the chart */
   value: string;
   onChange: (name: string) => void;
-  /** An evaluation: futures only */
-  futuresOnly: boolean;
-  /** The account's trading day — which month is the front one */
-  day: string;
-  /** Where a future trades now */
-  futPrice: (symbol: string) => number;
+  /** The only names the account's plan may trade — null: any listed name */
+  allowed: string[] | null;
   /** The indexes whose options the feed carries, and where one stands now */
   indexes: PaperIndex[];
   indexPrice: (symbol: string) => number;
 }
 
-const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, indexPrice }: Props) => {
+const TickerPicker = ({ value, onChange, allowed, indexes, indexPrice }: Props) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
@@ -59,7 +44,6 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
   const nameRev = useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
   useEffect(() => { ensureListed(); }, []);
 
-  const futures: Row[] = PAPER_FUTURES.map(p => ({ value: p.symbol, code: frontOn(p.symbol, day), name: CME_NAMES[p.symbol] ?? p.name, keywords: `${p.symbol} ${p.name} ${p.fund} futures`, price: open ? futPrice(p.symbol) : null, decimals: p.decimals }));
   const indexRows: Row[] = indexes.map(x => ({ value: x.symbol, code: x.symbol, name: `${x.name} options`, keywords: `${x.symbol} ${x.name} index options ${x.fund}`, price: open ? indexPrice(x.symbol) : null, decimals: 2 }));
   const stocks: Row[] = useMemo(() => {
     /* the list's company names are asked for only once it is open: a closed picker asks for nothing */
@@ -102,15 +86,17 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
     return [...prefix, ...contains].slice(0, 80).map(toRow);
   }, [open, query, listedRev, nameRev, stockWindow, indexes]);
   const q = query.trim().toLowerCase();
-  const hit = (r: Row) => !q || r.code.toLowerCase().includes(q) || r.value.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) || r.keywords.toLowerCase().includes(q);
+  const may = (r: Row) => !allowed || allowed.includes(r.value.toUpperCase());
+  const hit = (r: Row) => may(r) && (!q || r.code.toLowerCase().includes(q) || r.value.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) || r.keywords.toLowerCase().includes(q));
+  /* a plan's own list: its names, whether or not the listing has loaded them yet */
+  const planRows: Row[] = allowed ? allowed.filter(t => !indexes.some(x => x.symbol === t)).map(t => ({ value: t, code: t, name: companyName(t), keywords: t, price: null, decimals: 2 })) : [];
   const groups = [
-    { key: 'futures', title: 'Futures · front month', rows: FUTURES_LIVE ? futures.filter(hit) : [] },
-    { key: 'indexes', title: 'Index options · the chain', rows: futuresOnly ? [] : indexRows.filter(hit) },
-    { key: 'stocks', title: 'Stocks & funds · their options', rows: futuresOnly ? [] : stocks.filter(hit) },
+    { key: 'indexes', title: 'Index options · the chain', rows: indexRows.filter(hit) },
+    { key: 'stocks', title: allowed ? 'The names this plan trades' : 'Stocks & funds · their options', rows: allowed ? planRows.filter(hit) : stocks.filter(hit) },
   ];
   /** Every match in the order the card shows them — what the arrow keys walk */
   const flat = groups.flatMap(g => g.rows);
-  const current = [...futures, ...indexRows, ...stocks].find(r => r.value === value);
+  const current = [...indexRows, ...stocks, ...planRows].find(r => r.value === value);
 
   useEffect(() => {
     if (stocks.length) askCompanyNames(stocks.map(s => s.value));
@@ -181,7 +167,7 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
                 ref={inputRef}
                 value={query}
                 onChange={e => setQuery(e.target.value)}
-                placeholder={futuresOnly ? 'Search a future…' : 'Search a ticker, a company or a future…'}
+                placeholder="Search a ticker or a company…"
                 aria-label="Search what to put on the chart"
                 className="w-full bg-transparent font-mono text-t12 text-textPrimary placeholder:text-textMuted focus:outline-none"
                 data-paper-ticker-search
@@ -199,19 +185,16 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
               if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) setStockWindow(n => n + 160);
             }}
           >
-            {flat.length === 0 && !(futuresOnly && !q) ? (
+            {flat.length === 0 ? (
               <div className="px-4 py-6 text-center font-mono text-t10 text-textMuted" data-paper-ticker-none>
-                Nothing matches — try a ticker, a company or a future
+                {allowed ? `This plan trades ${allowed.join(', ')} only` : 'Nothing matches — try a ticker or a company'}
               </div>
             ) : (
               groups.map(g =>
-                g.rows.length === 0 && !(g.key === 'stocks' && futuresOnly) ? null : (
+                g.rows.length === 0 ? null : (
                   <div key={g.key} className="pb-1" data-paper-ticker-group={g.key}>
                     <div className="px-4 pt-2 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">{g.title}</div>
-                    {g.key === 'stocks' && futuresOnly ? (
-                      <div className="px-4 pb-2 text-t11 text-textMuted">An evaluation trades futures only — no index options, no stocks.</div>
-                    ) : (
-                      g.rows.map(r => {
+                    {g.rows.map(r => {
                         index += 1;
                         const i = index;
                         const on = r.value === value;
@@ -235,8 +218,7 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
                             <span className="font-mono text-t11 tnum text-textPrimary">{r.price != null ? r.price.toLocaleString('en-US', { minimumFractionDigits: r.decimals, maximumFractionDigits: r.decimals }) : ''}</span>
                           </button>
                         );
-                      })
-                    )}
+                      })}
                   </div>
                 )
               )

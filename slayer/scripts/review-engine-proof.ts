@@ -3,7 +3,7 @@
   The rules page (docs/review-backtest-rules.md), checked against the engine on a hand-made market
   (scripts/review-market-fixture.ts), where every fill can be worked out from its formula. Exits 1 on a miss.
 */
-import { accountOf, advance, amend, attach, bankedOf, bookOf, cancel, cashOf, cutsOf, dayStateOf, equityAtOpen, floorOf, ladderRoom, namesOf, newSession, place, rebase, refusal, setBreakeven, setTrail, stampOf, statsOf, MULT } from '../src/data/review/engine';
+import { accountOf, advance, amend, attach, bankedOf, bookOf, cancel, cashOf, cutsOf, dayStateOf, equityAtOpen, floorOf, ladderRoom, namesOf, newSession, pendingSettlement, place, rebase, refusal, setBreakeven, setTrail, stampOf, statsOf, MULT } from '../src/data/review/engine';
 import { splitQty } from '../src/data/review/ladder';
 import { chainAt, contractKey, contractWords, expiriesAt, quoteAt, quoteWith, spotForBid, yearsLeft } from '../src/data/review/quotes';
 import { LAST_MIN, barTime, closeMinOf, nbboAt, parseBars, parseListing, parseQuotes, putBars, putQuotes, spotAt } from '../src/data/review/history';
@@ -317,6 +317,46 @@ ok('contracts are shared out with the nearer level taking the odd one', splitQty
   const g = advance(newSession({ id: 'g', name: 'gap', ticker: 'SPY', startCash: 5000, startDay: D1, now: 0 }), { day: D1, minute: 40 }, 0);
   ok('a contract with no recorded quote cannot be bought at the market', quoteAt(dark, D1, 40).dead && refusal(g, { contract: dark, side: 'buy', qty: 1, kind: 'market' }) === 'No market in that contract right now');
   ok('the name’s price is the recorded bar’s close', spotAt('SPY', D2, 100) === 499.5);
+}
+
+/* ==== the bell, by product — and a close that is not known (added with the backtest golden) ==== */
+{
+  /* SPXW is written on SPX: its price is the index's; at the bell it settles in CASH on the closing print */
+  const day = D3;
+  const spx = Array.from({ length: 390 }, (_, m) => ({ time: barTime(day, m), open: 6000, high: 6000, low: 6000, close: 6000 + m * 0.1, volume: 0 }));
+  putBars('SPX', day, spx, 6040.25);
+  const xk = { ticker: 'SPXW', strike: 6030, right: 'C' as const, expiry: day };
+  putQuotes(xk, day, new Array(390).fill(4.9), new Array(390).fill(5.1));
+  ok('SPXW reads SPX’s price', spotAt('SPXW', day, 100) === 6010);
+  let ix = newSession({ id: 'ix', name: 'index', ticker: 'SPXW', startCash: 25000, startDay: day, now: 0 });
+  ix = place(advance(ix, { day, minute: 300 }, 0), { contract: xk, side: 'buy', qty: 1, kind: 'market' }, 0);
+  ix = advance(ix, { day, minute: LAST_MIN }, 0);
+  const it = bookOf(ix).trades[0];
+  /* 6,040.25 − 6,030 = 10.25 on the print — not the 15:59 bar's 6,038.90 */
+  ok('a cash-index contract settles in cash on the closing print, with no fee', it?.how === 'expired' && it.settle === 'cash' && ix.fills[1].price === 10.25 && ix.fills[1].fee === 0 && it.pnl === 1025 - 510 - 0.65, `${ix.fills[1]?.price} · ${it?.pnl}`);
+  ok('…and the bell kept the account', ix.closes?.[day]?.equity === cashOf(ix) && ix.closes?.[day]?.held === 0);
+  /* a contract whose expiry day has no bars is not settled at a guess: it waits, and says so */
+  const ghost = { ticker: 'QQQ', strike: 400, right: 'C' as const, expiry: '2026-10-29' };
+  putQuotes(ghost, D3, new Array(390).fill(1), new Array(390).fill(1.1));
+  let gh = place(advance(newSession({ id: 'gh', name: 'ghost', ticker: 'QQQ', startCash: 25000, startDay: D3, now: 0 }), { day: D3, minute: 10 }, 0), { contract: ghost, side: 'buy', qty: 1, kind: 'market' }, 0);
+  gh = advance(gh, { day: '2026-10-29', minute: LAST_MIN }, 0);
+  ok('an expiry whose close is not known is not settled — it is held, pending', bookOf(gh).positions.length === 1 && pendingSettlement(gh).length === 1 && !gh.fills.some(f => f.how === 'expired'));
+  /* SPY on the fixture: exercised (a stock or a fund), on the last bar's close where no print was recorded */
+  const ex = place(advance(newSession({ id: 'ex', name: 'exercise', ticker: 'SPY', startCash: 25000, startDay: D3, now: 0 }), { day: D3, minute: 0 }, 0), { contract: { ticker: 'SPY', strike: 495, right: 'C', expiry: NEAR }, side: 'buy', qty: 1, kind: 'market' }, 0);
+  const exd = advance(ex, { day: D3, minute: LAST_MIN }, 0);
+  /* D3 closes at 497.11: the 495 call is worth 2.11 */
+  ok('a fund’s contract is exercised at the close: worth what it is in the money', exd.fills[1]?.price === 2.11 && bookOf(exd).trades[0]?.settle === 'exercise', String(exd.fills[1]?.price));
+
+  /* a buy stop and a marketable limit on the fixture: D1 minute 10, SPY 500.20, the 500 call 2.65 / 2.75 */
+  let bs = advance(newSession({ id: 'bs', name: 'buy stop', ticker: 'SPY', startCash: 25000, startDay: D1, now: 0 }), { day: D1, minute: 10 }, 0);
+  bs = place(bs, { contract: call500, side: 'buy', qty: 1, kind: 'stop', price: 3.0 }, 0);
+  bs = advance(bs, { day: D1, minute: 60 }, 0);
+  /* minute 22: SPY 500.44, ask 2.99; minute 23: SPY 500.46, ask 3.01 — the first at or over 3.00, and a gap past it */
+  ok('a buy stop buys the first minute the ask is at or over it, at that ask', bs.fills[0]?.at.minute === 23 && bs.fills[0]?.price === 3.01, `${bs.fills[0]?.at.minute} @ ${bs.fills[0]?.price}`);
+  const ml = place(advance(newSession({ id: 'ml', name: 'marketable', ticker: 'SPY', startCash: 25000, startDay: D1, now: 0 }), { day: D1, minute: 10 }, 0), { contract: call500, side: 'buy', qty: 1, kind: 'limit', price: 3.5 }, 0);
+  ok('a limit over the ask fills at once, at the ask', ml.fills[0]?.at.minute === 10 && ml.fills[0]?.price === 2.75);
+  const ms = place(ml, { contract: call500, side: 'sell', qty: 1, kind: 'limit', price: 2.0 }, 0);
+  ok('…and a sell limit under the bid at the bid', ms.fills[1]?.price === 2.65 && bookOf(ms).trades[0]?.how === 'sold');
 }
 
 const sum = statsOf([...trades, bt]);

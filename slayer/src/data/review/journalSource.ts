@@ -47,7 +47,8 @@ export function useJournalSource(kind: JournalKind): JournalSource {
             rows: paperRowsOf(accounts, words),
             containers: accounts.map(a => ({ id: a.id, name: a.name })),
             containerWord: 'account',
-            containerPath: () => '/practice/paper',
+            /* each account's desk is its own address */
+            containerPath: id => `/practice/paper/${id}`,
             setEntry: setPaperEntry,
             setDayNote: setPaperDayNote,
             notesOf: id => ({ ...accounts.find(a => a.id === id)?.days, ...words.days[id] }),

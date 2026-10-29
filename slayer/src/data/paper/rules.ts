@@ -84,6 +84,8 @@ export interface PaperPlan {
   source: { url: string; asOf: string } | null;
   /** A plan from before options-only (a futures evaluation): kept so its account loads, never traded */
   legacy?: 'futures';
+  /** Rules the firm states that this engine does not check — said beside the plan, never silently dropped */
+  notModelled?: string[];
 }
 
 /** No rule at all: the plain practice account (cash is the only limit) */

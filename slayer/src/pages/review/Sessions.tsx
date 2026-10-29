@@ -14,9 +14,9 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import DayCard from '../../components/review/DayCard';
 import type { Column } from '../../components/ui/DataTable';
 import { accountOf, namesOf, statsOf, DEFAULT_FEE, type SessionRules } from '../../data/review/engine';
-import { createSession, deleteSession, duplicateSession, renameSession, runAgain, useSessions } from '../../data/review/store';
+import { createSession, deleteSession, duplicateSession, legsHeld, renameSession, runAgain, useSessions } from '../../data/review/store';
 import type { Session } from '../../data/review/engine';
-import { CASH_INDEX_ROOTS, dayWords, ensureWindow, historyOffline, historyRev, lastReplayDay, prevDay, replayWindow, subscribeHistory } from '../../data/review/history';
+import { CASH_INDEX_ROOTS, dayWords, ensureLeg, ensureWindow, historyOffline, historyRev, lastReplayDay, prevDay, replayWindow, subscribeHistory } from '../../data/review/history';
 import { ensureListed, optionSymbols, useListedRev } from '../../data/listedNames';
 import ThetaLine from '../../components/review/ThetaLine';
 import { companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
@@ -51,7 +51,10 @@ const DAY_RULES: DropdownOption<number>[] = [
 interface Row {
   s: Session;
   equity: number;
+  /** Up or down since the start, open contracts marked — NaN until their quotes are here */
   net: number;
+  /** Banked: closed trades and the pieces sold of open ones — always known */
+  banked: number;
   trades: number;
   winRate: number;
   open: number;
@@ -67,7 +70,7 @@ const Sessions = () => {
     const t = window.setTimeout(() => setArmed(null), 4000);
     return () => window.clearTimeout(t);
   }, [armed]);
-  useSyncExternalStore(subscribeHistory, historyRev, historyRev);
+  const hrev = useSyncExternalStore(subscribeHistory, historyRev, historyRev);
   const [ticker, setTicker] = useState('SPY');
   const [second, setSecond] = useState('');
   const listedRev = useListedRev();
@@ -76,6 +79,11 @@ const Sessions = () => {
     ensureListed();
     void ensureWindow();
   }, []);
+  /* the open contracts of each session, at its clock's day — what "Worth now" is marked at (kept in this browser once read) */
+  const heldKey = sessions.map(s => `${s.id}@${s.cursor.day}:${s.fills.length}`).join('|');
+  useEffect(() => {
+    for (const s of sessions.slice(0, 30)) for (const l of legsHeld(s)) if (l.expiry >= s.cursor.day) void ensureLeg(l, s.cursor.day);
+  }, [heldKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const nameOptions = useMemo(() => {
     const roots = [...new Set([...FUNDS, ...optionSymbols()])].filter(t => !INDEX_ROOTS.has(t));
     const company = (t: string) => {
@@ -114,11 +122,12 @@ const Sessions = () => {
       sessions.map(s => {
         const a = accountOf(s);
         const st = statsOf(a.trades);
-        return { s, equity: a.equity, net: a.equity - s.startCash, trades: st.n, winRate: st.winRate, open: a.positions.length };
+        return { s, equity: a.equity, net: a.equity - s.startCash, banked: a.realized, trades: st.n, winRate: st.winRate, open: a.positions.length };
       }),
-    [sessions]
+    [sessions, hrev] // eslint-disable-line react-hooks/exhaustive-deps
   );
-  const totals = useMemo(() => ({ trades: rows.reduce((a, r) => a + r.trades, 0), net: rows.reduce((a, r) => a + r.net, 0) }), [rows]);
+  /* every session's move where its open contracts are marked, its banked figure where they are not yet */
+  const totals = useMemo(() => ({ trades: rows.reduce((a, r) => a + r.trades, 0), net: rows.reduce((a, r) => a + (Number.isFinite(r.net) ? r.net : r.banked), 0), unmarked: rows.some(r => !Number.isFinite(r.net)) }), [rows]);
 
   const tickers = second && second !== ticker ? [ticker, second] : [ticker];
   const rules: SessionRules = { maxOpen: maxOpen || undefined, maxRiskPct: maxRisk || undefined, dailyLossPct: dayStop || undefined };
@@ -128,42 +137,14 @@ const Sessions = () => {
     navigate(`/practice/backtest/${s.id}`);
   };
 
-  const columns = useMemo<Column<Row>[]>(
-    () => [
-      {
-        key: 'name',
-        header: 'Session',
-        sortValue: r => r.s.name,
-        render: r => (
-          <span className="inline-flex items-center gap-2 min-w-0">
-            <span className="inline-flex items-center gap-1 shrink-0">
-              {namesOf(r.s).map(t => (
-                <CompanyLogo key={t} ticker={t} size={15} />
-              ))}
-            </span>
-            <span className="font-semibold text-textPrimary truncate">{r.s.name}</span>
-          </span>
-        ),
-      },
-      { key: 'clock', header: 'Clock', sortValue: r => r.s.cursor.day, render: r => <span className="text-textSecondary">{momentWords(r.s.cursor)}</span> },
-      { key: 'start', header: 'Start', align: 'right', sortValue: r => r.s.startCash, render: r => <span className="text-textSecondary">{usd(r.s.startCash, 0)}</span> },
-      { key: 'equity', header: 'Worth now', align: 'right', sortValue: r => r.equity, render: r => (Number.isFinite(r.equity) ? <span className="text-textPrimary">{usd(r.equity)}</span> : <span className="text-textMuted" title="Its open contracts are marked once the desk loads their day">—</span>) },
-      { key: 'net', header: 'P&L', align: 'right', sortValue: r => r.net, render: r => (Number.isFinite(r.net) ? <span className={`font-semibold ${dirInk(r.net)}`}>{usdSigned(r.net)}</span> : <span className="text-textMuted">—</span>) },
-      { key: 'trades', header: 'Trades', align: 'right', sortValue: r => r.trades, render: r => <span className="text-textPrimary">{r.trades}</span> },
-      { key: 'win', header: 'Won', align: 'right', sortValue: r => r.winRate, render: r => (r.trades ? <span className="text-textPrimary">{pct(r.winRate)}</span> : <span className="text-textMuted">—</span>) },
-      { key: 'open', header: 'Open', align: 'right', sortValue: r => r.open, render: r => (r.open ? <span className="text-textPrimary">{r.open}</span> : <span className="text-textMuted">—</span>) },
-      {
-        key: 'doors',
-        header: '',
-        align: 'right',
-        render: r => (
-          /* `leading-normal` + `align-middle`: a grid cell's line is as tall as its row, and a button inherits it
-             — its word dropped to the button's floor and the pair rode high on the row */
-          <span className="inline-flex items-center gap-1.5 leading-normal align-middle">
-            <button type="button" onClick={() => navigate(`/practice/backtest/${r.s.id}/report`)} className="inline-flex items-center h-6 px-2 rounded-md border border-borderSubtle font-mono text-t10 text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-session-report={r.s.id}>
-              Report
-            </button>
-            <RenameDoor name={r.s.name} onSave={name => renameSession(r.s.id, name)} />
+  const doors = (r: Row) => (
+    /* `leading-normal` + `align-middle`: a grid cell's line is as tall as its row, and a button inherits it
+       — its word dropped to the button's floor and the pair rode high on the row */
+    <span className="inline-flex items-center gap-1.5 leading-normal align-middle">
+      <button type="button" onClick={e => { e.stopPropagation(); navigate(`/practice/backtest/${r.s.id}/report`); }} className="tap-40 inline-flex items-center h-6 px-2 rounded-md border border-borderSubtle font-mono text-t10 text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-session-report={r.s.id}>
+        Report
+      </button>
+      <RenameDoor name={r.s.name} onSave={name => renameSession(r.s.id, name)} />
             <button
               type="button"
               onClick={e => {
@@ -221,11 +202,53 @@ const Sessions = () => {
                 <Trash2 className="w-3 h-3" />
               </button>
             )}
+    </span>
+  );
+  const columns = useMemo<Column<Row>[]>(
+    () => [
+      {
+        key: 'name',
+        header: 'Session',
+        sortValue: r => r.s.name,
+        render: r => (
+          <span className="inline-flex items-center gap-2 min-w-0">
+            <span className="inline-flex items-center gap-1 shrink-0">
+              {namesOf(r.s).map(t => (
+                <CompanyLogo key={t} ticker={t} size={15} />
+              ))}
+            </span>
+            <span className="font-semibold text-textPrimary truncate">{r.s.name}</span>
           </span>
         ),
       },
+      { key: 'clock', header: 'Clock', sortValue: r => r.s.cursor.day, render: r => <span className="text-textSecondary">{momentWords(r.s.cursor)}</span> },
+      { key: 'start', header: 'Start', align: 'right', sortValue: r => r.s.startCash, render: r => <span className="text-textSecondary">{usd(r.s.startCash, 0)}</span> },
+      { key: 'equity', header: 'Worth now', align: 'right', sortValue: r => r.equity, render: r => (Number.isFinite(r.equity) ? <span className="text-textPrimary">{usd(r.equity)}</span> : <span className="text-textMuted" title="Its open contracts are marked once the desk loads their day">—</span>) },
+      { key: 'net', header: 'P&L', align: 'right', sortValue: r => (Number.isFinite(r.net) ? r.net : r.banked), render: r => (Number.isFinite(r.net) ? <span className={`font-semibold ${dirInk(r.net)}`}>{usdSigned(r.net)}</span> : <span className={dirInk(r.banked)} title="Banked so far — its open contracts are marked once their quotes load">{usdSigned(r.banked)} <span className="text-textMuted text-t10">banked</span></span>) },
+      { key: 'trades', header: 'Trades', align: 'right', sortValue: r => r.trades, render: r => <span className="text-textPrimary">{r.trades}</span> },
+      { key: 'win', header: 'Won', align: 'right', sortValue: r => r.winRate, render: r => (r.trades ? <span className="text-textPrimary">{pct(r.winRate)}</span> : <span className="text-textMuted">—</span>) },
+      { key: 'open', header: 'Open', align: 'right', sortValue: r => r.open, render: r => (r.open ? <span className="text-textPrimary">{r.open}</span> : <span className="text-textMuted">—</span>) },
+      { key: 'doors', header: '', align: 'right', render: doors },
     ],
-    [navigate, armed]
+    [navigate, armed] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  /* a phone reads a session in two lines: its name and its move, then its clock and its doors */
+  const phoneRow = (r: Row) => (
+    <div className="flex flex-col gap-1 py-1.5 leading-snug min-w-0" data-session-phone={r.s.id}>
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="inline-flex items-center gap-1 shrink-0">
+          {namesOf(r.s).map(t => (
+            <CompanyLogo key={t} ticker={t} size={15} />
+          ))}
+        </span>
+        <span className="font-semibold text-textPrimary truncate">{r.s.name}</span>
+        <span className={`ml-auto shrink-0 font-mono tnum font-semibold ${Number.isFinite(r.net) ? dirInk(r.net) : dirInk(r.banked)}`}>{usdSigned(Number.isFinite(r.net) ? r.net : r.banked)}</span>
+      </div>
+      <div className="flex items-center gap-2 min-w-0 font-mono text-t10 tnum text-textSecondary">
+        <span className="truncate">{momentWords(r.s.cursor)} · {r.trades} {r.trades === 1 ? 'trade' : 'trades'}{r.trades ? ` · ${pct(r.winRate)} won` : ''}{r.open ? ` · ${r.open} open` : ''}</span>
+        <span className="ml-auto shrink-0">{doors(r)}</span>
+      </div>
+    </div>
   );
 
   const nameWords = (t: string) => {
@@ -243,7 +266,7 @@ const Sessions = () => {
         <>
           <Fact label="Sessions">{sessions.length}</Fact>
           <Fact label="Closed trades">{totals.trades}</Fact>
-          <Fact label="All sessions, up or down">
+          <Fact label="All sessions, up or down" title={totals.unmarked ? 'A session whose open contracts are not marked yet counts what it has banked' : 'Every session’s move since its start, open contracts marked'}>
             <span className={dirInk(totals.net)}>{usdSigned(totals.net)}</span>
           </Fact>
         </>
@@ -300,7 +323,7 @@ const Sessions = () => {
       }
     >
       <ThetaLine since={offline} className="px-5 pb-2" what="ThetaData offline — reconnecting · a session opens on the recorded quotes once it answers" />
-      <TraceGrid rows={rows} columns={columns} rowKey={r => r.s.id} onRowClick={r => navigate(`/practice/backtest/${r.s.id}`)} autoHeight animate={false} widths={{ doors: 200, clock: 150, start: 90, equity: 120, net: 110, trades: 80, win: 70, open: 70 }} emptyText="No sessions yet — start one above" testId="review-sessions" />
+      <TraceGrid rows={rows} columns={columns} rowKey={r => r.s.id} onRowClick={r => navigate(`/practice/backtest/${r.s.id}`)} autoHeight animate={false} widths={{ doors: 200, clock: 150, start: 90, equity: 120, net: 130, trades: 80, win: 70, open: 70 }} flexes={{ name: 2 }} phoneRow={phoneRow} emptyText="No sessions yet — start one above" testId="review-sessions" />
     </TraceBox>
   );
 };

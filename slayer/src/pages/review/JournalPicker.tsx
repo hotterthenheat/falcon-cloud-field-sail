@@ -23,10 +23,15 @@ const BOOKS: readonly { value: JournalBook; label: string }[] = [
 export const door = 'tap-40 inline-flex items-center justify-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors whitespace-nowrap disabled:cursor-not-allowed disabled:hover:text-textSecondary disabled:hover:border-borderSubtle';
 
 const money = (v: number) => usdSigned(v, 0);
-/** "Practice · $25K" · "Evaluation · 50K plan" — what kind of account, in a few words */
+/* read loosely: the paper store's account grows fields (a prop firm's plan, archiving) while the journal reads only
+   what it names here, and a field not there yet reads as absent */
+type AccountLoose = PaperAccount & { archived?: unknown; plan?: { label?: string; firm?: string | null } };
+const isArchived = (a: PaperAccount | undefined): boolean => !!(a as AccountLoose | undefined)?.archived;
+/** "Practice · $25K" · "Evaluation · Apex 50K · passed" — what kind of account, in a few words */
 const accountWords = (a: PaperAccount): string => {
+  const plan = (a as AccountLoose).plan;
   const size = a.startCash >= 1000 ? `$${Math.round(a.startCash / 1000)}K` : `$${a.startCash}`;
-  const kind = a.kind === 'evaluation' ? `Evaluation${a.plan?.label ? ` · ${a.plan.label}` : ''}` : `Practice · ${size}`;
+  const kind = a.kind === 'evaluation' ? `Evaluation${plan?.label ? ` · ${plan.firm && !plan.label.includes(plan.firm) ? `${plan.firm} ` : ''}${plan.label}` : ''}` : `Practice · ${size}`;
   const status = a.status === 'open' ? '' : ` · ${String(a.status)}`;
   return `${kind}${status}`;
 };
@@ -78,11 +83,15 @@ export const JournalPicker = ({ pick, onPick, onNew }: { pick: JournalPick; onPi
     const out: DropdownOption<string>[] = [
       { value: 'all', label: pick.book === 'paper' ? 'All paper accounts' : 'All backtest sessions', hint: `${src.containers.length} ${word}${src.containers.length === 1 ? '' : 's'} · ${src.rows.length} closed${src.rows.length ? ` · ${money(allNet)}` : ''}` },
     ];
-    for (const c of src.containers) {
+    /* archived accounts stand under their own heading, after the ones in use */
+    const rowOf = (c: { id: string; name: string }) => {
       const x = t.get(c.id);
       const a = pick.book === 'paper' ? accounts.find(y => y.id === c.id) : undefined;
-      out.push({ value: c.id, label: c.name, hint: `${a ? `${accountWords(a)} · ` : ''}${x ? `${x.n} closed · ${money(x.net)}` : 'nothing closed yet'}`, group: pick.book === 'paper' ? 'One account' : 'One session' });
-    }
+      return { value: c.id, label: c.name, hint: `${a ? `${accountWords(a)} · ` : ''}${x ? `${x.n} closed · ${money(x.net)}` : 'nothing closed yet'}`, archived: isArchived(a) };
+    };
+    const rows = src.containers.map(rowOf);
+    for (const r of rows.filter(r => !r.archived)) out.push({ value: r.value, label: r.label, hint: r.hint, group: pick.book === 'paper' ? 'One account' : 'One session' });
+    for (const r of rows.filter(r => r.archived)) out.push({ value: r.value, label: r.label, hint: r.hint, group: 'Archived' });
     for (const g of goneOf(seen, pick.book, src.containers)) out.push({ value: g.id, label: g.name, hint: `deleted · ${g.n} closed when last seen`, group: 'Deleted since', quiet: true });
     return out;
   }, [pick.book, paper, backtest, paperTally, backtestTally, accounts, manual, seen]);
