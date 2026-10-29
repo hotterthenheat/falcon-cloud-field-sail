@@ -138,7 +138,7 @@ const NameDesks = ({ ticker, sleeve }: { ticker: string; sleeve: 'odte' | 'weekl
       <div className="px-3.5 h-8 flex items-center gap-2 border-b border-borderSubtle/60 paper-band min-w-0">
         <PageGlyph name="compass" size={14} />
         <span className="font-mono text-t11 font-semibold text-textPrimary">{option}</span>
-        {name.toUpperCase() !== cash && <span className="min-w-0 truncate text-t11 text-textSecondary">{name}</span>}
+        {name.toUpperCase() !== cash && <span className="min-w-0 truncate text-t11 text-textSecondary" title={name}>{name}</span>}
         <span className="font-mono text-t9 uppercase tracking-wider text-textMuted border border-borderSubtle rounded px-1.5 py-0.5">{sameDay ? '0DTE' : '1–7 DTE'}</span>
         <span className="ml-auto shrink-0 font-mono text-t9 uppercase tracking-wider text-textMuted">Not in the score</span>
       </div>
@@ -206,7 +206,7 @@ const NameDesks = ({ ticker, sleeve }: { ticker: string; sleeve: 'odte' | 'weekl
                       <ContractLabel contract={row.contract} right={right} logo={row.ticker} size="sm" className="shrink-0" />
                       {row.p1 > 0 && <span className="shrink-0 font-mono text-t11 tnum text-textPrimary">{(row.p1 * 100).toFixed(1)}%</span>}
                     </span>
-                    <span className="mt-0.5 block truncate font-mono text-t10 text-textMuted">{row.why}</span>
+                    <span className="mt-0.5 block font-mono text-t10 leading-[14px] text-textMuted whitespace-normal break-words line-clamp-2" title={row.why}>{row.why}</span>
                   </li>
                 );
               })}
