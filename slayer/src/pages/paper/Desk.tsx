@@ -376,7 +376,7 @@ const PaperDesk = () => {
       now={m.now}
       onPick={setInHand}
       onPractice={holding ? size => startPractice(size) : null}
-      onEvaluation={holding ? plan => startEvaluation(plan) : null}
+      onEvaluation={holding && FUTURES_LIVE ? plan => startEvaluation(plan) : null}
       onEndEvaluation={holding ? id => endEval(id) : null}
       onFlatten={holding ? () => flattenAccount(account.id) : null}
       onCancelAll={holding && !fut ? () => cancelWorking(account.id) : null}

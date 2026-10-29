@@ -209,8 +209,6 @@ interface ChartToolbarProps {
       or opens it in a new tab */
   onSnapshot?: () => Promise<HTMLCanvasElement | null> | HTMLCanvasElement | null;
   snapshotName?: string;
-  /** Beside the picture: a link whose hash is the ticker, the interval, the overlays and the levels. No chain. */
-  onShareLink?: () => void;
 }
 
 const TIMEFRAME_OPTIONS = TIMEFRAMES.map(t => ({ value: t.value, label: t.label }));
@@ -528,7 +526,6 @@ const ChartToolbar = ({
   rightExtras,
   onSnapshot,
   snapshotName,
-  onShareLink,
 }: ChartToolbarProps) => {
   const storeThemeKey = useCandleThemeKey();
   const themeKey = themeKeyProp ?? storeThemeKey;
@@ -1323,7 +1320,7 @@ const ChartToolbar = ({
             </span>
             <button
               onClick={() => pickTheme(shownTheme.value)}
-              className={`mt-auto w-full rounded holo-bg text-onfoil hover:brightness-105 font-mono font-semibold uppercase tracking-wider transition-all ${
+              className={`relative mt-auto w-full rounded holo-bg foil-glide text-onfoil hover:brightness-105 font-mono font-semibold uppercase tracking-wider transition-all ${
                 dense ? 'py-1 text-t9' : 'py-1.5 text-t10'
               }`}
               data-theme-use
@@ -1402,17 +1399,6 @@ const ChartToolbar = ({
                   <span className="text-t10 text-textMuted">{hint}</span>
                 </button>
               ))}
-              {onShareLink && (
-                <button
-                  type="button"
-                  onClick={() => { setOpenMenu(null); onShareLink(); }}
-                  className="w-full flex flex-col items-start px-2 py-1.5 rounded text-left hover:bg-ink/[0.05] transition-colors"
-                  data-snapshot-do="link"
-                >
-                  <span className="font-mono text-t11 text-textPrimary">Copy a link</span>
-                  <span className="text-t10 text-textMuted">The levels and the overlays, no chain</span>
-                </button>
-              )}
             </div>
           </Dropdown>
         </span>

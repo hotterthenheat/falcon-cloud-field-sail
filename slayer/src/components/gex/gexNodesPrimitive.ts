@@ -1,4 +1,3 @@
-import { heatRampColor } from './heatmap';
 import type { ISeriesPrimitive, SeriesAttachedParameter, Time, IChartApi, ISeriesApi } from 'lightweight-charts';
 import type { GexSnapshot } from '../../types/market';
 import { nyIsoDate, nySession } from '../../core/nyTime';
@@ -51,7 +50,14 @@ const FLIP_RGBA = 'rgba(156,163,175,0.8)'; // indecision gray — the regime bor
    and lime diluted is olive, not neon. The wall's identity still gets told:
    its chip, its axis line, and the ladder's K·PW / K·CW tags all name it.
    The band belongs to the crown. */
-const FLIPK_RGBA = 'rgba(234,0,255,0.85)'; // the supreme outranks the flip on a shared strike too
+const FLIPK_RGBA = 'rgba(234,0,255,0.85)';
+/* the field's ink slots, in the order the renderer's INKS list holds them */
+const INK_F = 0;
+const INK_K = 1;
+const INK_CW = 2;
+const INK_PW = 3;
+const INK_P = 4;
+const INK_C = 5; // the supreme outranks the flip on a shared strike too
 
 /* A peak is at least each same-sign neighbour and 20% of that moment's largest node.
    A tie is one node across both strikes. The rest stays, at about a quarter. */
@@ -135,6 +141,8 @@ interface Column {
   all: Map<number, Bead>;
   /** The bucket before this one was missing. The row says so. */
   gap?: boolean;
+  /** `top` in draw order (the rest-of-book beads first), sorted once on first draw */
+  ordered?: Bead[];
 }
 
 /** The focused level's ink: the focus lime — or the supreme's magenta while the
@@ -311,8 +319,9 @@ class TrailsPaneRenderer {
 
       /* BATCHED: beads are gathered into one path per ink (alpha quantised to
          ~20 steps), then each path is filled once — into the BITMAP. */
-      const cores = new Map<string, Path2D>();
-      const halos = new Map<string, Path2D>();
+      /* one path per ink and quantised alpha, keyed inkIndex * 1000 + alphaStep (numbers: no string per bead) */
+      const cores = new Map<number, Path2D>();
+      const halos = new Map<number, Path2D>();
       const flipPath = new Path2D();
       let flipDrawn = false;
       const glyphs: { x: number; y: number; mark?: NodeMark; tag?: PriceTag; word?: string }[] = [];
@@ -326,7 +335,7 @@ class TrailsPaneRenderer {
       let held = 0;
       let off = 0;
       let broke = 0;
-      const pathFor = (map: Map<string, Path2D>, key: string) => {
+      const pathFor = (map: Map<number, Path2D>, key: number) => {
         let p = map.get(key);
         if (!p) map.set(key, (p = new Path2D()));
         return p;
@@ -381,12 +390,16 @@ class TrailsPaneRenderer {
 
         // This moment's field, ranked at load — plus the focused strike at
         // EVERY moment, however faint (its history must have no gaps)
-        let beads = col.top;
-        if (focus != null && !beads.some(b => b.strike === focus)) {
+        let beads = (col.ordered ??= [...col.top].sort((a, b) => Number(a.front !== false) - Number(b.front !== false)));
+        if (focus != null && !col.top.some(b => b.strike === focus)) {
           const fb = col.all.get(focus);
-          if (fb) beads = [...beads, fb];
+          if (fb) {
+            /* where the stable sort would have put it: after the rest-of-book beads, or last */
+            const back = beads.findIndex(b => b.front !== false);
+            const at = fb.front === false ? (back < 0 ? beads.length : back) : beads.length;
+            beads = [...beads.slice(0, at), fb, ...beads.slice(at)];
+          }
         }
-        beads = [...beads].sort((a, b) => Number(a.front !== false) - Number(b.front !== false));
 
         for (const bead of beads) {
           const isFocus = focus != null && bead.strike === focus;
@@ -439,16 +452,16 @@ class TrailsPaneRenderer {
              ramp-black — the alpha already carries the fade. Quantised to 8
              bins so the batcher stays a batcher. */
           const inkKey = isFocus
-            ? 'f'
+            ? INK_F
             : isSupreme
-              ? 'k'
+              ? INK_K
               : bead.strike === src.cwStrike
-                ? 'cw'
+                ? INK_CW
                 : bead.strike === src.pwStrike
-                  ? 'pw'
+                  ? INK_PW
                   : bead.put
-                    ? 'p'
-                    : 'c';
+                    ? INK_P
+                    : INK_C;
 
           /* Each ELLIPSE bead is its OWN subpath: ellipse() draws a line
              from the path's current point to the ellipse's start, so without
@@ -464,7 +477,7 @@ class TrailsPaneRenderer {
           const round = half > 2 * vr && !bead.missing;
           if (!bead.missing && t > 0.55 && half * 1.35 > 2.4 * vr) {
             const hx = rx * 1.15;
-            const p = pathFor(halos, `${inkKey}|${Math.round(halo * 40)}`);
+            const p = pathFor(halos, inkKey * 1000 + Math.round(halo * 40));
             if (round) {
               p.moveTo(cx + hx, mid);
               p.ellipse(cx, mid, hx, half * 1.9, 0, 0, Math.PI * 2);
@@ -472,7 +485,7 @@ class TrailsPaneRenderer {
               p.rect(cx - hx, mid - half * 1.9, hx * 2, half * 3.8);
             }
           }
-          const p = pathFor(cores, `${inkKey}|${Math.round(core * 20)}`);
+          const p = pathFor(cores, inkKey * 1000 + Math.round(core * 20));
           if (bead.missing) {
             p.rect(cx - rx * 0.7, mid - 0.6 * vr, rx * 1.4, 1.2 * vr);
           } else if (round) {
@@ -499,22 +512,11 @@ class TrailsPaneRenderer {
         if (parts.length) glyphs.push({ x: 8 * hr, y: 14 * vr, word: parts.join(' · ') });
       }
 
-      const INKS: Record<string, readonly [number, number, number]> = {
-        f: ink,
-        k: SUPREME_RGB,
-        cw: CW_RGB,
-        pw: PW_RGB,
-        p: PUT_RGB,
-        c: CALL_RGB,
-      };
-      const paint = (tctx: CanvasRenderingContext2D, map: Map<string, Path2D>, step: number) => {
-        for (const [key2, path] of map) {
-          const [inkKey, q] = key2.split('|');
-          const rgb =
-            inkKey[1] === '@'
-              ? heatRampColor(inkKey[0] === 'p' ? 1 : -1, Number(inkKey.slice(2)) / 7)
-              : INKS[inkKey] ?? CALL_RGB;
-          tctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(Number(q) / step).toFixed(3)})`;
+      const INKS: readonly (readonly [number, number, number])[] = [ink, SUPREME_RGB, CW_RGB, PW_RGB, PUT_RGB, CALL_RGB];
+      const paint = (tctx: CanvasRenderingContext2D, map: Map<number, Path2D>, step: number) => {
+        for (const [key, path] of map) {
+          const rgb = INKS[Math.floor(key / 1000)] ?? CALL_RGB;
+          tctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${((key % 1000) / step).toFixed(3)})`;
           tctx.fill(path);
         }
       };
@@ -984,7 +986,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
   /** Bumped on every data hand-off — the renderer's path cache keys on it. */
   rev = 0;
   /** Built columns by snapshot identity — see setData's incremental note. */
-  private colCache = new WeakMap<GexSnapshot, { time: number; top: Bead[]; all: Map<number, Bead>; back?: GexSnapshot; gap?: boolean }>();
+  private colCache = new WeakMap<GexSnapshot, { time: number; top: Bead[]; all: Map<number, Bead>; back?: GexSnapshot; gap?: boolean; ordered?: Bead[] }>();
   private colRef = -1;
 
   /** The Greek the beads draw — see TrailGreek */

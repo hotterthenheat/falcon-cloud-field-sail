@@ -100,14 +100,15 @@ const PointerCard = ({ x, y, width = 196, title, aside, children, foot, still = 
     const el = ref.current;
     if (!el || typeof globalThis.innerHeight !== 'number') return;
     const h = el.offsetHeight;
-    el.style.top = `${topFor(y, h)}px`;
+    el.style.transform = `translate(${left}px, ${topFor(y, h)}px)`;
     if (follow) follow.current = { el, h };
   });
   return createPortal(
     <div
       ref={ref}
       className={`fixed z-[90] rounded-lg border bg-card/85 backdrop-blur-md ${dense ? 'px-2.5 py-2' : 'px-3 py-2.5'} shadow-[0_12px_32px_rgba(0,0,0,0.55)] pointer-events-none ${still ? 'border-silver/40' : 'border-borderMuted'}`}
-      style={{ width, left, top: Math.max(EDGE, y - LIFT - 160) }}
+      /* placed by transform, not left/top: a move is then a composite, never a layout and a repaint */
+      style={{ width, left: 0, top: 0, transform: `translate(${left}px, ${Math.max(EDGE, y - LIFT - 160)}px)`, willChange: 'transform' }}
       data-card-kept={still ? '' : undefined}
       {...{ [testId]: testValue }}
     >
@@ -144,8 +145,7 @@ export const PointerFollowCard = ({ start, ...rest }: PointerFollowCardProps) =>
       pos.current = { x: ev.clientX, y: ev.clientY };
       const { el, h } = follow.current;
       if (!el || typeof globalThis.innerHeight !== 'number') return;
-      el.style.left = `${leftFor(ev.clientX, width)}px`;
-      el.style.top = `${topFor(ev.clientY, h)}px`;
+      el.style.transform = `translate(${leftFor(ev.clientX, width)}px, ${topFor(ev.clientY, h)}px)`;
     };
     window.addEventListener('pointermove', onMove, { passive: true });
     return () => window.removeEventListener('pointermove', onMove);
