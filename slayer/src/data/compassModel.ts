@@ -252,16 +252,16 @@ export function setScanBusy(on: boolean): void {
 }
 
 async function fetchCurve(symbol: string, now: number): Promise<Curve | null> {
-  const end = priorSessionYmd(sessionYmd(now));
-  const start = ymd(now - 21 * 86400000);
-  const root = UNDER[symbol] ?? symbol;
-  const index = INDEX.has(symbol) || INDEX.has(root);
-  const path = index
-    ? `/index/history/ohlc?symbol=${root}&start_date=${start}&end_date=${end}&interval=1m&format=json`
-    : `/stock/history/ohlc?symbol=${root}&start_date=${start}&end_date=${end}&interval=1m&format=json`;
-  const got = await compassHost().theta(path);
-  if (faulted(got)) throw new InputFault(path);
-  return curveFrom(got.error ? [] : barsOf(got.data));
+  /* the sessions of the last three weeks before today, one day a request: a whole range of a busy name's minutes
+     outlasts the terminal's answer time, and each finished day is kept once read */
+  const first = ymd(now - 21 * 86400000);
+  const days: string[] = [];
+  for (let d = priorSessionYmd(sessionYmd(now)); d >= first && days.length < 30; d = priorSessionYmd(d)) days.push(d);
+  const got: Bar[][] = [];
+  for (let i = 0; i < days.length; i += 3) {
+    got.push(...(await Promise.all(days.slice(i, i + 3).map(d => loadBars(symbol, d, true)))));
+  }
+  return curveFrom(got.reverse().flat());
 }
 
 /** The last trade of a stock or ETF now (ThetaData's trade snapshot), or NaN. */
@@ -424,17 +424,23 @@ function midThen(id: string, minute: number): number {
 
 const seededAt = new Map<string, number>();
 
+/** One seed window's quotes: contract id → minute of the day → bid and ask. The scan reads the mids 5 and 15 minutes
+    back and Book B's ask 30 back from the window of its own mark, so a late mark of the morning is never short of
+    them because later minutes filled the running lists. */
+type SeedWindow = Map<string, Map<number, { bid: number; ask: number }>>;
+const seedWindows = new Map<string, SeedWindow>();
+
 /** One expiry's NBBO, one reading a minute, from 30 minutes before the scan's 5-minute mark through the mark (one ask
     for every strike of the name and expiry): the mids 5 and 15 minutes back and Book B's ask 30 minutes back come
     from the quotes that stood then, not only from the scans this tab happened to run. The window is fixed to the
     mark, so every viewer scanning the same slot asks the same path and the server shares one answer. */
-async function seedQuotes(list: Setup[], now: number, strict = false): Promise<void> {
+async function seedQuotes(list: Setup[], now: number, strict = false): Promise<SeedWindow | null> {
   const first = list[0];
-  if (!first?.expiryDate) return;
+  if (!first?.expiryDate) return null;
   const clock = nyParts(now);
   const mark = Math.floor((clock.hour * 60 + clock.minute) / 5) * 5;
   const key = `${first.ticker}|${first.expiryDate}|${ymd(now)}|${mark}`;
-  if (seededAt.has(key)) return;
+  if (seededAt.has(key)) return seedWindows.get(key) ?? null;
   const byContract = new Map<string, string>();
   for (const s of list) byContract.set(`${s.strike}|${s.right}`, s.id);
   const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:00`;
@@ -442,11 +448,18 @@ async function seedQuotes(list: Setup[], now: number, strict = false): Promise<v
   if (faulted(got)) {
     /* not marked as read: the next pass asks again, and a strict one does not score without it */
     if (strict) throw new InputFault('quotes 30 minutes back');
-    return;
+    return null;
   }
   seededAt.set(key, now);
-  if (seededAt.size > 400) for (const k of [...seededAt.keys()].slice(0, 200)) seededAt.delete(k);
-  if (got.error) return;
+  const win: SeedWindow = new Map();
+  seedWindows.set(key, win);
+  if (seededAt.size > 120) {
+    for (const k of [...seededAt.keys()].slice(0, 60)) {
+      seededAt.delete(k);
+      seedWindows.delete(k);
+    }
+  }
+  if (got.error) return win;
   for (const item of Array.isArray(got.data) ? got.data : []) {
     if (!item || typeof item !== 'object') continue;
     const row = item as { contract?: Record<string, unknown>; data?: unknown };
@@ -463,8 +476,12 @@ async function seedQuotes(list: Setup[], now: number, strict = false): Promise<v
       if (!at || !quoteValid(bid, ask)) continue;
       noteAsk(id, minuteOf(at), bid, ask);
       noteMid(id, minuteOf(at), (bid + ask) / 2);
+      const mine = win.get(id) ?? new Map<number, { bid: number; ask: number }>();
+      mine.set(minuteOf(at), { bid, ask });
+      win.set(id, mine);
     }
   }
+  return win;
 }
 
 const passed = new Map<string, string[]>();
@@ -882,7 +899,14 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     list.push(s);
     groups.set(key, list);
   }
-  await Promise.all([...groups.values()].map(list => seedQuotes(list, now, true)));
+  const windows = new Map<string, SeedWindow | null>();
+  await Promise.all([...groups].map(async ([key, list]) => { windows.set(key, await seedQuotes(list, now, true)); }));
+  /* a minute's quote from the mark's own window first, else what the scans saw */
+  const seeded = (s: Setup, m: number) => windows.get(`${s.ticker}|${s.expiryDate}`)?.get(s.id)?.get(m) ?? null;
+  const midBack = (s: Setup, m: number) => {
+    const q = seeded(s, m);
+    return q ? (q.bid + q.ask) / 2 : midThen(s.id, m);
+  };
   const bySlot = new Map<string, Setup[]>();
   for (const s of rows) {
     const key = slotOf(s);
@@ -949,7 +973,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       const mid = (s.bid + s.ask) / 2;
       noteMid(s.id, qMin, mid);
       const pin = pins.get(`${s.ticker}|${s.expiryDate}`) ?? null;
-      const raw = features({ ...s, mid }, minute, book.get(under) ?? [], spy, pd.get(under) ?? null, iv, skew, sec, curve, pin, { m5: midThen(s.id, minute - 5), m15: midThen(s.id, minute - 15) }, { spy: marks.get('SPY'), sec: etf ? marks.get(etf) : undefined });
+      const raw = features({ ...s, mid }, minute, book.get(under) ?? [], spy, pd.get(under) ?? null, iv, skew, sec, curve, pin, { m5: midBack(s, minute - 5), m15: midBack(s, minute - 15) }, { spy: marks.get('SPY'), sec: etf ? marks.get(etf) : undefined });
       if (!raw) continue;
       const x = f32(raw);
       const p1 = predict(ENTRY, x);
@@ -975,7 +999,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       }
       const dist = strikeDistance(list.map(row => row.strike), tape.S, s.strike);
       const span = strikeSpan(tape.S, list.map(row => row.strike), SPAN_INDEX.includes(s.ticker as typeof SPAN_INDEX[number]));
-      const prior = quoteAt(s.id, minute - BOOK_B_LOOKBACK);
+      const prior = seeded(s, minute - BOOK_B_LOOKBACK) ?? quoteAt(s.id, minute - BOOK_B_LOOKBACK);
       const retOpen = tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN;
       const row = { setup: s, p1, prun, gex: x[27], retOpen };
       if (bookAPass(tape.tt, dist, span, dte, s.bid, s.ask, p1)) aPool.push(row);
