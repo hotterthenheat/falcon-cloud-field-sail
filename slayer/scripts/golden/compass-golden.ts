@@ -247,4 +247,81 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(expectedFile)) {
 }
 void DAY;
 
+/* ---- 5. a missed mark, scored late from the quotes ThetaData recorded at it ---------------------------------- */
+/* RUTW 0DTE at the 10:15 ET mark of 2026-10-29 (the browser scan called RUTW 2845C live there). The engine asks
+   option/at_time/quote for 10:15:00.000: every quote it scores must be stamped at or before the mark. */
+
+const LATE_SET = 'compass-late-2026-10-29';
+const lateDir = join(here, '..', 'fixtures', 'golden', LATE_SET);
+const lateExpected = join(lateDir, 'expected.json');
+if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
+  installUwFixtures(LATE_SET);
+  freezeClock('2026-10-29T18:10:00Z');
+  const { openFeeds } = await import('../../src/data/feedGate');
+  openFeeds();
+  const { thetaCall } = await import('../../src/data/theta');
+  const { setCompassHost } = await import('../../src/data/compassHost');
+  setCompassHost({
+    server: true,
+    theta: (p, jump) => thetaCall(p, jump),
+    asset: async p => {
+      const b = readFileSync(join(here, '..', '..', 'public', p.replace(/^\/+/, '')));
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+    },
+    econ: () => [],
+  });
+  const { atMark } = await import('../../src/data/compassScan');
+  const { scoreBook, onScoredRow, currentPicks } = await import('../../src/data/compassModel');
+  const { recordPicks, contractPath } = await import('../../src/data/compassLedger');
+  const { underCloses } = await import('../../src/data/compassModel');
+  const mark = nyWallTime(2026, 10, 29, 10, 15);
+  const snap = await atMark('RUTW', mark, 'odte');
+  const scored: { contract: string; p1: number; bid: number; ask: number; q: number }[] = [];
+  const off = onScoredRow(r => scored.push({ contract: r.setup.contract, p1: r.p1, bid: r.setup.bid, ask: r.setup.ask, q: r.setup.quotedAt ?? 0 }));
+  await scoreBook(snap.setups, mark, true, true);
+  off();
+  const fired = recordPicks(mark);
+  const latest = Math.max(...snap.setups.map(s => s.quotedAt ?? 0));
+  const pick = currentPicks().find(s => s.contract === 'RUTW 2845C') ?? null;
+  const row = scored.find(r => r.contract === 'RUTW 2845C') ?? null;
+  const sig = fired.find(r => r.contract === 'RUTW 2845C') ?? null;
+  let outcome: ReturnType<typeof settleSignal> | null = null;
+  if (sig) {
+    const quotes = await contractPath(sig, null);
+    const under = await underCloses('RUTW', '20261029');
+    if (quotes) outcome = settleSignal(sig, quotes, under, Date.now());
+  }
+  const got = {
+    rows: snap.rows,
+    setups: snap.setups.length,
+    latestQuoteAt: latest,
+    scored: scored.length,
+    bid: row?.bid ?? null,
+    ask: row?.ask ?? null,
+    quotedAt: row?.q ?? null,
+    p1: row ? Number(row.p1.toFixed(6)) : null,
+    called: pick?.band ?? null,
+    late: sig?.how ?? null,
+    firedAt: sig?.firedAt ?? null,
+    fill: outcome?.fill?.ask ?? null,
+    fillAt: outcome?.fill?.at ?? null,
+    exit: outcome?.exit ? { px: outcome.exit.px, why: outcome.exit.why, at: outcome.exit.at } : null,
+  };
+  if (existsSync(lateExpected)) {
+    const want = JSON.parse(readFileSync(lateExpected, 'utf8')) as typeof got;
+    expectEqual('late: ThetaData rows at the mark', got.rows, want.rows);
+    expectEqual('late: contracts on the board at the mark', got.setups, want.setups);
+    expectEqual('late: no quote stamped after the 10:15:00 mark', got.latestQuoteAt <= mark, true);
+    expectEqual('late: RUTW 2845C quote that stood at the mark', [got.bid, got.ask, got.quotedAt], [want.bid, want.ask, want.quotedAt]);
+    expectNear('late: RUTW 2845C Model 1', got.p1 ?? NaN, want.p1 ?? NaN, 1e-6);
+    expectEqual('late: RUTW 2845C called, marked late, at its mark', [got.called, got.late, got.firedAt], [want.called, want.late, mark]);
+    expectEqual('late: fill at the first quote a full minute after the mark', [got.fill, got.fillAt], [want.fill, want.fillAt]);
+    expectEqual('late: exit by the same rules from its mark', got.exit, want.exit);
+  } else {
+    console.log(`RECORDED ${LATE_SET}: ${JSON.stringify(got)}. Check it against the raw rows, then write ${lateExpected}.`);
+  }
+} else {
+  console.log(`SKIP  ${LATE_SET}: not recorded yet.`);
+}
+
 done();

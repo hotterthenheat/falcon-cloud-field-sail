@@ -253,6 +253,35 @@ async function fetchCurve(symbol: string, now: number): Promise<Curve | null> {
   return curveFrom(got.error ? [] : barsOf(got.data));
 }
 
+/** The last trade of a stock or ETF now (ThetaData's trade snapshot), or NaN. */
+async function priceNow(symbol: string): Promise<number> {
+  const got = await compassHost().theta(`/stock/snapshot/trade?symbol=${encodeURIComponent(symbol)}&format=json`, true);
+  if (got.error) return NaN;
+  const row = (Array.isArray(got.data) ? got.data[0] : null) as Record<string, unknown> | null;
+  const px = num(row?.price);
+  const at = nyWallStamp(row?.timestamp);
+  return px > 0 && at && Date.now() - at < 120_000 ? px : NaN;
+}
+
+const curveLoads = new Map<string, Promise<Curve | null>>();
+
+/** The name's intraday volume curve over the prior sessions, read before the name is scored (a first scan of the
+    day waits for it rather than score the two volume inputs as missing). */
+async function curveFor(symbol: string, now: number): Promise<Curve | null> {
+  if (INDEX.has(symbol)) return null;
+  const key = `${symbol}|${sessionYmd(now)}`;
+  if (curves.has(key)) return curves.get(key) ?? null;
+  let job = curveLoads.get(key);
+  if (!job) {
+    job = fetchCurve(symbol, now).catch(() => null);
+    curveLoads.set(key, job);
+  }
+  const curve = await job;
+  curveLoads.delete(key);
+  if (curve) curves.set(key, curve);
+  return curve;
+}
+
 /** The name's intraday volume curve over the prior sessions; asked for in the background the first time it is wanted */
 function curveOf(symbol: string, now = Date.now()): Curve | null {
   const key = `${symbol}|${sessionYmd(now)}`;
@@ -792,6 +821,14 @@ async function scoreAll(setups: Setup[], now: number, merge = false, late = fals
   const etfs = [...new Set(names.map(name => SECTOR_OF[name]).filter(Boolean))];
   const secBars = new Map<string, Bar[]>();
   await Promise.all(etfs.map(async etf => { secBars.set(etf, await loadBars(etf, day)); }));
+  /* a live scan reads SPY's and the sector ETFs' price at the mark: their minute bar is not in yet */
+  const marks = new Map<string, number>();
+  if (!late) {
+    await Promise.all(['SPY', ...etfs].map(async name => {
+      const px = await priceNow(name);
+      if (px > 0) marks.set(name, px);
+    }));
+  }
   const pd = new Map<string, { h: number; l: number; c: number } | null>();
   await Promise.all(names.map(async name => { pd.set(name, await loadPrior(name, day)); }));
   const pins = new Map<string, PinBook | null>();
@@ -852,7 +889,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false, late = fals
     const { iv, skew } = atmPair(list, tape.S, horizon);
     const etf = ticker === 'SPXW' ? '' : (SECTOR_OF[ticker] ?? SECTOR_OF[under] ?? '');
     const sec = etf ? secBars.get(etf) ?? [] : [];
-    const curve = curveOf(under, now);
+    const curve = await curveFor(under, now);
     const notes: string[] = [];
     for (const s of list) {
       const word = s.contract;
@@ -878,7 +915,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false, late = fals
       const mid = (s.bid + s.ask) / 2;
       noteMid(s.id, qMin, mid);
       const pin = pins.get(`${s.ticker}|${s.expiryDate}`) ?? null;
-      const raw = features({ ...s, mid }, minute, book.get(under) ?? [], spy, pd.get(under) ?? null, iv, skew, sec, curve, pin, { m5: midThen(s.id, minute - 5), m15: midThen(s.id, minute - 15) });
+      const raw = features({ ...s, mid }, minute, book.get(under) ?? [], spy, pd.get(under) ?? null, iv, skew, sec, curve, pin, { m5: midThen(s.id, minute - 5), m15: midThen(s.id, minute - 15) }, { spy: marks.get('SPY'), sec: etf ? marks.get(etf) : undefined });
       if (!raw) continue;
       const x = f32(raw);
       const p1 = predict(ENTRY, x);
