@@ -29,7 +29,8 @@ const WatchStar = ({
       aria-pressed={on}
       aria-label={on ? `Untrack this ${noun}` : `Track this ${noun}`}
       title={on ? `Tracking this ${noun} — click to untrack` : `Track this ${noun} in the Tracker`}
-      className={`shrink-0 transition-colors ${on ? 'text-select' : 'text-textMuted/40 hover:text-textSecondary'} ${className}`}
+      /* the padding is the hit area — 24px at a desk, 44px on a phone — and the negative margin keeps the row's layout */
+      className={`shrink-0 inline-flex items-center justify-center p-1.5 -m-1.5 max-sm:p-4 max-sm:-m-4 transition-colors ${on ? 'text-select' : 'text-textMuted/40 hover:text-textSecondary'} ${className}`}
     >
       <Bookmark className="w-3 h-3" fill={on ? 'currentColor' : 'none'} />
     </button>

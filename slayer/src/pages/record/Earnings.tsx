@@ -749,7 +749,7 @@ const Earnings = () => {
                   const shelf = (list: EarningsEvent[], slot: EarningsEvent['slot'], timed = true, hidden = 0) =>
                     list.length === 0 ? null : (
                       <div>
-                        <span className="flex items-center gap-1.5 px-1 font-mono text-t9 uppercase tracking-widest text-textMuted">
+                        <span className="flex items-center gap-1.5 px-1 font-mono text-t9 uppercase tracking-widest text-textSecondary">
                           <SlotMark slot={slot} timeKnown={timed} className="w-2.5 h-2.5" /> {!timed ? 'time not set' : slot === 'BMO' ? 'before the open' : 'after the close'}
                         </span>
                         <div className="mt-1.5 grid grid-cols-2 max-sm:grid-cols-3 gap-1.5">
@@ -762,7 +762,7 @@ const Earnings = () => {
                             type="button"
                             onClick={() => setOpenDays(d => ({ ...d, [dayKey]: true }))}
                             title={`The rest of this day ${!timed ? 'with no time set' : slot === 'BMO' ? 'before the open' : 'after the close'}`}
-                            className="mt-1.5 px-1 font-mono text-t9 uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors"
+                            className="mt-1.5 px-1 min-h-[24px] max-sm:min-h-[40px] font-mono text-t9 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors"
                             data-earnings-board-more={hidden}
                             data-shelf={!timed ? 'unset' : slot}
                           >

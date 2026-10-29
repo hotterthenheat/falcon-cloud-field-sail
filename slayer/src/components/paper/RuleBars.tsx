@@ -34,7 +34,7 @@ const RuleBars = ({ rules, dense = false, className = '' }: { rules: RuleRead[];
   const facts = rules.filter(r => r.kind === 'fact');
   return (
     <div className={`flex flex-col gap-2.5 ${className}`} data-paper-rules>
-      <div className={`grid gap-x-4 gap-y-2.5 ${dense ? 'grid-cols-1' : 'grid-cols-2 max-[380px]:grid-cols-1'}`}>
+      <div className={`grid gap-x-4 gap-y-2.5 ${dense ? 'grid-cols-1' : 'grid-cols-2 max-sm:grid-cols-1'}`}>
         {bars.map(r => (
           <RuleBar key={r.id} r={r} dense={dense} />
         ))}

@@ -45,7 +45,7 @@ let bMemory: string | null = null;
 const Fig = ({ children, lit, ink }: { children: ReactNode; lit: boolean; ink?: string }) => (
   <span className={`font-mono text-t12 tnum whitespace-nowrap ${lit ? 'font-semibold' : ''} ${ink ?? (lit ? 'text-textPrimary' : 'text-textSecondary')}`}>{children}</span>
 );
-const Sub = ({ children }: { children: ReactNode }) => <span className="text-t105 text-textSecondary whitespace-nowrap">{children}</span>;
+const Sub = ({ children }: { children: ReactNode }) => <span className="text-t11 text-textSecondary whitespace-nowrap">{children}</span>;
 const dirInk = (v: number) => (v > 0 ? 'text-bull' : v < 0 ? 'text-bear' : 'text-textMuted');
 /** Net puts bought lean bearish (red), sold bullish (green) */
 const putDirInk = (v: number) => dirInk(-v);
@@ -124,7 +124,7 @@ const Capsules = ({ bars, scale, side, lit, run, label, ticker, note }: { bars: 
         /* a leg at zero wears no direction — a nought is not bearish */
         const ink: BarInk = b.v === 0 ? 'mute' : b.ink;
         /* the words sit on the spine's side of both wings, so the two sets face each other */
-        const words = b.after && <span className="text-t105 text-textSecondary whitespace-nowrap shrink-0">{b.after}</span>;
+        const words = b.after && <span className="text-t11 text-textSecondary whitespace-nowrap shrink-0">{b.after}</span>;
         const cap = (
           <span
             className={`inline-flex items-center justify-center rounded-full shrink-0 ${capClass(ink, lit)}`}
@@ -193,7 +193,7 @@ const NameLists = ({ s, side, openKey, onOpen, mny, todayIso }: { s: TraceSide; 
     <div className="px-5 flex items-center gap-2 border-b border-borderSubtle/60 paper-band" style={{ height: CMP_LIST_HEAD_H }}>
       <CompanyLogo ticker={s.ticker} size={14} />
       <span className="text-t12 font-semibold text-textPrimary whitespace-nowrap">{s.ticker}'s heaviest contracts</span>
-      <span className="text-t105 text-textMuted break-words sm:whitespace-nowrap sm:truncate">· by dollars · a row opens the card</span>
+      <span className="text-t11 text-textMuted break-words sm:whitespace-nowrap sm:truncate">· by dollars · a row opens the card</span>
     </div>
     {listOf(s.rows).map(r => (
       <button
@@ -207,36 +207,36 @@ const NameLists = ({ s, side, openKey, onOpen, mny, todayIso }: { s: TraceSide; 
         <span className="min-w-0 flex items-center gap-1.5">
           <ContractCell strike={r.strike} right={r.right} expiry={r.expiry} />
           {floorPackaged(r) ? (
-            <span className="font-mono text-t95 uppercase text-warn whitespace-nowrap" title={`${Math.round(r.floorPct)}% on the floor, ${Math.round(r.multiPct)}% in packages: compression, not a bet`}>
+            <span className="font-mono text-t11 uppercase text-warn whitespace-nowrap" title={`${Math.round(r.floorPct)}% on the floor, ${Math.round(r.multiPct)}% in packages: compression, not a bet`}>
               floor pkg
             </span>
           ) : notABet(r) ? (
-            <span className="font-mono text-t95 uppercase text-warn whitespace-nowrap" title={`${notABetHint(r)}; not ranked`}>
+            <span className="font-mono text-t11 uppercase text-warn whitespace-nowrap" title={`${notABetHint(r)}; not ranked`}>
               {r.multiPct >= 50 ? 'spread legs' : 'a cross'}
             </span>
           ) : stockLike(r) ? (
-            <span className="font-mono text-t95 uppercase text-warn whitespace-nowrap" title={STOCK_LIKE_HINT}>
+            <span className="font-mono text-t11 uppercase text-warn whitespace-nowrap" title={STOCK_LIKE_HINT}>
               stock-like
             </span>
           ) : null}
         </span>
-        <span className="font-mono text-t10 tnum text-textMuted text-right max-sm:hidden">{r.dte}d</span>
+        <span className="font-mono text-t11 tnum text-textMuted text-right max-sm:hidden">{r.dte}d</span>
         <span className="font-mono text-t12 tnum font-semibold text-textPrimary text-right">{fmtUsd(r.premium)}</span>
-        <span className="font-mono text-t105 tnum text-textSecondary text-right whitespace-nowrap max-sm:hidden">{num(r.volume)} vol</span>
+        <span className="font-mono text-t11 tnum text-textSecondary text-right whitespace-nowrap max-sm:hidden">{num(r.volume)} vol</span>
         <span className="flex justify-end">
           <LeanCell askPct={r.askPct} split={r.sideVol} legsPct={r.multiPct} crossPct={r.crossPct} />
         </span>
       </button>
     ))}
     {s.rows.length === 0 && (
-      <div className="px-5 flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted" style={{ height: CMP_LIST_ROW_H }}>
+      <div className="px-5 flex items-center font-mono text-t11 uppercase tracking-widest text-textMuted" style={{ height: CMP_LIST_ROW_H }}>
         Nothing on this cut
       </div>
     )}
     <div className="px-5 flex items-center gap-2 border-y border-borderSubtle/60 paper-band" style={{ height: CMP_LIST_HEAD_H }}>
       <CompanyLogo ticker={s.ticker} size={14} />
       <span className="text-t12 font-semibold text-textPrimary whitespace-nowrap">{s.ticker}'s structures</span>
-      <span className="text-t105 text-textMuted break-words sm:whitespace-nowrap sm:truncate" title={mny !== 'all' ? "A structure's legs span strikes, so the money cut is not applied here; the clock cut is, by the near leg" : undefined}>
+      <span className="text-t11 text-textMuted break-words sm:whitespace-nowrap sm:truncate" title={mny !== 'all' ? "A structure's legs span strikes, so the money cut is not applied here; the clock cut is, by the near leg" : undefined}>
         · most net premium first{mny !== 'all' ? ' · every strike' : ''}
       </span>
     </div>
@@ -250,7 +250,7 @@ const NameLists = ({ s, side, openKey, onOpen, mny, todayIso }: { s: TraceSide; 
       >
         <span className="text-t115 font-semibold text-textPrimary whitespace-nowrap">{kindOf(t)}</span>
         <span className="font-mono text-t12 tnum font-semibold text-textPrimary break-words sm:whitespace-nowrap sm:truncate">{t.strikesLabel}</span>
-        <span className="font-mono text-t10 tnum text-textMuted whitespace-nowrap max-sm:hidden" title={t.farExpiry ? `Near leg ${t.expiry} (${t.dte}d), far leg ${t.farExpiry} (${t.farDte}d)` : undefined}>
+        <span className="font-mono text-t11 tnum text-textMuted whitespace-nowrap max-sm:hidden" title={t.farExpiry ? `Near leg ${t.expiry} (${t.dte}d), far leg ${t.farExpiry} (${t.farDte}d)` : undefined}>
           {t.farExpiry ? `${t.expiry.slice(0, 5)}–${t.farExpiry.slice(0, 5)} · ${t.dte}–${t.farDte}d` : `${t.expiry} · ${t.dte}d`}
         </span>
         <span className="font-mono text-t11 tnum text-right whitespace-nowrap max-sm:hidden">
@@ -272,7 +272,7 @@ const NameLists = ({ s, side, openKey, onOpen, mny, todayIso }: { s: TraceSide; 
       </div>
     ))}
     {s.structures.list.length === 0 && (
-      <div className="px-5 flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted" style={{ height: CMP_LIST_ROW_H }}>
+      <div className="px-5 flex items-center font-mono text-t11 uppercase tracking-widest text-textMuted" style={{ height: CMP_LIST_ROW_H }}>
         No structures on this cut {isLiveDay(todayIso) ? 'today' : `on ${shortDay(todayIso)}`}
       </div>
     )}
@@ -889,7 +889,7 @@ const Compare = () => {
           {/* on a phone the pair takes the whole row and a wide chip wraps inside itself; the extended-hours move hides */}
           <span className="flex items-center gap-1.5 max-sm:col-span-2 max-sm:flex-wrap max-sm:gap-y-2 [&_[data-scope]]:shrink-0 max-sm:[&_[data-scope]]:shrink max-sm:[&_[data-scope]]:max-w-[calc(100%-1rem)] max-sm:[&_[data-scope]]:h-auto max-sm:[&_[data-scope]]:min-h-6 max-sm:[&_[data-scope-pick]]:flex-wrap max-sm:[&_[data-scope-pick]]:py-1 max-sm:[&_[data-scope-pick]]:gap-y-1 max-sm:[&_[data-scope-ext]]:hidden" data-compare-names>
             <span className="inline-flex items-center gap-1.5 min-w-0 max-sm:flex-1" data-compare-pair="a">
-              <span className="font-mono text-t9 uppercase tracking-widest text-textMuted shrink-0">A</span>
+              <span className="font-mono text-t11 uppercase tracking-widest text-textMuted shrink-0">A</span>
               <ScopeChip ticker={aTicker} linked={aFollows} full quote closeOutside arrive={false} onToggleLink={() => setAPick(aFollows ? aTicker : null)} onPick={next => (aFollows ? changeTicker(next) : setAPick(next))} />
             </span>
             <button
@@ -903,7 +903,7 @@ const Compare = () => {
               <ArrowLeftRight className="w-3.5 h-3.5" />
             </button>
             <span className="inline-flex items-center gap-1.5 min-w-0 max-sm:w-full max-sm:pr-9" data-compare-pair="b">
-              <span className="font-mono text-t9 uppercase tracking-widest text-textMuted shrink-0">B</span>
+              <span className="font-mono text-t11 uppercase tracking-widest text-textMuted shrink-0">B</span>
               <ScopeChip ticker={bTicker} quote closeOutside arrive={false} onPick={next => setBPick(next)} title="The second name: pick another" />
             </span>
           </span>
@@ -943,13 +943,13 @@ const Compare = () => {
                 <span className="font-mono text-t11 font-bold text-textPrimary">{a.ticker}</span>
               </span>
               {/* the spine is the one bright column on paper; paper-* classes leave the dark theme untouched */}
-              <span className={`self-stretch flex items-center justify-center paper-panel paper-edge-x font-mono text-t9 uppercase tracking-widest text-textMuted ${phone ? 'bg-borderSubtle/60' : ''}`} data-compare-spine>
+              <span className={`self-stretch flex items-center justify-center paper-panel paper-edge-x font-mono text-t11 uppercase tracking-widest text-textMuted ${phone ? 'bg-borderSubtle/60' : ''}`} data-compare-spine>
                 {phone ? '' : 'against'}
               </span>
               <span className="flex items-center gap-1.5" data-compare-head="b">
                 <CompanyLogo ticker={b.ticker} size={14} />
                 <span className="font-mono text-t11 font-bold text-textPrimary">{b.ticker}</span>
-                <span className={`ml-auto font-mono text-t8 uppercase tracking-widest whitespace-nowrap max-sm:hidden ${pinned ? 'text-textSecondary' : 'text-textMuted'}`} data-compare-why>
+                <span className={`ml-auto font-mono text-t11 uppercase tracking-widest whitespace-nowrap max-sm:hidden ${pinned ? 'text-textSecondary' : 'text-textMuted'}`} data-compare-why>
                   {pinned ? 'in focus · click outside to let go' : 'click a row to keep it'}
                 </span>
               </span>
@@ -964,7 +964,7 @@ const Compare = () => {
               />
               {sections.map(sec => (
                 <Fragment key={sec.title}>
-                  <div className={`${gutter} flex items-center border-t border-borderSubtle/60 paper-indent paper-band paper-bold font-mono text-t9 uppercase tracking-widest text-textPrimary truncate`} style={{ height: CMP_SECTION_H }} data-compare-section={sec.title}>
+                  <div className={`${gutter} flex items-center border-t border-borderSubtle/60 paper-indent paper-band paper-bold font-mono text-t11 uppercase tracking-widest text-textPrimary truncate`} style={{ height: CMP_SECTION_H }} data-compare-section={sec.title}>
                     {sec.title}
                   </div>
                   {sec.rows.map(r => (
@@ -983,7 +983,7 @@ const Compare = () => {
                       {phone && (
                         <span className="flex flex-col items-center leading-none pt-1.5 pb-1" data-compare-fact title={r.hint}>
                           <span className="text-t11 text-textSecondary whitespace-nowrap">{r.label}</span>
-                          <span className="mt-[3px] text-t95 text-textMuted whitespace-nowrap truncate max-w-full" data-compare-note>
+                          <span className="mt-[3px] text-t11 text-textMuted whitespace-nowrap truncate max-w-full" data-compare-note>
                             {r.note}
                           </span>
                         </span>
@@ -997,7 +997,7 @@ const Compare = () => {
                         ) : (
                           <span className="min-w-0 self-stretch flex flex-col items-center justify-center leading-none paper-panel paper-edge-x" title={r.hint}>
                             <span className="text-t11 text-textSecondary group-hover:text-textPrimary transition-colors duration-150 whitespace-nowrap">{r.label}</span>
-                            <span className="mt-[3px] text-t95 text-textMuted group-hover:text-textSecondary transition-colors duration-150 whitespace-nowrap truncate max-w-full" data-compare-note>
+                            <span className="mt-[3px] text-t11 text-textMuted group-hover:text-textSecondary transition-colors duration-150 whitespace-nowrap truncate max-w-full" data-compare-note>
                               {r.note}
                             </span>
                           </span>

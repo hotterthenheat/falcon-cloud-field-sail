@@ -231,14 +231,14 @@ const NetFlow = () => {
       <div className="flex max-md:flex-col md:flex-1 md:min-h-0 border-t border-borderSubtle">
         <div ref={boardRef} className="md:w-[304px] shrink-0 md:border-r max-md:border-b max-md:max-h-[306px] border-borderSubtle overflow-y-auto" data-net-board>
           {leaders.length > 0 && (
-            <div className="sticky top-0 z-10 bg-panel flex items-center gap-2 px-3 py-1.5 border-b border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textMuted" data-net-board-head>
+            <div className="sticky top-0 z-10 bg-panel flex items-center gap-2 px-3 py-1.5 border-b border-borderSubtle font-mono text-t11 uppercase tracking-wider text-textMuted" data-net-board-head>
               <span className="w-5">#</span>
               <span className="flex-1">Name · share of lean</span>
               <span title={`Each name's whole day, pre-market in. The pane reads 09:30 on, so its figure can differ. ${VENDOR_TOTAL_NOTE}`}>Day net</span>
             </div>
           )}
           {leaders.length === 0 && (
-            <p className="px-4 py-6 font-mono text-t10 uppercase tracking-widest text-textMuted" data-net-board-empty>
+            <p className="px-4 py-6 font-mono text-t11 uppercase tracking-widest text-textMuted" data-net-board-empty>
               {boardReading ? 'Reading the board…' : top.fault ? 'This read did not land' : `No name has leaned yet ${dayAdv()}`}
             </p>
           )}
@@ -274,7 +274,7 @@ const NetFlow = () => {
         </div>
         <div className="flex-1 min-w-0 p-2 max-md:h-[460px] max-md:flex-none">
           {sel == null ? (
-            <p className="px-4 py-6 font-mono text-t10 uppercase tracking-widest text-textMuted" data-net-pane-waiting>
+            <p className="px-4 py-6 font-mono text-t11 uppercase tracking-widest text-textMuted" data-net-pane-waiting>
               Reading the board — the pane opens on its first name
             </p>
           ) : (

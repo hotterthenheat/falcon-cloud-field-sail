@@ -41,12 +41,12 @@ const DP_SHELVES = 6;
 
 /* ---- the head ------------------------------------------------------------------ */
 
-/** The shell's head as itself: the page's icon and name */
+/** The shell's head as itself: the page's icon, name and line */
 const TraceStripSkeleton = ({ pathname }: { pathname: string }) => {
   const active = TRACE_SUBPAGES.find(p => pathname.startsWith(p.path)) ?? TRACE_SUBPAGES[0];
   const PageIcon = active.icon;
   return (
-    <header className="flex items-start gap-6 flex-wrap pb-3 border-b border-borderSubtle" aria-hidden data-skeleton="trace-head">
+    <header className="flex items-start gap-6 flex-wrap pb-3 max-sm:pb-2 border-b border-borderSubtle" aria-hidden data-skeleton="trace-head">
       <div className="min-w-0 flex-1">
         <div className="h-6 flex items-center gap-2.5">
           <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0">
@@ -54,6 +54,7 @@ const TraceStripSkeleton = ({ pathname }: { pathname: string }) => {
           </span>
           <span className="text-t15 font-semibold leading-tight text-textPrimary">{active.label}</span>
         </div>
+        <p className="mt-0.5 text-t11 text-textMuted sm:whitespace-nowrap sm:truncate max-sm:hidden">{active.line}</p>
       </div>
     </header>
   );

@@ -44,6 +44,8 @@ const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
 /* the reason wraps to two lines, so it takes the room */
 const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, reason: 212, clip: 132, clipprem: 100, sideCol: 92, otm: 76, earn: 128 };
 const FLEXES: Record<string, number> = { reason: 3 };
+/* the reason is words: two lines and its hover, giving way to the figures first */
+const PROSE = ['reason'];
 const PIN_LEFT = ['time', 'ticker', 'contract'];
 const PIN_RIGHT = ['clipprem'];
 const WATCHER_CUTS = createViewStore('slayer_watchers_cuts_v1');
@@ -374,7 +376,7 @@ const Watchers = () => {
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight onVisible={vis => pairOiFor(vis.map(a => a.row))} endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts on the book', 'the list for the day is done', hold.paused, 'Load more ↓')} emptyText={query.trim() && book.some(r => matchesContract(query, r)) ? `${query.trim()} is on ${bookWord} but meets no reason ${dayAdv()}` : query.trim() && catches.length > 0 ? searchMiss(query, 'catch') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the watchers run when the book answers' : 'Nothing on the book meets a reason yet'} testId="watchers" />
+        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} prose={PROSE} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight onVisible={vis => pairOiFor(vis.map(a => a.row))} endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts on the book', 'the list for the day is done', hold.paused, 'Load more ↓')} emptyText={query.trim() && book.some(r => matchesContract(query, r)) ? `${query.trim()} is on ${bookWord} but meets no reason ${dayAdv()}` : query.trim() && catches.length > 0 ? searchMiss(query, 'catch') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the watchers run when the book answers' : 'Nothing on the book meets a reason yet'} testId="watchers" />
       </TraceBox>
 
       <BookDrill list={drillList} openKey={openKey} onOpen={setOpenKey} />

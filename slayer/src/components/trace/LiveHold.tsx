@@ -7,7 +7,6 @@ import { Pause, Play } from 'lucide-react';
 import { heldFresh, lastRegularClose, marketPhase, noteTraceHold, type MarketPhase } from '../../data/traceLive';
 import { FLOW_TTL_MS, StaleMark } from '../ui/liveRead';
 import type { FeedFault } from '../ui/liveRead';
-import { useResolvedTheme } from '../../theme/theme';
 import { shortDay } from './dayWords';
 
 /* the badge is a label, never the pause button */
@@ -93,7 +92,7 @@ export const SessionMark = ({ at, fault, paused = false, ttlMs = FLOW_TTL_MS, ke
   const ttl = ph === 'regular' || ph === 'late' ? ttlMs : Math.max(ttlMs, ph === 'pre' ? 150_000 : 45_000);
   if (closed)
     return (
-      <span className="inline-flex items-center gap-1 font-mono text-t9 uppercase tracking-widest text-textMuted" title={`The ${shortDay(closed.iso)} session has closed; its figures no longer change`} data-stale="closed">
+      <span className="inline-flex items-center gap-1 font-mono text-t11 uppercase tracking-widest text-textMuted" title={`The ${shortDay(closed.iso)} session has closed; its figures no longer change`} data-stale="closed">
         <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-textMuted" />
         Closed · {shortDay(closed.iso)}
       </span>
@@ -109,7 +108,7 @@ export const SessionMark = ({ at, fault, paused = false, ttlMs = FLOW_TTL_MS, ke
 export const KeptMark = ({ at, fault = null }: { at: number; fault?: FeedFault | null }) => {
   const today = nyIsoDate() === nyIsoDate(at);
   return (
-    <span className={`inline-flex items-center gap-1 font-mono text-t9 uppercase tracking-widest ${fault ? 'text-warn' : 'text-textMuted'}`} title={fault ? 'The fresh read did not land; these are the figures from before' : 'Figures from before; the fresh read is loading'} data-stale="kept">
+    <span className={`inline-flex items-center gap-1 font-mono text-t11 uppercase tracking-widest ${fault ? 'text-warn' : 'text-textMuted'}`} title={fault ? 'The fresh read did not land; these are the figures from before' : 'Figures from before; the fresh read is loading'} data-stale="kept">
       <span aria-hidden className={`inline-block h-1.5 w-1.5 rounded-full ${fault ? 'bg-warn' : 'bg-textMuted'}`} />
       As of {today ? '' : `${nyDay(at)} `}
       {nyClock(at)} ET{fault ? ' · refresh failed' : ''}
@@ -119,7 +118,6 @@ export const KeptMark = ({ at, fault = null }: { at: number; fault?: FeedFault |
 
 export const LiveHold = ({ paused, onToggle, heldAt, waitingFirst = false }: { paused: boolean; onToggle: () => void; heldAt?: Date | null; waitingFirst?: boolean }) => {
   const phase = usePhase();
-  const paper = useResolvedTheme() === 'light';
   const live = phase === 'regular' || phase === 'late';
   return (
     <span className="inline-flex items-center gap-2 shrink-0" data-live-hold data-session-phase={phase}>
@@ -132,27 +130,34 @@ export const LiveHold = ({ paused, onToggle, heldAt, waitingFirst = false }: { p
         {live && <span className="w-1.5 h-1.5 rounded-full bg-silver animate-live-breathe" aria-hidden />}
         {PHASE_WORD[phase]}
       </span>
+      {/* A quiet outline control, not the page's brightest thing: the state is the dot and the word — a following page
+          says Pause beside a calm dot, a held one turns amber and says Paused, and since when */}
       <button
         onClick={onToggle}
         aria-pressed={paused}
         title={paused ? (waitingFirst ? 'Paused — holds at the first read' : heldAt ? `Held as of ${clock(heldAt)} — resume to follow the feed` : 'Resume — follow the feed again') : 'Pause — hold the page until you resume'}
-        className={`inline-grid place-items-center px-3 py-1.5 rounded-md border font-mono text-t11 font-semibold uppercase tracking-wider transition-colors ${
-          paused ? 'border-warn/40 bg-warn/[0.06] text-warn hover:bg-warn/[0.1]' : paper ? 'relative foil-glide galaxy-bg border-transparent' : 'relative foil-glide holo-bg text-onfoil border-transparent hover:opacity-90'
+        className={`inline-grid place-items-center px-3 py-1.5 rounded-md border bg-transparent font-mono text-t11 font-semibold uppercase tracking-wider transition-colors ${
+          paused ? 'border-warn/50 text-warn hover:bg-warn/[0.08]' : 'border-borderMuted text-textSecondary hover:text-textPrimary hover:border-textMuted hover:bg-ink/[0.04]'
         }`}
         data-hold-button
+        data-held={paused || undefined}
       >
-        {/* the wider label always sits in the box, invisible, so Pause and Resume share one width */}
+        {/* the wider label always sits in the box, invisible, so Pause and Paused share one width */}
         <span className="invisible col-start-1 row-start-1 inline-flex items-center gap-1.5 whitespace-nowrap" aria-hidden>
-          <Play className="w-3 h-3" /> Resume · 00:00 ET
+          <span className="w-1.5 h-1.5" /> Paused · 00:00 ET <Play className="w-3 h-3" />
         </span>
         <span className="col-start-1 row-start-1 inline-flex items-center gap-1.5 whitespace-nowrap">
           {paused ? (
             <>
-              <Play className="w-3 h-3" /> {waitingFirst ? 'Holds' : heldAt ? `Resume · ${clock(heldAt)}` : 'Resume'}
+              <span className="w-1.5 h-1.5 rounded-full bg-warn" aria-hidden />
+              {waitingFirst ? 'Paused' : heldAt ? `Paused · ${clock(heldAt)}` : 'Paused'}
+              <Play className="w-3 h-3" aria-hidden />
             </>
           ) : (
             <>
-              <Pause className="w-3 h-3" /> Pause
+              <span className={`w-1.5 h-1.5 rounded-full ${live ? 'bg-silver' : 'bg-textMuted'}`} aria-hidden />
+              Pause
+              <Pause className="w-3 h-3" aria-hidden />
             </>
           )}
         </span>

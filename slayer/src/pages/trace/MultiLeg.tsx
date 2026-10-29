@@ -48,6 +48,8 @@ const MONEY_OPTIONS: DropdownOption<'ALL' | 'DEBIT' | 'CREDIT'>[] = [
   { value: 'CREDIT', label: 'Collected', hint: 'Structures that paid the trader to put on' },
 ];
 /* the set at rest fits a 1440 box beside the pinned risk columns */
+/* the strategy is words: two lines and its hover, giving way to the figures first */
+const PROSE = ['kind'];
 const WIDTHS: Record<string, number> = { time: 100, ticker: 84, strikes: 136, exp: 104, size: 56, net: 124, prem: 124, legs: 56, kind: 160, maxloss: 88, maxprofit: 88 };
 /* who on the left, the risk at the right, both always on screen */
 const PIN_LEFT = ['time', 'ticker'];
@@ -142,11 +144,11 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[trade.kind] }} />
             <span className="truncate">{t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}</span>
           </span>
-          {trade.extended && <span className="font-mono text-t10 uppercase tracking-wider text-textMuted whitespace-nowrap" title="Filled after hours against thin quotes; shown, not read for direction">after hours · not read</span>}
-          {trade.compression && <span className="font-mono text-t10 uppercase tracking-wider text-warn whitespace-nowrap" title={COMPRESSION_HINT}>compression · not a bet</span>}
-          {t.unverified && <span className="font-mono text-t10 uppercase tracking-wider text-warn whitespace-nowrap" title={UNVERIFIED_HINT}>unverified</span>}
-          {t.vendorShape && <span className="font-mono text-t10 text-textMuted whitespace-nowrap" title="Listed under another name; its legs as bought and sold say otherwise">listed as {t.vendorShape}</span>}
-          {t.namedBy === 'vendor' && !t.compression && <span className="font-mono text-t10 text-textMuted whitespace-nowrap" title={t.legsState === 'pending' ? 'The listed name; its legs are still being read' : 'The listed name; its legs do not settle into buys and sells that add up to its net'}>as listed</span>}
+          {trade.extended && <span className="font-mono text-t11 uppercase tracking-wider text-textMuted whitespace-nowrap" title="Filled after hours against thin quotes; shown, not read for direction">after hours · not read</span>}
+          {trade.compression && <span className="font-mono text-t11 uppercase tracking-wider text-warn whitespace-nowrap" title={COMPRESSION_HINT}>compression · not a bet</span>}
+          {t.unverified && <span className="font-mono text-t11 uppercase tracking-wider text-warn whitespace-nowrap" title={UNVERIFIED_HINT}>unverified</span>}
+          {t.vendorShape && <span className="font-mono text-t11 text-textMuted whitespace-nowrap" title="Listed under another name; its legs as bought and sold say otherwise">listed as {t.vendorShape}</span>}
+          {t.namedBy === 'vendor' && !t.compression && <span className="font-mono text-t11 text-textMuted whitespace-nowrap" title={t.legsState === 'pending' ? 'The listed name; its legs are still being read' : 'The listed name; its legs do not settle into buys and sells that add up to its net'}>as listed</span>}
         </span>
       }
       headerActions={
@@ -261,7 +263,7 @@ const phoneRow = (t: SpreadTrade) => (
         <CompanyLogo ticker={t.ticker} size={15} />
         <span className="font-bold">{t.ticker}</span>
         <span className="truncate">{shapeWord(t)}</span>
-        {t.compression && <span className="text-t10 uppercase text-warn shrink-0" title={COMPRESSION_HINT}>compression</span>}
+        {t.compression && <span className="text-t11 uppercase text-warn shrink-0" title={COMPRESSION_HINT}>compression</span>}
       </>
     }
     aside={t.extended ? `${t.time} ET · AH` : `${t.time} ET`}
@@ -449,8 +451,8 @@ const MultiLeg = () => {
           <span className="inline-flex items-center gap-1.5">
             <WatchStar k={structureKey(t)} make={() => watchStructure(t, 'multi-leg')} noun="structure" />
             <span className="text-t11 text-textPrimary">{t.time}</span>
-            {t.extended && <span className="text-t10 uppercase text-textMuted" title="Filled outside the regular session (before 09:30, or after 16:00 ET for stocks, 16:15 for index options)">AH</span>}
-            {t.repeats ? <span className="text-t10 text-textMuted" title={`Sent ${t.repeats + 1} times under other ids with the same legs, size, money and second; shown once`}>×{t.repeats + 1}</span> : null}
+            {t.extended && <span className="text-t11 uppercase text-textMuted" title="Filled outside the regular session (before 09:30, or after 16:00 ET for stocks, 16:15 for index options)">AH</span>}
+            {t.repeats ? <span className="text-t11 text-textMuted" title={`Sent ${t.repeats + 1} times under other ids with the same legs, size, money and second; shown once`}>×{t.repeats + 1}</span> : null}
           </span>
         ),
       },
@@ -470,30 +472,30 @@ const MultiLeg = () => {
         header: 'Strategy',
         sortValue: t => t.kind,
         render: t => (
-          <span className="inline-flex max-w-full items-center gap-1.5 text-t11 text-textPrimary whitespace-nowrap overflow-hidden" title={`${shapeWord(t)}${t.legsState === 'pending' ? ' (listed name, reading its legs)' : ''}: ${t.read ?? KIND_META[t.kind].read}`}>
+          <span className="inline-flex max-w-full items-center gap-1.5 align-middle text-t11 leading-tight text-textPrimary whitespace-normal overflow-hidden" title={`${shapeWord(t)}${t.legsState === 'pending' ? ' (listed name, reading its legs)' : ''}: ${t.read ?? KIND_META[t.kind].read}`}>
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[t.kind] }} />
-            <span className={`truncate ${t.legsState === 'pending' ? 'text-textSecondary' : ''}`}>{shapeWord(t)}</span>
+            <span className={`min-w-0 line-clamp-2 ${t.legsState === 'pending' ? 'text-textSecondary' : ''}`}>{shapeWord(t)}</span>
             {t.namedBy === 'vendor' && !t.compression && t.legsState !== 'pending' && (
-              <span className="text-t10 text-textMuted shrink-0" title={t.legsState === 'none' ? 'The listed name; its legs did not load' : 'The listed name; its legs do not settle into buys and sells that add up to its net'} data-feed-name>
+              <span className="text-t11 text-textMuted shrink-0" title={t.legsState === 'none' ? 'The listed name; its legs did not load' : 'The listed name; its legs do not settle into buys and sells that add up to its net'} data-feed-name>
                 as listed
               </span>
             )}
             {t.splitOf && (
-              <span className="text-t10 text-textMuted shrink-0" title={`Same second, strikes and name as a ${t.splitOf}; its own legs make ${t.shape}. Likely one order in pieces, never crowned`} data-split-order>
+              <span className="text-t11 text-textMuted shrink-0" title={`Same second, strikes and name as a ${t.splitOf}; its own legs make ${t.shape}. Likely one order in pieces, never crowned`} data-split-order>
                 piece of a {t.splitOf}
               </span>
             )}
             {t.unverified && !t.compression && (
-              <span className="text-t10 uppercase text-warn shrink-0" title={UNVERIFIED_HINT} data-unverified>
+              <span className="text-t11 uppercase text-warn shrink-0" title={UNVERIFIED_HINT} data-unverified>
                 unverified
               </span>
             )}
             {t.compression ? (
-              <span className="text-t10 uppercase text-warn" title={COMPRESSION_HINT}>
+              <span className="text-t11 uppercase text-warn" title={COMPRESSION_HINT}>
                 compression · not a bet
               </span>
             ) : t.extended ? (
-              <span className="text-t10 uppercase text-textMuted" title="Filled after hours against thin quotes; shown, not read for direction">
+              <span className="text-t11 uppercase text-textMuted" title="Filled after hours against thin quotes; shown, not read for direction">
                 not read
               </span>
             ) : null}
@@ -716,7 +718,7 @@ const MultiLeg = () => {
         lead={leadLine}
         detail={read}
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill ? (() => { const hit = shown.find(t => t.id === drill.id); return hit ? keyOf(hit) : null; })() : null} initialSort={{ key: 'time', dir: 'desc' }} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight onVisible={onVisible} endless={endlessOf(pack.older, 'structures', `the ${session === 'regular' ? 'session' : 'day'}'s start reached`, hold.paused)} key={tapeState} emptyText={cutQuery.trim() && trades.length > 0 ? searchMiss(cutQuery, 'structure') : tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : `No structures on this cut ${dayAdv()}`} testId="multi-leg" />
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} prose={PROSE} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill ? (() => { const hit = shown.find(t => t.id === drill.id); return hit ? keyOf(hit) : null; })() : null} initialSort={{ key: 'time', dir: 'desc' }} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight onVisible={onVisible} endless={endlessOf(pack.older, 'structures', `the ${session === 'regular' ? 'session' : 'day'}'s start reached`, hold.paused)} key={tapeState} emptyText={cutQuery.trim() && trades.length > 0 ? searchMiss(cutQuery, 'structure') : tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : `No structures on this cut ${dayAdv()}`} testId="multi-leg" />
         {/* the sentence and the grid already say a failed read; this mark is for a stale read under an empty cut */}
         {pack.fault && tapeState === 'in' && shown.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>

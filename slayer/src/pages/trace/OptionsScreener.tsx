@@ -266,7 +266,7 @@ const OptionsScreener = () => {
         sortValue: r => r.deltaOI,
         render: r => {
           /* a row still on the count before names its day, in plain ink */
-          const lag = oiLags(r, oiCover) && r.oiDay ? <span className="mr-1 text-t10 text-textMuted">{shortDay(r.oiDay)}</span> : null;
+          const lag = oiLags(r, oiCover) && r.oiDay ? <span className="mr-1 text-t11 text-textMuted">{shortDay(r.oiDay)}</span> : null;
           if (r.deltaOI === 0) return <span className="text-textSecondary" title={oiRowTitle(r)}>{lag}—</span>;
           const a = Math.abs(r.deltaOI);
           const tone = lag ? 'text-textPrimary' : a >= marks.doi.top ? 'text-supreme font-bold' : a >= marks.doi.bar ? (r.deltaOI > 0 ? 'text-bull dir-up' : 'text-bear dir-down') : 'text-textPrimary';

@@ -375,7 +375,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
           {/* The head names the measure (net gamma, in dollars), the full definition on hover. */}
           <div className="h-[20px] px-2 font-mono text-t9 uppercase tracking-widest text-textMuted whitespace-nowrap flex items-center gap-2 min-w-0" data-build-measure>
             <Term k="The wall now">The wall now</Term>
-            {!compact && <span className="normal-case tracking-normal text-textMuted/70">· net gamma at the strike, in dollars</span>}
+            {!compact && <span className="normal-case tracking-normal text-textMuted">· net gamma at the strike, in dollars</span>}
           </div>
           <div className="h-[20px] px-2 font-mono text-t9 uppercase tracking-widest text-textMuted text-right" title="How much the wall at the strike grew or shrank in the latest open-interest count: the size of its net gamma now against before, |now| − |was|, in dollars. A put-heavy wall whose net went from −$766M to −$595M SHRANK $171M — building and draining are the wall's size, not the contracts counted. The call wall is read by its call gamma and the put wall by its put gamma (the leg that makes each); a strike that changed sides shows both figures. The same figure as the head's grew / shrank most, the Agenda and the Map's report">Wall size</div>
           {!compact && <div className="h-[20px] px-2 font-mono text-t9 uppercase tracking-widest text-textMuted text-right" title="The part of the change from call contracts">Calls</div>}

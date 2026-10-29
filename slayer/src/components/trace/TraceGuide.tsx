@@ -257,8 +257,8 @@ const OiChangeFigure = () => (
   <Figure label="One contract's open interest: yesterday 576,487, today 681,730, the change +105,243 +18% in bold green, built on ASK 66% as a lean bar in one ink" h={58}>
     <Head x={14} y={12}>PREV OI</Head>
     <Head x={110} y={12}>OI</Head>
-    <Head x={200} y={12}>ΔOI</Head>
-    <Head x={290} y={12}>ΔOI %</Head>
+    <Head x={200} y={12}>OI CHANGE</Head>
+    <Head x={290} y={12}>% OF PRIOR</Head>
     <Head x={344} y={12}>BUILT ON</Head>
     <text x={14} y={36} fontSize={10} fill={SECOND} fontFamily={MONO}>
       576,487

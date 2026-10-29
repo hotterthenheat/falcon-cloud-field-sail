@@ -451,7 +451,8 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
     const inside = (lng: number, lat: number) => whole || bounds.contains([lng, lat]);
     const quiet = theme === 'light';
     const nameInk = quiet ? 'rgba(28,34,40,0.78)' : 'rgba(232,236,242,0.88)';
-    const softInk = quiet ? 'rgba(28,34,40,0.42)' : 'rgba(214,220,228,0.48)';
+    /* the gazetteer's names clear AA (4.5:1) on the map's ground at 11px — they were 3.9:1 at 10px */
+    const softInk = quiet ? 'rgba(28,34,40,0.66)' : 'rgba(214,220,228,0.64)';
     const placed: { x: number; y: number }[] = [];
     const crowded = (lng: number, lat: number, gap: number) => {
       const pt = map.project([lng, lat]);
@@ -594,7 +595,7 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
       name.textContent = news ? (mute.has(c.n) ? '' : `${c.n}  ${news.n}`) : c.n;
       if (news && mute.has(c.n)) el.title = `${c.n} · ${news.n} ${news.n === 1 ? 'story' : 'stories'}`;
       name.dataset.newsCity = c.n;
-      name.style.cssText = `font:${news ? 600 : 500} ${news ? 11 : 10}px/1.15 ui-sans-serif,system-ui,sans-serif;color:${news ? nameInk : softInk};white-space:nowrap;text-shadow:0 1px 2px ${quiet ? 'rgba(255,255,255,0.8)' : '#0b1016'};`;
+      name.style.cssText = `font:${news ? 600 : 500} 11px/1.15 ui-sans-serif,system-ui,sans-serif;color:${news ? nameInk : softInk};white-space:nowrap;text-shadow:0 1px 2px ${quiet ? 'rgba(255,255,255,0.8)' : '#0b1016'};`;
       el.append(dot, name);
       markers.push(new maplibregl.Marker({ element: el, anchor: box.flip ? 'right' : 'left' }).setLngLat([c.lng, c.lat]).addTo(map));
     }
