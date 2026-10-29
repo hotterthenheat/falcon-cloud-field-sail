@@ -221,11 +221,14 @@ const Pulse = () => {
     const id = window.setInterval(ask, BOOK_MS);
     return () => window.clearInterval(id);
   }, [names]);
-  /* a sweep at most every ten seconds — the book can land more often than the tiles need to rebuild */
+  /* a sweep at most every ten seconds — the book can land more often than the tiles need to rebuild — except the
+     first time a name's book lands: its tiles fill at once instead of waiting out the interval */
   const [sweep, setSweep] = useState(0);
   const lastSweep = useRef(0);
+  const built = useRef(new Set<string>());
   useEffect(() => {
-    const due = SCAN_INTERVAL_MS - (Date.now() - lastSweep.current);
+    const landed = names.some(t => !built.current.has(t) && snapshotOf(t) != null);
+    const due = landed ? 0 : SCAN_INTERVAL_MS - (Date.now() - lastSweep.current);
     if (due <= 0) {
       lastSweep.current = Date.now();
       setSweep(n => n + 1);
@@ -250,6 +253,7 @@ const Pulse = () => {
         /* a name the book cannot build is skipped — its tile says so */
       }
     }
+    built.current = new Set(map.keys());
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sweep, names]);
