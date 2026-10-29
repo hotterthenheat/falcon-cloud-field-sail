@@ -58,10 +58,11 @@ const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpe
       <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-borderSubtle">
         <ContractLabel contract={s.contract} right={s.right} logo={s.ticker} size="sm" />
         <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">Book {s.book}</span>
+        {s.how === 'late' && <span className="font-mono text-t10 text-warn border border-warn/40 rounded px-1.5 py-0.5" title="Scored after its mark from the quotes ThetaData recorded at the mark">Late</span>}
         {tracked && <Bookmark className="w-3.5 h-3.5 text-textSecondary" aria-label="Tracked" />}
         <span className={`ml-auto font-mono text-t10 uppercase tracking-wider ${state.tone}`}>{state.word}</span>
       </div>
-      <div className="grid grid-cols-4 gap-px bg-borderSubtle/30">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-borderSubtle/30">
         <Cell label="Model 1" value={s.p1 != null ? `${(s.p1 * 100).toFixed(1)}%` : 'No model'} />
         <Cell label="At call" value={`${s.bid.toFixed(2)}×${s.ask.toFixed(2)}`} />
         <Cell label="Filled" value={paid > 0 ? money(paid) : '—'} />
