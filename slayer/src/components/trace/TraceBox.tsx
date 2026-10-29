@@ -181,11 +181,13 @@ export const PhoneRow = ({ lead, title, aside, figures }: { lead?: ReactNode; ti
 const PROSE_FLOOR = 140;
 
 /** A page's Column<T> definitions as AG Grid columns — the cells, inks and doors untouched. `fit` is the width a
-    column's widest figure or header was measured to need (TraceGrid's fit pass): a floor, so no figure is ever cut. */
+    column's widest figure and its header were measured to need (TraceGrid's fit pass): the column's floor, so no
+    figure is ever cut, and a column with room to spare can give it up before the box runs out. */
 function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: Record<string, number> = {}, tooltips: Record<string, string> = {}, flexes: Record<string, number> = {}, lock = false, fit: Record<string, number> = {}, prose: Set<string> = new Set()): ColDef<T>[] {
   return columns.map(c => {
     const set = widths[c.key] ?? (c.width ? parseInt(c.width, 10) : undefined);
-    const fixed = set != null && fit[c.key] ? Math.max(set, fit[c.key]) : set;
+    const need = prose.has(c.key) ? undefined : fit[c.key];
+    const fixed = set != null && need ? Math.max(set, need) : set;
     const def: ColDef<T> = {
       colId: c.key,
       headerName: typeof c.header === 'string' ? c.header : c.key.charAt(0).toUpperCase() + c.key.slice(1),
@@ -202,13 +204,16 @@ function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: 
        is its width times its flex, and its floor gives way first */
     if (fixed) {
       def.width = fixed;
-      def.minWidth = prose.has(c.key) ? Math.min(fixed, PROSE_FLOOR) : fixed;
+      def.minWidth = prose.has(c.key) ? Math.min(fixed, PROSE_FLOOR) : need ?? fixed;
       def.flex = fixed * (flexes[c.key] ?? 1);
-      if (lock) def.resizable = false;
+      if (lock) {
+        def.resizable = false;
+        def.minWidth = fixed;
+      }
     } else {
       def.flex = flexes[c.key] ?? 1;
       /* the widest standard cell (the Lean bar, 64px) plus the grid's 24px padding, or the cell paints a clipped ".." */
-      def.minWidth = Math.max(92, prose.has(c.key) ? 0 : fit[c.key] ?? 0);
+      def.minWidth = need ?? 92;
     }
     return def;
   });
@@ -320,35 +325,49 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
   const endlessOn = !!endless;
   const proseKey = (prose ?? []).join(',');
   const proseSet = useMemo(() => new Set(proseKey ? proseKey.split(',') : []), [proseKey]);
-  /* The fit pass: a figure or a header wider than its column raises that column's floor to fit it — never a "+83…".
-     It only grows (a live tick never makes the columns breathe), and words columns are left to wrap. */
+  /* The fit pass: each column's widest figure and its header, measured, become its floor — never a "+83…", never a
+     "Swe…". A floor only rises (a live tick never makes the columns breathe); it passes the page's set width only when
+     a figure would otherwise be cut. Words columns are left to wrap. */
   const [fit, setFit] = useState<Record<string, number>>({});
   const fitTimer = useRef(0);
+  const setWidthOf = (key: string): number | undefined => {
+    const c = columns.find(x => x.key === key);
+    return widths?.[key] ?? (c?.width ? parseInt(c.width, 10) : undefined);
+  };
   const measureFit = () => {
     window.clearTimeout(fitTimer.current);
     fitTimer.current = window.setTimeout(() => {
       const wrap = wrapRef.current;
       if (!wrap || phone || lockColumns) return;
       const need: Record<string, number> = {};
-      const want = (id: string | null, px: number) => {
-        if (id && id !== 'phone' && !proseSet.has(id)) need[id] = Math.max(need[id] ?? 0, Math.ceil(px));
-      };
-      /* the content's own width, to the subpixel: scrollWidth rounds, and a 0.4px overflow still paints an ellipsis */
+      /* the content's own width, to the subpixel: scrollWidth rounds, and a 0.1px overflow still paints an ellipsis */
       const range = document.createRange();
       const contentW = (el: HTMLElement) => {
         range.selectNodeContents(el);
         return range.getBoundingClientRect().width;
       };
+      const want = (id: string | null, px: number, cut: boolean) => {
+        if (!id || id === 'phone' || proseSet.has(id)) return;
+        const set = setWidthOf(id);
+        /* an uncut column keeps its set width as the most it asks for: a bar drawn to the cell's width is not a need */
+        const w = Math.ceil(cut || set == null ? px : Math.min(px, set));
+        need[id] = Math.max(need[id] ?? 0, w);
+      };
       wrap.querySelectorAll<HTMLElement>('.ag-cell[col-id]').forEach(cell => {
         const cs = getComputedStyle(cell);
-        const room = cell.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-        const over = contentW(cell) - room;
-        if (over > 0.25) want(cell.getAttribute('col-id'), cell.offsetWidth + over + 2);
+        const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        const room = cell.clientWidth - pad;
+        const w = contentW(cell);
+        want(cell.getAttribute('col-id'), w + pad + (cell.offsetWidth - cell.clientWidth) + 2, w > room + 0.01);
       });
       wrap.querySelectorAll<HTMLElement>('.ag-header-cell[col-id]').forEach(head => {
         const text = head.querySelector<HTMLElement>('.ag-header-cell-text');
-        const over = text ? contentW(text) - text.getBoundingClientRect().width : 0;
-        if (over > 0.25) want(head.getAttribute('col-id'), head.offsetWidth + over + 2);
+        const label = head.querySelector<HTMLElement>('.ag-header-cell-label');
+        if (!text || !label) return;
+        const shown = text.getBoundingClientRect().width;
+        const w = contentW(text);
+        /* the cell around its label (padding, the resize grip), the words, and room for the sort arrow */
+        want(head.getAttribute('col-id'), head.offsetWidth - label.getBoundingClientRect().width + w + 18, w > shown + 0.01);
       });
       setFit(prev => {
         let next: Record<string, number> | null = null;
@@ -369,8 +388,10 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
       if (pinLeft?.includes(d.colId ?? '')) {
         d.pinned = 'left';
         d.flex = undefined;
+        d.minWidth = d.width ?? d.minWidth;
       } else if (pinRight?.includes(d.colId ?? '')) {
         d.flex = undefined;
+        d.minWidth = d.width ?? d.minWidth;
         d.pinned = 'right';
         /* room for the endless window's scrollbar beside the right-pinned figure */
         if (endlessOn && d.width) {

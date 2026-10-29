@@ -1764,6 +1764,15 @@ const ProfilePanel = ({
     if (!el) return;
     return attachScrollMore(el);
   }, [showSize, onField]);
+  /* the tab in hand is always in view in a rail narrower than its tabs */
+  useEffect(() => {
+    const el = tabsRef.current;
+    const on = el?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!el || !on) return;
+    const left = on.offsetLeft - el.offsetLeft;
+    if (left < el.scrollLeft) el.scrollLeft = left - 8;
+    else if (left + on.offsetWidth > el.scrollLeft + el.clientWidth) el.scrollLeft = left + on.offsetWidth - el.clientWidth + 8;
+  }, [view, shownW, showSize]);
   const closeDoor = onClose && (
     <button
       type="button"
@@ -1896,8 +1905,7 @@ const ProfilePanel = ({
           stop here starved it (Noah: "the hover effect … doesnt move with the mouse"); the panel's own handlers are
           gated on the view instead */}
       {onField && (
-        /* a matrix wider than a narrow pane's panel scrolls sideways (its bar shows) rather than cut its last column */
-        <div className="absolute inset-x-0 bottom-0 overflow-y-auto overflow-x-auto pointer-events-auto select-text" style={{ top: headH }} data-profile-gex>
+        <div className="absolute inset-x-0 bottom-0 overflow-y-auto overflow-x-hidden pointer-events-auto select-text" style={{ top: headH }} data-profile-gex>
           <ExposureField snapshot={gexSnap} toolbar="panel" viewLock={fieldView} legsLock={view === 'net' ? 'all' : undefined} selectedStrike={focusPrice ?? null} onSelectStrike={onSelect} fullMode="portal" narrowHint="widen the panel or pick fewer" headSlot={stripSlot} />
         </div>
       )}
