@@ -14,8 +14,8 @@ import { nyClock } from '../../core/nyTime';
 import { heldWords, usd, dirInk } from '../../components/review/words';
 import { useSignals, type Signal } from '../../data/compassLedger';
 import { daySummary } from '../../data/compassOutcome';
-import { useCompassFeed } from '../../data/compassFeed';
-import { asOfText } from '../../components/ui/states';
+import { backlogLine, useCompassFeed } from '../../data/compassFeed';
+import { EmptyBox, LoadingBox, asOfText } from '../../components/ui/states';
 import { useThetaStatus } from '../../data/thetaQuote';
 import { Tip } from '../../components/ui/Tooltip';
 
@@ -238,17 +238,22 @@ const Blotter = () => {
           />
         </>
       }
-      sentence={offlineLine ? <span data-blotter-offline>{offlineLine}</span> : false}
+      sentence={offlineLine || backlogLine(feed.marks) ? <span data-blotter-offline>{offlineLine || backlogLine(feed.marks)}</span> : false}
     >
       {rows.length === 0 ? (
-        <div className="border-t border-borderSubtle px-5 py-10 font-mono text-t11 text-textMuted" data-blotter-empty>
-          {q.trim()
-            ? `No signal matches “${q.trim()}”.`
-            : lines.length
-              ? 'No signal on this cut.'
-              : feed.status === 'loading'
-                ? 'Reading the record from the Compass server.'
-                : 'No call has fired yet. Each Book A, B or C call is written here the moment the scan fires it, with the quote it fired on, then filled and closed on the contract’s one-minute quotes from ThetaData.'}
+        <div className="border-t border-borderSubtle" data-blotter-empty>
+          {feed.status === 'loading' && !lines.length ? (
+            <LoadingBox shape="table" rows={4} label="Reading the record" />
+          ) : (
+            <EmptyBox
+              title={q.trim() ? 'No match' : lines.length ? 'Nothing on this cut' : 'No call yet'}
+              reason={q.trim()
+                ? `No call matches “${q.trim()}”.`
+                : lines.length
+                  ? 'No call on this day and side.'
+                  : backlogLine(feed.marks) || 'Each Book A, B or C call is written here the moment the scan fires it, with the quote it fired on, then filled and closed on the contract’s one-minute quotes from ThetaData.'}
+            />
+          )}
         </div>
       ) : (
         <TraceGrid

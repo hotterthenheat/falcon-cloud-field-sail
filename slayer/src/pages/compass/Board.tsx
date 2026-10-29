@@ -10,10 +10,11 @@ import { COMPASS_TICKERS, COMPASS_SET } from '../../data/compassUniverse';
 import { liveSpark, useThetaBook, alertUniverse, scanNames, setScanFocus } from '../../data/thetaBook';
 import { useSignals } from '../../data/compassLedger';
 import { bestByName, currentPicks, lastScanAt, scanBusy, scanReport, seatsNow } from '../../data/compassModel';
-import { compassFeed } from '../../data/compassFeed';
+import { backlogLine, compassFeed } from '../../data/compassFeed';
+import { daySummary } from '../../data/compassOutcome';
 import { asOfText } from '../../components/ui/states';
-import { MODELS_VALIDATED, P1_MIN, SEAT_CAP, UNVALIDATED_LINE, inModelWindow } from '../../data/compassParams';
-import { nyClock, nyDay, nyMinutes, nyWallTime } from '../../core/nyTime';
+import { MODELS_VALIDATED, P1_MIN, SEAT_CAP, inModelWindow } from '../../data/compassParams';
+import { nyClock, nyDay, nyIsoDate, nyMinutes, nyWallTime } from '../../core/nyTime';
 import { setCompassView, useCompassView, type BoardLayout } from '../../data/compassView';
 import { useScanClock } from '../../data/compassDoor';
 import { setCompassAlert, useCompassAlert } from '../../data/compassAlerts';
@@ -239,7 +240,7 @@ const Board = () => {
   const booksC = rankedSetups.filter(s => s.band === 'lottery').length;
   const near = rankedSetups.filter(s => s.band === 'closest').length;
   const called = swings + wings + booksC;
-  const caveat = MODELS_VALIDATED ? '' : ` ${UNVALIDATED_LINE}`;
+  const caveat = MODELS_VALIDATED ? '' : ' Unvalidated models.';
   const calledLine = offered === 'odte'
     ? `Book A ${swings}. Book B ${wings}. Book C ${booksC}.${near ? ` Closest ${near}.` : ''}${caveat}`
     : `Book A ${swings}. Book B ${wings}. Book C is same-day only.${near ? ` Closest ${near}.` : ''}${caveat}`;
@@ -250,6 +251,9 @@ const Board = () => {
       ? `Last scan ${nyDay(live.earlier.at, { weekday: true })}, ${nyClock(live.earlier.at, { zone: true })}.`
       : 'No scan has run today.';
   const offline = live.theta === 'down';
+  const todayIso = nyIsoDate();
+  const day = daySummary(record.filter(s => s.day === todayIso));
+  const backlog = backlogLine(compassFeed().marks);
   /* the server's engine: unreachable (nothing kept), or this browser's last copy of it, stamped */
   const lock = compassFeed().lock;
   const serverLine = live.feed === 'offline'
@@ -275,7 +279,7 @@ const Board = () => {
                 ? reading
                 : called || near
                   ? `${calledLine} ${asOf}`
-                  : `${bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.')} ${asOf}`}${windowLine}`
+                  : `${bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.')} ${asOf}`}${windowLine}${backlog ? ` ${backlog}` : ''}`
     } />
   );
   const names = scanNames(offered === 'weekly' ? 'weekly' : 'odte');
@@ -300,11 +304,16 @@ const Board = () => {
             guide={{ title: 'How to read the scan', door: 'What this page is', body: <CompassGuide />, testId: 'compass-guide', open: guideOpen, onOpen: setGuideOpen }}
             facts={
               <>
-                <Fact label="Called" testId="found">{called.toLocaleString('en-US')}</Fact>
+                <Fact label="Calls today" testId="found" title="Every call the scan fired today, on both sleeves. The blotter has each one.">{day.calls.toLocaleString('en-US')}</Fact>
+                <Fact label="Won · lost · open" testId="day" title="Today's calls: closed with a gain after fees, closed at or under the fill, and still held.">
+                  <span className="text-bull">{day.won}</span> · <span className="text-bear">{day.lost}</span> · {day.open}
+                </Fact>
+                <Fact label="Net today" testId="net" title="Per contract: today's closed calls after an estimated $1.08 round trip and the SEC fee.">
+                  {day.won + day.lost ? <span className={day.net >= 0 ? 'text-bull' : 'text-bear'}>{`${day.net < 0 ? '−' : '+'}$${Math.abs(day.net).toFixed(2)}`}</span> : '—'}
+                </Fact>
                 <Fact label="Best Model 1" testId="best" title={`The highest Model 1 read on this sleeve today. A call needs ${(P1_MIN * 100).toFixed(2)}%.`}>
                   {topBest >= 0 ? `${(topBest * 100).toFixed(1)}%` : '—'}
                 </Fact>
-                <Fact label="Closest" testId="active">{near.toLocaleString('en-US')}</Fact>
                 <Fact label="Seats" testId="fading" title="Roots Book A and Book B have called today. Five at most.">
                   <span className={seats >= SEAT_CAP ? 'text-bear' : 'text-textPrimary'}>{seats} of {SEAT_CAP}</span>
                 </Fact>
