@@ -16,7 +16,6 @@ import { buildExposureSurface, CALENDAR_DTES, GREEKS, type ExposureSurface, type
 import { buildFlipGauge, type GammaRegime } from './flipGauge';
 import { readRegime } from './flipLevel';
 import { levelsFor } from './levelsFor';
-import { sessionBars } from './levelview';
 import type { ExposureExpiry, ExposureLevels, ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, GexLevel, MarketSnapshot } from '../types/market';
 
@@ -241,7 +240,6 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   } catch {
     /* no surface for this name yet */
   }
-  const bars = sessionBars(ticker) ?? [];
   /* the likeliest close is the desk agenda's: the same build, the same 1σ and the same LEAN_MIN */
   const agenda = deskAgenda(snapshot, expiry, clock, 'matters', watchSurface(snapshot));
   const lead = agenda?.first[0];

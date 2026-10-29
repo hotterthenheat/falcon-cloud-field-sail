@@ -57,7 +57,6 @@ export const nyMinutes = (at?: At): number => {
   return p.hour * 60 + p.minute;
 };
 
-const ctByMinute = new Map<number, NyParts>();
 
 /** New York's clock, 24-hour: "14:03", "14:03:42" with seconds, "14:03 ET" with the zone. */
 export function nyClock(at?: At, opts: { seconds?: boolean; zone?: boolean } = {}): string {

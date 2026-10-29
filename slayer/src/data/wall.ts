@@ -503,6 +503,4 @@ export function buildWallContext(
 /** The odds at one strike, walls and trapdoors alike */
 export const oddsAt = (strike: number, ctx: WallContext): WallOdds => wallOdds(strike, ctx);
 
-/** The shelves each name listed last time — a listed shelf stays while it holds this share of the line */
-const listedShelves = new Map<string, Set<number>>();
 

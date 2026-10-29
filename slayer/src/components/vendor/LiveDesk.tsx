@@ -521,7 +521,6 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
   const painRows = still(series(taken(book, 'max-pain'))).sort((a, b) => dayOf(a).localeCompare(dayOf(b)));
   const pain = painRows[0];
   const painLine = stamps(painRows, 'expiry', [{ key: 'max_pain', name: 'Max pain', ink: SILVER_FILL }]);
-  const bookFlow = series(taken(book, 'greek-flow'));
   /* THE VENDOR'S NOPE, AS PRINTED (the retail test, 2026-10-22: the Map read "NOPE −2.81" against the vendor's last
      −3.00 — it was scaled by the window's share of the volume, a figure the vendor never printed). NOPE is the whole
      name's; the head says so rather than deriving a per-window one. */
@@ -546,7 +545,6 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
   const span = expirySpan(windowed ? wantList : null);
   const chartable = (ls: LineSpec[]) => ls.some(l => l.pts.length >= 2);
   const flowRow = taken(book, 'greek-flow');
-  const nopeRow = taken(book, 'nope');
   const waiting = !flowRow || flowRow.state === 'loading';
   if (!pain && lastNope == null && !chartable(flow) && !chartable(nopeLine) && !chartable(byExpiry) && expiryFlow.length !== 1 && !chartable(painLine) && !waiting && !flowWaiting && !nopeWaiting) return null;
   return (
