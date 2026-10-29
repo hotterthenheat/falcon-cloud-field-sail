@@ -36,6 +36,12 @@ const NO_TERMINAL = JSON.stringify({ error: 'This deployment has no market data 
 const OUTAGE = /"code":"(terminal_down|session_lost|terminal_unavailable)"/;
 const statusFor = (req, status, body) =>
   status === 503 && req.headers['x-theta-soft'] === '1' && OUTAGE.test(String(body).slice(0, 200)) ? 200 : status;
+/* 472 is ThetaData's "no data for this request" (a contract that never quoted that day): an answer, not a fault */
+const NO_DATA = JSON.stringify({ error: 'No data for this request.', code: 'no_data' });
+function sendSoftly(req, res, status, body, type) {
+  if (status === 472 && req.headers['x-theta-soft'] === '1') send(res, 200, NO_DATA);
+  else send(res, statusFor(req, status, body), body, type);
+}
 
 async function load(reqPath) {
   const running = inflight.get(reqPath);
@@ -93,7 +99,7 @@ export async function proxyTheta(req, res) {
   }
   try {
     const got = await load(reqPath);
-    send(res, statusFor(req, got.status, got.body), got.body, got.type);
+    sendSoftly(req, res, got.status, got.body, got.type);
   } catch {
     send(res, statusFor(req, 503, DOWN), DOWN);
   }
