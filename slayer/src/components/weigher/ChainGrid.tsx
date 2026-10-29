@@ -479,7 +479,7 @@ export const ChainCard = memo(function ChainCard({
         />
         {/* the grid's own overlay is read once; the empty chain's words change (reading, offline, none listed) */}
         {rows.length === 0 && (
-          <div className="absolute inset-0 top-8 flex items-center justify-center pointer-events-none font-mono text-[10px] uppercase tracking-widest text-textMuted" data-chain-empty>
+          <div className="absolute inset-0 top-8 flex items-center justify-center pointer-events-none font-mono text-t10 uppercase tracking-widest text-textMuted" data-chain-empty>
             {emptyText}
           </div>
         )}

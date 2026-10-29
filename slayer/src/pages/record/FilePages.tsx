@@ -414,7 +414,7 @@ const ShortSqueeze = ({ data }: ICellRendererParams<ShortRow>) => {
     <span className="flex flex-col leading-tight min-w-0" title={`${q.facts.map(f => f.text).join(' · ')}\n${SQUEEZE_TIP}`} data-squeeze={q.word}>
       <span className={`font-mono text-t10 font-semibold uppercase tracking-widest ${SQUEEZE_INK[q.word]}`}>{q.word}</span>
       {/* the setup sentence wraps to two lines rather than stop mid-sentence; the whole of it is on the hover */}
-      <span className="text-t10 leading-[13px] text-textMuted whitespace-normal break-words line-clamp-2">{q.facts.map(f => f.text).slice(0, 2).join(' · ')}</span>
+      <span className="text-t10 leading-[12px] text-textMuted whitespace-normal break-words line-clamp-2">{q.facts.map(f => f.text).slice(0, 2).join(' · ')}</span>
     </span>
   );
 };
@@ -480,8 +480,8 @@ export const Shorts = () => {
   const columnDefs = useMemo<ColDef<ShortRow>[]>(() => {
     const cols: ColDef<ShortRow>[] = [
       { headerName: 'Name', field: 'ticker', flex: 1.4, minWidth: 180, cellRenderer: ShortName, /* the name lands after the row; the cell redraws when it does */ valueGetter: p => (p.data ? `${p.data.ticker}\u0000${p.data.name ?? ''}` : ''), comparator: (a: string, b: string) => a.localeCompare(b), headerTooltip: 'The company — click the row to open the short file' },
-      { headerName: 'Squeeze setup', colId: 'squeeze', flex: 1.4, minWidth: 200, cellRenderer: ShortSqueeze, valueGetter: p => (p.data ? squeezeRead(p.data).points : 0), headerTooltip: SQUEEZE_TIP },
-      { headerName: 'Sector', field: 'sector', flex: 1, minWidth: 150, cellRenderer: ShortSector, headerTooltip: 'The sector the name files under' },
+      { headerName: 'Squeeze setup', colId: 'squeeze', flex: 1.9, minWidth: 240, cellRenderer: ShortSqueeze, valueGetter: p => (p.data ? squeezeRead(p.data).points : 0), headerTooltip: SQUEEZE_TIP },
+      { headerName: 'Sector', field: 'sector', flex: 1, minWidth: 172, cellRenderer: ShortSector, headerTooltip: 'The sector the name files under' },
       { headerName: 'Short interest', field: 'interestPct', width: 168, cellRenderer: ShortInterest, headerTooltip: 'The share of the tradable stock (the float) that has been sold short and not bought back. Red at 30% and above' },
       { headerName: 'Shares short', field: 'shortSharesM', width: 120, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{sharesM(data.shortSharesM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares sold short, in millions' },
       { headerName: 'Days to cover', field: 'daysToCover', width: 120, cellRenderer: ShortDays, type: 'rightAligned', headerTooltip: 'How many days of normal trading it would take the shorts to buy back every share — shares short divided by average daily volume' },

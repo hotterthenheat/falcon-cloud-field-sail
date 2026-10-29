@@ -81,7 +81,7 @@ const AlertToasts = () => {
           {t.account && <span className="text-textSecondary">{t.account} ·</span>}
           <span className="text-textPrimary">{t.words}</span>
           {t.pnl != null && <span className={`font-semibold ${dirInk(t.pnl)}`}>{usdSigned(t.pnl)}</span>}
-          <span className="text-[9px] uppercase tracking-wider text-textMuted">paper</span>
+          <span className="text-t9 uppercase tracking-wider text-textMuted">paper</span>
         </button>
       ))}
       {calls.map(c => (
@@ -95,7 +95,7 @@ const AlertToasts = () => {
           <span className="w-1.5 h-1.5 rounded-full bg-silver" aria-hidden />
           <span className="font-bold text-textPrimary">{c.contract}</span>
           <span className="text-textSecondary">{c.sleeve}</span>
-          <span className="text-[9px] uppercase tracking-wider text-textMuted">Compass call</span>
+          <span className="text-t9 uppercase tracking-wider text-textMuted">Compass call</span>
         </button>
       ))}
       {shown.map(x => (
@@ -110,7 +110,7 @@ const AlertToasts = () => {
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: ALERT }} aria-hidden />
           <span className="font-bold">{x.ticker}</span>
           <span className="text-textPrimary">{firedWords(x.r.alert, x.ticker)}</span>
-          <span className="text-[9px] uppercase tracking-wider text-textMuted">alerted</span>
+          <span className="text-t9 uppercase tracking-wider text-textMuted">alerted</span>
         </button>
       ))}
     </div>

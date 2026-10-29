@@ -364,7 +364,7 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
                     type="button"
                     tabIndex={half === 1 ? -1 : 0}
                     onClick={() => onPick(e)}
-                    className={`group inline-flex items-center gap-2 mr-9 transition-colors ${e.id === selectedId ? 'text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}
+                    className={`group inline-flex items-center gap-2 mr-9 min-h-[24px] transition-colors ${e.id === selectedId ? 'text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}
                     title={`${e.item.headline} · ${e.item.source} · ${ago(e.item.minutesAgo)}`}
                     data-news-tape-item={half === 0 ? e.id : undefined}
                   >
@@ -937,7 +937,7 @@ const News = () => {
               <>
                 <div className="flex items-center gap-2 flex-wrap">
                   {selected.item.ticker ? (
-                    <button type="button" onClick={() => openName(selected.item.ticker!)} className="inline-flex items-center gap-1.5 group" title={`Open ${selected.item.ticker} on the Map`}>
+                    <button type="button" onClick={() => openName(selected.item.ticker!)} className="hit inline-flex items-center gap-1.5 min-h-[24px] group" title={`Open ${selected.item.ticker} on the Map`}>
                       <CompanyLogo ticker={selected.item.ticker} size={16} />
                       <span className="font-mono text-t12 font-bold text-textPrimary group-hover:underline underline-offset-2">{selected.item.ticker}</span>
                     </button>
