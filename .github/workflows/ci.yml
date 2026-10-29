@@ -43,6 +43,7 @@ jobs:
             echo "::endgroup::"
           done
           node scripts/proxy-auth-proof.mjs
+          node scripts/hub-proof.mjs
       - name: Golden tests
         run: |
           set -e

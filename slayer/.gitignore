@@ -72,3 +72,4 @@ theta/run/
 theta/.env
 theta/creds.txt
 theta/*.log
+.cache/

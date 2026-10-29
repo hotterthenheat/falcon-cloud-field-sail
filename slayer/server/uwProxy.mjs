@@ -1,11 +1,14 @@
 /*
   Unusual Whales proxy. The browser calls /api/uw/*; this checks the caller (server/auth.mjs), adds the bearer
   token from UNUSUAL_WHALES_API_KEY and never writes the token back out.
-  Identical in-flight GETs share one upstream call; answers are cached 3 s, 15 s or 300 s by route class (ttlFor).
+  Every answer goes through the shared hub (server/hub.mjs): one copy per request for all viewers, refreshed in the
+  background while anyone watches it, so viewers never multiply the vendor calls. Fresh for 3 s, 15 s or 300 s by
+  route class (ttlFor); a page of the past (older_than, an earlier date) for 30 minutes.
 */
 
 import { gate, sendDenied } from './auth.mjs';
 import { forwardPath } from './paths.mjs';
+import { createHub } from './hub.mjs';
 
 const T = '[A-Za-z0-9.%$_-]{1,32}';
 const NAME = '[^/?]{1,80}';
@@ -122,31 +125,42 @@ const RETIRED = [
   /^\/institution\/[^/]+\/activity(?:\?|$)/,
 ];
 
-const cache = new Map();
-const inflight = new Map();
-const MAX_CACHE = 400;
 const JOB_MS = 30_000;
+/* the last vendor answers, for the hub's counts */
+const recent = [];
 
 /* The key allows three concurrent requests across all viewers; past that the vendor answers 429 or a bare 500.
    Every upstream call takes a slot and the rest queue. The limit is per process (per Vercel instance). */
 const UPSTREAM_SLOTS = 3;
 let upstreamBusy = 0;
-const upstreamQueue = [];
-async function upstreamSlot(fn) {
-  if (upstreamBusy >= UPSTREAM_SLOTS) await new Promise((r) => upstreamQueue.push(r));
+/* a viewer waiting on an answer goes ahead of every background refresh */
+const viewerQueue = [];
+const refreshQueue = [];
+async function upstreamSlot(fn, lane = 'viewer') {
+  if (upstreamBusy >= UPSTREAM_SLOTS) await new Promise((r) => (lane === 'viewer' ? viewerQueue : refreshQueue).push(r));
   upstreamBusy += 1;
   try {
     return await fn();
   } finally {
     upstreamBusy -= 1;
-    const next = upstreamQueue.shift();
+    const next = viewerQueue.shift() ?? refreshQueue.shift();
     if (next) next();
   }
 }
 /** A rate limit or a passing vendor error: worth a wait and another try. */
 const retryable = (status) => status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 
+const NY_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+/* a page that ends in the past (older_than a moment, or an earlier session's date) never changes again */
+const pastPage = (path) => {
+  const q = new URLSearchParams(path.split('?')[1] || '');
+  if (q.has('older_than')) return true;
+  const d = q.get('date');
+  return !!d && d < NY_DATE.format(new Date());
+};
+
 const ttlFor = (path) => {
+  if (pastPage(path)) return 30 * 60_000;
   const p = path.split('?')[0];
   if (/^\/option-contract\/[^/]+\/(?:flow|intraday)$/.test(p)) return 10_000;
   if (/^\/option-contract\/[^/]+\/(?:historic|volume-profile)$/.test(p)) return 60_000;
@@ -164,9 +178,7 @@ const send = (res, status, body, type = 'application/json') => {
   res.end(body);
 };
 
-async function load(path, key) {
-  const running = inflight.get(path);
-  if (running) return running;
+async function load(path, key, lane) {
   const job = (async () => {
     /* The vendor's 429s are waited out here (Retry-After, else 0.8 s, 1.6 s, 3.2 s), not in the browser. */
     let upstream;
@@ -179,50 +191,54 @@ async function load(path, key) {
           signal: AbortSignal.timeout(12_000),
         });
         return [r, Buffer.from(await r.arrayBuffer())];
+      }, lane).catch((e) => {
+        recent.push(`${e?.name || 'error'} ${path.slice(0, 60)}`);
+        throw e;
       });
+      recent.push(`${upstream.status} ${path.slice(0, 60)}`);
+      if (recent.length > 20) recent.splice(0, recent.length - 20);
       if (!retryable(upstream.status) || attempt >= 3) break;
       const after = Number(upstream.headers.get('retry-after'));
       await new Promise((r) => setTimeout(r, Number.isFinite(after) && after > 0 && after <= 5 ? after * 1000 : 800 * 2 ** attempt));
     }
-    /* still refused after the retries: the last good answer for the path beats an empty cell */
-    if (retryable(upstream.status)) {
-      const stale = cache.get(path);
-      if (stale) return { status: stale.status, body: stale.body, type: stale.type };
-    }
+    /* a refusal that outlasts the retries comes back as is; the hub keeps the last good answer on screen */
     const type = upstream.headers.get('content-type') || 'application/json';
-    if (upstream.status === 200) {
-      cache.set(path, { at: Date.now(), status: 200, body: buf, type });
-      if (cache.size > MAX_CACHE) cache.delete(cache.keys().next().value);
-    }
     return { status: upstream.status, body: buf, type };
   })();
   /* A job is let go after JOB_MS so later asks for the path are not stuck behind it; its late failure is ignored. */
   job.catch(() => {});
   let timer;
-  const capped = Promise.race([
-    job,
-    new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error('timeout')), JOB_MS);
-    }),
-  ]);
-  inflight.set(path, capped);
   try {
-    return await capped;
-  } catch (e) {
-    const stale = cache.get(path);
-    if (stale) return { status: stale.status, body: stale.body, type: stale.type };
-    if (e instanceof Error && e.message === 'timeout') return { status: 504, body: Buffer.from(JSON.stringify({ error: 'unusual whales timed out' })), type: 'application/json' };
-    throw e;
+    return await Promise.race([
+      job,
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve({ status: 504, body: Buffer.from(JSON.stringify({ error: 'unusual whales timed out' })), type: 'application/json' }), JOB_MS);
+      }),
+    ]);
   } finally {
     clearTimeout(timer);
-    if (inflight.get(path) === capped) inflight.delete(path);
   }
 }
+
+const hub = createHub({
+  name: 'uw',
+  fetch: (path, lane) => load(path, process.env.UNUSUAL_WHALES_API_KEY, lane),
+  ttl: ttlFor,
+  refreshPerSec: Number(process.env.UW_HUB_REFRESH_PER_SEC) || 3,
+  /* the vendor refusing for a moment (429, a gateway error) keeps the last answer up to a minute old on screen */
+  keepOnFail: (path, age) => age < Math.max(60_000, 4 * ttlFor(path)),
+});
+/** The hub's counts, for the load check (scripts/load-proof.mjs). */
+export const uwHubStats = () => hub.stats();
 
 /** Connect, Express and the Vercel Node function all hand over a Node request and response. */
 export async function proxyUw(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     send(res, 405, JSON.stringify({ error: 'method not allowed' }));
+    return;
+  }
+  if (/^(?:\/api\/uw)?\/__hub(?:\?|$)/.test(req.url || '') && process.env.VERCEL_ENV !== 'production') {
+    send(res, 200, JSON.stringify({ ...hub.stats(), slotsBusy: upstreamBusy, viewersQueued: viewerQueue.length, refreshesQueued: refreshQueue.length, recent }));
     return;
   }
   const path = forwardPath(req.url, /^\/api\/uw/, 400);
@@ -240,13 +256,8 @@ export async function proxyUw(req, res) {
     send(res, 503, JSON.stringify({ error: 'unusual whales is not configured' }));
     return;
   }
-  const hit = cache.get(path);
-  if (hit && Date.now() - hit.at < ttlFor(path)) {
-    send(res, hit.status, hit.body, hit.type);
-    return;
-  }
   try {
-    const got = await load(path, key);
+    const got = await hub.get(path);
     send(res, got.status, got.body, got.type);
   } catch {
     send(res, 502, JSON.stringify({ error: 'unusual whales unreachable' }));

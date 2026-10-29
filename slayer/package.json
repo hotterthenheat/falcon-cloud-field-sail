@@ -25,7 +25,9 @@
     "theta": "node theta/supervisor.mjs",
     "theta:relay": "node theta/relay.mjs",
     "theta:check": "node scripts/theta-check.mjs",
-    "proxy:proof": "node scripts/proxy-auth-proof.mjs"
+    "proxy:proof": "node scripts/proxy-auth-proof.mjs",
+    "hub:proof": "node scripts/hub-proof.mjs",
+    "load:proof": "node scripts/load-proof.mjs"
   },
   "dependencies": {
     "@codemirror/language": "^6.12.4",

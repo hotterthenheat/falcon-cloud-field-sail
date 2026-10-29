@@ -10,14 +10,11 @@
 import { gate, sendDenied } from './auth.mjs';
 import { forwardPath } from './paths.mjs';
 import { sessionLost, thetaAllowed, thetaTtl } from '../shared/thetaPaths.mjs';
+import { createHub } from './hub.mjs';
 
 const RELAY = (process.env.THETA_RELAY_URL || '').replace(/\/+$/, '');
 const RELAY_SECRET = process.env.THETA_RELAY_SECRET || '';
 const BASE = RELAY || process.env.THETA_REST_BASE || 'http://127.0.0.1:25503';
-
-const cache = new Map();
-const inflight = new Map();
-const MAX_CACHE = 400;
 
 const send = (res, status, body, type = 'application/json') => {
   res.statusCode = status;
@@ -44,38 +41,36 @@ function sendSoftly(req, res, status, body, type) {
 }
 
 async function load(reqPath) {
-  const running = inflight.get(reqPath);
-  if (running) return running;
-  const job = (async () => {
-    const upstream = await fetch(`${BASE}/v3${reqPath}`, {
-      headers: { Accept: 'application/json, text/csv', ...(RELAY ? { 'x-relay-secret': RELAY_SECRET } : {}) },
-      signal: AbortSignal.timeout(20_000),
-    });
-    let buf = Buffer.from(await upstream.arrayBuffer());
-    let type = upstream.headers.get('content-type') || 'text/plain';
-    let status = upstream.status;
-    if (status !== 200 && sessionLost(buf.toString('utf8', 0, Math.min(buf.length, 400)))) {
-      status = 503;
-      buf = Buffer.from(LOST);
-      type = 'application/json';
-    }
-    if (status === 200) {
-      cache.set(reqPath, { at: Date.now(), status, body: buf, type });
-      if (cache.size > MAX_CACHE) cache.delete(cache.keys().next().value);
-    }
-    return { status, body: buf, type };
-  })();
-  inflight.set(reqPath, job);
-  try {
-    return await job;
-  } finally {
-    inflight.delete(reqPath);
+  const upstream = await fetch(`${BASE}/v3${reqPath}`, {
+    headers: { Accept: 'application/json, text/csv', ...(RELAY ? { 'x-relay-secret': RELAY_SECRET } : {}) },
+    signal: AbortSignal.timeout(20_000),
+  });
+  const buf = Buffer.from(await upstream.arrayBuffer());
+  const type = upstream.headers.get('content-type') || 'text/plain';
+  if (upstream.status !== 200 && sessionLost(buf.toString('utf8', 0, Math.min(buf.length, 400)))) {
+    return { status: 503, body: Buffer.from(LOST), type: 'application/json' };
   }
+  return { status: upstream.status, body: buf, type };
 }
+
+/* One shared copy per request for every viewer (server/hub.mjs). A snapshot is refreshed about once a second while
+   anyone watches it, whatever the number of viewers; the terminal's eight slots are far from full at that rate. */
+const hub = createHub({
+  name: 'theta',
+  fetch: (p) => load(p).catch(() => ({ status: 503, body: Buffer.from(DOWN), type: 'application/json' })),
+  ttl: (p) => Math.max(thetaTtl(p), /\/snapshot\//.test(p) ? 900 : 0),
+  refreshPerSec: Number(process.env.THETA_HUB_REFRESH_PER_SEC) || 25,
+});
+/** The hub's counts, for the load check (scripts/load-proof.mjs). */
+export const thetaHubStats = () => hub.stats();
 
 export async function proxyTheta(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     send(res, 405, JSON.stringify({ error: 'method not allowed' }));
+    return;
+  }
+  if (/^(?:\/api\/theta)?\/__hub(?:\?|$)/.test(req.url || '') && process.env.VERCEL_ENV !== 'production') {
+    send(res, 200, JSON.stringify(hub.stats()));
     return;
   }
   if (process.env.VERCEL && !RELAY && !process.env.THETA_REST_BASE) {
@@ -92,13 +87,8 @@ export async function proxyTheta(req, res) {
     sendDenied(res, verdict);
     return;
   }
-  const hit = cache.get(reqPath);
-  if (hit && Date.now() - hit.at < thetaTtl(reqPath)) {
-    send(res, hit.status, hit.body, hit.type);
-    return;
-  }
   try {
-    const got = await load(reqPath);
+    const got = await hub.get(reqPath);
     sendSoftly(req, res, got.status, got.body, got.type);
   } catch {
     send(res, statusFor(req, 503, DOWN), DOWN);
