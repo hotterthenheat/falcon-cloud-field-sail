@@ -1,18 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE EDITOR'S DOCK (components/scripts/EditorDock.tsx)
-
-  The one place the script editor lives: a panel
-  docked at the right of a full-screen chart, the
-  chart narrowed to leave it room (every takeover
-  reads `--editor-w` for its right edge), with a
-  grip on its left edge to drag the width — the
-  Map's profile panel's own sash — and a remembered
-  width. The chart a script is written for stays
-  live beside the code: edit, add to chart, look,
-  edit again. The library (a chooser) stays a
-  centred card; this is a workbench.
-==================================================
+  The script editor docked at the right of a full-screen chart, with a draggable, remembered width, so the chart
+  stays live beside the code.
 */
 
 import { useCallback, useEffect, useRef, useState } from 'react';

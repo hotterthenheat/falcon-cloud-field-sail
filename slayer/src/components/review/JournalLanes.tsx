@@ -1,23 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE JOURNAL'S CUTS
-  (components/review/JournalLanes.tsx)
-
-  A card a way of cutting the period's trades — the hour
-  they were opened, the weekday, the name, long or short,
-  the size of the result (data/review/journalFigures.ts)
-  — in the house's row grammar (the Map's ladder, not a
-  chart): a row a lane, its bar what the lane made, green
-  to the right of nothing and red to the left, the
-  longest the card's biggest; or, for the sizes, how many
-  trades it holds, in the ink of its side. The figure at
-  the row's end, then how many.
-
-  THE POINTER ON A ROW SAYS IT IN FULL at the card's foot
-  (where the eye already is): what the lane is, how many
-  closed and won, what it made, what a trade in it was
-  worth. At rest the foot says the card's own line.
-==================================================
+  The period's trades cut by hour, weekday, name, side and result size, a row a lane with a bar for what it made;
+  the pointer says the lane in full at the card's foot.
 */
 
 import { useState } from 'react';

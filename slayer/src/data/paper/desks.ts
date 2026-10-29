@@ -1,29 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · THE READER'S DESKS
-  (data/paper/desks.ts)
-
-  What the partner's page called multiple desks (Noah
-  liked them: "multiple desks"): a desk is a LAYOUT of one
-  to four charts, each pane its own name and interval, the
-  one on the desk, and what keeps them in step. The reader
-  keeps as many as they like, names them, and moves
-  between them; the one in use is remembered. Kept on
-  this machine (`slayer_paper_desks_v1`) — they are the
-  reader's arrangement, not the account's.
-
-    KEEP IN STEP   the NAME (every pane shows the one the
-                   pane on the desk shows — one name at
-                   several intervals), the INTERVAL (every
-                   pane at the one the pane on the desk is
-                   at — several names side by side), and
-                   the CROSSHAIR (a moment hovered on one
-                   is marked on the others)
-
-  A GROWING LAYOUT gives the new panes the next intervals
-  of the pane on the desk's name — the classic "one name,
-  four intervals" — and a shrinking one keeps the first.
-==================================================
+  The paper desk's layouts: one to four charts, each pane its own name and interval, and what keeps them in step.
 */
 
 import { useSyncExternalStore } from 'react';

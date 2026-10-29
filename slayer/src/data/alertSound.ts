@@ -8,14 +8,6 @@ export function alertSoundOn(): boolean {
   }
 }
 
-export function setAlertSound(on: boolean): void {
-  try {
-    localStorage.setItem(KEY, on ? '1' : '0');
-  } catch {
-    /* the desk's disk warning covers a full store */
-  }
-}
-
 export function beepAlert(): void {
   if (!alertSoundOn()) return;
   const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;

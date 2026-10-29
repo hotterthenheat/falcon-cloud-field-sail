@@ -1,34 +1,16 @@
-/*
-==================================================
-  SLAYER TERMINAL - TRACE'S SKELETONS BY PAGE
-  (pages/trace/traceSkeletons.tsx)
-
-  Every Trace page standing in as itself while its
-  code travels: the shell's head (the page's real
-  icon, name and line — static chrome renders as
-  itself), then the house box every walked page is
-  (the walk, 2026-09-09): the head with its facts,
-  one line of cards, the sentence, and the page's
-  body — the grid in its window with the house's
-  32px head and 39px rows, Net Flow's board and
-  pane, 0DTE's panes, the tape's grid and rail, the
-  Tracker's note. Imports nothing heavy.
-==================================================
-*/
+/* Each Trace page's stand-in while its code loads: the shell's head as itself, then the page's box and body in its
+   real shape. Imports nothing heavy. */
 
 import type { ReactNode } from 'react';
 import { Block, ChartGround, Facts, Line, SubLine, TitleRow, Trigger } from '../../components/ui/skeletonKit';
 import { TRACE_SUBPAGES } from './subnav';
 
-/** THE SKELETON'S GRID: the rest of the first screen under the box's head, cards and sentence.
-    The live grid grows with its rows since 2026-09-11 and runs past the fold; above the fold
-    the stand-in and the page are the same shape, so the skeleton keeps a screen's worth. */
+/** The rest of the first screen under the box's head: above the fold the stand-in and the page are the same shape. */
 export const TRACE_GRID_H = 'calc(100vh - 247px)';
-/** Windows carries the day strip above its box (62px — the parts' names 20, the blocks 22, a
-    4px breath, the hours 16 — and the gap; the clock's clothes, 2026-09-16) */
+/** Intervals carries the day strip above its box: 62px and the gap */
 export const WINDOWS_GRID_H = 'calc(100vh - 321px)';
 
-/* COMPARE'S SHAPE (2026-09-13) — the page and its stand-in read these */
+/* Compare's shape: the page and its stand-in read these */
 /** The card's three columns: the first name's figure · the fact and its note · the second name's */
 export const CMP_COLUMNS = 'minmax(0,1fr) 250px minmax(0,1fr)';
 export const CMP_ROW_H = 30;
@@ -50,7 +32,7 @@ export const CMP_SECTIONS: { title: string; rows: number }[] = [
   { title: 'The calendar', rows: 1 },
 ];
 
-/* THE DARK POOL'S SHAPE (2026-09-13) — the page and its stand-in read these */
+/* The dark pool's shape: the page and its stand-in read these */
 /** The shelves strip: its head line and its six cells across the box */
 export const DP_STRIP_HEAD_H = 26;
 export const DP_SHELF_H = 68;
@@ -59,7 +41,7 @@ export const DP_SHELVES = 6;
 
 /* ---- the head ------------------------------------------------------------------ */
 
-/** The shell's head, static chrome rendered as itself: the page's icon and name over its line (the tabs live in the sidebar tree since 2026-09-09) */
+/** The shell's head as itself: the page's icon and name over its line */
 export const TraceStripSkeleton = ({ pathname }: { pathname: string }) => {
   const active = TRACE_SUBPAGES.find(p => pathname.startsWith(p.path)) ?? TRACE_SUBPAGES[0];
   const PageIcon = active.icon;
@@ -98,7 +80,7 @@ const GridWindow = ({ cols, rows, gridH }: { cols: number; rows: number; gridH: 
   </div>
 );
 
-/** A WALKED page standing: the head with its facts, one line of cards (the hold 31px, the cards 28 — the line is 39), the sentence, then the page's body — the grid in its window unless the page brings its own */
+/** A walked page standing: the head with its facts, one line of cards (the hold 31px, the cards 28 — the line is 39), the sentence, then the page's body — the grid in its window unless the page brings its own */
 export const TraceBoxSkeleton = ({
   title = 80,
   facts = [150, 110, 50, 140, 140, 140],
@@ -408,8 +390,7 @@ export const TracePageSkeleton = ({ pathname }: { pathname: string }) => {
   if (pathname.startsWith('/trace/intervals') || pathname.startsWith('/trace/windows'))
     return (
       <>
-        {/* THE DAY STRIP (2026-10-13, the partner's strip): the session's 26 quarter hours as bars at their x on a
-            baseline inside the session band, the five hour marks under */}
+        {/* The day strip: the session's quarter hours as bars on a baseline, the hour marks under */}
         <div className="relative select-none" data-skeleton-strip>
           <div className="relative h-12 rounded-md bg-ink/[0.03]">
             <div className="absolute inset-x-0 bottom-0 h-px bg-borderMuted/60" />

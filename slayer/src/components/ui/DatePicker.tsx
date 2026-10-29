@@ -1,13 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - DATE PICKER
-  A compact month grid for jumping to a session.
-  Weekends and future dates are dead — the market
-  did not print on them, so they should not look
-  clickable. Today wears the lime marker; the chosen
-  day wears the white selection.
-==================================================
-*/
+/* A compact month grid for jumping to a session: weekends and future days are disabled, today has the accent marker
+   and the chosen day the white selection. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';

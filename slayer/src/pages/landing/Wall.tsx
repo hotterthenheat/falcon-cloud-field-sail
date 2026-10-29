@@ -1,54 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE WALL OF TOOLS
-  (pages/landing/Wall.tsx)
-
-  THE FIRST SCREEN SHOWS THE TOOLS (Noah, 2026-10-01,
-  of his partner's landing: "i like the first section
-  of the page showcasing all the tools instead of big
-  words" — and then: "replace the big window with the
-  wall"). Where the hero held one wide window, it
-  holds eight small ones: every room of the terminal
-  side by side, the way a desk is a wall of screens,
-  each playing a short film of the room in use
-  (scripts/make-landing-clips.mjs — a small copy of
-  the room's own film from the tour, 640 wide).
-
-  Four across and two down on a desk; two across on a
-  phone. A screen is a door: it takes the reader to
-  that room's words in the tour, where the big window
-  plays the same film at its full size.
-
-  IN OUR OWN CLOTHES: the screen is the tour's window
-  made small — the same bar, the room's icon
-  (ui/PageGlyph.tsx, small), its name, and the tour's
-  number for it.
-
-  THE COST. Eight small films play at once, and only
-  while the wall is on the screen and the tab is in
-  front. Each starts a share further into itself than
-  the one before, so the wall never ticks in step. A
-  film shows only once it can play — until then, and
-  for a visitor who asked for less motion or to save
-  data, the screen is its still (films.ts).
-
-  THE TURN OF THE THEME IS INSTANT (2026-10-03 — Noah,
-  first: "the actual video recordings are lagging
-  when i click the light and dark theme"; then, with
-  the screens circled: they "wont change colors as
-  fast as the rest … they lag behind everytime").
-  Every room keeps a film for EACH theme: the one on
-  the ground plays and shows; the other is fetched
-  once the wall has settled and waits. When the
-  reader reaches for the toggle (films.ts
-  themeIntent) the waiting films start, hidden and in
-  step with the playing ones, so the press finds them
-  already running and the screens turn colour with
-  the page. A screen whose other film is not yet
-  running turns to the new theme's still at once and
-  takes the film as it comes — the colour never lags,
-  whatever the film does.
-==================================================
+  The landing's first screen: the tools as a wall of pictures instead of one wide window.
 */
 
 import { useEffect, useRef, useState } from 'react';

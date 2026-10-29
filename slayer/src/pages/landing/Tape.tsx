@@ -1,36 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE LANDING'S TAPE
-  (pages/landing/Tape.tsx)
-
-  Between the tour's last words ("One terminal.")
-  and "In every room" (Noah, 2026-09-30: "putting a
-  really cool tape of the different stocks like
-  robinhood, tsla, coinbase, apple, microsoft etc
-  would be cool"): two rows of names drifting in
-  opposite directions across the whole page — the
-  company's own mark, the ticker, the price, the
-  day's move in its ink and a small line of the day.
-  It says the one thing the tour does not: the
-  terminal is for ANY name.
-
-  THE NUMBERS ARE THE PREVIEW'S, and it says so
-  under the rows — the same simulated market the
-  terminal opens on, a day's move a name off the
-  house's own generator (core/rng), the base price
-  the universe's where the terminal has one. Real
-  quotes arrive with the data feed.
-
-  HOW IT MOVES: each row is its list twice on one
-  track, sliding half its width and starting over
-  (index.css `tape-run`), so the loop has no seam.
-  It pauses under the pointer and stands still under
-  reduced motion. The edges fade into the page.
-
-  Light on purpose: no simulator, no charting
-  library — the landing's first load stays what it
-  was.
-==================================================
+  Two rows of names drifting across the landing page, with the preview's prices labelled as simulated.
 */
 
 import { useMemo } from 'react';

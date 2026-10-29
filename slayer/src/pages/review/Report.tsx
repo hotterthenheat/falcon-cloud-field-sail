@@ -1,17 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW › BACKTEST · THE REPORT
-  (pages/review/Report.tsx)
-
-  What a session's closed trades add up to — THE
-  READER'S OWN NUMBERS about their own trades (so the
-  no-public-grades rule has nothing to say here: none
-  of this is a score of ours). The usual figures, the
-  running total on the chart library, and the cuts
-  that only options have: calls against puts, days to
-  expiry at entry, delta at entry, how it ended, the
-  hour it was entered.
-==================================================
+  What a backtest session's closed trades add up to: the reader's own figures, the running total, and the cuts.
 */
 
 import BacktestPaused from './BacktestPaused';

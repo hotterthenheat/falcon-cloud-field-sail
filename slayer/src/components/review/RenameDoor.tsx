@@ -1,17 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · A SESSION'S NAME
-  (components/review/RenameDoor.tsx)
-
-  A pencil that opens a small card with the name in a
-  field: Enter or "Save" keeps it, Esc or a click
-  elsewhere leaves it as it was. A CARD, not a field
-  in the row: the sessions list is a grid, and a grid
-  takes the arrow keys, Enter and Space for itself —
-  a field inside one of its cells loses the caret to
-  it. The card is drawn outside the grid, so the keys
-  are the field's.
-==================================================
+  A pencil that opens a small card to rename a session. It is drawn outside the grid so the grid does not take the
+  field's keys.
 */
 
 import { useEffect, useRef, useState } from 'react';

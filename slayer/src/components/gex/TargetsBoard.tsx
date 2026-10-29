@@ -1,59 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - TARGETS, THE AGENDA
-  (components/gex/TargetsBoard.tsx)
-
-  Box 1 of the Targets page (2026-09-08): every
-  strike in the order it matters today, read top to
-  bottom —
-
-    THE HEAD      the pane's line (its name chip, its
-                  Expiry card, its watch menu) and the
-                  four facts: watch first · most likely
-                  reached · the weakest wall in reach ·
-                  where the close leans
-    THE SENTENCE  "Watch 535 first, the put wall…"
-    THE THREE     the first three by what matters,
-                  side by side (Noah kept the podium)
-    THE LIST      the rest, one row each, on one
-                  column template
-
-  ONE PANE OF ONE TO FOUR since 2026-10-15 (Noah:
-  "can we add exp and different tickers to the
-  targets page as well?"): the box's own line —
-  Ranked by · Strikes · the names door · updated —
-  is TargetsControls, shared by every pane; the pane
-  takes a DENSITY from how many stand beside it:
-  alone, the whole board; beside one, the figures
-  without the words (seven columns); beside two or
-  three, the strike, the odds and the actions as
-  icons (four columns), the podium the one to watch
-  first. The pane's `ticker` is read by the host.
-
-  Every figure is another page's answer for that
-  strike — reached and holds (At the wall), built or
-  drained (Building), closes here (Ahead) — and the
-  inks are theirs: holds silver, breaks the warm side
-  of the calendar's ramp, a wall's weight its cool
-  side, the roles in their own. Two actions per row:
-  the chart, the alert. A click makes the strike the
-  terminal's focus; the row wears the where-you-are
-  silver.
-
-  THE ROW'S CARD (2026-09-09, after Noah put his
-  partner's ranked page beside ours and asked what
-  of it was worth taking — three facts were: the
-  contracts behind the dollars, the strike against
-  its neighbours, and which half of the rank carried
-  it): a click on a list row keeps the strike AND
-  opens a translucent card at the row — reached,
-  holds, the two paths, open interest in contracts,
-  built today, beside it, and one line naming the
-  driver. The same capsule again, a click anywhere,
-  a scroll or Esc closes it. The three cards on the
-  podium already say most of this and take no card.
-==================================================
-*/
+/* Targets (the Agenda): every strike in the order it matters today — the head (watch first, most likely reached, the
+   nearest walls in reach, the close's lean), the sentence, the podium of three and the list. One to four panes, each
+   denser beside others; a click keeps the strike and opens the row's card (reached, size, paths, OI, built, neighbours). */
 
 import { daySigmaOfIv } from '../../data/expectedMove';
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
@@ -75,15 +22,14 @@ import { cadenceWords, longDay, recordDay, aheadWord, sessionDay } from '../../d
 import { fmtDistance, sessionAtr } from '../../data/atr';
 import { bookCandles, peekDaySigma, peekIv, useBookRev } from '../../data/uwBook';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
-/* An armed alert wore lime here until 2026-09-10; it is a watch, not a live
-   thing, so it wears the alert ink now (palette ALERT) and the bell jingles */
+const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal */
+/* an armed alert wears the alert ink (palette ALERT) and the bell jingles */
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 export const ROLE_INK: Record<string, string> = { 'call wall': CALL_WALL, 'put wall': PUT_WALL, supreme: SUPREME, flip: FLIP };
 /** Breaks and trapdoors are the calendar's warm side; a wall's weight its cool side */
 const WARM = THERMAL_WARM;
 const COOL = THERMAL_COOL;
-/* "<1%" for the tiny chances — no floor (the audit: SPY 742–782, five expected moves out, all read "2% reached") */
+/* "<1%" for the tiny chances — no floor */
 const pct = chanceLabel;
 export const ORDER_OPTIONS: DropdownOption<AgendaOrder>[] = AGENDA_ORDERS.map(o => ({ value: o.value, label: o.label, hint: o.hint }));
 export const WINDOW_OPTIONS: DropdownOption<number>[] = STRIKE_WINDOWS.map(w => ({ value: w, label: `${w} each side`, hint: w === 30 ? 'The whole book' : `${w} strikes above spot and ${w} below` }));
@@ -93,11 +39,9 @@ export const WINDOW_OPTIONS: DropdownOption<number>[] = STRIKE_WINDOWS.map(w => 
 /** What a strike is: a named level, a shelf (a wall the Map does not name), a
     trapdoor (its hedging pushes the move along), or too thin to be any of them */
 type Kind = 'named' | 'shelf' | 'trapdoor' | 'thin';
-/* A WALL % ONLY ON A WALL (the audit's M3: "Wall 5%" on the 764 trapdoor — a named level with negative weight read as
-   'named'): a role names the strike, but only a strike that absorbs (dealers long gamma) carries a size */
-/* A STRIKE WITH ALMOST NO NET IS THIN, NOT A TRAPDOOR (the retail test, 2026-10-23: 774 TRAPDOOR on −$0.7M) — the
-   tag follows the strike's own net sign on the Levels card's contracts, and a near-zero net is neither */
-/* ONE CLASSIFIER (the eighth audit's M1): data/agenda.ts strikeKind — the Board's and Compare's watch-first read it too */
+/* a wall % only on a wall: only a strike that absorbs (dealers long gamma) carries a size */
+/* a strike with almost no net is thin, not a trapdoor: the tag follows the strike's own net sign */
+/* one classifier: data/agenda.ts strikeKind (the Board's and Compare's watch-first read it too) */
 const kindOf = (t: Target): Kind => strikeKind(t);
 /** What a strike that is not a wall does, in the cell's few words */
 const notWallWords = (t: Target) => (t.role === 'put wall' ? 'short gamma — a break can accelerate' : 'pushes the move along');
@@ -116,15 +60,11 @@ const HoldBeam = ({ t, w = 52, h = 6 }: { t: Target; w?: number | string; h?: nu
   );
 };
 
-/* EVERY LEVEL THE STRIKE IS, IN THE ONE ORDER (the retail test, 2026-10-23: 769 read PUT WALL here and SUPREME on the
-   Map): supreme · call wall · put wall, then shelf or trapdoor when it is none of them */
-/* THE TAG STANDS OUT ONLY WHERE IT MATTERS (the fourth audit: every strike of a short-gamma book read "TRAPDOOR" in the
-   same warm ink — true, and so it told the reader nothing). The kind is kept on every row; it wears its ink on the
-   strikes that carry weight — the first three in the order, the three heaviest, the named levels — and is quiet
-   elsewhere. The board says which are loud (LoudStrikes). */
+/* every level the strike is, in the one order: supreme · call wall · put wall, then shelf or trapdoor */
+/* The kind is kept on every row but wears its ink only where it carries weight — the first three, the three heaviest,
+   the named levels (LoudStrikes). */
 const LoudStrikes = createContext<ReadonlySet<number> | null>(null);
-/* FROM SPOT IN THE SHELL'S RULER (the fifth audit, 2026-10-23: the Agenda printed percent whatever the Ruler said) — the
-   board hands the formatter down, the rows and both cards read it */
+/* distance from spot in the shell's Ruler unit, handed down to the rows and both cards */
 const FromSpot = createContext<(t: Target) => string>(t => `${t.distancePct < 0 ? '−' : '+'}${Math.abs(t.distancePct).toFixed(2)}%`);
 const Tags = ({ t, yours }: { t: Target; yours?: string }) => {
   const loudSet = useContext(LoudStrikes);
@@ -200,8 +140,7 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
       className="fixed z-[120] rounded-md border border-borderSubtle px-3 py-2.5 select-text"
       style={{ width: CARD_W, left: pos?.left ?? 0, top: pos?.top ?? 0, background: 'rgba(8,8,10,0.88)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)', opacity: pos ? 1 : 0, transition: 'opacity 160ms ease-out' }}
       onPointerDown={e => e.stopPropagation()}
-      /* a typed dark glass, portalled onto the page: its words are the dark set on either theme (on the light page they were
-         the page's black on the dark card — the light sweep, 2026-09-19) */
+      /* a typed dark glass portalled onto the page: its words are the dark set on either theme */
       data-theme="dark"
       data-chart-glass
       data-target-card-node={t.strike}
@@ -278,8 +217,7 @@ const Actions = ({ t, armed, onChart, onAlert, icons = false }: { t: Target; arm
       {!icons && 'Chart '}
       <ArrowUpRight className="w-3 h-3" />
     </button>
-    {/* THE BELL JINGLES and turns orange when set (Noah, 2026-09-10) — the
-        alert ink, not lime: an armed alert is a watch, not a live thing */}
+    {/* the bell jingles and wears the alert ink when set — an armed alert is a watch, not a live thing */}
     <button
       onClick={() => onAlert(t)}
       aria-pressed={armed}
@@ -289,7 +227,7 @@ const Actions = ({ t, armed, onChart, onAlert, icons = false }: { t: Target; arm
       data-row-alert={armed ? 'armed' : 'quiet'}
     >
       <JingleBell count={armed ? 1 : 0} className={`w-3 h-3 ${armed ? '' : 'text-textSecondary'}`} />
-      {/* one line, always — "ALERT / SET" stacked in a narrow card (Noah's screenshot, 2026-09-10) */}
+      {/* one line, always */}
       {!icons && <span className={`whitespace-nowrap ${armed ? '' : 'text-textSecondary'}`}>{armed ? 'Alert set' : 'Alert'}</span>}
     </button>
   </span>
@@ -323,7 +261,7 @@ const builtHead = (agenda: Agenda, inSession: boolean): string => {
 
 /* ---- the three ---------------------------------------------------------------- */
 
-/** "At stake" and its "×", in words (the fourth audit: "0.2×" beside "at stake" was never explained) */
+/** "At stake" and its "×", in words */
 const stakeTip = (stake: number, per1: number): string =>
   `At stake: the dollars of dealer hedging that come into play if price reaches this strike — the hedging parked here plus what dealers must trade on the way through. ${
     per1 > 1 ? `The × figure is that against the dollars of stock it took to move the name 1% in ${recordDay().isToday ? "today's" : `${longDay(recordDay().date)}'s`} session (${fmtDollars(per1)}): ${(stake / per1).toFixed(1)}× means the hedging here is ${(stake / per1).toFixed(1)} times what a 1% move took.` : ''
@@ -391,7 +329,7 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
       {/* wraps rather than cuts: three facts on one 15px line ran out of card ("$176K at stake · (") */}
       <p className="mt-1 font-mono text-t10 leading-[15px] tnum flex flex-wrap items-center gap-x-3">
         <span className={material ? 'text-textPrimary' : 'text-textMuted'}>{buildWords(t, inSession)}</span>
-        {/* the session's tests on their own line-piece (the tenth audit: "held 10, broke 4" wrapped under the wall words) */}
+        {/* the session's tests on their own line-piece */}
         {t.today?.tests ? <span className="text-textSecondary whitespace-nowrap">held {t.today.held}, broke {t.today.broke} today</span> : null}
         {t.closes > 0 && <span className="text-textSecondary" title="Model weight for the close at this strike: a normal on 1σ to the close, pulled by the book — not a measured chance">close weight {t.closes.toFixed(0)}%</span>}
         <span className="text-textSecondary cursor-help" title={stakeTip(t.stake, marketPer1Pct)}>
@@ -422,8 +360,7 @@ interface ControlsProps {
   lenses?: boolean;
 }
 
-/** Ranked by · Strikes · the names door · when the numbers were read — one line for every pane (the Building row's
-    grammar; since 2026-10-15 the Targets face takes one to four names, each on its own expiry) */
+/** Ranked by · Strikes · the names door · when the numbers were read — one line for every pane */
 export const TargetsControls = ({ order, onOrder, window, onWindow, names, updatedAt, strikes, lenses = true }: ControlsProps) => (
   <div className="px-5 pb-2 flex items-center gap-2 flex-wrap" data-targets-controls>
     {lenses && (
@@ -516,9 +453,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
   };
   const cardTarget = card ? (agenda.targets.find(t => Math.abs(t.strike - card.strike) < 1e-9) ?? null) : null;
   /* THE PODIUM: the first three, side by side — in a tight pane the one to watch first alone, the other two in the list */
-  /* THE PODIUM IS THE CHOSEN ORDER'S FIRST THREE (the audit's M7: the cards stayed "Matters most" #1–#3 while the list
-     numbered by the chosen order and skipped them) — numbered by their own rank, the list going on from #4. In a tight
-     pane the one to watch first alone, as before. The card that is the desk's watch-first wears the word. */
+  /* The podium is the chosen order's first three, the list going on from #4; a tight pane shows the watch-first alone. */
   const podium = density === 'tight' ? agenda.first.slice(0, 1) : agenda.targets.slice(0, 3);
   const podiumSet = useMemo(() => new Set(podium.map(t => t.strike)), [podium]);
   const rest = useMemo(() => agenda.targets.filter(t => !podiumSet.has(t.strike)), [agenda.targets, podiumSet]);
@@ -539,7 +474,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
   const full = density === 'full';
   const wide = density !== 'tight';
   const pad = wide ? 'px-5' : 'px-3';
-  /* EVERY HEAD EXPLAINS ITSELF ON HOVER (the ship pass, 2026-10-22) — one plain sentence each */
+  /* every head explains itself on hover, one plain sentence each */
   const headCell = (words: ReactNode, right = false, extra = '', tip?: string) => (
     <div className={`h-[14px] text-t9 uppercase tracking-widest text-textMuted ${right ? 'text-right' : ''} ${tip ? 'cursor-help' : ''} ${extra}`} title={tip}>
       {words}
@@ -560,8 +495,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
           <div>
             <dt className="text-t10 text-textMuted cursor-help" title="The one strike to watch first: likely to be reached, with the most at stake">Watch first</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum whitespace-nowrap" style={{ color: lead?.roles[0] ? ROLE_INK[lead.roles[0]] : lead?.role ? ROLE_INK[lead.role] : 'rgb(var(--text-primary))' }} data-watch-first>
-              {/* EVERY LEVEL THE STRIKE IS, in the one order (core/walls.ts levelRoles — the sixth audit: "Watch first 760 PUT
-                  WALL" over a row tagged SUPREME · PUT WALL) */}
+              {/* every level the strike is, in the one order (core/walls.ts levelRoles) */}
               {lead ? fmtStrike(lead.strike) : '—'} {lead && (lead.roles.length ? <span className="text-t9 uppercase tracking-widest">{lead.roles.join(' · ')}</span> : lead.role ? <span className="text-t9 uppercase tracking-widest">{lead.role}</span> : null)}
             </dd>
           </div>
@@ -569,8 +503,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             <dt className="text-t10 text-textMuted cursor-help" title={`The strike price is most likely to touch ${agenda.horizon ?? (clock.inSession ? 'by the close' : aheadWord())}, and the chance — strikes price is already on, and strikes today's session has already traded through, are left out (they are reached, not likely)`}>Most likely reached <span className="text-textMuted/70">· {clock.inSession ? 'not yet today' : aheadWord() === 'today' ? 'today' : `next session, ${longDay(sessionDay().next)}`}</span></dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{agenda.mostReached ? `${fmtStrike(agenda.mostReached.strike)} · ${pct(agenda.mostReached.reach)}` : '—'}</dd>
           </div>
-          {/* THE NEAREST WALL ON EACH SIDE (the fifth audit, 2026-10-23: "Nearest wall in reach 769 · supreme · put wall"
-              hid the call wall at 770 beside it — both sides are named) */}
+          {/* the nearest wall on each side, both named */}
           <div>
             <dt className="text-t10 text-textMuted cursor-help" title="The nearest wall price is likely to reach (a 15% chance or more) on each side of price — a named call or put wall or a shelf — with every level it is. The table below tags the same strikes">{agenda.wallsInReach ? 'Nearest walls in reach' : 'Walls in reach'}</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum whitespace-nowrap flex items-baseline gap-2" data-nearest-wall>
@@ -593,8 +526,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             </dd>
           </div>
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`The strike the model weights most for the close (a normal on 1σ to the close, pulled by the book — not a measured chance) — named only when one strike reaches 15%; under that the close is spread too thin to lean anywhere${agenda.closeTop ? ` (the likeliest, ${fmtStrike(agenda.closeTop.strike)}, is ${agenda.closeTop.odds.toFixed(0)}%)` : ''}`}>{/* "the close leans to no clear lean" read as broken grammar (the retail test) — the label says what the figure is;
-                after the bell the odds are the NEXT session's close, never the one that just happened (the tenth audit's M3) */}{clock.inSession || agenda.horizon ? 'Likeliest close' : aheadWord() === 'today' ? 'Likeliest close today' : 'Likeliest next close'}</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={`The strike the model weights most for the close (a normal on 1σ to the close, pulled by the book — not a measured chance) — named only when one strike reaches 15%; under that the close is spread too thin to lean anywhere${agenda.closeTop ? ` (the likeliest, ${fmtStrike(agenda.closeTop.strike)}, is ${agenda.closeTop.odds.toFixed(0)}%)` : ''}`}>{/* the label says what the figure is; after the bell it is the next session's close */}{clock.inSession || agenda.horizon ? 'Likeliest close' : aheadWord() === 'today' ? 'Likeliest close today' : 'Likeliest next close'}</dt>
             <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${agenda.closesNear ? 'text-textPrimary' : 'text-textMuted'}`} data-close-lean>{closeLeanWords(agenda)}</dd>
           </div>
         </dl>
@@ -610,8 +542,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
       </div>
 
       {/* THE PODIUM */}
-      {/* The three cards under each other on a phone (the phone pass, 2026-09-13); beside one other pane, across from
-          1280px of screen; in a tight pane the one card */}
+      {/* the three cards under each other on a phone; across from 1280px beside one other pane; one card in a tight pane */}
       <div className={`${pad} pt-3 pb-3 grid gap-3 ${full ? 'grid-cols-1 sm:grid-cols-3' : density === 'compact' ? 'grid-cols-1 xl:grid-cols-3' : 'grid-cols-1'}`} data-targets-three>
         {podium.map((t, i) => (
           <Card
@@ -642,7 +573,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
           {full && headCell('Today', false, 'whitespace-nowrap', recordDay().isToday && !recordDay().done ? "What today's session has already done at the strike: traded through it, and how often it held or broke (the Map's \"How the levels held\" count) — a dash where the session has not reached it" : recordDay().isToday ? `Today's session has closed — these targets are the next session's (${longDay(sessionDay().next)}); how today's levels held is on the Map` : 'The session has not opened yet — nothing has been reached today')}
           {headCell('Net gamma', true, '', "The net gamma at this strike on the contracts the Levels card reads, dollars per 1% move — positive (green): dealers long gamma, their hedging slows price here; negative (red): short gamma, their hedging speeds a move through. The bar: a wall's size against the biggest wall on this ticker (100%); empty on a trapdoor or a thin strike")}
           {full && headCell('If it breaks', false, '', 'Where price runs next if it gets through, and how much stock dealers must buy or sell on the way')}
-          {/* ONE SHORT HEAD (the tenth audit's retail finding: "Built the overnight open-interest count" ran into "At stake") */}
+          {/* one short head */}
           {full && headCell(builtHead(agenda, clock.inSession), false, 'whitespace-nowrap truncate', agenda.targets[0]?.buildOvernight ? `How much the wall at this strike grew (+) or shrank (−) ${agenda.targets[0].buildWhen} — the overnight open-interest count, the contracts the Levels card reads, each valued at its own gamma. The same figure as Building's CHANGE column` : 'Hedging added (building) or taken off (draining) at this strike, estimated from the day’s trades until the overnight count loads')}
           {wide && headCell('At stake', false, '', stakeTip(1, 0))}
           {full && headCell('Why it ranks', false, 'whitespace-nowrap truncate', 'Why it ranks here: the two numbers behind its place — the chance it is reached times what is at stake')}
@@ -662,7 +593,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                 title="Click for its card"
               >
                 {wide && <div className="font-mono text-t10 tnum text-textSecondary">#{t.rank}</div>}
-                {/* ON A PHONE THE TAGS WRAP UNDER THE STRIKE (the fourth audit: "SUPREME PUT" cut off at 390) */}
+                {/* on a phone the tags wrap under the strike */}
                 <div className={`flex items-center gap-1.5 px-2 font-mono text-t11 tnum overflow-hidden ${wide ? 'whitespace-nowrap' : 'flex-wrap gap-y-0 leading-[12px] content-center'} ${kept ? 'text-silver font-bold shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)] h-full' : 'text-textPrimary'}`}>
                   <span className={wide ? '' : 'w-full'}>{fmtStrike(t.strike)}</span>
                   <Tags t={t} yours={yours?.get(t.strike)} />
@@ -678,8 +609,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                     {t.today ? (t.today.tests ? `held ${t.today.held} · broke ${t.today.broke}` : 'traded through') : <span className="text-textMuted">—</span>}
                   </div>
                 )}
-                {/* THE COLUMN SAYS SOMETHING ON EVERY ROW (the retail test, 2026-10-23: "—" on every row but 770): the strike's
-                    own net gamma, signed and in the one gamma ink, the wall's share of the top wall as its bar */}
+                {/* the column says something on every row: the strike's own net gamma, signed, the wall's share of the top wall as its bar */}
                 <div className="flex items-center justify-end gap-1.5 whitespace-nowrap font-mono text-t11 tnum font-semibold" style={{ color: kindOf(t) === 'thin' ? 'rgb(var(--text-muted))' : t.net > 0 ? LONG_GAMMA : SHORT_GAMMA }} title={t.isShelf ? `${holdShort(t.hold)} of the top wall` : undefined} data-target-net={Math.round(t.net)}>
                   {t.net > 0 ? '+' : t.net < 0 ? '−' : ''}
                   {fmtDollars(Math.abs(t.net))}
@@ -697,8 +627,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                     <span className="absolute right-0 font-mono text-t10 tnum text-textPrimary">{fmtDollars(t.stake)}</span>
                   </div>
                 )}
-                {/* THE WHOLE REASON, WRAPPED (the eleventh audit's retail finding: "reached today · 87% to touch…" cut at two lines) —
-                    the row grows to hold it */}
+                {/* the whole reason, wrapped — the row grows to hold it */}
                 {full && <div className="text-t10 leading-[13px] text-textMuted py-1 break-words">{t.why}</div>}
                 <Actions t={t} armed={armedAt(t.strike)} onChart={onChart} onAlert={onAlert} icons={!wide} />
               </div>

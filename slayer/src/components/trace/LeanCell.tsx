@@ -1,45 +1,30 @@
-/*
-  THE bid/ask cell — the Live Tape's RatioCell grammar, shared (Noah,
-  2026-08-30: "our bid ask should be the one we have for options tape...
-  make that the same ui"). Label over the bar: the ask share in the primary
-  ink from the right, the bid's share the quiet track left of it.
-*/
+/* The bid/ask cell, shared with the tape: the label over a bar of the ask share against the bid's quiet track. */
 
 import { dayLean, LEAN_EDGE, sideShares } from '../../data/traceLive';
-import { shyPct } from './dayWords';
+import { shyPct } from '../../data/traceLean';
 import { CROSS_PCT, SPREAD_LEG_PCT } from '../../data/flowBook';
 
-/* THE SIDE IN ONE INK (2026-10-13, the partner's rule at Noah's word): the ask share was green and the bid share red —
-   direction inks on a fact about SIDE, the reading the tape's own quote cell refuses: a put bought at the ask is not
-   bullish. The label and the bar's reach carry the side; the bar is the ask share in the primary ink over the bid's
-   quiet track.
+/* The side in one ink (a put bought at the ask is not bullish). Given the day by side, the bar is ask · mid · bid
+   over the whole volume and the lean is traceLean's one rule. */
 
-   ALL THREE SIDES (the re-audit, 2026-10-22: QQQ 725C read "ASK 56%" on 166 at the ask against 128 on the bid, while
-   38,000 of its 38,304 contracts were a no-side cross): given the day's contracts by side, the bar is ask · mid · bid
-   over the WHOLE volume, and a lean is called only when it is real — at least half the day on a side, and that side
-   LEAN_EDGE (55%) or more of it — the one rule (traceLive dayLean) every lean on Trace reads. A day that was mostly mid or
-   no side says MID. */
-
-/* ONE CASE FOR THE LABEL (audit round 9: "BID 60%" beside "bid 51%" with no stated meaning): every label is lower-case;
-   a called lean is the side's share in the primary ink, bold — "bid 60%"; a day short of the call says so in words —
-   "even · bid 51%" — in the quiet ink. The cell is wide enough for both at 1440 (the column was cut to "Le", "bid 50"). */
+/* Every label is lower-case: a called lean bold in the primary ink ("bid 60%"), a day short of the call quiet ("even
+   · bid 51%"). */
 const LeanCell = ({ askPct: raw, split, unit = 'contracts', legsPct, crossPct }: { askPct: number; split?: { ask: number; bid: number; mid: number }; unit?: 'contracts' | 'premium'; legsPct?: number; crossPct?: number }) => {
-  /* A DAY OF CROSSES HAS NO LEAN (audit round 9: a 25,000-lot PLTR 175C cross) — pre-arranged, no side taken */
+  /* A day of crosses has no lean: pre-arranged, no side taken */
   if (crossPct != null && Number.isFinite(crossPct) && crossPct >= CROSS_PCT && !(legsPct != null && legsPct >= SPREAD_LEG_PCT)) {
     return (
-      <span className="inline-flex flex-col items-end gap-[3px] w-20" title={`${Math.round(crossPct)}% of the day printed as cross trades — pre-arranged between two parties at one price, no side taken on the screen — so no lean is called (${CROSS_PCT}% or more in crosses)`}>
+      <span className="inline-flex flex-col items-end gap-[3px] w-20" title={`${Math.round(crossPct)}% of the day in pre-arranged cross trades, no side taken, so no lean (${CROSS_PCT}% or more)`}>
         <span className="font-mono text-t11 tnum leading-[14px] text-textSecondary whitespace-nowrap">cross {Math.round(crossPct)}%</span>
         <span className="flex w-20 h-[3px] rounded-full overflow-hidden bg-ink/[0.14]" />
       </span>
     );
   }
-  /* A DAY OF SPREAD LEGS HAS NO LEAN (audit round 8: VRT 185P read "ASK 100%" on 10,840 of 10,847 contracts in multi-leg
-     orders) — the share in legs, quiet, and why on the hover */
+  /* A day of spread legs has no lean: the share in legs, quiet, and why on the hover */
   if (legsPct != null && Number.isFinite(legsPct) && legsPct >= SPREAD_LEG_PCT) {
     return (
       <span
         className="inline-flex flex-col items-end gap-[3px] w-20"
-        title={`${Math.round(legsPct)}% of the day traded as legs of multi-leg orders — the side a leg prints on says how the package was filled, not which way the money leans, so no lean is called (${SPREAD_LEG_PCT}% or more in multi-leg orders)`}
+        title={`${Math.round(legsPct)}% of the day in multi-leg orders: a leg's side says how a package filled, not a lean (${SPREAD_LEG_PCT}% or more)`}
       >
         <span className="font-mono text-t11 tnum leading-[14px] text-textSecondary">legs {Math.round(legsPct)}%</span>
         <span className="flex w-20 h-[3px] rounded-full overflow-hidden bg-ink/[0.14]" />
@@ -59,12 +44,10 @@ const LeanCell = ({ askPct: raw, split, unit = 'contracts', legsPct, crossPct }:
     const a = sh.ask;
     const b = sh.bid;
     const m = sh.mid;
-    /* THE LABEL PRINTS THE NUMBER THE RULE USES (audit round 4: SPXW 7600P read "BID 47%" — the bid's share of ALL its
-       contracts — while the lean was called on the bid's 59.9% of the SIDED ones): a side's lean is its share of the sided
-       volume; a mostly-mid day prints the mid's share of the whole. The hover gives all three shares of the whole. */
+    /* The label prints the number the rule uses: a side's share of the sided volume, or the mid's share of the whole
+       on a mostly-mid day. */
     const askS = Math.round(l.askSided);
-    /* AN EVEN DAY STILL SAYS WHICH WAY IT TIPPED (retail, 2026-10-23: NVDA's Screener read "EVEN" on nearly every row and
-       answered nothing) — the larger side's share of the sided volume, lower-case and quiet: short of the 55% call */
+    /* An even day still says which way it tipped: the larger side's sided share, quiet, short of the call */
     const label = l.lean === 'ASK' ? `ask ${askS}%` : l.lean === 'BID' ? `bid ${100 - askS}%` : l.lean === 'UNSIDED' ? `mid ${m}%` : l.askSided >= 50 ? `even · ask ${shyPct(l.askSided)}%` : `even · bid ${shyPct(l.bidSided)}%`;
     const tone = l.lean === 'ASK' || l.lean === 'BID' ? 'text-textPrimary' : 'text-textSecondary';
     const total = split.ask + split.bid + split.mid;
@@ -100,7 +83,7 @@ const LeanCell = ({ askPct: raw, split, unit = 'contracts', legsPct, crossPct }:
   const label = even ? (askPct >= 50 ? `even · ask ${askPct}%` : `even · bid ${bidPct}%`) : l === 'BID' ? `bid ${bidPct}%` : `ask ${askPct}%`;
   const tone = even ? 'text-textSecondary' : 'text-textPrimary';
   return (
-    <span className="inline-flex flex-col items-end gap-[3px] w-20" title={`Of the premium or volume that traded at the bid or the ask: ${askPct}% at the ask, ${bidPct}% on the bid (mid and no-side not in this split) — a lean from ${LEAN_EDGE}% on a side`}>
+    <span className="inline-flex flex-col items-end gap-[3px] w-20" title={`Of what traded at the bid or ask: ${askPct}% at the ask, ${bidPct}% on the bid. A lean from ${LEAN_EDGE}% on a side`}>
       <span className={`font-mono text-t11 ${even ? '' : 'font-semibold'} tnum leading-[14px] whitespace-nowrap ${tone}`}>{label}</span>
       <span className="flex w-20 h-[3px] rounded-full overflow-hidden bg-ink/[0.14]">
         <span className="h-full bg-textPrimary/80 ml-auto" style={{ width: `${askPct}%` }} />

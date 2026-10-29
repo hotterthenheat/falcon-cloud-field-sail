@@ -1,20 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE OPTIONS CHAIN AS A GRID
-  (components/weigher/ChainGrid.tsx)
-
-  The Weigher's chain — its column catalog, the grid, the
-  market's hairline between strikes, the weigh-up (Stats ·
-  The Greeks) unfolding under a picked strike — lifted out
-  of pages/weigher/WeigherDesk.tsx on 2026-09-22 so the
-  Paper Live Chart could stand the SAME chain beside its
-  chart (Noah: "use the Weigher's chain … like we have for
-  the dropdown of the weigher options chain"). Nothing in
-  it changed for the Weigher; the Live Chart asks for three
-  things the Weigher does not: `drillExtra` (the order,
-  inside the dropdown), `held` (a HELD mark on a strike the
-  reader holds), and the catalog's "Decay a day" column.
-==================================================
+  The Weigher's chain as a grid: the column catalog, the market's line between strikes, and the weigh-up (stats and
+  greeks) unfolding under a picked strike. The paper desk uses the same grid.
 */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';

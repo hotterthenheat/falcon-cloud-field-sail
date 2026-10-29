@@ -1,22 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - WEIGHER (pages/Weigher.tsx)
-
-  Its own door on the top bar (Noah, 2026-08-26:
-  "weigher should be its own page instead of a
-  subsection of compass").
-==================================================
-
-  The desk outgrew the tab it was living behind. Compass is a CHOOSER — it
-  sweeps the universe and grades what it finds — and the Weigher is a
-  WORKSTATION you sit down at with one name. Sharing a page meant one
-  segmented control deciding which of two unrelated jobs you were doing, and
-  a Compass deep link could land you in neither. Now the workflow reads
-  straight down the Discover menu: Compass finds it, Weigher weighs it.
-
-  This file is only the door: the header, and the one deep link that arrives
-  carrying a name (Trace's "Weigh it"). Everything the desk does lives in
-  weigher/WeigherDesk.
+  The Weigher's page: chart, chain and watchlist on one desk, for weighing one contract at a time.
 */
 
 import { useEffect, useState } from 'react';

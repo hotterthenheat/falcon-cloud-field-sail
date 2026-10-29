@@ -1,60 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · THE ORDER CARD
-  (components/paper/OrderPanel.tsx)
-
-  The Live Chart's Order card, laid out the way the prop
-  firms' platforms lay theirs (Noah, 2026-09-22, with a
-  picture of TopstepX: "they dont give it random buzzword
-  names like 'the ticket' just simply Order"; then, of the
-  ticket that filled its column around a gap: "what do you
-  think we can do about all this empty space and the
-  button layouts" — and, shown this card: "okay do that").
-  Top to bottom:
-
-    WHAT IT IS     the contract, and where it trades
-    ORDER TYPE     Market · Limit · Stop — a limit's or a
-                   stop's price in a box that steps a tick
-                   either way
-    THE POSITION   one line: none, or long or short so many
-                   at a price, and what it is up or down
-    SIZE           − [n] + and 1 · 3 · 5 · 10 · 15 — THE
-                   DESK'S ONE SIZE (the chart's right-click
-                   card and the position bar use the same)
-    BUY · SELL     two buttons side by side, "Buy +1 @
-                   Market": the house's quiet colours at rest,
-                   the pointer on one fills it with its
-                   direction (Noah: "buy and sell should keep
-                   our colors with the hover being the
-                   direction color like red or green") — one
-                   press, no side to switch before it
-    THE REST       Join bid · Join ask (a limit resting at
-                   the bid or the ask), Close position ·
-                   Reverse · Cancel orders (this contract's),
-                   Flatten all · Cancel all (the account's)
-    BRACKETS       always in sight — DISTANCES in points
-                   from the fill, so either button carries
-                   them: above a buy's fill and below a
-                   sell's. With them: breakeven, trailing, a
-                   second and a third target, and the size a
-                   risk makes
-    THE FOOT       one line: what a press sets aside and
-                   costs — or, in the engine's own words, why
-                   it would be refused
-
-  The engine is asked before the press, for each button —
-  the same refusals it would give after it. The brackets
-  are kept for the next order, a product each
-  (`slayer_paper_brackets_v1`).
-
-  A FUTURE'S CARD ONLY (2026-09-22, the same evening: "the
-  order is not a buy limit or a sell limit but rather a put
-  or call"): a stock's or an index's options are ordered
-  inside the chain's own dropdown
-  (components/paper/OptionsChain), which borrows this
-  card's pieces — the size, the two-way button, the price
-  box.
-==================================================
+  The paper desk's Order card: the contract, the order type (market, limit, stop), the position, the size, the
+  ways out, and what the press will cost in plain words.
 */
 
 import { useEffect, useMemo, useState } from 'react';

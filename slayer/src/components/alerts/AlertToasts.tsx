@@ -1,28 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE TOAST ANYWHERE (components/alerts/AlertToasts.tsx)
-
-  HEAR IT EVERYWHERE (the alerts rule, 2026-09-10):
-  a firing shows where the reader IS — any page —
-  as one orange chip at the window's top right, in
-  the drawer's own words (the name, what alerted),
-  for five seconds; a click opens the drawer. The
-  chart panes used to carry their own chip and the
-  reader saw a firing twice when a chart of the name
-  was up; this one chip is the only one now. The
-  price line on the pane still turns solid — that
-  is the in-place mark, not a second voice.
-
-  A PAPER FILL SAYS SO HERE TOO (2026-09-22, docs/paper-
-  rules.md "Fill alerts"): a stop, a target, a limit, an
-  expiry, the rules closing something — on a paper
-  account, while the reader is anywhere — is a chip in
-  this same column (never a second stack over it), in
-  the house's where-you-are silver, with what it made in
-  its direction's ink; a click opens the Live Chart. A
-  failed evaluation wears the bear ink, a passed one the
-  bull.
-==================================================
+  An alert firing, or a paper fill, shown wherever the reader is: one chip at the window's top right for five
+  seconds; a click opens the alerts drawer. It is the only voice for a firing, so a chart of the name does not repeat it.
 */
 
 import { UndoToasts } from '../ui/undo';

@@ -1,41 +1,11 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE READER'S OWN REASONS
-  (data/flowReasons.ts)
-
-  Watchers ships six reasons the DESK watches
-  for. This is the door for the reader's own: name
-  a set of conditions over the day book, and every
-  contract that meets them joins the same feed,
-  under the reader's own words.
-
-  ONE BOOK, ONE MORE READER. A reason is a filter
-  over `BookContract` — the identical rows the
-  screener, the windows and the footprints all
-  read. A reader-made reason can no more invent a
-  number than a house rule can.
-
-  WHY EVERY TERM MUST HOLD (and there is no "or").
-  A reason answers "why is this in front of me" in
-  one sentence. Give it branches and the sentence
-  stops being answerable — the reader is then
-  maintaining a query, not reading a tape. Two
-  ideas are two reasons, and the feed says which
-  one caught the row.
-
-  INFORMATION, NOT ADVICE. A reason describes the
-  contracts it finds. It never scores them, ranks
-  them, or suggests a trade — the builder shows how
-  many rows it catches today so the reader can see
-  whether they have written something loud or
-  something rare, and that is the whole verdict.
-==================================================
-*/
+/* The reader's own Watchers reasons: every term must hold (no "or", so the reason stays one sentence) over the same
+   book rows the other pages read. A reason describes what it finds; it never scores or suggests. */
 
 import { useCallback, useSyncExternalStore } from 'react';
 import type { BookContract } from '../types/trace';
+import { dayLean, LEAN_EDGE } from './traceLean';
+import { fmtCount as num } from './traceLive';
 
-// ---- the vocabulary ---------------------------------------------------------
 
 export type ReasonField =
   | 'premium'
@@ -82,11 +52,7 @@ interface FieldMeta {
   step: number;
   /** How the value reads inside the sentence */
   fmt: (v: number) => string;
-  /**
-   * The clause this term contributes. Written per comparator because English
-   * does not negate cleanly — "under 40% bought at the ask" is a different
-   * sentence from "40%+ bought at the ask", not the same one with a "not".
-   */
+  /** The clause this term contributes, per comparator: "under 40% bought at the ask" is not "40%+" with a "not". */
   clause: (cmp: Comparator, v: number) => string;
   /** null = the row cannot answer this question (no earnings date, etc.) */
   read: (r: BookContract) => number | null;
@@ -98,7 +64,6 @@ const usd = (v: number) =>
     : v >= 1_000
       ? `$${Math.round(v / 1_000)}K`
       : `$${v}`;
-const num = (v: number) => v.toLocaleString('en-US');
 const over = (cmp: Comparator) => (cmp === 'atLeast' ? 'over' : 'under');
 
 export const REASON_FIELDS: Record<ReasonField, FieldMeta> = {
@@ -170,11 +135,12 @@ export const REASON_FIELDS: Record<ReasonField, FieldMeta> = {
   askPct: {
     label: 'Bought at the ask',
     unit: '%',
-    preset: 60,
+    preset: LEAN_EDGE,
     step: 5,
     fmt: v => `${v}%`,
     clause: (c, v) => `${over(c)} ${v}% bought at the ask`,
-    read: r => r.askPct,
+    /* the day lean's own figure: the ask share of the sided contracts */
+    read: r => dayLean(r).askSided,
   },
   chgPct: {
     label: 'Contract price change',
@@ -213,8 +179,7 @@ export const REASON_FIELDS: Record<ReasonField, FieldMeta> = {
     fmt: v => `${v}%`,
     clause: (c, v) =>
       c === 'atLeast' ? `at least ${v}% out of the money` : `no more than ${v}% out of the money`,
-    /* otmPct is already the distance PAST the stock on both sides (+ out of the money for a call and a put — audit round
-       7: this negated puts, so "at least 5% out of the money" took 5% in-the-money puts) */
+    /* otmPct is already the distance past the stock for calls and puts alike */
     read: r => r.otmPct,
   },
   last: {
@@ -278,13 +243,7 @@ export const REASON_FIELD_ORDER: ReasonField[] = [
   'volGtOiStreak',
 ];
 
-// ---- reading a reason -------------------------------------------------------
-
-/**
- * Every term must hold. A field the row cannot answer (an earnings distance on
- * a name with no date in the window) FAILS rather than passes — silence is not
- * agreement, and a reason that fires on missing data is a reason that lies.
- */
+/** Every term must hold; a field the row cannot answer fails, since silence is not agreement */
 export function reasonMatches(reason: UserReason, r: BookContract): boolean {
   if (reason.right !== 'ANY' && r.right !== reason.right) return false;
   for (const t of reason.terms) {
@@ -295,50 +254,35 @@ export function reasonMatches(reason: UserReason, r: BookContract): boolean {
   return true;
 }
 
-/** How many of today's contracts this reason catches — the builder's verdict. */
+/** How many of today's contracts this reason catches */
 export const reasonMatchCount = (reason: UserReason, rows: BookContract[]): number =>
   rows.reduce((n, r) => n + (reasonMatches(reason, r) ? 1 : 0), 0);
 
-/**
- * The reason's own sentence, composed from its terms — this is what the Reason
- * column prints, exactly like a house rule's phrase. One generator: the reader
- * never writes the explanation, so the words can never drift from the test.
- */
+/** The reason's sentence, composed from its terms, so the words can never drift from the test */
 export function reasonSentence(reason: UserReason): string {
   const side = reason.right === 'C' ? 'Calls' : reason.right === 'P' ? 'Puts' : null;
   const parts = reason.terms.map(t => REASON_FIELDS[t.field].clause(t.cmp, t.value));
   if (parts.length === 0) return side ? `Any ${side.toLowerCase().slice(0, -1)} on the book` : 'Anything on the book';
   const body = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
-  /* The side leads as a subject, not as another comma clause: every clause is
-     written to follow a noun ("over $1M traded", "60%+ bought at the ask"), so
-     "Calls over $1M traded" reads as a sentence and "Calls, over $1M traded"
-     reads as a list with a stray item at the front. */
+  /* the side leads as the subject: every clause is written to follow a noun */
   return side ? `${side} ${body}` : cap(body);
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** A short handle for a reason with no name yet — its loudest term. */
+/** A short handle for a reason with no name yet: its first term */
 export function suggestedName(terms: ReasonTerm[]): string {
   if (terms.length === 0) return 'My reason';
   return REASON_FIELDS[terms[0].field].label;
 }
 
-// ---- the store --------------------------------------------------------------
-
-/*
-  Module-level, not component state — the same argument the chart's alert store
-  makes: the Watchers page, its filter chips and its builder all read this
-  list, and a second writer would silently overwrite the first. Persisted with a
-  self-healing validator, so a malformed key from an older shape is dropped on
-  read rather than taking the page down.
-*/
+/* module-level so the page, its chips and its builder share one list; a malformed stored row is dropped on read */
 
 const STORE_KEY = 'slayer_flow_reasons_v1';
 
-/** Past this the feed stops being a feed and the chip row stops being readable. */
+/** Past this the chip row stops being readable */
 export const MAX_REASONS = 10;
-/** One sentence's worth. More terms than this and nobody can read the clause. */
+/** One sentence's worth of terms */
 export const MAX_TERMS = 5;
 
 const isFin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -395,12 +339,11 @@ const save = (list: UserReason[]) => {
     if (list.length === 0) localStorage.removeItem(STORE_KEY);
     else localStorage.setItem(STORE_KEY, JSON.stringify(list));
   } catch {
-    /* storage full, private, or switched off — never fatal */
+    /* storage full, private or off: never fatal */
   }
 };
 
-/* The cached array IS the snapshot: useSyncExternalStore compares by identity,
-   so a fresh array per read would re-render forever. */
+/* the cached array is the snapshot: useSyncExternalStore compares by identity */
 let cache: UserReason[] | null = null;
 const subs = new Set<() => void>();
 
@@ -441,11 +384,7 @@ export function removeReason(id: string): void {
   if (next.length !== list.length) write(next);
 }
 
-/**
- * A fingerprint of the whole shelf. The alert builder caches its feed by day and
- * minute; without the reader's reasons in that key, editing one would leave the
- * old feed on screen until the clock ticked.
- */
+/** A fingerprint of the shelf, so the feed's cache key changes when a reason is edited */
 export const reasonsSignature = (list: UserReason[]): string =>
   list.map(r => `${r.id}:${r.right}:${r.terms.map(t => `${t.field}${t.cmp}${t.value}`).join('|')}`).join(';');
 

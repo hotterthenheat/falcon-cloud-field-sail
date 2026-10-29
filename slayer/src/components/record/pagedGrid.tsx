@@ -3,9 +3,7 @@ import type { AgGridReact } from 'ag-grid-react';
 import { PageBar } from '../ui/PageBar';
 
 
-/* FIFTY ROWS A PAGE for the long books (the Dossier sweep, 2026-10-22): twenty houses file ~1,700 lines and a fund holds
-   ~500, and a grid grown to all of them made pages tens of thousands of pixels tall. The grid pages itself, so the sort
-   still runs over every row; the house page bar sits under it. */
+/* Fifty rows a page for the long books; the grid pages itself, so a sort still runs over every row. */
 const GRID_PAGE = 50;
 export function usePagedGrid<T>() {
   const ref = useRef<AgGridReact<T> | null>(null);
@@ -27,9 +25,7 @@ export function usePagedGrid<T>() {
   return { props, bar };
 }
 
-/* THE PHONE PIN (the retail pass, 2026-10-22): under 640px a Dossier grid scrolls sideways inside its own box, and its
-   first column — the name, the date, the house — stays pinned at the left so a row never loses what it is about.
-   Spread on every Dossier grid: <AgGridReact {...phonePin} …>. */
+/* Under 640px a grid scrolls sideways in its own box with its first column pinned. Spread on every Dossier grid. */
 type PinApi = { api: { isDestroyed?: () => boolean; getAllDisplayedColumns: () => { getColId: () => string; getPinned: () => unknown }[]; applyColumnState: (p: { state: { colId: string; pinned: 'left' | null }[] }) => unknown } };
 const pinFirst = (e: PinApi) => {
   if (typeof window === 'undefined' || window.innerWidth >= 640 || e.api.isDestroyed?.()) return;

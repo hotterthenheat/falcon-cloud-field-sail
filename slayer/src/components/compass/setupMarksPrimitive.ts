@@ -1,40 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE SETUP'S MARKS ON THE TAPE
-  (components/compass/setupMarksPrimitive.ts)
-
-  Noah, 2026-09-28: "i dont like the look of the
-  target capsules on the chart. and the entry look
-  is not appealing either." The setup's chart used
-  three vocabularies at once — dashed target lines
-  with the library's axis capsules, an entry dot with
-  words floating over the candles, a thick red floor
-  with another capsule. Now one short ladder on the
-  tape's right edge, drawn on the chart's own canvas:
-
-    THE ENTRY    a full amber line across the tape at the
-                 fill, ENTRY and the price at the right.
-                 Same bar as the stop and the targets.
-                 Off the canvas it docks. Not a chip
-                 sitting on the entry candle.
-    THE FLOOR    a full line across the tape at the
-                 stop premium, STOP and the price at
-                 the right. A broken stop stays the line.
-    THE TARGETS  a full line across the tape, named
-                 TP1, TP2, TP3 with the premium. A hit
-                 says so. Off the canvas, a tick — a
-                 line at a fake y would be a lie.
-
-  No capsule on the axis, no words over the
-  candles. The host draws the pointer card. The
-  targets are the exception: they cross the tape,
-  so a reader can see 1, 2 and 3 without hunting
-  a tick at the edge.
-
-  2026-10-04: the rule and the figure moved to a pen
-  the house chart's key levels share (gex/ladderPaint),
-  so the two ladders are one grammar.
-==================================================
+  The setup's marks drawn on the chart's own canvas at the tape's right edge: the entry, the stop and the targets as
+  one short ladder, docked when off screen.
 */
 
 import type { IChartApi, ISeriesApi, ISeriesPrimitive, SeriesAttachedParameter, Time, UTCTimestamp } from 'lightweight-charts';

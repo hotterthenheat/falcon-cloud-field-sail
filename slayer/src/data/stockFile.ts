@@ -1,7 +1,5 @@
-/*
-  One name's file: daily sessions, the last prints, the flow alerts, the
-  off-exchange tape. The stock page reads this. Nothing here is invented.
-*/
+/* One name's file for the stock page: daily sessions, the last prints, the flow alerts and the
+   off-exchange tape. */
 
 import { useEffect, useSyncExternalStore } from 'react';
 import type { Candle } from '../types/market';
@@ -79,14 +77,11 @@ export interface StockFile {
   darkWindow: TapeWindow;
   /** The chain's contracts, busiest by volume first (/stock/{t}/option-contracts) — the earnings page reads the same */
   contracts: Record<string, unknown>[];
-  /** The New York session the flow alerts and the dark prints are filtered to ("2026-10-22" before the open on the 23rd) */
+  /** The New York session the flow alerts and the dark prints are filtered to */
   session: string;
-  /** The session's tapes (flow alerts, dark prints) — read after the head of the file, so the page opens on the name,
-      its price and its read first (audit round 5, phone: all skeletons after 35s); 'loading' until they land */
+  /** The session's tapes (flow alerts, dark prints), read after the file's head so the page opens on the name first */
   tapes: 'loading' | 'live';
-  /** The session's one-minute cash bars (/stock/{t}/ohlc/1m — the same call Pinpoint's full book makes, so the two share
-      it): the tape the dark prints are drawn on. The page reads the light book (round 8: the full book's ~60 per-expiry
-      calls were for levels the page defers), whose bars are five-minute ones. Empty until they land. */
+  /** The session's one-minute cash bars (/stock/{t}/ohlc/1m, shared with Pinpoint): the tape the dark prints are drawn on */
   minutes?: Candle[];
   /** In the session: the New York clock today's range is read to (from the minutes) — "15:08" */
   rangeAsOf?: string;
@@ -167,21 +162,17 @@ function daysFrom(rows: UwDaily[]): Candle[] {
 }
 
 function flowsFrom(rows: Record<string, unknown>[], spot: number, session: string): FlowPrint[] {
-  /* THE SESSION'S ALERTS ONLY (the third audit, 2026-10-23): the vendor's alerts reach back over days — 5 of WOLF's 11
-     "today" were from 10/16–10/21 — so the premium-today split and the tape's richest prints read only alerts created on
-     the session the page names. An alert on a contract that expired BEFORE that session is dropped; the session's own
-     0DTE alerts are its own (audit round 5: after midnight the filter compared expiries with New York's today and threw
-     out 1,028 of SPY's 1,589 alerts on 10/22 — the 10/22 expiries) */
+  /* Only the alerts created on the session the page names (the vendor's reach back days); an alert on a contract that
+     expired before that session is dropped. */
   const live = rows.filter(row => {
     if (nyDayOf(String(row.created_at || '')) !== session) return false;
     const exp = String(row.expiry || '').slice(0, 10);
     return !/^\d{4}-\d{2}-\d{2}$/.test(exp) || exp >= session;
   });
-  /* every alert of the session is kept: the ask and sweep shares are sums over all of them (the tape shows the top few) */
+  /* every alert of the session is kept: the ask and sweep shares are sums over all of them */
   return live.map((row, i) => {
     const prem = num(row.total_premium);
-    /* SIDESRULE (audit round 5): the side that carried 60% or more of the alert's whole premium, else mid — Trace's
-       rule (data/sidesRule.ts), not "ask over 1.15× the bid" ($30,010 with $1,260 on the ask read ASK) */
+    /* SidesRule (sidesRule.ts): the side with 60%+ of the alert's premium, else mid */
     const sides = alertSides(row);
     const { ask, bid, side } = sides;
     const right: FlowPrint['right'] = String(row.type || '').toLowerCase().startsWith('p') ? 'P' : 'C';
@@ -221,11 +212,8 @@ function flowsFrom(rows: Record<string, unknown>[], spot: number, session: strin
   });
 }
 
-/* THE DARK POOL READ IS TRACE'S OWN (audit round 5, 2026-10-23): each print is mapped by traceLive.ts darkPrint — the
-   SidesRule in one place: set against the NBBO mid at its own print time, paid over it buyer-initiated (ACCUMULATION),
-   sold under it seller-initiated (DISTRIBUTION), at the mid (a quarter cent) neither; only a sized print (10,000 shares
-   or $500K) carries a read; a print priced by its own terms or in an auction, and every after-hours print, is kept and
-   never read. A print stamped outside 09:30–16:00 ET is after hours by its own time as well as its flag. */
+/* Each print is mapped by traceLive.ts darkPrint (Trace's SidesRule): over the mid at its print time buyer-initiated,
+   under it seller-initiated; own-terms, auction and after-hours prints are kept, never read. */
 const nyMinutes = (iso: string): number | null => {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return null;
@@ -248,11 +236,8 @@ function darksFrom(rows: Record<string, unknown>[], spot: number): DarkPoolPrint
     });
 }
 
-/* THE TAPE THE READ STANDS ON. After the bell the newest prints are all post-market, so the read had nothing of the
-   session: the prints are asked for on the session the page names, up to its 16:00 New York close once that has passed.
-   SIZED IS 10,000 SHARES OR $500K (Trace's SidesRule; the third audit, 2026-10-23: asked for $500K+ alone, GME lost 16
-   of its 25 sized prints) — so the tape is two asks, the $500K+ prints and the 10,000-share+ prints, merged on the
-   print's identity (data/sidesRule.ts darkPrintKey — the tracking id is reused by the vendor). The window they span is printed with the read. */
+/* The tape is asked on the session the page names (to its 16:00 close once passed), as two asks merged on the print's
+   identity: the $500K+ prints and the 10,000-share+ prints. */
 export const DARK_MIN_PREMIUM = 500_000;
 export const DARK_MIN_SIZE = 10_000;
 
@@ -275,10 +260,8 @@ const nyInstant = (session: string, hh: number, mm = 0): number => {
   return nyNoonUtc + (hh - nyNoonHour) * 3_600_000 + mm * 60_000;
 };
 
-/* PAGED BACK, BOUNDED (the fourth audit, 2026-10-23). One call of 500 rows covered SPY's $500K+ prints from 15:42 only
-   while the label said 09:32–15:59 (the start came from the 42-row 10,000-share read). Each stream now pages back
-   with older_than — the oldest print in hand — until it reaches the session's start or the vendor runs dry, at most
-   `maxPages` calls in a row (the key has 3 upstream slots for everyone, so the paging is sequential and capped). */
+/* Each stream pages back with older_than to the session's start or until the vendor runs dry, at most `maxPages` calls
+   in a row (the key's three slots are shared). */
 async function pageBack(base: string, stamp: string, limit: number, startMs: number, endMs: number | null, maxPages: number, keyOf: (row: Record<string, unknown>) => string): Promise<{ rows: Record<string, unknown>[]; complete: boolean; oldestMs: number | null; pages: number; error: string | null }> {
   const rows: Record<string, unknown>[] = [];
   const seen = new Set<string>();
@@ -317,12 +300,8 @@ async function pageBack(base: string, stamp: string, limit: number, startMs: num
   return { rows, complete: false, oldestMs, pages, error };
 }
 
-/* THE TAPE THE READ STANDS ON. After the bell the newest prints are all post-market, so the read had nothing of the
-   session: the prints are asked for on the session the page names, up to its 16:00 New York close once that has passed.
-   SIZED IS 10,000 SHARES OR $500K (Trace's SidesRule; the third audit, 2026-10-23: asked for $500K+ alone, GME lost 16
-   of its 25 sized prints) — so the tape is two asks, the $500K+ prints and the 10,000-share+ prints, merged on the
-   print's identity (sidesRule.ts darkPrintKey). When either ask could not be paged back to the open, both are cut to the window the shorter
-   one covers, so every print in the read is from one stated window — and that window is printed with the read. */
+/* When either ask could not page back to the open, both are cut to the window the shorter covers, so every print in the
+   read is from one stated window. */
 const DARK_LIMIT = 500;
 async function darkTape(ticker: string, session: string): Promise<{ rows: Record<string, unknown>[]; window: TapeWindow }> {
   const closeMs = nyInstant(session, 16);
@@ -361,9 +340,7 @@ async function darkTape(ticker: string, session: string): Promise<{ rows: Record
   return { rows: out, window };
 }
 
-/* THE SESSION'S FLOW ALERTS, PAGED BACK (the fourth audit, 2026-10-23): 200 rows covered SPY's alerts from 15:53 only
-   and AAPL's from 14:38 while the page called them the session's. They are paged back with older_than to the session's
-   New York midnight (newer_than holds the floor), at most 8 pages; the window in hand is stated with them. */
+/* The session's flow alerts, paged back with older_than to New York's midnight, at most 8 pages; the window is stated. */
 const FLOW_LIMIT = 200;
 async function flowTape(ticker: string, session: string): Promise<{ rows: Record<string, unknown>[]; window: TapeWindow }> {
   const dayStart = nyInstant(session, 0);
@@ -388,9 +365,7 @@ async function flowTape(ticker: string, session: string): Promise<{ rows: Record
 /** The prints the dark-pool read is built on: sized, in the regular session, priced at the quote */
 export const darkReadable = (p: DarkPoolPrint): boolean => p.intent !== 'ROTATION';
 
-/* THE TAPES ONLY WHERE THEY ARE SHOWN (audit round 10: the earnings name page, which shows the company card — the file's
-   head — paged six flow-alert reads and three dark-pool reads it never drew). A head-only reader leaves the tapes unread;
-   the first reader that shows them asks for them. */
+/* a reader that shows only the file's head leaves the tapes unread; the first that shows them asks */
 const heads = new Map<string, Promise<StockFile | null>>();
 const tapesAsked = new Set<string>();
 
@@ -494,9 +469,7 @@ function streetFrom(rows: Record<string, unknown>[] | null | undefined): StreetB
 
 async function load(ticker: string): Promise<StockFile | null> {
   const session = lastSessionIso();
-  /* THE HEAD FIRST (audit round 5, phone: the AAPL page was all skeletons after 35s — it waited on up to 26 paged tape
-     calls through the key's 3 shared slots). The screener row, the reports, the sessions and the chain are asked ahead of
-     the queue and the page opens on them; the session's flow alerts and dark prints follow and land on their own. */
+  /* The head first: the screener row, the reports, the sessions and the chain open the page; the tapes land on their own. */
   const headP = Promise.all([
     whalesScreener([ticker], true).catch(() => [] as Record<string, unknown>[]),
     whalesEarnings(ticker, true).catch(() => [] as EarnRow[]),
@@ -569,9 +542,7 @@ async function loadTapes(ticker: string, headP: Promise<StockFile | null>): Prom
     minutes.push({ time, open: num(b.open) || close, high: num(b.high) || close, low: num(b.low) || close, close, volume: num(b.volume) });
   }
   minutes.sort((a, b) => a.time - b.time);
-  /* TODAY'S RANGE FROM TODAY'S MINUTES (audit round 10: SPY "Range · Oct 23" at 15:08 read 2.64 — the vendor's daily bar,
-     frozen at 10:35 — against a true 4.79). The session's candle takes its high and low (and, in the session, its last
-     close) from the one-minute cash bars the page already reads; the daily bar is kept where the minutes are thin. */
+  /* the session's range from its one-minute bars; the vendor's daily bar is kept where the minutes are thin */
   let days2 = head.days;
   let rangeAsOf: string | undefined;
   const lastDay = head.days[head.days.length - 1];

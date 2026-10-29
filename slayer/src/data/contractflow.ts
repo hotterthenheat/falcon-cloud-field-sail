@@ -1,34 +1,11 @@
-/*
-==================================================
-  SLAYER TERMINAL - CONTRACT FLOW (contractflow.ts)
-  Everything behind one contract, for one session,
-  off the vendor's own per-contract routes:
-
-    • /option-contract/{occ}/intraday — the
-      contract's minutes, its volume and premium
-      split by side (ask / bid / mid / no side)
-    • /option-contract/{occ}/flow — its real prints,
-      the newest up to 500 of the session
-    • /option-contract/{occ}/historic — its day-by-
-      day volume, open interest, side split, sweeps,
-      multi-leg share and premium
-    • /stock/{t}/net-prem-ticks — the underlying's
-      net call and put premium minute by minute,
-      with its contracts by side
-
-  NOTHING HERE IS DRAWN FROM A HASH (the audit,
-  2026-10-22): the card's "THE TAPE" section was a
-  seeded generator — a price walk, invented clips,
-  an invented underlying and a six-session history —
-  and opening the card asked the vendor nothing.
-==================================================
-*/
+/* Everything behind one contract for one session, off the vendor's per-contract routes (intraday by side, its
+   prints, its daily history) and the underlying's minute ticks. Nothing here is drawn from a hash. */
 
 import { useEffect, useState } from 'react';
 import { uwCall } from './whales';
 import { isoDate, isTradingDay } from '../core/calendar';
 import { minuteLabel, nyClock } from '../core/nyTime';
-import { liveTrades, sideOfTags, printCondition, quoteNoReadOf, sessionEndMin, tapeSessionIso } from './traceLive';
+import { liveTrades, num, sideOfTags, printCondition, quoteNoReadOf, sessionEndMin, tapeSessionIso } from './traceLive';
 
 export type FlowSide = 'BID' | 'MID' | 'ASK';
 
@@ -39,10 +16,6 @@ const OPEN_MIN = 9 * 60 + 30;
 /** Minutes since the 09:30 bell on New York's 24-hour clock: 0 → "09:30" */
 export const flowClock = (min: number): string => minuteLabel(OPEN_MIN + Math.round(min));
 
-const num = (v: unknown): number => {
-  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.replace(/,/g, '')) : NaN;
-  return Number.isFinite(n) ? n : 0;
-};
 const rows = (data: unknown, key = 'data'): Record<string, unknown>[] => {
   if (Array.isArray(data)) return data as Record<string, unknown>[];
   const box = data as Record<string, unknown> | null;
@@ -156,7 +129,7 @@ export interface CardDay {
   multiPct: number;
   premium: number;
   trades: number;
-  /** Contracts the vendor reports CANCELLED that session — already out of `vol`, but in its side buckets and its premium */
+  /** Contracts the vendor reports cancelled that session — already out of `vol`, but in its side buckets and its premium */
   canceledVol: number;
   /** How the row's side split and premium were set: off the session's own prints (exact, cancelled ones dropped), or the
       vendor's row with the cancelled share taken out of the premium at its average price (≈) and the sides as sent */
@@ -172,10 +145,8 @@ export interface NetTick {
   putVol: number;
 }
 
-/** ONE WINDOW FOR THE WHOLE PANEL (the re-audit, 2026-10-22: the card's session strip drew its avg paid and side bar
-    from the regular session's minutes while its dollars and print count were the whole day's, and an after-hours alert
-    never reached its own chart). Minutes since 09:30 New York, the label that says them, and where the figures come
-    from: every print of the day when the route sent them all, else the vendor's regular-session minutes. */
+/** One window for the whole panel: every print of the day when the route sent them all, else the vendor's
+    regular-session minutes, labelled so. */
 export interface TapeWindow {
   from: number;
   to: number;
@@ -218,10 +189,8 @@ const pad = (n: number) => String(n).padStart(2, '0');
 function dayRow(r: Record<string, unknown>): CardDay {
   const iso = String(r.date || '').slice(0, 10);
   const vol = num(r.volume);
-  /* THE CANCELLED CONTRACTS COME OUT (the third audit, 2026-10-22: SPXW 270930P 8125 — volume 107, but its side buckets
-     summed 181 with canceled_volume 74, and its total_premium $10.1M carried the two cancelled $2.07M prints while the
-     card's session line said $6.0M). The vendor's volume is already net of them; its premium is not, and is taken down
-     by the cancelled contracts at the row's average price (≈); its sides cannot be told apart and are marked. */
+  /* The vendor's volume is net of cancelled contracts but its premium is not, so the premium is taken down at the
+     row's average price (≈) and the sides are marked. */
   const canceledVol = num(r.canceled_volume);
   const gross = num(r.total_premium);
   const premium = canceledVol > 0 && vol + canceledVol > 0 ? gross * (vol / (vol + canceledVol)) : gross;
@@ -310,7 +279,7 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
         min: at?.min ?? 0,
         price,
         size: num(r.size),
-        /* a crossed quote, or a side quoted minutes before the fill, gives no read (audit round 9) */
+        /* a crossed quote, or a side quoted minutes before the fill, gives no read */
         side: quoteNoReadOf(r, price, bid, ask, Date.parse(String(r.executed_at ?? ''))) ? 'MID' : sideOfTags(r.tags, price, bid, ask),
         premium: num(r.premium) || price * num(r.size) * 100,
         bid,
@@ -364,9 +333,8 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
   const panelMinutes = fromPrints ? minutesFromPrints(prints) : minutes;
 
   const hist = rows(histRaw, 'chains').map(dayRow).filter(d => d.iso).sort((a, b) => b.iso.localeCompare(a.iso));
-  /* THE CHANGE THIS SESSION'S TRADING MADE (audit round 7: the row's change was its open against the open before — the
-     session before's build, beside this session's volume): a row's count is set the morning OF it, so what its own volume
-     did is the next row's count less its own; the newest session's is not counted until the next morning (null) */
+  /* A row's count is set the morning of it, so what its own volume did is the next row's count less its own; the
+     newest session's is null until next morning. */
   for (let i = 0; i < hist.length; i++) hist[i].oiChange = i > 0 ? hist[i - 1].oi - hist[i].oi : null;
   /* the card's session, when every one of its prints is in hand: its side split and premium are its own prints' — the
      cancelled ones already dropped — so the history row, the session strip and the card's facts are one window */
@@ -386,9 +354,7 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
     }
     Object.assign(own, { askVol, bidVol, midVol, neutralVol: 0, premium: prem, vol, basis: 'prints' as const });
   }
-  /* THE CLOSE IS THE REGULAR SESSION'S (audit round 7: NVDA 220C 10/22 read "CLOSE $0.18" — the 16:12:34 extended print —
-     where the regular last was $0.15 at 15:59:59). From the session's own prints, newest first: the newest inside the
-     regular session is the close, a newer one after it is the extended last, said apart. */
+  /* The close is the regular session's newest print; a newer extended-hours print is the extended last, said apart. */
   if (own && prints.length) {
     const reg = prints.find(p => p.min >= 0 && p.min < end);
     const newest = prints[0];

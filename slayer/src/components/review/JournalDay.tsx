@@ -1,34 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - A DAY OF THE JOURNAL
-  (components/review/JournalDay.tsx)
-
-  What opens UNDER the month when a day is pressed (Noah,
-  2026-09-25: "when clicking on a certain calendar date
-  you should be able to see all of the trades you took
-  with accounts etc."; 2026-09-26, on the first cut, whose
-  day was a narrow column of crowded rows: "spacing is
-  horrible … the inside of the journal when you click on
-  a day … is also having similar problems"). Now the day
-  takes the page's whole width:
-
-    the head       the date, what it made, how many closed
-                   and won, the accounts, its best and its
-                   worst trade — and the ×
-    the trades     the house's grid, the journal's own
-                   columns (when it closed, THE ACCOUNT,
-                   the contract, size, in → out, held, how
-                   far it went against and for you, how it
-                   ended, what it made) — a row opens the
-                   trade's own page
-    beside them    how the day went — its running total, a
-                   point a trade, once there are two — and
-                   THE DAY'S WORDS: the plan before, the
-                   review after, one pair an account (a tab
-                   each when more than one traded the day),
-                   kept as they are typed with the house's
-                   "Kept" (the trade page's grammar)
-==================================================
+  A journal day opened under the month: the date, what it made, how many closed and won, its best and worst
+  trade, and the trades in the house grid.
 */
 
 import { useEffect, useMemo, useRef, useState } from 'react';

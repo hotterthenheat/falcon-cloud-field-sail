@@ -1,9 +1,5 @@
-/*
-  The searchable ticker universe: NASDAQ listings + common index ETFs bundled
-  from nasdaqTickers.json (6,300+ symbols), completed with the NYSE-listed
-  half of the S&P 500 from sp500.ts — the json alone couldn't find JPM, XOM,
-  UNH or V (Noah, 2026-08-18). Used by every ticker search menu.
-*/
+/* The searchable ticker universe: the bundled NASDAQ listings and index ETFs (nasdaqTickers.json), completed with the
+   NYSE half of the S&P 500 (sp500.ts). Used by every ticker search. */
 
 import raw from './nasdaqTickers.json';
 import { SP500_NYSE } from './sp500';
@@ -13,9 +9,7 @@ export interface TickerListing {
   name: string;
 }
 
-/* The json carries a few names with HTML entities in them ("McDonald&#39;s
-   Corporation" printed as such on the Insiders grid, the partner's review
-   2026-09-13) — read once, they are plain words from here on. */
+/* a few bundled names carry HTML entities ("McDonald&#39;s"); they are decoded once here */
 const ENTITY: Record<string, string> = { '&#39;': "'", '&apos;': "'", '&amp;': '&', '&quot;': '"', '&#34;': '"' };
 const plain = (s: string) => s.replace(/&(?:#39|apos|amp|quot|#34);/g, m => ENTITY[m] ?? m);
 export const NASDAQ_TICKERS = (raw as TickerListing[]).map(t => (/&(?:#\d+|\w+);/.test(t.name) ? { ...t, name: plain(t.name) } : t));
@@ -24,9 +18,8 @@ const bySymbol = new Map(NASDAQ_TICKERS.map(t => [t.symbol, t]));
 // NYSE S&P members fill the json's gap; the json wins where both know a name.
 for (const t of SP500_NYSE) if (!bySymbol.has(t.symbol)) bySymbol.set(t.symbol, t);
 
-/** Household names pinned to the top of the dropdown and ranked first in
-    search — ordered by prominence, not alphabet. Everything else follows
-    alphabetically, so the resting list is never a wall of "A" names. */
+/** Household names first in the dropdown and in search, by prominence; everything else follows
+    alphabetically */
 const FEATURED = [
   'SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL',
   'AMD', 'NFLX', 'AVGO', 'PLTR', 'COIN', 'MSTR', 'SMCI', 'HOOD', 'MU', 'TSM',
@@ -87,11 +80,8 @@ export function searchTickers(query: string, limit = 60): TickerListing[] {
   return [...prefix, ...contains].slice(0, limit);
 }
 
-/* ---- THE VENDOR'S OWN NAME FIRST (the re-audit, 2026-10-22) -------------------------------------------------------
-   The bundled json is years old: SERV read "ServiceMaster" (it is Serve Robotics), SG, AI and FUN are other companies
-   now. The Dossier prefers the name Unusual Whales gives on the stock's own info and falls back to the json only when
-   the vendor has none. Names are remembered in this browser for a fortnight (a per-viewer convenience — every read
-   still works without it). `tickerName` itself is unchanged for the rest of the terminal. */
+/* ---- the vendor's own name first ----
+   The bundled list is years old, so the Dossier prefers the vendor's name off the stock's info, kept a fortnight here. */
 const UW_NAMES_KEY = 'slayer.uwNames.v1';
 const UW_NAMES_TTL = 14 * 86_400_000;
 const uwNames = new Map<string, string>();
@@ -115,10 +105,8 @@ const saveNames = () => {
     }
   }, 800);
 };
-/* the vendor writes names in capitals ("SERVE ROBOTICS INC"): sentence them, keeping short capital words that are names.
-   ROUND 9: "Cme Group", "Gamestop", "Jpmorgan Chase", "Bny Mellon", "Ishares", "Spdr", "Msci", "Ftse", "Pc Connection" —
-   a short all-caps word (three letters or fewer) stays in capitals unless it is a common word, and the brands that are
-   not written in plain title case keep their own casing. */
+/* The vendor writes names in capitals: they are sentence-cased, a short all-caps word (three letters or fewer) staying
+   in capitals unless common, and brands keeping their own casing. */
 const KEEP_UPPER = new Set(['AG', 'SA', 'NV', 'SE', 'LP', 'LLC', 'PLC', 'ETF', 'ETN', 'ETFS', 'REIT', 'II', 'III', 'IV', 'US', 'USA', 'UK', 'AI', 'NYSE', 'SPDR', 'MSCI', 'FTSE', 'S&P', 'ADR', 'ADS', 'NA', 'BDC', 'ESG', 'NASDAQ']);
 const COMMON_SHORT = new Set(['of', 'the', 'and', 'for', 'inc', 'co', 'new', 'one', 'two', 'all', 'big', 'top', 'de', 'la', 'del', 'du', 'des', 'le', 'el', 'in', 'on', 'at', 'by', 'to', 'an', 'a', 'or', 'ltd', 'bio', 'gas', 'oil', 'air', 'sun', 'art', 'car', 'bay', 'sea', 'box', 'key', 'red', 'pet', 'go', 'gap', 'tex', 'its', 'net', 'web', 'lab', 'max', 'pro', 'fit', 'far', 'day', 'way', 'man', 'son', 'sons', 'old', 'hub', 'cap', 'mid', 'low', 'high', 'fund', 'tr', 'cl', 'cos', 'ord', 'shs', 'adj', 'sr', 'jr', 'st', 'ave', 'la', 'van', 'von', 'den', 'der', 'und', 'et', 'y', 'e', 'i', 'o', 'up', 'out', 'my', 'we', 'us']);
 const BRAND_CASE: Record<string, string> = {
@@ -152,12 +140,8 @@ const titled = (s: string): string =>
         .replace(/\bCo\b\.?(?=\s|$)/g, 'Co.')
     : s;
 
-/* ---- ONE DISPLAY NAME (audit round 10) ------------------------------------------------------------------------------
-   "ELI Lilly", "Spdr(r) S&p(r) Oil & Gas…", "Ishares Core S&P 500 ETF", "Gamestop Corporation" beside "GameStop", "Apple
-   Inc." beside "Apple", "Datadog, Inc. - Class A Common Stock". Every name the Dossier prints goes through displayName:
-   the marks stripped ("(r)", "®", "™"), the share-class line dropped, the house's casing applied to any word (capitals
-   or not), and — in the short form, the one on cards, grids and heads — the legal suffix dropped. The legal form keeps
-   the suffix, for a line that quotes a filing. */
+/* Every name the Dossier prints goes through displayName: marks and share-class lines dropped, the house
+   casing, and the legal suffix dropped in the short form. */
 const MIXED_FIX: Record<string, string> = { eli: 'Eli', spdr: 'SPDR', 's&p': 'S&P', msci: 'MSCI', ftse: 'FTSE', etf: 'ETF', etfs: 'ETFs', etn: 'ETN', reit: 'REIT', adr: 'ADR', nyse: 'NYSE' };
 const NOT_INITIALISM = new Set(['ELI']);
 const MARKS_RE = /\s*(?:\((?:r|R|tm|TM)\)|®|™)/g;
@@ -175,8 +159,7 @@ const caseWord = (w: string): string => {
   if (NOT_INITIALISM.has(w.toUpperCase().replace(/[,.;:]+$/, ''))) return bare.charAt(0).toUpperCase() + bare.slice(1) + tail;
   return w;
 };
-/** The one name the Dossier prints for a company. `legal` keeps "Inc." and the like (a quoted filing); the default short
-    form is the brand ("Apple", "GameStop", "Datadog", "Eli Lilly", "SPDR S&P Oil & Gas Exploration & Production ETF") */
+/** The one name the Dossier prints for a company; `legal` keeps "Inc." for a quoted filing */
 export function displayName(raw: string | null | undefined, form: 'short' | 'legal' = 'short'): string {
   let n = plain(String(raw ?? '')).replace(MARKS_RE, '').replace(/\s+/g, ' ').trim();
   if (!n) return '';
@@ -213,8 +196,7 @@ export function rememberCompanyName(symbol: string, name: string | null | undefi
   bumpNames();
 }
 
-/** Names another vendor read already carries (the earnings calendar's, a screener row's) — kept only where the stock's own
-    info has not given one, so a name cell need not ask for it (round 9: the Insiders page asked /info per ticker) */
+/** Names another read already carries (the earnings calendar's, a screener row's), kept where the stock's info has none */
 export function rememberCompanyNames(pairs: readonly (readonly [string, string | null | undefined])[]): void {
   let changed = false;
   for (const [symbol, name] of pairs) {
@@ -275,7 +257,10 @@ export function subscribeCompanyNames(fn: () => void): () => void {
 
 const nameAsked = new Set<string>();
 const nameQueue: string[] = [];
+const nameOut = new Set<string>();
 let nameBusy = 0;
+/** True while the symbol's name is queued or being read */
+export const companyNamePending = (symbol: string): boolean => nameOut.has(symbol.toUpperCase());
 let namesRev = 0;
 /** Bumps when a company name is remembered or an ask finishes. Search menus subscribe to this. */
 export const companyNamesRev = (): number => namesRev;
@@ -299,6 +284,7 @@ function pumpCompanyNames(): void {
       })
       .finally(() => {
         nameBusy -= 1;
+        nameOut.delete(sym);
         bumpNames();
         pumpCompanyNames();
       });
@@ -311,16 +297,14 @@ export function askCompanyNames(symbols: readonly string[]): void {
     if (!/^[A-Z0-9.]{1,6}$/.test(sym) || nameAsked.has(sym) || hasVendorName(sym) || INDEX_NAMES[sym]) continue;
     if (tickerName(sym).toUpperCase() !== sym) continue;
     nameAsked.add(sym);
+    nameOut.add(sym);
     nameQueue.push(sym);
   }
   pumpCompanyNames();
 }
 
-/* ---- A COMPANY NAMED IN A HEADLINE (the re-audit, 2026-10-22) -----------------------------------------------------
-   The wire leaves many company stories untagged ("COCA-COLA SAYS DENTSU CONTINUES…", "Medpace Slumps On Solid Report").
-   A headline's company is found by the listing's own name with its legal form taken off ("The Coca-Cola Company" →
-   Coca-Cola), written as the listing writes it or in capitals. A name that is also plain English (Target, Visa, Square,
-   General, Energy…) is never matched alone — a missing tag costs less than a story filed under the wrong company. */
+/* An untagged headline's company, by the listing's name without its legal form; a name that is also plain
+   English (Target, Visa, General) never matches alone. */
 const LEGAL = /(?<![\w-])(?:the|inc|incorporated|corp|corporation|co|company|companies|ltd|limited|llc|lp|l\.p|plc|sa|s\.a|nv|n\.v|ag|se|holdings?|group|class [a-c]|common stock|ordinary shares|ads|adr|american depositary shares?|depositary shares?|units?|warrants?|rights?)(?![\w-])\.?/gi;
 const PLAIN_WORDS = new Set(
   'target visa square general energy western eastern southern northern american national united global international first second new great capital financial digital mobile express charter pioneer liberty progressive sterling fortune reliance summit frontier heritage pinnacle premier insight quantum vertex nexus alliance atlantic pacific century patriot universal trinity phoenix genesis matrix vector spectrum horizon compass anchor beacon bridge element evolution fusion galaxy impact legacy momentum origin paragon precision signal spirit sunrise titan unity venture vista zenith marathon discovery dynamic strategic emerald diamond crystal golden silver harmony gaming energy power solar water health care medical services systems solutions technologies technology industries resources partners trust bank bancorp financial insurance realty properties investment investors security securities brands foods motors airlines communications networks software therapeutics pharmaceuticals biosciences sciences acquisition opportunity growth income value select advisors management market markets stock stocks shares index fund funds street wall today report earnings results quarter outlook guidance price prices target rating ratings deal deals merger sale sales news daily weekly online direct plus prime smart open clear simple best better central standard royal crown eagle falcon lion tiger bear bull apex core edge peak point line link path wave flow form base cloud data info life live home house world earth ocean river lake forest mountain valley island harbor coast north south east west carbon green blue black white orange purple gold iron steel copper oil gas mining metals chemical chemicals materials equipment products services entertainment media sports games travel hotels restaurants retail stores nasdaq nyse dow amex cboe s&p russell institutions enterprises associates logistics analytics labs innovations devices instruments robotics semiconductors diagnostics biotech bio pharma therapeutics hospitality residential commercial industrial infrastructure aerospace defense automotive transport transportation shipping marine air space'
@@ -389,10 +373,8 @@ export function companiesInHeadline(headline: string): string[] {
   return out;
 }
 
-/* ---- PEOPLE AND PLACES IN THE VENDOR'S CAPITALS (round 11) ------------------------------------------------------------
-   Form 4 names come as the SEC files them, surname first in capitals ("COHEN RYAN", "HOYER JAMES", "SECHAN II ROBERT"):
-   printed as a reader says them, "Ryan Cohen", "Robert Sechan II". A filer that is an entity (a fund, an LLC, a trust)
-   goes through the company casing instead. A name already in mixed case is the filer's own and is kept. */
+/* ---- people in the vendor's capitals ----
+   Form 4 names come surname first in capitals and are printed as said; an entity takes the company casing. */
 const ENTITY_WORD = /\b(?:LLC|L\.?L\.?C|LP|L\.P|LTD|INC|CORP|CORPORATION|COMPANY|CO|FUND|FUNDS|TRUST|PARTNERS|PARTNERSHIP|CAPITAL|HOLDINGS?|GROUP|MANAGEMENT|ADVISORS?|INVESTMENTS?|ASSOCIATES|FOUNDATION|BANK|PLC|SA|AG|NV|LIMITED|VENTURES|ESTATE|MASTER|OPPORTUNIT(?:Y|IES)|STRATEGIES|EQUITY|LLP)\b\.?/i;
 const NAME_SUFFIX = new Set(['JR', 'SR', 'II', 'III', 'IV', 'V', 'MD', 'PHD', 'ESQ']);
 const SURNAME_PARTICLE = new Set(['ST', 'VAN', 'VON', 'DE', 'DEL', 'DELLA', 'DA', 'DI', 'LA', 'LE', 'DU', 'MAC', 'MC', 'O', 'DOS', 'DAS', 'TEN', 'TER']);

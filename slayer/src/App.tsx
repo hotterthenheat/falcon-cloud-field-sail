@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { MotionConfig } from 'framer-motion';
 import { MarketDataProvider } from './context/MarketDataContext';
@@ -10,7 +10,6 @@ import EmbedBridge from './components/layout/EmbedBridge';
 import PageMeta from './components/layout/PageMeta';
 import { EMBEDDED } from './embed';
 import { FaviconFollowsMark } from './brand/favicon';
-import Wordmark from './brand/Wordmark';
 
 /* Every page is its own chunk, and so is the terminal's shell: the landing and the site pages never load it. */
 const loadShell = () => import('./components/layout/AppShell');
@@ -126,14 +125,14 @@ const FIRST_PAGE: [RegExp, () => Promise<unknown>][] = [
   [/^\/start/, () => import('./pages/start/Start')],
 ];
 
-/* Held while the shell's code arrives: the boot wordmark from index.html, shown only on a wait over 450 ms. */
-const ShellWait = () => (
-  <div className="min-h-screen bg-canvas flex items-center justify-center" aria-busy="true">
-    <span style={{ opacity: 0, animation: 'boot-in 0.01s linear 0.45s forwards' }}>
-      <Wordmark height={31} cursor label="" />
-    </span>
-  </div>
-);
+/* index.html's boot wordmark stays up while the first page's code arrives and is removed once something renders. */
+const removeBoot = () => document.getElementById('boot')?.remove();
+const BootDone = () => {
+  useEffect(removeBoot, []);
+  return null;
+};
+/* a later wait (a site page's chunk) shows the ground alone */
+const RouteWait = () => <div className="min-h-screen bg-canvas" aria-busy="true" />;
 
 if (typeof document !== 'undefined') {
   /* a first load inside the terminal fetches the shell and the page in parallel with the entry's own work */
@@ -157,7 +156,8 @@ const App = () => {
         <EmbedBridge />
         {!EMBEDDED && <FaviconFollowsMark />}
         <PageMeta />
-        <Suspense fallback={<ShellWait />}>
+        <Suspense fallback={<RouteWait />}>
+        <BootDone />
         <Routes>
           <Route path="/" element={EMBEDDED ? <Navigate to="/pulse" replace /> : <Landing />} />
           <Route path="/welcome" element={<Navigate to="/" replace />} />

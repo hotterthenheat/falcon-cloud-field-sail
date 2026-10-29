@@ -1,34 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - A SMALL CHART ON THE LIBRARY
-  (components/record/SessionsChart.tsx)
-
-  Every chart on a page is the chart library's —
-  the same engine as the price charts — with its
-  crosshair, its axes and a hover card (Noah,
-  2026-09-13, on the name's page's hand-drawn
-  session line: "charts like this which is obvious
-  you created yourself and didn't use a pre
-  existing library. it's not functional at all with
-  no hover effect. please fix that with a high
-  quality version"). This is the small one: a run
-  of sessions or minutes as an area, a line or bars,
-  the levels across it as the library's price lines
-  (named on the axis), BARS UNDER THE LINE on their
-  own scale when a tape has prints to show (the
-  trace's own grammar — a spot line over its
-  histograms), marks on the points that matter with
-  their word beside them, a card beside the pointer
-  that speaks the point under it, and A FOCUS: a
-  click on a bar keeps it (Noah: "the different
-  prints should have the ability to be focused
-  on") — the crosshair parks on it, its card stays
-  up, the other bars dim, and the host is told
-  which. It fits its content and does not pan or
-  zoom — a figure on a page, not a desk. A dark
-  island like every chart in the house.
-==================================================
-*/
+/* A small chart on the chart library: sessions or minutes as an area, a line or bars, levels as price lines, bars under
+   the line on their own scale, marks, a hover card and a kept focus. It fits its content and does not pan or zoom. */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AreaSeries, BaselineSeries, HistogramSeries, LineSeries, LineStyle, LineType, createChart, createSeriesMarkers, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type Time, type UTCTimestamp } from 'lightweight-charts';
@@ -50,8 +21,7 @@ export interface ChartLine {
   color: string;
   title: string;
   style?: 'dashed' | 'dotted' | 'solid';
-  /** Where the name prints: on the axis, in the library's tag with the figure (the default), or INSIDE THE PLOT at the
-      line's left end — the axis then carries the figure alone (the pair, 2026-09-29: three wide named tags collided) */
+  /** Where a level's name prints: on the axis tag (the default), or inside the plot at the line's left end. */
   name?: 'axis' | 'plot';
   /** false: no line across the plot, only its tag on the axis (a band's edge the primitive already draws) */
   line?: boolean;
@@ -67,7 +37,7 @@ export interface ChartMark {
   color: string;
   /** Under the point rather than over it */
   below?: boolean;
-  /** ON the point itself — at its value — rather than floating over or under the bar (the pair's days, 2026-09-29) */
+  /** on the point itself, at its value */
   on?: boolean;
   /** The mark's size, in the library's units (0.6 unless said) */
   size?: number;
@@ -91,7 +61,7 @@ export interface ChartHover {
 
 interface Props {
   points: ChartPoint[];
-  /** 'baseline' (2026-09-14, the Weigher's simulated returns): the line wears `ink` above `baseline` and `inkBelow` under it, with a faint fill each side — the library's own series for a figure that changes sign */
+  /** 'baseline': the line wears `ink` above `baseline` and `inkBelow` under it, a faint fill each side */
   kind?: 'area' | 'line' | 'histogram' | 'baseline';
   /** A token ink ('rgb(var(--bull))') or a literal — resolved off the island for the canvas */
   ink: string;
@@ -106,19 +76,14 @@ interface Props {
   /** A fixed height — or `fill`, and the chart takes its parent's height (the trend's chart fills its box's spare room) */
   height?: number;
   fill?: boolean;
-  /** 'day' names the axis and the card by the date (sessions); 'clock' by the minute (one session);
-      'span' is points through the hours of several days — the library's axis is put away and EVERY
-      DAY is named once in a strip of our own under the tape, placed by the chart's own scale (the
-      library dropped the first day's label at the left edge — Noah, 2026-09-14: "i only see sep
-      15"); the crosshair reads by the day and the minute (the simulated returns) */
+  /** 'day' names the axis by the date, 'clock' by the minute; 'span' runs through several days and names each day once in
+      a strip of its own under the tape. */
   clock?: 'day' | 'clock' | 'span';
   /** The word after the last day of a span — "exp" on the simulated returns */
   spanEndWord?: string;
   /** How the price scale prints — 'pnl' is signed dollars ("+$1.2K", "−$340") */
   scale?: 'price' | 'volume' | 'plain' | 'pnl' | 'ratio';
-  /** THE SCALE'S OWN RANGE, when the host knows it better than the library's fit (the pair, 2026-09-20: with its marks and
-      named lines the library left the line in the middle third of the plot, a flat thread nobody could read). The host says
-      the lowest and the highest figure that must be in view; the chart keeps its usual margins round them. */
+  /** The scale's own range when the host knows it better than the library's fit; the chart keeps its margins round it. */
   range?: readonly [number, number];
   card: (h: ChartHover) => ReactNode;
   cardW?: number;
@@ -126,24 +91,19 @@ interface Props {
   /** The kept bar's time — a click on a bar asks the host to keep it, a click elsewhere to let it go */
   focus?: number | null;
   onFocus?: (time: number | null) => void;
-  /** WHOSE CLOCK the axis, the crosshair and the day strip speak: the reader's (Settings), or New York's whatever Settings
-      says — a replayed session is a New York day (Review's journal, 2026-09-20) */
+  /** whose clock the axis and card speak: the reader's (Settings), or New York's */
   zone?: ChartClock;
   /** The point under the pointer, as it moves — so a host can light the row that point is (null when it leaves) */
   onHover?: (time: number | null) => void;
-  /** A click on a point of the chart, handed to the host (the journal's days, 2026-09-25: a day's bar opens its day) */
+  /** a click on a point, handed to the host */
   onPick?: (time: number) => void;
-  /** The line drawn as a curve through its points, not corners (the journal's running total, 2026-09-26) */
+  /** the line drawn as a curve through its points */
   curved?: boolean;
   testId?: string;
 }
 
 const STYLE: Record<NonNullable<ChartLine['style']>, LineStyle> = { dashed: LineStyle.Dashed, dotted: LineStyle.Dotted, solid: LineStyle.Solid };
-/* ONE empty list for every chart without bars, lines or marks — a fresh `[]`
-   default is a new reference on every render, the data effect below re-ran on
-   each, setData fired the crosshair under the pointer, the card's state
-   re-rendered the chart, and React hit its update depth (found on the score's
-   series and the dark prints, 2026-09-13) */
+/* one shared empty list: a fresh `[]` default would re-run the data effect every render and loop the crosshair state */
 const NONE: never[] = [];
 
 /** "+$1.2K" · "−$340" · "$0" — the pnl scale's words */
@@ -161,7 +121,7 @@ const SessionsChart = ({ points, kind = 'area', ink, inkBelow, baseline = 0, bar
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const span = clock === 'span';
-  /* THE DAY STRIP (a span): one label per day, at the x the chart's own scale gives that day's first point */
+  /* the day strip: one label per day, placed by the chart's own scale */
   const [dayTicks, setDayTicks] = useState<{ left: number; label: string; edge: 'start' | 'mid' | 'end' }[]>([]);
   const layDays = () => {
     const chart = chartRef.current;
@@ -182,9 +142,7 @@ const SessionsChart = ({ points, kind = 'area', ink, inkBelow, baseline = 0, bar
       const last = i === days.length - 1;
       out.push({ left: i === 0 ? 0 : last ? W : x, label, edge: i === 0 ? 'start' : last ? 'end' : 'mid' });
     });
-    /* THE STRIP THINS ITSELF (2026-09-25, the journal's month — a dozen days in 560px read "Sep 3Sep 4"): a label that would
-       touch the one kept before it is left out; the first and the last always stay, the last taking the place of the one
-       before it when the two would touch */
+    /* a label that would touch the one before it is left out; the first and last always stay */
     const CHAR = 5.6;
     const GAP = 10;
     const extent = (t: (typeof out)[number]): [number, number] => {
@@ -234,12 +192,8 @@ const SessionsChart = ({ points, kind = 'area', ink, inkBelow, baseline = 0, bar
 
   /* Mount once — and again on a theme flip: the island reads its inks at creation */
   const appTheme = useResolvedTheme();
-  /* ON PAPER A FIGURE IS PAPER (the light sweep, 2026-09-19 — Noah, on the Weigher's return chart while it wore Stone:
-     "the background of this card should just be a softer white"). A TAPE wears the candle theme's ground (Stone on the
-     light page); this is the small chart INSIDE a card, and on the light page it sits in a soft-white well — the page's
-     inset, a hairline round it — with the page's own inks, whatever the tapes wear. On the dark terminal it is the dark
-     island on the panel, whatever the tapes wear there too (it took the candle theme's ground until 2026-09-20: a Stone
-     pick turned every figure grey on the dark page). The hover card stays the dark glass on both (it is its own island). */
+  /* On the light page the chart sits in a soft-white well with the page's inks; on the dark page it is the dark island.
+     The hover card stays dark glass on both. */
   const paper = appTheme === 'light';
   useEffect(() => {
     const host = hostRef.current;
@@ -309,9 +263,7 @@ const SessionsChart = ({ points, kind = 'area', ink, inkBelow, baseline = 0, bar
             : chart.addSeries(AreaSeries, { lineColor: color, topColor: alpha(color, 0.26), bottomColor: alpha(color, 0.02), lineWidth: 2, lineType: curved ? LineType.Curved : LineType.Simple, priceFormat, priceLineVisible: false, lastValueVisible: true, crosshairMarkerRadius: 3 });
     /* the level the baseline turns on, as a hairline */
     if (kind === 'baseline') series.createPriceLine({ price: baseline, color: alpha(resolveInk('rgb(var(--text-primary))', host), 0.28), lineStyle: LineStyle.Solid, lineWidth: 1, axisLabelVisible: false });
-    /* THE AXIS TAGS KEEP APART (the dossier sweep, 2026-10-22: the resistance, the last price and the support tagged
-       343.99 · 343.80 · 342.50 one on top of the other). A level's tag is dropped when it would sit inside a tag's
-       height of the last price or of a tag already placed — the line and its name stay on the plot. */
+    /* A level's axis tag is dropped when it would overlap the last price's tag or one already placed; its line stays. */
     const vals = pointsRef.current.map(p => p.value).concat(lines.map(l => l.price)).filter(v => Number.isFinite(v));
     const span = vals.length ? Math.max(...vals) - Math.min(...vals) : 0;
     const gap = span * 0.1;

@@ -1,29 +1,11 @@
-/*
-==================================================
-  INSTITUTIONS, SHORTS, ETFs
-
-  The same reading order as Congress, Insiders and
-  Stocks — not a second table language:
-
-    THE HEAD      the title, how to read, four facts
-    THE CARDS     one line of dropdowns, Filter last
-    THE SENTENCE
-    THE NAMES     the lines worth knowing, a card
-    TO KNOW       keeps the grid to that name
-    THE GRID      the house grid, grown to its rows.
-                  A row opens the name.
-
-  ETFs add the fund's own weights under the grid,
-  the way Congress keeps a second face — still the
-  same grid.
-==================================================
-*/
+/* Institutions, Shorts, ETFs: the same reading order as the other lists — the head's facts, the controls, a sentence,
+   the names to know, then the grid. A row opens the name. */
 
 import { CoSub, useSeen } from '../../components/record/CoName';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { type ColDef, type ICellRendererParams, type IRowNode, type RowClickedEvent } from 'ag-grid-community';
+import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
@@ -40,14 +22,13 @@ import { displayName, tickerName } from '../../data/tickers';
 import { FeedFallback } from '../../components/ui/liveRead';
 
 import { NAMES_TO_KNOW } from './recordSkeletons';
-import { asOfDay, borrowM, moneyB, moneyM, signedM } from './money';
+import { asOfDay, borrowM, moneyB, moneyM, signedM, signedPct } from './money';
 import { SQUEEZE_INK, SQUEEZE_TIP, squeezeRead } from '../../data/squeeze';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
 import { statHelp } from '../../components/record/statHelp';
 
 const ink = (n: number) => (n > 0 ? 'text-bull' : n < 0 ? 'text-bear' : 'text-textMuted');
-const signed = (n: number, digits = 1) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(digits)}`;
 const assetsB = (b: number) => moneyM(b * 1000);
 /** Millions of shares, one way everywhere: a decimal under 100M, whole above, a B past a billion */
 const sharesM = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(2)}B` : m >= 100 ? `${m.toFixed(0)}M` : `${m.toFixed(1)}M`);
@@ -85,8 +66,7 @@ type BookPick = 'any' | InstitutionRow['book'];
 type HousePick = string;
 type NamesPick = 'all' | 'board';
 
-/* THE WINDOW IS WHEN THE LATEST 13F WAS FILED (round 8: "The year" read as a year of filings — each house's latest 13F
-   alone is read, every one of them for the same quarter) */
+/* the window is when the latest 13F was filed; each house's latest 13F alone is read */
 const WINDOW_OPTIONS: DropdownOption<Window>[] = [
   { value: 90, label: 'Filed ≤ 90 days', short: '90 days', hint: "Houses whose latest 13F was filed in the last 90 days" },
   { value: 180, label: 'Filed ≤ 180 days', short: '180 days', hint: "Houses whose latest 13F was filed in the last 180 days" },
@@ -124,21 +104,20 @@ const InstName = ({ data }: ICellRendererParams<InstitutionRow>) =>
     </span>
   ) : null;
 
-/* the filing day and, under it, the day the holdings are as of (round 8: "Filed 09/23 · 30d ago" read as fresh positions;
-   they are the quarter-end's) */
+/* the filing day and, under it, the quarter-end the holdings are as of */
 const InstFiled = ({ data }: ICellRendererParams<InstitutionRow>) =>
   data ? (
     <span className="flex flex-col leading-tight">
       <When days={data.filedDaysAgo} />
-      {quarterEnd(data.report) ? <span className="font-mono text-t9 text-textMuted">holdings as of {quarterEnd(data.report)}</span> : null}
+      {quarterEnd(data.report) ? <span className="font-mono text-t9 text-textMuted">as of {quarterEnd(data.report)}</span> : null}
     </span>
   ) : null;
 const InstHouse = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="text-t12 font-semibold text-textPrimary truncate">{displayName(data.name)}</span> : null);
 const InstBook = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-t11 ${BOOK_INK[data.book]}`}>{data.book === 'stock' && data.security ? data.security : BOOK_WORD[data.book]}</span> : null);
 const InstShares = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{data.sharesM.toFixed(1)}M</span> : null);
 const InstValue = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{moneyB(data.valueB)}</span> : null);
-/* no change reads "unchanged", never −0.0 (the retail test, round 6) */
-const InstChange = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? Math.abs(data.changePct) < 0.05 ? <span className="font-mono text-t10 text-textMuted">unchanged</span> : <span className={`font-mono text-t11 tnum ${ink(data.changePct)}`}>{signed(data.changePct)}%</span> : null);
+/* no change reads "unchanged", never −0.0 */
+const InstChange = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? Math.abs(data.changePct) < 0.05 ? <span className="font-mono text-t10 text-textMuted">unchanged</span> : <span className={`font-mono text-t11 tnum ${ink(data.changePct)}`}>{signedPct(data.changePct)}</span> : null);
 const InstStatus = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span title={data.status === 'held' ? `Held: ${data.changePct >= 0 ? '+' : data.changePct < 0 ? '−' : ''}${Math.abs(data.changePct).toFixed(1)}% units versus the prior 13F, inside the ±2% band` : undefined} className={`font-mono text-t11 ${data.status === 'added' || data.status === 'new' ? 'text-bull' : data.status === 'cut' || data.status === 'closed' ? 'text-bear' : 'text-textSecondary'}`}>{positionWord(data.status)}</span> : null);
 const InstBookPct = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{data.pctOfBook.toFixed(1)}%</span> : null);
 
@@ -153,13 +132,12 @@ const InstCard = ({ row, on, onToggle }: { row: InstitutionRow; on: boolean; onT
       <span className="text-t13 font-bold text-textPrimary">{moneyB(row.valueB)}</span>
       <span className={`text-t10 ${BOOK_INK[row.book]}`}>{BOOK_WORD[row.book]}</span>
     </span>
-    <span className={`mt-1 block font-mono text-t9 tnum ${ink(row.changePct)}`}>vs last filing {signed(row.changePct)}%</span>
+    <span className={`mt-1 block font-mono text-t9 tnum ${ink(row.changePct)}`}>vs last filing {signedPct(row.changePct)}</span>
   </button>
 );
 
 
-/* THE PHONE CARDS (the fourth audit's retail test, 2026-10-23): under 640px each book is a card a row — the deciding
-   fields on two lines instead of a grid whose value and side sat off-screen (components/record/PhoneCards.tsx) */
+/* under 640px each book is a card a row, the deciding fields on two lines */
 const cellJsx = <T,>(Cell: (p: ICellRendererParams<T>) => ReactNode, data: T) => <Cell {...({ data } as ICellRendererParams<T>)} />;
 const InstPhone = (r: InstitutionRow) => (
   <>
@@ -191,10 +169,10 @@ export const Institutions = () => {
   const [guideOpen, setGuideOpen] = useState(false);
   const live = useInstitutions();
   const feed = live.rows;
-  /* THE PERIOD THE 13Fs COVER (round 8: the page never said the values are as of the quarter's end) */
+  /* the period the 13Fs cover */
   const periods = useMemo(() => [...new Set(feed.map(r => r.report).filter(r => r && r !== '—'))].sort().reverse(), [feed]);
   const periodWords = periods.length === 1 && quarterEnd(periods[0]) ? `13F for the quarter ending ${quarterEnd(periods[0])}` : periods.length > 1 ? `13Fs for the quarters ending ${periods.map(p => quarterEnd(p) ?? p).join(', ')}` : null;
-  /* THE REST OF THE HOUSES WHEN WANTED (round 8): any cut, a pick, the grid's pages or the end of the list reads them */
+  /* the rest of the houses are read when wanted: any cut, a pick, the grid's pages or the list's end */
   const allSentinel = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!live.held) return;
@@ -279,17 +257,16 @@ export const Institutions = () => {
       { headerName: 'House', field: 'name', flex: 1.2, minWidth: 140, cellRenderer: InstHouse, headerTooltip: 'The filer' },
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: InstName, headerTooltip: 'The holding — click the row to open the house’s filing' },
       { headerName: 'Side', field: 'book', width: 88, cellRenderer: InstBook, headerTooltip: 'Call, put, or the shares. The filing does not name a strike or an expiry.' },
-      { headerName: 'Status', field: 'status', width: 88, cellRenderer: InstStatus, headerTooltip: 'Against the prior 13F: new, added (2% more units or over), cut (2% fewer or over), closed, or held — within 2% either way, so a +1.6% line reads held' },
+      { headerName: 'Status', field: 'status', width: 88, cellRenderer: InstStatus, headerTooltip: 'Against the prior 13F: new, added (2%+ more units), cut (2%+ fewer), closed, or held (within 2%)' },
       { headerName: 'Shares', field: 'sharesM', width: 96, cellRenderer: InstShares, type: 'rightAligned', headerTooltip: 'Shares reported, in millions' },
       { headerName: 'Value', field: 'valueB', width: 100, cellRenderer: InstValue, type: 'rightAligned', sort: 'desc', headerTooltip: 'The reported value; the grid opens on the largest lines' },
-      { headerName: '% of 13F value', field: 'pctOfBook', width: 112, cellRenderer: InstBookPct, type: 'rightAligned', headerTooltip: 'This line’s reported value as a share of the total value of everything the house reported on its 13F (Unusual Whales’ perc_of_share_value) — measured over the whole filing, not only the lines read here' },
+      { headerName: '% of 13F value', field: 'pctOfBook', width: 112, cellRenderer: InstBookPct, type: 'rightAligned', headerTooltip: 'This line’s value as a share of everything the house reported on its 13F, the whole filing' },
       { headerName: 'Vs last filing', field: 'changePct', width: 120, cellRenderer: InstChange, type: 'rightAligned', headerTooltip: 'Change versus the prior 13F, not versus yesterday' },
     ],
     [],
   );
   const gridRef = useRef<HTMLDivElement | null>(null);
-  /* FIFTY LINES A PAGE (the Dossier sweep, 2026-10-22): twenty houses file ~1,700 lines, and the grid grown to all of
-     them made a page some 70,000px tall. The grid pages itself — the sort still runs over every line. */
+  /* fifty lines a page; the sort runs over every line */
   const paged = usePagedGrid<InstitutionRow>();
   const cutKey = `${window}|${book}|${house}|${names}|${picks.join(',')}`;
   useEffect(() => {
@@ -307,9 +284,9 @@ export const Institutions = () => {
     navigate(`/dossier/institutions/${houseSlug(e.data.name)}?line=${e.data.ticker}`);
   };
 
-  /* READING, NOT NOTHING (round 9: "NO LINE ON THIS CUT" stood under "Reading the 13Fs") */
+  /* reading, not nothing */
   const instReading = !failed && feed.length === 0 && (live.status === 'loading' || (!!live.progress && live.progress.done < live.progress.total));
-  /* the cards and the largest line are over the houses read so far — said on them (round 9) */
+  /* the cards and the largest line are over the houses read so far, said on them */
   const newestWords = live.held && live.progress ? `among the ${live.progress.done} newest filers` : '';
   return (
     <Page testId="institutions" attrs={{ 'data-window': window }}>
@@ -322,7 +299,7 @@ export const Institutions = () => {
             <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">What the houses reported</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a line, a book and the change mean" testId="institutions-guide" />
           </div>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate" title="Each house's book is far longer than the lines read here: the largest 80 lines by value from its latest 13F, for the 40 largest houses. A 13F reports what a house held on the last day of the quarter, filed up to 45 days later — never today's positions">{periodWords ? <span className="text-textSecondary" data-institutions-period>{periodWords} — values as of that day · </span> : null}The largest {HOUSE_LINES} lines of each house's latest 13F, for the 40 largest houses — not every line · a row opens that house</p>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate" title="A 13F is what a house held at the quarter's end, filed up to 45 days later — never today's positions">{periodWords ? <span className="text-textSecondary" data-institutions-period>{periodWords} — values as of that day · </span> : null}The largest {HOUSE_LINES} lines of each house's latest 13F, for the 40 largest houses — not every line · a row opens that house</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
@@ -359,7 +336,7 @@ export const Institutions = () => {
         <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="institutions-names" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and houses on the page right now — tick any number; only those stay" testId="institutions-filter" />
       </div>
-      <p className={`px-5 pb-3 text-t12 leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-institutions-sentence>
+      <p className={`px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden ${failed ? 'hidden' : ''}`} data-institutions-sentence>
         {facts.lead ? (
           <>
             <span className="text-textPrimary font-semibold">{displayName(facts.lead.name)}</span>’s largest line is <span className="text-textPrimary font-semibold">{facts.lead.ticker}</span>, {moneyB(facts.lead.valueB)}. {facts.houses.toLocaleString('en-US')} {facts.houses === 1 ? 'house' : 'houses'} filed {facts.lines.toLocaleString('en-US')} {facts.lines === 1 ? 'line' : 'lines'} on this cut — {facts.calls} marked call, {facts.puts} marked put, and no strike on any of them.
@@ -371,7 +348,7 @@ export const Institutions = () => {
         )}
       </p>
       {failed && <FeedFallback />}
-      <Strip title="The lines to know" rest={`the largest reported line in each name, biggest first${newestWords ? ` — ${newestWords}` : ''} · click one to keep the grid to that name`} testId="institutions">
+      <Strip title="The lines to know" rest={`the largest line in each name${newestWords ? ` ${newestWords}` : ''} · a click keeps the grid to it`} testId="institutions">
         {toKnow.length === 0 ? (
           <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : instReading ? 'Reading the 13Fs…' : 'No line on this cut'}</div>
         ) : (
@@ -423,7 +400,7 @@ type SectorPick = string;
 
 const SHOW_OPTIONS: DropdownOption<Show>[] = [
   { value: 'all', label: 'Every name', short: 'All', hint: 'The whole short book' },
-  /* the screen's own floor is ~19% of the float, so "8% or more" kept every row (the re-audit, 2026-10-22) */
+  /* the screen's floor is about 19% of the float */
   { value: 'heavy', label: '30% or more', hint: 'Thirty percent of the float or more sold short' },
 ];
 
@@ -517,8 +494,7 @@ export const Shorts = () => {
   const [guideOpen, setGuideOpen] = useState(false);
   const liveShorts = useShorts();
   const failed = liveShorts.status === 'error';
-  /* NOTHING IS "NOTHING" UNTIL THE READ IS IN (round 8: tiles of 0 and "No name on this cut" at 4s) — the Stocks
-     board's rule: while the book is read, every figure is "…" and the empty lines say it is reading */
+  /* while the book is read every figure is "…" and the empty lines say it is reading */
   const waiting = liveShorts.status === 'loading' && liveShorts.rows.length === 0;
   const feed = liveShorts.rows;
   const board = useMemo(() => new Set(boardNames), [boardNames]);
@@ -576,8 +552,8 @@ export const Shorts = () => {
       { headerName: 'Short interest', field: 'interestPct', width: 168, cellRenderer: ShortInterest, headerTooltip: 'The share of the tradable stock (the float) that has been sold short and not bought back. Red at 30% and above' },
       { headerName: 'Shares short', field: 'shortSharesM', width: 120, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{sharesM(data.shortSharesM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares sold short, in millions' },
       { headerName: 'Days to cover', field: 'daysToCover', width: 120, cellRenderer: ShortDays, type: 'rightAligned', headerTooltip: 'How many days of normal trading it would take the shorts to buy back every share — shares short divided by average daily volume' },
-      { headerName: 'Fee', field: 'feeRate', width: 80, cellRenderer: ShortBorrow, type: 'rightAligned', headerTooltip: 'The annualized fee to borrow the shares on the settlement day — the short file shows today’s. A dash means the feed did not price the borrow.' },
-      { headerName: 'Available', field: 'availableM', width: 110, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{borrowM(data.availableM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares available to borrow on the settlement day — the short file shows today’s. The feed caps the count at 10M — 10M+ means at least that many. A dash means the feed did not say.' },
+      { headerName: 'Fee', field: 'feeRate', width: 80, cellRenderer: ShortBorrow, type: 'rightAligned', headerTooltip: 'The yearly fee to borrow on the settlement day (the short file shows today’s); a dash if not priced' },
+      { headerName: 'Available', field: 'availableM', width: 110, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{borrowM(data.availableM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares left to borrow on the settlement day (the short file shows today’s); the feed caps it at 10M' },
       { headerName: 'Float', field: 'floatM', flex: 0.7, minWidth: 90, cellRenderer: ShortFloat, type: 'rightAligned', headerTooltip: 'Shares free to trade (the float), in millions — insiders’ locked-up shares are not in it' },
     ];
     if (hasShortVol) cols.splice(5, 0, { headerName: 'Short vol', field: 'shortVolRatio', width: 100, cellRenderer: ShortVol, type: 'rightAligned', headerTooltip: 'Short volume as a percent of the session’s volume' });
@@ -617,11 +593,11 @@ export const Shorts = () => {
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`Names on the grid after the cards — of the screen's ${SHORTS_SCREEN}: the latest settlement's heaviest shorts by share of the float, floats of ${SHORTS_MIN_FLOAT / 1e6}M shares or more`}>Names</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={`Of the ${SHORTS_SCREEN} heaviest shorts by share of the float (floats of ${SHORTS_MIN_FLOAT / 1e6}M+ shares)`}>Names</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-shorts-count>{failed ? '—' : waiting ? '…' : <>{facts.names}{facts.funds ? <span className="text-textMuted"> · {facts.funds} funds</span> : null}</>}</dd>
           </div>
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`${SQUEEZE_TIP}\nOn this list the read uses the settlement's figures only; a name's file adds today's borrow, the last session's short volume and the fails to deliver, so it can read stronger there.`}>Squeeze setups</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={SQUEEZE_TIP}>Squeeze setups</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-shorts-squeeze>
               {failed ? '—' : waiting ? '…' : <><span className="text-bear">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.building} building</span> <span className="text-textMuted">of {facts.stocks}</span></>}
             </dd>
@@ -635,7 +611,7 @@ export const Shorts = () => {
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{failed ? '—' : waiting ? '…' : <>{facts.lead ? `${facts.lead.ticker} ${facts.lead.interestPct.toFixed(1)}%` : '—'}</>}</dd>
           </div>
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="The median, across the stocks here (funds left out), of the days of normal volume the shorts would need to buy back — half need more, half less">Median days to cover</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title="The median days of normal volume the shorts would need to buy back (funds left out)">Median days to cover</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{failed ? '—' : waiting ? '…' : <>{facts.stocks ? facts.days.toFixed(1) : '—'}</>}</dd>
           </div>
         </dl>
@@ -646,7 +622,7 @@ export const Shorts = () => {
         <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="shorts-names" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names on the page right now — tick any number; only those stay" testId="shorts-filter" />
       </div>
-      <p className={`px-5 pb-3 text-t12 leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-shorts-sentence>
+      <p className={`px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden ${failed ? 'hidden' : ''}`} data-shorts-sentence>
         {facts.lead ? (
           <>
             <span className={`font-semibold ${facts.lead.interestPct >= 30 ? 'text-bear' : 'text-textPrimary'}`}>{facts.lead.ticker}</span> is the heaviest stock short on this screen, {facts.lead.interestPct.toFixed(1)}% of the float and {facts.lead.daysToCover.toFixed(1)} days to cover. <span className="text-bear font-semibold">{facts.heavy}</span> {facts.heavy === 1 ? 'stock sits' : 'stocks sit'} at 20% or more, and the lightest here is still {facts.floor.toFixed(1)}%{facts.funds ? `; ${facts.funds} ${facts.funds === 1 ? 'fund is' : 'funds are'} listed with no squeeze read` : ''}. The squeeze words here read the settlement alone; a name's file adds today's borrow, short volume and fails to deliver, and can read stronger.
@@ -658,7 +634,7 @@ export const Shorts = () => {
         )}
       </p>
       {failed && <FeedFallback />}
-      <Strip title="The names to know" rest="the heaviest short interest among the stocks on this cut (funds left out) · click a name to keep the grid to it" testId="shorts">
+      <Strip title="The names to know" rest="the heaviest short interest on this cut, funds left out · a click keeps the grid to it" testId="shorts">
         {toKnow.length === 0 ? (
           <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the short book…' : 'No name on this cut'}</div>
         ) : (
@@ -734,7 +710,7 @@ const EtfKindCell = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span cla
 const EtfAum = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{assetsB(data.aumB)}</span> : null);
 const EtfFlow = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className={`font-mono text-t11 tnum ${ink(data.flow5dM)}`}>{signedM(data.flow5dM)}</span> : null);
 const EtfFee = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-t11 tnum text-textPrimary">{data.expensePct == null ? '—' : `${data.expensePct.toFixed(2)}%`}</span> : null);
-/* the fund's holdings are read once its cell is on screen (round 9 — liveFiles.wantFundHoldings) */
+/* the fund's holdings are read once its cell is on screen (liveFiles.wantFundHoldings) */
 const EtfTop = ({ data }: ICellRendererParams<EtfRow>) => {
   const [ref, seen] = useSeen<HTMLSpanElement>();
   const etf = data?.etf ?? '';
@@ -873,7 +849,7 @@ export const EtfBook = () => {
     navigate(`/dossier/etfs/${e.data.etf}`);
   };
 
-  /* READING, NOT ZERO (round 9: "Funds 0 · Assets $0 · NO FUND ON THIS CUT" beside "Reading the funds") */
+  /* reading, not zero */
   const etfReading = !failed && liveEtfs.status === 'loading' && liveEtfs.rows.length === 0;
   return (
     <Page testId="etf-book">
@@ -912,7 +888,7 @@ export const EtfBook = () => {
         <DropdownSelect label="Kind" value={kind} options={KIND_OPTIONS} onChange={setKind} title="Which funds" testId="etf-kind" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The funds on the page right now — tick any number; only those stay" testId="etf-filter" />
       </div>
-      <p className={`px-5 pb-3 text-t12 leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-etf-sentence>
+      <p className={`px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden ${failed ? 'hidden' : ''}`} data-etf-sentence>
         {facts.inflow && facts.outflow ? (
           <>
             {facts.inflow.flow5dM > 0 ? (
@@ -944,7 +920,7 @@ export const EtfBook = () => {
         )}
       </p>
       {failed && <FeedFallback />}
-      <Strip title="The funds to know" rest="the largest five-day flow, either way · click a fund to keep the grid to it" testId="etfs">
+      <Strip title="The funds to know" rest="the largest five-day flow, either way · a click keeps the grid to it" testId="etfs">
         {toKnow.length === 0 ? (
           <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : etfReading ? 'Reading the funds…' : 'No fund on this cut'}</div>
         ) : (
@@ -984,7 +960,7 @@ export const EtfBook = () => {
       </div>
       {focus && (
         <>
-          <Strip title={`What ${focus.etf} holds`} rest={`the largest fund on this cut, or the one a card kept · ${(() => { const c = liveEtfs.coverOf(focus.etf); return c && c.lines ? `${c.fundCount != null && c.lines < c.fundCount ? `the top ${c.lines} of ${c.fundCount.toLocaleString('en-US')} holdings` : `all ${c.lines} holdings`}, ${c.weight.toFixed(0)}% of the fund · ` : 'no holdings on file · '; })()}weights as of ${asOfDay(focus.holdingsAsOf)}, the fund's own holdings file`} testId="etf-holdings">
+          <Strip title={`What ${focus.etf} holds`} rest={`${(() => { const c = liveEtfs.coverOf(focus.etf); return c && c.lines ? `${c.fundCount != null && c.lines < c.fundCount ? `the top ${c.lines} of ${c.fundCount.toLocaleString('en-US')} holdings` : `all ${c.lines} holdings`}, ${c.weight.toFixed(0)}% of the fund` : 'no holdings on file'; })()} · as of ${asOfDay(focus.holdingsAsOf)}`} testId="etf-holdings">
             <span className="sr-only">{focus.name}</span>
           </Strip>
           <div className="slayer-board border-t border-borderSubtle" data-etf-holdings={focus.etf}>

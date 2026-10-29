@@ -6,7 +6,6 @@
 
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import SetupScanCard from '../../../components/compass/SetupScanCard';
-import VerdictBadge from '../../../components/compass/VerdictBadge';
 import { CHAIN_COLUMNS, ChainCard, DEFAULT_COLS, type ChainCol } from '../../../components/weigher/ChainGrid';
 import { ListGrid, usdSigned, type ListRow } from '../../../components/weigher/PositionsList';
 import { expiryFor, isoDate, today } from '../../../core/calendar';

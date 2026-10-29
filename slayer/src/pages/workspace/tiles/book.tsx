@@ -1,40 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE · THE BOOK'S TILES
-  (pages/workspace/tiles/book.tsx)
-
-  What dealer hedging is doing, tile by tile — each
-  one instrument and one read, its controls on the
-  tile's head (tile.ts):
-
-    The book        the Map's own matrix or calendar —
-                    ONE tile with a view switch (there
-                    were two tiles saying one book);
-                    the read is a switch on the head.
-                    THE LADDER IS GONE (Noah,
-                    2026-09-30: "the ladder is not a
-                    thing anymore even on pinpoint so
-                    remove it completely") — a desk
-                    that kept one opens on the matrix
-    Key levels      the walls, the flip, the supreme
-                    and spot, one row each
-    The range       where price is likely to hold to
-                    the close; the half hours under
-                    it when the tile is tall enough
-    Where it closes the odds of the close, strike by
-                    strike, opening on spot
-    At the wall     does it hold, and the two paths
-    Targets         every strike in the order it
-                    matters today — a row is a door
-                    to its page on that strike
-    Where the walls are heading
-                    open · now · by the close
-    Head to head    this name against another
-
-  A strike kept in a tile stays in the tile (Noah,
-  2026-09-22: a click that threw him into a chart —
-  "i don't like that").
-==================================================
+  Pulse's book tiles, each one instrument over the live dealer book: the book, key levels, the range, where it
+  closes, at the wall, targets, where the walls are heading, and head to head.
 */
 
 import { holdShort } from '../../../data/wall';
@@ -60,7 +26,7 @@ import { useResolvedTheme } from '../../../theme/theme';
 import type { ExposureExpiry } from '../../../types/gex';
 import type { TileControl, TileProps, TileState, WorkspaceCtx } from '../tile';
 import { useDeskClock } from '../useDeskClock';
-import { agendaOf, buildingOf, clockNow, keyLevelsOf, profile15, surface30 } from './derive';
+import { agendaOf, buildingOf, clockNow, keyLevelsOf, surface30 } from './derive';
 import { TileHeads, TileNoBook, TileRead, TileRow, TileRows, dirInk, fmtStrike, signedPct, useDoor } from './parts';
 
 const SILVER = 'rgb(var(--silver))';

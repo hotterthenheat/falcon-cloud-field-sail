@@ -1,33 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - A WINDOW BOOTS INTO A PAGE
-  (pages/landing/Boot.tsx)
-
-  THE LOADING MOMENT between two pages in the tour's
-  window (Noah, 2026-10-03, of his partner's landing:
-  "this loading thing on the landing pages that
-  changes from one page to another after a certain
-  period. implement that as well"). As the window
-  turns to another page, the new page comes in as a
-  fine grain without its colour and resolves into
-  itself (pixels.ts) in about half a second, along
-  the way its page moves (`sweep`: Pulse dealt a
-  strip at a time, Pinpoint opening from the middle,
-  Terrain drawn left to right, Trace printing down).
-  Nothing tears and nothing fringes: the picture
-  arrives.
-
-  It draws the window's own still (the film's first
-  frame) over the screen, and the window holds its
-  film on that frame until the canvas has gone
-  (`onDone`), so it ends on what is there. On paper
-  the marks that survive are the darkest (ink), as
-  the footer prints on paper. Never where less
-  motion is asked for, never in a tab behind, and
-  not at all if the still is slow to come: it gives
-  way WAIT in if it has not begun (the window never
-  waits on its own entrance).
-==================================================
+  The loading moment in the tour's window as it turns from one page to the next.
 */
 
 import { useEffect, useRef, useState } from 'react';

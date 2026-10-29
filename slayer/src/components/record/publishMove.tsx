@@ -1,8 +1,7 @@
-/* THE MOVE AT PUBLISH, SAID AS WHICH MOVE IT IS (the third audit, 2026-10-23): the regular session's move first, the
-   pre-market or after-hours move apart and named — never the after-hours move printed as the day's. */
+/* The move at publish, said as which move it is: the regular session's first, the extended move apart and named. */
 import type { NewsPrediction } from '../../data/news';
+import { signedPct as signed } from '../../pages/record/money';
 
-const signed = (v: number, d = 1) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
 const SHORT = { 'pre-market': 'PM', 'after hours': 'AH' } as const;
 
 export function PublishMove({ p, short = false }: { p: NewsPrediction; short?: boolean }) {

@@ -1,66 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE JOURNAL, CALENDAR FIRST
-  (pages/review/JournalHome.tsx)
-
-  The journal's front page since 2026-09-25 (Noah, on
-  the partner's journal: "a solid 5/10 i love the
-  calendar view as the first thing that greets you and
-  thats what i want but his page is a bit lackluster i
-  want cool but not over the top charts or graphs or any
-  visual thing that can showcase the users pnl in many
-  formats, alltime, this month, etc. when clicking on a
-  certain calendar date you should be able to see all of
-  the trades you took with accounts etc." — "build it,
-  start with paper"), REDRAWN on 2026-09-26 after his
-  look at the first cut ("the charts are very ugly,
-  spacing is horrible, the calendar should be the nice
-  cured corners … i want a complete redesign. but remember
-  my previous say about how i wanted to calendar to
-  look"). Paper's journal first; the backtest's is this
-  page handed its source.
-
-    the head       the period (today · this week · this
-                   month · this year · all time), the
-                   account, four figures, a sentence
-    the month      THE CALENDAR (JournalMonth) — a rounded
-                   card a day, Sunday to Saturday, washed in
-                   what it made — and beside it THE PERIOD'S
-                   FIGURES (JournalStats), the partner's
-                   arrangement in the house's words
-    the day        pressed on the calendar, it opens UNDER
-                   the month across the page (JournalDay):
-                   its trades with their accounts in the
-                   house's grid, how the day went, its words
-    drawn          THE RUNNING TOTAL, a curve through a
-                   point a trade, and WHAT EACH DAY MADE —
-                   two charts side by side, each the height
-                   a chart needs; a press on a point or a
-                   bar opens its day
-    five cuts      the hour · the weekday · the name ·
-                   long or short · the size of the result
-                   (JournalLanes, the house's rows)
-    the trades     every trade in the period
-
-  A day is THE CALENDAR DAY the trade closed on, New
-  York's (journalFigures.ts calendarDayOf). THE PERIOD,
-  THE ACCOUNT, THE DAY AND THE MONTH RIDE THE ADDRESS, so
-  Back from a trade comes home as it was left; the account
-  rides as `session`, the journal cut's own word for a
-  container, so a trade's ← → walks the same account.
-
-  A CHANGE OF WHAT IS DRAWN IS A SOFT SWAP, never a cut
-  (Noah, 2026-09-26: "the transition from the paper to
-  backtest on the journal page changes the page really
-  quickly and it should be smooth"): the switch's pill
-  glides at once; each region under the head that the
-  change touches fades out on the old for SWAP_OUT_MS,
-  then mounts the new and fades in — the Map's own swap
-  (ExposureField). The book, the period, the account and
-  the open day are read from ONE SNAPSHOT (`drawn`) that
-  catches up as the fade lands; the controls read the
-  address live.
-==================================================
+  The journal's front page: the month first, the period's figures beside it, what each day made, the lanes, and a
+  day opened under the month.
 */
 
 import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
@@ -236,7 +176,7 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
   const periodLabel = PERIODS.find(p => p.value === period)!.label;
   const title = period === 'today' ? 'Today' : period === 'week' ? 'This week' : period === 'month' ? monthWords(home) : period === 'year' ? today.slice(0, 4) : 'All time';
   const spanWords = !span ? 'Every trade kept in this browser' : period === 'today' ? `${shortDay(today)} · New York’s day` : period === 'week' ? `${shortDay(span.from)} to ${shortDay(span.to <= today ? span.to : today)}` : period === 'month' ? `${MONTHS[Number(home.slice(5)) - 1]} 1 to ${shortDay(today).split(', ')[1]}` : `Jan 1 to ${shortDay(today).split(', ')[1]}, ${today.slice(0, 4)}`;
-  const whose = account ? `on ${nameOfAccount(account)}` : source.containers.length > 1 ? `on every ${source.containerWord}${source.sample?.shown ? ', the sample in' : ''}` : '';
+  const whose = account ? `on ${nameOfAccount(account)}` : source.containers.length > 1 ? `on every ${source.containerWord}` : '';
   /* the backtest's book counts by its own clock: its "today" is the last day replayed */
   const clockWords = kind === 'backtest' ? ' · by the backtest’s clock' : '';
   const lead = period === 'today' ? 'Today' : period === 'week' ? 'This week' : period === 'month' ? `In ${monthWords(home).split(' ')[0]}` : period === 'year' ? `In ${today.slice(0, 4)}` : 'In all';
@@ -353,13 +293,7 @@ export const JournalHome = ({ kind: liveKind, books = false }: { kind: JournalKi
               <FilterTabs options={PERIODS} value={livePeriod} onChange={v => set({ period: v === 'month' ? null : v })} ariaLabel="Which period" />
             </span>
             {source.containers.length > 1 && <DropdownSelect label={source.containerWord === 'account' ? 'Account' : 'Session'} value={liveAccount ?? 'all'} options={accountOptions} onChange={v => set({ session: v === 'all' ? null : v, day: null })} title={`Which ${source.containerWord}’s trades`} testId="journal-account" />}
-            {/* THE SAMPLE ACCOUNTS (data/paper/sample.ts) — a made-up September the journal shows for now; the door hides it here */}
-            {source.sample && (
-              <button type="button" onClick={() => source.sample!.set(!source.sample!.shown)} title={source.sample.shown ? 'Take the sample accounts out of the journal — your own trades stay' : 'Put the sample accounts back in'} className="ml-auto h-7 px-2 font-mono text-t10 text-textMuted hover:text-textPrimary transition-colors" data-journal-sample={source.sample.shown ? 'shown' : 'hidden'}>
-                {source.sample.shown ? 'Hide the sample' : 'Show the sample'}
-              </button>
-            )}
-            <button type="button" onClick={exportCsv} disabled={!rows.length} title="This period’s trades as a file a spreadsheet opens — with your tags and your words" className={`${source.sample ? '' : 'ml-auto '}inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-30 transition-colors`} data-journal-export>
+            <button type="button" onClick={exportCsv} disabled={!rows.length} title="This period’s trades as a file a spreadsheet opens — with your tags and your words" className={`ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-30 transition-colors`} data-journal-export>
               <Download className="w-3 h-3" /> CSV
             </button>
           </>

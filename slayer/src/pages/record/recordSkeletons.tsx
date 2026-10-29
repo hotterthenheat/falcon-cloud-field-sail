@@ -542,9 +542,8 @@ export const EarningsNameSkeleton = () => (
   </>
 );
 
-/* The row counts are the default window's (90 days): Congress files about 45
-   reports, Insiders about 140 open-market rows — more than a first screen holds,
-   so the stand-in draws the first screen's worth */
+/* The default window holds more rows than a first screen (about 45 Congress reports, 140 insider rows),
+   so the stand-in draws one screen's worth. */
 /** A feed page with a to-know strip standing (Insiders, Congress): the head and cards, the sentence, six cards, the grid in its window */
 export const FeedStripPageSkeleton = ({ name, title, triggers, cols, widths, gridH }: { name: string; title: number; triggers: number[]; cols: number; widths: number[]; gridH: string }) => (
   <div className="border border-borderSubtle rounded-md overflow-hidden bg-panel flex flex-col" data-skeleton={name}>

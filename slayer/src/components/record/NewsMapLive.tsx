@@ -13,17 +13,15 @@ import atlasUrl from 'world-atlas/countries-110m.json?url';
 import cities from '../../data/cities.json';
 import { useResolvedTheme } from '../../theme/theme';
 import type { CityPing, GeoZone, NewsGrade } from '../../data/newsroom';
-import { HEAT_INK, OPEN_INK, NEWS_INK, type FlyTo, type HeatPoint, type MapProps, type Reach } from './NewsMap';
+import { HEAT_INK, OPEN_INK, NEWS_INK, type HeatPoint, type MapProps, type Reach } from './NewsMap';
 
 const SEA: Record<'dark' | 'light', string> = { dark: '#12181e', light: '#d7e3ea' };
 const LAND: Record<'dark' | 'light', string> = { dark: '#2a333c', light: '#f3f0e8' };
 const EDGE: Record<'dark' | 'light', string> = { dark: 'rgba(255,255,255,0.22)', light: 'rgba(20,28,36,0.25)' };
 const INK: Record<NewsGrade, string> = { THREAT: 'rgb(var(--bear))', ALLY: 'rgb(var(--bull))', WATCH: '#8a8f99' };
 
-/* THE DATELINE. The atlas cuts Russia, Fiji and the Aleutians at ±180°, and a ring that steps from 179.9° to -179.9°
-   is drawn by the map as a straight line all the way across the world — the stray horizontal rules over the Arctic
-   and the South Pacific (the dossier sweep, 2026-10-22). A ring is walked and any step longer than half the world is
-   carried on past 180°, so the polygon stays whole on one side. */
+/* The dateline: the atlas cuts rings at ±180°, which the map draws as a line across the world, so any step longer than
+   half the world is carried on past 180° and the polygon stays whole. */
 const unwrapRing = (ring: GeoJSON.Position[]): GeoJSON.Position[] => {
   let shift = 0;
   return ring.map((pt, i) => {
@@ -107,8 +105,7 @@ interface Props extends MapProps {
 }
 
 /** World width at zoom z is 512 * 2^z. Stay a hair inside that so the tiles cover the box. */
-/* clamped into MapLibre's own range: a hidden or not-yet-laid-out host (0×0) gave log2(64/512) ≈ −2.96, and
-   setMinZoom threw "minZoom must be between -2 and the current maxZoom" (the ship pass, 2026-10-22) */
+/* clamped into MapLibre's range: a host not yet laid out (0×0) would ask for a zoom under its −2 floor */
 const coverZoom = (w: number, h: number) => Math.min(7.5, Math.max(-2, Math.log2(Math.max(w, h, 64) / 512) + 0.04));
 
 const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
@@ -515,9 +512,7 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
             host = c;
           }
         }
-        /* A CITY'S COUNT IS ITS OWN METRO (audit round 7: at world zoom "Paris 32" and "Shanghai 23" took in London,
-           Berlin, Frankfurt, Beijing and Tokyo — every pin went to the nearest named city however far). A pin rolls
-           into a named city only within ROLL_KM of it; farther, it keeps its own dot, name and count. */
+        /* A pin rolls into a named city only within ROLL_KM of it; farther, it keeps its own dot, name and count. */
         if (!host || best > ROLL_KM) continue;
         claimed.add(p.city);
         const had = buckets.get(host.n);
@@ -532,9 +527,7 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
       }
     }
     const labeled = new Set<string>();
-    /* THE LABELS KEEP TO THE FRAME AND OFF EACH OTHER (the dossier sweep, 2026-10-22: "Tokyo" ran off the right edge
-       and "Frankfurt 4" sat on "Paris"). A label that would cross the right edge reads leftward from its dot; a quiet
-       city whose label would touch a city carrying news gives way to it. */
+    /* A label that would cross the right edge reads leftward; a quiet city's label gives way to a city carrying news. */
     const frameW = map.getContainer().clientWidth;
     const boxOf = (c: GazCity, text: string) => {
       const pt = map.project([c.lng, c.lat]);

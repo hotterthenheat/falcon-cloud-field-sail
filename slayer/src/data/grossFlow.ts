@@ -1,12 +1,5 @@
-/*
-  Gross option premium by minute, for the chart's book lines.
-
-  Flow VWAP is price weighted by dollars of premium, not by share volume
-  and not by the simulator's practice tape. SPX already has that in the
-  stored SPXW book. Every other name asks the feed once for the minute
-  ticks and keeps a minute only when it names ask, bid and mid premium.
-  A net (ask minus bid) is a different number, and it is not stood in.
-*/
+/* Gross option premium by minute for the chart's book lines: premium-weighted, from the stored SPXW book or a name's
+   minute ticks; a minute without ask, bid and mid premium is dropped. */
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { uwCall } from './whales';

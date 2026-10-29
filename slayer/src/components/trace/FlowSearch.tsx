@@ -1,63 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - FLOW SEARCH (trace)
-
-  The ticker/contract search every flow page
-  carries (promoted from the Live Tape, 2026-08-30).
-  Suggestions grouped TICKERS / CONTRACTS, ranked
-  by money, keyboard-walkable; rows shaped
-  {ticker, strike, right, premium} — FlowPrint and
-  BookContract both fit.
-
-  TWO STEPS, NOT ONE (Noah, 2026-08-30: "when i
-  click on the ticker it doesnt navigate me to the
-  contracts section it just kicks me out. and the
-  user should have the option to skip the specific
-  strikes in general and only see all the tapes for
-  the ticker"). Picking a ticker SCOPES the menu:
-  the filter applies at once (every print on that
-  name is already on screen behind the menu), and
-  the list turns into that ticker's contracts with
-  "everything on <ticker>" at the top and a way
-  back. Picking a contract, or "everything", closes.
-  Typing anything drops the scope — the reader is
-  searching again.
-
-  IN THE HOUSE'S CLOTHES (Noah, 2026-09-20, with a
-  picture of the old menu: "i feel as though it doesnt
-  match our new and improved ui design"). It was the
-  one control on a Trace toolbar still drawn the old
-  way — a square menu hung under the field, a "/" for
-  a name and a bare C or P for a contract, the field
-  itself a different box from the cards beside it.
-  Now:
-    · THE FIELD is one of the cards on its line (the
-      same height, ground, hairline and hover as
-      DropdownSelect's trigger); holding a filter it
-      is ARMED — the silver edge and a breath of
-      silver behind, as the Account's drop zone is —
-      and it wears the picked name's logo where the
-      glass was. (The old armed box was `.holo-border`,
-      whose fill is a typed black: on paper it was a
-      black field with black words.)
-    · THE MENU is the house card (DropdownSelect's
-      CARD, on Radix Popover — portalled, so a pane
-      that clips no longer slices it, and it keeps to
-      the window by itself): rounded rows on an inset,
-      caps headings, one figure column that lines up.
-    · A NAME TRAVELS WITH ITS LOGO; a name that opens
-      into its contracts says so with a chevron.
-    · A CONTRACT IS WRITTEN THE WAY THE TAPE UNDER IT
-      WRITES IT — name, strike, then "call" or "put"
-      in the side's ink — and because the row IS a
-      direction it wears green or red under the
-      pointer (DropdownSelect's `tone` rule).
-    · THE FILTER IN FORCE is the silver row with the
-      check: where you are.
-    · Nothing matches → the card says so, instead of
-      not opening.
-==================================================
-*/
+/* The ticker/contract search every flow page carries: suggestions grouped tickers then contracts, ranked by money,
+   keyboard-walkable. Picking a ticker scopes the menu to its contracts; picking a contract or "everything" closes. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
@@ -76,10 +18,8 @@ export interface FlowSearchRow {
 
 export const normSymbol = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-/* ---- A CONTRACT TYPED THE WAY PEOPLE WRITE IT (audit round 9: "NVDA 220C 11/20" read "Nothing on this cut", no hint) -----
-   The field takes a name, a name and a strike, or a whole contract: "NVDA 220C 11/20", "NVDA 220 C Nov 20",
-   "NVDA 220 call 2026-11-20", "NVDA261120C00220000" (OCC). The old letters-and-digits match stays for anything that is not
-   one of those ("505C", "spy505c"). */
+/* A contract typed the way people write it: "NVDA 220C 11/20", "NVDA 220 call 2026-11-20" or an OCC symbol; anything
+   else keeps the plain letters-and-digits match. */
 export interface ContractQuery {
   ticker: string;
   strike: number | null;
@@ -124,8 +64,8 @@ export function parseContractQuery(raw: string): ContractQuery | null {
   }
   return { ticker: m[1], strike: m[2] ? Number(m[2]) : null, right, month, day, year };
 }
-/** THE NAME A SEARCH ASKS FOR (audit round 11, major 5): "NVDA", "nvda 220c 11/20" and an OCC symbol all name NVDA — the
-    pages read that name's own rows from the vendor rather than cutting the market's; anything else ("505C") names none */
+/** The name a search asks for ("NVDA", "nvda 220c 11/20", an OCC symbol), so a page reads that name's own rows;
+    "505C" names none */
 export function searchedName(raw: string): string | null {
   const q = raw.trim().toUpperCase();
   if (!q) return null;
@@ -182,14 +122,12 @@ type Suggestion =
   | { key: string; kind: 'back'; primary: string }
   | { key: string; kind: 'door'; primary: string };
 
-/* One wash under the pointer whatever the row's side (2026-10-13): the call/put WORD carries the side; a green or red
-   wash read as a direction */
+/* One wash under the pointer whatever the side: the call/put word carries the side, never a direction ink */
 const WASH = { plain: 'bg-ink/[0.06]', C: 'bg-ink/[0.06]', P: 'bg-ink/[0.06]' } as const;
 const HEADING = 'px-2 pt-1.5 pb-1 font-mono text-t11 uppercase tracking-widest text-textMuted';
 
-/** A DOOR at the foot of the menu (the 0DTE desk, 2026-09-03): the search
-    can only offer what its page carries, so its last row sends the typed
-    name — or "any other name" — to the page that does. */
+/** A door at the foot of the menu: the search offers only what its page carries, so its last row sends the name to
+    the page that does. */
 export interface SearchDoor {
   /** The row's words, given what is typed (upper-cased, may be empty) */
   label: (query: string) => string;
@@ -211,14 +149,9 @@ const FlowSearch = ({
   rows: FlowSearchRow[];
   /** What a ticker's tally counts — "prints" on the tape, "contracts" on a book page. */
   countNoun?: string;
-  /** NAMES ONLY (Net Flow, 2026-09-03: "a ticker search (not contracts)") —
-      the page is a board of names, so the menu lists tickers alone and a
-      pick applies and closes; there is no contract step to scope into. */
+  /** Names only: on a board of names a pick applies and closes, with no contract step */
   tickersOnly?: boolean;
-  /** A pane-head fit: a short field the height of a chip, for the 0DTE
-      panes whose 32px strip already carries a cut, four chips and three
-      figures. Measured: the full field pushed a 2×2 pane's head 170px past
-      its edge at 1200px wide. */
+  /** A pane-head fit: a short field the height of a chip, for pane heads already carrying a cut and figures. */
   compact?: boolean;
   /** The menu's last row, a way out to the page that carries the rest. */
   door?: SearchDoor;
@@ -309,9 +242,8 @@ const FlowSearch = ({
   }, [tallies, nq, value, countNoun, tickersOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doorRow: Suggestion | null = door ? { key: 'door', kind: 'door', primary: door.label(value.trim()) } : null;
-  /* A STRIKE TYPED IS A CONTRACT ASKED FOR (audit round 10, minor 1: "NVDA 215C" + Enter picked "Everything on NVDA"): with
-     a strike in the query the contracts lead the menu, and Enter keeps the query itself — every expiry of that strike and
-     side, or the one contract when a date is typed */
+  /* A strike typed is a contract asked for: the contracts lead and Enter keeps the query itself, never "everything
+     on" the name */
   const parsedQ = tickersOnly ? null : parseContractQuery(value);
   const contractAsked = !!parsedQ && parsedQ.strike != null;
   const flat: Suggestion[] = scope ? scoped : contractAsked ? [...contracts, ...tickers, ...(doorRow ? [doorRow] : [])] : [...tickers, ...contracts, ...(doorRow ? [doorRow] : [])];
@@ -366,7 +298,7 @@ const FlowSearch = ({
         e.preventDefault();
         pick(flat[clampedHi]);
       } else if (open) {
-        /* nothing to pick: Enter keeps what is typed and closes the card, never leaves it over the page (retail, round 10) */
+        /* nothing to pick: Enter keeps what is typed and closes the card */
         e.preventDefault();
         close();
       }
@@ -376,7 +308,7 @@ const FlowSearch = ({
     }
   };
 
-  /* THE FILTER IN FORCE — the row that is the field's own words is where you are */
+  /* the filter in force: the row that is the field's own words is where you are */
   const inForce = (s: Suggestion): boolean => {
     if (!active || scope) return s.kind === 'all' && normSymbol(value) === normSymbol(s.ticker);
     if (s.kind === 'ticker') return normSymbol(s.ticker) === nq;
@@ -407,7 +339,7 @@ const FlowSearch = ({
         className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${lit ? WASH[s.kind === 'contract' ? s.right : 'plain'] : ''}`}
         data-flow-search-row={s.kind}
         data-lit={lit || undefined}
-        /* the figures say what they count (retail, round 10: "80 contracts $476.8M" unexplained) */
+        /* the figures say what they count */
         title={quiet ? undefined : `${s.kind === 'contract' ? `${s.ticker} ${s.strike}${s.right}` : s.kind === 'all' ? `Everything on ${s.ticker}` : s.ticker} — ${s.count ? `${s.count.replace('×', ' times')} ` : ''}on this page${s.money ? `, ${s.money} in premium among them` : ''}`}
       >
         <span className="w-4 h-4 shrink-0 flex items-center justify-center" aria-hidden="true">
@@ -459,8 +391,7 @@ const FlowSearch = ({
       <Popover.Anchor asChild>
         <div
           ref={rootRef}
-          /* One of the cards on its line. Holding a filter it is ARMED: silver is "where you are", never lime
-             (Noah, 2026-08-30: "remove anything neon in this search thing to holographic silver") */
+          /* One of the cards on its line; holding a filter it wears the silver of "where you are" */
           className={`inline-flex items-center gap-1.5 rounded-md border transition-colors font-mono ${compact ? 'h-[22px] pl-2 pr-1.5' : 'h-7 pl-2.5 pr-2'} ${
             active ? 'border-silver bg-silver/[0.07]' : `border-borderSubtle bg-chip hover:border-borderMuted focus-within:border-silver/50 ${open ? 'border-silver/50' : ''}`
           }`}
@@ -472,8 +403,7 @@ const FlowSearch = ({
           <input
             value={value}
             onChange={e => {
-              /* the date's "/" and "-" stay, and room for a whole contract (audit round 10, minor 1: "NVDA 215C 10/30" became
-                 "NVDA 215C 10" — the field kept 12 letters and digits; an OCC symbol alone is 21) */
+              /* the date's "/" and "-" stay, with room for a whole OCC symbol (21 characters) */
               onChange(e.target.value.toUpperCase().replace(/[^A-Z0-9 ./-]/g, '').slice(0, 28));
               setScope(null); // typing is searching again
               setOpen(true);

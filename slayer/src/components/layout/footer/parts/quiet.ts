@@ -1,10 +1,5 @@
-/*
-  THE QUIETER PICTURES (components/layout/footer/parts/quiet.ts) — for the pages that are not a market: the alerts'
-  list, Settings (the two grounds, the switches), the room (other readers' pointers resting on one chart), Status (the
-  services, the market's thirty days, a heartbeat), About (the scattered marks gathered into one terminal), the legal
-  pages (a document, a line being read), the account forms (a card being filled in), an invite (a dot on its way from one
-  screen to another), maintenance (the screen's test card).
-*/
+/* Scenes for pages that are not a market: the alerts list, Settings, the room, Status, About, the legal pages, the
+   account forms, an invite and maintenance. */
 
 import { ARROW, FONT, PIX, box, chip, clamp, clock, dashedCard, dayWord, ease, frame, hash01, keep, lerp, prose, rgb, rng, type, walk, type Box, type Part, type Pen, type Pill, type Stage } from '../kit';
 import { bell } from './field';
@@ -477,7 +472,7 @@ export const gather = (o: { count?: number } = {}): Part => {
   };
 };
 
-/* ---- THE LEGAL PAGES: a document — its title, its sections and their numbers in the margin, the line being read ----- */
+/* ---- legal pages: a document with numbered sections and the line being read ---- */
 
 export const doc = (): Part => {
   let s: Stage | null = null;
@@ -564,7 +559,7 @@ export const doc = (): Part => {
   };
 };
 
-/* ---- THE ACCOUNT FORMS: a card being filled in — an address typed, a password's dots, the door lit, again --------- */
+/* ---- account forms: a card being filled in, on a loop ---- */
 
 export const account = (): Part => {
   let s: Stage | null = null;
@@ -779,7 +774,7 @@ export const invite = (): Part => {
   };
 };
 
-/* ---- MAINTENANCE: the screen's test card — its colour bars, a line gone flat, a band sweeping down; back at a time -- */
+/* ---- maintenance: a test card with colour bars, a flat line and a sweeping band ---- */
 
 export const testCard = (): Part => {
   let s: Stage | null = null;

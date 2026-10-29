@@ -1,15 +1,5 @@
-/*
-  NYSE-listed S&P 500 constituents (plus a couple of featured NYSE ADRs the
-  search must know by name). The bundled nasdaqTickers.json carries only
-  NASDAQ listings, so without this half the ticker search could not find
-  JPM, XOM, UNH, V and the rest of the index (Noah, 2026-08-18: "this should
-  change to the entire s&p 500").
-
-  Snapshot of the membership as of early 2026 — sim-era data. The data phase
-  (ThetaData ingestion, task #23) replaces this with the provider's live
-  universe; constituents churn a handful of times a year, so do not hand-tend
-  this list beyond obvious corrections.
-*/
+/* NYSE-listed S&P 500 members (and a few NYSE ADRs) the bundled NASDAQ list lacks; a snapshot, corrected by hand only
+   for obvious changes. */
 
 import type { TickerListing } from './tickers';
 

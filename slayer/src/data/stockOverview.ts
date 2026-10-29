@@ -295,7 +295,6 @@ export const ordinal = (n: number): string => {
   const s = r >= 11 && r <= 13 ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th';
   return `${n}${s}`;
 };
-const pct = (v: number, d = 1) => signedPct(v, d);
 export const fmtMoney = (v: number): string => dollars3(v);
 const fmtCount = (v: number): string => (v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : `${Math.round(v)}`);
 /** A pillar's score from its factors: 50 + 50 × the leans' weighted mean */
@@ -440,10 +439,10 @@ export function numberFactors(row: ScreenRow): Factor[] {
   const g2 = rowNum(row, 'eps_growth_8q');
   if (g2 != null) out.push({ key: 'growth2', label: 'Earnings growth, two years', value: growthWords(g2), lean: clamp(capGrowth(g2) / 0.8), weight: 0.3, note: g2 >= 0 ? 'higher than two years ago' : 'lower than two years ago' });
   const sh = rowNum(row, 'shares_outstanding_growth_4q');
-  if (sh != null) out.push({ key: 'shares', label: 'Share count, one year', value: pct(sh * 100), lean: clamp(-sh / 0.05), weight: 0.3, note: sh <= -0.01 ? 'buying back shares' : sh >= 0.02 ? 'issuing shares — each one owns less' : 'about flat' });
+  if (sh != null) out.push({ key: 'shares', label: 'Share count, one year', value: signedPct(sh * 100), lean: clamp(-sh / 0.05), weight: 0.3, note: sh <= -0.01 ? 'buying back shares' : sh >= 0.02 ? 'issuing shares — each one owns less' : 'about flat' });
   return out;
 }
-const growthWords = (g: number): string => (Math.abs(g) > 1 ? `${pct(g * 100, 0)} · read as ${g > 0 ? '+' : '−'}100%` : pct(g * 100));
+const growthWords = (g: number): string => (Math.abs(g) > 1 ? `${signedPct(g * 100, 0)} · read as ${g > 0 ? '+' : '−'}100%` : signedPct(g * 100));
 
 /** The scored factors, from the screener row alone */
 export function screenFactors(row: ScreenRow): ScreenPillars {
@@ -463,14 +462,14 @@ export function screenFactors(row: ScreenRow): ScreenPillars {
   const trend: Factor[] = [];
   if (ema20 != null && ema20 > 0 && last != null && last > 0) {
     const off = ((last - ema20) / ema20) * 100;
-    trend.push({ key: 'ema20', label: 'Price against its 20-day EMA', value: `${pct(off)} · ${ema20.toFixed(2)}`, lean: clamp(off / 3), weight: 0.3, note: off >= 0 ? 'above its average — the trend holds' : 'under its average — the trend has slipped' });
+    trend.push({ key: 'ema20', label: 'Price against its 20-day EMA', value: `${signedPct(off)} · ${ema20.toFixed(2)}`, lean: clamp(off / 3), weight: 0.3, note: off >= 0 ? 'above its average — the trend holds' : 'under its average — the trend has slipped' });
   }
   if (rsi14 != null) trend.push({ key: 'rsi', label: 'RSI, 14 sessions', value: rsi14.toFixed(0), lean: clamp((rsi14 - 50) / 20), weight: 0.2, note: rsi14 >= 70 ? 'stretched — strong, but late' : rsi14 >= 55 ? 'firm' : rsi14 <= 30 ? 'washed out' : rsi14 <= 45 ? 'soft' : 'in the middle' });
   if (adx14 != null && week != null) {
     const dir = week >= 0 ? 1 : -1;
     trend.push({ key: 'adx', label: "ADX, the trend's strength", value: `${adx14.toFixed(0)} · ${week >= 0 ? 'up' : 'down'} on the week`, lean: clamp((Math.max(0, adx14 - 20) / 20) * dir), weight: 0.2, note: adx14 >= 25 ? `a trend with force, ${week >= 0 ? 'upward' : 'downward'}` : adx14 < 20 ? 'no trend — ADX under 20 says nothing about direction' : 'a weak trend' });
   }
-  if (month != null) trend.push({ key: 'chg20', label: 'The last month', value: pct(month * 100), lean: clamp((month * 100) / 8), weight: 0.1, note: month >= 0 ? 'up over the month' : 'down over the month' });
+  if (month != null) trend.push({ key: 'chg20', label: 'The last month', value: signedPct(month * 100), lean: clamp((month * 100) / 8), weight: 0.1, note: month >= 0 ? 'up over the month' : 'down over the month' });
   const numbers = numberFactors(row);
   const money: Factor[] = [];
   const rv = rvolFactor(pacedRelVolume(rowNum(row, 'relative_volume'), typeof row?.date === 'string' ? (row.date as string) : null), (day ?? 0) >= 0);
@@ -583,7 +582,7 @@ const trendFor = (blocks: Candle[][], spot: number, uptoSessions?: number): { re
   const rsi14 = rsi(closes, 14);
   const adx14 = adx(highs, lows, closes, 14);
   /* today's range against the sessions on hand */
-  const ranges = used.map((b, i) => highs[i] - lows[i]);
+  const ranges = highs.map((h, i) => h - lows[i]);
   const today = ranges[ranges.length - 1];
   const atrPercentile = ranges.length >= 5 ? Math.round((100 * ranges.filter(r => r <= today).length) / ranges.length) : null;
   /* the structure: the last five sessions' swing against the five before */
@@ -605,7 +604,7 @@ const trendFor = (blocks: Candle[][], spot: number, uptoSessions?: number): { re
   const factors: Factor[] = [];
   if (ema20 != null) {
     const off = ((last - ema20) / ema20) * 100;
-    factors.push({ key: 'ema20', label: 'Price against its 20-day EMA', value: `${pct(off)} · ${ema20.toFixed(2)}`, lean: clamp(off / 3), weight: 0.3, note: off >= 0 ? 'above its average — the trend holds' : 'under its average — the trend has slipped' });
+    factors.push({ key: 'ema20', label: 'Price against its 20-day EMA', value: `${signedPct(off)} · ${ema20.toFixed(2)}`, lean: clamp(off / 3), weight: 0.3, note: off >= 0 ? 'above its average — the trend holds' : 'under its average — the trend has slipped' });
   }
   if (rsi14 != null) factors.push({ key: 'rsi', label: 'RSI, 14 sessions', value: rsi14.toFixed(0), lean: clamp((rsi14 - 50) / 20), weight: 0.2, note: rsi14 >= 70 ? 'stretched — strong, but late' : rsi14 >= 55 ? 'firm' : rsi14 <= 30 ? 'washed out' : rsi14 <= 45 ? 'soft' : 'in the middle' });
   if (adx14 != null && change5Pct != null) {
@@ -613,7 +612,7 @@ const trendFor = (blocks: Candle[][], spot: number, uptoSessions?: number): { re
     factors.push({ key: 'adx', label: "ADX, the trend's strength", value: `${adx14.toFixed(0)} · ${change5Pct >= 0 ? 'up' : 'down'}`, lean: clamp((Math.max(0, adx14 - 20) / 20) * dir), weight: 0.2, note: adx14 >= 25 ? `a trend with force, ${change5Pct >= 0 ? 'upward' : 'downward'}` : adx14 < 20 ? 'no trend — ADX under 20 says nothing about direction' : 'a weak trend' });
   }
   if (sessions >= 10) factors.push({ key: 'structure', label: 'The structure', value: structure, lean: structLean, weight: 0.2, note: structLean > 0 ? 'the swings step up' : structLean < 0 ? 'the swings step down' : 'the swings disagree' });
-  if (change20Pct != null) factors.push({ key: 'chg20', label: 'The last 20 sessions', value: pct(change20Pct), lean: clamp(change20Pct / 8), weight: 0.1, note: change20Pct >= 0 ? 'up over the month' : 'down over the month' });
+  if (change20Pct != null) factors.push({ key: 'chg20', label: 'The last 20 sessions', value: signedPct(change20Pct), lean: clamp(change20Pct / 8), weight: 0.1, note: change20Pct >= 0 ? 'up over the month' : 'down over the month' });
   return { read, factors };
 };
 
@@ -885,7 +884,7 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
     if (!m || Math.abs(s.item.prediction.expMove1dPct) > Math.abs(m.item.prediction.expMove1dPct)) return s;
     return m;
   }, null);
-  if (biggest) factors.push({ key: 'move', label: 'Move at publish on the wire', value: pct(biggest.item.prediction.expMove1dPct), lean: clamp(biggest.item.prediction.expMove1dPct / 4), weight: 0.2, note: biggest.item.headline });
+  if (biggest) factors.push({ key: 'move', label: 'Move at publish on the wire', value: signedPct(biggest.item.prediction.expMove1dPct), lean: clamp(biggest.item.prediction.expMove1dPct / 4), weight: 0.2, note: biggest.item.headline });
   return { read, factors, lastReport };
 };
 
@@ -962,7 +961,7 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
     factors.push({
       key: 'surprise',
       label: 'EPS against the estimate',
-      value: tinyEst ? `${epsActual!.toFixed(2)} vs ${epsEstimate!.toFixed(2)} · ${epsActual! - epsEstimate! >= 0 ? '+' : '−'}${Math.round(Math.abs(epsActual! - epsEstimate!) * 100)}¢` : `${epsActual!.toFixed(2)} vs ${epsEstimate!.toFixed(2)} · ${pct(epsSurprisePct)}`,
+      value: tinyEst ? `${epsActual!.toFixed(2)} vs ${epsEstimate!.toFixed(2)} · ${epsActual! - epsEstimate! >= 0 ? '+' : '−'}${Math.round(Math.abs(epsActual! - epsEstimate!) * 100)}¢` : `${epsActual!.toFixed(2)} vs ${epsEstimate!.toFixed(2)} · ${signedPct(epsSurprisePct)}`,
       lean: tinyEst ? clamp(((epsActual! - epsEstimate!) * 100) / 8) : clamp(epsSurprisePct / 8),
       weight: 0.4,
       note: epsSurprisePct >= 0 ? 'the last print beat' : 'the last print missed',
@@ -1135,7 +1134,7 @@ const agreementOf = (pillars: Pillar[], composite: number, news: NewsRead): Agre
   return { lean, pillars: rows, aligned: rows.filter(r => r.agrees).length, risk };
 };
 const explanationOf = (name: string, composite: number, pillars: Pillar[], numbers: Fundamentals, agreement: Agreement): string => {
-  const fair = numbers.sample || numbers.fairValue == null || numbers.vsFairValuePct == null || numbers.valuation == null ? '' : ` The numbers put the price ${pct(numbers.vsFairValuePct)} from fair value, ${numbers.valuation}.`;
+  const fair = numbers.sample || numbers.fairValue == null || numbers.vsFairValuePct == null || numbers.valuation == null ? '' : ` The numbers put the price ${signedPct(numbers.vsFairValuePct)} from fair value, ${numbers.valuation}.`;
   if (!pillars.length) return `${name} has no live read yet. ${agreement.risk}`;
   const grade = gradeOfComposite(composite);
   const strongest = (side: 'for' | 'against') => [...pillars].filter(p => sideOf(p.score) === side).sort((a, b) => Math.abs(b.score - 50) - Math.abs(a.score - 50))[0];
@@ -1173,8 +1172,8 @@ const todayWhyOf = (ticker: string, dayPct: number | null | undefined, news: New
   const dayWord = isToday ? 'today' : `on ${new Date(Date.UTC(sy, sm - 1, sd, 12)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).replace(',', '')}`;
   const story = news.stories.find(st => nyIsoDate(st.item.atMs) >= session);
   const spy = peekQuote('SPY');
-  const market = spy && spy.phase === 'regular' && Number.isFinite(spy.changePct) ? ` The market: SPY ${pct(spy.changePct)} today.` : '';
-  const move = pct(dayPct);
+  const market = spy && spy.phase === 'regular' && Number.isFinite(spy.changePct) ? ` The market: SPY ${signedPct(spy.changePct)} today.` : '';
+  const move = signedPct(dayPct);
   return story
     ? ` ${isToday ? "Today's" : `${dayWord.slice(3)}'s`} ${move}: on the wire, "${story.item.headline.length > 110 ? `${story.item.headline.slice(0, 107)}…` : story.item.headline}".${market}`
     : ` No story on the wire ${dayWord} explains the ${move} move.${market}`;
@@ -1317,12 +1316,12 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
     if (priorHighs.length >= 5 && close > Math.max(...priorHighs)) timeline.push({ key: `breakout:${when}`, when, kind: 'breakout', text: `closed above the prior sessions' highs, at ${close.toFixed(2)}`, time, score: scoreAt(back) });
     else if (priorLows.length >= 5 && close < Math.min(...priorLows)) timeline.push({ key: `breakdown:${when}`, when, kind: 'breakdown', text: `closed under the prior sessions' lows, at ${close.toFixed(2)}`, time, score: scoreAt(back) });
     if (prevVol > 0 && vol >= prevVol * 1.6) timeline.push({ key: `volume:${when}`, when, kind: 'volume', text: `volume ${(vol / prevVol).toFixed(1)}× the session before`, time, score: scoreAt(back) });
-    if (Math.abs(chg) >= 2.5) timeline.push({ key: `session:${when}`, when, kind: 'session', text: `a ${pct(chg)} session`, time, score: scoreAt(back) });
+    if (Math.abs(chg) >= 2.5) timeline.push({ key: `session:${when}`, when, kind: 'session', text: `a ${signedPct(chg)} session`, time, score: scoreAt(back) });
   }
   if (news.lastReport) {
     const q = news.lastReport;
     const said = q.result == null || q.epsActual == null || q.epsEst == null ? (q.epsActual != null ? `reported EPS ${q.epsActual.toFixed(2)} — no estimate on file` : 'reported — no EPS on file') : `${q.result === 'beat' ? 'beat' : q.result === 'inline' ? 'in line' : 'missed'} on EPS — ${q.epsActual.toFixed(2)} against ${q.epsEst.toFixed(2)}`;
-    timeline.push({ key: `earnings:${q.label}`, when: q.label, kind: 'earnings', text: `${said}${q.movePct != null ? ` · ${pct(q.movePct)} the session after` : ''}`, time: null, score: null });
+    timeline.push({ key: `earnings:${q.label}`, when: q.label, kind: 'earnings', text: `${said}${q.movePct != null ? ` · ${signedPct(q.movePct)} the session after` : ''}`, time: null, score: null });
   }
 
   const contributions = contributionsOf(livePillars);

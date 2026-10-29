@@ -24,9 +24,7 @@ export interface GeoNewsEvent {
   impacts: GeoZone[];
 }
 
-/* ── where companies live ─────────────────────────────────────────────────
-   HQ registry for the names the sim actually surfaces; `cluster` picks the
-   impact map below. Unknown tickers fall back to the listing venue. */
+/* Where companies live: `cluster` picks the impact map below. */
 type Cluster =
   | 'chips' | 'tech' | 'autos' | 'ecom' | 'banks' | 'index' | 'health'
   | 'energy' | 'consumer' | 'media' | 'crypto' | 'industrial';
@@ -94,9 +92,8 @@ const HQ: Record<string, { lat: number; lng: number; city: string; cluster: Clus
   DIA: { lat: 40.71, lng: -74.01, city: 'New York', cluster: 'index' },
 };
 
-/* ── where each cluster's news lands ──────────────────────────────────────
-   Zones with RELATIVE weights; severity scales them into heat. Plain-English
-   labels — they surface verbatim on hover cards. */
+/* Where each cluster's news lands: relative zone weights that severity scales into heat; the labels show
+   on hover cards. */
 const IMPACT: Record<Cluster, (GeoZone & { rel: number })[]> = {
   chips: [
     { lat: 25.03, lng: 121.56, label: 'Taipei · foundries', rel: 1, w: 0 },
@@ -159,10 +156,7 @@ const IMPACT: Record<Cluster, (GeoZone & { rel: number })[]> = {
   ],
 };
 
-/* Macro headlines carry their origin in their words — first match wins, so the specific places sit above the broad
-   ones. EVERY PATTERN IS A WHOLE WORD (audit round 5, 2026-10-23): /uk/ matched "Ukraine" (London), /foundr/ pinned
-   Samsung's Taylor, Texas foundry to Taipei, /rate/ matched "Accelerates" (Washington), /gulf/ took the Gulf of Mexico to
-   Riyadh. A story's place must be named — a bare industry word ("foundry", "chips", "oil") names no city. */
+/* A macro story's place must be named, as a whole word; first match wins, so specific places sit above broad ones. */
 const MACRO_ORIGINS: { re: RegExp; lat: number; lng: number; city: string }[] = [
   { re: /\bopec\+?(?=\W|$)/i, lat: 48.21, lng: 16.37, city: 'Vienna' },
   { re: /\b(?:israel(?:i|is)?|gaza|hamas|jerusalem|tel aviv|west bank|hezbollah)\b/i, lat: 31.77, lng: 35.21, city: 'Jerusalem' },
@@ -196,8 +190,7 @@ const severityOf = (n: NewsItem): number =>
   Math.max(1, Math.min(10, Math.round(Math.abs(n.prediction.expMove1dPct) * 1.6 + n.magnitude * 5)));
 
 export function geoFromItems(items: NewsItem[]): GeoNewsEvent[] {
-  /* one story once: the wire is read page by page while it keeps printing, so a story that slid across a page boundary
-     came back twice — two rows, two pins and React's duplicate-key warning on the phone (the Dossier sweep, 2026-10-22) */
+  /* one story once: a story that slides across a page boundary comes back twice */
   const seen = new Set<string>();
   const once = items.filter(item => (seen.has(item.id) ? false : (seen.add(item.id), true)));
   return once.map(item => {
@@ -226,23 +219,17 @@ export function geoFromItems(items: NewsItem[]): GeoNewsEvent[] {
   });
 }
 
-/** Words for the internal severity — meters and words, never the number.
-    The cuts are the News page's three impact tiers (its square before a
-    headline): 7+ heavy, 4–6 firm, under 4 light. */
+/** Words for the severity, on the News page's three impact tiers: 7+ heavy, 4–6 firm, under 4 light */
 export const severityWord = (severity: number): string =>
   severity >= 7 ? 'heavy' : severity >= 4 ? 'firm' : 'light';
 
-/* ── the event lifecycle ──────────────────────────────────────────────────
-   News ages: a story LANDS (ripples), DEVELOPS (full heat), then FADES
-   (dim ping, cooled heat). Cut on the wire's own minutesAgo so every
-   surface — planet, zones, widget — agrees on what is still alive. */
+/* A story is fresh, developing or faded by its age on the wire, so every surface agrees on what is alive. */
 export type Freshness = 'fresh' | 'developing' | 'faded';
 export const freshnessOf = (e: GeoNewsEvent): Freshness =>
   e.item.minutesAgo <= 45 ? 'fresh' : e.item.minutesAgo <= 180 ? 'developing' : 'faded';
 
-/* ── one ping per CITY, not per story ─────────────────────────────────────
-   Five NYC stories must read as ONE louder ping with a count, not dot soup.
-   Dominant grade by count (severity breaks ties via the top event). */
+/* One ping per city with a count, not one per story; the grade is the commonest one, severity breaking
+   ties. */
 export interface CityPing {
   city: string;
   lat: number;
@@ -258,11 +245,7 @@ export interface CityPing {
   freshest: Freshness;
 }
 
-/* ── the economic calendar ────────────────────────────────────────────────
-   What's SCHEDULED to move markets — the wire's counterpart (news happened;
-   these are appointments). Deterministic per day off the engine clock, so
-   replay shows the calendar as it stood. Times are the terminal's local
-   frame, like every other clock on the desk. */
+/* The economic calendar's row: what is scheduled to move markets. */
 export interface EconEvent {
   id: string;
   title: string;
@@ -277,10 +260,7 @@ export interface EconEvent {
   previous?: string;
 }
 
-/* ── synthesized insights ─────────────────────────────────────────────────
-   The room reading its own wire — a few composed sentences over the whole
-   board, numbers left inline for RichRead to ink. Derived, never invented:
-   every figure comes from the same events the planet is drawing. */
+/* The room's insights: a few sentences over the whole wire, every figure from the same events. */
 export interface RoomInsight {
   key: string;
   title: string;
@@ -320,9 +300,7 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
     ink: 'neutral',
     read: `${topCat} carries ${topCatN} of ${events.length} stories today.`,
   });
-  /* MACRO IS THE MACRO BEAT (the fourth audit, 2026-10-23): "1216 stories name no single stock… market-wide" counted
-     every untagged story, press releases from unlisted companies included, against the page's own rule (whalesMap
-     categoryOf: macro only when the story is about the economy, a central bank, rates, prices, markets or policy) */
+  /* macro is the Macro beat (whalesMap categoryOf), not every untagged story */
   const macro = events.filter(e => e.item.category === 'Macro');
   const unnamed = events.filter(e => !e.item.ticker && e.item.category !== 'Macro').length;
   const named = events.filter(e => !!e.item.ticker).length;

@@ -1,16 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE BOARD'S VIEW (data/compassView.ts)
-
-  What the reader had the Compass board set to —
-  the tenor, the kind, the layout, the name, the
-  selected card — kept across the trip to a
-  setup's page and back (the page has its own
-  route since 2026-09-11, so the board unmounts;
-  Noah's 2026-08-19 rule that coming Back lands on
-  the selected card with the rail on its name
-  still holds). Session memory, not persisted.
-==================================================
+  What the Compass board was set to (tenor, kind, layout, name, selected card), kept across the trip to a setup's
+  page and back.
 */
 
 import { useSyncExternalStore } from 'react';

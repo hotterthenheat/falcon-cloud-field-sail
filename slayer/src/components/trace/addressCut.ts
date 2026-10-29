@@ -1,22 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE CUT IS THE ADDRESS, ON EVERY
-  BOOK PAGE (components/trace/addressCut.ts)
-
-  The tape keeps its cut in the address, so it can
-  be sent, bookmarked and saved by name; here every
-  book page can. The address IS the state: each card
-  reads its value off the query string (validated —
-  a URL is user input) and a pick writes it back,
-  replace never push. Only what differs from the
-  page's default is written, so an untouched page
-  has a clean address. No copy of the cut lives in
-  React state, so the back button, a pasted link
-  and a saved cut opened all land the same way: the
-  address changes, the page reads it. Taken from
-  the partner's build at Noah's word (2026-10-13).
-==================================================
-*/
+/* The cut is the address on every book page: each card reads its value off the validated query string and writes it
+   back (replace, never push), only where it differs from the default. */
 
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -42,9 +25,7 @@ export function useAddressCut<K extends string>(spec: CutSpec<K>): AddressCut<K>
     const out = {} as Record<K, string>;
     for (const k of keys) {
       const raw = params.get(k);
-      /* A SHARED LINK IN ANY CASE (audit round 11, minor 6: "?q=NVDA 220 C Nov 20" was dropped — the search field writes
-         upper case and the check is upper case) — a value that passes only in upper case is read in upper case, as
-         useQParam reads it */
+      /* A value that passes only in upper case is read in upper case, so a pasted link in any case still lands */
       out[k] = raw === null ? spec[k].def : spec[k].valid(raw) ? raw : spec[k].valid(raw.toUpperCase()) ? raw.toUpperCase() : spec[k].def;
     }
     return out;
@@ -86,8 +67,7 @@ export const isIsoDay = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
 /* a whole contract fits ("NVDA 215C 10/30", an OCC symbol of 21) — the field's own rule (FlowSearch) */
 export const isQuery = (v: string) => /^[A-Z0-9 ./-]{1,28}$/.test(v);
 
-/** THE SEARCH IN THE ADDRESS (the owner, 2026-10-23: a search link can be shared) — `?q=` for a page with no other cut in
-    its address; `memory` keeps it across route changes when the address has none */
+/** The search in the address (`?q=`) for a page with no other cut there; `memory` keeps it across route changes */
 export function useQParam(memory?: { q: string }): [string, (q: string) => void] {
   const [params, setParams] = useSearchParams();
   const raw = params.get('q');

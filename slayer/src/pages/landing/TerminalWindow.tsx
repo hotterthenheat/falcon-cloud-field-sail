@@ -1,53 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE TERMINAL, IN A WINDOW
-  (pages/landing/TerminalWindow.tsx)
-
-  The picture on the landing page is the terminal
-  itself (Noah, 2026-09-19: "i want the REAL thing
-  from our website so it doesnt scream fake").
-
-  IT PLAYS, SINCE 2026-10-01. From 2026-09-19 the
-  window held STILLS of the real pages. Then Noah
-  saw his partner's landing: "he has actual
-  recordings of the page working which is exactly
-  what we were missing … we will not be taking his
-  actual recording but making our own because we
-  have smoother animations when switching pages" —
-  and: "recordings in the tour too". So every page
-  the tour names is FILMED from the real terminal
-  (scripts/make-landing-clips.mjs): a dozen seconds
-  of the page in use, nothing over it but a pointer.
-
-  THE STILL STAYS UNDER THE FILM. It is the film's
-  own first frame and is on screen at once; the film
-  fades in over it when it can play, so the window
-  is never empty and the two never jump. The still
-  is ALL there is for a visitor who asked for less
-  motion or to save data, and where a film cannot be
-  played. A film plays only while the window is on
-  screen and the tab is in front (films.ts).
-
-  ONE FILM AT A TIME. When the tour asks for another
-  page the film on screen holds its frame until the
-  next can play, then the next fades in over it.
-  When the window turns theme on the same page, the
-  other theme's film picks up at the second this one
-  had reached, so the turn reads as one motion
-  changing its ground.
-
-  WHAT STAYED: the window, its bar saying where it
-  is and that the data is simulated, the tour's
-  words choosing the picture, the window turning
-  theme with the page.
-
-  THE PICTURE'S SHAPE IS FIXED (1440 × 1000 on a
-  desk): the window takes that shape (Tour.tsx) and
-  a picture is never cropped or stretched there. In
-  one column the window is a fixed band and the
-  picture fills it from its top left, the way a page
-  sits in a window that is shorter than it.
-==================================================
+  The terminal in a window on the landing page, playing recordings of the real pages; its bar says the data in
+  them is simulated.
 */
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';

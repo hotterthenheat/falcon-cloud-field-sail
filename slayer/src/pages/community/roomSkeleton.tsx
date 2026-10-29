@@ -1,14 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE ROOM'S SKELETON
-  (pages/community/roomSkeleton.tsx)
-
-  The room standing in as itself while its code
-  travels: the shell's head, then the three
-  columns — the profile card and the trending box,
-  the composer and the feed box, the notices and
-  who to follow. Imports nothing heavy.
-==================================================
+  The room's stand-in while its code loads: the shell head and the three columns. Imports nothing heavy.
 */
 
 import { Users } from 'lucide-react';

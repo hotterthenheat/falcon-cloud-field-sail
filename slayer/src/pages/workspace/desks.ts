@@ -1,45 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE DESKS
-  Named, saved layouts for the Pulse desk (Mo,
-  2026-08-19: "save a Pulse layout and come back
-  to it instead of rebuilding it"). Every desk,
-  preset or the reader's own, autosaves its working
-  state as you go, and a preset can always be reset
-  to its template.
-
-  A NEW STORE (2026-09-30, the desk rebuilt): every
-  widget and every preset the old store named is
-  gone, so the desks start clean under a new key —
-  `slayer_desks_v2`. Nothing is carried from v1: its
-  desks pointed at widgets that no longer exist (and
-  the terminal is not launched — the only desks in
-  it are ours).
-
-  FIVE PRESETS, named for the moment they serve:
-
-    The session   the chart, the book as a matrix,
-                  the range to the close, what has
-                  alerted — a first visit opens here
-    The open      the chart, the book across the
-                  calendar, the levels, the wire, who
-                  reports
-    0DTE          a one-minute chart, today's book,
-                  where it closes, the wall in front,
-                  the targets
-    The close     the chart, where it closes, the
-                  range, where the walls are heading
-    My book       positions and watchlist, the chain,
-                  the setups that fit, the key levels
-                  (the paper account and the journal
-                  left it on 2026-10-03, at Noah's word)
-
-  An instance carries its own settings (`state`):
-  a preset's calendar is the book tile told to open
-  on its calendar. (The book has two views, the matrix
-  and the calendar; the ladder went at Noah's word,
-  2026-09-30.)
-==================================================
+  Pulse's named desks: the house presets and the reader's own, each autosaving its layout, a preset resettable to
+  its template, and first-fit placement for a new tile.
 */
 
 import type { Layout } from 'react-grid-layout';

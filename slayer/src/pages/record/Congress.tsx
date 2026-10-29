@@ -559,7 +559,7 @@ const Congress = () => {
       {failed ? (
         <FeedFallback />
       ) : (
-        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-congress-sentence>
+        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden" data-congress-sentence>
           {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : `${bondStats.trades.length ? `Stocks, options and funds: ${congressSentence(equityStats).replace(/^No report on this cut/, 'none on this cut')} Bonds apart — ${bondStats.trades.length.toLocaleString('en-US')} ${bondStats.trades.length === 1 ? 'report' : 'reports'} of notes, munis and corporate bonds covering ${bondStats.totalHigh === null ? `at least ${dollars3(bondStats.totalLow)}` : `${dollars3(bondStats.totalLow)}–${dollars3(bondStats.totalHigh)}`}, on the grid but not in that total${bondStats.lateFilings ? `, ${bondStats.lateFilings.toLocaleString('en-US')} of them filed past the deadline` : ''}.` : congressSentence(stats)}${billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from every count here.` : ''}`}
         </p>
       )}
@@ -567,7 +567,7 @@ const Congress = () => {
         {/* on a phone the head stacks: the label over its words */}
         <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The reports to know</span>
-          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">the biggest disclosed stock, option and fund trades on this cut, the latest first among equals — bonds are left to the grid · click one to keep the grid to that member</span>
+          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">the biggest disclosed trades on this cut · a click keeps the grid to that member</span>
         </div>
         {toKnow.length === 0 ? (
           <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut'}</div>

@@ -3,19 +3,13 @@ import { useStockCard } from '../../data/liveFiles';
 import { useStockFile } from '../../data/stockFile';
 import { nextReportRow, reportDayLabel, tradingDaysUntil, untilWords } from '../../data/earningsFeed';
 import { FILE_TTL_MS, FeedFallback, StaleMark, TickFigure, quietText } from '../ui/liveRead';
-import { statHelp } from './statHelp';
+import { Fact as RecordFact } from './ui';
 
-/*
-  The company, under a name. Only what the vendor file actually carries.
-  The street target is the median of the firms that printed one in the last 180 days.
-*/
+const Fact = ({ label, children }: { label: string; children: ReactNode }) => <RecordFact label={label} nowrap>{children}</RecordFact>;
 
-const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
-  <div className="min-w-0">
-    <dt className="text-t10 text-textMuted truncate cursor-help" title={statHelp(label)}>{label}</dt>
-    <dd className="mt-0.5 font-mono text-t12 tabular-nums text-textPrimary whitespace-nowrap truncate">{children}</dd>
-  </div>
-);
+/* The company under a name, only what the vendor file carries; the street target is the median of the
+   firms that printed one in the last 180 days. */
+
 
 const num = (v: unknown): number | null => {
   const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
@@ -46,7 +40,7 @@ const count = (v: number | null): string => {
 
 const CompanyFile = ({ ticker }: { ticker: string }) => {
   const card = useStockCard(ticker);
-  /* the head is all this card shows — the tapes are read by the page that draws them (audit round 10) */
+  /* the head is all this card shows; the tapes are read by the page that draws them */
   const file = useStockFile(ticker, { tapes: false });
   /* the one next-earnings rule (data/earningsFeed.ts) — the same date the stock page and the earnings file show */
   const nextRow = nextReportRow(file.earnings, { skipOut: true });
@@ -60,7 +54,7 @@ const CompanyFile = ({ ticker }: { ticker: string }) => {
   const reading = card === undefined;
   const line = card?.sector || (reading ? 'Reading the company' : '—');
   const fault = file.status === 'error' ? 'failed' as const : null;
-  /* the vendor's profile can start lower-case (GME's "gamestop corp. engages in…", round 11) — its first letter capped */
+  /* the vendor's profile can start lower-case; its first letter capped */
   const profileRaw = card?.description ? quietText(card.description) : '—';
   const profile = profileRaw.charAt(0).toUpperCase() + profileRaw.slice(1);
   return (
@@ -85,8 +79,7 @@ const CompanyFile = ({ ticker }: { ticker: string }) => {
             <Fact label="Beta">{card.beta != null ? <TickFigure value={card.beta}>{card.beta.toFixed(2)}</TickFigure> : '—'}</Fact>
             <Fact label="Average volume · company file"><TickFigure value={card.avgVolume}>{count(card.avgVolume)}</TickFigure></Fact>
             <Fact label="Next earnings">{next && next.daysOut >= 0 ? <span title={next.confirmed ? 'Date set by the company' : 'Not announced yet — Unusual Whales’ estimate'}>{next.dateLabel} · {untilWords(next.daysOut)}{next.confirmed ? '' : ' · est.'}</span> : '—'}</Fact>
-            {/* "PAYS ONE" ONLY ON A POSITIVE YIELD (round 11: GME read "Pays one" beside "Dividend yield —" — the vendor's
-                has_dividend is true for a name that pays none) */}
+            {/* "pays one" only on a positive yield (the vendor's has_dividend can be true for a name that pays none) */}
             <Fact label="Dividend">{yieldPct != null && yieldPct > 0 ? 'Pays one' : yieldPct != null || card.hasDividend === false ? 'None' : file.status === 'loading' ? '…' : '—'}</Fact>
             <Fact label="Dividend yield">{yieldPct != null ? <TickFigure value={yieldPct}>{`${yieldPct.toFixed(2)}%`}</TickFigure> : file.status === 'loading' ? '…' : '—'}</Fact>
             <Fact label="EPS growth · YoY">

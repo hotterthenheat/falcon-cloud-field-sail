@@ -1,16 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE SCRIPT LIBRARY (components/scripts/ScriptLibrary.tsx)
-
-  What can go on this pane, and what is on it: the
-  terminal's own Slayer scripts, the classic
-  technicals in Pine, the chart's built-in tools,
-  the scripts you wrote, and your favourites — one
-  search over all of them, a tick to draw one, a
-  gear to set its inputs, a name to open it in the
-  editor, and "Write your own". Sits where the
-  Indicators control was (Noah, 2026-09-10).
-==================================================
+  What can go on a pane and what is on it: the built-in scripts, the classic technicals, the chart's tools, your
+  scripts and favourites, with one search, a tick to draw one and a gear for its inputs.
 */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';

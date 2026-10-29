@@ -1,47 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - A NAME'S READ BESIDE THE RULER
-  (components/gex/CompareSidePanel.tsx)
-
-  The partner's cut of Compare (through Noah,
-  2026-10-18): "remove the head to head section and
-  instead have two collapse tabs on the two books
-  one ruler section, one on each side, which
-  showcases the info for each ticker." So the Head
-  to head box is gone, and each name's read — the
-  book card's sections in its order: the book (the
-  net, the sentence, the four levels), the six
-  heaviest and what each did over a window, the
-  strike (its legs, its other greeks), today's
-  contracts over each window, to the close — stands
-  in a panel on its own side of the ruler, SPY's at
-  the left edge, QQQ's at the right. The comparison
-  lives where the eye makes it: across the ruler
-  between them.
-
-  Each panel folds to a slim tab on the box's edge
-  with the name on it; which sides stand open is
-  remembered (slayer_compare_sides). On a phone the
-  two reads stack under the ruler as plain cards.
-  A strike pressed anywhere keeps it on the ruler,
-  the page's shared focus.
-
-  THE QUIET SHEET (Noah, 2026-10-18: "these cards
-  are way too colorful ... i didnt want an exact
-  replica of the previous collapse"): the panel is
-  a fact sheet, not the book card again. Every
-  figure stands in the primary ink; colour lives in
-  two small places only — a level's name tag in its
-  family's tint (put wall · call wall · supreme ·
-  flip) and a change's glyph (▲ green, ▼ red, the
-  percent itself white). The levels and the six
-  heaviest are hairline tables, the strike's other
-  greeks a two-by-two of dot-leader rows, today's
-  windows one row of seven figures under their
-  labels, and the net's one accented word
-  (amplifies · absorbs) a silver tag.
-==================================================
-*/
+/* A name's read beside Compare's ruler: the book (net, sentence, levels), the six heaviest strikes and their change, the
+   strike's legs and greeks, today's contracts, to the close — one panel each side, folding to a tab (remembered in
+   slayer_compare_sides), stacked as cards on a phone. A quiet fact sheet: colour only on level tags and change glyphs. */
 
 import { bellDay, longDay, recordDay, todayScopeLabel } from '../../data/bookWindow';
 import { GLOSSARY, kindTip } from './glossary';
@@ -149,21 +108,17 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     const d = distanceIn(price - s.spot, s.spot, U, s.scales);
     return d == null ? '—' : fmtShared(d, U);
   };
-  /* NET GEX IN THE RETAIL SIGN (the ship pass, 2026-10-22) — the Board's figure for the same contracts: positive =
-     dealers long gamma = absorbs (green), negative = amplifies (red). The other greeks keep the ladder's own sign. */
+  /* net GEX in the retail sign: positive = dealers long gamma = absorbs; the other greeks keep the ladder's own sign */
   const shownThen = (v: number | null): number | null => (v == null ? null : shownGreek(greek, v));
   const net = greek === 'gex' ? s.netGex : s.rows[greek].reduce((acc, r) => acc + r.value, 0);
   const flipAt = s.flip;
   /* THE REGIME IS THE NET'S SIGN (data/flipLevel.ts) — "ABSORBS" beside a red −$1.3B read the side of the flip */
   const regimeWord = flipAt != null && flipAt > 0 && Math.abs(s.spot - flipAt) / flipAt <= 0.0005 ? 'either way' : s.netGex >= 0 ? 'absorbs' : 'amplifies';
   const rowOf = (strike: number): StrikeExposure | undefined => s.strikes.find(r => r.strike === strike);
-  /* A LEVEL OUTSIDE THE DRAWN WINDOW STILL HAS ITS VALUE (the audit: SPY's 800 call wall read "—" in All expiries) —
-     read off the side's whole chain when the window does not reach it */
+  /* a level outside the drawn window still has its value, read off the side's whole chain */
   const NODE_KEY = { gex: 'netGex', dex: 'netDex', vex: 'netVex', vanna: 'netVanna', charm: 'netCharm' } as const;
   const sideChain = (s.snapshot.liveBook && s.snapshot.uwChains?.[s.expiry]?.length ? s.snapshot.uwChains[s.expiry] : s.snapshot.chain) ?? [];
-  /* THE LEG THAT DEFINES THE LEVEL (the third audit, 2026-10-23: CALL WALL 770 printed +$32.7M — the strike's NET —
-     when the wall is the most CALL gamma, +$222.7M; TSLA's put wall 375 −$1.6M over −$34.9M of put gamma). A wall
-     prints its own leg, named; the supreme and the flip print the net. */
+  /* the leg that defines the level: a wall prints its own leg, named; the supreme and the flip print the net */
   const LEG_KEY: Record<'call' | 'put', Record<'gex', 'callGex' | 'putGex'>> = { call: { gex: 'callGex' }, put: { gex: 'putGex' } };
   const valueAt = (strike: number | null, g: Greek = greek, leg: 'net' | 'call' | 'put' = 'net'): number | null => {
     if (strike == null) return null;
@@ -175,8 +130,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     if (g !== 'gex' && g !== 'dex' && g !== 'vex' && g !== 'vanna' && g !== 'charm') return null;
     return leg === 'net' ? (n[NODE_KEY[g]] ?? null) : null;
   };
-  /* EVERY ROLE A STRIKE HAS, IN THE ONE ORDER (core/walls.ts LEVEL_ORDER — the sixth audit: "769 SUPREME" with its put
-     wall dropped): supreme · call wall · put wall · flip, then the pin */
+  /* every role a strike has, in the one order (core/walls.ts LEVEL_ORDER), then the pin */
   const rolesOf = (strike: number): { word: string; tone: Tone }[] => {
     const out: { word: string; tone: Tone }[] = levelRoles(strike, { supreme: s.levels.supreme, callWall: s.levels.callWall, putWall: s.levels.putWall, flip: s.flip }).map(r => ({ word: r, tone: ROLE_TONE[r] }));
     if (!out.length && s.strikes.find(r => r.pin)?.strike === strike) out.push({ word: 'pin', tone: 'neutral' });
@@ -186,7 +140,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
   const strike = focus ?? s.supreme[greek].strike;
   const kept = focus != null;
   const front = rowOf(strike);
-  /* ONE CLASSIFIER, THE AGENDA'S (the eighth audit's M1) — a thin strike says so in words */
+  /* one classifier, the Agenda's — a thin strike says so in words */
   const watchKind = s.watch ? strikeTag(s.watch) ?? thinWords(s.watch) : '';
   const others = GREEKS.filter(g => g !== greek);
   /* the odd-looking walls, plainly: a call wall is the most CALL gamma (its puts can still outweigh it), a put wall the most
@@ -197,19 +151,16 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     const pw = s.putWall.strike;
     const cwNet = valueAt(cw, 'gex', 'net');
     if (cwNet != null && shownGreek('gex', cwNet) < 0) parts.push(`${fmtStrike(cw)} is the call wall because it holds the most call gamma; its puts are heavier still, so its net is negative — dealers are short gamma there, so it is not a lid.`);
-    /* ONE "AT PRICE" (core/walls.ts wallPlace, 0.05% — the tenth audit's m2: "the 705 put wall right at price", then
-       "The put wall 705 is above price") */
+    /* one "at price" (core/walls.ts wallPlace, 0.05%) */
     else if (wallPlace(cw, s.spot) === 'below') parts.push(`The call wall ${fmtStrike(cw)} is below price: the most call gamma sits under it, which can act as support.`);
     if (wallPlace(pw, s.spot) === 'above') parts.push(`The put wall ${fmtStrike(pw)} is above price: that is overhead put hedging, not a floor.`);
     return parts.join(' ');
   })();
 
   /* EVERY FIGURE IN THE PRIMARY INK — a missing one muted; no ramp, no family colour on a number */
-  /* GAMMA IN THE READER'S SIGN AND INK (the ship pass, 2026-10-22, retailSign.ts): positive absorbs, green; negative
-     amplifies, red — the Board's net GEX convention, strike by strike. The other greeks stay in the primary ink. */
+  /* gamma in the reader's sign and ink (retailSign.ts): positive absorbs, green; negative amplifies, red */
   const Money = ({ v, bold = false, size = 11, g: mg = greek }: { v: number | null; bold?: boolean; size?: number; g?: Greek }) => {
-    /* NEVER A FALSE $0 (the fourth audit: "VEX $0" beside "VANNA −$19.4M"): vega comes off the contract rows alone (the
-       feed's exposure rows carry none), so a strike whose contracts carry none says so instead */
+    /* never a false $0: vega comes off the contract rows alone, so a strike whose contracts carry none says so */
     const noVega = mg === 'vex' && (v == null || v === 0);
     const shown = v == null || noVega ? null : shownGreek(mg, v);
     const ink = shown == null ? 'text-textMuted' : mg === 'gex' && shown > 0 ? 'text-bull' : mg === 'gex' && shown < 0 ? 'text-bear' : 'text-textPrimary';
@@ -281,7 +232,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     <div className="flex flex-col gap-0.5 px-3 pb-3" data-side-body>
       {/* THE BOOK — the net on one line, its word the sheet's one accent */}
       <Cap tip={GLOSSARY.book}>
-        {/* the scope beside the supreme and the walls, always (the sixth audit's retail test) */}
+        {/* the scope beside the supreme and the walls, always */}
         The book · {L} · per {GREEK_UNIT[greek]} · <span className="text-warn/90" data-side-scope>{scopeWords}</span>
       </Cap>
       <div className="pt-2 flex items-center gap-2 min-w-0">
@@ -294,9 +245,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
           {fmtUsd(net)}
         </span>
         <span className="text-t11 text-textMuted whitespace-nowrap">net {L}</span>
-        {/* THE TAG AGREES WITH THE READ (the ship pass, 2026-10-22): it was the net's sign alone, so AAPL wore AMPLIFIES
-            over "dips get absorbed" — spot above its flip absorbs whatever the book nets to. It is the regime at spot
-            (the read's), within a hair of the flip "either way", and only for gamma — amplify/absorb is gamma's word. */}
+        {/* the tag is the regime at spot (the read's), "either way" within a hair of the flip, and only for gamma */}
         {greek === 'gex' && <Tag tone="holo">{regimeWord}</Tag>}
       </div>
       <p className="pb-1.5 text-t11 leading-snug text-textSecondary" data-side-read>
@@ -311,8 +260,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         <Level word="put wall" tone="bear" k={s.putWall.strike} />
         <Level word="flip" tone="white" k={s.flip} />
       </div>
-      {/* WHY A WALL SITS WHERE IT DOES, IN ONE LINE (the eighth audit, QQQ: a 710 CALL WALL with net −$179.4M, the 711 put wall
-          and supreme above price) — said only when the levels look odd */}
+      {/* why a wall sits where it does, in one line — said only when the levels look odd */}
       {greek === 'gex' && wallWhy && (
         <p className="pt-1 text-t105 leading-snug text-textMuted" data-side-wall-why>
           {wallWhy}
@@ -366,8 +314,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
           <span className={`ml-auto font-bold text-t12 ${greek === 'gex' ? (shownGreek(greek, front[greek].net) > 0 ? 'text-bull' : 'text-bear') : ''}`}>{fmtUsd(shownGreek(greek, front[greek].net))}</span>
         </div>
       ) : greek === 'gex' && sideChain.some(x => Math.abs(x.strike - strike) < 1e-9) ? (
-        /* OFF THE DRAWN WINDOW, STILL ON THE BOOK (the sixth audit's B1: META's All-expiries supreme 750 read "Off the
-           book's window"): its legs off the side's whole chain */
+        /* off the drawn window, still on the book: its legs off the side's whole chain */
         (() => {
           const n = sideChain.find(x => Math.abs(x.strike - strike) < 1e-9)!;
           return (
@@ -393,8 +340,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       </div>
 
       {/* TODAY'S CONTRACTS — one row of seven figures under their labels */}
-      {/* THE LEVELS' CONTRACTS, NAMED BY THEIR SCOPE (the fifth audit, 2026-10-23: "Today's contracts" in All expiries, and
-          "each window" over Thursday's bars at 01:00 Friday): the scope's own words, and the windows' session by date */}
+      {/* the levels' contracts named by their scope, and the windows' session by date */}
       <Cap tip={`The contracts the levels read (${scopeWords}), re-priced at each window's price${rec.isToday && !rec.done ? '' : `, the windows counted back from ${rec.isToday ? "today's" : `${longDay(rec.date)}'s`} 4:00 close — the session is over, so nothing moves until the next open`}`}>{scopeWords} · {L} · {rec.isToday && !rec.done ? 'each window' : `each window to ${rec.isToday ? 'the' : `${rec.date.slice(5).replace('-', '/')}'s`} close`}</Cap>
       <div className="pt-1 grid grid-cols-7 font-mono tnum tabular-nums" data-side-windows>
         {READ_WINDOWS.map((w, i) => (
@@ -434,7 +380,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
           label="Watch first"
           value={
             s.watch ? (
-              /* wraps under its strike on a phone rather than run off the card ("supreme · put wal", the eighth audit) */
+              /* wraps under its strike on a phone rather than run off the card */
               <span className="inline-flex flex-wrap items-baseline justify-end gap-x-1.5 text-right max-w-[220px]">
                 <Door k={s.watch.strike} />
                 <span className="text-t10 text-textMuted" title={kindTip(s.watch.roles?.[0] ?? watchKind)}>

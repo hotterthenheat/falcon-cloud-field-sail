@@ -1,12 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE ALERTS DRAWER'S STATE (data/alertsDrawer.ts)
-
-  Open or shut — one flag the sidebar's bell flips
-  and the drawer reads, from anywhere (the rule,
-  2026-09-10: see every alert in one place, over
-  any page).
-==================================================
+  Whether the alerts drawer is open: one flag the sidebar's bell flips and the drawer reads.
 */
 
 import { useSyncExternalStore } from 'react';

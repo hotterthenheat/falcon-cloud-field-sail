@@ -1,14 +1,11 @@
 /*
-==================================================
-  SLAYER TERMINAL - SIMULATION ENGINE (simulator.ts)
-  Options Physics, Greeks Math, & Live Ticker Feed
-==================================================
+  The old random-walk market. No page reads it any more; a few data modules and the reference scripts in
+  scripts/ still import it, and a name's history is walked only when one of them asks for it.
 */
 
 import type {
   Candle,
   GexSnapshot,
-  Greeks,
   Indicators,
   MarketSnapshot,
   StrikeNode,
@@ -461,73 +458,6 @@ const Simulator = (() => {
     stepSeed(job, Infinity);
   }
 
-  /*
-    THE WALK OFF THE MAIN THREAD (2026-10-10, Noah: the board's session lines "often lag behind the cards loading in
-    for the first time"). A name's history is ~0.5s of pure work, and the main thread walked it five milliseconds every
-    twenty-four — two seconds a name, the board's names one after another, the last card's line half a minute away.
-    Now a pool of workers (core/seedPool.ts) runs the same walk whole, in parallel, and hands the result back: the bars
-    first (all a spark needs — they stand in as a PREVIEW until the rest lands), then the book's snapshots in small
-    chunks so no single message chokes the main thread. The name counts as seeded only when installHistory has it all;
-    until then anyone who cannot wait still finishes it here, the same way as before.
-  */
-  const previewBars: Record<string, Candle[]> = {};
-  /** whoever walks histories off this thread (the seed pool) — null, and the slices do it as before */
-  let offThread: ((sym: string) => void) | null = null;
-  interface SeededHistory {
-    bars: Candle[];
-    prices: number[];
-    currentPrice: number;
-    /** the book as it stood at the end of the walk — [strike, callOI, putOI] */
-    book: [number, number, number][];
-    snaps: GexSnapshot[];
-  }
-  /** Walk a name's whole history now (a worker's job) and hand it over; the worker forgets it once sent */
-  function buildHistory(symRaw: string, anchorSec: number): SeededHistory {
-    const sym = symRaw.toUpperCase();
-    if (!TICKERS[sym]) registerTicker(sym);
-    if (!candleHistory[sym]) {
-      const job = seedJobs[sym] ?? beginSeed(sym, anchorSec);
-      seedJobs[sym] = job;
-      stepSeed(job, Infinity);
-    }
-    const out: SeededHistory = {
-      bars: candleHistory[sym],
-      prices: priceHistory[sym],
-      currentPrice: TICKERS[sym].currentPrice,
-      book: [...(oiBook[sym] ?? new Map<number, BookEntry>())].map(([k, e]) => [k, e.callOI, e.putOI] as [number, number, number]),
-      snaps: gexHistory[sym],
-    };
-    delete candleHistory[sym];
-    delete gexHistory[sym];
-    delete priceHistory[sym];
-    delete candleTickCount[sym];
-    delete oiBook[sym];
-    return out;
-  }
-  /** the bars alone, ahead of the rest: a spark draws off them; nothing else counts the name as seeded */
-  function installPreview(symRaw: string, bars: Candle[]): void {
-    const sym = symRaw.toUpperCase();
-    if (!candleHistory[sym]) previewBars[sym] = bars;
-  }
-  /** a history walked elsewhere, installed whole — never over one already live here */
-  function installHistory(symRaw: string, h: SeededHistory): boolean {
-    const sym = symRaw.toUpperCase();
-    if (!TICKERS[sym]) registerTicker(sym);
-    if (candleHistory[sym]) {
-      delete previewBars[sym];
-      return false;
-    }
-    TICKERS[sym].currentPrice = h.currentPrice;
-    candleHistory[sym] = h.bars;
-    candleTickCount[sym] = 0;
-    gexHistory[sym] = h.snaps.slice(-GEX_LIMIT);
-    priceHistory[sym] = h.prices.slice(-historyLimit);
-    oiBook[sym] = new Map(h.book.map(([k, callOI, putOI]) => [k, { callOI, putOI }]));
-    delete seedJobs[sym];
-    delete previewBars[sym];
-    return true;
-  }
-
   /** Advance a name's seed by one slice of idle time. 'done' once its history is whole. */
   function seedAsync(symbolRaw: string, budgetMs = 6): 'done' | 'pending' {
     const sym = symbolRaw.toUpperCase();
@@ -577,9 +507,6 @@ const Simulator = (() => {
       byZ.set(z, u);
     }
     return u;
-  }
-  function gammaAt(spot: number, strike: number, iv: number): number {
-    return unitAt(spot, strike, iv).gamma / spot;
   }
 
   // Net GEX, DEX and VEX (all-expiry proxy) per strike at a given price, captured as one snapshot
@@ -722,42 +649,7 @@ const Simulator = (() => {
     return sym;
   }
 
-  /* THE FIRST PAINT SEEDS ONE NAME (2026-09-06, the perf sweep): the module
-     used to forward-sim the whole watchlist before anything could render —
-     four histories, the better part of a second, inside the app's first
-     task. Now the active name seeds here and the rest follow in idle time,
-     a slice at a time; anyone who reaches for one earlier finishes it
-     synchronously through ensureTicker, the same history either way. */
-  {
-    /* ROUND TWO (the same day): the active name's own walk was still a 195ms
-       task inside the app's first script — a hitch in the launch's own
-       animation. It walks in slices too, eight milliseconds every sixteen
-       (the overlay keeps its frames), the rest of the watchlist after it at
-       five every 24. The tick emits nothing until the active name is whole
-       (the feed context polls for that moment), and anyone who cannot wait
-       finishes it synchronously through ensureTicker, the same history.
-       A short timer, not an idle callback: a desk of charts keeps a frame
-       loop running, so the browser never sees a quiet moment and idle
-       callbacks only fire on their timeout — three names took minutes. */
-    const order = [activeTicker, ...WATCHLIST.filter(t => t !== activeTicker)];
-    const pump = () => {
-      /* WORKERS, WHEN THE APP HAS THEM (2026-10-10, core/seedPool.ts registers itself at boot): the whole roster is
-         handed off at once and walked in parallel off this thread — the active name whole in half a second instead of
-         a second of slices, the rest right behind it instead of two seconds each in a row */
-      if (offThread) {
-        order.filter(t => !candleHistory[t] && !seedJobs[t]).forEach(t => offThread?.(t));
-        return;
-      }
-      const next = order.find(t => !candleHistory[t]);
-      if (!next) return;
-      const urgent = next === activeTicker;
-      seedAsync(next, urgent ? 8 : 5);
-      setTimeout(pump, urgent ? 16 : 24);
-    };
-    if (typeof window !== 'undefined') setTimeout(pump, 0);
-    /* a worker (core/seedWorker.ts) walks only the names it is asked for; a script or a test seeds the roster now */
-    else if (typeof (globalThis as { importScripts?: unknown }).importScripts !== 'function') order.forEach(seedHistory);
-  }
+  /* Nothing seeds at import: a name's history is walked the first time something asks for it (ensureTicker). */
 
   // Calculate Indicators
   function getIndicators(prices: number[]): Indicators {
@@ -1122,15 +1014,7 @@ const Simulator = (() => {
     /** Bars WITHOUT the seeding side effect — null for names never simmed.
         For render-time reads over many symbols (the board's session sparks):
         getCandles would synchronously forward-sim every unseeded name. */
-    peekCandles: (sym: string): Candle[] | null => candleHistory[sym.toUpperCase()] ?? previewBars[sym.toUpperCase()] ?? null,
-    /* the walk off the main thread (core/seedPool.ts, core/seedWorker.ts) */
-    historyAnchor,
-    buildHistory,
-    installPreview,
-    installHistory,
-    setOffThreadSeeder: (fn: ((sym: string) => void) | null): void => {
-      offThread = fn;
-    },
+    peekCandles: (sym: string): Candle[] | null => candleHistory[sym.toUpperCase()] ?? null,
     /** Net-GEX-per-strike snapshots parallel to the candle series (read-only). */
     getGexHistory: (sym: string): GexSnapshot[] => {
       const key = ensureTicker(sym);

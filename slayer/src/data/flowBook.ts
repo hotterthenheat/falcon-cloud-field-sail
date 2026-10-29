@@ -1,18 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE DAY BOOK (data/flowBook.ts)
-
-  The shared vocabulary of Trace's day book: the
-  screens, the footprint screens, the watchers'
-  reasons and their catches, the net-flow cuts and
-  moneyness, the spread shapes, the reader filters,
-  and the session's quarter-hour clock. The ROWS are
-  the vendor's (data/traceLive.ts) — nothing in this
-  file generates a figure (the audit, 2026-10-22:
-  the hashed book, clip table, interval weights and
-  spread generator that lived here are gone).
-==================================================
-*/
+/* The shared vocabulary of Trace's day book: screens, footprints, reasons and catches, net-flow cuts, moneyness,
+   spread shapes and the quarter-hour clock. Nothing here makes a figure. */
 
 import { now } from '../core/clock';
 import { isTradingDay } from '../core/calendar';
@@ -25,12 +12,8 @@ import type { BookContract } from '../types/trace';
 import { dayLean, usd } from './traceLive';
 import { leanWords } from './traceLean';
 
-/* THE BOOK KEEPS NEW YORK'S SESSION (2026-10-13, from the partner's build at Noah's word): every minute in here is New
-   York's minute of the day, and the book's day is the cash session, 09:30 to 16:00. It used to be the machine's
-   midnight-to-midnight: windows from 00:00 with volume in every quarter hour, catches at 00:30 and after the close, a
-   "last print" at 18:03 — on a Los Angeles or UTC machine the whole book sat hours off the session marks drawn beside
-   it. Outside the session the book is the LAST session, whole: after the close today's, before the open (or on a
-   weekend or a holiday) the session before. */
+/* Every minute here is New York's minute of the day and the book's day is the cash session; outside it the book is
+   the last session, whole. */
 export interface BookSession {
   /** The session's New York date */
   year: number;
@@ -75,9 +58,7 @@ export function bookSession(at: Date | number = now()): BookSession {
 const clockOf = (minute: number) => minuteLabel(minute);
 // ---- screens ----------------------------------------------------------------
 
-/* A screen is a QUESTION asked of the book — a filter and an ordering, never a
-   judgment. States stay Compass's job; a screen only decides which rows are an
-   answer and which number ranks them. */
+/* A screen is a question asked of the book: a filter and an ordering, never a judgment. */
 export type ScreenKey =
   | 'active'
   | 'bullish'
@@ -108,9 +89,7 @@ export const FLOW_SCREENS: FlowScreen[] = [
   { key: 'long-term', label: 'Long-dated', hint: 'Three months out and beyond — patient money' },
 ];
 
-/** Aggressive call flow reads bullish; put flow bought at the ask reads
-    bearish — sentimentOf's rule, applied to the day's dominant side, and only where the day HAS a side (dayLean: at
-    least half the volume on a side — a day that was mostly a no-side cross leans nowhere). */
+/** Call flow bought at the ask reads bullish, put flow bearish, only where the day has a side (dayLean). */
 function leansBull(r: BookContract): boolean {
   if (notABet(r)) return false; // a floor package or a day of spread legs leans nowhere (audit round 8)
   const l = dayLean(r).lean;
@@ -141,7 +120,7 @@ export function runScreen(rows: BookContract[], key: ScreenKey): BookContract[] 
         .sort((a, b) => b.premium - a.premium);
     case 'conviction-puts':
       return rows
-        .filter(r => r.right === 'P' && r.sweepPct >= 25 && r.otmPct >= 0) /* otmPct is + out of the money on both sides (audit round 7: this took ITM puts) */
+        .filter(r => r.right === 'P' && r.sweepPct >= 25 && r.otmPct >= 0) /* otmPct is + out of the money for calls and puts alike */
         .sort((a, b) => b.premium - a.premium);
     case 'cheap':
       return rows.filter(r => r.right === 'C' && r.last <= 1.5 && r.otmPct >= 3).sort((a, b) => b.volume - a.volume);
@@ -152,9 +131,8 @@ export function runScreen(rows: BookContract[], key: ScreenKey): BookContract[] 
 
 // ---- footprint screens ------------------------------------------------------
 
-/* Footprints asks the OVERNIGHT questions — what stayed, who built it, what
-   left. Same rule as the screener's screens: a filter and an ordering, never
-   a judgment. */
+/* Footprints asks the overnight questions: what stayed, who built it, what left. A filter and an ordering, never a
+   judgment. */
 export type FootprintScreenKey = 'builds' | 'fresh' | 'unwinds' | 'streaks';
 
 export interface FootprintScreen {
@@ -186,17 +164,10 @@ export function runFootprintScreen(rows: BookContract[], key: FootprintScreenKey
 
 // ---- flow alerts ------------------------------------------------------------
 
-/* The tape watching itself. Rules are the desk's own watchers over the day
-   book — a contract surfaces the moment it trips one, and the feed drips
-   through the session on the engine clock exactly like the news wire, so
-   alerts LAND live and replay re-derives the same day. One book, one more
-   reader: an alert can never quote numbers the screener disagrees with. */
+/* The desk's watchers over the day book: a contract surfaces when it trips a reason, off the same rows as the
+   Screener, so a catch never quotes a different number. */
 
-/* VOCABULARY RULING (Noah, 2026-08-30): the user-facing word is REASON, not
-   rule — the reader's question is "why is this in front of me", and each row
-   answers it in a house phrase. "Repeated Hits" was the reference's verbatim
-   wording (banned, the king→supreme precedent) and "whale" anything echoes
-   their brand name — both replaced. */
+/* The word on the page is "reason": the reader's question is "why is this in front of me". */
 export type WatcherKey = 'big-money' | 'into-earnings' | 'climbing' | 'falling' | 'fresh-size' | 'hammering';
 
 export interface WatcherRule {
@@ -208,17 +179,13 @@ export interface WatcherRule {
   hint: string;
 }
 
-/** THE DESK'S WATCHERS (the Trace page of the same name — "Flow Alerts" until
-    2026-09-11: the bell is the reader's alerts, these are the desk's own
-    watchers over the day book). Priority order — a loud contract reports
-    under its loudest reason first. */
+/** The desk's watchers, in priority order: a loud contract reports under its loudest reason first. */
 export const WATCHERS: WatcherRule[] = [
   {
     key: 'big-money',
     label: 'Big money',
-    /* the rule is the contract's DAY premium — it never looked at one print. RELATIVE, so it stays rare (the third audit,
-       2026-10-22: "$25M and up" fired on 146 of the book's 174 — the book IS the day's heaviest contracts): the top tenth
-       of the book's own premium today, and $25M at the least */
+    /* The contract's day premium, relative so it stays rare: the top tenth of the book's premium today, and $25M at
+       the least */
     reason: "In the top tenth of the book's premium in the session ($25M at the least)",
     hint: "A contract whose day's premium is in the top 10% of the book's — and at least $25M",
   },
@@ -254,9 +221,8 @@ export const WATCHERS: WatcherRule[] = [
   },
 ];
 
-/** One row the desk's (or the reader's) watcher caught — a contract on the live book that meets a reason, told by its
-    own day: when it last printed, at what fill, how much money it carried, and which side its volume leaned. ONE ROW A
-    CONTRACT (the retail pass, 2026-10-22: QQQ 725C sat twice in "362 catches", once per reason) — its reasons together. */
+/** One contract a watcher caught, told by its own day (last print, fill, money, lean), with all its reasons on one
+    row. */
 export interface Catch {
   id: string;
   /** The contract's loudest reason — a house reason's key, or one of the reader's own reasons' ids. */
@@ -278,8 +244,7 @@ export interface Catch {
   row: BookContract;
 }
 
-/** A house reason said with the contract's OWN figure, not its threshold (the re-audit, 2026-10-22: "Volume 1.8× its
-    open interest" beside a Vol/OI of 30.14) */
+/** A house reason said with the contract's own figure, not its threshold */
 export function reasonPhrase(key: WatcherKey, r: BookContract): string {
   switch (key) {
     case 'big-money':
@@ -297,38 +262,27 @@ export function reasonPhrase(key: WatcherKey, r: BookContract): string {
   }
 }
 
-/** A DAY THAT WAS MOSTLY FLOOR PACKAGES (the third audit, 2026-10-22: "Most money today SPX 7000C · $1.6B" was 16,950 of
-    21,494 contracts on the floor in multi-leg packages — the cbmo compression the tape labels; the screener carries no
-    per-print condition, so the day's floor and multi-leg shares are what say it): half the day or more on the floor AND
-    half or more in multi-leg packages. Such a contract is not crowned "most money" without saying so. */
+/** A floor-package day: half or more on the floor and half or more in multi-leg packages (compression). Never
+    crowned without saying so. */
 export function floorPackaged(r: Pick<BookContract, 'floorPct' | 'multiPct'>): boolean {
   return r.floorPct >= 50 && r.multiPct >= 50;
 }
 
-/** A DAY THAT WAS MOSTLY SPREAD LEGS IS NOT A SINGLE BET (audit round 8, major 1: "Largest VRT 185P $13.6M ask 100%" was
-    10,840 of its 10,847 contracts legs of multi-leg orders — the other leg, VRT Mar 19 '27 150P, all multi-leg on the bid;
-    CCJ Mar 19 '27 65P, 39,000 of 39,000 multi-leg, read "Most money · bid-leaning"; 83 of the book's 200 were 90% legs or
-    more). THE LINE IS HALF: at 50% or more of the day's contracts in multi-leg orders, most of what the contract traded —
-    and most of its side — is one leg of a package whose other legs sit on other contracts, and a leg's side says how the
-    package was filled, not which way the money leans (a call spread bought prints its short leg on the bid). Under half,
-    the single-leg trading carries the day and its lean stands. Such a contract is shown and counted as a spread leg —
-    never crowned the biggest single bet, never given a lean, kept out of the app's directional totals. */
+/** A spread-leg day: 50% or more of the contracts in multi-leg orders, so its side says how a package filled, not
+    where money leans. Shown and counted as legs; never crowned, never given a lean. */
 export const SPREAD_LEG_PCT = 50;
 /** Mostly legs of multi-leg orders, and not a floor package (that has its own label) */
 export function spreadLegDay(r: Pick<BookContract, 'floorPct' | 'multiPct'>): boolean {
   return !floorPackaged(r) && r.multiPct >= SPREAD_LEG_PCT;
 }
-/** A DAY THAT WAS MOSTLY CROSSES (audit round 9, minor 2: "Largest PLTR 175C Dec 18" was one 25,000-lot cross — cross_volume
-    25,000 of 25,028, report_flags ["cross_trade"] — crowned on the Live Tape, the Screener and Watchers): a cross is a
-    pre-arranged trade printed between two parties at one price, no side taken on the screen. Half the day or more in
-    crosses and the contract is set apart like a floor package — out of the crowns, the leans and the directional totals,
-    said as "a cross". */
+/** A cross day: half or more in pre-arranged crosses, no side taken. Set apart like a floor package and said as "a
+    cross". */
 export const CROSS_PCT = 50;
 export function crossDay(r: { crossPct?: number }): boolean {
   return (r.crossPct ?? 0) >= CROSS_PCT;
 }
 export const crossHint = (r: { crossPct?: number; volume?: number }) =>
-  `${Math.round(r.crossPct ?? 0)}% of its day${r.volume ? ` (${Math.round(((r.crossPct ?? 0) / 100) * r.volume).toLocaleString('en-US')} of ${r.volume.toLocaleString('en-US')} contracts)` : ''} printed as cross trades — pre-arranged between two parties at one price, not bought or sold on the screen — so it gets no lean and is never ranked as the biggest single bet (${CROSS_PCT}% or more of the day in crosses)`;
+  `${Math.round(r.crossPct ?? 0)}% of its day${r.volume ? ` (${Math.round(((r.crossPct ?? 0) / 100) * r.volume).toLocaleString('en-US')} of ${r.volume.toLocaleString('en-US')} contracts)` : ''} in pre-arranged cross trades, no side taken: no lean, never crowned (${CROSS_PCT}% or more)`;
 /** Not a single bet: a floor package, a day of spread legs or a day of crosses — set apart wherever the book crowns or leans */
 export function notABet(r: Pick<BookContract, 'floorPct' | 'multiPct'> & { crossPct?: number }): boolean {
   return floorPackaged(r) || r.multiPct >= SPREAD_LEG_PCT || crossDay(r);
@@ -340,14 +294,14 @@ export function bookLeanWords(r: BookContract): string {
 }
 /** Why a spread-leg day carries no read, in its own figure */
 export const spreadLegHint = (r: Pick<BookContract, 'multiPct'>) =>
-  `${Math.round(r.multiPct)}% of its day traded as legs of multi-leg orders — one leg of spreads whose other legs sit on other contracts. A leg's side says how the package was filled, not which way the money leans, so it gets no lean and is never ranked as the biggest single bet (${SPREAD_LEG_PCT}% or more of the day in multi-leg orders)`;
+  `${Math.round(r.multiPct)}% of its day as legs of multi-leg orders: a leg's side says how a package filled, not a lean. Never crowned (${SPREAD_LEG_PCT}% or more)`;
 /** One word for why a row is not a bet */
 export const notABetWord = (r: Pick<BookContract, 'floorPct' | 'multiPct'> & { crossPct?: number }) => (floorPackaged(r) ? 'floor package' : r.multiPct >= SPREAD_LEG_PCT ? 'spread legs' : crossDay(r) ? 'a cross' : 'spread legs');
 
 /** Why a not-a-bet row is set apart, in full (the hover) */
 export const notABetHint = (r: Pick<BookContract, 'floorPct' | 'multiPct'> & { crossPct?: number; volume?: number }) =>
   floorPackaged(r)
-    ? `${Math.round(r.floorPct)}% of its day traded on the floor and ${Math.round(r.multiPct)}% in multi-leg packages — the shape of compression, which nets open interest down, not a directional bet`
+    ? `${Math.round(r.floorPct)}% of its day on the floor and ${Math.round(r.multiPct)}% in packages: compression, not a directional bet`
     : r.multiPct >= SPREAD_LEG_PCT
       ? spreadLegHint(r)
       : crossHint(r);
@@ -358,19 +312,18 @@ export function notABetLabel(rows: (Pick<BookContract, 'floorPct' | 'multiPct'> 
   return kinds.has('f') ? 'Floor packages' : kinds.has('l') ? 'Spread legs' : rows.length === 1 ? 'One cross' : 'Crosses';
 }
 
-/** ONE FLOOR FOR "FRESH" VOLUME ACROSS TRACE (audit round 5: Watchers' fresh size used 1.8× open interest, the Screener and
-    Compare 1.5×): volume at least this many times the open interest reads as positions built in the session */
+/** One floor for "fresh" volume across Trace: volume at least this many times the open interest reads as positions
+    built in the session */
 export const FRESH_VOL_OI = 1.5;
-/** Vol/OI as a cell — "new" when the contract had no open interest (nothing to divide by), never 0.00 (audit round 5) */
+/** Vol/OI as a cell: "new" when there was no open interest to divide by */
 export function volOiText(r: Pick<BookContract, 'oi' | 'volume' | 'volOverOI'>): string {
   /* volOverOI is against the count at the session's open — a row may now show the newer count (usePairedOi), so the
      ratio itself says whether there was one */
-  /* never "0.00x" for 21 on 5,164 (audit round 8) — under a hundredth says so */
+  /* under a hundredth says so, never "0.00x" */
   if (r.volOverOI > 0) return r.volOverOI < 0.01 ? '<0.01' : r.volOverOI.toFixed(2);
   return r.volume > 0 ? 'new' : '—';
 }
-/** A ΔOI's tail: "new" only when there was nothing (or next to nothing against the change) before; a percentage when it
-    means something; nothing otherwise (audit round 8: CCJ 65P 64 → 66 read "+2 new") */
+/** A ΔOI's tail: "new" only when there was next to nothing before; a percentage when it means something */
 export function doiTail(r: Pick<BookContract, 'prevOI' | 'deltaOI' | 'deltaOIPct'>): string {
   if (r.deltaOI === 0) return '';
   if (r.prevOI <= 0 || (r.deltaOI > 0 && r.prevOI * 20 < r.deltaOI)) return 'new';
@@ -378,16 +331,12 @@ export function doiTail(r: Pick<BookContract, 'prevOI' | 'deltaOI' | 'deltaOIPct
   const p = Math.round(r.deltaOIPct);
   return `${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p)}%`;
 }
-/** A DEEP-IN-THE-MONEY, LONG-DATED CONTRACT IS LIKELY NOT A BET (retail, 2026-10-23: NVDA's top "bet" on the Live Tape was a
-    2028 put 88.5% in the money, ΔOI +57): 25% or more in the money with six months or more to run trades like the
-    stock — a stock replacement, a roll or a financing leg — not a directional view. Flagged wherever bets are crowned. */
-/* A MONTH, NOT SIX (audit round 9, minor 8: Compare listed SPY 520C Dec 18 — 32% in the money, delta .99, 56 days — as a
-   bet): 25% or more in the money with a month or more to run already moves one-for-one with the stock */
+/** 25% or more in the money with a month or more to run trades like the stock, not a view; flagged wherever bets are crowned */
 export const STOCK_LIKE_DTE = 30;
 export function stockLike(r: { otmPct: number; dte: number }): boolean {
   return Number.isFinite(r.otmPct) && r.otmPct <= -25 && r.dte >= STOCK_LIKE_DTE;
 }
-export const STOCK_LIKE_HINT = 'Deep in the money (25% or more) with a month or more to run — it trades like the stock (delta near 1): likely a stock replacement, a roll or a financing leg, not a directional bet';
+export const STOCK_LIKE_HINT = '25% or more in the money with a month or more to run: it trades like the stock, likely a replacement or roll, not a bet';
 
 /** The book's big-money line: its 90th-percentile premium, $25M at the least */
 export function bigMoneyLine(rows: BookContract[]): number {
@@ -398,11 +347,11 @@ export function bigMoneyLine(rows: BookContract[]): number {
 
 function rulesFor(r: BookContract, bigLine = 25_000_000): WatcherKey[] {
   const out: WatcherKey[] = [];
-  // "Big enough to move the day" has to stay RARE or the words mean nothing.
+  // "Big enough to move the day" has to stay rare or the words mean nothing.
   if (r.premium >= bigLine) out.push('big-money');
   if (r.earnDays != null && r.earnDays <= 5 && r.deltaOI > 0 && r.volume >= 3000) out.push('into-earnings');
   // Climbing and falling are mirror predicates — chasers vs sellers, same bar.
-  /* a day of spread legs has no lean to chase or sell on (audit round 8) */
+  /* a day of spread legs has no lean to chase or sell on */
   const lean = notABet(r) ? 'UNSIDED' : dayLean(r).lean;
   if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct >= 8 && lean === 'ASK') out.push('climbing');
   else if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct <= -8 && lean === 'BID') out.push('falling');
@@ -423,12 +372,8 @@ function myReasonsFor(r: BookContract, reasons: UserReason[]): string[] {
 
 let catchCache: { rows: BookContract[]; sig: string; catches: Catch[] } | null = null;
 
-/**
- * EVERY CATCH IS A REAL CONTRACT'S REAL DAY (the audit, 2026-10-22): a catch's trip time was the open plus a hash, its
- * "print" a hashed share of the day's volume at a hashed fill — "SPY 766C 14:28 42,914 @ $0.09" where the largest real
- * print was 777. A catch is now a contract on the live book that meets a reason (the desk's six, or the reader's own),
- * stamped with the contract's own last print and day — newest last print first. Nothing is scheduled or invented.
- */
+/** A catch is a contract on the live book that meets a reason, stamped with its own last print and day, newest
+    first. Nothing is scheduled or invented. */
 export function buildCatches(rows: BookContract[], reasons: UserReason[] = []): Catch[] {
   const sig = reasonsSignature(reasons);
   if (catchCache && catchCache.rows === rows && catchCache.sig === sig) return catchCache.catches;
@@ -449,7 +394,7 @@ export function buildCatches(rows: BookContract[], reasons: UserReason[] = []): 
       time: r.lastAt,
       last: r.last,
       premium: r.premium,
-      /* a day of spread legs (or a floor package) carries no side of its own (audit round 8) */
+      /* a day of spread legs (or a floor package) carries no side of its own */
       side: notABet(r) ? 'LEGS' : lean === 'UNSIDED' ? 'MID' : lean,
       row: r,
     });
@@ -490,15 +435,8 @@ export function windowLabel(idx: number): string {
 /* The net-flow cuts: which part of the market a pane's vendor minutes read (/net-flow/expiry's tide types, a sector's
    tide) and which strikes (moneyness). */
 
-/* THE CUT, in plain English (Noah, 2026-09-03: "i dont get what 'single
-   names' mean… are the dropdowns reasonable? i am struggling to figure out
-   the idea behind them"). The old list mixed four kinds of thing — the whole
-   book, two families, two funds pulled out for convenience, one lone sector
-   — and its family label was street jargon that promised ONE name. Now a
-   cut is one of two kinds: the book by FAMILY (everything, the stocks alone,
-   the index funds alone) or the book by SECTOR (every sector the terminal
-   files, index funds excluded). One name is not a cut at all — it is the
-   pane's ticker mode, reached through the name search in its head. */
+/* A cut is the book by family (everything, stocks, index funds) or by sector; one name is the pane's ticker mode,
+   not a cut. */
 export type NetFlowSegment = 'all' | 'stocks' | 'index-funds' | 'indexes' | `sector:${string}`;
 
 export interface NetSegmentMeta {
@@ -529,10 +467,8 @@ export const MONEYNESS: { key: MoneynessKey; label: string; hint: string }[] = [
   { key: 'atm', label: 'ATM', hint: 'Within 1% of the spot' },
 ];
 
-/* MONEYNESS, ONE CONVENTION (audit round 7, the blocker: "Out of the money" returned CRWV 78P −40.3% and dropped the OTM
-   NVDA 210P +1.0%): otmPct is the strike's distance PAST the stock — positive out of the money for calls AND puts (call:
-   strike above spot; put: strike below spot; traceLive otmOf, spreadLegRow). So in the money is otmPct < 0 on both sides.
-   A distance that is not known (NaN — a whole-point small index) is neither in nor out. */
+/* otmPct is the strike's distance past the stock, positive out of the money for calls and puts; a NaN distance is
+   neither in nor out. */
 export const isInTheMoney = (r: Pick<BookContract, 'otmPct'>): boolean => Number.isFinite(r.otmPct) && r.otmPct < 0;
 
 /** A contract's or a print's place against the stock — both carry the same two fields */
@@ -553,9 +489,7 @@ export interface SpreadKindDef {
 }
 
 export const SPREAD_KINDS: SpreadKindDef[] = [
-  /* THE FAMILY, NEVER ITS DIRECTION (the re-audit, 2026-10-22: "wings bought, body sold" was printed over short flies):
-     these say what the shape is, both ways round; each structure's own sentence is worked from its settled legs
-     (traceLive describeStructure) */
+  /* The family, never its direction: each structure's own sentence comes from its settled legs (describeStructure) */
   { key: 'vertical', label: 'Vertical', read: 'Two strikes on one side and one expiry, one bought and one sold — the risk capped both ways.' },
   { key: 'condor', label: 'Iron condor', read: 'Four legs, two inner strikes and two outer — sold inner, it gains if the name stays between; bought inner, it gains on a move out.' },
   { key: 'butterfly', label: 'Butterfly', read: 'Three strikes, the middle one twice — long (wings bought), it pays most at the middle; short (wings sold), it gains on a move away.' },
@@ -621,7 +555,7 @@ export interface SpreadTrade {
   farExpiry?: string;
   farDte?: number;
   size: number;
-  /** Per-UNIT price (net premium over units × 100): positive = debit paid, negative = credit collected; 0 = not known */
+  /** Per-unit price (net premium over units × 100): positive = debit paid, negative = credit collected; 0 = not known */
   net: number;
   /** The shape's name — from the settled legs once they are in hand (traceLive nameFromLegs), else the vendor's, spelled
       out ("put diagonal spread", "time butterfly") */
@@ -699,10 +633,7 @@ export function markSplitOrders(list: SpreadTrade[]): SpreadTrade[] {
   return split.size ? list.map(t => (split.has(t.id) ? { ...t, splitOf: split.get(t.id) } : t)) : list;
 }
 
-/** One leg as a book row — every figure the vendor's legs route sends for it (its day volume, open interest, fill,
-    IV and quote); what the route does not carry (the day's side split, sweeps, history) is left unknown, never drawn
-    (the audit, 2026-10-22: this row was hashed — volume, open interest, its change, sweeps, sides). The card it opens
-    reads the contract's own tape by its symbol. */
+/** One leg as a book row: every figure the legs route sends; what it does not carry stays unknown, never drawn. */
 export function spreadLegRow(trade: SpreadTrade, i: number): BookContract {
   const l = trade.legs[i];
   const volume = l.volume ?? 0;
@@ -776,5 +707,5 @@ export function applyFilters(rows: BookContract[], f: BookFilters): BookContract
   });
 }
 
-/** Said on every figure the vendor sums for us (audit round 5, SidesRule): its totals carry spread legs and floor packages */
+/** Said on every figure the vendor sums for us: its totals carry spread legs and floor packages */
 export const VENDOR_TOTAL_NOTE = 'A summed total: spread legs and floor packages are in it. Live Tape, Dark Pool and Multi-Leg leave them out';

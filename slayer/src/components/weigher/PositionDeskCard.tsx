@@ -1,50 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE POSITION CARD ON THE DESK
-  (components/weigher/PositionDeskCard.tsx)
-
-  The Weigher's bottom-right card (2026-09-14): the
-  row picked in the list — a contract you WATCH
-  (marked when added) or a position you OWN or
-  SOLD (what you paid) — as Robinhood's Simulated
-  Returns, in the Positions panel's clothes:
-
-    THE FIGURES   the return at the chosen price
-                  now, the estimated contract price,
-                  "Now · 4 DTE"
-    BY DATE       the return over the sessions to
-                  the expiry at that price — the
-                  line sinks as time runs out; a
-                  dashed max-loss floor; the library
-                  chart with its crosshair and card
-    THE RULER     the stock's price under a marker,
-                  dragged by the cent — the dealer
-                  map's walls and flip on it
-    BY PRICE      the payoff sketch — the other cut
-                  of the same surface, the kept
-                  price on it
-    THE FACTS     what it has done since it was
-                  added, then the map's five
-    THE SENTENCE  where it sits, what the hedging
-                  does to it
-
-  One pricer for every figure: the chain's own
-  estimator (data/positionCurve valueOn). A settled
-  row shows the Robinhood notice as one quiet line.
-
-  OUR READ · SIMULATED RETURNS (Noah, 2026-10-13:
-  "if i click down on a strike chain then click on
-  one of them in my position or watchlist the
-  bottom right card should be able to switch
-  between 'Our read' and 'simulated returns' i dont
-  like how it says 'the positions' right now"): the
-  card's head is the switch. A strike pressed on
-  the chain opens on Our read (the case); a row
-  pressed on a list opens on Simulated returns; the
-  reader turns the card either way. The read speaks
-  of the chain's contract — for a row the chain
-  does not list (another date), it says so.
-==================================================
+  The picked row of the Weigher's list as a returns card: a watched contract against its mark when added, or a
+  position against what was paid, with the what-if curve and the book's read.
 */
 
 import { useMemo } from 'react';

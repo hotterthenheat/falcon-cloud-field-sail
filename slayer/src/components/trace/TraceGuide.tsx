@@ -1,22 +1,11 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW TO READ TRACE
-  (components/trace/TraceGuide.tsx)
-
-  The Trace pages' guides in the house pattern: a
-  figure per thing, the surface drawn small in its
-  own inks, one sentence under each. The figures
-  are shared — a contract door, the ink registers,
-  the lean bar, the three flow shares — and each
-  page assembles its own from them.
-==================================================
-*/
+/* The Trace pages' guides: a small drawn figure per thing with one sentence under it; shared figures, each page
+   assembling its own. */
 
 import type { ReactNode } from 'react';
 import { expiryLabel } from '../../core/format';
 import { tapeSessionIso } from '../../data/traceLive';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))'; /* the silver token, deep steel on the light terminal */
 const SUPREME = 'rgb(var(--supreme))';
 const BULL = 'rgb(var(--bull))';
 const BEAR = 'rgb(var(--bear))';
@@ -48,9 +37,7 @@ const Head = ({ x, y, children, anchor = 'start' }: { x: number; y: number; chil
   </text>
 );
 
-/* ---- the one rule ------------------------------------------------------------------
-   BOUGHT, SOLD, BULLISH, BEARISH — ONE RULE ACROSS TRACE (the re-audit, 2026-10-22: the tape counted at-the-ask as bought
-   while the dark pool tagged prints over the mid "DISTRIBUTION" in red). Said once, here, and every guide carries it. */
+/* Bought, sold, bullish, bearish: one rule across Trace, said once here and carried by every guide. */
 export const SidesRule = () => (
   <Section title="Bought, sold, bullish, bearish — one rule">
     <p>
@@ -72,7 +59,7 @@ export const SidesRule = () => (
       <b className="text-textPrimary">A leg of a multi-leg order</b> — a print whose OPRA condition marks it one leg of a spread, fly or condor (mlet, mlft, tlct and their family) — is half of a structure, not a bet of its own: a call vertical prints one call bought and one sold in the same millisecond. It is labelled "spread leg", counted on its own and in the call and put money, and kept out of every bullish or bearish total Trace builds from prints and the largest, top-bull and top-bear facts. Multi-Leg reads which way the whole structure went, from its net — except after hours, where the shape is shown and not read.
     </p>
     <p className="mt-2">
-      <b className="text-textPrimary">Some totals are not ours.</b> Net premium, net calls and net puts that come already summed — the top-net-impact ranking (Net Flow's board), the minute ticks (Net Flow's pane, Intervals, Compare's net), the flow by expiry (Compare's clock cuts and same-day money), the net flow by expiry (0DTE and the cut panes) and the market tide — <b className="text-textPrimary">include spread legs and floor packages</b>: every print is in the sum, and the legs cannot be taken back out without every print across the market. Only the totals Trace builds from prints — the Live Tape, the Dark Pool and Multi-Leg — leave them out. A name heavy with spreads can lean on its legs: BAC's "most bullish +$19.7M" was mostly put legs of mlft packages sold on the bid. Each such figure says so on its hover.
+      <b className="text-textPrimary">Some totals are not ours.</b> Net premium, net calls and net puts that come already summed — the top-net-impact ranking (Net Flow's board), the minute ticks (Net Flow's pane, Intervals, Compare's ticks row), the flow by expiry (Compare's net and same-day money), the net flow by expiry (0DTE and the cut panes) and the market tide — <b className="text-textPrimary">include spread legs and floor packages</b>: every print is in the sum, and the legs cannot be taken back out without every print across the market. Only the totals Trace builds from prints — the Live Tape, the Dark Pool and Multi-Leg — leave them out. A name heavy with spreads can lean on its legs: BAC's "most bullish +$19.7M" was mostly put legs of mlft packages sold on the bid. Each such figure says so on its hover.
     </p>
     <p className="mt-2">
       <b className="text-textPrimary">A lean</b> — at the ask, on the bid, even — is one rule on every page: at least half the day's contracts traded on a side, and that side holds 55% or more of the contracts that traded on a side; otherwise it is even, or mostly mid / no side. The figure a lean prints ("BID 60%") is that share of the sided contracts — the number the rule is decided on, judged before any rounding — and an even day prints its larger side's share too ("even · ask 52%"); the hover gives each side's share of the whole day. It counts contracts, because that is what is carried per contract; a name's net premium is its own figure. A flow alert's side is the side that carried 60% or more of its whole premium, unsided money included.
@@ -82,8 +69,7 @@ export const SidesRule = () => (
 
 /* ---- the shared figures ---------------------------------------------------------- */
 
-/** A contract cell: the strike, call or put in its ink, the expiry — silver under the pointer is the door
-    (the white line under it went on 2026-09-16) */
+/** A contract cell: the strike, call or put in its ink, the expiry; silver under the pointer is the door */
 export const ContractFigure = () => (
   <Figure label="A contract cell drawn large: 505 call 09/10 at rest, then 497 put 09/11 with its strike in silver as under the pointer, and beside them the words that say a contract turns silver under the pointer and opens its card" h={54}>
     <text x={14} y={30} fontSize={13} fontWeight={700} fill={INK} fontFamily={MONO}>
@@ -412,8 +398,7 @@ export const WatchersGuide = () => (
 
 /* ---- windows -------------------------------------------------------------------- */
 
-/** The session as one instrument (2026-10-13, the partner's strip): 09:30 to 16:00 New York, a bar a quarter hour,
-    taller where more traded — the busiest in magenta, the one open on a silver column, the live one under "now" */
+/** The session as one instrument: a bar a quarter hour, the busiest in magenta, the open one on a silver column */
 export const DayStripFigure = () => {
   const n = 26;
   const x0 = 14;
@@ -688,7 +673,7 @@ export const OdteGuide = () => (
 /* ---- live tape ----------------------------------------------------------------- */
 
 /** One row of the tape: when, the name, the contract, size at the fill, the dollars, the tag */
-/* the example contract expires on the tape's own session — the guide never shows a date long gone (the audit, 2026-10-22) */
+/* the example contract expires on the tape's own session, never a date long gone */
 const exampleExpiry = () => expiryLabel(tapeSessionIso());
 export const TapeRowFigure = () => (
   <Figure label={`One tape row: 14:52:07 · NVDA · 215C ${exampleExpiry()} · 850 @ $1.24 · $105.4K in bold · SWEEP in amber`} h={54}>
@@ -727,8 +712,7 @@ export const FillFigure = () => (
       { y: 48, pos: 0.08, ink: INK, word: 'filled 1.21, near the bid — sold, someone took what was there' },
     ].map(r => (
       <g key={r.y}>
-        {/* the bid at the left, the ask at the right — two different prices, each named (the retail pass: the sample read as
-            one price twice) */}
+        {/* the bid at the left, the ask at the right, each named */}
         <text x={8} y={r.y + 3} fontSize={6.5} fill={MUTED} fontFamily={MONO}>
           bid 1.20
         </text>
@@ -738,33 +722,6 @@ export const FillFigure = () => (
           ask 1.28
         </text>
         <text x={170} y={r.y + 3} fontSize={7} fill={SECOND} fontFamily={SANS}>
-          {r.word}
-        </text>
-      </g>
-    ))}
-  </Figure>
-);
-
-/** Which side was hit, and how hard — the bar's reach from the centre (no longer on the tape) */
-export const ConvictionFigure = () => (
-  <Figure label="Two conviction cells in one ink: a BUY chip over a bar reaching far right of centre; a SELL chip over a short bar left of centre — the reach and the side say it, never a colour" h={70}>
-    {[
-      { y: 16, side: 'BUY', ink: INK, score: 0.8, word: 'offers lifted, hard — a long bar to the right' },
-      { y: 46, side: 'SELL', ink: INK, score: -0.3, word: 'bids hit, gently — a short bar to the left' },
-    ].map(r => (
-      <g key={r.side}>
-        <rect x={14} y={r.y - 8} width={30} height={13} rx={2} fill="#ffffff" fillOpacity={0.05} stroke="#ffffff" strokeOpacity={0.18} strokeWidth={0.6} />
-        <text x={29} y={r.y + 1.5} textAnchor="middle" fontSize={7} fontWeight={600} fill={r.ink} fontFamily={MONO}>
-          {r.side}
-        </text>
-        <rect x={14} y={r.y + 10} width={64} height={3} rx={1.5} fill="#ffffff" fillOpacity={0.08} />
-        <rect x={45.6} y={r.y + 9} width={0.8} height={5} fill="#ffffff" fillOpacity={0.25} />
-        {r.score >= 0 ? (
-          <rect x={46} y={r.y + 10} width={32 * r.score} height={3} rx={1.5} fill={r.ink} />
-        ) : (
-          <rect x={46 + 32 * r.score} y={r.y + 10} width={-32 * r.score} height={3} rx={1.5} fill={r.ink} />
-        )}
-        <text x={100} y={r.y + 6} fontSize={7} fill={SECOND} fontFamily={SANS}>
           {r.word}
         </text>
       </g>
@@ -784,7 +741,7 @@ export const LiveTapeGuide = () => (
       <FillFigure />
     </Section>
     <Section title="Side, lean and window">
-      <p>A print's side is its own tag — at the ask, on the bid, or mid — the same on the tape, the card and every count; a tag the quote at the print contradicts gives way to the quote, and a fill through the quote says "under bid" or "over ask". The day lean is the contract's whole day so far: its contracts at the ask, on the bid, and at the mid or with no side — a lean is called only when at least half the day traded on a side. The head and the sentence count the prints in hand — the newest unbroken stretch of the tape, up to 2,000 — and the Window fact says from when to when; with one name typed, its biggest contracts of the whole day stand beside them.</p>
+      <p>A print's side is its own tag — at the ask, on the bid, or mid — the same on the tape, the card and every count; a tag the quote at the print contradicts gives way to the quote, and a fill through the quote says "under bid" or "over ask". The day lean is the contract's whole day so far: its contracts at the ask, on the bid, and at the mid or with no side — a lean is called only when at least half the day traded on a side. The head and the sentence count the prints in hand — the newest unbroken stretch of the tape, up to 20,000 — and the Window fact says from when to when; with one name typed, its biggest contracts of the whole day stand beside them.</p>
     </Section>
     <Section title="The inks">
       <p>Premium quiet below $250K, bold above, the largest print on the tape in magenta.</p>
@@ -853,6 +810,9 @@ export const CompareGuide = () => (
     <Section title="The two names">
       <p>Pick any two names on today's book — the two searches offer exactly those, and the arrow between them swaps the sides. The Clock and Money cards cut both names the same way, so every row compares like with like.</p>
     </Section>
+    <Section title="Where the net comes from">
+      <p>Each name's net, net calls and net puts are the vendor's flow by expiry, the whole day, on the Clock's expiries: the one route a clock can cut, so the headline never changes source when you pick one. The row under them, "Net · minute ticks", is the same name off the minute ticks — every expiry, the regular session — the series the panes draw and Intervals sums. Both routes carry the same contracts by side, but on names heavy with spreads their put money can differ, even in sign.</p>
+    </Section>
     <Section title="The card">
       <p>Each row is one fact printed for both names, the way a fight card is laid out: the first name's figure on the left, the fact in the middle with what the two say against each other under it, the second name's figure on the right. The figure that leads is lit; the other stays quiet. A signed figure keeps its direction ink on both sides.</p>
       <CardRowFigure />
@@ -871,10 +831,10 @@ export const CompareGuide = () => (
 
 /** A shelf on the board: the role in its ink, the price, the distance, the dollars, the bar and the count */
 export const ShelfFigure = () => (
-  <Figure label="Two shelf rows: RESISTANCE $492.27 +0.29% $177.6M with a red bar and 34% · 9 prints · held 4× under it; SUPPORT $488.40 −0.50% $96.1M with a green bar" h={78}>
+  <Figure label="Two shelf rows: RESISTANCE $492.27 +0.29% $177.6M with a red bar and 34% · 9 in hand under it; SUPPORT $488.40 −0.50% $96.1M with a green bar" h={78}>
     {[
-      { y: 18, role: 'RESISTANCE', ink: BEAR, price: '$492.27', dist: '+0.29%', dInk: BULL, usd: '$177.6M', bar: 1, under: '34% · 9 prints · held 4×', note: 'dollars rested above the market — a seller waits there' },
-      { y: 52, role: 'SUPPORT', ink: BULL, price: '$488.40', dist: '−0.50%', dInk: BEAR, usd: '$96.1M', bar: 0.54, under: '18% · 12 prints · held 2×', note: 'dollars rested below it — a buyer has leaned on it' },
+      { y: 18, role: 'RESISTANCE', ink: BEAR, price: '$492.27', dist: '+0.29%', dInk: BULL, usd: '$177.6M', bar: 1, under: '34% · 9 in hand', note: 'dollars rested above the market — a seller waits there' },
+      { y: 52, role: 'SUPPORT', ink: BULL, price: '$488.40', dist: '−0.50%', dInk: BEAR, usd: '$96.1M', bar: 0.54, under: '18% · 12 in hand', note: 'dollars rested below it — a buyer has leaned on it' },
     ].map(r => (
       <g key={r.role}>
         <text x={14} y={r.y} fontSize={6.5} fontWeight={700} letterSpacing={0.6} fill={r.ink} fontFamily={MONO}>
@@ -902,7 +862,7 @@ export const ShelfFigure = () => (
   </Figure>
 );
 
-/** The four reads, each in its ink, with the conviction the grid draws: a word over four steps, never a figure (2026-09-19) */
+/** The four reads, each in its ink, with the conviction as a word over four steps, never a figure */
 export const ReadFigure = () => (
   <Figure label="Four reads in a row: ACCUMULATION green (over the mid), DISTRIBUTION red (under the mid), AT THE MID amber, NO READ grey" h={76}>
     {[
@@ -933,7 +893,7 @@ export const DarkPoolGuide = () => (
   <div data-trace-guide="dark-pool">
     <SidesRule />
     <Section title="The shelves">
-      <p>A shelf is a price where off-exchange dollars rested today. Below the market it reads support, above it resistance, at it a pivot; "held" counts the times price turned there. Shelves are read per name: with a name in the search, the strip above the grid lists its shelves, lowest price at the left — a click cuts the grid to the crosses that printed on that shelf, and the Where card does the same.</p>
+      <p>A shelf is a price where off-exchange dollars rested today. Below the market it reads support, above it resistance, at it a pivot. Shelves are read per name: with a name in the search, the strip above the grid lists its shelves, lowest price at the left — a click cuts the grid to the crosses that printed on that shelf, and the Where card does the same.</p>
       <ShelfFigure />
     </Section>
     <Section title="The reads">
@@ -941,7 +901,7 @@ export const DarkPoolGuide = () => (
       <ReadFigure />
     </Section>
     <Section title="The posture and the cut">
-      <p>The posture weighs the dollars of the sized, regular-session crosses over the mid against those under it. It names the side that leads, accumulating or distributing, and how far it leans in a word: strong, good or caution. When neither side leads it reads Balanced: a poor lean is no lean. The Read, Size and Where cards cut the grid; the head's "On this cut" and "Building · leaving" follow the cut, the off-exchange share is the name's whole day; the posture reads the sized crosses in hand.</p>
+      <p>The posture weighs the dollars of the sized, regular-session crosses over the mid against those under it. It names the side that leads, accumulating or distributing, and how far it leans in a word: strong, good or caution. When neither side leads it reads Balanced: a poor lean is no lean. The Read, Size and Where cards cut the grid; the head's "On this cut" and "Sized: over · under mid" follow the cut, the off-exchange share is the name's whole day; the posture reads the sized crosses in hand.</p>
       <InkFigure />
     </Section>
     <Section title="Where the dark money went">

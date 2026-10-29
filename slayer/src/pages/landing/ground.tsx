@@ -1,46 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE LANDING'S GROUND
-  (pages/landing/ground.tsx)
-
-  THE PAGE TRAVELS TO THE OTHER THEME AND HOME AGAIN,
-  SLOWLY. It opens on the visitor's own ground
-  ('a'), and part way down the tour it turns into
-  the other ('b') over about a screen and a half of
-  scrolling — a painted gradient through steel, never
-  a cut (Noah, 2026-09-19, of the first cut: "i meant
-  more like a smooth transition not black one moment
-  then white in the very next section"). The
-  terminal in the window turns with it (the same
-  page's picture, in the other theme). After the last tool it turns
-  HOME the same slow way, so a page ends on the theme
-  it began on (Noah, the same day: "the light theme
-  should begin but also end as a light theme and the
-  dark theme should begin but end as a dark theme"):
-  the prices, the questions and the footer stand on
-  'a'. There and back — one journey, not a zebra.
-
-  HOW:
-  · a block of the page is STAMPED with its ground
-    (`data-theme`), so every token inside it is right
-    with no per-element colour transition;
-  · the turn itself is ONE CSS gradient painted
-    behind the tour (index.css `.landing-dawn`) —
-    nothing is tied to the scroll frame by frame, so
-    a phone does not stutter;
-  · the visitor's own ground is their stored choice,
-    else their machine's. The toggle flips it for the
-    whole site and crossfades the page as ONE picture
-    (View Transitions), at once where the browser
-    cannot or the visitor asked for less motion.
-
-  THE FOIL TRAP. Tokens follow the nearest stamp, but
-  the house's foil and paper rules in index.css are
-  written against the ROOT's stamp, so a block on the
-  other ground would wear the wrong foil. A child
-  that needs the foil, or a solid button, asks
-  `useBlockGround()` instead of trusting a class.
-==================================================
+  The landing page's ground, which turns to the other theme part way down the tour and back, as a painted gradient.
 */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';

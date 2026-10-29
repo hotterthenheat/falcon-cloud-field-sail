@@ -228,6 +228,8 @@ interface LedgerCellProps {
   idBase: string;
   /** "expired" when the column has no time left — a dash, not a zero and not "still being read" */
   pendingWord?: string;
+  /** The cell's grid area (row / column lines) — cells are placed explicitly so only the ones in view need mounting */
+  area?: string;
   onHover: (f: Focus | null, x: number, y: number) => void;
   onPick: (f: Focus, x: number, y: number) => void;
 }
@@ -243,7 +245,7 @@ export const SinceBadge = ({ text, dir }: { text: string; dir: 1 | -1 | 0 }) => 
   </span>
 );
 
-const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, ring, star, since, sinceDir, sinceLane, dotBeside, kept, fontSize, figure, mode, paper, pinned, idBase, pendingWord, onHover, onPick }: LedgerCellProps) => {
+const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, ring, star, since, sinceDir, sinceLane, dotBeside, kept, fontSize, figure, mode, paper, pinned, idBase, pendingWord, area, onHover, onPick }: LedgerCellProps) => {
   const pending = !Number.isFinite(v);
   const flash = useTickFlash(pending ? 0 : v);
   return (
@@ -255,6 +257,7 @@ const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, r
     data-pinned={pinned ? '' : undefined}
     data-kept={kept ? '' : undefined}
     className={`relative min-w-0 px-[3px] py-[2px] cursor-default select-none tabular-nums ${first ? 'border-l border-borderSubtle/60 pl-[2px]' : ''} ${wash}`}
+    style={area ? { gridArea: area } : undefined}
     onPointerEnter={ev => onHover({ strike, e, greek: g }, ev.clientX, ev.clientY)}
     onPointerMove={ev => onHover({ strike, e, greek: g }, ev.clientX, ev.clientY)}
     onPointerLeave={ev => onHover(null, ev.clientX, ev.clientY)}
@@ -495,6 +498,57 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
     .filter(Boolean)
     .join(' ');
 
+  /*
+    ONLY THE CELLS IN VIEW ARE MOUNTED. The box scrolls both ways (a rail shows ~4 of up to 30 columns and part of the
+    rows), and the cells out of view were most of the page's DOM — every repaint walked them. Each cell is placed by its
+    own grid lines, so the template, and the layout, are the same as when every cell was there. The window moves in
+    steps (overscan), and always holds the kept and the key cell, which the card and the keys look up in the DOM.
+  */
+  const [win, setWin] = useState<{ r0: number; r1: number; c0: number; c1: number } | null>(null);
+  const winRef = useRef(win);
+  winRef.current = win;
+  const nRows = strikes.length;
+  const aboveN = above.length;
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el || !box.w || !box.h) return;
+    const ROWS_OVER = 8;
+    const COLS_OVER = 2;
+    let raf = 0;
+    const measure = () => {
+      raf = 0;
+      const top = el.scrollTop;
+      const bottom = top + el.clientHeight;
+      const rowTop = (si: number) => HEAD_H + si * rowH + (si >= aboveN ? SPOT_H : 0);
+      let a = 0;
+      while (a < nRows && rowTop(a) + rowH <= top) a++;
+      let b = a;
+      while (b < nRows && rowTop(b) < bottom) b++;
+      const left = el.scrollLeft - strikeW;
+      const right = left + el.clientWidth;
+      const ca = Math.max(0, Math.floor(left / cellW));
+      const cb = Math.min(cols, Math.ceil(right / cellW));
+      const cur = winRef.current;
+      if (cur && cur.r0 <= Math.max(0, a - 1) && cur.r1 >= Math.min(nRows, b + 1) && cur.c0 <= ca && cur.c1 >= cb) return;
+      setWin({ r0: Math.max(0, a - ROWS_OVER), r1: Math.min(nRows, b + ROWS_OVER), c0: Math.max(0, ca - COLS_OVER), c1: Math.min(cols, cb + COLS_OVER) });
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(measure);
+    };
+    measure();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, [box.w, box.h, rowH, cellW, strikeW, nRows, aboveN, cols]);
+  /** The grid lines of body row `si` (the head takes lines 1–2, the spot rule one line between above and below) */
+  const rowLine = (si: number) => (si < aboveN ? 3 + si : 4 + si);
+  const rowShown = (si: number, strike: number) =>
+    !win || (si >= win.r0 && si < win.r1) || strike === pinned?.strike || strike === keyCell?.strike;
+  const colShown = (k: number, g: Greek, e: number) =>
+    !win ? k < 8 : (k >= win.c0 && k < win.c1) || (pinned?.greek === g && pinned.e === e) || (keyCell?.greek === g && keyCell.e === e);
+
   const heaviestExpiry = useCallback(
     (strike: number, g: Greek) => {
       const s = surface.strikes.indexOf(strike);
@@ -662,9 +716,13 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
   const walkTo = (f: Focus) => {
     setKeyCell(f);
     const c = cellBox(f);
-    c?.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     hoverCell(f, c?.x ?? 0, c?.y ?? 0);
   };
+  /* after the render that mounts it — the key cell is always inside the window (below) */
+  useLayoutEffect(() => {
+    if (keyCell) cellBox(keyCell)?.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyCell]);
   const leaveKeys = () => {
     setKeyCell(null);
     hoverCell(null, 0, 0);
@@ -1091,13 +1149,13 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
               /* THE SPOT RULE RUNS UNDER THE NODES ALONE (Noah, 2026-10-12: "centered in the middle in relation to
                  the amount of nodes not the entire width"): the strike column's cell of this row stays empty, the
                  rule spans the cell columns, so the pill is at the middle of the nodes */
-              si === above.length && <div key="spot-strike" aria-hidden />,
+              si === above.length && <div key="spot-strike" aria-hidden style={{ gridArea: `${3 + aboveN} / 1` }} />,
               si === above.length && (
-                <div key="spot" data-spot-row className="px-1.5 flex items-center" style={{ gridColumn: `span ${cols}` }}>
+                <div key="spot" data-spot-row className="px-1.5 flex items-center" style={{ gridArea: `${3 + aboveN} / 2 / auto / span ${cols}` }}>
                   <RoomSpotRule ticker={surface.ticker} fallback={liveSpot ?? surface.spot} centre live={live} />
                 </div>
               ),
-              <div
+              rowShown(si, strike) && <div
                 key={`s-${strike}`}
                 data-strike={strike}
                 data-pinned-row={isPinnedRow ? '' : undefined}
@@ -1106,7 +1164,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
                 className={`pl-2 pr-1.5 flex items-center justify-end overflow-hidden font-mono text-t11 tnum tabular-nums cursor-pointer whitespace-nowrap ${rowWash} ${
                   isPinnedRow ? `text-silver font-bold ${paper ? '' : 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]'}` : role.ink ? 'font-bold' : 'text-textPrimary'
                 }`}
-                style={!isPinnedRow && role.ink ? { color: role.ink } : undefined}
+                style={{ gridArea: `${rowLine(si)} / 1`, ...(!isPinnedRow && role.ink ? { color: role.ink } : null) }}
                 title={role.words.length ? `${fmtStrike(strike)} · ${role.words.join(' · ')}` : undefined}
                 aria-label={role.words.length ? `${fmtStrike(strike)} · ${role.words.join(' · ')}` : undefined}
                 data-supreme-row={isSupremeRow ? '' : undefined}
@@ -1118,11 +1176,13 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
                   <StrikeNum v={strike} cents={cents} />
                 </span>
               </div>,
-              ...greeks.flatMap(g => {
+              ...(!rowShown(si, strike) ? [] : greeks.flatMap((g, gi) => {
                 const king = kings.get(g)!;
                 const sup = supremes.get(g)!;
                 const maxAbs = q3(paintMax[g]);
                 return shownIdx.map((e, ci) => {
+                  const k = gi * shownIdx.length + ci;
+                  if (!colShown(k, g, e)) return null;
                   const exp = surface.expiries[e];
                   const isKing = king.e === e && king.strike === strike;
                   const isSupremeCell = sup.e === e && sup.strike === strike;
@@ -1161,12 +1221,13 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
                       paper={paper}
                       pinned={isPinned}
                       pendingWord={dead ? 'expired' : undefined}
+                      area={`${rowLine(si)} / ${2 + k}`}
                       onHover={onHoverCell}
                       onPick={onPickCell}
                     />
                   );
                 });
-              }),
+              })),
             ];
           })}
           </div>

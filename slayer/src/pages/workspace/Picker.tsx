@@ -1,30 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE · THE WIDGET PICKER
-  (pages/workspace/Picker.tsx)
-
-  What "Add widget" opens. It was a flat list of
-  twelve names; with twenty-one it is a catalogue:
-
-    A SEARCH       by the widget's name or what it
-                   says — the list narrows as you type
-    THE GROUPS     the rail's own — Market, The book,
-                   Trade, Practice, You — each widget
-                   with its icon and how many of it
-                   are already on this desk
-    THE PICTURE    the widget itself, live, on the
-                   desk's name, drawn at the size it
-                   lands at and scaled into the card —
-                   never a depiction; only the one
-                   under the pointer is mounted
-    WHAT IT IS     one line, the page its door opens,
-                   and its size on the grid
-
-  A click (or Enter) puts it in the first gap from
-  the top that takes it. DRAGGED, it is dropped onto
-  the grid where the reader lets go — the picker
-  steps out of the way for the length of the drag.
-==================================================
+  What Add widget opens: a search and the widgets in their groups, each draggable onto the desk or added with a
+  press to the first gap that fits.
 */
 
 import { useEffect, useMemo, useRef, useState } from 'react';

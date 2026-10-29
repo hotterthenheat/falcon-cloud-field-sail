@@ -1,34 +1,8 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE LANDING'S PICTURE
-  (components/layout/footer/landing.ts)
-
-  EVERY PRODUCT ON ONE SCREEN (2026-10-03 — the owner:
-  "the landing page one you go into more depth in creating
-  something that represetive every product but keep the
-  same artistic language"). One desk, each room leaving
-  its mark where the terminal keeps it:
-
-    the live chart (Pulse) with its key levels broken into
-      dashes, its strike field (Terrain) reaching back
-      from the edge, a bell on a line (the alerts) that
-      sounds when the price crosses it;
-    the book (Pinpoint): the strike ladder, its walls and
-      the supreme named, the flip;
-    the tape (Trace) printing down the right;
-    the setups (Compass), a sparkline each;
-    what a contract returns at every price (the Weigher);
-    a paper position (Practice) between its target and
-      its stop;
-    and behind them all, far back and faint, the world as
-      dots with the stories breaking on it (the Dossier).
-
-  DEPTH, NOT CLUTTER: the front marks (the chart, the
-  book) are the brightest; the panels below are a step
-  back (dim), the world further still — and the pointer's
-  focus brings any of them back sharp, every panel's frame
-  and name with it. The arrow of its own tours them all.
-==================================================
+  The landing footer's picture: every product on one desk. The live chart with broken key levels and Terrain's strike
+  field, a bell on a line (alerts), the Pinpoint ladder with walls and flip, the Trace tape, Compass sparklines, the
+  Weigher's payoff, a paper position, and the Dossier's world faint behind. The front marks are brightest; the
+  pointer's focus brings any panel back sharp, and the self-driven arrow tours them.
 */
 
 import { box, compose, cut, dim, type Box, type Part, type SceneMaker } from './kit';

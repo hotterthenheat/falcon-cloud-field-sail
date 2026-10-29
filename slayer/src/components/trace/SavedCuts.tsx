@@ -1,11 +1,5 @@
-/*
-  SAVED CUTS — Save, and the chips that open a saved cut. Every Trace
-  surface whose cut can be written as a query string wears this same one.
-
-  The control owns the words and the wiring; the page owns only the two
-  things that are actually its own — what its cut says as a query string, and
-  what to do when one is opened.
-*/
+/* Save, and the chips that open a saved cut. The control owns the words and wiring; the page owns its query string
+   and what to do when one opens. */
 
 import { useEffect, useRef, useState } from 'react';
 import { Check, MoreHorizontal, Save, Trash2, X } from 'lucide-react';
@@ -29,8 +23,7 @@ export interface SavedCutsProps {
   onSay: (said: string) => void;
 }
 
-/** The three buttons. They belong on the controls line. `compact` folds them into one "⋯" menu for a line that has
-    no room for three more doors (Intervals at 1440, 2026-10-22: the Columns card wrapped onto a row of its own). */
+/** The three buttons on the controls line; `compact` folds them into one "⋯" menu for a line with no room. */
 export const SavedCutsControl = ({ store, query, noun, testId, onSay, open, onToggleOpen, compact = false }: SavedCutsProps & { open: boolean; onToggleOpen: () => void; compact?: boolean }) => {
   const views = store.useViews();
   const [naming, setNaming] = useState(false);
@@ -61,7 +54,7 @@ export const SavedCutsControl = ({ store, query, noun, testId, onSay, open, onTo
       onSay('That needs a name.');
       return;
     }
-    /* Echo what was SAVED, not what was typed. The store caps a name at forty characters. */
+    /* Echo what was saved, not what was typed. The store caps a name at forty characters. */
     const saved = store.saveView(name.trim(), query);
     onSay(saved ? `Saved as "${saved.name}".` : 'That needs a name.');
     setNaming(false);
@@ -91,8 +84,7 @@ export const SavedCutsControl = ({ store, query, noun, testId, onSay, open, onTo
   }
   return (
     <span className="inline-flex items-center gap-1" data-cut-doors>
-      {/* AN INLINE NAME, NOT THE BROWSER'S PROMPT: Save opens a field in its place — Enter keeps the cut under that
-          name, Esc or the × lets it go */}
+      {/* Save opens an inline name field: Enter keeps the cut, Esc or × lets it go */}
       {naming ? (
         <span className="inline-flex items-center gap-1 h-7 pl-2 pr-1 rounded-md border border-borderMuted bg-ink/[0.03]">
           <input
@@ -164,8 +156,7 @@ export const SavedCutsList = ({ store, onOpen, noun, testId, onSay, open }: Save
           >
             {v.name}
           </button>
-          {/* FORGET AT ONCE, WITH AN UNDO: no "Forget?" second press — the chip goes, and the toast brings it back under
-              its own name */}
+          {/* Forget at once, with an undo toast instead of a second press */}
           <button
             type="button"
             onClick={() => {

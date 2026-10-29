@@ -1,24 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · THE POSITION ON ITS CHART'S FOOT
-  (components/paper/PositionBar.tsx)
-
-  The partner's position bar (Noah liked it: "see your
-  equity in real time"), in the house's floating-card
-  grammar — the replay bar's place at the foot of the
-  price pane (PaneFoot), where a live desk has no clock
-  to show. A line a position of the chart's own name:
-  what it is, where it came in and where it is now, what
-  it is up or down, WHERE IT BREAKS EVEN (fees both ways
-  in), the target and the stop riding it with the reward
-  to the risk — and the two hands a trader reaches for
-  there: Reverse (a future) and Close. Two lines at the
-  most; the rest are in the book.
-
-  The chip on the chart's line (PositionLayer) still says
-  what it is up or down beside the price; this is the
-  whole of it, in one place, without a pointer.
-==================================================
+  The position on its chart's foot: where it came in, where it is, what it is up or down, where it breaks even with
+  fees, the target and stop riding it, and Reverse and Close.
 */
 
 import { useState } from 'react';

@@ -1,32 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · A LADDER OF WAYS OUT
-  (data/review/ladder.ts)
-
-  What both engines share of "multiple targets and
-  stops" (Noah, 2026-09-20: "some people have multiple
-  tps and stop losses in place… how can we incorporate
-  that"). The rules are the two rules pages' ("A
-  ladder of ways out"); this file is the arithmetic
-  they have in common, with nothing of an option or a
-  future in it:
-
-    a rung        a price, and a whole number of
-                  contracts
-    a bracket     what rides an order: up to three
-                  targets and two stops (or the old
-                  single `target` / `stop`), and two
-                  switches — breakeven, trailing
-    a split       contracts shared out between levels,
-                  the NEARER level taking the odd one
-    giving up     when one side fills, the other side
-                  gives up that many contracts, the
-                  FURTHEST rung first
-
-  The engines own everything that needs a price of
-  their own kind: which way is "further", what "would
-  not wait" means, what a fill is.
-==================================================
+  The arithmetic both engines share for several targets and stops: sharing out the contracts, the next rung, and
+  what a ladder may hold.
 */
 
 export interface Rung {

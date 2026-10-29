@@ -1,23 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - DROPDOWN SEARCH
-  (components/ui/DropdownSearch.tsx)
-
-  A DropdownSelect whose list is long enough to
-  need a search (Noah, 2026-09-11, the Compass
-  board's Name card: "should be a searchable thing
-  not a scroll down until you see the stock your
-  looking for"). The trigger wears the same clothes
-  as every card on the line; the card opens with
-  the search box first, then the matches — a logo
-  where the option is a name, the current one in
-  the silver where-you-are ink, the arrow keys and
-  Enter pick.
-
-  Built on Radix Popover, not DropdownMenu: a menu
-  owns the keyboard for its typeahead and would eat
-  the letters typed into the box.
-==================================================
+  A DropdownSelect for lists long enough to need a search: the same trigger, a card opening on the search box and the
+  matches (logos for names, the current one in silver; arrows and Enter pick). Radix Popover, not DropdownMenu, whose
+  typeahead would eat the typed letters.
 */
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
@@ -27,7 +11,7 @@ import CompanyLogo from './CompanyLogo';
 import { CARD } from './DropdownSelect';
 import { askCompanyNames } from '../../data/tickers';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))'; /* the silver token (deep steel on the light theme) */
 
 export interface SearchOption<T extends string> {
   value: T;
@@ -54,15 +38,12 @@ interface DropdownSearchProps<T extends string> {
   ink?: string;
   align?: 'start' | 'end';
   testId?: string;
-  /** Opens on arrival — a card that was just ASKED for (Review's "a second name") goes straight to its search */
+  /** Open on mount: a card that was just asked for goes straight to its search */
   defaultOpen?: boolean;
   /** When set, this decides a hit. The default searches the label, the hint, and the keywords. */
   match?: (option: SearchOption<T>, query: string) => boolean;
-  /**
-   * The value that means "everything". When the chip isn't already on it, an X
-   * beside the chip sets it back, and that option stays pinned above a long list
-   * so it is never buried under the first screen of names.
-   */
+  /** The value meaning "everything": when not selected an X beside the chip resets to it, and it stays pinned above a
+   long list. */
   clearTo?: T;
 }
 

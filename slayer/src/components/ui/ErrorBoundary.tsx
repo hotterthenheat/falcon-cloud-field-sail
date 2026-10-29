@@ -1,13 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - ERROR BOUNDARY
-  A local catch so one bad panel degrades to a line
-  of text instead of taking the page down with it.
-  AppShell's RouteBoundary is the page-level net;
-  this is for surfaces that read live feed data and
-  must fail small — a drilldown, a widget, a chart.
-==================================================
-*/
+/* A local boundary so one failing panel (a drilldown, widget or chart on live data) degrades to a line of text;
+   AppShell's RouteBoundary is the page-level one. */
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 

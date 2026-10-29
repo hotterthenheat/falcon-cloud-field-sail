@@ -1,24 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE READER'S PICTURE (components/ui/Avatar.tsx)
-
-  The picture the reader added on Settings ›
-  Account, or their initials on the holo disc
-  until they do — one mark for the sidebar's foot,
-  the Account page and, later, their posts.
-
-  A PICTURE THAT WILL NOT LOAD FALLS BACK TO THE
-  DISC (Noah, 2026-10-14, an empty ring on the
-  Account page: "what happened to our icon??"): the
-  account's picture can be a URL — Google's, taken
-  from the sign-in (supabase/migrations
-  20261011_avatar_from_provider.sql) — and a URL
-  can die, or be refused. An <img> that fails is a
-  bare ring; the initials are never that. The
-  request carries no referrer: Google's picture
-  host refuses some sites' referrers outright, and
-  the picture is the reader's own either way.
-==================================================
+  The reader's picture, or their initials on the holo disc. A picture URL that fails to load (a provider's) falls back
+  to the initials, never a bare ring; the request sends no referrer, which some picture hosts refuse.
 */
 
 import { useEffect, useState } from 'react';

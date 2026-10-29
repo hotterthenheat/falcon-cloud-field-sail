@@ -1,17 +1,10 @@
-/*
-  Batch 1 — the routes Pinpoint and Dossier did not call.
-  One book per name (or per dossier page). Identical mounts share it.
-  A failed route stays an error row. Nothing here is filled in by hand.
-*/
+/* One shared book per name or page for the extra vendor routes; a failed route stays an error row. */
 
 import { useCallback, useRef, useSyncExternalStore } from 'react';
-import { noteLiveHolidays } from '../core/calendar';
-import { setCarry } from '../core/carry';
 import { nyClock, nyParts } from '../core/nyTime';
 import { houseNameFromSlug } from './liveFiles';
 import { setLiveCatalysts, setLiveFda, setLivePosts, setLiveSchedule, type CalEvent } from './monthCalendar';
 import { setFlexBook } from './oiHeat';
-import { thetaCall } from './theta';
 import { uwCall } from './whales';
 import { nyIsoDaysBack } from './nyDate';
 import { SIM_DESK } from './deskMode';
@@ -41,7 +34,7 @@ interface Job {
   id: string;
   label: string;
   path: string;
-  kind: 'uw' | 'theta';
+  kind: 'uw';
 }
 
 const listeners = new Set<() => void>();
@@ -62,24 +55,6 @@ function num(v: unknown): number | null {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (typeof v === 'string' && v.trim() && Number.isFinite(Number(v))) return Number(v);
   return null;
-}
-
-function nearMoney(data: unknown[]): unknown[] {
-  const scored = data.map((row, i) => {
-    if (!row || typeof row !== 'object') return { row, dist: Infinity, i };
-    const o = row as Record<string, unknown>;
-    const c = o.contract && typeof o.contract === 'object' ? (o.contract as Record<string, unknown>) : o;
-    const ticks = Array.isArray(o.data) ? o.data : [];
-    const tick = ticks[0] && typeof ticks[0] === 'object' ? (ticks[0] as Record<string, unknown>) : {};
-    const strike = num(c.strike);
-    const spot = num(tick.underlying_price);
-    const dist = strike != null && spot != null && spot > 0 ? Math.abs(strike - spot) / spot : Infinity;
-    return { row, dist, i };
-  });
-  const near = scored.filter(s => s.dist <= 0.08);
-  const keep = near.length >= 8 ? near : scored.filter(s => s.dist < Infinity).sort((a, b) => a.dist - b.dist).slice(0, 40);
-  if (!keep.length) return data.slice(0, 40);
-  return keep.sort((a, b) => a.i - b.i).map(s => s.row);
 }
 
 /** A row's date or time, from the first field that carries one — to tell which end of a list is newest */
@@ -105,11 +80,8 @@ function keepNewest<T>(rows: T[], cap: number): T[] {
   return a != null && b != null && a > b ? rows.slice(0, cap) : rows.slice(rows.length - cap);
 }
 
-function clip(data: unknown, kind: Job['kind']): unknown {
-  if (kind === 'theta' && Array.isArray(data) && data.some(r => !!r && typeof r === 'object' && 'contract' in (r as object))) {
-    return nearMoney(data);
-  }
-  const cap = kind === 'theta' ? 400 : 600;
+function clip(data: unknown): unknown {
+  const cap = 600;
   if (Array.isArray(data)) return keepNewest(data, cap);
   if (data && typeof data === 'object') {
     const next: Record<string, unknown> = {};
@@ -159,7 +131,7 @@ function faultOf(error: string, status: number): 'down' | 'failed' {
 const FAULT_WORDS = { down: 'Quote desk is down', failed: 'This read did not land' } as const;
 
 async function runJob(key: string, job: Job): Promise<unknown> {
-  const res = job.kind === 'theta' ? await thetaCall(job.path) : await uwCall(job.path);
+  const res = await uwCall(job.path);
   if (res.error) {
     const fault = faultOf(res.error, res.status);
     const prior = books.get(key)?.rows.find(r => r.id === job.id);
@@ -180,7 +152,7 @@ async function runJob(key: string, job: Job): Promise<unknown> {
     state: view.empty ? 'empty' : 'live',
     brief: view.brief,
     n: view.n,
-    data: clip(res.data, job.kind),
+    data: clip(res.data),
     path: job.path,
     label: job.label,
     okAt: Date.now(),
@@ -249,42 +221,6 @@ function flexTransfers(data: unknown): Map<number, number> {
     by.set(strike, (by.get(strike) ?? 0) + (oi - prev));
   }
   return by;
-}
-
-function applyRate(data: unknown): string | null {
-  let rate: number | null = null;
-  let when = '';
-  for (const r of asRows(data)) {
-    if (!r || typeof r !== 'object') continue;
-    const o = r as Record<string, unknown>;
-    const n = num(o.rate);
-    if (n == null) continue;
-    rate = n;
-    when = String(o.created ?? o.date ?? '');
-  }
-  if (rate == null) return null;
-  let r = rate;
-  if (r > 1 && r < 25) r = r / 100;
-  const ok = setCarry({ r }, `theta treasury_m3 ${(r * 100).toFixed(2)}%${when ? ` · ${when}` : ''}`);
-  return ok ? null : `carry rejected ${rate} — previous rate left standing`;
-}
-
-function applyHolidays(data: unknown) {
-  const dates: string[] = [];
-  for (const r of asRows(data)) {
-    if (!r || typeof r !== 'object') continue;
-    const o = r as Record<string, unknown>;
-    const type = String(o.type ?? o.status ?? '').toLowerCase();
-    if (type.includes('early')) continue;
-    const raw = String(o.date ?? o.holiday ?? o.day ?? '');
-    const iso = raw.match(/(\d{4})-(\d{2})-(\d{2})/);
-    const compact = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
-    const day = iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : compact ? `${compact[1]}-${compact[2]}-${compact[3]}` : '';
-    if (!day) continue;
-    if (type && !type.includes('close') && !type.includes('holiday') && !type.includes('full')) continue;
-    dates.push(day);
-  }
-  if (dates.length) noteLiveHolidays(dates, `theta year holidays · ${dates.length}`);
 }
 
 function dayFrom(raw: unknown): Date | null {
@@ -398,8 +334,7 @@ function applyCatalysts(data: unknown) {
     if (o.type === 'earnings') {
       const ticker = String(o.ticker ?? '').toUpperCase();
       if (!ticker) continue;
-      /* THE CATALYST'S OWN TIME, OR NONE (audit round 10: "unknown" read as after the close, every row "confirmed") —
-         the row carries no source, so it never claims the company confirmed the date */
+      /* the catalyst's own time, or none; the row carries no source, so it never claims the date is confirmed */
       const when = `${String(meta.report_time ?? '')} ${String(o.subtitle ?? '')}`.toLowerCase();
       const pre = /pre|before/.test(when);
       const post = /post|after/.test(when);
@@ -461,8 +396,7 @@ function seed(key: string, jobs: Job[]) {
 
 function pinJobs(t: string): Job[] {
   const e = enc(t);
-  /* Unusual Whales only (the owner's call, 2026-10-22): the Theta terminal's greeks, rate and calendar rows are gone —
-     the carry rate and the holidays fall back to core/carry and core/calendar */
+  /* Unusual Whales only: the carry rate and the holidays fall back to core/carry and core/calendar */
   return [
     { id: 'gex-levels', label: 'GEX levels', path: `/stock/${e}/gex-levels`, kind: 'uw' },
     { id: 'gex-minute', label: 'GEX each minute', path: `/stock/${e}/spot-exposures`, kind: 'uw' },
@@ -648,11 +582,6 @@ async function after(key: string, ticker: string, pathname: string, got: Map<str
   if (got.has('potus-s')) applySchedule(got.get('potus-s'));
   if (got.has('potus-p')) applyPosts(got.get('potus-p'));
   if (got.has('daily')) applyCatalysts(got.get('daily'));
-  if (got.has('th-rate')) {
-    const rejected = applyRate(got.get('th-rate'));
-    if (rejected) paint(key, 'th-rate', { state: 'error', brief: rejected });
-  }
-  if (got.has('th-year')) applyHolidays(got.get('th-year'));
   if (books.get(key)?.rows.some(r => r.id === 'flex-list')) setFlexBook(flexTransfers(got.get('flex-list')));
 
   if (books.get(key)?.rows.some(r => r.id === 'sector-names')) {

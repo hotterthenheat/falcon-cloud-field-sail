@@ -1,36 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · THE TICKET'S LADDER
-  (components/review/LadderFields.tsx)
-
-  The part of a ticket that says how a position will
-  be LEFT (Noah, 2026-09-20: "some people have multiple
-  tps and stop losses in place"): one, two or three
-  targets and one or two stops — the contracts shared
-  out between them, the nearer level taking the odd
-  one — and the two switches a stop can wear:
-
-    breakeven   when the first target fills, the stop
-                moves to what was paid
-    trailing    the stop keeps a distance from the best
-                price since — typed, or the distance it
-                is set at
-
-  THE COUNT AT EACH LEVEL CAN BE TYPED (Noah,
-  2026-09-21: "build the three you havent built yet").
-  The even share is what the fields start with, and
-  what an emptied field means; a typed count stands.
-  One target for two of four contracts, the rest left
-  to run, is a trade — the block says, before the
-  press, how many contracts are left with no stop.
-  With one contract there is nothing to split.
-
-  Both tickets use it (an option's and a future's); the
-  words that differ — what a price is a price OF — are
-  the ticket's. A level left empty is simply not
-  placed. The rules are the two rules pages'; the
-  engine refuses, in words, what the fields cannot.
-==================================================
+  How a position will be left: one to three targets and one or two stops with the contracts shared between them,
+  breakeven after the first target, and a trailing stop. The count at each level can be typed.
 */
 
 import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';

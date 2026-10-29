@@ -1,10 +1,5 @@
-/*
-  THE DOSSIER'S TABLES ON A PHONE (the fourth audit's retail test, 2026-10-23). Under 640px a grid showed its first two
-  or three columns — Insiders cut "Who" to "MARAGA…" with Trade, Value and "Chose to?" off-screen; Congress showed only
-  Filed and Member; Stocks only Name, Sector and Last. As Trace does, a phone gets a stacked card per row instead: the
-  row's own deciding fields (who, what, value, side) on two or three lines, the whole card the row's door. The list
-  pages itself, fifty cards a page, so a long book never makes a page tens of thousands of pixels tall.
-*/
+/* The Dossier's tables on a phone: under 640px each row is a stacked card of its deciding fields, the card its door,
+   fifty a page. */
 import { useEffect, useState, type ReactNode } from 'react';
 import { PageBar } from '../ui/PageBar';
 import { useMediaQuery } from '../ui/useMediaQuery';

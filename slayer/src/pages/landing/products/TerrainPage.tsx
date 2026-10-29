@@ -1,21 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - TERRAIN, ON ITS OWN PAGE
-  (pages/landing/products/TerrainPage.tsx)
-
-  The product page for Terrain (Noah, 2026-10-03:
-  "make the one for terrain" — Alerts gets none,
-  at his word the same day). One desk in the
-  terminal, read top to bottom: the desk whole;
-  one set of controls (a pane's strip, the desk
-  bar); the ONE recording (the tour's own film:
-  the crosshair down a chart, the strike rail
-  read, turned to its net and back, the desk to
-  one chart and back to two); the strike rail;
-  the drawing tools; your own scripts; replay.
-  Every picture is the real page (scripts/
-  make-product-shots.mjs, `terrain`).
-==================================================
+  Terrain's product page: the desk whole, its controls, one recording, and the panes.
 */
 
 import { useGround } from '../ground';

@@ -782,6 +782,24 @@ const Compare = () => {
   const columns = phone ? 'minmax(0,1fr) 2px minmax(0,1fr)' : narrow ? 'minmax(0,1fr) 112px minmax(0,1fr)' : CMP_COLUMNS;
   const gutter = phone ? 'mx-3' : 'mx-5';
   const listed = useMemo(() => [...listOf(a.rows), ...listOf(b.rows)], [a.rows, b.rows]);
+  const panes = (
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 border-t border-borderSubtle p-2" data-compare-panes>
+      {[a, b].map((s, i) => (
+        <div key={`${i}-${s.ticker}`} style={{ height: CMP_PANE_H }} className="min-w-0" data-compare-pane={i === 0 ? 'a' : 'b'}>
+          <NetFlowPane
+            seg="all"
+            mny={mny}
+            onSeg={() => {}}
+            onMny={setMny}
+            ticker={s.ticker}
+            dteMax={Infinity}
+            cutCards={false}
+            uncutNote={tenor !== 'all' || mny !== 'all' ? `every expiry and strike: the ${[tenor !== 'all' ? 'clock' : '', mny !== 'all' ? 'money' : ''].filter(Boolean).join(' and ')} cut does not reach the minute ticks` : undefined}
+          />
+        </div>
+      ))}
+    </div>
+  );
   const netTitle = `Net by expiry on ${clockWords}, ${dayWords}. Spread legs and floor packages are in it`;
 
   return (
@@ -912,22 +930,7 @@ const Compare = () => {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 border-t border-borderSubtle p-2" data-compare-panes>
-            {[a, b].map((s, i) => (
-              <div key={`${i}-${s.ticker}`} style={{ height: CMP_PANE_H }} className="min-w-0" data-compare-pane={i === 0 ? 'a' : 'b'}>
-                <NetFlowPane
-                  seg="all"
-                  mny={mny}
-                  onSeg={() => {}}
-                  onMny={setMny}
-                  ticker={s.ticker}
-                  dteMax={Infinity}
-                  cutCards={false}
-                  uncutNote={tenor !== 'all' || mny !== 'all' ? `every expiry and strike: the ${[tenor !== 'all' ? 'clock' : '', mny !== 'all' ? 'money' : ''].filter(Boolean).join(' and ')} cut does not reach the minute ticks` : undefined}
-                />
-              </div>
-            ))}
-          </div>
+          {!phone && panes}
 
           <div ref={cardRef} className="border-t border-borderSubtle pt-1 pb-2 paper-inset" data-compare-card data-compare-focus={pinned ? '' : undefined} data-compare-wing={wingW}>
             <div className={`${gutter} grid items-center ${phone ? 'gap-x-2' : 'gap-x-4'}`} style={{ gridTemplateColumns: columns, height: CMP_SECTION_H }}>
@@ -1006,6 +1009,8 @@ const Compare = () => {
             </div>
           </div>
 
+          {/* on a phone the card comes first, so a row stands above the fold; the panes follow it */}
+          {phone && panes}
           <div className="grid grid-cols-1 xl:grid-cols-2 border-t border-borderSubtle xl:divide-x divide-borderSubtle paper-inset" data-compare-lists-box>
             <NameLists s={a} side="a" openKey={openKey} onOpen={setOpenKey} mny={mny} todayIso={todayIso} />
             <NameLists s={b} side="b" openKey={openKey} onOpen={setOpenKey} mny={mny} todayIso={todayIso} />

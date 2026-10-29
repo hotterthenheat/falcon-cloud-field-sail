@@ -1,13 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - SETUP SCAN CARD (SetupScanCard.tsx)
-  One ranked contract on the two-axis board. Partner's
-  information architecture (docs/compass-redesign-port.md),
-  OUR ink: his cards render every datum in neutral gray —
-  structure without direction. Here the contract pill and
-  score lean with the market, achievement wears bull, and
-  process states stay chrome. Labels whisper, numbers never.
-==================================================
+  One Compass call as a card: the contract, its book, the live bid against the fill, the stop, and when it was
+  quoted and called. Labels stay quiet; numbers carry the direction's ink.
 */
 
 import { ArrowUpRight, TriangleAlert } from 'lucide-react';

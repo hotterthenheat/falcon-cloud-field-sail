@@ -24,8 +24,10 @@ import { nyTodayIso } from '../../data/nyDate';
 import { nyMinutes } from '../../core/nyTime';
 import { macroWindow, type MacroDate } from '../../data/events';
 import { useBoardNames } from '../../data/boardNames';
-import { statHelp } from '../../components/record/statHelp';
 import { phonePin, usePagedGrid } from '../../components/record/pagedGrid';
+import { Fact as RecordFact } from '../../components/record/ui';
+
+const Fact = (p: Omit<Parameters<typeof RecordFact>[0], 'scope'>) => <RecordFact scope="earnings" {...p} />;
 
 type WeekPick = '-1' | '0' | '1' | 'both';
 type ShowPick = 'all' | VolState;
@@ -73,7 +75,7 @@ export const PRICED_WORD: Record<VolState, string> = { RICH: 'rich', INLINE: 'fa
 export const PRICED_INK: Record<VolState, string> = { RICH: 'text-warn', INLINE: 'text-textPrimary', CHEAP: 'text-bull' };
 /* a report whose time the feed does not have is not "after the close" */
 export const slotWord = (e: { slot: EarningsEvent['slot']; timeKnown?: boolean }) => (e.timeKnown === false ? 'time not set' : e.slot === 'BMO' ? 'before the open' : 'after the close');
-/** How many past moves the usual move averages — the live feed says; the sample has eight */
+/** How many past moves the usual move averages */
 const histN = (e: EarningsEvent) => (e.history === false ? 0 : e.histCount ?? e.pastMoves.length);
 /** A usual move exists: at least one past move on file */
 const usualKnown = (e: EarningsEvent) => histN(e) > 0 && e.histAvgMovePct > 0;
@@ -88,15 +90,6 @@ export const SlotMark = ({ slot, className = 'w-3 h-3', timeKnown }: { slot: Ear
 /** Set by the company, or still an analyst's estimate — the same two words everywhere on the page */
 const SetTag = ({ confirmed }: { confirmed: boolean }) => <span className={`font-mono text-t8 uppercase tracking-widest ${confirmed ? 'text-textMuted' : 'text-warn'}`} title={confirmed ? 'The company has set the date' : "The date is Unusual Whales' estimate — the company has not set it"}>{confirmed ? 'confirmed' : 'date estimated'}</span>;
 
-const Fact = ({ label, children, testId }: { label: string; children: React.ReactNode; testId?: string; clip?: boolean }) => (
-  <div className="min-w-0 max-w-full">
-    <dt className="text-t10 text-textMuted whitespace-nowrap cursor-help" title={statHelp(label)}>{label}</dt>
-    {/* The whole line, wrapping. A clipped today line was hiding names. */}
-    <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-normal break-words" data-earnings-fact={testId}>
-      {children}
-    </dd>
-  </div>
-);
 
 /* ---- the list's doors and chips ---------------------------------------------------- */
 
@@ -536,7 +529,7 @@ const Earnings = () => {
       { headerName: 'Priced · or moved', colId: 'impliedMovePct', width: 140, cellRenderer: MoveCell,
         /* the cell's own text is its value, so it re-renders when the live reaction lands; it sorts on the implied move */
         valueGetter: p => (p.data ? `${moveCellText(p.data)}|${p.data.impliedMovePct}` : ''),
-        comparator: (_a, _b, na, nb) => (na.data?.impliedMovePct ?? 0) - (nb.data?.impliedMovePct ?? 0), type: 'rightAligned', headerTooltip: 'Before the print: the move the options charge — the at-the-money straddle as a percent of the stock ("priced"). Once the report is out: the move the stock made the session after ("moved"), or is making while that session trades ("so far"), with the price it had beside it' },
+        comparator: (_a, _b, na, nb) => (na.data?.impliedMovePct ?? 0) - (nb.data?.impliedMovePct ?? 0), type: 'rightAligned', headerTooltip: 'Before the print, the move the options charge; after it, the move the stock made (or is making, "so far")' },
       { headerName: 'Usually moves', field: 'histAvgMovePct', width: 136, cellRenderer: UsualCell, type: 'rightAligned', headerTooltip: 'The average move the session after its last eight reports — or fewer, said beside it, when fewer are on file' },
       { headerName: 'Priced', field: 'richness', width: 124, cellRenderer: PricedCell, type: 'rightAligned', headerTooltip: 'The options price over the usual move — rich above 1.3×, cheap below 0.85×, fair between' },
       { headerName: 'Beat · in line · miss', field: 'beatRate8q', width: 130, cellRenderer: BeatCell, type: 'rightAligned', headerTooltip: 'Of the last eight reports that carry both an actual and an estimate: how many beat, came in line (equal to the cent) and missed' },
@@ -563,7 +556,7 @@ const Earnings = () => {
               <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">Who reports</h3>
               <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the doors, the price and the words mean" testId="earnings-guide" />
             </div>
-            <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">The fortnight's reports · the board holds the day's reports · the figure on a priced name is the move its options charge · click a name for its page</p>
+            <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">The fortnight's reports · a priced name shows the move its options charge</p>
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <Fact label="Reports" testId="reports">
@@ -582,7 +575,7 @@ const Earnings = () => {
               ) : (
                 <span title={`${sampled ? `The ${sample.length} largest of the ${ahead.length} known names` : 'Known names'} still to report ${weekWords}, with at least ${MIN_PRICED_PRINTS} past moves on file: ${scored.length} of ${sample.length}. A name with fewer, or none, is not called rich or cheap. Rich: the options charge more than 1.3× the usual move; cheap: under 0.85×; fair between`}>
                   {/* the count says it is still counting */}
-                  {weekHistOut > 0 && <span className="text-warn" title="The known names' past reports are read one by one (the feed allows three at a time); the counts grow as they land, and stop when every one is in" data-earnings-priced-reading>reading {sample.length - weekHistOut} of {sample.length} · so far </span>}
+                  {weekHistOut > 0 && <span className="text-warn" title="The known names' past reports are read a few at a time; the counts grow until every one is in" data-earnings-priced-reading>reading {sample.length - weekHistOut} of {sample.length} · so far </span>}
                   <span className={weekHistOut > 0 ? 'opacity-60' : ''}>
                     <span className="text-warn">{rich} rich</span> <span className="text-textMuted">·</span> {fair} fair <span className="text-textMuted">·</span> <span className="text-bull">{cheap} cheap</span>
                     <span className="text-textMuted"> · of {scored.length}{sampled ? ` · the ${sample.length} largest of ${ahead.length}` : ''}</span>
@@ -642,7 +635,7 @@ const Earnings = () => {
         {failed ? (
           <FeedFallback />
         ) : (
-          <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-earnings-sentence>
+          <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden" data-earnings-sentence>
             {pending ? 'Reading the fortnight.' : weekPending ? "Reading last week's lists." : sentence}
           </p>
         )}

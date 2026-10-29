@@ -3,13 +3,10 @@
   scoring stays shut until those files hash to the values below.
 */
 
-export const UNIVERSE_FILE = 'config/universe_458.json';
 export const UNIVERSE_SHA = 'eb0ed706ae8dd5d5442a99d012db5077e6f9ba1ad0ef10a551af36b87840ef7e';
 export const UNIVERSE_N = 458;
 
-export const ENTRY_FILE = 'models/model_entry_all6months.txt';
 export const ENTRY_SHA = '94592d667860d271e85e24dc9f8e82252b71d393c97cb019af871bd3782bdb8d';
-export const RUNNER_FILE = 'models/model_runner_all6months.txt';
 export const RUNNER_SHA = '8a41876361259eec2c525b1977f703ddb0944bd2c39784fe3484959b1037302c';
 export const TREE_N = 300;
 
@@ -32,12 +29,7 @@ export const SPREAD_EPS = 1e-9;
 export const P1_MIN = 0.7067;
 export const PRUN_MIN = 0.5;
 
-/** First published training minute was t = 15. The live scan is not that window. */
-export const BOOK_A_T0 = 15;
-export const BOOK_A_T1 = 55;
 export const BOOK_A_STEP = 5;
-export const BOOK_A_STRIKES = 4;
-export const BOOK_A_CAP = 5;
 /** Book A and Book B. Weekdays from the session date, 0 through 7. Book C is same-day only. */
 export const DTE_MIN = 0;
 export const DTE_MAX = 7;
@@ -51,7 +43,6 @@ export const SEAT_CAP = 5;
 export const BOOK_B_ASK = 1;
 export const BOOK_B_HALVE = 0.5;
 export const BOOK_B_LOOKBACK = 30;
-export const BOOK_B_CAP = 5;
 
 export const STOP_HAIRCUT = 0.5322;
 export const STOP_KEEP = 1 - STOP_HAIRCUT;
@@ -94,17 +85,6 @@ export const MODELS_VALIDATED = false;
 export const UNVALIDATED_WORD = 'Unvalidated';
 export const UNVALIDATED_LINE = 'Unvalidated model: the live inputs have not yet been re-checked against the training data.';
 export const MODEL_2_NAME = 'Model 2';
-export const PUBLISHED_BOOSTERS = 2;
-
-export const FEATURES = [
-  't', 'ret_open', 'ret_5', 'ret_15', 'ret_60', 'pos_range', 'range_open', 'rv30', 'rv_ratio', 'compress',
-  'or_state', 'or_dist', 'pdh_dist', 'pdl_dist', 'gap', 'minutes_left', 'vwap_z', 'rvol', 'rvol5',
-  'spy_ret_5', 'spy_ret_15', 'spy_ret_open', 'sec_ret_15', 'sec_ret_open', 'atm_iv', 'iv_skew', 'iv_rv',
-  'net_gex_bn', 'call_wall_dist', 'put_wall_dist', 'otm_pct', 'dir', 'mid', 'spread_pct', 'opt_ret_5',
-  'opt_ret_15', 'iv', 'delta', 'gamma', 'theta', 'vega', 'gamma_theta', 'theta_pct', 'oi', 'cls_index',
-  'cls_highbeta', 'a_ret_open', 'a_ret_5', 'a_ret_15', 'a_ret_60', 'a_vwap_z', 'a_or_dist', 'a_spy_ret_15',
-  'a_sec_ret_15', 'a_pdh_dist', 'a_pdl_dist',
-] as const;
 
 export function lockReason(): string {
   return 'Model 1 and Model 2 are not loaded. Scoring is closed until the files match their hashes.';
@@ -347,19 +327,4 @@ export function thetaBurns(thetaPerDay: number, gamma: number, ask: number, dtYe
   if (!(ask > 0) || !(dtYears > 0) || !(gamma > 0) || !Number.isFinite(thetaPerDay)) return false;
   const thetaYear = thetaPerDay * 365;
   return Math.abs(thetaYear) * dtYears >= STOP_HAIRCUT * ask;
-}
-
-/** Column 27 is the model sign. House is the opposite. Customer-signed is column 27. Negative passes the live test. */
-export function customerGammaNegative(netGexBn: number): boolean {
-  return Number.isFinite(netGexBn) && netGexBn < 0;
-}
-
-/** Call-ask plus put-ask dollars, and the ask-side lean. +1 call, −1 put, 0 not confident. */
-export function flowSign(callAskUsd: number, putAskUsd: number): number {
-  if (!(callAskUsd >= 0) || !(putAskUsd >= 0)) return 0;
-  const sum = callAskUsd + putAskUsd;
-  if (sum < 250_000) return 0;
-  const lean = Math.abs(callAskUsd - putAskUsd) / sum;
-  if (lean < 0.2) return 0;
-  return callAskUsd > putAskUsd ? 1 : -1;
 }

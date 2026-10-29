@@ -1,45 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · A CLOSED TRADE ON ITS TAPE
-  (components/review/TradeTape.tsx)
-
-  The journal's picture of a trade: THE HOUSE CHART
-  (StrikeChart, fed the replayed tape — the same chart
-  the desk trades on, in the reader's candle theme)
-  over the days the trade was on, with the day before
-  it for context and THE REST OF THE LAST DAY after it
-  — what the name did once you were out is half of
-  what a journal is for. On it:
-
-    an arrow in, an arrow out   at the minute of each,
-                                with the price paid
-                                and the price taken
-    lines                       a future's entry, its
-                                target and its stop;
-                                an option's way out
-                                only when it was
-                                PINNED TO THE NAME — a
-                                way out priced on the
-                                contract has no fixed
-                                place on the name's
-                                chart (decay moves it),
-                                so it is drawn on the
-                                figure under this one,
-                                in dollars
-
-  The chart opens on the trade (its window, with room
-  either side), can be scrolled and zoomed like any
-  tape, and can be DRAWN ON — a mark-up is kept with
-  the trade (`journal:<trade>` is the drawings' key).
-
-  A PAPER TRADE (2026-09-22) is drawn off the candles its
-  account WROTE DOWN when it closed (data/paper/engine.ts
-  `paths`: an hour before the way in, to the way out) —
-  its simulated market is gone. They are on the chart's
-  own clock, the one the desk drew them on, and so are its
-  arrows. A trade older than the journal keeps drawings
-  for says so in place of a chart.
-==================================================
+  A closed trade on its chart: the days it was on, the day before and the rest of the last day, with arrows in
+  and out and the price lines that applied.
 */
 
 import { useEffect, useMemo, useRef, useState } from 'react';

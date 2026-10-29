@@ -1,6 +1,5 @@
-/* Insider filings: what the people who run a company did with their own shares, and whether they chose to. Most
-   selling is on a 10b5-1 plan and carries no view; a purchase someone chose is the row with one obvious motive. Most
-   Form 4 rows are compensation (grants, conversions, withholdings), kept one toggle away from the trades. */
+/* Insider filings: most selling is on a 10b5-1 plan and carries no view; a purchase someone chose has one obvious
+   motive. Grants, conversions and withholdings are kept one toggle away from the trades. */
 
 import { dollars3 } from '../pages/record/money';
 import type { InsiderFlow, InsiderSignal, InsiderTrade, PlanState, TxCode, TxCodeMeta } from '../types/record';
@@ -17,20 +16,16 @@ export const TX_CODES: Record<TxCode, TxCodeMeta> = {
 export const OPEN_MARKET_CODES: TxCode[] = ['P', 'S'];
 export const ALL_CODES: TxCode[] = ['P', 'S', 'A', 'M', 'F', 'G', 'D'];
 
-/** An OPEN-MARKET buy someone chose: the filing ticked "not a 10b5-1 plan". A buy on a plan is not one, and neither is a
-    buy whose filing left the box blank — the row reads UNSTATED, so the sums do not count it as chosen either (the data
-    audit, 2026-10-22: unstated buys were summed as chosen while their rows said "unstated"). */
+/** An open-market buy someone chose: the filing ticked "not a 10b5-1 plan". A planned or unstated buy is not counted. */
 export const isChosenBuy = (t: { code: TxCode; plan: PlanState; entity?: boolean }): boolean => {
   const m = TX_CODES[t.code];
-  /* a company or fund buying (a private placement, a strategic stake — Volkswagen's RIVN, SMFG's JEF) is not an
-     insider choosing to buy; it is counted apart as a corporate purchase (the re-audit, 2026-10-22) */
+  /* a company or fund buying (a strategic stake, a private placement) is counted apart as a corporate purchase */
   return m.openMarket && m.acquires && m.discretionary && t.plan === 'discretionary' && !t.entity;
 };
 
 /** A code-P purchase by a company or a fund: a strategic stake or a private placement, not a person's chosen buy */
 export const isCorporateBuy = (t: { code: TxCode; entity?: boolean }): boolean => t.code === 'P' && !!t.entity;
-/** An open-market trade either way by a company or a fund (round 9: Saba Capital's buys read CORPORATE while its PDX sale
-    read CHOSEN and counted in "sold by choice") — the filer is classed the same way for its sales */
+/** An open-market trade either way by a company or fund; its sales are classed the same way as its buys */
 export const isCorporateTrade = (t: { code: TxCode; entity?: boolean }): boolean => !!t.entity && !!TX_CODES[t.code]?.openMarket;
 
 /** Roll a set of filings into the window's totals and its signal */
@@ -56,12 +51,10 @@ export function summariseFlow(ticker: string, trades: InsiderTrade[], windowDays
     } else compValue += t.value;
   }
   const net = bought - sold;
-  /* CHOSEN ON ONE RULE BOTH WAYS (the fourth audit, 2026-10-23): "sold by choice" was sold − planned, so it took in the
-     unstated sales while chosen buying leaves unstated buys out; both sides now count only what the filing marks chosen */
+  /* chosen on one rule both ways: only what the filing marks chosen counts, buys and sales alike */
   const discretionarySold = chosenSold;
   let signal: InsiderSignal = 'quiet';
-  /* FLAT READS FLAT (the retail test, round 6: FOX "ACCUMULATING · against $10.3M sold by choice" on $10.3M bought and
-     $10.3M sold): chosen buying and chosen selling within a tenth of each other is neither side */
+  /* chosen buying and chosen selling within a tenth of each other is flat */
   const evenly = openMarketBuys > 0 && discretionarySold > 0 && Math.abs(openMarketBuys - discretionarySold) <= 0.1 * Math.max(openMarketBuys, discretionarySold);
   if (trades.length === 0) signal = 'quiet';
   else if (evenly) signal = 'flat';
@@ -76,7 +69,6 @@ export function summariseFlow(ticker: string, trades: InsiderTrade[], windowDays
 export const personSlug = (name: string) =>
   name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-/* ONE FORMATTER WITH THE PAGE'S CARDS (the fourth audit, 2026-10-23: the sentence read $1.4B beside a card's $1.35B) */
 const fmtM = dollars3;
 
 /** When the smaller sales cover less of the window than the large ones: the cut and the days the smaller ones cover */
@@ -108,9 +100,7 @@ export function insidersSentence(rows: InsiderTrade[], windowDays: number, split
   const market = rows.filter(t => TX_CODES[t.code].openMarket);
   const chosenBuys = market.filter(t => isChosenBuy(t));
   const allSales = market.filter(t => t.kind === 'SELL');
-  /* ONE COVERAGE PER FIGURE (the fourth audit, 2026-10-23): "$28.0B · 2,833 sales · 59% on a plan" mixed the $1M+ sales
-     of 90 days with the smaller sales of the last two days. When the two cover different spans the figure is the large
-     sales' alone, and the smaller ones are said apart with their own days. */
+  /* When the large and small sales cover different spans, the figure is the large sales' and the smaller are said apart. */
   const sales = split ? allSales.filter(t => t.value >= split.big) : allSales;
   const small = split ? allSales.filter(t => t.value < split.big) : [];
   const planned = sales.filter(t => t.plan === 'plan');

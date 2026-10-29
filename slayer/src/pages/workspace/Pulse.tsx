@@ -1,41 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE (pages/workspace/Pulse.tsx)
-
-  The desk you land on: tiles on a grid that the
-  reader arranges, on named desks that save as they
-  go.
-
-  REBUILT 2026-09-30 (Noah: "practically delete every
-  card, preset and widget. keep the ability on how
-  the cards move around. we need proper presets,
-  proper widget displays, proper headers for specific
-  widgets, full screen … bringing you to the page
-  with the back to pulse button"):
-
-    KEPT      how the cards move — the grid (drag by
-              the head, resize from every corner, the
-              rows close up under a tile taken away),
-              the desk's ride on the sidebar's glide,
-              first-fit for a new tile, desks that
-              save as you go, a tile linked to the
-              terminal's name or holding its own, one
-              tile mounting a frame, the phone's one
-              chart
-    NEW       what a tile is (tile.ts), the one head
-              every tile wears (TileFrame.tsx), twenty-one
-              widgets in the rail's groups
-              (registry.tsx), five desks named for
-              the moment they serve (desks.ts), the
-              picker (Picker.tsx), ONE bar where there
-              were three rows, a lock
-    GONE      a tile's fullscreen of its own. EVERY
-              door is a page: the tile's real page,
-              on the tile's name, carrying what the
-              tile showed, with "Back to Pulse" on it
-              (components/layout/WayBack). The chart's
-              is Terrain.
-==================================================
+  Pulse, the desk you land on: tiles on a grid the reader arranges, on named desks that save as they go, each
+  tile built from the live vendor book of its name.
 */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

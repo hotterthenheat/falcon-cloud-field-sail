@@ -1,81 +1,11 @@
 /*
-==================================================
-  SLAYER TERMINAL - LANDING (/) · v3
-
-  Rebuilt 2026-09-19 after Noah turned the first
-  rebuild down ("the tools we have arent even
-  showcased… i meant more like a smooth transition…")
-  and sent the sites that stand out to him, then: "i
-  dont want randomly generated renders, i want the
-  REAL thing from our website so it doesnt scream
-  fake". What the very first page was is in
-  docs/landing-page-reference.md.
-
-  THE IDEA. There is ONE picture on this page and it
-  is the terminal itself, in a window (TerminalWindow),
-  wide under the headline, then docked beside the
-  words while the page walks it through every tool
-  (Tour). Nothing on the page is drawn to look like
-  the product. It RAN in the window until the same
-  evening; Noah then made it STILLS ("keep our
-  interactive visuals but then make them static. i
-  dont like the idea of people flickering through the
-  website without any purchases. a static image breeds
-  mystery and desire") — photographs of the real
-  pages.
-
-  IT MOVES AGAIN, SINCE 2026-10-01 — as FILMS. Noah,
-  of his partner's landing: "he has actual recordings
-  of the page working which is exactly what we were
-  missing … i like the first section of the page
-  showcasing all the tools instead of big words". And
-  then: "replace the big window with the wall,
-  recordings in the tour too, and remove the 4 small
-  windows". So the first screen is THE WALL (Wall.tsx):
-  all eight tools, each playing a film of itself in
-  use; the tour's window plays the film of every page
-  it names; and "In every room" with its four small
-  windows is gone. The films are OURS, made from this
-  terminal by scripts/make-landing-clips.mjs — never
-  his: "we have smoother animations when switching
-  pages". His type sizes, logo and palette are not
-  taken ("we will keep that from ours").
-
-  THE LOOK, from his references: very large light
-  type with one marked word; every head in two tones;
-  a small word over a short rule above it; features
-  as rows on hairlines, not boxes; pill buttons; a
-  bar that lifts into a floating pill; a lot of air.
-
-  THE GROUND (ground.tsx) opens on the visitor's own
-  theme, turns slowly into the other half way down
-  the tour — the terminal in the window turns with
-  it — and turns home again after the last tool. The
-  page ENDS ON THE THEME IT BEGAN ON: the prices, the
-  questions and the footer stand on the visitor's
-  own ground.
-
-  THE RULES IT KEEPS (memory: no-public-grades,
-  plain-english-rule, landing-page-v2):
-  · NO grade, score or performance claim of ours.
-  · Plain English. Not a single buzzword.
-  · NO REFUNDS is said KINDLY, IN THE QUESTIONS — not
-    as a headline over the prices (Noah, 2026-09-19:
-    "should be stated in the legal or questions
-    section in a kind manner not a big bold section").
-    The doors into the terminal stay until checkout
-    and sign-in exist (his call, the same evening).
-  · The window says its data is simulated. The page
-    says nothing about a feed's speed or source.
-  · Phones first: the paid traffic arrives from X.
-  · The prices are data/billing.ts's. WHAT EACH PLAN
-    HOLDS below is Noah's to re-decide.
-==================================================
+  The landing page: the wall of tools, the tour with its window, the tape of names, every room, pricing and
+  questions. Every picture is the terminal itself; the recordings run on simulated data and say so.
 */
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { ArrowRight, Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { BILLING_ON, PLANS, fmtDollars, makeCheckoutAhead, priceOf, type Period, type PlanKey } from '../../data/billing';
 import { stripeLoader } from '../../data/stripeLoader';
 import AnimatedNumber from '../../components/ui/AnimatedNumber';
@@ -84,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLaunch } from '../../components/layout/LaunchTransition';
 import SiteFooter from '../../components/layout/SiteFooter';
 import { Block, GroundProvider, useBlockGround, useGround, type Ground } from './ground';
-import { Arrive, DOOR, DOOR_ARROW, DOOR_GROUP, Eyebrow, LitLines, MAIL, Nav, Pill, TwoTone, Wrap, doorTo, useDoorSeen } from './pieces';
+import { Arrive, DOOR, Eyebrow, LitLines, MAIL, Nav, Pill, TwoTone, Wrap, doorTo, useDoorSeen } from './pieces';
 import Tour, { type TourStep } from './Tour';
 import Tape from './Tape';
 import Wall from './Wall';
@@ -249,17 +179,16 @@ const STEPS: TourStep[] = [
     kind: 'Paper trading and backtesting',
     name: 'Practice',
     /* the headline leads with paper trading, as the room's first row does (Noah, 2026-09-26) */
-    lead: 'Paper trade today’s prices, or replay a past day’s.',
-    rest: 'A practice account or a prop firm’s evaluation on the live feed — options off the chain, futures long or short, the same order card and ladder as the desk, and nothing reaches a broker. Or a past day played back a minute at a time, the whole option chain with its bid and ask at every strike, so it can be traded in calls, puts and spreads with the decay in every price. One journal keeps every closed trade.',
+    lead: 'Paper trade today’s live option quotes.',
+    rest: 'A practice account on each contract’s live bid and ask — options off the chain, the same order card and chart as the desk, and nothing reaches a broker. Backtest and futures are paused until real history and a futures feed are wired in. One journal keeps every closed trade.',
     /* paper trading leads the room (Noah, 2026-09-26: "i want the paper trading live to be the first one") — its still
        is the options desk in use, not the start page (the photographer's `photo=1` window, embed.ts) */
     path: '/practice/paper',
     sweep: 'deal',
     rows: [
-      { title: 'Paper trading, live', says: 'A practice account or a prop firm’s evaluation on today’s prices — the same order card, chain and ladder, on the live feed.', path: '/practice/paper' },
-      { title: 'Options, off the real chain', says: 'Pick any contract as it was quoted that minute. A same-day one loses value while you watch.', path: '/practice/backtest' },
+      { title: 'Paper trading, live', says: 'A practice account filled at each contract’s live bid and ask during the options session — the same order card and chain as the desk.', path: '/practice/paper' },
+      { title: 'Options, off the live chain', says: 'Pick any listed contract at its live quote. A same-day one loses value while you watch.', path: '/practice/paper' },
       { title: 'Targets and stops that know decay', says: 'Set them on the contract’s price, or pin them to the stock’s. The chart shows where each one sits right now.' },
-      { title: 'Futures, long or short', says: 'ES, NQ, oil, gold and silver, nearly round the clock, on margin. Every fill leans against you, never for you.', path: '/practice/futures' },
       { title: 'Your own rules', says: 'How many positions, what a trade may risk, where the day stops. A trade that breaks one is refused.' },
       { title: 'The journal', says: 'Every closed trade on its chart: what it did while you held it, your tags, your words.', path: '/practice/journal' },
     ],

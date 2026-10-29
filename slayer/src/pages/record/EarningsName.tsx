@@ -579,7 +579,7 @@ const EarningsName = () => {
       </Box>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
-        <Box title="Beats and misses" sub={`Earnings per share, the estimate against the actual · ${split.beat} beat, ${split.inline} in line, ${split.miss} missed of ${nQ}${hasRev ? ` · revenue ${revBeats} of ${nQ}` : ''}`} testId="beats">
+        <Box title="Beats and misses" sub={`EPS against the estimate · ${split.beat} beat, ${split.inline} in line, ${split.miss} missed of ${nQ}${hasRev ? ` · revenue ${revBeats} of ${nQ}` : ''}`} testId="beats">
           <div className="px-5 pb-4">
             <div className="h-[132px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -655,7 +655,7 @@ const EarningsName = () => {
         </Box>
       </div>
 
-      <Box title="After the print" sub="What the options lose overnight once the number is out — a long option has to beat the move and this" testId="after">
+      <Box title="After the print" sub="What the options lose overnight once the number is out" testId="after">
         <dl className="px-5 pb-4 grid grid-cols-4 gap-x-6">
           {/* the median premium a long straddle gave back by the next open on the quiet prints: the option's loss, not an IV drop */}
           <Fact label="A quiet print takes" testId="crush">

@@ -7,7 +7,7 @@ import { houseSector, houseSlug, type EtfHolding, type EtfKind, type EtfRow, typ
 import { pickFromLive, type StockPick } from './stocks';
 import { UNIVERSE, type Sector } from './universe';
 import { nyDayOfUtcStamp, nyDaysAgo } from './nyDate';
-import { companyName, displayName, hasVendorName, placeDisplay, isListed, rememberCompanyName, rememberCompanyNames, subscribeCompanyNames } from './tickers';
+import { askCompanyNames, companyName, companyNamePending, companyNamesRev, displayName, hasVendorName, placeDisplay, isListed, rememberCompanyName, rememberCompanyNames, subscribeCompanyNames, tickerName } from './tickers';
 import { screenerNeedsCloses, screenerRead } from './liveQuote';
 import { loadCloses } from './stockFile';
 import {
@@ -1064,65 +1064,18 @@ export function useLiveStocks(): { status: FileStatus; picks: StockPick[] } {
   return { status: s.stockStatus, picks: s.stocks };
 }
 
-/* Names come from /stock/{t}/info, asked only for a name on screen, two at a time behind the page's own reads, and
-   remembered for a fortnight (tickers.ts); the listing's name stands only when the vendor has none. */
-let namesRev = 0;
-const companyNamesRev = () => namesRev;
-const nameAsked = new Set<string>();
-const nameDone = new Set<string>();
-const nameQueue: string[] = [];
-let nameBusy = 0;
-const bumpNames = () => {
-  namesRev += 1;
-  nameRevListeners.forEach(fn => fn());
-};
-const nameRevListeners = new Set<() => void>();
-function pumpNames(): void {
-  while (nameBusy < 2 && nameQueue.length) {
-    const t = nameQueue.shift()!;
-    nameBusy += 1;
-    void whalesStock(t)
-      .then(info => {
-        const row = info && typeof info === 'object' ? (info as Record<string, unknown>) : null;
-        if (row) rememberCompanyName(t, String(row.full_name || row.short_name || ''));
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        nameBusy -= 1;
-        nameDone.add(t);
-        bumpNames();
-        pumpNames();
-      });
-  }
-}
-function askName(t: string): void {
-  if (nameAsked.has(t)) return;
-  nameAsked.add(t);
-  nameQueue.push(t);
-  pumpNames();
-}
-const subscribeNames = (fn: () => void) => {
-  const off = subscribeCompanyNames(fn);
-  nameRevListeners.add(fn);
-  return () => {
-    off();
-    nameRevListeners.delete(fn);
-  };
-};
-const askable = (t: string, fromVendorFeed: boolean) => /^[A-Z][A-Z0-9.]{0,6}$/.test(t) && (fromVendorFeed || isListed(t));
+/* A name the listing lacks is asked of /stock/{t}/info once it is on screen (tickers.ts keeps it a fortnight). */
+const askable = (t: string, fromVendorFeed: boolean) => /^[A-Z][A-Z0-9.]{0,6}$/.test(t) && (fromVendorFeed || isListed(t)) && tickerName(t).toUpperCase() === t;
 
-/** The company's name as the vendor gives it; `seen` gates the ask. While the ask is out the name is ''. */
 export function useCompanyName(ticker: string, fromVendorFeed = false, seen = true): string {
   const t = (ticker || '').toUpperCase();
-  useSyncExternalStore(subscribeNames, companyNamesRev, companyNamesRev);
-  const ask = !!t && askable(t, fromVendorFeed) && !hasVendorName(t);
+  useSyncExternalStore(subscribeCompanyNames, companyNamesRev, companyNamesRev);
+  const ask = !!t && !hasVendorName(t) && askable(t, fromVendorFeed);
   useEffect(() => {
-    if (ask && seen) askName(t);
+    if (ask && seen) askCompanyNames([t]);
   }, [t, ask, seen]);
   if (!t) return '';
-  if (hasVendorName(t)) return companyName(t);
-  if (ask && !nameDone.has(t)) return '';
-  return companyName(t);
+  return ask && companyNamePending(t) ? '' : companyName(t);
 }
 
 export function useStockCard(ticker: string): StockCard | null | undefined {
@@ -1134,9 +1087,8 @@ export function useStockCard(ticker: string): StockCard | null | undefined {
   return t in s.cards ? s.cards[t] : undefined;
 }
 
-/* ---- a set's prices in bulk, from the screener ----
-   A dozen names a call, every 45 seconds in the session and five minutes outside it, each row on liveQuote's
-   screenerRead rule; a name with no row is listed in `missing`. */
+/* A set's prices in bulk off the screener, a dozen names a call on liveQuote's screenerRead rule; a name
+   with no row is listed in `missing`. */
 export interface BatchQuote {
   /** the regular price: the last print in the session, the last regular close outside it */
   price: number;

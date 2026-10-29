@@ -1,9 +1,5 @@
-/*
-  THE FILE ON A NAME (components/layout/footer/parts/world.ts) — the Dossier's: the world as a field of dots, a pin on
-  every city a story comes from, New York's open hours a band across it; a story lands — a ring where it broke, its arcs
-  out to where it reaches. Beside it the story's card (its name, its lean, its kind, its words, the odds bar), and under
-  it the earnings to come, day by day.
-*/
+/* The Dossier: the world as dots with a pin per story city and New York's hours as a band; a story lands as a ring with
+   arcs. Beside it the story card, and under it the coming earnings by day. */
 
 import { bar, box, chip, clamp, dayWord, frame, keep, prose, rgb, rng, type, type Box, type Part, type Pen, type Pill, type Stage } from '../kit';
 
@@ -265,7 +261,7 @@ export const story = (): Part => {
   };
 };
 
-/* ---- THE EARNINGS TO COME: the next two weeks' market days, the reports in each (before the open, after the close) - */
+/* ---- coming earnings: the next two weeks' sessions, reports before the open and after the close ---- */
 
 export const strip = (o: { days?: number } = {}): Part => {
   let at: Box = box(0, 0, 0, 0);

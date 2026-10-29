@@ -1,47 +1,13 @@
-/*
-==================================================
-  SLAYER TERMINAL - DAY STRIP (the Intervals page's
-  session instrument)
-
-  THE SESSION AS ONE FIXED INSTRUMENT (the partner's
-  strip, taken at Noah's word, 2026-10-13): 09:30 to
-  16:00 New York, its 26 quarter hours each at its
-  true x inside a faint session band on a baseline,
-  the future empty above the baseline — so the shape
-  never changes through the session and a time is
-  always in the same place. It ran midnight to
-  midnight on the machine's clock as 96 equal shaded
-  blocks until then (2026-09-16, the clock's clothes).
-
-  What a bar says:
-    · its HEIGHT is the window's volume against the
-      loud bar (the 80th percentile, so the ordinary
-      bulk spreads over the height and one burst
-      does not flatten the day into a barcode);
-    · the volume floor's two registers — the quiet
-      bulk faint, the loud quintile bright — and the
-      day's busiest window in the SUPREME magenta:
-      a magnitude wears one ink, and the ink crowns
-      it, not the height;
-    · the window you have open stands on a silver
-      column (where you are); the live one breathes
-      the status ink under a "now" hairline, held =
-      amber;
-    · a readout pinned top right reads the window
-      under the pointer, or the one open;
-    · the keys: ← → walk the windows, Home and End
-      the first and the last; on a phone a slider
-      under the strip, a finger's width tall.
-==================================================
-*/
+/* The Intervals session as one fixed instrument: 09:30 to the close, each quarter hour a bar at its true x, its
+   height the volume against the loud bar, the busiest in magenta. A time is always in the same place. */
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { WINDOWS_PER_DAY, type IntervalWindow } from '../../data/flowBook';
 import { SESSION_LENGTH_MIN } from '../../core/nyTime';
 import { earnMarks } from './earnedInk';
+import { fmtCount as num } from '../../data/traceLive';
 
 const MIN_PER_SLOT = SESSION_LENGTH_MIN / WINDOWS_PER_DAY;
-const num = (v: number) => v.toLocaleString('en-US');
 
 /* Hour marks at their true x, minutes since the open; the open and the close speak louder — the close is 16:15 for the
    index and ETF options that trade then (the strip takes the name's own slot count) */
@@ -53,10 +19,8 @@ const ticksFor = (len: number): { min: number; label: string; edge?: boolean }[]
   { min: len, label: len === 405 ? '16:15' : '16:00', edge: true },
 ];
 
-/* THE BARS ARE CAPSULES, NOT BLOCKS (Noah, 2026-10-13: "they look way too blocky like barebone html"): each bar is a
-   soft capsule in its slot with a gutter either side, its fill a vertical wash of its ink — the foot faint, the head full —
-   and the three that mean something (the busiest, the one open, the live one) carry a glow in their own ink. The
-   volume floor's two registers are the secondary ink at two strengths, a token on either ground. */
+/* Each bar is a soft capsule with a gutter either side, its fill a wash of its ink; the busiest, the open and the
+   live ones glow. */
 type Fill = { background: string; boxShadow?: string };
 const wash = (token: string, foot: number, head: number): string => `linear-gradient(to top, rgb(var(${token}) / ${foot}), rgb(var(${token}) / ${head}))`;
 const glow = (token: string, a = 0.35): string => `0 0 10px rgb(var(${token}) / ${a})`;
@@ -82,21 +46,18 @@ const DayStrip = ({
   slots?: number;
 }) => {
   const len = slots * MIN_PER_SLOT;
-  /** A minute of the SESSION (0 = 09:30) at its x */
+  /** A minute of the session (0 = 09:30) at its x */
   const pct = (minute: number) => `${(minute / len) * 100}%`;
   const TICKS = ticksFor(len);
   const [hover, setHover] = useState<number | null>(null);
   const marks = useMemo(() => earnMarks(windows, w => w.totalVol), [windows]);
   const max = Math.max(marks.top === Infinity ? 1 : marks.top, 1);
-  /* The height's ceiling is the LOUD bar (the 80th percentile), not the champion: measured on a live day, one 160k
-     burst over a 60–80k bulk put every ordinary window in the bottom third and the strip read as a flat barcode.
-     Against the loud bar the bulk spreads over the height, the loud quintile touches the ceiling, and the champion
-     is told by its magenta. */
+  /* The height's ceiling is the loud bar (80th percentile), not the champion, so one burst never flattens the day
+     into a barcode. */
   const ceiling = Math.max(marks.bar === Infinity ? max : marks.bar, 1);
   const live = windows.find(w => w.live);
   const nowMin = live ? (live.idx + 1) * MIN_PER_SLOT : null;
-  /* THE AXIS MEASURES ITS OWN ROOM (audit round 8, 390: "09:30now" — the 45-minute berth is ~40px on a phone, less than
-     the two labels need): a fixed mark steps aside when "now" sits within ~52px of it, whatever the width */
+  /* A fixed axis mark steps aside when "now" sits within ~52px of it, so the labels never collide on a phone */
   const axisRef = useRef<HTMLDivElement | null>(null);
   const [axisW, setAxisW] = useState(0);
   useEffect(() => {
@@ -139,7 +100,7 @@ const DayStrip = ({
           const champ = w.totalVol >= max && w.totalVol > 0;
           const loud = w.totalVol >= marks.bar;
           const fill: Fill = champ ? BUSIEST : w.live ? (paused ? HELD : LIVE) : sel ? OPEN : loud ? LOUD : QUIET;
-          /* LINEAR against the loud bar (see `ceiling`); a floor keeps the quietest window visible. */
+          /* linear against the loud bar (see `ceiling`); a floor keeps the quietest window visible. */
           const h = w.totalVol > 0 ? 8 + 92 * Math.min(1, w.totalVol / ceiling) : 0;
           return (
             <button
@@ -156,8 +117,8 @@ const DayStrip = ({
               className="group/slot absolute inset-y-0"
               style={{ left: pct(w.idx * MIN_PER_SLOT), width: pct(MIN_PER_SLOT) }}
             >
-              {/* THE CAPSULE IS SLIM (Noah, 2026-10-13: "its too wide"): a pill no wider than 16px centred in its slot, air
-                  either side — the slot stays the click target; its height glides as the live window fills */}
+              {/* A pill no wider than 16px centred in its slot; the slot stays the click target and the height glides
+                 as the live window fills */}
               <span
                 className={`absolute bottom-px left-1/2 -translate-x-1/2 w-[clamp(6px,34%,16px)] rounded-t-[8px] rounded-b-[3px] overflow-hidden transition-[height,box-shadow] duration-300 ${w.live && !paused ? 'animate-live-breathe' : ''}`}
                 style={{ height: `${h}%`, ...fill }}
@@ -179,7 +140,7 @@ const DayStrip = ({
         {readout && (
           <span
             className={`max-sm:hidden pointer-events-none absolute top-0.5 z-10 px-1.5 py-0.5 rounded border border-borderSubtle bg-panel/70 backdrop-blur-sm font-mono text-t11 tnum whitespace-nowrap text-textSecondary ${
-              /* pinned at the end AWAY from the window it reads, so it never sits on that capsule's head */
+              /* pinned at the end away from the window it reads, so it never sits on that capsule's head */
               shown && shown.idx >= slots * 0.7 ? 'left-0' : 'right-0'
             }`}
             data-strip-readout={shown?.idx}
@@ -217,13 +178,13 @@ const DayStrip = ({
           </span>
         )}
       </div>
-      {/* ON A PHONE the readout stands under the axis, a line of its own, never over the bars */}
+      {/* ON A phone the readout stands under the axis, a line of its own, never over the bars */}
       {readout && (
         <span className="sm:hidden block mt-1 font-mono text-t11 tnum truncate text-silver" data-strip-readout-phone={shown?.idx}>
           {readout}
         </span>
       )}
-      {/* ON A PHONE, ONE SLIDER: a quarter hour is a sliver 13px wide there */}
+      {/* ON A phone, ONE slider: a quarter hour is a sliver 13px wide there */}
       {windows.length > 1 && (
         <input
           type="range"

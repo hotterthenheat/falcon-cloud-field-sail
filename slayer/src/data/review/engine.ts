@@ -1,78 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · THE BACKTEST'S ENGINE
-  (data/review/engine.ts)
-
-  docs/review-backtest-rules.md, in code — and
-  nothing else. Pure functions over a Session: no
-  clock of its own, no storage, no React. A session
-  is its orders and its fills; everything the desk
-  shows (cash, positions, trades, the report) is READ
-  off those, so it cannot drift from them.
-
-  FROZEN FACTS: a fill is written once and never
-  edited. Version 1 trades LONG calls and puts, paid
-  in cash — buy to open, sell to close.
-
-  TWO THINGS A WAY OUT CAN WAIT ON (Noah, 2026-09-20,
-  thinking about what options have that futures do not:
-  "do those tps and stop losses increase or decrease
-  depending on how close you are to expiration?"). A
-  target or a stop set on THE CONTRACT'S PRICE keeps its
-  dollars — and because the contract decays, the place
-  the NAME has to reach for it moves every minute: on a
-  same-day contract the stop walks up into a name that
-  has not moved, and sells. A target or a stop set on
-  THE NAME'S PRICE (`on: 'name'`) is the other way
-  round: the level stays where it was put, the dollars
-  it will make are whatever the contract bids when the
-  name gets there. Both are real ways traders leave;
-  the record treats them the same (target · stopped).
-
-  TWO NAMES, ONE CLOCK, ONE ACCOUNT (Noah, 2026-09-20:
-  "should a user be able to choose more than one ticker
-  during 1 backtesting session? like 2"). Every order
-  and fill already carries its contract's name, so a
-  session of two names is the same book on the same
-  cash — `tickers` holds them (two at most; `ticker`
-  stays, the first, so a session saved before this
-  still opens).
-
-  A VERTICAL SPREAD, BOUGHT FOR A DEBIT (2026-09-20),
-  is one contract with a second strike (quotes.ts): a
-  bull call spread, a bear put spread. It is paid for in
-  cash and the most it can lose is what it cost, so it
-  is the same trade to every rule here — one position,
-  one price, one target, one stop, one line at the bell
-  (what it is worth in the money, never more than its
-  width) — with the fee charged on both legs. Spreads
-  SOLD for a credit need cash held against them and are
-  not in this version.
-
-  A LADDER OF WAYS OUT (Noah, 2026-09-20: "some people
-  have multiple tps and stop losses in place"). The pair
-  a position carried — one target, one stop — is now a
-  GROUP (the orders that share an `oco`): up to three
-  targets and two stops, each for its own contracts.
-  When a target fills the stops give up that many, the
-  furthest first, and the other way round; flat,
-  everything goes; a market sell by hand is never
-  "spoken for" — the ladder gives way. Two switches
-  ride a stop: BREAKEVEN (the first target's fill moves
-  it to what was paid) and TRAILING (it keeps the
-  distance it was set at from the best price since,
-  checked before it is moved). The arithmetic the
-  futures engine shares is data/review/ladder.ts.
-
-  THE READER'S OWN RULES ARE HARD BLOCKS (his word:
-  "build it, hard blocks"). Set when the session
-  starts, never after: how many positions may be open
-  at once, how much of the account one trade may cost,
-  and how far down a day may go before it is over.
-  They stop a way IN, in words, and never a way OUT —
-  a rule that kept a reader in a losing contract would
-  be the opposite of discipline.
-==================================================
+  The backtest's rules in code: pure functions over a session that is its orders and fills, with no clock, storage
+  or React of its own; the desk, the report and the journal read everything off them.
 */
 
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from './ladder';
@@ -189,7 +117,6 @@ export const DEFAULT_FEE = 0.65;
 export const MULT = 100;
 /** A moment as one number, for order. 2,000 a day: an option's day is 390 minutes, a future's 1,380 (futuresTape.ts) */
 export const stampOf = (m: Moment): number => dayIndex(m.day) * 2000 + m.minute;
-export const sameMoment = (a: Moment, b: Moment) => a.day === b.day && a.minute === b.minute;
 const cents = (v: number) => Math.round(v * 100) / 100;
 
 /** The names a session trades, first one first */

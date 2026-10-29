@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useCompanyName } from '../../data/liveFiles';
 import { displayName } from '../../data/tickers';
 
-/* ONE OBSERVER FOR EVERY NAME CELL (round 8): a cell asks the vendor for its company's name once it is on screen — a
-   200-row grid asks for the rows a reader can see, not all 200 at once */
+/* One observer for every name cell: a cell asks for its company's name once it is on screen. */
 const seenCb = new WeakMap<Element, () => void>();
 let io: IntersectionObserver | null = null;
 const observer = (): IntersectionObserver | null => {
@@ -42,9 +41,8 @@ export function useSeen<T extends Element>(): [React.RefObject<T>, boolean] {
   return [ref, seen];
 }
 
-/** The company's name under a ticker. The vendor is asked once the cell is on screen even when a bundled or filing name
-    is already in hand — that listing is years stale on some symbols. "…" while the ask is out. The vendor's name when it
-    has one. The fallback only after the vendor answers without one. Never the ticker said twice. */
+/** The company's name under a ticker: asked of the vendor once on screen (bundled names can be stale), "…" while out,
+    the fallback only after the vendor answers without one, never the ticker twice. */
 export const CoSub = ({ ticker, fallback, className = 'text-t10 text-textMuted truncate', vendor = true }: { ticker: string; fallback?: string | null; className?: string; /** the symbol came off a vendor feed, so the feed knows it */ vendor?: boolean }) => {
   const [ref, seen] = useSeen<HTMLSpanElement>();
   const fallbackName = fallback && fallback.toUpperCase() !== ticker.toUpperCase() ? fallback : '';

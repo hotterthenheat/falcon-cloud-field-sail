@@ -4,6 +4,7 @@
 import { companyName, displayName, searchTickers } from '../../data/tickers';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
@@ -58,9 +59,8 @@ const NAMES_OPTIONS: DropdownOption<NamesPick>[] = [
   { value: 'board', label: 'Your board', hint: 'The names on your Board' },
 ];
 
-/* Direction of relative strength over two windows — a different axis from
-   the ladder's rank. LEADING is the ladder's absolute top only (ties share it),
-   the one magenta on the page; the phase words say which way a sector moves. */
+/* Which way relative strength moves over two windows, apart from the ladder's rank; LEADING is the
+   ladder's top only (ties share it). */
 const PHASE_WORD: Record<SectorRow['phase'], string> = { LEADING: 'RISING', IMPROVING: 'TURNING UP', WEAKENING: 'ROLLING OVER', LAGGING: 'FALLING' };
 const PHASE_INK: Record<SectorRow['phase'], string> = { LEADING: 'text-bull', IMPROVING: 'text-flip', WEAKENING: 'text-warn', LAGGING: 'text-bear' };
 const PHASE_BAR: Record<SectorRow['phase'], string> = { LEADING: 'bg-bull', IMPROVING: 'bg-flip', WEAKENING: 'bg-warn', LAGGING: 'bg-bear/80' };
@@ -292,6 +292,7 @@ const Stocks = () => {
   const phone = usePhoneCards();
   const boardNames = useBoardNames();
   const [screen, setScreen] = useState<ScreenPick>('all');
+  const [rotOpen, setRotOpen] = useState(false);
   const [sector, setSector] = useState<SectorPick>('all');
   const [names, setNames] = useState<NamesPick>('all');
   const [guideOpen, setGuideOpen] = useState(false);
@@ -475,7 +476,7 @@ const Stocks = () => {
           </div>
           <div>
             {/* ranked last by its names' grades, with its direction beside it: a sector can rank last and still be turning up */}
-            <dt className="text-t10 text-textMuted cursor-help" title="The sector whose names screen worst, by rank — its direction against the tape (the card's word) beside it. A sector can rank last and still be turning up">Ranked last</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title="The sector whose names grade worst, its direction beside it; it can rank last and still be turning up">Ranked last</dt>
             <dd className="mt-0.5 whitespace-nowrap" data-stocks-trailer>
               {quiet ? <span className="font-mono text-t12 text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="font-mono text-t12 tnum text-bear hover:underline underline-offset-2">
                 {bottom.sector} <span className="text-textMuted font-normal">· {PHASE_WORD[bottom.phase].toLowerCase()}</span>
@@ -500,18 +501,19 @@ const Stocks = () => {
       {failed ? (
         <FeedFallback />
       ) : (
-        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-stocks-sentence>
+        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden" data-stocks-sentence>
           {waiting ? 'Reading the screens.' : sentence}
         </p>
       )}
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-stocks-rotation>
-        {/* on a phone the head stacks: the label over its words */}
-        <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
+        {/* on a phone the rotation folds, so the first row of the grid is on the first screen */}
+        <button type="button" onClick={() => setRotOpen(o => !o)} disabled={!phone} aria-expanded={!phone || rotOpen} className="w-full h-[26px] flex items-center gap-3 text-left text-t10 font-semibold uppercase tracking-widest text-textPrimary disabled:cursor-default max-sm:h-auto max-sm:py-1.5" data-stocks-rotation-head>
           <span>The rotation</span>
-          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">every sector ranked by its names' screens, leader first · its names' average return over a week and a month, and the month against the board's average · click a sector to keep the grid to its names</span>
-        </div>
+          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary max-sm:hidden">sectors ranked by their names' screens · a click keeps the grid to a sector</span>
+          {phone && <ChevronDown className={`ml-auto w-3.5 h-3.5 text-textMuted transition-transform ${rotOpen ? 'rotate-180' : ''}`} />}
+        </button>
         {/* two on a phone, four on a tablet, five across from a laptop */}
-        {quiet ? (
+        {phone && !rotOpen ? null : quiet ? (
           <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : 'Reading the screens'}</div>
         ) : (
         <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-5" data-sectors={ROTATION_SECTORS}>

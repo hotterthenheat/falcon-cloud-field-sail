@@ -1,50 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · THE ACCOUNTS AND THEIR RUNNER
-  (data/paper/store.ts)
-
-  The reader's paper accounts, kept on this machine
-  (`slayer_paper_v1`) and carried by the account when
-  signed in (data/sync.ts) — the review store's pattern: a module store
-  with a subscription, every change through the
-  engine's pure functions, this file only holding,
-  saving, and RUNNING them:
-
-    THE RUNNER    on every tick of the feed (data/
-                  feedTicks.ts), wherever the reader
-                  is, every open account's working
-                  orders meet the market (engine.ts
-                  `tick`) — and what happened is said
-                  (the fill alerts, `usePaperToasts`)
-    ONE TAB       the accounts are HELD by one tab (a
-                  lease renewed every few seconds): a
-                  second tab reads them and takes
-                  nothing until it takes them over
-                  (docs/paper-rules.md, "One tab at a
-                  time") — two tabs would be two
-                  simulated markets writing one book
-    THE PAGE'S    on the simulated feed, a page that
-    EDGES         closes flattens what is open at the
-                  market it saw, and the next load
-                  closes whatever a page could not, at
-                  the last price THAT page wrote down
-                  (engine.ts `closeStale`)
-    THE JOURNAL'S the reader's words and tags on a
-    OWN KEY       paper trade (`slayer_paper_journal_
-                  v1`) — apart from the book, so words
-                  written in a tab that does not hold
-                  the account are never lost under the
-                  holder's next save
-
-  NEVER IN THE LANDING'S WINDOW: a page EMBEDDED in a
-  frame (embed.ts) reads nothing, runs nothing and
-  holds nothing — a tour must not trade the visitor's
-  account. THE PHOTOGRAPHER'S WINDOW (embed.ts PHOTO)
-  is the one exception, and only half of one: it still
-  reads nothing and writes nothing, but it may START an
-  account and run it in memory, so the desk can be
-  pictured in use (2026-09-26).
-==================================================
+  The reader's paper accounts, kept in localStorage and synced when signed in: one tab holds them at a time, a
+  beat works the orders against the live quotes, and every change goes through the engine.
 */
 
 import { useSyncExternalStore } from 'react';
@@ -195,11 +151,6 @@ const snapshot = () => state;
 /** Every paper account, the one in hand, and whether this tab holds them */
 export const usePaper = (): PaperState => useSyncExternalStore(subscribe, snapshot, snapshot);
 export const readPaper = (): PaperState => state;
-/** The account on the desk (null: none yet) */
-export const useInHand = (): PaperAccount | null => {
-  const s = usePaper();
-  return s.accounts.find(a => a.id === s.inHand) ?? null;
-};
 
 /* ================================================================== */
 /*  ONE TAB AT A TIME                                                  */
@@ -432,10 +383,6 @@ export function startEvaluation(plan: EvalPlan): string | null {
   return a.id;
 }
 export const setInHand = (id: string) => state.accounts.some(a => a.id === id) && commit({ inHand: id }, true);
-export const renameAccount = (id: string, name: string) => state.holding && commit({ accounts: state.accounts.map(a => (a.id === id ? { ...a, name: name.trim() || a.name } : a)) }, true);
-/** The sandbox: fees off, futures fill at the price — practice only */
-export const setSandbox = (id: string, on: boolean) => state.holding && commit({ accounts: state.accounts.map(a => (a.id === id && a.kind === 'practice' ? { ...a, sandbox: on || undefined } : a)) }, true);
-
 /* ================================================================== */
 /*  THE JOURNAL'S OWN KEY                                              */
 /* ================================================================== */

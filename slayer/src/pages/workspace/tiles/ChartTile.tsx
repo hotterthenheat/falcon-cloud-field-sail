@@ -1,46 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE · THE LIVE CHART
-  (pages/workspace/tiles/ChartTile.tsx)
-
-  THE CHART AS IT WAS BEFORE THE DESK WAS REBUILT
-  (Noah, 2026-10-02: "i dont like how you changed the
-  pulse chart and removed the indicators, and button
-  layout … lets start off with first changing the
-  live chart on the pulse page to look like the prev
-  one"). The rebuild of 2026-09-30 had made it a bare
-  tape with two cards on the tile's head and sent
-  everything else to Terrain. This is the widget it
-  replaced, back whole:
-
-    ITS OWN TASKBAR on the tape — the timeframes at
-    the left, the Overlays menu and the candle theme
-    at the right, a translucent strip the tape runs
-    under (TradingView's spread)
-    THE LEGEND under it — name · interval · the tick,
-    and a row a comparison
-    THE STRIKE BAND docked under the tape when the
-    Overlays menu asks for it
-    ITS OWN FULLSCREEN, behind the tile head's one
-    button — where the rest of the toolbar rides:
-    the symbol and compare, the INDICATORS, the chart
-    style, replay, alerts, the drawing rail, and the
-    total fullscreen behind that. Esc steps back down
-
-  Each copy on the desk keeps its own window: its
-  interval is the tile's own setting (so Terrain,
-  from the tile's menu, opens on it), and its
-  overlays, compares, style and indicators are held
-  here, so two charts side by side can watch one
-  name on two clocks.
-
-  A strike kept on a Pinpoint page is drawn as the
-  focus line while the tile is on that name, with its
-  chip on the taskbar.
-
-  The phone's Pulse is one chart holding the window
-  and is its own component (workspace/PhoneChart.tsx).
-==================================================
+  Pulse's live chart tile: the house chart on the tile's name with its own toolbar, compares and fullscreen,
+  and the book's levels drawn on it.
 */
 
 import { useEffect, useMemo, useRef, useState } from 'react';

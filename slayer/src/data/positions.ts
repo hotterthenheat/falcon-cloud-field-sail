@@ -1,41 +1,11 @@
 /*
-==================================================
-  SLAYER TERMINAL - YOUR POSITIONS (data/positions.ts)
-
-  The book made personal (the Pinpoint roadmap,
-  2026-09-05, step 6 beside the Board). A position
-  is a contract the reader owns or sold: a strike, a
-  call or a put, how many, when it expires. The
-  store keeps them per name in localStorage; the
-  READ puts each one on the dealer map and says, in
-  plain English, what the hedging does to it:
-
-    "Your 5 SPY 455 calls sit on the put wall,
-     0.2% below spot. Hedging works against you —
-     above the flip at 457.50 dealers sell into
-     rallies. Expires today at 4:00."
-
-  NOTHING HERE IS A FORECAST OF PRICE. It is the
-  same map every other surface reads (the 0DTE
-  profile: walls, flip, pin, supreme, the net gamma
-  at each strike) pointed at the reader's own
-  strikes. The words follow the house convention:
-  net gamma ABOVE zero at a strike amplifies a move
-  through it, BELOW zero absorbs it; spot above the
-  flip = dealers absorb (they sell rallies and buy
-  dips), below it = they amplify.
-
-  Positions can also come from the Tracker — a
-  contract tracked on Compass is one the reader
-  cares about, so the box offers to bring those in.
-==================================================
+  The positions the reader owns or sold, kept per name, and how each reads against the day's dealer map: where it
+  sits, whether hedging works with it, and when it expires.
 */
 
 import { useMemo, useSyncExternalStore } from 'react';
 import { expiryFor, isoDate, sessionsBetween, today } from '../core/calendar';
-import { SLEEVE_BY_KEY } from '../types/compass';
 import type { ExposureProfileData } from '../types/gex';
-import type { TrackedSetup } from '../types/tracker';
 
 export type Right = 'C' | 'P';
 export type Side = 'long' | 'short';
@@ -156,17 +126,6 @@ export function removePosition(id: string): void {
   commit(positions.filter(p => p.id !== id));
 }
 
-/** A tracked Compass contract as a position: one long contract on the sleeve's expiry */
-export function positionFromTracked(t: TrackedSetup): Omit<Position, 'id' | 'addedAt'> {
-  const dte = SLEEVE_BY_KEY[t.sleeve ?? 'odte']?.dte ?? 0;
-  return { ticker: t.ticker, strike: t.strike, right: t.right, side: 'long', contracts: 1, expiry: isoDate(expiryFor(dte).date), source: 'tracker' };
-}
-
-/** Tracked contracts on this name that are not in the list yet (by strike and right) */
-export function trackedNotIn(tracked: TrackedSetup[], ticker: string, have: Position[]): TrackedSetup[] {
-  return tracked.filter(t => t.ticker === ticker && !have.some(p => p.strike === t.strike && p.right === t.right));
-}
-
 /** Today's session as an expiry string — the default for a new position */
 export const todayExpiry = (): string => isoDate(expiryFor(0).date);
 
@@ -277,19 +236,4 @@ export function readPosition(p: Position, profile: ExposureProfileData): Positio
   const { expires, sessions } = expiryWords(p.expiry);
   const sentence = `${subjectWords(p)} sit${p.contracts === 1 ? 's' : ''} ${sits}. ${hedging[0].toUpperCase()}${hedging.slice(1)}. ${sessions < 0 ? 'Expired.' : `Expires ${expires}.`}`;
   return { sits, verdict, hedging, gammaHere, through, expires, sessions, sentence };
-}
-
-/** The one line for the box: the tally, then the position nearest spot in full */
-export function positionsLine(ticker: string, positions: Position[], reads: ReadonlyMap<string, PositionRead>, spot: number): string | null {
-  if (!positions.length) return null;
-  const tally = { with: 0, against: 0, mixed: 0 };
-  for (const p of positions) {
-    const r = reads.get(p.id);
-    if (r) tally[r.verdict]++;
-  }
-  const lead = [...positions].sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot))[0];
-  const leadRead = reads.get(lead.id);
-  const n = positions.length;
-  const head = n === 1 ? '' : `${n} positions on ${ticker} — hedging works with ${tally.with}, against ${tally.against}${tally.mixed ? `, both ways for ${tally.mixed}` : ''}. Nearest spot: `;
-  return leadRead ? `${head}${leadRead.sentence}` : head;
 }

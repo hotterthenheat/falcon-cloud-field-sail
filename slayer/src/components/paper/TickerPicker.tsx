@@ -1,32 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · WHAT IS ON THE CHART
-  (components/paper/TickerPicker.tsx)
-
-  The Live Chart's ticker selection (Noah, 2026-09-22, with
-  a picture of the partner's: "this is more organized the
-  only thing he is missing is the ability to search
-  yourself so add that and make that our new ticker
-  selection for the paper live chart only").
-
-  THE PARTNER'S ORDER: the futures first, by their front
-  month, each with the exchange's own name for it and
-  where it trades now; then the stocks and funds with
-  their names. OURS ON TOP OF IT: ONE search box over all
-  of it — a ticker, a company, a future's name ("nasdaq"
-  finds NQ, MNQ and QQQ) — the arrow keys walking the
-  matches and Enter picking, the one on the chart in the
-  silver that means where you are.
-
-  THE INDEX OPTIONS sit between the two, as on the
-  partner's: SPX, NDX and RUT, each with where it stands
-  (our feed carries them since the same evening — made
-  from their funds, data/paper/products.ts). An evaluation
-  trades futures only: the index options and the stocks
-  are not offered there, and the card says so. A stock's
-  price is not shown: asking for one starts the simulator
-  on that name.
-==================================================
+  What is on the paper chart: index options and stocks (and futures, when a futures feed is live), with one search
+  over all of them; the arrow keys walk the matches and Enter picks.
 */
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';

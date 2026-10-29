@@ -98,13 +98,3 @@ export function noteCompassCall(pick: { id: string; ticker: string; contract: st
   pings = [{ id: pick.id, ticker: pick.ticker, contract: pick.contract, at: Date.now(), sleeve: odte ? '0DTE' : '1–7 DTE' }, ...pings].slice(0, 12);
   emit();
 }
-
-export function useCompassPings(): CompassPing[] {
-  const [rows, setRows] = useState(pings);
-  useEffect(() => {
-    const fn = () => setRows(pings);
-    listeners.add(fn);
-    return () => { listeners.delete(fn); };
-  }, []);
-  return rows;
-}

@@ -8,8 +8,6 @@ import type { Lean, Person, Post, RoomState, Setup } from '../types/room';
 /** The reader's own posts carry this handle; the page draws the profile for it */
 export const ME = 'me';
 
-const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
-const hoursAgo = (h: number) => minutesAgo(h * 60);
 
 /* No members or posts are invented: until the room has a backend, only this browser's own posts are in it. */
 export const PEOPLE: Person[] = [];
@@ -57,7 +55,6 @@ export function timeAgo(iso: string): string {
 }
 
 const NAME_RE = /\$([A-Z]{1,5})\b/g;
-const HANDLE_RE = /@([a-z0-9_]{2,24})/gi;
 
 export type Token = { kind: 'text'; text: string } | { kind: 'name'; text: string } | { kind: 'handle'; text: string };
 
@@ -81,12 +78,6 @@ export function tokenize(body: string): Token[] {
 export function mentionsOf(body: string): string[] {
   const seen = new Set<string>();
   for (const m of body.matchAll(NAME_RE)) seen.add(m[1]!.toUpperCase());
-  return [...seen];
-}
-
-export function handlesOf(body: string): string[] {
-  const seen = new Set<string>();
-  for (const m of body.matchAll(HANDLE_RE)) seen.add(m[1]!.toLowerCase());
   return [...seen];
 }
 

@@ -1,34 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · A CONTRACT'S QUOTE
-  (data/review/quotes.ts)
-
-  The other half of the seam (see tape.ts): what a
-  contract was bid and asked at a minute of a past
-  day, which expiries and strikes were listed that
-  day, and the greeks worked out from the price.
-
-  TODAY it is a stand-in: Black-Scholes on the seeded
-  tape, off the day's base vol with a smile and a put
-  skew, inside a spread that widens away from the
-  money. WITH THE REAL TAPE the bid and the ask are
-  READ (the vendor's one-minute quote), and the vol
-  and the greeks are still worked out here, by the
-  same math the live terminal uses (core/greeks) — so
-  DECAY IS NEVER A CHARGE: it is whatever the next
-  quote is lower by (docs/review-backtest-rules.md).
-
-  A VERTICAL SPREAD IS A CONTRACT WITH A SECOND STRIKE
-  (2026-09-20): `short` is the strike SOLD against
-  `strike`, same right, same expiry. It is quoted at
-  its natural prices — to buy it, the bought leg's ask
-  less the sold leg's bid; to sell it, the bought leg's
-  bid less the sold leg's ask — and never outside
-  nothing and its width. Everything above the seam
-  (orders, the bell, targets and stops, the chart's
-  lines) treats it as one thing with one price, which
-  it is to the trader who bought it.
-==================================================
+  A contract's quote on the backtest tape (Black-Scholes on the synthetic walk), the expiries listed on a day, and
+  the greeks from the price. Kept for sessions already in the journal; Backtest is paused.
 */
 
 import { isTradingDay, isoDate, sessionsBetween } from '../../core/calendar';
@@ -45,7 +17,6 @@ export interface ContractId {
   /** A VERTICAL SPREAD: the strike SOLD against `strike` — same right, same expiry (see the head note) */
   short?: number;
 }
-export const isSpread = (c: ContractId): boolean => c.short != null;
 /** What a spread is worth at the most: the distance between its strikes */
 export const spreadWidth = (c: ContractId): number => (c.short != null ? Math.abs(c.short - c.strike) : 0);
 /** The bought leg on its own — what the chain's row and its drop-down are */

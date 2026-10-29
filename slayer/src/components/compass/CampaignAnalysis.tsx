@@ -1,17 +1,10 @@
 /*
-==================================================
-  SLAYER TERMINAL - CAMPAIGN ANALYSIS (Compass)
-  Full analysis for the slow scanners: the campaign
-  on a live chart. TP1–TP4 underlying milestones and
-  the calculated floor are drawn on the candles
-  (TradingView's lightweight-charts — the house
-  engine), with the premium ladder, thesis and floor
-  rule alongside. States, never orders.
-==================================================
+  A Compass contract's own page: the live chart with the entry, the stop and the exits on it, the quote and its
+  greeks, and the call's state as Compass reads it. States, never orders.
 */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowUpRight, Bookmark, Check, Info, ShieldAlert } from 'lucide-react';
+import { ArrowUpRight, Bookmark, ShieldAlert } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { tfMinutes, type Timeframe } from '../../data/timeframe';
 import SignalBadge from '../ui/SignalBadge';
@@ -27,7 +20,7 @@ import { choiceRight } from '../../data/compass';
 import { activeStop, bookLine, closeOf, flatNow, lockFill, lotteryFlatNow, notePeak, noteRung, peakBefore, remember, ret5Of, rungsOf, stampClose, useCompassBook } from '../../data/compassLedger';
 import { liveSetups, liveSpark, useContractBars, useContractLive, useSecondGreek } from '../../data/thetaBook';
 import { entryAsk, leftOf, noteLeft, passedOver } from '../../data/compassModel';
-import { entryGate, formatAge, quoteContract, quoteMissing, quoteStale } from '../../data/contractQuote';
+import { entryGate, quoteContract, quoteMissing, quoteStale } from '../../data/contractQuote';
 import { MODELS_VALIDATED, SPREAD_MAX, STOP_KEEP, UNVALIDATED_WORD, spreadPass, weekdayDte } from '../../data/compassParams';
 import { BLOCK_MIN_PREMIUM, BLOCK_MIN_SIZE } from '../../data/tape';
 import { useShelfPrints } from '../../data/traceLive';
@@ -35,12 +28,10 @@ import type { FlowPrint } from '../../types/trace';
 import { nameTape, optionScanOpen, printInSession, sessionEmpty, sessionYmd } from '../../data/compassSession';
 import { useDeskSession } from '../../data/deskSession';
 import { nyClock } from '../../core/nyTime';
-import ContractPick, { type ConPickRow } from './ContractPick';
+import { type ConPickRow } from './ContractPick';
 import { Tip } from '../ui/Tooltip';
 import { useTracker } from '../../context/TrackerContext';
 import {
-  SLEEVES,
-  isScannerEligible,
   type OptionRight,
   type ScannerKey,
   type Setup,
@@ -58,12 +49,6 @@ const dayDollars = (perShare: number) => {
   const n = Math.round(Math.abs(perShare) * 100);
   return `${perShare < 0 ? '−' : ''}$${n.toLocaleString('en-US')}`;
 };
-
-function occOf(setup: { ticker: string; expiryDate: string; right: string; strike: number }): string {
-  const [y, m, d] = (setup.expiryDate || '').split('-');
-  if (!y || !m || !d) return '';
-  return `${setup.ticker}${y.slice(2)}${m}${d}${setup.right}${Math.round(setup.strike * 1000).toString().padStart(8, '0')}`;
-}
 
 /** A change on this contract's own prints. Ten minutes by the print's clock, not from 09:30. */
 function tapeChange(prints: FlowPrint[]): { word: string; why: string } | null {
@@ -101,10 +86,6 @@ function isoOf(label: string): string {
   return m ? `${m[3]}-${m[1]}-${m[2]}` : label.slice(0, 10);
 }
 
-/* The lens said out loud (Noah, 2026-08-30: cards "dont state wether
-   something is a 0dte, weekly, discounted etc so they all look the same...
-   'oh it says right here this is a weekly'"). */
-const SLEEVE_LABEL: Record<SleeveKey, string> = { odte: '0DTE', weekly: 'Weekly', swing: 'Swing', position: 'Position', leaps: 'Long-dated' };
 
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -115,21 +96,6 @@ function dayStamp(iso: string): string {
   if (!y || !m || !d) return iso;
   const dt = new Date(y, m - 1, d);
   return `${DAY_SHORT[dt.getDay()]} ${MONTH_SHORT[m - 1]} ${d}`;
-}
-
-function QuoteAge({ at, missing }: { at: number; missing: boolean }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const stale = quoteStale(at, now, missing);
-  return (
-    <span data-quote-age={Math.max(0, now - at)} data-stale={stale ? 'yes' : 'no'}>
-      {missing ? 'missing' : formatAge(Math.max(0, now - at))}
-      {stale ? ' · stale' : ''}
-    </span>
-  );
 }
 
 interface CampaignAnalysisProps {
@@ -149,9 +115,6 @@ interface CampaignAnalysisProps {
       (pages/compass/SetupPage.tsx, 2026-09-11); the way back lives there too. */
   onOpenContract?: (strike: number, right: OptionRight, sleeve?: SleeveKey) => void;
 }
-
-/** The driver list sweeps on the scan tier — structure must not vibrate with every tick. */
-const DRIVERS_SCAN_MS = 10_000;
 
 /** The campaign's story, stamped ON the tape (Noah's sketch, 2026-08-09):
     the entry premium on the bar it was graded, and each banked TP on the
@@ -305,12 +268,6 @@ const CampaignAnalysis = ({
     : '';
 
   const bankedLevels = useMemo(() => new Set(tpHits.map(h => h.level)), [tpHits]);
-  /* Retired: no rung is "working" anymore — the ladder freezes. */
-  const workingLevel = retired
-    ? null
-    : (c.takeProfits.map((_, i) => i + 1).find(l => !bankedLevels.has(l)) ?? null);
-  const ladderStatus = (i: number): 'HIT' | 'IN PROGRESS' | 'PENDING' =>
-    bankedLevels.has(i + 1) ? 'HIT' : i + 1 === workingLevel ? 'IN PROGRESS' : 'PENDING';
   const hitCount = bankedLevels.size;
 
   const [chartTf, setChartTf] = useState<Timeframe>('1m');
@@ -363,7 +320,6 @@ const CampaignAnalysis = ({
     return next;
   }, [liveBars, chartTf, q.bid, q.ask]);
   const traded = painted;
-  const askPx = q.entryPremium;
   const bidPx = q.bid;
   const midPx = q.mark;
   const spreadFrac = midPx > 0 ? (q.ask - q.bid) / midPx : 1;

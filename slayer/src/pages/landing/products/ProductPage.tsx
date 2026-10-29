@@ -1,33 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - A PRODUCT'S OWN PAGE
-  (pages/landing/products/ProductPage.tsx)
-
-  Noah, 2026-10-01 night: "make the products
-  sections open up a new brief page explaining
-  that product with recordings etc." And of the
-  first one, Pulse (2026-10-02): "this section
-  needs to start off with a slightly more detailed
-  explanation throughout the page explaining what
-  it does with images, i want only one screen
-  recording on this page … these pages shouldn't
-  be too long."
-
-  So a product's page is the landing's clothes —
-  the bar with its Products menu, the eyebrow and
-  the two-tone head, the pills, the footer — around
-  a short run of the product itself: the product's
-  page in the window, still; a few sections that
-  each say one thing about it beside a picture of
-  that thing; ONE recording, of the one thing he
-  named for it; and the door. Every picture is the
-  real terminal (scripts/make-product-shots.mjs);
-  the recording is the film maker's (`@<key>`).
-
-  The page stands on the visitor's own ground, as
-  the landing opens — one ground, no turn: it is a
-  short page.
-==================================================
+  The frame every product page wears: the bar, the head and intro, the page in a window, its sections and the plan.
 */
 
 import { useEffect, type ReactNode } from 'react';

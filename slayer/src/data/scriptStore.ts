@@ -1,24 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - WHERE SCRIPTS ARE KEPT (data/scriptStore.ts)
-
-  The browser's driver for the ScriptStore door
-  (types/scripts.ts): a user's scripts, their
-  versions, favourites and what sits on each pane,
-  saved on THEIR OWN COMPUTER in IndexedDB — the
-  same idea as the watchlist and the board's names,
-  with room for whole files. No server, no account.
-  When the server exists, its driver answers the
-  same questions and this one becomes the cache.
-
-  The built-ins never touch the database: they are
-  source in the repo (data/builtinScripts.ts) and
-  read-only; a copy of one is a script of yours.
-
-  A private window, or a browser with site data
-  blocked, gets a memory driver that lives for the
-  page — the editor works, nothing survives a reload.
-==================================================
+  Where a reader's scripts are kept: IndexedDB on their own machine, with versions, favourites and what sits on
+  each pane.
 */
 
 import { compile, explain } from '../core/pine';

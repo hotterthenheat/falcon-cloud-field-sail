@@ -1,41 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · THE SHAPE OF A TRADE
-  (data/review/shape.ts)
-
-  Noah, 2026-09-29, with a radar of six account
-  figures beside the journal's "While you held it":
-  "can you turn this section of the journal analysis
-  into the hexogram look? … a cooler hexogram."
-
-  Six reads of ONE trade, each a share from nothing
-  to whole, so a trade has a shape — and the reader's
-  trades together have a usual shape to hold it
-  against. Nothing here is a grade of ours: these
-  are the reader's own numbers about their own trade
-  ([[no-public-grades]] does not reach the journal),
-  and every axis says its figure and its sentence in
-  plain words.
-
-    KEPT    of the best it was up, what was taken
-            (the excursion's `kept`)
-    HEAT    how much of the risk it sat through at
-            its worst — whole when it was never under
-    RESULT  what it made against what was at risk:
-            R where a stop set one, else against the
-            cost or the trade's own reach
-    ENTRY   how much of the name's run lay AHEAD of
-            the way in — in at the low of an up-run
-            is whole
-    PLAN    the ways out that rode it (a stop, a
-            target), how it ended, and what the
-            reader said about the plan
-    WORDS   what the reader wrote: the three
-            questions and the tags
-
-  The usual: the same six, averaged over a cut of the
-  reader's trades — drawn behind the trade's shape.
-==================================================
+  Six reads of one trade, each a share from nothing to whole, for the journal's hexagon.
 */
 
 import { ENDED, directionOf, entryOf, type JournalEntry, type JournalRow } from './journal';

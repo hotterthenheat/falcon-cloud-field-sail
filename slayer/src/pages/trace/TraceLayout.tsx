@@ -1,26 +1,11 @@
-/*
-==================================================
-  SLAYER TERMINAL - TRACE'S SHELL (pages/trace/TraceLayout.tsx)
-
-  One head over nine pages, the way Pinpoint's and
-  the Record's read (2026-09-09; Noah: "should we
-  have the different subtabs on the sub-bar or stay
-  on the top section of the header" — the sidebar
-  tree, like the other two sections). The page's
-  icon and name over its one line, the ticker
-  picker at the right where a page keeps one. The
-  fused strip of tabs and its hover cards are gone;
-  the sidebar carries the nine as a tree and the
-  head only says where you are. Only the subpage
-  body cross-fades.
-==================================================
-*/
+/* Trace's shell: the page's icon, name and one line over the subpage, which alone cross-fades; the sidebar carries
+   the pages. */
 
 import { Suspense } from 'react';
 import { useLocation, useOutlet } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { TracePageSkeleton } from './traceSkeletons';
-import { useMarketData } from '../../context/MarketDataContext';
+import { useTicker } from '../../context/MarketDataContext';
 import { sessionPhase } from '../../data/traceLive';
 import TickerSearch from '../../components/ui/TickerSearch';
 import BackToTop from '../../components/ui/BackToTop';
@@ -29,20 +14,15 @@ import { useGlideHold } from '../../components/ui/useGlideHold';
 import { TraceSessionCard } from '../../components/trace/traceSession';
 import { TRACE_SUBPAGES } from './subnav';
 
-/* The Live Tape carries its own ticker/contract search, the flow-book pages
-   sweep the whole universe, and the Tracker lists the reader's marks across
-   every name with its own names-only search — a single-ticker picker would
-   mislead on all of them. */
+/* The tape, the book pages and the Tracker each carry their own search, so a single-ticker picker would mislead
+   there. */
 const NO_PICKER = /^\/trace\/(live-tape|dark-pool|screener|net-flow|footprints|watchers|intervals|odte|multi-leg|compare|tracker)/;
 
-/* THE SESSION CARD STANDS WHERE IT IS READ (audit round 4, 2026-10-22: it sat on every Trace page while only the Live
-   Tape read it). The tape, the dark pool, the structures and Net Flow's market figure honour it; the Screener, Footprints,
-   Watchers, Intervals, 0DTE, Compare and the Tracker read the vendor's whole-day rows per contract (or the regular
-   session's minutes), which carry no session split — the card would change nothing there, so it is not shown. */
+/* The Session card shows only on pages whose figures it cuts; the whole-day pages carry no session split. */
 const SESSION_PAGES = /^\/trace\/(live-tape|dark-pool|multi-leg|net-flow)/;
 
 const TraceLayout = () => {
-  const { activeTicker, changeTicker } = useMarketData();
+  const { activeTicker, changeTicker } = useTicker();
   const location = useLocation();
   const outlet = useOutlet();
   const active = TRACE_SUBPAGES.find(page => location.pathname.startsWith(page.path)) ?? TRACE_SUBPAGES[0];
@@ -50,9 +30,7 @@ const TraceLayout = () => {
   /* The viewport-fitted pages (Net Flow, 0DTE): the outlet wrapper absorbs the remaining height for them */
   const bleed = /^\/trace\/(net-flow|odte)/.test(location.pathname);
   const picker = !NO_PICKER.test(location.pathname);
-  /* The pages' grids grow with their rows now (2026-09-11), so the column
-     holds its width for the sidebar's glide — one layout at the end, not one
-     per frame over every rendered row (the Weigher's rule) */
+  /* The column holds its width through the sidebar's glide: one layout at the end, not one per frame of every row. */
   const phase = sessionPhase();
   const subtitle =
     active.path === '/trace/live-tape' && (phase === 'closed' || phase === 'pre')
@@ -77,10 +55,7 @@ const TraceLayout = () => {
           {SESSION_PAGES.test(location.pathname) && <TraceSessionCard />}
         </div>
       </header>
-      {/* A CROSS-FADE, NO TRAVEL (Noah, 2026-08-30: "on open... things get
-          out of place like the tables shrink then go back to normal spacing
-          for a very brief moment"). Opacity is the only thing that moves;
-          the exit is short so the wait between pages is a blink, not a blank. */}
+      {/* Opacity is the only thing that moves, so tables never jump on open; the short exit keeps the wait a blink. */}
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={location.pathname}
@@ -91,14 +66,14 @@ const TraceLayout = () => {
           transition={{ duration: 0.14 }}
           className={`flex flex-col gap-2.5 ${bleed ? 'flex-1 min-h-0' : ''}`}
         >
-          {/* A subpage opens at its head, not where the last one's scroll was (2026-09-11) */}
+          {/* A subpage opens at its head, not where the last one's scroll was */}
           <ScrollHome />
           {/* A page's code travels on its first visit; it stands in as ITS OWN
               shape under a head that stays put (traceSkeletons.tsx) */}
           <Suspense fallback={<TracePageSkeleton pathname={location.pathname} />}>{outlet}</Suspense>
         </motion.div>
       </AnimatePresence>
-      {/* The page's door home once a grid runs past a screen (the Compass board's, 2026-09-11) */}
+      {/* The page's door home once a grid runs past a screen */}
       <BackToTop testId="trace" />
     </>
   );

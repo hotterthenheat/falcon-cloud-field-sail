@@ -1,41 +1,11 @@
-/*
-==================================================
-  SLAYER TERMINAL - ALL NEWS
-  (components/record/NewsFeedTabs.tsx)
-
-  Every headline on the wire, as one feed with
-  tabs — the partner's box, ported 2026-09-13
-  (Noah, with his screenshot: "i love it. i want
-  that as well but it needs to match our type
-  design and our already existing code"):
-
-    ALL FINANCE   every story, newest first
-    FOLLOWING     the names you follow — pick them
-                  here, ring the bell on any of them
-    EARNINGS      prints and guidance
-    DATA          the macro stories, and today's
-                  prints as they land
-    ANALYST       upgrades, downgrades, targets
-    DEALS         M&A, product, regulatory
-    OTHER         company stories of no named beat
-
-  A row is the wire's row, in the wire's grammar
-  (time · name · kind · reads · headline with its
-  impact square · 1-day · sure); a click opens the
-  story beside the map above and glides the map to
-  its city. The bell on a followed name is the
-  shell's own news alert (data/newsFollows.ts →
-  alertStore.armNews) — the same one the story's
-  "Alert me" door sets — so it wears the armed
-  silver, never a colour of its own.
-==================================================
-*/
+/* Every headline as one feed with tabs (all, following, earnings, data, analyst, deals, other); a click opens the story
+   above and flies the map to its city. A followed name's bell is the shell's own news alert (alertStore.armNews). */
 
 import { PublishMove } from './publishMove';
 import { useMediaQuery } from '../ui/useMediaQuery';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, BellOff, Plus, X } from 'lucide-react';
-import { freshnessOf, type EconEvent, type GeoNewsEvent, type NewsGrade } from '../../data/newsroom';
+import { freshnessOf, type EconEvent, type GeoNewsEvent } from '../../data/newsroom';
 import { followName, setFollowAlerts, unfollowName, useFollows } from '../../data/newsFollows';
 import { NEWS_ROW_H, NEWS_WINDOW_H, NEWS_WINDOW_ROWS } from '../../pages/record/recordSkeletons';
 import CatTag from '../news/CatTag';
@@ -44,8 +14,7 @@ import CompanyLogo from '../ui/CompanyLogo';
 import TickerLookup from '../ui/TickerLookup';
 import { ImpactLegend, ImpactMark, NEWS_FLAG_TIP, NewsFlag, tierOf } from './impactMark';
 
-/** The name column's word for a story with no ticker: MACRO only for an economy or market story — a company story the
-    wire left untagged is not macro (the retail pass, 2026-10-22: Moderna, Global Payments and Zurn all read MACRO) */
+/** MACRO only for an economy or market story; an untagged company story is not macro */
 export const nameWord = (item: { ticker: string | null; category: string; mentions?: string[] }): string => item.ticker ?? (item.mentions?.length ? `mentions ${item.mentions[0]}` : item.category === 'Macro' ? 'MACRO' : 'NO NAME');
 import { useBoardNames } from '../../data/boardNames';
 
@@ -57,14 +26,13 @@ export const FEED_TABS = [
   { value: 'data', label: 'Data news' },
   { value: 'analyst', label: 'Analyst' },
   { value: 'deals', label: 'Deals, product & rules' },
-  /* the stories of no named beat have a tab of their own (round 8: "DEALS & PRODUCT · 69" held the General stories) */
+  /* the stories of no named beat have a tab of their own */
   { value: 'other', label: 'Other company news' },
 ] as const;
 /** The wire's columns — the same seven the rows under the map wear */
 export const FEED_COLS = '72px 104px 96px 72px minmax(0, 1fr) 76px 72px';
 /** The tab in hand outlives the page — back from a story's page, the reader lands on the tab they left */
-/* it opens on a kind, not on "All" — the wire box above already lists every story, and the two boxes opened on the same
-   list, every headline twice on the page (the retail pass, 2026-10-22) */
+/* it opens on a kind, not on All: the list above already holds every story */
 let tabMemory: FeedTab = 'earnings';
 
 /** Scroll a window so the row it names is in view — the window alone, never the page (scrollIntoView would move both) */
@@ -101,9 +69,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
   const boardSet = useMemo(() => new Set(boardNames), [boardNames]);
   const onBoard = (e: GeoNewsEvent) => (e.item.tickers ?? (e.item.ticker ? [e.item.ticker] : [])).some(t => boardSet.has(t));
   const [adding, setAdding] = useState(false);
-  /* ON A PHONE THE ROWS STACK (the retail test, round 7: at 390px each row squeezed its headline column to nothing — the
-     headline broke a letter a line, rows 1,000–1,800px tall, and the box read as an empty black band). The same two-line
-     row as the wire's own under the map: the headline, then time · name · kind · flag · move */
+  /* on a phone each row stacks: the headline, then time · name · kind · flag · move */
   const stacked = useMediaQuery('(max-width: 639.98px)');
   /* the open row stays in the window; a tab change starts the window at its head */
   const windowRef = useRef<HTMLDivElement | null>(null);
@@ -166,12 +132,12 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
 
   return (
     <div data-news-feed={tab}>
-      {/* THE TABS — the child tier, a hairline gliding between them */}
+      {/* the tabs, a hairline gliding between them */}
       <div className="px-5 min-h-[38px] py-1 border-b border-borderSubtle flex items-center gap-x-4 gap-y-1 flex-wrap" data-news-feed-tabs>
         <CardTabs options={tabOptions} value={tab} onChange={setTab} ariaLabel="Which news" />
       </div>
 
-      {/* THE NAMES YOU FOLLOW — on the Following tab: a chip per name with its bell, and the door to add one */}
+      {/* the names you follow, on the Following tab: a chip per name with its bell */}
       {tab === 'following' && (
         <div className="px-5 h-[44px] border-b border-borderSubtle/60 flex items-center gap-2 flex-wrap" data-news-follows={follows.length}>
           <span className="font-mono text-t9 uppercase tracking-widest text-textMuted mr-1">Following</span>
@@ -222,12 +188,12 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
         </div>
       )}
 
-      {/* THE ROWS — the wire's grammar; below lg they scroll sideways inside the box at a readable width (the phone pass, 2026-09-13) */}
-      {/* THE FEED SCROLLS INSIDE ITS BOX past twenty rows (Noah, 2026-10-13) — the same window as the rows under the map */}
+      {/* the rows; below lg they scroll sideways at a readable width */}
+      {/* the feed scrolls inside its box past twenty rows */}
       <div ref={windowRef} className={`relative overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ maxHeight: NEWS_WINDOW_H }} data-news-feed-window={rows.length + printed.length > NEWS_WINDOW_ROWS || undefined} data-news-feed-stacked={stacked || undefined}>
       {!stacked && <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-t9 uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: FEED_COLS }}>
         <span title="When the headline crossed, New York time">Time</span>
-        <span title="The first stock the headline names; MACRO for an economy or market story that names none; NO TICKER for a company story the wire left untagged">Name</span>
+        <span title="The first stock the headline names; MACRO for an economy story; NO TICKER for an untagged company story">Name</span>
         <span title="What sort of story it is, read from the headline">Kind</span>
         <span title={NEWS_FLAG_TIP}>Flag</span>
         <span className="flex items-center gap-4">

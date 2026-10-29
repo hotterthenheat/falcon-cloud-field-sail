@@ -1,15 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - LAUNCH TRANSITION
-  One branded gate, for the door in: "Launch terminal",
-  a product's open, the footer's jump, and a missing
-  page's way to Pulse. A browser refresh does not play
-  it. That wait is the bigger wordmark in index.html.
-  Caret logo + a lime progress line over black, then
-  the destination fades in beneath it. Fixed duration
-  — when a real boot sequence exists it slots into
-  the same hold.
-==================================================
+  The branded gate for doors into the terminal (Launch terminal, a product's open, the footer, the not-found way to
+  Pulse); a refresh does not play it (index.html's wordmark covers that wait). A fixed duration over black, then the
+  destination fades in beneath.
 */
 
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
@@ -83,10 +75,8 @@ export const LaunchProvider = ({ children }: { children: ReactNode }) => {
             className="fixed inset-0 z-[100] bg-canvas flex flex-col items-center justify-center gap-5"
             data-launch-gate
           >
-            {/* HIS PARTNER'S LOGO SYSTEM (2026-10-03): the S| in its loading state (the foil at speed), the wordmark typing
-                itself in at 28 ms a character, the bar, the signature. On the light page the bar goes to the ink (index.css —
-                Noah, 2026-09-26: "the loading screen of slayer on light mode esp the bar needs to be more apparent"); the
-                mark and the lit letters wear the galaxy ink there on their own. */}
+            {/* the S| in its loading state, the wordmark typing at 28 ms a character, the bar and the signature; on the light
+                theme the bar takes the ink (index.css) and the mark the galaxy ink */}
             <Wordmark height={22} typing label="Slayer Terminal" />
             <div className="w-52 h-[2px] rounded-full bg-ink/[0.08] overflow-hidden" data-gate-track>
               {/* CSS transform fill (see .animate-gate-fill) — compositor-driven,

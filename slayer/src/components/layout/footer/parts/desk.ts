@@ -1,8 +1,5 @@
-/*
-  THE DESK'S SMALLER PANELS (components/layout/footer/parts/desk.ts) — Pulse's setup cards and its earnings rows, and
-  Compass's board of contract cards and its heaviest contracts: a card is a contract's tag edged in its side's ink, a
-  sparkline that walks, the line it breaks at, its state.
-*/
+/* Pulse's setup cards and earnings rows, and Compass's contract cards: a tag edged in its side's ink, a walking
+   sparkline, the line it breaks at, its state. */
 
 import {
   FONT,

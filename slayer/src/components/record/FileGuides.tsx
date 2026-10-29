@@ -1,8 +1,4 @@
-/*
-  How to read Institutions, Shorts and ETFs. The same door Congress,
-  Insiders and Stocks already use — a figure of words, not a second
-  visual language.
-*/
+/* How to read Institutions, Shorts and ETFs, through the same guide door the other Dossier pages use. */
 
 import type { ReactNode } from 'react';
 

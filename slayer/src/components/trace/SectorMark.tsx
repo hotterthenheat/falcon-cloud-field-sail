@@ -1,21 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - SECTOR MARK (trace)
-
-  A sector told by SHAPE, not hue (Noah, 2026-09-03:
-  "the little color coded circles next to the sector
-  name. i feel like every financial website has the
-  exact same setup and colors for them. find another
-  way to showcase the differences"). One monochrome
-  glyph per sector, from the icon set the Trace tabs
-  already wear, in the quiet ink — a sector is a
-  category, and under the colour law a category has
-  no claim on colour: hue stays for direction,
-  status and the champion. The name always rides
-  beside the glyph; the glyph lets the eye sort a
-  column before the word is read.
-==================================================
-*/
+/* A sector told by a monochrome glyph, not a hue (hue is kept for direction, status and the champion); the name
+   rides beside it. */
 
 import {
   Building2,
@@ -46,7 +30,7 @@ const GLYPH: Record<string, LucideIcon> = {
   'Real Estate': Building2,
   Energy: Fuel,
   'Basic Materials': FlaskConical,
-  /* The equity universe's own names for the same sectors (data/universe.ts — the Stocks page, 2026-09-10) */
+  /* The equity universe's own names for the same sectors */
   Financials: Landmark,
   'Health Care': HeartPulse,
   'Consumer Discretionary': ShoppingBag,

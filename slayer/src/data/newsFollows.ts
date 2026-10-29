@@ -1,23 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE NAMES YOU FOLLOW ON THE WIRE
-  (data/newsFollows.ts)
-
-  Which tickers' news the reader follows, and which
-  of them ring the bell (the partner's review, item
-  2: "choose which tickers' news to follow, have
-  alerts on for specific tickers"; the All news box
-  is his, ported 2026-09-13 — Noah: "i love it. i
-  want that as well but it needs to match our type
-  design and our already existing code"). One
-  store, read with useSyncExternalStore, the
-  board-names store's shape, remembered in
-  localStorage. Turning a name's bell on arms the
-  shell's own news alert for it (alertStore.armNews)
-  so it rings the way every other alert does — the
-  same alert the story's "Alert me" door sets.
-==================================================
-*/
+/* The names the reader follows on the wire and which ring the bell, kept in this browser; a bell arms the shell's own
+   news alert (alertStore.armNews). */
 
 import { useSyncExternalStore } from 'react';
 import { armNews, getAlerts, removeAlert } from '../components/gex/alertStore';

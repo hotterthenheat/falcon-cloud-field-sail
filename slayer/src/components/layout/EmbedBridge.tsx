@@ -1,19 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE WINDOW'S BRIDGE
-  (components/layout/EmbedBridge.tsx)
-
-  The inside half of the terminal in the landing's
-  window (embed.ts has the whole story). It renders
-  nothing and, outside a window, does nothing.
-
-  Inside one it takes two orders from the page
-  outside — open this page, wear this theme — and
-  says three things back: it is listening, the page
-  changed, Esc was pressed (the visitor wants the
-  landing's scroll back). Same origin only, and only
-  from the frame's own parent.
-==================================================
+  The inside half of the terminal in the landing's window (embed.ts). Renders nothing; outside a window does nothing.
+  Inside, it takes "open this page" and "wear this theme" and reports ready, route changes and Escape, same origin
+  and from its own parent only.
 */
 
 import { useEffect } from 'react';
@@ -27,11 +15,9 @@ const say = (type: FromEmbed['type']) => {
   window.parent.postMessage(msg, window.location.origin);
 };
 
-/** The theme changes as ONE crossfade of the whole page where the browser can (index.css times it),
-    at once where it cannot or where the visitor asked for less motion. A beat is held inside the
-    change so the charts, which re-ink in an effect, are in the picture that fades in — a TIMER, not
-    a frame: the browser holds rendering while the change is made, so a frame callback never comes
-    and the transition times out (measured: "DOM update timed out", the terminal stayed dark). */
+/** The theme changes as one page crossfade where supported (index.css times it), at once otherwise or under reduced
+    motion. A timer (not a frame callback, which never fires while the browser holds rendering) holds a beat so the
+    re-inked charts are in the new picture. */
 const wear = (theme: Theme) => {
   if (getResolvedTheme() === theme) return;
   const run = () => flushSync(() => setThemeChoice(theme));

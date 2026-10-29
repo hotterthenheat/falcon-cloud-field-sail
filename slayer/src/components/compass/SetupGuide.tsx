@@ -1,13 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - HOW TO READ A SETUP
-  (components/compass/SetupGuide.tsx)
-
-  The setup page's guide in the house pattern (the
-  walk, 2026-09-11): a figure per thing, the
-  surface drawn small in its own inks, one sentence
-  under each.
-==================================================
+  How to read a setup's page, one short paragraph per part.
 */
 
 import type { ReactNode } from 'react';
@@ -98,27 +90,6 @@ const TargetsFigure = () => (
       <text x={20} y={78} fontSize={8} fontWeight={700} fill={BEAR}>Stop</text>
       <text x={408} y={78} textAnchor="end" fontSize={8.5} fontWeight={700} fill={BEAR}>$0.48</text>
     </g>
-  </Figure>
-);
-
-/* The case: four words, no meter — the page does not draw one */
-const CaseFigure = () => (
-  <Figure label="Four case words: strong, good, caution, poor" h={92}>
-    {[
-      { y: 18, ink: BULL, word: 'strong' },
-      { y: 40, ink: BULL, word: 'good' },
-      { y: 62, ink: WARN, word: 'caution' },
-      { y: 84, ink: BEAR, word: 'poor' },
-    ].map(m => (
-      <g key={m.word} fontFamily={MONO}>
-        <text x={12} y={m.y} fontSize={6.5} letterSpacing={0.8} fill={MUTED}>
-          THE CASE
-        </text>
-        <text x={80} y={m.y} fontSize={8} fontWeight={700} fill={m.ink}>
-          {m.word}
-        </text>
-      </g>
-    ))}
   </Figure>
 );
 

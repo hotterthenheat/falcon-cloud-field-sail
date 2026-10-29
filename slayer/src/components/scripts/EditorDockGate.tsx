@@ -1,27 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE EDITOR DOCK'S DOOR
-  (components/scripts/EditorDockGate.tsx)
-
-  The script editor is CodeMirror, the Pine runtime and
-  — through the bars its status line reads — the chart
-  itself. The shell mounted the dock on every page, so
-  all of that rode in the FIRST file every visitor
-  downloads: the landing page on a phone paid for an
-  editor it cannot even open (measured 2026-09-19 on a
-  production build: the first file was 1,602 KB).
-
-  The shell mounts THIS instead: a few lines that watch
-  whether the dock is open, and fetch the editor the
-  first time it is. Nothing shows while it travels —
-  the dock fades in when it lands, as it always did.
-
-  SCRIPTS ARE PART OF TAPE (2026-10-10, the plan gates):
-  on Book the dock opens onto a card instead of the
-  editor — what scripts are, which plan has them, and
-  the doors to Desk and to Tape — in the dock's own
-  place at the chart's right edge.
-==================================================
+  Loads the script editor (CodeMirror, the Pine runtime) only when it is opened, so no other page pays for it.
 */
 
 import { lazy, Suspense } from 'react';

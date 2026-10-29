@@ -1,54 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE · WHAT A TILE IS
-  (pages/workspace/tile.ts)
-
-  THE DESK REBUILT (Noah, 2026-09-30: "practically
-  delete every card, preset and widget. keep the
-  ability on how the cards move around. we need
-  proper presets, proper widget displays, proper
-  headers for specific widgets, full screen …
-  bringing you to the page with the back to pulse
-  button"). What was wrong with the twelve it had:
-  every one was a PAGE SHRUNK INTO A BOX — the tile's
-  head, then the page's own head again (a guide door,
-  a row of facts, a row of control cards), so the
-  instrument began far down the tile and was drawn
-  too small to read.
-
-  THE CONTRACT every tile keeps:
-
-    ONE INSTRUMENT, ONE READ   no guide door, no facts
-                               grid, no second head —
-                               the page has those
-    ITS CONTROLS ARE THE HEAD'S  declared as data
-                               (`controls`), drawn by
-                               the one head as the
-                               house's dropdown cards;
-                               the head folds them
-                               when the tile is narrow
-    IT KNOWS ITS ROOM          `size.room` — small ·
-                               medium · large — and
-                               `size.short`
-    ITS SETTINGS ARE ITS OWN   `state`, kept with the
-                               instance on the desk,
-                               so two copies differ
-                               and the door can carry
-                               what the tile showed
-    ITS DOOR IS A PAGE         `page` — the real page,
-                               on the tile's name,
-                               with the way back to
-                               Pulse; never a takeover
-                               of its own
-
-  THE CHART IS THE ONE EXCEPTION, at Noah's word
-  (2026-10-02: "i dont like how you changed the pulse
-  chart and removed the indicators, and button layout
-  … look like the prev one"): it keeps its own
-  taskbar on the tape and lifts ITS OWN FULLSCREEN
-  (`fullscreen`), where its indicators live. Its page
-  (Terrain) moves into the tile's menu.
-==================================================
+  What a Pulse tile is: one instrument and one read, its controls declared as data for the head, its own settings,
+  and a door to the real page. The chart alone lifts its own fullscreen.
 */
 
 import type { ComponentType, ReactNode } from 'react';

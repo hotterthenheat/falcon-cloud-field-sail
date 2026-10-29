@@ -1,19 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE EXPIRY CUT (trace)
-  (components/trace/bookExpiry.ts)
-
-  One hook for a flow page: the dates that are
-  ACTUALLY ON THE ROWS in front of the reader (the
-  tape's prints, the book's own expiries), as a
-  calendar, and the rows cut to the chosen one — or
-  every expiry, which is where a page opens. The
-  dates come from the rows and nothing else, so the
-  calendar can never offer a day the page has
-  nothing on. Taken from the partner's build with
-  his tape, at Noah's word (2026-10-13).
-==================================================
-*/
+/* The expiry cut for a flow page: the dates actually on its rows as a calendar, and the rows cut to the chosen one
+   (or every expiry). */
 
 import { useCallback, useMemo, useState } from 'react';
 import { expiryAt, isoDate, type Expiry } from '../../core/calendar';
@@ -43,10 +29,7 @@ export interface ExpiryCut<T> {
   chosen: Expiry | null;
 }
 
-/**
- * The expiry cut for a page. `get` reads a row's expiry (MM/DD/YYYY). `control`, given, holds the choice outside the
- * hook — a page whose cut lives in the address hands its own value and setter.
- */
+/** The expiry cut for a page. `get` reads a row's expiry (MM/DD/YYYY); `control` holds the choice outside the hook. */
 export function useExpiryCut<T>(rows: T[], get: (r: T) => string, control?: { value: string | null; onChange: (iso: string | null) => void }): ExpiryCut<T> {
   const [own, setOwn] = useState<string | null>(null);
   const expiry = control ? control.value : own;

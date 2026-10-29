@@ -1,33 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - WATCH CONTEXT (the Trace bookmarks)
-
-  One store for everything a reader bookmarks on
-  the Trace pages (Noah, 2026-09-03: "a bookmark
-  ability by each tape ticker like how live tape
-  has it already… for the other subpages"). Until
-  now the tape's star and the card's "Track this
-  print" wrote to page-local sets that died on the
-  next navigation, and the Tracker tab was a
-  scaffold with nowhere to read from.
-
-  Three kinds of thing get watched, because the
-  pages deal in three units:
-    print      one execution off the tape — the
-               thing that printed, as it printed
-    contract   a whole contract off a book page
-               (Screener, Footprints, Watchers,
-               Windows, or the card) — keyed by
-               ticker · strike · right · expiry so
-               it survives the day rolling over
-    structure  a multi-leg trade off Multi-Leg
-
-  Every item carries WHEN it was watched, WHERE
-  from, and a snapshot of what it looked like then —
-  the Tracker's whole job is "what has it done
-  since", and that needs a then. Persisted.
-==================================================
-*/
+/* One persisted store for everything a reader marks on Trace: prints, whole contracts, structures and dark crosses,
+   each with when and where it was marked and a snapshot of it then, so the Tracker can say what it has done since. */
 
 import type { DarkPoolIntent, DarkPoolPrint } from '../types/darkpool';
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
@@ -73,10 +45,9 @@ export interface WatchedPrint extends WatchBase {
   premium: number;
   side: 'ASK' | 'BID' | 'MID';
   sweep: boolean;
-  /** One leg of a multi-leg order — half of a structure, never read bullish or bearish when reopened (audit round 8) */
+  /** One leg of a multi-leg order: never read bullish or bearish when reopened */
   multi?: boolean;
-  /** The underlying and the contract's day when it printed — `daySide` the contract's day by side at the mark, so the
-      Tracker's "lean then" is the lean when it was marked (audit round 8: "— → EVEN" on a print marked at ask 54%) */
+  /** The underlying and the contract's day when it printed; `daySide` is the lean then */
   at: { spot: number; volume: number; oi: number; daySide?: { ask: number; bid: number; mid: number } };
   occ?: string;
 }
@@ -89,7 +60,7 @@ export interface WatchedStructure extends WatchBase {
   dte: number;
   time: string;
   size: number;
-  /** Per UNIT: positive = debit paid, negative = credit collected (older marks: the vendor's net price) */
+  /** Per unit: positive = debit paid, negative = credit collected (older marks: the vendor's net price) */
   net: number;
   /** The net premium that changed hands, dollars, signs dropped (older marks: the gross of every leg — see `gross`) */
   premium: number;
@@ -102,11 +73,12 @@ export interface WatchedStructure extends WatchBase {
   at: { spot: number };
 }
 
-/** A DARK-POOL CROSS under watch (2026-10-19; Noah: "you should also be able to save and bookmark it for it to be seen
-    in the tracker") — the cross's own figures and its read, with the stock where it stood */
+/** A dark-pool cross under watch: its own figures and read, with the stock where it stood */
 export interface WatchedCross extends WatchBase {
   kind: 'cross';
   id: number;
+  /** The cross's New York day, YYYY-MM-DD */
+  dateIso?: string;
   time: string;
   price: number;
   size: number;
@@ -123,17 +95,18 @@ export interface WatchedCross extends WatchBase {
 
 export type WatchedItem = WatchedContract | WatchedPrint | WatchedStructure | WatchedCross;
 
-// ---- keys and builders ---------------------------------------------------------
+const NY_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
+/** The New York day of an instant, '' without one */
+const dayOf = (ms?: number) => (ms && ms > 0 ? NY_DAY.format(new Date(ms)) : '');
 
 export const contractKey = (c: { ticker: string; strike: number; right: 'C' | 'P'; expiry: string }) =>
   `c:${c.ticker}:${c.strike}:${c.right}:${c.expiry}`;
 
-/** A print's key is its CONTENT, not its tape id — ids restart with the
-    session, the print itself does not. */
-export const printKey = (p: FlowPrint) => `p:${p.ticker}:${p.strike}:${p.right}:${p.expiry}:${p.time}:${p.size}:${p.fill}`;
+/** A print's key is its content and its day: tape ids restart with the session, and a clock repeats every day */
+export const printKey = (p: FlowPrint) => `p:${dayOf(p.epochMs ?? (p.epoch ? p.epoch * 1000 : undefined))}:${p.ticker}:${p.strike}:${p.right}:${p.expiry}:${p.time}:${p.size}:${p.fill}`;
 
-/** A cross's key is its content too — the name, the minute, the price and the shares */
-export const crossKey = (p: Pick<DarkPoolPrint, 'ticker' | 'time' | 'price' | 'size'>) => `x:${p.ticker}:${p.time}:${p.price}:${p.size}`;
+/** A cross's key is its content and its day too */
+export const crossKey = (p: Pick<DarkPoolPrint, 'ticker' | 'time' | 'price' | 'size' | 'epochMs' | 'dateIso'>) => `x:${p.dateIso || dayOf(p.epochMs)}:${p.ticker}:${p.time}:${p.price}:${p.size}`;
 export const watchedCross = (p: DarkPoolPrint, spot: number, from: WatchSource = 'dark-pool'): WatchedCross => ({
   key: crossKey(p),
   kind: 'cross',
@@ -141,6 +114,7 @@ export const watchedCross = (p: DarkPoolPrint, spot: number, from: WatchSource =
   watchedAt: Date.now(),
   from,
   id: p.id,
+  dateIso: p.dateIso || dayOf(p.epochMs) || undefined,
   time: p.time,
   price: p.price,
   size: p.size,
@@ -157,6 +131,7 @@ export const watchedCross = (p: DarkPoolPrint, spot: number, from: WatchSource =
 /** The cross back from its watch, for the card */
 export const crossOfWatch = (w: WatchedCross): DarkPoolPrint => ({
   id: w.id,
+  dateIso: w.dateIso ?? (/^x:(\d{4}-\d{2}-\d{2}):/.exec(w.key)?.[1] || undefined),
   time: w.time,
   ticker: w.ticker,
   price: w.price,
@@ -182,7 +157,7 @@ export const watchContract = (r: BookContract, from: WatchSource): WatchedContra
   expiry: r.expiry,
   watchedAt: Date.now(),
   from,
-  /* THE SPOT AT MARK TIME IS THE LIVE ONE (audit round 9: "Spot then $212.75" was the screener's frozen stock-state) */
+  /* the spot at mark time is the live one, not the screener's frozen stock state */
   at: { dte: r.dte, spot: liveSpotOf(r.ticker) || r.spot, last: r.last, chgPct: r.chgPct, volume: r.volume, oi: r.oi, premium: r.premium, askPct: r.askPct, lastAt: r.lastAt && r.lastAt !== '—' ? r.lastAt : undefined },
   occ: r.optionSymbol,
 });
@@ -217,8 +192,7 @@ export const watchStructure = (t: SpreadTrade, from: WatchSource): WatchedStruct
   expiry: t.expiry,
   dte: t.dte,
   time: t.time,
-  /* THE MONEY THAT CHANGED HANDS (the re-audit, 2026-10-22: a structure's "Then $18.1K" was the gross of its legs; it
-     collected $2.35K) — units and the per-unit net from its settled legs, the net premium beside the gross */
+  /* the money that changed hands: units and per-unit net from the settled legs, the net beside the gross */
   size: t.units ?? t.size,
   net: t.net,
   premium: t.netKnown === false ? t.premium : Math.abs(t.netPremium),
@@ -230,7 +204,6 @@ export const watchStructure = (t: SpreadTrade, from: WatchSource): WatchedStruct
   at: { spot: t.spot },
 });
 
-// ---- storage -------------------------------------------------------------------
 
 const KINDS = new Set<string>(['print', 'contract', 'structure', 'cross']);
 
@@ -256,12 +229,15 @@ function load(): WatchedItem[] {
     const parsed: unknown = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(parsed)) return [];
     const valid = parsed.filter(isValid);
-    /* The Trace page "Flow Alerts" became Watchers on 2026-09-11 — a mark taken
-       there before that day keeps its source under the new name */
+    /* old sources keep their new name; print and cross keys taken before keys carried a day get the mark's day */
     let renamed = 0;
     for (const it of valid) {
       if ((it.from as string) === 'flow-alerts') {
         it.from = 'watchers';
+        renamed++;
+      }
+      if ((it.kind === 'print' || it.kind === 'cross') && !/^[px]:\d{4}-\d{2}-\d{2}:/.test(it.key) && !/^[px]::/.test(it.key)) {
+        it.key = `${it.key.slice(0, 2)}${dayOf(it.watchedAt)}:${it.key.slice(2)}`;
         renamed++;
       }
     }
@@ -276,11 +252,10 @@ function save(items: WatchedItem[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   } catch {
-    /* storage full or off — the session still works */
+    /* storage full or off: the session still works */
   }
 }
 
-// ---- the context ---------------------------------------------------------------
 
 interface WatchValue {
   watched: WatchedItem[];

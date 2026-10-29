@@ -1,26 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE SHARED STRIKE (FocusContext)
-  One strike, held by the whole terminal (Noah,
-  2026-09-05, the Pinpoint cut: "the shared
-  strike"). Before this, every Pinpoint tab kept its
-  own selected strike and forgot it on the next tab,
-  and the chart learned a strike only by a route
-  state handed to it on arrival. Now a strike picked
-  anywhere — a ladder row, a capsule, a ranked
-  target, a session grid — is THE strike: the shell
-  wears it as a chip, every tab lights it, the Pulse
-  chart draws it as the focus line the moment the
-  desk opens.
-
-  A focus is a fact about ONE name. Leaving that
-  name retires it — but only a transition AWAY
-  counts: arriving with a repoint in flight, the
-  desk is briefly still on the old name, and
-  clearing then would kill the focus before the
-  chart ever drew it (the rule Pulse carried alone
-  since 2026-08-19; it lives here now).
-==================================================
+  One strike held by the whole terminal, so every page and the chart agree on the strike in focus.
 */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';

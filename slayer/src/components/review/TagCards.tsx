@@ -1,17 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · A TRADE'S TAGS
-  (components/review/TagCards.tsx)
-
-  What turns a journal's words into something that can
-  be COUNTED: on a closed trade, the setup it was, the
-  mistakes made in it, and whether the plan was
-  followed. One line of labelled cards — the house's
-  approved look, never a row of chips — and beside
-  them the door to the reader's own lists: the tags
-  are theirs to add to and take from (a tag taken off
-  a list stays on the trades that carry it).
-==================================================
+  A closed trade's tags as labelled cards (the setup, the mistakes, whether the plan was followed), beside the door
+  to the reader's own tag lists.
 */
 
 import { useRef, useState } from 'react';

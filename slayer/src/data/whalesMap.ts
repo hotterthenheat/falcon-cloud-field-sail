@@ -1,6 +1,4 @@
-/*
-  Live Unusual Whales rows, in the shapes the dossier pages already render.
-*/
+/* Live Unusual Whales rows, in the shapes the Dossier pages render. */
 
 import type { NewsItem, NewsCategory } from './news';
 import { AMOUNT_BRACKETS, summariseCongress } from './congress';
@@ -260,9 +258,10 @@ const NOISE_RE =
   /\bon binance\b[^.]{0,80}?(?:macd|stochastic|bollinger|moving averages?|rsi|pivot|oversold|overbought)|\b(?:macd|stochastic|bollinger)\b[^.]{0,80}\bbinance\b|\bmarket worth \$?[\d.,]+ ?(?:billion|million) by 20\d\d\b|\|\s*marketsandmarkets|\bessay writing service\b|\b(?:marathon|athletics integrity|olympic) (?:champion|unit|gold)/i;
 export const isNewsSpam = (headline: string): boolean => SPAM_RE.test(headline) || NOISE_RE.test(headline);
 
-/* A story is major when the vendor says so, it is about a listed company or the economy, and it is not house-keeping. */
+/* A story is major when the vendor says so, it is about a listed company or the economy, and it is not house-keeping
+   (results dates, calls, dividends, conference slots); a figure's decimal point is not a sentence end. */
 const ROUTINE_RE =
-  /\bconference call\b|\b(?:earnings|results) (?:release|date|call)\b|\b(?:to|will) (?:host|hold|report|announce|release)\b[^.]{0,60}\b(?:results|earnings)\b|\bannounces? (?:the )?(?:date|timing)\b|\btiming of\b[^.]{0,40}\bresults\b|\bto (?:speak|present|participate) at\b|\binvestor (?:conference|day)\b|(?<!\b(?:results|earnings)\b.*)\bdeclares?\b[^.]{0,40}\bdividends?\b(?!.*\b(?:results|earnings)\b)|\b(?:declares?|announces?)\b[^.]{0,30}\b(?:quarterly|regular|monthly|cash) (?:cash )?dividend\b|\bdividend payout\b|\bnames?\b[^.]{0,40}\b(?:vice president|vp|manager|director)\b/i;
+  /\bconference call\b|\b(?:earnings|results) (?:release|date|call)\b|\b(?:to|will) (?:host|hold|report|announce|release)\b[^.]{0,60}\b(?:results|earnings)\b|\bannounces? (?:the )?(?:date|timing)\b|\btiming of\b[^.]{0,40}\bresults\b|\bto (?:speak|present|participate) at\b|\binvestor (?:conference|day)\b|(?<!\b(?:results|earnings)\b.*)\bdeclares?\b[^.]{0,40}\bdividends?\b(?!.*\b(?:results|earnings)\b)|\b(?:declares?|announces?)\b[^.]{0,30}\b(?:quarterly|regular|monthly|cash) (?:cash )?dividend\b|\bdividend payout\b|\bnames?\b[^.]{0,40}\b(?:vice president|vp|manager|director)\b|\bdeclares?\b(?:[^.]|\.(?=\d)){0,40}\bdividends?\b|\bdividends?\b(?:[^.]|\.(?=\d)){0,20}\bdeclared\b|\b(?:to (?:announce|report|release|host)|announces?|schedules?|sets?)\b(?:[^.]|\.(?=\d)){0,60}\b(?:results|earnings release|conference call|webcast)\b(?:[^.]|\.(?=\d)){0,40}\b(?:on|date|dates|for)\b|\b(?:to )?(?:participate|present) (?:in|at)\b(?:[^.]|\.(?=\d)){0,40}\bconferences?\b|\btokeni[sz]ed\b|\bbinance futures\b|\belected\b(?:[^.]|\.(?=\d)){0,40}\bdirector\b/i;
 
 /* a law firm's solicitation of shareholders, a marketing tie-in or a brand line is never major */
 const LAW_AD_RE =
@@ -801,9 +800,8 @@ export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
   let notShares = 0;
   let implausible = 0;
   for (const r of rows) {
-    /* Form 144 is a notice of a proposed sale, not an execution. A code the
-       book does not name (J, U, C…) is not an open-market buy or sale either —
-       mapping those onto P and S put fictional trades on the open-market page. */
+    /* Form 144 is a notice of a proposed sale, and an unnamed code (J, U, C…) is not an open-market
+       trade either: neither maps onto P or S. */
     const form = String(r.formtype || '');
     if (form === '144' || form.startsWith('144')) continue;
     const letter = (r.transaction_code || '').toUpperCase();

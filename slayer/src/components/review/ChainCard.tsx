@@ -1,32 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · THE CHAIN BESIDE THE CHART
-  (components/review/ChainCard.tsx)
-
-  The options desk's chain, lifted out of it (2026-09-22)
-  so the live paper desk trades from the same card: the
-  backtest hands it the chain AS IT STOOD at the clock's
-  minute, the paper desk the chain AS IT STANDS. Every
-  ruling on it stands (pages/review/Desk.tsx's head note):
-
-    THE CHAIN IS A WINDOW  its head and its column names
-                           stay, its rows scroll inside;
-                           it opens with the money in its
-                           middle, and a strike that is
-                           opened is brought into view
-                           WITH its drop-down — by the
-                           window's own scroll, never the
-                           page's ("when i use the dropdown
-                           the ticket is gone")
-    EACH STRIKE HAS ITS    Stats and The Greeks, the
-    OWN DROP-DOWN          Weigher's (ContractDrill)
-    WHOSE CHAIN            with two names on the desk the
-                           head says, in the silver the
-                           chart on the desk wears
-    HELD · SOLD            a strike held says so; the
-                           strike sold against it in a
-                           spread says that
-==================================================
+  The chain beside the chart, shared by the backtest and the paper desk: a window that opens on the money, a strike
+  that opens onto its stats, greeks and order.
 */
 
 import { useLayoutEffect, useRef, type CSSProperties } from 'react';

@@ -1,13 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE DESK'S CLOCK
-  (pages/workspace/useDeskClock.ts)
-
-  The Pinpoint pages read New York time every 15s
-  and hand the surfaces an AheadClock (minutes left,
-  in session). The desk's panels that carry those
-  surfaces need the same clock, on the same cadence.
-==================================================
+  New York's clock as an AheadClock, read every 15 seconds, for the desk's panels.
 */
 
 import { useEffect, useMemo, useState } from 'react';

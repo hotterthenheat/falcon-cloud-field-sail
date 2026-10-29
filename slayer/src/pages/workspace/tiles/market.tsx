@@ -1,27 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE · THE MARKET'S TILES
-  (pages/workspace/tiles/market.tsx)
-
-  What happened and what is coming, as lists a
-  reader can run an eye down — every row a door to
-  its own page, with the way back to Pulse:
-
-    News                 the wire, newest first: the
-                         name, the headline, the move
-                         the model reads for the next
-                         session
-    Earnings             who reports in the next two
-                         weeks, when, and the move the
-                         market is charging
-    Stocks               the board's names with today,
-                         thirty days, and the screen's
-                         one word
-    Insiders & Congress  the latest filings, one or
-                         the other
-
-  The chart is its own file (ChartTile.tsx).
-==================================================
+  Pulse's market tiles, lists with every row a door to its page: news, earnings, stocks, and insiders and Congress.
 */
 
 import { useMemo } from 'react';

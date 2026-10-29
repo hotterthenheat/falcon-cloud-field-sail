@@ -1,43 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE ROOM (pages/community/Room.tsx)
-  Community is one room (2026-09-13; Noah, with
-  his partner's page: "basically a community
-  chatroom… his design pattern is not that bad but
-  i think we can hone it to the next level… build
-  it, you can delete everything on the community
-  page"). Three columns, read left to right:
-
-    THE READER      their picture, their handle,
-                    their counts and the record
-                    their settled setups build;
-                    under it TRENDING — every $name
-                    the room mentioned in the last
-                    day, the most mentioned first,
-                    a click cuts the feed to it
-    THE FEED        the composer, then one box of
-                    posts as rows: the person, the
-                    body with every $name and
-                    @handle a door, the lean in its
-                    ink, a setup card that settles
-                    on the record; the View · Lean ·
-                    Name cards cut the rows; a click
-                    keeps a post the Pulse way and
-                    opens its replies under it
-    THE ROOM'S EDGE notices, who to follow, the
-                    rules
-
-  It opens after launch: the whole room is drawn,
-  then a translucent wall stands over it — the
-  house glass — with one line. `?open` on the URL
-  takes it down, `?wall` puts it up; an owner, or
-  someone in the BETA (a grant set in Settings ›
-  People, 2026-10-17), walks through it by rest.
-
-  Everything runs on the seeded room and this
-  browser's storage (data/room.ts) — the shapes are
-  the room's future contract.
-==================================================
+  The community room, behind the coming-soon wall until it has a backend: the reader's own posts, what is trending,
+  and setups with the record they build. No members or posts are invented.
 */
 
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -51,7 +14,7 @@ import DropdownSelect, { type DropdownOption } from '../../components/ui/Dropdow
 import { initials, useProfile } from '../../data/profile';
 import { fmtFollowers, fmtR, loadRoom, ME, PEOPLE, personOf, rMultiple, recordOf, saveRoom, timeAgo, tokenize, trendingOf } from '../../data/room';
 import type { Lean, Post, RoomState, Setup, SetupState } from '../../types/room';
-import { ROOM_FOLLOW_H, ROOM_GRID, ROOM_NOTICE_H, ROOM_POST_H, ROOM_TREND_H } from './roomSkeleton';
+import { ROOM_FOLLOW_H, ROOM_GRID, ROOM_POST_H, ROOM_TREND_H } from './roomSkeleton';
 
 const SILVER = 'rgb(var(--silver))';
 const num = (v: number) => v.toLocaleString('en-US');

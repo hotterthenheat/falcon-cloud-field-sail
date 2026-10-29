@@ -169,7 +169,7 @@ const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
       {/* one format: the share of the holding as a percent, the plain word at the ends, the account mark beside it */}
       {data.stakePct < 0 ? '—' : data.stakePct >= 99.95 ? '100%' : data.stakePct < 0.1 ? '<0.1%' : `${data.stakePct.toFixed(1)}%`}
       {data.stakePct >= 99.95 ? <span className="text-t8 uppercase tracking-widest text-textMuted"> · {data.kind === 'BUY' ? 'first buy' : 'all sold'}</span> : null}
-      {data.indirect && data.stakePct >= 0 ? <span className="text-t8 uppercase tracking-widest text-textMuted" title="An indirect holding — a trust, a fund or a family member's account the insider reports: the percent is of that account's shares alone, not of everything the insider holds"> · of that account</span> : null}
+      {data.indirect && data.stakePct >= 0 ? <span className="text-t8 uppercase tracking-widest text-textMuted" title="An indirect holding (a trust, fund or family account): the percent is of that account alone"> · of that account</span> : null}
     </span>
   ) : null;
 
@@ -305,7 +305,7 @@ const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window:
           ? `the latest ${coverage.restCount.toLocaleString()} filed, ${shortDay(coverage.restSince)} – ${shortDay(coverage.restNewest)}`
           : `every one filed in the last ${window} days`}
       {setAside > 0 ? (
-        <span title="Swaps, preferreds and other non-share securities on an open-market row, and rows whose filed price is ten times the stock's own or whose value is over a quarter of the company — a unit mix-up, not a trade">
+        <span title="Non-share securities, and rows whose price or size no real trade can have (a unit mix-up)">
           {' · '}
           {setAside.toLocaleString()} {setAside === 1 ? 'row' : 'rows'} set aside ({coverage.notShares} not common shares, {coverage.implausible} whose price or size no trade can have — a price ten times off the stock's own, or one trade worth over a quarter of the company)
         </span>
@@ -417,14 +417,14 @@ const Insiders = () => {
       { headerName: 'Shares', field: 'shares', width: 100, cellRenderer: SharesCell, type: 'rightAligned', headerTooltip: 'Shares in the transaction' },
       { headerName: 'Price', field: 'price', width: 96, cellRenderer: PriceCell, type: 'rightAligned', headerTooltip: 'The filed price per share' },
       { headerName: 'Value', field: 'value', width: 104, cellRenderer: ValueCell, type: 'rightAligned', headerTooltip: 'Shares times the filed price' },
-      { headerName: 'Of holding', field: 'stakePct', width: 176, cellRenderer: StakeCell, type: 'rightAligned', headerTooltip: "The share of the insider's holding this trade was, as a percent — 100% · first buy when they held none before, 100% · all sold when nothing was left; · of account marks an indirect line (a trust, a fund), which counts that account alone" },
+      { headerName: 'Of holding', field: 'stakePct', width: 176, cellRenderer: StakeCell, type: 'rightAligned', headerTooltip: "The share of the insider's holding this trade was; 'of account' marks a trust or fund line, that account alone" },
       {
         headerName: 'Chose to?',
         field: 'plan',
         width: 104,
         cellRenderer: PlanCell,
         comparator: (a: InsiderTrade['plan'], b: InsiderTrade['plan']) => ['discretionary', 'unknown', 'plan'].indexOf(a) - ['discretionary', 'unknown', 'plan'].indexOf(b),
-        headerTooltip: 'Chosen: the insider decided to trade. Planned: it ran off a 10b5-1 schedule adopted months earlier. Unstated: the filing carried no box either way',
+        headerTooltip: 'Chosen: the insider decided. Planned: a 10b5-1 schedule set months earlier. Unstated: no box ticked',
       },
       { headerName: 'Others', field: 'clusterCount', width: 84, cellRenderer: OthersCell, headerTooltip: 'How many distinct filers did the same in this name inside 30 days — a cluster is a stronger read than one' },
     ],
@@ -472,14 +472,14 @@ const Insiders = () => {
             </dd>
           </div>
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="Purchases (code P — on the open market or in a private placement) that a person chose to make, not on a 10b5-1 plan. Purchases by companies and funds — strategic stakes — are counted apart under Company & fund buys">Chosen buying</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title="Code-P purchases a person chose to make, not on a 10b5-1 plan; company and fund buys are counted apart">Chosen buying</dt>
             <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${facts.chosen > 0 ? 'text-bull' : 'text-textMuted'}`} data-insiders-chosen>
               {failed || waiting ? '—' : facts.chosen > 0 ? fmtDollars(facts.chosen) : 'none'}
               {reading && !failed && !waiting ? <span className="text-t9 text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
             </dd>
           </div>
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="Code-P purchases by a company or a fund (Volkswagen buying Rivian, a bank buying into a broker): strategic stakes and private placements, not an insider choosing to buy">Company &amp; fund buys</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title="Code-P purchases by a company or fund: strategic stakes and placements, not an insider's choice">Company &amp; fund buys</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-insiders-corporate>
               {failed || waiting ? '—' : facts.corporate > 0 ? fmtDollars(facts.corporate) : 'none'}
               {reading && !failed && !waiting ? <span className="text-t9 text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
@@ -514,7 +514,7 @@ const Insiders = () => {
       {failed ? (
         <FeedFallback />
       ) : (
-        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary" data-insiders-sentence>
+        <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden" data-insiders-sentence>
           {waiting ? 'Reading the filings.' : `${reading ? 'So far: ' : ''}${insidersSentence(rows, window, split)}`}
         </p>
       )}
@@ -538,7 +538,7 @@ const Insiders = () => {
         {/* on a phone the head stacks: the label over its words */}
         <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The names to know</span>
-          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">where a person chose to buy (not on a plan, not a company or fund) in the last {window} days, heaviest first · click a name to keep the grid to it</span>
+          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">chosen buys over the last {window} days, heaviest first · a click keeps the grid to it</span>
         </div>
         {toKnow.length === 0 ? (
           <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No insider chose to buy in this window'}</div>

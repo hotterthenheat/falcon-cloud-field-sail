@@ -1,36 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE COMPASS BOARD (pages/compass/Board.tsx)
-
-  The setups the sweep found, graded and ranked.
-  WALKED into the house grammar (2026-09-11, the
-  walk after Trace and the Record): under the
-  shell head (CompassLayout), ONE box — the head
-  with its facts and the top pick among them, one
-  line of cards (Expiry · Kind · Name · Layout),
-  the sentence, and the board growing with what
-  the sweep found (the cards two across, or the
-  grid) — with the heaviest contracts on the
-  selected name in a rail beside it that sticks
-  while the page scrolls (Noah, 2026-09-11). The
-  four tenor boxes, the six scanner pills, the
-  hand-rolled filter menu and the pager are gone;
-  Expiry and Kind are cards on the line, changed
-  in place, never pages in the sidebar (Noah:
-  "they require immediate ability to change").
-
-  A setup's page has a ROUTE of its own since the
-  walk (/compass/<id>, pages/compass/SetupPage.tsx)
-  — the board keeps its view in data/compassView
-  across the trip and back.
-
-  THE ENGINE IS UNTOUCHED: buildCompassView takes
-  the snapshot, the kind, the universe and the
-  tenor as arguments and never reads the simulator
-  — the backtest harness runs the same call
-  (docs/compass-backtest-spec.md). This file only
-  decides what the reader sees.
-==================================================
+  The Compass board: the scan's calls and closest misses under one head with its facts and controls, and the
+  selected name's desks in a rail beside it. The board keeps its view across a trip to a setup's page.
 */
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';

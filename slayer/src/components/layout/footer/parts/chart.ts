@@ -1,9 +1,5 @@
-/*
-  THE CHART AND ITS NEIGHBOURS (components/layout/footer/parts/chart.ts) — the photograph's own pieces, made parts so
-  every picture can stand them where its page does: the chart pane (its line walking — or its candles — its last price
-  run out to a tag that is the clock, its volume, its time axis, its levels broken into coloured dashes), a panel's
-  frame, the breadcrumb, the strike ladder and the row of chips.
-*/
+/* Shared pieces: the chart pane (a walking line or candles, a clock tag on the last price, volume, time axis, levels as
+   coloured dashes), a panel frame, the breadcrumb, the strike ladder and a row of chips. */
 
 import {
   FONT,
@@ -31,7 +27,7 @@ import {
   type Stage,
 } from '../kit';
 
-/* ---- A PANEL'S FRAME AND ITS TITLE: only in focus, a corner of it broken ---------------------------------------- */
+/* ---- a panel frame and title: only in focus, one corner broken ---- */
 
 export const panel = (title?: string, o: { grip?: boolean; radius?: number } = {}): Part => {
   let at: Box = box(0, 0, 0, 0);
@@ -59,7 +55,7 @@ export const crumb = (text: string): Part => {
   };
 };
 
-/* ---- THE CHART PANE --------------------------------------------------------------------------------------------- */
+/* ---- the chart pane ---- */
 
 interface Level {
   y: number;
@@ -255,8 +251,7 @@ export const chart = (o: ChartOpts = {}) => {
         c.textAlign = 'left';
         c.fillText(word, tagX + 6, headY + 0.5);
       }
-      /* the time axis: the day's own times, on through the empty space ahead as a chart's axis runs — in seconds: the pane
-         holds under a minute, so its minutes were one number over and over (2026-10-03 audit) */
+      /* the time axis in seconds, running on into the empty space ahead: the pane spans under a minute */
       if (o.axis !== false) {
         const gap = ((tagX - pane.x0) * 0.95) / ticks;
         c.font = `600 8.5px ${FONT}`;
@@ -361,8 +356,8 @@ export const chart = (o: ChartOpts = {}) => {
   return part;
 };
 
-/* ---- THE STRIKE LADDER: a strike's bars either side of a spine, longest in the middle (the photograph's diamond), its
-   marks down the left, and the spot's line run out to the right ---------------------------------------------------- */
+/* ---- the strike ladder: bars either side of a spine, longest in the middle, marks down the left, the spot's line out to
+   the right ---- */
 
 export const ladder = (o: { seed?: number; gap?: number; curve?: boolean; share?: number; run?: boolean; warm?: boolean; marks?: boolean; solid?: boolean } = {}): Part & { spotY: () => number } => {
   let at: Box = box(0, 0, 0, 0);
