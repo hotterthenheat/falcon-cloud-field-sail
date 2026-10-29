@@ -1,8 +1,52 @@
-# Running the ThetaData terminal locally
+# The ThetaData terminal
 
-The `/api/theta` proxy (`server/thetaProxy.mjs`) forwards to ThetaData's own terminal, a Java program that must run
-on the same machine as the dev server. The terminal is a vendor download: it is not in this repository, and it never
-runs on Vercel (there `/api/theta` answers `503 terminal_unavailable`).
+ThetaData is the real-time source for quotes, chains, greeks and history on Terrain, Weigher, Compass and Practice
+(Pinpoint and Dossier read Unusual Whales only). The data comes from ThetaData's own terminal, a Java program, and
+**the account allows one terminal at a time**: a second one anywhere ends the first one's session.
+
+So there is one always-on terminal, with the relay (`theta/relay.mjs`) beside it, and everything goes through it:
+the live site (Vercel's `/api/theta` forwards to the relay) and your own machine's dev server (set the same two
+variables locally and it forwards there too, instead of starting a terminal of its own).
+
+```
+browser -> /api/theta (Vercel or your dev server) -> relay (THETA_RELAY_URL, secret) -> terminal 127.0.0.1:25503
+```
+
+## The always-on terminal
+
+Any always-on Linux machine with Java 21, Node 22 and about 2 GB of free memory: a small cloud server (2 vCPU / 4 GB
+is comfortable), or a home machine that never sleeps.
+
+1. **Install** Java 21 and Node 22, and copy the `slayer/` folder (or clone the repo) to `/opt/slayer`.
+   Put the terminal jar at `slayer/theta/lib/<build>.jar` or `slayer/theta/ThetaTerminalv3.jar` (see One-time setup).
+2. **Secrets** in `/etc/theta-relay.env` (readable by root and the service user only):
+   ```
+   THETADATA_API_KEY=td1_...
+   THETA_RELAY_SECRET=<a long random string: openssl rand -hex 32>
+   ```
+3. **Run it as a service**: copy `slayer/theta/theta-relay.service` to `/etc/systemd/system/`, then
+   `sudo systemctl daemon-reload && sudo systemctl enable --now theta-relay`. systemd restarts the relay if it ever
+   exits; the relay's supervisor restarts the terminal if it exits, stops answering, or loses its session.
+4. **Reach it over HTTPS.** The relay listens on port 25510 (`THETA_RELAY_PORT`). Put it behind TLS, for example
+   a Cloudflare Tunnel (`cloudflared tunnel --url http://127.0.0.1:25510`, or a named tunnel on your domain) or Caddy
+   with a domain. Never expose the terminal's own port 25503: it has no authentication.
+5. **Point the site at it.** In Vercel → Project → Settings → Environment Variables (Production and Preview):
+   `THETA_RELAY_URL=https://<your relay host>` and `THETA_RELAY_SECRET=<the same secret>`. Redeploy.
+6. **Point your own dev server at it** the same way (`slayer/.env.local`: the same two lines). With
+   `THETA_RELAY_URL` set the dev server never starts a local terminal, so it can't take the session.
+7. **Check it**: `curl https://<relay host>/health` shows `"terminal":"up"`, the call counts and the cache size.
+
+What keeps it up and fast:
+
+- **Supervisor**: restarts the terminal if it exits (5 s, doubling to 5 minutes), if it stops answering for about
+  45 s, or if its session has been lost for a minute (it logs in again; if that keeps happening, another terminal is
+  using the account and the log says so).
+- **Warmer**: every 15 s the relay asks the terminal for SPY, QQQ, IWM, SPX, NDX, RUT and VIX (`THETA_WARM` to
+  change the list), so the market-data connection and the JVM never go cold; every 4 minutes it reloads the
+  calendar and those names' expirations, so the first page view never waits on them.
+- **Speed**: the terminal's 8 request slots are shared with snapshots ahead of history (history never takes more
+  than 6), identical requests in flight become one, closed days are kept for hours and snapshots only for the
+  400 ms burst window, and answers travel gzipped.
 
 ## One-time setup
 
@@ -19,7 +63,10 @@ runs on Vercel (there `/api/theta` answers `503 terminal_unavailable`).
    line 1, password on line 2; git-ignored). The key is handed to the Java process through its environment, never on
    its command line, so it does not show up in `ps` or Task Manager's command-line column.
 
-## Running it
+## Running a terminal on your own machine instead
+
+Only when no always-on terminal is running (one per account).
+
 
 - `npm run dev` starts the supervisor (`theta/supervisor.mjs`) inside the dev server. Set `THETA_AUTOSTART=0` to
   turn that off.

@@ -45,7 +45,7 @@ function parseCsv(text: string): Record<string, string>[] {
   const lines = text.trim().split(/\r?\n/).filter(Boolean);
   if (lines.length < 2 || !lines[0].includes(',')) return [];
   const head = lines[0].split(',').map(h => h.trim());
-  return lines.slice(1, 80).map(line => {
+  return lines.slice(1).map(line => {
     const cols = line.split(',');
     const row: Record<string, string> = {};
     head.forEach((h, i) => {
@@ -75,7 +75,7 @@ function faultText(status: number, parsed: unknown, text: string): string {
   const o = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
   const code = o && typeof o.code === 'string' ? o.code : '';
   const raw = o ? String(o.error || o.message || '') : typeof parsed === 'string' ? parsed : text;
-  if (code === 'terminal_down' || status === 503 || status === 0 || downStatus(status) || /not running|thetadata|invalid session/i.test(raw)) return 'terminal_down';
+  if (code === 'terminal_down' || code === 'session_lost' || code === 'terminal_unavailable' || status === 503 || status === 0 || downStatus(status) || /not running|thetadata|invalid session/i.test(raw)) return 'terminal_down';
   const msg = raw.replace(/\s+/g, ' ').trim().slice(0, 180);
   return msg || `unavailable ${status}`;
 }
