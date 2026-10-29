@@ -239,6 +239,8 @@ export function startCompassEngine(o: EngineOptions): Engine {
     });
   };
 
+  /* the week's releases are read before the first mark, so a release window is never missed at start */
+  readEcon();
   setCompassHost({
     server: true,
     theta: async p => {
@@ -385,6 +387,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
       backfillFrom: o.backfillFrom,
       onDay: next => {
         if (next === day) return;
+        dirty = !readOnly;
         save();
         day = next;
         rollModelDay(next.replace(/-/g, ''));
