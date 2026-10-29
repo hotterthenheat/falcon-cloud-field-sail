@@ -175,6 +175,10 @@ export interface Setup {
   quotedAt?: number;
   /** When Compass first listed this contract, epoch ms. Not a model call. */
   seenAt?: number;
+  /** Scored after its mark from the quotes ThetaData recorded at that mark (the live scan missed it) */
+  late?: boolean;
+  /** The scan mark the call belongs to, epoch ms of its minute */
+  mark?: number;
   /** P(TP1) from the entry model at the scan that picked this contract. */
   p1?: number;
   /** P(runner) from the runner model at that same scan. */

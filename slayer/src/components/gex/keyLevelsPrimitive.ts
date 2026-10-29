@@ -238,7 +238,7 @@ function drawNamed(src: KeyLevelsPrimitive, target: DrawTarget, spot: number): v
       items.push({ r, y, text: rungLabel({ ...r, share: src.shareOf(r) }, spot), hot: src.hotT(r.key) });
     }
     if (!items.length) return;
-    const key = `${W0}x${H0}|${hr0}|${vr0}|${src.edge}|${items.map(i => `${i.r.key}:${i.y}:${i.text}:${i.r.ink}:${i.hot.toFixed(3)}:${i.r.dash ? 1 : 0}:${i.r.weight ?? 1}`).join(',')}`;
+    const key = `${W0}x${H0}|${hr0}|${vr0}|${src.edge}|${src.chromeInset}|${items.map(i => `${i.r.key}:${i.y}:${i.text}:${i.r.ink}:${i.hot.toFixed(3)}:${i.r.dash ? 1 : 0}:${i.r.weight ?? 1}`).join(',')}`;
     let cache = namedCache.get(src);
     if (!cache || cache.key !== key) {
       const now = performance.now();
@@ -282,6 +282,9 @@ function paintNamed(src: KeyLevelsPrimitive, scope: Parameters<typeof ladderPen>
   }
   placed.sort((a, b) => a.y - b.y);
   const step = boxH + gap;
+  /* the first box clears the host's chrome; the rest are pushed down from it */
+  const ceiling = src.chromeInset * vr + boxH / 2 + 2 * vr;
+  placed[0].ty = Math.max(placed[0].ty, ceiling);
   for (let i = 1; i < placed.length; i++) placed[i].ty = Math.max(placed[i].ty, placed[i - 1].ty + step);
   const floor = H - boxH / 2 - 2 * vr;
   if (placed[placed.length - 1].ty > floor) {
@@ -352,6 +355,8 @@ export class KeyLevelsPrimitive implements ISeriesPrimitive<Time> {
   }
   /** Set, the rungs are named at the edge, with their distance from this price (setNamed) */
   namedSpot: number | null = null;
+  /** The host's floating chrome, media px from the pane's top: the named words stay below it */
+  chromeInset = 0;
   private shares: { callWall?: number; putWall?: number; supreme?: number } = {};
   /** The named form's inputs: the price the distances measure from, each wall's share of the largest strike, and the
       levels' max pain as a rung of its own */

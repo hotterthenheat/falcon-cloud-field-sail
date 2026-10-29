@@ -1,0 +1,6 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
+
+export function compassMount(
+  load: () => Promise<unknown>,
+  root?: string,
+): { start: () => Promise<void>; handle: (req: IncomingMessage, res: ServerResponse) => Promise<void>; stop: () => void };

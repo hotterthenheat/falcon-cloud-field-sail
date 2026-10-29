@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { proxyUw } from './server/uwProxy.mjs';
 import { proxyTheta } from './server/thetaProxy.mjs';
 import { proxyLogo } from './server/logoProxy.mjs';
+import { compassMount } from './server/compassApi.mjs';
 
 try {
   process.loadEnvFile('.env.local');
@@ -15,6 +16,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = Number(process.env.PORT ?? 8080);
 
+/* the official Compass engine (src/data/compassServer.ts): it scans from start to shutdown, viewers or not */
+const COMPASS_ENGINE = './src/data/compassServer.ts';
+const compass = compassMount(() => import(COMPASS_ENGINE), __dirname);
+app.use('/api/compass', (req, res) => {
+  void compass.handle(req, res);
+});
 app.use('/api/uw', (req, res) => {
   void proxyUw(req, res);
 });
@@ -35,6 +42,16 @@ app.use((_req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Slayer terminal on http://localhost:${PORT}`);
+  void compass.start();
 });
+
+/* a clean stop: the record is written and the engine's lock let go before the process ends */
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    compass.stop();
+    server.close();
+    process.exit(0);
+  });
+}

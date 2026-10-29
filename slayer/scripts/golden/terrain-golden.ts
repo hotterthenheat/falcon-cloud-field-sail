@@ -166,7 +166,14 @@ for (const k of [770, 772, 775] as const) {
 }
 const cols = field.gridColumns(oiGrid);
 expectNear('a column keeps the house sign: 775 kept = −dealer', cols[0].levels.find(l => l.strike === 775)!.value, -FIELD_HAND.oi[775], 1e-12);
-const netNow = field.exposureNet('SPY', GOLD.front, closeAt)!;
+/* every expiry reads the vendor's whole-book rows (spot-exposures/strike, page 0): 775 there is call_gamma_oi + put_gamma_oi
+   = 1,146,019,346.43 − 551,841,102.16, and its ask + bid legs −4,283,500,218.57 + 3,948,235,193.07 − 577,005,844.71
+   + 499,213,720.89 */
+const bookOi = field.exposureGrid('SPY', 'book', dayBar, 86_400, 'oi', closeAt)!;
+const bookFlow = field.exposureGrid('SPY', 'book', dayBar, 86_400, 'flow', closeAt)!;
+expectNear('every expiry, open interest, SPY 775 = the whole-book row', cellOf(bookOi, 775), 594178244.27, 1e-9);
+expectNear("every expiry, today's flow, SPY 775 = the whole-book row's ask + bid legs", cellOf(bookFlow, 775), -413057149.32, 1e-9);
+const netNow = field.exposureNet('SPY', GOLD.front)!;
 expectNear("the cut's net, open interest = the house net GEX Pinpoint prints for SPY Today", netNow.oi, house.netGex, 1e-12);
 expectNear('… and the raw rows summed by hand', netNow.oi, FIELD_HAND.netOi, 1e-9);
 expectNear("the cut's net, today's flow, summed by hand", netNow.flow, FIELD_HAND.netFlow, 1e-9);
