@@ -8,9 +8,9 @@ import type { DayNote, JournalEntry } from '../review/journal';
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from '../review/ladder';
 import { contractKey, contractWords, dteAt, legsOf, type ContractId, type Quote } from '../review/quotes';
 import type { Candle } from '../../types/market';
-import { bellOf, nyAt, tradingDayOf } from './clock';
+import { bellOf, dayBeginsAt, nyAt, tradingDayOf } from './clock';
 import { paperFut } from './products';
-import { judgeRoll, judgeTick, mustBeFlat, peakAfterRoll, peakAfterTick, phaseOf, ruleRefusal, type EarningsWhen, type PaperPlan, type RuleId } from './rules';
+import { closeMeasure, judgePass, judgeRoll, judgeTick, mustBeFlat, peakAfterRoll, peakAfterTick, ruleRefusal, type EarningsWhen, type PaperPlan, type RuleId } from './rules';
 
 /* ================================================================== */
 /*  TYPES                                                              */
@@ -294,7 +294,8 @@ export function newAccount(o: { id: string; kind: AccountKind; name: string; sta
     day,
     ledger: { [day]: { open: start, bal: start, hi: start, lo: start } },
     peak: start,
-    fee: o.fee ?? plan?.rules.fee ?? HOUSE_FEE,
+    /* a firm plan charges what the firm states, and nothing where it states nothing */
+    fee: o.fee ?? (plan ? (plan.rules.fee ?? 0) : HOUSE_FEE),
     sandbox: o.kind === 'practice' ? o.sandbox || undefined : undefined,
     feed: 'live',
     opt: { orders: [], fills: [] },
@@ -629,6 +630,8 @@ export interface PaperView {
   cash: number;
   /** Cash + the options at the mark */
   equity: number;
+  /** Cash + the options at their bid — what it would sell for now (a plan that values open contracts so) */
+  equityBid: number;
   /** What it is worth less what is open, up or down: the start and every closed trade (a firm's "balance") */
   balance: number;
   /** What is open, up or down */
@@ -661,12 +664,14 @@ export function viewOf(a: PaperAccount, m: PaperMarket): PaperView {
   });
   const optValue = cents(opt.reduce((x, p) => x + p.value, 0));
   const equity = cents(cash + optValue);
+  const equityBid = cents(cash + opt.reduce((x, p) => x + p.quote.bid * MULT * p.qty, 0));
   const openPnl = cents(opt.reduce((x, p) => x + p.pnl, 0));
   const dayOpen = a.ledger[a.day]?.open ?? a.startCash;
   const closed = cents(ob.trades.reduce((x, t) => x + t.pnl, 0) + fb.trades.reduce((x, t) => x + t.pnl, 0));
   return {
     cash,
     equity,
+    equityBid,
     balance: cents(equity - openPnl),
     openPnl,
     optValue,
@@ -1049,6 +1054,22 @@ export interface PaperEvent {
 /** Is an option position's expiry past: 16:00 New York on its date */
 const expired = (c: ContractId, now: number) => bellOf(c.expiry) <= now;
 
+const planName = (plan: PaperPlan) => `${plan.firm ?? 'Your own rules'} ${plan.label}`;
+/** The target met with all it waits on (rules.ts judgePass): the account passes — or goes on to its next phase, which
+    starts from the balance it is at */
+function passIf(a: PaperAccount, v: PaperView, m: PaperMarket, events: PaperEvent[]): PaperAccount {
+  const plan = a.plan;
+  const verdict = plan ? judgePass(a, v) : null;
+  if (!plan || !verdict) return a;
+  if (verdict.kind === 'pass') {
+    events.push({ kind: 'passed', at: m.now, words: `${planName(plan)} passed — ${verdict.why}` });
+    return logged({ ...a, status: 'passed', statusAt: m.now, statusRule: 'target', statusWhy: `Passed — ${verdict.why}` }, m.now, `Passed — ${verdict.why}`, 'pass');
+  }
+  events.push({ kind: 'passed', at: m.now, words: `${planName(plan)} · ${verdict.why}` });
+  const start = { at: m.now, day: a.day, equity: v.balance };
+  return logged({ ...a, phase: (a.phase ?? 0) + 1, phaseStart: start, peak: v.balance }, m.now, verdict.why, 'pass');
+}
+
 /** The day rolls at 17:00 New York: day orders go, the day that was is written down, an evaluation's high mark and
     its pass are judged on its close, and the new day begins from what the account is worth */
 function roll(a: PaperAccount, m: PaperMarket, events: PaperEvent[]): PaperAccount {
@@ -1064,32 +1085,22 @@ function roll(a: PaperAccount, m: PaperMarket, events: PaperEvent[]): PaperAccou
   const when = momentAt(m.now);
   /* a day order with minutes still to replay waits for them: the replay ends it at its own day's bell */
   next = setOpt(next, next.opt.orders.map(o => (o.status === 'working' && o.tif === 'day' && gapOf(o, m.now) == null ? { ...o, status: 'cancelled' as const, done: when, why: 'the day ended' } : o)));
-  /* the plan's day-end rules (rules.ts): an end-of-day floor follows the close up; the target, the days, the best-day
-     rule and the time limit are judged on it */
+  /* the plan's day-end rules (rules.ts): an end-of-day floor follows the close up; the target with what it waits on,
+     and the time limit, are judged on it */
   const plan = next.plan;
-  let phaseUp: { at: number; day: string; equity: number } | null = null;
-  if (plan && next.status === 'open' && ledger[was]) {
-    const close = v.equity;
-    next = { ...next, peak: peakAfterRoll(next, close) };
-    const verdict = judgeRoll(next, close, m.now);
-    const label = `${plan.firm ?? 'Your own rules'} ${plan.label}`;
-    if (verdict?.kind === 'pass') {
-      next = logged({ ...next, status: 'passed', statusAt: m.now, statusRule: 'target', statusWhy: `Passed — ${verdict.why}` }, m.now, `Passed — ${verdict.why}`, 'pass');
-      events.push({ kind: 'passed', at: m.now, words: `${label} passed — ${verdict.why}` });
-    } else if (verdict?.kind === 'next') {
-      const ph = phaseOf(next);
-      phaseUp = { at: m.now, day, equity: close };
-      next = logged({ ...next, phase: ph.index + 1, peak: close }, m.now, verdict.why, 'pass');
-      events.push({ kind: 'passed', at: m.now, words: `${label} · ${verdict.why}` });
-    } else if (verdict?.kind === 'fail') {
+  if (plan && !plan.legacy && next.status === 'open' && ledger[was]) {
+    next = { ...next, peak: peakAfterRoll(next, closeMeasure(next, v)) };
+    next = passIf(next, v, m, events);
+    const verdict = next.status === 'open' ? judgeRoll(next, m.now) : null;
+    if (verdict) {
       const seen = next.marks;
       next = flattenAll(next, m, 'rule', verdict.why, key => (m.open() ? undefined : seen[key]));
       next = logged({ ...next, status: 'failed', statusAt: m.now, statusRule: verdict.rule, statusWhy: `Failed — ${verdict.why}` }, m.now, `Failed — ${verdict.why}`, 'fail');
-      events.push({ kind: 'failed', at: m.now, words: `${label} failed — ${verdict.why}` });
+      events.push({ kind: 'failed', at: m.now, words: `${planName(plan)} failed — ${verdict.why}` });
     }
   }
   const bal = Number.isFinite(v.balance) ? v.balance : v.equity;
-  next = { ...next, day, dayOver: undefined, ...(phaseUp ? { phaseStart: phaseUp } : {}), ledger: { ...next.ledger, [day]: next.ledger[day] ?? { open: v.equity, bal, hi: v.equity, lo: v.equity } } };
+  next = { ...next, day, dayOver: undefined, ...(next.phaseStart && next.phaseStart.day === was && next.phaseStart.at >= dayBeginsAt(was) && next.phase ? { phaseStart: { ...next.phaseStart, day } } : {}), ledger: { ...next.ledger, [day]: next.ledger[day] ?? { open: v.equity, bal, hi: v.equity, lo: v.equity } } };
   events.push({ kind: 'roll', at: m.now, words: `A new trading day began at ${money(v.equity, 0)}` });
   return next;
 }
@@ -1260,8 +1271,9 @@ function fillEvents(before: PaperAccount, after: PaperAccount, events: PaperEven
 export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; events: PaperEvent[] } {
   const events: PaperEvent[] = [];
   const before = a;
-  /* nothing open, nothing working, the same day: nothing to do — the same account back */
-  if (a.day === tradingDayOf(m.now) && !optBookOf(a).positions.length && !a.opt.orders.some(o => o.status === 'working')) return { account: a, events };
+  /* nothing open, nothing working, the same day, and no plan whose rules a close by hand may have just met: nothing to
+     do — the same account back */
+  if (a.day === tradingDayOf(m.now) && !optBookOf(a).positions.length && !a.opt.orders.some(o => o.status === 'working') && !(a.plan && !a.plan.legacy && a.status === 'open')) return { account: a, events };
   let next = roll(a, m, events);
   if (next.status === 'open') {
     /* 16:00 on its date: an expiring contract settles at what it is worth in the money */
@@ -1307,7 +1319,7 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
       if (!v.opt.length || (fresh && m.open())) {
         next = { ...next, peak: peakAfterTick(next, v) };
         const verdict = judgeTick(next, v);
-        const label = `${plan.firm ?? 'Your own rules'} ${plan.label}`;
+        const label = planName(plan);
         if (verdict?.kind === 'fail') {
           next = flattenAll(next, m, 'rule', verdict.why);
           next = logged({ ...next, status: 'failed', statusAt: m.now, statusRule: verdict.rule, statusWhy: `Failed — ${verdict.why}` }, m.now, `Failed — ${verdict.why}`, 'fail');
@@ -1318,6 +1330,8 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
           events.push({ kind: 'day-over', at: m.now, words: `The day is over — ${verdict.why}. No new positions until the next trading day` });
         }
       }
+      /* the target, met with all it waits on (it reads the balance, which no quote moves) */
+      if (next.status === 'open') next = passIf(next, viewOf(next, m), m, events);
     }
   }
   next = keepHeld(next, m);

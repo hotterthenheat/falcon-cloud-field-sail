@@ -7,6 +7,7 @@
    numbers the reader types (customPlan). */
 
 import { NO_RULES, type DrawdownMode, type PaperPlan, type PropRules } from './rules';
+import { HOUSE_FEE } from './engine';
 
 export interface PropFirm {
   id: string;
@@ -65,9 +66,10 @@ export function customPlan(c: CustomRules): PaperPlan {
     ...NO_RULES,
     phases: [{ name: 'Your target', target: c.target > 0 ? c.target : null }],
     dailyLoss: c.dailyLoss > 0 ? { amount: c.dailyLoss, from: 'balance', breach: c.dailyBreach } : null,
-    drawdown: c.drawdown > 0 ? { amount: c.drawdown, mode: c.drawdownMode, lockAt: c.drawdownMode !== 'static' && c.lockAtStart ? 0 : null } : null,
+    drawdown: c.drawdown > 0 ? { amount: c.drawdown, mode: c.drawdownMode, lockAt: c.drawdownMode !== 'static' && c.lockAtStart ? 0 : null, on: 'equity' } : null,
     minDays: c.minDays > 0 ? c.minDays : null,
-    consistency: c.consistencyPct > 0 ? c.consistencyPct / 100 : null,
+    consistency: c.consistencyPct > 0 ? { share: c.consistencyPct / 100, of: 'day', strict: false } : null,
+    fee: HOUSE_FEE,
     maxContracts: c.maxContracts > 0 ? c.maxContracts : null,
     flatBy: /^\d{1,2}:\d{2}$/.test(c.flatBy) ? c.flatBy : null,
     overnight: c.overnight,
@@ -89,7 +91,9 @@ export function planChips(plan: PaperPlan): string[] {
   if (r.drawdown) out.push(`${r.drawdown.mode === 'static' ? 'max loss' : r.drawdown.mode === 'eod' ? 'EOD trailing' : 'intraday trailing'} ${k(r.drawdown.amount)}`);
   if (r.dailyLoss) out.push(`daily ${k(r.dailyLoss.amount)}${r.dailyLoss.breach === 'pause' ? ' (pauses the day)' : ''}`);
   if (r.minDays) out.push(`${r.minDays} days min`);
-  if (r.consistency != null) out.push(`best day ≤ ${Math.round(r.consistency * 100)}%`);
+  if (r.consistency) out.push(`best ${r.consistency.of} ${r.consistency.strict ? '<' : '≤'} ${Math.round(r.consistency.share * 100)}% of profit`);
+  if (r.minTrades) out.push(`${r.minTrades} trades min`);
+  if (r.profitableDays) out.push(`${r.profitableDays.count} days of ${k(r.profitableDays.min)}+`);
   if (r.timeLimitDays) out.push(`${r.timeLimitDays} days to pass`);
   if (r.maxContracts) out.push(`${r.maxContracts} contracts max`);
   if (r.flatBy) out.push(`flat by ${r.flatBy} ET`);
