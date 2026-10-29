@@ -21,7 +21,7 @@
     "landing:clips": "node scripts/make-landing-clips.mjs",
     "landing:shots": "node scripts/make-landing-clips.mjs http://localhost:5199 stills",
     "logos:fetch": "node scripts/fetch-logos.mjs",
-    "review:proof": "tsx scripts/review-engine-proof.ts && tsx scripts/review-futures-proof.ts && tsx scripts/review-journal-proof.ts && tsx scripts/paper-proof.ts",
+    "review:proof": "tsx scripts/review-engine-proof.ts && tsx scripts/review-journal-proof.ts && tsx scripts/paper-proof.ts",
     "theta": "node theta/supervisor.mjs",
     "theta:relay": "node theta/relay.mjs",
     "theta:check": "node scripts/theta-check.mjs",
