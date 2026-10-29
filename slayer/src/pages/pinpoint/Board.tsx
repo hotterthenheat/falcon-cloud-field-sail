@@ -13,10 +13,10 @@ import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
 import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
-import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, peekExtLast, refreshBoardPrices, ensureBook } from '../../data/uwBook';
+import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, refreshBoardPrices, ensureBook } from '../../data/uwBook';
 import { useNameUnit } from '../../data/distanceUnits';
 import { fmtDistance } from '../../data/atr';
-import { bellDay, cadenceWords, dayWordOf, expirySpan, longDay, recordDay, recordPossessive, sessionDay, todayScopeLabel } from '../../data/bookWindow';
+import { bellDay, cadenceWords, dayWordOf, expirySpan, longDay, recordDay, recordPossessive, todayScopeLabel } from '../../data/bookWindow';
 import { buildBoardRow, netGexTitle, type BoardRow } from '../../data/board';
 import { strikeTag, todayWords } from '../../data/agenda';
 import { addBoardName, removeBoardName, useBoardNames } from '../../data/boardNames';
@@ -37,6 +37,7 @@ import { callWallWordsAt, levelRoles, putWallWordsAt, wallPlace } from '../../co
 import { BOARD_TTL_MS, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { ReadMiss } from './BookDown';
 import { kindTip } from '../../components/gex/glossary';
+import { LivePrice } from '../../components/gex/LivePrice';
 import { fmtStrike } from '../../core/format';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal */
@@ -126,25 +127,16 @@ const DayChange = ({ data, compact = false, lead = false, extOnly = false }: { d
   );
 };
 
+/* the live price is ThetaData's (components/gex/LivePrice.tsx); the levels' own price sits under it */
 const SpotCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
-  /* outside the session the price is the close; the after-hours or pre-market print is named in the hover */
-  const ext = peekExtLast(data.ticker);
   return (
-    /* two lines outside the session: the price and the day's change, then the extended-hours move */
-    <TickFigure value={data.spot} title={ext ? `${data.spot.toFixed(2)} regular close · ${ext.price.toFixed(2)} ${ext.word}. The levels, and every distance here, are read at the close` : undefined} className="flex flex-col justify-center leading-[14px] font-mono text-t12">
-      <span className="inline-flex items-baseline gap-2 whitespace-nowrap">
-        <span className="text-textPrimary">${data.spot.toFixed(2)}</span>
-        <DayChange data={data} lead />
+    <span className="flex flex-col justify-center leading-[14px] font-mono text-t12">
+      <LivePrice ticker={data.ticker} compact />
+      <span className="text-t10 text-textMuted tnum whitespace-nowrap" title="The price the vendor marked this name's rows at — every distance on the board is measured from it">
+        levels at {data.spot.toFixed(2)}
       </span>
-      {/* the price's own time — when the price was printed, not when the board was built */}
-      {!ext && data.priceAt != null && (
-        <span className="text-t10 text-textMuted tnum whitespace-nowrap" title={`The price as printed at ${nyClock(data.priceAt, { seconds: true, zone: true})} — ${sessionDay().open ? 'the board refreshes prices every 10s and the levels every 90s' : `the levels and the prices are ${cadenceWords()}`}`} data-price-at={data.priceAt}>
-          as of {nyClock(data.priceAt)}
-        </span>
-      )}
-      <DayChange data={data} extOnly />
-    </TickFigure>
+    </span>
   );
 };
 
@@ -385,10 +377,10 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
         {/* the day's change wraps under the price rather than cut */}
         <span className="min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span className="text-t13 font-bold text-textPrimary">{row.ticker}</span>
-          <span className="text-t13 text-textPrimary tnum">${row.spot.toFixed(2)}</span>
-          <span className="min-w-0">
-            <DayChange data={row} compact />
+          <span className="text-t13">
+            <LivePrice ticker={row.ticker} compact />
           </span>
+          <span className="text-t10 text-textMuted tnum">levels at {row.spot.toFixed(2)}</span>
         </span>
         <button
           type="button"

@@ -1,7 +1,7 @@
 /* One shared book per name or page for the extra vendor routes; a failed route stays an error row. */
 
 import { useCallback, useRef, useSyncExternalStore } from 'react';
-import { nyClock, nyParts } from '../core/nyTime';
+import { nyClock, nyParts, nySessionPhase } from '../core/nyTime';
 import { houseNameFromSlug } from './liveFiles';
 import { setLiveCatalysts, setLiveFda, setLivePosts, setLiveSchedule, type CalEvent } from './monthCalendar';
 import { setFlexBook } from './oiHeat';
@@ -406,53 +406,54 @@ function seed(key: string, jobs: Job[]) {
   });
 }
 
+/* The rows Pinpoint draws, no more: the Map's session readings (max pain, NOPE, the minute's delta and vega flow, flow per
+   expiry) and the Agenda's Building notes (the open-interest change, FLEX, the vol statistics and the term range). */
 function pinJobs(t: string): Job[] {
   const e = enc(t);
-  /* Unusual Whales only: the carry rate and the holidays fall back to core/carry and core/calendar */
   return [
-    { id: 'gex-levels', label: 'GEX levels', path: `/stock/${e}/gex-levels`, kind: 'uw' },
-    { id: 'gex-minute', label: 'GEX each minute', path: `/stock/${e}/spot-exposures`, kind: 'uw' },
-    { id: 'gex-strike', label: 'GEX by strike', path: `/stock/${e}/spot-exposures/strike`, kind: 'uw' },
-    { id: 'gex-expiry-strike', label: 'GEX by strike and expiry', path: `/stock/${e}/spot-exposures/expiry-strike?limit=200`, kind: 'uw' },
     { id: 'greek-flow', label: 'Delta and vega flow each minute', path: `/stock/${e}/greek-flow`, kind: 'uw' },
-    { id: 'greek-flow-expiry', label: 'Delta and vega flow by expiry', path: '', kind: 'uw' },
     { id: 'flow-expiry', label: 'Flow per expiry', path: `/stock/${e}/flow-per-expiry`, kind: 'uw' },
-    { id: 'flow-strike-min', label: 'Flow per strike each minute', path: `/stock/${e}/flow-per-strike-intraday`, kind: 'uw' },
-    { id: 'oi-change', label: "Day's open-interest change", path: `/stock/${e}/oi-change?limit=40`, kind: 'uw' },
-    { id: 'oi-expiry', label: 'Open interest per expiry', path: `/stock/${e}/oi-per-expiry`, kind: 'uw' },
-    { id: 'vol-oi-expiry', label: 'Volume and open interest per expiry', path: `/stock/${e}/option/volume-oi-expiry`, kind: 'uw' },
-    { id: 'flex-list', label: 'FLEX contracts', path: `/flex-options?ticker_symbol=${e}`, kind: 'uw' },
-    { id: 'flex-one', label: 'FLEX one contract', path: '', kind: 'uw' },
-    { id: 'flex-ticker', label: "Ticker's FLEX history", path: `/flex-options/${e}`, kind: 'uw' },
-    { id: 'flex-market', label: 'FLEX market overview', path: '/flex-options/market', kind: 'uw' },
-    { id: 'skew', label: '25Δ and 10Δ risk-reversal skew', path: `/stock/${e}/historical-risk-reversal-skew`, kind: 'uw' },
     { id: 'max-pain', label: 'Max pain', path: `/stock/${e}/max-pain`, kind: 'uw' },
     { id: 'nope', label: 'NOPE', path: `/stock/${e}/nope`, kind: 'uw' },
-    { id: 'prem', label: 'Net-premium ticks', path: `/stock/${e}/net-prem-ticks`, kind: 'uw' },
-    { id: 'atm', label: 'At-the-money chains', path: '', kind: 'uw' },
-    { id: 'rv', label: 'Realized volatility', path: `/stock/${e}/volatility/realized`, kind: 'uw' },
+    { id: 'oi-change', label: "Day's open-interest change", path: `/stock/${e}/oi-change?limit=40`, kind: 'uw' },
+    { id: 'flex-list', label: 'FLEX contracts', path: `/flex-options?ticker_symbol=${e}`, kind: 'uw' },
     { id: 'vstats', label: 'Volatility statistics', path: `/stock/${e}/volatility/stats`, kind: 'uw' },
-    { id: 'iv', label: 'Interpolated IV', path: `/stock/${e}/interpolated-iv`, kind: 'uw' },
-    { id: 'iv-dist', label: '1-year interpolated-IV range', path: `/stock/${e}/interpolated-iv/distribution`, kind: 'uw' },
     { id: 'term-dist', label: 'Term-structure distribution', path: `/stock/${e}/volatility/term-structure/distribution`, kind: 'uw' },
-    { id: 'vanom', label: 'Volatility anomaly', path: `/stock/${e}/volatility/anomaly`, kind: 'uw' },
-    { id: 'vchar', label: 'Volatility character', path: `/stock/${e}/volatility/character`, kind: 'uw' },
-    { id: 'vctx', label: 'Volatility context', path: `/stock/${e}/volatility/context`, kind: 'uw' },
-    { id: 'sent', label: 'Options positioning sentiment', path: `/stock/${e}/volatility/option-sentiment`, kind: 'uw' },
-    { id: 'rv-win', label: 'Realized-volatility windows', path: `/stock/${e}/volatility/realized/windows`, kind: 'uw' },
-    { id: 'vrp', label: 'Variance risk premium', path: `/stock/${e}/volatility/variance-risk-premium`, kind: 'uw' },
-    { id: 'vrp-win', label: 'VRP windows', path: `/stock/${e}/volatility/variance-risk-premium/windows`, kind: 'uw' },
-    { id: 'quote', label: 'Quote', path: `/stock/${e}/quote`, kind: 'uw' },
-    { id: 'opt-vol', label: 'Option volume and premium', path: `/stock/${e}/options-volume`, kind: 'uw' },
-    { id: 'opt-px', label: 'Option volume by price', path: `/stock/${e}/option/stock-price-levels`, kind: 'uw' },
-    { id: 'lit-off', label: 'Lit versus off-lit volume by price', path: `/stock/${e}/stock-volume-price-levels`, kind: 'uw' },
-    { id: 'unusual', label: 'Unusual volume vs ~90 sessions', path: `/stock/${e}/unusualness`, kind: 'uw' },
   ];
+}
+
+/* The session's own lines on Pinpoint are read again at the vendor's minute cadence while a reader has them on screen,
+   the page is visible and the market is open */
+const PIN_LIVE = new Set(['greek-flow', 'flow-expiry', 'max-pain', 'nope']);
+const PIN_REFRESH_MS = 60_000;
+const pinReaders = new Map<string, { n: number; id: number | null }>();
+function holdPinRefresh(key: string, ticker: string): () => void {
+  const cur = pinReaders.get(key) ?? { n: 0, id: null };
+  cur.n += 1;
+  if (cur.id == null && typeof window !== 'undefined') {
+    cur.id = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (nySessionPhase() !== 'open') return;
+      const jobs = pinJobs(ticker).filter(j => PIN_LIVE.has(j.id));
+      void pool(key, jobs);
+    }, PIN_REFRESH_MS);
+  }
+  pinReaders.set(key, cur);
+  return () => {
+    const now = pinReaders.get(key);
+    if (!now) return;
+    now.n -= 1;
+    if (now.n <= 0) {
+      if (now.id != null) window.clearInterval(now.id);
+      pinReaders.delete(key);
+    }
+  };
 }
 
 function stockJobs(t: string): Job[] {
   const e = enc(t);
-  const month = new Date().getMonth() + 1;
+  /* New York's month, so every viewer asks the same address */
+  const month = nyParts().month;
   return [
     { id: 'info', label: 'Sector of the name', path: `/stock/${e}/info`, kind: 'uw' },
     { id: 'oi-expiry', label: 'Open interest per expiry', path: `/stock/${e}/oi-per-expiry`, kind: 'uw' },
@@ -663,7 +664,12 @@ export function useVendor(desk: 'pinpoint' | 'dossier', ticker: string, pathname
   const subscribe = useCallback((fn: () => void) => {
     const off = store.subscribe(fn);
     start(ref.current.desk, ref.current.ticker, ref.current.pathname);
-    return off;
+    const t = routeTicker(ref.current.pathname.split('?')[0], ref.current.ticker);
+    const release = ref.current.desk === 'pinpoint' && t ? holdPinRefresh(key, t) : null;
+    return () => {
+      off();
+      release?.();
+    };
   }, [key]);
   return useSyncExternalStore(subscribe, () => books.get(key) ?? EMPTY_BOOK, () => books.get(key) ?? EMPTY_BOOK);
 }
