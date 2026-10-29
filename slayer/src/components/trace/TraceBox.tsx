@@ -187,6 +187,7 @@ function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: 
   return columns.map(c => {
     const set = widths[c.key] ?? (c.width ? parseInt(c.width, 10) : undefined);
     const need = prose.has(c.key) ? undefined : fit[c.key];
+    /* `fixed` is the width the column asks for: its set width, or more where a figure needs more */
     const fixed = set != null && need ? Math.max(set, need) : set;
     const def: ColDef<T> = {
       colId: c.key,
@@ -358,7 +359,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
         const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
         const room = cell.clientWidth - pad;
         const w = contentW(cell);
-        want(cell.getAttribute('col-id'), w + pad + (cell.offsetWidth - cell.clientWidth) + 2, w > room + 0.01);
+        want(cell.getAttribute('col-id'), w + pad + (cell.offsetWidth - cell.clientWidth) + 1, w > room + 0.01);
       });
       wrap.querySelectorAll<HTMLElement>('.ag-header-cell[col-id]').forEach(head => {
         const text = head.querySelector<HTMLElement>('.ag-header-cell-text');
@@ -366,8 +367,9 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
         if (!text || !label) return;
         const shown = text.getBoundingClientRect().width;
         const w = contentW(text);
-        /* the cell around its label (padding, the resize grip), the words, and room for the sort arrow */
-        want(head.getAttribute('col-id'), head.offsetWidth - label.getBoundingClientRect().width + w + 18, w > shown + 0.01);
+        /* cut (a sort arrow took the room): what it has plus what it lacks; else the cell around its label and the words */
+        const cut = w > shown + 0.01;
+        want(head.getAttribute('col-id'), cut ? head.offsetWidth + (w - shown) + 1 : head.offsetWidth - label.getBoundingClientRect().width + w + 1, cut);
       });
       setFit(prev => {
         let next: Record<string, number> | null = null;
@@ -384,14 +386,14 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
     }
     const defs = columnsToColDefs(columns, hiddenSet, widths, tooltips, flexes, lockColumns, fit, proseSet);
     for (const d of defs) {
-      /* a pinned column is a wall, not a share: no flex, so a fitted width is the width it draws at */
+      /* a pinned column is a wall at its widest figure (its floor), else at its set width */
       if (pinLeft?.includes(d.colId ?? '')) {
         d.pinned = 'left';
         d.flex = undefined;
-        d.minWidth = d.width ?? d.minWidth;
+        d.width = d.minWidth ?? d.width;
       } else if (pinRight?.includes(d.colId ?? '')) {
         d.flex = undefined;
-        d.minWidth = d.width ?? d.minWidth;
+        d.width = d.minWidth ?? d.width;
         d.pinned = 'right';
         /* room for the endless window's scrollbar beside the right-pinned figure */
         if (endlessOn && d.width) {
@@ -672,7 +674,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
 
   return (
     /* suppressAnimationFrame puts every row in the first paint; the endless foot stands under the window, not in it */
-    <div ref={wrapRef} className={`slayer-board relative border-t border-borderSubtle animate-grid-in ${windowed ? '[&_.ag-grid-pinned-right-cells_.ag-column-last]:!pr-[22px] [&_.ag-grid-pinned-right-cells_.ag-cell:last-child]:!pr-[22px] [&_.ag-header-cell.ag-column-last]:!pr-[22px]' : ''} ${windowed && phone ? '[&_.ag-cell]:!pr-[18px]' : ''}`} data-trace-grid={testId} data-fit-dbg={JSON.stringify(fit)} data-lock={lockColumns || undefined} data-cutting={cutting || undefined} data-phone-rows={phone || undefined} data-paged={paged || undefined} data-endless={endless ? endless.state : undefined}>
+    <div ref={wrapRef} className={`slayer-board relative border-t border-borderSubtle animate-grid-in ${windowed ? '[&_.ag-grid-pinned-right-cells_.ag-column-last]:!pr-[22px] [&_.ag-grid-pinned-right-cells_.ag-cell:last-child]:!pr-[22px] [&_.ag-header-cell.ag-column-last]:!pr-[22px]' : ''} ${windowed && phone ? '[&_.ag-cell]:!pr-[18px]' : ''}`} data-trace-grid={testId} data-lock={lockColumns || undefined} data-cutting={cutting || undefined} data-phone-rows={phone || undefined} data-paged={paged || undefined} data-endless={endless ? endless.state : undefined}>
      <div className="relative" style={windowed ? { height: `min(${pageHeight}px, calc(100dvh - 72px))`, minHeight: 360 } : autoHeight ? (paged ? { height: pageHeight } : undefined) : { height }} data-trace-window>
       <AgGridProvider modules={GRID_MODULES}>
         <AgGridReact<T>

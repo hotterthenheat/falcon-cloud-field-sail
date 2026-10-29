@@ -105,6 +105,14 @@ const AppShell = () => {
 
   /* the page on screen counts as loaded, so a later click back to it never waits */
   useEffect(() => noteRouteShown(location.pathname), [location.pathname]);
+  /* the last page shown in this tab, for addresses that are drawers, not pages (/alerts in App.tsx) */
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('slayer.lastPage', `${location.pathname}${location.search}`);
+    } catch {
+      /* no storage: those addresses open on Pulse */
+    }
+  }, [location.pathname, location.search]);
 
   /* the chart pages are framed to the viewport; every other page scrolls */
   const bleedPage = /^\/trace\/(net-flow|odte)/.test(location.pathname);

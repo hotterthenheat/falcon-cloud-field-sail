@@ -307,13 +307,13 @@ const AccountPreview = () => {
       {/* THE PICTURE — a place to drop one: staged, shown as it will be kept, applied only when you say so (PictureDrop.tsx) */}
       <PictureDrop />
       <Row name="Name" line="How the terminal greets you and signs your posts" testId="name">
-        <Field value={p.name} onSave={v => setProfile({ name: v })} check={checkName} testId="name" />
+        <Field value={p.name} onSave={v => setProfile({ name: v })} check={checkName} testId="name" label="Name" />
       </Row>
       <Row name="Handle" line="Your name on Community — one word, yours alone" testId="handle">
-        <Field value={p.handle} prefix="@" onSave={v => setProfile({ handle: v.replace(/^@/, '').toLowerCase() })} check={checkHandle} testId="handle" />
+        <Field value={p.handle} prefix="@" onSave={v => setProfile({ handle: v.replace(/^@/, '').toLowerCase() })} check={checkHandle} testId="handle" label="Handle" />
       </Row>
       <Row name="Email" line="Where sign-in links and receipts go" testId="email">
-        <Field value={p.email} type="email" width={240} onSave={v => setProfile({ email: v })} check={checkEmail} testId="email" />
+        <Field value={p.email} type="email" width={240} onSave={v => setProfile({ email: v })} check={checkEmail} testId="email" label="Email" />
       </Row>
       <Row name="Sign in with" line="A link to your inbox, or the account you already have — no password to keep" testId="sign-in-way">
         <DropdownSelect<SignInWay> label="Sign in" value={p.signIn} options={SIGN_IN_OPTIONS} onChange={v => setProfile({ signIn: v })} title="How you sign in" testId="settings-sign-in" align="end" />
@@ -391,6 +391,7 @@ const PasswordChange = () => {
         <input
           type="password"
           value={pw}
+          aria-label="New password"
           autoComplete="new-password"
           placeholder="new password"
           onChange={e => {
@@ -546,10 +547,10 @@ const AccountLive = () => {
       {/* THE PICTURE — a place to drop one: staged, shown as it will be kept, applied only when you say so (PictureDrop.tsx) */}
       <PictureDrop />
       <Row name="Name" line="How the terminal greets you and signs your posts" testId="name">
-        <Field value={p.name} onSave={v => setProfile({ name: v })} check={checkName} testId="name" />
+        <Field value={p.name} onSave={v => setProfile({ name: v })} check={checkName} testId="name" label="Name" />
       </Row>
       <Row name="Handle" line="Your name on Community — one word, yours alone" testId="handle">
-        <Field value={p.handle} prefix="@" onSave={v => setProfile({ handle: v.replace(/^@/, '').toLowerCase() })} check={checkHandle} testId="handle" />
+        <Field value={p.handle} prefix="@" onSave={v => setProfile({ handle: v.replace(/^@/, '').toLowerCase() })} check={checkHandle} testId="handle" label="Handle" />
       </Row>
       <Row name="Email" line="Where sign-in and reset links go — changing it will come with the account's own mail" testId="email">
         <span className="font-mono text-t11 text-textPrimary" data-account-email>
