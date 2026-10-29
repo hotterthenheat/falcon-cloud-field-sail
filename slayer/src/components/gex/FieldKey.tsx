@@ -53,6 +53,11 @@ function FieldKey({ ticker, cut, cutWords, scale, compact = false }: FieldKeyPro
         <span className="tnum">{scale > 0 ? `+${fmtUsd(scale)}` : '—'}</span>
         {!compact && <span>long</span>}
       </div>
+      {!(scale > 0) && (
+        <div className="mt-0.5 whitespace-nowrap text-textSecondary" data-field-empty>
+          {mode === 'flow' ? 'A bar fills once a reading covers its start and its end' : 'No reading covers a bar yet'}
+        </div>
+      )}
       <div className="mt-0.5 flex items-center gap-1.5 whitespace-nowrap">
         <span className={`tnum font-semibold ${netValue == null ? '' : netValue >= 0 ? 'text-goldline' : 'text-steelline'}`} data-field-net>
           {netValue == null ? '—' : `${netValue >= 0 ? '+' : ''}${fmtUsd(netValue)}`}

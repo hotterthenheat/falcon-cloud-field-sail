@@ -1162,7 +1162,7 @@ const Pane = ({
             />
             </Deferred>
             {/* The field's key: the model, its switch, the colour scale and the cut's net GEX */}
-            {overlays.trails && !replay && fieldScale > 0 && (
+            {overlays.trails && !replay && (
               <div className="absolute left-12 bottom-9 z-20" data-terrain-field-key>
                 <FieldKey
                   ticker={ticker}
