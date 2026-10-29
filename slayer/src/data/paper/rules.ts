@@ -40,8 +40,8 @@ export interface PropRules {
       (everything closed, no new positions until the next trading day). */
   dailyLoss: { amount: number; from: 'balance' | 'equity' | 'higher'; breach: 'fail' | 'pause' } | null;
   /** The most the account may lose in all, from a high mark: the start (static), the best day's close (eod), or the
-      best moment, open trades in (intraday). `lockAt`: the floor stops trailing once it reaches the phase's start plus
-      this many dollars (0: at the start) — null: it trails for good. `on`: measured on the worth (open trades in) or
+      best moment, open trades in (intraday). `lockAt`: the floor stops trailing once it reaches the account's starting
+      size plus this many dollars (0: at the start) — null: it trails for good. A static floor is under the start. `on`: measured on the worth (open trades in) or
       the balance (closed trades only). */
   drawdown: { amount: number; mode: DrawdownMode; lockAt: number | null; on: 'equity' | 'balance' } | null;
   /** Trading days with at least one fill before the target counts */
@@ -75,8 +75,9 @@ export interface PropRules {
   zeroDte: boolean;
   /** "15:55" — flat by this New York time every trading day; null: no daily flat time */
   flatBy: string | null;
-  /** On its expiry day a contract is closed at this New York time */
-  expiryClose: string | null;
+  /** On its expiry day a contract is closed at this New York time — but for the names in `except`, which the firm
+      closes later than the 16:00 bell this desk's quotes stop at: those settle at the 16:00 close here */
+  expiryClose: { at: string; except: string[] } | null;
   /** May a position be held past the close into the next session */
   overnight: boolean;
   /** …and over a weekend or a market holiday */
@@ -178,7 +179,7 @@ const ddMeasure = (a: PaperAccount, v: PaperView): number => (rulesOf(a)?.drawdo
 export function floorOf(a: PaperAccount): number | null {
   const d = rulesOf(a)?.drawdown;
   if (!d) return null;
-  const base = phaseOf(a).base;
+  const base = a.startCash;
   if (d.mode === 'static') return cents(base - d.amount);
   const trailed = a.peak - d.amount;
   return cents(d.lockAt == null ? trailed : Math.min(trailed, base + d.lockAt));
@@ -187,7 +188,7 @@ export function floorOf(a: PaperAccount): number | null {
 export function floorLocked(a: PaperAccount): boolean {
   const d = rulesOf(a)?.drawdown;
   if (!d || d.mode === 'static' || d.lockAt == null) return false;
-  return a.peak - d.amount >= phaseOf(a).base + d.lockAt - EPS;
+  return a.peak - d.amount >= a.startCash + d.lockAt - EPS;
 }
 /** What the day's loss is measured from, and the day's floor */
 export function dayFloorOf(a: PaperAccount): { from: number; floor: number } | null {
@@ -251,7 +252,7 @@ export function flatTimeOf(a: PaperAccount, day: string, c: ContractId | null, m
   if (r.flatBy) out.push({ at: nyInstant(day, minutesOf(r.flatBy)), why: `flat by ${r.flatBy} ET`, rule: 'flat' });
   if (!r.overnight) bell('nothing is held past the close', 'overnight');
   else if (!r.weekend && breakFollows(day)) bell('nothing is held over the weekend or a market holiday', 'weekend');
-  if (c && r.expiryClose && c.expiry === day) out.push({ at: nyInstant(day, minutesOf(r.expiryClose)), why: `an expiring contract is closed at ${r.expiryClose} ET on its expiry day`, rule: 'expiry' });
+  if (c && r.expiryClose && c.expiry === day && !r.expiryClose.except.includes(c.ticker.toUpperCase())) out.push({ at: nyInstant(day, minutesOf(r.expiryClose.at)), why: `an expiring contract is closed at ${r.expiryClose.at} ET on its expiry day`, rule: 'expiry' });
   const name = c?.ticker.toUpperCase();
   if (!r.earnings && name) {
     const e = m.earnings?.(name);
@@ -486,7 +487,7 @@ export function readRules(a: PaperAccount, v: PaperView, m: Pick<PaperMarket, 'n
       state: limitState(fill),
       value: `floor ${money(floor, 2)}`,
       room: `${money(Math.max(0, room))} above the floor`,
-      says: `${r.drawdown.mode === 'static' ? `A fixed floor ${money(r.drawdown.amount)} under the start` : `A floor ${money(r.drawdown.amount)} under the ${r.drawdown.mode === 'eod' ? 'best day’s close' : 'best moment, open trades in'}`}${r.drawdown.mode !== 'static' ? (r.drawdown.lockAt != null ? `; it stops trailing at ${money(ph.base + r.drawdown.lockAt)}${locked ? ' — and has' : ''}` : '; it never stops trailing in the evaluation') : ''}. Measured on ${r.drawdown.on === 'balance' ? 'the balance (closed trades)' : `what the account is worth, open contracts at their ${r.markAt === 'bid' ? 'bid' : 'mid'}`}, every tick. Reached: the account fails.`,
+      says: `${r.drawdown.mode === 'static' ? `A fixed floor ${money(r.drawdown.amount)} under the start` : `A floor ${money(r.drawdown.amount)} under the ${r.drawdown.mode === 'eod' ? 'best day’s close' : 'best moment, open trades in'}`}${r.drawdown.mode !== 'static' ? (r.drawdown.lockAt != null ? `; it stops trailing at ${money(a.startCash + r.drawdown.lockAt)}${locked ? ' — and has' : ''}` : '; it never stops trailing in the evaluation') : ''}. Measured on ${r.drawdown.on === 'balance' ? 'the balance (closed trades)' : `what the account is worth, open contracts at their ${r.markAt === 'bid' ? 'bid' : 'mid'}`}, every tick. Reached: the account fails.`,
     });
   }
   if (r.minDays != null) {
@@ -541,7 +542,7 @@ export function readRules(a: PaperAccount, v: PaperView, m: Pick<PaperMarket, 'n
     const hhmm = `${String(Math.floor(at.minutes / 60)).padStart(2, '0')}:${String(at.minutes % 60).padStart(2, '0')}`;
     out.push({ id: flat.rule, label: `Flat by ${hhmm} ET`, kind: 'fact', fill: 0, state: past ? 'hit' : left < 15 * 60_000 ? 'near' : 'ok', value: past ? 'flat until the next session' : at.date === nyAt(m.now).date ? untilWords(left) : 'every session', room: '', says: `Everything open is closed by the rules at ${hhmm} ET — ${flat.why}` });
   }
-  if (r.expiryClose) out.push({ id: 'expiry', label: 'Expiring contracts', kind: 'fact', fill: 0, state: 'ok', value: `closed ${r.expiryClose} ET`, room: '', says: `A contract is closed by the rules at ${r.expiryClose} ET on its expiry day` });
+  if (r.expiryClose) out.push({ id: 'expiry', label: 'Expiring contracts', kind: 'fact', fill: 0, state: 'ok', value: `closed ${r.expiryClose.at} ET`, room: '', says: `A contract is closed by the rules at ${r.expiryClose.at} ET on its expiry day${r.expiryClose.except.length ? ` — but ${r.expiryClose.except.join(', ')}, which the firm closes after the 16:00 bell: here they settle at the 16:00 close` : ''}` });
   if (!r.earnings) out.push({ id: 'earnings', label: 'Earnings', kind: 'fact', fill: 0, state: 'ok', value: 'not through a report', room: '', says: `A position on a name that reports before the next session is closed at ${BEFORE_BELL} ET; a buy waits until the report date is known` });
   const allowed: string[] = [];
   if (r.underlyings) allowed.push(r.underlyings.length > 12 ? `${r.underlyings.length} names` : r.underlyings.join(' · '));

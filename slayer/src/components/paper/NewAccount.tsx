@@ -84,7 +84,7 @@ const NewAccount = ({ onPractice, onPlan }: Props) => {
                     <div key={prog} className="flex flex-col gap-2 min-w-0" data-paper-program={`${f.id}:${prog}`}>
                       <div className="flex items-baseline gap-2 flex-wrap">
                         <span className="text-t12 font-medium text-textPrimary">{prog}</span>
-                        <span className="text-t10 text-textMuted">{planChips(first).join(' · ')}</span>
+                        <span className="text-t10 text-textMuted">{planChips(first, true).join(' · ')}</span>
                       </div>
                       {first.notModelled?.length ? (
                         <p className="text-t10 text-warn leading-snug" data-paper-not-modelled>

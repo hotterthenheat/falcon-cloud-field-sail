@@ -1067,7 +1067,7 @@ function passIf(a: PaperAccount, v: PaperView, m: PaperMarket, events: PaperEven
   }
   events.push({ kind: 'passed', at: m.now, words: `${planName(plan)} · ${verdict.why}` });
   const start = { at: m.now, day: a.day, equity: v.balance };
-  return logged({ ...a, phase: (a.phase ?? 0) + 1, phaseStart: start, peak: v.balance }, m.now, verdict.why, 'pass');
+  return logged({ ...a, phase: (a.phase ?? 0) + 1, phaseStart: start }, m.now, verdict.why, 'pass');
 }
 
 /** The day rolls at 17:00 New York: day orders go, the day that was is written down, an evaluation's high mark and
