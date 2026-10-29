@@ -1,7 +1,7 @@
 /* The tape reconstructed into structures: each one named and priced from its own settled legs, its expiry risk at the
    right, and a card that says in plain words what the shape does. */
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTraceSession } from '../../components/trace/traceSession';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, CalendarDays } from 'lucide-react';
@@ -511,10 +511,10 @@ const MultiLeg = () => {
           <span className="inline-flex items-center align-middle max-w-full" title={t.strikesLabel}>
             <span className="font-mono tnum font-bold leading-tight text-textPrimary whitespace-normal line-clamp-2">
               {t.strikesLabel.split(' / ').map((k, i) => (
-                <span key={i} className="whitespace-nowrap">
-                  {i > 0 ? ' / ' : ''}
-                  {k}
-                </span>
+                <Fragment key={i}>
+                  {i > 0 && ' / '}
+                  <span className="whitespace-nowrap">{k}</span>
+                </Fragment>
               ))}
             </span>
           </span>

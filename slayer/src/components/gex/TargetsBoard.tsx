@@ -217,7 +217,7 @@ const Actions = ({ t, armed, onChart, onAlert, icons = false, reveal = false }: 
     <button
       onClick={() => onChart(t)}
       title="See this strike on the Map"
-      className="inline-flex items-center gap-1 px-2 py-1 rounded font-mono text-t9 font-semibold uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
+      className="inline-flex items-center gap-1 px-2 py-1 min-h-[24px] rounded font-mono text-t9 font-semibold uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
     >
       {!icons && 'Chart '}
       <ArrowUpRight className="w-3 h-3" />
@@ -227,7 +227,7 @@ const Actions = ({ t, armed, onChart, onAlert, icons = false, reveal = false }: 
       onClick={() => onAlert(t)}
       aria-pressed={armed}
       title={armed ? 'Alert set at this strike — click to remove it' : 'Alert me when price crosses this strike'}
-      className="inline-flex items-center gap-1 px-2 py-1 rounded font-mono text-t9 font-semibold uppercase tracking-wider whitespace-nowrap hover:bg-ink/[0.06]"
+      className="inline-flex items-center gap-1 px-2 py-1 min-h-[24px] rounded font-mono text-t9 font-semibold uppercase tracking-wider whitespace-nowrap hover:bg-ink/[0.06]"
       style={{ color: armed ? ALERT : undefined, transition: `color 0.25s ease ${armed ? '0.45s' : '0s'}, background-color 0.15s` }}
       data-row-alert={armed ? 'armed' : 'quiet'}
     >
