@@ -44,6 +44,7 @@ export function canonical(p) {
  * @param {(path: string) => number} o.ttl     ms an answer stays fresh during market hours
  * @param {number} o.refreshPerSec             background refresh budget
  * @param {number} [o.maxBytes]
+ * @param {number} [o.maxRefreshing]             background refreshes outstanding at once (default 2)
  * @param {(path: string, ageMs: number) => boolean} [o.keepOnFail]  may a failed refresh fall back to the last good
  *   answer of this age? (default: never, so a failure shows as one)
  */
@@ -77,11 +78,18 @@ export function createHub(o) {
   const keepable = (status) => status === 200 || (status >= 400 && status < 500 && ![401, 403, 408, 429].includes(status));
   const keepOnFail = o.keepOnFail ?? (() => false);
 
+  /* background refreshes outstanding: the hub never queues more than the upstream can work through */
+  let refreshing = 0;
+  const MAX_REFRESHING = o.maxRefreshing ?? 2;
+
   function upstream(key, lane) {
     const running = inflight.get(key);
     if (running) return running;
     if (lane === 'viewer') stats.upstreamViewer += 1;
-    else stats.upstreamRefresh += 1;
+    else {
+      stats.upstreamRefresh += 1;
+      refreshing += 1;
+    }
     const fallback = () => {
       const last = cache.get(key);
       return last && last.status === 200 && keepOnFail(key, Date.now() - last.at) ? last : null;
@@ -108,7 +116,10 @@ export function createHub(o) {
         if (last) return last;
         throw e;
       })
-      .finally(() => inflight.delete(key));
+      .finally(() => {
+        inflight.delete(key);
+        if (lane !== 'viewer') refreshing -= 1;
+      });
     inflight.set(key, job);
     return job;
   }
@@ -137,7 +148,7 @@ export function createHub(o) {
       const failing = wanted.get(key)?.fails && !keepOnFail(key, age);
       if (!failing && age < Math.max(2 * ttl, ttl + 2_000)) {
         stats.stale += 1;
-        void upstream(key, 'refresh').catch(() => {});
+        if (refreshing < MAX_REFRESHING) void upstream(key, 'refresh').catch(() => {});
         return hit;
       }
     }
@@ -184,7 +195,7 @@ export function createHub(o) {
     /* the paths viewers asked for most recently and most often go first */
     due.sort((a, b) => b[1].last - a[1].last || b[1].asks - a[1].asks);
     for (const [key] of due) {
-      if (tokens < 1) break;
+      if (tokens < 1 || refreshing >= MAX_REFRESHING) break;
       tokens -= 1;
       void upstream(key, 'refresh').catch(() => {});
     }
@@ -221,6 +232,6 @@ export function createHub(o) {
     get,
     canonical,
     /** Counts for the load check: asks served fresh, served stale, waited on, and the vendor calls behind them. */
-    stats: () => ({ ...stats, watching: wanted.size, cached: cache.size, megabytes: Math.round(bytes / 1e5) / 10 }),
+    stats: () => ({ ...stats, refreshing, watching: wanted.size, cached: cache.size, megabytes: Math.round(bytes / 1e5) / 10 }),
   };
 }
