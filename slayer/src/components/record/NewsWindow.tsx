@@ -71,10 +71,12 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
     ro.observe(el);
     return () => ro.disconnect();
   }, [el]);
-  const widthRef = useRef(width);
-  widthRef.current = width;
-  const estimateRef = useRef(estimate);
-  estimateRef.current = estimate;
+  /* Estimates are kept per story for the width: the virtualizer re-reads every unmeasured row's estimate each time a
+     row is measured (once a frame while scrolling), so each one is worked out once, not ~1,300 times a frame. */
+  const estCache = useRef({ width, estimate, kept: new Map<string, number>() });
+  if (estCache.current.width !== width || estCache.current.estimate !== estimate) estCache.current = { width, estimate, kept: new Map() };
+  const keyOfRef = useRef(keyOf);
+  keyOfRef.current = keyOf;
 
   /* where the rows start inside the window: under the head, and under anything drawn before them (the day's prints) */
   const sizerRef = useRef<HTMLDivElement | null>(null);
@@ -85,7 +87,17 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
   });
 
   const getItemKey = useCallback((i: number) => keyOf(itemsRef.current[i]), [items]); // eslint-disable-line react-hooks/exhaustive-deps
-  const estimateSize = useCallback((i: number) => estimateRef.current(itemsRef.current[i], widthRef.current), []);
+  const estimateSize = useCallback((i: number) => {
+    const t = itemsRef.current[i];
+    const k = keyOfRef.current(t);
+    const c = estCache.current;
+    let e = c.kept.get(k);
+    if (e === undefined) {
+      e = c.estimate(t, c.width);
+      c.kept.set(k, e);
+    }
+    return e;
+  }, []);
   const v = useVirtualizer({
     count: items.length,
     getScrollElement: () => el,

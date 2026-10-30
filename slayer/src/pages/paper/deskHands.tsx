@@ -42,32 +42,43 @@ export function positionLines(h: Hands, name: string): BarLine[] {
     .map(p => {
       /* an option breaks even AT EXPIRY: the strike, plus (a call) or less (a put) what it cost a share, fees in */
       const c = p.contract;
-      const costEach = (p.avg * MULT * p.qty + p.fees + (account.sandbox ? 0 : account.fee * p.qty)) / (MULT * p.qty);
-      const even = c.right === 'C' ? c.strike + costEach : c.strike - costEach;
+      const legs = c.short != null ? 2 : 1;
+      const feeOut = account.sandbox ? 0 : account.fee * p.qty * legs;
+      /* a long's cost a share, fees in — a short's credit a share, fees out: the strike (a spread: the one nearer the
+         money) moved by it is where it breaks even at expiry */
+      const each = p.dir > 0 ? (p.avg * MULT * p.qty + p.fees + feeOut) / (MULT * p.qty) : (p.avg * MULT * p.qty - p.fees - feeOut) / (MULT * p.qty);
+      const even = c.right === 'C' ? c.strike + each : c.strike - each;
       const sells = account.opt.orders.filter(o => o.status === 'working' && o.side === 'sell' && o.price != null && o.contract.ticker === name && o.contract.strike === c.strike && o.contract.expiry === c.expiry && o.contract.right === c.right);
       const way = (kind: 'limit' | 'stop') => {
         const o = sells.find(x => x.kind === kind);
         if (!o) return null;
         return o.on === 'name' ? `${name} ${o.price!.toFixed(2)}` : o.price!.toFixed(2);
       };
-      const facts: BarLine['facts'] = [
-        { label: 'paid', value: p.avg.toFixed(2) },
-        { label: 'bid', value: p.quote.bid.toFixed(2) },
-        { label: 'even at expiry', value: `${name} ${even.toFixed(2)}` },
-      ];
+      const facts: BarLine['facts'] = p.dir > 0
+        ? [
+            { label: 'paid', value: p.avg.toFixed(2) },
+            { label: 'bid', value: p.quote.bid > 0 ? p.quote.bid.toFixed(2) : '—' },
+            { label: 'even at expiry', value: `${name} ${even.toFixed(2)}` },
+          ]
+        : [
+            { label: 'sold', value: p.avg.toFixed(2) },
+            { label: 'ask', value: p.quote.ask > 0 ? p.quote.ask.toFixed(2) : '—' },
+            { label: 'even at expiry', value: `${name} ${even.toFixed(2)}` },
+            ...(p.margin && p.margin.keys[0] === p.key ? [{ label: 'margin', value: `$${Math.round(p.margin.held).toLocaleString('en-US')}${p.margin.kind === 'naked' ? ' est.' : ''}` }] : []),
+          ];
       const t = way('limit');
       const s = way('stop');
       if (t) facts.push({ label: 'target', value: t, ink: 'text-bull' });
       if (s) facts.push({ label: 'stop', value: s, ink: 'text-bear' });
       return {
         key: p.key,
-        label: `${p.qty} × ${contractWords(c).replace(`${name} `, '')}`,
-        tone: c.right === 'C' ? ('bull' as const) : ('bear' as const),
+        label: p.dir > 0 ? `${p.qty} × ${contractWords(c).replace(`${name} `, '')}` : `−${p.qty} × ${contractWords(c).replace(`${name} `, '')} short`,
+        tone: p.dir < 0 ? ('bear' as const) : c.right === 'C' ? ('bull' as const) : ('bear' as const),
         facts,
         pnl: p.pnl,
         r: p.r,
         onClose: () => closeOpt(account.id, c, p.qty),
-        locked: lock ?? (p.quote.dead ? 'No bid to sell into right now' : account.status !== 'open' ? 'This account is closed' : null),
+        locked: lock ?? (p.quote.dead ? (p.dir > 0 ? 'No bid to sell into right now' : 'No offer to buy it back from right now') : account.status !== 'open' ? 'This account is closed' : null),
       };
     });
 }
@@ -112,6 +123,11 @@ export function chartMenu(h: Hands, name: string): (price: number) => ChartMenu 
       const c = p.contract;
       const tIs = (kind: 'limit' | 'stop') => (nameGoesUp(kind, c.right) ? at > spot : at < spot);
       const items: ChartMenuItem[] = [];
+      if (p.dir < 0) {
+        items.push({ label: `Buy back all ${p.qty}`, hint: 'At the ask, now — what it holds of margin comes free', off: off ?? (p.quote.dead ? 'No offer to buy it back from right now' : null), run: () => closeOpt(account.id, c, p.qty), testId: 'opt-close' });
+        sections.push({ title: `Short ${p.qty} × ${contractWords(c)}`, items });
+        continue;
+      }
       if (tIs('limit')) items.push({ label: `Target when ${name} reaches ${at.toFixed(2)}`, hint: 'Sells at the bid when the name gets there — the level holds, the dollars drift with decay', tone: 'bull', off, run: () => attachOpt(account.id, c, 'target', at, 'name'), testId: 'opt-target' });
       if (tIs('stop')) items.push({ label: `Stop if ${name} ${nameGoesUp('stop', c.right) ? 'rises' : 'falls'} to ${at.toFixed(2)}`, hint: 'Sells at the bid when the name gets there', tone: 'bear', off, run: () => attachOpt(account.id, c, 'stop', at, 'name'), testId: 'opt-stop' });
       items.push({ label: `Close all ${p.qty}`, off: off ?? (p.quote.dead ? 'No bid to sell into right now' : null), run: () => closeOpt(account.id, c, p.qty), testId: 'opt-close' });

@@ -94,7 +94,8 @@ const StrategyBuilder = ({ desk }: { desk: StrategyDesk }) => {
   const cq = callSide ? desk.quote(callSide) : null;
   const sq = csp ? desk.quote(csp) : null;
   /* the price at the market, a share: what it takes in (credit) or costs (debit) */
-  const natural = kind === 'vertical' ? (vq ? (way === 'credit' ? vq.bid : vq.ask) : NaN) : kind === 'condor' ? (pq && cq && !pq.dead && !cq.dead ? +(pq.bid + cq.bid).toFixed(2) : NaN) : kind === 'csp' ? (sq?.bid ?? NaN) : NaN;
+  /* a leg with no quote read yet (or none standing) has no price: a dash, never 0.00 */
+  const natural = kind === 'vertical' ? (vq && !vq.dead ? (way === 'credit' ? vq.bid : vq.ask) : NaN) : kind === 'condor' ? (pq && cq && !pq.dead && !cq.dead ? +(pq.bid + cq.bid).toFixed(2) : NaN) : kind === 'csp' ? (sq && !sq.dead ? sq.bid : NaN) : NaN;
   const limitPx = Math.max(0.01, num(limit) ?? (Number.isFinite(natural) ? natural : 0.01));
   const width = kind === 'vertical' && vertical ? Math.abs(vertical.short! - vertical.strike) : kind === 'condor' && w != null ? w : 0;
 
@@ -221,11 +222,11 @@ const StrategyBuilder = ({ desk }: { desk: StrategyDesk }) => {
             <SizeRow q={n} onQ={desk.onQ} />
             <div className="grid grid-cols-2 gap-2">
               <Act side={sells ? 'sell' : 'buy'} count={n} at={Number.isFinite(natural) ? `${natural.toFixed(2)} Mkt` : 'Mkt'} why={why.market} onPress={() => place('market')} />
-              <Act side={sells ? 'sell' : 'buy'} count={n} at={`${limitPx.toFixed(2)} Lmt`} why={why.limit} onPress={() => place('limit')} />
+              <Act side={sells ? 'sell' : 'buy'} count={n} at={`${num(limit) != null || Number.isFinite(natural) ? limitPx.toFixed(2) : '—'} Lmt`} why={why.limit} onPress={() => place('limit')} />
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className={labelCls}>{sells ? 'Net credit' : 'Net debit'}</span>
-              <PriceBox value={limit} onChange={setLimit} step={dir => setLimit(Math.max(0.01, limitPx + dir * 0.01).toFixed(2))} label="Net price" placeholder={Number.isFinite(natural) ? natural.toFixed(2) : ''} />
+              <PriceBox value={limit} onChange={setLimit} step={dir => setLimit(Math.max(0.01, limitPx + dir * 0.01).toFixed(2))} label="Net price" placeholder={Number.isFinite(natural) ? natural.toFixed(2) : '—'} />
               <button type="button" onClick={() => setLimit('')} className={quiet} title="The price the legs trade at now, each at its bid or ask">
                 Market
               </button>

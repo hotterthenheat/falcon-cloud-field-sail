@@ -186,6 +186,11 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
   /** A limit's price, as typed — empty is the middle */
   const [limit, setLimit] = useState('');
   const limitPx = Math.max(0.01, num(limit) ?? mid);
+  /* no quote read yet for the contract (or a leg of it): a dash, never a $0.00 that reads as a price */
+  const quoted = quote.bid > 0 || quote.ask > 0;
+  const pw = (v: number) => (quoted && Number.isFinite(v) ? v.toFixed(2) : '—');
+  const uw = (v: number) => (quoted && Number.isFinite(v) ? usd(v) : '—');
+  const limitW = num(limit) != null || quoted ? limitPx.toFixed(2) : '—';
   const [bracketsOpen, setBracketsOpen] = useState(false);
   const [ladder, setLadder] = useState<LadderDraft>(LADDER_AT_REST);
   const [basis, setBasis] = useState<'contract' | 'name'>('contract');
@@ -249,7 +254,7 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
   const width = spreadWidth(contract);
   const levelFor = (bid: number) => desk.spotForBid(contract, +bid.toFixed(2))?.toFixed(2) ?? '';
   const fallsOrRises = contract.right === 'C' ? 'falls to' : 'rises to';
-  const priceBox = <PriceBox value={limit} onChange={setLimit} step={dir => setLimit(Math.max(0.01, limitPx + dir * 0.01).toFixed(2))} label="Limit price" placeholder={mid.toFixed(2)} />;
+  const priceBox = <PriceBox value={limit} onChange={setLimit} step={dir => setLimit(Math.max(0.01, limitPx + dir * 0.01).toFixed(2))} label="Limit price" placeholder={quoted ? mid.toFixed(2) : '—'} />;
 
   if (pos && pos.dir === -1) {
     const cost = quote.ask * MULT * sellN;
@@ -274,22 +279,22 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
           </button>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Act side="buy" count={sellN} at={`Ask ${quote.ask.toFixed(2)}`} why={why.buy} onPress={() => desk.onPlace(coverDraft('market'))} />
-          <Act side="buy" count={sellN} at={`${limitPx.toFixed(2)} Lmt`} why={why.buyLimit} onPress={() => desk.onPlace(coverDraft('limit'))} />
+          <Act side="buy" count={sellN} at={`Ask ${pw(quote.ask)}`} why={why.buy} onPress={() => desk.onPlace(coverDraft('market'))} />
+          <Act side="buy" count={sellN} at={`${limitW} Lmt`} why={why.buyLimit} onPress={() => desk.onPlace(coverDraft('limit'))} />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className={labelCls}>Limit</span>
           {priceBox}
           <button type="button" onClick={() => setLimit('')} className={quiet} title="The middle of the bid and the ask">
-            Mid {mid.toFixed(2)}
+            Mid {pw(mid)}
           </button>
           <button type="button" onClick={() => desk.onPlace({ contract, side: 'sell', qty: n, kind: 'market' })} disabled={!!more} title={more ?? `Sell ${n} more at the bid`} className={`${quiet} ml-auto enabled:hover:text-bear enabled:hover:border-bear/50`} data-chain-order-more>
-            Sell {n} more @ {quote.bid.toFixed(2)}
+            Sell {n} more @ {pw(quote.bid)}
           </button>
         </div>
         <div className="font-mono text-t11 tnum leading-relaxed whitespace-normal break-words" data-order-status>
           <div className="text-textSecondary">
-            Buy back {sellN} × {usd(quote.ask)} × 100 = <span className="text-textPrimary font-semibold">{usd(cost)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
+            Buy back {sellN} × {uw(quote.ask)} × 100 = <span className="text-textPrimary font-semibold">{uw(cost)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
           </div>
           {whyLine ? <div className="text-warn">{whyLine}</div> : <div className="text-textMuted">Buys back {sellN === pos.qty ? 'all of it' : `${sellN} of ${pos.qty}`} at the ask — what it holds in margin comes free with it</div>}
         </div>
@@ -319,22 +324,22 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
           </button>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Act side="sell" count={sellN} at={`Bid ${quote.bid.toFixed(2)}`} why={why.sell} onPress={() => desk.onPlace(sellDraft('market'))} />
-          <Act side="sell" count={sellN} at={`${limitPx.toFixed(2)} Lmt`} why={why.sellLimit} onPress={() => desk.onPlace(sellDraft('limit'))} />
+          <Act side="sell" count={sellN} at={`Bid ${pw(quote.bid)}`} why={why.sell} onPress={() => desk.onPlace(sellDraft('market'))} />
+          <Act side="sell" count={sellN} at={`${limitW} Lmt`} why={why.sellLimit} onPress={() => desk.onPlace(sellDraft('limit'))} />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className={labelCls}>Limit</span>
           {priceBox}
           <button type="button" onClick={() => setLimit('')} className={quiet} title="The middle of the bid and the ask">
-            Mid {mid.toFixed(2)}
+            Mid {pw(mid)}
           </button>
           <button type="button" onClick={() => desk.onPlace(buyDraft('market'))} disabled={!!why.buy} title={why.buy ?? `Add ${n} at the ask`} className={`${quiet} ml-auto enabled:hover:text-bull enabled:hover:border-bull/50`} data-chain-order-more>
-            Buy {n} more @ {quote.ask.toFixed(2)}
+            Buy {n} more @ {pw(quote.ask)}
           </button>
         </div>
         <div className="font-mono text-t11 tnum leading-relaxed whitespace-normal break-words" data-order-status>
           <div className="text-textSecondary">
-            {sellN} × {usd(quote.bid)} × 100 = <span className="text-textPrimary font-semibold">{usd(proceeds)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
+            {sellN} × {uw(quote.bid)} × 100 = <span className="text-textPrimary font-semibold">{uw(proceeds)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
           </div>
           {whyLine ? <div className="text-warn">{whyLine}</div> : <div className="text-textMuted">Sells {sellN === pos.qty ? 'all of it' : `${sellN} of ${pos.qty}`} — what is working on it gives way where it has to</div>}
         </div>
@@ -370,7 +375,7 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
           <span className="font-mono text-t11 font-semibold text-textPrimary">{contractWords(contract)}</span>
           {spreadOptions.length > 1 && <DropdownSelect label="Spread" value={short} options={spreadOptions} onChange={k => { setShort(k); desk.onShort?.(k); }} title="Buy a strike further out against it — a credit spread: its loss capped at the distance between the two, less the credit" testId="chain-order-spread" size="sm" />}
           <span className="ml-auto font-mono text-t10 tnum text-textMuted">
-            bid <span className="text-textPrimary">{quote.bid.toFixed(2)}</span> · mid <span className="text-textPrimary">{mid.toFixed(2)}</span> · ask <span className="text-textPrimary">{quote.ask.toFixed(2)}</span>
+            bid <span className="text-textPrimary">{pw(quote.bid)}</span> · mid <span className="text-textPrimary">{pw(mid)}</span> · ask <span className="text-textPrimary">{pw(quote.ask)}</span>
           </span>
         </div>
         {singlePut && (
@@ -386,26 +391,26 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
         )}
         <SizeRow q={n} onQ={desk.onQ} />
         <div className="grid grid-cols-2 gap-2">
-          <Act side="sell" count={n} at={`Bid ${quote.bid.toFixed(2)}`} why={why.sell} onPress={() => desk.onPlace(sellDraft('market'))} />
-          <Act side="sell" count={n} at={`${limitPx.toFixed(2)} Lmt`} why={why.sellLimit} onPress={() => desk.onPlace(sellDraft('limit'))} />
+          <Act side="sell" count={n} at={`Bid ${pw(quote.bid)}`} why={why.sell} onPress={() => desk.onPlace(sellDraft('market'))} />
+          <Act side="sell" count={n} at={`${limitW} Lmt`} why={why.sellLimit} onPress={() => desk.onPlace(sellDraft('limit'))} />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className={labelCls}>Limit</span>
           {priceBox}
           <button type="button" onClick={() => setLimit('')} className={quiet} title="The middle of the bid and the ask">
-            Mid {mid.toFixed(2)}
+            Mid {pw(mid)}
           </button>
         </div>
         <div className="font-mono text-t11 tnum leading-relaxed whitespace-normal break-words" data-order-status>
           <div className="text-textSecondary">
-            Takes in {n} × {usd(quote.bid)} × 100 = <span className="text-textPrimary font-semibold">{usd(credit)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
+            Takes in {n} × {uw(quote.bid)} × 100 = <span className="text-textPrimary font-semibold">{uw(credit)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
           </div>
           {pv && <div className="text-textSecondary" data-order-margin>Holds <span className="text-textPrimary font-semibold">{usd(pv.held)}</span> of margin · free after {usd(pv.free)}</div>}
           {whyLine ? (
             <div className="text-warn">{whyLine}</div>
           ) : (
             <div className="text-textMuted">
-              {width > 0 ? `Can make ${usd(credit)}, can lose ${usd(Math.max(0, width - quote.bid) * MULT * n)} — its width less the credit` : singlePut && secured ? `Cash-secured: can lose the strike less the premium, ${usd(Math.max(0, contract.strike - quote.bid) * MULT * n)}` : contract.right === 'C' ? 'A call sold on its own: no cap on what it can lose — held on a Reg T margin estimate, re-marked every tick' : 'A put sold on margin: held on a Reg T estimate, re-marked every tick'}
+              {width > 0 ? `Can make ${uw(credit)}, can lose ${usd(Math.max(0, width - quote.bid) * MULT * n)} — its width less the credit` : singlePut && secured ? `Cash-secured: can lose the strike less the premium, ${usd(Math.max(0, contract.strike - quote.bid) * MULT * n)}` : contract.right === 'C' ? 'A call sold on its own: no cap on what it can lose — held on a Reg T margin estimate, re-marked every tick' : 'A put sold on margin: held on a Reg T estimate, re-marked every tick'}
             </div>
           )}
         </div>
@@ -424,19 +429,19 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
         <span className="font-mono text-t11 font-semibold text-textPrimary">{contractWords(contract)}</span>
         {spreadOptions.length > 1 && <DropdownSelect label="Spread" value={short} options={spreadOptions} onChange={k => { setShort(k); desk.onShort?.(k); }} title="Sell a strike further out against it — a vertical spread, bought for a debit: cheaper, and capped at the distance between the two" testId="chain-order-spread" size="sm" />}
         <span className="ml-auto font-mono text-t10 tnum text-textMuted">
-          bid <span className="text-textPrimary">{quote.bid.toFixed(2)}</span> · mid <span className="text-textPrimary">{mid.toFixed(2)}</span> · ask <span className="text-textPrimary">{quote.ask.toFixed(2)}</span>
+          bid <span className="text-textPrimary">{pw(quote.bid)}</span> · mid <span className="text-textPrimary">{pw(mid)}</span> · ask <span className="text-textPrimary">{pw(quote.ask)}</span>
         </span>
       </div>
       <SizeRow q={n} onQ={desk.onQ} />
       <div className="grid grid-cols-2 gap-2">
-        <Act side="buy" count={n} at={`Ask ${quote.ask.toFixed(2)}`} why={why.buy} onPress={() => desk.onPlace(buyDraft('market'))} />
-        <Act side="buy" count={n} at={`${limitPx.toFixed(2)} Lmt`} why={why.buyLimit} onPress={() => desk.onPlace(buyDraft('limit'))} />
+        <Act side="buy" count={n} at={`Ask ${pw(quote.ask)}`} why={why.buy} onPress={() => desk.onPlace(buyDraft('market'))} />
+        <Act side="buy" count={n} at={`${limitW} Lmt`} why={why.buyLimit} onPress={() => desk.onPlace(buyDraft('limit'))} />
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <span className={labelCls}>Limit</span>
         {priceBox}
         <button type="button" onClick={() => setLimit('')} className={quiet} title="The middle of the bid and the ask">
-          Mid {mid.toFixed(2)}
+          Mid {pw(mid)}
         </button>
         <button type="button" onClick={() => setBracketsOpen(o => !o)} aria-expanded={bracketsOpen} className={`${quiet} ml-auto ${bracketsOpen ? 'text-textPrimary border-silver/50' : ''}`} data-chain-order-brackets={bracketsOpen ? 'open' : 'folded'}>
           {bracketsOpen ? '− Target / Stop' : '+ Target / Stop'}
@@ -457,7 +462,7 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
       )}
       <div className="font-mono text-t11 tnum leading-relaxed whitespace-normal break-words" data-order-status>
         <div className="text-textSecondary">
-          {n} × {usd(px)} × 100 = <span className="text-textPrimary font-semibold">{usd(cost)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
+          {n} × {uw(px)} × 100 = <span className="text-textPrimary font-semibold">{uw(cost)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
         </div>
         {whyLine ? (
           <div className="text-warn">{whyLine}</div>
