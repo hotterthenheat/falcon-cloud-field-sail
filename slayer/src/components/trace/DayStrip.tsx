@@ -1,11 +1,12 @@
 /* The Intervals session as one fixed instrument: 09:30 to the close, each quarter hour a bar at its true x, its
    height the volume against the loud bar, the busiest in magenta. A time is always in the same place. */
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { WINDOWS_PER_DAY, type IntervalWindow } from '../../data/flowBook';
 import { SESSION_LENGTH_MIN } from '../../core/nyTime';
 import { earnMarks } from './earnedInk';
 import { fmtCount as num } from '../../data/traceLive';
+import { useIsPhone } from '../ui/useMediaQuery';
 
 const MIN_PER_SLOT = SESSION_LENGTH_MIN / WINDOWS_PER_DAY;
 
@@ -31,6 +32,18 @@ const OPEN: Fill = { background: wash('--silver', 0.55, 1), boxShadow: glow('--s
 const LIVE: Fill = { background: wash('--select', 0.45, 1), boxShadow: glow('--select') };
 const HELD: Fill = { background: wash('--warn', 0.45, 0.85) };
 
+/** One quarter hour's slot: a tab at a desk; on a phone a plain picture of it (the slider is the control there). */
+const Slot = ({ phone, sel, label, onPick, onHover, style, children, ...data }: { phone: boolean; sel: boolean; label: string; onPick: () => void; onHover: () => void; style: CSSProperties; children: ReactNode; 'data-window': number; 'data-window-role'?: string }) =>
+  phone ? (
+    <span className="group/slot absolute inset-y-0" style={style} {...data}>
+      {children}
+    </span>
+  ) : (
+    <button type="button" role="tab" aria-selected={sel} tabIndex={sel ? 0 : -1} aria-label={label} onClick={onPick} onPointerEnter={onHover} className="group/slot absolute inset-y-0" style={style} {...data}>
+      {children}
+    </button>
+  );
+
 const DayStrip = ({
   windows,
   selectedIdx,
@@ -50,6 +63,9 @@ const DayStrip = ({
   const pct = (minute: number) => `${(minute / len) * 100}%`;
   const TICKS = ticksFor(len);
   const [hover, setHover] = useState<number | null>(null);
+  /* On a phone a quarter hour is a sliver 13px wide: the bars are the picture, the slider under them is the control
+     (a 44px target), and a tap on the strip still picks the quarter under it. */
+  const phone = useIsPhone();
   const marks = useMemo(() => earnMarks(windows, w => w.totalVol), [windows]);
   const max = Math.max(marks.top === Infinity ? 1 : marks.top, 1);
   /* The height's ceiling is the loud bar (80th percentile), not the champion, so one burst never flattens the day
@@ -89,7 +105,21 @@ const DayStrip = ({
 
   return (
     <div className="relative select-none" data-day-strip onPointerLeave={() => setHover(null)}>
-      <div className="relative h-12" role="tablist" aria-label="The session's quarter hours, New York" onKeyDown={onKeys}>
+      <div
+        className="relative h-12"
+        {...(phone
+          ? {
+              'aria-hidden': true,
+              onClick: (e: MouseEvent<HTMLDivElement>) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                if (!(r.width > 0) || !windows.length) return;
+                const slot = Math.floor(((e.clientX - r.left) / r.width) * slots);
+                const near = windows.reduce((a, w) => (Math.abs(w.idx - slot) < Math.abs(a.idx - slot) ? w : a), windows[0]);
+                onSelect(near.idx);
+              },
+            }
+          : { role: 'tablist', 'aria-label': "The session's quarter hours, New York", onKeyDown: onKeys })}
+      >
         {/* The session as a faint rounded band — no boxed edges; the open and the close are the axis's own marks. */}
         <div aria-hidden className="absolute inset-0 rounded-md bg-ink/[0.03]" />
         {/* The floor the capsules stand on */}
@@ -103,18 +133,15 @@ const DayStrip = ({
           /* linear against the loud bar (see `ceiling`); a floor keeps the quietest window visible. */
           const h = w.totalVol > 0 ? 8 + 92 * Math.min(1, w.totalVol / ceiling) : 0;
           return (
-            <button
+            <Slot
               key={w.idx}
-              type="button"
-              role="tab"
-              aria-selected={sel}
-              tabIndex={sel ? 0 : -1}
+              phone={phone}
+              sel={sel}
               data-window={w.idx}
               data-window-role={w.live ? 'now' : champ ? 'busiest' : sel ? 'open' : undefined}
-              aria-label={`${w.label} New York · ${num(w.totalVol)} contracts`}
-              onClick={() => onSelect(w.idx)}
-              onPointerEnter={() => setHover(w.idx)}
-              className="group/slot absolute inset-y-0"
+              label={`${w.label} New York · ${num(w.totalVol)} contracts`}
+              onPick={() => onSelect(w.idx)}
+              onHover={() => setHover(w.idx)}
               style={{ left: pct(w.idx * MIN_PER_SLOT), width: pct(MIN_PER_SLOT) }}
             >
               {/* A pill no wider than 16px centred in its slot; the slot stays the click target and the height glides
@@ -128,7 +155,7 @@ const DayStrip = ({
               </span>
               {/* where you are: a silver underline on the floor, under the open window's capsule */}
               {sel && <span aria-hidden className="absolute -bottom-px left-1/2 -translate-x-1/2 w-[clamp(10px,50%,24px)] h-[2px] rounded-full bg-silver" />}
-            </button>
+            </Slot>
           );
         })}
 

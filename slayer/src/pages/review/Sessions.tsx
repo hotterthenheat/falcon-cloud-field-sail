@@ -131,7 +131,7 @@ const Sessions = () => {
 
   const tickers = second && second !== ticker ? [ticker, second] : [ticker];
   const rules: SessionRules = { maxOpen: maxOpen || undefined, maxRiskPct: maxRisk || undefined, dailyLossPct: dayStop || undefined };
-  const ruleWords = [maxOpen ? `no more than ${maxOpen} ${maxOpen === 1 ? 'position' : 'positions'} open at once` : '', maxRisk ? `no trade over ${maxRisk * 100}% of the account` : '', dayStop ? `the day is over at −${dayStop * 100}%` : ''].filter(Boolean);
+  const ruleWords = [maxOpen ? `no more than ${maxOpen} ${maxOpen === 1 ? 'position' : 'positions'} open at once` : '', maxRisk ? `no trade over ${maxRisk * 100}% of the account` : '', dayStop ? `day stop −${+(dayStop * 100).toFixed(1)}% of the account at 09:30 (−${usd(cash * dayStop, 0)} on the first day, measured afresh at each open)` : ''].filter(Boolean);
   const start = () => {
     const s = createSession({ name: `${tickers.join(' + ')} from ${dayWords(startDay)}`, ticker, tickers, rules, startCash: cash, fee, startDay });
     navigate(`/practice/backtest/${s.id}`);

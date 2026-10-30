@@ -3,7 +3,7 @@
 
 import { PublishMove } from './publishMove';
 import { useMediaQuery } from '../ui/useMediaQuery';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, BellOff, Plus, X } from 'lucide-react';
 import { freshnessOf, type EconEvent, type GeoNewsEvent } from '../../data/newsroom';
 import { followName, setFollowAlerts, unfollowName, useFollows } from '../../data/newsFollows';
@@ -11,6 +11,7 @@ import { NEWS_ROW_H, NEWS_WINDOW_H, NEWS_WINDOW_ROWS } from '../../pages/record/
 import CatTag from '../news/CatTag';
 import CardTabs from '../ui/CardTabs';
 import CompanyLogo from '../ui/CompanyLogo';
+import NewsWindow from './NewsWindow';
 import TickerLookup from '../ui/TickerLookup';
 import { ImpactLegend, ImpactMark, NEWS_FLAG_TIP, NewsFlag, tierOf } from './impactMark';
 
@@ -31,21 +32,11 @@ const FEED_TABS = [
 ] as const;
 /** The wire's columns — the same seven the rows under the map wear */
 const FEED_COLS = '72px 104px 96px 72px minmax(0, 1fr) 76px 72px';
+/** the window's pinned column head */
+const NEWS_HEAD_H = 22;
 /** The tab in hand outlives the page — back from a story's page, the reader lands on the tab they left */
 /* it opens on a kind, not on All: the list above already holds every story */
 let tabMemory: FeedTab = 'earnings';
-
-/** Scroll a window so the row it names is in view — the window alone, never the page (scrollIntoView would move both) */
-export function keepInWindow(box: HTMLElement | null, rowSelector: string | null): void {
-  if (!box || !rowSelector) return;
-  const row = box.querySelector<HTMLElement>(rowSelector);
-  if (!row) return;
-  const top = row.offsetTop;
-  const bottom = top + row.offsetHeight;
-  const head = 22;
-  if (top < box.scrollTop + head) box.scrollTop = Math.max(0, top - head);
-  else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
-}
 
 interface Props {
   events: GeoNewsEvent[];
@@ -55,6 +46,96 @@ interface Props {
   /** 'reading' while the wire is still being read — the empty line waits for it; 'failed' when it did not answer */
   wire?: 'reading' | 'failed' | 'read';
 }
+
+/** One story in the feed. Memoized: a pick redraws the rows whose open state changed, not the window. */
+const FeedRow = memo(function FeedRow({ e, open, stacked, onBoard, ringing, onPick }: { e: GeoNewsEvent; open: boolean; stacked: boolean; onBoard: boolean; ringing: boolean; onPick: (e: GeoNewsEvent) => void }) {
+  const faded = freshnessOf(e) === 'faded';
+  if (stacked)
+    return (
+      <button
+        type="button"
+        onClick={() => onPick(e)}
+        className={`group w-full text-left px-4 py-2.5 flex flex-col gap-1 border-t border-borderSubtle/40 transition-colors ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
+        data-news-feed-row={e.id}
+        data-open={open || undefined}
+      >
+        <span className="flex items-start gap-2 min-w-0">
+          <span className="mt-[5px] shrink-0">
+            <ImpactMark tier={tierOf(e.severity)} />
+          </span>
+          <span className={`min-w-0 line-clamp-2 text-t125 leading-snug ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
+        </span>
+        <span className="min-w-0 flex items-center gap-1.5 font-mono text-t10 text-textMuted whitespace-nowrap overflow-hidden">
+          <span className="tnum text-textSecondary">{e.item.time}</span>
+          <span>·</span>
+          {e.item.ticker ? (
+            <span className="inline-flex items-center gap-1 font-bold text-textPrimary">
+              <CompanyLogo ticker={e.item.ticker} size={12} />
+              {e.item.ticker}
+            </span>
+          ) : (
+            <span className="text-textSecondary">{nameWord(e.item)}</span>
+          )}
+          <span>·</span>
+          <CatTag category={e.item.category} size={9} />
+          {(e.item.major || onBoard) && <NewsFlag major={e.item.major} onBoard={onBoard} />}
+          <span className="ml-auto tnum font-semibold">
+            <PublishMove p={e.item.prediction} short />
+          </span>
+        </span>
+      </button>
+    );
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(e)}
+      className={`group w-full text-left px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 transition-colors max-lg:min-w-[900px] ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
+      style={{ minHeight: NEWS_ROW_H, gridTemplateColumns: FEED_COLS }}
+      data-news-feed-row={e.id}
+      data-open={open || undefined}
+    >
+      <span className="h-5 flex items-center font-mono text-t10 tnum text-textSecondary">{e.item.time}</span>
+      <span className="min-w-0 h-5 inline-flex items-center gap-1.5 font-mono text-t11 font-bold text-textPrimary">
+        {e.item.ticker ? (
+          <>
+            <CompanyLogo ticker={e.item.ticker} size={14} />
+            {e.item.ticker}
+            {ringing && <Bell className="w-2.5 h-2.5 text-silver" aria-label="the bell rings on this name" data-feed-bell />}
+          </>
+        ) : (
+          <span className="text-textSecondary">{nameWord(e.item)}</span>
+        )}
+      </span>
+      <span className="min-w-0 h-5 flex items-center">
+        <CatTag category={e.item.category} size={9} />
+      </span>
+      <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard} /></span>
+      <span className="min-w-0 flex items-center gap-2">
+        <ImpactMark tier={tierOf(e.severity)} />
+        <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-t12 ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
+        <span className="font-mono text-t9 text-textMuted whitespace-nowrap">{e.item.source}</span>
+      </span>
+      {/* an unmeasured story carries no move — the same "—" the wire's own rows show, never "+0.0% · poor" */}
+      <span className="h-5 flex items-center justify-end font-mono text-t11 font-semibold tnum whitespace-nowrap"><PublishMove p={e.item.prediction} short /></span>
+      <span className="h-5 flex items-center justify-end font-mono text-t10 text-textSecondary truncate" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
+        {(e.item.tickers ?? []).length > 1 ? `${e.item.tickers![1]}${e.item.tickers!.length > 2 ? ` +${e.item.tickers!.length - 2}` : ''}` : '—'}
+      </span>
+    </button>
+  );
+});
+
+/* A row's height before it is measured: the headline's lines at the window's width (Inter at ~0.5em a character, fitted to the measured rows). */
+const feedEstimate = (stacked: boolean) => (e: GeoNewsEvent, width: number): number => {
+  const len = e.item.headline.length;
+  /* a phone's row clamps its headline to two lines, which nearly every headline fills: one height */
+  if (stacked) return 76;
+  const vw = typeof window === 'undefined' ? 1440 : window.innerWidth;
+  const rowW = vw < 1024 ? Math.max(900, width) : width || 900;
+  /* the seven columns and their gaps, the impact square and the source's name beside the headline */
+  const lines = Math.max(1, Math.ceil((len * 6) / Math.max(80, rowW - 604 - 16 - (e.item.source.length * 5.4 + 8))));
+  return Math.max(NEWS_ROW_H, Math.round(17 + Math.max(20, lines * 19.5)));
+};
+const storyKey = (e: GeoNewsEvent) => e.id;
 
 const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: Props) => {
   const [tab, setTabState] = useState<FeedTab>(tabMemory);
@@ -71,11 +152,12 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
   const [adding, setAdding] = useState(false);
   /* on a phone each row stacks: the headline, then time · name · kind · flag · move */
   const stacked = useMediaQuery('(max-width: 639.98px)');
-  /* the open row stays in the window; a tab change starts the window at its head */
+  /* the open row stays in the window (NewsWindow brings it into view on a pick and on a tab change) */
   const windowRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    keepInWindow(windowRef.current, selectedId ? `[data-news-feed-row="${selectedId}"]` : null);
-  }, [selectedId, tab]);
+  const pickRef = useRef(onPick);
+  pickRef.current = onPick;
+  const onRowPick = useCallback((e: GeoNewsEvent) => pickRef.current(e), []);
+  const estimate = useMemo(() => feedEstimate(stacked), [stacked]);
   const addRef = useRef<HTMLDivElement | null>(null);
   /* the add menu closes on a click outside it or Escape, the way every picker menu does */
   useEffect(() => {
@@ -190,7 +272,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
 
       {/* the rows; below lg they scroll sideways at a readable width */}
       {/* the feed scrolls inside its box past twenty rows */}
-      <div ref={windowRef} className={`relative overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ maxHeight: NEWS_WINDOW_H }} data-news-feed-window={rows.length + printed.length > NEWS_WINDOW_ROWS || undefined} data-news-feed-stacked={stacked || undefined}>
+      <div ref={windowRef} className={`relative overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ maxHeight: NEWS_WINDOW_H, overflowAnchor: 'none' }} data-news-feed-window={rows.length + printed.length > NEWS_WINDOW_ROWS || undefined} data-news-feed-stacked={stacked || undefined}>
       {!stacked && <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-t9 uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: FEED_COLS }}>
         <span title="When the headline crossed, New York time">Time</span>
         <span title="The first stock the headline names; MACRO for an economy story; NO TICKER for an untagged company story">Name</span>
@@ -235,84 +317,9 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
           {wire === 'reading' ? 'Reading the wire' : wire === 'failed' ? 'This read did not land' : tab === 'following' ? 'Nothing yet on the names you follow' : 'Nothing on the wire here today'}
         </div>
       )}
-      {rows.map(e => {
-        const open = e.id === selectedId;
-        const faded = freshnessOf(e) === 'faded';
-        if (stacked)
-          return (
-            <button
-              key={e.id}
-              type="button"
-              onClick={() => onPick(e)}
-              className={`group w-full text-left px-4 py-2.5 flex flex-col gap-1 border-t border-borderSubtle/40 transition-colors ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
-              data-news-feed-row={e.id}
-              data-open={open || undefined}
-            >
-              <span className="flex items-start gap-2 min-w-0">
-                <span className="mt-[5px] shrink-0">
-                  <ImpactMark tier={tierOf(e.severity)} />
-                </span>
-                <span className={`min-w-0 line-clamp-2 text-t125 leading-snug ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
-              </span>
-              <span className="min-w-0 flex items-center gap-1.5 font-mono text-t10 text-textMuted whitespace-nowrap overflow-hidden">
-                <span className="tnum text-textSecondary">{e.item.time}</span>
-                <span>·</span>
-                {e.item.ticker ? (
-                  <span className="inline-flex items-center gap-1 font-bold text-textPrimary">
-                    <CompanyLogo ticker={e.item.ticker} size={12} />
-                    {e.item.ticker}
-                  </span>
-                ) : (
-                  <span className="text-textSecondary">{nameWord(e.item)}</span>
-                )}
-                <span>·</span>
-                <CatTag category={e.item.category} size={9} />
-                {(e.item.major || onBoard(e)) && <NewsFlag major={e.item.major} onBoard={onBoard(e)} />}
-                <span className="ml-auto tnum font-semibold">
-                  <PublishMove p={e.item.prediction} short />
-                </span>
-              </span>
-            </button>
-          );
-        return (
-          <button
-            key={e.id}
-            type="button"
-            onClick={() => onPick(e)}
-            className={`group w-full text-left px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 transition-colors max-lg:min-w-[900px] ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
-            style={{ minHeight: NEWS_ROW_H, gridTemplateColumns: FEED_COLS }}
-            data-news-feed-row={e.id}
-            data-open={open || undefined}
-          >
-            <span className="h-5 flex items-center font-mono text-t10 tnum text-textSecondary">{e.item.time}</span>
-            <span className="min-w-0 h-5 inline-flex items-center gap-1.5 font-mono text-t11 font-bold text-textPrimary">
-              {e.item.ticker ? (
-                <>
-                  <CompanyLogo ticker={e.item.ticker} size={14} />
-                  {e.item.ticker}
-                  {ringing.has(e.item.ticker) && <Bell className="w-2.5 h-2.5 text-silver" aria-label="the bell rings on this name" data-feed-bell />}
-                </>
-              ) : (
-                <span className="text-textSecondary">{nameWord(e.item)}</span>
-              )}
-            </span>
-            <span className="min-w-0 h-5 flex items-center">
-              <CatTag category={e.item.category} size={9} />
-            </span>
-            <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} /></span>
-            <span className="min-w-0 flex items-center gap-2">
-              <ImpactMark tier={tierOf(e.severity)} />
-              <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-t12 ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
-              <span className="font-mono text-t9 text-textMuted whitespace-nowrap">{e.item.source}</span>
-            </span>
-            {/* an unmeasured story carries no move — the same "—" the wire's own rows show, never "+0.0% · poor" */}
-            <span className="h-5 flex items-center justify-end font-mono text-t11 font-semibold tnum whitespace-nowrap"><PublishMove p={e.item.prediction} short /></span>
-            <span className="h-5 flex items-center justify-end font-mono text-t10 text-textSecondary truncate" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
-              {(e.item.tickers ?? []).length > 1 ? `${e.item.tickers![1]}${e.item.tickers!.length > 2 ? ` +${e.item.tickers!.length - 2}` : ''}` : '—'}
-            </span>
-          </button>
-        );
-      })}
+      <NewsWindow box={windowRef} items={rows} keyOf={storyKey} estimate={estimate} head={stacked ? 0 : NEWS_HEAD_H} initialHeight={NEWS_WINDOW_H} openKey={selectedId} reveal={tab} className={stacked ? '' : 'max-lg:min-w-[900px]'}>
+        {e => <FeedRow e={e} open={e.id === selectedId} stacked={stacked} onBoard={onBoard(e)} ringing={!!e.item.ticker && ringing.has(e.item.ticker)} onPick={onRowPick} />}
+      </NewsWindow>
       </div>
     </div>
   );

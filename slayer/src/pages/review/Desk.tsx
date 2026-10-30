@@ -16,12 +16,12 @@ import { ChainOrder } from '../../components/paper/OptionsChain';
 import { BellCard, ClosingLine, type BellFacts } from '../../components/review/BellNotice';
 import type { ChartBracket, ChartEntry, ChartPosition } from '../../components/review/PositionLayer';
 import { dirInk, momentWords, pct, rWords, usd, usdSigned } from '../../components/review/words';
-import { accountOf, bankedOf, dayStateOf, feesOf, floorOf, ladderRoom, ladderTake, nameGoesUp, namesOf, pendingSettlement, refusal, statsOf, type Account, type Order, type Trade } from '../../data/review/engine';
+import { accountOf, bankedOf, dayStateOf, dayStopOf, feesOf, floorOf, ladderRoom, ladderTake, nameGoesUp, namesOf, pendingSettlement, refusal, spokenFor, spokenWords, statsOf, type Account, type Order, type Trade } from '../../data/review/engine';
 import PnlBadges from '../../components/review/PnlBadges';
 import StopOrders, { type Tif } from '../../components/review/StopOrders';
 import { chainAt, contractDay, contractKey, contractWords, dteAt, expiriesAt, longLeg, quoteAt, quoteWith, settleStyleOf, spotForAsk, spotForBid, type ContractId, type Right } from '../../data/review/quotes';
-import { amendOrder, attachBracket, breakevenOrder, cancelOrder, closePosition, legsHeld, moveClock, placeOrder, rebaseOrder, renameSession, trailOrder, useMoving, useSession } from '../../data/review/store';
-import { DAY_MIN, LAST_MIN, underOf, barsNeed, chainNeed, clockWords, dayBars, dayWords, ensureBars, ensureBarsRange, ensureChainDay, ensureLeg, ensureListing, ensureTrades, historyOffline, historyRev, listingNeed, nextDay, prevDay, spotAt, subscribeHistory } from '../../data/review/history';
+import { amendOrder, attachBracket, breakevenOrder, cancelBracket, cancelOrder, closePosition, legsHeld, moveClock, placeOrder, rebaseOrder, renameSession, setRollOver, trailOrder, useMoving, useSession } from '../../data/review/store';
+import { DAY_MIN, LAST_MIN, LISTING_DTE, underOf, barsNeed, chainNeed, clockWords, dayBars, dayWords, ensureBars, ensureBarsRange, ensureChainDay, ensureLaterListing, ensureLeg, ensureListing, ensureTrades, historyOffline, historyRev, laterAsked, laterListingNeed, listingNeed, nextDay, prevDay, spotAt, subscribeHistory } from '../../data/review/history';
 import { companyName } from '../../data/tickers';
 import ThetaLine from '../../components/review/ThetaLine';
 import { EmptyBox, LoadingBox } from '../../components/ui/states';
@@ -41,6 +41,8 @@ type Tab = 'open' | 'orders' | 'closed';
 const CHAIN_EACH = 12;
 /** The last minutes of a session the desk counts down */
 const CLOSING_MIN = 15;
+/** The expiry menu's door to the expiries past the first listing's 120 days (history.ensureLaterListing) */
+const LATER = '__later';
 
 /** The nearest strike's IV on a chain — the name's vol that minute, as its options priced it */
 const atmIv = (rows: { strike: number; call: { iv: number } }[], spot: number): number => {
@@ -116,10 +118,39 @@ const Desk = () => {
     for (const l of legsHeld(session)) if (l.expiry >= session.cursor.day) void ensureLeg(l, session.cursor.day);
   }, [session?.orders, session?.fills, cursor?.day, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* LATER EXPIRIES: past the first listing's 120 days, asked for only when the reader asks — and then, on this desk,
+     asked again for each day the clock reaches (a contract that far out stays in reach as the days go by) */
+  const [wantLater, setWantLater] = useState(false);
+  const [jumpLater, setJumpLater] = useState(false);
+  useEffect(() => {
+    if (cursor && wantLater) void ensureLaterListing(ticker, cursor.day);
+  }, [wantLater, ticker, cursor?.day, retry]); // eslint-disable-line react-hooks/exhaustive-deps
   /* the expiries listed today; the one in hand gives way to the next once it has passed */
   const expiries = useMemo(() => (cursor ? expiriesAt(ticker, cursor.day) : []), [ticker, cursor?.day, hrev]); // eslint-disable-line react-hooks/exhaustive-deps
   const exp = expiry && expiries.some(e => e.iso === expiry) ? expiry : (expiries.find(e => e.dte >= 5) ?? expiries[0])?.iso ?? null;
-  const expiryOptions = useMemo<DropdownOption<string>[]>(() => expiries.map(e => ({ value: e.iso, label: `${e.label} · ${e.dte}d`, hint: e.dte === 0 ? 'Expires at today’s bell' : `${e.kind === 'monthly' ? 'The monthly' : e.kind === 'daily' ? 'A daily' : 'A weekly'} · ${dayWords(e.iso, true)}` })), [expiries]);
+  const laterNeed = cursor && laterAsked(ticker, cursor.day) ? laterListingNeed(ticker, cursor.day) : null;
+  /* the later listing landed after the reader asked for it: the first expiry past 120 days is put in hand */
+  useEffect(() => {
+    if (!jumpLater || laterNeed === 'loading' || laterNeed == null) return;
+    setJumpLater(false);
+    const first = expiries.find(e => e.dte > LISTING_DTE);
+    if (laterNeed === 'ready' && first) setExpiry(first.iso);
+  }, [jumpLater, laterNeed, expiries]);
+  const expiryOptions = useMemo<DropdownOption<string>[]>(() => {
+    const out: DropdownOption<string>[] = expiries.map(e => ({ value: e.iso, label: `${e.label} · ${e.dte}d`, hint: e.dte === 0 ? 'Expires at today’s bell' : `${e.kind === 'monthly' ? 'The monthly' : e.kind === 'daily' ? 'A daily' : 'A weekly'} · ${dayWords(e.iso, true)}`, ...(e.dte > LISTING_DTE ? { group: `Later · past ${LISTING_DTE} days` } : {}) }));
+    if (!expiries.length || laterNeed === 'ready') return out;
+    const words =
+      laterNeed === 'loading' ? { label: 'Loading later expiries…', hint: 'Every contract ThetaData recorded that day — the LEAPS too' } : laterNeed === 'offline' ? { label: 'Later expiries · ThetaData offline', hint: 'Asked again when the terminal answers — pick to try now' } : laterNeed === 'none' ? { label: 'No later expiries recorded', hint: `ThetaData listed nothing past ${LISTING_DTE} days that day` } : { label: 'Later expiries…', hint: `Past ${LISTING_DTE} days — the LEAPS, loaded when you ask` };
+    out.push({ value: LATER, ...words, group: `Later · past ${LISTING_DTE} days`, quiet: true });
+    return out;
+  }, [expiries, laterNeed]);
+  const pickExpiry = (v: string) => {
+    if (v !== LATER) return setExpiry(v);
+    if (!cursor || laterNeed === 'none') return;
+    setWantLater(true);
+    setJumpLater(true);
+    void ensureLaterListing(ticker, cursor.day);
+  };
   useEffect(() => {
     if (cursor && exp) void ensureChainDay(ticker, exp, cursor.day);
   }, [ticker, exp, cursor?.day, retry]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -285,6 +316,7 @@ const Desk = () => {
   /* The reader's own rules, and where each stands */
   const rules = session.rules;
   const dayState = rules?.dailyLossPct ? dayStateOf(session) : null;
+  const dayStop = rules?.dailyLossPct ? dayStopOf(session) : null;
   const rulesLine =
     rules && (rules.maxOpen || rules.maxRiskPct || rules.dailyLossPct) ? (
       <span className="inline-flex items-center gap-x-2 gap-y-0.5 flex-wrap" data-review-rules>
@@ -299,8 +331,9 @@ const Desk = () => {
           </span>
         ) : null}
         {rules.dailyLossPct && dayState ? (
-          <span className={dayState.stopped ? 'text-warn font-semibold' : 'text-textPrimary'} title="Measured from what the account was worth at the open — no new positions once it is reached, until the next open" data-review-day-stop={dayState.stopped ? 'reached' : 'standing'}>
-            {dayState.stopped ? `the day is over · ${(dayState.pct * 100).toFixed(1)}%` : `day ${dayState.pct >= 0 ? '+' : ''}${(dayState.pct * 100).toFixed(1)}% · stops at −${rules.dailyLossPct * 100}%`}
+          <span className={dayState.stopped ? 'text-warn font-semibold' : 'text-textPrimary'} title={`Measured from what the account was worth at the open${dayStop ? `, ${usd(dayStop.open)}` : ''} — no new positions once it is reached, until the next open`} data-review-day-stop={dayState.stopped ? 'reached' : 'standing'}>
+            {dayStop ? dayStop.words : `Day stop: −${+(rules.dailyLossPct * 100).toFixed(1)}% of the account at 09:30`}
+            <span className={dayState.stopped ? '' : 'text-textSecondary'}>{dayState.stopped ? ` · reached, the day is over · ${(dayState.pct * 100).toFixed(1)}%` : ` · day ${dayState.pct >= 0 ? '+' : ''}${(dayState.pct * 100).toFixed(1)}%`}</span>
           </span>
         ) : null}
       </span>
@@ -394,7 +427,7 @@ const Desk = () => {
       onRight={setRight}
       expiry={exp}
       expiryOptions={expiryOptions}
-      onExpiry={setExpiry}
+      onExpiry={pickExpiry}
       expiryTitle="The expiries listed on this day"
       /* a day the vendor recorded nothing near the money on: the empty box says so, not a ladder of dashes */
       rows={chainState === 'none' || chainState === 'offline' ? [] : (chain?.rows ?? [])}
@@ -411,6 +444,14 @@ const Desk = () => {
   );
 
   /* ---- THE TICKET ---- */
+  /* the position in hand, and what of it a sell that waits can have (engine spokenFor) */
+  const heldPick = picked ? account.positions.find(p => contractKey(longLeg(p.contract)) === contractKey(longLeg(picked))) : undefined;
+  const spoken = (() => {
+    if (!heldPick) return null;
+    const w = spokenFor(session, heldPick.contract);
+    if (w.bracket + w.other <= 0) return null;
+    return { w, contract: heldPick.contract, short: Math.max(1, Math.min(q, w.held)) > w.free };
+  })();
   const ticketCard = (
     <div className={`${card} min-w-0 shrink-0`} data-review-ticket-card>
       <div className={head}>
@@ -461,6 +502,18 @@ const Desk = () => {
               },
             }}
           />
+          {/* SELL @ LMT and the bracket: a sell that waits never takes contracts a target or a stop already speaks for —
+              said here when it applies, with the door that frees them */}
+          {spoken && (
+            <div className={`mt-2 flex items-center gap-x-3 gap-y-1.5 flex-wrap font-mono text-t11 tnum ${spoken.short ? 'text-warn' : 'text-textSecondary'}`} data-review-spoken={`${spoken.w.bracket + spoken.w.other}/${spoken.w.held}`}>
+              <span className="min-w-0">{spokenWords(spoken.w)}</span>
+              {spoken.w.bracket > 0 && (
+                <button type="button" onClick={() => cancelBracket(session.id, spoken.contract)} title="Cancel every target and stop working on this position — its contracts are then free to sell at a limit" className={`${smallDoor} tap-40 ml-auto`} data-review-cancel-bracket>
+                  Cancel the bracket
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ) : null}
       {picked && pickedQuote ? (
@@ -526,11 +579,12 @@ const Desk = () => {
         words: `${dayWords(cursor.day)} · ${clockWords(cursor.minute)}`,
         wordsAt: clockWords,
         move: to => moveClock(session.id, to),
+        roll: !!session.rollOver,
       }}
       goToTitle="Jump the clock to the open of a later day — every day between is run"
       nextDayTitle="Ring today’s bell and open the next session"
       /* THE BELL — the last fifteen minutes as a line, 16:00 as a card; both can be put away for the day */
-      notice={({ seek }) =>
+      notice={({ seek, playing }) =>
         moving ? (
           /* a move waiting on its recorded days, or one the terminal could not load: said on a card over the tape */
           <div className="pointer-events-auto mt-11 rounded-md border border-borderMuted bg-panel/95 backdrop-blur-md px-3 py-2 animate-soft-in" data-theme="dark" role="status" data-review-moving={moving.failed ? 'failed' : 'loading'}>
@@ -538,7 +592,7 @@ const Desk = () => {
           </div>
         ) : bellFacts ? (
           bellSeen !== cursor.day ? (
-            <BellCard facts={bellFacts} onNextDay={tomorrow ? () => seek(0, tomorrow) : null} onDismiss={() => setBellSeen(cursor.day)} />
+            <BellCard facts={bellFacts} onNextDay={tomorrow ? () => seek(0, tomorrow) : null} onDismiss={() => setBellSeen(cursor.day)} roll={!!session.rollOver} onRoll={on => setRollOver(session.id, on)} rolling={playing && !!session.rollOver} nextWords={tomorrow ? dayWords(tomorrow, true).split(',').slice(0, 2).join(',') : undefined} />
           ) : null
         ) : minutesLeft <= CLOSING_MIN && closingSeen !== cursor.day ? (
           <ClosingLine minutesLeft={minutesLeft} expiring={expiringToday} onDismiss={() => setClosingSeen(cursor.day)} />

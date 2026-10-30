@@ -81,7 +81,7 @@ const writeDesk = (patch: DeskPrefs) => {
   }
 };
 
-const OPT_ENDED: Record<OptTrade['how'], string> = { sold: 'Sold by you', target: 'Target hit', stopped: 'Stopped out', expired: 'Held to the bell', scaled: 'Scaled out', rule: 'Closed by the rules', page: 'Closed with the page' };
+const OPT_ENDED: Record<OptTrade['how'], string> = { sold: 'Sold by you', closed: 'Bought back by you', target: 'Target hit', stopped: 'Stopped out', expired: 'Held to the bell', scaled: 'Scaled out', rule: 'Closed by the rules', page: 'Closed with the page' };
 const FUT_ENDED: Record<FutTrade['how'], string> = { closed: 'Closed by you', target: 'Target hit', stopped: 'Stopped out', scaled: 'Scaled out', rule: 'Closed by the rules', page: 'Closed with the page' };
 
 type OpenRow = { key: string; p: MarkedOpt };

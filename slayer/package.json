@@ -42,6 +42,7 @@
     "@stripe/react-stripe-js": "^7.0.0",
     "@stripe/stripe-js": "^10.0.0",
     "@supabase/supabase-js": "^2.117.2",
+    "@tanstack/react-virtual": "^3.14.24",
     "ag-grid-community": "^36.1.0",
     "ag-grid-react": "^36.1.0",
     "codemirror": "^6.0.2",

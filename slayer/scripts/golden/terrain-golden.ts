@@ -222,6 +222,25 @@ if (!(existsSync(openDir) && readdirSync(openDir).some(f => f.endsWith('.json.gz
   expectEqual('a bar no reading reaches is empty', gap.values.every(Number.isNaN), true);
   const before = field.exposureGrid('SPY', '2026-10-29', [Math.floor(tA / 1000) - 3 * 3600], 60, 'oi', now);
   expectEqual('nothing before the first reading', before ? before.values.every(Number.isNaN) : true, true);
+  /* The server's recorder (data/exposureRecorder.ts) read poll A; this page opened later and read poll B itself. The
+     recorded series merged into the page's log draw the same cells, by the same hand values, as reading both here. */
+  const rec = await import('../../src/data/exposureRecorder');
+  const served = new rec.DaySeries();
+  expectEqual("the recorder keeps poll A's answer", served.add(rec.lineOf(rowsA, '2026-10-29', 0, tA + 1_000)!), true);
+  field.resetExposureLog('SPY');
+  expectEqual('the recorded series merge into an empty log', field.mergeExposureSeries('SPY', served.out()), true);
+  field.noteExposureRows('SPY', rowsB);
+  const ogM = field.exposureGrid('SPY', '2026-10-29', [a], span, 'oi', now)!;
+  const fgM = field.exposureGrid('SPY', '2026-10-29', [a], span, 'flow', now)!;
+  for (const k of [770, 775] as const) {
+    expectNear(`recorded poll A + this page's poll B, open interest SPY ${k}: poll B`, cellOf(ogM, k), OPEN_HAND.oiB[k], 1e-9);
+    expectNear(`recorded poll A + this page's poll B, today's flow SPY ${k}: poll B − poll A`, cellOf(fgM, k), OPEN_HAND.flowDelta[k], 1e-9);
+  }
+  /* merging the same record again, or the page's own copy of poll A on top, changes nothing */
+  expectEqual('the record merged twice adds nothing', field.mergeExposureSeries('SPY', served.out()), false);
+  const revBefore = field.exposureLogRev('SPY');
+  field.noteExposureRows('SPY', rowsA);
+  expectEqual("the page's own read of a recorded answer adds nothing", field.exposureLogRev('SPY'), revBefore);
   const { ensureMaxPain, maxPainFor } = await import('../../src/components/gex/levelExtras');
   await ensureMaxPain('SPY');
   expectEqual("max pain, SPY Oct 29: the vendor's own row", maxPainFor('SPY', '2026-10-29'), OPEN_HAND_PAIN);

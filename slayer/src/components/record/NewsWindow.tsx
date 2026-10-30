@@ -1,0 +1,159 @@
+/* A window of news rows that draws only the rows near its view. A day of the wire is well over a thousand stories of
+   different heights; drawing them all cost ~25,000 nodes and a slow pick. The rows are measured as they draw (so a
+   two-line headline takes its real height), the open story and the focused row stay drawn, the open story is kept in
+   view, and the arrow keys walk the stories. The window scrolls itself only, never the page. */
+
+import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+
+interface Props<T> {
+  /** the scrolling window the rows sit in */
+  box: RefObject<HTMLDivElement | null>;
+  items: readonly T[];
+  keyOf: (t: T) => string;
+  /** a row's height before it is measured, for the window's width */
+  estimate: (t: T, width: number) => number;
+  /** the pinned head's height inside the window (a revealed row lands under it), 0 when there is none */
+  head: number;
+  /** the window's height before it is measured, so the first frame draws a full window */
+  initialHeight: number;
+  /** the open story: kept drawn, and brought into view when it changes or first lands */
+  openKey?: string | null;
+  /** bump to bring the open story into view again (a tab change) */
+  reveal?: unknown;
+  /** classes for the box the rows stand in (a minimum width, say) */
+  className?: string;
+  children: (t: T, index: number) => ReactNode;
+}
+
+/** rows drawn past each edge of the view, so a Tab or an arrow always finds the next row drawn */
+const OVERSCAN = 8;
+
+export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initialHeight, openKey = null, reveal, className = '', children }: Props<T>) {
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const indexOf = useMemo(() => {
+    const m = new Map<string, number>();
+    items.forEach((t, i) => m.set(keyOf(t), i));
+    return m;
+  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openIdx = openKey == null ? -1 : (indexOf.get(openKey) ?? -1);
+
+  /* the open row and the focused row stay drawn wherever the window stands */
+  const keepRef = useRef<{ open: number; focus: string | null; indexOf: Map<string, number> }>({ open: -1, focus: null, indexOf });
+  keepRef.current.open = openIdx;
+  keepRef.current.indexOf = indexOf;
+  const rangeExtractor = useCallback((r: Range) => {
+    const base = defaultRangeExtractor(r);
+    const { open, focus, indexOf: idx } = keepRef.current;
+    const f = focus == null ? -1 : (idx.get(focus) ?? -1);
+    const lo = base.length ? base[0] : 0;
+    const hi = base.length ? base[base.length - 1] : -1;
+    const extra = [open, f].filter(i => i >= 0 && i < r.count && (i < lo || i > hi));
+    if (!extra.length) return base;
+    return [...new Set([...base, ...extra])].sort((a, b) => a - b);
+  }, []);
+
+  /* the window's width sets the estimate (how many lines a headline wraps to) */
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [box]);
+  const widthRef = useRef(width);
+  widthRef.current = width;
+  const estimateRef = useRef(estimate);
+  estimateRef.current = estimate;
+
+  /* where the rows start inside the window: under the head, and under anything drawn before them (the day's prints) */
+  const sizerRef = useRef<HTMLDivElement | null>(null);
+  const [margin, setMargin] = useState(head);
+  useLayoutEffect(() => {
+    const m = sizerRef.current?.offsetTop ?? head;
+    if (m !== margin) setMargin(m);
+  });
+
+  const getItemKey = useCallback((i: number) => keyOf(itemsRef.current[i]), [items]); // eslint-disable-line react-hooks/exhaustive-deps
+  const estimateSize = useCallback((i: number) => estimateRef.current(itemsRef.current[i], widthRef.current), []);
+  const v = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => box.current,
+    estimateSize,
+    getItemKey,
+    overscan: OVERSCAN,
+    scrollMargin: margin,
+    scrollPaddingStart: head,
+    rangeExtractor,
+    initialRect: { width: 0, height: initialHeight },
+  });
+
+  /* a new width rewraps every headline: the kept heights are stale, measure again (the drawn rows at once) */
+  const widthSeen = useRef(width);
+  useEffect(() => {
+    if (widthSeen.current === width) return;
+    widthSeen.current = width;
+    v.measure();
+    v.elementsCache.forEach(el => v.measureElement(el));
+  }, [width, v]);
+
+  /* the open story into view: on a pick, and once when a deep-linked story first lands in the rows */
+  const shownRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (openIdx < 0 || openKey == null) return;
+    const mark = `${openKey}|${String(reveal)}`;
+    if (shownRef.current === mark) return;
+    shownRef.current = mark;
+    v.scrollToIndex(openIdx, { align: 'auto' });
+  }, [openKey, openIdx >= 0, reveal]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* the keys walk the stories: ↑ ↓ one, Page Up / Page Down a window, Home / End the ends; Enter opens (the row is a button) */
+  const pendingFocus = useRef<number | null>(null);
+  const tryFocus = () => {
+    const n = pendingFocus.current;
+    if (n == null) return;
+    const el = box.current?.querySelector<HTMLElement>(`[data-index="${n}"]`)?.firstElementChild as HTMLElement | null;
+    if (!el) return;
+    pendingFocus.current = null;
+    el.focus({ preventScroll: true });
+  };
+  useLayoutEffect(tryFocus);
+  const onKeyDown = (ev: KeyboardEvent<HTMLDivElement>) => {
+    if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+    const wrap = (ev.target as HTMLElement).closest<HTMLElement>('[data-index]');
+    if (!wrap || wrap.parentElement !== ev.currentTarget) return;
+    const i = Number(wrap.dataset.index);
+    const n = itemsRef.current.length;
+    const avg = v.getTotalSize() / Math.max(1, n);
+    const page = Math.max(1, Math.floor(((v.scrollRect?.height ?? initialHeight) - head) / Math.max(1, avg)) - 1);
+    const to = ev.key === 'ArrowDown' ? i + 1 : ev.key === 'ArrowUp' ? i - 1 : ev.key === 'PageDown' ? i + page : ev.key === 'PageUp' ? i - page : ev.key === 'Home' ? 0 : ev.key === 'End' ? n - 1 : null;
+    if (to == null) return;
+    ev.preventDefault();
+    const t = Math.max(0, Math.min(n - 1, to));
+    keepRef.current.focus = keyOf(itemsRef.current[t]);
+    pendingFocus.current = t;
+    v.scrollToIndex(t, { align: 'auto' });
+    tryFocus();
+  };
+  const onFocus = (ev: FocusEvent<HTMLDivElement>) => {
+    const wrap = (ev.target as HTMLElement).closest<HTMLElement>('[data-index]');
+    if (wrap && wrap.parentElement === ev.currentTarget) keepRef.current.focus = keyOf(itemsRef.current[Number(wrap.dataset.index)]);
+  };
+  const onBlur = (ev: FocusEvent<HTMLDivElement>) => {
+    if (!ev.currentTarget.contains(ev.relatedTarget as Node | null)) keepRef.current.focus = null;
+  };
+
+  return (
+    <div ref={sizerRef} className={`relative w-full ${className}`} style={{ height: v.getTotalSize() }} onKeyDown={onKeyDown} onFocus={onFocus} onBlur={onBlur} data-news-window-rows={items.length}>
+      {v.getVirtualItems().map(x => (
+        <div key={x.key} data-index={x.index} ref={v.measureElement} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${x.start - margin}px)` }}>
+          {children(items[x.index], x.index)}
+        </div>
+      ))}
+    </div>
+  );
+}

@@ -5,8 +5,38 @@ import FilterTabs from '../ui/FilterTabs';
 import { FIELD_RAMP_CSS } from './gexNodesPrimitive';
 import { fmtUsd } from '../../data/gex';
 import { FIELD_MODE_WORDS, setFieldMode, useFieldMode } from '../../data/fieldMode';
-import { exposureNet, exposureTodayFrom, useExposureLogRev, useFieldPoll, type FieldMode } from '../../data/book/exposureLog';
-import { nyClock } from '../../core/nyTime';
+import { exposureNet, exposureTodayFrom, useExposureLogRev, useFieldPoll, useServerExposure, type FieldMode, type ServerExposure } from '../../data/book/exposureLog';
+import { nyClock, nyIsoDate, nyWallTime } from '../../core/nyTime';
+
+/** Where the field's day starts, in words: the server's record from the open, a recorder that started late, or (no
+    recorder on this server) this page's own first read */
+function sinceWords(first: number | null, server: ServerExposure, now = Date.now()): { text: string; title: string } {
+  if (first == null) {
+    return server.state === 'off'
+      ? { text: 'waiting for the first reading', title: "No exposure recorder runs on this server: the field starts at this page's first read." }
+      : { text: 'waiting for the first reading', title: '' };
+  }
+  const since = nyClock(first);
+  if (server.state === 'off') {
+    return {
+      text: `read since ${since} ET · this page's first read`,
+      title: "No exposure recorder runs on this server, so the field starts at the first read this page made, not at the open.",
+    };
+  }
+  if (server.state === 'on') {
+    const [y, m, d] = nyIsoDate(now).split('-').map(Number);
+    const open = nyWallTime(y, m, d, 9, 30);
+    /* the day began before the record did: say where the record starts, not that it is the whole day */
+    if (first > open + 120_000 && now > open && nyIsoDate(first) === nyIsoDate(now)) {
+      return {
+        text: `recorded from ${since} ET`,
+        title: `The server's recorder first read this name at ${server.firstAt != null ? nyClock(server.firstAt) : since} ET today; nothing before ${since} ET was read, so the field is empty before it.`,
+      };
+    }
+    return { text: `read since ${since} ET`, title: 'Recorded on the server through the day, every minute from 09:30 ET (every two minutes in the premarket and after hours).' };
+  }
+  return { text: `read since ${since} ET`, title: '' };
+}
 
 const MODES: readonly { value: FieldMode; label: string }[] = [
   { value: 'oi', label: FIELD_MODE_WORDS.oi.name },
@@ -31,8 +61,9 @@ function FieldKey({ ticker, cut, cutWords, scale, oiNet, compact = false }: Fiel
   useExposureLogRev(ticker);
   useFieldPoll(ticker, cut);
   const net = cut ? exposureNet(ticker, cut) : null;
+  const server = useServerExposure(ticker);
   const first = exposureTodayFrom(ticker);
-  const since = first != null ? nyClock(first) : null;
+  const since = sinceWords(first, server);
   const words = FIELD_MODE_WORDS[mode];
   const netValue = mode === 'oi' ? oiNet : net ? net.flow : null;
   const netWords = netValue == null ? '—' : `${netValue >= 0 ? '+' : ''}${fmtUsd(netValue)}`;
@@ -77,8 +108,8 @@ function FieldKey({ ticker, cut, cutWords, scale, oiNet, compact = false }: Fiel
           <span className={`tnum font-semibold ${netInk}`} data-field-net>
             {netWords}
           </span>
-          <span>
-            {mode === 'flow' ? "today's flow" : 'net GEX'} · {cutWords} · {since ? `read since ${since} ET` : 'waiting for the first reading'}
+          <span title={since.title || undefined} data-field-since={server.state}>
+            {mode === 'flow' ? "today's flow" : 'net GEX'} · {cutWords} · {since.text}
           </span>
         </div>
       )}

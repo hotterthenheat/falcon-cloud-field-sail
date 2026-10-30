@@ -463,4 +463,88 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   }
 }
 
+/* ---- 9. every session's study, pooled ---------------------------------------------------------------------- */
+/* Two hand-built labelled sessions (scripts/fixtures/golden/compass-study-pool): 2026-10-27 with its study,
+   2026-10-28 without one. Only one real session is labelled so far (.cache/compass/labels), so the pooling is locked
+   on these. The trained minutes are t = 585..900 (15 to 330 after 09:30); P1_MIN = 0.7067.
+     10-27: .20 F, .25 T, .72 T, .74 F (t 600/700), .80 T at t 580 (outside), .85 F, .45 unsettled
+     10-28: .71 F, .73 F, .10 F, .30 T at t 905 (outside), .76 T
+   Wilson 95% (z 1.96): 1/3 → .0615–.7923, 1/4 → .0456–.6994, 1/1 → .2065–1, 0/1 → 0–.7935, 2/6 → .0968–.7000. */
+{
+  const { poolStudies, wilson, POOL_BAR } = await import('../../src/data/compassStudy');
+  const { pooledStudy, compassRoute, startCompassEngine } = await import('../../src/data/compassServer');
+  const { cpSync, mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const POOL = join(here, '..', 'fixtures', 'golden', 'compass-study-pool');
+  expectEqual('wilson: 1 of 4', wilson(1, 4), { n: 4, k: 1, rate: 0.25, lo95: 0.0456, hi95: 0.6994 });
+  expectEqual('wilson: 2 of 6', [wilson(2, 6).lo95, wilson(2, 6).hi95], [0.0968, 0.7]);
+  expectEqual('wilson: 1 of 1 stops at 1', [wilson(1, 1).lo95, wilson(1, 1).hi95], [0.2065, 1]);
+  expectEqual('wilson: nothing is nothing', wilson(0, 0), { n: 0, k: 0, rate: 0, lo95: 0, hi95: 0 });
+  const p = pooledStudy(POOL);
+  expectEqual('pool: sessions oldest first; 12 rows, 11 settled; 3 movers (10-28 has no study)', [p.days, p.labels, p.settled, p.movers], [['2026-10-27', '2026-10-28'], 12, 11, 3]);
+  expectEqual('pool: a session without a study says so', p.notes, ['2026-10-28: labels without a study; its movers are not counted.']);
+  const b = (name: string) => p.calibration.find(c => c.bucket === name)!;
+  /* 0–30%, in the window: .20 F, .25 T, .10 F → 1 of 3; mean (.20 + .25 + .10)/3 = .1833; gap 33.33 - 18.33 = +15.00 */
+  expectEqual('pool: 0–30% bucket', [b('0–30%').win, b('0–30%').meanP1, b('0–30%').gapPoints, b('0–30%').sessions], [{ n: 3, k: 1, rate: 0.3333, lo95: 0.0615, hi95: 0.7923 }, 0.1833, 15, 2]);
+  /* 30–40%: only .30 at 15:05, outside the window: none in the window, 1 of 1 over every minute */
+  expectEqual('pool: 30–40% bucket, outside the window only', [b('30–40%').win.n, b('30–40%').all.n, b('30–40%').all.k, b('30–40%').meanP1], [0, 1, 1, null]);
+  /* the unsettled .45 row is not counted */
+  expectEqual('pool: an unsettled row is no row', b('40–50%').all.n, 0);
+  /* 70.67–75%: .72 T, .74 F, .71 F, .73 F → 1 of 4; mean 2.90/4 = .725; gap 25 - 72.5 = -47.5; both sessions */
+  expectEqual('pool: 70.67–75% bucket', [b('70.67–75%').win, b('70.67–75%').meanP1, b('70.67–75%').gapPoints, b('70.67–75%').sessions], [{ n: 4, k: 1, rate: 0.25, lo95: 0.0456, hi95: 0.6994 }, 0.725, -47.5, 2]);
+  /* 75–80%: .76 T → 1 of 1, gap +24.  80–100%: .85 F in the window (0 of 1, gap -85); .80 T at 09:40 outside;
+     every minute 1 of 2, bid hit 1.50× 1 of 2 */
+  expectEqual('pool: 75–80% bucket', [b('75–80%').win.k, b('75–80%').win.n, b('75–80%').gapPoints], [1, 1, 24]);
+  expectEqual('pool: 80–100% bucket', [b('80–100%').win, b('80–100%').gapPoints, b('80–100%').all.n, b('80–100%').all.k, b('80–100%').hit50], [{ n: 1, k: 0, rate: 0, lo95: 0, hi95: 0.7935 }, -85, 2, 1, 0.5]);
+  expectEqual('pool: every settled row in one bucket', p.calibration.reduce((a, c) => a + c.all.n, 0), 11);
+  /* the sweep, in the window: at 60% and at 70.67% the same six rows (.72 .74 .85 | .71 .73 .76), 2 took;
+     mean return (50 - 40 - 50 - 35 - 45 + 50)/6 = -11.67; per session -13.33 and -10.00, neither up.
+     At 75%: .85 F, .76 T → 1 of 2, mean 0; 10-28 is up (+50). At 85%: .85 only. */
+  const t = (cut: number) => p.thresholds.find(x => Math.abs(x.p1 - cut) < 1e-9)!;
+  expectEqual('pool: sweep at 70.67%', [t(0.7067).win.n, t(0.7067).win.k, t(0.7067).meanRet, t(0.7067).sessions, t(0.7067).upSessions], [6, 2, -11.67, 2, 0]);
+  expectEqual('pool: sweep at 60% equals 70.67% here', t(0.6).win, t(0.7067).win);
+  expectEqual('pool: sweep at 75%', [t(0.75).win.n, t(0.75).win.k, t(0.75).meanRet, t(0.75).upSessions], [2, 1, 0, 1]);
+  expectEqual('pool: sweep at 85% keeps .85', [t(0.85).win.n, t(0.85).meanRet], [1, -50]);
+  /* each session over the bar, in the window: 10-27 .72 T .74 F .85 F (mean .77, -13.33); 10-28 .71 F .73 F .76 T */
+  expectEqual('pool: session lines', p.sessions.map(d => [d.day, d.labels, d.settled, d.over.n, d.over.k, d.overMeanP1, d.overMeanRet, d.movers]), [['2026-10-27', 7, 6, 3, 1, 0.77, -13.33, 3], ['2026-10-28', 5, 5, 3, 1, 0.7333, -10, null]]);
+  /* miss reasons and held-down inputs come from the studies: 10-27's three movers */
+  expectEqual('pool: miss reasons summed', p.missReasons, [{ gate: 'Model 1 under the threshold', n: 2, sessions: 1 }, { gate: 'spread over 8%', n: 1, sessions: 1 }]);
+  expectEqual('pool: held down, from the movers', p.heldDownMost.map(h => [h.col, h.n, h.sessions]), [[26, 2, 1], [24, 1, 1]]);
+  expectEqual('pool: inputs over time', p.inputsOverTime, { cols: [{ col: 26, name: 'IV / RV' }, { col: 24, name: 'ATM IV' }], rows: [{ day: '2026-10-27', under: 2, n: [2, 1] }] });
+  /* the verdict: two sessions, no full bucket; over the bar 2 of 6 (.0968–.7000), mean (.72+.74+.85+.71+.73+.76)/6 = .7517 */
+  expectEqual('pool: verdict is not yet, every bar unmet', [p.verdict.ready, p.verdict.needs.map(n => n.met)], [false, [false, false, false, false]]);
+  expectEqual('pool: verdict line', p.verdict.line, 'No: the evidence does not support reading Model 1 as a probability yet (4 of 4 bars unmet). Rows scored at or over 70.67% (mean 75.2%) took the 1.50× profit 33.3% of the time (95%: 9.7–70.0%, 6 rows, 2 sessions).');
+  /* a calibrated pool meets the bars: 20 sessions, 25 rows a bucket a session (500 each) at the bucket's middle,
+     round(25·mid) of them taking profit (16%, 36%, 44%, 56%, 64%, 68%, 72%, 76%, 92%: every gap within 2 points) */
+  const MIDS = [0.15, 0.35, 0.45, 0.55, 0.625, 0.678, 0.728, 0.775, 0.9];
+  const synth = (bad: number | null) =>
+    Array.from({ length: 20 }, (_, i) => {
+      const day = `2026-09-${String(i + 1).padStart(2, '0')}`;
+      const labels = MIDS.flatMap((mid, j) => Array.from({ length: 25 }, (_, r) => ({ t: 600, k: `SPY ${j}C`, e: day, p1: mid, p2: 0, fill: 1, exit: 1, why: '', ret: 0, tp1: j === bad ? false : r < Math.round(25 * mid), hit50: false, best: 1 })));
+      return { day, labels, study: { missReasons: [], movers: [] } };
+    });
+  const good = poolStudies(synth(null), 0);
+  expectEqual('pool: a calibrated pool meets every bar', [good.verdict.ready, good.verdict.needs.map(n => n.met), good.calibration.map(c => c.win.n)], [true, [true, true, true, true], MIDS.map(() => 500)]);
+  expectEqual('pool: meeting the bars never lifts the label', /“Unvalidated” label stays until the owner lifts it/.test(good.verdict.line), true);
+  /* the same with the 50–60% bucket never taking profit: its gap (-55) fails, and it reverses against 40–50% */
+  const bad = poolStudies(synth(3), 0);
+  expectEqual('pool: one bucket off fails the gap and the order', [bad.verdict.ready, bad.verdict.needs.map(n => n.met), bad.calibration[3].gapPoints], [false, [true, true, false, false], -55]);
+  expectEqual('pool: the bars', [POOL_BAR.sessions, POOL_BAR.rowsPerBucket, POOL_BAR.gapPoints], [20, 400, 5]);
+  /* served at /api/compass/study?day=all from the record folder */
+  const dir9 = mkdtempSync(join(tmpdir(), 'compass-pool-'));
+  cpSync(POOL, dir9, { recursive: true });
+  const engine9 = startCompassEngine({ dir: dir9, publicDir: join(here, '..', '..', 'public'), theta: async () => ({ status: 503, body: '', type: '' }), scan: false });
+  let body9 = '';
+  const res9 = { statusCode: 0, setHeader: () => {}, end: (x?: string | Buffer) => { body9 = String(x ?? ''); } };
+  compassRoute(engine9, { url: '/api/compass/study?day=all', method: 'GET', headers: {} }, res9);
+  const served = JSON.parse(body9) as typeof p;
+  expectEqual('pool: served at study?day=all', [res9.statusCode, served.day, served.days, served.verdict.line], [200, 'all', p.days, p.verdict.line]);
+  const empty = mkdtempSync(join(tmpdir(), 'compass-pool-empty-'));
+  const engine9b = startCompassEngine({ dir: empty, publicDir: join(here, '..', '..', 'public'), theta: async () => ({ status: 503, body: '', type: '' }), scan: false });
+  compassRoute(engine9b, { url: '/api/compass/study?day=all', method: 'GET', headers: {} }, res9);
+  expectEqual('pool: nothing labelled is not built', [res9.statusCode, (JSON.parse(body9) as { code: string }).code], [404, 'not_built']);
+  engine9.stop();
+  engine9b.stop();
+}
+
 done();

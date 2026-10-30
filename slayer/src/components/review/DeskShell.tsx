@@ -21,6 +21,7 @@ import RenameDoor from './RenameDoor';
 import { dirInk, usd, usdSigned } from './words';
 import { DOCK_ROOM, useEditorDock } from '../../data/editorDock';
 import { dayNumber, daysBetween } from '../../data/review/history';
+import { playStep } from '../../data/review/engine';
 import type { OpeningRange } from '../../data/sessionLevels';
 import { tfMinutes, type Timeframe } from '../../data/timeframe';
 import type { KeyLevels } from '../../types/gex';
@@ -131,6 +132,8 @@ export interface DeskName {
 interface DeskHands {
   /** Stop the clock and put it there (clamped to the day) */
   seek: (minute: number, day?: string) => void;
+  /** The clock is playing */
+  playing: boolean;
   /** The top row has shed its words */
   compact: boolean;
   /** …or a second name's capsule is being paid for by words */
@@ -208,6 +211,9 @@ interface DeskShellProps {
     marks?: { u: number; label: string }[];
     /** The engine's: it refuses what the rules refuse */
     move: (to: { day: string; minute: number }) => void;
+    /** The reader's roll-over (set at the bell): playing, the clock stands on the bell a moment, then opens the next
+        day and keeps playing — what "Open the next day" does (engine `playStep`) */
+    roll?: boolean;
   };
   goToTitle?: string;
   nextDayTitle?: string;
@@ -243,6 +249,9 @@ interface DeskShellProps {
   /** The rows of the tab in hand */
   book: ReactNode;
 }
+
+/** How long the playing clock stands on the bell before a roll-over opens the next day: six ticks, 1.5 s */
+const BELL_HOLD_TICKS = 6;
 
 /** That address holds no session of this browser's */
 export const DeskMissing = () => (
@@ -331,19 +340,37 @@ const DeskShell = ({ phoneSideFirst = false, session, kind, onRename, subline = 
   useEffect(() => {
     if (!playing || !live.current.clock) return;
     let owed = 0;
+    /* ticks stood on the bell, and the day already rolled from (the next day's loads may take a while: asked once) */
+    let atBell = 0;
+    let rolled = '';
     const t = window.setInterval(() => {
       const { clock: c, pace: p } = live.current;
       if (!c) return;
+      if (c.minute >= c.lastMin) {
+        const to = playStep(c, 0, !!c.roll, c.tomorrow);
+        if (!to) return setPlaying(false);
+        /* the bell is seen for a moment, then the next session opens */
+        if (++atBell < BELL_HOLD_TICKS || rolled === c.day) return;
+        rolled = c.day;
+        atBell = 0;
+        owed = 0;
+        c.move(to);
+        return;
+      }
+      atBell = 0;
       owed += p * 0.25;
       const mins = Math.floor(owed / 60);
       if (mins < 1) return;
       owed -= mins * 60;
-      const to = Math.min(c.lastMin, c.minute + mins);
-      c.move({ day: c.day, minute: to });
-      if (to >= c.lastMin) setPlaying(false);
+      const to = playStep(c, mins, !!c.roll, c.tomorrow);
+      if (!to) return setPlaying(false);
+      c.move(to);
+      if (to.minute >= c.lastMin && !(c.roll && c.tomorrow)) setPlaying(false);
     }, 250);
     return () => window.clearInterval(t);
   }, [playing]);
+  /** Play is offered while the day has minutes left — or, rolling over, while the tape has a next day */
+  const canPlay = !!clock && (clock.minute < clock.lastMin || (!!clock.roll && !!clock.tomorrow));
   const seek = (minute: number, day = clock?.day ?? '') => {
     setPlaying(false);
     if (clock) clock.move({ day, minute: Math.max(0, Math.min(clock.lastMin, minute)) });
@@ -415,14 +442,14 @@ const DeskShell = ({ phoneSideFirst = false, session, kind, onRename, subline = 
   const shown = split ? names : [on];
   const paneIdOf = (n: DeskName) => paneIds[names.indexOf(n) <= 0 ? 0 : 1];
   const exportOf = (n: DeskName) => (names.indexOf(n) <= 0 ? exportRefA : exportRefB);
-  const hands: DeskHands = { seek, compact, tight, headW };
+  const hands: DeskHands = { seek, playing, compact, tight, headW };
 
   /* THE KEYS. Read through a ref so the listener is bound once and always sees this render's hands. */
   const keyHands = useRef<Record<string, (shift: boolean) => void>>({});
   keyHands.current = {
     ...(clock
       ? {
-          ' ': () => setPlaying(p => !p && clock.minute < clock.lastMin),
+          ' ': () => setPlaying(p => !p && canPlay),
           ArrowRight: (shift: boolean) => seek(clock.minute + (shift ? 5 : 1)),
           ArrowLeft: (shift: boolean) => seek(clock.minute - (shift ? 5 : 1)),
           End: () => seek(clock.lastMin),
@@ -469,7 +496,7 @@ const DeskShell = ({ phoneSideFirst = false, session, kind, onRename, subline = 
       stateWord="New York"
       exitWords="Your sessions"
       playing={playing}
-      onPlay={p => setPlaying(p && clock.minute < clock.lastMin)}
+      onPlay={p => setPlaying(p && canPlay)}
       pace={pace}
       onPace={setPace}
       /* the pace's words are said in the candles THIS chart draws: 1× is a candle a second on 1m, one every five on 5m */

@@ -324,11 +324,14 @@ const hub = createHub({
 /** The hub's counts, for the load check (scripts/load-proof.mjs). */
 export const uwHubStats = () => hub.stats();
 
-/** One answer for a reader inside this process (the Compass engine): the same hub, cache and three slots. */
-export async function uwDirect(path) {
-  if (!process.env.UNUSUAL_WHALES_API_KEY || !allowed(path)) return { status: 503, body: '{}' };
-  const got = await hub.get(path);
-  return { status: got.status, body: got.body.toString('utf8') };
+/** One answer for a reader inside this process (the Compass engine, the exposure recorder): the same hub, cache and
+    three slots. `lane: 'record'` is for work no viewer is waiting on: it reuses any copy younger than `maxAge`, and a
+    vendor call it needs goes in the background lane (one slot at most, behind every waiting viewer). `at` is when the
+    answer was taken. */
+export async function uwDirect(path, opt) {
+  if (!process.env.UNUSUAL_WHALES_API_KEY || !allowed(path)) return { status: 503, body: '{}', at: Date.now() };
+  const got = await hub.get(path, opt?.lane === 'record' ? { lane: 'record', maxAge: opt.maxAge } : undefined);
+  return { status: got.status, body: got.body.toString('utf8'), at: got.at };
 }
 
 /** Connect, Express and the Vercel Node function all hand over a Node request and response. */

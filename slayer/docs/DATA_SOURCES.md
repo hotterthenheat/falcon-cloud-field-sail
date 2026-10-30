@@ -200,6 +200,27 @@ market for one day.
 - Options: trades, the full trade, quotes, market value
 - Indices: prices, market value
 
+### Extended-hours bars (what is left out)
+
+ThetaData's one-minute stock bars before 09:30 and after 16:00 take their open, high, low and close from every Form T
+print, so late reports at an old price draw tall false spikes (SPY on 2026-10-29: near 765.5 after the close, yet
+16:09–16:19 highs of 769.36 and 769.5067 from the closing auction's average-price report of 2.2M shares, its
+prior-reference-price reports, and size-1 odd lots at the close; before the open, odd lots at Oct 28's 772.31 close).
+The chart bars (`data/thetaTape.ts` `pullIntraday`, which Terrain, the Weigher, Paper and Pinpoint's tape draw) rebuild
+a **stock's** pre-market and after-hours bars from `/stock/history/trade` (`data/thetaEligible.ts`):
+
+- A print sets a bar's price only if every condition it carries (`condition`, `ext_condition1`–`4`) is one ThetaData's
+  Trade Conditions table marks as updating the consolidated High, Low and Last, and not as a Late Report. Form T,
+  EXTENDED_HOURS_TRADE, TRADE_THRU_EXEMPT and BENCHMARK are neutral. Left out of the price: odd lots, average-price,
+  prior-reference-price, cash-sale, sold-last and out-of-sequence reports, closing and derivatively priced prints,
+  cancels, and (as ThetaData's own bars do) a print more than 5% from the last accepted one.
+- Volume is ThetaData's bar volume: every print counts. A minute with no price-setting print holds the last such price
+  of that day; with none earlier that day it has no price and is not drawn.
+- One trades request per name and window for the finished days of the last 6 calendar days (cached 6 h by the hub), and
+  one for today, read on from the minute the last read reached. Bars older than 6 days, indexes, the regular session
+  and the 16:00 close bar are ThetaData's own (the regular session already follows these rules: its bars match them).
+- Locked by `scripts/golden/extended-golden.ts` (set `extended-2026-10-29`).
+
 ### Also in the same REST spec
 - Session calendar: today, a date, and the year's holidays
 - Treasury-rate history

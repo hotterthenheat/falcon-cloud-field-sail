@@ -22,6 +22,7 @@ import { importSignals, importWould, onSignalsChange, setSessionClose, signals, 
 import { exportMarks, importMarks, lotterySwept, onMarks, onScanMeta, scanMeta, sessionClose, setLotteryDay, setScanMeta, startScan, stopScan, type MarkRow, type ScanMeta } from './compassScan';
 import { sessionIso } from './compassSession';
 import { buildSession, reviewFile, studyFile } from './compassReview';
+import { poolStudies, type Label, type PooledStudy, type StudyDay, type StudyResult } from './compassStudy';
 import { nyParts } from '../core/nyTime';
 import type { Setup } from '../types/compass';
 
@@ -525,6 +526,59 @@ export function startCompassEngine(o: EngineOptions): Engine {
   };
 }
 
+/* ---- every session's study, pooled ---- */
+
+let pooledMemo: { key: string; doc: PooledStudy } | null = null;
+
+/** Every labelled session in the folder pooled (data/compassStudy.ts poolStudies), rebuilt only when a labels or
+    study file changes: a session's labels are tens of thousands of lines. */
+export function pooledStudy(dir: string): PooledStudy {
+  const labelDir = path.join(dir, 'labels');
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(labelDir).filter(n => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(n)).sort();
+  } catch {
+    names = [];
+  }
+  const stamp = (file: string) => {
+    try {
+      const st = fs.statSync(file);
+      return `${st.mtimeMs}:${st.size}`;
+    } catch {
+      return '-';
+    }
+  };
+  const key = `${dir}|${names.map(n => `${n}:${stamp(path.join(labelDir, n))}:${stamp(studyFile(dir, n.slice(0, 10)))}`).join(',')}`;
+  if (pooledMemo?.key === key) return pooledMemo.doc;
+  const days: StudyDay[] = [];
+  for (const n of names) {
+    const day = n.slice(0, 10);
+    let labels: Label[] = [];
+    try {
+      labels = fs.readFileSync(path.join(labelDir, n), 'utf8').split('\n').filter(Boolean).flatMap(line => {
+        try {
+          return [JSON.parse(line) as Label];
+        } catch {
+          return [];
+        }
+      });
+    } catch {
+      labels = [];
+    }
+    let study: StudyDay['study'] = null;
+    try {
+      const st = JSON.parse(fs.readFileSync(studyFile(dir, day), 'utf8')) as StudyResult;
+      study = { missReasons: st.missReasons ?? [], movers: st.movers ?? [] };
+    } catch {
+      study = null;
+    }
+    days.push({ day, labels, study });
+  }
+  const doc = poolStudies(days);
+  pooledMemo = { key, doc };
+  return doc;
+}
+
 /* ---- HTTP ---- */
 
 type Req = { url?: string; method?: string; headers: Record<string, string | string[] | undefined> };
@@ -546,7 +600,9 @@ function send(req: Req, res: Res, status: number, body: unknown): void {
 
 /** /api/compass/state[?rev=N]   the board, the record and the engine (just {rev, same: true} when rev is current)
     /api/compass/record?day=D     one session's official record (calls, marks, close)
-    /api/compass/days             the sessions on record and their call counts */
+    /api/compass/days             the sessions on record and their call counts
+    /api/compass/review?day=D     one session's review; /api/compass/study?day=D its study
+    /api/compass/study?day=all    every labelled session's study pooled */
 export function compassRoute(engine: Engine, req: Req, res: Res): void {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     send(req, res, 405, { error: 'method not allowed' });
@@ -582,6 +638,15 @@ export function compassRoute(engine: Engine, req: Req, res: Res): void {
     const { state: _state, meta: _meta, ...rest } = f;
     const { demoted: _demoted, ...record } = rest as typeof rest & { demoted?: unknown };
     send(req, res, 200, record);
+    return;
+  }
+  if (route === '/study' && url.searchParams.get('day') === 'all') {
+    const pooled = pooledStudy(engine.dir);
+    if (!pooled.days.length) {
+      send(req, res, 404, { error: 'No session has been labelled yet.', code: 'not_built' });
+      return;
+    }
+    send(req, res, 200, pooled);
     return;
   }
   if (route === '/review' || route === '/study') {

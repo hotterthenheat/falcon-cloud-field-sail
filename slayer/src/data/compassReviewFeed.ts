@@ -4,10 +4,11 @@
 import { useEffect, useState } from 'react';
 import { feedHeaders } from './feedGate';
 import type { SessionReview } from './compassReview';
-import type { StudyResult } from './compassStudy';
+import type { PooledStudy, StudyResult } from './compassStudy';
 
-type Kind = 'review' | 'study';
-type Doc<K extends Kind> = K extends 'review' ? SessionReview : StudyResult;
+/** 'pooled' is every labelled session's study together (/api/compass/study?day=all; pass day 'all') */
+type Kind = 'review' | 'study' | 'pooled';
+type Doc<K extends Kind> = K extends 'review' ? SessionReview : K extends 'pooled' ? PooledStudy : StudyResult;
 export interface DocState<T> {
   doc: T | null;
   status: 'loading' | 'ready' | 'missing' | 'error';
@@ -38,7 +39,7 @@ function keep(key: string, doc: unknown): void {
   }
 }
 
-/** The review or the study of one session (YYYY-MM-DD). */
+/** The review or the study of one session (YYYY-MM-DD), or every session's study pooled ('pooled', day 'all'). */
 export function useCompassDoc<K extends Kind>(kind: K, day: string | null): DocState<Doc<K>> {
   const key = `${kind}|${day}`;
   const [state, setState] = useState<DocState<Doc<K>>>(() => {
@@ -62,7 +63,7 @@ export function useCompassDoc<K extends Kind>(kind: K, day: string | null): DocS
         return;
       }
       try {
-        const res = await fetch(`/api/compass/${kind}?day=${day}`, { headers: auth.headers });
+        const res = await fetch(kind === 'pooled' ? '/api/compass/study?day=all' : `/api/compass/${kind}?day=${day}`, { headers: auth.headers });
         const body = (await res.json().catch(() => null)) as (Doc<K> & { code?: string; error?: string }) | null;
         if (dead) return;
         if (res.status === 404 && body?.code === 'not_built') {

@@ -390,10 +390,20 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
       setPin(null);
       setHover(null);
       return;
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onBlockClick(cur);
+      return;
     } else return;
     e.preventDefault();
     setHover(next);
-    stripRef.current?.querySelector<HTMLButtonElement>(`[data-block="${next}"]`)?.focus();
+  };
+  /* The strip is one target (a slider): the block under the pointer is the one it means, so a finger or a mouse never
+     has to land on a 10-20 px block, and the 2 px gaps between them are not dead. */
+  const blockAt = (e: { clientX: number; currentTarget: HTMLElement }) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!(r.width > 0)) return null;
+    return Math.max(0, Math.min(blocks - 1, Math.floor(((e.clientX - r.left) / r.width) * blocks)));
   };
   /* the guide draws the desk's 78 five-minute blocks whatever the strip's width — the cash session's picture */
   const guideNow = cash && inSession ? Math.min(SPAN / BLOCK_MIN - 1, Math.floor((nowMin - OPEN_MIN) / BLOCK_MIN)) : null;
@@ -503,7 +513,8 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
                 onClick={() => onNameClick(p.key)}
                 /* Under lg: every other name on the second row. */
                 /* The close's name on the strip's right edge at every width; from its own start it ran past the box. */
-                className={`hit absolute font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap ${nameCls} ${narrow && i % 2 === 1 ? 'top-[18px]' : 'top-0'} ${last ? '!left-auto !right-0 !translate-x-0' : ''} ${turn && !narrow ? '!left-auto !right-[52px] !translate-x-0' : ''}`}
+                /* pt-[7px] -mt-[7px]: the name's box reaches 24px up into the head's gap (the strip is under it), the word stays put */
+                className={`hit absolute pt-[7px] -mt-[7px] font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap ${nameCls} ${narrow && i % 2 === 1 ? 'top-[18px]' : 'top-0'} ${last ? '!left-auto !right-0 !translate-x-0' : ''} ${turn && !narrow ? '!left-auto !right-[52px] !translate-x-0' : ''}`}
                 style={{
                   left: `${pctAt(turn ? p.to : p.from)}%`,
                   transform: turn ? 'translateX(calc(-100% - 6px))' : last ? 'translateX(2px)' : undefined,
@@ -523,14 +534,29 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
           {/* a narrow strip is the thumb's height (44px) — the blocks are the targets, and 10px wide is all the width a quarter
               hour gets on a phone; the height is ours to give */}
           <div
-            className={`flex gap-[2px] ${narrow ? 'h-11' : 'h-7'}`}
+            className={`flex gap-[2px] cursor-pointer rounded-[2px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-silver/60 ${narrow ? 'h-11' : 'h-7'}`}
             data-clock-strip
             data-block-minutes={blockMin}
-            role="group"
+            role="slider"
+            tabIndex={0}
             aria-label={`Today's session as ${narrow ? 'fifteen' : 'five'}-minute blocks, shaded by how hard hedging pushes — the arrow keys walk them, Enter keeps one`}
+            aria-valuemin={0}
+            aria-valuemax={blocks - 1}
+            aria-valuenow={hover ?? focusBlock}
+            aria-valuetext={(() => {
+              const at = minuteOf((hover ?? focusBlock) * blockMin, win);
+              return `${hhmm(at)} · ${phaseAtMin(at).name}`;
+            })()}
             onKeyDown={onStripKeys}
-            onBlur={e => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHover(null);
+            onFocus={() => setHover(h => h ?? focusBlock)}
+            onBlur={() => setHover(null)}
+            onPointerMove={e => {
+              const i = blockAt(e);
+              if (i != null && i !== hover) setHover(i);
+            }}
+            onClick={e => {
+              const i = blockAt(e);
+              if (i != null) onBlockClick(i);
             }}
           >
             {Array.from({ length: blocks }, (_, i) => {
@@ -552,18 +578,12 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
               const boundary = i > 0 && phaseAtMin(minuteOf(i * blockMin - 1, win)).key !== p.key;
               const dim = hover != null && !hovered;
               return (
-                <button
+                <div
                   key={i}
-                  type="button"
                   data-block={i}
                   data-phase={p.key}
                   data-focus={pin ? (inFocus ? 'in' : 'soft') : undefined}
-                  aria-label={`${hhmm(min)} · ${p.name}`}
-                  aria-pressed={keptBlock === i}
-                  tabIndex={i === focusBlock ? 0 : -1}
-                  onFocus={() => setHover(i)}
-                  onPointerEnter={() => setHover(i)}
-                  onClick={() => onBlockClick(i)}
+                  data-kept={keptBlock === i ? 'true' : undefined}
                   className={`flex-1 min-w-0 rounded-[2px] ${boundary ? 'ml-[3px]' : ''}`}
                   style={{
                     /* the ink's wash — light on the dark terminal, near-black on paper (the white washes were "so bright") */

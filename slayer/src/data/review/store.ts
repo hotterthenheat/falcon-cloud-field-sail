@@ -187,6 +187,21 @@ export const closePosition = (id: string, contract: ContractId, qty: number) =>
     },
     true
   );
+/** The bracket on a held contract cancelled — every target and stop of its ladder — so a sell that waits can have its
+    contracts (the ticket's "Cancel the bracket") */
+export const cancelBracket = (id: string, contract: ContractId) =>
+  swap(
+    id,
+    s => {
+      const key = contractKey(contract);
+      let next = s;
+      for (const o of s.orders) if (o.status === 'working' && o.side === 'sell' && o.oco && contractKey(o.contract) === key) next = cancel(next, o.id, Date.now());
+      return next;
+    },
+    true
+  );
+/** The bell's setting: carry on into the next day by itself while the clock plays */
+export const setRollOver = (id: string, on: boolean) => swap(id, s => ({ ...s, rollOver: on || undefined }), true);
 /** The journal's entry on a closed trade — what is given is written over what was there */
 export const setEntry = (id: string, tradeId: string, patch: Partial<JournalEntry>) =>
   commit(list.map(s => (s.id === id ? { ...s, journal: { ...s.journal, [tradeId]: { ...s.journal?.[tradeId], ...patch } } } : s)), true);

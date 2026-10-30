@@ -419,7 +419,8 @@ const FlowSearch = ({
             role="combobox"
             aria-expanded={open}
             aria-autocomplete="list"
-            className={`${compact ? 'w-[68px]' : 'w-[132px]'} bg-transparent text-t11 font-semibold uppercase tracking-wider text-textPrimary placeholder:text-textMuted placeholder:font-normal placeholder:normal-case placeholder:tracking-normal focus:outline-none`}
+            /* the field's whole height is the input's (24px at the least), not the 17px of its line */
+            className={`${compact ? 'w-[68px] h-6 -my-[2px]' : 'w-[132px] self-stretch'} bg-transparent text-t11 font-semibold uppercase tracking-wider text-textPrimary placeholder:text-textMuted placeholder:font-normal placeholder:normal-case placeholder:tracking-normal focus:outline-none`}
           />
           {active && (
             <button
@@ -430,7 +431,7 @@ const FlowSearch = ({
                 setScope(null);
               }}
               aria-label="Clear search"
-              className="text-silver/70 hover:text-silver transition-colors"
+              className="hit-24 text-silver/70 hover:text-silver transition-colors"
             >
               <X className="w-3 h-3" />
             </button>

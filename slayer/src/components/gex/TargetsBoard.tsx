@@ -10,7 +10,7 @@ import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import JingleBell from '../ui/JingleBell';
 import { heatLaneColor } from './heatmap';
 import { ALERT, CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_WARM } from './paletteInk';
-import { AGENDA_COLUMNS, AGENDA_MIN_W, CARD_H, ROW_H } from './targetsSkeletons';
+import { AGENDA_ACT, AGENDA_COLUMNS, AGENDA_MIN_W, CARD_H, ROW_H } from './targetsSkeletons';
 import { AGENDA_ORDERS, DRIVER_WORDS, buildWords, closeLeanWords, reachWords, strikeKind, targetName, thinWords, todayWords, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
 import { LONG_GAMMA, SHORT_GAMMA } from './paletteInk';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
@@ -208,7 +208,33 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
 /** The two actions; `icons` alone where a pane is a quarter of the screen (the tight density). `reveal`: in the list they
     show on the row's hover or keyboard focus (always on a touch screen, and always once an alert is set), so the column
     is not the same two words on every row. */
-const Actions = ({ t, armed, onChart, onAlert, icons = false, reveal = false }: { t: Target; armed: boolean; onChart: (t: Target) => void; onAlert: (t: Target) => void; icons?: boolean; reveal?: boolean }) => (
+/* `overlay` (the list at full and compact density): the column is 24px on a hover screen and holds a "⋯" at rest — or
+   the bell, in the alert ink, once an alert is set — and the two actions lay over the row's end, on the row's own ground,
+   on hover or keyboard focus. On a touch screen the column is wide and they stand in it (AGENDA_ACT). */
+const Actions = (props: { t: Target; armed: boolean; onChart: (t: Target) => void; onAlert: (t: Target) => void; icons?: boolean; reveal?: boolean; overlay?: boolean }) => {
+  if (!props.overlay) return <ActionPair {...props} />;
+  const { armed } = props;
+  return (
+    <div className="relative h-full flex items-center justify-end" data-row-actions-cell>
+      <span
+        aria-hidden
+        className="pr-1 font-mono text-t12 leading-none text-textMuted transition-opacity duration-150 group-hover/row:opacity-0 group-focus-within/row:opacity-0 group-data-[hover=true]/row:opacity-0 [@media(hover:none)]:hidden"
+        style={armed ? { color: ALERT } : undefined}
+        data-row-actions-rest={armed ? 'armed' : 'more'}
+      >
+        {armed ? <JingleBell count={0} className="w-3 h-3" /> : '⋯'}
+      </span>
+      <span className="absolute right-0 top-1/2 -translate-y-1/2 z-[1] rounded bg-panel shadow-[-14px_0_10px_-2px_rgb(var(--panel))] pointer-events-none opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 group-hover/row:pointer-events-auto group-focus-within/row:opacity-100 group-focus-within/row:pointer-events-auto group-data-[hover=true]/row:opacity-100 group-data-[hover=true]/row:pointer-events-auto [@media(hover:none)]:static [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:shadow-none [@media(hover:none)]:bg-transparent">
+        {/* the row's wash over the panel, so the actions sit on the row's own ground */}
+        <span className="block rounded bg-silver/[0.05] [@media(hover:none)]:bg-transparent">
+          <ActionPair {...props} reveal={false} />
+        </span>
+      </span>
+    </div>
+  );
+};
+
+const ActionPair = ({ t, armed, onChart, onAlert, icons = false, reveal = false }: { t: Target; armed: boolean; onChart: (t: Target) => void; onAlert: (t: Target) => void; icons?: boolean; reveal?: boolean }) => (
   <span
     className={`flex items-center justify-end gap-1 ${reveal && !armed ? 'opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 group-focus-within/row:opacity-100 group-data-[hover=true]/row:opacity-100 [@media(hover:none)]:opacity-100' : ''}`}
     onClick={ev => ev.stopPropagation()}
@@ -393,7 +419,7 @@ const COLS: Record<TargetsDensity, { template: string; min: number; span: string
   /* # · strike · from spot · reached · today · net gamma · if it breaks · built · at stake · why · actions */
   full: { template: AGENDA_COLUMNS, min: AGENDA_MIN_W, span: 'col-span-11' },
   /* # · strike · from spot · reached · holds · at stake · actions */
-  compact: { template: '32px 160px 64px 64px 104px 120px 120px', min: 740, span: 'col-span-7' },
+  compact: { template: '32px 160px 64px 64px 104px 120px var(--agenda-act,120px)', min: 740, span: 'col-span-7' },
   /* strike · reached · holds · actions */
   tight: { template: 'minmax(92px,128px) 48px 92px minmax(52px,1fr)', min: 316, span: 'col-span-4' },
 };
@@ -570,7 +596,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
 
       {/* THE LIST — the columns a density keeps */}
       <div className={`${pad} pb-2 overflow-x-auto`} data-targets-rows onPointerLeave={() => setHover(null)}>
-        <div className="grid items-center gap-x-3 gap-y-0" style={{ gridTemplateColumns: cols.template, minWidth: cols.min }}>
+        <div className={`grid items-center gap-x-3 gap-y-0 ${AGENDA_ACT}`} style={{ gridTemplateColumns: cols.template, minWidth: cols.min }}>
           {wide && headCell('#', false, '', 'Its place in the order: how likely price gets there times how much happens if it does')}
           {headCell('Strike', false, '', 'The option strike price, with its role: call wall (the most call hedging), put wall (the most put hedging — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet), supreme (the most hedging of all), shelf (dealers long gamma: their hedging slows price, above or below) or trapdoor (dealers short gamma: their hedging speeds a move through it, above or below) — the Map\'s colours')}
           {wide && headCell('From spot', true, '', 'How far the strike is from the current price, in the Ruler at the top of the page ($, %, ATR or σ)')}
@@ -582,7 +608,8 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
           {full && headCell(builtHead(agenda, clock.inSession), false, '', agenda.targets[0]?.buildOvernight ? `How much the wall at this strike grew (+) or shrank (−) ${agenda.targets[0].buildWhen} — the overnight open-interest count, the contracts the Levels card reads, each valued at its own gamma. The same figure as Building's CHANGE column` : 'Hedging added (building) or taken off (draining) at this strike, estimated from the day’s trades until the overnight count loads')}
           {wide && headCell('At stake', false, '', stakeTip(1, 0))}
           {full && headCell('Why it ranks', false, '', 'Why it ranks here: the two numbers behind its place — the chance it is reached times what is at stake')}
-          {headCell(wide ? 'Actions' : '', true, '', 'Open the strike on the Map, or set a price alert on it')}
+          {/* where the column is a 24px "⋯" (a hover screen) its head is the ellipsis too; the word where the actions stand */}
+          {headCell(wide ? <><span className="[@media(hover:none)]:hidden" aria-hidden>⋯</span><span className="hidden [@media(hover:none)]:inline">Actions</span></> : '', true, '', 'Open the strike on the Map, or set a price alert on it')}
           {rest.map(t => {
             const kept = focus != null && Math.abs(focus - t.strike) < 1e-9;
             const wash = kept || hover === t.strike ? 'bg-silver/[0.05]' : '';
@@ -636,7 +663,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                 )}
                 {/* the whole reason, wrapped — the row grows to hold it */}
                 {full && <div className="text-t10 leading-[13px] text-textMuted py-1 break-words">{t.why}</div>}
-                <Actions t={t} armed={armedAt(t.strike)} onChart={onChart} onAlert={onAlert} icons={!wide} reveal />
+                <Actions t={t} armed={armedAt(t.strike)} onChart={onChart} onAlert={onAlert} icons={!wide} reveal overlay={wide} />
               </div>
             );
           })}

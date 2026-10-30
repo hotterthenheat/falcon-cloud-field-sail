@@ -375,7 +375,34 @@ export async function ensureListing(ticker: string, day: string): Promise<boolea
   emit();
   return v != null;
 }
-export const listingOf = (ticker: string, day: string): Listing | null => listings.get(`list|${ticker.toUpperCase()}|${day}`) ?? null;
+/* LATER EXPIRIES. The day's listing above asks for 120 days out (max_dte=120) — what a chain is mostly read for, and an
+   answer a third the size. Past that (the LEAPS, a year or two out) is a second ask, made only when the reader asks for
+   "later expiries": the same route with no max_dte, every contract quoted that day. It is a NEW request beside the first,
+   which stays as it was. Once it is here the day's listing is it (it holds everything the first did, and more). */
+export async function ensureLaterListing(ticker: string, day: string): Promise<boolean> {
+  const t = ticker.toUpperCase();
+  const key = `listall|${t}|${day}`;
+  if (listings.has(key)) return listings.get(key) != null;
+  listWant.set(key, 'loading');
+  emit();
+  const got = await load(key, `/option/list/contracts/quote?symbol=${encodeURIComponent(t)}&date=${ymd(day)}&format=json`, rows => parseListing(day, rows));
+  if (got.offline) {
+    listWant.set(key, 'offline');
+    emit();
+    return false;
+  }
+  const v = got.value && !isNone(got.value) ? (got.value as Listing) : null;
+  listings.set(key, v);
+  listWant.set(key, v ? 'ready' : 'none');
+  emit();
+  return v != null;
+}
+/** Where the later expiries stand for a day: 'loading' before they are asked for too — `laterAsked` tells the two apart */
+export const laterListingNeed = (ticker: string, day: string): Need => listWant.get(`listall|${ticker.toUpperCase()}|${day}`) ?? 'loading';
+export const laterAsked = (ticker: string, day: string): boolean => listWant.has(`listall|${ticker.toUpperCase()}|${day}`);
+/** The days to expiry the first listing reaches — past it, an expiry is a "later" one */
+export const LISTING_DTE = 120;
+export const listingOf = (ticker: string, day: string): Listing | null => listings.get(`listall|${ticker.toUpperCase()}|${day}`) ?? listings.get(`list|${ticker.toUpperCase()}|${day}`) ?? null;
 export const listingNeed = (ticker: string, day: string): Need => listWant.get(`list|${ticker.toUpperCase()}|${day}`) ?? 'loading';
 
 /* ---- a contract's quotes through a day ---- */

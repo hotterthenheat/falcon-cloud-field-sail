@@ -4,6 +4,7 @@ import { proxyUw } from './server/uwProxy.mjs';
 import { proxyTheta } from './server/thetaProxy.mjs';
 import { proxyLogo } from './server/logoProxy.mjs';
 import { compassMount } from './server/compassApi.mjs';
+import { exposureMount } from './server/exposureApi.mjs';
 import { superviseTheta } from './theta/supervisor.mjs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { pathToFileURL } from 'node:url';
@@ -12,8 +13,13 @@ import nodePath from 'node:path';
 /* The data proxies (server/) run inside the dev and preview servers; their keys stay in this process.
    Any other /api path answers 404 instead of falling through to the SPA's index.html. */
 const dataProxies = (): Plugin => {
-  const mount = (use: (path: string, fn: (req: IncomingMessage, res: ServerResponse) => void) => void, compass?: ReturnType<typeof compassMount>) => {
+  const mount = (
+    use: (path: string, fn: (req: IncomingMessage, res: ServerResponse) => void) => void,
+    compass?: ReturnType<typeof compassMount>,
+    exposure?: ReturnType<typeof exposureMount>,
+  ) => {
     if (compass) use('/api/compass', (req, res) => void compass.handle(req, res));
+    if (exposure) use('/api/exposure', (req, res) => void exposure.handle(req, res));
     use('/api/uw', (req, res) => void proxyUw(req, res));
     use('/api/theta', (req, res) => void proxyTheta(req, res));
     use('/api/logo', (req, res) => void proxyLogo(req, res));
@@ -28,9 +34,13 @@ const dataProxies = (): Plugin => {
     configureServer(server) {
       /* the official Compass engine (src/data/compassServer.ts) runs in this process from the moment it listens */
       const compass = compassMount(() => server.ssrLoadModule('/src/data/compassServer.ts'));
-      mount((path, fn) => server.middlewares.use(path, fn), compass);
+      /* the exposure recorder (src/data/exposureRecorder.ts): Terrain's per-strike field, read every minute, viewers or not */
+      const exposure = exposureMount(() => server.ssrLoadModule('/src/data/exposureRecorder.ts'));
+      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure);
       server.httpServer?.once('listening', () => void compass.start());
+      server.httpServer?.once('listening', () => void exposure.start());
       server.httpServer?.once('close', () => compass.stop());
+      server.httpServer?.once('close', () => exposure.stop());
       /* one ThetaData terminal for local work (theta/supervisor.mjs); THETA_AUTOSTART=0 leaves it to `npm run theta`, and
          a machine that shares the always-on terminal (THETA_RELAY_URL) never starts its own */
       if (process.env.THETA_AUTOSTART !== '0' && !process.env.THETA_RELAY_URL) {
@@ -41,9 +51,13 @@ const dataProxies = (): Plugin => {
     configurePreviewServer(server) {
       const file = pathToFileURL(nodePath.join(process.cwd(), 'src/data/compassServer.ts')).href;
       const compass = compassMount(async () => (await import('tsx/esm/api')).tsImport(file, import.meta.url));
-      mount((path, fn) => server.middlewares.use(path, fn), compass);
+      const exposureFile = pathToFileURL(nodePath.join(process.cwd(), 'src/data/exposureRecorder.ts')).href;
+      const exposure = exposureMount(async () => (await import('tsx/esm/api')).tsImport(exposureFile, import.meta.url));
+      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure);
       server.httpServer?.once('listening', () => void compass.start());
+      server.httpServer?.once('listening', () => void exposure.start());
       server.httpServer?.once('close', () => compass.stop());
+      server.httpServer?.once('close', () => exposure.stop());
     },
   };
 };
@@ -66,6 +80,13 @@ const SERVER_ENV = [
   'PROXY_PLAN_GATE',
   'PROXY_RATE_BURST',
   'PROXY_RATE_PER_SEC',
+  'EXPOSURE_RECORDER',
+  'EXPOSURE_DIR',
+  'EXPOSURE_NAMES',
+  'EXPOSURE_NAMES_MAX',
+  'EXPOSURE_KEEP_DAYS',
+  'EXPOSURE_FRONT',
+  'EXPOSURE_EXT_EVERY',
 ];
 
 /* Vendor libraries in a few stable chunks: fewer requests on first load, and an app deploy leaves them cached. */

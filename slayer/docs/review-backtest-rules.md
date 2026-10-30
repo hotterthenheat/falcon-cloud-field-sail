@@ -30,6 +30,10 @@ real, with the costs that are real for options: the spread, the fee, and the dec
   at the bell with what the bell did to the book.
 - Moving the clock forward runs every minute in between: working orders are checked at each minute, and the bell is
   rung for each day that passes.
+- **Roll-over** (added 2026-10-29): the bell's card has a setting, "Carry on into the next day automatically", off by
+  default and kept with the session. On, the playing clock stands on the bell a moment, then opens the next session and
+  keeps playing — exactly what "Open the next day" does: positions and good-till-cancelled orders carry, day orders
+  expire at the bell as always (engine `playStep`, `nextOpen`).
 
 ## The price of a contract
 
@@ -42,6 +46,9 @@ real, with the costs that are real for options: the spread, the fee, and the dec
   interval quote, the bid and ask standing at the end of each minute. The name's price is its recorded one-minute bar.
   The expiries and strikes are the contracts quoted that day. A session can open on any day from the oldest the key's
   history reaches to the newest finished session; each day loads once and is kept in the browser.
+- The day's listing reaches 120 days out (`max_dte=120`). **Later expiries** (2026-10-29) — the LEAPS — are a second
+  listing with no limit, asked only when the reader picks "Later expiries…" in the expiry menu; the first request is
+  unchanged.
 
 ## Orders and fills
 
@@ -104,7 +111,8 @@ ONE GROUP — **up to three targets and up to two stops**, each for a whole numb
   everything that was working on it goes.
 - **A market sell by hand is never "spoken for":** the ladder gives way — the furthest target and the furthest stop give
   up the contracts sold. A sell that WAITS (a limit or a stop typed on the ticket) still has to find contracts nothing
-  else speaks for.
+  else speaks for. The ticket says so when it applies — "3 of 5 are working in your bracket; 2 can be sold here" — with
+  a door that cancels the bracket first (2026-10-29).
 - **On the chart** a further pull off the position's chip adds a level: it takes the contracts no level of that kind
   covers yet, or else HALF of the biggest level's. Where no level has two contracts to give, or the ladder is full
   (three targets, two stops), the pull is not taken.
@@ -145,7 +153,7 @@ rule. They are **hard blocks on a way in**, said in words on the ticket; they ne
 | --- | --- |
 | Positions open at once | the buy would open a new position and that many are already open — counting, with them, the contracts a working buy would open, so a resting order cannot carry the book past the limit |
 | The most one trade may cost | what is already paid into that contract plus this buy (premium + fees) is more than that share of what the account is worth now |
-| The day's stop | the account is down that share since the day's open (the book as it stood at the open, marked at the open's first minute). Resting buys are cancelled rather than filled while it stands; it lifts at the next open |
+| The day's stop | the account is down that share since the day's open (the book as it stood at the open, marked at the open's first minute). Resting buys are cancelled rather than filled while it stands; it lifts at the next open. Said in dollars on the desk and in the report: "Day stop: −3% of the account at 09:30 = −$750" |
 
 Adding to a contract already held does not count as a new position. Ours, not the reader's: no more than ten positions
 open at once — past that a tape cannot be read.
@@ -188,7 +196,9 @@ lands, and the trade is written to the record as "expired". Since 2026-10-29:
 ## The report (the reader's own numbers)
 
 (2026-10-29) Also: the running total at each minute a trade closed (ET), **By day** — what closed on each day and the
-account at each bell, open contracts marked — the account's deepest fall bell to bell, and the fees paid.
+account at each bell, open contracts marked, and the day stop in dollars where the reader set one — the account's deepest
+fall bell to bell, and the fees paid. Both the trades and By day download as CSV, in the journal export's conventions
+(`src/data/review/reportCsv.ts` documents the columns).
 
 Net P&L · win rate · average win and loss · profit factor · expectancy (dollars and R) · the deepest drawdown · the
 longest losing run · time in a trade — and the cuts that only options have: **by days to expiry at entry, by delta at

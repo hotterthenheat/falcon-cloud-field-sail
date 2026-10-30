@@ -540,6 +540,35 @@ const DarkPool = () => {
   );
   const leaderChooser = useHiddenColumns('slayer_darkpool_leader_cols');
   const leaderChooserCols = useMemo(() => leaderColumns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [leaderColumns]);
+  /* On a phone a leader is a card like the tape's rows: the name and its last print, the dark dollars at the right,
+     the shares and its share of the heaviest name under them, so the box never scrolls sideways */
+  const leaderPhoneRow = useCallback(
+    (r: LeaderRow) => {
+      const pct = Math.round((r.notional / r.sectorMax) * 100);
+      return (
+        <PhoneRow
+          title={
+            <>
+              <CompanyLogo ticker={r.ticker} size={15} />
+              <span className="font-bold">{r.ticker}</span>
+              <span className="tnum text-textSecondary" title="The name's last dark print">${r.price.toFixed(2)}</span>
+            </>
+          }
+          aside={<span className={weightInk(r.notional, leaderMarks.dark)}>{fmtUsd(r.notional)}</span>}
+          figures={[
+            <span key="s" className={weightInk(r.size, leaderMarks.shares)}>{num(r.size)} sh</span>,
+            <span key="v" className="inline-flex items-center gap-1.5" title="Its dark dollars against the heaviest name's">
+              <span className="inline-flex w-12 h-[3px] rounded-full overflow-hidden bg-ink/[0.06]">
+                <span className="h-full rounded-full bg-silver/70" style={{ width: `${pct}%` }} />
+              </span>
+              {pct}% of the heaviest
+            </span>,
+          ]}
+        />
+      );
+    },
+    [leaderMarks]
+  );
 
   if (!head) return <TracePageSkeleton pathname="/trace/dark-pool" />;
   const litLane = tapeKind === 'lit';
@@ -806,7 +835,7 @@ const DarkPool = () => {
         }
         sentence={leadersSentence}
       >
-        <TraceGrid rows={leaderRows} columns={leaderColumns} hidden={leaderChooser.hidden} widths={LEADER_WIDTHS} tooltips={LEADER_TOOLTIPS} rowKey={leaderKey} onRowClick={r => putAbove(r.ticker)} selectedKey={name} initialSort={{ key: 'dark', dir: 'desc' }} autoHeight emptyText={srcReading ? 'Reading the tape…' : 'No dark prints in hand yet'} testId="dark-leaders" />
+        <TraceGrid rows={leaderRows} columns={leaderColumns} hidden={leaderChooser.hidden} widths={LEADER_WIDTHS} tooltips={LEADER_TOOLTIPS} rowKey={leaderKey} onRowClick={r => putAbove(r.ticker)} selectedKey={name} initialSort={{ key: 'dark', dir: 'desc' }} phoneRow={leaderPhoneRow} autoHeight emptyText={srcReading ? 'Reading the tape…' : 'No dark prints in hand yet'} testId="dark-leaders" />
       </TraceBox>
 
       <CrossDrilldown print={shownCross} view={openView} onClose={() => setOpenCross(null)} onStep={stepCross} hasPrev={openIdx > 0} hasNext={openIdx >= 0 && openIdx < cut.length - 1} onOpen={setOpenCross} />
