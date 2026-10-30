@@ -252,6 +252,8 @@ interface DeskShellProps {
 
 /** How long the playing clock stands on the bell before a roll-over opens the next day: six ticks, 1.5 s */
 const BELL_HOLD_TICKS = 6;
+/** …and how often it asks again while the next day's quotes have not loaded: sixty ticks, 15 s */
+const ROLL_RETRY_TICKS = 60;
 
 /** That address holds no session of this browser's */
 export const DeskMissing = () => (
@@ -349,10 +351,11 @@ const DeskShell = ({ phoneSideFirst = false, session, kind, onRename, subline = 
       if (c.minute >= c.lastMin) {
         const to = playStep(c, 0, !!c.roll, c.tomorrow);
         if (!to) return setPlaying(false);
-        /* the bell is seen for a moment, then the next session opens */
-        if (++atBell < BELL_HOLD_TICKS || rolled === c.day) return;
+        /* the bell is seen for a moment, then the next session opens — asked once, and again every 15 s while the clock
+           still stands on this bell (the terminal was away: the move waits on the recorded days) */
+        atBell++;
+        if (atBell < BELL_HOLD_TICKS || (rolled === c.day && atBell % ROLL_RETRY_TICKS !== 0)) return;
         rolled = c.day;
-        atBell = 0;
         owed = 0;
         c.move(to);
         return;

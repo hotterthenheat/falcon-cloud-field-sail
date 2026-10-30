@@ -169,6 +169,14 @@ export const PRINT_DAYS = 6;
 type Held = { ticks: Tick[]; through: number };
 type Window = { start: string; end: string };
 
+/** A stock's extended-hours windows as ThetaData is asked for them. The end is the window's last millisecond: an end
+    of 19:59:59 would leave out every print stamped 19:59:59.xxx (the terminal's end_time is exclusive at the stamp's
+    resolution), and 20:00:00 would open the next minute's bar. The same strings everywhere, so the reads are shared. */
+export const EXT_WINDOWS: { pre: Window; post: Window } = {
+  pre: { start: '04:00:00', end: '09:29:59.999' },
+  post: { start: '16:00:00', end: '19:59:59.999' },
+};
+
 const pastReads = new Map<string, { at: number; got: Promise<Held | null> }>();
 const todayReads = new Map<string, { day: string; held: Held | null; at: number; busy: Promise<void> | null }>();
 

@@ -54,17 +54,23 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
     return [...new Set([...base, ...extra])].sort((a, b) => a - b);
   }, []);
 
+  /* The window is the parent's element, and a parent's ref is set only after its children's layout effects have run:
+     on the first mount the virtualizer would find no element. It is taken here once the ref is set. */
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (box.current !== el) setEl(box.current);
+  });
+
   /* the window's width sets the estimate (how many lines a headline wraps to) */
   const [width, setWidth] = useState(0);
   useLayoutEffect(() => {
-    const el = box.current;
     if (!el) return;
     setWidth(el.clientWidth);
     if (typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(() => setWidth(el.clientWidth));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [box]);
+  }, [el]);
   const widthRef = useRef(width);
   widthRef.current = width;
   const estimateRef = useRef(estimate);
@@ -82,7 +88,7 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
   const estimateSize = useCallback((i: number) => estimateRef.current(itemsRef.current[i], widthRef.current), []);
   const v = useVirtualizer({
     count: items.length,
-    getScrollElement: () => box.current,
+    getScrollElement: () => el,
     estimateSize,
     getItemKey,
     overscan: OVERSCAN,
@@ -104,22 +110,22 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
   /* the open story into view: on a pick, and once when a deep-linked story first lands in the rows */
   const shownRef = useRef<string | null>(null);
   useEffect(() => {
-    if (openIdx < 0 || openKey == null) return;
+    if (openIdx < 0 || openKey == null || !el) return;
     const mark = `${openKey}|${String(reveal)}`;
     if (shownRef.current === mark) return;
     shownRef.current = mark;
     v.scrollToIndex(openIdx, { align: 'auto' });
-  }, [openKey, openIdx >= 0, reveal]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [openKey, openIdx >= 0, reveal, el]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* the keys walk the stories: ↑ ↓ one, Page Up / Page Down a window, Home / End the ends; Enter opens (the row is a button) */
   const pendingFocus = useRef<number | null>(null);
   const tryFocus = () => {
     const n = pendingFocus.current;
     if (n == null) return;
-    const el = box.current?.querySelector<HTMLElement>(`[data-index="${n}"]`)?.firstElementChild as HTMLElement | null;
-    if (!el) return;
+    const row = el?.querySelector<HTMLElement>(`[data-index="${n}"]`)?.firstElementChild as HTMLElement | null;
+    if (!row) return;
     pendingFocus.current = null;
-    el.focus({ preventScroll: true });
+    row.focus({ preventScroll: true });
   };
   useLayoutEffect(tryFocus);
   const onKeyDown = (ev: KeyboardEvent<HTMLDivElement>) => {

@@ -6,6 +6,7 @@ import { noteBarCloses, peekRegularCloses } from '../dayChange';
 import { type Candle } from '../../types/market';
 import { thetaAllowedHere } from '../theta';
 import { thetaCall } from '../theta';
+import { EXT_WINDOWS, cleanExtendedBars } from '../thetaEligible';
 import { type UwBar } from '../whales';
 import { num } from './scale';
 
@@ -83,13 +84,15 @@ export async function thetaTape(symbol: string, index: boolean): Promise<UwBar[]
   const back = symbol.toUpperCase() === 'SPX' ? 8 : 4;
   const start = ymdNY(Date.now() - back * 86400000);
   const root = index ? 'index' : 'stock';
-  /* The vendor's default window is the cash session. Premarket, the curb and the overnight book are separate asks. */
+  /* The vendor's default window is the cash session. Premarket, the curb and the overnight book are separate asks.
+     Each ends on its last millisecond: an end of 19:59:59 leaves out the prints stamped 19:59:59.xxx, and the cash
+     window's old end of 16:15:00 kept a 16:15 bar of the 16:15:00.000 prints alone (it wins over the post window's). */
   const windows = [
-    { start: '09:30:00', end: '16:15:00' },
-    { start: '04:00:00', end: '09:29:59' },
-    { start: '16:00:00', end: '19:59:59' },
-    { start: '20:00:00', end: '23:59:59' },
-    { start: '00:00:00', end: '03:59:59' },
+    { start: '09:30:00', end: '16:15:59.999' },
+    EXT_WINDOWS.pre,
+    EXT_WINDOWS.post,
+    { start: '20:00:00', end: '23:59:59.999' },
+    { start: '00:00:00', end: '03:59:59.999' },
   ];
   const got = await Promise.all(
     windows.map(w => thetaCall(`/${root}/history/ohlc?symbol=${symbol}&start_date=${start}&end_date=${end}&interval=1m&start_time=${w.start}&end_time=${w.end}&format=json`)),
@@ -129,11 +132,35 @@ export async function thetaTape(symbol: string, index: boolean): Promise<UwBar[]
   }
   noteBlankDays(symbol, seen);
   out.sort((a, b) => Date.parse(a.start_time || '') - Date.parse(b.start_time || ''));
+  /* a stock's pre-market and after-hours minutes priced off the prints that may set a price (data/thetaEligible.ts),
+     the same reads the chart tape makes */
+  const clean = index ? out : await cleanStockTape(symbol, out);
   const row = Array.isArray(snap.data) ? snap.data[0] as Record<string, unknown> | undefined : undefined;
   const px = row ? num(row.price ?? row.close) : 0;
   const at = row ? nyWallStamp(row.timestamp) : 0;
-  pushPrint(out, px, at, symbol);
-  return out;
+  pushPrint(clean, px, at, symbol);
+  return clean;
+}
+
+/** A stock's extended-hours bars rebuilt from its price-setting prints (data/thetaEligible.ts); the regular session
+    and the 16:00 close bar as they came. */
+async function cleanStockTape(symbol: string, bars: UwBar[]): Promise<UwBar[]> {
+  const asCandle = (b: UwBar): Candle => ({ time: Math.floor(Date.parse(b.start_time || '') / 1000), open: num(b.open), high: num(b.high), low: num(b.low), close: num(b.close), volume: num(b.volume) });
+  const minuteOf = (b: UwBar) => nyMinutes(Date.parse(b.start_time || ''));
+  const isPre = (b: UwBar) => minuteOf(b) >= 4 * 60 && minuteOf(b) < OPEN_MIN;
+  const isPost = (b: UwBar) => minuteOf(b) >= CLOSE_MIN && minuteOf(b) < 20 * 60;
+  const [pre, post] = await Promise.all([
+    cleanExtendedBars(thetaCall, symbol, EXT_WINDOWS.pre, 60, bars.filter(isPre).map(asCandle)),
+    cleanExtendedBars(thetaCall, symbol, EXT_WINDOWS.post, 60, bars.filter(isPost).map(asCandle)),
+  ]);
+  const asBar = (c: Candle): UwBar => {
+    const iso = new Date(c.time * 1000).toISOString();
+    return { open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume, start_time: iso, end_time: iso, market_time: tapeMark(symbol, nyMinutes(c.time * 1000)) };
+  };
+  return bars
+    .filter(b => !isPre(b) && !isPost(b))
+    .concat(pre.map(asBar), post.map(asBar))
+    .sort((a, b) => Date.parse(a.start_time || '') - Date.parse(b.start_time || ''));
 }
 
 /** VIX prints from 03:15. That print is the price, not a pre-market stock. */

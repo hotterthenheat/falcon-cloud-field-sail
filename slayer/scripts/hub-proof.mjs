@@ -53,7 +53,7 @@ check('one key per request', canonical('/a?z=1&b=2&a=3&b=1') === '/a?a=3&b=2&b=1
 const counts = {};
 for (const n of [1, 5, 500]) {
   const v = vendor();
-  const hub = createHub({ name: `proof-${n}`, fetch: v.fetch, ttl: () => TTL, refreshPerSec: 50 });
+  const hub = createHub({ hours: () => true, name: `proof-${n}`, fetch: v.fetch, ttl: () => TTL, refreshPerSec: 50 });
   const asks = await viewers(hub, n, 100, RUN);
   counts[n] = v.total();
   check(`${n} viewer(s) asking every 100 ms: ${asks} asks, ${v.total()} vendor calls`, v.total() <= RUN / TTL + 3);
@@ -64,7 +64,7 @@ check('500 viewers cost about what 1 does (within three calls)', counts[500] <= 
 /* a single slow viewer is not refreshed faster than it looks: calls follow its asks, not the freshness window */
 {
   const v = vendor();
-  const hub = createHub({ name: 'proof-slow', fetch: v.fetch, ttl: () => 100, refreshPerSec: 50 });
+  const hub = createHub({ hours: () => true, name: 'proof-slow', fetch: v.fetch, ttl: () => 100, refreshPerSec: 50 });
   const asks = await viewers(hub, 1, 600, RUN);
   check(`one viewer every 600 ms on a 100 ms path: ${asks} asks, ${v.total()} calls`, v.total() <= asks + 2);
 }
@@ -72,7 +72,7 @@ check('500 viewers cost about what 1 does (within three calls)', counts[500] <= 
 /* identical asks at the same instant share one call */
 {
   const v = vendor();
-  const hub = createHub({ name: 'proof-burst', fetch: v.fetch, ttl: () => TTL, refreshPerSec: 50 });
+  const hub = createHub({ hours: () => true, name: 'proof-burst', fetch: v.fetch, ttl: () => TTL, refreshPerSec: 50 });
   await Promise.all(Array.from({ length: 200 }, () => hub.get('/news/headlines?page=0&limit=50')));
   await Promise.all(Array.from({ length: 200 }, () => hub.get('/news/headlines?limit=50&page=0')));
   check('400 simultaneous asks, two spellings: one vendor call', v.total() === 1, `${v.total()}`);
@@ -82,8 +82,8 @@ check('500 viewers cost about what 1 does (within three calls)', counts[500] <= 
 {
   let down = false;
   const v = vendor(() => (down ? 503 : 200));
-  const strict = createHub({ name: 'proof-strict', fetch: v.fetch, ttl: () => 50, refreshPerSec: 50 });
-  const lenient = createHub({ name: 'proof-lenient', fetch: v.fetch, ttl: () => 50, refreshPerSec: 50, keepOnFail: () => true });
+  const strict = createHub({ hours: () => true, name: 'proof-strict', fetch: v.fetch, ttl: () => 50, refreshPerSec: 50 });
+  const lenient = createHub({ hours: () => true, name: 'proof-lenient', fetch: v.fetch, ttl: () => 50, refreshPerSec: 50, keepOnFail: () => true });
   await strict.get('/q');
   await lenient.get('/q2');
   down = true;
@@ -103,7 +103,7 @@ check('500 viewers cost about what 1 does (within three calls)', counts[500] <= 
 /* "no data" is an answer: kept, so viewers asking again do not each go to the vendor */
 {
   const v = vendor(() => 472);
-  const hub = createHub({ name: 'proof-nodata', fetch: v.fetch, ttl: () => 10_000, refreshPerSec: 50 });
+  const hub = createHub({ hours: () => true, name: 'proof-nodata', fetch: v.fetch, ttl: () => 10_000, refreshPerSec: 50 });
   for (let i = 0; i < 50; i++) await hub.get('/option/history/quote?date=20261028');
   check('a no-data answer is kept like any other', v.total() === 1, `${v.total()}`);
 }
@@ -113,7 +113,7 @@ check('500 viewers cost about what 1 does (within three calls)', counts[500] <= 
 {
   let n = 0;
   const promoted = [];
-  const hub = createHub({
+  const hub = createHub({ hours: () => true,
     name: 'proof-promote',
     fetch: async (p) => {
       n += 1;
