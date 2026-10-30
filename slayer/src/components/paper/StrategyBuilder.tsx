@@ -94,8 +94,11 @@ const StrategyBuilder = ({ desk }: { desk: StrategyDesk }) => {
   const cq = callSide ? desk.quote(callSide) : null;
   const sq = csp ? desk.quote(csp) : null;
   /* the price at the market, a share: what it takes in (credit) or costs (debit) */
-  /* a leg with no quote read yet (or none standing) has no price: a dash, never 0.00 */
-  const natural = kind === 'vertical' ? (vq && !vq.dead ? (way === 'credit' ? vq.bid : vq.ask) : NaN) : kind === 'condor' ? (pq && cq && !pq.dead && !cq.dead ? +(pq.bid + cq.bid).toFixed(2) : NaN) : kind === 'csp' ? (sq && !sq.dead ? sq.bid : NaN) : NaN;
+  /* a leg with no quote read yet has no price: a dash, never 0.00. A quote read a while ago (after the bell the feed reads
+     once a minute) still prices the order, said as the last quote — nothing fills on it. */
+  const pos = (v: number | undefined) => (v != null && v > 0 ? v : NaN);
+  const natural = kind === 'vertical' ? (vq ? pos(way === 'credit' ? vq.bid : vq.ask) : NaN) : kind === 'condor' ? (pq && cq && pq.bid > 0 && cq.bid > 0 ? +(pq.bid + cq.bid).toFixed(2) : NaN) : kind === 'csp' ? pos(sq?.bid) : NaN;
+  const stale = kind === 'vertical' ? !!vq?.dead : kind === 'condor' ? !!(pq?.dead || cq?.dead) : kind === 'csp' ? !!sq?.dead : false;
   const limitPx = Math.max(0.01, num(limit) ?? (Number.isFinite(natural) ? natural : 0.01));
   const width = kind === 'vertical' && vertical ? Math.abs(vertical.short! - vertical.strike) : kind === 'condor' && w != null ? w : 0;
 
@@ -112,7 +115,7 @@ const StrategyBuilder = ({ desk }: { desk: StrategyDesk }) => {
     if (kind === 'covered') return { market: 'Not offered here', limit: 'Not offered here' };
     if (off) return { market: off, limit: off };
     /* a limit needs a price: the market's, or one typed — never a made-up 0.01 */
-    const noPrice = num(limit) == null && !Number.isFinite(natural) ? 'No market in a leg right now — type the net price it should wait for' : null;
+    const noPrice = num(limit) == null && !Number.isFinite(natural) ? 'No quote for a leg yet — type the net price it should wait for' : null;
     if (kind === 'condor') {
       const m = comboDraft('market');
       const l = comboDraft('limit');
@@ -217,7 +220,7 @@ const StrategyBuilder = ({ desk }: { desk: StrategyDesk }) => {
                 {words}
                 <span className="text-textMuted">
                   {' '}
-                  · {Number.isFinite(natural) ? `${natural.toFixed(2)} ${sells ? 'credit' : 'debit'} at the market` : 'no market in a leg right now'}
+                  · {Number.isFinite(natural) ? `${natural.toFixed(2)} ${sells ? 'credit' : 'debit'} ${stale ? 'on the last quote read — nothing fills on it now' : 'at the market'}` : 'no quote for a leg yet'}
                 </span>
               </div>
             )}
