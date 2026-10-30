@@ -87,6 +87,7 @@ import { useFadeClose } from '../../components/ui/useFadeClose';
 import { fmtStrike, CHAIN_COLUMNS, DEFAULT_COLS, COLUMN_GROUPS, ChainCard } from '../../components/weigher/ChainGrid';
 import type { Timeframe } from '../../data/timeframe';
 import type { OptionRight } from '../../types/compass';
+const STAMP_FMT = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' });
 
 /* Still v2 on purpose: the desk went static and the stored `layout` field simply stopped being read — but the
    tickers, columns, depth and every other choice in the same record survive the change untouched. */
@@ -1213,7 +1214,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
      fact. The head knows its room. */
   const chainName = <TickerQuickPick ticker={ticker} onPick={pickTicker} slim />;
   const chainFeedWords = (() => {
-    const stamp = (at: number) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(at));
+    const stamp = (at: number) => STAMP_FMT.format(new Date(at));
     if (chain.offline) return offlineWords(chain.takenAt ?? listed?.takenAt ?? 0);
     if (listed === null || (chainWait && !chain.rows.length)) return 'Pulling';
     if (chain.kept && chain.takenAt) return `Kept · as of ${etClock(chain.takenAt)}`;

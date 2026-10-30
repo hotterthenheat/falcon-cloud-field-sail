@@ -497,9 +497,9 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
       <div className="px-5 pb-4 flex-1 flex flex-col justify-center" ref={stripRef}>
         {/* The strip keeps its 28 px; beside the report the phases, strip and hours centre in the height the box has. */}
         {/* Phase names on one row at their phase's start, except the turn (20 min) ends at 15:50 where the close's (10 min) begins. */}
-        {/* ON A TOUCH SCREEN the two rows stand 44 apart and the strip starts under the second's finger boxes (the
+        {/* ON A TOUCH SCREEN the two rows stand 46 apart and the strip starts under the second's finger boxes (the
             last-targets pass, 2026-10-30): a name over another 18px below it shared its 44px box with that one */}
-        <div className={`relative ${narrow ? 'h-9 [@media(pointer:coarse)]:h-[72px]' : 'h-[18px]'}`} data-clock-phases>
+        <div className={`relative ${narrow ? 'h-9 [@media(pointer:coarse)]:h-[74px]' : 'h-[18px]'}`} data-clock-phases>
           {phases.map((p, i) => {
             const active = current?.key === p.key;
             const kept = keptPhase?.key === p.key || (keptBlock != null && phaseAtMin(minuteOf(keptBlock * blockMin, win)).key === p.key);
@@ -518,7 +518,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
                 /* pt-[7px] -mt-[7px]: the name's box reaches 24px up into the head's gap (the strip is under it), the word stays put */
                 /* !absolute: on a touch screen the Pinpoint frame's `.hit` on every button (position: relative) won, and the
                    names fell into a row of their own, off their phases and past the box's edge (the last-targets pass) */
-                className={`hit !absolute pt-[7px] -mt-[7px] font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap ${nameCls} ${narrow && i % 2 === 1 ? 'top-[18px] [@media(pointer:coarse)]:top-[44px]' : 'top-0'} ${last ? '!left-auto !right-0 !translate-x-0' : ''} ${turn && !narrow ? '!left-auto !right-[52px] !translate-x-0' : ''}`}
+                className={`hit !absolute pt-[7px] -mt-[7px] font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap ${nameCls} ${narrow && i % 2 === 1 ? 'top-[18px] [@media(pointer:coarse)]:top-[46px]' : 'top-0'} ${last ? '!left-auto !right-0 !translate-x-0' : ''} ${turn && !narrow ? '!left-auto !right-[52px] !translate-x-0' : ''}`}
                 style={{
                   left: `${pctAt(turn ? p.to : p.from)}%`,
                   transform: turn ? 'translateX(calc(-100% - 6px))' : last ? 'translateX(2px)' : undefined,

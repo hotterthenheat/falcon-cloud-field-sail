@@ -388,7 +388,8 @@ const JumpToTime = ({ onJump, back, latestWord }: { onJump: (hhmm: string) => vo
 };
 
 const ALERT_PACK_HINT = 'Alerts that are legs of a floor package — no side, filed in the same millisecond as alerts on the root’s other contracts';
-const tapeIsoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+const TAPE_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
+const tapeIsoToday = () => TAPE_DAY.format(new Date());
 const alertIdOf = (p: FlowPrint) => p.vendorId || String(p.id);
 
 const LiveTape = () => {
