@@ -908,9 +908,11 @@ const News = () => {
           kept={news.keptAt}
           line={<span className="max-sm:block max-sm:line-clamp-2 max-sm:min-h-[2lh]" data-news-coverage>{coverText} · a row opens the story beside the list</span>}
         >
-          {/* the head's figures stand at one height at every width: one row on a desk, two on a tablet, three on a phone */}
-          <dl className="mt-2 grid gap-x-6 gap-y-2 grid-cols-3 sm:grid-cols-[auto_auto_auto_minmax(0,1fr)] lg:flex lg:items-start" data-news-facts>
-            <Fact cell="lg:shrink-0" label="Stories" testId="stories" tip={`Headlines on the wire after the cards and the filter${coverage.reading ? ' — still reading back, the count grows' : ''}`} partial={coverage.reading && rows.length > 0}>
+          {/* The head's figures stand at one size at every width — one row on a desk, three below it —
+              and each in a cell of its own width, so a value that grows as the wire reads moves nothing beside it.
+              (`[display:grid]`, not `grid`: index.css turns a `main dl.grid` into a wrapping flex below lg.) */}
+          <dl className="mt-2 [display:grid] gap-x-6 gap-y-2 grid-cols-3 sm:grid-cols-[7rem_6rem_minmax(0,1fr)] lg:flex lg:items-start" data-news-facts>
+            <Fact cell="lg:shrink-0 lg:w-[7rem]" label="Stories" testId="stories" tip={`Headlines on the wire after the cards and the filter${coverage.reading ? ' — still reading back, the count grows' : ''}`} partial={coverage.reading && rows.length > 0}>
               {news.status === 'loading' && rows.length === 0 ? (
                 <span className="text-textMuted">Reading</span>
               ) : news.status === 'sim' ? (
@@ -923,14 +925,14 @@ const News = () => {
               )}
             </Fact>
             <>
-                <Fact cell="lg:shrink-0" label="Major" testId="major" tip="Headlines Unusual Whales flags as major" partial={coverage.reading && rows.length > 0}>
+                <Fact cell="lg:shrink-0 lg:w-[6rem]" label="Major" testId="major" tip="Headlines Unusual Whales flags as major" partial={coverage.reading && rows.length > 0}>
                   {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : <>{rows.filter(r => r.item.major).length}{coverage.reading && <span className="text-t9"> · so far</span>}</>}
                 </Fact>
-                <Fact cell="lg:shrink-0" label="On your Board" testId="board" tip="Headlines that name a stock on your Board" partial={coverage.reading && rows.length > 0}>
+                <Fact cell="lg:shrink-0 lg:w-[7rem]" label="On your Board" testId="board" tip="Headlines that name a stock on your Board" partial={coverage.reading && rows.length > 0}>
                   {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : <>{rows.filter(onBoard).length}{coverage.reading && <span className="text-t9"> · so far</span>}</>}
                 </Fact>
             </>
-            <Fact cell="max-sm:col-span-3 lg:max-w-[45%]" label={biggest && !moveDayIsToday ? `Biggest move · ${shortDay(biggest.date)}` : coverage.today ? 'Biggest move today' : `Biggest move · ${shortDay(coverage.day)}`} testId="biggest" tip={`The regular session's change${biggest && !moveDayIsToday ? ` on ${shortDay(biggest.date)}, the last session` : ''} — not the move when the story crossed — over every name ${coverage.today ? "today's" : `${wireDayWord}'s`} stories are about (${moveNames.length} names, read in bulk off the screener; the regular close is each name's daily row — ${setMoves.moves.size} read, the other ${Math.max(0, setMoves.screened - setMoves.moves.size)} ruled out because their whole session range sits inside the leader's move)`}>
+            <Fact cell="max-lg:col-span-3 lg:shrink-0 lg:w-[17rem]" label={biggest && !moveDayIsToday ? `Biggest move · ${shortDay(biggest.date)}` : coverage.today ? 'Biggest move today' : `Biggest move · ${shortDay(coverage.day)}`} testId="biggest" tip={`The regular session's change${biggest && !moveDayIsToday ? ` on ${shortDay(biggest.date)}, the last session` : ''} — not the move when the story crossed — over every name ${coverage.today ? "today's" : `${wireDayWord}'s`} stories are about (${moveNames.length} names, read in bulk off the screener; the regular close is each name's daily row — ${setMoves.moves.size} read, the other ${Math.max(0, setMoves.screened - setMoves.moves.size)} ruled out because their whole session range sits inside the leader's move)`}>
               {coverage.reading ? (
                 <span className="text-textMuted">reading {coverage.today ? "today's" : `${wireDayWord}'s`} stories{namesSoFar ? ` · ${namesSoFar} names so far` : ''}</span>
               ) : biggest ? (
@@ -943,7 +945,7 @@ const News = () => {
               )}
             </Fact>
             {/* the one figure that may run long: one line on a desk, two on a phone, and the space for them is always kept */}
-            <Fact cell="col-span-3 sm:col-span-4 lg:flex-1" nowrap={false} label="Next print" testId="next" tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first; with none ahead, the next earnings report">
+            <Fact cell="col-span-3 lg:flex-1" nowrap={false} label="Next print" testId="next" tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first; with none ahead, the next earnings report">
               <span className="block sm:truncate max-sm:line-clamp-2 max-sm:min-h-[2lh]" title={nextPrintText ?? undefined}>
               {nextPrint ? (
                 <>
