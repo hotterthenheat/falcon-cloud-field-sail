@@ -161,7 +161,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: NotebookPen,
     glyph: 'journal',
     ink: NAV_INK.journal,
-    description: 'Every trade you closed — paper or backtest — on its day, with your own words on it',
+    description: 'Every trade you closed — paper, backtest or your own journal — on its day, with your own words on it',
     group: 'Practice',
   },
   // ── More ──

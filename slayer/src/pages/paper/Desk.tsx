@@ -16,6 +16,8 @@ import type { DropdownOption } from '../../components/ui/DropdownSelect';
 import type { Column } from '../../components/ui/DataTable';
 import DeskShell, { smallDoor, type DeskName } from '../../components/review/DeskShell';
 import OptionsChain, { ChainOrder, type ChainOrderDesk } from '../../components/paper/OptionsChain';
+import StrategyBuilder, { type StrategyDesk } from '../../components/paper/StrategyBuilder';
+import { Pills } from '../../components/paper/OrderPanel';
 import type { ChartBracket, ChartEntry, ChartMark, ChartPosition } from '../../components/review/PositionLayer';
 import PnlChips from '../../components/paper/PnlChips';
 import { HeldElsewhere } from '../../components/paper/HeldElsewhere';
@@ -36,13 +38,13 @@ import { nameGoesUp } from '../../data/review/engine';
 import { contractKey, contractWords, type ContractId, type Right } from '../../data/review/quotes';
 import { companyName } from '../../data/tickers';
 import type { Timeframe } from '../../data/timeframe';
-import { bankedOf, gapOf, optLadderRoom, optLadderTake, optRefusal, viewOf, type FutTrade, type MarkedOpt, type OptOrder, type OptTrade } from '../../data/paper/engine';
-import { readRules, rulesOf } from '../../data/paper/rules';
+import { bankedOf, comboRefusal, gapOf, openPreview, optLadderRoom, optLadderTake, optRefusal, viewOf, type ComboDraft, type FutTrade, type MarkedOpt, type OptOrder, type OptTrade } from '../../data/paper/engine';
+import { putsSecured, readRules, rulesOf, sellSays } from '../../data/paper/rules';
 import { LIFE, PAPER_INDEXES, feedOffline, isPaperIndex, ivOf, liveDeskChain, paperIndex, spotRead, listedNow, spotOf, spotForAskNow, spotForBidNow, stepOf } from '../../data/paper/feed';
 import { futWords } from '../../data/paper/products';
 import { dayBeginsAt, nyMomentWords } from '../../data/paper/clock';
 import { nyClock } from '../../core/nyTime';
-import { amendOrder, attachOpt, breakevenOrder, cancelOrder, cancelWorking, closeOpt, flattenAccount, liveMarket, placeOptOrder, readPaper, rebaseOrder, setInHand, trailOrder, usePaper } from '../../data/paper/store';
+import { amendOrder, attachOpt, breakevenOrder, cancelOrder, cancelWorking, closeOpt, flattenAccount, liveMarket, placeComboOrder, placeOptOrder, readPaper, rebaseOrder, setInHand, trailOrder, usePaper } from '../../data/paper/store';
 
 /* The chart's settings on this desk. A name's live chart has its book: the walls, the trails, the vol pane. An index's
    has no book of its own, so the overlays that read one are not offered, and no daily candle. */
@@ -142,6 +144,8 @@ const PaperDesk = () => {
   const [expiry, setExpiry] = useState<string | null>(null);
   const [picked, setPicked] = useState<ContractId | null>(null);
   const [drillOpen, setDrillOpen] = useState(true);
+  /** The side column's second card: the chain (an order inside a strike) or the strategy builder */
+  const [panel, setPanel] = useState<'chain' | 'build'>('chain');
   const centreRef = useRef<{ key: string; at: number } | null>(null);
   /** A drawn long or short, being placed: whose, and at what size */
   const [markOrder, setMarkOrder] = useState<{ name: string; mark: TradeMark; qty: number } | null>(null);
@@ -241,7 +245,8 @@ const PaperDesk = () => {
     if (hit) return hit;
     const spot = spotOf(name);
     const ivNow = ivOf(name, m.now);
-    const positions: ChartPosition[] = v.opt.filter(p => p.contract.ticker === name).map(p => ({ key: p.key, contract: p.contract, qty: p.qty, spotIn: p.spotIn, pnl: p.pnl, r: p.r, avg: p.avg, bid: p.quote.bid, dead: p.quote.dead, room: optLadderRoom(account, m, p.contract), take: optLadderTake(account, m, p.contract) }));
+    /* a short says so on its chip; the ladder rides longs only (a short's way out is a buy back) */
+    const positions: ChartPosition[] = v.opt.filter(p => p.contract.ticker === name).map(p => ({ key: p.key, contract: p.contract, qty: p.qty, spotIn: p.spotIn, pnl: p.pnl, r: p.r, avg: p.avg, bid: p.quote.bid, dead: p.quote.dead, room: optLadderRoom(account, m, p.contract), take: optLadderTake(account, m, p.contract), ...(p.dir < 0 ? { label: `${contractWords(p.contract).replace(`${name} `, '')} short`, tone: 'bear' as const } : {}) }));
     const brackets: ChartBracket[] = [];
     for (const o of account.opt.orders) {
       if (o.status !== 'working' || o.side !== 'sell' || o.price == null || o.kind === 'market' || o.contract.ticker !== name) continue;
@@ -274,7 +279,7 @@ const PaperDesk = () => {
       for (const g of groups.values()) if (g.length > 1) [...g].sort((x, y) => Math.abs(x.money) / x.qty - Math.abs(y.money) / y.qty).forEach((b, i) => (b.nth = i + 1));
     }
     /* the fills of THIS page load, as arrows where the chart stood (an earlier load's market is not this one) */
-    const marks: ChartMark[] = account.opt.fills.filter(f => f.contract.ticker === name && f.life === LIFE).map(f => ({ time: f.bar, side: f.side, quiet: f.how === 'expired' || f.how === 'rule' || f.how === 'page', text: `${f.side === 'buy' ? 'Bought' : f.how === 'expired' ? 'Expired' : 'Sold'} ${f.qty} · ${contractWords(f.contract).replace(`${name} `, '')}` }));
+    const marks: ChartMark[] = account.opt.fills.filter(f => f.contract.ticker === name && f.life === LIFE).map(f => ({ time: f.bar, side: f.side, quiet: f.how === 'expired' || f.how === 'rule' || f.how === 'page', text: `${f.how === 'expired' ? 'Expired' : f.side === 'buy' ? (f.opens === false ? 'Bought back' : 'Bought') : f.opens ? 'Sold short' : 'Sold'} ${f.qty} · ${contractWords(f.contract).replace(`${name} `, '')}` }));
     const made: DeskName = {
       symbol: name,
       title: titleOf(name),
@@ -339,12 +344,18 @@ const PaperDesk = () => {
     onQ: setQuick,
     heldAt: strike => {
       const p = v.opt.find(x => legOf(x.contract) && x.contract.strike === strike);
-      return p ? { contract: p.contract, qty: p.qty, avg: p.avg, pnl: p.pnl, decayDay: Math.abs(p.quote.theta) * 100 * p.qty } : null;
+      return p ? { contract: p.contract, dir: p.dir, qty: p.qty, avg: p.avg, pnl: p.pnl, decayDay: Math.abs(p.quote.theta) * 100 * p.qty } : null;
     },
     strikes: chain?.rows.map(r => r.strike) ?? [],
     onPlace: d => {
+      const held = v.opt.find(p => p.key === contractKey(d.contract));
+      const opens = !held || (d.side === 'buy') === (held.dir > 0);
       placeOptOrder(account.id, d);
-      setTab(d.kind === 'market' ? (d.side === 'buy' ? 'open' : 'closed') : 'orders');
+      setTab(d.kind === 'market' ? (opens ? 'open' : 'closed') : 'orders');
+    },
+    sell: {
+      securedOnly: putsSecured(account),
+      preview: d => (d.contract.ticker === name ? openPreview(account, m, [{ contract: d.contract, side: d.side, qty: d.qty, secured: d.secured }]) : null),
     },
     onClose: (c, q) => {
       closeOpt(account.id, c, q);
@@ -352,10 +363,46 @@ const PaperDesk = () => {
     },
   };
   const heldStrikes = new Set(v.opt.filter(p => legOf(p.contract)).map(p => p.contract.strike));
+  const planRules = rulesOf(account);
+  const strategyDesk: StrategyDesk = {
+    ticker: name,
+    expiry: exp,
+    expiryOptions,
+    onExpiry: setExpiry,
+    strikes: chain?.rows.map(r => r.strike) ?? [],
+    spot,
+    quote: c => m.optQuote(c),
+    q: quickOf(desks),
+    onQ: setQuick,
+    fee: account.sandbox ? 0 : account.fee,
+    locked: chainDesk.locked,
+    canSell: !planRules || planRules.allowSell !== 'none',
+    sellWords: planRules ? sellSays(planRules) : '',
+    securedOnly: putsSecured(account),
+    refuse: d => optRefusalLive(account.id, d),
+    refuseCombo: d => comboRefusalLive(account.id, d),
+    preview: legs => openPreview(account, m, legs),
+    onPlace: d => {
+      placeOptOrder(account.id, d);
+      setTab(d.kind === 'market' ? 'open' : 'orders');
+    },
+    onPlaceCombo: d => {
+      placeComboOrder(account.id, d);
+      setTab(d.kind === 'market' ? 'open' : 'orders');
+    },
+    version,
+  };
+  const panelSwitch = (
+    <div className="flex items-center gap-2 shrink-0" data-paper-side-panel={panel}>
+      <Pills label="The chain, or a strategy built from it" value={panel} onChange={setPanel} options={[{ value: 'chain', label: 'Chain' }, { value: 'build', label: 'Strategies' }]} />
+      <span className="text-t10 text-textMuted truncate">{panel === 'chain' ? 'an order inside a strike' : 'spreads, condors, cash-secured puts'}</span>
+    </div>
+  );
   const sideCard = (
     <>
       {accountCard}
-      <OptionsChain
+      {panelSwitch}
+      {panel === 'build' ? <StrategyBuilder desk={strategyDesk} /> : <OptionsChain
         ticker={name}
         chain={chain}
         right={right}
@@ -377,8 +424,8 @@ const PaperDesk = () => {
             <LoadingBox shape="table" rows={12} label="Loading the listed expiries" />
           )
         }
-        order={c => (exp && chain ? <ChainOrder key={`${name}|${exp}|${c.strike}|${c.right}|${heldStrikes.has(c.strike) ? 'held' : 'new'}`} c={c} ticker={name} expiry={exp} spot={chain.spot} desk={chainDesk} /> : null)}
-      />
+        order={c => (exp && chain ? <ChainOrder key={`${name}|${exp}|${c.strike}|${c.right}|${heldStrikes.has(c.strike) ? `held${v.opt.find(p => legOf(p.contract) && p.contract.strike === c.strike)?.dir}` : 'new'}`} c={c} ticker={name} expiry={exp} spot={chain.spot} desk={chainDesk} /> : null)}
+      />}
     </>
   );
 
@@ -390,12 +437,34 @@ const PaperDesk = () => {
     .sort((x, y) => (x.o.status === 'working' ? 0 : 1) - (y.o.status === 'working' ? 0 : 1) || y.o.placed.at - x.o.placed.at)
     .slice(0, 60);
   const closedRows: ClosedRow[] = [...v.optTrades.map(t => ({ key: t.id, fut: false as const, t, at: t.closed.at })), ...v.futTrades.map(t => ({ key: t.id, fut: true as const, t, at: t.closed.at }))].sort((x, y) => y.at - x.at);
+  /* what a short holds of margin: on the first position of its line (a condor's two spreads are one line) */
+  const marginCell = (p: MarkedOpt) => {
+    const l = p.margin;
+    if (!l) return <span className="text-textMuted">{p.dir > 0 ? 'paid' : '—'}</span>;
+    if (l.keys[0] !== p.key) return <span className="text-textMuted" title={l.words}>with the {contractWords(v.opt.find(x => x.key === l.keys[0])?.contract ?? p.contract).replace(`${p.contract.ticker} `, '')}</span>;
+    return (
+      <span className="text-textPrimary" title={l.words}>
+        {usd(l.held, 0)}
+        {l.kind === 'naked' ? <span className="text-t10 text-warn"> est.</span> : null}
+      </span>
+    );
+  };
   const openCols: Column<OpenRow>[] = [
-    { key: 'contract', header: 'Contract', render: r => <ContractLabel contract={contractWords(r.p.contract)} right={r.p.contract.right} logo={r.p.contract.ticker} size="sm" /> },
-    { key: 'qty', header: 'Held', align: 'right', render: r => <span className="text-textPrimary">{r.p.qty}</span> },
-    { key: 'avg', header: 'Paid', align: 'right', render: r => <span className="text-textSecondary">{r.p.avg.toFixed(2)}</span> },
+    {
+      key: 'contract',
+      header: 'Contract',
+      render: r => (
+        <span className="inline-flex items-center gap-1.5 min-w-0">
+          <ContractLabel contract={contractWords(r.p.contract)} right={r.p.contract.right} logo={r.p.contract.ticker} size="sm" />
+          {r.p.dir < 0 && <span className="font-mono text-t9 font-bold uppercase tracking-wider text-bear" data-position-short>{r.p.comboName ? r.p.comboName : r.p.contract.short != null ? 'credit spread' : r.p.secured ? 'short · cash-secured' : 'short'}</span>}
+        </span>
+      ),
+    },
+    { key: 'qty', header: 'Held', align: 'right', render: r => <span className={r.p.dir < 0 ? 'text-bear font-semibold' : 'text-textPrimary'} title={r.p.dir < 0 ? `Short ${r.p.qty}: sold to open` : undefined}>{r.p.dir < 0 ? `−${r.p.qty}` : r.p.qty}</span> },
+    { key: 'avg', header: 'In at', align: 'right', render: r => <span className="text-textSecondary" title={r.p.dir < 0 ? 'What it was sold at' : 'What was paid'}>{r.p.dir < 0 ? 'sold ' : ''}{r.p.avg.toFixed(2)}</span> },
     { key: 'now', header: 'Bid · ask', align: 'right', render: r => <span className="text-textPrimary">{`${r.p.quote.bid.toFixed(2)} · ${r.p.quote.ask.toFixed(2)}`}</span> },
-    { key: 'carry', header: 'Decay a day', align: 'right', render: r => <span className="text-textSecondary" title="What the contract loses a day, all else equal">{usd(Math.abs(r.p.quote.theta) * 100 * r.p.qty)}</span> },
+    { key: 'margin', header: 'Margin', align: 'right', render: r => marginCell(r.p) },
+    { key: 'carry', header: 'Decay a day', align: 'right', render: r => <span className={r.p.dir < 0 ? 'text-bull' : 'text-textSecondary'} title={r.p.dir < 0 ? 'What its decay pays a day, all else equal — a short gains it' : 'What the contract loses a day, all else equal'}>{r.p.dir < 0 ? '+' : ''}{usd(Math.abs(r.p.quote.theta) * 100 * r.p.qty)}</span> },
     { key: 'pnl', header: 'Up or down', align: 'right', render: r => <span className={`font-semibold ${dirInk(r.p.pnl)}`}>{usdSigned(r.p.pnl)} <span className="text-t10 font-normal opacity-80">{rWords(r.p.r)}</span></span> },
     {
       key: 'close',
@@ -409,18 +478,20 @@ const PaperDesk = () => {
             closeOpt(account.id, r.p.contract, r.p.qty);
           }}
           disabled={!!lock || r.p.quote.dead}
-          title={lock ?? (r.p.quote.dead ? 'No bid to sell into right now' : 'Sell all of it at the bid, now')}
+          title={lock ?? (r.p.quote.dead ? (r.p.dir < 0 ? 'No offer to buy it back from right now' : 'No bid to sell into right now') : r.p.dir < 0 ? 'Buy all of it back at the ask, now' : 'Sell all of it at the bid, now')}
           className={smallDoor}
           data-position-close={r.key}
         >
-          Close
+          {r.p.dir < 0 ? 'Buy back' : 'Close'}
         </button>
       ),
     },
   ];
   const orderWords = (o: OptOrder): string => {
     const how = o.kind === 'market' ? 'market' : o.on === 'name' ? `${o.kind === 'limit' ? 'when' : 'if'} ${o.contract.ticker} ${o.kind === 'limit' ? 'reaches' : nameGoesUp(o.kind, o.contract.right) ? 'rises to' : 'falls to'} ${o.price?.toFixed(2)}` : o.kind === 'limit' ? `limit ${o.price?.toFixed(2)}` : `stop ${o.price?.toFixed(2)}`;
-    return `${o.side === 'buy' ? 'Buy' : 'Sell'} ${o.qty} · ${how}${o.oco ? ' · rides the buy' : ''}${o.trail != null ? ` · trails by ${o.trail.toFixed(2)}` : ''}${o.breakeven ? ' · to what you paid after the first target' : ''}${o.moved ? ' · moved to what you paid' : ''}`;
+    const verb = o.side === 'buy' ? (o.opens === false ? 'Buy back' : 'Buy') : o.opens ? 'Sell to open' : 'Sell';
+    if (o.combo) return `${o.comboName ?? 'Order of several'} · ${verb} ${o.qty}${o.kind === 'market' ? ' · market' : ` · the set at a net ${(o.net ?? 0) >= 0 ? 'credit' : 'debit'} of ${Math.abs(o.net ?? 0).toFixed(2)} or better`}`;
+    return `${verb} ${o.qty}${o.secured ? ' cash-secured' : ''} · ${how}${o.oco ? ' · rides the buy' : ''}${o.trail != null ? ` · trails by ${o.trail.toFixed(2)}` : ''}${o.breakeven ? ' · to what you paid after the first target' : ''}${o.moved ? ' · moved to what you paid' : ''}`;
   };
   const orderCols: Column<OrderRow>[] = [
     { key: 'contract', header: 'Contract', render: r => <ContractLabel contract={contractWords(r.o.contract)} right={r.o.contract.right} logo={r.o.contract.ticker} size="sm" /> },
@@ -463,9 +534,9 @@ const PaperDesk = () => {
   ];
   const closedCols: Column<ClosedRow>[] = [
     { key: 'contract', header: 'Contract', render: r => (r.fut ? <FutLabel contract={r.t.contract} long={r.t.long} symbol={r.t.symbol} /> : <ContractLabel contract={contractWords(r.t.contract)} right={r.t.contract.right} logo={r.t.contract.ticker} size="sm" />) },
-    { key: 'qty', header: 'Size', align: 'right', render: r => <span className="text-textPrimary">{r.t.qty}</span> },
-    { key: 'in', header: 'In', render: r => <span className="text-textSecondary">{nyMomentWords(r.t.opened.at)} · {r.fut ? futWords(r.t.symbol, r.t.avgIn) : r.t.avgIn.toFixed(2)}</span> },
-    { key: 'out', header: 'Out', render: r => <span className="text-textSecondary">{nyMomentWords(r.t.closed.at)} · {r.fut ? futWords(r.t.symbol, r.t.avgOut) : r.t.avgOut.toFixed(2)}</span> },
+    { key: 'qty', header: 'Size', align: 'right', render: r => (!r.fut && r.t.short ? <span className="text-bear font-semibold" title={`Sold to open${r.t.comboName ? ` (${r.t.comboName.toLowerCase()})` : ''}, bought back`}>−{r.t.qty}</span> : <span className="text-textPrimary">{r.t.qty}</span>) },
+    { key: 'in', header: 'In', render: r => <span className="text-textSecondary">{nyMomentWords(r.t.opened.at)} · {r.fut ? futWords(r.t.symbol, r.t.avgIn) : `${r.t.short ? 'sold ' : ''}${r.t.avgIn.toFixed(2)}`}</span> },
+    { key: 'out', header: 'Out', render: r => <span className="text-textSecondary">{nyMomentWords(r.t.closed.at)} · {r.fut ? futWords(r.t.symbol, r.t.avgOut) : `${r.t.short ? 'bought ' : ''}${r.t.avgOut.toFixed(2)}`}</span> },
     { key: 'how', header: 'Ended', render: r => <span className="text-textSecondary" title={r.t.note}>{r.fut ? FUT_ENDED[r.t.how] : OPT_ENDED[r.t.how]}</span> },
     { key: 'pnl', header: 'Made or lost', align: 'right', render: r => <span className={`font-semibold ${dirInk(r.t.pnl)}`}>{usdSigned(r.t.pnl)} <span className="text-t10 font-normal opacity-80">{r.t.r != null ? rWords(r.t.r) : 'no stop · no R'}</span></span> },
   ];
@@ -494,7 +565,7 @@ const PaperDesk = () => {
         /* no strip over the chart: the account is the right column's first card */
         strip={false}
         picker={picker}
-        foot="ThetaData’s live NBBO — practice, not advice. Orders fill only on a two-sided quote read in the last few seconds, in the options session (09:30–16:00 ET); positions carry from one visit to the next."
+        foot="ThetaData’s live NBBO — practice, not advice. A sale fills at the bid, a buy at the ask, only on a two-sided quote read in the last few seconds, in the options session (09:30–16:00 ET); positions carry from one visit to the next. Margin on a naked short is a Reg T estimate; a broker’s own can differ."
         revision={revision}
         account={{ equity: v.equity, openPnl: v.openPnl, third: floorRule ? { label: 'above the floor', value: floorRule.room.replace(' above the floor', '') } : { label: 'free', value: usd(v.free, 0) } }}
         names={[deskName]}
@@ -527,7 +598,7 @@ const PaperDesk = () => {
         /* the full screen fills the screen, edge to edge */
         fullBleed
         side={sideCard}
-        sideMinPx={(rules.length ? ACCOUNT_RULES_PX : ACCOUNT_PX) + 10 + CHAIN_MIN_PX}
+        sideMinPx={(rules.length ? ACCOUNT_RULES_PX : ACCOUNT_PX) + 10 + 42 + CHAIN_MIN_PX}
         sideWidth={SIDE_CHAIN_PX}
         panelWord="chain"
         panelTitle="The account and the chain — its orders are inside a strike’s dropdown"
@@ -536,7 +607,7 @@ const PaperDesk = () => {
         counts={{ open: openRows.length, working, closed: closedRows.length }}
         book={
           tab === 'open' ? (
-            <TraceGrid key="open" rows={openRows} columns={openCols} rowKey={r => r.key} onRowClick={r => setName(r.p.contract.ticker, r.p.contract)} autoHeight animate={false} widths={{ qty: 70, avg: 90, close: 84, now: 130, carry: 130 }} emptyText={account.status === 'open' ? 'Nothing open — buy from a strike in the chain, or off the chart' : 'This account is over — nothing more trades on it'} testId="paper-open" />
+            <TraceGrid key="open" rows={openRows} columns={openCols} rowKey={r => r.key} onRowClick={r => setName(r.p.contract.ticker, r.p.contract)} autoHeight animate={false} widths={{ qty: 70, avg: 100, close: 92, now: 130, margin: 110, carry: 120 }} emptyText={account.status === 'open' ? 'Nothing open — buy or sell from a strike in the chain, build a strategy, or trade off the chart' : 'This account is over — nothing more trades on it'} testId="paper-open" />
           ) : tab === 'orders' ? (
             <TraceGrid key="orders" rows={orderRows} columns={orderCols} rowKey={r => r.key} onRowClick={r => setName(r.o.contract.ticker, r.o.contract)} autoHeight animate={false} widths={{ cancel: 56 }} flexes={{ status: 2, what: 1.4 }} emptyText="No orders yet" testId="paper-orders" />
           ) : (
@@ -552,6 +623,10 @@ const PaperDesk = () => {
 function optRefusalLive(id: string, d: Parameters<typeof optRefusal>[2]): string | null {
   const a = readPaper().accounts.find(x => x.id === id);
   return a ? optRefusal(a, liveMarket(), d) : 'No account';
+}
+function comboRefusalLive(id: string, d: ComboDraft): string | null {
+  const a = readPaper().accounts.find(x => x.id === id);
+  return a ? comboRefusal(a, liveMarket(), d) : 'No account';
 }
 
 /** A drawn long or short, being placed: what order it is, what it risks, at what size — placed, or put away */

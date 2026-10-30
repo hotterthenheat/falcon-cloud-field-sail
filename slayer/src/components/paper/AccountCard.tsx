@@ -8,7 +8,8 @@ import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import { card, head } from '../review/DeskShell';
 import { dirInk, usd, usdSigned } from '../review/words';
 import type { PaperAccount, PaperView } from '../../data/paper/engine';
-import { phaseOf, type RuleRead } from '../../data/paper/rules';
+import { phaseOf, rulesOf, sellSays, sellWords, type RuleRead } from '../../data/paper/rules';
+import { marginCallWords } from '../../data/paper/engine';
 import { FIRM_GOVERNS, firmOf, sizeWords } from '../../data/paper/propFirms';
 import { nyMomentWords } from '../../data/paper/clock';
 import RuleBars from './RuleBars';
@@ -31,7 +32,7 @@ export const StatusChip = ({ a }: { a: PaperAccount }) => {
 };
 /** What kind of account it is, in a line: "Practice · $25K" · "Vanquish Trader · Basic Options · $50K · Phase 1" */
 export function kindWords(a: PaperAccount): string {
-  if (a.kind !== 'evaluation' || !a.plan) return `Practice · ${sizeWords(a.startCash)} · cash is the only limit`;
+  if (a.kind !== 'evaluation' || !a.plan) return `Practice · ${sizeWords(a.startCash)} · buy and sell, naked included`;
   if (a.plan.legacy) return `A futures evaluation (${a.plan.label}) from before options-only`;
   const ph = phaseOf(a);
   return [a.plan.firm ?? 'Your own rules', a.plan.firm ? a.plan.program : null, sizeWords(a.plan.size), ph.count > 1 ? ph.name : null].filter(Boolean).join(' · ');
@@ -46,19 +47,33 @@ const Cell = ({ label, children, title, testId }: { label: string; children: Rea
   </div>
 );
 
-/** What is tied up of what the account is worth: the options at their mark */
+/** What is tied up of what the account is worth: the longs at their mark, and what the shorts hold of margin */
 const TiedBar = ({ v }: { v: PaperView }) => {
   const worth = Math.max(1, v.equity);
-  const opt = Math.max(0, v.optValue);
+  const longs = Math.max(0, v.opt.reduce((x, p) => x + (p.dir > 0 ? p.value : 0), 0));
+  const held = Math.max(0, v.margin);
+  const pct = (x: number) => `${Math.min(100, (x / worth) * 100).toFixed(2)}%`;
   return (
     <div className="w-full" data-paper-tied>
       <div className="relative h-[5px] rounded-full bg-ink/[0.08] overflow-hidden flex" aria-hidden="true">
-        <span className="h-full bg-silver/70" style={{ width: `${Math.min(100, (opt / worth) * 100).toFixed(2)}%` }} />
+        <span className="h-full bg-silver/70" style={{ width: pct(longs) }} />
+        <span className={`h-full ${v.marginCall ? 'bg-bear' : 'bg-warn/70'}`} style={{ width: pct(held) }} />
       </div>
       <div className="mt-1 font-mono text-t9 tnum text-textMuted">
-        in options <span className="text-textSecondary">{usd(opt, 0)}</span> of {usd(v.equity, 0)}
+        in longs <span className="text-textSecondary">{usd(longs, 0)}</span> · margin held <span className="text-textSecondary">{usd(held, 0)}</span> of {usd(v.equity, 0)}
       </div>
     </div>
+  );
+};
+/** What the account lets be sold: "Free reign" on practice, the plan's own on a firm's */
+export const SellChip = ({ a }: { a: PaperAccount }) => {
+  const r = rulesOf(a);
+  const word = r ? sellWords(r.allowSell) : sellWords('all');
+  const says = r ? sellSays(r) : 'Practice: everything — calls and puts bought or sold, naked included (held on a Reg T margin estimate), spreads, iron condors, cash-secured puts';
+  return (
+    <span className={`inline-flex items-center h-5 px-1.5 shrink-0 rounded border font-mono text-t9 font-bold uppercase tracking-widest whitespace-nowrap ${r && r.allowSell === 'none' ? 'text-textSecondary border-borderSubtle' : 'text-silver border-silver/50'}`} title={says} data-paper-sell-chip={r ? r.allowSell : 'all'}>
+      {word}
+    </span>
   );
 };
 
@@ -111,6 +126,19 @@ const AccountCard = ({ account: a, accounts, view: v, rules, onPick, onFlatten, 
             </>
           )}
         </p>
+        {!a.plan?.legacy && (
+          <div className="-mt-1.5 flex items-center gap-2 min-w-0">
+            <SellChip a={a} />
+            <span className="text-t10 text-textMuted truncate" title={rulesOf(a) ? sellSays(rulesOf(a)!) : undefined}>
+              {rulesOf(a) ? (rulesOf(a)!.allowSell === 'none' ? 'what the plan allows: buys only' : 'what the plan allows to be sold') : 'practice: anything may be sold'}
+            </span>
+          </div>
+        )}
+        {v.marginCall && a.status === 'open' && (
+          <p className="text-t11 leading-snug text-bear font-medium" role="alert" data-paper-margin-call>
+            {marginCallWords(v)}
+          </p>
+        )}
         <div className="grid grid-cols-3 max-[440px]:grid-cols-2 gap-x-4 gap-y-3" data-paper-facts>
           <div className="min-w-0 max-[440px]:col-span-2">
             <div className="text-t10 text-textMuted whitespace-nowrap">Worth</div>
@@ -124,8 +152,11 @@ const AccountCard = ({ account: a, accounts, view: v, rules, onPick, onFlatten, 
           <Cell label="All time" testId="paper-all-time">
             <span className={live ? dirInk(v.allTime) : 'text-textMuted'}>{live ? usdSigned(v.allTime) : '—'}</span>
           </Cell>
-          <Cell label="Cash free" testId="paper-free" title="What pays for an option">
-            {usd(v.free)}
+          <Cell label="Free" testId="paper-free" title="Buying power: cash less what the open shorts hold — what pays for an option or holds a new short">
+            <span className={v.free < 0 ? 'text-bear' : undefined}>{usd(v.free)}</span>
+          </Cell>
+          <Cell label="Margin held" testId="paper-margin" title="What the open shorts hold of your money, re-marked every tick: a credit spread’s or cash-secured put’s whole loss; a naked short’s Reg T estimate less its premium">
+            <span className={v.marginCall ? 'text-bear' : v.margin > 0 ? 'text-warn' : 'text-textMuted'}>{usd(v.margin)}</span>
           </Cell>
           <Cell label="Open, up or down" testId="paper-open">
             <span className={live ? dirInk(v.openPnl) : 'text-textMuted'}>{live ? usdSigned(v.openPnl) : '—'}</span>
