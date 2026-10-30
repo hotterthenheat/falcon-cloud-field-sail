@@ -584,6 +584,10 @@ export function pooledStudy(dir: string): PooledStudy {
 type Req = { url?: string; method?: string; headers: Record<string, string | string[] | undefined> };
 type Res = { statusCode: number; setHeader: (k: string, v: string) => void; end: (body?: string | Buffer) => void };
 
+/* "not built yet" is a normal state to the terminal's own pages: asked with x-compass-soft it answers 200 with the code,
+   so the browser console stays clean; any other caller still gets the 404 */
+const notBuilt = (req: Req): number => (String(req.headers['x-compass-soft'] ?? '') === '1' ? 200 : 404);
+
 function send(req: Req, res: Res, status: number, body: unknown): void {
   const text = JSON.stringify(body);
   res.statusCode = status;
@@ -643,7 +647,7 @@ export function compassRoute(engine: Engine, req: Req, res: Res): void {
   if (route === '/study' && url.searchParams.get('day') === 'all') {
     const pooled = pooledStudy(engine.dir);
     if (!pooled.days.length) {
-      send(req, res, 404, { error: 'No session has been labelled yet.', code: 'not_built' });
+      send(req, res, notBuilt(req), { error: 'No session has been labelled yet.', code: 'not_built' });
       return;
     }
     send(req, res, 200, pooled);
@@ -663,7 +667,7 @@ export function compassRoute(engine: Engine, req: Req, res: Res): void {
       body = null;
     }
     if (!body) {
-      send(req, res, 404, { error: route === '/review' ? 'No review for that session yet.' : 'No study for that session yet.', code: 'not_built' });
+      send(req, res, notBuilt(req), { error: route === '/review' ? 'No review for that session yet.' : 'No study for that session yet.', code: 'not_built' });
       return;
     }
     send(req, res, 200, body);
