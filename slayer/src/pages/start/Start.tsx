@@ -34,7 +34,7 @@ const LINES: Record<string, string> = {
   '/weigher': 'One desk for a contract: the chain, the book at a strike, your positions and your watchlist.',
   '/practice/paper': 'Trade today’s live option quotes with pretend money on a practice account.',
   '/practice/backtest': 'Replay a recorded ThetaData session minute by minute and trade it at the bid and ask each contract had.',
-  '/practice/journal': 'Every trade you closed, paper or backtest, on its day, with your own words on it.',
+  '/practice/journal': 'Every trade you closed, paper, backtest or your own journal, on its day, with your own words on it.',
 };
 
 const CARDS = NAV_ITEMS.filter(item => item.glyph && LINES[item.path]);
