@@ -222,15 +222,17 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
   /* a short held: its way out is a buy back, at the ask or a limit */
   const coverDraft = (kind: OrderKind): OptDraft => ({ contract, side: 'buy', qty: sellN, kind, price: kind === 'limit' ? limitPx : undefined });
   const shortHeld = !!pos && pos.dir === -1;
+  /* a limit with no quote read yet needs its price typed — never a made-up 0.01 */
+  const noPx = !quoted && num(limit) == null ? 'No quote for it yet — type a limit price' : null;
   const why = useMemo(
     () => ({
       buy: desk.locked ?? desk.refuse(shortHeld ? coverDraft('market') : buyDraft('market')),
-      buyLimit: desk.locked ?? desk.refuse(shortHeld ? coverDraft('limit') : buyDraft('limit')),
+      buyLimit: desk.locked ?? noPx ?? desk.refuse(shortHeld ? coverDraft('limit') : buyDraft('limit')),
       sell: pos || selling ? (desk.locked ?? desk.refuse(sellDraft('market'))) : 'Nothing held here',
-      sellLimit: pos || selling ? (desk.locked ?? desk.refuse(sellDraft('limit'))) : 'Nothing held here',
+      sellLimit: pos || selling ? (desk.locked ?? noPx ?? desk.refuse(sellDraft('limit'))) : 'Nothing held here',
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [desk.version, desk.locked, n, limit, short, ladder, basis, bracketsOpen, !!pos, side, secured]
+    [desk.version, desk.locked, n, limit, short, ladder, basis, bracketsOpen, !!pos, side, secured, noPx]
   );
 
   /* The strikes that can be sold against it, while nothing is held: further out, the nearest eight */

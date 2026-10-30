@@ -11,7 +11,7 @@ import ThetaLine from '../../components/review/ThetaLine';
 import { dirInk, usd, usdSigned } from '../../components/review/words';
 import NewAccount from '../../components/paper/NewAccount';
 import { RuleBar } from '../../components/paper/RuleBars';
-import { StatusChip, kindWords } from '../../components/paper/AccountCard';
+import { SellChip, StatusChip, kindWords } from '../../components/paper/AccountCard';
 import { HeldElsewhere } from '../../components/paper/HeldElsewhere';
 import { viewOf, type PaperAccount } from '../../data/paper/engine';
 import { readRules } from '../../data/paper/rules';
@@ -64,6 +64,7 @@ const Row = ({ a, holding, onOpen }: { a: PaperAccount; holding: boolean; onOpen
           </button>
           {holding && <RenameDoor name={a.name} onSave={n => renameAccount(a.id, n)} className="w-6 h-6 shrink-0" />}
           <StatusChip a={a} />
+          {!a.plan?.legacy && <SellChip a={a} />}
         </div>
         <p className="text-t11 text-textMuted truncate" title={a.statusWhy}>
           {kindWords(a)}

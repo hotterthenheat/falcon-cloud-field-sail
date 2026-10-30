@@ -866,6 +866,12 @@ const StrikeChart = ({
   /* …and as state, with the box's height, for the drawing rail's placement */
   const [chromeInset, setChromeInset] = useState(0);
   const [boxH, setBoxH] = useState(0);
+  /* THE LEFT RAIL'S OWN BAND (2026-10-30, the last-targets pass): the chrome over the rail's column only — a strike
+     panel's head on the box's right edge used to push the rail down onto the TradingView mark — and the room the
+     mark needs at the bottom: CSS px from the mark's top to the box's bottom, measured, 56 until the chart has drawn
+     it (a 27px time axis, the mark's 10px inset and its 19px). */
+  const [railInset, setRailInset] = useState(0);
+  const [markClear, setMarkClear] = useState(56);
   /* Read at create time by the mount effect, which must not take `compact` as a dep — that effect builds the whole
      chart, and rebuilding it on a prop change would drop the reader's pan, zoom and drawings. */
   const compactRef = useRef(compact);
@@ -1451,6 +1457,17 @@ const StrikeChart = ({
         }
       });
       const inset = Math.round(low);
+      /* the rail's column: its 6px inset, 44px width and a hair */
+      let railLow = 0;
+      document.querySelectorAll<HTMLElement>('[data-chart-chrome]').forEach(c => {
+        const r = c.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return;
+        if (r.right > box.left && r.left < box.left + 56 && r.bottom > box.top && r.top < box.top + box.height / 3) railLow = Math.max(railLow, r.bottom - box.top);
+      });
+      setRailInset(Math.round(railLow));
+      const mark = el.querySelector('#tv-attr-logo');
+      const mr = mark?.getBoundingClientRect();
+      if (mr && mr.height > 0) setMarkClear(Math.round(box.bottom - mr.top));
       if (inset === chromeInsetRef.current) return;
       chromeInsetRef.current = inset;
       setChromeInset(inset);
@@ -3551,7 +3568,19 @@ const StrikeChart = ({
     ro.observe(el);
     return () => ro.disconnect();
   }, [rail.open, rail.dock, drawing]);
-  const leftDockStyle = rail.dock === 'left' && boxH > 0 ? { top: Math.max(boxH / 2, chromeInset + 8 + railH / 2), maxHeight: Math.max(120, boxH - chromeInset - 16) } : undefined;
+  /* …and never over the TradingView mark in the bottom-left corner, which its licence keeps seen and clickable: the
+     rail ends 14px above the mark (a finger's 44px box round it reaches 12.5px), rising off centre, and scrolls past
+     the room left. */
+  const railTop = railInset + 8;
+  const railBottom = boxH - markClear - 14;
+  const railFit = Math.min(railH, railBottom - railTop);
+  const leftDockStyle =
+    rail.dock === 'left' && boxH > 0
+      ? {
+          top: Math.max(railTop + railFit / 2, Math.min(boxH / 2, railBottom - railFit / 2)),
+          maxHeight: Math.max(120, railBottom - railTop),
+        }
+      : undefined;
   const [, forceMark] = useReducer((x: number) => x + 1, 0);
   const [barPos, setBarPos] = useState<{ x: number; y: number } | null>(null);
   const [barMenu, setBarMenu] = useState<'color' | 'tcolor' | 'width' | 'style' | null>(null);

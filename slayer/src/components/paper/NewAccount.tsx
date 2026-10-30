@@ -42,7 +42,7 @@ const NewAccount = ({ onPractice, onPlan }: Props) => {
       {/* THE PLAIN PRACTICE ACCOUNT */}
       <div className={`${card} px-6 py-5 flex flex-col gap-3 max-w-[720px] max-sm:px-4`} data-paper-start-practice>
         <Head icon={<Wallet className="w-4 h-4" />} title="A practice account" />
-        <p className="text-t12 leading-relaxed text-textSecondary">Options off the chain beside the chart, with pretend money, filled at each contract’s live ThetaData bid and ask during the options session (09:30–16:00 ET). It carries from day to day. Open as many as you like.</p>
+        <p className="text-t12 leading-relaxed text-textSecondary">Options off the chain beside the chart, with pretend money, filled at each contract’s live ThetaData bid and ask during the options session (09:30–16:00 ET): buy, or sell to open — naked shorts, credit spreads, iron condors and cash-secured puts, held on a margin estimate. It carries from day to day. Open as many as you like.</p>
         <div className="grid grid-cols-4 max-[420px]:grid-cols-2 gap-1.5 max-w-[440px]">
           {PRACTICE_SIZES.map(size => (
             <button key={size} type="button" disabled={!can} onClick={() => onPractice?.(size)} className={sizeBtn} data-paper-start-size={size}>
@@ -58,7 +58,7 @@ const NewAccount = ({ onPractice, onPlan }: Props) => {
       <div className={`${card} px-6 py-5 flex flex-col gap-4 max-sm:px-4`} data-paper-start-prop>
         <Head icon={<ClipboardCheck className="w-4 h-4" />} title="Prop firm" />
         <p className="text-t12 leading-relaxed text-textSecondary">
-          Practise a firm’s options evaluation on live prices before you pay for one: its target, its loss limits, its flat-by time and its other rules are checked on every order and every tick, and the account passes or fails the way the firm’s would. Options only.
+          Practise a firm’s options evaluation on live prices before you pay for one: its target, its loss limits, its flat-by time and its other rules are checked on every order and every tick, and the account passes or fails the way the firm’s would. It trades only what the plan allows — most buy only. Options only.
         </p>
         {PROP_FIRMS.length === 0 ? (
           <p className="text-t11 text-textMuted" data-paper-firms-empty>
@@ -169,6 +169,7 @@ const OwnRules = ({ onStart }: { onStart: ((plan: PaperPlan) => void) | null }) 
           <input value={c.flatBy} placeholder="off — e.g. 15:55" onChange={e => set({ flatBy: e.target.value.replace(/[^0-9:]/g, '').slice(0, 5) })} className={field} data-paper-own="flat" />
         </label>
         <Choice label="Overnight" value={c.overnight ? 'yes' : 'no'} options={[{ value: 'yes', label: 'may hold' }, { value: 'no', label: 'flat by the close' }]} onChange={v => set({ overnight: v === 'yes' })} testId="overnight" />
+        <Choice label="Selling to open" value={c.selling} options={[{ value: 'all', label: 'everything, naked too' }, { value: 'definedRisk', label: 'capped loss only' }, { value: 'none', label: 'none — buys only' }]} onChange={v => set({ selling: v })} testId="selling" />
         <Choice label="0DTE" value={c.zeroDte ? 'yes' : 'no'} options={[{ value: 'yes', label: 'allowed' }, { value: 'no', label: 'not allowed' }]} onChange={v => set({ zeroDte: v === 'yes' })} testId="zerodte" />
       </div>
       <div className="flex items-center gap-3 flex-wrap">

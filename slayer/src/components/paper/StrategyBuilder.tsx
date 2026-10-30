@@ -111,14 +111,16 @@ const StrategyBuilder = ({ desk }: { desk: StrategyDesk }) => {
     const off = desk.locked ?? (!ready ? 'Loading the chain' : sells && !desk.canSell ? desk.sellWords : null);
     if (kind === 'covered') return { market: 'Not offered here', limit: 'Not offered here' };
     if (off) return { market: off, limit: off };
+    /* a limit needs a price: the market's, or one typed — never a made-up 0.01 */
+    const noPrice = num(limit) == null && !Number.isFinite(natural) ? 'No market in a leg right now — type the net price it should wait for' : null;
     if (kind === 'condor') {
       const m = comboDraft('market');
       const l = comboDraft('limit');
-      return { market: m ? desk.refuseCombo(m) : 'Pick its strikes', limit: l ? desk.refuseCombo(l) : 'Pick its strikes' };
+      return { market: m ? desk.refuseCombo(m) : 'Pick its strikes', limit: noPrice ?? (l ? desk.refuseCombo(l) : 'Pick its strikes') };
     }
     const m = singleDraft('market');
     const l = singleDraft('limit');
-    return { market: m ? desk.refuse(m) : 'Pick its strikes', limit: l ? desk.refuse(l) : 'Pick its strikes' };
+    return { market: m ? desk.refuse(m) : 'Pick its strikes', limit: noPrice ?? (l ? desk.refuse(l) : 'Pick its strikes') };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desk.version, desk.locked, kind, right, way, nearK, farK, pK, cK, w, csK, n, limit, ready]);
   const preview = useMemo(() => {
