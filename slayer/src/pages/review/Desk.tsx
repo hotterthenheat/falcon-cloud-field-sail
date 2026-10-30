@@ -333,7 +333,7 @@ const Desk = () => {
         {rules.dailyLossPct && dayState ? (
           <span className={dayState.stopped ? 'text-warn font-semibold' : 'text-textPrimary'} title={`Measured from what the account was worth at the open${dayStop ? `, ${usd(dayStop.open)}` : ''} — no new positions once it is reached, until the next open`} data-review-day-stop={dayState.stopped ? 'reached' : 'standing'}>
             {dayStop ? dayStop.words : `Day stop: −${+(rules.dailyLossPct * 100).toFixed(1)}% of the account at 09:30`}
-            <span className={dayState.stopped ? '' : 'text-textSecondary'}>{dayState.stopped ? ` · reached, the day is over · ${(dayState.pct * 100).toFixed(1)}%` : ` · day ${dayState.pct >= 0 ? '+' : ''}${(dayState.pct * 100).toFixed(1)}%`}</span>
+            <span className={dayState.stopped ? '' : 'text-textSecondary'}>{dayState.stopped ? ` · reached, the day is over · ${(dayState.pct * 100).toFixed(1)}%` : Number.isFinite(dayState.pct) ? ` · day ${dayState.pct >= 0 ? '+' : ''}${(dayState.pct * 100).toFixed(1)}%` : ' · day —'}</span>
           </span>
         ) : null}
       </span>

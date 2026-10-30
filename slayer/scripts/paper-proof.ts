@@ -8,9 +8,12 @@
 */
 
 import { addDays, dayBeginsAt, dayEndsAt, nyAt, nyInstant, tradingDayOf, yearsToExpiry } from '../src/data/paper/clock';
-import { bankedOf, closeStale, endAccount, flattenAll, futBookOf, newAccount, optBookOf, optClose, optPlace, optRefusal, retireFutures, tick, viewOf, type PaperAccount, type PaperMarket } from '../src/data/paper/engine';
-import { NO_RULES, floorOf, readRules, type PaperPlan, type PropRules } from '../src/data/paper/rules';
-import { PROP_FIRMS } from '../src/data/paper/propFirms';
+import { bankedOf, closeStale, comboNatural, comboRefusal, endAccount, flattenAll, futBookOf, newAccount, optBookOf, optCancel, optClose, optPlace, optPlaceCombo, optRefusal, retireFutures, tick, viewOf, type PaperAccount, type PaperMarket } from '../src/data/paper/engine';
+import { NO_RULES, floorOf, readRules, ruleRefusal, type PaperPlan, type PropRules } from '../src/data/paper/rules';
+import { CUSTOM_DEFAULTS, PROP_FIRMS, customPlan, planById } from '../src/data/paper/propFirms';
+import { marginOf } from '../src/data/paper/margin';
+import { OPTIONS_FUNDING_WHITELIST } from '../src/data/paper/whitelists';
+import { optionsOpen } from '../src/data/paper/feed';
 import { isPaperIndex } from '../src/data/paper/products';
 import { optionRootOf } from '../src/data/paper/thetaFeed';
 import type { ContractId } from '../src/data/review/quotes';
@@ -556,6 +559,255 @@ const roll = (a: PaperAccount, day: string) => {
   u = replayGaps(u, none, now, 'L1');
   const left = u.opt.orders.find(o => o.kind === 'limit')!;
   ok('without the history it stays working, says which minutes were not judged, and the live tick takes it from now', left.status === 'working' && left.unjudged?.why === 'ThetaData has no history for those minutes' && left.unjudged.from === left.placed.at && gapOf(left, now) == null);
+}
+
+/* ================================================================== */
+/*  SELLING (2026-10-29): shorts, spreads sold, iron condors, margin, expiry, and what each firm's plan allows           */
+/* ================================================================== */
+{
+  /* A market of fixed quotes, every number typed here, so each figure below is worked by hand */
+  const T = '2026-09-22';
+  const E2 = '2026-10-02';
+  now = nyInstant(T, 10 * 60);
+  const spot: Record<string, number> = { SPY: 500, IWM: 220, SPX: 5000 };
+  const book: Record<string, [number, number]> = {
+    'SPY|500|P': [5.0, 5.2],
+    'SPY|495|P': [3.4, 3.5],
+    'SPY|490|P': [2.0, 2.1],
+    'SPY|485|P': [1.4, 1.5],
+    'SPY|480|P': [1.0, 1.1],
+    'SPY|505|C': [4.0, 4.2],
+    'SPY|510|C': [3.0, 3.1],
+    'SPY|515|C': [1.8, 1.9],
+    'SPY|520|C': [1.0, 1.1],
+    'IWM|210|P': [1.5, 1.6],
+    'SPX|5000|C': [80.0, 81.0],
+    'SPX|5050|C': [55.0, 56.0],
+  };
+  const leg = (t: string, k: number, r: 'C' | 'P') => {
+    const q = book[`${t}|${k}|${r}`];
+    const s0 = spot[t];
+    const intrinsic = Math.max(0, r === 'C' ? s0 - k : k - s0);
+    if (!q) return { bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic, dead: true, spot: s0 };
+    return { bid: q[0], ask: q[1], mark: Math.round(((q[0] + q[1]) / 2) * 100) / 100, iv: 0.2, delta: r === 'C' ? 0.4 : -0.4, gamma: 0, theta: -0.05, vega: 0, rho: 0, intrinsic, dead: !(q[0] > 0), spot: s0 };
+  };
+  const fixedQuote = (c: ContractId) => {
+    if (c.short == null) return leg(c.ticker, c.strike, c.right);
+    const b = leg(c.ticker, c.strike, c.right);
+    const s1 = leg(c.ticker, c.short, c.right);
+    const w = Math.abs(c.short - c.strike);
+    const inside = (v: number) => Math.max(0, Math.min(w, v));
+    const bid = Math.round(inside(b.bid - s1.ask) * 100) / 100;
+    const ask = Math.round(Math.max(bid + 0.01, inside(b.ask - s1.bid)) * 100) / 100;
+    return { ...b, bid, ask, mark: Math.round(((bid + ask) / 2) * 100) / 100, dead: b.dead || s1.dead || bid <= 0 };
+  };
+  const fixed = (): PaperMarket => ({ now, life: 'L1', optQuote: fixedQuote, optQuoteAt: fixedQuote, bar: () => Math.floor(now / 1000), candles: () => [], open: () => optionsOpen(now), fresh: () => true, closeOf: (t: string) => spot[t] });
+  const P = (k: number, t = 'SPY'): ContractId => ({ ticker: t, strike: k, right: 'P', expiry: E2 });
+  const Cc = (k: number, t = 'SPY'): ContractId => ({ ticker: t, strike: k, right: 'C', expiry: E2 });
+  const fresh = (cash = 25_000, id = 's') => newAccount({ id, kind: 'practice', name: id, startCash: cash, now });
+
+  /* ---- a naked put: sold at the bid, bought back at the ask ---- */
+  let a = fresh();
+  a = optPlace(a, fixed(), { contract: P(490), side: 'sell', qty: 2, kind: 'market' });
+  let v = viewOf(a, fixed());
+  ok('a sell with nothing held opens a short, at once, at the bid (490P: 2.00)', a.opt.fills.length === 1 && a.opt.fills[0].price === 2 && a.opt.fills[0].opens === true && optBookOf(a).positions[0]?.dir === -1 && optBookOf(a).positions[0]?.qty === 2);
+  ok('…the premium comes into cash, less the fee: 25,000 + 2.00 × 100 × 2 − 1.30 = 25,398.70', near(v.cash, 25_398.7));
+  ok('…worth counts it at the mark as owed: 25,398.70 − 2.05 × 200 = 24,988.70', near(v.equity, 24_988.7), `${v.equity}`);
+  /* Reg T, a put: the greater of 20% × 500 − 10 out of the money + 2.05 = 92.05, or 10% × 490 + 2.05 = 51.05 → 9,205 a contract */
+  ok('Reg T on a naked put: (20% × 500 − 10 OTM + 2.05 premium) × 100 = 9,205 a contract — 18,410 held for 2, 18,010 of the reader’s own', near(v.marginReq, 18_410) && near(v.margin, 18_010) && v.marginLines[0]?.kind === 'naked', `${v.marginReq} · ${v.margin}`);
+  ok('…and free is cash less all it holds: 25,398.70 − 18,410 = 6,988.70', near(v.free, 6_988.7), `${v.free}`);
+  ok('…it is said to be an estimate', /estimate/.test(v.marginLines[0]?.words ?? '') && /broker/.test(v.marginLines[0]?.words ?? ''));
+  ok('a short is never bought back past flat: 3 of a short 2 is refused, in words', (optRefusal(a, fixed(), { contract: P(490), side: 'buy', qty: 3, kind: 'market' }) ?? '').startsWith('You hold 2 short'));
+  a = optClose(a, fixed(), P(490), 2);
+  const shortTrade = optBookOf(a).trades[0];
+  ok('a short is bought back at the ask (2.10)', a.opt.fills[1]?.side === 'buy' && a.opt.fills[1].price === 2.1 && optBookOf(a).positions.length === 0);
+  ok('…the trade: sold 2.00, bought back 2.10, (2.00 − 2.10) × 200 − 2.60 fees = −22.60, ended “closed”, marked short', shortTrade?.pnl === -22.6 && shortTrade.how === 'closed' && shortTrade.short === true && shortTrade.avgIn === 2 && shortTrade.avgOut === 2.1, `${shortTrade?.pnl}`);
+  ok('…its R is on what it held when it opened (the Reg T estimate less the premium)', !!shortTrade && shortTrade.cost > 9_000 && near(shortTrade.r, shortTrade.pnl / shortTrade.cost, 1e-9), `${shortTrade?.cost}`);
+
+  /* ---- a naked call, and the floors of the formula ---- */
+  let c1 = optPlace(fresh(), fixed(), { contract: Cc(510), side: 'sell', qty: 1, kind: 'market' });
+  ok('Reg T on a naked call: 20% × 500 − 10 OTM + 3.05 = 93.05 → 9,305', near(viewOf(c1, fixed()).marginReq, 9_305), `${viewOf(c1, fixed()).marginReq}`);
+  const mq = (bid: number, ask: number, s0: number) => ({ bid, ask, mark: (bid + ask) / 2, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic: 0, dead: false, spot: s0 });
+  const farPut = marginOf([{ key: 'k', contract: { ticker: 'SPY', strike: 400, right: 'P', expiry: E2 }, dir: -1, qty: 1, avg: 0.1, quote: mq(0.09, 0.11, 500), spotIn: 500 }]);
+  ok('…far out of the money the floor holds: 10% × the 400 strike + 0.10 = 40.10 → 4,010 (20% × 500 − 100 + 0.10 is only 0.10)', near(farPut.req, 4_010), `${farPut.req}`);
+  const farCall = marginOf([{ key: 'k', contract: { ticker: 'SPY', strike: 600, right: 'C', expiry: E2 }, dir: -1, qty: 1, avg: 0.1, quote: mq(0.09, 0.11, 500), spotIn: 500 }]);
+  ok('…a call’s floor is 10% of the name: 10% × 500 + 0.10 = 50.10 → 5,010', near(farCall.req, 5_010), `${farCall.req}`);
+  const spxCall = marginOf([{ key: 'k', contract: { ticker: 'SPX', strike: 5100, right: 'C', expiry: E2 }, dir: -1, qty: 1, avg: 20, quote: mq(20, 20.4, 5000), spotIn: 5000 }]);
+  ok('an index (SPX) is 15% / 10%: 15% × 5,000 − 100 OTM + 20.20 = 670.20 → 67,020', near(spxCall.req, 67_020) && /index/.test(spxCall.lines[0].words), `${spxCall.req}`);
+  ok('…and SPX’s own floor: 10% × 5,000 + premium, where that is more', near(marginOf([{ key: 'k', contract: { ticker: 'SPX', strike: 6000, right: 'C', expiry: E2 }, dir: -1, qty: 1, avg: 1, quote: mq(0.9, 1.1, 5000), spotIn: 5000 }]).req, 50_100));
+
+  /* ---- a credit spread: sell the 500P, buy the 490P, one order ---- */
+  let cs = fresh();
+  const bullPut: ContractId = { ...P(500), short: 490 };
+  const free0 = viewOf(cs, fixed()).free;
+  cs = optPlace(cs, fixed(), { contract: bullPut, side: 'sell', qty: 1, kind: 'market' });
+  v = viewOf(cs, fixed());
+  ok('a put spread sold fills at its bid: 500P bid 5.00 less 490P ask 2.10 = 2.90 (sell at the bid, buy at the ask)', cs.opt.fills[0]?.price === 2.9 && optBookOf(cs).positions[0]?.dir === -1);
+  ok('…it holds its width, 10 × 100 = 1,000 — with the 290 credit in, 710 held: its whole loss', near(v.marginReq, 1_000) && near(v.margin, 710) && v.marginLines[0]?.kind === 'credit', `${v.marginReq} · ${v.margin}`);
+  ok('…free falls by exactly the most it can lose, fees in: 1,000 − 290 + 1.30 = 711.30', near(free0 - v.free, 711.3), `${free0 - v.free}`);
+  ok('…its R is measured on that 710', near(optBookOf(cs).positions[0].held, 710));
+
+  /* ---- an iron condor: two spreads sold as one order ---- */
+  let ic = fresh(25_000, 'ic');
+  const putSide: ContractId = { ...P(490), short: 480 };
+  const callSide: ContractId = { ...Cc(510), short: 515 };
+  ok('its legs at the market now: (2.00 − 1.10) + (3.00 − 1.90) = 2.00 a set', comboNatural(fixed(), [{ contract: putSide, side: 'sell' }, { contract: callSide, side: 'sell' }]) === 2);
+  ic = optPlaceCombo(ic, fixed(), { name: 'Iron condor', legs: [{ contract: putSide, side: 'sell' }, { contract: callSide, side: 'sell' }], qty: 2, kind: 'market' });
+  v = viewOf(ic, fixed());
+  ok('an iron condor at the market: every leg fills at once — the put spread at 0.90, the call spread at 1.10', ic.opt.fills.length === 2 && ic.opt.fills[0].price === 0.9 && ic.opt.fills[1].price === 1.1 && ic.opt.fills.every(f => f.combo && f.comboName === 'Iron condor'));
+  ok('…it holds the wider side once: max(10, 5) × 100 × 2 = 2,000 — less the 400 credit, 1,600 held: its whole loss', near(v.marginReq, 2_000) && near(v.margin, 1_600) && v.marginLines.length === 1 && v.marginLines[0].kind === 'condor', `${v.marginReq} · ${v.margin}`);
+  ok('…cash takes in the credit, less $0.65 on each of 8 legs: 25,000 + 400 − 5.20', near(v.cash, 25_394.8), `${v.cash}`);
+  /* a condor that waits for its net */
+  let icl = optPlaceCombo(fresh(25_000, 'icl'), fixed(), { name: 'Iron condor', legs: [{ contract: putSide, side: 'sell' }, { contract: callSide, side: 'sell' }], qty: 1, kind: 'limit', net: 2.2 });
+  ok('an iron condor limit at a 2.20 credit waits while the legs bring in 2.00', icl.opt.orders.filter(o => o.status === 'working' && o.combo).length === 2 && icl.opt.fills.length === 0);
+  ({ account: icl } = (() => {
+    step(1500);
+    return tick(icl, fixed());
+  })());
+  ok('…still waiting a tick on, nothing filled', icl.opt.fills.length === 0);
+  book['SPY|490|P'] = [2.2, 2.3];
+  step(1500);
+  icl = tick(icl, fixed()).account;
+  ok('…the 490P bids 2.20: the legs bring in 2.20 — both spreads fill together, at their own bids (1.10 and 1.10)', icl.opt.fills.length === 2 && icl.opt.fills[0].price === 1.1 && icl.opt.fills[1].price === 1.1, icl.opt.fills.map(f => f.price).join(' · '));
+  book['SPY|490|P'] = [2.0, 2.1];
+  const icCancel = optCancel(optPlaceCombo(fresh(25_000, 'icc'), fixed(), { name: 'Iron condor', legs: [{ contract: putSide, side: 'sell' }, { contract: callSide, side: 'sell' }], qty: 1, kind: 'limit', net: 3 }), fixed(), 'o2');
+  ok('cancelling one leg of an order of several cancels all of it', icCancel.opt.orders.every(o => o.status === 'cancelled'));
+
+  /* ---- a cash-secured put ---- */
+  const csp: ContractId = P(210, 'IWM');
+  let pu = optPlace(fresh(), fixed(), { contract: csp, side: 'sell', qty: 1, kind: 'market', secured: 'cash' });
+  v = viewOf(pu, fixed());
+  ok('a cash-secured put holds the strike: 210 × 100 = 21,000 — with the 150 premium in, 20,850, its whole loss', near(v.marginReq, 21_000) && near(v.margin, 20_850) && v.marginLines[0].kind === 'csp' && pu.opt.fills[0].secured === 'cash', `${v.marginReq}`);
+  ok('a cash-secured put the account cannot cover is refused, in words: 490 × 100 − 200 + 0.65 = 48,800.65', (optRefusal(fresh(), fixed(), { contract: P(490), side: 'sell', qty: 1, kind: 'market', secured: 'cash' }) ?? '') === 'Not enough buying power — this holds $48,800.65, and $25,000.00 is free');
+  ok('…a sold put is added to the way it is held: on margin, onto a cash-secured one, is refused', (optRefusal(pu, fixed(), { contract: csp, side: 'sell', qty: 1, kind: 'market' }) ?? '').startsWith('You hold this put cash-secured'));
+  ok('…and covered calls are not offered: the desk holds no stock (a call sold against a long call is a spread)', (() => {
+    let h = optPlace(fresh(), fixed(), { contract: Cc(515), side: 'buy', qty: 1, kind: 'market' });
+    h = optPlace(h, fixed(), { contract: Cc(510), side: 'sell', qty: 1, kind: 'market' });
+    const line = viewOf(h, fixed()).marginLines[0];
+    /* sold the 510C under a long 515C: the pair can lose the 5 between them — 500 held, less the 3.00 premium */
+    return line?.kind === 'covered' && near(line.req, 500) && near(line.held, 200);
+  })());
+
+  /* ---- sells and buy-backs that wait ---- */
+  let w = optPlace(fresh(), fixed(), { contract: Cc(505), side: 'sell', qty: 1, kind: 'limit', price: 4.1 });
+  ok('a sell to open that waits for 4.10 does not fill while the bid is 4.00', w.opt.fills.length === 0 && w.opt.orders[0].opens === true);
+  book['SPY|505|C'] = [4.15, 4.3];
+  step(1500);
+  w = tick(w, fixed()).account;
+  ok('…the bid reaches 4.15: it fills at that bid, never under the limit', w.opt.fills[0]?.price === 4.15 && optBookOf(w).positions[0]?.dir === -1);
+  w = optPlace(w, fixed(), { contract: Cc(505), side: 'buy', qty: 1, kind: 'limit', price: 4.0 });
+  ok('a buy back that waits at 4.00 is a way out (it opens nothing)', w.opt.orders[1].opens === false && w.opt.orders[1].status === 'working');
+  book['SPY|505|C'] = [3.8, 3.95];
+  step(1500);
+  w = tick(w, fixed()).account;
+  ok('…the ask comes down to 3.95: bought back at that ask', w.opt.fills[1]?.price === 3.95 && optBookOf(w).positions.length === 0 && optBookOf(w).trades[0].pnl === Math.round(((4.15 - 3.95) * 100 - 1.3) * 100) / 100);
+  book['SPY|505|C'] = [4.0, 4.2];
+
+  /* ---- the margin call: equity under what the shorts need blocks new ways in, and nothing is sold off by itself ---- */
+  let mc = optPlace(fresh(10_000, 'mc'), fixed(), { contract: P(490), side: 'sell', qty: 1, kind: 'market' });
+  ok('a $10,000 account sells one naked 490P: 9,205 held, 994.35 free', near(viewOf(mc, fixed()).free, 994.35) && !viewOf(mc, fixed()).marginCall, `${viewOf(mc, fixed()).free}`);
+  spot.SPY = 450;
+  book['SPY|490|P'] = [41.0, 41.4];
+  v = viewOf(mc, fixed());
+  /* now 20% × 450 − 0 (in the money) + 41.20 = 131.20 → 13,120: free 10,199.35 − 13,120 = −2,920.65 */
+  ok('SPY falls to 450: the put re-marks to 13,120 held and free is −2,920.65 — a margin call', near(v.marginReq, 13_120) && near(v.free, -2_920.65) && v.marginCall, `${v.marginReq} · ${v.free}`);
+  ok('…a new way in is refused with the margin call in words', (optRefusal(mc, fixed(), { contract: Cc(510), side: 'buy', qty: 1, kind: 'market' }) ?? '').startsWith('Margin call'));
+  ok('…a way out is not: the put can be bought back', optRefusal(mc, fixed(), { contract: P(490), side: 'buy', qty: 1, kind: 'market' }) === null);
+  step(1500);
+  mc = tick(mc, fixed()).account;
+  ok('…and nothing is closed by itself on a practice account', optBookOf(mc).positions.length === 1);
+  spot.SPY = 500;
+  book['SPY|490|P'] = [2.0, 2.1];
+
+  /* ---- what each firm's plan allows (propFirms.ts) ---- */
+  const on = (planId: string) => newAccount({ id: planId, kind: 'evaluation', name: planId, startCash: 0, plan: planById(planId)!, now });
+  const say = (acct: PaperAccount, d: Partial<Parameters<typeof optRefusal>[2]>) => optRefusal(acct, fixed(), { contract: P(490), side: 'sell', qty: 1, kind: 'market', ...d }) ?? '';
+  for (const id of ['of-growth-25k', 'of-express-25k', 'sx-strix-25k', 'sx-express-25k', 'vq-basic-50k', 'vq-rapid-express-50k', 'vq-rapid-elite-50k', 'tf-prop-25k']) ok(`${id}: a sale to open is refused — buy only, in words`, say(on(id), {}).startsWith('This plan buys only'), say(on(id), {}));
+  ok('of-growth: the credit spread too', say(on('of-growth-25k'), { contract: bullPut }).startsWith('This plan buys only'));
+  ok('Options Funding: a name off its 275-name whitelist is refused (NDX)', (ruleRefusal(on('of-growth-25k'), fixed(), { contract: { ticker: 'NDX', strike: 20000, right: 'C', expiry: E2 }, side: 'buy', qty: 1, kind: 'market' }, viewOf(on('of-growth-25k'), fixed()), 1) ?? '').includes('the 275 names on the firm’s list (as of 2026-10-29) only — NDX is not on it'));
+  ok('…the names on it pass, written either way (SPY; BRK.B is its BRKB)', ruleRefusal(on('of-growth-25k'), fixed(), { contract: Cc(510), side: 'buy', qty: 1, kind: 'market' }, viewOf(on('of-growth-25k'), fixed()), 3.1) === null && !(ruleRefusal(on('of-growth-25k'), fixed(), { contract: { ticker: 'BRK.B', strike: 500, right: 'C', expiry: E2 }, side: 'buy', qty: 1, kind: 'market' }, viewOf(on('of-growth-25k'), fixed()), 1) ?? '').includes('not on it'));
+  ok('the whitelist is data with its source: 275 names, optionsfunding.co, read 2026-10-29', OPTIONS_FUNDING_WHITELIST.names.length === 275 && new Set(OPTIONS_FUNDING_WHITELIST.names).size === 275 && OPTIONS_FUNDING_WHITELIST.url === 'https://optionsfunding.co/ticker-whitelist' && planById('of-express-50k')!.rules.underlyings === OPTIONS_FUNDING_WHITELIST.names && planById('sx-strix-25k')!.rules.underlyings === null);
+  const pro = on('sx-pro-50k');
+  ok('Strix Pro: a credit spread is taken (a capped loss)', say(pro, { contract: bullPut }) === '');
+  ok('…a call sold on its own is refused — no cap on its loss', say(pro, { contract: Cc(510) }).includes('sells only with a capped loss'));
+  ok('…a put sold is cash-secured, whatever the ticket asked', (() => {
+    const x = optPlace(on('sx-pro-100k'), fixed(), { contract: P(490), side: 'sell', qty: 1, kind: 'market' });
+    return x.opt.fills[0]?.secured === 'cash' && viewOf(x, fixed()).marginLines[0]?.kind === 'csp';
+  })());
+  ok('…a call sold against a long call held on the same expiry is taken, and the long cannot be sold out from under it', (() => {
+    let x = optPlace(pro, fixed(), { contract: Cc(515), side: 'buy', qty: 1, kind: 'market' });
+    const sold = optRefusal(x, fixed(), { contract: Cc(510), side: 'sell', qty: 1, kind: 'market' });
+    x = optPlace(x, fixed(), { contract: Cc(510), side: 'sell', qty: 1, kind: 'market' });
+    return sold === null && (optRefusal(x, fixed(), { contract: Cc(515), side: 'sell', qty: 1, kind: 'market' }) ?? '').startsWith('That long call caps a call you sold');
+  })());
+  ok('…and an iron condor', comboRefusal(pro, fixed(), { name: 'Iron condor', legs: [{ contract: putSide, side: 'sell' }, { contract: callSide, side: 'sell' }], qty: 1, kind: 'market' }) === null);
+  const adv = on('vq-advanced-50k');
+  ok('Vanquish Advanced (Level 4): a credit spread on SPY is taken', say(adv, { contract: bullPut }) === '');
+  ok('…an iron condor on SPY is taken', comboRefusal(adv, fixed(), { name: 'Iron condor', legs: [{ contract: putSide, side: 'sell' }, { contract: callSide, side: 'sell' }], qty: 1, kind: 'market' }) === null);
+  ok('…a naked call is refused: Level 4 here has no margin', say(adv, { contract: Cc(510) }).startsWith('Level 4 here is cash only'));
+  ok('…on SPX it buys single legs only: a call spread sold is refused', say(adv, { contract: { ...Cc(5000, 'SPX'), short: 5050 } }).startsWith('This plan allows only single calls and puts on SPX, bought'));
+  ok('…every Vanquish plan buys SPX, XSP and VIX single legs only — bought, a single call is fine', optRefusal(on('vq-basic-50k'), fixed(), { contract: Cc(5000, 'SPX'), side: 'buy', qty: 1, kind: 'market' }) === null && planById('vq-basic-50k')!.rules.longOnlyOn?.join() === 'SPX,XSP,VIX');
+  ok('the plans’ selling, as data: Vanquish Advanced Level 4, Strix Pro defined risk, every other plan buy only', PROP_FIRMS.flatMap(f => f.plans).every(p => p.rules.allowSell === (p.id.startsWith('vq-advanced') ? 'level4' : p.id.startsWith('sx-pro') ? 'definedRisk' : 'none')));
+  ok('…and the notes that said they were not checked are gone', PROP_FIRMS.flatMap(f => f.plans).every(p => !(p.notModelled ?? []).some(n => /selling to open|finite-loss|275-name ticker whitelist|16:10/.test(n))));
+  ok('practice accounts sell everything (no plan); the reader’s own rules default to everything too', optRefusal(fresh(), fixed(), { contract: Cc(510), side: 'sell', qty: 1, kind: 'market' }) === null && customPlan(CUSTOM_DEFAULTS).rules.allowSell === 'all');
+
+  /* ---- expiry: a short settles at what it is worth in the money, in cash ---- */
+  {
+    now = nyInstant(T, 15 * 60);
+    px.SPY = 500;
+    px.SPX = 5000;
+    let x = newAccount({ id: 'ex', kind: 'practice', name: 'ex', startCash: 100_000, now });
+    const day = (k: number, r: 'C' | 'P', t = 'SPY'): ContractId => ({ ticker: t, strike: k, right: r, expiry: T });
+    x = optPlace(x, market(), { contract: day(505, 'P'), side: 'sell', qty: 1, kind: 'market' });
+    x = optPlace(x, market(), { contract: day(503, 'C'), side: 'sell', qty: 1, kind: 'market' });
+    x = optPlace(x, market(), { contract: day(4990, 'C', 'SPX'), side: 'sell', qty: 1, kind: 'market' });
+    x = optPlace(x, market(), { contract: { ...day(500, 'P'), short: 495 }, side: 'sell', qty: 1, kind: 'market' });
+    px.SPY = 497;
+    px.SPX = 5002;
+    now = nyInstant(T, 16 * 60) + 500;
+    x = tick(x, market()).account;
+    const tr = (k: number) => optBookOf(x).trades.find(t => t.contract.strike === k)!;
+    ok('16:00: a short put in the money on a fund is assigned — settled in cash at 8.00 (505 − 497), said so', tr(505)?.how === 'expired' && tr(505).avgOut === 8 && /assigned/.test(tr(505).note ?? '') && /no stock/.test(tr(505).note ?? ''), tr(505)?.note);
+    ok('…a short call out of the money expires worthless: bought back at 0', tr(503)?.avgOut === 0 && /worthless/.test(tr(503).note ?? ''), `${tr(503)?.avgOut} · ${tr(503)?.note}`);
+    ok('…an index short is cash-settled on the 16:00 print at intrinsic (5002 − 4990 = 12)', tr(4990)?.avgOut === 12 && /cash-settled/.test(tr(4990).note ?? ''));
+    ok('…a put spread sold settles inside its width (500 − 497 = 3 of 5), the leg sold assigned', tr(500)?.avgOut === 3 && /assigned/.test(tr(500).note ?? ''));
+    ok('…and nothing is left open', optBookOf(x).positions.length === 0);
+  }
+
+  /* ---- Options Funding's 16:10 close for SPY, QQQ, IWM and DIA ---- */
+  {
+    now = nyInstant(T, 15 * 60);
+    px.SPY = 500;
+    px.IWM = 220;
+    const ofp = (id: string) => newAccount({ id, kind: 'evaluation', name: id, startCash: 0, plan: planById('of-growth-50k')!, now });
+    let x = ofp('of1610');
+    x = optPlace(x, market(), { contract: { ticker: 'SPY', strike: 495, right: 'C', expiry: T }, side: 'buy', qty: 2, kind: 'market' });
+    ok('an Options Funding account buys a SPY 0DTE call', optBookOf(x).positions.length === 1);
+    px.SPY = 503;
+    now = nyInstant(T, 16 * 60 + 5);
+    x = tick(x, market()).account;
+    ok('16:05: past the bell it is not settled — SPY’s options trade to 16:15 and the firm closes it at 16:10', optBookOf(x).positions.length === 1);
+    ok('…it may still be closed by hand in that window (the market is shut for anything else)', optRefusal(x, { ...market(), open: () => false }, { contract: { ticker: 'SPY', strike: 495, right: 'C', expiry: T }, side: 'sell', qty: 1, kind: 'market' }) === null);
+    now = nyInstant(T, 16 * 60 + 10);
+    const q1610 = market().optQuote({ ticker: 'SPY', strike: 495, right: 'C', expiry: T });
+    x = tick(x, { ...market(), open: () => false }).account;
+    const t1610 = optBookOf(x).trades[0];
+    ok('16:10: closed by the rules at the live bid of that minute', t1610?.how === 'rule' && t1610.avgOut === q1610.bid && nyAt(t1610.closed.at).minutes === 16 * 60 + 10, `${t1610?.how} ${t1610?.avgOut} · ${t1610?.note}`);
+    now = nyInstant(T, 15 * 60);
+    let y = ofp('of1610b');
+    y = optPlace(y, market(), { contract: { ticker: 'SPY', strike: 495, right: 'C', expiry: T }, side: 'buy', qty: 1, kind: 'limit', price: 99 });
+    now = nyInstant(T, 15 * 60 + 1);
+    y = tick(y, market()).account;
+    now = nyInstant(T, 16 * 60 + 11);
+    y = tick(y, { ...market(), open: () => false, optQuote: c => ({ ...market().optQuote(c), dead: true, bid: 0, ask: 0 }) }).account;
+    ok('…with no quote standing at 16:10, it settles at the 16:00 close instead, and says so', optBookOf(y).trades[0]?.how === 'expired' && /16:10/.test(optBookOf(y).trades[0]?.note ?? ''), `${optBookOf(y).trades[0]?.how} · ${optBookOf(y).trades[0]?.note} · ${optBookOf(y).positions.length}`);
+    let z = newAccount({ id: 'pr1610', kind: 'practice', name: 'pr', startCash: 25_000, now: nyInstant(T, 15 * 60) });
+    now = nyInstant(T, 15 * 60);
+    z = optPlace(z, market(), { contract: { ticker: 'SPY', strike: 495, right: 'C', expiry: T }, side: 'buy', qty: 1, kind: 'market' });
+    now = nyInstant(T, 16 * 60) + 500;
+    z = tick(z, market()).account;
+    ok('a practice account’s SPY 0DTE still settles at the 16:00 close', optBookOf(z).trades[0]?.how === 'expired');
+  }
 }
 
 console.log(`\n${passed} held · ${failed} missed`);

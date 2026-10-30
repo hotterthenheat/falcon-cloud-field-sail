@@ -437,7 +437,9 @@ function vendor(clock: () => number, opt: { status?: (p: string) => number; onCa
     await uwDirect(p);
     await sleep(3_200);
     const got = await uwDirect(p, { lane: 'record', maxAge: 45_000 });
-    check("a viewer's copy (3 s past fresh) is reused by the recorder", (upstream.get(p) ?? 0) - was === 1 && got.status === 200 && got.at < Date.now() - 3_000);
+    /* in the session that copy is past its 3 s freshness, outside it still fresh (TTL ×10): reused either way, so this
+       holds at any hour */
+    check("a viewer's copy (3 s old, inside the recorder's 45 s) is reused, not asked again", (upstream.get(p) ?? 0) - was === 1 && got.status === 200 && got.at < Date.now() - 3_000);
     const stats = uwHubStats() as Record<string, number>;
     check('record asks are counted apart and keep nothing warm', stats.recordAsks === 9 && stats.recordReused === 1 && stats.upstreamRecord === 8, JSON.stringify({ recordAsks: stats.recordAsks, reused: stats.recordReused, upstreamRecord: stats.upstreamRecord, watching: stats.watching }));
     check('… the hub watches only the viewers\' paths', stats.watching === 9, `${stats.watching}`);
