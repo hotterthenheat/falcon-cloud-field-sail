@@ -460,7 +460,9 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
             {last && <PartFact label="Line changed sign" title={`How many times through the session the line${scoped ? '' : ' (every expiry)'} flipped between absorbing and amplifying`}>{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</PartFact>}
             <button
               type="button"
-              className="hit-24 inline-flex items-baseline gap-1 font-mono text-t11 uppercase tracking-wider text-textMuted hover:text-textPrimary underline-offset-2 hover:underline"
+              /* z-[3]: its finger box reaches over the chart's top edge, whose canvases lightweight-charts stacks at z 1–2
+                 (the last-targets pass) */
+              className="hit-24 z-[3] inline-flex items-baseline gap-1 font-mono text-t11 uppercase tracking-wider text-textMuted hover:text-textPrimary underline-offset-2 hover:underline"
               aria-expanded={showDetails}
               onClick={() => setShowDetails(v => !v)}
               data-through-details-toggle

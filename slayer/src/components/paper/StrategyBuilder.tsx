@@ -181,8 +181,8 @@ const StrategyBuilder = ({ desk }: { desk: StrategyDesk }) => {
             }}
             options={[
               { value: 'vertical', label: 'Vertical' },
-              { value: 'condor', label: 'Iron condor' },
-              { value: 'csp', label: 'Cash-secured put' },
+              { value: 'condor', label: 'Condor' },
+              { value: 'csp', label: 'Secured put' },
               { value: 'covered', label: 'Covered call' },
             ]}
           />

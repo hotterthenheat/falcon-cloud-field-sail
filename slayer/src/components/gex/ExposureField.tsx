@@ -1437,7 +1437,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   const bandRows: 'one' | 'two' = bandMode === 'two' || bandOver ? 'two' : 'one';
 
   const leadFold = lead ? (
-    <Fold open={!many} gap={8} testId="data-band-lead">
+    /* bleed: the scope chip's finger box (44px on a phone) reaches past the fold's own 24px (the last-targets pass) */
+    <Fold open={!many} gap={8} testId="data-band-lead" bleed>
       <span className="shrink-0 inline-flex items-center">{lead}</span>
     </Fold>
   ) : null;
@@ -1700,7 +1701,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
         <div className="shrink-0 flex items-start gap-3 px-4 py-2 border-b border-borderSubtle/60 bg-silver/[0.04] text-t11 text-textSecondary" data-map-note>
           <p className="min-w-0 flex-1 leading-relaxed">
             <span className="font-semibold text-textPrimary">First time here?</span> Each row is a strike. {palette === 'thermal' ? 'Red and orange mean' : 'Ember orange means'} dealer hedging pushes a move along there, {palette === 'thermal' ? 'green means' : 'glacier blue means'} it holds one back. A strike in magenta is the supreme, blue the call wall, gold the put wall. Click a row to keep it on every box.{' '}
-            <button type="button" onClick={openFirstTime} className="hit-24 underline decoration-dotted underline-offset-2 text-textPrimary hover:text-silver" data-map-note-words>
+            {/* z-[1]: its finger box reaches over the column's first row, which is drawn after it (the last-targets pass) */}
+            <button type="button" onClick={openFirstTime} className="hit-24 z-[1] underline decoration-dotted underline-offset-2 text-textPrimary hover:text-silver" data-map-note-words>
               Every word Pinpoint uses →
             </button>
           </p>
