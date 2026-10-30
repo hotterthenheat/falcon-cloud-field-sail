@@ -126,22 +126,36 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
     onChange: () => holding.current?.(),
   });
 
-  /* What is in view, written each draw (the virtualizer draws on every scroll): the rows in view and where each stands
-     against the window's top, so a re-read can keep the first of them in place. */
-  const inView = useRef<{ view: unknown; rows: { key: string; at: number }[] }>({ view, rows: [] });
+  /* the view the rows were last drawn under: a change of items under the same one is a re-read */
+  const inView = useRef<{ view: unknown }>({ view });
+  const hold = useRef<() => void>(() => {});
   const anchor = useRef<{ key: string; at: number } | null>(null);
   const itemsSeen = useRef(items);
   if (itemsSeen.current !== items) {
     itemsSeen.current = items;
-    /* the first row in view that is still on the list holds its place; a new view starts where it is told to */
-    const was = inView.current;
-    anchor.current = was.view === view ? (was.rows.find(r => indexOf.has(r.key)) ?? null) : null;
+    /* a new read ends the last one's hold before anything of it is drawn */
+    hold.current();
+    /* The first row on screen that is still on the list holds its place; a new view starts where it is told to. Where it
+       stands is read off the page as the reader sees it now (the old rows are still drawn), not from the virtualizer's
+       sums, which run a step behind while it settles a measurement. */
+    anchor.current = null;
+    if (inView.current.view === view && el) {
+      const boxTop = el.getBoundingClientRect().top;
+      let best: { key: string; at: number } | null = null;
+      v.elementsCache.forEach((node, key) => {
+        const k = String(key);
+        if (!node.isConnected || !indexOf.has(k)) return;
+        const r = node.getBoundingClientRect();
+        if (r.bottom > boxTop + head + 1 && r.height > 0 && (!best || r.top - boxTop < best.at)) best = { key: k, at: r.top - boxTop };
+      });
+      anchor.current = best;
+    }
   }
   const off = v.scrollOffset ?? 0;
   const tall = v.scrollRect?.height ?? initialHeight;
   const drawn = v.getVirtualItems();
   const shown = drawn.filter(x => x.end > off + head + 1 && x.start < off + tall - 1);
-  inView.current = { view, rows: shown.map(x => ({ key: String(x.key), at: x.start - off })) };
+  inView.current = { view };
   if (seen) seen.current = { first: shown.length ? String(shown[0].key) : null, last: shown.length ? String(shown[shown.length - 1].key) : null };
 
   /* After a re-read the anchor row is where it was: scroll by what landed above it, before the frame is painted, and
@@ -149,7 +163,6 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
      measured over the next frames, so for about a second and a half the row is held at its place from where it really stands on the
      screen — until the reader scrolls, which ends the hold. */
   const [, redraw] = useState(0);
-  const hold = useRef<() => void>(() => {});
   useLayoutEffect(() => {
     const a = anchor.current;
     anchor.current = null;
