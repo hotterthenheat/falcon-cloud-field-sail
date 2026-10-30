@@ -206,8 +206,9 @@ ThetaData's one-minute stock bars before 09:30 and after 16:00 take their open, 
 print, so late reports at an old price draw tall false spikes (SPY on 2026-10-29: near 765.5 after the close, yet
 16:09–16:19 highs of 769.36 and 769.5067 from the closing auction's average-price report of 2.2M shares, its
 prior-reference-price reports, and size-1 odd lots at the close; before the open, odd lots at Oct 28's 772.31 close).
-The chart bars (`data/thetaTape.ts` `pullIntraday`, which Terrain, the Weigher, Paper and Pinpoint's tape draw) rebuild
-a **stock's** pre-market and after-hours bars from `/stock/history/trade` (`data/thetaEligible.ts`):
+The chart bars (`data/thetaTape.ts` `pullIntraday`, which Terrain, the Weigher, Paper and Pinpoint's tape draw) and the
+book's ThetaData fallback tape (`data/book/tape.ts` `thetaTape`) rebuild a **stock's** pre-market and after-hours bars
+from `/stock/history/trade` (`data/thetaEligible.ts`):
 
 - A print sets a bar's price only if every condition it carries (`condition`, `ext_condition1`–`4`) is one ThetaData's
   Trade Conditions table marks as updating the consolidated High, Low and Last, and not as a Late Report. Form T,
@@ -219,6 +220,10 @@ a **stock's** pre-market and after-hours bars from `/stock/history/trade` (`data
 - One trades request per name and window for the finished days of the last 6 calendar days (cached 6 h by the hub), and
   one for today, read on from the minute the last read reached. Bars older than 6 days, indexes, the regular session
   and the 16:00 close bar are ThetaData's own (the regular session already follows these rules: its bars match them).
+- Every history window ends on its last millisecond (`15:59:59.999`, `09:29:59.999`, `19:59:59.999`): the terminal's
+  `end_time` is exclusive at the stamp, so an end of `15:59:59` dropped every print stamped 15:59:59.xxx (SPY's
+  2026-10-29 15:59 bar read 315,661 shares and a 769.62 high instead of 330,558 and 769.66), and `16:00:00` would
+  open the next bar with only its 16:00:00.000 prints.
 - Locked by `scripts/golden/extended-golden.ts` (set `extended-2026-10-29`).
 
 ### Also in the same REST spec
