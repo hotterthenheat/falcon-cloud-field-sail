@@ -3,14 +3,16 @@ import { useLocation } from 'react-router-dom';
 import { ChevronUp, Code2, Link2, Maximize2, Minimize2, Rows3, SlidersHorizontal, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
-import { useDeskSession, type DeskSession } from '../../data/deskSession';
+import { useDeskSession, sessionMeta, type DeskSession } from '../../data/deskSession';
 import { chainForDate, expiryLabel, peekSpot, useBookRev } from '../../data/uwBook';
+import { rootTradesSession } from '../../data/compassSession';
 import { useSessionQuote } from '../../data/sessionQuote';
-import { peekPrint, usePrintRev, useTapeRev, useThetaTape, wantPrint } from '../../data/thetaTape';
+import { barInTape, peekPrint, peekTape, usePrintRev, useTapeRev, useThetaTape, wantPrint } from '../../data/thetaTape';
 import { thetaChartBars } from '../../data/thetaCandles';
 import { fmtUsd } from '../../data/gex';
 import { CALENDAR_DTES } from '../../data/exposureSurface';
 import { expiryFor, futuresPhaseAt, FUTURES_PHASE_WORDS } from '../../core/calendar';
+import { nyClock } from '../../core/nyTime';
 
 import DistanceUnitPicker from '../../components/ui/DistanceUnitPicker';
 import SessionBook from '../../components/ui/SessionBook';
@@ -60,7 +62,7 @@ import ScopeChip from '../../components/ui/ScopeChip';
 import { ChartSkeleton, Deferred } from '../../components/ui/Skeleton';
 import SpotPrice from '../../components/gex/SpotPrice';
 import { CANDLE_THEMES, chartGround, pageDefaultCandleKey, usePageDefaultCandleKey, type CandleThemeKey } from '../../components/gex/candleTheme';
-import { TIMEFRAMES, type Timeframe } from '../../data/timeframe';
+import { TIMEFRAMES, frameServed, type Timeframe } from '../../data/timeframe';
 import FrameMeter, { frameMeterOn } from '../../components/gex/FrameMeter';
 import { paneLevels } from './paneLevels';
 import { buildConfluence, type TrendState } from '../../data/confluence';
@@ -166,7 +168,7 @@ const railCutChoices = (): ExpiryChoice<RailCut>[] => {
     const day = `${MONTHS[e.date.getMonth()]} ${e.date.getDate()}`;
     out.push({ value: dte, label: dte === 0 ? `Today · ${day}` : day, hint: dte === 0 ? "The contracts that expire at today's bell" : `${e.sessions} sessions out`, date: e.date });
   }
-  out.push({ value: 'book', label: 'Every expiry', hint: 'Every expiry the name carries', date: null });
+  out.push({ value: 'book', label: 'Whole book', hint: 'Every listed expiry, on the contracts live in this session', date: null });
   return out;
 };
 type RailData = {
@@ -298,7 +300,7 @@ function readPane(raw: unknown, def: PaneCfg): PaneCfg {
   return {
     ticker: typeof c.ticker === 'string' && c.ticker ? c.ticker : def.ticker,
     tabs: readTabs(c.tabs, typeof c.ticker === 'string' && c.ticker ? c.ticker : def.ticker),
-    timeframe: typeof c.timeframe === 'string' && TF_VALUES.has(c.timeframe) ? (c.timeframe as Timeframe) : def.timeframe,
+    timeframe: typeof c.timeframe === 'string' && TF_VALUES.has(c.timeframe) && frameServed(c.timeframe as Timeframe) ? (c.timeframe as Timeframe) : def.timeframe,
     overlays: { ...DEFAULT_OVERLAYS, ...(c.overlays && typeof c.overlays === 'object' ? c.overlays : {}) },
     indicators: { ...DEFAULT_INDICATORS, ...(c.indicators && typeof c.indicators === 'object' ? c.indicators : {}) },
     chartStyle: typeof c.chartStyle === 'string' && STYLES.has(c.chartStyle as ChartStyle) ? (c.chartStyle as ChartStyle) : def.chartStyle,
@@ -358,7 +360,7 @@ function loadCfg(): TerrainCfg {
 
     // The flat shape, fanned out
     const legacy: Partial<PaneCfg> = {
-      timeframe: typeof c.timeframe === 'string' && TF_VALUES.has(c.timeframe) ? (c.timeframe as Timeframe) : undefined,
+      timeframe: typeof c.timeframe === 'string' && TF_VALUES.has(c.timeframe) && frameServed(c.timeframe as Timeframe) ? (c.timeframe as Timeframe) : undefined,
       overlays: c.overlays && typeof c.overlays === 'object' ? (c.overlays as ChartOverlays) : undefined,
       indicators: c.indicators && typeof c.indicators === 'object' ? (c.indicators as ChartIndicators) : undefined,
       chartStyle: typeof c.chartStyle === 'string' && STYLES.has(c.chartStyle as ChartStyle) ? (c.chartStyle as ChartStyle) : undefined,
@@ -475,26 +477,58 @@ function useStable<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) 
   ref.current = fn;
   return useCallback((...args: A) => ref.current(...args), []);
 }
-const NO_FLOW_PRINTS: readonly never[] = [];
 
-/* The head's price and its move off the regular close, off ThetaData: the session's last bar with the live print on
-   it. The close is the prior session's before and during the day, today's after the bell. */
-function headRead(ticker: string, session: DeskSession, cashClose: number | null): { px: number | null; move: number | null } {
+/* The head's price and its move off the regular close, off ThetaData. The chart series stays the full join.
+   The number is the last real bar of the session on the desk, not the newest bar of another session. */
+const SESSION_EMPTY: Record<DeskSession, string> = {
+  overnight: 'No overnight prints',
+  pre: 'No premarket prints',
+  rth: 'No regular prints',
+  post: 'No after-hours prints',
+};
+function headRead(ticker: string, session: DeskSession, cashClose: number | null): { px: number | null; at: number; move: number | null; note: string | null } {
   const bars = thetaChartBars(ticker, 1, session);
-  const px = bars.length ? bars[bars.length - 1].close : null;
+  let last: { close: number; time: number } | null = null;
+  for (let i = bars.length - 1; i >= 0; i--) {
+    const b = bars[i];
+    if (!(b.open > 0) || !(b.high > 0) || !(b.low > 0) || !(b.close > 0)) continue;
+    if (!barInTape(b.time, session, ticker)) continue;
+    last = b;
+    break;
+  }
+  if (!last) {
+    const tape = peekTape(ticker, '1m', session);
+    const waiting = tape.bars.length === 0 && (tape.state === 'loading' || tape.takenAt === 0);
+    const note = waiting ? null : SESSION_EMPTY[session];
+    return { px: null, at: 0, move: null, note };
+  }
+  const px = last.close;
   const print = peekPrint(ticker);
   const base = session === 'post' || session === 'overnight' ? cashClose : print && print.prev > 0 ? print.prev : null;
-  return { px, move: px != null && base != null && base > 0 ? ((px - base) / base) * 100 : null };
+  return { px, at: last.time, move: px != null && base != null && base > 0 ? ((px - base) / base) * 100 : null, note: null };
 }
 /* Leaves, so a print (every second in the session) re-renders the number and not the pane */
 const HeadPrice = ({ ticker, session, className }: { ticker: string; session: DeskSession; className?: string }) => {
   usePrintRev();
   useTapeRev();
-  const { px } = headRead(ticker, session, null);
-  const quote = useSessionQuote(ticker, session, session !== 'rth' && px == null);
-  if (px == null && quote) return <span className="font-mono text-t11 font-semibold tnum text-textPrimary" title="No prints in this session. Bid and ask.">{quote.bid.toFixed(2)} × {quote.ask.toFixed(2)}</span>;
+  const { px, at, note } = headRead(ticker, session, null);
+  const quote = useSessionQuote(ticker, session, session !== 'rth' && px == null && !note);
+  if (px == null && note) {
+    return (
+      <span className="font-mono text-t11 text-textMuted" title={`${note}. ${sessionMeta(session).label} is not borrowing another session's print.`} data-head-note={session}>
+        {note}
+      </span>
+    );
+  }
+  if (px == null && quote) return <span className="font-mono text-t11 font-semibold tnum text-textPrimary" title="No prints on this name. Bid and ask.">{quote.bid.toFixed(2)} × {quote.ask.toFixed(2)}</span>;
   if (px == null) return <span className="font-mono text-t11 text-textMuted">—</span>;
-  return <SpotPrice value={px} className={className} />;
+  const stale = at > 0 && Date.now() / 1000 - at > 120;
+  return (
+    <span className="inline-flex items-baseline gap-1">
+      <SpotPrice value={px} className={className} />
+      {stale && <span className="font-mono text-t10 text-textMuted" title="The last print on the tape. Nothing newer has printed.">{nyClock(at * 1000)}</span>}
+    </span>
+  );
 };
 const HeadMove = ({ ticker, session, cashClose, className = '' }: { ticker: string; session: DeskSession; cashClose: number | null; className?: string }) => {
   usePrintRev();
@@ -739,8 +773,7 @@ const Pane = ({
   const levelsTop = useMemo(() => (levelsNodes ? levelsNodes.reduce((m, n) => Math.max(m, Math.abs(n.netGex)), 0) : 0), [levelsNodes]);
   const maxPain = useMaxPain(ticker, house?.date ?? levelsChain?.date ?? null, overlays.levels);
   const levels = useMemo(() => paneLevels(railData.spot, house, { top: levelsTop, maxPain }), [railData, house, levelsTop, maxPain]);
-  // Deterministic per ticker, so the dark-pool lines do not wander on a tick
-  const prints = useMemo(() => [] as { price: number; notional: number; date: string; size: number; time: string }[], []);
+  /* Dark-pool and option prints are the chart's own feed. Passing an empty list here used to win, and the overlay drew nothing. */
   /* The rail's rows come off the same snapshot `levels` was reduced from. The header's three-strike read uses them
      too, so the line and the column can never name different strikes. */
   const rail = railData;
@@ -1028,9 +1061,8 @@ const Pane = ({
       trend={trendByTf}
       overlays={overlays}
       onOverlays={o => onCfg({ overlays: o })}
-      /* Everything except the strike band: that band docks under the Pulse chart only (no Terrain surface mounts it
-         — his tree included), and a switch that cannot turn anything on is a lie in a menu. */
-      overlayKeys={['trails', 'levels', 'darkpool', 'volume', 'flow', 'netDrift', 'volDrift', 'session', 'cone', 'events', 'alerts']}
+      /* The strike band docks under the tape when Exposure by strike is on. The chart mounts it; this menu only switches it. */
+      overlayKeys={['trails', 'levels', 'darkpool', 'volume', 'flow', 'netDrift', 'volDrift', 'dexStrike', 'session', 'cone', 'events', 'alerts']}
       indicators={indicators}
       onIndicators={i => onCfg({ indicators: i })}
       paneId={`terrain:${index + 1}`}
@@ -1135,10 +1167,11 @@ const Pane = ({
               bookDate={railCut === 'book' ? 'book' : bookPick}
               levels={levels}
               timeframe={timeframe}
-              flowPrints={NO_FLOW_PRINTS}
               height={tall ? 260 : 200}
               overlays={overlays}
+              onOverlays={o => onCfg({ overlays: o })}
               indicators={indicators}
+              onIndicators={i => onCfg({ indicators: i })}
               chartStyle={chartStyle}
               themeKey={theme}
               /* The field's key prints on the desk's own line, not under every pane */
@@ -1147,7 +1180,6 @@ const Pane = ({
               /* The chart's picture, for the toolbar's camera */
               snapshotRegister={chartSnapshotRegister}
               barClock={clock}
-              prints={prints}
               compares={compares}
               priceScale={priceScale}
               sessionOr={sessionOr}
@@ -1183,7 +1215,7 @@ const Pane = ({
                 <FieldKey
                   ticker={ticker}
                   cut={railCut === 'book' ? 'book' : shownBook?.date ?? null}
-                  cutWords={railCut === 'book' ? 'every expiry' : shownBook?.label ?? '—'}
+                  cutWords={railCut === 'book' ? (rootTradesSession(ticker, session) ? 'the whole book' : 'options shut') : shownBook?.label ?? '—'}
                   scale={fieldScale}
                   oiNet={fieldOiNet}
                   compact={isPhone || (paneCount > 1 && !expanded)}
@@ -1501,7 +1533,7 @@ const Terrain = () => {
       try {
         const ticker = arrive.ticker.trim().toUpperCase();
         if (ticker) {
-        c = { ...stored, panes: stored.panes.map((p, i) => (i === 0 ? { ...p, ticker, timeframe: arrive.timeframe && TF_VALUES.has(arrive.timeframe) ? arrive.timeframe : p.timeframe } : p)) };
+        c = { ...stored, panes: stored.panes.map((p, i) => (i === 0 ? { ...p, ticker, timeframe: arrive.timeframe && TF_VALUES.has(arrive.timeframe) && frameServed(arrive.timeframe) ? arrive.timeframe : p.timeframe } : p)) };
         }
       } catch {
         /* A name the feed cannot build — the pane keeps its own */

@@ -4,9 +4,9 @@ import { nySession } from '../../core/nyTime';
 import { dealerOf } from '../../core/dealerSign';
 
 /*
-  The exposure field: one row per strike, as tall as the strike spacing, one column per chart bar, one colour per cell —
-  that strike's dealer gamma at that time on the chosen expiries (data/book/exposureLog.ts builds the grid). Rows never
-  overlap; a cell with no reading is left empty.
+  The exposure field: one band per strike, centered on the strike, with black between it and the next.
+  A timeframe that compresses the book keeps the louder strike and drops the one that would touch it.
+  A cell with no reading is left empty.
 
   The colour is a perceptual ramp on the cell's size against the field's own scale (the 98th percentile of every cell,
   so one freak print does not flatten the rest): dim navy for the quiet cells, rising through teal and green to yellow
@@ -196,7 +196,29 @@ class FieldRenderer {
     const ink = INK_RGB[src.focusInk];
     const strikes = src.strikes;
     const R = strikes.length;
-    const probeStrike = strikes[R >> 1] ?? 0;
+    if (R > 200 || cols.length > 2000) return;
+    /* Rows are prices. A strike the scale cannot see is not drawn, and nothing is spaced across the pane in its place. */
+    const paneH = src.chart.paneSize(0).height;
+    const pTop = series.coordinateToPrice(0);
+    const pBot = paneH > 0 ? series.coordinateToPrice(paneH) : null;
+    let rLo = 0;
+    let rHi = R;
+    if (pTop != null && pBot != null && pTop !== pBot) {
+      const loP = Math.min(pTop, pBot);
+      const hiP = Math.max(pTop, pBot);
+      let i = 0;
+      while (i < R && strikes[i] < loP) i++;
+      let j = i;
+      while (j < R && strikes[j] <= hiP) j++;
+      rLo = Math.max(0, i - 1);
+      rHi = Math.min(R, j + 1);
+    }
+    /* An empty scale maps every strike to one y. Painting that is the stack. Wait for a real scale. */
+    if (rHi - rLo >= 2) {
+      const yA = series.priceToCoordinate(strikes[rLo]);
+      const yB = series.priceToCoordinate(strikes[rHi - 1]);
+      if (yA == null || yB == null || yA === yB) return;
+    }
 
     target.useBitmapCoordinateSpace(scope => {
       const ctx = scope.context;
@@ -206,6 +228,7 @@ class FieldRenderer {
       const halfW = barSpacing * 0.5;
 
       const x0 = ts.timeToCoordinate(cols[first].time as Time);
+      const probeStrike = strikes[Math.min(R - 1, Math.max(rLo, (rLo + rHi) >> 1))] ?? 0;
       const probeA = series.priceToCoordinate(probeStrike) ?? -1;
       const probeB = series.priceToCoordinate(probeStrike + 1) ?? -1;
       const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${src.focusInk}`;
@@ -243,36 +266,13 @@ class FieldRenderer {
         const mxCss = mxPx / hr;
         const cFrom = wide ? rFirst : first;
         const cTo = wide ? rLast : last;
-        /* each row's edges: half way to the neighbouring strikes, the outer rows as tall as their neighbour's step.
-           Guard against a collapsed price scale (common on 1D / coarse bars or before the series is ready): if the
-           coordinates are missing or the whole field spans less than a few pixels, fall back to a proportional
-           layout so the rows never stack on top of each other. */
+        /* each row's edges, for the focus outline. A strike the scale cannot see stays NaN.
+           Do not space the book across the pane — that fallback is the stack. */
         const edgeY = new Float64Array(R + 1);
-        let finite = 0;
-        let minY = Infinity, maxY = -Infinity;
         for (let r = 0; r <= R; r++) {
           const lo = r === 0 ? strikes[0] - (R > 1 ? (strikes[1] - strikes[0]) / 2 : 0.5) : (strikes[r - 1] + strikes[r]) / 2;
           const y = series.priceToCoordinate(r === R ? strikes[R - 1] + (R > 1 ? (strikes[R - 1] - strikes[R - 2]) / 2 : 0.5) : lo);
-          if (y == null || !Number.isFinite(y)) { edgeY[r] = NaN; continue; }
-          const yy = y * vr;
-          edgeY[r] = yy;
-          finite++;
-          if (yy < minY) minY = yy;
-          if (yy > maxY) maxY = yy;
-        }
-        const span = maxY - minY;
-        const minSpan = Math.max(R * 4 * vr, scope.bitmapSize.height * 0.15);
-        if (finite < R * 0.6 || !Number.isFinite(span) || span < minSpan) {
-          /* proportional fallback: space rows by strike difference across the visible pane */
-          const s0 = strikes[0], s1 = strikes[R - 1];
-          const ds = s1 > s0 ? s1 - s0 : 1;
-          const top = myPx * 0.5;
-          const bot = scope.bitmapSize.height - myPx * 0.5;
-          for (let r = 0; r <= R; r++) {
-            const mid = r === 0 ? s0 : r === R ? s1 : (strikes[r - 1] + strikes[r]) / 2;
-            const t = (mid - s0) / ds;
-            edgeY[r] = bot - t * (bot - top);
-          }
+          edgeY[r] = y === null || !Number.isFinite(y) ? NaN : y * vr;
         }
         const hBmp = scope.bitmapSize.height;
         /* one path per ink step and side, cells of a row merged across touching bars of the same step */
@@ -295,19 +295,53 @@ class FieldRenderer {
         }
         const vals = src.values;
         const ref = src.ref;
-        for (let r = 0; r < R; r++) {
-          const ya = edgeY[r];
-          const yb = edgeY[r + 1];
-          if (!Number.isFinite(ya) || !Number.isFinite(yb)) continue;
-          let yTop = Math.min(ya, yb);
-          let yBot = Math.max(ya, yb);
-          if (yBot < -myPx || yTop > hBmp + myPx) continue;
-          /* a hairline between rows once they are tall enough to spare it */
-          const h = yBot - yTop;
-          if (h > 5 * vr) yTop += Math.max(1, Math.round(0.6 * vr));
-          yTop = Math.round(yTop);
-          yBot = Math.round(yBot);
-          if (yBot - yTop < 1) yBot = yTop + 1;
+        /* A band sits on its strike. It does not run to the next strike — that fill is the stack. Quiet bands
+           stay thin. The loudest get thicker, and still stop short of the neighbour, on every timeframe. */
+        const yOf = (price: number): number => {
+          const y = series.priceToCoordinate(price);
+          return y == null ? NaN : y * vr;
+        };
+        const cand: { r: number; yTop: number; yBot: number; yMid: number; mag: number }[] = [];
+        for (let r = rLo; r < rHi; r++) {
+          const yC = yOf(strikes[r]);
+          if (!Number.isFinite(yC)) continue;
+          const prevPx = r > 0 ? strikes[r - 1] : strikes[r] - (r + 1 < R ? strikes[r + 1] - strikes[r] : 1);
+          const nextPx = r + 1 < R ? strikes[r + 1] : strikes[r] + (r > 0 ? strikes[r] - strikes[r - 1] : 1);
+          const yP = yOf((strikes[r] + prevPx) / 2);
+          const yN = yOf((strikes[r] + nextPx) / 2);
+          const gap = Math.min(Number.isFinite(yP) ? Math.abs(yC - yP) : Infinity, Number.isFinite(yN) ? Math.abs(yC - yN) : Infinity);
+          if (!(gap > 0)) continue;
+          let mag = 0;
+          for (let c = cFrom; c < cTo; c++) {
+            const v = vals[c * R + r];
+            if (!Number.isNaN(v)) mag = Math.max(mag, Math.abs(v));
+          }
+          if (!(mag > 0) && strikes[r] !== focus) continue;
+          const t = ref > 0 ? Math.min(1, mag / ref) : 0;
+          const half = Math.max(Math.round(0.7 * vr), Math.min(gap - 0.5, gap * (0.32 + 0.5 * t)));
+          const yTop = Math.round(yC - half);
+          const yBot = Math.round(yC + half);
+          if (yBot < -myPx || yTop > hBmp + myPx || yBot - yTop < 1) continue;
+          cand.push({ r, yTop, yBot, yMid: yC, mag });
+        }
+        const draw: { r: number; yTop: number; yBot: number; mag: number }[] = [];
+        const gapPx = Math.max(1, Math.round(vr));
+        for (const row of cand) {
+          const prev = draw[draw.length - 1];
+          if (prev && row.yTop < prev.yBot + gapPx) {
+            if (row.mag <= prev.mag) continue;
+            const earlier = draw[draw.length - 2];
+            if (earlier && row.yTop < earlier.yBot + gapPx) continue;
+            draw[draw.length - 1] = { r: row.r, yTop: row.yTop, yBot: row.yBot, mag: row.mag };
+            continue;
+          }
+          draw.push({ r: row.r, yTop: row.yTop, yBot: row.yBot, mag: row.mag });
+        }
+        for (const row of draw) {
+          const r = row.r;
+          const yTop = row.yTop;
+          const yBot = row.yBot;
+          if (yBot - yTop < 1 || yBot < -myPx || yTop > hBmp + myPx) continue;
           const dim = focus != null && strikes[r] !== focus;
           let runKey = -1;
           let runL = 0;
@@ -566,8 +600,16 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     if (logical === null) return null;
     const bar = this.series.dataByIndex(Math.round(logical), MismatchDirection.None);
     if (!bar) return null;
-    const ci = this.colIndexAtOrAfter(Number(bar.time));
-    if (ci >= this.cols.length || this.cols[ci].time !== Number(bar.time)) return null;
+    const t = Number(bar.time);
+    let ci = this.colIndexAtOrAfter(t);
+    if (ci >= this.cols.length || this.cols[ci].time !== t) {
+      const prev = ci - 1;
+      const near = [prev, ci].filter(i => i >= 0 && i < this.cols.length);
+      near.sort((a, b) => Math.abs(this.cols[a].time - t) - Math.abs(this.cols[b].time - t));
+      const best = near[0];
+      if (best == null || Math.abs(this.cols[best].time - t) > Math.max(this.barSec, 60)) return null;
+      ci = best;
+    }
     const price = this.series.coordinateToPrice(y);
     if (price === null) return null;
     const row = this.rowAt(price);
@@ -672,31 +714,39 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     this.barSec = barSec;
     this.maxAbs = maxAbs;
     this.enabled = enabled;
-    const lastPx = prices.length ? prices[prices.length - 1].time + barSec : Infinity;
-    const folded: GexSnapshot[] = [];
-    /* each column onto its own bar: the last bar starting at or before it (the chart's bars need not sit on round times) */
-    const barOf = (t: number): number => {
-      if (!prices.length) return barSec >= 86_400 ? t : Math.floor(t / barSec) * barSec;
-      let lo = 0;
-      let hi = prices.length;
-      while (lo < hi) {
-        const m = (lo + hi) >> 1;
-        if (prices[m].time <= t) lo = m + 1;
-        else hi = m;
-      }
-      return lo > 0 ? prices[lo - 1].time : Math.floor(t / barSec) * barSec;
-    };
+    if (!enabled) {
+      this.cols = [];
+      this.strikes = [];
+      this.values = new Float64Array(0);
+      this.requestUpdate?.();
+      this.onData?.(0);
+      return;
+    }
+    const folded: { time: number; levels: GexSnapshot['levels'] }[] = [];
+    /* The column's time is the bar's open. Re-bucketing onto a round clock collapses a session of bars into one needle. */
+    const end = prices.length ? prices[prices.length - 1].time : Infinity;
     for (const s of snapshots) {
-      if (s.time > lastPx) continue;
-      const bucket = barOf(s.time);
+      if (prices.length && s.time > end) continue;
       const prev = folded[folded.length - 1];
-      if (prev && prev.time === bucket) folded[folded.length - 1] = { time: bucket, levels: s.levels };
-      else folded.push({ time: bucket, levels: s.levels });
+      if (prev && prev.time === s.time) folded[folded.length - 1] = s;
+      else folded.push(s);
+    }
+    if (folded.length > 2000) {
+      folded.splice(0, folded.length - 2000);
     }
     this.snapshots = folded;
     const strikeSet = new Set<number>();
     for (const s of folded) for (const l of s.levels) strikeSet.add(l.strike);
     const strikes = [...strikeSet].sort((a, b) => a - b);
+    if (strikes.length > 200) {
+      this.cols = [];
+      this.strikes = [];
+      this.values = new Float64Array(0);
+      this.enabled = false;
+      this.requestUpdate?.();
+      this.onData?.(0);
+      return;
+    }
     const index = new Map(strikes.map((k, i) => [k, i]));
     const R = strikes.length;
     const values = new Float64Array(folded.length * R).fill(NaN);

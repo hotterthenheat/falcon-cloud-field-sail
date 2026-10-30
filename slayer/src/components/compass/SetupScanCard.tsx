@@ -13,6 +13,7 @@ import { P1_MIN } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
 import { Tip } from '../ui/Tooltip';
 import { usd2 as money } from '../../core/format';
+import { useContractLive } from '../../data/thetaBook';
 
 const Stat = ({ label, value, ink = 'text-textPrimary', right = false }: { label: string; value: string; ink?: string; right?: boolean }) => (
   <span className={`flex flex-col gap-0.5 min-w-0 ${right ? 'items-end text-right' : ''}`}>
@@ -47,11 +48,11 @@ const tagOf = (setup: Setup): string => {
 const holdOf = (setup: Setup): string => {
   if (setup.strength) return 'Held. Same trade.';
   if (setup.band === 'closest') return '';
-  if (setup.band === 'lottery') return 'Book C. No model. No stop. Flat at 15:50.';
-  if (setup.band === 'wing') return 'Book B. Model 2 exit, even under 50%.';
+  if (setup.band === 'lottery') return 'Book C. No score. No stop. Flat at 15:50.';
+  if (setup.band === 'wing') return 'Book B. The exit rides, even under 50%.';
   if (setup.band === 'average') return 'Average.';
-  if (setup.runner) return 'Model 2 runner. Stop ratchets. Flat at 15:55.';
-  return 'Model 1. Out at 1.50 × the ask, or the stop.';
+  if (setup.runner) return 'The exit rides. Stop ratchets. Flat at 15:55.';
+  return 'Out at 1.50 × the ask, or the stop.';
 };
 
 const placeWord = (setup: Setup): string => {
@@ -74,10 +75,21 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const ticket = setup.band === 'top' || setup.band === 'wing' || setup.band === 'lottery';
   const closest = setup.band === 'closest';
   const priced = ticket || closest;
+  const live = useContractLive(setup.ticker, setup.expiryDate || '', setup.strike, setup.right, priced && !!setup.expiryDate);
   const signal = ticket ? signalOf(setup.id) : null;
   const paid = signal?.outcome?.fill?.ask ?? 0;
-  const entry = paid > 0 ? paid : setup.ask > 0 ? setup.ask : 0;
-  const liveBid = priced && setup.bid > 0 && setup.ask >= setup.bid ? setup.bid : NaN;
+  /* One quote, both sides. A live Theta quote replaces the scan's. Never a bid from one and an ask from the other, and never a mid standing in for a side the quote did not print. */
+  const liveQuote = live && Number.isFinite(live.bid) && Number.isFinite(live.ask) && live.ask >= live.bid && live.ask > 0
+    ? { bid: live.bid, ask: live.ask, at: live.at }
+    : null;
+  const scanQuote = !liveQuote && setup.ask > 0 && setup.bid >= 0 && setup.ask >= setup.bid
+    ? { bid: setup.bid, ask: setup.ask, at: setup.quotedAt || 0 }
+    : null;
+  const quoted = liveQuote ?? scanQuote;
+  const ask = quoted?.ask ?? 0;
+  const bid = quoted?.bid ?? 0;
+  const entry = paid > 0 ? paid : ask > 0 ? ask : 0;
+  const liveBid = priced && bid > 0 && ask >= bid ? bid : NaN;
   const outcome = signal?.outcome ?? null;
   const runner = setup.band === 'wing' || setup.runner === true;
   /* the stop standing now: the ratchet's rung once the call has filled and run, else 0.4678 × the entry */
@@ -90,15 +102,16 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const pnl = closedOut?.pnl ?? (paid > 0 && Number.isFinite(liveBid) ? (liveBid - paid) * 100 - optionFees(liveBid) : NaN);
   const pnlWord = Number.isFinite(pnl) ? `${pnl >= 0 ? '+' : '−'}$${Math.abs(pnl).toFixed(0)}` : '—';
   const place = placeWord(setup);
+  const line = setup.p1 == null ? '' : setup.p1 + 1e-12 >= P1_MIN ? 'The line cleared.' : 'Short of the line.';
   const model = setup.p1 != null
-    ? `${holdOf(setup)} Model 1 ${(setup.p1 * 100).toFixed(1)}%.${setup.prun != null ? ` Model 2 ${(setup.prun * 100).toFixed(0)}%.` : ''}${MODELS_VALIDATED ? '' : ` ${UNVALIDATED_LINE}`}`
+    ? `${holdOf(setup)} ${line}${MODELS_VALIDATED ? '' : ` ${UNVALIDATED_LINE}`}`
     : setup.band === 'lottery'
       ? holdOf(setup)
       : '';
   const when = [
     ticket && setup.late && setup.seenAt ? `Scored late from recorded quotes (${nyClock(setup.mark ?? setup.seenAt)} ET mark)` : '',
     ticket && !setup.late && setup.seenAt ? `Called ${nyClock(setup.seenAt, { zone: true })}` : '',
-    setup.quotedAt ? `Quote ${nyClock(setup.quotedAt, { seconds: true, zone: true })}` : '',
+    setup.quotedAt || liveQuote?.at ? `Quote ${nyClock(liveQuote?.at || setup.quotedAt || 0, { seconds: true, zone: true })}` : '',
   ].filter(Boolean);
   const sigma = setup.greeks.iv > 0 && setup.sigmaMovePct > 0 ? `IV move ±${setup.sigmaMovePct}%` : '';
   const status = priced ? [place, sigma, ...when].filter(Boolean).join(' · ') : (setup.whyText || 'Not a ticket.');
@@ -147,13 +160,13 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
       {priced ? (
         <>
           <div className="grid grid-cols-4 gap-2 items-start" data-card-numbers>
-            <Stat label="Model 1" value={setup.p1 != null ? `${(setup.p1 * 100).toFixed(1)}%` : setup.band === 'lottery' ? 'None' : '—'} ink={setup.p1 != null && setup.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'} />
+            <Stat label="The line" value={setup.p1 != null ? (setup.p1 + 1e-12 >= P1_MIN ? 'Cleared' : 'Short') : setup.band === 'lottery' ? 'None' : '—'} ink={setup.p1 != null && setup.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'} />
             <Stat label={paid > 0 ? 'Filled' : 'Ask'} value={entry > 0 ? money(entry) : '—'} />
             <Stat label={closedOut ? 'Exit' : 'Bid'} value={closedOut?.exit ? money(closedOut.exit.px) : Number.isFinite(liveBid) ? money(liveBid) : '—'} />
             <Stat label="P&L" value={pnlWord} ink={!Number.isFinite(pnl) ? 'text-textMuted' : pnl >= 0 ? 'text-bull' : 'text-bear'} right />
           </div>
           <div className="flex items-center gap-x-3 gap-y-1 flex-wrap font-mono text-t10 text-textSecondary tnum" data-card-distances>
-            <span>{signal ? 'At call' : 'Quote'} <span className="text-textPrimary">{signal ? `${signal.bid.toFixed(2)} × ${signal.ask.toFixed(2)}` : setup.ask > 0 ? `${setup.bid.toFixed(2)} × ${setup.ask.toFixed(2)}` : '—'}</span></span>
+            <span>{signal ? 'At call' : 'Quote'} <span className="text-textPrimary">{signal ? `${signal.bid.toFixed(2)} × ${signal.ask.toFixed(2)}` : ask > 0 ? `${bid.toFixed(2)} × ${ask.toFixed(2)}` : '—'}</span></span>
             <span>{stopPx > 0 ? <>{standing?.name ?? 'Stop'} <span className="text-warn font-semibold">{money(stopPx)}</span> {away(stopPx)}</> : setup.band === 'lottery' ? 'No stop' : 'Stop —'}</span>
             <span>{target > 0 ? <>Target <span className="text-textPrimary font-semibold">{money(target)}</span> {away(target)}</> : runner ? 'Target: the ratchet' : ''}</span>
             <span className="ml-auto max-sm:hidden"><SessionSpark ticker={setup.ticker} points={signal?.spark.length ? signal.spark : undefined} width={64} height={22} /></span>

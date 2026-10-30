@@ -1,4 +1,5 @@
 import type { Candle } from '../types/market';
+import { sessionOccurrence, type DeskSession } from './deskSession';
 
 /*
 ==================================================
@@ -76,6 +77,21 @@ export function sessionStarts(bars: readonly Candle[], barMinutes: number): numb
   return out;
 }
 
+/** Where the session you picked opens again. A halt is not a new session. Overnight's morning belongs to the evening it started. */
+function anchorsOf(bars: readonly { time: number }[], barMinutes: number, session?: DeskSession): Set<number> {
+  if (!session || bars.length === 0) return new Set(sessionStarts(bars as Candle[], barMinutes));
+  const out = [0];
+  let prev = sessionOccurrence(bars[0].time, session);
+  for (let i = 1; i < bars.length; i++) {
+    const key = sessionOccurrence(bars[i].time, session);
+    if (key !== prev) {
+      out.push(i);
+      prev = key;
+    }
+  }
+  return new Set(out);
+}
+
 /**
  * Session-anchored VWAP: cumulative typical×volume over cumulative volume,
  * reset at every session start.
@@ -83,8 +99,8 @@ export function sessionStarts(bars: readonly Candle[], barMinutes: number): numb
  * Falls back to the close on a bar with no volume behind it, so the series is
  * a price throughout rather than dropping to zero on a dead open.
  */
-export function vwapSeries(bars: readonly Candle[], barMinutes: number): number[] {
-  const starts = new Set(sessionStarts(bars, barMinutes));
+export function vwapSeries(bars: readonly Candle[], barMinutes: number, session?: DeskSession): number[] {
+  const starts = anchorsOf(bars, barMinutes, session);
   const out: number[] = [];
   let pv = 0;
   let vol = 0;
@@ -234,10 +250,10 @@ export function smaSeries(bars: readonly Candle[], period: number): (number | nu
  * volume behind it yet — a band of width zero would claim certainty, not
  * absence.
  */
-export function vwapSigmaSeries(bars: readonly Candle[], barMinutes: number): (number | null)[] {
+export function vwapSigmaSeries(bars: readonly Candle[], barMinutes: number, session?: DeskSession): (number | null)[] {
   const out: (number | null)[] = new Array(bars.length).fill(null);
   if (bars.length === 0) return out;
-  const starts = new Set(sessionStarts(bars, barMinutes));
+  const starts = anchorsOf(bars, barMinutes, session);
   let cumV = 0;
   let cumPV = 0;
   let cumP2V = 0;
@@ -293,10 +309,11 @@ export function weightedSessionSeries(
   bars: readonly Candle[],
   barMinutes: number,
   weight: readonly (number | null)[],
+  session?: DeskSession,
 ): (number | null)[] {
   const out: (number | null)[] = new Array(bars.length).fill(null);
   if (bars.length === 0 || weight.length !== bars.length) return out;
-  const starts = new Set(sessionStarts(bars, barMinutes));
+  const starts = anchorsOf(bars, barMinutes, session);
   let pv = 0;
   let w = 0;
   for (let i = 0; i < bars.length; i++) {
@@ -323,8 +340,8 @@ export function weightedSessionSeries(
  * first print of a session the value is null — a share VWAP stood in for
  * a flow VWAP would be a different line wearing this one's name.
  */
-export function flowVwapSeries(bars: readonly Candle[], barMinutes: number, premium: readonly number[]): (number | null)[] {
-  return weightedSessionSeries(bars, barMinutes, premium);
+export function flowVwapSeries(bars: readonly Candle[], barMinutes: number, premium: readonly number[], session?: DeskSession): (number | null)[] {
+  return weightedSessionSeries(bars, barMinutes, premium, session);
 }
 
 /**
@@ -333,7 +350,7 @@ export function flowVwapSeries(bars: readonly Candle[], barMinutes: number, prem
  * Eight real prints, and the middle of the path has to move by at least
  * two percent of its own typical size.
  */
-function gammaMoves(gamma: readonly (number | null)[]): boolean {
+export function gammaMoves(gamma: readonly (number | null)[]): boolean {
   const abs: number[] = [];
   for (const g of gamma) if (g != null && Number.isFinite(g) && g !== 0) abs.push(Math.abs(g));
   if (abs.length < 8) return false;
@@ -387,10 +404,10 @@ export function gammaEmaSeries(bars: readonly Candle[], gamma: readonly (number 
  * by an EMA. Same honesty rule as the gamma EMA: a path that does not
  * move is a time average, and it stays blank.
  */
-export function gammaVwapSeries(bars: readonly Candle[], barMinutes: number, gamma: readonly (number | null)[]): (number | null)[] {
+export function gammaVwapSeries(bars: readonly Candle[], barMinutes: number, gamma: readonly (number | null)[], session?: DeskSession): (number | null)[] {
   if (!gammaMoves(gamma)) return new Array(bars.length).fill(null);
   const weight = gamma.map(g => (g != null && Number.isFinite(g) && g !== 0 ? Math.abs(g) : null));
-  return weightedSessionSeries(bars, barMinutes, weight);
+  return weightedSessionSeries(bars, barMinutes, weight, session);
 }
 
 /** Premium per bar, keyed on the bar's own clock. A bar with no prints is 0, not a guess. */

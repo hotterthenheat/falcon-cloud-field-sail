@@ -8,11 +8,13 @@ import { bookToday, isoDate, nextSession, MONTHS } from '../core/calendar';
 import { expiryOpen } from '../core/tradingYear';
 import { expiryLabel, peekIv } from './uwBook';
 import { HIGHER_KEYS, chainClock, contractHigher, strikeHigher, type HigherKey } from './liveHigher';
+import { pickLegWalls } from '../core/walls';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
 import type { ExposureLevels, ExposureProfileData } from '../types/gex';
 
 /** Gamma, delta, vega, vanna, charm, and the five higher greeks calculated off each contract's own vol. */
 export type Greek = 'gex' | 'dex' | 'vex' | 'vanna' | 'charm' | 'color' | 'vomma' | 'speed' | 'veta' | 'zomma';
+export type BookMode = 'oi' | 'flow';
 export const GREEKS: Greek[] = ['gex', 'dex', 'vex', 'vanna', 'charm', 'color', 'vomma', 'speed', 'veta', 'zomma'];
 /** Needs the option-contracts read. Spot GEX, DEX, vanna and charm do not. */
 const CONTRACT_GREEKS: ReadonlySet<Greek> = new Set<Greek>(['vex', 'color', 'vomma', 'speed', 'veta', 'zomma']);
@@ -114,6 +116,10 @@ export interface ExposureSurface {
   miss?: boolean[][];
   /** The next chain is not in yet. The rail says so instead of going blank. */
   waiting?: string | null;
+  /** Which book the cells were read from. */
+  mode?: BookMode;
+  /** Flow sign disagrees with the open-interest cell, per expiry then strike. */
+  disagree?: boolean[][];
   /** The live snapshot the surface was read off (the profile re-prices its dates with the flip's own legs) */
   book?: MarketSnapshot;
 }
@@ -122,21 +128,43 @@ export interface ExposureSurface {
 export const CALENDAR_DTES = [0, 1, 2, 3, 4, 7, 14, 21, 28, 35, 42, 49, 63, 77, 91] as const;
 
 const EPS = 1e-6;
-/** The dealers' side of each leg — the simulator's own numbers (core/simulator.ts, the chain builder) */
-const DEALER_CALL = -0.55;
-const DEALER_PUT = -0.53;
-/** The greeks whose legs come signed and ready from the desk chain, never anchored to the front */
-const DIRECT: ReadonlySet<Greek> = new Set<Greek>(['vanna', 'charm', 'color', 'vomma', 'speed', 'veta', 'zomma']);
 
 const HIGHER: ReadonlySet<Greek> = new Set<Greek>(HIGHER_KEYS);
+
+/** At-the-money implied vol on this column's own contracts. 0 when none is printed — never a stand-in vol. */
+function atmIvOf(chain: readonly StrikeNode[], spot: number): number {
+  if (!(spot > 0)) return 0;
+  let best = 0;
+  let dist = Infinity;
+  for (const n of chain) {
+    const c = n.callIv ?? 0;
+    const p = n.putIv ?? 0;
+    const iv = c > 0 && p > 0 ? (c + p) / 2 : c > 0 ? c : p;
+    if (!(iv > 0) || iv > 3) continue;
+    const d = Math.abs(n.strike - spot);
+    if (d < dist) {
+      dist = d;
+      best = iv;
+    }
+  }
+  return best;
+}
 
 function columnFacts(chain: readonly StrikeNode[], date: string, facts: ReadonlySet<string> | undefined): boolean {
   if (date && facts?.has(date)) return true;
   return chain.some(n => (n.callIv ?? 0) > 0 || (n.putIv ?? 0) > 0 || n.callVex !== 0 || n.putVex !== 0);
 }
 
-function legOf(n: StrikeNode | undefined, greek: Greek): { put: number; call: number } {
+function legOf(n: StrikeNode | undefined, greek: Greek, mode: BookMode = 'oi'): { put: number; call: number } {
   if (!n) return { put: 0, call: 0 };
+  const f = mode === 'flow' ? n.flow : undefined;
+  if (f) {
+    if (greek === 'gex') return f.gex;
+    if (greek === 'dex') return f.dex;
+    if (greek === 'vex') return f.vex;
+    if (greek === 'vanna') return f.vanna;
+    return f.charm;
+  }
   if (greek === 'gex') return { put: n.putGex, call: n.callGex };
   if (greek === 'dex') return { put: n.putDex, call: n.callDex };
   if (greek === 'vex') return { put: n.putVex, call: n.callVex };
@@ -145,7 +173,7 @@ function legOf(n: StrikeNode | undefined, greek: Greek): { put: number; call: nu
 }
 
 /** The calendar from the vendor's own rows, one column a real expiry. No simulated term structure. */
-function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow): ExposureSurface {
+function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMode = 'oi'): ExposureSurface {
   const front = buildExposureProfile(snapshot, snapshot.uwChains?.['0DTE']?.length ? '0DTE' : 'ALL', half);
   const rows = [...front.strikes].sort((a, b) => a.strike - b.strike);
   const strikes = rows.map(r => r.strike);
@@ -165,8 +193,11 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow): ExposureSurf
   }
   if (!cols.length && !listedAll.length && !waiting) cols.push({ date: '', dte: 0, chain: snapshot.chain });
 
-  const iv = peekIv(snapshot.ticker) ?? 0.2;
+  const nameIv = peekIv(snapshot.ticker) ?? 0;
   const expiries: SurfaceExpiry[] = cols.map(c => {
+    /* A dated column takes that expiry's own at-the-money vol. The undated whole-book column takes the name's
+       printed vol. Neither is filled with a sample. */
+    const iv = c.date ? atmIvOf(c.chain, snapshot.spot) : nameIv;
     if (!c.date) return { dte: 0, short: 'Book', date: 'All', iv, sessions: 0 };
     const parts = c.date.split('-').map(Number);
     return { dte: c.dte, short: c.dte === 0 ? '0DTE' : `${c.dte}d`, date: `${MONTHS[parts[1] - 1]} ${parts[2]}`, iv, sessions: c.dte, iso: c.date };
@@ -215,7 +246,9 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow): ExposureSurf
       }
       const si = at.get(node.strike);
       if (si != null && dropped) blankMiss[si] = true;
-      const h = strikeHigher(snapshot.spot, node.strike, t, node.callIv, node.putIv, callN, putN, volPt);
+      const h = mode === 'flow' && node.flow
+        ? { color: node.flow.color, vomma: node.flow.vomma, speed: node.flow.speed, veta: node.flow.veta, zomma: node.flow.zomma }
+        : strikeHigher(snapshot.spot, node.strike, t, node.callIv, node.putIv, callN, putN, volPt);
       if (h) m.set(node.strike, h);
     }
     return m;
@@ -243,7 +276,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow): ExposureSurf
           pv = h ? h[greek as HigherKey].put : 0;
           cv = h ? h[greek as HigherKey].call : 0;
         } else {
-          const leg = legOf(byStrike.get(s), greek);
+          const leg = legOf(byStrike.get(s), greek, mode);
           pv = leg.put;
           cv = leg.call;
         }
@@ -324,6 +357,58 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow): ExposureSurf
     supreme[greek] = { strike, e, value, total };
   }
 
+  const levels = { ...front.levels };
+  if (mode === 'flow') {
+    const pts = strikes.map((strike, si) => {
+      let callSum = 0;
+      let putSum = 0;
+      for (let e = 0; e < cols.length; e++) {
+        callSum += call.gex[e][si] ?? 0;
+        putSum += put.gex[e][si] ?? 0;
+      }
+      return { strike, callSum, putSum, net: callSum + putSum };
+    });
+    const walls = pickLegWalls(pts, p => p.callSum, p => p.putSum);
+    let supremeStrike = Number.NaN;
+    let best = 0;
+    for (const p of pts) {
+      const a = Math.abs(p.net);
+      if (a > best) {
+        best = a;
+        supremeStrike = p.strike;
+      }
+    }
+    const ordered = [...pts].sort((a, b) => a.strike - b.strike);
+    let prev = 0;
+    let flip = front.levels.flip;
+    let flipFound = false;
+    let flipDist = Infinity;
+    for (const p of ordered) {
+      if (prev !== 0 && p.net !== 0 && Math.sign(prev) !== Math.sign(p.net)) {
+        const dist = Math.abs(p.strike - snapshot.spot);
+        if (dist < flipDist && dist <= snapshot.spot * 0.1) {
+          flipDist = dist;
+          flip = p.strike;
+          flipFound = true;
+        }
+      }
+      if (p.net !== 0) prev = p.net;
+    }
+    levels.callWall = walls.callWall ?? Number.NaN;
+    levels.putWall = walls.putWall ?? Number.NaN;
+    levels.callWallFound = walls.callWall != null;
+    levels.putWallFound = walls.putWall != null;
+    levels.supreme = supremeStrike;
+    levels.flip = flip;
+    levels.flipFound = flipFound;
+  }
+  const disagree = mode === 'flow'
+    ? cols.map(col => {
+        const by = new Map(col.chain.map(node => [node.strike, node]));
+        return strikes.map(s => !!by.get(s)?.flow?.disagree);
+      })
+    : undefined;
+
   return {
     ticker: snapshot.ticker,
     spot: snapshot.spot,
@@ -338,18 +423,20 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow): ExposureSurf
     king,
     supreme,
     priced,
-    levels: front.levels,
+    levels,
     front,
     skipped,
     closed,
     miss,
     waiting,
+    mode,
+    disagree,
     book: snapshot,
   };
 }
 
 /** `pricedOff`: whose spot and OI the desk's expiries are priced from, the live book or the snapshot given (levelview snapshotAtOpen). */
-export function buildExposureSurface(snapshot: MarketSnapshot, half: StrikeWindow, _dtes: readonly number[] = DESK_DTES, _pricedOff: 'live' | 'snapshot' = 'live'): ExposureSurface {
+export function buildExposureSurface(snapshot: MarketSnapshot, half: StrikeWindow, _dtes: readonly number[] = DESK_DTES, _pricedOff: 'live' | 'snapshot' = 'live', mode: BookMode = 'oi'): ExposureSurface {
   /* Every book is the vendor's per-date rows: there is no modelled chain to stand in for an expiry */
-  return liveSurface(snapshot, half);
+  return liveSurface(snapshot, half, mode);
 }

@@ -3,6 +3,7 @@
    same-day row in session is the move left); outside the session one session is the 1-day implied_move_perc, else
    k·S·σ·√(1/365). No guessed vol. */
 
+import { useSyncExternalStore } from 'react';
 import { RTH_MINUTES } from '../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase, SESSION_CLOSE_MIN } from '../core/nyTime';
 import { YEAR_MINUTES } from './measure';
@@ -45,12 +46,15 @@ let rev = 0;
 
 const CHAIN: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW', NDX: 'NDXP' };
 const UW: Record<string, string> = { SPXW: 'SPX', RUTW: 'RUT', NDXP: 'NDX' };
-/** What the vendor's rows usually fit, when a name has no pair of move and vol. */
-const K_DEFAULT = 0.68;
 
 function emit(): void {
   rev += 1;
   listeners.forEach(fn => fn());
+}
+
+export function subscribeCone(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
 }
 
 function num(v: unknown): number {
@@ -90,16 +94,16 @@ function minutesLeft(): number {
 
 function scaleK(surface: Surface, spot: number): number {
   if (surface.source === 'theta') return 1;
-  if (!(spot > 0)) return K_DEFAULT;
+  if (!(spot > 0)) return 0;
   const ks: number[] = [];
   for (const row of surface.rows) {
     if (!(row.iv > 0) || !(row.move > 0) || !(row.dte > 0)) continue;
     ks.push(row.move / (spot * row.iv * Math.sqrt(row.dte / 365)));
   }
-  if (!ks.length) return surface.k > 0 ? surface.k : K_DEFAULT;
+  if (!ks.length) return surface.k > 0 ? surface.k : 0;
   ks.sort((a, b) => a - b);
   const k = ks[Math.floor(ks.length / 2)];
-  return k > 0.3 && k < 1.2 ? k : K_DEFAULT;
+  return k > 0.3 && k < 1.2 ? k : 0;
 }
 
 async function fromUw(ticker: string): Promise<Surface | null> {
@@ -257,6 +261,11 @@ export function coneTerm(ticker: string): { rows: { expiry: string; iv: number }
 
 /** The surface's revision: it moves when a name's vols land */
 export const coneRev = (): number => rev;
+
+/** Re-renders when a name's vols land. The cone is empty until then. */
+export function useConeRev(): number {
+  return useSyncExternalStore(subscribeCone, coneRev, coneRev);
+}
 
 export function coneFor(ticker: string, horizon: ConeHorizon, spot: number): ConeDraw | null {
   const surface = cache.get(keyOf(ticker));

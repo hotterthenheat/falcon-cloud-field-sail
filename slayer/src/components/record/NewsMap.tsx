@@ -32,11 +32,13 @@ export interface SessionDef {
   /** minutes into the local day */
   open: number;
   close: number;
+  /** local minutes the cash market is shut for lunch, [start, reopen) */
+  lunch?: readonly [number, number];
   west: number;
   east: number;
 }
 const SESSIONS: SessionDef[] = [
-  { key: 'tokyo', label: 'Tokyo', tz: 'Asia/Tokyo', open: 9 * 60, close: 15 * 60, west: 95, east: 150 },
+  { key: 'tokyo', label: 'Tokyo', tz: 'Asia/Tokyo', open: 9 * 60, close: 15 * 60, lunch: [11 * 60 + 30, 12 * 60 + 30], west: 95, east: 150 },
   { key: 'london', label: 'London', tz: 'Europe/London', open: 8 * 60, close: 16 * 60 + 30, west: -12, east: 32 },
   { key: 'newyork', label: 'New York', tz: 'America/New_York', open: 9 * 60 + 30, close: 16 * 60, west: -128, east: -64 },
 ];
@@ -56,22 +58,24 @@ const localClock = (at: Date, tz: string): { min: number; weekday: boolean } => 
   const wd = get('weekday');
   return { min: (Number(get('hour')) % 24) * 60 + Number(get('minute')), weekday: wd !== 'Sat' && wd !== 'Sun' };
 };
-/** Which cash sessions are open at a moment */
+const inLunch = (s: SessionDef, min: number): boolean => !!s.lunch && min >= s.lunch[0] && min < s.lunch[1];
+/** Which cash sessions are open at a moment — Tokyo is shut 11:30–12:30 JST */
 export const openSessions = (at: Date): SessionDef[] =>
   SESSIONS.filter(s => {
     const { min, weekday } = localClock(at, s.tz);
-    return weekday && min >= s.open && min < s.close;
+    return weekday && min >= s.open && min < s.close && !inLunch(s, min);
   });
-/** The next cash session to open after `at`, walked in five-minute steps over four days */
+/** The next cash session to open after `at`, walked in five-minute steps over four days. Lunch's end is an open. */
 export const nextOpen = (at: Date): { session: SessionDef; at: Date } | null => {
   const t = new Date(at);
   t.setSeconds(0, 0);
   t.setMinutes(Math.floor(t.getMinutes() / 5) * 5);
+  const justOpened = (s: SessionDef, min: number) => (min >= s.open && min < s.open + 5) || (!!s.lunch && min >= s.lunch[1] && min < s.lunch[1] + 5);
   for (let i = 0; i < (4 * 24 * 60) / 5; i++) {
     t.setMinutes(t.getMinutes() + 5);
     for (const s of SESSIONS) {
       const { min, weekday } = localClock(t, s.tz);
-      if (weekday && min >= s.open && min < s.open + 5) return { session: s, at: new Date(t) };
+      if (weekday && justOpened(s, min)) return { session: s, at: new Date(t) };
     }
   }
   return null;

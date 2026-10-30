@@ -15,7 +15,6 @@ import { P1_MIN } from '../../data/compassParams';
 import { COMPASS_SET } from '../../data/compassUniverse';
 import type { Setup } from '../../types/compass';
 import CampaignAnalysis from '../../components/compass/CampaignAnalysis';
-import NameDesks from '../../components/compass/NameDesks';
 import { signals } from '../../data/compassLedger';
 import { nyClock, nyDay } from '../../core/nyTime';
 
@@ -141,7 +140,7 @@ const SetupPage = () => {
         <>
           {back}
           <div className="border border-borderSubtle rounded-md bg-panel px-5 py-6" data-setup-record={fired.key}>
-            <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">{fired.ticker} · Book {fired.book}{fired.p1 != null ? ` · Model 1 ${(fired.p1 * 100).toFixed(1)}%` : ''}</span>
+            <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">{fired.ticker} · Book {fired.book}</span>
             <p className="mt-1 text-t16 font-semibold text-textPrimary">{fired.contract}</p>
             <p className="mt-2 text-t12 text-textSecondary">Called {nyDay(fired.firedAt, { weekday: true })}, {nyClock(fired.firedAt, { zone: true })} on {fired.bid.toFixed(2)} × {fired.ask.toFixed(2)}. {result}</p>
             <Link to="/compass/blotter" className="mt-3 inline-flex slayer-chip uppercase tracking-wider">The blotter</Link>
@@ -179,9 +178,6 @@ const SetupPage = () => {
             navigate(`/compass/${setupIdOf({ ticker: address.ticker, strike, right, scanner: address.scanner, sleeve })}`, { state: { from: setup.contract } });
           }}
         />
-        <div className="mt-3">
-          <NameDesks ticker={setup.ticker} sleeve={address.sleeve === 'odte' ? 'odte' : 'weekly'} />
-        </div>
       </div>
     </>
   );

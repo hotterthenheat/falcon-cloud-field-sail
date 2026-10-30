@@ -36,8 +36,6 @@ import {
   releaseBlocks,
   thetaBurns,
   lotteryEntry,
-  MODEL_1_NAME,
-  MODEL_2_NAME,
   P1_MIN,
 } from './compassParams';
 import { COMPASS_TICKERS } from './compassUniverse';
@@ -91,7 +89,7 @@ async function ensureModels(): Promise<boolean> {
       const entry = await loadOne('/models/model_entry_all6months.txt', ENTRY_SHA);
       const runner = await loadOne('/models/model_runner_all6months.txt', RUNNER_SHA);
       if (!entry || !runner) {
-        lockText = `${MODEL_1_NAME} or ${MODEL_2_NAME} failed its hash or its tree count. Scoring is closed.`;
+        lockText = 'The read failed its check. Scoring is closed.';
         return false;
       }
       ENTRY = entry;
@@ -548,15 +546,66 @@ export interface PassLine {
   sleeve: string;
 }
 
+/** A closest or a pass that was on the board. Not an official call. */
+export interface WatchedPass {
+  ticker: string;
+  contract: string;
+  right: 'C' | 'P';
+  strike: number;
+  sleeve: string;
+  p1: number | null;
+  why: string;
+  bid: number;
+  ask: number;
+  at: number;
+  kind: 'closest' | 'passed';
+}
+
 const passBook = new Map<string, PassLine>();
+const watched = new Map<string, WatchedPass>();
 
 export function passLines(sleeve: 'odte' | 'weekly'): PassLine[] {
   return [...passBook.values()].filter(row => row.sleeve === sleeve).sort((a, b) => b.p1 - a.p1 || a.contract.localeCompare(b.contract));
 }
 
+/** Closest and passed contracts saved apart from Book A, B and C. Newest first. */
+export function watchedPasses(): WatchedPass[] {
+  return [...watched.values()].sort((a, b) => b.at - a.at || a.contract.localeCompare(b.contract));
+}
+
+function noteWatched(s: Setup, kind: 'closest' | 'passed', why: string, at: number): void {
+  const key = `${s.sleeve}|${s.contract}`;
+  const had = watched.get(key);
+  const quoted = quoteValid(s.bid, s.ask);
+  if (had && had.kind === 'closest' && kind === 'passed') {
+    watched.set(key, {
+      ...had,
+      why: why || had.why,
+      p1: s.p1 ?? had.p1,
+      bid: quoted ? s.bid : had.bid,
+      ask: quoted ? s.ask : had.ask,
+    });
+    return;
+  }
+  watched.set(key, {
+    ticker: s.ticker,
+    contract: s.contract,
+    right: s.right === 'P' ? 'P' : 'C',
+    strike: s.strike,
+    sleeve: s.sleeve,
+    p1: s.p1 ?? null,
+    why: why || had?.why || '',
+    bid: quoted ? s.bid : had?.bid ?? 0,
+    ask: quoted ? s.ask : had?.ask ?? 0,
+    at: had?.at || at || Date.now(),
+    kind: had?.kind === 'closest' ? 'closest' : kind,
+  });
+}
+
 function rememberPass(s: Setup, p1: number, why: string): void {
   const key = `${s.sleeve}|${s.contract}`;
   passBook.set(key, { ticker: s.ticker, contract: s.contract, p1, why, sleeve: s.sleeve });
+  noteWatched({ ...s, p1 }, 'passed', why, s.quotedAt || s.seenAt || Date.now());
   const mine = [...passBook.entries()].filter(([, row]) => row.ticker === s.ticker && row.sleeve === s.sleeve);
   if (mine.length <= 50) return;
   mine.sort((a, b) => a[1].p1 - b[1].p1);
@@ -567,13 +616,14 @@ function stampPassed(): void {
   const called = new Set<string>();
   for (const s of [...picks.values(), ...wingPicks.values(), ...lotteryPicks.values()]) called.add(`${s.sleeve}|${s.contract}`);
   for (const key of [...passBook.keys()]) if (called.has(key)) passBook.delete(key);
+  for (const key of [...watched.keys()]) if (called.has(key)) watched.delete(key);
   for (const row of misses.values()) {
     const key = `${row.setup.sleeve}|${row.setup.contract}`;
     if (called.has(key)) continue;
     const had = passBook.get(key);
-    const foreign = !had || had.why.startsWith('Model 1') || /^[A-Z]{1,6}\s+\d/.test(had.why);
+    const foreign = !had || had.why.startsWith('Model 1') || had.why.startsWith('Short of the line') || had.why.startsWith('The line cleared') || /^[A-Z]{1,6}\s+\d/.test(had.why);
     const why = foreign
-      ? (row.p1 + 1e-12 < P1_MIN ? `Model 1 ${(row.p1 * 100).toFixed(1)}%. Needs ${(P1_MIN * 100).toFixed(2)}%.` : 'No seat.')
+      ? (row.p1 + 1e-12 < P1_MIN ? `Short of the line. A call needs ${(P1_MIN * 100).toFixed(2)}%.` : 'The line cleared. No seat left.')
       : had.why;
     passBook.set(key, { ticker: row.setup.ticker, contract: row.setup.contract, p1: row.p1, why, sleeve: row.setup.sleeve });
   }
@@ -609,6 +659,8 @@ export type ModelPack = {
   misses?: [string, { setup: Setup; p1: number; prun: number }][];
   left?: LeftRow[];
   passed?: [string, string[]][];
+  /** Closest and passed kept apart from official calls */
+  watched?: WatchedPass[];
   reports?: { odte?: ScanReport; weekly?: ScanReport };
   wouldSeen?: string[];
   wouldRoot?: { A?: string[]; B?: string[]; C?: string[] };
@@ -658,6 +710,7 @@ export function exportModelState(): ModelPack {
     misses: [...misses.entries()],
     left: [...left.values()],
     passed: [...passed.entries()],
+    watched: [...watched.values()],
     reports: { odte: reports.odte, weekly: reports.weekly },
     wouldSeen: [...wouldSeen],
     wouldRoot: { A: [...wouldRoot.A], B: [...wouldRoot.B], C: [...wouldRoot.C] },
@@ -665,7 +718,7 @@ export function exportModelState(): ModelPack {
 }
 
 function clearState(): void {
-  for (const m of [picks, wingPicks, lotteryPicks, kept, nearPicks, passBook, misses, left, passed]) m.clear();
+  for (const m of [picks, wingPicks, lotteryPicks, kept, nearPicks, passBook, misses, left, passed, watched]) m.clear();
   for (const set of [seen, seenRootA, seenRootB, seenRootC, wouldSeen, wouldRoot.A, wouldRoot.B, wouldRoot.C]) set.clear();
   wouldPicks.clear();
   scannedAt.odte = 0;
@@ -686,6 +739,30 @@ export function importModelState(pack: ModelPack | null, earlierScanned: { day: 
   for (const [k, v] of pack.kept ?? []) if (v && v.id) kept.set(k, v);
   for (const [k, v] of pack.near ?? []) if (v && v.id) nearPicks.set(k, v);
   for (const row of pack.pass ?? []) if (row && row.ticker && row.contract) passBook.set(`${row.sleeve}|${row.contract}`, row);
+  if (pack.watched) {
+    for (const row of pack.watched) if (row && row.ticker && row.contract && row.sleeve) watched.set(`${row.sleeve}|${row.contract}`, row);
+  } else {
+    for (const row of pack.pass ?? []) {
+      if (!row || !row.ticker || !row.contract || !row.sleeve) continue;
+      const strike = Number(String(row.contract).replace(/^[A-Za-z]+\s+/, '').replace(/[CP]$/i, ''));
+      watched.set(`${row.sleeve}|${row.contract}`, {
+        ticker: row.ticker,
+        contract: row.contract,
+        right: row.contract.endsWith('P') ? 'P' : 'C',
+        strike: Number.isFinite(strike) ? strike : 0,
+        sleeve: row.sleeve,
+        p1: row.p1,
+        why: row.why,
+        bid: 0,
+        ask: 0,
+        at: 0,
+        kind: 'passed',
+      });
+    }
+    for (const [, v] of pack.near ?? []) {
+      if (v && v.id && v.band === 'closest') noteWatched(v, 'closest', v.whyText || 'Not a call.', v.seenAt || v.quotedAt || 0);
+    }
+  }
   for (const id of pack.seen ?? []) seen.add(id);
   for (const t of pack.rootA ?? []) seenRootA.add(t);
   for (const t of pack.rootB ?? []) seenRootB.add(t);
@@ -816,9 +893,10 @@ export function commitClosest(sleeve: 'odte' | 'weekly', at = Date.now()): void 
       priceTargets: [],
       invalidationPrice: 0,
       invalidationReason: '',
-      whyText: row.p1 + 1e-12 < P1_MIN ? `Model 1 ${(row.p1 * 100).toFixed(1)}%. Needs ${(P1_MIN * 100).toFixed(2)}%.` : `Model 1 ${(row.p1 * 100).toFixed(1)}%. No seat.`,
+      whyText: row.p1 + 1e-12 < P1_MIN ? `Short of the line. A call needs ${(P1_MIN * 100).toFixed(2)}%.` : 'The line cleared. No seat left.',
     };
     nearPicks.set(s.id, card);
+    noteWatched(card, 'closest', card.whyText, at);
         taken.add(s.ticker);
     n += 1;
   }
@@ -990,6 +1068,10 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     const sec = etf ? secBars.get(etf) ?? [] : [];
     const curve = await curveFor(under, now);
     const notes: string[] = [];
+    const scoredP = new Map<string, number>();
+    const lineWhy = (p: number) => (p + 1e-12 < P1_MIN
+      ? `Short of the line. A call needs ${(P1_MIN * 100).toFixed(2)}%.`
+      : 'The line cleared. No seat left.');
     for (const s of list) {
       const word = s.contract;
       const qMin = s.quotedAt ? minuteOf(s.quotedAt) : NaN;
@@ -1035,7 +1117,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         continue;
       }
       if (seen.has(s.id)) {
-        notes.push(`${word} ${MODEL_1_NAME} ${(p1 * 100).toFixed(0)}%`);
+        notes.push(`${word} already called today`);
         continue;
       }
       const dist = strikeDistance(list.map(row => row.strike), tape.S, s.strike);
@@ -1046,7 +1128,8 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       if (bookAPass(tape.tt, dist, span, dte, s.bid, s.ask, p1)) aPool.push(row);
       else if (prior && bookBPass(tape.tt, dist, span, dte, s.bid, s.ask, prior.bid, prior.ask, p1)) bPool.push(row);
       else if (!prior && dist > span) notes.push(`${word} has no quote from 30 minutes earlier`);
-      notes.push(`${word} ${MODEL_1_NAME} ${(p1 * 100).toFixed(0)}%`);
+      notes.push(`${word} ${lineWhy(p1)}`);
+      scoredP.set(word, p1);
     }
     passed.set(ticker, notes.slice(0, 6));
     for (const note of notes) {
@@ -1055,8 +1138,8 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       const contract = note.slice(0, cut);
       const hit = list.find(s => s.contract === contract);
       if (!hit) continue;
-      const pct = /Model 1 (\d+(?:\.\d+)?)%/.exec(note);
-      rememberPass(hit, pct ? Number(pct[1]) / 100 : 0, note.slice(cut + 1));
+      const pct = scoredP.get(hit.contract);
+      rememberPass(hit, pct ?? 0, note.slice(cut + 1));
     }
   }
   type Row = { setup: Setup; p1: number; prun: number; gex: number; retOpen: number; book: 'A' | 'B' };
@@ -1149,7 +1232,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         priceTargets: [],
         invalidationPrice: 0,
         invalidationReason: '',
-        whyText: 'Book A. Model 1 cleared.',
+        whyText: 'The math passes.',
       });
     } else {
       seen.add(row.setup.id);
@@ -1172,7 +1255,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         priceTargets: [],
         invalidationPrice: 0,
         invalidationReason: '',
-        whyText: 'Book B. Model 1 cleared. The exit is the runner ratchet.',
+        whyText: 'The math passes. The exit rides.',
       });
     }
   }
@@ -1216,7 +1299,7 @@ export function paintQuotes(setups: Setup[]): void {
       scalpExit: { price: 0, pct: 0 },
       expectedMovePct: 0,
       whyChips: [],
-      whyText: pick.band === 'lottery' ? 'Book C. No model.' : pick.band === 'wing' ? 'Book B. Model 1 cleared. Model 2 runs the exit.' : pick.band === 'closest' ? pick.whyText : 'Book A. Model 1 cleared.',
+      whyText: pick.band === 'lottery' ? 'Book C. No score.' : pick.band === 'wing' ? 'The math passes. The exit rides.' : pick.band === 'closest' ? pick.whyText : 'The math passes.',
     });
   };
   for (const [key, pick] of [...picks]) {

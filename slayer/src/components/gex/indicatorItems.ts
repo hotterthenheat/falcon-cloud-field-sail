@@ -33,3 +33,9 @@ export const INDICATOR_ITEMS: IndicatorItem[] = [
   { key: 'atrPane', label: 'ATR 14', hint: 'Wilder average true range of the bars on this pane. Unit: price. Warmup: 14 bars. Source: this pane’s bars. Alert: no. Replay: the tape only.', sub: true },
 ];
 
+/** The menu line. The rest of the hint (unit, warmup, source) is the hover, not the row. */
+export function indicatorBlurb(hint: string): string {
+  const cut = hint.split(/\.\s/)[0]?.trim() || hint.trim();
+  if (cut.length > 110) return `${cut.slice(0, 107)}…`;
+  return cut.endsWith('.') ? cut : `${cut}.`;
+}

@@ -34,7 +34,7 @@ export interface ConeHit {
 }
 
 interface ConeGeom {
-  pts: { x: number; up1: number; dn1: number; up2: number; dn2: number }[];
+  pts: { x: number; up1: number; dn1: number; up2: number; dn2: number; pUp1: number; pDn1: number; pUp2: number; pDn2: number; minutes: number }[];
   spot: number;
   tipUp1: number;
   tipDn1: number;
@@ -102,8 +102,11 @@ class ExpectedMoveRenderer {
       const anchor = Math.max(0, Math.min(barTimes.length - 1, data.anchor ?? barTimes.length - 1));
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const xa = ts.logicalToCoordinate(anchor as any);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const xb = ts.logicalToCoordinate((anchor + 1) as any);
+      let xb = ts.logicalToCoordinate((anchor + 1) as any);
+      if (xa !== null && (xb === null || xb === xa)) {
+        const spacing = ts.options().barSpacing ?? 6;
+        xb = ((xa as number) + spacing) as typeof xa;
+      }
       const base = fw[0].up1;
       const ya = series.priceToCoordinate(base);
       const yb = series.priceToCoordinate(base + 1);
@@ -126,14 +129,14 @@ class ExpectedMoveRenderer {
         const prev = pts[pts.length - 1];
         const last = i === fw.length - 1;
         if (prev && (x <= prev.x || (!last && x - prev.x < minStep))) continue;
-        pts.push({ x, up1: yOf(p.up1), dn1: yOf(p.dn1), up2: yOf(p.up2), dn2: yOf(p.dn2) });
+        pts.push({ x, up1: yOf(p.up1), dn1: yOf(p.dn1), up2: yOf(p.up2), dn2: yOf(p.dn2), pUp1: p.up1, pDn1: p.dn1, pUp2: p.up2, pDn2: p.dn2, minutes: p.minutesAhead });
         if (x > reachMax) break;
       }
       const tip = fw[fw.length - 1];
       src.geom =
         pts.length >= 2
           ? {
-              pts: pts.map(p => ({ x: (p.x + x0) / hr, up1: p.up1 / vr, dn1: p.dn1 / vr, up2: p.up2 / vr, dn2: p.dn2 / vr })),
+              pts: pts.map(p => ({ x: (p.x + x0) / hr, up1: p.up1 / vr, dn1: p.dn1 / vr, up2: p.up2 / vr, dn2: p.dn2 / vr, pUp1: p.pUp1, pDn1: p.pDn1, pUp2: p.pUp2, pDn2: p.pDn2, minutes: p.minutes })),
               spot: base,
               tipUp1: tip.up1,
               tipDn1: tip.dn1,
@@ -336,25 +339,30 @@ export class ExpectedMovePrimitive implements ISeriesPrimitive<Time> {
     const b = pts[Math.min(pts.length - 1, i + 1)];
     const u = b.x > a.x ? (x - a.x) / (b.x - a.x) : 0;
     const lerp = (p: number, q: number) => p + (q - p) * u;
-    const up1 = lerp(a.up1, b.up1);
-    const dn1 = lerp(a.dn1, b.dn1);
-    const up2 = lerp(a.up2, b.up2);
-    const dn2 = lerp(a.dn2, b.dn2);
-    const top = Math.min(up2, dn2);
-    const bot = Math.max(up2, dn2);
+    const up1 = lerp(a.pUp1, b.pUp1);
+    const dn1 = lerp(a.pDn1, b.pDn1);
+    const up2 = lerp(a.pUp2, b.pUp2);
+    const dn2 = lerp(a.pDn2, b.pDn2);
+    const y1 = lerp(a.up1, b.up1);
+    const y1b = lerp(a.dn1, b.dn1);
+    const y2 = lerp(a.up2, b.up2);
+    const y2b = lerp(a.dn2, b.dn2);
+    const top = Math.min(y2, y2b);
+    const bot = Math.max(y2, y2b);
     if (y < top || y > bot) return null;
-    const innerTop = Math.min(up1, dn1);
-    const innerBot = Math.max(up1, dn1);
+    const innerTop = Math.min(y1, y1b);
+    const innerBot = Math.max(y1, y1b);
+    const minutes = lerp(a.minutes, b.minutes);
     return {
       horizon: g.horizon,
       iv: g.iv,
-      minutes: g.minutes,
+      minutes: Math.max(0, g.minutes - minutes),
       source: g.source,
       spot: g.spot,
-      up1: g.tipUp1,
-      dn1: g.tipDn1,
-      up2: g.tipUp2,
-      dn2: g.tipDn2,
+      up1,
+      dn1,
+      up2,
+      dn2,
       band: y >= innerTop && y <= innerBot ? 1 : 2,
     };
   }

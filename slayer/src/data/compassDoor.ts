@@ -99,7 +99,8 @@ export type TrackAnswer =
 
 export function gateTrack(tracked: readonly TrackedSetup[], setup: { id: string; ticker: string; sleeve?: SleeveKey }, at: At = now()): TrackAnswer {
   if (tracked.some(t => t.id === setup.id)) return { ok: true };
-  if (!scanClock(at).open) return { ok: false, why: 'closed' };
+  /* A bookmark is not a ticket. The scan clock does not refuse it — a closed tape used to
+     return { ok: false, why: 'closed' } and the contract page never wrote the row. */
   const mine = sessionBook(tracked, at);
   if (nameUsed(setup.ticker, at)) {
     const taken = mine.find(t => t.ticker === setup.ticker);

@@ -511,7 +511,9 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
   const keepRef = useRef(opts?.keep);
   keepRef.current = opts?.keep;
   const [nonce, setNonce] = useState(0);
-  const storeKey = `${tapeQueryString(query)}|${untilMs ?? 'live'}`;
+  /* the window is part of the key: a regular/extended keep or a new start must not keep the other session's rows */
+  const keepTag = opts?.keep ? opts.keep.toString() : 'all';
+  const storeKey = `${tapeQueryString(query)}|${untilMs ?? 'live'}|${startMs ?? 'open'}|${keepTag}`;
   const key = `${storeKey}|${nonce}`;
   const [rows, setRows] = useState<FlowPrint[]>([]);
   /* the rows on screen are an earlier answer (kept in this browser, or read before the page was left) until a read lands */
@@ -764,7 +766,20 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
 
   const reset = useCallback(() => setNonce(n => n + 1), []);
   const fresh = rowsFor === key;
-  const shown = fresh ? rows : EMPTY_PRINTS;
+  const raw = fresh ? rows : EMPTY_PRINTS;
+  /* a window change drops what no longer belongs even before the new read lands */
+  const shown = useMemo(() => {
+    if (!raw.length) return raw;
+    const keep = opts?.keep;
+    if (!keep && startMs == null && untilMs == null) return raw;
+    const next = raw.filter(p => {
+      const ms = p.epochMs ?? (p.epoch ? p.epoch * 1000 : 0);
+      if (startMs != null && ms > 0 && ms < startMs) return false;
+      if (untilMs != null && ms > untilMs) return false;
+      return keep ? keep(p) : true;
+    });
+    return next.length === raw.length ? raw : next;
+  }, [raw, startMs, untilMs, opts?.keep]);
   /* what the page holds, for its return */
   useEffect(() => {
     if (!fresh || !rows.length || kept) return;
@@ -895,6 +910,19 @@ export function useStockLast(ticker: string | null): LivePack<StockLast | null> 
     return q.price > 0 ? q : null;
   }, null, !!name, READ_POLL_MS, 'live');
 }
+/** Cumulative share volume for one dated session: regular stops at 16:00 so after-hours bars are not the regular day's total */
+function datedDayVolume(bars: Record<string, unknown>[], session: 'regular' | 'extended'): number {
+  let maxAll = 0;
+  let maxReg = 0;
+  for (const b of bars) {
+    const tv = num(b.total_volume);
+    if (tv > maxAll) maxAll = tv;
+    const c = clock(b.start_time || b.time || b.date);
+    if (c.minute >= SESSION_OPEN && c.minute < 960 && tv > maxReg) maxReg = tv;
+  }
+  return session === 'regular' ? maxReg || maxAll : maxAll;
+}
+
 /** A name's dark day: with `dateIso`, that session's own, its whole volume off that day's one-minute bars */
 export function useDarkDay(ticker: string | null, dateIso: string | null = null): LivePack<DarkDay | null> {
   const name = (ticker || '').trim().toUpperCase();
@@ -965,32 +993,35 @@ export function useTickerKnown(name: string | null | undefined): boolean | null 
   if (!t) return null;
   return state.t === t ? state.ok : null;
 }
-export function useNameDark(ticker: string | null, untilMs: number | null = null): LivePack<{ view: DarkPoolView | null; lit: DarkPoolPrint[]; day: DarkDay | null; unknown?: boolean }> {
+export function useNameDark(ticker: string | null, untilMs: number | null = null, session: 'regular' | 'extended' = 'regular', dateIso: string | null = null): LivePack<{ view: DarkPoolView | null; lit: DarkPoolPrint[]; day: DarkDay | null; unknown?: boolean }> {
   const name = (ticker || '').trim().toUpperCase();
-  /* with `untilMs` (the stock close, after the bell) the name's crosses are its regular session's, walked back from the
-     close — its after-hours prints are the After hours view's */
+  /* with `untilMs` (the stock close, after the bell) the name's crosses are walked back from the close; `session`
+     drops the other side — regular leaves out premarket and after hours, extended leaves out the regular session */
   const cut = untilMs ? `&older_than=${untilMs}` : '';
+  const day0 = dateIso || (untilMs ? nyDateOf(untilMs) : nyIsoToday());
   return useLive(
-    name ? `name-dark:${name}:${untilMs ?? 'live'}` : 'name-dark:off',
+    name ? `name-dark:${name}:${untilMs ?? 'live'}:${session}:${day0}` : 'name-dark:off',
     async () => {
       if (!name) return { view: null, lit: [] as DarkPoolPrint[], day: null };
       /* a name the vendor does not carry is said so, and nothing else is asked for it */
       if (!(await tickerKnown(name))) return { view: null, lit: [] as DarkPoolPrint[], day: null, unknown: true };
-      const [prints, levels, lit, quote] = await Promise.all([
+      const [prints, levels, lit, quote, bars] = await Promise.all([
         getRows(`/darkpool/${encodeURIComponent(name)}?limit=200${cut}`),
-        getRows(`/darkpool/${encodeURIComponent(name)}/price-levels`).catch(() => [] as Record<string, unknown>[]),
+        getRows(`/darkpool/${encodeURIComponent(name)}/price-levels?date=${day0}`).catch(() => [] as Record<string, unknown>[]),
         getRows(`/lit-flow/${encodeURIComponent(name)}?limit=200${cut}`).catch(() => [] as Record<string, unknown>[]),
         stockLastOf(name),
+        getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?date=${day0}&limit=1000`).catch(() => [] as Record<string, unknown>[]),
       ]);
-      /* the session's New York day only: a name with few crosses walks back into the day before */
-      const day0 = untilMs ? nyDateOf(untilMs) : nyIsoToday();
-      const onDay = (p: DarkPoolPrint) => !p.dateIso || p.dateIso === day0;
+      /* the session's New York day, and only the session that was picked */
+      const inSession = (p: DarkPoolPrint) => (session === 'regular' ? !p.extended : !!p.extended);
+      const onDay = (p: DarkPoolPrint) => (!p.dateIso || p.dateIso === day0) && inSession(p);
       const mapped = prints.filter(r => !r.canceled).map((r, i) => darkPrint(r, i)).filter(onDay);
       /* the stock's own last trade, never a cross's price (a cross may be an own-terms print far off the market); with no
          quote there is no spot, and nothing is placed against one */
       const spot = quote.price > 0 ? quote.price : 0;
-      const dayVol = quote.vol;
-      const day = darkDayOf(levels, dayVol);
+      const dayVol = datedDayVolume(bars, session);
+      const dayRaw = darkDayOf(levels, dayVol);
+      const day = dayRaw ? { ...dayRaw, iso: day0 } : null;
       return { view: darkView(name, mapped, darkLevels(levels, spot, mapped), spot, day && Number.isFinite(day.sharePct) ? day.sharePct : 0), lit: lit.filter(r => !r.canceled).map((r, i) => darkPrint(r, i, 0, 'lit')).filter(onDay), day };
     },
     { view: null, lit: [], day: null } as { view: DarkPoolView | null; lit: DarkPoolPrint[]; day: DarkDay | null; unknown?: boolean },
@@ -1959,13 +1990,14 @@ export async function olderDarkDay(iso: string, inHand: DarkPoolPrint[], limit =
   const rows = got.filter(r => !r.canceled).map((r, j) => darkPrint(r, inHand.length + j)).filter(p => !p.extended && (!p.dateIso || p.dateIso === iso));
   return { rows, end: got.length < limit };
 }
-/** One name's older crosses of the day, walked back from the oldest in hand (`older_than`) */
-export async function olderNameDark(ticker: string, inHand: DarkPoolPrint[], dayIso: string, limit = 200): Promise<{ rows: DarkPoolPrint[]; end: boolean }> {
+/** One name's older crosses of the day, walked back from the oldest in hand (`older_than`), kept to the session */
+export async function olderNameDark(ticker: string, inHand: DarkPoolPrint[], dayIso: string, limit = 200, session: 'regular' | 'extended' = 'regular'): Promise<{ rows: DarkPoolPrint[]; end: boolean }> {
   const oldest = inHand.reduce((m, p) => Math.min(m, p.epochMs ?? Infinity), Infinity);
   if (!Number.isFinite(oldest)) return { rows: [], end: true };
   const got = await getRowsLow(`/darkpool/${encodeURIComponent(ticker)}?limit=${limit}&older_than=${oldest}`);
   const mapped = got.filter(r => !r.canceled).map((r, i) => darkPrint(r, inHand.length + i));
-  const rows = mapped.filter(p => !p.dateIso || p.dateIso === dayIso);
+  const rows = mapped.filter(p => (!p.dateIso || p.dateIso === dayIso) && (session === 'regular' ? !p.extended : !!p.extended));
+  /* a shorter page, or the first print of the other session or the day before, is the end of this walk */
   return { rows, end: got.length < limit || rows.length < mapped.length };
 }
 

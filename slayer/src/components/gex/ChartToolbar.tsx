@@ -30,8 +30,9 @@ import {
   Minimize2,
   Palette,
   Play,
+  Star,
 } from 'lucide-react';
-import { TIMEFRAMES, type Timeframe } from '../../data/timeframe';
+import { TIMEFRAMES, frameServed, type Timeframe } from '../../data/timeframe';
 import { TREND_GLYPH, type TrendState } from '../../data/confluence';
 import {
   CANDLE_THEMES,
@@ -52,7 +53,7 @@ import {
   type ChartStyle,
   type PriceScale,
 } from './StrikeChart';
-import { INDICATOR_ITEMS } from './indicatorItems';
+import { INDICATOR_ITEMS, indicatorBlurb } from './indicatorItems';
 /* The scripts library loads the first time its menu opens, not with every chart */
 const ScriptLibrary = lazy(() => import('../scripts/ScriptLibrary'));
 import { usePaneScripts } from '../../data/paneScripts';
@@ -214,6 +215,90 @@ interface ChartToolbarProps {
 
 const TIMEFRAME_OPTIONS = TIMEFRAMES.map(t => ({ value: t.value, label: t.label }));
 
+const PIN_KEY = 'slayer-tf-pins';
+const DEFAULT_PINS: Timeframe[] = ['1m', '5m', '15m', '1h', '1D'];
+const INTERVAL_GROUPS = [
+  { id: 'minute' as const, label: 'Minutes' },
+  { id: 'hour' as const, label: 'Hours' },
+  { id: 'day' as const, label: 'Days' },
+];
+
+function readPins(): Timeframe[] {
+  try {
+    const raw = localStorage.getItem(PIN_KEY);
+    if (!raw) return DEFAULT_PINS;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return DEFAULT_PINS;
+    const known = new Set(TIMEFRAMES.filter(t => t.menu && frameServed(t.value)).map(t => t.value));
+    const pins = parsed.filter((v): v is Timeframe => typeof v === 'string' && known.has(v as Timeframe));
+    return pins.length ? pins : DEFAULT_PINS;
+  } catch {
+    return DEFAULT_PINS;
+  }
+}
+
+/** The interval list: minutes, hours, then date frames. A star pins a row onto the strip. */
+function IntervalMenu({
+  value,
+  onChange,
+  pins,
+  onPin,
+  trend,
+}: {
+  value: Timeframe;
+  onChange: (tf: Timeframe) => void;
+  pins: Timeframe[];
+  onPin: (tf: Timeframe) => void;
+  trend?: TrendByTf;
+}) {
+  return (
+    <div role="group" aria-label="Timeframe" className="min-w-[220px] py-1">
+      {INTERVAL_GROUPS.map(g => (
+        <div key={g.id}>
+          <div className="px-3 pt-2 pb-1 font-mono text-t9 uppercase tracking-wider text-textMuted">{g.label}</div>
+          {TIMEFRAMES.filter(t => t.group === g.id).map(opt => {
+            const active = opt.value === value;
+            const served = frameServed(opt.value);
+            const pinned = pins.includes(opt.value);
+            const state = trend && opt.value in trend ? trend[opt.value] ?? null : undefined;
+            const held = served ? undefined : `${opt.menu} is not on this feed yet`;
+            return (
+              <div key={opt.value} className={`flex items-center ${active ? 'bg-ink/[0.06]' : served ? 'hover:bg-ink/[0.03]' : ''}`}>
+                <button
+                  type="button"
+                  aria-pressed={active}
+                  aria-disabled={!served}
+                  title={held}
+                  onClick={() => {
+                    if (served) onChange(opt.value);
+                  }}
+                  className={`flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left font-mono text-t11 ${active ? 'text-textPrimary' : served ? 'text-textSecondary' : 'cursor-default text-textMuted opacity-45'}`}
+                >
+                  <Check className={`h-3 w-3 shrink-0 ${active ? 'opacity-100' : 'opacity-0'}`} aria-hidden />
+                  <span className="truncate">{opt.menu}</span>
+                  {state !== undefined && <TrendGlyph state={state} />}
+                </button>
+                {served && (
+                <button
+                  type="button"
+                  aria-pressed={pinned}
+                  aria-label={pinned ? `Unpin ${opt.menu}` : `Pin ${opt.menu}`}
+                  title={pinned ? 'On the strip' : 'Pin to the strip'}
+                  onClick={() => onPin(opt.value)}
+                  className={`mr-1.5 grid h-6 w-6 place-items-center rounded ${pinned ? 'text-textPrimary' : 'text-textMuted hover:text-textPrimary'}`}
+                >
+                  <Star className={`h-3 w-3 ${pinned ? 'fill-current' : ''}`} aria-hidden />
+                </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Bare timeframe strip — floating labels, no box, no dividers. The active
     one earns a BUBBLE (Noah, 2026-08-23): a fully-round chip that springs
     from timeframe to timeframe as one continuous piece, stretching to each
@@ -248,7 +333,7 @@ export const TimeframeStrip = ({
   trend?: TrendByTf;
 }) => {
   const uid = useId();
-  const options = only ? TIMEFRAME_OPTIONS.filter(o => only.includes(o.value)) : TIMEFRAME_OPTIONS;
+  const options = (only ? TIMEFRAME_OPTIONS.filter(o => only.includes(o.value)) : TIMEFRAME_OPTIONS).filter(o => frameServed(o.value));
   return (
     <div
       role="group"
@@ -534,6 +619,20 @@ const ChartToolbar = ({
   const [openMenu, setOpenMenu] = useState<'snapshot' | 
     'overlays' | 'candles' | 'style' | 'indicators' | 'alerts' | 'timeframe' | null
   >(null);
+  const [pins, setPins] = useState<Timeframe[]>(DEFAULT_PINS);
+  useEffect(() => { setPins(readPins()); }, []);
+  const togglePin = (tf: Timeframe) => {
+    if (!frameServed(tf)) return;
+    setPins(prev => {
+      const next = prev.includes(tf) ? prev.filter(v => v !== tf) : [...prev, tf];
+      try { localStorage.setItem(PIN_KEY, JSON.stringify(next)); } catch { /* the strip still updates */ }
+      return next;
+    });
+  };
+  const fullIntervals = !timeframes;
+  const stripOnly = fullIntervals
+    ? TIMEFRAMES.map(t => t.value).filter(v => frameServed(v) && ((v === '15s' ? v === timeframe : pins.includes(v)) || v === timeframe))
+    : timeframes;
   /* How many are set on this name — the bell jingles when it rises. The
      unseen count and its badge left this bell for the sidebar's (the alerts
      rule, 2026-09-10: one inbox). */
@@ -651,9 +750,6 @@ const ChartToolbar = ({
       }`}
     >
       {compact && !keepIntervals ? (
-        /* The current interval IS the trigger, the way every mobile charting
-           app does it — the label is the answer to "what am I looking at" and
-           the menu is the answer to "what else can I look at". */
         <Dropdown
           label={TIMEFRAME_OPTIONS.find(o => o.value === timeframe)?.label ?? String(timeframe)}
           open={openMenu === 'timeframe'}
@@ -661,6 +757,18 @@ const ChartToolbar = ({
           menuSide={menuSide} bounds={menuBounds}
           title="Timeframe"
         >
+          {fullIntervals ? (
+            <IntervalMenu
+              value={timeframe}
+              pins={pins}
+              trend={trend}
+              onPin={togglePin}
+              onChange={tf => {
+                onTimeframe(tf);
+                setOpenMenu(null);
+              }}
+            />
+          ) : (
           <div role="group" aria-label="Timeframe">
             {(timeframes ? TIMEFRAME_OPTIONS.filter(o => timeframes.includes(o.value)) : TIMEFRAME_OPTIONS).map(opt => {
               const active = opt.value === timeframe;
@@ -668,12 +776,15 @@ const ChartToolbar = ({
                 <button
                   key={opt.value}
                   aria-pressed={active}
+                  aria-disabled={!frameServed(opt.value)}
+                  title={frameServed(opt.value) ? undefined : `${opt.label} is not on this feed yet`}
                   onClick={() => {
+                    if (!frameServed(opt.value)) return;
                     onTimeframe(opt.value);
                     setOpenMenu(null);
                   }}
                   className={`flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-t11 transition-colors ${
-                    active ? 'bg-ink/[0.06] text-textPrimary' : 'text-textSecondary hover:bg-ink/[0.03]'
+                    !frameServed(opt.value) ? 'cursor-default text-textMuted opacity-45' : active ? 'bg-ink/[0.06] text-textPrimary' : 'text-textSecondary hover:bg-ink/[0.03]'
                   }`}
                 >
                   <Check className={`w-3 h-3 shrink-0 ${active ? 'opacity-100' : 'opacity-0'}`} aria-hidden />
@@ -683,9 +794,33 @@ const ChartToolbar = ({
               );
             })}
           </div>
+          )}
         </Dropdown>
       ) : (
-        <TimeframeStrip value={timeframe} onChange={onTimeframe} vertical={vertical} only={timeframes} trend={trend} />
+        <>
+          <TimeframeStrip value={timeframe} onChange={onTimeframe} vertical={vertical} only={stripOnly} trend={trend} />
+          {fullIntervals && !vertical && (
+            <Dropdown
+              label="All"
+              title="All intervals"
+              open={openMenu === 'timeframe'}
+              onToggle={() => setOpenMenu(m => (m === 'timeframe' ? null : 'timeframe'))}
+              menuSide={menuSide}
+              bounds={menuBounds}
+            >
+              <IntervalMenu
+                value={timeframe}
+                pins={pins}
+                trend={trend}
+                onPin={togglePin}
+                onChange={tf => {
+                  onTimeframe(tf);
+                  setOpenMenu(null);
+                }}
+              />
+            </Dropdown>
+          )}
+        </>
       )}
       {afterIntervals && !vertical && (
         <>
@@ -982,7 +1117,7 @@ const ChartToolbar = ({
               onToggle={() => setOpenMenu(m => (m === 'indicators' ? null : 'indicators'))}
               menuSide={menuSide} bounds={menuBounds}
             >
-              <div className="p-1.5 flex flex-col gap-0.5">
+              <div className="p-1.5 flex flex-col gap-0.5 w-[min(300px,80vw)]">
                 {(() => {
                   const firstSub = INDICATOR_ITEMS.findIndex(i => i.sub);
                   return INDICATOR_ITEMS.map((item, idx) => {
@@ -998,7 +1133,7 @@ const ChartToolbar = ({
                   const capped = (!!item.sub && !on && subsOn >= MAX_SUB_PANES) || heldByClock;
                   const prev = INDICATOR_ITEMS[idx - 1];
                   return (
-                    <div key={item.key} className="contents">
+                    <div key={item.key} className="flex flex-col">
                     {item.group === 'book' && prev?.group !== 'book' && (
                       <div className="px-2.5 pt-1 font-mono text-t9 uppercase tracking-widest text-textMuted">From the book</div>
                     )}
@@ -1019,32 +1154,32 @@ const ChartToolbar = ({
                           ? 'Needs time bars — the pane is on a rule clock'
                           : capped
                             ? 'Two sub-panes are the cap — turn one off first, or the tape shrinks past its floor'
-                            : undefined
+                            : item.hint
                       }
                       onClick={() => !capped && onIndicators({ ...indicators, [item.key]: !on })}
-                      className={`flex items-start gap-2.5 px-2.5 py-2 rounded text-left transition-colors ${
+                      className={`flex items-start gap-2.5 px-2.5 py-1.5 rounded text-left transition-colors ${
                         capped ? 'opacity-40 cursor-default' : 'hover:bg-ink/[0.03]'
                       }`}
                     >
                       <span
-                        className={`mt-px inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-[3px] border ${
+                        className={`mt-0.5 inline-flex w-4 h-4 shrink-0 items-center justify-center rounded-[3px] border ${
                           on ? 'bg-silverFill border-silverFill' : 'border-borderMuted'
                         }`}
                       >
-                        {on && <Check className="w-2.5 h-2.5 text-onfoil" />}
+                        {on && <Check className="w-3 h-3 text-onfoil" />}
                       </span>
-                      <span className="min-w-0">
+                      <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5">
                           <span
-                            className="inline-block w-2 h-[3px] rounded-full"
+                            className="inline-block w-2 h-[3px] rounded-full shrink-0"
                             style={{ background: INDICATOR_INKS[item.key] }}
                             aria-hidden
                           />
-                          <span className={`font-mono text-t11 font-semibold ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>
+                          <span className={`font-mono text-t11 font-semibold truncate ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>
                             {item.label}
                           </span>
                         </span>
-                        <span className="block text-t10 text-textSecondary leading-snug">{item.hint}</span>
+                        <span className="block text-t10 text-textSecondary leading-snug truncate">{indicatorBlurb(item.hint)}</span>
                       </span>
                     </button>
                     </div>

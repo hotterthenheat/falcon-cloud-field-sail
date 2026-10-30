@@ -7,9 +7,9 @@
 import { isTradingDay, isoDate } from '../../core/calendar';
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
 import { thetaAllowedHere, thetaCall } from '../theta';
-import { DAY_MIN, flatRows, legKey, parseBars, parseQuotes, standingAt } from '../review/history';
-import { contractKey, longLeg, type ContractId, type Quote } from '../review/quotes';
-import { bellOf, dateAt, nyAt, nyInstant, yearsToExpiry, OPEN_MIN } from './clock';
+import { LAST_MIN, LATE_QUOTE_MIN, barTime, flatRows, legKey, parseBars, parseQuotes, rowAt, standingAt } from '../review/history';
+import { bookMark, contractKey, longLeg, spreadBook, type ContractId, type Quote } from '../review/quotes';
+import { dateAt, nyAt, nyInstant, yearsToExpiry, OPEN_MIN } from './clock';
 import { gapOf, judgeOrders, type OptOrder, type PaperAccount, type PaperMarket } from './engine';
 import { optionRootOf } from './thetaFeed';
 
@@ -34,14 +34,15 @@ function sessionsOf(from: number, to: number): string[] {
 interface Gap {
   order: OptOrder;
   from: number;
-  /** Where its minutes end: now, its day's bell for a day order, its expiry's bell */
+  /** Where its minutes end: now, its session's end for a day order (16:15 where that name trades the late close), its expiry's */
   to: number;
   days: string[];
 }
 /** What a replay needs, fetched: each leg's day of quotes, each name's day of bars — or why it could not be had */
 export interface Fetched {
   quotes: Map<string, { bid: number[]; ask: number[] }>;
-  bars: Map<string, number[]>;
+  /** Real prints only — a missing minute is a gap, not a flat zero-volume candle */
+  bars: Map<string, { time: number; close: number }[]>;
   /** By order id: why its minutes could not be read, and whether to ask again (the terminal away) or not */
   failed: Map<string, { why: string; again: boolean }>;
 }
@@ -51,8 +52,8 @@ function gapsOf(a: PaperAccount, now: number): Gap[] {
   for (const o of a.opt.orders) {
     const from = gapOf(o, now);
     if (from == null) continue;
-    let to = Math.min(now, bellOf(o.contract.expiry));
-    if (o.tif === 'day') to = Math.min(to, bellOf(nyAt(o.placed.at).date));
+    let to = Math.min(now, nyInstant(o.contract.expiry, 16 * 60 + 15));
+    if (o.tif === 'day') to = Math.min(to, nyInstant(nyAt(o.placed.at).date, 16 * 60 + 15));
     out.push({ order: o, from, to, days: to > from ? sessionsOf(from, to) : [] });
   }
   return out;
@@ -90,7 +91,7 @@ export async function fetchGaps(a: PaperAccount, now: number): Promise<Fetched> 
       const root = INDEXES.has(t) ? 'index' : 'stock';
       jobs.push(once(`bars|${t}|${day}`, `/${root}/history/ohlc?symbol=${encodeURIComponent(t)}&start_date=${ymd(day)}&end_date=${ymd(day)}&interval=1m&format=json`, rows => {
         const b = parseBars(day, rows);
-        if (b) got.bars.set(`${t}|${day}`, b.bars.map(x => x.close));
+        if (b) got.bars.set(`${t}|${day}`, b.bars.filter(x => x.close > 0 && (x.volume > 0 || x.high !== x.low || x.open !== x.close)).map(x => ({ time: x.time, close: x.close })));
       }));
       for (const leg of legsOf(g.order.contract)) {
         if (leg.expiry < day) continue;
@@ -108,13 +109,22 @@ export async function fetchGaps(a: PaperAccount, now: number): Promise<Fetched> 
   return got;
 }
 
-/** A leg's recorded quote at the end of a minute, with the greeks from its mid — dead where none stood */
+/** A leg's recorded quote at the end of a minute, with the greeks from its mid — dead where none stood.
+    Past the bell, only that minute's own row counts: a quote is not carried into 16:01–16:15, and those minutes are
+    not a market without one. */
 function recorded(c: ContractId, day: string, m: number, f: Fetched, at: number): Quote {
   const closes = f.bars.get(`${c.ticker.toUpperCase()}|${day}`);
-  const spot = closes?.length ? closes[Math.min(closes.length - 1, m)] : NaN;
+  let spot = NaN;
+  if (closes?.length) {
+    const target = barTime(day, m);
+    for (const row of closes) {
+      if (row.time > target) break;
+      spot = row.close;
+    }
+  }
   const leg = (k: ContractId): Quote => {
     const d = f.quotes.get(`${legKey(k)}|${day}`);
-    const q = d ? standingAt(d, m) : null;
+    const q = d ? (m > LAST_MIN ? rowAt(d, m) : standingAt(d, m)) : null;
     const intrinsic = spot > 0 ? Math.max(0, k.right === 'C' ? spot - k.strike : k.strike - spot) : 0;
     if (!q || !(q.ask > 0) || !(q.bid > 0)) return { bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic, dead: true, spot };
     const mid = (q.bid + q.ask) / 2;
@@ -128,10 +138,19 @@ function recorded(c: ContractId, day: string, m: number, f: Fetched, at: number)
   const s = leg({ ...longLeg(c), strike: c.short });
   if (b.dead || s.dead) return { ...b, bid: 0, ask: 0, mark: NaN, dead: true };
   const width = Math.abs(c.short - c.strike);
-  const inside = (v: number) => Math.max(0, Math.min(width, v));
-  const bid = cents(inside(b.bid - s.ask));
-  const ask = cents(Math.max(bid + 0.01, inside(b.ask - s.bid)));
-  return { ...b, bid, ask, mark: cents((bid + ask) / 2), delta: b.delta - s.delta, dead: bid <= 0 };
+  const { bid, ask } = spreadBook(b.bid - s.ask, b.ask - s.bid, width);
+  return { ...b, bid, ask, mark: bookMark(bid, ask, cents), delta: b.delta - s.delta, dead: bid <= 0 };
+}
+
+/** Did this name print a quote after 16:00 that day — so a missing minute in that window is a hole, not a closed session */
+function tradesLate(f: Fetched, c: ContractId, day: string): boolean {
+  const legs = c.short != null ? [longLeg(c), { ...longLeg(c), strike: c.short }] : [longLeg(c)];
+  return legs.some(k => {
+    const d = f.quotes.get(`${legKey(k)}|${day}`);
+    if (!d) return false;
+    for (let m = LAST_MIN + 1; m <= LATE_QUOTE_MIN; m++) if (rowAt(d, m)) return true;
+    return false;
+  });
 }
 
 /** Replay the account's gaps on what was fetched, then mark what could not be. Pure: the store applies it to the account
@@ -145,7 +164,7 @@ export function replayGaps(a: PaperAccount, f: Fetched, now: number, life: strin
   for (const g of ok)
     for (const day of g.days) {
       const open = nyInstant(day, OPEN_MIN);
-      for (let m = 0; m < DAY_MIN; m++) {
+      for (let m = 0; m <= LATE_QUOTE_MIN; m++) {
         const end = open + (m + 1) * 60_000;
         if (end <= g.from || end > g.to) continue;
         const e = ends.get(end) ?? { day, m, keys: new Set<string>() };
@@ -154,8 +173,26 @@ export function replayGaps(a: PaperAccount, f: Fetched, now: number, life: strin
       }
     }
   let next = a;
+  /* How far each order was actually judged. A minute after 16:00 on a name that trades then is judged only on that
+     minute's own quote — a missing row is not marked judged while the late close is still open. */
+  const progress = new Map<string, { to: number; blocked: boolean }>();
+  for (const g of ok) progress.set(g.order.id, { to: g.order.judgedTo ?? g.from, blocked: false });
   for (const [end, e] of [...ends.entries()].sort((x, y) => x[0] - y[0])) {
     const quote = (c: ContractId): Quote => (e.keys.has(contractKey(c)) ? recorded(c, e.day, e.m, f, end) : { bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic: 0, dead: true, spot: NaN });
+    for (const g of ok) {
+      if (!e.keys.has(contractKey(g.order.contract))) continue;
+      if (end <= g.from || end > g.to) continue;
+      const st = progress.get(g.order.id);
+      if (!st || st.blocked) continue;
+      const q = quote(g.order.contract);
+      const lateMin = e.m > LAST_MIN;
+      const lateOpen = now < nyInstant(e.day, 16 * 60 + 15);
+      if (lateMin && q.dead && tradesLate(f, g.order.contract, e.day) && lateOpen) {
+        st.blocked = true;
+        continue;
+      }
+      st.to = end;
+    }
     const market: PaperMarket = {
       now: end,
       life,
@@ -173,8 +210,9 @@ export function replayGaps(a: PaperAccount, f: Fetched, now: number, life: strin
     };
     next = judgeOrders(next, market);
   }
-  /* what was replayed is judged up to its end; a day order still working past its day's bell ends there; what could not
-     be replayed says so (and is let go to the live tick where asking again will not help) */
+  /* what was replayed is judged up to the last minute that had a quote (a late minute with none is left unjudged while
+     that name still trades); a day order still working past its session ends there — 16:15 where it traded the late
+     close, else 16:00. What could not be replayed says so. */
   return {
     ...next,
     opt: {
@@ -184,9 +222,12 @@ export function replayGaps(a: PaperAccount, f: Fetched, now: number, life: strin
         if (!g || o.status !== 'working') return o;
         const fail = f.failed.get(o.id);
         if (fail) return { ...o, unjudged: { from: g.from, to: now, why: fail.why }, judgedTo: fail.again ? o.judgedTo : now };
-        const dayBell = bellOf(nyAt(o.placed.at).date);
-        if (o.tif === 'day' && now >= dayBell) return { ...o, judgedTo: g.to, status: 'cancelled' as const, done: { at: dayBell, day: o.placed.day }, why: 'the day ended' };
-        return { ...o, judgedTo: Math.max(o.judgedTo ?? 0, now), unjudged: undefined };
+        const st = progress.get(o.id);
+        const placedDay = nyAt(o.placed.at).date;
+        const dayEnd = nyInstant(placedDay, tradesLate(f, o.contract, placedDay) ? 16 * 60 + 15 : 16 * 60);
+        const judgedTo = st?.blocked ? st.to : Math.max(st?.to ?? 0, now);
+        if (o.tif === 'day' && now >= dayEnd) return { ...o, judgedTo, status: 'cancelled' as const, done: { at: dayEnd, day: o.placed.day }, why: 'the day ended' };
+        return { ...o, judgedTo, unjudged: undefined };
       }),
     },
   };

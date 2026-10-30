@@ -1153,17 +1153,10 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
 .slayer-chain .ag-full-width-row:hover {
   background-color: transparent !important;
 }
-/* THE WATCHLIST DOOR on a chain row (2026-09-14): the + shows on the row's hover, on the
-   picked row, and under the keyboard; once the contract is watched the check stays */
-.slayer-chain [data-chain-watch]:not([data-on]) {
-  opacity: 0;
-  transition: opacity 120ms ease-out;
-}
-.slayer-chain .ag-row:hover [data-chain-watch],
-.slayer-chain .ag-row-hover [data-chain-watch],
-.slayer-chain .ag-row-selected [data-chain-watch],
-.slayer-chain .ag-pinned-right-cols-container [data-chain-watch],
-.slayer-chain [data-chain-watch]:focus-visible {
+/* THE WATCHLIST DOOR. The + is a column of its own, outside the scrolled facts, and it stays
+   visible — not a hover secret, and not a pin that only exists once the old pinned-right class is present. */
+.slayer-chain [data-chain-watch],
+[data-chain-watch-rail] [data-chain-watch] {
   opacity: 1;
 }
 /* THE LIVE CHART'S CHAIN under a scrollbar that floats OVER the grid (headless Chromium, some Macs — the grid marks it
@@ -2188,18 +2181,15 @@ html[data-theme='light'] [data-paper-chain-side-pick='P']:not([aria-pressed='tru
   }
 }
 
-/* The wire's map keeps a map's shape at every window. Landscape is 16:9 and
-   never taller than the screen. Portrait is 4:3 so a phone isn't a ribbon. */
+/* The wire's map fills its column. A max-width here centered it and left two empty sides. */
 [data-news-stage] {
-  aspect-ratio: 16 / 9;
-  max-height: min(54vh, 460px);
-  max-width: min(100%, calc(min(54vh, 460px) * 16 / 9));
+  width: 100%;
+  height: min(52vh, 480px);
+  max-width: none;
 }
 @media (orientation: portrait) {
   [data-news-stage] {
-    aspect-ratio: 4 / 3;
-    max-height: min(46vh, 520px);
-    max-width: min(100%, calc(min(46vh, 520px) * 4 / 3));
+    height: min(42vh, 420px);
   }
 }
 

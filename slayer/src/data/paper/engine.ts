@@ -10,6 +10,7 @@ import { isBroadIndex, marginLineOf, marginOf, type MarginLine } from './margin'
 import type { DayNote, JournalEntry } from '../review/journal';
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from '../review/ladder';
 import { contractKey, contractWords, dteAt, legsOf, type ContractId, type Quote } from '../review/quotes';
+import { closeBasisOf } from '../review/history';
 import type { Candle } from '../../types/market';
 import { bellOf, dayBeginsAt, dayEndsAt, nyAt, tradingDayOf } from './clock';
 import { paperFut } from './products';
@@ -43,7 +44,8 @@ export interface PaperMarket {
   fresh?: (c: ContractId) => boolean;
   /** When a name next reports — undefined while it is not known yet (none: no earnings calendar is read) */
   earnings?: (ticker: string) => EarningsWhen | undefined;
-  /** The name's 16:00 close on a past or today's date (what an expiring contract settles on) — NaN until it is known */
+  /** The name's close on a past or today's date (what an expiring contract settles on): the 16:00 closing print when
+      one was recorded, else the last real print — NaN until it is known. Never a flat zero-volume candle. */
   closeOf?: (ticker: string, day: string) => number;
   /** A replayed minute of the history (store.ts catch-up), not the live market */
   replay?: boolean;
@@ -255,7 +257,8 @@ export interface PaperAccount {
   opt: { orders: OptOrder[]; fills: OptFill[] };
   /** Futures, from before options-only: read for the history, never added to */
   fut: { orders: FutOrder[]; fills: FutFill[] };
-  /** The last price seen for each thing held — what a position left open by a page that could not close it is closed at */
+  /** The last real bid (a long) or ask (a short) taken from a live quote — what a dead quote is closed at. Never the
+      entry, never a dead quote's zero. */
   marks: Record<string, number>;
   /** By trade id: while it was held (open trades are kept up on every tick; closed ones stay) */
   held: Record<string, HeldRecord>;
@@ -1258,20 +1261,46 @@ export function optPlaceCombo(a: PaperAccount, m: PaperMarket, cd: ComboDraft): 
 /* Everything at once: The rules' hand and the page's */
 /* ================================================================== */
 
+/** A price a dead quote may be closed at: a caller's real price, else the last live bid (long) or ask (short). The
+    average entry is not a price, and neither is zero. */
+function flattenPx(p: { key: string; dir: number; avg: number }, live: Quote, given: number | undefined, marks: Record<string, number>): number | undefined {
+  const stored = marks[p.key];
+  const storedOk = stored > 0;
+  if (given != null && given > 0 && ((storedOk && given === stored) || given !== p.avg)) return given;
+  const mkt = !live.dead ? (p.dir > 0 ? live.bid : live.ask) : 0;
+  if (mkt > 0) return mkt;
+  if (storedOk) return stored;
+  return undefined;
+}
+
 /** Close what is open at the market and cancel what is working — the rules' hand (`rule`) or the page's (`page`).
     `at`: a price to close each at in place of the market's (a page that did not get to close its own: its last marks).
-    `only`: just these positions (and the orders on them) — every one where it is not given. */
+    A dead quote closes at the last real bid (long) or ask (short) stored from a live quote. It does not fill at $0 and
+    it does not fill at the average entry. With neither a live quote nor a stored one, the position is left open and
+    the account says the quote is missing. `only`: just these positions (and the orders on them) — every one where it
+    is not given. */
 export function flattenAll(a: PaperAccount, m: PaperMarket, how: 'rule' | 'page', note: string, at?: (key: string) => number | undefined, only?: Set<string>): PaperAccount {
   let next = a;
   const when = momentAt(m.now);
   const mine = (key: string) => !only || only.has(key);
-  next = setOpt(next, next.opt.orders.map(o => (o.status === 'working' && mine(contractKey(o.contract)) ? { ...o, status: 'cancelled' as const, done: when, why: note } : o)));
-  for (const p of optBookOf(next).positions) {
-    if (!mine(p.key)) continue;
+  const positions = optBookOf(a).positions.filter(p => mine(p.key));
+  const priced: { p: (typeof positions)[number]; px: number; live: Quote }[] = [];
+  const missing: string[] = [];
+  for (const p of positions) {
     const live = m.optQuote(p.contract);
+    const px = flattenPx(p, live, at?.(p.key), a.marks);
+    if (px == null) missing.push(contractWords(p.contract));
+    else priced.push({ p, px, live });
+  }
+  const leave = new Set(positions.filter(p => !priced.some(x => x.p.key === p.key)).map(p => p.key));
+  next = setOpt(next, next.opt.orders.map(o => (o.status === 'working' && mine(contractKey(o.contract)) && !leave.has(contractKey(o.contract)) ? { ...o, status: 'cancelled' as const, done: when, why: note } : o)));
+  for (const { p, px, live } of priced) {
     /* a long sold at the bid, a short bought back at the ask */
-    const px = at?.(p.key) ?? (p.dir > 0 ? live.bid : live.ask);
     next = optFillNow(next, { id: '', placed: when, contract: p.contract, side: p.dir > 0 ? 'sell' : 'buy', qty: p.qty, kind: 'market', tif: 'day', status: 'working', tag: p.tag, life: m.life, opens: false }, px, how, at ? { ...live, bid: px, ask: px, spot: p.spotIn } : live, m, note);
+  }
+  if (missing.length) {
+    const words = missing.length === 1 ? `${missing[0]} left open — the quote is missing` : `${missing.length} positions left open — the quote is missing`;
+    if (next.log[0]?.words !== words) next = logged(next, m.now, words, 'info');
   }
   return { ...next, touchedAt: m.now };
 }
@@ -1285,13 +1314,15 @@ export function flattenByHand(a: PaperAccount, m: PaperMarket): PaperAccount {
   return next;
 }
 
-/** An account the reader ends: everything closed at the market (at the last price seen, where nothing can be sold
-    now), and it is written down as ended — not passed, not failed */
+/** An account the reader ends: everything closed at the market (at the last live bid or ask, where the quote is dead).
+    A position with neither is left open — the quote is missing. The account is written down as ended — not passed, not failed */
 export function endAccount(a: PaperAccount, m: PaperMarket, why = 'Ended by you'): PaperAccount {
   if (a.status !== 'open') return a;
   const last = (key: string) => {
     const p = optBookOf(a).positions.find(x => x.key === key);
-    return p && m.optQuote(p.contract).dead ? (a.marks[key] ?? p.avg) : undefined;
+    if (!p || !m.optQuote(p.contract).dead) return undefined;
+    const px = a.marks[key];
+    return px > 0 ? px : undefined;
   };
   const next = flattenAll(a, m, 'rule', 'the account was ended', last);
   return logged({ ...next, status: 'ended', statusAt: m.now, statusWhy: why }, m.now, `${why} — the account was ended`, 'info');
@@ -1304,9 +1335,14 @@ export function closeStale(a: PaperAccount, m: PaperMarket): PaperAccount {
   const staleOrders = a.opt.orders.some(o => o.status === 'working' && o.life !== m.life);
   if (!stale.length && !staleOrders) return a;
   const keys = new Set(stale.map(p => p.key));
-  const avgOf = (key: string) => optBookOf(a).positions.find(p => p.key === key)?.avg;
-  let next = flattenAll(a, m, 'page', 'the page closed before it could close this — at the last price it saw', key => (keys.has(key) ? (a.marks[key] ?? avgOf(key)) : undefined));
-  next = logged(next, m.now, `${stale.length} ${stale.length === 1 ? 'position' : 'positions'} left open by a closed page ${stale.length === 1 ? 'was' : 'were'} closed at the last price it saw`, 'page');
+  let next = flattenAll(a, m, 'page', 'the page closed before it could close this — at the last price it saw', key => {
+    if (!keys.has(key)) return undefined;
+    const px = a.marks[key];
+    return px > 0 ? px : undefined;
+  });
+  const left = optBookOf(next).positions.filter(p => keys.has(p.key)).length;
+  const n = stale.length - left;
+  if (n > 0) next = logged(next, m.now, `${n} ${n === 1 ? 'position' : 'positions'} left open by a closed page ${n === 1 ? 'was' : 'were'} closed at the last price it saw`, 'page');
   return next;
 }
 
@@ -1352,12 +1388,21 @@ const nyClockOf = (ms: number) => {
   return `${String(Math.floor(t.minutes / 60)).padStart(2, '0')}:${String(t.minutes % 60).padStart(2, '0')} ET`;
 };
 /** How a short ends at its expiry, in words: settled in cash on an index; assigned, or expired worthless, on a stock or
-    fund — this desk holds no stock, so an assignment is settled in cash at what it was in the money */
-export function settleWords(c: ContractId, close: number, value: number): string {
+    fund — this desk holds no stock, so an assignment is settled in cash at what it was in the money.
+    `print` is "16:00" for the closing print, otherwise the last printed minute ("15:59"). */
+export function settleWords(c: ContractId, close: number, value: number, print = '16:00'): string {
   const at = `${c.ticker} ${close.toFixed(2)}`;
-  if (isBroadIndex(c.ticker)) return value > 0 ? `cash-settled at ${value.toFixed(2)} on the 16:00 print (${at})` : `expired worthless on the 16:00 print (${at})`;
-  if (!(value > 0)) return `expired worthless at the 16:00 close (${at})`;
-  return `assigned at the 16:00 close (${at}) — settled in cash at ${value.toFixed(2)}, what it was in the money${c.short != null ? ' (the leg sold assigned, the leg bought exercised)' : ''}: this desk holds no stock, so no shares change hands`;
+  const official = print === '16:00';
+  const onPrint = official ? 'the 16:00 print' : `the ${print} print`;
+  const atClose = official ? 'the 16:00 close' : `the ${print} print`;
+  if (isBroadIndex(c.ticker)) return value > 0 ? `cash-settled at ${value.toFixed(2)} on ${onPrint} (${at})` : `expired worthless on ${onPrint} (${at})`;
+  if (!(value > 0)) return `expired worthless at ${atClose} (${at})`;
+  return `assigned at ${atClose} (${at}) — settled in cash at ${value.toFixed(2)}, what it was in the money${c.short != null ? ' (the leg sold assigned, the leg bought exercised)' : ''}: this desk holds no stock, so no shares change hands`;
+}
+/** Which print `close` is, when the day's bars say so. An injected close (no bars, or a different price) stays "16:00". */
+function printOf(ticker: string, day: string, close: number): string {
+  const b = closeBasisOf(ticker, day);
+  return b && Math.abs(b.price - close) < 0.005 ? b.print : '16:00';
 }
 
 const planName = (plan: PaperPlan) => `${plan.firm ?? 'Your own rules'} ${plan.label}`;
@@ -1552,7 +1597,8 @@ function keepHeld(a: PaperAccount, m: PaperMarket): PaperAccount {
     /* at the bid it could be sold into (a short: the ask it could be bought back at), less the fee to close it — "fees
        in", the backtest's walk */
     const px = p.dir > 0 ? q.bid : q.ask;
-    if (p.dir < 0 && !(px > 0)) continue;
+    /* only a live quote is stored — a dead one is not a fill at zero, and it does not wipe the last real bid or ask */
+    if (q.dead || !(px > 0)) continue;
     note(p.tradeId, p.flow + p.dir * px * MULT * p.qty - optFee(a, p.contract, p.qty), px, q.spot);
     marks[p.key] = px;
   }
@@ -1657,16 +1703,19 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
       if (!(close > 0)) continue;
       const q = { ...m.optQuote(p.contract), spot: close };
       const value = settleValue(p.contract, close);
-      const note = p.dir < 0 ? settleWords(p.contract, close, value) : late != null ? `no live quote at its ${nyClockOf(late)} close — settled at the 16:00 close` : undefined;
+      const print = printOf(p.contract.ticker, p.contract.expiry, close);
+      const on = print === '16:00' ? 'the 16:00 close' : `the ${print} print`;
+      const note = p.dir < 0 ? settleWords(p.contract, close, value, print) : late != null ? `no live quote at its ${nyClockOf(late)} close — settled at ${on}` : undefined;
       next = optFillNow(next, { id: '', placed: when, contract: p.contract, side: p.dir > 0 ? 'sell' : 'buy', qty: p.qty, kind: 'market', tif: 'day', status: 'working', tag: p.tag, life: m.life, opens: false }, value, 'expired', q, m, note);
     }
     /* the plan's holding rules (rules.ts): flat by its time, nothing past the close, over a weekend, or through a
-       report — closed at the bid, or at the last bid seen where there is none to sell into now */
+       report — closed at the bid (a short: the ask). A dead quote keeps the last live one; with none stored the
+       position stays and the account says the quote is missing */
     const flat = mustBeFlat(next, m, viewOf(next, m));
     if (flat) {
       const seen = next.marks;
       const held = optBookOf(next).positions;
-      const n = flat.keys.size;
+      const before = held.filter(p => flat.keys.has(p.key)).length;
       next = flattenAll(
         next,
         m,
@@ -1674,12 +1723,18 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
         flat.why,
         key => {
           const p = held.find(x => x.key === key);
-          return p && m.optQuote(p.contract).dead ? seen[key] : undefined;
+          if (!p || !m.optQuote(p.contract).dead) return undefined;
+          const px = seen[key];
+          return px > 0 ? px : undefined;
         },
         flat.keys
       );
-      next = logged(next, m.now, `${n} ${n === 1 ? 'position' : 'positions'} closed by the rules — ${flat.why}`, 'rule');
-      events.push({ kind: 'flat', at: m.now, words: `${n} ${n === 1 ? 'position' : 'positions'} closed — ${flat.why}` });
+      const left = optBookOf(next).positions.filter(p => flat.keys.has(p.key)).length;
+      const n = before - left;
+      if (n > 0) {
+        next = logged(next, m.now, `${n} ${n === 1 ? 'position' : 'positions'} closed by the rules — ${flat.why}`, 'rule');
+        events.push({ kind: 'flat', at: m.now, words: `${n} ${n === 1 ? 'position' : 'positions'} closed — ${flat.why}` });
+      }
     }
     next = optTickOrders(next, m);
     /* the plan's floor and its day's limit, as it happens — judged only on fresh quotes in the session, or with nothing open */

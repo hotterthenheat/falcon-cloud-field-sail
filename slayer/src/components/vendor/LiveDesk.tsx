@@ -9,6 +9,8 @@ import { hhmm } from '../../data/ahead';
 import { nyIsoDate, nyMinutes } from '../../core/nyTime';
 import { dayWordOf, expirySpan, longDay } from '../../data/bookWindow';
 import { bookToday, isoDate } from '../../core/calendar';
+import { expiryDateFor, peekEntry } from '../../data/uwBook';
+import type { ExposureExpiry } from '../../types/gex';
 import { uwCall } from '../../data/whales';
 import { useResolvedTheme } from '../../theme/theme';
 import { useVendor, type VendorBook, type VendorRow } from '../../data/vendorFeed';
@@ -621,12 +623,35 @@ function ContractBoard({ title, rest, rows, testId, volume }: { title: string; r
   );
 }
 
-/** Contracts whose open interest changed. Under the ledger, in its rows. A FLEX line only when that contract moved. */
-export function BuildingArrived({ ticker }: { ticker: string }) {
+/** The ISO date a pane's expiry names. ALL is every still-live contract. OPEX is the Friday 14–45 days out closest to 30 — expiryDateFor only resolves the ladder dates. Null when that date is not known. */
+function arrivedExpiry(ticker: string, expiry: ExposureExpiry): string | null {
+  if (expiry === 'ALL') return null;
+  if (expiry === 'OPEX') {
+    const entry = peekEntry(ticker);
+    if (!entry) return null;
+    const fridays = entry.expiries.filter(e => {
+      const dt = new Date(`${e.date}T00:00:00`);
+      return dt.getUTCDay() === 5 && e.dte >= 14 && e.dte <= 45;
+    });
+    const opex = [...fridays].sort((a, b) => Math.abs(a.dte - 30) - Math.abs(b.dte - 30))[0];
+    return opex?.date ?? null;
+  }
+  return expiryDateFor(ticker, expiry);
+}
+
+/** Contracts whose open interest changed. Under the ledger, in its rows, for this pane's ticker and expiry. A FLEX line only when that contract moved. */
+export function BuildingArrived({ ticker, expiry }: { ticker: string; expiry: ExposureExpiry }) {
   const book = useVendor('pinpoint', ticker, '/pinpoint/agenda');
   if (!ticker) return null;
   /* Not expired contracts, and not "today": the change is the overnight count. */
   const floor = isoDate(bookToday());
+  const want = expiry === 'ALL' ? null : arrivedExpiry(ticker, expiry);
+  const onExpiry = (symbol: string): boolean => {
+    if (expiry === 'ALL') return true;
+    if (!want) return false;
+    const m = symbol.toUpperCase().match(OCC);
+    return !!m && `20${m[2]}-${m[3]}-${m[4]}` === want;
+  };
   const rawOi = series(taken(book, 'oi-change'));
   const dates = rawOi.reduce<{ from: string; to: string }>((d, r) => ({ from: String(r.last_date ?? '') > d.from ? String(r.last_date) : d.from, to: String(r.curr_date ?? '') > d.to ? String(r.curr_date) : d.to }), { from: '', to: '' });
   const oi = rawOi
@@ -636,6 +661,7 @@ export function BuildingArrived({ ticker }: { ticker: string }) {
       if (diff == null || diff === 0 || !symbol) return null;
       const m = symbol.toUpperCase().match(OCC);
       if (m && `20${m[2]}-${m[3]}-${m[4]}` < floor) return null;
+      if (!onExpiry(symbol)) return null;
       return { symbol, change: signed(diff), volume: r.volume, oi: r.curr_oi, _abs: Math.abs(diff) };
     })
     .filter((r): r is NonNullable<typeof r> => !!r)
@@ -646,6 +672,7 @@ export function BuildingArrived({ ticker }: { ticker: string }) {
       const prev = num(r.prev_oi);
       const symbol = String(r.option_symbol ?? '');
       if (oiN == null || prev == null || oiN === prev || !symbol) return null;
+      if (!onExpiry(symbol)) return null;
       return { symbol, change: signed(oiN - prev), volume: r.volume, oi: oiN, _abs: Math.abs(oiN - prev) };
     })
     .filter((r): r is NonNullable<typeof r> => !!r)

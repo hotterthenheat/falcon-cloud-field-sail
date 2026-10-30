@@ -7,7 +7,7 @@ import { Search, Check } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
 import { setupIdOf } from '../../data/compass';
 import { COMPASS_TICKERS, COMPASS_SET } from '../../data/compassUniverse';
-import { liveSpark, useThetaBook, alertUniverse, scanNames, setScanFocus } from '../../data/thetaBook';
+import { liveSpark, useThetaBook, alertUniverse } from '../../data/thetaBook';
 import { useSignals } from '../../data/compassLedger';
 import { bestByName, currentPicks, lastScanAt, scanBusy, scanReport, seatsNow } from '../../data/compassModel';
 import { backlogLine, compassFeed } from '../../data/compassFeed';
@@ -35,7 +35,6 @@ import BackToTop from '../../components/ui/BackToTop';
 import { CompassGuide } from '../../components/compass/CompassGuide';
 import SetupScanBoard from '../../components/compass/SetupScanBoard';
 import FilterTabs from '../../components/ui/FilterTabs';
-import { Tip } from '../../components/ui/Tooltip';
 
 /** "Sep 16", or "Sep 10 '27" once the year turns */
 const dayOf = (d: Date) => {
@@ -101,7 +100,6 @@ const Board = () => {
   const clock = useScanClock();
   const live = useThetaBook(offered);
   const record = useSignals();
-  useEffect(() => setScanFocus(tickerFilter), [tickerFilter]);
 
   // Deep links in: a setup from the Tracker, the Weigher, the tape's drilldown
   // or the Pulse tile lands on ITS PAGE; the wire's door lands here on one name.
@@ -282,9 +280,8 @@ const Board = () => {
                   : `${bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.')} ${asOf}`}${windowLine}${backlog ? ` ${backlog}` : ''}`
     } />
   );
-  const names = scanNames(offered === 'weekly' ? 'weekly' : 'odte');
   const bests = bestByName(offered === 'weekly' ? 'weekly' : 'odte');
-  const topBest = [...bests.values()].reduce((m, r) => Math.max(m, r.p1), -1);
+  const cleared = [...bests.values()].filter(r => r.p1 + 1e-12 >= P1_MIN).length;
   const seats = seatsNow().seats;
   const emptyLabel = live.feed === 'offline'
     ? serverLine
@@ -311,8 +308,8 @@ const Board = () => {
                 <Fact label="Net today" testId="net" title="Per contract: today's closed calls after an estimated $1.08 round trip and the SEC fee.">
                   {day.won + day.lost ? <span className={day.net >= 0 ? 'text-bull' : 'text-bear'}>{`${day.net < 0 ? '−' : '+'}$${Math.abs(day.net).toFixed(2)}`}</span> : '—'}
                 </Fact>
-                <Fact label="Best Model 1" testId="best" title={`The highest Model 1 read on this sleeve today. A call needs ${(P1_MIN * 100).toFixed(2)}%.`}>
-                  {topBest >= 0 ? `${(topBest * 100).toFixed(1)}%` : '—'}
+                <Fact label="Cleared" testId="best" title="Names on this sleeve whose best contract cleared the line. A call still needs a seat.">
+                  {bests.size ? cleared.toLocaleString('en-US') : '—'}
                 </Fact>
                 <Fact label="Seats" testId="fading" title="Roots Book A and Book B have called today. Five at most.">
                   <span className={seats >= SEAT_CAP ? 'text-bear' : 'text-textPrimary'}>{seats} of {SEAT_CAP}</span>
@@ -378,7 +375,6 @@ const Board = () => {
             sentence={sentence}
           >
             <div className="xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
-            <NameStrip names={names} bests={bests} selected={tickerFilter} onPick={t => setCompassView({ tickerFilter: t === tickerFilter ? null : t, selectedId: null })} />
             {!currentPicks().length && live.earlier && rankedSetups.length > 0 && (
               <p className="px-5 py-2 border-t border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textMuted" data-compass-asof>
                 As of {live.earlier.at ? `${nyDay(live.earlier.at, { weekday: true })}, ${nyClock(live.earlier.at, { zone: true })}` : nyDay(nyWallTime(Number(live.earlier.day.slice(0, 4)), Number(live.earlier.day.slice(4, 6)), Number(live.earlier.day.slice(6, 8)), 12), { weekday: true })} · the last session&apos;s scan, not live
@@ -402,33 +398,6 @@ const Board = () => {
       </div>
       <BackToTop testId="compass" />
     </>
-  );
-};
-
-/** The names the scan reads on this sleeve, each with its best Model 1 read today. A tap narrows the board to it. */
-const NameStrip = ({ names, bests, selected, onPick }: { names: string[]; bests: Map<string, { p1: number; contract: string }>; selected: string | null; onPick: (ticker: string) => void }) => {
-  if (!names.length) return null;
-  return (
-    <div className="px-5 py-2.5 border-t border-borderSubtle flex flex-wrap gap-1.5" data-compass-names>
-      {names.map(t => {
-        const best = bests.get(t);
-        const on = selected === t;
-        return (
-          <Tip key={t} label={best ? `${best.contract}: Model 1 ${(best.p1 * 100).toFixed(1)}%` : `${t}: not scored yet today`}>
-            <button
-              type="button"
-              onClick={() => onPick(t)}
-              aria-pressed={on}
-              className={`inline-flex items-center gap-1.5 h-8 min-w-[40px] px-2 rounded border font-mono text-t11 tnum transition-colors ${on ? 'border-silver/60 bg-silver/[0.06]' : 'border-borderSubtle hover:border-borderMuted'}`}
-              data-compass-name-chip={t}
-            >
-              <span className="font-semibold text-textPrimary">{t}</span>
-              <span className={best && best.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textSecondary'}>{best ? `${(best.p1 * 100).toFixed(1)}%` : '—'}</span>
-            </button>
-          </Tip>
-        );
-      })}
-    </div>
   );
 };
 

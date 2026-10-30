@@ -208,14 +208,14 @@ export const Institutions = () => {
     const seen = new Set<string>();
     const out: InstitutionRow[] = [];
     /* the largest reported line in each name, biggest first — as the strip's own words say */
-    for (const r of [...cut].sort((a, b) => b.valueB - a.valueB)) {
+    for (const r of [...rows].sort((a, b) => b.valueB - a.valueB)) {
       if (seen.has(r.ticker)) continue;
       seen.add(r.ticker);
       out.push(r);
       if (out.length === NAMES_TO_KNOW) break;
     }
     return out;
-  }, [cut]);
+  }, [rows]);
   const facts = useMemo(() => {
     const lead = [...rows].sort((a, b) => b.valueB - a.valueB)[0];
     return {
@@ -458,7 +458,7 @@ export const Shorts = () => {
     feed.forEach(r => r.sector && r.sector !== '—' && by.set(r.sector, (by.get(r.sector) ?? 0) + 1));
     return [{ value: 'all', label: 'Every sector', short: 'All', hint: 'Every name on the screen' }, ...[...by.entries()].sort((a, b) => b[1] - a[1]).map(([sct, n]) => ({ value: sct, label: sct, hint: `${n} ${n === 1 ? 'name' : 'names'}` }))];
   }, [feed]);
-  const toKnow = useMemo(() => cut.filter(r => !r.fund).slice(0, NAMES_TO_KNOW), [cut]);
+  const toKnow = useMemo(() => rows.filter(r => !r.fund).slice(0, NAMES_TO_KNOW), [rows]);
   const facts = useMemo(() => {
     const stocks = rows.filter(r => !r.fund);
     /* every name on the screen is a heavy short already, so the count that says something is the 20% rung (2 points) */
@@ -683,7 +683,7 @@ export const EtfBook = () => {
   }, [cut, picks, feed]);
   const rows = useMemo(() => (picks.length === 0 ? cut : cut.filter(r => picks.includes(`fund:${r.etf}`))), [cut, picks]);
   const toggleFund = (etf: string) => setPicks(p => (p.includes(`fund:${etf}`) ? p.filter(x => x !== `fund:${etf}`) : [...p, `fund:${etf}`]));
-  const toKnow = useMemo(() => [...cut].sort((a, b) => Math.abs(b.flow5dM) - Math.abs(a.flow5dM)).slice(0, NAMES_TO_KNOW), [cut]);
+  const toKnow = useMemo(() => [...rows].sort((a, b) => Math.abs(b.flow5dM) - Math.abs(a.flow5dM)).slice(0, NAMES_TO_KNOW), [rows]);
   const focus = useMemo(() => [...rows].sort((a, b) => b.aumB - a.aumB)[0], [rows]);
   useEffect(() => {
     if (focus) wantFundHoldings(focus.etf);

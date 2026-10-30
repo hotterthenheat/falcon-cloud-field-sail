@@ -200,6 +200,8 @@ interface LedgerCellProps {
   e: number;
   g: Greek;
   v: number;
+  /** Set when the flow cell's sign is opposite the open-interest cell. */
+  mark?: string;
   maxAbs: number;
   date: string;
   first: boolean;
@@ -245,7 +247,7 @@ export const SinceBadge = ({ text, dir }: { text: string; dir: 1 | -1 | 0 }) => 
   </span>
 );
 
-const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, ring, star, since, sinceDir, sinceLane, dotBeside, kept, fontSize, figure, mode, paper, pinned, idBase, pendingWord, area, onHover, onPick }: LedgerCellProps) => {
+const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, ring, star, since, sinceDir, sinceLane, dotBeside, kept, fontSize, figure, mode, paper, pinned, idBase, pendingWord, area, mark, onHover, onPick }: LedgerCellProps) => {
   const pending = !Number.isFinite(v);
   const flash = useTickFlash(pending ? 0 : v);
   return (
@@ -253,7 +255,8 @@ const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, r
     data-cell
     data-cell-key={`${g}|${e}|${strike}`}
     id={`${idBase}-${g}-${e}-${strike}`.replace(/\./g, '_')}
-    aria-label={`${fmtStrike(strike)} on ${date} · ${pending ? (pendingWord ?? 'contract vol still being read') : fmtUsd(shownGreek(g, v))}${since ? ` · ${since} since the open` : ''}`}
+    aria-label={`${fmtStrike(strike)} on ${date} · ${pending ? (pendingWord ?? 'contract vol still being read') : fmtUsd(shownGreek(g, v))}${since ? ` · ${since} since the open` : ''}${mark ? ` · ${mark}` : ''}`}
+    data-flow-disagree={mark ? '' : undefined}
     data-pinned={pinned ? '' : undefined}
     data-kept={kept ? '' : undefined}
     className={`relative min-w-0 px-[3px] py-[2px] cursor-default select-none tabular-nums ${first ? 'border-l border-borderSubtle/60 pl-[2px]' : ''} ${wash}`}
@@ -1196,6 +1199,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
                   const dead = !!surface.closed?.[e] && (g === 'color' || g === 'vomma' || g === 'speed' || g === 'veta' || g === 'zomma');
                   const open = !dead && surface.priced?.[g]?.[e] !== false;
                   const v = open ? q3(raw) : Number.NaN;
+                  const disagree = surface.mode === 'flow' && !!surface.disagree?.[e]?.[s];
                   return (
                     <LedgerCell
                       key={`c-${g}-${exp.dte}-${strike}`}
@@ -1203,6 +1207,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
                       e={e}
                       g={g}
                       v={v}
+                      mark={disagree ? 'Flow and open interest disagree' : undefined}
                       maxAbs={maxAbs}
                       date={exp.date}
                       first={ci === 0}

@@ -108,8 +108,9 @@ export function layout(cmp: Compare, unit: DistanceUnit, reach: Reach, greek: Gr
       for (const d of ds) R = Math.max(R, Math.abs(d));
       continue;
     }
-    const oneMove = U === '%' ? (s.sigmaDay / s.spot) * 100 : U === 'σ' ? 1 : s.sigmaDay / (s.scales.atr ?? s.sigmaDay);
-    R = Math.max(R, moves * oneMove);
+    const day = s.sigmaDay;
+    const oneMove = U === 'σ' ? 1 : day != null && day > 0 && s.spot > 0 && Number.isFinite(day) ? (U === '%' ? (day / s.spot) * 100 : day / (s.scales.atr ?? day)) : null;
+    if (oneMove != null && Number.isFinite(oneMove)) R = Math.max(R, moves * oneMove);
     const up = ds.filter(d => d > 0).sort((x, y) => x - y);
     const down = ds.filter(d => d < 0).sort((x, y) => y - x);
     R = Math.max(R, Math.abs(up[Math.min(3, up.length - 1)] ?? 0), Math.abs(down[Math.min(3, down.length - 1)] ?? 0));

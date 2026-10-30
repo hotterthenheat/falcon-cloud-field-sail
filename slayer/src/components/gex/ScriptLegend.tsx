@@ -73,7 +73,7 @@ const ScriptLegend = ({ paneId, scripts }: { paneId: string; scripts: PaneScript
             <span className={`whitespace-nowrap ${on && !broken ? 'text-textPrimary' : 'text-textMuted'}`}>{ps.script.title}</span>
             {summary(ps) && <span className="text-textMuted whitespace-nowrap tnum">{summary(ps)}</span>}
             {broken && <span className="text-bear text-t9 uppercase tracking-wider">does not read</span>}
-            <span className={`inline-flex items-center gap-0.5 ${on ? 'opacity-0 group-hover:opacity-100' : ''} transition-opacity`}>
+            <span className="inline-flex items-center gap-0.5 opacity-70 group-hover:opacity-100 transition-opacity">
               <button
                 onClick={() => void updateOnPane(paneId, { ...ps.chart, visible: !on })}
                 aria-pressed={!on}

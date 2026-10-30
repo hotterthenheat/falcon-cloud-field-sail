@@ -5,33 +5,45 @@
 */
 
 import type { Candle, GexSnapshot } from '../types/market';
+import { nyParts, nyWallTime } from '../core/nyTime';
 
-export type Timeframe = '15s' | '1m' | '5m' | '15m' | '30m' | '1h' | '1D' | '1W';
+export type Timeframe =
+  | '15s'
+  | '1m' | '2m' | '3m' | '5m' | '10m' | '15m' | '30m' | '45m'
+  | '1h' | '2h' | '4h' | '6h' | '8h' | '12h'
+  | '1D' | '3D' | '1W' | '1M' | '3M' | '6M' | '1Y';
+
+export type TfGroup = 'minute' | 'hour' | 'day';
 
 /*
-  T-14 — SUB-MINUTE, honestly. `minutes` goes FRACTIONAL below one minute
-  (15s = 0.25) so every consumer that multiplies by 60 keeps working in
-  seconds without a second unit system. The 15s row is served from the
-  simulator's live-only seconds tape (one tick = one quarter-bar), never by
-  resampling 1m history — a sub-minute label on resampled minutes would be
-  a different instrument wearing the same name, the exact thing the
-  directive rules out. The region before the app connected is EMPTY and the
-  pane says so.
-
-  1s AND 5s WAIT FOR THE FEED, deliberately: the seam's finest real
-  observation is one tick per quarter-minute, so a 1s row today would be
-  invention, and this desk does not ship pickers whose data cannot exist.
-  When the per-second WebSocket lands they are one row each here.
+  The interval menu is minutes, then hours, then date frames. 15s stays in the
+  type because a saved pane can still be on it. It is not a row in the menu:
+  the feed's finest stored bar is a quarter-minute, and the menu is the list
+  a chart is asked to offer.
 */
-export const TIMEFRAMES: { value: Timeframe; label: string; minutes: number }[] = [
+export const TIMEFRAMES: { value: Timeframe; label: string; minutes: number; menu?: string; group?: TfGroup }[] = [
   { value: '15s', label: '15s', minutes: 0.25 },
-  { value: '1m', label: '1m', minutes: 1 },
-  { value: '5m', label: '5m', minutes: 5 },
-  { value: '15m', label: '15m', minutes: 15 },
-  { value: '30m', label: '30m', minutes: 30 },
-  { value: '1h', label: '1h', minutes: 60 },
-  { value: '1D', label: '1D', minutes: 1440 },
-  { value: '1W', label: '1W', minutes: 10080 },
+  { value: '1m', label: '1m', minutes: 1, menu: '1 minute', group: 'minute' },
+  { value: '2m', label: '2m', minutes: 2, menu: '2 minutes', group: 'minute' },
+  { value: '3m', label: '3m', minutes: 3, menu: '3 minutes', group: 'minute' },
+  { value: '5m', label: '5m', minutes: 5, menu: '5 minutes', group: 'minute' },
+  { value: '10m', label: '10m', minutes: 10, menu: '10 minutes', group: 'minute' },
+  { value: '15m', label: '15m', minutes: 15, menu: '15 minutes', group: 'minute' },
+  { value: '30m', label: '30m', minutes: 30, menu: '30 minutes', group: 'minute' },
+  { value: '45m', label: '45m', minutes: 45, menu: '45 minutes', group: 'minute' },
+  { value: '1h', label: '1h', minutes: 60, menu: '1 hour', group: 'hour' },
+  { value: '2h', label: '2h', minutes: 120, menu: '2 hours', group: 'hour' },
+  { value: '4h', label: '4h', minutes: 240, menu: '4 hours', group: 'hour' },
+  { value: '6h', label: '6h', minutes: 360, menu: '6 hours', group: 'hour' },
+  { value: '8h', label: '8h', minutes: 480, menu: '8 hours', group: 'hour' },
+  { value: '12h', label: '12h', minutes: 720, menu: '12 hours', group: 'hour' },
+  { value: '1D', label: '1D', minutes: 1440, menu: '1 day', group: 'day' },
+  { value: '3D', label: '3D', minutes: 3 * 1440, menu: '3 days', group: 'day' },
+  { value: '1W', label: '1W', minutes: 7 * 1440, menu: '1 week', group: 'day' },
+  { value: '1M', label: '1M', minutes: 30 * 1440, menu: '1 month', group: 'day' },
+  { value: '3M', label: '3M', minutes: 91 * 1440, menu: '3 months', group: 'day' },
+  { value: '6M', label: '6M', minutes: 182 * 1440, menu: '6 months', group: 'day' },
+  { value: '1Y', label: '1Y', minutes: 365 * 1440, menu: '1 year', group: 'day' },
 ];
 
 /** Node overlay is an intraday feature — hidden at daily/weekly. */
@@ -39,6 +51,15 @@ export const INTRADAY_MAX_MINUTES = 60;
 
 export function tfMinutes(tf: Timeframe): number {
   return TIMEFRAMES.find(t => t.value === tf)?.minutes ?? 1;
+}
+
+/*
+  Longer than one cash day is on the menu so the list matches a chart's
+  interval picker. The feed does not serve those bars yet. A click stays on
+  the frame already up, and a stored one is not drawn.
+*/
+export function frameServed(tf: Timeframe): boolean {
+  return tfMinutes(tf) <= 1440;
 }
 
 /*
@@ -60,19 +81,41 @@ interface CandleFold {
 }
 const candleFolds = new WeakMap<Candle[], Map<number, CandleFold>>();
 
+/** Bucket from a session open in New York, not from the unix epoch. A morning overnight bar belongs to the previous evening's open. */
+function sessionBucket(timeSec: number, bucketSec: number, openMin: number): number {
+  const p = nyParts(timeSec * 1000);
+  const min = p.hour * 60 + p.minute;
+  let y = p.year;
+  let m = p.month;
+  let d = p.day;
+  if (openMin >= 20 * 60 && min < 4 * 60) {
+    const utc = new Date(Date.UTC(y, m - 1, d));
+    utc.setUTCDate(utc.getUTCDate() - 1);
+    y = utc.getUTCFullYear();
+    m = utc.getUTCMonth() + 1;
+    d = utc.getUTCDate();
+  }
+  const open = Math.floor(nyWallTime(y, m, d, Math.floor(openMin / 60), openMin % 60) / 1000);
+  if (timeSec < open) return open;
+  return open + Math.floor((timeSec - open) / bucketSec) * bucketSec;
+}
+
 /** Aggregate 1m OHLC bars into buckets of `minutes`. The base contract is
     ONE-MINUTE bars: sub-minute timeframes never come through here — they
     read the seconds tape directly (see the T-14 note above), so `<= 1`
-    correctly means "already at or below the base grid". */
-export function aggregateCandles(base: Candle[], minutes: number): Candle[] {
+    correctly means "already at or below the base grid". `openMin` anchors
+    the bucket to that session's New York open. Without it the bucket is the
+    unix epoch, which cuts an hour at :00 and not at 9:30. */
+export function aggregateCandles(base: Candle[], minutes: number, openMin?: number): Candle[] {
   if (minutes <= 1 || base.length === 0) return base;
   const bucketSec = minutes * 60;
+  const cacheKey = openMin == null ? minutes : openMin * 10_000 + minutes;
   let byMin = candleFolds.get(base);
   if (!byMin) {
     byMin = new Map();
     candleFolds.set(base, byMin);
   }
-  let fold = byMin.get(minutes);
+  let fold = byMin.get(cacheKey);
   const stale = !fold || fold.folded > base.length || fold.firstRef !== base[0] || (fold.folded > 0 && fold.lastRef !== base[fold.folded - 1]);
   if (stale) fold = { closed: [], folded: 0, firstRef: base[0], lastRef: undefined };
   const f = fold!;
@@ -83,7 +126,7 @@ export function aggregateCandles(base: Candle[], minutes: number): Candle[] {
   let curStart = f.folded;
   for (let i = f.folded; i < base.length; i++) {
     const b = base[i];
-    const bucket = Math.floor(b.time / bucketSec) * bucketSec;
+    const bucket = openMin == null ? Math.floor(b.time / bucketSec) * bucketSec : sessionBucket(b.time, bucketSec, openMin);
     if (bucket !== curBucket) {
       if (cur) {
         f.closed.push(cur);
@@ -101,7 +144,7 @@ export function aggregateCandles(base: Candle[], minutes: number): Candle[] {
     }
   }
   void curStart;
-  byMin.set(minutes, f);
+  byMin.set(cacheKey, f);
   return cur ? [...f.closed, cur] : f.closed.slice();
 }
 

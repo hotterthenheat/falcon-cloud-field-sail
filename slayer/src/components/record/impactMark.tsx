@@ -31,8 +31,7 @@ export const ImpactLegend = ({ className = '' }: { className?: string }) => (
   </span>
 );
 
-/* A row's flag says what the feed knows: the vendor's MAJOR flag and whether the story names a stock on your Board.
-   The vendor marks every headline neutral, so no positive or negative word is shown. */
+/* A row's flag says what the feed knows: the vendor's MAJOR flag and whether the story names a stock on your Board. */
 export const NEWS_FLAG_TIP = 'MAJOR: flagged major by the vendor and about a listed company or the economy. BOARD: it names a stock on your Board.';
 
 export const NewsFlag = ({ major, onBoard, className = '' }: { major?: boolean; onBoard?: boolean; className?: string }) => {

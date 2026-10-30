@@ -6,13 +6,19 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import type { Candle } from '../types/market';
 import { nyMinutes, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
-import { isTradingDay, nyYmd } from '../core/calendar';
+import { isTradingDay, isEarlyClose, nyYmd, EARLY_CLOSES } from '../core/calendar';
 import { minuteInSession, sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { etClock, keepTheta, keptTheta, noData, offlineWords, pageHidden, thetaDown, thetaGet } from './thetaFeed';
 import { thetaUseHere } from './theta';
 import { EXT_WINDOWS, cleanExtendedBars } from './thetaEligible';
 
 export const THETA_INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
+
+/** Minute of day the overnight tape opens. Stocks at 8:00 PM. The index book at 8:15 PM. */
+export function tapeOpenMinute(session: DeskSession, symbol = ''): number {
+  if (session === 'overnight' && THETA_INDEX.has(symbol.trim().toUpperCase())) return 20 * 60 + 15;
+  return sessionMeta(session).from;
+}
 
 /** Intraday grains are ThetaData intervals; `day` and `week` are the EOD rows (today folded from 5-minute bars). */
 export type TapeGrain = '15s' | '1m' | '5m' | '15m' | '30m' | '1h' | 'day' | 'week';
@@ -67,7 +73,45 @@ export function weekClose(timeSec: number): number {
   return Math.floor(nyWallTime(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate(), 16, 0) / 1000);
 }
 
-/** Bars folded into the bucket `keyOf` names: first open, highest high, lowest low, last close, summed volume. */
+function windowsFor(symbol: string, session: DeskSession, from = '', to = ''): { start: string; end: string }[] {
+  if (session === 'overnight' && THETA_INDEX.has(symbol)) {
+    return [
+      { start: '20:15:00', end: '23:59:59.999' },
+      { start: '00:00:00', end: '03:59:59.999' },
+    ];
+  }
+  /* Post opens when the early close ends (13:00), not at 16:00, on any pull that covers a half day.
+     A normal day in that pull still drops 13:00–15:59 in barInTape. */
+  if (session === 'post' && rangeHasEarlyClose(from, to)) return [{ start: '13:00:00', end: '19:59:59.999' }];
+  return WINDOWS[session];
+}
+
+function rangeHasEarlyClose(from: string, to: string): boolean {
+  if (!(from && to)) return false;
+  for (const iso of EARLY_CLOSES) {
+    const ymd = iso.replace(/-/g, '');
+    if (ymd >= from && ymd <= to) return true;
+  }
+  return false;
+}
+
+/** A print belongs on this tape. The stock overnight starts at 8:00 PM. An index overnight starts at 8:15.
+    On a half day, 13:00–15:59 stays regular — dropping it left those bars in no session — and post opens at
+    13:00, when the early close ends. No bar is invented. */
+export function barInTape(timeSec: number, session: DeskSession, symbol = ''): boolean {
+  const min = nyMinutes(timeSec * 1000);
+  const name = symbol.trim().toUpperCase();
+  if (session === 'overnight' && THETA_INDEX.has(name)) {
+    return min >= 20 * 60 + 15 || min < 4 * 60;
+  }
+  const p = nyParts(timeSec * 1000);
+  const iso = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+  if (isEarlyClose(iso)) {
+    if (session === 'rth') return min >= 9 * 60 + 30 && min < 16 * 60;
+    if (session === 'post') return min >= 13 * 60 && min < 20 * 60;
+  }
+  return minuteInSession(min, session);
+}
 export function foldTo(bars: readonly Candle[], keyOf: (timeSec: number) => number): Candle[] {
   const map = new Map<number, Candle>();
   for (const b of bars) {
@@ -84,18 +128,18 @@ export function foldTo(bars: readonly Candle[], keyOf: (timeSec: number) => numb
   return [...map.values()].sort((a, b) => a.time - b.time);
 }
 
-/** Intraday rows in one session, oldest first, one bar per stamp. A bar with no price is not a bar. */
-export function readOhlc(data: unknown, session: DeskSession): Candle[] {
+/** Intraday rows in one session, oldest first, one bar per stamp. A bar with a zero open, high, low, or close is not a bar. The close is not copied into a missing field. */
+export function readOhlc(data: unknown, session: DeskSession, symbol = ''): Candle[] {
   const bars: Candle[] = [];
   for (const b of flatRows(data)) {
     const at = nyWallStamp(b.timestamp ?? b.time);
+    const open = num(b.open);
+    const high = num(b.high);
+    const low = num(b.low);
     const close = num(b.close);
-    const open = num(b.open) || close;
-    const high = num(b.high) || close;
-    const low = num(b.low) || close;
-    if (!at || !(close > 0) || !(high > 0) || !(low > 0)) continue;
+    if (!at || !(open > 0) || !(high > 0) || !(low > 0) || !(close > 0)) continue;
     const time = Math.floor(at / 1000);
-    if (!minuteInSession(nyMinutes(time * 1000), session)) continue;
+    if (!barInTape(time, session, symbol)) continue;
     bars.push({ time, open, high, low, close, volume: num(b.volume) });
   }
   return dedupe(bars);
@@ -143,19 +187,20 @@ export function spansOf(from: string, to: string, grain: Exclude<TapeGrain, 'day
 }
 
 export async function pullIntraday(symbol: string, grain: Exclude<TapeGrain, 'day' | 'week'>, session: DeskSession, from: string, to: string): Promise<Pull> {
+  const wins = windowsFor(symbol, session, from, to);
   const got = await Promise.all(
     spansOf(from, to, grain).flatMap(([start, end]) =>
-      WINDOWS[session].map(win =>
+      wins.map(win =>
         thetaGet(`/${root(symbol)}/history/ohlc?symbol=${encodeURIComponent(symbol)}&start_date=${start}&end_date=${end}&interval=${grain}&start_time=${win.start}&end_time=${win.end}&format=json`),
       ),
     ),
   );
   const offline = got.some(g => g.error != null && !noData(g));
-  const bars = dedupe(got.flatMap(g => (g.error ? [] : readOhlc(g.data, session))));
+  const bars = dedupe(got.flatMap(g => (g.error ? [] : readOhlc(g.data, session, symbol))));
   /* a stock's pre-market and after-hours bars take their prices from the prints that may set one (late reports at an
      old price do not; data/thetaEligible.ts) — the regular session is ThetaData's bars as they come */
   if (root(symbol) === 'stock' && (session === 'pre' || session === 'post')) {
-    return { bars: await cleanExtendedBars(thetaGet, symbol, WINDOWS[session][0], STEP_SEC[grain] ?? 60, bars), offline };
+    return { bars: await cleanExtendedBars(thetaGet, symbol, wins[0], STEP_SEC[grain] ?? 60, bars), offline };
   }
   return { bars, offline };
 }
@@ -166,11 +211,20 @@ async function pullEod(symbol: string, from: string, to: string): Promise<Pull> 
   return { bars: readEod(got.data), offline: false };
 }
 
-/** Daily or weekly bars: the EOD rows, with today's regular session folded from its 5-minute bars until its EOD row lands. */
+/** Daily or weekly bars: the EOD rows, with today's regular session folded from its 5-minute bars until its EOD row lands.
+    Five years, a year at a time. A one-year chart folded from 400 days is a single bar. */
+async function pullEodYears(symbol: string, years: number): Promise<Pull> {
+  const now = Date.now();
+  const spans: [string, string][] = [];
+  for (let i = 0; i < years; i++) spans.push([ymd(now - (i + 1) * 365 * 86_400_000), ymd(now - i * 365 * 86_400_000)]);
+  const got = await Promise.all(spans.map(([from, to]) => pullEod(symbol, from, to)));
+  return { bars: dedupe(got.flatMap(g => g.bars)), offline: got.some(g => g.offline) };
+}
+
 async function pullDays(symbol: string, grain: 'day' | 'week', session: DeskSession): Promise<Pull> {
   const to = ymd();
   if (session === 'rth') {
-    const [daily, today] = await Promise.all([pullEod(symbol, ymd(Date.now() - 400 * 86_400_000), to), pullIntraday(symbol, '5m', 'rth', to, to)]);
+    const [daily, today] = await Promise.all([pullEodYears(symbol, 5), pullIntraday(symbol, '5m', 'rth', to, to)]);
     const byTime = new Map(daily.bars.map(b => [b.time, b]));
     for (const b of foldTo(today.bars, dayClose)) if (!byTime.has(b.time)) byTime.set(b.time, b);
     const days = [...byTime.values()].sort((a, b) => a.time - b.time);
@@ -222,7 +276,14 @@ const keyOf = (symbol: string, grain: TapeGrain, session: DeskSession) => `${sym
 function sessionLive(session: DeskSession): boolean {
   const p = nyParts();
   const trading = isTradingDay(new Date(p.year, p.month - 1, p.day));
-  return trading && sessionOfMinute(nyMinutes()) === session;
+  if (!trading) return false;
+  const min = p.hour * 60 + p.minute;
+  const iso = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+  /* After the early close, post is the session that is open. Regular's bars stay on the tape; the cash session is not live. */
+  if (isEarlyClose(iso) && session === 'post' && min >= 13 * 60 && min < 20 * 60) return true;
+  if (sessionOfMinute(min) !== session) return false;
+  if (session === 'rth' && isEarlyClose(iso) && min >= 13 * 60) return false;
+  return true;
 }
 
 /** How long a read holds: a trading session's bars are re-read every 15 s, a closed one's every 5 minutes. */
@@ -238,12 +299,16 @@ function slotOf(symbol: string, grain: TapeGrain, session: DeskSession): Slot {
   return s;
 }
 
-function merge(old: Candle[], fresh: Candle[]): Candle[] {
+/** Keep a closed bar. A later read may update the bar that was still forming, and may add a bar that was not here. It does not rewrite a bar that already had a bar after it. */
+function sealBars(old: Candle[], fresh: Candle[]): Candle[] {
   if (!fresh.length) return old;
   if (!old.length) return fresh;
-  const from = fresh[0].time;
-  const keep = old.filter(b => b.time < from);
-  return keep.length ? keep.concat(fresh) : fresh;
+  const oldLast = old[old.length - 1].time;
+  const byTime = new Map(old.map(b => [b.time, b]));
+  for (const b of fresh) {
+    if (!byTime.has(b.time) || b.time >= oldLast) byTime.set(b.time, b);
+  }
+  return [...byTime.values()].sort((a, b) => a.time - b.time);
 }
 
 async function read(s: Slot): Promise<void> {
@@ -278,7 +343,7 @@ async function read(s: Slot): Promise<void> {
       }
       return;
     }
-    s.bars = full ? got.bars : merge(s.bars, got.bars);
+    s.bars = s.bars.length ? sealBars(s.bars, got.bars) : got.bars;
     s.takenAt = Date.now();
     s.state = 'live';
     if (full) s.fullAt = s.takenAt;
@@ -381,7 +446,11 @@ export function useThetaTape(symbol: string, grain: TapeGrain, session: DeskSess
 export function tapeWords(t: TapeRead, session: DeskSession): string | null {
   if (t.state === 'offline') return offlineWords(t.takenAt);
   if (t.state === 'kept') return `Kept bars · as of ${etClock(t.takenAt)}`;
-  if (t.state === 'live' && !t.bars.length) return `${sessionMeta(session).label} has no prints on this name.`;
+  if (t.state === 'live' && !t.bars.length) {
+    return session === 'overnight'
+      ? 'No overnight prints on this feed. The cash close is not shown in its place.'
+      : `${sessionMeta(session).label} has no prints on this name.`;
+  }
   return null;
 }
 
@@ -511,12 +580,12 @@ export function useThetaPrint(symbol: string, on = true): Print | null {
 
 /* ---- the forming bar ---- */
 
-function openSec(atSec: number, session: DeskSession): number {
+function openSec(atSec: number, session: DeskSession, symbol = ''): number {
   const p = nyParts(atSec * 1000);
-  const meta = sessionMeta(session);
-  const hour = Math.floor(meta.from / 60);
-  const minute = meta.from % 60;
-  if (session === 'overnight' && p.hour * 60 + p.minute < meta.to) {
+  const from = tapeOpenMinute(session, symbol);
+  const hour = Math.floor(from / 60);
+  const minute = from % 60;
+  if (session === 'overnight' && p.hour * 60 + p.minute < sessionMeta(session).to) {
     const utc = new Date(Date.UTC(p.year, p.month - 1, p.day));
     utc.setUTCDate(utc.getUTCDate() - 1);
     return Math.floor(nyWallTime(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate(), hour, minute) / 1000);
@@ -526,13 +595,13 @@ function openSec(atSec: number, session: DeskSession): number {
 
 /** The live print joins the bar it belongs to (opening one when the print is past the last). It never opens a bar in
     another session. `stepSec` is the bar's width; 0 for a daily, -1 for a weekly. */
-export function paintPrint(bars: Candle[], price: number, atSec: number, stepSec: number, session: DeskSession): Candle[] {
-  if (!(price > 0) || !(atSec > 0) || !minuteInSession(nyMinutes(atSec * 1000), session)) return bars;
+export function paintPrint(bars: Candle[], price: number, atSec: number, stepSec: number, session: DeskSession, symbol = ''): Candle[] {
+  if (!(price > 0) || !(atSec > 0) || !barInTape(atSec, session, symbol)) return bars;
   const last = bars[bars.length - 1];
   let bucket: number;
   if (stepSec <= 0) bucket = stepSec < 0 ? weekClose(atSec) : dayClose(atSec);
   else {
-    const open = openSec(atSec, session);
+    const open = openSec(atSec, session, symbol);
     bucket = open + Math.floor(Math.max(0, atSec - open) / stepSec) * stepSec;
   }
   if (last && bucket < last.time) return bars;

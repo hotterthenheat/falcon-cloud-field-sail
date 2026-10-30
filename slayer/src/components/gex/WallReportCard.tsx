@@ -1,7 +1,7 @@
 /* How the levels held today: each named level's session record (tests, holds, breaks, last touch, OI change) and a strip
    of the session, one tick per test. A test is a bar reaching the level; a close beyond it after a test is a break. A row click keeps the strike. */
 
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { roomLevels } from '../../data/roomLevels';
 import FoldDoor from './FoldDoor';
 import { useBoxFold } from '../../data/boxFold';
@@ -13,6 +13,7 @@ import { oiWhen, valueOiChange } from '../../data/building';
 import { aheadWord, longDay, recordDay } from '../../data/bookWindow';
 import { fmtDollars as fmtUsdShort } from '../../data/ahead';
 import { sessionOfMinute } from '../../data/deskSession';
+import { useTapeRev, wantTape } from '../../data/thetaTape';
 import { nyClock, nyMinutes } from '../../core/nyTime';
 import { baseRates, levelTicks, sessionRecords, type RecordLevel, type Tick } from '../../data/levelRecord';
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME } from './paletteInk';
@@ -135,11 +136,17 @@ const GRID = 'grid gap-x-4 px-5 grid-cols-[minmax(0,1fr)_36px_36px_40px_48px] lg
 const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, tight = false, unavailable: unavailableIn = null }: { snapshot: MarketSnapshot; focus: number | null; onPick: (price: number) => void; scope?: ReactNode; /** Plain words when the book today's session ran on is no longer available (after the close) — said instead of a table of zeros */ unavailable?: string | null; /** The expiry window the levels are read from ("Oct 21 → Oct 30") — the Map's book is wider than the Agenda's next session, so its walls can differ and the head says which window */ span?: string | null; /** The day so far, handed in; the Map's replay reads the bars up to its position. */ bars?: readonly Candle[]; /** A name beside others — the phone's columns, so a third of the page still reads */ tight?: boolean }) => {
   const read = useResolvedSession(snapshot.ticker);
   const session = barsProp?.length ? sessionOfMinute(nyMinutes(barsProp[0].time * 1000)) : read.session;
+  const handed = barsProp != null;
+  useEffect(() => {
+    if (handed) return;
+    return wantTape(snapshot.ticker, '1m', session);
+  }, [snapshot.ticker, session, handed]);
+  const tapeRev = useTapeRev();
   const bars = useMemo(() => {
     if (barsProp) return barsProp;
     if (session !== 'rth') return deskBars(snapshot.ticker, session) ?? [];
     return sessionBars(snapshot.ticker) ?? [];
-  }, [snapshot, barsProp, session]);
+  }, [snapshot, barsProp, session, tapeRev]);
   const grid = tight ? 'grid gap-x-3 px-3 grid-cols-[minmax(0,1fr)_32px_32px_36px_44px]' : GRID;
   const desk = tight ? 'hidden' : 'max-lg:hidden';
   const phone = tight ? '' : 'lg:hidden';

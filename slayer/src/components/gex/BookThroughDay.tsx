@@ -13,6 +13,7 @@ import { nySessionPhase } from '../../core/nyTime';
 
 const inSessionNow = (): boolean => nySessionPhase() === 'open';
 import { sessionOfMinute } from '../../data/deskSession';
+import { useTapeRev, wantTape } from '../../data/thetaTape';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { hhmm } from '../../data/ahead';
 import { axisForSession } from '../../data/dayAxis';
@@ -100,11 +101,17 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
   const ticker = snapshot.ticker;
   const read = useResolvedSession(ticker);
   const shown = barsProp?.length ? sessionOfMinute(nyMinutes(barsProp[0].time * 1000)) : read.session;
+  const handed = !!barsProp?.length;
+  useEffect(() => {
+    if (handed) return;
+    return wantTape(ticker, '1m', shown);
+  }, [ticker, shown, handed]);
+  const tapeRev = useTapeRev();
   const bars = useMemo(() => {
     if (barsProp?.length) return barsProp;
     if (shown !== 'rth') return deskBars(ticker, shown) ?? [];
     return sessionBars(ticker) ?? [];
-  }, [ticker, barsProp, shown]);
+  }, [ticker, barsProp, shown, tapeRev]);
   const vendor = useBookMinutes(ticker);
 
   /* The minutes: volume gamma through the session, in the book's unit. The open-interest series are near-straight lines

@@ -125,13 +125,12 @@ export function flowWindow(expiry: string, nowMs = Date.now()): boolean {
   return minutes <= 5 * 390;
 }
 
-/** Dealer inventory from open interest: a customer buy at the ask makes the dealer shorter, a sale at the bid longer; the count may cross zero
-    (the dealer is then net long that side). Multi-leg volume is removed in proportion. */
+/** Dealer inventory. A customer buy at the ask shortens the dealer. A customer sale at the bid lengthens it. The count may cross zero. Multi-leg volume is removed in proportion, then the ask and the bid are what is left. */
 export function dealerInventory(oi: number, askVol: number, bidVol: number, multiVol: number, volume: number): number {
   const complex = volume > 0 ? Math.min(1, Math.max(0, multiVol / volume)) : 0;
   const ask = Math.max(0, askVol) * (1 - complex);
   const bid = Math.max(0, bidVol) * (1 - complex);
-  return oi + ask - bid;
+  return oi - ask + bid;
 }
 
 /** Ask minus bid after multi-leg volume is removed. This is the net, not the inventory, and it may be negative. */

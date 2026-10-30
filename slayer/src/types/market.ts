@@ -115,6 +115,33 @@ export interface StrikeNode {
   putBook?: number;
   /** False when this strike's flow net is too small a share of its volume to trust. The sign is still the flow sign. */
   flowFirm?: boolean;
+  /** Spot-exposure dollars for one strike. Ask is dealers selling, bid is dealers buying. Not greek-exposure shares. */
+  vendor?: {
+    px: number;
+    at?: number;
+    /** call oi, call ask, call bid, put oi, put ask, put bid */
+    g: number[];
+    d: number[];
+    v: number[];
+    c: number[];
+    asks: boolean;
+  };
+  /** The flow book, in the same kept sign as the open-interest fields. A held strike draws the open-interest figure. */
+  flow?: {
+    gex: { call: number; put: number };
+    dex: { call: number; put: number };
+    vex: { call: number; put: number };
+    vanna: { call: number; put: number };
+    charm: { call: number; put: number };
+    color: { call: number; put: number };
+    vomma: { call: number; put: number };
+    speed: { call: number; put: number };
+    veta: { call: number; put: number };
+    zomma: { call: number; put: number };
+    disagree: boolean;
+    held: boolean;
+    outside: boolean;
+  };
 }
 
 export type TradeDirection = 'BULLISH' | 'BEARISH';

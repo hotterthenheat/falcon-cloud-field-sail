@@ -1,10 +1,8 @@
 /* Where the market is, one reading for the mark, the signature, the rail and the footer, plus a plain sentence per state
    (pre-market, open, after hours, closed, early close, holiday). Clock: data/moc.ts; holidays: core/calendar.ts; early closes: the exchange's. */
 
-import { MARKET_HOLIDAYS, isTradingDay, isoDate } from '../core/calendar';
+import { EARLY_CLOSES, MARKET_HOLIDAYS, isTradingDay, isoDate } from '../core/calendar';
 import { readSessionClock } from './moc';
-
-const EARLY_CLOSES = new Set(['2025-07-03', '2025-11-28', '2025-12-24', '2026-11-27', '2026-12-24', '2027-11-26']);
 
 type MarketStateKind = 'open' | 'pre-market' | 'after-hours' | 'closed' | 'early-close' | 'holiday';
 

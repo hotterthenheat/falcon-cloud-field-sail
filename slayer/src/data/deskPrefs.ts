@@ -2,7 +2,7 @@
    In localStorage until the account carries them; read at first render, by the chart clock and by the bell. */
 
 import { useSyncExternalStore } from 'react';
-import type { Timeframe } from './timeframe';
+import { TIMEFRAMES, frameServed, type Timeframe } from './timeframe';
 
 export type ClockZone = 'local' | 'ny';
 
@@ -24,13 +24,19 @@ interface DeskPrefs {
 const KEY = 'slayer_desk_prefs';
 const DEFAULT_DESK_PREFS: DeskPrefs = { opensOn: { ticker: null, timeframe: null, page: null }, alertsSound: true, clock: 'ny' };
 
+function asTimeframe(v: unknown): Timeframe | null {
+  if (typeof v !== 'string') return null;
+  const known = TIMEFRAMES.find(t => t.value === v);
+  return known && frameServed(known.value) ? known.value : null;
+}
+
 let prefs: DeskPrefs = (() => {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULT_DESK_PREFS;
     const p = JSON.parse(raw) as Partial<DeskPrefs>;
     return {
-      opensOn: { ticker: p.opensOn?.ticker ?? null, timeframe: p.opensOn?.timeframe ?? null, page: typeof p.opensOn?.page === 'string' ? p.opensOn.page : null },
+      opensOn: { ticker: p.opensOn?.ticker ?? null, timeframe: asTimeframe(p.opensOn?.timeframe), page: typeof p.opensOn?.page === 'string' ? p.opensOn.page : null },
       alertsSound: p.alertsSound ?? true,
       /* New York's clock unless the reader chose the machine's (every time in the app is ET) */
       clock: p.clock === 'local' ? 'local' : 'ny',
@@ -50,7 +56,9 @@ const subscribe = (fn: () => void) => {
 /** A patch — `opensOn` may name only the name or only the timeframe */
 type DeskPrefsPatch = Partial<Omit<DeskPrefs, 'opensOn'>> & { opensOn?: Partial<DeskPrefs['opensOn']> };
 export function setDeskPrefs(patch: DeskPrefsPatch): void {
-  prefs = { ...prefs, ...patch, opensOn: { ...prefs.opensOn, ...(patch.opensOn ?? {}) } };
+  const nextOpen = patch.opensOn?.timeframe;
+  const opensOn = nextOpen && !frameServed(nextOpen) ? { ...patch.opensOn, timeframe: null } : patch.opensOn;
+  prefs = { ...prefs, ...patch, opensOn: { ...prefs.opensOn, ...(opensOn ?? {}) } };
   try {
     localStorage.setItem(KEY, JSON.stringify(prefs));
   } catch {

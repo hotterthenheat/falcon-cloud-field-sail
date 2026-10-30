@@ -4,28 +4,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Link2, Unlink2 } from 'lucide-react';
-import { extendedLine, priceWords, useLiveQuote, type LiveQuote } from '../../data/liveQuote';
+import { extendedLine, useLiveQuote } from '../../data/liveQuote';
 import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
 import { thetaUseHere } from '../../data/theta';
-import { DayRef } from '../../data/bookWindow';
-
-/** "Oct 22" */
-const shortMonDay = (iso: string): string => {
-  const [, m, d] = iso.split('-').map(Number);
-  return m && d ? `${MON3[m - 1]} ${d}` : iso;
-};
-const sessionWord = (q: LiveQuote | null | undefined): string => {
-  const d = q && q.phase !== 'regular' ? q.regDate : null;
-  const w = d ? DayRef(d) : 'Today';
-  return `${w}'s`;
-};
 import CompanyLogo from './CompanyLogo';
 import TickerLookup from './TickerLookup';
 import useFocusTrap from './useFocusTrap';
 import { useAnchoredMenu } from './useAnchoredMenu';
 import { MorphingInfinity, useWorking } from './Working';
 import { useNameArriving } from '../gex/useSeeded';
-import { MONTHS as MON3 } from '../../core/calendar';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token (deep steel on the light theme) */
 /** Matches the `w-72` on the menu — the placement keeps its far edge on screen */
@@ -44,7 +31,7 @@ interface ScopeChipProps {
   /** Print the live price and change on an own-name chip. Off where the
       host already prints its own price beside the chip. */
   quote?: boolean;
-  /** Outside the regular session, print the regular close as the price with the extended-hours move beside it */
+  /** Kept so existing callers compile. The price is the session the clock is in. */
   closeOutside?: boolean;
   /** Optionally controlled, like TickerQuickPick — a host with keys owns it */
   open?: boolean;
@@ -107,11 +94,9 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
   const theta = thetaUseHere() !== 'none';
   const thetaRead = useThetaPrice(shown && theta ? ticker : null).held;
   const live = useLiveQuote(shown && !theta ? ticker : null);
-  const price = closeOutside ? priceWords(live)?.lead : live?.spot;
-  /* before the open, the lead is the last session's change named by its date, with the pre-market move beside it */
-  const pre = live?.phase === 'pre';
-  const change = pre ? live?.lastSessionPct ?? null : live?.changePct;
-  const changeDay = pre && live?.regDate ? shortMonDay(live.regDate) : null;
+  const price = live ? (live.phase !== 'regular' && live.extPrice != null && live.extPrice > 0 ? live.extPrice : live.spot) : null;
+  const sessionMove = live != null && live.phase !== 'regular';
+  const change = !live ? null : sessionMove ? live.extPct : live.changePct;
 
   const menu =
     open &&
@@ -179,14 +164,12 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
             </span>
             {/* the regular session's change, the extended move beside it (zero is neutral); outside the session it is named by
                 its date */}
-            <span className={`text-t10 tnum leading-none whitespace-nowrap ${change == null || Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={`${sessionWord(live)} regular-session change (its 4:00 close against the close before)${pre ? ' — the session has not opened' : ''}${closeOutside && live?.phase !== 'regular' && live?.regClose != null ? ` · the price is that ${live.regClose.toFixed(2)} close` : ''}${extendedLine(live) ? ` · ${extendedLine(live)}${live?.extPrice != null ? ` at ${live.extPrice.toFixed(2)}` : ''}, kept apart` : ''}`} data-scope-change>
+            <span className={`text-t10 tnum leading-none whitespace-nowrap ${change == null || Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={sessionMove ? `${live?.phase === 'pre' ? 'Premarket' : 'After hours'} from the regular close${live?.regClose != null ? ` ${live.regClose.toFixed(2)}` : ''}` : 'The regular session, against the close before it'} data-scope-change>
               {change == null ? '…' : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change).toFixed(2)}%`}
-              {changeDay && <span className="text-textMuted"> {changeDay}</span>}
             </span>
-            {extendedLine(live) && (
+            {!sessionMove && extendedLine(live) && (
               <span className="text-t10 tnum leading-none text-textMuted whitespace-nowrap" data-scope-ext>
-                {/* the chip's room is a title row's: "pre" and "AH" stand for the words, which the hover spells out */}
-                · {pre ? extendedLine(live)!.replace('pre-market', 'pre') : closeOutside && live?.extPrice != null ? `AH ${live.extPrice.toFixed(2)}` : extendedLine(live)!.replace('after hours', 'AH')}
+                · {extendedLine(live)!.replace('after hours', 'AH').replace('pre-market', 'pre')}
               </span>
             )}
           </>

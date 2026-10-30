@@ -4,8 +4,8 @@
 
 import { daySigmaOfIv, sigmaOverMinutes } from './expectedMove';
 import { wallPlace } from '../core/walls';
-import { bookCandles, peekBellShare, peekIv, peekSpot, scopeDatesPending } from './uwBook';
-import { scopeSigma } from './wall';
+import { bookCandles, monDayOf, peekBellShare, peekDaySigma, peekIv, peekMoveToClose, peekScopeMove, peekSpot, scopeDatesPending } from './uwBook';
+import { scopeDateOf } from './wall';
 import { UNIVERSE } from './universe';
 import type { AheadClock } from './ahead';
 import { sessionStarts } from './indicators';
@@ -80,14 +80,14 @@ export interface CompareSide {
   flip: number | null;
   /** Signed percent, flip − spot */
   flipDistPct: number | null;
-  /** One expected move for the minutes left, dollars — and as percent of spot */
-  sigmaLeft: number;
+  /** One expected move for the minutes left, dollars — and as percent of spot. Null when this name has no real implied move. */
+  sigmaLeft: number | null;
   /** "by Nov 20" when the move runs to a later expiry than the coming session — null for the close */
   horizon: string | null;
-  /** Which number the move is ("the vendor's implied move into Oct 23") */
+  /** Which number the move is ("the vendor's implied move into Oct 23"). Empty when there is no move. */
   moveWords: string;
-  sigmaLeftPct: number;
-  sigmaDay: number;
+  sigmaLeftPct: number | null;
+  sigmaDay: number | null;
   scales: DistanceScales;
   levels: ExposureLevels;
   /** Every strike in the window, ascending, the day's net parked there — one list per greek */
@@ -130,8 +130,8 @@ export interface Compare {
   a: CompareSide;
   b: CompareSide;
   inSession: boolean;
-  /** Whose expected move is wider, and by how much */
-  wider: { ticker: string; ratio: number };
+  /** Whose expected move is wider, and by how much — null when either name has no real move */
+  wider: { ticker: string; ratio: number } | null;
   sentence: string;
 }
 
@@ -182,14 +182,27 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   /* The flip off the same contracts as the walls: with another expiry picked here, the gauge reads that expiry's chain. */
   const lens = snapshot.liveBook && snapshot.uwChains?.[expiry]?.length ? { ...snapshot, chain: snapshot.uwChains[expiry]! } : snapshot;
   const gauge = buildFlipGauge(lens);
-  const iv = peekIv(ticker) ?? 0.2;
-  /* the expiry this side reads: its own implied move, not the 30-day IV (data/uwBook.ts peekDaySigma) */
-  /* …over the scope's own horizon — "by Nov 20" for a later expiry (data/wall.ts scopeSigma) */
-  const ss = scopeSigma(lens, clock.minutesLeft, iv);
-  const sigmaDay = snapshot.liveBook ? ss.sigmaDay : daySigmaOfIv(spot, iv) ?? spot * 0.01;
-  const sigmaLeft = snapshot.liveBook ? ss.sigmaLeft : sigmaOverMinutes(sigmaDay, clock.minutesLeft);
-  const horizon = snapshot.liveBook ? ss.horizon : null;
-  const moveWords = snapshot.liveBook ? ss.words : 'the 30-day implied vol over one session';
+  /* a real implied move only: the term's, or this name's own vol. Never a 20% stand-in, and never spot × 1%. */
+  const iv = peekIv(ticker);
+  const date = scopeDateOf(lens);
+  const day = snapshot.liveBook ? peekDaySigma(ticker, date) : iv != null ? daySigmaOfIv(spot, iv) : null;
+  const move = snapshot.liveBook ? peekScopeMove(ticker, date) : null;
+  let sigmaLeft: number | null = null;
+  let sigmaDay: number | null = null;
+  let horizon: string | null = null;
+  let moveWords = '';
+  if (move?.multi && move.move > 0) {
+    sigmaLeft = move.move;
+    sigmaDay = day != null && day > 0 ? day : move.move;
+    horizon = move.until ? `by ${monDayOf(move.until)}` : null;
+    moveWords = move.words;
+  } else if (day != null && day > 0) {
+    sigmaDay = day;
+    const left = snapshot.liveBook ? peekMoveToClose(ticker, date, clock.minutesLeft) : null;
+    const scaled = left != null && left > 0 ? left : sigmaOverMinutes(day, clock.minutesLeft);
+    sigmaLeft = scaled > 0 ? scaled : null;
+    moveWords = move?.words ?? (iv != null ? 'the 30-day implied vol over one session' : 'the implied move');
+  }
   const scales: DistanceScales = { atr: sessionAtr(bookCandles(ticker) ?? []), sigma: sigmaDay };
 
   const rows = {} as Record<Greek, GexLevel[]>;
@@ -256,7 +269,7 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     sigmaLeft,
     horizon,
     moveWords,
-    sigmaLeftPct: (sigmaLeft / spot) * 100,
+    sigmaLeftPct: sigmaLeft != null && spot > 0 ? (sigmaLeft / spot) * 100 : null,
     sigmaDay,
     scales,
     levels,
@@ -439,9 +452,11 @@ const placeWords = (strike: number, spot: number, distPct: number): string => {
 };
 
 export function buildCompare(a: CompareSide, b: CompareSide, clock: AheadClock): Compare {
-  const ratioRaw = b.sigmaLeftPct / Math.max(1e-9, a.sigmaLeftPct);
-  const wider = ratioRaw >= 1 ? { ticker: b.ticker, ratio: ratioRaw } : { ticker: a.ticker, ratio: 1 / ratioRaw };
-  const narrower = wider.ticker === a.ticker ? b.ticker : a.ticker;
+  const aPct = a.sigmaLeftPct;
+  const bPct = b.sigmaLeftPct;
+  const ratioRaw = aPct != null && bPct != null && aPct > 0 && bPct > 0 ? bPct / aPct : null;
+  const wider = ratioRaw == null ? null : ratioRaw >= 1 ? { ticker: b.ticker, ratio: ratioRaw } : { ticker: a.ticker, ratio: 1 / ratioRaw };
+  const narrower = wider == null ? null : wider.ticker === a.ticker ? b.ticker : a.ticker;
   const nearerCall = Math.abs(a.callWall.distPct) <= Math.abs(b.callWall.distPct) ? a : b;
   const nearerPut = Math.abs(a.putWall.distPct) <= Math.abs(b.putWall.distPct) ? a : b;
   const regimes =
@@ -451,8 +466,10 @@ export function buildCompare(a: CompareSide, b: CompareSide, clock: AheadClock):
         ? `dealers ${regimeWord(a)} moves on both`
         : `dealers ${regimeWord(a)} moves on ${a.ticker} and ${regimeWord(b)} them on ${b.ticker}`;
   const when = clock.inSession ? 'to the close' : 'next session';
+  const moveClause = wider && narrower ? `${wider.ticker} has the wider expected move ${when}, ${wider.ratio.toFixed(1)}× ${narrower}'s; ` : '';
+  const lead = moveClause ? regimes : `${regimes.charAt(0).toUpperCase()}${regimes.slice(1)}`;
   const sentence =
-    `${wider.ticker} has the wider expected move ${when}, ${wider.ratio.toFixed(1)}× ${narrower}'s; ${regimes}. ` +
+    `${moveClause}${lead}. ` +
     `${nearerCall.ticker}'s call wall (the most call gamma) is the nearer at ${fmtStrike(nearerCall.callWall.strike)}, ${placeWords(nearerCall.callWall.strike, nearerCall.spot, nearerCall.callWall.distPct)}; ${nearerPut.ticker}'s put wall (the most put gamma) the nearer at ${fmtStrike(nearerPut.putWall.strike)}, ${placeWords(nearerPut.putWall.strike, nearerPut.spot, nearerPut.putWall.distPct)}.`;
   return { a, b, inSession: clock.inSession, wider, sentence };
 }

@@ -191,7 +191,7 @@ const ContractTrack = ({
               {setup.contract} · {setup.expiry}
             </span>
           )}
-          <TimeframeStrip value={timeframe} onChange={setTimeframe} only={['1m', '5m', '15m', '30m', '1h', '1D', '1W']} />
+          <TimeframeStrip value={timeframe} onChange={setTimeframe} only={['1m', '5m', '15m', '30m', '1h', '1D']} />
           {onToggleFullscreen && (
             <button type="button" onClick={onToggleFullscreen} className="slayer-chip px-2 ml-auto" data-premium-full>
               {fullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}

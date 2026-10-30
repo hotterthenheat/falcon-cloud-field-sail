@@ -1,4 +1,4 @@
-import { TIMEFRAMES, type Timeframe } from '../../data/timeframe';
+import { TIMEFRAMES, frameServed, type Timeframe } from '../../data/timeframe';
 import { symKey } from './setups';
 
 /*
@@ -27,11 +27,14 @@ import { symKey } from './setups';
 
 /* One step along the interval list, CLAMPED at both ends. Wrapping would
    turn one keypress on a 1-minute chart into a weekly chart, which is a
-   different instrument, not a smaller adjustment. */
+   different instrument, not a smaller adjustment. Frames the feed does not
+   serve yet are not on this walk — = on a daily chart stays on the day. */
 export const stepTf = (tf: Timeframe, dir: 1 | -1): Timeframe => {
-  const i = TIMEFRAMES.findIndex(t => t.value === tf);
-  const j = Math.max(0, Math.min(TIMEFRAMES.length - 1, (i < 0 ? 2 : i) + dir));
-  return TIMEFRAMES[j].value;
+  const list = TIMEFRAMES.filter(t => frameServed(t.value));
+  const i = list.findIndex(t => t.value === tf);
+  if (i < 0) return list[list.length - 1]?.value ?? '1D';
+  const j = Math.max(0, Math.min(list.length - 1, i + dir));
+  return list[j].value;
 };
 
 /*

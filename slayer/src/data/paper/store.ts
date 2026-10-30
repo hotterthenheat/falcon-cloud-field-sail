@@ -14,7 +14,7 @@ import { contractKey, type ContractId, type Quote } from '../review/quotes';
 import type { DayNote, JournalEntry } from '../review/journal';
 import { LIFE, SIM_FEED, barNowOf, candlesOf, optionFresh, optionQuote, optionQuoteAt, optionsOpen, spotForBidNow } from './feed';
 import { bellOf, nyAt } from './clock';
-import { LAST_MIN, ensureBars, spotAt } from '../review/history';
+import { closePrintOf, ensureBars } from '../review/history';
 import { canCatchUp, fetchGaps, hasGaps, replayGaps } from './catchUp';
 import { whalesEarnings } from '../whales';
 import {
@@ -107,11 +107,12 @@ export function liveMarket(now = Date.now()): PaperMarket {
     open: () => optionsOpen(now),
     fresh: (c: ContractId) => optionFresh(c, now),
     earnings: earningsOf,
-    /* ThetaData's recorded minute bars for the day: the last bar's close is the 16:00 print (13:00 on an early close) */
+    /* The 16:00 closing print when ThetaData recorded one; otherwise the last real print — never the 15:59 bar, and
+       never a flat zero-volume candle. Settlement waits until a minute and a half after the bell, so the print can land. */
     closeOf: (ticker: string, day: string) => {
       if (now < bellOf(day) + 90_000) return NaN;
       void ensureBars(ticker, day);
-      return spotAt(ticker, day, LAST_MIN);
+      return closePrintOf(ticker, day);
     },
   };
 }

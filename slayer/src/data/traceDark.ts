@@ -2,7 +2,7 @@
 
 import type { DarkPoolIntent, DarkPoolLevel, DarkPoolPrint, DarkPoolView, LevelRole, Posture } from '../types/darkpool';
 import { postureOfNet } from './traceLean';
-import { clock, execOf, hashId, num, nyDateOf } from './traceRows';
+import { clock, execOf, hashId, num, nyDateOf, SESSION_OPEN } from './traceRows';
 
 
 /* The dark-pool read, one rule across Trace: a sized regular-session print over the mid was paid up (accumulation),
@@ -60,6 +60,12 @@ export const SPECIAL_WORD: Record<string, string> = {
 /** The auction codes among SPECIAL_WORD — read as "priced in the auction", not "by its terms" */
 export const AUCTION_CODES = new Set(['cross_trade', 'opening_print', 'closing_print', 'reopening_print', 'nasdaq_official_close_price', 'nasdaq_official_opening_price', 'official_close_price', 'official_open_price']);
 
+/** The vendor's ext_hour_sold_codes names an extended-hours sale — any other non-empty code is not one */
+function extHour(raw: unknown): boolean {
+  const codes = Array.isArray(raw) ? raw.map(String) : raw != null && raw !== '' ? [String(raw)] : [];
+  return codes.some(c => /extended/i.test(c));
+}
+
 export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kind: 'dark' | 'lit' = 'dark'): DarkPoolPrint {
   const price = num(row.price);
   const size = num(row.size);
@@ -78,14 +84,18 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
   const special = ownWords.length ? ownWords.join(', ') : null;
   const auction = own.some(c => AUCTION_CODES.has(c));
   const sized = notional >= DARK_SIZED_USD;
-  /* after hours (the vendor's ext_hour_sold_codes "extended_hours_trade"): the quote it is set against is the thin
-     post-market one, so the print is shown and labelled, never read */
-  const extended = row.ext_hour_sold_codes != null && row.ext_hour_sold_codes !== '';
+  /* Stocks: regular is 09:30–16:00. A print in that window is regular even when the vendor sets an extended-hours
+     code on a late regular print — it is not after hours. Before the open and from 16:00 it is extended, flag or not. */
+  const when = clock(row.executed_at);
+  const m = when.minute;
+  const flaggedExt = extHour(row.ext_hour_sold_codes);
+  /* a missing clock is minute 0 with no epoch — that is not midnight, so only then does the vendor flag decide */
+  const extended = when.ms > 0 ? m < SESSION_OPEN || m >= 960 : flaggedExt;
+  const premarket = when.ms > 0 && m < SESSION_OPEN;
   const placeCents = quotePlace(vs, price).cents;
   const intent = special || extended ? 'ROTATION' : intentOf(placeCents, sized);
   /* an after-hours print's place in a thin quote is drawn neutral, never as a side; `exec` still says where it sat */
   const exec = special ? null : execOf(price, bid, ask);
-  const when = clock(row.executed_at);
   /* the vendor's tracking_id is NOT unique — distinct prints (other sizes, other cumulative volumes) share one — so the
      id folds in the fields that tell them apart; stable across polls, so the accumulator still de-dupes repeats */
   const id = hashId(row.tracking_id != null ? `${row.tracking_id}-${row.executed_at}-${row.size}-${row.price}-${row.volume}` : `${row.ticker}-${row.executed_at}-${i}`);
@@ -96,7 +106,9 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
       ? `${/^[aeiou]/i.test(special) ? 'An' : 'A'} ${special} — priced in the auction, not against the quote; no read.`
       : `${/^[aeiou]/i.test(special) ? 'An' : 'A'} ${special} — priced by its terms, not the quote; no read.`
     : extended
-      ? `After hours, ${where} of a post-market quote — no read.`
+      ? premarket
+        ? `Before the open, ${where} of a premarket quote — no read.`
+        : `After hours, ${where} of a post-market quote — no read.`
       : sized
         ? place.cents > 0
           ? `Size paid ${where} — buyer-initiated.`

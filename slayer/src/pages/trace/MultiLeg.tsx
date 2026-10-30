@@ -105,7 +105,7 @@ const riskCell = (v: number | 'uncapped' | null, tone: 'loss' | 'profit', t?: Sp
 const doorBtn = 'inline-flex items-center gap-1 font-mono text-t11 uppercase tracking-wider text-textSecondary hover:text-textPrimary border border-borderSubtle rounded px-2 py-1 hover:bg-ink/[0.04] transition-colors';
 
 /** One structure opened up: the legs, the risk box, and a line saying what the shape does */
-const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: () => void; onLeg: (legs: SpreadLeg[], i: number) => void }) => {
+export const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: () => void; onLeg: (legs: SpreadLeg[], i: number) => void }) => {
   const navigate = useNavigate();
   /* the card reads its own legs, settled by the same function as the row, so the two never disagree */
   const own = useSpreadTrade(trade);

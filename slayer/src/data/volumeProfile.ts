@@ -102,9 +102,9 @@ function buildVolumeProfile(sessionBars: readonly Candle[], binSize: number): Vo
 
 /** Today's profile for a ticker's base bars — the session cut plus a bin
     size aimed at TARGET_BINS across the session's own range. */
-export function sessionVolumeProfile(bars1m: readonly Candle[]): VolumeProfile {
+export function sessionVolumeProfile(bars1m: readonly Candle[], whole = false): VolumeProfile {
   if (bars1m.length === 0) return EMPTY;
-  const starts = sessionStarts(bars1m, 1);
+  const starts = whole ? [0] : sessionStarts(bars1m, 1);
   const sess = bars1m.slice(starts[starts.length - 1]);
   let lo = Infinity;
   let hi = -Infinity;

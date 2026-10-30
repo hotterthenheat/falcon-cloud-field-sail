@@ -26,10 +26,10 @@ import {
   type Time,
 } from 'lightweight-charts';
 import { chainForDate, deskTape, ensureBook, peekDaySigma, peekEntry, peekIv, snapshotFor, useBookMinutes, useBookRev } from '../../data/uwBook';
-import { ensureFieldCloses, exposureGrid, gridColumns, useExposureLogRev } from '../../data/book/exposureLog';
+import { ensureFieldCloses, ensureFieldCut, exposureGrid, gridColumns, useExposureLogRev } from '../../data/book/exposureLog';
 import { useFieldMode } from '../../data/fieldMode';
 import { useSessionQuote } from '../../data/sessionQuote';
-import { getDeskSession, minuteInSession, sessionMeta, sessionOfMinute, useDeskSession, type DeskSession } from '../../data/deskSession';
+import { getDeskSession, minuteInSession, sessionMeta, sessionOccurrence, sessionOfMinute, useDeskSession, type DeskSession } from '../../data/deskSession';
 import { snapsAsOf } from '../../data/exposureScope';
 import { onGlide, promisedWidth } from '../../core/glide';
 import { compile, explain, run as runScript, type Compiled } from '../../core/pine';
@@ -37,28 +37,31 @@ import { setPaneBars, usePaneScripts } from '../../data/paneScripts';
 import { drawRun, type ScriptHandle } from './scriptLayer';
 import ScriptLegend from './ScriptLegend';
 import ResetViewControl from './ResetViewControl';
-import { LOCAL_TIME, NY_TIME, localTickMarks, nyTickMarks } from './chartTime';
+import { NY_TIME, nyTickMarks } from './chartTime';
 import {
   aggregateCandles,
   aggregateSnapshots,
   snapshotsMaxAbs,
   tfMinutes,
+  frameServed,
   type Timeframe,
 } from '../../data/timeframe';
 import { BEAD_INK_CSS, GexTrailsPrimitive, type BeadHit } from './gexNodesPrimitive';
 import { ExpectedMovePrimitive, type ConeHit } from './expectedMovePrimitive';
-import { coneTerm, ensureCone } from '../../data/coneFeed';
-import { coneMarks, forwardCone, runwaySlots, todayOpenOf, tradingMinutesPerBar } from '../../data/terrainCone';
+import { coneTerm, ensureCone, useConeRev } from '../../data/coneFeed';
+import { coneFrame, coneMarks, forwardCone, runwaySlots, todayOpenOf, tradingMinutesPerBar } from '../../data/terrainCone';
 import { EXTRA_INK, coneRungs } from './levelExtras';
 import { KeyLevelsPrimitive, KEY_LEVEL_KEYS, KEY_LEVEL_WORDS, type KeyLevelKey, type KeyLevelRung } from './keyLevelsPrimitive';
 import { LADDER_HIT_W, nearRule } from './ladderPaint';
 import PointerCard, { CardRow, PointerFollowCard, letGoWords } from '../ui/PointerCard';
 import { CellView, makeCell } from './hoverCell';
-import { nyClock, nyMinutes } from '../../core/nyTime';
+import { nyClock, nyMinutes, nyParts, nyWallTime } from '../../core/nyTime';
 import { beepAlert } from '../../data/alertSound';
 import { oiDoubled } from '../../data/oiWatch';
 import { chartGrain, thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
-import { usePrintRev } from '../../data/thetaTape';
+import { barInTape, peekPrint, usePrintRev, useTapeRev } from '../../data/thetaTape';
+import { contractsLive } from '../../data/compassSession';
+import { sameName } from '../../data/spotGexBook';
 import { nodeScore } from '../../data/nodeScore';
 import { fmtStrike } from '../../data/ahead';
 import PaneFoot from './PaneFoot';
@@ -84,7 +87,7 @@ import { barClockSpec, type AltBarSpec } from '../../data/altBars';
 import type { Candle, GexSnapshot } from '../../types/market';
 import type { DarkPoolPrint, KeyLevels } from '../../types/gex';
 import { bucketFlow, flowMaxLeg } from '../../data/flowBars';
-import { atrBarSeries, alignGamma, alignPremium, alignSides, bollingerSeries, emaSeries, flowVwapSeries, gammaEmaSeries, gammaVwapSeries, macdSeries, rsiSeries, smaSeries, vwapSeries, vwapSigmaSeries } from '../../data/indicators';
+import { atrBarSeries, alignGamma, alignPremium, alignSides, bollingerSeries, emaSeries, flowVwapSeries, gammaEmaSeries, gammaMoves, gammaVwapSeries, macdSeries, rsiSeries, smaSeries, vwapSeries, vwapSigmaSeries } from '../../data/indicators';
 import { buildSessionLevels, type OpeningRange } from '../../data/sessionLevels';
 import { SessionLevelsPrimitive, sessionLines } from './sessionLevelsPrimitive';
 import { daySigmaOfIv } from '../../data/expectedMove';
@@ -97,6 +100,11 @@ import { EventsPrimitive } from './eventsPrimitive';
 import { cumulativeDrift, driftPeak } from '../../data/driftSeries';
 import { impliedVolLine, realizedVol, volCeiling } from '../../data/volDrift';
 import type { FlowPrint } from '../../types/trace';
+import { useChartDarkPrints, useChartFlowPrints } from '../../data/chartFeeds';
+import { INDICATOR_ITEMS, indicatorBlurb } from './indicatorItems';
+import StrikeExposureBand, { type BandMetric } from './StrikeExposureBand';
+import { buildExposureProfile } from '../../data/exposure';
+import type { ExposureProfileData } from '../../types/gex';
 
 /* The shape this chart needs off a print: whatever FlowPrint is, plus the instant it arrived. Declared here rather
    than imported from the provider so a chart never depends on a React context it does not use. */
@@ -125,7 +133,22 @@ const PANE_LABEL_LOOK: Record<string, string> = {
   flow: 'Flow',
   netDrift: 'Net drift',
   volDrift: 'Vol drift',
+  rsi: 'RSI 14',
+  macd: 'MACD',
+  atrPane: 'ATR 14',
 };
+
+/** Dark prints far from the tape blow the price scale. Keep the largest ones near spot. */
+const DARK_NEAR = 0.1;
+const DARK_CAP = 12;
+function darkNear(rows: readonly DarkPoolPrint[], spot: number): DarkPoolPrint[] {
+  const near = rows.filter(p => {
+    if (!(p.price > 0) || !Number.isFinite(p.price) || !(p.notional > 0)) return false;
+    if (!(spot > 0)) return true;
+    return Math.abs(p.price - spot) / spot <= DARK_NEAR;
+  });
+  return [...near].sort((a, b) => b.notional - a.notional).slice(0, DARK_CAP);
+}
 
 /* The drawing tools themselves — their families, names and glyphs — are drawTools.tsx; the rail's buttons are
    DrawRailTools.tsx. */
@@ -339,7 +362,7 @@ export function displayBars(ticker: string, mins: number, alt?: AltBarSpec | nul
   /* Rule bars have no live tape — they stay empty. */
   if (alt) return [];
   const session = getDeskSession();
-  /* Pinpoint, Trace and the Dossier read Unusual Whales (docs/DATA_SOURCES.md); every other desk draws ThetaData's bars */
+  /* Pinpoint, Trace and the Dossier read Unusual Whales. Every other desk draws every session that has a price. */
   if (thetaBars()) return thetaChartBars(ticker, mins, session);
   if (mins < 1) return [];
   ensureBook(ticker, 'board');
@@ -393,6 +416,10 @@ export const PRICE_SCALE_MIN_WIDTH = 58;
 export interface PriceProjection {
   /** Y in CSS px from the top of the plot, or null if the series is gone. */
   yFor(price: number): number | null;
+  /** The last candle's close — the price the tape is printing. Null before the first bar. */
+  last(): number | null;
+  /** Pan the price scale by `dy` pixels. Positive moves toward lower prices. The ladder and the candle stay on one scale. */
+  pan(dy: number): void;
   /** The plot's own height — NOT the container's; the time axis is below it. */
   plotHeight(): number;
   /** The time axis's height, for a neighbour that has to stop above it. */
@@ -471,6 +498,10 @@ interface StrikeChartProps {
   barClock?: string;
   /** Indicator overlays computed from the same bars */
   indicators?: ChartIndicators;
+  /** The on-chart legend turns a built-in off. Absent, the legend still names what is on. */
+  onIndicators?: (next: ChartIndicators) => void;
+  /** Closes the strike band from its own row. */
+  onOverlays?: (next: ChartOverlays) => void;
   /** This pane's name for the script library: 'pulse:main', 'terrain:1', 'weigher', 'pinpoint:map'. Given, the
       scripts placed on it draw here over the same bars; absent, no script draws. */
   paneId?: string;
@@ -513,6 +544,7 @@ interface StrikeChartProps {
       stay on gamma. */
   trailsGreek?: 'gex' | 'dex' | 'vex';
   /** Which expected-move wedge to draw. Session unless the indicators menu says otherwise. */
+  /** Kept on the props so a host can still pass it. The cone does not read it: the interval on the chart is the horizon. */
   coneHorizon?: 'session' | 'week' | 'next';
   /** The field's key row under the plot: drawn here unless the host prints the key on a line of its own — Terrain's
       desk bar — in which case the reference figure goes out through `onTrailKey` (0 when the field is off) */
@@ -690,6 +722,39 @@ const FULL_TRIGGER = 80;
 const windowOf = (all: Candle[], full: boolean): Candle[] =>
   full || all.length <= INITIAL_BARS + 200 ? all : all.slice(all.length - INITIAL_BARS);
 
+/** A daily or weekly bar is stamped at 16:00 — the cash close, not an after-hours print. */
+function barOnDesk(time: number, session: DeskSession, ticker: string, mins: number): boolean {
+  if (mins >= 1440) return session === 'rth';
+  return barInTape(time, session, ticker);
+}
+
+type FocusHold = { key: string; from: number; to: number };
+
+let labelMeasure: CanvasRenderingContext2D | null = null;
+function measureLabel(text: string, font: string): number {
+  if (typeof document === 'undefined') return text.length * 7;
+  labelMeasure ??= document.createElement('canvas').getContext('2d');
+  if (!labelMeasure) return text.length * 7;
+  labelMeasure.font = font;
+  return labelMeasure.measureText(text).width;
+}
+
+/** The series on the chart. A session focus that starts before the recent window widens the left edge so the
+    logical range is computed against bars that are actually drawn. */
+function sliceFor(all: Candle[], full: boolean, hold: FocusHold | null, world: string): Candle[] {
+  const recent = windowOf(all, full);
+  if (full || !hold || !hold.key.startsWith(`${world}|`) || !all.length || !recent.length) return recent;
+  if (recent[0].time <= hold.from) return recent;
+  let i0 = 0;
+  for (let i = 0; i < all.length; i++) {
+    if (all[i].time >= hold.from) {
+      i0 = i;
+      break;
+    }
+  }
+  return all.slice(i0);
+}
+
 /** KeepView: the reader's view per world, surviving a remount and a refresh. */
 type KeptView = { barSpacing: number; rightOffset: number; scroll: number };
 const VIEW_STORE = 'slayer.chartView';
@@ -715,17 +780,31 @@ function rememberView(key: string, view: KeptView) {
     keyed on it fires every render. */
 const NO_COMPARES: never[] = [];
 
+/** Minutes left on the cone, in the unit of the frame. A year is not 98,280 minutes. */
+function coneLeft(m: number): string {
+  if (!(m > 0)) return '—';
+  if (m < 90) return `${Math.round(m)}m`;
+  if (m < 390 * 2) {
+    const h = m / 60;
+    return `${h >= 10 ? Math.round(h) : h.toFixed(1)}h`;
+  }
+  const sessions = m / 390;
+  if (sessions < 12) return `${sessions >= 10 ? Math.round(sessions) : sessions.toFixed(1)}d`;
+  if (sessions < 50) return `${Math.round(sessions / 5)}w`;
+  if (sessions < 400) return `${Math.round(sessions / 21)}mo`;
+  return `${(sessions / 252).toFixed(1)}y`;
+}
+
 /** TradingView-grade candlestick chart with dealer-structure overlays and the net-GEX node heatmap. */
 const StrikeChart = ({
   ticker,
   paneId,
   revision: revisionProp,
   levels,
-  timeframe,
+  timeframe: timeframeIn,
   height = 460,
   keepView = false,
   trailsGreek = 'gex',
-  coneHorizon = 'session',
   trailKey = true,
   onTrailKey,
   compact = false,
@@ -743,6 +822,8 @@ const StrikeChart = ({
   themeKey: themeKeyProp,
   barClock = 'time',
   indicators = DEFAULT_INDICATORS,
+  onIndicators,
+  onOverlays,
   drawing = false,
   onExitDraw,
   onEnterDraw,
@@ -765,12 +846,20 @@ const StrikeChart = ({
   projectionRef,
   exportRef,
 }: StrikeChartProps) => {
+  /* A date frame the feed does not serve yet never reaches the tape. The menu
+     stays on the frame already up; a stored week or month falls back here. */
+  const servedTf = useRef<Timeframe>(frameServed(timeframeIn) ? timeframeIn : '15m');
+  if (frameServed(timeframeIn)) servedTf.current = timeframeIn;
+  const timeframe = servedTf.current;
   const bookRev = useBookRev();
   const bookMinutes = useBookMinutes(ticker);
   const session = useDeskSession();
+  const volsRev = useConeRev();
   const deskSessionRef = useRef(session);
   deskSessionRef.current = session;
-  /* Where the bars come from — the host's tape, or this session's prints. Another session is never left on screen. */
+  const tickerRef = useRef(ticker);
+  tickerRef.current = ticker;
+  /* Where the bars come from — the host's tape, or every session that has a price. A session with no prints is a gap. */
   const tapeRef = useRef<ChartTape | undefined>(tape);
   tapeRef.current = tape;
   const tapeKeyRef = useRef('');
@@ -787,11 +876,54 @@ const StrikeChart = ({
   const fieldRev = useExposureLogRev(ticker);
   const fieldColumns = (bars: readonly Candle[], mins: number): GexSnapshot[] => {
     if (tapeRef.current || !bars.length) return [];
-    const cut = chainForDate(ticker, bookDate)?.date;
-    /* a day bar also reads the sessions before today, each as of its close */
-    if (cut && mins >= 1440) ensureFieldCloses(ticker, cut);
-    const grid = cut ? exposureGrid(ticker, cut, bars.map(b => b.time), mins * 60, fieldMode) : null;
-    return grid ? gridColumns(grid) : [];
+    /* SPXW, NDXP, RUTW and VIXW are the cash index on Unusual Whales. The greek chain is not required
+       for the whole book: that cut is the spot-exposures rows. A named expiry is that date. No chain and
+       no rows leaves the field empty — strikes are not invented. */
+    const name = sameName(ticker);
+    const asked = bookDate;
+    const resolved = chainForDate(name, asked)?.date ?? null;
+    const cut = asked === 'book' ? 'book' : resolved ?? (asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : null);
+    if (!cut) return [];
+    /* A column is a bar whose contracts were live then. The desk clock is not a filter: the chart draws
+       every session, and keeping only the clock's window (barInTape) blanked every name but SPX once the
+       cash session ended. A shut book (QQQ overnight, a name with no session then) stays empty. */
+    const dayBar = mins >= 1440;
+    const times: number[] = [];
+    for (const b of bars) {
+      if (dayBar) {
+        /* A day bar is the cash session. The desk clock being after hours must not blank the field. */
+        const p = nyParts(b.time * 1000);
+        if (!contractsLive(name, cut, nyWallTime(p.year, p.month, p.day, 9, 30))) continue;
+      } else if (!contractsLive(name, cut, b.time * 1000)) continue;
+      times.push(b.time);
+    }
+    if (!times.length) return [];
+    /* A daily chart can hold years of bars. The field only needs the recent ones — walking every strike across
+       every session locks the page (and is what "This page stopped" was). */
+    const drawn = dayBar && times.length > 60 ? times.slice(-60) : times.length > 2000 ? times.slice(-2000) : times;
+    ensureFieldCut(name, cut);
+    if (dayBar) ensureFieldCloses(name, cut);
+    const series = candleSeriesRef.current;
+    const paneH = chartRef.current?.paneSize(0).height ?? 0;
+    let price: { lo: number; hi: number } | null = null;
+    if (series && paneH > 0) {
+      const top = series.coordinateToPrice(0);
+      const bot = series.coordinateToPrice(paneH);
+      if (top != null && bot != null && top !== bot) price = { lo: Math.min(top, bot), hi: Math.max(top, bot) };
+    }
+    if (!price) {
+      const tail = bars.slice(-40);
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (const b of tail) {
+        if (b.low < lo) lo = b.low;
+        if (b.high > hi) hi = b.high;
+      }
+      if (hi > lo) price = { lo, hi };
+    }
+    const grid = exposureGrid(name, cut, drawn, mins * 60, fieldMode, Date.now(), price);
+    if (!grid || grid.strikes.length > 200 || grid.times.length > 2000) return [];
+    return gridColumns(grid);
   };
   const nameIv = (): number | undefined => (tapeRef.current ? tapeRef.current.iv : peekIv(ticker) ?? undefined);
   const drawKey = tape?.key ?? ticker;
@@ -802,6 +934,7 @@ const StrikeChart = ({
      effect keys on it) and the newest one is applied on release. */
   /* ThetaData's live print moves the forming bar between the host's ticks (every desk but Pinpoint and the Dossier) */
   const printRev = usePrintRev(!tape && thetaBars());
+  const tapeRev = useTapeRev();
   const liveRev = revisionProp + printRev;
   const [revision, setRevision] = useState(liveRev);
   const keepViewRef = useRef(keepView);
@@ -858,6 +991,14 @@ const StrikeChart = ({
   /* The rule clock's spec, or null on the ordinary timeframe — resolved once per key so every effect gates on the
      same object. */
   const altSpec = useMemo(() => barClockSpec(barClock), [barClock]);
+  /* A host that already has prints wins. An empty list is not a feed — the chart asks while the overlay is on. */
+  const hostFlow = flowPrints && flowPrints.length > 0 ? flowPrints : null;
+  const darkFeed = useChartDarkPrints(ticker, !!overlays.darkpool && !replay && prints.length === 0);
+  const darkRows = prints.length > 0 ? prints : darkFeed.rows;
+  const flowWanted = !!overlays.flow || !!overlays.netDrift || !!overlays.events || !!indicators.flowVwap || !!indicators.sideVwap;
+  const flowFeed = useChartFlowPrints(ticker, flowWanted && !replay && !hostFlow && barClock === 'time');
+  const flowRows: readonly StampedFlowPrint[] = hostFlow ?? flowFeed.rows;
+  const [bandMetric, setBandMetric] = useState<BandMetric>('gex');
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   /* The host's chrome band: CSS px from the box's top to the lowest floating block over its upper third — every host
@@ -956,9 +1097,6 @@ const StrikeChart = ({
   const lastBarTimeRef = useRef(0);
   /** The host tape's last one-minute bar at the last load — how a jump of the host's clock is told from a tick */
   const tapeLastRef = useRef(0);
-  /* What the price card's countdown measures against: the bar time we last saw, when we saw it in real ms, and the
-     observed real gap between the last two arrivals. */
-  const barClockRef = useRef({ stamp: 0, at: 0, realMs: 0 });
   const bucketSecRef = useRef(60);
   const levelTickerRef = useRef('');
   const focusLineRef = useRef<IPriceLine | null>(null);
@@ -1009,12 +1147,13 @@ const StrikeChart = ({
      from "a bar completed and a new one opened" (reload — update cannot rewrite an older time). */
   const altCountRef = useRef(0);
   const indAltCountRef = useRef(0);
-  const loadedRef = useRef<{ ticker: string; timeframe: Timeframe; theme: string; clock: string; full: boolean }>({
+  const loadedRef = useRef<{ ticker: string; timeframe: Timeframe; theme: string; clock: string; full: boolean; session: string }>({
     ticker: '',
     timeframe: '1m',
     theme: '',
     clock: 'time',
     full: false,
+    session: '',
   });
 
   // Drawing state
@@ -1044,6 +1183,8 @@ const StrikeChart = ({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [quiet, setQuiet] = useState(false);
   const [sessionNote, setSessionNote] = useState<string | null>(null);
+  const [sessionGap, setSessionGap] = useState<string | null>(null);
+  const focusKeyRef = useRef('');
   const quote = useSessionQuote(ticker, session, quiet && session !== 'rth');
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -1175,20 +1316,42 @@ const StrikeChart = ({
      a fixed 130. Width-aware, so a docked panel and the fullscreen takeover each get the pitch, not the count. */
   /* The bar pitch the default view lands on, per timeframe: 5m reads right at ~4px, 15m at ~6.5 — coarser bars earn
      more room, so a wider frame shows fewer of them and the recent structure stays legible. */
-  const DEFAULT_PITCH_PX: Record<Timeframe, number> = { '15s': 3, '1m': 3.5, '5m': 4, '15m': 6.5, '30m': 8, '1h': 10, '1D': 14, '1W': 18 };
+  const pitchPx = (tf: Timeframe): number => {
+    const m = tfMinutes(tf);
+    if (m < 1) return 3;
+    if (m <= 1) return 3.5;
+    if (m <= 5) return 4;
+    if (m <= 15) return 6.5;
+    if (m <= 45) return 8;
+    if (m <= 60) return 10;
+    if (m <= 240) return 12;
+    if (m < 1440) return 13;
+    if (m <= 1440) return 14;
+    if (m <= 7 * 1440) return 16;
+    return 18;
+  };
   /* History takes ~64% of the width; the rest stays OPEN ahead of the last bar. */
   const HISTORY_SHARE = 0.64;
   const timeframeRef = useRef<Timeframe>(timeframe);
   timeframeRef.current = timeframe;
+  const barClockRef = useRef(barClock);
+  barClockRef.current = barClock;
+  /** Session focus the reader just set. showRecent must not snap it back to the right edge. */
+  const focusHoldRef = useRef<FocusHold | null>(null);
+  const focusBumpRef = useRef('');
+  const [focusNonce, setFocusNonce] = useState(0);
   /** The container's last observed width — the re-fit observer keeps it, so showRecent reads the DOM (a forced
       layout, 28–44ms of every desk open on the profiler) only the first time, before any observation. */
   const widthRef = useRef(0);
   const showRecent = useCallback(() => {
     const chart = chartRef.current;
     if (!chart) return;
+    const hold = focusHoldRef.current;
+    const world = `${tickerRef.current}|${timeframeRef.current}|${barClockRef.current}`;
+    if (hold && hold.key.startsWith(`${world}|`)) return;
     const len = barCountRef.current;
     const width = widthRef.current || (containerRef.current?.clientWidth ?? 1200);
-    const pitch = DEFAULT_PITCH_PX[timeframeRef.current] ?? 4;
+    const pitch = pitchPx(timeframeRef.current);
     let total = Math.max(90, Math.min(700, Math.round(width / pitch)));
     /* A live-only tape can be minutes old — twenty quarter-bars against a 300-slot window rendered as a sliver at
        the left edge of 46 minutes of runway (measured on the first 15s pane). */
@@ -1270,11 +1433,14 @@ const StrikeChart = ({
     const cur = runwayRef.current;
     /* Grown in chunks, because this runs on every visible-range change. */
     const need = Math.max(120, Math.ceil(reach + span), cur.from === lastTime ? cur.slots : 0);
-    const want = Math.min(RUNWAY_MAX, Math.ceil(need / RUNWAY_STEP) * RUNWAY_STEP);
+    /* A day bar is one session. 12,000 of them is years of empty axis and froze the page on 1D. */
+    const cap = bucketSec >= 86_400 ? 40 : RUNWAY_MAX;
+    const want = Math.min(cap, Math.ceil(need / RUNWAY_STEP) * RUNWAY_STEP);
     if (cur.from === lastTime && cur.slots >= want) return;
 
-    /* trading time ahead on a regular-session chart, so a slot is what the cone's variance runs on */
-    const pts = runwaySlots(lastTime, bucketSec, want, deskSessionRef.current === 'rth').map(t => ({ time: t as UTCTimestamp }));
+    /* Cash minutes only. Premarket, after hours, and overnight are not cash minutes — the fan ends at the cash close
+       (1:00 PM on a half day). A week of runway is still five cash sessions, not five overnight clocks. */
+    const pts = runwaySlots(lastTime, bucketSec, want, { from: 9 * 60 + 30, to: 16 * 60, wraps: false, earlyClose: true }).map(t => ({ time: t as UTCTimestamp }));
     series.setData(pts);
     runwayRef.current = { from: lastTime, slots: want };
   }, []);
@@ -1282,6 +1448,7 @@ const StrikeChart = ({
   const resetView = useCallback(() => {
     const chart = chartRef.current;
     if (!chart) return;
+    focusHoldRef.current = null;
     chart.priceScale('right').applyOptions({ autoScale: true });
     showRecent();
   }, [showRecent]);
@@ -1401,25 +1568,61 @@ const StrikeChart = ({
     []
   );
 
-  // Widen the visible price range to always include the walls/supreme so several strike-node bands are on screen,
-  // not just the couple around spot — and the focus strike, when one is set.
+  // Keep the last price and the gamma strikes near it on screen. A wall or a wick far from the price does not stretch the scale.
   const autoscaleProvider = useCallback(
     /* `priceRange` is nullable in the library and the annotation the partner tree still carries says it is not, so
        tsc blesses `base?.priceRange.minValue` — which throws the moment the view holds no candles at all. */
     (original: () => { priceRange: { minValue: number; maxValue: number } | null } | null) => {
-      const base = original();
+      let base: { priceRange: { minValue: number; maxValue: number } | null } | null = null;
+      try {
+        base = original();
+      } catch {
+        base = null;
+      }
       const lv = levelsRef.current;
-      const extras = [lv.putWall, lv.callWall, lv.supreme, lv.spot, focusPriceRef.current ?? NaN, ...roomRef.current].filter(v =>
-        Number.isFinite(v)
-      );
+      const lastPx = lastCloseRef.current;
+      /* The same 6% the field keeps (exposureSegs WINDOW is 5%). Outside it, a low wick or a far wall pulls the
+         minimum down and every strike near the price lands on one band at the top. */
+      const band = lastPx != null && lastPx > 0 ? { lo: lastPx * 0.94, hi: lastPx * 1.06 } : null;
+      const near = (v: number): boolean => band == null || (v > band.lo && v < band.hi);
       const range = base?.priceRange ?? null;
-      // Nothing to scale by at all — let the library keep its own answer
+      const strikes = trailsRef.current?.strikes;
+      let lo = Infinity;
+      let hi = -Infinity;
+      let n = 0;
+      if (band && strikes && strikes.length) {
+        for (const s of strikes) {
+          if (!(s > band.lo) || !(s < band.hi)) continue;
+          if (s < lo) lo = s;
+          if (s > hi) hi = s;
+          n += 1;
+        }
+      }
+      const protect = band != null && n >= 3 && range != null && range.maxValue > band.lo && range.minValue < band.hi;
+      /* Scrolled off the last price: the field's strikes are not this window. Leave the candles alone. */
+      if (band && range && !protect && !(range.maxValue > band.lo && range.minValue < band.hi)) {
+        const pad = Math.max((range.maxValue - range.minValue) * 0.08, 0.01);
+        return { priceRange: { minValue: range.minValue - pad, maxValue: range.maxValue + pad } };
+      }
+      const extras: number[] = [];
+      for (const v of [lv.spot, lastPx ?? NaN, focusPriceRef.current ?? NaN, lv.putWall, lv.callWall, lv.supreme, ...roomRef.current]) {
+        if (Number.isFinite(v) && v > 0 && near(v)) extras.push(v);
+      }
+      if (n >= 3) extras.push(lo, hi);
       if (range === null && extras.length === 0) return base;
       let min = range ? range.minValue : Math.min(...extras);
       let max = range ? range.maxValue : Math.max(...extras);
+      if (protect && band) {
+        min = Math.min(Math.max(min, band.lo), band.hi);
+        max = Math.max(Math.min(max, band.hi), band.lo);
+      }
       for (const v of extras) {
         if (v < min) min = v;
         if (v > max) max = v;
+      }
+      if (!(max > min)) {
+        min -= 0.01;
+        max += 0.01;
       }
       const pad = Math.max((max - min) * 0.08, 0.01);
       /* No pixel margin for the chrome here: the scale's own 20% top margin already lands the highest wall ~130px
@@ -1568,8 +1771,8 @@ const StrikeChart = ({
         fontSize: compactRef.current ? 9 : 10,
         attributionLogo: true,
       },
-      // The reader's clock, not Greenwich's — see chartTime.ts.
-      localization: tapeRef.current?.clock === 'ny' ? NY_TIME : LOCAL_TIME,
+      // The session cut is New York, so the axis is New York, whatever clock the reader picked in Settings.
+      localization: NY_TIME,
       // No grid: the nodes and the levels are the structure; a grid behind them competes with the ribbons
       grid: {
         vertLines: { visible: false },
@@ -1578,7 +1781,7 @@ const StrikeChart = ({
       // The live-price capsule replaces the series' own last-value label and takes the axis's measured width (the
       // priceTag element below) — the axis itself is as wide as its figures; it used to be held open at 74 for a…
       rightPriceScale: { borderColor: s0.line, minimumWidth: 0 },
-      timeScale: { borderColor: s0.line, timeVisible: true, secondsVisible: false, rightOffset: 10, barSpacing: 6, minBarSpacing: 0.5, tickMarkFormatter: tapeRef.current?.clock === 'ny' ? nyTickMarks : localTickMarks },
+      timeScale: { borderColor: s0.line, timeVisible: true, secondsVisible: false, rightOffset: 10, barSpacing: 6, minBarSpacing: 0.5, tickMarkFormatter: nyTickMarks },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true } },
       crosshair: {
@@ -1737,6 +1940,26 @@ const StrikeChart = ({
     if (projectionRef) {
       projectionRef.current = {
         yFor: price => candleSeriesRef.current?.priceToCoordinate(price) ?? null,
+        last: () => lastCloseRef.current,
+        pan: (dy: number) => {
+          const chart = chartRef.current;
+          const series = candleSeriesRef.current;
+          if (!chart || !series || !dy) return;
+          cancelAnimationFrame(scaleGlideRef.current);
+          const ps = chart.priceScale('right');
+          ps.applyOptions({ autoScale: false });
+          const range = ps.getVisibleRange();
+          if (!range) return;
+          const span = range.to - range.from;
+          const h = Math.max(1, chart.paneSize(0).height);
+          if (!(span > 0)) return;
+          const shift = span * (dy / h);
+          try {
+            ps.setVisibleRange({ from: range.from - shift, to: range.to - shift });
+          } catch {
+            /* a range the scale will not take */
+          }
+        },
         plotHeight: () => chart.paneSize(0).height,
         axisHeight: () => chart.timeScale().height(),
       };
@@ -1842,7 +2065,7 @@ const StrikeChart = ({
       printLinesRef.current = [];
       shownLevelsRef.current = null;
       cancelAnimationFrame(levelRafRef.current);
-      loadedRef.current = { ticker: '', timeframe: '1m', theme: '', clock: 'time', full: false };
+      loadedRef.current = { ticker: '', timeframe: '1m', theme: '', clock: 'time', full: false, session: '' };
     };
     // EnsureRunway and applySync are stable useCallback([])s — listed so the subscriptions installed here are never
     // reading a stale one.
@@ -1911,6 +2134,10 @@ const StrikeChart = ({
       { key: 'netDrift', series: driftCallsRef.current },
       { key: 'volDrift', series: rvRef.current },
     ];
+    for (const key of ['rsi', 'macd', 'atrPane'] as const) {
+      const series = indicatorSeriesRef.current.get(`${key}:line`);
+      wanted.push({ key, series: series ?? null });
+    }
     let next: { key: string; top: number }[] = [];
     if (chart) {
       try {
@@ -1921,7 +2148,7 @@ const StrikeChart = ({
           const idx = w.series.getPane().paneIndex();
           /* Pane 0 is the tape. A product series that somehow landed there has no band of its own to label. */
           if (idx <= 0 || idx >= heights.length) continue;
-          if (heights[idx] < 36) continue;
+          if (heights[idx] < 20) continue;
           let top = 0;
           for (let j = 0; j < idx; j++) top += heights[j];
           next.push({ key: w.key, top: top + 6 });
@@ -1961,7 +2188,7 @@ const StrikeChart = ({
 
     /* The band is built on demand and torn down when it is off. The first cut created the pane at mount and
        collapsed it to 1px when the overlay was off. */
-    if (!overlays.flow || altSpec) {
+    if (!overlays.flow || altSpec || flowRows.length === 0) {
       const oldCalls = flowCallsRef.current;
       const oldPuts = flowPutsRef.current;
       /* Refs cleared before the removals, not after: removing a series can throw on a chart that is already tearing
@@ -2006,7 +2233,7 @@ const StrikeChart = ({
     }
 
     const barSec = tfMinutes(timeframe) * 60;
-    const buckets = bucketFlow(flowPrints ?? [], { barSec, ticker });
+    const buckets = bucketFlow(flowRows, { barSec, ticker });
     const byTime = new Map(buckets.map(b => [b.time, b]));
     const slots = barsFor(tfMinutes(timeframe));
     const times = slots.length > 0 ? slots.map(b => b.time) : buckets.map(b => b.time);
@@ -2037,7 +2264,7 @@ const StrikeChart = ({
     }
 
     remeasurePaneLabels();
-  }, [overlays.flow, flowPrints, timeframe, ticker, themeKey, remeasurePaneLabels, altSpec]);
+  }, [overlays.flow, flowRows, timeframe, ticker, themeKey, remeasurePaneLabels, altSpec]);
 
   /* The net drift: the same premium the flow band bars, kept as a running total. Two lines, not a histogram, and
      they share the flow legs' inks because they are the flow legs' numbers. */
@@ -2047,7 +2274,7 @@ const StrikeChart = ({
 
     /* Built on demand and torn down when off: an always-present pane adds a separator and grows the time axis for
        every chart, including ones that never turn it on. */
-    if (!overlays.netDrift || altSpec) {
+    if (!overlays.netDrift || altSpec || flowRows.length === 0) {
       const oldCalls = driftCallsRef.current;
       const oldPuts = driftPutsRef.current;
       driftCallsRef.current = null;
@@ -2088,7 +2315,7 @@ const StrikeChart = ({
     }
 
     const barSec = tfMinutes(timeframe) * 60;
-    const points = cumulativeDrift(flowPrints ?? [], { barSec, ticker });
+    const points = cumulativeDrift(flowRows, { barSec, ticker });
     calls.setData(points.map(p => ({ time: p.time as UTCTimestamp, value: p.calls })));
     puts.setData(points.map(p => ({ time: p.time as UTCTimestamp, value: p.puts })));
 
@@ -2101,7 +2328,7 @@ const StrikeChart = ({
     }
 
     remeasurePaneLabels();
-  }, [overlays.netDrift, flowPrints, timeframe, ticker, themeKey, remeasurePaneLabels, altSpec]);
+  }, [overlays.netDrift, flowRows, timeframe, ticker, themeKey, remeasurePaneLabels, altSpec]);
 
   /* The volatility drift: what the underlying is doing against what the option market says it expects. Realised is
      measured from the same aggregated bars the tape draws, so the two agree on every timeframe. */
@@ -2112,7 +2339,7 @@ const StrikeChart = ({
        letting them run forward while the tape is rewound would put two different clocks in one window. */
     if (replayRef.current) return;
 
-    if (!overlays.volDrift || altSpec) {
+    const tearVol = () => {
       const oldRv = rvRef.current;
       const oldIv = ivRef.current;
       rvRef.current = null;
@@ -2124,8 +2351,22 @@ const StrikeChart = ({
         /* Already gone */
       }
       remeasurePaneLabels();
+    };
+
+    if (!overlays.volDrift || altSpec) {
+      tearVol();
       return;
     }
+
+    const mins = tfMinutes(timeframe);
+    const bars = barsFor(mins);
+    const rvPoints = realizedVol(bars, mins * 60);
+    /* A short window is not a line of zeros. The pane stays down until realised vol exists. */
+    if (rvPoints.length === 0) {
+      tearVol();
+      return;
+    }
+    const ivPoints = impliedVolLine(nameIv(), rvPoints);
 
     let rv = rvRef.current;
     let iv = ivRef.current;
@@ -2150,12 +2391,6 @@ const StrikeChart = ({
       }
     }
 
-    const mins = tfMinutes(timeframe);
-    const bars = barsFor(mins);
-    const rvPoints = realizedVol(bars, mins * 60);
-    /* The implied line is drawn only where realised is, so the pane never shows a lone flat line hanging over an
-       empty half — the two are read as a pair, and a spread against nothing is not a spread. */
-    const ivPoints = impliedVolLine(nameIv(), rvPoints);
     rv.setData(rvPoints.map(p => ({ time: p.time as UTCTimestamp, value: p.value })));
     iv.setData(ivPoints.map(p => ({ time: p.time as UTCTimestamp, value: p.value })));
 
@@ -2168,7 +2403,7 @@ const StrikeChart = ({
     }
 
     remeasurePaneLabels();
-  }, [overlays.volDrift, revision, timeframe, ticker, themeKey, remeasurePaneLabels, altSpec]);
+  }, [overlays.volDrift, revision, timeframe, ticker, themeKey, remeasurePaneLabels, altSpec, bookRev]);
 
   /* Indicators are computed from the same aggregated bars the tape draws (data/indicators.ts), so nothing
      summarising them can disagree. */
@@ -2182,11 +2417,11 @@ const StrikeChart = ({
     /* On a rule clock the session-anchored pair is out: vwapSeries cuts sessions by comparing bar gaps against the
        bar interval, and rule bars have no interval — it would cut sessions mid-day and draw a VWAP of nothing. */
     const active = allKeys.filter(k => indicators[k] && (INDICATOR_PARTS[k].pane === 'overlay' || subsActive.includes(k)))
-      .filter(k => !(altSpec && (k === 'vwap' || k === 'vwapBands')));
-    const paneCompareOn = compares.some(c => c.mode === 'pane');
-    const subBase = paneCompareOn ? 2 : 1;
+      .filter(k => !(altSpec && (k === 'vwap' || k === 'vwapBands' || k === 'flowVwap' || k === 'sideVwap' || k === 'gammaEma' || k === 'gammaVwap')));
+    /* Append under whatever product panes are already open. A fixed index lands RSI in the flow pane, or opens a blank one. */
+    const product = lastProductPaneIndex();
     const full = fullWorldRef.current === `${ticker}|${timeframe}|${barClock}`;
-    const sig = `${ticker}|${timeframe}|${barClock}|${active.join(',')}|${subBase}|${mainNonce}|${full ? 'full' : 'recent'}`;
+    const sig = `${ticker}|${timeframe}|${barClock}|${session}|${active.join(',')}|${product}|${mainNonce}|${full ? 'full' : 'recent'}`;
     const rebuild = indicatorLoadedRef.current !== sig;
     if (rebuild) {
       for (const s of indicatorSeriesRef.current.values()) {
@@ -2197,9 +2432,10 @@ const StrikeChart = ({
         }
       }
       indicatorSeriesRef.current.clear();
+      let appendAt = chart.panes().length;
       for (const key of active) {
         const spec = INDICATOR_PARTS[key];
-        const paneIndex = spec.pane === 'overlay' ? 0 : subBase + subsActive.indexOf(key);
+        const paneIndex = spec.pane === 'overlay' ? 0 : appendAt++;
         for (const part of spec.parts) {
           const series =
             part.kind === 'hist'
@@ -2244,24 +2480,31 @@ const StrikeChart = ({
       }
       indicatorLoadedRef.current = sig;
     }
-    if (active.length === 0) return;
+    if (active.length === 0) {
+      remeasurePaneLabels();
+      return;
+    }
     /* The same window as the candles — a line that ran further left than the tape would widen the time scale and
        throw showRecent's arithmetic */
-    const bars = windowOf(barsFor(mins, altSpec), full);
-    if (bars.length === 0) return;
+    const bars = sliceFor(barsFor(mins, altSpec), full, focusHoldRef.current, `${ticker}|${timeframe}|${barClock}`);
+    if (bars.length === 0) {
+      indAltCountRef.current = 0;
+      remeasurePaneLabels();
+      return;
+    }
     /* The formulas live in data/indicators.ts — one copy, shared with the confluence strip and every other
        summariser (the walls' lesson). This maps numbers onto series points and owns nothing else. */
     const seriesFor = (key: keyof ChartIndicators): Record<string, (number | null)[]> => {
       switch (key) {
         case 'vwap':
-          return { line: vwapSeries(bars, mins) };
+          return { line: vwapSeries(bars, mins, session) };
         case 'bb': {
           const b = bollingerSeries(bars, 20, 2);
           return { basis: b.basis, upper: b.upper, lower: b.lower };
         }
         case 'vwapBands': {
-          const vw = vwapSeries(bars, mins);
-          const sg = vwapSigmaSeries(bars, mins);
+          const vw = vwapSeries(bars, mins, session);
+          const sg = vwapSigmaSeries(bars, mins, session);
           const band = (k: number) => vw.map((v, i) => (sg[i] === null ? null : v + k * (sg[i] as number)));
           return { up1: band(1), dn1: band(-1), up2: band(2), dn2: band(-2) };
         }
@@ -2278,12 +2521,12 @@ const StrikeChart = ({
         case 'flowVwap':
         case 'sideVwap': {
           const sec = (at: number) => (at > 1e12 ? Math.floor(at / 1000) : at);
-          const flow = (flowPrints ?? []).map(p => ({ time: sec(p.at), callPrem: p.right === 'C' ? p.premium : 0, putPrem: p.right === 'P' ? p.premium : 0 }));
+          const flow = flowRows.map(p => ({ time: sec(p.at), callPrem: p.right === 'C' ? p.premium : 0, putPrem: p.right === 'P' ? p.premium : 0 }));
           if (key === 'sideVwap') {
             const sides = alignSides(bars, flow, mins * 60);
-            return { call: flowVwapSeries(bars, mins, sides.call), put: flowVwapSeries(bars, mins, sides.put) };
+            return { call: flowVwapSeries(bars, mins, sides.call, session), put: flowVwapSeries(bars, mins, sides.put, session) };
           }
-          return { line: flowVwapSeries(bars, mins, alignPremium(bars, flow, mins * 60)) };
+          return { line: flowVwapSeries(bars, mins, alignPremium(bars, flow, mins * 60), session) };
         }
         case 'gammaEma': {
           const gamma = alignGamma(bars, (bookMinutes ?? []).map(m => ({ time: m.time, levels: [{ value: m.net }] })), mins * 60);
@@ -2291,7 +2534,7 @@ const StrikeChart = ({
         }
         case 'gammaVwap': {
           const gamma = alignGamma(bars, (bookMinutes ?? []).map(m => ({ time: m.time, levels: [{ value: m.net }] })), mins * 60);
-          return { line: gammaVwapSeries(bars, mins, gamma) };
+          return { line: gammaVwapSeries(bars, mins, gamma, session) };
         }
         default:
           return { line: emaSeries(bars, key === 'ema9' ? 9 : key === 'ema21' ? 21 : 50) };
@@ -2305,15 +2548,20 @@ const StrikeChart = ({
         const pts = bars.map((b, i) =>
           vals[i] === null ? { time: b.time as UTCTimestamp } : { time: b.time as UTCTimestamp, value: vals[i] as number }
         );
-        /* Same completed-bar rule as the candles: update cannot rewrite an older time, so a rule-clock pass that
-           changed the bar count reloads the series instead. */
-        if (rebuild || (altSpec && indAltCountRef.current !== bars.length)) s.setData(pts);
-        else s.update(pts[pts.length - 1]);
+        /* A length change, including the first bar after an empty tape, reloads. update() on an empty series throws and the line never appears. */
+        const stale = rebuild || bars.length !== indAltCountRef.current;
+        try {
+          if (stale) s.setData(pts);
+          else s.update(pts[pts.length - 1]);
+        } catch {
+          try { s.setData(pts); } catch { /* series already gone */ }
+        }
       }
     }
     indAltCountRef.current = bars.length;
+    remeasurePaneLabels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators, ticker, revision, timeframe, mainNonce, compares, altSpec, barClock, fullNonce, flowPrints, bookMinutes]);
+  }, [indicators, ticker, revision, timeframe, mainNonce, compares, altSpec, barClock, fullNonce, focusNonce, flowRows, bookMinutes, session, lastProductPaneIndex, remeasurePaneLabels]);
 
   /* The scripts on this pane — the Pine runtime. */
   useEffect(() => {
@@ -2331,7 +2579,7 @@ const StrikeChart = ({
     if (replayRef.current) return;
     const mins = tfMinutes(timeframe);
     const full = fullWorldRef.current === `${ticker}|${timeframe}|${barClock}`;
-    const bars = windowOf(barsFor(mins, altSpec), full).map(c => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume }));
+    const bars = sliceFor(barsFor(mins, altSpec), full, focusHoldRef.current, `${ticker}|${timeframe}|${barClock}`).map(c => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume }));
     setPaneBars(paneId, bars, ticker, String(timeframe));
     if (bars.length === 0) {
       tearDown();
@@ -2341,7 +2589,8 @@ const StrikeChart = ({
     const paneCompareOn = compares.some(c => c.mode === 'pane');
     const subBase = paneCompareOn ? 2 : 1;
     const live = paneScripts.filter(p => p.chart.visible && p.script.status === 'ok');
-    const sig = `${ticker}|${timeframe}|${barClock}|${full ? 'full' : 'recent'}|${mainNonce}|${subBase}|${subsActive.join(',')}|${live.map(p => `${p.chart.id}:${p.script.sourceHash}:${JSON.stringify(p.chart.inputs)}`).join(';')}`;
+    const holdFrom = focusHoldRef.current?.key.startsWith(`${ticker}|${timeframe}|${barClock}|`) ? focusHoldRef.current.from : 0;
+    const sig = `${ticker}|${timeframe}|${barClock}|${full ? 'full' : 'recent'}|${holdFrom}|${mainNonce}|${subBase}|${subsActive.join(',')}|${live.map(p => `${p.chart.id}:${p.script.sourceHash}:${JSON.stringify(p.chart.inputs)}`).join(';')}`;
     const rebuild = scriptSigRef.current !== sig;
     if (rebuild) tearDown();
     const slayer = { callWall: levels.callWall, putWall: levels.putWall, flip: levels.flip, supreme: levels.supreme };
@@ -2374,7 +2623,8 @@ const StrikeChart = ({
         have.destroy();
         handles.delete(ps.chart.id);
       }
-      const paneIndex = own ? subBase + subsActive.length + ownPanes++ : 0;
+      const paneIndex = own ? chart.panes().length : 0;
+      if (own) ownPanes++;
       handles.set(ps.chart.id, drawRun(chart, result, bars, paneIndex));
     }
     if (rebuild && subsActive.length + ownPanes > 0) {
@@ -2383,7 +2633,7 @@ const StrikeChart = ({
     }
     scriptSigRef.current = sig;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paneId, paneScripts, indicators, ticker, revision, timeframe, mainNonce, compares, altSpec, barClock, fullNonce, levels]);
+  }, [paneId, paneScripts, indicators, ticker, revision, timeframe, mainNonce, compares, altSpec, barClock, fullNonce, focusNonce, levels]);
 
   /* The handles go with the chart */
   useEffect(
@@ -2413,6 +2663,7 @@ const StrikeChart = ({
         }
       }
       compareSeriesRef.current.clear();
+      const paneAt = chart.panes().length;
       for (const c of compares) {
         ensureBook(c.ticker, 'board');
         const series = chart.addSeries(
@@ -2425,8 +2676,8 @@ const StrikeChart = ({
             lastValueVisible: true,
             title: c.ticker,
           },
-          /* Below every product pane that is open, not below the flow band alone. */
-          c.mode === 'pane' ? lastProductPaneIndex() + 1 : 0
+          /* Below every pane already open, sharing one pane when several compare in pane mode. */
+          c.mode === 'pane' ? paneAt : 0
         );
         compareSeriesRef.current.set(`${c.ticker}:${c.mode}`, series);
       }
@@ -2545,8 +2796,19 @@ const StrikeChart = ({
       }
       if (!thetaBars()) {
         const book = peekEntry(ticker);
-        if (!book || book.status === 'loading') return;
-      } else if (thetaChartNote(ticker, tfMinutes(timeframe), session) == null) return;
+        if (!book || book.status === 'loading') {
+          candleSeries.setData([]);
+          volumeSeries.setData([]);
+          trails.setData([], 0, false, 60, trailsGreek);
+          return;
+        }
+      } else if (thetaChartNote(ticker, tfMinutes(timeframe), session) == null) {
+        /* Still reading this session. The last session's candles are not this one. */
+        candleSeries.setData([]);
+        volumeSeries.setData([]);
+        trails.setData([], 0, false, 60, trailsGreek);
+        return;
+      }
       candleSeries.setData([]);
       volumeSeries.setData([]);
       trails.setData([], 0, false, 60, trailsGreek);
@@ -2559,10 +2821,10 @@ const StrikeChart = ({
     const all = barsFor(mins, altSpec);
     /* This world's key, and whether the reader has asked for its whole history (onRange sets it); the recent window
        otherwise */
-    const key = `${ticker}|${timeframe}|${barClock}|${session}`;
-    worldKeyRef.current = key;
-    const full = fullWorldRef.current === key;
-    const bars = windowOf(all, full);
+    const world = `${ticker}|${timeframe}|${barClock}`;
+    worldKeyRef.current = world;
+    const full = fullWorldRef.current === world;
+    const bars = sliceFor(all, full, focusHoldRef.current, world);
     const held = bars.length < all.length;
     barCountRef.current = bars.length;
     if (bars.length > 0) setQuiet(false);
@@ -2589,6 +2851,7 @@ const StrikeChart = ({
 
     /* A host's tape can jump. */
     const baseLast = base[base.length - 1].time;
+    const prevEdge = lastBarTimeRef.current;
     const jumped = !!tapeRef.current && tapeLastRef.current > 0 && (baseLast < tapeLastRef.current || baseLast - tapeLastRef.current > 60);
     tapeLastRef.current = tapeRef.current ? baseLast : 0;
 
@@ -2651,7 +2914,7 @@ const StrikeChart = ({
           window.setTimeout(lift, 40);
         }
       }
-      loadedRef.current = { ticker, timeframe, theme: themeKey, clock: barClock, full };
+      loadedRef.current = { ticker, timeframe, theme: themeKey, clock: barClock, full, session };
       tapeKeyRef.current = tapeKey;
       /* Armed a frame later: the library reports a range on the setData itself, before it has laid the view out
          (−83..6 was measured on a mount), and that would have asked for the whole store at once. */
@@ -2662,31 +2925,99 @@ const StrikeChart = ({
          session paint. Update cannot rewrite older times, so a count jump reloads. */
       candleSeries.setData(bars.map(toMain));
       volumeSeries.setData(bars.map(b => toVolume(b, theme)));
-      showRecent();
-    } else {
+      /* Older sessions filling in do not move the right edge. Snapping there on every arrival is what made the
+         price look stuck. */
+      if (altSpec || bars[bars.length - 1].time !== prevEdge) showRecent();
+    } else if (bars.length) {
       const last = bars[bars.length - 1];
       candleSeries.update(toMain(last));
       volumeSeries.update(toVolume(last, theme));
+    } else {
+      /* The minute tape can be full while this frame's own tape is still empty (a day bar is not folded from
+         minutes). Updating a bar that is not there is what stopped the page on 1D. */
+      candleSeries.setData([]);
+      volumeSeries.setData([]);
     }
     altCountRef.current = bars.length;
 
-    /* The exposure field on this timeframe's bars and the cut's expiries. A rule clock's axis only carries the times its
-       bars happened to start at, so the field stays off there. */
-    const showTrails = false; /* forced off: field was hard-crashing the page on load; re-enable once stable */
+    /* The exposure field on these bars. One column per bar open, as wide as the bar, carried through the session.
+       A bad grid is dropped. It is not left forced off, and it is not laid out by spacing every strike down the pane. */
+    const showTrails = !!overlays.trails;
     trails.labelPx = compact ? 8.5 : 9.5;
-    const handTrails = () => {
-      try {
-        const cols = showTrails ? fieldColumns(bars, mins) : [];
-        trails.setData(cols, 0, showTrails, mins * 60, trailsGreek, 0, [], bars.map(b => ({ time: b.time, close: b.close })));
-      } catch (e) {
-        /* 1D / coarse bars can produce a degenerate grid; never let the trails path kill the page */
-        console.warn('[trails] skipped', e);
-        trails.setData([], 0, false, mins * 60, trailsGreek, 0, [], []);
-      }
-    };
-    handTrails();
+    try {
+      const cols = showTrails ? fieldColumns(bars, mins) : [];
+      trails.setData(cols, 0, showTrails, mins * 60, trailsGreek, 0, [], bars.map(b => ({ time: b.time, close: b.close })));
+    } catch (e) {
+      console.warn('[trails]', e);
+      trails.setData([], 0, false, mins * 60, trailsGreek, 0, [], []);
+    }
     return () => cancelAnimationFrame(armTimer);
-  }, [ticker, revision, timeframe, themeKey, overlays.trails, showRecent, reloadNonce, mainNonce, toMain, compact, altSpec, barClock, fullNonce, trailsGreek, levels.spot, levels.callWall, levels.putWall, levels.flip, levels.supreme, bookRev, session, bookDate, tapeStamp, fieldMode, fieldRev]);
+  }, [ticker, revision, timeframe, themeKey, overlays.trails, showRecent, reloadNonce, mainNonce, toMain, compact, altSpec, barClock, fullNonce, focusNonce, trailsGreek, levels.spot, levels.callWall, levels.putWall, levels.flip, levels.supreme, bookRev, session, tapeRev, bookDate, tapeStamp, fieldMode, fieldRev]);
+
+  /* A session click moves the view to that session's bars. It does not drop the other sessions. A session with no
+     prints says so, and the tape that does have prices stays up. The range is the series on the chart, not the
+     full store. A later showRecent does not undo the focus. */
+  useEffect(() => {
+    if (replayRef.current || altSpec || !thetaBars()) return;
+    const chart = chartRef.current;
+    const mins = tfMinutes(timeframe);
+    const all = barsFor(mins);
+    if (!chart || !all.length) return;
+    const world = `${ticker}|${timeframe}|${barClock}`;
+    const key = `${world}|${session}`;
+    if (focusKeyRef.current === key) return;
+    const mine = all.filter(b => barOnDesk(b.time, session, ticker, mins));
+    if (!mine.length) {
+      focusHoldRef.current = null;
+      /* The other sessions stay on the chart. A pill that says this feed has no prints is a lie over a tape that
+         has them. The header names an empty session. This overlay does not. */
+      setSessionGap(prev => (prev === null ? prev : null));
+      return;
+    }
+    setSessionGap(prev => (prev === null ? prev : null));
+    const fromT = mine[0].time;
+    const toT = mine[mine.length - 1].time;
+    const hold: FocusHold = { key, from: fromT, to: toT };
+    focusHoldRef.current = hold;
+    const full = fullWorldRef.current === world;
+    const want = sliceFor(all, full, hold, world);
+    const candleSeries = candleSeriesRef.current;
+    const volumeSeries = volumeSeriesRef.current;
+    if (want.length !== barCountRef.current) {
+      if (focusBumpRef.current !== key) {
+        focusBumpRef.current = key;
+        setFocusNonce(n => n + 1);
+        return;
+      }
+      if (candleSeries && volumeSeries) {
+        candleSeries.setData(want.map(toMain));
+        volumeSeries.setData(want.map(b => toVolume(b, themeRef.current)));
+        barCountRef.current = want.length;
+        altCountRef.current = want.length;
+      }
+    }
+    focusKeyRef.current = key;
+    let a = 0;
+    let b = Math.max(0, want.length - 1);
+    for (let i = 0; i < want.length; i++) {
+      if (want[i].time >= fromT) {
+        a = i;
+        break;
+      }
+    }
+    for (let i = want.length - 1; i >= 0; i--) {
+      if (want[i].time <= toT) {
+        b = i;
+        break;
+      }
+    }
+    const pad = Math.max(3, Math.round((b - a) * 0.06));
+    try {
+      chart.timeScale().setVisibleLogicalRange({ from: a - pad, to: b + pad });
+    } catch {
+      /* chart already gone */
+    }
+  }, [session, ticker, timeframe, barClock, tapeRev, mainNonce, focusNonce, toMain, altSpec]);
 
   /* `compact` can change without the chart being rebuilt — a desktop window dragged across the phone line, a handset
      rotated. The mount effect read it once at create time, so apply later changes here. */
@@ -2828,34 +3159,40 @@ const StrikeChart = ({
       ladderRef.current?.setExtras('cone', []);
       return;
     }
-    /* From the last bar over the rest of today's session and the next one, off the at-the-money vols (data/terrainCone.ts) */
+    /* The cone is the expected move of the interval on this chart, not a fixed session fan. */
     const mins = tfMinutes(timeframe);
     const bars = barsFor(mins);
     ensureCone(ticker);
-    const spot = bars.length ? bars[bars.length - 1].close : 0;
+    const barSpot = bars.length ? bars[bars.length - 1].close : 0;
+    const print = peekPrint(ticker);
+    const live = print && print.price > 0 ? print.price : 0;
+    const spot = live > 0 ? live : barSpot;
     const term = coneTerm(ticker);
     const perBar = tradingMinutesPerBar(mins);
-    const fc = term && spot > 0 ? forwardCone(term.rows, spot, Date.now(), todayOpenOf(bars), Math.max(1, Math.min(5, perBar / 3))) : null;
+    const now = Date.now();
+    const clock = coneFrame(mins, now);
+    const step = Math.max(1, Math.round(clock.next / 80));
+    const fc = term && spot > 0 ? forwardCone(term.rows, spot, now, todayOpenOf(bars), step, clock) : null;
     prim.setData(
       fc
         ? {
             cone: { past: [], forward: fc.points, crossings: [], openPrice: 0, openTime: null },
-            marks: coneMarks(fc),
+            marks: coneMarks(fc, clock.label),
             /* the key levels name the cone's ends at the edge; without them the cone names its own */
             markWords: !overlays.levels,
             barTimes: bars.map(b => b.time),
             barMinutes: perBar,
             anchor: bars.length - 1,
-            oddsName: `To the ${fc.nextDay.slice(5)} close`,
+            oddsName: clock.label,
             iv: fc.ivNext,
             source: term?.source === 'theta' ? 'ThetaData at-the-money IV' : 'Unusual Whales term structure',
           }
         : null,
     );
-    /* the cone's numbers at the edge: today's expected move, and ±1σ to the close */
-    ladderRef.current?.setExtras('cone', coneRungs(fc));
+    /* the cone's numbers at the edge: today's expected move, and ±1σ to the tip of this frame */
+    ladderRef.current?.setExtras('cone', coneRungs(fc, clock.label));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, coneHorizon]);
+  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, printRev]);
 
   /* The event markers. The calendar half (this name's report, the macro dates) is cached per ticker and day; the
      prints half is live. */
@@ -2890,7 +3227,7 @@ const StrikeChart = ({
     const sec = (at: number) => (at > 1e12 ? at / 1000 : at);
     const built = buildTapeEvents({
       bars: baseBars().filter(b => (cut == null ? true : b.time <= cut)),
-      prints: (flowPrints ?? []).filter(p => cut == null || sec(p.at) <= cut).map(p => ({ ...p, at: sec(p.at) })),
+      prints: (flowRows).filter(p => cut == null || sec(p.at) <= cut).map(p => ({ ...p, at: sec(p.at) })),
       earnings: cal.earnings,
       macro: cal.macro,
       todayIso: cal.todayIso,
@@ -2901,7 +3238,7 @@ const StrikeChart = ({
       barMinutes: mins,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, timeframe, revision, overlays.events, replay, replayIdx, mainNonce, flowPrints, altSpec]);
+  }, [ticker, timeframe, revision, overlays.events, replay, replayIdx, mainNonce, flowRows, altSpec]);
 
   /* The live price, as a card on the right scale. The library draws a flat one-line tag for the last value. */
   useEffect(() => {
@@ -2918,7 +3255,6 @@ const StrikeChart = ({
     const timeEl = el.lastElementChild as HTMLElement | null;
     if (!priceEl || !timeEl) return;
 
-    const bucket = Math.max(60, tfMinutes(timeframe) * 60);
     let shownPrice = '';
     let shownLeft = '';
     let shownY = Number.NaN;
@@ -2945,30 +3281,29 @@ const StrikeChart = ({
       const p = price.toFixed(2);
       const minute = nyMinutes((lastBarTimeRef.current || 0) * 1000);
       const sess = sessionOfMinute(minute);
-      const label = sess === 'pre' ? `${p} pre` : sess === 'post' ? `${p} AH` : sess === 'overnight' ? `${p} ON` : p;
+      const suffix = sess === 'pre' ? ' pre' : sess === 'post' ? ' AH' : sess === 'overnight' ? ' ON' : '';
+      let label = `${p}${suffix}`;
+      /* The gutter is the tag's width. Omit pre/AH/ON when the suffix would run past it. */
+      if (suffix && gw > 0) {
+        const font = getComputedStyle(priceEl).font;
+        const width = measureLabel(label, font);
+        const pad = 10;
+        if (width + pad > gw) label = p;
+      }
       if (label !== shownPrice) {
         priceEl.textContent = label;
         shownPrice = label;
       }
 
-      /* Time left in the bar, ON the chart's clock This read `bucket - (now % bucket)`: wall-clock seconds to the
-         next multiple of the timeframe. Two things wrong with it. It was off by an order of magnitude. */
-      const barAt = lastBarTimeRef.current;
-      if (barAt !== barClockRef.current.stamp) {
-        const nowMs = Date.now();
-        if (barClockRef.current.stamp !== 0) barClockRef.current.realMs = nowMs - barClockRef.current.at;
-        barClockRef.current.stamp = barAt;
-        barClockRef.current.at = nowMs;
-      }
-      const period = barClockRef.current.realMs;
+      /* Time left in this timeframe's bar. The close is the last bar's own grid: a 15-minute bar that opened at
+         :45 closes on the next :00, including while no new print has arrived. A rule bar has no clock. */
+      const step = Math.round(tfMinutes(timeframe) * 60);
+      const anchor = lastBarTimeRef.current;
       const pad = (v: number) => String(v).padStart(2, '0');
-      /* Blank until a full bar has been observed — but never return early here. The card is positioned below, and an
-         early exit leaves it wherever it was last put. */
       let t = '';
-      /* A rule bar closes when the market moves or trades enough — "time left" is not a thing it has, so the card is
-         price-only there. */
-      if (period > 0 && !altSpec) {
-        const left = Math.max(0, Math.round((period - (Date.now() - barClockRef.current.at)) / 1000));
+      if (step >= 60 && anchor > 0 && !altSpec) {
+        const into = ((Date.now() / 1000 - anchor) % step + step) % step;
+        const left = Math.max(0, Math.round(step - into));
         const hh = Math.floor(left / 3600);
         t = hh > 0
           ? `${hh}:${pad(Math.floor((left % 3600) / 60))}:${pad(left % 60)}`
@@ -3002,13 +3337,12 @@ const StrikeChart = ({
     for (const line of printLinesRef.current) candleSeries.removePriceLine(line);
     printLinesRef.current = [];
     if (!overlays.darkpool || replay) return;
-    // Teal, the app-wide dark-pool ink (Live Tape dot, landing accent) — the old 65% white whisper vanished against
-    // the candles.
-    printLinesRef.current = prints.map(print =>
+    const spot = lastCloseRef.current && lastCloseRef.current > 0 ? lastCloseRef.current : levels.spot;
+    printLinesRef.current = darkNear(darkRows, spot).map(print =>
       candleSeries.createPriceLine({
         price: print.price,
         color: DARK_POOL,
-        title: `DP $${print.notional.toFixed(2)}B · ${print.date}`,
+        title: `DP ${fmtUsd(print.notional)}${print.time ? ` · ${print.time}` : print.date ? ` · ${print.date}` : ''}`,
         lineStyle: LineStyle.Dashed,
         lineWidth: 1,
         axisLabelVisible: true,
@@ -3016,7 +3350,7 @@ const StrikeChart = ({
         axisLabelTextColor: '#0a0a0a',
       })
     );
-  }, [prints, overlays.darkpool, replay, mainNonce]);
+  }, [darkRows, overlays.darkpool, replay, mainNonce, levels.spot, revision]);
 
   // Tween the rungs to their new scan values — the ladder glides, never teleports
   useEffect(() => {
@@ -3182,7 +3516,7 @@ const StrikeChart = ({
         return typeof p === 'number' && Number.isFinite(p) ? p : null;
       };
       values[a.source] =
-        a.source === 'vwap' ? last(vwapSeries(bars, mins))
+        a.source === 'vwap' ? last(vwapSeries(bars, mins, session))
         : a.source === 'rsi' ? last(rsiSeries(bars, 14))
         : last(emaSeries(bars, a.source === 'ema9' ? 9 : a.source === 'ema21' ? 21 : 50));
     }
@@ -3200,7 +3534,7 @@ const StrikeChart = ({
       step: exp?.step ?? 0,
       values,
       prints: waiting.some(a => a.kind === 'flow')
-        ? (flowPrints ?? []).filter(p => p.ticker === ticker).map(p => ({ at: p.at, premium: p.premium }))
+        ? flowRows.filter(p => p.ticker === ticker).map(p => ({ at: p.at, premium: p.premium }))
         : [],
       news: waiting.some(a => a.kind === 'news') ? newsPulse(ticker) : [],
       charm: (() => {
@@ -3222,7 +3556,7 @@ const StrikeChart = ({
       if (verdict.fire) { markFired(ticker, a.id, now); beepAlert(); }
       else if (verdict.armed) commitArm(ticker, verdict.armed);
     }
-  }, [alerts, ticker, revision, replay, timeframe, flowPrints]);
+  }, [alerts, ticker, revision, replay, timeframe, flowRows]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -3314,7 +3648,7 @@ const StrikeChart = ({
         setOwnPhase('pick');
         /* The day marks under the track: where each session starts, at most eight named */
         const starts: number[] = [0];
-        for (let i = 1; i < bars.length; i++) if (bars[i].time - bars[i - 1].time > 90) starts.push(i);
+        for (let i = 1; i < bars.length; i++) if (sessionOccurrence(bars[i].time, session) !== sessionOccurrence(bars[i - 1].time, session)) starts.push(i);
         const every = Math.max(1, Math.ceil(starts.length / 8));
         setReplayMarks(starts.filter((_, k) => k % every === 0).map(i => ({ u: i / Math.max(1, bars.length), label: dayWords(bars[i].time) })));
       }
@@ -3325,7 +3659,7 @@ const StrikeChart = ({
     } else {
       replayDataRef.current = null;
       setReplayPlaying(false);
-      loadedRef.current = { ticker: '', timeframe: '1m', theme: '', clock: 'time', full: false };
+      loadedRef.current = { ticker: '', timeframe: '1m', theme: '', clock: 'time', full: false, session: '' };
       setReloadNonce(n => n + 1);
     }
     /* On the host's clock a timeframe change re-cuts the same moment on the new bars (the Map keeps replaying); on
@@ -3478,18 +3812,18 @@ const StrikeChart = ({
       setReplayDebug(`${v2 ? `${Math.round(v2.from)}..${Math.round(v2.to)}` : 'none'} · ${data.bars.length} bars · ${data.bars[Math.max(0, idx - 1)]?.time}`);
     }
 
-    const cutoff = data.bars[idx - 1].time;
     const mins = tfMinutes(timeframe);
-    // The replay's last bar is complete — its sub-bar beads belong to it
+    const shown = data.bars.slice(0, idx);
+    /* The same carried level as live, cut off at this bar. Sparse snapshots are not asked to become bands. */
     trails.setData(
-      snapsAsOf(data.snaps, cutoff),
-      data.maxAbs,
+      fieldColumns(shown, mins),
+      0,
       overlays.trails,
       mins * 60,
       trailsGreek,
       0,
       [],
-      data.bars.slice(0, idx).map(b => ({ time: b.time, close: b.close })),
+      shown.map(b => ({ time: b.time, close: b.close })),
     );
   }, [replay, replayIdx, replayNonce, ownPhase, external, overlays.trails, timeframe]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3990,6 +4324,88 @@ const StrikeChart = ({
     commitDrawing(d);
   };
 
+  const gapNotes = (() => {
+    if (replay || quiet) return [] as string[];
+    const lines: string[] = [];
+    const push = (s: string) => {
+      if (lines.length >= 4 || lines.includes(s)) return;
+      lines.push(s);
+    };
+    const clock = !!altSpec;
+    if (clock && (
+      overlays.flow || overlays.netDrift || overlays.volDrift || overlays.session || overlays.cone || overlays.events
+      || indicators.vwap || indicators.vwapBands || indicators.flowVwap || indicators.sideVwap || indicators.gammaEma || indicators.gammaVwap
+    )) push('Book lines and VWAP need time bars');
+    if (overlays.darkpool) {
+      const spot = lastCloseRef.current && lastCloseRef.current > 0 ? lastCloseRef.current : levels.spot;
+      const away = darkRows.length > 0 && darkNear(darkRows, spot).length === 0;
+      if (prints.length === 0 && darkFeed.fault) push('Dark pool — the feed did not answer');
+      else if (prints.length === 0 && !darkFeed.ready) push('Dark pool — waiting on the feed');
+      else if (darkRows.length === 0) push('Dark pool — no prints on this name');
+      else if (away) push('Dark pool — prints are away from this tape');
+    }
+    if (!clock && flowRows.length === 0 && (overlays.flow || overlays.netDrift || indicators.flowVwap || indicators.sideVwap)) {
+      const why = !hostFlow && flowFeed.fault
+        ? 'the feed did not answer'
+        : !hostFlow && !flowFeed.ready
+          ? 'waiting on the feed'
+          : 'no option prints on this name';
+      if (overlays.flow) push(`Flow — ${why}`);
+      if (overlays.netDrift) push(`Net drift — ${why}`);
+      if (indicators.flowVwap || indicators.sideVwap) push(`Flow VWAP — ${why}`);
+    }
+    const mins = tfMinutes(timeframe);
+    const drawn = barsFor(mins, altSpec);
+    if (!clock && overlays.volDrift) {
+      const rv = realizedVol(drawn, mins * 60);
+      if (rv.length === 0) push('Vol drift — not enough bars yet');
+      else if (impliedVolLine(nameIv(), rv).length === 0) push('Vol drift — implied vol is not in');
+    }
+    if (!clock && overlays.session && sessionLines(buildSessionLevels(baseBars(), sessionOr)).length === 0) {
+      push('Session levels — not enough of this session');
+    }
+    if (!clock && overlays.cone && !coneTerm(ticker)) push('Expected move — waiting on implied vol');
+    if (overlays.levels && ![levels.callWall, levels.putWall, levels.flip, levels.supreme].some(v => Number.isFinite(v) && v > 0)) {
+      push('Key levels — the book has not named a wall yet');
+    }
+    if (overlays.alerts && !alerts.some(a => a.kind === 'price')) push('Alert lines — no price alert on this name');
+    if (overlays.volume && drawn.length > 0 && drawn.every(b => !(b.volume > 0))) push('Volume — these bars have no share volume');
+    if (!clock && drawn.length > 0) {
+      const n = drawn.length;
+      if (indicators.rsi && n < 14) push('RSI — needs 14 bars');
+      if (indicators.macd && n < 26) push('MACD — needs 26 bars');
+      if (indicators.atrPane && n < 14) push('ATR — needs 14 bars');
+      if (indicators.bb && n < 20) push('Bollinger — needs 20 bars');
+      if (indicators.sma && n < 200) push('SMA 200 — needs 200 bars');
+      if (indicators.gammaEma || indicators.gammaVwap) {
+        const gamma = alignGamma(drawn, (bookMinutes ?? []).map(m => ({ time: m.time, levels: [{ value: m.net }] })), mins * 60);
+        if (!gammaMoves(gamma)) push('Gamma lines — the minute gamma has not moved');
+      }
+    }
+    return lines;
+  })();
+
+  let exposureBand: ExposureProfileData | null = null;
+  let exposureNote = '';
+  if (overlays.dexStrike && !replay) {
+    const snap = snapshotFor(ticker, 'ALL');
+    const chain = snap?.uwChains?.ALL?.length ? snap.uwChains.ALL : snap?.chain ?? [];
+    if (snap?.liveBook && chain.length) {
+      const profile = buildExposureProfile(snap, 'ALL', 15);
+      if (profile.strikes.length) exposureBand = profile;
+    }
+    if (!exposureBand) {
+      const status = peekEntry(ticker)?.status;
+      exposureNote = status === 'error'
+        ? 'Exposure by strike — the book did not answer'
+        : status === 'loading' || status == null
+          ? 'Exposure by strike — the book is still loading'
+          : 'Exposure by strike — the book is not in yet';
+    }
+  }
+  const builtinOn = INDICATOR_ITEMS.filter(item => indicators[item.key]);
+  const legendTop = (chromeInset > 0 ? chromeInset + 4 : 8) + (paneScripts.length > 0 ? paneScripts.length * 23 : 0);
+
   return (
     <div className="flex flex-col h-full">
       {/* No legend row — the chart owns the whole widget; inks are taught by the field itself, dbl-click resets the
@@ -4062,7 +4478,7 @@ const StrikeChart = ({
           const coneHit = !bead && overlays.cone ? conePrimRef.current?.probe(px, e.clientY - rect.top) ?? null : null;
           coneCell.set(prev => {
             if (!coneHit) return prev === null ? prev : null;
-            if (prev && prev.up1 === coneHit.up1 && prev.band === coneHit.band && prev.horizon === coneHit.horizon) return prev;
+            if (prev && prev.up1 === coneHit.up1 && prev.dn1 === coneHit.dn1 && prev.minutes === coneHit.minutes && prev.band === coneHit.band && prev.horizon === coneHit.horizon) return prev;
             return coneHit;
           });
           /* The event lane's hover — resolved here because canvas glyphs cannot be hovered and the card wants real
@@ -4099,16 +4515,16 @@ const StrikeChart = ({
         )}
         <canvas ref={hoverCanvasRef} aria-hidden className="absolute left-0 top-0 z-[3] pointer-events-none" />
         <div ref={containerRef} className={`absolute inset-0 ${picking ? 'cursor-crosshair' : ''}`} onPointerDownCapture={onSleepingMarkDown} data-pick-time={picking ? '' : undefined} data-replay-idx={replay ? replayIdx : undefined} data-replay-len={replay ? (replayDataRef.current?.bars.length ?? 0) : undefined} data-replay-time={replay && replayTime != null ? replayTime : undefined} data-replay-debug={replay ? replayDebug : undefined} data-tv-mark-beside={markBeside ? '' : undefined} />
-        {sessionNote && !replay && !quiet && (
-          <p className="absolute left-1/2 z-[4] -translate-x-1/2 max-w-[360px] truncate rounded-md border border-borderSubtle bg-canvas/85 px-2 py-1 font-mono text-t10 text-textSecondary pointer-events-none" style={{ top: chromeInset > 0 ? chromeInset + 6 : 8 }} data-session-note>
-            {sessionNote}
+        {(sessionGap || sessionNote) && !replay && !quiet && (
+          <p className="absolute left-1/2 z-[4] -translate-x-1/2 max-w-[420px] truncate rounded-md border border-borderSubtle bg-canvas/85 px-2 py-1 font-mono text-t10 text-textSecondary pointer-events-none" style={{ top: chromeInset > 0 ? chromeInset + 6 : 8 }} data-session-note>
+            {sessionNote || sessionGap}
           </p>
         )}
         {quiet && !replay && (
           <div className="absolute inset-0 z-[4] flex items-center justify-center pointer-events-none" data-chart-empty>
             <div className="max-w-[280px] rounded-md border border-borderSubtle bg-canvas/85 px-4 py-3 text-center">
               <p className="font-mono text-t11 text-textPrimary">{tape?.note || sessionNote || 'No bars for this name'}</p>
-              <p className="mt-1 font-mono text-t10 text-textMuted">{quote ? `Quote ${quote.bid.toFixed(2)} × ${quote.ask.toFixed(2)}. No prints in this session.` : tape?.note && !/offline/i.test(tape.note) ? `${etWindow(session)}.` : 'This frame stays. Bars fill it when the tape answers.'}</p>
+              <p className="mt-1 font-mono text-t10 text-textMuted">{quote ? `Quote ${quote.bid.toFixed(2)} × ${quote.ask.toFixed(2)}. No prints on this name.` : tape?.note && !/offline/i.test(tape.note) ? `${etWindow(session)}.` : 'This frame stays. Bars fill it when the tape answers.'}</p>
             </div>
           </div>
         )}
@@ -4119,6 +4535,36 @@ const StrikeChart = ({
         <ResetViewControl onReset={resetView} pillClass={footInset > 0 ? 'right-16 bottom-20' : undefined} />
         {/* The scripts on this pane, named at the top left with hide and remove */}
         {paneId && paneScripts.length > 0 && !replay && <ScriptLegend paneId={paneId} scripts={paneScripts} />}
+        {builtinOn.length > 0 && !replay && (
+          <div
+            className="absolute left-3 z-10 flex flex-col items-start gap-[3px] pointer-events-auto"
+            style={{ top: legendTop }}
+            data-indicator-legend
+          >
+            {builtinOn.map(item => (
+              <div key={item.key} className="inline-flex items-center gap-1.5 h-[20px] pl-1.5 pr-1 rounded bg-canvas/75 backdrop-blur-[2px] font-mono text-t105 leading-none" title={indicatorBlurb(item.hint)}>
+                <span className="inline-block w-2 h-[3px] rounded-full shrink-0" style={{ background: INDICATOR_INKS[item.key] }} aria-hidden />
+                <span className="whitespace-nowrap text-textPrimary">{item.label}</span>
+                {onIndicators && (
+                  <button type="button" onClick={() => onIndicators({ ...indicators, [item.key]: false })} title={`Turn ${item.label} off`} className="p-0.5 rounded text-textMuted hover:text-textPrimary">
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {gapNotes.length > 0 && !replay && !quiet && (
+          <div
+            className="absolute left-3 z-[4] flex max-w-[280px] flex-col items-start gap-1 pointer-events-none"
+            style={{ top: legendTop + builtinOn.length * 23 }}
+            data-indicator-gaps
+          >
+            {gapNotes.map(line => (
+              <p key={line} className="rounded bg-canvas/80 px-1.5 py-0.5 font-mono text-t10 text-textSecondary leading-snug">{line}</p>
+            ))}
+          </div>
+        )}
         {/* Every band says its own name, the way the reference does. An unlabelled strip under a chart is a puzzle;
             `pointer-events-none` so the tape still pans straight through them. */}
         {paneLabels.map(l => {
@@ -4147,13 +4593,12 @@ const StrikeChart = ({
             ref={priceTagRef}
             aria-hidden
             /* The card wears the chart's ground, like its words. */
-            /* The card is the library's label size: one line at the axis's 12px, as wide as the axis; the countdown
-               line stays in the DOM but hidden. */
-            className="pointer-events-none absolute top-0 right-0 z-10 will-change-transform rounded-[2px] border border-ink/[0.07] border-l-2 border-l-ink/60 bg-panel/95 pl-[8px] pr-0.5 py-px text-left whitespace-nowrap opacity-0 shadow-sm shadow-black/40"
+            /* The card is the library's label size: the price, then the time left in this timeframe's bar. */
+            className="pointer-events-none absolute top-0 right-0 z-10 will-change-transform overflow-hidden rounded-[2px] border border-ink/[0.07] border-l-2 border-l-ink/60 bg-panel/95 pl-[8px] pr-0.5 py-px text-left whitespace-nowrap opacity-0 shadow-sm shadow-black/40"
             data-price-tag
           >
             <div className="font-mono text-t12 font-bold leading-[14px] tnum text-textPrimary" />
-            <div className="hidden font-mono text-t9 leading-[11px] tnum text-textMuted" />
+            <div className="font-mono text-t9 leading-[11px] tnum text-textMuted" />
           </div>
         )}
 
@@ -4595,48 +5040,37 @@ const StrikeChart = ({
             /* The side as the figure's sub, what it does as a line of its own — on the value's line the words ran
                past the card's edge and dragged every figure with them */
             const side = b.value >= 0 ? 'positive' : 'negative';
-            const does =
-              fieldMode === 'flow'
-                ? b.value >= 0
-                  ? "Today's trades left dealers longer gamma across this bar."
-                  : "Today's trades left dealers shorter gamma across this bar."
-                : b.value >= 0
-                  ? 'Dealers long gamma: their hedging holds a move back.'
-                  : 'Dealers short gamma: their hedging pushes a move along.';
             const markWord = b.mark === 'born' ? 'Born' : b.mark === 'grew' ? 'Grew' : b.mark === 'flipped' ? 'Flipped' : b.mark === 'died' ? 'Died' : null;
             const tagWord = b.tag === 'absorbed' ? 'Held' : b.tag === 'rejected' ? 'Off' : b.tag === 'broke' ? 'Broke' : null;
             const ink = b.value >= 0 ? BEAD_INK_CSS.put : BEAD_INK_CSS.call;
             const since = b.open == null ? null : b.value - b.open;
-            const rank = kept && tr ? tr.rankAt(b.ci, b.strike) : null;
-            const before = kept && tr ? tr.valueBefore(b.ci, b.strike, 30 * 60) : null;
+            const rank = tr ? tr.rankAt(b.ci, b.strike) : null;
             const bars = replayDataRef.current?.bars ?? baseBars() ?? [];
             let bi = bars.length - 1;
             while (bi > 0 && bars[bi].time > b.time) bi--;
-            const closeThen = kept && bi >= 0 && bars[bi] && bars[bi].time <= b.time ? bars[bi].close : null;
+            const closeThen = bi >= 0 && bars[bi] && bars[bi].time <= b.time ? bars[bi].close : null;
             const dist = closeThen != null && closeThen > 0 ? ((b.strike - closeThen) / closeThen) * 100 : null;
             const rows = (
               <>
                 <CardRow k={greekWord} v={fmtUsd(b.value)} ink={ink} sub={side} />
+                <CardRow k="Of book" v={`${(b.share * 100).toFixed(1)}%`} />
+                {dist != null && <CardRow k="From price" v={`${dist >= 0 ? '+' : '−'}${Math.abs(dist).toFixed(2)}%`} sub={closeThen!.toFixed(2)} />}
+                {since != null && since !== 0 && <CardRow k="Since open" v={`${since >= 0 ? '+' : '−'}${fmtUsd(Math.abs(since))}`} />}
+                {rank && <CardRow k="Rank" v={`${rank.rank} of ${rank.of}`} />}
                 {markWord && <CardRow k="Node" v={markWord} />}
-                {tagWord && <CardRow k="Price" v={tagWord} sub="ten minutes" />}
-                {b.firm === false && <CardRow k="Flow" v="thin" sub="net under 2% of the volume" />}
-                <CardRow k="Of the book" v={`${(b.share * 100).toFixed(1)}%`} sub="then" />
-                {fieldMode === 'oi' && <CardRow k="Since the open" v={since == null ? '—' : `${since >= 0 ? '+' : '−'}${fmtUsd(Math.abs(since))}`} />}
-                {kept && rank && <CardRow k="Rank then" v={`${rank.rank} of ${rank.of}`} />}
-                {kept && closeThen != null && <CardRow k="Price then" v={closeThen.toFixed(2)} sub={dist != null ? `${dist >= 0 ? '+' : '−'}${Math.abs(dist).toFixed(2)}% away` : undefined} />}
-                {kept && before && <CardRow k="30 min before" v={`${b.value - before.value >= 0 ? '+' : '−'}${fmtUsd(Math.abs(b.value - before.value))}`} sub={`since ${nyClock(before.time * 1000)}`} />}
-                <span className="col-span-2 mt-0.5 text-textSecondary leading-snug">{does}</span>
+                {tagWord && <CardRow k="Price" v={tagWord} />}
+                <span className="col-span-2 text-textMuted">{b.value >= 0 ? 'Holds a move back' : 'Pushes a move on'}</span>
               </>
             );
-            const foot = <span className="text-textMuted">{kept ? letGoWords() : 'click to keep the strike'}</span>;
+            const foot = <span className="text-textMuted">{kept ? letGoWords() : 'click to keep'}</span>;
             const title = fmtStrike(b.strike);
-            const aside = `${nyClock(b.time * 1000)} ET`;
+            const aside = `${nyClock(b.time * 1000)}`;
             return kept ? (
-              <PointerCard x={pinnedBead!.x} y={pinnedBead!.y} width={176} dense still testId="data-bead-card" testValue={`${b.strike}`} title={title} aside={aside} foot={foot}>
+              <PointerCard x={pinnedBead!.x} y={pinnedBead!.y} width={188} dense still testId="data-bead-card" testValue={`${b.strike}`} title={title} aside={aside} foot={foot}>
                 {rows}
               </PointerCard>
             ) : (
-              <PointerFollowCard start={pointerAtRef.current} width={176} dense testId="data-bead-card" testValue={`${b.strike}`} title={title} aside={aside} foot={foot}>
+              <PointerFollowCard start={pointerAtRef.current} width={188} dense testId="data-bead-card" testValue={`${b.strike}`} title={title} aside={aside} foot={foot}>
                 {rows}
               </PointerFollowCard>
             );
@@ -4658,7 +5092,7 @@ const StrikeChart = ({
             <CardRow k="Lower" v={coneCard.dn1.toFixed(2)} />
             <CardRow k="±2σ" v={coneCard.up2.toFixed(2)} sub={coneCard.dn2.toFixed(2)} />
             <CardRow k="Vol" v={coneCard.iv > 0 ? `${(coneCard.iv * 100).toFixed(1)}%` : '—'} />
-            <CardRow k="Left" v={coneCard.minutes > 0 ? `${Math.round(coneCard.minutes)}m` : '—'} />
+            <CardRow k="Left" v={coneLeft(coneCard.minutes)} />
             {coneCard.source && <span className="col-span-2 mt-0.5 text-textMuted leading-snug">{coneCard.source}</span>}
           </PointerFollowCard>
         )}</CellView>
@@ -4667,14 +5101,14 @@ const StrikeChart = ({
         {/* The hover card — floats above the lane at the marker's x, flipping to the left of it near the right edge. */}
         <CellView cell={eventCell}>{eventCard => eventCard && (
           <div
-            className="absolute bottom-9 z-30 pointer-events-none border border-borderMuted bg-panel/95 rounded px-2 py-1.5 shadow-xl shadow-black/50 max-w-[260px]"
+            className="absolute bottom-9 z-30 pointer-events-none overflow-hidden border border-borderMuted bg-panel/95 rounded px-2 py-1.5 shadow-xl shadow-black/50 max-w-[260px]"
             style={
               eventCard.x > (containerRef.current?.clientWidth ?? 400) - 270
                 ? { right: Math.max(4, (containerRef.current?.clientWidth ?? 400) - eventCard.x + 6) }
                 : { left: Math.max(4, eventCard.x + 6) }
             }
           >
-            <div className="font-mono text-t10 font-semibold uppercase tracking-wider text-textPrimary whitespace-nowrap">
+            <div className="max-w-full truncate font-mono text-t10 font-semibold uppercase tracking-wider text-textPrimary">
               {eventCard.e.label}
             </div>
             <div className="font-mono text-t9 text-textSecondary mt-0.5">{eventCard.e.detail}</div>
@@ -4709,6 +5143,18 @@ const StrikeChart = ({
           </PaneFoot>
         )}
       </div>
+      {overlays.dexStrike && !replay && (
+        exposureBand ? (
+          <StrikeExposureBand
+            data={exposureBand}
+            metric={bandMetric}
+            onMetric={setBandMetric}
+            onClose={onOverlays ? () => onOverlays({ ...overlays, dexStrike: false }) : undefined}
+          />
+        ) : (
+          <p className="shrink-0 border-t border-borderSubtle px-2 py-1 font-mono text-t10 text-textSecondary" data-dex-note>{exposureNote}</p>
+        )
+      )}
       {/* The field's key: what a bead's size is and what its inks mean, in the house's words, and the size every bead
           stands against — the field's own reference, the very number the beads were drawn with. */}
       {trailKey && overlays.trails && trailRef > 0 && !replay && (

@@ -74,7 +74,7 @@ import { bookForDates, expirySpan, levelsBook, levelsDate, levelsWords, todaySco
 import { shownGreek } from './retailSign';
 import { useLedgerPalette } from '../../data/ledgerPalette';
 import MoreDoor from './MoreDoor';
-import { todayColumn, buildExposureSurface, CALENDAR_DTES, GREEKS, contractsReady, isContractGreek, type ExposureSurface, type Greek } from '../../data/exposureSurface';
+import { todayColumn, buildExposureSurface, CALENDAR_DTES, GREEKS, contractsReady, isContractGreek, type BookMode, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { snapshotAtOpen } from '../../data/levelview';
 import { HEAT_MODE, heatCellStyle, heatRampColorFor } from './heatmap';
 import type { MarketSnapshot } from '../../types/market';
@@ -344,6 +344,7 @@ function listedIso(snap: MarketSnapshot | null | undefined): string[] {
 
 const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, onHoverStrike, onSelectStrike, openRatio, onTicker, toolbar = 'desk', marks, lead, greeks: greeksProp, onGreeks, fresh = false, after, fullMode = 'portal', fullOpen, headFull = false, multi = false, selectedStrikeFor, onSelectStrikeFor, snapshotFor, onNaturalWidth, onBandNeed, headSlot, pack = false, above, onNames, onExpiries, onNameDates, narrowHint = 'widen the window', viewLock, legsLock }: ExposureFieldProps) => {
   const [ownPick, setOwnPick] = useState<string[]>(['gex', 'dex', 'vex', 'vanna', 'charm', 'color', 'vomma', 'speed', 'veta', 'zomma']);
+  const [bookMode, setBookMode] = useState<BookMode>('oi');
   const pick = greeksProp ?? ownPick;
   /* the page's theme: on paper the island and everything drawn in it wear the light set and the paper ramps */
   const paper = useResolvedTheme() === 'light';
@@ -774,7 +775,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      since the last one, when six seconds have passed, or when the name
      changes. The head's price and change stay live off the snapshot, and
      the ledger's spot rule reads the live spot too. */
-  const builtRef = useRef<{ surface: ExposureSurface; spot: number; at: number; dates: number } | null>(null);
+  const builtRef = useRef<{ surface: ExposureSurface; spot: number; at: number; dates: number; mode: BookMode } | null>(null);
   /* how many expiries have their own chain — they land seconds after the whole book. Not in the reuse test, a surface
      built off the whole book alone was kept through a quiet tape (after the bell spot never moves): the card read
      "Today" over a single all-dates column and the matrix crowned the book's supreme, not the window's (2026-10-22) */
@@ -783,12 +784,12 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     if (!snapshot) return null;
     const b = builtRef.current;
     const now = Date.now();
-    if (!fresh && b && b.surface.ticker === snapshot.ticker && b.dates === datesIn && Math.abs(snapshot.spot - b.spot) / b.spot < 0.001 && now - b.at < 6000) return b.surface;
-    const next = buildExposureSurface(snapshot, WHOLE_BOOK, CALENDAR_DTES);
-    builtRef.current = { surface: next, spot: snapshot.spot, at: now, dates: datesIn };
+    if (!fresh && b && b.mode === bookMode && b.surface.ticker === snapshot.ticker && b.dates === datesIn && Math.abs(snapshot.spot - b.spot) / b.spot < 0.001 && now - b.at < 6000) return b.surface;
+    const next = buildExposureSurface(snapshot, WHOLE_BOOK, CALENDAR_DTES, 'live', bookMode);
+    builtRef.current = { surface: next, spot: snapshot.spot, at: now, dates: datesIn, mode: bookMode };
     return next;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot, datesIn]);
+  }, [snapshot, datesIn, bookMode]);
 
   /* THE NAMES BESIDE THE HOST'S — kept on this machine; a name the host
      already shows is never doubled. Their books are the simulator's pure read,
@@ -938,17 +939,17 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      name whose session has no opening snapshot yet gets null and no badges. Only the calendar reads it. */
   const openRef = useRef(new Map<string, ExposureSurface | null>());
   const openSurfaceOf = (t: string): ExposureSurface | null => {
-    const kept = openRef.current.get(t);
+    const kept = openRef.current.get(`${t}|${bookMode}`);
     if (kept !== undefined) return kept;
     let built: ExposureSurface | null = null;
     try {
       const snap = snapshotAtOpen(t);
-      built = snap ? buildExposureSurface(snap, WHOLE_BOOK, CALENDAR_DTES, 'snapshot') : null;
+      built = snap ? buildExposureSurface(snap, WHOLE_BOOK, CALENDAR_DTES, 'snapshot', bookMode) : null;
     } catch {
       built = null;
     }
     /* a session without its opening snapshot is asked again next time; a built one is kept */
-    if (built) openRef.current.set(t, built);
+    if (built) openRef.current.set(`${t}|${bookMode}`, built);
     return built;
   };
   /* EACH NAME'S BOOK, REBUILT WHEN IT MATTERS — the host's rule (above) for the names beside it (2026-10-12, Noah:
@@ -956,7 +957,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      (fifteen expiries × a priced chain, ~50ms a name) and, the surfaces being new objects, re-rendered every
      capsule — on a name leaving, on a name arriving, and on the host's every rebuild. A name's surface is kept
      until its spot has moved a tenth of a percent or six seconds have passed; the replay rebuilds every frame. */
-  const extraCache = useRef(new Map<string, { surface: ExposureSurface; spot: number; at: number }>());
+  const extraCache = useRef(new Map<string, { surface: ExposureSurface; spot: number; at: number; mode: BookMode }>());
   const namesSeen = useRef(names);
   const extraBooks = useMemo(() => {
     if (!multi || !surface) return [];
@@ -982,10 +983,10 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
         }
         const kept = extraCache.current.get(t);
         let built: ExposureSurface;
-        if (!fresh && kept && (namesChanged || (Math.abs(snap.spot - kept.spot) / kept.spot < 0.001 && now - kept.at < 6000))) built = kept.surface;
+        if (!fresh && kept && kept.mode === bookMode && (namesChanged || (Math.abs(snap.spot - kept.spot) / kept.spot < 0.001 && now - kept.at < 6000))) built = kept.surface;
         else {
-          built = buildExposureSurface(snap, WHOLE_BOOK, CALENDAR_DTES);
-          extraCache.current.set(t, { surface: built, spot: snap.spot, at: now });
+          built = buildExposureSurface(snap, WHOLE_BOOK, CALENDAR_DTES, 'live', bookMode);
+          extraCache.current.set(t, { surface: built, spot: snap.spot, at: now, mode: bookMode });
         }
         out.push({ ticker: t, book: { ticker: t, snapshot: snap, surface: built } });
       } catch {
@@ -994,7 +995,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [multi, names, surface, snapshotFor, warmed, fresh]);
+  }, [multi, names, surface, snapshotFor, warmed, fresh, bookMode]);
   useEffect(() => {
     const cold = extraBooks.filter(c => !c.book && !warmedRef.current.has(c.ticker)).map(c => c.ticker);
     if (!cold.length) return;
@@ -1304,6 +1305,10 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {/* bare in the panel (2026-10-15): "Calendar", "GEX" and "Today → Oct 19" say what they are without their label words,
           and the three cards then share the panel's one head line with the tabs at 580px */}
       {!viewLock && <DropdownSelect label="View" value={view} options={VIEWS_FOR[viewHost].map(v => VIEW_OPTION[v])} onChange={pickView} title="The matrix, the calendar or the profile" testId="ledger-view" bare={stripsBare || panel} flat={toolbar === 'band'} />}
+      <span className="inline-flex items-center rounded-md border border-borderMuted p-0.5" data-ledger-book={bookMode}>
+        <button type="button" aria-pressed={bookMode === 'oi'} onClick={() => setBookMode('oi')} className={`px-1.5 py-0.5 rounded font-mono text-t10 ${bookMode === 'oi' ? 'bg-ink/[0.12] text-textPrimary' : 'text-textMuted'}`}>Open interest</button>
+        <button type="button" aria-pressed={bookMode === 'flow'} onClick={() => setBookMode('flow')} className={`px-1.5 py-0.5 rounded font-mono text-t10 ${bookMode === 'flow' ? 'bg-ink/[0.12] text-textPrimary' : 'text-textMuted'}`} title="Open interest plus today's signed volume. A cell that failed a gate still shows the open-interest figure.">Flow</button>
+      </span>
       {/* with names side by side the greek steps down to each column's head; the profile draws GEX alone (its foot says
           so), so the card steps aside there rather than read "All five" over a chart it does not govern (the re-audit's M2) */}
       {view !== 'profile' && (
@@ -1822,7 +1827,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                           <div className="h-[9px] w-20 rounded-full bg-ink/[0.06]" />
                         </div>
                         {Array.from({ length: colsFit }, (_, i) => (
-                          <div key={`h-${i}`} className="px-2 flex items-center justify-end border-b border-borderSubtle">
+                          <div key={`h-${i}`} className="px-2 flex items-center justify-center border-b border-borderSubtle">
                             <div className="h-[9px] w-10 rounded-full bg-ink/[0.06]" />
                           </div>
                         ))}

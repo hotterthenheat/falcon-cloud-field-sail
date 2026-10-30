@@ -146,14 +146,14 @@ console.log(`  (Oct 28 SPY by hand: ${oct28.length} minutes, O ${oct28[0].open} 
 
 /* ---- 4. the exposure field, read off the raw spot-exposure rows ---- */
 /* Hand values: summed off spot-exposures/expiry-strike?expirations[]=2026-10-29 (the Oct 28 close rows, time 20:15Z) in
-   Python — open interest = call_gamma_oi + put_gamma_oi, today's flow = call_gamma_ask + call_gamma_bid + put_gamma_ask
-   + put_gamma_bid (the vendor prints the ask legs negative: customers buying leave dealers short), dealer sign. */
+   Python — open interest = call_gamma_oi + put_gamma_oi. Dealer flow is that plus the ask and the bid legs
+   (call_gamma_ask + call_gamma_bid + put_gamma_ask + put_gamma_bid). Both are the level, dealer sign. */
 const field = await import('../../src/data/book/exposureLog');
 const FIELD_HAND = {
   oi: { 770: -17915246.21, 772: 31039557.69, 775: 70661411.04 },
-  flow: { 770: 121728593.38, 772: -227842268.32, 775: 33774879.71 },
+  flow: { 770: 103813347.17, 772: -196802710.63, 775: 104436290.75 },
   netOi: 107689622.85,
-  netFlow: 193783436.86,
+  netFlow: 301473059.71,
 };
 const closeAt = Date.parse('2026-10-28T21:00:00Z');
 const dayBar = [Date.parse('2026-10-28T20:00:00Z') / 1000];
@@ -162,7 +162,7 @@ const flowGrid = field.exposureGrid('SPY', GOLD.front, dayBar, 86_400, 'flow', c
 const cellOf = (g: typeof oiGrid, k: number, c = 0) => g.values[c * g.strikes.length + g.strikes.indexOf(k)];
 for (const k of [770, 772, 775] as const) {
   expectNear(`field, open interest, SPY ${k} Oct 29 = the row's call + put gamma_oi`, cellOf(oiGrid, k), FIELD_HAND.oi[k], 1e-9);
-  expectNear(`field, today's flow, SPY ${k} Oct 29 = the row's ask + bid legs`, cellOf(flowGrid, k), FIELD_HAND.flow[k], 1e-9);
+  expectNear(`field, dealer flow, SPY ${k} Oct 29 = open interest plus the ask and bid legs`, cellOf(flowGrid, k), FIELD_HAND.flow[k], 1e-9);
 }
 const cols = field.gridColumns(oiGrid);
 expectNear('a column keeps the house sign: 775 kept = −dealer', cols[0].levels.find(l => l.strike === 775)!.value, -FIELD_HAND.oi[775], 1e-12);
@@ -172,11 +172,11 @@ expectNear('a column keeps the house sign: 775 kept = −dealer', cols[0].levels
 const bookOi = field.exposureGrid('SPY', 'book', dayBar, 86_400, 'oi', closeAt)!;
 const bookFlow = field.exposureGrid('SPY', 'book', dayBar, 86_400, 'flow', closeAt)!;
 expectNear('every expiry, open interest, SPY 775 = the whole-book row', cellOf(bookOi, 775), 594178244.27, 1e-9);
-expectNear("every expiry, today's flow, SPY 775 = the whole-book row's ask + bid legs", cellOf(bookFlow, 775), -413057149.32, 1e-9);
+expectNear("every expiry, dealer flow, SPY 775 = the whole-book open interest plus its ask and bid legs", cellOf(bookFlow, 775), 181121094.95, 1e-9);
 const netNow = field.exposureNet('SPY', GOLD.front)!;
 expectNear("the cut's net, open interest = the house net GEX Pinpoint prints for SPY Today", netNow.oi, house.netGex, 1e-12);
 expectNear('… and the raw rows summed by hand', netNow.oi, FIELD_HAND.netOi, 1e-9);
-expectNear("the cut's net, today's flow, summed by hand", netNow.flow, FIELD_HAND.netFlow, 1e-9);
+expectNear("the cut's net, dealer flow, summed by hand", netNow.flow, FIELD_HAND.netFlow, 1e-9);
 
 /* ---- 5. two real polls an answer apart, recorded in the session (terrain-2026-10-29-open) ---- */
 const OPEN_SET = 'terrain-2026-10-29-open';
@@ -197,29 +197,44 @@ if (!(existsSync(openDir) && readdirSync(openDir).some(f => f.endsWith('.json.gz
   field.resetExposureLog('SPY');
   field.noteExposureRows('SPY', rowsA);
   field.noteExposureRows('SPY', rowsB);
-  /* one bar from poll A's answer to just past poll B's: open interest is B's reading, flow is B − A */
+  /* one bar from poll A's answer to just past poll B's: both books are B's level, not B − A */
   const a = Math.ceil(tA / 1000);
   const span = Math.ceil((tB - tA) / 1000) + 1;
   const now = tB + 5_000;
   const og = field.exposureGrid('SPY', '2026-10-29', [a], span, 'oi', now)!;
   const fg = field.exposureGrid('SPY', '2026-10-29', [a], span, 'flow', now)!;
-  /* Hand, off the two recorded answers: each answer's latest row time; poll B's call + put gamma_oi; poll B's ask + bid legs
-     less poll A's (770: 563,243,939.95 − 563,298,224.21; 775: 18,353,868.82 − 18,832,841.12) */
+  const lastOf = (rows: Record<string, string>[], strike: number, book: 'oi' | 'flow') => {
+    let best = -1;
+    let v = NaN;
+    for (const r of rows) {
+      if (Number(r.strike) !== strike) continue;
+      const t = Date.parse(r.time);
+      if (t >= best) {
+        best = t;
+        const m = field.rowMeasures(r);
+        v = book === 'oi' ? m.oi : m.flow;
+      }
+    }
+    return v;
+  };
+  /* read off the recorded max-pain answer's 2026-10-29 row: max_pain "770" */
   const OPEN_HAND = {
     tA: Date.parse('2026-10-29T15:57:22.000Z'),
     tB: Date.parse('2026-10-29T15:58:32.793Z'),
     oiB: { 770: -445796038.47, 775: 144895773.02 },
-    flowDelta: { 770: -54284.26, 775: -478972.3 },
   };
   /* read off the recorded max-pain answer's 2026-10-29 row: max_pain "770" */
   const OPEN_HAND_PAIN = 770;
   expectEqual('the two polls were answered at', [new Date(tA).toISOString(), new Date(tB).toISOString()], [new Date(OPEN_HAND.tA).toISOString(), new Date(OPEN_HAND.tB).toISOString()]);
   for (const k of [770, 775] as const) {
     expectNear(`open interest across the bar, SPY ${k}: the last reading (poll B)`, cellOf(og, k), OPEN_HAND.oiB[k], 1e-9);
-    expectNear(`today's flow across the bar, SPY ${k}: poll B − poll A`, cellOf(fg, k), OPEN_HAND.flowDelta[k], 1e-9);
+    expectNear(`dealer flow across the bar, SPY ${k}: poll B's level, not the change`, cellOf(fg, k), lastOf(rowsB, k, 'flow'), 1e-6);
   }
   const gap = field.exposureGrid('SPY', '2026-10-29', [Math.ceil((tB + field.JOIN_MS) / 1000)], 60, 'oi', tB + 20 * 60_000)!;
-  expectEqual('a bar no reading reaches is empty', gap.values.every(Number.isNaN), true);
+  expectNear('a later bar in the same session keeps the last reading', cellOf(gap, 770), OPEN_HAND.oiB[770], 1e-9);
+  const nextDay = Math.floor(Date.parse('2026-10-30T14:30:00Z') / 1000);
+  const next = field.exposureGrid('SPY', '2026-10-29', [nextDay], 60, 'oi', nextDay * 1000 + 60_000);
+  expectEqual('the next session does not inherit the level', next ? next.values.every(Number.isNaN) : true, true);
   const before = field.exposureGrid('SPY', '2026-10-29', [Math.floor(tA / 1000) - 3 * 3600], 60, 'oi', now);
   expectEqual('nothing before the first reading', before ? before.values.every(Number.isNaN) : true, true);
   /* The server's recorder (data/exposureRecorder.ts) read poll A; this page opened later and read poll B itself. The
@@ -234,7 +249,7 @@ if (!(existsSync(openDir) && readdirSync(openDir).some(f => f.endsWith('.json.gz
   const fgM = field.exposureGrid('SPY', '2026-10-29', [a], span, 'flow', now)!;
   for (const k of [770, 775] as const) {
     expectNear(`recorded poll A + this page's poll B, open interest SPY ${k}: poll B`, cellOf(ogM, k), OPEN_HAND.oiB[k], 1e-9);
-    expectNear(`recorded poll A + this page's poll B, today's flow SPY ${k}: poll B − poll A`, cellOf(fgM, k), OPEN_HAND.flowDelta[k], 1e-9);
+    expectNear(`recorded poll A + this page's poll B, dealer flow SPY ${k}: poll B's level`, cellOf(fgM, k), lastOf(rowsB, k, 'flow'), 1e-6);
   }
   /* merging the same record again, or the page's own copy of poll A on top, changes nothing */
   expectEqual('the record merged twice adds nothing', field.mergeExposureSeries('SPY', served.out()), false);

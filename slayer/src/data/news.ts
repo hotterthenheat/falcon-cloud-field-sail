@@ -4,8 +4,8 @@
 export type NewsCategory = 'Earnings' | 'Guidance' | 'Analyst' | 'Macro' | 'M&A' | 'Product' | 'Regulatory' | 'General';
 
 export interface NewsPrediction {
-  /** Model P(ticker closes up next session), 0–100 */
-  probUpPct: number;
+  /** Model P(ticker closes up next session), 0–100. Omitted when the feed does not send one. */
+  probUpPct?: number;
   /** Signed expected move, next session, % */
   expMove1dPct: number;
   /** Signed expected move, five sessions, % */
@@ -45,8 +45,8 @@ export interface NewsItem {
   /** Where the story ran, when the provider gives it */
   url?: string;
   category: NewsCategory;
-  /** −1…+1 */
-  sentiment: number;
+  /** −1…+1; null when the vendor sent no read */
+  sentiment: number | null;
   /** 0…1 — how market-moving the item is */
   magnitude: number;
   /** Unusual Whales flags the headline as major (is_major) */

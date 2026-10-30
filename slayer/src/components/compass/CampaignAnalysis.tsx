@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, Bookmark, ShieldAlert } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { tfMinutes, type Timeframe } from '../../data/timeframe';
+import { type Timeframe } from '../../data/timeframe';
 import SignalBadge from '../ui/SignalBadge';
 import ContractLabel from '../ui/ContractLabel';
 import RichRead from '../ui/RichRead';
@@ -23,7 +23,7 @@ import { MODELS_VALIDATED, SPREAD_MAX, STOP_KEEP, UNVALIDATED_WORD, spreadPass, 
 import { BLOCK_MIN_PREMIUM, BLOCK_MIN_SIZE } from '../../data/tape';
 import { useShelfPrints } from '../../data/traceLive';
 import type { FlowPrint } from '../../types/trace';
-import { nameTape, optionScanOpen, printInSession, sessionEmpty, sessionYmd } from '../../data/compassSession';
+import { nameTape, optionScanOpen, printInSession, sessionYmd } from '../../data/compassSession';
 import { useDeskSession } from '../../data/deskSession';
 import { nyClock } from '../../core/nyTime';
 import { type ConPickRow } from './ContractPick';
@@ -293,21 +293,7 @@ const CampaignAnalysis = ({
   const gVega = live && Number.isFinite(live.vega) ? live.vega : !live ? setup.greeks.vega : NaN;
   const gRho = live && Number.isFinite(live.rho) ? live.rho : !live && Number.isFinite(setup.greeks.rho ?? NaN) ? (setup.greeks.rho as number) : NaN;
   const liveBars = useContractBars(setup.ticker, setup.expiryDate, setup.strike, setup.right, true, chartTf);
-  const painted = useMemo(() => {
-    const base = liveBars && liveBars.length ? liveBars : [];
-    const px = q.bid > 0 && q.ask >= q.bid ? (q.bid + q.ask) / 2 : 0;
-    if (!(px > 0)) return base.length ? base : null;
-    const step = Math.max(60, tfMinutes(chartTf) * 60);
-    const bucket = Math.floor(Date.now() / 1000 / step) * step;
-    if (!base.length) return [{ time: bucket, open: px, high: px, low: px, close: px }];
-    const next = base.slice();
-    const last = next[next.length - 1];
-    if (bucket < last.time) return next;
-    if (bucket === last.time) next[next.length - 1] = { ...last, high: Math.max(last.high, px), low: Math.min(last.low, px), close: px };
-    else next.push({ time: bucket, open: last.close, high: Math.max(last.close, px), low: Math.min(last.close, px), close: px });
-    return next;
-  }, [liveBars, chartTf, q.bid, q.ask]);
-  const traded = painted;
+  const traded = liveBars;
   const bidPx = q.bid;
   const midPx = q.mark;
   const spreadFrac = midPx > 0 ? (q.ask - q.bid) / midPx : 1;
@@ -481,8 +467,7 @@ const CampaignAnalysis = ({
             ) : null}
             <Fact label="Delta" testId="delta">{greekOk && Number.isFinite(gDelta) ? gDelta.toFixed(2) : '—'}</Fact>
             <Fact label="IV" testId="iv">{greekOk ? `${ivPct.toFixed(0)}%` : '—'}</Fact>
-            <Fact label="Model 1" testId="p1">{setup.p1 != null ? `${(setup.p1 * 100).toFixed(1)}%` : '—'}</Fact>
-            {setup.prun != null ? <Fact label="Model 2" testId="prun">{`${(setup.prun * 100).toFixed(0)}%`}</Fact> : null}
+            <Fact label="The line" testId="p1">{setup.p1 == null ? '—' : setup.p1 + 1e-12 >= 0.7067 ? 'Cleared' : 'Short'}</Fact>
             <Fact label="Quote" testId="quote-time">{quoteAt ? nyClock(quoteAt, { seconds: true, zone: true }) : '—'}</Fact>
           </dl>
         </div>
@@ -524,8 +509,8 @@ const CampaignAnalysis = ({
             quote={chartQuote}
             traded={traded}
             volume={sessionPrints.reduce((sum, p) => sum + p.size, 0)}
-            emptyNote={traded && traded.length === 0 ? sessionEmpty(setup.ticker, desk) : ''}
-            pathNote={!liveBars || liveBars.length === 0 ? (thetaDown ? 'ThetaData offline. The line is the last mark.' : 'No bars yet. The line is the live mark.') : ''}
+            emptyNote={traded && traded.length === 0 ? 'No trades on this contract. A minute with no print is not a candle.' : ''}
+            pathNote={traded == null ? (thetaDown ? 'ThetaData offline. No bars.' : 'No bars from ThetaData yet.') : ''}
           />
         </div>
         <div className="min-w-0 flex flex-col gap-3">
@@ -613,25 +598,7 @@ const CampaignAnalysis = ({
               <span className="ml-auto">{setup.expiry === '0DTE' ? '' : tape.word}</span>
             </div>
             <div className="border-t border-borderSubtle p-2" data-setup-action={verdict.word}>
-              {!ticket ? (
-                <button
-                  type="button"
-                  disabled
-                  className="w-full h-8 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textMuted font-mono text-t11 font-semibold uppercase tracking-wider cursor-not-allowed"
-                  data-setup-track="blocked"
-                >
-                  {setup.whyText || 'Not a ticket.'}
-                </button>
-              ) : checkFail && !tracked && tapeOpen && !expired ? (
-                <button
-                  type="button"
-                  disabled
-                  className="w-full h-8 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textMuted font-mono text-t11 font-semibold uppercase tracking-wider cursor-not-allowed"
-                  data-setup-track="blocked"
-                >
-                  {checkFail}
-                </button>
-              ) : closed ? (
+              {closed ? (
                 <button
                   type="button"
                   onClick={() => navigate('/compass/blotter')}
@@ -651,7 +618,12 @@ const CampaignAnalysis = ({
                         return;
                       }
                       const ans = trackSetup(setup, scanner, { mark: q.mark, stop: shownStop, ask: q.entryPremium });
-                      setTrackNo(ans.ok ? null : ans.why === 'full' ? '5 open. Untrack one first.' : ans.why === 'closed' ? 'Scan is closed. 0DTE entries run 09:30 to 15:00 ET.' : `Already tracking ${ans.contract}.`);
+                      if (!ans.ok) {
+                        setTrackNo(ans.why === 'full' ? '5 open. Untrack one first.' : ans.why === 'closed' ? 'Could not save this track.' : `Already tracking ${ans.contract}.`);
+                        return;
+                      }
+                      setTrackNo(null);
+                      navigate('/compass/tracker', { state: { focus: setup.id } });
                     }}
                     className="relative foil-glide flex-1 min-w-0 inline-flex items-center justify-center gap-2 px-2 holo-bg text-onfoil hover:brightness-105 font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap"
                   >

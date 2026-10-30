@@ -8,7 +8,7 @@ import { useLocation } from 'react-router-dom';
 import { AsOf, asOfText } from '../ui/states';
 import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
 import { thetaAllowedHere } from '../../data/theta';
-import { extendedLine, useLiveQuote } from '../../data/liveQuote';
+import { extendedLine, sessionPrice, useLiveQuote } from '../../data/liveQuote';
 import { changeInk } from '../../data/uwBook';
 import { uwKept } from '../../data/whales';
 
@@ -73,9 +73,10 @@ export function useNavQuote(ticker: string): NavQuoteRead {
   }
   if (uwOnly) {
     /* before the open the lead is the last session's change; the extended move rides beside it */
-    const change = uw ? (uw.phase === 'pre' ? uw.lastSessionPct : uw.changePct) : null;
+    const px = sessionPrice(uw);
+    const change = uw ? (uw.phase === 'regular' ? uw.changePct : uw.extPct) : null;
     return {
-      priceText: uw && uw.regularPrice > 0 ? money(uw.regularPrice) : '—',
+      priceText: px != null && px > 0 ? money(px) : '—',
       changeText: change != null && Number.isFinite(change) ? signed(change) : '',
       change: change != null && Number.isFinite(change) ? change : null,
       extText: extendedLine(uw),
@@ -113,7 +114,7 @@ export const NavPrice = memo(({ ticker, compact = false }: { ticker: string; com
   const q = useNavQuote(ticker);
   return (
     <>
-      <span className={`shrink-0 font-mono text-t11 tnum ${q.live ? 'text-textPrimary' : 'text-textSecondary'}`} data-subject-price title={q.asOf ? `ThetaData · ${asOfText(q.asOf)}` : q.source === 'uw' ? 'Unusual Whales · last regular price' : 'ThetaData · last trade'}>
+      <span className={`shrink-0 font-mono text-t11 tnum ${q.live ? 'text-textPrimary' : 'text-textSecondary'}`} data-subject-price title={q.asOf ? `ThetaData · ${asOfText(q.asOf)}` : q.source === 'uw' ? 'Unusual Whales · this session' : 'ThetaData · last trade'}>
         {q.priceText}
       </span>
       {q.change != null && (

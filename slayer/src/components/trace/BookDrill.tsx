@@ -16,7 +16,7 @@ interface BookDrillProps {
   openKey: string | null;
   onOpen: (key: string | null) => void;
   /** The exact print a host opened the row from (a flow alert's, a Tracker mark's) */
-  clipFor?: (row: BookContract) => { size: number; fill: number; side: 'ASK' | 'BID'; time: string; multi?: boolean } | undefined;
+  clipFor?: (row: BookContract) => { size: number; fill: number; side: 'ASK' | 'BID' | 'MID'; time: string; bid?: number; ask?: number; premium?: number; multi?: boolean; sweep?: boolean; extended?: boolean } | undefined;
 }
 
 const BookDrill = ({ list, openKey, onOpen, clipFor }: BookDrillProps) => {

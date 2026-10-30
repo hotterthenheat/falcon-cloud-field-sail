@@ -577,7 +577,8 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                 <span className={`font-mono text-t13 font-bold ${sideTone}`}>{sideLabel}</span>
                 {print.sweep && <span className="font-mono text-t11 uppercase font-semibold text-warn">Sweep</span>}
               </span>
-              {/* the clearest aggressor tell — where between bid and ask it printed */}
+              {/* a quote is drawn only when the print carries one — a day total and a mark with no bid/ask draw none */}
+              {print.bid > 0 && print.ask > 0 && (
               <span className="flex items-center gap-2 w-[220px] max-w-full" title="Where between the bid and the ask it filled — who was in a hurry">
                 <span className="font-mono text-t11 tnum text-textMuted">{fixed(print.bid)}</span>
                 <span className="relative flex-1 h-[3px] rounded-full bg-ink/[0.08]">
@@ -588,11 +589,12 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                 </span>
                 <span className="font-mono text-t11 tnum text-textMuted">{fixed(print.ask)}</span>
               </span>
+              )}
               <span className="font-mono text-t11 text-textSecondary tnum whitespace-nowrap">
                 <RichRead
                   text={
                     print.dayCard
-                      ? `the day: ${num(print.size)} contracts (the screener's row, as of its ${print.time} ET fill) · last ${print.dayCard.session} print $${fixed(print.dayCard.last?.fill ?? print.fill)} × ${num(print.dayCard.last?.size ?? 0)} at ${print.dayCard.last?.time ?? print.time} ET${print.dayCard.last?.volume ? ` (day volume ${num(print.dayCard.last.volume)} at that print)` : ''}`
+                      ? `the day: ${num(print.size)} contracts (the screener's row, as of its ${print.time} ET fill)${print.dayCard.last ? ` · last ${print.dayCard.session} print $${fixed(print.dayCard.last.fill)} × ${num(print.dayCard.last.size)} at ${print.dayCard.last.time} ET${print.dayCard.last.volume ? ` (day volume ${num(print.dayCard.last.volume)} at that print)` : ''}` : ''}`
                       : print.trades && print.trades > 1
                       ? alertFacts
                         ? `last fill $${fixed(alertFacts.last.fill)} × ${num(alertFacts.last.size)} at ${alertFacts.last.time} · ${num(alertFacts.contracts)} contracts in ${alertFacts.n} prints, ${print.time}${print.fillEnd && print.fillEnd !== print.time ? `–${print.fillEnd}` : ''} ET${print.extended ? ' · after hours' : ''}`

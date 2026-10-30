@@ -176,6 +176,26 @@ export function nameTape(ticker: string, expiryToday: boolean, at: At = now()): 
   };
 }
 
+/** This root's contracts are live at `at`. `book` means any listed expiry of the root; one date is live only on its own clock, and a same-day expiry is done at its own stop. Halt and closed are not a book. */
+export function contractsLive(ticker: string, expiry: string | 'book', at: At = now()): boolean {
+  const p = nyParts(at);
+  const ymd = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+  const expiryToday = expiry !== 'book' && expiry === ymd;
+  const tape = nameTape(ticker, expiryToday, at);
+  if (tape.option === 'closed' || tape.option === 'halt') return false;
+  if (expiryToday && tape.done) return false;
+  return true;
+}
+
+/** Whether this root trades in the desk session at all. Overnight is OVERNIGHT_INDEX only — NDX and NDXP are not on it. A name that is not on the list does not borrow another session's book. */
+export function rootTradesSession(ticker: string, session: DeskSession): boolean {
+  const root = ticker.toUpperCase();
+  if (session === 'rth') return true;
+  if (session === 'overnight') return OVERNIGHT_INDEX.has(root);
+  if (session === 'pre') return OVERNIGHT_INDEX.has(root) || EXT_STOCK.has(root) || EXT_ETF.has(root);
+  return INDEX.has(root) || EXT_STOCK.has(root) || EXT_ETF.has(root) || LATE_ETF.has(root);
+}
+
 /** The clock the board speaks. Overnight and pre-market are open tapes, not a closed desk. */
 export function deskPhase(at: At = now()): OptionPhase {
   const p = nyParts(at);
@@ -337,22 +357,22 @@ export function resolveDeskSession(ticker: string, minutes: readonly number[] | 
   });
   if (!optionTapeIn(root, asked)) {
     const note = asked === 'overnight'
-      ? `${root} does not trade overnight. Overnight options are SPX, NDX, RUT, and VIX. Showing the cash session.`
+      ? `${root} does not trade overnight. Overnight options are SPX, SPXW, XSP, RUT, RUTW, and VIX.`
       : asked === 'pre'
-        ? `${root} has no pre-market options. Showing the cash session.`
-        : `${root} has no after-hours options. Showing the cash session.`;
-    return { session: 'rth', asked, held: true, note };
+        ? `${root} has no pre-market options.`
+        : `${root} has no after-hours options.`;
+    return { session: asked, asked, held: true, note };
   }
   if (has) return { session: asked, asked, held: false, note: null };
   const pastCurb = nyParts().hour * 60 + nyParts().minute >= 17 * 60;
   const note = asked === 'overnight' && cashIndex
-    ? `${root} options trade overnight. The cash index does not print then. Showing the cash session.`
+    ? `${root} options trade overnight. The cash index does not print then.`
     : asked === 'post' && cashIndex
       ? (pastCurb
-        ? `${root} does not print after the close. The curb ended at 5:00 PM ET. Showing the cash session.`
-        : `${root} options trade the curb until 5:00 PM ET. The cash index does not print then. Showing the cash session.`)
+        ? `${root} does not print after the close. The curb ended at 5:00 PM ET.`
+        : `${root} options trade the curb until 5:00 PM ET. The cash index does not print then.`)
       : asked === 'pre' && cashIndex
-        ? `${root} options trade before the open. The cash index does not print then. Showing the cash session.`
-        : `No ${asked === 'pre' ? 'pre-market' : asked === 'post' ? 'after-hours' : 'overnight'} prints for ${root} yet. Showing the cash session.`;
-  return { session: 'rth', asked, held: true, note };
+        ? `${root} options trade before the open. The cash index does not print then.`
+        : `No ${asked === 'pre' ? 'pre-market' : asked === 'post' ? 'after-hours' : 'overnight'} prints for ${root} yet.`;
+  return { session: asked, asked, held: true, note };
 }

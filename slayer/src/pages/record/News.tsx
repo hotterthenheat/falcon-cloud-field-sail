@@ -612,7 +612,8 @@ const News = () => {
   const [names, setNames] = useState<NamesPick>('all');
   const [sort, setSort] = useState<Sort>('matters');
   const boardSet = useMemo(() => new Set(boardNames), [boardNames]);
-  const onBoard = (e: GeoNewsEvent) => (e.item.tickers ?? (e.item.ticker ? [e.item.ticker] : [])).some(t => boardSet.has(t));
+  const storyTickersOf = (e: GeoNewsEvent) => e.item.tickers ?? (e.item.ticker ? [e.item.ticker] : []);
+  const onBoard = (e: GeoNewsEvent) => storyTickersOf(e).some(t => boardSet.has(t));
   /* The filter lists every name and city the other controls leave, with counts; any pick (`name:NVDA`, `city:Riyadh`)
      keeps its rows. */
   /* a name's page opens the wire on that name */
@@ -624,7 +625,7 @@ const News = () => {
     const board = new Set(boardNames);
     return events.filter(e => {
       if (category !== 'all' && e.item.category !== category) return false;
-      if (names === 'board' && !(e.item.ticker && board.has(e.item.ticker))) return false;
+      if (names === 'board' && !storyTickersOf(e).some(t => board.has(t))) return false;
       /* macro is the Macro beat (whalesMap categoryOf) — an unnamed company press release is not macro */
       if (names === 'macro' && (e.item.ticker || e.item.category !== 'Macro')) return false;
       return true;
@@ -795,18 +796,17 @@ const News = () => {
   const rowsRef = useRef<HTMLDivElement | null>(null);
   /* below 640px each story stacks: the headline first, its facts under it */
   const stacked = useMediaQuery('(max-width: 639.98px)');
-  /* the map is shut on a phone; open on a desk, it loads once its box is near the screen */
-  const [mapOpen, setMapOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 640);
+  /* the map sits at the top of the wire, so it loads as soon as that box is on the page */
   const mapRef = useRef<HTMLDivElement | null>(null);
   const [mapNear, setMapNear] = useState(false);
   useEffect(() => {
     const el = mapRef.current;
-    if (mapNear || !mapOpen || !el) return;
+    if (mapNear || !el) return;
     if (typeof IntersectionObserver === 'undefined') return setMapNear(true);
     const io = new IntersectionObserver(es => es.some(e => e.isIntersecting) && setMapNear(true), { rootMargin: '400px' });
     io.observe(el);
     return () => io.disconnect();
-  }, [mapOpen, mapNear]);
+  }, [mapNear]);
   const pick = (e: GeoNewsEvent) => {
     pickedRef.current = true;
     setSelectedId(e.id);
@@ -814,7 +814,7 @@ const News = () => {
   };
   /* the tape: the newest headlines on the cut, whatever the sort */
   const tape = useMemo(() => [...rows].sort((a, b) => a.item.minutesAgo - b.item.minutesAgo).slice(0, 14), [rows]);
-  const reach = useMemo<Reach | null>(() => (selected ? { lat: selected.origin.lat, lng: selected.origin.lng, city: selected.origin.city, zones: [] } : null), [selected]);
+  const reach = useMemo<Reach | null>(() => (selected ? { lat: selected.origin.lat, lng: selected.origin.lng, city: selected.origin.city, zones: selected.impacts } : null), [selected]);
   const sessionsOpen = useMemo(() => openSessions(at), [at]);
   /* nothing open (a night, a weekend): which market opens next and how long until it, so the read line never just says "no" */
   const nextUp = useMemo(() => (sessionsOpen.length ? null : nextOpen(at)), [sessionsOpen, at]);
@@ -857,7 +857,8 @@ const News = () => {
   const biggest = useMemo(() => (setMoves.complete ? leaderOf(setMoves) : null), [setMoves]); // eslint-disable-line react-hooks/exhaustive-deps
   const moveDayIsToday = biggest ? biggest.date === nyTodayIso() : true;
   const selectedQuote = useLiveQuote(selected?.item.ticker ?? null);
-  const nextPrint = calendar.find(c => c.impact === 'high' && c.inMinutes >= 0) ?? calendar.find(c => c.inMinutes >= 0) ?? null;
+  const minsLeft = (c: { atMs: number }) => Math.round((c.atMs - at.getTime()) / 60_000);
+  const nextPrint = calendar.find(c => c.impact === 'high' && c.atMs >= at.getTime()) ?? calendar.find(c => c.atMs >= at.getTime()) ?? null;
   /* with no economic release ahead, the next earnings report on the near lists is the next print */
   const reportsQ = useNearReports();
   const [matesOpen, setMatesOpen] = useState(true);
@@ -958,7 +959,7 @@ const News = () => {
               <span className="block sm:truncate max-sm:line-clamp-2 max-sm:min-h-[2lh]" title={nextPrintText ?? undefined}>
               {nextPrint ? (
                 <>
-                  {nextPrint.title} <span className={nextPrint.inMinutes < 90 ? 'text-warn' : 'text-textMuted'}>· {nextPrint.dayLabel} {nextPrint.timeLabel} · in {nextPrint.inMinutes < 60 ? `${nextPrint.inMinutes}m` : `${Math.floor(nextPrint.inMinutes / 60)}h ${nextPrint.inMinutes % 60}m`}</span>
+                  {nextPrint.title} <span className={minsLeft(nextPrint) < 90 ? 'text-warn' : 'text-textMuted'}>· {nextPrint.dayLabel} {nextPrint.timeLabel} · in {minsLeft(nextPrint) < 60 ? `${minsLeft(nextPrint)}m` : `${Math.floor(minsLeft(nextPrint) / 60)}h ${minsLeft(nextPrint) % 60}m`}</span>
                 </>
               ) : (
                 nextReport ? (
@@ -1000,7 +1001,54 @@ const News = () => {
           </div>
         </div>
 
-        {/* the story list first, the story in hand beside it; the map loads below, once it is near the screen */}
+        {/* the map across the top of the wire, edge to edge. It used to sit in a
+            centered frame, which left a black band on each side. */}
+        <div ref={mapRef} className="border-t border-borderSubtle" data-news-map-box>
+          <div className="flex flex-col">
+            <NewsTape tape={tape} selectedId={selectedId} onPick={pick} />
+            <div className="relative w-full" data-news-stage>
+              {mapNear ? <NewsMap className="absolute inset-0" pins={pins} selectedCity={selected?.origin.city ?? null} hoverCity={hoverCity?.city ?? null} onPick={p => { const e = rows.find(r => r.id === p.topId) ?? events.find(r => r.id === p.topId); if (e) pick(e); else setSelectedId(p.topId); }} onHover={setHoverCity} heat={heat} reach={reach} at={at} flyTo={flyTo} /> : null}
+            </div>
+            <div className="px-4 min-h-[26px] py-1 border-t border-ink/[0.06] flex items-center gap-3 font-mono text-t10 text-textSecondary whitespace-normal" data-news-map-read>
+              {hoverCity ? (
+                <>
+                  <span className="font-bold text-textPrimary">{hoverCity.city}</span>
+                  <span>
+                    {hoverCity.n} {hoverCity.n === 1 ? 'story' : 'stories'}
+                  </span>
+                  <span className="text-textMuted break-words leading-relaxed">· {hoverCity.topHeadline}</span>
+                  <span className="ml-auto text-textMuted">click for its loudest story</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-textMuted break-words whitespace-normal leading-relaxed">
+                    {pins.length} {pins.length === 1 ? 'city' : 'cities'} · the land warms where the news lands · the arcs are where the open story reaches
+                  </span>
+                  <HeatLegend className="shrink-0 max-sm:hidden" />
+                  <span className="ml-auto shrink-0" data-news-session-read>
+                    {sessionsOpen.length ? (
+                      <>
+                        <span className="text-silver">{sessionsOpen.map(s => s.label).join(', ')}</span> <span className="text-textMuted">open</span>
+                      </>
+                    ) : (
+                      <span className="text-textMuted">
+                        no cash session open
+                        {nextUp && (
+                          <>
+                            {' · '}
+                            <span className="text-textSecondary">{nextUp.session.label}</span> opens in {untilWords(nextUp.at.getTime() - at.getTime())}
+                          </>
+                        )}
+                      </span>
+                    )}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* the story list first, the story in hand beside it */}
         <div className="px-5 py-2 border-t border-borderSubtle flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>button]:shrink-0" role="group" aria-label="What kind of story" data-news-kinds={category}>
           {kindPills}
           <span className="ml-auto pl-3 shrink-0 max-sm:hidden">
@@ -1133,58 +1181,6 @@ const News = () => {
         <p className="px-5 pb-4 pt-3 border-t border-borderSubtle/40 text-t12 leading-relaxed text-textSecondary" data-news-sentence>
           <RichRead text={note} />
         </p>
-        <div ref={mapRef} className="border-t border-borderSubtle" data-news-map-box>
-          <button type="button" onClick={() => setMapOpen(v => !v)} aria-expanded={mapOpen} className="w-full px-5 h-9 flex items-center gap-2 font-mono text-t10 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-news-map-door={mapOpen ? 'open' : 'shut'}>
-            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${mapOpen ? 'rotate-180' : ''}`} />
-            The map · {pins.length} {pins.length === 1 ? 'city' : 'cities'} the stories come from
-            <HeatLegend className="ml-auto normal-case tracking-normal max-sm:hidden" />
-          </button>
-          {mapOpen && (
-            <div className="flex flex-col border-t border-borderSubtle/60">
-              <NewsTape tape={tape} selectedId={selectedId} onPick={pick} />
-              <div className="px-2 py-2 flex flex-col items-center">
-              <div className="relative w-full" data-news-stage>
-                {mapNear ? <NewsMap className="absolute inset-0" pins={pins} selectedCity={selected?.origin.city ?? null} hoverCity={hoverCity?.city ?? null} onPick={p => { const e = rows.find(r => r.id === p.topId) ?? events.find(r => r.id === p.topId); if (e) pick(e); else setSelectedId(p.topId); }} onHover={setHoverCity} heat={heat} reach={reach} at={at} flyTo={flyTo} /> : null}
-              </div>
-              </div>
-            <div className="px-4 min-h-[26px] py-1 border-t border-ink/[0.06] flex items-center gap-3 font-mono text-t10 text-textSecondary whitespace-normal" data-news-map-read>
-              {hoverCity ? (
-                <>
-                  <span className="font-bold text-textPrimary">{hoverCity.city}</span>
-                  <span>
-                    {hoverCity.n} {hoverCity.n === 1 ? 'story' : 'stories'}
-                  </span>
-                  <span className="text-textMuted break-words leading-relaxed">· {hoverCity.topHeadline}</span>
-                  <span className="ml-auto text-textMuted">click for its loudest story</span>
-                </>
-              ) : (
-                <>
-                  <span className="text-textMuted break-words whitespace-normal leading-relaxed">
-                    {pins.length} {pins.length === 1 ? 'city' : 'cities'} · the land warms where the news lands · the arcs are where the open story reaches · scroll to zoom, pull to pan
-                  </span>
-                  <span className="ml-auto shrink-0" data-news-session-read>
-                    {sessionsOpen.length ? (
-                      <>
-                        <span className="text-silver">{sessionsOpen.map(s => s.label).join(', ')}</span> <span className="text-textMuted">open</span>
-                      </>
-                    ) : (
-                      <span className="text-textMuted">
-                        no cash session open
-                        {nextUp && (
-                          <>
-                            {' · '}
-                            <span className="text-textSecondary">{nextUp.session.label}</span> opens in {untilWords(nextUp.at.getTime() - at.getTime())}
-                          </>
-                        )}
-                      </span>
-                    )}
-                  </span>
-                </>
-              )}
-            </div>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* All news: every headline as a feed with tabs, and the names you follow */}

@@ -27,7 +27,13 @@ const decodeEntities = (s: string): string =>
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&');
 
-const sentimentOf = (s: string): number => (s === 'positive' || s === 'bullish' ? 0.55 : s === 'negative' || s === 'bearish' ? -0.55 : 0);
+const sentimentOf = (s: string | null | undefined): number | null => {
+  const v = (s ?? '').trim().toLowerCase();
+  if (v === 'positive' || v === 'bullish') return 0.55;
+  if (v === 'negative' || v === 'bearish') return -0.55;
+  if (v === 'neutral') return 0;
+  return null;
+};
 
 /* The beat comes from the headline's own words: guidance needs a company changing an outlook, macro needs the economy,
    a central bank, rates, prices or the whole market; a company story of no named beat is Product. */
@@ -302,7 +308,6 @@ export function newsFromWhales(rows: UwNews[], priorClose: PriorClose = noPrior)
       magnitude: major ? 0.8 : 0.45,
       major,
       prediction: {
-        probUpPct: 50,
         expMove1dPct: move,
         expMove5dPct: move,
         confidencePct: moved != null ? 58 : 0,
@@ -357,12 +362,13 @@ export function econFromWhales(rows: UwEcon[]): EconEvent[] {
       impact: impactOf(r.event),
       dayLabel: dt.toLocaleDateString('en-US', { weekday: 'short', month: '2-digit', day: '2-digit', timeZone: 'America/New_York' }).replace(',', ''),
       timeLabel: nyClock(dt, { zone: true }),
+      atMs: at,
       inMinutes,
       forecast: r.forecast ?? undefined,
       previous: r.prev ?? undefined,
     });
   }
-  return out.sort((a, b) => a.inMinutes - b.inMinutes);
+  return out.sort((a, b) => a.atMs - b.atMs);
 }
 
 const chamberOf = (raw?: string): Member['chamber'] => (/senate/i.test(raw || '') ? 'Senate' : 'House');

@@ -166,10 +166,12 @@ const MACRO_ORIGINS: { re: RegExp; lat: number; lng: number; city: string }[] = 
   { re: /\b(?:hormuz|saudi(?: arabia)?|riyadh|aramco|persian gulf|gulf states)\b/i, lat: 24.71, lng: 46.68, city: 'Riyadh' },
   { re: /\b(?:eia|cushing|permian|wti|shale|gulf of mexico)\b/i, lat: 29.76, lng: -95.37, city: 'Houston' },
   { re: /\b(?:taiwan(?:ese)?|taipei|tsmc|taiex)\b/i, lat: 25.03, lng: 121.56, city: 'Taipei' },
+  { re: /\b(?:north korea(?:n)?|dprk|pyongyang|kim jong(?:-un|-il)?)\b/i, lat: 39.03, lng: 125.75, city: 'Pyongyang' },
   { re: /\b(?:south korea(?:n)?|korea(?:n)?|seoul|kospi|bok)\b/i, lat: 37.57, lng: 126.98, city: 'Seoul' },
   { re: /\b(?:india(?:n)?|mumbai|new delhi|rbi|sensex|nifty|rupee)\b/i, lat: 19.08, lng: 72.88, city: 'Mumbai' },
   { re: /\b(?:boj|japan(?:ese)?|tokyo|yen|nikkei|jgbs?)\b/i, lat: 35.68, lng: 139.69, city: 'Tokyo' },
-  { re: /\b(?:china|chinese|beijing|pboc|yuan|renminbi|caixin|hang seng|hong kong)\b/i, lat: 39.9, lng: 116.4, city: 'Beijing' },
+  { re: /\b(?:hong kong|hang seng)\b/i, lat: 22.28, lng: 114.16, city: 'Hong Kong' },
+  { re: /\b(?:china|chinese|beijing|pboc|yuan|renminbi|caixin)\b/i, lat: 39.9, lng: 116.4, city: 'Beijing' },
   { re: /\b(?:uk|u\.k\.|britain|british|england|boe|bank of england|gilts?|ftse|sterling|london)\b/i, lat: 51.51, lng: -0.13, city: 'London' },
   { re: /\b(?:ital(?:y|ian)|btps?|rome)\b/i, lat: 41.9, lng: 12.5, city: 'Rome' },
   { re: /\b(?:france|french|paris|cac 40|oats)\b/i, lat: 48.86, lng: 2.35, city: 'Paris' },
@@ -188,6 +190,10 @@ const MACRO_ORIGINS: { re: RegExp; lat: number; lng: number; city: string }[] = 
 const severityOf = (n: NewsItem): number =>
   Math.max(1, Math.min(10, Math.round(Math.abs(n.prediction.expMove1dPct) * 1.6 + n.magnitude * 5)));
 
+/** The map's grade from the vendor's own read. Neutral stays WATCH; a missing read is not graded for or against. */
+const gradeFromSentiment = (s: number | null): NewsGrade =>
+  s == null || !Number.isFinite(s) || s === 0 ? 'WATCH' : s > 0 ? 'ALLY' : 'THREAT';
+
 export function geoFromItems(items: NewsItem[]): GeoNewsEvent[] {
   /* one story once: a story that slides across a page boundary comes back twice */
   const seen = new Set<string>();
@@ -201,8 +207,8 @@ export function geoFromItems(items: NewsItem[]): GeoNewsEvent[] {
     return {
       id: item.id,
       item,
-      /* the vendor marks every headline neutral, so no story is graded for or against its name */
-      grade: 'WATCH' as NewsGrade,
+      /* positive for the name, negative against it, neutral or no read stays on watch */
+      grade: gradeFromSentiment(item.sentiment),
       severity,
       origin: o
         ? {
@@ -253,7 +259,9 @@ export interface EconEvent {
   impact: 'high' | 'medium' | 'low';
   dayLabel: string;
   timeLabel: string;
-  /** Minutes from now — negative means it already printed today. */
+  /** Epoch ms of the release. "in Nm" and landed are computed from this at render, not frozen at the fetch. */
+  atMs: number;
+  /** Minutes from when the calendar was read — negative means it had already printed then. */
   inMinutes: number;
   forecast?: string;
   previous?: string;
@@ -273,6 +281,7 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
   const positive = events.filter(e => e.grade === 'ALLY').length;
   const negative = events.filter(e => e.grade === 'THREAT').length;
   const marked = positive + negative;
+  const anyRead = events.some(e => e.item.sentiment != null && Number.isFinite(e.item.sentiment));
   const lean = marked === 0 ? 'unmarked' : positive > negative ? 'positive' : negative > positive ? 'negative' : 'split';
   const top = [...events].sort((a, b) => b.severity - a.severity)[0];
   const where = top?.item.ticker ?? 'index-level';
@@ -284,7 +293,7 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
       ink: lean === 'positive' ? 'bull' : lean === 'negative' ? 'bear' : 'neutral',
       read:
         marked === 0
-          ? `${events.filter(e => e.item.major).length} of ${events.length} headlines are major — flagged so by Unusual Whales, about a named listed company or the economy, and not house-keeping (call dates, routine dividends); the feed sends no positive or negative read. The hardest-landing one is ${where}${from}.`
+          ? `${events.filter(e => e.item.major).length} of ${events.length} headlines are major — flagged so by Unusual Whales, about a named listed company or the economy, and not house-keeping (call dates, routine dividends).${anyRead ? '' : ' There is no read.'} The hardest-landing one is ${where}${from}.`
           : `${positive} positive against ${negative} negative across ${events.length} headlines — the wire is ${
               lean === 'split' ? 'split down the middle' : `net ${lean}`
             }. The heaviest print is ${where}${from}.`,

@@ -281,7 +281,7 @@ export const PairTile = ({ ctx, state }: TileProps) => {
   const flipOf = (s: CompareSide) => (s.flip != null && s.flipDistPct != null ? { strike: s.flip, distPct: s.flipDistPct } : null);
   const rows: { read: string; a: ReactNode; b: ReactNode }[] = [
     { read: 'Today', a: <span className={dirInk(cmp.a.changePct)}>{signedPct(cmp.a.changePct)}</span>, b: <span className={dirInk(cmp.b.changePct)}>{signedPct(cmp.b.changePct)}</span> },
-    { read: cmp.inSession ? 'Move left today' : 'A day’s move', a: `±${cmp.a.sigmaLeftPct.toFixed(2)}%`, b: `±${cmp.b.sigmaLeftPct.toFixed(2)}%` },
+    { read: cmp.inSession ? 'Move left today' : 'A day’s move', a: cmp.a.sigmaLeftPct == null ? '…' : `±${cmp.a.sigmaLeftPct.toFixed(2)}%`, b: cmp.b.sigmaLeftPct == null ? '…' : `±${cmp.b.sigmaLeftPct.toFixed(2)}%` },
     { read: 'Call wall', a: levelWords(cmp.a.callWall), b: levelWords(cmp.b.callWall) },
     { read: 'Put wall', a: levelWords(cmp.a.putWall), b: levelWords(cmp.b.putWall) },
     { read: 'Flip', a: levelWords(flipOf(cmp.a)), b: levelWords(flipOf(cmp.b)) },

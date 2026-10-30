@@ -55,10 +55,10 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Info, X } from 'lucide-react';
-import { bookCandles, dayBars, snapshotOf, useBookRev } from '../../data/uwBook';
-import { nodeScore } from '../../data/nodeScore';
-import { levelsFor } from '../../data/levelsFor';
-import { yesterdayLevel } from '../../data/levelMemory';
+import { snapshotOf, useBookRev } from '../../data/uwBook';
+import { useDeskSession } from '../../data/deskSession';
+import { thetaChartBars } from '../../data/thetaCandles';
+import { useTapeRev } from '../../data/thetaTape';
 import Term from '../ui/Term';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
@@ -73,11 +73,11 @@ import type { PriceProjection } from './StrikeChart';
 import type { GexLevel, MarketSnapshot } from '../../types/market';
 import ExposureField from './ExposureField';
 import FilterTabs from '../ui/FilterTabs';
+import { CardRow, PointerFollowCard } from '../ui/PointerCard';
 import { attachScrollMore } from '../ui/scrollMore';
 import type { KeyLevels } from '../../types/gex';
 import { FONT_SANS } from '../../theme/fonts';
 import { readToken, useResolvedTheme } from '../../theme/theme';
-import { shownGreek } from './retailSign';
 
 export type ProfileLane = 'both' | 'size' | 'flow';
 export const LANE_OPTIONS: DropdownOption<ProfileLane>[] = [
@@ -157,8 +157,6 @@ const INK_3 = '#7d7d7d';
 
 /** The band the head owns — no row is drawn in it */
 const HEAD_TOP = 30;
-/** How far the ladder grows past the book's strikes, a side — rows carrying nothing, to the plot's edge */
-const GROWN_MAX = 400;
 /** The panel's three views as the house's pill rail — one control, one in hand (Noah, 2026-10-15: "the ladder net and
     gex should look like 1 button that is active on one of them at a time not a dropdown like the rest") */
 const VIEW_TABS = [
@@ -166,8 +164,6 @@ const VIEW_TABS = [
   { value: 'net', label: 'Matrix' },
   { value: 'gex', label: 'Calendar' },
   { value: 'surface', label: 'Surface' },
-  { value: 'history', label: 'History' },
-  { value: 'greeks', label: 'Greeks' },
 ] as const;
 type RailView = (typeof VIEW_TABS)[number]['value'];
 /** The head on TWO ROWS below the full tier (2026-09-16: the view tabs and the host's Expiry
@@ -426,6 +422,9 @@ interface Hover {
   strike: number;
   x: number;
   y: number;
+  /** Pointer position in the page, for the same card the other tabs use */
+  cx: number;
+  cy: number;
 }
 
 const ProfilePanel = ({
@@ -437,7 +436,6 @@ const ProfilePanel = ({
      (heatmap.ts) and the canvas's inks the light set's tokens */
   const pageTheme = useResolvedTheme();
   const paper = pageTheme === 'light';
-  const thermal = (value: number, max: number) => heatOn(value, max, mode, paper);
   const rootRef = useRef<HTMLDivElement | null>(null);
   /* the canvas's inks, re-read off the root when the page's theme changes (the root is the island that holds them) */
   const inksRef = useRef<PanelInks>(DARK_INKS);
@@ -486,7 +484,7 @@ const ProfilePanel = ({
   }, [view]);
   const bookRev = useBookRev();
   const gexSnap = useMemo<MarketSnapshot | null>(() => {
-    if ((!onField && view !== 'greeks') || !ticker) return null;
+    if (!onField || !ticker) return null;
     return snapshotOf(ticker);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, ticker, gexTick, bookRev]);
@@ -590,10 +588,16 @@ const ProfilePanel = ({
     every tick, so the session's newest minute is always folded in.
   */
   const [showVol, setShowVol] = useState(false);
+  const deskSession = useDeskSession();
+  const tapeRev = useTapeRev();
   const vp = useMemo<VolumeProfile | null>(
-    () => (showVol && ticker ? sessionVolumeProfile(bookCandles(ticker) ?? dayBars(ticker) ?? []) : null),
+    () => {
+      if (!showVol || !ticker) return null;
+      const tape = thetaChartBars(ticker, 1, deskSession);
+      return tape.length ? sessionVolumeProfile(tape, true) : null;
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showVol, ticker, rows, bookRev]
+    [showVol, ticker, rows, bookRev, deskSession, tapeRev]
   );
   const vpRef = useRef<VolumeProfile | null>(null);
   vpRef.current = vp;
@@ -606,6 +610,11 @@ const ProfilePanel = ({
      lands mid-glide simply bends the glide. */
   const animRef = useRef(new Map<string, { len: number; c: [number, number, number]; h: number }>());
   const lastTsRef = useRef(0);
+  const lastPitchRef = useRef(0);
+  /* The ladder's own window. It opens centered on the live price, with about 18px a strike.
+     A wheel or a drag takes it over; until then it stays on the price. The chart's zoom does not move it. */
+  const ladderView = useRef({ center: 0, rows: 0, touched: false, ticker: '' });
+  const ladderGeom = useRef({ top: 0, height: 1, step: 1 });
   const settledRef = useRef(true);
   /* Bumped when the data changes so the frame loop redraws even if nothing moved */
   const dataRev = useRef(0);
@@ -660,7 +669,7 @@ const ProfilePanel = ({
       try {
       const dt = lastTsRef.current ? Math.min(64, ts - lastTsRef.current) : 16;
       lastTsRef.current = ts;
-      const k = 1 - Math.exp(-dt / 110);
+      let k = 1 - Math.exp(-dt / 110);
       const root = rootRef.current;
       const canvas = canvasRef.current;
       const p = projection.current;
@@ -685,25 +694,46 @@ const ProfilePanel = ({
       }
       /* The pin is the Map's; a Terrain pane's levels carry none. NaN is never near anything. */
       const pin = levels.pin ?? Number.NaN;
-      /* Is the scale live? Two prices a strike apart must land on different rows */
-      const anchor = rows[Math.floor(rows.length / 2)]?.strike ?? levels.spot;
-      const y0 = p.yFor(anchor);
-      const y1 = p.yFor(anchor + step);
-      if (y0 == null || y1 == null || !Number.isFinite(y0) || !Number.isFinite(y1) || Math.abs(y1 - y0) < 0.5) return;
-      const pitch = Math.abs(y1 - y0);
-      const spotY = p.yFor(levels.spot) ?? -1;
-      const hv = hoverRef.current;
-      const key = `${W}|${Htot}|${H}|${y0.toFixed(1)}|${pitch.toFixed(2)}|${spotY.toFixed(1)}|${hv?.strike ?? ''}|${dataRev.current}`;
-      if (key === lastKey && settledRef.current) { keep = false; return; }
-      lastKey = key;
-      /* THE TIER this frame, off the panel's own width: the column's width, and whether the key
-         is drawn under the head (the ladder view, above thin) — the rows start under both */
+      const tapeLast = typeof p.last === 'function' ? p.last() : null;
+      const spotPx = tapeLast != null && Number.isFinite(tapeLast) && tapeLast > 0 ? tapeLast : levels.spot;
       const tierNow = profileTier(W);
       const colW = tierNow === 'thin' ? COL_W : COL_W_WIDE;
-      const keyOn = showSize && tierNow !== 'thin';
+      const keyOn = false;
       const headTop = tierNow === 'full' ? HEAD_TOP : HEAD_TOP_2;
       const HEAD_BAND = headTop + (keyOn ? KEY_BAND : 0) + COL_HEAD;
       headBandRef.current = HEAD_BAND;
+      /* THE LADDER'S OWN SCALE. Not the chart's. Opens on the live price with a row tall enough
+         to read, and stays there until the reader zooms or drags. */
+      const plotTop = HEAD_BAND;
+      const plotH = Math.max(40, H - FOOT_BAND - plotTop);
+      const fitRows = Math.max(10, Math.min(80, Math.round(plotH / 18)));
+      const lv = ladderView.current;
+      const sym = ticker ?? '';
+      if (!lv.rows || lv.ticker !== sym) {
+        lv.center = spotPx;
+        lv.rows = fitRows;
+        lv.touched = false;
+        lv.ticker = sym;
+      } else if (!lv.touched) {
+        lv.center = spotPx;
+        lv.rows = fitRows;
+      }
+      const span = Math.max(step, lv.rows * step);
+      ladderGeom.current = { top: plotTop, height: plotH, step };
+      const yFor = (price: number): number | null => {
+        if (!Number.isFinite(price)) return null;
+        return plotTop + (0.5 - (price - lv.center) / span) * plotH;
+      };
+      const y0 = yFor(spotPx) ?? plotTop;
+      const y1 = yFor(spotPx + step) ?? y0 + 18;
+      const pitch = Math.max(1, Math.abs(y1 - y0));
+      if (lastPitchRef.current > 0 && Math.abs(pitch - lastPitchRef.current) / lastPitchRef.current > 0.04) k = 1;
+      lastPitchRef.current = pitch;
+      const spotY = yFor(spotPx) ?? -1;
+      const hv = hoverRef.current;
+      const key = `${W}|${Htot}|${H}|${lv.center.toFixed(2)}|${lv.rows.toFixed(2)}|${pitch.toFixed(2)}|${spotY.toFixed(1)}|${hv?.strike ?? ''}|${dataRev.current}`;
+      if (key === lastKey && settledRef.current) { keep = false; return; }
+      lastKey = key;
       /* Ease one capsule toward its target length and colour; says whether it got there */
       const anim = animRef.current;
       const touched = new Set<string>();
@@ -802,43 +832,12 @@ const ProfilePanel = ({
       const barH = Math.max(4, Math.min(14, Math.round(pitch * 0.62)));
       const half = barH / 2;
       const placed: Placed[] = [];
-      let above = 0;
-      let below = 0;
       for (const r of rows) {
-        const y = p.yFor(r.strike);
+        const y = yFor(r.strike);
         if (y == null || !Number.isFinite(y)) continue;
-        if (y - half < HEAD_BAND) {
-          above++;
-          continue;
-        }
-        if (y + half > H - FOOT_BAND) {
-          below++;
-          continue;
-        }
+        if (y - half < HEAD_BAND) continue;
+        if (y + half > H - FOOT_BAND) continue;
         placed.push({ strike: r.strike, y, value: r.value, rung: rungBy.get(r.strike) });
-      }
-      /* THE LADDER GROWS WITH THE PANE (Noah, 2026-10-17: "we just continue to grow or stretch as the strikes do so the
-         furthest out ones practically show nothing but we still see it on the ladder"): the chart's zoom is never
-         limited — past the book's first or last strike the ladder keeps stepping, a row for every strike to the plot's
-         edge, carrying nothing. The rows stay in the chart's order (highest first); the label stride, the hover and the
-         keep work on them as on any row. Capped at GROWN_MAX a side: past that the strikes are a hairline apart anyway. */
-      if (rows.length > 0 && step > 0 && Number.isFinite(step)) {
-        const topStrike = rows[0].strike;
-        const bottomStrike = rows[rows.length - 1].strike;
-        const up: Placed[] = [];
-        for (let k = topStrike + step, n = 0; n < GROWN_MAX; k += step, n++) {
-          const y = p.yFor(k);
-          if (y == null || !Number.isFinite(y) || y - half < HEAD_BAND) break;
-          up.push({ strike: k, y, value: 0, rung: undefined });
-        }
-        const down: Placed[] = [];
-        for (let k = bottomStrike - step, n = 0; n < GROWN_MAX; k -= step, n++) {
-          const y = p.yFor(k);
-          if (y == null || !Number.isFinite(y) || y + half > H - FOOT_BAND) break;
-          down.push({ strike: k, y, value: 0, rung: undefined });
-        }
-        if (up.length) placed.unshift(...up.reverse());
-        if (down.length) placed.push(...down);
       }
       placedRef.current = placed;
       const stride = Math.max(1, Math.ceil(LABEL_PITCH / pitch));
@@ -918,27 +917,45 @@ const ProfilePanel = ({
         kx += 10;
         word('supreme', ink.supreme);
       }
-      /* THE COLUMN HEADS over the rows — the partner's header row in the house's letters: the
-         lane's name centred over it (◂ PUTS · CALLS ▸, or NET on the net view), STRIKE over the
-         column with Δ SPOT at its right when the column is wide, the flow lane's name over it */
+      /* THE COLUMN HEADS over the rows: each lane's name centered over that lane, and STRIKE
+         (with Δ SPOT beside it when the column is wide) centered over the strike column */
       {
         const hy = HEAD_BAND - COL_HEAD / 2 + 0.5;
-        ctx.font = `600 7.5px ${FIG}`;
+        ctx.font = `600 11px ${FIG}`;
         ctx.fillStyle = ink.ink3;
         ctx.textBaseline = 'middle';
         if (showSize) {
           ctx.textAlign = 'center';
           ctx.fillText('◂ PUTS · CALLS ▸', sizeL + (sizeR - sizeL) / 2, hy);
         }
-        ctx.textAlign = 'left';
-        ctx.fillText('STRIKE', colL + 6, hy);
+        /* The strike head sits on the same center as the numbers under it. Wide: STRIKE and Δ SPOT as one
+           pair in the middle of the column when they fit; thin: the word alone, centered. */
+        ctx.font = `600 11px ${FIG}`;
+        ctx.fillStyle = ink.ink3;
         if (colW === COL_W_WIDE && view === 'ladder') {
-          ctx.textAlign = 'right';
-          ctx.fillText('Δ SPOT', colR - 6, hy);
+          const strikeHead = 'STRIKE';
+          const deltaHead = 'Δ SPOT';
+          const sw = ctx.measureText(strikeHead).width;
+          const dw = ctx.measureText(deltaHead).width;
+          const gap = 10;
+          if (sw + gap + dw <= colW - 8) {
+            const start = colL + (colW - (sw + gap + dw)) / 2;
+            ctx.textAlign = 'left';
+            ctx.fillText(strikeHead, start, hy);
+            ctx.fillText(deltaHead, start + sw + gap, hy);
+          } else {
+            ctx.textAlign = 'left';
+            ctx.fillText(strikeHead, colL + 6, hy);
+            ctx.textAlign = 'right';
+            ctx.fillText(deltaHead, colR - 6, hy);
+          }
+        } else {
+          ctx.textAlign = 'center';
+          ctx.fillText('STRIKE', colL + colW / 2, hy);
         }
         if (showFlow) {
-          ctx.textAlign = 'left';
-          ctx.fillText('A MOVE FORCES', flowL + 6, hy);
+          ctx.textAlign = 'center';
+          ctx.fillText('A MOVE FORCES', flowL + (flowR - flowL) / 2, hy);
         }
         ctx.strokeStyle = ink.headRule;
         ctx.lineWidth = 1;
@@ -981,8 +998,8 @@ const ProfilePanel = ({
         if (maxV > 0) {
           const vSpan = Math.max(1, sizeR - sizeL - 10);
           for (const b of prof.bins) {
-            const y = p.yFor(b.price);
-            const y2 = p.yFor(b.price + prof.binSize);
+            const y = yFor(b.price);
+            const y2 = yFor(b.price + prof.binSize);
             if (y == null || y2 == null || !Number.isFinite(y) || !Number.isFinite(y2)) continue;
             const top = Math.max(HEAD_BAND, Math.min(y, y2));
             const bot = Math.min(H - FOOT_BAND, Math.max(y, y2));
@@ -994,7 +1011,7 @@ const ProfilePanel = ({
           }
           const rule = (price: number | null, alpha: number, dash: number[]) => {
             if (price === null) return;
-            const y = p.yFor(price);
+            const y = yFor(price);
             if (y == null || y < HEAD_BAND || y > H - FOOT_BAND) return;
             ctx.save();
             ctx.strokeStyle = ink.vol(alpha);
@@ -1010,7 +1027,7 @@ const ProfilePanel = ({
           rule(prof.val, 0.28, [3, 3]);
           rule(prof.vpoc, 0.4, []);
           if (prof.vpoc !== null) {
-            const y = p.yFor(prof.vpoc);
+            const y = yFor(prof.vpoc);
             if (y != null && y > HEAD_BAND + 8 && y < H - FOOT_BAND) {
               ctx.font = `7px ${FIG}`;
               ctx.fillStyle = ink.volText;
@@ -1040,7 +1057,7 @@ const ProfilePanel = ({
       ctx.stroke();
 
       /* THE FLIP — a dashed rule across both lanes */
-      const flipY = p.yFor(levels.flip);
+      const flipY = yFor(levels.flip);
       if (flipY != null && flipY > HEAD_BAND && flipY < H - FOOT_BAND) {
         const yy = Math.round(flipY) + 0.5;
         ctx.save();
@@ -1352,36 +1369,54 @@ const ProfilePanel = ({
         nameAt(hv?.strike);
       }
 
-      /* THE STRIKE COLUMN — the strike centred in the thin column; in the wide one (the full and
-         mid tiers) the strike at the left and its Δ FROM SPOT at the right, the partner's column,
-         in the direction's ink */
+      /* THE STRIKE COLUMN — the strike and its Δ from spot as one pair, centered in the column.
+         A pair that will not fit falls back to strike at the left and Δ at the right. */
       ctx.textBaseline = 'middle';
       const cx = colL + colW / 2;
       const wide = colW === COL_W_WIDE;
+      let lastLabelY = -1e9;
       placed.forEach((r, i) => {
+        const hot = isFocus(r.strike) || isHover(r.strike);
         if (!labelled(i, r.strike)) return;
+        if (!hot && Math.abs(r.y - lastLabelY) < LABEL_PITCH) return;
         if (spotOn && Math.abs(r.y - spotY) < 9) return; // the spot chip owns that height
+        lastLabelY = r.y;
         const k = r.strike;
         const focus = isFocus(k);
-        /* the strike bold in the wide column (the partner's), plain in the thin one */
+        const strikeInk = focus ? ink.silver : near(k, levels.callWall) ? ink.callWall : near(k, levels.putWall) ? ink.putWall : near(k, levels.supreme) ? ink.supreme : near(k, pin) || isHover(k) ? ink.ink : wide ? ink.ink : ink.ink2;
+        const label = fmtStrike(k);
         ctx.font = `${focus || wide ? '700 ' : ''}10px ${FIG}`;
-        ctx.fillStyle = focus ? ink.silver : near(k, levels.callWall) ? ink.callWall : near(k, levels.putWall) ? ink.putWall : near(k, levels.supreme) ? ink.supreme : near(k, pin) || isHover(k) ? ink.ink : wide ? ink.ink : ink.ink2;
-        ctx.textAlign = wide ? 'left' : 'center';
-        ctx.fillText(fmtStrike(k), wide ? colL + 6 : cx, r.y);
-        if (wide) {
-          const d = ((k - levels.spot) / levels.spot) * 100;
-          ctx.font = `9px ${FIG}`;
+        if (!wide) {
+          ctx.fillStyle = strikeInk;
+          ctx.textAlign = 'center';
+          ctx.fillText(label, cx, r.y);
+          return;
+        }
+        const d = ((k - spotPx) / spotPx) * 100;
+        const dText = `${d > 0 ? '+' : ''}${d.toFixed(1)}%`;
+        const sw = ctx.measureText(label).width;
+        ctx.font = `11px ${FIG}`;
+        const dw = ctx.measureText(dText).width;
+        const gap = 8;
+        ctx.textAlign = 'left';
+        if (sw + gap + dw <= colW - 8) {
+          const start = colL + (colW - (sw + gap + dw)) / 2;
+          ctx.font = `700 10px ${FIG}`;
+          ctx.fillStyle = strikeInk;
+          ctx.fillText(label, start, r.y);
+          ctx.font = `11px ${FIG}`;
+          ctx.fillStyle = d > 0 ? 'rgb(var(--bull))' : d < 0 ? 'rgb(var(--bear))' : ink.ink3;
+          ctx.fillText(dText, start + sw + gap, r.y);
+        } else {
+          ctx.font = `700 10px ${FIG}`;
+          ctx.fillStyle = strikeInk;
+          ctx.fillText(label, colL + 6, r.y);
+          ctx.font = `11px ${FIG}`;
           ctx.fillStyle = d > 0 ? 'rgb(var(--bull))' : d < 0 ? 'rgb(var(--bear))' : ink.ink3;
           ctx.textAlign = 'right';
-          ctx.fillText(`${d > 0 ? '+' : ''}${d.toFixed(2)}%`, colR - 6, r.y);
+          ctx.fillText(dText, colR - 6, r.y);
         }
       });
-      /* Culled rows, counted */
-      ctx.font = `9px ${FIG}`;
-      ctx.fillStyle = ink.ink3;
-      ctx.textAlign = 'center';
-      if (above) ctx.fillText(`▲ ${above}`, cx, HEAD_BAND + 6);
-      if (below) ctx.fillText(`▼ ${below}`, cx, H - FOOT_BAND / 2 + 1);
 
       /* THE LEVEL NAMES — the cards' chips at the flow lane's right edge when
          that lane is drawn. The size lane is the ladder, so it marks a level the
@@ -1429,7 +1464,7 @@ const ProfilePanel = ({
         ctx.fillStyle = ink.spotChipText;
         ctx.font = `700 10px ${FIG}`;
         ctx.textAlign = 'center';
-        ctx.fillText(levels.spot.toFixed(2), cx, spotY + 0.5);
+        ctx.fillText(spotPx.toFixed(2), cx, spotY + 0.5);
       }
 
       /* THE MIRROR (Noah, 2026-09-06: "i love how this section zooms out… i
@@ -1447,7 +1482,7 @@ const ProfilePanel = ({
           continue;
         }
         const strike = Number(id.slice(2));
-        const yRaw = p.yFor(strike);
+        const yRaw = yFor(strike);
         if (yRaw == null || !Number.isFinite(yRaw)) {
           anim.delete(id);
           continue;
@@ -1477,8 +1512,30 @@ const ProfilePanel = ({
     const arm = () => { if (!raf) raf = requestAnimationFrame(draw); };
     railArmRef.current = arm;
     raf = requestAnimationFrame(draw);
-    return () => { cancelAnimationFrame(raf); railArmRef.current = () => {}; };
-  }, [rows, maxAbs, legs, openRatio, mode, step, levels, flow, lane, focusPrice, projection, showSize, showFlow, vp, liveSplit, view, paper]);
+    const host = rootRef.current;
+    const onWheel = (e: WheelEvent) => {
+      if (view !== 'ladder') return;
+      const g = ladderGeom.current;
+      const lv = ladderView.current;
+      if (!lv.rows || !(g.height > 0) || !(g.step > 0)) return;
+      e.preventDefault();
+      const rect = host?.getBoundingClientRect();
+      const y = rect ? e.clientY - rect.top : g.top + g.height / 2;
+      const t = (y - g.top) / g.height;
+      const at = lv.center + (0.5 - t) * lv.rows * g.step;
+      const next = Math.min(g.height / 4, Math.max(8, lv.rows * (e.deltaY > 0 ? 1.15 : 1 / 1.15)));
+      lv.rows = next;
+      lv.center = at - (0.5 - t) * next * g.step;
+      lv.touched = true;
+      arm();
+    };
+    host?.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      cancelAnimationFrame(raf);
+      host?.removeEventListener('wheel', onWheel);
+      railArmRef.current = () => {};
+    };
+  }, [rows, maxAbs, legs, openRatio, mode, step, levels, flow, lane, focusPrice, projection, showSize, showFlow, vp, liveSplit, view, paper, ticker]);
 
   /* THE POINTER — the nearest strike by height, anywhere in the lanes */
   const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -1488,6 +1545,21 @@ const ProfilePanel = ({
     const r = root.getBoundingClientRect();
     const y = e.clientY - r.top;
     const x = e.clientX - r.left;
+    if (dragYRef.current != null && (e.buttons & 1)) {
+      const dy = e.clientY - dragYRef.current;
+      if (Math.abs(dy) > 2) {
+        draggedRef.current = true;
+        dragYRef.current = e.clientY;
+        const g = ladderGeom.current;
+        const lv = ladderView.current;
+        if (lv.rows && g.height > 0) {
+          lv.center += (dy / g.height) * lv.rows * g.step;
+          lv.touched = true;
+        }
+        railArmRef.current();
+      }
+      return;
+    }
     if (y < headBandRef.current) {
       if (hoverRef.current) setHover(null);
       return;
@@ -1502,11 +1574,30 @@ const ProfilePanel = ({
       }
     }
     if (!best) return;
-    if (!hoverRef.current || !near(hoverRef.current.strike, best.strike) || Math.abs(hoverRef.current.x - x) > 2) setHover({ strike: best.strike, x, y: best.y });
+    if (!hoverRef.current || !near(hoverRef.current.strike, best.strike) || Math.abs(hoverRef.current.x - x) > 2) setHover({ strike: best.strike, x, y: best.y, cx: e.clientX, cy: e.clientY });
     railArmRef.current();
   };
-  const onLeave = () => setHover(null);
+  const onLeave = () => {
+    setHover(null);
+    dragYRef.current = null;
+  };
+  const draggedRef = useRef(false);
+  const dragYRef = useRef<number | null>(null);
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (view !== 'ladder' || onField) return;
+    const t = e.target as HTMLElement;
+    if (t.closest('button, [data-profile-views], [data-profile-tools], [data-split]')) return;
+    dragYRef.current = e.clientY;
+    draggedRef.current = false;
+  };
+  const onPointerUp = () => {
+    dragYRef.current = null;
+  };
   const onClick = () => {
+    if (draggedRef.current) {
+      draggedRef.current = false;
+      return;
+    }
     if (onField) return;
     if (hoverRef.current && onSelect) onSelect(hoverRef.current.strike);
   };
@@ -1531,178 +1622,35 @@ const ProfilePanel = ({
             ? { words: 'Pin', c: 'rgb(var(--text-secondary))' }
             : null
     : null;
-  const hoverMax = placedRef.current.reduce((m, r) => Math.max(m, Math.abs(r.value)), 0) || maxAbs || 1;
-  /* the partner's footer figures: the picked strike's legs and its share of the net on screen */
-  const readLegs = readRow ? legs?.get(readRow.strike) ?? null : null;
-  const readShare = readRow ? (() => { const total = placedRef.current.reduce((s, r) => s + Math.abs(r.value), 0); return total > 0 ? (100 * Math.abs(readRow.value)) / total : null; })() : null;
-  const hoverFlowMax = placedRef.current.reduce((m, r) => Math.max(m, Math.abs(r.rung?.flow ?? 0)), 0) || flow?.maxAbs || 1;
-  /* WHAT THE LINE HOLDS follows the panel's width — it never wraps and it never
-     clips a figure mid-number. Wide, the whole read; under ~430px the words go
-     and the figures stay; under ~240px (a docked Terrain pane) the strike and
-     the size, which is the one number the old rail never printed. */
-  const tight = panelW > 0 && panelW < 430;
-  const tiny = panelW > 0 && panelW < 240;
-  /* THE CARD BELOW THE TOP TIER (Noah, 2026-09-16: the partner's ladder "carries a hover card
-     once the numbers can't fit the screen anymore"): the figures the rows cannot print, over
-     the CHART beside the pointer's row — never over the lanes (the 2026-09-06 ruling that put
-     the read line under them stands): the strike and its distance from spot, the put and call
-     legs with their dollars, the net and its word, the open interest where the book carries it,
-     and the change since the open. */
-  const cardOn = !!hover && showSize && !figuresRef.current;
+  const tapeLast = projection.current?.last() ?? null;
+  const liveSpot = tapeLast != null && tapeLast > 0 ? tapeLast : levels.spot;
+  /* The ladder uses the same pointer card as the calendar and the matrix. The strip along the
+     bottom was a second read of the same strike, and it quoted a different price than the candle. */
+  const cardOn = view === 'ladder' && !!hover && !!readRow;
   const cardRow = cardOn && readRow ? readRow : null;
   const cardLegs = cardRow ? legs?.get(cardRow.strike) ?? null : null;
   const cardLevel = cardRow ? rows.find(r => near(r.strike, cardRow.strike)) ?? null : null;
-  const cardLegMax = cardRow ? placedRef.current.reduce((m, r) => { const l = legs?.get(r.strike); return l ? Math.max(m, Math.abs(l.put), Math.abs(l.call)) : m; }, 0) || 1 : 1;
-  /* the house's one since-open rule (data/levelview): the figure is a percent, a multiple, or
-     words alone — never a run of digits (the first cut printed "+164103195%") */
   const sinceOpen = cardRow && openRatio ? sinceOpenRead(openRatio.get(cardRow.strike)) : null;
-  /* the strike KEPT by a click wears the silver ring on the row; the card says so in the read
-     line's own words (Noah, 2026-09-16: the card "on the focus status should showcase that") */
   const cardKept = !!cardRow && focusPrice != null && near(focusPrice, cardRow.strike);
-  const cardTop = cardRow && foot ? Math.max(headBandRef.current, Math.min(cardRow.y - 44, foot.top - 132)) : 0;
-  const rampInk = (sign: 1 | -1, t: number) => {
-    const tt = Math.max(0, Math.min(1, t));
-    const [rr, gg, bb] = paper ? heatPaperLeg(sign, tt, mode) : heatRampColorFor(sign, Math.max(0.35, tt), mode);
-    return `rgb(${rr},${gg},${bb})`;
-  };
-  const card = cardRow && (
-    <div
-      data-profile-card={cardRow.strike}
-      className="absolute z-40 pointer-events-none w-[236px] rounded-lg border border-borderMuted bg-card/95 backdrop-blur-sm shadow-[0_8px_24px_rgba(0,0,0,0.5)] px-3 py-2 animate-soft-in"
-      style={{ right: 'calc(100% + 10px)', top: cardTop }}
+  const fromSpot = cardRow && liveSpot > 0 ? ((cardRow.strike - liveSpot) / liveSpot) * 100 : null;
+  const card = cardRow && hover && (
+    <PointerFollowCard
+      start={{ x: hover.cx, y: hover.cy }}
+      width={220}
+      dense
+      testId="data-profile-card"
+      testValue={cardRow.strike}
+      title={<>{ticker ? `${ticker} ` : ''}{fmtStrike(cardRow.strike)}</>}
+      aside={fromSpot == null ? undefined : `${fromSpot > 0 ? '+' : ''}${fromSpot.toFixed(2)}%`}
+      foot={cardKept ? 'Kept · click to let go' : 'Click to keep'}
     >
-      <div className="flex items-baseline gap-2">
-        <span className="font-mono text-t12 font-bold tnum text-textPrimary">
-          {ticker ? `${ticker} ` : ''}
-          {fmtStrike(cardRow.strike)}
-        </span>
-        <span className={`font-mono text-t10 tnum ${cardRow.strike > levels.spot ? 'text-bull' : cardRow.strike < levels.spot ? 'text-bear' : 'text-textMuted'}`}>
-          {cardRow.strike > levels.spot ? '+' : ''}
-          {(((cardRow.strike - levels.spot) / levels.spot) * 100).toFixed(2)}% from spot
-        </span>
-        {readRole && (
-          <span className="ml-auto text-t10 font-medium" style={{ color: readRole.c }}>
-            {readRole.words}
-          </span>
-        )}
-      </div>
-      {cardLegs && (
-        <div className="mt-1.5 flex flex-col gap-1">
-          {(
-            [
-              ['Puts', Math.abs(cardLegs.put), 1],
-              ['Calls', Math.abs(cardLegs.call), -1],
-            ] as const
-          ).map(([name, v, sign]) => (
-            <div key={name} className="flex items-center gap-2">
-              <span className="w-8 shrink-0 font-mono text-t8 uppercase tracking-widest text-textMuted">{name}</span>
-              <span className="flex-1 h-[5px] rounded-full bg-ink/[0.06] overflow-hidden">
-                <span className="block h-full rounded-full transition-colors duration-300" style={{ width: `${Math.round((v / cardLegMax) * 100)}%`, background: rampInk(sign, v / cardLegMax) }} />
-              </span>
-              <span className="w-14 shrink-0 text-right font-mono text-t10 tnum text-textPrimary">{v > 0 ? fmtUsd(v) : '—'}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="mt-1.5 grid grid-cols-3 gap-2">
-        <div>
-          <div className="font-mono text-t8 uppercase tracking-widest text-textMuted">Net</div>
-          <div className="mt-0.5 flex items-center gap-1 font-mono text-t10 tnum text-textPrimary">
-            {cardRow.value !== 0 && <span className="w-2 h-2 rounded-full shrink-0 transition-colors duration-300" style={{ background: thermal(cardRow.value, hoverMax).fill }} aria-hidden />}
-            {cardRow.value === 0 ? '—' : fmtUsd(Math.abs(cardRow.value))}
-          </div>
-          {cardRow.value !== 0 && <div className="text-t9 text-textMuted">{cardRow.value > 0 ? words.pos : words.neg}</div>}
-        </div>
-        <div>
-          <div className="font-mono text-t8 uppercase tracking-widest text-textMuted">Open int</div>
-          <div className="mt-0.5 font-mono text-t10 tnum text-textPrimary">{cardLevel && (cardLevel.callOI != null || cardLevel.putOI != null) ? ((cardLevel.callOI ?? 0) + (cardLevel.putOI ?? 0)).toLocaleString('en-US') : '—'}</div>
-        </div>
-        <div>
-          <div className="font-mono text-t8 uppercase tracking-widest text-textMuted">Since open</div>
-          {/* the figure in the direction's ink; with no figure the short words take its line */}
-          <div className={`mt-0.5 font-mono text-t10 tnum ${sinceOpen == null ? 'text-textMuted' : sinceOpen.dir < 0 ? 'text-bear' : sinceOpen.dir > 0 ? 'text-bull' : 'text-textPrimary'}`} data-card-since>
-            {sinceOpen == null ? '—' : sinceOpen.figure ?? sinceOpen.short}
-          </div>
-          {sinceOpen?.figure && <div className="text-t9 text-textMuted">{sinceOpen.short}</div>}
-        </div>
-      </div>
-      {/* KEPT OR NOT — the read line's own words, so the card says what the silver ring means */}
-      <div className={`mt-1.5 pt-1.5 border-t border-borderSubtle/60 flex items-center gap-1.5 text-t9 ${cardKept ? 'text-silver' : 'text-textMuted'}`} data-card-kept={cardKept ? '' : undefined}>
-        {cardKept && <span className="w-1.5 h-1.5 rounded-full bg-silver shrink-0" aria-hidden />}
-        {cardKept ? 'Kept · click to let go' : 'Click to keep'}
-      </div>
-    </div>
-  );
-  const readLine = foot && (
-    <div
-      data-profile-read
-      data-read-strike={readRow ? readRow.strike : undefined}
-      className={`absolute inset-x-0 flex items-center ${tight ? 'gap-2 px-2' : 'gap-3 px-2.5'} border-t border-ink/[0.06] bg-panel whitespace-nowrap overflow-hidden text-t105 text-textSecondary pointer-events-none`}
-      style={{ top: foot.top, height: foot.h }}
-    >
-      {readRow ? (
-        <>
-          <span className="font-mono text-t11 font-bold tnum text-textPrimary">{fmtStrike(readRow.strike)}</span>
-          {readRole && (
-            <span className="text-t10 font-medium shrink-0" style={{ color: readRole.c }} data-read-role>
-              {readRole.words}
-            </span>
-          )}
-          {!tiny && (
-            <span className={`font-mono tnum ${readRow.strike > levels.spot ? 'text-bull' : readRow.strike < levels.spot ? 'text-bear' : 'text-textMuted'}`}>
-              {readRow.strike > levels.spot ? '+' : ''}
-              {(((readRow.strike - levels.spot) / levels.spot) * 100).toFixed(2)}%{tight ? '' : ' from spot'}
-            </span>
-          )}
-          {view === 'net' && readLegs ? (
-            /* the partner's footer for the picked strike: PUT · CALL · SHARE */
-            <>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="text-textMuted">Put</span>
-                <span className="font-mono tnum text-textPrimary">{fmtUsd(Math.abs(readLegs.put))}</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="text-textMuted">Call</span>
-                <span className="font-mono tnum text-textPrimary">{fmtUsd(Math.abs(readLegs.call))}</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="text-textMuted">Share</span>
-                <span className="font-mono tnum text-textPrimary">{readShare != null ? `${readShare.toFixed(1)}%` : '—'}</span>
-              </span>
-            </>
-          ) : (
-            <span className="inline-flex items-center gap-1.5">
-              {!tight && <span className="text-textMuted">Size</span>}
-              {readRow.value !== 0 && <span className="w-2 h-2 rounded-full shrink-0 transition-colors duration-300" style={{ background: thermal(readRow.value, hoverMax).fill }} aria-hidden />}
-              <span className="font-mono tnum text-textPrimary">
-                {readRow.value === 0 ? '—' : tight ? fmtUsd(Math.abs(readRow.value)) : `${fmtUsd(Math.abs(readRow.value))} · ${readRow.value > 0 ? words.pos : words.neg}`}
-              </span>
-            </span>
-          )}
-          {!tiny && (
-            <span className="inline-flex items-center gap-1.5">
-              {!tight && <span className="text-textMuted">A move here forces</span>}
-              {readRow.rung && readRow.rung.flow !== 0 && (
-                <span className="w-2 h-2 rounded-full shrink-0 transition-colors duration-300" style={{ background: thermal(readRow.rung.amplifies ? Math.abs(readRow.rung.flow) : -Math.abs(readRow.rung.flow), hoverFlowMax).fill }} aria-hidden />
-              )}
-              <span className="font-mono tnum text-textPrimary">{readRow.rung && readRow.rung.flow !== 0 ? `${readRow.rung.flow >= 0 ? 'buy' : 'sell'} ${fmtFlow(readRow.rung.flow)}` : '—'}</span>
-            </span>
-          )}
-          {!tight && (
-            <span className="truncate">
-              {readRow.rung
-                ? readRow.rung.flow === 0
-                  ? 'no forced flow at this strike'
-                  : `dealers ${readRow.rung.amplifies ? 'chase' : 'lean against'} a move here · ${readRow.rung.amplifies ? 'speeds it up' : 'slows it'}`
-                : 'the market is here'}
-            </span>
-          )}
-          {!tight && <span className="ml-auto text-textMuted">{hover ? (focusPrice != null && near(focusPrice, readRow.strike) ? 'kept · click to let go' : 'click to keep') : 'kept'}</span>}
-        </>
-      ) : (
-        <span className="text-textMuted">{tiny ? 'hover a strike' : 'hover a strike · click to keep it'}</span>
-      )}
-    </div>
+      {cardLegs && <CardRow k="Puts" v={Math.abs(cardLegs.put) > 0 ? fmtUsd(Math.abs(cardLegs.put)) : '—'} />}
+      {cardLegs && <CardRow k="Calls" v={Math.abs(cardLegs.call) > 0 ? fmtUsd(Math.abs(cardLegs.call)) : '—'} />}
+      <CardRow k="Net" v={cardRow.value === 0 ? '—' : fmtUsd(Math.abs(cardRow.value))} sub={cardRow.value === 0 ? undefined : cardRow.value > 0 ? words.pos : words.neg} />
+      <CardRow k="Open int" v={cardLevel && (cardLevel.callOI != null || cardLevel.putOI != null) ? ((cardLevel.callOI ?? 0) + (cardLevel.putOI ?? 0)).toLocaleString('en-US') : '—'} />
+      <CardRow k="Since open" v={sinceOpen == null ? '—' : sinceOpen.figure ?? sinceOpen.short} ink={sinceOpen == null ? undefined : sinceOpen.dir < 0 ? 'rgb(var(--bear))' : sinceOpen.dir > 0 ? 'rgb(var(--bull))' : undefined} />
+      {readRole && <CardRow k="Level" v={readRole.words} ink={readRole.c} />}
+    </PointerFollowCard>
   );
 
   /* HOW TO READ THIS (Noah, 2026-09-06: "how can someone know this info in the
@@ -1803,6 +1751,13 @@ const ProfilePanel = ({
       className={`relative h-full select-none bg-panel ${sized ? 'shrink-0' : 'flex-1 min-w-0'} ${className}`}
       style={sized ? { width: shownW } : undefined}
       onPointerMove={onMove}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onDoubleClick={() => {
+        if (view !== 'ladder') return;
+        ladderView.current.touched = false;
+        railArmRef.current();
+      }}
       onPointerLeave={onLeave}
       onClick={onClick}
       /* THE PANEL'S OWN ISLAND on the page's theme (2026-10-17): the pane's box is a dark island stamped with the
@@ -1872,7 +1827,7 @@ const ProfilePanel = ({
             </span>
           )}
           {!twoRowHead && showSize && !onField && (
-            <span className="min-w-0 flex-1 flex items-center gap-2 text-t10 text-textMuted pl-1" data-lane-head="size">
+            <span className="min-w-0 flex-1 flex items-center justify-center gap-2 text-t10 text-textMuted" data-lane-head="size">
               <Term k="Size at a strike" className="pointer-events-auto truncate">
                 Size · {greek}
                 <span className="text-textMuted"> · puts ◂ ▸ calls</span>
@@ -1880,7 +1835,7 @@ const ProfilePanel = ({
             </span>
           )}
           {!twoRowHead && showFlow && !onField && (
-            <span className="min-w-0 flex-1 flex items-center gap-2 text-t10 text-textMuted pl-1" data-lane-head="flow">
+            <span className="min-w-0 flex-1 flex items-center justify-center gap-2 text-t10 text-textMuted" data-lane-head="flow">
               <Term k="What a move forces" className="pointer-events-auto truncate">
                 What a move forces <span className="text-textMuted">· from gamma</span>
               </Term>
@@ -1897,70 +1852,21 @@ const ProfilePanel = ({
           </div>
         )}
       </div>
-      {!onField && readLine}
-      {!onField && card}
+      {view === 'ladder' && card}
       {/* THE GEX VIEW: the Map's book — the calendar or the matrix — on the field's own band, the whole panel under the
           tabs; the panel's pointer and click stay out of it (the field keeps its own hover and its own kept strike) */}
       {/* no stopPropagation on the box: the house's pointer card follows the pointer through a window listener, and a
           stop here starved it (Noah: "the hover effect … doesnt move with the mouse"); the panel's own handlers are
           gated on the view instead */}
-      {onField && (
-        <div className="absolute inset-x-0 bottom-0 overflow-y-auto overflow-x-hidden pointer-events-auto select-text" style={{ top: headH }} data-profile-gex>
+      {onField && gexSnap && (gexSnap.chain?.length ?? 0) > 0 && (
+        <div className="absolute inset-x-0 bottom-0 overflow-y-auto overflow-x-hidden pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-gex>
           <ExposureField snapshot={gexSnap} toolbar="panel" viewLock={fieldView} legsLock={view === 'net' ? 'all' : undefined} selectedStrike={focusPrice ?? null} onSelectStrike={onSelect} fullMode="portal" narrowHint="widen the panel or pick fewer" headSlot={stripSlot} />
         </div>
       )}
-      {(view === 'history' || view === 'greeks') && (
-        <div className="absolute inset-x-0 bottom-0 overflow-y-auto px-2 py-1 font-mono text-t10 leading-4 text-textSecondary pointer-events-auto" style={{ top: headH }}>
-          {view === 'history' && ticker && (() => {
-            const lv = levelsFor(ticker, 'ALL');
-            const y = yesterdayLevel(ticker, 'supreme');
-            const moves = lv?.moves ?? [];
-            return (
-              <>
-                <p className="text-textMuted">Level moves today. A blank line means it has not changed strike.</p>
-                {moves.length === 0 && <p>No move recorded.</p>}
-                {moves.map((m, i) => (
-                  <p key={`${m.level}-${m.at}-${i}`}>{m.level} {m.from.toFixed(2)} → {m.to.toFixed(2)}</p>
-                ))}
-                <p>Yesterday supreme: {y != null ? y.toFixed(2) : 'unavailable'}</p>
-              </>
-            );
-          })()}
-          {view === 'greeks' && (
-            <>
-              {([
-                ['netGex', 'Gamma $'],
-                ['netDex', 'Delta $'],
-                ['netVex', 'Vega $'],
-                ['netVanna', 'Vanna $'],
-                ['netCharm', 'Charm $'],
-              ] as const).map(([key, label]) => {
-                const chain = gexSnap?.chain ?? [];
-                /* the book keeps every greek in the house sign: printed in the dealer sign, as Pinpoint prints it */
-                const sum = shownGreek(key, chain.reduce((a, n) => a + (Number(n[key]) || 0), 0));
-                return <p key={key}>{label}: {chain.length ? fmtUsd(sum) : 'unavailable'}</p>;
-              })}
-              {(() => {
-                const score = ticker ? nodeScore(ticker) : null;
-                return (
-                  <>
-                    {score && score.unsigned != null && <p>No side on {Math.round(score.unsigned * 100)}% of the near volume.{score.unsigned >= 0.4 ? ' The flow book is thin.' : ''}</p>}
-                    {score && ([['Flow', score.flowHeld, score.flowBroke], ['Nearby', score.nearHeld, score.nearBroke], ['OI', score.oiHeld, score.oiBroke]] as const).map(([name, held, broke]) => {
-                      const n = held + broke;
-                      if (!n) return null;
-                      return <p key={name}>{n < 25 ? `${name}: ${n} events. The rate waits for 25.` : `${name} held ${held} of ${n}, inside 5¢ or 2bp for 10 minutes.`}</p>;
-                    })}
-                    {score && score.oiMiss != null && <p>Yesterday's flow against this morning's open interest: {Math.round(score.oiMiss * 100)}% of OI, {score.oiMissStrikes} strikes.</p>}
-                    {score?.oiMissBy?.map(ex => (
-                      <p key={ex.expiry}>{ex.expiry.slice(5)} calls {ex.call ? `${Math.round(ex.call.rate * 100)}% of OI, ${ex.call.strikes}` : '—'} · puts {ex.put ? `${Math.round(ex.put.rate * 100)}% of OI, ${ex.put.strikes}` : '—'}</p>
-                    ))}
-                  </>
-                );
-              })()}
-              <p className="text-textMuted">One chain. Missing is unavailable, not zero.</p>
-            </>
-          )}
-        </div>
+      {onField && (!gexSnap || (gexSnap.chain?.length ?? 0) === 0) && (
+        <p className="absolute inset-x-0 bottom-0 flex items-center justify-center px-6 text-center font-mono text-t12 text-textSecondary" style={{ top: headH }} data-profile-gex-empty>
+          No nodes on this name. The book comes back when the chain quotes.
+        </p>
       )}
     </div>
   );

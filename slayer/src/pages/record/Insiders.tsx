@@ -14,8 +14,8 @@ import { InsidersGuide } from '../../components/record/InsidersGuide';
 import { When } from '../../components/record/when';
 import { dollars3 as fmtDollars } from './money';
 import { useBoardNames } from '../../data/boardNames';
-import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, isCorporateTrade, personSlug, bigWord, spanWords, type SalesSplit } from '../../data/insiders';
-import { useInsiderBook, useInsiderBuyers, useInsiderCoverage, useInsidersStatus, useInsiderTrades, useKeptAt, wantInsiderWindow, type InsiderCoverage } from '../../data/liveRecord';
+import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, isCorporateTrade, personSlug, bigWord, spanWords, summariseFlow, type SalesSplit } from '../../data/insiders';
+import { useInsiderBook, useInsiderCoverage, useInsidersStatus, useInsiderTrades, useKeptAt, wantInsiderWindow, type InsiderCoverage } from '../../data/liveRecord';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { personDisplay, tickerName } from '../../data/tickers';
 import { useCompanyName } from '../../data/liveFiles';
@@ -393,12 +393,20 @@ const Insiders = () => {
     return { filings: rows.length, chosen, corporate, sold, sales: sales.length, smallSold: small.reduce((s, t) => s + t.value, 0), smallCount: small.length, plannedPct: sales.length ? Math.round((planned / sales.length) * 100) : null };
   }, [rows, split]);
 
-  /* the names to know: chosen buying in the window, heaviest first */
-  const buyers = useInsiderBuyers(window);
+  /* the names to know: chosen buying on the filtered rows, heaviest first */
   const toKnow = useMemo(() => {
-    const board = new Set(boardNames);
-    return buyers.filter(f => names === 'all' || board.has(f.ticker)).slice(0, NAMES_TO_KNOW);
-  }, [buyers, names, boardNames]);
+    const by = new Map<string, InsiderTrade[]>();
+    for (const t of rows) {
+      const list = by.get(t.ticker) ?? [];
+      list.push(t);
+      by.set(t.ticker, list);
+    }
+    return [...by.entries()]
+      .map(([ticker, trades]) => summariseFlow(ticker, trades, window))
+      .filter(f => f.openMarketBuys > 0)
+      .sort((a, b) => b.openMarketBuys - a.openMarketBuys)
+      .slice(0, NAMES_TO_KNOW);
+  }, [rows, window]);
 
   const columnDefs = useMemo<ColDef<InsiderTrade>[]>(
     () => [

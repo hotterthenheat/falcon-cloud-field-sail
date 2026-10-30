@@ -427,11 +427,11 @@ const Congress = () => {
   /* the reports to know: the biggest disclosed brackets on the cut, the latest first among equals */
   const toKnow = useMemo(
     () =>
-      cut
+      rows
         .filter(t => !isBondReport(t))
         .sort((a, b) => (b.bracket ?? -1) - (a.bracket ?? -1) || a.filedDaysAgo - b.filedDaysAgo)
         .slice(0, REPORTS_TO_KNOW),
-    [cut]
+    [rows]
   );
 
   const columnDefs = useMemo<ColDef<CongressTrade>[]>(

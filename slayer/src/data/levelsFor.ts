@@ -60,7 +60,7 @@ function trackMoves(key: string, lv: { callWall: number | null; putWall: number 
   const moves = [...(prev?.moves ?? [])];
   const now = Date.now();
   const note = (level: LevelMove['level'], from: number | null | undefined, to: number | null) => {
-    if (from == null || to == null || Math.abs(from - to) < 1e-9) return;
+    if (from == null || to == null || !Number.isFinite(from) || !Number.isFinite(to) || Math.abs(from - to) < 1e-9) return;
     moves.push({ level, from, to, at: now });
   };
   if (prev) {

@@ -18,7 +18,7 @@ import { nyClock } from '../../core/nyTime';
 const PeopleBox = lazy(() => import('./People'));
 import { NAV_ITEMS } from '../../components/layout/nav';
 import { chime } from '../../core/sound';
-import { TIMEFRAMES, type Timeframe } from '../../data/timeframe';
+import { TIMEFRAMES, frameServed, type Timeframe } from '../../data/timeframe';
 import { setDeskPrefs, useDeskPrefs, type ClockZone } from '../../data/deskPrefs';
 import { SAMPLE_PROFILE, setProfile, useProfile, type SignInWay } from '../../data/profile';
 import { ACCOUNTS_ON } from '../../data/supabase';
@@ -79,7 +79,7 @@ const OPENS_ON_NAMES: DropdownOption<string>[] = [
 ];
 const OPENS_ON_TIMEFRAMES: DropdownOption<string>[] = [
   { value: '', label: "Each desk's own", hint: 'Pulse and the Weigher at 1m, the Map at 15m' },
-  ...TIMEFRAMES.filter(t => t.value !== '15s').map(t => ({ value: t.value, label: t.label, hint: `Every chart opens at ${t.label}` })),
+  ...TIMEFRAMES.filter(t => t.value !== '15s' && frameServed(t.value)).map(t => ({ value: t.value, label: t.label, hint: `Every chart opens at ${t.label}` })),
 ];
 /* The page the terminal opens on: the start page or any rail page (where landing/pieces.tsx doorTo lands). */
 const OPENS_ON_PAGES: DropdownOption<string>[] = [

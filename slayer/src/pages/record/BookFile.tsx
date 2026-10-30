@@ -141,7 +141,7 @@ export const HouseFile = () => {
     [feed, book, status],
   );
   const changed = useMemo(() => feed.filter(r => r.status !== 'held'), [feed]);
-  const toKnow = useMemo(() => [...feed].sort((a, b) => b.valueB - a.valueB).slice(0, 6), [feed]);
+  const toKnow = useMemo(() => [...rows].sort((a, b) => b.valueB - a.valueB).slice(0, 6), [rows]);
   const value = feed.reduce((s, r) => s + r.valueB, 0);
   const cols = useMemo<ColDef<InstitutionRow>[]>(
     () => [
@@ -161,7 +161,7 @@ export const HouseFile = () => {
   );
   if (bookLive.status === 'loading' && !house) return <Reading to="/dossier/institutions" back="Institutions" what="the filing" />;
   if (!house) return <Missing to="/dossier/institutions" label="Institutions" />;
-  const focused = rows.find(r => r.ticker === focus) ?? rows[0] ?? null;
+  const focused = rows.find(r => r.ticker === focus) ?? null;
   const callValue = feed.filter(r => r.book === 'calls').reduce((s, r) => s + r.valueB, 0);
   const putValue = feed.filter(r => r.book === 'puts').reduce((s, r) => s + r.valueB, 0);
   return (
@@ -205,7 +205,7 @@ export const HouseFile = () => {
       <Summary testId="house">
         {house ? displayName(house) : house} reported {bookLive.totalB != null ? moneyB(bookLive.totalB) : 'its book'} on its latest 13F. The {feed.length} largest lines, shown here, are {moneyB(value)}{bookLive.totalB ? ` (${Math.round((100 * value) / bookLive.totalB)}% of it)` : ''}{bookLive.optionsB ? <>; the whole filing holds {moneyB(bookLive.optionsB.calls)} of calls and {moneyB(bookLive.optionsB.puts)} of puts, {callValue + putValue > 0 ? `${moneyB(callValue)} and ${moneyB(putValue)} of them in these lines` : 'none of them among these lines'}</> : <>: calls {moneyB(callValue)}, puts {moneyB(putValue)}</>}; {changed.length} of them changed size by more than 2% versus the prior quarter.
         {line ? <> The line you opened is {line}.</> : null}
-        {focused ? (focused.quarters.length > 1 ? <> {focused.quarters.length} quarters of {focused.ticker} sit under the grid, {focused.quarters[0]?.unitsM.toFixed(1)}M units in {focused.quarters[0]?.period} and {focused.quarters[focused.quarters.length - 1]?.unitsM.toFixed(1)}M now.</> : <> One quarter of {focused.ticker} is on file, {focused.quarters[0]?.unitsM.toFixed(1)}M units.</>) : null}
+        {focus && !focused ? <> The line is not in these rows.</> : focused ? (focused.quarters.length > 1 ? <> {focused.quarters.length} quarters of {focused.ticker} sit under the grid, {focused.quarters[0]?.unitsM.toFixed(1)}M units in {focused.quarters[0]?.period} and {focused.quarters[focused.quarters.length - 1]?.unitsM.toFixed(1)}M now.</> : <> One quarter of {focused.ticker} is on file, {focused.quarters[0]?.unitsM.toFixed(1)}M units.</>) : null}
       </Summary>
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-file-strip="house-know">
         <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
@@ -517,7 +517,7 @@ export const FundFile = () => {
   );
   const cut = useMemo(() => holdings.filter(h => sector === 'all' || h.sector === sector), [holdings, sector]);
   const rows = useMemo(() => (picks.length === 0 ? cut : cut.filter(h => picks.includes(h.ticker))), [cut, picks]);
-  const toKnow = useMemo(() => [...cut].sort((a, b) => b.weight - a.weight).slice(0, 6), [cut]);
+  const toKnow = useMemo(() => [...rows].sort((a, b) => b.weight - a.weight).slice(0, 6), [rows]);
   const toggle = (ticker: string) => setPicks(p => (p.includes(ticker) ? p.filter(x => x !== ticker) : [...p, ticker]));
   const cols = useMemo<ColDef<EtfHolding>[]>(
     () => [
@@ -799,13 +799,13 @@ export const MemberFile = () => {
   const rows = useMemo(() => (picks.length === 0 ? cut : cut.filter(t => picks.includes(assetKey(t)))), [cut, picks]);
   const toKnow = useMemo(() => {
     const by = new Map<string, CongressTrade>();
-    for (const t of cut) {
+    for (const t of rows) {
       const k = assetKey(t);
       const have = by.get(k);
       if (!have || (t.bracket ?? -1) > (have.bracket ?? -1)) by.set(k, t);
     }
     return [...by.values()].sort((a, b) => (b.bracket ?? -1) - (a.bracket ?? -1)).slice(0, 6);
-  }, [cut]);
+  }, [rows]);
   /* bought in the year's reports, with no full sale of the same asset in them since — what the reports show, NOT a
      holdings disclosure (that is the annual report, which this key cannot read) */
   const held = useMemo(() => {

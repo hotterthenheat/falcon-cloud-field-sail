@@ -6,7 +6,7 @@
 
 import { nyIsoDate, nyWallTime } from '../../core/nyTime';
 
-/** Readings further apart than this are not joined: the cells between them are empty */
+/** Readings further apart than this are not joined into one segment. The chart still carries the last level across the bars of the same session. */
 export const JOIN_MS = 180_000;
 /** Strikes kept with their history: within this share of the row's price (every strike keeps its latest values) */
 export const WINDOW = 0.05;
@@ -33,11 +33,16 @@ export const dayStartOf = (ms: number): number => {
   return nyWallTime(y, m, d, DAY_START_HOUR, 0);
 };
 
-/** One row's two measures, dealer sign, dollars per 1% move */
+/** One row's two levels, dealer sign, dollars per 1%. Gamma is already dollars. Do not scale it again.
+    Each field is the vendor's own figure. keptVendorLeg (dealerSigned) is applied once, later, when the column is
+    kept for the painter — summing here and flipping once is the same add, and flipping here too would flip twice.
+    Flow is the open-interest gamma plus the ask and the bid. Open interest is the open-interest gamma alone. */
 export function rowMeasures(r: Record<string, unknown>): { oi: number; flow: number } {
+  const callOi = num(r.call_gamma_oi);
+  const putOi = num(r.put_gamma_oi);
   return {
-    oi: num(r.call_gamma_oi) + num(r.put_gamma_oi),
-    flow: num(r.call_gamma_ask) + num(r.call_gamma_bid) + num(r.put_gamma_ask) + num(r.put_gamma_bid),
+    oi: callOi + putOi,
+    flow: callOi + num(r.call_gamma_ask) + num(r.call_gamma_bid) + putOi + num(r.put_gamma_ask) + num(r.put_gamma_bid),
   };
 }
 
