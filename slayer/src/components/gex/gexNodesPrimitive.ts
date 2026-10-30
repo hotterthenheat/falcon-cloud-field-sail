@@ -163,7 +163,8 @@ class FieldRenderer {
     const src = this.source;
     src.chips = [];
     const cols = src.cols;
-    if (!src.enabled || !src.chart || !src.series || cols.length === 0 || !(src.ref > 0)) return;
+    /* hard bail: never draw a field that can blow the page (too many columns, no strikes, or disabled) */
+    if (!src.enabled || !src.chart || !src.series || cols.length === 0 || cols.length > 2000 || src.strikes.length === 0 || src.strikes.length > 200 || !(src.ref > 0)) return;
     const series = src.series;
     const ts = src.chart.timeScale();
     const vis = ts.getVisibleRange();

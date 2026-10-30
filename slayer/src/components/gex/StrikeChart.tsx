@@ -358,7 +358,7 @@ const etWindow = (session: DeskSession): string => {
 };
 
 export const DEFAULT_OVERLAYS: ChartOverlays = {
-  trails: true,
+  trails: false,  /* off by default until the field is stable — page was hard-crashing on load */
   /* Off to begin with, on every chart: a chart opens as the tape and the exposure field, with nothing named on it,
      and the walls, the flip and the supreme are one switch away in the Overlays menu. */
   levels: false,
@@ -2672,7 +2672,7 @@ const StrikeChart = ({
 
     /* The exposure field on this timeframe's bars and the cut's expiries. A rule clock's axis only carries the times its
        bars happened to start at, so the field stays off there. */
-    const showTrails = overlays.trails && !altSpec;
+    const showTrails = false; /* forced off: field was hard-crashing the page on load; re-enable once stable */
     trails.labelPx = compact ? 8.5 : 9.5;
     const handTrails = () => {
       try {
