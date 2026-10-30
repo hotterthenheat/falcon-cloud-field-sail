@@ -6,6 +6,7 @@ import { useSyncExternalStore } from 'react';
 import { isTradingDay, today as nyToday } from '../core/calendar';
 import { nyMinutes, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
 import { uwCall, uwKept } from './whales';
+const NY_DAY_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
 
 /* ---- reads -------------------------------------------------------------------- */
 
@@ -173,7 +174,7 @@ export function dropFresh(key: string): void {
 
 /** The instant a kept paint stands for, said as New York's clock ("10:42 ET"), or a date when it is not today */
 export function keptWords(at: number): string {
-  const day = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(ms));
+  const day = (ms: number) => NY_DAY_FMT.format(new Date(ms));
   const time = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }).format(new Date(at));
   if (day(at) === day(Date.now())) return `${time} ET`;
   const date = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' }).format(new Date(at));

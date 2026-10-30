@@ -41,9 +41,12 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const nyToday = (): string => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+/* built once: a formatter costs far more to make than to use, and these run per report */
+const NY_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
+const NY_HM = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const nyToday = (): string => NY_DAY.format(new Date());
 const nyMinutesNow = (): number => {
-  const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  const p = NY_HM.formatToParts(new Date());
   return Number(p.find(x => x.type === 'hour')?.value ?? 0) * 60 + Number(p.find(x => x.type === 'minute')?.value ?? 0);
 };
 

@@ -37,7 +37,8 @@ interface SqueezeExtras {
 
 const pct = (v: number, d = 1) => `${v.toFixed(d)}%`;
 
-const nyToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+const NY_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
+const nyToday = () => NY_DAY.format(new Date());
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const PUBLISH_LAG_DAYS = 11;
 
