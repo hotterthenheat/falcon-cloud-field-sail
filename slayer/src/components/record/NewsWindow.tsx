@@ -43,6 +43,8 @@ interface Props<T> {
 
 /** rows drawn past each edge of the view, so a Tab or an arrow always finds the next row drawn */
 const OVERSCAN = 8;
+/** frames a re-read's anchor is held while the rows drawn above it settle (about 1.5 s; the reader's own scroll ends it) */
+const HOLD_FRAMES = 90;
 
 export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initialHeight, openKey = null, reveal, above, view, seen, className = '', children }: Props<T>) {
   const itemsRef = useRef(items);
@@ -144,7 +146,7 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
 
   /* After a re-read the anchor row is where it was: scroll by what landed above it, before the frame is painted, and
      draw again at once so the rows for the new offset are there in the same frame. The rows just drawn above it are
-     measured over the next frames, so for a few frames the row is held at its place from where it really stands on the
+     measured over the next frames, so for about a second and a half the row is held at its place from where it really stands on the
      screen — until the reader scrolls, which ends the hold. */
   const [, redraw] = useState(0);
   const hold = useRef<() => void>(() => {});
@@ -185,7 +187,7 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
     };
     const tick = () => {
       correct();
-      if (++frames < 20) raf = requestAnimationFrame(tick);
+      if (++frames < HOLD_FRAMES) raf = requestAnimationFrame(tick);
       else stop();
     };
     holding.current = correct;
