@@ -1779,7 +1779,7 @@ const ProfilePanel = ({
       onClick={onClose}
       aria-label={ticker ? `Hide the ${ticker} panel` : 'Hide this panel'}
       title={closeHint}
-      className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.08] transition-colors"
+      className="hit-24 shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.08] transition-colors"
       data-profile-close
     >
       <X className="w-3 h-3" />
