@@ -5,9 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to a pull request replaces its running check. Every push to main is its own group, so each one runs to
+# the end and main's history shows a result for every commit, never a cancelled run.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   slayer:
@@ -17,8 +19,8 @@ jobs:
       run:
         working-directory: slayer
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
