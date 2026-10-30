@@ -244,7 +244,7 @@ const StrategyBuilder = ({ desk }: { desk: StrategyDesk }) => {
               </div>
             )}
             <div className="font-mono text-t11 tnum leading-relaxed whitespace-normal break-words" data-order-status>
-              {preview && (
+              {preview && !(sells && !desk.canSell) && (
                 <div className="text-textSecondary" data-strategy-margin>
                   {sells ? <>Holds <span className="text-textPrimary font-semibold">{usd(preview.held)}</span> of margin · </> : null}free after {usd(preview.free)} <span className="text-textMuted">· fees {usd(fees)}</span>
                 </div>

@@ -64,7 +64,6 @@ export function positionLines(h: Hands, name: string): BarLine[] {
             { label: 'sold', value: p.avg.toFixed(2) },
             { label: 'ask', value: p.quote.ask > 0 ? p.quote.ask.toFixed(2) : '—' },
             { label: 'even at expiry', value: `${name} ${even.toFixed(2)}` },
-            ...(p.margin && p.margin.keys[0] === p.key ? [{ label: 'margin', value: `$${Math.round(p.margin.held).toLocaleString('en-US')}${p.margin.kind === 'naked' ? ' est.' : ''}` }] : []),
           ];
       const t = way('limit');
       const s = way('stop');

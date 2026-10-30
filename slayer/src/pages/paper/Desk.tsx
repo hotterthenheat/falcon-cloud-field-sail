@@ -461,11 +461,11 @@ const PaperDesk = () => {
       ),
     },
     { key: 'qty', header: 'Held', align: 'right', render: r => <span className={r.p.dir < 0 ? 'text-bear font-semibold' : 'text-textPrimary'} title={r.p.dir < 0 ? `Short ${r.p.qty}: sold to open` : undefined}>{r.p.dir < 0 ? `−${r.p.qty}` : r.p.qty}</span> },
+    { key: 'pnl', header: 'Up or down', align: 'right', render: r => <span className={`font-semibold ${dirInk(r.p.pnl)}`}>{usdSigned(r.p.pnl)} <span className="text-t10 font-normal opacity-80">{rWords(r.p.r)}</span></span> },
+    { key: 'margin', header: 'Margin', align: 'right', render: r => marginCell(r.p) },
     { key: 'avg', header: 'In at', align: 'right', render: r => <span className="text-textSecondary" title={r.p.dir < 0 ? 'What it was sold at' : 'What was paid'}>{r.p.dir < 0 ? 'sold ' : ''}{r.p.avg.toFixed(2)}</span> },
     { key: 'now', header: 'Bid · ask', align: 'right', render: r => <span className="text-textPrimary">{`${r.p.quote.bid.toFixed(2)} · ${r.p.quote.ask.toFixed(2)}`}</span> },
-    { key: 'margin', header: 'Margin', align: 'right', render: r => marginCell(r.p) },
     { key: 'carry', header: 'Decay a day', align: 'right', render: r => <span className={r.p.dir < 0 ? 'text-bull' : 'text-textSecondary'} title={r.p.dir < 0 ? 'What its decay pays a day, all else equal — a short gains it' : 'What the contract loses a day, all else equal'}>{r.p.dir < 0 ? '+' : ''}{usd(Math.abs(r.p.quote.theta) * 100 * r.p.qty)}</span> },
-    { key: 'pnl', header: 'Up or down', align: 'right', render: r => <span className={`font-semibold ${dirInk(r.p.pnl)}`}>{usdSigned(r.p.pnl)} <span className="text-t10 font-normal opacity-80">{rWords(r.p.r)}</span></span> },
     {
       key: 'close',
       header: '',
@@ -607,7 +607,7 @@ const PaperDesk = () => {
         counts={{ open: openRows.length, working, closed: closedRows.length }}
         book={
           tab === 'open' ? (
-            <TraceGrid key="open" rows={openRows} columns={openCols} rowKey={r => r.key} onRowClick={r => setName(r.p.contract.ticker, r.p.contract)} autoHeight animate={false} widths={{ qty: 70, avg: 100, close: 92, now: 130, margin: 110, carry: 120 }} emptyText={account.status === 'open' ? 'Nothing open — buy or sell from a strike in the chain, build a strategy, or trade off the chart' : 'This account is over — nothing more trades on it'} testId="paper-open" />
+            <TraceGrid key="open" rows={openRows} columns={openCols} rowKey={r => r.key} onRowClick={r => setName(r.p.contract.ticker, r.p.contract)} autoHeight animate={false} widths={{ qty: 56, avg: 84, close: 88, now: 108, margin: 96, carry: 96 }} emptyText={account.status === 'open' ? 'Nothing open — buy or sell from a strike in the chain, build a strategy, or trade off the chart' : 'This account is over — nothing more trades on it'} testId="paper-open" />
           ) : tab === 'orders' ? (
             <TraceGrid key="orders" rows={orderRows} columns={orderCols} rowKey={r => r.key} onRowClick={r => setName(r.o.contract.ticker, r.o.contract)} autoHeight animate={false} widths={{ cancel: 56 }} flexes={{ status: 2, what: 1.4 }} emptyText="No orders yet" testId="paper-orders" />
           ) : (
