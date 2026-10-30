@@ -877,6 +877,13 @@ const News = () => {
     navigate('/pinpoint/map');
   };
 
+  /* the read finished untouched and the window went to the top: the lead is the top story again (a pick stays) */
+  const rowsNow = useRef(rows);
+  rowsNow.current = rows;
+  const leadFromTop = useCallback(() => {
+    if (!pickedRef.current && rowsNow.current.length) setSelectedId(rowsNow.current[0].id);
+  }, []);
+
   /* the rows read a stable pick, so a memoized row redraws only when its own story or open state changes */
   const pickRef = useRef(pick);
   pickRef.current = pick;
@@ -1022,7 +1029,7 @@ const News = () => {
           ) : (
             <div className="px-5 py-6 text-center font-mono text-t10 uppercase tracking-widest text-textMuted">{news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>
           ))}
-          <NewsWindow box={rowsRef} items={rows} keyOf={storyKey} estimate={estimateWire} head={stacked ? 0 : NEWS_HEAD_H} initialHeight={NEWS_WINDOW_H} openKey={selectedId} view={viewKey} seen={seenRef} className={stacked ? '' : 'max-lg:min-w-[900px]'}>
+          <NewsWindow box={rowsRef} items={rows} keyOf={storyKey} estimate={estimateWire} head={stacked ? 0 : NEWS_HEAD_H} initialHeight={NEWS_WINDOW_H} openKey={selectedId} view={viewKey} seen={seenRef} reading={coverage.reading} interacted={pickedRef.current} onTop={leadFromTop} className={stacked ? '' : 'max-lg:min-w-[900px]'}>
             {e => <WireRow e={e} open={e.id === selectedId} stacked={stacked} onBoard={onBoard(e)} similar={similarRef.current.get(e.id)} onPick={onRowPick} />}
           </NewsWindow>
         </div>
