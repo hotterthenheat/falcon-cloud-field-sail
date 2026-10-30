@@ -6,6 +6,7 @@
    what was inserted, so nothing the reader sees moves. */
 
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
+import { ArrowUp } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type MutableRefObject, type ReactNode, type RefObject } from 'react';
 
 /** The rows in view, first to last, for the parent (it places new stories out of view) */
@@ -34,6 +35,12 @@ interface Props<T> {
   /** the list's identity (its sort, its filters, its tab): a change of items under the same view is a re-read and keeps
       the first row in view where it stands; a new view does not */
   view?: unknown;
+  /** the list is still being read back (more pages are coming) */
+  reading?: boolean;
+  /** the reader has acted on the list from outside the window (a pick on the map or the tape, a deep link) */
+  interacted?: boolean;
+  /** the read finished with the reader not having touched the list, and the window went to the top */
+  onTop?: () => void;
   /** written on every draw: the first and last rows in view */
   seen?: MutableRefObject<WindowSeen>;
   /** classes for the box the rows stand in (a minimum width, say) */
@@ -46,7 +53,7 @@ const OVERSCAN = 8;
 /** frames a re-read's anchor is held while the rows drawn above it settle (about 1.5 s; the reader's own scroll ends it) */
 const HOLD_FRAMES = 90;
 
-export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initialHeight, openKey = null, reveal, above, view, seen, className = '', children }: Props<T>) {
+export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initialHeight, openKey = null, reveal, above, view, seen, reading = false, interacted = false, onTop, className = '', children }: Props<T>) {
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const indexOf = useMemo(() => {
@@ -130,6 +137,9 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
   const inView = useRef<{ view: unknown }>({ view });
   const hold = useRef<() => void>(() => {});
   const anchor = useRef<{ key: string; at: number } | null>(null);
+  const keysSeen = useRef<Set<string>>(new Set(indexOf.keys()));
+  const landedAbove = useRef(0);
+  const [newAbove, setNewAbove] = useState(0);
   const itemsSeen = useRef(items);
   if (itemsSeen.current !== items) {
     itemsSeen.current = items;
@@ -149,7 +159,13 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
         if (r.bottom > boxTop + head + 1 && r.height > 0 && (!best || r.top - boxTop < best.at)) best = { key: k, at: r.top - boxTop };
       });
       anchor.current = best;
+      /* the stories new to the list that land above the anchor: what the "new above" pill counts */
+      const at = best ? indexOf.get((best as { key: string }).key) : undefined;
+      let n = 0;
+      if (at != null) for (let i = 0; i < at; i++) if (!keysSeen.current.has(keyOf(items[i]))) n++;
+      landedAbove.current = n;
     }
+    keysSeen.current = new Set(indexOf.keys());
   }
   const off = v.scrollOffset ?? 0;
   const tall = v.scrollRect?.height ?? initialHeight;
@@ -166,7 +182,10 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
   useLayoutEffect(() => {
     const a = anchor.current;
     anchor.current = null;
+    const landed = landedAbove.current;
+    landedAbove.current = 0;
     if (!a || !el) return;
+    if (landed > 0) setNewAbove(n => n + landed);
     const i = indexOf.get(a.key);
     const m = i == null ? undefined : v.measurementsCache[i];
     if (!m) return;
@@ -209,6 +228,50 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
     raf = requestAnimationFrame(tick);
   }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => hold.current(), []);
+
+  /* The reader's own touch on the list (a wheel, a finger, a press, a key in it). Until then, and while the wire is still
+     read back, the rows hold still; when the read ends the window goes to the top in one step, so the reader sees the
+     newest and most important stories first. After a touch the rows stay where the reader put them, and what lands
+     above them is counted in the pill. */
+  const [touched, setTouched] = useState(false);
+  useEffect(() => {
+    if (!el || touched) return;
+    const on = () => setTouched(true);
+    const kinds = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
+    for (const t of kinds) el.addEventListener(t, on, { passive: true });
+    return () => {
+      for (const t of kinds) el.removeEventListener(t, on);
+    };
+  }, [el, touched]);
+  const untouched = !touched && !interacted;
+  const toTop = () => {
+    if (!el) return;
+    hold.current();
+    el.scrollTop = 0;
+    v.scrollOffset = 0;
+    setNewAbove(0);
+    redraw(n => n + 1);
+  };
+  const wasReading = useRef(reading);
+  useEffect(() => {
+    const was = wasReading.current;
+    wasReading.current = reading;
+    if (!was || reading || !el || !untouched) return;
+    toTop();
+    onTop?.();
+  }, [reading]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* the pill clears at the top, and with a new view */
+  const atTop = (v.scrollOffset ?? 0) <= 1;
+  useEffect(() => {
+    if (atTop && newAbove) setNewAbove(0);
+  }, [atTop, newAbove]);
+  const viewSeen = useRef(view);
+  useEffect(() => {
+    if (viewSeen.current === view) return;
+    viewSeen.current = view;
+    setNewAbove(0);
+  }, [view]);
+  const showPill = newAbove > 0 && !atTop && !(reading && untouched);
   /* every commit while a hold is on (a redraw for the new offset, a row measured and redrawn) */
   useLayoutEffect(() => {
     holding.current?.();
@@ -270,6 +333,21 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
   };
 
   return (
+    <>
+      {/* the pill rides at the top of the window, under the pinned head; it takes no height, so the rows do not move */}
+      {showPill && (
+        <div className="sticky z-20 h-0 w-full" style={{ top: head }}>
+          <button
+            type="button"
+            onClick={toTop}
+            className="tap-40 absolute left-1/2 -translate-x-1/2 top-2 inline-flex items-center gap-1.5 h-7 px-3 rounded-full border border-borderMuted bg-panel/95 backdrop-blur shadow-lg shadow-black/40 font-mono text-t11 text-textPrimary hover:border-silver/50 transition-colors whitespace-nowrap"
+            data-news-new-above={newAbove}
+          >
+            {newAbove.toLocaleString('en-US')} new {newAbove === 1 ? 'story' : 'stories'} above
+            <ArrowUp className="w-3 h-3" aria-hidden />
+          </button>
+        </div>
+      )}
     <div ref={sizerRef} className={`relative w-full ${className}`} style={{ height: v.getTotalSize() }} onKeyDown={onKeyDown} onFocus={onFocus} onBlur={onBlur} data-news-window-rows={items.length}>
       {drawn.map(x => (
         <div key={x.key} data-index={x.index} ref={v.measureElement} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${x.start - margin}px)` }}>
@@ -277,5 +355,6 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
         </div>
       ))}
     </div>
+    </>
   );
 }
