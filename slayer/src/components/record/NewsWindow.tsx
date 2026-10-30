@@ -149,6 +149,7 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
     const m = i == null ? undefined : v.measurementsCache[i];
     if (!m) return;
     const target = Math.max(0, m.start - a.at);
+    ((window as unknown as { __anc: unknown[] }).__anc ??= []).push([Math.round(performance.now()), a.key.slice(3, 30), a.at, i, m.start, v.scrollOffset, target, el.scrollTop]); // DEBUG-ANC
     if (Math.abs(target - (v.scrollOffset ?? 0)) < 0.5) return;
     el.scrollTop = target;
     v.scrollOffset = el.scrollTop;
