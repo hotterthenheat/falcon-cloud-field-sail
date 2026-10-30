@@ -705,6 +705,9 @@ const News = () => {
       if (twin) {
         const head = heads[twin.idx];
         folded.set(head.id, (folded.get(head.id) ?? 0) + 1);
+        /* on a re-read a later story may match a story already folded rather than the drawn head, which a fresh sort
+           would have made the head: the folded ones stand for their group too, so the groups come out as a fresh read's */
+        if (memo) sigs.push({ words, at: e.item.minutesAgo, idx: twin.idx });
         continue;
       }
       sigs.push({ words, at: e.item.minutesAgo, idx: heads.length });
