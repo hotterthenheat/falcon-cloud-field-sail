@@ -260,7 +260,12 @@
 }
 
 /* The charts' TradingView mark (lightweight-charts draws it 35 × 19, absolute in the plot's corner): the same box, so the
-   attribution link is a fair target too. */
+   attribution link is a fair target too. Where a chart's left drawing rail reaches the corner (StrikeChart's
+   markBeside, a short pane) the mark steps right of the rail's column — 6px inset, 44px rail, 6px — so the licence's
+   mark is never under it. */
+[data-tv-mark-beside] a#tv-attr-logo {
+  left: 56px;
+}
 a#tv-attr-logo::before {
   content: '';
   position: absolute;
