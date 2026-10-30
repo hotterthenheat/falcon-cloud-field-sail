@@ -105,7 +105,19 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
     scrollPaddingStart: head,
     rangeExtractor,
     initialRect: { width: 0, height: initialHeight },
+    /* the rows' positions and the box's height are written to the page directly; React redraws only when the drawn
+       range changes, not on every scrolled frame or every row measured */
+    directDomUpdates: true,
+    directDomUpdatesMode: 'position',
+    useFlushSync: false,
   });
+  const sizerRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      sizerRef.current = node;
+      v.containerRef(node);
+    },
+    [v],
+  );
 
   /* a new width rewraps every headline: the kept heights are stale, measure again (the drawn rows at once) */
   const widthSeen = useRef(width);
@@ -163,9 +175,9 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
   };
 
   return (
-    <div ref={sizerRef} className={`relative w-full ${className}`} style={{ height: v.getTotalSize() }} onKeyDown={onKeyDown} onFocus={onFocus} onBlur={onBlur} data-news-window-rows={items.length}>
+    <div ref={sizerRefs} className={`relative w-full ${className}`} onKeyDown={onKeyDown} onFocus={onFocus} onBlur={onBlur} data-news-window-rows={items.length}>
       {v.getVirtualItems().map(x => (
-        <div key={x.key} data-index={x.index} ref={v.measureElement} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${x.start - margin}px)` }}>
+        <div key={x.key} data-index={x.index} ref={v.measureElement} className="absolute left-0 w-full">
           {children(items[x.index], x.index)}
         </div>
       ))}
