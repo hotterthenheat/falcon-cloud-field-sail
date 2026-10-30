@@ -63,10 +63,10 @@ export function useCompassDoc<K extends Kind>(kind: K, day: string | null): DocS
         return;
       }
       try {
-        const res = await fetch(kind === 'pooled' ? '/api/compass/study?day=all' : `/api/compass/${kind}?day=${day}`, { headers: auth.headers });
+        const res = await fetch(kind === 'pooled' ? '/api/compass/study?day=all' : `/api/compass/${kind}?day=${day}`, { headers: { ...auth.headers, 'x-compass-soft': '1' } });
         const body = (await res.json().catch(() => null)) as (Doc<K> & { code?: string; error?: string }) | null;
         if (dead) return;
-        if (res.status === 404 && body?.code === 'not_built') {
+        if ((res.status === 404 || res.status === 200) && body?.code === 'not_built') {
           memo.set(key, { at: Date.now(), doc: null, status: 'missing', error: body.error ?? '' });
           setState({ doc: null, status: 'missing', error: body.error ?? '' });
           return;
