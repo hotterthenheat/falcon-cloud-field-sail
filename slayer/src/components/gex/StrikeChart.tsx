@@ -2675,8 +2675,14 @@ const StrikeChart = ({
     const showTrails = overlays.trails && !altSpec;
     trails.labelPx = compact ? 8.5 : 9.5;
     const handTrails = () => {
-      const cols = showTrails ? fieldColumns(bars, mins) : [];
-      trails.setData(cols, 0, showTrails, mins * 60, trailsGreek, 0, [], bars.map(b => ({ time: b.time, close: b.close })));
+      try {
+        const cols = showTrails ? fieldColumns(bars, mins) : [];
+        trails.setData(cols, 0, showTrails, mins * 60, trailsGreek, 0, [], bars.map(b => ({ time: b.time, close: b.close })));
+      } catch (e) {
+        /* 1D / coarse bars can produce a degenerate grid; never let the trails path kill the page */
+        console.warn('[trails] skipped', e);
+        trails.setData([], 0, false, mins * 60, trailsGreek, 0, [], []);
+      }
     };
     handTrails();
     return () => cancelAnimationFrame(armTimer);

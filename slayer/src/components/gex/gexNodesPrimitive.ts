@@ -242,12 +242,36 @@ class FieldRenderer {
         const mxCss = mxPx / hr;
         const cFrom = wide ? rFirst : first;
         const cTo = wide ? rLast : last;
-        /* each row's edges: half way to the neighbouring strikes, the outer rows as tall as their neighbour's step */
+        /* each row's edges: half way to the neighbouring strikes, the outer rows as tall as their neighbour's step.
+           Guard against a collapsed price scale (common on 1D / coarse bars or before the series is ready): if the
+           coordinates are missing or the whole field spans less than a few pixels, fall back to a proportional
+           layout so the rows never stack on top of each other. */
         const edgeY = new Float64Array(R + 1);
+        let finite = 0;
+        let minY = Infinity, maxY = -Infinity;
         for (let r = 0; r <= R; r++) {
           const lo = r === 0 ? strikes[0] - (R > 1 ? (strikes[1] - strikes[0]) / 2 : 0.5) : (strikes[r - 1] + strikes[r]) / 2;
           const y = series.priceToCoordinate(r === R ? strikes[R - 1] + (R > 1 ? (strikes[R - 1] - strikes[R - 2]) / 2 : 0.5) : lo);
-          edgeY[r] = y === null ? NaN : y * vr;
+          if (y == null || !Number.isFinite(y)) { edgeY[r] = NaN; continue; }
+          const yy = y * vr;
+          edgeY[r] = yy;
+          finite++;
+          if (yy < minY) minY = yy;
+          if (yy > maxY) maxY = yy;
+        }
+        const span = maxY - minY;
+        const minSpan = Math.max(R * 4 * vr, scope.bitmapSize.height * 0.15);
+        if (finite < R * 0.6 || !Number.isFinite(span) || span < minSpan) {
+          /* proportional fallback: space rows by strike difference across the visible pane */
+          const s0 = strikes[0], s1 = strikes[R - 1];
+          const ds = s1 > s0 ? s1 - s0 : 1;
+          const top = myPx * 0.5;
+          const bot = scope.bitmapSize.height - myPx * 0.5;
+          for (let r = 0; r <= R; r++) {
+            const mid = r === 0 ? s0 : r === R ? s1 : (strikes[r - 1] + strikes[r]) / 2;
+            const t = (mid - s0) / ds;
+            edgeY[r] = bot - t * (bot - top);
+          }
         }
         const hBmp = scope.bitmapSize.height;
         /* one path per ink step and side, cells of a row merged across touching bars of the same step */
