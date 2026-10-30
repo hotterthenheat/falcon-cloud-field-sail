@@ -175,11 +175,13 @@ const RankedTargets = () => {
   const setOrder = (o: AgendaOrder) => {
     orderMemory = o;
     setOrderState(o);
+    if (panes.length < 2) setPanes(panes.map(p => ({ ...p, order: o })));
   };
   const [window, setWindowState] = useState<StrikeWindow>(windowMemory);
   const setWindow = (w: StrikeWindow) => {
     windowMemory = w;
     setWindowState(w);
+    if (panes.length < 2) setPanes(panes.map(p => ({ ...p, strikes: w })));
   };
   const [guideOpen, setGuideOpen] = useState(false);
   /* The expiries as dates, one list for every pane's card (ladderControls). */
@@ -273,6 +275,9 @@ const RankedTargets = () => {
   const density = phone ? 'tight' : densityFor(panes.length);
   let strikes = 0;
   for (const a of agendas.values()) strikes += a.targets.length;
+  const lone = panes.length < 2;
+  const headOrder = lone ? paneOrder(panes[0], order) : order;
+  const headWindow = lone ? paneWindow(panes[0], window) : window;
 
   return (
     <div className="relative border border-borderSubtle rounded-md bg-panel" data-targets data-targets-panes={panes.length} data-scope-ticker={tickerFor(panes[0])}>
@@ -291,9 +296,10 @@ const RankedTargets = () => {
         </p>
       </div>
       <TargetsControls
-        order={order}
+        lenses={panes.length < 2}
+        order={headOrder}
         onOrder={setOrder}
-        window={window}
+        window={headWindow}
         onWindow={setWindow}
         names={<NamesDoor count={panes.length} onPick={addPane} testId="targets" title="Rank another name beside this one — up to four side by side, each on its own expiry" />}
         updatedAt={scan.at}

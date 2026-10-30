@@ -9,17 +9,20 @@
    is no reading, and its cells are left empty. The vendor serves no earlier per-strike state for today: its per-strike
    routes answer the latest book only, and a past date only as of that date's close (closes below).
 
-   Both of the vendor's measures are kept, in its dealer sign (positive: dealers long gamma, their hedging absorbs):
-   - open interest: call_gamma_oi + put_gamma_oi, the morning's open interest priced at the row's minute;
-   - today's flow: call_gamma_ask + call_gamma_bid + put_gamma_ask + put_gamma_bid — the day's volume by the side it
-     traded on, a customer buying at the ask leaving dealers short (the vendor prints those fields negative) and one
-     selling at the bid leaving them long. It is the day's trades only, never a position carried from earlier days. */
+   Both levels are the vendor's dollars per 1% (already dollars — not scaled by spot again), dealer sign. The painter
+   flips once, through dealerOf, so a positive cell is dealers long gamma:
+   - open interest: call_gamma_oi + put_gamma_oi;
+   - dealer flow: those two, plus call_gamma_ask + call_gamma_bid + put_gamma_ask + put_gamma_bid.
+   A cell is that level, not the change from the previous bar. The last reading at or before the bar's end is carried
+   through the later bars of the same New York session. It is not carried across a session, a weekend, or a holiday.
+   JOIN_MS only joins two raw answers into one segment. It does not punch a hole between them. */
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { nyIsoDate, nyMinutes, nyWallTime } from '../../core/nyTime';
 import { isTradingDay } from '../../core/calendar';
 import { keptOf } from '../../core/dealerSign';
 import { uwCall } from '../whales';
+import { sameName } from '../spotGexBook';
 import { feedHeaders } from '../feedGate';
 import type { GexSnapshot } from '../../types/market';
 import { ALL, JOIN_MS, closeOf, dayStartOf, placeSeg, readAnswer, rowMeasures, spanOf, type KeptSeries } from './exposureSegs';
@@ -30,6 +33,9 @@ export { JOIN_MS, rowMeasures };
 export type FieldMode = 'oi' | 'flow';
 /** The expiries a cut reads: one date, or every expiry ('book') */
 export type FieldCut = string | 'book';
+
+/** Weekly index roots are the cash index on Unusual Whales. SPXW is SPX. One book, one log. */
+const rootOf = (ticker: string): string => sameName(ticker);
 
 /* The join (JOIN_MS), the strike window, the day's 04:00 start and the whole book's pseudo-expiry are one rule with the
    server's recorder: data/book/exposureSegs.ts */
@@ -76,7 +82,7 @@ const logOf = (t: string): NameLog => {
 export function noteExposureRows(ticker: string, rows: unknown, allRows = false): void {
   const read = readAnswer(rows, allRows);
   if (!read) return;
-  const t = ticker.toUpperCase();
+  const t = rootOf(ticker);
   const { answeredAt } = read;
   const day = nyIsoDate(answeredAt);
   const log = logOf(t);
@@ -132,7 +138,7 @@ function placeKept(t: string, series: readonly KeptSeries[] | readonly [string, 
 /** Merge the server's recorded series for a name (GET /api/exposure/day) into the log: the same segments this browser
     would have read, so the two join without seams; where both hold the same minute, they agree. */
 export function mergeExposureSeries(ticker: string, series: readonly KeptSeries[]): boolean {
-  const t = ticker.toUpperCase();
+  const t = rootOf(ticker);
   const changed = placeKept(t, series);
   if (changed) {
     scheduleSave(t);
@@ -142,11 +148,11 @@ export function mergeExposureSeries(ticker: string, series: readonly KeptSeries[
 }
 
 /** The log's revision for a name — a grid built at one revision stands until it moves */
-export const exposureLogRev = (ticker: string): number => logs.get(ticker.toUpperCase())?.rev ?? 0;
+export const exposureLogRev = (ticker: string): number => logs.get(rootOf(ticker))?.rev ?? 0;
 
 /** The log's revision for a name, as a hook (it also brings back this browser's kept copy of the day) */
 export function useExposureLogRev(ticker: string): number {
-  const t = ticker.toUpperCase();
+  const t = rootOf(ticker);
   useEffect(() => {
     restoreExposureLog(t);
   }, [t]);
@@ -162,14 +168,14 @@ export function useExposureLogRev(ticker: string): number {
 
 /** The newest day the log holds, and the earliest moment it covers (ms) — null before the first answer */
 export function exposureLogSpan(ticker: string): { day: string; from: number } | null {
-  const log = logs.get(ticker.toUpperCase());
+  const log = logs.get(rootOf(ticker));
   return log && Number.isFinite(log.from) ? { day: log.day, from: log.from } : null;
 }
 
 const todayMemo = new Map<string, { rev: number; at: number | null }>();
 /** The first moment today any reading covers, ms — null before today's first answer */
 export function exposureTodayFrom(ticker: string, now: number = Date.now()): number | null {
-  const t = ticker.toUpperCase();
+  const t = rootOf(ticker);
   const log = logs.get(t);
   if (!log) return null;
   const hit = todayMemo.get(t);
@@ -195,7 +201,7 @@ const seriesOf = (cut: FieldCut): string => (cut === 'book' ? ALL : cut);
 /** The cut's latest net, dealer sign, per measure: every strike's newest row. One expiry's open-interest figure is the
     same rows' sum the book's net GEX is for that date. */
 export function exposureNet(ticker: string, cut: FieldCut): { oi: number; flow: number; at: number } | null {
-  const log = logs.get(ticker.toUpperCase());
+  const log = logs.get(rootOf(ticker));
   const rows = log?.latest.get(seriesOf(cut));
   if (!rows?.size) return null;
   let oi = 0;
@@ -220,34 +226,48 @@ export interface ExposureGrid {
 
 const gridMemo = new Map<string, { key: string; grid: ExposureGrid }>();
 
+/** The New York session a reading belongs to, or null on a weekend or a holiday. */
+const sessionIso = (ms: number): string | null => {
+  const iso = nyIsoDate(ms);
+  const [y, m, d] = iso.split('-').map(Number);
+  return isTradingDay(new Date(y, m - 1, d)) ? iso : null;
+};
+
 /**
- * The field's grid for a cut, on the chart's bars (`times`, seconds, oldest first; each bar spans `barSec`, a day bar its
- * New York day). Open interest: the last reading inside the bar, a level. Today's flow: the change in the day's
- * directional dealer gamma across the bar — the bar's trades, plus the re-pricing of the day's earlier ones — a sum (a
- * day bar: the whole day's, the measure starting each day at nothing). A cell is drawn only where a reading covers it
- * (the flow: its start and its end); a past session read only as of its close draws only on a day bar.
+ * The field's grid for a cut, on the chart's bars (`times`, seconds, oldest first; each bar spans `barSec`).
+ * Both books are a level, not a change. The cell is the last reading at or before the bar's end, carried forward
+ * through the later bars of the same New York session. A new session stays empty until its first reading.
+ * A day bar is that session's last reading. A week bar is that week's last session's last reading.
+ * A forming bar uses the newest reading so far (`now`). A reading after a bar's end does not rewrite it.
  */
-export function exposureGrid(ticker: string, cut: FieldCut, times: readonly number[], barSec: number, mode: FieldMode, now: number = Date.now()): ExposureGrid | null {
-  const t = ticker.toUpperCase();
+export function exposureGrid(ticker: string, cut: FieldCut, timesIn: readonly number[], barSec: number, mode: FieldMode, now: number = Date.now(), price: { lo: number; hi: number } | null = null): ExposureGrid | null {
+  const times = timesIn.length > 2000 ? timesIn.slice(-2000) : timesIn;
+  const t = rootOf(ticker);
   restoreExposureLog(t);
   const log = logs.get(t);
   if (!log || !times.length || !Number.isFinite(log.from)) return null;
   const memoKey = `${t}|${cut}|${mode}|${barSec}`;
-  const key = `${log.rev}|${times.length}|${times[0]}|${times[times.length - 1]}|${Math.floor(now / 30_000)}`;
+  const key = `${log.rev}|${times.length}|${times[0]}|${times[times.length - 1]}|${Math.floor(now / 30_000)}|${price ? Math.round(price.lo) : 'x'}|${price ? Math.round(price.hi) : 'x'}`;
   const hit = gridMemo.get(memoKey);
   if (hit && hit.key === key) return hit.grid;
+  const weekBars = barSec >= 7 * 86_400;
   const dayBars = barSec >= 86_400;
   const n = times.length;
   const a = new Float64Array(n);
   const b = new Float64Array(n);
+  const sess: (string | null)[] = new Array(n);
   for (let i = 0; i < n; i++) {
     if (dayBars) {
       const [y, m, d] = nyIsoDate(times[i] * 1000).split('-').map(Number);
+      const span = Math.max(1, Math.round(barSec / 86_400));
       a[i] = nyWallTime(y, m, d, 0, 0);
-      b[i] = Math.min(now, nyWallTime(y, m, d + Math.max(1, Math.round(barSec / 86_400)), 0, 0));
+      b[i] = Math.min(now, nyWallTime(y, m, d + span, 0, 0));
+      sess[i] = weekBars ? null : sessionIso(a[i] + 12 * 3_600_000);
     } else {
       a[i] = times[i] * 1000;
-      b[i] = Math.min(now, (times[i] + barSec) * 1000);
+      const next = i + 1 < n ? times[i + 1] * 1000 : (times[i] + barSec) * 1000;
+      b[i] = Math.min(now, next);
+      sess[i] = sessionIso(a[i]);
     }
   }
   /* the first bar that can hold a reading */
@@ -261,58 +281,67 @@ export function exposureGrid(ticker: string, cut: FieldCut, times: readonly numb
     if (list) list.push(s);
     else byStrike.set(s.strike, [s]);
   }
-  const strikes = [...byStrike.keys()].sort((x, y) => x - y);
+  const strikesAll = [...byStrike.keys()].sort((x, y) => x - y);
+  /* Visible prices, plus the one strike past each edge. The whole book on every bar is what froze the page. */
+  let strikes = strikesAll;
+  if (price && price.hi > price.lo) {
+    let i = 0;
+    while (i < strikesAll.length && strikesAll[i] < price.lo) i++;
+    let j = i;
+    while (j < strikesAll.length && strikesAll[j] <= price.hi) j++;
+    strikes = strikesAll.slice(Math.max(0, i - 1), Math.min(strikesAll.length, j + 1));
+  }
+  /* A book this wide is not a field. Drawing it locks the tab. */
+  if (strikes.length > 200 || times.length > 2000) return null;
   const R = strikes.length;
   const values = new Float64Array(n * R).fill(NaN);
   const sum = new Float64Array(n);
-  const bad = new Uint8Array(n);
   const any = new Uint8Array(n);
-  /* how far a reading reaches: to the next when they are an answer apart, and the newest toward now by the same join */
-  const reach = (segs: number[], j: number): number => {
-    const to = segs[j + 1];
-    const next = j + 4 < segs.length ? segs[j + 4] : now;
-    return next - to <= JOIN_MS ? Math.max(to, next) : to;
-  };
   const field = mode === 'oi' ? 2 : 3;
-  /* one series' value in each bar into `into` (NaN where it has none), by a walk in time order */
+  /* The last reading at or before the bar's end. Intraday: only a reading from that bar's own session, so a
+     missing minute keeps the earlier one and a new session starts empty. A day or a week: only inside its window. */
+  const levelAt = (segs: number[], end: number, lo: number, session: string | null): number => {
+    let loI = 0;
+    let hi = segs.length / 4;
+    while (loI < hi) {
+      const m = (loI + hi) >> 1;
+      if (segs[m * 4] <= end) loI = m + 1;
+      else hi = m;
+    }
+    const j = loI - 1;
+    if (j < 0) return NaN;
+    if (weekBars || dayBars) return segs[j * 4] >= lo ? segs[j * 4 + field] : NaN;
+    for (let i = j; i >= 0; i--) {
+      const s = sessionIso(segs[i * 4]);
+      if (s == null) continue;
+      if (s !== session) return NaN;
+      return segs[i * 4 + field];
+    }
+    return NaN;
+  };
   const walk = (s: Series, into: (c: number, v: number) => void) => {
     const segs = s.segs;
     if (!segs.length) return;
-    let j = 0; // the last reading starting before the bar's end
-    let k = 0; // the last reading starting at or before the bar's start
     for (let c = c0; c < n; c++) {
       if (a[c] >= s.closeAt) break;
-      while (j + 4 < segs.length && segs[j + 4] < b[c]) j += 4;
-      const end = segs[j] < b[c] && reach(segs, j) >= a[c] ? segs[j + field] : NaN;
-      if (Number.isNaN(end) || mode === 'oi') {
-        into(c, end);
+      if (!weekBars && !dayBars && !sess[c]) {
+        into(c, NaN);
         continue;
       }
-      /* flow: the change across the bar; a day bar starts its day at nothing */
-      if (dayBars) {
-        into(c, end);
-        continue;
-      }
-      while (k + 4 < segs.length && segs[k + 4] <= a[c]) k += 4;
-      const startOk = segs[k] <= a[c] && reach(segs, k) >= a[c];
-      into(c, startOk ? end - segs[k + field] : NaN);
+      into(c, levelAt(segs, b[c], a[c], sess[c]));
     }
   };
   for (let r = 0; r < R; r++) {
     sum.fill(0);
-    bad.fill(0);
     any.fill(0);
     for (const s of byStrike.get(strikes[r])!) {
-      /* a bar the series was alive in but has no reading for spoils the cell */
       walk(s, (c, v) => {
-        if (Number.isNaN(v)) bad[c] = 1;
-        else {
-          sum[c] += v;
-          any[c] = 1;
-        }
+        if (Number.isNaN(v)) return;
+        sum[c] += v;
+        any[c] = 1;
       });
     }
-    for (let c = c0; c < n; c++) if (any[c] && !bad[c]) values[c * R + r] = sum[c];
+    for (let c = c0; c < n; c++) if (any[c]) values[c * R + r] = sum[c];
   }
   const grid: ExposureGrid = { times: [...times], strikes, values };
   gridMemo.set(memoKey, { key, grid });
@@ -329,6 +358,7 @@ export function gridColumns(grid: ExposureGrid): GexSnapshot[] {
     for (let r = 0; r < R; r++) {
       const v = grid.values[c * R + r];
       if (Number.isNaN(v)) continue;
+      /* keptOf once: the sum of keptVendorLeg(field, dealerSigned) for the call and the put. The painter's dealerOf flips it back. */
       levels.push({ strike: grid.strikes[r], value: keptOf(v), dex: 0, vex: 0, callOI: 0, putOI: 0 });
     }
     if (levels.length) out.push({ time: grid.times[c], levels });
@@ -340,38 +370,63 @@ export function gridColumns(grid: ExposureGrid): GexSnapshot[] {
 
 const POLL_MS = 60_000;
 const polls = new Map<string, { n: number; id: number }>();
+/** When this page last asked a cut that no poll owns yet. A chart tick must not ask again. */
+const cutAskedAt = new Map<string, number>();
 
-async function readCut(t: string, cut: FieldCut): Promise<void> {
-  if (cut === 'book') {
-    for (let page = 0; page < 4; page++) {
-      const res = await uwCall(`/stock/${encodeURIComponent(t)}/spot-exposures/strike?limit=500&page=${page}`);
-      if (res.error || !Array.isArray(res.data)) return;
-      noteExposureRows(t, res.data, true);
-      if (res.data.length < 500) return;
+/** One cut off Unusual Whales, on the cash root. True when the vendor answered (an empty book is an answer). */
+async function readCut(ticker: string, cut: FieldCut): Promise<boolean> {
+  const t = rootOf(ticker);
+  if (!t) return false;
+  try {
+    if (cut === 'book') {
+      for (let page = 0; page < 4; page++) {
+        const res = await uwCall(`/stock/${encodeURIComponent(t)}/spot-exposures/strike?limit=500&page=${page}`);
+        if (res.error || !Array.isArray(res.data)) return false;
+        noteExposureRows(t, res.data, true);
+        if (res.data.length < 500) return true;
+      }
+      return true;
     }
-    return;
+    const res = await uwCall(`/stock/${encodeURIComponent(t)}/spot-exposures/expiry-strike?expirations[]=${encodeURIComponent(cut)}&limit=500`);
+    if (res.error || !Array.isArray(res.data)) return false;
+    noteExposureRows(t, res.data);
+    return true;
+  } catch {
+    return false;
   }
-  const res = await uwCall(`/stock/${encodeURIComponent(t)}/spot-exposures/expiry-strike?expirations[]=${encodeURIComponent(cut)}&limit=500`);
-  if (!res.error) noteExposureRows(t, res.data);
+}
+
+/** Ask this cut if nobody is polling it. At most once a minute. No rows means an empty field — strikes are not invented. */
+export function ensureFieldCut(ticker: string, cut: FieldCut): void {
+  const t = rootOf(ticker);
+  if (!t || !cut) return;
+  const key = `${t}|${cut}`;
+  if (polls.has(key)) return;
+  const at = cutAskedAt.get(key) ?? 0;
+  if (Date.now() - at < POLL_MS) return;
+  cutAskedAt.set(key, Date.now());
+  pullExposureServer(t);
+  void readCut(t, cut);
 }
 
 /** Read the cut's rows once a minute while a field shows them (the book itself reads a date's rows every few minutes,
     and readings further apart than JOIN_MS are not joined); the same paths the book asks, so a shared answer is reused */
 export function useFieldPoll(ticker: string, cut: FieldCut | null, on = true): void {
+  const t = rootOf(ticker);
   useEffect(() => {
-    if (!on || !ticker || !cut) return;
-    const key = `${ticker.toUpperCase()}|${cut}`;
+    if (!on || !t || !cut) return;
+    const key = `${t}|${cut}`;
     const cur = polls.get(key);
     if (cur) cur.n += 1;
     else {
       /* the server's recording of the day first (from the open, whenever this page opened), then this page's own reads */
-      pullExposureServer(ticker);
-      void readCut(ticker.toUpperCase(), cut);
+      pullExposureServer(t);
+      void readCut(t, cut);
       polls.set(key, {
         n: 1,
         id: window.setInterval(() => {
-          pullExposureServer(ticker);
-          void readCut(ticker.toUpperCase(), cut);
+          pullExposureServer(t);
+          void readCut(t, cut);
         }, POLL_MS),
       });
     }
@@ -384,7 +439,7 @@ export function useFieldPoll(ticker: string, cut: FieldCut | null, on = true): v
         polls.delete(key);
       }
     };
-  }, [ticker, cut, on]);
+  }, [t, cut, on]);
 }
 
 /* ---- the server's recording (GET /api/exposure/day, data/exposureRecorder.ts) --------------------------------- */
@@ -443,7 +498,7 @@ const setServer = (t: string, next: ServerExposure) => {
 export function pullExposureServer(ticker: string, now: number = Date.now()): void {
   if (typeof window === 'undefined' || typeof fetch !== 'function') return;
   if (typeof document !== 'undefined' && document.hidden) return;
-  const t = ticker.toUpperCase();
+  const t = rootOf(ticker);
   let p = serverPull.get(t);
   if (!p) serverPull.set(t, (p = { at: 0, since: 0, busy: false, past: new Set() }));
   if (p.busy || (p.at && now - p.at < SERVER_EVERY_MS)) return;
@@ -478,7 +533,7 @@ export function pullExposureServer(ticker: string, now: number = Date.now()): vo
 
 /** The server's recording of a name, as a hook */
 export function useServerExposure(ticker: string): ServerExposure {
-  const t = ticker.toUpperCase();
+  const t = rootOf(ticker);
   return useSyncExternalStore(
     fn => {
       listeners.add(fn);
@@ -508,7 +563,7 @@ function priorSessions(count: number, now: number = Date.now()): string[] {
 /** Read the cut's book as of each of the last `count` sessions' closes, once each (a past date never changes): one
     expiry's rows off spot-exposures/expiry-strike, or the whole book off spot-exposures/strike. One call at a time. */
 export function ensureFieldCloses(ticker: string, cut: FieldCut, count = 8): void {
-  const t = ticker.toUpperCase();
+  const t = rootOf(ticker);
   const days = priorSessions(count).filter(d => cut === 'book' || d <= cut);
   const todo = days.filter(d => !closesAsked.has(`${t}|${cut}|${d}`));
   if (!todo.length) return;
@@ -601,7 +656,7 @@ async function saveLog(t: string): Promise<void> {
 
 /** Bring back this browser's kept readings for a name, once a page */
 export function restoreExposureLog(ticker: string): void {
-  const t = ticker.toUpperCase();
+  const t = rootOf(ticker);
   if (restored.has(t) || typeof indexedDB === 'undefined') return;
   restored.add(t);
   void (async () => {
@@ -624,9 +679,9 @@ export function restoreExposureLog(ticker: string): void {
 /** Forget a name's log (tests) */
 export function resetExposureLog(ticker?: string): void {
   if (ticker) {
-    logs.delete(ticker.toUpperCase());
-    serverState.delete(ticker.toUpperCase());
-    serverPull.delete(ticker.toUpperCase());
+    logs.delete(rootOf(ticker));
+    serverState.delete(rootOf(ticker));
+    serverPull.delete(rootOf(ticker));
   } else {
     logs.clear();
     serverState.clear();
@@ -635,4 +690,5 @@ export function resetExposureLog(ticker?: string): void {
   gridMemo.clear();
   todayMemo.clear();
   closesAsked.clear();
+  cutAskedAt.clear();
 }

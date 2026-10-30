@@ -46,6 +46,8 @@ export function findJar() {
 
 function findJava() {
   if (process.env.THETA_JAVA) return process.env.THETA_JAVA;
+  const bundled = '/tmp/jdk21/jdk-21.0.13+9-jre/bin/java';
+  if (fs.existsSync(bundled)) return bundled;
   const exe = process.platform === 'win32' ? 'java.exe' : 'java';
   if (process.env.JAVA_HOME) {
     const bin = path.join(process.env.JAVA_HOME, 'bin', exe);
@@ -199,16 +201,10 @@ export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`), warm 
       return;
     }
     if (state === 'session_lost') {
-      /* the terminal reconnects on its own; a fresh login after a minute of losses takes the session back, and a
-         repeat means another terminal keeps logging in with this account */
+      /* Do not kill it. A restart logs in again, the other session answers UNAUTHENTICATED, and the two
+         take turns throwing each other off. The terminal reconnects on its own. */
       lostTicks += 1;
-      if (child && lostTicks >= 4 && Date.now() >= nextStart) {
-        lostRestarts += 1;
-        if (lostRestarts >= 2) log('another terminal keeps taking this account\'s session: stop the other one (one terminal per account)');
-        log(`session lost for ${Math.round((lostTicks * CHECK_MS) / 1000)}s; restarting the terminal to log in again`);
-        lostTicks = 0;
-        child.kill();
-      }
+      if (lostTicks === 4) log('session lost; leaving this terminal up so it can reconnect. A second terminal on this account is what knocks it off.');
       return;
     }
     if (child) {

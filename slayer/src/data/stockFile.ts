@@ -500,7 +500,7 @@ async function load(ticker: string, kept: KeptRead | null = null): Promise<Stock
   /* The head first: the screener row, the reports, the sessions and the chain open the page; the tapes land on their own. */
   const headP = headReads(ticker, kept ? kept.get : null);
   const [screenR, earnR, dayR, contractR, finR, infoR, analystR] = await headP;
-  const screen = Array.isArray(screenR) ? (screenR.find(r => String(r.ticker || '').toUpperCase() === ticker) ?? screenR[0] ?? null) : null;
+  const screen = Array.isArray(screenR) ? (screenR.find(r => String(r.ticker || '').toUpperCase() === ticker) ?? null) : null;
   const days = daysFrom(Array.isArray(dayR) ? dayR : []);
   const quarters = quartersFrom(finR);
   const street = streetFrom(Array.isArray(analystR) ? analystR : []);

@@ -20,14 +20,16 @@ import { buildPrints } from '../../../data/gex';
 import { levelsOf } from './derive';
 import { fmtTwin, twinFamilyFor, twinPrice, useTwinRatio } from '../../../data/indexTwins';
 import { buildLevelRead } from '../../../data/levelview';
-import { TIMEFRAMES, type Timeframe } from '../../../data/timeframe';
+import { TIMEFRAMES, frameServed, type Timeframe } from '../../../data/timeframe';
 import type { TileProps, TileState } from '../tile';
 import { LiveSpot, fmtStrike } from './parts';
 
 /** The tile's interval: its own pick, else the desk's (Settings › The desk), else one minute */
 export const chartTf = (state: TileState): Timeframe => {
-  const own = TIMEFRAMES.find(t => t.value === state.tf)?.value;
-  return own ?? readDeskPrefs().opensOn.timeframe ?? '1m';
+  const own = TIMEFRAMES.find(t => t.value === state.tf);
+  if (own && frameServed(own.value)) return own.value;
+  const desk = readDeskPrefs().opensOn.timeframe;
+  return desk && frameServed(desk) ? desk : '1m';
 };
 
 /* Compare-line inks, blue leading like TradingView's; four slots. None of these collide with the field (gold/steel), the

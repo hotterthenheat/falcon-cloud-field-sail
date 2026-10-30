@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { darkView, execWord, fmtCount as num, lastStockClose, nyIsoToday, olderDarkDay, olderNameDark, postureOf, quotePlace, useAccumTape, useDarkRegularDay, useLitRegularDay, useNameDark, useOlderPages, usd as fmtUsd } from '../../data/traceLive';
-import { dayAdv, shortDay, spanWords } from '../../components/trace/dayWords';
+import { dayAdv, dayPos, shortDay, spanWords } from '../../components/trace/dayWords';
 import { useTraceSession } from '../../components/trace/traceSession';
 import { useQParam } from '../../components/trace/addressCut';
 import { FLOW_TTL_MS, FeedFallback, StaleMark } from '../../components/ui/liveRead';
@@ -137,7 +137,6 @@ const DarkPool = () => {
   const named0 = /^[A-Z][A-Z0-9.]{0,5}$/.test(q0) ? q0 : null;
   const regOlder = useOlderPages(`dreg:${closed?.iso ?? ''}`, darkReg0.rows, darkIdOf, inHand => olderDarkDay(closed!.iso, inHand), regularView && !named0 && tapeKind === 'dark');
   const darkReg = useMemo(() => ({ ...darkReg0, rows: regOlder.rows }), [darkReg0, regOlder.rows]);
-  const dark = regularView ? darkReg : darkLive;
   const litLive = useAccumTape('lit', 200, !regularView && !namedLive && tapeKind === 'lit');
   /* own-terms prints (contingent, average-price) stand apart, in no total and no leader */
   const [terms, setTerms] = useState<'quote' | 'own'>('quote');
@@ -150,15 +149,21 @@ const DarkPool = () => {
     return [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(e => e[0]);
   }, [darkReg.rows]);
   const litReg = useLitRegularDay(regularView && tapeKind === 'lit' && !named ? closed! : null, litNames);
-  const lit = regularView ? litReg : litLive;
-  const nameBook = useNameDark(named, regularView ? closed!.closeMs : null);
+  /* regular drops premarket and after hours; extended drops late regular prints that are not after hours */
+  const inDpSession = useCallback((p: DarkPoolPrint) => (dpSession === 'after' ? !!p.extended : !p.extended), [dpSession]);
+  const darkBase = regularView ? darkReg : darkLive;
+  const litBase = regularView ? litReg : litLive;
+  const dark = useMemo(() => ({ ...darkBase, rows: darkBase.rows.filter(inDpSession) }), [darkBase, inDpSession]);
+  const lit = useMemo(() => ({ ...litBase, rows: litBase.rows.filter(inDpSession) }), [litBase, inDpSession]);
+  const nameSession: 'regular' | 'extended' = dpSession === 'after' ? 'extended' : 'regular';
+  const nameDayIso = regularView ? closed!.iso : nyIsoToday();
+  const nameBook = useNameDark(named, regularView ? closed!.closeMs : null, nameSession, named ? nameDayIso : null);
   const [read, setRead] = useState<ReadCut>('all');
   const [size, setSize] = useState<SizeCut>('any');
   const [where, setWhere] = useState<WhereCut>('anywhere');
   const [guideOpen, setGuideOpen] = useState(false);
 
-  const nameDayIso = regularView ? closed!.iso : nyIsoToday();
-  const nameOlder = useOlderPages(`dname:${named ?? ''}:${nameDayIso}`, nameBook.rows.view?.prints ?? NO_PRINTS, darkIdOf, inHand => olderNameDark(named!, inHand, nameDayIso), !!named && tapeKind !== 'lit');
+  const nameOlder = useOlderPages(`dname:${named ?? ''}:${nameDayIso}:${nameSession}`, nameBook.rows.view?.prints ?? NO_PRINTS, darkIdOf, inHand => olderNameDark(named!, inHand, nameDayIso, 200, nameSession), !!named && tapeKind !== 'lit');
   const nameView0 = named && tapeKind !== 'lit' ? nameBook.rows.view : null;
   const nameView = useMemo(() => (nameView0 && nameOlder.rows.length > nameView0.prints.length ? { ...nameView0, prints: nameOlder.rows } : nameView0), [nameView0, nameOlder.rows]);
   const liveView = useMemo(() => {
@@ -650,7 +655,7 @@ const DarkPool = () => {
           <>
             {/* only a name's day carries a share of volume */}
             {view && nameDay ? (
-              <Fact label={`Off-exchange ${dayAdv()}`} testId="share" title="The day's dark shares at prices the lit tape also traded, over the day's volume. Own-terms buckets are counted apart">
+              <Fact label={`Off-exchange ${dayAdv(nameDay?.iso ?? nameDayIso)}`} testId="share" title={`${dayPos(nameDay?.iso ?? nameDayIso)} dark shares at prices the lit tape also traded, over that session's volume. Own-terms buckets are counted apart`}>
                 {Number.isFinite(nameDay.sharePct) ? `${nameDay.sharePct.toFixed(0)}% ` : ''}<span className="text-textMuted">{Number.isFinite(nameDay.sharePct) ? 'of shares · ' : ''}≈{fmtUsd(nameDay.darkDollars)} · {nameDay.darkShares.toLocaleString('en-US')} sh</span>
                 {nameDay.offShares > 0 && <span className="text-textMuted" title="Dark shares at prices the lit tape never traded: own-terms prints, set apart from every other figure"> · ≈{fmtUsd(nameDay.offDollars)} own terms apart</span>}
               </Fact>
@@ -764,7 +769,7 @@ const DarkPool = () => {
         <div className="border-t border-borderSubtle" data-dark-pool-shelves>
           <div className="px-5 flex items-center gap-2 border-b border-borderSubtle/60 font-mono text-t11 uppercase tracking-widest" style={{ height: DP_STRIP_HEAD_H }}>
             <span className="text-textPrimary">The shelves</span>
-            <span className="text-textMuted normal-case tracking-normal font-sans text-t11" title="A shelf holds 3% or more of the day's dark dollars within 5% of the market">· where the day's dark shares rested · {shelfWords}</span>
+            <span className="text-textMuted normal-case tracking-normal font-sans text-t11" title={`A shelf holds 3% or more of ${dayPos(nameDayIso)} dark dollars within 5% of the market`}>· where {dayPos(nameDayIso)} dark shares rested · {shelfWords}</span>
           </div>
           {/* two across on a phone, three from 640, six from 1024: narrower cells cut their figures */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-borderSubtle/60 max-sm:divide-y">

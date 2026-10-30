@@ -4,7 +4,7 @@
 import { bookToday, expiryFor, isoDate, isTradingDay, nextSession, MONTHS as MON3 } from '../../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../../core/nyTime';
 import { keptOf } from '../../core/dealerSign';
-import { dayChangeOf, noteBarCloses } from '../dayChange';
+import { noteBarCloses } from '../dayChange';
 import { type GexSnapshot, type StrikeNode } from '../../types/market';
 import { levelsForName, readLevelsScope, type LevelsScope } from '../levelsScope';
 import { sameName } from '../spotGexBook';
@@ -386,9 +386,10 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   const last = keepHeld ? held!.spot : barOrState;
   const mt = offRegular ? offRegular.marketTime : typeof state.market_time === 'string' ? state.market_time : undefined;
   const statePrev = offRegular ? offRegular.close : num(state.prev_close);
-  const offPhase = dayChangeOf({ close: last, prev_close: statePrev, market_time: mt }, null).phase;
   const regClose = statePrev;
-  const spot = (offPhase === 'post' || offPhase === 'pre') && regClose > 0 ? regClose : last;
+  /* The price is the print of the session we are in. The regular close stays on the state for the day's change.
+     It is not the price during pre-market or after hours. */
+  const spot = last > 0 ? last : regClose;
   /* the close before that session: the daily rows', else the state's own prev_close when its print is of that session */
   const prevOff = offRegular ? offRegular.prevClose || (Number.isFinite(tapeMs) && nyIsoDate(tapeMs) === nyIsoDate(offRegular.at - 60_000) ? num(state.prev_close) : 0) : 0;
   /* unknown stays 0: the day's change then reads "—", never a made-up 0.00% */

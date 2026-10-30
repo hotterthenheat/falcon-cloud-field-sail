@@ -11,7 +11,7 @@ import { bumpLibrary, getPaneBars, liftFromPane, placeOnPane, updateOnPane, useL
 import { scriptStore } from '../../data/scriptStore';
 import type { ChartScript, PaneId, Script, ScriptInput, ScriptInputValue } from '../../types/scripts';
 import Modal from '../ui/Modal';
-import { INDICATOR_ITEMS } from '../gex/indicatorItems';
+import { INDICATOR_ITEMS, indicatorBlurb } from '../gex/indicatorItems';
 import { MAX_SUB_PANES, SUB_PANE_ORDER, type ChartIndicators, type ChartOverlays } from '../gex/StrikeChart';
 import { OPENING_RANGES, type OpeningRange } from '../../data/sessionLevels';
 
@@ -181,6 +181,9 @@ const OVERLAY_ROWS: { key: keyof ChartOverlays; label: string; hint: string; pan
 ];
 
 const CLOCK_HELD = new Set<keyof ChartOverlays>(['trails', 'flow', 'netDrift', 'volDrift', 'session', 'cone', 'events']);
+/* Book lines and share VWAP have no session to cut on a rule clock. Keyed by the indicator, not the shelf group — search rewrites the group. */
+const CLOCK_HELD_CHART = new Set<keyof ChartIndicators>(['vwap', 'vwapBands', 'flowVwap', 'sideVwap', 'gammaEma', 'gammaVwap']);
+const ROW_GRID = 'grid grid-cols-[52px_minmax(0,1fr)_80px_28px_28px_44px] items-center px-2';
 
 const ScriptLibrary = ({
   open,
@@ -285,6 +288,7 @@ const ScriptLibrary = ({
   const toggle = useCallback(
     async (r: Row) => {
       if (capped(r)) return;
+      if ((barClock ?? 'time') !== 'time' && r.chartKey && CLOCK_HELD_CHART.has(r.chartKey)) return;
       /* turning something ON is a use — it goes to the top of Recently used */
       const used = () => {
         remember({ id: r.key, title: r.title });
@@ -309,7 +313,7 @@ const ScriptLibrary = ({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [paneId, indicators, onIndicators, subsOn, edit]
+    [paneId, indicators, onIndicators, subsOn, edit, barClock]
   );
 
   const star = async (r: Row) => {
@@ -435,7 +439,7 @@ const ScriptLibrary = ({
               new search fades its rows up softly (the house soft-in, keyed) instead of
               swapping them in a frame */}
           <div className="min-w-0 h-full flex flex-col" role="table" aria-label="Scripts">
-            <div className="grid grid-cols-[60px_minmax(0,1fr)_96px_28px_28px_40px] items-center h-7 px-2 font-mono text-t8 uppercase tracking-widest text-textSecondary border-b border-borderSubtle shrink-0" role="row">
+            <div className={`${ROW_GRID} h-7 font-mono text-t8 uppercase tracking-widest text-textSecondary border-b border-borderSubtle shrink-0`} role="row">
               <span>Kind</span>
               <span>Name</span>
               <span>Shelf</span>
@@ -443,7 +447,7 @@ const ScriptLibrary = ({
               <span />
               <span className="text-right">On</span>
             </div>
-            <div key={`${q ? 'search' : shelf}|${q}`} className="flex-1 min-h-0 overflow-y-auto animate-soft-in" data-library-rows>
+            <div key={`${q ? 'search' : shelf}|${q}`} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden animate-soft-in" data-library-rows>
             {overlays && onOverlays && (shelf === 'chart' || !!q) && (
               <div>
                 <div className="px-2 pt-3 pb-1 font-mono text-t8 uppercase tracking-widest text-textSecondary">On the chart</div>
@@ -452,13 +456,19 @@ const ScriptLibrary = ({
                   const held = (barClock ?? 'time') !== 'time' && CLOCK_HELD.has(r.key);
                   return (
                     <div key={r.key}>
-                      <div role="row" className={`grid grid-cols-[60px_minmax(0,1fr)_96px_28px_28px_40px] items-center h-[38px] px-2 rounded-md ${on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}>
+                      <div role="row" className={`${ROW_GRID} min-h-[46px] overflow-hidden rounded-md ${on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}>
                         <span className="inline-flex w-fit items-center font-mono text-t8 font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border bg-ink/[0.1] border-borderMuted text-textPrimary">chart</span>
-                        <span className="min-w-0 flex items-baseline gap-2">
-                          <span className="font-semibold text-t12 text-textPrimary whitespace-nowrap">{r.label}</span>
-                          <span className="text-t105 text-textPrimary truncate">{held ? 'Needs time bars' : r.hint}</span>
-                        </span>
-                        <span className="font-mono text-t10 text-textPrimary whitespace-nowrap">{r.pane}</span>
+                        <button
+                          type="button"
+                          disabled={held}
+                          onClick={() => !held && onOverlays({ ...overlays, [r.key]: !on })}
+                          title={held ? 'Needs time bars — the pane is on a rule clock' : r.hint}
+                          className="min-w-0 flex flex-col items-start text-left overflow-hidden disabled:cursor-default"
+                        >
+                          <span className="font-semibold text-t12 text-textPrimary truncate max-w-full">{r.label}</span>
+                          <span className="text-t10 text-textSecondary truncate max-w-full">{held ? 'Needs time bars' : r.hint}</span>
+                        </button>
+                        <span className="font-mono text-t10 text-textPrimary whitespace-nowrap truncate">{r.pane}</span>
                         <span />
                         <span />
                         <span className="flex justify-end">
@@ -467,7 +477,7 @@ const ScriptLibrary = ({
                             aria-checked={on}
                             disabled={held}
                             onClick={() => !held && onOverlays({ ...overlays, [r.key]: !on })}
-                            className={`inline-flex w-[14px] h-[14px] items-center justify-center rounded-[3px] border transition-colors ${on && !held ? 'bg-silverFill border-silverFill' : 'border-textPrimary/60 hover:border-textPrimary'} ${held ? 'opacity-40 cursor-default' : ''}`}
+                            className={`inline-flex w-5 h-5 items-center justify-center rounded-[3px] border transition-colors ${on && !held ? 'bg-silverFill border-silverFill' : 'border-textPrimary/60 hover:border-textPrimary'} ${held ? 'opacity-40 cursor-default' : ''}`}
                           >
                             {on && !held && (
                               <svg viewBox="0 0 10 10" className="w-2.5 h-2.5" aria-hidden>
@@ -520,35 +530,37 @@ const ScriptLibrary = ({
                 {g.rows.map(r => {
                   const idx = rows.indexOf(r);
                   const hi = idx === highlight;
-                  const held = capped(r);
+                  const held = capped(r) || ((barClock ?? 'time') !== 'time' && !!r.chartKey && CLOCK_HELD_CHART.has(r.chartKey));
                   const fav = favourites.has(r.key);
                   return (
                     <div key={r.key}>
                       <div
                         role="row"
                         onMouseEnter={() => setHighlight(idx)}
-                        className={`grid grid-cols-[60px_minmax(0,1fr)_96px_28px_28px_40px] items-center h-[38px] px-2 rounded-md transition-colors ${hi ? 'bg-silver/[0.06]' : ''} ${r.on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}
+                        className={`${ROW_GRID} min-h-[46px] overflow-hidden rounded-md transition-colors ${hi ? 'bg-silver/[0.06]' : ''} ${r.on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}
                         data-library-row={r.key}
                         data-on={r.on || undefined}
                       >
                         {/* The kind as a filled tag: SLAYER the house's silver tag, PINE and CHART the chip ground */}
                         <span className={`inline-flex w-fit items-center font-mono text-t8 font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border ${r.kind === 'slayer' ? 'bg-silverFill border-silverFill text-onfoil' : 'bg-ink/[0.1] border-borderMuted text-textPrimary'}`} data-library-kind={r.kind}>{KIND_WORD[r.kind]}</span>
-                        <span className="min-w-0 flex items-baseline gap-2">
+                        <span className="min-w-0 flex flex-col justify-center gap-px overflow-hidden">
                           {r.script && fullscreen ? (
-                            <button onClick={() => edit(r.script!)} className="font-semibold text-t12 text-textPrimary hover:underline underline-offset-2 whitespace-nowrap" title="Open in the editor">
+                            <button onClick={() => edit(r.script!)} className="min-w-0 max-w-full truncate text-left font-semibold text-t12 text-textPrimary hover:underline underline-offset-2" title="Open in the editor">
                               {r.title}
                             </button>
                           ) : r.script ? (
-                            <span className="font-semibold text-t12 text-textPrimary whitespace-nowrap" title={EDITOR_SHUT}>
+                            <span className="font-semibold text-t12 text-textPrimary truncate" title={EDITOR_SHUT}>
                               {r.title}
                             </span>
                           ) : (
-                            <span className="font-semibold text-t12 text-textPrimary whitespace-nowrap">{r.title}</span>
+                            <button type="button" disabled={held} onClick={() => void toggle(r)} className="min-w-0 max-w-full truncate text-left font-semibold text-t12 text-textPrimary disabled:cursor-default">
+                              {r.title}
+                            </button>
                           )}
-                          <span className="text-t105 text-textPrimary truncate">{r.description}</span>
+                          <span className="text-t10 text-textSecondary truncate" title={held ? 'Needs time bars — the pane is on a rule clock' : r.description}>{held && r.chartKey ? 'Needs time bars' : r.kind === 'chart' ? indicatorBlurb(r.description) : r.description}</span>
                           {r.script?.status === 'error' && <span className="font-mono text-t8 uppercase tracking-widest text-bear">does not read</span>}
                         </span>
-                        <span className="font-mono text-t10 text-textPrimary whitespace-nowrap" title={r.pane === 'own' ? 'Takes its own pane under the tape — two at most' : 'Draws on the tape itself'}>
+                        <span className="font-mono text-t10 text-textPrimary whitespace-nowrap truncate" title={r.pane === 'own' ? 'Takes its own pane under the tape — two at most' : 'Draws on the tape itself'}>
                           {r.pane === 'own' ? 'own pane' : 'on the tape'}
                         </span>
                         <span>
@@ -567,8 +579,8 @@ const ScriptLibrary = ({
                             aria-checked={r.on}
                             disabled={held}
                             onClick={() => void toggle(r)}
-                            title={held ? 'Two own panes are the cap — turn one off first, or the tape shrinks past its floor' : r.on ? 'Take it off this pane' : 'Draw it on this pane'}
-                            className={`inline-flex w-[14px] h-[14px] items-center justify-center rounded-[3px] border transition-colors ${r.on ? 'bg-silverFill border-silverFill' : 'border-textPrimary/60 hover:border-textPrimary'} ${held ? 'opacity-40 cursor-default' : ''}`}
+                            title={held ? (r.chartKey && (barClock ?? 'time') !== 'time' ? 'Needs time bars — the pane is on a rule clock' : 'Two own panes are the cap — turn one off first, or the tape shrinks past its floor') : r.on ? 'Take it off this pane' : 'Draw it on this pane'}
+                            className={`inline-flex w-5 h-5 items-center justify-center rounded-[3px] border transition-colors ${r.on ? 'bg-silverFill border-silverFill' : 'border-textPrimary/60 hover:border-textPrimary'} ${held ? 'opacity-40 cursor-default' : ''}`}
                             data-library-toggle
                           >
                             {r.on && (

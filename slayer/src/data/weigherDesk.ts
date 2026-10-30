@@ -151,13 +151,22 @@ function snapRows(data: unknown): { contract: Record<string, unknown>; data: Rec
 }
 
 interface LegQuote {
-  mark: number | null;
+  /** What a long can sell for. 0 is a real bid, not a missing one. */
+  bid: number | null;
+  /** What a short must pay to cover. Absent when the ask is missing or 0. */
+  ask: number | null;
   prev: number | null;
   low: number | null;
   high: number | null;
 }
 
-const legCache = new Map<string, { at: number; marks: Map<string, number> }>();
+/** A long is worth the bid, including 0. A short is worth the ask, and only when the ask is a real price. The mid is not a live price. */
+export function exitPrice(side: 'long' | 'short', bid: number | null, ask: number | null): number | null {
+  if (side === 'short') return ask != null && Number.isFinite(ask) && ask > 0 ? ask : null;
+  return bid != null && Number.isFinite(bid) && bid >= 0 ? bid : null;
+}
+
+const legCache = new Map<string, { at: number; quotes: Map<string, { bid: number; ask: number }> }>();
 
 function legDay(data: unknown): { close: number | null; low: number | null; high: number | null } {
   let close: number | null = null;
@@ -174,8 +183,8 @@ function legDay(data: unknown): { close: number | null; low: number | null; high
   return { close, low, high };
 }
 
-/** Live marks and yesterday's closes for many contracts: one NBBO snapshot and one EOD read per option root and
-    expiry, whatever the strikes. A leg the feed does not quote stays null. */
+/** Live bids and asks, and yesterday's closes, for many contracts: one NBBO snapshot and one EOD read per option root and
+    expiry, whatever the strikes. A leg the feed does not quote stays null. The mid is not stored. */
 export async function readLegs(legs: readonly { ticker: string; expiry: string; strike: number; right: OptionRight }[]): Promise<Map<string, LegQuote>> {
   const out = new Map<string, LegQuote>();
   const groups = new Map<string, typeof legs[number][]>();
@@ -189,11 +198,11 @@ export async function readLegs(legs: readonly { ticker: string; expiry: string; 
     [...groups.entries()].map(async ([g, list]) => {
       const [ticker, expiry] = g.split('|');
       const exp = ymd(expiry);
-      const marks = new Map<string, number>();
+      const quotes = new Map<string, { bid: number; ask: number }>();
       let prevs = new Map<string, number>();
       for (const symbol of optionRoots(ticker)) {
         const hit = legCache.get(`${symbol}|${exp}`);
-        let sheet = hit && Date.now() - hit.at < 4000 ? hit.marks : null;
+        let sheet = hit && Date.now() - hit.at < 4000 ? hit.quotes : null;
         if (!sheet) {
           const quote = await thetaGet(`/option/snapshot/quote?symbol=${encodeURIComponent(symbol)}&expiration=${exp}&format=json`, true);
           if (quote.error) continue;
@@ -202,17 +211,19 @@ export async function readLegs(legs: readonly { ticker: string; expiry: string; 
             const k = contractKey(item.contract);
             const bid = numOr(item.data.bid);
             const ask = numOr(item.data.ask);
-            if (k && bid != null && ask != null && ask >= bid && ask > 0) sheet.set(k, Number(((bid + ask) / 2).toFixed(2)));
+            /* A 0 bid with an ask at or over it is a real quote. A crossed book is not. */
+            if (k && bid != null && ask != null && ask >= bid) sheet.set(k, { bid, ask });
           }
-          legCache.set(`${symbol}|${exp}`, { at: Date.now(), marks: sheet });
+          legCache.set(`${symbol}|${exp}`, { at: Date.now(), quotes: sheet });
         }
-        for (const [k, v] of sheet) if (!marks.has(k)) marks.set(k, v);
+        for (const [k, v] of sheet) if (!quotes.has(k)) quotes.set(k, v);
         if (!prevs.size) prevs = await eodCloses(symbol, exp);
-        if (list.every(l => marks.has(`${Number(l.strike.toFixed(4))}|${l.right}`))) break;
+        if (list.every(l => quotes.has(`${Number(l.strike.toFixed(4))}|${l.right}`))) break;
       }
       for (const l of list) {
         const k = `${Number(l.strike.toFixed(4))}|${l.right}`;
-        out.set(`${l.ticker}|${l.expiry}|${l.strike}|${l.right}`, { mark: marks.get(k) ?? null, prev: prevs.get(k) ?? null, low: null, high: null });
+        const q = quotes.get(k);
+        out.set(`${l.ticker}|${l.expiry}|${l.strike}|${l.right}`, { bid: q ? q.bid : null, ask: q ? q.ask : null, prev: prevs.get(k) ?? null, low: null, high: null });
       }
     }),
   );
@@ -320,6 +331,14 @@ function dayLabel(iso: string, weekday: number): string {
   return `${month} ${day} · ${weekday} DTE`;
 }
 
+/** A same-day expiry whose tape is finished is not a choice. A later date is not that contract.
+    Weekday 0 is the NY calendar day, so Saturday's next session (Monday) is not dropped just because the index tape is marked done. */
+export function listedOpen(rows: readonly ListedExpiry[], at: number = Date.now()): ListedExpiry[] {
+  const shut = rows.some(e => e.weekday === 0 && nameTape(e.root, true, at).done);
+  if (!shut) return rows as ListedExpiry[];
+  return rows.filter(e => !(e.weekday === 0 && nameTape(e.root, true, at).done));
+}
+
 /** Every expiration the feed lists for this name. A standard index includes its weekly root, so SPX has a today. `down` means the feed did not answer. An empty list with down false means the name has no options. */
 export async function listLiveExpiries(ticker: string): Promise<{ rows: ListedExpiry[]; down: boolean; takenAt?: number }> {
   const roots = optionRoots(ticker);
@@ -362,13 +381,11 @@ function expiriesFrom(roots: string[], datas: unknown[], up: boolean[]): ListedE
       seen.add(iso);
       const e = expiryFor(dte);
       const weekday = weekdayCount(today, iso);
-      /* A finished 0 DTE is not a choice. The next same-day contract appears when that day is today and its tape is still open. */
-      if (weekday === 0 && nameTape(roots[i], true).done) continue;
       out.push({ iso, dte: e.dte, weekday, label: dayLabel(iso, weekday), root: roots[i] });
     }
   }
   out.sort((a, b) => a.iso.localeCompare(b.iso));
-  return out;
+  return listedOpen(out);
 }
 
 function weekdayCount(todayIso: string, expIso: string): number {

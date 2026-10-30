@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { now } from '../../core/clock';
 import { buildMonthCalendar, dayKeyOf, fdaStamp, setLiveEarnings, subscribeFda, type CalDay, type CalEvent } from '../../data/monthCalendar';
 import { ensureEarnings, useEveryReportQuiet, useLiveReactions } from '../../data/earningsFeed';
 import { nyTodayIso as nyIsoDate } from '../../data/nyDate';
@@ -92,7 +91,9 @@ const moveWords = (e: CalEvent): string => {
 };
 
 const NewsCalendar = () => {
-  const today = useMemo(() => now(), []);
+  const todayIso = nyIsoDate();
+  const [ty, tm, td] = todayIso.split('-').map(Number);
+  const today = new Date(ty, tm - 1, td);
   const [ym, setYm] = useState({ y: today.getFullYear(), m: today.getMonth() });
   const [kind, setKind] = useState<KindPick>('all');
   const fdaRev = useSyncExternalStore(subscribeFda, fdaStamp, fdaStamp);
@@ -139,7 +140,7 @@ const NewsCalendar = () => {
         })
     );
   }, [reports]);
-  const cal = useMemo(() => buildMonthCalendar(ym.y, ym.m), [ym, fdaRev]);
+  const cal = useMemo(() => buildMonthCalendar(ym.y, ym.m), [ym, fdaRev, todayIso]);
   const [pickedKey, setPickedKey] = useState(dayKeyOf(today));
   const days = useMemo(() => cal.weeks.flat(), [cal]);
   const picked: CalDay = days.find(d => d.key === pickedKey) ?? days.find(d => d.today) ?? days.find(d => d.inMonth)!;

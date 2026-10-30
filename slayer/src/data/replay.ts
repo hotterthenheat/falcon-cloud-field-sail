@@ -10,15 +10,11 @@ import { dollarGammaPerContract } from '../core/gammaFlip';
 import { bookToday, isoDate } from '../core/calendar';
 import { yearsTo } from './flipLevel';
 import { registerChainDates } from './chainDates';
-import { peekEntry } from './uwBook';
 import type { Candle, GexLevel, GexSnapshot, MarketSnapshot, StrikeNode } from '../types/market';
 
 /** The book is read every five seconds of session time */
 const FRAME_SEC = 5;
 const BAR_SEC = 60;
-/** The simulator's dealer weights — the split of net gamma between the legs */
-const W_CALL = -0.55;
-const W_PUT = 0.53;
 
 export interface ReplayRange {
   ticker: string;
@@ -179,7 +175,8 @@ const EMPTY_NODE: Omit<StrikeNode, 'strike'> = { callOI: 0, putOI: 0, gamma: 0, 
    is shared by size, so the legs add to the net and neither exceeds its contracts (dividing the net by near-cancelling weights blew up). */
 function legsOf(net: number, callEst: number, putEst: number): { call: number; put: number } {
   const size = Math.abs(callEst) + Math.abs(putEst);
-  if (size < 1e-9) return { call: net / 2, put: net / 2 };
+  /* No estimate of the legs: the net stays on the level, and neither leg is invented. */
+  if (size < 1e-9) return { call: 0, put: 0 };
   const rest = net - (callEst + putEst);
   return { call: callEst + (rest * Math.abs(callEst)) / size, put: putEst + (rest * Math.abs(putEst)) / size };
 }
@@ -187,7 +184,7 @@ function legsOf(net: number, callEst: number, putEst: number): { call: number; p
 /* A past minute of the vendor's book is today's contracts re-priced: OI is counted overnight, so each leg's dollar gamma is re-priced
    (Black-Scholes at that minute's spot and time, own vol) and every chain moves together. */
 const RATIO_CAP = 25;
-function repriceDate(chain: readonly StrikeNode[], date: string, s0: number, s1: number, t0: number, t1: number, atmIv: number): StrikeNode[] {
+function repriceDate(chain: readonly StrikeNode[], date: string, s0: number, s1: number, t0: number, t1: number): StrikeNode[] {
   const T0 = yearsTo(date, t0);
   const T1 = yearsTo(date, t1);
   const ratio = (K: number, iv: number) => {
@@ -197,8 +194,11 @@ function repriceDate(chain: readonly StrikeNode[], date: string, s0: number, s1:
     return Math.min(RATIO_CAP, dollarGammaPerContract(s1, K, T1, iv) / a);
   };
   return chain.map(n => {
-    const callGex = n.callGex * ratio(n.strike, n.callIv && n.callIv > 0 ? n.callIv : atmIv);
-    const putGex = n.putGex * ratio(n.strike, n.putIv && n.putIv > 0 ? n.putIv : atmIv);
+    /* A leg with no printed vol is not scaled by another expiry's vol or the name's 30-day vol. */
+    const callIv = n.callIv && n.callIv > 0 ? n.callIv : 0;
+    const putIv = n.putIv && n.putIv > 0 ? n.putIv : 0;
+    const callGex = n.callGex * ratio(n.strike, callIv);
+    const putGex = n.putGex * ratio(n.strike, putIv);
     return { ...n, callGex, putGex, netGex: callGex + putGex };
   });
 }
@@ -208,7 +208,6 @@ function liveBookAt(live: MarketSnapshot, spot: number, atMs: number): Pick<Mark
   const by = live.uwByDate;
   const chains = live.uwChains;
   if (!live.liveBook || !by || !chains || !(live.spot > 0)) return null;
-  const entry = peekEntry(live.ticker);
   const now = Date.now();
   const floor = isoDate(bookToday());
   const swap = new Map<readonly StrikeNode[], StrikeNode[]>();
@@ -220,7 +219,7 @@ function liveBookAt(live: MarketSnapshot, spot: number, atMs: number): Pick<Mark
       byAt[d] = src;
       continue;
     }
-    const out = repriceDate(src, d, live.spot, spot, now, atMs, entry?.termIv?.[d] ?? entry?.iv ?? 0);
+    const out = repriceDate(src, d, live.spot, spot, now, atMs);
     byAt[d] = out;
     swap.set(src, out);
     src.forEach((n, i) => {
@@ -272,17 +271,17 @@ export function snapshotAt(live: MarketSnapshot, range: ReplayRange, pos: number
     const t = template.get(l.strike);
     const callOI = l.callOI ?? t?.callOI ?? 0;
     const putOI = l.putOI ?? t?.putOI ?? 0;
-    /* each leg: the live leg at the strike, per contract, times that moment's contracts (legsOf above) */
+    const known = !!t;
     const perC = (leg: number | undefined, oi: number | undefined) => (leg != null && oi ? leg / oi : 0);
-    const cGex = t ? perC(t.callGex, t.callOI) * callOI : callOI * W_CALL;
-    const pGex = t ? perC(t.putGex, t.putOI) * putOI : putOI * W_PUT;
-    const g = legsOf(l.value, cGex, pGex);
+    const cGex = known ? perC(t!.callGex, t!.callOI) * callOI : 0;
+    const pGex = known ? perC(t!.putGex, t!.putOI) * putOI : 0;
+    const g = known ? legsOf(l.value, cGex, pGex) : { call: 0, put: 0 };
     const callGex = g.call;
     const putGex = g.put;
-    const dex = l.dex ?? t?.netDex ?? 0;
-    const vex = l.vex ?? t?.netVex ?? 0;
-    const dx = legsOf(dex, t ? perC(t.callDex, t.callOI) * callOI : dex / 2, t ? perC(t.putDex, t.putOI) * putOI : dex / 2);
-    const vx = legsOf(vex, t ? perC(t.callVex, t.callOI) * callOI : vex / 2, t ? perC(t.putVex, t.putOI) * putOI : vex / 2);
+    const dex = l.dex ?? (known ? t!.netDex : 0) ?? 0;
+    const vex = l.vex ?? (known ? t!.netVex : 0) ?? 0;
+    const dx = known ? legsOf(dex, perC(t!.callDex, t!.callOI) * callOI, perC(t!.putDex, t!.putOI) * putOI) : { call: 0, put: 0 };
+    const vx = known ? legsOf(vex, perC(t!.callVex, t!.callOI) * callOI, perC(t!.putVex, t!.putOI) * putOI) : { call: 0, put: 0 };
     return {
       ...(t ?? { strike: l.strike, ...EMPTY_NODE }),
       strike: l.strike,

@@ -45,7 +45,7 @@ interface Props {
   book: Book | null;
   tick: number;
   score: LiveScore | null;
-  listed: { dte: number; label: string }[];
+  listed: { dte: number; label: string; iso?: string; weekday?: number }[];
   onPickAlt: (strike: number, dte: number, right?: OptionRight) => void;
 }
 
@@ -66,41 +66,45 @@ const clock = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2,
 
 /** What a person can read. The scores stay in the gate. They are not shown. */
 function speak(s: string): string | null {
-  if (/simulated/i.test(s)) return 'These prices are not a live quote.';
-  if (/Quote missing|crossed|older than/i.test(s)) return 'The bid and ask are missing, crossed, or old.';
-  if (/Outside the entry clock/i.test(s)) return 'This name’s options are not in a window we read.';
-  if (/high-impact release/i.test(s)) return 'A big number is close. We don’t start a new one.';
-  if (/same-day only/i.test(s)) return 'This late window is only for contracts that expire today.';
-  if (/outside 0 to 7|options are shut|not on this scan|Halted/i.test(s)) return 'This contract is not being read right now.';
-  if (/Bid is at or under/i.test(s)) return 'The bid is $0.15 or less. Too thin to take.';
-  if (/Spread is over/i.test(s)) return 'The spread is wider than 8% of the price.';
-  if (/Outside the span/i.test(s)) return s.replace('Outside the span. ', 'Too far from the stock. ');
-  if (/Book B/i.test(s)) return 'This far strike has not cheapened enough.';
-  if (/Book C ask/i.test(s)) return 'The ask is over $1.65.';
-  if (/Only the call/i.test(s)) return 'The stock is up from the open. This is a put.';
-  if (/Only the put/i.test(s)) return 'The stock is down from the open. This is a call.';
-  if (/open is not in hand/i.test(s)) return 'The opening price is not in yet, so the side is not named.';
-  if (/Flat root/i.test(s)) return 'The stock is flat from the open. Neither side is named.';
-  if (/Needs 70\.67|has not scored/i.test(s)) return 'It does not clear.';
-  if (/Model 1/i.test(s)) return null;
-  if (/does not send/i.test(s)) return 'It clears. We do not call this name.';
-  if (/already sent/i.test(s)) return 'This name already has one today.';
-  if (/seats are full/i.test(s)) return 'Five are already out today.';
-  if (/Book A\. Model|Book B\. Model|Book C\. No model|The math passes/i.test(s)) return 'This one clears.';
-  if (/^Quote /i.test(s)) return s.replace(/^Quote /, 'Bid and ask ').replace(', on this contract.', '.');
-  if (/Inside the Book/i.test(s)) return null;
-  if (/No high-impact/i.test(s)) return 'No big number in the next 15 minutes.';
-  if (/Same-day contract/i.test(s)) return 'It expires today.';
-  if (/weekday sessions/i.test(s)) return s.replace('weekday sessions to expiration.', 'sessions left.');
-  if (/Bid is above/i.test(s)) return 'The bid is above $0.15.';
-  if (/^Spread /i.test(s)) return s.replace('of the mid.', 'of the price.');
-  if (/Inside Book A/i.test(s)) return s.replace('Inside Book A. ', '');
-  if (/Inside Book B/i.test(s)) return s.replace('Inside Book B. ', 'Further out. ');
-  if (/has halved/i.test(s)) return 'The ask has come in.';
-  if (/Call side of the open/i.test(s)) return 'It is the call, and the stock is up from the open.';
-  if (/Put side of the open/i.test(s)) return 'It is the put, and the stock is down from the open.';
-  if (/458|seat is open/i.test(s)) return null;
-  return null;
+  let out: string | null;
+  if (/simulated/i.test(s)) out = 'These prices are not a live quote.';
+  else if (/Quote missing|crossed|older than/i.test(s)) out = 'The bid and ask are missing, crossed, or old.';
+  else if (/Outside the entry clock/i.test(s)) out = 'This name’s options are not in a window we read.';
+  else if (/high-impact release/i.test(s)) out = 'A big number is close. We don’t start a new one.';
+  else if (/same-day only/i.test(s)) out = 'This late window is only for contracts that expire today.';
+  else if (/outside 0 to 7|options are shut|not on this scan|Halted/i.test(s)) out = 'This contract is not being read right now.';
+  else if (/Bid is at or under/i.test(s)) out = 'The bid is $0.15 or less. Too thin to take.';
+  else if (/Spread is over/i.test(s)) out = 'The spread is wider than 8% of the price.';
+  else if (/Outside the span/i.test(s)) out = 'Too far from the stock.';
+  else if (/Book C ask/i.test(s)) out = 'The ask is over $1.65.';
+  else if (/Only the call/i.test(s)) out = 'The stock is up from the open. This is a put.';
+  else if (/Only the put/i.test(s)) out = 'The stock is down from the open. This is a call.';
+  else if (/open is not in hand/i.test(s)) out = 'The opening price is not in yet, so the side is not named.';
+  else if (/Flat root/i.test(s)) out = 'The stock is flat from the open. Neither side is named.';
+  else if (/Needs 70\.67|has not scored|Short of the line|has not been read/i.test(s)) out = 'It does not clear.';
+  else if (/Model 1/i.test(s)) out = null;
+  else if (/does not send/i.test(s)) out = 'It clears. We do not call this name.';
+  else if (/already sent/i.test(s)) out = 'This name already has one today.';
+  else if (/seats are full/i.test(s)) out = 'Five are already out today.';
+  else if (/\bseat/i.test(s)) out = null;
+  else if (/Book A\. Model|Book B\. Model|Book C\. No model|Book C\. No score|The math passes/i.test(s)) out = 'This one clears.';
+  else if (/^Quote /i.test(s)) out = s.replace(/^Quote /, 'Bid and ask ').replace(', on this contract.', '.');
+  else if (/Inside the Book/i.test(s)) out = null;
+  else if (/No high-impact/i.test(s)) out = 'No big number in the next 15 minutes.';
+  else if (/Same-day contract/i.test(s)) out = 'It expires today.';
+  else if (/weekday sessions/i.test(s)) out = s.replace('weekday sessions to expiration.', 'sessions left.');
+  else if (/Bid is above/i.test(s)) out = 'The bid is above $0.15.';
+  else if (/^Spread /i.test(s)) out = s.replace('of the mid.', 'of the price.');
+  else if (/Inside Book A/i.test(s)) out = s.replace(/Inside Book A\.\s*/i, '');
+  else if (/Inside Book B/i.test(s)) out = s.replace(/Inside Book B\.\s*/i, 'Further out. ');
+  else if (/has halved/i.test(s)) out = 'The ask has come in.';
+  else if (/Call side of the open/i.test(s)) out = 'It is the call, and the stock is up from the open.';
+  else if (/Put side of the open/i.test(s)) out = 'It is the put, and the stock is down from the open.';
+  else if (/458/.test(s)) out = null;
+  else if (/Book B/i.test(s)) out = 'This far strike has not cheapened enough.';
+  else out = null;
+  if (out != null && /Book A|Model 1|70\.67|458|\bseat/i.test(out)) return null;
+  return out;
 }
 
 const strikeLabel = (n: number) => (n % 1 === 0 ? n.toFixed(0) : n.toFixed(2));
@@ -201,7 +205,7 @@ const StrikeCase = ({ ticker, c, right, chain, tick, score, listed, onPickAlt }:
                   <ContractLabel contract={`${ticker} ${strikeLabel(k)}${right}`} right={right} logo={ticker} size="sm" />
                   <span className="ml-auto shrink-0 text-right">
                     <span className="block font-mono text-t11 tnum text-textPrimary">{q.line}</span>
-                    <span className="block text-t10 text-textMuted truncate max-w-[220px]">{speak(q.status) ?? q.status}</span>
+                    <span className="block text-t10 text-textMuted truncate max-w-[220px]">{speak(q.status) ?? 'It does not clear.'}</span>
                   </span>
                 </button>
               );
@@ -217,7 +221,7 @@ const StrikeCase = ({ ticker, c, right, chain, tick, score, listed, onPickAlt }:
               <Fact big label="Sessions left" value={dte === 0 ? 'the bell' : Number.isFinite(dte) ? String(dte) : '—'} />
               <Fact big label="Priced move" value={chain.expectedMovePct > 0 ? (sim ? `±${chain.expectedMovePct.toFixed(2)}% · Simulated` : `±${chain.expectedMovePct.toFixed(2)}%`) : '—'} />
               <Fact big label="Stop" value={Number.isFinite(ask) ? show(ask * STOP_KEEP) : '—'} />
-              <Fact big label="Non-runner" value={Number.isFinite(ask) ? show(ask * 1.5) : '—'} />
+              <Fact big label="Target +50%" value={Number.isFinite(ask) ? show(ask * 1.5) : '—'} />
               {runner && Number.isFinite(ask) && (
                 <>
                   <Fact big label="Stop at +50%" value={show(ask * TP1_STOP)} />
@@ -253,12 +257,13 @@ const StrikeCase = ({ ticker, c, right, chain, tick, score, listed, onPickAlt }:
           <div className="flex flex-col gap-3" data-strike-calendar>
             <span className={HEAD}>This strike, on each listed expiry</span>
             <ul className="flex flex-col">
-              {(listed.length ? listed : [{ dte: Number.isFinite(dte) ? dte : chain.expiry.dte, label: sleeve }]).map(e => {
-                const current = e.dte === (Number.isFinite(dte) ? dte : chain.expiry.dte);
-                const band = e.dte === 0 ? '0 DTE' : e.dte >= 1 && e.dte <= 7 ? '1–7 DTE' : 'Later';
+              {(listed.length ? listed : [{ dte: chain.expiry.dte, iso: chain.expiryIso, weekday: Number.isFinite(dte) ? dte : chain.expiry.dte, label: sleeve }]).map(e => {
+                const sessions = e.weekday ?? e.dte;
+                const current = e.iso ? e.iso === chain.expiryIso : e.dte === chain.expiry.dte;
+                const band = sessions === 0 ? '0 DTE' : sessions >= 1 && sessions <= 7 ? '1–7 DTE' : 'Later';
                 return (
-                  <li key={`${e.dte}-${e.label}`} className="border-b border-borderSubtle/60">
-                    <button type="button" disabled={current} onClick={() => onPickAlt(c.strike, e.dte, right)} className={`w-full text-left py-2 ${current ? '' : 'hover:bg-ink/[0.03]'}`} data-strike-cal={e.dte}>
+                  <li key={e.iso ?? `${e.dte}-${e.label}`} className="border-b border-borderSubtle/60">
+                    <button type="button" disabled={current} onClick={() => onPickAlt(c.strike, e.dte, right)} className={`w-full text-left py-2 ${current ? '' : 'hover:bg-ink/[0.03]'}`} data-strike-cal={e.iso ?? e.dte}>
                       <span className="font-mono text-t12 text-textPrimary">{e.label} · {band}</span>
                       <span className="block text-t12 text-textSecondary">
                         {current

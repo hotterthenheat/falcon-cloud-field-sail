@@ -14,6 +14,8 @@ import type { Candle } from '../../types/market';
 /** Minutes in a session, and the minute the bell rings on (the last bar's index) */
 export const DAY_MIN = 390;
 export const LAST_MIN = DAY_MIN - 1;
+/** Quote stamps kept through the late close. The 16:00:00 row is minute 389; the 16:15:00 row is minute 404. */
+export const LATE_QUOTE_MIN = LAST_MIN + 15;
 /** Strikes each side of the money a chain's day is loaded with */
 export const CHAIN_SPAN = 14;
 
@@ -219,18 +221,10 @@ export function parseBars(day: string, rows: Row[]): DayBars | null {
   }
   let last = -1;
   for (let m = DAY_MIN - 1; m >= 0; m--) if (at[m]) { last = m; break; }
-  if (last < 0) return null;
-  /* a minute with no trade carries the last price flat, with no volume (said as such: no volume) */
+  if (last < 0) return Number.isFinite(closePrint) ? { bars: [], last: -1, closePrint } : null;
+  /* a minute with no trade is a gap — not a flat zero-volume candle. Those are not prints. */
   const out: Candle[] = [];
-  const first = at.find(Boolean)!;
-  let flat = first.open;
-  for (let m = 0; m <= last; m++) {
-    const b = at[m];
-    if (b) {
-      out.push(b);
-      flat = b.close;
-    } else out.push({ time: barTime(day, m), open: flat, high: flat, low: flat, close: flat, volume: 0 });
-  }
+  for (let m = 0; m <= last; m++) if (at[m]) out.push(at[m]!);
   return Number.isFinite(closePrint) ? { bars: out, last, closePrint } : { bars: out, last };
 }
 
@@ -313,22 +307,50 @@ export async function ensureBarsRange(ticker: string, from: string, to: string):
 /** Has the day's bars been answered (with bars, or with none) */
 export const barsKnown = (ticker: string, day: string): boolean => bars.has(`bars|${underOf(ticker)}|${day}`);
 export const barsNeed = (ticker: string, day: string): Need => barsWant.get(`bars|${underOf(ticker)}|${day}`) ?? 'loading';
-/** The name's bars for a day, oldest first — empty until they are loaded */
-export const dayBars = (ticker: string, day: string): Candle[] => bars.get(`bars|${underOf(ticker)}|${day}`)?.bars ?? [];
+/** A made-up candle: no trade, every price the same. Not a print — charts leave the gap, and nothing settles on it. */
+export const isFlatCandle = (c: Candle): boolean => !(c.volume > 0) && c.open === c.high && c.high === c.low && c.low === c.close;
+/** The name's bars for a day, oldest first — empty until they are loaded. Flat zero-volume candles are not prints. */
+export const dayBars = (ticker: string, day: string): Candle[] => (bars.get(`bars|${underOf(ticker)}|${day}`)?.bars ?? []).filter(b => !isFlatCandle(b));
+/** Real prints at or before the end of `minute` (a cursor's clock). A minute with no trade is left out. */
+export function barsUntil(ticker: string, day: string, minute: number): Candle[] {
+  const end = barTime(day, Math.max(0, minute));
+  return dayBars(ticker, day).filter(b => b.time <= end);
+}
 /** The last minute the name traded that day (389 on a full session) — or −1 until loaded */
 export const closeMinOf = (ticker: string, day: string): number => bars.get(`bars|${underOf(ticker)}|${day}`)?.last ?? -1;
-/** What the name closed at that day — the 16:00:00 closing print where one was recorded, else its last bar's close (an
-    early close's 13:00) — NaN until the day's bars are loaded, or where there were none */
-export function closePrintOf(ticker: string, day: string): number {
+/** "15:59" for the bar stamped 15:59 — the minute it printed, not the end of the bar. */
+export const printClock = (minute: number): string => {
+  const t = 9 * 60 + 30 + minute;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+/** What the name closed at, and which print it was. The 16:00:00 closing print when one was recorded; otherwise the
+    last real print (never a flat zero-volume candle). Null until the day's bars are loaded, or where there were none. */
+export function closeBasisOf(ticker: string, day: string): { price: number; print: string } | null {
   const d = bars.get(`bars|${underOf(ticker)}|${day}`);
-  if (!d) return NaN;
-  return d.closePrint != null && d.closePrint > 0 ? d.closePrint : (d.bars[d.bars.length - 1]?.close ?? NaN);
+  if (!d) return null;
+  if (d.closePrint != null && d.closePrint > 0) return { price: d.closePrint, print: '16:00' };
+  const list = dayBars(ticker, day);
+  const last = list[list.length - 1];
+  if (!last || !(last.close > 0)) return null;
+  const minute = Math.round((last.time - barTime(day, 0)) / 60);
+  return { price: last.close, print: printClock(minute) };
 }
-/** Where the name stood at the end of a minute (NaN until its bars are loaded) */
+/** What the name closed at that day — the 16:00:00 closing print where one was recorded, else its last real print
+    (an early close's last trade, never a flat zero-volume candle) — NaN until the day's bars are loaded, or where there were none */
+export function closePrintOf(ticker: string, day: string): number {
+  return closeBasisOf(ticker, day)?.price ?? NaN;
+}
+/** Where the name stood at the end of a minute: the last real print at or before it (NaN until its bars are loaded) */
 export function spotAt(ticker: string, day: string, minute: number): number {
   const b = dayBars(ticker, day);
   if (!b.length) return NaN;
-  return b[Math.max(0, Math.min(b.length - 1, minute))].close;
+  const target = barTime(day, Math.max(0, minute));
+  let close = NaN;
+  for (const c of b) {
+    if (c.time > target) break;
+    close = c.close;
+  }
+  return close;
 }
 
 /* ---- what was quoted that day ---- */
@@ -414,8 +436,8 @@ export interface Leg {
 }
 /** A minute whose quote was one-sided or crossed */
 const NO_MARKET = -2;
-/** One leg's day: its bid and ask at the end of every minute (NaN where no row was recorded, NO_MARKET where the row was
-    no market) */
+/** One leg's day: its bid and ask at the end of every minute through the late close (NaN where no row was recorded,
+    NO_MARKET where the row was no market). Index 0 is the 09:31 stamp; 389 the 16:00 stamp; 404 the 16:15 stamp. */
 interface LegDay {
   bid: number[];
   ask: number[];
@@ -426,14 +448,16 @@ const legWant = new Map<string, Need>();
 /* A v3 interval quote row is the NBBO standing at its stamp: the 09:31:00 row is the quote at the end of minute 0. */
 const quoteMinute = (stamp: unknown) => minuteOfStamp(stamp) - 1;
 function emptyDay(): LegDay {
-  return { bid: new Array<number>(DAY_MIN).fill(NaN), ask: new Array<number>(DAY_MIN).fill(NaN) };
+  const n = LATE_QUOTE_MIN + 1;
+  return { bid: new Array<number>(n).fill(NaN), ask: new Array<number>(n).fill(NaN) };
 }
-/** Rows of one day's quotes, any number of contracts, by leg */
+/** Rows of one day's quotes, any number of contracts, by leg. Minutes through the 16:15 stamp are kept — index and ETF
+    options trade the late close, and a resting order there cannot be judged on a quote that was thrown away. */
 export function parseQuotes(ticker: string, rows: Row[], only?: Leg): Map<string, LegDay> {
   const out = new Map<string, LegDay>();
   for (const r of rows) {
     const m = quoteMinute(r.timestamp);
-    if (!(m >= 0 && m < DAY_MIN)) continue;
+    if (!(m >= 0 && m <= LATE_QUOTE_MIN)) continue;
     const exp = String(r.expiration ?? only?.expiry ?? '').slice(0, 10);
     const k = num(r.strike ?? only?.strike);
     const rw = String(r.right ?? only?.right ?? '').toUpperCase();
@@ -527,10 +551,21 @@ export function nbboAt(c: Leg, day: string, minute: number): { bid: number; ask:
   if (last >= 0 && m > last) return null;
   return standingAt(d, m);
 }
+/** The quote recorded on minute `m` itself — not one carried forward from earlier. Null where that minute has no
+    two-sided row (a late-close minute is not judged without this). */
+export function rowAt(d: { bid: number[]; ask: number[] }, m: number): { bid: number; ask: number } | null {
+  if (!(m >= 0) || m >= d.ask.length) return null;
+  const ask = d.ask[m];
+  const bid = d.bid[m];
+  if (ask === NO_MARKET || !Number.isFinite(ask) || !Number.isFinite(bid)) return null;
+  if (!(ask > 0) || !(bid >= 0) || ask < bid) return null;
+  return { bid, ask };
+}
 /** The quote standing at the end of minute `m` of a parsed day (parseQuotes): its own row, else the last before it;
-    null before the first, or where that minute's row was no market */
+    null before the first, or where that minute's row was no market. Does not look past the minute it was asked for. */
 export function standingAt(d: { bid: number[]; ask: number[] }, m: number): { bid: number; ask: number } | null {
-  for (let k = Math.min(LAST_MIN, m); k >= 0; k--) {
+  const cap = Math.min(m, d.ask.length - 1);
+  for (let k = cap; k >= 0; k--) {
     if (d.ask[k] === NO_MARKET) return null;
     if (Number.isFinite(d.ask[k]) && Number.isFinite(d.bid[k])) return { bid: d.bid[k], ask: d.ask[k] };
   }

@@ -3,12 +3,13 @@
    the house sign of core/dealerSign.ts. Pure: no fetch, no state. */
 
 import { nyIsoDate } from '../../core/nyTime';
-import { keptLeg, keptVendorLeg } from '../../core/dealerSign';
+import { keptLeg, keptVendorLeg, DEALER_SIDE, type Right } from '../../core/dealerSign';
 import { type StrikeNode } from '../../types/market';
 import { blackScholesGreeks } from '../../core/greeks';
 import { tradingYears } from '../../core/tradingYear';
 import { carryFor } from '../../core/carry';
-import { dealerInventory, flowFirm, flowImbalance, flowWindow, ivOnTradingClock, quotedVolPoint, quoteMaxAge, smoothSmile, unsignedShare } from '../../core/volClock';
+import { dealerInventory, flowFirm, flowImbalance, flowWindow, ivOnTradingClock, markGap, quotedVolPoint, quoteMaxAge, smoothSmile, unsignedShare } from '../../core/volClock';
+import { contractHigher } from '../liveHigher';
 import { noteClose, noteNodes, peakStrikes, type CloseRow } from '../nodeScore';
 import { type UwContract, type UwFlowStrike, type UwGreekStrike } from '../whales';
 
@@ -130,6 +131,24 @@ type LiveLeg = {
   /** delta_oi: the holder's delta × OI × 100 × S × (S × 1%) */
   cd: number;
   pd: number;
+  gA: number;
+  gB: number;
+  pA: number;
+  pB: number;
+  dA: number;
+  dB: number;
+  pdA: number;
+  pdB: number;
+  vA: number;
+  vB: number;
+  pvA: number;
+  pvB: number;
+  cA: number;
+  cB: number;
+  pcA: number;
+  pcB: number;
+  /** The vendor row included ask and bid, so a zero there is a real zero */
+  asks: boolean;
   /** The vendor row included its vanna (charm, delta) fields, so a zero is a real zero */
   vanna: boolean;
   charm: boolean;
@@ -137,7 +156,7 @@ type LiveLeg = {
 };
 export type LiveGamma = Map<number, LiveLeg>;
 
-const blankLeg = (): LiveLeg => ({ c: 0, p: 0, cv: 0, pv: 0, cc: 0, pc: 0, cd: 0, pd: 0, vanna: false, charm: false, delta: false });
+const blankLeg = (): LiveLeg => ({ c: 0, p: 0, cv: 0, pv: 0, cc: 0, pc: 0, cd: 0, pd: 0, gA: 0, gB: 0, pA: 0, pB: 0, dA: 0, dB: 0, pdA: 0, pdB: 0, vA: 0, vB: 0, pvA: 0, pvB: 0, cA: 0, cB: 0, pcA: 0, pcB: 0, asks: false, vanna: false, charm: false, delta: false });
 
 export function liveGammaRows(rows: unknown, into: LiveGamma, stamp?: { price: number; at: number }): number {
   if (!Array.isArray(rows)) return 0;
@@ -170,6 +189,34 @@ export function liveGammaRows(rows: unknown, into: LiveGamma, stamp?: { price: n
       cur.pd += num(r.put_delta_oi);
       cur.delta = true;
     }
+    if ('call_gamma_ask' in r || 'call_gamma_bid' in r || 'put_gamma_ask' in r || 'put_gamma_bid' in r) {
+      cur.gA += num(r.call_gamma_ask);
+      cur.gB += num(r.call_gamma_bid);
+      cur.pA += num(r.put_gamma_ask);
+      cur.pB += num(r.put_gamma_bid);
+      cur.asks = true;
+    }
+    if ('call_delta_ask' in r || 'call_delta_bid' in r || 'put_delta_ask' in r || 'put_delta_bid' in r) {
+      cur.dA += num(r.call_delta_ask);
+      cur.dB += num(r.call_delta_bid);
+      cur.pdA += num(r.put_delta_ask);
+      cur.pdB += num(r.put_delta_bid);
+      cur.asks = true;
+    }
+    if ('call_vanna_ask' in r || 'call_vanna_bid' in r || 'put_vanna_ask' in r || 'put_vanna_bid' in r) {
+      cur.vA += num(r.call_vanna_ask);
+      cur.vB += num(r.call_vanna_bid);
+      cur.pvA += num(r.put_vanna_ask);
+      cur.pvB += num(r.put_vanna_bid);
+      cur.asks = true;
+    }
+    if ('call_charm_ask' in r || 'call_charm_bid' in r || 'put_charm_ask' in r || 'put_charm_bid' in r) {
+      cur.cA += num(r.call_charm_ask);
+      cur.cB += num(r.call_charm_bid);
+      cur.pcA += num(r.put_charm_ask);
+      cur.pcB += num(r.put_charm_bid);
+      cur.asks = true;
+    }
     if (own && (cur.at == null || at >= cur.at)) {
       cur.at = at;
       cur.px = px;
@@ -196,6 +243,17 @@ export function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma, exp
     const callGex = l ? keptVendorLeg('C', l.c, true) : 0;
     const putGex = l ? keptVendorLeg('P', l.p, true) : 0;
     const next: StrikeNode = { ...n, callGex, putGex, netGex: callGex + putGex, gexPx: l?.px, gexAt: l?.at };
+    if (l) {
+      next.vendor = {
+        px: l.px ?? 0,
+        at: l.at,
+        g: [l.c, l.gA, l.gB, l.p, l.pA, l.pB],
+        d: [l.cd, l.dA, l.dB, l.pd, l.pdA, l.pdB],
+        v: [l.cv, l.vA, l.vB, l.pv, l.pvA, l.pvB],
+        c: [l.cc, l.cA, l.cB, l.pc, l.pcA, l.pcB],
+        asks: l.asks,
+      };
+    }
     const painted = n.callBook != null || n.putBook != null;
     if (!painted && l?.vanna && l.px != null && l.px > 0) {
       const callVanna = keptVendorLeg('C', l.cv * l.px * 0.01, true);
@@ -354,6 +412,80 @@ export function foldContracts(rows: UwContract[], expiry: string, now = Date.now
 
 /** A date's chain with its contracts' facts (vols, OI, delta, vanna, charm, vega) laid on — new nodes, never the old
     ones edited, so whatever is keyed on the old chain recomputes. Gamma stays the vendor's open-interest rows. */
+const loggedFlow = new Set<string>();
+
+function add3(right: Right, dealerSigned: boolean, scale: (v: number) => number, oi: number, ask: number, bid: number): number {
+  return keptVendorLeg(right, scale(oi), dealerSigned) + keptVendorLeg(right, scale(ask), dealerSigned) + keptVendorLeg(right, scale(bid), dealerSigned);
+}
+
+/** The flow book beside the open-interest book. A failed gate, or a gap too small to mark, draws the open-interest figure. N still moves with the tape. */
+function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: string, spot: number, ticker: string, near: boolean, years: number, volPt: number, r?: number, q?: number): void {
+  if (!(spot > 0)) return;
+  const share = expiry ? quotedVolPoint(expiry, Date.now()) ** 2 : 1;
+  const ident = (v: number) => v;
+  const dexOf = (v: number) => v / (spot * 0.01);
+  const vanOf = (v: number) => v * spot * 0.01;
+  const chmOf = (v: number) => (v / CHARM_SESSION) * share;
+  const blankH = () => ({ call: 0, put: 0 });
+  const drafts: { n: StrikeNode; held: boolean; outside: boolean; gex: { call: number; put: number }; dex: { call: number; put: number }; vanna: { call: number; put: number }; charm: { call: number; put: number }; vex: { call: number; put: number }; pack: { color: { call: number; put: number }; vomma: { call: number; put: number }; speed: { call: number; put: number }; veta: { call: number; put: number }; zomma: { call: number; put: number } } }[] = [];
+  for (const n of nodes) {
+    const leg = book.get(n.strike);
+    const v = n.vendor;
+    const outside = !near;
+    const thin = near && n.flowFirm === false;
+    const heldGate = outside || thin || !v?.asks;
+    const callCount = !leg || heldGate ? (leg?.callOI ?? n.callOI) : dealerInventory(leg.callOI, leg.callAsk, leg.callBid, leg.callMulti, leg.callVol);
+    const putCount = !leg || heldGate ? (leg?.putOI ?? n.putOI) : dealerInventory(leg.putOI, leg.putAsk, leg.putBid, leg.putMulti, leg.putVol);
+    const gex = v?.asks && !heldGate ? { call: add3('C', true, ident, v.g[0], v.g[1], v.g[2]), put: add3('P', true, ident, v.g[3], v.g[4], v.g[5]) } : { call: n.callGex, put: n.putGex };
+    const dex = v?.asks && !heldGate ? { call: add3('C', false, dexOf, v.d[0], v.d[1], v.d[2]), put: add3('P', false, dexOf, v.d[3], v.d[4], v.d[5]) } : { call: n.callDex, put: n.putDex };
+    const vanna = v?.asks && !heldGate ? { call: add3('C', true, vanOf, v.v[0], v.v[1], v.v[2]), put: add3('P', true, vanOf, v.v[3], v.v[4], v.v[5]) } : { call: n.callVanna, put: n.putVanna };
+    const charm = v?.asks && !heldGate ? { call: add3('C', true, chmOf, v.c[0], v.c[1], v.c[2]), put: add3('P', true, chmOf, v.c[3], v.c[4], v.c[5]) } : { call: n.callCharm, put: n.putCharm };
+    const callBs = n.callIv && n.callIv > 0 && years > 0 ? blackScholesGreeks(spot, n.strike, years, n.callIv, r, q) : null;
+    const putBs = n.putIv && n.putIv > 0 && years > 0 ? blackScholesGreeks(spot, n.strike, years, n.putIv, r, q) : null;
+    if (ticker && v?.asks && callBs && callCount !== 0) {
+      const key = `${ticker}|${nyIsoDate()}`;
+      if (!loggedFlow.has(key)) {
+        loggedFlow.add(key);
+        const local = DEALER_SIDE.C * callBs.gamma * callCount * 100 * spot * spot * 0.01;
+        const summed = v.g[0] + v.g[1] + v.g[2];
+        const gap = summed !== 0 ? ((local - summed) / Math.abs(summed)) * 100 : 0;
+        const sign = Math.sign(local) === Math.sign(summed) || local === 0 || summed === 0 ? 'same' : 'opposite';
+        console.info(`[flow] ${ticker} ${n.strike}C ${sign} ${gap.toFixed(1)}%`);
+      }
+    }
+    const hc = callBs ? contractHigher(spot, n.strike, years, n.callIv ?? 0, callCount, 'C', volPt) : null;
+    const hp = putBs ? contractHigher(spot, n.strike, years, n.putIv ?? 0, putCount, 'P', volPt) : null;
+    const higher = { color: { call: hc?.color ?? 0, put: hp?.color ?? 0 }, vomma: { call: hc?.vomma ?? 0, put: hp?.vomma ?? 0 }, speed: { call: hc?.speed ?? 0, put: hp?.speed ?? 0 }, veta: { call: hc?.veta ?? 0, put: hp?.veta ?? 0 }, zomma: { call: hc?.zomma ?? 0, put: hp?.zomma ?? 0 } };
+    drafts.push({ n, held: heldGate, outside, gex, dex, vanna, charm, vex: { call: callBs ? keptLeg('C', callBs.vega * 100 * volPt, callCount) : n.callVex, put: putBs ? keptLeg('P', putBs.vega * 100 * volPt, putCount) : n.putVex }, pack: higher });
+  }
+  let biggest = 0;
+  for (const d of drafts) biggest = Math.max(biggest, Math.abs(d.n.netGex), Math.abs(d.gex.call + d.gex.put));
+  for (const d of drafts) {
+    const flowNet = d.gex.call + d.gex.put;
+    const show = !d.held && markGap(flowNet, d.n.netGex, biggest);
+    const pack = d.pack;
+    let gex = d.gex;
+    let dex = d.dex;
+    let vanna = d.vanna;
+    let charm = d.charm;
+    let vex = d.vex;
+    let higher = pack ?? { color: blankH(), vomma: blankH(), speed: blankH(), veta: blankH(), zomma: blankH() };
+    if (!show) {
+      gex = { call: d.n.callGex, put: d.n.putGex };
+      dex = { call: d.n.callDex, put: d.n.putDex };
+      vanna = { call: d.n.callVanna, put: d.n.putVanna };
+      charm = { call: d.n.callCharm, put: d.n.putCharm };
+      vex = { call: d.n.callVex, put: d.n.putVex };
+      const cN = d.n.callBook ?? d.n.callOI;
+      const pN = d.n.putBook ?? d.n.putOI;
+      const hc = years > 0 && (d.n.callIv ?? 0) > 0 ? contractHigher(spot, d.n.strike, years, d.n.callIv ?? 0, cN, 'C', volPt) : null;
+      const hp = years > 0 && (d.n.putIv ?? 0) > 0 ? contractHigher(spot, d.n.strike, years, d.n.putIv ?? 0, pN, 'P', volPt) : null;
+      higher = { color: { call: hc?.color ?? 0, put: hp?.color ?? 0 }, vomma: { call: hc?.vomma ?? 0, put: hp?.vomma ?? 0 }, speed: { call: hc?.speed ?? 0, put: hp?.speed ?? 0 }, veta: { call: hc?.veta ?? 0, put: hp?.veta ?? 0 }, zomma: { call: hc?.zomma ?? 0, put: hp?.zomma ?? 0 } };
+    }
+    d.n.flow = { gex, dex, vex, vanna, charm, ...higher, disagree: show && flowNet !== 0 && d.n.netGex !== 0 && Math.sign(flowNet) !== Math.sign(d.n.netGex), held: !show, outside: d.outside };
+  }
+}
+
 export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi: boolean, spot = 0, expiry = '', ticker = ''): StrikeNode[] {
   /* vols are put on the trading clock at the minute (and price) the vendor priced the date's gamma, the clock the flip
      re-prices at — never the wall clock, or a shut market's book would drift overnight with no new rows */
@@ -395,7 +527,6 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
   let volSum = 0;
   let bareSum = 0;
   const closes: CloseRow[] = [];
-  const flowNets: { strike: number; value: number }[] = [];
   for (const n of painted) {
     const leg = book.get(n.strike);
     if (!leg) continue;
@@ -416,38 +547,25 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
       const putInv = dealerInventory(leg.putOI, leg.putAsk, leg.putBid, leg.putMulti, leg.putVol);
       closes.push({ expiry, strike: n.strike, right: 'C', flow: callInv, oi: leg.callOI });
       closes.push({ expiry, strike: n.strike, right: 'P', flow: putInv, oi: leg.putOI });
-      const scale = spot * spot * 0.01 * 100;
-      flowNets.push({ strike: n.strike, value: (put ? keptLeg('P', put.gamma * scale, putInv) : 0) + (call ? keptLeg('C', call.gamma * scale, callInv) : 0) });
     }
     volSum += leg.callVol + leg.putVol;
     bareSum += leg.callMid + leg.callNone + leg.putMid + leg.putNone;
     /* Vega is repriced here, on this clock and this vol, not the vendor's calendar-time vega. */
     n.callBook = callN;
     n.putBook = putN;
-    /* one long contract's $ figures: delta × 100 × S; vanna per quoted vol point (× 1% × 100 × S); charm per session; vega per quoted vol point */
-    if (call && callN !== 0) {
-      n.callDex = keptLeg('C', call.deltaCall * 100 * spot, callN);
-      n.callVanna = keptLeg('C', call.vanna * spot * volPt, callN);
-      n.callCharm = keptLeg('C', (call.charmCall / 252) * 100 * spot, callN);
-      n.callVex = keptLeg('C', call.vega * 100 * volPt, callN);
-    } else {
-      n.callVex = 0;
-    }
-    if (put && putN !== 0) {
-      n.putDex = keptLeg('P', put.deltaPut * 100 * spot, putN);
-      n.putVanna = keptLeg('P', put.vanna * spot * volPt, putN);
-      n.putCharm = keptLeg('P', (put.charmPut / 252) * 100 * spot, putN);
-      n.putVex = keptLeg('P', put.vega * 100 * volPt, putN);
-    } else {
-      n.putVex = 0;
-    }
+    /* Vega is repriced here. Delta, vanna and charm stay the vendor's open-interest rows (withLiveGamma). */
+    if (call && callN !== 0) n.callVex = keptLeg('C', call.vega * 100 * volPt, callN);
+    else n.callVex = 0;
+    if (put && putN !== 0) n.putVex = keptLeg('P', put.vega * 100 * volPt, putN);
+    else n.putVex = 0;
     n.netVex = n.callVex + n.putVex;
     n.netDex = n.callDex + n.putDex;
     n.netVanna = n.callVanna + n.putVanna;
     n.netCharm = n.callCharm + n.putCharm;
   }
+  stampFlow(painted, book, expiry, spot, ticker, near, t, volPt, carry?.r, carry?.q);
   if (ticker && spot > 0 && near) {
-    const flow = peakStrikes(flowNets);
+    const flow = peakStrikes(painted.map(n => ({ strike: n.strike, value: (n.flow?.gex.call ?? 0) + (n.flow?.gex.put ?? 0) })));
     const oi = peakStrikes(painted.map(n => ({ strike: n.strike, value: n.netGex })));
     noteNodes(ticker, spot, flow, oi, volSum > 0 ? unsignedShare(bareSum, 0, volSum) : null);
   }

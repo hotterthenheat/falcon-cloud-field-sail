@@ -245,9 +245,9 @@ export function readGate(input: GateInput): GateRead {
   }
 
   if (!bookC) {
-    if (input.p1 == null || !Number.isFinite(input.p1)) return fail(11, 'Model 1 has not scored this contract. No number was invented.');
-    passed.push(`Model 1 ${(input.p1 * 100).toFixed(1)}%.${input.prun != null && Number.isFinite(input.prun) ? ` Model 2 ${(input.prun * 100).toFixed(0)}%.` : ''}`);
-    if (input.p1 + 1e-12 < P1_MIN) return fail(11, `Model 1 ${(input.p1 * 100).toFixed(1)}%. Needs 70.67%.`);
+    if (input.p1 == null || !Number.isFinite(input.p1)) return fail(11, 'The line has not been read. No number was invented.');
+    if (input.p1 + 1e-12 < P1_MIN) return fail(11, 'Short of the line. A call needs 70.67%.');
+    passed.push('The line cleared.');
   }
 
   if (!COMPASS_SET.has(chain.ticker)) return fail(12, 'The math passes. Compass does not send this name.');
@@ -260,7 +260,7 @@ export function readGate(input: GateInput): GateRead {
   passed.push('A seat is open.');
 
   return {
-    status: bookC ? 'Book C. No model. Entry is this ask.' : inB ? 'Book B. Model 1 cleared. The exit is the runner ratchet.' : 'Book A. Model 1 cleared. Entry is this ask.',
+    status: bookC ? 'Book C. No score. Entry is this ask.' : inB ? 'The math passes. The exit rides.' : 'The math passes. Entry is this ask.',
     passed,
     failed: null,
     ticket: true,

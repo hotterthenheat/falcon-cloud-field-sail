@@ -28,7 +28,7 @@ export function buildKeyLevels(snapshot: MarketSnapshot, levels: KeyLevels, pin:
     { kind: 'pin', label: 'Pin Level', price: pin, distPct: dist(pin), pressure: pressureAt(snapshot, pin) },
     { kind: 'flip', label: 'Flip Level', price: levels.flip, distPct: dist(levels.flip), pressure: pressureAt(snapshot, levels.flip) },
     { kind: 'supreme', label: 'Supreme Node', price: levels.supreme, distPct: dist(levels.supreme), pressure: pressureAt(snapshot, levels.supreme) },
-  ];
+  ].filter(r => r.kind === 'spot' || Number.isFinite(r.price));
   // Price-descending like a ladder, spot embedded naturally
   return rows.sort((a, b) => b.price - a.price);
 }

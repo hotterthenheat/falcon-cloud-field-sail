@@ -129,7 +129,9 @@ export async function thetaCall(path: string, jump = false): Promise<{ status: n
     /* an outage or a no-data answer the proxy sent as 200 (x-theta-soft) still carries its code */
     const outage = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as { code?: unknown }).code : undefined;
     if (outage === 'terminal_down' || outage === 'session_lost' || outage === 'terminal_unavailable') {
-      noteDown();
+      /* A stolen session is one read. The terminal is still up and the next read usually lands — a 15s blackout
+         is what left the rail saying offline while quotes were answering. A dead terminal still backs off. */
+      if (outage !== 'session_lost') noteDown();
       return { status: 503, data: null, error: 'terminal_down' };
     }
     if (outage === 'no_data') {

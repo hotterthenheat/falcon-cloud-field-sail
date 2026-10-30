@@ -85,11 +85,12 @@ const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expi
         render: r => <span className="font-mono text-t11 text-textPrimary">{r.band === 'top' ? 'A' : r.band === 'wing' ? 'B' : r.band === 'lottery' ? 'C' : '—'}</span>,
       },
       { key: 'sigma', header: '1σ to expiry', align: 'right', sortValue: r => r.sigmaMovePct, render: r => <span className="font-mono text-t11 tnum text-textPrimary">{r.greeks.iv > 0 && r.sigmaMovePct > 0 ? `±${r.sigmaMovePct}%` : '—'}</span> },
-      { key: 'premium', header: 'Ask', align: 'right', sortValue: r => (r.ask > 0 ? r.ask : r.mid), render: r => <span className="font-mono text-t11 tnum text-textPrimary">${(r.ask > 0 ? r.ask : r.mid).toFixed(2)}</span> },
-      { key: 'breaks', header: 'Stop', align: 'right', sortValue: r => (r.band === 'lottery' ? 0 : (r.ask > 0 ? r.ask : r.mid) * STOP_KEEP), render: r => {
+      { key: 'premium', header: 'Ask', align: 'right', sortValue: r => (r.ask > 0 ? r.ask : -1), render: r => <span className="font-mono text-t11 tnum text-textPrimary">{r.ask > 0 ? `$${r.ask.toFixed(2)}` : '—'}</span> },
+      { key: 'breaks', header: 'Stop', align: 'right', sortValue: r => (r.band === 'lottery' || !(r.ask > 0) ? 0 : r.ask * STOP_KEEP), render: r => {
         if (r.band === 'lottery') return <span className="font-mono text-t11 tnum text-warn">No stop</span>;
         if (r.band !== 'top' && r.band !== 'wing') return <span className="font-mono text-t11 text-textMuted">Not a call</span>;
-        return <span className="font-mono text-t11 tnum text-warn">${((r.ask > 0 ? r.ask : r.mid) * STOP_KEEP).toFixed(2)}</span>;
+        if (!(r.ask > 0)) return <span className="font-mono text-t11 text-textMuted">—</span>;
+        return <span className="font-mono text-t11 tnum text-warn">${(r.ask * STOP_KEEP).toFixed(2)}</span>;
       } },
     ];
     cols.push({

@@ -978,7 +978,11 @@ const LiveTape = () => {
         )}
       </Fact>
       {dayTopBet && (
-        <Champion label="Most premium" ink="supreme" title={`The day's heaviest single bet, ${leanWords(dayLean(dayTopBet))}`} onOpen={() => setOpenPrint({ ...bookRowToPrint(dayTopBet), occ: dayTopBet.optionSymbol })} testId="day-top">
+        <Champion label="Most premium" ink="supreme" title={`The day's heaviest single bet, ${leanWords(dayLean(dayTopBet))}`} onOpen={() => {
+          const day = bookRowToPrint(dayTopBet);
+          /* the screener's day, not one fill: no quote is on the row, so none is drawn */
+          setOpenPrint({ ...day, occ: dayTopBet.optionSymbol, bid: 0, ask: 0, dayCard: day.dayCard ?? { last: null, session: 'regular session' } });
+        }} testId="day-top">
           {dayTopBet.ticker} {dayTopBet.strike}
           {dayTopBet.right} · {fmtUsd(dayTopBet.premium)}
         </Champion>
@@ -1176,11 +1180,28 @@ const LiveTape = () => {
                           {a.right} {expiryLabel(a.expiry)} · {fmtUsd(a.premium)} <span className="text-textSecondary">{a.side === 'ASK' ? 'at the ask' : a.side === 'BID' ? 'on the bid' : 'no side'} · {a.time}</span>
                         </button>
                       ))}
-                      {dayAlertsSplit.packs.length > 0 && (
-                        <button type="button" onClick={() => setOpenPrint(dayAlertsSplit.packs[0])} className="block w-full py-1 text-left font-mono tnum text-textSecondary break-words sm:truncate hover:text-silver" title={ALERT_PACK_HINT} data-tape-day-alert-pack>
-                          <span className="text-warn">floor package · not a bet</span> · {num(dayAlertsSplit.packs.length)} alert{dayAlertsSplit.packs.length === 1 ? '' : 's'}, {fmtUsd(dayAlertsSplit.packs.reduce((a, p) => a + p.premium, 0))}
-                        </button>
-                      )}
+                      {dayAlertsSplit.packs.length > 0 && (() => {
+                        const packs = dayAlertsSplit.packs;
+                        const sum = packs.reduce((a, p) => a + p.premium, 0);
+                        const text = (
+                          <>
+                            <span className="text-warn">floor package · not a bet</span> · {num(packs.length)} alert{packs.length === 1 ? '' : 's'}, {fmtUsd(sum)}
+                          </>
+                        );
+                        /* one package opens its own card; the sum of several is not the first package's print */
+                        if (packs.length === 1) {
+                          return (
+                            <button type="button" onClick={() => setOpenPrint(packs[0])} className="block w-full py-1 text-left font-mono tnum text-textSecondary break-words sm:truncate hover:text-silver" title={ALERT_PACK_HINT} data-tape-day-alert-pack>
+                              {text}
+                            </button>
+                          );
+                        }
+                        return (
+                          <div className="block w-full py-1 text-left font-mono tnum text-textSecondary break-words sm:truncate" title={`${ALERT_PACK_HINT}. ${num(packs.length)} separate alerts — ${fmtUsd(sum)} is their sum, not one print`} data-tape-day-alert-pack>
+                            {text}
+                          </div>
+                        );
+                      })()}
                     </>
                   ) : (
                     <div className="font-mono text-textMuted">{dayAlerts.waiting ? '…' : 'none'}</div>

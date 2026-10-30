@@ -5,13 +5,14 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { ArrowDown, ArrowUp, Check, ChevronRight, Plus } from 'lucide-react';
 import { ShapeChip } from './BookBlock';
 import type { BookAtStrike } from '../../data/bookAtStrike';
-import { type ColDef, type ICellRendererParams, type RowClickedEvent, type RowDoubleClickedEvent } from 'ag-grid-community';
+import { type ColDef, type GridApi, type ICellRendererParams, type RowClickedEvent, type RowDoubleClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../ui/houseGrid';
 import type { MultiGroup } from '../ui/DropdownMulti';
 import Term from '../ui/Term';
 import type { DeskContract, DeskChain } from '../../data/weigherDesk';
 import type { OptionRight } from '../../types/compass';
+import { useWeigherSpot } from '../../data/weigherTape';
 import { fmtStrike } from '../../core/format';
 
 export { fmtStrike };
@@ -200,9 +201,8 @@ const FullRow = (p: ICellRendererParams<ChainGridRow>) => {
   );
 };
 
-/* Memo: up to 301 rows × 29 columns, re-rendered only when its own facts change (a chain refresh, a selection, a column pick). */
-/* The door to the watchlist on every strike — a + at the row's end, shown on the row's hover; once watched it
-   stays, a check in the where-you-are ink */
+/* The door to the watchlist — a + that stays on screen, not a fact that scrolls away. Once watched it
+   stays, a check in the where-you-are ink. */
 const WatchCell = ({ strike, on, onWatch }: { strike: number; on: boolean; onWatch: (strike: number) => void }) => (
   <button
     type="button"
@@ -219,6 +219,64 @@ const WatchCell = ({ strike, on, onWatch }: { strike: number; on: boolean; onWat
     {on ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
   </button>
 );
+
+/** The strikes the price sits between. It changes only when the print crosses a strike. */
+function strikeBracket(strikes: readonly number[], spot: number): string {
+  let below = Number.NEGATIVE_INFINITY;
+  let above = Number.POSITIVE_INFINITY;
+  for (const s of strikes) {
+    if (s <= spot && s > below) below = s;
+    if (s >= spot && s < above) above = s;
+  }
+  return `${below}:${above}`;
+}
+
+/* The + is not a grid column. A pinned column needs a module this grid does not load, so the button
+   sat past the edge. This rail is outside the scrolled facts and follows the vertical scroll. */
+function WatchRail({ api, watched, onWatch }: { api: GridApi<ChainGridRow> | null; watched?: ReadonlySet<number>; onWatch: (strike: number) => void }) {
+  const [spots, setSpots] = useState<{ strike: number; top: number }[]>([]);
+  useEffect(() => {
+    if (!api) return;
+    const sync = () => {
+      const range = api.getVerticalPixelRange();
+      const first = api.getFirstDisplayedRowIndex();
+      const last = api.getLastDisplayedRowIndex();
+      const next: { strike: number; top: number }[] = [];
+      if (first >= 0 && last >= first) {
+        for (let i = first; i <= last; i++) {
+          const n = api.getDisplayedRowAtIndex(i);
+          if (!n || n.data?.kind !== 'row' || n.rowTop == null) continue;
+          next.push({ strike: n.data.c.strike, top: n.rowTop - range.top });
+        }
+      }
+      setSpots(prev => {
+        if (prev.length === next.length && prev.every((p, i) => p.strike === next[i].strike && p.top === next[i].top)) return prev;
+        return next;
+      });
+    };
+    sync();
+    api.addEventListener('bodyScroll', sync);
+    api.addEventListener('viewportChanged', sync);
+    api.addEventListener('modelUpdated', sync);
+    return () => {
+      api.removeEventListener('bodyScroll', sync);
+      api.removeEventListener('viewportChanged', sync);
+      api.removeEventListener('modelUpdated', sync);
+    };
+  }, [api]);
+  return (
+    <div className="relative w-7 shrink-0 border-l border-borderSubtle bg-panel" data-chain-watch-rail>
+      <div className="h-7 border-b border-borderSubtle bg-chip" />
+      <div className="absolute inset-x-0 bottom-0 overflow-hidden" style={{ top: 28 }}>
+        {spots.map(s => (
+          <span key={s.strike} className="absolute inset-x-0 flex items-center justify-center" style={{ top: s.top, height: CHAIN_ROW_H }}>
+            <WatchCell strike={s.strike} on={!!watched?.has(s.strike)} onWatch={onWatch} />
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export const ChainCard = memo(function ChainCard({
   chain,
@@ -245,9 +303,8 @@ export const ChainCard = memo(function ChainCard({
   /** The strikes on the watchlist for this ladder, and the door that adds one (the desk; Pulse's tile has neither) */
   watched?: ReadonlySet<number>;
   onWatch?: (strike: number) => void;
-  /** Changes when the ladder itself changes (name, expiry, depth) — the cue
-      to re-centre the scroll on the market. A moving spot alone must NOT
-      re-centre; it would fight the user's own scrolling every tick. */
+  /** Changes when the ladder itself changes (name, expiry, depth). The scroll also recentres when the
+      live print crosses a strike. A tick that stays between the same strikes does not. */
   centerKey: string;
   /** Pulse's grammar — the selected row unfolds its weigh-up inline, Robinhood-style. The desk page leaves this
       off; its weigh-up owns the bottom-right card. */
@@ -271,9 +328,16 @@ export const ChainCard = memo(function ChainCard({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [away, setAway] = useState<'above' | 'below' | null>(null);
   const [ready, setReady] = useState(false);
+  const [api, setApi] = useState<GridApi<ChainGridRow> | null>(null);
+  /* The live stock or index print. The greeks snapshot's underlying is only the fallback. */
+  const tape = useWeigherSpot(chain.ticker);
+  const spot = tape && tape.spot > 0 ? tape.spot : chain.spot;
+  const bracket = useMemo(() => strikeBracket(chain.rows.map(r => r.strike), spot), [chain.rows, spot]);
+  /* The hairline keeps the print from the moment the price crossed into this bracket, so a tick does not rebuild the ladder. */
+  const anchorSpot = useMemo(() => spot, [bracket, chain.ticker, chain.expiryIso]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* High strikes at the top, like a price axis; the market's hairline slots
-     between the strikes that bracket it; the weigh-up under the picked one */
+     between the strikes that bracket the live print; the weigh-up under the picked one */
   const { rows, dividerIdx } = useMemo(() => {
     const contracts = chain.rows.map(r => (right === 'C' ? r.call : r.put));
     const ordered = [...contracts].reverse();
@@ -283,13 +347,13 @@ export const ChainCard = memo(function ChainCard({
       out.push({ kind: 'row', key: `s${c.strike}`, c });
       if (inlineDrill && sel != null && Math.abs(c.strike - sel) < 1e-9) out.push({ kind: 'drill', key: `d${c.strike}`, c, head: drillHead, extra: drillExtra });
       const next = ordered[i + 1];
-      if (c.strike > chain.spot && next && next.strike <= chain.spot) {
+      if (anchorSpot > 0 && c.strike > anchorSpot && next && next.strike <= anchorSpot) {
         divider = out.length;
-        out.push({ kind: 'divider', key: 'divider', spot: chain.spot });
+        out.push({ kind: 'divider', key: 'divider', spot: anchorSpot });
       }
     });
     return { rows: out, dividerIdx: divider };
-  }, [chain, right, sel, inlineDrill, drillExtra, drillHead]);
+  }, [chain, right, sel, inlineDrill, drillExtra, drillHead, anchorSpot]);
 
   const columnDefs = useMemo<ColDef<ChainGridRow>[]>(
     () => [
@@ -311,26 +375,8 @@ export const ChainCard = memo(function ChainCard({
         type: 'rightAligned',
         cellRenderer: factCell(col),
       })),
-      /* the watchlist door, a narrow last column — the desk's chain only */
-      ...(onWatch
-        ? [
-            {
-              colId: 'watch',
-              headerName: '',
-              headerTooltip: 'Add a contract to your watchlist',
-              /* Pinned so a full set of columns cannot scroll it under the bar. */
-              pinned: 'right',
-              lockPinned: true,
-              width: 28,
-              resizable: false,
-              suppressNavigable: true,
-              cellStyle: { padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-              cellRenderer: ({ data }: ICellRendererParams<ChainGridRow>) => (data?.kind === 'row' ? <WatchCell strike={data.c.strike} on={!!watched?.has(data.c.strike)} onWatch={onWatch} /> : null),
-            } satisfies ColDef<ChainGridRow>,
-          ]
-        : []),
     ],
-    [cols, watched, onWatch, held, book]
+    [cols, held, book]
   );
 
   useEffect(() => {
@@ -385,35 +431,38 @@ export const ChainCard = memo(function ChainCard({
     (smooth: boolean) => {
       if (dividerIdx < 0) return false;
       const vp = viewport();
-      const dest = vp && vp.clientHeight >= 40 ? Math.max(0, dividerTop() - vp.clientHeight / 2 + DIVIDER_H / 2) : null;
-      if (vp && dest != null) {
-        if (smooth) vp.scrollTo({ top: dest, behavior: 'smooth' });
-        else vp.scrollTop = dest;
-        return dest === 0 || Math.abs(vp.scrollTop - dest) < 8;
-      }
-      gridRef.current?.api?.ensureIndexVisible(dividerIdx, 'middle');
-      return false;
+      /* No height yet is not a centre. A dest of 0 is not a centre either unless the viewport is actually there. */
+      if (!vp || vp.clientHeight < 40) return false;
+      const dest = Math.max(0, dividerTop() - vp.clientHeight / 2 + DIVIDER_H / 2);
+      const max = Math.max(0, vp.scrollHeight - vp.clientHeight);
+      if (dest > max + 8) return false;
+      if (smooth) vp.scrollTo({ top: dest, behavior: 'smooth' });
+      else vp.scrollTop = dest;
+      return Math.abs(vp.scrollTop - dest) < 8;
     },
     [dividerIdx, dividerTop]
   );
-  /* A new ladder opens on the price, in the middle of the window. The first
-     paint often has no height yet, so this retries until the price row is
-     actually there. A moving spot does not re-centre. */
+  /* A new ladder, or a print that crossed a strike, opens on the price. Retry until the body has a height.
+     A failed scroll is not stored. The retry stops when this ladder's key changes (a new name). */
   const centred = useRef('');
+  const centreKey = `${chain.ticker}|${centerKey}|${bracket}`;
   useEffect(() => {
-    if (!ready || dividerIdx < 0 || centred.current === centerKey) return;
-    let n = 0;
-    let raf = 0;
+    if (!ready || dividerIdx < 0 || centred.current === centreKey) return;
+    let timer = 0;
+    let dead = false;
     const tick = () => {
-      n += 1;
+      if (dead) return;
       const landed = centerOnSpot(false);
       locate();
-      if (landed || n > 24) centred.current = centerKey;
-      else raf = requestAnimationFrame(tick);
+      if (landed) centred.current = centreKey;
+      else timer = window.setTimeout(tick, 50);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [ready, dividerIdx, centerKey, centerOnSpot, locate]);
+    timer = window.setTimeout(tick, 0);
+    return () => {
+      dead = true;
+      window.clearTimeout(timer);
+    };
+  }, [ready, dividerIdx, centreKey, centerOnSpot, locate]);
   /* …unless a contract was carried in: its row is brought to the top third (the market's centring above runs
      first, this lands after it). Waits for the ladder that holds the strike — a name switch lands its rows a
      render later — and asks once per `n`. */
@@ -439,7 +488,8 @@ export const ChainCard = memo(function ChainCard({
   }, [reveal, ready, rows]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div ref={wrapRef} className="slayer-board slayer-chain relative h-full" data-chain-grid={centerKey}>
+    <div className="relative flex h-full min-w-0" data-chain-grid={centerKey}>
+    <div ref={wrapRef} className="slayer-board slayer-chain relative h-full flex-1 min-w-0">
       <AgGridProvider modules={GRID_MODULES}>
         <AgGridReact<ChainGridRow>
           ref={gridRef}
@@ -471,7 +521,10 @@ export const ChainCard = memo(function ChainCard({
           animateRows={false}
           /* The scrollbar's room is reserved from the first sizing, so flex columns never lay out under it. */
           alwaysShowVerticalScroll
-          onFirstDataRendered={() => setReady(true)}
+          onFirstDataRendered={e => {
+            setReady(true);
+            setApi(e.api);
+          }}
           onBodyScroll={locate}
           onViewportChanged={locate}
           tooltipShowDelay={350}
@@ -492,9 +545,11 @@ export const ChainCard = memo(function ChainCard({
           style={{ background: 'rgb(var(--panel) / 0.85)' }}
           data-chain-away={away}
         >
-          {away === 'above' ? <ArrowUp className="w-3 h-3 text-textSecondary" aria-hidden /> : <ArrowDown className="w-3 h-3 text-textSecondary" aria-hidden />}{money(chain.spot)}
+          {away === 'above' ? <ArrowUp className="w-3 h-3 text-textSecondary" aria-hidden /> : <ArrowDown className="w-3 h-3 text-textSecondary" aria-hidden />}{money(spot > 0 ? spot : chain.spot)}
         </button>
       )}
+    </div>
+    {onWatch && <WatchRail api={api} watched={watched} onWatch={onWatch} />}
     </div>
   );
 });

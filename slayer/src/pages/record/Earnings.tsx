@@ -453,7 +453,6 @@ const Earnings = () => {
   /* a name in the fortnight keeps the board, the list and the grid to it; one outside it is said under the line */
   /* in the window only when its NEXT report is (TSLA reported on Wednesday; its next is 01/27, outside) */
   const askedIn = asked != null && !!next && events.some(e => e.ticker === asked && e.iso === next.iso);
-  const inWeeks = (e: EarningsEvent) => week === 'both' || String(e.weekIdx) === week;
   const shown = useMemo(() => {
     const cut = (show === 'all' ? events : events.filter(e => pricedKnown(e) && stateOf(e) === show)).filter(e => week === 'both' || String(e.weekIdx) === week);
     const named = askedIn ? cut.filter(e => e.ticker === asked) : cut;
@@ -470,9 +469,9 @@ const Earnings = () => {
   }, [week, show, asked, paged.props.ref]);
   /* the pricing facts are told over the known names still to report whose usual move is in — a print that is out is
      not priced any more, and a count that grows as histories land says how many are in */
-  /* the head counts the weeks the Week card shows — the same cut as the board and the grid */
-  const weekEvents = events.filter(inWeeks);
-  const weekKnown = knownEvents.filter(inWeeks);
+  /* the head counts `shown` — the same cut as the board, not the whole week after Show or a name filter */
+  const weekEvents = shown;
+  const weekKnown = shown.filter(e => e.known);
   const ahead = weekKnown.filter(e => !e.reported);
   /* the week's known names whose past reports have not landed: one stated set, the same the head counts */
   /* the priced counts are over a stated sample: the largest known names still to report */
@@ -486,7 +485,7 @@ const Earnings = () => {
   const fair = scored.length - rich - cheap;
   const pricedPool = sample.filter(e => e.impliedMovePct > 0);
   const biggest = pricedPool.reduce<EarningsEvent | null>((a, e) => (a === null || e.impliedMovePct > a.impliedMovePct ? e : a), null);
-  const todayAll = rankEvents(events.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()));
+  const todayAll = rankEvents(shown.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()));
   const seen = useSeenNames();
   useEarningsHistories([...sample.map(e => e.ticker), ...seen, ...(show !== 'all' ? ahead.map(e => e.ticker) : [])]);
 

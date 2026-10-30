@@ -7,13 +7,14 @@ import { pickLegWalls } from '../../core/walls';
 import { registerChainDates } from '../chainDates';
 import { levelFlip } from '../flipLevel';
 import { type Candle, type GexSnapshot, type Indicators, type MarketSnapshot, type StrikeNode, type TradePlan } from '../../types/market';
-import { getDeskSession, minuteInSession, sessionMeta, type DeskSession } from '../deskSession';
+import { getDeskSession, currentSessionBars, minuteInSession, sessionMeta, type DeskSession } from '../deskSession';
 import { type LevelsScope } from '../levelsScope';
 import { sameName } from '../spotGexBook';
 import { expiryOpen } from '../../core/tradingYear';
 import { emptyNode, mergeChains } from './scale';
 import { LADDER_DTE, chartAll, chartSpan, closestDate, datesComplete, gammaPriced, peekEntry, peekGammaPriced, settledLive, settledRows, type Entry } from './store';
 import { blankTapeDay } from './tape';
+import { peekTape } from '../thetaTape';
 
 
 /** The live gamma still carried by contracts that have settled (dates before the book's day), RETAIL sign, dollars per
@@ -173,12 +174,12 @@ function indicatorsOf(closes: number[]): Indicators {
 
 function planFor(ticker: string, spot: number, chain: StrikeNode[], flipAt: number | null): TradePlan {
   const walls = pickLegWalls(chain, n => n.callGex, n => n.putGex);
-  const flip = flipAt ?? spot;
-  const callWall = walls.callWall ?? spot;
-  const putWall = walls.putWall ?? spot;
+  const flip = flipAt ?? Number.NaN;
+  const callWall = walls.callWall ?? Number.NaN;
+  const putWall = walls.putWall ?? Number.NaN;
   return {
     ticker,
-    direction: spot >= flip ? 'BULLISH' : 'BEARISH',
+    direction: Number.isFinite(flip) && spot < flip ? 'BEARISH' : 'BULLISH',
     score: 0,
     confidence: 0,
     entry: spot,
@@ -416,8 +417,18 @@ export function bookCandles(ticker: string): Candle[] | null {
   return e?.status === 'live' ? e.candles : null;
 }
 
-/** The day's price in the session the head is set to, or the one you name. Regular hours are the cash bars. An empty list means the feed has no prints in that window — never a made-up chain. */
+/** Theta's one-minute bars for this session once that tape has been read. Null only while nobody has asked — an empty live, kept, or offline tape is no prints, not a reason to walk the vendor's closes. */
+export function thetaPriceBars(ticker: string, session: DeskSession): Candle[] | null {
+  const t = peekTape(ticker, '1m', session);
+  if (t.bars.length) return t.bars;
+  if (t.takenAt > 0 || t.state === 'live' || t.state === 'kept' || t.state === 'offline') return [];
+  return null;
+}
+
+/** The day's price in the session the head is set to, or the one you name. Regular hours are the cash bars. An empty list means the feed has no prints in that window — never a made-up chain. When Theta's minute bars have been read, they are the path — the vendor's bars are only the stand-in before that tape is asked. */
 export function deskBars(ticker: string, session: DeskSession = getDeskSession()): Candle[] | null {
+  const theta = thetaPriceBars(ticker, session);
+  if (theta != null) return theta.length ? currentSessionBars(theta, session) : [];
   const e = peekEntry(ticker);
   if (!e || e.status !== 'live') return null;
   if (session === 'rth') return e.candles.length ? e.candles : null;
@@ -453,7 +464,7 @@ export function chainForDate(ticker: string, date: string | 'book' | null): { no
   if (!entry || entry.status !== 'live') return null;
   const kindOf = (nodes: StrikeNode[]): 'Flow' | 'OI' => (nodes.some(n => n.oiNetGex != null) ? 'Flow' : 'OI');
   if (date === 'book') {
-    return entry.all.length ? { nodes: entry.all, label: 'Every expiry', kind: kindOf(entry.all), date: 'book', movedFrom: null } : null;
+    return entry.all.length ? { nodes: entry.all, label: 'Whole book', kind: kindOf(entry.all), date: 'book', movedFrom: null } : null;
   }
   const floor = isoDate(bookToday());
   const dates = Object.keys(entry.byDate).filter(d => d >= floor && expiryOpen(d) && entry.byDate[d]?.length).sort();

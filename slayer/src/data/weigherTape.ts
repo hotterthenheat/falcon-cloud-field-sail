@@ -11,13 +11,15 @@ import { nyYmd } from '../core/calendar';
 import { sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { noData, offlineWords, pageHidden, thetaGet } from './thetaFeed';
 import { thetaUseHere } from './theta';
-import { dayClose, foldTo, grainStep, paintPrint, readEod, readOhlc, useThetaPrint, useThetaTape, tapeWords, weekClose, type TapeGrain } from './thetaTape';
+import { THETA_INDEX, dayClose, foldTo, grainStep, paintPrint, readEod, readOhlc, useThetaPrint, useThetaTape, tapeWords, weekClose, type TapeGrain } from './thetaTape';
+import { chartGrain, shapeBars } from './thetaCandles';
+import { tfMinutes } from './timeframe';
 
-const GRAIN: Record<Timeframe, TapeGrain> = { '15s': '15s', '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h', '1D': 'day', '1W': 'week' };
+const grainOf = (tf: Timeframe): TapeGrain => chartGrain(tfMinutes(tf));
 
 /** The live print joins the bar it belongs to. It never opens a bar in another session. */
 export function paintLive(bars: Candle[], price: number, atSec: number, tf: Timeframe, session: DeskSession): Candle[] {
-  return paintPrint(bars, price, atSec, grainStep(GRAIN[tf]), session);
+  return paintPrint(bars, price, atSec, grainStep(grainOf(tf)), session);
 }
 
 /** The name's last print and the prior session's close, from ThetaData. Null until the first print lands. */
@@ -35,15 +37,27 @@ interface WeigherTape {
 }
 
 export function useWeigherTape(ticker: string, tf: Timeframe, session: DeskSession): WeigherTape {
-  const t = useThetaTape(ticker, GRAIN[tf], session);
+  const t = useThetaTape(ticker, grainOf(tf), session);
   const ready = t.state !== 'loading' || t.bars.length > 0;
-  return { bars: t.bars, ready, note: ready ? tapeWords(t, session) : null };
+  const bars = ready ? shapeBars(t.bars, tfMinutes(tf), session, ticker) : t.bars;
+  return { bars, ready, note: ready ? tapeWords(t, session) : null };
 }
 
 /* ---- one contract's premium bars ---- */
 
 const ymd = (at = Date.now()): string => nyYmd(at);
-const DAYS: Partial<Record<Timeframe, number>> = { '15s': 0, '1m': 5, '5m': 12, '15m': 25, '30m': 40, '1h': 60 };
+const DAYS: Partial<Record<Timeframe, number>> = { '15s': 1, '1m': 5, '2m': 5, '3m': 5, '5m': 12, '10m': 12, '15m': 25, '30m': 40, '45m': 40, '1h': 60, '2h': 60, '4h': 60, '6h': 60, '8h': 60, '12h': 60 };
+
+/** Theta's option history takes these intervals. Anything else is folded up from the nearest one. */
+function optionInterval(tf: Timeframe): string {
+  const m = tfMinutes(tf);
+  if (m < 1) return '15s';
+  if (m <= 1) return '1m';
+  if (m <= 5) return '5m';
+  if (m <= 15) return '15m';
+  if (m <= 30) return '30m';
+  return '1h';
+}
 /* each window ends on its last millisecond: an end of 15:59:59 leaves out the prints stamped 15:59:59.xxx */
 const WINDOWS: Record<DeskSession, { start: string; end: string }[]> = {
   rth: [{ start: '09:30:00', end: '15:59:59.999' }],
@@ -58,21 +72,28 @@ const WINDOWS: Record<DeskSession, { start: string; end: string }[]> = {
 async function contractBars(symbol: string, exp: string, strike: number, right: OptionRight, tf: Timeframe, session: DeskSession): Promise<{ bars: Candle[]; offline: boolean }> {
   const leg = `symbol=${encodeURIComponent(symbol)}&expiration=${exp}&strike=${strike}&right=${right === 'C' ? 'call' : 'put'}`;
   const end = ymd();
-  if (tf === '1D' || tf === '1W') {
-    const got = await thetaGet(`/option/history/eod?${leg}&start_date=${ymd(Date.now() - 200 * 86_400_000)}&end_date=${end}&format=json`);
+  const mins = tfMinutes(tf);
+  if (mins >= 1440) {
+    const got = await thetaGet(`/option/history/eod?${leg}&start_date=${ymd(Date.now() - 5 * 365 * 86_400_000)}&end_date=${end}&format=json`);
     if (got.error) return { bars: [], offline: !noData(got) };
     const days = readEod(got.data);
-    return { bars: tf === '1W' ? foldTo(days, weekClose) : days, offline: false };
+    const base = tf === '1W' ? foldTo(days, weekClose) : days;
+    return { bars: shapeBars(base, mins, session, symbol), offline: false };
   }
-  const days = tf === '15s' ? [ymd(Date.now() - 86_400_000), end].map(d => [d, d]) : [[ymd(Date.now() - (DAYS[tf] ?? 5) * 86_400_000), end]];
+  const interval = optionInterval(tf);
+  const days = interval === '15s' ? [ymd(Date.now() - 86_400_000), end].map(d => [d, d]) : [[ymd(Date.now() - (DAYS[tf] ?? 5) * 86_400_000), end]];
+  const name = symbol.trim().toUpperCase();
+  const wins = session === 'overnight' && THETA_INDEX.has(name)
+    ? [{ start: '20:15:00', end: '23:59:59.999' }, { start: '00:00:00', end: '03:59:59.999' }]
+    : WINDOWS[session];
   const got = await Promise.all(
     days.flatMap(([from, to]) =>
-      WINDOWS[session].map(w => thetaGet(`/option/history/ohlc?${leg}&start_date=${from}&end_date=${to}&interval=${tf}&start_time=${w.start}&end_time=${w.end}&format=json`)),
+      wins.map(w => thetaGet(`/option/history/ohlc?${leg}&start_date=${from}&end_date=${to}&interval=${interval}&start_time=${w.start}&end_time=${w.end}&format=json`)),
     ),
   );
   const offline = got.some(g => g.error != null && !noData(g));
-  const bars = got.flatMap(g => (g.error ? [] : readOhlc(g.data, session))).sort((a, b) => a.time - b.time);
-  return { bars: foldTo(bars, b => b), offline };
+  const bars = got.flatMap(g => (g.error ? [] : readOhlc(g.data, session, name))).sort((a, b) => a.time - b.time);
+  return { bars: shapeBars(foldTo(bars, b => b), mins, session, name), offline };
 }
 
 const contracts = new Map<string, { at: number; bars: Candle[] }>();

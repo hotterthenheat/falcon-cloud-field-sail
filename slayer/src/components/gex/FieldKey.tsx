@@ -39,8 +39,8 @@ function sinceWords(first: number | null, server: ServerExposure, now = Date.now
 }
 
 const MODES: readonly { value: FieldMode; label: string }[] = [
-  { value: 'oi', label: FIELD_MODE_WORDS.oi.name },
   { value: 'flow', label: FIELD_MODE_WORDS.flow.name },
+  { value: 'oi', label: FIELD_MODE_WORDS.oi.name },
 ];
 
 interface FieldKeyProps {
@@ -68,7 +68,7 @@ function FieldKey({ ticker, cut, cutWords, scale, oiNet, compact = false }: Fiel
   const netValue = mode === 'oi' ? oiNet : net ? net.flow : null;
   const netWords = netValue == null ? '—' : `${netValue >= 0 ? '+' : ''}${fmtUsd(netValue)}`;
   const netInk = netValue == null ? '' : netValue >= 0 ? 'text-goldline' : 'text-steelline';
-  const empty = mode === 'flow' ? 'A bar fills once a reading covers its start and its end' : 'No reading covers a bar yet';
+  const empty = 'No reading in this session yet';
   const scaleRow = (
     <div className="flex items-center gap-1.5 whitespace-nowrap" aria-label="Colour scale">
       {!compact && <span>short</span>}

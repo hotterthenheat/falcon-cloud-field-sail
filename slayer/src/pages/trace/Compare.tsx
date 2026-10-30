@@ -223,8 +223,8 @@ const NameLists = ({ s, side, openKey, onOpen, mny, todayIso }: { s: TraceSide; 
         <span className="font-mono text-t11 tnum text-textMuted text-right max-sm:hidden">{r.dte}d</span>
         <span className="font-mono text-t12 tnum font-semibold text-textPrimary text-right">{fmtUsd(r.premium)}</span>
         <span className="font-mono text-t11 tnum text-textSecondary text-right whitespace-nowrap max-sm:hidden">{num(r.volume)} vol</span>
-        <span className="flex justify-end">
-          <LeanCell askPct={r.askPct} split={r.sideVol} legsPct={r.multiPct} crossPct={r.crossPct} />
+        <span className="flex justify-end min-w-0 overflow-hidden">
+          <LeanCell askPct={r.askPct} split={r.sideVol} legsPct={r.multiPct} crossPct={r.crossPct} fit />
         </span>
       </button>
     ))}

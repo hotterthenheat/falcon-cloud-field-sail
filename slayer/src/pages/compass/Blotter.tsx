@@ -13,6 +13,7 @@ import { isoDate, type Expiry, MONTHS as SHORT } from '../../core/calendar';
 import { nyClock } from '../../core/nyTime';
 import { heldWords, usd, dirInk } from '../../components/review/words';
 import { useSignals, type Signal } from '../../data/compassLedger';
+import { watchedPasses, type WatchedPass } from '../../data/compassModel';
 import { daySummary } from '../../data/compassOutcome';
 import { backlogLine, useCompassFeed } from '../../data/compassFeed';
 import { useCompassDoc } from '../../data/compassReviewFeed';
@@ -21,6 +22,7 @@ import { Link } from 'react-router-dom';
 import { EmptyBox, ErrorBox, LoadingBox, asOfText } from '../../components/ui/states';
 import { useThetaStatus } from '../../data/thetaQuote';
 import { Tip } from '../../components/ui/Tooltip';
+import { P1_MIN } from '../../data/compassParams';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -122,7 +124,7 @@ const COLUMNS: Column<Line>[] = [
     : <span className="tnum text-textPrimary">{nyClock(r.fired)}</span>) },
   { key: 'contract', header: 'Contract', sortValue: r => r.label, render: r => <ContractLabel contract={r.label} right={r.right} logo={r.ticker} size="sm" /> },
   { key: 'book', header: 'Book', sortValue: r => r.book, render: r => <span className="text-textPrimary">{r.book}</span> },
-  { key: 'p1', header: 'Model 1', align: 'right', sortValue: r => r.p1 ?? -1, render: r => (r.p1 == null ? blank : <span className="tnum text-textPrimary">{(r.p1 * 100).toFixed(1)}%</span>) },
+  { key: 'p1', header: 'Line', align: 'right', sortValue: r => r.p1 ?? -1, render: r => (r.p1 == null ? blank : <span className={r.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'}>{r.p1 + 1e-12 >= P1_MIN ? 'Cleared' : 'Short'}</span>) },
   { key: 'quote', header: 'Quote at call', align: 'right', sortValue: r => r.ask, render: r => <span className="tnum text-textSecondary">{r.bid.toFixed(2)} × {r.ask.toFixed(2)}</span> },
   { key: 'paid', header: 'Filled', align: 'right', sortValue: r => r.paid, render: r => (r.paid > 0 ? <span className="tnum text-textPrimary">{usd(r.paid)}</span> : blank) },
   { key: 'exitPx', header: 'Exit', align: 'right', sortValue: r => r.exitPx ?? -1, render: r => (r.exitPx == null ? blank : <span className="tnum text-textPrimary">{usd(r.exitPx)}</span>) },
@@ -135,7 +137,7 @@ const COLUMNS: Column<Line>[] = [
 const WIDTHS: Record<string, number> = { day: 62, fired: 88, contract: 156, book: 52, p1: 74, quote: 124, paid: 78, exitPx: 78, out: 62, held: 70, ret: 74, pnl: 86, result: 82 };
 const TOOLTIPS: Record<string, string> = {
   fired: 'When the scan sent the call, New York time.',
-  p1: 'Model 1 at the call. Book C has no model.',
+  p1: 'Whether the call cleared the line. Book C has no score.',
   quote: 'The bid and ask the model read when it called.',
   paid: 'The ask of the first quote a full minute after the call.',
   exitPx: 'The bid it left on, or the take-profit price.',
@@ -199,6 +201,7 @@ const Blotter = () => {
   const cut = useMemo(() => resultOf(rows), [rows]);
   const day = useMemo(() => daySummary(rows.map(r => r.sig)), [rows]);
   const feed = useCompassFeed();
+  const watched = watchedPasses();
   const open = record.filter(s => !s.outcome || s.outcome.status === 'open' || s.outcome.status === 'waiting');
   const readAt = open.reduce((m, s) => Math.max(m, s.pathAt), 0);
   const offlineLine = feed.status === 'offline'
@@ -242,6 +245,7 @@ const Blotter = () => {
       }
       sentence={offlineLine || backlogLine(feed.marks) ? <span data-blotter-offline>{offlineLine || backlogLine(feed.marks)}</span> : false}
     >
+      <>
       {rows.length === 0 ? (
         <div className="border-t border-borderSubtle" data-blotter-empty>
           {feed.status === 'loading' && !lines.length ? (
@@ -288,7 +292,33 @@ const Blotter = () => {
         />
       )}
       {picked && <ReviewPanel signalKey={picked} day={lines.find(l => l.key === picked)?.sig.day ?? null} onClose={() => setPicked(null)} />}
+      <NotACall rows={watched} />
+      </>
     </TraceBox>
+  );
+};
+
+/** Closest and passed contracts that were on the board. Not Book A, B or C. */
+const NotACall = ({ rows }: { rows: WatchedPass[] }) => {
+  if (!rows.length) return null;
+  const quote = (row: WatchedPass) => row.ask > 0 && row.bid >= 0 && row.ask >= row.bid;
+  return (
+    <div className="border-t border-borderSubtle" data-blotter-passed>
+      <div className="px-4 sm:px-5 py-3 flex items-baseline gap-3 min-w-0">
+        <span className="font-mono text-t10 uppercase tracking-widest text-textPrimary">Not a call</span>
+        <span className="min-w-0 font-mono text-t10 text-textMuted truncate">{rows.length.toLocaleString('en-US')} closest and passed. Not the official record.</span>
+      </div>
+      <ul className="max-h-72 overflow-y-auto border-t border-borderSubtle/60">
+        {rows.map(row => (
+          <li key={`${row.sleeve}|${row.contract}`} className="px-4 sm:px-5 py-2 border-b border-borderSubtle/40 flex items-start gap-3 min-w-0" data-blotter-pass={row.contract}>
+            <ContractLabel contract={row.contract} right={row.right} logo={row.ticker} size="sm" className="shrink-0" />
+            <span className="font-mono text-t10 uppercase tracking-wider text-textMuted shrink-0">{row.kind === 'closest' ? 'Closest' : 'Passed'}</span>
+            <span className="font-mono text-t11 tnum text-textSecondary shrink-0">{quote(row) ? `${row.bid.toFixed(2)} × ${row.ask.toFixed(2)}` : '—'}</span>
+            <span className="min-w-0 font-mono text-t10 text-textMuted truncate" title={row.why}>{row.why}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 };
 

@@ -141,7 +141,7 @@ const MonthFigure = () => {
 export const NewsGuide = () => (
   <div data-news-guide>
     <Section title="The map">
-      <p>The map sits under the story list and loads when you open it. One pin per city a story comes from, its size the count. Countries a story reaches are tinted <span style={{ color: HEAT_INK }}>copper</span>, the open story's own <span style={{ color: OPEN_INK }}>green</span>, and a pale wash marks the cash market open now. Pins are grey: the vendor marks every headline neutral, so no story is graded for or against its name. Pick a story anywhere and the map flies to its city.</p>
+      <p>The map sits under the story list and loads when you open it. One pin per city a story comes from, its size the count. Countries a story reaches are tinted <span style={{ color: HEAT_INK }}>copper</span>, the open story's own <span style={{ color: OPEN_INK }}>green</span>, and a pale wash marks the cash market open now. A pin takes its colour from the vendor's read — for the name, against it, or grey when that read is neutral or there is no read. Pick a story anywhere and the map flies to its city.</p>
     </Section>
     <Section title="The square">
       <p>How hard a story lands, on the wire and on the calendar.</p>

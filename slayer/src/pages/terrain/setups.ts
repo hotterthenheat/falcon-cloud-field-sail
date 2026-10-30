@@ -1,4 +1,4 @@
-import { TIMEFRAMES, type Timeframe } from '../../data/timeframe';
+import { TIMEFRAMES, frameServed, type Timeframe } from '../../data/timeframe';
 import type {
   ChartIndicators,
   ChartOverlays,
@@ -152,7 +152,7 @@ export function readSetup(raw: unknown, key: string): StoredSetup | null {
   const r = raw as Record<string, unknown>;
   const out: StoredSetup = { seen: typeof r.seen === 'number' && Number.isFinite(r.seen) ? r.seen : 0 };
 
-  if (isStr(r.timeframe) && TF_VALUES.has(r.timeframe)) out.timeframe = r.timeframe as Timeframe;
+  if (isStr(r.timeframe) && TF_VALUES.has(r.timeframe) && frameServed(r.timeframe as Timeframe)) out.timeframe = r.timeframe as Timeframe;
   if (isStr(r.chartStyle) && STYLE_VALUES.has(r.chartStyle)) out.chartStyle = r.chartStyle as ChartStyle;
   /* Absent on every record written before T-7, and that is the whole design of
      this function: a missing field is simply not assigned, so `applySetup`

@@ -6,6 +6,7 @@ import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark } from 'lucide-react';
 import { useTracker } from '../context/TrackerContext';
+import type { TrackedSetup } from '../types/tracker';
 import { nyClock, nyIsoDate } from '../core/nyTime';
 import { activeStop, useSignals, type Signal } from '../data/compassLedger';
 import { daySummary, optionFees } from '../data/compassOutcome';
@@ -63,7 +64,7 @@ const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpe
         <span className={`ml-auto font-mono text-t10 uppercase tracking-wider ${state.tone}`}>{state.word}</span>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-borderSubtle/30">
-        <Cell label="Model 1" value={s.p1 != null ? `${(s.p1 * 100).toFixed(1)}%` : 'No model'} />
+        <Cell label="The line" value={s.p1 == null ? 'No score' : s.p1 + 1e-12 >= 0.7067 ? 'Cleared' : 'Short'} />
         <Cell label="At call" value={`${s.bid.toFixed(2)}×${s.ask.toFixed(2)}`} />
         <Cell label="Filled" value={paid > 0 ? money(paid) : '—'} />
         <Cell label={closed ? 'Exit' : 'Bid'} value={now != null ? money(now) : '—'} />
@@ -82,11 +83,34 @@ const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpe
   );
 };
 
+const TrackedCard = ({ t, onOpen }: { t: TrackedSetup; onOpen: () => void }) => {
+  const quoted = t.signalAsk != null && t.signalAsk > 0 && t.signalBid != null && t.signalBid >= 0 && t.signalAsk >= t.signalBid;
+  return (
+    <button type="button" onClick={onOpen} className="text-left border border-borderSubtle bg-panel rounded-md overflow-hidden flex flex-col hover:border-borderMuted transition-colors" data-tracker-tracked={t.id}>
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-borderSubtle">
+        <ContractLabel contract={t.contract} right={t.right} logo={t.ticker} size="sm" />
+        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">Tracked</span>
+        <Bookmark className="w-3.5 h-3.5 text-textSecondary" aria-label="Tracked" />
+        <span className="ml-auto font-mono text-t10 uppercase tracking-wider text-textSecondary">Not a call</span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-borderSubtle/30">
+        <Cell label="Quote" value={quoted ? `${(t.signalBid as number).toFixed(2)}×${(t.signalAsk as number).toFixed(2)}` : '—'} />
+        <Cell label="Ask" value={t.askAtTrack != null && t.askAtTrack > 0 ? money(t.askAtTrack) : '—'} />
+        <Cell label="Stop" value={t.stopAtTrack != null && t.stopAtTrack > 0 ? money(t.stopAtTrack) : '—'} tone="text-warn" />
+        <Cell label="Saved" value={nyClock(t.trackedAt, { zone: true })} />
+      </div>
+      <div className="px-3.5 py-2">
+        <p className="font-mono text-t10 text-textSecondary whitespace-normal">Saved from its page. Not a Book A, B or C call.</p>
+      </div>
+    </button>
+  );
+};
+
 /** `embedded`: under the Compass shell, which wears the head */
 const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
   void embedded;
   const navigate = useNavigate();
-  const { isTracked } = useTracker();
+  const { isTracked, trackedSetups } = useTracker();
   useEffect(() => holdCompassFeed(), []);
   const record = useSignals();
   const feed = useCompassFeed();
@@ -98,6 +122,10 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
     const done = record.filter(s => s.day === today && s.outcome && (s.outcome.status === 'closed' || s.outcome.status === 'unavailable'));
     return { live, done };
   }, [record, today]);
+  const bookmarks = useMemo(
+    () => trackedSetups.filter(t => !record.some(s => s.id === t.id)),
+    [trackedSetups, record],
+  );
   const readAt = rows.live.reduce((m, s) => Math.max(m, s.pathAt), 0);
   const tracked = record.filter(s => isTracked(s.id)).length;
   const sentence = feed.status === 'offline'
@@ -110,6 +138,7 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
       ? `Paths read once a minute from the contract's own quotes${readAt ? `. Last read ${nyClock(readAt, { zone: true })}` : ''}.`
       : false;
   const open = (s: Signal) => navigate(`/compass/${s.id}`, { state: { from: 'Tracker' } });
+  const openTracked = (t: TrackedSetup) => navigate(`/compass/${t.id}`, { state: { from: 'Tracker' } });
 
   return (
     <TraceBox
@@ -134,7 +163,7 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
       }
       sentence={sentence ? <span data-tracker-line>{sentence}</span> : false}
     >
-      {rows.live.length + rows.done.length === 0 ? (
+      {rows.live.length + rows.done.length + bookmarks.length === 0 ? (
         <div className="border-t border-borderSubtle" data-tracker-empty>
           {feed.status === 'offline' && !record.length ? (
             <ErrorBox what="The record did not load" detail={feed.error || 'The Compass server did not answer.'} />
@@ -152,6 +181,11 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
         </div>
       ) : (
         <div className="border-t border-borderSubtle px-4 sm:px-5 py-4 flex flex-col gap-4">
+          {bookmarks.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3" data-tracker-tracked>
+              {bookmarks.map(t => <TrackedCard key={t.id} t={t} onOpen={() => openTracked(t)} />)}
+            </div>
+          )}
           {rows.live.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3" data-tracker-open>
               {rows.live.map(s => <SignalCard key={s.key} s={s} tracked={isTracked(s.id)} onOpen={() => open(s)} />)}

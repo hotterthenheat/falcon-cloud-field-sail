@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useNavigate } from 'react-router-dom';
 import { useQParam } from '../../components/trace/addressCut';
 import { useTicker } from '../../context/MarketDataContext';
-import { contractKey, crossOfWatch, useWatch, type WatchSource, type WatchedContract, type WatchedCross, type WatchedItem, type WatchedPrint } from '../../context/WatchContext';
+import { contractKey, crossOfWatch, useWatch, type WatchSource, type WatchedContract, type WatchedCross, type WatchedItem, type WatchedPrint, type WatchedStructure } from '../../context/WatchContext';
 import CrossDrilldown, { IntentTag } from '../../components/trace/CrossDrilldown';
 import type { DarkPoolPrint } from '../../types/darkpool';
 
@@ -18,6 +18,8 @@ import type { Column } from '../../components/ui/DataTable';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import RichRead from '../../components/ui/RichRead';
 import BookDrill from '../../components/trace/BookDrill';
+import { spreadLegRow, SPREAD_KINDS, type SpreadKind, type SpreadTrade } from '../../data/flowBook';
+import { SpreadCard } from './MultiLeg';
 import ContractCell from '../../components/trace/ContractCell';
 import { DOOR, DOOR_GROUP_TEXT } from '../../components/trace/door';
 import { directionInk, earnMarks, weightInk } from '../../components/trace/earnedInk';
@@ -125,6 +127,47 @@ const isoOfExpiry = (e: string) => {
   return m ? `${m[3]}-${m[1]}-${m[2]}` : e.slice(0, 10);
 };
 
+/** The watched dollars, never fill × size × 100. Older marks stored the vendor's total_premium under that name. */
+function watchedPremium(w: WatchedPrint & { total_premium?: number }): number | undefined {
+  if (typeof w.premium === 'number' && Number.isFinite(w.premium)) return w.premium;
+  if (typeof w.total_premium === 'number' && Number.isFinite(w.total_premium)) return w.total_premium;
+  return undefined;
+}
+
+/** A marked structure as the card's trade: its own id and the dollars that were kept, no fill made up */
+function tradeOfWatch(w: WatchedStructure): SpreadTrade {
+  const prefix = `s:${w.ticker}:`;
+  const id = w.key.startsWith(prefix) ? w.key.slice(prefix.length) : w.key;
+  const kind: SpreadKind = SPREAD_KINDS.some(k => k.key === w.spreadKind) ? (w.spreadKind as SpreadKind) : 'custom';
+  const label = SPREAD_KINDS.find(k => k.key === kind)?.label ?? w.spreadKind;
+  return {
+    id,
+    minute: 0,
+    time: w.time,
+    ticker: w.ticker,
+    kind,
+    strikesLabel: w.strikesLabel,
+    expiry: w.expiry,
+    dte: w.dte,
+    size: w.size,
+    net: w.net,
+    shape: label,
+    netPremium: w.netPremium ?? 0,
+    netKnown: w.netPremium != null,
+    premium: w.gross ?? w.premium,
+    maxLoss: null,
+    maxProfit: null,
+    iv: 0,
+    delta: 0,
+    theta: NaN,
+    spot: w.at.spot,
+    legs: [],
+    units: w.units,
+    legsState: 'pending',
+    namedBy: 'vendor',
+  };
+}
+
 const Dash = () => <span className="text-textSecondary">—</span>;
 
 /** Index option roots: the feed has no stock price for them, so an index mark's spot reads "—", never "$0.00" */
@@ -176,6 +219,12 @@ const FlowTracker = () => {
   const crosses = useMemo(() => watched.filter((w): w is WatchedCross => w.kind === 'cross').sort((a, b) => b.watchedAt - a.watchedAt), [watched]);
   const crossRowKey = useCallback((w: WatchedCross) => w.key, []);
   const [openCross, setOpenCross] = useState<DarkPoolPrint | null>(null);
+  /** The open contract or print: its watch key, so two prints of one contract do not share a card */
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  /** A structure has no book row — its own card, from the mark */
+  const [openStruct, setOpenStruct] = useState<WatchedStructure | null>(null);
+  const [legTrade, setLegTrade] = useState<SpreadTrade | null>(null);
+  const [legKey, setLegKey] = useState<string | null>(null);
   const crossColumns = useMemo<Column<WatchedCross>[]>(
     () => [
       {
@@ -244,8 +293,6 @@ const FlowTracker = () => {
   );
   /* the search is in the address (?q=) and takes a contract too */
   const [query, setQuery] = useQParam();
-  /** The open card: a contract's key, and the print clip when opened from a print row */
-  const [open, setOpen] = useState<{ key: string; clip?: { size: number; fill: number; side: 'ASK' | 'BID'; time: string; multi?: boolean } } | null>(null);
 
   /* an empty tracker asks nothing */
   const contractPack = useLiveBook(activeTicker, options.length > 0);
@@ -375,26 +422,35 @@ const FlowTracker = () => {
     [rows]
   );
 
-  /* the card: the contract's live row, with the print's own clip from a print row; steps walk the table's order */
+  /* one card per mark: a print keeps its own key, so the first print of a contract is not every print of it */
   const drillList = useMemo(() => {
-    const seen = new Set<string>();
     const out: BookContract[] = [];
     for (const r of rows) {
-      if (r.live && !seen.has(r.live.key)) {
-        seen.add(r.live.key);
-        out.push(r.live);
-      }
+      if (r.w.kind === 'structure' || !r.live) continue;
+      out.push(r.live.key === r.w.key ? r.live : { ...r.live, key: r.w.key });
     }
     return out;
   }, [rows]);
-  const clipFor = useCallback((row: BookContract) => (open && row.key === open.key ? open.clip : undefined), [open]);
+  const clips = useMemo(() => {
+    const m = new Map<string, { size: number; fill: number; side: 'ASK' | 'BID' | 'MID'; time: string; multi?: boolean; premium?: number; sweep: boolean }>();
+    for (const r of rows) {
+      if (r.w.kind !== 'print') continue;
+      m.set(r.w.key, { size: r.w.size, fill: r.w.fill, side: r.w.side, time: r.w.time, multi: r.w.multi, premium: watchedPremium(r.w), sweep: !!r.w.sweep });
+    }
+    return m;
+  }, [rows]);
+  const clipFor = useCallback((row: BookContract) => clips.get(row.key), [clips]);
   const openRow = useCallback((r: TrackRow) => {
+    if (r.w.kind === 'structure') {
+      setOpenKey(null);
+      setLegTrade(null);
+      setLegKey(null);
+      setOpenStruct(r.w);
+      return;
+    }
+    setOpenStruct(null);
     if (!r.live) return;
-    const w = r.w;
-    setOpen({
-      key: r.live.key,
-      clip: w.kind === 'print' && w.side !== 'MID' ? { size: w.size, fill: w.fill, side: w.side, time: w.time, multi: w.multi } : undefined,
-    });
+    setOpenKey(r.w.key);
   }, []);
   const keyOf = useCallback((r: TrackRow) => r.w.key, []);
   /* an expired contract dims; a print off the book is usual, and a structure never had one */
@@ -640,7 +696,8 @@ const FlowTracker = () => {
     [options]
   );
 
-  const selectedKey = open ? (rows.find(r => r.live?.key === open.key && (open.clip ? r.w.kind === 'print' : r.w.kind === 'contract'))?.w.key ?? null) : null;
+  const selectedKey = openStruct?.key ?? openKey;
+  const legRows = useMemo(() => (legTrade ? legTrade.legs.map((_, i) => spreadLegRow(legTrade, i)) : []), [legTrade]);
 
   return (
     <>
@@ -718,7 +775,26 @@ const FlowTracker = () => {
       )}
       <CrossDrilldown print={openCross} view={null} onClose={() => setOpenCross(null)} />
 
-      <BookDrill list={drillList} openKey={open?.key ?? null} onOpen={k => setOpen(k ? { key: k } : null)} clipFor={clipFor} />
+      {openStruct && (
+        <SpreadCard
+          trade={tradeOfWatch(openStruct)}
+          onClose={() => setOpenStruct(null)}
+          onLeg={(legs, i) => {
+            const t = { ...tradeOfWatch(openStruct), legs };
+            setLegTrade(t);
+            setLegKey(`${t.id}-l${i}`);
+          }}
+        />
+      )}
+      <BookDrill list={drillList} openKey={openKey} onOpen={setOpenKey} clipFor={clipFor} />
+      <BookDrill
+        list={legRows}
+        openKey={legKey}
+        onOpen={k => {
+          setLegKey(k);
+          if (k === null) setLegTrade(null);
+        }}
+      />
     </>
   );
 };

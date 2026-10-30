@@ -27,12 +27,10 @@ const left = vendor * vendor * calendarYears(exp, late);
 const right = converted * converted * tLate;
 if (Math.abs(left - right) / left > 1e-9) throw new Error('variance did not survive the conversion');
 
-if (dealerInventory(100, 10, 0, 0, 10) !== 110) throw new Error('ask buy did not make the dealer shorter');
-if (dealerInventory(100, 0, 10, 0, 10) !== 90) throw new Error('bid sale did not make the dealer longer');
+if (dealerInventory(100, 10, 0, 0, 10) !== 90) throw new Error('ask buy did not make the dealer shorter');
+if (dealerInventory(100, 0, 10, 0, 10) !== 110) throw new Error('bid sale did not make the dealer longer');
 if (dealerInventory(100, 10, 0, 10, 10) !== 100) throw new Error('a multi-leg print was counted as a side');
-const put770 = dealerInventory(1566, 316025, 331853, 9323, 664323);
-if (!(put770 < 0)) throw new Error('put inventory was stopped at zero');
-if (!(-put770 > 0)) throw new Error('a negative inventory did not flip the greek sign');
+if (!(dealerInventory(100, 200, 0, 0, 200) < 0)) throw new Error('ask buying through the open interest did not cross zero');
 const callNet = flowImbalance(500806, 493714, 37628, 1006749);
 if (!(flowConfidence(callNet, 1006749, (12227 + 2) / 1006749) < 0.02)) throw new Error('770 call net was treated as firm');
 if (flowFirm(callNet, 1006749, 0)) throw new Error('a net under 2% of gross was firm');

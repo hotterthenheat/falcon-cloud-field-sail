@@ -278,11 +278,11 @@ const Building = () => {
               ) : (
                 <BuildingLedgerSkeleton rows={rows} bare folded={show === 'moved'} />
               )}
+              <BuildingArrived ticker={t} expiry={p.expiry} />
             </div>
           );
         })}
       </div>
-      <BuildingArrived ticker={activeTicker} />
     </div>
   );
 };

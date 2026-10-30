@@ -61,26 +61,32 @@ export function useMaxPain(ticker: string, expiry: string | null | undefined, on
   );
 }
 
-/** The cone's levels at the edge: today's expected move from the open, and the last price ±1σ to the close */
-export function coneRungs(fc: ForwardCone | null): KeyLevelRung[] {
+/** The one expected-move pair this chart's frame is about. A session frame is the 1σ left to the close
+    (the day's move from the open when that is all there is). A longer frame is that frame's 1σ.
+    The day's move, the close, and the 2σ are not all named at once — that is what stacks the rail. */
+export function coneRungs(fc: ForwardCone | null, label = 'Next day'): KeyLevelRung[] {
   if (!fc) return [];
-  const out: KeyLevelRung[] = [];
-  if (fc.move) {
-    out.push({ key: 'moveHigh', price: fc.move.high, ink: EXTRA_INK.move, dash: true });
-    out.push({ key: 'moveLow', price: fc.move.low, ink: EXTRA_INK.move, dash: true });
+  const session = fc.nextMin > 0 && fc.nextMin <= Math.max(fc.todayMin, 0);
+  if (session) {
+    if (fc.sigmaToday != null && fc.sigmaToday > 0) {
+      return [
+        { key: 'sigmaHigh', price: fc.spot + fc.sigmaToday, ink: EXTRA_INK.sigma, dash: true },
+        { key: 'sigmaLow', price: fc.spot - fc.sigmaToday, ink: EXTRA_INK.sigma, dash: true },
+      ];
+    }
+    if (fc.move) {
+      return [
+        { key: 'moveHigh', price: fc.move.high, ink: EXTRA_INK.move, dash: true },
+        { key: 'moveLow', price: fc.move.low, ink: EXTRA_INK.move, dash: true },
+      ];
+    }
+    return [];
   }
-  /* 1σ to today's close while the session runs; once it has rung, the next close is the cone's end below */
-  if (fc.sigmaToday != null && fc.sigmaToday > 0) {
-    out.push({ key: 'sigmaHigh', price: fc.spot + fc.sigmaToday, ink: EXTRA_INK.sigma, dash: true });
-    out.push({ key: 'sigmaLow', price: fc.spot - fc.sigmaToday, ink: EXTRA_INK.sigma, dash: true });
-  }
-  if (fc.sigmaNext > 0) {
-    out.push({ key: 'nextHigh', price: fc.spot + fc.sigmaNext, ink: EXTRA_INK.cone, dash: true });
-    out.push({ key: 'nextLow', price: fc.spot - fc.sigmaNext, ink: EXTRA_INK.cone, dash: true });
-    out.push({ key: 'twoHigh', price: fc.spot + 2 * fc.sigmaNext, ink: EXTRA_INK.cone2, dash: true });
-    out.push({ key: 'twoLow', price: fc.spot - 2 * fc.sigmaNext, ink: EXTRA_INK.cone2, dash: true });
-  }
-  return out;
+  if (!(fc.sigmaNext > 0)) return [];
+  return [
+    { key: 'nextHigh', price: fc.spot + fc.sigmaNext, ink: EXTRA_INK.cone, dash: true, title: `${label} 1σ` },
+    { key: 'nextLow', price: fc.spot - fc.sigmaNext, ink: EXTRA_INK.cone, dash: true, title: `${label} 1σ` },
+  ];
 }
 
 /** Each wall's and the supreme's size: the strike's |net GEX| against the cut's largest strike's (house rows) */

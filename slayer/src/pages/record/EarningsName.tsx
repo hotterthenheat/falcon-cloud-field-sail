@@ -440,8 +440,9 @@ const EarningsName = () => {
   /* the stock NOW — the calendar row's price is the one the options were priced against, stale once the print is out
      (TSLA read $386.55 after closing the night at $373.63) */
   /* the regular price leads, the extended print beside it, named */
-  const spotNow = quote?.regularPrice && quote.regularPrice > 0 ? quote.regularPrice : e.price;
-  const extNow = quote?.extPrice != null && quote.extPrice > 0 ? { px: quote.extPrice, word: quote.phase === 'pre' ? 'pre-market' : 'after hours' } : null;
+  const inExt = !!(quote && quote.phase !== 'regular' && quote.extPrice != null && quote.extPrice > 0);
+  const spotNow = inExt ? quote!.extPrice! : quote?.regularPrice && quote.regularPrice > 0 ? quote.regularPrice : e.price;
+  const extNow = inExt && quote!.regularPrice > 0 ? { px: quote!.regularPrice, word: 'regular close' } : null;
   /* the board's own rule (earningsFeed.reportedNow), so the two never disagree on whether a print is out */
   const reported = reportedNow(e);
   const nQ = quarters.length || 0;

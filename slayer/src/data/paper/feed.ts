@@ -8,7 +8,7 @@ import type { Candle } from '../../types/market';
 import type { DeskChain, DeskContract } from '../weigherDesk';
 import { isTradingDay, expiryFor } from '../../core/calendar';
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
-import { longLeg, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
+import { longLeg, spreadBook, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
 import { bookCandles, ensureBook } from '../uwBook';
 import { bellOf, dateAt, nyAt, sessionFrom, yearsToExpiry, OPEN_MIN, BELL_MIN } from './clock';
 import { paperIndex } from './products';
@@ -98,22 +98,24 @@ export const optionQuote = (c: ContractId, ms: number, spot = spotOf(c.ticker)):
   if (c.short == null) return legQuote(c, spot, ms);
   const bought = legQuote(longLeg(c), spot, ms);
   const sold = legQuote({ ...longLeg(c), strike: c.short }, spot, ms);
-  if (!(bought.ask > 0) || !(sold.ask > 0)) return { ...deadQuote(bought.spot), mark: bought.mark - sold.mark };
   const width = Math.abs(c.short - c.strike);
-  const inside = (v: number) => Math.max(0, Math.min(width, v));
-  const bid = cents(inside(bought.bid - sold.ask));
-  const ask = cents(Math.max(bid + 0.01, inside(bought.ask - sold.bid)));
+  if (!(bought.ask > 0) || !(sold.ask > 0)) {
+    const raw = bought.mark - sold.mark;
+    const mark = Number.isFinite(raw) ? Math.min(width, Math.max(0, cents(raw))) : NaN;
+    return { ...deadQuote(bought.spot), mark };
+  }
+  const { bid, ask } = spreadBook(bought.bid - sold.ask, bought.ask - sold.bid, width);
   return {
     bid,
     ask,
-    mark: cents((bid + ask) / 2),
+    mark: bookMark(bid, ask, cents),
     iv: bought.iv,
     delta: bought.delta - sold.delta,
     gamma: bought.gamma - sold.gamma,
     theta: bought.theta - sold.theta,
     vega: bought.vega - sold.vega,
     rho: bought.rho - sold.rho,
-    intrinsic: cents(inside(bought.intrinsic - sold.intrinsic)),
+    intrinsic: cents(Math.max(0, Math.min(width, bought.intrinsic - sold.intrinsic))),
     dead: bid <= 0 || bought.dead || sold.dead,
     spot: bought.spot,
   };

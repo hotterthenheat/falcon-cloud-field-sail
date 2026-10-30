@@ -140,7 +140,8 @@ const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
   if (!data) return null;
   if (data.listedOnly && !b) return <span className="font-mono text-t11 text-textMuted" title="No screen on this name">—</span>;
   const pre = b ? !b.live : false;
-  const chg = b ? b.pct ?? data.changePct : data.changePct;
+  const chg = b?.pct != null ? b.pct : Number.isFinite(data.changePct) ? data.changePct : null;
+  if (chg == null) return <span className="font-mono text-t11 text-textMuted" title="No change on the feed">—</span>;
   const ext = b ? batchExt(b, data.ticker) : data.extPct != null && Math.abs(data.extPct) >= EXT_FLOOR ? `after hours ${data.extPct >= 0 ? '+' : '−'}${Math.abs(data.extPct).toFixed(2)}%` : null;
   const day = b && !b.live ? ` (${b.date})` : '';
   return (
@@ -337,9 +338,9 @@ const Stocks = () => {
     const blankOf = (symbol: string, known: string): StockPick => ({
       ticker: symbol,
       name: known || symbol,
-      sector: lookup(symbol)?.sector ?? 'Technology',
+      sector: lookup(symbol)?.sector ?? ('—' as StockPick['sector']),
       price: 0,
-      changePct: 0,
+      changePct: Number.NaN,
       sleeves: { momentum: 0, quality: 0, flow: 0, news: 0 },
       quiet: ['momentum', 'quality', 'flow', 'news'],
       composite: 0,
@@ -350,12 +351,19 @@ const Stocks = () => {
     });
     if (query) {
       const hits = searchListed('equity', query, SEARCH_ROWS * 2, searchTickers(query, SEARCH_ROWS * 2), companyName).filter(h => COMMON_SYMBOL.test(h.symbol));
-      return hits.slice(0, SEARCH_ROWS).map(hit => picks.find(p => p.ticker === hit.symbol) ?? blankOf(hit.symbol, filedName(hit.symbol, hit.name)));
+      const board = new Set(boardNames);
+      const on = new Set(filter);
+      const sameCut = (p: StockPick) =>
+        (screen === 'all' || (!p.listedOnly && gradeOfPick(p) === screen)) &&
+        (sector === 'all' || p.sector === sector) &&
+        (names === 'all' || board.has(p.ticker)) &&
+        (on.size === 0 || on.has(`name:${p.ticker}`));
+      return hits.map(hit => picks.find(p => p.ticker === hit.symbol) ?? blankOf(hit.symbol, filedName(hit.symbol, hit.name))).filter(sameCut).slice(0, SEARCH_ROWS);
     }
     if (filter.length === 0) return cut;
     const on = new Set(filter);
     return cut.filter(p => on.has(`name:${p.ticker}`));
-  }, [cut, filter, find, picks]);
+  }, [cut, filter, find, picks, screen, sector, names, boardNames]);
 
   const facts = useMemo(() => {
     const scored = rows.filter(p => !p.listedOnly);
@@ -397,13 +405,21 @@ const Stocks = () => {
   /* in the session the column is today; outside it, the last session's date */
   /* the scored names, plus the newest page of the unscreened list — never the whole 26k in one quote */
   const quoteTickers = useMemo(() => picks.map(p => p.ticker), [picks]);
-  useScreenerQuotes(quoteTickers);
+  const { rev: quoteRev } = useScreenerQuotes(quoteTickers);
   /* a house name the screener has no row for (BYDDY) is said, never silently dropped */
   const unscreened = useMemo(() => (liveBoard.status === 'live' && picks.length ? UNIVERSE.filter(u => !picks.some(p => p.ticker === u.ticker)).map(u => u.ticker) : []), [liveBoard.status, picks]);
-  /* the day the rows' change belongs to, off the rows' own bulk read */
-  const headBatch = useBatchQuote(picks[0]?.ticker);
-  const headDate = headBatch ? (headBatch.live ? null : headBatch.date) : picks[0]?.sessionDate && picks[0].sessionDate !== nyIsoDate() ? picks[0].sessionDate : null;
-  const dayHead = headDate ? shortDayWord(headDate) : 'Today';
+  /* the change column: one date when the visible rows agree, Today only while that session is live, otherwise Session */
+  const dayHead = useMemo(() => {
+    const today = nyIsoDate();
+    const dates = rows.map(p => peekBatchQuote(p.ticker)?.date || p.sessionDate || '');
+    const agreed = dates.length > 0 && dates.every(d => d && d === dates[0]);
+    if (!agreed) return 'Session';
+    const liveToday = rows.every(p => {
+      const b = peekBatchQuote(p.ticker);
+      return !!b?.live && b.date === today && dates[0] === today;
+    });
+    return liveToday ? 'Today' : shortDayWord(dates[0]);
+  }, [rows, quoteRev]);
 
   const columnDefs = useMemo<ColDef<StockPick>[]>(() => {
     const cols: ColDef<StockPick>[] = [
@@ -411,7 +427,12 @@ const Stocks = () => {
       { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 124, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
       { headerName: 'Sector', field: 'sector', width: 156, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
       { headerName: 'Last', field: 'price', width: 84, cellRenderer: LastCell, valueGetter: p => (p.data ? peekBatchQuote(p.data.ticker)?.price || p.data.price : 0), type: 'rightAligned', headerTooltip: 'The last price in the session; the regular close outside it (hover for the extended print, ET)' },
-      { headerName: dayHead, field: 'changePct', width: 78, cellRenderer: TodayCell, valueGetter: p => (p.data ? peekBatchQuote(p.data.ticker)?.pct ?? p.data.changePct : 0), type: 'rightAligned', headerTooltip: "The regular session's change (the last session's outside it); the extended move sits under it" },
+      { headerName: dayHead, field: 'changePct', width: 78, cellRenderer: TodayCell, valueGetter: p => {
+        if (!p.data) return null;
+        const q = peekBatchQuote(p.data.ticker)?.pct;
+        if (q != null) return q;
+        return Number.isFinite(p.data.changePct) ? p.data.changePct : null;
+      }, type: 'rightAligned', headerTooltip: "The regular session's change (the last session's outside it); the extended move sits under it" },
       { headerName: 'Year', field: 'trend', width: 116, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
       { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 96, cellRenderer: sleeveCell('momentum'), headerTooltip: "Price against its 20-day EMA, RSI, ADX with the week's direction, and the month. Hover for the figures." },
       { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 96, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth a year (the slowest of the 1-, 2- and 3-year rates) and the change in share count. Hover for the figures.' },

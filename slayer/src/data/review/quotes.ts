@@ -73,6 +73,17 @@ export const dteAt = (iso: string, expiry: string): number => Math.max(0, Math.r
 const cents = (v: number) => Math.round(v * 100) / 100;
 /** A mark is the mid itself — half a cent is kept (3.90 / 3.91 is marked at 3.905, not 3.90): only float dust is cut */
 const mid4 = (v: number) => Math.round(v * 1e4) / 1e4;
+/** A spread's bid and ask, clamped to `[0, width]`. The one-cent bump that keeps a locked book from being a single price
+    stops at the width: a $5-wide spread locked at $5.00 is not bought at $5.01. */
+export function spreadBook(naturalBid: number, naturalAsk: number, width: number): { bid: number; ask: number } {
+  const lo = (v: number) => Math.max(0, Math.min(width, v));
+  const bid = Math.min(width, Math.max(0, cents(lo(naturalBid))));
+  let ask = Math.min(width, Math.max(0, cents(Math.max(bid + 0.01, lo(naturalAsk)))));
+  if (ask < bid) ask = bid;
+  return { bid, ask };
+}
+/** The mid, kept inside the quoted book (never through the ask, never above the width). */
+export const bookMark = (bid: number, ask: number, round: (v: number) => number): number => Math.min(ask, Math.max(bid, round((bid + ask) / 2)));
 const intrinsicOf = (c: ContractId, spot: number) => (spot > 0 ? Math.max(0, c.right === 'C' ? spot - c.strike : c.strike - spot) : 0);
 const noQuote = (c: ContractId, spot: number): Quote => ({ bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic: cents(intrinsicOf(c, spot)), dead: true, spot });
 
@@ -104,12 +115,11 @@ export function quoteAt(c: ContractId, iso: string, minute: number): Quote {
   const inside = (v: number) => Math.max(0, Math.min(width, v));
   const intrinsic = cents(inside(bought.intrinsic - sold.intrinsic));
   if (bought.dead || sold.dead) return { ...noQuote(c, bought.spot), intrinsic };
-  const bid = cents(inside(bought.bid - sold.ask));
-  const ask = cents(Math.max(bid + 0.01, inside(bought.ask - sold.bid)));
+  const { bid, ask } = spreadBook(bought.bid - sold.ask, bought.ask - sold.bid, width);
   return {
     bid,
     ask,
-    mark: mid4((bid + ask) / 2),
+    mark: bookMark(bid, ask, mid4),
     iv: bought.iv,
     delta: bought.delta - sold.delta,
     gamma: bought.gamma - sold.gamma,

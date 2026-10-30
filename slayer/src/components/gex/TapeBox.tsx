@@ -2,7 +2,7 @@
    levels ladder at the right edge (a kept strike, a bell that arms the level's alert), and ahead of now 1σ to the close
    and the corridor's field. The replay rewinds it with the page; hover for the minute, arrow keys walk the bars. */
 
-import { sigmaFracOver, sigmaOverMinutes } from '../../data/expectedMove';
+import { daySigmaOfIv, sigmaOverMinutes } from '../../data/expectedMove';
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { DayHeadSlot } from './DayBox';
@@ -12,10 +12,10 @@ import { roomLevels } from '../../data/roomLevels';
 import { peekDaySigma, peekIv, peekMoveToClose, peekScopeMove, useBookRev, useResolvedSession } from '../../data/uwBook';
 import { thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
 import { usePrintRev, useTapeRev } from '../../data/thetaTape';
-import { sessionOfMinute } from '../../data/deskSession';
+import { currentSessionBars, minuteInSession, sessionMeta, sessionOfMinute } from '../../data/deskSession';
 import { scopeDateOf } from '../../data/wall';
 import { readSessionClock } from '../../data/moc';
-import { CLOSE_MIN, aheadClock, buildCorridor, hhmm, type AheadClock } from '../../data/ahead';
+import { CLOSE_MIN, OPEN_MIN, aheadClock, buildCorridor, hhmm, type AheadClock } from '../../data/ahead';
 import { buildExposureProfile } from '../../data/exposure';
 import { ThermalFieldPrimitive, type FieldPoint, type Rgb } from './thermalFieldPrimitive';
 import { axisForSession, dayAxisFrom, dayAxisTo } from '../../data/dayAxis';
@@ -26,6 +26,7 @@ import { armLevel, removeAlert, useAlerts, type LevelName } from './alertStore';
 import { setDayHover, useDayHover } from '../../data/dayHover';
 import { useResolvedTheme } from '../../theme/theme';
 import { useRoomSpot } from '../../pages/pinpoint/useRoomSpot';
+import { peekThetaPrice } from '../../data/thetaQuote';
 import { undoable } from '../ui/undo';
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_COOL, THERMAL_WARM, alpha, resolveInk } from './paletteInk';
 import { CLOCK_SCALE, DAY_SCALE_W, dayChartOptions, dayClock, daySurface, dayStartOf, feedSeries, syncDayScale } from './dayChart';
@@ -126,18 +127,16 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const printRev = usePrintRev(barsProp == null);
   /* kept or offline: the bars stay, stamped as of when they were read */
   const tapeNote = thetaChartNote(snapshot.ticker, 1, tapeSession);
-  const bars = useMemo(() => {
+  /* thetaChartBars joins every session. The drawn series is the pin's window (deskSession minuteInSession), the latest
+     occurrence of it — not the newest calendar day, which drops yesterday's cash session and splits overnight. */
+  const drawn = useMemo(() => {
     const all = thetaChartBars(snapshot.ticker, 1, tapeSession);
-    /* the tape holds several days: live, the box is the newest one */
-    if (!barsProp) {
-      const day = all.length ? nyIsoDate(all[all.length - 1].time * 1000) : '';
-      return all.filter(b => nyIsoDate(b.time * 1000) === day);
-    }
-    if (!barsProp.length) return [];
-    const from = barsProp[0].time;
-    const to = barsProp[barsProp.length - 1].time;
-    return all.filter(b => b.time >= from && b.time <= to);
+    const windowed = !barsProp ? all : !barsProp.length ? [] : all.filter(b => b.time >= barsProp[0].time && b.time <= barsProp[barsProp.length - 1].time);
+    const inWin = windowed.filter(b => minuteInSession(nyMinutes(b.time * 1000), tapeSession));
+    return { bars: barsProp ? inWin : currentSessionBars(inWin, tapeSession), joined: windowed.length };
   }, [snapshot.ticker, barsProp, tapeSession, tapeRev, printRev]);
+  const bars = drawn.bars;
+  const joined = drawn.joined;
   /* the book handed in is already the Map's window, read as it stands (a dated book is read '0DTE') */
   const levelsScope = '0DTE' as const;
   const levels = useMemo<Level[]>(() => {
@@ -189,31 +188,37 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const liveMin = h * 60 + m;
   const inSession = at != null ? true : clock.phase === 'OPEN' || clock.phase === 'AUCTION';
   /* the clock starts where the day's bars do (data/dayAxis.ts) — the book under it reads the same bars, so the same minute */
-  /* a pre-market or evening tape keeps its own window, the clock the book under it reads (axisForSession) */
-  const offCash = tapeSession === 'pre' || tapeSession === 'post' ? axisForSession(bars, tapeSession, at == null && inSession) : null;
+  /* a session outside the cash day keeps its own window, the clock the book under it reads (axisForSession) — overnight
+     included, measured from the first bar so the wrap does not sit on midnight */
+  const offCash = tapeSession !== 'rth' ? axisForSession(bars, tapeSession, at == null && inSession) : null;
   const FROM = offCash?.from ?? dayAxisFrom(bars[0]?.time);
   /* live, the axis is the session so far (dayAxis.ts); a replay and a closed day keep the whole session */
   const TO = offCash?.to ?? dayAxisTo(bars[bars.length - 1]?.time, at == null && inSession);
   const nowMin = at != null ? Math.max(FROM, Math.min(TO, at)) : inSession ? Math.max(FROM, liveMin) : TO;
   const spot = bars.length ? bars[bars.length - 1].close : snapshot.spot;
-  /* what "Last" prints: the room's price — the replay's last bar when rewound */
-  const last = barsProp != null ? spot : roomSpot ?? spot;
-  /* one 1σ on every page: the levels' expiry's (uwBook peekDaySigma), the name's vol only when the feed has none */
-  const iv = peekIv(snapshot.ticker) ?? 0.2;
+  /* what "Last" prints. In the cash session, the room's price. Outside it, the same Theta last trade the head prints
+     (live or kept) when one exists — never the regular close standing in unlabeled. A replay keeps the last bar. */
+  const cashNow = at == null && liveMin >= OPEN_MIN && liveMin < CLOSE_MIN;
+  const heldPx = barsProp == null ? peekThetaPrice(snapshot.ticker)?.value.price ?? null : null;
+  const thetaOk = !cashNow && heldPx != null && heldPx > 0;
+  const barClose = bars.length ? bars[bars.length - 1].close : null;
+  const last = barsProp != null ? spot : thetaOk ? heldPx : cashNow ? (roomSpot ?? spot) : (barClose ?? roomSpot ?? spot);
+  const regularNamed = !cashNow && barsProp == null && !thetaOk && barClose == null && roomSpot != null && last === roomSpot;
+  /* one 1σ on every page: the levels' expiry (peekDaySigma) or a real implied vol. Never a stand-in 20%. */
+  const iv = peekIv(snapshot.ticker);
   const minLeft = Math.max(0, CLOSE_MIN - nowMin);
-  /* …and no expected move off it either (the same blocker: "ONE MOVE today ±4.12" read off the 30-day vol, later ±4.74 —
-     the feed's own implied move): "…" until the levels' scope is final and the feed's term structure is in */
+  /* …and no expected move off a 30-day stand-in while the feed's own term is still out ("…" until the scope is final) */
   const movePending = !!snapshot.liveBook && (!!snapshot.levelsPending || roomLevels(snapshot, '0DTE')?.complete === false || peekScopeMove(snapshot.ticker, scopeDateOf(snapshot))?.source === 'iv30');
-  const daySigma = snapshot.liveBook && !movePending ? peekDaySigma(snapshot.ticker, scopeDateOf(snapshot)) : null;
+  const daySigma = snapshot.liveBook && !movePending ? peekDaySigma(snapshot.ticker, scopeDateOf(snapshot)) : !snapshot.liveBook && iv != null ? daySigmaOfIv(spot, iv) : null;
   /* scaled to the minutes left exactly once; a replay's minute keeps the full-session figure's scaling */
   const left = daySigma != null && at == null ? peekMoveToClose(snapshot.ticker, scopeDateOf(snapshot), minLeft) : null;
-  const w1 = left ?? (daySigma != null ? sigmaOverMinutes(daySigma, minLeft) : spot * sigmaFracOver(iv, minLeft));
+  const w1 = daySigma != null ? (left ?? sigmaOverMinutes(daySigma, minLeft)) : null;
   /* one phase vocabulary: outside the session the move is the coming session's — "today" before a trading day's open,
      "next session" after its close (bookWindow todayScopeLabel) */
   const aheadWord = todayScopeLabel() === 'Today' ? 'today' : 'next session';
   const shutBand = !movePending && daySigma != null && spot > 0 ? `${(spot - daySigma).toFixed(2)}–${(spot + daySigma).toFixed(2)}` : null;
   const shutMove = movePending ? `${aheadWord} …` : shutBand ? `${aheadWord} ${shutBand}` : aheadWord;
-  const dayStart = bars.length ? dayStartOf(bars[0].time, nyMinutes(bars[0].time * 1000)) : 0;
+  const dayStart = offCash ? offCash.dayStart : bars.length ? dayStartOf(bars[0].time, nyMinutes(bars[0].time * 1000)) : 0;
   /* The field: where price is likelier to be from now to the close, by the corridor (data/ahead.ts), read a point a minute
      and cut at the axis' end while the session runs. Nothing after the close; in a replay, from the replayed minute. */
   const profile = useMemo(() => {
@@ -225,10 +230,10 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   }, [snapshot]);
   const fieldEnd = Math.min(CLOSE_MIN, TO);
   const fieldPoints = useMemo<FieldPoint[]>(() => {
-    if (!profile || movePending || minLeft <= 0 || !bars.length || fieldEnd <= nowMin) return [];
+    if (!profile || movePending || w1 == null || minLeft <= 0 || !bars.length || fieldEnd <= nowMin) return [];
     const clock: AheadClock = { ...aheadClock(readSessionClock()), nowMin, inSession: true, minutesLeft: Math.max(1, CLOSE_MIN - nowMin) };
-    /* the corridor runs from the tape's own last close, the figure the line ends on */
-    const cone = buildCorridor({ ...snapshot, spot }, profile, iv, clock).cone;
+    /* the corridor runs from the tape's own last close. peekDaySigma is read first inside; iv is only a real vol, never 0.2 */
+    const cone = buildCorridor({ ...snapshot, spot }, profile, iv ?? 0, clock).cone;
     if (cone.length < 2) return [];
     const out: FieldPoint[] = [];
     let k = 0;
@@ -242,7 +247,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, snapshot, spot, iv, nowMin, fieldEnd, minLeft > 0, bars.length > 0]);
+  }, [profile, snapshot, spot, iv, w1, nowMin, fieldEnd, minLeft > 0, bars.length > 0]);
 
   /* ---- the chart ---- */
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -509,9 +514,9 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     const pin = levels.find(l => l.key === 'pin');
     if (pin && Number.isFinite(pin.price)) linesRef.current.push(series.createPriceLine({ price: pin.price, color: alpha(resolveInk(pin.ink, host), 0.7), lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: 'Pin' }));
     if (focus != null) linesRef.current.push(series.createPriceLine({ price: focus, color: resolveInk(SILVER, host), lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: 'Kept' }));
-    if (Number.isFinite(last) && last > 0) linesRef.current.push(series.createPriceLine({ price: last, color: resolveInk(INK_3, host), lineWidth: 1, lineStyle: LineStyle.Solid, lineVisible: false, axisLabelVisible: true, title: '' }));
+    if (Number.isFinite(last) && last > 0) linesRef.current.push(series.createPriceLine({ price: last, color: resolveInk(INK_3, host), lineWidth: 1, lineStyle: LineStyle.Solid, lineVisible: false, axisLabelVisible: true, title: regularNamed ? 'Regular close' : '' }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupsKey, focus, paper, part, open, last]);
+  }, [groupsKey, focus, paper, part, open, last, regularNamed]);
 
   /* A kept strike off the scale stays off (it would flatten the tape), but a chip in the row and a tag at the plot's edge
      say so and which way — read off the drawn chart after every render. */
@@ -606,15 +611,15 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
       </span>
       {bars.length > 0 && session && (
         <>
-          <PartFact label="Last">
+          <PartFact label={regularNamed ? 'Regular close' : 'Last'}>
             <span data-tape-last={last.toFixed(2)}>{last.toFixed(2)}</span>
           </PartFact>
           <PartFact label="Session">
             {session.lo.toFixed(2)} – {session.hi.toFixed(2)}
           </PartFact>
           <PartFact label="One move" title={fieldLast ? `By the close, one move is ${fieldLast.lo1.toFixed(2)} to ${fieldLast.hi1.toFixed(2)}. Two moves is ${fieldLast.lo2.toFixed(2)} to ${fieldLast.hi2.toFixed(2)}.` : 'One expected move from here to the close'}>
-            <span data-tape-move={movePending ? undefined : w1.toFixed(2)} data-tape-ahead={fieldLast ? `${fieldLast.lo1.toFixed(2)}-${fieldLast.hi1.toFixed(2)}` : undefined}>
-              {movePending ? '…' : minLeft > 0 && fieldLast ? `${fieldLast.lo1.toFixed(2)}–${fieldLast.hi1.toFixed(2)} · ${spot >= fieldLast.lo1 && spot <= fieldLast.hi1 ? 'inside' : spot > fieldLast.hi1 ? 'through the high' : 'through the low'} · ${minLeft}m` : shutMove}
+            <span data-tape-move={w1 != null ? w1.toFixed(2) : undefined} data-tape-ahead={w1 != null && fieldLast ? `${fieldLast.lo1.toFixed(2)}-${fieldLast.hi1.toFixed(2)}` : undefined}>
+              {w1 == null ? '…' : minLeft > 0 && fieldLast ? `${fieldLast.lo1.toFixed(2)}–${fieldLast.hi1.toFixed(2)} · ${spot >= fieldLast.lo1 && spot <= fieldLast.hi1 ? 'inside' : spot > fieldLast.hi1 ? 'through the high' : 'through the low'} · ${minLeft}m` : shutMove}
             </span>
           </PartFact>
         </>
@@ -652,7 +657,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
         {bars.length > 0 && session && (
           <dl className="grid grid-cols-3 gap-x-6">
             <div>
-              <dt className="text-t11 text-textMuted">Last</dt>
+              <dt className="text-t11 text-textMuted">{regularNamed ? 'Regular close' : 'Last'}</dt>
               <dd className="mt-0.5 font-mono text-t14 tnum text-textPrimary whitespace-nowrap" data-tape-last={last.toFixed(2)}>
                 {last.toFixed(2)}
               </dd>
@@ -665,8 +670,8 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
             </div>
             <div>
               <dt className="text-t11 text-textMuted">One move to the close</dt>
-              <dd className="mt-0.5 font-mono text-t14 tnum text-textPrimary whitespace-nowrap" data-tape-move={movePending ? undefined : w1.toFixed(2)}>
-                {movePending ? '…' : minLeft > 0 && fieldLast ? `${fieldLast.lo1.toFixed(2)}–${fieldLast.hi1.toFixed(2)}` : shutMove}
+              <dd className="mt-0.5 font-mono text-t14 tnum text-textPrimary whitespace-nowrap" data-tape-move={w1 != null ? w1.toFixed(2) : undefined}>
+                {w1 == null ? '…' : minLeft > 0 && fieldLast ? `${fieldLast.lo1.toFixed(2)}–${fieldLast.hi1.toFixed(2)}` : shutMove}
               </dd>
             </div>
           </dl>
@@ -824,7 +829,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
             )}
             {bars.length === 0 && (
               <div className="absolute inset-0 grid place-items-center px-4 text-center font-mono text-t11 uppercase tracking-widest text-textMuted" data-tape-note={tapeNote ? '' : undefined}>
-                {tapeNote ?? 'No bars yet this session'}
+                {joined > 0 ? `${sessionMeta(tapeSession).label} has no prints` : tapeNote ?? 'No bars yet this session'}
               </div>
             )}
           </div>

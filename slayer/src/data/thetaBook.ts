@@ -8,7 +8,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { thetaCall } from './theta';
-import { nyWallStamp } from '../core/nyTime';
+import { nyWallStamp, nyWallTime } from '../core/nyTime';
 import { indexLevel, indexRoot, liveSpotOf, noteIndex, noteSpot } from './traceLive';
 import { deskPhase } from './compassSession';
 import { currentPicks, earlierScan, lastScanAt, stampPickQuote } from './compassModel';
@@ -17,6 +17,8 @@ import { compassFeed, holdCompassFeed, useCompassFeed, type FeedStatus } from '.
 import { subscribeTheta, thetaStatus } from './thetaQuote';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import type { Timeframe } from './timeframe';
+import { tfMinutes } from './timeframe';
+import { shapeBars } from './thetaCandles';
 import { nyYmd as ymd } from '../core/calendar';
 
 export type { ThetaState };
@@ -104,43 +106,98 @@ interface LiveBar { time: number; open: number; high: number; low: number; close
 
 const barCache = new Map<string, { at: number; bars: LiveBar[] }>();
 
-function barWindow(tf: Timeframe): { interval: string; days: number } {
-  switch (tf) {
-    case '1W': return { interval: '1d', days: 120 };
-    case '1D': return { interval: '1d', days: 28 };
-    case '1h': return { interval: '1h', days: 15 };
-    case '30m': return { interval: '30m', days: 10 };
-    case '15m': return { interval: '15m', days: 6 };
-    case '5m': return { interval: '5m', days: 4 };
-    default: return { interval: '1m', days: 1 };
-  }
+function barWindow(tf: Timeframe): { interval: string; days: number; minutes: number } {
+  const minutes = tfMinutes(tf);
+  if (minutes >= 7 * 1440) return { interval: '1d', days: 5 * 365, minutes };
+  if (minutes >= 1440) return { interval: '1d', days: minutes >= 30 * 1440 ? 5 * 365 : 180, minutes };
+  if (minutes >= 60) return { interval: '1h', days: 40, minutes };
+  if (minutes >= 30) return { interval: '30m', days: 10, minutes };
+  if (minutes >= 15) return { interval: '15m', days: 6, minutes };
+  if (minutes >= 5) return { interval: '5m', days: 4, minutes };
+  if (minutes < 1) return { interval: '15s', days: 1, minutes };
+  return { interval: '1m', days: 2, minutes };
 }
 
 function readBars(data: unknown): LiveBar[] {
   const flat: Record<string, unknown>[] = [];
   for (const item of asRows(data)) {
-    const row = item as { data?: unknown; close?: unknown };
+    const row = item as { data?: unknown; close?: unknown; price?: unknown };
     if (Array.isArray(row.data)) flat.push(...(row.data as Record<string, unknown>[]));
-    else if (row.close != null) flat.push(item);
+    else if (row.close != null || row.price != null) flat.push(item as Record<string, unknown>);
   }
-  return flat
-    .map(b => ({
-      time: Math.floor(nyWallStamp(b.timestamp) / 1000),
-      open: num(b.open),
-      high: num(b.high),
-      low: num(b.low),
-      close: num(b.close),
-    }))
-    .filter(b => b.time > 0 && b.high > 0 && b.low > 0 && b.close > 0)
-    .sort((a, b) => a.time - b.time);
+  const out: LiveBar[] = [];
+  for (const b of flat) {
+    const time = Math.floor(barStamp(b) / 1000);
+    const open = num(b.open);
+    const high = num(b.high);
+    const low = num(b.low);
+    const close = num(b.close);
+    if (!(time > 0 && open > 0 && high > 0 && low > 0 && close > 0)) continue;
+    const hasVol = b.volume != null && b.volume !== '';
+    const hasCount = b.count != null && b.count !== '';
+    /* A minute the feed marks with no contracts traded is not a candle. */
+    if ((hasVol || hasCount) && !(hasVol && num(b.volume) > 0) && !(hasCount && num(b.count) > 0)) continue;
+    out.push({ time, open, high, low, close });
+  }
+  out.sort((a, b) => a.time - b.time);
+  return out;
 }
+
+function barStamp(row: Record<string, unknown>): number {
+  const ts = nyWallStamp(row.timestamp ?? row.time);
+  if (ts > 1e11) return ts;
+  const ms = num(row.ms_of_day);
+  const date = String(row.date ?? '');
+  const m = /^(\d{4})-?(\d{2})-?(\d{2})/.exec(date);
+  if (m && row.ms_of_day != null && ms >= 0) return nyWallTime(Number(m[1]), Number(m[2]), Number(m[3]), 0, 0) + ms;
+  return ts;
+}
+
+/** One candle per bucket that had a print. A minute with no trade is left out. */
+function barsFromTrades(data: unknown, step: number): LiveBar[] {
+  const ticks: { t: number; price: number }[] = [];
+  for (const item of asRows(data)) {
+    const row = item as { data?: unknown; price?: unknown };
+    const flat = Array.isArray(row.data) ? (row.data as Record<string, unknown>[]) : [item as Record<string, unknown>];
+    for (const b of flat) {
+      const price = num(b.price);
+      const size = num(b.size);
+      const ms = barStamp(b);
+      if (!(price > 0) || !(size > 0) || !(ms > 0)) continue;
+      ticks.push({ t: Math.floor(ms / 1000), price });
+    }
+  }
+  ticks.sort((a, b) => a.t - b.t);
+  const buckets = new Map<number, LiveBar>();
+  for (const tick of ticks) {
+    const time = Math.floor(tick.t / step) * step;
+    const had = buckets.get(time);
+    if (!had) buckets.set(time, { time, open: tick.price, high: tick.price, low: tick.price, close: tick.price });
+    else {
+      had.high = Math.max(had.high, tick.price);
+      had.low = Math.min(had.low, tick.price);
+      had.close = tick.price;
+    }
+  }
+  return [...buckets.values()].sort((a, b) => a.time - b.time);
+}
+
+const stepSec = (interval: string): number => {
+  if (interval === '5m') return 300;
+  if (interval === '15m') return 900;
+  if (interval === '30m') return 1800;
+  if (interval === '1h') return 3600;
+  if (interval === '1d') return 86400;
+  return 60;
+};
 
 const hidden = () => typeof document !== 'undefined' && document.hidden;
 
-/** The contract's own bars from the terminal. Polls while the page shows it and the tab is visible. */
+/** The contract's own bars from the terminal: history OHLC, or trades when OHLC has no prints. A quote is not a bar.
+    Polls while the page shows it and the tab is visible. Null until the feed answers; [] when it answered and there were no trades. */
 export function useContractBars(ticker: string, expiration: string, strike: number, right: OptionRight, on: boolean, tf: Timeframe = '1m'): LiveBar[] | null {
   const spec = barWindow(tf);
-  const key = `${ticker}|${expiration}|${strike}|${right}|${spec.interval}`;
+  const key = `${ticker}|${expiration}|${strike}|${right}|${tf}`;
   const [bars, setBars] = useState<LiveBar[] | null>(barCache.get(key)?.bars ?? null);
   useEffect(() => {
     if (!on || !ticker || !expiration) return;
@@ -151,13 +208,19 @@ export function useContractBars(ticker: string, expiration: string, strike: numb
       if (hidden()) return;
       const end = ymd(Date.now());
       const start = ymd(Date.now() - (spec.days - 1) * 86400000);
-      const path = (interval: string, from: string) => `/option/history/ohlc?symbol=${encodeURIComponent(ticker)}&expiration=${exp}&strike=${strike}&right=${rightWord}&start_date=${from}&end_date=${end}&interval=${interval}&format=json`;
-      const got = await theta(path(spec.interval, start), true);
+      const leg = `symbol=${encodeURIComponent(ticker)}&expiration=${exp}&strike=${strike}&right=${rightWord}&start_date=${start}&end_date=${end}`;
+      const ohlc = await theta(`/option/history/ohlc?${leg}&interval=${spec.interval}&format=json`, true);
       if (dead) return;
-      const rows = readBars(got.data);
-      if (dead || !rows.length) return;
-      barCache.set(key, { at: Date.now(), bars: rows });
-      setBars(rows);
+      let rows = ohlc.error ? [] : readBars(ohlc.data);
+      if (!rows.length) {
+        const trades = await theta(`/option/history/trade?${leg}&format=json`, true);
+        if (dead) return;
+        rows = trades.error ? [] : barsFromTrades(trades.data, stepSec(spec.interval));
+        if (ohlc.error && trades.error) return;
+      }
+      const shaped = shapeBars(rows.map(b => ({ ...b, volume: 0 })), spec.minutes, 'rth', ticker).map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close }));
+      barCache.set(key, { at: Date.now(), bars: shaped });
+      setBars(shaped);
     };
     const hit = barCache.get(key);
     if (hit) setBars(hit.bars);

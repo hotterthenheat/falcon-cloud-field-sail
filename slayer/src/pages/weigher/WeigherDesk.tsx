@@ -32,6 +32,7 @@ import {
   blankChain,
   dteForDate,
   listLiveExpiries,
+  listedOpen,
   loadLiveChain,
   attachHistory,
   attachPrior,
@@ -40,6 +41,7 @@ import {
   keepSlow,
   optionsOpen,
   readLegs,
+  exitPrice,
   type DeskChain,
   type DeskContract,
   type ListedExpiry,
@@ -566,7 +568,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     const c = leg === 'C' ? row.call : row.put;
     const low = c.low > 0 && c.high >= c.low ? c.low : null;
     const high = c.low > 0 && c.high >= c.low ? c.high : null;
-    return { listed: true, low, high, mark: c.mark > 0 ? c.mark : null };
+    /* A 0 bid is not a price paid. The mid of a 0 bid must not be stamped. */
+    const mark = c.bid > 0 && c.mark > 0 ? c.mark : null;
+    return { listed: true, low, high, mark };
   };
   /* The terminal coming back re-lists and re-reads what it could not */
   const thetaOff = useThetaDown();
@@ -581,6 +585,16 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       dead = true;
     };
   }, [ticker, thetaOff]);
+  /* The list is fetched with the name. When the clock crosses that root's stop, drop the same-day row without
+     reloading every expiry. The chain effect then leaves a finished 0DTE. */
+  useEffect(() => {
+    setListed(prev => {
+      if (!prev) return prev;
+      const rows = listedOpen(prev.rows);
+      if (rows === prev.rows) return prev;
+      return { ...prev, rows };
+    });
+  }, [tick]);
   /* a new name starts from an empty chain, never the last name's */
   useEffect(() => {
     setListed(null);
@@ -791,7 +805,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const prints = useMemo(() => buildPrints(ticker, liveSpot || levels.spot), [ticker, liveSpot, levels.spot]); // eslint-disable-line react-hooks/exhaustive-deps
   /* The rail's expiries — and the one a deep link asked for when the rail
      does not list it (a contract's own Friday), in date order */
-  const expiries = useMemo(() => listed?.rows ?? [], [listed]);
+  const expiries = useMemo(() => listedOpen(listed?.rows ?? []), [listed, tick]);
   const expiryOptions = useMemo<ExpiryChoice<number>[]>(
     () =>
       expiries.map(e => ({
@@ -856,9 +870,10 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const contractTape = useWeigherContract(chain.optRoot || ticker, chain.expiryIso || '', selected?.strike ?? 0, right, timeframe, bookSession, lens === 'contract' && selected != null);
   const tradedBars = useMemo(() => {
     if (!contractTape.bars) return null;
-    if (contractTape.note || !selected || !Number.isFinite(selected.mark) || selected.mark <= 0) return contractTape.bars;
+    /* The last candle is the last trade. A mid is not a trade, and a missing trade does not paint one. */
+    if (contractTape.note || !selected || !Number.isFinite(selected.last) || !(selected.last > 0)) return contractTape.bars;
     if (sessionOfMinute(nyMinutes()) !== bookSession) return contractTape.bars;
-    return paintLive(contractTape.bars, selected.mark, Math.floor(Date.now() / 1000), timeframe, bookSession);
+    return paintLive(contractTape.bars, selected.last, Math.floor(Date.now() / 1000), timeframe, bookSession);
   }, [contractTape, selected, bookSession, timeframe]);
   useEffect(() => {
     if (!selected || chain.source !== 'live') {
@@ -934,10 +949,13 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       setListSel(null);
       setCardView('read');
       if (nextRight) patch({ right: nextRight });
-      if (toDte !== dte) {
-        const row = expiries.find(e => e.dte === toDte);
-        setPendingPick({ ticker, dte: toDte, strike });
-        patch({ dte: toDte, ...(row ? { optRoot: row.root } : {}) });
+      /* The case passes calendar days. Match the listed date, then the desk's own horizon for that date — a weekday count is not that key. */
+      const wantIso = isoDate(expiryFor(toDte).date);
+      const row = expiries.find(e => e.iso === wantIso) ?? expiries.find(e => e.dte === toDte);
+      const horizon = row?.dte ?? toDte;
+      if (horizon !== dte) {
+        setPendingPick({ ticker, dte: horizon, strike });
+        patch({ dte: horizon, ...(row ? { optRoot: row.root } : {}) });
       } else {
         setSel(strike);
         setReveal(r => ({ strike, n: (r?.n ?? 0) + 1 }));
@@ -1279,7 +1297,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     for (const w of watchlist) if (w.status === 'open') keys.push(`${w.ticker}|${w.expiry}|${w.strike}|${w.right}`);
     return [...new Set(keys)].sort().join(',');
   }, [positions, watchlist]);
-  const [legBook, setLegBook] = useState<Map<string, { mark: number | null; prev: number | null; at: number; live: boolean }>>(new Map());
+  const [legBook, setLegBook] = useState<Map<string, { bid: number | null; ask: number | null; prev: number | null; at: number; live: boolean }>>(new Map());
   useEffect(() => {
     if (!legKey || chainWait) return;
     let dead = false;
@@ -1292,14 +1310,14 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       const got = await readLegs(legs).catch(() => null);
       if (dead || !got) return;
       setLegBook(prev => {
-        /* a leg the read did not quote keeps its last mark */
+        /* a leg the read did not quote keeps its last bid and ask */
         const next = new Map(prev);
         const now = Date.now();
         for (const [k, q] of got) {
           const was = next.get(k);
-          if (q.mark != null) next.set(k, { mark: q.mark, prev: q.prev ?? was?.prev ?? null, at: now, live: true });
+          if (q.bid != null || q.ask != null) next.set(k, { bid: q.bid, ask: q.ask, prev: q.prev ?? was?.prev ?? null, at: now, live: true });
           else if (was) next.set(k, { ...was, live: false });
-          else next.set(k, { mark: null, prev: q.prev, at: 0, live: false });
+          else next.set(k, { bid: null, ask: null, prev: q.prev, at: 0, live: false });
         }
         return next;
       });
@@ -1311,17 +1329,19 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       window.clearInterval(id);
     };
   }, [legKey, chainWait]);
-  const liveOf = (ticker: string, expiry: string, strike: number, right: 'C' | 'P') => {
-    const onChain = chain.source === 'live' && chain.ticker === ticker && chain.expiryIso === expiry ? chain.rows.find(r => Math.abs(r.strike - strike) < 1e-6) : undefined;
+  const liveOf = (sym: string, expiry: string, strike: number, right: 'C' | 'P') => {
+    const onChain = chain.source === 'live' && chain.ticker === sym && chain.expiryIso === expiry ? chain.rows.find(r => Math.abs(r.strike - strike) < 1e-6) : undefined;
     const leg = onChain ? (right === 'C' ? onChain.call : onChain.put) : null;
-    const quoted = legBook.get(`${ticker}|${expiry}|${strike}|${right}`);
-    const onLive = !!leg && leg.mark > 0;
-    const mark = onLive ? leg!.mark : quoted?.mark ?? null;
+    const quoted = legBook.get(`${sym}|${expiry}|${strike}|${right}`);
+    const onThisChain = !!leg && (Number.isFinite(leg.bid) || Number.isFinite(leg.ask));
+    const bid = onThisChain ? (Number.isFinite(leg.bid) ? leg.bid : null) : quoted?.bid ?? null;
+    const ask = onThisChain ? (Number.isFinite(leg.ask) ? leg.ask : null) : quoted?.ask ?? null;
+    /* The mid is only a stamp for a real bid. A 0 bid must not become one. */
+    const mid = bid != null && bid > 0 && ask != null && ask >= bid && ask > 0 ? Number(((bid + ask) / 2).toFixed(2)) : null;
     const prev = leg && leg.prevClose > 0 ? leg.prevClose : quoted?.prev ?? null;
-    /* live: this read's quote; otherwise the last one, with when it was taken */
-    const live = onLive ? !chain.offline && !chain.kept : !!quoted?.live;
-    const markAt = live ? null : onLive ? chain.takenAt ?? null : quoted?.at || null;
-    return { mark, prev, live, markAt };
+    const live = onThisChain ? !chain.offline && !chain.kept : !!quoted?.live;
+    const markAt = live ? null : onThisChain ? chain.takenAt ?? null : quoted?.at || null;
+    return { bid, ask, mid, prev, live, markAt };
   };
   /* TWO CARDS: the positions you own or sold in one, the contracts you watch in the other — the same rows, priced
      on the sweep, newest first, a watched row's settled ones last */
@@ -1329,15 +1349,16 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     () =>
       positions
         .map<ListRow>(p => {
-          const { mark, prev } = liveOf(p.ticker, p.expiry, p.strike, p.right);
+          const { bid, ask, prev } = liveOf(p.ticker, p.expiry, p.strike, p.right);
+          const px = exitPrice(p.side, bid, ask);
           const sign = p.side === 'long' ? 1 : -1;
           const per = 100 * p.contracts;
           const cost = costOf(p);
-          const total = mark != null && cost ? (mark - cost.value) * sign * per : null;
-          const totalR = mark != null && cost && cost.value > 0 ? ((mark - cost.value) / cost.value) * sign : null;
-          const today = mark != null && prev != null ? (mark - prev) * sign * per : null;
-          const todayR = mark != null && prev != null && prev > 0 ? ((mark - prev) / prev) * sign : null;
-          return { kind: 'own', id: p.id, p, value: mark, today, todayR, total, totalR };
+          const total = px != null && cost ? (px - cost.value) * sign * per : null;
+          const totalR = px != null && cost && cost.value > 0 ? ((px - cost.value) / cost.value) * sign : null;
+          const today = px != null && prev != null ? (px - prev) * sign * per : null;
+          const todayR = px != null && prev != null && prev > 0 ? ((px - prev) / prev) * sign : null;
+          return { kind: 'own', id: p.id, p, value: px, today, todayR, total, totalR };
         })
         .sort((a, b) => (b.kind === 'own' ? b.p.addedAt : 0) - (a.kind === 'own' ? a.p.addedAt : 0)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1346,9 +1367,15 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const watchRows = useMemo<ListRow[]>(() => {
     const rank = (w: WatchedContract) => (w.status === 'open' ? 0 : 1);
     return [...watchlist].sort((a, b) => rank(a) - rank(b) || b.addedAt - a.addedAt).map<ListRow>(w => {
-      const { mark, prev, live: quoteLive, markAt } = w.status === 'open' ? liveOf(w.ticker, w.expiry, w.strike, w.right) : { mark: w.closedMark ?? null, prev: null, live: true, markAt: null };
+      const open = w.status === 'open';
+      const q = open ? liveOf(w.ticker, w.expiry, w.strike, w.right) : null;
+      /* A watch is as if bought: the live price is the bid, and 0 stays 0. */
+      const px = open ? exitPrice('long', q?.bid ?? null, q?.ask ?? null) : w.closedMark ?? null;
+      const prev = open ? q?.prev ?? null : null;
+      const quoteLive = open ? !!q?.live : true;
+      const markAt = open ? q?.markAt ?? null : null;
+      const live = px != null && Number.isFinite(px) ? px : null;
       const per = 100 * w.size;
-      const live = mark != null && mark > 0 ? mark : null;
       const addedDay = isoDate(new Date(w.addedAt));
       const todayKey = isoDate(today());
       const since = live != null ? (live - w.addedMark) * per : NaN;
@@ -1380,8 +1407,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   useEffect(() => {
     for (const w of watchlist) {
       if (w.status !== 'open') continue;
-      const { mark } = liveOf(w.ticker, w.expiry, w.strike, w.right);
-      if (mark != null && mark > 0) restampWatch(w.id, mark, chain.ticker === w.ticker && chain.spot > 0 ? chain.spot : 0);
+      const { mid } = liveOf(w.ticker, w.expiry, w.strike, w.right);
+      if (mid != null && mid > 0) restampWatch(w.id, mid, chain.ticker === w.ticker && chain.spot > 0 ? chain.spot : 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchlist, chain, legBook]);
@@ -1435,9 +1462,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const quoteAt = useCallback((strike: number): number | null => {
     const row = chain.rows.find(r => Math.abs(r.strike - strike) < 1e-6);
     const leg = row ? (right === 'C' ? row.call : row.put) : null;
-    if (!leg) return null;
+    if (!leg || !(leg.bid > 0)) return null;
     if (leg.mark > 0) return leg.mark;
-    if (leg.bid > 0 && leg.ask >= leg.bid) return Number(((leg.bid + leg.ask) / 2).toFixed(2));
+    if (leg.ask >= leg.bid) return Number(((leg.bid + leg.ask) / 2).toFixed(2));
     return null;
   }, [chain.rows, right]);
   const watchIt = useCallback(() => {
@@ -1537,7 +1564,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
      doors, the same strike down the calendar, what to look at for the horizon (components/weigher/StrikeCase.tsx,
      data/strikeCase.ts). */
   const drillCase = useCallback(
-    (c: DeskContract) => <StrikeCase ticker={ticker} c={c} right={right} chain={chain} profile={profile} book={book} tick={scanTick} score={liveScore} listed={expiries.map(e => ({ dte: e.weekday ?? e.dte, label: e.label }))} onPickAlt={pointToContract} />,
+    (c: DeskContract) => <StrikeCase ticker={ticker} c={c} right={right} chain={chain} profile={profile} book={book} tick={scanTick} score={liveScore} listed={expiries.map(e => ({ dte: e.dte, iso: e.iso, weekday: e.weekday, label: e.label }))} onPickAlt={pointToContract} />,
     [ticker, right, chain, profile, book, scanTick, pointToContract, liveScore, expiries]
   );
 

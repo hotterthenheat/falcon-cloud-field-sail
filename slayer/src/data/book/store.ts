@@ -34,7 +34,7 @@ export interface Entry {
   phase?: MarketPhase;
   /** False after the bell until the regular closes land (the state's own change would be the after-hours move) */
   dayKnown?: boolean;
-  /** The last print — the after-hours or pre-market one outside the session (`spot` is then the regular close) */
+  /** The last print of the session the clock is in. The regular close is `state.prev_close` outside that session. */
   last?: number;
   /** The stock-state as read: close, prev_close, market_time */
   state?: { close: number; prev_close: number; market_time?: string };

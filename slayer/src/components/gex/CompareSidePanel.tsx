@@ -354,15 +354,19 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       </div>
 
       {/* TO THE CLOSE */}
-      <Cap tip={`The expected move is ${s.moveWords}`}>{s.horizon ? s.horizon.replace(/^by/, 'By') : cmp.inSession ? 'To the close' : todayScopeLabel() === 'Today' ? "Today's session" : 'Next session'}</Cap>
+      <Cap tip={s.sigmaLeft == null ? 'No implied move on this name yet' : `The expected move is ${s.moveWords}`}>{s.horizon ? s.horizon.replace(/^by/, 'By') : cmp.inSession ? 'To the close' : todayScopeLabel() === 'Today' ? "Today's session" : 'Next session'}</Cap>
       <div className="pt-1 flex flex-col gap-0.5">
         <Fact
           label="Expected move"
           value={
-            <span className="inline-flex items-baseline gap-1.5">
-              <span className="font-bold">±${s.sigmaLeft.toFixed(2)}</span>
-              <span className="text-t10 text-textMuted">±{s.sigmaLeftPct.toFixed(2)}%</span>
-            </span>
+            s.sigmaLeft == null || s.sigmaLeftPct == null ? (
+              <span className="text-textMuted">…</span>
+            ) : (
+              <span className="inline-flex items-baseline gap-1.5">
+                <span className="font-bold">±${s.sigmaLeft.toFixed(2)}</span>
+                <span className="text-t10 text-textMuted">±{s.sigmaLeftPct.toFixed(2)}%</span>
+              </span>
+            )
           }
         />
         <Fact

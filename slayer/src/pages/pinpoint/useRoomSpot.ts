@@ -1,6 +1,8 @@
 /* The one price on the page: every box on the Map prints a name's live price, re-rendering a reader only when the figure
-   moves. In the regular session it is ThetaData's last print where the page may read it (data/thetaQuote.ts); otherwise,
-   and while the terminal is down, the price the vendor book is marked at (uwBook peekSpot). */
+   moves. In the regular session it is ThetaData's last print where the page may read it (data/thetaQuote.ts). Outside
+   9:30–16:00 it is the same ThetaData last trade the head prints (LivePrice), live or kept, when one exists — never the
+   regular close standing in for that print. The vendor book's price is the fallback, and outside the session that
+   fallback is the regular close. */
 
 import { useRef, useSyncExternalStore } from 'react';
 import { bookStatus, ensureBook, peekSpot } from '../../data/uwBook';
@@ -24,14 +26,18 @@ const inSession = (): boolean => {
   return isTradingDay(new Date(y, mo - 1, d));
 };
 
-/* the terminal's print, when it is this session's and agrees with the book within a fifth (a different listing never does) */
+/* the head's last trade (LivePrice peekThetaPrice). Outside the cash session that print is the price, even when the
+   book is still marked at the regular close. In the cash session a print that is not this session's, or that disagrees
+   with the book by more than a fifth, is a different listing and is not used. */
 const thetaSpot = (ticker: string, book: number | null): number | null => {
-  if (!inSession() || !thetaAllowedHere('/stock/snapshot/trade')) return null;
+  if (!thetaAllowedHere('/stock/snapshot/trade')) return null;
   /* paced by the price's own asker (LivePrice askThetaPrice), never at the half-second read */
   askThetaPrice(ticker);
   const held = peekThetaPrice(ticker);
-  const px = held?.live ? held.value.price : null;
-  if (px == null || !(px > 0)) return null;
+  const px = held && held.value.price > 0 ? held.value.price : null;
+  if (px == null) return null;
+  if (!inSession()) return px;
+  if (!held.live) return null;
   return book == null || Math.abs(px - book) <= book * 0.2 ? px : null;
 };
 

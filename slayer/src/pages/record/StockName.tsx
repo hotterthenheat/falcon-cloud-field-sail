@@ -1505,8 +1505,8 @@ function NameWithoutBook({ ticker, file, quote }: { ticker: string; file: StockF
     .sort();
   const today = nyIsoDate();
   const next = dates.find(d => d >= today) ?? null;
-  const px = quote && quote.regularPrice > 0 ? quote.regularPrice : null;
-  const pct = quote && Number.isFinite(quote.changePct) ? quote.changePct : null;
+  const px = quote ? (quote.phase !== 'regular' && quote.extPrice != null && quote.extPrice > 0 ? quote.extPrice : quote.spot > 0 ? quote.spot : null) : null;
+  const pct = quote ? (quote.phase === 'regular' ? quote.changePct : quote.extPct) : null;
   const filed = quarterFacts(file.quarters);
   return (
     <div className="border border-borderSubtle rounded-md bg-panel px-5 py-4" data-stock-empty={ticker}>

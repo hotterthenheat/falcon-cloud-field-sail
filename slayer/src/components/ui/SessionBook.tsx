@@ -9,8 +9,8 @@ const SessionBook = () => {
   const follows = useDeskFollowsClock();
   const live = sessionMeta(session);
   const options = [
-    { value: 'clock' as const, label: `Follow · ${live.label}`, hint: `Moves on its own. Right now ${live.window}.` },
-    ...DESK_SESSIONS.map(s => ({ value: s.value, label: s.label, hint: `${s.window} · ${s.hint}. Stays until you follow the clock.` })),
+    { value: 'clock' as const, label: `Follow · ${live.label}`, hint: `The session the clock is in. Right now ${live.window}.` },
+    ...DESK_SESSIONS.map(s => ({ value: s.value, label: s.label, hint: `${s.window} · ${s.hint}. Lets go when the clock leaves the session this was picked in.` })),
   ];
   return (
     <DropdownSelect<Choice>
@@ -18,7 +18,7 @@ const SessionBook = () => {
       value={follows ? 'clock' : session}
       options={options}
       onChange={next => (next === 'clock' ? followDeskClock() : setDeskSession(next))}
-      title={follows ? `Following the clock. ${live.label}, ${live.window}. Pick a session to hold it.` : `Held on ${live.label}. Follow the clock to let it move.`}
+      title={follows ? `Following the clock. ${live.label}, ${live.window}.` : `Looking at ${live.label}. The site follows again when the clock leaves the session this was picked in.`}
       testId="desk-session"
       align="end"
     />

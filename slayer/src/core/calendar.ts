@@ -51,7 +51,14 @@ export const MARKET_HOLIDAYS = new Set([
    refuses Good Friday 2019. An empty set changes nothing. */
 const LIVE_HOLIDAYS = new Set<string>();
 
-/** Local-date ISO key (NOT toISOString — that shifts across the UTC boundary). */
+/** Cash session ends at 1:00 PM ET (12:00 PM CT) on these dates. Not holidays, and not a reason to invent a bar. */
+export const EARLY_CLOSES = new Set([
+  '2025-07-03', '2025-11-28', '2025-12-24',
+  '2026-11-27', '2026-12-24',
+  '2027-11-26',
+]);
+
+export const isEarlyClose = (iso: string): boolean => EARLY_CLOSES.has(iso);
 export { MONTHS } from './nyTime';
 
 /** New York's date of an instant, YYYYMMDD */

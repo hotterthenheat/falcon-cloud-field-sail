@@ -67,6 +67,8 @@ export interface KeyLevelRung {
   touches?: number;
   /** The strike's net GEX against the cut's largest strike's, 0–1 — printed beside the name where the host has it */
   share?: number;
+  /** Replaces the stock name when this rung is a cone edge for a specific frame */
+  title?: string;
 }
 
 export interface KeyLevelsLadder {
@@ -211,7 +213,7 @@ const priceWords = (p: number): string => (Math.abs(p - Math.round(p)) < 1e-9 ? 
 /** A rung's words at the edge: its name, its price, its share of the largest strike where it has one, its distance from
     the price */
 export function rungLabel(r: KeyLevelRung, spot: number): string {
-  const name = KEY_LEVEL_WORDS[r.key].name;
+  const name = r.title ?? KEY_LEVEL_WORDS[r.key].name;
   const share = r.share != null && Number.isFinite(r.share) ? ` · ${r.key === 'supreme' && r.share >= 0.995 ? 'top node' : `${Math.round(r.share * 100)}% of top`}` : '';
   return `${name} ${priceWords(r.price)}${share} · ${signedPct(((r.price - spot) / spot) * 100)}`;
 }
@@ -237,6 +239,19 @@ function drawNamed(src: KeyLevelsPrimitive, target: DrawTarget, spot: number): v
       if (y < 2 * vr0 || y > H0 - 2 * vr0) continue;
       items.push({ r, y, text: rungLabel({ ...r, share: src.shareOf(r) }, spot), hot: src.hotT(r.key) });
     }
+    if (!items.length) return;
+    /* A label that is not a wall, the flip, or the supreme yields when it would sit on one of those,
+       or on another label. The lines stay. Only the words are dropped, so the rail stops stacking. */
+    const book = (k: KeyLevelKey) => k === 'callWall' || k === 'putWall' || k === 'flip' || k === 'supreme';
+    const room = Math.round(16 * vr0);
+    const kept: typeof items = [];
+    const byRank = [...items].sort((a, b) => Number(book(b.r.key)) - Number(book(a.r.key)) || a.y - b.y);
+    for (const it of byRank) {
+      if (!book(it.r.key) && kept.some(k => Math.abs(k.y - it.y) < room)) continue;
+      kept.push(it);
+    }
+    items.length = 0;
+    items.push(...kept);
     if (!items.length) return;
     const key = `${W0}x${H0}|${hr0}|${vr0}|${src.edge}|${src.chromeInset}|${items.map(i => `${i.r.key}:${i.y}:${i.text}:${i.r.ink}:${i.hot.toFixed(3)}:${i.r.dash ? 1 : 0}:${i.r.weight ?? 1}`).join(',')}`;
     let cache = namedCache.get(src);

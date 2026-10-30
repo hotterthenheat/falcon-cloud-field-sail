@@ -5,10 +5,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BaselineSeries, createChart, LineSeries, LineStyle, LineType, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { useResolvedSession } from '../../data/uwBook';
 import type { DeskSession } from '../../data/deskSession';
+import { currentSessionBars, minuteInSession, sessionMeta } from '../../data/deskSession';
 import { thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
 import { usePrintRev, useTapeRev } from '../../data/thetaTape';
 import { DayRef } from '../../data/bookWindow';
-import { nyIsoDate } from '../../core/nyTime';
+import { nyIsoDate, nyMinutes } from '../../core/nyTime';
 import { DARK_FIGURE_SURFACE } from './candleTheme';
 import { readToken, useResolvedTheme } from '../../theme/theme';
 import { alpha, resolveInk } from './paletteInk';
@@ -35,19 +36,19 @@ interface Point {
   cb: number | null;
 }
 
-/** A name's ThetaData one-minute bars on the newest day its tape holds, in one session */
-const lastDayBars = (t: string, session: DeskSession) => {
+/** A name's ThetaData bars in the latest occurrence of this session. The join is every session; the newest calendar day is not the cut — it drops yesterday's cash session and splits overnight. */
+const sessionSeries = (t: string, session: DeskSession) => {
   const all = thetaChartBars(t, 1, session);
-  if (!all.length) return all;
-  const day = nyIsoDate(all[all.length - 1].time * 1000);
-  return all.filter(bar => nyIsoDate(bar.time * 1000) === day);
+  const inWin = all.filter(b => minuteInSession(nyMinutes(b.time * 1000), session));
+  return { drawn: currentSessionBars(inWin, session), joined: all.length };
 };
 
-/** Both sessions as percent from each name's own open, on the union of their minutes */
-function buildToday(a: string, b: string, session: DeskSession): { points: Point[]; lastA: number | null; lastB: number | null; gap: { min: number; max: number } | null } {
-  const take = (t: string) => lastDayBars(t, session);
-  const ba = take(a);
-  const bb = take(b);
+/** Both names as percent from each name's own open, on the union of their minutes in this session */
+function buildToday(a: string, b: string, session: DeskSession): { points: Point[]; lastA: number | null; lastB: number | null; gap: { min: number; max: number } | null; joined: number } {
+  const aS = sessionSeries(a, session);
+  const bS = sessionSeries(b, session);
+  const ba = aS.drawn;
+  const bb = bS.drawn;
   const pct = (bars: typeof ba) => {
     const m = new Map<number, { p: number; c: number }>();
     const open0 = bars[0]?.open;
@@ -69,7 +70,7 @@ function buildToday(a: string, b: string, session: DeskSession): { points: Point
   }
   const lastA = ba.length ? pa.get(ba[ba.length - 1].time)?.p ?? null : null;
   const lastB = bb.length ? pb.get(bb[bb.length - 1].time)?.p ?? null : null;
-  return { points, lastA, lastB, gap: Number.isFinite(min) ? { min, max } : null };
+  return { points, lastA, lastB, gap: Number.isFinite(min) ? { min, max } : null, joined: aS.joined + bS.joined };
 }
 
 /** The hover card's footprint — placed beside the pointer, kept inside the plot */
@@ -332,7 +333,7 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
             {tapeNote ? <span className={`ml-auto ${/offline/i.test(tapeNote) ? 'text-warn' : 'text-textMuted'}`} data-tape-note>{tapeNote}</span> : <span className="ml-auto text-textMuted">hover the chart for any minute</span>}
           </>
         ) : (
-          <span className="text-textMuted">{tapeNote ?? 'no session on the tape yet'}</span>
+          <span className="text-textMuted">{today.joined > 0 ? `${sessionMeta(session).label} has no prints` : tapeNote ?? 'no session on the tape yet'}</span>
         )}
       </div>
     </section>

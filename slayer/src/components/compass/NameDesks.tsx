@@ -191,29 +191,30 @@ const NameDesks = ({ ticker, sleeve }: { ticker: string; sleeve: 'odte' | 'weekl
             <p className="mt-1 text-t12 text-textSecondary">{tape.fault ? 'The tape did not answer.' : 'No print on this name.'}</p>
           )}
         </Desk>
-        <div className="px-3.5 py-3 min-w-0 overflow-hidden flex flex-col" data-desk="passed">
-          <p className="flex items-center gap-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted">
-            <span className="text-textPrimary">Passed</span>
-            <span>{passed.length ? passed.length.toLocaleString('en-US') : 'this name'}</span>
-          </p>
-          {passed.length ? (
-            <ul className="mt-1 flex flex-col gap-2 min-h-0 overflow-y-auto">
-              {passed.map(row => {
-                const right = row.contract.endsWith('P') ? 'P' : 'C';
-                return (
-                  <li key={`${row.sleeve}|${row.contract}`} className="min-w-0">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <ContractLabel contract={row.contract} right={right} logo={row.ticker} size="sm" className="shrink-0" />
-                      {row.p1 > 0 && <span className="shrink-0 font-mono text-t11 tnum text-textPrimary">{(row.p1 * 100).toFixed(1)}%</span>}
-                    </span>
-                    <span className="mt-0.5 block font-mono text-t10 leading-[14px] text-textMuted whitespace-normal break-words line-clamp-2" title={row.why}>{row.why}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="mt-1 text-t12 text-textSecondary">Nothing on this name missed 70.67%.</p>
-          )}
+        <div className="relative min-w-0 min-h-0 overflow-hidden" data-desk="passed">
+          <div className="px-3.5 py-3 flex flex-col gap-1 min-h-0 max-h-[7.5rem] overflow-y-auto sm:max-h-none sm:absolute sm:inset-0">
+            <p className="flex items-center gap-1.5 shrink-0 font-mono text-t9 uppercase tracking-widest text-textMuted">
+              <span className="text-textPrimary">Passed</span>
+              <span className="truncate">{passed.length ? option : 'this name'}</span>
+            </p>
+            {passed.length ? (
+              <ul className="flex flex-col gap-2 min-h-0">
+                {passed.map(row => {
+                  const side = row.contract.endsWith('P') ? 'P' : 'C';
+                  return (
+                    <li key={`${row.sleeve}|${row.contract}`} className="min-w-0">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <ContractLabel contract={row.contract} right={side} logo={row.ticker} size="sm" className="shrink-0" />
+                      </span>
+                      <span className="mt-0.5 block font-mono text-t10 leading-[14px] text-textMuted whitespace-normal break-words" title={row.why}>{row.why}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-t12 text-textSecondary">Nothing on this name missed the line.</p>
+            )}
+          </div>
         </div>
       </div>
 

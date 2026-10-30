@@ -1,13 +1,14 @@
 /* Add or change one position in a popover from the button that asked (PopoverCard): one row of labelled fields,
    like TradingView's strategy builder writes a leg. */
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { CARD } from '../ui/DropdownSelect';
 import { CalendarDays } from 'lucide-react';
 import { DateBoard } from '../ui/ExpiryPicker';
-import { addPosition, updatePosition, todayExpiry, type Position, type Right, type Side } from '../../data/positions';
+import { addPosition, updatePosition, odteShutToday, todayExpiry, type Position, type Right, type Side } from '../../data/positions';
 import { entryRange } from '../../data/weigherDesk';
+import { isoDate, today } from '../../core/calendar';
 import { nyIsoDate } from '../../core/nyTime';
 
 const SILVER_FILL = 'rgb(var(--silver-fill))'; /* the silver as a SURFACE — a filled pill with the dark word on it, the holo flat form on either ground */
@@ -22,12 +23,12 @@ interface Draft {
   entry: string;
 }
 
-const draftOf = (p: Partial<Position> | undefined, defaults: { strike: number }): Draft => ({
+const draftOf = (p: Partial<Position> | undefined, defaults: { strike: number; ticker: string }): Draft => ({
   strike: String(p?.strike ?? defaults.strike),
   right: p?.right ?? 'C',
   side: p?.side ?? 'long',
   contracts: String(p?.contracts ?? 1),
-  expiry: p?.expiry ?? todayExpiry(),
+  expiry: p?.expiry ?? todayExpiry(defaults.ticker),
   enteredOn: p?.enteredOn ?? (p?.addedAt ? nyIsoDate(p.addedAt) : nyIsoDate()),
   entry: p?.entry != null ? String(p.entry) : '',
 });
@@ -94,10 +95,22 @@ interface PositionFormProps {
 
 const PositionForm = ({ ticker, position, defaultStrike, trigger, align = 'end', quoteFor }: PositionFormProps) => {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<Draft>(() => draftOf(position, { strike: defaultStrike }));
+  const [draft, setDraft] = useState<Draft>(() => draftOf(position, { strike: defaultStrike, ticker }));
   const [fault, setFault] = useState('');
   const [which, setWhich] = useState<'entered' | 'expiry'>('entered');
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft(d => ({ ...d, [k]: v }));
+  /* A new position must not stay on a 0DTE the clock just shut. An existing position keeps the date it was given. */
+  useEffect(() => {
+    if (!open || position) return;
+    const pull = () => {
+      if (!odteShutToday(ticker)) return;
+      const shut = isoDate(today());
+      setDraft(d => (d.expiry === shut ? { ...d, expiry: todayExpiry(ticker) } : d));
+    };
+    pull();
+    const id = window.setInterval(pull, 5000);
+    return () => window.clearInterval(id);
+  }, [open, position, ticker]);
 
   const strike = Number(draft.strike);
   const contracts = Math.round(Number(draft.contracts));
@@ -136,7 +149,7 @@ const PositionForm = ({ ticker, position, defaultStrike, trigger, align = 'end',
       open={open}
       onOpenChange={o => {
         if (o) {
-          setDraft(draftOf(position, { strike: defaultStrike }));
+          setDraft(draftOf(position, { strike: defaultStrike, ticker }));
           setFault('');
           setWhich('entered');
         }
@@ -184,6 +197,7 @@ const PositionForm = ({ ticker, position, defaultStrike, trigger, align = 'end',
                 value={which === 'entered' ? draft.enteredOn : draft.expiry}
                 floor={which === 'expiry' ? draft.enteredOn : undefined}
                 ceiling={which === 'entered' ? draft.expiry : undefined}
+                hideToday={odteShutToday(ticker)}
                 onChange={iso => set(which === 'entered' ? 'enteredOn' : 'expiry', iso)}
               />
             </div>

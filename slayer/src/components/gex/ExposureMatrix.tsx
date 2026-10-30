@@ -95,15 +95,11 @@ const Cell = ({ value, shown, leg, cap, mode, paper, gi, first, last, rowH = ROW
   const ink = pending || value === 0 ? 'transparent' : heatLadderColor(value, cap, mode, paper);
   return (
     <td className={`px-2.5 py-0 align-middle ${groupSkin(gi, first, last, paper)}`} data-matrix-leg={leg} data-matrix-level-cell={level ? '' : undefined} title={level?.title}>
-      <div className="flex flex-col justify-center" style={{ height: Math.max(ROW_MIN, rowH) - 1 }}>
-        <div className="flex items-baseline justify-between gap-2 min-w-0">
-          {/* No level words in the cells: walls and supreme show as the strike's ink and on the card; the spacer keeps the figure right. */}
-          <span aria-hidden />
-          <span className={`font-mono text-t12 tnum leading-none whitespace-nowrap ${leg === 'net' ? 'font-bold text-textPrimary' : 'font-medium text-textPrimary'} ${level ? 'underline decoration-dotted underline-offset-2' : ''}`} style={level ? { textDecorationColor: level.ink } : undefined}>{pending ? '—' : fmtUsd(shown)}</span>
-        </div>
+      <div className="flex flex-col items-center justify-center" style={{ height: Math.max(ROW_MIN, rowH) - 1 }}>
+        <span className={`font-mono text-t12 tnum leading-none whitespace-nowrap text-center ${leg === 'net' ? 'font-bold text-textPrimary' : 'font-medium text-textPrimary'} ${level ? 'underline decoration-dotted underline-offset-2' : ''}`} style={level ? { textDecorationColor: level.ink } : undefined}>{pending ? '—' : fmtUsd(shown)}</span>
         {/* the track under every figure, the bar on it — the width with the data, the ink with the Colours switch */}
         <span className={`relative block w-full h-[3px] mt-[5px] rounded-full ${paper ? 'bg-ink/[0.1]' : 'bg-ink/[0.08]'}`} data-matrix-track>
-          <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${pct}%`, background: ink, opacity: heavy ? 1 : 0.72 }} data-matrix-heavy={heavy || undefined} />
+          <span className="absolute inset-y-0 left-1/2 -translate-x-1/2 rounded-full" style={{ width: `${pct}%`, background: ink, opacity: heavy ? 1 : 0.72 }} data-matrix-heavy={heavy || undefined} />
         </span>
       </div>
     </td>
@@ -611,7 +607,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
                 {LEGS.length > 1 && (
                   <span className="mt-1 grid" style={{ gridTemplateColumns: `repeat(${LEGS.length}, minmax(0, 1fr))` }} data-matrix-legs>
                     {LEGS.map(leg => (
-                      <span key={leg} className={`pr-0.5 text-right ${leg === 'net' ? 'text-textPrimary' : 'text-textSecondary'}`}>
+                      <span key={leg} className={`text-center ${leg === 'net' ? 'text-textPrimary' : 'text-textSecondary'}`}>
                         {leg}
                       </span>
                     ))}

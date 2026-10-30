@@ -12,7 +12,7 @@ import { useWatchlist } from '../../data/watchlist';
 import { peekThetaPrice, thetaMove, useThetaPrices, useThetaStatus } from '../../data/thetaQuote';
 import { asOfText } from '../ui/states';
 import { OfflineLine, useUwOnlyRoute } from './NavQuote';
-import { peekQuote, useDayMoves } from '../../data/liveQuote';
+import { peekQuote, sessionPrice, useDayMoves } from '../../data/liveQuote';
 import { peekEntry, useBookRev } from '../../data/uwBook';
 import {
   MAX_NAMES, MAX_SECTIONS, addSection, closeWatchlist, moveName, nudgeName, removeSection, renameSection, restoreName, restoreSection, setNameFlag,
@@ -52,8 +52,8 @@ function readName(symbol: string, uwOnly: boolean): NameRead {
   /* a page that may not ask the terminal for prices reads the vendor's quote (data/theta.ts) */
   const q = uwOnly ? peekQuote(symbol) : null;
   const held = uwOnly ? null : peekThetaPrice(symbol);
-  const spot = uwOnly ? (q && q.regularPrice > 0 ? q.regularPrice : null) : held ? held.value.price : null;
-  const change = uwOnly ? (q ? (q.phase === 'pre' ? q.lastSessionPct : q.changePct) : null) : thetaMove(held?.value)?.pct ?? null;
+  const spot = uwOnly ? sessionPrice(q) : held ? held.value.price : null;
+  const change = uwOnly ? (q ? (q.phase === 'regular' ? q.changePct : q.extPct) : null) : thetaMove(held?.value)?.pct ?? null;
   const book = peekEntry(symbol);
   let near: NameRead['near'] = null;
   if (spot != null && spot > 0 && book?.status === 'live' && book.all.length) {

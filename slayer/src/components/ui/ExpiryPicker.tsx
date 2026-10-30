@@ -19,8 +19,8 @@ const thirdFriday = (year: number, month: number) => {
   return addDays(first, ((5 - first.getDay() + 7) % 7) + 14);
 };
 
-/** The four dates a trader reaches for, each a real session */
-function quickExpiries(from: Date = today()): { label: string; date: Date }[] {
+/** The four dates a trader reaches for, each a real session. `hideToday` drops NY's calendar day once that root's 0DTE is shut. */
+function quickExpiries(from: Date = today(), hideToday = false): { label: string; date: Date }[] {
   const thisFri = backToSession(fridayOnOrAfter(from));
   const nextFri = backToSession(addDays(fridayOnOrAfter(from), 7));
   let monthly = backToSession(thirdFriday(from.getFullYear(), from.getMonth()));
@@ -34,7 +34,10 @@ function quickExpiries(from: Date = today()): { label: string; date: Date }[] {
     { label: 'Monthly', date: monthly },
   ];
   // Two picks that land on the same day keep the first name only
-  return out.filter((q, i) => out.findIndex(o => isoDate(o.date) === isoDate(q.date)) === i);
+  const unique = out.filter((q, i) => out.findIndex(o => isoDate(o.date) === isoDate(q.date)) === i);
+  if (!hideToday) return unique;
+  const shut = isoDate(from);
+  return unique.filter(q => isoDate(q.date) !== shut);
 }
 
 interface DateBoardProps {
@@ -45,6 +48,8 @@ interface DateBoardProps {
   /** Inclusive. An entered day cannot fall after the expiry, and an expiry cannot fall before it. */
   floor?: string;
   ceiling?: string;
+  /** This root's same-day contract is finished. Do not offer NY's calendar day as an expiry. */
+  hideToday?: boolean;
 }
 
 /** The days a trader reaches for when writing the day they got in. */
@@ -90,12 +95,12 @@ const DAY_CLASS = {
 };
 
 /** One calendar. Expiry and the day you entered are the same grid, with different days open. */
-export function DateBoard({ mode, value, onChange, floor, ceiling }: DateBoardProps) {
+export function DateBoard({ mode, value, onChange, floor, ceiling, hideToday = false }: DateBoardProps) {
   const selected = parse(value);
   const t = today();
   const floorD = floor ? parse(floor) : undefined;
   const ceilingD = ceiling ? parse(ceiling) : undefined;
-  const picks = (mode === 'entered' ? quickEntered(t) : quickExpiries(t)).filter(q => {
+  const picks = (mode === 'entered' ? quickEntered(t) : quickExpiries(t, mode === 'expiry' && hideToday)).filter(q => {
     if (floorD && q.date < floorD) return false;
     if (ceilingD && q.date > ceilingD) return false;
     if (mode === 'entered' && q.date > t) return false;
@@ -105,6 +110,7 @@ export function DateBoard({ mode, value, onChange, floor, ceiling }: DateBoardPr
   const blocked = (d: Date) => {
     if (!isTradingDay(d)) return true;
     if (mode === 'expiry' && d < t) return true;
+    if (mode === 'expiry' && hideToday && isoDate(d) === isoDate(t)) return true;
     if (mode === 'entered' && d > t) return true;
     if (floorD && d < floorD) return true;
     if (ceilingD && d > ceilingD) return true;

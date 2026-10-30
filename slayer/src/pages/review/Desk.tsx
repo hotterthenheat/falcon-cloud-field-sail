@@ -21,7 +21,7 @@ import PnlBadges from '../../components/review/PnlBadges';
 import StopOrders, { type Tif } from '../../components/review/StopOrders';
 import { chainAt, contractDay, contractKey, contractWords, dteAt, expiriesAt, longLeg, quoteAt, quoteWith, settleStyleOf, spotForAsk, spotForBid, type ContractId, type Right } from '../../data/review/quotes';
 import { amendOrder, attachBracket, breakevenOrder, cancelBracket, cancelOrder, closePosition, legsHeld, moveClock, placeOrder, rebaseOrder, renameSession, setRollOver, trailOrder, useMoving, useSession } from '../../data/review/store';
-import { DAY_MIN, LAST_MIN, LISTING_DTE, underOf, barsNeed, chainNeed, clockWords, dayBars, dayWords, ensureBars, ensureBarsRange, ensureChainDay, ensureLaterListing, ensureLeg, ensureListing, ensureTrades, historyOffline, historyRev, laterAsked, laterListingNeed, listingNeed, nextDay, prevDay, spotAt, subscribeHistory } from '../../data/review/history';
+import { DAY_MIN, LAST_MIN, LISTING_DTE, underOf, barsNeed, barsUntil, chainNeed, clockWords, dayBars, dayWords, ensureBars, ensureBarsRange, ensureChainDay, ensureLaterListing, ensureLeg, ensureListing, ensureTrades, historyOffline, historyRev, laterAsked, laterListingNeed, listingNeed, nextDay, prevDay, spotAt, subscribeHistory } from '../../data/review/history';
 import { companyName } from '../../data/tickers';
 import ThetaLine from '../../components/review/ThetaLine';
 import { EmptyBox, LoadingBox } from '../../components/ui/states';
@@ -178,7 +178,7 @@ const Desk = () => {
     const need = barsNeed(n, cursor.day);
     return need === 'none' ? `ThetaData has no bars for ${n} on ${dayWords(cursor.day)}` : need === 'offline' ? 'ThetaData offline — reconnecting' : null;
   };
-  const tapeBy = useMemo<Record<string, ChartTape>>(() => (cursor ? Object.fromEntries(names.map(n => [n, { bars: [...(contextBy[n] ?? []), ...dayBars(n, cursor.day).slice(0, cursor.minute + 1)], iv: n === ticker ? ivNow : 0, key: `review:${n}`, clock: 'ny' as const, note: noteOf(n) }])) : {}), [contextBy, names, cursor?.day, cursor?.minute, hrev, ivNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tapeBy = useMemo<Record<string, ChartTape>>(() => (cursor ? Object.fromEntries(names.map(n => [n, { bars: [...(contextBy[n] ?? []), ...barsUntil(n, cursor.day, cursor.minute)], iv: n === ticker ? ivNow : 0, key: `review:${n}`, clock: 'ny' as const, note: noteOf(n) }])) : {}), [contextBy, names, cursor?.day, cursor?.minute, hrev, ivNow]); // eslint-disable-line react-hooks/exhaustive-deps
   const fillsBy = useMemo(() => Object.fromEntries(names.map(n => [n, session ? session.fills.filter(f => f.contract.ticker === n) : []])), [session?.fills, names]); // eslint-disable-line react-hooks/exhaustive-deps
   /* the contract in hand: its legs' day, and its prints for the drop-down */
   useEffect(() => {

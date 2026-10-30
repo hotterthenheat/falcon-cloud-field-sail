@@ -8,9 +8,9 @@ const listeners = new Set<() => void>();
 
 const read = (): FieldMode => {
   try {
-    return localStorage.getItem(KEY) === 'flow' ? 'flow' : 'oi';
+    return localStorage.getItem(KEY) === 'oi' ? 'oi' : 'flow';
   } catch {
-    return 'oi';
+    return 'flow';
   }
 };
 let mode: FieldMode = read();
@@ -43,10 +43,10 @@ export function useFieldMode(): FieldMode {
 export const FIELD_MODE_WORDS: Record<FieldMode, { name: string; line: string }> = {
   oi: {
     name: 'Open interest',
-    line: "Dealer gamma on this morning's open interest, dealers long the calls and short the puts — each cell the last reading inside the bar",
+    line: 'Open-interest gamma only, the same cells as dealer flow. The level stays on the strike until a newer reading replaces it',
   },
   flow: {
-    name: "Today's flow",
-    line: "Dealer gamma from today's trades by side — bought at the ask leaves dealers short, sold at the bid leaves them long. Each cell is the change across the bar. Today's trades only: no position carried from earlier days",
+    name: 'Dealer flow',
+    line: 'Open interest plus the ask and the bid, dollars per 1%. The level stays on the strike until a newer reading replaces it. Not the change from bar to bar',
   },
 };

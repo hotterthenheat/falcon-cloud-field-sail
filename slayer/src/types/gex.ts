@@ -18,7 +18,7 @@ export interface KeyLevels {
 
 export interface DarkPoolPrint {
   price: number;
-  /** Notional in $B */
+  /** Notional in dollars */
   notional: number;
   date: string;
   /** Shares crossed */
@@ -91,8 +91,8 @@ export interface ExposureLevels {
       (their hedging pulls price back to it) and price is within 1% of it — otherwise no surface calls it a pin */
   pin: number;
   pinFound?: boolean;
-  /** The gamma flip (data/flipLevel.ts). When `flipFound` is false there is no crossing within ±10% and this holds
-      spot only as a placeholder — print "no flip nearby", never this number */
+  /** The gamma flip (data/flipLevel.ts). When `flipFound` is false there is no crossing within ±10% and this is
+      NaN — print "no flip nearby", never the spot in its place. */
   flip: number;
   flipFound?: boolean;
   /** False while the contracts these levels are read from are still landing (a date, or the front date's own vols) —

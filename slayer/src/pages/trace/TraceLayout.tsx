@@ -11,7 +11,7 @@ import TickerSearch from '../../components/ui/TickerSearch';
 import BackToTop from '../../components/ui/BackToTop';
 import ScrollHome from '../../components/layout/ScrollHome';
 import { useGlideHold } from '../../components/ui/useGlideHold';
-import { TraceSessionCard } from '../../components/trace/traceSession';
+import { TraceSessionCard, useTraceSession } from '../../components/trace/traceSession';
 import { TRACE_SUBPAGES } from './subnav';
 
 /* The tape, the book pages and the Tracker each carry their own search, so a single-ticker picker would mislead
@@ -39,9 +39,20 @@ const TraceLayout = () => {
   const picker = !NO_PICKER.test(location.pathname);
   /* The column holds its width through the sidebar's glide: one layout at the end, not one per frame of every row. */
   const phase = sessionPhase();
-  const closedTape = active.path === '/trace/live-tape' && (phase === 'closed' || phase === 'pre');
-  const subtitle = closedTape ? 'The last regular session — the newest stretch before the close, not a live stream. Scroll or jump for the rest of the day.' : active.subtitle;
-  const line = closedTape ? 'The last regular session, newest first — not a live stream' : active.line;
+  const picked = useTraceSession();
+  const onTape = active.path === '/trace/live-tape';
+  const shut = phase === 'closed' || phase === 'pre';
+  /* the line follows the Session card: a shut tape is the last regular session only when that is what was picked */
+  const subtitle = onTape && picked === 'extended'
+    ? 'Prints outside the regular session — before the open and after the close, against thin quotes. Shown and labelled, never read as a side.'
+    : onTape && shut
+      ? 'The last regular session — the newest stretch before the close, not a live stream. Scroll or jump for the rest of the day.'
+      : active.subtitle;
+  const line = onTape && picked === 'extended'
+    ? 'Prints outside the regular session, newest first — shown, not read'
+    : onTape && shut
+      ? 'The last regular session, newest first — not a live stream'
+      : active.line;
   const holdRef = useGlideHold<HTMLDivElement>();
 
   return (

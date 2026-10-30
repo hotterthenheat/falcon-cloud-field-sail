@@ -3,6 +3,7 @@
 import { SESSION_CLOSE_MIN, SESSION_OPEN_MIN, nyClock, nyIsoDate, nyMinutes } from '../core/nyTime';
 import { recordDay } from './bookWindow';
 import { bookCandles, bookHistory, peekEntry, peekSpot } from './uwBook';
+import { thetaPriceBars } from './book/levels';
 import type { MarketSnapshot } from '../types/market';
 
 /** NONE: no book was kept at the open or now — nothing to compare */
@@ -27,8 +28,17 @@ const TREND_THRESHOLD = 15;
 /** A bar's time, New York's clock — the market's day, whatever zone the machine is in */
 const fmtTime = (t: number) => nyClock(t * 1000);
 
-/** The live session's bars (sessionCut), shared with the Wall Report Card so every grade reads the same session cut. */
+/** The live session's bars (sessionCut), shared with the Wall Report Card so every grade reads the same session cut. Theta's cash minute bars, once that tape has been read; the vendor's closes only before anyone has asked. */
 export function sessionBars(ticker: string) {
+  const theta = thetaPriceBars(ticker, 'rth');
+  if (theta != null) {
+    if (theta.length > 1) {
+      const day = recordDay().date;
+      const own = theta.filter(b => nyIsoDate(b.time * 1000) === day);
+      return own.length > 1 ? own : [];
+    }
+    return [];
+  }
   const live = bookCandles(ticker);
   /* A live vendor book answers for this name. One bar, or none, is not a
      session yet — the counts wait (uwBook candlesFrom). The simulator's tape

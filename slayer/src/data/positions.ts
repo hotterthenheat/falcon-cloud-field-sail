@@ -3,6 +3,7 @@
 
 import { useMemo, useSyncExternalStore } from 'react';
 import { expiryFor, isoDate, sessionsBetween, today } from '../core/calendar';
+import { nameTape } from './compassSession';
 import type { ExposureProfileData } from '../types/gex';
 import { fmtStrike } from '../core/format';
 
@@ -125,8 +126,24 @@ export function removePosition(id: string): void {
   commit(positions.filter(p => p.id !== id));
 }
 
-/** Today's session as an expiry string — the default for a new position */
-export const todayExpiry = (): string => isoDate(expiryFor(0).date);
+/** True only when the next open expiry is NY's calendar today and that root's 0DTE tape is already done.
+    On a weekend the next session is Monday, and a done Saturday tape must not hide it. */
+export function odteShutToday(ticker: string): boolean {
+  const ny = isoDate(today());
+  const open = isoDate(expiryFor(0).date);
+  return open === ny && nameTape(ticker, true).done;
+}
+
+/** Today's session as an expiry string — the default for a new position. A shut 0DTE is not that default. */
+export function todayExpiry(ticker?: string): string {
+  const open = isoDate(expiryFor(0).date);
+  if (!ticker || !odteShutToday(ticker)) return open;
+  for (let d = 1; d <= 14; d++) {
+    const iso = isoDate(expiryFor(d).date);
+    if (iso !== open) return iso;
+  }
+  return open;
+}
 
 // ---- THE READ: the position on the dealer map, in words --------------------------
 

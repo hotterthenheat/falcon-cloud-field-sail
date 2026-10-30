@@ -1,8 +1,7 @@
-/* Dealer gamma as a function of spot. On a live book each drawn date is re-priced with the flip's own legs (data/flipLevel.ts
-   datesNetAt), so the curve's zero over the levels' dates IS the flip; off the live book each cell is scaled by how
-   Black-Scholes gamma × spot² moves at its date's time and ATM vol. The zero is the total's crossing nearest spot. */
+/* Dealer gamma as a function of spot. Each drawn date is re-priced with the flip's own legs (data/flipLevel.ts
+   datesNetAt), so the curve's zero over the levels' dates IS the flip. No vol, no legs: no curve — a Black-Scholes
+   stand-in is not drawn in its place. */
 
-import { blackScholesGreeks } from '../core/greeks';
 import { datesNetAt } from './flipLevel';
 import type { ExposureSurface } from './exposureSurface';
 
@@ -43,35 +42,10 @@ export function buildExposureCurve(surface: ExposureSurface, expiries: number[],
   const steps = Math.max(11, opts.steps ?? STEPS);
   const drawn = expiries.filter(e => e >= 0 && e < surface.expiries.length);
 
-  /* Each cell as (strike, its figure over gamma·spot²·100·1% at current spot), bounded by its open interest so a far cell's vanishing gamma
-     cannot blow the ratio up; a cell with no count is skipped below 1e-6 of the ATM gamma. */
-  const cells: { e: number; k: number; t: number; v: number; eff: number }[] = [];
-  for (const e of drawn) {
-    const ex = surface.expiries[e];
-    const t = Math.max(0.5, ex.sessions) / 252;
-    const v = Math.max(0.01, ex.iv);
-    const row = surface.net.gex[e] ?? [];
-    const oiRow = surface.oi[e] ?? [];
-    const atm = blackScholesGreeks(S0, S0, t, v).gamma * S0 * S0 * 100 * 0.01;
-    for (let s = 0; s < strikes.length; s++) {
-      const fig = row[s] ?? 0;
-      if (!fig) continue;
-      const g0 = blackScholesGreeks(S0, strikes[s], t, v).gamma;
-      const base = g0 * S0 * S0 * 100 * 0.01;
-      if (!(base > 0)) continue;
-      const oi = oiRow[s];
-      let eff = fig / base;
-      if (Number.isFinite(oi) && oi > 0) eff = Math.max(-oi, Math.min(oi, eff));
-      /* No open interest to bound it: skip a cell whose gamma at spot is under 1% of the ATM's (its ratio explodes). */
-      else if (base < atm * 1e-2) continue;
-      cells.push({ e, k: strikes[s], t, v, eff });
-    }
-  }
-
   const points: CurvePoint[] = [];
   let maxAbs = 1;
   const grid = Array.from({ length: steps }, (_, i) => S0 * (1 - span + (2 * span * i) / (steps - 1)));
-  /* the live book: every drawn date through the flip's own legs */
+  /* the book's own legs, or nothing — a missing vol is not filled with a sample and then run through Black-Scholes */
   const book = surface.book;
   const isos = drawn.map(e => surface.expiries[e]?.iso);
   if (book?.liveBook && isos.every((d): d is string => !!d)) {
@@ -89,36 +63,7 @@ export function buildExposureCurve(surface: ExposureSurface, expiries: number[],
       return { points, spot: S0, expiries: drawn, flip: zeroOf(points, S0, surface.book!, isos as string[]), maxAbs, atSpot };
     }
   }
-  for (let i = 0; i < steps; i++) {
-    const S = S0 * (1 - span + (2 * span * i) / (steps - 1));
-    const byExpiry = drawn.map(() => 0);
-    for (const c of cells) {
-      const g = blackScholesGreeks(S, c.k, c.t, c.v).gamma;
-      byExpiry[drawn.indexOf(c.e)] += c.eff * g * S * S * 100 * 0.01;
-    }
-    const total = byExpiry.reduce((a, b) => a + b, 0);
-    for (const b of byExpiry) maxAbs = Math.max(maxAbs, Math.abs(b));
-    maxAbs = Math.max(maxAbs, Math.abs(total));
-    points.push({ spot: S, total, byExpiry });
-  }
-
-  /* the zero: the total's crossing nearest spot, between its two points */
-  let flip: number | null = null;
-  let best = Infinity;
-  for (let i = 1; i < points.length; i++) {
-    const a = points[i - 1];
-    const b = points[i];
-    if (Math.sign(a.total) === Math.sign(b.total) || a.total === b.total) continue;
-    const x = a.spot + ((0 - a.total) * (b.spot - a.spot)) / (b.total - a.total);
-    const d = Math.abs(x - S0);
-    if (d < best) {
-      best = d;
-      flip = x;
-    }
-  }
-  /* the total at spot, read off the nearest point */
-  const near = points.reduce((p, q) => (Math.abs(q.spot - S0) < Math.abs(p.spot - S0) ? q : p), points[0]);
-  return { points, spot: S0, expiries: drawn, flip, maxAbs, atSpot: near?.total ?? 0 };
+  return { points: [], spot: S0, expiries: drawn, flip: null, maxAbs: 1, atSpot: 0 };
 }
 
 /** The live curve's zero nearest spot: the bracketing grid step re-priced on a fine grid, then read between its points */

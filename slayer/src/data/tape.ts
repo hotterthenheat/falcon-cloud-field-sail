@@ -14,8 +14,9 @@ export function bookRowToPrint(
   const fill = clip?.fill ?? row.last;
   const dl = dayLean(row);
   const side: FlowPrint['side'] = clip?.side ?? (dl.lean === 'ASK' ? 'ASK' : dl.lean === 'BID' ? 'BID' : 'MID');
-  const bidQ = clip?.bid != null && clip.bid > 0 ? clip.bid : fill;
-  const askQ = clip?.ask != null && clip.ask > 0 ? clip.ask : fill;
+  /* a clip may carry the print's own quote; neither a clip nor the day invents one by copying the fill onto both sides */
+  const bidQ = clip?.bid != null && clip.bid > 0 ? clip.bid : 0;
+  const askQ = clip?.ask != null && clip.ask > 0 ? clip.ask : 0;
   const fillPos = askQ > bidQ ? Math.min(1, Math.max(0, (fill - bidQ) / (askQ - bidQ))) : 0.5;
   const size = clip?.size ?? row.volume;
   const bidPct = Number.isFinite(dl.bid) && row.sideVol ? Math.round((row.sideVol.bid / Math.max(1, row.sideVol.ask + row.sideVol.bid)) * 100) : 100 - row.askPct;
@@ -40,7 +41,7 @@ export function bookRowToPrint(
     side,
     ratioBidPct: bidPct,
     size,
-    premium: clip ? Math.round(clip.premium ?? fill * size * 100) : Math.round(row.premium),
+    premium: clip ? (clip.premium != null && Number.isFinite(clip.premium) ? Math.round(clip.premium) : Number.NaN) : Math.round(row.premium),
     volume: row.volume,
     oi: row.oi,
     deltaOI: row.deltaOI,
@@ -51,6 +52,8 @@ export function bookRowToPrint(
     sweep,
     extended: clip?.extended || undefined,
     theta: clip?.theta ?? row.theta,
+    /* no clip: the card is the day's total, not one fill, and it has no quote to draw */
+    dayCard: clip ? undefined : { last: null, session: 'regular session' },
   };
 }
 

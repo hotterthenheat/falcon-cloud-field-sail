@@ -35,11 +35,11 @@ const CompassPage = () => (
     {/* ── THE BOARD ── */}
     <Aside eyebrow="The board" first="Every card is a call." second="With the rules it fired and closes on." picture={<Picture src={`${SHOTS}/board`} alt="The board: the sweep's facts and its one-line read across the top, the cards two across under them, and the Heaviest contracts rail beside them" ratio="1440 / 953" />}>
       <p>
-        The board is one box. Across its head, what the scan found today: how many calls fired, the best Model 1 read against the bar a call needs, how many came closest, and how many of the five seats are taken. Then
+        The board is one box. Across its head, what the scan found today: how many calls fired, how many names cleared the line, how many came closest, and how many of the five seats are taken. Then
         the cards, two across, newest first.
       </p>
       <p>
-        A call needs Model 1 at 70.67% or more, a bid over $0.15 and a spread at or under 8%. It fills at the ask of the first quote a full minute after the call, and closes on the stop, the take-profit, a reversal of the
+        A call needs the line at 70.67% or more, a bid over $0.15 and a spread at or under 8%. It fills at the ask of the first quote a full minute after the call, and closes on the stop, the take-profit, a reversal of the
         underlying or the 15:55 ET flat — each read off a quote that printed. The Book A and Book B calls are marked unvalidated until the live model inputs are re-checked against training.
       </p>
     </Aside>

@@ -135,6 +135,7 @@ const feedEstimate = (stacked: boolean) => (e: GeoNewsEvent, width: number): num
   const lines = Math.max(1, Math.ceil((len * 6) / Math.max(80, rowW - 604 - 16 - (e.item.source.length * 5.4 + 8))));
   return Math.max(NEWS_ROW_H, Math.round(17 + Math.max(20, lines * 19.5)));
 };
+const tickersOf = (e: GeoNewsEvent) => e.item.tickers ?? (e.item.ticker ? [e.item.ticker] : []);
 const storyKey = (e: GeoNewsEvent) => e.id;
 
 const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: Props) => {
@@ -148,7 +149,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
   const followed = useMemo(() => new Set(follows.map(f => f.ticker)), [follows]);
   const boardNames = useBoardNames();
   const boardSet = useMemo(() => new Set(boardNames), [boardNames]);
-  const onBoard = (e: GeoNewsEvent) => (e.item.tickers ?? (e.item.ticker ? [e.item.ticker] : [])).some(t => boardSet.has(t));
+  const onBoard = (e: GeoNewsEvent) => tickersOf(e).some(t => boardSet.has(t));
   const [adding, setAdding] = useState(false);
   /* on a phone each row stacks: the headline, then time · name · kind · flag · move */
   const stacked = useMediaQuery('(max-width: 639.98px)');
@@ -180,7 +181,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
     const newest = [...events].sort((a, b) => a.item.minutesAgo - b.item.minutesAgo);
     switch (tab) {
       case 'following':
-        return newest.filter(e => e.item.ticker && followed.has(e.item.ticker));
+        return newest.filter(e => tickersOf(e).some(t => followed.has(t)));
       case 'earnings':
         return newest.filter(e => e.item.category === 'Earnings' || e.item.category === 'Guidance');
       case 'data':
@@ -196,11 +197,11 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
     }
   }, [events, tab, followed]);
   /* the prints that already landed today, on the Data tab, the latest first */
-  const printed = useMemo(() => (tab === 'data' ? calendar.filter(c => c.inMinutes < 0).sort((a, b) => b.inMinutes - a.inMinutes) : []), [calendar, tab]);
+  const printed = useMemo(() => (tab === 'data' ? calendar.filter(c => c.atMs < Date.now()).sort((a, b) => b.atMs - a.atMs) : []), [calendar, tab]);
   const counts = useMemo(() => {
     const c = { all: events.length, following: 0, earnings: 0, data: 0, analyst: 0, deals: 0, other: 0 };
     for (const e of events) {
-      if (e.item.ticker && followed.has(e.item.ticker)) c.following++;
+      if (tickersOf(e).some(t => followed.has(t))) c.following++;
       const k = e.item.category;
       if (k === 'Earnings' || k === 'Guidance') c.earnings++;
       else if (k === 'Macro') c.data++;
@@ -284,7 +285,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
             <ImpactLegend />
           </span>
         </span>
-        <span className="text-right" title="How the named stock has moved so far today — a fact, not a forecast">Today</span>
+        <span className="text-right" title="How the named stock had moved at publish — a fact, not a forecast">At publish</span>
         <span className="text-right" title="The other stocks the headline names">Also</span>
       </div>}
       {printed.map(p => (
@@ -318,7 +319,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
         </div>
       )}
       <NewsWindow box={windowRef} items={rows} keyOf={storyKey} estimate={estimate} head={stacked ? 0 : NEWS_HEAD_H} initialHeight={NEWS_WINDOW_H} openKey={selectedId} reveal={tab} view={tab} reading={wire === 'reading'} above={`${tab}|${printed.length}|${rows.length === 0}`} className={stacked ? '' : 'max-lg:min-w-[900px]'}>
-        {e => <FeedRow e={e} open={e.id === selectedId} stacked={stacked} onBoard={onBoard(e)} ringing={!!e.item.ticker && ringing.has(e.item.ticker)} onPick={onRowPick} />}
+        {e => <FeedRow e={e} open={e.id === selectedId} stacked={stacked} onBoard={onBoard(e)} ringing={tickersOf(e).some(t => ringing.has(t))} onPick={onRowPick} />}
       </NewsWindow>
       </div>
     </div>

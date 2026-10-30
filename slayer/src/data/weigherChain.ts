@@ -58,7 +58,10 @@ export function liveSpotOf(ticker: string): number | null {
   }
   ensureQuote(name);
   const q = peekQuote(name);
-  if (q && q.regularPrice > 0) return q.regularPrice;
+  if (q) {
+    const px = q.phase !== 'regular' && q.extPrice != null && q.extPrice > 0 ? q.extPrice : q.spot;
+    if (px > 0) return px;
+  }
   return peekSpot(name);
 }
 

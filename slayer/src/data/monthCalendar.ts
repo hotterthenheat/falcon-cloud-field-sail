@@ -2,8 +2,8 @@
    FDA calendar, the schedule and the posts; monthly expiration (third Friday) is the one date known by rule. */
 
 import { createStore } from './feedStore';
-import { now } from '../core/clock';
 import { type ReportSlot } from './earnings';
+import { nyTodayIso } from './nyDate';
 import { uwCall } from './whales';
 import { econImpact } from './econImpact';
 
@@ -191,7 +191,8 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 
 /** The month as weeks of days, Sunday first, every event on its day */
 export function buildMonthCalendar(year: number, month: number): MonthCalendar {
-  const today = now();
+  const [ty, tm, td] = nyTodayIso().split('-').map(Number);
+  const today = new Date(ty, tm - 1, td);
   const inMonth = (e: CalEvent) => e.date.getFullYear() === year && e.date.getMonth() === month;
   ensureEcon();
   const bare = (s: string) => s.split(' · ')[0].trim().toLowerCase();

@@ -472,7 +472,7 @@ function pickLine(): string {
   const a = rows.filter(s => s.band === 'top').length;
   const b = rows.filter(s => s.band === 'wing').length;
   const c = rows.filter(s => s.band === 'lottery').length;
-  return `Book A ${a}. Book B ${b}. Book C ${c}. Model 1 entry. Model 2 runner.`;
+  return `Book A ${a}. Book B ${b}. Book C ${c}.`;
 }
 
 function noteSpots(snaps: { symbol: string; spot: number }[]): void {

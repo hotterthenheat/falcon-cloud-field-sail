@@ -191,14 +191,22 @@ async function fillTapeQuote(t: string): Promise<void> {
   emit();
 }
 
-/** The price, said as which price it is: in the session "348.34 · 14:05 ET"; outside it "348.22 close · 348.34 after hours 19:25 ET". */
+/** The price of the session this quote is in. `regularPrice` is the cash close, and it is not this number outside that session. */
+export function sessionPrice(q: LiveQuote | null | undefined): number | null {
+  if (!q) return null;
+  if (q.phase !== 'regular' && q.extPrice != null && q.extPrice > 0) return q.extPrice;
+  return q.spot > 0 ? q.spot : null;
+}
+
+/** The price, said as which price it is. The lead is the session we are in. The regular close is named beside it, not in its place. */
 export function priceWords(q: LiveQuote | null | undefined): { lead: number; line: string } | null {
   if (!q) return null;
   const clock = `${nyClock(q.tapeAt, { zone: true })}`;
-  if (q.phase === 'regular' || q.regClose == null) return { lead: q.spot, line: `${q.spot.toFixed(2)} · ${clock}` };
+  const lead = sessionPrice(q);
+  if (lead == null) return null;
+  if (q.phase === 'regular' || q.regClose == null || Math.abs(lead - q.regClose) < 0.005) return { lead, line: `${lead.toFixed(2)} · ${clock}` };
   const word = q.phase === 'pre' ? 'pre-market' : 'after hours';
-  if (Math.abs(q.spot - q.regClose) < 0.005) return { lead: q.regClose, line: `${q.regClose.toFixed(2)} close` };
-  return { lead: q.regClose, line: `${q.regClose.toFixed(2)} close · ${q.spot.toFixed(2)} ${word} ${clock}` };
+  return { lead, line: `${lead.toFixed(2)} ${word} · ${q.regClose.toFixed(2)} close` };
 }
 
 /** "after hours +0.4%" / "pre-market −1.1%" — the move outside the session, or null */
