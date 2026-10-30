@@ -660,7 +660,9 @@ const News = () => {
   const similarRef = useRef<Map<string, number>>(new Map());
   /* The list's view: its sort and its cut. Under one view the order is kept across re-reads (orderRef); a new view sorts
      afresh. The rows in view come back from the window (NewsWindow writes seenRef on every draw). */
-  const viewKey = `${sort}|${category}|${names}|${picks.join(',')}|${boardNames.join(',')}`;
+  /* a fresh sort once the read has finished untouched (leadFromTop): the window opens on the true order, top story first */
+  const [sortRound, setSortRound] = useState(0);
+  const viewKey = `${sortRound}|${sort}|${category}|${names}|${picks.join(',')}|${boardNames.join(',')}`;
   const orderRef = useRef<{ view: string; ids: string[] } | null>(null);
   const seenRef = useRef<WindowSeen>({ first: null, last: null });
   const rows = useMemo(() => {
@@ -877,12 +879,9 @@ const News = () => {
     navigate('/pinpoint/map');
   };
 
-  /* the read finished untouched and the window went to the top: the lead is the top story again (a pick stays) */
-  const rowsNow = useRef(rows);
-  rowsNow.current = rows;
-  const leadFromTop = useCallback(() => {
-    if (!pickedRef.current && rowsNow.current.length) setSelectedId(rowsNow.current[0].id);
-  }, []);
+  /* The read finished untouched and the window went to the top: the rows are sorted afresh (a new view, so the kept order
+     is dropped and the lead follows the new first story — a pick stays). */
+  const leadFromTop = useCallback(() => setSortRound(n => n + 1), []);
 
   /* the rows read a stable pick, so a memoized row redraws only when its own story or open state changes */
   const pickRef = useRef(pick);
