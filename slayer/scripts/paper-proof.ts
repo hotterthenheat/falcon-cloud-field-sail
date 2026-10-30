@@ -703,6 +703,20 @@ const roll = (a: PaperAccount, day: string) => {
   ok('…the ask comes down to 3.95: bought back at that ask', w.opt.fills[1]?.price === 3.95 && optBookOf(w).positions.length === 0 && optBookOf(w).trades[0].pnl === Math.round(((4.15 - 3.95) * 100 - 1.3) * 100) / 100);
   book['SPY|505|C'] = [4.0, 4.2];
 
+  /* ---- after the bell the feed's last quotes still read as new: a resting order does not fill on them ---- */
+  {
+    now = nyInstant(T, 15 * 60 + 30);
+    let x = optPlace(fresh(25_000, 'ah'), fixed(), { contract: Cc(505), side: 'sell', qty: 1, kind: 'limit', price: 4.1 });
+    book['SPY|505|C'] = [4.3, 4.4];
+    now = nyInstant(T, 16 * 60 + 30);
+    x = tick(x, fixed()).account;
+    ok('16:30: a sell limit the last quote would fill waits — nothing fills outside the session', x.opt.fills.length === 0 && x.opt.orders[0].status === 'working');
+    now = nyInstant(addDays(T, 1), 9 * 60 + 31);
+    ok('…by the next session it has a gap: its minutes are replayed from the history first (catchUp.ts), the session’s only', gapOf(x.opt.orders[0], now) != null);
+    book['SPY|505|C'] = [4.0, 4.2];
+    now = nyInstant(T, 10 * 60);
+  }
+
   /* ---- the margin call: equity under what the shorts need blocks new ways in, and nothing is sold off by itself ---- */
   let mc = optPlace(fresh(10_000, 'mc'), fixed(), { contract: P(490), side: 'sell', qty: 1, kind: 'market' });
   ok('a $10,000 account sells one naked 490P: 9,205 held, 994.35 free', near(viewOf(mc, fixed()).free, 994.35) && !viewOf(mc, fixed()).marginCall, `${viewOf(mc, fixed()).free}`);
