@@ -25,8 +25,13 @@ interface RailToolsProps {
 }
 
 /* Two columns, a 24 px icon and a 10 px arrow; docked top, only buttons with an arrow pay for its column. */
-const cell = (dock: Dock) => (dock === 'left' ? 'h-[26px] w-full pr-[10px]' : 'w-[24px] h-full');
-const listCell = (dock: Dock) => (dock === 'left' ? 'h-[26px] w-full' : 'w-[34px] h-full');
+/* ON A TOUCH SCREEN the arrow column is 24 wide, not 10 (the last-targets pass, 2026-10-30): there it is always shown
+   ([@media(hover:none)]) and a finger needs it; the rail widens to 58 to carry it (StrikeChart), and every cell's
+   right padding follows so the icons stay in one column. RAIL_ARROW_PAD is that padding, for StrikeChart's own
+   buttons in the rail. */
+export const RAIL_ARROW_PAD = 'pr-[10px] [@media(pointer:coarse)]:pr-[24px]';
+const cell = (dock: Dock) => (dock === 'left' ? `h-[26px] w-full ${RAIL_ARROW_PAD}` : 'w-[24px] h-full');
+const listCell = (dock: Dock) => (dock === 'left' ? 'h-[26px] w-full' : 'w-[34px] [@media(pointer:coarse)]:w-[48px] h-full');
 const face = (on: boolean) => (on ? 'bg-select/15 text-select' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]');
 const Rule = ({ dock }: { dock: Dock }) => <div className={dock === 'left' ? 'mx-1 my-0.5 h-px bg-borderMuted' : 'my-1 mx-0.5 w-px bg-borderMuted'} aria-hidden />;
 
@@ -82,7 +87,7 @@ const ListButton = ({ dock, on, title, listTitle, icon, onFace, onList, open, te
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={openList}
-        className={`w-[10px] shrink-0 inline-flex items-center justify-center rounded-r text-textSecondary hover:text-textPrimary hover:bg-ink/[0.1] transition-opacity focus-visible:opacity-100 group-hover/fam:opacity-100 [@media(hover:none)]:opacity-100 ${open ? 'opacity-100 text-textPrimary bg-ink/[0.1]' : 'opacity-0'}`}
+        className={`w-[10px] [@media(pointer:coarse)]:w-[24px] shrink-0 inline-flex items-center justify-center rounded-r text-textSecondary hover:text-textPrimary hover:bg-ink/[0.1] transition-opacity focus-visible:opacity-100 group-hover/fam:opacity-100 [@media(hover:none)]:opacity-100 ${open ? 'opacity-100 text-textPrimary bg-ink/[0.1]' : 'opacity-0'}`}
         data-draw-family-more
       >
         {dock === 'left' ? <ChevronRight className="w-2.5 h-2.5 -mx-px" strokeWidth={2.6} /> : <ChevronDown className="w-2.5 h-2.5 -mx-px" strokeWidth={2.6} />}

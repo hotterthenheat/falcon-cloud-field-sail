@@ -266,6 +266,12 @@
 [data-tv-mark-beside] a#tv-attr-logo {
   left: 56px;
 }
+@media (pointer: coarse) {
+  /* the rail is 58 there (DrawRailTools' arrow column) */
+  [data-tv-mark-beside] a#tv-attr-logo {
+    left: 70px;
+  }
+}
 a#tv-attr-logo::before {
   content: '';
   position: absolute;

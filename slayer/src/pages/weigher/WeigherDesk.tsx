@@ -206,17 +206,22 @@ const DeskCard = ({
     {/* min-h, not h: a crowded actions strip (the chain's) wraps, and the
         header must GROW with it — with a fixed height the wrapped chips
         slid under the table and its sticky header ate their clicks. */}
-    <div className={`shrink-0 flex items-center gap-2 pr-2.5 py-0.5 min-h-8 ${under ? '' : 'border-b border-ink/[0.05]'}`}>
+    {/* ON A TOUCH SCREEN the head is 44 tall (the last-targets pass, 2026-10-30): its small controls' finger boxes
+        (`.hit-24`, 44 × 44 there) fit inside the card, which clips, instead of being cut by its edge or covered by
+        the table's header under it. */}
+    <div className={`shrink-0 flex items-center gap-2 pr-2.5 py-0.5 min-h-8 [@media(pointer:coarse)]:min-h-11 ${under ? '' : 'border-b border-ink/[0.05]'}`}>
       {/* The title takes its NATURAL width and keeps it — flex-1 here let the chain's loaded strip squeeze it down
           to "C…". The actions take the remainder and wrap; the header grows to fit them. */}
-      <div className="select-none flex items-center gap-2 pl-2.5 self-stretch shrink-0">
+      {/* gap-4 on a touch screen: the chevron's finger box reaches 22px from its centre, past a title that is tabs */}
+      <div className="select-none flex items-center gap-2 [@media(pointer:coarse)]:gap-4 pl-2.5 self-stretch shrink-0">
         {fold && (
           <button
             type="button"
             onClick={fold.onToggle}
             aria-expanded={fold.open}
             title={fold.open ? 'Fold the card to its head' : 'Open the card'}
-            className="hit-24 inline-flex items-center justify-center w-4 h-4 -ml-1 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
+            /* -ml-1 at a desk; on a touch screen 4px in, so the 44px box stands inside the card's clipped edge */
+            className="hit-24 inline-flex items-center justify-center w-4 h-4 -ml-1 [@media(pointer:coarse)]:ml-1 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
             data-fold={fold.testId}
           >
             <ChevronDown className={`w-3 h-3 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${fold.open ? '' : '-rotate-90'}`} />

@@ -645,7 +645,9 @@ const ChartToolbar = ({
                and packed left it left the expand door mid-row. It used to be
                `spread && !compact`, when compact meant "no room to spread
                across" — the host's wrapper now grows to the row, so there is. */
-            `items-center gap-2 flex-wrap ${spread ? 'w-full' : ''}`
+            /* ON A TOUCH SCREEN the rows stand 48 apart, centre to centre, so each control's finger box (`.hit-24`,
+               44 × 44 there) is its own and not the row's below (the last-targets pass, 2026-10-30) */
+            `items-center gap-2 [@media(pointer:coarse)]:gap-y-6 flex-wrap ${spread ? 'w-full' : ''}`
       }`}
     >
       {compact && !keepIntervals ? (
@@ -696,7 +698,7 @@ const ChartToolbar = ({
           timeframes on the left, the lesser important stuff on the right"): beside the timeframes — Candles (the tape's
           SHAPE and its axis), Indicators, Replay. Alerts leads the right cluster with the standing controls. */}
       {(onToggleReplay || onIndicators || onChartStyle || onPriceScale) && (
-        <span className={`flex gap-1 ${vertical ? 'flex-col items-stretch' : 'flex-wrap items-center'}`} data-toolbar-left>
+        <span className={`flex gap-1 ${vertical ? 'flex-col items-stretch' : 'flex-wrap items-center [@media(pointer:coarse)]:gap-x-[18px] [@media(pointer:coarse)]:gap-y-6'}`} data-toolbar-left>
           {(onChartStyle || onPriceScale) && (
             <Dropdown
               label={vertical || compact ? '' : 'Candles'}
@@ -1104,7 +1106,7 @@ const ChartToolbar = ({
           (bars/line/area…), not the color theme; Alerts is live since
           2026-08-28 — armed watches, the fired log, and the bell's count. */}
       {(alertTicker || rightExtras) && (
-        <span className={`flex gap-1 ${vertical ? 'flex-col items-stretch' : 'flex-wrap items-center justify-end'}`} data-toolbar-right>
+        <span className={`flex gap-1 ${vertical ? 'flex-col items-stretch' : 'flex-wrap items-center justify-end [@media(pointer:coarse)]:gap-x-[18px] [@media(pointer:coarse)]:gap-y-6'}`} data-toolbar-right>
           {alertTicker && (
             <Dropdown
               label={vertical || compact ? '' : 'Alerts'}

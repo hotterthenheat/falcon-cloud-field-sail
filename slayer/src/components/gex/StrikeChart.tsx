@@ -68,7 +68,7 @@ import { newsPulse } from '../../data/news';
 import { exposureNowFor, fmtGexUsd as fmtUsd } from '../../data/gex';
 import { ChevronsLeft, ChevronsUp, GripVertical, Lock, PanelLeft, PanelTop, Pencil, Type, Unlock } from 'lucide-react';
 import { DrawingsPrimitive, REST_INK_DARK, REST_INK_LIGHT, gestureOf, isFreehand, isWordsKind, loadDrawings, needsThirdAnchor, popDrawings, saveDrawings, usesPts, type Drawing, type DrawingKind } from './drawingsPrimitive';
-import DrawRailTools, { DrawSheet } from './DrawRailTools';
+import DrawRailTools, { DrawSheet, RAIL_ARROW_PAD } from './DrawRailTools';
 import { drawToolLabel, registerDrawChart, rememberDrawTool, touchDrawChart } from './drawTools';
 import {
   CANDLE_THEMES,
@@ -4197,7 +4197,8 @@ const StrikeChart = ({
             } ${
               rail.dock === 'left'
                 ? /* 44 wide: a 24px icon column with a 10px arrow column beside it, so a family's arrow sits right of its icon */
-                  'left-1.5 top-1/2 -translate-y-1/2 w-[44px] max-h-[92%] overflow-y-auto flex-col'
+                  /* …58 on a touch screen, where the arrow column is 24 (DrawRailTools) */
+                  'left-1.5 top-1/2 -translate-y-1/2 w-[44px] [@media(pointer:coarse)]:w-[58px] max-h-[92%] overflow-y-auto flex-col'
                 : /* Left of true centre: the right-hand strip cluster reaches further into the middle than the left one */
                   /* In the strip's empty middle: the top dock exists only in the takeovers, and each of them has a
                      44px strip with clusters at both ends. */
@@ -4211,7 +4212,7 @@ const StrikeChart = ({
               aria-label="Select"
               aria-pressed={drawTool === 'select'}
               className={`inline-flex items-center justify-center rounded transition-colors shrink-0 ${
-                rail.dock === 'left' ? 'h-[26px] pr-[10px]' : 'w-[24px]'
+                rail.dock === 'left' ? `h-[26px] ${RAIL_ARROW_PAD}` : 'w-[24px]'
               } ${
                 drawing && drawTool === 'select'
                   ? 'bg-select/15 text-select'
@@ -4232,7 +4233,7 @@ const StrikeChart = ({
                   title="Delete the selected drawing"
                   aria-label="Delete selected"
                   className={`inline-flex items-center justify-center rounded transition-colors shrink-0 text-textSecondary enabled:hover:text-textPrimary enabled:hover:bg-ink/[0.04] disabled:opacity-30 disabled:cursor-default ${
-                    rail.dock === 'left' ? 'h-[26px] pr-[10px]' : 'w-[24px]'
+                    rail.dock === 'left' ? `h-[26px] ${RAIL_ARROW_PAD}` : 'w-[24px]'
                   }`}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -4242,7 +4243,7 @@ const StrikeChart = ({
                   title="Clear all drawings"
                   aria-label="Clear all drawings"
                   className={`inline-flex items-center justify-center rounded transition-colors shrink-0 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04] ${
-                    rail.dock === 'left' ? 'h-[26px] pr-[10px]' : 'w-[24px]'
+                    rail.dock === 'left' ? `h-[26px] ${RAIL_ARROW_PAD}` : 'w-[24px]'
                   }`}
                 >
                   <Eraser className="w-3.5 h-3.5" />
@@ -4257,7 +4258,7 @@ const StrikeChart = ({
               title={rail.dock === 'left' ? 'Move the tools to the top' : 'Move the tools to the left side'}
               aria-label={rail.dock === 'left' ? 'Move the tools to the top' : 'Move the tools to the left side'}
               className={`inline-flex items-center justify-center rounded transition-colors shrink-0 text-textMuted hover:text-textPrimary hover:bg-ink/[0.04] ${
-                rail.dock === 'left' ? 'h-[26px] pr-[10px]' : 'w-[24px]'
+                rail.dock === 'left' ? `h-[26px] ${RAIL_ARROW_PAD}` : 'w-[24px]'
               }`}
             >
               {rail.dock === 'left' ? <PanelTop className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
@@ -4267,7 +4268,7 @@ const StrikeChart = ({
               title="Hide the tools — the small tab at the edge brings them back"
               aria-label="Hide the tools"
               className={`inline-flex items-center justify-center rounded transition-colors shrink-0 text-textMuted hover:text-textPrimary hover:bg-ink/[0.04] ${
-                rail.dock === 'left' ? 'h-[26px] pr-[10px]' : 'w-[24px]'
+                rail.dock === 'left' ? `h-[26px] ${RAIL_ARROW_PAD}` : 'w-[24px]'
               }`}
             >
               {rail.dock === 'left' ? <ChevronsLeft className="w-3.5 h-3.5" /> : <ChevronsUp className="w-3.5 h-3.5" />}

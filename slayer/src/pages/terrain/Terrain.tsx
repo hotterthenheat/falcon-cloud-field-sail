@@ -1239,7 +1239,9 @@ const Pane = ({
                 paddingLeft: ownScale ? PRICE_GUTTER_PX : undefined,
                 paddingRight: PRICE_GUTTER_PX,
               }}
-              className={`pointer-events-none absolute inset-x-0 ${expanded ? 'top-11' : 'top-0'} z-20 flex flex-col items-start gap-1 p-1.5`}
+              /* gap-3.5 on a touch screen: the toolbar row's finger boxes (22px above its controls' centres) clear the symbol
+                 chip's (22px below its centre) in the identity row (the last-targets pass, 2026-10-30) */
+              className={`pointer-events-none absolute inset-x-0 ${expanded ? 'top-11' : 'top-0'} z-20 flex flex-col items-start gap-1 [@media(pointer:coarse)]:gap-3.5 p-1.5`}
               /* Floating chrome the chart's scripts legend measures and sits under */
               data-chart-chrome
               data-head-form={inlineFull ? 'full' : inlineCompact ? 'compact' : 'own'}
