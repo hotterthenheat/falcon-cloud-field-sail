@@ -108,6 +108,8 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
 
   const getItemKey = useCallback((i: number) => keyOf(itemsRef.current[i]), [items]); // eslint-disable-line react-hooks/exhaustive-deps
   const estimateSize = useCallback((i: number) => estimatesRef.current[i] ?? 40, []);
+  /* the held anchor's correction, while a re-read's rows settle (below) */
+  const holding = useRef<(() => unknown) | null>(null);
   const v = useVirtualizer({
     count: items.length,
     getScrollElement: () => el,
@@ -118,6 +120,8 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
     scrollPaddingStart: head,
     rangeExtractor,
     initialRect: { width: 0, height: initialHeight },
+    /* a row measured while a re-read's anchor is held: put the anchor back before this frame is painted */
+    onChange: () => holding.current?.(),
   });
 
   /* What is in view, written each draw (the virtualizer draws on every scroll): the rows in view and where each stands
@@ -138,9 +142,12 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
   inView.current = { view, rows: shown.map(x => ({ key: String(x.key), at: x.start - off })) };
   if (seen) seen.current = { first: shown.length ? String(shown[0].key) : null, last: shown.length ? String(shown[shown.length - 1].key) : null };
 
-  /* after a re-read the anchor row is where it was: scroll by what landed above it, before the frame is painted, and
-     draw again at once so the rows for the new offset are there in the same frame */
+  /* After a re-read the anchor row is where it was: scroll by what landed above it, before the frame is painted, and
+     draw again at once so the rows for the new offset are there in the same frame. The rows just drawn above it are
+     measured over the next frames, so for a few frames the row is held at its place from where it really stands on the
+     screen — until the reader scrolls, which ends the hold. */
   const [, redraw] = useState(0);
+  const hold = useRef<() => void>(() => {});
   useLayoutEffect(() => {
     const a = anchor.current;
     anchor.current = null;
@@ -148,13 +155,49 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
     const i = indexOf.get(a.key);
     const m = i == null ? undefined : v.measurementsCache[i];
     if (!m) return;
-    const target = Math.max(0, m.start - a.at);
-    ((window as unknown as { __anc: unknown[] }).__anc ??= []).push([Math.round(performance.now()), a.key.slice(3, 30), a.at, i, m.start, v.scrollOffset, target, el.scrollTop]); // DEBUG-ANC
-    if (Math.abs(target - (v.scrollOffset ?? 0)) < 0.5) return;
-    el.scrollTop = target;
-    v.scrollOffset = el.scrollTop;
+    hold.current();
+    /* where the row really stands is the truth (rows drawn in this same commit may already have been measured) */
+    const correct = () => {
+      const row = v.elementsCache.get(a.key);
+      if (!row?.isConnected) return false;
+      const off = row.getBoundingClientRect().top - el.getBoundingClientRect().top - a.at;
+      if (Math.abs(off) >= 1) {
+        el.scrollTop += off;
+        v.scrollOffset = el.scrollTop;
+      }
+      return true;
+    };
+    if (!correct()) {
+      const target = Math.max(0, m.start - a.at);
+      if (Math.abs(target - (v.scrollOffset ?? 0)) >= 0.5) {
+        el.scrollTop = target;
+        v.scrollOffset = el.scrollTop;
+      }
+    }
     redraw(n => n + 1);
+    let frames = 0;
+    let raf = 0;
+    const stop = () => {
+      cancelAnimationFrame(raf);
+      for (const t of ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const) el.removeEventListener(t, stop);
+      holding.current = null;
+      hold.current = () => {};
+    };
+    const tick = () => {
+      correct();
+      if (++frames < 20) raf = requestAnimationFrame(tick);
+      else stop();
+    };
+    holding.current = correct;
+    for (const t of ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const) el.addEventListener(t, stop, { passive: true });
+    hold.current = stop;
+    raf = requestAnimationFrame(tick);
   }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => hold.current(), []);
+  /* every commit while a hold is on (a redraw for the new offset, a row measured and redrawn) */
+  useLayoutEffect(() => {
+    holding.current?.();
+  });
 
   /* a new width rewraps every headline: the kept heights are stale, measure again (the drawn rows at once) */
   const widthSeen = useRef(width);
