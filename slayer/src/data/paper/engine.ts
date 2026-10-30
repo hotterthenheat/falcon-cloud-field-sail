@@ -854,6 +854,19 @@ function powerRefusal(a: PaperAccount, m: PaperMarket, v: PaperView, legs: Leg[]
   const need = cents(v.free - after.free);
   return legs.every(l => l.side === 'buy') ? `Not enough free money — this needs ${money(need)}, and ${money(Math.max(0, v.free))} is free` : `Not enough buying power — this holds ${money(need)}, and ${money(Math.max(0, v.free))} is free`;
 }
+/** What a way in would hold and leave free, before it is taken — the ticket's foot: each leg at its market (a sale at
+    the bid, a buy at the ask). `held`: what it adds to the margin held; `need`: what it takes off free. */
+export function openPreview(a: PaperAccount, m: PaperMarket, legs: { contract: ContractId; side: Side; qty: number; secured?: 'cash' }[]): { held: number; need: number; free: number } {
+  const v = viewOf(a, m);
+  const ls: Leg[] = legs.map(l => {
+    const q = m.optQuote(l.contract);
+    const d = draftOf(a, { ...l, kind: 'market' });
+    const px = l.side === 'sell' ? q.bid : q.ask;
+    return { contract: l.contract, side: l.side, qty: l.qty, px: px > 0 ? px : Number.isFinite(q.mark) ? q.mark : 0, secured: d.secured };
+  });
+  const after = viewOf(withFills(a, m, ls), m);
+  return { held: cents(after.margin - v.margin), need: cents(v.free - after.free), free: after.free };
+}
 /** Calls sold on a name and expiry that a sale of `qty` of the long call `key` would leave with nothing over them */
 function bareCallsAfter(a: PaperAccount, c: ContractId, key: string, qty: number): number {
   const same = optBookOf(a).positions.filter(p => p.contract.ticker === c.ticker && p.contract.expiry === c.expiry && p.contract.right === 'C' && p.contract.short == null);

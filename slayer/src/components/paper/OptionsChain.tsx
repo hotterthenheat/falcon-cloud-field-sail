@@ -117,9 +117,11 @@ const OptionsChain = ({ ticker, chain, right, onRight, expiry, expiryOptions, on
 /* The order, inside a strike's dropdown */
 /* ================================================================== */
 
-/** A position held at a strike of the chain's side and expiry — a single contract, or a spread bought on it */
+/** A position held at a strike of the chain's side and expiry — a single contract, or a spread on it */
 export interface HeldHere {
   contract: ContractId;
+  /** 1 held long, −1 held short (the paper desk's; the backtest only buys) */
+  dir?: 1 | -1;
   qty: number;
   avg: number;
   pnl: number;
@@ -147,6 +149,15 @@ export interface ChainOrderDesk {
   onClose: (c: ContractId, qty: number) => void;
   /** The strike sold against the one in hand changed (0: a single again) — a host that marks the sold leg in its chain */
   onShort?: (k: number) => void;
+  /** The paper desk's selling: a Buy | Sell switch, sales to open at the bid, a short's buy back at the ask. None on the
+      backtest's desk, which only buys. */
+  sell?: SellDesk;
+}
+export interface SellDesk {
+  /** A put sold is always cash-secured (a plan with no margin) */
+  securedOnly: boolean;
+  /** What a way in would add to the margin held, and take off free — at each leg's market */
+  preview: (d: OptDraft) => { held: number; need: number; free: number } | null;
 }
 
 /** The order in full view inside the chain's own scroll, never the page's: as little as it takes, its top kept in sight,
@@ -178,6 +189,12 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
   const [bracketsOpen, setBracketsOpen] = useState(false);
   const [ladder, setLadder] = useState<LadderDraft>(LADDER_AT_REST);
   const [basis, setBasis] = useState<'contract' | 'name'>('contract');
+  /** The paper desk's: a way in bought or sold to open, and a put sold cash-secured or on margin */
+  const [side, setSide] = useState<'buy' | 'sell'>('buy');
+  const [securedPick, setSecured] = useState(true);
+  const selling = !!desk.sell && !pos && side === 'sell';
+  const singlePut = contract.short == null && contract.right === 'P';
+  const secured = selling && singlePut && (desk.sell!.securedOnly || securedPick) ? ('cash' as const) : undefined;
   const n = desk.q;
   const sellN = pos ? Math.max(1, Math.min(n, pos.qty)) : n;
   /* A strike opened: its order brought into view once the grid has sized the dropdown to it — and again when the
@@ -196,16 +213,19 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
     const rides = bracketsOpen ? bracketOf(ladder, n, stopFromTrail) : undefined;
     return { contract, side: 'buy', qty: n, kind, price: kind === 'limit' ? limitPx : undefined, bracket: rides ? { ...rides, on } : undefined };
   };
-  const sellDraft = (kind: OrderKind): OptDraft => ({ contract, side: 'sell', qty: sellN, kind, price: kind === 'limit' ? limitPx : undefined });
+  const sellDraft = (kind: OrderKind): OptDraft => ({ contract, side: 'sell', qty: pos ? sellN : n, kind, price: kind === 'limit' ? limitPx : undefined, secured });
+  /* a short held: its way out is a buy back, at the ask or a limit */
+  const coverDraft = (kind: OrderKind): OptDraft => ({ contract, side: 'buy', qty: sellN, kind, price: kind === 'limit' ? limitPx : undefined });
+  const shortHeld = !!pos && pos.dir === -1;
   const why = useMemo(
     () => ({
-      buy: desk.locked ?? desk.refuse(buyDraft('market')),
-      buyLimit: desk.locked ?? desk.refuse(buyDraft('limit')),
-      sell: pos ? (desk.locked ?? desk.refuse(sellDraft('market'))) : 'Nothing held here',
-      sellLimit: pos ? (desk.locked ?? desk.refuse(sellDraft('limit'))) : 'Nothing held here',
+      buy: desk.locked ?? desk.refuse(shortHeld ? coverDraft('market') : buyDraft('market')),
+      buyLimit: desk.locked ?? desk.refuse(shortHeld ? coverDraft('limit') : buyDraft('limit')),
+      sell: pos || selling ? (desk.locked ?? desk.refuse(sellDraft('market'))) : 'Nothing held here',
+      sellLimit: pos || selling ? (desk.locked ?? desk.refuse(sellDraft('limit'))) : 'Nothing held here',
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [desk.version, desk.locked, n, limit, short, ladder, basis, bracketsOpen, !!pos]
+    [desk.version, desk.locked, n, limit, short, ladder, basis, bracketsOpen, !!pos, side, secured]
   );
 
   /* The strikes that can be sold against it, while nothing is held: further out, the nearest eight */
@@ -220,7 +240,9 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
           .map(k => {
             const pair = { ...longLeg(base), short: k };
             const pq = desk.quoteWith(pair, spot);
-            return { value: k, label: `Sell the ${strikeWords(k)}${c.right}`, hint: pq.dead ? 'No market in the pair right now' : `Costs ${pq.ask.toFixed(2)} · can make ${usd((spreadWidth(pair) - pq.ask) * MULT)} a spread` };
+            return selling
+              ? { value: k, label: `Buy the ${strikeWords(k)}${c.right}`, hint: pq.dead ? 'No market in the pair right now' : `Takes in ${pq.bid.toFixed(2)} · can lose ${usd((spreadWidth(pair) - pq.bid) * MULT)} a spread` }
+              : { value: k, label: `Sell the ${strikeWords(k)}${c.right}`, hint: pq.dead ? 'No market in the pair right now' : `Costs ${pq.ask.toFixed(2)} · can make ${usd((spreadWidth(pair) - pq.ask) * MULT)} a spread` };
           }),
       ];
   const fees = desk.fee * (pos ? sellN : n) * legsOf(contract);
@@ -228,6 +250,52 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
   const levelFor = (bid: number) => desk.spotForBid(contract, +bid.toFixed(2))?.toFixed(2) ?? '';
   const fallsOrRises = contract.right === 'C' ? 'falls to' : 'rises to';
   const priceBox = <PriceBox value={limit} onChange={setLimit} step={dir => setLimit(Math.max(0.01, limitPx + dir * 0.01).toFixed(2))} label="Limit price" placeholder={mid.toFixed(2)} />;
+
+  if (pos && pos.dir === -1) {
+    const cost = quote.ask * MULT * sellN;
+    const whyLine = desk.locked ?? whyWords(why.buy, null);
+    const more = desk.locked ?? desk.refuse({ contract, side: 'sell', qty: n, kind: 'market' });
+    return (
+      <div ref={rootRef} className="pt-2.5 border-t border-ink/[0.08] flex flex-col gap-2.5" data-chain-order="short">
+        <div className="flex items-center gap-2 flex-wrap font-mono text-t11 tnum">
+          <span className="text-t9 font-bold uppercase tracking-widest text-textSecondary">Your position</span>
+          <span className="font-semibold text-bear">Short −{pos.qty}</span>
+          <span className="text-textPrimary">{contractWords(pos.contract)}</span>
+          <span className="text-textMuted">sold @ {pos.avg.toFixed(2)}</span>
+          <span className={`font-semibold ${dirInk(pos.pnl)}`}>{usdSigned(pos.pnl)}</span>
+          <span className="ml-auto text-bull" title="What its decay pays a day, all else equal — a short gains what a long loses">
+            +{usd(pos.decayDay)} a day
+          </span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <SizeRow q={n} onQ={desk.onQ} />
+          <button type="button" onClick={() => desk.onQ(pos.qty)} className={quiet} data-chain-order-all>
+            All {pos.qty}
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Act side="buy" count={sellN} at={`Ask ${quote.ask.toFixed(2)}`} why={why.buy} onPress={() => desk.onPlace(coverDraft('market'))} />
+          <Act side="buy" count={sellN} at={`${limitPx.toFixed(2)} Lmt`} why={why.buyLimit} onPress={() => desk.onPlace(coverDraft('limit'))} />
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={labelCls}>Limit</span>
+          {priceBox}
+          <button type="button" onClick={() => setLimit('')} className={quiet} title="The middle of the bid and the ask">
+            Mid {mid.toFixed(2)}
+          </button>
+          <button type="button" onClick={() => desk.onPlace({ contract, side: 'sell', qty: n, kind: 'market' })} disabled={!!more} title={more ?? `Sell ${n} more at the bid`} className={`${quiet} ml-auto enabled:hover:text-bear enabled:hover:border-bear/50`} data-chain-order-more>
+            Sell {n} more @ {quote.bid.toFixed(2)}
+          </button>
+        </div>
+        <div className="font-mono text-t11 tnum leading-relaxed whitespace-normal break-words" data-order-status>
+          <div className="text-textSecondary">
+            Buy back {sellN} × {usd(quote.ask)} × 100 = <span className="text-textPrimary font-semibold">{usd(cost)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
+          </div>
+          {whyLine ? <div className="text-warn">{whyLine}</div> : <div className="text-textMuted">Buys back {sellN === pos.qty ? 'all of it' : `${sellN} of ${pos.qty}`} at the ask — what it holds in margin comes free with it</div>}
+        </div>
+      </div>
+    );
+  }
 
   if (pos) {
     const proceeds = quote.bid * MULT * sellN;
@@ -274,13 +342,85 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
     );
   }
 
+  const sideSwitch = desk.sell ? (
+    <Pills
+      label="Buy, or sell to open"
+      value={side}
+      onChange={x => {
+        setSide(x);
+        setShort(0);
+        desk.onShort?.(0);
+        setLimit('');
+        setBracketsOpen(false);
+      }}
+      options={[
+        { value: 'buy', label: 'Buy', tone: 'bull' },
+        { value: 'sell', label: 'Sell to open', tone: 'bear' },
+      ]}
+    />
+  ) : null;
+  if (selling) {
+    const credit = quote.bid * MULT * n;
+    const pv = desk.sell!.preview(sellDraft('market'));
+    const whyLine = desk.locked ?? whyWords(null, why.sell);
+    return (
+      <div ref={rootRef} className="pt-2.5 border-t border-ink/[0.08] flex flex-col gap-2.5" data-chain-order="sell">
+        <div className="flex items-center gap-2 flex-wrap">
+          {sideSwitch}
+          <span className="font-mono text-t11 font-semibold text-textPrimary">{contractWords(contract)}</span>
+          {spreadOptions.length > 1 && <DropdownSelect label="Spread" value={short} options={spreadOptions} onChange={k => { setShort(k); desk.onShort?.(k); }} title="Buy a strike further out against it — a credit spread: its loss capped at the distance between the two, less the credit" testId="chain-order-spread" size="sm" />}
+          <span className="ml-auto font-mono text-t10 tnum text-textMuted">
+            bid <span className="text-textPrimary">{quote.bid.toFixed(2)}</span> · mid <span className="text-textPrimary">{mid.toFixed(2)}</span> · ask <span className="text-textPrimary">{quote.ask.toFixed(2)}</span>
+          </span>
+        </div>
+        {singlePut && (
+          <Pills
+            label="How the put is held"
+            value={secured ? 'cash' : 'margin'}
+            onChange={x => setSecured(x === 'cash')}
+            options={[
+              { value: 'cash', label: 'Cash-secured' },
+              { value: 'margin', label: 'On margin', off: desk.sell!.securedOnly },
+            ]}
+          />
+        )}
+        <SizeRow q={n} onQ={desk.onQ} />
+        <div className="grid grid-cols-2 gap-2">
+          <Act side="sell" count={n} at={`Bid ${quote.bid.toFixed(2)}`} why={why.sell} onPress={() => desk.onPlace(sellDraft('market'))} />
+          <Act side="sell" count={n} at={`${limitPx.toFixed(2)} Lmt`} why={why.sellLimit} onPress={() => desk.onPlace(sellDraft('limit'))} />
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={labelCls}>Limit</span>
+          {priceBox}
+          <button type="button" onClick={() => setLimit('')} className={quiet} title="The middle of the bid and the ask">
+            Mid {mid.toFixed(2)}
+          </button>
+        </div>
+        <div className="font-mono text-t11 tnum leading-relaxed whitespace-normal break-words" data-order-status>
+          <div className="text-textSecondary">
+            Takes in {n} × {usd(quote.bid)} × 100 = <span className="text-textPrimary font-semibold">{usd(credit)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
+          </div>
+          {pv && <div className="text-textSecondary" data-order-margin>Holds <span className="text-textPrimary font-semibold">{usd(pv.held)}</span> of margin · free after {usd(pv.free)}</div>}
+          {whyLine ? (
+            <div className="text-warn">{whyLine}</div>
+          ) : (
+            <div className="text-textMuted">
+              {width > 0 ? `Can make ${usd(credit)}, can lose ${usd(Math.max(0, width - quote.bid) * MULT * n)} — its width less the credit` : singlePut && secured ? `Cash-secured: can lose the strike less the premium, ${usd(Math.max(0, contract.strike - quote.bid) * MULT * n)}` : contract.right === 'C' ? 'A call sold on its own: no cap on what it can lose — held on a Reg T margin estimate, re-marked every tick' : 'A put sold on margin: held on a Reg T estimate, re-marked every tick'}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const px = quote.ask;
   const cost = px * MULT * n;
   const whyLine = desk.locked ?? whyWords(why.buy, null);
   return (
     <div ref={rootRef} className="pt-2.5 border-t border-ink/[0.08] flex flex-col gap-2.5" data-chain-order="buy">
       <div className="flex items-center gap-2 flex-wrap">
-        {word && <span className="font-mono text-t9 font-bold uppercase tracking-widest text-textSecondary">Order</span>}
+        {sideSwitch}
+        {word && !sideSwitch && <span className="font-mono text-t9 font-bold uppercase tracking-widest text-textSecondary">Order</span>}
         <span className="font-mono text-t11 font-semibold text-textPrimary">{contractWords(contract)}</span>
         {spreadOptions.length > 1 && <DropdownSelect label="Spread" value={short} options={spreadOptions} onChange={k => { setShort(k); desk.onShort?.(k); }} title="Sell a strike further out against it — a vertical spread, bought for a debit: cheaper, and capped at the distance between the two" testId="chain-order-spread" size="sm" />}
         <span className="ml-auto font-mono text-t10 tnum text-textMuted">
