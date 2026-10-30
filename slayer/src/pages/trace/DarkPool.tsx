@@ -106,6 +106,9 @@ const queryMemory = { q: '' };
 const darkIdOf = (p: DarkPoolPrint) => `${p.ticker}-${p.id}`;
 const NO_PRINTS: DarkPoolPrint[] = [];
 
+/* A leader's name in the leaders sentence, on a touch screen: at least 32 wide, the name centred (see the sentence) */
+const LEADER_DOOR = '[@media(pointer:coarse)]:inline-block [@media(pointer:coarse)]:min-w-[32px] [@media(pointer:coarse)]:text-center';
+
 const DarkPool = () => {
   /* the search is in the address (?q=), so a link carries it */
   const [query, setQuery] = useQParam(queryMemory);
@@ -605,12 +608,14 @@ const DarkPool = () => {
   const leadersSentence: ReactNode = shownSector ? (
     <>
       <RichRead text={`${fmtUsd(shownSector.notional)} printed off-exchange across ${num(shownSector.prints)} crosses — `} />
+      {/* ON A TOUCH SCREEN the three names stand 44 apart, centre to centre, so each one's finger box is its own and not
+          its neighbour's: each at least 32 wide, a little more room after a comma (the last-targets pass, 2026-10-30) */}
       {lead.map((r, i) => (
         <span key={r.ticker}>
-          <ReadDoor onOpen={() => putAbove(r.ticker)} title={`Put ${r.ticker} on the box above`}>
+          <ReadDoor onOpen={() => putAbove(r.ticker)} title={`Put ${r.ticker} on the box above`} className={LEADER_DOOR}>
             {r.ticker}
           </ReadDoor>
-          {i < lead.length - 2 ? ', ' : i === lead.length - 2 ? ' and ' : ''}
+          {i < lead.length - 2 ? <span className="[@media(pointer:coarse)]:mr-2">, </span> : i === lead.length - 2 ? ' and ' : ''}
         </span>
       ))}
       <RichRead text={regularView ? ` lead it, among the day's largest regular-session crosses (${fmtUsd(regFloor)} and up).` : ` lead it${leaderWindow ? `, ${leaderWindow}` : ''}. The recent feed carries crosses of about $100K and up.`} />
