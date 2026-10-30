@@ -1,10 +1,18 @@
 /* A window of news rows that draws only the rows near its view. A day of the wire is well over a thousand stories of
    different heights; drawing them all cost ~25,000 nodes and a slow pick. The rows are measured as they draw (so a
    two-line headline takes its real height), the open story and the focused row stay drawn, the open story is kept in
-   view, and the arrow keys walk the stories. The window scrolls itself only, never the page. */
+   view, and the arrow keys walk the stories. The window scrolls itself only, never the page. Rows that land above the
+   first row in view on a re-read (the same view, a fresh read) leave that row where it stands: the window scrolls by
+   what was inserted, so nothing the reader sees moves. */
 
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type MutableRefObject, type ReactNode, type RefObject } from 'react';
+
+/** The rows in view, first to last, for the parent (it places new stories out of view) */
+export interface WindowSeen {
+  first: string | null;
+  last: string | null;
+}
 
 interface Props<T> {
   /** the scrolling window the rows sit in */
@@ -23,6 +31,11 @@ interface Props<T> {
   reveal?: unknown;
   /** changes whenever what is drawn above the rows inside the window changes (beyond the head) */
   above?: unknown;
+  /** the list's identity (its sort, its filters, its tab): a change of items under the same view is a re-read and keeps
+      the first row in view where it stands; a new view does not */
+  view?: unknown;
+  /** written on every draw: the first and last rows in view */
+  seen?: MutableRefObject<WindowSeen>;
   /** classes for the box the rows stand in (a minimum width, say) */
   className?: string;
   children: (t: T, index: number) => ReactNode;
@@ -31,7 +44,7 @@ interface Props<T> {
 /** rows drawn past each edge of the view, so a Tab or an arrow always finds the next row drawn */
 const OVERSCAN = 8;
 
-export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initialHeight, openKey = null, reveal, above, className = '', children }: Props<T>) {
+export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initialHeight, openKey = null, reveal, above, view, seen, className = '', children }: Props<T>) {
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const indexOf = useMemo(() => {
@@ -107,6 +120,41 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
     initialRect: { width: 0, height: initialHeight },
   });
 
+  /* What is in view, written each draw (the virtualizer draws on every scroll): the rows in view and where each stands
+     against the window's top, so a re-read can keep the first of them in place. */
+  const inView = useRef<{ view: unknown; rows: { key: string; at: number }[] }>({ view, rows: [] });
+  const anchor = useRef<{ key: string; at: number } | null>(null);
+  const itemsSeen = useRef(items);
+  if (itemsSeen.current !== items) {
+    itemsSeen.current = items;
+    /* the first row in view that is still on the list holds its place; a new view starts where it is told to */
+    const was = inView.current;
+    anchor.current = was.view === view ? (was.rows.find(r => indexOf.has(r.key)) ?? null) : null;
+  }
+  const off = v.scrollOffset ?? 0;
+  const tall = v.scrollRect?.height ?? initialHeight;
+  const drawn = v.getVirtualItems();
+  const shown = drawn.filter(x => x.end > off + head + 1 && x.start < off + tall - 1);
+  inView.current = { view, rows: shown.map(x => ({ key: String(x.key), at: x.start - off })) };
+  if (seen) seen.current = { first: shown.length ? String(shown[0].key) : null, last: shown.length ? String(shown[shown.length - 1].key) : null };
+
+  /* after a re-read the anchor row is where it was: scroll by what landed above it, before the frame is painted, and
+     draw again at once so the rows for the new offset are there in the same frame */
+  const [, redraw] = useState(0);
+  useLayoutEffect(() => {
+    const a = anchor.current;
+    anchor.current = null;
+    if (!a || !el) return;
+    const i = indexOf.get(a.key);
+    const m = i == null ? undefined : v.measurementsCache[i];
+    if (!m) return;
+    const target = Math.max(0, m.start - a.at);
+    if (Math.abs(target - (v.scrollOffset ?? 0)) < 0.5) return;
+    el.scrollTop = target;
+    v.scrollOffset = el.scrollTop;
+    redraw(n => n + 1);
+  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* a new width rewraps every headline: the kept heights are stale, measure again (the drawn rows at once) */
   const widthSeen = useRef(width);
   useEffect(() => {
@@ -164,7 +212,7 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
 
   return (
     <div ref={sizerRef} className={`relative w-full ${className}`} style={{ height: v.getTotalSize() }} onKeyDown={onKeyDown} onFocus={onFocus} onBlur={onBlur} data-news-window-rows={items.length}>
-      {v.getVirtualItems().map(x => (
+      {drawn.map(x => (
         <div key={x.key} data-index={x.index} ref={v.measureElement} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${x.start - margin}px)` }}>
           {children(items[x.index], x.index)}
         </div>
