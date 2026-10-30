@@ -40,7 +40,9 @@ export function canonical(p) {
 /**
  * @param {object} o
  * @param {string} o.name                      for logs and the popular-paths file
- * @param {(path: string, lane: 'viewer' | 'refresh') => Promise<{status:number, body:Buffer, type:string}>} o.fetch
+ * @param {(path: string, lane: 'viewer' | 'refresh' | 'record') => Promise<{status:number, body:Buffer, type:string}>} o.fetch
+ *   'record' is a reader inside this process that must never get ahead of a viewer (the exposure recorder): it rides the
+ *   background lane upstream
  * @param {(path: string) => number} o.ttl     ms an answer stays fresh during market hours
  * @param {number} o.refreshPerSec             background refresh budget
  * @param {number} [o.maxBytes]
@@ -57,7 +59,7 @@ export function createHub(o) {
   const inflight = new Map();
   /* key -> { last: ms of the last ask, asks: count, pinned: kept warm from the popular list } */
   const wanted = new Map();
-  const stats = { asks: 0, fresh: 0, stale: 0, waited: 0, upstreamViewer: 0, upstreamRefresh: 0, startedAt: Date.now() };
+  const stats = { asks: 0, fresh: 0, stale: 0, waited: 0, upstreamViewer: 0, upstreamRefresh: 0, recordAsks: 0, recordReused: 0, upstreamRecord: 0, startedAt: Date.now() };
 
   /* outside market hours nothing moves: answers stay good ten times longer */
   const ttlNow = (key) => (marketHours() ? o.ttl(key) : o.ttl(key) * 10);
@@ -97,6 +99,7 @@ export function createHub(o) {
     }
     laneOf.set(key, lane);
     if (lane === 'viewer') stats.upstreamViewer += 1;
+    else if (lane === 'record') stats.upstreamRecord += 1;
     else {
       stats.upstreamRefresh += 1;
       refreshing += 1;
@@ -130,15 +133,30 @@ export function createHub(o) {
       .finally(() => {
         inflight.delete(key);
         laneOf.delete(key);
-        if (lane !== 'viewer') refreshing -= 1;
+        if (lane === 'refresh') refreshing -= 1;
       });
     inflight.set(key, job);
     return job;
   }
 
-  /** One answer for a request path. */
-  async function get(p) {
+  /**
+   * One answer for a request path.
+   * @param {string} p
+   * @param {{ lane?: 'viewer' | 'record', maxAge?: number }} [opt]  `record`: a reader in this process (the exposure
+   *   recorder). Its asks are not counted as a viewer's (nothing is kept warm on its schedule), it takes any copy younger
+   *   than `maxAge` (default: the path's freshness), and a vendor call it needs waits behind every viewer.
+   */
+  async function get(p, opt) {
     const key = canonical(p);
+    if (opt?.lane === 'record') {
+      stats.recordAsks += 1;
+      const hit = cache.get(key);
+      if (hit && Date.now() - hit.at < Math.max(ttlNow(key), opt.maxAge ?? 0)) {
+        stats.recordReused += 1;
+        return hit;
+      }
+      return upstream(key, 'record');
+    }
     stats.asks += 1;
     const now = Date.now();
     const w = wanted.get(key);

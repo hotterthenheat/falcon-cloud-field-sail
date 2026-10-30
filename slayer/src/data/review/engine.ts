@@ -130,8 +130,14 @@ export interface Session {
   days?: Record<string, DayNote>;
   /** The account at each bell that rang, by day */
   closes?: Record<string, DayClose>;
+  /** What the account was worth at each open the clock walked through with something carried into it (`equityAtOpen`,
+      kept so the report can say each day's day stop without that day's quotes loaded) */
+  opens?: Record<string, number>;
   /** Copied from another session's book at its clock (store.duplicateSession) — its id */
   copiedFrom?: string;
+  /** The reader's setting at the bell: the clock playing carries on into the next session by itself (default off). The
+      engine never reads it — the desk's clock does (`playStep`). */
+  rollOver?: boolean;
   createdAt: number;
   touchedAt: number;
   seq: number;
@@ -506,6 +512,26 @@ const reserved = (s: Session, key: string) => {
   return loose + [...byGroup.values()].reduce((a, g) => a + Math.max(g.limit, g.stop), 0);
 };
 
+/** What of a held contract a sell that WAITS can still have: the contracts held, those a bracket (a ladder's targets
+    and stops) speaks for, those another working sell speaks for, and what is left — the ticket's "3 of 5 are working in
+    your bracket; 2 can be sold here" */
+export function spokenFor(s: Session, contract: ContractId): { held: number; bracket: number; other: number; free: number } {
+  const key = contractKey(contract);
+  const held = bookOf(s).positions.find(p => p.key === key)?.qty ?? 0;
+  const all = reserved(s, key);
+  const other = workingSells(s, key).filter(o => !o.oco || o.kind === 'market').reduce((a, o) => a + o.qty, 0);
+  const bracket = Math.max(0, all - other);
+  return { held, bracket: Math.min(held, bracket), other: Math.min(held, other), free: Math.max(0, held - all) };
+}
+const areWord = (n: number) => (n === 1 ? 'is' : 'are');
+/** The words for a sell that waits and finds its contracts spoken for */
+export function spokenWords(w: { held: number; bracket: number; other: number; free: number }): string {
+  const can = w.free === 0 ? 'none can be sold here' : `${w.free} can be sold here`;
+  if (w.bracket > 0 && w.other > 0) return `${w.bracket} of ${w.held} ${areWord(w.bracket)} working in your bracket and ${w.other} in another sell; ${can}`;
+  if (w.bracket > 0) return `${w.bracket === w.held && w.held > 1 ? `All ${w.held}` : `${w.bracket} of ${w.held}`} ${areWord(w.bracket)} working in your bracket; ${can}`;
+  return `${w.other === w.held && w.held > 1 ? `All ${w.held}` : `${w.other} of ${w.held}`} ${areWord(w.other)} working in another sell; ${can}`;
+}
+
 /* ---- the reader's own rules ---- */
 /** What the account was worth at today's open: the book as the fills BEFORE today left it, marked at the open's first minute */
 export function equityAtOpen(s: Session): number {
@@ -524,6 +550,22 @@ export function dayStateOf(s: Session): DayState {
   const pct = open > 0 ? (accountOf(s).equity - open) / open : 0;
   const limit = s.rules?.dailyLossPct;
   return { pct, stopped: limit != null && limit > 0 && pct <= -limit + 1e-9 };
+}
+/** "−$750" · "−$749.95": whole dollars where the cents are none */
+const lossWords = (v: number): string => {
+  const c = Math.round(Math.abs(v) * 100) / 100;
+  return `−$${c.toLocaleString('en-US', Number.isInteger(c) ? { maximumFractionDigits: 0 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+/** The reader's day stop, said plainly: the share, the account it is measured from (its value at the day's open,
+    `equityAtOpen`) and the dollars that makes — "Day stop: −3% of the account at 09:30 = −$750". `open` defaults to
+    the clock's day; null without the rule, or while the open cannot be valued (a held contract with no quote). */
+export function dayStopOf(s: Session, day = s.cursor.day): { pct: number; open: number; loss: number; words: string } | null {
+  const pct = s.rules?.dailyLossPct;
+  if (!(pct != null && pct > 0)) return null;
+  const open = s.opens?.[day] ?? equityAtOpen(day === s.cursor.day ? s : { ...s, cursor: { day, minute: 0 } });
+  if (!Number.isFinite(open)) return null;
+  const loss = cents(open * pct);
+  return { pct, open, loss, words: `Day stop: −${pctWords(pct)} of the account at 09:30 = ${lossWords(loss)}` };
 }
 /** Contracts a working BUY would open that are not held yet — counted with the open positions, so a resting order can
     never carry the book past the reader's limit on the minute it fills */
@@ -612,7 +654,7 @@ export function refusal(s: Session, d: Draft): string | null {
   const held = bookOf(s).positions.find(p => p.key === contractKey(d.contract))?.qty ?? 0;
   /* A market sell by hand is never "SPOKEN FOR": the ladder gives way (afterSell). A sell that WAITS has to find
      contracts nothing else speaks for. */
-  if (d.kind === 'market' ? held < d.qty : held - reserved(s, contractKey(d.contract)) < d.qty) return held ? (d.kind === 'market' ? `You hold ${held}` : 'Those contracts are already spoken for by a working order') : 'You do not hold that contract';
+  if (d.kind === 'market' ? held < d.qty : held - reserved(s, contractKey(d.contract)) < d.qty) return held ? (d.kind === 'market' ? `You hold ${held}` : spokenWords(spokenFor(s, d.contract))) : 'You do not hold that contract';
   if (d.kind === 'market' && q.dead) return 'No bid to sell into right now';
   if (d.on === 'name' && nameHit(d, q.spot)) return `${name} is already past that — it would sell on the next minute`;
   return null;
@@ -848,11 +890,27 @@ export function advance(s: Session, to: Moment, now: number): Session {
   for (let day: string | null = from.day, guard = 0; day && day <= to.day && guard < 400; day = sessionAfter(day), guard++) {
     const first = day === from.day ? from.minute + 1 : 0;
     const last = day === to.day ? to.minute : LAST_MIN;
+    /* the open walked through with a book carried into it: what the account was worth there is kept (the day stop's base) */
+    if (first === 0 && next.opens?.[day] == null && next.fills.some(f => f.at.day < day)) {
+      const eq = equityAtOpen({ ...next, cursor: { day, minute: 0 } });
+      if (Number.isFinite(eq)) next = { ...next, opens: { ...next.opens, [day]: eq } };
+    }
     const busy = next.orders.some(o => o.status === 'working');
     if (busy) for (let m = first; m <= last; m++) next = minuteOrders(next, { day, minute: m });
     if (last === LAST_MIN) next = bell(next, day);
   }
   return { ...next, cursor: to, touchedAt: now };
+}
+
+/** OPEN THE NEXT DAY: the bell rung on the clock's day (what expires settles, day orders go) and the clock at the next
+    session's open — positions and good-till-cancelled orders carried. The bell's door, and the roll-over's step. */
+export const nextOpen = (s: Session, now: number): Session => advance(s, { day: sessionAfter(s.cursor.day), minute: 0 }, now);
+/** THE CLOCK PLAYING: where one tick of `mins` session minutes takes it from `at`, or null where it stops. It always
+    stands on the bell first (16:00 rings, and is seen); from the bell, with the reader's roll-over on and a next day
+    on the tape, it goes on to that day's open — what "Open the next day" does — and keeps playing. */
+export function playStep(at: Moment, mins: number, roll: boolean, tomorrow: string | null): Moment | null {
+  if (at.minute >= LAST_MIN) return roll && tomorrow ? { day: tomorrow, minute: 0 } : null;
+  return { day: at.day, minute: Math.min(LAST_MIN, at.minute + Math.max(1, Math.floor(mins))) };
 }
 
 /* ---- the report ---- */

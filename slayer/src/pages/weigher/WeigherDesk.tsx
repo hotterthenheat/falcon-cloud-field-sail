@@ -216,7 +216,7 @@ const DeskCard = ({
             onClick={fold.onToggle}
             aria-expanded={fold.open}
             title={fold.open ? 'Fold the card to its head' : 'Open the card'}
-            className="inline-flex items-center justify-center w-4 h-4 -ml-1 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
+            className="hit-24 inline-flex items-center justify-center w-4 h-4 -ml-1 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
             data-fold={fold.testId}
           >
             <ChevronDown className={`w-3 h-3 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${fold.open ? '' : '-rotate-90'}`} />
@@ -836,7 +836,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     <button
       onClick={() => setFull(card)}
       title={card === 'chart' ? 'Fullscreen chart' : 'Fullscreen chain'}
-      className="p-1 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] transition-colors"
+      className="hit-24 p-1 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] transition-colors"
     >
       <Maximize2 className="w-3 h-3" />
     </button>

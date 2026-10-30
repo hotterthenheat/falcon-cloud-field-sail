@@ -94,6 +94,15 @@ export const JournalManualHome = () => {
   const journals = useMemo(() => (one ? [one] : missing ? [] : all), [one, missing, all]);
   const creating = q.get('new') === '1' || all.length === 0;
   const [importing, setImporting] = useState(q.get('import') === '1');
+  /* a link to `?journal=manual&import=1` (the journal's "Import a CSV" door) opens the import, even on this page */
+  const importAsked = q.get('import') === '1';
+  useEffect(() => {
+    if (importAsked) setImporting(true);
+  }, [importAsked]);
+  const closeImport = () => {
+    setImporting(false);
+    if (importAsked) set({ import: null });
+  };
   const [editing, setEditing] = useState(false);
 
   const set = (patch: Record<string, string | null>) => {
@@ -182,9 +191,13 @@ export const JournalManualHome = () => {
               csvWhyNot={csvWhyNot}
               csvTitle="This journal as CSV files in the import format — its days, and its trades if any"
               extra={
-                one ? (
+                !one && all.length > 1 ? (
+                  <button type="button" onClick={() => setImporting(v => !v)} aria-expanded={importing} className={door} title="Bring a CSV from your broker into one of your journals" data-journal-import-door>
+                    <FileUp className="w-3 h-3" /> Import
+                  </button>
+                ) : one ? (
                   <>
-                    <button type="button" onClick={() => setImporting(v => !v)} aria-expanded={importing} className={door} data-journal-import-door>
+                    <button type="button" onClick={() => (importing ? closeImport() : setImporting(true))} aria-expanded={importing} className={door} data-journal-import-door>
                       <FileUp className="w-3 h-3" /> Import
                     </button>
                     <button type="button" onClick={() => setEditing(v => !v)} aria-expanded={editing} className={door} title="Rename or delete this journal" data-journal-edit-door>
@@ -222,7 +235,27 @@ export const JournalManualHome = () => {
 
       {creating && <NewJournal first={!all.length} onMade={id => pickJournal({ book: 'manual', id })} onCancel={all.length ? () => set({ new: null }) : undefined} />}
       {one && editing && <EditJournal j={one} onDone={() => setEditing(false)} onDeleted={() => pickJournal({ book: 'manual', id: null })} />}
-      {one && importing && <ImportCard j={one} onClose={() => setImporting(false)} />}
+      {one && importing && <ImportCard j={one} onClose={closeImport} />}
+      {/* the import asked for with more than one journal and none picked: which one it goes into */}
+      {!one && !missing && importing && all.length > 1 && (
+        <div className={`${card} px-5 py-4 flex flex-col gap-3`} data-manual-import-pick>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className={headWord}>Bring in a CSV</span>
+            <span className="text-t12 text-textSecondary">Into which journal?</span>
+            <button type="button" onClick={closeImport} aria-label="Close the import" className="ml-auto tap-40 inline-flex items-center justify-center w-8 h-8 rounded-md text-textMuted hover:text-textPrimary">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {all.map(j => (
+              <button key={j.id} type="button" onClick={() => pickJournal({ book: 'manual', id: j.id })} className={door} data-manual-import-into={j.id}>
+                {j.name}
+                {j.broker ? <span className="normal-case tracking-normal text-textMuted"> · {j.broker}</span> : null}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {missing && (
         <div className={card}>
           <EmptyBox title="No such journal" reason="The link names a journal of your own that this browser does not hold." action={<button type="button" onClick={() => pickJournal({ book: 'manual', id: null })} className={door}>Your journals</button>} />

@@ -11,7 +11,8 @@ import ContractLabel from '../../components/ui/ContractLabel';
 import type { Column } from '../../components/ui/DataTable';
 import JournalCalendar from './JournalCalendar';
 import JournalBars from './JournalBars';
-import { EndDoors, JournalPicker, PeriodPick, saveFile } from './JournalPicker';
+import { EndDoors, JournalPicker, PeriodPick, door, saveFile } from './JournalPicker';
+import { FileUp } from 'lucide-react';
 import { EmptyBox } from '../../components/ui/states';
 import JournalStats from '../../components/review/JournalStats';
 import JournalDay, { type DayHolder } from '../../components/review/JournalDay';
@@ -286,7 +287,18 @@ export const JournalHome = ({ kind: liveKind }: { kind: JournalKind }) => {
             {/* WHICH JOURNAL: the book (paper, backtest, your own) and the account or session in it — never mixed */}
             <JournalPicker pick={livePick} onPick={pickJournal} onNew={openNew} />
             <PeriodPick value={livePeriod} onChange={v => set({ period: v === 'month' ? null : v })} />
-            <EndDoors onNotes={missing ? undefined : openNotes} onCsv={exportCsv} csvWhyNot={missing ? 'nothing — this journal is gone' : csvWhyNot} csvTitle="This period’s trades as a file a spreadsheet opens — with your tags and your words" />
+            <EndDoors
+              onNotes={missing ? undefined : openNotes}
+              onCsv={exportCsv}
+              csvWhyNot={missing ? 'nothing — this journal is gone' : csvWhyNot}
+              csvTitle="This period’s trades as a file a spreadsheet opens — with your tags and your words"
+              extra={
+                /* YOUR OWN TRADING: a broker's CSV brought into a journal of your own (JournalManual reads `import=1`) */
+                <Link to="?journal=manual&import=1" className={door} title="Bring your real trading in from your broker’s CSV — into a journal of your own, kept apart from paper and backtest" data-journal-import-csv>
+                  <FileUp className="w-3 h-3" /> Import a CSV
+                </Link>
+              }
+            />
           </>
         }
         sentence={

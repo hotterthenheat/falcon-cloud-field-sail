@@ -3,7 +3,8 @@
    reader's own. Every rule is a field that is either set or off (null / true), so a plan is a list of numbers, never
    code. The engine (engine.ts) asks:
 
-   - `ruleRefusal`  before a buy is taken, and again when a resting buy would fill: the hard rule it would break, or null.
+   - `ruleRefusal`  before a way in is taken (a buy, or a sell to open), and again when a resting one would fill: the
+                    hard rule it would break, or null — what the plan lets be sold among them (`allowSell`).
    - `judgeTick`    on every tick of the live market: a floor or a day's limit reached (fail, or the day is over).
    - `judgePass`    on every tick and at the roll: the target, the days, the trades, the best-day rule — pass, or the
                     next phase.
@@ -12,11 +13,13 @@
                     contract's close, no earnings).
    - `readRules`    the live progress of every rule, with the room left, for the desk and the Accounts page.
 
-   A sell (a way out) is never refused by a rule. */
+   A way out (a sell of what is held, a buy back of what is short) is never refused by a rule — but one that would leave
+   a call sold with nothing over it, on a plan that never allows that. */
 
 import type { ContractId } from '../review/quotes';
 import { contractKey, legsOf } from '../review/quotes';
 import { MULT } from '../review/engine';
+import { listKey } from './whitelists';
 import { addDays, dateAt, dayEndsAt, nyAt, nyInstant, sessionFrom } from './clock';
 import type { OptTrade, PaperAccount, PaperMarket, PaperView, OptDraft } from './engine';
 
@@ -25,6 +28,12 @@ import type { OptTrade, PaperAccount, PaperMarket, PaperView, OptDraft } from '.
 /* ================================================================== */
 
 export type DrawdownMode = 'static' | 'eod' | 'intraday';
+/** What a plan lets be sold to open: nothing (buys only) · what has a capped loss · Level 4 (here, the same: no margin) ·
+    everything, naked shorts on a Reg T margin estimate (the practice account's free reign) */
+export type AllowSell = 'none' | 'definedRisk' | 'level4' | 'all';
+/** What a way in is, for the rules: a single bought, a spread bought (debit) or sold (credit), a put sold cash-secured
+    or on margin, a call sold on its own or against a long call held on the same expiry */
+export type OpenShape = 'long' | 'debit' | 'credit' | 'csp' | 'shortPut' | 'shortCall' | 'hedgedCall';
 /** When a name reports, as far as the market knows: null — it does not (a fund, an index, none on the calendar) */
 export type EarningsWhen = { date: string; slot: 'BMO' | 'AMC' | null } | null;
 
@@ -67,17 +76,24 @@ export interface PropRules {
   buyingPower: number | null;
   /** The names that may be traded — null: any listed name */
   underlyings: string[] | null;
-  /** Debit spreads allowed (the desk only ever buys: long calls, long puts, debit spreads) */
+  /** …and where that list was read (whitelists.ts) */
+  underlyingsSource?: { url: string; asOf: string; says: string } | null;
+  /** Debit spreads allowed (a spread bought: it opens a short leg, so a buy-only plan of single legs has none) */
   spreads: boolean;
-  /** …but never on these names: single legs only */
+  /** …but never on these names: single legs only (kept for plans saved before `longOnlyOn`) */
   noSpreadsOn: string[] | null;
+  /** What may be sold to open (AllowSell) — a plan saved before this field is buy-only */
+  allowSell: AllowSell;
+  /** Names where only a single call or put may be bought: no spread, no selling to open (Vanquish: SPX, XSP, VIX) */
+  longOnlyOn: string[] | null;
   /** A contract expiring today may be bought */
   zeroDte: boolean;
   /** "15:55" — flat by this New York time every trading day; null: no daily flat time */
   flatBy: string | null;
-  /** On its expiry day a contract is closed at this New York time — but for the names in `except`, which the firm
-      closes later than the 16:00 bell this desk's quotes stop at: those settle at the 16:00 close here */
-  expiryClose: { at: string; except: string[] } | null;
+  /** On its expiry day a contract is closed at this New York time — but for the names in `except`, whose options trade
+      on to 16:15: those are closed at `lateAt` (Options Funding: 16:10) at the live bid (a short: the ask), or, without
+      `lateAt`, settle at the 16:00 close */
+  expiryClose: { at: string; except: string[]; lateAt?: string } | null;
   /** May a position be held past the close into the next session */
   overnight: boolean;
   /** …and over a weekend or a market holiday */
@@ -125,8 +141,11 @@ export const NO_RULES: PropRules = {
   maxOpenPositions: null,
   buyingPower: null,
   underlyings: null,
+  underlyingsSource: null,
   spreads: true,
   noSpreadsOn: null,
+  allowSell: 'none',
+  longOnlyOn: null,
   zeroDte: true,
   flatBy: null,
   expiryClose: null,
@@ -252,7 +271,11 @@ export function flatTimeOf(a: PaperAccount, day: string, c: ContractId | null, m
   if (r.flatBy) out.push({ at: nyInstant(day, minutesOf(r.flatBy)), why: `flat by ${r.flatBy} ET`, rule: 'flat' });
   if (!r.overnight) bell('nothing is held past the close', 'overnight');
   else if (!r.weekend && breakFollows(day)) bell('nothing is held over the weekend or a market holiday', 'weekend');
-  if (c && r.expiryClose && c.expiry === day && !r.expiryClose.except.includes(c.ticker.toUpperCase())) out.push({ at: nyInstant(day, minutesOf(r.expiryClose.at)), why: `an expiring contract is closed at ${r.expiryClose.at} ET on its expiry day`, rule: 'expiry' });
+  if (c && r.expiryClose && c.expiry === day) {
+    const late = r.expiryClose.except.includes(c.ticker.toUpperCase());
+    if (!late) out.push({ at: nyInstant(day, minutesOf(r.expiryClose.at)), why: `an expiring contract is closed at ${r.expiryClose.at} ET on its expiry day`, rule: 'expiry' });
+    else if (r.expiryClose.lateAt) out.push({ at: nyInstant(day, minutesOf(r.expiryClose.lateAt)), why: `an expiring ${c.ticker.toUpperCase()} contract is closed at ${r.expiryClose.lateAt} ET on its expiry day`, rule: 'expiry' });
+  }
   const name = c?.ticker.toUpperCase();
   if (!r.earnings && name) {
     const e = m.earnings?.(name);
@@ -264,32 +287,90 @@ export function flatTimeOf(a: PaperAccount, day: string, c: ContractId | null, m
   return out.sort((x, y) => x.at - y.at)[0];
 }
 
+/** The instant an expiring contract of a late name (SPY, QQQ, IWM, DIA on Options Funding) is closed by the plan, after
+    the 16:00 bell its quotes trade on past — null where the plan has no such close for it */
+export function lateCloseOf(a: PaperAccount, c: ContractId): number | null {
+  const x = rulesOf(a)?.expiryClose;
+  if (!x?.lateAt || !x.except.includes(c.ticker.toUpperCase())) return null;
+  return nyInstant(c.expiry, minutesOf(x.lateAt));
+}
+
 /* ================================================================== */
-/*  WHAT A BUY WOULD BREAK                                             */
+/*  WHAT A WAY IN WOULD BREAK                                          */
 /* ================================================================== */
 
-export type RuleId = 'target' | 'daily' | 'drawdown' | 'days' | 'good-days' | 'trades' | 'time' | 'consistency' | 'hold' | 'contracts' | 'cost' | 'open' | 'bp' | 'names' | 'spreads' | '0dte' | 'flat' | 'overnight' | 'weekend' | 'expiry' | 'earnings' | 'fee';
+/** What a plan lets be sold, in two words — for the account card and the chooser */
+export const sellWords = (s: AllowSell): string => (s === 'none' ? 'Buy only' : s === 'definedRisk' ? 'Defined-risk selling' : s === 'level4' ? 'Level 4' : 'Free reign');
+/** …and in a sentence */
+export const sellSays = (r: Pick<PropRules, 'allowSell' | 'spreads'>): string =>
+  r.allowSell === 'none'
+    ? `Buys only — long calls and puts${r.spreads ? ' and debit spreads' : ''}; nothing is sold to open`
+    : r.allowSell === 'definedRisk'
+      ? 'Selling with a capped loss only — credit spreads, iron condors, puts held at their full loss; a call is sold only against a long call on the same expiry'
+      : r.allowSell === 'level4'
+        ? 'Level 4, cash only — spreads bought and sold, iron condors and butterflies, cash-secured puts; a call is sold only against a long call on the same expiry (covered calls need shares, which this desk does not hold)'
+        : 'Everything — calls and puts bought or sold, naked included (held on a Reg T margin estimate), spreads, condors, cash-secured puts';
+
+/** What a way in is: `d` against what is held now (v) */
+export function shapeOf(d: Pick<OptDraft, 'contract' | 'side' | 'secured' | 'qty'>, v: Pick<PaperView, 'opt'>): OpenShape {
+  const c = d.contract;
+  if (d.side === 'buy') return c.short != null ? 'debit' : 'long';
+  if (c.short != null) return 'credit';
+  if (c.right === 'P') return d.secured === 'cash' ? 'csp' : 'shortPut';
+  /* a long call held on the same name and expiry, not already over another short call, caps a call sold now */
+  const same = v.opt.filter(p => p.contract.ticker === c.ticker && p.contract.expiry === c.expiry && p.contract.right === 'C' && p.contract.short == null);
+  const longs = same.filter(p => p.dir > 0).reduce((x, p) => x + p.qty, 0);
+  const shorts = same.filter(p => p.dir < 0).reduce((x, p) => x + p.qty, 0);
+  return longs - shorts >= d.qty ? 'hedgedCall' : 'shortCall';
+}
+/** Does the plan sell a put only cash-secured (it uses no margin) */
+export const putsSecured = (a: PaperAccount): boolean => {
+  const r = rulesOf(a);
+  return !!r && (r.allowSell === 'definedRisk' || r.allowSell === 'level4');
+};
+/** Does the plan never let a call be sold with nothing over it */
+export const nakedCallsBarred = (a: PaperAccount): boolean => {
+  const r = rulesOf(a);
+  return !!r && r.allowSell !== 'all';
+};
+/** What the plan does not let this way in be, in words — or null */
+export function shapeRefusal(r: PropRules, shape: OpenShape, name: string): string | null {
+  if (r.longOnlyOn?.includes(name) && shape !== 'long') return `This plan allows only single calls and puts on ${name}, bought — no spreads and no selling to open`;
+  if ((shape === 'debit' || shape === 'credit') && r.noSpreadsOn?.includes(name)) return `This plan allows only single calls and puts on ${name}`;
+  if (shape === 'long') return null;
+  if (shape === 'debit') return r.spreads ? null : 'This plan does not allow spreads — single calls and puts only';
+  if (r.allowSell === 'all') return null;
+  if (r.allowSell === 'none') return `This plan buys only — ${r.spreads ? 'calls, puts and debit spreads' : 'single calls and puts'}; nothing may be sold to open`;
+  if (shape === 'shortPut') return 'On this plan a put is sold cash-secured — its whole loss, the strike × 100 less the premium, is held';
+  if (shape === 'shortCall')
+    return r.allowSell === 'level4'
+      ? 'Level 4 here is cash only, no margin — a call sold on its own has no cap on its loss. Sell it as a spread, or against a long call on the same expiry (covered calls need shares, which this desk does not hold)'
+      : 'This plan sells only with a capped loss — a call sold on its own has none. Sell it as a spread, or against a long call on the same expiry';
+  return null;
+}
+
+export type RuleId = 'target' | 'daily' | 'drawdown' | 'days' | 'good-days' | 'trades' | 'time' | 'consistency' | 'hold' | 'contracts' | 'cost' | 'open' | 'bp' | 'names' | 'spreads' | 'sell' | '0dte' | 'flat' | 'overnight' | 'weekend' | 'expiry' | 'earnings' | 'fee';
 
 /** Contracts a position or an order is, a leg each */
 const legsQty = (c: ContractId, qty: number) => qty * legsOf(c);
 
-/** The hard rule a buy would break, in words — null where it breaks none. `px`: what it would pay a contract.
-    `except`: a resting order being asked again as it fills (not counted twice). */
+/** The hard rule a way in would break, in words — null where it breaks none. `px`: what it would pay (a buy) or take in
+    (a sell to open) a contract. `except`: a resting order being asked again as it fills (not counted twice). */
 export function ruleRefusal(a: PaperAccount, m: PaperMarket, d: OptDraft, v: PaperView, px: number, except?: string): string | null {
   if (a.status !== 'open') return a.kind === 'evaluation' ? `This account is over — it ${a.status === 'passed' ? 'passed' : a.status === 'failed' ? 'failed' : 'was ended'}` : 'This account is closed';
   const r = rulesOf(a);
   if (!r) return null;
   if (a.dayOver && a.dayOver.day === a.day) return `The day’s loss limit was reached (${a.dayOver.why}) — no new positions until the next trading day`;
   const name = d.contract.ticker.toUpperCase();
-  if (r.underlyings && !r.underlyings.includes(name)) return `This plan trades ${r.underlyings.length > 12 ? 'the names on the firm’s list' : r.underlyings.join(', ')} only — ${name} is not on it`;
-  if (d.contract.short != null && !r.spreads) return 'This plan does not allow spreads — single calls and puts only';
-  if (d.contract.short != null && r.noSpreadsOn?.includes(name)) return `This plan allows only single calls and puts on ${name}`;
+  if (r.underlyings && !r.underlyings.some(n => listKey(n) === listKey(name))) return `This plan trades ${r.underlyings.length > 12 ? `the ${r.underlyings.length} names on the firm’s list${r.underlyingsSource ? ` (as of ${r.underlyingsSource.asOf})` : ''}` : r.underlyings.join(', ')} only — ${name} is not on it`;
+  const shaped = shapeRefusal(r, shapeOf(d, v), name);
+  if (shaped) return shaped;
   if (!r.zeroDte && d.contract.expiry === nyAt(m.now).date) return 'This plan does not allow contracts that expire today (0DTE)';
   const flat = flatTimeOf(a, a.day, d.contract, m);
   if (flat && m.now >= flat.at && m.now < dayEndsAt(a.day)) return `It is past the plan’s close — ${flat.why}`;
   if (!r.earnings && m.earnings && m.earnings(name) === undefined) return `${name}’s earnings date is not loaded yet — this plan does not allow holding through a report`;
   /* what is open and what is resting, with this buy */
-  const pending = a.opt.orders.filter(o => o.status === 'working' && o.side === 'buy' && o.id !== except);
+  const pending = a.opt.orders.filter(o => o.status === 'working' && (o.opens ?? o.side === 'buy') && o.id !== except);
   const key = contractKey(d.contract);
   if (r.maxContracts != null) {
     const n = v.opt.reduce((x, p) => x + legsQty(p.contract, p.qty), 0) + pending.reduce((x, o) => x + legsQty(o.contract, o.qty), 0) + legsQty(d.contract, d.qty);
@@ -300,27 +381,28 @@ export function ruleRefusal(a: PaperAccount, m: PaperMarket, d: OptDraft, v: Pap
     if (keys.size > r.maxOpenPositions) return `No more than ${r.maxOpenPositions} ${r.maxOpenPositions === 1 ? 'position' : 'positions'} open at once on this plan`;
   }
   const fee = (a.sandbox ? 0 : a.fee) * legsQty(d.contract, d.qty);
-  const cost = px * MULT * d.qty + fee;
-  if (r.maxPositionCost != null) {
+  const cost = d.side === 'buy' ? px * MULT * d.qty + fee : 0;
+  if (r.maxPositionCost != null && d.side === 'buy') {
     const held = v.opt.find(p => p.key === key);
     const same = (held ? held.avg * MULT * held.qty + held.fees : 0) + pending.filter(o => contractKey(o.contract) === key).reduce((x, o) => x + (o.price ?? 0) * MULT * o.qty, 0) + cost;
     if (same > r.maxPositionCost + EPS) return `One position may cost no more than ${money(r.maxPositionCost)} on this plan — this would be ${money(same, 2)}`;
   }
-  if (r.buyingPower != null) {
+  if (r.buyingPower != null && d.side === 'buy') {
     const tied = v.opt.reduce((x, p) => x + p.avg * MULT * p.qty + p.fees, 0) + pending.reduce((x, o) => x + (o.price ?? 0) * MULT * o.qty, 0) + cost;
     if (tied > r.buyingPower + EPS) return `No more than ${money(r.buyingPower)} tied up in premium at once on this plan — this would be ${money(tied, 2)}`;
   }
-  /* the buy itself costs, at once, the spread to where the rules value it and the fee: never let that alone put the
-     account through a floor */
+  /* the way in itself costs, at once, the spread to where the rules value it and the fee: never let that alone put the
+     account through a floor (a short is valued at the ask on a plan that values at the bid: what buying it back costs) */
   const q = m.optQuote(d.contract);
-  const at = r.markAt === 'bid' ? q.bid : q.mark;
+  const at = r.markAt === 'bid' ? (d.side === 'buy' ? q.bid : q.ask) : q.mark;
   const worth = worthOf(a, v);
   if (Number.isFinite(at) && Number.isFinite(worth)) {
-    const after = worth - Math.max(0, px - at) * MULT * d.qty - fee;
+    const after = worth - (d.side === 'buy' ? Math.max(0, px - at) : Math.max(0, at - px)) * MULT * d.qty - fee;
     const floor = floorOf(a);
-    if (floor != null && r.drawdown?.on !== 'balance' && after <= floor + EPS) return `This buy alone would put the account at ${money(after, 2)}, through its floor at ${money(floor, 2)}`;
+    const word = d.side === 'buy' ? 'buy' : 'sale';
+    if (floor != null && r.drawdown?.on !== 'balance' && after <= floor + EPS) return `This ${word} alone would put the account at ${money(after, 2)}, through its floor at ${money(floor, 2)}`;
     const df = dayFloorOf(a);
-    if (df && after <= df.floor + EPS) return `This buy alone would put the day at ${money(after - df.from, 2)}, through its loss limit of ${money(r.dailyLoss!.amount)}`;
+    if (df && after <= df.floor + EPS) return `This ${word} alone would put the day at ${money(after - df.from, 2)}, through its loss limit of ${money(r.dailyLoss!.amount)}`;
   }
   return null;
 }
@@ -512,7 +594,7 @@ export function readRules(a: PaperAccount, v: PaperView, m: Pick<PaperMarket, 'n
     out.push({ id: 'consistency', label: of === 'trade' ? 'Best trade' : 'Best day', kind: 'limit', fill: clamp01(now / share), state: ok ? (now >= share * 0.75 ? 'near' : 'ok') : 'hit', value: p.best > 0 ? `${money(p.best)}${p.profit > 0 ? ` · ${Math.round(now * 100)}%` : ''}` : '—', room: `${r.consistency.strict ? 'under' : 'at most'} ${Math.round(share * 100)}% of the profit`, says: `No single ${of} ${r.consistency.strict ? 'may reach' : 'more than'} ${Math.round(share * 100)}% of the profit — until it holds, the pass waits (the profit needed is the best ${of} ÷ ${share})` });
   }
   if (r.minHoldSec != null) out.push({ id: 'hold', label: `Held over ${r.minHoldSec}s`, kind: 'fact', fill: 0, state: p.excluded > 0 ? 'near' : 'ok', value: p.excluded > 0 ? `${money(p.excluded, 2)} not counted` : 'every win counts so far', room: '', says: `A winning trade held ${r.minHoldSec} seconds or less does not count toward the target` });
-  const pending = a.opt.orders.filter(o => o.status === 'working' && o.side === 'buy');
+  const pending = a.opt.orders.filter(o => o.status === 'working' && (o.opens ?? o.side === 'buy'));
   if (r.maxContracts != null) {
     const n = v.opt.reduce((x, q) => x + legsQty(q.contract, q.qty), 0) + pending.reduce((x, o) => x + legsQty(o.contract, o.qty), 0);
     const fill = clamp01(n / r.maxContracts);
@@ -542,14 +624,18 @@ export function readRules(a: PaperAccount, v: PaperView, m: Pick<PaperMarket, 'n
     const hhmm = `${String(Math.floor(at.minutes / 60)).padStart(2, '0')}:${String(at.minutes % 60).padStart(2, '0')}`;
     out.push({ id: flat.rule, label: `Flat by ${hhmm} ET`, kind: 'fact', fill: 0, state: past ? 'hit' : left < 15 * 60_000 ? 'near' : 'ok', value: past ? 'flat until the next session' : at.date === nyAt(m.now).date ? untilWords(left) : 'every session', room: '', says: `Everything open is closed by the rules at ${hhmm} ET — ${flat.why}` });
   }
-  if (r.expiryClose) out.push({ id: 'expiry', label: 'Expiring contracts', kind: 'fact', fill: 0, state: 'ok', value: `closed ${r.expiryClose.at} ET`, room: '', says: `A contract is closed by the rules at ${r.expiryClose.at} ET on its expiry day${r.expiryClose.except.length ? ` — but ${r.expiryClose.except.join(', ')}, which the firm closes after the 16:00 bell: here they settle at the 16:00 close` : ''}` });
+  if (r.expiryClose) {
+    const x = r.expiryClose;
+    out.push({ id: 'expiry', label: 'Expiring contracts', kind: 'fact', fill: 0, state: 'ok', value: `closed ${x.at} ET${x.except.length && x.lateAt ? ` · ${x.except.join(', ')} ${x.lateAt}` : ''}`, room: '', says: `A contract is closed by the rules at ${x.at} ET on its expiry day${x.except.length ? ` — but ${x.except.join(', ')}, whose options trade on to 16:15: ${x.lateAt ? `those are closed at ${x.lateAt} ET at the live bid (a short at the ask), on the quotes of that window` : 'here they settle at the 16:00 close'}` : ''}` });
+  }
   if (!r.earnings) out.push({ id: 'earnings', label: 'Earnings', kind: 'fact', fill: 0, state: 'ok', value: 'not through a report', room: '', says: `A position on a name that reports before the next session is closed at ${BEFORE_BELL} ET; a buy waits until the report date is known` });
-  const allowed: string[] = [];
+  const allowed: string[] = [sellWords(r.allowSell)];
   if (r.underlyings) allowed.push(r.underlyings.length > 12 ? `${r.underlyings.length} names` : r.underlyings.join(' · '));
   if (!r.zeroDte) allowed.push('no 0DTE');
-  if (!r.spreads) allowed.push('calls and puts only');
-  else if (r.noSpreadsOn?.length) allowed.push(`single legs on ${r.noSpreadsOn.join(', ')}`);
-  if (allowed.length) out.push({ id: r.underlyings ? 'names' : !r.zeroDte ? '0dte' : 'spreads', label: 'Allowed', kind: 'fact', fill: 0, state: 'ok', value: allowed.join(' · '), room: '', says: `Buys only — long calls, long puts${r.spreads ? ', debit spreads' : ''}${r.noSpreadsOn?.length ? ` (single legs only on ${r.noSpreadsOn.join(', ')})` : ''}${r.underlyings ? `, on ${r.underlyings.length > 12 ? 'the firm’s list of names' : r.underlyings.join(', ')}` : ''}${r.zeroDte ? '' : ', nothing that expires today'}` });
+  if (r.allowSell === 'none' && !r.spreads) allowed.push('calls and puts only');
+  const single = r.longOnlyOn?.length ? r.longOnlyOn : r.noSpreadsOn;
+  if (single?.length) allowed.push(`single legs bought on ${single.join(', ')}`);
+  out.push({ id: r.allowSell !== 'none' ? 'sell' : r.underlyings ? 'names' : !r.zeroDte ? '0dte' : 'spreads', label: 'Allowed', kind: 'fact', fill: 0, state: 'ok', value: allowed.join(' · '), room: '', says: `${sellSays(r)}${single?.length ? ` · on ${single.join(', ')} only single calls and puts, bought` : ''}${r.underlyings ? ` · on ${r.underlyings.length > 12 ? `the firm’s list of ${r.underlyings.length} names${r.underlyingsSource ? ` (${r.underlyingsSource.url.replace(/^https?:\/\//, '')}, read ${r.underlyingsSource.asOf})` : ''}` : r.underlyings.join(', ')}` : ''}${r.zeroDte ? '' : ' · nothing that expires today'}` });
   out.push({ id: 'fee', label: 'Commission', kind: 'fact', fill: 0, state: 'ok', value: r.fee == null ? 'none stated' : `$${r.fee.toFixed(2)} a contract, each side`, room: '', says: r.fee == null ? 'The firm states no commission, so none is charged here' : `$${r.fee.toFixed(2)} a contract (each leg), on the way in and the way out — it counts toward the profit and the drawdown` });
   return out;
 }

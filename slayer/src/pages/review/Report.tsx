@@ -6,13 +6,15 @@
 import { useEffect, useMemo } from 'react';
 import { sayPage } from '../../components/layout/PageMeta';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Download } from 'lucide-react';
 import TraceBox, { Fact, RestFoot, TraceGrid, useRestCap } from '../../components/trace/TraceBox';
 import ContractLabel from '../../components/ui/ContractLabel';
 import { EmptyBox } from '../../components/ui/states';
 import SessionsChart, { type ChartPoint } from '../../components/record/SessionsChart';
 import type { Column } from '../../components/ui/DataTable';
-import { accountOf, cutsOf, decayPerDay, feesOf, stampOf, statsOf, type Trade } from '../../data/review/engine';
+import { accountOf, cutsOf, dayStopOf, decayPerDay, feesOf, stampOf, statsOf, type Trade } from '../../data/review/engine';
+import { dayRowsOf, reportDaysCsv, reportTradesCsv, type DayRow } from '../../data/review/reportCsv';
+import { saveFile } from './JournalPicker';
 import { contractWords } from '../../data/review/quotes';
 import { useSession } from '../../data/review/store';
 import { barTime, dayWords } from '../../data/review/history';
@@ -20,17 +22,6 @@ import { dirInk, heldWords, momentWords, pct, rWords, usd, usdSigned } from '../
 
 const ENDED: Record<Trade['how'], string> = { sold: 'Sold by you', target: 'Target hit', stopped: 'Stopped out', expired: 'Held to the bell', scaled: 'Scaled out' };
 const endedWords = (t: Trade) => (t.how !== 'expired' ? ENDED[t.how] : t.settle === 'cash' ? 'Cash-settled' : t.avgOut > 0 ? 'Exercised at the close' : 'Expired worthless');
-/** A day of the session: what closed on it, and the account as the bell left it (where the bell has rung) */
-interface DayRow {
-  day: string;
-  n: number;
-  net: number;
-  /** The account at the bell, marked — null on a day the bell has not rung on */
-  equity: number | null;
-  /** The account's move that day, open contracts marked — null without both bells */
-  move: number | null;
-  held: number | null;
-}
 /** What a trade has been worth, with its 95% range (the mean's ± 1.96 standard errors) — null under two trades */
 export function expectancyRange(pnls: number[]): { mean: number; lo: number; hi: number } | null {
   const n = pnls.length;
@@ -69,19 +60,7 @@ const Report = () => {
   }, [trades, session]);
   const oneDay = useMemo(() => new Set(trades.flatMap(t => [t.opened.day, t.closed.day])).size <= 1, [trades]);
   /* By day: the trades that closed on it, and the account at its bell (the engine keeps one a day it rings) */
-  const days = useMemo<DayRow[]>(() => {
-    if (!session) return [];
-    const closes = session.closes ?? {};
-    const all = [...new Set([...Object.keys(closes), ...trades.map(t => t.closed.day)])].sort();
-    let prev: number | null = session.startCash;
-    return all.map(day => {
-      const mine = trades.filter(t => t.closed.day === day);
-      const c = closes[day];
-      const row: DayRow = { day, n: mine.length, net: mine.reduce((a, t) => a + t.pnl, 0), equity: c ? c.equity : null, move: c && prev != null ? c.equity - prev : null, held: c ? c.held : null };
-      prev = c ? c.equity : null;
-      return row;
-    });
-  }, [session, trades]);
+  const days = useMemo<DayRow[]>(() => (session ? dayRowsOf(session, trades) : []), [session, trades]);
   /* the account's deepest fall from a high, bell to bell, open contracts marked */
   const bellFall = useMemo(() => {
     if (!session) return null;
@@ -132,7 +111,17 @@ const Report = () => {
 
   /* the rules the session was run under — chosen at its start, hard blocks on a way in (data/review/engine) */
   const r = session.rules;
-  const rulesWords = [r?.maxOpen ? `${r.maxOpen} open at once` : '', r?.maxRiskPct ? `${r.maxRiskPct * 100}% of the account a trade` : '', r?.dailyLossPct ? `the day stops at −${r.dailyLossPct * 100}%` : ''].filter(Boolean).join(' · ');
+  const rulesWords = [r?.maxOpen ? `${r.maxOpen} open at once` : '', r?.maxRiskPct ? `${r.maxRiskPct * 100}% of the account a trade` : '', r?.dailyLossPct ? `the day stops at −${+(r.dailyLossPct * 100).toFixed(1)}% of the account at 09:30` : ''].filter(Boolean).join(' · ');
+  /* the day stop, plainly: the clock's day's, in dollars — and each day's in the By day table */
+  const dayStop = dayStopOf(session);
+  const withStop = !!r?.dailyLossPct;
+  /* THE FILES: the closed trades and the By day table, in the journal's CSV conventions (data/review/reportCsv.ts) */
+  const slug = session.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'session';
+  const csvWhyNot = !trades.length && !days.length ? 'nothing yet — no trade has closed and no bell has rung' : null;
+  const exportCsv = () => {
+    saveFile(`slayer-backtest-${slug}-trades.csv`, reportTradesCsv(trades));
+    window.setTimeout(() => saveFile(`slayer-backtest-${slug}-days.csv`, reportDaysCsv(days, withStop)), 300);
+  };
   const sentence =
     stats.n === 0
       ? 'No trade has closed in this session yet. The report fills in as trades close — a sale, a target, a stop, or the bell.'
@@ -163,9 +152,14 @@ const Report = () => {
         </>
       }
       controls={
-        <Link to={`/practice/backtest/${session.id}`} className="inline-flex items-center gap-1.5 h-7 px-3 rounded-md border border-borderSubtle bg-chip font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-review-desk-door>
-          <ArrowLeft className="w-3 h-3" /> Back to the desk
-        </Link>
+        <>
+          <Link to={`/practice/backtest/${session.id}`} className="tap-40 inline-flex items-center gap-1.5 h-7 px-3 rounded-md border border-borderSubtle bg-chip font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-review-desk-door>
+            <ArrowLeft className="w-3 h-3" /> Back to the desk
+          </Link>
+          <button type="button" onClick={exportCsv} disabled={!!csvWhyNot} aria-disabled={!!csvWhyNot} title={csvWhyNot ?? 'The closed trades and the By day table, as two CSV files a spreadsheet opens'} className="tap-40 ml-auto inline-flex items-center gap-1.5 h-7 px-3 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors disabled:opacity-60 disabled:cursor-not-allowed" data-report-export={csvWhyNot ? 'off' : 'on'}>
+            <Download className="w-3 h-3" /> CSV · trades and days
+          </button>
+        </>
       }
       sentence={sentence}
     >
@@ -197,13 +191,24 @@ const Report = () => {
       {days.length > 0 && (
         <div className="px-5 pb-4 pt-3 border-t border-borderSubtle/70 min-w-0" data-report-days>
           <div className="font-mono text-t10 font-semibold uppercase tracking-widest text-textPrimary">By day</div>
+          {withStop && (
+            <p className="mt-0.5 text-t11 text-textSecondary" data-report-day-stop>
+              {dayStop ? dayStop.words : `Day stop: −${+((r?.dailyLossPct ?? 0) * 100).toFixed(1)}% of the account at 09:30`}
+              <span className="text-textMuted"> · on {dayWords(session.cursor.day)}, the clock’s day — measured afresh at each open, from the account as it stood then</span>
+            </p>
+          )}
           <div className="mt-1.5 overflow-x-auto">
-            <div className="grid grid-cols-[minmax(84px,1fr)_auto_auto_auto_auto] gap-x-4 font-mono text-t11 tnum min-w-[340px] max-w-[720px]">
+            <div className={`grid ${withStop ? 'grid-cols-[minmax(84px,1fr)_auto_auto_auto_auto_auto] max-w-[820px]' : 'grid-cols-[minmax(84px,1fr)_auto_auto_auto_auto] max-w-[720px]'} gap-x-4 font-mono text-t11 tnum min-w-[340px]`}>
               <span className="text-t9 uppercase tracking-widest text-textMuted pb-1">Day</span>
               <span className="text-t9 uppercase tracking-widest text-textMuted text-right pb-1">Closed</span>
               <span className="text-t9 uppercase tracking-widest text-textMuted text-right pb-1" title="What the trades that closed that day made or lost">Their P&amp;L</span>
               <span className="text-t9 uppercase tracking-widest text-textMuted text-right pb-1" title="The account's move from the bell before, open contracts marked at the bell">Account</span>
               <span className="text-t9 uppercase tracking-widest text-textMuted text-right pb-1" title="What the account was worth at 16:00 ET">At the bell</span>
+              {withStop && (
+                <span className="text-t9 uppercase tracking-widest text-textMuted text-right pb-1" title="Your day stop that day in dollars: the account as it stood at 09:30, times your rule">
+                  Day stop
+                </span>
+              )}
               {days.map(d => (
                 <div key={d.day} className="contents" data-report-day={d.day}>
                   <span className="py-1 border-t border-borderSubtle/70 text-textPrimary">{dayWords(d.day)}</span>
@@ -213,6 +218,11 @@ const Report = () => {
                   <span className="py-1 border-t border-borderSubtle/70 text-right text-textSecondary" title={d.held ? `${d.held} ${d.held === 1 ? 'position' : 'positions'} carried over the night` : undefined}>
                     {d.equity != null ? usd(d.equity) : <span className="text-textMuted" title="The bell has not rung on this day yet">—</span>}
                   </span>
+                  {withStop && (
+                    <span className="py-1 border-t border-borderSubtle/70 text-right text-textSecondary" title={d.stop != null ? `−${+((r?.dailyLossPct ?? 0) * 100).toFixed(1)}% of the account at 09:30` : 'The account at that open could not be valued — a held contract had no quote'}>
+                      {d.stop != null ? usdSigned(-d.stop, Number.isInteger(d.stop) ? 0 : 2) : '—'}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

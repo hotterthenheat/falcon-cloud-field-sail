@@ -440,6 +440,11 @@ export interface StudyResult {
 }
 
 const BUCKETS: [number, number][] = [[0, 0.3], [0.3, 0.4], [0.4, 0.5], [0.5, 0.6], [0.6, 0.65], [0.65, P1_MIN], [P1_MIN, 0.75], [0.75, 0.8], [0.8, 1.01]];
+const bucketName = (lo: number, hi: number) => `${(lo * 100).toFixed(lo === P1_MIN ? 2 : 0)}–${hi > 1 ? '100' : (hi * 100).toFixed(hi === P1_MIN ? 2 : 0)}%`;
+/** The cuts the threshold sweep tries */
+const CUTS = [0.6, 0.65, 0.7, P1_MIN, 0.75, 0.8, 0.85];
+/** Inside the minutes the trees were trained on (15 to 330 after 09:30) */
+const inWin = (l: Pick<Label, 't'>) => l.t - 570 >= 15 && l.t - 570 <= 330;
 
 export interface StudyDeps extends ReviewDeps {
   marks: readonly MarkRow[];
@@ -609,12 +614,11 @@ export async function runStudy(deps: StudyDeps): Promise<StudyResult> {
     deps.onLabel?.(label);
   }
   const done = labels.filter(l => l.tp1 != null);
-  const inWin = (l: Label) => l.t - 570 >= 15 && l.t - 570 <= 330;
   const calibration = BUCKETS.map(([lo, hi]) => {
     const inB = done.filter(l => l.p1 >= lo && l.p1 < hi);
     const w = inB.filter(inWin);
     return {
-      bucket: `${(lo * 100).toFixed(lo === P1_MIN ? 2 : 0)}–${hi > 1 ? '100' : (hi * 100).toFixed(hi === P1_MIN ? 2 : 0)}%`,
+      bucket: bucketName(lo, hi),
       lo,
       hi,
       n: inB.length,
@@ -625,7 +629,7 @@ export async function runStudy(deps: StudyDeps): Promise<StudyResult> {
     };
   });
   /* the same labels cut at other thresholds (inside the trained minutes, one row per contract per mark) */
-  const thresholds = [0.6, 0.65, 0.7, P1_MIN, 0.75, 0.8, 0.85].map(th => {
+  const thresholds = CUTS.map(th => {
     const pass = done.filter(l => inWin(l) && l.p1 >= th);
     const rets = pass.map(l => l.ret ?? 0);
     return { p1: th, n: pass.length, tp1: pass.length ? Number((pass.filter(l => l.tp1).length / pass.length).toFixed(3)) : 0, meanRet: rets.length ? Number((rets.reduce((a, b) => a + b, 0) / rets.length).toFixed(2)) : null };
@@ -678,6 +682,251 @@ function suggest(cal: StudyResult['calibration'], th: StudyResult['thresholds'],
   for (const r of lost) byCause.set(r.verdict.cause, (byCause.get(r.verdict.cause) ?? 0) + 1);
   if (lost.length) out.push({ change: 'Look at the losing Book A/B calls by cause before changing the exits', evidence: [...byCause].map(([c, n]) => `${c}: ${n}`).join(', '), n: lost.length, applied: false });
   return out;
+}
+
+/* ---- every session pooled ---- */
+
+/** One labelled session as the pool reads it: its labels file, and its study when one was built. */
+export interface StudyDay {
+  day: string;
+  labels: readonly Label[];
+  study: Pick<StudyResult, 'missReasons' | 'movers'> | null;
+}
+
+/** A rate with its 95% Wilson interval (k of n). */
+export interface Rate {
+  n: number;
+  k: number;
+  rate: number;
+  lo95: number;
+  hi95: number;
+}
+
+/** The 95% Wilson score interval for k successes in n: honest at small n and at rates near 0 or 1. */
+export function wilson(k: number, n: number, z = 1.959964): Rate {
+  if (!(n > 0)) return { n: 0, k: 0, rate: 0, lo95: 0, hi95: 0 };
+  const p = k / n;
+  const z2 = z * z;
+  const den = 1 + z2 / n;
+  const mid = (p + z2 / (2 * n)) / den;
+  const half = (z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n))) / den;
+  const r3 = (v: number) => Number(v.toFixed(4));
+  return { n, k, rate: r3(p), lo95: r3(Math.max(0, mid - half)), hi95: r3(Math.min(1, mid + half)) };
+}
+
+/** What reading Model 1 as a probability would need, from the pooled labels. Each bar is fixed here; meeting them
+    all is evidence, not a switch: the "Unvalidated" label is the owner's to lift, after the input check. */
+export const POOL_BAR = {
+  /** labelled sessions: about a month of trading, so one regime or one news day cannot carry the table */
+  sessions: 20,
+  /** settled rows inside the trained minutes, in every Model 1 bucket: at a 20% rate the 95% interval is then about
+      ±4 points, under the gap allowed */
+  rowsPerBucket: 400,
+  /** the most a bucket's take-profit rate may sit from its mean Model 1, in points */
+  gapPoints: 5,
+} as const;
+
+export interface PooledStudy {
+  day: 'all';
+  builtAt: number;
+  /** the labelled sessions pooled, oldest first */
+  days: string[];
+  labels: number;
+  settled: number;
+  movers: number;
+  /** each session's line: its rows, the rows at or over the bar and how they did, its movers */
+  sessions: {
+    day: string;
+    labels: number;
+    settled: number;
+    over: Rate;
+    overMeanP1: number | null;
+    overMeanRet: number | null;
+    movers: number | null;
+  }[];
+  /** Model 1 bucket against the realised take-profit rate, every session's settled rows together */
+  calibration: {
+    bucket: string;
+    lo: number;
+    hi: number;
+    all: Rate;
+    hit50: number;
+    /** inside the trained minutes: the rows the verdict reads */
+    win: Rate;
+    /** mean Model 1 of the in-window rows */
+    meanP1: number | null;
+    /** win.rate − meanP1, points (negative: the score promised more than happened) */
+    gapPoints: number | null;
+    /** sessions with an in-window row in the bucket */
+    sessions: number;
+  }[];
+  thresholds: { p1: number; win: Rate; meanRet: number | null; sessions: number; upSessions: number }[];
+  missReasons: { gate: Gate; n: number; sessions: number }[];
+  heldDownMost: { col: number; name: string; n: number; sessions: number }[];
+  /** the inputs most often holding movers down, session by session (movers held down by each, of those scored under the bar) */
+  inputsOverTime: { cols: { col: number; name: string }[]; rows: { day: string; under: number; n: number[] }[] };
+  verdict: {
+    ready: boolean;
+    line: string;
+    needs: { what: string; have: string; need: string; met: boolean }[];
+  };
+  notes: string[];
+}
+
+const meanOf = (xs2: readonly number[]) => (xs2.length ? xs2.reduce((a, b) => a + b, 0) / xs2.length : null);
+
+/** Every labelled session pooled: the calibration with 95% intervals, the threshold sweep, the miss reasons, the
+    inputs over time, and a plain verdict on reading Model 1 as a probability. */
+export function poolStudies(input: readonly StudyDay[], builtAt = Date.now()): PooledStudy {
+  const days = [...input].filter(d => d.labels.length > 0).sort((a, b) => a.day.localeCompare(b.day));
+  const notes: string[] = [];
+  const done: (Label & { day: string })[] = [];
+  for (const d of days) for (const l of d.labels) if (l.tp1 != null) done.push({ ...l, day: d.day });
+  const wonOf = (ls: readonly Label[]) => ls.filter(l => l.tp1).length;
+
+  const calibration = BUCKETS.map(([lo, hi]) => {
+    const inB = done.filter(l => l.p1 >= lo && l.p1 < hi);
+    const w = inB.filter(inWin);
+    const win = wilson(wonOf(w), w.length);
+    const m = meanOf(w.map(l => l.p1));
+    return {
+      bucket: bucketName(lo, hi),
+      lo,
+      hi,
+      all: wilson(wonOf(inB), inB.length),
+      hit50: inB.length ? Number((inB.filter(l => l.hit50).length / inB.length).toFixed(4)) : 0,
+      win,
+      meanP1: m == null ? null : Number(m.toFixed(4)),
+      gapPoints: m == null ? null : Number(((win.k / win.n - m) * 100).toFixed(2)),
+      sessions: new Set(w.map(l => l.day)).size,
+    };
+  });
+
+  const thresholds = CUTS.map(th => {
+    const pass = done.filter(l => inWin(l) && l.p1 >= th);
+    const byDay = new Map<string, number[]>();
+    for (const l of pass) byDay.set(l.day, [...(byDay.get(l.day) ?? []), l.ret ?? 0]);
+    const m = meanOf(pass.map(l => l.ret ?? 0));
+    return {
+      p1: th,
+      win: wilson(wonOf(pass), pass.length),
+      meanRet: m == null ? null : Number(m.toFixed(2)),
+      sessions: byDay.size,
+      upSessions: [...byDay.values()].filter(r => (meanOf(r) ?? 0) > 0).length,
+    };
+  });
+
+  const sessions = days.map(d => {
+    const settled = d.labels.filter(l => l.tp1 != null);
+    const over = settled.filter(l => inWin(l) && l.p1 + 1e-12 >= P1_MIN);
+    const mp = meanOf(over.map(l => l.p1));
+    const mr = meanOf(over.map(l => l.ret ?? 0));
+    return {
+      day: d.day,
+      labels: d.labels.length,
+      settled: settled.length,
+      over: wilson(wonOf(over), over.length),
+      overMeanP1: mp == null ? null : Number(mp.toFixed(4)),
+      overMeanRet: mr == null ? null : Number(mr.toFixed(2)),
+      movers: d.study ? d.study.movers.length : null,
+    };
+  });
+
+  const reasons = new Map<Gate, { n: number; days: Set<string> }>();
+  const held = new Map<number, { n: number; days: Set<string> }>();
+  const heldByDay = new Map<string, Map<number, number>>();
+  const underByDay = new Map<string, number>();
+  for (const d of days) {
+    if (!d.study) {
+      notes.push(`${d.day}: labels without a study; its movers are not counted.`);
+      continue;
+    }
+    for (const r of d.study.missReasons) {
+      const e = reasons.get(r.gate) ?? { n: 0, days: new Set<string>() };
+      e.n += r.n;
+      e.days.add(d.day);
+      reasons.set(r.gate, e);
+    }
+    const mine = new Map<number, number>();
+    for (const m of d.study.movers) {
+      for (const h of m.heldDown) {
+        mine.set(h.col, (mine.get(h.col) ?? 0) + 1);
+        const e = held.get(h.col) ?? { n: 0, days: new Set<string>() };
+        e.n += 1;
+        e.days.add(d.day);
+        held.set(h.col, e);
+      }
+    }
+    heldByDay.set(d.day, mine);
+    underByDay.set(d.day, d.study.movers.filter(m => m.gate === 'Model 1 under the threshold').length);
+  }
+  const heldDownMost = [...held].map(([col, e]) => ({ col, name: INPUT_NAMES[col], n: e.n, sessions: e.days.size })).sort((a, b) => b.n - a.n || a.col - b.col).slice(0, 10);
+  const top = heldDownMost.slice(0, 6).map(h => ({ col: h.col, name: h.name }));
+  const inputsOverTime = {
+    cols: top,
+    rows: days.filter(d => heldByDay.has(d.day)).map(d => ({ day: d.day, under: underByDay.get(d.day) ?? 0, n: top.map(c => heldByDay.get(d.day)?.get(c.col) ?? 0) })),
+  };
+
+  /* the verdict: every bar, what the pool has against it */
+  const full = calibration.filter(c => c.win.n >= POOL_BAR.rowsPerBucket);
+  const thin = calibration.filter(c => c.win.n < POOL_BAR.rowsPerBucket);
+  const minRows = calibration.reduce((a, c) => Math.min(a, c.win.n), Infinity);
+  const worst = full.filter(c => c.gapPoints != null).sort((a, b) => Math.abs(b.gapPoints!) - Math.abs(a.gapPoints!))[0] ?? null;
+  const reversals: string[] = [];
+  for (let i = 1; i < full.length; i++) {
+    const a = full[i - 1];
+    const b = full[i];
+    if (b.win.hi95 < a.win.lo95) reversals.push(`${b.bucket} below ${a.bucket}`);
+  }
+  const needs = [
+    { what: 'Labelled sessions', have: String(days.length), need: `${POOL_BAR.sessions} or more`, met: days.length >= POOL_BAR.sessions },
+    {
+      what: 'Settled rows in every Model 1 bucket, 09:45–15:00 ET',
+      have: Number.isFinite(minRows) ? `fewest ${minRows.toLocaleString('en-US')}${thin.length ? ` (${thin.map(c => c.bucket).join(', ')} short)` : ''}` : 'none',
+      need: `${POOL_BAR.rowsPerBucket} or more each`,
+      met: thin.length === 0,
+    },
+    {
+      what: 'Take-profit rate within a few points of the mean score, in every full bucket',
+      have: worst ? `worst ${worst.bucket}: ${(worst.win.rate * 100).toFixed(1)}% took vs ${(worst.meanP1! * 100).toFixed(1)}% scored (${worst.gapPoints! > 0 ? '+' : worst.gapPoints! < 0 ? '−' : ''}${Math.abs(worst.gapPoints!).toFixed(1)} pts)` : 'no full bucket',
+      need: `within ±${POOL_BAR.gapPoints} pts`,
+      met: !!worst && full.length === calibration.length && Math.abs(worst.gapPoints!) <= POOL_BAR.gapPoints,
+    },
+    {
+      what: 'A higher bucket never takes profit clearly less often than the one below',
+      have: full.length < 2 ? 'too few full buckets to tell' : reversals.length ? `${reversals.length}: ${reversals.slice(0, 3).join('; ')}` : 'none',
+      need: 'no reversal outside the 95% intervals',
+      met: full.length >= 2 && reversals.length === 0,
+    },
+  ];
+  const ready = needs.every(n => n.met);
+  const over = calibration.filter(c => c.lo >= P1_MIN);
+  const overWin = wilson(over.reduce((a, c) => a + c.win.k, 0), over.reduce((a, c) => a + c.win.n, 0));
+  const overMean = meanOf(done.filter(l => inWin(l) && l.p1 >= P1_MIN).map(l => l.p1));
+  const evidence = overWin.n
+    ? ` Rows scored at or over ${(P1_MIN * 100).toFixed(2)}% (mean ${((overMean ?? 0) * 100).toFixed(1)}%) took the 1.50× profit ${(overWin.rate * 100).toFixed(1)}% of the time (95%: ${(overWin.lo95 * 100).toFixed(1)}–${(overWin.hi95 * 100).toFixed(1)}%, ${overWin.n.toLocaleString('en-US')} rows, ${days.length} session${days.length === 1 ? '' : 's'}).`
+    : '';
+  const line = !days.length
+    ? 'No: no session has been labelled yet.'
+    : ready
+      ? `The pooled labels meet every bar below.${evidence} That supports reading Model 1 as a take-profit probability on these rules; the “Unvalidated” label stays until the owner lifts it after the input check.`
+      : `No: the evidence does not support reading Model 1 as a probability yet (${needs.filter(n => !n.met).length} of ${needs.length} bars unmet).${evidence}`;
+  return {
+    day: 'all',
+    builtAt,
+    days: days.map(d => d.day),
+    labels: days.reduce((a, d) => a + d.labels.length, 0),
+    settled: done.length,
+    movers: days.reduce((a, d) => a + (d.study?.movers.length ?? 0), 0),
+    sessions,
+    calibration,
+    thresholds,
+    missReasons: [...reasons].map(([gate, e]) => ({ gate, n: e.n, sessions: e.days.size })).sort((a, b) => b.n - a.n),
+    heldDownMost,
+    inputsOverTime,
+    verdict: { ready, line, needs },
+    notes,
+  };
 }
 
 export { sigmoid };

@@ -30,7 +30,8 @@ const CardTabs = <V extends string>({
               key={opt.value}
               aria-pressed={active}
               onClick={() => onChange(opt.value)}
-              className={size === 'title' ? 'relative pb-0.5 text-t15 font-semibold leading-tight transition-colors' : 'relative py-1 font-mono text-t10 uppercase tracking-widest transition-colors'}
+              /* hit-24: the tab's hit area reaches 24px at a desk and 44 on a phone; the drawn tab is unchanged */
+              className={size === 'title' ? 'hit-24 relative pb-0.5 text-t15 font-semibold leading-tight transition-colors' : 'hit-24 relative py-1 font-mono text-t10 uppercase tracking-widest transition-colors'}
             >
               <span className={active ? 'text-textPrimary' : 'text-tabRest hover:text-textPrimary'}>{opt.label}</span>
               {active && (

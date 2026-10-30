@@ -138,8 +138,9 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
   return (
     <span
       ref={rootRef}
-      /* h-6: the chip sits on 24px title rows, and the page skeletons assume it */
-      className={`relative inline-flex items-stretch h-6 rounded-md border bg-chip overflow-hidden transition-colors font-mono select-none ${open ? 'border-silver/50' : 'border-borderSubtle hover:border-borderMuted'}`}
+      /* h-6: the chip sits on 24px title rows, and the page skeletons assume it. No overflow clip: the two buttons round
+         their own ends, so their hit areas (hit-24: 24px at a desk, 44 on a phone) reach past the 22px inside */
+      className={`relative inline-flex items-stretch h-6 rounded-md border bg-chip transition-colors font-mono select-none ${open ? 'border-silver/50' : 'border-borderSubtle hover:border-borderMuted'}`}
       data-scope={follows ? 'follows' : 'own'}
       data-scope-ticker={ticker}
     >
@@ -149,7 +150,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
         onClick={() => setOpen(!open)}
         aria-label={`${follows ? 'Follows' : 'Reads'} ${ticker} — pick another name`}
         title={title ?? (follows ? 'Follows the terminal · pick a name to move the whole terminal' : hasLink ? 'Its own name · pick a name for this panel alone' : 'Switch ticker')}
-        className="inline-flex items-center gap-1.5 pl-2 pr-1.5 hover:bg-ink/[0.05] transition-colors"
+        className={`hit-24 inline-flex items-center gap-1.5 pl-2 pr-1.5 rounded-l-[5px] ${hasLink ? '' : 'rounded-r-[5px]'} hover:bg-ink/[0.05] transition-colors`}
         data-scope-pick
       >
         <CompanyLogo ticker={ticker} size={14} />
@@ -204,7 +205,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
           aria-pressed={follows}
           aria-label={follows ? `Follows the terminal's ${ticker} — click to give this panel its own name` : `Holds ${ticker} — click to follow the terminal again`}
           title={follows ? 'Follows the terminal · click to give this panel its own name' : 'Its own name · click to follow the terminal again'}
-          className={`inline-flex items-center justify-center px-1.5 border-l border-borderSubtle hover:bg-ink/[0.05] transition-colors ${follows ? '' : 'text-textMuted hover:text-textPrimary'}`}
+          className={`hit-24 inline-flex items-center justify-center px-1.5 rounded-r-[5px] border-l border-borderSubtle hover:bg-ink/[0.05] transition-colors ${follows ? '' : 'text-textMuted hover:text-textPrimary'}`}
           style={follows ? { color: SILVER } : undefined}
           data-scope-link
         >

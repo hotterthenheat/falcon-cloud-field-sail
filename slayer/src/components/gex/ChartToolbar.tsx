@@ -425,7 +425,7 @@ const Dropdown = ({
       aria-haspopup="menu"
       aria-expanded={open}
       aria-label={label ? undefined : title}
-      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors ${
+      className={`hit-24 inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors ${
         open
           ? 'bg-ink/[0.07] text-textPrimary'
           : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.03]'
@@ -931,7 +931,7 @@ const ChartToolbar = ({
                 aria-haspopup="dialog"
                 aria-expanded={libraryOpen}
                 aria-label={vertical || compact ? 'Indicators and scripts' : undefined}
-                className={`inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors ${
+                className={`hit-24 inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors ${
                   libraryOpen ? 'bg-ink/[0.07] text-textPrimary' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.03]'
                 }`}
                 data-scripts-door
@@ -1059,7 +1059,7 @@ const ChartToolbar = ({
             <button
               onClick={onToggleReplay}
               title={replay ? 'Exit replay — P' : 'Replay session history — P'}
-              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors ${
+              className={`hit-24 inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors ${
                 /* Armed = the holo silver, never the live lime (Noah, 2026-09-08) */
                 replay ? 'bg-silver/[0.12] text-silver' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.03]'
               }`}
@@ -1418,7 +1418,7 @@ const ChartToolbar = ({
         <button
           onClick={onToggleFullscreen}
           title={fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen chart'}
-          className="inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.03] transition-colors"
+          className="hit-24 inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.03] transition-colors"
         >
           {fullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
         </button>
@@ -1428,7 +1428,7 @@ const ChartToolbar = ({
         <button
           onClick={onTotalFullscreen}
           title="Total fullscreen — the taskbar goes too; Esc brings it back"
-          className="inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.03] transition-colors"
+          className="hit-24 inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.03] transition-colors"
         >
           <Fullscreen className="w-3.5 h-3.5" />
         </button>

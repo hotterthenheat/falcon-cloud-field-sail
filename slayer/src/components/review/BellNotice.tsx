@@ -1,6 +1,8 @@
 /* Options stop trading at 16:00 New York. In the last fifteen minutes the desk says how long is left and what
    expires today; at the bell it says the day is over and how what was held settled. */
 
+import { useId } from 'react';
+import * as Switch from '@radix-ui/react-switch';
 import { ArrowRight, BellRing, X } from 'lucide-react';
 import { usdSigned } from './words';
 
@@ -53,10 +55,37 @@ interface BellProps {
   /** Null on the tape's last day */
   onNextDay: (() => void) | null;
   onDismiss: () => void;
+  /** The roll-over: playing, carry on into the next day by itself — positions and good-till-cancelled orders carried,
+      as "Open the next day" does. Off by default. */
+  roll?: boolean;
+  onRoll?: (on: boolean) => void;
+  /** The clock is playing with the roll-over on: the next day opens in a moment */
+  rolling?: boolean;
+  /** "Fri, Oct 30" — the day that opens next */
+  nextWords?: string;
 }
 
+/** The roll-over's switch: the bell's own setting */
+const RollSwitch = ({ on, onChange, disabled }: { on: boolean; onChange: (on: boolean) => void; disabled: boolean }) => {
+  const id = useId();
+  return (
+    <label htmlFor={id} className={`tap-40 inline-flex items-center gap-2 font-mono text-t10 ${disabled ? 'text-textMuted' : 'text-textSecondary hover:text-textPrimary'} cursor-pointer select-none`} title="While the clock plays, the bell opens the next day by itself and keeps playing — what is held and what is good till cancelled carries; day orders still go at 16:00" data-review-roll={on ? 'on' : 'off'}>
+      <Switch.Root
+        id={id}
+        checked={on}
+        disabled={disabled}
+        onCheckedChange={onChange}
+        className="relative shrink-0 w-8 h-[18px] rounded-full border border-borderSubtle bg-ink/[0.06] data-[state=checked]:bg-silver data-[state=checked]:border-silver disabled:opacity-40 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-silver/60"
+      >
+        <Switch.Thumb className="block w-3 h-3 rounded-full bg-textPrimary translate-x-[2px] data-[state=checked]:translate-x-[16px] data-[state=checked]:bg-panel transition-transform" />
+      </Switch.Root>
+      Carry on into the next day automatically
+    </label>
+  );
+};
+
 /** 16:00: the day is over */
-export const BellCard = ({ facts, onNextDay, onDismiss }: BellProps) => (
+export const BellCard = ({ facts, onNextDay, onDismiss, roll = false, onRoll, rolling = false, nextWords }: BellProps) => (
   <div className={`${shell} border-borderMuted w-[min(420px,calc(100vw-48px))] px-3.5 pt-2.5 pb-3`} role="status" aria-live="polite" data-chart-chrome data-review-bell>
     <div className="flex items-center gap-2">
       <BellRing className="w-3.5 h-3.5 text-silver" aria-hidden="true" />
@@ -88,7 +117,7 @@ export const BellCard = ({ facts, onNextDay, onDismiss }: BellProps) => (
         )}
       </ul>
     )}
-    <div className="mt-2.5 flex items-center gap-2">
+    <div className="mt-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap">
       {onNextDay ? (
         <button type="button" onClick={onNextDay} className="inline-flex items-center gap-1.5 h-7 px-3.5 rounded-full text-t11 font-semibold transition-opacity hover:opacity-90" style={{ background: 'rgb(var(--silver-fill))', color: '#0a0a0a' }} data-review-bell-next>
           Open the next day <ArrowRight className="w-3 h-3" />
@@ -96,6 +125,12 @@ export const BellCard = ({ facts, onNextDay, onDismiss }: BellProps) => (
       ) : (
         <span className="font-mono text-t10 text-textMuted">This is the tape’s last day.</span>
       )}
+      {onRoll && <RollSwitch on={roll} onChange={onRoll} disabled={!onNextDay} />}
     </div>
+    {rolling && onNextDay && (
+      <p className="mt-1.5 font-mono text-t10 text-silver" data-review-rolling>
+        Opening {nextWords ?? 'the next day'} — the clock keeps playing
+      </p>
+    )}
   </div>
 );

@@ -7,7 +7,12 @@ import { Skeleton } from '../ui/Skeleton';
 /** # · strike · from spot · reached · today · net gamma · if it breaks · built · at stake · why · actions */
 /* The words columns wrap to two lines and share the room, so the list fits a 1440 screen beside the rail. */
 /* Today has its own column: Reached is always a chance, Today what the session has already done at the strike. */
-export const AGENDA_COLUMNS = '32px 140px 64px 84px 64px 96px minmax(112px,1fr) minmax(112px,1fr) 100px minmax(80px,1fr) 124px';
+/* The last, Actions, is --agenda-act wide (AGENDA_ACT): 24px on a screen with a hover, where a "⋯" stands in it at rest
+   and the two actions lay over the row's end on hover or focus, so it is never a blank strip; 124px on a touch screen,
+   where they always show. */
+export const AGENDA_COLUMNS = '32px 140px 64px 84px 64px 96px minmax(112px,1fr) minmax(112px,1fr) 100px minmax(80px,1fr) var(--agenda-act,124px)';
+/** Sets --agenda-act on the list's grid (the board's and its skeleton's, so nothing moves when it lands) */
+export const AGENDA_ACT = '[--agenda-act:24px] [@media(hover:none)]:[--agenda-act:124px]';
 /** The columns' floor plus ten 12px gaps */
 export const AGENDA_MIN_W = 1128;
 export const CARD_H = 158;
@@ -104,7 +109,7 @@ export const TargetsInner = ({ rows = 38, bare = false }: { rows?: number; bare?
 
     {/* THE LIST */}
     <div className="px-5 pb-2 overflow-x-auto">
-      <div className="grid items-center gap-x-3 gap-y-0" style={{ gridTemplateColumns: AGENDA_COLUMNS, minWidth: AGENDA_MIN_W }}>
+      <div className={`grid items-center gap-x-3 gap-y-0 ${AGENDA_ACT}`} style={{ gridTemplateColumns: AGENDA_COLUMNS, minWidth: AGENDA_MIN_W }}>
         {[10, 34, 54, 48, 34, 34, 62, 36, 50, 24, 44].map((w, i) => (
           <div key={`h-${i}`} className={`h-[14px] flex items-center ${(i >= 2 && i <= 3) || i === 5 ? 'justify-end' : i === 10 ? 'justify-end' : ''}`}>
             <Skeleton className="h-2" style={{ width: w }} line />

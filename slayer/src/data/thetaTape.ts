@@ -10,6 +10,7 @@ import { isTradingDay, nyYmd } from '../core/calendar';
 import { minuteInSession, sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { etClock, keepTheta, keptTheta, noData, offlineWords, pageHidden, thetaDown, thetaGet } from './thetaFeed';
 import { thetaUseHere } from './theta';
+import { cleanExtendedBars } from './thetaEligible';
 
 export const THETA_INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
 
@@ -139,7 +140,7 @@ export function spansOf(from: string, to: string, grain: Exclude<TapeGrain, 'day
   return out.reverse();
 }
 
-async function pullIntraday(symbol: string, grain: Exclude<TapeGrain, 'day' | 'week'>, session: DeskSession, from: string, to: string): Promise<Pull> {
+export async function pullIntraday(symbol: string, grain: Exclude<TapeGrain, 'day' | 'week'>, session: DeskSession, from: string, to: string): Promise<Pull> {
   const got = await Promise.all(
     spansOf(from, to, grain).flatMap(([start, end]) =>
       WINDOWS[session].map(win =>
@@ -148,7 +149,13 @@ async function pullIntraday(symbol: string, grain: Exclude<TapeGrain, 'day' | 'w
     ),
   );
   const offline = got.some(g => g.error != null && !noData(g));
-  return { bars: dedupe(got.flatMap(g => (g.error ? [] : readOhlc(g.data, session)))), offline };
+  const bars = dedupe(got.flatMap(g => (g.error ? [] : readOhlc(g.data, session))));
+  /* a stock's pre-market and after-hours bars take their prices from the prints that may set one (late reports at an
+     old price do not; data/thetaEligible.ts) — the regular session is ThetaData's bars as they come */
+  if (root(symbol) === 'stock' && (session === 'pre' || session === 'post')) {
+    return { bars: await cleanExtendedBars(thetaGet, symbol, WINDOWS[session][0], STEP_SEC[grain] ?? 60, bars), offline };
+  }
+  return { bars, offline };
 }
 
 async function pullEod(symbol: string, from: string, to: string): Promise<Pull> {

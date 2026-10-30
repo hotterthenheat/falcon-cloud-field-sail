@@ -230,6 +230,54 @@
   }
 }
 
+/* A DESK'S HIT AREA TOO (2026-10-29, the leftovers pass: "every control at least 24px at a desk, 44 on a phone"):
+   `.hit-24` is `.hit` that also gives a mouse an invisible box of at least 24 × 24 px round a small control, centred on
+   it; on a coarse pointer the box is 44 × 44 like `.hit`'s. Nothing seen changes. `.hit-24-after` is the same box on
+   ::after, for a control whose ::before is taken. Like `.hit`, a class of its own that positions the control wins. */
+@layer components {
+  .hit-24,
+  .hit-24-after {
+    position: relative;
+  }
+  .hit-24::before,
+  .hit-24-after::after {
+    content: '';
+    position: absolute;
+    top: min(0px, calc(50% - 12px));
+    bottom: min(0px, calc(50% - 12px));
+    left: min(0px, calc(50% - 12px));
+    right: min(0px, calc(50% - 12px));
+  }
+  @media (pointer: coarse) {
+    .hit-24::before,
+    .hit-24-after::after {
+      top: min(0px, calc(50% - 22px));
+      bottom: min(0px, calc(50% - 22px));
+      left: min(0px, calc(50% - 22px));
+      right: min(0px, calc(50% - 22px));
+    }
+  }
+}
+
+/* The charts' TradingView mark (lightweight-charts draws it 35 × 19, absolute in the plot's corner): the same box, so the
+   attribution link is a fair target too. */
+a#tv-attr-logo::before {
+  content: '';
+  position: absolute;
+  top: min(0px, calc(50% - 12px));
+  bottom: min(0px, calc(50% - 12px));
+  left: min(0px, calc(50% - 12px));
+  right: min(0px, calc(50% - 12px));
+}
+@media (pointer: coarse) {
+  a#tv-attr-logo::before {
+    top: min(0px, calc(50% - 22px));
+    bottom: min(0px, calc(50% - 22px));
+    left: min(0px, calc(50% - 22px));
+    right: min(0px, calc(50% - 22px));
+  }
+}
+
 /* The house control. Search fields, filter chips and their hover are this,
    on every desk — silver is where you are, the chip is the resting face. */
 @layer components {

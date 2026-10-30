@@ -3,7 +3,9 @@
   The rules page (docs/review-backtest-rules.md), checked against the engine on a hand-made market
   (scripts/review-market-fixture.ts), where every fill can be worked out from its formula. Exits 1 on a miss.
 */
-import { accountOf, advance, amend, attach, bankedOf, bookOf, cancel, cashOf, cutsOf, dayStateOf, equityAtOpen, floorOf, ladderRoom, namesOf, newSession, pendingSettlement, place, rebase, refusal, setBreakeven, setTrail, stampOf, statsOf, MULT } from '../src/data/review/engine';
+import { accountOf, advance, amend, attach, bankedOf, bookOf, cancel, cashOf, cutsOf, dayStateOf, dayStopOf, equityAtOpen, floorOf, ladderRoom, namesOf, newSession, nextOpen, pendingSettlement, place, playStep, rebase, refusal, setBreakeven, setTrail, spokenFor, stampOf, statsOf, MULT, type Session } from '../src/data/review/engine';
+import { TRADE_COLUMNS, dayRowsOf, reportDaysCsv, reportTradesCsv, tradeFees } from '../src/data/review/reportCsv';
+import { csvCells } from '../src/data/review/journalManual';
 import { splitQty } from '../src/data/review/ladder';
 import { chainAt, contractKey, contractWords, expiriesAt, quoteAt, quoteWith, spotForBid, yearsLeft } from '../src/data/review/quotes';
 import { LAST_MIN, barTime, closeMinOf, nbboAt, parseBars, parseListing, parseQuotes, putBars, putQuotes, spotAt } from '../src/data/review/history';
@@ -103,7 +105,7 @@ ok('a stop sells the first minute the bid is at or under it, at that bid', sf.ho
 let t = advance(newSession({ id: 'u', name: 'bracket', ticker: 'SPY', startCash: 25000, startDay: D1, now: 0 }), { day: D1, minute: 10 }, 0);
 t = place(t, { contract: call500, side: 'buy', qty: 3, kind: 'market', bracket: { target: 3.16, stop: 2.34 } }, 0);
 ok('the pair is working after the buy', t.orders.filter(o => o.status === 'working' && o.oco).length === 2);
-ok('the held contracts are spoken for by the pair — for a sell that WAITS; a market sell by hand never is', refusal(t, { contract: call500, side: 'sell', qty: 1, kind: 'limit', price: 5.5 }) === 'Those contracts are already spoken for by a working order' && refusal(t, { contract: call500, side: 'sell', qty: 1, kind: 'market' }) === null);
+ok('the held contracts are spoken for by the pair — for a sell that WAITS; a market sell by hand never is', refusal(t, { contract: call500, side: 'sell', qty: 1, kind: 'limit', price: 5.5 }) === 'All 3 are working in your bracket; none can be sold here' && refusal(t, { contract: call500, side: 'sell', qty: 1, kind: 'market' }) === null);
 t = advance(t, { day: D1, minute: LAST_MIN }, 0);
 const bt = bookOf(t).trades[0];
 ok('the target filled at the first bid over it, and the stop went with it', bt?.how === 'target' && bt.closed.minute === 36 && bt.avgOut === 3.17 && t.orders.some(o => o.kind === 'stop' && o.why === 'its pair filled'), `${bt?.how} at ${bt?.closed.minute} for ${bt?.avgOut}`);
@@ -229,7 +231,7 @@ ok('contracts are shared out with the nearer level taking the odd one', splitQty
   L = place(L, { contract: c, side: 'buy', qty: 4, kind: 'market', bracket: { targets: [{ price: T1, qty: 2 }, { price: T2, qty: 2 }], stops: [{ price: S, qty: 4 }], breakeven: true } }, 0);
   const rungs = () => L.orders.filter(o => o.status === 'working' && o.side === 'sell');
   ok('two targets and a stop ride the buy, as ONE group', rungs().length === 3 && new Set(rungs().map(o => o.oco)).size === 1 && rungs().filter(o => o.kind === 'limit').map(o => o.qty).join() === '2,2' && rungs().find(o => o.kind === 'stop')!.qty === 4);
-  ok('a sell that WAITS finds every contract spoken for — once, not twice', refusal(L, { contract: c, side: 'sell', qty: 1, kind: 'limit', price: T2 }) === 'Those contracts are already spoken for by a working order');
+  ok('a sell that WAITS finds every contract spoken for — once, not twice', refusal(L, { contract: c, side: 'sell', qty: 1, kind: 'limit', price: T2 }) === 'All 4 are working in your bracket; none can be sold here');
   ok('a market sell by hand is never spoken for', refusal(L, { contract: c, side: 'sell', qty: 1, kind: 'market' }) === null && refusal(L, { contract: c, side: 'sell', qty: 5, kind: 'market' }) === 'You hold 4');
   const paid = bookOf(L).positions[0].avg;
   L = advance(L, { day: D1, minute: hit }, 0);
@@ -357,6 +359,93 @@ ok('contracts are shared out with the nearer level taking the odd one', splitQty
   ok('a limit over the ask fills at once, at the ask', ml.fills[0]?.at.minute === 10 && ml.fills[0]?.price === 2.75);
   const ms = place(ml, { contract: call500, side: 'sell', qty: 1, kind: 'limit', price: 2.0 }, 0);
   ok('…and a sell limit under the bid at the bid', ms.fills[1]?.price === 2.65 && bookOf(ms).trades[0]?.how === 'sold');
+}
+
+/* ==== THE ROLL-OVER: playing past the bell into the next day (engine playStep + nextOpen) ==== */
+{
+  const cF = { ticker: 'SPY', strike: 500, right: 'C' as const, expiry: FAR };
+  let r = advance(newSession({ id: 'ro', name: 'roll', ticker: 'SPY', startCash: 25000, startDay: D1, now: 0 }), { day: D1, minute: 30 }, 0);
+  r = place(r, { contract: cF, side: 'buy', qty: 2, kind: 'market' }, 0);
+  /* a GTC target nowhere near, a DAY buy far under the ask, and a GTC buy far under it too */
+  r = place(r, { contract: cF, side: 'sell', qty: 2, kind: 'limit', price: 9, tif: 'gtc' }, 0);
+  r = place(r, { contract: { ...cF, strike: 501 }, side: 'buy', qty: 1, kind: 'limit', price: 0.05, tif: 'day' }, 0);
+  r = place(r, { contract: { ...cF, strike: 499 }, side: 'buy', qty: 1, kind: 'limit', price: 0.05, tif: 'gtc' }, 0);
+  /* the clock playing, an hour a tick, as the desk's interval does: roll off, it stops on the bell */
+  const play = (s0: Session, roll: boolean, ticks: number) => {
+    let s1 = s0;
+    const path: string[] = [];
+    for (let i = 0; i < ticks; i++) {
+      const to = playStep(s1.cursor, 60, roll, s1.cursor.day === D1 ? D2 : s1.cursor.day === D2 ? D3 : null);
+      if (!to) break;
+      s1 = advance(s1, to, 0);
+      path.push(`${to.day.slice(5)}@${to.minute}`);
+    }
+    return { s: s1, path };
+  };
+  const off = play(r, false, 20);
+  ok('roll-over off: the playing clock stops on the bell', off.s.cursor.day === D1 && off.s.cursor.minute === LAST_MIN && off.path[off.path.length - 1] === `${D1.slice(5)}@${LAST_MIN}`, off.path.join(' '));
+  ok('…and the play button is not offered past it', playStep(off.s.cursor, 60, false, D2) === null && playStep(off.s.cursor, 60, true, null) === null);
+  const on = play(r, true, 7);
+  ok('roll-over on: the clock stands on the bell first, then opens the next day and keeps playing', on.path.join(' ') === `${D1.slice(5)}@90 ${D1.slice(5)}@150 ${D1.slice(5)}@210 ${D1.slice(5)}@270 ${D1.slice(5)}@330 ${D1.slice(5)}@${LAST_MIN} ${D2.slice(5)}@0`, on.path.join(' '));
+  const rs = on.s;
+  ok('…the positions carry', bookOf(rs).positions.length === 1 && bookOf(rs).positions[0].qty === 2 && rs.cursor.day === D2);
+  const w = (strike: number) => rs.orders.find(o => o.contract.strike === strike && o.side === 'buy');
+  ok('…GTC orders carry, still working', rs.orders.find(o => o.side === 'sell')?.status === 'working' && w(499)?.status === 'working');
+  ok('…day orders expire at the bell, as now', w(501)?.status === 'cancelled' && w(501)?.why === 'the day ended' && w(501)?.done?.day === D1 && w(501)?.done?.minute === LAST_MIN);
+  ok('…the bell kept the account', rs.closes?.[D1]?.held === 1 && Number.isFinite(rs.closes?.[D1]?.equity ?? NaN));
+  ok('…exactly what “Open the next day” does from the bell', JSON.stringify({ ...rs, touchedAt: 0 }) === JSON.stringify({ ...nextOpen(off.s, 0), touchedAt: 0 }));
+  ok('the open walked into with a book carried is kept — the day stop’s base', rs.opens?.[D2] === equityAtOpen(rs) && Number.isFinite(rs.opens?.[D2] ?? NaN), String(rs.opens?.[D2]));
+  ok('…and played on, the next day runs like any other (a third day opens on the next bell)', play(rs, true, 9).s.cursor.day === D3);
+}
+
+/* ==== THE DAY STOP, SAID PLAINLY ==== */
+{
+  const ds = newSession({ id: 'ds', name: 'stop', ticker: 'SPY', rules: { dailyLossPct: 0.03 }, startCash: 25000, startDay: D1, now: 0 });
+  ok('the day stop is measured from the account at the open, and said in dollars', dayStopOf(ds)?.words === 'Day stop: −3% of the account at 09:30 = −$750' && dayStopOf(ds)?.loss === 750);
+  ok('…none without the rule', dayStopOf(newSession({ id: 'ds2', name: 'x', ticker: 'SPY', startCash: 25000, startDay: D1, now: 0 })) === null);
+  /* a book carried into D2: the open there is the account marked at D2's first minute, not the start */
+  let dc = place(advance(ds, { day: D1, minute: 30 }, 0), { contract: { ticker: 'SPY', strike: 500, right: 'C', expiry: FAR }, side: 'buy', qty: 2, kind: 'market' }, 0);
+  dc = advance(dc, { day: D2, minute: 10 }, 0);
+  const open2 = equityAtOpen(dc);
+  ok('…on a later day, from that day’s open', near(dayStopOf(dc)!.loss, open2 * 0.03, 0.006) && dayStopOf(dc, D1)?.loss === 750, `${dayStopOf(dc)?.words}`);
+}
+
+/* ==== SELL @ LMT AND THE BRACKET: what is spoken for, said ==== */
+{
+  const cF = { ticker: 'SPY', strike: 500, right: 'C' as const, expiry: FAR };
+  let b5 = advance(newSession({ id: 'b5', name: 'five', ticker: 'SPY', startCash: 25000, startDay: D1, now: 0 }), { day: D1, minute: 10 }, 0);
+  b5 = place(b5, { contract: cF, side: 'buy', qty: 5, kind: 'market', bracket: { targets: [{ price: 9, qty: 3 }], stops: [{ price: 1, qty: 3 }] } }, 0);
+  ok('3 of 5 in the bracket: 2 are free', JSON.stringify(spokenFor(b5, cF)) === JSON.stringify({ held: 5, bracket: 3, other: 0, free: 2 }));
+  ok('a sell limit for 3 is refused in those words', refusal(b5, { contract: cF, side: 'sell', qty: 3, kind: 'limit', price: 8 }) === '3 of 5 are working in your bracket; 2 can be sold here');
+  ok('…for 2 it is taken', refusal(b5, { contract: cF, side: 'sell', qty: 2, kind: 'limit', price: 8 }) === null);
+  const freed = b5.orders.filter(o => o.status === 'working' && o.oco).reduce((s1, o) => cancel(s1, o.id, 0), b5);
+  ok('the bracket cancelled, all 5 can be sold at a limit', spokenFor(freed, cF).free === 5 && refusal(freed, { contract: cF, side: 'sell', qty: 5, kind: 'limit', price: 8 }) === null);
+  const loose = place(freed, { contract: cF, side: 'sell', qty: 4, kind: 'limit', price: 8 }, 0);
+  ok('a loose sell is said as another sell', refusal(loose, { contract: cF, side: 'sell', qty: 2, kind: 'limit', price: 8.5 }) === '4 of 5 are working in another sell; 1 can be sold here');
+}
+
+/* ==== THE REPORT AS FILES: columns and sums match the report ==== */
+{
+  const all = [...trades, bt, ...bookOf(lo).trades].sort((a, b2) => stampOf(a.closed) - stampOf(b2.closed));
+  const cells = csvCells(reportTradesCsv(all));
+  const head = cells[0];
+  const col = (name: string) => head.indexOf(name);
+  ok('the trades file has the columns it says, in order', head.join() === TRADE_COLUMNS.join() && cells.length === all.length + 1, head.join());
+  const st = statsOf(all);
+  const sumOf = (rows: string[][], name: string) => rows.reduce((a, r2) => a + Number(r2[col(name)]), 0);
+  ok('…its pnl adds up to the report’s Made or lost', near(sumOf(cells.slice(1), 'pnl'), st.net, 0.001), `${sumOf(cells.slice(1), 'pnl').toFixed(2)} vs ${st.net}`);
+  ok('…its fees are every fill’s', near(sumOf(cells.slice(1), 'fees'), all.reduce((a, t2) => a + tradeFees(t2), 0), 0.001));
+  ok('…line by line, each trade’s own pnl, entry, exit and size', all.every((t2, i) => Number(cells[i + 1][col('pnl')]) === t2.pnl && Number(cells[i + 1][col('entry')]) === t2.avgIn && Number(cells[i + 1][col('exit')]) === t2.avgOut && Number(cells[i + 1][col('qty')]) === t2.qty));
+  ok('…and every fill of it, in order', all.every((t2, i) => cells[i + 1][col('fills')].split('; ').length === t2.legs.length), cells[1][col('fills')]);
+  ok('…times are ET on the desk’s clock, and a settled trade says how', cells.slice(1).every(r2 => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(r2[col('closed_et')])) && cells.slice(1).every((r2, i) => (all[i].how === 'expired') === (r2[col('settle')] !== '')));
+  /* By day on a session that rang bells: dz (two days) */
+  const dzTrades = [...accountOf(dz).trades].sort((a, b2) => stampOf(a.closed) - stampOf(b2.closed));
+  const rows = dayRowsOf(dz, dzTrades);
+  const dcells = csvCells(reportDaysCsv(rows, true));
+  ok('the days file has the By day columns, with the day stop', dcells[0].join() === 'date,closed,pnl,account_move,equity_at_bell,held_overnight,day_stop' && dcells.length === rows.length + 1);
+  ok('…its pnl adds up to the closed trades', near(dcells.slice(1).reduce((a, r2) => a + Number(r2[2]), 0), statsOf(dzTrades).net, 0.001));
+  ok('…the account at each bell is the engine’s', rows.every((d, i) => d.equity == null ? dcells[i + 1][4] === '' : Number(dcells[i + 1][4]) === dz.closes?.[d.day]?.equity));
+  ok('…the day stop is the account at that open times the rule', rows.every((d, i) => d.stop != null && Number(dcells[i + 1][6]) === -d.stop));
 }
 
 const sum = statsOf([...trades, bt]);

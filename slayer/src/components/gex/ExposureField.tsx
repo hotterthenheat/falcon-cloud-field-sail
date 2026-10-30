@@ -1700,7 +1700,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
         <div className="shrink-0 flex items-start gap-3 px-4 py-2 border-b border-borderSubtle/60 bg-silver/[0.04] text-t11 text-textSecondary" data-map-note>
           <p className="min-w-0 flex-1 leading-relaxed">
             <span className="font-semibold text-textPrimary">First time here?</span> Each row is a strike. {palette === 'thermal' ? 'Red and orange mean' : 'Ember orange means'} dealer hedging pushes a move along there, {palette === 'thermal' ? 'green means' : 'glacier blue means'} it holds one back. A strike in magenta is the supreme, blue the call wall, gold the put wall. Click a row to keep it on every box.{' '}
-            <button type="button" onClick={openFirstTime} className="underline decoration-dotted underline-offset-2 text-textPrimary hover:text-silver" data-map-note-words>
+            <button type="button" onClick={openFirstTime} className="hit-24 underline decoration-dotted underline-offset-2 text-textPrimary hover:text-silver" data-map-note-words>
               Every word Pinpoint uses →
             </button>
           </p>

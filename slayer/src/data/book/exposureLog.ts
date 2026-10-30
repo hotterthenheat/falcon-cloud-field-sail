@@ -16,25 +16,23 @@
      selling at the bid leaving them long. It is the day's trades only, never a position carried from earlier days. */
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { nyIsoDate, nyWallTime } from '../../core/nyTime';
+import { nyIsoDate, nyMinutes, nyWallTime } from '../../core/nyTime';
 import { isTradingDay } from '../../core/calendar';
 import { keptOf } from '../../core/dealerSign';
 import { uwCall } from '../whales';
+import { feedHeaders } from '../feedGate';
 import type { GexSnapshot } from '../../types/market';
+import { ALL, JOIN_MS, closeOf, dayStartOf, placeSeg, readAnswer, rowMeasures, spanOf, type KeptSeries } from './exposureSegs';
+
+export { JOIN_MS, rowMeasures };
 
 /** The two models the field draws: the open-interest book, or the dealer gamma of today's trades by side */
 export type FieldMode = 'oi' | 'flow';
 /** The expiries a cut reads: one date, or every expiry ('book') */
 export type FieldCut = string | 'book';
 
-/** Readings further apart than this are not joined: the cells between them are empty */
-export const JOIN_MS = 180_000;
-/** Strikes kept with their history: within this share of the row's price (every strike keeps its latest values) */
-const WINDOW = 0.05;
-/** A day's readings start at 04:00 New York, the start of the day's tape */
-const DAY_START_HOUR = 4;
-/** The pseudo-expiry of the vendor's whole-book rows (spot-exposures/strike): the 'every expiry' cut reads them */
-const ALL = 'ALL';
+/* The join (JOIN_MS), the strike window, the day's 04:00 start and the whole book's pseudo-expiry are one rule with the
+   server's recorder: data/book/exposureSegs.ts */
 /** Readings older than this are dropped from memory and from the kept copy */
 const KEEP_DAYS = 12;
 
@@ -67,98 +65,37 @@ const logs = new Map<string, NameLog>();
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach(fn => fn());
 
-const num = (v: unknown): number => {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
-  return Number.isFinite(n) ? n : 0;
-};
-
-const closeOf = (expiry: string): number => {
-  if (expiry === ALL) return Infinity;
-  const [y, m, d] = expiry.split('-').map(Number);
-  return nyWallTime(y, m, d, 16, 0);
-};
-
-const dayStartOf = (ms: number): number => {
-  const [y, m, d] = nyIsoDate(ms).split('-').map(Number);
-  return nyWallTime(y, m, d, DAY_START_HOUR, 0);
-};
-
-/** One row's two measures, dealer sign, dollars per 1% move */
-export function rowMeasures(r: Record<string, unknown>): { oi: number; flow: number } {
-  return {
-    oi: num(r.call_gamma_oi) + num(r.put_gamma_oi),
-    flow: num(r.call_gamma_ask) + num(r.call_gamma_bid) + num(r.put_gamma_ask) + num(r.put_gamma_bid),
-  };
-}
-
 const logOf = (t: string): NameLog => {
   let log = logs.get(t);
   if (!log) logs.set(t, (log = { day: '', series: new Map(), latest: new Map(), from: Infinity, rev: 0 }));
   return log;
 };
 
-/** Put one reading into a series in time order: the same recalculation read again extends it; one that overlaps a
-    different reading adds nothing */
-function place(s: Series, from: number, to: number, oi: number, flow: number): boolean {
-  const segs = s.segs;
-  let lo = 0;
-  let hi = segs.length / 4;
-  while (lo < hi) {
-    const m = (lo + hi) >> 1;
-    if (segs[m * 4] <= from) lo = m + 1;
-    else hi = m;
-  }
-  const at = lo * 4; // insertion point; the reading before it starts at or before `from`
-  if (at > 0 && segs[at - 4] === from) {
-    if (segs[at - 2] !== oi || segs[at - 1] !== flow) return false;
-    if (to <= segs[at - 3]) return false;
-    if (at < segs.length && to >= segs[at]) return false;
-    segs[at - 3] = to;
-    return true;
-  }
-  if (at > 0 && from <= segs[at - 3]) return false;
-  if (at < segs.length && to >= segs[at]) return false;
-  segs.splice(at, 0, from, to, oi, flow);
-  return true;
-}
-
 /** Take one answer of exposure rows into the name's log: one expiry's rows (spot-exposures/expiry-strike, each with its
     `expiry`), or with `allRows` the whole book's (spot-exposures/strike, every expiry at the strike in one row). */
 export function noteExposureRows(ticker: string, rows: unknown, allRows = false): void {
-  if (!Array.isArray(rows) || !rows.length) return;
+  const read = readAnswer(rows, allRows);
+  if (!read) return;
   const t = ticker.toUpperCase();
-  let answeredAt = 0;
-  for (const r of rows as Record<string, unknown>[]) {
-    const at = Date.parse(String(r?.time ?? ''));
-    if (Number.isFinite(at) && at > answeredAt) answeredAt = at;
-  }
-  if (!(answeredAt > 0)) return;
+  const { answeredAt } = read;
   const day = nyIsoDate(answeredAt);
   const log = logOf(t);
   if (day > log.day) log.day = day;
-  const start = dayStartOf(answeredAt);
   let changed = false;
-  for (const r of rows as Record<string, unknown>[]) {
-    if (!r || typeof r !== 'object') continue;
-    const expiry = allRows ? ALL : String(r.expiry ?? '').slice(0, 10);
-    const strike = num(r.strike);
-    if ((!allRows && !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) || !(strike > 0)) continue;
-    const rowAt = Date.parse(String(r.time ?? ''));
-    if (!Number.isFinite(rowAt)) continue;
-    const { oi, flow } = rowMeasures(r);
+  for (const r of read.rows) {
+    const { expiry, strike, rowAt, oi, flow } = r;
     let byStrike = log.latest.get(expiry);
     if (!byStrike) log.latest.set(expiry, (byStrike = new Map()));
     const prev = byStrike.get(strike);
     if (!prev || rowAt >= prev.at) byStrike.set(strike, { oi, flow, at: rowAt });
-    const px = num(r.price);
-    if (px > 0 && Math.abs(strike - px) > px * WINDOW) continue;
+    if (!r.near) continue;
+    const span = spanOf(rowAt, answeredAt);
+    if (!span) continue;
     const key = `${expiry}|${strike}`;
     let s = log.series.get(key);
     if (!s) log.series.set(key, (s = { expiry, strike, closeAt: closeOf(expiry), segs: [] }));
-    const from = Math.max(rowAt, start);
-    if (answeredAt < from) continue;
-    if (place(s, from, answeredAt, oi, flow)) {
-      if (from < log.from) log.from = from;
+    if (placeSeg(s.segs, span.from, span.to, oi, flow)) {
+      if (span.from < log.from) log.from = span.from;
       changed = true;
     }
   }
@@ -167,6 +104,41 @@ export function noteExposureRows(ticker: string, rows: unknown, allRows = false)
     scheduleSave(t);
     emit();
   }
+}
+
+/** Place kept series (this browser's copy, or the server's recording) into a name's log. True when anything landed. */
+function placeKept(t: string, series: readonly KeptSeries[] | readonly [string, number, ArrayLike<number>][], floor = -Infinity): boolean {
+  const log = logOf(t);
+  let changed = false;
+  for (const [expiry, strike, segs] of series) {
+    if (typeof expiry !== 'string' || !(strike > 0) || !segs || segs.length % 4) continue;
+    const key = `${expiry}|${strike}`;
+    let s = log.series.get(key);
+    if (!s) log.series.set(key, (s = { expiry, strike, closeAt: closeOf(expiry), segs: [] }));
+    for (let i = 0; i < segs.length; i += 4) {
+      if (segs[i + 1] < floor) continue;
+      if (placeSeg(s.segs, segs[i], segs[i + 1], segs[i + 2], segs[i + 3])) {
+        changed = true;
+        if (segs[i] < log.from) log.from = segs[i];
+        const day = nyIsoDate(segs[i + 1]);
+        if (day > log.day) log.day = day;
+      }
+    }
+  }
+  if (changed) log.rev += 1;
+  return changed;
+}
+
+/** Merge the server's recorded series for a name (GET /api/exposure/day) into the log: the same segments this browser
+    would have read, so the two join without seams; where both hold the same minute, they agree. */
+export function mergeExposureSeries(ticker: string, series: readonly KeptSeries[]): boolean {
+  const t = ticker.toUpperCase();
+  const changed = placeKept(t, series);
+  if (changed) {
+    scheduleSave(t);
+    emit();
+  }
+  return changed;
 }
 
 /** The log's revision for a name — a grid built at one revision stands until it moves */
@@ -392,8 +364,16 @@ export function useFieldPoll(ticker: string, cut: FieldCut | null, on = true): v
     const cur = polls.get(key);
     if (cur) cur.n += 1;
     else {
+      /* the server's recording of the day first (from the open, whenever this page opened), then this page's own reads */
+      pullExposureServer(ticker);
       void readCut(ticker.toUpperCase(), cut);
-      polls.set(key, { n: 1, id: window.setInterval(() => void readCut(ticker.toUpperCase(), cut), POLL_MS) });
+      polls.set(key, {
+        n: 1,
+        id: window.setInterval(() => {
+          pullExposureServer(ticker);
+          void readCut(ticker.toUpperCase(), cut);
+        }, POLL_MS),
+      });
     }
     return () => {
       const p = polls.get(key);
@@ -405,6 +385,108 @@ export function useFieldPoll(ticker: string, cut: FieldCut | null, on = true): v
       }
     };
   }, [ticker, cut, on]);
+}
+
+/* ---- the server's recording (GET /api/exposure/day, data/exposureRecorder.ts) --------------------------------- */
+
+/** What the server's exposure recorder holds for a name today */
+export interface ServerExposure {
+  /** 'waiting' before the first answer; 'on' the server serves a record for the name; 'off' no recorder answers here (a
+      hosted deployment, or EXPOSURE_RECORDER=0 with nothing on file): the field starts at this page's first read */
+  state: 'waiting' | 'on' | 'off';
+  /** a recorder reads on the server now */
+  recording: boolean;
+  /** the server's first read of the name today, ms (null: none yet) */
+  firstAt: number | null;
+}
+const SERVER_WAITING: ServerExposure = { state: 'waiting', recording: false, firstAt: null };
+const serverState = new Map<string, ServerExposure>();
+const serverPull = new Map<string, { at: number; since: number; busy: boolean; past: Set<string> }>();
+/** The server's record is asked again this often while a field shows the name (only what changed since the last ask) */
+const SERVER_EVERY_MS = 5 * 60_000;
+const OPEN_MIN = 9 * 60 + 30;
+
+interface ServedDay {
+  format: string;
+  recording: boolean;
+  firstAt: number | null;
+  lastAt: number | null;
+  series: KeptSeries[];
+}
+
+async function pullDay(t: string, day: string, since: number): Promise<{ ok: true; body: ServedDay } | { ok: false; off: boolean }> {
+  const auth = await feedHeaders();
+  if (!auth.ok) return { ok: false, off: false };
+  try {
+    const res = await fetch(`/api/exposure/day?ticker=${encodeURIComponent(t)}&day=${day}${since > 0 ? `&since=${Math.floor(since)}` : ''}`, { headers: auth.headers });
+    const body = (await res.json().catch(() => null)) as ServedDay | null;
+    /* a server without the recorder (a hosted deployment answers 404, a stopped one 503) is "off"; a refusal at the gate is not */
+    if (res.status === 401 || res.status === 403 || res.status === 429) return { ok: false, off: false };
+    if (!res.ok || !body || body.format !== 'exposure-day/1' || !Array.isArray(body.series)) return { ok: false, off: true };
+    mergeExposureSeries(t, body.series);
+    return { ok: true, body };
+  } catch {
+    return { ok: false, off: false };
+  }
+}
+
+const setServer = (t: string, next: ServerExposure) => {
+  const was = serverState.get(t);
+  if (was && was.state === next.state && was.recording === next.recording && was.firstAt === next.firstAt) return;
+  serverState.set(t, next);
+  emit();
+};
+
+/** Ask the server for the name's recorded day and merge it into the log: at once on the first ask of a page, then at
+    most every five minutes, only the segments that changed. Before today's open (or on a day the market is shut) the
+    session before is asked once too: the chart shows it. */
+export function pullExposureServer(ticker: string, now: number = Date.now()): void {
+  if (typeof window === 'undefined' || typeof fetch !== 'function') return;
+  if (typeof document !== 'undefined' && document.hidden) return;
+  const t = ticker.toUpperCase();
+  let p = serverPull.get(t);
+  if (!p) serverPull.set(t, (p = { at: 0, since: 0, busy: false, past: new Set() }));
+  if (p.busy || (p.at && now - p.at < SERVER_EVERY_MS)) return;
+  p.busy = true;
+  const pull = p;
+  void (async () => {
+    try {
+      const today = nyIsoDate(now);
+      const [y, m, d] = today.split('-').map(Number);
+      const trading = isTradingDay(new Date(y, m - 1, d));
+      if (!trading || nyMinutes(now) < OPEN_MIN) {
+        const prev = priorSessions(1, now)[0];
+        if (prev && !pull.past.has(prev)) {
+          pull.past.add(prev);
+          await pullDay(t, prev, 0);
+        }
+      }
+      const got = await pullDay(t, today, pull.since);
+      if (got.ok) {
+        /* segments that end after a little before the last read: one a later reading extended is sent again whole */
+        if (got.body.lastAt) pull.since = Math.max(pull.since, got.body.lastAt - JOIN_MS);
+        const was = serverState.get(t);
+        const firstAt = was?.firstAt != null && got.body.firstAt != null ? Math.min(was.firstAt, got.body.firstAt) : got.body.firstAt ?? was?.firstAt ?? null;
+        setServer(t, { state: 'on', recording: !!got.body.recording, firstAt });
+      } else if (got.off && serverState.get(t)?.state !== 'on') setServer(t, { state: 'off', recording: false, firstAt: null });
+    } finally {
+      pull.at = Date.now();
+      pull.busy = false;
+    }
+  })();
+}
+
+/** The server's recording of a name, as a hook */
+export function useServerExposure(ticker: string): ServerExposure {
+  const t = ticker.toUpperCase();
+  return useSyncExternalStore(
+    fn => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    () => serverState.get(t) ?? SERVER_WAITING,
+    () => serverState.get(t) ?? SERVER_WAITING,
+  );
 }
 
 /* ---- past sessions: each one's book as of its close ---------------------------------------------------------- */
@@ -535,34 +617,22 @@ export function restoreExposureLog(ticker: string): void {
       }
     });
     if (!kept || kept.v !== VERSION) return;
-    const log = logOf(t);
-    const floor = Date.now() - KEEP_DAYS * 86_400_000;
-    let changed = false;
-    for (const [expiry, strike, segs] of kept.series) {
-      const key = `${expiry}|${strike}`;
-      let s = log.series.get(key);
-      if (!s) log.series.set(key, (s = { expiry, strike, closeAt: closeOf(expiry), segs: [] }));
-      for (let i = 0; i < segs.length; i += 4) {
-        if (segs[i + 1] < floor) continue;
-        if (place(s, segs[i], segs[i + 1], segs[i + 2], segs[i + 3])) {
-          changed = true;
-          if (segs[i] < log.from) log.from = segs[i];
-          const day = nyIsoDate(segs[i + 1]);
-          if (day > log.day) log.day = day;
-        }
-      }
-    }
-    if (changed) {
-      log.rev += 1;
-      emit();
-    }
+    if (placeKept(t, kept.series, Date.now() - KEEP_DAYS * 86_400_000)) emit();
   })();
 }
 
 /** Forget a name's log (tests) */
 export function resetExposureLog(ticker?: string): void {
-  if (ticker) logs.delete(ticker.toUpperCase());
-  else logs.clear();
+  if (ticker) {
+    logs.delete(ticker.toUpperCase());
+    serverState.delete(ticker.toUpperCase());
+    serverPull.delete(ticker.toUpperCase());
+  } else {
+    logs.clear();
+    serverState.clear();
+    serverPull.clear();
+  }
   gridMemo.clear();
+  todayMemo.clear();
   closesAsked.clear();
 }
