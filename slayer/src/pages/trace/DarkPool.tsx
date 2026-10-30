@@ -106,8 +106,9 @@ const queryMemory = { q: '' };
 const darkIdOf = (p: DarkPoolPrint) => `${p.ticker}-${p.id}`;
 const NO_PRINTS: DarkPoolPrint[] = [];
 
-/* A leader's name in the leaders sentence, on a touch screen: at least 32 wide, the name centred (see the sentence) */
-const LEADER_DOOR = '[@media(pointer:coarse)]:inline-block [@media(pointer:coarse)]:min-w-[32px] [@media(pointer:coarse)]:text-center';
+/* A leader's name in the leaders sentence, on a touch screen: at least 32 wide, the name to the right so a comma
+   after it stays tight (see the sentence) */
+const LEADER_DOOR = '[@media(pointer:coarse)]:inline-block [@media(pointer:coarse)]:min-w-[32px] [@media(pointer:coarse)]:text-right';
 
 const DarkPool = () => {
   /* the search is in the address (?q=), so a link carries it */
