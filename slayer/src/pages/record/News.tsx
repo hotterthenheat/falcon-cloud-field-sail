@@ -7,7 +7,8 @@ import { PublishMove, storyNameWord } from '../../components/record/publishMove'
 import { nyTodayIso, shortDay } from '../../data/nyDate';
 import { useNearReports } from '../../data/earningsFeed';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { LoadingBox } from '../../components/ui/states';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, Bell, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import Fold from '../../components/ui/Fold';
@@ -32,7 +33,7 @@ import { nyClock } from '../../core/nyTime';
 import { ImpactLegend, ImpactMark, NEWS_FLAG_TIP, NewsFlag, tierOf } from '../../components/record/impactMark';
 import NewsFeedTabs, { nameWord } from '../../components/record/NewsFeedTabs';
 import NewsCalendar from '../../components/record/NewsCalendar';
-import NewsWindow from '../../components/record/NewsWindow';
+import NewsWindow, { type WindowSeen } from '../../components/record/NewsWindow';
 import { useMediaQuery } from '../../components/ui/useMediaQuery';
 import { NEWS_ROW_H, NEWS_WINDOW_H, NEWS_WINDOW_ROWS } from './recordSkeletons';
 
@@ -41,7 +42,13 @@ const NEWS_HEAD_H = 22;
 import { signedPct } from './money';
 import { Door, Fact as RecordFact, ago } from '../../components/record/ui';
 
-const Fact = (p: Omit<Parameters<typeof RecordFact>[0], 'scope'>) => <RecordFact scope="news" {...p} />;
+/* A head figure in its cell. One line by default (it truncates; the hover has the whole), so the head stands at one
+   height from the first frame to the last read: the contract's no-shift rule. */
+const Fact = ({ cell = '', nowrap = true, ...p }: Omit<Parameters<typeof RecordFact>[0], 'scope'> & { cell?: string }) => (
+  <div className={`min-w-0 ${cell}`}>
+    <RecordFact scope="news" nowrap={nowrap} {...p} />
+  </div>
+);
 
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
@@ -651,6 +658,11 @@ const News = () => {
     ];
   }, [cut, picks]);
   const similarRef = useRef<Map<string, number>>(new Map());
+  /* The list's view: its sort and its cut. Under one view the order is kept across re-reads (orderRef); a new view sorts
+     afresh. The rows in view come back from the window (NewsWindow writes seenRef on every draw). */
+  const viewKey = `${sort}|${category}|${names}|${picks.join(',')}|${boardNames.join(',')}`;
+  const orderRef = useRef<{ view: string; ids: string[] } | null>(null);
+  const seenRef = useRef<WindowSeen>({ first: null, last: null });
   const rows = useMemo(() => {
     const moveKey = (e: GeoNewsEvent): number => {
       const p = e.item.prediction;
@@ -676,25 +688,73 @@ const News = () => {
       loud: (a, b) => b.severity - a.severity,
     };
  const sorted = [...kept].sort(by[sort]);
+    /* A re-read under the same view keeps the rows already drawn in their order (they never move against each other).
+       The fold runs over them first, so a drawn row stays the head of its near-duplicates. */
+    const memo = orderRef.current?.view === viewKey ? orderRef.current : null;
+    const byId = new Map(kept.map(e => [e.id, e]));
+    const drawnBefore = memo ? memo.ids.filter(id => byId.has(id)) : [];
+    const wasDrawn = new Set(drawnBefore);
+    const foldOrder = memo ? [...drawnBefore.map(id => byId.get(id)!), ...sorted.filter(e => !wasDrawn.has(e.id))] : sorted;
     /* the near-duplicates fold into the first of them in this order */
-    const out: GeoNewsEvent[] = [];
+    const heads: GeoNewsEvent[] = [];
     const sigs: { words: Set<string>; at: number; idx: number }[] = [];
     const folded = new Map<string, number>();
-    for (const e of sorted) {
+    for (const e of foldOrder) {
       const words = dupWords(e.item.headline);
       const twin = sigs.find(g => Math.abs(g.at - e.item.minutesAgo) <= 360 && dupClose(g.words, words));
       if (twin) {
-        const head = out[twin.idx];
+        const head = heads[twin.idx];
         folded.set(head.id, (folded.get(head.id) ?? 0) + 1);
         continue;
       }
-      sigs.push({ words, at: e.item.minutesAgo, idx: out.length });
-      out.push(e);
+      sigs.push({ words, at: e.item.minutesAgo, idx: heads.length });
+      heads.push(e);
     }
     similarRef.current = folded;
+    let out: GeoNewsEvent[];
+    if (!memo) out = heads;
+    else {
+      const isHead = new Set(heads.map(e => e.id));
+      const drawn = drawnBefore.filter(id => isHead.has(id));
+      /* each new story takes its place in the order: after the drawn row that comes before it in a fresh sort */
+      const after = new Map<string | null, GeoNewsEvent[]>();
+      let lastDrawn: string | null = null;
+      for (const e of sorted) {
+        if (wasDrawn.has(e.id)) {
+          if (isHead.has(e.id)) lastDrawn = e.id;
+        } else if (isHead.has(e.id)) {
+          const list = after.get(lastDrawn);
+          if (list) list.push(e);
+          else after.set(lastDrawn, [e]);
+        }
+      }
+      /* a place inside the rows in view would push them down: those stories go just above the first row in view, where
+         the window keeps the reader's rows still (NewsWindow) and a scroll up finds them */
+      const first = seenRef.current.first ? drawn.indexOf(seenRef.current.first) : -1;
+      const last = seenRef.current.last ? drawn.indexOf(seenRef.current.last) : -1;
+      const above: GeoNewsEvent[] = [];
+      if (first >= 0 && last >= first) {
+        for (let k = first; k < last; k++) {
+          const list = after.get(drawn[k]);
+          if (list) {
+            above.push(...list);
+            after.delete(drawn[k]);
+          }
+        }
+      }
+      out = [...(after.get(null) ?? [])];
+      drawn.forEach((id, k) => {
+        if (k === first) out.push(...above);
+        out.push(byId.get(id)!);
+        const list = after.get(id);
+        if (list) out.push(...list);
+      });
+    }
+    orderRef.current = { view: viewKey, ids: out.map(e => e.id) };
     return out;
-  
-  }, [cut, picks, sort]);
+    // the order memory and the rows in view are read, not tracked: a re-read is what redraws the list
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cut, picks, sort, viewKey]);
   const pins = useMemo(() => clusterByCity(rows), [rows]);
   /* the heat: each story's city, weighed by how hard it lands */
   const heat = useMemo<HeatPoint[]>(() => {
@@ -711,12 +771,18 @@ const News = () => {
 
   /* the story in hand: the Pulse tile's deep link opens on its story, else the first */
   const [selectedId, setSelectedId] = useState<string | null>(() => (location.state as { selectedId?: string } | null)?.selectedId ?? null);
-  /* the lead follows the order until the reader picks a story */
+  /* The lead is the first story of a view until the reader picks one. A re-read does not move it (new stories land above
+     the rows in view, out of sight); a new sort or cut leads with its own first story. */
   const pickedRef = useRef(!!(location.state as { selectedId?: string } | null)?.selectedId);
+  const leadViewRef = useRef<string | null>(null);
   useEffect(() => {
     if (rows.length === 0) return;
-    if (!pickedRef.current ? selectedId !== rows[0].id : !selectedId || !rows.some(r => r.id === selectedId)) setSelectedId(rows[0].id);
-  }, [rows, selectedId]);
+    const newView = leadViewRef.current !== viewKey;
+    leadViewRef.current = viewKey;
+    if (!selectedId || !rows.some(r => r.id === selectedId) || (newView && !pickedRef.current)) {
+      if (selectedId !== rows[0].id) setSelectedId(rows[0].id);
+    }
+  }, [rows, selectedId, viewKey]);
   const selected = rows.find(r => r.id === selectedId) ?? events.find(e => e.id === selectedId) ?? null;
   /* a story picked by hand flies the map to its city; the one picked for the reader does not move it */
   const [flyTo, setFlyTo] = useState<FlyTo | null>(null);
@@ -800,6 +866,9 @@ const News = () => {
     return { e: first, same: mates.length, mates, total: ahead.length, today: first.iso === today, scope: reportsQ.fortnight ? "on the fortnight's lists" : 'today and next session' };
   }, [reportsQ]);
 
+  /* the whole of the next print, for the hover when its line is cut */
+  const nextPrintText = nextPrint ? `${nextPrint.title} · ${nextPrint.dayLabel} ${nextPrint.timeLabel}` : null;
+
   const openName = (t: string) => {
     changeTicker(t);
     navigate('/pinpoint/map');
@@ -837,10 +906,11 @@ const News = () => {
           title="The wire"
           guide={{ title: 'How to read the wire', door: 'What the pins, the flags and the numbers mean', testId: 'news-guide', body: <NewsGuide /> }}
           kept={news.keptAt}
-          line={<span data-news-coverage>{coverText} · a row opens the story beside the list</span>}
-          facts={
-            <>
-            <Fact label="Stories" testId="stories" tip={`Headlines on the wire after the cards and the filter${coverage.reading ? ' — still reading back, the count grows' : ''}`} partial={coverage.reading && rows.length > 0}>
+          line={<span className="max-sm:block max-sm:line-clamp-2 max-sm:min-h-[2lh]" data-news-coverage>{coverText} · a row opens the story beside the list</span>}
+        >
+          {/* the head's figures stand at one height at every width: one row on a desk, two on a tablet, three on a phone */}
+          <dl className="mt-2 grid gap-x-6 gap-y-2 grid-cols-3 sm:grid-cols-[auto_auto_auto_minmax(0,1fr)] lg:flex lg:items-start" data-news-facts>
+            <Fact cell="lg:shrink-0" label="Stories" testId="stories" tip={`Headlines on the wire after the cards and the filter${coverage.reading ? ' — still reading back, the count grows' : ''}`} partial={coverage.reading && rows.length > 0}>
               {news.status === 'loading' && rows.length === 0 ? (
                 <span className="text-textMuted">Reading</span>
               ) : news.status === 'sim' ? (
@@ -853,14 +923,14 @@ const News = () => {
               )}
             </Fact>
             <>
-                <Fact label="Major" testId="major" tip="Headlines Unusual Whales flags as major" partial={coverage.reading && rows.length > 0}>
+                <Fact cell="lg:shrink-0" label="Major" testId="major" tip="Headlines Unusual Whales flags as major" partial={coverage.reading && rows.length > 0}>
                   {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : <>{rows.filter(r => r.item.major).length}{coverage.reading && <span className="text-t9"> · so far</span>}</>}
                 </Fact>
-                <Fact label="On your Board" testId="board" tip="Headlines that name a stock on your Board" partial={coverage.reading && rows.length > 0}>
+                <Fact cell="lg:shrink-0" label="On your Board" testId="board" tip="Headlines that name a stock on your Board" partial={coverage.reading && rows.length > 0}>
                   {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : <>{rows.filter(onBoard).length}{coverage.reading && <span className="text-t9"> · so far</span>}</>}
                 </Fact>
             </>
-            <Fact label={biggest && !moveDayIsToday ? `Biggest move · ${shortDay(biggest.date)}` : coverage.today ? 'Biggest move today' : `Biggest move · ${shortDay(coverage.day)}`} testId="biggest" tip={`The regular session's change${biggest && !moveDayIsToday ? ` on ${shortDay(biggest.date)}, the last session` : ''} — not the move when the story crossed — over every name ${coverage.today ? "today's" : `${wireDayWord}'s`} stories are about (${moveNames.length} names, read in bulk off the screener; the regular close is each name's daily row — ${setMoves.moves.size} read, the other ${Math.max(0, setMoves.screened - setMoves.moves.size)} ruled out because their whole session range sits inside the leader's move)`}>
+            <Fact cell="max-sm:col-span-3 lg:max-w-[45%]" label={biggest && !moveDayIsToday ? `Biggest move · ${shortDay(biggest.date)}` : coverage.today ? 'Biggest move today' : `Biggest move · ${shortDay(coverage.day)}`} testId="biggest" tip={`The regular session's change${biggest && !moveDayIsToday ? ` on ${shortDay(biggest.date)}, the last session` : ''} — not the move when the story crossed — over every name ${coverage.today ? "today's" : `${wireDayWord}'s`} stories are about (${moveNames.length} names, read in bulk off the screener; the regular close is each name's daily row — ${setMoves.moves.size} read, the other ${Math.max(0, setMoves.screened - setMoves.moves.size)} ruled out because their whole session range sits inside the leader's move)`}>
               {coverage.reading ? (
                 <span className="text-textMuted">reading {coverage.today ? "today's" : `${wireDayWord}'s`} stories{namesSoFar ? ` · ${namesSoFar} names so far` : ''}</span>
               ) : biggest ? (
@@ -872,7 +942,9 @@ const News = () => {
                 <span className="text-textMuted">{moveNames.length ? (setMoves.complete ? 'no regular close on these names' : `reading ${Math.min(setMoves.screened, moveNames.length)} of ${moveNames.length} names`) : 'no named stories yet'}</span>
               )}
             </Fact>
-            <Fact label="Next print" testId="next" tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first; with none ahead, the next earnings report">
+            {/* the one figure that may run long: one line on a desk, two on a phone, and the space for them is always kept */}
+            <Fact cell="col-span-3 sm:col-span-4 lg:flex-1" nowrap={false} label="Next print" testId="next" tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first; with none ahead, the next earnings report">
+              <span className="block sm:truncate max-sm:line-clamp-2 max-sm:min-h-[2lh]" title={nextPrintText ?? undefined}>
               {nextPrint ? (
                 <>
                   {nextPrint.title} <span className={nextPrint.inMinutes < 90 ? 'text-warn' : 'text-textMuted'}>· {nextPrint.dayLabel} {nextPrint.timeLabel} · in {nextPrint.inMinutes < 60 ? `${nextPrint.inMinutes}m` : `${Math.floor(nextPrint.inMinutes / 60)}h ${nextPrint.inMinutes % 60}m`}</span>
@@ -904,10 +976,10 @@ const News = () => {
                   <span className="text-textMuted">{econ.status === 'loading' || reportsQ.status === 'loading' ? 'reading the calendar' : econ.status === 'sim' && reportsQ.status === 'sim' ? 'the calendar did not answer' : 'nothing ahead on the calendar'}</span>
                 )
               )}
+              </span>
             </Fact>
-            </>
-          }
-        />
+          </dl>
+        </RecordHead>
         {/* on a phone the controls are a grid of equal cells */}
         <div className={`px-5 pb-3 ${CONTROLS_LINE}`} data-news-controls>
           <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Whose stories" testId="news-names" />
@@ -929,7 +1001,7 @@ const News = () => {
         {/* every story on the cut, in the chosen order */}
         {/* below lg the rows scroll sideways at a readable width */}
         {/* a day of the wire is hundreds of rows, so the list scrolls inside a window with its head pinned */}
-        <div ref={rowsRef} className={`relative overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ maxHeight: NEWS_WINDOW_H, overflowAnchor: 'none' }} data-news-rows data-news-window={rows.length > NEWS_WINDOW_ROWS || undefined} data-news-stacked={stacked || undefined}>
+        <div ref={rowsRef} className={`relative overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ height: NEWS_WINDOW_H, overflowAnchor: 'none' }} data-news-rows data-news-window={rows.length > NEWS_WINDOW_ROWS || undefined} data-news-stacked={stacked || undefined}>
           {!stacked && <div className={`sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-t9 uppercase tracking-widest text-textMuted max-lg:min-w-[900px] ${BAND_COLS}`}>
             <span title="When the headline crossed, New York time">Time</span>
             <span title="The first stock the headline names; MACRO for an economy or market story; NO NAME for an unlisted company's story">Name</span>
@@ -939,13 +1011,19 @@ const News = () => {
             <span className="text-right" title="How the named stock had moved on the session when the story crossed — a snapshot at publish, not today's move now">At publish</span>
             <span className="text-right lg:max-2xl:hidden" title="The other stocks the headline names">Also</span>
           </div>}
-          {rows.length === 0 && <div className="px-5 py-6 text-center font-mono text-t10 uppercase tracking-widest text-textMuted">{news.status === 'loading' || coverage.reading ? 'Reading the wire' : news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>}
-          <NewsWindow box={rowsRef} items={rows} keyOf={storyKey} estimate={estimateWire} head={stacked ? 0 : NEWS_HEAD_H} initialHeight={NEWS_WINDOW_H} openKey={selectedId} className={stacked ? '' : 'max-lg:min-w-[900px]'}>
+          {/* the window stands at its full height from the first frame; while the wire is read it holds the rows' shape */}
+          {rows.length === 0 && (news.status === 'loading' || coverage.reading ? (
+            <LoadingBox shape="table" rows={NEWS_WINDOW_ROWS} label="Reading the wire" style={{ height: NEWS_WINDOW_H - (stacked ? 0 : NEWS_HEAD_H) }} />
+          ) : (
+            <div className="px-5 py-6 text-center font-mono text-t10 uppercase tracking-widest text-textMuted">{news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>
+          ))}
+          <NewsWindow box={rowsRef} items={rows} keyOf={storyKey} estimate={estimateWire} head={stacked ? 0 : NEWS_HEAD_H} initialHeight={NEWS_WINDOW_H} openKey={selectedId} view={viewKey} seen={seenRef} className={stacked ? '' : 'max-lg:min-w-[900px]'}>
             {e => <WireRow e={e} open={e.id === selectedId} stacked={stacked} onBoard={onBoard(e)} similar={similarRef.current.get(e.id)} onPick={onRowPick} />}
           </NewsWindow>
         </div>
           </div>
-          <div className="min-w-0 px-4 pt-3 pb-3 flex flex-col gap-3 overflow-y-auto lg:sticky lg:top-0 lg:self-start lg:max-h-[min(80vh,720px)] max-lg:border-t max-lg:border-borderSubtle" data-news-story={selected?.id}>
+          {/* beside the list the story is never taller than its window, so the band stands at the window's height */}
+          <div className="min-w-0 px-4 pt-3 pb-3 flex flex-col gap-3 overflow-y-auto lg:sticky lg:top-0 lg:self-start lg:max-h-[var(--news-window)] max-lg:border-t max-lg:border-borderSubtle" style={{ '--news-window': `${NEWS_WINDOW_H}px` } as CSSProperties} data-news-story={selected?.id}>
             {selected ? (
               <>
                 <div className="flex items-center gap-2 flex-wrap">
