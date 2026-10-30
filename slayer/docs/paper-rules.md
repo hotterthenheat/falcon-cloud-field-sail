@@ -6,7 +6,9 @@
 > "your own rules" accounts are judged by the rule engine in `src/data/paper/rules.ts`, on the firms' published rules in
 > `src/data/paper/propFirms.ts` (each with its source and "rules as of" date; the firm's own site governs).
 > `scripts/paper-proof.ts` and `scripts/golden/paper-golden.ts` check the engine. Fills, fees, the clock and the
-> carry-over below still hold for options.
+> carry-over below still hold for options. **Since 2026-10-29 options are also sold** — "Selling, margin and what each
+> plan allows" at the foot of this page is current and supersedes "What can be traded: long calls and puts, and
+> vertical spreads bought for a debit" below.
 
 Written 2026-09-22, **before the code** (Noah, on the partner's paper page: "he is basically making a 'propfirm' type
 field for users to trade paper money on instead of wasting their money buying a propfirm when they are not ready for
@@ -347,3 +349,72 @@ one journal, two books, never mixed (the book rides the address, `?book=backtest
 - **A trade's own page** draws a target or a stop on the "while you held it" figure only when it lies within reach of
   what the trade actually did — a way out far off the path is named in the facts above it, not drawn (it pressed the
   whole figure into a flat line).
+
+## Selling, margin and what each plan allows (2026-10-29 — current)
+
+The owner, verbatim: "allow everything on paper trading, but on the free reign mode, but if people are using accounts
+that we have up for props only offer what the prop offers". Code: `src/data/paper/engine.ts` (the book, orders, expiry),
+`margin.ts` (what shorts hold), `rules.ts` (`allowSell`, `longOnlyOn`, the whitelist, the 16:10 close), `propFirms.ts`
+and `whitelists.ts` (the firms' data). Checked by `scripts/paper-proof.ts` (hand-worked numbers on a fixed-quote market)
+and `scripts/golden/paper-golden.ts` §6–11 (SPY's recorded 0DTE chain of 2026-10-29, 09:30–16:15).
+
+**Selling.** A sell with nothing held opens a short; a buy of a contract held short closes it. A way out never goes past
+flat (refused in words: "You hold 2 short — buy back no more than that"). Fills are the NBBO's: **a sale at the bid, a
+buy at the ask** (a limit never worse than its price). Fees as before, a contract a leg each way.
+
+- **Short calls and puts**, naked included (practice only — see the plans below).
+- **Credit spreads**: a vertical sold — the near strike sold, the far one bought, as one order (`{ strike, short }`
+  sold: its bid is the near leg's bid less the far leg's ask). Debit spreads as before.
+- **Iron condors and iron butterflies**: two spreads sold as **one order** (`optPlaceCombo`): at the market every leg fills
+  at once at its own bid or ask; a limit waits until the legs bring in its net credit, then all fill together, or none.
+  Cancelling one leg cancels the order. A spread can also be put on in two orders ("legged"): a call sold against a long
+  call held on the same expiry is margined as the pair.
+- **Cash-secured puts**: a put sold with its strike × 100 held.
+- **Covered calls are not offered**: they need 100 shares a contract and this desk holds no stock. The Strategies card
+  says so and points to a call spread.
+- Targets and stops (the ladder) ride longs only; a short's way out is a buy back — at the ask, a limit (fills when the
+  ask comes down to it, at the ask), or a buy stop (fills when the ask rises to it).
+- **Fills only in the options session.** After the bell the feed's last quotes still read as new, so a resting order
+  does not fill on them (this held for buys too and was not enforced before); the minutes it missed are replayed from the
+  history as before.
+
+**Margin and buying power** (`margin.ts`, re-marked on every tick). Free = cash − what the open shorts hold:
+
+| Position | Holds (the premium it took in is in cash, so the net is its whole loss) |
+| --- | --- |
+| A long, a debit spread | nothing more — paid in full |
+| A credit spread | width × 100 (net: width − credit) |
+| An iron condor / butterfly | the most the two spreads can lose at expiry, once (net: the wider side − both credits) |
+| A cash-secured put | strike × 100 (net: strike − premium) |
+| A single sold against a long of the same kind and expiry | the distance between the strikes where the long is further out, else nothing |
+| A naked short (practice) | **Reg T estimate**: the greater of 20% × the name − out of the money + the premium now, or 10% × the name (a call) / the strike (a put) + the premium — 15% / 10% on a broad-based index (SPX, NDX, RUT, XSP, VIX …). An estimate: a broker's own figure can differ |
+
+The account card shows **Free** and **Margin held**. **A margin call** is equity under what the open shorts need (free
+plus the longs at their bid below zero): every new way in is refused with the call in words, ways out are not, and
+nothing is sold off by itself (no plan here says otherwise).
+
+**Expiry and assignment.** At 16:00 a short settles at what it is worth in the money on the 16:00 print, bought back in
+cash with no fee: an index is cash-settled; a stock or fund in the money is **assigned and settled in cash at intrinsic**
+(the desk holds no stock, so no shares change hands — the trade says so); out of the money it expires worthless. A spread
+sold settles inside its width. Shorts obey each plan's flat-by and expiry-close rules like longs (bought back at the ask).
+
+**The 16:10 close** (Options Funding, Strix): an expiring SPY, QQQ, IWM or DIA contract trades on to 16:15. It is not
+settled at the bell; at 16:10 the rules close it at that minute's live bid (a short at the ask); in that window it may
+still be closed by hand. With no quote standing at 16:10 it settles at the 16:00 close and says so.
+
+**What each plan allows** (`allowSell` in `rules.ts`, refused in `ruleRefusal` in words):
+
+| Account | Allows | Data |
+| --- | --- | --- |
+| Practice ("free reign") | everything, naked shorts on the Reg T estimate | no plan |
+| Your own rules | chosen: everything (default), capped loss only, or buys only | `CustomRules.selling` |
+| Vanquish Basic, Rapid Express, Rapid Elite | buy only, single legs | `allowSell: 'none'`, `spreads: false` |
+| Vanquish Advanced | **Level 4**: spreads bought and sold, condors, butterflies, puts cash-secured; a call sold only as a spread or against a long call (no margin) | `allowSell: 'level4'` |
+| every Vanquish plan | SPX, XSP, VIX: single calls and puts bought only | `longOnlyOn: ['SPX','XSP','VIX']` |
+| Strix Pro | **defined risk**: credit and debit spreads, condors, puts held at their whole loss, a call only with a long call over it | `allowSell: 'definedRisk'` |
+| Strix, Strix Express, Options Funding Growth and Express, TradeFundrr | buy only | `allowSell: 'none'` |
+
+Options Funding trades only the **275 names of its whitelist** (`whitelists.ts`: optionsfunding.co/ticker-whitelist,
+read 2026-10-29; a name compares without dots, so BRK.B is the list's BRKB). Strix names a 275-symbol list of its own
+that was not read here, so Strix plans do not check names and say so. A plan saved before these fields is read with the
+firm's current permissions when it loads (`store.ts migrate`).

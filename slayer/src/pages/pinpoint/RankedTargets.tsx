@@ -118,10 +118,11 @@ const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count,
       <X className="w-3 h-3" />
     </button>
   );
-  /* A quarter of the screen holds the head in two rows; the door off stays by the name. */
+  /* A quarter of the screen holds the head in two rows; the door off stays by the name. gap-3 on a touch screen: the
+     scope chip's finger box (22px under its centre) clears the expiry card under it (the last-targets pass). */
   const head =
     density === 'tight' ? (
-      <div className="w-full flex flex-col gap-2">
+      <div className="w-full flex flex-col gap-2 [@media(pointer:coarse)]:gap-3">
         <div className="flex items-center gap-2">
           {chip}
           {off}
