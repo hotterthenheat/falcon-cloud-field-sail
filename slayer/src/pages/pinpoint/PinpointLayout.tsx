@@ -129,7 +129,7 @@ const PinpointLayout = () => {
       {sessionRead.note && noteSeen !== sessionRead.note && (
         <p className="mt-2 flex items-center gap-2 font-mono text-t10 text-textMuted" data-session-note>
           <span className="min-w-0">{sessionRead.note}</span>
-          <button type="button" onClick={() => seeNote(sessionRead.note)} className="shrink-0 inline-flex items-center rounded p-0.5 hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" aria-label="Hide this note" title="Hide this note">
+          <button type="button" onClick={() => seeNote(sessionRead.note)} className="hit-24 shrink-0 inline-flex items-center rounded p-0.5 hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" aria-label="Hide this note" title="Hide this note">
             <X className="w-3 h-3" />
           </button>
         </p>

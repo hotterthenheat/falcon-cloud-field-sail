@@ -153,11 +153,11 @@ const Report = () => {
       }
       controls={
         <>
-          <Link to={`/practice/backtest/${session.id}`} className="tap-40 inline-flex items-center gap-1.5 h-7 px-3 rounded-md border border-borderSubtle bg-chip font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-review-desk-door>
+          <Link to={`/practice/backtest/${session.id}`} className="tap-40 inline-flex items-center gap-1.5 h-7 px-3 whitespace-nowrap rounded-md border border-borderSubtle bg-chip font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-review-desk-door>
             <ArrowLeft className="w-3 h-3" /> Back to the desk
           </Link>
-          <button type="button" onClick={exportCsv} disabled={!!csvWhyNot} aria-disabled={!!csvWhyNot} title={csvWhyNot ?? 'The closed trades and the By day table, as two CSV files a spreadsheet opens'} className="tap-40 ml-auto inline-flex items-center gap-1.5 h-7 px-3 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors disabled:opacity-60 disabled:cursor-not-allowed" data-report-export={csvWhyNot ? 'off' : 'on'}>
-            <Download className="w-3 h-3" /> CSV · trades and days
+          <button type="button" onClick={exportCsv} disabled={!!csvWhyNot} aria-disabled={!!csvWhyNot} title={csvWhyNot ?? 'The closed trades and the By day table, as two CSV files a spreadsheet opens'} className="tap-40 ml-auto inline-flex items-center gap-1.5 h-7 px-3 whitespace-nowrap rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors disabled:opacity-60 disabled:cursor-not-allowed" data-report-export={csvWhyNot ? 'off' : 'on'}>
+            <Download className="w-3 h-3" /> CSV<span className="max-sm:hidden"> · trades and days</span>
           </button>
         </>
       }

@@ -135,7 +135,7 @@ export const PeriodPick = ({ value, onChange }: { value: Period; onChange: (p: P
 /** THE DOORS at the line's end: the day's notes (today's plan, or the day that is open) and the file — the file says
     why it cannot be had when it cannot */
 export const EndDoors = ({ onNotes, notesWord = 'Today’s notes', onCsv, csvWhyNot, csvTitle, extra }: { onNotes?: () => void; notesWord?: string; onCsv: () => void; csvWhyNot: string | null; csvTitle: string; extra?: ReactNode }) => (
-  <span className="ml-auto flex items-center gap-2 max-sm:col-span-2 max-sm:[&>*]:flex-1" data-journal-doors>
+  <span className="ml-auto flex items-center gap-2 max-sm:col-span-2 max-sm:flex-wrap max-sm:[&>*]:flex-1" data-journal-doors>
     {extra}
     {onNotes && (
       <button type="button" onClick={onNotes} className={door} title="The plan before the day and the review after it — kept as you type" data-journal-notes-door>

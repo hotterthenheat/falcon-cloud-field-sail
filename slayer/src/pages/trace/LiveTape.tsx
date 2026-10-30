@@ -1170,13 +1170,13 @@ const LiveTape = () => {
                   {dayAlertsSplit.bets.length || dayAlertsSplit.packs.length ? (
                     <>
                       {dayAlertsSplit.bets.slice(0, 3).map(a => (
-                        <button key={a.id} type="button" onClick={() => setOpenPrint(a)} className="block w-full py-[3.5px] text-left font-mono tnum text-textPrimary break-words sm:truncate hover:text-silver" data-tape-day-alert>
+                        <button key={a.id} type="button" onClick={() => setOpenPrint(a)} className="block w-full py-1 text-left font-mono tnum text-textPrimary break-words sm:truncate hover:text-silver" data-tape-day-alert>
                           {a.ticker} {a.strike}
                           {a.right} {expiryLabel(a.expiry)} · {fmtUsd(a.premium)} <span className="text-textSecondary">{a.side === 'ASK' ? 'at the ask' : a.side === 'BID' ? 'on the bid' : 'no side'} · {a.time}</span>
                         </button>
                       ))}
                       {dayAlertsSplit.packs.length > 0 && (
-                        <button type="button" onClick={() => setOpenPrint(dayAlertsSplit.packs[0])} className="block w-full py-[3.5px] text-left font-mono tnum text-textSecondary break-words sm:truncate hover:text-silver" title={ALERT_PACK_HINT} data-tape-day-alert-pack>
+                        <button type="button" onClick={() => setOpenPrint(dayAlertsSplit.packs[0])} className="block w-full py-1 text-left font-mono tnum text-textSecondary break-words sm:truncate hover:text-silver" title={ALERT_PACK_HINT} data-tape-day-alert-pack>
                           <span className="text-warn">floor package · not a bet</span> · {num(dayAlertsSplit.packs.length)} alert{dayAlertsSplit.packs.length === 1 ? '' : 's'}, {fmtUsd(dayAlertsSplit.packs.reduce((a, p) => a + p.premium, 0))}
                         </button>
                       )}

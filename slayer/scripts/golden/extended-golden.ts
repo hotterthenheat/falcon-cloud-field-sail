@@ -118,6 +118,9 @@ expectEqual('07:41 holds the last price-setting print', at(pre.bars, '2026-10-29
 /* ---- the regular session is untouched ---- */
 const rth = await pullIntraday('SPY', '1m', 'rth', '20261029', '20261029');
 const rawRth = await raw('/stock/history/ohlc?symbol=SPY&start_date=20261029&end_date=20261029&interval=1m&start_time=09:30:00&end_time=15:59:59.999&format=json');
+/* the window ends on its last millisecond (15:59:59.999): the 15:59 bar holds its last second. The raw prints of
+   15:59:00–15:59:59.999 sum to 330,558 shares, high 769.66; an end of 15:59:59 gave 315,661 and 769.62 */
+expectEqual('the 15:59 bar is the whole minute', [at(rth.bars, '2026-10-29', '15:59')?.volume, at(rth.bars, '2026-10-29', '15:59')?.high], [330558, 769.66]);
 expectEqual("regular session bars = ThetaData's", JSON.stringify(rth.bars) === JSON.stringify(rawRth) && rth.bars.length === 390, true);
 
 done();

@@ -26,7 +26,7 @@ export const PRACTICE_SUBPAGES: PracticeSubpage[] = [
   {
     path: '/practice/journal',
     label: 'Journal',
-    subtitle: 'Every trade on its day — paper, backtest or a journal of your own from your broker — what each day, week, month and year made, and the trades behind it',
+    subtitle: 'Every trade on its day — paper, backtest or a journal of your own — what each day, week, month and year made',
     icon: NotebookPen,
   },
 ];
