@@ -317,7 +317,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
           {wire === 'reading' ? 'Reading the wire' : wire === 'failed' ? 'This read did not land' : tab === 'following' ? 'Nothing yet on the names you follow' : 'Nothing on the wire here today'}
         </div>
       )}
-      <NewsWindow box={windowRef} items={rows} keyOf={storyKey} estimate={estimate} head={stacked ? 0 : NEWS_HEAD_H} initialHeight={NEWS_WINDOW_H} openKey={selectedId} reveal={tab} className={stacked ? '' : 'max-lg:min-w-[900px]'}>
+      <NewsWindow box={windowRef} items={rows} keyOf={storyKey} estimate={estimate} head={stacked ? 0 : NEWS_HEAD_H} initialHeight={NEWS_WINDOW_H} openKey={selectedId} reveal={tab} above={`${tab}|${printed.length}|${rows.length === 0}`} className={stacked ? '' : 'max-lg:min-w-[900px]'}>
         {e => <FeedRow e={e} open={e.id === selectedId} stacked={stacked} onBoard={onBoard(e)} ringing={!!e.item.ticker && ringing.has(e.item.ticker)} onPick={onRowPick} />}
       </NewsWindow>
       </div>

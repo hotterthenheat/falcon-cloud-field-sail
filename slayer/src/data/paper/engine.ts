@@ -1442,8 +1442,12 @@ function reaskOpen(a: PaperAccount, m: PaperMarket, legs: OptOrder[], pxOf: (o: 
 function optTickOrders(a: PaperAccount, m: PaperMarket): PaperAccount {
   let next = a;
   const judged = new Set<string>();
+  /* fills only in the options session: after the bell the feed's last quotes still read as new, but nothing trades on
+     them — but for a way out of an expiring SPY, QQQ, IWM or DIA contract in a plan's late window (to 16:10) */
+  const shut = !m.replay && !m.open();
+  const mayFill = (o: OptOrder) => !shut || ((o.opens ?? o.side === 'buy') === false && lateWindow(next, o.contract, m.now));
   for (const o of a.opt.orders) {
-    if (o.status !== 'working' || !lookable(o.placed, m.now) || o.combo) continue;
+    if (o.status !== 'working' || !lookable(o.placed, m.now) || o.combo || !mayFill(o)) continue;
     /* minutes it missed are replayed first, in order (store.ts): judging it on today's quote now would skip them */
     if (!m.replay && gapOf(o, m.now) != null) continue;
     const live = next.opt.orders.find(x => x.id === o.id);
@@ -1481,7 +1485,7 @@ function optTickOrders(a: PaperAccount, m: PaperMarket): PaperAccount {
   }
   /* orders of several: judged as one, on the net of their legs, and filled leg by leg at each one's own bid or ask */
   const combos = new Map<string, OptOrder[]>();
-  for (const o of next.opt.orders) if (o.status === 'working' && o.combo && lookable(o.placed, m.now) && (m.replay || gapOf(o, m.now) == null)) combos.set(o.combo, [...(combos.get(o.combo) ?? []), o]);
+  for (const o of next.opt.orders) if (o.status === 'working' && o.combo && lookable(o.placed, m.now) && mayFill(o) && (m.replay || gapOf(o, m.now) == null)) combos.set(o.combo, [...(combos.get(o.combo) ?? []), o]);
   for (const legs of combos.values()) {
     const natural = comboNatural(m, legs);
     if (!Number.isFinite(natural)) continue;

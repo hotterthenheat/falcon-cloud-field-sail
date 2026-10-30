@@ -21,6 +21,8 @@ interface Props<T> {
   openKey?: string | null;
   /** bump to bring the open story into view again (a tab change) */
   reveal?: unknown;
+  /** changes whenever what is drawn above the rows inside the window changes (beyond the head) */
+  above?: unknown;
   /** classes for the box the rows stand in (a minimum width, say) */
   className?: string;
   children: (t: T, index: number) => ReactNode;
@@ -29,7 +31,7 @@ interface Props<T> {
 /** rows drawn past each edge of the view, so a Tab or an arrow always finds the next row drawn */
 const OVERSCAN = 8;
 
-export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initialHeight, openKey = null, reveal, className = '', children }: Props<T>) {
+export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initialHeight, openKey = null, reveal, above, className = '', children }: Props<T>) {
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const indexOf = useMemo(() => {
@@ -71,33 +73,28 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
     ro.observe(el);
     return () => ro.disconnect();
   }, [el]);
-  /* Estimates are kept per story for the width: the virtualizer re-reads every unmeasured row's estimate each time a
-     row is measured (once a frame while scrolling), so each one is worked out once, not ~1,300 times a frame. */
-  const estCache = useRef({ width, estimate, kept: new Map<string, number>() });
-  if (estCache.current.width !== width || estCache.current.estimate !== estimate) estCache.current = { width, estimate, kept: new Map() };
-  const keyOfRef = useRef(keyOf);
-  keyOfRef.current = keyOf;
+  /* The estimates are worked out once per list and width, into an array read by index: the virtualizer re-reads
+     every unmeasured row's estimate each time a row is measured (about once a frame while scrolling), so the read
+     must be a plain array lookup, not ~1,300 estimates or map lookups a frame. */
+  const estimates = useMemo(() => {
+    const a = new Float64Array(items.length);
+    items.forEach((t, i) => (a[i] = estimate(t, width)));
+    return a;
+  }, [items, width, estimate]);
+  const estimatesRef = useRef(estimates);
+  estimatesRef.current = estimates;
 
-  /* where the rows start inside the window: under the head, and under anything drawn before them (the day's prints) */
+  /* where the rows start inside the window: under the head, and under anything drawn before them (the day's prints).
+     Read only when that can change — reading it every render would force a layout on every scrolled frame. */
   const sizerRef = useRef<HTMLDivElement | null>(null);
   const [margin, setMargin] = useState(head);
   useLayoutEffect(() => {
     const m = sizerRef.current?.offsetTop ?? head;
     if (m !== margin) setMargin(m);
-  });
+  }, [head, width, items.length === 0, above]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getItemKey = useCallback((i: number) => keyOf(itemsRef.current[i]), [items]); // eslint-disable-line react-hooks/exhaustive-deps
-  const estimateSize = useCallback((i: number) => {
-    const t = itemsRef.current[i];
-    const k = keyOfRef.current(t);
-    const c = estCache.current;
-    let e = c.kept.get(k);
-    if (e === undefined) {
-      e = c.estimate(t, c.width);
-      c.kept.set(k, e);
-    }
-    return e;
-  }, []);
+  const estimateSize = useCallback((i: number) => estimatesRef.current[i] ?? 40, []);
   const v = useVirtualizer({
     count: items.length,
     getScrollElement: () => el,
