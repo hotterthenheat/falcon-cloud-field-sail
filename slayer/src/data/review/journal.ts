@@ -69,9 +69,14 @@ export const dayMinOf = (r: JournalRow): number => (r.paper ? 1440 : r.fut ? 138
 /** The name it was a trade IN: the ticker, or the product */
 export const nameOf = (r: JournalRow): string => (r.fut ? r.t.symbol : r.t.contract.ticker);
 /** What it is called in a sentence: "SPY 518C Jul 2", "ESU6 long" */
-export const titleOf = (r: JournalRow): string => (r.fut ? `${r.t.contract} ${r.t.long ? 'long' : 'short'}` : contractWords(r.t.contract));
+/* a paper option sold to open reads "short"; one opened in a multi-leg order names it */
+const paperShort = (r: JournalRow): boolean => !r.fut && r.paper === true && (r.t as PaperOptTrade).short === true;
+const comboOf = (r: JournalRow): string | undefined => (!r.fut && r.paper === true ? (r.t as PaperOptTrade).comboName : undefined);
+export const titleOf = (r: JournalRow): string =>
+  r.fut ? `${r.t.contract} ${r.t.long ? 'long' : 'short'}` : `${contractWords(r.t.contract)}${paperShort(r) ? ' short' : ''}${comboOf(r) ? ` · ${comboOf(r)!.toLowerCase()}` : ''}`;
 /** The way it needed the name to go: a call and a long up, a put and a short down */
-export const directionOf = (r: JournalRow): 'up' | 'down' => (r.fut ? (r.t.long ? 'up' : 'down') : r.t.contract.right === 'C' ? 'up' : 'down');
+/** Which way the trade wanted the name to go: a call bought or a put sold wants it up */
+export const directionOf = (r: JournalRow): 'up' | 'down' => (r.fut ? (r.t.long ? 'up' : 'down') : (r.t.contract.right === 'C') !== paperShort(r) ? 'up' : 'down');
 export const ENDED: Record<Trade['how'] | PaperOptTrade['how'] | PaperFutTrade['how'], string> = { sold: 'Sold by you', target: 'Target hit', stopped: 'Stopped out', expired: 'Held to the bell', closed: 'Closed by you', scaled: 'Scaled out', rule: 'Closed by the rules', page: 'Closed with the page' };
 /** A piece a trade left in, in a word */
 export const OUT_WORD: Record<'target' | 'stop' | 'hand' | 'bell' | 'roll' | 'rule' | 'page', string> = { target: 'target', stop: 'stop', hand: 'by hand', bell: 'the bell', roll: 'the roll', rule: 'the rules', page: 'the page closing' };
