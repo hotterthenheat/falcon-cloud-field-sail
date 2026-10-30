@@ -16,6 +16,8 @@ Compass scans, calls and settles on the server, once for every viewer. Browsers 
 - One process per record folder runs the scan: it holds `.cache/compass/engine.lock`. A second server on the same
   folder serves the first one's record and scans nothing.
 - `COMPASS_ENGINE=0` serves the record without scanning. `COMPASS_DIR` moves the record.
+- The exposure recorder (Terrain's per-strike field, `docs/exposure-recorder.md`) runs beside it the same way: started
+  and stopped with the server, one lock per folder (`.cache/exposure/recorder.lock`), read-only at `/api/exposure/*`.
 
 ## What it does
 

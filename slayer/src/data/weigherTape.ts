@@ -44,13 +44,14 @@ export function useWeigherTape(ticker: string, tf: Timeframe, session: DeskSessi
 
 const ymd = (at = Date.now()): string => nyYmd(at);
 const DAYS: Partial<Record<Timeframe, number>> = { '15s': 0, '1m': 5, '5m': 12, '15m': 25, '30m': 40, '1h': 60 };
+/* each window ends on its last millisecond: an end of 15:59:59 leaves out the prints stamped 15:59:59.xxx */
 const WINDOWS: Record<DeskSession, { start: string; end: string }[]> = {
-  rth: [{ start: '09:30:00', end: '15:59:59' }],
-  pre: [{ start: '04:00:00', end: '09:29:59' }],
-  post: [{ start: '16:00:00', end: '19:59:59' }],
+  rth: [{ start: '09:30:00', end: '15:59:59.999' }],
+  pre: [{ start: '04:00:00', end: '09:29:59.999' }],
+  post: [{ start: '16:00:00', end: '19:59:59.999' }],
   overnight: [
-    { start: '20:00:00', end: '23:59:59' },
-    { start: '00:00:00', end: '03:59:59' },
+    { start: '20:00:00', end: '23:59:59.999' },
+    { start: '00:00:00', end: '03:59:59.999' },
   ],
 };
 

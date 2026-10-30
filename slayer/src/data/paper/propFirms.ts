@@ -6,8 +6,9 @@
    The plain practice account is here too: no rules, cash is the only limit. And the reader's own rules, made from
    numbers the reader types (customPlan). */
 
-import { NO_RULES, type DrawdownMode, type PaperPlan, type PropRules } from './rules';
+import { NO_RULES, sellWords, type AllowSell, type DrawdownMode, type PaperPlan, type PropRules } from './rules';
 import { HOUSE_FEE } from './engine';
+import { OPTIONS_FUNDING_WHITELIST } from './whitelists';
 
 export interface PropFirm {
   id: string;
@@ -52,9 +53,13 @@ const ddOf = (mode: 'eod' | 'intraday', lockAt: number | null = null, on: 'equit
 
 /* Vanquish Trader (support.vanquishtrader.com, the help center's plan articles of 2026-10-18): one evaluation phase; the
    target on closed trades with everything closed; no daily loss limit (stated); flat by 15:59 ET every day, no
-   overnight, no weekend; no commission stated. The Buffer lock is the funded account's, not the evaluation's. */
+   overnight, no weekend; no commission stated. The Buffer lock is the funded account's, not the evaluation's. Basic,
+   Rapid Express and Rapid Elite buy single calls and puts only; Advanced is Level 4 ("What Can I Trade?", article
+   17655120: sell to open, verticals debit and credit, iron condors, butterflies, straddles and strangles, puts
+   cash-secured only, covered calls, no margin) — and on SPX, XSP and VIX every plan buys single calls and puts only. */
 const VQ_SIZES = (t: number, dd: number): [number, number[], number][] => [10_000, 50_000, 75_000, 100_000, 150_000].map(n => [n, [(n * t) / 100], (n * dd) / 100]);
-const VQ_RULES: Partial<PropRules> = { targetOn: 'flat', markAt: 'mid', flatBy: '15:59', overnight: false, weekend: false, fee: null, spreads: false };
+const VQ_LONG_ONLY = ['SPX', 'XSP', 'VIX'];
+const VQ_RULES: Partial<PropRules> = { targetOn: 'flat', markAt: 'mid', flatBy: '15:59', overnight: false, weekend: false, fee: null, spreads: false, allowSell: 'none', longOnlyOn: VQ_LONG_ONLY };
 const VQ_NOTES = ['the exploit policy (illiquid far-out-of-the-money fills, oversized positions, micro-scalping) — the firm’s judgment, not a number'];
 const VANQUISH: PropFirm = {
   id: 'vanquish',
@@ -64,7 +69,7 @@ const VANQUISH: PropFirm = {
   about: 'Options-only evaluations, one phase, intraday: everything is closed at 15:59 ET. No daily loss limit — the drawdown is the only loss rule.',
   plans: [
     ...program({ firm: 'Vanquish Trader', slug: 'vq-basic', name: 'Basic Options', source: 'https://support.vanquishtrader.com/en/articles/11835566-basic-options-plan-evaluation-rules-overview', phases: ['Evaluation'], rows: VQ_SIZES(10, 5), rules: { ...VQ_RULES, drawdown: ddOf('intraday'), consistency: { share: 0.3, of: 'trade', strict: true }, minTrades: 10 }, notModelled: VQ_NOTES }),
-    ...program({ firm: 'Vanquish Trader', slug: 'vq-advanced', name: 'Advanced Options', source: 'https://support.vanquishtrader.com/en/articles/11585998-advanced-options-plan-evaluation-rules-overview', phases: ['Evaluation'], rows: VQ_SIZES(10, 5), rules: { ...VQ_RULES, spreads: true, noSpreadsOn: ['SPX', 'XSP', 'VIX'], drawdown: ddOf('eod'), minDays: 4, consistency: { share: 0.3, of: 'day', strict: true } }, notModelled: ['selling to open (Level 4: credit spreads, condors, cash-secured puts, covered calls) — this desk only buys: calls, puts, debit spreads', ...VQ_NOTES] }),
+    ...program({ firm: 'Vanquish Trader', slug: 'vq-advanced', name: 'Advanced Options', source: 'https://support.vanquishtrader.com/en/articles/11585998-advanced-options-plan-evaluation-rules-overview', phases: ['Evaluation'], rows: VQ_SIZES(10, 5), rules: { ...VQ_RULES, spreads: true, allowSell: 'level4', drawdown: ddOf('eod'), minDays: 4, consistency: { share: 0.3, of: 'day', strict: true } }, notModelled: ['covered calls — they need 100 shares a contract, and this desk holds no stock, so none can be written here', 'a call sold on its own — the firm’s page does not say; with no margin it has no cap on its loss, so here a call is sold only as a spread or against a long call on the same expiry', ...VQ_NOTES] }),
     ...program({ firm: 'Vanquish Trader', slug: 'vq-rapid-express', name: 'Rapid Express', source: 'https://support.vanquishtrader.com/en/articles/17655270-rapid-express-plan-evaluation-rules-overview', phases: ['Evaluation'], rows: VQ_SIZES(9, 3), rules: { ...VQ_RULES, drawdown: ddOf('intraday') }, notModelled: VQ_NOTES }),
     ...program({ firm: 'Vanquish Trader', slug: 'vq-rapid-elite', name: 'Rapid Elite', source: 'https://support.vanquishtrader.com/en/articles/17655328-rapid-elite-plan-evaluation-rules-overview', phases: ['Evaluation'], rows: VQ_SIZES(9, 3), rules: { ...VQ_RULES, drawdown: ddOf('eod'), consistency: { share: 0.5, of: 'day', strict: true } }, notModelled: VQ_NOTES }),
   ],
@@ -72,28 +77,32 @@ const VANQUISH: PropFirm = {
 
 /* Options Funding (optionsfunding.co/rules): buy-only single-leg calls and puts on new Growth and Express accounts; the
    target on the balance; open contracts valued at the bid; no daily loss limit published; overnight allowed;
-   $0.65 a contract a leg each side; an expiring position is closed at 15:55 ET on its day (16:10 ET for SPY, QQQ,
-   IWM, DIA). */
+   $0.65 a contract a leg each side; an expiring position is closed at 15:55 ET on its day — 16:10 ET for SPY, QQQ, IWM,
+   DIA, whose options trade to 16:15: closed then at the live bid; the 275 names of its ticker whitelist only
+   (whitelists.ts, read 2026-10-29). */
 const LATE = ['SPY', 'QQQ', 'IWM', 'DIA'];
-const OF_RULES: Partial<PropRules> = { targetOn: 'balance', markAt: 'bid', fee: 0.65, spreads: false, overnight: true, weekend: true, expiryClose: { at: '15:55', except: LATE } };
-const OF_NOTES = ['the firm’s 275-name ticker whitelist — trade only names on its list (optionsfunding.co/ticker-whitelist); not checked here', 'SPY, QQQ, IWM and DIA expiring positions are closed at 16:10 ET there; here they settle at the 16:00 close'];
+const OF_LIST = OPTIONS_FUNDING_WHITELIST;
+const OF_RULES: Partial<PropRules> = { targetOn: 'balance', markAt: 'bid', fee: 0.65, spreads: false, allowSell: 'none', overnight: true, weekend: true, expiryClose: { at: '15:55', except: LATE, lateAt: '16:10' }, underlyings: OF_LIST.names, underlyingsSource: { url: OF_LIST.url, asOf: OF_LIST.asOf, says: OF_LIST.says } };
 const OPTIONS_FUNDING: PropFirm = {
   id: 'options-funding',
   name: 'Options Funding',
   url: 'https://optionsfunding.co/rules',
   asOf: AS_OF,
-  about: 'One evaluation phase on live NBBO, buy-only on new Growth and Express accounts, positions may be held overnight. Pro is not offered here (its risk-adjusted profit and selling are beyond this desk).',
+  about: 'One evaluation phase on live NBBO, buy-only on new Growth and Express accounts, positions may be held overnight, 275 names on its whitelist. Pro is not offered here: it passes on a risk-adjusted “eligible profit” this desk does not work out.',
   plans: [
-    ...program({ firm: 'Options Funding', slug: 'of-growth', name: 'Growth', source: 'https://optionsfunding.co/rules', phases: ['Evaluation'], rows: [[25_000, [3_000], 1_500], [50_000, [6_000], 3_000], [100_000, [12_000], 6_000]], rules: { ...OF_RULES, drawdown: ddOf('eod') }, notModelled: OF_NOTES }),
-    ...program({ firm: 'Options Funding', slug: 'of-express', name: 'Express', source: 'https://optionsfunding.co/rules', phases: ['Evaluation'], rows: [[25_000, [2_500], 1_250], [50_000, [5_000], 2_500], [100_000, [10_000], 5_000]], rules: { ...OF_RULES, drawdown: ddOf('intraday') }, notModelled: OF_NOTES }),
+    ...program({ firm: 'Options Funding', slug: 'of-growth', name: 'Growth', source: 'https://optionsfunding.co/rules', phases: ['Evaluation'], rows: [[25_000, [3_000], 1_500], [50_000, [6_000], 3_000], [100_000, [12_000], 6_000]], rules: { ...OF_RULES, drawdown: ddOf('eod') } }),
+    ...program({ firm: 'Options Funding', slug: 'of-express', name: 'Express', source: 'https://optionsfunding.co/rules', phases: ['Evaluation'], rows: [[25_000, [2_500], 1_250], [50_000, [5_000], 2_500], [100_000, [10_000], 5_000]], rules: { ...OF_RULES, drawdown: ddOf('intraday') } }),
   ],
 };
 
 /* Strix Options Funding (strixoptionsfunding.com/#/rules): the same platform as Options Funding, its own numbers; the
    target on the balance; no daily loss limit published; overnight and weekend holds allowed; no commission stated;
-   expiring positions closed at 15:55 ET (16:10 ET for SPY, QQQ, IWM, DIA). */
-const SX_RULES: Partial<PropRules> = { targetOn: 'balance', markAt: 'mid', fee: null, spreads: false, overnight: true, weekend: true, expiryClose: { at: '15:55', except: LATE } };
-const SX_NOTES = ['the firm’s 275-name approved whitelist — trade only names on its list; not checked here', 'SPY, QQQ, IWM and DIA expiring positions are closed at 16:10 ET there; here they settle at the 16:00 close'];
+   expiring positions closed at 15:55 ET (16:10 ET for SPY, QQQ, IWM, DIA, at the live bid). Strix and Express buy single
+   calls and puts only ("opening any short leg, including one inside a debit spread, requires Strix Pro"); Strix Pro
+   adds "supported finite-loss selling" — credit and debit spreads, and an unlimited-loss short call only with a hedge on
+   the same root and expiry. Its whitelist is its own (assets/data/tickers.json), not read here. */
+const SX_RULES: Partial<PropRules> = { targetOn: 'balance', markAt: 'mid', fee: null, spreads: false, allowSell: 'none', overnight: true, weekend: true, expiryClose: { at: '15:55', except: LATE, lateAt: '16:10' } };
+const SX_NOTES = ['the firm’s own 275-name approved whitelist — its list was not read here, so the names are not checked: trade only names on the firm’s list'];
 const STRIX: PropFirm = {
   id: 'strix',
   name: 'Strix Options Funding',
@@ -103,7 +112,7 @@ const STRIX: PropFirm = {
   plans: [
     ...program({ firm: 'Strix Options Funding', slug: 'sx-strix', name: 'Strix', source: 'https://strixoptionsfunding.com/#/rules', phases: ['Evaluation'], rows: [[10_000, [1_200], 600], [25_000, [3_000], 1_500], [50_000, [6_000], 3_000], [100_000, [12_000], 6_000]], rules: { ...SX_RULES, drawdown: ddOf('eod') }, notModelled: SX_NOTES }),
     ...program({ firm: 'Strix Options Funding', slug: 'sx-express', name: 'Express', source: 'https://strixoptionsfunding.com/#/rules', phases: ['Evaluation'], rows: [[10_000, [800], 400], [25_000, [2_000], 1_000], [50_000, [4_000], 2_000], [100_000, [8_000], 4_000]], rules: { ...SX_RULES, drawdown: ddOf('intraday') }, notModelled: SX_NOTES }),
-    ...program({ firm: 'Strix Options Funding', slug: 'sx-pro', name: 'Strix Pro', source: 'https://strixoptionsfunding.com/#/rules', phases: ['Evaluation'], rows: [[10_000, [1_200], 600], [25_000, [3_000], 1_500], [50_000, [6_000], 3_000], [100_000, [12_000], 6_000]], rules: { ...SX_RULES, spreads: true, drawdown: ddOf('eod') }, notModelled: ['finite-loss selling to open — this desk only buys: calls, puts, debit spreads', ...SX_NOTES] }),
+    ...program({ firm: 'Strix Options Funding', slug: 'sx-pro', name: 'Strix Pro', source: 'https://strixoptionsfunding.com/#/rules', phases: ['Evaluation'], rows: [[10_000, [1_200], 600], [25_000, [3_000], 1_500], [50_000, [6_000], 3_000], [100_000, [12_000], 6_000]], rules: { ...SX_RULES, spreads: true, allowSell: 'definedRisk', drawdown: ddOf('eod') }, notModelled: SX_NOTES }),
   ],
 };
 
@@ -174,8 +183,10 @@ export interface CustomRules {
   flatBy: string;
   overnight: boolean;
   zeroDte: boolean;
+  /** What may be sold to open — everything by default (the reader's own account) */
+  selling: AllowSell;
 }
-export const CUSTOM_DEFAULTS: CustomRules = { size: 50_000, target: 0, dailyLoss: 0, dailyBreach: 'fail', drawdown: 0, drawdownMode: 'static', lockAtStart: true, minDays: 0, consistencyPct: 0, maxContracts: 0, flatBy: '', overnight: true, zeroDte: true };
+export const CUSTOM_DEFAULTS: CustomRules = { size: 50_000, target: 0, dailyLoss: 0, dailyBreach: 'fail', drawdown: 0, drawdownMode: 'static', lockAtStart: true, minDays: 0, consistencyPct: 0, maxContracts: 0, flatBy: '', overnight: true, zeroDte: true, selling: 'all' };
 
 /** A plan from the reader's own numbers: every 0 is a rule left off */
 export function customPlan(c: CustomRules): PaperPlan {
@@ -191,9 +202,14 @@ export function customPlan(c: CustomRules): PaperPlan {
     flatBy: /^\d{1,2}:\d{2}$/.test(c.flatBy) ? c.flatBy : null,
     overnight: c.overnight,
     zeroDte: c.zeroDte,
+    allowSell: c.selling ?? 'all',
   };
   return { id: 'custom', label: `${Math.round(c.size / 1000)}K`, firm: null, program: 'Your own rules', size: c.size, rules, source: null };
 }
+
+/** What a plan lets be sold, in two words: "Buy only" · "Defined-risk selling" · "Level 4" · "Free reign" (none: the
+    practice account) */
+export const planSellWords = (plan: PaperPlan | undefined | null): string => sellWords(plan ? (plan.rules.allowSell ?? 'none') : 'all');
 
 /** "$25K" */
 export const sizeWords = (n: number): string => (n >= 1000 && n % 1000 === 0 ? `$${(n / 1000).toLocaleString('en-US')}K` : `$${n.toLocaleString('en-US')}`);
@@ -220,7 +236,9 @@ export function planChips(plan: PaperPlan, share = false): string[] {
   if (r.flatBy) out.push(`flat by ${r.flatBy} ET`);
   else if (!r.overnight) out.push('flat by the close');
   else if (plan.firm) out.push('overnight allowed');
-  if (!r.spreads) out.push('calls and puts');
+  out.push(r.allowSell === 'none' ? (r.spreads ? 'buy only · debit spreads' : 'buy only · calls and puts') : r.allowSell === 'all' ? 'selling allowed, naked included' : r.allowSell === 'level4' ? 'Level 4 · cash-secured puts, spreads, condors' : 'defined-risk selling');
+  if (r.longOnlyOn?.length) out.push(`${r.longOnlyOn.join(', ')} single legs bought`);
+  if (r.underlyings) out.push(r.underlyings.length > 12 ? `${r.underlyings.length} names` : r.underlyings.join(', '));
   if (!r.zeroDte) out.push('no 0DTE');
   if (plan.firm) out.push(r.fee == null ? 'no commission stated' : `$${r.fee.toFixed(2)} a contract`);
   return out;

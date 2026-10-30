@@ -340,7 +340,8 @@ export function peekThetaCloseOn(ticker: string, iso: string): number | null {
   return closeOn.get(`${symbolOf(ticker)}|${iso}`) ?? null;
 }
 
-/* today's one-minute bars of a name, for the alerts that read an indicator or run a script */
+/* today's one-minute bars of a name, for the alerts that read an indicator or run a script: 09:30 through the 16:00
+   close bar, whole (an end of 16:00:00 kept only the prints stamped 16:00:00.000 in that bar) */
 const barsOf = new Map<string, { read: number; bars: Candle[] }>();
 const barsAsked = new Set<string>();
 const barsHere = () => thetaAllowedHere('/stock/history/ohlc');
@@ -354,7 +355,7 @@ export function ensureThetaBars(ticker: string): void {
   barsAsked.add(sym);
   const day = ymd(nyIsoDate());
   const root = INDEX.has(sym) ? 'index' : 'stock';
-  void thetaCall(`/${root}/history/ohlc?symbol=${encodeURIComponent(sym)}&start_date=${day}&end_date=${day}&interval=1m&start_time=09:30:00&end_time=16:00:00&format=json`)
+  void thetaCall(`/${root}/history/ohlc?symbol=${encodeURIComponent(sym)}&start_date=${day}&end_date=${day}&interval=1m&start_time=09:30:00&end_time=16:00:59.999&format=json`)
     .then(got => {
       if (got.error) {
         if (got.error === 'terminal_down') setStatus('down');

@@ -66,9 +66,12 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
       <Section title="Can Model 1 be read as a probability?">
         <p className={`text-t12 leading-relaxed ${doc.verdict.ready ? 'text-textPrimary' : 'text-textSecondary'}`} data-pool-verdict={doc.verdict.ready ? 'ready' : 'not-yet'}>
           <span className="font-semibold text-textPrimary">{doc.verdict.ready ? 'The bars are met. ' : 'Not yet. '}</span>
-          {doc.verdict.line.replace(/^No: /, '')}
+          {(() => {
+            const rest = doc.verdict.line.replace(/^No: /, '');
+            return rest.charAt(0).toUpperCase() + rest.slice(1);
+          })()}
         </p>
-        <table className="mt-3 w-full font-mono text-t11 tnum" data-pool-needs>
+        <table className="mt-3 w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-needs>
           <thead>
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
               <th className={`text-left ${TH}`}>What it needs</th>
@@ -96,7 +99,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
         </p>
       </Section>
       <Section title={`Model 1 against what happened · ${doc.days.length} session${doc.days.length === 1 ? '' : 's'} pooled`}>
-        <table className="w-full font-mono text-t11 tnum" data-pool-calibration>
+        <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-calibration>
           <thead>
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
               <th className={`text-left ${TH}`}>Model 1</th>
@@ -130,7 +133,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
         </table>
       </Section>
       <Section title="The threshold, cut other ways · 09:45–15:00 ET">
-        <table className="w-full font-mono text-t11 tnum" data-pool-thresholds>
+        <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-thresholds>
           <thead>
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
               <th className={`text-left ${TH}`}>At or over</th>
@@ -157,7 +160,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
       </Section>
       <Section title="Why the movers were missed · every session">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          <table className="w-full font-mono text-t11 tnum" data-pool-reasons>
+          <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-reasons>
             <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className={`text-left ${TH}`}>What stopped it</th><th className={`text-right ${TH}`}>Movers</th><th className={`text-right ${TH}`}>Sessions</th></tr></thead>
             <tbody>
               {doc.missReasons.map(r => (
@@ -169,7 +172,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
               ))}
             </tbody>
           </table>
-          <table className="w-full font-mono text-t11 tnum" data-pool-held>
+          <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-held>
             <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className={`text-left ${TH}`}>Input holding Model 1 down</th><th className={`text-right ${TH}`}>Movers</th><th className={`text-right ${TH}`}>Sessions</th></tr></thead>
             <tbody>
               {doc.heldDownMost.map(r => (
@@ -184,7 +187,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
         </div>
       </Section>
       <Section title="Session by session">
-        <table className="w-full font-mono text-t11 tnum" data-pool-sessions>
+        <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-sessions>
           <thead>
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
               <th className={`text-left ${TH}`}>Session</th>
@@ -213,8 +216,22 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
         {io.cols.length > 0 && (
           <div className="mt-5">
             <h4 className="font-mono text-t9 uppercase tracking-widest text-textMuted">Inputs holding the missed movers down, over time</h4>
-            <div className="mt-2 overflow-x-auto max-sm:-mx-4 max-sm:px-4">
-              <table className="w-full min-w-[520px] font-mono text-t11 tnum" data-pool-inputs>
+            {/* a phone reads each session as a short list, never a table that scrolls sideways */}
+            <div className="sm:hidden mt-2 space-y-3" data-pool-inputs-phone>
+              {io.rows.slice().reverse().map(r => (
+                <div key={r.day} className="font-mono text-t11 tnum">
+                  <div className="flex justify-between text-textPrimary"><span>{r.day}</span><span className="text-textMuted">{r.under} under the bar</span></div>
+                  {r.n.map((n, i) => (
+                    <div key={io.cols[i].col} className="flex justify-between gap-3 border-b border-borderSubtle/40 py-1 text-textSecondary">
+                      <span className="min-w-0">{io.cols[i].name}</span>
+                      <span className="shrink-0">{n}{r.under ? <span className="text-textMuted"> · {pct(n / r.under, 0)}</span> : null}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div className="max-sm:hidden mt-2 overflow-x-auto">
+              <table className="w-full min-w-[520px] font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-inputs>
                 <thead>
                   <tr className="text-textMuted text-t9 tracking-wide">
                     <th className={`text-left ${TH} uppercase tracking-widest`}>Session</th>
@@ -256,7 +273,7 @@ const SessionStudy = () => {
   return (
     <TraceBox
       title="Session study"
-      sub="What made 50%+ in the scan's band, what the model read, and what stopped it"
+      sub={view === 'all' ? 'Every labelled session pooled: Model 1 against what happened, and whether it reads as a probability yet' : "What made 50%+ in the scan's band, what the model read, and what stopped it"}
       testId="compass-study"
       facts={
         view === 'all' ? (

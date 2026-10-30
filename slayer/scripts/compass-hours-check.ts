@@ -86,10 +86,10 @@ async function tradedMinutes(sym: string, exp: string): Promise<Set<string>> {
       }
     }
   };
-  await ask(prevDay, '16:00:00', '23:59:59');
-  await ask(DAY, '00:00:00', '09:29:59');
-  await ask(DAY, '09:30:00', '16:15:00');
-  await ask(DAY, '16:15:00', '19:59:59');
+  await ask(prevDay, '16:00:00', '23:59:59.999');
+  await ask(DAY, '00:00:00', '09:29:59.999');
+  await ask(DAY, '09:30:00', '16:14:59.999');
+  await ask(DAY, '16:15:00', '19:59:59.999');
   return out;
 }
 

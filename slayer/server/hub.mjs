@@ -47,6 +47,7 @@ export function canonical(p) {
  * @param {number} o.refreshPerSec             background refresh budget
  * @param {number} [o.maxBytes]
  * @param {number} [o.maxRefreshing]             background refreshes outstanding at once (default 2)
+ * @param {() => boolean} [o.hours]           is the market moving now (default marketHours; the proof pins it)
  * @param {(path: string, ageMs: number) => boolean} [o.keepOnFail]  may a failed refresh fall back to the last good
  *   answer of this age? (default: never, so a failure shows as one)
  * @param {(path: string) => void} [o.promote]  a viewer is now waiting on this path's background refresh: move it ahead
@@ -62,7 +63,8 @@ export function createHub(o) {
   const stats = { asks: 0, fresh: 0, stale: 0, waited: 0, upstreamViewer: 0, upstreamRefresh: 0, recordAsks: 0, recordReused: 0, upstreamRecord: 0, startedAt: Date.now() };
 
   /* outside market hours nothing moves: answers stay good ten times longer */
-  const ttlNow = (key) => (marketHours() ? o.ttl(key) : o.ttl(key) * 10);
+  const hours = o.hours ?? (() => marketHours());
+  const ttlNow = (key) => (hours() ? o.ttl(key) : o.ttl(key) * 10);
 
   function keep(key, entry) {
     const old = cache.get(key);
@@ -217,7 +219,7 @@ export function createHub(o) {
         due.push([key, w]);
       } else if (w.pinned) {
         /* a popular path nobody is watching yet: loaded, and kept within a minute while anything moves */
-        if (!marketHours() && hit) continue;
+        if (!hours() && hit) continue;
         if (hit && now - hit.at < Math.max(ttl, 60_000)) continue;
         due.push([key, w]);
       } else wanted.delete(key);

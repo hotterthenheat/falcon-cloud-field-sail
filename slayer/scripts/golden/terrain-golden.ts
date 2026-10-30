@@ -291,7 +291,7 @@ if (!(existsSync(thetaDir) && readdirSync(thetaDir).some(f => f.endsWith('.json.
 } else {
   installUwFixtures(THETA_SET);
   const { thetaGet } = await import('../../src/data/thetaFeed');
-  const path = '/stock/history/ohlc?symbol=SPY&start_date=20261028&end_date=20261028&interval=1m&start_time=09:30:00&end_time=15:59:59&format=json';
+  const path = '/stock/history/ohlc?symbol=SPY&start_date=20261028&end_date=20261028&interval=1m&start_time=09:30:00&end_time=15:59:59.999&format=json';
   const got = await thetaGet(path);
   if (got.error) {
     /* an outage is not kept as a recording: the set stays empty for a machine whose terminal answers */

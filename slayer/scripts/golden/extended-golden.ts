@@ -61,7 +61,7 @@ const raw = async (path: string): Promise<Candle[]> => {
 /* ---- after hours, Oct 23–29: one read for the finished days, one for today ---- */
 const post = await pullIntraday('SPY', '1m', 'post', '20261023', '20261029');
 if (post.offline) throw new Error('golden: ThetaData did not answer the after-hours bars');
-const rawPost = await raw('/stock/history/ohlc?symbol=SPY&start_date=20261023&end_date=20261029&interval=1m&start_time=16:00:00&end_time=19:59:59&format=json');
+const rawPost = await raw('/stock/history/ohlc?symbol=SPY&start_date=20261023&end_date=20261029&interval=1m&start_time=16:00:00&end_time=19:59:59.999&format=json');
 const late = ['16:09', '16:10', '16:11', '16:13', '16:15', '16:16', '16:17', '16:19'];
 say('raw 16:09–16:19 highs', late.map(t => at(rawPost, '2026-10-29', t)?.high));
 say('rebuilt 16:09–16:19', late.map(t => at(post.bars, '2026-10-29', t)));
@@ -104,7 +104,7 @@ expectEqual("the 16:00 bar is ThetaData's", close, rawClose);
 
 /* ---- pre-market, Oct 29 ---- */
 const pre = await pullIntraday('SPY', '1m', 'pre', '20261029', '20261029');
-const rawPre = await raw('/stock/history/ohlc?symbol=SPY&start_date=20261029&end_date=20261029&interval=1m&start_time=04:00:00&end_time=09:29:59&format=json');
+const rawPre = await raw('/stock/history/ohlc?symbol=SPY&start_date=20261029&end_date=20261029&interval=1m&start_time=04:00:00&end_time=09:29:59.999&format=json');
 say('pre 04:00 / 07:41 raw', [at(rawPre, '2026-10-29', '04:00'), at(rawPre, '2026-10-29', '07:41')]);
 say('pre 04:00 / 07:41 rebuilt', [at(pre.bars, '2026-10-29', '04:00'), at(pre.bars, '2026-10-29', '07:41')]);
 /* 772.31 is Oct 28's close, printed again as size-1 odd lots (some CASH_SALE, ext_condition1 11) through the morning */
@@ -117,7 +117,7 @@ expectEqual('07:41 holds the last price-setting print', at(pre.bars, '2026-10-29
 
 /* ---- the regular session is untouched ---- */
 const rth = await pullIntraday('SPY', '1m', 'rth', '20261029', '20261029');
-const rawRth = await raw('/stock/history/ohlc?symbol=SPY&start_date=20261029&end_date=20261029&interval=1m&start_time=09:30:00&end_time=15:59:59&format=json');
+const rawRth = await raw('/stock/history/ohlc?symbol=SPY&start_date=20261029&end_date=20261029&interval=1m&start_time=09:30:00&end_time=15:59:59.999&format=json');
 expectEqual("regular session bars = ThetaData's", JSON.stringify(rth.bars) === JSON.stringify(rawRth) && rth.bars.length === 390, true);
 
 done();

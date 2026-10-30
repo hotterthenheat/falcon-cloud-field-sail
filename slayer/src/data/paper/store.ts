@@ -29,18 +29,20 @@ import {
   optCancel,
   optClose,
   optPlace,
+  optPlaceCombo,
   optRebase,
   optSetBreakeven,
   optSetTrail,
   retireFutures,
   tick,
+  type ComboDraft,
   type OptDraft,
   type PaperAccount,
   type PaperEvent,
   type PaperMarket,
 } from './engine';
 import { NO_RULES, rulesOf, type EarningsWhen, type PaperPlan } from './rules';
-import { sizeWords } from './propFirms';
+import { planById, sizeWords } from './propFirms';
 
 const KEY = 'slayer_paper_v1';
 /* How often working orders are checked against the live quotes */
@@ -138,6 +140,13 @@ function migrate(a: PaperAccount): PaperAccount {
   let x: PaperAccount = { ...a, fut: a.fut && typeof a.fut === 'object' ? { orders: a.fut.orders ?? [], fills: a.fut.fills ?? [] } : { orders: [], fills: [] } };
   const plan = x.plan as (PaperPlan & { target?: number }) | undefined;
   if (plan && !plan.rules) x = { ...x, plan: { id: `legacy-${plan.label ?? 'futures'}`, label: plan.label ?? '', firm: null, program: 'A futures evaluation', size: plan.size ?? x.startCash, rules: NO_RULES, source: null, legacy: 'futures' } };
+  /* a firm plan saved before selling, the whitelist and the 16:10 close were checked: what the firm lets be traded is
+     read from its plan as published now (its numbers stay as they were when the account began) */
+  const now = x.plan && x.plan.firm && x.plan.rules && x.plan.rules.allowSell == null ? planById(x.plan.id) : null;
+  if (now && x.plan) {
+    const r = now.rules;
+    x = { ...x, plan: { ...x.plan, notModelled: now.notModelled, rules: { ...x.plan.rules, allowSell: r.allowSell, longOnlyOn: r.longOnlyOn, noSpreadsOn: r.noSpreadsOn, spreads: r.spreads, underlyings: r.underlyings, underlyingsSource: r.underlyingsSource, expiryClose: r.expiryClose } } };
+  }
   return retireFutures(x, Date.now());
 }
 function load(): Pick<PaperState, 'accounts' | 'inHand'> {
@@ -405,6 +414,8 @@ function act(id: string, fn: (a: PaperAccount, m: PaperMarket) => PaperAccount):
   return true;
 }
 export const placeOptOrder = (id: string, d: OptDraft) => act(id, (a, m) => optPlace(a, m, d));
+/** An order of several legs (an iron condor: two spreads sold as one) — they fill together or not at all */
+export const placeComboOrder = (id: string, d: ComboDraft) => act(id, (a, m) => optPlaceCombo(a, m, d));
 /** Every working order at once — the account's, or one contract's (what a cancel takes with it goes the way a single
     cancel would take it) */
 export const cancelWorking = (id: string, only?: { contract?: string }) =>

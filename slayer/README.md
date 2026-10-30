@@ -43,11 +43,19 @@ record is `slayer/.cache/compass/YYYY-MM-DD.json`. Start the server before the s
 while it was off or while ThetaData was down are scored afterwards from recorded quotes and marked "late". How it
 works and what it needs: `docs/compass-engine.md`.
 
+**Terrain's exposure field is recorded inside the server too.** The vendor keeps no per-strike history for today, so a
+browser alone could only draw the field from the moment it opened. `npm run dev` and `npm run serve` read the per-strike
+exposure of the house's names and of every name a Terrain viewer opened today (25 at most) once a minute from 09:30 ET
+(every two minutes in the premarket and after hours), into `slayer/.cache/exposure/YYYY-MM-DD/`, and Terrain merges that
+record with its own reads, so a viewer arriving at 14:00 sees the day from the open. It shares the Unusual Whales hub
+and never gets ahead of a viewer. `EXPOSURE_RECORDER=0` turns it off. Budget and settings: `docs/exposure-recorder.md`.
+
 ## Keep it running 24/7 on your PC
 
 From the `slayer` folder, once: `powershell -ExecutionPolicy Bypass -File theta\install-autostart.ps1`. It registers
 two Windows tasks that start at every log-in and restart within a minute if they stop: **SlayerTheta** (the ThetaData
-terminal) and **SlayerSite** (the built site, the data proxies and the Compass engine on http://localhost:8080). Keep
+terminal) and **SlayerSite** (the built site, the data proxies, the Compass engine and the exposure recorder on
+http://localhost:8080), so Compass scans and Terrain's field is recorded every session. Keep
 the PC from sleeping. Don't also run `npm run dev` while SlayerSite runs. Details: `docs/theta-terminal.md`.
 
 ## Serve it to other people
@@ -75,6 +83,7 @@ npm run typecheck
 npm run build
 npx tsx scripts/golden/pinpoint-golden.ts        # and the other scripts/golden/*-golden.ts
 node scripts/hub-proof.mjs
+npx tsx scripts/exposure-recorder-proof.ts
 ```
 
 CI (`.github/workflows/ci.yml`) runs the typecheck, the build, every proof script and every golden test on each push.

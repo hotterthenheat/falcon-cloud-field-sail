@@ -10,20 +10,22 @@ import { isTradingDay, nyYmd } from '../core/calendar';
 import { minuteInSession, sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { etClock, keepTheta, keptTheta, noData, offlineWords, pageHidden, thetaDown, thetaGet } from './thetaFeed';
 import { thetaUseHere } from './theta';
-import { cleanExtendedBars } from './thetaEligible';
+import { EXT_WINDOWS, cleanExtendedBars } from './thetaEligible';
 
 export const THETA_INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
 
 /** Intraday grains are ThetaData intervals; `day` and `week` are the EOD rows (today folded from 5-minute bars). */
 export type TapeGrain = '15s' | '1m' | '5m' | '15m' | '30m' | '1h' | 'day' | 'week';
 
+/* Each window ends on its last millisecond: an end of 15:59:59 leaves out every print stamped 15:59:59.xxx (on SPY
+   2026-10-29, 14,897 shares of the 15:59 bar and its 769.66 high), and 16:00:00 would open the 16:00 bar. */
 const WINDOWS: Record<DeskSession, { start: string; end: string }[]> = {
-  rth: [{ start: '09:30:00', end: '15:59:59' }],
-  pre: [{ start: '04:00:00', end: '09:29:59' }],
-  post: [{ start: '16:00:00', end: '19:59:59' }],
+  rth: [{ start: '09:30:00', end: '15:59:59.999' }],
+  pre: [EXT_WINDOWS.pre],
+  post: [EXT_WINDOWS.post],
   overnight: [
-    { start: '20:00:00', end: '23:59:59' },
-    { start: '00:00:00', end: '03:59:59' },
+    { start: '20:00:00', end: '23:59:59.999' },
+    { start: '00:00:00', end: '03:59:59.999' },
   ],
 };
 
