@@ -688,8 +688,19 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   const { sessionDayOpen, sessionYmd: sYmd, optionScanOpen: open10 } = await import('../../src/data/compassSession');
   const ny = (d: number, h: number, m: number) => nyWallTime(2026, 11, d, h, m);
   expectEqual('holiday: Wed 11-25 21:00 and Thu 11-26 10:00 belong to Fri 11-27 (was 11-26)', [sYmd(ny(25, 21, 0)), sYmd(ny(26, 10, 0))], ['20261127', '20261127']);
-  expectEqual('holiday: no scan Wed night or Thursday; Thursday night and Friday scan', [sessionDayOpen(ny(25, 21, 0)), sessionDayOpen(ny(26, 10, 0)), sessionDayOpen(ny(26, 21, 0)), sessionDayOpen(ny(27, 10, 0))], [false, false, true, true]);
-  expectEqual('holiday: SPXW is off the scan on Thanksgiving (was on)', [open10('SPXW', 1, ny(26, 10, 0)), open10('SPXW', 0, ny(27, 10, 0))], [false, true]);
+  /* core/session (2026-10-31): Cboe's Global Trading Hours run the evening before Thanksgiving until 11:30 on the
+     holiday; the stock and equity-option tapes do not. So the index roots scan Wed night and Thursday morning (that
+     book is Friday's), nothing scans Thursday afternoon, and Thursday night and Friday scan */
+  expectEqual('holiday eve: GTH Wed night and Thu to 11:30 scan; Thu 12:00 does not; Thu night and Fri do', [sessionDayOpen(ny(25, 21, 0)), sessionDayOpen(ny(26, 10, 0)), sessionDayOpen(ny(26, 12, 0)), sessionDayOpen(ny(26, 21, 0)), sessionDayOpen(ny(27, 10, 0))], [true, true, false, true, true]);
+  expectEqual('holiday eve: SPXW on in Thanksgiving GTH (10:00), off at 12:00; SPY off on the holiday; SPXW 0DTE Friday on', [open10('SPXW', 1, ny(26, 10, 0)), open10('SPXW', 1, ny(26, 12, 0)), open10('SPY', 1, ny(26, 10, 0)), open10('SPXW', 0, ny(27, 10, 0))], [true, false, false, true]);
+  expectEqual('no GTH before Christmas: SPXW off Thu 12-24 21:00 and Fri 12-25 10:00', [open10('SPXW', 1, nyWallTime(2026, 12, 24, 21, 0)), open10('SPXW', 1, nyWallTime(2026, 12, 25, 10, 0))], [false, false]);
+  /* the early close of Fri 11-27 (13:00): equity options to 13:00 (ETFs 13:15), SPXW's same-day contract stops at
+     13:00, a later SPXW expiry trades to 13:15 and there is no curb; the board is done at 13:15 */
+  const { odteBoardDone } = await import('../../src/data/compassSession');
+  expectEqual('early close: SPY 0DTE 12:59 on, KO 13:05 off, SPY 13:10 on (ETF +15), SPXW 0DTE 13:05 off, SPXW 1DTE 13:10 on, 13:20 off (no curb)', [open10('SPY', 0, ny(27, 12, 59)), open10('KO', 1, ny(27, 13, 5)), open10('SPY', 1, ny(27, 13, 10)), open10('SPXW', 0, ny(27, 13, 5)), open10('SPXW', 1, ny(27, 13, 10)), open10('SPXW', 1, ny(27, 13, 20))], [true, false, true, false, true, false]);
+  expectEqual('early close: the 0DTE board is done at 13:15 (was 16:15)', [odteBoardDone(true, ny(27, 13, 10)), odteBoardDone(true, ny(27, 13, 15))], [false, true]);
+  /* Sunday 20:15 (Nov 1, the day the clocks went back): the week opens with Monday's book; SPXW's GTH is on, SPY is not */
+  expectEqual('Sunday 20:15: Monday\'s book, SPXW on, SPY off; Sunday 20:10 SPXW off', [sYmd(nyWallTime(2026, 11, 1, 20, 15)), open10('SPXW', 0, nyWallTime(2026, 11, 1, 20, 15)), open10('SPY', 1, nyWallTime(2026, 11, 1, 20, 15)), open10('SPXW', 0, nyWallTime(2026, 11, 1, 20, 10))], ['20261102', true, false, false]);
 
   /* the engine lock: a reader takes over once the scanner's lock is stale, and a scanner that loses it stops */
   const { startCompassEngine: start10 } = await import('../../src/data/compassServer');
