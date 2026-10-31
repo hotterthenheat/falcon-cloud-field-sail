@@ -161,7 +161,7 @@ const SIDE_OPTIONS: DropdownOption<SideKey>[] = [
 const KIND_WORD: Record<PrintKind, string> = { SWEEP: 'Sweep', BLOCK: 'Block', MULTI: 'Multi-leg', SINGLE: 'Single', COMPRESSION: 'Compression', BURST: 'Burst' };
 
 /* every width clears its widest cell; the time takes the rank's room only in a ranked order */
-const WIDTHS: Record<string, number> = { time: 96, ticker: 84, contract: 168, dte: 64, otm: 76, quote: 134, size: 148, prem: 80, dayRatio: 116, sentiment: 92, vol: 76, oi: 76, volOverOi: 64, iv: 66, tag: 80 };
+const WIDTHS: Record<string, number> = { time: 96, ticker: 84, contract: 168, dte: 64, otm: 76, quote: 134, prem: 80, sentiment: 116, vol: 76, oi: 76, volOverOi: 128, iv: 66, tag: 80 };
 const WIDTHS_RANKED: Record<string, number> = { ...WIDTHS, time: 146 };
 const FLEXES: Record<string, number> = {};
 const PIN_LEFT = ['time', 'ticker', 'contract'];
@@ -171,11 +171,10 @@ const TOOLTIPS: Record<string, string> = {
   otm: 'Out of the money by this much of the spot, calls and puts alike; negative is in the money',
   contract: 'The contract; under it the days left and OTM % (the stock at the print stands under the ticker)',
   quote: 'The fill, the side it crossed and its implied volatility, over the bid and ask it crossed into',
-  size: "Contracts on this print, over the day's volume and the open interest",
-  prem: 'Dollars paid — size × fill × 100',
-  dayRatio: "The contract's whole day by side; on the alerts lane, the alert's premium by side",
-  sentiment: 'Bullish (calls bought, puts sold), bearish (puts bought, calls sold), or no read — and under it the kind: sweep, block, multi-leg or single print',
-  volOverOi: 'Volume over the open interest the session opened on; 1.5+ means positions built today',
+  prem: 'Dollars paid — size × fill × 100 — over the contracts on this print',
+  time: 'The print, New York time; under it the kind: sweep, block, multi-leg or single print',
+  sentiment: "Bullish (calls bought, puts sold), bearish (puts bought, calls sold), or no read — and under it the contract's whole day by side (on the alerts lane, the alert's premium by side)",
+  volOverOi: "The day's volume over the open interest the session opened on, beside their ratio; 1.5+ means positions built today",
 };
 
 /** One stretch of the read — a sentence piece, or a door onto a print */
@@ -257,18 +256,6 @@ const QuoteCell = ({ print }: { print: FlowPrint }) => (
       </span>
       <span className="font-mono text-t11 tnum text-textSecondary">{print.ask.toFixed(2)}</span>
     </span>
-  </span>
-);
-
-/** Size beside the scale it is read against: the day's volume over the standing open interest — two short lines, not
-    one long one, so the column is narrower; the size keeps the column's right edge */
-const SizeCell = ({ print }: { print: FlowPrint }) => (
-  <span className="inline-flex items-start gap-2 leading-none align-middle">
-    <span className="inline-flex flex-col items-end gap-[2px] font-mono text-t11 tnum text-textSecondary whitespace-nowrap" title="The day's volume, and the open interest the session opened on">
-      <span>vol {num(print.volume)}</span>
-      <span>oi {num(print.oi)}</span>
-    </span>
-    <span className="font-mono text-t11 font-bold tnum text-textPrimary">{num(print.size)}</span>
   </span>
 );
 
@@ -831,7 +818,11 @@ const LiveTape = () => {
           <span className="inline-flex items-center gap-1.5">
             <WatchStar k={printKey(r.p)} make={() => watchPrint(r.p, 'tape')} noun="print" />
             {r.rank !== undefined && <span className="min-w-[30px] shrink-0 text-t11 font-bold tnum text-textPrimary">#{r.rank}</span>}
-            <span className="text-t11 tnum text-textPrimary whitespace-nowrap">{r.p.time}</span>
+            {/* the print's kind under its time: how it crossed, beside when */}
+            <span className="inline-flex flex-col items-start gap-[3px] leading-none">
+              <span className="text-t11 tnum text-textPrimary whitespace-nowrap">{r.p.time}</span>
+              {kindOf(r.p)}
+            </span>
           </span>
         ),
       },
@@ -868,46 +859,41 @@ const LiveTape = () => {
       { key: 'dte', label: 'DTE', group: 'Contract', header: 'DTE', align: 'right', sortValue: r => r.p.dte, render: r => <span className="text-textPrimary">{r.p.dte}d</span> },
       { key: 'otm', label: 'OTM %', group: 'Contract', header: 'OTM %', align: 'right', sortValue: r => (r.p.spot > 0 && Number.isFinite(r.p.otmPct) ? r.p.otmPct : Number.NEGATIVE_INFINITY), render: r => <OtmCell otmPct={r.p.otmPct} ticker={r.p.ticker} spot={r.p.spot} /> },
       { key: 'quote', label: 'Fill & market', group: 'Execution', header: 'Fill & market', align: 'right', sortValue: r => r.p.fillPos, render: r => <QuoteCell print={r.p} /> },
-      { key: 'size', label: 'Size, vol & OI', group: 'Execution', header: 'Size, vol & OI', align: 'right', sortValue: r => r.p.size, render: r => <SizeCell print={r.p} /> },
       {
         key: 'prem',
-        label: 'Prem',
+        label: 'Prem & size',
         group: 'Execution',
         header: 'Prem',
         align: 'right',
         sortValue: r => r.p.premium,
+        /* the print's contracts under the dollars they paid: the Size column folds in (its volume and OI stand beside Vol/OI) */
         render: r => (
-          <span className={`font-mono tnum ${r.p.id === champId ? 'text-supreme font-bold' : r.p.premium >= 250_000 ? 'font-bold text-textPrimary' : 'text-textPrimary'}`}>
-            <TickFigure value={r.p.premium}>{fmtUsd(r.p.premium)}</TickFigure>
+          <span className="inline-flex flex-col items-end gap-[3px] leading-none align-middle font-mono tnum">
+            <span className={r.p.id === champId ? 'text-supreme font-bold' : r.p.premium >= 250_000 ? 'font-bold text-textPrimary' : 'text-textPrimary'}>
+              <TickFigure value={r.p.premium}>{fmtUsd(r.p.premium)}</TickFigure>
+            </span>
+            <span className="text-t11 text-textSecondary whitespace-nowrap" title="Contracts on this print">
+              {num(r.p.size)} ct
+            </span>
           </span>
         ),
       },
       {
-        key: 'dayRatio',
-        label: lane === 'alerts' ? 'Alert side' : 'Day lean',
-        group: 'Conviction',
-        header: lane === 'alerts' ? 'Alert side' : 'Day lean',
-        align: 'right',
-        sortValue: r => (Number.isFinite(r.p.ratioBidPct) ? 100 - r.p.ratioBidPct : -1),
-        render: r =>
-          lane === 'prints' ? (
-            <LeanCell askPct={100 - r.p.ratioBidPct} split={r.p.daySide} />
-          ) : (
-            <LeanCell askPct={100 - r.p.ratioBidPct} split={r.p.alertSides ? { ask: r.p.alertSides.ask, bid: r.p.alertSides.bid, mid: r.p.alertSides.other } : undefined} unit="premium" />
-          ),
-      },
-      {
         key: 'sentiment',
-        label: 'Sentiment',
+        label: lane === 'alerts' ? 'Sentiment & alert side' : 'Sentiment & day lean',
         group: 'Conviction',
         header: 'Sentiment',
         align: 'right',
         sortValue: r => sentimentOf(r.p),
-        /* the print's kind under its read: one column, not two */
+        /* the day's lean under the print's read: one column, not two (the print's kind stands under its time) */
         render: r => (
           <span className="inline-flex flex-col items-end gap-[3px] leading-none align-middle">
             {readOf(r)}
-            {kindOf(r.p)}
+            {lane === 'prints' ? (
+              <LeanCell askPct={100 - r.p.ratioBidPct} split={r.p.daySide} />
+            ) : (
+              <LeanCell askPct={100 - r.p.ratioBidPct} split={r.p.alertSides ? { ask: r.p.alertSides.ask, bid: r.p.alertSides.bid, mid: r.p.alertSides.other } : undefined} unit="premium" />
+            )}
           </span>
         ),
       },
@@ -915,13 +901,25 @@ const LiveTape = () => {
       { key: 'oi', label: 'OI', group: 'Activity', header: 'OI', align: 'right', sortValue: r => r.p.oi, render: r => <span className="text-textPrimary">{num(r.p.oi)}</span> },
       {
         key: 'volOverOi',
-        label: 'Vol/OI',
+        label: 'Vol, OI & Vol/OI',
         group: 'Activity',
         header: 'Vol/OI',
         align: 'right',
         sortValue: r => r.p.volOverOI,
-        /* the opening flag under the ratio, not beside it: beside, it widened the column past a 1440 box and the pinned premium hid Kind */
-        render: r => <span className={`inline-flex flex-col items-end gap-[2px] leading-none align-middle [&>[data-likely-opening]]:ml-0 font-mono tnum ${r.p.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.p.oi > 0 ? undefined : 'No open interest before the session — a new contract'}>{volOiText(r.p)}<OpeningTag volume={r.p.volume} oi={r.p.oi} /></span>,
+        /* the day's volume over the open interest, beside the ratio and its opening flag: two short stacks, not one long line */
+        render: r => (
+          <span className="inline-flex items-start gap-1.5 leading-none align-middle">
+            {/* the ratio's two figures as a fraction, the volume over the open interest (the head names them) */}
+            <span className="inline-flex flex-col items-end gap-[2px] font-mono text-t11 tnum text-textSecondary whitespace-nowrap" title={`The day's volume, ${num(r.p.volume)}, over the open interest the session opened on, ${num(r.p.oi)}`}>
+              <span>{num(r.p.volume)}</span>
+              <span>{num(r.p.oi)}</span>
+            </span>
+            <span className={`inline-flex flex-col items-end gap-[2px] leading-none [&>[data-likely-opening]]:ml-0 font-mono tnum ${r.p.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.p.oi > 0 ? undefined : 'No open interest before the session — a new contract'}>
+              {volOiText(r.p)}
+              <OpeningTag volume={r.p.volume} oi={r.p.oi} />
+            </span>
+          </span>
+        ),
       },
     ],
     [champId, lane]

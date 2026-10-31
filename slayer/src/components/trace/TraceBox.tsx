@@ -15,10 +15,10 @@ export { CONTROLS_LINE, Champion, Fact, PhoneRow } from './traceFrame';
 
 /** The tape's rows: 39px on a 32px head (the house grid's feed pages run 44 on 30) */
 const TRACE_GRID_THEME = GRID_THEME.withParams({ rowHeight: 39, headerHeight: 32, fontSize: 12 });
-/** Under a 1440 screen the cells keep 8px a side, not 12, and under 1100 6px: every column gives the room back and
+/** Under a 1440 screen the cells keep 8px a side, not 12, and under 1100 5px: every column gives the room back and
     the tables fit their box at 1280 and 1024 (the type stays its size) */
 const TRACE_GRID_THEME_TIGHT = TRACE_GRID_THEME.withParams({ cellHorizontalPadding: 8 });
-const TRACE_GRID_THEME_TIGHTER = TRACE_GRID_THEME.withParams({ cellHorizontalPadding: 6 });
+const TRACE_GRID_THEME_TIGHTER = TRACE_GRID_THEME.withParams({ cellHorizontalPadding: 5 });
 const TIGHT_QUERY = '(max-width: 1439.98px)';
 const TIGHTER_QUERY = '(max-width: 1099.98px)';
 /** A phone's row: two lines, the contract over its figures (see PhoneRow) */
@@ -263,8 +263,9 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
         d.flex = undefined;
         d.width = d.minWidth ?? d.width;
         d.pinned = 'right';
-        /* room for the endless window's scrollbar beside the right-pinned figure — the outermost one only */
-        if (endlessOn && d.width && d.colId === lastPinRight) {
+        /* room for the endless window's scrollbar beside the right-pinned figure — the outermost one only, and only on a
+           set width: a measured floor was read off the cell with the scrollbar's padding already in it */
+        if (endlessOn && d.width && d.colId === lastPinRight && fit[d.colId ?? ''] == null) {
           d.width += 14;
           d.minWidth = d.width;
         }
