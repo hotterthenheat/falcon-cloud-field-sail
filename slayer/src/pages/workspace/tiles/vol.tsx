@@ -127,7 +127,7 @@ export const VolOutlookTile = ({ ctx, size }: TileProps) => {
         </div>
       </div>
       <TileRead testId="vol">
-        Realised vol: the regular session’s 5-minute moves, ×√252. Implied: ATM IV on the same trading clock. Fitted on this name’s last {o.sessions} sessions, refit monthly.
+        Realised: the regular session’s 5-minute moves ×√252. Implied: ATM IV on the same trading clock. Fit on {o.sessions} sessions.
       </TileRead>
     </div>
   );
