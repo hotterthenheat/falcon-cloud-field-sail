@@ -762,15 +762,15 @@ const News = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cut, picks, sort, viewKey]);
   const pins = useMemo(() => clusterByCity(rows), [rows]);
-  /* the heat: each story's city, weighed by how hard it lands */
+  /* the shade under a country: how many stories on the cut come from it */
   const heat = useMemo<HeatPoint[]>(() => {
     const sum = new Map<string, HeatPoint>();
     rows.forEach(e => {
       if (!e.origin.city) return;
       const key = `${e.origin.lat},${e.origin.lng}`;
       const had = sum.get(key);
-      if (had) had.w += e.severity;
-      else sum.set(key, { lat: e.origin.lat, lng: e.origin.lng, w: e.severity });
+      if (had) had.w += 1;
+      else sum.set(key, { lat: e.origin.lat, lng: e.origin.lng, w: 1 });
     });
     return [...sum.values()];
   }, [rows]);
@@ -824,6 +824,18 @@ const News = () => {
     return h ? `${h}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m}m`;
   };
   const [hoverCity, setHoverCity] = useState<CityPing | null>(null);
+  /* the stories that name a place the map knows, and what the map says when it has no pin to draw */
+  const placedCount = useMemo(() => rows.filter(e => !!e.origin.city).length, [rows]);
+  const mapNote =
+    news.status === 'loading' && rows.length === 0
+      ? 'Reading the wire…'
+      : news.status === 'sim' && rows.length === 0
+        ? 'The wire did not answer — no story to place'
+        : rows.length === 0
+          ? 'No story on this cut'
+          : pins.length === 0
+            ? `None of the ${rows.length.toLocaleString('en-US')} ${rows.length === 1 ? 'story' : 'stories'} on this cut names a place the map knows — the list below has them all`
+            : null;
 
   /* the headline count keeps the folded near-duplicates */
   const storyCount = rows.length + [...similarRef.current.values()].reduce((a, n) => a + n, 0);
@@ -935,7 +947,7 @@ const News = () => {
               )}
             </Fact>
             <>
-                <Fact cell="lg:shrink-0 lg:w-[6rem]" label="Major" testId="major" tip="Headlines Unusual Whales flags as major" partial={coverage.reading && rows.length > 0}>
+                <Fact cell="lg:shrink-0 lg:w-[6rem]" label="Major" testId="major" tip="Headlines flagged as major" partial={coverage.reading && rows.length > 0}>
                   {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : <>{rows.filter(r => r.item.major).length}{coverage.reading && <span className="text-t9"> · so far</span>}</>}
                 </Fact>
                 <Fact cell="lg:shrink-0 lg:w-[7rem]" label="On your Board" testId="board" tip="Headlines that name a stock on your Board" partial={coverage.reading && rows.length > 0}>
@@ -1007,25 +1019,26 @@ const News = () => {
           <div className="flex flex-col">
             <NewsTape tape={tape} selectedId={selectedId} onPick={pick} />
             <div className="relative w-full" data-news-stage>
-              {mapNear ? <NewsMap className="absolute inset-0" pins={pins} selectedCity={selected?.origin.city ?? null} hoverCity={hoverCity?.city ?? null} onPick={p => { const e = rows.find(r => r.id === p.topId) ?? events.find(r => r.id === p.topId); if (e) pick(e); else setSelectedId(p.topId); }} onHover={setHoverCity} heat={heat} reach={reach} at={at} flyTo={flyTo} /> : null}
+              {mapNear ? <NewsMap className="absolute inset-0" pins={pins} selectedCity={selected?.origin.city ?? null} hoverCity={hoverCity?.city ?? null} onPick={p => { const e = rows.find(r => r.id === p.topId) ?? events.find(r => r.id === p.topId); if (e) pick(e); else setSelectedId(p.topId); }} onHover={setHoverCity} heat={heat} reach={reach} at={at} flyTo={flyTo} note={mapNote} /> : null}
             </div>
-            <div className="px-4 min-h-[26px] py-1 border-t border-ink/[0.06] flex items-center gap-3 font-mono text-t10 text-textSecondary whitespace-normal" data-news-map-read>
+            <div className="px-4 min-h-[30px] py-1.5 border-t border-ink/[0.06] flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-t10 text-textSecondary whitespace-normal" data-news-map-read>
               {hoverCity ? (
                 <>
                   <span className="font-bold text-textPrimary">{hoverCity.city}</span>
                   <span>
                     {hoverCity.n} {hoverCity.n === 1 ? 'story' : 'stories'}
+                    {hoverCity.majors ? ` · ${hoverCity.majors} major` : ''}
                   </span>
-                  <span className="text-textMuted break-words leading-relaxed">· {hoverCity.topHeadline}</span>
-                  <span className="ml-auto text-textMuted">click for its loudest story</span>
+                  <span className="text-textMuted break-words leading-relaxed min-w-0 flex-1">{hoverCity.topHeadline}</span>
+                  <span className="ml-auto text-textMuted max-sm:hidden">{/ and \d+ near$/.test(hoverCity.city) ? 'click to zoom in' : 'click for its loudest story'}</span>
                 </>
               ) : (
                 <>
-                  <span className="text-textMuted break-words whitespace-normal leading-relaxed">
-                    {pins.length} {pins.length === 1 ? 'city' : 'cities'} · the land warms where the news lands · the arcs are where the open story reaches
+                  <span className="text-textMuted" data-news-map-count>
+                    {placedCount.toLocaleString('en-US')} of {rows.length.toLocaleString('en-US')} {rows.length === 1 ? 'story' : 'stories'} placed · {pins.length} {pins.length === 1 ? 'city' : 'cities'}
                   </span>
-                  <HeatLegend className="shrink-0 max-sm:hidden" />
-                  <span className="ml-auto shrink-0" data-news-session-read>
+                  <HeatLegend />
+                  <span className="ml-auto" data-news-session-read>
                     {sessionsOpen.length ? (
                       <>
                         <span className="text-silver">{sessionsOpen.map(s => s.label).join(', ')}</span> <span className="text-textMuted">open</span>
