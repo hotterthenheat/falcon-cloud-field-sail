@@ -9,7 +9,7 @@ import { nyMinutes, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { isTradingDay, isEarlyClose, nyYmd, EARLY_CLOSES, sessionBefore, sessionCloseMinOn } from '../core/calendar';
 import { minuteInSession, sessionMeta, type DeskSession } from './deskSession';
 import { phaseAt, sessionAt } from '../core/session';
-import { etClock, keepTheta, keptTheta, noData, offlineWords, pageHidden, thetaDown, thetaGet } from './thetaFeed';
+import { etClock, keepTheta, keptTheta, noData, offlineWords, pageHidden, thetaDown, thetaGet, type ThetaAnswer } from './thetaFeed';
 import { thetaUseHere } from './theta';
 import { isCashIndex } from './symbolDirectory';
 import { EXT_WINDOWS, cleanExtendedBars, saneStockBars } from './thetaEligible';
@@ -301,6 +301,31 @@ export function spansOf(from: string, to: string, grain: Exclude<TapeGrain, 'day
 }
 
 export async function pullIntraday(symbol: string, grain: Exclude<TapeGrain, 'day' | 'week'>, session: DeskSession, from: string, to: string): Promise<Pull> {
+  const raw = await pullIntradayRaw(symbol, grain, session, from, to);
+  return { bars: await raw.clean(), offline: raw.offline };
+}
+
+/* The bad-print cleaner's own reads (/stock/history/trade, data/thetaEligible.ts): at most CLEAN_READS at once across
+   every tape, so a cold desk's dozens of them never take the slots the panes' first bars are waiting for. */
+const CLEAN_READS = 2;
+let cleanBusy = 0;
+const cleanQueue: (() => void)[] = [];
+async function cleanGet(path: string): Promise<ThetaAnswer> {
+  if (cleanBusy >= CLEAN_READS) await new Promise<void>(resolve => cleanQueue.push(resolve));
+  else cleanBusy += 1;
+  try {
+    return await thetaGet(path);
+  } finally {
+    /* the slot passes straight to the next in line */
+    const next = cleanQueue.shift();
+    if (next) next();
+    else cleanBusy -= 1;
+  }
+}
+
+/** ThetaData's bars as they came (`bars`, already sound enough to draw), and the cleaner that turns them into the bars
+    pullIntraday answers (`clean`). The tape paints the first before it runs the second. */
+async function pullIntradayRaw(symbol: string, grain: IntraGrain, session: DeskSession, from: string, to: string): Promise<Pull & { clean: () => Promise<Candle[]> }> {
   const wins = windowsFor(symbol, session, from, to);
   const got = await Promise.all(
     spansOf(from, to, grain).flatMap(([start, end]) =>
@@ -315,11 +340,18 @@ export async function pullIntraday(symbol: string, grain: Exclude<TapeGrain, 'da
      old price do not; data/thetaEligible.ts) — the regular session is ThetaData's bars as they come */
   const step = STEP_SEC[grain] ?? 60;
   if (root(symbol) === 'stock') {
-    const clean = session === 'pre' || session === 'post' ? await cleanExtendedBars(thetaGet, symbol, wins[0], step, bars) : bars;
-    /* a bad print's wick on a day the prints above were not read (data/barSanity.ts): rebuilt from that bar's prints */
-    return { bars: await saneStockBars(thetaGet, symbol, step, clean), offline };
+    return {
+      bars,
+      offline,
+      clean: async () => {
+        const clean = session === 'pre' || session === 'post' ? await cleanExtendedBars(cleanGet, symbol, wins[0], step, bars) : bars;
+        /* a bad print's wick on a day the prints above were not read (data/barSanity.ts): rebuilt from that bar's prints */
+        return saneStockBars(cleanGet, symbol, step, clean);
+      },
+    };
   }
-  return { bars: saneBars(bars), offline };
+  const sane = saneBars(bars);
+  return { bars: sane, offline, clean: async () => sane };
 }
 
 async function pullEod(symbol: string, from: string, to: string): Promise<Pull> {
@@ -458,11 +490,39 @@ function sealBars(old: Candle[], fresh: Candle[]): Candle[] {
   return [...byTime.values()].sort((a, b) => a.time - b.time);
 }
 
+/* ---- a cold chart's first reads: the lead session first ---- */
+
+/** How long a session's first read waits for its chart's lead session to paint */
+export const LEAD_WAIT_MS = 4_000;
+const firstAsked = new WeakMap<Slot, number>();
+/** The session a chart of this name reads first: the one trading now when it is the pre-market, the regular session or
+    the after-hours, else the regular session (the last one with a full day of bars). */
+export function leadSession(nowMs = Date.now()): DeskSession {
+  for (const s of ['pre', 'rth', 'post'] as const) if (sessionLive(s, nowMs)) return s;
+  return 'rth';
+}
+/** A first read of a session other than the lead waits while the lead's tape of the same name and grain is wanted and
+    has not answered yet — up to LEAD_WAIT_MS from its own first ask — so the first bars on a cold desk are the lead's,
+    not behind every other window's. */
+function firstReadWaits(s: Slot): boolean {
+  const lead = leadSession();
+  if (s.session === lead || s.grain === 'day' || s.grain === 'week') return false;
+  const now = Date.now();
+  const since = firstAsked.get(s) ?? now;
+  if (!firstAsked.has(s)) firstAsked.set(s, now);
+  if (now - since >= LEAD_WAIT_MS) return false;
+  const key = keyOf(s.symbol, s.grain, lead);
+  const l = slots.get(key);
+  return wanted.has(key) && !!l && l.takenAt === 0 && !l.bars.length && l.state !== 'offline';
+}
+
 async function read(s: Slot): Promise<void> {
   /* a room kept mounted behind a page that reads Unusual Whales only asks nothing; Pinpoint reads bars and prints (theta.ts) */
   if (s.busy || thetaUseHere() === 'none') return;
   s.busy = true;
   const key = keyOf(s.symbol, s.grain, s.session);
+  /* the lead session's turn first (firstReadWaits): asked again on the next beat */
+  let deferred = false;
   try {
     if (!s.keptAsked) {
       s.keptAsked = true;
@@ -479,10 +539,28 @@ async function read(s: Slot): Promise<void> {
     const daily = s.grain === 'day' || s.grain === 'week';
     const win = tapeWindow(s.grain, s.session);
     const first = !s.from;
+    /* a cold chart reads its lead session first (firstReadWaits); the others wait their turn, a few seconds at most */
+    if (first && !s.bars.length && firstReadWaits(s)) {
+      deferred = true;
+      return;
+    }
     /* the first read paints the newest chunk; every ten minutes the last sessions again (a late correction); between, today */
     const refresh = !first && Date.now() - s.fullAt > 10 * 60_000;
     const from = first ? win.from : refresh ? (daily && s.session === 'rth' ? daysBack(win.to, 12) : sessionsBack(anchorSession(s.session), REFRESH_SESSIONS)) : ymd();
-    const got = daily ? await pullDays(s.symbol, s.session, from, win.to, true) : await pullIntraday(s.symbol, s.grain as IntraGrain, s.session, from, win.to);
+    let got: Pull;
+    if (daily) got = await pullDays(s.symbol, s.session, from, win.to, true);
+    else {
+      const raw = await pullIntradayRaw(s.symbol, s.grain as IntraGrain, s.session, from, win.to);
+      /* Nothing on screen yet: ThetaData's bars are drawn the moment they land, and the bad-print cleaner (its trade reads,
+         capped) runs after; the bars it mends replace them below — the same bars as reading them cleaned. */
+      if (first && !s.bars.length && raw.bars.length) {
+        s.bars = raw.bars;
+        s.state = 'live';
+        emit();
+      }
+      got = { bars: await raw.clean(), offline: raw.offline };
+      if (first && s.bars === raw.bars) s.bars = [];
+    }
     const full = first || refresh;
     if (first && !(got.offline && !got.bars.length)) {
       s.from = win.from;
@@ -507,7 +585,7 @@ async function read(s: Slot): Promise<void> {
     emit();
   } finally {
     s.busy = false;
-    s.dueAt = Date.now() + (s.state === 'offline' ? 15_000 : holdMs(s));
+    s.dueAt = deferred ? 0 : Date.now() + (s.state === 'offline' ? 15_000 : holdMs(s));
   }
 }
 

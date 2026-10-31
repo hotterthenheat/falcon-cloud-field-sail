@@ -117,6 +117,11 @@ function openOn(y: number, m: number, d: number, min = 9 * 60 + 30): number {
   (core/nyTime nyTradingDay; the overnight from 20:00 joins the day it opens), stamped at its 9:30 open; a week starts on that
   day's Monday; 3D counts civil days; a month, quarter, half or year is the calendar's.
 */
+/** The bucket a moment falls in on a chart of `minutes` — the key a synced crosshair matches on. A bar is stamped somewhere
+    inside its own bucket (an intraday bar at its start, a daily bar at its 16:00 close), so two moments are on the same
+    bar exactly when their keys are equal. A minutes of 0 or less (a rule clock) is read as one minute. */
+export const syncBucket = (timeSec: number, minutes: number): number => barBucket(timeSec, minutes > 0 ? minutes : 1);
+
 export function barBucket(timeSec: number, minutes: number): number {
   if (minutes >= 1440) {
     const key = nyTradingDay(timeSec * 1000);

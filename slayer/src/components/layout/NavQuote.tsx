@@ -3,7 +3,8 @@
    component, re-rendering only when that name's reading changes, so nothing else on the rail moves with the tape. With
    the terminal down it shows the last reading, stamped with when it was taken. */
 
-import { LIVE_OFFLINE, LIVE_OFFLINE_KEPT, marketStamp, quoteStamp } from '../../copy/feeds';
+import { LIVE_LOGIN_FAILED, LIVE_LOGIN_FAILED_KEPT, LIVE_OFFLINE, LIVE_OFFLINE_KEPT, marketStamp, quoteStamp } from '../../copy/feeds';
+import { useThetaLogin } from '../../data/thetaFeed';
 import { memo, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AsOf, asOfText } from '../ui/states';
@@ -125,19 +126,25 @@ export function useNavQuote(ticker: string): NavQuoteRead {
   };
 }
 
-/** The offline line under the subject: which feed is down, and how old the price beside it is */
-export const OfflineLine = memo(({ asOf, className = '' }: { asOf: number | null; className?: string }) => (
-  <span className={`flex items-center gap-1.5 font-mono text-t9 uppercase tracking-widest text-warn ${className}`} title={LIVE_OFFLINE_KEPT} data-theta-offline>
-    <span aria-hidden className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />
-    <span className="truncate">{LIVE_OFFLINE}{asOf ? ` · ${asOfText(asOf)}` : ''}</span>
-  </span>
-));
+/** The offline line under the subject: which feed is down — or that its login was refused — and how old the price
+    beside it is */
+export const OfflineLine = memo(({ asOf, className = '' }: { asOf: number | null; className?: string }) => {
+  const login = useThetaLogin();
+  return (
+    <span className={`flex items-center gap-1.5 font-mono text-t9 uppercase tracking-widest text-warn ${className}`} title={login ? LIVE_LOGIN_FAILED_KEPT : LIVE_OFFLINE_KEPT} data-theta-offline={login ? 'login' : ''}>
+      <span aria-hidden className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />
+      <span className="truncate">{login ? LIVE_LOGIN_FAILED : LIVE_OFFLINE}{asOf ? ` · ${asOfText(asOf)}` : ''}</span>
+    </span>
+  );
+});
 OfflineLine.displayName = 'OfflineLine';
 
 /** Price and change, inline (the rail's subject and the phone strip): the last trade, the day's change, and outside
     the session the extended move, short ("AH +0.19%") */
 export const NavPrice = memo(({ ticker, compact = false }: { ticker: string; compact?: boolean }) => {
   const q = useNavQuote(ticker);
+  const login = useThetaLogin();
+  const downWord = login ? LIVE_LOGIN_FAILED : LIVE_OFFLINE;
   const priceTitle = q.asOf
     ? `Last trade${q.priceWord ? `, ${q.priceWord}` : ''} · ${asOfText(q.asOf)}${q.regClose != null ? ` · regular close ${q.regClose.toFixed(2)}` : ''}`
     : q.priceWord
@@ -167,7 +174,7 @@ export const NavPrice = memo(({ ticker, compact = false }: { ticker: string; com
           {extShort}
         </span>
       )}
-      {compact && q.offline && <span aria-label={LIVE_OFFLINE} title={`${LIVE_OFFLINE}${q.asOf ? ` · ${asOfText(q.asOf)}` : ''}`} className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" data-theta-offline />}
+      {compact && q.offline && <span aria-label={downWord} title={`${downWord}${q.asOf ? ` · ${asOfText(q.asOf)}` : ''}`} className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" data-theta-offline />}
     </>
   );
 });

@@ -15,6 +15,10 @@ export const LIVE_OFFLINE = 'Live data offline';
 export const LIVE_RECONNECTING = 'Live data offline — reconnecting';
 /** The rail chip / dot tooltip while the quote feed is down and the last price is kept. */
 export const LIVE_OFFLINE_KEPT = 'Live data is not answering. The price is the last one it gave.';
+/** The quotes feed is down because its login was refused: the key on the machine that runs it needs looking at. */
+export const LIVE_LOGIN_FAILED = 'Market data login failed — check the data key';
+/** The rail chip / dot tooltip while the login is refused and the last price is kept. */
+export const LIVE_LOGIN_FAILED_KEPT = 'Market data login failed — check the data key. The price is the last one it gave.';
 /** Waiting on the first live price. */
 export const LIVE_WAITING = 'Waiting on live prices';
 

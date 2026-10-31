@@ -34,7 +34,8 @@ import { useLevelsFor } from '../../data/levelsFor';
 import { paneLevels } from '../terrain/paneLevels';
 import ExpiryDensity from '../../components/weigher/ExpiryDensity';
 import { levelsForName, useNameLevels } from '../../data/levelsScope';
-import { etClock, keepTheta, keptTheta, offlineWords, useThetaDown } from '../../data/thetaFeed';
+import { etClock, keepTheta, keptTheta, offlineWords, useThetaDown, useThetaLogin } from '../../data/thetaFeed';
+import { useYield } from '../../data/carryFeed';
 import { thetaUseHere } from '../../data/theta';
 import {
   blankChain,
@@ -626,6 +627,10 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   };
   /* The terminal coming back re-lists and re-reads what it could not */
   const thetaOff = useThetaDown();
+  /* the name's dividend yield into the pricing carry (core/carry.ts): every contract on the desk is priced with it */
+  useYield(ticker);
+  /* a refused login re-words every outage line on the desk (offlineWords) */
+  useThetaLogin();
   useEffect(() => {
     if (thetaUseHere() !== 'all') return;
     let dead = false;
@@ -1727,7 +1732,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       onWatch={watchFromChain}
       book={bookAt}
       drillExtra={drillBook}
-      emptyText={chain.offline ? 'Live data offline — reconnecting' : listed === null || chainWait ? 'Reading the chain' : 'No listed contracts'}
+      emptyText={chain.offline ? offlineWords(0) : listed === null || chainWait ? 'Reading the chain' : 'No listed contracts'}
     />
   );
 

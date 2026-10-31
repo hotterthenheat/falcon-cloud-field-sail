@@ -1,4 +1,4 @@
-import { aggregateCandles, tfMinutes, type Timeframe } from './timeframe';
+import { aggregateCandles, barBucket, tfMinutes, type Timeframe } from './timeframe';
 import { emaSeries, emaWarmup, sessionStarts, vwapSeries } from './indicators';
 import type { Candle } from '../types/market';
 
@@ -73,15 +73,16 @@ function stateOf(close: number, ema: number, vwap: number): TrendState {
 function lastAggregate(base: readonly Candle[], mins: number): Candle {
   const last = base[base.length - 1]!;
   if (mins <= 1) return last;
-  const bucketSec = mins * 60;
-  const bucket = Math.floor(last.time / bucketSec) * bucketSec;
+  /* the same session-anchored buckets aggregateCandles folds with (timeframe.ts barBucket), so the open bucket's time is
+     the last aggregate's own and the patch path is taken, not a full re-fold every tick */
+  const bucket = barBucket(last.time, mins);
   let open = last.open;
   let high = last.high;
   let low = last.low;
   let volume = 0;
   for (let i = base.length - 1; i >= 0; i--) {
     const b = base[i]!;
-    if (Math.floor(b.time / bucketSec) * bucketSec !== bucket) break;
+    if (barBucket(b.time, mins) !== bucket) break;
     open = b.open;
     if (b.high > high) high = b.high;
     if (b.low < low) low = b.low;

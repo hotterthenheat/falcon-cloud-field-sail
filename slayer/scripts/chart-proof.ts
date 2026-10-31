@@ -25,7 +25,8 @@ import {
 } from '../src/data/indicators';
 import { sessionAtr } from '../src/data/atr';
 import { volumeProfileAt } from '../src/data/volumeProfile';
-import { aggregateCandles } from '../src/data/timeframe';
+import { aggregateCandles, barBucket, syncBucket } from '../src/data/timeframe';
+import { buildConfluence } from '../src/data/confluence';
 import { anchorSession, olderChunk, sessionsBack, spansOf, tapeWindow } from '../src/data/thetaTape';
 import { chartGrain } from '../src/data/thetaCandles';
 import { contractSpan } from '../src/data/thetaBook';
@@ -242,6 +243,46 @@ check('no vol means no cone', blank.past.length === 0 && blank.forward.length ==
   const q = flowQuery('SPY', f);
   check('flow filters ask the tape the same narrowing', q.single === true && q.otm === true && q.side === 'ASK' && q.codes?.[0] === 'isoi' && q.maxDte === 14 && q.minPremium === 50_000, JSON.stringify(q));
   check('flow caption reads the filters', flowCaption(f) === 'FLOW · SINGLE LEG · OTM · ASK · SWEEP · DTE 0–14 · ≥$50K', flowCaption(f));
+}
+
+/* TM6 — a synced crosshair finds the bar on the follower's own, session-anchored buckets. Two SPY panes on 1h (bars at
+   9:30, 10:30 … 15:30) and one on 1D (the day's bar at its 16:00 close). The old sync floored the moment on the unix epoch:
+   on 1h it named :00, where no bar is, half the hour; on 1D it named UTC midnight, never a bar. */
+{
+  const open = nyWallTime(2026, 10, 30, 9, 30) / 1000;
+  const minutes: Candle[] = [];
+  for (let i = 0; i < 390; i++) minutes.push({ time: open + i * 60, open: 750 + i * 0.01, high: 750.2 + i * 0.01, low: 749.8 + i * 0.01, close: 750.1 + i * 0.01, volume: 1000 });
+  const hourly = aggregateCandles(minutes, 60);
+  const hourTimes = new Set(hourly.map(b => b.time));
+  const dayStamp = nyWallTime(2026, 10, 30, 16, 0) / 1000;
+  /* the follower's lookup: the bar whose own bucket is the moment's (StrikeChart applySync) */
+  const follow = (stamps: number[], t: number, mins: number) => stamps.find(s => syncBucket(s, mins) === syncBucket(t, mins)) ?? null;
+  let hourNew = 0;
+  let hourOld = 0;
+  let dayNew = 0;
+  let dayOld = 0;
+  let right = 0;
+  const hours = hourly.map(b => b.time);
+  for (const m of minutes) {
+    const got = follow(hours, m.time, 60);
+    if (got != null) hourNew++;
+    if (got != null && got <= m.time && m.time < got + 3600) right++;
+    if (hourTimes.has(Math.floor(m.time / 3600) * 3600)) hourOld++;
+    if (follow([dayStamp], m.time, 1440) === dayStamp) dayNew++;
+    if (Math.floor(m.time / 86400) * 86400 === dayStamp) dayOld++;
+  }
+  check('TM6: 1h buckets start at the open (9:30, 10:30 … 15:30)', hourly.length === 7 && hourly[0].time === open && hourly[1].time === open + 3600, hourly.map(b => b.time - open).join(','));
+  check(`TM6: a 1h follower finds its bar at every minute of the session (${hourNew}/390; the epoch floor ${hourOld}/390)`, hourNew === 390 && right === 390 && hourOld < 390);
+  check(`TM6: a 1D follower finds the day's bar (stamped at 16:00) from every minute (${dayNew}/390; the epoch floor ${dayOld}/390)`, dayNew === 390 && dayOld === 0);
+  check('TM6: a 1h moment read on a 1h pane is its own bar (both 1h panes follow each other)', hours.every(t => follow(hours, t, 60) === t));
+  /* confluence's open bucket uses the same buckets: the patched last row equals a fresh fold */
+  const base = minutes.slice(0, 200);
+  buildConfluence(base);
+  base.push(minutes[200]);
+  const patched = buildConfluence(base);
+  const fresh = buildConfluence(minutes.slice(0, 201));
+  check('TM6: confluence patched on a new minute equals a fresh fold', JSON.stringify(patched) === JSON.stringify(fresh), JSON.stringify(patched.map(r => r.state)));
+  check('TM6: the confluence bucket of 10:45 on 1h is 10:30, not 10:00', barBucket(open + 75 * 60, 60) === open + 3600);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

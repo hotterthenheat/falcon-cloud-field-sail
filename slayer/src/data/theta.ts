@@ -63,14 +63,25 @@ const downStatus = (status: number) => status === 503 || status === 474 || statu
 /* While the terminal is down every call would fail the same way: hold them all, 15 s at first and up to a minute. */
 let downUntil = 0;
 let downFor = 0;
-const noteDown = () => {
+/* Why the terminal is down, when it is: its login was refused (the supervisor's login_failed, which the proxy answers as
+   terminal_login), or anything else. Its own state, so the page can say "login failed" instead of "offline"; the breaker
+   treats both alike. */
+let loginRefused = false;
+const noteDown = (login = false) => {
+  loginRefused = login;
   downFor = Math.min(60_000, downFor ? downFor * 2 : 15_000);
   downUntil = Date.now() + downFor;
 };
 const noteUp = () => {
+  loginRefused = false;
   downFor = 0;
   downUntil = 0;
 };
+/** The terminal is down because its login was refused (the data key), not merely not answering. */
+export const thetaLoginRefused = (): boolean => loginRefused;
+/** A down answer, marked when the login was the reason. The error stays `terminal_down` for every reader that keys on
+    it; `reason` says why. */
+const downAnswer = (status: number, login: boolean): ThetaAnswer => ({ status, data: null, error: 'terminal_down', ...(login ? { reason: 'login' as const } : {}) });
 
 /** A down terminal is the code, never the server's sentence. */
 function faultText(status: number, parsed: unknown, text: string): string {
@@ -79,9 +90,15 @@ function faultText(status: number, parsed: unknown, text: string): string {
   const raw = o ? String(o.error || o.message || '') : typeof parsed === 'string' ? parsed : text;
   if (code === 'terminal_down' || code === 'terminal_login' || code === 'session_lost' || code === 'terminal_unavailable' || status === 0 || downStatus(status) || /not running|invalid session/i.test(raw)) return 'terminal_down';
   if (status === 472) return 'no_data';
+  /* the server gave up waiting on a terminal that is up (server/thetaProxy.mjs BUSY): busy, by its code */
+  if (code === 'terminal_busy') return 'terminal_busy';
   const msg = raw.replace(/\s+/g, ' ').trim().slice(0, 180);
   return msg || `unavailable ${status}`;
 }
+
+/** The proxy's answer names a refused login (terminal_login) */
+const loginCode = (parsed: unknown): boolean =>
+  !!parsed && typeof parsed === 'object' && !Array.isArray(parsed) && (parsed as { code?: unknown }).code === 'terminal_login';
 
 /* What ThetaData may be asked for on the page in view (the owner's rules, docs/DATA_SOURCES.md):
    Trace and the Dossier read Unusual Whales only; Pinpoint reads its greeks, exposure and levels from Unusual Whales
@@ -109,7 +126,7 @@ export const thetaAllowedHere = (path: string): boolean => {
 export const optionPath = (path: string): string =>
   path.startsWith('/option/') ? path.replace(/([?&](?:symbol|root)=)([A-Z]{1,4})(?:\.|%2E)([A-Z])(?=&|$)/gi, '$1$2$3') : path;
 
-type ThetaAnswer = { status: number; data: unknown; error: string | null };
+type ThetaAnswer = { status: number; data: unknown; error: string | null; reason?: 'login' };
 
 /* A name's daily rows are one read a page: the price store (prior closes) and the tape store (the print's prior close)
    both ask the same address within a second of each other. One read is in flight at a time, and its good answer serves
@@ -133,16 +150,29 @@ export function thetaCall(path: string, jump = false): Promise<ThetaAnswer> {
   return slot.answer;
 }
 
+/* How long this browser waits on one read: a little past the server's own limit on the terminal (server/thetaProxy.mjs
+   loadNow: 20 s for a snapshot, 90 s for history), so the server's busy answer (504 terminal_busy) normally lands
+   first. A read that outlives it anyway (a stalled socket, a proxy that never answers) is the terminal being busy, not
+   down: no breaker, the next read asks again. */
+const THETA_WAIT_MS = { quote: 25_000, history: 95_000 } as const;
+const historyPath = (p: string): boolean => /\/(history|at_time)\//.test(p);
+export const thetaWaitMs = (path: string): number => (historyPath(path) ? THETA_WAIT_MS.history : THETA_WAIT_MS.quote);
+const BUSY_ANSWER = (): ThetaAnswer => ({ status: 504, data: null, error: 'terminal_busy' });
+const timedOut = (e: unknown): boolean => {
+  const name = e && typeof e === 'object' ? (e as { name?: unknown }).name : undefined;
+  return name === 'TimeoutError' || name === 'AbortError';
+};
+
 async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
   path = optionPath(path);
   if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
   if (!thetaAllowedHere(path)) return { status: 0, data: null, error: 'uw_only' };
   const auth = await feedHeaders();
   if (!auth.ok) return { status: 401, data: null, error: auth.code };
-  if (Date.now() < downUntil) return { status: 503, data: null, error: 'terminal_down' };
+  if (Date.now() < downUntil) return downAnswer(503, loginRefused);
   await take(jump);
   try {
-    const res = await fetch(`/api/theta${path}`, { headers: { ...auth.headers, 'x-theta-soft': '1' } });
+    const res = await fetch(`/api/theta${path}`, { headers: { ...auth.headers, 'x-theta-soft': '1' }, signal: AbortSignal.timeout(thetaWaitMs(path)) });
     const text = await res.text();
     const type = res.headers.get('content-type') || '';
     let parsed: unknown = null;
@@ -162,8 +192,9 @@ async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
     if (outage === 'terminal_down' || outage === 'terminal_login' || outage === 'session_lost' || outage === 'terminal_unavailable') {
       /* A stolen session is one read. The terminal is still up and the next read usually lands — a 15s blackout
          is what left the rail saying offline while quotes were answering. A dead terminal still backs off. */
-      if (outage !== 'session_lost') noteDown();
-      return { status: 503, data: null, error: 'terminal_down' };
+      const login = outage === 'terminal_login';
+      if (outage !== 'session_lost') noteDown(login);
+      return downAnswer(503, login);
     }
     if (outage === 'no_data') {
       noteUp();
@@ -171,12 +202,18 @@ async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
     }
     if (!res.ok) {
       const error = faultText(res.status, parsed, text);
-      if (error === 'terminal_down') noteDown();
+      if (error === 'terminal_down') {
+        const login = loginCode(parsed);
+        noteDown(login);
+        return { status: res.status, data, error, ...(login ? { reason: 'login' as const } : {}) };
+      }
       return { status: res.status, data, error };
     }
     noteUp();
     return { status: res.status, data, error: null };
-  } catch {
+  } catch (e) {
+    /* our own wait ran out: busy, never down (the body can time out too, after the headers came in) */
+    if (timedOut(e)) return BUSY_ANSWER();
     noteDown();
     return { status: 0, data: null, error: 'terminal_down' };
   } finally {

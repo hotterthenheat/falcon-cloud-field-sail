@@ -7,6 +7,7 @@ import { levelsBook, levelsDate, levelsWords } from './bookWindow';
 import { ensureScopeDates, scopeDatesPending } from './book/load';
 import { snapshotFor } from './book/feed';
 import { useBookRev } from './book/store';
+import { bookInMode, bookMode, useBookMode } from './bookMode';
 import { LEVELS_WINDOW } from './roomLevels';
 import { nyIsoDate } from '../core/nyTime';
 import type { LevelsScope } from './levelsScope';
@@ -97,8 +98,10 @@ export function levelsFor(ticker: string, scope: LevelsScope): TickerLevels | nu
   const t = ticker.trim().toUpperCase();
   if (!t) return null;
   if (scope === 'ALL') ensureScopeDates(t, 'ALL');
-  const snap = snapshotFor(t, scope);
-  if (!snap) return null;
+  const read = snapshotFor(t, scope);
+  if (!read) return null;
+  /* the book the desk's toggle names (data/bookMode.ts): on Open interest the snapshot itself */
+  const snap = bookInMode(read, bookMode());
   /* one reading per state of the name's book (data/uwBook.ts materialize hands the same snapshot back until it moves) */
   const pending = scopeDatesPending(t, scope);
   const memo = levelsMemo.get(snap);
@@ -163,7 +166,8 @@ function levelsOf(t: string, scope: LevelsScope, snap: NonNullable<ReturnType<ty
 export function levelsForDate(ticker: string, date: string): TickerLevels | null {
   const t = ticker.trim().toUpperCase();
   if (!t || !date) return null;
-  const front = snapshotFor(t, '0DTE');
+  const read = snapshotFor(t, '0DTE');
+  const front = read ? bookInMode(read, bookMode()) : read;
   const rows = front?.uwByDate?.[date];
   if (!front || !rows?.length) return null;
   if (front.uwChains?.['0DTE'] === rows) return levelsFor(t, '0DTE');
@@ -186,8 +190,10 @@ const dateSnaps = new WeakMap<object, Map<string, NonNullable<ReturnType<typeof 
 /** The hook: both scopes' levels for a name, kept fresh as its book lands. A `date` reads that one expiry instead. */
 export function useLevelsFor(ticker: string | null | undefined, scope: LevelsScope, date?: string | null): TickerLevels | null {
   const rev = useBookRev();
+  /* the Open interest / Flow toggle re-reads the levels */
+  const mode = useBookMode();
   useEffect(() => {
     if (ticker && scope === 'ALL' && !date) ensureScopeDates(ticker.toUpperCase(), 'ALL');
   }, [ticker, scope, date]);
-  return useMemo(() => (!ticker ? null : date ? levelsForDate(ticker, date) : levelsFor(ticker, scope)), [ticker, scope, date, rev]);
+  return useMemo(() => (!ticker ? null : date ? levelsForDate(ticker, date) : levelsFor(ticker, scope)), [ticker, scope, date, rev, mode]);
 }

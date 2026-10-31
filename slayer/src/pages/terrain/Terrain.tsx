@@ -8,7 +8,10 @@ import { chainForDate, expiryLabel } from '../../data/book/levels';
 import { ensureBook } from '../../data/book/load';
 import { peekSpot } from '../../data/book/day';
 import { snapshotFor } from '../../data/book/feed';
-import { useBookRev } from '../../data/book/store';
+import { bookStatus, peekEntry, useBookRev } from '../../data/book/store';
+import type { StrikeNode } from '../../types/market';
+import { ReadMiss } from '../../components/ui/BookDown';
+import { bookInMode, chainInMode, useBookMode, type BookMode } from '../../data/bookMode';
 import { levelNetPath } from '../../data/flipLevel';
 import { rootTradesSession } from '../../data/compassSession';
 import { useSessionQuote } from '../../data/sessionQuote';
@@ -203,8 +206,11 @@ const railShape = (rows: { strike: number; value: number; callOI?: number }[], s
   if (!Number.isFinite(step) || step <= 0) step = 1;
   return { rows, core, maxAbs, spot, step };
 };
+/** A chain of the name's book in the toggled book, its dates read off the book's own per-date rows */
+const nodesInMode = (ticker: string, nodes: StrikeNode[], mode: BookMode): StrikeNode[] =>
+  mode === 'flow' ? chainInMode(nodes, peekEntry(ticker)?.byDate, 'flow') : nodes;
 /** The rail reads the same live chain the chart draws. No book yet means an empty rail, not a made-up one. */
-function railForCut(ticker: string, cut: RailCut): RailData {
+function railForCut(ticker: string, cut: RailCut, mode: BookMode = 'oi'): RailData {
   const spot = peekSpot(ticker);
   const blank: RailData = {
     rows: [],
@@ -224,8 +230,10 @@ function railForCut(ticker: string, cut: RailCut): RailData {
         })();
   const pack = chainForDate(ticker, date);
   if (!pack || !(spot != null && spot > 0) || pack.nodes.length === 0) return blank;
+  /* the desk's Open interest / Flow toggle (data/bookMode.ts): on Open interest the chain itself */
+  const nodes = nodesInMode(ticker, pack.nodes, mode);
   const legs = new Map<number, { put: number; call: number }>();
-  const rows = pack.nodes
+  const rows = nodes
     .map(n => {
       legs.set(n.strike, { put: n.putGex, call: n.callGex });
       return { strike: n.strike, value: n.netGex, callOI: n.callOI };
@@ -852,10 +860,12 @@ const Pane = ({
   // Each pane reads its own book; revision keeps the levels tracking the tick
   /* The rail's book for the desk's cut: rows, core, walls and legs in one read, so the chart's level lines, the
      header's heaviest line and the rail can never name different strikes for different expiries */
+  /* Open interest (the default) or Flow: the field's toggle, which the rail, the walls, the flip and the regime follow */
+  const bookMode = useBookMode();
   const railData = useMemo(
-    () => railForCut(ticker, railCut),
+    () => railForCut(ticker, railCut, bookMode),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ticker, revision, railCut]
+    [ticker, revision, railCut, bookMode]
   );
   /* The expiry a later-date cut reads, and its rows: the header's heaviest read and the house levels both use them. */
   const bookPick = railCut === 'book' || railCut === 0
@@ -865,9 +875,12 @@ const Pane = ({
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       })();
   const shownBook = useMemo(
-    () => chainForDate(ticker, bookPick),
+    () => {
+      const pack = chainForDate(ticker, bookPick);
+      return pack && bookMode === 'flow' ? { ...pack, nodes: nodesInMode(ticker, pack.nodes, bookMode) } : pack;
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ticker, revision, bookPick],
+    [ticker, revision, bookPick, bookMode],
   );
   /* The walls, flip and supreme are the house's (data/levelsFor.ts): the name's levels scope Pinpoint's head sets for it
      (the one Pulse and Weigher read too), or the cut's own expiry when the rail is cut to a later date, off the rows the
@@ -875,11 +888,11 @@ const Pane = ({
   const levelsScope = useNameLevels(ticker);
   const house = useLevelsFor(ticker, levelsScope, bookPick ? shownBook?.date ?? null : null);
   /* the field's cut: its net GEX off the house's rows for it, the figure Pinpoint prints for the same cut */
-  const fieldNodes = (railCut === 'book' ? chainForDate(ticker, 'book') : shownBook)?.nodes;
+  const fieldNodes = railCut === 'book' ? (() => { const n = chainForDate(ticker, 'book')?.nodes; return n ? nodesInMode(ticker, n, bookMode) : n; })() : shownBook?.nodes;
   const fieldOiNet = useMemo(() => (fieldNodes ? dealerOf(fieldNodes.reduce((a, n) => a + n.netGex, 0)) : null), [fieldNodes]);
   /* the levels' own contracts: their largest strike sizes each wall, and their expiry names max pain */
   const levelsChain = house ? chainForDate(ticker, house.date ?? 'book') : null;
-  const levelsNodes = levelsChain?.nodes;
+  const levelsNodes = levelsChain ? nodesInMode(ticker, levelsChain.nodes, bookMode) : undefined;
   const levelsTop = useMemo(() => (levelsNodes ? levelsNodes.reduce((m, n) => Math.max(m, Math.abs(n.netGex)), 0) : 0), [levelsNodes]);
   const maxPain = useMaxPain(ticker, house?.date ?? levelsChain?.date ?? null, overlays.levels);
   const levels = useMemo(() => paneLevels(railData.spot, house, { top: levelsTop, maxPain }), [railData, house, levelsTop, maxPain]);
@@ -951,15 +964,20 @@ const Pane = ({
      `revision` also counts ThetaData's bars, which bumped this ~14 times a second on a first load (each a ~4 ms re-price
      of the whole book at ~320 prices) without changing any input. */
   const bookRev = useBookRev();
+  /* The options book did not come back (and no kept copy stands in): the rail, the field and the levels have nothing to
+     draw, and the pane says so with Pinpoint's retry card instead of letting them vanish */
+  const bookDown = optionable && bookStatus(ticker) === 'error';
+  const retryBook = useCallback(() => ensureBook(ticker, 'board', true), [ticker]);
   const flowStrikes = rail.rows.map(r => r.strike).join(',');
   const flow = useMemo(() => {
     if (!rail.rows.length) return null;
-    const snap = snapshotFor(ticker, '0DTE');
+    const read = snapshotFor(ticker, '0DTE');
+    const snap = read ? bookInMode(read, bookMode) : read;
     const chain = fieldNodes;
     const repriced = snap?.liveBook && chain?.length ? (prices: readonly number[]) => levelNetPath(snap, chain, prices)?.path.map(v => -v) ?? null : undefined;
     return buildFlowFromRows(rail.rows, levels.spot, repriced);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flowStrikes, levels.spot, fieldNodes, ticker, bookRev]);
+  }, [flowStrikes, levels.spot, fieldNodes, ticker, bookRev, bookMode]);
   /* The ladder's two legs: the put and call hedging behind every strike's net, off the live chain, and the net at
      the open as a ratio of now for the spine's ghost — the size lane draws the strike ladder's rows */
   const legs = railData.legs;
@@ -1340,6 +1358,17 @@ const Pane = ({
             </Deferred>
             {/* The pane's corner chip row: the field's key (the model, its switch, the colour scale and the cut's net
                 GEX) and, beside it, what is not in yet */}
+            {/* the book's retry where the rail's card is not on screen (rail off, or below xl where the rail is hidden) */}
+            {bookDown && !replay && (
+              <div className={`absolute z-20 left-16 bottom-14 max-w-[calc(100%-140px)] ${ladder ? 'xl:hidden' : ''}`} role="status" data-terrain-book-down="chip">
+                <span className="inline-flex max-w-full items-center gap-2 rounded-md border border-borderSubtle bg-canvas/90 px-2 py-1 font-mono text-t10 text-warn" title={`The book for ${ticker} did not come back from the feed. The page asks again on its own — or ask now.`}>
+                  <span className="min-w-0 truncate">Book did not land</span>
+                  <button type="button" onClick={retryBook} className="shrink-0 whitespace-nowrap rounded border border-borderMuted px-1.5 py-0.5 uppercase tracking-widest text-t9 text-textPrimary hover:bg-ink/[0.06]" data-book-retry>
+                    Try again
+                  </button>
+                </span>
+              </div>
+            )}
             {!replay && (overlays.trails || gapLines.length > 0) && (
               /* Chips in the top-right corner, under the expand door and in the price scale's top margin — they never
                  sit on a bar (the card it replaced stood over the candles and the volume at the bottom-left) */
@@ -1641,6 +1670,12 @@ const Pane = ({
               onSelect={price => setFocus(cur => (cur != null && Math.abs(cur - price) < 1e-9 ? null : price))}
               className="hidden xl:block"
             />
+          )}
+          {/* …and where the rail would stand, the book's failure card */}
+          {ladder && bookDown && rail.rows.length === 0 && (
+            <aside className="hidden xl:flex shrink-0 flex-col p-3 border-l border-borderSubtle overflow-y-auto" style={{ width: Math.min(cfg.ladderW ?? railRestWidth(paneCount, expanded), 340) }} data-terrain-book-down="rail">
+              <ReadMiss who={ticker} onRetry={retryBook} leave={false} compact />
+            </aside>
           )}
         </div>
         {/* The guide in focus — over the whole pane, the pane blurred behind it */}

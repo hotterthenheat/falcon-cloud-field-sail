@@ -28,7 +28,7 @@ import {
 import { chainForDate, deskTape } from '../../data/book/levels';
 import { ensureBook } from '../../data/book/load';
 import { peekDaySigma, peekIv } from '../../data/book/move';
-import { peekEntry, useBookRev } from '../../data/book/store';
+import { bookStatus, peekEntry, useBookRev } from '../../data/book/store';
 import { snapshotFor } from '../../data/book/feed';
 import { useBookMinutes } from '../../data/book/minutes';
 import { alignLatestColumn, ensureFieldCloses, ensureFieldCut, exposureGrid, gridColumns, heldStrikes, useExposureLogRev } from '../../data/book/exposureLog';
@@ -48,6 +48,7 @@ import {
   aggregateCandles,
   aggregateSnapshots,
   snapshotsMaxAbs,
+  syncBucket,
   tfMinutes,
   frameServed,
   type Timeframe,
@@ -65,6 +66,8 @@ import { nyClock, nyMinutes, nyParts, nyWallTime } from '../../core/nyTime';
 import { beepAlert } from '../../data/alertSound';
 import { oiDoubled } from '../../data/oiWatch';
 import { chartGrain, extendChartTape, thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
+import { useThetaDown, useThetaLogin } from '../../data/thetaFeed';
+import { LIVE_LOGIN_FAILED } from '../../copy/feeds';
 import { barInTape, peekPrint, usePrintRev, useTapeRev } from '../../data/thetaTape';
 import { contractsLive } from '../../data/compassSession';
 import { sameName } from '../../data/spotGexBook';
@@ -1254,13 +1257,19 @@ const StrikeChart = ({
       stop = true;
     };
   }, [barsIn, quiet, ticker]);
-  /** A tape's note in the desk's words: no vendor named, a signed-out read asks for a sign-in, and a terminal that did
-      not answer in time is busy and being asked again — never "offline" */
+  /* The quotes terminal known down, and whether its login was refused: then the pane says so rather than "busy" */
+  const feedDown = useThetaDown();
+  const feedLogin = useThetaLogin();
+  /** A tape's note in the desk's words: no vendor named, a signed-out read asks for a sign-in, a refused login says so,
+      a terminal known to be down is offline, and one that did not answer in time is busy and being asked again */
   const noteWords = (note: string | null | undefined): string | null => {
     if (!note) return null;
     if (signedOut) return 'Sign in to load prices';
     const asOf = note.match(/as of (.+)$/)?.[1];
-    if (/offline|did not answer|reconnecting/i.test(note)) return `Prices busy — retrying${asOf ? ` · as of ${asOf}` : ''}`;
+    const stamp = asOf ? ` · as of ${asOf}` : '';
+    if (feedLogin && /offline|did not answer|reconnecting|login failed/i.test(note)) return `${LIVE_LOGIN_FAILED}${stamp}`;
+    if (feedDown && /offline|reconnecting/i.test(note)) return note;
+    if (/offline|did not answer|reconnecting/i.test(note)) return `Prices busy — retrying${stamp}`;
     return note.replace(/ThetaData|Unusual Whales/g, 'the feed');
   };
   const [sessionNote, setSessionNote] = useState<string | null>(null);
@@ -1273,7 +1282,8 @@ const StrikeChart = ({
       if (barCountRef.current === 0 && (tapeRef.current || !thetaBars() || thetaChartNote(ticker, tfMinutes(timeframe), getDeskSession()) != null)) setQuiet(true);
     }, 1200);
     return () => window.clearTimeout(id);
-  }, [ticker, timeframe, barClock]);
+    /* the terminal going down (or its login refused) asks again: a known outage is said, not loaded forever */
+  }, [ticker, timeframe, barClock, feedDown, feedLogin]);
   /** The chart's box — what the rail's lists and the sheet are portalled into */
   const [boxEl, setBoxEl] = useState<HTMLDivElement | null>(null);
   /* The box's client rect for the per-move hit tests, read once and dropped when it can have moved. Read fresh on
@@ -1629,16 +1639,29 @@ const StrikeChart = ({
       emitReadout(null);
       return;
     }
-    /* This chart's bucket, floored — the bar the moment is inside of. The library's own lookup rounds UP, so a 12:07
-       hover would land on a 15m neighbour's 12:15 bar: one that had not happened at 12:07. */
-    const bucket = Math.max(60, tfMinutes(timeframeRef.current) * 60);
-    const target = (Math.floor(time / bucket) * bucket) as UTCTimestamp;
+    /* The bar the moment is inside of, in this chart's own buckets (data/timeframe.ts barBucket: session-anchored — 1h
+       bars at 9:30, 10:30 …, a day the New York trading day). Flooring on the unix epoch put a 1h moment on :00, where
+       no bar is, and a day on UTC midnight. The library's own nearest lookup rounds UP, so a 12:07 hover would land on a
+       15m neighbour's 12:15 bar: only a bar whose own bucket is the moment's is taken. */
+    const mins = tfMinutes(timeframeRef.current);
+    const key = syncBucket(time, mins);
     const ts = chart.timeScale();
-    const idx = ts.timeToIndex(target, false); // exact hit or null — never nearest
+    const stampAt = (i: number): number | null => {
+      const d = series.dataByIndex(i) as { time?: unknown } | null;
+      return d && typeof d.time === 'number' ? d.time : null;
+    };
+    let idx: number | null = ts.timeToIndex(key as UTCTimestamp, false); // a bar stamped at its bucket's start
+    if (idx === null) {
+      /* a bar stamped later inside its bucket (a daily bar at its close): the bars either side of the key */
+      const near = ts.timeToIndex(key as UTCTimestamp, true);
+      idx = near == null ? null : ([near, near + 1, near - 1].find(i => { const t = stampAt(i); return t != null && syncBucket(t, mins) === key; }) ?? null);
+    }
+    const stamp = idx === null ? null : stampAt(idx);
+    const target = (stamp ?? key) as UTCTimestamp;
     const vis = ts.getVisibleLogicalRange();
     /* Outside this chart's data, or outside what it is currently showing, draw nothing. SetCrosshairPosition clamps
        the index to the visible range and would otherwise print a confident mark on the wrong bar. */
-    if (idx === null || vis === null || idx < vis.from || idx > vis.to) {
+    if (idx === null || stamp === null || vis === null || idx < vis.from || idx > vis.to) {
       chart.clearCrosshairPosition();
       setFollower(false);
       /* This pane has no bar at that moment, or is not showing it. It draws nothing, so it reports nothing — a
@@ -4435,7 +4458,8 @@ const StrikeChart = ({
     }
     if (!clock && overlays.cone && !coneTerm(ticker)) push(coneMissed(ticker) ? 'Expected move — no implied vol on this name' : 'Expected move — waiting on implied vol');
     if (overlays.levels && ![levels.callWall, levels.putWall, levels.flip, levels.supreme].some(v => Number.isFinite(v) && v > 0)) {
-      push('Key levels — the book has not named a wall yet');
+      /* the book did not come back at all: that, not "not named yet" */
+      push(bookStatus(ticker) === 'error' ? 'Book — the feed did not answer' : 'Key levels — the book has not named a wall yet');
     }
     if (overlays.alerts && !alerts.some(a => a.kind === 'price')) push('Alert lines — no price alert on this name');
     if (overlays.volume && drawn.length > 0 && drawn.every(b => !(b.volume > 0))) push('Volume — these bars have no share volume');
@@ -4619,7 +4643,7 @@ const StrikeChart = ({
           <div className="absolute inset-0 z-[4] flex items-center justify-center pointer-events-none" data-chart-empty>
             <div className="max-w-[280px] rounded-md border border-borderSubtle bg-canvas/85 px-4 py-3 text-center">
               <p className="font-mono text-t11 text-textPrimary">{signedOut ? 'Sign in to load prices' : noteWords(tape?.note || sessionNote) || 'No bars for this name'}</p>
-              <p className="mt-1 font-mono text-t10 text-textMuted">{signedOut ? 'Prices load for a signed-in session.' : quote ? `Quote ${quote.bid.toFixed(2)} × ${quote.ask.toFixed(2)}${quote.current ? '' : `, ${asOfText(quote.at)}`}. No prints on this name${quote.current ? '' : ' this session'}.` : tape?.note && !/offline/i.test(tape.note) ? `${etWindow(session)}.` : 'This frame stays. Bars fill it when the tape answers.'}</p>
+              <p className="mt-1 font-mono text-t10 text-textMuted">{signedOut ? 'Prices load for a signed-in session.' : quote ? `Quote ${quote.bid.toFixed(2)} × ${quote.ask.toFixed(2)}${quote.current ? '' : `, ${asOfText(quote.at)}`}. No prints on this name${quote.current ? '' : ' this session'}.` : tape?.note && !/offline|login failed/i.test(tape.note) ? `${etWindow(session)}.` : 'This frame stays. Bars fill it when the tape answers.'}</p>
             </div>
           </div>
         )}
