@@ -54,7 +54,7 @@ import {
   type PriceScale,
 } from './StrikeChart';
 import { INDICATOR_ITEMS, indicatorBlurb } from './indicatorItems';
-import { NODE_LOOKS, setDeskPrefs, useDeskPrefs, type FlowFilters } from '../../data/deskPrefs';
+import { NODE_ALERT_PCTS, NODE_LOOKS, setDeskPrefs, useDeskPrefs, type FlowFilters } from '../../data/deskPrefs';
 import { FLOW_CHIPS } from '../../data/flowBuckets';
 /* The scripts library loads the first time its menu opens, not with every chart */
 const ScriptLibrary = lazy(() => import('../scripts/ScriptLibrary'));
@@ -1361,6 +1361,39 @@ const ChartToolbar = ({
                     {l.label}
                   </button>
                 ))}
+              </span>
+            </div>
+          )}
+          {overlays.trails && overlayItems.some(i => i.key === 'trails') && (
+            <div className="flex items-center gap-2 pl-[26px] pr-2.5 pb-2 -mt-1" title="An alert when price comes this near one of the three heaviest nodes or the flip — once a level a session">
+              <span className="font-mono text-t9 uppercase tracking-wider text-textMuted shrink-0">Alert near</span>
+              <span role="group" aria-label="Node pressure alert" className="inline-flex items-center gap-0.5 rounded border border-borderMuted p-0.5">
+                <button
+                  type="button"
+                  onClick={() => onOverlays({ ...overlays, nodeAlert: false })}
+                  aria-pressed={!overlays.nodeAlert}
+                  className={`px-1.5 py-0.5 rounded font-mono text-t10 transition-colors ${!overlays.nodeAlert ? 'bg-ink/[0.16] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'}`}
+                >
+                  Off
+                </button>
+                {NODE_ALERT_PCTS.map(p => {
+                  const on = !!overlays.nodeAlert && deskPrefs.nodeAlertPct === p;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => {
+                        setDeskPrefs({ nodeAlertPct: p });
+                        if (!overlays.nodeAlert) onOverlays({ ...overlays, nodeAlert: true });
+                      }}
+                      aria-pressed={on}
+                      data-node-alert={p}
+                      className={`px-1.5 py-0.5 rounded font-mono text-t10 tnum transition-colors ${on ? 'bg-ink/[0.16] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'}`}
+                    >
+                      {p}%
+                    </button>
+                  );
+                })}
               </span>
             </div>
           )}
