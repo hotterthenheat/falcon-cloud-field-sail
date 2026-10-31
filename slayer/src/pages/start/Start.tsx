@@ -33,7 +33,7 @@ const LINES: Record<string, string> = {
   '/compass': 'Contracts scored on the terminal’s live quotes, same day and one to seven days out, each call with its marks on the chart.',
   '/weigher': 'One desk for a contract: the chain, the book at a strike, your positions and your watchlist.',
   '/practice/paper': 'Trade today’s live option quotes with pretend money on a practice account.',
-  '/practice/backtest': 'Replay a recorded ThetaData session minute by minute and trade it at the bid and ask each contract had.',
+  '/practice/backtest': 'Replay a recorded session minute by minute and trade it at the bid and ask each contract had.',
   '/practice/journal': 'Every trade you closed, paper, backtest or your own journal, on its day, with your own words on it.',
 };
 
@@ -68,7 +68,7 @@ const Start = () => {
             {paid
               ? plan
                 ? `Thank you — ${plan.name} is yours. Every page of the terminal, one picture and one line each: pick where to begin.`
-                : 'Thank you. Stripe is confirming the payment; your plan lands in a moment. Every page of the terminal, one picture and one line each: pick where to begin.'
+                : 'Thank you. The payment is being confirmed; your plan lands in a moment. Every page of the terminal, one picture and one line each: pick where to begin.'
               : 'Every page of the terminal, one picture and one line each. Pick one; the rest stay one press away on the rail, or the menu on a phone.'}
           </p>
         </div>

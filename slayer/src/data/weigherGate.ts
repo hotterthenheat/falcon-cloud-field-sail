@@ -11,9 +11,9 @@
 
 import { blackScholesGreeks, blackScholesPrice, decayOver, impliedVolFromPrice, thetaPerSession } from '../core/greeks';
 import { carryFor, getCarry, DEFAULT_R } from '../core/carry';
-import { tradingMinutes, tradingYears } from '../core/tradingYear';
+import { tradingMinutes, tradingYears, TRADING_DAYS } from '../core/tradingYear';
 import { quotedVolPoint, sigmaMoveOfQuotedIv } from '../core/volClock';
-import { weekdayDte, SPAN_INDEX, strikeSpan, bookBRange, P1_MIN, BID_MIN, SPREAD_MAX, DRIVE, onScanGrid, inLottery, releaseBlocks, QUOTE_MAX_AGE_MS, SEAT_CAP, LOTTERY_ASK_MAX } from './compassParams';
+import { SPAN_INDEX, strikeSpan, bookBRange, P1_MIN, BID_MIN, SPREAD_MAX, DRIVE, onScanGrid, inLottery, releaseBlocks, QUOTE_MAX_AGE_MS, SEAT_CAP, LOTTERY_ASK_MAX } from './compassParams';
 import { optionScanOpen, scanShutWhy } from './compassSession';
 import { econReleases } from './monthCalendar';
 import { COMPASS_SET } from './compassUniverse';
@@ -312,6 +312,22 @@ function releaseNow(minute: number, now: number): string | null {
   return null;
 }
 
+/** The gate's widest expiry, in trading sessions after today's */
+const DTE_GATE_MAX = 7;
+const nyDate = (now: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(now));
+/** Trading time left to the expiry's close, in full sessions of the clock theta decays on (core/tradingYear
+    tradingYears × 252): weekends, holidays and the night are not counted; an early close is the part of a session it is */
+export function sessionsLeft(expiry: string, now = Date.now()): number {
+  return tradingYears(isoOf(expiry), now) * TRADING_DAYS;
+}
+/** Whole trading sessions after today's to the expiry on that clock: 0 on the expiry's own day (NaN once it has closed) */
+export function sessionDte(expiry: string, now = Date.now()): number {
+  const iso = isoOf(expiry);
+  if (tradingMinutes(iso, now, false) == null) return NaN;
+  if (iso === nyDate(now)) return 0;
+  return Math.max(1, Math.ceil(sessionsLeft(iso, now) - 1e-9) - 1);
+}
+
 /** The first gate that fails. A simulated chain is not scored and is not a ticket. */
 export function readGate(input: GateInput): GateRead {
   const { chain, contract: c } = input;
@@ -343,13 +359,13 @@ export function readGate(input: GateInput): GateRead {
   if (rel) return fail(3, `Inside 15 minutes of a high-impact release (${rel}). No new ticket.`);
   passed.push('No high-impact release inside 15 minutes.');
 
-  const session = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(now));
   const exp = chain.expiryIso || '';
-  const dte = exp ? weekdayDte(session.replace(/-/g, ''), exp.replace(/-/g, '')) : NaN;
+  const left = exp ? sessionsLeft(exp, now) : NaN;
+  const dte = exp ? sessionDte(exp, now) : NaN;
   if (bookC && dte !== 0) return fail(4, 'Book C is same-day only.');
-  if (!bookC && !(dte >= 0 && dte <= 7)) return fail(4, 'DTE is outside 0 to 7 weekday sessions.');
+  if (!bookC && !(dte >= 0 && left <= DTE_GATE_MAX + 1 + 1e-9)) return fail(4, 'Expiry is outside 0 to 7 trading sessions.');
   if (!bookC && !optionScanOpen(chain.ticker, dte, now)) return fail(4, scanShutWhy(chain.ticker, dte, now));
-  passed.push(dte === 0 ? 'Same-day contract.' : `${dte} weekday sessions to expiration.`);
+  passed.push(dte === 0 ? 'Same-day contract.' : `${left.toFixed(1)} trading sessions to expiration.`);
 
   if (!(c.bid > BID_MIN)) return fail(5, 'Bid is at or under $0.15.');
   passed.push('Bid is above $0.15.');

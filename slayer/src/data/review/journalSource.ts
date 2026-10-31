@@ -7,6 +7,9 @@ import { setDayNote as setReviewDayNote, setEntry as setReviewEntry, useSessions
 import { setPaperDayNote, setPaperEntry, usePaper, usePaperJournal } from '../paper/store';
 import { nyAt } from '../paper/clock';
 import { calendarDayOf } from './journalFigures';
+import { equityCurveOf, type StatsCurve } from './engine';
+import { paperCurveOf } from '../paper/engine';
+import { ensureCurve } from './sessionStats';
 
 export type JournalKind = 'backtest' | 'paper';
 interface JournalSource {
@@ -31,6 +34,9 @@ interface JournalSource {
   current: string | null;
   /** The line under a trade's page */
   foot: string;
+  /** A container's own equity, for the figures a list of trades cannot give: its drawdown, Sharpe and Sortino
+      (data/review/engine statsOf). Undefined for one that is gone. */
+  curveOf: (containerId: string) => StatsCurve | undefined;
 }
 
 /** A journal's source — both stores are read (a hook each, always), only the asked one's rows are made */
@@ -54,6 +60,10 @@ export function useJournalSource(kind: JournalKind): JournalSource {
             notesOf: id => ({ ...accounts.find(a => a.id === id)?.days, ...words.days[id] }),
             today: nyAt(Date.now()).date,
             current: paper.inHand,
+            curveOf: id => {
+              const a = accounts.find(x => x.id === id);
+              return a ? paperCurveOf(a) : undefined;
+            },
             foot: 'Paper trades fill at each contract’s live NBBO — practice, not advice. Every time on this page is New York’s (ET).',
       };
     }
@@ -71,7 +81,15 @@ export function useJournalSource(kind: JournalKind): JournalSource {
               /* a replayed journal has no today of its own: its newest day stands in */
               today: rows[0] ? calendarDayOf(rows[0]) : new Date().toISOString().slice(0, 10),
               current: null,
-              foot: 'Backtest trades fill at ThetaData’s recorded NBBO at the end of each minute — practice, not advice. Every time on this page is New York’s (ET).',
+              curveOf: id => {
+                const s = sessions.find(x => x.id === id);
+                if (!s) return undefined;
+                const days = Object.keys(s.closes ?? {}).sort();
+                const daily = [s.startCash, ...days.map(d => s.closes![d].equity)];
+                /* the minute curve once every day of every leg it marks is in hand (asked for here); its bells till then */
+                return ensureCurve(s) ? { equity: equityCurveOf(s), daily } : { daily };
+              },
+              foot: 'Backtest trades fill at the recorded NBBO at the end of each minute — practice, not advice. Every time on this page is New York’s (ET).',
     };
   }, [kind, kind === 'paper' ? paper.accounts : sessions, words, paper.inHand]); // eslint-disable-line react-hooks/exhaustive-deps
 }
