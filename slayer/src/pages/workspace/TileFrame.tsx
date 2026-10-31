@@ -50,6 +50,8 @@ interface HeadPlan {
   inline: number;
   /** No room for the grip and the widget's icon: the title keeps its words */
   tight: boolean;
+  /** Even then the title would be cut: the door (or fullscreen) folds into the More menu */
+  fold: boolean;
 }
 const cardW = (c: TileControl, value: string, bare: boolean) => (bare ? 0 : c.label.length * 6.4 + 8) + value.length * 6.9 + 38;
 const planOf = (width: number, def: WidgetDef, controls: TileControl[], state: TileState, hasScope: boolean, hasDoor: boolean, locked: boolean): HeadPlan => {
@@ -57,12 +59,15 @@ const planOf = (width: number, def: WidgetDef, controls: TileControl[], state: T
   const glyphs = (locked ? 0 : 22) + 22;
   const tight = width - rest - glyphs < (controls.length ? 30 : 0);
   const room = width - rest - (tight ? 0 : glyphs);
-  if (!controls.length) return { standing: 'named', inline: 0, tight };
+  /* the head line as laid out, tight: its padding and gap, the title's words, then each 28px button (2px apart),
+     the settings door when the cards wait behind it, and the name chip — past the width, the door folds away */
+  const fold = (behind: boolean) => tight && (hasDoor || !!def.fullscreen) && 30 + def.title.length * 7 + (behind ? 30 : 0) + (def.toggles?.length ?? 0) * 30 + (hasScope ? 105 : 0) + 30 + 30 > width;
+  if (!controls.length) return { standing: 'named', inline: 0, tight, fold: fold(false) };
   /* the card's own fallback: a setting not yet made shows the first choice */
   const valueOf = (c: TileControl) => c.options.find(o => o.value === String(state[c.id] ?? c.options[0]?.value ?? ''))?.label ?? '';
   const sum = (bare: boolean) => controls.reduce((a, c) => a + cardW(c, valueOf(c), bare) + 6, 0);
-  if (sum(false) <= room) return { standing: 'named', inline: controls.length, tight };
-  if (sum(true) <= room) return { standing: 'bare', inline: controls.length, tight };
+  if (sum(false) <= room) return { standing: 'named', inline: controls.length, tight, fold: fold(false) };
+  if (sum(true) <= room) return { standing: 'bare', inline: controls.length, tight, fold: fold(false) };
   /* not all of them: the first ones that fit beside the sliders door, bare */
   let used = 30;
   let inline = 0;
@@ -71,7 +76,7 @@ const planOf = (width: number, def: WidgetDef, controls: TileControl[], state: T
     if (used > room) break;
     inline++;
   }
-  return { standing: 'door', inline, tight };
+  return { standing: 'door', inline, tight, fold: fold(true) };
 };
 
 const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
@@ -112,7 +117,7 @@ const Tile = ({ def, ctx, state, onState, width, index, locked, scope, onOpen, o
   /* the head's fullscreen button, counted — the body lifts its own fullscreen each time it changes */
   const [lift, setLift] = useState(0);
   const controls = bodyCtx && def.controls ? def.controls({ ctx: bodyCtx, state }) : [];
-  const { standing, inline, tight } = planOf(width, def, controls, state, !!scope, !!onOpen, locked);
+  const { standing, inline, tight, fold } = planOf(width, def, controls, state, !!scope, !!onOpen, locked);
   const Icon = def.icon;
   const card = (c: TileControl, bare: boolean, big = false) => (
     <DropdownSelect key={c.id} label={c.label} title={c.title} value={String(state[c.id] ?? c.options[0]?.value ?? '')} options={c.options} onChange={v => onState({ [c.id]: v })} size={big ? 'md' : 'sm'} bare={bare} testId={`tile-${def.key}-${c.id}`} />
@@ -156,7 +161,7 @@ const Tile = ({ def, ctx, state, onState, width, index, locked, scope, onOpen, o
             );
           })}
           {scope && <ScopeChip ticker={scope.ticker} linked={scope.linked} onPick={scope.onPick} onToggleLink={scope.onToggleLink} />}
-          {def.fullscreen ? (
+          {fold ? null : def.fullscreen ? (
             <button type="button" onClick={() => setLift(n => n + 1)} className={headBtn} title="Fullscreen — the whole toolbar, the indicators and the drawing tools" aria-label={`${def.title}: fullscreen`} data-tile-fullscreen>
               <Maximize2 className="w-3.5 h-3.5" />
             </button>
@@ -176,6 +181,20 @@ const Tile = ({ def, ctx, state, onState, width, index, locked, scope, onOpen, o
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
               <DropdownMenu.Content align="end" sideOffset={6} className={`${CARD} min-w-[190px] p-1.5`} data-tile-menu>
+                {/* a narrow tile's door and fullscreen, folded off its head line so the title keeps its words */}
+                {fold && def.fullscreen && (
+                  <DropdownMenu.Item className={menuItem} onSelect={() => setLift(n => n + 1)} data-tile-fullscreen>
+                    <Maximize2 className="w-3 h-3" /> Fullscreen
+                  </DropdownMenu.Item>
+                )}
+                {fold && !def.fullscreen && onOpen && def.page && (
+                  <>
+                    <DropdownMenu.Item className={menuItem} onSelect={onOpen} data-tile-door={typeof def.page.path === 'string' ? def.page.path : def.page.path(state)}>
+                      <ArrowUpRight className="w-3 h-3" /> Open {def.page.label}
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Separator className="my-1 h-px bg-borderSubtle" />
+                  </>
+                )}
                 {def.fullscreen && onOpen && def.page && (
                   <>
                     <DropdownMenu.Item className={menuItem} onSelect={onOpen} data-tile-door={typeof def.page.path === 'string' ? def.page.path : ''}>
