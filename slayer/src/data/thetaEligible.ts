@@ -11,7 +11,7 @@
 import type { Candle } from '../types/market';
 import { nyParts, nyWallTime } from '../core/nyTime';
 import { sessionCloseMinOn } from '../core/calendar';
-import { badWicks, mendWicks } from './barSanity';
+import { badBars, mendBars, type PrintRange } from './barSanity';
 
 /** Conditions whose High, Low and Last columns are all marked and whose Late Report column is not
     (https://docs.thetadata.us/Articles/Errors-Exchanges-Conditions/Trade-Conditions.html, read 2026-10-29). */
@@ -279,51 +279,52 @@ export async function cleanExtendedBars(get: Get, symbol: string, w: Window, ste
   return rebuildExtended(bars, stepSec, ticks, covered);
 }
 
-/* ---- bad wicks on any day (data/barSanity.ts): the flagged bar's own prints ---- */
+/* ---- bad prints on any day (data/barSanity.ts): the flagged bar's own prints ---- */
 
-const wickReads = new Map<string, Promise<{ lo: number; hi: number } | null>>();
-/** Flagged bars read per call; any more are cut back to their body */
-const WICK_READS = 24;
+const barReads = new Map<string, Promise<PrintRange | null>>();
+/** Flagged bars read per call; any more take the rule's own values */
+const BAR_READS = 24;
 
 const hms = (t: number, ms = ''): string => {
   const p = nyParts(t * 1000);
   return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}:${String(p.second).padStart(2, '0')}${ms}`;
 };
 
-/** The lowest and highest price-setting print inside one bar, null when the prints did not come back or none may set a
-    price. A finished bar's prints never change, so a read is kept (a failed one is asked again a minute later). */
-function barPrintRange(get: Get, symbol: string, time: number, stepSec: number): Promise<{ lo: number; hi: number } | null> {
+/** The lowest, highest, first and last price-setting print inside one bar, null when the prints did not come back or
+    none may set a price. A finished bar's prints never change, so a read is kept (a failed one is asked again a minute
+    later). */
+function barPrintRange(get: Get, symbol: string, time: number, stepSec: number): Promise<PrintRange | null> {
   const day = ymdOf(time);
   const key = `${symbol}|${time}|${stepSec}`;
-  const hit = wickReads.get(key);
+  const hit = barReads.get(key);
   if (hit) return hit;
   const got = get(tradePath(symbol, day, day, hms(time), hms(time + stepSec - 1, '.999'))).then(a => {
     if (a.error || !Array.isArray(a.data)) {
-      setTimeout(() => wickReads.get(key) === got && wickReads.delete(key), 60_000);
+      setTimeout(() => barReads.get(key) === got && barReads.delete(key), 60_000);
       return null;
     }
-    const { ticks } = readTicks(rowsOf(a.data));
+    const inside = readTicks(rowsOf(a.data)).ticks.filter(t => t.t >= time && t.t < time + stepSec);
+    if (!inside.length) return null;
     let lo = Infinity;
     let hi = 0;
-    for (const t of ticks) {
-      if (t.t < time || t.t >= time + stepSec) continue;
+    for (const t of inside) {
       if (t.price < lo) lo = t.price;
       if (t.price > hi) hi = t.price;
     }
-    return hi > 0 ? { lo, hi } : null;
+    return { lo, hi, first: inside[0].price, last: inside[inside.length - 1].price };
   });
-  wickReads.set(key, got);
-  if (wickReads.size > 400) wickReads.delete(wickReads.keys().next().value as string);
+  barReads.set(key, got);
+  if (barReads.size > 400) barReads.delete(barReads.keys().next().value as string);
   return got;
 }
 
-/** A stock's intraday bars with every bad wick (barSanity.ts) rebuilt from that bar's price-setting prints, or cut back
-    to its body where they cannot be read. Bars with no bad wick are returned as they came, without a read. */
+/** A stock's intraday bars with every bad print (barSanity.ts) rebuilt from that bar's price-setting prints, or mended
+    by the rule's own values where they cannot be read. Bars with nothing flagged are returned as they came, unread. */
 export async function saneStockBars(get: Get, symbol: string, stepSec: number, bars: Candle[]): Promise<Candle[]> {
-  const cuts = badWicks(bars);
-  if (!cuts.length) return bars;
-  const idx = [...new Set(cuts.map(c => c.index))].slice(0, WICK_READS);
-  const ranges = new Map<number, { lo: number; hi: number } | null>();
+  const fixes = badBars(bars);
+  if (!fixes.length) return bars;
+  const idx = [...new Set(fixes.map(c => c.index))].slice(0, BAR_READS);
+  const ranges = new Map<number, PrintRange | null>();
   await Promise.all(idx.map(async i => ranges.set(i, await barPrintRange(get, symbol, bars[i].time, stepSec))));
-  return mendWicks(bars, cuts, i => ranges.get(i) ?? null);
+  return mendBars(bars, fixes, i => ranges.get(i) ?? null);
 }
