@@ -253,13 +253,15 @@ const QuoteCell = ({ print }: { print: FlowPrint }) => (
   </span>
 );
 
-/** Size over the scale it is read against: the day's volume and the standing open interest */
+/** Size beside the scale it is read against: the day's volume over the standing open interest — two short lines, not
+    one long one, so the column is narrower; the size keeps the column's right edge */
 const SizeCell = ({ print }: { print: FlowPrint }) => (
-  <span className="inline-flex flex-col items-end gap-[2px] leading-none align-middle">
-    <span className="font-mono text-t11 font-bold tnum text-textPrimary">{num(print.size)}</span>
-    <span className="font-mono text-t11 tnum text-textSecondary whitespace-nowrap" title="The day's volume, and the open interest the session opened on">
-      vol {num(print.volume)} <span aria-hidden>·</span> oi {num(print.oi)}
+  <span className="inline-flex items-start gap-2 leading-none align-middle">
+    <span className="inline-flex flex-col items-end gap-[2px] font-mono text-t11 tnum text-textSecondary whitespace-nowrap" title="The day's volume, and the open interest the session opened on">
+      <span>vol {num(print.volume)}</span>
+      <span>oi {num(print.oi)}</span>
     </span>
+    <span className="font-mono text-t11 font-bold tnum text-textPrimary">{num(print.size)}</span>
   </span>
 );
 
