@@ -229,7 +229,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const marketWord = marketState.word;
   /* shut, the session line says when the next session opens (New York time, as the clock beside it) */
   const nextOpen = nextOpenWords();
-  const sessionWords = marketState.badge;
+  /* the time stays on one line when the badge wraps ("Sun 8:00 PM ET") */
+  const sessionWords = marketState.badge.replace(/ (\d{1,2}:\d{2}) (AM|PM) ET$/, '\u00a0$1\u00a0$2\u00a0ET');
 
   /* The mark and wordmark, the door home: the S| with its foil and cursor and ">slayer_terminal" beside it; folded, the S| alone
      with its cursor held lit. The S brightens as the pointer nears. */

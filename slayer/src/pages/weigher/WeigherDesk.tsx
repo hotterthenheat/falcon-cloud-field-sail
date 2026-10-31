@@ -1,7 +1,7 @@
 /* The Weigher desk: the chart, the live chain, the name lists and the weigh-up of one contract on one static desk,
    with the positions and watchlist under them marked at live quotes. */
 
-import { extTag, optionProductOf, productHours, sessionBadge, useMarketSession } from '../../core/session';
+import { extTag, optionProductOf, productHours, sessionAt, sessionBadge, useMarketSession } from '../../core/session';
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Maximize2, Minimize2, Plus, Scale } from 'lucide-react';
@@ -1286,7 +1286,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
        own time and the hours its options trade (core/session.ts) */
     const root = chain.optRoot || ticker;
     if (optionsOpen(root) && Date.now() - at < 120_000) return `Live · ${fmtDay(chain.expiry.date)} · ${stamp(at)} ET`;
-    return `${fmtDay(chain.expiry.date)} · quotes as of ${etClock(at)}${optionsOpen(root) ? '' : ` · ${productHours(optionProductOf(root))}`}`;
+    return `${fmtDay(chain.expiry.date)} · quotes as of ${etClock(at)}${optionsOpen(root) ? '' : ` · ${productHours(optionProductOf(root), sessionAt(Date.now()).isEarlyClose)}`}`;
   })();
   const chainMove = (
     <span className="inline-flex items-center gap-2">
