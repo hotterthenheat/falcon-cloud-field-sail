@@ -83,6 +83,13 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   check(`SPY 772: call ${M(-k772.callGex)} put ${M(-k772.putGex)} = vendor ${M(Number(v772.call_gamma_oi))} / ${M(Number(v772.put_gamma_oi))}`, Math.abs(-k772.callGex - Number(v772.call_gamma_oi)) < 1 && Math.abs(-k772.putGex - Number(v772.put_gamma_oi)) < 1);
   const oi772 = (fx.contracts.find(c => c.option_symbol === occ('C', 772))?.open_interest as number) ?? 0;
   check(`SPY 772C counts its open interest (${k772.callBook}) for every greek, not a flow inventory`, k772.callBook === oi772 && oi772 === 1310);
+  /* units (docs/DATA_MAP.md §7): the spot-exposure row is dollars per 1% — Γ·OI·100 shares × S²·1% at the row's price */
+  {
+    const c772 = fx.contracts.find(c => c.option_symbol === occ('C', 772))!;
+    const px = Number(v772.price);
+    const dollars = Number(c772.gamma) * oi772 * 100 * px * px * 0.01;
+    check(`units: 772C Γ·OI·100·S²·1% = ${M(dollars)} at ${px} against the row's ${M(Number(v772.call_gamma_oi))} (shares would read ${(Number(c772.gamma) * oi772 * 100).toFixed(0)})`, Math.abs(dollars / Number(v772.call_gamma_oi) - 1) < 0.05);
+  }
   /* the walls off the book against the walls off the raw rows */
   const w = pickLegWalls(book, n => n.callGex, n => n.putGex);
   const by = (f: (r: Record<string, string>) => number) => Number(fx.spotExposures.reduce((b, r) => (f(r) > f(b) ? r : b)).strike);
