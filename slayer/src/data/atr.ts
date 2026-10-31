@@ -2,7 +2,9 @@ import { sessionStarts } from './indicators';
 import type { Candle } from '../types/market';
 
 /* Two distance rulers: Wilder's ATR on completed sessions (true range against the prior close, seeded with the first period's mean;
-   the forming session excluded), and σ = spot · iv · √(1/252). Both null when they cannot be measured. */
+   the forming session excluded), and σ, one session's 1σ in dollars, which the caller passes in: the vendor's straddle × √(π/2)
+   (book/move.ts peekDaySigma) or the quoted vol over 390 trading minutes on core/volClock's clock (expectedMove.ts daySigmaOfIv:
+   S·σ_trading·√(1/252), σ_trading the calendar vol moved onto the trading clock). Both null when they cannot be measured. */
 
 const ATR_PERIOD = 14;
 

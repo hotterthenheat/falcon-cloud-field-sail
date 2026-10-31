@@ -21,7 +21,10 @@ import {
   smaSeries,
   vwapSeries,
 } from '../src/data/indicators';
-import { buildExpectedMoveCone } from '../src/data/expectedMove';
+import { buildExpectedMoveCone, daySigmaOfIv, sigmaFracOver, sigmaOverMinutes } from '../src/data/expectedMove';
+import { sigmaToExpiry } from '../src/core/volClock';
+import { nyWallTime } from '../src/core/nyTime';
+import { vendorVol } from '../src/data/coneFeed';
 import type { Candle } from '../src/types/market';
 
 let pass = 0;
@@ -96,6 +99,18 @@ const cone = buildExpectedMoveCone(candles.slice(0, 30), 0.2, 120, 1);
 check('cone has an envelope and a forward half', cone.past.length === 30 && cone.forward.length > 1 && cone.forward[0].up1 > 0);
 const blank = buildExpectedMoveCone(candles.slice(0, 5), 0, 120, 1);
 check('no vol means no cone', blank.past.length === 0 && blank.forward.length === 0);
+
+/* one σ everywhere: core/volClock's, the one Terrain's cone draws (S·σ_trading·√(minutes/(390·252))) */
+{
+  const noon = nyWallTime(2026, 10, 28, 12, 0);
+  const odte = sigmaOverMinutes(daySigmaOfIv(600, 0.2, '2026-10-28', noon) ?? 0, 240);
+  const truth = sigmaToExpiry(600, 0.2, '2026-10-28', noon) ?? 0;
+  check('0DTE 20% at S=600, noon: the odds read $2.56 to the close, as Terrain does (was $4.93)', Math.abs(odte - 2.564) < 0.01 && Math.abs(odte - truth) < 1e-6, `$${odte.toFixed(2)}`);
+  const day30 = daySigmaOfIv(600, 0.2, null, noon) ?? 0;
+  check('a 30-day 20% vol over one session at S=600 is ≈ $7.49, not 600·0.2·√(1/365) = $6.28', Math.abs(day30 - 7.485) < 0.01, `$${day30.toFixed(2)}`);
+  check('sigmaFracOver is the same σ per dollar', Math.abs(600 * sigmaFracOver(0.2, 240, '2026-10-28', noon) - truth) < 1e-6);
+  check('a vendor vol is read as the fraction it is: 3.2 is 320% (was 3.2%)', vendorVol(3.2) === 3.2 && vendorVol(0.18) === 0.18 && vendorVol(-1) === 0);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

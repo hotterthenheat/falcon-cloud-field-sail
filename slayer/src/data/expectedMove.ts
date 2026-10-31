@@ -1,28 +1,45 @@
 import type { Candle } from '../types/market';
+import { sigmaMoveOfQuotedIv } from '../core/volClock';
+import { sessionAtOrBefore, isoDate } from '../core/calendar';
+import { nyParts } from '../core/nyTime';
+import { now } from '../core/clock';
 
-/* The cone and the one σ every Pinpoint odd reads. The vendor's implied move is the ATM straddle, σ·√(2/π) ≈ 0.80σ for a normal move;
-   a vendor vol is calendar-year, so one session carries a calendar day's variance. */
+/* The cone and the one σ every Pinpoint odd reads. The vendor's implied move is the ATM straddle, σ·√(2/π) ≈ 0.80σ for a normal move.
+   A vol is quoted on the calendar year for its expiry; every σ off a vol is core/volClock's sigmaMoveOfQuotedIv — the variance
+   moved onto the trading clock, S·σ_trading·√(minutes / (390·252)) — the same σ as Terrain's forward-variance cone. One session
+   is NOT a calendar day's variance: a 30-day 20% vol over one session at S = 600 is ≈ $7.5, not 600·0.2·√(1/365) = $6.28, and a
+   0DTE 20% vol at noon prices $2.56 to the close, not $4.93. */
 
 /** 1σ per dollar of ATM straddle: σ = straddle·√(π/2) ≈ 1.2533 (dollars → dollars; E|X| = σ·√(2/π) for a normal X;
     UW SPY 10/29 implied_move 5.09 against the 772 straddle mid 5.26). */
 export const STRADDLE_TO_SIGMA = Math.sqrt(Math.PI / 2);
 /** Straddle ÷ (S·σ·√T) for a normal move, √(2/π) ≈ 0.798 — the straddle fit's k when the vendor's rows give none. */
 export const STRADDLE_K = Math.sqrt(2 / Math.PI);
-/** Session minutes, and the calendar days a vendor vol is annualised over (one session = one calendar day of variance). */
+/** The unit session a "one session σ" is quoted over: 390 trading minutes (an early close is a shorter horizon, not a shorter unit). */
 const SESSION_MIN = 390;
-const VOL_YEAR_DAYS = 365;
+/** The tenor an undated vol is (the 30-day IV every name carries), calendar days. */
+const UNDATED_DAYS = 30;
+
+/** The expiry an undated vol is quoted for: the session on or before 30 calendar days out (New York dates). */
+export function undatedExpiry(nowMs: number = now().getTime()): string {
+  const p = nyParts(nowMs);
+  return isoDate(sessionAtOrBefore(new Date(p.year, p.month - 1, p.day + UNDATED_DAYS)));
+}
 
 /** One standard move, dollars, from the vendor's straddle (its implied move), dollars. */
 export const sigmaFromStraddle = (straddle: number): number => (straddle > 0 ? straddle * STRADDLE_TO_SIGMA : 0);
 
-/** 1σ as a fraction of price over `minutes` session minutes, for an annualised calendar-year vol (0.2 = 20%). */
-export function sigmaFracOver(iv: number, minutes: number): number {
-  return iv > 0 && minutes > 0 ? iv * Math.sqrt(minutes / (SESSION_MIN * VOL_YEAR_DAYS)) : 0;
+/** 1σ as a fraction of price over `minutes` trading minutes, for a calendar-year vol (0.2 = 20%) quoted for `expiry`
+    (YYYY-MM-DD; an undated vol is the 30-day one). core/volClock's sigmaMoveOfQuotedIv per dollar of spot. */
+export function sigmaFracOver(iv: number, minutes: number, expiry?: string | null, nowMs: number = now().getTime()): number {
+  if (!(iv > 0) || !(minutes > 0)) return 0;
+  return sigmaMoveOfQuotedIv(1, iv, expiry || undatedExpiry(nowMs), minutes, nowMs);
 }
 
-/** One session's 1σ, dollars, off an annualised calendar-year vol — null without a price or a vol. */
-export function daySigmaOfIv(spot: number, iv: number): number | null {
-  return spot > 0 && iv > 0 ? spot * sigmaFracOver(iv, SESSION_MIN) : null;
+/** One session's (390 trading minutes) 1σ, dollars, off a calendar-year vol quoted for `expiry` (the 30-day vol when
+    none) — null without a price or a vol. sigmaOverMinutes scales it to the minutes left. */
+export function daySigmaOfIv(spot: number, iv: number, expiry?: string | null, nowMs: number = now().getTime()): number | null {
+  return spot > 0 && iv > 0 ? spot * sigmaFracOver(iv, SESSION_MIN, expiry, nowMs) : null;
 }
 
 /** 1σ dollars over the session minutes left, from one full session's 1σ (variance spread evenly over the session). */
@@ -81,13 +98,16 @@ export interface ExpectedMoveCone {
 
 const EMPTY: ExpectedMoveCone = { past: [], forward: [], crossings: [], openPrice: 0, openTime: null };
 
-/** The cone from the session's 1-minute bars (oldest first, cut by sessionStarts), annualised ATM `iv` (0.2 = 20%),
-    and `minutesToClose` (0 after the bell collapses the forward half). */
+/** The cone from the session's 1-minute bars (oldest first, cut by sessionStarts), a calendar-year ATM `iv` (0.2 = 20%)
+    quoted for `expiry` (the 30-day vol when none), and `minutesToClose` (0 after the bell collapses the forward half).
+    The app draws Terrain's forward-variance cone (data/terrainCone.ts); this stays for the proofs, on the same σ. */
 export function buildExpectedMoveCone(
   sessionBars: readonly Candle[],
   iv: number,
   minutesToClose: number,
-  barMinutes = 1
+  barMinutes = 1,
+  expiry?: string | null,
+  nowMs: number = now().getTime()
 ): ExpectedMoveCone {
   if (sessionBars.length === 0 || !(iv > 0)) return EMPTY;
   const openPrice = sessionBars[0].open;
@@ -101,7 +121,7 @@ export function buildExpectedMoveCone(
   for (let i = 0; i < sessionBars.length; i++) {
     const b = sessionBars[i];
     const elapsedMin = ((b.time - openTime) / 60);
-    const w1 = openPrice * sigmaFracOver(iv, Math.max(0, elapsedMin));
+    const w1 = openPrice * sigmaFracOver(iv, Math.max(0, elapsedMin), expiry, nowMs);
     const p: ConePastPoint = {
       time: b.time,
       up1: openPrice + w1,
@@ -128,11 +148,11 @@ export function buildExpectedMoveCone(
   /* Every bar-step plus the exact close, so the tip lands ON the bell rather
      than one stride short of it. */
   for (let m = 0; m <= total; m += step) {
-    const w1 = spot * sigmaFracOver(iv, m);
+    const w1 = spot * sigmaFracOver(iv, m, expiry, nowMs);
     forward.push({ minutesAhead: m, up1: spot + w1, dn1: spot - w1, up2: spot + 2 * w1, dn2: spot - 2 * w1 });
   }
   if (total > 0 && (total % step !== 0 || forward.length === 1)) {
-    const w1 = spot * sigmaFracOver(iv, total);
+    const w1 = spot * sigmaFracOver(iv, total, expiry, nowMs);
     forward.push({ minutesAhead: total, up1: spot + w1, dn1: spot - w1, up2: spot + 2 * w1, dn2: spot - 2 * w1 });
   }
 
