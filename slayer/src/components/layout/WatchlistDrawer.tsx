@@ -1,7 +1,7 @@
 /* The shell's one watchlist of names in reader-named sections (data/nameWatch.ts): mark, price, day change and the nearest level
    per row; a press makes it the terminal's name. Contract lists stay in their own rooms. Kept locally and carried by the account. */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Eye, Flag, FolderPlus, MoreHorizontal, Plus, X } from 'lucide-react';
@@ -23,8 +23,12 @@ import CompanyLogo from '../ui/CompanyLogo';
 import { scopeWalls } from '../../data/book/levels';
 import { levelsForName } from '../../data/levelsScope';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
-import TickerLookup from '../ui/TickerLookup';
 import { quoteStamp } from '../../copy/feeds';
+
+/* The search and the listed universe it reads (data/listedNames, ~90 KB) load when the drawer opens, not with the shell:
+   the drawer is mounted, closed, on every terminal page. */
+const loadLookup = () => import('../ui/TickerLookup');
+const TickerLookup = lazy(loadLookup);
 
 /** The Map's default window is not read here. A wall is shown only when that name's live book is already in. */
 const usd = (v: number) => `$${v.toFixed(2)}`;
@@ -283,7 +287,7 @@ const WatchlistDrawer = () => {
       setSaid(null);
       setAdding(false);
       setAddingIn(null);
-    }
+    } else void loadLookup();
   }, [open]);
 
   /* Esc — after any layer inside it (a menu) had its say, before the takeovers behind (the alerts drawer's rule) */
@@ -432,7 +436,9 @@ const WatchlistDrawer = () => {
             <div className="shrink-0 px-3.5 py-2 border-b border-borderSubtle/60 flex flex-col gap-2" data-watchlist-adding>
               {list.sections.length > 1 && <DropdownSelect label="Into" value={into || list.sections[0].id} options={sectionOptions} onChange={setInto} />}
               <div className="rounded-md border border-borderSubtle bg-panel">
-                <TickerLookup onPick={add} limit={8} />
+                <Suspense fallback={null}>
+                  <TickerLookup onPick={add} limit={8} />
+                </Suspense>
               </div>
             </div>
           )}
@@ -463,7 +469,9 @@ const WatchlistDrawer = () => {
                     <SectionHead s={s} removable={list.sections.length > 1} adding={addingIn === s.id} onAdd={() => setAddingIn(v => (v === s.id ? null : s.id))} onRemove={() => takeSection(s)} />
                     {addingIn === s.id && (
                       <div className="mx-2 mb-1.5 rounded-md border border-silver/40 bg-panel" data-watch-section-adding={s.id}>
-                        <TickerLookup onPick={sym => addInto(sym, s.id)} limit={8} />
+                        <Suspense fallback={null}>
+                          <TickerLookup onPick={sym => addInto(sym, s.id)} limit={8} />
+                        </Suspense>
                       </div>
                     )}
                     {shown.length === 0 ? (

@@ -14,6 +14,7 @@ import { FaultView, isLoadFault, reloadOnceForStaleBuild } from '../ui/Fault';
 import { openFeeds } from '../../data/feedGate';
 import { noteRouteShown } from '../../data/warmRooms';
 import RouteHold from './RouteHold';
+import { useAllAlerts } from '../gex/alertStore';
 
 /* Loaded after the shell paints, on terminal pages only: the alert engine, the drawers, the paper runner. The palette
    (and the ticker universe it searches) loads the first time it is opened. */
@@ -23,6 +24,14 @@ const AlertWatcher = lazy(() => import('../alerts/AlertWatcher'));
 const AlertToasts = lazy(() => import('../alerts/AlertToasts'));
 const PaperRunner = lazy(() => import('../paper/PaperRunner'));
 const CommandPalette = lazy(() => import('./CommandPalette'));
+
+/* The watcher judges only names with an alert still waiting, so with none waiting it has nothing to do: it (and the
+   feeds, the book and the script engine it reads, ~200 KB) loads the moment one is armed, not on every first load. */
+const AlertWatcherWhenArmed = () => {
+  const names = useAllAlerts();
+  const armed = names.some(n => n.alerts.some(a => !a.firedAt));
+  return armed ? <AlertWatcher /> : null;
+};
 
 /** A page crash renders a fault panel instead of a blank shell. It resets on navigation through resetKey,
     not a React key, so a subpage change does not remount the whole section. */
@@ -158,7 +167,7 @@ const AppShell = () => {
       <Suspense fallback={null}>
         <AlertsDrawer />
         <WatchlistDrawer />
-        <AlertWatcher />
+        <AlertWatcherWhenArmed />
         <PaperRunner />
         <AlertToasts />
       </Suspense>
