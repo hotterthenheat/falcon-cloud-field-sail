@@ -35,6 +35,7 @@ import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/
 import { PREM_FLOOR_OPTIONS, PREM_FLOORS, type PremFloor } from '../../components/trace/premFloor';
 import { createViewStore } from '../../data/savedViews';
 import { expiryLabel } from '../../core/format';
+import OpeningTag from '../../components/trace/OpeningTag';
 
 const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
   { value: 'ALL', label: 'Both', hint: 'Calls and puts' },
@@ -273,7 +274,7 @@ const Watchers = () => {
       },
       { key: 'vol', header: 'Vol', align: 'right', sortValue: a => a.row.volume, render: a => <span className={weightInk(a.row.volume, marks.vol)}>{num(a.row.volume)}</span> },
       { key: 'oi', header: 'OI', align: 'right', sortValue: a => a.row.oi, render: a => <span className={weightInk(a.row.oi, marks.oi)}>{num(a.row.oi)}</span> },
-      { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: a => a.row.volOverOI, render: a => <span className={a.row.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'} title={a.row.volOverOI > 0 || !(a.row.volume > 0) ? undefined : 'No open interest before the session — a new contract'}>{volOiText(a.row)}</span> },
+      { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: a => a.row.volOverOI, render: a => <span className={a.row.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'} title={a.row.volOverOI > 0 || !(a.row.volume > 0) ? undefined : 'No open interest before the session — a new contract'}>{volOiText(a.row)}<OpeningTag flag={a.row.likelyOpening} volume={a.row.volume} oi={a.row.oi} /></span> },
       { key: 'otm', header: 'OTM %', align: 'right', sortValue: a => otmSortValue(a.row.otmPct), render: a => <OtmCell otmPct={a.row.otmPct} ticker={a.row.ticker} /> },
       {
         key: 'earn',

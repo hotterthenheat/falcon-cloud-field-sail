@@ -736,7 +736,7 @@ export const LiveTapeGuide = () => (
   <div data-trace-guide="live-tape">
     <SidesRule />
     <Section title="A print">
-      <p>One contract traded once — when, the name, the contract with its days left and where the stock stood, how many at what price, the dollars, and its kind. A block is one leg of 100 contracts or $250K and up; a print with legs is multi-leg; the rest are single prints. P/C is put premium over call premium.</p>
+      <p>One contract traded once — when, the name, the contract with its days left and where the stock stood, how many at what price, the dollars, and its kind. A block is one leg, 100 contracts or more and $50K or more, in one print; a print with legs is multi-leg; the rest are single prints. P/C is put premium over call premium.</p>
       <TapeRowFigure />
     </Section>
     <Section title="Fill &amp; market">

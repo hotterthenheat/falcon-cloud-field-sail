@@ -35,6 +35,7 @@ import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
 import { useExpiryCut } from '../../components/trace/bookExpiry';
 import { isoDate } from '../../core/calendar';
 import { pctSigned } from '../../core/format';
+import OpeningTag from '../../components/trace/OpeningTag';
 
 /* the whole screen is kept, as the address it is — a reopened page comes back as it was left */
 const SCREEN_KEY = 'slayer_screener_screen_v2';
@@ -298,7 +299,7 @@ const OptionsScreener = () => {
             <span className="text-textMuted">—</span>
           ),
       },
-      { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: r => r.volOverOI, render: r => <span className={`font-mono tnum ${r.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.volOverOI > 0 || !(r.volume > 0) ? undefined : 'No open interest before the session — a new contract'}>{volOiText(r)}</span> },
+      { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: r => r.volOverOI, render: r => <span className={`font-mono tnum ${r.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.volOverOI > 0 || !(r.volume > 0) ? undefined : 'No open interest before the session — a new contract'}>{volOiText(r)}<OpeningTag flag={r.likelyOpening} volume={r.volume} oi={r.oi} /></span> },
       { key: 'sweep', header: 'Sweep', align: 'right', sortValue: r => r.sweepPct, render: r => <span className={r.sweepPct >= 40 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.sweepPct)}%</span> },
       { key: 'floor', header: 'Floor', align: 'right', sortValue: r => r.floorPct, render: r => (r.floorPct === 0 ? <span className="text-textSecondary">—</span> : <span className={r.floorPct >= 50 ? 'text-textPrimary font-bold' : 'text-textPrimary'}>{Math.round(r.floorPct)}%</span>) },
       { key: 'multi', header: 'Multi', align: 'right', sortValue: r => r.multiPct, render: r => <span className={r.multiPct >= 30 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.multiPct)}%</span> },

@@ -27,6 +27,7 @@ import ResetViewControl from '../gex/ResetViewControl';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import { SLEEVES, type SleeveKey } from '../../types/compass';
 import CompanyLogo from '../ui/CompanyLogo';
+import { coversSpan, coversTip } from './coversWords';
 
 export const MONEY_OPTIONS: DropdownOption<MoneynessKey>[] = MONEYNESS.map(m => ({ value: m.key, label: m.label === 'All strikes' ? 'Any' : m.label, hint: m.hint }));
 export const CLOCK_OPTIONS: DropdownOption<SleeveKey | 'all'>[] = [
@@ -131,7 +132,10 @@ const NetFlowPane = ({ seg, mny, onSeg, onMny, onExpand, expanded, ticker, dteMa
   const endMin = sessionEndMin(ref);
   const nowP = nyParts(new Date());
   const runningNow = isLiveDay() && nowP.hour * 60 + nowP.minute < endMin;
-  const windowWords = runningNow ? `09:30–${tail ? nyClock(tail.time * 1000, { zone: true }) : 'now'}` : `09:30–${endMin === 975 ? '16:15' : '16:00'} ET`;
+  /* the stretch the figure covers, off the series itself (data/traceRows NetCovers): a name's ticks start at its 09:30,
+     a cut's minutes at the feed's own day start — never a hard-coded bell */
+  const windowWords = coversSpan(own.covers) || (runningNow ? `09:30–${tail ? nyClock(tail.time * 1000, { zone: true }) : 'now'}` : `09:30–${endMin === 975 ? '16:15' : '16:00'} ET`);
+  const coverTip = coversTip(own.covers);
   /* at rest the readout holds the latest minute; a hover writes over it */
   const restTip = useCallback(() => {
     const card = tipRef.current;
@@ -447,18 +451,19 @@ const NetFlowPane = ({ seg, mny, onSeg, onMny, onExpand, expanded, ticker, dteMa
               every expiry
             </span>
           )}
-          <span title={`${ticker ? 'Minute ticks for the name, from the bell' : 'Net flow by expiry, from the bell'}. ${VENDOR_TOTAL_NOTE}`}>
+          <span title={`${coverTip || (ticker ? 'Minute ticks for the name' : 'Net flow by expiry')}. ${VENDOR_TOTAL_NOTE}`}>
             <span aria-hidden data-pane-legend="calls" className="inline-block align-middle w-3.5 mr-1 border-t-2" style={{ borderColor: inksNow.calls }} title="Solid line: net call premium" />
             <span className="text-textMuted uppercase text-t11 tracking-wider mr-1">net calls</span>
             <span className={ncp >= 0 ? 'text-bull' : 'text-bear'}>{tail ? fmtUsd(ncp) : '—'}</span>
           </span>
-          <span title={VENDOR_TOTAL_NOTE}>
+          <span title={`${coverTip ? `${coverTip}. ` : ''}${VENDOR_TOTAL_NOTE}`}>
             <span aria-hidden data-pane-legend="puts" className="inline-block align-middle w-3.5 mr-1 border-t-2 border-dashed" style={{ borderColor: inksNow.puts }} title="Dashed line: net put premium" />
             <span className="text-textMuted uppercase text-t11 tracking-wider mr-1">net puts</span>
             <span className={npp >= 0 ? 'text-bear' : 'text-bull'}>{tail ? fmtUsd(npp) : '—'}</span>
+            {!ticker && tail && windowWords && <span className="text-textSecondary text-t11 ml-1" data-pane-window>· {windowWords}</span>}
           </span>
           {ticker && tail && (
-            <span title="Net calls less net puts from the bell, the minute ticks. The same figure as Intervals">
+            <span title={`Net calls less net puts, the minute ticks${coverTip ? ` · ${coverTip}` : ''}. The same figure as Intervals`}>
               <span className="text-textMuted uppercase text-t11 tracking-wider mr-1">net</span>
               <span className={ncp - npp >= 0 ? 'text-bull' : 'text-bear'}>{ncp - npp < 0 ? '−' : '+'}{fmtUsd(Math.abs(ncp - npp))}</span>
               <span className="text-textSecondary text-t11 ml-1" data-pane-window>· {windowWords}{isLiveDay() ? '' : `, ${shortDay(tapeSessionIso())}`}</span>

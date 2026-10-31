@@ -36,6 +36,8 @@ import type { FlowPrint, PrintSentiment, TapeSummary } from '../../types/trace';
 import { crossDay, floorPackaged, FRESH_VOL_OI, notABet, notABetHint, notABetLabel, notABetWord, stockLike, STOCK_LIKE_HINT, VENDOR_TOTAL_NOTE, volOiText } from '../../data/flowBook';
 import { dayAdv, shortDay, spanWords } from '../../components/trace/dayWords';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
+import OpeningTag from '../../components/trace/OpeningTag';
+import { coversSpan, coversTip } from '../../components/trace/coversWords';
 
 /* the chooser stores the hidden set; the old key held the visible one */
 const COLS_KEY = 'slayer_tape_hidden_v2';
@@ -126,7 +128,7 @@ const ORDER_OPTIONS: DropdownOption<TapeView>[] = (Object.keys(VIEW_META) as Tap
 const KIND_OPTIONS: DropdownOption<FlowFilter>[] = [
   { value: 'ALL', label: 'Every kind', hint: 'Every print' },
   { value: 'SWEEP', label: 'Sweeps', hint: "Swept across exchanges (OPRA isoi) — refills with the day's sweeps" },
-  { value: 'BLOCK', label: 'Blocks', hint: `One leg, ${BLOCK_MIN_SIZE}+ contracts or $${BLOCK_MIN_PREMIUM / 1000}K+ in one print` },
+  { value: 'BLOCK', label: 'Blocks', hint: `One leg, ${BLOCK_MIN_SIZE}+ contracts and $${BLOCK_MIN_PREMIUM / 1000}K+ in one print` },
   { value: 'MULTI', label: 'Multi-leg', hint: 'Legs of multi-leg orders — read the structures on Multi-Leg' },
   { value: 'SINGLE', label: 'Single prints', hint: 'One leg, under the block line — cuts the prints in hand' },
   { value: 'COMPRESSION', label: 'Compression', hint: 'OPRA cbmo / mctp packages — not bets, in no bullish or bearish total' },
@@ -456,7 +458,8 @@ const LiveTape = () => {
       codes: flowFilter === 'SWEEP' ? ['isoi'] : flowFilter === 'COMPRESSION' ? ['cbmo', 'mctp'] : undefined,
       single: flowFilter === 'BLOCK' ? true : undefined,
       minSize: flowFilter === 'BLOCK' ? BLOCK_MIN_SIZE : undefined,
-      minPremium: Number(minPremKey) || undefined,
+      /* a block clears both lines (data/tape.ts isBlockSized): the size AND the premium go out, the premium card's own floor if higher */
+      minPremium: flowFilter === 'BLOCK' ? Math.max(Number(minPremKey) || 0, BLOCK_MIN_PREMIUM) : Number(minPremKey) || undefined,
     }),
     [asked, flowFilter, minPremKey, rightKey, sideKey, expiryPick]
   );
@@ -683,6 +686,8 @@ const LiveTape = () => {
   /* twenty, so three bets remain after the packages are set apart */
   const dayTop = useDayTopContracts(20, dayWanted);
   const dayAlerts = useDayBigAlerts(dayOpenMs, anchor?.closeMs ?? null, regularOnly ? 'regular' : 'extended', 5_000_000, 200, dayWanted);
+  /* the alert pages walked back did not reach the day's start (traceLive readDayAlerts `complete`): the largest of the newest only */
+  const dayAlertsPartial = (dayAlerts.rows as FlowPrint[] & { complete?: boolean }).complete === false;
   const dayAlertsSplit = useMemo(() => {
     const packedDay = new Set(dayTop.rows.filter(c => floorPackaged(c) || crossDay(c)).map(c => `${c.ticker}|${c.strike}|${c.right}|${c.expiry}`));
     const isPack = (a: FlowPrint) => !!a.floorPackage || packedDay.has(`${a.ticker}|${a.strike}|${a.right}|${a.expiry}`);
@@ -837,7 +842,7 @@ const LiveTape = () => {
         header: 'Vol/OI',
         align: 'right',
         sortValue: r => r.p.volOverOI,
-        render: r => <span className={`font-mono tnum ${r.p.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.p.oi > 0 ? undefined : 'No open interest before the session — a new contract'}>{volOiText(r.p)}</span>,
+        render: r => <span className={`font-mono tnum ${r.p.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.p.oi > 0 ? undefined : 'No open interest before the session — a new contract'}>{volOiText(r.p)}<OpeningTag volume={r.p.volume} oi={r.p.oi} /></span>,
       },
       { key: 'iv', label: 'IV', group: 'Activity', header: 'IV', align: 'right', sortValue: r => r.p.iv, render: r => <span className="font-mono tnum text-textPrimary">{r.p.iv.toFixed(0)}%</span> },
       {
@@ -930,7 +935,7 @@ const LiveTape = () => {
           </>
         )}
       </Fact>
-      <Fact label="Premium" testId="premium" title={`Call and put premium in this view${beamSummary.compression.count ? '; compression left out' : ''}`}>
+      <Fact label="Premium" testId="premium" title={`Call and put premium in this view${beamSummary.compression.count ? '; compression left out' : ''}${beamSummary.covers ? ` · ${coversTip(beamSummary.covers)}` : ''}`}>
         {headReading ? (
           <span className="text-textMuted">—</span>
         ) : (
@@ -939,7 +944,7 @@ const LiveTape = () => {
           </>
         )}
       </Fact>
-      <Fact label="Sweeps · blocks · multi" testId="kinds" title={`Blocks: one leg, ${BLOCK_MIN_SIZE}+ contracts or $${BLOCK_MIN_PREMIUM / 1000}K+; ${beamSummary.other} single prints besides`}>
+      <Fact label="Sweeps · blocks · multi" testId="kinds" title={`Blocks: one leg, ${BLOCK_MIN_SIZE}+ contracts and $${BLOCK_MIN_PREMIUM / 1000}K+ in one print; ${beamSummary.other} single prints besides`}>
         {headReading ? <span className="text-textMuted">—</span> : <>{num(beamSummary.sweeps)} <span className="text-textSecondary">·</span> {num(beamSummary.blocks)} <span className="text-textSecondary">·</span> {num(beamSummary.multi)}</>}
       </Fact>
       <Fact label="P/C premium" testId="pc" title="Put premium over call premium, this view only">
@@ -964,9 +969,9 @@ const LiveTape = () => {
   const dayAlertTop = dayAlertsSplit.bets[0] ?? null;
   const dayFacts = (
     <>
-      <Fact label="Market net" testId="day-net" title={`The market tide's net, 09:30–16:15 ET ${dayAdv(dayIso)}. ${VENDOR_TOTAL_NOTE}`}>
+      <Fact label="Market net" testId="day-net" title={`The market tide's net ${dayAdv(dayIso)}${dayNet ? ` · ${coversTip(dayNet.covers)}` : ''}. ${VENDOR_TOTAL_NOTE}`}>
         {dayNet ? <span className={dayNet.net >= 0 ? 'text-bull' : 'text-bear'}>{dayNet.net >= 0 ? '+' : '−'}{fmtUsd(Math.abs(dayNet.net))}</span> : <span className="text-textMuted">{dayTide.waiting ? '…' : '—'}</span>}
-        {dayNet && <span className="text-textSecondary"> · {shortDay(dayIso)}</span>}
+        {dayNet && <span className="text-textSecondary"> · {shortDay(dayIso)}{coversSpan(dayNet.covers) ? ` ${coversSpan(dayNet.covers)}` : ''}</span>}
       </Fact>
       <Fact label="Net calls · puts" testId="day-sides" title="Net call and net put premium; puts bought lean bearish">
         {dayNet ? (
@@ -1169,8 +1174,8 @@ const LiveTape = () => {
                   )}
                 </div>
                 <div className="min-w-0" data-tape-day-alerts>
-                  <div className="text-textMuted" title="Flow alerts of $5M+ in the session, largest first; an alert's side is the one lean rule over its premium">
-                    Largest flow alerts · $5M+
+                  <div className="text-textMuted" title={`Flow alerts of $5M+ in the session, largest first; an alert's side is the one lean rule over its premium${dayAlertsPartial ? ". The day's alerts did not all load: these are the largest of the newest ones read" : ''}`}>
+                    Largest flow alerts · $5M+{dayAlertsPartial && <span className="text-warn" data-tape-day-alerts-partial> · newest only</span>}
                   </div>
                   {dayAlertsSplit.bets.length || dayAlertsSplit.packs.length ? (
                     <>
