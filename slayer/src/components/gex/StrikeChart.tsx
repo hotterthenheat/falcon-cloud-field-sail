@@ -58,7 +58,7 @@ import { CellView, makeCell } from './hoverCell';
 import { nyClock, nyMinutes, nyParts, nyWallTime } from '../../core/nyTime';
 import { beepAlert } from '../../data/alertSound';
 import { oiDoubled } from '../../data/oiWatch';
-import { chartGrain, thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
+import { chartGrain, extendChartTape, thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
 import { barInTape, peekPrint, usePrintRev, useTapeRev } from '../../data/thetaTape';
 import { contractsLive } from '../../data/compassSession';
 import { sameName } from '../../data/spotGexBook';
@@ -1124,6 +1124,8 @@ const StrikeChart = ({
     }
   }, []);
   const barCountRef = useRef(0);
+  /** Every bar the store holds is on the chart (no recent window held back) — only then does the left edge ask for older */
+  const drawnAllRef = useRef(false);
   /* History on demand: a world (name · interval · clock) opens on its recent bars and scrolling to their left edge
      loads the whole store once. `fullWorldRef` names the world that asked; the nonce re-runs the data effects. */
   const fullWorldRef = useRef<string | null>(null);
@@ -1843,6 +1845,12 @@ const StrikeChart = ({
           fullWorldRef.current = worldKeyRef.current;
           setFullNonce(n => n + 1);
         }
+      } else if (drawnAllRef.current && thetaBars() && !tapeRef.current && loadedRef.current.clock === 'time' && barCountRef.current > 0) {
+        /* Everything held is drawn and the reader is at its left edge: the chunk before it, from ThetaData (each tape
+           reads one chunk at a time and stops at the data's start; the bars land through the tape's revision, and a
+           prepend keeps the view where it is — the time scale counts from the right edge) */
+        const r = chart.timeScale().getVisibleLogicalRange();
+        if (r && r.from < FULL_TRIGGER && r.to - r.from > 10) extendChartTape(loadedRef.current.ticker, tfMinutes(loadedRef.current.timeframe));
       }
       /* A synthetic crosshair is anchored to a pixel, not to a time: the model re-derives its bar from the saved x
          on the next update, so panning this pane slides someone else's mark onto a different bar without a word. */
@@ -2795,6 +2803,7 @@ const StrikeChart = ({
     const bars = sliceFor(all, full, focusHoldRef.current, world);
     const held = bars.length < all.length;
     barCountRef.current = bars.length;
+    drawnAllRef.current = !held;
     if (bars.length > 0) setQuiet(false);
     /* A rule clock reads the seconds tape, so it wears the chip too. A host that brought real 15-second history is
        not "live since connect" — that chip would call two days of prints a gap. */
