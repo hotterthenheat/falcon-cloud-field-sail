@@ -48,6 +48,7 @@ import {
   aggregateCandles,
   aggregateSnapshots,
   snapshotsMaxAbs,
+  syncBucket,
   tfMinutes,
   frameServed,
   type Timeframe,
@@ -1638,16 +1639,29 @@ const StrikeChart = ({
       emitReadout(null);
       return;
     }
-    /* This chart's bucket, floored — the bar the moment is inside of. The library's own lookup rounds UP, so a 12:07
-       hover would land on a 15m neighbour's 12:15 bar: one that had not happened at 12:07. */
-    const bucket = Math.max(60, tfMinutes(timeframeRef.current) * 60);
-    const target = (Math.floor(time / bucket) * bucket) as UTCTimestamp;
+    /* The bar the moment is inside of, in this chart's own buckets (data/timeframe.ts barBucket: session-anchored — 1h
+       bars at 9:30, 10:30 …, a day the New York trading day). Flooring on the unix epoch put a 1h moment on :00, where
+       no bar is, and a day on UTC midnight. The library's own nearest lookup rounds UP, so a 12:07 hover would land on a
+       15m neighbour's 12:15 bar: only a bar whose own bucket is the moment's is taken. */
+    const mins = tfMinutes(timeframeRef.current);
+    const key = syncBucket(time, mins);
     const ts = chart.timeScale();
-    const idx = ts.timeToIndex(target, false); // exact hit or null — never nearest
+    const stampAt = (i: number): number | null => {
+      const d = series.dataByIndex(i) as { time?: unknown } | null;
+      return d && typeof d.time === 'number' ? d.time : null;
+    };
+    let idx: number | null = ts.timeToIndex(key as UTCTimestamp, false); // a bar stamped at its bucket's start
+    if (idx === null) {
+      /* a bar stamped later inside its bucket (a daily bar at its close): the bars either side of the key */
+      const near = ts.timeToIndex(key as UTCTimestamp, true);
+      idx = near == null ? null : ([near, near + 1, near - 1].find(i => { const t = stampAt(i); return t != null && syncBucket(t, mins) === key; }) ?? null);
+    }
+    const stamp = idx === null ? null : stampAt(idx);
+    const target = (stamp ?? key) as UTCTimestamp;
     const vis = ts.getVisibleLogicalRange();
     /* Outside this chart's data, or outside what it is currently showing, draw nothing. SetCrosshairPosition clamps
        the index to the visible range and would otherwise print a confident mark on the wrong bar. */
-    if (idx === null || vis === null || idx < vis.from || idx > vis.to) {
+    if (idx === null || stamp === null || vis === null || idx < vis.from || idx > vis.to) {
       chart.clearCrosshairPosition();
       setFollower(false);
       /* This pane has no bar at that moment, or is not showing it. It draws nothing, so it reports nothing — a
