@@ -54,6 +54,7 @@ import {
   type Timeframe,
 } from '../../data/timeframe';
 import { BEAD_INK_CSS, GexTrailsPrimitive, signedDollars, type BeadHit, type EdgeLevel } from './gexNodesPrimitive';
+import { nodeConcept } from './nodeConcept';
 import { ExpectedMovePrimitive, type ConeHit } from './expectedMovePrimitive';
 import { coneMissed, coneTerm, ensureCone, useConeRev } from '../../data/coneFeed';
 import { coneFrame, coneMarks, forwardCone, runwaySlots, todayOpenOf, tradingMinutesPerBar } from '../../data/terrainCone';
@@ -1895,6 +1896,7 @@ const StrikeChart = ({
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
 
     const trails = new GexTrailsPrimitive();
+    trails.setConcept(nodeConcept()); // dev-only switch: ?nodes=current|heat
     trails.chromeInset = chromeInsetRef.current;
     trails.hoverOverlay = true;
     trails.afterDraw = () => drawHoverRef.current();
