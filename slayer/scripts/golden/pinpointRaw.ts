@@ -214,6 +214,86 @@ export function rawFlowTo(legs: readonly RawLeg[], spot: number, k: number): num
   return f;
 }
 
+/* The rows are marked at the vendor's own price (its 4:15 read of the close, a few rows earlier in the day), and the
+   page's spot before the open is the pre-market print. Each group of rows is re-priced FROM its own price, and the
+   search and the integral run from spot — the rows are never taken as priced at a spot they were not. */
+export type Priced = { s0: number; legs: RawLeg[] }[];
+export function pricedLegs(rows: readonly Row[], dates: ReadonlySet<string>, vols: Map<string, number>, ois: Map<string, number>, term?: Map<string, number>): Priced {
+  const by = new Map<number, Row[]>();
+  for (const r of rows) {
+    const p = n(r.price);
+    if (!(p > 0)) continue;
+    by.set(p, [...(by.get(p) ?? []), r]);
+  }
+  /* a row marked before the close carries the rest of its own session too: its years are the sessions after its day
+     plus its day's minutes left to 4:00 ET (20:00Z in October), on the 390-minute session */
+  return [...by].map(([s0, rs]) => ({
+    s0,
+    legs: rs.flatMap(r => {
+      const left = Math.max(0, Math.min(390, (Date.parse(`${String(r.date)}T20:00:00Z`) - Date.parse(String(r.time))) / 60_000));
+      const t = (l: RawLeg) => l.t + left / (390 * 252);
+      /* a contract with no vol of its own (a date whose contracts were not read) takes its expiry's term vol, a calendar-year
+         vol moved onto the session clock by its variance, σ_cal·√(T_cal ÷ T_trade) — never carried flat */
+      const tCal = (Date.parse(`${String(r.expiry)}T20:00:00Z`) - Date.parse(String(r.time))) / (365 * 86_400_000);
+      const termIv = term?.get(String(r.expiry)) ?? 0;
+      return rawLegs([r], dates, vols, ois).map(l => ({ ...l, t: t(l), iv: l.iv > 0 || !(termIv > 0) || !(tCal > 0) ? l.iv : termIv * Math.sqrt(tCal / t(l)) }));
+    }),
+  }));
+}
+/* No leg in its last session holds more Γ·S²·1% than its open interest can at its peak near the strike,
+   OI·K/(√(2π)·σ·√t) (Black-Scholes: max over S of S·φ(d₁)/(σ√t) is K·φ(0)·e^(−rt)/(σ√t), bounded by K·φ(0)/(σ√t)).
+   The rows' gamma was marked on the close's open interest and the contracts' open interest is the morning's, so a leg
+   walked a few dollars toward its strike can pass that bound; it is held at it, here as in core/gammaFlip.ts. */
+const LAST_SESSION = 1 / 252 + 1e-12;
+const boundedNet = (legs: readonly RawLeg[], s0: number, x: number) =>
+  legs.reduce((a, l) => {
+    const g = rawNetAt([l], s0, x);
+    if (!(l.oi > 0) || !(l.iv > 0) || !(l.t > 0) || l.t > LAST_SESSION) return a + g;
+    const cap = Math.max(Math.abs(l.g0), (l.oi * l.k) / (Math.sqrt(2 * Math.PI) * l.iv * Math.sqrt(l.t)));
+    return a + Math.sign(g) * Math.min(Math.abs(g), cap);
+  }, 0);
+/** The re-priced net at x, vendor sign (calls +): each group of rows from its own price */
+export const pricedNet = (book: Priced, x: number) => book.reduce((a, g) => a + boundedNet(g.legs, g.s0, x), 0);
+/** The zero of the re-priced net nearest spot inside ±10% (1,600 cells, bisected) */
+export function pricedFlip(book: Priced, spot: number): number | null {
+  const N = 1600;
+  let best: number | null = null;
+  let px = spot * 0.9;
+  let py = pricedNet(book, px);
+  for (let i = 1; i <= N; i++) {
+    const x = spot * (0.9 + (0.2 * i) / N);
+    const y = pricedNet(book, x);
+    if (py * y < 0) {
+      let a = px;
+      let b = x;
+      let fa = py;
+      for (let j = 0; j < 40; j++) {
+        const m = (a + b) / 2;
+        const fm = pricedNet(book, m);
+        if (fm * fa > 0) {
+          a = m;
+          fa = fm;
+        } else b = m;
+      }
+      const z = (a + b) / 2;
+      if (best == null || Math.abs(z - spot) < Math.abs(best - spot)) best = z;
+    }
+    px = x;
+    py = y;
+  }
+  return best;
+}
+/** ∫ G(x)·dx/(0.01·x) from spot to K, G the re-priced vendor net, on a 400-cell midpoint grid */
+export function pricedFlowTo(book: Priced, spot: number, k: number): number {
+  const N = 400;
+  let f = 0;
+  for (let i = 0; i < N; i++) {
+    const x = spot + ((k - spot) * (i + 0.5)) / N;
+    f += (pricedNet(book, x) / x) * ((k - spot) / N) * 100;
+  }
+  return f;
+}
+
 /** Standard normal CDF by erf (W. J. Cody's rational form via Math), independent of the app's A–S polynomial */
 export function phiCdf(x: number): number {
   /* erf by its Taylor series near 0 and the continued fraction outside: plenty for 1e-9 here */
@@ -239,6 +319,17 @@ export function phiCdf(x: number): number {
 export function impliedMove(raw: Map<string, unknown>, t: string, expiry: string): number {
   const rows = raw.get(`/stock/${t}/volatility/term-structure`) as Row[];
   return n(rows.find(r => r.expiry === expiry)?.implied_move);
+}
+
+/** The term structure's vol per expiry (calendar-year fraction), keyed YYYY-MM-DD */
+export function termVols(raw: Map<string, unknown>, t: string): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const r of (raw.get(`/stock/${t}/volatility/term-structure`) as Row[]) ?? []) {
+    let v = n(r.volatility);
+    if (v > 3) v /= 100;
+    if (v > 0 && v < 5) m.set(String(r.expiry), v);
+  }
+  return m;
 }
 
 /** The vendor's open-interest change rows read (both orders, first page each) */

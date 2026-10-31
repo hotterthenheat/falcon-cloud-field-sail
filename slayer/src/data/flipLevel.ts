@@ -472,7 +472,8 @@ export function readRegime(levels: { spot: number; flip: number; flipFound?: boo
   const flip = levels.flipFound === false ? null : levels.flip;
   /* one strike format on every page */
   const px = fmtK;
-  const long = levels.net != null ? levels.net < 0 : flip != null && spot >= flip;
+  /* the ONE regime rule on the net re-priced at spot — no "above the flip is long" stand-in */
+  const long = levels.net != null && regimeOfNet(levels.net) === 'LONG';
   /* the walls are the most call and the most put gamma either side of price, so each is placed by where it is */
   /* One tolerance for "at price" (core/walls.ts wallPlace, 0.05%). */
   const side = (k: number) => {
