@@ -46,7 +46,8 @@ installTestMarket();
   ok('…and a minute that was no market is not carried over by an older quote', nbboAt(leg, '2026-11-02', 9) == null && nbboAt(leg, '2026-11-02', 12) == null);
   /* bars are stamped at their start: 09:30:00 is minute 0 */
   const b = parseBars('2026-10-28', [{ timestamp: '2026-10-28T09:30:00.000', open: 1, high: 2, low: 0.5, close: 1.5, volume: 10 }, { timestamp: '2026-10-28T09:32:00.000', open: 1.6, high: 1.7, low: 1.6, close: 1.7, volume: 5 }])!;
-  ok('a bar is stamped at its start; a minute with no trade carries the last close flat, with no volume', b.bars.length === 3 && b.bars[0].close === 1.5 && b.bars[1].close === 1.5 && b.bars[1].volume === 0 && b.bars[2].close === 1.7 && b.last === 2);
+  /* a minute with no trade is a gap (411b43b: no made-up flat candles); every reader looks a minute up by its time */
+  ok('a bar is stamped at its start; a minute with no trade is a gap, not a flat candle', b.bars.length === 2 && b.bars[0].time === barTime('2026-10-28', 0) && b.bars[0].close === 1.5 && b.bars[1].time === barTime('2026-10-28', 2) && b.bars[1].close === 1.7 && b.last === 2);
   const l = parseListing('2026-10-28', [{ symbol: 'SPY', expiration: '2026-10-27', strike: 500, right: 'C' }, { symbol: 'SPY', expiration: '2026-10-30', strike: 501, right: 'PUT' }, { symbol: 'SPY', expiration: '2026-10-30', strike: 499, right: 'P' }])!;
   ok('the listing keeps the expiries at or after the day, strikes low to high', l.expiries.join() === '2026-10-30' && l.strikes['2026-10-30|P'].join() === '499,501');
   /* an early close: the name's last bar is 12:59 (minute 209); after it no quote stands */
