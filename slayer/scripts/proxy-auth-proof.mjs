@@ -177,6 +177,20 @@ check('dev, no Supabase: theta passes the gate', show(await call(proxyTheta, TH)
     delete process.env.SLAYER_HUB_HOURS;
   }
 
+  /* three calls that never settle (not even on their abort signal) hold the key's three slots: each slot comes back
+     after the call's hard limit (15 s), not at the 30 s job limit or never */
+  {
+    const inner = globalThis.fetch;
+    globalThis.fetch = (url, init) => (String(url).includes('/HANG') ? new Promise(() => {}) : inner(url, init));
+    for (const t of ['HANGA', 'HANGB', 'HANGC']) void call(proxyUw, `/api/uw/stock/${t}/info`);
+    await new Promise((r) => setTimeout(r, 100));
+    const t = Date.now();
+    const after = await call(proxyUw, '/api/uw/stock/AFTERHANG/info');
+    const waited = Date.now() - t;
+    check('uw: calls that hang give their slots back after 15 s', `${after.status} ${waited < 20_000}`, '200 true');
+    globalThis.fetch = inner;
+  }
+
   /* a vendor that keeps refusing with Retry-After 1: one retry after the breaker, not four calls */
   plan.set('/stock/RL1/info', [[429, 1]]);
   const t0 = Date.now();
