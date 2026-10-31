@@ -134,6 +134,19 @@ for (const t of NAMES) {
     expectEqual(`${t} ${name}: regime is the sign of the net at spot`, lv.regime, atSpot > 0 ? 'LONG' : 'SHORT');
   }
   expectEqual(`${t}: Today reads the front expiry`, lv0.date, gold.front);
+  /* the flip gauge counts crossings against the flip as it stood at each bar (the book re-priced at each minute's own
+     clock): ten one-minute closes alternating 0.5% either side of the printed flip cross it nine times; ten closes 2%
+     on spot's side, never */
+  {
+    const { flipCrossingsAsOf } = await import('../../src/data/flipGauge');
+    const chain0 = snap.uwChains?.['0DTE'] ?? snap.chain;
+    /* at the rows' own minute (after the bell no trading time passes, so each bar's flip is the printed one) */
+    const t0 = Date.parse('2026-10-28T20:16:00Z') / 1000;
+    const f = lv0.flip!;
+    const alt = Array.from({ length: 10 }, (_, i) => ({ time: t0 + i * 60, open: f, high: f, low: f, close: f * (i % 2 ? 1.005 : 0.995), volume: 0 }));
+    const away = alt.map(b => ({ ...b, close: f * (spot > f ? 1.02 : 0.98) }));
+    expectEqual(`${t}: crossings as of each bar — alternating ±0.5% of ${f.toFixed(2)}: 9, held 2% off: 0`, [flipCrossingsAsOf(snap, chain0, alt), flipCrossingsAsOf(snap, chain0, away)], [9, 0]);
+  }
   /* the watchlist's nearest wall reads the walls Pinpoint prints for the scope (it read the raw whole book) */
   {
     const { scopeWalls } = await import('../../src/data/book/levels');

@@ -407,7 +407,8 @@ export function levelNetPath(snapshot: MarketSnapshot, chain: readonly StrikeNod
   const set = legSet(snapshot, chain);
   if (!set || !set.withVol) return null;
   const legs = quietLegs(set.legs);
-  const ref = pricingClock(undefined, Date.now());
+  /* the minute the legs are priced at: a pinned book's own (a finished session frozen at its close), else the live clock */
+  const ref = snapshot.asOf ?? snapshot.flipAt ?? pricingClock(undefined, Date.now());
   const y = carryFor(snapshot.ticker);
   const path = prices.map((S, i) => {
     const at = times?.[i];

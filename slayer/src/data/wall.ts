@@ -14,6 +14,7 @@ import { putWallWords } from '../core/walls';
 import { dealerOf } from '../core/dealerSign';
 import { monDayOf, peekDaySigma, peekMoveToClose, peekScopeMove } from './uwBook';
 import { datesOf, levelNetPath } from './flipLevel';
+import { levelTests } from './levelRecord';
 import { pctWhole as pct } from '../core/format';
 import { clamp } from '../core/math';
 
@@ -134,34 +135,9 @@ export const holdShort = (v: number): string => (v >= 0.995 ? 'top' : v < 0.05 ?
 export const chanceLabel = (v: number): string => (v < 0.005 ? '<1%' : v > 0.995 ? '>99%' : `${Math.round(v * 100)}%`);
 const signedDollars = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 
-/** Tests of a level as visits, not bars: a test begins when a bar reaches the strike and ends held when price leaves it
-    back on its own side, or broke on the first close beyond it. */
+/** Tests of a level: the one rule (levelRecord.ts levelTicks — visits, not bars), counted */
 export function testEvents(bars: readonly Candle[], strike: number, side: WallSide): { tests: number; held: number; broke: number } {
-  let held = 0;
-  let broke = 0;
-  let at = false;
-  let beyond = false;
-  for (const b of bars) {
-    const touched = b.low <= strike && b.high >= strike;
-    const closedBeyond = side === 'call' ? b.close > strike : b.close < strike;
-    if (beyond) {
-      if (!closedBeyond) beyond = false; // back on the original side: the next visit is new
-      continue;
-    }
-    if (touched) {
-      at = true;
-      if (closedBeyond) {
-        broke++;
-        at = false;
-        beyond = true;
-      }
-    } else if (at) {
-      held++;
-      at = false;
-    }
-  }
-  if (at) held++; // still at the level as the tape ends — it has held so far
-  return { tests: held + broke, held, broke };
+  return levelTests(bars, strike, side);
 }
 
 /** Dollars of stock it took to move price 1% today — today's dollar volume over today's travel */
