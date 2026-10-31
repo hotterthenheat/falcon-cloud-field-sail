@@ -3268,6 +3268,10 @@ const StrikeChart = ({
     const clock = coneFrame(mins, now);
     const step = Math.max(1, Math.round(clock.next / 80));
     const fc = term && spot > 0 ? forwardCone(term.rows, spot, now, todayOpenOf(bars), step, clock) : null;
+    /* the cone stands on the last bar the chart DRAWS: a chart opens on its recent window (sliceFor), so the tape's
+       full length put the anchor hundreds of bars past the edge and the cone off screen */
+    const shown = barCountRef.current;
+    const drawn = shown > 0 && shown < bars.length ? bars.slice(-shown) : bars;
     prim.setData(
       fc
         ? {
@@ -3275,9 +3279,9 @@ const StrikeChart = ({
             marks: coneMarks(fc, clock.label),
             /* the key levels name the cone's ends at the edge; without them the cone names its own */
             markWords: !overlays.levels,
-            barTimes: bars.map(b => b.time),
+            barTimes: drawn.map(b => b.time),
             barMinutes: perBar,
-            anchor: bars.length - 1,
+            anchor: drawn.length - 1,
             oddsName: clock.label,
             iv: fc.ivNext,
             source: term?.source === 'theta' ? 'at-the-money implied vol' : 'term structure',
@@ -3287,7 +3291,7 @@ const StrikeChart = ({
     /* the cone's numbers at the edge: today's expected move, and ±1σ to the tip of this frame */
     ladderRef.current?.setExtras('cone', coneRungs(fc, clock.label));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, printRev]);
+  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, printRev, fullNonce]);
 
   /* The event markers. The calendar half (this name's report, the macro dates) is cached per ticker and day; the
      prints half is live. */
