@@ -10,7 +10,7 @@ import type { DarkPoolPrint, DarkPoolView } from '../types/darkpool';
 import { marketPhase } from '../core/marketPhase';
 import { nyParts } from '../core/nyTime';
 import type { MoneynessKey, NetFlowSegment, SpreadTrade } from './flowBook';
-import { alertToPrint, byNewest, clock, contractRow, coversOf, dteFrom, ensureIndexLevels, ensureSpots, extendedOf, heldFresh, indexRoot, lastRegularClose, liveSpotOf, liveTrades, mapBook, mapWithIndex, markAlertPackages, nextSessionIso, num, nyDateOf, nyIsoToday, prevSessionIso, printCondition, printKeyOf, printSideOf, rowsOf, SESSION_OPEN, sessionEndLabel, sessionEndMin, tapeSessionIso, type NetCovers, tickerOfRow, tradeToPrint } from './traceRows';
+import { alertToPrint, byNewest, clock, contractRow, coversOf, dteFrom, ensureIndexLevels, ensureSpots, extendedOf, heldFresh, indexRoot, lastRegularClose, likelyOpeningOf, liveSpotOf, liveTrades, mapBook, mapWithIndex, markAlertPackages, nextSessionIso, num, nyDateOf, nyIsoToday, prevSessionIso, printCondition, printKeyOf, printSideOf, rowsOf, SESSION_OPEN, sessionEndLabel, sessionEndMin, tapeSessionIso, type NetCovers, tickerOfRow, tradeToPrint } from './traceRows';
 import { dedupeSpreads, settleSpreadWith, spreadOf } from './traceSpreads';
 import { type DarkDay, darkDayOf, darkLevels, darkPrint, darkView, mergeDark } from './traceDark';
 
@@ -1222,9 +1222,11 @@ function usePairedOi(rows: BookContract[], only?: string): BookContract[] {
       const vol = volDayOf(r);
       const next = nextSessionIso(vol);
       const hit = r.optionSymbol ? newestOiCache.get(`${r.optionSymbol}:${next}`) : undefined;
-      if (!hit) return { ...r, volDay: vol, oiDay: prevSessionIso(vol), oiPending: !r.expired };
+      /* likelyOpening (likelyOpeningOf): a flag beside the row, its classifications untouched */
+      if (!hit) return { ...r, volDay: vol, oiDay: prevSessionIso(vol), oiPending: !r.expired, likelyOpening: likelyOpeningOf(r) };
       return {
         ...r,
+        likelyOpening: likelyOpeningOf(r, hit),
         oi: hit.oi,
         prevOI: hit.before,
         deltaOI: hit.oi - hit.before,

@@ -690,6 +690,19 @@ export function nextSessionIso(iso: string): string {
   for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() + 1);
   return isoDate(d);
 }
+/** Opening, not closing: no more contracts can close than stood open, so a day (or a print) whose volume ran past the
+    open interest it opened on opened at least the difference; once the next session's count is out, interest that grew
+    by half the day's volume or more says the same. A flag beside the classifications, never one of them; null when
+    neither can be told (volume within the open interest and no next count yet). */
+export const OPENING_DOI_SHARE = 0.5;
+export function likelyOpeningOf(r: { volume: number; oi: number }, next?: { oi: number; before: number } | null): boolean | null {
+  if (!(r.volume > 0)) return null;
+  const atOpen = next ? next.before : r.oi;
+  if (r.volume > atOpen) return true;
+  if (next) return next.oi - next.before >= OPENING_DOI_SHARE * r.volume;
+  return null;
+}
+
 /** The session before a session day, YYYY-MM-DD */
 export function prevSessionIso(iso: string = tapeSessionIso()): string {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);

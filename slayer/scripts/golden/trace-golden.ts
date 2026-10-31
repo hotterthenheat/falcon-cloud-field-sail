@@ -313,6 +313,15 @@ const { buildCatches } = await import('../../src/data/flowBook');
   const cg = summariseCongress([10, 20, 30, 40].map(lagDays => ({ lagDays, bracket: null, type: 'Purchase', late: false }) as never), 365);
   expectEqual('congress median lag of 10, 20, 30, 40 days', cg.medianLag, 25);
 }
+{
+  /* likely opening: volume past the open interest it opened on, or the next count up by half the day's volume */
+  const { likelyOpeningOf } = await import('../../src/data/traceRows');
+  expectEqual('likely opening: 1,000 on 800 OI; 1,000 on 5,000 with no next count; +600 next; +300 next', [likelyOpeningOf({ volume: 1000, oi: 800 }), likelyOpeningOf({ volume: 1000, oi: 5000 }), likelyOpeningOf({ volume: 1000, oi: 5000 }, { oi: 5600, before: 5000 }), likelyOpeningOf({ volume: 1000, oi: 5000 }, { oi: 5300, before: 5000 })], [true, null, true, false]);
+  /* SPY's 200 screener rows: volume past open_interest on 125, within it on 75 (no next count in the fixtures) */
+  const spyBook = await T.readBook('ticker_symbol=SPY&limit=200&order=premium&order_direction=desc');
+  const flags = spyBook.map(r => likelyOpeningOf(r));
+  expectEqual('SPY book: likely opening · unknown', [flags.filter(f => f === true).length, flags.filter(f => f == null).length], [125, 75]);
+}
 
 void stockClose;
 done();
