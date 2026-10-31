@@ -103,7 +103,13 @@ export const thetaAllowedHere = (path: string): boolean => {
   return use === 'all' || (use === 'prices' && PRICE_PATH.test(path));
 };
 
+/* The terminal spells a class share's stock with its dot (BRK.B) and its option root without (BRKB): every option
+   read is sent the root, so a desk can pass the listing as the reader knows it. */
+export const optionPath = (path: string): string =>
+  path.startsWith('/option/') ? path.replace(/([?&](?:symbol|root)=)([A-Z]{1,4})(?:\.|%2E)([A-Z])(?=&|$)/gi, '$1$2$3') : path;
+
 export async function thetaCall(path: string, jump = false): Promise<{ status: number; data: unknown; error: string | null }> {
+  path = optionPath(path);
   if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
   if (!thetaAllowedHere(path)) return { status: 0, data: null, error: 'uw_only' };
   const auth = await feedHeaders();

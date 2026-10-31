@@ -1,8 +1,10 @@
 /* The searchable ticker universe: the bundled NASDAQ listings and index ETFs (nasdaqTickers.json), completed with the
    NYSE half of the S&P 500 (sp500.ts). Used by every ticker search. */
 
+import { useSyncExternalStore } from 'react';
 import raw from './nasdaqTickers.json';
 import { SP500_NYSE } from './sp500';
+import { directoryEntry, directoryName, directoryReady, loadDirectory, searchDirectory, subscribeDirectory } from './symbolDirectory';
 
 export interface TickerListing {
   symbol: string;
@@ -59,15 +61,30 @@ const UNIVERSE: TickerListing[] = [
     .sort((a, b) => a.symbol.localeCompare(b.symbol)),
 ];
 
+/* The symbol directory (data/symbolDirectory.ts) is the current name of every listing; the bundled list is the
+   name before it loads. A name asked for starts its load, after first paint. */
+let directoryAsked = false;
+const askDirectory = () => {
+  if (directoryAsked) return;
+  directoryAsked = true;
+  const go = () => void loadDirectory();
+  if (typeof window === 'undefined') go();
+  else if ('requestIdleCallback' in window) (window as Window & { requestIdleCallback: (fn: () => void, o?: { timeout: number }) => number }).requestIdleCallback(go, { timeout: 1500 });
+  else setTimeout(go, 200);
+};
+
 export function tickerName(symbol: string): string {
   const sym = symbol.toUpperCase();
-  return bySymbol.get(sym)?.name ?? FALLBACK_NAMES[sym] ?? sym;
+  if (!directoryReady()) askDirectory();
+  return directoryName(sym) || bySymbol.get(sym)?.name || FALLBACK_NAMES[sym] || sym;
 }
 
-/** Prefix matches first (by symbol), then symbol/name substring matches.
-    Featured names outrank the alphabet inside each tier. */
+/** Exact symbol first, then symbols that start with it, then names, then the rest — most traded first inside each
+    tier (the symbol directory once loaded; the bundled list before). */
 export function searchTickers(query: string, limit = 60): TickerListing[] {
   const q = query.trim().toUpperCase();
+  if (directoryReady()) return searchDirectory(query, { limit }).map(e => ({ symbol: e.symbol, name: e.name || tickerName(e.symbol) }));
+  askDirectory();
   if (!q) return UNIVERSE.slice(0, limit);
 
   const prefix: TickerListing[] = [];
@@ -240,12 +257,25 @@ export function companyName(symbol: string): string {
   const sym = symbol.toUpperCase();
   const known = INDEX_NAMES[sym];
   const n = uwNames.get(sym) ?? known ?? tickerName(sym);
+  if (!n) return sym;
   return n.toUpperCase() === sym ? n : displayName(n);
 }
+/** The company's name for a header or a tooltip, re-read as names land; '' when only the symbol is known */
+export function useCompanyName(symbol: string | null | undefined): string {
+  useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
+  if (!symbol) return '';
+  const n = companyName(symbol);
+  return n && n.toUpperCase() !== symbol.toUpperCase() ? n : '';
+}
+/** "NVDA · NVIDIA" — a symbol with its name when one is known */
+export const symbolWithName = (symbol: string): string => {
+  const n = companyName(symbol);
+  return n && n.toUpperCase() !== symbol.toUpperCase() ? `${symbol} · ${n}` : symbol;
+};
 /** The legal form of the company's name — for a line that quotes the filing */
 
 /** True when the symbol is on the bundled listing — a name off it (an OTC symbol on a filing) is not asked of the vendor */
-export const isListed = (symbol: string): boolean => bySymbol.has(symbol.toUpperCase());
+export const isListed = (symbol: string): boolean => bySymbol.has(symbol.toUpperCase()) || !!directoryEntry(symbol);
 
 /** True when the vendor's own name for the symbol is known */
 export const hasVendorName = (symbol: string): boolean => uwNames.has(symbol.toUpperCase());
@@ -268,6 +298,8 @@ const bumpNames = () => {
   namesRev += 1;
   nameListeners.forEach(fn => fn());
 };
+/* the directory landing names every row at once */
+subscribeDirectory(bumpNames);
 function pumpCompanyNames(): void {
   while (nameBusy < 3 && nameQueue.length) {
     const sym = nameQueue.shift()!;
@@ -290,8 +322,16 @@ function pumpCompanyNames(): void {
       });
   }
 }
-/** Ask /stock/{symbol}/info for names the listing does not have. The screener's full_name comes back empty. */
+/** Ask /stock/{symbol}/info for names the listing does not have. The screener's full_name comes back empty. The
+    directory names nearly every listing, so the vendor is asked only once it has loaded and still lacks the name. */
 export function askCompanyNames(symbols: readonly string[]): void {
+  if (!directoryReady()) {
+    const held = [...symbols];
+    void loadDirectory().then(() => {
+      if (directoryReady()) askCompanyNames(held);
+    });
+    return;
+  }
   for (const raw of symbols) {
     const sym = raw.toUpperCase();
     if (!/^[A-Z0-9.]{1,6}$/.test(sym) || nameAsked.has(sym) || hasVendorName(sym) || INDEX_NAMES[sym]) continue;
