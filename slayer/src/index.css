@@ -1510,11 +1510,14 @@ html[data-theme='light'] [data-paper-chain-side-pick='P']:not([aria-pressed='tru
   main p.whitespace-nowrap:not(.truncate) {
     white-space: normal;
   }
-  /* A box's facts (a <dl> laid out as a grid of four or five equal tracks)
+  /* A box's facts (a <dl> laid out as a grid of three to six equal tracks)
      squeezed each fact to 44px and its figure ran under the next; on a phone
-     every such dl is a wrapping row instead — one line where it fits, two
-     where it does not (the same cut TraceBox and the shell heads got by hand). */
-  main dl.grid {
+     such a dl is a wrapping row instead — one line where it fits, two where it
+     does not (the same cut TraceBox and the shell heads got by hand). Scoped to
+     those fixed-track grids only: a dl that sets its own phone columns
+     (`grid-cols-2 sm:grid-cols-4`, TraceBox's tight two-up, a label | value
+     list) keeps the layout it asked for. */
+  main dl.grid:is([class~='grid-cols-3'], [class~='grid-cols-4'], [class~='grid-cols-5'], [class~='grid-cols-6'], [style*='repeat(']) {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem 1.5rem;
@@ -1522,8 +1525,9 @@ html[data-theme='light'] [data-paper-chain-side-pick='P']:not([aria-pressed='tru
   /* …and the facts take a row of their own under the title: a head is `flex
      flex-wrap` with the title block at `flex-1` (a zero basis, so the line
      always has room for the dl beside it) — on a phone that squeezed the
-     title to 60px. Full-basis, the dl drops under, and the title keeps the row. */
-  main .flex-wrap > dl {
+     title to 60px. Full-basis, the dl drops under, and the title keeps the row.
+     Scoped to that head: a dl after a flex-1 title in a wrapping row. */
+  main .flex-wrap > .flex-1 ~ dl {
     flex-basis: 100%;
   }
 }

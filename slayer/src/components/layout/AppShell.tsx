@@ -114,7 +114,8 @@ const AppShell = () => {
     }
   }, [location.pathname, location.search]);
 
-  /* the chart pages are framed to the viewport; every other page scrolls */
+  /* the chart pages are framed to the viewport from md up; on a phone their board and panes stack, so they scroll like
+     every other page (overflow-hidden there clipped Net Flow's pane and the 0DTE desk) */
   const bleedPage = /^\/trace\/(net-flow|odte)/.test(location.pathname);
 
   return (
@@ -125,15 +126,15 @@ const AppShell = () => {
       {/* Trace pages reserve the scrollbar gutter so switching between them never changes the page width */}
       <main
         /* max-md:pt-12 clears the fixed phone strip (SideNav, h-12) */
-        className={`flex-1 min-w-0 min-h-0 h-full max-md:pt-12 ${bleedPage ? 'overflow-hidden' : 'overflow-y-auto'} ${
+        className={`flex-1 min-w-0 min-h-0 h-full max-md:pt-12 ${bleedPage ? 'overflow-y-auto md:overflow-hidden' : 'overflow-y-auto'} ${
           location.pathname.startsWith('/trace') ? '[scrollbar-gutter:stable]' : ''
         }`}
       >
-        <div className={`w-full min-w-0 max-w-full flex flex-col ${bleedPage ? 'h-full' : 'min-h-full'}`}>
+        <div className={`w-full min-w-0 max-w-full flex flex-col ${bleedPage ? 'min-h-full md:h-full' : 'min-h-full'}`}>
             <ScrollHome />
             <WayBack />
             <div
-              className={`${bleedPage ? 'px-4 lg:px-6 2xl:px-8 pt-5 pb-0 gap-4 h-full min-h-0 overflow-hidden' : 'px-4 lg:px-6 2xl:px-8 pt-5 pb-16 gap-4'} flex flex-col flex-grow min-w-0 max-w-full`}
+              className={`${bleedPage ? 'px-4 lg:px-6 2xl:px-8 pt-5 pb-16 md:pb-0 gap-4 md:h-full md:min-h-0 md:overflow-hidden' : 'px-4 lg:px-6 2xl:px-8 pt-5 pb-16 gap-4'} flex flex-col flex-grow min-w-0 max-w-full`}
             >
               <RouteBoundary resetKey={location.pathname}>
                 <Suspense
