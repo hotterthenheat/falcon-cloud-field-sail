@@ -15,6 +15,7 @@ import { isCashIndex } from './symbolDirectory';
 import { EXT_WINDOWS, RTH_WINDOW, cleanExtendedBars, saneStockBars } from './thetaEligible';
 import { saneBars } from './barSanity';
 import { InUseLru } from './boundedMap';
+import { ensureThetaPrice, peekThetaPrice, subscribeThetaPrices, thetaPriceRev, type ThetaPrice } from './thetaQuote';
 
 export const THETA_INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
 
@@ -355,12 +356,6 @@ async function pullIntradayRaw(symbol: string, grain: IntraGrain, session: DeskS
   return { bars: sane, offline, clean: async () => sane };
 }
 
-async function pullEod(symbol: string, from: string, to: string): Promise<Pull> {
-  const got = await thetaGet(`/${root(symbol)}/history/eod?symbol=${encodeURIComponent(symbol)}&start_date=${from}&end_date=${to}&format=json`);
-  if (got.error) return { bars: [], offline: !noData(got) };
-  return { bars: readEod(got.data), offline: false };
-}
-
 /** EOD rows over [from, to] in spans of at most 365 days (ThetaData's limit), one after another. `none`: the terminal
     answered "no data" for every span — before the name's first day. */
 async function pullEodRange(symbol: string, from: string, to: string): Promise<Pull & { none: boolean }> {
@@ -653,7 +648,7 @@ function beat(): void {
     /* older chunks, one at a time per tape, after its first paint */
     else if (s && !s.busy && !s.olderBusy && s.takenAt > 0 && s.from && s.from > s.target && !s.done && now >= s.olderDueAt) void readOlder(s);
   }
-  if (printWanted.size && !printsBusy && now >= printsDue) void readPrints();
+  if (printWanted.size) askPrints();
 }
 function startClock(): void {
   if (clock || typeof window === 'undefined') return;
@@ -712,18 +707,10 @@ export function useTapeRev(): number {
   return useSyncExternalStore(subscribeTape, tapeRev, tapeRev);
 }
 
-/* The prints move every second in the session: their own listeners, so a reader of bars alone is not re-rendered by them */
-const printListeners = new Set<() => void>();
-let printRev = 0;
-const emitPrint = () => {
-  printRev += 1;
-  printListeners.forEach(fn => fn());
-};
-export function subscribePrints(fn: () => void): () => void {
-  printListeners.add(fn);
-  return () => printListeners.delete(fn);
-}
-export const printRevNow = (): number => printRev;
+/* The prints are the quote store's readings (data/thetaQuote.ts): its price listeners alone, so a reader of bars is not
+   re-rendered by them, nor a print reader by every option mark */
+export const subscribePrints = subscribeThetaPrices;
+export const printRevNow = (): number => thetaPriceRev();
 /** Re-renders when any name's print changes. */
 export function usePrintRev(on = true): number {
   return useSyncExternalStore(on ? subscribePrints : noSub, printRevNow, printRevNow);
@@ -764,19 +751,15 @@ export interface Print {
   kept?: boolean;
 }
 
-interface PrintSlot {
-  print: Print | null;
-  prevAt: number;
-  prev: number;
-  keptAt: number;
-}
-
-/* Bounded like the tapes: TAPE_PANES names' prints, the least recently used unwanted one let go first, a wanted one never */
+/* ONE STORE FOR A NAME'S LAST TRADE (audit D1, 2026-10-31). The tape used to read every wanted name's trade snapshot on
+   its own (1 s) beside the quote store's read of the same address (3 s): 21 reads a minute a name, and the Terrain tab
+   strip (this store) and the nav (the quote store) showing two different moves of one price. The print is now the
+   quote store's reading (data/thetaQuote.ts): a wanted print only asks that store to keep the name fresher (printGap),
+   and every reader — the forming bar, the tab, the nav, the heads — reads the one reading. */
 const printWanted = new Map<string, number>();
-const prints = new InUseLru<string, PrintSlot>(TAPE_PANES, name => printWanted.has(name));
-/** The tapes and prints held now, least recently used first (scripts/tape-cache-proof.ts) */
+/** The tapes held now, least recently used first, and the names whose print is wanted now (scripts/tape-cache-proof.ts) */
 export const heldTapeKeys = (): string[] => [...slots.keys()];
-export const heldPrintNames = (): string[] => [...prints.keys()];
+export const heldPrintNames = (): string[] => [...printWanted.keys()];
 
 /** A stock's print moves in every session the stock trades (core/session.ts: overnight, pre, regular, after hours); an
     index's from 09:30 to a quarter after the cash close (16:15; 13:15 on an early close), and the VIX through Global
@@ -786,67 +769,18 @@ export function printLive(symbol: string, nowMs = Date.now()): boolean {
   const idx = sessionAt(nowMs, 'indexOption');
   return idx.window?.kind === 'regular' || (symbol === 'VIX' && idx.window?.kind === 'gth');
 }
-/** How often the prints are read: every second while a stock's pre/regular/after tape or an index moves; every 15 s
-    overnight (the overnight venues are not on this feed yet — a fresh look, not a firehose); a minute when shut. */
-function printGap(names: readonly string[], nowMs = Date.now()): number {
-  const ph = phaseAt(nowMs);
-  if (names.some(n => printLive(n, nowMs) && (THETA_INDEX.has(n) || ph !== 'overnight'))) return 1_000;
-  if (names.some(n => printLive(n, nowMs))) return 15_000;
+/** How fresh a wanted print is kept: a second while a stock's pre/regular/after tape or an index moves; 15 s overnight
+    (the overnight venues are not on this feed yet — a fresh look, not a firehose); a minute when shut. The quote store
+    never reads a name more often than this, whoever else asks. */
+export function printGap(symbol: string, nowMs = Date.now()): number {
+  if (printLive(symbol, nowMs) && (THETA_INDEX.has(symbol) || phaseAt(nowMs) !== 'overnight')) return 1_000;
+  if (printLive(symbol, nowMs)) return 15_000;
   return 60_000;
 }
 
-/* Every wanted name's print, one read a name (the same address for every viewer, so the server shares it); each name's
-   prior close once in 30 minutes. */
-let printsBusy = false;
-let printsDue = 0;
-/* every read failing for a reason other than a down terminal: 15 s before the next, doubling to a minute, cleared by an answer */
-let printsFailGap = 0;
-async function readPrints(): Promise<void> {
-  if (printsBusy || thetaUseHere() === 'none') return;
-  printsBusy = true;
-  const names = [...printWanted.keys()];
-  try {
-    await Promise.all(
-      names.map(async symbol => {
-        const slot = prints.get(symbol);
-        if (!slot || Date.now() - slot.prevAt < 30 * 60_000) return;
-        const eod = await pullEod(symbol, ymd(Date.now() - 12 * 86_400_000), ymd());
-        if (eod.offline) return;
-        slot.prevAt = Date.now();
-        const before = eod.bars.filter(b => b.time < dayClose(Math.floor(Date.now() / 1000)));
-        if (before.length) slot.prev = before[before.length - 1].close;
-      }),
-    );
-    const reads = await Promise.all(
-      names.map(n => thetaGet(isCashIndex(n) ? `/index/snapshot/price?symbol=${encodeURIComponent(n)}&format=json` : `/stock/snapshot/trade?symbol=${encodeURIComponent(n)}&format=json`, true)),
-    );
-    let moved = false;
-    printsFailGap = reads.length && reads.every(got => got.error && got.error !== 'terminal_down') ? Math.min(60_000, printsFailGap ? printsFailGap * 2 : 15_000) : 0;
-    reads.forEach((got, i) => {
-      if (got.error) return;
-      for (const row of flatRows(got.data).slice(-1)) {
-        const symbol = names[i];
-        const slot = prints.get(symbol);
-        const price = num(row.price ?? row.last ?? row.close);
-        const at = Math.floor(nyWallStamp(row.timestamp) / 1000);
-        if (!slot || !(price > 0) || !(at > 0)) continue;
-        const was = slot.print;
-        if (!was || was.kept || was.price !== price || was.at !== at || was.prev !== slot.prev) {
-          slot.print = { price, at, prev: slot.prev, readAt: Date.now() };
-          moved = true;
-          /* kept for the next visit, at most twice a minute */
-          if (Date.now() - slot.keptAt > 30_000) {
-            slot.keptAt = Date.now();
-            keepTheta(`print:${symbol}`, slot.print);
-          }
-        }
-      }
-    });
-    if (moved) emitPrint();
-  } finally {
-    printsBusy = false;
-    printsDue = Date.now() + (thetaDown() ? 15_000 : printsFailGap || printGap(names));
-  }
+function askPrints(): void {
+  if (thetaUseHere() === 'none') return;
+  for (const name of printWanted.keys()) ensureThetaPrice(name, printGap(name));
 }
 
 /** Ask for a name's live print until the returned release is called. */
@@ -854,32 +788,29 @@ export function wantPrint(symbol: string): () => void {
   const name = symbol.trim().toUpperCase();
   if (!name) return () => undefined;
   const fresh = !printWanted.has(name);
-  if (!prints.has(name)) {
-    const slot: PrintSlot = { print: null, prevAt: 0, prev: 0, keptAt: 0 };
-    prints.set(name, slot);
-    void keptTheta<Print>(`print:${name}`).then(kept => {
-      if (!kept || slot.print || !(kept.data?.price > 0)) return;
-      slot.print = { ...kept.data, kept: true };
-      emitPrint();
-    });
-  }
   printWanted.set(name, (printWanted.get(name) ?? 0) + 1);
   startClock();
-  /* a new name is read on the next beat with the others */
-  if (fresh) printsDue = 0;
+  /* a new name is asked at once, not on the next beat */
+  if (fresh && !pageHidden() && thetaUseHere() !== 'none') ensureThetaPrice(name, printGap(name));
   return () => {
     const n = (printWanted.get(name) ?? 1) - 1;
     if (n > 0) printWanted.set(name, n);
-    else {
-      printWanted.delete(name);
-      prints.trim();
-    }
+    else printWanted.delete(name);
     stopClockIfIdle();
   };
 }
 
+/* one Print per reading, so a reader comparing objects sees a change only when the reading changed */
+const printOf = new WeakMap<ThetaPrice, { live: boolean; print: Print }>();
 export function peekPrint(symbol: string): Print | null {
-  return prints.get(symbol.trim().toUpperCase())?.print ?? null;
+  const held = peekThetaPrice(symbol.trim().toUpperCase());
+  if (!held) return null;
+  const v = held.value;
+  const hit = printOf.get(v);
+  if (hit && hit.live === held.live) return hit.print;
+  const print: Print = { price: v.price, at: Math.floor(v.at / 1000), prev: v.prevClose ?? 0, readAt: v.read, ...(held.live ? {} : { kept: true }) };
+  printOf.set(v, { live: held.live, print });
+  return print;
 }
 
 /** A name's live print, kept fresh while the caller is mounted. */

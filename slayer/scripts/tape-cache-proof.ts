@@ -1,5 +1,5 @@
 /*
-  Tape cache proof (audit §10 DL6): the chart tape's slots and prints (src/data/thetaTape.ts) are bounded to about
+  Tape cache proof (audit §10 DL6): the chart tape's slots (src/data/thetaTape.ts) are bounded to about
   twelve panes (TAPE_PANES). Once a thirteenth is made, the least recently used one no pane wants is let go: the newest
   are kept, a read or a want marks one used, and a slot a pane still wants is never let go however many are wanted.
   The real stores are driven through wantTape / wantPrint / peekTape. The page is set to a Trace address, where the
@@ -54,13 +54,28 @@ check('a thirteenth wanted tape is held beside twelve wanted ones', held().inclu
 for (const g of ['15s', '1m', '5m', '15m', '30m', '1h', 'day', 'week'] as const) for (const ses of ['rth', 'pre'] as const) wantTape('F', g, ses)();
 check('sixteen grain × session tapes of one name: twelve kept, the last made newest', held().length === 12 && held()[11] === 'F|week|pre', held().slice(-3).join(' '));
 
-/* 7. the prints, the same way */
+/* 7. the prints are the quote store's (audit D1): a want is a demand on data/thetaQuote.ts, held while wanted and gone
+   when released, and no tape code reads a trade snapshot of its own */
 for (const s of names('P', 1, 20)) wantPrint(s)();
-check('20 prints wanted and released: the newest 12 kept (P09…P20)', same(heldPrintNames(), names('P', 9, 20)), heldPrintNames().join(' '));
+check('20 prints wanted and released: none still asked for', heldPrintNames().length === 0, heldPrintNames().join(' '));
 const pinned = wantPrint('P01');
+const twice = wantPrint('P01');
 for (const s of names('Q', 1, 20)) wantPrint(s)();
-check('a print still wanted survives twenty newer ones', heldPrintNames().includes('P01') && heldPrintNames().length === 12 && same(heldPrintNames().filter(n => n.startsWith('Q')), names('Q', 10, 20)), heldPrintNames().join(' '));
+twice();
+check('a print still wanted (twice, released once) stays asked for; the twenty released ones do not', same(heldPrintNames(), ['P01']), heldPrintNames().join(' '));
 pinned();
+{
+  const { readFileSync } = await import('node:fs');
+  const code = (f: string) =>
+    readFileSync(new URL(`../${f}`, import.meta.url), 'utf8')
+      .split('\n')
+      .filter(l => !/^\s*(\/\/|\/\*|\*)/.test(l))
+      .join('\n');
+  const tapeCode = code('src/data/thetaTape.ts');
+  check('the tape reads no trade or index price snapshot of its own (one reader a name: data/thetaQuote.ts)', !/snapshot\/(trade|price)/.test(tapeCode) && /ensureThetaPrice\(/.test(tapeCode));
+  const strip = code('src/components/gex/TickerTabStrip.tsx');
+  check('the Terrain tab strip reads the nav\'s quote (useNavQuote), not a print of its own', /useNavQuote\(/.test(strip) && !/peekPrint|wantPrint/.test(strip));
+}
 
 /* 8. one regular-session window for every reader of minute bars (audit §10 DL7): the chart's tape, the Weigher's, the
    book's day tape and the vol outlook ask the same start and end, so a name's day is one request in the hub's cache.

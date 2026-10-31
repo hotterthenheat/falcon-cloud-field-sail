@@ -103,10 +103,18 @@ const emit = () => {
   rev += 1;
   listeners.forEach(fn => fn());
 };
+/* the prices alone: a chart's forming bar and the tab strip re-render when a name's print moves, not on every option mark */
+const priceListeners = new Set<() => void>();
+let priceRev = 0;
+const emitPrice = () => {
+  priceRev += 1;
+  priceListeners.forEach(fn => fn());
+};
 function setStatus(next: ThetaStatus): void {
   if (status === next) return;
   status = next;
   emit();
+  emitPrice();
 }
 
 /* ---- parsing (v3 answers are flat rows, or { contract, data: [row] } for options) ---- */
@@ -260,10 +268,13 @@ function readPrice(sym: string): Promise<void> {
     }
     const rows = closes ? (own && !closes.some(c => c.date === today) ? [...closes, own] : closes) : undefined;
     const next: ThetaPrice = { price: print.price, prevClose: prior?.close ?? null, todayClose: own?.close ?? null, closes: rows ? rows.slice(-4) : undefined, at: print.at, read: Date.now() };
+    const was = live.peek(key) as ThetaPrice | undefined;
+    const moved = !was || was.price !== next.price || was.at !== next.at || was.prevClose !== next.prevClose || was.todayClose !== next.todayClose || status !== 'up';
     live.set(key, next);
     keep(key, next);
     status = 'up';
     emit();
+    if (moved) emitPrice();
   })().finally(() => inflight.delete(key));
   inflight.set(key, job);
   return job;
@@ -304,13 +315,17 @@ function readMark(ticker: string, expiry: string, strike: number, right: OptionR
   return job;
 }
 
-/** Ask for a name's price, unless a fresh reading is in hand */
-export function ensureThetaPrice(ticker: string): void {
+/** Ask for a name's price, unless a fresh reading is in hand. This is the ONE reader of a name's last trade in the
+    browser: the quotes (nav, heads, watchlist) ask it at the session's pace (ttl), and a chart's forming bar
+    (data/thetaTape.ts wantPrint) asks it with `maxAgeMs`, its own shorter pace — one read a name feeds both, so the
+    tab strip, the nav and the chart can never show two different moves. */
+export function ensureThetaPrice(ticker: string, maxAgeMs?: number): void {
   const sym = symbolOf(ticker);
   if (!sym || typeof window === 'undefined') return;
   const hit = live.get(`S:${sym}`);
+  const fresh = maxAgeMs != null && maxAgeMs > 0 ? Math.min(ttl(), maxAgeMs) : ttl();
   /* a page that may not ask the terminal for prices (data/theta.ts) asks nothing */
-  if ((hit && Date.now() - hit.read < ttl()) || hidden() || !pricesHere()) return;
+  if ((hit && Date.now() - hit.read < fresh) || hidden() || !pricesHere()) return;
   void readPrice(sym);
 }
 
@@ -436,6 +451,13 @@ export function thetaMove(p: ThetaPrice | null | undefined, at = Date.now()): { 
   const mv = moveOffCloses(p.price, p.at, closes, at);
   return { pct: mv.dayPct, base: mv.base, ext: mv.extPct, extWord: mv.extWord, regClose: mv.regClose, regDate: mv.regDate };
 }
+
+/** Re-run when a name's price reading moves (price, print instant or closes); not on option marks or bars */
+export function subscribeThetaPrices(fn: () => void): () => void {
+  priceListeners.add(fn);
+  return () => priceListeners.delete(fn);
+}
+export const thetaPriceRev = (): number => priceRev;
 
 export function subscribeTheta(fn: () => void): () => void {
   listeners.add(fn);

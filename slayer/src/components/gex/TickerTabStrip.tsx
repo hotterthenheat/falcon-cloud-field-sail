@@ -5,12 +5,14 @@
   pressed renames the pane you are in.
 */
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, X } from 'lucide-react';
 import { ensureBook } from '../../data/book/load';
-import { peekPrint, usePrintRev, wantPrint } from '../../data/thetaTape';
-import { etClock } from '../../data/thetaFeed';
+import { useNavQuote } from '../layout/NavQuote';
+import { changeInk } from '../../data/book/day';
+import { extTag } from '../../core/session';
+import { asOfText } from '../ui/states';
 import CompanyLogo from '../ui/CompanyLogo';
 import { companyNamesRev, subscribeCompanyNames, symbolWithName } from '../../data/tickers';
 import TickerLookup from '../ui/TickerLookup';
@@ -37,7 +39,37 @@ interface TickerTabStripProps {
   max?: number;
 }
 
-const fmtPrice = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/* A tab's price and move are the nav's (layout/NavQuote.tsx useNavQuote): the one quote store's reading of the name
+   (data/thetaQuote.ts), the day's regular-session change, and outside the session the extended move labelled the way
+   the nav labels it ("AH +0.19%"). The tab used to divide the print by the prior close on its own, which after hours
+   showed the AH move as the day's (+0.19% beside the nav's −1.77%). */
+const TabPrice = memo(({ ticker }: { ticker: string }) => {
+  const q = useNavQuote(ticker);
+  if (q.priceText === '—') return null;
+  const tag = q.priceWord ? extTag(q.priceWord) : null;
+  const extShort = q.extText ? q.extText.replace('after hours ', 'AH ').replace('pre-market ', 'PM ').replace('overnight ', 'ON ') : null;
+  const priceTitle = `Last trade${q.priceWord ? `, ${q.priceWord}` : ''}${q.asOf ? ` · ${asOfText(q.asOf)}` : ''}${q.regClose != null ? ` · regular close ${q.regClose.toFixed(2)}` : ''}`;
+  const changeTitle = `${q.dayWhen ? `${q.dayWhen}’s regular-session change` : 'The day’s change'} (the regular close, or the live price in the session, against the regular close before it)`;
+  return (
+    <>
+      <span className={`text-t11 tnum ${q.live ? 'text-textPrimary' : 'text-textSecondary'}`} title={priceTitle} data-ticker-tab-price>
+        {q.priceText.replace(/^\$/, '')}
+        {tag && <sup className="ml-0.5 text-t8 text-textMuted">{tag}</sup>}
+      </span>
+      {q.change != null && (
+        <span className="text-t105 tnum" style={{ color: changeInk(q.change) }} title={changeTitle} data-ticker-tab-change>
+          {q.changeText}
+        </span>
+      )}
+      {extShort && (
+        <span className="text-t9 tnum text-textMuted" title={`${q.extText} since the regular close`} data-ticker-tab-ext>
+          {extShort}
+        </span>
+      )}
+    </>
+  );
+});
+TabPrice.displayName = 'TabPrice';
 
 const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compact = false, max = TAB_MAX }: TickerTabStripProps) => {
   const [open, setOpen] = useState(false);
@@ -70,14 +102,10 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
   }, [open]);
 
   const full = tabs.length >= max;
-  /* each tab's price is ThetaData's print, read with the other panes' in one call */
-  usePrintRev();
   const tabKey = tabs.join(',');
   useEffect(() => {
     /* the exposure book of every tab is warmed, so a switch draws at once */
     for (const t of tabKey.split(',').filter(Boolean)) ensureBook(t, 'board');
-    const offs = tabKey.split(',').filter(Boolean).map(t => wantPrint(t));
-    return () => offs.forEach(off => off());
   }, [tabKey]);
 
   const menu =
@@ -115,9 +143,6 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
       )}
       {tabs.map(t => {
         const on = t === active;
-        const print = peekPrint(t);
-        const price = print?.price ?? null;
-        const change = print && print.prev > 0 ? (print.price / print.prev - 1) * 100 : null;
         return (
           <span
             key={t}
@@ -132,19 +157,7 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
             <button type="button" onClick={() => onPick(t)} title={on ? `${symbolWithName(t)} — on the tape` : `Show ${symbolWithName(t)} on this pane`} className="pl-2.5 pr-1.5 inline-flex items-center gap-2 min-w-0">
               <CompanyLogo ticker={t} size={14} />
               <span className="text-t11 font-bold tracking-wide">{t}</span>
-              {!compact && price != null && (
-                <>
-                  <span className="text-t11 tnum text-textPrimary" title={print?.kept ? `Live print, as of ${etClock(print.readAt)}` : 'Live print'}>
-                    {fmtPrice(price)}
-                  </span>
-                  {change != null && (
-                    <span className={`text-t105 tnum ${change >= 0 ? 'text-bull' : 'text-bear'}`} title="From the prior regular close">
-                      {change >= 0 ? '+' : '−'}
-                      {Math.abs(change).toFixed(2)}%
-                    </span>
-                  )}
-                </>
-              )}
+              {!compact && <TabPrice ticker={t} />}
             </button>
             <button
               type="button"
