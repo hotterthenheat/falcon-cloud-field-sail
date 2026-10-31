@@ -39,7 +39,7 @@ const ContractDrill = ({ contract, quote: q, day: d }: { contract: ContractId; q
       <div className="grid grid-cols-3 gap-x-4 gap-y-2.5">
         <Stat label="Delta" term="Delta" value={greek(q.delta, q.iv > 0)} />
         <Stat label="Gamma" term="Gamma" value={greek(q.gamma, q.iv > 0)} />
-        <Stat label="Theta / day" term="Theta" value={greek(q.theta, q.iv > 0)} />
+        <Stat label="Theta / session" term="Theta" value={greek(q.theta, q.iv > 0)} />
         <Stat label="Vega" term="Vega" value={greek(q.vega, q.iv > 0)} />
         <Stat label="Rho" term="Rho" value={greek(q.rho, q.iv > 0)} />
       </div>

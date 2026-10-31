@@ -270,8 +270,8 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
           <span className="text-textPrimary">{contractWords(pos.contract)}</span>
           <span className="text-textMuted">sold @ {pos.avg.toFixed(2)}</span>
           <span className={`font-semibold ${dirInk(pos.pnl)}`}>{usdSigned(pos.pnl)}</span>
-          <span className="ml-auto text-bull" title="What its decay pays a day, all else equal — a short gains what a long loses">
-            +{usd(pos.decayDay)} a day
+          <span className="ml-auto text-bull" title="What its decay pays over one trading session, all else equal — a short gains what a long loses">
+            +{usd(pos.decayDay)} a session
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -315,8 +315,8 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
           <span className="text-textPrimary">{contractWords(pos.contract)}</span>
           <span className="text-textMuted">@ {pos.avg.toFixed(2)}</span>
           <span className={`font-semibold ${dirInk(pos.pnl)}`}>{usdSigned(pos.pnl)}</span>
-          <span className="ml-auto text-bear" title="What it loses a day, all else equal">
-            −{usd(pos.decayDay)} a day
+          <span className="ml-auto text-bear" title="What it loses over one trading session, all else equal">
+            −{usd(pos.decayDay)} a session
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

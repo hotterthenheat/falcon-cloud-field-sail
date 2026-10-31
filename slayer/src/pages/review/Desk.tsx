@@ -15,13 +15,14 @@ import DeskShell, { DeskMissing, card, head, headWord, smallDoor, type DeskName 
 import { ChainOrder } from '../../components/paper/OptionsChain';
 import { BellCard, ClosingLine, type BellFacts } from '../../components/review/BellNotice';
 import type { ChartBracket, ChartEntry, ChartPosition } from '../../components/review/PositionLayer';
-import { dirInk, momentWords, pct, rWords, usd, usdSigned } from '../../components/review/words';
-import { accountOf, bankedOf, dayStateOf, dayStopOf, feesOf, floorOf, ladderRoom, ladderTake, nameGoesUp, namesOf, pendingSettlement, refusal, spokenFor, spokenWords, statsOf, type Account, type Order, type Trade } from '../../data/review/engine';
+import { dirInk, momentWords, pct, ratioWords, RATIO_TITLE, rWords, scratchWords, SCRATCH_TITLE, usd, usdSigned } from '../../components/review/words';
+import { accountOf, bankedOf, dayStateOf, dayStopOf, feesOf, floorOf, ladderRoom, ladderTake, nameGoesUp, namesOf, pendingSettlement, refusal, spokenFor, spokenWords, type Account, type Order, type Trade } from '../../data/review/engine';
 import PnlBadges from '../../components/review/PnlBadges';
 import StopOrders, { type Tif } from '../../components/review/StopOrders';
 import { chainAt, contractDay, contractKey, contractWords, dteAt, expiriesAt, longLeg, quoteAt, quoteWith, settleStyleOf, spotForAsk, spotForBid, type ContractId, type Right } from '../../data/review/quotes';
 import { amendOrder, attachBracket, breakevenOrder, cancelBracket, cancelOrder, closePosition, legsHeld, moveClock, placeOrder, rebaseOrder, renameSession, setRollOver, trailOrder, useMoving, useSession } from '../../data/review/store';
 import { DAY_MIN, LAST_MIN, LISTING_DTE, underOf, barsNeed, barsUntil, chainNeed, clockWords, dayBars, dayWords, ensureBars, ensureBarsRange, ensureChainDay, ensureLaterListing, ensureLeg, ensureListing, ensureTrades, historyOffline, historyRev, laterAsked, laterListingNeed, listingNeed, nextDay, prevDay, spotAt, subscribeHistory } from '../../data/review/history';
+import { useSessionStats } from '../../data/review/sessionStats';
 import { companyName } from '../../data/tickers';
 import ThetaLine from '../../components/review/ThetaLine';
 import { EmptyBox, LoadingBox } from '../../components/ui/states';
@@ -252,7 +253,7 @@ const Desk = () => {
       { key: 'exp', header: 'Expires', render: p => (session && p.contract.expiry < session.cursor.day ? <span className="text-warn" title={`Expired ${dayWords(p.contract.expiry)} — it settles on ${underOf(p.contract.ticker)}’s close that day, which the data has not answered yet`}>settling…</span> : <span className="text-textSecondary">{dayWords(p.contract.expiry)} · {session ? dteAt(session.cursor.day, p.contract.expiry) : 0}d</span>) },
       { key: 'avg', header: 'Paid', align: 'right', render: p => <span className="text-textSecondary">{p.avg.toFixed(2)}</span> },
       { key: 'mark', header: 'Bid · ask', align: 'right', render: p => (p.quote.dead ? <span className="text-textMuted" title={Number.isFinite(p.mark) ? `No two-sided quote this minute — marked at ${p.mark.toFixed(2)}, the mid it last had${p.staleFrom != null ? ` (${clockWords(p.staleFrom)} ET)` : ''}` : 'No two-sided quote yet today — not marked'}>{Number.isFinite(p.mark) ? `mid ${p.mark.toFixed(2)}${p.staleFrom != null ? ` · ${clockWords(p.staleFrom)}` : ''}` : '— · —'}</span> : <span className="text-textPrimary">{`${p.quote.bid.toFixed(2)} · ${p.quote.ask.toFixed(2)}`}</span>) },
-      { key: 'theta', header: 'Decay a day', align: 'right', render: p => <span className="text-textSecondary">{p.quote.iv > 0 ? usd(Math.abs(p.quote.theta) * 100 * p.qty) : '—'}</span> },
+      { key: 'theta', header: 'Decay a session', align: 'right', render: p => <span className="text-textSecondary">{p.quote.iv > 0 ? usd(Math.abs(p.quote.theta) * 100 * p.qty) : '—'}</span> },
       { key: 'pnl', header: 'Up or down', align: 'right', render: p => (Number.isFinite(p.pnl) ? <span className={`font-semibold ${dirInk(p.pnl)}`}>{usdSigned(p.pnl)} <span className="text-t10 font-normal opacity-80">{rWords(p.r)}</span></span> : <span className="text-textMuted" title="No quote stood this minute">—</span>) },
       {
         key: 'close',
@@ -304,11 +305,14 @@ const Desk = () => {
     []
   );
 
-  if (!session || !cursor || !account) return <DeskMissing />;
+  /* the report's figures, off the account's own equity (data/review/engine sessionStatsOf) — once per fill or clock
+     move, and again as the recorded quotes load */
+  const { stats, reading: statsReading } = useSessionStats(session);
+
+  if (!session || !cursor || !account || !stats) return <DeskMissing />;
 
   const spotOf = (n: string) => spotAt(n, cursor.day, cursor.minute);
   const spot = spotOf(ticker);
-  const stats = statsOf(account.trades);
   const floor = floorOf(session);
   const tomorrow = nextDay(cursor.day);
   const working = session.orders.filter(o => o.status === 'working');
@@ -550,11 +554,31 @@ const Desk = () => {
         { label: 'Banked, made or lost', testId: 'realized', node: <span className={dirInk(account.realized)} title={`Closed trades ${usdSigned(stats.net)}, and the pieces sold of what is still open — after ${usd(feesOf(session))} of fees. With the open figure it is the account’s whole move.`}>{usdSigned(account.realized)}</span> },
         ...(rulesLine ? [{ label: 'Your rules', testId: 'rules', node: <span className="text-t12 font-medium">{rulesLine}</span> }] : []),
         {
+          label: 'Deepest fall',
+          testId: 'drawdown',
+          node: statsReading ? (
+            <span className="text-textMuted">reading…</span>
+          ) : session.fills.length ? (
+            <span className={stats.maxDrawdown > 0 ? 'text-bear' : 'text-textSecondary'} title="The account's worst fall from a high so far, minute by minute, with its open contracts marked at their mid">
+              {stats.maxDrawdown > 0 ? `−${usd(stats.maxDrawdown)}` : 'none'}
+            </span>
+          ) : (
+            '—'
+          ),
+        },
+        { label: 'Sharpe · Sortino', testId: 'ratios', node: <span title={RATIO_TITLE}>{ratioWords(stats.sharpe)} · {ratioWords(stats.sortino)}</span> },
+        {
           label: 'Closed trades',
           testId: 'trades',
           node: (
             <>
-              {stats.n} {stats.n > 0 && <span className="text-textMuted">· {pct(stats.winRate)} won</span>}
+              {stats.n} {stats.n > stats.scratches && <span className="text-textMuted">· {pct(stats.winRate)} won</span>}
+              {stats.scratches > 0 && (
+                <span className="text-textMuted" title={SCRATCH_TITLE}>
+                  {' '}
+                  · {scratchWords(stats.scratches)}
+                </span>
+              )}
             </>
           ),
         },

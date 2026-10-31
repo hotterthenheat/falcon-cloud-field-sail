@@ -97,12 +97,12 @@ const ChainCard = ({ ticker, title, spot, showName, stamp, right, onRight, expir
           {expiry && <DropdownSelect label="Expiry" value={expiry} options={expiryOptions} onChange={onExpiry} title={expiryTitle} align="end" testId="review-expiry" size="sm" />}
         </span>
       </div>
-      <div className="grid grid-cols-[1.25fr_1fr_1fr_1fr_1fr_1fr] px-4 h-7 items-center border-b border-borderSubtle/70 font-mono text-t9 font-semibold uppercase tracking-widest text-gridHead">
+      <div className="grid grid-cols-[1.2fr_1fr_1fr_0.9fr_1.3fr_0.8fr] px-4 h-7 items-center border-b border-borderSubtle/70 font-mono text-t9 font-semibold uppercase tracking-widest text-gridHead">
         <span className="pl-4">Strike</span>
         <span className="text-right">Bid</span>
         <span className="text-right">Ask</span>
         <span className="text-right">Delta</span>
-        <span className="text-right">Decay/day</span>
+        <span className="text-right tracking-wider" title="Theta: what the contract loses over one trading session, all else equal">Decay/sess</span>
         <span className="text-right" title="Implied volatility — what the price says about how far the name may move">
           IV
         </span>
@@ -133,7 +133,7 @@ const ChainCard = ({ ticker, title, spot, showName, stamp, right, onRight, expir
                 aria-selected={on}
                 aria-expanded={on && drillOpen}
                 onClick={() => onPick(c)}
-                className={`w-full grid grid-cols-[1.25fr_1fr_1fr_1fr_1fr_1fr] px-4 h-[26px] items-center font-mono text-t11 tnum text-left transition-colors ${on ? 'bg-silver/[0.10]' : right === 'C' ? 'hover:bg-bull/[0.08]' : 'hover:bg-bear/[0.08]'}`}
+                className={`w-full grid grid-cols-[1.2fr_1fr_1fr_0.9fr_1.3fr_0.8fr] px-4 h-[26px] items-center font-mono text-t11 tnum text-left transition-colors ${on ? 'bg-silver/[0.10]' : right === 'C' ? 'hover:bg-bull/[0.08]' : 'hover:bg-bear/[0.08]'}`}
                 data-chain-row={r.strike}
               >
                 <span className={`inline-flex items-center gap-1 font-semibold ${on ? 'text-silver' : 'text-textPrimary'}`}>

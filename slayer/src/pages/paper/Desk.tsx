@@ -465,7 +465,7 @@ const PaperDesk = () => {
     { key: 'margin', header: 'Margin', align: 'right', render: r => marginCell(r.p) },
     { key: 'avg', header: 'In at', align: 'right', render: r => <span className="text-textSecondary" title={r.p.dir < 0 ? 'What it was sold at' : 'What was paid'}>{r.p.dir < 0 ? 'sold ' : ''}{r.p.avg.toFixed(2)}</span> },
     { key: 'now', header: 'Bid · ask', align: 'right', render: r => <span className="text-textPrimary">{`${r.p.quote.bid.toFixed(2)} · ${r.p.quote.ask.toFixed(2)}`}</span> },
-    { key: 'carry', header: 'Decay a day', align: 'right', render: r => <span className={r.p.dir < 0 ? 'text-bull' : 'text-textSecondary'} title={r.p.dir < 0 ? 'What its decay pays a day, all else equal — a short gains it' : 'What the contract loses a day, all else equal'}>{r.p.dir < 0 ? '+' : ''}{usd(Math.abs(r.p.quote.theta) * 100 * r.p.qty)}</span> },
+    { key: 'carry', header: 'Decay a session', align: 'right', render: r => <span className={r.p.dir < 0 ? 'text-bull' : 'text-textSecondary'} title={r.p.dir < 0 ? 'What its decay pays over one trading session, all else equal — a short gains it' : 'What the contract loses over one trading session, all else equal'}>{r.p.dir < 0 ? '+' : ''}{usd(Math.abs(r.p.quote.theta) * 100 * r.p.qty)}</span> },
     {
       key: 'close',
       header: '',

@@ -13,14 +13,15 @@ import DropdownSearch from '../../components/ui/DropdownSearch';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import DayCard from '../../components/review/DayCard';
 import type { Column } from '../../components/ui/DataTable';
-import { accountOf, namesOf, statsOf, DEFAULT_FEE, type SessionRules } from '../../data/review/engine';
+import { accountOf, namesOf, sessionStatsOf, DEFAULT_FEE, type SessionRules } from '../../data/review/engine';
 import { createSession, deleteSession, duplicateSession, legsHeld, renameSession, runAgain, useSessions } from '../../data/review/store';
 import type { Session } from '../../data/review/engine';
 import { CASH_INDEX_ROOTS, dayWords, ensureLeg, ensureWindow, historyOffline, historyRev, lastReplayDay, prevDay, replayWindow, subscribeHistory } from '../../data/review/history';
+import { useSessionsStats } from '../../data/review/sessionStats';
 import { ensureListed, optionSymbols, useListedRev } from '../../data/listedNames';
 import ThetaLine from '../../components/review/ThetaLine';
 import { companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
-import { dirInk, momentWords, pct, usd, usdSigned } from '../../components/review/words';
+import { dirInk, momentWords, pct, ratioWords, RATIO_TITLE, scratchWords, SCRATCH_TITLE, usd, usdSigned } from '../../components/review/words';
 
 const SILVER_FILL = 'rgb(var(--silver-fill))';
 /* `short`: the trigger's words — a phone's two-column line of cards has about 170 px a card */
@@ -57,6 +58,12 @@ interface Row {
   banked: number;
   trades: number;
   winRate: number;
+  /** Closed at exactly $0 — out of the win rate */
+  scratches: number;
+  /** The account's worst fall from a high, minute by minute, open contracts marked (sessionStatsOf) */
+  drawdown: number;
+  sharpe: number | null;
+  sortino: number | null;
   open: number;
 }
 
@@ -117,14 +124,15 @@ const Sessions = () => {
   });
   const startDay = win.first && picked < win.first ? win.first : picked > win.last ? win.last : picked;
 
+  const figures = useSessionsStats(sessions);
   const rows = useMemo<Row[]>(
     () =>
       sessions.map(s => {
         const a = accountOf(s);
-        const st = statsOf(a.trades);
-        return { s, equity: a.equity, net: a.equity - s.startCash, banked: a.realized, trades: st.n, winRate: st.winRate, open: a.positions.length };
+        const st = figures.stats.get(s.id) ?? sessionStatsOf(s);
+        return { s, equity: a.equity, net: a.equity - s.startCash, banked: a.realized, trades: st.n, winRate: st.winRate, scratches: st.scratches, drawdown: s.fills.length && !figures.reading.has(s.id) ? st.maxDrawdown : NaN, sharpe: st.sharpe, sortino: st.sortino, open: a.positions.length };
       }),
-    [sessions, hrev] // eslint-disable-line react-hooks/exhaustive-deps
+    [sessions, hrev, figures] // eslint-disable-line react-hooks/exhaustive-deps
   );
   /* every session's move where its open contracts are marked, its banked figure where they are not yet */
   const totals = useMemo(() => ({ trades: rows.reduce((a, r) => a + r.trades, 0), net: rows.reduce((a, r) => a + (Number.isFinite(r.net) ? r.net : r.banked), 0), unmarked: rows.some(r => !Number.isFinite(r.net)) }), [rows]);
@@ -226,7 +234,36 @@ const Sessions = () => {
       { key: 'equity', header: 'Worth now', align: 'right', sortValue: r => r.equity, render: r => (Number.isFinite(r.equity) ? <span className="text-textPrimary">{usd(r.equity)}</span> : <span className="text-textMuted" title="Its open contracts are marked once the desk loads their day">—</span>) },
       { key: 'net', header: 'P&L', align: 'right', sortValue: r => (Number.isFinite(r.net) ? r.net : r.banked), render: r => (Number.isFinite(r.net) ? <span className={`font-semibold ${dirInk(r.net)}`}>{usdSigned(r.net)}</span> : <span className={dirInk(r.banked)} title="Banked so far — its open contracts are marked once their quotes load">{usdSigned(r.banked)} <span className="text-textMuted text-t10">banked</span></span>) },
       { key: 'trades', header: 'Trades', align: 'right', sortValue: r => r.trades, render: r => <span className="text-textPrimary">{r.trades}</span> },
-      { key: 'win', header: 'Won', align: 'right', sortValue: r => r.winRate, render: r => (r.trades ? <span className="text-textPrimary">{pct(r.winRate)}</span> : <span className="text-textMuted">—</span>) },
+      {
+        key: 'win',
+        header: 'Won',
+        align: 'right',
+        sortValue: r => r.winRate,
+        render: r =>
+          r.trades > r.scratches ? (
+            <span className="text-textPrimary" title={r.scratches ? `${scratchWords(r.scratches)} left out — ${SCRATCH_TITLE.toLowerCase()}` : undefined}>
+              {pct(r.winRate)}
+              {r.scratches > 0 && <span className="text-textMuted text-t10"> · {scratchWords(r.scratches)}</span>}
+            </span>
+          ) : (
+            <span className="text-textMuted">{r.scratches ? scratchWords(r.scratches) : '—'}</span>
+          ),
+      },
+      {
+        key: 'dd',
+        header: 'Deepest fall',
+        align: 'right',
+        sortValue: r => (Number.isFinite(r.drawdown) ? r.drawdown : -1),
+        render: r =>
+          Number.isFinite(r.drawdown) ? (
+            <span className={r.drawdown > 0 ? 'text-bear' : 'text-textSecondary'} title="The account's worst fall from a high, minute by minute, open contracts marked">
+              {r.drawdown > 0 ? `−${usd(r.drawdown)}` : 'none'}
+            </span>
+          ) : (
+            <span className="text-textMuted">—</span>
+          ),
+      },
+      { key: 'sharpe', header: 'Sharpe', align: 'right', sortValue: r => r.sharpe ?? -Infinity, render: r => <span className={r.sharpe == null ? 'text-textMuted' : 'text-textSecondary'} title={`${RATIO_TITLE} Sortino ${ratioWords(r.sortino)}.`}>{ratioWords(r.sharpe)}</span> },
       { key: 'open', header: 'Open', align: 'right', sortValue: r => r.open, render: r => (r.open ? <span className="text-textPrimary">{r.open}</span> : <span className="text-textMuted">—</span>) },
       { key: 'doors', header: '', align: 'right', render: doors },
     ],
@@ -245,7 +282,7 @@ const Sessions = () => {
         <span className={`ml-auto shrink-0 font-mono tnum font-semibold ${Number.isFinite(r.net) ? dirInk(r.net) : dirInk(r.banked)}`}>{usdSigned(Number.isFinite(r.net) ? r.net : r.banked)}</span>
       </div>
       <div className="flex items-center gap-2 min-w-0 font-mono text-t10 tnum text-textSecondary">
-        <span className="truncate">{momentWords(r.s.cursor)} · {r.trades} {r.trades === 1 ? 'trade' : 'trades'}{r.trades ? ` · ${pct(r.winRate)} won` : ''}{r.open ? ` · ${r.open} open` : ''}</span>
+        <span className="truncate">{momentWords(r.s.cursor)} · {r.trades} {r.trades === 1 ? 'trade' : 'trades'}{r.trades > r.scratches ? ` · ${pct(r.winRate)} won` : ''}{r.drawdown > 0 ? ` · fell −${usd(r.drawdown, 0)}` : ''}{r.open ? ` · ${r.open} open` : ''}</span>
         <span className="ml-auto shrink-0">{doors(r)}</span>
       </div>
     </div>
