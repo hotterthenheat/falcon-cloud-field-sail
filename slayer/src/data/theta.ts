@@ -3,6 +3,7 @@
 
 import { SIM_DESK } from './deskMode';
 import { feedHeaders } from './feedGate';
+import { BoundedMap } from './boundedMap';
 
 let inflight = 0;
 const next: (() => void)[] = [];
@@ -108,7 +109,31 @@ export const thetaAllowedHere = (path: string): boolean => {
 export const optionPath = (path: string): string =>
   path.startsWith('/option/') ? path.replace(/([?&](?:symbol|root)=)([A-Z]{1,4})(?:\.|%2E)([A-Z])(?=&|$)/gi, '$1$2$3') : path;
 
-export async function thetaCall(path: string, jump = false): Promise<{ status: number; data: unknown; error: string | null }> {
+type ThetaAnswer = { status: number; data: unknown; error: string | null };
+
+/* A name's daily rows are one read a page: the price store (prior closes) and the tape store (the print's prior close)
+   both ask the same address within a second of each other. One read is in flight at a time, and its good answer serves
+   that address for a minute (the price store's own after-the-bell re-ask is a minute apart too). */
+const DAILY_ROWS = /^\/(stock|index)\/history\/eod\?/;
+const DAILY_SHARE_MS = 60_000;
+const dailyShared = new BoundedMap<string, { at: number; answer: Promise<ThetaAnswer> }>(200);
+
+export function thetaCall(path: string, jump = false): Promise<ThetaAnswer> {
+  if (!DAILY_ROWS.test(path)) return thetaRead(path, jump);
+  const hit = dailyShared.get(path);
+  if (hit && (hit.at === 0 || Date.now() - hit.at < DAILY_SHARE_MS)) return hit.answer;
+  const slot = { at: 0, answer: thetaRead(path, jump) };
+  dailyShared.set(path, slot);
+  void slot.answer.then(a => {
+    /* a good answer is kept for the minute; a failed one is not kept at all, so the next ask reads again */
+    if (a.error) {
+      if (dailyShared.get(path) === slot) dailyShared.delete(path);
+    } else slot.at = Date.now();
+  });
+  return slot.answer;
+}
+
+async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
   path = optionPath(path);
   if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
   if (!thetaAllowedHere(path)) return { status: 0, data: null, error: 'uw_only' };
