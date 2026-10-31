@@ -311,6 +311,14 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   check(`no re-pricing, no rungs (${flat.rungs.length}): first order would read ${M(firstOrder101)} to 101 against ${M(integral(101))}`, flat.rungs.length === 0 && Math.abs(firstOrder101 / integral(101) - 1) > 0.5);
 }
 
+/* 13 — the surface's columns count trading sessions, not calendar days (it once put dte in `sessions`) */
+{
+  const { sessionsTo } = await import('../src/data/exposureSurface');
+  const fri = Date.parse('2026-10-30T18:00:00Z');
+  const got = [sessionsTo('2026-10-30', fri), sessionsTo('2026-11-02', fri), sessionsTo('2026-11-06', fri), sessionsTo('2026-11-27', Date.parse('2026-11-25T15:00:00Z'))];
+  check(`sessions to expiry from Fri 10/30: same day ${got[0]}, Mon ${got[1]} (3 calendar days), next Fri ${got[2]}; Wed 11/25 → Fri 11/27 over Thanksgiving ${got[3]}`, JSON.stringify(got) === JSON.stringify([0, 1, 5, 1]));
+}
+
 if (fail) {
   console.log(`\n${fail} failed`);
   process.exit(1);
