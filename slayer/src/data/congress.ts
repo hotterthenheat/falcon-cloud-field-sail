@@ -68,7 +68,9 @@ export function summariseCongress(trades: CongressTrade[], windowDays: number): 
     if (t.late) lateFilings += 1;
   }
   const lags = trades.map(t => t.lagDays).sort((a, b) => a - b);
-  const medianLag = lags.length === 0 ? 0 : lags[Math.floor(lags.length / 2)];
+  /* the true median: the middle lag, or the mean of the two middle ones on an even count (never the upper one) */
+  const mid = Math.floor(lags.length / 2);
+  const medianLag = lags.length === 0 ? 0 : lags.length % 2 ? lags[mid] : (lags[mid - 1] + lags[mid]) / 2;
   return { trades, totalLow, totalHigh, unknownAmounts, purchases, sales, lateFilings, medianLag, windowDays };
 }
 

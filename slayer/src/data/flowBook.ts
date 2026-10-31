@@ -427,21 +427,23 @@ export type MoneynessKey = 'all' | 'itm' | 'otm' | 'atm';
 
 export const MONEYNESS: { key: MoneynessKey; label: string; hint: string }[] = [
   { key: 'all', label: 'All strikes', hint: 'Every strike in the cut' },
-  { key: 'itm', label: 'ITM', hint: 'In the money — intrinsic value now' },
-  { key: 'otm', label: 'OTM', hint: 'Out of the money — all time value' },
+  { key: 'itm', label: 'ITM', hint: 'In the money past 1% of the spot — intrinsic value now' },
+  { key: 'otm', label: 'OTM', hint: 'Out of the money past 1% of the spot — all time value' },
   { key: 'atm', label: 'ATM', hint: 'Within 1% of the spot' },
 ];
+/** The at-the-money band, % of the spot either way: inside it a strike is ATM and neither ITM nor OTM */
+export const ATM_BAND_PCT = 1;
 
 /* otmPct is the strike's distance past the stock, positive out of the money for calls and puts; a NaN distance is
-   neither in nor out. */
-const isInTheMoney = (r: Pick<BookContract, 'otmPct'>): boolean => Number.isFinite(r.otmPct) && r.otmPct < 0;
+   neither in nor out. The three bands do not overlap: ATM within ATM_BAND_PCT either way, ITM and OTM past it (a 0.5%
+   OTM strike was both OTM and ATM). */
 
 /** A contract's or a print's place against the stock — both carry the same two fields */
 export function moneynessFilter(r: Pick<BookContract, 'otmPct' | 'right'>, m: MoneynessKey): boolean {
   if (m === 'all') return true;
   if (!Number.isFinite(r.otmPct)) return false;
-  if (m === 'atm') return Math.abs(r.otmPct) <= 1;
-  return m === 'itm' ? isInTheMoney(r) : !isInTheMoney(r);
+  if (m === 'atm') return Math.abs(r.otmPct) <= ATM_BAND_PCT;
+  return m === 'itm' ? r.otmPct < -ATM_BAND_PCT : r.otmPct > ATM_BAND_PCT;
 }
 
 export type SpreadKind = 'vertical' | 'diagonal' | 'condor' | 'butterfly' | 'straddle' | 'strangle' | 'calendar' | 'ratio' | 'synthetic' | 'riskReversal' | 'custom';
@@ -698,11 +700,13 @@ export function bookFacts(rows: BookContract[]): { prem: number; callPct: number
   return { prem, callPct: Math.round((callPrem / Math.max(1, prem)) * 100), fresh, names: names.size, apartPrem, apart, bets: rows.length - apart };
 }
 
-/** The net-flow board's two ends summed: the bullish names' net, the bearish names' net, and the counts */
-export function boardSums(leaders: { ticker: string; net: number }[]): { calls: number; puts: number; gross: number; bullish: number; bearish: number } {
+/** The net-flow board's two ends summed: the bullish names' net, the bearish names' net, and the counts — a name at
+    exactly zero net is neither */
+export function boardSums(leaders: { ticker: string; net: number }[]): { calls: number; puts: number; gross: number; bullish: number; bearish: number; neutral: number } {
   const calls = leaders.reduce((a, l) => a + (l.net > 0 ? l.net : 0), 0);
   const puts = leaders.reduce((a, l) => a + (l.net < 0 ? l.net : 0), 0);
   const gross = leaders.reduce((a, l) => a + Math.abs(l.net), 0) || 1;
   const bullish = leaders.filter(l => l.net > 0).length;
-  return { calls, puts, gross, bullish, bearish: leaders.length - bullish };
+  const bearish = leaders.filter(l => l.net < 0).length;
+  return { calls, puts, gross, bullish, bearish, neutral: leaders.length - bullish - bearish };
 }

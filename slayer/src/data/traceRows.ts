@@ -544,7 +544,8 @@ export function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
     sweep: row.has_sweep === true,
     legs: row.has_multileg === true && row.has_singleleg !== true ? 2 : 1,
     trades: num(row.trade_count) || undefined,
-    ratioBidPct: whole > 0 ? Math.round((bidPrem / whole) * 100) : NaN,
+    /* the bid's share of the sided money (ask + bid), as a print's ratioBidPct is of its sided contracts */
+    ratioBidPct: sided > 0 ? Math.round((bidPrem / sided) * 100) : NaN,
     alertSides: { ask: askPrem, bid: bidPrem, other: Math.max(0, total - sided) },
     alertRule: row.alert_rule ? String(row.alert_rule) : undefined,
     /* the alert's filing instant — the route's older_than cursor (the endless lists) */

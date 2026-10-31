@@ -202,7 +202,8 @@ function flowsFrom(rows: Record<string, unknown>[], spot: number, session: strin
       ask: num(row.ask),
       fillPos: side === 'ASK' ? 1 : side === 'BID' ? 0 : 0.5,
       side,
-      ratioBidPct: sides.whole > 0 ? (100 * bid) / sides.whole : 0,
+      /* the bid's share of the sided money (ask + bid), Trace's ratioBidPct */
+      ratioBidPct: ask + bid > 0 ? (100 * bid) / (ask + bid) : NaN,
       alertSides: { ask, bid, other: sides.other },
       size: num(row.total_size),
       premium: prem,

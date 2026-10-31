@@ -290,6 +290,29 @@ const { buildCatches } = await import('../../src/data/flowBook');
   const putsOnly = summarizeTape(spy.prints.filter(p => p.right === 'P' && !p.extended));
   expectEqual('P/C with no calls: no ratio', Number.isNaN(putsOnly.pcRatio), true);
 }
+{
+  /* the day's big alerts walked to the day's start before the largest are picked: the 14 are the whole day */
+  expectEqual("$5M+ alerts: the day's whole list, not the newest page", (alerts as { complete?: boolean }).complete, true);
+  /* a name at exactly zero net is neither bullish nor bearish (it counted bearish) */
+  const bs = boardSums([{ ticker: 'A', net: 5 }, { ticker: 'B', net: 0 }, { ticker: 'C', net: -3 }]);
+  expectEqual('board of +5, 0, −3: bullish, bearish, neutral', [bs.bullish, bs.bearish, bs.neutral], [1, 1, 1]);
+  /* an alert's bid share is of its sided money, as a print's is of its sided contracts: $600K ask, $200K bid, $200K
+     other is 25% (it read 20% of the whole) */
+  const { alertToPrint } = await import('../../src/data/traceRows');
+  const al = alertToPrint({ id: 'al-1', ticker: 'ZZZ', type: 'call', strike: '10', expiry: '2027-12-17', total_ask_side_prem: '600000', total_bid_side_prem: '200000', total_premium: '1000000', total_size: 100, price: '1.05', bid: '1.00', ask: '1.10', start_time: Date.parse('2026-10-28T15:00:00Z'), created_at: '2026-10-28T15:00:05Z' });
+  expectEqual('alert bid share of the sided premium', al.ratioBidPct, 25);
+}
+{
+  /* insiders: the buyer cluster counts the buyers whose buys count — a planned buy and a fund's are not chosen ones */
+  const { summariseFlow } = await import('../../src/data/insiders');
+  const tr = (person: string, plan: string, entity = false) => ({ code: 'P', kind: 'BUY', plan, entity, person, value: 100_000, daysAgo: 3 }) as never;
+  const f = summariseFlow('ZZZ', [tr('A', 'discretionary'), tr('B', 'plan'), tr('C', 'discretionary', true)], 30);
+  expectEqual('insider buyer cluster: one chosen buyer of three', [f.buyerCluster, f.openMarketBuys], [1, 100_000]);
+  /* congress: the median of 10, 20, 30, 40 days is 25 (it read the upper middle, 30) */
+  const { summariseCongress } = await import('../../src/data/congress');
+  const cg = summariseCongress([10, 20, 30, 40].map(lagDays => ({ lagDays, bracket: null, type: 'Purchase', late: false }) as never), 365);
+  expectEqual('congress median lag of 10, 20, 30, 40 days', cg.medianLag, 25);
+}
 
 void stockClose;
 done();
