@@ -19,6 +19,7 @@ import type { Session } from '../../data/review/engine';
 import { CASH_INDEX_ROOTS, dayWords, ensureLeg, ensureWindow, historyOffline, historyRev, lastReplayDay, prevDay, replayWindow, subscribeHistory } from '../../data/review/history';
 import { useSessionsStats } from '../../data/review/sessionStats';
 import { ensureListed, optionSymbols, searchRoom, useListedRev } from '../../data/listedNames';
+import { isCashIndex } from '../../data/symbolDirectory';
 import ThetaLine from '../../components/review/ThetaLine';
 import { companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
 import { dirInk, momentWords, pct, ratioWords, RATIO_TITLE, scratchWords, SCRATCH_TITLE, usd, usdSigned } from '../../components/review/words';
@@ -94,7 +95,7 @@ const Sessions = () => {
   /* the directory's ranking — the exact symbol, then symbols that start with it, then company names, most traded first */
   const searchNames = (q: string) => searchRoom('option', q, 120, [], companyName).map(r => r.symbol);
   const nameOptions = useMemo(() => {
-    const roots = [...new Set([...FUNDS, ...optionSymbols()])].filter(t => !INDEX_ROOTS.has(t));
+    const roots = [...new Set([...FUNDS, ...optionSymbols()])].filter(t => !INDEX_ROOTS.has(t) && !isCashIndex(t));
     const company = (t: string) => {
       const named = companyName(t);
       return named.toUpperCase() !== t ? named : undefined;

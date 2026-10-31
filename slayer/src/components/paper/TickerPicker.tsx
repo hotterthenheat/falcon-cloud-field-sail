@@ -6,6 +6,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Search } from 'lucide-react';
 import CompanyLogo from '../ui/CompanyLogo';
 import { noOptionsLine } from '../ui/SymbolRowTag';
+import { isCashIndex } from '../../data/symbolDirectory';
 import { CARD } from '../ui/DropdownSelect';
 import type { PaperIndex } from '../../data/paper/products';
 import { ensureListed, isOptionRoot, optionSymbols, searchRoom, useListedRev } from '../../data/listedNames';
@@ -50,7 +51,9 @@ const TickerPicker = ({ value, onChange, allowed, indexes, indexPrice }: Props) 
     /* the list's company names are asked for only once it is open: a closed picker asks for nothing */
     if (!open) return [];
     const roots = optionSymbols();
-    const skip = new Set(indexes.map(x => x.symbol));
+    /* the desk's own indexes have their group; any other cash index (OEX, DJX) is not a name the desk prices */
+    const own = new Set(indexes.map(x => x.symbol));
+    const skip = { has: (sym: string) => own.has(sym) || isCashIndex(sym) };
     const label = (ticker: string) => {
       const named = companyName(ticker);
       return named;
