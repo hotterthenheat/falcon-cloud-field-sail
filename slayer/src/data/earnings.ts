@@ -134,9 +134,17 @@ export interface EarningsDossier {
   inside: { n: number; of: number } | null;
   /** Past reports whose next-session move was up, of the moves on file */
   up: { n: number; of: number } | null;
-  /** Typical overnight IV deflation after this name reports, % */
+  /** Typical IV crush: the median drop of the name's 30-day implied vol from the close before a report to the close after
+      it, % of the IV before (0 when ivCrushKnown is false) */
   ivCrushPct: number;
-  /** Extrinsic value an ATM option typically loses by next open, % */
+  /** The same drop in vol points */
+  ivCrushPoints?: number;
+  /** The IV history covered at least one past report on both sides */
+  ivCrushKnown?: boolean;
+  /** Median share of a long straddle's premium lost by the next session on the quiet prints, % — the option's loss, not
+      an IV drop (crushKnown) */
+  straddleLossPct?: number;
+  /** Extrinsic value an ATM option typically loses by next open, % — the straddle loss */
   premiumLostPct: number;
   /** The 3 busiest calls on the name into the print, by volume */
   activeCalls: ActiveContract[];

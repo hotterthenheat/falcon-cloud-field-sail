@@ -51,6 +51,10 @@ const get = async <T>(path: string): Promise<T> => {
 };
 const round = (v: number, d = 4) => Number(v.toFixed(d));
 
+/* recomputed from the raw iv-rank rows: drops of 3.0%, 8.5%, 14.7%, 18.9% (1.6, 4.2, 6.6, 7.8 points) — medians 11.6% and 5.4;
+   the straddle loss is the long_straddle_1d median, 72% */
+const NVDA_CRUSH = [true, 12, 5.4, 72, 72];
+
 const READ: Record<string, { pillars: number[]; composite: number; grade: string; rate: number }> = {
   NVDA: { pillars: [28, 87, 46], composite: 51, grade: 'caution', rate: 85 },
   GME: { pillars: [11, 46, 50], composite: 34, grade: 'poor', rate: 8 },
@@ -186,6 +190,33 @@ for (const t of ['NVDA', 'GME']) {
 }
 
 /* ---- 7. known numbers: one rule per figure, against hand-worked rows ------------------------------------------ */
+{
+  /* IV crush and the straddle's loss are two figures. NVDA's year of 30-day IV around its four after-close reports in
+     it (Nov 19, Feb 25, May 20, Aug 26): the close-of-report-day IV against the next day's */
+  const { ivCrushOf } = await import('../../src/data/earningsFeed');
+  const rows = await get<Record<string, unknown>[]>('/earnings/NVDA');
+  const ivRows = await get<Record<string, unknown>[]>('/stock/NVDA/iv-rank?timespan=1y');
+  const ivDays = ivRows.map(r => ({ date: String(r.date).slice(0, 10), iv: Number(r.volatility) })).filter(d => d.iv > 0).sort((a, b) => a.date.localeCompare(b.date));
+  const d = dossierFromRows('NVDA', rows as never, ivDays)!;
+  say('NVDA.crush', { iv: ivCrushOf(rows as never, ivDays), loss: d.straddleLossPct, lost: d.premiumLostPct });
+  expectEqual('NVDA IV crush (median of the reports\' IV drop) and straddle loss: apart', [d.ivCrushKnown, d.ivCrushPct, d.ivCrushPoints, d.straddleLossPct, d.premiumLostPct], NVDA_CRUSH);
+  /* by hand: an after-close report on Aug 26 (IV 62% that close, 40% the next) and a before-open one on May 20 (50% the
+     close before, 40% that day's close): 35.5% and 20% — the median 27.7%, 28; in points 22 and 10, 16 */
+  const hand = ivCrushOf(
+    [
+      { report_date: '2026-08-26', report_time: 'postmarket', actual_eps: '1' },
+      { report_date: '2026-05-20', report_time: 'premarket', actual_eps: '1' },
+    ] as never,
+    [
+      { date: '2026-05-19', iv: 0.5 },
+      { date: '2026-05-20', iv: 0.4 },
+      { date: '2026-08-25', iv: 0.6 },
+      { date: '2026-08-26', iv: 0.62 },
+      { date: '2026-08-27', iv: 0.4 },
+    ]
+  );
+  expectEqual('IV crush by hand: median of 35.5% and 20%, in % and points', hand, { pct: 28, points: 16, n: 2 });
+}
 {
   const { contractsFrom } = await import('../../src/data/earningsFeed');
   const { busiestOf, flowSidesOf } = await import('../../src/data/stockOverview');
