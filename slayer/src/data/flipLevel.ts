@@ -20,6 +20,17 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 export const FLIP_RULE =
   "The flip is the price where the book's net gamma, re-priced at that price, crosses zero within ±10%. Each contract is re-priced from the price and minute the vendor priced it at, to 4:00 ET on its expiry, at its own implied vol — or its expiry's smile, or the at-the-money vol for small expiries; contracts too far from price for their printed gamma to matter are priced from their open interest. When the profile crosses more than once in the session, the flip stays on its crossing until that crossing is gone, and says so; outside the session it is the crossing nearest price.";
 
+/** A final read with no flip, in words that are true of the book: the re-priced net never crosses zero within ±10%, so it
+    keeps the sign it has at spot across that whole range. `netHouse` is the net at spot in the HOUSE sign (negative =
+    dealers long gamma), as FlipRead.netAtSpot and ExposureLevels.net carry it. Only for a final read — a provisional one
+    is "…", never "none". */
+export function noFlipWords(netHouse: number | null | undefined): string {
+  if (netHouse == null || !Number.isFinite(netHouse) || netHouse === 0) return 'none — no flip within ±10%';
+  return netHouse > 0
+    ? 'none — net gamma stays negative within ±10% (dealers short gamma throughout)'
+    : 'none — net gamma stays positive within ±10% (dealers long gamma throughout)';
+}
+
 /* ---- which dates a chain is ---------------------------------------------------------------------------------- */
 
 /** Which expiry dates a chain is: one date's own strikes, a registered sum of dates, or the whole live book */

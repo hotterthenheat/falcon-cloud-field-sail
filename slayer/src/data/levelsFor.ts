@@ -37,6 +37,10 @@ export interface TickerLevels {
   regime: 'LONG' | 'SHORT' | null;
   /** False while some of the scope's expiries are still loading — the figures are then provisional */
   complete: boolean;
+  /** The walls and the supreme are read off the scope's own contracts — false while another book stands in for them
+      ("Today" before its date's chain is in reads the whole book). A page draws no wall while this is false. `complete`
+      also waits on the flip's pricing. */
+  wallsFinal: boolean;
   /** Another crossing of the profile inside ±10% when it crosses more than once — the flip keeps its own (FLIP_RULE) */
   flipSecond: number | null;
   /** Today's moves of a level from one strike (or flip price) to another, newest last: "call wall moved 765 → 762 at 13:08" */
@@ -117,7 +121,10 @@ function levelsOf(t: string, scope: LevelsScope, snap: NonNullable<ReturnType<ty
   const lv = profile.levels;
   const hasCall = book.chain.some(n => n.callGex);
   const hasPut = book.chain.some(n => n.putGex);
-  const complete = flip.complete && !scopeDatesPending(t, scope) && (scope === 'ALL' || levelsDate(snap, scope) != null);
+  /* the walls and the supreme are final once the scope's own contracts are in: "Today" before its date's chain lands reads
+     the whole book (a different book, whose walls are not the day's), and All expiries before every date has landed */
+  const wallsFinal = scope === 'ALL' ? !scopeDatesPending(t, 'ALL') : levelsDate(snap, scope) != null;
+  const complete = flip.complete && wallsFinal;
   const date = levelsDate(snap, scope);
   const moves = trackMoves(`${t}|${scope}|${date ?? 'ALL'}|${nyIsoDate()}`, { callWall: hasCall ? lv.callWall : null, putWall: hasPut ? lv.putWall : null, supreme: lv.supreme, flip: flip.flip, complete }, flip.moved);
   return {
@@ -144,6 +151,7 @@ function levelsOf(t: string, scope: LevelsScope, snap: NonNullable<ReturnType<ty
       return n ? { call: r(n.callGex), put: r(n.putGex), net: r(n.netGex) } : null;
     },
     complete,
+    wallsFinal,
     flipSecond: flip.second ?? null,
     moves,
   };

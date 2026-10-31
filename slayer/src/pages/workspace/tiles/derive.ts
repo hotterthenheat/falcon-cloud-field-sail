@@ -11,6 +11,10 @@ import { sessionBars } from '../../../data/levelview';
 import { readSessionClock } from '../../../data/moc';
 import { buildKeyLevels } from '../../../data/pulse';
 import { bookCandles, bookHistory } from '../../../data/book/levels';
+import { snapshotFor } from '../../../data/book/feed';
+import { levelsFor, type TickerLevels } from '../../../data/levelsFor';
+import { levelsForName } from '../../../data/levelsScope';
+import { LEVELS_WINDOW } from '../../../data/roomLevels';
 import { peekIv } from '../../../data/book/move';
 import type { ExposureProfileData, KeyLevelRow, KeyLevels } from '../../../types/gex';
 import type { MarketSnapshot } from '../../../types/market';
@@ -40,20 +44,53 @@ const ivOf = (ticker: string): number => {
   return iv;
 };
 
-/** Today's book, fifteen strikes each side — the agenda */
-const profile15 = once<ExposureProfileData>(s => buildExposureProfile(s, '0DTE', 15));
-/** …and thirty — the walls, the agenda, the chain's read */
-export const profile30 = once<ExposureProfileData>(s => buildExposureProfile(s, '0DTE', 30));
+/** The scope a name's levels are read in — the one Pinpoint's head sets for it (data/levelsScope.ts), the scope Terrain,
+    Pinpoint and Weigher read the same name in. The snapshot itself is materialized in it (data/book/feed.ts snapshotOf). */
+const scopeOf = (s: MarketSnapshot) => levelsForName(s.ticker);
+/** The name's book in its levels scope, fifteen strikes each side — the agenda */
+const profile15 = once<ExposureProfileData>(s => buildExposureProfile(s, scopeOf(s), 15));
+/** …and the levels' own window (roomLevels LEVELS_WINDOW, levelsFor's) — the walls, the agenda, the chain's read */
+export const profile30 = once<ExposureProfileData>(s => buildExposureProfile(s, scopeOf(s), LEVELS_WINDOW));
 /** The whole calendar's book — the Map's */
 export const surface30 = once<ExposureSurface>(s => buildExposureSurface(s, 30, CALENDAR_DTES));
-/** The walls, flip and supreme the chart draws: today's book, thirty strikes each side */
-export const levelsOf = (s: MarketSnapshot | null): KeyLevels => profile30Safe(s)?.levels ?? { spot: s?.spot ?? NaN, callWall: NaN, putWall: NaN, flip: NaN, supreme: NaN };
+
+/** The name's levels — the ONE source every page prints a wall, the supreme or the flip from (data/levelsFor.ts, on the
+    name's own scope). Null off the live book. Read on every render (levelsFor is memoised on the book's own state), never
+    kept per snapshot: a desk context outlives the book landing under it. */
+export const houseOf = (s: MarketSnapshot | null): TickerLevels | null => (s?.liveBook ? levelsFor(s.ticker, scopeOf(s)) : null);
+
+/** A house reading as the chart's levels: the walls and the supreme only once the scope's own contracts are in, the flip
+    only once final — before that each is NaN (nothing drawn), never another book's level standing in */
+export const keyLevelsFrom = (spot: number, house: TickerLevels | null): KeyLevels => {
+  const walls = !!house?.wallsFinal;
+  const n = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? Number.NaN : v);
+  return {
+    spot,
+    callWall: walls ? n(house!.callWall) : Number.NaN,
+    putWall: walls ? n(house!.putWall) : Number.NaN,
+    supreme: walls ? n(house!.supreme) : Number.NaN,
+    flip: house?.complete ? n(house.flip) : Number.NaN,
+  };
+};
+
+/** The walls, flip and supreme the chart draws: the house's on a live book; a replayed or simulated book (no house) reads
+    its own profile, by the same rule */
+export const levelsOf = (s: MarketSnapshot | null): KeyLevels => {
+  if (!s) return { spot: Number.NaN, callWall: Number.NaN, putWall: Number.NaN, flip: Number.NaN, supreme: Number.NaN };
+  if (s.liveBook) return keyLevelsFrom(s.spot, houseOf(s));
+  return profile30Safe(s)?.levels ?? { spot: s.spot, callWall: Number.NaN, putWall: Number.NaN, flip: Number.NaN, supreme: Number.NaN };
+};
 const profile30Safe = (s: MarketSnapshot | null) => (s ? profile30(s) : null);
-export const keyLevelsOf = once<KeyLevelRow[]>(s => {
-  const p = profile30(s);
-  if (!p) throw new Error('no book');
-  return buildKeyLevels(s, p.levels, p.levels.pin ?? s.spot);
-});
+
+/** The key-levels rail's rows off a house reading: the levels' own book sizes each one (the contracts they were read on),
+    the most open interest is that book's too. Null without a book. */
+export function keyLevelsFor(s: MarketSnapshot, house: TickerLevels | null): KeyLevelRow[] | null {
+  const book = (house && s.liveBook ? snapshotFor(s.ticker, house.scope) : null) ?? s;
+  const p = profile30Safe(book);
+  if (!p) return null;
+  const levels = s.liveBook ? keyLevelsFrom(book.spot, house) : p.levels;
+  return buildKeyLevels(book, levels, house && !house.wallsFinal ? Number.NaN : p.levels.pin ?? book.spot);
+}
 
 export const buildingOf = once<Building>(s => {
   const p = profile30(s);

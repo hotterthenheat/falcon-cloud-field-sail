@@ -421,7 +421,10 @@ export function scopeWalls(ticker: string, scope: LevelsScope): { callWall: numb
   if (!entry || entry.status !== 'live' || !entry.all.length) return null;
   const chains = chainsFor(entry);
   const today = chains['0DTE'];
-  const chain = scope === 'ALL' ? chains.ALL ?? liveAll(entry) : today && today.length ? today : chains.ALL ?? liveAll(entry);
+  /* no stand-in: "Today" before its own date's chain is in, or All expiries before every date has landed, has no walls yet
+     (levelsFor's wallsFinal) — the whole book's walls are not the day's */
+  if (scope === 'ALL' ? !datesComplete(entry) : !today?.length) return null;
+  const chain = scope === 'ALL' ? chains.ALL ?? liveAll(entry) : today!;
   return pickLegWalls(chain, n => n.callGex, n => n.putGex);
 }
 

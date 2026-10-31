@@ -14,7 +14,8 @@ export interface WorkspaceCtx {
   snapshot: MarketSnapshot;
   /** Bumped with every sweep of the live book */
   revision: number;
-  /** Today's book, ten strikes each side — the levels every tile reads */
+  /** The name's book in its levels scope (data/levelsScope.ts levelsForName), ten strikes each side. The walls, flip and supreme a
+      tile prints are the house's (tiles/derive.ts houseOf, data/levelsFor.ts), not this profile's — it is the window's figures */
   exposure: ExposureProfileData;
 }
 

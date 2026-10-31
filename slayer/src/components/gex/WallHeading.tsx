@@ -218,8 +218,10 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
                 </text>
 
                 {l.now == null ? (
-                  <text x={x((lo + hi) / 2)} y={y + 3.5} textAnchor="middle" fontSize={9.5} fill={K.note} fontFamily={SANS}>
-                    none — no {l.name === 'Call wall' ? 'call' : 'put'} gamma on this book
+                  /* the level's own words (data/building.ts): "…" while it is read, else why there is none — a flip with
+                     none is the net staying one sign, never "no put gamma" */
+                  <text x={x((lo + hi) / 2)} y={y + 3.5} textAnchor="middle" fontSize={9.5} fill={K.note} fontFamily={SANS} data-heading-none={l.pending ? 'pending' : 'none'}>
+                    {l.words}
                   </text>
                 ) : (
                   <>

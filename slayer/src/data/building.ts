@@ -7,9 +7,9 @@ import { dollarGammaPerContract } from '../core/gammaFlip';
 import { bookToday, isoDate, isTradingDay, nextSession, sessionBefore, today as nyTodayDate, MONTHS as MON } from '../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
 import { recordDay } from './bookWindow';
-import { datesOf, smileOf, yearsTo } from './flipLevel';
+import { datesOf, noFlipWords, smileOf, yearsTo } from './flipLevel';
 import { ownIvDates } from './book/scale';
-import { peekEntry } from './book/store';
+import { datesComplete, peekEntry } from './book/store';
 import type { OiChange } from './book/oiChange';
 import { shownGamma } from '../components/gex/retailSign';
 import { CLOSE_MIN, OPEN_MIN, SESSION_MIN, fmtDollars, fmtStrike, hhmm, type AheadClock } from './ahead';
@@ -74,8 +74,12 @@ export interface WallHeading {
   open: number | null;
   now: number | null;
   close: number | null;
+  /** The read line's words; for a level with no strike they say why — "…" while it is still being read (`pending`),
+      "none — …" for a final reading that has none */
   words: string;
   challenger: Challenger | null;
+  /** The level's contracts or pricing are still landing: nothing is drawn, the row prints "…" */
+  pending?: boolean;
 }
 
 export interface Building {
@@ -373,23 +377,26 @@ export function buildBuilding(
 
   const rows: BuildRow[] = [];
   /* each strike's call and put legs at the open and now — the walls are the most call / put gamma (core/walls.ts) */
-  const legsAt = new Map<number, { openC: number; openP: number; nowC: number; nowP: number }>();
   let maxAbs = 1;
   let maxChange = 1;
-  for (const s of profile.strikes) {
-    const K = s.strike;
+  /* What a strike added since the open (or overnight), each leg in dollars, house sign — one reading for the window's rows
+     and for the whole chain the walls are picked on */
+  const addedAt = (K: number) => {
     const u = unit.get(K) ?? { call: 0, put: 0, net: 0 };
-    const now = u.net;
     const o = openAt.get(K);
     const n = nowAt.get(K) ?? { c: 0, p: 0 };
     const oc = real ? valued!.get(K) : undefined;
-    const isNew = !real && hasOi && !o;
     const dCall = real ? (oc?.dCall ?? 0) : hasOi ? n.c - (o?.c ?? 0) : 0;
     const dPut = real ? (oc?.dPut ?? 0) : hasOi ? n.p - (o?.p ?? 0) : 0;
     /* Dollars in the house sign — call units are negative, so "calls added" is |dCall · unit|. The overnight count is
        valued contract by contract, each at its own gamma (valueOiChange) */
-    const callAddedSigned = real ? (oc?.call ?? 0) : dCall * u.call;
-    const putAddedSigned = real ? (oc?.put ?? 0) : dPut * u.put;
+    return { u, o, oc, dCall, dPut, callAddedSigned: real ? (oc?.call ?? 0) : dCall * u.call, putAddedSigned: real ? (oc?.put ?? 0) : dPut * u.put };
+  };
+  for (const s of profile.strikes) {
+    const K = s.strike;
+    const { u, o, oc, dCall, dPut, callAddedSigned, putAddedSigned } = addedAt(K);
+    const now = u.net;
+    const isNew = !real && hasOi && !o;
     const added = callAddedSigned + putAddedSigned;
     const open = now - added;
     const callAdded = real ? -(oc?.call ?? 0) : dCall * Math.abs(u.call);
@@ -398,7 +405,6 @@ export function buildBuilding(
     const nowNode = chain.find(x => x.strike === K);
     const nowC = nowNode?.callGex ?? 0;
     const nowP = nowNode?.putGex ?? 0;
-    legsAt.set(K, { nowC, nowP, openC: nowC - callAddedSigned, openP: nowP - putAddedSigned });
     /* The leg that makes the level: a call wall by its call gamma, a put wall by its puts, the supreme and every other strike by the net. */
     const kRoles = levelRoles(K, levels);
     /* …and a strike that is both walls by each leg; only the supreme is read by the net. */
@@ -535,14 +541,22 @@ export function buildBuilding(
   const fastestDown = byUp[byUp.length - 1] && byUp[byUp.length - 1].sizeChange < 0 ? byUp[byUp.length - 1] : null;
   const spotAfter = rows.findIndex(r => r.strike < spot);
 
-  /* Where the walls are heading: the levels re-picked on the open's book and on the projected one. */
+  /* Where the walls are heading: the levels re-picked on the open's book and on the projected one — over EVERY strike of
+     the contracts, as the levels themselves are (exposure.ts, core/walls.ts: "anywhere on the book"), never only the
+     rows' window: a wall outside the window is still the wall, and the strike-axis picture widens to it. */
   type Pt = { strike: number; v: number; c: number; p: number };
-  const legOf = (r: BuildRow) => legsAt.get(r.strike) ?? { openC: 0, openP: 0, nowC: 0, nowP: 0 };
-  const openPts: Pt[] = rows.map(r => ({ strike: r.strike, v: r.open, c: legOf(r).openC, p: legOf(r).openP }));
-  const nowPts: Pt[] = rows.map(r => ({ strike: r.strike, v: r.now, c: legOf(r).nowC, p: legOf(r).nowP }));
+  const book = chain.map(node => {
+    const a = addedAt(node.strike);
+    const nowC = node.callGex ?? 0;
+    const nowP = node.putGex ?? 0;
+    const now = a.u.net;
+    return { strike: node.strike, now, open: now - (a.callAddedSigned + a.putAddedSigned), nowC, nowP, openC: nowC - a.callAddedSigned, openP: nowP - a.putAddedSigned };
+  });
+  const openPts: Pt[] = book.map(b => ({ strike: b.strike, v: b.open, c: b.openC, p: b.openP }));
+  const nowPts: Pt[] = book.map(b => ({ strike: b.strike, v: b.now, c: b.nowC, p: b.nowP }));
   /* the overnight count is one step between two sessions, not a pace through the day — nothing is projected off it */
   const pace = (a: number, b: number) => b + ((b - a) / elapsedMin) * minutesLeft;
-  const closePts: Pt[] = real ? nowPts : rows.map(r => ({ strike: r.strike, v: pace(r.open, r.now), c: pace(legOf(r).openC, legOf(r).nowC), p: pace(legOf(r).openP, legOf(r).nowP) }));
+  const closePts: Pt[] = real ? nowPts : book.map(b => ({ strike: b.strike, v: pace(b.open, b.now), c: pace(b.openC, b.nowC), p: pace(b.openP, b.nowP) }));
   /* the most call gamma and the most put gamma (core/walls.ts pickLegWalls) — the Map's and the Agenda's rule */
   const walls = (pts: Pt[]) => pickLegWalls(pts, p => p.c, p => p.p);
   const supremeOf = (pts: { strike: number; v: number }[]) => pts.reduce<{ strike: number; v: number } | null>((b, p) => (!b || Math.abs(p.v) > Math.abs(b.v) ? p : b), null)?.strike ?? null;
@@ -553,12 +567,13 @@ export function buildBuilding(
 
   const challengerFor = (side: 'call' | 'put', wall: number | null): Challenger | null => {
     if (wall == null) return null;
-    const w = rows.find(r => r.strike === wall);
+    const w = book.find(r => r.strike === wall);
     if (!w) return null;
-    /* a challenger grows the same leg: the most call (or put) gamma added */
-    const legNow = (r: BuildRow) => Math.abs(side === 'call' ? legOf(r).nowC : legOf(r).nowP);
-    const legGrew = (r: BuildRow) => legNow(r) - Math.abs(side === 'call' ? legOf(r).openC : legOf(r).openP);
-    const cands = rows.filter(r => r.strike !== wall && legGrew(r) > 0);
+    /* a challenger grows the same leg: the most call (or put) gamma added, anywhere on the contracts as the wall is */
+    type Leg = (typeof book)[number];
+    const legNow = (r: Leg) => Math.abs(side === 'call' ? r.nowC : r.nowP);
+    const legGrew = (r: Leg) => legNow(r) - Math.abs(side === 'call' ? r.openC : r.openP);
+    const cands = book.filter(r => r.strike !== wall && legGrew(r) > 0);
     if (!cands.length) return null;
     const c = cands.sort((a, b) => legGrew(b) - legGrew(a))[0];
     const needs = legNow(w) - legNow(c);
@@ -581,8 +596,8 @@ export function buildBuilding(
             ? `at ${fmtStrike(now)}, where it was ${before}`
             : `at ${fmtStrike(now)} since the open`
           : name === 'Flip'
-            ? 'no flip within ±10%'
-            : `none — no ${name === 'Call wall' ? 'call' : 'put'} gamma in the window`;
+            ? noFlipWords(levels.net)
+            : `none — no ${name === 'Call wall' ? 'call' : 'put'} gamma on these contracts`;
     const ahead = real || close == null || now == null ? '' : close === now ? ` · holds ${horizon}` : ` · ${horizon} it moves to ${fmtStrike(close)}`;
     const chal = ch ? ` · ${fmtStrike(ch.strike)} grew the most ${name === 'Call wall' ? 'call' : 'put'} gamma${real ? ` ${day}` : ''}, ${fmtDollars(ch.needs)} short${ch.by ? `, there by ${ch.by} at today's pace` : !real && ch.outrun ? ', but the wall is growing faster' : ''}` : '';
     return `${moved}${ahead}${chal}`;
@@ -598,11 +613,16 @@ export function buildBuilding(
   const flipOpen = flipNow;
   const flipClose = flipNow;
 
+  /* Nothing provisional is drawn as a level: the walls and the supreme wait for the scope's own contracts (the whole book
+     standing in for "Today" names other walls), the flip for its final pricing — until then a level is "…", never "none". */
+  const wallsPending = !!snapshot.liveBook && (scopeMissing || !!snapshot.levelsPending || (profile.expiry === 'ALL' && !!entry && !datesComplete(entry)));
+  const flipPending = wallsPending || levelsPending;
+  const pendingLevel = (name: WallHeading['name']): WallHeading => ({ name, open: null, now: null, close: null, words: '…', challenger: null, pending: true });
   const heading: WallHeading[] = [
-    { name: 'Call wall', open: wOpen.callWall, now: wNow.callWall, close: wClose.callWall, words: levelWords('Call wall', wOpen.callWall, wNow.callWall, wClose.callWall, callCh), challenger: callCh },
-    { name: 'Put wall', open: wOpen.putWall, now: wNow.putWall, close: wClose.putWall, words: levelWords('Put wall', wOpen.putWall, wNow.putWall, wClose.putWall, putCh), challenger: putCh },
-    { name: 'Supreme', open: supOpen, now: supNow, close: supClose, words: levelWords('Supreme', supOpen, supNow, supClose, null), challenger: null },
-    { name: 'Flip', open: flipOpen, now: flipNow, close: flipClose, words: levelWords('Flip', flipOpen, flipNow, flipClose, null), challenger: null },
+    wallsPending ? pendingLevel('Call wall') : { name: 'Call wall', open: wOpen.callWall, now: wNow.callWall, close: wClose.callWall, words: levelWords('Call wall', wOpen.callWall, wNow.callWall, wClose.callWall, callCh), challenger: callCh },
+    wallsPending ? pendingLevel('Put wall') : { name: 'Put wall', open: wOpen.putWall, now: wNow.putWall, close: wClose.putWall, words: levelWords('Put wall', wOpen.putWall, wNow.putWall, wClose.putWall, putCh), challenger: putCh },
+    wallsPending ? pendingLevel('Supreme') : { name: 'Supreme', open: supOpen, now: supNow, close: supClose, words: levelWords('Supreme', supOpen, supNow, supClose, null), challenger: null },
+    flipPending ? pendingLevel('Flip') : { name: 'Flip', open: flipOpen, now: flipNow, close: flipClose, words: levelWords('Flip', flipOpen, flipNow, flipClose, null), challenger: null },
   ];
 
   /* THE SENTENCE */

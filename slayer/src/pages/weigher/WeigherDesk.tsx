@@ -33,7 +33,7 @@ import { buildPrints, fmtUsd } from '../../data/gex';
 import { useLevelsFor } from '../../data/levelsFor';
 import { paneLevels } from '../terrain/paneLevels';
 import ExpiryDensity from '../../components/weigher/ExpiryDensity';
-import { useLevelsScope } from '../../data/levelsScope';
+import { levelsForName, useNameLevels } from '../../data/levelsScope';
 import { etClock, keepTheta, keptTheta, offlineWords, useThetaDown } from '../../data/thetaFeed';
 import { thetaUseHere } from '../../data/theta';
 import {
@@ -830,7 +830,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     return rows;
   }, [preset, scanQuotes.rev, topNet.rows]);
   /* The walls, flip and supreme are the house's (data/levelsFor.ts), the same as Pinpoint's and the Terrain's */
-  const house = useLevelsFor(ticker, useLevelsScope());
+  const house = useLevelsFor(ticker, useNameLevels(ticker));
   const levels = useMemo(() => paneLevels(house?.spot ?? null, house), [house]);
   const under = printOf(ticker);
   const bookSession = useDeskSession();
@@ -1644,7 +1644,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const profile = useMemo<ExposureProfileData | null>(() => {
     try {
       const snap = snapshotOf(ticker);
-      return snap ? buildExposureProfile(snap, '0DTE', 30) : null;
+      /* in the name's levels scope, as the house levels above (a name set to All expiries reads its walls there) */
+      return snap ? buildExposureProfile(snap, levelsForName(ticker), 30) : null;
     } catch {
       return null;
     }

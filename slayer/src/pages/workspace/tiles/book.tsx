@@ -15,7 +15,7 @@ import { ladderExpiryOptions, LADDER_RANGES } from '../../../components/gex/ladd
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_WARM } from '../../../components/gex/paletteInk';
 import { useFocus } from '../../../context/FocusContext';
 import { expiryFor } from '../../../core/calendar';
-import { snapshotOf } from '../../../data/book/feed';
+import { snapshotFor, snapshotOf } from '../../../data/book/feed';
 import { AGENDA_ORDERS, type AgendaOrder, type Target } from '../../../data/agenda';
 import { fmtDollars } from '../../../data/ahead';
 import { buildCompare, buildCompareSide, partnerFor, regimeWord, type CompareSide } from '../../../data/compare';
@@ -25,7 +25,9 @@ import { useResolvedTheme } from '../../../theme/theme';
 import type { ExposureExpiry } from '../../../types/gex';
 import type { TileControl, TileProps, TileState, WorkspaceCtx } from '../tile';
 import { useDeskClock } from '../useDeskClock';
-import { agendaOf, buildingOf, clockNow, keyLevelsOf, surface30 } from './derive';
+import { agendaOf, buildingOf, clockNow, keyLevelsFor, surface30 } from './derive';
+import { useLevelsFor } from '../../../data/levelsFor';
+import { useNameLevels } from '../../../data/levelsScope';
 import { TileHeads, TileNoBook, TileRead, TileRow, TileRows, dirInk, fmtStrike, signedPct, useDoor } from './parts';
 import { pctWhole as pct } from '../../../core/format';
 
@@ -131,7 +133,11 @@ export const levelsControls = ({ ctx }: { ctx: WorkspaceCtx; state: TileState })
 };
 
 export const LevelsTile = ({ ctx, state }: TileProps) => {
-  const rows0 = keyLevelsOf(ctx.snapshot);
+  /* The house's levels (data/levelsFor.ts) on the name's own scope — the walls Terrain, Pinpoint and Weigher print, kept
+     fresh as the book lands. Never the desk context's own profile: before the scope's contracts land that is another
+     book (the whole book standing in for "Today"), whose walls are not the day's. */
+  const house = useLevelsFor(ctx.ticker, useNameLevels(ctx.ticker));
+  const rows0 = useMemo(() => keyLevelsFor(ctx.snapshot, ctx.snapshot.liveBook ? house : null), [ctx.snapshot, house]);
   /* spot is the room's price the rest of the page prints (the matrix's spot row, useRoomSpot), and the distances are read from it — the
      levels' own marked price (the vendor's last) differed from it by a few cents on a thin after-hours tape */
   const last = useRoomSpot(ctx.ticker);
@@ -149,15 +155,36 @@ export const LevelsTile = ({ ctx, state }: TileProps) => {
     return rows.map(r => ({ ...r, price: twinPrice(lens, r.price, ratio) }));
   }, [rows, fam, lens, ratio]);
   if (!rows) return <TileNoBook ticker={ctx.ticker} />;
-  const { spot, callWall, putWall, flip } = ctx.exposure.levels;
-  const above = spot >= flip;
+  const live = ctx.snapshot.liveBook;
+  const wallsIn = !live || !!house?.wallsFinal;
+  const flipIn = !live || !!house?.complete;
+  const spot = last != null && last > 0 ? last : ctx.snapshot.spot;
+  const flip = live ? (flipIn ? house?.flip ?? null : null) : Number.isFinite(ctx.exposure.levels.flip) ? ctx.exposure.levels.flip : null;
+  const callWall = live ? house?.callWall ?? null : Number.isFinite(ctx.exposure.levels.callWall) ? ctx.exposure.levels.callWall : null;
+  const putWall = live ? house?.putWall ?? null : Number.isFinite(ctx.exposure.levels.putWall) ? ctx.exposure.levels.putWall : null;
+  const above = flip != null && spot >= flip;
+  /* the flip in words that are true of the book: where it is, "…" while it is priced, or — a final read with none — the
+     sign the net keeps across ±10% (never "no put gamma") */
+  const flipWords = !flipIn
+    ? 'The flip is still being priced (…).'
+    : flip != null
+      ? `${ctx.ticker} is ${above ? 'above' : 'below'} the flip at ${fmtStrike(flip)}, where dealer hedging ${above ? 'slows moves down' : 'pushes moves along'}.`
+      : `No flip within ±10%: net gamma stays ${(house?.regime ?? (ctx.exposure.levels.net != null && ctx.exposure.levels.net > 0 ? 'SHORT' : 'LONG')) === 'SHORT' ? 'negative' : 'positive'} across it.`;
   return (
-    <div className="h-full min-h-0 flex flex-col" data-levels-tile>
+    <div className="h-full min-h-0 flex flex-col" data-levels-tile data-levels-scope={house?.scopeLabel ?? ''} data-levels-final={wallsIn && flipIn ? 'yes' : 'no'}>
       <TileRows>
         <KeyLevelsRail rows={shown} maxPressure={rows.reduce((a, l) => Math.max(a, l.pressure), 1)} priceFormat={fam && lens !== 'etf' && ratio != null ? fmtTwin : undefined} />
+        {!wallsIn && (
+          <p className="px-2.5 py-2 font-mono text-t10 text-textMuted" data-levels-pending>
+            Walls · supreme · flip …
+          </p>
+        )}
       </TileRows>
       <TileRead testId="levels">
-        {ctx.ticker} is {above ? 'above' : 'below'} the flip at {fmtStrike(flip)}, where dealer hedging {above ? 'slows moves down' : 'pushes moves along'}. The call wall is {fmtStrike(callWall)}, the put wall {fmtStrike(putWall)}.
+        {house?.scopeLabel ? `${house.scopeLabel} — ` : ''}
+        {!wallsIn
+          ? `reading ${ctx.ticker}'s contracts for these levels…`
+          : `${flipWords} The call wall is ${callWall != null ? fmtStrike(callWall) : 'none (no call gamma)'}, the put wall ${putWall != null ? fmtStrike(putWall) : 'none (no put gamma)'}.`}
       </TileRead>
     </div>
   );
@@ -247,7 +274,11 @@ export const TargetsTile = ({ ctx, state, size }: TileProps) => {
 
 export const HeadingTile = ({ ctx }: TileProps) => {
   const clock = useDeskClock();
-  const data = buildingOf(ctx.snapshot);
+  /* the book the house reads the name's levels off, as it lands — the desk context's snapshot is a sweep old, and before
+     the scope's contracts landed it was the whole book standing in (its levels then print "…") */
+  const house = useLevelsFor(ctx.ticker, useNameLevels(ctx.ticker));
+  const book = (ctx.snapshot.liveBook && house ? snapshotFor(ctx.ticker, house.scope) : null) ?? ctx.snapshot;
+  const data = buildingOf(book);
   if (!data) return <TileNoBook ticker={ctx.ticker} />;
   return <WallHeading data={data} clock={clock} bare fill />;
 };

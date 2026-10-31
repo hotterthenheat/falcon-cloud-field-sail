@@ -11,6 +11,7 @@ import 'react-resizable/css/styles.css';
 import { Check, Lock, LockOpen, Plus, RotateCcw, Save, Trash2, X } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
 import { buildExposureProfile } from '../../data/exposure';
+import { levelsForName } from '../../data/levelsScope';
 import { bookStatus, useBookRev } from '../../data/book/store';
 import { ensureBook } from '../../data/book/load';
 import { snapshotOf } from '../../data/book/feed';
@@ -251,7 +252,7 @@ const Pulse = () => {
       const snapshot = snapshotOf(t);
       if (!snapshot) continue;
       try {
-        map.set(t, { ticker: snapshot.ticker, snapshot, exposure: buildExposureProfile(snapshot, '0DTE', 10), revision: sweep });
+        map.set(t, { ticker: snapshot.ticker, snapshot, exposure: buildExposureProfile(snapshot, levelsForName(t), 10), revision: sweep });
       } catch {
         /* a name the book cannot build is skipped — its tile says so */
       }

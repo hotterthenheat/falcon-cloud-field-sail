@@ -7,6 +7,7 @@ import { aheadClock, CLOSE_MIN, OPEN_MIN } from '../../../data/ahead';
 import { readSessionClock } from '../../../data/moc';
 import type { TileProps } from '../tile';
 import { TileRead } from './parts';
+import { houseOf, keyLevelsFrom } from './derive';
 
 const SPAN = CLOSE_MIN - OPEN_MIN;
 const two = (n: number) => String(n).padStart(2, '0');
@@ -28,7 +29,13 @@ export const ClockTile = ({ ctx, size }: TileProps) => {
   const now = clock.inSession && clock.nowMin != null ? clock.nowMin : null;
   const phase = now != null ? PHASES.find(p => now >= p.from && now < p.to) ?? PHASES[PHASES.length - 1] : null;
   const next = now != null ? PHASES.find(p => p.from > now) ?? null : null;
-  const { pin, supreme, flip } = ctx.exposure.levels;
+  /* the supreme and the flip are the house's (data/levelsFor.ts, the name's scope) — the ones every other page prints, and
+     none while they are still being read (a stand-in book's are not the day's) */
+  const { pin } = ctx.exposure.levels;
+  const lv = keyLevelsFrom(ctx.snapshot.spot, houseOf(ctx.snapshot));
+  const live = ctx.snapshot.liveBook;
+  const supreme = live ? (Number.isFinite(lv.supreme) ? lv.supreme : null) : ctx.exposure.levels.supreme;
+  const flip = live ? (Number.isFinite(lv.flip) ? lv.flip : null) : ctx.exposure.levels.flip;
   const facts: ClockFacts = { pin, supreme, flip, charmStrike: null, charmMoves: null, bellShare: null };
   const wide = size.room !== 'small';
   return (

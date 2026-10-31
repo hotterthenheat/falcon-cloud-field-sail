@@ -61,7 +61,7 @@ import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, type ProfileLane, type Pr
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import { netSinceOpenRatio } from '../../data/levelview';
 import { useLevelsFor } from '../../data/levelsFor';
-import { useLevelsScope } from '../../data/levelsScope';
+import { useNameLevels } from '../../data/levelsScope';
 import ProfileGuide from '../../components/gex/ProfileGuide';
 import GuideFocus from '../../components/ui/GuideFocus';
 import { buildFlowFromRows } from '../../data/hedgeFlow';
@@ -869,9 +869,10 @@ const Pane = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ticker, revision, bookPick],
   );
-  /* The walls, flip and supreme are the house's (data/levelsFor.ts): the desk-wide levels scope Pinpoint's head sets, or
-     the cut's own expiry when the rail is cut to a later date, off the rows the rail already holds. */
-  const levelsScope = useLevelsScope();
+  /* The walls, flip and supreme are the house's (data/levelsFor.ts): the name's levels scope Pinpoint's head sets for it
+     (the one Pulse and Weigher read too), or the cut's own expiry when the rail is cut to a later date, off the rows the
+     rail already holds. */
+  const levelsScope = useNameLevels(ticker);
   const house = useLevelsFor(ticker, levelsScope, bookPick ? shownBook?.date ?? null : null);
   /* the field's cut: its net GEX off the house's rows for it, the figure Pinpoint prints for the same cut */
   const fieldNodes = (railCut === 'book' ? chainForDate(ticker, 'book') : shownBook)?.nodes;
