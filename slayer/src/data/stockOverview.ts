@@ -18,6 +18,8 @@ import type { Fundamentals } from './fundamentals';
 import type { Candle } from '../types/market';
 import type { BookContract, FlowPrint } from '../types/trace';
 import type { DarkPoolView } from '../types/darkpool';
+import { otmOf } from './traceRows';
+import { leanOfSides } from './traceLean';
 
 export type PillarKey = 'trend' | 'numbers' | 'money' | 'news';
 export type Screen = 'STRONG' | 'MIXED' | 'WEAK';
@@ -629,7 +631,7 @@ const trendFor = (blocks: Candle[][], spot: number, uptoSessions?: number): { re
 };
 
 /* The busiest contracts are the chain's own by the day's volume (expired ones out), with the day's whole premium. */
-const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', ticker: string, spot: number): BookContract[] => {
+export const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', ticker: string, spot: number): BookContract[] => {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
   const out: BookContract[] = [];
   for (const row of rows) {
@@ -647,6 +649,8 @@ const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', ticker: st
     const fill = nOr(row.avg_price) ?? (bid > 0 && ask > 0 ? (bid + ask) / 2 : last);
     const premium = nOr(row.total_premium) ?? volume * fill * 100;
     const askV = nOr(row.ask_volume) ?? 0;
+    const bidV = nOr(row.bid_volume) ?? 0;
+    const midV = (nOr(row.mid_volume) ?? 0) + (nOr(row.no_side_volume) ?? 0);
     const sweepV = nOr(row.sweep_volume) ?? 0;
     const oi = nOr(row.open_interest) ?? 0;
     const iv = nOr(row.implied_volatility) ?? 0;
@@ -661,7 +665,8 @@ const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', ticker: st
       expiry: `${m[2]}/${m[3]}/20${m[1]}`,
       dte,
       spot,
-      otmPct: spot > 0 ? ((strike - spot) / spot) * 100 : 0,
+      /* + out of the money for calls and puts alike (traceRows otmOf): a 90 put on a 100 stock is +10%, not −10% */
+      otmPct: otmOf(right, strike, spot, false),
       last,
       chgPct: 0,
       lastAt: String(row.last_tape_time || ''),
@@ -671,13 +676,17 @@ const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', ticker: st
       deltaOI: 0,
       deltaOIPct: 0,
       premium,
-      iv: iv * (iv < 3 ? 100 : 1),
+      /* always a fraction (traceRows contractRow): a 3.4 is 340%, never 3.4% */
+      iv: iv * 100,
       ivChg: 0,
       volOverOI: oi > 0 ? volume / oi : 0,
       sweepPct: volume > 0 ? (100 * sweepV) / volume : 0,
       multiPct: volume > 0 ? (100 * (nOr(row.multi_leg_volume) ?? 0)) / volume : 0,
       floorPct: volume > 0 ? (100 * (nOr(row.floor_volume) ?? 0)) / volume : 0,
-      askPct: volume > 0 ? (100 * askV) / volume : 0,
+      /* Trace's "% ask": the ask's share of the sided contracts (ask + bid), the split carried so dayLean reads mid too —
+         never ask over the whole volume, which counted every mid print as a bid */
+      askPct: askV + bidV > 0 ? (100 * askV) / (askV + bidV) : NaN,
+      sideVol: { ask: askV, bid: bidV, mid: midV },
       prevOI: nOr(row.prev_oi) ?? oi,
       prevAvgFill: fill,
       oiStreak: 0,
@@ -690,6 +699,21 @@ const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', ticker: st
 
 /* ---- the money, from the book, the flow and the dark pool ------------------------------- */
 
+/** The alerts' premium by side: an alert's own split where it carries one, else its whole premium on its side */
+export function flowSidesOf(flow: readonly Pick<FlowPrint, 'premium' | 'side' | 'alertSides'>[]): { ask: number; bid: number; mid: number } {
+  const out = { ask: 0, bid: 0, mid: 0 };
+  for (const p of flow) {
+    if (p.alertSides) {
+      out.ask += p.alertSides.ask;
+      out.bid += p.alertSides.bid;
+      out.mid += Math.max(0, Math.max(p.premium, p.alertSides.ask + p.alertSides.bid + p.alertSides.other) - p.alertSides.ask - p.alertSides.bid);
+    } else if (p.side === 'ASK') out.ask += p.premium;
+    else if (p.side === 'BID') out.bid += p.premium;
+    else out.mid += p.premium;
+  }
+  return out;
+}
+
 /** Fewer regular-session prints than this is too few to call buying or selling */
 export const DARK_MIN_PRINTS = 12;
 const moneyFor = (ticker: string, spot: number, blocks: Candle[][], file: StockFile, dayPct: number): { read: MoneyRead; factors: Factor[] } => {
@@ -701,11 +725,13 @@ const moneyFor = (ticker: string, spot: number, blocks: Candle[][], file: StockF
   const bearishPremium = nOr(screen?.bearish_premium) ?? 0;
   const callVolume = nOr(screen?.call_volume) ?? 0;
   const putVolume = nOr(screen?.put_volume) ?? 0;
-  /* the ask share is each alert's own ask-side premium over the alerts' whole premium */
+  /* the ask share is Trace's (leanOfSides): the alerts' ask-side premium over their sided (ask + bid) premium, the
+     unsided rest as mid — one meaning of "% ask" on every page */
   const flowPrem = file.flow.reduce((a, p) => a + Math.max(p.premium, (p.alertSides?.ask ?? 0) + (p.alertSides?.bid ?? 0) + (p.alertSides?.other ?? 0)), 0);
-  const askPrem = file.flow.reduce((a, p) => a + (p.alertSides ? p.alertSides.ask : p.side === 'ASK' ? p.premium : 0), 0);
+  const flowSides = flowSidesOf(file.flow);
   const sweepPrem = file.flow.filter(p => p.sweep).reduce((a, p) => a + p.premium, 0);
-  const askSharePct = flowPrem > 0 ? (100 * askPrem) / flowPrem : null;
+  const sidedLean = leanOfSides(flowSides);
+  const askSharePct = flowPrem > 0 && Number.isFinite(sidedLean.askSided) && flowSides.ask + flowSides.bid > 0 ? sidedLean.askSided : null;
   const sweepSharePct = flowPrem > 0 ? (100 * sweepPrem) / flowPrem : null;
   const unusual = file.flow.filter(p => p.volOverOI >= 2).length;
   const stockVol = nOr(screen?.stock_volume);

@@ -185,4 +185,29 @@ for (const t of ['NVDA', 'GME']) {
   expectNear(`${t} screener outside-session move %`, sr?.extPct ?? NaN, w.screenExt, 1e-4);
 }
 
+/* ---- 7. known numbers: one rule per figure, against hand-worked rows ------------------------------------------ */
+{
+  const { contractsFrom } = await import('../../src/data/earningsFeed');
+  const { busiestOf, flowSidesOf } = await import('../../src/data/stockOverview');
+  const { dayLean } = await import('../../src/data/traceLean');
+  /* the vendor's IV is a fraction: 3.4 is 340% (it read 3%), 0.45 is 45% */
+  const chain = [
+    { option_symbol: 'GME271217C00030000', volume: 1000, nbbo_bid: '1.00', nbbo_ask: '1.10', last_price: '1.05', open_interest: 500, implied_volatility: '3.4', ask_volume: 400, bid_volume: 100, mid_volume: 500, no_side_volume: 0, avg_price: '1.05', total_premium: '105000' },
+    { option_symbol: 'GME271217P00020000', volume: 800, nbbo_bid: '0.50', nbbo_ask: '0.60', last_price: '0.55', open_interest: 100, implied_volatility: '0.45', ask_volume: 100, bid_volume: 300, mid_volume: 400, no_side_volume: 0, avg_price: '0.55', total_premium: '44000' },
+  ];
+  const ef = contractsFrom('GME', chain, 25);
+  expectEqual('earnings busiest contracts: IV 3.4 → 340%, 0.45 → 45%', [ef.calls[0]?.ivPct, ef.puts[0]?.ivPct], [340, 45]);
+  const call = busiestOf(chain, 'C', 'GME', 25)[0];
+  const put = busiestOf(chain, 'P', 'GME', 25)[0];
+  expectEqual('Dossier busiest contracts: IV 3.4 → 340%, 0.45 → 45%', [call.iv, put.iv].map(v => Math.round(v)), [340, 45]);
+  /* "% ask" is ask over ask + bid (Trace's): 400 ask, 100 bid, 500 mid is 80% ask and leans ASK — it read 40% of the
+     whole volume, a BID lean */
+  expectEqual('Dossier busiest call: % ask of the sided contracts, and its lean', [Math.round(call.askPct), dayLean(call).lean, Math.round(dayLean(call).mid)], [80, 'ASK', 50]);
+  /* the 20 put on a 25 stock is 20% out of the money (+), a 30 call 20% out (+) — the put read −20% */
+  expectEqual('Dossier busiest: out of the money is + for the put and the call', [Math.round(put.otmPct), Math.round(call.otmPct)], [20, 20]);
+  /* an alert's split: $600K ask, $200K bid, $200K mid → 75% of the sided premium (it read 60% of the whole) */
+  const sides = flowSidesOf([{ premium: 1_000_000, side: 'ASK', alertSides: { ask: 600_000, bid: 200_000, other: 200_000 } }]);
+  expectEqual('Dossier flow ask share: ask over ask + bid premium', [sides.ask, sides.bid, sides.mid], [600_000, 200_000, 200_000]);
+}
+
 done();
