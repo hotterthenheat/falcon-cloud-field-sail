@@ -10,19 +10,70 @@
     window per path, and fewer when viewers ask less often. Background refreshes have their own rate budget and
     always yield to a viewer who is waiting.
   - The most-asked paths are remembered across restarts and loaded at start, so the first viewer of the day finds the
-    site already loaded.
+    site already loaded. A remembered path is let go once the day it names is over (an expired expiry) or nobody has
+    asked for it in PIN_IDLE_DAYS; one nobody asked for today is kept warm at a slower pace.
 */
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { EARLY_CLOSE_DATES, HOLIDAY_DATES } from '../shared/marketCalendar.mjs';
 
-const NY_PARTS = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hour12: false });
-/** Weekdays 04:00–20:00 New York: the hours anything moves (pre-market, session, after-hours). */
-export function marketHours(now = Date.now()) {
+const NY_PARTS = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  weekday: 'short',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: false,
+});
+const HOLIDAYS = new Set(HOLIDAY_DATES);
+const EARLY = new Set(EARLY_CLOSE_DATES);
+/** New York's date (YYYY-MM-DD), weekday and minute of the day at an instant */
+export function nyNow(now = Date.now()) {
   const parts = Object.fromEntries(NY_PARTS.formatToParts(new Date(now)).map((p) => [p.type, p.value]));
-  const h = Number(parts.hour) % 24;
-  return parts.weekday !== 'Sat' && parts.weekday !== 'Sun' && h >= 4 && h < 20;
+  return { day: `${parts.year}-${parts.month}-${parts.day}`, weekday: parts.weekday, minute: (Number(parts.hour) % 24) * 60 + Number(parts.minute) };
 }
+/** Trading days 04:00–20:00 New York, to 17:00 on an early close: the hours anything moves (pre-market, session,
+    after-hours). Weekends and holidays are closed all day (shared/marketCalendar.mjs).
+    SLAYER_HUB_HOURS=open|closed pins it, for a load check outside the session. */
+export function marketHours(now = Date.now()) {
+  const pin = process.env.SLAYER_HUB_HOURS;
+  if (pin === 'open') return true;
+  if (pin === 'closed') return false;
+  const t = nyNow(now);
+  if (t.weekday === 'Sat' || t.weekday === 'Sun' || HOLIDAYS.has(t.day)) return false;
+  return t.minute >= 4 * 60 && t.minute < (EARLY.has(t.day) ? 17 : 20) * 60;
+}
+
+/* a date in a query value: 2026-10-29 or 20261029 */
+const DATE_IN = /(?:^|[^0-9])(20\d\d)-?([01]\d)-?([0-3]\d)(?![0-9])/;
+/** The latest date a request names in its query (expiry, expirations[], date, end_date …), YYYY-MM-DD, or null */
+export function lastDateOf(p) {
+  const i = p.indexOf('?');
+  if (i < 0) return null;
+  let last = null;
+  for (const kv of p.slice(i + 1).split('&')) {
+    let v = kv.slice(kv.indexOf('=') + 1);
+    try {
+      v = decodeURIComponent(v);
+    } catch {
+      /* kept as written */
+    }
+    const m = v.match(DATE_IN);
+    if (m) {
+      const d = `${m[1]}-${m[2]}-${m[3]}`;
+      if (!last || d > last) last = d;
+    }
+  }
+  return last;
+}
+/** A request whose every date is over (an expired expiry, an earlier session): nothing to keep warm */
+export const pastDated = (p, today = nyNow().day) => {
+  const d = lastDateOf(p);
+  return !!d && d < today;
+};
 
 /** The same request however its query was written: parameters sorted by name, repeated ones kept in order. */
 export function canonical(p) {
@@ -51,14 +102,27 @@ export function canonical(p) {
  * @param {(path: string, ageMs: number) => boolean} [o.keepOnFail]  may a failed refresh fall back to the last good
  *   answer of this age? (default: never, so a failure shows as one)
  * @param {(path: string) => void} [o.promote]  a viewer is now waiting on this path's background refresh: move it ahead
+ * @param {(status: number, path: string) => boolean} [o.keepable]  is an answer with this status about the request
+ *   itself (kept like a good one) rather than a fault (default: 200 and 4xx other than 401/403/408/429)
+ * @param {string} [o.file]             the popular-paths file (default .cache/hub-<name>.json)
+ * @param {number} [o.pinIdleDays]      a remembered path nobody asked for in this many days is let go (default 3,
+ *   HUB_PIN_IDLE_DAYS)
+ * @param {() => string} [o.today]      New York's date, YYYY-MM-DD (the proof pins it)
  */
 export function createHub(o) {
   const MAX_BYTES = o.maxBytes ?? 300 * 1024 * 1024;
   const POPULAR = 200;
+  const DAY_MS = 86_400_000;
+  const PIN_IDLE_MS = (o.pinIdleDays ?? (Number(process.env.HUB_PIN_IDLE_DAYS) || 3)) * DAY_MS;
+  /* a remembered path asked for in the last day is kept within a minute while anything moves; an older one within five */
+  const PIN_WARM_MS = 60_000;
+  const PIN_COOL_MS = 5 * 60_000;
+  const today = o.today ?? (() => nyNow().day);
   const cache = new Map();
   let bytes = 0;
   const inflight = new Map();
-  /* key -> { last: ms of the last ask, asks: count, pinned: kept warm from the popular list } */
+  /* key -> { last: ms of the last ask this run, asks: count, pinned: kept warm from the popular list,
+     seenAt: ms of the last viewer's ask, across restarts } */
   const wanted = new Map();
   const stats = { asks: 0, fresh: 0, stale: 0, waited: 0, upstreamViewer: 0, upstreamRefresh: 0, recordAsks: 0, recordReused: 0, upstreamRecord: 0, startedAt: Date.now() };
 
@@ -80,7 +144,7 @@ export function createHub(o) {
   }
 
   /* an answer about the request itself (not found, no data) is kept like a good one; a refusal or a fault is not */
-  const keepable = (status) => status === 200 || (status >= 400 && status < 500 && ![401, 403, 408, 429].includes(status));
+  const keepable = o.keepable ?? ((status) => status === 200 || (status >= 400 && status < 500 && ![401, 403, 408, 429].includes(status)));
   const keepOnFail = o.keepOnFail ?? (() => false);
 
   /* background refreshes outstanding: the hub never queues more than the upstream can work through */
@@ -114,7 +178,7 @@ export function createHub(o) {
       .fetch(key, lane)
       .then((got) => {
         const w = wanted.get(key);
-        if (keepable(got.status)) {
+        if (keepable(got.status, key)) {
           if (w) w.fails = 0;
           const entry = { ...got, at: Date.now() };
           keep(key, entry);
@@ -167,7 +231,8 @@ export function createHub(o) {
       if (w.last) w.gap = Math.min(600_000, Math.max(100, w.gap ? 0.7 * w.gap + 0.3 * (now - w.last) : now - w.last));
       w.last = now;
       w.asks += 1;
-    } else wanted.set(key, { last: now, asks: 1, pinned: false });
+      w.seenAt = now;
+    } else wanted.set(key, { last: now, asks: 1, pinned: false, seenAt: now });
     const hit = cache.get(key);
     if (hit) {
       const age = Date.now() - hit.at;
@@ -190,10 +255,21 @@ export function createHub(o) {
 
   /* ---- background refresh ---- */
   let tokens = o.refreshPerSec;
+  /* a remembered path is let go once the day it names is over or nobody has asked for it in PIN_IDLE_MS */
+  const pinGone = (key, w, now, day) => pastDated(key, day) || now - (w.seenAt ?? 0) > PIN_IDLE_MS;
+  let pruneDay = '';
+  let pruneAt = 0;
   const tick = () => {
     tokens = Math.min(o.refreshPerSec * 2, tokens + o.refreshPerSec / 4);
     const now = Date.now();
     const due = [];
+    /* once a minute (and when New York's date turns), the remembered paths that are over are let go */
+    const day = today();
+    if (day !== pruneDay || now - pruneAt > 60_000) {
+      pruneDay = day;
+      pruneAt = now;
+      for (const [key, w] of wanted) if (w.pinned && !w.asks && pinGone(key, w, now, day)) wanted.delete(key);
+    }
     for (const [key, w] of wanted) {
       const ttl = ttlNow(key);
       const hit = cache.get(key);
@@ -218,9 +294,11 @@ export function createHub(o) {
         if (hit && hit.at + ttl > nextAsk) continue;
         due.push([key, w]);
       } else if (w.pinned) {
-        /* a popular path nobody is watching yet: loaded, and kept within a minute while anything moves */
+        /* a popular path nobody is watching yet: loaded, and kept within a minute while anything moves (five minutes
+           when nobody has asked for it in a day) */
         if (!hours() && hit) continue;
-        if (hit && now - hit.at < Math.max(ttl, 60_000)) continue;
+        const pace = now - (w.seenAt ?? 0) < DAY_MS ? PIN_WARM_MS : PIN_COOL_MS;
+        if (hit && now - hit.at < Math.max(ttl, pace)) continue;
         due.push([key, w]);
       } else wanted.delete(key);
     }
@@ -236,33 +314,50 @@ export function createHub(o) {
   timer.unref?.();
 
   /* ---- popular paths across restarts ---- */
-  const file = path.join(process.cwd(), '.cache', `hub-${o.name}.json`);
+  /* The file holds [{ p: path, at: ms of the last viewer's ask }], the most recently asked first. An older file of bare
+     paths counts each as asked when the file was last written. Paths that are over are never loaded. */
+  const file = o.file ?? path.join(process.cwd(), '.cache', `hub-${o.name}.json`);
   try {
-    for (const key of JSON.parse(fs.readFileSync(file, 'utf8'))) {
-      if (typeof key === 'string') wanted.set(key, { last: 0, asks: 0, pinned: true });
+    const written = fs.statSync(file).mtimeMs;
+    const now = Date.now();
+    const day = today();
+    for (const item of JSON.parse(fs.readFileSync(file, 'utf8'))) {
+      const key = typeof item === 'string' ? item : item && typeof item.p === 'string' ? item.p : null;
+      if (!key) continue;
+      const seenAt = typeof item === 'string' ? written : Number(item.at) || written;
+      const w = { last: 0, asks: 0, pinned: true, seenAt };
+      if (!pinGone(key, w, now, day)) wanted.set(canonical(key), w);
     }
   } catch {
     /* first start, or a host with no writable disk */
   }
-  const save = setInterval(() => {
+  /** Writes the popular paths: those viewers asked for more than once this run and the remembered ones still in use.
+      Always written, so a path nobody wants any more leaves the file. */
+  function savePins() {
+    const now = Date.now();
+    const day = today();
     const top = [...wanted.entries()]
-      .filter(([, w]) => w.asks > 1)
-      .sort((a, b) => b[1].asks - a[1].asks)
+      .filter(([k, w]) => (w.asks > 1 || w.pinned) && !pinGone(k, w, now, day))
+      .sort((a, b) => (b[1].seenAt ?? 0) - (a[1].seenAt ?? 0) || b[1].asks - a[1].asks)
       .slice(0, POPULAR)
-      .map(([k]) => k);
-    if (!top.length) return;
+      .map(([p, w]) => ({ p, at: w.seenAt ?? now }));
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, JSON.stringify(top));
     } catch {
       /* read-only disk (Vercel): the list just isn't kept */
     }
-  }, 300_000);
+    return top.length;
+  }
+  const save = setInterval(savePins, 300_000);
   save.unref?.();
 
   return {
     get,
     canonical,
+    savePins,
+    /** The paths kept warm with nobody watching (the popular list), for the load check */
+    pinned: () => [...wanted.entries()].filter(([, w]) => w.pinned).map(([k]) => k),
     /** Counts for the load check: asks served fresh, served stale, waited on, and the vendor calls behind them. */
     stats: () => ({ ...stats, refreshing, watching: wanted.size, cached: cache.size, megabytes: Math.round(bytes / 1e5) / 10 }),
   };
