@@ -732,7 +732,8 @@ export interface PaperView {
   /** …and all they hold, the premium in (free = cash − marginReq) */
   marginReq: number;
   marginLines: MarginLine[];
-  /** Free plus the longs at their bid: under 0 is a margin call (equity under what the open shorts need) */
+  /** What is free (cash − what the shorts hold): under 0 is a margin call. A long option has no loan value under Reg T,
+      so the longs held are not counted toward it. */
   excess: number;
   /** Equity is under what the open shorts need: nothing new opens until it is cured */
   marginCall: boolean;
@@ -767,8 +768,8 @@ export function viewOf(a: PaperAccount, m: PaperMarket): PaperView {
   const equity = cents(cash + optValue);
   const equityBid = cents(cash + opt.reduce((x, p) => x + (p.dir > 0 ? p.quote.bid : -(p.quote.ask > 0 ? p.quote.ask : p.quote.mark)) * MULT * p.qty, 0));
   const free = cents(cash - mg.req);
-  const longBid = opt.reduce((x, p) => x + (p.dir > 0 ? p.quote.bid * MULT * p.qty : 0), 0);
-  const excess = cents(free + longBid);
+  /* Reg T gives a listed option no loan value: the longs held do not hold the shorts, so excess is what is free */
+  const excess = free;
   const openPnl = cents(opt.reduce((x, p) => x + p.pnl, 0));
   const dayOpen = a.ledger[a.day]?.open ?? a.startCash;
   const closed = cents(ob.trades.reduce((x, t) => x + t.pnl, 0) + fb.trades.reduce((x, t) => x + t.pnl, 0));

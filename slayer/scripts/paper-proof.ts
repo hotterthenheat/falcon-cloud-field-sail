@@ -868,5 +868,28 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   ok('…15:59 → 12:59, 16:10 → 13:10; a full day keeps them', sessionTimeOn(EC, 15 * 60 + 59) === 12 * 60 + 59 && sessionTimeOn(EC, 16 * 60 + 10) === 13 * 60 + 10 && sessionTimeOn('2026-11-25', 15 * 60 + 55) === 15 * 60 + 55);
 }
 
+{
+  /* 3. margin: S 500, short 510C @ 2 and short 490P @ 2 (premium now 2 each) */
+  const E = '2026-10-16';
+  const q2 = { bid: 2, ask: 2, mark: 2, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic: 0, dead: false, spot: 500 };
+  const sc = { key: 'c', contract: { ticker: 'SPY', strike: 510, right: 'C' as const, expiry: E }, dir: -1 as const, qty: 1, avg: 2, quote: q2, spotIn: 500 };
+  const sp = { key: 'p', contract: { ticker: 'SPY', strike: 490, right: 'P' as const, expiry: E }, dir: -1 as const, qty: 1, avg: 2, quote: q2, spotIn: 500 };
+  const strangle = marginOf([sc, sp]);
+  ok('a short strangle is margined once (CBOE): the greater side, 9,200 (20% × 500 − 10 + 2), + the other’s 200 premium = 9,400 — not 18,400', near(strangle.req, 9_400) && strangle.lines.length === 1, `${strangle.req}`);
+  ok('…its own money held is 9,400 less the 400 credit = 9,000', near(strangle.held, 9_000), `${strangle.held}`);
+  const twoCalls = marginOf([{ ...sc, qty: 2 }, sp]);
+  ok('…a second call with no put against it is naked on its own: 9,400 + 9,200 = 18,600', near(twoCalls.req, 18_600), `${twoCalls.req}`);
+  const later = marginOf([sc, { key: 'l', contract: { ticker: 'SPY', strike: 515, right: 'C' as const, expiry: '2026-11-20' }, dir: 1 as const, qty: 1, avg: 3, quote: q2, spotIn: 500 }]);
+  ok('a short call covered by a later-expiry long call (a diagonal) holds the 5 between the strikes × 100 = 500', near(later.req, 500) && later.lines[0]?.kind === 'covered', `${later.req}`);
+  const earlier = marginOf([sc, { key: 'e', contract: { ticker: 'SPY', strike: 515, right: 'C' as const, expiry: '2026-10-09' }, dir: 1 as const, qty: 1, avg: 3, quote: q2, spotIn: 500 }]);
+  ok('…a long that expires first does not cover it: naked, 9,200', near(earlier.req, 9_200), `${earlier.req}`);
+  /* a long held does not hold a short: 10,000 cash, a long call bid 5 (−500 paid), a short 490P naked */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  let x = newAccount({ id: 'xs', kind: 'practice', name: 'xs', startCash: 10_000, now: T0, sandbox: true });
+  x = optPlace(x, fixed(() => 5, T0), { contract: { ticker: 'SPY', strike: 500, right: 'C', expiry: E }, side: 'buy', qty: 2, kind: 'market' });
+  const w = viewOf(x, fixed(() => 5, T0));
+  ok('excess is what is free: a long option has no loan value (Reg T) — 9,000 cash, 1,000 of calls, nothing short → excess 9,000', w.excess === 9_000 && w.free === 9_000, `${w.excess}`);
+}
+
 console.log(`\n${passed} held · ${failed} missed`);
 if (failed) process.exit(1);

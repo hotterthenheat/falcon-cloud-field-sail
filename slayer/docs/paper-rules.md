@@ -386,11 +386,13 @@ buy at the ask** (a limit never worse than its price). Fees as before, a contrac
 | A credit spread | width × 100 (net: width − credit) |
 | An iron condor / butterfly | the most the two spreads can lose at expiry, once (net: the wider side − both credits) |
 | A cash-secured put | strike × 100 (net: strike − premium) |
-| A single sold against a long of the same kind and expiry | the distance between the strikes where the long is further out, else nothing |
+| A single sold against a long of the same kind, same expiry or later (a calendar, a diagonal) | the distance between the strikes where the long is further out, else nothing |
+| A naked call and a naked put on one name (a short straddle or strangle) | **once** (CBOE): the greater of the two sides' Reg T estimates plus the other side's premium now — 510C and 490P sold at 2.00 with SPY at 500: 9,200 + 200 = **9,400**, not 18,400 |
 | A naked short (practice) | **Reg T estimate**: the greater of 20% × the name − out of the money + the premium now, or 10% × the name (a call) / the strike (a put) + the premium — 15% / 10% on a broad-based index (SPX, NDX, RUT, XSP, VIX …). An estimate: a broker's own figure can differ |
 
-The account card shows **Free** and **Margin held**. **A margin call** is equity under what the open shorts need (free
-plus the longs at their bid below zero): every new way in is refused with the call in words, ways out are not, and
+The account card shows **Free** and **Margin held**. **A margin call** is free under zero — cash under what the open
+shorts hold. A long option held is not counted toward it: under Reg T a listed option has no loan value (2026-10-31; it
+was free plus the longs at their bid): every new way in is refused with the call in words, ways out are not, and
 nothing is sold off by itself (no plan here says otherwise).
 
 **Expiry and assignment.** At 16:00 a short settles at what it is worth in the money on the 16:00 print, bought back in
