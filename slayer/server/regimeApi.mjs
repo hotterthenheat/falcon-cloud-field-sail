@@ -53,6 +53,8 @@ export const SNAP_LIVE_MS = 10_000;
 export const SNAP_IDLE_MS = 5 * 60_000;
 /** A live day's path is topped up at most this often */
 export const PATH_MS = 60_000;
+/** …and before the cash open, when only the VIX prints */
+export const PATH_PRE_MS = 5 * 60_000;
 /** History reads in flight at once, across this module */
 export const HISTORY_AT_ONCE = 2;
 /** A failed read is not tried again before this */
@@ -169,7 +171,9 @@ export function createRegime(o) {
       paths.set(sym, s);
     }
     const t = now();
-    if (s.done || s.job || t - s.readAt < PATH_MS || t - s.failAt < RETRY_MS) return;
+    /* before the cash open only the VIX itself prints (from about 03:15), so a ratio has little to add: a slower pace */
+    const pace = nyInstant(day, 9 * 60 + 31) > t ? PATH_PRE_MS : PATH_MS;
+    if (s.done || s.job || t - s.readAt < pace || t - s.failAt < RETRY_MS) return;
     const from = s.bars.length ? s.bars[s.bars.length - 1][0] : 3 * 60;
     const over = dayOver(day, t);
     s.job = (async () => {

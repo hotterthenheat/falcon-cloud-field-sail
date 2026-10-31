@@ -131,7 +131,7 @@ const RatioPath = ({ r, mode, paper, day }: { r: RegimeRatio; mode: HeatMode; pa
           <svg width={w} height={H} className="block" aria-label={`${r.key} through ${fmtDay(day)}`}>
             {parity && <line x1={0} x2={w} y1={Y(1)} y2={Y(1)} stroke="rgb(var(--text-muted))" strokeDasharray="2 3" strokeWidth={1} />}
             {parity && (
-              <text x={w - 1} y={Y(1) - 3} textAnchor="end" className="font-mono tnum" fontSize={9} fill="rgb(var(--text-muted))">
+              <text x={1} y={Y(1) - 3} textAnchor="start" className="font-mono tnum" fontSize={9} fill="rgb(var(--text-muted))">
                 1.000
               </text>
             )}

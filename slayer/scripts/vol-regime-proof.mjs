@@ -193,5 +193,26 @@ function terminal({ day = '2026-10-30', stamp = '16:15:01', bars = (sym) => [] }
   check('a live minute costs at most 6 snapshots + 3 path reads, however often it is asked', perMin <= 9, `${perMin} requests`);
 }
 
+{
+  /* before the open: Monday 05:00, the VIX printing since about 03:15 — the path is read at the slow pace */
+  let t = nyInstant('2026-11-02', 5 * 60);
+  const term = terminal({ day: '2026-11-02', stamp: '05:00:00', bars: (s) => (s === 'VIX' ? [[195, 18.47], [300, 18.5]] : []) });
+  const r = createRegime({ theta: term.theta, dir: null, now: () => t });
+  await r.vol();
+  await r.settle();
+  const a = await r.vol();
+  check('05:00: the VIX is live and today is the regime day', a.live === true && a.day === '2026-11-02');
+  check('05:00: no ratio path yet (VIX3M and VIX9D have not printed), and nothing pending', a.ratios[0].path.length === 0 && a.pending.path === false);
+  const n = term.of(/ohlc/).length;
+  t += 61_000;
+  await r.vol();
+  await r.settle();
+  check('before the open the path is not re-read every minute…', term.of(/ohlc/).length === n);
+  t += 4 * 60_000;
+  await r.vol();
+  await r.settle();
+  check('…but every five', term.of(/ohlc/).length === n + 3);
+}
+
 console.log(failed ? `\n${failed} check(s) failed` : '\nvol-regime proof: all checks passed');
 process.exit(failed ? 1 : 0);

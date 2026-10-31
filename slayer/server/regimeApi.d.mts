@@ -4,6 +4,7 @@ export const REGIME_VERSION: number;
 export const SNAP_LIVE_MS: number;
 export const SNAP_IDLE_MS: number;
 export const PATH_MS: number;
+export const PATH_PRE_MS: number;
 export const HISTORY_AT_ONCE: number;
 export function createRegime(o: {
   theta: (path: string, opt?: { lane?: 'record' }) => Promise<{ status: number; body: string }>;
