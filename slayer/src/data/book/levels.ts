@@ -409,6 +409,18 @@ function materializeNow(entry: Entry, scope: LevelsScope): MarketSnapshot {
   return snap;
 }
 
+/** A name's call and put walls in a levels scope, off the chain levelsFor reads for it (the front date's own chain for
+    "Today", else the live whole book with the settled dates off — liveAll), by the one rule (core/walls.ts). A peek:
+    no fetch; null until the book is live. Pages that print a name's walls without its levels (the watchlist) read this. */
+export function scopeWalls(ticker: string, scope: LevelsScope): { callWall: number | null; putWall: number | null } | null {
+  const entry = peekEntry(ticker);
+  if (!entry || entry.status !== 'live' || !entry.all.length) return null;
+  const chains = chainsFor(entry);
+  const today = chains['0DTE'];
+  const chain = scope === 'ALL' ? chains.ALL ?? liveAll(entry) : today && today.length ? today : chains.ALL ?? liveAll(entry);
+  return pickLegWalls(chain, n => n.callGex, n => n.putGex);
+}
+
 /** Every listed date of a full book has landed once — the Map's matrix window is final */
 export const bookDatesIn = (ticker: string): boolean => {
   const e = peekEntry(ticker);

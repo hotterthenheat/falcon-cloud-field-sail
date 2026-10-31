@@ -134,6 +134,15 @@ for (const t of NAMES) {
     expectEqual(`${t} ${name}: regime is the sign of the net at spot`, lv.regime, atSpot > 0 ? 'LONG' : 'SHORT');
   }
   expectEqual(`${t}: Today reads the front expiry`, lv0.date, gold.front);
+  /* the watchlist's nearest wall reads the walls Pinpoint prints for the scope (it read the raw whole book) */
+  {
+    const { scopeWalls } = await import('../../src/data/book/levels');
+    const { pickLegWalls } = await import('../../src/core/walls');
+    const raw0 = pickLegWalls(book.peekEntry(t)!.all, x => x.callGex, x => x.putGex);
+    const w0 = scopeWalls(t, '0DTE');
+    const wA = scopeWalls(t, 'ALL');
+    expectEqual(`${t}: watchlist walls = the levels' walls, Today ${lv0.callWall}/${lv0.putWall} and All ${lvA.callWall}/${lvA.putWall} (the raw book read ${raw0.callWall}/${raw0.putWall})`, [w0?.callWall, w0?.putWall, wA?.callWall, wA?.putWall], [lv0.callWall, lv0.putWall, lvA.callWall, lvA.putWall]);
+  }
   /* the profile's dealer-gamma curve prints the one flip and the one regime (it once read its own zero off its grid) */
   {
     const { buildExposureSurface } = await import('../../src/data/exposureSurface');
