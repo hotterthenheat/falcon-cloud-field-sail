@@ -1,16 +1,13 @@
-/* One Compass call as a card: the contract, its book, and three numbers left to right: the price at the call, the best
-   bid after it (never a fill), and the exit with why it left (or, while it is open, its live mark and the stop standing).
-   The exit is the result, so it is the loudest of the three. Labels stay quiet; results carry the gain or loss ink. */
+/* One Compass call as a card: the contract, its book, the live bid against the fill, the stop, and when it was
+   quoted and called. Labels stay quiet; numbers carry the direction's ink. */
 
 import { ArrowUpRight, TriangleAlert } from 'lucide-react';
-import type { ReactNode } from 'react';
 import type { Setup } from '../../types/compass';
 import { nyClock } from '../../core/nyTime';
 import ContractLabel from '../ui/ContractLabel';
 import SessionSpark from './SessionSpark';
-import { BOOK_NAME, MODEL_1_NAME, MODELS_VALIDATED, OUTSIDE_TRAINED_WORD, UNVALIDATED_LINE, UNVALIDATED_WORD } from '../../data/compassParams';
-import { activeStop, signalOf, type Signal } from '../../data/compassLedger';
-import { BOOK_INK, callNumbers, pctWord } from '../../data/compassCalls';
+import { BOOK_NAME, MODELS_VALIDATED, OUTSIDE_TRAINED_WORD, UNVALIDATED_LINE, UNVALIDATED_WORD } from '../../data/compassParams';
+import { activeStop, signalOf } from '../../data/compassLedger';
 import { P1_MIN } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
 import { Tip } from '../ui/Tooltip';
@@ -35,10 +32,6 @@ interface SetupScanCardProps {
   expiryChip: string;
   /** The sweep's spark for this name — drawn until the name has a tape of its own. */
   spark?: number[];
-  /** The call on record behind this card, when the board knows it (a past session's); else today's by its address */
-  signal?: Signal | null;
-  /** Lit from the session's events or the chart */
-  hot?: boolean;
 }
 
 const tagOf = (setup: Setup): string => {
@@ -78,30 +71,12 @@ export function ownExpiry(setup: { expiry: string; expiryDate?: string }): strin
   return `${setup.expiry} · ${m[2]}/${m[3]}/${m[1].slice(2)}`;
 }
 
-/** One of the card's three numbers: a whispered label, the figure, and a line under it. */
-const Num = ({ label, value, extra, sub, ink = 'text-textPrimary', size = 'text-t13', testId, title }: { label: string; value: string; extra?: ReactNode; sub?: ReactNode; ink?: string; size?: string; testId: string; title?: string }) => (
-  <div className="min-w-0 flex flex-col gap-0.5" data-card-num={testId} title={title}>
-    <span className="font-mono text-t9 uppercase tracking-wider text-textMuted whitespace-nowrap truncate">{label}</span>
-    <span className="flex items-baseline gap-x-1.5 flex-wrap min-w-0">
-      <span className={`font-mono ${size} font-semibold tnum leading-tight ${ink}`}>{value}</span>
-      {extra}
-    </span>
-    {sub ? <span className="font-mono text-t10 text-textMuted leading-snug whitespace-normal break-words">{sub}</span> : null}
-  </div>
-);
-
-const signedUsd = (v: number) => `${v < 0 ? '−' : '+'}$${Math.abs(v).toFixed(2)}`;
-const resultInk = (v: number | null | undefined) => (v == null || !Number.isFinite(v) || Math.abs(v) < 0.05 ? 'text-textPrimary' : v > 0 ? 'text-bull' : 'text-bear');
-
-const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis, signal: given, hot = false }: SetupScanCardProps) => {
+const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupScanCardProps) => {
   const ticket = setup.band === 'top' || setup.band === 'wing' || setup.band === 'lottery';
-  const bookKey = setup.band === 'top' ? 'A' : setup.band === 'wing' ? 'B' : setup.band === 'lottery' ? 'C' : null;
   const closest = setup.band === 'closest';
   const priced = ticket || closest;
-  const signal = ticket ? (given !== undefined ? given : signalOf(setup.id)) : null;
-  /* a call that has left needs no live quote: its numbers are the record's */
-  const settled = signal?.outcome?.status === 'closed' || signal?.outcome?.status === 'unavailable';
-  const live = useContractLive(setup.ticker, setup.expiryDate || '', setup.strike, setup.right, priced && !!setup.expiryDate && !settled);
+  const live = useContractLive(setup.ticker, setup.expiryDate || '', setup.strike, setup.right, priced && !!setup.expiryDate);
+  const signal = ticket ? signalOf(setup.id) : null;
   const paid = signal?.outcome?.fill?.ask ?? 0;
   /* One quote, both sides. A live Theta quote replaces the scan's. Never a bid from one and an ask from the other, and never a mid standing in for a side the quote did not print. */
   const liveQuote = live && Number.isFinite(live.bid) && Number.isFinite(live.ask) && live.ask >= live.bid && live.ask > 0
@@ -126,11 +101,6 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis, signal: gi
   const closedOut = outcome?.status === 'closed' ? outcome : null;
   const pnl = closedOut?.pnl ?? (paid > 0 && Number.isFinite(liveBid) ? (liveBid - paid) * 100 : NaN);
   const pnlWord = Number.isFinite(pnl) ? `${pnl >= 0 ? '+' : '−'}$${Math.abs(pnl).toFixed(0)}` : '—';
-  const nums = signal ? callNumbers(signal) : null;
-  /* open: the live bid, else the last bid the record read */
-  const openMark = Number.isFinite(liveBid) ? liveBid : nums?.last ? nums.last.bid : NaN;
-  const openBase = nums?.fill?.ask ?? 0;
-  const openPct = openBase > 0 && Number.isFinite(openMark) ? (openMark / openBase - 1) * 100 : NaN;
   const place = placeWord(setup);
   const line = setup.p1 == null ? '' : setup.p1 + 1e-12 >= P1_MIN ? 'The line cleared.' : 'Short of the line.';
   const model = setup.p1 != null
@@ -144,22 +114,20 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis, signal: gi
     setup.quotedAt || liveQuote?.at ? `Quote ${nyClock(liveQuote?.at || setup.quotedAt || 0, { seconds: true, zone: true })}` : '',
   ].filter(Boolean);
   const sigma = setup.greeks.iv > 0 && setup.sigmaMovePct > 0 ? `IV move ±${setup.sigmaMovePct}%` : '';
-  const score = ticket && setup.p1 != null ? `${MODEL_1_NAME} ${(setup.p1 * 100).toFixed(1)}%` : '';
-  const status = priced ? [place, score, sigma, ...when].filter(Boolean).join(' · ') : (setup.whyText || 'Not a ticket.');
+  const status = priced ? [place, sigma, ...when].filter(Boolean).join(' · ') : (setup.whyText || 'Not a ticket.');
 
   return (
     <Tip label={selected ? 'Selected. Click again for this contract.' : 'Select. Click again to open.'}>
     <button
       onClick={() => onSelect(setup)}
       aria-pressed={selected}
-      className={`text-left rounded-md border p-3.5 flex flex-col gap-3 transition-[border-color,background-color,box-shadow] ${hot ? 'ring-1 ring-silver/70 ring-offset-0' : ''} ${
+      className={`text-left rounded-md border p-3.5 flex flex-col gap-3 transition-colors ${
         selected
           ? 'border-silver/60 bg-silver/[0.04]'
           : 'border-borderSubtle bg-ink/[0.015] hover:border-borderMuted hover:bg-ink/[0.03]'
       }`}
       data-compass-card={setup.id}
       data-selected={selected || undefined}
-      data-hot={hot || undefined}
     >
       <div className="flex items-center gap-2 flex-wrap">
         <span className="font-mono text-t10 text-textMuted tnum">#{rank}</span>
@@ -169,10 +137,7 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis, signal: gi
         </span>
         {tagOf(setup) ? (
           <Tip label={model || undefined}>
-            <span className={`inline-flex items-center gap-1.5 font-mono text-t10 uppercase tracking-wider text-textPrimary border rounded px-1.5 py-0.5 ${bookKey ? BOOK_INK[bookKey].ring : 'border-silver/40'}`} data-card-book={bookKey ?? undefined}>
-              {bookKey ? <span className={`w-1.5 h-1.5 rounded-full ${BOOK_INK[bookKey].dot}`} aria-hidden /> : null}
-              {tagOf(setup)}
-            </span>
+            <span className="font-mono text-t10 uppercase tracking-wider text-textPrimary border border-silver/40 rounded px-1.5 py-0.5">{tagOf(setup)}</span>
           </Tip>
         ) : null}
         {ticket && setup.late ? (
@@ -181,7 +146,7 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis, signal: gi
           </Tip>
         ) : null}
         {ticket ? (
-          <span className="ml-auto font-mono text-t10 uppercase tracking-wider text-textPrimary">{closedOut ? 'Closed' : nums?.state === 'open' ? 'Open' : 'Called'}</span>
+          <span className="ml-auto font-mono text-t10 uppercase tracking-wider text-textPrimary">{closedOut ? 'Closed' : 'Called'}</span>
         ) : closest ? (
           <span className="ml-auto font-mono text-t10 uppercase tracking-wider text-textSecondary">Not a call</span>
         ) : (
@@ -192,77 +157,7 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis, signal: gi
         {priced ? status : [place, status, ...when].filter(Boolean).join(' · ')}
       </p>
 
-      {ticket ? (
-        <>
-          <div className="grid grid-cols-3 gap-x-3 gap-y-2 items-start" data-card-numbers data-card-state={nums?.state ?? 'none'}>
-            <Num
-              testId="call"
-              label="At the call"
-              value={nums ? money(nums.at) : entry > 0 ? money(entry) : '—'}
-              title="The ask the call is measured from: the ask of the first quote a full minute after the call, once it filled."
-              sub={nums
-                ? nums.fill
-                  ? Math.abs(nums.fill.ask - nums.calledAsk) < 0.005
-                    ? `Ask at the call · filled ${nyClock(nums.fill.at)}`
-                    : `Called ${nums.calledBid.toFixed(2)} × ${nums.calledAsk.toFixed(2)} · filled ${nyClock(nums.fill.at)}`
-                  : `Called ${nums.calledBid.toFixed(2)} × ${nums.calledAsk.toFixed(2)}`
-                : 'The ask now · not called'}
-            />
-            <Num
-              testId="best"
-              label="Best after"
-              value={nums?.best ? money(nums.best.px) : '—'}
-              ink="text-textSecondary"
-              extra={nums?.best ? <span className="font-mono text-t10 tnum text-textMuted">{pctWord(nums.best.pct, 0)}</span> : null}
-              title="The highest bid after the fill, before the exit. Nobody is filled at a best price: it is shown beside the exit, never instead of it."
-              sub="best price after · not a fill"
-            />
-            {nums?.exit ? (
-              <Num
-                testId="exit"
-                label="The exit"
-                size="text-t15"
-                value={money(nums.exit.px)}
-                ink={resultInk(nums.exit.pct)}
-                extra={nums.exit.pct != null ? <span className={`font-mono text-t12 font-semibold tnum whitespace-nowrap ${resultInk(nums.exit.pct)}`}>{pctWord(nums.exit.pct)}</span> : null}
-                title={nums.exit.reason.full}
-                sub={<>{nums.exit.reason.word}{nums.exit.reason.kind === 'flat' ? '' : ` · ${nyClock(nums.exit.at)}`}{nums.exit.pnl != null ? <> · <span className={`whitespace-nowrap ${resultInk(nums.exit.pnl)}`}>{signedUsd(nums.exit.pnl)}</span></> : null}</>}
-              />
-            ) : nums?.state === 'open' || !nums ? (
-              <Num
-                testId="now"
-                label={nums ? 'Now · open' : 'Now'}
-                size="text-t15"
-                value={Number.isFinite(openMark) ? money(openMark) : '—'}
-                ink={resultInk(openPct)}
-                extra={Number.isFinite(openPct) ? <span className={`font-mono text-t12 font-semibold tnum whitespace-nowrap ${resultInk(openPct)}`}>{pctWord(openPct)}</span> : null}
-                title="Still open: its bid now, and the stop standing now."
-                sub={setup.band === 'lottery'
-                  ? 'No stop · flat 15:50'
-                  : stopPx > 0
-                    ? <>{nums?.stop && nums.stop.name !== 'Stop' ? `Stop · ${nums.stop.name}` : 'Stop'} <span className="text-warn font-semibold tnum">{money(nums?.stop?.px ?? stopPx)}</span></>
-                    : 'Stop —'}
-              />
-            ) : (
-              <Num
-                testId="exit"
-                label="The exit"
-                size="text-t15"
-                value={nums.state === 'unavailable' ? 'No fill' : 'Filling'}
-                ink="text-textSecondary"
-                sub={nums.state === 'unavailable' ? 'No valid quote stood a minute after the call' : 'Fills at the ask a minute after the call'}
-              />
-            )}
-          </div>
-          {!closedOut && (
-            <div className="flex items-center gap-x-3 gap-y-1 flex-wrap font-mono text-t10 text-textSecondary tnum" data-card-distances>
-              <span>{stopPx > 0 ? <>{standing?.name ?? 'Stop'} <span className="text-warn font-semibold">{money(stopPx)}</span> {away(stopPx)}</> : setup.band === 'lottery' ? 'No stop' : 'Stop —'}</span>
-              <span>{target > 0 ? <>Target <span className="text-textPrimary font-semibold">{money(target)}</span> {away(target)}</> : runner ? 'Target: the ratchet' : ''}</span>
-              <span className="ml-auto max-sm:hidden"><SessionSpark ticker={setup.ticker} points={signal?.spark.length ? signal.spark : undefined} width={64} height={22} /></span>
-            </div>
-          )}
-        </>
-      ) : priced ? (
+      {priced ? (
         <>
           <div className="grid grid-cols-4 gap-2 items-start" data-card-numbers>
             <Stat label="The line" value={setup.p1 != null ? (setup.p1 + 1e-12 >= P1_MIN ? 'Cleared' : 'Short') : setup.band === 'lottery' ? 'None' : '—'} ink={setup.p1 != null && setup.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'} />
@@ -285,9 +180,6 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis, signal: gi
       )}
 
       <div className="flex items-start gap-2">
-        {nums?.exit ? (
-          <span className="font-mono text-t11 text-textSecondary min-w-0 whitespace-normal" data-card-why>{nums.exit.reason.full}</span>
-        ) : (
         <span className="flex items-start gap-1.5 font-mono text-t11 text-warn min-w-0 whitespace-normal">
           <TriangleAlert className="w-3 h-3 shrink-0 mt-0.5" />
           {setup.band === 'lottery' ? (
@@ -298,14 +190,12 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis, signal: gi
             </span>
           ) : stopPx > 0 ? (
             <span>
-              Stop at or under <span className="tnum font-semibold">{money(stopPx)}</span>.{' '}
-              {standing && standing.name === 'Breakeven' ? 'Raised to the entry.' : standing && standing.name !== 'Stop' ? `Raised by the ratchet at ${standing.name}.` : 'That is 0.4678 × the entry.'}
+              Stop at or under <span className="tnum font-semibold">{money(stopPx)}</span>. That is 0.4678 × the entry.
             </span>
           ) : (
             <span>{setup.whyText || 'Not a ticket.'}</span>
           )}
         </span>
-        )}
         <span
           role="button"
           tabIndex={0}

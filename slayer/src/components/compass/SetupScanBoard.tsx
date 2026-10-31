@@ -10,7 +10,6 @@ import { TraceGrid, RestFoot, useRestCap, ROWS_AT_REST } from '../trace/TraceBox
 import SetupScanCard, { ownExpiry } from './SetupScanCard';
 import { BOOK_NAME } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
-import type { Signal } from '../../data/compassLedger';
 
 type ScanLayout = 'cards' | 'table';
 
@@ -27,10 +26,6 @@ interface SetupScanBoardProps {
   expiryChip: string;
   /** What the empty board says while a sweep is still reading. */
   emptyLabel?: string;
-  /** The call on record behind a card, when the board holds the session's record (a past session's calls) */
-  callOf?: (id: string) => Signal | undefined;
-  /** The card lit by the session's events or chart */
-  hotId?: string | null;
 }
 
 const WIDTHS: Record<string, number> = { rank: 56, expiry: 150, book: 90, sigma: 110, premium: 96, breaks: 120, open: 72 };
@@ -59,7 +54,7 @@ const MoreFoot = ({ shown, total, onMore }: { shown: number; total: number; onMo
   );
 };
 
-const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expiryChip, emptyLabel, callOf, hotId = null }: SetupScanBoardProps) => {
+const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expiryChip, emptyLabel }: SetupScanBoardProps) => {
   const ranked = useMemo<Ranked[]>(() => setups.map((s, i) => ({ ...s, rank: i + 1 })), [setups]);
   const cap = useRestCap(ranked);
   const huge = ranked.length > HUGE;
@@ -153,7 +148,7 @@ const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expi
     <div key="cards" className="border-t border-borderSubtle px-5 pt-4 pb-5 animate-soft-in" data-compass-board="cards">
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {shown.map(s => (
-          <SetupScanCard key={s.id} setup={s} rank={s.rank} spark={s.spark} selected={s.id === selectedId} hot={s.id === hotId} signal={callOf?.(s.id)} onSelect={onSelect} onAnalysis={onAnalysis} expiryChip={expiryChip} />
+          <SetupScanCard key={s.id} setup={s} rank={s.rank} spark={s.spark} selected={s.id === selectedId} onSelect={onSelect} onAnalysis={onAnalysis} expiryChip={expiryChip} />
         ))}
       </div>
       {huge ? (
