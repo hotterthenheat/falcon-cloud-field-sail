@@ -1204,7 +1204,7 @@ const methodOf = (trend: TrendRead, money: MoneyRead, news: NewsRead, pillars: P
     `${trend.sessions} sessions of the name's own bars`,
     `${money.volumeToday != null ? `${fmtCount(money.volumeToday)} shares today` : 'no volume yet today'}${money.volumeAvg != null ? ` against ${fmtCount(money.volumeAvg)} usual` : ''}`,
     `${fmtCount(money.callOI + money.putOI)} contracts of open interest (the screener)`,
-    money.callPremium + money.putPremium > 0 ? `${fmtMoney(money.callPremium + money.putPremium)} of option premium today (screener call_premium + put_premium)` : 'no option premium on the screener yet',
+    money.callPremium + money.putPremium > 0 ? `${fmtMoney(money.callPremium + money.putPremium)} of option premium today (the screener's call and put premium)` : 'no option premium on the screener yet',
     money.dark.prints.length ? `${money.dark.prints.length} off-exchange ${money.dark.prints.length === 1 ? 'print' : 'prints'}` : 'no off-exchange prints in the recent tape',
     `${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} on the wire`,
   ],
