@@ -408,11 +408,11 @@ const Compare = () => {
   const { tape, spreads, since: tapeSince } = held;
   const todayIso = tapeSessionIso();
   const sideA = useMemo<TraceSide>(
-    () => ({ ...buildTraceSide(held.bookA, spreads, tape, aTicker, tenor, mny, held.fpeA.rows, todayIso), netPending: pendingOf(held.fpeA), ticks: ticksOf(held.flowA) }),
+    () => ({ ...buildTraceSide(held.bookA, spreads, tape, aTicker, tenor, mny, held.fpeA.rows, todayIso), netPending: mny === 'all' ? pendingOf(held.fpeA) : undefined, ticks: ticksOf(held.flowA) }),
     [held, spreads, tape, aTicker, tenor, mny, todayIso]
   );
   const sideB = useMemo<TraceSide>(
-    () => ({ ...buildTraceSide(held.bookB, spreads, tape, bTicker, tenor, mny, held.fpeB.rows, todayIso), netPending: pendingOf(held.fpeB), ticks: ticksOf(held.flowB) }),
+    () => ({ ...buildTraceSide(held.bookB, spreads, tape, bTicker, tenor, mny, held.fpeB.rows, todayIso), netPending: mny === 'all' ? pendingOf(held.fpeB) : undefined, ticks: ticksOf(held.flowB) }),
     [held, spreads, tape, bTicker, tenor, mny, todayIso]
   );
   /* after the close the two tapes' last stretches are not the day, so no busier tape is called */
@@ -463,6 +463,9 @@ const Compare = () => {
   const leansWords = cmp.bullish.net >= 0 ? 'the more bullish' : 'the less bearish';
   const netHeld = !a.netPending && !b.netPending;
   const pend = (s: TraceSide) => (s.netPending === 'loading' ? '…' : '—');
+  /* a cut's net is an estimate off the cut's contracts (traceCompare netCovers.approx): every such figure wears "≈" */
+  const approxMark = (s: TraceSide) => (s.netCovers?.approx ? '≈' : '');
+  const netUsd = (s: TraceSide, v: number) => `${approxMark(s)}${signedUsd(v)}`;
   const ticksHeld = !!a.ticks && !!b.ticks;
   const nearer = (): 'a' | 'b' | null => {
     if (a.earnDays == null && b.earnDays == null) return null;
@@ -485,7 +488,7 @@ const Compare = () => {
 
   const sections: { title: string; rows: Row[] }[] = [
     {
-      title: `Net flow · by expiry, ${clockWords}, ${dayWords}${mny !== 'all' ? ' · every strike' : ''}`,
+      title: `Net flow · ${mny !== 'all' ? `the cut's contracts on the book, ≈, ${clockWords}` : `by expiry, ${clockWords}`}, ${dayWords}`,
       rows: [
         {
           key: 'net',
@@ -493,24 +496,24 @@ const Compare = () => {
           note: !netHeld ? (a.netPending === 'loading' || b.netPending === 'loading' ? 'loading…' : 'did not load') : a.net === b.net ? 'the same lean' : `${cmp.bullish.ticker} ${leansWords}`,
           lead: netHeld ? higher(s => s.net) : null,
           hint: `Call premium at the ask less on the bid, less the same for puts, on ${clockWords}. Spread legs and floor packages are in it`,
-          bars: s => [{ v: s.netPending ? 0 : s.net, text: s.netPending ? pend(s) : signedUsd(s.net), ink: barInk(s.net) }],
-          cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={dirInk(s.net)}>{signedUsd(s.net)}</Fig>),
+          bars: s => [{ v: s.netPending ? 0 : s.net, text: s.netPending ? pend(s) : netUsd(s, s.net), ink: barInk(s.net) }],
+          cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={dirInk(s.net)}>{netUsd(s, s.net)}</Fig>),
         },
         {
           key: 'calls',
           label: 'Net calls',
           note: netHeld ? the(louder(s => s.netCall), 'the louder on calls') : '…',
           lead: netHeld ? louder(s => s.netCall) : null,
-          bars: s => [{ v: s.netPending ? 0 : s.netCall, text: s.netPending ? pend(s) : signedUsd(s.netCall), ink: barInk(s.netCall) }],
-          cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={dirInk(s.netCall)}>{signedUsd(s.netCall)}</Fig>),
+          bars: s => [{ v: s.netPending ? 0 : s.netCall, text: s.netPending ? pend(s) : netUsd(s, s.netCall), ink: barInk(s.netCall) }],
+          cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={dirInk(s.netCall)}>{netUsd(s, s.netCall)}</Fig>),
         },
         {
           key: 'puts',
           label: 'Net puts',
           note: netHeld ? the(louder(s => s.netPut), 'the louder on puts') : '…',
           lead: netHeld ? louder(s => s.netPut) : null,
-          bars: s => [{ v: s.netPending ? 0 : s.netPut, text: s.netPending ? pend(s) : signedUsd(s.netPut), ink: putInk(s.netPut) }],
-          cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={putDirInk(s.netPut)}>{signedUsd(s.netPut)}</Fig>),
+          bars: s => [{ v: s.netPending ? 0 : s.netPut, text: s.netPending ? pend(s) : netUsd(s, s.netPut), ink: putInk(s.netPut) }],
+          cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={putDirInk(s.netPut)}>{netUsd(s, s.netPut)}</Fig>),
         },
         {
           key: 'ticks',
@@ -803,7 +806,10 @@ const Compare = () => {
       ))}
     </div>
   );
-  const netTitle = `Net by expiry on ${clockWords}, ${dayWords}. Spread legs and floor packages are in it`;
+  const netTitle =
+    mny !== 'all'
+      ? `An estimate (≈): the cut's own contracts on the book, each one's premium split by its ask-less-bid share of contracts, on ${clockWords}, ${dayWords}. The expiry route cannot cut by strike`
+      : `Net by expiry on ${clockWords}, ${dayWords}. Spread legs and floor packages are in it`;
 
   return (
     <TraceBox
@@ -826,10 +832,10 @@ const Compare = () => {
         ) : (
           <>
             <Fact label={`${a.ticker} net`} testId="a-net" title={netTitle}>
-              {a.netPending ? <span className="text-textMuted">{pend(a)}</span> : <span className={dirInk(a.net)}>{signedUsd(a.net)}</span>}
+              {a.netPending ? <span className="text-textMuted">{pend(a)}</span> : <span className={dirInk(a.net)}>{netUsd(a, a.net)}</span>}
             </Fact>
             <Fact label={`${b.ticker} net`} testId="b-net" title={netTitle}>
-              {b.netPending ? <span className="text-textMuted">{pend(b)}</span> : <span className={dirInk(b.net)}>{signedUsd(b.net)}</span>}
+              {b.netPending ? <span className="text-textMuted">{pend(b)}</span> : <span className={dirInk(b.net)}>{netUsd(b, b.net)}</span>}
             </Fact>
             <Fact label={isLiveDay(todayIso) ? 'Expiring today · net' : `Expired ${shortDay(todayIso)} · net`} testId="same-day" title={`Net premium on each name's contracts ${sameDayWords(todayIso)}, by expiry`}>
               <span className={dirInk(a.odte.net)}>{a.odte.has ? signedUsd(a.odte.net) : '—'}</span> <span className="text-textMuted">·</span> <span className={dirInk(b.odte.net)}>{b.odte.has ? signedUsd(b.odte.net) : '—'}</span>
@@ -837,7 +843,7 @@ const Compare = () => {
             <Champion label={`Leans ${leansWords}`} ink={cmp.bullish.net >= 0 ? 'bull' : 'bear'} onOpen={() => toNetFlow(cmp.bullish.ticker)} title="Put it on Net Flow's pane" testId="bullish">
               {netHeld ? (
                 <>
-                  {cmp.bullish.ticker} · {signedUsd(cmp.bullish.net)}
+                  {cmp.bullish.ticker} · {netUsd(cmp.bullish, cmp.bullish.net)}
                 </>
               ) : (
                 <span className="text-textMuted">…</span>
@@ -917,7 +923,7 @@ const Compare = () => {
           ? "Reading the day's book."
           : bookState === 'down'
             ? 'This read did not land — the two names fill when the feed answers.'
-            : `${a.ticker} traded ${fmtUsd(a.book.premium)} in options, net ${a.netPending ? '…' : signedUsd(a.net)} into calls over puts; ${b.ticker} ${fmtUsd(b.book.premium)}, net ${b.netPending ? '…' : signedUsd(b.net)}.`
+            : `${a.ticker} traded ${fmtUsd(a.book.premium)} in options, net ${a.netPending ? '…' : netUsd(a, a.net)} into calls over puts; ${b.ticker} ${fmtUsd(b.book.premium)}, net ${b.netPending ? '…' : netUsd(b, b.net)}.`
       }
       detail={
         bookState === 'in' ? (

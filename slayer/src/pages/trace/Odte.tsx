@@ -17,6 +17,7 @@ import { OdteGuide } from '../../components/trace/TraceGuide';
 import FlowSearch, { useSearchedName } from '../../components/trace/FlowSearch';
 import SameDayName from '../../components/trace/SameDayName';
 import { useQParam } from '../../components/trace/addressCut';
+import { coversSpan, coversTip } from '../../components/trace/coversWords';
 
 /* the searched name, kept across route changes within a visit */
 const nameMemory = { q: '' };
@@ -129,7 +130,7 @@ const Odte = () => {
   const putWords = (v: number) => (v >= 0 ? `bearish net puts bought ${fmtUsd(v)}` : `bullish net puts sold ${fmtUsd(Math.abs(v))}`);
   /* calls and puts leaning the same way are joined by "and", opposed by "against" */
   const read = awake
-    ? `The same-day money leans ${bullish ? 'bullish' : 'bearish'} — net calls ${signed(ncp)} ${(ncp >= 0) === (npp < 0) ? 'and' : 'against'} ${putWords(npp)} on every contract ${sameDayWords()}, from the bell to ${asOf} ET.${isLiveDay() ? '' : ` That is the ${shortDay(tapeSessionIso())} session's same-day book — it expired at that bell.`}`
+    ? `The same-day money leans ${bullish ? 'bullish' : 'bearish'} — net calls ${signed(ncp)} ${(ncp >= 0) === (npp < 0) ? 'and' : 'against'} ${putWords(npp)} on every contract ${sameDayWords()}, from ${flow.covers.since && flow.covers.since !== '—' ? flow.covers.since : 'the first minute'} to ${asOf} ET.${isLiveDay() ? '' : ` That is the ${shortDay(tapeSessionIso())} session's same-day book — it expired at that bell.`}`
     : flow.fault
       ? 'This read did not land — the same-day minutes fill when the feed answers.'
       : 'The same-day money is still waking up.';
@@ -184,14 +185,14 @@ const Odte = () => {
             <Fact label="Leans" testId="lean">
               <span className={!awake ? 'text-textMuted' : bullish ? 'text-bull' : 'text-bear'}>{awake ? (bullish ? 'bullish' : 'bearish') : '—'}</span>
             </Fact>
-            <Fact label="Net calls" testId="calls" title={VENDOR_TOTAL_NOTE}>
+            <Fact label="Net calls" testId="calls" title={`${coversTip(flow.covers)}. ${VENDOR_TOTAL_NOTE}`}>
               {awake ? <Lean v={ncp} /> : <span className="text-textMuted">—</span>}
             </Fact>
-            <Fact label="Net puts" testId="puts" title={VENDOR_TOTAL_NOTE}>
+            <Fact label="Net puts" testId="puts" title={`${coversTip(flow.covers)}. ${VENDOR_TOTAL_NOTE}`}>
               {awake ? <Lean v={npp} put /> : <span className="text-textMuted">—</span>}
             </Fact>
             <Fact label="As of" testId="as-of" title={`The same-day series' last minute. ${VENDOR_TOTAL_NOTE}`}>
-              {asOf ? `${asOf} ET` : '—'} <span className="text-textSecondary">· every contract {sameDayWords()}</span>
+              {asOf ? `${asOf} ET` : '—'} <span className="text-textSecondary">· {coversSpan(flow.covers) ? `since ${flow.covers.since}, ` : ''}every contract {sameDayWords()}</span>
             </Fact>
           </>
         }
