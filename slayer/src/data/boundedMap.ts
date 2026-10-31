@@ -50,6 +50,57 @@ export class BoundedMap<K, V> {
   }
 }
 
+/** A map that keeps its `max` most recently used entries, never letting go of one still in use (`inUse`): a chart's
+    tape or print slot is dropped only once no pane wants it and newer ones have pushed it out. While more than `max`
+    are in use it holds them all and lets go of the oldest unused ones first. */
+export class InUseLru<K, V> {
+  private m = new Map<K, V>();
+  constructor(
+    readonly max: number,
+    private inUse: (k: K) => boolean,
+  ) {}
+  /** Read it and mark it used */
+  get(k: K): V | undefined {
+    const v = this.m.get(k);
+    if (v !== undefined) {
+      this.m.delete(k);
+      this.m.set(k, v);
+    }
+    return v;
+  }
+  /** Read without marking it used */
+  peek(k: K): V | undefined {
+    return this.m.get(k);
+  }
+  has(k: K): boolean {
+    return this.m.has(k);
+  }
+  /** Write it as the newest; it is never the one let go by its own write (its want may be counted just after) */
+  set(k: K, v: V): this {
+    this.m.delete(k);
+    this.m.set(k, v);
+    this.trim(k);
+    return this;
+  }
+  /** Let go of the least recently used entries no one wants, down to `max` (call once a want is released) */
+  trim(keep?: K): void {
+    if (this.m.size <= this.max) return;
+    for (const k of this.m.keys()) {
+      if (this.m.size <= this.max) break;
+      if (k !== keep && !this.inUse(k)) this.m.delete(k);
+    }
+  }
+  delete(k: K): boolean {
+    return this.m.delete(k);
+  }
+  get size(): number {
+    return this.m.size;
+  }
+  keys(): IterableIterator<K> {
+    return this.m.keys();
+  }
+}
+
 /** A Set that keeps the `max` most recently added members */
 export class BoundedSet<T> {
   private m: BoundedMap<T, true>;
