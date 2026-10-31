@@ -219,6 +219,8 @@ function vendor(clock: () => number, opt: { status?: (p: string) => number; onCa
   const rec = startExposureRecorder({ dir, uw: v.uw, manual: true, now: () => now, max: 10 });
   const p = (await rec.tick())!;
   check('a slow pass stops at its deadline (past it by one name at most) and counts what it missed', p.took <= PASS_MS + 6_000 && p.missed > 0 && p.asks < 30, `${p.asks} asks in ${p.took / 1000}s, ${p.missed} missed`);
+  const st = rec.status() as { missedTotal?: number; passesMissing?: number };
+  check('the status counts the cuts passes missed since start (a starved recorder shows)', st.missedTotal === p.missed && st.passesMissing === 1, JSON.stringify(st.missedTotal));
   now = at(11, 1, 1);
   const first = [...v.calls.keys()].length;
   await rec.tick();
@@ -448,6 +450,28 @@ function vendor(clock: () => number, opt: { status?: (p: string) => number; onCa
     process.chdir(cwd);
     delete process.env.UNUSUAL_WHALES_API_KEY;
   }
+}
+
+/* ---- a rename refused for a moment (Windows: a reader or a scanner holds the file) is tried again ---- */
+{
+  const mod = (await import('../src/data/exposureRecorder')) as { renameRetrying?: (a: string, b: string, r?: (a: string, b: string) => void) => void };
+  const dir = folder();
+  const from = path.join(dir, 'a.tmp');
+  const to = path.join(dir, 'a.json');
+  fs.writeFileSync(from, 'x');
+  let refusals = 2;
+  const flaky = (a: string, b: string) => {
+    if (refusals-- > 0) throw Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' });
+    fs.renameSync(a, b);
+  };
+  let ok = false;
+  try {
+    mod.renameRetrying?.(from, to, flaky);
+    ok = fs.readFileSync(to, 'utf8') === 'x';
+  } catch {
+    ok = false;
+  }
+  check('a rename refused twice with EPERM lands on the third try', ok);
 }
 
 for (const d of made) fs.rmSync(d, { recursive: true, force: true });

@@ -133,13 +133,17 @@ const recent = [];
    Every upstream call takes a slot and the rest queue. The limit is per process (per Vercel instance). */
 const UPSTREAM_SLOTS = 3;
 let upstreamBusy = 0;
-let refreshBusy = 0;
-/* A viewer goes ahead of every background refresh, and a quick request ahead of a slow one: a route whose answers
-   have been taking over 1.5 s (a whole chain, a long tape) waits behind the quick ones (a quote, the day's exposure),
-   so one viewer's heavy walk never makes another's price time out. Refreshes hold at most one of the three slots. */
+/* A viewer goes ahead of all background work, and a quick request ahead of a slow one: a route whose answers have been
+   taking over 1.5 s (a whole chain, a long tape) waits behind the quick ones (a quote, the day's exposure), so one
+   viewer's heavy walk never makes another's price time out.
+   Background work has two lanes of one slot each: the hub's refreshes (keep-warm and the popular paths) and the exposure
+   recorder ('record'), so the recorder's minute is never spent queued behind 35–70 s of refreshes. Both run only while
+   no viewer waits, and together they never hold the last slot. */
 const quickQueue = [];
 const viewerQueue = [];
 const refreshQueue = [];
+const recordQueue = [];
+const busy = { refresh: 0, record: 0 };
 const took = new Map();
 const routeOf = (path) => path.split('?')[0].replace(/\/[A-Z0-9.$_-]{1,12}(?=\/|$)/g, '/:t').replace(/\/[0-9a-f-]{20,}/g, '/:id');
 const slow = (path) => (took.get(routeOf(path)) ?? 0) > 1_500;
@@ -148,20 +152,20 @@ const noteTook = (path, ms) => {
   const was = took.get(r);
   took.set(r, was == null ? ms : 0.7 * was + 0.3 * ms);
 };
-/* slow work (a viewer's heavy route, or a refresh) never holds the last slot: a quick ask always finds one free */
+/* slow work (a viewer's heavy route, a refresh, the recorder) never holds the last slot: a quick ask always finds one */
 let slowBusy = 0;
 const slowMayGo = () => upstreamBusy < UPSTREAM_SLOTS && slowBusy < UPSTREAM_SLOTS - 1;
-const refreshMayGo = () => slowMayGo() && refreshBusy < 1 && quickQueue.length === 0 && viewerQueue.length === 0;
+const backgroundMayGo = (lane) => slowMayGo() && busy[lane] < 1 && quickQueue.length === 0 && viewerQueue.length === 0;
 /* a slot is counted for the lane its holder was let in from */
 function take(kind) {
   upstreamBusy += 1;
   if (kind !== 'quick') slowBusy += 1;
-  if (kind === 'refresh') refreshBusy += 1;
+  if (kind === 'refresh' || kind === 'record') busy[kind] += 1;
 }
 function give(kind) {
   upstreamBusy -= 1;
   if (kind !== 'quick') slowBusy -= 1;
-  if (kind === 'refresh') refreshBusy -= 1;
+  if (kind === 'refresh' || kind === 'record') busy[kind] -= 1;
 }
 function wake() {
   while (upstreamBusy < UPSTREAM_SLOTS && quickQueue.length) {
@@ -172,41 +176,44 @@ function wake() {
     take('viewer');
     viewerQueue.shift().go('viewer');
   }
-  if (refreshQueue.length && refreshMayGo()) {
-    take('refresh');
-    refreshQueue.shift().go('refresh');
+  /* the recorder first: its pass has a deadline, a refresh does not */
+  for (const [lane, q] of [['record', recordQueue], ['refresh', refreshQueue]]) {
+    if (q.length && backgroundMayGo(lane)) {
+      take(lane);
+      q.shift().go(lane);
+    }
   }
 }
-/* the background refreshes still waiting for a slot, by path */
-const refreshWaiting = new Map();
-/** A viewer is waiting on this path's background refresh (server/hub.mjs): it leaves the refresh lane for the viewers'. */
+/* the background asks still waiting for a slot, by path */
+const backgroundWaiting = new Map();
+/** A viewer is waiting on this path's background ask (server/hub.mjs): it leaves the background lane for the viewers'. */
 function promote(path) {
-  const entry = refreshWaiting.get(path);
-  const at = entry ? refreshQueue.indexOf(entry) : -1;
-  if (at < 0) return;
-  refreshQueue.splice(at, 1);
-  refreshWaiting.delete(path);
+  const entry = backgroundWaiting.get(path);
+  const q = entry ? [refreshQueue, recordQueue].find((x) => x.includes(entry)) : null;
+  if (!q) return;
+  q.splice(q.indexOf(entry), 1);
+  backgroundWaiting.delete(path);
   (slow(path) ? viewerQueue : quickQueue).push(entry);
   wake();
 }
 /** Takes a waiting ask out of its queue (its job was given up): it never reaches the vendor. */
 function withdraw(entry) {
-  for (const q of [quickQueue, viewerQueue, refreshQueue]) {
+  for (const q of [quickQueue, viewerQueue, refreshQueue, recordQueue]) {
     const at = q.indexOf(entry);
     if (at >= 0) {
       q.splice(at, 1);
-      if (refreshWaiting.get(entry.path) === entry) refreshWaiting.delete(entry.path);
+      if (backgroundWaiting.get(entry.path) === entry) backgroundWaiting.delete(entry.path);
       entry.go(null);
       return;
     }
   }
 }
 async function upstreamSlot(fn, lane = 'viewer', path = '', ticket = {}) {
-  const refresh = lane !== 'viewer';
-  /* a refresh is slow work whatever its route; a viewer's ask is slow when its route has been taking long */
-  const heavy = refresh || slow(path);
-  const want = refresh ? 'refresh' : heavy ? 'viewer' : 'quick';
-  const free = refresh ? refreshMayGo() : heavy ? slowMayGo() && viewerQueue.length === 0 : upstreamBusy < UPSTREAM_SLOTS;
+  const background = lane === 'refresh' || lane === 'record' ? lane : null;
+  /* background work is slow whatever its route; a viewer's ask is slow when its route has been taking long */
+  const heavy = !!background || slow(path);
+  const want = background ?? (heavy ? 'viewer' : 'quick');
+  const free = background ? backgroundMayGo(background) : heavy ? slowMayGo() && viewerQueue.length === 0 : upstreamBusy < UPSTREAM_SLOTS;
   let kind = want;
   if (free) take(kind);
   else {
@@ -214,12 +221,12 @@ async function upstreamSlot(fn, lane = 'viewer', path = '', ticket = {}) {
     const entry = { path, go: () => {} };
     kind = await new Promise((r) => {
       entry.go = r;
-      (refresh ? refreshQueue : heavy ? viewerQueue : quickQueue).push(entry);
-      if (refresh) refreshWaiting.set(path, entry);
+      (background === 'record' ? recordQueue : background ? refreshQueue : heavy ? viewerQueue : quickQueue).push(entry);
+      if (background) backgroundWaiting.set(path, entry);
       ticket.entry = entry;
     });
     ticket.entry = null;
-    if (refreshWaiting.get(path) === entry) refreshWaiting.delete(path);
+    if (backgroundWaiting.get(path) === entry) backgroundWaiting.delete(path);
     if (!kind) throw new Error('withdrawn');
   }
   try {
@@ -399,7 +406,7 @@ export async function proxyUw(req, res) {
     return;
   }
   if (/^(?:\/api\/uw)?\/__hub(?:\?|$)/.test(req.url || '') && process.env.VERCEL_ENV !== 'production') {
-    send(res, 200, JSON.stringify({ ...hub.stats(), slotsBusy: upstreamBusy, slowSlots: slowBusy, refreshSlots: refreshBusy, quickQueued: quickQueue.length, viewersQueued: viewerQueue.length, refreshesQueued: refreshQueue.length, coolingMs: coolLeft(), ...stats429, recent }));
+    send(res, 200, JSON.stringify({ ...hub.stats(), slotsBusy: upstreamBusy, slowSlots: slowBusy, refreshSlots: busy.refresh, recordSlots: busy.record, recordsQueued: recordQueue.length, quickQueued: quickQueue.length, viewersQueued: viewerQueue.length, refreshesQueued: refreshQueue.length, coolingMs: coolLeft(), ...stats429, recent }));
     return;
   }
   const path = forwardPath(req.url, /^\/api\/uw/, 400);
