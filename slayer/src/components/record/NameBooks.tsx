@@ -65,25 +65,28 @@ const shortDay = (iso: string | null) => {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
+const EMPTY_WEIGHTS: Record<string, { weight: number; asOf: string | null } | null> = {};
 /* the funds' files are read when the funds are on screen */
 function useOwnWeights(ticker: string, etfs: string[], seen: boolean): Record<string, { weight: number; asOf: string | null } | null> {
   const key = etfs.join(',');
-  const [got, setGot] = useState<Record<string, { weight: number; asOf: string | null } | null>>({});
+  const sym = ticker.toUpperCase();
+  /* held with the name they are for: on a switch the last name's weights in the same funds are not shown under the new
+     name while its own are read */
+  const [got, setGot] = useState<{ sym: string; w: Record<string, { weight: number; asOf: string | null } | null> }>({ sym, w: {} });
   useEffect(() => {
     if (!seen) return;
     let dead = false;
-    const sym = ticker.toUpperCase();
     etfs.forEach(etf =>
       void weightsOf(etf).then(m => {
-        if (!dead) setGot(g => ({ ...g, [etf]: m.get(sym) ?? null }));
+        if (!dead) setGot(g => ({ sym, w: { ...(g.sym === sym ? g.w : {}), [etf]: m.get(sym) ?? null } }));
       })
     );
     return () => {
       dead = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, key, seen]);
-  return got;
+  }, [sym, key, seen]);
+  return got.sym === sym ? got.w : EMPTY_WEIGHTS;
 }
 
 const NameBooks = ({ ticker }: { ticker: string }) => {
