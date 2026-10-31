@@ -6,7 +6,7 @@
   Replay: npx tsx scripts/golden/pinpoint-golden.ts
   Record: GOLDEN_RECORD=1 npx tsx scripts/golden/pinpoint-golden.ts   (then: npx tsx scripts/golden/slimFixtures.ts pinpoint-2026-10-29)
 */
-import { done, expectEqual, expectNear, freezeClock, installUwFixtures, recordedAt } from './uwFixtures';
+import { done, expectEqual, expectNear, freezeClock, installUwFixtures, recordedAt, settleOn } from './uwFixtures';
 import { pruneSet } from './pinpointRaw';
 import { dealerOf } from '../../src/core/dealerSign';
 import { bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, pricedFlip, pricedFlowTo, pricedLegs, pricedNet, rawAnswers, termVols, yearsTrading } from './pinpointRaw';
@@ -28,28 +28,17 @@ g.localStorage = {
   length: 0,
 };
 
-const { asked } = installUwFixtures(SET);
+const fx = installUwFixtures(SET);
+const { asked } = fx;
 freezeClock(recordedAt(SET, new Date().toISOString()));
 
 const book = await import('../../src/data/uwBook');
 const { openFeeds } = await import('../../src/data/feedGate');
 openFeeds();
 
-const settle = async (ticker: string, ok: () => boolean, ms = 600_000) => {
-  const t0 = Date.now();
-  let quiet = 0;
-  let last = asked.length;
-  while (Date.now() - t0 < ms) {
-    await new Promise(r => setTimeout(r, 250));
-    if (asked.length === last) quiet += 250;
-    else {
-      quiet = 0;
-      last = asked.length;
-    }
-    if (ok() && quiet >= (process.env.GOLDEN_RECORD === '1' ? 12000 : 1500)) return;
-  }
-  throw new Error(`golden: ${ticker} did not settle`);
-};
+/* settled: nothing in flight and nothing new asked for a count of event-loop turns (uwFixtures settleOn), not a
+   stretch of quiet wall-clock time */
+const settle = (ticker: string, ok: () => boolean) => settleOn(fx, ok, ticker);
 
 for (const t of NAMES) {
   book.ensureBook(t, 'full');

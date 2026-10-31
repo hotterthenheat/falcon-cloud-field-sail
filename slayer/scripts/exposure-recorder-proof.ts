@@ -474,6 +474,10 @@ function vendor(clock: () => number, opt: { status?: (p: string) => number; onCa
   let peak = 0;
   let recordBusy = 0;
   let recordPeak = 0;
+  /* No real latency: the stand-in vendor holds every call until the test lets it answer, oldest first (answerAll),
+     and the order is a counter, not a clock — so what is measured is the hub's order, never the machine's speed. */
+  let seq = 0;
+  const held: (() => void)[] = [];
   const done: { path: string; end: number; start: number }[] = [];
   const upstream = new Map<string, number>();
   const realFetch = globalThis.fetch;
@@ -488,34 +492,65 @@ function vendor(clock: () => number, opt: { status?: (p: string) => number; onCa
       recordBusy += 1;
       recordPeak = Math.max(recordPeak, recordBusy);
     }
-    const start = Date.now();
-    await sleep(60);
+    const start = seq++;
+    await new Promise<void>(r => held.push(r));
     busy -= 1;
     if (record) recordBusy -= 1;
-    done.push({ path: p, start, end: Date.now() });
+    done.push({ path: p, start, end: seq++ });
     return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
   }) as typeof fetch;
+  const turns = async (n = 20) => {
+    for (let i = 0; i < n; i++) await new Promise(r => setImmediate(r));
+  };
+  /* until `ok`, in event-loop turns (a guard of 100,000 turns, never a sleep) */
+  const turnsUntil = async (ok: () => boolean) => {
+    for (let i = 0; i < 100_000 && !ok(); i++) await new Promise(r => setImmediate(r));
+  };
+  /* answer the held calls one at a time, oldest first, letting the hub admit the next after each, until all settle */
+  const answerAll = async (all: Promise<unknown>[]) => {
+    let settled = false;
+    void Promise.all(all).then(() => (settled = true));
+    while (!settled) {
+      await turnsUntil(() => held.length > 0 || settled);
+      held.shift()?.();
+      await turns();
+    }
+  };
   try {
     const { uwDirect, uwHubStats } = await import('../server/uwProxy.mjs');
     /* eight record asks queued first, then eight viewers arrive */
     const recs = Array.from({ length: 8 }, (_, i) => uwDirect(bookPath(`R${String.fromCharCode(65 + i)}`, 0), { lane: 'record', maxAge: 45_000 }));
-    await sleep(5);
+    /* the record asks are queued and the first is with the vendor before any viewer arrives */
+    await turnsUntil(() => held.length > 0);
+    await turns();
     const views = Array.from({ length: 8 }, (_, i) => uwDirect(`/stock/V${String.fromCharCode(65 + i)}/stock-state`));
-    await Promise.all([...recs, ...views]);
-    const lastViewer = Math.max(...done.filter(d => d.path.includes('stock-state')).map(d => d.end));
-    const recordsAfter = done.filter(d => d.path.includes('spot-exposures') && d.start >= lastViewer - 60).length;
+    await answerAll([...recs, ...views]);
+    /* record asks that reached the vendor only after the last viewer had */
+    const lastViewer = Math.max(...done.filter(d => d.path.includes('stock-state')).map(d => d.start));
+    const recordsAfter = done.filter(d => d.path.includes('spot-exposures') && d.start > lastViewer).length;
     check('never more than the key\'s three requests at once', peak <= 3, `peak ${peak}`);
     check('the recorder holds at most one of them', recordPeak === 1, `peak ${recordPeak}`);
     check('viewers who arrive later go ahead of the queued recorder', recordsAfter >= 5, `${recordsAfter} of 8 record asks ran after the last viewer`);
     /* a viewer's fresh copy is the recorder's: no second call */
     const p = bookPath('SHARED', 0);
     const was = upstream.get(p) ?? 0;
-    await uwDirect(p);
-    await sleep(3_200);
-    const got = await uwDirect(p, { lane: 'record', maxAge: 45_000 });
+    await answerAll([uwDirect(p)]);
+    /* the viewer's copy 3.2 s old: the clock moved on, not waited out */
+    const realNow = Date.now;
+    Date.now = () => realNow() + 3_200;
+    let got: Awaited<ReturnType<typeof uwDirect>>;
+    let age = 0;
+    try {
+      const asked = uwDirect(p, { lane: 'record', maxAge: 45_000 });
+      await answerAll([asked]);
+      got = await asked;
+      age = Date.now() - got.at;
+    } finally {
+      Date.now = realNow;
+    }
     /* in the session that copy is past its 3 s freshness, outside it still fresh (TTL ×10): reused either way, so this
        holds at any hour */
-    check("a viewer's copy (3 s old, inside the recorder's 45 s) is reused, not asked again", (upstream.get(p) ?? 0) - was === 1 && got.status === 200 && got.at < Date.now() - 3_000);
+    check("a viewer's copy (3 s old, inside the recorder's 45 s) is reused, not asked again", (upstream.get(p) ?? 0) - was === 1 && got.status === 200 && age > 3_000, `${age} ms old`);
     const stats = uwHubStats() as Record<string, number>;
     check('record asks are counted apart and keep nothing warm', stats.recordAsks === 9 && stats.recordReused === 1 && stats.upstreamRecord === 8, JSON.stringify({ recordAsks: stats.recordAsks, reused: stats.recordReused, upstreamRecord: stats.upstreamRecord, watching: stats.watching }));
     check('… the hub watches only the viewers\' paths', stats.watching === 9, `${stats.watching}`);
@@ -573,7 +608,8 @@ function vendor(clock: () => number, opt: { status?: (p: string) => number; onCa
   try {
     const tq = await import('../src/data/thetaQuote');
     tq.ensureThetaPrice('ZZPROOF');
-    for (let i = 0; i < 50 && !tq.peekThetaPrice('ZZPROOF'); i++) await sleep(20);
+    /* until the price is in (a condition, polled; the guard is generous so a busy box only makes it slower) */
+    for (const t0 = Date.now(); !tq.peekThetaPrice('ZZPROOF') && Date.now() - t0 < 60_000; ) await sleep(10);
     const fresh = tq.peekThetaPrice('ZZPROOF');
     /* ten minutes on with no new reading (a hidden tab, failing reads): the price is no longer live */
     Date.now = () => realNow() + 10 * 60_000;

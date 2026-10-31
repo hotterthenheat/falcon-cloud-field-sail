@@ -61,7 +61,7 @@ at that row: at the price, the market; under it, a limit to buy and a stop to se
 sell — carrying **the Order card's brackets**, the same as its own buttons. The reader's working orders sit on their rows
 (a stop marked "s"); a press on one cancels it. **Volume** is what traded at each price this session (a bar's volume spread
 over its range), and with a position open, **P&L** is what it would be up or down with the price at that row, the entry
-underlined. There is no book to show: the simulated feed has none, so no column pretends to. A press the engine would
+underlined. There is no book depth to show: the feed carries the best bid and ask only, so no column pretends to. A press the engine would
 refuse says why at its foot. **It closes three ways**: its X, Esc inside it (never the full screen's Esc, a menu's or a
 drawing's), or the door again; it stays as it was left. On a phone or a narrow screen there is no room for it beside the
 chart, and neither it nor its door shows.
@@ -98,10 +98,10 @@ the price in the chain is the price a press gets:
 Two kinds of account:
 
 - **Practice** — the reader's own. It starts with the money they choose ($10,000 · $25,000 · $50,000 · $100,000),
-  carries from day to day, and trades options and futures. A new one can be started at any time; the old one is closed at
-  the market first and stays in the account list, with its trades.
-- **An evaluation** — a prop firm's test. Futures only, a set of rules that end the day or end the test, and a target
-  that passes it. One can run at a time. A finished one — passed, failed, or ended by the reader — is kept with its
+  carries from day to day, and trades options. A new one can be started at any time; the old one is closed at the market
+  first and stays in the account list, with its trades.
+- **An evaluation** — a prop firm's test, on options. A set of rules that end the day or end the test (the firm's
+  published rules, `src/data/paper/propFirms.ts`, judged by `src/data/paper/rules.ts`), and a target that passes it. One can run at a time. A finished one — passed, failed, or ended by the reader — is kept with its
   record.
 
 The Live Chart trades **the account in hand**: the practice account, or the evaluation that is running. The account card
@@ -111,29 +111,31 @@ two starts.
 
 ## The prices
 
-**Today the feed is the terminal's simulator.** It trades round the clock, and it is a new market on every page load —
-so the rules below say what happens at the page's edges (below, "When the page closes"). When the real feed is wired in,
-`src/data/paper/feed.ts` is the one file that changes, and the market's hours become the exchange's: options 09:30 to
-16:00 New York, futures 18:00 to 17:00. Until then the page says "Simulated feed" wherever a figure is shown.
+> **Updated 2026-10-31.** The simulated feed is gone. Every price on the desk is the market's own, live from the
+> ThetaData terminal (`src/data/paper/thetaFeed.ts`, read by `src/data/paper/feed.ts`, where `SIM_FEED` is false), and
+> nothing on the page says "Simulated feed". The futures table and the index-from-its-fund pricing below are superseded
+> with the rest of futures (the banner at the top).
+
+**The feed is live.** Each name's NBBO (an index's price), the expiries listed today, and every contract's NBBO on the
+expiries the desk is looking at or holds are read from the terminal on a two-second beat while the tab is visible, and
+nothing while it is hidden. The market's hours are the exchange's: an order fills only in the options session, a trading
+day from 09:30 to 16:00 New York (13:00 on an early close; `optionsOpen`, `core/session.ts` equityOption). Positions
+carry from one page load to the next. With the terminal down the desk says the live data is offline and nothing fills.
 
 ### Options
 
-- The chain beside the chart is quoted by **the backtest's own pricer** (`src/data/review/quotes.ts`): Black-Scholes on the
-  name's live vol, with a smile and the skew puts pay, inside a spread that widens away from the money. A quote is a
-  **bid**, an **ask**, and the **mark** between them, with delta, theta a day and implied vol worked out from it.
+- The chain beside the chart is **the market's own quotes**: each contract's live **bid** and **ask**, and the **mark**
+  between them. Delta, theta a day and the implied vol are worked out from the quote's mid (Black-Scholes, `core/greeks.ts`).
+- **A fill needs a fresh, two-sided quote**: one read in the last 8 seconds (`FRESH_MS`). The last answer is kept in
+  this browser and painted on a reload, stamped with when it was taken; a kept or stale quote is shown and never fills.
 - **Time left is counted by the real clock**: the sessions after today up to the expiry, plus what is left of today's
   09:30–16:00. A same-day contract loses its time value through the day, the way a real one does.
 - **Decay is not charged — it is in the price.**
-- Listed expiries: the funds' dailies (SPY, QQQ, IWM), six weeklies, three monthlies — the backtest's list, from today.
-  Today's expiry leaves the list at 16:00.
+- Listed expiries: the ones the terminal lists for the name today. Today's expiry leaves the list at 16:00.
 - What can be traded: **long calls and puts**, and **vertical spreads bought for a debit** (a bull call spread, a bear put
   spread) — the backtest's contracts, paid in cash. Spreads sold for a credit are the third round's (below).
-- **Index options** (2026-09-22 — Noah: "we will have index options so make our price feed carry that"): **SPX, NDX and
-  RUT**, each made from its fund at the ratio its futures use and no carry — SPX is SPY × 10, NDX is QQQ × 41, RUT is
-  IWM × 10 — so ES trades over SPX by exactly its 12 points of carry. Strikes every 5 points (SPX, RUT) and 25 (NDX); a
-  contract every session, as the funds list; the same pricer on the index's level and its fund's vol; a hundred to the
-  point; settled in cash at the bell. An index is never asked of the simulator by its own name: its level and its candles
-  are its fund's, turned. Only the Live Chart offers them; an evaluation does not (futures only).
+- **Index options**: **SPX, NDX and RUT** on their own roots (SPXW, NDXP, RUTW), quoted live like any name's, on the
+  index's own price; a hundred to the point; settled in cash at the bell.
 
 ### Futures
 
@@ -183,7 +185,7 @@ A **dead quote gives no fill** (a zero bid, or a spread wider than 60% of the ma
 - **A reversal** (futures): an order past flat closes the position and opens the rest the other way, as on the backtest.
 - **Fees**: options $0.65 a contract each way (both legs of a spread); futures $2.00 ($0.50 for a micro).
 - **A day order** is cancelled at the end of the trading day (17:00 New York). A GTC order waits until it fills or is
-  cancelled — and, on the simulated feed, until the page closes.
+  cancelled.
 - **Expiry**: at 16:00 New York on its expiry date, a held option settles at what it is worth in the money, at the name's
   price then; what was working on it is cancelled.
 
@@ -267,25 +269,19 @@ reader can end the pause early; the account says it was ended early.
 - **The sandbox** (practice only): fees off, and futures fill at the price with no tick against you. The account says so
   in its head.
 
-## When the page closes (the simulated feed)
+## When the page closes
 
-The simulator makes a **new market on every page load**, so nothing open can honestly be carried across one:
-
-- When the page closes or reloads, **everything open is closed at the last price the page saw** and everything working is
-  cancelled. The fills say so ("the page closed").
-- If the page did not get the chance (a crash, a killed tab), the next load closes what was left open at the last price
-  that page wrote down, and says so.
-- The account itself — its cash, its trades, its days, an evaluation's record — carries across reloads.
-
-With the real feed this section goes away and positions stay open across a reload. Orders are still **watched only while
+The feed is live (above), so **positions stay open across a reload** and the account — its cash, its trades, its days, an
+evaluation's record — carries from one page load to the next. (The rule that closed everything at the page's edge was the
+simulated feed's, which made a new market on every load; it is gone.) Orders are still **watched only while
 the terminal is open in a browser**: a prop firm's server watches round the clock, and that needs the backend. The
 account lives in this browser until accounts move to the server.
 
 ## One tab at a time
 
 The account is **held by one tab**. A second tab opens the Live Chart read-only, says the account is open elsewhere, and can
-take it over — the first tab then goes read-only. Two tabs trading one account against two different simulated markets
-would write nonsense into it.
+take it over — the first tab then goes read-only. Two tabs trading one account at once would
+write their fills over each other.
 
 ## Fill alerts
 

@@ -6,7 +6,7 @@ import { peekChange } from './book/day';
 import { snapshotFor } from './book/feed';
 import { levelsFor } from './levelsFor';
 import { levelsForName } from './levelsScope';
-import type { DarkPoolPrint, KeyLevels } from '../types/gex';
+import type { DarkPoolPrint } from '../types/gex';
 
 // ---- formatting -------------------------------------------------------------
 export function fmtUsd(v: number): string {
@@ -29,13 +29,6 @@ export const fmtGexUsd = (v: number): string => {
 /** Dark-pool prints come from the live tape. This used to hash a few blocks. It does not. */
 export function buildPrints(_ticker: string, _spot: number): DarkPoolPrint[] {
   return [];
-}
-
-/** A name's key levels: its Levels card's own (data/levelsFor.ts — one wall rule, one flip), NaN while the book loads. */
-export function buildLevelsFor(ticker: string): KeyLevels {
-  const lv = levelsFor(ticker, levelsForName(ticker));
-  if (!lv) return { spot: NaN, callWall: NaN, putWall: NaN, flip: NaN, supreme: NaN };
-  return { spot: lv.spot, callWall: lv.callWall ?? NaN, putWall: lv.putWall ?? NaN, flip: lv.flip ?? NaN, supreme: lv.supreme };
 }
 
 /** The live session change for a ticker, percent (0 until the vendor's read lands) */

@@ -34,23 +34,44 @@ jobs:
           npx tsc --noEmit -p tsconfig.node.json
       - name: Build
         run: npm run build
-      - name: Proof scripts
-        run: |
-          set -e
-          for f in trace-moneyness-proof gamma-sign-proof lgbm-parity-proof chart-proof clock-proof contract-quote-proof \
-            fixture-proof higher-proof paper-proof replay-proof review-engine-proof \
-            review-journal-proof spx-book-proof terrain-contract-proof terrain-setups-proof exposure-recorder-proof pine-proof vol-outlook-proof weigher-density-proof session-proof symbol-directory-proof opening-lean-proof tape-cache-proof; do
-            echo "::group::$f"
-            npx tsx "scripts/$f.ts"
-            echo "::endgroup::"
-          done
-          node scripts/proxy-auth-proof.mjs
-          node scripts/hub-proof.mjs
-      - name: Golden tests
-        run: |
-          set -e
-          for f in scripts/golden/*-golden.ts; do
-            echo "::group::$f"
-            npx tsx "$f"
-            echo "::endgroup::"
-          done
+      - name: Proofs and golden tests
+        # the one list (scripts/run-proofs.mjs) that `npm test` runs too
+        run: npm test
+
+  browser-smoke:
+    # the production build served by the app's own server with no keys (every page in its offline state), every route
+    # loaded in Chromium at 1440x900 and 390x844: no console error, no NaN or "undefined", no sideways overflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: slayer
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: slayer/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: Install Chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Chromium's system libraries
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Build
+        run: npx vite build
+      - name: Smoke every route
+        run: node scripts/browser-smoke.mjs

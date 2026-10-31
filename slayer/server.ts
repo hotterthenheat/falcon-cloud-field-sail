@@ -56,7 +56,9 @@ app.use(express.static(path.join(__dirname, 'dist')));
 
 /* every other path is the single-page app */
 app.use((_req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  /* `root`, not an absolute path: send refuses any path with a dot-folder in it (a checkout under .claude/worktrees
+     answered 404 for every page but /), and with a root only the file's own path is checked */
+  res.sendFile('index.html', { root: path.join(__dirname, 'dist') });
 });
 
 const server = app.listen(PORT, () => {

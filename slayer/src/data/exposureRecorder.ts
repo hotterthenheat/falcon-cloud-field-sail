@@ -27,7 +27,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
-import { nyIsoDate, nyParts, nyWallTime } from '../core/nyTime';
+import { nyIsoDate, nyParts } from '../core/nyTime';
 import { isTradingDay } from '../core/calendar';
 import { phaseAt, sessionAt } from '../core/session';
 import { ALL, closeOf, placeSeg, readAnswer, spanOf, type KeptSeries } from './book/exposureSegs';
@@ -833,10 +833,4 @@ export function exposureRoute(rec: Recorder, req: Req, res: Res, now: () => numb
     return;
   }
   send(req, res, 404, { error: 'not found' });
-}
-
-/** New York's 04:00 and the regular open on a day, ms: where a full day's record starts */
-export function dayMarks(day: string): { start: number; open: number } {
-  const [y, m, d] = day.split('-').map(Number);
-  return { start: nyWallTime(y, m, d, 4, 0), open: nyWallTime(y, m, d, 9, 30) };
 }

@@ -15,7 +15,7 @@
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { done, expectEqual, expectNear, freezeClock, installUwFixtures, recordedAt } from './uwFixtures';
+import { done, expectEqual, expectNear, freezeClock, installUwFixtures, recordedAt, settleOn } from './uwFixtures';
 import { byStrike, contractOi, contractVols, levelsOfRows, pricedFlip, pricedLegs, rawAnswers } from './pinpointRaw';
 
 const SET = 'terrain-2026-10-29';
@@ -36,28 +36,17 @@ g.localStorage = {
   length: 0,
 };
 
-const { asked } = installUwFixtures(SET);
+const fx = installUwFixtures(SET);
+const { asked } = fx;
 freezeClock(recordedAt(SET, new Date().toISOString()));
 
 const book = await import('../../src/data/uwBook');
 const { openFeeds } = await import('../../src/data/feedGate');
 openFeeds();
 
-const settle = async (ok: () => boolean, ms = 600_000) => {
-  const t0 = Date.now();
-  let quiet = 0;
-  let last = asked.length;
-  while (Date.now() - t0 < ms) {
-    await new Promise(r => setTimeout(r, 250));
-    if (asked.length === last) quiet += 250;
-    else {
-      quiet = 0;
-      last = asked.length;
-    }
-    if (ok() && quiet >= (RECORD ? 12000 : 1500)) return;
-  }
-  throw new Error('golden: SPY did not settle');
-};
+/* settled: nothing in flight and nothing new asked for a count of event-loop turns (uwFixtures settleOn), not a
+   stretch of quiet wall-clock time */
+const settle = (ok: () => boolean) => settleOn(fx, ok, 'SPY');
 
 book.ensureBook('SPY', 'board');
 await settle(() => book.peekEntry('SPY')?.status === 'live');

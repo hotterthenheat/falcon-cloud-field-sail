@@ -41,7 +41,7 @@ import {
   type PaperEvent,
   type PaperMarket,
 } from './engine';
-import { NO_RULES, rulesOf, type EarningsWhen, type PaperPlan } from './rules';
+import { NO_RULES, type EarningsWhen, type PaperPlan } from './rules';
 import { planById, sizeWords } from './propFirms';
 
 const KEY = 'slayer_paper_v1';
@@ -523,8 +523,6 @@ export function deleteAccount(id: string): boolean {
   });
   return true;
 }
-/** Does the account run on a plan's rules */
-export const hasRules = (a: PaperAccount): boolean => rulesOf(a) != null;
 
 /* ================================================================== */
 /* The journal's own key */

@@ -7,7 +7,6 @@ import { nyClock } from '../../core/nyTime';
 /** The minutes after midnight New York's clock names: the open, the bell, the flat-by and the roll */
 export const OPEN_MIN = 9 * 60 + 30;
 export const BELL_MIN = 16 * 60;
-const FLAT_MIN = 16 * 60 + 59;
 const ROLL_MIN = 17 * 60;
 /** A full session's minutes — the unit the trading year counts in (an early close is 210 of them) */
 const SESSION_MIN = BELL_MIN - OPEN_MIN;
@@ -105,9 +104,6 @@ export function vixSchedule(expiry: string): { lastTrade: string; settleDay: str
 export const lastTradeDayOf = (c: { ticker: string; expiry: string }): string => (isVixRoot(c.ticker) ? vixSchedule(c.expiry).lastTrade : c.expiry);
 /** When a contract stops trading: the close of its last trading day (13:00 on an early close) */
 export const tradingEndsAt = (c: { ticker: string; expiry: string }): number => bellOf(lastTradeDayOf(c));
-
-/** 16:59 New York on a trading day — an evaluation's flat-by */
-export const flatByOf = (day: string): number => nyInstant(day, FLAT_MIN);
 
 /** Years of trading time an option has left at an instant, on the trading clock (core/tradingYear): the session minutes
     still to come today (all of it before the open, none after the close, none on a day with no session) and every

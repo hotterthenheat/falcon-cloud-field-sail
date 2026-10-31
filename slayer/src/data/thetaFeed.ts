@@ -27,7 +27,6 @@ let down = false;
 /* Until the first answer nobody knows: callers wait on that one read rather than all failing together. */
 let known = false;
 let firstRead: Promise<unknown> | null = null;
-let downSince = 0;
 let probing = false;
 const listeners = new Set<() => void>();
 let rev = 0;
@@ -41,7 +40,6 @@ function note(a: ThetaAnswer): void {
   known = true;
   if (off === down) return;
   down = off;
-  downSince = off ? Date.now() : 0;
   emit();
 }
 
@@ -64,7 +62,6 @@ export async function thetaGet(path: string, jump = false): Promise<ThetaAnswer>
 
 /** Whether the last ThetaData read failed because the terminal is not there. */
 export const thetaDown = (): boolean => down;
-export const thetaDownSince = (): number => downSince;
 
 export function subscribeTheta(fn: () => void): () => void {
   listeners.add(fn);
@@ -101,5 +98,3 @@ export function etClock(at: number): string {
 /** The line a box shows while the terminal is down. */
 export const offlineWords = (takenAt: number): string =>
   takenAt > 0 ? `${LIVE_RECONNECTING} · as of ${etClock(takenAt)}` : LIVE_RECONNECTING;
-
-export const thetaRev = (): number => rev;

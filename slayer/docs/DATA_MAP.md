@@ -1,6 +1,13 @@
 # Data map: which key feeds which box
 
-This map is built from the code as it stood on **2026-10-29, 12:15 UTC**. Seven fixers were editing the tree at the time, so a line number can drift by a few lines. Read it with `docs/PAGE_CONTRACT.md` §1–§2 and `docs/DATA_SOURCES.md`.
+> **Status (2026-10-31): a dated snapshot, not a live map.** §1 and §2 describe the code as it stood on
+> **2026-10-29, 12:15 UTC**, and §3 was re-checked on 2026-10-31 (its **FIXED** marks). It is not regenerated as the code
+> changes. Read every `file:line` below as "near here on 2026-10-29": the line numbers have drifted, and some named
+> functions have since been removed (`uwOnlyDesk`, `sheetChain` and `spxBook.ts` on 2026-10-31; the guard they stood for
+> is `theta.ts thetaUseHere()`). For what a box reads now, follow the route in `src/App.tsx` to its data module and
+> check `docs/DATA_SOURCES.md`, which is kept current.
+
+This map was built from the code as it stood on 2026-10-29, 12:15 UTC, while seven fixers were editing the tree. Read it with `docs/PAGE_CONTRACT.md` §1–§2 and `docs/DATA_SOURCES.md`.
 
 **How it was built.** Every route in `src/App.tsx` was traced to its components, stores and data modules, and from there to the vendor path each one calls. All 39 terminal routes were also loaded in Playwright against the dev server. Every `/api/uw/*` and `/api/theta/*` request was answered locally (UW with `{"data":[]}`, Theta with `terminal_down`), so the run cost the UW key nothing. The first-wave URLs it recorded are quoted below. Because the answers were empty, only the first wave fired; requests that depend on data (expiries, a sector, a chain) are taken from the code.
 
