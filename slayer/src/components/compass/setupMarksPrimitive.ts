@@ -62,6 +62,8 @@ class MarksRenderer {
       /* A line at its real premium. Off the canvas it docks — a line at a fake y is a lie.
          Sitting under the toolbar is still on the tape; the toolbar is clear. */
       const onScale = (raw: number | null): raw is number => raw != null && raw > 2 * vr && raw < H - 2 * vr;
+      /* a level on the tape but under the chart's chrome (its readout row): its rule is drawn, its label docks below */
+      const underChrome = (raw: number | null): raw is number => onScale(raw) && raw < topLimit;
 
       const ENTRY = '#FF9500';
       const fromEntry = (price: number) => {
@@ -102,10 +104,11 @@ class MarksRenderer {
         const px = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const word = `STOP  ${px(data.floor.price)}${fromEntry(data.floor.price)}${data.floor.brokeAt ? '  broke' : ''}`;
         const alpha = data.hot === 'floor' ? 1 : 0.9;
-        if (onScale(raw)) {
+        if (onScale(raw) && !underChrome(raw)) {
           rule(0, raw, right, data.bear, alpha, false);
           figure(word, raw, data.bear, raw > topLimit);
         } else {
+          if (underChrome(raw)) rule(0, raw, right, data.bear, alpha * 0.6, false);
           const y = dockY(raw);
           const tickW = 14 * hr;
           ctx.fillStyle = data.bear;
@@ -126,10 +129,11 @@ class MarksRenderer {
         const raw = yOf(data.entry.price);
         const px = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const word = `${data.entryWord || 'ASK'}${stopAtEntry ? ' · STOP' : ''}  ${px(data.entry.mid)}`;
-        if (onScale(raw)) {
+        if (onScale(raw) && !underChrome(raw)) {
           rule(0, raw, right, ENTRY, 0.95, false);
           figure(word, raw, ENTRY, raw > topLimit);
         } else {
+          if (underChrome(raw)) rule(0, raw, right, ENTRY, 0.6, false);
           const y = dockY(raw);
           chip(word, y, ENTRY, false);
         }
@@ -145,8 +149,10 @@ class MarksRenderer {
         if (onScale(raw)) {
           pen.rule(0, raw, right, '#04140A', t.won ? 0.95 : 0.75, { trace: false, width: t.won ? 5 : 3 });
           pen.rule(0, raw, right, ink, 1, { trace: false, width: t.won ? 2.4 : 1.35 });
-          chip(word, raw, ink, t.won);
-          continue;
+          if (!underChrome(raw)) {
+            chip(word, raw, ink, t.won);
+            continue;
+          }
         }
         const y = dockY(raw);
         chip(word, y, ink, t.won);

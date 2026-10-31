@@ -80,13 +80,16 @@ const ContractTrack = ({
   const tapeRef = useRef<HTMLDivElement | null>(null);
   const chromeRef = useRef<HTMLDivElement | null>(null);
   const [topMargin, setTopMargin] = useState(0.18);
+  /* the chrome's own height: a level's label never docks under the readout */
+  const [chromeH, setChromeH] = useState(56);
   const [bar, setBar] = useState<{ open: number; high: number; low: number; close: number } | null>(null);
 
   useEffect(() => {
     const measure = () => {
       const tape = tapeRef.current?.clientHeight ?? 0;
       const chrome = chromeRef.current?.clientHeight ?? 0;
-      if (tape > 0 && chrome > 0) setTopMargin(Math.min(0.28, Math.max(0.1, (chrome + 8) / tape)));
+      if (tape > 0 && chrome > 0) setTopMargin(Math.min(0.4, Math.max(0.1, (chrome + 8) / tape)));
+      if (chrome > 0) setChromeH(chrome);
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -148,10 +151,10 @@ const ContractTrack = ({
       bear: resolveInk('rgb(var(--bear))', host),
       ink: resolveInk('rgb(var(--text-primary))', host),
       hot: null,
-      insetTop: 48,
+      insetTop: chromeH,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setup.ticker, book.entryPremium, book.stopPremium, book.mark, themeKey, traded, multiples.join('|'), entryWord]);
+  }, [setup.ticker, book.entryPremium, book.stopPremium, book.mark, themeKey, traded, multiples.join('|'), entryWord, chromeH]);
 
   return (
     <div
@@ -206,7 +209,7 @@ const ContractTrack = ({
             </button>
           )}
         </div>
-        <div className="h-[23px] flex items-center gap-2.5 px-3 pointer-events-none overflow-hidden" data-readout-line>
+        <div className="min-h-[23px] flex flex-wrap items-center gap-x-2.5 gap-y-0.5 px-3 pb-1 pointer-events-none" data-readout-line>
           <ReadoutCell k="O" v={shown ? px2(shown.open) : '—'} />
           <ReadoutCell k="H" v={shown ? px2(shown.high) : '—'} />
           <ReadoutCell k="L" v={shown ? px2(shown.low) : '—'} />
@@ -214,7 +217,7 @@ const ContractTrack = ({
           {traded && traded.length === 0 && <span className="min-w-0 truncate font-mono text-t10 text-textMuted">{emptyNote || 'No print on the tape'}</span>}
           {traded == null && !pathNote && <span className="min-w-0 truncate font-mono text-t10 text-textMuted">Not on the tape</span>}
           {pathNote && <span className="min-w-0 truncate font-mono text-t10 text-textMuted">{pathNote}</span>}
-          <span className="ml-auto flex items-center gap-2.5 min-w-0 max-sm:hidden">
+          <span className="ml-auto flex flex-wrap items-center gap-x-2.5 gap-y-0.5 min-w-0 max-sm:hidden">
             <ReadoutCell k="High" v={series ? px2(series.high) : '—'} />
             <ReadoutCell k="Low" v={series ? px2(series.low) : '—'} />
             <ReadoutCell k="Vol" v={volume > 0 ? count(volume) : '—'} />
