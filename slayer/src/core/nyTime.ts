@@ -6,7 +6,7 @@ import type { Time, TickMarkFormatter } from 'lightweight-charts';
 import { now } from './clock';
 /* calendar imports nyParts from here; its sets are read only when these functions run, so the cycle is safe */
 import { sessionCloseMinOn } from './calendar';
-import { sessionAt } from './session';
+import { sessionAt } from '../../shared/marketSession.mjs';
 
 const NY_TZ = 'America/New_York';
 /** The cash session, in minutes since New York's midnight. SESSION_CLOSE_MIN is a full day's close: on an early close the
