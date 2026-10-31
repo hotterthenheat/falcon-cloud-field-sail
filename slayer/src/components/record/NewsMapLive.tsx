@@ -279,6 +279,11 @@ const LiveMap = ({ pins, selectedCity, onPick, onHover, heat, reach, flyTo = nul
   const toneRef = useRef(tone);
   toneRef.current = tone;
   const fineReady = useRef(atlasLevel >= 2);
+  /* What the pins draw, as text: a re-read that hands over the same pins (a new array, the same stories) neither rebuilds
+     the markers nor starts a new glide. Only the fields the markers, their titles and the fit read are in it. */
+  const pinsKey = pins.map(p => `${p.city}|${p.lng}|${p.lat}|${p.n}|${p.up}|${p.down}|${p.majors}|${p.maxSeverity}|${p.topId}`).join(';');
+  /** Where the last fit aimed: an animated fit to the same place again is skipped (it would only redraw for 650 ms) */
+  const lastFit = useRef('');
 
   /** The whole inhabited world, or the cut's pins when they sit in one region */
   const fit = (map: maplibregl.Map, animate: boolean) => {
@@ -292,10 +297,16 @@ const LiveMap = ({ pins, selectedCity, onPick, onHover, heat, reach, flyTo = nul
       const spanLat = Math.max(...lats) - Math.min(...lats);
       if (spanLng < 70 && spanLat < 45) {
         const b = new maplibregl.LngLatBounds([Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]);
+        const aim = `${b.toArray().flat().join(',')}@${box.clientWidth}x${box.clientHeight}`;
+        if (animate && aim === lastFit.current) return;
+        lastFit.current = aim;
         map.fitBounds(b, { padding: 56, duration: animate ? 650 : 0, maxZoom: 4 });
         return;
       }
     }
+    const aim = `world@${box.clientWidth}x${box.clientHeight}`;
+    if (animate && aim === lastFit.current) return;
+    lastFit.current = aim;
     if (animate) map.easeTo({ center: WORLD_CENTER, zoom: z, duration: 650 });
     else map.jumpTo({ center: WORLD_CENTER, zoom: z });
   };
@@ -394,6 +405,8 @@ const LiveMap = ({ pins, selectedCity, onPick, onHover, heat, reach, flyTo = nul
   }, [tone, ready]);
 
   const sessionKey = sessions.map(s => s.key).join(' ');
+  /* the shading and the lines are rebuilt only when what they show changes, not on every new array from a re-read */
+  const shadeKey = `${JSON.stringify(heat)}#${JSON.stringify(reach)}`;
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
@@ -401,14 +414,14 @@ const LiveMap = ({ pins, selectedCity, onPick, onHover, heat, reach, flyTo = nul
     setSource(map, 'news-reach', reachData(reach));
     setSource(map, 'news-session', sessionData(sessions));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, heat, reach, sessionKey, atlasRev]);
+  }, [ready, shadeKey, sessionKey, atlasRev]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || moved.current) return;
     fit(map, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, pins]);
+  }, [ready, pinsKey]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -567,7 +580,7 @@ const LiveMap = ({ pins, selectedCity, onPick, onHover, heat, reach, flyTo = nul
     }
     return () => markers.forEach(m => m.remove());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, pins, selectedCity, bucket, atlasRev]);
+  }, [ready, pinsKey, selectedCity, bucket, atlasRev]);
 
   /* quiet place names for bearings once zoomed to a region: only those on screen, re-placed when the view settles */
   useEffect(() => {
@@ -629,6 +642,8 @@ const LiveMap = ({ pins, selectedCity, onPick, onHover, heat, reach, flyTo = nul
     const map = mapRef.current;
     if (!map) return;
     moved.current = false;
+    /* the reader asked for the frame back: aim again even where the last fit already pointed */
+    lastFit.current = '';
     fit(map, true);
   };
 
