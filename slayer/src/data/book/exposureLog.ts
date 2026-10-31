@@ -30,6 +30,7 @@ import { peekEntry } from './store';
 import { expiryOpen } from '../../core/tradingYear';
 import type { GexSnapshot } from '../../types/market';
 import { ALL, JOIN_MS, closeOf, dayStartOf, placeSeg, readAnswer, rowMeasures, spanOf, type KeptSeries } from './exposureSegs';
+import { nodeConcept } from '../../components/gex/nodeConcept';
 
 export { JOIN_MS, rowMeasures };
 
@@ -747,6 +748,8 @@ async function pullHist(t: string, cut: FieldCut, day: string): Promise<boolean>
 
 /** Where the field's cell at this moment came from, in words for the cell's card: null for a live day */
 export function fieldSourceWords(ticker: string, ms: number): string | null {
+  /* dev-only with the heat look until the owner approves it: production's card is unchanged */
+  if (nodeConcept() !== 'heat') return null;
   const src = daySource.get(`${rootOf(ticker)}|${nyIsoDate(ms)}`);
   if (src === 'reconstructed') return "Reconstructed from the day's open interest and quotes";
   if (src === 'recorded') return 'Recorded live';
@@ -767,7 +770,9 @@ export function ensureFieldCloses(ticker: string, cut: FieldCut, count = 8): voi
   void (async () => {
     for (const d of todo) {
       let answered = false;
-      if (await pullHist(t, cut, d)) {
+      /* the server's past day (recorded or rebuilt) feeds the dev-only heat look until the owner approves it; production
+         keeps the vendor's close */
+      if (nodeConcept() === 'heat' && (await pullHist(t, cut, d))) {
         closesSettled.add(`${t}|${cut}|${d}`);
         emit();
         continue;
