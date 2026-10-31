@@ -2086,6 +2086,9 @@ const Terrain = () => {
             ? {
                 right: (panes[expanded]?.ladder && !belowLg ? panes[expanded]?.ladderW ?? railRestWidth(cfg.layout, true) : 0) + PRICE_GUTTER_PX + 8,
                 bottom: deskBarH > 0 ? DESK_BAR_GAP_PX : TIME_AXIS_PX + 12,
+                /* held inside the screen: a bar wider than the room wraps onto a second line (the pane reserves its
+                   height) instead of running off the left edge with the layout buttons on it */
+                left: DESK_BAR_GAP_PX,
               }
             : undefined
         }
@@ -2096,7 +2099,7 @@ const Terrain = () => {
         /* The desk bar, docked: A row under the grid. */
         className={
           expanded !== null
-            ? 'chrome-hover pointer-events-none flex items-center gap-2 opacity-40 transition-opacity duration-200 hover:opacity-100 focus-within:opacity-100 fixed z-[90]'
+            ? 'chrome-hover pointer-events-none flex flex-wrap items-center justify-end gap-2 opacity-40 transition-opacity duration-200 hover:opacity-100 focus-within:opacity-100 fixed z-[90]'
             : 'order-last shrink-0 mt-1 flex items-center justify-end gap-2'
         }
         data-terrain-desk-bar={expanded !== null ? 'floating' : 'docked'}
