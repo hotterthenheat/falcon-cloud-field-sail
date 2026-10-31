@@ -198,6 +198,9 @@ export interface PaperDay {
   /** The day's start balance — what it was worth less what was open (closed trades only) */
   bal?: number;
   close?: number;
+  /** The balance at the roll (closed trades only): with `bal`, the day's closed P&L — what consistency and profitable
+      days count */
+  closeBal?: number;
   hi: number;
   lo: number;
 }
@@ -1470,7 +1473,9 @@ function passIf(a: PaperAccount, v: PaperView, m: PaperMarket, events: PaperEven
   }
   events.push({ kind: 'passed', at: m.now, words: `${planName(plan)} · ${verdict.why}` });
   const start = { at: m.now, day: a.day, equity: v.balance };
-  return logged({ ...a, phase: (a.phase ?? 0) + 1, phaseStart: start }, m.now, verdict.why, 'pass');
+  /* a plan whose every phase carries its own drawdown starts the high mark again from where the phase begins */
+  const restart = plan.rules.drawdown?.perPhase ? { peak: v.balance } : {};
+  return logged({ ...a, phase: (a.phase ?? 0) + 1, phaseStart: start, ...restart }, m.now, verdict.why, 'pass');
 }
 
 /** The day rolls at 17:00 New York: day orders go, the day that was is written down, an evaluation's high mark and
@@ -1483,7 +1488,7 @@ function roll(a: PaperAccount, m: PaperMarket, events: PaperEvent[]): PaperAccou
   if (!Number.isFinite(v.equity)) return a;
   const was = a.day;
   const ledger = { ...a.ledger };
-  if (ledger[was]) ledger[was] = { ...ledger[was], close: v.equity };
+  if (ledger[was]) ledger[was] = { ...ledger[was], close: v.equity, ...(Number.isFinite(v.balance) ? { closeBal: v.balance } : {}) };
   let next: PaperAccount = { ...a, ledger };
   const when = momentAt(m.now);
   /* a day order with minutes still to replay waits for them: the replay ends it at its own day's bell */

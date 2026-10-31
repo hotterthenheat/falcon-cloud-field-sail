@@ -10,7 +10,7 @@
 import { addDays, bellOf, dayBeginsAt, dayEndsAt, lastTradeDayOf, nyAt, nyInstant, sessionTimeOn, tradingDayOf, tradingEndsAt, vixSchedule, yearsToExpiry } from '../src/data/paper/clock';
 import { isFresh } from '../src/data/paper/thetaFeed';
 import { bankedOf, paperCurveOf, closeStale, comboNatural, comboRefusal, endAccount, flattenAll, futBookOf, newAccount, optBookOf, optCancel, optClose, optPlace, optPlaceCombo, optRefusal, retireFutures, tick, viewOf, type PaperAccount, type PaperMarket } from '../src/data/paper/engine';
-import { NO_RULES, flatTimeOf, floorOf, readRules, ruleRefusal, type PaperPlan, type PropRules } from '../src/data/paper/rules';
+import { NO_RULES, flatTimeOf, floorOf, progressOf, readRules, ruleRefusal, type PaperPlan, type PropRules } from '../src/data/paper/rules';
 import { CUSTOM_DEFAULTS, PROP_FIRMS, customPlan, planById } from '../src/data/paper/propFirms';
 import { marginOf } from '../src/data/paper/margin';
 import { OPTIONS_FUNDING_WHITELIST } from '../src/data/paper/whitelists';
@@ -954,6 +954,36 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   const em = expectedMovePctOf(500, 20, { ticker: 'SPY', expiry: '2026-10-16' }, ms);
   const want = 20 * Math.sqrt(yearsToExpiry('2026-10-16', ms));
   ok('the expected move goes through sigmaToExpiry and keeps the variance: 20% on the trading clock → 20 × √T_trading %', near(em, want, 0.002), `${em} vs ${want}`);
+}
+
+{
+  /* 7. consistency and profitable days count each session's CLOSED P&L, as the target does (TradeFundrr: $0.30 a side) */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  const pxk: Record<number, number> = { 500: 2, 505: 1 };
+  const mk = (t: number): PaperMarket => ({ ...fixed(() => 0, t), optQuote: (c: ContractId) => ({ ...fixed(() => pxk[c.strike], t).optQuote(c) }) });
+  const E = '2026-10-16';
+  let x = newAccount({ id: 'tf7', kind: 'evaluation', name: 'tf7', startCash: 0, plan: planById('tf-preprop-25k')!, now: T0 });
+  x = optPlace(x, mk(T0), { contract: { ticker: 'SPY', strike: 500, right: 'C', expiry: E }, side: 'buy', qty: 1, kind: 'market' });
+  x = optPlace(x, mk(T0), { contract: { ticker: 'SPY', strike: 505, right: 'C', expiry: E }, side: 'buy', qty: 1, kind: 'market' });
+  pxk[500] = 5;
+  pxk[505] = 6;
+  x = optPlace(x, mk(T0 + 60_000), { contract: { ticker: 'SPY', strike: 500, right: 'C', expiry: E }, side: 'sell', qty: 1, kind: 'market' });
+  const pr = progressOf(x, viewOf(x, mk(T0 + 60_000)));
+  /* closed: (5 − 2) × 100 − 0.60 = 299.40; still open: (6 − 1) × 100 − 0.30 = 499.70, not counted */
+  ok('the best day is the day’s closed P&L, 299.40 — not 799.10 with the open trade in', near(pr.best, 299.4), `${pr.best}`);
+  ok('…and it is a profitable day (≥ 250) on what closed', pr.good === 1 && near(pr.profit, 299.4), `${pr.good} · ${pr.profit}`);
+}
+
+{
+  /* 8. a phase that carries its own drawdown: TradeFundrr Pre-Prop's Prop step starts its floor again */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  const a0 = newAccount({ id: 'tf8', kind: 'evaluation', name: 'tf8', startCash: 0, plan: planById('tf-preprop-25k')!, now: T0 });
+  ok('Pre-Prop step: a $3,000 end-of-day floor under 25,000, stopping at the start — 22,000', floorOf(a0) === 22_000);
+  const step2 = { ...a0, phase: 1, phaseStart: { at: T0, day: a0.day, equity: 26_300 }, peak: 29_500 };
+  ok('Prop step, begun at 26,300 and closed as high as 29,500: the floor is its own, 29,500 − 3,000 stopping at 26,300 → 26,300 (not the first step’s 25,000)', floorOf(step2) === 26_300, `${floorOf(step2)}`);
+  const step2b = { ...step2, peak: 27_000 };
+  ok('…below where it stops: 27,000 − 3,000 = 24,000', floorOf(step2b) === 24_000);
+  ok('…a plan without it keeps one floor for every phase (Options Funding Growth: one phase, unchanged)', planById('of-growth-50k')!.rules.drawdown?.perPhase !== true);
 }
 
 console.log(`\n${passed} held · ${failed} missed`);
