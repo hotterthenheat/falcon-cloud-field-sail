@@ -6,6 +6,7 @@ import type { Time, TickMarkFormatter } from 'lightweight-charts';
 import { now } from './clock';
 /* calendar imports nyParts from here; its sets are read only when these functions run, so the cycle is safe */
 import { sessionCloseMinOn } from './calendar';
+import { sessionAt } from './session';
 
 const NY_TZ = 'America/New_York';
 /** The cash session, in minutes since New York's midnight. SESSION_CLOSE_MIN is a full day's close: on an early close the
@@ -141,10 +142,14 @@ export function nySession(at?: At): { open: number; close: number } {
   };
 }
 
-/** Where New York's clock stands against the session: before the open, in it, or after the close (13:00 on an early close) */
+/** Where New York's clock stands against the CASH session (core/session.ts, the one rule): before the open, in it, or
+    after the close (13:00 on an early close). A day with no session (a weekend, a holiday) is 'after' all day — the last
+    session is over — and never 'open'. The overnight and the pre-market are 'before' on a session morning. */
 export const nySessionPhase = (at?: At): 'before' | 'open' | 'after' => {
-  const m = nyMinutes(at);
-  return m < SESSION_OPEN_MIN ? 'before' : m < nyCloseMin(at) ? 'open' : 'after';
+  const s = sessionAt(ms(at));
+  if (s.phase === 'regular') return 'open';
+  if (s.date !== s.tradingDay || s.isHoliday) return 'after';
+  return s.minute < SESSION_OPEN_MIN ? 'before' : 'after';
 };
 
 /* lightweight-charts on New York's clock (the library stamps UTC and has no zone option). A business day prints as it is.
