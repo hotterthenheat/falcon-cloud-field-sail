@@ -1,7 +1,18 @@
 /* One read of a Weigher contract. The chain, the case, and the curve ask this. A blank greek stays blank. A
-   simulated chain is named, and it is not scored. */
+   simulated chain is named, and it is not scored.
 
-import { blackScholesPrice } from '../core/greeks';
+   One clock for every model number in a row: the trading clock (core/tradingYear tradingYears, early closes and holidays
+   known). A vendor's IV is quoted on the calendar year; it is moved onto the trading clock with the variance unchanged
+   (core/volClock vendorIvOnTradingClock) before anything is priced off it, and the IV column keeps the quoted convention.
+   Rate and yield are the name's carry (core/carry carryFor), and they accrue on the calendar: on the trading clock they
+   are scaled by T_calendar / T_trading (`clockCarry`), so r·T is the calendar's (a 0DTE otherwise accrues a whole
+   session of interest in 4 hours, which moved an ATM delta by 0.007). The model is European (Black–Scholes); an American put in the
+   money is flagged, not re-priced. */
+
+import { blackScholesGreeks, blackScholesPrice, decayOver, impliedVolFromPrice, thetaPerSession } from '../core/greeks';
+import { carryFor, getCarry, DEFAULT_R } from '../core/carry';
+import { tradingYears } from '../core/tradingYear';
+import { quotedVolPoint, sigmaToExpiry } from '../core/volClock';
 import { weekdayDte, SPAN_INDEX, strikeSpan, bookBRange, P1_MIN, BID_MIN, SPREAD_MAX, DRIVE, onScanGrid, inLottery, releaseBlocks, QUOTE_MAX_AGE_MS, SEAT_CAP, LOTTERY_ASK_MAX } from './compassParams';
 import { optionScanOpen, scanShutWhy } from './compassSession';
 import { econReleases } from './monthCalendar';
@@ -10,50 +21,80 @@ import type { OptionRight } from '../types/compass';
 import type { DeskChain, DeskContract } from './weigherDesk';
 import { normCdf as ncdf } from '../core/math';
 
-export const WEIGHER_R = 0.042;
+interface Carry {
+  r: number;
+  q: number;
+}
+
+/** @deprecated The bill rate the carry seam starts at. Price through `carryFor(ticker)` (or `pricerFor`), which also
+    carries the name's dividend yield. */
+export const WEIGHER_R = DEFAULT_R;
+/** @deprecated Zero; a name's yield comes from `carryFor(ticker)`. */
 export const WEIGHER_Q = 0;
-/* Theta is shown per calendar day across the app, the same as the ThetaData feed and Compass. */
-export const THETA_DAYS = 365;
-/** A calendar-day theta as the decay over one hour of the cash session (6.5 hours, 252 sessions a year). */
-export const thetaPerSessionHour = (thetaPerDay: number): number => (thetaPerDay * THETA_DAYS) / (252 * 6.5);
+/** Trading minutes in a full cash session. */
+const SESSION_MIN = 390;
+/** One trading minute, in trading years. */
+const MINUTE_YEARS = 1 / (SESSION_MIN * 252);
 
-/** Weekday sessions left, including what is left of today, over 390 × 252, plus 1e−6. */
-export function yearFracLeft(expiryYmd: string, now = Date.now()): number {
-  const session = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(now));
-  const ahead = weekdayDte(session.replace(/-/g, ''), expiryYmd.replace(/-/g, ''));
-  if (!Number.isFinite(ahead) || ahead < 0) return 1e-6;
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(now));
-  const hh = Number(parts.find(p => p.type === 'hour')?.value ?? 0) % 24;
-  const mm = Number(parts.find(p => p.type === 'minute')?.value ?? 0);
-  const minute = hh * 60 + mm;
-  const open = 9 * 60 + 30;
-  const close = 16 * 60;
-  const leftToday = minute < close ? Math.max(0, close - Math.max(minute, open)) : 0;
-  const mins = ahead * 390 + leftToday;
-  return mins / (390 * 252) + 1e-6;
+/** Weigher theta is per trading session (core/greeks thetaPerSession). Its hourly rate over a full 6.5-hour session.
+    Inside the last session prefer the contract's own `thetaHour`, the decay over the next trading hour. */
+export const thetaPerSessionHour = (thetaPerSession: number): number => thetaPerSession / (SESSION_MIN / 60);
+
+const isoOf = (expiry: string): string => {
+  const d = expiry.replace(/\D/g, '').slice(0, 8);
+  return d.length === 8 ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}` : expiry;
+};
+
+/** Trading years to the expiry's cash close (13:00 on an early close), holidays and weekends out: core/tradingYear
+    tradingYears, floored at five trading minutes. Takes YYYY-MM-DD or YYYYMMDD. */
+export function yearFracLeft(expiry: string, now = Date.now()): number {
+  return tradingYears(isoOf(expiry), now);
 }
 
-/** 60 bisections on [0.01, 8]. Null when the mark is outside the bracket. */
-export function solveIv(mark: number, spot: number, strike: number, t: number, right: OptionRight): number | null {
-  if (!(mark > 0) || !(spot > 0) || !(strike > 0) || !(t > 0)) return null;
-  let lo = 0.01;
-  let hi = 8;
-  const at = (v: number) => blackScholesPrice(spot, strike, t, v, right, WEIGHER_R, WEIGHER_Q);
-  if (mark < at(lo) - 1e-6 || mark > at(hi) + 1e-4) return null;
-  for (let i = 0; i < 60; i++) {
-    const mid = (lo + hi) / 2;
-    if (at(mid) < mark) lo = mid;
-    else hi = mid;
-  }
-  return (lo + hi) / 2;
+/** Implied vol off a mark on the clock `t`: core/greeks bisection on [1e-4, 5]. Null when the mark is outside the bracket. */
+export function solveIv(mark: number, spot: number, strike: number, t: number, right: OptionRight, carry: Carry = getCarry()): number | null {
+  return impliedVolFromPrice(mark, spot, strike, t, right, carry.r, carry.q);
 }
 
-interface BsRead {
+/**
+ * THE touch odds for every page: the chance a lognormal walk with total log-sd `sigmaT` (σ√T) and total log drift
+ * `driftT` (μT) touches `barrier` before the horizon — the reflection principle. With `driftT` 0 this is exactly
+ * 2·(1 − Φ(|ln(B/S)| / σ√T)); the Weigher passes (r − q)·T, the walk around the forward. A fraction, 0 to 1.
+ */
+export function touchChance(spot: number, barrier: number, sigmaT: number, driftT = 0): number {
+  if (!(spot > 0) || !(barrier > 0) || !(sigmaT > 0) || !Number.isFinite(driftT)) return NaN;
+  const up = barrier > spot;
+  if (Math.abs(barrier - spot) < 1e-12) return 1;
+  const b = Math.abs(Math.log(barrier / spot));
+  const m = up ? driftT : -driftT;
+  const p = ncdf((m - b) / sigmaT) + Math.exp((2 * m * b) / (sigmaT * sigmaT)) * ncdf((-b - m) / sigmaT);
+  if (!Number.isFinite(p)) return NaN;
+  return Math.min(1, Math.max(0, p));
+}
+
+/** Roots whose options are European (cash-settled index). Everything else listed is American. */
+const EUROPEAN_ROOTS = new Set(['SPX', 'SPXW', 'XSP', 'NDX', 'NDXP', 'RUT', 'RUTW', 'VIX', 'VIXW', 'DJX', 'OEX', 'XEO', 'MRUT']);
+
+/** True when a European price stands in for an American contract that can be worth more: a put in the money on a
+    name whose options exercise early. The UI says so beside the model numbers. */
+export function europeanApprox(root: string, right: OptionRight, strike: number, spot: number): boolean {
+  return right === 'P' && spot > 0 && strike > spot && !EUROPEAN_ROOTS.has(root.trim().toUpperCase());
+}
+
+/** The words for that flag. */
+export const EUROPEAN_NOTE = 'European model. This put can be exercised early, so it can be worth more than shown.';
+
+export interface BsRead {
   delta: number;
   gamma: number;
+  /** Per trading session (core/greeks thetaPerSession). */
   theta: number;
+  /** The decay over the next trading hour, or what is left of the session when less. */
+  thetaHour: number;
+  /** Per vol point of the vol in `iv`. */
   vega: number;
   rho: number;
+  /** Percent. bsOnMark: on the clock it was solved on. readContract: the quoted (calendar-year) convention. */
   iv: number;
   itm: number;
   touch: number;
@@ -61,65 +102,158 @@ interface BsRead {
   profitShort: number;
 }
 
-/** Chance the price touches `barrier` before `t`, under the risk-neutral lognormal walk (the reflection-principle formula). */
-function touchProb(spot: number, barrier: number, t: number, vol: number, up: boolean, r = WEIGHER_R, q = WEIGHER_Q): number {
-  if (!(spot > 0) || !(barrier > 0) || !(t > 0) || !(vol > 0)) return NaN;
-  if (up && spot >= barrier) return 1;
-  if (!up && spot <= barrier) return 1;
-  const mu = r - q - (vol * vol) / 2;
-  const s = vol * Math.sqrt(t);
-  const d = (Math.log(spot / barrier) + mu * t) / s;
-  const lam = (2 * mu) / (vol * vol);
-  const shift = (2 * mu * t) / s;
-  const p = up
-    ? ncdf(d) + Math.pow(barrier / spot, lam) * ncdf(d - shift)
-    : ncdf(-d) + Math.pow(barrier / spot, lam) * ncdf(-d + shift);
-  if (!Number.isFinite(p)) return NaN;
-  return Math.min(1, Math.max(0, p));
-}
-
-function finishProb(spot: number, level: number, t: number, vol: number, above: boolean): number {
+function finishProb(spot: number, level: number, t: number, vol: number, above: boolean, carry: Carry): number {
   if (!(level > 0) || !(spot > 0) || !(t > 0) || !(vol > 0)) return NaN;
-  const mu = WEIGHER_R - WEIGHER_Q - (vol * vol) / 2;
+  const mu = carry.r - carry.q - (vol * vol) / 2;
   const d2 = (Math.log(spot / level) + mu * t) / (vol * Math.sqrt(t));
   const p = above ? ncdf(d2) : ncdf(-d2);
   return Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : NaN;
 }
 
-/** Greeks from the mark. IV is 60 bisections on [0.01, 8]. Blank when the bracket fails. The vendor's IV is not used. */
-export function bsOnMark(spot: number, strike: number, right: OptionRight, bid: number, ask: number, t: number): BsRead | null {
-  const mark = bid >= 0 && ask >= bid && ask > 0 ? (ask + bid) / 2 : NaN;
-  if (!(mark > 0) || !(t > 0)) return null;
-  const iv = solveIv(mark, spot, strike, t, right);
-  if (iv == null) return null;
+/** Every model number of one contract at vol `vol` on the clock `t` (both the trading clock's), carry `carry`.
+    `volPt` rescales vega to a point of the quoted vol (core/volClock quotedVolPoint); 1 keeps it per point of `vol`. */
+export function modelAt(spot: number, strike: number, right: OptionRight, bid: number, ask: number, t: number, vol: number, carry: Carry = getCarry(), volPt = 1): BsRead | null {
+  if (!(spot > 0) || !(strike > 0) || !(t > 0) || !(vol > 0)) return null;
+  const g = blackScholesGreeks(spot, strike, t, vol, carry.r, carry.q);
   const sq = Math.sqrt(t);
-  const d1 = (Math.log(spot / strike) + (WEIGHER_R + (iv * iv) / 2) * t) / (iv * sq);
-  const d2 = d1 - iv * sq;
-  const df = Math.exp(-WEIGHER_R * t);
-  const pdf = Math.exp((-d1 * d1) / 2) / Math.sqrt(2 * Math.PI);
-  const nd1 = ncdf(d1);
-  const nd2 = ncdf(d2);
-  const thetaYear =
-    -(spot * pdf * iv) / (2 * sq) -
-    (right === 'C' ? WEIGHER_R * strike * df * nd2 : -WEIGHER_R * strike * df * ncdf(-d2));
-  const beLong = right === 'C' ? strike + ask : strike - ask;
-  const beShort = right === 'C' ? strike + Math.max(0, bid) : strike - Math.max(0, bid);
-  const itm = right === 'C' ? nd2 : ncdf(-d2);
-  const touch = touchProb(spot, strike, t, iv, right === 'C');
-  const profitLong = finishProb(spot, beLong, t, iv, right === 'C');
-  const profitShort = finishProb(spot, beShort, t, iv, right === 'P');
+  const d1 = (Math.log(spot / strike) + (carry.r - carry.q + (vol * vol) / 2) * t) / (vol * sq);
+  const d2 = d1 - vol * sq;
+  const beLong = ask > 0 ? (right === 'C' ? strike + ask : strike - ask) : NaN;
+  const beShort = bid >= 0 && Number.isFinite(bid) ? (right === 'C' ? strike + bid : strike - bid) : NaN;
+  const itm = right === 'C' ? ncdf(d2) : ncdf(-d2);
+  /* a call touches upward, a put downward; already past its strike is a touch */
+  const past = right === 'C' ? spot >= strike : spot <= strike;
+  const touch = past ? 1 : touchChance(spot, strike, vol * sq, (carry.r - carry.q) * t);
   return {
-    delta: right === 'C' ? nd1 : nd1 - 1,
-    gamma: pdf / (spot * iv * sq),
-    theta: thetaYear / THETA_DAYS,
-    vega: (spot * sq * pdf) / 100,
-    rho: ((right === 'C' ? 1 : -1) * strike * t * df * (right === 'C' ? nd2 : ncdf(-d2))) / 100,
-    iv: iv * 100,
+    delta: right === 'C' ? g.deltaCall : g.deltaPut,
+    gamma: g.gamma,
+    theta: thetaPerSession(spot, strike, t, vol, right, carry.r, carry.q),
+    thetaHour: decayOver(spot, strike, t, vol, right, 60 * MINUTE_YEARS, carry.r, carry.q),
+    vega: g.vega * volPt,
+    rho: right === 'C' ? g.rhoCall : g.rhoPut,
+    iv: vol * 100,
     itm: itm * 100,
     touch: touch * 100,
-    profitLong: profitLong * 100,
-    profitShort: profitShort * 100,
+    profitLong: finishProb(spot, beLong, t, vol, right === 'C', carry) * 100,
+    profitShort: finishProb(spot, beShort, t, vol, right === 'P', carry) * 100,
   };
+}
+
+/** Greeks from the mark: the vol solved off the mid on the clock `t` (core bisection), then `modelAt`. Blank when the
+    quote is not two-sided or the bracket fails. */
+export function bsOnMark(spot: number, strike: number, right: OptionRight, bid: number, ask: number, t: number, carry: Carry = getCarry()): BsRead | null {
+  const mark = bid >= 0 && ask >= bid && ask > 0 ? (ask + bid) / 2 : NaN;
+  if (!(mark > 0) || !(t > 0)) return null;
+  const iv = solveIv(mark, spot, strike, t, right, carry);
+  if (iv == null) return null;
+  return modelAt(spot, strike, right, bid, ask, t, iv, carry);
+}
+
+export interface ContractRead extends BsRead {
+  /** The vol the trading clock prices, percent. */
+  ivTrading: number;
+  /** Where the vol came from: the vendor's print, or solved off this contract's mid. */
+  ivFrom: 'vendor' | 'mark';
+  /** A European price for an American put in the money (EUROPEAN_NOTE). */
+  europeanApprox: boolean;
+}
+
+/**
+ * One chain row's model numbers on one clock. The vol is the vendor's quoted (calendar-year) IV moved onto the trading
+ * clock, else the vol solved off the mid on that clock; delta, gamma, theta (per session), vega (per quoted vol point),
+ * rho, the finish, touch and profit odds are all priced off that one vol, at `now`, with the name's carry. `iv` comes
+ * back in the quoted convention, so a solved row reads like a vendor row. Null with no spot, no clock, or no vol.
+ */
+export function readContract(input: {
+  ticker: string;
+  root?: string;
+  spot: number;
+  strike: number;
+  right: OptionRight;
+  bid: number;
+  ask: number;
+  expiryIso: string;
+  /** The vendor's IV, a fraction on the calendar year. Absent, 0 or NaN: solve off the mid. */
+  vendorIv?: number | null;
+  now?: number;
+}): ContractRead | null {
+  const now = input.now ?? Date.now();
+  const iso = isoOf(input.expiryIso);
+  const { spot, strike, right, bid, ask } = input;
+  if (!(spot > 0) || !(strike > 0)) return null;
+  const t = tradingYears(iso, now);
+  const volPt = quotedVolPoint(iso, now);
+  const carry = clockCarry(input.ticker, iso, now);
+  let vol: number | null = null;
+  let from: 'vendor' | 'mark' = 'vendor';
+  const vendor = input.vendorIv;
+  if (vendor != null && vendor > 0 && vendor < 5) vol = vendor * volPt;
+  else {
+    const mark = bid >= 0 && ask >= bid && ask > 0 ? (ask + bid) / 2 : NaN;
+    vol = mark > 0 ? solveIv(mark, spot, strike, t, right, carry) : null;
+    from = 'mark';
+  }
+  if (vol == null || !(vol > 0)) return null;
+  const read = modelAt(spot, strike, right, bid, ask, t, vol, carry, volPt);
+  if (!read) return null;
+  return {
+    ...read,
+    /* rho per point of the calendar rate: the trading-clock rate moves k times as fast */
+    rho: read.rho * carry.k,
+    iv: (vol / volPt) * 100,
+    ivTrading: vol * 100,
+    ivFrom: from,
+    europeanApprox: europeanApprox(input.root || input.ticker, right, strike, spot),
+  };
+}
+
+/** The name's carry restated on the trading clock: rate and yield × T_calendar / T_trading, so r·T_trading is the
+    calendar's r·T (interest accrues overnight and on weekends; variance does not). volPt² is that ratio. */
+export function clockCarry(ticker: string, expiryIso: string, now = Date.now()): Carry & { k: number } {
+  const c = carryFor(ticker);
+  const pt = quotedVolPoint(isoOf(expiryIso), now);
+  const k = pt * pt;
+  return { r: c.r * k, q: c.q * k, k };
+}
+
+/** A row's price as a function of spot, on the same clock and carry the row was read on (its quoted IV moved onto the
+    trading clock). For the payoff curve. Undefined without a usable IV. */
+export function pricerFor(chain: Pick<DeskChain, 'ticker' | 'expiryIso'>, contract: Pick<DeskContract, 'strike' | 'right' | 'iv'>, now = Date.now()): ((s: number) => number) | undefined {
+  const quoted = contract.iv / 100;
+  if (!(quoted > 0 && quoted < 5) || !chain.expiryIso) return undefined;
+  const t = tradingYears(chain.expiryIso, now);
+  const vol = quoted * quotedVolPoint(chain.expiryIso, now);
+  const carry = clockCarry(chain.ticker, chain.expiryIso, now);
+  return (s: number) => blackScholesPrice(s, contract.strike, t, vol, contract.right, carry.r, carry.q);
+}
+
+/** The IV at spot, in the rows' own units: at each of the two strikes around spot the mean of the call's and the put's IV
+    (whichever are there), then linear in strike between them. One side only: that strike's. 0 with none. */
+export function atmIvAt(rows: readonly { strike: number; call: { iv: number }; put: { iv: number } }[], spot: number): number {
+  if (!(spot > 0)) return 0;
+  const pts: { k: number; iv: number }[] = [];
+  for (const r of rows) {
+    const legs = [r.call?.iv, r.put?.iv].filter((v): v is number => Number.isFinite(v) && (v as number) > 0);
+    if (r.strike > 0 && legs.length) pts.push({ k: r.strike, iv: legs.reduce((a, b) => a + b, 0) / legs.length });
+  }
+  if (!pts.length) return 0;
+  pts.sort((a, b) => a.k - b.k);
+  let lo: { k: number; iv: number } | null = null;
+  let hi: { k: number; iv: number } | null = null;
+  for (const p of pts) {
+    if (p.k <= spot) lo = p;
+    if (p.k >= spot && !hi) hi = p;
+  }
+  if (lo && hi) return hi.k === lo.k ? lo.iv : lo.iv + ((hi.iv - lo.iv) * (spot - lo.k)) / (hi.k - lo.k);
+  return (lo ?? hi)!.iv;
+}
+
+/** The move the options price to the expiry's close, ± percent of spot, from an ATM IV quoted in percent on the calendar
+    year: core/volClock sigmaToExpiry (S·σ·√T_calendar). 0 once the expiry has closed or without a spot or vol. */
+export function expectedMovePctOf(spot: number, atmIvPct: number, expiryIso: string, now = Date.now()): number {
+  if (!(spot > 0) || !(atmIvPct > 0)) return 0;
+  const move = sigmaToExpiry(spot, atmIvPct / 100, isoOf(expiryIso), now);
+  return move != null && move > 0 ? (move / spot) * 100 : 0;
 }
 
 interface GateInput {
