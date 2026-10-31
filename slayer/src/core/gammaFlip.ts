@@ -98,6 +98,48 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r?:
   return sum;
 }
 
+/** netGammaAt at every price of a path: the same arithmetic in the same order, so each value is bit-identical to
+    netGammaAt(legs, S0, prices[i]) — but what does not move with S (each leg's d₁ at its base, its drift, √T, the cap) is
+    worked out once per leg rather than once per leg per price. Terrain's dealer-flow ladder re-prices the book at ~320. */
+export function netGammaPath(legs: readonly GammaLeg[], S0: number, prices: readonly number[], r?: number, q?: number): number[] {
+  const carry = getCarry();
+  const rate = r ?? carry.r;
+  const yld = q ?? carry.q;
+  const n = prices.length;
+  const sums = new Array<number>(n).fill(0);
+  for (const l of legs) {
+    if (!l.g0 && !(l.oi && l.side)) continue;
+    if (!(l.iv > 0) || !(l.t > 0)) {
+      for (let i = 0; i < n; i++) sums[i] += l.g0;
+      continue;
+    }
+    const base = l.s0 && l.s0 > 0 ? l.s0 : S0;
+    const tBase = l.t0 && l.t0 > 0 ? l.t0 : l.t;
+    const a = d1Of(base, l.strike, tBase, l.iv, rate, yld);
+    if (Math.abs(a) > OUTRIGHT_D1) {
+      for (let i = 0; i < n; i++) sums[i] += l.oi && l.oi > 0 && l.side ? l.side * l.oi * dollarGammaPerContract(prices[i], l.strike, l.t, l.iv, rate, yld) : l.g0;
+      continue;
+    }
+    /* d1Of(S, K, t, iv, rate, yld) with its S-free parts held: (log(S/K) + drift) / volT */
+    const drift = (rate - yld + (l.iv * l.iv) / 2) * l.t;
+    const volT = l.iv * Math.sqrt(l.t);
+    const lead = -yld * (l.t - tBase);
+    const aTerm = (a * a) / 2;
+    const tTerm = tBase !== l.t ? 0.5 * Math.log(tBase / l.t) : 0;
+    const capped = !!(l.oi && l.oi > 0 && (!l.ownIv || l.t <= 1 / 252));
+    const cap = capped ? Math.max(Math.abs(l.g0), (l.oi! * l.strike * Math.exp(-yld * l.t)) / (SQRT2PI * l.iv * Math.sqrt(l.t))) : 0;
+    for (let i = 0; i < n; i++) {
+      const S = prices[i];
+      const b = (Math.log(S / l.strike) + drift) / volT;
+      const ln = lead + Math.log(S / base) - (b * b) / 2 + aTerm + tTerm;
+      let g = l.g0 * Math.exp(Math.min(ln, 60));
+      if (capped && Math.abs(g) > cap) g = Math.sign(g) * cap;
+      sums[i] += g;
+    }
+  }
+  return sums;
+}
+
 /** Six deviations from the strike: past this a leg's printed gamma is under e^-18 of its peak (rounding). */
 const OUTRIGHT_D1 = 6;
 
@@ -128,7 +170,7 @@ export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r?: numb
   for (let i = 0; i <= STEPS; i++) cx.push(lo + coarseStep * i);
   cx.push(spot);
   cx.sort((a, b) => a - b);
-  const cy = cx.map(S => netGammaAt(broad, spot, S, r, q));
+  const cy = netGammaPath(broad, spot, cx, r, q);
   const broadAt = (S: number): number => {
     let i = 1;
     let j = cx.length - 1;

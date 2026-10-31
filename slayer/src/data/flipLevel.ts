@@ -6,7 +6,7 @@ import { bellDay, shortDay, todayScopeLabel } from './bookWindow';
 import { carryFor } from '../core/carry';
 import { tradingMinutesBetween, tradingYears } from '../core/tradingYear';
 import { vendorIvOnTradingClock } from '../core/volClock';
-import { dollarGammaPerContract, netGammaAt, quietLegs, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
+import { dollarGammaPerContract, netGammaAt, netGammaPath, quietLegs, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
 import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
 import { bookCandles } from './book/levels';
@@ -412,6 +412,8 @@ export function levelNetPath(snapshot: MarketSnapshot, chain: readonly StrikeNod
   /* the minute the legs are priced at: a pinned book's own (a finished session frozen at its close), else the live clock */
   const ref = snapshot.asOf ?? snapshot.flipAt ?? pricingClock(undefined, Date.now());
   const y = carryFor(snapshot.ticker);
+  /* every price at the same clock: one pass over the legs (netGammaPath, the same values as netGammaAt price by price) */
+  if (!times) return { path: netGammaPath(legs, snapshot.spot, prices, y.r, y.q).map(v => (v === 0 ? 0 : -v)), complete: set.complete };
   const path = prices.map((S, i) => {
     const at = times?.[i];
     /* each minute at its own clock: the time to expiry it had, its time now plus the session minutes since */
@@ -432,7 +434,7 @@ export function datesNetAt(snapshot: MarketSnapshot, dates: readonly string[], p
     const set = chain?.length ? legSet(snapshot, chain) : null;
     if (!set || !set.withVol) return null;
     const legs = quietLegs(set.legs);
-    return prices.map(S => netGammaAt(legs, snapshot.spot, S, y.r, y.q));
+    return netGammaPath(legs, snapshot.spot, prices, y.r, y.q);
   });
 }
 
