@@ -206,8 +206,9 @@ function dayRow(r: Record<string, unknown>): CardDay {
     midVol: num(r.mid_volume),
     neutralVol: num(r.neutral_volume),
     iv: num(r.implied_volatility) * 100,
-    sweepPct: vol > 0 ? (num(r.sweep_volume) / vol) * 100 : 0,
-    multiPct: vol > 0 ? (num(r.multi_leg_volume) / vol) * 100 : 0,
+    sweepPct: vol + canceledVol > 0 ? Math.min(100, (num(r.sweep_volume) / (vol + canceledVol)) * 100) : 0,
+    /* the kind counts include cancelled contracts, the volume does not: their share reads over both */
+    multiPct: vol + canceledVol > 0 ? Math.min(100, (num(r.multi_leg_volume) / (vol + canceledVol)) * 100) : 0,
     premium,
     trades: num(r.trades),
     canceledVol,

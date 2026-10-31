@@ -654,6 +654,9 @@ export const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', tic
     const bidV = nOr(row.bid_volume) ?? 0;
     const midV = (nOr(row.mid_volume) ?? 0) + (nOr(row.no_side_volume) ?? 0);
     const sweepV = nOr(row.sweep_volume) ?? 0;
+    /* the shares' base: volume is net of cancelled contracts, the side and kind counts are not (traceRows contractRow) */
+    const gross = Math.max(volume, askV + bidV + midV);
+    const share = (v: number) => (gross > 0 ? Math.min(100, (100 * v) / gross) : 0);
     const oi = nOr(row.open_interest) ?? 0;
     const iv = nOr(row.implied_volatility) ?? 0;
     const dte = Math.max(0, Math.round((Date.UTC(+`20${m[1]}`, +m[2] - 1, +m[3]) - Date.UTC(+today.slice(0, 4), +today.slice(5, 7) - 1, +today.slice(8, 10))) / 86_400_000));
@@ -682,9 +685,9 @@ export const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', tic
       iv: iv * 100,
       ivChg: 0,
       volOverOI: oi > 0 ? volume / oi : 0,
-      sweepPct: volume > 0 ? (100 * sweepV) / volume : 0,
-      multiPct: volume > 0 ? (100 * (nOr(row.multi_leg_volume) ?? 0)) / volume : 0,
-      floorPct: volume > 0 ? (100 * (nOr(row.floor_volume) ?? 0)) / volume : 0,
+      sweepPct: share(sweepV),
+      multiPct: share(nOr(row.multi_leg_volume) ?? 0),
+      floorPct: share(nOr(row.floor_volume) ?? 0),
       /* Trace's "% ask": the ask's share of the sided contracts (ask + bid), the split carried so dayLean reads mid too —
          never ask over the whole volume, which counted every mid print as a bid */
       askPct: askV + bidV > 0 ? (100 * askV) / (askV + bidV) : NaN,

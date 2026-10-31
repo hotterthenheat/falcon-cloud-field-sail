@@ -600,6 +600,10 @@ export function contractRow(row: Record<string, unknown>, _i = 0): BookContract 
   const ask = num(row.ask_side_volume);
   const bid = num(row.bid_side_volume);
   const mid = num(row.mid_volume) + num(row.no_side_volume);
+  /* the shares' base: the vendor's volume is net of cancelled contracts but its side and kind counts are not (SPX 18 Dec
+     7000C, 30 Oct: volume 18,600, sides 20,750, multi-leg 19,749 — "legs 106%"), so a share reads over the larger */
+  const gross = Math.max(volume, ask + bid + mid);
+  const share = (v: unknown) => (gross > 0 ? Math.min(100, (num(v) / gross) * 100) : 0);
   const when = clock(row.last_fill);
   const dte = dteOf(expiryIso);
   return {
@@ -634,10 +638,10 @@ export function contractRow(row: Record<string, unknown>, _i = 0): BookContract 
     })(),
     ivChg: num(row.iv_change) * 100,
     volOverOI: oi > 0 ? volume / oi : 0,
-    sweepPct: volume > 0 ? (num(row.sweep_volume) / volume) * 100 : 0,
-    multiPct: volume > 0 ? (num(row.multileg_volume) / volume) * 100 : 0,
-    floorPct: volume > 0 ? (num(row.floor_volume) / volume) * 100 : 0,
-    crossPct: volume > 0 ? Math.min(100, (num(row.cross_volume) / volume) * 100) : 0,
+    sweepPct: share(row.sweep_volume),
+    multiPct: share(row.multileg_volume),
+    floorPct: share(row.floor_volume),
+    crossPct: share(row.cross_volume),
     askPct: ask + bid > 0 ? (ask / (ask + bid)) * 100 : 0,
     prevOI: num(row.prev_oi),
     prevAvgFill: num(row.chain_prev_close),
