@@ -25,7 +25,9 @@ g.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: stri
 
 /* the recorded instant of the contract's row: 07:36:50 ET, before the open, the 0 DTE's whole session still ahead */
 freezeClock('2026-10-29T11:36:50.238Z');
-const { bsOnMark, yearFracLeft, WEIGHER_R } = await import('../../src/data/weigherGate');
+const gate = await import('../../src/data/weigherGate');
+const { bsOnMark, yearFracLeft, WEIGHER_R } = gate;
+const { blackScholesPrice } = await import('../../src/core/greeks');
 
 /* ---- the contract, straight off the recorded vendor row ---- */
 const raw = rawAnswers('terrain-2026-10-29');
@@ -37,9 +39,13 @@ const bid = Number(row.nbbo_bid);
 const ask = Number(row.nbbo_ask);
 expectEqual('the row: spot · bid · ask', [S, bid, ask], [772.31, 1.22, 1.27]);
 
-/* the clock: 0 weekdays ahead and all 390 minutes of today's session, over 390 × 252, plus 1e-6 */
+/* the clock: core tradingYears — all 390 minutes of today's session, over 390 × 252 (was + 1e-6) */
 const t = yearFracLeft('2026-10-29');
-expectNear('years left = one session', t, 390 / (390 * 252) + 1e-6, 1e-12);
+expectNear('years left = one session', t, 390 / (390 * 252), 1e-12);
+/* holidays and early closes: Wed 2026-11-25 11:00 ET to Fri 11/27 (Thanksgiving shut, Friday closes 13:00) is
+   300 + 0 + 210 = 510 trading minutes, not 1140 weekday minutes */
+expectNear('Thanksgiving week: Wed 11:00 to Fri 13:00 = 510 trading minutes', yearFracLeft('2026-11-27', Date.parse('2026-11-25T16:00:00Z')) * 390 * 252, 510, 1e-9);
+expectNear('YYYYMMDD reads the same', yearFracLeft('20261127', Date.parse('2026-11-25T16:00:00Z')) * 390 * 252, 510, 1e-9);
 
 /* this file's own Black-Scholes (r 4.2%, no dividend), and the vol off the mid by Newton's method */
 const r = WEIGHER_R;
@@ -59,7 +65,9 @@ expectNear('IV off the mid, %', read.iv, v * 100, 1e-5);
 expectNear('delta = N(d1)', read.delta, phiCdf(d1), 1e-5);
 expectNear('gamma = φ(d1)/(Sσ√t)', read.gamma, pdf(d1) / (S * v * Math.sqrt(t)), 1e-5);
 expectNear('vega per vol point', read.vega, (S * Math.sqrt(t) * pdf(d1)) / 100, 1e-5);
-expectNear('theta per calendar day', read.theta, (-(S * pdf(d1) * v) / (2 * Math.sqrt(t)) - r * K * Math.exp(-r * t) * phiCdf(d2)) / 365, 1e-5);
+/* theta per trading SESSION: one session left, so the whole price goes (OTM, intrinsic 0) — not θ/365 (−0.7493) */
+expectNear('theta per session = −(model price) on the last session', read.theta, -call(S, K, v), 1e-5);
+expectNear('theta an hour = V(t − 60 min) − V(t)', read.thetaHour, call(S, K, v) === 0 ? 0 : (() => { const t1 = t - 60 / (390 * 252); const e1 = (Math.log(S / K) + (r + v * v / 2) * t1) / (v * Math.sqrt(t1)); return S * phiCdf(e1) - K * Math.exp(-r * t1) * phiCdf(e1 - v * Math.sqrt(t1)) - call(S, K, v); })(), 1e-5);
 expectNear('finish in the money = N(d2), %', read.itm, phiCdf(d2) * 100, 1e-5);
 /* breakevens: long pays the ask (775 + 1.27), short collects the bid (775 + 1.22) */
 const beLong = K + ask;
@@ -69,10 +77,13 @@ const mu = r - v * v / 2;
 const above = (level: number) => phiCdf((Math.log(S / level) + mu * t) / (v * Math.sqrt(t)));
 expectNear('profit odds long = P(S_T > 776.27), %', read.profitLong, above(beLong) * 100, 1e-5);
 expectNear('profit odds short = P(S_T < 776.22), %', read.profitShort, (1 - above(beShort)) * 100, 1e-5);
-/* touch: the reflection formula for an up barrier, P(max ≥ K) = N(a) + (K/S)^(2μ/σ²)·N(b), a = (ln(S/K) + μt)/σ√t, b = (ln(S/K) − μt)/σ√t */
-const a = (Math.log(S / K) + mu * t) / (v * Math.sqrt(t));
-const b = (Math.log(S / K) - mu * t) / (v * Math.sqrt(t));
-const touchHand = phiCdf(a) + Math.pow(K / S, (2 * mu) / (v * v)) * phiCdf(b);
+/* touch: the reflection formula for an up barrier with log drift ν = r − q (the walk around the forward, no −σ²/2 —
+   the same function Pinpoint's driftless touch is at ν = 0), P(max ≥ K) = N(a) + (K/S)^(2ν/σ²)·N(b),
+   a = (ln(S/K) + νt)/σ√t, b = (ln(S/K) − νt)/σ√t */
+const nu = r;
+const a = (Math.log(S / K) + nu * t) / (v * Math.sqrt(t));
+const b = (Math.log(S / K) - nu * t) / (v * Math.sqrt(t));
+const touchHand = phiCdf(a) + Math.pow(K / S, (2 * nu) / (v * v)) * phiCdf(b);
 expectNear('touch odds, %', read.touch, touchHand * 100, 1e-5);
 /* pinned: what the card shows for this contract */
 expectEqual('pinned: IV · delta · touch · profit long (rounded)', [read.iv.toFixed(2), read.delta.toFixed(3), read.touch.toFixed(1), read.profitLong.toFixed(1)], [(v * 100).toFixed(2), phiCdf(d1).toFixed(3), (touchHand * 100).toFixed(1), (above(beLong) * 100).toFixed(1)]);
@@ -109,7 +120,8 @@ expectEqual('touch odds are never below the finish odds', read.touch >= read.itm
   };
   const gauss = () => Math.sqrt(-2 * Math.log(rnd() || 1e-12)) * Math.cos(2 * Math.PI * rnd());
   const dt = T / steps;
-  const drift = (r - sig * sig / 2) * dt;
+  /* the walk the touch odds assume: log drift r − q, no −σ²/2 */
+  const drift = r * dt;
   const vol = sig * Math.sqrt(dt);
   let hit = 0;
   for (let p = 0; p < paths; p++) {
@@ -121,7 +133,7 @@ expectEqual('touch odds are never below the finish odds', read.touch >= read.itm
     }
   }
   const mc = hit / paths;
-  const m2 = r - sig * sig / 2;
+  const m2 = r;
   const s = sig * Math.sqrt(T);
   const formula = phiCdf((Math.log(S0 / B) + m2 * T) / s) + Math.pow(B / S0, (2 * m2) / (sig * sig)) * phiCdf((Math.log(S0 / B) - m2 * T) / s);
   /* the app's touch for a 105 call priced at exactly 30% vol */
@@ -131,6 +143,71 @@ expectEqual('touch odds are never below the finish odds', read.touch >= read.itm
   /* a discrete walk misses touches between steps, so it reads a little low: within 2 points */
   expectNear(`Monte Carlo (${paths} paths × ${steps} steps) reads ${(mc * 100).toFixed(1)}%`, mc, formula, 0.02 / formula);
   console.log(`  (S 100 → 105, σ 30%, t 0.1: formula ${(formula * 100).toFixed(2)}%, Monte Carlo ${(mc * 100).toFixed(2)}%)`);
+}
+
+/* ---- the touch odds are one function: Pinpoint's driftless 2·(1 − Φ(z)) is touchChance at drift 0 ---- */
+{
+  const { touchOdds } = await import('../../src/data/expectedMove');
+  for (const [s0, lv, sd] of [[600, 606, 0.012], [600, 590, 0.02], [772.31, 775, 0.0063]] as const) {
+    expectNear(`touchChance(${s0} → ${lv}, σ√T ${sd}, drift 0) = expectedMove.touchOdds`, gate.touchChance(s0, lv, sd, 0), touchOdds(s0, lv, sd * s0), 1e-9);
+  }
+  /* known number: S 100 → 105, σ√T 0.3·√0.1, drift 0.042·0.1 (the review's case on the forward walk) */
+  expectNear('touchChance(100 → 105, σ 30%, t 0.1, ν 4.2%)', gate.touchChance(100, 105, 0.3 * Math.sqrt(0.1), 0.042 * 0.1), 0.620828, 1e-5);
+  expectNear('a down touch mirrors an up touch on the log scale', gate.touchChance(100, 100 / 1.05, 0.3 * Math.sqrt(0.1), -0.0042), gate.touchChance(100, 105, 0.3 * Math.sqrt(0.1), 0.0042), 1e-12);
+}
+
+/* ---- carry, the core bracket, and the American flag ---- */
+{
+  /* an index with a 1.3% yield: delta is e^(−qT)·N(d1), the price the core's (the old inline model dropped q) */
+  const T = 30 / 252, sig = 0.18, S0 = 5800, K0 = 5850, rr = 0.042, qq = 0.013;
+  const px = blackScholesPrice(S0, K0, T, sig, 'C', rr, qq);
+  const rd = bsOnMark(S0, K0, 'C', px - 0.05, px + 0.05, T, { r: rr, q: qq })!;
+  const dd1 = (Math.log(S0 / K0) + (rr - qq + sig * sig / 2) * T) / (sig * Math.sqrt(T));
+  expectNear('carry: IV solved with the yield', rd.iv, sig * 100, 1e-6);
+  expectNear('carry: delta = e^(−qT)·N(d1)', rd.delta, Math.exp(-qq * T) * phiCdf(dd1), 1e-5);
+  /* the core's bracket is [1e-4, 5]: a mark that needs 600% vol is a quote problem, not a vol */
+  const wild = blackScholesPrice(100, 100, 0.01, 6, 'C', 0.042, 0);
+  expectEqual('a mark past 500% vol is blank', gate.solveIv(wild, 100, 100, 0.01, 'C'), null);
+  expectEqual('American put in the money is flagged · European index is not · a call is not', [gate.europeanApprox('SPY', 'P', 780, 769.35), gate.europeanApprox('SPXW', 'P', 5900, 5800), gate.europeanApprox('SPY', 'C', 760, 769.35), gate.europeanApprox('AAPL', 'P', 200, 210)], [true, false, false, false]);
+}
+
+/* ---- one clock in a row: the vendor's calendar IV moved onto the trading clock, the odds priced off that same vol ---- */
+{
+  /* SPY 770C at 11:51:02 ET on 2026-10-29, ThetaData IV 22.09% (calendar year to 16:00) */
+  const at = Date.parse('2026-10-29T15:51:02Z');
+  const rd = gate.readContract({ ticker: 'SPY', spot: 769.35, strike: 770, right: 'C', bid: 1.18, ask: 1.19, expiryIso: '2026-10-29', vendorIv: 0.2209, now: at })!;
+  const tCal = (16 * 60 - (11 * 60 + 51 + 2 / 60)) / (365 * 1440);
+  const tTr = (16 * 60 - (11 * 60 + 51)) / (390 * 252);
+  const sigTr = 0.2209 * Math.sqrt(Math.max(5, (16 * 60 - (11 * 60 + 51 + 2 / 60))) / (365 * 1440) / tTr);
+  /* the rate accrues on the calendar: r·T_calendar, the variance on the trading clock */
+  const d2Tr = (Math.log(769.35 / 770) + 0.042 * tCal - (sigTr * sigTr / 2) * tTr) / (sigTr * Math.sqrt(tTr));
+  expectNear('one clock: IV shown is the vendor\'s quoted 22.09%', rd.iv, 22.09, 1e-9);
+  expectNear('one clock: the trading-clock vol keeps the variance', (rd.ivTrading / 100) ** 2 * tTr, 0.2209 ** 2 * tCal, 1e-6);
+  expectNear('one clock: finish odds = N(d2) at that vol on that clock', rd.itm, phiCdf(d2Tr) * 100, 1e-4);
+  expectNear('one clock: delta within 0.001 of ThetaData\'s 0.4327', rd.delta, 0.4327, 0.001 / 0.4327);
+  expectEqual('one clock: the vol came from the vendor', rd.ivFrom, 'vendor');
+  /* the payoff curve prices on the same clock: at today's spot it is the row's model price */
+  const price = gate.pricerFor({ ticker: 'SPY', expiryIso: '2026-10-29' }, { strike: 770, right: 'C', iv: rd.iv }, at)!;
+  expectNear('pricerFor at spot = the mid (1.185) within a cent', price(769.35), 1.185, 0.01 / 1.185);
+}
+
+/* ---- the expected move: S·σ·√T on the calendar clock (core/volClock sigmaToExpiry), not σ·√(trading T) ---- */
+{
+  /* 0 DTE, IV 20%, S 600, 12:00 ET: 240 calendar minutes, 600·0.2·√(240/525600) = $2.564 (σ·√(trading T) gave $5.93) */
+  const pct = gate.expectedMovePctOf(600, 20, '2026-10-30', Date.parse('2026-10-30T16:00:00Z'));
+  expectNear('0DTE 20% IV, S 600, 12:00 → $2.564', (pct / 100) * 600, 600 * 0.2 * Math.sqrt(240 / 525600), 1e-9);
+  expectEqual('… rounded', ((pct / 100) * 600).toFixed(2), '2.56');
+  /* the ATM IV at spot: mean of call and put at each bracketing strike, linear in strike; row order does not matter */
+  const rows = [
+    { strike: 771, call: { iv: 21.72 }, put: { iv: 21.82 } },
+    { strike: 760, call: { iv: 21.87 }, put: { iv: 28.12 } },
+    { strike: 769, call: { iv: 22.46 }, put: { iv: 22.53 } },
+    { strike: 778, call: { iv: 23.43 }, put: { iv: 28.12 } },
+    { strike: 770, call: { iv: 22.09 }, put: { iv: 22.16 } },
+  ];
+  expectNear('ATM IV at 769.35 = 22.495 + 0.35·(22.125 − 22.495)', gate.atmIvAt(rows, 769.35), 22.495 + 0.35 * (22.125 - 22.495), 1e-9);
+  expectNear('ATM IV on a strike = that strike\'s mean', gate.atmIvAt(rows, 770), 22.125, 1e-9);
+  expectNear('ATM IV with one side only', gate.atmIvAt([{ strike: 770, call: { iv: NaN }, put: { iv: 22.16 } }, { strike: 771, call: { iv: 21.72 }, put: { iv: NaN } }], 770.5), (22.16 + 21.72) / 2, 1e-9);
 }
 
 /* ---- the chain off ThetaData's snapshots, when recorded ---- */
