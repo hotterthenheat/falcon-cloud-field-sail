@@ -474,6 +474,50 @@ function vendor(clock: () => number, opt: { status?: (p: string) => number; onCa
   check('a rename refused twice with EPERM lands on the third try', ok);
 }
 
+/* ---- the browser's data caches (run here under Node with a stand-in fetch): bounded, honest about age, no HTML ---- */
+{
+  const { BoundedMap } = await import('../src/data/boundedMap');
+  const m = new BoundedMap<number, number>(50);
+  for (let i = 0; i < 1_000; i++) m.set(i, i);
+  check('a bounded cache keeps its last 50 entries of 1000', m.size === 50 && m.has(999) && !m.has(949));
+
+  const g = globalThis as unknown as { window?: unknown; fetch: typeof fetch };
+  const realFetch = g.fetch;
+  const hadWindow = 'window' in g;
+  g.window = globalThis;
+  const { openFeeds } = await import('../src/data/feedGate');
+  const close = openFeeds();
+  const stamp = Date.now();
+  g.fetch = (async (url: string | URL) => {
+    const u = String(url);
+    if (u.startsWith('/api/theta/stock/snapshot/trade')) return new Response(JSON.stringify([{ price: 101.25, timestamp: stamp }]), { headers: { 'content-type': 'application/json' } });
+    if (u.startsWith('/api/theta/')) return new Response('[]', { headers: { 'content-type': 'application/json' } });
+    if (u.startsWith('/api/uw/stock/HTML/info')) return new Response('<!DOCTYPE html><html><body><h1>504 Gateway Timeout</h1></body></html>', { status: 504, headers: { 'content-type': 'text/html' } });
+    return realFetch(url);
+  }) as typeof fetch;
+  const realNow = Date.now;
+  try {
+    const tq = await import('../src/data/thetaQuote');
+    tq.ensureThetaPrice('ZZPROOF');
+    for (let i = 0; i < 50 && !tq.peekThetaPrice('ZZPROOF'); i++) await sleep(20);
+    const fresh = tq.peekThetaPrice('ZZPROOF');
+    /* ten minutes on with no new reading (a hidden tab, failing reads): the price is no longer live */
+    Date.now = () => realNow() + 10 * 60_000;
+    const old = tq.peekThetaPrice('ZZPROOF');
+    Date.now = realNow;
+    check('a terminal price reads live while fresh, and not live ten minutes later with no new reading', fresh?.live === true && old?.live === false && old.value.price === 101.25, `${fresh?.live} then ${old?.live}`);
+
+    const w = await import('../src/data/whales');
+    const got = await w.uwCall('/stock/HTML/info');
+    check('a gateway\'s HTML error page reaches the reader as "unavailable 504"', got.error === 'unavailable 504', String(got.error).slice(0, 60));
+  } finally {
+    Date.now = realNow;
+    g.fetch = realFetch;
+    close();
+    if (!hadWindow) delete g.window;
+  }
+}
+
 for (const d of made) fs.rmSync(d, { recursive: true, force: true });
 console.log(failed ? `\n${failed} check(s) failed` : '\nall exposure recorder checks passed');
 process.exit(failed ? 1 : 0);
