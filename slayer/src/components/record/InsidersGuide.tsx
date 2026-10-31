@@ -169,7 +169,7 @@ export const InsidersGuide = () => (
       <StakeFigure />
     </Section>
     <Section title="The window">
-      <p>Unusual Whales sends at most 500 filings a request, newest filed first. Two reads are paged back until the whole window is covered: every open-market purchase (the rows with one motive), and every open-market sale of $1M or more. Smaller sales, grants and the other filings are far more numerous — thousands a week — so the page reads the latest 1,000 of them, and the line under the controls says exactly which filing dates that covers. Only common stock is read: notes and debentures file a face amount where a share price should be.</p>
+      <p>Our data provider sends at most 500 filings a request, newest filed first. Two reads are paged back until the whole window is covered: every open-market purchase (the rows with one motive), and every open-market sale of $1M or more. Smaller sales, grants and the other filings are far more numerous — thousands a week — so the page reads the latest 1,000 of them, and the line under the controls says exactly which filing dates that covers. Only common stock is read: notes and debentures file a face amount where a share price should be.</p>
     </Section>
     <Section title="One trade, one row">
       <p>A joint Form 4 lists the same trade once for each reporting owner — a fund and its general partner, two partners of one firm. Those are one trade: the row names the first owner and says how many more filed it ("+2 joint"), and the totals count it once. An amended filing (4/A) that restates a trade already filed replaces it rather than adding to it.</p>

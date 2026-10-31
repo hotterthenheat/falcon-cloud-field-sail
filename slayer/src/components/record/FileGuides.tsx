@@ -11,7 +11,7 @@ const Section = ({ title, children }: { title: string; children: ReactNode }) =>
 
 export const InstitutionsGuide = () => (
   <>
-    <Section title="A line">One house (a fund manager), one stock, what the house’s latest 13F filing said it held. A 13F is the quarterly holdings report every manager over $100M files with the SEC, up to 45 days after the quarter ends — so a line is a few weeks to a few months old, never today’s position. Every line is from Unusual Whales’ copy of those filings.</Section>
+    <Section title="A line">One house (a fund manager), one stock, what the house’s latest 13F filing said it held. A 13F is the quarterly holdings report every manager over $100M files with the SEC, up to 45 days after the quarter ends — so a line is a few weeks to a few months old, never today’s position. Every line is from our data provider’s copy of those filings.</Section>
     <Section title="The side">A line is shares, a call, or a put. That is all the filing says. It does not name a strike or an expiry, and it is not colored like a trade. The change is versus the house’s prior filing, not versus yesterday’s close.</Section>
     <Section title="The page">A card keeps the grid to a name. A row opens the house. The stock page is its own door.</Section>
   </>

@@ -88,7 +88,7 @@ export const SlotMark = ({ slot, className = 'w-3 h-3', timeKnown }: { slot: Ear
   timeKnown === false ? <span className={`${className} inline-block rounded-full border border-textMuted/60`} aria-label="time not set" title="The report's time is not set" /> : slot === 'BMO' ? <Sunrise className={`${className} text-warn`} aria-label="before the open" /> : <Moon className={`${className} text-moon`} aria-label="after the close" />;
 
 /** Set by the company, or still an analyst's estimate — the same two words everywhere on the page */
-const SetTag = ({ confirmed }: { confirmed: boolean }) => <span className={`font-mono text-t8 uppercase tracking-widest ${confirmed ? 'text-textMuted' : 'text-warn'}`} title={confirmed ? 'The company has set the date' : "The date is Unusual Whales' estimate — the company has not set it"}>{confirmed ? 'confirmed' : 'date estimated'}</span>;
+const SetTag = ({ confirmed }: { confirmed: boolean }) => <span className={`font-mono text-t8 uppercase tracking-widest ${confirmed ? 'text-textMuted' : 'text-warn'}`} title={confirmed ? 'The company has set the date' : "The date is our data provider's estimate — the company has not set it"}>{confirmed ? 'confirmed' : 'date estimated'}</span>;
 
 /* ---- the list's doors and chips ---------------------------------------------------- */
 
