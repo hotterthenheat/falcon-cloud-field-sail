@@ -292,7 +292,16 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
       if (!(h > 0)) return;
       sized.set(node, h);
       const at = v.measurementsCache[i];
-      if (!at || Math.abs(at.size - h) >= 0.5) v.resizeItem(i, Math.round(h));
+      if (at && Math.abs(at.size - h) < 0.5) return;
+      /* through the hook's own measure (not resizeItem), which redraws without a flushSync inside this effect; the
+         scrolling flag is lifted for the one read, since skipping it while scrolling is the very gap closed here */
+      const scrolling = v.isScrolling;
+      v.isScrolling = false;
+      try {
+        v.measureElement(node);
+      } finally {
+        v.isScrolling = scrolling;
+      }
     });
   });
 
