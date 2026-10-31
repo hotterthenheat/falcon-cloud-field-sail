@@ -1088,6 +1088,13 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
 .slayer-board .ag-row {
   cursor: pointer;
 }
+/* A narrow stacked column (a bar over its word) keeps half the side padding, so its word is not clipped; the type is
+   unchanged (the Dossier fit pass, 2026-10-31). */
+.slayer-board .ag-cell.slayer-tight,
+.slayer-board .ag-header-cell.slayer-tight {
+  padding-left: 6px;
+  padding-right: 6px;
+}
 /* A short book (one sector, two countries) sat on AG Grid's 150px auto-height floor — a band of empty panel under the
    rows. With rows on the grid the floor goes; an empty grid keeps it for its overlay line (the Dossier sweep, 2026-10-22). */
 .slayer-board .ag-layout-auto-height .ag-center-cols-viewport:has(.ag-row),

@@ -4,7 +4,7 @@
 import { companyName, displayName, searchTickers } from '../../data/tickers';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
+import { type ColDef, type ICellRendererParams, type IRowNode, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import { FeedFallback } from '../../components/ui/liveRead';
@@ -29,6 +29,7 @@ import { searchListed } from '../../data/listedNames';
 import { ROTATION_SECTORS } from './recordSkeletons';
 import { phonePin } from '../../components/record/pagedGrid';
 import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
+import { useMediaQuery } from '../../components/ui/useMediaQuery';
 import { signedPct } from './money';
 
 type ScreenPick = 'all' | Grade;
@@ -101,12 +102,36 @@ const SectorCell = ({ data }: ICellRendererParams<StockPick>) => {
   const house = lookup(data.ticker);
   const sector = house?.sector ?? (data.listedOnly ? null : data.sector);
   return sector ? (
-    <span className="flex items-center gap-1.5 min-w-0 text-t11 text-textSecondary" title={sector}>
+    <span className="flex items-center gap-1.5 min-w-0 h-full text-t11 text-textSecondary" title={sector}>
       <SectorMark sector={sector} />
-      <span className="min-w-0 truncate">{sector}</span>
+      <span className="min-w-0 whitespace-normal leading-tight line-clamp-2">{sector}</span>
     </span>
   ) : (
     <span className="font-mono text-t10 text-textMuted" title="Sector is not filed for this name">—</span>
+  );
+};
+
+/* under 1440 the sector stands under the name: one column, not two side by side */
+const NameSectorCell = ({ data }: ICellRendererParams<StockPick>) => {
+  if (!data) return null;
+  const house = lookup(data.ticker);
+  const sector = house?.sector ?? (data.listedOnly ? null : data.sector);
+  return (
+    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
+      <CompanyLogo ticker={data.ticker} size={16} />
+      <span className="flex flex-col leading-tight min-w-0">
+        <span className="font-mono text-t12 font-bold text-textPrimary">{data.ticker}</span>
+        <CoSub ticker={data.ticker} fallback={filedName(data.ticker, data.name)} />
+        {sector ? (
+          <span className="flex items-center gap-1 min-w-0 text-t10 text-textSecondary" title={sector}>
+            <SectorMark sector={sector} />
+            <span className="min-w-0 truncate">{sector}</span>
+          </span>
+        ) : (
+          <span className="font-mono text-t10 text-textMuted" title="Sector is not filed for this name">—</span>
+        )}
+      </span>
+    </span>
   );
 };
 
@@ -151,13 +176,20 @@ const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
     </span>
   );
 };
+/* under 1440 the day's change stands under the last price */
+const LastDayCell = (p: ICellRendererParams<StockPick>) => (
+  <span className="flex flex-col items-end justify-center h-full leading-tight">
+    <LastCell {...p} />
+    <TodayCell {...p} />
+  </span>
+);
 const TrendCell = ({ data }: ICellRendererParams<StockPick>) => {
   if (!data || data.trend.length < 2) return <span className="font-mono text-t10 text-textMuted">—</span>;
   const first = data.trend[0];
   const last = data.trend[data.trend.length - 1];
   const chg = first > 0 ? ((last - first) / first) * 100 : 0;
   return (
-    <span className="flex items-center gap-1.5 cursor-help" title={`The closes a year ago, six, three and one month ago, a week ago and now: ${data.trend.map(v => v.toFixed(2)).join(' → ')} — ${signedPct(chg)} over the span`}>
+    <span className="flex flex-col items-start justify-center h-full gap-0.5 leading-tight cursor-help" title={`The closes a year ago, six, three and one month ago, a week ago and now: ${data.trend.map(v => v.toFixed(2)).join(' → ')} — ${signedPct(chg)} over the span`}>
       <Sparkline data={data.trend} up={last >= first} width={56} height={20} />
       <span className={`font-mono text-t9 tnum ${dirInk(chg)}`}>{signedPct(chg, 1)}</span>
     </span>
@@ -175,11 +207,11 @@ const sleeveCell =
     /* the grade word beside the bar, the measures it is read from on hover */
     const note = data.sleeveNotes?.[key];
     return (
-      <span className="flex items-center gap-1.5 h-full w-full pr-2 cursor-help" title={`${SLEEVE_NAME[key]} reads ${g} (${v > 50 ? 'above the 50 line — for the name' : 'below the 50 line — against it'})${note ? `. ${note}` : ''}`} data-sleeve={key} data-grade={g}>
-        <span className="relative flex-1 h-[4px] rounded-full bg-ink/[0.06] overflow-hidden">
+      <span className="flex flex-col justify-center gap-1 h-full w-full cursor-help" title={`${SLEEVE_NAME[key]} reads ${g} (${v > 50 ? 'above the 50 line — for the name' : 'below the 50 line — against it'})${note ? `. ${note}` : ''}`} data-sleeve={key} data-grade={g}>
+        <span className="relative block w-full h-[4px] rounded-full bg-ink/[0.06] overflow-hidden">
           <span className={`absolute left-0 top-0 h-full rounded-full ${v > 50 ? 'bg-bull' : 'bg-bear/70'}`} style={{ width: `${v}%` }} />
         </span>
-        <span className={`shrink-0 font-mono text-t8 uppercase tracking-widest ${GRADE_WORD_INK[g]}`}>{g}</span>
+        <span className={`font-mono text-t8 leading-none uppercase tracking-widest ${GRADE_WORD_INK[g]}`}>{g}</span>
       </span>
     );
   };
@@ -210,6 +242,20 @@ const WhyCell = ({ data }: ICellRendererParams<StockPick>) =>
   data ? (
     <span className="block py-1 text-t11 leading-snug text-textSecondary whitespace-normal break-words line-clamp-3" title={data.thesis}>
       {data.thesis}
+    </span>
+  ) : null;
+
+/* under 1440 the screen's word stands over its why */
+const ScreenWhyCell = (p: ICellRendererParams<StockPick>) =>
+  p.data ? (
+    /* the last column: its words keep clear of the grid's overlay scrollbar */
+    <span className="flex flex-col justify-center h-full gap-0.5 py-1 pr-3 leading-tight">
+      <span className="leading-none">
+        <ScreenCell {...p} />
+      </span>
+      <span className="block text-t11 leading-snug text-textSecondary whitespace-normal break-words line-clamp-2" title={p.data.thesis}>
+        {p.data.thesis}
+      </span>
     </span>
   ) : null;
 
@@ -304,6 +350,8 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
 const Stocks = () => {
   const navigate = useNavigate();
   const phone = usePhoneCards();
+  /* under 1440 the grid takes its stacked shape: the width a laptop's grid has (994 at 1280, 738 at 1024) */
+  const narrow = useMediaQuery('(max-width: 1439.98px)');
   const boardNames = useBoardNames();
   const [screen, setScreen] = useState<ScreenPick>('all');
   const [sector, setSector] = useState<SectorPick>('all');
@@ -428,30 +476,46 @@ const Stocks = () => {
   }, [rows, quoteRev]);
 
   const columnDefs = useMemo<ColDef<StockPick>[]>(() => {
-    const cols: ColDef<StockPick>[] = [
-      /* the fixed widths add to ~1130px so the Why column lands inside a laptop's grid instead of past its right edge */
-      { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 124, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
-      { headerName: 'Sector', field: 'sector', width: 156, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
-      { headerName: 'Last', field: 'price', width: 84, cellRenderer: LastCell, valueGetter: p => (p.data ? peekBatchQuote(p.data.ticker)?.price || p.data.price : 0), type: 'rightAligned', headerTooltip: 'The last price in the session; the regular close outside it (hover for the extended print, ET)' },
-      { headerName: dayHead, field: 'changePct', width: 78, cellRenderer: TodayCell, valueGetter: p => {
-        if (!p.data) return null;
-        const q = peekBatchQuote(p.data.ticker)?.pct;
-        if (q != null) return q;
-        return Number.isFinite(p.data.changePct) ? p.data.changePct : null;
-      }, type: 'rightAligned', headerTooltip: "The regular session's change (the last session's outside it); the extended move sits under it" },
-      { headerName: 'Year', field: 'trend', width: 116, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
-      { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 96, cellRenderer: sleeveCell('momentum'), headerTooltip: "Price against its 20-day EMA, RSI, ADX with the week's direction, and the month. Hover for the figures." },
-      { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 96, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth a year (the slowest of the 1-, 2- and 3-year rates) and the change in share count. Hover for the figures.' },
-      { headerName: 'Money', colId: 'flow', valueGetter: p => p.data?.sleeves.flow ?? 0, width: 96, cellRenderer: sleeveCell('flow'), headerTooltip: 'Relative volume and the side of the options premium. Under $1M of premium it is not scored.' },
-    ];
-    if (!newsQuiet) cols.push({ headerName: 'News', colId: 'news', valueGetter: p => p.data?.sleeves.news ?? 0, width: 88, cellRenderer: sleeveCell('news'), headerTooltip: "The wire's lean on the name. A dash stays out of the screen." });
+    const changeOf = (d: StockPick | undefined) => {
+      if (!d) return null;
+      const q = peekBatchQuote(d.ticker)?.pct;
+      if (q != null) return q;
+      return Number.isFinite(d.changePct) ? d.changePct : null;
+    };
+    /* the paired values stand in one cell (a line or a bar over its figure or word; under 1440 the sector under the
+       name, the day under the price and the screen's word over its why too), so the grid fits 1280 and 1024 without a
+       sideways scroll */
+    const TIGHT = { cellClass: 'slayer-tight', headerClass: 'slayer-tight' };
+    const cols: ColDef<StockPick>[] = narrow
+      ? [
+          { headerName: 'Name · sector', field: 'ticker', flex: 1, minWidth: 128, cellRenderer: NameSectorCell, headerTooltip: 'The company and the sector it files under — click the row to open the name’s file' },
+          { headerName: `Last · ${dayHead}`, colId: 'changePct', width: 84, cellRenderer: LastDayCell, valueGetter: p => changeOf(p.data), type: 'rightAligned', headerTooltip: "The last price in the session (the regular close outside it), and under it the regular session's change (the last session's outside it) and the extended move · sorts on the change" },
+        ]
+      : [
+          { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 124, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
+          { headerName: 'Sector', field: 'sector', width: 112, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
+          { headerName: 'Last', field: 'price', width: 84, cellRenderer: LastCell, valueGetter: p => (p.data ? peekBatchQuote(p.data.ticker)?.price || p.data.price : 0), type: 'rightAligned', headerTooltip: 'The last price in the session; the regular close outside it (hover for the extended print, ET)' },
+          { headerName: dayHead, field: 'changePct', width: 78, cellRenderer: TodayCell, valueGetter: p => changeOf(p.data), type: 'rightAligned', headerTooltip: "The regular session's change (the last session's outside it); the extended move sits under it" },
+        ];
     cols.push(
-      { headerName: 'Screen', field: 'verdict', width: 92, cellRenderer: ScreenCell, comparator: (_a: StockVerdict, _b: StockVerdict, na, nb) => GRADE_RANK.indexOf(na.data ? gradeOfPick(na.data) : 'poor') - GRADE_RANK.indexOf(nb.data ? gradeOfPick(nb.data) : 'poor'), headerTooltip: 'The trend (32%), the numbers (24%) and the money (26%) in one word. Hover a cell for its sums. A state, never an instruction.' },
-      { headerName: 'Why', field: 'thesis', flex: 2.4, minWidth: 230, cellRenderer: WhyCell, sortable: false, headerTooltip: 'What is for the name and what is against it' },
+      { headerName: 'Year', field: 'trend', width: 72, cellClass: 'slayer-tight', headerClass: 'slayer-tight', cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
+      { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 64, ...TIGHT, cellRenderer: sleeveCell('momentum'), headerTooltip: "Price against its 20-day EMA, RSI, ADX with the week's direction, and the month. Hover for the figures." },
+      { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 68, ...TIGHT, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth a year (the slowest of the 1-, 2- and 3-year rates) and the change in share count. Hover for the figures.' },
+      { headerName: 'Money', colId: 'flow', valueGetter: p => p.data?.sleeves.flow ?? 0, width: 64, ...TIGHT, cellRenderer: sleeveCell('flow'), headerTooltip: 'Relative volume and the side of the options premium. Under $1M of premium it is not scored.' },
     );
+    if (!newsQuiet) cols.push({ headerName: 'News', colId: 'news', valueGetter: p => p.data?.sleeves.news ?? 0, width: 64, ...TIGHT, cellRenderer: sleeveCell('news'), headerTooltip: "The wire's lean on the name. A dash stays out of the screen." });
+    const byGrade = (_a: StockVerdict, _b: StockVerdict, na: IRowNode<StockPick>, nb: IRowNode<StockPick>) => GRADE_RANK.indexOf(na.data ? gradeOfPick(na.data) : 'poor') - GRADE_RANK.indexOf(nb.data ? gradeOfPick(nb.data) : 'poor');
+    const screenTip = 'The trend (32%), the numbers (24%) and the money (26%) in one word. Hover a cell for its sums. A state, never an instruction.';
+    if (narrow) cols.push({ headerName: 'Screen · why', field: 'verdict', flex: 2.4, minWidth: 196, cellRenderer: ScreenWhyCell, comparator: byGrade, headerTooltip: `${screenTip} Under it, what is for the name and what is against it · sorts on the screen` });
+    else
+      cols.push(
+        { headerName: 'Screen', field: 'verdict', width: 96, cellRenderer: ScreenCell, comparator: byGrade, headerTooltip: screenTip },
+        { headerName: 'Why', field: 'thesis', flex: 2.4, minWidth: 200, cellRenderer: WhyCell, sortable: false, headerTooltip: 'What is for the name and what is against it' },
+      );
     return cols;
-  }, [newsQuiet, dayHead]);
-  const defaultColDef = useMemo<ColDef<StockPick>>(() => ({ sortable: true, resizable: true, suppressMovable: true }), []);
+  }, [newsQuiet, dayHead, narrow]);
+  /* a long head (Last · the day) wraps over two lines rather than widen its column */
+  const defaultColDef = useMemo<ColDef<StockPick>>(() => ({ sortable: true, resizable: true, suppressMovable: true, wrapHeaderText: true, autoHeaderHeight: true }), []);
 
   /* the grid stays mounted, so a new cut replays the house soft-in over its window */
   const gridRef = useRef<HTMLDivElement | null>(null);
