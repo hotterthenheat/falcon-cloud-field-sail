@@ -3,7 +3,7 @@
 
 import { FailLine } from '../ui/states';
 
-const ThetaLine = ({ since, at, what = 'ThetaData offline — reconnecting', className = '' }: { since: number; at?: number | null; what?: string; className?: string }) =>
+const ThetaLine = ({ since, at, what = 'Live data offline — reconnecting', className = '' }: { since: number; at?: number | null; what?: string; className?: string }) =>
   since > 0 ? <FailLine what={what} at={at ?? since} className={`px-1 ${className}`} /> : null;
 
 export default ThetaLine;

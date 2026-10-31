@@ -140,7 +140,7 @@ const Desk = () => {
     const out: DropdownOption<string>[] = expiries.map(e => ({ value: e.iso, label: `${e.label} · ${e.dte}d`, hint: e.dte === 0 ? 'Expires at today’s bell' : `${e.kind === 'monthly' ? 'The monthly' : e.kind === 'daily' ? 'A daily' : 'A weekly'} · ${dayWords(e.iso, true)}`, ...(e.dte > LISTING_DTE ? { group: `Later · past ${LISTING_DTE} days` } : {}) }));
     if (!expiries.length || laterNeed === 'ready') return out;
     const words =
-      laterNeed === 'loading' ? { label: 'Loading later expiries…', hint: 'Every contract ThetaData recorded that day — the LEAPS too' } : laterNeed === 'offline' ? { label: 'Later expiries · ThetaData offline', hint: 'Asked again when the terminal answers — pick to try now' } : laterNeed === 'none' ? { label: 'No later expiries recorded', hint: `ThetaData listed nothing past ${LISTING_DTE} days that day` } : { label: 'Later expiries…', hint: `Past ${LISTING_DTE} days — the LEAPS, loaded when you ask` };
+      laterNeed === 'loading' ? { label: 'Loading later expiries…', hint: 'Every contract recorded that day — the LEAPS too' } : laterNeed === 'offline' ? { label: 'Later expiries · data offline', hint: 'Asked again when the data is back — pick to try now' } : laterNeed === 'none' ? { label: 'No later expiries recorded', hint: `Nothing was listed past ${LISTING_DTE} days that day` } : { label: 'Later expiries…', hint: `Past ${LISTING_DTE} days — the LEAPS, loaded when you ask` };
     out.push({ value: LATER, ...words, group: `Later · past ${LISTING_DTE} days`, quiet: true });
     return out;
   }, [expiries, laterNeed]);
@@ -176,7 +176,7 @@ const Desk = () => {
   const noteOf = (n: string): string | null => {
     if (!cursor) return null;
     const need = barsNeed(n, cursor.day);
-    return need === 'none' ? `ThetaData has no bars for ${n} on ${dayWords(cursor.day)}` : need === 'offline' ? 'ThetaData offline — reconnecting' : null;
+    return need === 'none' ? `No recorded bars for ${n} on ${dayWords(cursor.day)}` : need === 'offline' ? 'Live data offline — reconnecting' : null;
   };
   const tapeBy = useMemo<Record<string, ChartTape>>(() => (cursor ? Object.fromEntries(names.map(n => [n, { bars: [...(contextBy[n] ?? []), ...barsUntil(n, cursor.day, cursor.minute)], iv: n === ticker ? ivNow : 0, key: `review:${n}`, clock: 'ny' as const, note: noteOf(n) }])) : {}), [contextBy, names, cursor?.day, cursor?.minute, hrev, ivNow]); // eslint-disable-line react-hooks/exhaustive-deps
   const fillsBy = useMemo(() => Object.fromEntries(names.map(n => [n, session ? session.fills.filter(f => f.contract.ticker === n) : []])), [session?.fills, names]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -249,7 +249,7 @@ const Desk = () => {
     () => [
       { key: 'contract', header: 'Contract', render: p => <ContractLabel contract={contractWords(p.contract)} right={p.contract.right} logo={p.contract.ticker} size="sm" /> },
       { key: 'qty', header: 'Held', align: 'right', render: p => <span className="text-textPrimary">{p.qty}</span> },
-      { key: 'exp', header: 'Expires', render: p => (session && p.contract.expiry < session.cursor.day ? <span className="text-warn" title={`Expired ${dayWords(p.contract.expiry)} — it settles on ${underOf(p.contract.ticker)}’s close that day, which ThetaData has not answered yet`}>settling…</span> : <span className="text-textSecondary">{dayWords(p.contract.expiry)} · {session ? dteAt(session.cursor.day, p.contract.expiry) : 0}d</span>) },
+      { key: 'exp', header: 'Expires', render: p => (session && p.contract.expiry < session.cursor.day ? <span className="text-warn" title={`Expired ${dayWords(p.contract.expiry)} — it settles on ${underOf(p.contract.ticker)}’s close that day, which the data has not answered yet`}>settling…</span> : <span className="text-textSecondary">{dayWords(p.contract.expiry)} · {session ? dteAt(session.cursor.day, p.contract.expiry) : 0}d</span>) },
       { key: 'avg', header: 'Paid', align: 'right', render: p => <span className="text-textSecondary">{p.avg.toFixed(2)}</span> },
       { key: 'mark', header: 'Bid · ask', align: 'right', render: p => (p.quote.dead ? <span className="text-textMuted" title={Number.isFinite(p.mark) ? `No two-sided quote this minute — marked at ${p.mark.toFixed(2)}, the mid it last had${p.staleFrom != null ? ` (${clockWords(p.staleFrom)} ET)` : ''}` : 'No two-sided quote yet today — not marked'}>{Number.isFinite(p.mark) ? `mid ${p.mark.toFixed(2)}${p.staleFrom != null ? ` · ${clockWords(p.staleFrom)}` : ''}` : '— · —'}</span> : <span className="text-textPrimary">{`${p.quote.bid.toFixed(2)} · ${p.quote.ask.toFixed(2)}`}</span>) },
       { key: 'theta', header: 'Decay a day', align: 'right', render: p => <span className="text-textSecondary">{p.quote.iv > 0 ? usd(Math.abs(p.quote.theta) * 100 * p.qty) : '—'}</span> },
@@ -408,9 +408,9 @@ const Desk = () => {
   const chainState = exp ? chainNeed(ticker, exp, cursor.day) : listNeed;
   const chainEmpty =
     listNeed === 'offline' || chainState === 'offline' ? (
-      <EmptyBox title="ThetaData offline — reconnecting" reason="The recorded quotes for this day load when the terminal answers." />
+      <EmptyBox title="Live data offline — reconnecting" reason="The recorded quotes for this day load when the data is back." />
     ) : listNeed === 'none' ? (
-      <EmptyBox title="No contracts recorded" reason={`ThetaData has no option quotes for ${ticker} on ${dayWords(cursor.day)}.`} />
+      <EmptyBox title="No contracts recorded" reason={`No option quotes were recorded for ${ticker} on ${dayWords(cursor.day)}.`} />
     ) : chainState === 'none' ? (
       <EmptyBox title="No quotes recorded" reason={`Nothing was quoted near the money on the ${exp ? dayWords(exp) : ''} expiry that day.`} />
     ) : (
@@ -542,7 +542,7 @@ const Desk = () => {
     <DeskShell
       session={session}
       onRename={name => renameSession(session.id, name)}
-      subline={`${names.map(companyName).join(' and ')} · ThetaData’s recorded NBBO: buys at the ask, sells at the bid, checked at each minute’s end · ${session.fee ? `${usd(session.fee)} a contract each way` : 'no fee'}`}
+      subline={`${names.map(companyName).join(' and ')} · the recorded NBBO: buys at the ask, sells at the bid, checked at each minute’s end · ${session.fee ? `${usd(session.fee)} a contract each way` : 'no fee'}`}
       facts={[
         { label: 'Worth now', testId: 'equity', node: Number.isFinite(account.equity) ? usd(account.equity) : '—' },
         { label: 'Cash', testId: 'cash', node: usd(account.cash) },

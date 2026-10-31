@@ -259,7 +259,7 @@ const Sessions = () => {
   return (
     <TraceBox
       title="Your sessions"
-      sub="A session replays one name, or two, from a day you pick, on ThetaData’s recorded quotes · the clock only moves forward · every fill is kept"
+      sub="A session replays one name, or two, from a day you pick, on recorded quotes · the clock only moves forward · every fill is kept"
       testId="review-sessions"
       data={{ sessions: sessions.length }}
       facts={
@@ -311,7 +311,7 @@ const Sessions = () => {
       sentence={
         <>
           A new session opens <span className="text-textPrimary font-semibold">{tickers.map(nameWords).join(' and ')}</span>
-          {tickers.length > 1 ? ' on one clock and one account,' : ''} at 09:30 ET on <span className="text-textPrimary font-semibold">{dayWords(startDay, true)}</span> with <span className="text-textPrimary font-semibold">{usd(cash, 0)}</span>. Fills are at ThetaData’s recorded NBBO at the end of each minute — buys at the ask, sells at the bid — and never in a minute with no two-sided quote.{' '}
+          {tickers.length > 1 ? ' on one clock and one account,' : ''} at 09:30 ET on <span className="text-textPrimary font-semibold">{dayWords(startDay, true)}</span> with <span className="text-textPrimary font-semibold">{usd(cash, 0)}</span>. Fills are at the recorded NBBO at the end of each minute — buys at the ask, sells at the bid — and never in a minute with no two-sided quote.{' '}
           {ruleWords.length > 0 ? (
             <>
               Your rules: <span className="text-textPrimary font-semibold">{ruleWords.join(' · ')}</span>. A buy that breaks one is refused, a way out never is — and they cannot be changed once the session starts.
@@ -322,7 +322,7 @@ const Sessions = () => {
         </>
       }
     >
-      <ThetaLine since={offline} className="px-5 pb-2" what="ThetaData offline — reconnecting · a session opens on the recorded quotes once it answers" />
+      <ThetaLine since={offline} className="px-5 pb-2" what="Live data offline — reconnecting · a session opens on the recorded quotes once it answers" />
       <TraceGrid rows={rows} columns={columns} rowKey={r => r.s.id} onRowClick={r => navigate(`/practice/backtest/${r.s.id}`)} autoHeight animate={false} widths={{ doors: 200, clock: 150, start: 90, equity: 120, net: 130, trades: 80, win: 70, open: 70 }} flexes={{ name: 2 }} phoneRow={phoneRow} emptyText="No sessions yet — start one above" testId="review-sessions" />
     </TraceBox>
   );

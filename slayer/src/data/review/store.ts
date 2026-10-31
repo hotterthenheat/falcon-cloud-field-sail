@@ -157,7 +157,7 @@ export async function moveClock(id: string, to: Moment): Promise<void> {
   /* a later move asked for while this one loaded wins */
   if (moving.get(id)?.to !== to) return;
   if (missed && historyOffline()) {
-    moving.set(id, { to, words: '', failed: 'ThetaData is offline — reconnecting. The clock stays where it is until the recorded quotes load.' });
+    moving.set(id, { to, words: '', failed: 'Live data is offline — reconnecting. The clock stays where it is until the recorded quotes load.' });
     sayMoving();
     return;
   }

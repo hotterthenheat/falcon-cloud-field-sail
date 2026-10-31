@@ -417,7 +417,7 @@ const PaperDesk = () => {
         /* keyed by whether the strike is held: a buy that fills turns the dropdown to the position with a fresh price box */
         empty={
           feedOffline() ? (
-            <EmptyBox title="ThetaData offline — reconnecting" reason="The chain fills with each contract’s live NBBO once the terminal answers." />
+            <EmptyBox title="Live data offline — reconnecting" reason="The chain fills with each contract’s live quotes once the feed answers." />
           ) : expiries.length ? (
             <LoadingBox shape="table" rows={12} label="Loading the chain" />
           ) : (
@@ -558,14 +558,14 @@ const PaperDesk = () => {
   return (
     <div className="flex flex-col gap-2.5" data-paper-desk={account.id}>
       {!holding && elsewhere && <HeldElsewhere />}
-      <ThetaLine since={feedOffline()} at={nameRead?.takenAt} what="ThetaData offline — reconnecting · nothing fills until it answers" />
+      <ThetaLine since={feedOffline()} at={nameRead?.takenAt} what="Live data offline — reconnecting · nothing fills until it answers" />
       <DeskShell
         session={{ id: account.id, name: account.name }}
         kind="paper"
         /* no strip over the chart: the account is the right column's first card */
         strip={false}
         picker={picker}
-        foot="ThetaData’s live NBBO — practice, not advice. A sale fills at the bid, a buy at the ask, only on a two-sided quote read in the last few seconds, in the options session (09:30–16:00 ET); positions carry from one visit to the next. Margin on a naked short is a Reg T estimate; a broker’s own can differ."
+        foot="Live quotes (NBBO) — practice, not advice. A sale fills at the bid, a buy at the ask, only on a two-sided quote read in the last few seconds, in the options session (09:30–16:00 ET); positions carry from one visit to the next. Margin on a naked short is a Reg T estimate; a broker’s own can differ."
         revision={revision}
         account={{ equity: v.equity, openPnl: v.openPnl, third: floorRule ? { label: 'above the floor', value: floorRule.room.replace(' above the floor', '') } : { label: 'free', value: usd(v.free, 0) } }}
         names={[deskName]}
