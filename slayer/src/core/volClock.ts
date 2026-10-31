@@ -1,17 +1,17 @@
 import { impliedVolFromPrice } from './greeks';
-import { tradingMinutes, tradingYears } from './tradingYear';
+import { tradingMinutes, tradingYears, TRADING_DAYS } from './tradingYear';
+import { sessionCloseMinOn } from './calendar';
 import { nyIsoDate, nyMinutes } from './nyTime';
 
 /** The vendor's year. Their own implied move is k·S·σ·√(dte/365). */
 const CALENDAR_YEAR_MIN = 365 * 24 * 60;
-const CLOSE_MIN = 16 * 60;
 const FLOOR_MIN = 5;
 
-/** Calendar minutes from `now` to 16:00 ET on the expiry, five at the least. This is the clock a 365-day vol was solved on. */
+/** Calendar minutes from `now` to the expiry's cash close (16:00 ET, 13:00 on an early close), five at the least. This is the clock a 365-day vol was solved on. */
 export function calendarYears(expiry: string, nowMs = Date.now()): number {
   const today = nyIsoDate(nowMs);
   const days = Math.round((Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
-  const mins = days * 1440 + (CLOSE_MIN - nyMinutes(nowMs));
+  const mins = days * 1440 + (sessionCloseMinOn(expiry) - nyMinutes(nowMs));
   return Math.max(FLOOR_MIN, mins) / CALENDAR_YEAR_MIN;
 }
 
@@ -22,6 +22,24 @@ export function vendorIvOnTradingClock(vendorIv: number, expiry: string, nowMs =
   const tCal = calendarYears(expiry, nowMs);
   if (!(tTrade > 0) || !(tCal > 0)) return vendorIv;
   return vendorIv * Math.sqrt(tCal / tTrade);
+}
+
+/**
+ * THE one-sigma move, dollars, for every page: an at-the-money vol quoted on the calendar year for `expiry`, moved onto
+ * the trading clock with the variance unchanged, over `horizonMin` trading minutes (the variance runs only while the
+ * market is open): S × σ_trading × √(minutes / (390 × 252)). With `horizonMin` = the minutes left to the expiry's close
+ * this is exactly S·σ·√T_calendar, the move the option prices. 0 without a price, a vol or a horizon.
+ */
+export function sigmaMoveOfQuotedIv(spot: number, quotedIv: number, expiry: string, horizonMin: number, nowMs = Date.now()): number {
+  if (!(spot > 0) || !(quotedIv > 0) || !(horizonMin > 0)) return 0;
+  const ivTrade = vendorIvOnTradingClock(quotedIv, expiry, nowMs);
+  return spot * ivTrade * Math.sqrt(horizonMin / (390 * TRADING_DAYS));
+}
+
+/** The same σ to the expiry's own close: S·σ·√T on the expiry's clock (null once the expiry has closed). */
+export function sigmaToExpiry(spot: number, quotedIv: number, expiry: string, nowMs = Date.now()): number | null {
+  const left = tradingMinutes(expiry, nowMs, false);
+  return left == null ? null : sigmaMoveOfQuotedIv(spot, quotedIv, expiry, left, nowMs);
 }
 
 /** ∂σ_trading/∂σ_quoted = √(T_calendar/T_trading): a vega, vanna or zomma taken per trading-clock vol point, times this, is

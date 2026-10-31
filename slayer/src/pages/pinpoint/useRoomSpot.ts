@@ -37,7 +37,7 @@ const thetaSpot = (ticker: string, book: number | null): number | null => {
   const px = held && held.value.price > 0 ? held.value.price : null;
   if (px == null) return null;
   if (!inSession()) return px;
-  if (!held.live) return null;
+  if (!held?.live) return null;
   return book == null || Math.abs(px - book) <= book * 0.2 ? px : null;
 };
 

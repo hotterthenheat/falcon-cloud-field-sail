@@ -51,14 +51,31 @@ export const MARKET_HOLIDAYS = new Set([
    refuses Good Friday 2019. An empty set changes nothing. */
 const LIVE_HOLIDAYS = new Set<string>();
 
-/** Cash session ends at 1:00 PM ET (12:00 PM CT) on these dates. Not holidays, and not a reason to invent a bar. */
+/** Cash session ends at 1:00 PM ET (12:00 PM CT) on these dates, back to 2016 for the replay (the day after
+    Thanksgiving, and July 3 and December 24 when they are weekdays and not themselves holidays). Not holidays, and not a
+    reason to invent a bar. */
 export const EARLY_CLOSES = new Set([
+  '2016-11-25',
+  '2017-07-03', '2017-11-24',
+  '2018-07-03', '2018-11-23', '2018-12-24',
+  '2019-07-03', '2019-11-29', '2019-12-24',
+  '2020-11-27', '2020-12-24',
+  '2021-11-26',
+  '2022-11-25',
+  '2023-07-03', '2023-11-24',
+  '2024-07-03', '2024-11-29', '2024-12-24',
   '2025-07-03', '2025-11-28', '2025-12-24',
   '2026-11-27', '2026-12-24',
   '2027-11-26',
 ]);
 
 export const isEarlyClose = (iso: string): boolean => EARLY_CLOSES.has(iso);
+
+/** Minute of the New York day the cash session ends on a date (YYYY-MM-DD): 13:00 on an early close, else 16:00. */
+export const sessionCloseMinOn = (iso: string): number => (EARLY_CLOSES.has(iso) ? 13 * 60 : 16 * 60);
+
+/** Cash-session minutes on a date: 210 on an early close, else 390. */
+export const sessionLengthOn = (iso: string): number => sessionCloseMinOn(iso) - (9 * 60 + 30);
 export { MONTHS } from './nyTime';
 
 /** New York's date of an instant, YYYYMMDD */
