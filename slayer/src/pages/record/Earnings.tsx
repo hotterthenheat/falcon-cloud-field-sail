@@ -4,6 +4,7 @@
 import { Controls, PhoneFold, RecordHead, Summary } from '../../components/record/recordHead';
 import { createStore, useStore } from '../../data/feedStore';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { keptPick, readKeptView, useKeepView } from './keptView';
 import { useNavigate } from 'react-router-dom';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Moon, Search, Sunrise, X } from 'lucide-react';
@@ -319,14 +320,16 @@ const NameCellIn = ({ data }: { data: EarningsEvent }) => {
 
 const WhenCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
   data ? (
+    /* three lines, so the column is the widest of them, not the four side by side: the date and whether it is set,
+       how far off, then the slot */
     <span className="flex flex-col leading-tight">
-      <span className="font-mono text-t11 tnum text-textPrimary">
-        {data.dateLabel} <span className="text-textMuted">· {untilWords(data.daysOut)}</span>
+      <span className="inline-flex items-baseline gap-1.5 font-mono text-t11 tnum text-textPrimary whitespace-nowrap">
+        {data.dateLabel} <SetTag confirmed={data.confirmed} />
       </span>
-      <span className="inline-flex items-center gap-1.5 text-t10">
+      <span className="font-mono text-t10 tnum text-textMuted whitespace-nowrap">{untilWords(data.daysOut)}</span>
+      <span className="inline-flex items-center gap-1.5 text-t10 whitespace-nowrap">
         <SlotMark slot={data.slot} timeKnown={data.timeKnown} className="w-2.5 h-2.5" />
         <span className="text-textSecondary">{slotWord(data)}</span>
-        <SetTag confirmed={data.confirmed} />
       </span>
     </span>
   ) : null;
@@ -360,8 +363,9 @@ const UsualCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
   if (!usualKnown(data)) return <span className="font-mono text-t11 text-textMuted" title={data.classOf ? `A second share class — its reports are filed under ${data.classOf}` : 'No past move on file for this name'}>{data.classOf ? `see ${data.classOf}` : 'no history'}</span>;
   const n = histN(data);
   return (
-    <span className="font-mono text-t11 tnum text-textSecondary" title={`The average move the session after its last ${n} ${n === 1 ? 'report' : 'reports'}`}>
-      ±{data.histAvgMovePct.toFixed(1)}%{n < 8 ? <span className="text-t9 text-textMuted"> · {n} {n === 1 ? 'print' : 'prints'}</span> : null}
+    <span className="flex flex-col items-end leading-tight font-mono text-t11 tnum text-textSecondary" title={`The average move the session after its last ${n} ${n === 1 ? 'report' : 'reports'}`}>
+      <span>±{data.histAvgMovePct.toFixed(1)}%</span>
+      {n < 8 ? <span className="text-t9 text-textMuted">{n} {n === 1 ? 'print' : 'prints'}</span> : null}
     </span>
   );
 };
@@ -375,8 +379,9 @@ const PricedCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
     );
   const s = stateOf(data);
   return (
-    <span className={`font-mono text-t11 tnum ${PRICED_INK[s]}`}>
-      {richText(data.richness)}× <span className="text-t9 uppercase tracking-widest">{PRICED_WORD[s]}</span>
+    <span className={`flex flex-col items-end leading-tight font-mono text-t11 tnum ${PRICED_INK[s]}`}>
+      <span>{richText(data.richness)}×</span>
+      <span className="text-t9 uppercase tracking-widest">{PRICED_WORD[s]}</span>
     </span>
   );
 };
@@ -400,6 +405,8 @@ const BeatCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
 };
 /* ---- the page ----------------------------------------------------------------------- */
 
+const VIEW_KEY = 'slayer_earnings_view';
+
 const Earnings = () => {
   const navigate = useNavigate();
   const boardNames = useBoardNames();
@@ -417,9 +424,13 @@ const Earnings = () => {
   const knownEvents = useMemo(() => events.filter(e => e.known), [events]);
   /* the Fed's published FOMC dates and payrolls Friday; the CPI date the engine can only approximate stays off the board */
   const macro = useMemo(() => macroWindow(new Date(), 10, 20).filter(m => !/approximated/i.test(m.detail)), []);
-  const [week, setWeekRaw] = useState<WeekPick>('0');
+  /* the view is kept for the visit (keptView.ts, as News keeps its own): back from a name's page the calendar is as it
+     was left. Only a week the reader picked is kept; an untouched one still follows the rule below. */
+  const kept = useMemo(() => readKeptView(VIEW_KEY), []);
+  const keptWeek = kept?.weekTouched === true ? keptPick<WeekPick>(WEEK_OPTIONS, kept.week, '0') : null;
+  const [week, setWeekRaw] = useState<WeekPick>(() => keptWeek ?? '0');
   /* Once the lists are in, a this-week with no report left opens on next week; a reader's own pick is never overridden. */
-  const [weekTouched, setWeekTouched] = useState(false);
+  const [weekTouched, setWeekTouched] = useState(() => keptWeek != null);
   const setWeek = (w: WeekPick) => {
     setWeekTouched(true);
     setWeekRaw(w);
@@ -442,11 +453,12 @@ const Earnings = () => {
       setAutoNext(true);
     }
   }, [weekTouched, pending, failed, events.length, thisWeekLeft.length, nextWeekCount, week]);
-  const [show, setShow] = useState<ShowPick>('all');
-  const [layout, setLayout] = useState<Layout>('board');
+  const [show, setShow] = useState<ShowPick>(() => keptPick<ShowPick>(SHOW_OPTIONS, kept?.show, 'all'));
+  const [layout, setLayout] = useState<Layout>(() => keptPick<Layout>(LAYOUT_OPTIONS, kept?.layout, 'board'));
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
   /* the name asked for, and its answer */
-  const [asked, setAsked] = useState<string | null>(null);
+  const [asked, setAsked] = useState<string | null>(() => (typeof kept?.asked === 'string' && /^[A-Z0-9.]{1,8}$/.test(kept.asked) ? kept.asked : null));
+  useKeepView(VIEW_KEY, { week, weekTouched, show, layout, asked });
   const next = useNextReport(asked);
   const nextPending = useNextReportPending(asked);
 
@@ -513,20 +525,21 @@ const Earnings = () => {
 
   const columnDefs = useMemo<ColDef<EarningsEvent>[]>(
     () => [
-      { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 180, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open its page' },
-      { headerName: 'Reports', field: 'daysOut', width: 210, cellRenderer: WhenCell, headerTooltip: 'The date, before the open or after the close, and whether the company has confirmed it or it is still an estimate' },
-      { headerName: 'Priced · or moved', colId: 'impliedMovePct', width: 140, cellRenderer: MoveCell,
+      { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 140, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open its page' },
+      { headerName: 'Reports', field: 'daysOut', width: 188, cellRenderer: WhenCell, headerTooltip: 'The date, before the open or after the close, and whether the company has confirmed it or it is still an estimate' },
+      { headerName: 'Priced · or moved', colId: 'impliedMovePct', width: 116, cellRenderer: MoveCell,
         /* the cell's own text is its value, so it re-renders when the live reaction lands; it sorts on the implied move */
         valueGetter: p => (p.data ? `${moveCellText(p.data)}|${p.data.impliedMovePct}` : ''),
         comparator: (_a, _b, na, nb) => (na.data?.impliedMovePct ?? 0) - (nb.data?.impliedMovePct ?? 0), type: 'rightAligned', headerTooltip: 'Before the print, the move the options charge; after it, the move the stock made (or is making, "so far")' },
-      { headerName: 'Usually moves', field: 'histAvgMovePct', width: 136, cellRenderer: UsualCell, type: 'rightAligned', headerTooltip: 'The average move the session after its last eight reports — or fewer, said beside it, when fewer are on file' },
-      { headerName: 'Priced', field: 'richness', width: 124, cellRenderer: PricedCell, type: 'rightAligned', headerTooltip: 'The options price over the usual move — rich above 1.3×, cheap below 0.85×, fair between' },
-      { headerName: 'Beat · in line · miss', field: 'beatRate8q', width: 130, cellRenderer: BeatCell, type: 'rightAligned', headerTooltip: 'Of the last eight reports that carry both an actual and an estimate: how many beat, came in line (equal to the cent) and missed' },
-      { headerName: 'IV rank', field: 'ivRank', width: 92, cellRenderer: IvCell, type: 'rightAligned', headerTooltip: 'Where implied volatility sits against its own past year, 0 to 100 — 80 and up is dear' },
+      { headerName: 'Usually moves', field: 'histAvgMovePct', width: 76, cellRenderer: UsualCell, type: 'rightAligned', headerTooltip: 'The average move the session after its last eight reports — or fewer, said beside it, when fewer are on file' },
+      { headerName: 'Priced', field: 'richness', width: 80, cellRenderer: PricedCell, type: 'rightAligned', headerTooltip: 'The options price over the usual move — rich above 1.3×, cheap below 0.85×, fair between' },
+      { headerName: 'Beat · in line · miss', field: 'beatRate8q', width: 72, cellRenderer: BeatCell, type: 'rightAligned', headerTooltip: 'Of the last eight reports that carry both an actual and an estimate: how many beat, came in line (equal to the cent) and missed' },
+      { headerName: 'IV rank', field: 'ivRank', width: 66, cellRenderer: IvCell, type: 'rightAligned', headerTooltip: 'Where implied volatility sits against its own past year, 0 to 100 — 80 and up is dear' },
     ],
     []
   );
-  const defaultColDef = useMemo<ColDef<EarningsEvent>>(() => ({ sortable: true, resizable: true, suppressMovable: true }), []);
+  /* a long head wraps over two lines rather than widen its column */
+  const defaultColDef = useMemo<ColDef<EarningsEvent>>(() => ({ sortable: true, resizable: true, suppressMovable: true, wrapHeaderText: true, autoHeaderHeight: true }), []);
   const onRow = (e: RowClickedEvent<EarningsEvent>) => {
     if (e.data) open(e.data.ticker);
   };
@@ -717,13 +730,13 @@ const Earnings = () => {
         ) : (
           <div
             key={`board-${week}-${show}`}
-            /* on a phone the five-day board scrolls sideways at a readable width */
-            className="border-t border-borderSubtle animate-soft-in max-lg:overflow-x-auto max-sm:overflow-x-visible min-w-0 max-w-full"
+            /* under a laptop's width the five days wrap, three then two to a row; on a phone they stand one under the other */
+            className="border-t border-borderSubtle animate-soft-in min-w-0 max-w-full"
             data-earnings-board
           >
             {weeks.map(weekIdx => (
               /* on a phone the five days stand one under the other */
-              <div key={weekIdx} className="grid grid-cols-5 gap-px bg-borderSubtle/60 border-b border-borderSubtle/60 last:border-0 max-lg:min-w-[1000px] max-sm:min-w-0 max-sm:grid-cols-1">
+              <div key={weekIdx} className="grid grid-cols-5 gap-px bg-borderSubtle/60 border-b border-borderSubtle/60 last:border-0 max-lg:grid-cols-3 max-md:grid-cols-2 max-sm:grid-cols-1">
                 {WEEKDAYS.map(wd => {
                   const { label, isToday } = weekDayLabel(weekIdx, wd);
                   const dayAll = shown.filter(e => e.weekIdx === weekIdx && e.weekday === wd);
@@ -771,7 +784,7 @@ const Earnings = () => {
                       </div>
                     );
                   return (
-                    <div key={wd} className={`bg-panel px-3 py-3 min-h-[176px] max-sm:min-h-0 flex flex-col ${isToday ? 'bg-silver/[0.04]' : ''}`} data-earnings-board-day={label} data-today={isToday || undefined} data-more={more || undefined}>
+                    <div key={wd} className={`bg-panel px-3 py-3 min-h-[176px] max-sm:min-h-0 flex flex-col ${wd === 5 ? 'max-lg:col-span-2 max-sm:col-span-1' : ''} ${isToday ? 'bg-silver/[0.04]' : ''}`} data-earnings-board-day={label} data-today={isToday || undefined} data-more={more || undefined}>
                       <div className="flex items-center justify-between">
                         <span className={`font-mono text-t11 font-bold tnum ${isToday ? 'text-silver' : 'text-textPrimary'}`}>{label}</span>
                         {isToday && <span className="font-mono text-t8 uppercase tracking-widest text-silver">today</span>}

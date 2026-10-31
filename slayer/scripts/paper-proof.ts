@@ -746,6 +746,12 @@ const roll = (a: PaperAccount, day: string) => {
   ok('Options Funding: a name off its 275-name whitelist is refused (NDX)', (ruleRefusal(on('of-growth-25k'), fixed(), { contract: { ticker: 'NDX', strike: 20000, right: 'C', expiry: E2 }, side: 'buy', qty: 1, kind: 'market' }, viewOf(on('of-growth-25k'), fixed()), 1) ?? '').includes('the 275 names on the firm’s list (as of 2026-10-29) only — NDX is not on it'));
   ok('…the names on it pass, written either way (SPY; BRK.B is its BRKB)', ruleRefusal(on('of-growth-25k'), fixed(), { contract: Cc(510), side: 'buy', qty: 1, kind: 'market' }, viewOf(on('of-growth-25k'), fixed()), 3.1) === null && !(ruleRefusal(on('of-growth-25k'), fixed(), { contract: { ticker: 'BRK.B', strike: 500, right: 'C', expiry: E2 }, side: 'buy', qty: 1, kind: 'market' }, viewOf(on('of-growth-25k'), fixed()), 1) ?? '').includes('not on it'));
   ok('the whitelist is data with its source: 275 names, optionsfunding.co, read 2026-10-29', OPTIONS_FUNDING_WHITELIST.names.length === 275 && new Set(OPTIONS_FUNDING_WHITELIST.names).size === 275 && OPTIONS_FUNDING_WHITELIST.url === 'https://optionsfunding.co/ticker-whitelist' && planById('of-express-50k')!.rules.underlyings === OPTIONS_FUNDING_WHITELIST.names && planById('sx-strix-25k')!.rules.underlyings === null);
+  ok('each firm’s commission is the figure its own page states (read 2026-10-31): Options Funding $0.65, TradeFundrr $0.30, Vanquish and Strix none', PROP_FIRMS.flatMap(f => f.plans).every(p => p.rules.fee === (p.firm === 'Options Funding' ? 0.65 : p.firm === 'TradeFundrr' ? 0.3 : null)));
+  ok('…Options Funding’s own example: opening and closing 10 contracts costs $13.00', (() => {
+    let x = optPlace(on('of-growth-50k'), fixed(), { contract: Cc(510), side: 'buy', qty: 10, kind: 'market' });
+    x = optClose(x, fixed(), Cc(510), 10);
+    return x.opt.fills.length === 2 && near(x.opt.fills.reduce((s, f) => s + f.fee, 0), 13);
+  })());
   const pro = on('sx-pro-50k');
   ok('Strix Pro: a credit spread is taken (a capped loss)', say(pro, { contract: bullPut }) === '');
   ok('…a call sold on its own is refused — no cap on its loss', say(pro, { contract: Cc(510) }).includes('sells only with a capped loss'));
@@ -926,6 +932,43 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   stamp = T0 + 3000;
   x = tick(x, sized(T0 + 4000)).account;
   ok('…a new quote fills the rest, 2; the order is filled, 5 in all, and its target rides all 5', x.opt.fills.length === 2 && x.opt.fills[1].qty === 2 && x.opt.orders[0].status === 'filled' && x.opt.orders[0].qty === 5 && x.opt.orders.some(o => o.oco && o.qty === 5 && o.status === 'working'), x.opt.orders.map(o => `${o.kind}:${o.qty}:${o.status}`).join(' '));
+}
+
+{
+  /* 5b. an order of several takes at most the sets its legs show together (PR5): a 50-lot call vertical, bought — the
+     500C at its ask, the 510C sold at its bid — against 5 shown on each fills 5 sets, both legs, and the rest waits */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  let stamp = T0;
+  let sizes: Record<number, { ask: number; bid: number }> = { 500: { ask: 5, bid: 9 }, 510: { ask: 9, bid: 5 } };
+  const legPx: Record<number, number> = { 500: 3, 510: 1 };
+  const sized = (t: number): PaperMarket => ({
+    ...fixed(() => 2, t),
+    optQuote: (c: ContractId) => ({ ...fixed(() => legPx[c.strike] ?? 2, t).optQuote(c), askSize: sizes[c.strike]?.ask, bidSize: sizes[c.strike]?.bid, quotedAt: stamp }),
+  });
+  const lc: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  const sc: ContractId = { ...lc, strike: 510 };
+  const legs = [{ contract: lc, side: 'buy' as const }, { contract: sc, side: 'sell' as const }];
+  const qtyOf = (a: PaperAccount, k: number) => optBookOf(a).positions.find(p => p.contract.strike === k)?.qty ?? 0;
+  let x = newAccount({ id: 'csz', kind: 'practice', name: 'csz', startCash: 100_000, now: T0, sandbox: true });
+  x = optPlaceCombo(x, sized(T0), { name: 'Call vertical', legs, qty: 50, kind: 'market' });
+  ok('paper: a 50-lot vertical at the market against 5 × 5 shown fills 5 sets — 5 of each leg, never 50', x.opt.fills.length === 2 && x.opt.fills.every(f => f.qty === 5) && qtyOf(x, 500) === 5 && qtyOf(x, 510) === 5, x.opt.fills.map(f => `${f.side}${f.qty}`).join(' '));
+  ok('…both legs stay working for the other 45, together', x.opt.orders.filter(o => o.combo).every(o => o.status === 'working' && o.qty === 45 && o.filled === 5));
+  x = tick(x, sized(T0 + 2000)).account;
+  ok('…the same quotes read again (stamps unchanged) fill nothing more', x.opt.fills.length === 2);
+  stamp = T0 + 3000;
+  sizes = { 500: { ask: 7, bid: 9 }, 510: { ask: 9, bid: 4 } };
+  x = tick(x, sized(T0 + 4000)).account;
+  ok('…new quotes, the long leg’s ask showing 7 and the short leg’s bid 4: 4 more sets, the fewer of the two', x.opt.fills.length === 4 && x.opt.fills.slice(2).every(f => f.qty === 4) && qtyOf(x, 500) === 9 && qtyOf(x, 510) === 9, x.opt.fills.map(f => `${f.side}${f.qty}`).join(' '));
+  sizes = { 500: { ask: 500, bid: 500 }, 510: { ask: 500, bid: 500 } };
+  stamp = T0 + 5000;
+  x = tick(x, sized(T0 + 6000)).account;
+  ok('…and once the size is there the last 41 fill: 50 sets in all, the order filled', qtyOf(x, 500) === 50 && qtyOf(x, 510) === 50 && x.opt.orders.filter(o => o.combo).every(o => o.status === 'filled' && o.qty === 50));
+  /* a limit waits for its net, then takes the shown size too */
+  stamp = T0 + 7000;
+  sizes = { 500: { ask: 3, bid: 9 }, 510: { ask: 9, bid: 6 } };
+  let y = optPlaceCombo(newAccount({ id: 'cszl', kind: 'practice', name: 'cszl', startCash: 100_000, now: T0, sandbox: true }), sized(T0 + 7000), { name: 'Call vertical', legs, qty: 20, kind: 'limit', net: -2 });
+  y = tick(y, sized(T0 + 8000)).account;
+  ok('a 20-lot vertical limit at its net fills 3 sets against an ask showing 3 — both legs, the rest working', y.opt.fills.length === 2 && y.opt.fills.every(f => f.qty === 3) && y.opt.orders.filter(o => o.combo).every(o => o.status === 'working' && o.qty === 17), y.opt.fills.map(f => `${f.side}${f.qty}`).join(' '));
 }
 
 {

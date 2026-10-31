@@ -4,6 +4,7 @@
 import { ownerWord } from '../../data/whalesMap';
 import { CardLine } from '../../components/record/PhoneCards';
 import { useEffect, useMemo, useState } from 'react';
+import { keptPick, keptStrings, readKeptView, useKeepView } from './keptView';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type IRowNode } from 'ag-grid-community';
 import { Controls, HeadFact, PhoneFold, RecordGrid, RecordHead, RecordPanel, Summary, ToKnow } from '../../components/record/RecordFrame';
@@ -340,20 +341,24 @@ export const BillsSwitch = ({ hide, onToggle, hidden, testId, reading = false }:
 
 /* ---- the page ------------------------------------------------------------------ */
 
+const VIEW_KEY = 'slayer_congress_view';
+
 const Congress = () => {
   const navigate = useNavigate();
-  const [window, setWindowRaw] = useState<Window>(90);
-  const [basis, setBasis] = useState<Basis>('traded');
+  /* the cut is kept for the visit (keptView.ts, as News keeps its own): back from a member's page the list is as it was left */
+  const keptView = useMemo(() => readKeptView(VIEW_KEY), []);
+  const [window, setWindowRaw] = useState<Window>(() => keptPick<Window>(WINDOW_OPTIONS, keptView?.window, 90));
+  const [basis, setBasis] = useState<Basis>(() => keptPick<Basis>(BASIS_OPTIONS, keptView?.basis, 'traded'));
   /* a short window opens on the filing day, a long one on the trade day; the menu changes it either way */
   const setWindow = (w: Window) => {
     setWindowRaw(w);
     setBasis(w <= 30 ? 'filed' : 'traded');
   };
-  const [chamber, setChamber] = useState<ChamberPick>('both');
-  const [owner, setOwner] = useState<OwnerPick>('any');
-  const [show, setShow] = useState<Show>('all');
+  const [chamber, setChamber] = useState<ChamberPick>(() => keptPick<ChamberPick>(CHAMBER_OPTIONS, keptView?.chamber, 'both'));
+  const [owner, setOwner] = useState<OwnerPick>(() => keptPick<OwnerPick>(OWNER_OPTIONS, keptView?.owner, 'any'));
+  const [show, setShow] = useState<Show>(() => keptPick<Show>(SHOW_OPTIONS, keptView?.show, 'all'));
   /* Treasury bills are hidden by default (parked cash, not equity trades); one switch shows them and the head counts them */
-  const [hideBills, setHideBills] = useState(true);
+  const [hideBills, setHideBills] = useState(() => keptView?.hideBills !== false);
 
   /* The feed is the live record when it answers; the reports are paged back by trade day until the window is covered */
   const feed = useCongressFeed(window, basis);
@@ -385,7 +390,8 @@ const Congress = () => {
   );
 
   /* the filter reads the names and members on the cut; any pick keeps its rows */
-  const [picks, setPicks] = useState<string[]>([]);
+  const [picks, setPicks] = useState<string[]>(() => keptStrings(keptView?.picks));
+  useKeepView(VIEW_KEY, { window, basis, chamber, owner, show, hideBills, picks });
   const filterGroups = useMemo<MultiGroup[]>(() => {
     const count = (key: (t: CongressTrade) => string | null) => {
       const m = new Map<string, number>();

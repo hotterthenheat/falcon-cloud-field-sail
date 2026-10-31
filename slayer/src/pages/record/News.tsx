@@ -8,6 +8,7 @@ import { nyTodayIso, shortDay } from '../../data/nyDate';
 import { useNearReports } from '../../data/earningsFeed';
 import { CONTROLS_LINE } from '../../components/trace/traceFrame';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { keptPick, keptStrings, readKeptView, writeKeptView } from './keptView';
 import { LoadingBox } from '../../components/ui/states';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, Bell, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -580,29 +581,18 @@ const storyKey = (e: GeoNewsEvent) => e.id;
 type KeptView = { category: CategoryPick; names: NamesPick; sort: Sort; picks: string[]; selectedId: string | null; picked: boolean };
 const VIEW_KEY = 'slayer_news_view';
 const readView = (): KeptView | null => {
-  try {
-    const raw = sessionStorage.getItem(VIEW_KEY);
-    if (!raw) return null;
-    const v = JSON.parse(raw) as Partial<KeptView>;
-    return {
-      category: CATEGORY_OPTIONS.some(o => o.value === v.category) ? (v.category as CategoryPick) : 'all',
-      names: NAMES_OPTIONS.some(o => o.value === v.names) ? (v.names as NamesPick) : 'all',
-      sort: SORT_OPTIONS.some(o => o.value === v.sort) ? (v.sort as Sort) : 'matters',
-      picks: Array.isArray(v.picks) ? v.picks.filter((x): x is string => typeof x === 'string').slice(0, 40) : [],
-      selectedId: typeof v.selectedId === 'string' ? v.selectedId : null,
-      picked: v.picked === true,
-    };
-  } catch {
-    return null;
-  }
+  const v = readKeptView(VIEW_KEY);
+  if (!v) return null;
+  return {
+    category: keptPick<CategoryPick>(CATEGORY_OPTIONS, v.category, 'all'),
+    names: keptPick<NamesPick>(NAMES_OPTIONS, v.names, 'all'),
+    sort: keptPick<Sort>(SORT_OPTIONS, v.sort, 'matters'),
+    picks: keptStrings(v.picks),
+    selectedId: typeof v.selectedId === 'string' ? v.selectedId : null,
+    picked: v.picked === true,
+  };
 };
-const writeView = (v: KeptView) => {
-  try {
-    sessionStorage.setItem(VIEW_KEY, JSON.stringify(v));
-  } catch {
-    /* storage blocked: the view lives for the visit only */
-  }
-};
+const writeView = (v: KeptView) => writeKeptView(VIEW_KEY, v);
 
 const News = () => {
   const location = useLocation();

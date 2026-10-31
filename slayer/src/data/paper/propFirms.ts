@@ -77,7 +77,11 @@ const VANQUISH: PropFirm = {
 
 /* Options Funding (optionsfunding.co/rules): buy-only single-leg calls and puts on new Growth and Express accounts; the
    target on the balance; open contracts valued at the bid; no daily loss limit published; overnight allowed;
-   $0.65 a contract a leg each side; an expiring position is closed at 15:55 ET on its day — 16:10 ET for SPY, QQQ, IWM,
+   $0.65 a contract a leg each side (the FAQ's "Is there a commission on trades?",
+   https://optionsfunding.co/faq/accounts-and-billing#trading-commission, read 2026-10-31: "Every options trade is
+   charged a flat $0.65 per contract, on every leg, both when you open and when you close … no minimum, no cap, and no
+   other per-trade fee. The commission comes out of your trading account balance … so it counts toward your profit and
+   loss and your drawdown." The rules page itself states no figure); an expiring position is closed at 15:55 ET on its day — 16:10 ET for SPY, QQQ, IWM,
    DIA, whose options trade to 16:15: closed then at the live bid; the 275 names of its ticker whitelist only
    (whitelists.ts, read 2026-10-29). */
 const LATE = ['SPY', 'QQQ', 'IWM', 'DIA'];
@@ -120,7 +124,14 @@ const STRIX: PropFirm = {
    more; no session over 30% of the target (a session over $375 raises it to that session ÷ 0.30); a $1,000 daily
    limit on realized and unrealized P&L that is a soft breach; a $3,000 end-of-day drawdown on the realized balance
    that stops at the starting balance; flat by 15:55 ET; $0.30 a contract each side; a winner held 15 seconds or less
-   does not count. The June-2026 contract caps are not confirmed for these programs and are left out. */
+   does not count.
+   The commission, read 2026-10-31: the Pre-Prop and Prop FAQ "What are the commissions?" (modified 5 Oct 2026,
+   https://tradefundrr.freshdesk.com/support/solutions/articles/202000125615-what-are-the-commissions-) says "Options:
+   Commissions are $0.30 per contract, per side." The legacy-program articles say the same (202000119016, modified 26 Jun;
+   202000093116). The tiered $0.65 / $0.55 / $0.45 schedule was on tradefundrr.com/tradefundrr-fees-and-pricing-2/, a page
+   that names no program; it answers 404 on 2026-10-31 and is not in the site's sitemap, so it is not modelled. The
+   options pages (/options-trader-funding/pre-prop/, /prop/) state no figure ("Trading commissions affect your net
+   profit"). The June-2026 contract caps are not confirmed for these programs and are left out. */
 const TF_RULES: Partial<PropRules> = {
   targetOn: 'balance',
   markAt: 'mid',
@@ -135,7 +146,7 @@ const TF_RULES: Partial<PropRules> = {
   overnight: false,
   weekend: false,
 };
-const TF_NOTES = ['what a daily-limit soft breach does is not stated by the firm — here it closes everything and ends the day, never the account', 'strategy permissions are not stated for these programs — this desk buys calls, puts and debit spreads'];
+const TF_NOTES = ['the commission is the firm’s Pre-Prop and Prop help article (“Options: Commissions are $0.30 per contract, per side”, modified 5 Oct 2026, read 2026-10-31); a tiered $0.65 / $0.55 / $0.45 schedule once on its fees page is no longer published and is not used', 'what a daily-limit soft breach does is not stated by the firm — here it closes everything and ends the day, never the account', 'strategy permissions are not stated for these programs — this desk buys calls, puts and debit spreads'];
 const TRADEFUNDRR: PropFirm = {
   id: 'tradefundrr',
   name: 'TradeFundrr',

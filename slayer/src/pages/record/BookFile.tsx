@@ -31,7 +31,7 @@ import { useShortReads } from '../../data/shortFile';
 import { displayName } from '../../data/tickers';
 import { AssetCell, BillsSwitch, CongressCard, assetKey, assetLine } from './Congress';
 import { PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
-import { holdingAssetKey } from '../../data/fileBooks';
+import { holdingAssetKey, isOffExchangeVenue, venueWords } from '../../data/fileBooks';
 import { asOfDay, borrowM, longDay, moneyB, signedM as moneyFlow } from './money';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { STOCK_ACT_DEADLINE_DAYS, bracketLabel, isTreasuryBill, seatLabel } from '../../data/congress';
@@ -152,7 +152,7 @@ export const HouseFile = () => {
       { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-t11 tnum ${ink(data.unitsChangeM)}`}>{unitsDelta(data.unitsChangeM)}</span> : null), headerTooltip: 'Change in units since the house\'s prior 13F' },
       { headerName: 'Value', field: 'valueB', width: 96, type: 'rightAligned', valueFormatter: p => moneyB(Number(p.value)), headerTooltip: 'The line\'s market value on the filing' },
       { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "Our data provider's estimate of the average price the house paid — '—' where it rests on a first buy the filing contradicts" },
-      { headerName: '% of 13F value', field: 'pctOfBook', width: 112, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s reported value as a share of the total value of everything the house reported on its 13F (the provider\'s perc_of_share_value) — over the whole filing, not only the lines read here' },
+      { headerName: '% of 13F value', field: 'pctOfBook', width: 112, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s reported value as a share of the total value of everything the house reported on its 13F — over the whole filing, not only the lines read here' },
       { headerName: '% of co.', field: 'pctOfShares', width: 96, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `${Number(p.value).toFixed(2)}%` : '—'), headerTooltip: 'The share of the company\'s shares outstanding this house holds' },
       { headerName: 'First buy', field: 'firstBuy', width: 110, valueFormatter: p => (p.value && /^\d{4}-\d{2}-\d{2}/.test(String(p.value)) ? longDay(String(p.value)) : String(p.value ?? '—')), headerTooltip: "The first quarter this house reported the stock; '—' where the filing itself contradicts the date" },
       { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "The close on the day of the first buy. Not a strike. '—' where the first buy cannot be trusted (see First buy)" },
@@ -184,11 +184,11 @@ export const HouseFile = () => {
           </div>
           {/* the whole filing's calls and puts, the feed's own call_value and put_value */}
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`Calls on the whole 13F as our data provider totals it (call_value) — the market value of the shares the call lines cover${callValue > 0 ? `; ${moneyB(callValue)} of it in the ${feed.length} lines read below` : `; none of the ${feed.length} largest lines below is a call`}`}>Calls · whole 13F</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={`Calls on the whole 13F as our data provider totals it — the market value of the shares the house’s call lines cover${callValue > 0 ? `; ${moneyB(callValue)} of it in the ${feed.length} lines read below` : `; none of the ${feed.length} largest lines below is a call`}`}>Calls · whole 13F</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{bookLive.optionsB ? moneyB(bookLive.optionsB.calls) : '—'}</dd>
           </div>
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`Puts on the whole 13F as our data provider totals it (put_value)${putValue > 0 ? `; ${moneyB(putValue)} of it in the ${feed.length} lines read below` : `; none of the ${feed.length} largest lines below is a put`}`}>Puts · whole 13F</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={`Puts on the whole 13F as our data provider totals it — the market value of the shares the house’s put lines cover${putValue > 0 ? `; ${moneyB(putValue)} of it in the ${feed.length} lines read below` : `; none of the ${feed.length} largest lines below is a put`}`}>Puts · whole 13F</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{bookLive.optionsB ? moneyB(bookLive.optionsB.puts) : '—'}</dd>
           </div>
           <div>
@@ -307,11 +307,11 @@ export const ShortFile = () => {
   const [picks, setPicks] = useState<string[]>([]);
   const markets = useMemo(() => {
     if (!row) return [];
-    return row.exchanges.map(e => ({ id: e.exchange, exchange: e.exchange, shortM: e.shortM, totalM: e.totalM, ratio: e.totalM ? (e.shortM / e.totalM) * 100 : 0 }));
+    return row.exchanges.map(e => ({ id: e.exchange, exchange: venueWords(e.exchange), shortM: e.shortM, totalM: e.totalM, ratio: e.totalM ? (e.shortM / e.totalM) * 100 : 0 }));
   }, [row]);
   const shown = useMemo(() => {
     const cut = markets.filter(e => heavy === 'any' || e.ratio >= 50);
-    return picks.length === 0 ? cut : cut.filter(e => picks.includes(e.exchange));
+    return picks.length === 0 ? cut : cut.filter(e => picks.includes(e.id));
   }, [markets, heavy, picks]);
   const toKnow = useMemo(() => [...markets].sort((a, b) => b.ratio - a.ratio).slice(0, 6), [markets]);
   const toggle = (name: string) => setPicks(p => (p.includes(name) ? p.filter(x => x !== name) : [...p, name]));
@@ -374,10 +374,10 @@ export const ShortFile = () => {
           </div>
           {row.shortVolRatio != null ? (
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`The share of last session's off-exchange volume reported short; about half is ordinary. Source: ${row.shortVolSource ?? 'FINRA'}`}>Short volume · off-exchange</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={`The share of last session's off-exchange volume reported short; about half is ordinary. Source: ${row.shortVolSource ?? 'the off-exchange short-volume report'}`}>Short volume · off-exchange</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{row.shortVolRatio.toFixed(0)}%{row.shortVolDate ? <span className="text-textMuted"> · {asOfDay(row.shortVolDate)}</span> : null}</dd>
             {/* the source named on the card */}
-            <dd className="font-mono text-t9 text-textMuted whitespace-nowrap" data-short-vol-source>{row.shortVolSource?.startsWith('the by-market') ? 'FINRA CNMS · by-market rows' : 'FINRA CNMS · short volume read'}</dd>
+            <dd className="font-mono text-t9 text-textMuted whitespace-nowrap" data-short-vol-source>{row.shortVolSource?.startsWith('the by-market') ? 'Off-exchange short-volume report · by-market rows' : 'Off-exchange short-volume report'}</dd>
           </div>
           ) : null}
           </>
@@ -420,13 +420,13 @@ export const ShortFile = () => {
       <Summary testId="short">
         {row.shortSharesM.toFixed(1)}M shares short, {row.interestPct.toFixed(2)}% of a {row.floatM.toFixed(0)}M float, {row.daysToCover.toFixed(1)} days to cover.
         {row.availableM == null ? ' The feed did not say how many shares are left to borrow.' : row.availableM >= 10 - 1e-9 ? ' At least 10M shares are available to borrow.' : ` ${borrowM(row.availableM)} shares are available to borrow.`}
-        {/* FINRA's CNMS rows are off-exchange volume alone (dark pools and wholesalers), never the day's whole volume. */}
+        {/* The off-exchange report's rows are off-exchange volume alone (dark pools and wholesalers), never the day's whole volume. */}
         {lead && markets.length === 1 ? (
           <>
             {' '}
             On {row.exchangesDate ? asOfDay(row.exchangesDate) : 'the last session'}, {(lead.shortM).toFixed(2)}M of the {lead.totalM.toFixed(2)}M shares{' '}
-            <span className="text-textPrimary font-semibold">{/finra/i.test(lead.exchange) ? 'traded off-exchange (reported to FINRA)' : `reported by ${lead.exchange}`}</span> were short sales, {lead.ratio.toFixed(0)}%
-            {/finra/i.test(lead.exchange) ? ' — that total is off-exchange volume only; the lit exchanges’ trades are not in it' : ''}
+            <span className="text-textPrimary font-semibold">{isOffExchangeVenue(lead.id) ? 'traded off-exchange' : `reported by ${lead.exchange}`}</span> were short sales, {lead.ratio.toFixed(0)}%
+            {isOffExchangeVenue(lead.id) ? ' — that total is off-exchange volume only; the lit exchanges’ trades are not in it' : ''}
             {row.exchangesDate && row.shortVolDate && row.exchangesDate !== row.shortVolDate ? ` (a session behind the ${row.shortVolRatio != null ? `${row.shortVolRatio.toFixed(0)}% ` : ''}short volume of ${asOfDay(row.shortVolDate)})` : ''}.
           </>
         ) : lead ? (
@@ -458,7 +458,7 @@ export const ShortFile = () => {
         </div>
         <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
           {toKnow.map(e => (
-            <button key={e.exchange} type="button" onClick={() => toggle(e.exchange)} aria-pressed={picks.includes(e.exchange)} className={KNOW(picks.includes(e.exchange))} data-short-know={e.exchange}>
+            <button key={e.id} type="button" onClick={() => toggle(e.id)} aria-pressed={picks.includes(e.id)} className={KNOW(picks.includes(e.id))} data-short-know={e.exchange}>
               <span className="font-mono text-t12 font-bold text-textPrimary">{e.exchange}</span>
               <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
                 <span className={`text-t13 font-bold ${e.ratio >= 50 ? 'text-bear' : 'text-textPrimary'}`}>{e.ratio.toFixed(0)}%</span>
@@ -487,7 +487,7 @@ export const ShortFile = () => {
       </>
       ) : null}
       <ShortHistory ticker={t} />
-      {row.ftdDays.length > 0 ? <Board title="Fails to deliver" rest={`The day, the shares that failed, and the close · newest first, the latest on file ${asOfDay(row.ftdDays[0]?.date)} (the SEC publishes fails about two weeks late)`} testId="short-ftd" rows={row.ftdDays.map(d => ({ id: d.date, date: d.date, quantity: d.quantity, price: d.price }))} cols={FTD_COLS} /> : null}
+      {row.ftdDays.length > 0 ? <Board title="Fails to deliver" rest={`The day, the shares that failed, and the close · newest first, the latest on file ${asOfDay(row.ftdDays[0]?.date)} (fails are published about two weeks late)`} testId="short-ftd" rows={row.ftdDays.map(d => ({ id: d.date, date: d.date, quantity: d.quantity, price: d.price }))} cols={FTD_COLS} /> : null}
     </Page>
     </>
   );

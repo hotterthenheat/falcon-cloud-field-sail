@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { setDividend } from '../core/carry';
-import { houseSector, houseSlug, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type PositionStatus, type ShortRow } from './fileBooks';
+import { houseSector, houseSlug, venueWords, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type PositionStatus, type ShortRow } from './fileBooks';
 import { pickFromLive, type StockPick } from './stocks';
 import { UNIVERSE, type Sector } from './universe';
 import { nyDayOfUtcStamp, nyDaysAgo } from './nyDate';
@@ -490,7 +490,7 @@ export function shortRowFromFile(
     if (session.market_date) out.shortVolDate = String(session.market_date).slice(0, 10);
     const sv = num(session.short_volume);
     if (sv > 0) out.shortVolM = sv / 1e6;
-    out.shortVolSource = 'Short volume and ratio from our data provider (FINRA CNMS, the consolidated tape)';
+    out.shortVolSource = 'Short volume and ratio from our data provider’s off-exchange short-volume report';
   }
   const fails = arr(reads.ftd).filter(f => f.date).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   if (fails.length && !out.ftdDays.length) {
@@ -513,7 +513,7 @@ export function shortRowFromFile(
       out.shortVolRatio = (short / total) * 100;
       out.shortVolM = short;
       out.shortVolDate = out.exchangesDate;
-      out.shortVolSource = `the by-market short volume (${[...new Set(out.exchanges.map(v => v.exchange))].join(', ')}) — the vendor's short volume and ratio came back empty`;
+      out.shortVolSource = `the by-market short volume (${[...new Set(out.exchanges.map(v => venueWords(v.exchange)))].join(', ')}) — the short volume and ratio read came back empty`;
     }
   }
   return out;
