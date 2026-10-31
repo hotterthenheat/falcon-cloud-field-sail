@@ -10,6 +10,9 @@
 import { gate, sendDenied } from './auth.mjs';
 import { forwardPath } from './paths.mjs';
 import { sessionLost, thetaAllowed, thetaTtl } from '../shared/thetaPaths.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createHub } from './hub.mjs';
 
 const RELAY = (process.env.THETA_RELAY_URL || '').replace(/\/+$/, '');
@@ -31,6 +34,33 @@ const timedOut = (e) => e?.name === 'TimeoutError' || e?.name === 'AbortError';
 const failed = (e) => (timedOut(e) ? { status: 504, body: Buffer.from(BUSY), type: 'application/json' } : { status: 503, body: Buffer.from(DOWN), type: 'application/json' });
 const LOST = JSON.stringify({ error: 'The market data session is reconnecting.', code: 'session_lost' });
 const NO_TERMINAL = JSON.stringify({ error: 'This deployment has no market data terminal configured.', code: 'terminal_unavailable' });
+
+/* The supervisor on this machine (theta/supervisor.mjs, maybe another process) writes what it knows about the terminal
+   to theta/run/state.json. When it says the key was refused, a failed request answers terminal_login, so the page can
+   say "ThetaData login failed: check THETADATA_API_KEY" instead of "not running". Read at most every 5 s. Through the
+   relay, the relay sends the same code itself. */
+const LOGIN = JSON.stringify({ error: 'ThetaData refused the login: check THETADATA_API_KEY on the machine that runs the terminal.', code: 'terminal_login' });
+const STATE_FILE = process.env.THETA_RUN_DIR ? path.join(process.env.THETA_RUN_DIR, 'state.json') : fileURLToPath(new URL('../theta/run/state.json', import.meta.url));
+let stateRead = { at: 0, login: false };
+function loginFailed() {
+  if (RELAY) return false;
+  const now = Date.now();
+  if (now - stateRead.at < 5_000) return stateRead.login;
+  let login = false;
+  try {
+    const s = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    login = s?.state === 'login_failed' && now - Number(s.at) < 60_000;
+  } catch {
+    /* no supervisor on this machine (a terminal started by hand, or Vercel) */
+  }
+  stateRead = { at: now, login };
+  return login;
+}
+/** A failed answer from a terminal whose login was refused becomes terminal_login (never kept by the hub: a 503) */
+const withLogin = (got) =>
+  got.status !== 200 && got.status !== 472 && (got.status >= 500 || (got.status >= 470 && got.status <= 479)) && loginFailed()
+    ? { status: 503, body: Buffer.from(LOGIN), type: 'application/json' }
+    : got;
 
 /* The app's own client sends x-theta-soft: 1 and reads `code`, so an outage it already shows on screen is answered
    200 rather than 503, and the browser does not log every call of a known outage as an error. Anyone else gets 503. */
@@ -111,9 +141,18 @@ async function loadNow(reqPath) {
 
 /* One shared copy per request for every viewer (server/hub.mjs). A snapshot is refreshed about once a second while
    anyone watches it, whatever the number of viewers; the terminal's eight slots are far from full at that rate. */
+/* ThetaData's own 47x codes are mostly about the terminal, not the request (the v3 jar: 471 PERMISSION, 472 NO_DATA,
+   473 UNAUTHENTICATED, 475 TERMINAL_PARSE; older terminals and the relay also send 474 DISCONNECTED, 476 WRONG_IP,
+   477 NO_PAGE_FOUND, 478 INVALID_SESSION_ID). Only 472 ("this contract has no data that day") is an answer worth keeping:
+   a 474 kept during an outage was served for six hours (a past day's TTL) after the terminal came back. 471 is not
+   kept either: a refusal from a terminal that has not finished logging in must not be pinned for hours. */
+export const thetaKeepable = (status) =>
+  status === 200 || status === 472 || (status >= 400 && status < 500 && !(status >= 470 && status <= 479) && ![401, 403, 408, 429].includes(status));
+
 const hub = createHub({
   name: 'theta',
-  fetch: (p) => load(p).catch(failed),
+  fetch: (p) => load(p).catch(failed).then(withLogin),
+  keepable: thetaKeepable,
   ttl: (p) => Math.max(thetaTtl(p), /\/snapshot\//.test(p) ? 900 : 0),
   refreshPerSec: Number(process.env.THETA_HUB_REFRESH_PER_SEC) || 25,
 });
@@ -158,6 +197,7 @@ export async function proxyTheta(req, res) {
   }
   try {
     const got = await hub.get(reqPath);
+    if (got.status === 200) for (const [k, v] of Object.entries(hub.ageHeaders(reqPath, got))) res.setHeader(k, v);
     sendSoftly(req, res, got.status, got.body, got.type);
   } catch {
     send(res, statusFor(req, 503, DOWN), DOWN);

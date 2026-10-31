@@ -46,14 +46,17 @@ name the vendor refuses or answers empty two passes running is left out for the 
 the cache and the key's three slots with every viewer:
 
 - one ask at a time, so it never holds more than **one** of the three slots;
-- a vendor call it needs goes in the background lane: it waits while any viewer is queued, and takes a slot only when
-  one is free for a quick ask too;
+- a vendor call it needs goes in **its own** background lane (`record`), beside the hub's refresh lane (the popular
+  paths and keep-warm): each holds one slot at most, both wait while any viewer is queued, and together they never
+  take the slot a quick ask needs. Before 2026-10-31 the recorder shared the one refresh slot, which spent 35–70 s
+  of every minute on refreshes, and passes ran out of time;
 - a copy of the answer younger than 45 s (a viewer's own read of the same path) is reused, not asked again;
 - its asks are not counted as a viewer's, so the hub keeps nothing warm on its schedule;
 - the book for every name goes first, then the front expiries: when time runs short it is the second cut that waits;
 - a pass stops 50 s after it started, and the names it did not reach go first next time;
-- a 429, a vendor fault or a timeout stops the pass and backs off 1, 2, 4, then 8 minutes; the proxy's own retries
-  (Retry-After, else 0.8, 1.6, 3.2 s) run first.
+- a 429, a vendor fault or a timeout stops the pass and backs off 1, 2, 4, then 8 minutes. While the key's 429
+  breaker holds (`server/uwProxy.mjs`) a recorder ask gives up at once instead of waiting, so the pass stops early
+  rather than queueing behind it.
 
 ## The budget
 
@@ -71,7 +74,8 @@ every name a viewer has open costs the recorder nothing on that cut. One slot of
 hub's usual 0.3–0.6 s for these routes, a minute's 50 asks hold one slot for 15–30 s, and never while a viewer waits.
 `scripts/exposure-recorder-proof.ts` counts them minute by minute over a whole day.
 
-If a pass cannot finish inside its 50 s (`/api/exposure/status` shows `last.missed`), record less:
+If a pass cannot finish inside its 50 s (`/api/exposure/status` shows `last.missed`, and `missedTotal` /
+`passesMissing` since start; the log says so once and then every tenth such pass), record less:
 `EXPOSURE_FRONT=0` records the whole book only (25 a minute), `EXPOSURE_NAMES_MAX=10` records ten names (20 a minute),
 `EXPOSURE_EXT_EVERY=0` reads the regular session only.
 
@@ -97,7 +101,8 @@ megabytes a day before gzip; most names far less.
   (the recorder's first and last read of the name that day) and `readings`. With `since`, only the segments that end
   after it. Asking for today names the ticker as opened by a viewer.
 - `GET /api/exposure/status`: whether it records (and why not), the names, the cap, the last pass (asks, vendor calls,
-  lines, missed, fault) and the vendor calls of the last ten passes.
+  lines, missed, fault), the vendor calls of the last ten passes, and `missedTotal` / `passesMissing`: the cuts
+  passes did not reach since start, and how many passes missed any.
 
 The gate is the Unusual Whales proxy's (`server/auth.mjs`): open on local work, a signed-in plan when accounts are on.
 
