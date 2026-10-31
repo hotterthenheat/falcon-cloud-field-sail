@@ -152,7 +152,7 @@ export const HouseFile = () => {
       { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-t11 tnum ${ink(data.unitsChangeM)}`}>{unitsDelta(data.unitsChangeM)}</span> : null), headerTooltip: 'Change in units since the house\'s prior 13F' },
       { headerName: 'Value', field: 'valueB', width: 96, type: 'rightAligned', valueFormatter: p => moneyB(Number(p.value)), headerTooltip: 'The line\'s market value on the filing' },
       { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "Our data provider's estimate of the average price the house paid — '—' where it rests on a first buy the filing contradicts" },
-      { headerName: '% of 13F value', field: 'pctOfBook', width: 112, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s reported value as a share of the total value of everything the house reported on its 13F (the provider\'s perc_of_share_value) — over the whole filing, not only the lines read here' },
+      { headerName: '% of 13F value', field: 'pctOfBook', width: 112, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s reported value as a share of the total value of everything the house reported on its 13F — over the whole filing, not only the lines read here' },
       { headerName: '% of co.', field: 'pctOfShares', width: 96, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `${Number(p.value).toFixed(2)}%` : '—'), headerTooltip: 'The share of the company\'s shares outstanding this house holds' },
       { headerName: 'First buy', field: 'firstBuy', width: 110, valueFormatter: p => (p.value && /^\d{4}-\d{2}-\d{2}/.test(String(p.value)) ? longDay(String(p.value)) : String(p.value ?? '—')), headerTooltip: "The first quarter this house reported the stock; '—' where the filing itself contradicts the date" },
       { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "The close on the day of the first buy. Not a strike. '—' where the first buy cannot be trusted (see First buy)" },
@@ -184,11 +184,11 @@ export const HouseFile = () => {
           </div>
           {/* the whole filing's calls and puts, the feed's own call_value and put_value */}
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`Calls on the whole 13F as our data provider totals it (call_value) — the market value of the shares the call lines cover${callValue > 0 ? `; ${moneyB(callValue)} of it in the ${feed.length} lines read below` : `; none of the ${feed.length} largest lines below is a call`}`}>Calls · whole 13F</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={`Calls on the whole 13F as our data provider totals it — the market value of the shares the house’s call lines cover${callValue > 0 ? `; ${moneyB(callValue)} of it in the ${feed.length} lines read below` : `; none of the ${feed.length} largest lines below is a call`}`}>Calls · whole 13F</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{bookLive.optionsB ? moneyB(bookLive.optionsB.calls) : '—'}</dd>
           </div>
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`Puts on the whole 13F as our data provider totals it (put_value)${putValue > 0 ? `; ${moneyB(putValue)} of it in the ${feed.length} lines read below` : `; none of the ${feed.length} largest lines below is a put`}`}>Puts · whole 13F</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={`Puts on the whole 13F as our data provider totals it — the market value of the shares the house’s put lines cover${putValue > 0 ? `; ${moneyB(putValue)} of it in the ${feed.length} lines read below` : `; none of the ${feed.length} largest lines below is a put`}`}>Puts · whole 13F</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{bookLive.optionsB ? moneyB(bookLive.optionsB.puts) : '—'}</dd>
           </div>
           <div>
