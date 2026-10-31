@@ -105,7 +105,6 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   const profile = { strikes: near.map(n => ({ strike: n.strike, gex: { net: n.netGex } })), levels: { spot } } as never;
   const at = (S: number) => netGammaAt(legs, spot, S, 0.042, 0);
   const ladder = buildHedgeFlowLadder(profile, prices => prices.map(at));
-  const old = buildFlowFromRows(near.map(n => ({ strike: n.strike, value: n.netGex })), spot);
   let ok = true;
   for (const K of [765, 771, 775, 780]) {
     let fine = 0;
@@ -115,8 +114,7 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
       fine += (at(x) / x) * ((K - spot) / N) * 100;
     }
     const got = ladder.rungs.find(r => r.strike === K)!.flow;
-    const was = old.rungs.find(r => r.strike === K)!.flow;
-    console.log(`     flow to ${K}: ${M(got)} (fine sum ${M(fine)}; the old crossed-strikes sum ${M(was)})`);
+    console.log(`     flow to ${K}: ${M(got)} (fine sum ${M(fine)})`);
     if (Math.abs(got - fine) > 0.01 * Math.max(Math.abs(fine), 1e6)) ok = false;
   }
   check('the hedge-flow ladder equals ∫ G(x)·dx/(0.01·x) of the re-priced book', ok);
@@ -254,6 +252,63 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   const book = expiryBookFromRows([row(780, 5_000_000, 0)], [hot('C', 780)] as never[], spot, expiry);
   const n = book.find(x => x.strike === 780)!;
   check(`no vendor delta: the call's $delta is its contracts' (${M(dealerOf(n.callDex))} for 1,000 OI)`, dealerOf(n.callDex) > 0 && dealerOf(n.callVanna) !== 0 && dealerOf(n.callCharm) !== 0);
+}
+
+/* 11 — the regime and the flip read one curve. A book priced at 100 (call leg 103 −0.9M, put leg 97 +1.0M, house sign,
+   20 sessions, 25%) read at a live spot of 101.5: Σg0 = +0.1M (short), but re-priced at 101.5 the net is −0.069M (long)
+   and the crossing is at 100.87, below spot — before, netAtSpot was Σg0 and the page said "short gamma" above a flip. */
+{
+  const t20 = 20 / 252;
+  const legs: GammaLeg[] = [
+    { strike: 103, g0: -0.9e6, iv: 0.25, t: t20, s0: 100 },
+    { strike: 97, g0: 1e6, iv: 0.25, t: t20, s0: 100 },
+  ];
+  const r = repricedFlip(legs, 101.5, 0.042, 0.1, 0);
+  const exact = netGammaAt(legs, 101.5, 101.5, 0.042, 0);
+  check(`priced at 100, read at 101.5: net at spot ${M(r.netAtSpot)} (re-priced ${M(exact)}; Σg0 +0.10M), regime ${regimeOfNet(r.netAtSpot)}, flip ${r.flip?.toFixed(2)} below spot`, Math.abs(r.netAtSpot - exact) < 1e-6 && regimeOfNet(r.netAtSpot) === 'LONG' && r.flip != null && Math.abs(r.flip - 100.8746) < 0.001 && r.beyond === 'short');
+  const atFlip = netGammaAt(legs, 101.5, r.flip!, 0.042, 0);
+  check(`the flip is the exact curve's zero, not the grid's line between points (net there ${atFlip.toExponential(1)})`, Math.abs(atFlip) < 1e-3);
+  /* two 0DTE legs ($90 call, $110 put, 5 minutes, 20%): between them both underflow to an exact 0 — the net steps from
+     long through a run of exact zeros to short. The old walk skipped any zero point and found no flip. */
+  const t5 = 5 / (390 * 252);
+  const far: GammaLeg[] = [
+    { strike: 90, g0: 0, iv: 0.2, t: t5, oi: 1000, side: -1 },
+    { strike: 110, g0: 0, iv: 0.2, t: t5, oi: 1000, side: 1 },
+  ];
+  const z = repricedFlip(far, 100, 0.042, 0.15, 0);
+  check(`a crossing through exact zeros is found: flip ${z.flip?.toFixed(2)} inside the zero run (90…110)`, z.flip != null && z.flip > 91 && z.flip < 109 && netGammaAt(far, 100, z.flip, 0.042, 0) === 0);
+}
+
+/* 12 — Terrain's ladder off bare rows is the same integral. Spot 100, 20 sessions, 25%: 1,000 calls at each strike
+   100…115 and 1,500 puts at each 85…100 (house net at spot +$1.34M, short gamma; −$1.12M at 102, long). The old rows
+   arithmetic (the net of the strikes crossed × the move) read −$1.68M to 102 — dealers selling $1.7M; the book re-priced
+   along the walk says dealers BUY $0.21M. Without re-pricing no rung is drawn: the net at spot carried flat reads
+   +1.34M to 101 against +0.71M re-priced. */
+{
+  const S = 100;
+  const t20 = 20 / 252;
+  const book: GammaLeg[] = [];
+  for (let k = 85; k <= 115; k++) {
+    if (k >= 100) book.push({ strike: k, g0: -1000 * dollarGammaPerContract(S, k, t20, 0.25, 0.042, 0), iv: 0.25, t: t20, oi: 1000, side: -1, ownIv: true });
+    if (k <= 100) book.push({ strike: k, g0: 1500 * dollarGammaPerContract(S, k, t20, 0.25, 0.042, 0), iv: 0.25, t: t20, oi: 1500, side: 1, ownIv: true });
+  }
+  const rows = [...new Set(book.map(l => l.strike))].map(k => ({ strike: k, value: book.filter(l => l.strike === k).reduce((a, l) => a + l.g0, 0) }));
+  const G = (x: number) => netGammaAt(book, S, x, 0.042, 0);
+  const integral = (K: number) => {
+    let f = 0;
+    const N = 4000;
+    for (let i = 0; i < N; i++) {
+      const x = S + ((K - S) * (i + 0.5)) / N;
+      f += (G(x) / x) * ((K - S) / N) * 100;
+    }
+    return f;
+  };
+  const ladder = buildFlowFromRows(rows, S, prices => prices.map(G));
+  const at102 = ladder.rungs.find(r => r.strike === 102)!.flow;
+  check(`rows ladder to 102: ${M(at102)} (dealers buy) against the integral ${M(integral(102))} (the old rows sum read −1.68M)`, Math.abs(at102 - integral(102)) < 0.01 * Math.abs(integral(102)) && Math.abs(integral(102) - 0.2054e6) < 0.002e6);
+  const flat = buildFlowFromRows(rows, S);
+  const firstOrder101 = G(S) * Math.log(101 / S) * 100;
+  check(`no re-pricing, no rungs (${flat.rungs.length}): first order would read ${M(firstOrder101)} to 101 against ${M(integral(101))}`, flat.rungs.length === 0 && Math.abs(firstOrder101 / integral(101) - 1) > 0.5);
 }
 
 if (fail) {
