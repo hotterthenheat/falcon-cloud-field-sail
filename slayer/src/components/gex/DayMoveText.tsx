@@ -10,6 +10,20 @@ export const dayMoveOfSnapshot = (s: MarketSnapshot): DayMove => ({
   phase: s.dayMove?.phase ?? 'regular',
 });
 
+/** The same move read at another print of the same name: the closes it is measured from are recovered off the
+    snapshot's own price (in the session the base of the day's change; outside it the regular close of the extended move) */
+function atPrice(m: DayMove, at: number, price: number): DayMove {
+  if (!(at > 0) || !(price > 0) || Math.abs(price - at) < 0.005) return m;
+  if (m.phase === 'regular') {
+    if (m.dayPct == null || !Number.isFinite(m.dayPct)) return m;
+    const base = at / (1 + m.dayPct / 100);
+    return { ...m, dayPct: (price / base - 1) * 100 };
+  }
+  if (m.extPct == null || !Number.isFinite(m.extPct)) return m;
+  const close = at / (1 + m.extPct / 100);
+  return { ...m, extPct: (price / close - 1) * 100 };
+}
+
 interface Props {
   /** Read from the book by name… */
   ticker?: string;
@@ -17,13 +31,17 @@ interface Props {
   snapshot?: MarketSnapshot | null;
   /** Drop the after-hours / pre-market figure (a tight cell); it stays in the hover */
   short?: boolean;
+  /** The price printed beside it, when it is not the snapshot's own (the terminal's last trade): the move is re-read
+      against the same closes, so the row never says 692.69 beside a move computed off 692.74 */
+  price?: number | null;
   className?: string;
   extClassName?: string;
 }
 
-const DayMoveText = ({ ticker, snapshot, short = false, className = 'text-t11', extClassName = 'text-textMuted' }: Props) => {
+const DayMoveText = ({ ticker, snapshot, short = false, price = null, className = 'text-t11', extClassName = 'text-textMuted' }: Props) => {
   useBookRev();
-  const move = snapshot?.liveBook ? dayMoveOfSnapshot(snapshot) : ticker ? peekDayMove(ticker) : snapshot ? { dayPct: snapshot.changePercent, extPct: null, phase: 'regular' as const } : null;
+  const move0 = snapshot?.liveBook ? dayMoveOfSnapshot(snapshot) : ticker ? peekDayMove(ticker) : snapshot ? { dayPct: snapshot.changePercent, extPct: null, phase: 'regular' as const } : null;
+  const move = move0 && snapshot && price != null ? atPrice(move0, snapshot.spot, price) : move0;
   const w = dayMoveWords(move);
   if (!w || !move) return null;
   const main = move.dayPct;

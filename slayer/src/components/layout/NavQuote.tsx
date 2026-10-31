@@ -138,7 +138,9 @@ export const NavPrice = memo(({ ticker, compact = false }: { ticker: string; com
       ? `Last trade, ${q.priceWord}${q.regClose != null ? ` · regular close ${q.regClose.toFixed(2)}` : ''}`
       : q.source === 'uw'
         ? marketStamp('this session')
-        : quoteStamp('last trade');
+        : q.dayWhen
+          ? `Last trade · ${q.dayWhen}`
+          : quoteStamp('last trade');
   const changeTitle = `${q.dayWhen ? `${q.dayWhen}’s regular-session change` : 'The day’s change'} (the regular close, or the live price in the session, against the regular close before it)${q.extText ? ` · ${q.extText} since the close` : ''}`;
   const tag = q.priceWord === 'pre-market' ? 'PM' : q.priceWord ? 'AH' : null;
   const extShort = q.extText ? q.extText.replace('after hours ', 'AH ').replace('pre-market ', 'PM ') : null;
