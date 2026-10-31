@@ -1,9 +1,10 @@
 /* The session study: every contract in the scan's strike band that made a 50%+ move by the books' own definitions,
-   what the model read at that mark and the gate that stopped it; the miss reasons; Model 1's calibration on the
+   whether Model 1 cleared at that mark and the gate that stopped it; the miss reasons; Model 1's calibration on the
    day's labelled rows; and suggested changes with their evidence. Nothing here is applied.
    "All sessions" pools every labelled day (data/compassStudy.ts poolStudies): the calibration with 95% intervals, the
    threshold sweep, the miss reasons, the inputs over time, and a plain verdict on reading Model 1 as a probability,
-   which never lifts the "Unvalidated" label by itself. */
+   which never lifts the "Unvalidated" label by itself. No model score is printed: a score bucket is a band, the
+   threshold is "the line", and a cut is named by its place against the line. */
 
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -16,7 +17,7 @@ import ContractLabel from '../../components/ui/ContractLabel';
 import { EmptyBox, ErrorBox, LoadingBox } from '../../components/ui/states';
 import { useCompassDoc } from '../../data/compassReviewFeed';
 import { holdCompassFeed } from '../../data/compassFeed';
-import { BOOK_NAME, MODEL_1_NAME, P1_MIN } from '../../data/compassParams';
+import { MODEL_WORD, P1_MIN, bandWord, modelOfBook } from '../../data/compassParams';
 import { POOL_BAR, type Mover, type PooledStudy, type Rate } from '../../data/compassStudy';
 import { isoDate } from '../../core/calendar';
 import { expiryOfDay, useReviewDay } from './SessionReview';
@@ -30,7 +31,7 @@ const COLUMNS: Column<Mover>[] = [
   { key: 'best', header: 'Best bid', align: 'right', sortValue: r => r.bestBid, render: r => <span className="tnum text-bull">{r.bestBid.toFixed(2)} <span className="text-textMuted">{r.bestAt}</span></span> },
   { key: 'ratio', header: 'Move', align: 'right', sortValue: r => r.ratio, render: r => <span className="tnum text-bull">{r.ratio.toFixed(2)}×</span> },
   { key: 'stop', header: 'Stop first', align: 'right', sortValue: r => (r.stopFirst ? 1 : 0), render: r => (r.stopFirst ? <span className="text-warn">Yes</span> : <span className="text-textMuted">No</span>) },
-  { key: 'p1', header: MODEL_1_NAME, align: 'right', sortValue: r => r.p1 ?? -1, render: r => (r.p1 == null ? blank : <span className={`tnum ${r.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'}`}>{(r.p1 * 100).toFixed(1)}%</span>) },
+  { key: 'p1', header: MODEL_WORD[1], align: 'right', sortValue: r => (r.p1 == null ? -1 : r.p1 + 1e-12 >= P1_MIN ? 1 : 0), render: r => (r.p1 == null ? blank : <span className={r.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'}>{r.p1 + 1e-12 >= P1_MIN ? 'Cleared' : 'Short'}</span>) },
   { key: 'gate', header: 'What stopped it', sortValue: r => r.gate, render: r => <span className="text-textSecondary">{r.gate}</span> },
   { key: 'held', header: 'Held down by', sortValue: r => r.heldDown[0]?.name ?? '', render: r => (r.heldDown.length ? <span className="text-textMuted">{r.heldDown.map(d => d.name).join(', ')}</span> : blank) },
 ];
@@ -44,17 +45,22 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
 );
 
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
+/** A threshold cut named by its place against the line, never by its score: "The line · now", "2 under the line". */
+const cutWord = (cut: number, cuts: readonly number[]) => {
+  if (Math.abs(cut - P1_MIN) < 1e-9) return 'The line · now';
+  const sorted = [...new Set([...cuts, P1_MIN])].sort((a, b) => a - b);
+  const steps = sorted.indexOf(cut) - sorted.findIndex(x => Math.abs(x - P1_MIN) < 1e-9);
+  return `${Math.abs(steps)} ${steps > 0 ? 'over' : 'under'} the line`;
+};
 const band = (r: Rate) => (r.n ? `${(r.lo95 * 100).toFixed(1)}–${(r.hi95 * 100).toFixed(1)}%` : '—');
 const signed = (v: number, d = 1) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}`;
 const TH = 'font-normal pb-1';
 
-/** One bucket on a 0–100% track: the realised rate's 95% interval (the band), its rate (the bar) and the mean
-    score (the tick). A calibrated bucket has the tick inside the band. */
-const Strip = ({ r, score }: { r: Rate; score: number | null }) => (
+/** One band on a 0–100% track: the realised rate's 95% interval and its rate (the bar). */
+const Strip = ({ r }: { r: Rate }) => (
   <div className="relative h-3 w-full min-w-[96px] rounded-sm bg-chip" aria-hidden="true">
     {r.n > 0 && <div className="absolute inset-y-0 rounded-sm bg-silver/25" style={{ left: `${r.lo95 * 100}%`, width: `${Math.max(0.5, (r.hi95 - r.lo95) * 100)}%` }} />}
     {r.n > 0 && <div className="absolute inset-y-[3px] w-[2px] bg-textPrimary" style={{ left: `calc(${r.rate * 100}% - 1px)` }} />}
-    {score != null && <div className="absolute -inset-y-[2px] w-[2px] bg-warn" style={{ left: `calc(${score * 100}% - 1px)` }} />}
   </div>
 );
 
@@ -63,7 +69,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
   const io = doc.inputsOverTime;
   return (
     <>
-      <Section title={`Can the ${MODEL_1_NAME} be read as a probability?`}>
+      <Section title={`Can ${MODEL_WORD[1]} be read as a probability?`}>
         <p className={`text-t12 leading-relaxed ${doc.verdict.ready ? 'text-textPrimary' : 'text-textSecondary'}`} data-pool-verdict={doc.verdict.ready ? 'ready' : 'not-yet'}>
           <span className="font-semibold text-textPrimary">{doc.verdict.ready ? 'The bars are met. ' : 'Not yet. '}</span>
           {(() => {
@@ -95,21 +101,19 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
           </tbody>
         </table>
         <p className="mt-2 font-mono text-t10 text-textMuted">
-          The bars are fixed: {POOL_BAR.sessions}+ sessions, {POOL_BAR.rowsPerBucket}+ effective rows in every bucket inside the trained minutes (settled rows counted after clustering by session, since one session’s rows move together), each bucket within ±{POOL_BAR.gapPoints} points of its mean score. Meeting them is evidence for the owner, not a switch: the “Unvalidated” label stays until the owner lifts it after the input check.
+          The bars are fixed: {POOL_BAR.sessions}+ sessions, {POOL_BAR.rowsPerBucket}+ effective rows in every bucket inside the trained minutes (settled rows counted after clustering by session, since one session’s rows move together), each band within ±{POOL_BAR.gapPoints} points of what it scored. Meeting them is evidence for the owner, not a switch: the “Unvalidated” label stays until the owner lifts it after the input check.
         </p>
       </Section>
-      <Section title={`${MODEL_1_NAME} against what happened · ${doc.days.length} session${doc.days.length === 1 ? '' : 's'} pooled`}>
+      <Section title={`${MODEL_WORD[1]} against what happened · ${doc.days.length} session${doc.days.length === 1 ? '' : 's'} pooled`}>
         <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-calibration>
           <thead>
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
-              <th className={`text-left ${TH}`}>{MODEL_1_NAME}</th>
+              <th className={`text-left ${TH}`} title={`${MODEL_WORD[1]}'s bands, lowest first`}>{MODEL_WORD[1]} band</th>
               <th className={`text-right ${TH}`} title="Settled rows inside the trained minutes, 09:45–15:00 ET, then the effective count after clustering by session (the bar reads the effective count)">Rows · eff.</th>
-              <th className={`text-right ${TH}`} title={`Mean ${MODEL_1_NAME} of those rows`}>Score</th>
-              <th className={`text-right ${TH}`} title={`Took the 1.50× profit by the ${BOOK_NAME.A} rules from the mark`}>Took</th>
+              <th className={`text-right ${TH}`} title={`Took the 1.50× profit by ${MODEL_WORD[1]}'s rules from the mark`}>Took</th>
               <th className={`text-right ${TH} max-sm:hidden`}>95% interval</th>
-              <th className={`text-right ${TH}`} title="Took minus score, points">Gap</th>
               <th className={`text-left ${TH} pl-4 max-md:hidden w-[28%]`}>
-                <span className="text-textMuted">Took, 95% band</span> · <span className="text-warn">score</span>
+                <span className="text-textMuted">Took, 95% band</span>
               </th>
               <th className={`text-right ${TH} max-lg:hidden`} title="All settled rows, every minute">All rows · took</th>
               <th className={`text-right ${TH} max-lg:hidden`}>Sessions</th>
@@ -118,13 +122,11 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
           <tbody>
             {doc.calibration.map(c => (
               <tr key={c.bucket} className={`border-b border-borderSubtle/40 ${c.lo >= P1_MIN ? 'text-textPrimary' : 'text-textSecondary'}`}>
-                <td className="py-1 whitespace-nowrap">{c.bucket}</td>
+                <td className="py-1 whitespace-nowrap">{bandWord(c.bucket)}</td>
                 <td className={`py-1 text-right whitespace-nowrap ${(c.win.nEff ?? c.win.n) < POOL_BAR.rowsPerBucket ? 'text-warn' : ''}`}>{c.win.n.toLocaleString('en-US')} · {Math.round(c.win.nEff ?? c.win.n).toLocaleString('en-US')}</td>
-                <td className="py-1 text-right">{c.meanP1 == null ? blank : pct(c.meanP1)}</td>
                 <td className="py-1 text-right">{c.win.n ? pct(c.win.rate) : blank}</td>
                 <td className="py-1 text-right text-textMuted max-sm:hidden">{band(c.win)}</td>
-                <td className={`py-1 text-right ${c.gapPoints == null ? '' : Math.abs(c.gapPoints) <= POOL_BAR.gapPoints ? 'text-bull' : 'text-bear'}`}>{c.gapPoints == null ? blank : signed(c.gapPoints)}</td>
-                <td className="py-1 pl-4 max-md:hidden"><Strip r={c.win} score={c.meanP1} /></td>
+                <td className="py-1 pl-4 max-md:hidden"><Strip r={c.win} /></td>
                 <td className="py-1 text-right max-lg:hidden">{c.all.n.toLocaleString('en-US')} · {c.all.n ? pct(c.all.rate) : '—'}</td>
                 <td className="py-1 text-right max-lg:hidden">{c.sessions}</td>
               </tr>
@@ -136,18 +138,18 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
         <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-thresholds>
           <thead>
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
-              <th className={`text-left ${TH}`}>At or over</th>
+              <th className={`text-left ${TH}`} title="Each cut named by its place against the line Model 1 calls on">Cut</th>
               <th className={`text-right ${TH}`}>Rows</th>
               <th className={`text-right ${TH}`}>Took</th>
               <th className={`text-right ${TH} max-sm:hidden`}>95% interval</th>
-              <th className={`text-right ${TH}`} title={`Mean ${BOOK_NAME.A} return per row, percent`}>Mean return</th>
+              <th className={`text-right ${TH}`} title={`Mean ${MODEL_WORD[1]} return per row, percent`}>Mean return</th>
               <th className={`text-right ${TH}`} title="Sessions whose mean return at this cut was positive, of those with a row">Sessions up</th>
             </tr>
           </thead>
           <tbody>
             {doc.thresholds.map(t => (
               <tr key={t.p1} className={`border-b border-borderSubtle/40 ${Math.abs(t.p1 - P1_MIN) < 1e-9 ? 'text-textPrimary' : 'text-textSecondary'}`}>
-                <td className="py-1 whitespace-nowrap">{(t.p1 * 100).toFixed(Math.abs(t.p1 - P1_MIN) < 1e-9 ? 2 : 0)}%{Math.abs(t.p1 - P1_MIN) < 1e-9 && <span className="text-textMuted"> · now</span>}</td>
+                <td className="py-1 whitespace-nowrap">{cutWord(t.p1, doc.thresholds.map(x => x.p1))}</td>
                 <td className="py-1 text-right">{t.win.n.toLocaleString('en-US')}</td>
                 <td className="py-1 text-right">{t.win.n ? pct(t.win.rate) : blank}</td>
                 <td className="py-1 text-right text-textMuted max-sm:hidden">{band(t.win)}</td>
@@ -173,7 +175,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
             </tbody>
           </table>
           <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-held>
-            <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className={`text-left ${TH}`}>Input holding the {MODEL_1_NAME} down</th><th className={`text-right ${TH}`}>Movers</th><th className={`text-right ${TH}`}>Sessions</th></tr></thead>
+            <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className={`text-left ${TH}`}>Input holding {MODEL_WORD[1]} down</th><th className={`text-right ${TH}`}>Movers</th><th className={`text-right ${TH}`}>Sessions</th></tr></thead>
             <tbody>
               {doc.heldDownMost.map(r => (
                 <tr key={r.col} className="border-b border-borderSubtle/40">
@@ -192,9 +194,8 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
               <th className={`text-left ${TH}`}>Session</th>
               <th className={`text-right ${TH} max-sm:hidden`}>Rows</th>
-              <th className={`text-right ${TH}`} title={`Settled rows at or over ${(P1_MIN * 100).toFixed(2)}%, 09:45–15:00 ET`}>Over the bar</th>
+              <th className={`text-right ${TH}`} title="Settled rows over the line, 09:45–15:00 ET">Over the line</th>
               <th className={`text-right ${TH}`}>Took</th>
-              <th className={`text-right ${TH} max-sm:hidden`}>Score</th>
               <th className={`text-right ${TH}`}>Mean return</th>
               <th className={`text-right ${TH} max-sm:hidden`}>Movers</th>
             </tr>
@@ -206,7 +207,6 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
                 <td className="py-1 text-right max-sm:hidden">{d.settled.toLocaleString('en-US')}</td>
                 <td className="py-1 text-right">{d.over.n.toLocaleString('en-US')}</td>
                 <td className="py-1 text-right text-textPrimary">{d.over.n ? pct(d.over.rate) : blank}</td>
-                <td className="py-1 text-right max-sm:hidden">{d.overMeanP1 == null ? blank : pct(d.overMeanP1)}</td>
                 <td className={`py-1 text-right ${d.overMeanRet == null ? '' : d.overMeanRet > 0 ? 'text-bull' : 'text-bear'}`}>{d.overMeanRet == null ? blank : `${signed(d.overMeanRet, 2)}%`}</td>
                 <td className="py-1 text-right max-sm:hidden">{d.movers ?? blank}</td>
               </tr>
@@ -273,7 +273,7 @@ const SessionStudy = () => {
   return (
     <TraceBox
       title="Session study"
-      sub={view === 'all' ? `Every labelled session pooled: the ${MODEL_1_NAME} against what happened, and whether it reads as a probability yet` : "What made 50%+ in the scan's band, what the model read, and what stopped it"}
+      sub={view === 'all' ? `Every labelled session pooled: ${MODEL_WORD[1]} against what happened, and whether it reads as a probability yet` : "What made 50%+ in the scan's band, whether Model 1 cleared, and what stopped it"}
       testId="compass-study"
       facts={
         view === 'all' ? (
@@ -281,13 +281,13 @@ const SessionStudy = () => {
             <Fact label="Sessions pooled" testId="pool-sessions">{pool.doc ? pool.doc.days.length : '—'}</Fact>
             <Fact label="Rows labelled · settled" testId="pool-labels">{pool.doc ? `${pool.doc.labels.toLocaleString('en-US')} · ${pool.doc.settled.toLocaleString('en-US')}` : '—'}</Fact>
             <Fact label="Movers" testId="pool-movers" title="Contracts whose bid reached 1.50× an ask at a mark, before the flat, every session">{pool.doc ? pool.doc.movers.toLocaleString('en-US') : '—'}</Fact>
-            <Fact label={`${MODEL_1_NAME} as a probability`} testId="pool-verdict">{pool.doc ? <span className={pool.doc.verdict.ready ? 'text-bull' : 'text-warn'}>{pool.doc.verdict.ready ? 'Bars met' : 'Not yet'}</span> : '—'}</Fact>
+            <Fact label={`${MODEL_WORD[1]} as a probability`} testId="pool-verdict">{pool.doc ? <span className={pool.doc.verdict.ready ? 'text-bull' : 'text-warn'}>{pool.doc.verdict.ready ? 'Bars met' : 'Not yet'}</span> : '—'}</Fact>
           </>
         ) : (
           <>
             <Fact label="0DTE movers" testId="odte" title="Contracts whose bid reached 1.50× an ask at a mark, before the flat">{s ? s.odte.movers : '—'}</Fact>
             <Fact label="1–7 DTE movers" testId="weekly">{s ? s.weekly.movers : '—'}</Fact>
-            <Fact label="Scored · over the bar" testId="scored" title={`Read by the model at that mark, and at or over ${(P1_MIN * 100).toFixed(2)}%`}>{s ? `${s.odte.scored + s.weekly.scored} · ${s.odte.aboveThreshold + s.weekly.aboveThreshold}` : '—'}</Fact>
+            <Fact label="Scored · over the line" testId="scored" title={`Read by ${MODEL_WORD[1]} at that mark, and over its line`}>{s ? `${s.odte.scored + s.weekly.scored} · ${s.odte.aboveThreshold + s.weekly.aboveThreshold}` : '—'}</Fact>
             <Fact label="Called" testId="called">{s ? s.odte.called + s.weekly.called : '—'}</Fact>
             <Fact label="Rows labelled" testId="labels">{doc ? doc.labels.toLocaleString('en-US') : '—'}</Fact>
           </>
@@ -300,7 +300,7 @@ const SessionStudy = () => {
             value={view}
             options={[
               { value: 'one', label: 'One session', hint: "A session's movers, gates and calibration" },
-              { value: 'all', label: 'All sessions', hint: `Every labelled session pooled, with a verdict on the ${MODEL_1_NAME}` },
+              { value: 'all', label: 'All sessions', hint: `Every labelled session pooled, with a verdict on ${MODEL_WORD[1]}` },
             ]}
             onChange={setView}
             title="One session, or every labelled session pooled"
@@ -364,7 +364,7 @@ const SessionStudy = () => {
                 </tbody>
               </table>
               <table className="w-full font-mono text-t11 tnum" data-study-held>
-                <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className="text-left font-normal pb-1">Input holding the {MODEL_1_NAME} down</th><th className="text-right font-normal pb-1">Movers</th></tr></thead>
+                <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className="text-left font-normal pb-1">Input holding {MODEL_WORD[1]} down</th><th className="text-right font-normal pb-1">Movers</th></tr></thead>
                 <tbody>
                   {doc.heldDownMost.map(r => (
                     <tr key={r.col} className="border-b border-borderSubtle/40">
@@ -376,12 +376,12 @@ const SessionStudy = () => {
               </table>
             </div>
           </Section>
-          <Section title={`${MODEL_1_NAME} against what happened (${BOOK_NAME.A} rules from each mark)`}>
+          <Section title={`${MODEL_WORD[1]} against what happened (its rules from each mark)`}>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[420px] font-mono text-t11 tnum" data-study-calibration>
                 <thead>
                   <tr className="text-textMuted text-t9 uppercase tracking-widest">
-                    <th className="text-left font-normal pb-1">{MODEL_1_NAME}</th>
+                    <th className="text-left font-normal pb-1">{MODEL_WORD[1]} band</th>
                     <th className="text-right font-normal pb-1">Rows</th>
                     <th className="text-right font-normal pb-1">Took 1.50×</th>
                     <th className="text-right font-normal pb-1">Bid hit 1.50×</th>
@@ -391,7 +391,7 @@ const SessionStudy = () => {
                 <tbody>
                   {doc.calibration.map(c => (
                     <tr key={c.bucket} className={`border-b border-borderSubtle/40 ${c.lo >= P1_MIN ? 'text-textPrimary' : 'text-textSecondary'}`}>
-                      <td className="py-1">{c.bucket}</td>
+                      <td className="py-1 whitespace-nowrap">{bandWord(c.bucket)}</td>
                       <td className="py-1 text-right">{c.n.toLocaleString('en-US')}</td>
                       <td className="py-1 text-right">{(c.tp1 * 100).toFixed(1)}%</td>
                       <td className="py-1 text-right">{(c.hit50 * 100).toFixed(1)}%</td>
@@ -408,7 +408,7 @@ const SessionStudy = () => {
                 {doc.falsePositives.map(f => (
                   <li key={`${f.contract}${f.would}`} className="flex gap-3">
                     <span className="text-textPrimary">{f.contract}</span>
-                    <span className="text-textMuted">{BOOK_NAME[f.book as 'A' | 'B' | 'C'] ?? f.book}{f.would ? ' · would have called' : ''}</span>
+                    <span className="text-textMuted">{modelOfBook(f.book) || f.book}{f.would ? ' · would have called' : ''}</span>
                     <span className="text-bear tnum">{f.pnl == null ? '—' : `−$${Math.abs(f.pnl).toFixed(2)}`}</span>
                     <span className="text-textSecondary">{f.cause}</span>
                   </li>
@@ -434,7 +434,7 @@ const SessionStudy = () => {
                   aside={<span className="text-bull">{r.ratio.toFixed(2)}×</span>}
                   figures={[
                     <span key="m">{r.mark} ET · ask {r.ask.toFixed(2)} → {r.bestBid.toFixed(2)} at {r.bestAt}</span>,
-                    <span key="g">{r.p1 == null ? 'Not scored' : `${MODEL_1_NAME} ${(r.p1 * 100).toFixed(1)}%`} · {r.gate}</span>,
+                    <span key="g">{r.p1 == null ? 'Not scored' : `${MODEL_WORD[1]} ${r.p1 + 1e-12 >= P1_MIN ? 'cleared' : 'short'}`} · {r.gate}</span>,
                   ]}
                 />
               )}

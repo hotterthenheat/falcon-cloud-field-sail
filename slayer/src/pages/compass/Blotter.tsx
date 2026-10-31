@@ -23,7 +23,8 @@ import { Link } from 'react-router-dom';
 import { EmptyBox, ErrorBox, LoadingBox, asOfText } from '../../components/ui/states';
 import { useThetaStatus } from '../../data/thetaQuote';
 import { Tip } from '../../components/ui/Tooltip';
-import { BOOK_NAME, P1_MIN } from '../../data/compassParams';
+import { MODEL_WORD, RIDING_WORD, modelOfBook } from '../../data/compassParams';
+import { ArrowUpRight } from 'lucide-react';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -124,8 +125,8 @@ const COLUMNS: Column<Line>[] = [
     ? <Tip label={`Scored late from recorded quotes (${nyClock(r.mark)} ET mark): the live scan missed it.`}><span className="tnum text-warn">{nyClock(r.mark)} late</span></Tip>
     : <span className="tnum text-textPrimary">{nyClock(r.fired)}</span>) },
   { key: 'contract', header: 'Contract', sortValue: r => r.label, render: r => <ContractLabel contract={r.label} right={r.right} logo={r.ticker} size="sm" /> },
-  { key: 'book', header: 'Book', sortValue: r => r.book, render: r => <span className="text-textPrimary">{BOOK_NAME[r.book]}</span> },
-  { key: 'p1', header: 'Line', align: 'right', sortValue: r => r.p1 ?? -1, render: r => (r.p1 == null ? blank : <span className={r.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'}>{r.p1 + 1e-12 >= P1_MIN ? 'Cleared' : 'Short'}</span>) },
+  { key: 'book', header: 'Model', sortValue: r => modelOfBook(r.book), render: r => <span className="font-semibold text-textPrimary whitespace-nowrap">{modelOfBook(r.book)}</span> },
+  { key: 'p1', header: MODEL_WORD[2], sortValue: r => (r.book === 'A' && r.sig.runner ? 1 : 0), render: r => (r.book === 'A' && r.sig.runner ? <span className="text-textPrimary">Riding</span> : blank) },
   { key: 'quote', header: 'Quote at call', align: 'right', sortValue: r => r.ask, render: r => <span className="tnum text-textSecondary">{r.bid.toFixed(2)} × {r.ask.toFixed(2)}</span> },
   { key: 'paid', header: 'Filled', align: 'right', sortValue: r => r.paid, render: r => (r.paid > 0 ? <span className="tnum text-textPrimary">{usd(r.paid)}</span> : blank) },
   { key: 'exitPx', header: 'Exit', align: 'right', sortValue: r => r.exitPx ?? -1, render: r => (r.exitPx == null ? blank : <span className="tnum text-textPrimary">{usd(r.exitPx)}</span>) },
@@ -134,11 +135,22 @@ const COLUMNS: Column<Line>[] = [
   { key: 'ret', header: 'Return', align: 'right', sortValue: r => r.ret ?? -1e9, render: r => (r.ret == null ? blank : <span className={`tnum ${dirInk(r.ret)}`}>{pctWords(r.ret, 1)}</span>) },
   { key: 'pnl', header: 'P&L', align: 'right', sortValue: r => r.pnl ?? -1e9, render: r => (r.pnl == null ? blank : <span className={`tnum ${dirInk(r.pnl)}`}>{`${r.pnl < 0 ? '−' : '+'}${usd(Math.abs(r.pnl))}`}</span>) },
   { key: 'result', header: 'Result', align: 'right', sortValue: r => r.result, render: r => <Tip label={r.why || undefined}><span className={RESULT_INK[r.result]}>{RESULT_WORD[r.result]}</span></Tip> },
+  {
+    key: 'open',
+    header: '',
+    align: 'right',
+    render: r => (
+      <Link to={`/compass/${r.sig.id}?day=${r.date}`} state={{ from: 'Blotter' }} onClick={e => e.stopPropagation()} className="slayer-chip uppercase tracking-wider" data-blotter-open={r.key}>
+        Open <ArrowUpRight className="w-3 h-3" />
+      </Link>
+    ),
+  },
 ];
-const WIDTHS: Record<string, number> = { day: 62, fired: 88, contract: 156, book: 96, p1: 74, quote: 124, paid: 78, exitPx: 78, out: 62, held: 70, ret: 74, pnl: 86, result: 82 };
+const WIDTHS: Record<string, number> = { day: 70, fired: 84, contract: 150, book: 72, p1: 66, quote: 104, paid: 74, exitPx: 74, out: 60, held: 62, ret: 72, pnl: 84, result: 74, open: 66 };
 const TOOLTIPS: Record<string, string> = {
   fired: 'When the scan sent the call, New York time.',
-  p1: `Whether the call cleared the line. ${BOOK_NAME.C} has no score.`,
+  book: `The model that made the call: ${MODEL_WORD[1]}, or ${MODEL_WORD[3]} (the late sweep, by rule).`,
+  p1: `${RIDING_WORD}: ${MODEL_WORD[2]} cleared on the call too, so it did not sell at 1.50× and its stop ratcheted.`,
   quote: 'The bid and ask the model read when it called.',
   paid: 'The ask of the first quote a full minute after the call.',
   exitPx: 'The bid it left on, or the take-profit price.',
@@ -263,7 +275,7 @@ const Blotter = () => {
                 ? `No call matches “${q.trim()}”.`
                 : lines.length
                   ? 'No call on this day and side.'
-                  : backlogLine(feed.marks) || `Each ${BOOK_NAME.A}, ${BOOK_NAME.B} or ${BOOK_NAME.C} call is written here the moment the scan fires it, with the quote it fired on, then filled and closed on the contract’s one-minute quotes. Compass calls from 09:45 ET.`}
+                  : backlogLine(feed.marks) || `Each ${MODEL_WORD[1]} or ${MODEL_WORD[3]} call is written here the moment the scan fires it, with the quote it fired on, then filled and closed on the contract’s one-minute quotes. Compass calls from 09:45 ET.`}
             />
           )}
         </div>
@@ -287,7 +299,7 @@ const Blotter = () => {
               title={<ContractLabel contract={r.label} right={r.right} logo={r.ticker} size="sm" />}
               aside={<span className={r.ret == null ? RESULT_INK[r.result] : dirInk(r.ret)}>{r.ret == null ? RESULT_WORD[r.result] : pctWords(r.ret, 1)}</span>}
               figures={[
-                <span key="i">{dayCell(r.date)} · {r.late ? `${nyClock(r.mark)} ET mark, scored late` : `${nyClock(r.fired)} ET`} · {BOOK_NAME[r.book]}{r.p1 != null ? ` · ${(r.p1 * 100).toFixed(1)}%` : ''}</span>,
+                <span key="i">{dayCell(r.date)} · {r.late ? `${nyClock(r.mark)} ET mark, scored late` : `${nyClock(r.fired)} ET`} · {modelOfBook(r.book)}{r.book === 'A' && r.sig.runner ? ` · ${RIDING_WORD}` : ''}</span>,
                 <span key="p">{r.paid > 0 ? `Filled ${usd(r.paid)}` : `Quote ${r.bid.toFixed(2)} × ${r.ask.toFixed(2)}`}{r.exitPx != null ? ` · exit ${usd(r.exitPx)}${r.out ? ` ${nyClock(r.out)}` : ''}` : ''}</span>,
                 <span key="h">{RESULT_WORD[r.result]}{r.held != null ? ` · ${heldWords(r.held)}` : ''}{r.pnl != null ? ` · ${signed(r.pnl)}` : ''}</span>,
               ]}
@@ -295,14 +307,14 @@ const Blotter = () => {
           )}
         />
       )}
-      {picked && <ReviewPanel signalKey={picked} day={lines.find(l => l.key === picked)?.sig.day ?? null} onClose={() => setPicked(null)} />}
+      {picked && <ReviewPanel signalKey={picked} day={lines.find(l => l.key === picked)?.sig.day ?? null} contractId={lines.find(l => l.key === picked)?.sig.id ?? null} onClose={() => setPicked(null)} />}
       <NotACall rows={watched} />
       </>
     </TraceBox>
   );
 };
 
-/** Closest and passed contracts that were on the board. Not Book A, B or C. */
+/** Closest and passed contracts that were on the board. Not a call. */
 const NotACall = ({ rows }: { rows: WatchedPass[] }) => {
   if (!rows.length) return null;
   const quote = (row: WatchedPass) => row.ask > 0 && row.bid >= 0 && row.ask >= row.bid;
@@ -327,13 +339,14 @@ const NotACall = ({ rows }: { rows: WatchedPass[] }) => {
 };
 
 /** The picked call's review, under the grid: built after the session settles. */
-const ReviewPanel = ({ signalKey, day, onClose }: { signalKey: string; day: string | null; onClose: () => void }) => {
+const ReviewPanel = ({ signalKey, day, contractId, onClose }: { signalKey: string; day: string | null; contractId: string | null; onClose: () => void }) => {
   const { doc, status } = useCompassDoc('review', day);
   const trade = doc?.trades.find(t => t.key === signalKey) ?? null;
   return (
     <div className="border-t border-borderSubtle px-4 sm:px-5 py-4" data-blotter-review>
       <div className="flex items-center gap-3 mb-2">
         <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">Review</span>
+        {day && contractId && <Link to={`/compass/${contractId}?day=${day}`} state={{ from: 'Blotter' }} className="font-mono text-t10 text-textPrimary underline decoration-borderMuted underline-offset-4" data-blotter-contract>Inside the contract</Link>}
         {day && <Link to={`/compass/review?day=${day}#${encodeURIComponent(signalKey)}`} className="font-mono text-t10 text-textSecondary underline decoration-borderMuted underline-offset-4">The session review</Link>}
         <button type="button" onClick={onClose} className="ml-auto slayer-chip uppercase tracking-wider tap-40">Close</button>
       </div>

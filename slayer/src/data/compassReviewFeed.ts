@@ -7,7 +7,7 @@ import type { SessionReview } from './compassReview';
 import type { PooledStudy, StudyResult } from './compassStudy';
 import type { Signal } from './compassLedger';
 import { noFees } from './compassOutcome';
-import { userWords } from './compassParams';
+import { viewerWords } from './compassParams';
 
 /** 'pooled' is every labelled session's study together (/api/compass/study?day=all; pass day 'all') */
 type Kind = 'review' | 'study' | 'pooled';
@@ -23,7 +23,7 @@ const KEEP = 'slayer_compass_doc_v1';
 
 function kept(key: string): unknown {
   try {
-    const all = JSON.parse(userWords(localStorage.getItem(KEEP) || '{}')) as Record<string, unknown>;
+    const all = JSON.parse(viewerWords(localStorage.getItem(KEEP) || '{}')) as Record<string, unknown>;
     return all[key] ?? null;
   } catch {
     return null;
@@ -67,7 +67,7 @@ export function useCompassDoc<K extends Kind>(kind: K, day: string | null): DocS
       }
       try {
         const res = await fetch(kind === 'pooled' ? '/api/compass/study?day=all' : `/api/compass/${kind}?day=${day}`, { headers: { ...auth.headers, 'x-compass-soft': '1' } });
-        const body = (await res.text().then(t => JSON.parse(userWords(t))).catch(() => null)) as (Doc<K> & { code?: string; error?: string }) | null;
+        const body = (await res.text().then(t => JSON.parse(viewerWords(t))).catch(() => null)) as (Doc<K> & { code?: string; error?: string }) | null;
         if (dead) return;
         if ((res.status === 404 || res.status === 200) && body?.code === 'not_built') {
           memo.set(key, { at: Date.now(), doc: null, status: 'missing', error: body.error ?? '' });
@@ -113,7 +113,7 @@ export function useAllCalls(today: string, rev: number): Signal[] | null {
           }
           const r = await fetch(`/api/compass/record?day=${d}`, { headers: auth.headers });
           if (!r.ok) continue;
-          const doc = JSON.parse(userWords(await r.text())) as { calls?: Signal[] };
+          const doc = JSON.parse(viewerWords(await r.text())) as { calls?: Signal[] };
           const got = Array.isArray(doc.calls) ? doc.calls.map(noFees) : [];
           recordMemo.set(d, { at: Date.now(), calls: got });
           out.push(...got);

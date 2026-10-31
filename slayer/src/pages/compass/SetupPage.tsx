@@ -1,5 +1,7 @@
-/* A setup's page at /compass/<id>: the id is the setup's address, so the tracker, the tape and Back all land here.
-   A contract that left the board says why. */
+/* A setup's page at /compass/<id>: the id is the setup's address, so the board, the Tracker, the Blotter, the tape and
+   Back all land here. A live call reads the live quote. A call that has left the scan (a past session, or the market
+   shut) is read off its record: the same page, its chart and its numbers from that session (?day=YYYY-MM-DD picks the
+   session when one contract was called on more than one). */
 
 import { useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -11,12 +13,66 @@ import { useNotFoundHead } from '../notFound/NotFound';
 import { parseSetupId, setupIdOf } from '../../data/compass';
 import { liveSetup, liveSpot, useThetaBook } from '../../data/thetaBook';
 import { heldSetup, leftOf } from '../../data/compassModel';
-import { BOOK_NAME, P1_MIN } from '../../data/compassParams';
+import { P1_MIN, modelOfBook, weekdayDte } from '../../data/compassParams';
 import { COMPASS_SET } from '../../data/compassUniverse';
 import type { Setup } from '../../types/compass';
 import CampaignAnalysis from '../../components/compass/CampaignAnalysis';
-import { signals } from '../../data/compassLedger';
-import { nyClock, nyDay } from '../../core/nyTime';
+import { nyIsoDate } from '../../core/nyTime';
+import { useSignals, wouldSignals, type Signal } from '../../data/compassLedger';
+
+/** A recorded call as the page's setup: the record's own fields, nothing guessed. Greeks come from the session's
+    history on the page; the model's score is never carried. */
+function setupOfSignal(s: Signal): Setup {
+  const dte = s.expiry === s.day ? 0 : weekdayDte(s.day, s.expiry);
+  const mid = (s.bid + s.ask) / 2;
+  return {
+    id: s.id,
+    ticker: s.ticker,
+    contract: s.contract,
+    right: s.right,
+    strike: s.strike,
+    expiry: dte === 0 ? '0DTE' : `${Number.isFinite(dte) ? dte : 1}DTE`,
+    expiryDate: s.expiry,
+    sessionsLeft: 0,
+    sigmaMovePct: 0,
+    sleeve: s.sleeve,
+    score: 0,
+    verdict: 'ENTER',
+    topRated: false,
+    topOpportunity: false,
+    expectedMovePct: 0,
+    swingTarget: { price: 0, pct: 0 },
+    scalpExit: { price: 0, pct: 0 },
+    headline: '',
+    whyChips: [],
+    whyText: '',
+    greeks: { delta: NaN, gamma: NaN, theta: NaN, vega: NaN, iv: NaN },
+    bid: s.bid,
+    ask: s.ask,
+    mid,
+    liveMid: mid,
+    highWater: s.outcome?.peak ?? 0,
+    confidence: 0,
+    health: 0,
+    momentum: 'NEUTRAL',
+    takeProfits: [],
+    priceTargets: [],
+    liquidityLabel: 'Normal',
+    liquiditySpread: '',
+    spot: s.spot ?? undefined,
+    quotedAt: s.quoteAt,
+    seenAt: s.firedAt,
+    mark: s.mark,
+    late: s.how === 'late',
+    outsideTrained: s.outsideTrained,
+    tapeSession: s.tapeSession,
+    flatAt: s.flatAt,
+    runner: s.runner,
+    band: s.book === 'A' ? 'top' : s.book === 'B' ? 'wing' : 'lottery',
+    invalidationPrice: 0,
+    invalidationReason: '',
+  } as Setup;
+}
 
 const SetupPage = () => {
   const { id = '' } = useParams();
@@ -28,6 +84,7 @@ const SetupPage = () => {
   const navigate = useNavigate();
   const { activeTicker, changeTicker } = useTicker();
   const from = (location.state as { from?: string } | null)?.from ?? null;
+  const askedDay = new URLSearchParams(location.search).get('day') ?? '';
   const address = useMemo(() => {
     const parsed = parseSetupId(id);
     if (!parsed || !COMPASS_SET.has(parsed.ticker)) return null;
@@ -42,8 +99,11 @@ const SetupPage = () => {
   }, [address?.ticker]);
 
   const liveBook = useThetaBook(address?.sleeve === 'weekly' ? 'weekly' : 'odte');
+  const record = useSignals();
   const held = heldSetup(id);
   const setup = useMemo(() => {
+    /* an asked session other than today's is read off the record, never off today's quote */
+    if (askedDay && askedDay !== nyIsoDate()) return null;
     if (!held || held.band === 'scalp' || held.band === 'average') return null;
     if (held.band !== 'top' && held.band !== 'wing' && held.band !== 'lottery' && held.band !== 'closest') return null;
     const dte = held.expiry === '0DTE' ? 0 : Number(/^(\d+)DTE$/.exec(held.expiry)?.[1]);
@@ -70,7 +130,14 @@ const SetupPage = () => {
       invalidationReason: '',
       whyText: held.whyText,
     } as Setup;
-  }, [held, id, liveBook.setups]);
+  }, [held, id, liveBook.setups, askedDay]);
+
+  /* the record of this address: the asked session's, else the newest (a late mark's would-have-called row too) */
+  const fired = useMemo(() => {
+    const rows = [...record, ...wouldSignals()].filter(r => r.id === id);
+    if (askedDay) return rows.find(r => r.day === askedDay) ?? null;
+    return rows.sort((a, b) => b.firedAt - a.firedAt)[0] ?? null;
+  }, [record, id, askedDay]);
   const spot = liveSpot(setup?.ticker ?? address?.ticker ?? '') || 0;
 
   const back = (
@@ -111,73 +178,60 @@ const SetupPage = () => {
     );
   }
 
-  if (!setup) {
-    const left = leftOf(id);
-    if (left) {
-      return (
-        <>
-          {back}
-          <div className="border border-bear/30 bg-bear/[0.04] rounded-md px-5 py-6" data-setup-left={left.why}>
-            <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">{left.ticker}</span>
-            <p className="mt-1 text-t16 font-semibold text-textPrimary">{left.contract}</p>
-            <p className="mt-2 font-mono text-t12 font-bold uppercase tracking-wider text-bear">{left.why}</p>
-            <p className="mt-1 text-t12 text-textSecondary">This contract left the board. It is not a live pick.</p>
-          </div>
-        </>
-      );
-    }
-    const fired = signals().find(r => r.id === id);
-    if (fired) {
-      const o = fired.outcome;
-      const result = o?.status === 'closed' && o.exit && o.fill
-        ? `${o.exit.why}. Filled ${o.fill.ask.toFixed(2)}, out ${o.exit.px.toFixed(2)} at ${nyClock(o.exit.at, { zone: true })}, ${o.ret != null ? `${o.ret >= 0 ? '+' : '−'}${Math.abs(o.ret).toFixed(1)}%` : ''}.`
-        : o?.status === 'unavailable'
-          ? 'No valid quote stood a minute after the call. No price was substituted.'
-          : o?.fill
-            ? `Filled ${o.fill.ask.toFixed(2)}. Still open on its last read.`
-            : 'Waiting for its fill.';
-      return (
-        <>
-          {back}
-          <div className="border border-borderSubtle rounded-md bg-panel px-5 py-6" data-setup-record={fired.key}>
-            <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">{fired.ticker} · {BOOK_NAME[fired.book]}</span>
-            <p className="mt-1 text-t16 font-semibold text-textPrimary">{fired.contract}</p>
-            <p className="mt-2 text-t12 text-textSecondary">Called {nyDay(fired.firedAt, { weekday: true })}, {nyClock(fired.firedAt, { zone: true })} on {fired.bid.toFixed(2)} × {fired.ask.toFixed(2)}. {result}</p>
-            <Link to="/compass/blotter" className="mt-3 inline-flex slayer-chip uppercase tracking-wider">The blotter</Link>
-          </div>
-        </>
-      );
-    }
+  /* A row of the contracts around it or the capsule's pick opens the next contract on the same name — its own page,
+     with this one named as the way back. A pick can carry its own tenor: the page follows. */
+  const openNext = (strike: number, right: 'C' | 'P', nextSleeve?: Setup['sleeve']) => {
+    const sleeve = nextSleeve ?? address.sleeve;
+    navigate(`/compass/${setupIdOf({ ticker: address.ticker, strike, right, scanner: address.scanner, sleeve })}`, { state: { from: setup?.contract ?? fired?.contract ?? 'The contract' } });
+  };
+
+  if (setup) {
     return (
       <>
         {back}
-        <div className="border border-borderSubtle rounded-md bg-panel px-5 py-6" data-setup-missing>
-          <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">{address.ticker}</span>
-          <p className="mt-1 text-t16 font-semibold text-textPrimary">{address.ticker} {address.strike}{address.right}</p>
-          <p className="mt-2 text-t12 text-textSecondary">Not on this pass. The tape opens a contract the scan is holding.</p>
+        <div key={id} className="animate-soft-in-slow" data-setup-page={id}>
+          <CampaignAnalysis setup={setup} revision={setup.quotedAt ?? 0} spot={spot} scanner={address.scanner} sleeve={address.sleeve} onOpenContract={openNext} />
         </div>
       </>
     );
   }
 
-  /* A driver row or the capsule's pick opens the next contract on the same
-     name — its own page, with this one named as the way back. A pick can
-     carry ITS OWN tenor (the capsule spans tenors): the page follows. */
+  /* off the scan: the call's own record, the same page read from that session */
+  if (fired) {
+    return (
+      <>
+        {back}
+        <div key={`${id}|${fired.day}`} className="animate-soft-in-slow" data-setup-page={id} data-setup-record={fired.key} data-setup-model={modelOfBook(fired.book)}>
+          <CampaignAnalysis setup={setupOfSignal(fired)} revision={fired.pathAt} spot={0} scanner={address.scanner} sleeve={fired.sleeve} past={fired} />
+        </div>
+      </>
+    );
+  }
+
+  const left = leftOf(id);
+  if (left) {
+    return (
+      <>
+        {back}
+        <div className="border border-bear/30 bg-bear/[0.04] rounded-md px-5 py-6" data-setup-left={left.why}>
+          <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">{left.ticker}</span>
+          <p className="mt-1 text-t16 font-semibold text-textPrimary">{left.contract}</p>
+          <p className="mt-2 font-mono text-t12 font-bold uppercase tracking-wider text-bear">{left.why}</p>
+          <p className="mt-1 text-t12 text-textSecondary">This contract left the board. It is not a live pick.</p>
+        </div>
+      </>
+    );
+  }
   return (
     <>
       {back}
-      <div key={id} className="animate-soft-in-slow" data-setup-page={id}>
-        <CampaignAnalysis
-          setup={setup}
-          revision={setup.quotedAt ?? 0}
-          spot={spot}
-          scanner={address.scanner}
-          sleeve={address.sleeve}
-          onOpenContract={(strike, right, nextSleeve) => {
-            const sleeve = nextSleeve ?? address.sleeve;
-            navigate(`/compass/${setupIdOf({ ticker: address.ticker, strike, right, scanner: address.scanner, sleeve })}`, { state: { from: setup.contract } });
-          }}
-        />
+      <div className="border border-borderSubtle rounded-md bg-panel px-5 py-6" data-setup-missing>
+        <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">{address.ticker}</span>
+        <p className="mt-1 text-t16 font-semibold text-textPrimary">
+          {address.ticker} {address.strike}
+          {address.right}
+        </p>
+        <p className="mt-2 text-t12 text-textSecondary">{askedDay ? `No call on this contract on ${askedDay}.` : 'Not on this pass, and not on the record. The board opens a contract the scan is holding.'}</p>
       </div>
     </>
   );

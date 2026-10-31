@@ -17,7 +17,7 @@ import TraceBox, { Fact } from '../components/trace/traceFrame';
 import ContractLabel from '../components/ui/ContractLabel';
 import SessionSpark from '../components/compass/SessionSpark';
 import { usd2 as money } from '../core/format';
-import { BOOK_NAME } from '../data/compassParams';
+import { RIDING_WORD, modelOfBook } from '../data/compassParams';
 
 const pct = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`);
 const ink = (v: number | null) => (v == null || Math.abs(v) < 0.05 ? 'text-textPrimary' : v > 0 ? 'text-bull' : 'text-bear');
@@ -59,13 +59,14 @@ const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpe
     <button type="button" onClick={onOpen} className="text-left border border-borderSubtle bg-panel rounded-md overflow-hidden flex flex-col hover:border-borderMuted transition-colors" data-tracker-signal={s.key}>
       <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-borderSubtle">
         <ContractLabel contract={s.contract} right={s.right} logo={s.ticker} size="sm" />
-        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">{BOOK_NAME[s.book]}</span>
+        <span className="font-mono text-t10 font-bold uppercase tracking-wider text-textPrimary border border-silver/50 rounded px-1.5 py-0.5" data-tracker-model>{modelOfBook(s.book)}</span>
+        {s.book === 'A' && s.runner && <span className="font-mono text-t10 font-bold uppercase tracking-wider text-onfoil holo-bg rounded px-1.5 py-0.5">{RIDING_WORD}</span>}
         {s.how === 'late' && <span className="font-mono text-t10 text-warn border border-warn/40 rounded px-1.5 py-0.5" title="Scored after its mark from the recorded quotes at the mark">Late</span>}
         {tracked && <Bookmark className="w-3.5 h-3.5 text-textSecondary" aria-label="Tracked" />}
         <span className={`ml-auto font-mono text-t10 uppercase tracking-wider ${state.tone}`}>{state.word}</span>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-borderSubtle/30">
-        <Cell label="The line" value={s.p1 == null ? 'No score' : s.p1 + 1e-12 >= 0.7067 ? 'Cleared' : 'Short'} />
+        <Cell label="Hold" value={lottery ? '3× or 2×' : s.book === 'A' && s.runner ? 'Model 2 rides' : runner ? 'Ratchet' : 'Out at 1.50×'} />
         <Cell label="At call" value={`${s.bid.toFixed(2)}×${s.ask.toFixed(2)}`} />
         <Cell label="Filled" value={paid > 0 ? money(paid) : '—'} />
         <Cell label={closed ? 'Exit' : 'Bid'} value={now != null ? money(now) : '—'} />
@@ -138,7 +139,7 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
     : rows.live.length
       ? `Paths read once a minute from the contract's own quotes${readAt ? `. Last read ${nyClock(readAt, { zone: true })}` : ''}.`
       : false;
-  const open = (s: Signal) => navigate(`/compass/${s.id}`, { state: { from: 'Tracker' } });
+  const open = (s: Signal) => navigate(`/compass/${s.id}?day=${s.day}`, { state: { from: 'Tracker' } });
   const openTracked = (t: TrackedSetup) => navigate(`/compass/${t.id}`, { state: { from: 'Tracker' } });
 
   return (

@@ -1,10 +1,12 @@
 /* One trade, reviewed after the session: the verdict and its cause first, then the numbers that make it (the fill
-   and the exit, where the money went), then the entry snapshot (the inputs that pushed Model 1 up and held it down). */
+   and the exit, where the money went), then the entry snapshot (the inputs that pushed Model 1 up and held it down).
+   The model is named, never scored: no score and no score's weight is printed. */
 
 import type { TradeReview, Driver } from '../../data/compassStudy';
 import ContractLabel from '../ui/ContractLabel';
 import { Tip } from '../ui/Tooltip';
-import { BOOK_NAME, MODEL_1_NAME } from '../../data/compassParams';
+import { Link } from 'react-router-dom';
+import { MODEL_WORD, RIDING_WORD, modelOfBook } from '../../data/compassParams';
 
 const usd = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? '—' : `${v < 0 ? '−' : '+'}$${Math.abs(v).toFixed(2)}`);
 const px = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? '—' : `$${v.toFixed(2)}`);
@@ -27,12 +29,12 @@ const Drivers = ({ title, rows }: { title: string; rows: Driver[] }) => (
           <li key={d.col} className="flex items-baseline gap-2 font-mono text-t11 tnum">
             <span className="text-textSecondary truncate">{d.name}</span>
             <span className="text-textMuted">{d.value == null ? 'missing' : Math.abs(d.value) >= 100 ? d.value.toFixed(0) : d.value.toPrecision(3)}</span>
-            <span className={`ml-auto ${d.credit > 0 ? 'text-bull' : 'text-bear'}`}>{d.credit > 0 ? '+' : '−'}{Math.abs(d.credit).toFixed(3)}</span>
+            <span className={`ml-auto ${d.credit > 0 ? 'text-bull' : 'text-bear'}`}>{d.credit > 0 ? 'up' : 'down'}</span>
           </li>
         ))}
       </ul>
     ) : (
-      <p className="mt-1 font-mono text-t11 text-textMuted">No model row ({BOOK_NAME.C} has no model).</p>
+      <p className="mt-1 font-mono text-t11 text-textMuted">No model row ({MODEL_WORD[3]} is a rule, not a score).</p>
     )}
   </div>
 );
@@ -53,7 +55,7 @@ const TradeReviewCard = ({ r, compact = false }: { r: TradeReview; compact?: boo
     <article id={r.key} className="border border-borderSubtle bg-panel rounded-md overflow-hidden" data-trade-review={r.key}>
       <header className="flex items-center gap-2 flex-wrap px-3.5 py-2.5 border-b border-borderSubtle">
         <ContractLabel contract={r.contract} right={right} logo={r.contract.split(' ')[0]} size="sm" />
-        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">{BOOK_NAME[r.book as 'A' | 'B' | 'C'] ?? r.book}</span>
+        <span className="font-mono text-t10 font-bold uppercase tracking-wider text-textPrimary border border-silver/50 rounded px-1.5 py-0.5">{modelOfBook(r.book) || r.book}</span>
         {r.would ? (
           <Tip label="A mark scored late from recorded quotes cleared every gate. Late marks are never calls and never take a seat: this is what it would have done.">
             <span className="font-mono text-t10 text-warn border border-warn/40 rounded px-1.5 py-0.5">Would have called</span>
@@ -63,6 +65,11 @@ const TradeReviewCard = ({ r, compact = false }: { r: TradeReview; compact?: boo
         )}
         <span className="font-mono text-t10 text-textMuted tnum">{r.mark} ET mark</span>
         <span className={`ml-auto font-mono text-t11 uppercase tracking-wider ${CAUSE_INK[r.verdict.cause] ?? 'text-bear'}`}>{r.verdict.cause}</span>
+        {r.key.includes('|') && (
+          <Link to={`/compass/${r.key.split('|')[1]}?day=${r.key.split('|')[0]}`} state={{ from: 'Review' }} className="slayer-chip uppercase tracking-wider" data-review-contract>
+            Inside the contract
+          </Link>
+        )}
       </header>
       <div className="px-3.5 py-3 flex flex-col gap-3">
         <p className="text-t12 leading-relaxed text-textPrimary" data-review-line>{r.verdict.line}</p>
@@ -70,7 +77,7 @@ const TradeReviewCard = ({ r, compact = false }: { r: TradeReview; compact?: boo
           <p className="font-mono text-t10 text-warn">{r.verdict.flags.join(' · ')}</p>
         )}
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-          <Num label={MODEL_1_NAME} value={r.p1 != null ? `${(r.p1 * 100).toFixed(1)}%` : r.snapshot.modelRead != null ? `Read ${(r.snapshot.modelRead * 100).toFixed(1)}%` : 'None'} title={r.p1 == null && r.snapshot.modelRead != null ? `${BOOK_NAME.C} calls without a model; this is what the ${MODEL_1_NAME} read on the contract at that mark.` : undefined} />
+          <Num label="Model" value={r.book === 'C' ? MODEL_WORD[3] : r.book === 'A' && r.p2 != null && r.p2 >= 0.5 ? RIDING_WORD : MODEL_WORD[1]} title={r.book === 'C' ? `${MODEL_WORD[3]} is the late sweep: a rule, not a score.` : undefined} />
           <Num label="At call" value={`${r.snapshot.bid.toFixed(2)}×${r.snapshot.ask.toFixed(2)}`} />
           <Num label="Fill" value={a.fill == null ? '—' : `${px(a.fill)} ${a.fillAt ?? ''}`} />
           <Num label="Exit" value={a.exit == null ? '—' : `${px(a.exit)} ${a.exitAt ?? ''}`} title={a.why} />
@@ -94,8 +101,8 @@ const TradeReviewCard = ({ r, compact = false }: { r: TradeReview; compact?: boo
         )}
         {!compact && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-borderSubtle/60 pt-3" data-review-drivers>
-            <Drivers title={`Pushed the ${MODEL_1_NAME} up (log-odds)`} rows={r.snapshot.up} />
-            <Drivers title={`Held the ${MODEL_1_NAME} down (log-odds)`} rows={r.snapshot.down} />
+            <Drivers title={`Pushed ${MODEL_WORD[1]} up`} rows={r.snapshot.up} />
+            <Drivers title={`Held ${MODEL_WORD[1]} down`} rows={r.snapshot.down} />
           </div>
         )}
       </div>

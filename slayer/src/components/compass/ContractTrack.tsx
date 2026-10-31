@@ -35,6 +35,10 @@ interface ContractTrackProps {
   emptyNote?: string;
   /** Set when the candles are the premium off the stock, not prints. */
   pathNote?: string;
+  /** The exits drawn, as multiples of the entry (the late sweep sells at 2× and 3×) */
+  multiples?: number[];
+  /** What the entry line is: the fill once it filled, the call's ask before. Every percent on the chart is from it. */
+  entryWord?: string;
 }
 
 const px2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -66,6 +70,8 @@ const ContractTrack = ({
   traded,
   emptyNote = '',
   pathNote = '',
+  multiples = [1.5, 2, 3],
+  entryWord = 'ASK',
 }: ContractTrackProps) => {
   const [localTf, setLocalTf] = useState<Timeframe>('1m');
   const timeframe = timeframeProp ?? localTf;
@@ -74,13 +80,16 @@ const ContractTrack = ({
   const tapeRef = useRef<HTMLDivElement | null>(null);
   const chromeRef = useRef<HTMLDivElement | null>(null);
   const [topMargin, setTopMargin] = useState(0.18);
+  /* the chrome's own height: a level's label never docks under the readout */
+  const [chromeH, setChromeH] = useState(56);
   const [bar, setBar] = useState<{ open: number; high: number; low: number; close: number } | null>(null);
 
   useEffect(() => {
     const measure = () => {
       const tape = tapeRef.current?.clientHeight ?? 0;
       const chrome = chromeRef.current?.clientHeight ?? 0;
-      if (tape > 0 && chrome > 0) setTopMargin(Math.min(0.28, Math.max(0.1, (chrome + 8) / tape)));
+      if (tape > 0 && chrome > 0) setTopMargin(Math.min(0.4, Math.max(0.1, (chrome + 8) / tape)));
+      if (chrome > 0) setChromeH(chrome);
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -117,7 +126,7 @@ const ContractTrack = ({
   const markWord = shown ? 'C' : 'Last';
   const markPx = shown ? shown.close : (series?.last ?? book.mark);
   const spotName = SPOT_NAME[setup.ticker] ?? setup.ticker;
-  const tps = [1.5, 2, 3].map((mult, i) => ({ level: i + 1, price: Number((book.entryPremium * mult).toFixed(2)) }));
+  const tps = multiples.map((mult, i) => ({ level: i + 1, price: Number((book.entryPremium * mult).toFixed(2)) }));
 
   const framePrices = useMemo(
     () => [book.entryPremium, book.stopPremium, ...tps.map(t => t.price)].filter(p => p > 0 && p <= book.entryPremium * 1.7),
@@ -130,9 +139,11 @@ const ContractTrack = ({
     const host = tapeRef.current;
     const lastT = (traded && traded.length ? traded[traded.length - 1].time : Math.floor(Date.now() / 1000)) as UTCTimestamp;
     return {
-      entry: { time: lastT, price: book.entryPremium, mid: book.mark },
-      entryWord: 'ASK',
-      floor: { price: book.stopPremium, brokeAt: null },
+      /* the entry line and every percent on the chart measure from the same price: the fill, or the call's ask */
+      entry: { time: lastT, price: book.entryPremium, mid: book.entryPremium },
+      entryWord,
+      /* no stop, no line (the late sweep holds without one) */
+      floor: book.stopPremium > 0 ? { price: book.stopPremium, brokeAt: null } : null,
       targets: tps.map(t => ({ level: t.level, price: t.price, won: false })),
       silver: resolveInk('rgb(var(--silver))', host),
       bg: surface.bg,
@@ -140,10 +151,10 @@ const ContractTrack = ({
       bear: resolveInk('rgb(var(--bear))', host),
       ink: resolveInk('rgb(var(--text-primary))', host),
       hot: null,
-      insetTop: 48,
+      insetTop: chromeH,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setup.ticker, book.entryPremium, book.stopPremium, book.mark, themeKey, traded]);
+  }, [setup.ticker, book.entryPremium, book.stopPremium, book.mark, themeKey, traded, multiples.join('|'), entryWord, chromeH]);
 
   return (
     <div
@@ -198,7 +209,7 @@ const ContractTrack = ({
             </button>
           )}
         </div>
-        <div className="h-[23px] flex items-center gap-2.5 px-3 pointer-events-none overflow-hidden" data-readout-line>
+        <div className="min-h-[23px] flex flex-wrap items-center gap-x-2.5 gap-y-0.5 px-3 pb-1 pointer-events-none" data-readout-line>
           <ReadoutCell k="O" v={shown ? px2(shown.open) : '—'} />
           <ReadoutCell k="H" v={shown ? px2(shown.high) : '—'} />
           <ReadoutCell k="L" v={shown ? px2(shown.low) : '—'} />
@@ -206,7 +217,7 @@ const ContractTrack = ({
           {traded && traded.length === 0 && <span className="min-w-0 truncate font-mono text-t10 text-textMuted">{emptyNote || 'No print on the tape'}</span>}
           {traded == null && !pathNote && <span className="min-w-0 truncate font-mono text-t10 text-textMuted">Not on the tape</span>}
           {pathNote && <span className="min-w-0 truncate font-mono text-t10 text-textMuted">{pathNote}</span>}
-          <span className="ml-auto flex items-center gap-2.5 min-w-0 max-sm:hidden">
+          <span className="ml-auto flex flex-wrap items-center gap-x-2.5 gap-y-0.5 min-w-0 max-sm:hidden">
             <ReadoutCell k="High" v={series ? px2(series.high) : '—'} />
             <ReadoutCell k="Low" v={series ? px2(series.low) : '—'} />
             <ReadoutCell k="Vol" v={volume > 0 ? count(volume) : '—'} />

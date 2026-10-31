@@ -112,6 +112,67 @@ export function userWords(text: string): string {
     .replace(/ThetaData/g, 'Live data');
 }
 
+/* WHAT A VIEWER READS (owner, 2026-10-31: "design the cards better to say model 1-2-3 etc and never say the model %
+   or anything in compass"). The engine keeps its own words above (the record, the golden and old rows read them);
+   every page shows these: Model 1 is the entry tree that calls the Core and Wing books, Model 2 is the runner tree
+   (when it clears on a call, Model 2 rides it), Model 3 is the late sweep's rule. No score and no percentage of a
+   score is ever shown. */
+export const MODEL_WORD = { 1: 'Model 1', 2: 'Model 2', 3: 'Model 3' } as const;
+export const RIDING_WORD = 'Model 2 riding';
+
+/** The model a call came from, by its book: Core and Wing are Model 1's books, the late sweep is Model 3. */
+export function modelOfBook(book: 'A' | 'B' | 'C' | string): string {
+  return book === 'C' ? MODEL_WORD[3] : book === 'A' || book === 'B' ? MODEL_WORD[1] : '';
+}
+
+/** The model a card came from, by its band; empty for a contract that is not a call. */
+export function modelOfBand(band: string | undefined): string {
+  return band === 'lottery' ? MODEL_WORD[3] : band === 'top' || band === 'wing' ? MODEL_WORD[1] : '';
+}
+
+/* The score buckets the study names ("65–70.67%"), lowest first: shown as bands, never as a score */
+const SCORE_BUCKETS = ['0–30%', '30–40%', '40–50%', '50–60%', '60–65%', '65–70.67%', '70.67–75%', '75–80%', '80–100%'];
+const LINE_PCT = `${(P1_MIN * 100).toFixed(2)}%`;
+
+/** A score bucket as a viewer reads it: "Band 7 · over the line". */
+export function bandWord(bucket: string): string {
+  const i = SCORE_BUCKETS.indexOf(bucket);
+  if (i < 0) return /^Band \d/.test(bucket) ? bucket : 'A score band';
+  const lo = Number(bucket.split('–')[0]);
+  return `Band ${i + 1}${lo + 1e-9 >= P1_MIN * 100 ? ' · over the line' : ''}`;
+}
+
+/** The engine's and the study's sentences without a model score in them: a bucket is a band, the threshold is "the
+    line", a cut is a cut, and a mean score or a score gap is dropped. Outcome rates (took, returns) stay. */
+export function scoreFree(text: string): string {
+  return text
+    .replace(/A call needs \d+(?:\.\d+)?%\./g, 'A call needs Model 1 to clear its line.')
+    .replace(/\b\d{1,3}(?:\.67)?–\d{1,3}(?:\.67)?%/g, m => bandWord(m))
+    .replace(/ \(mean \d+(?:\.\d+)?%\)/g, '')
+    .replace(/ vs \d+(?:\.\d+)?% scored \([^)]*\)/g, '')
+    .replace(/threshold \d+(?:\.\d+)?% → \d+(?:\.\d+)?%/g, 'threshold: move the line')
+    .replace(new RegExp(LINE_PCT.replace('.', '\\.'), 'g'), 'the line')
+    .replace(/\bbest \d+(?:\.\d+)?%:/g, 'best cut:')
+    .replace(/\bat or over \d+\.\d\d%/g, 'at or over that cut')
+    .replace(/\bat \d+\.\d\d%:/g, 'at that cut:')
+    .replace(/\bbeat \d+\.\d\d%/g, 'beat the line');
+}
+
+/** Engine text as a viewer reads it: the record's names (userWords) turned into Model 1, 2 and 3, no vendor, no
+    score. The feeds run every Compass answer through it. */
+export function viewerWords(text: string): string {
+  const one = MODEL_WORD[1];
+  return scoreFree(userWords(text))
+    .replace(new RegExp(`\\b${MODEL_1_NAME}\\b`, 'g'), one)
+    .replace(new RegExp(`\\b${MODEL_2_NAME}\\b`, 'g'), MODEL_WORD[2])
+    .replace(new RegExp(`\\b(?:${BOOK_NAME.A}|${BOOK_NAME.B})\\b`, 'g'), one)
+    .replace(new RegExp(`\\b${BOOK_NAME.C}\\b`, 'g'), MODEL_WORD[3])
+    .replace(/\bModel 1(?:, | and | or |\/)Model 1\b/g, one)
+    /* no fees in Compass: a review written before that rule still names them */
+    .replace(/, fees [−-]\$\d+(?:\.\d+)?/g, '')
+    .replace(/\bModel 1 (\d+)\. Model 1 (\d+)\./g, (_, a, b) => `${one} ${Number(a) + Number(b)}.`);
+}
+
 export function printOf(root: string): string {
   return PRINT_OF[root] ?? root;
 }

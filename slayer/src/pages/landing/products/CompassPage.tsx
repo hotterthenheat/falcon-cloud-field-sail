@@ -6,7 +6,7 @@ import { useGround } from '../ground';
 import { Eyebrow } from '../pieces';
 import TerminalWindow from '../TerminalWindow';
 import ProductPage, { Aside, Head, Pair, Picture, Room } from './ProductPage';
-import { BOOK_NAME } from '../../../data/compassParams';
+import { MODEL_WORD } from '../../../data/compassParams';
 
 const SHOTS = '/landing/products/compass';
 
@@ -40,8 +40,8 @@ const CompassPage = () => (
         the cards, two across, newest first.
       </p>
       <p>
-        A call needs the line at 70.67% or more, a bid over $0.15 and a spread at or under 8%. It fills at the ask of the first quote a full minute after the call, and closes on the stop, the take-profit, a reversal of the
-        underlying or its session’s flat — each read off a quote that printed. The {BOOK_NAME.A} and {BOOK_NAME.B} calls are marked unvalidated until the live model inputs are re-checked against training.
+        A call needs {MODEL_WORD[1]} to clear its line — or {MODEL_WORD[3]}, the late sweep, by rule — a bid over $0.15 and a spread at or under 8%. It fills at the ask of the first quote a full minute after the call, and closes on the stop, the take-profit, a reversal of the
+        underlying or its session’s flat — each read off a quote that printed. {MODEL_WORD[1]} calls are marked unvalidated until the live model inputs are re-checked against training.
       </p>
     </Aside>
 
