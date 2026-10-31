@@ -226,7 +226,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const marketWord = marketState.word;
   /* shut, the session line says when the next session opens (New York time, as the clock beside it) */
   const nextOpen = nextOpenWords();
-  const shutWord = marketState.kind === 'pre-market' ? 'pre-market' : marketState.kind === 'after-hours' ? 'after hours' : 'closed';
+  const shutWord = marketState.kind === 'pre-market' || marketState.kind === 'after-hours' ? 'extended' : 'closed';
 
   /* The mark and wordmark, the door home: the S| with its foil and cursor and ">slayer_terminal" beside it; folded, the S| alone
      with its cursor held lit. The S brightens as the pointer nears. */
@@ -595,7 +595,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
               <span className="mt-1.5 flex items-center gap-2 font-mono text-t10 tnum">
                 <span className="min-w-0 truncate text-textSecondary" title={!open && nextOpen ? `${clock.label} · the next session opens ${nextOpen.long}` : clock.label} data-session-line>
                   {/* 16:00–16:15 on Trace: stock options are shut, index and ETF options still trade. */}
-                  {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'stocks closed · index & ETF options trade to 16:15 ET' : open ? clock.label : nextOpen ? `${shutWord} · ${nextOpen.short}` : clock.label.toLowerCase()}
+                  {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'stocks closed · index & ETF options trade to 16:15 ET' : open ? clock.label : nextOpen && shutWord === 'closed' ? nextOpen.short : clock.label.toLowerCase()}
                 </span>
                 <NavClock />
               </span>
