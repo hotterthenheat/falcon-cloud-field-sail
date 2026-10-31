@@ -2,7 +2,8 @@
    day opened under the month — for ONE journal: every paper account, one of them, every backtest session, or one
    (`?journal=…`, data/review/journalBooks.ts). A journal of the reader's own entries is JournalManual.tsx. */
 
-import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type HTMLAttributes, type ReactNode } from 'react';
+import { historyRev, subscribeHistory } from '../../data/review/history';
 import type { UTCTimestamp } from 'lightweight-charts';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import TraceBox, { Fact, RestFoot, TraceGrid, useRestCap } from '../../components/trace/TraceBox';
@@ -19,7 +20,7 @@ import JournalDay, { type DayHolder } from '../../components/review/JournalDay';
 import JournalLanes from '../../components/review/JournalLanes';
 import { card, headWord } from '../../components/review/DeskShell';
 import { fmtStampLocal } from '../../components/gex/chartTime';
-import { dirInk, heldWords, pct, rWords, usd, usdSigned } from '../../components/review/words';
+import { dirInk, heldWords, pct, rWords, scratchWords, SCRATCH_TITLE, usd, usdSigned } from '../../components/review/words';
 import { statsOf } from '../../data/review/engine';
 import { excursionOf } from '../../data/review/excursion';
 import { ENDED, csvOf, dayMinOf, instantOf, priceWordsOf, titleOf, whenWords, type DayNote, type JournalRow } from '../../data/review/journal';
@@ -151,7 +152,12 @@ export const JournalHome = ({ kind: liveKind }: { kind: JournalKind }) => {
   const rows = useMemo(() => rowsIn(accountRows, span), [accountRows, period, today]); // eslint-disable-line react-hooks/exhaustive-deps
   const days = useMemo(() => dayTotals(accountRows), [accountRows]);
   const periodDays = useMemo(() => dayTotals(rows), [rows]);
-  const stats = useMemo(() => statsOf(rows.map(r => r.t)), [rows]);
+  /* one account, all of it: its own equity gives the drawdown, Sharpe and Sortino (a paper account's ticks and closes,
+     a backtest's minutes and bells) — a period or a set of accounts is read off its closed trades */
+  const hrev = useSyncExternalStore(subscribeHistory, historyRev, historyRev);
+  const whole = !!account && !missing && !span;
+  const curve = useMemo(() => (whole ? source.curveOf(account!) : undefined), [source, account, whole, kind === 'backtest' ? hrev : 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stats = useMemo(() => statsOf(rows.map(r => r.t), curve), [rows, curve]);
   const accountsIn = new Set(rows.map(r => r.s.id)).size;
   const nameOfAccount = (id: string) => source.containers.find(c => c.id === id)?.name ?? id;
 
@@ -276,7 +282,10 @@ export const JournalHome = ({ kind: liveKind }: { kind: JournalKind }) => {
               <span className={`text-t14 font-semibold ${dirInk(stats.net)}`}>{stats.n ? usdSigned(stats.net) : '—'}</span>
             </Fact>
             <Fact label="Trades" testId="journal-trades">{stats.n || '—'}</Fact>
-            <Fact label="Won" testId="journal-won">{stats.n ? `${stats.wins} of ${stats.n} · ${pct(stats.winRate)}` : '—'}</Fact>
+            <Fact label="Won" testId="journal-won" title={stats.scratches ? SCRATCH_TITLE : undefined}>
+              {stats.n > stats.scratches ? `${stats.wins} of ${stats.n - stats.scratches} · ${pct(stats.winRate)}` : '—'}
+              {stats.scratches > 0 && <span className="text-textMuted"> · {scratchWords(stats.scratches)}</span>}
+            </Fact>
             <Fact label="Profit factor" title="What the winners made, over what the losers lost" testId="journal-pf">
               {!stats.n ? '—' : stats.profitFactor == null ? (stats.wins ? 'no losses' : '—') : stats.profitFactor.toFixed(2)}
             </Fact>
@@ -324,7 +333,7 @@ export const JournalHome = ({ kind: liveKind }: { kind: JournalKind }) => {
                   Your best day was {shortDay(best.day)} (<span className={dirInk(best.net)}>{usdSigned(best.net, 0)}</span>), your worst {shortDay(worst.day)} (<span className={dirInk(worst.net)}>{usdSigned(worst.net, 0)}</span>).
                 </>
               )}
-              {stats.maxDrawdown > 0 && <> The most you gave back from a high was {usd(stats.maxDrawdown)}.</>}
+              {stats.maxDrawdown > 0 && <> The most {stats.drawdownFrom === 'curve' ? `the ${source.containerWord} fell from a high, open positions marked,` : 'you gave back from a high'} was {usd(stats.maxDrawdown)}.</>}
             </>
           )
         }
@@ -345,7 +354,7 @@ export const JournalHome = ({ kind: liveKind }: { kind: JournalKind }) => {
           <JournalCalendar month={month} onMonth={m => set({ month: m === home ? null : m })} home={home} days={days} today={today} picked={livePicked} onPick={openDay} noted={noted} />
         </Swap>
         <Swap key={periodKey} out={periodOut} late={alive.current} className="min-w-0 min-h-0" data-journal-stats-region>
-          <JournalStats rows={rows} periodDays={periodDays} periodLabel={periodLabel} />
+          <JournalStats rows={rows} periodDays={periodDays} periodLabel={periodLabel} stats={stats} whole={whole} />
         </Swap>
       </div>
 

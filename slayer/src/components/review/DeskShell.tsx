@@ -874,7 +874,7 @@ const DeskShell = ({ phoneSideFirst = false, session, kind, onRename, subline = 
           </div>,
           document.body
         )}
-      <p className="px-1 font-mono text-t10 text-textMuted">{foot ?? 'ThetaData’s recorded NBBO, minute by minute — practice, not advice. Past results, real or pretend, promise nothing. Every time is New York’s (ET).'}</p>
+      <p className="px-1 font-mono text-t10 text-textMuted">{foot ?? 'The recorded NBBO, minute by minute — practice, not advice. Past results, real or pretend, promise nothing. Every time is New York’s (ET).'}</p>
     </div>
   );
 };

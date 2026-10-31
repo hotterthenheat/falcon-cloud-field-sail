@@ -36,11 +36,14 @@ const PositionBar = ({ lines }: { lines: BarLine[] }) => {
           <span className={`text-t12 font-semibold ${dirInk(l.pnl)}`}>
             {usdSigned(l.pnl)} {l.r != null && <span className="text-t10 font-normal opacity-80">{rWords(l.r)}</span>}
           </span>
-          {l.facts.map(f => (
-            <span key={f.label} className="min-w-0 truncate">
-              <span className="text-textMuted">{f.label}</span> <span className={f.ink ?? 'text-textPrimary'}>{f.value}</span>
-            </span>
-          ))}
+          {/* the facts in whole: a narrow pane shows as many as fit, never one cut to "sol…" (the line's title has all) */}
+          <span className="min-w-0 flex-1 inline-flex items-center gap-3 overflow-hidden" title={l.facts.map(f => `${f.label} ${f.value}`).join(' · ')}>
+            {l.facts.map(f => (
+              <span key={f.label} className="shrink-0">
+                <span className="text-textMuted">{f.label}</span> <span className={f.ink ?? 'text-textPrimary'}>{f.value}</span>
+              </span>
+            ))}
+          </span>
           <span className="ml-1 inline-flex items-center gap-1 shrink-0">
             {l.onReverse && (
               <button type="button" onClick={l.onReverse} disabled={!!l.locked} title={l.locked ?? 'Reverse — close it and open the same size the other way, at the market'} className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-30 transition-colors" data-paper-reverse={l.key}>

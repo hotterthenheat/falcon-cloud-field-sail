@@ -369,7 +369,7 @@ const ManualStatsCard = ({ stats: s, periodLabel }: { stats: ReturnType<typeof m
         <EnteredChip />
       </div>
       <div className={`mt-1.5 font-mono text-t24 font-semibold tnum leading-none ${s.days ? dirInk(s.net) : 'text-textMuted'}`} data-journal-stats-net>
-        {s.days ? usdSigned(s.net) : '$0.00'}
+        {s.days ? usdSigned(s.net) : '—'}
       </div>
       <div className="mt-1.5 font-mono text-t11 tnum text-textSecondary">{s.days ? `${s.days} ${s.days === 1 ? 'day' : 'days'}${s.trades ? ` · ${s.trades} ${s.trades === 1 ? 'trade' : 'trades'}` : ''} · after fees` : 'Nothing entered in this period'}</div>
     </div>
@@ -771,7 +771,7 @@ const NewJournal = ({ first, onMade, onCancel }: { first: boolean; onMade: (id: 
         </label>
         <label className="flex flex-col gap-1 min-w-0">
           <span className={label}>Broker or account · optional</span>
-          <input className={field} value={broker} onChange={e => setBroker(e.target.value)} placeholder="Schwab · IRA" maxLength={60} data-manual-new-broker />
+          <input className={field} value={broker} onChange={e => setBroker(e.target.value)} placeholder="My broker · IRA" maxLength={60} data-manual-new-broker />
         </label>
         <div className="flex items-center gap-2">
           <button type="submit" className="tap-40 inline-flex items-center gap-1.5 h-10 sm:h-8 px-3 rounded-md border border-silver/50 text-t12 font-semibold text-textPrimary hover:bg-ink/[0.05]" data-manual-new-make>
