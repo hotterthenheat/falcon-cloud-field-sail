@@ -167,7 +167,7 @@ const DarkBaselineStrip = ({ ticker, todayIso, sessionLive }: { ticker: string; 
         <div className="grid gap-x-8 gap-y-3 md:grid-cols-2">
           <Stat
             label="Dark share of the whole day's volume"
-            tip="Off-exchange shares at prices the lit tape also traded, over the day's whole share volume, pre-market through 20:00 ET — a different divisor from the off-exchange share above, so the two can differ"
+            tip="Off-exchange shares at prices the lit tape also traded, over the day's whole share volume, pre-market through 20:00 ET — the same share as the off-exchange figure above"
             stat={base.share}
             todayText={`${base.share.today.toFixed(1)}%`}
             meanText={`${base.share.mean.toFixed(1)}%`}
