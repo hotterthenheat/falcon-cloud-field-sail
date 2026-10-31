@@ -25,7 +25,7 @@ import { done, expectEqual, expectNear, freezeClock, installUwFixtures } from '.
 import { CHAIN, CONTRACT, DAY, MINUTE, PRIOR, curveBars, pinBook, sessionBars } from './compassScenario';
 import { atmPair, curveFrom, features, yearsLeft } from '../../src/data/compassFeatures';
 import { optionScanOpen } from '../../src/data/compassSession';
-import { f32, bookAPass, bookBPass, onScanGrid, sessionScanOpen, spreadPass, strikeDistance, strikeSpan, thetaBurns, P1_MIN } from '../../src/data/compassParams';
+import { f32, bookAPass, bookBPass, entryTimeOk, flatTOf, onScanGrid, sessionScanOpen, spreadPass, strikeDistance, strikeSpan, thetaBurns, P1_MIN } from '../../src/data/compassParams';
 import { parseBoosters, predict } from '../../src/data/lgbm';
 import { settleSignal, type PathQuote } from '../../src/data/compassOutcome';
 import { nyWallTime } from '../../src/core/nyTime';
@@ -171,6 +171,12 @@ expectEqual('Book A 5 strikes out', bookAPass(60, 5, 4, 0, 1.2, 1.24, 0.8), fals
 expectEqual('Book B 0.40 × 0.42 from 0.90', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), true);
 expectEqual('Book B not half (0.42 vs 0.80)', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.78, 0.8, 0.8), false);
 expectEqual('Book B too near (7 out)', bookBPass(60, 7, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), false);
+/* the time-of-day gate (was: any mark on the grid, so 15:55, the curb to 16:55 and the overnight could call): t 15 to
+   330, and 55 minutes before the flat (t 385 on a full day; 205 on a 13:00 close, so the last entry is t 150, 12:00) */
+expectEqual('Book A at 09:45 and 15:00, not 09:40, 15:05, 15:55, 16:55, 21:00', [15, 330, 10, 335, 385, 445, 690].map(t => bookAPass(t, 2, 4, 0, 1.2, 1.24, 0.8)), [true, true, false, false, false, false, false]);
+expectEqual('Book B gated the same: 15:00 yes, 15:05 no', [bookBPass(330, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), bookBPass(335, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8)], [true, false]);
+expectEqual('early close 13:00: flat t 205, last entry t 150', [flatTOf(780), flatTOf(null), bookAPass(150, 2, 4, 0, 1.2, 1.24, 0.8, flatTOf(780)), bookAPass(155, 2, 4, 0, 1.2, 1.24, 0.8, flatTOf(780))], [205, 385, true, false]);
+expectEqual('entry gate in words', [entryTimeOk(15), entryTimeOk(14), entryTimeOk(330, 385), entryTimeOk(331, 385)], [true, false, true, false]);
 /* Theta burn: |theta/day·365|·dt ≥ 0.5322·ask. -0.50/day over 40 minutes (40/(390·252) y): 182.5·0.000407 = 0.0743 < 0.5322·0.20 = 0.1064 holds; at ask 0.12 it burns (0.0639). */
 expectEqual('theta does not burn at ask 0.20', thetaBurns(-0.5, 0.01, 0.2, 40 / (390 * 252)), false);
 expectEqual('theta burns at ask 0.12', thetaBurns(-0.5, 0.01, 0.12, 40 / (390 * 252)), true);
@@ -208,6 +214,24 @@ expectEqual('flat at 15:55', [o.exit?.why, o.exit?.px, o.exit?.at], ['15:55 flat
 /* Early close (13:00 ET, minute 780): the flat is the first quote at or after 12:55 */
 o = settleSignal({ book: 'A', right: 'C', runner: false, firedAt: fired, closeMin: 780 }, [q(10, 31, 1.21, 1.25), q(12, 54, 1.3, 1.34), q(12, 55, 1.31, 1.35)], [], after);
 expectEqual('early close: flat at 12:55', [o.exit?.why, o.exit?.px, o.exit?.at], ['12:55 flat', 1.31, at(12, 55)]);
+/* 1-second quotes inside a minute that crossed the stop: minute quotes alone sell at the 10:40 bid 0.40 (the stop
+   0.58475 was crossed somewhere in 10:39–10:40); the seconds put the touch at 10:39:20, bid 0.58 */
+{
+  const { fineWindows } = await import('../../src/data/compassOutcome');
+  const sigA = { book: 'A' as const, right: 'C' as const, runner: false, firedAt: fired };
+  const mins = [q(10, 31, 1.21, 1.25), q(10, 35, 1.0, 1.04), q(10, 39, 0.9, 0.94), q(10, 40, 0.4, 0.44)];
+  expectEqual('fine windows: the stop crossed only in 10:39–10:40', fineWindows(sigA, mins), [[at(10, 39), at(10, 40)]]);
+  const fine = [q(10, 39, 0.8, 0.84, 10), q(10, 39, 0.58, 0.62, 20), q(10, 39, 0.5, 0.54, 40)];
+  const coarse = settleSignal(sigA, mins, [], after);
+  const sharp = settleSignal(sigA, [...mins, ...fine], [], after);
+  expectEqual('stop from minute quotes (the old read)', [coarse.exit?.px, coarse.exit?.at], [0.4, at(10, 40)]);
+  expectEqual('stop from the seconds (was 0.40 at 10:40)', [sharp.exit?.why, sharp.exit?.px, sharp.exit?.at, sharp.pnl], ['Stop', 0.58, at(10, 39, 20), -68.08]);
+  /* a target touched inside a minute: 1.875 crossed in 10:49–10:50; the seconds sell it at 10:49:30 */
+  const tpMins = [q(10, 31, 1.21, 1.25), q(10, 49, 1.7, 1.74), q(10, 50, 1.9, 1.94)];
+  expectEqual('fine windows: the 1.50× target crossed in 10:49–10:50 (and 1.25× crossed in 10:31–10:49)', fineWindows(sigA, tpMins), [[at(10, 31), at(10, 49)], [at(10, 49), at(10, 50)]]);
+  const tp = settleSignal(sigA, [...tpMins, q(10, 49, 1.88, 1.92, 30)], [], after);
+  expectEqual('take-profit from the seconds', [tp.exit?.why, tp.exit?.px, tp.exit?.at], ['Take profit 1.50×', 1.88, at(10, 49, 30)]);
+}
 /* Book C: 3× the 0.50 fill (1.50) inside 120 seconds sells at 1.50 */
 const firedC = at(15, 20, 5);
 o = settleSignal({ book: 'C', right: 'C', runner: false, firedAt: firedC }, [q(15, 21, 0.45, 0.5), q(15, 21, 1.2, 1.3, 40), q(15, 22, 1.55, 1.6, 30)], [], after);
@@ -274,10 +298,14 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
     econ: () => [],
   });
   const { atMark } = await import('../../src/data/compassScan');
-  const { scoreBook, onScoredRow, currentPicks } = await import('../../src/data/compassModel');
+  const { scoreBook, onScoredRow, currentPicks, importModelState } = await import('../../src/data/compassModel');
   const { recordPicks, contractPath, wouldSignals, signals } = await import('../../src/data/compassLedger');
   const { underCloses } = await import('../../src/data/compassModel');
   const mark = nyWallTime(2026, 10, 29, 10, 15);
+  /* every seat was taken by live calls, but at 11:00, after this mark: the late mark is judged on the seats as they
+     stood at 10:15, all free (was: seats full, nothing would have been called) */
+  const later = mark + 45 * 60_000;
+  importModelState({ day: '20261029', rootA: ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'META'], rootAt: ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'META'].map(t => [t, later] as [string, number]) }, null);
   const snap = await atMark('RUTW', mark, 'odte');
   const scored: { contract: string; p1: number; bid: number; ask: number; q: number }[] = [];
   const off = onScoredRow(r => scored.push({ contract: r.setup.contract, p1: r.p1, bid: r.setup.bid, ask: r.setup.ask, q: r.setup.quotedAt ?? 0 }));
@@ -290,12 +318,21 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   const row = scored.find(r => r.contract === 'RUTW 2845C') ?? null;
   const sig = wouldSignals().find(r => r.contract === 'RUTW 2845C') ?? null;
   const { seatsNow } = await import('../../src/data/compassModel');
-  expectEqual('late: no official call, no card, no seat', [signals().length, pick, seatsNow().seats], [0, null, 0]);
+  expectEqual('late: no official call, no card, no seat taken (the five later seats stay five)', [signals().length, pick, seatsNow().seats], [0, null, 5]);
   let outcome: ReturnType<typeof settleSignal> | null = null;
+  let fineGot: { windows: number; exit: { px: number; why: string; at: number } | null } | null = null;
   if (sig) {
     const quotes = await contractPath(sig, null);
     const under = await underCloses('RUTW', '20261029');
     if (quotes) outcome = settleSignal(sig, quotes, under, Date.now());
+    if (quotes) {
+      /* the same call with its stop and target minutes read to the second (recorded 1-second quotes) */
+      const { withFineExits } = await import('../../src/data/compassLedger');
+      const { fineWindows } = await import('../../src/data/compassOutcome');
+      const sharp = settleSignal(sig, await withFineExits(sig, quotes), under, Date.now());
+      fineGot = { windows: fineWindows(sig, quotes).length, exit: sharp.exit ? { px: sharp.exit.px, why: sharp.exit.why, at: sharp.exit.at } : null };
+      if (REPORT || process.env.GOLDEN_RECORD === '1') console.log(`REPORT fine exit ${JSON.stringify(fineGot)}`);
+    }
   }
   const got = {
     rows: snap.rows,
@@ -323,6 +360,9 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
     expectEqual('late: RUTW 2845C would have called (Book A), marked late, at its mark', [got.called, got.late, got.firedAt], [want.called, want.late, mark]);
     expectEqual('late: fill at the first quote a full minute after the mark', [got.fill, got.fillAt], [want.fill, want.fillAt]);
     expectEqual('late: exit by the same rules from its mark', got.exit, want.exit);
+    /* read to the second, the break-even stop (16.90 + fees) was touched at 11:45:56, bid 16.30, inside a minute the
+       one-a-minute quotes saw above it; the minute read exits at 11:59, bid 15.10 */
+    expectEqual('late: the stop judged on 1-second quotes', fineGot, { windows: 9, exit: { px: 16.3, why: 'Stop', at: nyWallTime(2026, 10, 29, 11, 45) + 56_000 } });
   } else {
     console.log(`RECORDED ${LATE_SET}: ${JSON.stringify(got)}. Check it against the raw rows, then write ${lateExpected}.`);
   }
@@ -339,7 +379,8 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
     { outcome: closedAt(1.88, 1.25, 61.92, 1.08) },
     /* lost: the stop test's -68.08 */
     { outcome: closedAt(0.58, 1.25, -68.08, 1.08) },
-    /* open: fill 1.25, last bid 1.40: (1.40 - 1.25)·100 - (1.00 + 0.08 + 1.40·100·0.0000206 = 1.0829 → 1.08) = 13.92 */
+    /* open: fill 1.25, last bid 1.40: (1.40 - 1.25)·100 - (1.00 + 0.08 + 1.40·100·0.0000278 + 0.00279 TAF = 1.0867
+       → 1.09) = 13.91 (was 13.92 with the old SEC rate and no TAF) */
     { outcome: { status: 'open' as const, fill: { at: 0, bid: 1.21, ask: 1.25 }, exit: null, peak: 1.4, stop: 0.58, last: { t: 0, bid: 1.4, ask: 1.44 }, ret: 12, pnl: null, fees: null, heldMin: 5 } },
     { outcome: null },
     { outcome: { status: 'unavailable' as const, fill: null, exit: null, peak: 0, stop: 0, last: null, ret: null, pnl: null, fees: null, heldMin: null } },
@@ -348,8 +389,18 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectEqual('day: calls, won, lost, open, filling, unavailable', [d.calls, d.won, d.lost, d.open, d.waiting, d.unavailable], [5, 1, 1, 1, 1, 1]);
   /* net 61.92 - 68.08 = -6.16; open marked 13.92; fees 1.08 + 1.08 + 1.08 */
   expectEqual('day: net per contract after the round trip', d.net, -6.16);
-  expectEqual('day: open calls marked at the bid', d.openMark, 13.92);
-  expectEqual('day: round-trip fees inside', d.fees, 3.24);
+  expectEqual('day: open calls marked at the bid', d.openMark, 13.91);
+  expectEqual('day: round-trip fees inside (1.08 + 1.08 + 1.09)', d.fees, 3.25);
+  /* the fee schedule: 1.00 commission + 0.08 exchange + SEC 0.0000278 of the sale + TAF 0.00279 */
+  const { optionFees: fees, breakEvenBid, stopAfter } = await import('../../src/data/compassParams');
+  expectEqual('fees: sale at 10.00 = 1.08 + 0.0278 + 0.0028 = 1.11 (was 1.10)', fees(10), 1.11);
+  /* break-even after fees: a 1.25 ask that peaked at 1.5625 (1.25x) stops at 1.25 + fees(1.25)/100, fees =
+     1.08 + 0.0035 + 0.0028 = 1.0863 → 1.09, so 1.2609 (was 1.25, a sale that lost the fees) */
+  expectNear('break-even stop includes the fees', stopAfter(1.25, 1.5625, false), 1.2609, 1e-9);
+  expectNear('break-even bid', breakEvenBid(2), 2 + 1.09 / 100, 1e-12);
+  const { weekdayDte: wdte } = await import('../../src/data/compassParams');
+  /* sessions to expiry skip market holidays: Wed 11-25 to Fri 11-27 is 1 (was 2, Thanksgiving counted); Fri to Mon is 1 */
+  expectEqual('sessions to expiry over Thanksgiving, and over a weekend', [wdte('20261125', '2026-11-27'), wdte('20261030', '2026-11-02'), wdte('20261030', '2026-10-30')], [1, 1, 0]);
   /* a stop exactly at the fill still loses its fees: (1.25 - 1.25)·100 - 1.08 is a loss */
   expectEqual('day: breakeven exit counts as lost', daySummary([{ outcome: closedAt(1.25, 1.25, -1.08, 1.08) }]).lost, 1);
 }
@@ -469,7 +520,9 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
    on these. The trained minutes are t = 585..900 (15 to 330 after 09:30); P1_MIN = 0.7067.
      10-27: .20 F, .25 T, .72 T, .74 F (t 600/700), .80 T at t 580 (outside), .85 F, .45 unsettled
      10-28: .71 F, .73 F, .10 F, .30 T at t 905 (outside), .76 T
-   Wilson 95% (z 1.96): 1/3 → .0615–.7923, 1/4 → .0456–.6994, 1/1 → .2065–1, 0/1 → 0–.7935, 2/6 → .0968–.7000. */
+   Wilson 95% (z 1.96): 1/3 → .0615–.7923, 1/4 → .0456–.6994, 1/1 → .2065–1, 0/1 → 0–.7935, 2/6 → .0968–.7000.
+   The pooled rates are clustered by session (clusterRate): V = C/(C-1)·Σ(k_c - p·n_c)²/n², nEff = p(1-p)/V capped
+   at n, Wilson at nEff; one cluster gives 0–1. */
 {
   const { poolStudies, wilson, POOL_BAR } = await import('../../src/data/compassStudy');
   const { pooledStudy, compassRoute, startCompassEngine } = await import('../../src/data/compassServer');
@@ -482,20 +535,25 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectEqual('wilson: nothing is nothing', wilson(0, 0), { n: 0, k: 0, rate: 0, lo95: 0, hi95: 0 });
   const p = pooledStudy(POOL);
   expectEqual('pool: sessions oldest first; 12 rows, 11 settled; 3 movers (10-28 has no study)', [p.days, p.labels, p.settled, p.movers], [['2026-10-27', '2026-10-28'], 12, 11, 3]);
-  expectEqual('pool: a session without a study says so', p.notes, ['2026-10-28: labels without a study; its movers are not counted.']);
+  expectEqual('pool: a session without a study says so; the sweep carries its multiple-comparisons note', p.notes, ['2026-10-28: labels without a study; its movers are not counted.', 'The threshold sweep tries 7 cuts on the same rows: the best of them is biased up by the choice (multiple comparisons). It is advisory; a new threshold needs sessions it was not chosen on.']);
   const b = (name: string) => p.calibration.find(c => c.bucket === name)!;
   /* 0–30%, in the window: .20 F, .25 T, .10 F → 1 of 3; mean (.20 + .25 + .10)/3 = .1833; gap 33.33 - 18.33 = +15.00 */
-  expectEqual('pool: 0–30% bucket', [b('0–30%').win, b('0–30%').meanP1, b('0–30%').gapPoints, b('0–30%').sessions], [{ n: 3, k: 1, rate: 0.3333, lo95: 0.0615, hi95: 0.7923 }, 0.1833, 15, 2]);
+  /* clustered: 10-27 (2 rows, 1 won), 10-28 (1, 0): Σ = (1 - 2/3)² + (0 - 1/3)² = 2/9, V = 2·(2/9)/9 = 0.0494,
+     nEff = (2/9)/0.0494 = 4.5 → capped at 3: the plain Wilson */
+  expectEqual('pool: 0–30% bucket', [b('0–30%').win, b('0–30%').meanP1, b('0–30%').gapPoints, b('0–30%').sessions], [{ n: 3, k: 1, rate: 0.3333, lo95: 0.0615, hi95: 0.7923, by: 'session', clusters: 2, nEff: 3 }, 0.1833, 15, 2]);
   /* 30–40%: only .30 at 15:05, outside the window: none in the window, 1 of 1 over every minute */
   expectEqual('pool: 30–40% bucket, outside the window only', [b('30–40%').win.n, b('30–40%').all.n, b('30–40%').all.k, b('30–40%').meanP1], [0, 1, 1, null]);
   /* the unsettled .45 row is not counted */
   expectEqual('pool: an unsettled row is no row', b('40–50%').all.n, 0);
   /* 70.67–75%: .72 T, .74 F, .71 F, .73 F → 1 of 4; mean 2.90/4 = .725; gap 25 - 72.5 = -47.5; both sessions */
-  expectEqual('pool: 70.67–75% bucket', [b('70.67–75%').win, b('70.67–75%').meanP1, b('70.67–75%').gapPoints, b('70.67–75%').sessions], [{ n: 4, k: 1, rate: 0.25, lo95: 0.0456, hi95: 0.6994 }, 0.725, -47.5, 2]);
+  /* clustered: 10-27 (2, 1), 10-28 (2, 0): Σ = 0.25 + 0.25, V = 2·0.5/16 = 0.0625, nEff = 0.1875/0.0625 = 3; Wilson at
+     p .25, n 3: .0368–.7439 (was .0456–.6994, the four rows read as independent) */
+  expectEqual('pool: 70.67–75% bucket', [b('70.67–75%').win, b('70.67–75%').meanP1, b('70.67–75%').gapPoints, b('70.67–75%').sessions], [{ n: 4, k: 1, rate: 0.25, lo95: 0.0368, hi95: 0.7439, by: 'session', clusters: 2, nEff: 3 }, 0.725, -47.5, 2]);
   /* 75–80%: .76 T → 1 of 1, gap +24.  80–100%: .85 F in the window (0 of 1, gap -85); .80 T at 09:40 outside;
      every minute 1 of 2, bid hit 1.50× 1 of 2 */
   expectEqual('pool: 75–80% bucket', [b('75–80%').win.k, b('75–80%').win.n, b('75–80%').gapPoints], [1, 1, 24]);
-  expectEqual('pool: 80–100% bucket', [b('80–100%').win, b('80–100%').gapPoints, b('80–100%').all.n, b('80–100%').all.k, b('80–100%').hit50], [{ n: 1, k: 0, rate: 0, lo95: 0, hi95: 0.7935 }, -85, 2, 1, 0.5]);
+  /* one row in one session: one cluster cannot bound a rate, 0–1 (was 0–.7935) */
+  expectEqual('pool: 80–100% bucket', [b('80–100%').win, b('80–100%').gapPoints, b('80–100%').all.n, b('80–100%').all.k, b('80–100%').hit50], [{ n: 1, k: 0, rate: 0, lo95: 0, hi95: 1, by: 'session', clusters: 1, nEff: 1 }, -85, 2, 1, 0.5]);
   expectEqual('pool: every settled row in one bucket', p.calibration.reduce((a, c) => a + c.all.n, 0), 11);
   /* the sweep, in the window: at 60% and at 70.67% the same six rows (.72 .74 .85 | .71 .73 .76), 2 took;
      mean return (50 - 40 - 50 - 35 - 45 + 50)/6 = -11.67; per session -13.33 and -10.00, neither up.
@@ -513,7 +571,7 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectEqual('pool: inputs over time', p.inputsOverTime, { cols: [{ col: 26, name: 'IV / RV' }, { col: 24, name: 'ATM IV' }], rows: [{ day: '2026-10-27', under: 2, n: [2, 1] }] });
   /* the verdict: two sessions, no full bucket; over the bar 2 of 6 (.0968–.7000), mean (.72+.74+.85+.71+.73+.76)/6 = .7517 */
   expectEqual('pool: verdict is not yet, every bar unmet', [p.verdict.ready, p.verdict.needs.map(n => n.met)], [false, [false, false, false, false]]);
-  expectEqual('pool: verdict line', p.verdict.line, 'No: the evidence does not support reading Model 1 as a probability yet (4 of 4 bars unmet). Rows scored at or over 70.67% (mean 75.2%) took the 1.50× profit 33.3% of the time (95%: 9.7–70.0%, 6 rows, 2 sessions).');
+  expectEqual('pool: verdict line', p.verdict.line, 'No: the evidence does not support reading Model 1 as a probability yet (4 of 4 bars unmet). Rows scored at or over 70.67% (mean 75.2%) took the 1.50× profit 33.3% of the time (95%: 9.7–70.0%, clustered by session; 6 rows, about 6 effective, 2 sessions).');
   /* a calibrated pool meets the bars: 20 sessions, 25 rows a bucket a session (500 each) at the bucket's middle,
      round(25·mid) of them taking profit (16%, 36%, 44%, 56%, 64%, 68%, 72%, 76%, 92%: every gap within 2 points) */
   const MIDS = [0.15, 0.35, 0.45, 0.55, 0.625, 0.678, 0.728, 0.775, 0.9];
@@ -528,7 +586,20 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectEqual('pool: meeting the bars never lifts the label', /“Unvalidated” label stays until the owner lifts it/.test(good.verdict.line), true);
   /* the same with the 50–60% bucket never taking profit: its gap (-55) fails, and it reverses against 40–50% */
   const bad = poolStudies(synth(3), 0);
-  expectEqual('pool: one bucket off fails the gap and the order', [bad.verdict.ready, bad.verdict.needs.map(n => n.met), bad.calibration[3].gapPoints], [false, [true, true, false, false], -55]);
+  /* a bucket at 0 of 500 has no within-session variance to read a design effect from: its effective rows are its 20
+     sessions, so it is short of the 400 and fails the rows and the gap bars (was: full, failing the gap and order) */
+  expectEqual('pool: one bucket off fails the rows and the gap', [bad.verdict.ready, bad.verdict.needs.map(n => n.met), bad.calibration[3].gapPoints, bad.calibration[3].win.nEff], [false, [true, false, false, true], -55, 20]);
+  /* the pool of one session clusters by name and session */
+  const { clusterRate } = await import('../../src/data/compassStudy');
+  /* 3 names × 10 overlapping rows, all-or-nothing per name (1 won, 2 lost): p = 1/3, Σ = (20/3)² + 2·(10/3)² = 66.67,
+     V = (3/2)·66.67/900 = 0.1111, nEff = (2/9)/0.1111 = 2 (three paths, less the C/(C-1) correction); plain Wilson
+     reads 30 rows: .1923–.5122 */
+  const one = clusterRate(['A', 'B', 'C'].flatMap((nm, i) => Array.from({ length: 10 }, () => ({ won: i === 0, cluster: nm }))), 'name-session');
+  /* each label by its own book (was: Book A's non-runner rules for every row) */
+  const { bookOfRow } = await import('../../src/data/compassStudy');
+  const mates = Array.from({ length: 21 }, (_, i) => ({ k: `SPY ${500 + i}C` }));
+  expectEqual('label book: 2 out is A; 9 out at 0.50 is B; 9 out at 1.50 and 14 out are neither', [bookOfRow({ k: 'SPY 512C', s: 510, a: 2 }, mates, 'SPY'), bookOfRow({ k: 'SPY 519C', s: 510, a: 0.5 }, mates, 'SPY'), bookOfRow({ k: 'SPY 519C', s: 510, a: 1.5 }, mates, 'SPY'), bookOfRow({ k: 'SPY 520C', s: 506, a: 0.2 }, mates, 'SPY')], ['A', 'B', null, null]);
+  expectEqual('clustered: 30 rows that are 3 paths count as 2 effective rows', [one.nEff, one.lo95, one.hi95, wilson(10, 30).lo95, wilson(10, 30).hi95], [2, 0.0453, 0.8406, 0.1923, 0.5122]);
   expectEqual('pool: the bars', [POOL_BAR.sessions, POOL_BAR.rowsPerBucket, POOL_BAR.gapPoints], [20, 400, 5]);
   /* served at /api/compass/study?day=all from the record folder */
   const dir9 = mkdtempSync(join(tmpdir(), 'compass-pool-'));
@@ -545,6 +616,167 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectEqual('pool: nothing labelled is not built', [res9.statusCode, (JSON.parse(body9) as { code: string }).code], [404, 'not_built']);
   engine9.stop();
   engine9b.stop();
+}
+
+/* ---- 10. the engine stays up ------------------------------------------------------------------------------- */
+{
+  const { spawnSync } = await import('node:child_process');
+  const { mkdtempSync, writeFileSync: write10 } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const api = (await import('../../server/compassApi.mjs')) as {
+    startDelay: (n: number) => number;
+    compassMount: (load: () => Promise<unknown>, root?: string) => { start: () => Promise<void>; stop: () => void };
+  };
+  expectEqual('start backoff: 5 s, 10 s, 20 s, capped at 5 min', [1, 2, 3, 7, 12].map(api.startDelay), [5_000, 10_000, 20_000, 300_000, 300_000]);
+  /* a start that failed is not memoised: inside its backoff it waits, after it the next start loads again */
+  freezeClock('2026-10-29T15:00:00Z');
+  let loads = 0;
+  const warn = console.warn;
+  console.warn = () => {};
+  const mount = api.compassMount(async () => {
+    loads += 1;
+    throw new Error('the import failed');
+  }, tmpdir());
+  await mount.start();
+  await mount.start();
+  const inside = loads;
+  freezeClock('2026-10-29T15:00:06Z');
+  await mount.start();
+  mount.stop();
+  console.warn = warn;
+  expectEqual('a failed engine start is tried again after its backoff (was: down until restart)', [inside, loads], [1, 2]);
+  /* the process logger, in a child: an unhandled rejection is logged and the process keeps running */
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', "const m = await import(process.argv[1]); m.installProcessLogger(l => console.log(l.split('\\n')[0])); Promise.reject(new Error('sentinel')); setTimeout(() => console.log('still up'), 50);", join(here, '..', '..', 'server', 'compassApi.mjs')], { encoding: 'utf8' });
+  expectEqual('process logger: the rejection is logged, the process lives', [child.status, child.stdout.trim().split('\n')], [0, ['[process] unhandled rejection: Error: sentinel', 'still up']]);
+  /* the model lock's reason reaches the log: a model folder whose universe file is not the locked one */
+  const badPublic = mkdtempSync(join(tmpdir(), 'compass-badpublic-'));
+  const { mkdirSync: mk10 } = await import('node:fs');
+  mk10(join(badPublic, 'config'), { recursive: true });
+  write10(join(badPublic, 'config', 'universe_458.json'), '["SPY"]');
+  const lockKid = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', [
+    "const { startCompassEngine } = await import(process.argv[1] + '/compassServer.ts');",
+    "const { scoreBook } = await import(process.argv[1] + '/compassModel.ts');",
+    "const e = startCompassEngine({ dir: process.argv[2], publicDir: process.argv[3], theta: async () => ({ status: 503, body: '', type: '' }), scan: false, log: l => { if (l.includes('model lock')) console.log(l); } });",
+    'await scoreBook([], Date.now(), true);',
+    'e.stop();',
+  ].join('\n'), join(here, '..', '..', 'src', 'data'), mkdtempSync(join(tmpdir(), 'compass-lockdir-')), badPublic], { encoding: 'utf8', cwd: join(here, '..', '..') });
+  expectEqual('model lock: its reason is logged (was: never logged)', lockKid.stdout.trim(), '[compass] model lock: Universe hash does not match. Scoring is closed.');
+
+  /* the early close: the core calendar stands in until ThetaData's calendar answers */
+  const { calendarClose } = await import('../../src/data/compassScan');
+  expectEqual('early close from the calendar: 2026-11-27 13:00, 2026-10-30 full', [calendarClose('20261127'), calendarClose('20261030')], [780, null]);
+  /* holidays: Thanksgiving 2026-11-26 is no session, and the night before it belongs to it */
+  const { sessionDayOpen, sessionYmd: sYmd, optionScanOpen: open10 } = await import('../../src/data/compassSession');
+  const ny = (d: number, h: number, m: number) => nyWallTime(2026, 11, d, h, m);
+  expectEqual('holiday: Wed 11-25 21:00 and Thu 11-26 10:00 belong to Fri 11-27 (was 11-26)', [sYmd(ny(25, 21, 0)), sYmd(ny(26, 10, 0))], ['20261127', '20261127']);
+  expectEqual('holiday: no scan Wed night or Thursday; Thursday night and Friday scan', [sessionDayOpen(ny(25, 21, 0)), sessionDayOpen(ny(26, 10, 0)), sessionDayOpen(ny(26, 21, 0)), sessionDayOpen(ny(27, 10, 0))], [false, false, true, true]);
+  expectEqual('holiday: SPXW is off the scan on Thanksgiving (was on)', [open10('SPXW', 1, ny(26, 10, 0)), open10('SPXW', 0, ny(27, 10, 0))], [false, true]);
+
+  /* the engine lock: a reader takes over once the scanner's lock is stale, and a scanner that loses it stops */
+  const { startCompassEngine: start10 } = await import('../../src/data/compassServer');
+  freezeClock('2026-10-31T15:00:00Z');
+  const dir10 = mkdtempSync(join(tmpdir(), 'compass-lock-'));
+  const lockFile = join(dir10, 'engine.lock');
+  const other = process.ppid;
+  write10(lockFile, JSON.stringify({ pid: other, at: Date.now() }));
+  const eng = start10({ dir: dir10, publicDir: join(here, '..', '..', 'public'), theta: async () => ({ status: 503, body: '', type: '' }), scan: true, lockRetryMs: 60, log: () => {} });
+  const role = () => eng.state()?.engine.readOnly;
+  const first = role();
+  write10(lockFile, JSON.stringify({ pid: other, at: Date.now() - 200_000 }));
+  await new Promise(r => setTimeout(r, 250));
+  const took = role();
+  write10(lockFile, JSON.stringify({ pid: other, at: Date.now() }));
+  await new Promise(r => setTimeout(r, 250));
+  const lost = role();
+  eng.stop();
+  expectEqual('engine lock: reader, takes over a stale lock, gives it up to a live holder (was: reader for life, scanner never stops)', [first, took, lost], [true, false, true]);
+}
+
+/* ---- 11. what the trees never saw -------------------------------------------------------------------------- */
+{
+  const { nanUnsafeColumns, trainingRanges } = await import('../../src/data/lgbm');
+  const { setCompassHost } = await import('../../src/data/compassHost');
+  const { scoreBook, scoreRow, minuteBars } = await import('../../src/data/compassModel');
+  const entryText = readFileSync(join(here, '..', '..', 'public', 'models', 'model_entry_all6months.txt'), 'utf8');
+  const runnerText = readFileSync(join(here, '..', '..', 'public', 'models', 'model_runner_all6months.txt'), 'utf8');
+  /* missing type none on a split, and 0 outside the column's training range: realised vol (min 1.63e-5 / 5.86e-5),
+     range compression (runner min 0.0637), gamma/|theta| (runner min 1.58e-6); the rest are never NaN live */
+  expectEqual('NaN-unsafe columns, Model 1', nanUnsafeColumns(entryText), [0, 6, 7, 15, 32]);
+  expectEqual('NaN-unsafe columns, Model 2', nanUnsafeColumns(runnerText), [0, 6, 7, 9, 15, 32, 38, 40, 41]);
+  expectEqual('training range of x5 is [0, 1]', trainingRanges(entryText)[5], [-4.4935507815787104e-14, 1]);
+  let reads = 0;
+  let lastMinute = 9 * 60 + 30 + 58;
+  const day11 = '20261030';
+  freezeClock('2026-10-30T14:30:10Z');
+  setCompassHost({
+    server: true,
+    theta: async () => {
+      reads += 1;
+      const rows = Array.from({ length: lastMinute - 570 + 1 }, (_, i) => {
+        const m = 570 + i;
+        return { timestamp: `2026-10-30T${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:00.000`, open: 100, high: 100.5, low: 99.5, close: 100, volume: 10 };
+      });
+      return { status: 200, data: rows, error: null };
+    },
+    asset: async p => {
+      const b = readFileSync(join(here, '..', '..', 'public', p.replace(/^\/+/, '')));
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+    },
+    econ: () => [],
+  });
+  await scoreBook([], Date.now(), true);
+  const row = ref.x.map(v => (v == null ? NaN : v));
+  const plain = scoreRow(row);
+  expectNear('scoreRow on the reference row = both models', plain.p1 ?? NaN, ref.entry, 1e-9);
+  expectNear('scoreRow on the reference row, Model 2', plain.prun ?? NaN, ref.runner, 1e-9);
+  const noCompress = scoreRow(row.map((v, i) => (i === 9 ? NaN : v)));
+  expectEqual('compression undefined: Model 1 scores (NaN is missing to it), Model 2 does not (was: read as 0)', [noCompress.p1 != null, noCompress.prun, /Model 2 not scored: range compression \(input 9\)/.test(noCompress.why)], [true, null, true]);
+  expectEqual('gamma/|theta| undefined: Model 2 not scored', scoreRow(row.map((v, i) => (i === 41 ? NaN : v))).prun, null);
+  const noVol = scoreRow(row.map((v, i) => (i === 7 ? NaN : v)));
+  expectEqual('realised vol undefined: neither model scores (Model 1 never saw it missing either)', [noVol.p1, noVol.prun, /Model 1 not scored: realised vol, 30 min \(input 7\)/.test(noVol.why)], [null, null, true]);
+  /* x5, place in the day range: the price at the mark above the high of minutes 0..t-1 was 2.0, now 1 (training max) */
+  const flat = Array.from({ length: 30 }, (_, k) => ({ d: '20261030', m: 570 + k, o: 100, h: 101, l: 99, c: 100, v: 10 }));
+  const x5 = features(stub(100, 'C', 1, 1.04, 103), 600, flat, flat, null, NaN, NaN, [], null, null, { m5: NaN, m15: NaN })?.[5];
+  expectEqual('x5 clipped to the training range [0, 1] (was (103 - 99)/(101 - 99) = 2)', x5, 1);
+  /* the live bar read: a memo that does not reach minute t-1 is read again (was: up to 60 s stale) */
+  reads = 0;
+  lastMinute = 628;
+  const a = await minuteBars('QQQ', day11, 629);
+  const b2 = await minuteBars('QQQ', day11, 629);
+  const inside = reads;
+  freezeClock('2026-10-30T14:30:13Z');
+  lastMinute = 629;
+  const c = await minuteBars('QQQ', day11, 629);
+  const d = await minuteBars('QQQ', day11, 629);
+  expectEqual('stale bars: read, memo inside 2 s, read again once it is older and short of t-1, then memo', [a.at(-1)?.m, b2.at(-1)?.m, inside, c.at(-1)?.m, d.at(-1)?.m, reads], [628, 628, 1, 629, 629, 2]);
+  /* one read answers every name of a pass that asks for the same bars at once (SPY, a sector ETF) */
+  reads = 0;
+  await Promise.all(Array.from({ length: 6 }, () => minuteBars('IWM', day11)));
+  expectEqual('shared bar read: six names at once, one request (was six)', reads, 1);
+}
+
+/* ---- 12. the weekly read reaches Book B ------------------------------------------------------------------- */
+{
+  const { WEEKLY_STRIKES, bookBRange } = await import('../../src/data/compassParams');
+  const { setCompassHost } = await import('../../src/data/compassHost');
+  const { atMark, weeklyExpiry } = await import('../../src/data/compassScan');
+  /* Book B sits 8 to 12 strikes out on an index root, up to 13 to 17 on a 12-strike span; the weekly read was 4 */
+  expectEqual('Book B bands: index span 4 → 8..12, span 12 → 13..17; weekly read reaches 17', [bookBRange(4), bookBRange(12), WEEKLY_STRIKES], [{ inner: 8, outer: 12 }, { inner: 13, outer: 17 }, 17]);
+  const paths: string[] = [];
+  setCompassHost({
+    server: true,
+    theta: async p => {
+      paths.push(p);
+      if (p.startsWith('/option/list/expirations')) return { status: 200, data: [{ expiration: '2026-10-30' }, { expiration: '2026-11-02' }, { expiration: '2026-11-06' }], error: null };
+      return { status: 472, data: null, error: 'no_data' };
+    },
+    asset: async () => null,
+    econ: () => [],
+  });
+  const m12 = nyWallTime(2026, 10, 30, 10, 30);
+  expectEqual('nearest weekly expiry 1 to 7 sessions out', await weeklyExpiry('TLT', m12), '2026-11-02');
+  await atMark('TLT', m12, 'weekly');
+  expectEqual('the weekly read asks Book B\'s band (strike_range 17, was 4)', paths.filter(p => p.startsWith('/option/at_time/quote')).map(p => /strike_range=(\d+)/.exec(p)?.[1]), ['17']);
 }
 
 done();

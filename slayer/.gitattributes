@@ -1,0 +1,3 @@
+# the model files and the universe are checked by SHA-256 (src/data/compassParams.ts): never convert their line ends
+public/models/* -text
+public/config/*.json -text
