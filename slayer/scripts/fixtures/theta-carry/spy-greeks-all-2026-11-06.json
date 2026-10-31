@@ -1,0 +1,437 @@
+{
+	"response": [
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":739.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.7967,"color":-0.1088,"zomma":-0.0173,"delta":0.8053,"implied_vol":0.2070,"theta":-0.4903,"d1":0.8609,"speed":-0.0005,"d2":0.8322,"epsilon":-11.6857,"lambda":29.6942,"vomma":99.8331,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.972","underlying_price":756.5900,"vera":-16.6122,"veta":1257.1919,"iv_error":0.0000,"ultima":-1101.3659,"charm":5.5971,"ask":20.7700,"rho":11.2921,"vanna":-1.1067,"dual_gamma":0.0133,"bid":20.2800,"vega":28.8554,"gamma":0.0126}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":739.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.1886,"color":-0.0832,"zomma":-0.0129,"delta":-0.1815,"implied_vol":0.1956,"theta":-0.3712,"d1":0.9095,"speed":-0.0005,"d2":0.8824,"epsilon":2.6341,"lambda":-67.0259,"vomma":113.3655,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.999","underlying_price":756.5900,"vera":-17.7915,"veta":1262.4277,"iv_error":-0.0003,"ultima":-1273.6076,"charm":5.6854,"ask":2.0800,"rho":-2.6734,"vanna":-1.1896,"dual_gamma":0.0134,"bid":2.0300,"vega":27.6406,"gamma":0.0128}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":760.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.5706,"color":-0.5858,"zomma":-0.1412,"delta":-0.5622,"implied_vol":0.1608,"theta":-0.4276,"d1":-0.1567,"speed":0.0001,"d2":-0.1790,"epsilon":8.1587,"lambda":-51.5645,"vomma":7.2042,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.966","underlying_price":756.5900,"vera":5.5718,"veta":1118.1329,"iv_error":0.0000,"ultima":-133.8683,"charm":-2.5364,"ask":8.3200,"rho":-8.3170,"vanna":0.4385,"dual_gamma":0.0231,"bid":8.1800,"vega":41.2891,"gamma":0.0233}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":760.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.4305,"color":-0.5694,"zomma":-0.1328,"delta":0.4399,"implied_vol":0.1661,"theta":-0.5256,"d1":-0.1511,"speed":0.0001,"d2":-0.1741,"epsilon":-6.3833,"lambda":59.1214,"vomma":6.5480,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.007","underlying_price":756.5900,"vera":5.2072,"veta":1116.4571,"iv_error":0.0000,"ultima":-118.0177,"charm":-2.4662,"ask":5.6700,"rho":6.2754,"vanna":0.4134,"dual_gamma":0.0224,"bid":5.5900,"vega":41.3249,"gamma":0.0226}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":759.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.4535,"color":-0.5786,"zomma":-0.1329,"delta":0.4631,"implied_vol":0.1679,"theta":-0.5365,"d1":-0.0926,"speed":0.0000,"d2":-0.1158,"epsilon":-6.7196,"lambda":56.9801,"vomma":2.6587,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.966","underlying_price":756.5900,"vera":3.1777,"veta":1103.2870,"iv_error":-0.0001,"ultima":-48.1155,"charm":-1.8728,"ask":6.1900,"rho":6.6017,"vanna":0.2740,"dual_gamma":0.0224,"bid":6.1100,"vega":41.6208,"gamma":0.0225}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":759.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.5470,"color":-0.5987,"zomma":-0.1426,"delta":-0.5385,"implied_vol":0.1620,"theta":-0.4367,"d1":-0.0968,"speed":0.0001,"d2":-0.1192,"epsilon":7.8145,"lambda":-52.6483,"vomma":2.9647,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.007","underlying_price":756.5900,"vera":3.4425,"veta":1104.2799,"iv_error":0.0000,"ultima":-55.4736,"charm":-1.9318,"ask":7.8000,"rho":-7.9630,"vanna":0.2922,"dual_gamma":0.0232,"bid":7.6800,"vega":41.6042,"gamma":0.0233}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":758.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.4761,"color":-0.5817,"zomma":-0.1317,"delta":0.4859,"implied_vol":0.1697,"theta":-0.5456,"d1":-0.0352,"speed":0.0000,"d2":-0.0588,"epsilon":-7.0507,"lambda":54.9506,"vomma":0.5105,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.956","underlying_price":756.5900,"vera":1.2022,"veta":1093.8297,"iv_error":0.0000,"ultima":-9.8145,"charm":-1.2792,"ask":6.7200,"rho":6.9224,"vanna":0.1380,"dual_gamma":0.0223,"bid":6.6600,"vega":41.7736,"gamma":0.0224}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":758.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.5235,"color":-0.6033,"zomma":-0.1417,"delta":-0.5149,"implied_vol":0.1636,"theta":-0.4453,"d1":-0.0374,"speed":0.0000,"d2":-0.0601,"epsilon":7.4719,"lambda":-53.5879,"vomma":0.5755,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.967","underlying_price":756.5900,"vera":1.3252,"veta":1094.1907,"iv_error":0.0000,"ultima":-11.3456,"charm":-1.3183,"ask":7.3300,"rho":-7.6113,"vanna":0.1465,"dual_gamma":0.0231,"bid":7.2200,"vega":41.7703,"gamma":0.0232}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":763.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.6425,"color":-0.5095,"zomma":-0.1288,"delta":-0.6349,"implied_vol":0.1559,"theta":-0.3858,"d1":-0.3448,"speed":0.0004,"d2":-0.3664,"epsilon":9.2123,"lambda":-48.6696,"vomma":31.9194,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.935","underlying_price":756.5900,"vera":12.0622,"veta":1181.4184,"iv_error":0.0000,"ultima":-588.9399,"charm":-4.2773,"ask":10.1200,"rho":-9.4016,"vanna":0.8833,"dual_gamma":0.0226,"bid":9.6300,"vega":39.3865,"gamma":0.0230}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":763.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.3604,"color":-0.5016,"zomma":-0.1229,"delta":0.3690,"implied_vol":0.1605,"theta":-0.4830,"d1":-0.3342,"speed":0.0004,"d2":-0.3565,"epsilon":-5.3554,"lambda":66.1853,"vomma":29.3344,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.004","underlying_price":756.5900,"vera":11.3948,"veta":1176.7862,"iv_error":-0.0001,"ultima":-527.0112,"charm":-4.1749,"ask":4.2600,"rho":5.2745,"vanna":0.8375,"dual_gamma":0.0220,"bid":4.1800,"vega":39.5284,"gamma":0.0224}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":741.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.7741,"color":-0.1628,"zomma":-0.0279,"delta":0.7830,"implied_vol":0.2027,"theta":-0.5076,"d1":0.7824,"speed":-0.0005,"d2":0.7543,"epsilon":-11.3616,"lambda":31.4795,"vomma":89.5980,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.920","underlying_price":756.5900,"vera":-16.4479,"veta":1242.2441,"iv_error":0.0000,"ultima":-1065.4370,"charm":5.3650,"ask":19.0600,"rho":11.0007,"vanna":-1.0928,"dual_gamma":0.0144,"bid":18.5800,"vega":30.7770,"gamma":0.0138}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":741.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.2124,"color":-0.1433,"zomma":-0.0251,"delta":-0.2049,"implied_vol":0.1921,"theta":-0.3916,"d1":0.8239,"speed":-0.0005,"d2":0.7973,"epsilon":2.9743,"lambda":-65.9938,"vomma":101.7505,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.003","underlying_price":756.5900,"vera":-17.6727,"veta":1249.6617,"iv_error":0.0000,"ultima":-1240.9806,"charm":5.4854,"ask":2.3800,"rho":-3.0194,"vanna":-1.1786,"dual_gamma":0.0147,"bid":2.3300,"vega":29.7684,"gamma":0.0141}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":762.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.6174,"color":-0.5384,"zomma":-0.1324,"delta":-0.6094,"implied_vol":0.1592,"theta":-0.4065,"d1":-0.2778,"speed":0.0003,"d2":-0.2999,"epsilon":8.8429,"lambda":-49.2103,"vomma":21.0503,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.957","underlying_price":756.5900,"vera":9.7200,"veta":1155.8560,"iv_error":0.0000,"ultima":-386.4057,"charm":-3.6871,"ask":9.5300,"rho":-9.0226,"vanna":0.7230,"dual_gamma":0.0226,"bid":9.2200,"vega":40.2168,"gamma":0.0230}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":762.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.3838,"color":-0.5313,"zomma":-0.1281,"delta":0.3927,"implied_vol":0.1622,"theta":-0.4985,"d1":-0.2721,"speed":0.0003,"d2":-0.2946,"epsilon":-5.6987,"lambda":63.7721,"vomma":19.9025,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.186","underlying_price":756.5900,"vera":9.3545,"veta":1153.5846,"iv_error":0.0000,"ultima":-358.8393,"charm":-3.6270,"ask":4.7000,"rho":5.6093,"vanna":0.6979,"dual_gamma":0.0222,"bid":4.6300,"vega":40.2799,"gamma":0.0226}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":740.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.7882,"color":-0.1311,"zomma":-0.0218,"delta":0.7968,"implied_vol":0.2027,"theta":-0.4917,"d1":0.8305,"speed":-0.0005,"d2":0.8024,"epsilon":-11.5627,"lambda":30.7598,"vomma":97.3195,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.985","underlying_price":756.5900,"vera":-16.7946,"veta":1251.8210,"iv_error":0.0000,"ultima":-1120.5948,"charm":5.5152,"ask":19.7000,"rho":11.1868,"vanna":-1.1183,"dual_gamma":0.0139,"bid":19.5000,"vega":29.6060,"gamma":0.0133}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":740.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.2004,"color":-0.1129,"zomma":-0.0189,"delta":-0.1931,"implied_vol":0.1940,"theta":-0.3821,"d1":0.8664,"speed":-0.0005,"d2":0.8395,"epsilon":2.8023,"lambda":-66.4489,"vomma":107.6276,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.030","underlying_price":756.5900,"vera":-17.7536,"veta":1256.8899,"iv_error":-0.0004,"ultima":-1260.7594,"charm":5.5976,"ask":2.2200,"rho":-2.8445,"vanna":-1.1855,"dual_gamma":0.0140,"bid":2.1800,"vega":28.7188,"gamma":0.0134}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":761.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.5943,"color":-0.5666,"zomma":-0.1383,"delta":-0.5861,"implied_vol":0.1596,"theta":-0.4165,"d1":-0.2177,"speed":0.0002,"d2":-0.2398,"epsilon":8.5053,"lambda":-50.5107,"vomma":13.3525,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.972","underlying_price":756.5900,"vera":7.7108,"veta":1135.6599,"iv_error":0.0000,"ultima":-247.3912,"charm":-3.1303,"ask":8.9800,"rho":-8.6736,"vanna":0.5853,"dual_gamma":0.0230,"bid":8.5900,"vega":40.8207,"gamma":0.0232}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":761.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.4072,"color":-0.5540,"zomma":-0.1314,"delta":0.4164,"implied_vol":0.1641,"theta":-0.5126,"d1":-0.2110,"speed":0.0002,"d2":-0.2338,"epsilon":-6.0420,"lambda":61.4197,"vomma":12.2942,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.010","underlying_price":756.5900,"vera":7.2813,"veta":1133.3303,"iv_error":-0.0001,"ultima":-221.8112,"charm":-3.0547,"ask":5.1800,"rho":5.9436,"vanna":0.5558,"dual_gamma":0.0224,"bid":5.0900,"vega":40.8786,"gamma":0.0226}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":755.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.5416,"color":-0.5581,"zomma":-0.1211,"delta":0.5516,"implied_vol":0.1753,"theta":-0.5632,"d1":0.1298,"speed":-0.0001,"d2":0.1056,"epsilon":-8.0047,"lambda":49.3957,"vomma":3.2422,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.005","underlying_price":756.5900,"vera":-4.2517,"veta":1086.7117,"iv_error":0.0000,"ultima":-56.0113,"charm":0.4473,"ask":8.5100,"rho":7.8426,"vanna":-0.2382,"dual_gamma":0.0216,"bid":8.3900,"vega":41.4485,"gamma":0.0215}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":755.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.4556,"color":-0.5783,"zomma":-0.1300,"delta":-0.4467,"implied_vol":0.1690,"theta":-0.4631,"d1":0.1338,"speed":-0.0001,"d2":0.1104,"epsilon":6.4825,"lambda":-56.0644,"vomma":3.6210,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.005","underlying_price":756.5900,"vera":-4.5413,"veta":1086.6929,"iv_error":-0.0001,"ultima":-64.7304,"charm":0.4728,"ask":6.0700,"rho":-6.5982,"vanna":-0.2582,"dual_gamma":0.0224,"bid":5.9900,"vega":41.4270,"gamma":0.0223}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":754.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.5625,"color":-0.5417,"zomma":-0.1160,"delta":0.5725,"implied_vol":0.1770,"theta":-0.5654,"d1":0.1829,"speed":-0.0002,"d2":0.1584,"epsilon":-8.3082,"lambda":47.7633,"vomma":6.7337,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.958","underlying_price":756.5900,"vera":-5.8847,"veta":1090.6711,"iv_error":0.0000,"ultima":-113.8154,"charm":0.9902,"ask":9.1100,"rho":8.1343,"vanna":-0.3512,"dual_gamma":0.0212,"bid":9.0300,"vega":41.1057,"gamma":0.0211}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":754.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.4339,"color":-0.5612,"zomma":-0.1247,"delta":-0.4249,"implied_vol":0.1704,"theta":-0.4644,"d1":0.1891,"speed":-0.0002,"d2":0.1655,"epsilon":6.1666,"lambda":-57.0146,"vomma":7.5426,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.004","underlying_price":756.5900,"vera":-6.3104,"veta":1091.0080,"iv_error":0.0000,"ultima":-132.1873,"charm":1.0368,"ask":5.6900,"rho":-6.2748,"vanna":-0.3806,"dual_gamma":0.0220,"bid":5.6000,"vega":41.0588,"gamma":0.0219}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":753.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.5827,"color":-0.5209,"zomma":-0.1100,"delta":0.5928,"implied_vol":0.1788,"theta":-0.5669,"d1":0.2348,"speed":-0.0002,"d2":0.2100,"epsilon":-8.6021,"lambda":46.1455,"vomma":11.2163,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.009","underlying_price":756.5900,"vera":-7.3932,"veta":1097.2547,"iv_error":0.0000,"ultima":-185.7814,"charm":1.5085,"ask":9.7900,"rho":8.4157,"vanna":-0.4557,"dual_gamma":0.0209,"bid":9.6600,"vega":40.6625,"gamma":0.0207}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":753.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.4129,"color":-0.5384,"zomma":-0.1180,"delta":-0.4039,"implied_vol":0.1722,"theta":-0.4656,"d1":0.2430,"speed":-0.0003,"d2":0.2191,"epsilon":5.8618,"lambda":-57.7803,"vomma":12.5546,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.005","underlying_price":756.5900,"vera":-7.9318,"veta":1098.1339,"iv_error":0.0000,"ultima":-215.6023,"charm":1.5735,"ask":5.3300,"rho":-5.9632,"vanna":-0.4930,"dual_gamma":0.0216,"bid":5.2500,"vega":40.5831,"gamma":0.0214}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":774.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.8426,"color":0.0235,"zomma":-0.0005,"delta":-0.8379,"implied_vol":0.1593,"theta":-0.2221,"d1":-0.9859,"speed":0.0008,"d2":-1.0080,"epsilon":12.1582,"lambda":-34.7581,"vomma":160.3962,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.093","underlying_price":756.5900,"vera":22.0354,"veta":1381.6875,"iv_error":0.0000,"ultima":-2020.3842,"charm":-6.8866,"ask":18.9600,"rho":-12.5080,"vanna":1.5526,"dual_gamma":0.0140,"bid":17.5300,"vega":25.7084,"gamma":0.0147}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":774.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.1306,"color":0.1222,"zomma":0.0242,"delta":0.1349,"implied_vol":0.1427,"theta":-0.2427,"d1":-1.1031,"speed":0.0010,"d2":-1.1228,"epsilon":-1.9586,"lambda":101.0288,"vomma":197.4522,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.972","underlying_price":756.5900,"vera":24.3519,"veta":1377.6942,"iv_error":0.0009,"ultima":-2437.5859,"charm":-6.7886,"ask":1.0400,"rho":1.9393,"vanna":1.7083,"dual_gamma":0.0138,"bid":0.9900,"vega":22.7476,"gamma":0.0145}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":757.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.4984,"color":-0.5794,"zomma":-0.1294,"delta":0.5083,"implied_vol":0.1715,"theta":-0.5526,"d1":0.0208,"speed":0.0000,"d2":-0.0028,"epsilon":-7.3758,"lambda":53.0532,"vomma":-0.0146,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.009","underlying_price":756.5900,"vera":-0.7045,"veta":1088.0277,"iv_error":-0.0001,"ultima":-0.5459,"charm":-0.6915,"ask":7.3000,"rho":7.2368,"vanna":0.0066,"dual_gamma":0.0221,"bid":7.2100,"vega":41.7905,"gamma":0.0221}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":757.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.5004,"color":-0.6010,"zomma":-0.1392,"delta":-0.4917,"implied_vol":0.1653,"theta":-0.4526,"d1":0.0207,"speed":0.0000,"d2":-0.0021,"epsilon":7.1346,"lambda":-54.4697,"vomma":-0.0110,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.006","underlying_price":756.5900,"vera":-0.7276,"veta":1087.9999,"iv_error":0.0000,"ultima":-0.6003,"charm":-0.7082,"ask":6.8800,"rho":-7.2656,"vanna":0.0050,"dual_gamma":0.0229,"bid":6.7900,"vega":41.7906,"gamma":0.0230}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":756.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.5203,"color":-0.5711,"zomma":-0.1256,"delta":0.5302,"implied_vol":0.1734,"theta":-0.5588,"d1":0.0759,"speed":-0.0001,"d2":0.0519,"epsilon":-7.6941,"lambda":51.1712,"vomma":0.9473,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.003","underlying_price":756.5900,"vera":-2.5269,"veta":1085.7331,"iv_error":0.0000,"ultima":-17.1628,"charm":-0.1139,"ask":7.8900,"rho":7.5437,"vanna":-0.1190,"dual_gamma":0.0219,"bid":7.8000,"vega":41.6793,"gamma":0.0218}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":756.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.4777,"color":-0.5931,"zomma":-0.1355,"delta":-0.4689,"implied_vol":0.1669,"theta":-0.4580,"d1":0.0779,"speed":-0.0001,"d2":0.0548,"epsilon":6.8040,"lambda":-55.3523,"vomma":1.0671,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.011","underlying_price":756.5900,"vera":-2.6945,"veta":1085.5807,"iv_error":0.0000,"ultima":-19.9429,"charm":-0.1089,"ask":6.4700,"rho":-6.9270,"vanna":-0.1306,"dual_gamma":0.0227,"bid":6.3600,"vega":41.6728,"gamma":0.0227}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":771.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.8174,"color":-0.0584,"zomma":-0.0234,"delta":-0.8127,"implied_vol":0.1456,"theta":-0.2251,"d1":-0.8879,"speed":0.0010,"d2":-0.9081,"epsilon":11.7924,"lambda":-39.9813,"vomma":156.0436,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.979","underlying_price":756.5900,"vera":23.7959,"veta":1376.0753,"iv_error":0.0000,"ultima":-2351.0288,"charm":-6.8935,"ask":15.7100,"rho":-12.0874,"vanna":1.6772,"dual_gamma":0.0169,"bid":15.0600,"vega":28.1812,"gamma":0.0176}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":771.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.1844,"color":-0.0675,"zomma":-0.0253,"delta":0.1901,"implied_vol":0.1473,"theta":-0.3147,"d1":-0.8774,"speed":0.0009,"d2":-0.8978,"epsilon":-2.7587,"lambda":89.8904,"vomma":152.0832,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.008","underlying_price":756.5900,"vera":23.4580,"veta":1373.9845,"iv_error":0.0001,"ultima":-2284.0088,"charm":-6.8788,"ask":1.6300,"rho":2.7280,"vanna":1.6542,"dual_gamma":0.0169,"bid":1.5700,"vega":28.4445,"gamma":0.0175}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":749.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.6572,"color":-0.4115,"zomma":-0.0820,"delta":0.6672,"implied_vol":0.1866,"theta":-0.5607,"d1":0.4322,"speed":-0.0004,"d2":0.4063,"epsilon":-9.6812,"lambda":40.3535,"vomma":35.8296,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.973","underlying_price":756.5900,"vera":-12.2097,"veta":1141.8562,"iv_error":0.0000,"ultima":-542.9097,"charm":3.2959,"ask":12.7100,"rho":9.4413,"vanna":-0.7911,"dual_gamma":0.0189,"bid":12.3100,"vega":38.0719,"gamma":0.0185}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":749.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.3351,"color":-0.4193,"zomma":-0.0869,"delta":-0.3264,"implied_vol":0.1788,"theta":-0.4556,"d1":0.4498,"speed":-0.0004,"d2":0.4250,"epsilon":4.7361,"lambda":-60.8281,"vomma":40.3826,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.003","underlying_price":756.5900,"vera":-13.1557,"veta":1146.2182,"iv_error":0.0000,"ultima":-634.7614,"charm":3.4224,"ask":4.0900,"rho":-4.8139,"vanna":-0.8567,"dual_gamma":0.0196,"bid":4.0300,"vega":37.7769,"gamma":0.0192}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":770.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.8005,"color":-0.1164,"zomma":-0.0386,"delta":-0.7955,"implied_vol":0.1452,"theta":-0.2418,"d1":-0.8257,"speed":0.0009,"d2":-0.8458,"epsilon":11.5429,"lambda":-41.3386,"vomma":142.9183,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.943","underlying_price":756.5900,"vera":23.3991,"veta":1364.2994,"iv_error":0.0000,"ultima":-2264.9711,"charm":-6.8118,"ask":14.8000,"rho":-11.8221,"vanna":1.6519,"dual_gamma":0.0179,"bid":14.3200,"vega":29.7245,"gamma":0.0186}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":770.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.2038,"color":-0.1316,"zomma":-0.0413,"delta":0.2098,"implied_vol":0.1485,"theta":-0.3372,"d1":-0.8069,"speed":0.0009,"d2":-0.8275,"epsilon":-3.0448,"lambda":86.7505,"vomma":135.6769,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.005","underlying_price":756.5900,"vera":22.7051,"veta":1359.0739,"iv_error":0.0000,"ultima":-2130.5530,"charm":-6.7669,"ask":1.8500,"rho":3.0097,"vanna":1.6046,"dual_gamma":0.0178,"bid":1.8100,"vega":30.1835,"gamma":0.0185}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":748.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.6734,"color":-0.3798,"zomma":-0.0743,"delta":0.6833,"implied_vol":0.1894,"theta":-0.5591,"d1":0.4771,"speed":-0.0004,"d2":0.4508,"epsilon":-9.9156,"lambda":38.9303,"vomma":42.3600,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.984","underlying_price":756.5900,"vera":-13.0100,"veta":1155.0308,"iv_error":0.0000,"ultima":-623.3855,"charm":3.6505,"ask":13.4700,"rho":9.6609,"vanna":-0.8473,"dual_gamma":0.0183,"bid":13.1000,"vega":37.3025,"gamma":0.0179}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":748.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.3169,"color":-0.3852,"zomma":-0.0788,"delta":-0.3083,"implied_vol":0.1801,"theta":-0.4488,"d1":0.5005,"speed":-0.0005,"d2":0.4756,"epsilon":4.4740,"lambda":-61.7260,"vomma":48.7424,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.010","underlying_price":756.5900,"vera":-14.1927,"veta":1161.1922,"iv_error":-0.0001,"ultima":-748.1398,"charm":3.8083,"ask":3.8200,"rho":-4.5465,"vanna":-0.9293,"dual_gamma":0.0190,"bid":3.7500,"vega":36.8780,"gamma":0.0186}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":769.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.7786,"color":-0.1870,"zomma":-0.0559,"delta":-0.7731,"implied_vol":0.1475,"theta":-0.2680,"d1":-0.7491,"speed":0.0009,"d2":-0.7695,"epsilon":11.2179,"lambda":-42.2660,"vomma":123.3913,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.986","underlying_price":756.5900,"vera":22.2036,"veta":1343.3133,"iv_error":0.0000,"ultima":-2027.6378,"charm":-6.6270,"ask":14.1300,"rho":-11.4833,"vanna":1.5719,"dual_gamma":0.0188,"bid":13.5600,"vega":31.5717,"gamma":0.0194}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":769.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.2247,"color":-0.1973,"zomma":-0.0572,"delta":0.2312,"implied_vol":0.1503,"theta":-0.3613,"d1":-0.7347,"speed":0.0008,"d2":-0.7556,"epsilon":-3.3551,"lambda":83.3346,"vomma":117.8549,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.010","underlying_price":756.5900,"vera":21.5999,"veta":1338.2342,"iv_error":-0.0003,"ultima":-1917.2684,"charm":-6.5761,"ask":2.1400,"rho":3.3149,"vanna":1.5308,"dual_gamma":0.0187,"bid":2.0700,"vega":31.9103,"gamma":0.0193}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":752.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.6025,"color":-0.4974,"zomma":-0.1037,"delta":0.6126,"implied_vol":0.1805,"theta":-0.5663,"d1":0.2861,"speed":-0.0003,"d2":0.2611,"epsilon":-8.8888,"lambda":44.6545,"vomma":16.6020,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.004","underlying_price":756.5900,"vera":-8.8054,"veta":1106.1311,"iv_error":0.0000,"ultima":-269.7708,"charm":2.0033,"ask":10.4500,"rho":8.6897,"vanna":-0.5538,"dual_gamma":0.0204,"bid":10.3200,"vega":40.1234,"gamma":0.0202}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":752.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.3925,"color":-0.5122,"zomma":-0.1106,"delta":-0.3836,"implied_vol":0.1740,"theta":-0.4654,"d1":0.2959,"speed":-0.0003,"d2":0.2718,"epsilon":5.5666,"lambda":-58.5234,"vomma":18.4947,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.007","underlying_price":756.5900,"vera":-9.4224,"veta":1107.6394,"iv_error":0.0000,"ultima":-311.0730,"charm":2.0818,"ask":4.9900,"rho":-5.6617,"vanna":-0.5964,"dual_gamma":0.0212,"bid":4.9400,"vega":40.0089,"gamma":0.0209}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":773.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.8504,"color":0.0570,"zomma":0.0068,"delta":-0.8464,"implied_vol":0.1449,"theta":-0.1859,"d1":-1.0212,"speed":0.0010,"d2":-1.0412,"epsilon":12.2815,"lambda":-37.6031,"vomma":182.0369,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:56.801","underlying_price":756.5900,"vera":24.2097,"veta":1384.6684,"iv_error":0.0000,"ultima":-2432.4581,"charm":-6.8944,"ask":17.3700,"rho":-12.6081,"vanna":1.7012,"dual_gamma":0.0149,"bid":16.7000,"vega":24.8150,"gamma":0.0155}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":773.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.1471,"color":0.0633,"zomma":0.0084,"delta":0.1519,"implied_vol":0.1439,"theta":-0.2656,"d1":-1.0282,"speed":0.0010,"d2":-1.0482,"epsilon":-2.2042,"lambda":97.3931,"vomma":184.4271,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.976","underlying_price":756.5900,"vera":24.3655,"veta":1384.6608,"iv_error":0.0000,"ultima":-2462.5552,"charm":-6.8903,"ask":1.2000,"rho":2.1815,"vanna":1.7117,"dual_gamma":0.0149,"bid":1.1600,"vega":24.6361,"gamma":0.0155}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":751.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.6215,"color":-0.4707,"zomma":-0.0967,"delta":0.6315,"implied_vol":0.1824,"theta":-0.5653,"d1":0.3359,"speed":-0.0003,"d2":0.3106,"epsilon":-9.1637,"lambda":43.1668,"vomma":22.5964,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.006","underlying_price":756.5900,"vera":-10.0718,"veta":1116.7977,"iv_error":0.0000,"ultima":-359.2910,"charm":2.4663,"ask":11.1400,"rho":8.9514,"vanna":-0.6419,"dual_gamma":0.0200,"bid":11.0000,"vega":39.5060,"gamma":0.0197}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":751.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.3725,"color":-0.4840,"zomma":-0.1033,"delta":-0.3636,"implied_vol":0.1753,"theta":-0.4624,"d1":0.3486,"speed":-0.0004,"d2":0.3243,"epsilon":5.2769,"lambda":-59.4225,"vomma":25.3664,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.002","underlying_price":756.5900,"vera":-10.8303,"veta":1119.2382,"iv_error":0.0001,"ultima":-418.3722,"charm":2.5655,"ask":4.6700,"rho":-5.3657,"vanna":-0.6944,"dual_gamma":0.0207,"bid":4.6000,"vega":39.3350,"gamma":0.0204}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":772.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.8349,"color":0.0024,"zomma":-0.0075,"delta":-0.8305,"implied_vol":0.1450,"theta":-0.2045,"d1":-0.9563,"speed":0.0010,"d2":-0.9764,"epsilon":12.0511,"lambda":-38.8150,"vomma":170.3676,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.959","underlying_price":756.5900,"vera":24.1635,"veta":1383.6172,"iv_error":0.0000,"ultima":-2427.9169,"charm":-6.9239,"ask":16.5300,"rho":-12.3616,"vanna":1.7002,"dual_gamma":0.0159,"bid":15.8600,"vega":26.4595,"gamma":0.0166}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":772.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.1654,"color":-0.0015,"zomma":-0.0085,"delta":0.1705,"implied_vol":0.1456,"theta":-0.2903,"d1":-0.9518,"speed":0.0010,"d2":-0.9719,"epsilon":-2.4753,"lambda":93.5248,"vomma":168.7456,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.008","underlying_price":756.5900,"vera":24.0420,"veta":1383.1568,"iv_error":0.0000,"ultima":-2403.6771,"charm":-6.9223,"ask":1.4000,"rho":2.4488,"vanna":1.6920,"dual_gamma":0.0159,"bid":1.3600,"vega":26.5733,"gamma":0.0166}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":750.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.6401,"color":-0.4426,"zomma":-0.0898,"delta":0.6501,"implied_vol":0.1840,"theta":-0.5618,"d1":0.3856,"speed":-0.0004,"d2":0.3601,"epsilon":-9.4333,"lambda":41.8270,"vomma":29.2929,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.004","underlying_price":756.5900,"vera":-11.2624,"veta":1129.0692,"iv_error":0.0000,"ultima":-456.1787,"charm":2.9052,"ask":11.9300,"rho":9.2078,"vanna":-0.7248,"dual_gamma":0.0195,"bid":11.5900,"vega":38.8037,"gamma":0.0192}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":750.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.3535,"color":-0.4524,"zomma":-0.0951,"delta":-0.3447,"implied_vol":0.1772,"theta":-0.4598,"d1":0.3995,"speed":-0.0004,"d2":0.3749,"epsilon":5.0023,"lambda":-60.0997,"vomma":32.6263,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.022","underlying_price":756.5900,"vera":-12.0491,"veta":1132.1707,"iv_error":0.0000,"ultima":-525.4750,"charm":3.0096,"ask":4.3700,"rho":-5.0855,"vanna":-0.7793,"dual_gamma":0.0201,"bid":4.3200,"vega":38.5933,"gamma":0.0198}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":744.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.7354,"color":-0.2527,"zomma":-0.0464,"delta":0.7448,"implied_vol":0.1964,"theta":-0.5312,"d1":0.6583,"speed":-0.0005,"d2":0.6311,"epsilon":-10.8074,"lambda":34.4682,"vomma":71.1928,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.972","underlying_price":756.5900,"vera":-15.6219,"veta":1209.9352,"iv_error":0.0000,"ultima":-937.4574,"charm":4.8200,"ask":16.5900,"rho":10.4938,"vanna":-1.0321,"dual_gamma":0.0161,"bid":16.1200,"vega":33.6564,"gamma":0.0156}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":744.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.2529,"color":-0.2433,"zomma":-0.0464,"delta":-0.2449,"implied_vol":0.1868,"theta":-0.4193,"d1":0.6904,"speed":-0.0005,"d2":0.6646,"epsilon":3.5540,"lambda":-64.3427,"vomma":80.8697,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.004","underlying_price":756.5900,"vera":-16.8507,"veta":1218.0470,"iv_error":0.0000,"ultima":-1100.1957,"charm":4.9679,"ask":2.9200,"rho":-3.6093,"vanna":-1.1177,"dual_gamma":0.0165,"bid":2.8500,"vega":32.9337,"gamma":0.0160}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":765.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.6874,"color":-0.4227,"zomma":-0.1091,"delta":-0.6803,"implied_vol":0.1551,"theta":-0.3583,"d1":-0.4685,"speed":0.0006,"d2":-0.4900,"epsilon":9.8713,"lambda":-46.0821,"vomma":55.4334,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.972","underlying_price":756.5900,"vera":15.6647,"veta":1232.8847,"iv_error":0.0000,"ultima":-990.5330,"charm":-5.2226,"ask":11.3600,"rho":-10.0855,"vanna":1.1290,"dual_gamma":0.0215,"bid":10.9900,"vega":37.4537,"gamma":0.0219}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":765.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.3138,"color":-0.4223,"zomma":-0.1075,"delta":0.3218,"implied_vol":0.1571,"theta":-0.4474,"d1":-0.4624,"speed":0.0005,"d2":-0.4842,"epsilon":-4.6702,"lambda":71.3999,"vomma":53.5419,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.015","underlying_price":756.5900,"vera":15.3121,"veta":1230.0096,"iv_error":0.0001,"ultima":-946.8100,"charm":-5.1749,"ask":3.4300,"rho":4.6048,"vanna":1.1049,"dual_gamma":0.0213,"bid":3.3900,"vega":37.5601,"gamma":0.0217}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":743.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.7490,"color":-0.2218,"zomma":-0.0399,"delta":0.7582,"implied_vol":0.1984,"theta":-0.5237,"d1":0.7006,"speed":-0.0005,"d2":0.6731,"epsilon":-11.0019,"lambda":33.4301,"vomma":77.7065,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.976","underlying_price":756.5900,"vera":-15.9861,"veta":1221.8651,"iv_error":0.0000,"ultima":-990.4683,"charm":5.0302,"ask":17.4000,"rho":10.6728,"vanna":-1.0585,"dual_gamma":0.0155,"bid":16.9300,"vega":32.7020,"gamma":0.0150}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":743.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.2387,"color":-0.2088,"zomma":-0.0389,"delta":-0.2308,"implied_vol":0.1885,"theta":-0.4103,"d1":0.7359,"speed":-0.0005,"d2":0.7098,"epsilon":3.3499,"lambda":-64.9403,"vomma":88.3171,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.005","underlying_price":756.5900,"vera":-17.2297,"veta":1230.0883,"iv_error":0.0000,"ultima":-1160.8103,"charm":5.1724,"ask":2.7300,"rho":-3.4015,"vanna":-1.1453,"dual_gamma":0.0159,"bid":2.6600,"vega":31.8826,"gamma":0.0153}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":764.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.6656,"color":-0.4689,"zomma":-0.1201,"delta":-0.6583,"implied_vol":0.1550,"theta":-0.3711,"d1":-0.4078,"speed":0.0005,"d2":-0.4293,"epsilon":9.5521,"lambda":-47.4778,"vomma":43.4299,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.972","underlying_price":756.5900,"vera":14.0083,"veta":1207.1851,"iv_error":0.0000,"ultima":-791.7899,"charm":-4.7826,"ask":10.7300,"rho":-9.7532,"vanna":1.0162,"dual_gamma":0.0221,"bid":10.2600,"vega":38.4635,"gamma":0.0225}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":764.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.3370,"color":-0.4653,"zomma":-0.1162,"delta":0.3453,"implied_vol":0.1587,"theta":-0.4657,"d1":-0.3978,"speed":0.0005,"d2":-0.4198,"epsilon":-5.0111,"lambda":68.7610,"vomma":40.6304,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.011","underlying_price":756.5900,"vera":13.4012,"veta":1202.5743,"iv_error":0.0000,"ultima":-725.6536,"charm":-4.6951,"ask":3.8400,"rho":4.9382,"vanna":0.9746,"dual_gamma":0.0217,"bid":3.7600,"vega":38.6187,"gamma":0.0221}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":742.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.7613,"color":-0.1924,"zomma":-0.0338,"delta":0.7704,"implied_vol":0.2011,"theta":-0.5175,"d1":0.7402,"speed":-0.0005,"d2":0.7123,"epsilon":-11.1786,"lambda":32.3823,"vomma":83.3339,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.933","underlying_price":756.5900,"vera":-16.2001,"veta":1232.2832,"iv_error":0.0000,"ultima":-1025.2148,"charm":5.2046,"ask":18.2200,"rho":10.8334,"vanna":-1.0744,"dual_gamma":0.0149,"bid":17.7800,"vega":31.7828,"gamma":0.0143}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":742.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.2254,"color":-0.1757,"zomma":-0.0319,"delta":-0.2177,"implied_vol":0.1905,"theta":-0.4017,"d1":0.7797,"speed":-0.0005,"d2":0.7533,"epsilon":3.1598,"lambda":-65.4081,"vomma":95.0776,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.004","underlying_price":756.5900,"vera":-17.4778,"veta":1240.5455,"iv_error":-0.0003,"ultima":-1204.3775,"charm":5.3420,"ask":2.5500,"rho":-3.2081,"vanna":-1.1637,"dual_gamma":0.0153,"bid":2.4900,"vega":30.8426,"gamma":0.0147}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":747.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.6903,"color":-0.3485,"zomma":-0.0673,"delta":0.7001,"implied_vol":0.1907,"theta":-0.5518,"d1":0.5247,"speed":-0.0004,"d2":0.4983,"epsilon":-10.1587,"lambda":37.8089,"vomma":49.9376,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.922","underlying_price":756.5900,"vera":-13.8773,"veta":1169.4218,"iv_error":0.0000,"ultima":-717.6831,"charm":3.9979,"ask":14.2300,"rho":9.8900,"vanna":-0.9082,"dual_gamma":0.0178,"bid":13.7900,"vega":36.4232,"gamma":0.0173}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":747.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.2998,"color":-0.3498,"zomma":-0.0705,"delta":-0.2913,"implied_vol":0.1817,"theta":-0.4423,"d1":0.5494,"speed":-0.0005,"d2":0.5243,"epsilon":4.2273,"lambda":-62.4429,"vomma":56.9780,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.975","underlying_price":756.5900,"vera":-15.0496,"veta":1176.1263,"iv_error":0.0000,"ultima":-850.9486,"charm":4.1521,"ask":3.5700,"rho":-4.2950,"vanna":-0.9896,"dual_gamma":0.0184,"bid":3.5000,"vega":35.9428,"gamma":0.0180}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":768.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.7571,"color":-0.2520,"zomma":-0.0716,"delta":-0.7511,"implied_vol":0.1490,"theta":-0.2908,"d1":-0.6782,"speed":0.0008,"d2":-0.6988,"epsilon":10.8997,"lambda":-43.3160,"vomma":105.6209,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.986","underlying_price":756.5900,"vera":20.9288,"veta":1319.2860,"iv_error":0.0000,"ultima":-1790.6442,"charm":-6.3805,"ask":13.4000,"rho":-11.1513,"vanna":1.4862,"dual_gamma":0.0196,"bid":12.8400,"vega":33.2109,"gamma":0.0202}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":768.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.2463,"color":-0.2600,"zomma":-0.0719,"delta":0.2531,"implied_vol":0.1520,"theta":-0.3844,"d1":-0.6644,"speed":0.0008,"d2":-0.6855,"epsilon":-3.6737,"lambda":80.1243,"vomma":100.4309,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.007","underlying_price":756.5900,"vera":20.2876,"veta":1313.6626,"iv_error":0.0003,"ultima":-1681.4145,"charm":-6.3164,"ask":2.4200,"rho":3.6278,"vanna":1.4424,"dual_gamma":0.0194,"bid":2.3700,"vega":33.5190,"gamma":0.0200}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":746.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.7059,"color":-0.3165,"zomma":-0.0601,"delta":0.7155,"implied_vol":0.1927,"theta":-0.5461,"d1":0.5697,"speed":-0.0004,"d2":0.5430,"epsilon":-10.3828,"lambda":36.6283,"vomma":57.0424,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.974","underlying_price":756.5900,"vera":-14.5468,"veta":1183.2832,"iv_error":0.0000,"ultima":-796.9456,"charm":4.3013,"ask":15.0100,"rho":10.0994,"vanna":-0.9555,"dual_gamma":0.0172,"bid":14.5600,"vega":35.5376,"gamma":0.0167}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":746.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.2835,"color":-0.3141,"zomma":-0.0623,"delta":-0.2751,"implied_vol":0.1834,"theta":-0.4354,"d1":0.5972,"speed":-0.0005,"d2":0.5718,"epsilon":3.9928,"lambda":-63.0878,"vomma":65.0947,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.003","underlying_price":756.5900,"vera":-15.7649,"veta":1190.7574,"iv_error":0.0000,"ultima":-943.8911,"charm":4.4584,"ask":3.3400,"rho":-4.0561,"vanna":-1.0402,"dual_gamma":0.0178,"bid":3.2700,"vega":34.9721,"gamma":0.0173}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":767.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.7355,"color":-0.3128,"zomma":-0.0861,"delta":-0.7293,"implied_vol":0.1500,"theta":-0.3109,"d1":-0.6107,"speed":0.0007,"d2":-0.6315,"epsilon":10.5822,"lambda":-44.4642,"vomma":89.1393,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.973","underlying_price":756.5900,"vera":19.5474,"veta":1293.3235,"iv_error":0.0000,"ultima":-1553.3716,"charm":-6.0784,"ask":12.7000,"rho":-10.8202,"vanna":1.3930,"dual_gamma":0.0204,"bid":12.1200,"vega":34.6880,"gamma":0.0210}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":767.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.2681,"color":-0.3188,"zomma":-0.0853,"delta":0.2754,"implied_vol":0.1535,"theta":-0.4059,"d1":-0.5964,"speed":0.0007,"d2":-0.6176,"epsilon":-3.9967,"lambda":77.1786,"vomma":83.9369,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.957","underlying_price":756.5900,"vera":18.8187,"veta":1286.9292,"iv_error":0.0000,"ultima":-1439.0827,"charm":-5.9963,"ask":2.7400,"rho":3.9449,"vanna":1.3432,"dual_gamma":0.0201,"bid":2.6700,"vega":34.9890,"gamma":0.0207}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":745.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.7203,"color":-0.2848,"zomma":-0.0531,"delta":0.7299,"implied_vol":0.1951,"theta":-0.5410,"d1":0.6125,"speed":-0.0005,"d2":0.5855,"epsilon":-10.5910,"lambda":35.4469,"vomma":63.6705,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.006","underlying_price":756.5900,"vera":-15.0587,"veta":1196.4263,"iv_error":0.0000,"ultima":-862.2558,"charm":4.5662,"ask":15.7900,"rho":10.2922,"vanna":-0.9920,"dual_gamma":0.0166,"bid":15.3700,"vega":34.6490,"gamma":0.0161}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":745.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.2674,"color":-0.2782,"zomma":-0.0542,"delta":-0.2593,"implied_vol":0.1848,"theta":-0.4265,"d1":0.6454,"speed":-0.0005,"d2":0.6198,"epsilon":3.7625,"lambda":-63.8855,"vomma":73.4781,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.957","underlying_price":756.5900,"vera":-16.4153,"veta":1205.1619,"iv_error":0.0003,"ultima":-1034.3047,"charm":4.7363,"ask":3.1000,"rho":-3.8214,"vanna":-1.0864,"dual_gamma":0.0172,"bid":3.0500,"vega":33.9390,"gamma":0.0167}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"PUT","strike":766.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":0.7128,"color":-0.3705,"zomma":-0.0993,"delta":-0.7061,"implied_vol":0.1516,"theta":-0.3318,"d1":-0.5422,"speed":0.0007,"d2":-0.5632,"epsilon":10.2464,"lambda":-45.5115,"vomma":72.6886,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:14:59.973","underlying_price":756.5900,"vera":17.8724,"veta":1264.8272,"iv_error":0.0000,"ultima":-1292.5923,"charm":-5.7035,"ask":12.0200,"rho":-10.4716,"vanna":1.2794,"dual_gamma":0.0211,"bid":11.4600,"vega":36.0851,"gamma":0.0216}
+			]
+			},
+		{
+			"contract": {"expiration":"2026-11-06","right":"CALL","strike":766.000,"symbol":"SPY"},
+			"data": [
+				{"dual_delta":-0.2907,"color":-0.3733,"zomma":-0.0973,"delta":0.2984,"implied_vol":0.1552,"theta":-0.4271,"d1":-0.5289,"speed":0.0006,"d2":-0.5504,"epsilon":-4.3300,"lambda":74.2542,"vomma":68.1467,"underlying_timestamp":"2026-10-30T20:00:00.174","timestamp":"2026-10-30T16:15:00.009","underlying_price":756.5900,"vera":17.1448,"veta":1258.6064,"iv_error":0.0002,"ultima":-1189.5618,"charm":-5.6133,"ask":3.0800,"rho":4.2717,"vanna":1.2296,"dual_gamma":0.0207,"bid":3.0100,"vega":36.3429,"gamma":0.0213}
+			]
+		}
+	]
+}
+

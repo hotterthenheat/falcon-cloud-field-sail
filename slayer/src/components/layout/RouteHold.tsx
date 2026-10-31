@@ -7,6 +7,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAccount } from '../../data/account';
 import { loadRoute, routeReady, warmIdle, warmPath } from '../../data/warmRooms';
 import { stopRoomData, warmRoomData } from '../../data/warmData';
+import { ensureRate } from '../../data/rateFeed';
 import { useTicker } from '../../context/MarketDataContext';
 
 const HELD = '[data-sidenav] a[href], [data-mobile-menu] a[href], [data-route-hold] a[href]';
@@ -29,6 +30,11 @@ export default function RouteHold() {
     if (account.status === 'in' || account.status === 'off') warmRoomData(activeTicker, pathname);
   }, [activeTicker, pathname, account.status]);
   useEffect(() => stopRoomData, []);
+  /* the reference every priced contract needs, on any page that may ask for it: today's rate (data/rateFeed.ts) — one
+     shared read a day on the server; a page that may not ask keeps the last rate this browser read */
+  useEffect(() => {
+    if (account.status === 'in' || account.status === 'off') ensureRate();
+  }, [pathname, account.status]);
   /* any link in the shell: its page's code on pointer or focus, ahead of the click */
   useEffect(() => {
     const onIntent = (e: Event) => {

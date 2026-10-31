@@ -17,7 +17,10 @@ const todayNy = () => NY_DATE.format(new Date()).replace(/-/g, '');
 /** Milliseconds an answer may be reused. Snapshots move every tick: shared only within a burst. */
 export function thetaTtl(p) {
   const [path, query = ''] = p.split('?');
-  if (/^\/(calendar|interest_rate)\//.test(path)) return 300_000;
+  /* the rate history and a year's holidays change once a day at most: every browser asks one path a publishing day
+     (src/data/rateFeed.ts ratePath, holidayFeed.ts), so the vendor is asked about once a day */
+  if (/^\/(interest_rate\/|calendar\/year_holidays)/.test(path)) return 24 * 3_600_000;
+  if (/^\/calendar\//.test(path)) return 300_000;
   if (/\/list\//.test(path)) return 300_000;
   if (/\/snapshot\//.test(path)) return 400;
   if (/\/(history|at_time)\//.test(path)) {

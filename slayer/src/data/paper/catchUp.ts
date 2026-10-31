@@ -6,6 +6,8 @@
 
 import { isTradingDay, isoDate, sessionCloseMinOn, sessionLengthOn } from '../../core/calendar';
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
+import { carryFor } from '../../core/carry';
+import { ensureDayRates } from '../rateFeed';
 import { thetaAllowedHere, thetaCall } from '../theta';
 import { barTime, flatRows, legKey, parseBars, parseQuotes, rowAt, standingAt } from '../review/history';
 import { bookMark, contractKey, longLeg, spreadBook, spreadSizes, type ContractId, type Quote } from '../review/quotes';
@@ -95,6 +97,8 @@ export async function fetchGaps(a: PaperAccount, now: number): Promise<Fetched> 
     }
     const jobs: Promise<string | null>[] = [];
     for (const day of g.days) {
+      /* the day's own rate, for the replayed minutes' greeks (recorded) */
+      ensureDayRates(day);
       const t = g.order.contract.ticker.toUpperCase();
       const root = INDEXES.has(t) ? 'index' : 'stock';
       jobs.push(once(`bars|${t}|${day}`, `/${root}/history/ohlc?symbol=${encodeURIComponent(t)}&start_date=${ymd(day)}&end_date=${ymd(day)}&interval=1m&format=json`, rows => {
@@ -161,8 +165,10 @@ function recorded(c: ContractId, day: string, m: number, f: Fetched, at: number)
     if (!q || !(q.ask > 0) || !(q.bid > 0)) return { bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic, dead: true, spot };
     const mid = (q.bid + q.ask) / 2;
     const t = Math.max(yearsToExpiry(lastTradeDayOf(k), at), 1 / (252 * 390));
-    const iv = spot > 0 ? impliedVolFromPrice(mid, spot, k.strike, t, k.right) : null;
-    const g = iv != null ? blackScholesGreeks(spot, k.strike, t, iv) : null;
+    /* the day's own rate (core/carry rateOn; data/rateFeed ensureDayRates reads its month) and the name's yield */
+    const { r, q: y } = carryFor(k.ticker, { on: day });
+    const iv = spot > 0 ? impliedVolFromPrice(mid, spot, k.strike, t, k.right, r, y) : null;
+    const g = iv != null ? blackScholesGreeks(spot, k.strike, t, iv, r, y) : null;
     /* the sizes the row showed: a replayed fill is capped the way a live one is (the row's minute is which quote it is) */
     const sz = { ...(q.bidSize != null ? { bidSize: q.bidSize } : {}), ...(q.askSize != null ? { askSize: q.askSize } : {}), quotedAt: nyInstant(day, OPEN_MIN) + (q.at + 1) * 60_000 };
     return { bid: q.bid, ask: q.ask, mark: cents(mid), iv: iv ?? 0, delta: g ? (k.right === 'C' ? g.deltaCall : g.deltaPut) : 0, gamma: g?.gamma ?? 0, theta: 0, vega: g?.vega ?? 0, rho: 0, intrinsic: cents(intrinsic), dead: false, spot, ...sz };
@@ -235,7 +241,8 @@ export function replayGaps(a: PaperAccount, f: Fetched, now: number, life: strin
       optQuoteAt: (c, spot) => {
         const q = quote(c);
         const t = Math.max(yearsToExpiry(lastTradeDayOf(c), end), 1 / (252 * 390));
-        const v = q.iv > 0 ? Math.max(0, blackScholesPrice(spot, c.strike, t, q.iv, c.right)) : 0;
+        const { r, q: y } = carryFor(c.ticker, { on: e.day });
+        const v = q.iv > 0 ? Math.max(0, blackScholesPrice(spot, c.strike, t, q.iv, c.right, r, y)) : 0;
         return { ...q, bid: cents(v), ask: cents(v), mark: cents(v), dead: !(v > 0), spot };
       },
       bar: () => Math.floor(end / 1000) - 60,

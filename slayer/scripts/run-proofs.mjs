@@ -43,6 +43,7 @@ const PROOFS = [
   'theta-wait-proof',
   'book-mode-proof',
   'carry-proof',
+  'rate-proof',
   'node-strikes-proof',
   'proxy-auth-proof.mjs',
   'hub-proof.mjs',

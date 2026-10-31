@@ -10,9 +10,12 @@ endpoint name suggests.
   candles from ThetaData (stock and index snapshots and bars). No ThetaData greeks or open interest on Pinpoint.
 - **Terrain, Weigher, Compass and Practice** read ThetaData for real-time quotes, NBBO, chains, greeks, bars and
   history, and Unusual Whales for what ThetaData does not carry (exposure, flow, levels).
-- `thetaCall` in `src/data/theta.ts` enforces this per page (`thetaUseHere`, `thetaAllowedHere`). Where the app needs
-  a carry rate or the market holidays without ThetaData, it falls back to `src/core/carry.ts` (`DEFAULT_R`) and the
-  holiday set in `src/core/calendar.ts`.
+- `thetaCall` in `src/data/theta.ts` enforces this per page (`thetaUseHere`, `thetaAllowedHere`).
+- The pricing rate (SOFR, `/interest_rate/history/eod`, `src/data/rateFeed.ts`) and the year's holidays
+  (`/calendar/year_holidays`) are reference reads, not greeks or open interest: Pinpoint may ask them too. One shared
+  path a day; the hub keeps the answer 24 h. Trace and the Dossier ask nothing: they price at the last rate this browser
+  read, then the fixed `DEFAULT_R` (4.2%) in `src/core/carry.ts`, and use the holiday table in
+  `shared/marketCalendar.mjs`.
 
 Set by the owner on 2026-10-22 (Pinpoint and Dossier on Unusual Whales) and 2026-10-29 (Trace on Unusual Whales
 only; ThetaData for Pinpoint's live price and candles).
