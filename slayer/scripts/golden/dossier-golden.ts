@@ -245,4 +245,17 @@ for (const t of ['NVDA', 'GME']) {
   expectEqual('Dossier unusual alerts at 1.4×, 1.5×, 1.7×, 2.5× open interest', unusualOf([1.4, 1.5, 1.7, 2.5].map(volOverOI => ({ volOverOI }))), 3);
 }
 
+/* ---- 8. no constant poses as data: a story carries no model confidence and its "magnitude" is the vendor's flag -- */
+{
+  const { newsFromWhales } = await import('../../src/data/whalesMap');
+  const { severityOf } = await import('../../src/data/newsroom');
+  const story = (is_major: boolean) => ({ headline: 'Nvidia beats quarterly earnings estimates and raises its outlook', created_at: '2026-10-28T15:00:00Z', source: 'Wire', tickers: ['NVDA'], is_major, sentiment: 'positive', tags: [] });
+  const [maj, min] = newsFromWhales([story(true), story(false)] as never, () => 200);
+  say('news', { maj: maj && { conf: maj.prediction.confidencePct, mag: maj.magnitude, sev: severityOf(maj) }, min: min && { conf: min.prediction.confidencePct, mag: min.magnitude, sev: severityOf(min) } });
+  /* confidence was a constant 58 on every measured story; magnitude 0.8 / 0.45 for the major flag */
+  expectEqual('news: no model confidence, magnitude = the major flag', [Number.isNaN(maj?.prediction.confidencePct), Number.isNaN(min?.prediction.confidencePct), maj?.magnitude, min?.magnitude], [true, true, 1, 0]);
+  /* the severity words keep their tiers: a story with no move at publish is 4 when major, 2 when not */
+  expectEqual('news severity off the flag, no move', [severityOf({ ...maj!, prediction: { ...maj!.prediction, expMove1dPct: 0 } }), severityOf({ ...min!, prediction: { ...min!.prediction, expMove1dPct: 0 } })], [4, 2]);
+}
+
 done();
