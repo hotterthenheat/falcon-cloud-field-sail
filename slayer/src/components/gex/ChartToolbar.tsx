@@ -54,6 +54,8 @@ import {
   type PriceScale,
 } from './StrikeChart';
 import { INDICATOR_ITEMS, indicatorBlurb } from './indicatorItems';
+import { NODE_ALERT_PCTS, NODE_LOOKS, setDeskPrefs, useDeskPrefs, type FlowFilters } from '../../data/deskPrefs';
+import { FLOW_CHIPS } from '../../data/flowBuckets';
 /* The scripts library loads the first time its menu opens, not with every chart */
 const ScriptLibrary = lazy(() => import('../scripts/ScriptLibrary'));
 import { usePaneScripts } from '../../data/paneScripts';
@@ -433,12 +435,12 @@ const STYLE_GLYPHS: Record<ChartStyle, ReactNode> = {
 /* The rows themselves live in indicatorItems.ts, shared with the script library. */
 
 const OVERLAY_ITEMS: { key: keyof ChartOverlays; label: string; hint: string }[] = [
-  { key: 'trails', label: 'Exposure trails', hint: 'Dealer-flow gamma by strike, held across the session. Open interest is the other book.' },
+  { key: 'trails', label: 'Exposure nodes', hint: 'Dealer gamma by strike through the session: beads on the heavy strikes, the heaviest zones outlined and named at the edge, where each stands now. Open interest is the other book.' },
   { key: 'levels', label: 'Key levels', hint: "Call & put walls, flip and supreme — a ladder at the tape's right edge" },
   { key: 'darkpool', label: 'Dark pool', hint: 'Off-exchange print lines' },
   { key: 'volume', label: 'Volume', hint: 'Session bars along the floor' },
-  { key: 'flow', label: 'Flow', hint: 'Prints for the name on this chart, on its own minutes. SPX, NDX, and RUT also read the weekly root. Off unless that tape is here — Trace and the practice book are not this history, and they are not labelled live.' },
-  { key: 'netDrift', label: 'Net drift', hint: 'Running call and put premium from those same prints. SPX, NDX, and RUT also read the weekly root. Off without them.' },
+  { key: 'flow', label: 'Flow pane', hint: 'Net option premium a bar under the chart: calls bought at the ask and puts sold at the bid up, puts bought and calls sold down. The filters are the chips on its caption. Hidden while the name has no prints under them.' },
+  { key: 'netDrift', label: 'Net drift', hint: 'The flow pane summed through each session, one line. Same prints, same filters.' },
   { key: 'volDrift', label: 'Vol drift', hint: 'Realised vol of these bars against the morning at-the-money IV. One number, not a made-up path.' },
   { key: 'dexStrike', label: 'Exposure by strike', hint: 'Delta, gamma or vega across the chain — docked under the tape' },
   { key: 'session', label: 'Session levels', hint: "Yesterday's high, low & close, the opening range and the first hour" },
@@ -615,6 +617,8 @@ const ChartToolbar = ({
 }: ChartToolbarProps) => {
   const storeThemeKey = useCandleThemeKey();
   const themeKey = themeKeyProp ?? storeThemeKey;
+  /* the nodes' look and the flow pane's filters are the reader's, on every chart */
+  const deskPrefs = useDeskPrefs();
   const { activeTicker } = useMarketData();
   const [openMenu, setOpenMenu] = useState<'snapshot' | 
     'overlays' | 'candles' | 'style' | 'indicators' | 'alerts' | 'timeframe' | null
@@ -1338,6 +1342,84 @@ const ChartToolbar = ({
             broken, and this one has nothing to do until there are lines to
             change.
           */}
+          {overlays.trails && overlayItems.some(i => i.key === 'trails') && (
+            <div className="flex items-center gap-2 pl-[26px] pr-2.5 pb-2 -mt-1">
+              <span className="font-mono text-t9 uppercase tracking-wider text-textMuted shrink-0">Draw</span>
+              <span role="group" aria-label="How the exposure nodes draw" className="inline-flex items-center gap-0.5 rounded border border-borderMuted p-0.5">
+                {NODE_LOOKS.map(l => (
+                  <button
+                    key={l.value}
+                    type="button"
+                    onClick={() => setDeskPrefs({ nodeLook: l.value })}
+                    aria-pressed={deskPrefs.nodeLook === l.value}
+                    title={l.hint}
+                    data-node-look={l.value}
+                    className={`px-1.5 py-0.5 rounded font-mono text-t10 transition-colors ${
+                      deskPrefs.nodeLook === l.value ? 'bg-ink/[0.16] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'
+                    }`}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </span>
+            </div>
+          )}
+          {overlays.trails && overlayItems.some(i => i.key === 'trails') && (
+            <div className="flex items-center gap-2 pl-[26px] pr-2.5 pb-2 -mt-1" title="An alert when price comes this near one of the three heaviest nodes or the flip — once a level a session">
+              <span className="font-mono text-t9 uppercase tracking-wider text-textMuted shrink-0">Alert near</span>
+              <span role="group" aria-label="Node pressure alert" className="inline-flex items-center gap-0.5 rounded border border-borderMuted p-0.5">
+                <button
+                  type="button"
+                  onClick={() => onOverlays({ ...overlays, nodeAlert: false })}
+                  aria-pressed={!overlays.nodeAlert}
+                  className={`px-1.5 py-0.5 rounded font-mono text-t10 transition-colors ${!overlays.nodeAlert ? 'bg-ink/[0.16] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'}`}
+                >
+                  Off
+                </button>
+                {NODE_ALERT_PCTS.map(p => {
+                  const on = !!overlays.nodeAlert && deskPrefs.nodeAlertPct === p;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => {
+                        setDeskPrefs({ nodeAlertPct: p });
+                        if (!overlays.nodeAlert) onOverlays({ ...overlays, nodeAlert: true });
+                      }}
+                      aria-pressed={on}
+                      data-node-alert={p}
+                      className={`px-1.5 py-0.5 rounded font-mono text-t10 tnum transition-colors ${on ? 'bg-ink/[0.16] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'}`}
+                    >
+                      {p}%
+                    </button>
+                  );
+                })}
+              </span>
+            </div>
+          )}
+          {overlays.flow && overlayItems.some(i => i.key === 'flow') && (
+            <div className="flex flex-wrap items-center gap-1 pl-[26px] pr-2.5 pb-2 -mt-1" role="group" aria-label="Which prints the flow pane sums">
+              {FLOW_CHIPS.map(c => (
+                <span key={c.key} className="inline-flex items-center gap-0.5 rounded border border-borderMuted p-0.5">
+                  {c.options.map(o => {
+                    const on = deskPrefs.flowFilters[c.key] === o.value;
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => setDeskPrefs({ flowFilters: { [c.key]: o.value } as Partial<FlowFilters> })}
+                        aria-pressed={on}
+                        title={c.hint}
+                        className={`px-1 py-0.5 rounded font-mono text-t9 transition-colors ${on ? 'bg-ink/[0.16] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'}`}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </span>
+              ))}
+            </div>
+          )}
           {onTrailGreek && overlays.trails && overlayItems.some(i => i.key === 'trails') && (
             <div className="flex items-center gap-2 pl-[26px] pr-2.5 pb-2 -mt-1">
               <span className="font-mono text-t9 uppercase tracking-wider text-textMuted shrink-0">Greek</span>
