@@ -19,6 +19,7 @@ import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import type { Timeframe } from './timeframe';
 import { tfMinutes } from './timeframe';
 import { shapeBars } from './thetaCandles';
+import { vendorVol } from './coneFeed';
 import { nyYmd as ymd } from '../core/calendar';
 
 export type { ThetaState };
@@ -297,7 +298,8 @@ async function pullQuote(key: string, want: QuoteWant): Promise<void> {
       theta: perDay(field(parsed.quote.theta)),
       vega: perPoint(field(parsed.quote.vega)),
       rho: perPoint(field(parsed.quote.rho)),
-      iv: rawIv > 0 && rawIv < 3 ? rawIv * 100 : rawIv,
+      /* ThetaData prints implied_vol as a fraction, always (0.1834 = 18.34%; a deep wing's 3.2 is 320%): percent for the page */
+      iv: Number.isFinite(rawIv) ? vendorVol(rawIv) * 100 : rawIv,
     });
     stampPickQuote(want.ticker, want.expiration, want.strike, want.right, quoteBox.get(key)!);
     emit();
