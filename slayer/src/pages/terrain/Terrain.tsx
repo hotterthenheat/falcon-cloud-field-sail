@@ -1302,7 +1302,7 @@ const Pane = ({
                  sit on a bar (the card it replaced stood over the candles and the volume at the bottom-left) */
               <div
                 className="absolute z-20 flex w-max max-w-[calc(100%-120px)] items-center justify-end gap-1.5"
-                style={{ top: expanded ? 52 : 34, right: PRICE_GUTTER_PX + 6 }}
+                style={{ top: expanded ? 52 : isPhone ? stripH + 4 : 34, right: PRICE_GUTTER_PX + 6 }}
                 data-terrain-corner-chips
               >
                 {gapLines.length > 0 && (
