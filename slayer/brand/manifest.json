@@ -1,0 +1,1748 @@
+{
+ "generated": "2026-10-31",
+ "count": 54,
+ "assets": [
+  {
+   "name": "SLAYER_LOGO_APPICON_ANDROID_MASKABLE_V01",
+   "title": "App icon, maskable",
+   "variant": "512, >S| inside the middle 80%",
+   "use": "The web manifest’s maskable icon: any launcher may cut a circle, a squircle or a square from it.",
+   "category": "LOGO",
+   "campaign": "APPICON",
+   "platform": "ANDROID",
+   "format": "MASKABLE",
+   "version": "V01",
+   "dimensions": "512×512",
+   "fileTypes": [
+    "png",
+    "webp"
+   ],
+   "files": {
+    "png": "exports/logo/SLAYER_LOGO_APPICON_ANDROID_MASKABLE_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_APPICON_ANDROID_MASKABLE_V01.webp"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-appicon-maskable",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_APPICON_IOS_DARK_V01",
+   "title": "App icon",
+   "variant": "1024, the ground edge to edge",
+   "use": "The ground fills the square; the platform rounds its own corners. Never a tile or a border drawn inside.",
+   "category": "LOGO",
+   "campaign": "APPICON",
+   "platform": "IOS",
+   "format": "DARK",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_APPICON_IOS_DARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_APPICON_IOS_DARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_APPICON_IOS_DARK_V01.webp"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-appicon-ios",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_AVATAR_SOCIAL_DARK_V01",
+   "title": "Social media avatar",
+   "variant": "1000 square, S| inside the circle crop",
+   "use": "Every profile picture: the platform cuts the circle; the S| sits well inside it.",
+   "category": "LOGO",
+   "campaign": "AVATAR",
+   "platform": "SOCIAL",
+   "format": "DARK",
+   "version": "V01",
+   "dimensions": "1000×1000",
+   "fileTypes": [
+    "png",
+    "webp"
+   ],
+   "files": {
+    "png": "exports/logo/SLAYER_LOGO_AVATAR_SOCIAL_DARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_AVATAR_SOCIAL_DARK_V01.webp"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-avatar",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_COMPACT_ALL_DARK_V01",
+   "title": "Compact logo",
+   "variant": "On black",
+   "use": "S| — the symbol for small spaces, under 32 px tall and in tight corners.",
+   "category": "LOGO",
+   "campaign": "COMPACT",
+   "platform": "ALL",
+   "format": "DARK",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_COMPACT_ALL_DARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_COMPACT_ALL_DARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_COMPACT_ALL_DARK_V01.webp"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-compact-dark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_COMPACT_ALL_LIGHT_V01",
+   "title": "Compact logo",
+   "variant": "On paper",
+   "use": "S| — the symbol for small spaces, under 32 px tall and in tight corners.",
+   "category": "LOGO",
+   "campaign": "COMPACT",
+   "platform": "ALL",
+   "format": "LIGHT",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_COMPACT_ALL_LIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_COMPACT_ALL_LIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_COMPACT_ALL_LIGHT_V01.webp"
+   },
+   "ground": "light",
+   "source": "brand/templates/logos.mjs#logo-compact-light",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_COMPACT_ALL_ONDARK_V01",
+   "title": "Compact logo",
+   "variant": "Transparent, for dark grounds",
+   "use": "S| — the symbol for small spaces, under 32 px tall and in tight corners.",
+   "category": "LOGO",
+   "campaign": "COMPACT",
+   "platform": "ALL",
+   "format": "ONDARK",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_COMPACT_ALL_ONDARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_COMPACT_ALL_ONDARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_COMPACT_ALL_ONDARK_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-compact-ondark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_COMPACT_ALL_ONLIGHT_V01",
+   "title": "Compact logo",
+   "variant": "Transparent, for light grounds",
+   "use": "S| — the symbol for small spaces, under 32 px tall and in tight corners.",
+   "category": "LOGO",
+   "campaign": "COMPACT",
+   "platform": "ALL",
+   "format": "ONLIGHT",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_COMPACT_ALL_ONLIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_COMPACT_ALL_ONLIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_COMPACT_ALL_ONLIGHT_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-compact-onlight",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_EMAILFOOTER_EMAIL_GREY_V01",
+   "title": "Email footer logo",
+   "variant": "S|, flat grey, 2× for 24 px",
+   "use": "The footer’s sign-off: quiet, one ink, reads on light and dark clients alike.",
+   "category": "LOGO",
+   "campaign": "EMAILFOOTER",
+   "platform": "EMAIL",
+   "format": "GREY",
+   "version": "V01",
+   "dimensions": "48×48",
+   "fileTypes": [
+    "png"
+   ],
+   "files": {
+    "png": "exports/logo/SLAYER_LOGO_EMAILFOOTER_EMAIL_GREY_V01.png"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-email-footer",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_EMAILHEADER_EMAIL_DARK_V01",
+   "title": "Email header logo",
+   "variant": "The wordmark, 2× for 160 px wide, for the dark mail",
+   "use": "A PNG (mail strips SVG) with the alt text “Slayer Terminal”, 160 px wide in the header row.",
+   "category": "LOGO",
+   "campaign": "EMAILHEADER",
+   "platform": "EMAIL",
+   "format": "DARK",
+   "version": "V01",
+   "dimensions": "320×34",
+   "fileTypes": [
+    "png"
+   ],
+   "files": {
+    "png": "exports/logo/SLAYER_LOGO_EMAILHEADER_EMAIL_DARK_V01.png"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-email-header-dark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_EMAILHEADER_EMAIL_LIGHT_V01",
+   "title": "Email header logo",
+   "variant": "The wordmark, 2× for 160 px wide, for the light mail",
+   "use": "A PNG (mail strips SVG) with the alt text “Slayer Terminal”, 160 px wide in the header row.",
+   "category": "LOGO",
+   "campaign": "EMAILHEADER",
+   "platform": "EMAIL",
+   "format": "LIGHT",
+   "version": "V01",
+   "dimensions": "320×34",
+   "fileTypes": [
+    "png"
+   ],
+   "files": {
+    "png": "exports/logo/SLAYER_LOGO_EMAILHEADER_EMAIL_LIGHT_V01.png"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-email-header-light",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_EMBROIDERY_MERCH_TWOTHREAD_V01",
+   "title": "Embroidery-compatible logo",
+   "variant": ">S|, two threads: metallic silver and white",
+   "use": "At least 50 mm wide: the prompt and the S in metallic silver thread, the cursor in white. No wordmark under 90 mm.",
+   "category": "LOGO",
+   "campaign": "EMBROIDERY",
+   "platform": "MERCH",
+   "format": "TWOTHREAD",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_EMBROIDERY_MERCH_TWOTHREAD_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_EMBROIDERY_MERCH_TWOTHREAD_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_EMBROIDERY_MERCH_TWOTHREAD_V01.webp"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-embroidery",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_FAVICON_WEB_ADAPTIVE_V01",
+   "title": "Browser favicon",
+   "variant": "S|, silver on a dark tab strip and the galaxy ink on a light one",
+   "use": "One SVG that reads the colour scheme; favicon.ico and a 32 px PNG for whatever cannot read SVG.",
+   "category": "LOGO",
+   "campaign": "FAVICON",
+   "platform": "WEB",
+   "format": "ADAPTIVE",
+   "version": "V01",
+   "dimensions": "32×32",
+   "fileTypes": [
+    "svg",
+    "png",
+    "ico"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_FAVICON_WEB_ADAPTIVE_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_FAVICON_WEB_ADAPTIVE_V01.png",
+    "ico": "exports/logo/SLAYER_LOGO_FAVICON_WEB_ADAPTIVE_V01.ico"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-favicon",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_FOOTER_WEB_DARK_V01",
+   "title": "Website footer logo",
+   "variant": "The wordmark without its cursor, on black",
+   "use": "SiteFooter’s own: 14 px tall over the footer’s line.",
+   "category": "LOGO",
+   "campaign": "FOOTER",
+   "platform": "WEB",
+   "format": "DARK",
+   "version": "V01",
+   "dimensions": "560×120",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_FOOTER_WEB_DARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_FOOTER_WEB_DARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_FOOTER_WEB_DARK_V01.webp"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-site-footer-dark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_FOOTER_WEB_LIGHT_V01",
+   "title": "Website footer logo",
+   "variant": "The wordmark without its cursor, on paper",
+   "use": "SiteFooter’s own: 14 px tall over the footer’s line.",
+   "category": "LOGO",
+   "campaign": "FOOTER",
+   "platform": "WEB",
+   "format": "LIGHT",
+   "version": "V01",
+   "dimensions": "560×120",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_FOOTER_WEB_LIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_FOOTER_WEB_LIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_FOOTER_WEB_LIGHT_V01.webp"
+   },
+   "ground": "light",
+   "source": "brand/templates/logos.mjs#logo-site-footer-light",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_HORIZONTAL_ALL_BLACK_V01",
+   "title": "Horizontal logo",
+   "variant": "Black, one colour",
+   "use": "Single-ink print on white: forms, fax, newsprint, a stamp.",
+   "category": "LOGO",
+   "campaign": "HORIZONTAL",
+   "platform": "ALL",
+   "format": "BLACK",
+   "version": "V01",
+   "dimensions": "2400×629",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_BLACK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_BLACK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_BLACK_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-horizontal-black",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_HORIZONTAL_ALL_DARK_V01",
+   "title": "Horizontal logo",
+   "variant": "On black",
+   "use": "The symbol beside the wordmark, for wide spaces: a site header, a deck, a banner.",
+   "category": "LOGO",
+   "campaign": "HORIZONTAL",
+   "platform": "ALL",
+   "format": "DARK",
+   "version": "V01",
+   "dimensions": "2400×629",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_DARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_DARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_DARK_V01.webp"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-horizontal-dark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_HORIZONTAL_ALL_LIGHT_V01",
+   "title": "Horizontal logo",
+   "variant": "On paper",
+   "use": "The symbol beside the wordmark, for wide spaces: a site header, a deck, a banner.",
+   "category": "LOGO",
+   "campaign": "HORIZONTAL",
+   "platform": "ALL",
+   "format": "LIGHT",
+   "version": "V01",
+   "dimensions": "2400×629",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_LIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_LIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_LIGHT_V01.webp"
+   },
+   "ground": "light",
+   "source": "brand/templates/logos.mjs#logo-horizontal-light",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_HORIZONTAL_ALL_MONO_V01",
+   "title": "Horizontal logo",
+   "variant": "Monochrome",
+   "use": "One ink of the house: the silver on black.",
+   "category": "LOGO",
+   "campaign": "HORIZONTAL",
+   "platform": "ALL",
+   "format": "MONO",
+   "version": "V01",
+   "dimensions": "2400×629",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_MONO_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_MONO_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_MONO_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-horizontal-mono",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_HORIZONTAL_ALL_ONDARK_V01",
+   "title": "Horizontal logo",
+   "variant": "Transparent, for dark grounds",
+   "use": "The symbol beside the wordmark, for wide spaces: a site header, a deck, a banner.",
+   "category": "LOGO",
+   "campaign": "HORIZONTAL",
+   "platform": "ALL",
+   "format": "ONDARK",
+   "version": "V01",
+   "dimensions": "2400×629",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_ONDARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_ONDARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_ONDARK_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-horizontal-ondark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_HORIZONTAL_ALL_ONLIGHT_V01",
+   "title": "Horizontal logo",
+   "variant": "Transparent, for light grounds",
+   "use": "The symbol beside the wordmark, for wide spaces: a site header, a deck, a banner.",
+   "category": "LOGO",
+   "campaign": "HORIZONTAL",
+   "platform": "ALL",
+   "format": "ONLIGHT",
+   "version": "V01",
+   "dimensions": "2400×629",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_ONLIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_ONLIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_ONLIGHT_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-horizontal-onlight",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_HORIZONTAL_ALL_WHITE_V01",
+   "title": "Horizontal logo",
+   "variant": "White, one colour",
+   "use": "Over photography and colour fields, single-ink print, foil, etching.",
+   "category": "LOGO",
+   "campaign": "HORIZONTAL",
+   "platform": "ALL",
+   "format": "WHITE",
+   "version": "V01",
+   "dimensions": "2400×629",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_WHITE_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_WHITE_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_HORIZONTAL_ALL_WHITE_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-horizontal-white",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_MERCH_PRINT_WHITE_V01",
+   "title": "Merchandise logo",
+   "variant": "Vertical lockup, white, one screen",
+   "use": "Screen print on black stock: one white screen, no gradient, no halftone.",
+   "category": "LOGO",
+   "campaign": "MERCH",
+   "platform": "PRINT",
+   "format": "WHITE",
+   "version": "V01",
+   "dimensions": "1600×1600",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_MERCH_PRINT_WHITE_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_MERCH_PRINT_WHITE_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_MERCH_PRINT_WHITE_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-merch",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_PRIMARY_ALL_BLACK_V01",
+   "title": "Primary logo",
+   "variant": "Black, one colour",
+   "use": "Single-ink print on white: forms, fax, newsprint, a stamp.",
+   "category": "LOGO",
+   "campaign": "PRIMARY",
+   "platform": "ALL",
+   "format": "BLACK",
+   "version": "V01",
+   "dimensions": "2400×486",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_BLACK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_BLACK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_BLACK_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-primary-black",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_PRIMARY_ALL_DARK_V01",
+   "title": "Primary logo",
+   "variant": "On black",
+   "use": "The wordmark ending on its cursor. Headers, mail, print, the pages outside the terminal.",
+   "category": "LOGO",
+   "campaign": "PRIMARY",
+   "platform": "ALL",
+   "format": "DARK",
+   "version": "V01",
+   "dimensions": "2400×486",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_DARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_DARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_DARK_V01.webp"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-primary-dark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_PRIMARY_ALL_LIGHT_V01",
+   "title": "Primary logo",
+   "variant": "On paper",
+   "use": "The wordmark ending on its cursor. Headers, mail, print, the pages outside the terminal.",
+   "category": "LOGO",
+   "campaign": "PRIMARY",
+   "platform": "ALL",
+   "format": "LIGHT",
+   "version": "V01",
+   "dimensions": "2400×486",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_LIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_LIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_LIGHT_V01.webp"
+   },
+   "ground": "light",
+   "source": "brand/templates/logos.mjs#logo-primary-light",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_PRIMARY_ALL_MONO_V01",
+   "title": "Primary logo",
+   "variant": "Monochrome",
+   "use": "One ink of the house: the silver on black.",
+   "category": "LOGO",
+   "campaign": "PRIMARY",
+   "platform": "ALL",
+   "format": "MONO",
+   "version": "V01",
+   "dimensions": "2400×486",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_MONO_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_MONO_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_MONO_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-primary-mono",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_PRIMARY_ALL_ONDARK_V01",
+   "title": "Primary logo",
+   "variant": "Transparent, for dark grounds",
+   "use": "The wordmark ending on its cursor. Headers, mail, print, the pages outside the terminal.",
+   "category": "LOGO",
+   "campaign": "PRIMARY",
+   "platform": "ALL",
+   "format": "ONDARK",
+   "version": "V01",
+   "dimensions": "2400×486",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_ONDARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_ONDARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_ONDARK_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-primary-ondark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_PRIMARY_ALL_ONLIGHT_V01",
+   "title": "Primary logo",
+   "variant": "Transparent, for light grounds",
+   "use": "The wordmark ending on its cursor. Headers, mail, print, the pages outside the terminal.",
+   "category": "LOGO",
+   "campaign": "PRIMARY",
+   "platform": "ALL",
+   "format": "ONLIGHT",
+   "version": "V01",
+   "dimensions": "2400×486",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_ONLIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_ONLIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_ONLIGHT_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-primary-onlight",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_PRIMARY_ALL_WHITE_V01",
+   "title": "Primary logo",
+   "variant": "White, one colour",
+   "use": "Over photography and colour fields, single-ink print, foil, etching.",
+   "category": "LOGO",
+   "campaign": "PRIMARY",
+   "platform": "ALL",
+   "format": "WHITE",
+   "version": "V01",
+   "dimensions": "2400×486",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_WHITE_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_WHITE_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_PRIMARY_ALL_WHITE_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-primary-white",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_PRINT_PRINT_BLACK_V01",
+   "title": "Print-compatible logo",
+   "variant": "One colour, black",
+   "use": "Any single-ink print on white.",
+   "category": "LOGO",
+   "campaign": "PRINT",
+   "platform": "PRINT",
+   "format": "BLACK",
+   "version": "V01",
+   "dimensions": "2400×629",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_PRINT_PRINT_BLACK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_PRINT_PRINT_BLACK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_PRINT_PRINT_BLACK_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-print-black",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_PRINT_PRINT_SPOT2_V01",
+   "title": "Print-compatible logo",
+   "variant": "Two spot colours: metallic silver and black",
+   "use": "The S in metallic silver ink (proof against Pantone 877 C), everything else black. On black stock, the silver and white.",
+   "category": "LOGO",
+   "campaign": "PRINT",
+   "platform": "PRINT",
+   "format": "SPOT2",
+   "version": "V01",
+   "dimensions": "2400×629",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_PRINT_PRINT_SPOT2_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_PRINT_PRINT_SPOT2_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_PRINT_PRINT_SPOT2_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-print-spot2",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_SMALL_ALL_DARK16_V01",
+   "title": "Small-resolution logo",
+   "variant": "16 px, flat silver on black",
+   "use": "Where a logo is drawn at its pixel size: a list row, a tab, an embed.",
+   "category": "LOGO",
+   "campaign": "SMALL",
+   "platform": "ALL",
+   "format": "DARK16",
+   "version": "V01",
+   "dimensions": "16×16",
+   "fileTypes": [
+    "png"
+   ],
+   "files": {
+    "png": "exports/logo/SLAYER_LOGO_SMALL_ALL_DARK16_V01.png"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-small-16",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_SMALL_ALL_DARK24_V01",
+   "title": "Small-resolution logo",
+   "variant": "24 px, flat silver on black",
+   "use": "Where a logo is drawn at its pixel size: a list row, a tab, an embed.",
+   "category": "LOGO",
+   "campaign": "SMALL",
+   "platform": "ALL",
+   "format": "DARK24",
+   "version": "V01",
+   "dimensions": "24×24",
+   "fileTypes": [
+    "png"
+   ],
+   "files": {
+    "png": "exports/logo/SLAYER_LOGO_SMALL_ALL_DARK24_V01.png"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-small-24",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_SMALL_ALL_DARK32_V01",
+   "title": "Small-resolution logo",
+   "variant": "32 px, flat silver on black",
+   "use": "Where a logo is drawn at its pixel size: a list row, a tab, an embed.",
+   "category": "LOGO",
+   "campaign": "SMALL",
+   "platform": "ALL",
+   "format": "DARK32",
+   "version": "V01",
+   "dimensions": "32×32",
+   "fileTypes": [
+    "png"
+   ],
+   "files": {
+    "png": "exports/logo/SLAYER_LOGO_SMALL_ALL_DARK32_V01.png"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-small-32",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_SMALL_ALL_DARK48_V01",
+   "title": "Small-resolution logo",
+   "variant": "48 px, flat silver on black",
+   "use": "Where a logo is drawn at its pixel size: a list row, a tab, an embed.",
+   "category": "LOGO",
+   "campaign": "SMALL",
+   "platform": "ALL",
+   "format": "DARK48",
+   "version": "V01",
+   "dimensions": "48×48",
+   "fileTypes": [
+    "png"
+   ],
+   "files": {
+    "png": "exports/logo/SLAYER_LOGO_SMALL_ALL_DARK48_V01.png"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-small-48",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_SMALL_ALL_DARK64_V01",
+   "title": "Small-resolution logo",
+   "variant": "64 px, flat silver on black",
+   "use": "Where a logo is drawn at its pixel size: a list row, a tab, an embed.",
+   "category": "LOGO",
+   "campaign": "SMALL",
+   "platform": "ALL",
+   "format": "DARK64",
+   "version": "V01",
+   "dimensions": "64×64",
+   "fileTypes": [
+    "png"
+   ],
+   "files": {
+    "png": "exports/logo/SLAYER_LOGO_SMALL_ALL_DARK64_V01.png"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-small-64",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_SYMBOL_ALL_BLACK_V01",
+   "title": "Standalone symbol",
+   "variant": "Black, one colour",
+   "use": "Single-ink print on white: forms, fax, newsprint, a stamp.",
+   "category": "LOGO",
+   "campaign": "SYMBOL",
+   "platform": "ALL",
+   "format": "BLACK",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_BLACK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_BLACK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_BLACK_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-symbol-black",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_SYMBOL_ALL_DARK_V01",
+   "title": "Standalone symbol",
+   "variant": "On black",
+   "use": ">S| — the mark alone, from 32 px tall.",
+   "category": "LOGO",
+   "campaign": "SYMBOL",
+   "platform": "ALL",
+   "format": "DARK",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_DARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_DARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_DARK_V01.webp"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-symbol-dark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_SYMBOL_ALL_LIGHT_V01",
+   "title": "Standalone symbol",
+   "variant": "On paper",
+   "use": ">S| — the mark alone, from 32 px tall.",
+   "category": "LOGO",
+   "campaign": "SYMBOL",
+   "platform": "ALL",
+   "format": "LIGHT",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_LIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_LIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_LIGHT_V01.webp"
+   },
+   "ground": "light",
+   "source": "brand/templates/logos.mjs#logo-symbol-light",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_SYMBOL_ALL_MONO_V01",
+   "title": "Standalone symbol",
+   "variant": "Monochrome",
+   "use": "One ink of the house: the silver on black.",
+   "category": "LOGO",
+   "campaign": "SYMBOL",
+   "platform": "ALL",
+   "format": "MONO",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_MONO_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_MONO_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_MONO_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-symbol-mono",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_SYMBOL_ALL_ONDARK_V01",
+   "title": "Standalone symbol",
+   "variant": "Transparent, for dark grounds",
+   "use": ">S| — the mark alone, from 32 px tall.",
+   "category": "LOGO",
+   "campaign": "SYMBOL",
+   "platform": "ALL",
+   "format": "ONDARK",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_ONDARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_ONDARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_ONDARK_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-symbol-ondark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_SYMBOL_ALL_ONLIGHT_V01",
+   "title": "Standalone symbol",
+   "variant": "Transparent, for light grounds",
+   "use": ">S| — the mark alone, from 32 px tall.",
+   "category": "LOGO",
+   "campaign": "SYMBOL",
+   "platform": "ALL",
+   "format": "ONLIGHT",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_ONLIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_ONLIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_ONLIGHT_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-symbol-onlight",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_SYMBOL_ALL_WHITE_V01",
+   "title": "Standalone symbol",
+   "variant": "White, one colour",
+   "use": "Over photography and colour fields, single-ink print, foil, etching.",
+   "category": "LOGO",
+   "campaign": "SYMBOL",
+   "platform": "ALL",
+   "format": "WHITE",
+   "version": "V01",
+   "dimensions": "1024×1024",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_WHITE_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_WHITE_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_SYMBOL_ALL_WHITE_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-symbol-white",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_TINY_ALL_SOLID_V01",
+   "title": "Simplified symbol for tiny areas",
+   "variant": "S|, one flat ink",
+   "use": "Under 24 px, or wherever a gradient cannot be drawn: a status bar, a map pin, a partner’s icon row.",
+   "category": "LOGO",
+   "campaign": "TINY",
+   "platform": "ALL",
+   "format": "SOLID",
+   "version": "V01",
+   "dimensions": "512×512",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_TINY_ALL_SOLID_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_TINY_ALL_SOLID_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_TINY_ALL_SOLID_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-tiny-solid",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_VERTICAL_ALL_DARK_V01",
+   "title": "Vertical logo",
+   "variant": "On black",
+   "use": "The symbol over the wordmark, for square and tall spaces: an end card, a cover, a sign.",
+   "category": "LOGO",
+   "campaign": "VERTICAL",
+   "platform": "ALL",
+   "format": "DARK",
+   "version": "V01",
+   "dimensions": "2400×1626",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_VERTICAL_ALL_DARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_VERTICAL_ALL_DARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_VERTICAL_ALL_DARK_V01.webp"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-vertical-dark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_VERTICAL_ALL_LIGHT_V01",
+   "title": "Vertical logo",
+   "variant": "On paper",
+   "use": "The symbol over the wordmark, for square and tall spaces: an end card, a cover, a sign.",
+   "category": "LOGO",
+   "campaign": "VERTICAL",
+   "platform": "ALL",
+   "format": "LIGHT",
+   "version": "V01",
+   "dimensions": "2400×1626",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_VERTICAL_ALL_LIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_VERTICAL_ALL_LIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_VERTICAL_ALL_LIGHT_V01.webp"
+   },
+   "ground": "light",
+   "source": "brand/templates/logos.mjs#logo-vertical-light",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_VERTICAL_ALL_ONDARK_V01",
+   "title": "Vertical logo",
+   "variant": "Transparent, for dark grounds",
+   "use": "The symbol over the wordmark, for square and tall spaces: an end card, a cover, a sign.",
+   "category": "LOGO",
+   "campaign": "VERTICAL",
+   "platform": "ALL",
+   "format": "ONDARK",
+   "version": "V01",
+   "dimensions": "2400×1626",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_VERTICAL_ALL_ONDARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_VERTICAL_ALL_ONDARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_VERTICAL_ALL_ONDARK_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-vertical-ondark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_VERTICAL_ALL_ONLIGHT_V01",
+   "title": "Vertical logo",
+   "variant": "Transparent, for light grounds",
+   "use": "The symbol over the wordmark, for square and tall spaces: an end card, a cover, a sign.",
+   "category": "LOGO",
+   "campaign": "VERTICAL",
+   "platform": "ALL",
+   "format": "ONLIGHT",
+   "version": "V01",
+   "dimensions": "2400×1626",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_VERTICAL_ALL_ONLIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_VERTICAL_ALL_ONLIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_VERTICAL_ALL_ONLIGHT_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-vertical-onlight",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_WATERMARK_IMAGE_WHITE_V01",
+   "title": "Watermark logo",
+   "variant": "Horizontal, white at 30%",
+   "use": "Bottom right of a still, its height a twentieth of the image’s; already faded, so place it at 100%.",
+   "category": "LOGO",
+   "campaign": "WATERMARK",
+   "platform": "IMAGE",
+   "format": "WHITE",
+   "version": "V01",
+   "dimensions": "1200×200",
+   "fileTypes": [
+    "png",
+    "webp"
+   ],
+   "files": {
+    "png": "exports/logo/SLAYER_LOGO_WATERMARK_IMAGE_WHITE_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_WATERMARK_IMAGE_WHITE_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-watermark-image",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_WATERMARK_VIDEO_WHITE_V01",
+   "title": "Video watermark",
+   "variant": "S|, white at 55%",
+   "use": "A video’s bottom-right corner, 4% of the frame’s height, inside the title-safe area.",
+   "category": "LOGO",
+   "campaign": "WATERMARK",
+   "platform": "VIDEO",
+   "format": "WHITE",
+   "version": "V01",
+   "dimensions": "256×256",
+   "fileTypes": [
+    "png",
+    "webp"
+   ],
+   "files": {
+    "png": "exports/logo/SLAYER_LOGO_WATERMARK_VIDEO_WHITE_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_WATERMARK_VIDEO_WHITE_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-watermark-video",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_WORDMARK_ALL_DARK_V01",
+   "title": "Standalone wordmark",
+   "variant": "On black",
+   "use": ">slayer_terminal without the cursor, where the line already moves on (a footer).",
+   "category": "LOGO",
+   "campaign": "WORDMARK",
+   "platform": "ALL",
+   "format": "DARK",
+   "version": "V01",
+   "dimensions": "2400×499",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_WORDMARK_ALL_DARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_WORDMARK_ALL_DARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_WORDMARK_ALL_DARK_V01.webp"
+   },
+   "ground": "dark",
+   "source": "brand/templates/logos.mjs#logo-wordmark-dark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_WORDMARK_ALL_LIGHT_V01",
+   "title": "Standalone wordmark",
+   "variant": "On paper",
+   "use": ">slayer_terminal without the cursor, where the line already moves on (a footer).",
+   "category": "LOGO",
+   "campaign": "WORDMARK",
+   "platform": "ALL",
+   "format": "LIGHT",
+   "version": "V01",
+   "dimensions": "2400×499",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_WORDMARK_ALL_LIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_WORDMARK_ALL_LIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_WORDMARK_ALL_LIGHT_V01.webp"
+   },
+   "ground": "light",
+   "source": "brand/templates/logos.mjs#logo-wordmark-light",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_WORDMARK_ALL_ONDARK_V01",
+   "title": "Standalone wordmark",
+   "variant": "Transparent, for dark grounds",
+   "use": ">slayer_terminal without the cursor, where the line already moves on (a footer).",
+   "category": "LOGO",
+   "campaign": "WORDMARK",
+   "platform": "ALL",
+   "format": "ONDARK",
+   "version": "V01",
+   "dimensions": "2400×499",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_WORDMARK_ALL_ONDARK_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_WORDMARK_ALL_ONDARK_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_WORDMARK_ALL_ONDARK_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-wordmark-ondark",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  },
+  {
+   "name": "SLAYER_LOGO_WORDMARK_ALL_ONLIGHT_V01",
+   "title": "Standalone wordmark",
+   "variant": "Transparent, for light grounds",
+   "use": ">slayer_terminal without the cursor, where the line already moves on (a footer).",
+   "category": "LOGO",
+   "campaign": "WORDMARK",
+   "platform": "ALL",
+   "format": "ONLIGHT",
+   "version": "V01",
+   "dimensions": "2400×499",
+   "fileTypes": [
+    "svg",
+    "png",
+    "webp"
+   ],
+   "files": {
+    "svg": "exports/logo/SLAYER_LOGO_WORDMARK_ALL_ONLIGHT_V01.svg",
+    "png": "exports/logo/SLAYER_LOGO_WORDMARK_ALL_ONLIGHT_V01.png",
+    "webp": "exports/logo/SLAYER_LOGO_WORDMARK_ALL_ONLIGHT_V01.webp"
+   },
+   "ground": "transparent",
+   "source": "brand/templates/logos.mjs#logo-wordmark-onlight",
+   "created": "2026-10-31",
+   "updated": "2026-10-31",
+   "campaignAssociation": null,
+   "expires": null,
+   "approval": {
+    "status": "internal-review",
+    "by": null,
+    "at": null
+   }
+  }
+ ]
+}
