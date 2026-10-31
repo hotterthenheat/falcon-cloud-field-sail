@@ -12,6 +12,7 @@ import { bookStatus, peekEntry, useBookRev } from '../../data/book/store';
 import type { StrikeNode } from '../../types/market';
 import { ReadMiss } from '../../components/ui/BookDown';
 import { BOOK_MODE_WORDS, bookInMode, chainInMode, useBookMode, type BookMode } from '../../data/bookMode';
+import { setHeatPalette } from '../../components/gex/nodeHeat';
 import { levelNetPath } from '../../data/flipLevel';
 import { rootTradesSession } from '../../data/compassSession';
 import { useSessionQuote } from '../../data/sessionQuote';
@@ -1767,6 +1768,8 @@ const Terrain = () => {
     setNamedLayouts(next);
     persistNamedLayouts(next);
   };
+  /* the chart's dev-only heat look wears the rails' palette (nodeHeat.ts), and switches with this menu */
+  useEffect(() => setHeatPalette(cfg.palette), [cfg.palette]);
   useEffect(() => {
     try {
       localStorage.setItem(TERRAIN_KEY, JSON.stringify(cfg));

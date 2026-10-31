@@ -1,61 +1,41 @@
 /* HEAT — Slayer's exposure terrain (dev only, ?nodes=heat; nodeConcept.ts). Every strike is a band across time, each
-   cell lit by its dealer gamma on a ramp of the desk's own two inks: long gamma (hedging damps a move) rises from the
-   ground through slate and glacier to ice, short gamma (hedging extends one) through umber and ember to pale gold. The
-   lightness climbs evenly along each ramp. The strikes that matter (nodeStrikes.ts) carry the light; every other strike
-   is a whisper of context. In each moment only the heaviest node glows — the mark's foil over its cell — so the eye
-   finds the king first and the candles stay readable on top. The field itself is gexNodesPrimitive's raster (the same
-   cells, the same cache and pan mapping); this file holds its inks, the king pass and the labels at the price axis. */
+   cell lit by its dealer gamma on the desk's own heat palette — the one the matrix, the calendar and the rails wear
+   (heatmap.ts), Thermal unless the COLOURS menu at Terrain's foot says House — so the chart and its rails read alike and
+   switch together. The strikes that matter (nodeStrikes.ts) carry the light; every other strike is a whisper of context.
+   In each moment only the heaviest node glows — the mark's foil along its cell — so the eye finds the king first and the
+   candles stay readable on top. The field itself is gexNodesPrimitive's raster (the same cells, the same cache and pan
+   mapping); this file holds its inks, the palette it follows, the king pass's inks and the labels at the price axis. */
 
 import type { KeptLevel } from './nodeStrikes';
+import { HEAT_MODE, heatRampColorFor, type HeatMode } from './heatmap';
 
 export type Rgb = readonly [number, number, number];
 
 /** Colour steps per side */
 export const HEAT_STEPS = 32;
 
-/* The ramps, ground to full, for each ground. Each climbs in lightness at an even pace (L* ≈ 8 → 90 on black). */
-const DARK_LONG: Rgb[] = [
-  [18, 24, 36],
-  [30, 50, 78],
-  [46, 92, 126],
-  [92, 160, 194],
-  [206, 234, 246],
-];
-const DARK_SHORT: Rgb[] = [
-  [24, 20, 30],
-  [72, 40, 50],
-  [152, 82, 42],
-  [216, 150, 54],
-  [252, 224, 142],
-];
-/* on paper the ramps run the other way: from the paper down to the inks' deep cuts (tokens.css light --glacier/--ember) */
-const LIGHT_LONG: Rgb[] = [
-  [226, 232, 236],
-  [176, 202, 220],
-  [98, 152, 190],
-  [26, 108, 160],
-  [8, 62, 104],
-];
-const LIGHT_SHORT: Rgb[] = [
-  [236, 228, 216],
-  [226, 196, 150],
-  [200, 140, 64],
-  [150, 90, 10],
-  [96, 56, 4],
-];
+/* ---------- the palette it follows ---------- */
 
-const rampAt = (stops: readonly Rgb[], t: number): Rgb => {
-  const x = Math.max(0, Math.min(1, t)) * (stops.length - 1);
-  const i = Math.min(stops.length - 2, Math.floor(x));
-  const f = x - i;
-  const a = stops[i];
-  const b = stops[i + 1];
-  return [Math.round(a[0] + (b[0] - a[0]) * f), Math.round(a[1] + (b[1] - a[1]) * f), Math.round(a[2] + (b[2] - a[2]) * f)];
-};
+/** Terrain's COLOURS menu (ProfilePanel PALETTE_OPTIONS): Thermal, or the house's ember and glacier */
+export type HeatPalette = 'thermal' | 'house';
+const modeOf = (p: HeatPalette): HeatMode => (p === 'house' ? HEAT_MODE : 'thermal-yellow');
+let palette: HeatPalette = 'thermal';
+const paletteSubs = new Set<() => void>();
+/** The page's palette, set by the page that owns the menu (Terrain) */
+export function setHeatPalette(p: HeatPalette): void {
+  if (p === palette) return;
+  palette = p;
+  paletteSubs.forEach(fn => fn());
+}
+export const heatPalette = (): HeatPalette => palette;
+export function onHeatPalette(fn: () => void): () => void {
+  paletteSubs.add(fn);
+  return () => paletteSubs.delete(fn);
+}
 
 export interface HeatInks {
   light: boolean;
-  /** fills per step: [side 0 long, side 1 short] for the strikes that matter, and the whisper for the rest */
+  /** fills per step: [side 0 long gamma, side 1 short gamma] for the strikes that matter, and the whisper for the rest */
   lit: [string[], string[]];
   quiet: [string[], string[]];
   /** solid per step, for the hover */
@@ -65,30 +45,32 @@ export interface HeatInks {
   bloom: Rgb;
 }
 
-const cache = new Map<boolean, HeatInks>();
-/** The field's inks on a ground */
+/* heatmap.ts reads +1 as the side whose hedging amplifies (dealers short gamma) and −1 as the side that absorbs */
+const rampSign = (side: number): 1 | -1 => (side === 0 ? -1 : 1);
+
+const cache = new Map<string, HeatInks>();
+/** The field's inks on a ground, in the page's palette */
 export function heatInks(light: boolean): HeatInks {
-  const hit = cache.get(light);
+  const mode = modeOf(palette);
+  const key = `${mode}|${light}`;
+  const hit = cache.get(key);
   if (hit) return hit;
-  const long = light ? LIGHT_LONG : DARK_LONG;
-  const short = light ? LIGHT_SHORT : DARK_SHORT;
   const lit: [string[], string[]] = [[], []];
   const quiet: [string[], string[]] = [[], []];
   const solid: [string[], string[]] = [[], []];
   for (let s = 0; s < HEAT_STEPS; s++) {
     const t = (s + 0.5) / HEAT_STEPS;
     /* the lit strikes: present from the first step, never opaque, so a candle over the brightest cell still reads */
-    const a = (light ? 0.1 : 0.1) + (light ? 0.5 : 0.56) * Math.pow(t, 1.15);
-    /* the rest: context only */
-    /* the rest: context only — the ramp's lower third, lifted enough to read as terrain, never as a level */
-    const q = (light ? 0.06 : 0.1) + (light ? 0.12 : 0.18) * Math.pow(t, 0.9);
-    [long, short].forEach((stops, side) => {
-      const c = rampAt(stops, 0.12 + 0.88 * t);
+    const a = 0.1 + (light ? 0.5 : 0.56) * Math.pow(t, 1.15);
+    /* the rest: context only — the ramp's lower half, faint, never read as a level */
+    const q = (light ? 0.06 : 0.08) + (light ? 0.12 : 0.16) * Math.pow(t, 0.9);
+    for (const side of [0, 1]) {
+      const c = heatRampColorFor(rampSign(side), 0.12 + 0.88 * t, mode, light);
       lit[side].push(`rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`);
-      const cq = rampAt(stops, 0.26 + 0.3 * t);
+      const cq = heatRampColorFor(rampSign(side), 0.2 + 0.35 * t, mode, light);
       quiet[side].push(`rgba(${cq[0]},${cq[1]},${cq[2]},${q.toFixed(3)})`);
       solid[side].push(`rgb(${c[0]},${c[1]},${c[2]})`);
-    });
+    }
   }
   const inks: HeatInks = {
     light,
@@ -99,15 +81,16 @@ export function heatInks(light: boolean): HeatInks {
     crown: light ? [62, 70, 96] : [238, 241, 248],
     bloom: light ? [102, 113, 143] : [194, 214, 240],
   };
-  cache.set(light, inks);
+  cache.set(key, inks);
   return inks;
 }
 
-/** The key's swatches in this look (FieldKey), short gamma left, long gamma right */
-export const HEAT_RAMP_CSS = {
-  neg: `linear-gradient(90deg, ${DARK_SHORT.map(c => `rgb(${c[0]},${c[1]},${c[2]})`).join(', ')})`,
-  pos: `linear-gradient(90deg, ${DARK_LONG.map(c => `rgb(${c[0]},${c[1]},${c[2]})`).join(', ')})`,
-} as const;
+/** The key's swatches in this look (FieldKey), in a palette: short gamma left, long gamma right */
+export function heatRampCss(p: HeatPalette): { neg: string; pos: string } {
+  const mode = modeOf(p);
+  const stops = (sign: 1 | -1) => [0.1, 0.4, 0.7, 1].map(t => heatRampColorFor(sign, t, mode)).map(c => `rgb(${c[0]},${c[1]},${c[2]})`).join(', ');
+  return { neg: `linear-gradient(90deg, ${stops(1)})`, pos: `linear-gradient(90deg, ${stops(-1)})` };
+}
 
 /* ---------- the labels at the price axis ---------- */
 

@@ -5,7 +5,7 @@ import { dealerOf } from '../../core/dealerSign';
 import type { NodeLook } from '../../data/deskPrefs';
 import { selectNodeStrikes, type KeptLevel } from './nodeStrikes';
 import type { NodeConcept } from './nodeConcept';
-import { heatInks, layoutHeatLabels, paintHeatLabels, type HeatLabel } from './nodeHeat';
+import { heatInks, heatPalette, layoutHeatLabels, onHeatPalette, paintHeatLabels, type HeatLabel } from './nodeHeat';
 
 /*
   The exposure field: one filled band per strike, from the midpoint of the strike below to the midpoint of the
@@ -286,7 +286,7 @@ class FieldRenderer {
       const probeStrike = strikes[Math.min(R - 1, Math.max(rLo, (rLo + rHi) >> 1))] ?? 0;
       const probeA = series.priceToCoordinate(probeStrike) ?? -1;
       const probeB = series.priceToCoordinate(probeStrike + 1) ?? -1;
-      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${src.focusInk}|${src.look}|${src.keptKey}|${src.concept}|${light}`;
+      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${src.focusInk}|${src.look}|${src.keptKey}|${src.concept}|${light}|${heat ? heatPalette() : ''}`;
       const cached = key === this.cacheKey && !!this.bmp;
       /* A moved view maps the last raster: both axes are affine, so one drawImage puts every cell where this frame's
          scales want it, until the gesture rests (SETTLE_MS) or the view leaves the raster or the scale drifts too far */
@@ -1167,9 +1167,20 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
   /** The levels keptRows last kept, with their roles and sizes */
   keptLevels: KeptLevel[] = [];
 
+  private paletteOff: (() => void) | null = null;
+
   setConcept(concept: NodeConcept): void {
     if (this.concept === concept) return;
     this.concept = concept;
+    /* the heat wears the page's palette (Terrain's COLOURS menu): a new palette is a new raster */
+    this.paletteOff?.();
+    this.paletteOff =
+      concept === 'heat'
+        ? onHeatPalette(() => {
+            this.rev++;
+            this.requestUpdate?.();
+          })
+        : null;
     this.heatLabels = [];
     this.chips = [];
     this.rev++;
