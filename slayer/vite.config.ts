@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { proxyUw } from './server/uwProxy.mjs';
 import { proxyTheta } from './server/thetaProxy.mjs';
 import { proxyLogo } from './server/logoProxy.mjs';
-import { compassMount } from './server/compassApi.mjs';
+import { compassMount, installProcessLogger } from './server/compassApi.mjs';
 import { exposureMount } from './server/exposureApi.mjs';
 import { superviseTheta } from './theta/supervisor.mjs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -32,6 +32,8 @@ const dataProxies = (): Plugin => {
   return {
     name: 'data-proxies',
     configureServer(server) {
+      /* a promise or exception nobody caught is logged, not lost */
+      installProcessLogger();
       /* the official Compass engine (src/data/compassServer.ts) runs in this process from the moment it listens */
       const compass = compassMount(() => server.ssrLoadModule('/src/data/compassServer.ts'));
       /* the exposure recorder (src/data/exposureRecorder.ts): Terrain's per-strike field, read every minute, viewers or not */
@@ -49,6 +51,7 @@ const dataProxies = (): Plugin => {
       }
     },
     configurePreviewServer(server) {
+      installProcessLogger();
       const file = pathToFileURL(nodePath.join(process.cwd(), 'src/data/compassServer.ts')).href;
       const compass = compassMount(async () => (await import('tsx/esm/api')).tsImport(file, import.meta.url));
       const exposureFile = pathToFileURL(nodePath.join(process.cwd(), 'src/data/exposureRecorder.ts')).href;
