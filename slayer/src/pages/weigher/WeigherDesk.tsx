@@ -1,6 +1,7 @@
 /* The Weigher desk: the chart, the live chain, the name lists and the weigh-up of one contract on one static desk,
    with the positions and watchlist under them marked at live quotes. */
 
+import { extTag, optionProductOf, productHours } from '../../core/session';
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Maximize2, Minimize2, Plus, Scale } from 'lucide-react';
@@ -755,7 +756,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       if (dead || busy.current || cur.source !== 'live' || !cur.rows.length || document.visibilityState === 'hidden' || thetaUseHere() !== 'all') return;
       if (cur.ticker !== ticker || cur.expiryIso !== wantIso) return;
       if (cur.optRoot && cur.optRoot !== wantRoot) return;
-      if (Date.now() - lastAt < (optionsOpen() ? 1000 : 60_000)) return;
+      if (Date.now() - lastAt < (optionsOpen(wantRoot) ? 1000 : 60_000)) return;
       lastAt = Date.now();
       busy.current = true;
       n += 1;
@@ -1086,7 +1087,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       )}
       {headMove && headMove.ext != null && (
         <span className="font-mono text-[10px] tnum text-textMuted" title={closeMoveTitle(headMove)} data-weigher-ext>
-          {headMove.extWord === 'pre-market' ? 'PM' : 'AH'} {signedPct(headMove.ext)}
+          {extTag(headMove.extWord)} {signedPct(headMove.ext)}
         </span>
       )}
     </span>
@@ -1278,7 +1279,11 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     if (!listed.rows.length || !chain.rows.length) return 'No listed options';
     const at = chain.quotedAt || chain.takenAt || 0;
     if (!at) return fmtDay(chain.expiry.date);
-    return optionsOpen() ? `Live · ${fmtDay(chain.expiry.date)} · ${stamp(at)} ET` : `${fmtDay(chain.expiry.date)} · quotes as of ${etClock(at)}`;
+    /* live only while this root's options trade (index options through GTH) and the quote is fresh; otherwise the quote's
+       own time and the hours its options trade (core/session.ts) */
+    const root = chain.optRoot || ticker;
+    if (optionsOpen(root) && Date.now() - at < 120_000) return `Live · ${fmtDay(chain.expiry.date)} · ${stamp(at)} ET`;
+    return `${fmtDay(chain.expiry.date)} · quotes as of ${etClock(at)}${optionsOpen(root) ? '' : ` · ${productHours(optionProductOf(root))}`}`;
   })();
   const chainMove = (
     <span className="inline-flex items-center gap-2">
