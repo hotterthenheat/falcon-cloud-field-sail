@@ -213,7 +213,7 @@ const CompareControl = ({
                   }`}
                 >
                   <CompanyLogo ticker={t.symbol} size={16} />
-                  <span className="font-mono text-t11 font-semibold text-textPrimary w-14 shrink-0">{t.symbol}</span>
+                  <span className="font-mono text-t11 font-semibold text-textPrimary min-w-[3.5rem] shrink-0">{t.symbol}</span>
                   <span className="text-t10 text-textSecondary truncate" title={companyName(t.symbol) !== t.symbol ? companyName(t.symbol) : undefined}>{companyName(t.symbol).toUpperCase() === t.symbol ? '' : companyName(t.symbol)}</span>
                   {/* The TV move: the row's right side becomes the three
                       scale choices on hover — how the line joins the chart */}

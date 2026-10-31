@@ -18,7 +18,7 @@ import { createSession, deleteSession, duplicateSession, legsHeld, renameSession
 import type { Session } from '../../data/review/engine';
 import { CASH_INDEX_ROOTS, dayWords, ensureLeg, ensureWindow, historyOffline, historyRev, lastReplayDay, prevDay, replayWindow, subscribeHistory } from '../../data/review/history';
 import { useSessionsStats } from '../../data/review/sessionStats';
-import { ensureListed, optionSymbols, useListedRev } from '../../data/listedNames';
+import { ensureListed, optionSymbols, searchRoom, useListedRev } from '../../data/listedNames';
 import ThetaLine from '../../components/review/ThetaLine';
 import { companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
 import { dirInk, momentWords, pct, ratioWords, RATIO_TITLE, scratchWords, SCRATCH_TITLE, usd, usdSigned } from '../../components/review/words';
@@ -91,6 +91,8 @@ const Sessions = () => {
   useEffect(() => {
     for (const s of sessions.slice(0, 30)) for (const l of legsHeld(s)) if (l.expiry >= s.cursor.day) void ensureLeg(l, s.cursor.day);
   }, [heldKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* the directory's ranking — the exact symbol, then symbols that start with it, then company names, most traded first */
+  const searchNames = (q: string) => searchRoom('option', q, 120, [], companyName).map(r => r.symbol);
   const nameOptions = useMemo(() => {
     const roots = [...new Set([...FUNDS, ...optionSymbols()])].filter(t => !INDEX_ROOTS.has(t));
     const company = (t: string) => {
@@ -310,10 +312,10 @@ const Sessions = () => {
       }
       controls={
         <>
-          <DropdownSearch label="Name" value={ticker} options={nameOptions} onChange={setTicker} title="The name this session trades — a fund or a stock with listed options" placeholder="Search a ticker or a company…" testId="review-name" />
+          <DropdownSearch label="Name" value={ticker} options={nameOptions} search={searchNames} onChange={setTicker} title="The name this session trades — a fund or a stock with listed options" placeholder="Search a ticker or a company…" testId="review-name" />
           {adding || second ? (
             <span className="inline-flex items-center gap-0.5">
-              <DropdownSearch label="And" value={second === ticker ? '' : second} options={nameOptions.filter(o => o.value !== ticker)} onChange={setSecond} title="A second one on the same clock and the same account — two at most" placeholder="Search a ticker or a company…" testId="review-name-2" defaultOpen={!second} />
+              <DropdownSearch label="And" value={second === ticker ? '' : second} options={nameOptions.filter(o => o.value !== ticker)} search={searchNames} onChange={setSecond} title="A second one on the same clock and the same account — two at most" placeholder="Search a ticker or a company…" testId="review-name-2" defaultOpen={!second} />
               <button
                 type="button"
                 onClick={() => {

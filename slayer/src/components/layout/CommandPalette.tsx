@@ -100,7 +100,7 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
     const q = query.trim();
     if (q && tickMod) {
       const rows = room === 'listed'
-        ? tickMod.searchTickers(q, 8)
+        ? tickMod.searchTickers(q, 8).map(t => ({ symbol: t.symbol, name: companyName(t.symbol) }))
         : searchRoom(room, q, 8, tickMod.searchTickers('', 8), companyName);
       return rows.map(t => ({
         id: `ticker-${t.symbol}`,
@@ -125,7 +125,10 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
     return QUICK_NAMES.map(tk => ({
       id: `ticker-${tk}`,
       group: 'Ticker' as const,
-      label: `Set ticker → ${tk}`,
+      label: (() => {
+        const n = companyName(tk);
+        return n && n.toUpperCase() !== tk ? `Set ticker → ${tk} · ${n}` : `Set ticker → ${tk}`;
+      })(),
       hint: tk === activeTicker ? 'active' : '',
       icon: <ArrowRightLeft className="w-3.5 h-3.5" />,
       run: () => changeTicker(tk),
@@ -174,6 +177,10 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [...actions, ...tickerActions];
+    /* a symbol typed in full ("nvda") is a ticker ask first */
+    if (tickerActions[0]?.id === `ticker-${q.toUpperCase()}`) {
+      return [...tickerActions, ...actions.filter(a => a.label.toLowerCase().includes(q) || a.hint.toLowerCase().includes(q)), ...chartActions, ...drawActions];
+    }
     return [
       ...actions.filter(a => a.label.toLowerCase().includes(q) || a.hint.toLowerCase().includes(q)),
       ...chartActions,

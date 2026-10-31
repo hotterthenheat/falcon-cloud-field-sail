@@ -15,6 +15,7 @@ import { peekThetaPrice } from '../../data/thetaQuote';
 import { peekQuote } from '../../data/liveQuote';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import CompanyLogo from '../ui/CompanyLogo';
+import { useCompanyName } from '../../data/tickers';
 import {
   MAX_ALERTS, clearAlerts, clearFiredLog, firedWords, markSeenAll, rearmFromRecord, removeAlert,
   useAllAlerts, waitingWords, type Alert, type AlertKind, type FiredRecord,
@@ -94,13 +95,17 @@ const Card = ({ children, testId }: { children: React.ReactNode; testId?: string
   </div>
 );
 
-const NameHead = ({ ticker, note }: { ticker: string; note: string }) => (
-  <div className="flex items-center gap-2 h-8 px-3 border-b border-borderSubtle/70 bg-ink/[0.02]" data-alert-name={ticker}>
-    <CompanyLogo ticker={ticker} size={14} />
-    <span className="font-mono text-t11 font-bold text-textPrimary">{ticker}</span>
-    <span className="font-mono text-t9 tnum text-textMuted">{note}</span>
-  </div>
-);
+const NameHead = ({ ticker, note }: { ticker: string; note: string }) => {
+  const name = useCompanyName(ticker);
+  return (
+    <div className="flex items-center gap-2 h-8 px-3 border-b border-borderSubtle/70 bg-ink/[0.02]" data-alert-name={ticker}>
+      <CompanyLogo ticker={ticker} size={14} />
+      <span className="font-mono text-t11 font-bold text-textPrimary">{ticker}</span>
+      {name && <span className="min-w-0 truncate text-t10 text-textSecondary">{name}</span>}
+      <span className="shrink-0 font-mono text-t9 tnum text-textMuted">{note}</span>
+    </div>
+  );
+};
 
 /** The door back to the surface that shows the alert — a small bordered pill */
 const Door = ({ label, onClick }: { label: string; onClick: () => void }) => (

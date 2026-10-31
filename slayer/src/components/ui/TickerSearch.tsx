@@ -3,6 +3,7 @@ import { ChevronDown, Search } from 'lucide-react';
 import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames, type TickerListing } from '../../data/tickers';
 import { ensureListed, roomOf, searchRoom, useListedRev } from '../../data/listedNames';
 import CompanyLogo from './CompanyLogo';
+import SymbolRowTag, { noOptionsLine } from './SymbolRowTag';
 
 type TickerModule = typeof import('../../data/tickers');
 
@@ -11,7 +12,7 @@ interface TickerSearchProps {
   onChange: (symbol: string) => void;
 }
 
-/** Compact searchable ticker menu — filters the full NASDAQ universe (lazy-loaded). */
+/** Compact searchable ticker menu — the symbol directory by symbol or company name, each row the symbol and its name. */
 const TickerSearch = ({ value, onChange }: TickerSearchProps) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -79,6 +80,10 @@ const TickerSearch = ({ value, onChange }: TickerSearchProps) => {
     <div ref={wrapRef} className="relative">
       <button
         onClick={() => setOpen(o => !o)}
+        title={(() => {
+          const n = companyName(value);
+          return n && n.toUpperCase() !== value ? `${value} · ${n} — switch ticker` : 'Switch ticker';
+        })()}
         className="flex items-center gap-2 border border-borderSubtle hover:border-borderMuted bg-panel rounded-md pl-2.5 pr-2 py-1.5 font-mono text-xs transition-colors min-w-[104px]"
       >
         <CompanyLogo ticker={value} size={14} />
@@ -97,7 +102,7 @@ const TickerSearch = ({ value, onChange }: TickerSearchProps) => {
               ref={inputRef}
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder={room === 'equity' ? 'Ticker or company…' : room === 'option' ? 'Ticker or company, options only…' : room === 'compass' ? 'One of the 456…' : 'Search tickers…'}
+              placeholder={room === 'equity' ? 'Ticker or company…' : room === 'option' ? 'Ticker or company, options only…' : room === 'compass' ? 'One of the 456…' : 'Ticker or company…'}
               className="w-full bg-transparent py-2.5 text-sm text-textPrimary placeholder:text-textMuted focus:outline-none"
             />
           </div>
@@ -105,7 +110,7 @@ const TickerSearch = ({ value, onChange }: TickerSearchProps) => {
             {!mod ? (
               <div className="px-3 py-6 text-center font-mono text-t11 text-textMuted">Loading tickers…</div>
             ) : results.length === 0 ? (
-              <div className="px-3 py-6 text-center font-mono text-t11 text-textMuted">No matches</div>
+              <div className="px-3 py-6 text-center font-mono text-t11 text-textMuted">{(room === 'option' && noOptionsLine(query)) || 'No symbol or company matches'}</div>
             ) : (
               results.map((t, i) => (
                 <button
@@ -118,19 +123,20 @@ const TickerSearch = ({ value, onChange }: TickerSearchProps) => {
                 >
                   <CompanyLogo ticker={t.symbol} size={16} />
                   <span
-                    className={`font-mono text-xs font-semibold w-14 shrink-0 ${
+                    className={`font-mono text-xs font-semibold min-w-[3.5rem] shrink-0 ${
                       t.symbol === value ? 'text-silver' : 'text-textPrimary'
                     }`}
                   >
                     {t.symbol}
                   </span>
-                  <span className="text-t11 text-textSecondary truncate" title={(() => {
+                  <span className="text-t11 text-textSecondary truncate min-w-0 flex-1" title={(() => {
                     const label = companyName(t.symbol);
                     return label.toUpperCase() === t.symbol ? undefined : label;
                   })()}>{(() => {
                     const label = companyName(t.symbol);
                     return label && label.toUpperCase() !== t.symbol ? label : '';
                   })()}</span>
+                  <SymbolRowTag symbol={t.symbol} room={room} />
                 </button>
               ))
             )}

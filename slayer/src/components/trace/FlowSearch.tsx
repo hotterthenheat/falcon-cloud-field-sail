@@ -1,11 +1,12 @@
 /* The ticker/contract search every flow page carries: suggestions grouped tickers then contracts, ranked by money,
    keyboard-walkable. Picking a ticker scopes the menu to its contracts; picking a contract or "everything" closes. */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { ArrowLeft, ArrowUpRight, Check, ChevronRight, Layers, Search, X } from 'lucide-react';
 import { usd as fmtUsd } from '../../data/traceLive';
 import CompanyLogo from '../ui/CompanyLogo';
+import { companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
 import { CARD } from '../ui/DropdownSelect';
 
 /** The four facts a row must carry — FlowPrint and BookContract both do. */
@@ -165,6 +166,12 @@ const FlowSearch = ({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const nq = normSymbol(value);
   const active = value.length > 0;
+  /* names land with the symbol directory: the rows re-read them */
+  const nameRev = useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
+  const nameOf = (tk: string): string => {
+    const n = companyName(tk);
+    return n && n.toUpperCase() !== tk.toUpperCase() ? n : '';
+  };
 
   const close = () => {
     setOpen(false);
@@ -226,9 +233,12 @@ const FlowSearch = ({
 
   /* Unscoped: the query against every ticker and contract. */
   const { tickers, contracts } = useMemo(() => {
+    /* a company typed by name ("nvidia") finds its ticker; the exact symbol leads, then the money */
+    const word = value.trim().toUpperCase();
+    const byName = (tk: string) => word.length >= 3 && nameOf(tk).toUpperCase().includes(word);
     const tickers: Suggestion[] = [...tallies.tick.entries()]
-      .filter(([tk]) => nq === '' || normSymbol(tk).includes(nq) || parseContractQuery(value)?.ticker === tk)
-      .sort((a, b) => b[1].prem - a[1].prem)
+      .filter(([tk]) => nq === '' || normSymbol(tk).includes(nq) || parseContractQuery(value)?.ticker === tk || byName(tk))
+      .sort((a, b) => Number(normSymbol(b[0]) === nq) - Number(normSymbol(a[0]) === nq) || b[1].prem - a[1].prem)
       .slice(0, tickersOnly ? 8 : nq === '' ? 5 : 4)
       .map(([tk, v]) => ({ key: `t-${tk}`, kind: 'ticker', ticker: tk, primary: tk, count: `${v.count} ${countNoun}`, money: fmtUsd(v.prem) }));
     const contracts: Suggestion[] = tickersOnly
@@ -239,7 +249,7 @@ const FlowSearch = ({
           .slice(0, nq === '' ? 4 : 6)
           .map(contractRow);
     return { tickers, contracts };
-  }, [tallies, nq, value, countNoun, tickersOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tallies, nq, value, countNoun, tickersOnly, nameRev]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doorRow: Suggestion | null = door ? { key: 'door', kind: 'door', primary: door.label(value.trim()) } : null;
   /* A strike typed is a contract asked for: the contracts lead and Enter keeps the query itself, never "everything
@@ -362,7 +372,10 @@ const FlowSearch = ({
             <span className={s.right === 'C' ? 'text-bull' : 'text-bear'}>{s.right === 'C' ? 'call' : 'put'}</span>
           </span>
         ) : (
-          <span className={`min-w-0 truncate font-mono text-t11 leading-snug ${quiet ? 'text-textSecondary' : `font-semibold ${on ? 'text-silver' : 'text-textPrimary'}`}`}>{s.primary}</span>
+          <span className="min-w-0 truncate leading-snug">
+            <span className={`font-mono text-t11 ${quiet ? 'text-textSecondary' : `font-semibold ${on ? 'text-silver' : 'text-textPrimary'}`}`}>{s.primary}</span>
+            {(s.kind === 'ticker' || s.kind === 'all') && s.ticker && nameOf(s.ticker) && <span className="ml-1.5 text-t10 text-textMuted">{nameOf(s.ticker)}</span>}
+          </span>
         )}
         {!quiet && (
           <span className="ml-auto shrink-0 flex items-center gap-2 pl-2 font-mono tnum">
