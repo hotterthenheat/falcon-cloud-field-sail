@@ -1,47 +1,33 @@
-/* The exposure field's key, in the chart's corner: which model the cells are, the switch between the two, the colour scale
-   with the dollars a full-light cell stands for, and the cut's net GEX in dollars — the same rows' sum Pinpoint prints. */
+/* The exposure nodes' key: one compact chip in the chart's top-right corner, under the expand door and in the price
+   scale's top margin, so it never sits on a bar. It holds the model switch (dealer flow / open interest), the colour
+   scale with the dollars a full-light node stands for, and the cut's net GEX; the rest — what the model is, when the
+   day's record starts, yesterday — is the chip's hover. */
 import { memo } from 'react';
-import FilterTabs from '../ui/FilterTabs';
-import { FIELD_RAMP_CSS } from './gexNodesPrimitive';
+import { BEAD_RAMP_CSS, FIELD_RAMP_CSS } from './gexNodesPrimitive';
 import { fmtUsd } from '../../data/gex';
 import { FIELD_MODE_WORDS, setFieldMode, useFieldMode } from '../../data/fieldMode';
+import { useDeskPrefs } from '../../data/deskPrefs';
 import { exposureTodayFrom, ledgerFlowNet, priorSessionWords, useExposureLogRev, useFieldPoll, useServerExposure, type FieldMode, type ServerExposure } from '../../data/book/exposureLog';
 import { useBookRev } from '../../data/uwBook';
 import { nyClock, nyIsoDate, nyWallTime } from '../../core/nyTime';
 
 /** Where the field's day starts, in words: the server's record from the open, a recorder that started late, or (no
     recorder on this server) this page's own first read */
-function sinceWords(first: number | null, server: ServerExposure, now = Date.now()): { text: string; title: string } {
-  if (first == null) {
-    return server.state === 'off'
-      ? { text: 'waiting for the first reading', title: "No exposure recorder runs on this server: the field starts at this page's first read." }
-      : { text: 'waiting for the first reading', title: '' };
-  }
+function sinceWords(first: number | null, server: ServerExposure, now = Date.now()): string {
+  if (first == null) return 'waiting for the first reading';
   const since = nyClock(first);
-  if (server.state === 'off') {
-    return {
-      text: `read since ${since} ET · this page's first read`,
-      title: "No exposure recorder runs on this server, so the field starts at the first read this page made, not at the open.",
-    };
-  }
+  if (server.state === 'off') return `read since ${since} ET (this page's first read; no recorder runs on this server)`;
   if (server.state === 'on') {
     const [y, m, d] = nyIsoDate(now).split('-').map(Number);
     const open = nyWallTime(y, m, d, 9, 30);
-    /* the day began before the record did: say where the record starts, not that it is the whole day */
-    if (first > open + 120_000 && now > open && nyIsoDate(first) === nyIsoDate(now)) {
-      return {
-        text: `recorded from ${since} ET`,
-        title: `The server's recorder first read this name at ${server.firstAt != null ? nyClock(server.firstAt) : since} ET today; nothing before ${since} ET was read, so the field is empty before it.`,
-      };
-    }
-    return { text: `read since ${since} ET`, title: 'Recorded on the server through the day, every minute from 09:30 ET (every two minutes in the premarket and after hours).' };
+    if (first > open + 120_000 && now > open && nyIsoDate(first) === nyIsoDate(now)) return `recorded from ${since} ET; nothing before it was read`;
   }
-  return { text: `read since ${since} ET`, title: '' };
+  return `read since ${since} ET`;
 }
 
 const MODES: readonly { value: FieldMode; label: string }[] = [
-  { value: 'flow', label: FIELD_MODE_WORDS.flow.name },
-  { value: 'oi', label: FIELD_MODE_WORDS.oi.name },
+  { value: 'flow', label: 'Flow' },
+  { value: 'oi', label: 'OI' },
 ];
 
 interface FieldKeyProps {
@@ -50,77 +36,68 @@ interface FieldKeyProps {
   cut: string | null;
   /** The cut in a reader's words: "Oct 29", "Every expiry" */
   cutWords: string;
-  /** The size a full-light cell stands for, dollars per 1% (the field's scale) */
+  /** The size a full-light node stands for, dollars per 1% (the field's scale) */
   scale: number;
   /** The cut's net GEX off the house's rows for it (dealer sign) — the figure Pinpoint prints for the same cut */
   oiNet: number | null;
+  /** A narrow pane: the net figure alone, no scale numbers */
   compact?: boolean;
 }
 
 function FieldKey({ ticker, cut, cutWords, scale, oiNet, compact = false }: FieldKeyProps) {
   const mode = useFieldMode();
+  const { nodeLook } = useDeskPrefs();
   useExposureLogRev(ticker);
   useBookRev();
   useFieldPoll(ticker, cut);
   const server = useServerExposure(ticker);
-  const first = exposureTodayFrom(ticker);
-  const since = sinceWords(first, server);
+  const since = sinceWords(exposureTodayFrom(ticker), server);
   const words = FIELD_MODE_WORDS[mode];
   const flowNet = mode === 'flow' && cut ? ledgerFlowNet(ticker, cut) : null;
   const netValue = mode === 'oi' ? oiNet : flowNet;
   const netWords = netValue == null ? '—' : `${netValue >= 0 ? '+' : ''}${fmtUsd(netValue)}`;
   const netInk = netValue == null ? '' : netValue >= 0 ? 'text-goldline' : 'text-steelline';
   const yesterday = cut ? priorSessionWords(ticker, cut) : null;
-  const empty = 'No reading in this session yet';
-  const scaleRow = (
-    <div className="flex items-center gap-1.5 whitespace-nowrap" aria-label="Colour scale">
-      {!compact && <span>short</span>}
-      <span className="tnum">{scale > 0 ? `−${fmtUsd(scale)}` : '—'}</span>
-      <span className={`h-2 ${compact ? 'w-7' : 'w-10'} rounded-sm`} style={{ background: FIELD_RAMP_CSS.neg, transform: 'scaleX(-1)' }} aria-hidden />
-      <span>0</span>
-      <span className={`h-2 ${compact ? 'w-7' : 'w-10'} rounded-sm`} style={{ background: FIELD_RAMP_CSS.pos }} aria-hidden />
-      <span className="tnum">{scale > 0 ? `+${fmtUsd(scale)}` : '—'}</span>
-      {!compact && <span>long</span>}
-    </div>
-  );
+  const ramp = nodeLook === 'heat' ? FIELD_RAMP_CSS : BEAD_RAMP_CSS;
+  const title = [
+    `${words.name}: ${words.line}.`,
+    scale > 0 ? `Full light: ${fmtUsd(scale)} per 1% move — short gamma (pushes a move along) left, long gamma (holds it back) right.` : 'No reading in this session yet.',
+    `Net GEX ${netWords} · ${mode === 'flow' ? "today's flow" : 'open interest'} · ${cutWords} · ${since}.`,
+    yesterday ?? '',
+  ]
+    .filter(Boolean)
+    .join('\n');
   return (
     <div
-      className="pointer-events-auto select-none rounded-md border border-ink/[0.08] bg-canvas/85 px-2 py-1.5 font-mono text-t9 text-textMuted"
+      className="pointer-events-auto select-none inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-ink/[0.08] bg-canvas/80 px-1.5 py-0.5 font-mono text-t9 text-textMuted"
       /* no backdrop blur: the tape repaints under it on every pointer move, and a blur would be re-rendered each time */
       data-field-key
       data-chart-chrome
-      title={`${words.name}: ${words.line}.${scale > 0 ? '' : ` ${empty}.`}${yesterday ? ` ${yesterday}` : ''}`}
+      title={title}
     >
-      <div className="flex items-center gap-2">
-        {!compact && <span className="text-textSecondary font-semibold uppercase tracking-wider whitespace-nowrap">Net GEX</span>}
-        <FilterTabs paper={false} options={MODES} value={mode} onChange={setFieldMode} ariaLabel="Which model the exposure cells show" />
-        {compact && (
-          <span className={`tnum font-semibold whitespace-nowrap ${netInk}`} data-field-net>
-            {netWords}
-          </span>
-        )}
-      </div>
-      <div className="mt-1">{scaleRow}</div>
-      {!compact && !(scale > 0) && (
-        <div className="mt-0.5 whitespace-nowrap text-textSecondary" data-field-empty>
-          {empty}
-        </div>
-      )}
-      {!compact && (
-        <div className="mt-0.5 flex items-center gap-1.5 whitespace-nowrap">
-          <span className={`tnum font-semibold ${netInk}`} data-field-net>
-            {netWords}
-          </span>
-          <span title={since.title || undefined} data-field-since={server.state}>
-            {mode === 'flow' ? "today's flow" : 'net GEX'} · {cutWords} · {since.text}
-          </span>
-        </div>
-      )}
-      {!compact && yesterday && (
-        <div className="mt-0.5 whitespace-nowrap" data-field-yesterday>
-          {yesterday}
-        </div>
-      )}
+      <span role="group" aria-label="Which model the exposure nodes show" className="inline-flex items-center rounded-[3px] border border-ink/[0.08] p-px">
+        {MODES.map(m => (
+          <button
+            key={m.value}
+            type="button"
+            onClick={() => setFieldMode(m.value)}
+            aria-pressed={mode === m.value}
+            title={FIELD_MODE_WORDS[m.value].name}
+            className={`rounded-[2px] px-1 leading-[14px] transition-colors ${mode === m.value ? 'bg-ink/[0.14] text-textPrimary font-semibold' : 'text-textMuted hover:text-textPrimary'}`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </span>
+      <span className="inline-flex items-center gap-1" aria-label="Colour scale">
+        {!compact && <span className="tnum">{scale > 0 ? `−${fmtUsd(scale)}` : '—'}</span>}
+        <span className="h-1.5 w-5 rounded-sm" style={{ background: ramp.neg, transform: 'scaleX(-1)' }} aria-hidden />
+        <span className="h-1.5 w-5 rounded-sm" style={{ background: ramp.pos }} aria-hidden />
+        {!compact && <span className="tnum">{scale > 0 ? `+${fmtUsd(scale)}` : ''}</span>}
+      </span>
+      <span className={`tnum font-semibold ${netInk}`} data-field-net>
+        {netWords}
+      </span>
     </div>
   );
 }
