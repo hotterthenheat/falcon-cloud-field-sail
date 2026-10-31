@@ -8,8 +8,9 @@ import { useTicker } from '../../context/MarketDataContext';
 import { setupIdOf } from '../../data/compass';
 import { COMPASS_TICKERS, COMPASS_SET } from '../../data/compassUniverse';
 import { liveSpark, useThetaBook, alertUniverse } from '../../data/thetaBook';
-import { useSignals } from '../../data/compassLedger';
-import { bestByName, currentPicks, lastScanAt, scanBusy, scanReport, seatsNow } from '../../data/compassModel';
+import { useSignals, type Signal } from '../../data/compassLedger';
+import { bestByName, currentPicks, heldSetup, lastScanAt, scanBusy, scanReport, seatsNow } from '../../data/compassModel';
+import { callSession, setupOfSignal, type CallEvent } from '../../data/compassCalls';
 import { backlogLine, compassFeed } from '../../data/compassFeed';
 import { daySummary } from '../../data/compassOutcome';
 import { asOfText } from '../../components/ui/states';
@@ -34,6 +35,7 @@ import DropdownSearch, { type SearchOption } from '../../components/ui/DropdownS
 import BackToTop from '../../components/ui/BackToTop';
 import { CompassGuide } from '../../components/compass/CompassGuide';
 import SetupScanBoard from '../../components/compass/SetupScanBoard';
+import SessionCalls, { lineOf } from '../../components/compass/SessionCalls';
 import FilterTabs from '../../components/ui/FilterTabs';
 
 /** "Sep 16", or "Sep 10 '27" once the year turns */
@@ -144,11 +146,57 @@ const Board = () => {
     return (side === 'BOTH' ? ranked : ranked.filter(s => s.right === side)).map(s => ({ ...s, spark: liveSpark(s.ticker) }));
   }, [live.setups, live.sparks, live.earlier, record, side, tickerFilter, offered]);
 
+  /* The session's calls, every book: today's once there is one, else the newest session on record (shown as that,
+     never as live). A call keeps its card after it leaves the scan, so its exit can be read. */
+  const todayIso = nyIsoDate();
+  const session = useMemo(() => {
+    const s = callSession(record, todayIso);
+    return s && (s.live || !currentPicks().length) ? s : null;
+  }, [record, todayIso, live.setups]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* While options are shut, a tenor with no call that session still shows the session's calls (every tenor): a shut
+     board is the last session's review, never an empty box. */
+  const { sessionCalls, everyTenor } = useMemo(() => {
+    if (!session) return { sessionCalls: [] as Signal[], everyTenor: false };
+    const ofDay = record.filter(r =>
+      !r.would &&
+      r.day === session.day &&
+      (side === 'BOTH' || r.right === side) &&
+      (!tickerFilter || lineOf(r.ticker) === lineOf(tickerFilter)));
+    const tenor = ofDay.filter(r => (offered === 'odte' ? r.sleeve === 'odte' : r.sleeve !== 'odte'));
+    if (!tenor.length && !session.live && ofDay.length) return { sessionCalls: ofDay, everyTenor: true };
+    return { sessionCalls: tenor, everyTenor: false };
+  }, [record, session, offered, side, tickerFilter]);
+  const callById = useMemo(() => new Map(sessionCalls.map(c => [c.id, c] as const)), [sessionCalls]);
+  const cards = useMemo(() => {
+    const shown = new Set(rankedSetups.map(s => s.id));
+    const more: (Setup & { spark?: number[] })[] = [];
+    for (const sig of sessionCalls) {
+      if (shown.has(sig.id)) continue;
+      shown.add(sig.id);
+      const held = session?.live ? heldSetup(sig.id) : null;
+      more.push(held && (held.band === 'top' || held.band === 'wing' || held.band === 'lottery') ? held : setupOfSignal(sig));
+    }
+    return more.length ? [...rankedSetups, ...more] : rankedSetups;
+  }, [rankedSetups, sessionCalls, session]);
+
   /* Nothing selected → #1 is: a scan, filter or kind change that drops the selected card falls back to the first visible. */
   useEffect(() => {
-    if (!rankedSetups.length) return;
-    if (!selectedId || !rankedSetups.some(s => s.id === selectedId)) setCompassView({ selectedId: rankedSetups[0].id });
-  }, [rankedSetups, selectedId]);
+    if (!cards.length) return;
+    if (!selectedId || !cards.some(s => s.id === selectedId)) setCompassView({ selectedId: cards[0].id });
+  }, [cards, selectedId]);
+
+  /* the event lit on the chart and in the list: its card is the selected one */
+  const [hotKey, setHotKey] = useState<string | null>(null);
+  const hotId = hotKey ? hotKey.split('|')[1] ?? null : null;
+  const litKey = hotId && hotId === selectedId ? hotKey : null;
+  const pickEvent = (e: CallEvent) => {
+    setHotKey(e.key);
+    setCompassView({ selectedId: e.sig.id });
+  };
+  const chartTicker = useMemo(() => {
+    const picked = selectedId ? cards.find(s => s.id === selectedId) : null;
+    return picked?.ticker ?? sessionCalls[0]?.ticker ?? '';
+  }, [cards, selectedId, sessionCalls]);
 
   const activeSleeveExp = sleeveDates[sleeve];
 
@@ -164,7 +212,12 @@ const Board = () => {
 
   const handleSelect = (setup: Setup) => {
     if (setup.id === selectedId) openSetup(setup);
-    else setCompassView({ selectedId: setup.id });
+    else {
+      setCompassView({ selectedId: setup.id });
+      /* a card that is a call lights its call on the chart */
+      const sig = callById.get(setup.id);
+      setHotKey(sig ? `${sig.key}|call` : null);
+    }
   };
 
   const expiryOptions = useMemo<DropdownOption<SleeveKey>[]>(() => {
@@ -249,7 +302,6 @@ const Board = () => {
       ? `Last scan ${nyDay(live.earlier.at, { weekday: true })}, ${nyClock(live.earlier.at, { zone: true })}.`
       : 'No scan has run today.';
   const offline = live.theta === 'down';
-  const todayIso = nyIsoDate();
   const day = daySummary(record.filter(s => s.day === todayIso));
   const backlog = backlogLine(compassFeed().marks);
   /* the server's engine: unreachable (nothing kept), or this browser's last copy of it, stamped */
@@ -391,17 +443,26 @@ const Board = () => {
                 As of {live.earlier.at ? `${nyDay(live.earlier.at, { weekday: true })}, ${nyClock(live.earlier.at, { zone: true })}` : nyDay(nyWallTime(Number(live.earlier.day.slice(0, 4)), Number(live.earlier.day.slice(4, 6)), Number(live.earlier.day.slice(6, 8)), 12), { weekday: true })} · the last session&apos;s scan, not live
               </p>
             )}
-            {offered === 'odte' && odteAsleep() && !rankedSetups.length ? (
-              <OdteOver />
-            ) : (
+            {offered === 'odte' && odteAsleep() && !rankedSetups.length && <OdteOver />}
+            {session && sessionCalls.length > 0 && chartTicker && (
+              <SessionCalls calls={sessionCalls} day={session.day} live={session.live} ticker={chartTicker} hotKey={litKey} onPick={pickEvent} />
+            )}
+            {session && !session.live && cards.length > rankedSetups.length && (
+              <p className="px-5 py-2 border-t border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textMuted" data-compass-asof-calls>
+                {nyDay(nyWallTime(Number(session.day.slice(0, 4)), Number(session.day.slice(5, 7)), Number(session.day.slice(8, 10)), 12), { weekday: true })} · the last session&apos;s calls, not live{everyTenor ? ` · no ${offered === 'odte' ? '0DTE' : '1–7 DTE'} call, every tenor shown` : ''}
+              </p>
+            )}
+            {offered === 'odte' && odteAsleep() && !cards.length ? null : (
             <SetupScanBoard
-              setups={rankedSetups}
+              setups={cards}
               layout={layout === 'table' ? 'table' : 'cards'}
               selectedId={selectedId}
               onSelect={handleSelect}
               onAnalysis={openSetup}
               expiryChip={sleeveDates[offered].label}
               emptyLabel={emptyLabel}
+              callOf={id => callById.get(id)}
+              hotId={litKey ? hotId : null}
             />
             )}
             </div>

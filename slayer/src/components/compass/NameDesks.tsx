@@ -12,6 +12,7 @@ import { useNameTape } from '../../data/traceLive';
 import { useTickerNews } from '../../data/liveRecord';
 import { ensureEarnings, useEarningsFailed, useEarningsHistories, useEveryReport } from '../../data/earningsFeed';
 import { passLines, sessionBars } from '../../data/compassModel';
+import { sessionYmd } from '../../data/compassSession';
 import { useThetaPrice } from '../../data/thetaQuote';
 import ContractLabel from '../ui/ContractLabel';
 import { useScanClock } from '../../data/compassDoor';
@@ -66,7 +67,13 @@ function useSessionRange(ticker: string): Range | null {
     setRange(null);
     const pull = async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
-      const got = await sessionBars(ticker);
+      /* after the evening roll and on a weekend the session clock names the next session, which has no minutes yet
+         (the terminal refuses a day ahead): read from the last session that has begun */
+      const now = Date.now();
+      const today = nyIsoDate(now).replace(/-/g, '');
+      let at = now;
+      for (let i = 0; i < 6 && sessionYmd(at) > today; i++) at -= 86_400_000;
+      const got = await sessionBars(ticker, at);
       if (dead || !got || !got.bars.length) return;
       let high = 0;
       let low = Infinity;
