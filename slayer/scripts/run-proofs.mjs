@@ -47,6 +47,7 @@ const PROOFS = [
   'forward-proof',
   'holidays-proof',
   'theta-paths-proof',
+  'cone-feed-proof',
   'weigher-gamma-proof',
   'node-strikes-proof',
   'proxy-auth-proof.mjs',
