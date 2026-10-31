@@ -22,6 +22,7 @@ import type { MarketSnapshot } from '../../types/market';
 import { alpha, pressureInks } from './paletteInk';
 import { useLedgerPalette } from '../../data/ledgerPalette';
 import { fmtStrike } from '../../core/format';
+import { nextOpenWords } from '../../data/marketState';
 
 const LIVE = 'rgb(var(--select))';
 const SILVER = 'rgb(var(--silver))';
@@ -472,7 +473,10 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
                   <span className="font-normal text-textSecondary">{cash ? 'the close' : shown === 'pre' ? 'the open' : 'the end'}</span>
                 ) : (
                   <>
-                    <span className="font-normal text-textSecondary">{cash ? 'open' : sessionMeta(shown).label.toLowerCase()}</span> <span className="tnum">{cash ? '09:30' : hhmm(win.from)}</span>
+                    {/* the day it opens when that is not today (a weekend, a holiday, after the close) */}
+                    <span className="font-normal text-textSecondary" title={nextOpenWords() ? `The next session opens ${nextOpenWords()!.long}` : undefined}>{cash ? (nextOpenWords()?.short.replace(' today', '') ?? 'open') : sessionMeta(shown).label.toLowerCase()}</span>{' '}
+                    {!cash && <span className="tnum">{hhmm(win.from)}</span>}
+                    {cash && !nextOpenWords() && <span className="tnum">09:30</span>}
                   </>
                 )}
               </ClockFact>
