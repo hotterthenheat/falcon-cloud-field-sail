@@ -42,7 +42,7 @@ const ScriptsWall = () => {
             </span>
             <span className="ml-auto h-4 px-1.5 inline-flex items-center rounded-full bg-textPrimary text-canvas font-mono text-t8 font-bold uppercase tracking-widest">All of it</span>
           </p>
-          <p className="mt-1 text-t12 leading-snug text-textSecondary">Scripts, Trace and Dossier, and Compass, the Weigher, Practice and Community.</p>
+          <p className="mt-1 text-t12 leading-snug text-textSecondary">Scripts, Trace and Dossier, Compass, the Weigher and Practice, and Community (coming soon).</p>
           <Link to={to('desk')} className={`mt-3 h-10 w-full rounded-full inline-flex items-center justify-center text-t135 font-medium relative foil-glide ${theme === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`} data-scripts-wall-go="desk">
             {holds ? 'Upgrade to Desk' : 'Choose Desk'}
           </Link>
