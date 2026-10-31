@@ -96,8 +96,8 @@ function rangeHasEarlyClose(from: string, to: string): boolean {
 }
 
 /** A print belongs on this tape. The stock overnight starts at 8:00 PM. An index overnight starts at 8:15.
-    On a half day, 13:00–15:59 stays regular — dropping it left those bars in no session — and post opens at
-    13:00, when the early close ends. No bar is invented. */
+    On a half day the cash session ends at 13:00: 13:00–19:59 is the after-hours (post opens when the early close
+    ends), so every minute is in exactly one session and nothing after the close is a regular bar. No bar is invented. */
 export function barInTape(timeSec: number, session: DeskSession, symbol = ''): boolean {
   const min = nyMinutes(timeSec * 1000);
   const name = symbol.trim().toUpperCase();
@@ -107,7 +107,7 @@ export function barInTape(timeSec: number, session: DeskSession, symbol = ''): b
   const p = nyParts(timeSec * 1000);
   const iso = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
   if (isEarlyClose(iso)) {
-    if (session === 'rth') return min >= 9 * 60 + 30 && min < 16 * 60;
+    if (session === 'rth') return min >= 9 * 60 + 30 && min < 13 * 60;
     if (session === 'post') return min >= 13 * 60 && min < 20 * 60;
   }
   return minuteInSession(min, session);
@@ -478,12 +478,14 @@ interface PrintSlot {
 const prints = new Map<string, PrintSlot>();
 const printWanted = new Map<string, number>();
 
-/** A stock's print and an index's price move from 04:00 to 20:00 New York on a trading day; outside that they hold. */
+/** A stock's print moves from 04:00 to 20:00 New York on a trading day, an index's from 09:30 to a quarter after the cash
+    close (16:15; 13:15 on an early close); outside that they hold. */
 function printLive(symbol: string): boolean {
   const p = nyParts();
   if (!isTradingDay(new Date(p.year, p.month - 1, p.day))) return false;
   const m = nyMinutes();
-  return THETA_INDEX.has(symbol) ? m >= 9 * 60 + 30 && m < 16 * 60 + 15 : m >= 4 * 60 && m < 20 * 60;
+  const iso = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+  return THETA_INDEX.has(symbol) ? m >= 9 * 60 + 30 && m < (isEarlyClose(iso) ? 13 * 60 : 16 * 60) + 15 : m >= 4 * 60 && m < 20 * 60;
 }
 
 /* Every wanted name's print, one read a name (the same address for every viewer, so the server shares it); each name's
