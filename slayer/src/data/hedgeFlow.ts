@@ -36,14 +36,18 @@ export function fmtFlow(mag: number): string {
     book cannot be re-priced */
 type RepricedNet = (prices: readonly number[]) => number[] | null;
 
-/** The ladder over a profile's strikes. With `repriced` each rung integrates the re-priced profile from spot to the
-    rung; without it the book's net at spot is carried along the path (the first-order flow). */
+/** The ladder over a profile's strikes: each rung integrates the re-priced profile from spot to the rung. A book that
+    cannot be re-priced draws NO rung — the net at spot carried flat (G₀ × the move) is not the flow even at 1%: a book
+    whose gamma changes sign within 2% (scripts/gamma-sign-proof.ts §12) reads +$1.34M to 101 flat against +$0.71M
+    re-priced, and the wrong sign by 102. */
 export function buildHedgeFlowLadder(profile: ExposureProfileData, repriced?: RepricedNet): FlowLadder {
-  const rows = profile.strikes.map(s => ({ strike: s.strike, value: s.gex.net }));
-  const spot = profile.levels.spot;
-  const flows = repriced ? integratedFlows(rows.map(r => r.strike), spot, repriced) : null;
-  const net0 = rows.reduce((a, r) => a + r.value, 0);
-  return ladderOf(rows.map(r => r.strike), spot, K => flows?.get(K) ?? net0 * ((K - spot) / spot) * 100);
+  return flowLadder(profile.strikes.map(s => s.strike), profile.levels.spot, repriced);
+}
+
+function flowLadder(strikes: readonly number[], spot: number, repriced?: RepricedNet): FlowLadder {
+  const flows = repriced ? integratedFlows(strikes, spot, repriced) : null;
+  if (!flows) return { spot, rungs: [], maxAbs: 0 };
+  return ladderOf(strikes, spot, K => flows.get(K) ?? 0);
 }
 
 /** Points per side of spot the path is integrated on (each rung's strike is one of them). */
@@ -82,16 +86,13 @@ function integratedFlows(targets: readonly number[], spot: number, repriced: Rep
   return out;
 }
 
-/** The old arithmetic off bare rows — each strike's net gamma counted once a path crosses it — kept for a host that
-    holds only the rows (Terrain's panes). Pinpoint's walls read the re-priced ladder above. */
-export function buildFlowFromRows(rows: readonly { strike: number; value: number }[], spot: number): FlowLadder {
-  return ladderOf(rows.map(r => r.strike), spot, K => {
-    const lo = Math.min(spot, K);
-    const hi = Math.max(spot, K);
-    let crossed = 0;
-    for (const t of rows) if (t.strike >= lo && t.strike <= hi) crossed += t.value;
-    return crossed * ((K - spot) / spot) * 100;
-  });
+/** The ladder over bare rows (Terrain's panes): the same integral as Pinpoint's walls, ∫ G(x)·dx/(0.01·x) of the rows'
+    book re-priced at x (`repriced`, flipLevel.ts levelNetPath) — without it, no rungs.
+    The old arithmetic here — the net of the strikes a path crosses × the move — is not a flow: a strike's gamma is
+    felt across the whole walk, not where its strike is passed (spot 100, 20 sessions, 25%, 1,000 calls a strike
+    100–115 and 1,500 puts 85–100: it read dealers selling $1.68M to 102; the integral says buying $0.21M). */
+export function buildFlowFromRows(rows: readonly { strike: number; value: number }[], spot: number, repriced?: RepricedNet): FlowLadder {
+  return flowLadder(rows.map(r => r.strike), spot, repriced);
 }
 
 function ladderOf(strikes: readonly number[], spot: number, flowTo: (K: number) => number): FlowLadder {
