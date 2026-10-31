@@ -195,8 +195,24 @@ export function sideOfTags(tags: unknown, price: number, bid: number, ask: numbe
   const quoted = price > 0 && bid > 0 && ask > bid;
   if (t.includes('ask_side')) return quoted && price <= bid + 1e-6 ? 'BID' : 'ASK';
   if (t.includes('bid_side')) return quoted && price >= ask - 1e-6 ? 'ASK' : 'BID';
-  if (t.includes('mid_side') || t.includes('no_side')) return 'MID';
+  /* a mid tag inside a live quote follows where the fill sat: within a fifth of the spread of a side it is that side's
+     (execOf); a no-side tag carries nothing to place */
+  if (t.includes('mid_side')) return execOf(price, bid, ask) ?? 'MID';
+  if (t.includes('no_side')) return 'MID';
   return execOf(price, bid, ask) ?? 'MID';
+}
+/** A print's side, the one rule every page reads: no read (MID) on a crossed or stale quote and on a cross trade, else
+    the tag against the quote (sideOfTags) */
+export function printSideOf(row: Record<string, unknown>, price: number, bid: number, ask: number, atMs: number): 'ASK' | 'BID' | 'MID' {
+  if (quoteNoReadOf(row, price, bid, ask, atMs)) return 'MID';
+  if (printCondition(row).cross) return 'MID';
+  return sideOfTags(row.tags, price, bid, ask);
+}
+/** A print's identity: the vendor's trade id, else its content (contract, instant, price, size, premium) — never its
+    place on a page, which shifts as prints land and repeats a print read on two pages */
+export function printKeyOf(row: Record<string, unknown>): string {
+  if (row.id != null && row.id !== '') return String(row.id);
+  return `${tickerOfRow(row)}|${row.option_chain_id ?? row.option_chain ?? row.option_symbol ?? ''}|${row.executed_at ?? row.created_at ?? ''}|${row.price ?? ''}|${row.size ?? ''}|${row.premium ?? ''}`;
 }
 
 /* The print's OPRA condition says what it was: ISOI a sweep; ML?T / TL?T and the ?ESL / ?ASL / ?FSL family legs of a
@@ -299,6 +315,14 @@ export interface SeenSpot {
 }
 export const spotSeen = new Map<string, SeenSpot>();
 export const spotScreenAt = new Map<string, number>();
+/* A name's average day in dollars (the screener's avg30_volume × its close), noted wherever a screener row is read —
+   the sized lines (dark prints, big money) scale to it */
+const advSeen = new Map<string, number>();
+export function noteAdv(ticker: string, advUsd: number): void {
+  if (ticker && advUsd > 0 && Number.isFinite(advUsd)) advSeen.set(ticker.toUpperCase(), advUsd);
+}
+/** A name's average daily dollar volume, null when no screener row for it has been read */
+export const advUsdOf = (ticker: string): number | null => advSeen.get((ticker || '').toUpperCase()) ?? null;
 export const spotAsks = new Map<string, Promise<void>>();
 export const SPOT_SCREEN_MS = 60_000;
 /** Note a price for a name, stamped by when it printed — the newest wins */
@@ -358,6 +382,7 @@ export async function ensureSpots(tickers: Iterable<string>): Promise<void> {
           const close = num(r.close);
           /* the screener row carries no clock of its own: stamped a little before the read, so a print seen since wins */
           if (t && close > 0) noteSpot(t, close, readAt - 5_000);
+          if (t && close > 0) noteAdv(t, num(r.avg30_volume) * close);
         }
       } catch {
         /* no price: the row keeps its own */
@@ -410,9 +435,8 @@ export function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const right: 'C' | 'P' = String(row.option_type || row.type || '').toLowerCase().startsWith('p') ? 'P' : 'C';
   /* (a flow alert's side is its money's split, not one quote — the check is a print's) */
   const quoteNoRead = row.__aggregate ? null : quoteNoReadOf(row, fill, bid, ask, when.ms);
-  /* a cross takes no side on the screen, so no read */
-  const crossPrint = /cross_trade/i.test(Array.isArray(row.report_flags) ? row.report_flags.join(' ') : String(row.report_flags || ''));
-  const side = quoteNoRead || crossPrint ? 'MID' : sideOfTags(row.tags, fill, bid, ask);
+  /* a cross takes no side on the screen, so no read (printSideOf; an alert's side is its money's, never a quote's) */
+  const side = row.__aggregate ? (Array.isArray(row.tags) && row.tags.includes('mid_side') ? 'MID' : sideOfTags(row.tags, fill, bid, ask)) : printSideOf(row, fill, bid, ask, when.ms);
   /* the vendor's flag, else the clock: a fill outside the name's regular session (09:30 to 16:00, 16:15 for the index
      and ETF options) is an extended-hours print whether or not it came flagged (a hive call at 17:11:50 did not) */
   /* By the print, not the wall clock: between 16:00 and 16:15 the vendor's own flag decides; before 09:30 and from
@@ -431,7 +455,8 @@ export function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const bidVol = num(row.bid_vol);
   const volSum = askVol + bidVol;
   const { multi, sweep, compression, cross } = printCondition(row);
-  const idRaw = String(row.id || `${ticker}-${when.epoch}-${i}`);
+  void i;
+  const idRaw = printKeyOf(row);
   return {
     id: hashId(idRaw),
     time: when.time,
@@ -519,7 +544,8 @@ export function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
     sweep: row.has_sweep === true,
     legs: row.has_multileg === true && row.has_singleleg !== true ? 2 : 1,
     trades: num(row.trade_count) || undefined,
-    ratioBidPct: whole > 0 ? Math.round((bidPrem / whole) * 100) : NaN,
+    /* the bid's share of the sided money (ask + bid), as a print's ratioBidPct is of its sided contracts */
+    ratioBidPct: sided > 0 ? Math.round((bidPrem / sided) * 100) : NaN,
     alertSides: { ask: askPrem, bid: bidPrem, other: Math.max(0, total - sided) },
     alertRule: row.alert_rule ? String(row.alert_rule) : undefined,
     /* the alert's filing instant — the route's older_than cursor (the endless lists) */
@@ -664,15 +690,55 @@ export function nextSessionIso(iso: string): string {
   for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() + 1);
   return isoDate(d);
 }
+/** Opening, not closing: no more contracts can close than stood open, so a day (or a print) whose volume ran past the
+    open interest it opened on opened at least the difference; once the next session's count is out, interest that grew
+    by half the day's volume or more says the same. A flag beside the classifications, never one of them; null when
+    neither can be told (volume within the open interest and no next count yet). */
+export const OPENING_DOI_SHARE = 0.5;
+export function likelyOpeningOf(r: { volume: number; oi: number }, next?: { oi: number; before: number } | null): boolean | null {
+  if (!(r.volume > 0)) return null;
+  const atOpen = next ? next.before : r.oi;
+  if (r.volume > atOpen) return true;
+  if (next) return next.oi - next.before >= OPENING_DOI_SHARE * r.volume;
+  return null;
+}
+
 /** The session before a session day, YYYY-MM-DD */
 export function prevSessionIso(iso: string = tapeSessionIso()): string {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return iso;
   return isoDate(sessionBefore(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))));
 }
+/** What a net-premium figure covers, so a page can say it beside the figure: the stretch (New York clocks), the source,
+    and what it leaves out. Every net figure Trace makes returns one. */
+export interface NetCovers {
+  /** "09:30" — the first minute or print counted, New York */
+  since: string;
+  /** "16:15" — the last */
+  until: string;
+  /** Whose figure: "net-prem-ticks", "market tide", "net flow by expiry", "flow by expiry", "the book's contracts", "the prints in hand" */
+  source: string;
+  /** Left out of it: "pre-market", "spread legs", "crosses", "compression", "after hours", "strikes off the cut"… */
+  leaves: string[];
+  /** True when the figure is the app's own estimate off contract shares, not the vendor's sum */
+  approx?: boolean;
+}
+const hhmm = (sec: number) => (sec > 0 ? clock(sec).time.slice(0, 5) : '—');
+/** A series' stretch, first to last point (epoch seconds) */
+export function coversOf(points: readonly { time: number }[], source: string, leaves: string[] = [], approx = false): NetCovers {
+  let first = 0;
+  let last = 0;
+  for (const p of points) {
+    if (!(p.time > 0)) continue;
+    if (!first || p.time < first) first = p.time;
+    if (p.time > last) last = p.time;
+  }
+  return { since: hhmm(first), until: hhmm(last), source, leaves, ...(approx ? { approx } : {}) };
+}
+
 /** The tide's net between two New York minutes [from, to): its running figure at the last point before `to`, less the last
     point before `from` (the tide runs from 07:30, so the regular session's own net is the difference) */
-export function tideBetween(rows: { time: number; callPrem: number; putPrem: number }[], from: number, to: number): { calls: number; puts: number; net: number; first: number; last: number } | null {
+export function tideBetween(rows: { time: number; callPrem: number; putPrem: number }[], from: number, to: number): { calls: number; puts: number; net: number; first: number; last: number; covers: NetCovers } | null {
   let base: { callPrem: number; putPrem: number } | null = null;
   let end: { time: number; callPrem: number; putPrem: number } | null = null;
   let first = 0;
@@ -688,7 +754,9 @@ export function tideBetween(rows: { time: number; callPrem: number; putPrem: num
   if (!end) return null;
   const calls = end.callPrem - (base?.callPrem ?? 0);
   const puts = end.putPrem - (base?.putPrem ?? 0);
-  return { calls, puts, net: calls - puts, first, last: end.time };
+  /* from the window's own start when a point before it is the base, else from the vendor's first minute (07:30) */
+  const since = base ? `${String(Math.floor(from / 60)).padStart(2, '0')}:${String(from % 60).padStart(2, '0')}` : hhmm(first);
+  return { calls, puts, net: calls - puts, first, last: end.time, covers: { since, until: hhmm(end.time), source: 'market tide', leaves: [] } };
 }
 
 /** A contract's OCC symbol from its parts — "SPY", 763, P, "10/22/2026" → SPY261022P00763000; an index's weekly root
@@ -701,10 +769,17 @@ export function occOf(root: string, strike: number, right: 'C' | 'P', expiry: st
   return `${root.toUpperCase()}${d[1].slice(2)}${d[2]}${d[3]}${right}${String(Math.round(strike * 1000)).padStart(8, '0')}`;
 }
 
-/** Print versus the quote. At or above the ask is a lift; at or below the bid is a hit. Null when NBBO is missing. */
+/** Inside the spread, a fill this far toward a side (fillPos 0–1 from the bid) counts to it: 0.8 and up the ask, 0.2 and
+    under the bid; the middle three-fifths stays MID */
+export const NEAR_SIDE = 0.8;
+/** Print versus the quote. At or above the ask is a lift, at or below the bid a hit, and within a fifth of the spread of
+    either it counts to that side (NEAR_SIDE). A locked or crossed quote (bid at or over the ask) says nothing: MID, as
+    sideOfTags reads it. Null when NBBO is missing. */
 export function execOf(price: number, bid: number, ask: number): 'ASK' | 'BID' | 'MID' | null {
-  if (!(price > 0) || !(bid > 0) || !(ask > 0) || ask < bid) return null;
+  if (!(price > 0) || !(bid > 0) || !(ask > 0)) return null;
+  if (bid >= ask) return 'MID';
   if (price >= ask - 1e-6) return 'ASK';
   if (price <= bid + 1e-6) return 'BID';
-  return 'MID';
+  const pos = (price - bid) / (ask - bid);
+  return pos >= NEAR_SIDE - 1e-9 ? 'ASK' : pos <= 1 - NEAR_SIDE + 1e-9 ? 'BID' : 'MID';
 }

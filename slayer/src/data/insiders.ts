@@ -61,7 +61,8 @@ export function summariseFlow(ticker: string, trades: InsiderTrade[], windowDays
   else if (openMarketBuys > 0 && openMarketBuys >= discretionarySold) signal = 'accumulating';
   else if (discretionarySold > 0 && discretionarySold >= sold * 0.4) signal = 'distributing';
   else if (sold > 0) signal = 'scheduled selling';
-  const recentBuyers = new Set(trades.filter(t => t.code === 'P' && t.daysAgo <= 30).map(t => t.person));
+  /* the cluster counts the buyers whose buys are counted: chosen ones (isChosenBuy), never a planned or a fund's */
+  const recentBuyers = new Set(trades.filter(t => isChosenBuy(t) && t.daysAgo <= 30).map(t => t.person));
   return { ticker, trades, bought, sold, net, plannedValue, compValue, buyerCluster: recentBuyers.size, openMarketBuys, chosenSold, signal, windowDays };
 }
 

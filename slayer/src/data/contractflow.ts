@@ -6,7 +6,7 @@ import { uwCall } from './whales';
 import { marketPhase } from '../core/marketPhase';
 import { isoDate, isTradingDay } from '../core/calendar';
 import { minuteLabel, nyClock } from '../core/nyTime';
-import { liveTrades, num, sideOfTags, printCondition, quoteNoReadOf, sessionEndMin, tapeSessionIso } from './traceRows';
+import { liveTrades, num, printCondition, printKeyOf, printSideOf, sessionEndMin, tapeSessionIso } from './traceRows';
 
 type FlowSide = 'BID' | 'MID' | 'ASK';
 
@@ -273,13 +273,13 @@ async function loadContractTape(occ: string, ticker: string, dateIso: string): P
       const ask = num(r.nbbo_ask);
       const cond = printCondition(r);
       return {
-        id: String(r.id || i),
+        id: printKeyOf(r),
         time: at?.time ?? '—',
         min: at?.min ?? 0,
         price,
         size: num(r.size),
-        /* a crossed quote, or a side quoted minutes before the fill, gives no read */
-        side: quoteNoReadOf(r, price, bid, ask, Date.parse(String(r.executed_at ?? ''))) ? 'MID' : sideOfTags(r.tags, price, bid, ask),
+        /* Trace's one rule (printSideOf): a crossed or stale quote, or a cross trade, gives no read */
+        side: printSideOf(r, price, bid, ask, Date.parse(String(r.executed_at ?? ''))),
         premium: num(r.premium) || price * num(r.size) * 100,
         bid,
         ask,

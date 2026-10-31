@@ -2,13 +2,23 @@
 
 import type { DarkPoolIntent, DarkPoolLevel, DarkPoolPrint, DarkPoolView, LevelRole, Posture } from '../types/darkpool';
 import { postureOfNet } from './traceLean';
-import { clock, execOf, hashId, num, nyDateOf, SESSION_OPEN } from './traceRows';
+import { advUsdOf, clock, execOf, hashId, num, nyDateOf, SESSION_OPEN } from './traceRows';
 
 
 /* The dark-pool read, one rule across Trace: a sized regular-session print over the mid was paid up (accumulation),
    under it sold down (distribution), at the mid neither. Only sized prints at the quote carry a read. */
-/** A sized cross is dollars, not shares: $250K and up carries a read, below it none. */
+/** A sized cross is dollars, not shares: $250K and up carries a read, below it none. This is the floor for every name;
+    a name whose average day is known needs a second of that day (darkSizedFloor). */
 export const DARK_SIZED_USD = 250_000;
+/** Seconds in the regular session (09:30–16:00) */
+const SESSION_SECONDS = 23_400;
+/** The sized line for a name: one second of its average day's dollar volume (avg30 shares × price over 23,400 s), never
+    under DARK_SIZED_USD — $250K is a block on a $50M-a-day name and noise on NVDA's ~$36B day (its line is ~$1.5M) */
+export function darkSizedFloor(advUsd: number | null | undefined): number {
+  return advUsd != null && advUsd > 0 ? Math.max(DARK_SIZED_USD, advUsd / SESSION_SECONDS) : DARK_SIZED_USD;
+}
+/** Fewer read prints than this is too few to call buying or selling, on every page */
+export const DARK_MIN_PRINTS = 12;
 export function intentOf(cents: number, sized: boolean): DarkPoolIntent {
   if (!sized) return 'ROTATION';
   if (cents > 0) return 'ACCUMULATION';
@@ -98,7 +108,9 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
   const exec = special ? null : execOf(price, bid, ask);
   /* the vendor's tracking_id is NOT unique — distinct prints (other sizes, other cumulative volumes) share one — so the
      id folds in the fields that tell them apart; stable across polls, so the accumulator still de-dupes repeats */
-  const id = hashId(row.tracking_id != null ? `${row.tracking_id}-${row.executed_at}-${row.size}-${row.price}-${row.volume}` : `${row.ticker}-${row.executed_at}-${i}`);
+  /* with no tracking id, the print's content — never its place on the page, which repeats it under two ids across pages */
+  void i;
+  const id = hashId(row.tracking_id != null ? `${row.tracking_id}-${row.executed_at}-${row.size}-${row.price}-${row.volume}` : `${row.ticker}-${row.executed_at}-${row.size}-${row.price}-${row.volume}-${row.premium}`);
   const place = quotePlace(vs, price);
   const where = place.cents === 0 ? 'at the mid' : place.cents > 0 ? `${place.text.slice(1)} over the mid` : `${place.text.slice(1)} under the mid`;
   const read = special
@@ -187,17 +199,44 @@ export function darkLevels(allRows: Record<string, unknown>[], spot: number, all
   return [...take('SUPPORT'), ...take('RESISTANCE'), ...take('PIVOT')];
 }
 
-/** The posture of the sized, read prints — their dollars over the mid (bought up) against under it (sold down) */
-export function postureOf(prints: DarkPoolPrint[]): { posture: Posture; net: number; note: string; read: number } {
-  const read = prints.filter(p => p.sized && !p.extended && !p.special);
-  const acc = read.reduce((a, p) => a + (p.intent === 'ACCUMULATION' ? p.notional : 0), 0);
-  const dist = read.reduce((a, p) => a + (p.intent === 'DISTRIBUTION' ? p.notional : 0), 0);
-  const all = read.reduce((a, p) => a + p.notional, 0);
-  const net = all > 0 ? Math.round(((acc - dist) / all) * 100) : 0;
-  const posture: Posture = postureOfNet(net);
+/** The one dark-pool posture, Trace's and Dossier's alike, over whatever print set the caller holds: the regular-session
+    prints priced at the quote and sized for their own name (darkSizedFloor), their dollars over the mid (bought up)
+    against under it (sold down). The net is unrounded — 17.6% is Balanced everywhere — and under DARK_MIN_PRINTS read
+    prints there is no posture (Balanced, `enough` false). */
+export interface DarkPostureRead {
+  posture: Posture;
+  /** Net of the read dollars over the mid less under it, %, unrounded */
+  net: number;
+  /** The prints read, and their dollars */
+  read: DarkPoolPrint[];
+  notional: number;
+  bought: number;
+  sold: number;
+  /** At least DARK_MIN_PRINTS prints were read */
+  enough: boolean;
+}
+export function darkPosture(prints: readonly DarkPoolPrint[], opts: { advUsd?: (ticker: string) => number | null; minPrints?: number } = {}): DarkPostureRead {
+  const adv = opts.advUsd ?? advUsdOf;
+  const minPrints = opts.minPrints ?? DARK_MIN_PRINTS;
+  const read = prints.filter(p => p.intent !== 'ROTATION' && p.sized && !p.extended && !p.special && p.notional >= darkSizedFloor(adv(p.ticker)));
+  const bought = read.reduce((a, p) => a + (p.intent === 'ACCUMULATION' ? p.notional : 0), 0);
+  const sold = read.reduce((a, p) => a + (p.intent === 'DISTRIBUTION' ? p.notional : 0), 0);
+  const notional = read.reduce((a, p) => a + p.notional, 0);
+  const net = notional > 0 ? ((bought - sold) / notional) * 100 : 0;
+  const enough = read.length >= minPrints;
+  return { posture: enough ? postureOfNet(net) : 'BALANCED', net, read, notional, bought, sold, enough };
+}
+
+/** The posture of the sized, read prints (darkPosture) with its note */
+export function postureOf(prints: DarkPoolPrint[], opts: { advUsd?: (ticker: string) => number | null; minPrints?: number } = {}): { posture: Posture; net: number; note: string; read: number; enough: boolean } {
+  const pv = darkPosture(prints, opts);
+  const { posture, net, enough } = pv;
+  const read = pv.read;
   const after = prints.length > 0 && read.length === 0 && prints.some(p => p.extended);
   const note = after
     ? 'Every print in hand is after hours — set against a post-market quote, so none is read.'
+    : read.length && !enough
+      ? `Only ${read.length} sized ${read.length === 1 ? 'print' : 'prints'} in the regular session — too few to read.`
     : posture === 'ACCUMULATING'
       ? 'Sized dollars lean over the mid — bought up, buyer-initiated.'
       : posture === 'DISTRIBUTING'
@@ -206,7 +245,7 @@ export function postureOf(prints: DarkPoolPrint[]): { posture: Posture; net: num
           ? 'Sized dollars sit on both sides of the mid.'
           : 'No sized print in the regular session to read.';
   /* `read`: how many prints carried a read; none is "nothing to read", never Balanced */
-  return { posture, net, note, read: read.length };
+  return { posture, net, note, read: read.length, enough };
 }
 
 export function darkView(ticker: string, prints: DarkPoolPrint[], levels: DarkPoolLevel[], spot: number, dpSharePct = 0): DarkPoolView {
@@ -233,10 +272,13 @@ export function darkView(ticker: string, prints: DarkPoolPrint[], levels: DarkPo
 
 export const DARK_CAP = 2000;
 
-export function mergeDark(prev: DarkPoolPrint[], incoming: DarkPoolPrint[]): DarkPoolPrint[] {
+/** Merge a poll into the accumulated prints, newest first, no print twice; `gone` (ids the vendor has since cancelled)
+    are taken back out of what was merged */
+export function mergeDark(prev0: DarkPoolPrint[], incoming: DarkPoolPrint[], gone?: ReadonlySet<number>): DarkPoolPrint[] {
+  const prev = gone?.size ? prev0.filter(r => !gone.has(r.id)) : prev0;
   const seen = new Set(prev.map(r => r.id));
-  const fresh = incoming.filter(r => !seen.has(r.id) && (seen.add(r.id), true));
-  if (!fresh.length) return prev;
+  const fresh = incoming.filter(r => !gone?.has(r.id) && !seen.has(r.id) && (seen.add(r.id), true));
+  if (!fresh.length) return prev.length === prev0.length ? prev0 : prev;
   const next = fresh.concat(prev);
   return next.length > DARK_CAP ? next.slice(0, DARK_CAP) : next;
 }

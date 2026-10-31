@@ -1,5 +1,14 @@
 /* Every lean and posture threshold on Trace. Pages and data modules import these; none restates a number. */
 
+/** Volume at least this many times its open interest reads as positions built in the session — Trace's "fresh" and
+    Dossier's "unusual" alike. 1.5×: at least a third of the day's contracts ((vol − OI) / vol) cannot be closing ones,
+    since no more than the open interest can close; 2× (Dossier's old cut) asked for half */
+export const FRESH_VOL_OI = 1.5;
+/** A contract's day is spread legs at this share (%) of its volume in multi-leg orders — half */
+export const SPREAD_LEG_PCT = 50;
+/** A contract's day is swept at this share (%) of its volume in sweeps — a quarter, on every screen, reason and card */
+export const SWEEP_DAY_PCT = 25;
+
 /** A side leans when it holds this share (%) of the sided volume or premium */
 export const LEAN_EDGE = 55;
 /** …and at least this share (%) of the whole traded on a side at all */

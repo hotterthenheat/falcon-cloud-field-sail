@@ -51,6 +51,10 @@ const get = async <T>(path: string): Promise<T> => {
 };
 const round = (v: number, d = 4) => Number(v.toFixed(d));
 
+/* recomputed from the raw iv-rank rows: drops of 3.0%, 8.5%, 14.7%, 18.9% (1.6, 4.2, 6.6, 7.8 points) — medians 11.6% and 5.4;
+   the straddle loss is the long_straddle_1d median, 72% */
+const NVDA_CRUSH = [true, 12, 5.4, 72, 72];
+
 const READ: Record<string, { pillars: number[]; composite: number; grade: string; rate: number }> = {
   NVDA: { pillars: [28, 87, 46], composite: 51, grade: 'caution', rate: 85 },
   GME: { pillars: [11, 46, 50], composite: 34, grade: 'poor', rate: 8 },
@@ -183,6 +187,75 @@ for (const t of ['NVDA', 'GME']) {
   /* the screener row (dated Oct 28) reads the regular close, its own close as the move outside the session */
   expectEqual(`${t} screener regular close`, sr?.regular, w.regular);
   expectNear(`${t} screener outside-session move %`, sr?.extPct ?? NaN, w.screenExt, 1e-4);
+}
+
+/* ---- 7. known numbers: one rule per figure, against hand-worked rows ------------------------------------------ */
+{
+  /* IV crush and the straddle's loss are two figures. NVDA's year of 30-day IV around its four after-close reports in
+     it (Nov 19, Feb 25, May 20, Aug 26): the close-of-report-day IV against the next day's */
+  const { ivCrushOf } = await import('../../src/data/earningsFeed');
+  const rows = await get<Record<string, unknown>[]>('/earnings/NVDA');
+  const ivRows = await get<Record<string, unknown>[]>('/stock/NVDA/iv-rank?timespan=1y');
+  const ivDays = ivRows.map(r => ({ date: String(r.date).slice(0, 10), iv: Number(r.volatility) })).filter(d => d.iv > 0).sort((a, b) => a.date.localeCompare(b.date));
+  const d = dossierFromRows('NVDA', rows as never, ivDays)!;
+  say('NVDA.crush', { iv: ivCrushOf(rows as never, ivDays), loss: d.straddleLossPct, lost: d.premiumLostPct });
+  expectEqual('NVDA IV crush (median of the reports\' IV drop) and straddle loss: apart', [d.ivCrushKnown, d.ivCrushPct, d.ivCrushPoints, d.straddleLossPct, d.premiumLostPct], NVDA_CRUSH);
+  /* by hand: an after-close report on Aug 26 (IV 62% that close, 40% the next) and a before-open one on May 20 (50% the
+     close before, 40% that day's close): 35.5% and 20% — the median 27.7%, 28; in points 22 and 10, 16 */
+  const hand = ivCrushOf(
+    [
+      { report_date: '2026-08-26', report_time: 'postmarket', actual_eps: '1' },
+      { report_date: '2026-05-20', report_time: 'premarket', actual_eps: '1' },
+    ] as never,
+    [
+      { date: '2026-05-19', iv: 0.5 },
+      { date: '2026-05-20', iv: 0.4 },
+      { date: '2026-08-25', iv: 0.6 },
+      { date: '2026-08-26', iv: 0.62 },
+      { date: '2026-08-27', iv: 0.4 },
+    ]
+  );
+  expectEqual('IV crush by hand: median of 35.5% and 20%, in % and points', hand, { pct: 28, points: 16, n: 2 });
+}
+{
+  const { contractsFrom } = await import('../../src/data/earningsFeed');
+  const { busiestOf, flowSidesOf } = await import('../../src/data/stockOverview');
+  const { dayLean } = await import('../../src/data/traceLean');
+  /* the vendor's IV is a fraction: 3.4 is 340% (it read 3%), 0.45 is 45% */
+  const chain = [
+    { option_symbol: 'GME271217C00030000', volume: 1000, nbbo_bid: '1.00', nbbo_ask: '1.10', last_price: '1.05', open_interest: 500, implied_volatility: '3.4', ask_volume: 400, bid_volume: 100, mid_volume: 500, no_side_volume: 0, avg_price: '1.05', total_premium: '105000' },
+    { option_symbol: 'GME271217P00020000', volume: 800, nbbo_bid: '0.50', nbbo_ask: '0.60', last_price: '0.55', open_interest: 100, implied_volatility: '0.45', ask_volume: 100, bid_volume: 300, mid_volume: 400, no_side_volume: 0, avg_price: '0.55', total_premium: '44000' },
+  ];
+  const ef = contractsFrom('GME', chain, 25);
+  expectEqual('earnings busiest contracts: IV 3.4 → 340%, 0.45 → 45%', [ef.calls[0]?.ivPct, ef.puts[0]?.ivPct], [340, 45]);
+  const call = busiestOf(chain, 'C', 'GME', 25)[0];
+  const put = busiestOf(chain, 'P', 'GME', 25)[0];
+  expectEqual('Dossier busiest contracts: IV 3.4 → 340%, 0.45 → 45%', [call.iv, put.iv].map(v => Math.round(v)), [340, 45]);
+  /* "% ask" is ask over ask + bid (Trace's): 400 ask, 100 bid, 500 mid is 80% ask and leans ASK — it read 40% of the
+     whole volume, a BID lean */
+  expectEqual('Dossier busiest call: % ask of the sided contracts, and its lean', [Math.round(call.askPct), dayLean(call).lean, Math.round(dayLean(call).mid)], [80, 'ASK', 50]);
+  /* the 20 put on a 25 stock is 20% out of the money (+), a 30 call 20% out (+) — the put read −20% */
+  expectEqual('Dossier busiest: out of the money is + for the put and the call', [Math.round(put.otmPct), Math.round(call.otmPct)], [20, 20]);
+  /* an alert's split: $600K ask, $200K bid, $200K mid → 75% of the sided premium (it read 60% of the whole) */
+  const sides = flowSidesOf([{ premium: 1_000_000, side: 'ASK', alertSides: { ask: 600_000, bid: 200_000, other: 200_000 } }]);
+  const { leanOfSides } = await import('../../src/data/traceLean');
+  expectEqual('Dossier flow ask share: ask over ask + bid premium', [sides.ask, sides.bid, sides.mid, leanOfSides(sides).askSided], [600_000, 200_000, 200_000, 75]);
+  const { unusualOf } = await import('../../src/data/stockOverview');
+  /* one "unusual" cut with Trace's fresh: 1.5× open interest (Dossier asked 2×, so a 1.7× alert was not unusual) */
+  expectEqual('Dossier unusual alerts at 1.4×, 1.5×, 1.7×, 2.5× open interest', unusualOf([1.4, 1.5, 1.7, 2.5].map(volOverOI => ({ volOverOI }))), 3);
+}
+
+/* ---- 8. no constant poses as data: a story carries no model confidence and its "magnitude" is the vendor's flag -- */
+{
+  const { newsFromWhales } = await import('../../src/data/whalesMap');
+  const { severityOf } = await import('../../src/data/newsroom');
+  const story = (is_major: boolean) => ({ headline: 'Nvidia beats quarterly earnings estimates and raises its outlook', created_at: '2026-10-28T15:00:00Z', source: 'Wire', tickers: ['NVDA'], is_major, sentiment: 'positive', tags: [] });
+  const [maj, min] = newsFromWhales([story(true), story(false)] as never, () => 200);
+  say('news', { maj: maj && { conf: maj.prediction.confidencePct, mag: maj.magnitude, sev: severityOf(maj) }, min: min && { conf: min.prediction.confidencePct, mag: min.magnitude, sev: severityOf(min) } });
+  /* confidence was a constant 58 on every measured story; magnitude 0.8 / 0.45 for the major flag */
+  expectEqual('news: no model confidence, magnitude = the major flag', [Number.isNaN(maj?.prediction.confidencePct), Number.isNaN(min?.prediction.confidencePct), maj?.magnitude, min?.magnitude], [true, true, 1, 0]);
+  /* the severity words keep their tiers: a story with no move at publish is 4 when major, 2 when not */
+  expectEqual('news severity off the flag, no move', [severityOf({ ...maj!, prediction: { ...maj!.prediction, expMove1dPct: 0 } }), severityOf({ ...min!, prediction: { ...min!.prediction, expMove1dPct: 0 } })], [4, 2]);
 }
 
 done();

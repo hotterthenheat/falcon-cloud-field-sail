@@ -72,5 +72,13 @@ for (const [i, x] of LIVE_ROWS.entries()) {
   check(`${x.row.option_symbol}: screener ${x.row.stock_price} read ${frozen.otmPct.toFixed(2)}%; live ${liveSpotOf(t)} reads ${live.otmPct.toFixed(2)}% ${x.want.toUpperCase()}`, live.spot === x.live && (x.want === 'otm' ? live.otmPct > 0 : live.otmPct < 0));
 }
 
+/* THE BANDS DO NOT OVERLAP: within 1% of the spot either way a strike is ATM and neither ITM nor OTM (a 0.5% OTM strike
+   was OTM and ATM at once); past it, ITM or OTM alone */
+for (const [pct, want] of [[0.5, 'atm'], [-0.5, 'atm'], [1, 'atm'], [1.04, 'otm'], [-1.45, 'itm']] as const) {
+  const r = { otmPct: pct, right: 'P' } as const;
+  const got = (['itm', 'atm', 'otm'] as const).filter(m => moneynessFilter(r, m));
+  check(`${pct}% from the spot reads ${want.toUpperCase()} alone (${got.join(', ') || 'none'})`, got.length === 1 && got[0] === want);
+}
+
 console.log(fail ? `\n${fail} failed` : '\nall moneyness checks pass');
 process.exit(fail ? 1 : 0);

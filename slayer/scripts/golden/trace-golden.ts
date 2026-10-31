@@ -193,5 +193,135 @@ for (const name of ['SPY', 'QQQ']) {
   expectEqual(`0DTE ${name}: net calls, net puts, call vol, put vol`, day.length === 1 ? [day[0].callNet, day[0].putNet, day[0].callVol, day[0].putVol].map(Math.round) : null, FPE[name]);
 }
 
+/* ---- 6. known numbers: one rule per figure, against hand-worked rows ------------------------------------------ */
+const { darkPrint } = await import('../../src/data/traceLive');
+const { postureOf, darkPosture, darkSizedFloor } = await import('../../src/data/traceDark');
+const { noteAdv } = await import('../../src/data/traceRows');
+const { printKind } = await import('../../src/data/tape');
+const { buildCatches } = await import('../../src/data/flowBook');
+{
+  /* a regular-session dark print 1¢ over (or under) a 9.99 × 10.01 quote, its dollars as given */
+  const dp = (ticker: string, over: boolean, usd: number, k: number) =>
+    darkPrint({ ticker, price: over ? '10.01' : '9.99', size: Math.round(usd / 10), premium: String(usd), nbbo_bid: '9.99', nbbo_ask: '10.01', executed_at: `2026-10-28T15:${String(10 + k).padStart(2, '0')}:00Z`, tracking_id: `${ticker}${k}` }, k);
+  /* six $588K paid over the mid, six $412K sold under: (3.528M − 2.472M) / 6M = 17.6% — under the 18% edge, Balanced
+     on Trace and Dossier alike (Trace rounded it to 18 and read Accumulating) */
+  const set = [...Array.from({ length: 6 }, (_, k) => dp('ZZZ', true, 588_000, k)), ...Array.from({ length: 6 }, (_, k) => dp('ZZZ', false, 412_000, k + 6))];
+  const t = postureOf(set);
+  const d = darkPosture(set);
+  expectEqual('dark posture at a 17.6% net: Trace and Dossier both Balanced, unrounded', [t.posture, d.posture, Number(t.net.toFixed(1)), Number(d.net.toFixed(1)), t.read], ['BALANCED', 'BALANCED', 17.6, 17.6, 12]);
+  /* five prints all over the mid are too few (12) to read on either page — Trace read them Accumulating */
+  const few = postureOf(set.slice(0, 5));
+  expectEqual('dark posture on 5 prints: too few to read', [few.posture, few.read, few.enough], ['BALANCED', 5, false]);
+  /* NVDA's ~$36B average day: its sized line is a second of it, $1,538,462; a $1M NVDA print is not read, a ZZZ one is */
+  noteAdv('NVDA', 36e9);
+  expectEqual('dark sized line: a second of the average day, $250K at the least', [Math.round(darkSizedFloor(36e9)), darkSizedFloor(20e6), darkSizedFloor(null)], [1538462, 250000, 250000]);
+  expectEqual('dark posture reads a $1M print on ZZZ, not on NVDA', [darkPosture([dp('NVDA', true, 1_000_000, 20)], { minPrints: 1 }).read.length, darkPosture([dp('ZZZ', true, 1_000_000, 21)], { minPrints: 1 }).read.length], [0, 1]);
+}
+{
+  /* a block needs both lines: 100 contracts AND $50K — a 100-lot at $0.05 ($500) and a 20-lot for $300K are single prints */
+  const k = (size: number, premium: number) => printKind({ sweep: false, legs: 1, strat: '—', size, premium });
+  expectEqual('print kind: 100 × $0.05, 20 for $300K, 100 for $60K', [k(100, 500), k(20, 300_000), k(100, 60_000)], ['SINGLE', 'SINGLE', 'BLOCK']);
+  /* big money: $25M at the least, a thousandth of the name's average dollar day where that is more (NVDA's $36B: $36M) */
+  const row = (ticker: string) => ({ key: `${ticker}-big`, ticker, premium: 30_000_000, volume: 1, volOverOI: 0, sweepPct: 0, chgPct: 0, floorPct: 0, multiPct: 0, askPct: 50, earnDays: null, deltaOI: 0, lastAtMin: 600, lastAt: '10:00', last: 1 }) as never;
+  const caught = buildCatches([row('NVDA'), row('ZZZ')]).filter(c => c.rules.includes('big-money')).map(c => c.row.ticker);
+  expectEqual('big money at $30M: ZZZ yes, NVDA (line $36M) no', caught, ['ZZZ']);
+  /* one set of cuts: legs at half the day in multi-leg orders, swept at a quarter — on the card and every reason. A day
+     40% legs and 27% swept is not a spread-leg card (it was, at 30%) but is a swept one (it was not, at 40%), and
+     12,000 contracts 27% swept is hammering (it needed 30%) */
+  const { bookRowToPrint } = await import('../../src/data/tape');
+  const day = { ...(row('QQQ') as object), right: 'C', strike: 1, expiry: '12/17/2027', dte: 400, otmPct: 1, spot: 1, oi: 1, iv: 20, theta: 0, volume: 12_000, premium: 1_000_000, multiPct: 40, sweepPct: 27, sideVol: { ask: 6000, bid: 3000, mid: 3000 } } as never;
+  const card = bookRowToPrint(day);
+  expectEqual('day card at 40% legs, 27% swept: not legs, swept', [card.legs, card.sweep], [1, true]);
+  expectEqual('hammering at 12,000 contracts, 27% swept', buildCatches([day]).flatMap(c => c.rules), ['hammering']);
+}
+{
+  /* the side inside the spread: within a fifth of it from a side counts to that side, the middle stays mid; a locked
+     quote says nothing (execOf read a fill at a locked 1.00 × 1.00 as ASK while sideOfTags read MID) */
+  const { execOf, sideOfTags, printSideOf, tradeToPrint, printKeyOf } = await import('../../src/data/traceRows');
+  expectEqual('fill inside 1.00 × 1.10 at 1.09, 1.01, 1.05; locked at 1.00', [execOf(1.09, 1, 1.1), execOf(1.01, 1, 1.1), execOf(1.05, 1, 1.1), execOf(1, 1, 1), sideOfTags([], 1, 1, 1)], ['ASK', 'BID', 'MID', 'MID', 'MID']);
+  expectEqual('a mid_side tag at 1.09 of 1.00 × 1.10 reads ASK; no_side stays MID', [sideOfTags(['mid_side'], 1.09, 1, 1.1), sideOfTags(['no_side'], 1.09, 1, 1.1)], ['ASK', 'MID']);
+  /* a cross is no read on every page (the contract card sided it by its tag) */
+  const cross = { tags: ['ask_side'], report_flags: ['cross_trade'], price: '1.10', nbbo_bid: '1.00', nbbo_ask: '1.10', executed_at: '2026-10-28T15:00:00Z' };
+  expectEqual('a cross trade at the ask: MID', printSideOf(cross, 1.1, 1, 1.1, Date.parse(cross.executed_at)), 'MID');
+  /* a row with no vendor id is the same print on any page: its id is its content, not its index */
+  const bare = { underlying_symbol: 'ZZZ', option_chain_id: 'ZZZ271217C00010000', executed_at: '2026-10-28T15:00:00.123Z', price: '1.05', size: 10, premium: '1050', nbbo_bid: '1.00', nbbo_ask: '1.10', strike: '10', option_type: 'call', expiry: '2027-12-17' };
+  expectEqual('an id-less print read at index 0 and at index 7: one id', tradeToPrint(bare, 0).id === tradeToPrint(bare, 7).id && printKeyOf(bare) === tradeToPrint(bare, 3).vendorId, true);
+  const darkBare = { ticker: 'ZZZ', executed_at: '2026-10-28T15:00:00Z', price: '10', size: 100000, premium: '1000000', volume: 5 };
+  expectEqual('an id-less dark print at index 0 and 7: one id', darkPrint(darkBare, 0).id === darkPrint(darkBare, 7).id, true);
+  /* a cancel that lands after its print merged takes it back out of the tape and the dark accumulator */
+  const { mergePrints, noteCancelled } = await import('../../src/data/traceLive');
+  const { mergeDark } = await import('../../src/data/traceDark');
+  const a = tradeToPrint({ ...bare, id: 'trade-a' });
+  const b = tradeToPrint({ ...bare, id: 'trade-b', executed_at: '2026-10-28T15:00:01Z' });
+  const held = mergePrints([], [a, b], 'front');
+  noteCancelled([{ ...bare, id: 'trade-a', canceled: true }]);
+  expectEqual('tape after trade-a is cancelled: trade-b alone', mergePrints(held, [], 'front').map(p => p.vendorId), ['trade-b']);
+  const d1 = darkPrint({ ...darkBare, tracking_id: 1 }, 0);
+  const d2 = darkPrint({ ...darkBare, tracking_id: 2 }, 1);
+  expectEqual('dark accumulator after print 1 is cancelled: print 2 alone', mergeDark(mergeDark([], [d1, d2]), [], new Set([d1.id])).map(p => p.id), [d2.id]);
+  /* a one-minute bar's volume is its own, never the day's running total_volume: 1,000 then 1,500 running, then a bar of
+     0, read 1,000 · 1,500 · 1,500; now 0 (no bar before it) · 500 · 0 */
+  const { parseTape } = await import('../../src/data/book/tape');
+  const bars = [
+    { open: 1, high: 1, low: 1, close: 1, total_volume: 1000, start_time: '2026-10-28T13:30:00Z' },
+    { open: 1, high: 1, low: 1, close: 1, total_volume: 1500, start_time: '2026-10-28T13:31:00Z' },
+    { open: 1, high: 1, low: 1, close: 1, volume: 0, total_volume: 1500, start_time: '2026-10-28T13:32:00Z' },
+  ];
+  expectEqual('one-minute bar volumes off a running total', parseTape(bars).map(c => c.volume), [0, 500, 0]);
+}
+{
+  /* every net figure says what it covers: the tide from 09:30 (the window's base) to its last minute, a name's pane from
+     its own 09:30 tick, the tape's net with what it leaves out */
+  expectEqual('market tide 09:30–16:15: covers', tideNet?.covers, { since: '09:30', until: '16:14', source: 'market tide', leaves: [] });
+  const spyTicks = (await uwCall('/stock/SPY/net-prem-ticks')).data as Record<string, unknown>[];
+  expectEqual("SPY pane: covers", T.paneCovers('SPY', T.paneFromTicks('SPY', spyTicks, [])), { since: '09:30', until: '16:14', source: 'net-prem-ticks', leaves: ['pre-market', 'after 16:15 ET'] });
+  expectEqual('market tape summary: covers', [mktSum.covers.source, mktSum.covers.leaves], ['the prints in hand', ['spread legs', 'crosses', 'compression', 'mid prints', 'after hours']]);
+  /* Compare's headline obeys the money cut: on OTM it is the cut's own contracts (≈ premium × (ask − bid) share) — an
+     OTM call of $1M at 600/200/200 is +$400K, an OTM put of $500K at 100/300/100 −$200K, net +$600K; the every-strike
+     expiry route's +$8M is not the cut's (it read +$8M on every cut) */
+  const { buildTraceSide } = await import('../../src/data/traceCompare');
+  const otm = (right: 'C' | 'P', premium: number, sv: { ask: number; bid: number; mid: number }) => ({ key: `SPY-${right}`, ticker: 'SPY', right, strike: right === 'C' ? 800 : 700, otmPct: 3, dte: 10, expiry: '11/07/2026', premium, volume: sv.ask + sv.bid + sv.mid, sideVol: sv, askPct: (100 * sv.ask) / (sv.ask + sv.bid), multiPct: 0, floorPct: 0, sweepPct: 0, iv: 20, oi: 1, volOverOI: 1, deltaOI: 0 }) as never;
+  const itm = { ...(otm('C', 9_000_000, { ask: 900, bid: 0, mid: 100 }) as object), key: 'SPY-ITM', otmPct: -5 } as never;
+  const fpe = [{ expiry: '2026-11-07', date: '2026-10-28', dte: 10, callNet: 9_000_000, putNet: 1_000_000, callVol: 1, putVol: 1, trades: 1 }];
+  const side = buildTraceSide([otm('C', 1_000_000, { ask: 600, bid: 200, mid: 200 }), otm('P', 500_000, { ask: 100, bid: 300, mid: 100 }), itm], [], [], 'SPY', 'all', 'otm', fpe, '2026-10-28');
+  const every = buildTraceSide([otm('C', 1_000_000, { ask: 600, bid: 200, mid: 200 })], [], [], 'SPY', 'all', 'all', fpe, '2026-10-28');
+  expectEqual('Compare net on OTM: the cut\'s contracts, ≈; on all strikes: the expiry route', [Math.round(side.net), side.netCovers.approx, every.net, every.netCovers.source], [600_000, true, 8_000_000, 'flow by expiry']);
+  /* no call premium is no P/C ratio (it read 0) */
+  const putsOnly = summarizeTape(spy.prints.filter(p => p.right === 'P' && !p.extended));
+  expectEqual('P/C with no calls: no ratio', Number.isNaN(putsOnly.pcRatio), true);
+}
+{
+  /* the day's big alerts walked to the day's start before the largest are picked: the 14 are the whole day */
+  expectEqual("$5M+ alerts: the day's whole list, not the newest page", (alerts as { complete?: boolean }).complete, true);
+  /* a name at exactly zero net is neither bullish nor bearish (it counted bearish) */
+  const bs = boardSums([{ ticker: 'A', net: 5 }, { ticker: 'B', net: 0 }, { ticker: 'C', net: -3 }]);
+  expectEqual('board of +5, 0, −3: bullish, bearish, neutral', [bs.bullish, bs.bearish, bs.neutral], [1, 1, 1]);
+  /* an alert's bid share is of its sided money, as a print's is of its sided contracts: $600K ask, $200K bid, $200K
+     other is 25% (it read 20% of the whole) */
+  const { alertToPrint } = await import('../../src/data/traceRows');
+  const al = alertToPrint({ id: 'al-1', ticker: 'ZZZ', type: 'call', strike: '10', expiry: '2027-12-17', total_ask_side_prem: '600000', total_bid_side_prem: '200000', total_premium: '1000000', total_size: 100, price: '1.05', bid: '1.00', ask: '1.10', start_time: Date.parse('2026-10-28T15:00:00Z'), created_at: '2026-10-28T15:00:05Z' });
+  expectEqual('alert bid share of the sided premium', al.ratioBidPct, 25);
+}
+{
+  /* insiders: the buyer cluster counts the buyers whose buys count — a planned buy and a fund's are not chosen ones */
+  const { summariseFlow } = await import('../../src/data/insiders');
+  const tr = (person: string, plan: string, entity = false) => ({ code: 'P', kind: 'BUY', plan, entity, person, value: 100_000, daysAgo: 3 }) as never;
+  const f = summariseFlow('ZZZ', [tr('A', 'discretionary'), tr('B', 'plan'), tr('C', 'discretionary', true)], 30);
+  expectEqual('insider buyer cluster: one chosen buyer of three', [f.buyerCluster, f.openMarketBuys], [1, 100_000]);
+  /* congress: the median of 10, 20, 30, 40 days is 25 (it read the upper middle, 30) */
+  const { summariseCongress } = await import('../../src/data/congress');
+  const cg = summariseCongress([10, 20, 30, 40].map(lagDays => ({ lagDays, bracket: null, type: 'Purchase', late: false }) as never), 365);
+  expectEqual('congress median lag of 10, 20, 30, 40 days', cg.medianLag, 25);
+}
+{
+  /* likely opening: volume past the open interest it opened on, or the next count up by half the day's volume */
+  const { likelyOpeningOf } = await import('../../src/data/traceRows');
+  expectEqual('likely opening: 1,000 on 800 OI; 1,000 on 5,000 with no next count; +600 next; +300 next', [likelyOpeningOf({ volume: 1000, oi: 800 }), likelyOpeningOf({ volume: 1000, oi: 5000 }), likelyOpeningOf({ volume: 1000, oi: 5000 }, { oi: 5600, before: 5000 }), likelyOpeningOf({ volume: 1000, oi: 5000 }, { oi: 5300, before: 5000 })], [true, null, true, false]);
+  /* SPY's 200 screener rows: volume past open_interest on 125, within it on 75 (no next count in the fixtures) */
+  const spyBook = await T.readBook('ticker_symbol=SPY&limit=200&order=premium&order_direction=desc');
+  const flags = spyBook.map(r => likelyOpeningOf(r));
+  expectEqual('SPY book: likely opening · unknown', [flags.filter(f => f === true).length, flags.filter(f => f == null).length], [125, 75]);
+}
+
 void stockClose;
 done();
