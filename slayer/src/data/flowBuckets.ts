@@ -2,8 +2,9 @@
    premium of the passing prints in each bar of the chart. Pure — no React, no fetch — so a proof can hold it to numbers.
 
    THE SIGN is the tape's own (data/tape.ts sentimentOf): a call bought at the ask or a put sold at the bid reads up, a
-   put bought at the ask or a call sold at the bid reads down; a mid print, an extended-hours print, compression and a
-   leg of a multi-leg order read neither and add nothing.
+   put bought at the ask or a call sold at the bid reads down, on a print that likely opened new positions (tape.ts
+   printOpens); a print that may be closing, a mid print, an extended-hours print, compression and a leg of a
+   multi-leg order read neither and add nothing.
 
    THE BARS are the chart's own: a print lands in the bar whose open is the last at or before its fill and whose span
    holds it, so an hour bar opened at 9:30 takes 9:30–10:29 and a print in a session gap lands nowhere. */
