@@ -29,6 +29,7 @@ import { chainForDate, deskTape, ensureBook, peekDaySigma, peekEntry, peekIv, sn
 import { alignLatestColumn, ensureFieldCloses, ensureFieldCut, exposureGrid, gridColumns, heldStrikes, useExposureLogRev } from '../../data/book/exposureLog';
 import { useFieldMode } from '../../data/fieldMode';
 import { useSessionQuote } from '../../data/sessionQuote';
+import { asOfText } from '../ui/states';
 import { getDeskSession, minuteInSession, sessionMeta, sessionOccurrence, sessionOfMinute, useDeskSession, type DeskSession } from '../../data/deskSession';
 import { snapsAsOf } from '../../data/exposureScope';
 import { onGlide, promisedWidth } from '../../core/glide';
@@ -4580,7 +4581,7 @@ const StrikeChart = ({
           <div className="absolute inset-0 z-[4] flex items-center justify-center pointer-events-none" data-chart-empty>
             <div className="max-w-[280px] rounded-md border border-borderSubtle bg-canvas/85 px-4 py-3 text-center">
               <p className="font-mono text-t11 text-textPrimary">{signedOut ? 'Sign in to load prices' : noteWords(tape?.note || sessionNote) || 'No bars for this name'}</p>
-              <p className="mt-1 font-mono text-t10 text-textMuted">{signedOut ? 'Prices load for a signed-in session.' : quote ? `Quote ${quote.bid.toFixed(2)} × ${quote.ask.toFixed(2)}. No prints on this name.` : tape?.note && !/offline/i.test(tape.note) ? `${etWindow(session)}.` : 'This frame stays. Bars fill it when the tape answers.'}</p>
+              <p className="mt-1 font-mono text-t10 text-textMuted">{signedOut ? 'Prices load for a signed-in session.' : quote ? `Quote ${quote.bid.toFixed(2)} × ${quote.ask.toFixed(2)}${quote.current ? '' : `, ${asOfText(quote.at)}`}. No prints on this name${quote.current ? '' : ' this session'}.` : tape?.note && !/offline/i.test(tape.note) ? `${etWindow(session)}.` : 'This frame stays. Bars fill it when the tape answers.'}</p>
             </div>
           </div>
         )}

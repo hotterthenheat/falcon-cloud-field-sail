@@ -8,6 +8,7 @@ import { chainForDate, ensureBook, expiryLabel, peekSpot, snapshotFor, useBookRe
 import { levelNetPath } from '../../data/flipLevel';
 import { rootTradesSession } from '../../data/compassSession';
 import { useSessionQuote } from '../../data/sessionQuote';
+import { asOfText } from '../../components/ui/states';
 import { barInTape, peekPrint, peekTape, usePrintRev, useTapeRev, useThetaTape, wantPrint } from '../../data/thetaTape';
 import { thetaChartBars } from '../../data/thetaCandles';
 import { fmtUsd } from '../../data/gex';
@@ -537,7 +538,13 @@ const HeadPrice = ({ ticker, session, className }: { ticker: string; session: De
       </span>
     );
   }
-  if (px == null && quote) return <span className="font-mono text-t11 font-semibold tnum text-textPrimary" title="No prints on this name. Bid and ask.">{quote.bid.toFixed(2)} × {quote.ask.toFixed(2)}</span>;
+  if (px == null && quote)
+    return (
+      <span className={`font-mono text-t11 font-semibold tnum ${quote.current ? 'text-textPrimary' : 'text-textSecondary'}`} title={quote.current ? 'No prints on this name. Bid and ask.' : `No prints in this session on this feed. The last bid and ask, ${asOfText(quote.at)}.`} data-session-quote={quote.current ? 'live' : 'as-of'}>
+        {quote.bid.toFixed(2)} × {quote.ask.toFixed(2)}
+        {!quote.current && quote.at > 0 && <span className="ml-1 font-normal text-t9 text-warn uppercase tracking-widest">{asOfText(quote.at)}</span>}
+      </span>
+    );
   if (px == null) return <span className="font-mono text-t11 text-textMuted">—</span>;
   const stale = at > 0 && Date.now() / 1000 - at > 120;
   return (
