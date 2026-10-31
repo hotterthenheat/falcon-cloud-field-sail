@@ -29,7 +29,8 @@ import { useEffect, useSyncExternalStore } from 'react';
 import type { Candle } from '../types/market';
 import { isTradingDay, isoDate, sessionBefore, sessionCloseMinOn } from '../core/calendar';
 import { nyMinutes, nyParts } from '../core/nyTime';
-import { keepTheta, keptTheta, noData, thetaGet } from './thetaFeed';
+import { keepTheta, keptTheta, noData, thetaGet, type ThetaAnswer } from './thetaFeed';
+import { feedHeaders } from './feedGate';
 import { flatRows, sessionsBack, spansOf } from './thetaTape';
 import { isCashIndex } from './symbolDirectory';
 import { listLiveExpiries, loadLiveChain } from './weigherDesk';
@@ -568,65 +569,164 @@ const put = (t: string, v: VolOutlook) => {
   emit();
 };
 
-/** Read the kept sessions, read the missing ones (two months of minute bars at a time, newest window anchored on the
-    quarter), and fit. A closed session never changes, so a name's history is read once and kept. */
-async function build(ticker: string): Promise<void> {
-  const liveDay = isoDate(new Date(nyParts().year, nyParts().month - 1, nyParts().day));
-  const last = lastClosedSession();
-  const start = windowStart(liveDay);
-  const kept = await keptTheta<Kept>(keepKey(ticker));
-  let days: SessionRec[] = [];
-  let tail: Kept['tail'] = null;
-  if (kept && kept.data && kept.data.v === KEEP_VERSION && kept.data.days.length && kept.data.days[0].day <= start) {
-    days = kept.data.days.filter(d => d.day >= start);
-    tail = kept.data.tail;
-  }
-  /* the kept run must reach the window's start; else read it all again */
-  if (!days.length) tail = null;
+/* ---- the sessions: one reader for the browser and the server (data/volOutlookServer.ts), so both hold the same numbers ---- */
+
+/** A name's kept sessions and returns tail */
+export interface Sessions {
+  days: SessionRec[];
+  tail: Kept['tail'];
+}
+
+/** The kept run that still serves a window starting `start`: its days from `start` on, or nothing when it does not reach
+    back that far (the window then is read whole) */
+export function keptRun(have: Sessions | null, start: string): Sessions {
+  if (!have || !have.days.length || have.days[0].day > start) return { days: [], tail: null };
+  return { days: have.days.filter(d => d.day >= start), tail: have.tail };
+}
+
+/** Bring a name's sessions up to `last`: the kept run (keptRun), then the missing sessions read (two months of minute
+    bars at a time, two reads at a time, so one name never holds the page's history slots) and digested onto its tail.
+    `offline`: a read failed for a reason other than "no data", and the run is the kept one. */
+export async function readSessions(
+  ticker: string,
+  have: Sessions | null,
+  start: string,
+  last: string,
+  read: (path: string) => Promise<ThetaAnswer>,
+  onProgress?: (done: number, of: number) => void,
+): Promise<Sessions & { offline: boolean; read: boolean }> {
+  let { days, tail } = keptRun(have, start);
   const from = days.length ? sessionAfter(days[days.length - 1].day) : start;
+  if (from > last) return { days, tail, offline: false, read: false };
+  const spans = spansOf(ymdOfIso(from), ymdOfIso(last), '1m');
+  const got: Map<string, MinuteBar[]>[] = new Array(spans.length);
+  let done = 0;
+  let offline = false;
+  onProgress?.(done, spans.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < spans.length && !offline) {
+      const k = next++;
+      const [a, b] = spans[k];
+      const ans = await read(minutePath(ticker, a, b));
+      if (ans.error && !noData(ans)) offline = true;
+      got[k] = ans.error ? new Map() : minuteBarsOfRows(ans.data);
+      done += 1;
+      onProgress?.(done, spans.length);
+    }
+  };
+  await Promise.all([worker(), worker()]);
+  if (offline) return { days, tail, offline: true, read: false };
+  const byDay = new Map<string, MinuteBar[]>();
+  for (const part of got) for (const [day, list] of part) byDay.set(day, [...(byDay.get(day) ?? []), ...list]);
+  const grids: DayGrid[] = [];
+  for (const day of [...byDay.keys()].sort()) {
+    if (day < from || day > last) continue;
+    const g = dayGrid(day, byDay.get(day)!);
+    if (g) grids.push(g);
+  }
+  const dig = digest(grids, tail);
+  days = [...days, ...dig.recs];
+  tail = dig.tail;
+  return { days, tail, offline: false, read: true };
+}
+
+/** Today's window for the tile: the live day, the last closed session (the forecast's origin) and the window's start */
+export function sessionWindow(nowMs = Date.now()): { liveDay: string; last: string; start: string } {
+  const p = nyParts(nowMs);
+  const liveDay = isoDate(new Date(p.year, p.month - 1, p.day));
+  return { liveDay, last: lastClosedSession(nowMs), start: windowStart(liveDay) };
+}
+
+/* The sessions on the wire (the server's /api/vol-outlook): JSON with the numbers JSON cannot spell — NaN (a day with
+   under 200 bars, an hour with no full next 60 minutes), ±Infinity and −0 — as strings, read back to the same bits */
+const ODD: Record<string, number> = { NaN: NaN, Infinity: Infinity, '-Infinity': -Infinity, '-0': -0 };
+export const sessionsToWire = (v: unknown): string =>
+  JSON.stringify(v, (_k, x) => (typeof x === 'number' && (!Number.isFinite(x) || Object.is(x, -0)) ? (Object.is(x, -0) ? '-0' : String(x)) : x));
+export const sessionsFromWire = <T,>(text: string): T => JSON.parse(text, (_k, x) => (typeof x === 'string' && x in ODD ? ODD[x] : x)) as T;
+
+/** What the server serves for a name: its sessions over the window that starts `start`, read up to `last` */
+export interface ServedSessions extends Sessions {
+  v: number;
+  ticker: string;
+  start: string;
+  last: string;
+}
+export const SERVED_VERSION = 1;
+
+/** The server's copy (data/volOutlookServer.ts): a name's year of minutes read once a day there, not in each browser.
+    Ready: its sessions (they may stop short of `last`; the browser tops them up). Building: its progress, and the tile
+    asks again. Null: no server here (a host without a long-lived process), or it did not answer — the browser reads. */
+async function askServer(ticker: string, start: string, last: string): Promise<{ ready: Sessions } | { building: { done: number; of: number } } | null> {
+  if (typeof fetch !== 'function' || typeof window === 'undefined') return null;
+  try {
+    const auth = await feedHeaders();
+    if (!auth.ok) return null;
+    const res = await fetch(`/api/vol-outlook/${encodeURIComponent(ticker)}`, { headers: auth.headers });
+    if (res.status === 202) {
+      const b = (await res.json()) as { progress?: { done: number; of: number } };
+      return { building: b.progress ?? { done: 0, of: 0 } };
+    }
+    if (!res.ok) return null;
+    const s = sessionsFromWire<ServedSessions>(await res.text());
+    /* the same window, read no further than the browser's own last session */
+    if (s.v !== SERVED_VERSION || s.ticker !== ticker || s.start !== start || s.last > last || !s.days.length) return null;
+    return { ready: { days: s.days, tail: s.tail } };
+  } catch {
+    return null;
+  }
+}
+const SERVER_POLL_MS = 3_000;
+/** How long the tile waits on a server that is reading a name before it reads the name itself */
+const SERVER_WAIT_MS = 6 * 60_000;
+
+/** Read the kept sessions, then the server's copy, then (only what is still missing, or everything when there is no
+    server) the minute bars, and fit. A closed session never changes, so a name's history is read once and kept. */
+async function build(ticker: string): Promise<void> {
+  const { liveDay, last, start } = sessionWindow();
+  const kept = await keptTheta<Kept>(keepKey(ticker));
+  let have: Sessions = keptRun(kept && kept.data && kept.data.v === KEEP_VERSION ? kept.data : null, start);
+  const covers = (s: Sessions) => s.days.length > 0 && s.days[s.days.length - 1].day >= last;
   const cur = store.get(ticker) ?? blank(ticker);
-  if (days.length) {
-    const o = outlookOf(ticker, days, liveDay);
-    if (o) put(ticker, { ...cur, ...o, state: from > last ? 'ready' : 'loading', progress: { done: 0, of: 0 } });
+  if (have.days.length) {
+    const o = outlookOf(ticker, have.days, liveDay);
+    if (o) put(ticker, { ...cur, ...o, state: covers(have) ? 'ready' : 'loading', progress: { done: 0, of: 0 } });
   }
-  if (from <= last) {
-    const spans = spansOf(ymdOfIso(from), ymdOfIso(last), '1m');
-    const got: Map<string, MinuteBar[]>[] = new Array(spans.length);
-    let done = 0;
-    let offline = false;
-    put(ticker, { ...(store.get(ticker) ?? blank(ticker)), progress: { done, of: spans.length } });
-    /* two reads at a time, so one name never holds the page's history slots */
-    let next = 0;
-    const worker = async () => {
-      while (next < spans.length && !offline) {
-        const k = next++;
-        const [a, b] = spans[k];
-        const ans = await thetaGet(minutePath(ticker, a, b));
-        if (ans.error && !noData(ans)) offline = true;
-        got[k] = ans.error ? new Map() : minuteBarsOfRows(ans.data);
-        done += 1;
-        put(ticker, { ...(store.get(ticker) ?? blank(ticker)), progress: { done, of: spans.length } });
+  let served = false;
+  if (!covers(have)) {
+    const t0 = Date.now();
+    for (;;) {
+      const ans = await askServer(ticker, start, last);
+      if (!ans) break;
+      if ('ready' in ans) {
+        /* the longer run wins: the server's when this browser kept less */
+        if (ans.ready.days[ans.ready.days.length - 1].day > (have.days[have.days.length - 1]?.day ?? '')) {
+          have = ans.ready;
+          served = true;
+        }
+        break;
       }
-    };
-    await Promise.all([worker(), worker()]);
-    if (offline) {
-      const have = store.get(ticker) ?? blank(ticker);
-      put(ticker, { ...have, state: have.origin ? 'ready' : 'offline' });
-      return;
+      put(ticker, { ...(store.get(ticker) ?? blank(ticker)), progress: ans.building });
+      if (Date.now() - t0 > SERVER_WAIT_MS) break;
+      await new Promise(r => setTimeout(r, SERVER_POLL_MS));
     }
-    const byDay = new Map<string, MinuteBar[]>();
-    for (const part of got) for (const [day, list] of part) byDay.set(day, [...(byDay.get(day) ?? []), ...list]);
-    const grids: DayGrid[] = [];
-    for (const day of [...byDay.keys()].sort()) {
-      if (day < from || day > last) continue;
-      const g = dayGrid(day, byDay.get(day)!);
-      if (g) grids.push(g);
-    }
-    const dig = digest(grids, tail);
-    days = [...days, ...dig.recs];
-    tail = dig.tail;
-    keepTheta(keepKey(ticker), { v: KEEP_VERSION, ticker, days, tail } satisfies Kept);
   }
+  const got = await readSessions(ticker, have, start, last, p => thetaGet(p), (done, of) => put(ticker, { ...(store.get(ticker) ?? blank(ticker)), progress: { done, of } }));
+  if (got.offline) {
+    const h = store.get(ticker) ?? blank(ticker);
+    if (have.days.length && !h.origin) {
+      const o = outlookOf(ticker, have.days, liveDay);
+      if (o) {
+        tails.set(ticker, have.tail);
+        put(ticker, { ...h, ...o, state: 'ready', progress: { done: 0, of: 0 } });
+        return;
+      }
+    }
+    put(ticker, { ...h, state: h.origin ? 'ready' : 'offline' });
+    return;
+  }
+  const { days, tail } = got;
+  if (got.read || served) keepTheta(keepKey(ticker), { v: KEEP_VERSION, ticker, days, tail } satisfies Kept);
   tails.set(ticker, tail);
   const o = outlookOf(ticker, days, liveDay);
   put(ticker, o ? { ...(store.get(ticker) ?? blank(ticker)), ...o, state: 'ready', progress: { done: 0, of: 0 } } : { ...blank(ticker), state: 'thin' });

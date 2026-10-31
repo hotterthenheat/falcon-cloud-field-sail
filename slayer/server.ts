@@ -6,6 +6,7 @@ import { proxyTheta } from './server/thetaProxy.mjs';
 import { proxyLogo } from './server/logoProxy.mjs';
 import { compassMount, installProcessLogger } from './server/compassApi.mjs';
 import { exposureMount } from './server/exposureApi.mjs';
+import { volOutlookMount } from './server/volOutlookApi.mjs';
 
 try {
   process.loadEnvFile('.env.local');
@@ -32,6 +33,12 @@ const exposure = exposureMount(() => import(EXPOSURE_RECORDER), __dirname);
 app.use('/api/exposure', (req, res) => {
   void exposure.handle(req, res);
 });
+/* the vol outlook's sessions (src/data/volOutlookServer.ts): each name's year of minutes read once a day, not per viewer */
+const VOL_OUTLOOK = './src/data/volOutlookServer.ts';
+const vol = volOutlookMount(() => import(VOL_OUTLOOK), __dirname);
+app.use('/api/vol-outlook', (req, res) => {
+  void vol.handle(req, res);
+});
 app.use('/api/uw', (req, res) => {
   void proxyUw(req, res);
 });
@@ -56,6 +63,7 @@ const server = app.listen(PORT, () => {
   console.log(`Slayer terminal on http://localhost:${PORT}`);
   void compass.start();
   void exposure.start();
+  void vol.start();
 });
 
 /* a clean stop: the record is written and the engine's lock let go before the process ends */
@@ -63,6 +71,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
     compass.stop();
     exposure.stop();
+    vol.stop();
     server.close();
     process.exit(0);
   });

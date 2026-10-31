@@ -315,5 +315,119 @@ if (!existsSync(barDir) || readdirSync(barDir).filter(f => f.endsWith('.json.gz'
   console.log(`   (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
 }
 
+/* ------------------------------------------------------------------ 4. the server's sessions are the browser's */
+console.log('\n4. the server reads the sessions once a day; the tile fits on them (data/volOutlookServer.ts)');
+{
+  const { readSessions, sessionWindow, sessionsFromWire, sessionsToWire, outlookOf, SERVED_VERSION } = await import('../src/data/volOutlook');
+  const { startVolOutlookServer, volOutlookRoute } = await import('../src/data/volOutlookServer');
+  const { isTradingDay } = await import('../src/core/calendar');
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  /* a deep equal that tells NaN from NaN as equal and +0 from −0 apart: the same bits, not the same-looking numbers */
+  const same = (a: unknown, b: unknown): boolean => {
+    if (typeof a === 'number' && typeof b === 'number') return Object.is(a, b);
+    if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((v, i) => same(v, b[i]));
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      const ka = Object.keys(a as object).sort();
+      const kb = Object.keys(b as object).sort();
+      return same(ka, kb) && ka.every(k => same((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+    }
+    return a === b;
+  };
+  /* the terminal's one-minute rows for any span, made up and fixed per day: a random walk, a few missing minutes, now
+     and then a short day (under 200 bars: no daily RV, a NaN on the wire) */
+  const hash = (s: string) => {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+    return h >>> 0;
+  };
+  const rowsOfDay = (iso: string) => {
+    let seed = hash(iso);
+    const rnd = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+    const short = rnd() < 0.04;
+    const n = short ? 180 : 390;
+    const out: { timestamp: string; open: number; close: number }[] = [];
+    let px = 500 + (hash(iso.slice(0, 7)) % 100);
+    for (let m = 0; m < n; m++) {
+      if (rnd() < 0.01) continue;
+      const open = px;
+      px = Math.round(px * Math.exp((rnd() - 0.5) * 0.002) * 100) / 100;
+      const t = 9 * 60 + 30 + m;
+      out.push({ timestamp: `${iso}T${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}:00.000`, open, close: px });
+    }
+    return out;
+  };
+  let reads = 0;
+  const body = (p: string) => {
+    reads++;
+    const a = p.match(/start_date=(\d{8})/)![1];
+    const b = p.match(/end_date=(\d{8})/)![1];
+    const rows: ReturnType<typeof rowsOfDay> = [];
+    const d = new Date(Number(a.slice(0, 4)), Number(a.slice(4, 6)) - 1, Number(a.slice(6, 8)));
+    const end = new Date(Number(b.slice(0, 4)), Number(b.slice(4, 6)) - 1, Number(b.slice(6, 8)));
+    for (; d <= end; d.setDate(d.getDate() + 1)) {
+      if (!isTradingDay(d)) continue;
+      rows.push(...rowsOfDay(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`));
+    }
+    return JSON.stringify({ response: rows });
+  };
+  const browserRead = async (p: string) => ({ status: 200, data: (JSON.parse(body(p)) as { response: unknown }).response, error: null });
+
+  /* a: the browser's first visit, the whole window in one read; b: day by day (yesterday's run, over the wire, topped up
+     with today's session, over the wire again) — the server's way */
+  const start = '2026-04-01';
+  const last = '2026-10-30';
+  const liveDay = '2026-11-02';
+  const a = await readSessions('SPY', null, start, last, browserRead);
+  const b1 = await readSessions('SPY', null, start, '2026-10-29', browserRead);
+  const b1w = sessionsFromWire<typeof b1>(sessionsToWire({ days: b1.days, tail: b1.tail }));
+  const b = await readSessions('SPY', b1w, start, last, browserRead);
+  const bw = sessionsFromWire<typeof b>(sessionsToWire({ days: b.days, tail: b.tail }));
+  const nanDays = a.days.filter(d => Number.isNaN(d.x)).length;
+  check(`sessions: ${a.days.length} days, the same bits read whole or a day at a time over the wire (${nanDays} short days spelled NaN)`, a.days.length > 120 && nanDays > 0 && same(a.days, bw.days) && same(a.tail, bw.tail));
+  const oa = outlookOf('SPY', a.days, liveDay);
+  const ob = outlookOf('SPY', bw.days, liveDay);
+  check('outlook: forecast, half-life, HAR and next-hour fits identical off either', !!oa && !!oa.hourBeta && same(oa, ob), oa ? `forecast ${(oa.forecast * 100).toFixed(2)}%, half-life ${oa.halfLife.toFixed(2)} sessions, ${oa.hourRows} hour rows` : '');
+  check('wire: NaN, ±Infinity and −0 come back as themselves', same(sessionsFromWire(sessionsToWire([NaN, Infinity, -Infinity, -0, 0, 1.5])), [NaN, Infinity, -Infinity, -0, 0, 1.5]));
+
+  /* the server itself, on today's window: a name asked for is read once, then served; its sessions are the browser's */
+  const dir = mkdtempSync(join(tmpdir(), 'vol-outlook-'));
+  try {
+    reads = 0;
+    const w = sessionWindow();
+    const srv = startVolOutlookServer({ dir, theta: async p => ({ status: 200, body: body(p), type: 'application/json' }), hot: [], log: () => undefined });
+    const first = srv.ask('QQQ');
+    const t0s = Date.now();
+    let got = srv.ask('QQQ');
+    while (!('ready' in got) && Date.now() - t0s < 120_000) {
+      await new Promise(r => setTimeout(r, 50));
+      got = srv.ask('QQQ');
+    }
+    const readsFirst = reads;
+    const again = srv.ask('QQQ');
+    const readsAgain = reads;
+    const own = await readSessions('QQQ', null, w.start, w.last, browserRead);
+    const served = 'ready' in got ? got.ready : null;
+    check(`server: building first, then ${served?.days.length ?? 0} sessions ${w.start} … ${w.last} — the browser's own read, bit for bit`, 'building' in first && !!served && served.v === SERVED_VERSION && served.start === w.start && served.last === w.last && same(served.days, own.days) && same(served.tail, own.tail));
+    check(`server: a second ask reads nothing (${readsFirst} reads for the first)`, 'ready' in again && readsAgain === readsFirst);
+    /* the route: 200 with the wire format; a restart serves the kept file without a read */
+    const res = { statusCode: 0, headers: {} as Record<string, string>, text: '', setHeader(k: string, v: string) { this.headers[k] = v; }, end(t?: string | Buffer) { this.text = String(t ?? ''); } };
+    volOutlookRoute(srv, { url: '/api/vol-outlook/QQQ', method: 'GET', headers: {} }, res);
+    const wire = sessionsFromWire<{ days: unknown[]; tail: unknown }>(res.text);
+    check('route: 200, the sessions over the wire', res.statusCode === 200 && same(wire.days, own.days) && same(wire.tail, own.tail));
+    srv.stop();
+    reads = 0;
+    const srv2 = startVolOutlookServer({ dir, theta: async p => ({ status: 200, body: body(p), type: 'application/json' }), hot: [], log: () => undefined });
+    const kept = srv2.ask('QQQ');
+    check('restart: the kept file serves at once, no read', 'ready' in kept && reads === 0 && same(kept.ready.days, own.days));
+    srv2.stop();
+    const ao = outlookOf('QQQ', own.days, w.liveDay);
+    const so = served ? outlookOf('QQQ', served.days, w.liveDay) : null;
+    check('tile: the outlook off the served sessions = off its own read', same(ao, so));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 console.log(fail ? `\n${fail} FAILED` : '\nvol outlook proof: all checks pass');
 process.exit(fail ? 1 : 0);

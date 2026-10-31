@@ -5,6 +5,7 @@ import { proxyTheta } from './server/thetaProxy.mjs';
 import { proxyLogo } from './server/logoProxy.mjs';
 import { compassMount, installProcessLogger } from './server/compassApi.mjs';
 import { exposureMount } from './server/exposureApi.mjs';
+import { volOutlookMount } from './server/volOutlookApi.mjs';
 import { superviseTheta } from './theta/supervisor.mjs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { pathToFileURL } from 'node:url';
@@ -17,9 +18,11 @@ const dataProxies = (): Plugin => {
     use: (path: string, fn: (req: IncomingMessage, res: ServerResponse) => void) => void,
     compass?: ReturnType<typeof compassMount>,
     exposure?: ReturnType<typeof exposureMount>,
+    vol?: ReturnType<typeof volOutlookMount>,
   ) => {
     if (compass) use('/api/compass', (req, res) => void compass.handle(req, res));
     if (exposure) use('/api/exposure', (req, res) => void exposure.handle(req, res));
+    if (vol) use('/api/vol-outlook', (req, res) => void vol.handle(req, res));
     use('/api/uw', (req, res) => void proxyUw(req, res));
     use('/api/theta', (req, res) => void proxyTheta(req, res));
     use('/api/logo', (req, res) => void proxyLogo(req, res));
@@ -38,11 +41,15 @@ const dataProxies = (): Plugin => {
       const compass = compassMount(() => server.ssrLoadModule('/src/data/compassServer.ts'));
       /* the exposure recorder (src/data/exposureRecorder.ts): Terrain's per-strike field, read every minute, viewers or not */
       const exposure = exposureMount(() => server.ssrLoadModule('/src/data/exposureRecorder.ts'));
-      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure);
+      /* the vol outlook's sessions (src/data/volOutlookServer.ts): a name's year of minutes read once a day here, not per viewer */
+      const vol = volOutlookMount(() => server.ssrLoadModule('/src/data/volOutlookServer.ts'));
+      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure, vol);
       server.httpServer?.once('listening', () => void compass.start());
       server.httpServer?.once('listening', () => void exposure.start());
+      server.httpServer?.once('listening', () => void vol.start());
       server.httpServer?.once('close', () => compass.stop());
       server.httpServer?.once('close', () => exposure.stop());
+      server.httpServer?.once('close', () => vol.stop());
       /* one ThetaData terminal for local work (theta/supervisor.mjs); THETA_AUTOSTART=0 leaves it to `npm run theta`, and
          a machine that shares the always-on terminal (THETA_RELAY_URL) never starts its own */
       if (process.env.THETA_AUTOSTART !== '0' && !process.env.THETA_RELAY_URL) {
@@ -56,11 +63,15 @@ const dataProxies = (): Plugin => {
       const compass = compassMount(async () => (await import('tsx/esm/api')).tsImport(file, import.meta.url));
       const exposureFile = pathToFileURL(nodePath.join(process.cwd(), 'src/data/exposureRecorder.ts')).href;
       const exposure = exposureMount(async () => (await import('tsx/esm/api')).tsImport(exposureFile, import.meta.url));
-      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure);
+      const volFile = pathToFileURL(nodePath.join(process.cwd(), 'src/data/volOutlookServer.ts')).href;
+      const vol = volOutlookMount(async () => (await import('tsx/esm/api')).tsImport(volFile, import.meta.url));
+      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure, vol);
       server.httpServer?.once('listening', () => void compass.start());
       server.httpServer?.once('listening', () => void exposure.start());
+      server.httpServer?.once('listening', () => void vol.start());
       server.httpServer?.once('close', () => compass.stop());
       server.httpServer?.once('close', () => exposure.stop());
+      server.httpServer?.once('close', () => vol.stop());
     },
   };
 };
