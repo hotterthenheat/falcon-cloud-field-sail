@@ -8,9 +8,12 @@
    multi-leg order (FlowPrint.legs > 1: half a structure, not an order on its own) and the caller's `exclude` keys
    (pass a RollRead's excludeIds so a roll's legs are not also a "repeat").
 
-   Hit: an order unit (flowRolls.orderUnits) — the prints on one contract, one side, one millisecond, sizes added.
-   A sweep split over five exchanges is one hit, not five. A hit under REPEAT_MIN_SIZE (10) contracts is not counted:
-   1- and 2-lots on a liquid contract run all day from many hands (SPY's 0DTE puts: 300 one-lot lifts in two hours).
+   Hit: the prints on one contract and one side that follow each other within REPEAT_BURST_MS (250 ms) — order
+   units (flowRolls.orderUnits: one millisecond) chained while each starts at most 250 ms after the last one's fill,
+   sizes added. A sweep split over five exchanges, or one order filling over 8 ms (NVDA 210C 12/18, 2026-10-30
+   13:57:57.996–.004: 76 + 13 + 17 + 16 lots), is one hit, not several. A hit under REPEAT_MIN_SIZE (10) contracts
+   (after chaining) is not counted: 1- and 2-lots on a liquid contract run all day from many hands (SPY's 0DTE puts:
+   300 one-lot lifts in two hours).
 
    Cluster (kind 'contract'): the hits of one contract and one side, in time order, such that
      (1) each hit is at most REPEAT_GAP_MS (10 min) after the one before it;
@@ -37,6 +40,37 @@ export const REPEAT_MIN_HITS = 3;
 export const REPEAT_GAP_MS = 10 * 60_000;
 export const REPEAT_SIZE_TOL = 0.3;
 export const REPEAT_MIN_SIZE = 10;
+export const REPEAT_BURST_MS = 250;
+
+/** Units of one contract and side chained into hits: a unit within `burstMs` of the previous one's last fill joins it */
+export function burstHits(units: readonly OrderUnit[], burstMs = REPEAT_BURST_MS): OrderUnit[] {
+  const by = new Map<string, OrderUnit[]>();
+  for (const u of units) {
+    const k = `${u.contract}|${u.side}`;
+    (by.get(k) ?? by.set(k, []).get(k)!).push(u);
+  }
+  const out: OrderUnit[] = [];
+  for (const list of by.values()) {
+    list.sort((a, b) => a.ts - b.ts || (a.key < b.key ? -1 : 1));
+    let cur: OrderUnit | null = null;
+    let last = 0;
+    for (const u of list) {
+      if (cur && u.ts - last <= burstMs) {
+        cur.size += u.size;
+        cur.premium += u.premium;
+        cur.oi = Math.max(cur.oi, u.oi);
+        cur.volume = Math.max(cur.volume, u.volume);
+        cur.printIds.push(...u.printIds);
+        cur.prints.push(...u.prints);
+      } else {
+        cur = { ...u, printIds: [...u.printIds], prints: [...u.prints] };
+        out.push(cur);
+      }
+      last = u.ts;
+    }
+  }
+  return out.sort((a, b) => a.ts - b.ts || (a.key < b.key ? -1 : 1));
+}
 
 export interface RepeatCluster {
   kind: 'contract' | 'strip';
@@ -133,6 +167,7 @@ export interface RepeatOptions {
   sizeTol?: number;
   minHits?: number;
   minSize?: number;
+  burstMs?: number;
   /** Print keys the vendor has since cancelled */
   cancelled?: ReadonlySet<string>;
   /** Print keys to leave out (a RollRead's excludeIds) */
@@ -157,7 +192,7 @@ export function detectRepeats(input: readonly FlowPrint[], opts: RepeatOptions =
   }
   for (const [t, l] of chain) chain.set(t, [...new Set(l)].sort());
   const minSize = opts.minSize ?? REPEAT_MIN_SIZE;
-  const units = orderUnits(live.filter(p => !(p.legs > 1) && !opts.exclude?.has(printKey(p)))).filter(u => u.size >= minSize);
+  const units = burstHits(orderUnits(live.filter(p => !(p.legs > 1) && !opts.exclude?.has(printKey(p)))), opts.burstMs).filter(u => u.size >= minSize);
   const by = new Map<string, OrderUnit[]>();
   const byStrike = new Map<string, OrderUnit[]>();
   for (const u of units) {
