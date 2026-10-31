@@ -50,6 +50,9 @@ type IntraGrain = Exclude<TapeGrain, 'day' | 'week'>;
 const DEPTH: Record<TapeGrain, number> = { '15s': 1, '1m': 5, '5m': 20, '15m': 40, '30m': 63, '1h': 126, day: 5 * 252, week: 5 * 252 };
 /** Sessions in one read: the first paint, every backfill step and every scroll-back step */
 const CHUNK: Record<TapeGrain, number> = { '15s': 1, '1m': 5, '5m': 20, '15m': 20, '30m': 20, '1h': 20, day: 252, week: 252 };
+/** Sessions in the FIRST read, kept small so a pane paints in a second or two even while three other panes, the
+    Compass warm-up and the backfills share the terminal's six history slots; the backfill then reads CHUNK at a time */
+const FIRST: Record<IntraGrain, number> = { '15s': 1, '1m': 2, '5m': 3, '15m': 5, '30m': 5, '1h': 10 };
 /** Sessions the ten-minute refresh re-reads (late corrections land on the last day or two); between refreshes, today only */
 const REFRESH_SESSIONS = 2;
 /** A daily or weekly chart off the extended sessions folds 5-minute bars: its sessions per chunk and its depth */
@@ -120,7 +123,8 @@ export function tapeWindow(grain: TapeGrain, session: DeskSession, nowMs = Date.
   const anchor = anchorSession(session, nowMs);
   const to = readEnd(grain, session, nowMs);
   const cash = session === 'rth' || (grain !== 'day' && grain !== 'week');
-  const chunk = cash ? CHUNK[grain] : EXT_DAY_CHUNK;
+  const intra = grain !== 'day' && grain !== 'week';
+  const chunk = intra ? FIRST[grain as IntraGrain] : cash ? CHUNK[grain] : EXT_DAY_CHUNK;
   const depth = cash ? DEPTH[grain] : EXT_DAY_DEPTH;
   if ((grain === 'day' || grain === 'week') && session === 'rth') return { from: daysBack(to, 365), to, target: daysBack(to, 5 * 365) };
   return { from: sessionsBack(anchor, chunk), to, target: sessionsBack(anchor, depth) };
