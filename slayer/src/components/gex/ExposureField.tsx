@@ -77,7 +77,7 @@ import { bookForDates, expirySpan, levelsBook, levelsDate, levelsWords, todaySco
 import { shownGreek } from './retailSign';
 import { useLedgerPalette } from '../../data/ledgerPalette';
 import MoreDoor from './MoreDoor';
-import { setBookMode, useBookMode } from '../../data/bookMode';
+import { BOOK_MODE_WORDS, setBookMode, useBookMode } from '../../data/bookMode';
 import { todayColumn, buildExposureSurface, CALENDAR_DTES, GREEKS, contractsReady, isContractGreek, type BookMode, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { snapshotAtOpen } from '../../data/levelview';
 import { HEAT_MODE, heatCellStyle, heatRampColorFor } from './heatmap';
@@ -1312,8 +1312,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           and the three cards then share the panel's one head line with the tabs at 580px */}
       {!viewLock && <DropdownSelect label="View" value={view} options={VIEWS_FOR[viewHost].map(v => VIEW_OPTION[v])} onChange={pickView} title="The matrix, the calendar or the profile" testId="ledger-view" bare={stripsBare || panel} flat={toolbar === 'band'} />}
       <span className="inline-flex items-center rounded-md border border-borderMuted p-0.5" data-ledger-book={bookMode}>
-        <button type="button" aria-pressed={bookMode === 'oi'} onClick={() => setBookMode('oi')} title="Yesterday's open interest — the default. The walls, the flip, the regime and the strike rail read it too." className={`px-1.5 py-0.5 rounded font-mono text-t10 ${bookMode === 'oi' ? 'bg-ink/[0.12] text-textPrimary' : 'text-textMuted'}`}>Open interest</button>
-        <button type="button" aria-pressed={bookMode === 'flow'} onClick={() => setBookMode('flow')} className={`px-1.5 py-0.5 rounded font-mono text-t10 ${bookMode === 'flow' ? 'bg-ink/[0.12] text-textPrimary' : 'text-textMuted'}`} title="Open interest plus today's signed volume. The walls, the flip, the regime and the strike rail read it too. A cell that failed a gate still shows the open-interest figure.">Flow</button>
+        <button type="button" aria-pressed={bookMode === 'oi'} onClick={() => setBookMode('oi')} title={`${BOOK_MODE_WORDS.oi.line} — the default. The walls, the flip, the regime and the strike rail read it too.`} className={`px-1.5 py-0.5 rounded font-mono text-t10 ${bookMode === 'oi' ? 'bg-ink/[0.12] text-textPrimary' : 'text-textMuted'}`}>{BOOK_MODE_WORDS.oi.label}</button>
+        <button type="button" aria-pressed={bookMode === 'flow'} onClick={() => setBookMode('flow')} className={`px-1.5 py-0.5 rounded font-mono text-t10 ${bookMode === 'flow' ? 'bg-ink/[0.12] text-textPrimary' : 'text-textMuted'}`} title={`${BOOK_MODE_WORDS.flow.line}. The walls, the flip, the regime and the strike rail read it too. A cell with too little to go on shows the settled figure.`}>{BOOK_MODE_WORDS.flow.label}</button>
       </span>
       {/* with names side by side the greek steps down to each column's head; the profile draws GEX alone (its foot says
           so), so the card steps aside there rather than read "All five" over a chart it does not govern (the re-audit's M2) */}

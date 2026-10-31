@@ -435,7 +435,7 @@ const STYLE_GLYPHS: Record<ChartStyle, ReactNode> = {
 /* The rows themselves live in indicatorItems.ts, shared with the script library. */
 
 const OVERLAY_ITEMS: { key: keyof ChartOverlays; label: string; hint: string }[] = [
-  { key: 'trails', label: 'Exposure nodes', hint: 'Dealer gamma by strike through the session: beads on the heavy strikes, the heaviest zones outlined and named at the edge, where each stands now. Open interest is the other book.' },
+  { key: 'trails', label: 'Exposure nodes', hint: 'Dealer gamma by strike through the session: beads on the heavy strikes, the heaviest zones outlined and named at the edge, where each stands now. Live and Settled are its two books.' },
   { key: 'levels', label: 'Key levels', hint: "Call & put walls, flip and supreme — a ladder at the tape's right edge" },
   { key: 'darkpool', label: 'Dark pool', hint: 'Off-exchange print lines' },
   { key: 'volume', label: 'Volume', hint: 'Session bars along the floor' },

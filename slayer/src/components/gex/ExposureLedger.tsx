@@ -1207,7 +1207,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
                       e={e}
                       g={g}
                       v={v}
-                      mark={disagree ? 'Flow and open interest disagree' : undefined}
+                      mark={disagree ? 'Live and Settled disagree' : undefined}
                       maxAbs={maxAbs}
                       date={exp.date}
                       first={ci === 0}

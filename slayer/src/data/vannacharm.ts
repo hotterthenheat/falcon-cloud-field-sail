@@ -86,7 +86,7 @@ export function buildVannaCharm(
 
   const delta: MigrationRead['delta'] = null;
 
-  const line = 'Vanna and charm are the open-interest book. They do not move the gamma walls.';
+  const line = 'Vanna and charm are the settled book. They do not move the gamma walls.';
 
   const read: MigrationRead = {
     flip: lvl(base.flip),
