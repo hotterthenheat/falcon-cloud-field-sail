@@ -218,7 +218,9 @@ const hidden = () => typeof document !== 'undefined' && document.hidden;
 export function useContractBars(ticker: string, expiration: string, strike: number, right: OptionRight, on: boolean, tf: Timeframe = '1m'): LiveBar[] | null {
   const spec = barWindow(tf);
   const key = `${ticker}|${expiration}|${strike}|${right}|${tf}`;
-  const [bars, setBars] = useState<LiveBar[] | null>(barCache.get(key)?.bars ?? null);
+  /* the bars are held with the contract they are for: on a switch the last contract's bars are not shown under the new one */
+  const [held, setHeld] = useState<{ key: string; bars: LiveBar[] | null }>(() => ({ key, bars: barCache.get(key)?.bars ?? null }));
+  const setBars = (next: LiveBar[] | null) => setHeld({ key, bars: next });
   useEffect(() => {
     if (!on || !ticker || !expiration) return;
     let dead = false;
@@ -251,7 +253,7 @@ export function useContractBars(ticker: string, expiration: string, strike: numb
       window.clearInterval(id);
     };
   }, [key, on, ticker, expiration, strike, right, spec.interval, spec.sessions]);
-  return bars;
+  return held.key === key ? held.bars : barCache.get(key)?.bars ?? null;
 }
 
 interface ContractLive {
@@ -344,17 +346,23 @@ function armQuotes(): void {
 /** One contract's quote for the page that shows it: polled every 3 seconds while that page is open. */
 export function useContractLive(ticker: string, expiration: string, strike: number, right: OptionRight, on: boolean): ContractLive | null {
   const key = quoteKey(ticker, expiration, strike, right);
-  const [row, setRow] = useState<ContractLive | null>(() => quoteBox.get(key) ?? null);
+  /* held with its contract's key: a switch never shows the last contract's quote, and a pull for it that lands late is
+     not heard */
+  const [held, setHeld] = useState<{ key: string; row: ContractLive | null }>(() => ({ key, row: quoteBox.get(key) ?? null }));
   useEffect(() => {
     if (!on || !ticker || !expiration || !(strike > 0)) return;
+    let dead = false;
     const want = quoteWant.get(key) ?? { ticker, expiration, strike, right, n: 0 };
     want.n += 1;
     quoteWant.set(key, want);
     armQuotes();
-    const hear = () => setRow(quoteBox.get(key) ?? null);
+    const hear = () => {
+      if (!dead) setHeld({ key, row: quoteBox.get(key) ?? null });
+    };
     quoteHeard.add(hear);
     void pullQuote(key, want).then(hear);
     return () => {
+      dead = true;
       quoteHeard.delete(hear);
       const held = quoteWant.get(key);
       if (!held) return;
@@ -363,12 +371,14 @@ export function useContractLive(ticker: string, expiration: string, strike: numb
       if (!quoteWant.size) stopQuotes();
     };
   }, [key, on, ticker, expiration, strike, right]);
-  return on ? row : null;
+  if (!on) return null;
+  return held.key === key ? held.row : quoteBox.get(key) ?? null;
 }
 
 export function useSecondGreek(ticker: string, expiration: string, strike: number, right: OptionRight, on: boolean): { gamma: number; vanna: number; charm: number } | null {
   const key = `${ticker}|${expiration}|${strike}|${right}|g`;
-  const [row, setRow] = useState<{ gamma: number; vanna: number; charm: number } | null>(null);
+  const [held, setHeld] = useState<{ key: string; row: { gamma: number; vanna: number; charm: number } | null }>({ key, row: null });
+  const setRow = (row: { gamma: number; vanna: number; charm: number }) => setHeld({ key, row });
   useEffect(() => {
     if (!on || !ticker || !expiration || !(strike > 0)) return;
     let dead = false;
@@ -388,7 +398,8 @@ export function useSecondGreek(ticker: string, expiration: string, strike: numbe
     const id = window.setInterval(pull, 15_000);
     return () => { dead = true; window.clearInterval(id); };
   }, [key, on, ticker, expiration, strike, right]);
-  return row;
+  /* the last contract's greeks are not shown under a new one while its own read is out */
+  return held.key === key ? held.row : null;
 }
 
 export interface BookView {
