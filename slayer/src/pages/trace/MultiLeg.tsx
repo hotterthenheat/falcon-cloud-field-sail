@@ -50,6 +50,9 @@ const MONEY_OPTIONS: DropdownOption<'ALL' | 'DEBIT' | 'CREDIT'>[] = [
 /* the set at rest fits a 1440 box beside the pinned risk columns */
 /* the strategy is words and the strikes a ladder: both wrap to two lines with their hover, giving way to the figures first */
 const PROSE = ['kind', 'strikes'];
+/** A shape with a mark beside its name (as listed, a piece, unverified, compression, after hours) */
+const kindMarked = (t: { namedBy?: string; compression?: unknown; legsState?: string; splitOf?: unknown; unverified?: unknown; extended?: unknown }): boolean =>
+  (t.namedBy === 'vendor' && !t.compression && t.legsState !== 'pending') || !!t.splitOf || (!!t.unverified && !t.compression) || !!t.compression || !!t.extended;
 const WIDTHS: Record<string, number> = { time: 100, ticker: 84, strikes: 168, exp: 104, size: 56, net: 112, prem: 112, legs: 56, kind: 208, maxloss: 88, maxprofit: 88 };
 /* who on the left, the risk at the right, both always on screen */
 const PIN_LEFT = ['time', 'ticker'];
@@ -472,9 +475,12 @@ const MultiLeg = () => {
         header: 'Strategy',
         sortValue: t => t.kind,
         render: t => (
+          /* the shape on its line, its marks (as listed, unverified, …) on the line under it: never one squeezing the other */
           <span className="inline-flex max-w-full items-center gap-1.5 align-middle text-t11 leading-tight text-textPrimary whitespace-normal overflow-hidden" title={`${shapeWord(t)}${t.legsState === 'pending' ? ' (listed name, reading its legs)' : ''}: ${t.read ?? KIND_META[t.kind].read}`}>
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[t.kind] }} />
-            <span className={`min-w-0 line-clamp-2 ${t.legsState === 'pending' ? 'text-textSecondary' : ''}`}>{shapeWord(t)}</span>
+            <span className="min-w-0 flex flex-col">
+            <span className={`min-w-0 ${kindMarked(t) ? 'truncate' : 'line-clamp-2'} ${t.legsState === 'pending' ? 'text-textSecondary' : ''}`}>{shapeWord(t)}</span>
+            {kindMarked(t) && <span className="min-w-0 flex items-center gap-1.5 overflow-hidden whitespace-nowrap">
             {t.namedBy === 'vendor' && !t.compression && t.legsState !== 'pending' && (
               <span className="text-t11 text-textMuted shrink-0" title={t.legsState === 'none' ? 'The listed name; its legs did not load' : 'The listed name; its legs do not settle into buys and sells that add up to its net'} data-feed-name>
                 as listed
@@ -499,6 +505,8 @@ const MultiLeg = () => {
                 not read
               </span>
             ) : null}
+            </span>}
+            </span>
           </span>
         ),
       },
@@ -526,8 +534,9 @@ const MultiLeg = () => {
         /* left-aligned: the date is the fixed-width fact, the "· 102d" tail is not */
         sortValue: t => t.dte,
         render: t => (
-          <span className="text-textPrimary text-t11 whitespace-nowrap" title={t.farExpiry ? `Two expiries: the near leg ${expiryLabel(t.expiry)} (${t.dte}d), the far leg ${expiryLabel(t.farExpiry)} (${t.farDte}d)` : undefined}>
+          <span className={`text-textPrimary text-t11 whitespace-nowrap ${t.farExpiry ? 'inline-flex flex-col align-middle leading-tight' : ''}`} title={t.farExpiry ? `Two expiries: the near leg ${expiryLabel(t.expiry)} (${t.dte}d), the far leg ${expiryLabel(t.farExpiry)} (${t.farDte}d)` : undefined}>
             {t.farExpiry ? (
+              /* the far leg under the near one: the column keeps a one-expiry width */
               <>
                 {expiryLabel(t.expiry)}
                 <span className="text-textSecondary">→{expiryLabel(t.farExpiry)}</span>
@@ -557,15 +566,18 @@ const MultiLeg = () => {
         align: 'right',
         sortValue: t => t.net,
         render: t => (
-          <span className="text-textPrimary whitespace-nowrap">
+          /* the way over the figure ("collected" / "$4.55"): the column is the figure's width, so the grid fits a 1280 screen */
+          <span className="inline-flex flex-col items-end align-middle leading-tight text-textPrimary whitespace-nowrap">
             {/* per unit from the net premium: the vendor's net_price is wrong on ratio'd shapes */}
             {t.net !== 0 ? (
               <>
-                <span className="text-t11 text-textSecondary">{t.net > 0 ? 'paid' : 'collected'}</span> ${Math.abs(t.net).toFixed(2)}
+                <span className="text-t10 text-textSecondary">{t.net > 0 ? 'paid' : 'collected'}</span>
+                <span>${Math.abs(t.net).toFixed(2)}</span>
               </>
             ) : t.netAbs != null && t.netAbs > 0 && t.units ? (
-              <span title="No net printed and the legs cannot settle the way: the net's size, paid if bought, collected if sold">
-                ${(t.netAbs / (t.units * 100)).toFixed(2)} <span className="text-t11 text-textMuted">either way</span>
+              <span className="inline-flex flex-col items-end" title="No net printed and the legs cannot settle the way: the net's size, paid if bought, collected if sold">
+                <span className="text-t10 text-textMuted">either way</span>
+                <span>${(t.netAbs / (t.units * 100)).toFixed(2)}</span>
               </span>
             ) : t.legsState === 'pending' && t.netKnown !== false ? (
               <span className="text-textMuted">…</span>
@@ -588,8 +600,10 @@ const MultiLeg = () => {
               <span className="text-textMuted">—</span>
             ) : (
               <TickFigure value={t.netPremium}>
-                <span className="text-t11 text-textSecondary">{t.netPremium > 0 ? 'paid ' : 'collected '}</span>
-                {fmtUsd(Math.abs(t.netPremium))}
+                <span className="inline-flex flex-col items-end align-middle leading-tight">
+                  <span className="text-t10 text-textSecondary">{t.netPremium > 0 ? 'paid' : 'collected'}</span>
+                  <span>{fmtUsd(Math.abs(t.netPremium))}</span>
+                </span>
               </TickFigure>
             )}
           </span>

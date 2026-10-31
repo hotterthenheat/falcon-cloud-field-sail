@@ -21,7 +21,7 @@ const TRACE_PHONE_THEME = GRID_THEME.withParams({ rowHeight: 58, headerHeight: 0
 /* ---- the grid in its window ------------------------------------------------------ */
 
 /** A words column's floor: it gives way to the figures first, wrapping to two lines with its full words in a title */
-const PROSE_FLOOR = 140;
+const PROSE_FLOOR = 120;
 
 /** A page's Column<T> definitions as AG Grid columns — the cells, inks and doors untouched. `fit` is the width a
     column's widest figure and its header were measured to need (TraceGrid's fit pass): the column's floor, so no
@@ -231,6 +231,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
       return [{ colId: 'phone', headerName: '', flex: 1, sortable: false, resizable: false, suppressMovable: true, cellRenderer: (p: ICellRendererParams<T>) => (p.data ? phoneRow(p.data) : null) } as ColDef<T>];
     }
     const defs = columnsToColDefs(columns, hiddenSet, widths, tooltips, flexes, lockColumns, fit, proseSet);
+    const lastPinRight = [...defs].reverse().find(d => !d.hide && pinRight?.includes(d.colId ?? ''))?.colId;
     for (const d of defs) {
       /* a pinned column is a wall at its widest figure (its floor), else at its set width */
       if (pinLeft?.includes(d.colId ?? '')) {
@@ -241,8 +242,8 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
         d.flex = undefined;
         d.width = d.minWidth ?? d.width;
         d.pinned = 'right';
-        /* room for the endless window's scrollbar beside the right-pinned figure */
-        if (endlessOn && d.width) {
+        /* room for the endless window's scrollbar beside the right-pinned figure — the outermost one only */
+        if (endlessOn && d.width && d.colId === lastPinRight) {
           d.width += 14;
           d.minWidth = d.width;
         }
