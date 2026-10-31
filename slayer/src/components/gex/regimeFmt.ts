@@ -1,6 +1,5 @@
 /* The words and figures the rail's Regime and OI change tabs share (VolRegimeView, OiChangeView) */
 
-import { useEffect, useState, type RefObject } from 'react';
 import { MONTHS } from '../../core/nyTime';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -33,18 +32,4 @@ export function ordinal(p: number): string {
   const t = n % 100;
   const suf = t >= 11 && t <= 13 ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th';
   return `${n}${suf}`;
-}
-/** An element's width, kept current */
-export function useWidth(ref: RefObject<HTMLElement>): number {
-  const [w, setW] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const read = () => setW(Math.round(el.clientWidth));
-    read();
-    const ro = new ResizeObserver(read);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [ref]);
-  return w;
 }

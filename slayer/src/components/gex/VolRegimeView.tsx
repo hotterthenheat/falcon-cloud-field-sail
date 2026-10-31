@@ -1,294 +1,207 @@
 /*
   THE RAIL'S REGIME TAB: the VIX term structure, live — VIX1D, VIX9D, VIX, VIX3M, VIX6M, with VVIX and SKEW — its
-  shape (contango or backwardation), the two ratios that say where it bends (VIX/VIX3M at the 30-day point, VIX9D/VIX at
-  the front) with their path through the day, and where every value sits in its past year of daily closes.
+  shape (contango or backwardation), where every print sits in its past year of daily closes, and the two ratios that
+  say where the curve bends (VIX/VIX3M at the 30-day point, VIX9D/VIX at the front) through the day.
 
   One answer for the whole desk (data/regimeFeed.ts useVolRegime → server/regimeApi.mjs): four panes showing this tab
   make one request between them. The prints follow the session rule: while the index feed moves (the VIX from about
-  03:15 ET) the head says Live with the print's time; otherwise it says As of the last print.
+  03:15 ET) the head says Live with the print's time; otherwise As of the last print.
 
-  The inks are the rail's own ramp (heatmap.ts), read as a sign: warm where vol is rich (high in its year, rising, the
-  curve inverted), cool where it is cheap — the same two poles the ladder's legs wear beside it.
+  Drawn as the other rail tabs are (Calendar, Matrix, Surface): the head's fact chips, caps section heads, figures in
+  the mono voice, a one-line foot; the charts are shadcn's (components/shadcn/chart.tsx) over recharts, in the house
+  tokens only — the series in hand in the silver select, the rest in the secondary ink, the grid in the subtle border.
 */
 
-import { useId, useMemo, useRef } from 'react';
-import { heatLadderColor, type HeatMode } from './heatmap';
+import { useMemo } from 'react';
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, ReferenceLine, XAxis, YAxis } from 'recharts';
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../shadcn/chart';
 import { useVolRegime, regimeTrouble, type RegimeQuote, type RegimeRatio } from '../../data/regimeFeed';
 import { TERM } from '../../../shared/volRegime.mjs';
-import { fmtDay, fmtMinute, fmtStamp, ordinal, signed, useWidth } from './regimeFmt';
+import { fmtDay, fmtMinute, fmtStamp, ordinal, signed } from './regimeFmt';
+import { FactChip, INK, RailFoot, SectionHead, TICK } from './railFacts';
 
-interface Props {
-  mode: HeatMode;
-  paper: boolean;
-}
-
-/** A sign's ink at strength t (0..1) on the rail's ramp: +1 warm, −1 cool */
-const inkOf = (sign: number, t: number, mode: HeatMode, paper: boolean) => heatLadderColor(sign >= 0 ? Math.max(0.02, t) : -Math.max(0.02, t), 1, mode, paper);
-/** A percentile's ink: warm above the median, cool below, deeper toward the ends */
-const pctInk = (p: number, mode: HeatMode, paper: boolean) => inkOf(p >= 50 ? 1 : -1, Math.abs(p - 50) / 50, mode, paper);
-
-const REGIME_WORDS = {
-  contango: { label: 'Contango', hint: 'The curve slopes up: near-term vol under the 3-month' },
-  backwardation: { label: 'Backwardation', hint: 'The curve is inverted: near-term vol over the 3-month' },
-  flat: { label: 'Flat', hint: 'VIX and VIX3M within half a percent of each other' },
+const SHAPE = {
+  contango: { word: 'Contango', hint: 'near-term vol under the 3-month' },
+  backwardation: { word: 'Backwardation', hint: 'near-term vol over the 3-month' },
+  flat: { word: 'Flat', hint: 'VIX and VIX3M within half a percent' },
 } as const;
 
-const SECTION = 'font-mono text-t10 uppercase tracking-widest text-textMuted';
+/* ---- the curve ---- */
 
-/* THE CURVE: the five tenors on a log-days axis, today's prints solid, the year's last closes dashed behind them */
-const Curve = ({ quotes, ink, mode, paper }: { quotes: RegimeQuote[]; ink: string; mode: HeatMode; paper: boolean }) => {
-  const boxRef = useRef<HTMLDivElement>(null);
-  const w = useWidth(boxRef);
-  const H = 104;
-  const pad = { l: 14, r: 14, t: 18, b: 18 };
-  const pts = TERM.map(t => ({ t, q: quotes.find(q => q.sym === t.sym) })).filter(x => x.q && x.q.price != null) as { t: (typeof TERM)[number]; q: RegimeQuote }[];
-  const all = pts.flatMap(p => [p.q.price as number, ...(p.q.prev != null ? [p.q.prev] : [])]);
-  if (!pts.length || w < 60) return <div ref={boxRef} style={{ height: H }} />;
-  const lo = Math.min(...all);
-  const hi = Math.max(...all);
-  const span = Math.max(0.5, hi - lo);
-  const lx = (d: number) => Math.log(d);
-  const x0 = lx(TERM[0].days);
-  const x1 = lx(TERM[TERM.length - 1].days);
-  const X = (d: number) => pad.l + ((lx(d) - x0) / (x1 - x0)) * (w - pad.l - pad.r);
-  const Y = (v: number) => pad.t + (1 - (v - (lo - span * 0.12)) / (span * 1.24)) * (H - pad.t - pad.b);
-  const line = (vals: { d: number; v: number }[]) => vals.map((p, i) => `${i ? 'L' : 'M'}${X(p.d).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
-  const prev = pts.filter(p => p.q.prev != null).map(p => ({ d: p.t.days, v: p.q.prev as number }));
+const CurveChart = ({ quotes, day, prevDay }: { quotes: RegimeQuote[]; day: string | undefined; prevDay: string | null }) => {
+  const config = {
+    now: { label: fmtDay(day, false), color: INK.select },
+    prior: { label: prevDay ? `${fmtDay(prevDay, false)} close` : 'Prior close', color: INK.secondary },
+  } satisfies ChartConfig;
+  const data = TERM.map(t => {
+    const q = quotes.find(x => x.sym === t.sym);
+    return { tenor: t.label, sym: t.sym, now: q?.price ?? null, prior: q?.prev ?? null };
+  });
   return (
-    <div ref={boxRef} className="relative" style={{ height: H }} data-regime-curve>
-      <svg width={w} height={H} className="block" aria-label="VIX term structure">
-        {[0.25, 0.5, 0.75].map(f => (
-          <line key={f} x1={pad.l} x2={w - pad.r} y1={pad.t + f * (H - pad.t - pad.b)} y2={pad.t + f * (H - pad.t - pad.b)} stroke="rgb(var(--ink) / 0.06)" />
-        ))}
-        {prev.length > 1 && <path d={line(prev)} fill="none" stroke="rgb(var(--text-muted))" strokeWidth={1} strokeDasharray="3 3" />}
-        <path d={line(pts.map(p => ({ d: p.t.days, v: p.q.price as number })))} fill="none" stroke={ink} strokeWidth={1.75} strokeLinejoin="round" />
-        {pts.map((p, i) => {
-          const cx = X(p.t.days);
-          const cy = Y(p.q.price as number);
-          const anchor = i === 0 ? 'start' : i === pts.length - 1 ? 'end' : 'middle';
-          /* two figures closer than a figure's width: the earlier one hangs under its point */
-          const crowded = i < pts.length - 1 && X(pts[i + 1].t.days) - cx < 40;
-          return (
-            <g key={p.t.sym}>
-              <circle cx={cx} cy={cy} r={3} fill={p.q.pct != null ? pctInk(p.q.pct, mode, paper) : ink} stroke="rgb(var(--panel))" strokeWidth={1.25} />
-              <text x={cx} y={crowded ? cy + 14 : cy - 7} textAnchor={anchor} className="font-mono tnum" fontSize={10} fill="rgb(var(--text-primary))">
-                {(p.q.price as number).toFixed(2)}
-              </text>
-              <text x={cx} y={H - 4} textAnchor={anchor} className="font-mono" fontSize={9} fill="rgb(var(--text-muted))">
-                {p.t.label}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
+    <ChartContainer config={config} className="aspect-auto h-[142px] w-full font-mono tnum" data-regime-curve>
+      <LineChart data={data} margin={{ top: 16, right: 22, bottom: 0, left: 18 }} accessibilityLayer>
+        <CartesianGrid vertical={false} />
+        <XAxis dataKey="tenor" tickLine={false} axisLine={false} tickMargin={6} tick={TICK} />
+        {/* the prints are named at their points: no figure axis to collide with them */}
+        <YAxis hide domain={[(min: number) => Math.floor(min - 1), (max: number) => Math.ceil(max + 1)]} />
+        <ChartTooltip cursor={false} content={<ChartTooltipContent labelFormatter={(_, p) => `${p?.[0]?.payload?.sym ?? ''}`} />} />
+        <Line dataKey="prior" type="linear" stroke="var(--color-prior)" strokeWidth={1.25} strokeDasharray="3 3" dot={false} isAnimationActive={false} />
+        <Line dataKey="now" type="linear" stroke="var(--color-now)" strokeWidth={2} dot={{ r: 2.5, fill: 'var(--color-now)', strokeWidth: 0 }} isAnimationActive={false}>
+          <LabelList dataKey="now" position="top" offset={7} className="fill-textPrimary" fontSize={10} formatter={(v: unknown) => (typeof v === 'number' ? v.toFixed(2) : '')} />
+        </Line>
+        <ChartLegend verticalAlign="top" align="right" height={18} content={<ChartLegendContent verticalAlign="top" className="justify-end gap-3 pb-1 pr-3 text-t10 text-textMuted" />} />
+      </LineChart>
+    </ChartContainer>
   );
 };
 
-/* ONE RATIO: its figure, its year's percentile, and its path through the regime day with 1.00 marked when in reach */
-const RatioPath = ({ r, mode, paper, day }: { r: RegimeRatio; mode: HeatMode; paper: boolean; day: string | undefined }) => {
-  const boxRef = useRef<HTMLDivElement>(null);
-  const w = useWidth(boxRef);
-  const H = 46;
-  const path = r.path;
-  const vals = path.map(p => p[1]);
+/* ---- each print's year: one bar per index, the percentile; the row's figures in its axis ---- */
+
+const YearTick = ({ x, y, payload, rows }: { x?: number; y?: number; payload?: { value: string }; rows: Map<string, RegimeQuote> }) => {
+  const q = payload ? rows.get(payload.value) : undefined;
+  if (!q || x == null || y == null) return null;
+  const chg = q.price != null && q.prev != null ? q.price - q.prev : null;
+  /* three columns inside the axis: the name, the print, its change from the last close */
+  const left = x - 144;
+  return (
+    <g data-regime-row={q.sym}>
+      <text x={left} y={y} dy={3.5} fontSize={11} fill="rgb(var(--text-secondary))">
+        {q.sym}
+      </text>
+      <text x={left + 92} y={y} dy={3.5} fontSize={11} textAnchor="end" fontWeight={600} fill="rgb(var(--text-primary))">
+        {q.price == null ? '—' : q.price.toFixed(2)}
+      </text>
+      <text x={x - 4} y={y} dy={3.5} fontSize={10} textAnchor="end" fill="rgb(var(--text-muted))">
+        {chg == null ? '' : signed(chg, 2)}
+      </text>
+    </g>
+  );
+};
+
+const YearChart = ({ quotes, pending }: { quotes: RegimeQuote[]; pending: boolean }) => {
+  const rows = useMemo(() => new Map(quotes.map(q => [q.sym, q])), [quotes]);
+  const config = { pct: { label: '1y percentile', color: INK.secondary } } satisfies ChartConfig;
+  const data = quotes.map(q => ({ sym: q.sym, pct: q.pct == null ? 0 : Math.round(q.pct * 10) / 10, lo: q.lo, hi: q.hi, n: q.n }));
+  if (pending && quotes.every(q => q.pct == null)) return <p className="px-3 py-3 font-mono text-t11 text-textMuted">Reading the year of closes…</p>;
+  return (
+    <ChartContainer config={config} className="aspect-auto w-full font-mono tnum" style={{ height: quotes.length * 22 + 6 }} data-regime-year>
+      <BarChart data={data} layout="vertical" margin={{ top: 0, right: 34, bottom: 0, left: 12 }} barCategoryGap={7} accessibilityLayer>
+        <CartesianGrid horizontal={false} />
+        <XAxis type="number" domain={[0, 100]} ticks={[0, 50, 100]} hide />
+        <YAxis type="category" dataKey="sym" width={150} tickLine={false} axisLine={false} interval={0} tick={<YearTick rows={rows} />} />
+        <ReferenceLine x={50} stroke={INK.grid} />
+        <ChartTooltip
+          cursor={false}
+          content={
+            <ChartTooltipContent
+              hideIndicator
+              labelFormatter={(_, p) => {
+                const r = p?.[0]?.payload as { sym: string; lo: number | null; hi: number | null; n: number } | undefined;
+                return r ? `${r.sym} · ${r.n} closes · ${r.lo?.toFixed(2)}–${r.hi?.toFixed(2)}` : '';
+              }}
+            />
+          }
+        />
+        <Bar dataKey="pct" radius={2} isAnimationActive={false} background={{ fill: 'rgb(var(--ink) / 0.05)', radius: 2 }}>
+          {data.map(d => (
+            <Cell key={d.sym} fill={d.sym === 'VIX' ? INK.select : INK.secondary} fillOpacity={d.sym === 'VIX' ? 1 : 0.55} />
+          ))}
+          <LabelList dataKey="pct" position="right" offset={6} fontSize={10} className="fill-textSecondary" formatter={(v: unknown) => (typeof v === 'number' && v > 0 ? ordinal(v) : '')} />
+        </Bar>
+      </BarChart>
+    </ChartContainer>
+  );
+};
+
+/* ---- a ratio through the day ---- */
+
+const RatioChart = ({ r }: { r: RegimeRatio }) => {
+  const config = { ratio: { label: r.key, color: INK.select } } satisfies ChartConfig;
+  const data = r.path.map(([m, v]) => ({ m, ratio: v }));
+  const vals = r.path.map(p => p[1]);
   const lo = vals.length ? Math.min(...vals) : 0;
   const hi = vals.length ? Math.max(...vals) : 0;
-  const spread = Math.max(0.004, hi - lo);
-  const yLo = lo - spread * 0.15;
-  const yHi = hi + spread * 0.15;
-  const m0 = Math.min(570, path[0]?.[0] ?? 570);
-  const m1 = Math.max(975, path[path.length - 1]?.[0] ?? 975);
-  const X = (m: number) => ((m - m0) / (m1 - m0)) * (w - 2) + 1;
-  const Y = (v: number) => 3 + (1 - (v - yLo) / (yHi - yLo)) * (H - 6);
-  const inverted = r.value != null && r.value > 1;
-  const ink = r.value == null ? 'rgb(var(--text-muted))' : inkOf(inverted ? 1 : -1, Math.min(1, Math.abs(r.value - 1) * 6), mode, paper);
-  const d = path.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(' ');
-  const parity = 1 >= yLo && 1 <= yHi;
-  const coolInk = inkOf(-1, 0.55, mode, paper);
-  const warmInk = inkOf(1, 0.75, mode, paper);
-  /* one clip per drawing: four panes may draw the same ratio at four widths */
-  const clipId = `${r.key}${useId()}`.replace(/[^A-Za-z0-9]/g, '');
-  const open = path[0]?.[1];
+  const pad = Math.max(0.003, (hi - lo) * 0.12);
+  const parity = 1 >= lo - pad && 1 <= hi + pad;
+  /* the low, 1.00 when the path reaches it, the high — an end too near 1.00 to print beside it is left out */
+  const near1 = (v: number) => parity && Math.abs(v - 1) < (hi - lo + 2 * pad) * 0.22;
+  const ticks = [lo, ...(parity ? [1] : []), hi].filter((v, i, a) => (v === 1 || !near1(v)) && a.indexOf(v) === i);
   return (
-    <div className="py-2 border-t border-borderSubtle/60" data-regime-ratio={r.key}>
-      <div className="flex items-baseline gap-2 min-w-0">
-        <span className="font-mono text-t11 text-textSecondary whitespace-nowrap">{r.key}</span>
-        <span className="font-mono text-t12 tnum font-semibold whitespace-nowrap" style={{ color: ink }}>
-          {r.value == null ? '—' : r.value.toFixed(3)}
-        </span>
-        {r.prev != null && r.value != null && (
-          <span className="font-mono text-t10 tnum text-textMuted whitespace-nowrap" title={`The year's last close, ${r.prev.toFixed(3)}`}>
-            {signed(r.value - r.prev, 3)}
-          </span>
-        )}
-        <span className="ml-auto font-mono text-t10 tnum whitespace-nowrap" style={{ color: r.pct == null ? undefined : pctInk(r.pct, mode, paper) }} title={r.pct == null ? undefined : `Higher than ${Math.round(r.pct)}% of the past year's ${r.n} closes · range ${r.lo?.toFixed(3)}–${r.hi?.toFixed(3)}`}>
-          {r.pct == null ? '' : `${ordinal(r.pct)} pct`}
-        </span>
-      </div>
-      <div ref={boxRef} className="relative mt-1" style={{ height: H }}>
-        {w > 40 && path.length > 1 ? (
-          <svg width={w} height={H} className="block" aria-label={`${r.key} through ${fmtDay(day)}`}>
-            {parity && <line x1={0} x2={w} y1={Y(1)} y2={Y(1)} stroke="rgb(var(--text-muted))" strokeDasharray="2 3" strokeWidth={1} />}
-            {parity && (
-              <text x={1} y={Y(1) - 3} textAnchor="start" className="font-mono tnum" fontSize={9} fill="rgb(var(--text-muted))">
-                1.000
-              </text>
-            )}
-            {/* the minutes over 1.000 (the curve inverted at this point) wear the warm ink, the rest the cool */}
-            <defs>
-              <clipPath id={`over-${clipId}`}>
-                <rect x={0} y={0} width={w} height={parity ? Y(1) : 0} />
-              </clipPath>
-            </defs>
-            <path d={d} fill="none" stroke={coolInk} strokeWidth={1.25} strokeLinejoin="round" />
-            {parity && <path d={d} fill="none" stroke={warmInk} strokeWidth={1.25} strokeLinejoin="round" clipPath={`url(#over-${clipId})`} />}
-            <circle cx={X(path[path.length - 1][0])} cy={Y(path[path.length - 1][1])} r={2.25} fill={ink} />
-          </svg>
-        ) : (
-          <p className="h-full flex items-center font-mono text-t10 text-textMuted">No minute prints for both indices on {fmtDay(day)} yet.</p>
-        )}
-      </div>
-      {path.length > 1 && (
-        <div className="mt-0.5 flex justify-between gap-2 font-mono text-t9 tnum text-textMuted whitespace-nowrap overflow-hidden">
-          <span>
-            {fmtMinute(path[0][0])} {open?.toFixed(3)}
-          </span>
-          <span className="truncate">
-            lo {lo.toFixed(3)} · hi {hi.toFixed(3)}
-          </span>
-          <span>{fmtMinute(path[path.length - 1][0])}</span>
-        </div>
+    <div className="pb-1" data-regime-ratio={r.key}>
+      <SectionHead
+        name={r.key}
+        gloss={r.pct == null ? undefined : `${ordinal(r.pct)} pct of the year`}
+        aside={
+          <>
+            <span className="font-semibold text-textPrimary">{r.value == null ? '—' : r.value.toFixed(3)}</span>
+            {r.prev != null && r.value != null && <span className="ml-1.5 text-textMuted">{signed(r.value - r.prev, 3)}</span>}
+          </>
+        }
+      />
+      {data.length > 1 ? (
+        <ChartContainer config={config} className="aspect-auto h-[116px] w-full font-mono tnum">
+          <LineChart data={data} margin={{ top: 4, right: 14, bottom: 0, left: 0 }} accessibilityLayer>
+            <CartesianGrid vertical={false} />
+            <XAxis dataKey="m" type="number" domain={[570, 975]} ticks={[570, 720, 870]} tickFormatter={(m: number) => fmtMinute(m).replace(':00', '').replace(' ', '')} tickLine={false} axisLine={false} tick={TICK} tickMargin={4} />
+            <YAxis width={40} tickLine={false} axisLine={false} tick={TICK} domain={[lo - pad, hi + pad]} ticks={ticks} tickCount={3} interval={0} tickFormatter={(v: number) => v.toFixed(2)} />
+            {parity && <ReferenceLine y={1} stroke={INK.secondary} strokeDasharray="3 3" />}
+            <ChartTooltip cursor={false} content={<ChartTooltipContent hideIndicator labelFormatter={(_, p) => fmtMinute(Number(p?.[0]?.payload?.m ?? 0))} />} />
+            <Line dataKey="ratio" type="linear" stroke="var(--color-ratio)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          </LineChart>
+        </ChartContainer>
+      ) : (
+        <p className="px-3 pb-2 font-mono text-t11 text-textMuted">No minute prints for both indices yet.</p>
       )}
     </div>
   );
 };
 
-const VolRegimeView = ({ mode, paper }: Props) => {
+const VolRegimeView = () => {
   const { data, error, loading } = useVolRegime();
-  const quotes = data?.quotes ?? [];
-  const regime = data?.regime ? REGIME_WORDS[data.regime] : null;
-  const main = data?.ratios?.[0];
-  const regimeInk = main?.value == null ? 'rgb(var(--text-secondary))' : inkOf(main.value > 1 ? 1 : -1, Math.min(1, Math.abs(main.value - 1) * 6), mode, paper);
-  const rows = useMemo(() => {
-    const term = TERM.map(t => quotes.find(q => q.sym === t.sym)).filter(Boolean) as RegimeQuote[];
-    const gauges = quotes.filter(q => !TERM.some(t => t.sym === q.sym));
-    return { term, gauges };
-  }, [quotes]);
   const trouble = regimeTrouble(error);
+  const quotes = data?.quotes ?? [];
+  const term = useMemo(() => TERM.map(t => quotes.find(q => q.sym === t.sym)).filter(Boolean) as RegimeQuote[], [quotes]);
+  const all = useMemo(() => [...term, ...quotes.filter(q => !TERM.some(t => t.sym === q.sym))], [term, quotes]);
 
   if (!data) {
     return (
-      <div className="h-full flex items-center justify-center px-6 text-center font-mono text-t12 text-textSecondary" data-regime-empty>
-        {loading ? 'Reading the VIX term structure…' : trouble ?? 'No VIX prints on file.'}
+      <div className="h-full flex items-center justify-center px-6 text-center font-mono text-t11 uppercase tracking-widest text-textMuted" data-regime-empty>
+        {loading ? 'Reading the VIX term structure…' : trouble ?? 'No VIX prints on file'}
       </div>
     );
   }
-  const stale = (q: RegimeQuote) => !!q.at && !!data.asOf && q.at.slice(0, 10) !== data.asOf.slice(0, 10);
-  const year = data.yearEnd ? `the past year's daily closes to ${fmtDay(data.yearEnd, false)}` : "the past year's daily closes";
-  const row = (q: RegimeQuote) => {
-    const chg = q.price != null && q.prev != null ? q.price - q.prev : null;
-    return (
-      <tr key={q.sym} className="border-t border-borderSubtle/40" data-regime-row={q.sym} title={q.at ? `${q.sym} ${fmtStamp(q.at)}${q.prevDay ? ` · change from the ${fmtDay(q.prevDay, false)} close` : ''}` : undefined}>
-        <td className="py-[3px] pr-2 font-mono text-t11 text-textSecondary whitespace-nowrap">{q.sym}</td>
-        <td className={`py-[3px] pr-2 text-right font-mono text-t12 tnum whitespace-nowrap ${stale(q) ? 'text-textMuted' : 'text-textPrimary font-semibold'}`}>
-          {q.price == null ? '—' : q.price.toFixed(2)}
-          {stale(q) && <span className="ml-1 text-t9 font-normal">{fmtDay(q.at, false)}</span>}
-        </td>
-        <td className="py-[3px] pr-2 text-right font-mono text-t11 tnum whitespace-nowrap" style={{ color: chg == null || chg === 0 ? 'rgb(var(--text-muted))' : inkOf(chg > 0 ? 1 : -1, Math.min(1, Math.abs(chg) / Math.max(0.01, q.prev ?? 1) * 8), mode, paper) }}>
-          {chg == null ? '—' : signed(chg, 2)}
-        </td>
-        <td className="py-[3px] w-[42%]">
-          {q.pct == null ? (
-            <span className="font-mono text-t10 text-textMuted">{data.pending?.year ? 'reading…' : '—'}</span>
-          ) : (
-            <span className="flex items-center gap-1.5" title={`Higher than ${Math.round(q.pct)}% of ${year} (${q.n}) · range ${q.lo?.toFixed(2)}–${q.hi?.toFixed(2)}`}>
-              <span className="relative flex-1 h-[5px] rounded-full bg-ink/[0.08] overflow-hidden" data-regime-pct>
-                <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${Math.max(2, q.pct)}%`, background: pctInk(q.pct, mode, paper) }} />
-              </span>
-              <span className="w-8 text-right font-mono text-t10 tnum text-textSecondary">{ordinal(q.pct)}</span>
-            </span>
-          )}
-        </td>
-      </tr>
-    );
-  };
-
+  const shape = data.regime ? SHAPE[data.regime] : null;
+  const main = data.ratios?.[0];
+  const prevDay = quotes.find(q => q.sym === 'VIX')?.prevDay ?? data.yearEnd ?? null;
   return (
-    <div className="h-full overflow-y-auto overflow-x-hidden px-3 pb-3" data-regime-view data-regime={data.regime ?? ''}>
-      {/* THE HEAD: the shape in words and its ratio, and when the prints are from */}
-      <div className="pt-2 pb-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className={SECTION}>VIX term structure</span>
-        <span className="ml-auto font-mono text-t10 tnum whitespace-nowrap" data-regime-asof={data.live ? 'live' : 'asof'}>
-          {data.live ? (
-            <span className="text-textSecondary">
-              <span className="inline-block w-1.5 h-1.5 mr-1 rounded-full align-middle bg-bull" aria-hidden />
-              Live · {fmtStamp(data.asOf).split(', ')[1]}
-            </span>
-          ) : (
-            <span className="text-warn">As of {fmtStamp(data.asOf)}</span>
+    <div className="h-full flex flex-col min-h-0" data-regime-view data-regime={data.regime ?? ''}>
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+        {/* THE HEAD: the shape and when the prints are from, as the head's cards */}
+        <div className="flex flex-wrap items-center gap-1.5 px-2 pt-1.5" data-regime-head>
+          {shape && main?.value != null && (
+            <FactChip label="Curve" title={shape.hint} testId="shape">
+              {shape.word} <span className="font-normal text-textSecondary">{main.value.toFixed(3)}</span>
+            </FactChip>
           )}
-        </span>
-      </div>
-      {regime && main?.value != null && (
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5" title={regime.hint}>
-          <span className="text-t125 font-semibold" style={{ color: regimeInk }} data-regime-shape>
-            {regime.label}
-          </span>
-          <span className="font-mono text-t11 tnum text-textSecondary">
-            VIX/VIX3M {main.value.toFixed(3)}
-          </span>
-          <span className="font-mono text-t10 text-textMuted">{regime.hint.split(': ')[1]}</span>
+          <FactChip label={data.live ? 'Live' : 'As of'} testId={data.live ? 'live' : 'asof'}>
+            {data.live ? fmtStamp(data.asOf).split(', ')[1] : fmtStamp(data.asOf).replace(',', '').replace(' ET', '')}
+          </FactChip>
         </div>
-      )}
-      <Curve quotes={rows.term} ink={regimeInk} mode={mode} paper={paper} />
-      <div className="flex items-center gap-3 font-mono text-t9 text-textMuted -mt-0.5 mb-1">
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-3 h-[2px]" style={{ background: regimeInk }} aria-hidden />
-          {fmtDay(data.day, false)}
-        </span>
-        {data.yearEnd && (
-          <span className="inline-flex items-center gap-1">
-            <span className="inline-block w-3 border-t border-dashed border-textMuted" aria-hidden />
-            {fmtDay(data.yearEnd, false)} close
-          </span>
-        )}
-      </div>
 
-      {/* THE PRINTS, each against its year */}
-      <table className="w-full border-collapse" data-regime-table>
-        <thead>
-          <tr className="font-mono text-t9 uppercase tracking-wider text-textMuted">
-            <th className="pb-1 text-left font-normal">Index</th>
-            <th className="pb-1 pr-2 text-right font-normal">Last</th>
-            <th className="pb-1 pr-2 text-right font-normal">Chg</th>
-            <th className="pb-1 text-left font-normal">1y pct</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.term.map(row)}
-          {rows.gauges.length > 0 && (
-            <tr>
-              <td colSpan={4} className="pt-2 pb-0.5 font-mono text-t9 uppercase tracking-wider text-textMuted">
-                Vol of vol · tail
-              </td>
-            </tr>
-          )}
-          {rows.gauges.map(row)}
-        </tbody>
-      </table>
+        <SectionHead name="Term structure" gloss="VIX by tenor" />
+        <CurveChart quotes={term} day={data.day} prevDay={prevDay} />
 
-      {/* THE RATIOS through the day */}
-      <div className="mt-2">
-        <div className={`${SECTION} pb-1`}>Ratios · {fmtDay(data.day)}</div>
-        {(data.ratios ?? []).map(r => (
-          <RatioPath key={r.key} r={r} mode={mode} paper={paper} day={data.day} />
-        ))}
+        <SectionHead name="1y percentile" gloss={data.yearEnd ? `daily closes to ${fmtDay(data.yearEnd, false)}` : 'daily closes'} aside={<span className="text-textMuted">last · chg</span>} />
+        <YearChart quotes={all} pending={!!data.pending?.year} />
+
+        <div className="mt-1 border-t border-borderSubtle/60">
+          {(data.ratios ?? []).map(r => (
+            <RatioChart key={r.key} r={r} />
+          ))}
+        </div>
+        {trouble && <p className="px-3 py-1 font-mono text-t11 text-warn">{trouble}</p>}
       </div>
-      <p className="mt-1 font-mono text-t9 leading-snug text-textMuted" data-regime-foot>
-        Percentiles rank each print against {year}. Chg is from that close.
-        {trouble ? <span className="block text-warn">{trouble}</span> : null}
-      </p>
+      <RailFoot>Ratios through {fmtDay(data.day)} · chg from the {fmtDay(prevDay, false)} close</RailFoot>
     </div>
   );
 };

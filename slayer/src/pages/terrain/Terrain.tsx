@@ -61,7 +61,7 @@ import { dealerOf } from '../../core/dealerSign';
 import { useMaxPain } from '../../components/gex/levelExtras';
 import { composeSnapshot, snapshotName } from '../../components/gex/snapshot';
 import { readSessionClock } from '../../data/moc';
-import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, modeOf, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
+import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
 import RegimeDoor from '../../components/gex/RegimeDoor';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import { netSinceOpenRatio } from '../../data/levelview';
@@ -2442,7 +2442,7 @@ const Terrain = () => {
       </div>
       {/* THE PHONE'S WAY IN to the rail's Regime and OI change tabs (the rail is not on a phone): one line, a sheet */}
       {isPhone && panes[active] && (
-        <RegimeDoor ticker={panes[active].ticker} oiScope={oiScopeOf(cfg.railCut)} spot={snapshotOf(panes[active].ticker)?.spot ?? 0} mode={modeOf(cfg.palette)} paper={pageLight} />
+        <RegimeDoor ticker={panes[active].ticker} oiScope={oiScopeOf(cfg.railCut)} spot={snapshotOf(panes[active].ticker)?.spot ?? 0} />
       )}
       {meterOn && <FrameMeter />}
     </div>

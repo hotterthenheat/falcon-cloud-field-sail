@@ -73,8 +73,7 @@ import { splinePath } from './StrikePressureLadder';
 import type { PriceProjection } from './StrikeChart';
 import type { GexLevel, MarketSnapshot } from '../../types/market';
 import ExposureField from './ExposureField';
-import VolRegimeView from './VolRegimeView';
-import OiChangeView from './OiChangeView';
+import { RegimeTabs } from './regimeLazy';
 import FilterTabs from '../ui/FilterTabs';
 import { CardRow, PointerFollowCard } from '../ui/PointerCard';
 import { attachScrollMore } from '../ui/scrollMore';
@@ -1881,12 +1880,12 @@ const ProfilePanel = ({
       {/* THE REGIME AND OI CHANGE TABS: their own views under the head, the canvas quiet behind them */}
       {view === 'regime' && (
         <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-regime>
-          <VolRegimeView mode={mode} paper={paper} />
+          <RegimeTabs.Regime />
         </div>
       )}
       {view === 'oi' && ticker && (
         <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-oi>
-          <OiChangeView ticker={ticker} expiry={oiScope?.expiry ?? 'book'} scopeLabel={oiScope?.label ?? 'Whole book'} spot={liveSpot} mode={mode} paper={paper} focusPrice={focusPrice ?? null} onSelect={onSelect} />
+          <RegimeTabs.Oi ticker={ticker} expiry={oiScope?.expiry ?? 'book'} scopeLabel={oiScope?.label ?? 'Whole book'} spot={liveSpot} focusPrice={focusPrice ?? null} onSelect={onSelect} />
         </div>
       )}
       {onField && (!gexSnap || (gexSnap.chain?.length ?? 0) === 0) && (
