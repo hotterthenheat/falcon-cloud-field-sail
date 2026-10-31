@@ -7,7 +7,7 @@ server functions stay in Supabase; the money stays in Stripe. Nothing secret eve
 
 | Place | What lives there | Who sets it up |
 |---|---|---|
-| **Vercel** | The site itself: the built files, served from a network of edge servers near each visitor. It also builds the site from GitHub every time the `v1` branch changes. | Noah, in the Vercel dashboard (this walk) |
+| **Vercel** | The site itself: the built files, served from a network of edge servers near each visitor. It also builds the site from GitHub every time the `main` branch changes. | Noah, in the Vercel dashboard (this walk) |
 | **Supabase** | The accounts, the profiles with their plans, the carried stores, the audit log, and the four Edge Functions (checkout, portal, webhook, account-delete). The Stripe secret key and the webhook signing secret live here, as the functions' secrets. | Already running on project `ncsigrsvvoroiplnjtam` |
 | **Stripe** | Products and prices, customers, subscriptions, invoices. Test mode today, live mode at launch. | Already running; live mode is a launch step below |
 | **Plausible** | The visit count, if we want one. Off until the build names the site. | Optional, at launch |
@@ -19,12 +19,15 @@ the webhook secret are not in the build, not in the repo, not in Vercel. They st
 ## The first deploy, step by step
 
 1. **Connect GitHub to Vercel.** In Vercel: Add New → Project → Import Git Repository → install Vercel's GitHub app
-   on the `Nuh00` account and pick `revamp`. Vercel reads the repo; it sees Vite and fills in the build on its own
-   (`npm run build`, output `dist`). The repo's `vercel.json` adds the two things Vite does not say: every address
+   on the `hotterthenheat` account and pick `falcon-cloud-field-sail`. **Set Root Directory to `slayer`** (Configure
+   Project → Root Directory → Edit → `slayer`): the app and its `package.json`, `vercel.json` and `api/` functions
+   live there, not at the top of the repo, and a project built from the repo root builds the wrong thing. Vercel then
+   sees Vite and fills in the build on its own (`npm run build`, output `dist`); leave "Include files outside the root
+   directory" on, the default. Set Node.js Version (Settings → Build and Deployment) to 22.x. The repo's `vercel.json` adds the two things Vite does not say: every address
    opens the app (a deep link like `/settings/billing` must load `index.html`, not a 404), and the hashed files under
    `/assets` and the font are cached for a year.
-2. **Set the production branch to `v1`.** Settings → Git → Production Branch. Every push to `v1` is a release from
-   then on; every other branch and pull request gets its own private preview address.
+2. **Set the production branch to `main`.** Settings → Environments → Production → Branch Tracking (older
+   dashboards: Settings → Git → Production Branch). Every push to `main` is a release from then on; every other branch and pull request gets its own private preview address.
 3. **Add the variables.** Settings → Environment Variables. Names and values from `.env.local`:
 
    | Name | Production | Preview and Development |
@@ -44,7 +47,8 @@ the webhook secret are not in the build, not in the repo, not in Vercel. They st
    function instance; `PROXY_PLAN_GATE=off` drops the plan check (sign-in and bans still apply) for a build without
    Stripe, where the browser's gates are off too. `UW_PROXY_OPEN=1` opens the proxy for local work and is ignored when
    `VERCEL_ENV=production`. ThetaData does not run on Vercel: `/api/theta` answers 503 `terminal_unavailable` there
-   unless `THETA_REST_BASE` points at a reachable terminal. See `docs/data-proxies.md`.
+   unless `THETA_RELAY_URL` and `THETA_RELAY_SECRET` point at the always-on relay (`docs/theta-terminal.md`, "Later")
+   or `THETA_REST_BASE` at a reachable terminal. See `docs/data-proxies.md`.
    A value that starts `sk_` or `whsec_` never goes here. If one is ever typed here by mistake, roll it in its own
    dashboard the same day.
 4. **Deploy.** The first build takes a few minutes. The site is up at an address ending in `.vercel.app`. Open it, sign
@@ -98,7 +102,7 @@ in Stripe's payment method domains, and for Apple Pay a file served from that sa
 address of its own:
 
 1. Create the Vercel project from the repo (the first deploy above). Vercel gives it an address like
-   `revamp-xxxx.vercel.app`. That address is public but unlinked, and the terminal is walled signed out.
+   `falcon-cloud-field-sail-xxxx.vercel.app`. That address is public but unlinked, and the terminal is walled signed out.
 2. Stripe → Settings → Payment methods → Payment method domains → add that exact address, in the sandbox. Stripe
    hands over the Apple file; it goes in the repo under `public/.well-known/` and ships with the next push. Register
    again once the file is live and Stripe can fetch it.
@@ -112,8 +116,8 @@ password protection on, which is a paid feature; or the wallets wait for launch 
 
 ## Things to know
 
-- **A push to `v1` is a release.** Your partner has push access. Either agree that `v1` is only pushed when the site
-  should change, or move releases to a branch only you push to and set that as the production branch.
+- **A push to `main` is a release.** Your partner has push access. Either agree that `main` is only pushed when the
+  site should change, or move releases to a branch only you push to and set that as the production branch.
 - **Preview addresses are private by default.** Vercel asks for a Vercel sign-in before showing a preview deployment,
   so a half-finished branch is never public. Production is public.
 - **The sample journal is off on a built site.** The two sample paper accounts show only on a development server

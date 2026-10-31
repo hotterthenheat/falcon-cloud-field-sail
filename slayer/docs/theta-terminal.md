@@ -20,16 +20,37 @@ ever run one with this account.
 
 1. Put `THETADATA_API_KEY=td1_...` in `slayer/.env.local` (git-ignored).
 2. **Keep it running 24/7** (Windows): from the `slayer` folder run
-   `powershell -ExecutionPolicy Bypass -File theta\install-autostart.ps1` once. It registers two tasks that start at
-   every log-in and restart within a minute if they ever stop: `SlayerTheta` (the supervised terminal, `npm run theta`)
-   and `SlayerSite` (the built site with the Unusual Whales and ThetaData proxies, the shared data hub and the Compass
-   engine, `npm run serve` on http://localhost:8080). It builds the site once if it was never built, and adds
-   `THETA_AUTOSTART=0` to `slayer/.env.local` so nothing starts a second terminal. After pulling new code:
-   `npm run build`, then `Stop-ScheduledTask SlayerSite; Start-ScheduledTask SlayerSite`.
+   `powershell -ExecutionPolicy Bypass -File theta\install-autostart.ps1` once (it needs Node 22 or 24 on the PATH,
+   and says so if not). It registers two tasks: `SlayerTheta` (the supervised terminal, `npm run theta`) and
+   `SlayerSite` (the built site with the Unusual Whales and ThetaData proxies, the shared data hub, the Compass engine
+   and the exposure recorder, `npm run serve` on http://localhost:8080).
+   - They start at every log-in; run the installer from an **Administrator** PowerShell and they also start at boot,
+     before anyone logs in.
+   - Each runs `theta\autostart-run.ps1`, which starts its program again 10 s after **any** exit, clean or not.
+     Task Scheduler's own restart (every minute, up to 255 times, the most its schema allows) only backs that up:
+     on its own it restarts a task only when it fails, never after a clean exit.
+   - The installer runs `npm ci` if there is no `node_modules`, builds the site, and adds `THETA_AUTOSTART=0` to
+     `slayer/.env.local` so nothing starts a second terminal.
+   - Logs: `theta\run\autostart-theta.log`, `theta\run\autostart-site.log`, and the terminal's own
+     `theta\run\terminal.out`.
 3. **Keep the PC awake**: Settings → System → Power → put the device to sleep: Never (when plugged in).
 4. **Check it**: `npm run theta:check` asks the terminal for every kind of data the pages read, twice each, and
    prints status, rows and the cold and warm time. A line naming "another ThetaData terminal" means a second terminal
    took the session: close it.
+
+### Updating
+
+```powershell
+git pull
+npm ci            # when package-lock.json changed (harmless otherwise)
+npm run build
+Stop-ScheduledTask SlayerSite;  Start-ScheduledTask SlayerSite
+Stop-ScheduledTask SlayerTheta; Start-ScheduledTask SlayerTheta    # only when theta/ changed
+```
+
+SlayerSite also checks on every start: it rebuilds when the code changed since the last build (git's record of the
+last pull or checkout) and runs `npm ci` first when `package-lock.json` changed, so `git pull` and a restart of the
+task is enough. A new terminal jar goes into `theta\lib\` (the newest `.jar` there wins); restart SlayerTheta.
 
 Start the terminal through `npm run theta` or `npm run dev`, not by double-clicking the jar: only a supervised
 terminal is restarted when it stops, and the warmer keeps any running terminal hot.
@@ -75,15 +96,19 @@ What keeps it up and fast:
 1. **Install Java 21** (any OpenJDK 21 build, for example Eclipse Temurin 21 from https://adoptium.net).
    Check with `java -version`. If `java` on the PATH is another version, set `THETA_JAVA` to the full path of the
    Java 21 executable (Windows: `C:\Program Files\Eclipse Adoptium\jdk-21...\bin\java.exe`), or set `JAVA_HOME`.
-2. **Download the terminal.** Sign in at https://www.thetadata.net, download the v3 terminal
-   (`ThetaTerminalv3.jar`, see https://docs.thetadata.us for the current link), and put it at
+2. **Download the terminal.** It must be the **v3** terminal: the app calls its v3 REST API (`/v3/...` on port
+   25503); the older v1/v2 terminals answer other paths and do not work. Sign in at https://www.thetadata.net,
+   download the v3 terminal (`ThetaTerminalv3.jar`, see https://docs.thetadata.us for the current link), and put it at
    `slayer/theta/ThetaTerminalv3.jar`. If ThetaData ships the newer `lib/<build>.jar` layout, put that jar in
    `slayer/theta/lib/`: the newest `*.jar` there wins over the bootstrap jar. Anywhere else works too with
    `THETA_JAR=<full path to the jar>`. All of these paths are git-ignored.
-3. **Give it the key.** Put `THETADATA_API_KEY=td1_...` in `slayer/.env.local` (git-ignored), or set it in the shell
+3. **Give it the key.** The API key is on your account page at https://www.thetadata.net (it starts `td1_`). Put
+   `THETADATA_API_KEY=td1_...` in `slayer/.env.local` (git-ignored), or set it in the shell
    environment. Accounts that log in with email and password can instead create `slayer/theta/creds.txt` (email on
    line 1, password on line 2; git-ignored). The key is handed to the Java process through its environment, never on
-   its command line, so it does not show up in `ps` or Task Manager's command-line column.
+   its command line, so it does not show up in `ps` or Task Manager's command-line column. The Java process gets only
+   the variables Java needs (PATH, the system and temp folders, `JAVA_HOME`/`JAVA_TOOL_OPTIONS`, a proxy) and its own
+   key: never the Unusual Whales, Supabase or relay secrets.
 
 ## How it starts
 
@@ -100,10 +125,21 @@ $env:THETA_JAVA = "C:\Program Files\Eclipse Adoptium\jdk-21.0.5.11-hotspot\bin\j
 npm run theta
 ```
 
+(PowerShell sets a variable with `$env:NAME = "value"`; the `NAME=value command` form is for macOS/Linux shells.)
+
 What the supervisor does:
 
-- One supervisor per checkout (`theta/run/supervisor.pid`); a second one exits at once.
-- If something already answers on `127.0.0.1:25503` (a terminal you started by hand), it is left alone.
+- One supervisor per checkout (`theta/run/supervisor.pid`); a second one exits at once. The file's time is refreshed
+  every 15 s, so after a crash a PID that Windows has given to another program never blocks the next start.
+- If something already answers on `127.0.0.1:25503` (a terminal you started by hand), it is left alone. A terminal
+  that an earlier supervisor of this checkout started and left running (the supervisor was killed hard, for example
+  by Task Manager) is adopted: watched like its own, and replaced if it stops answering.
+- **A refused key** (the terminal prints "Invalid credentials" to `theta/run/terminal.out`): it logs one line,
+  `ThetaData login failed: check THETADATA_API_KEY`, stops the terminal and does not try that key again for 10
+  minutes (then 20, 40, up to an hour); a changed key in `.env.local` is tried at once. Pages read `terminal_login`
+  from `/api/theta` meanwhile, not "not running".
+- What it knows (starting, up, down, session_lost, unauthenticated, login_failed) is in `theta/run/state.json`,
+  refreshed every 15 s; the data proxy reads it.
 - It starts the jar with `theta/config.toml`, which binds the REST port (25503), the websocket port (25520) and the
   MCP endpoint to `127.0.0.1` only, and writes logs to `theta/run/logs/` and `theta/run/terminal.out`.
 - If its terminal exits it is restarted after 5 s, then 10 s, doubling to at most 5 minutes; if its terminal stops
@@ -115,8 +151,12 @@ supervisor at another config file. Keep the two in step.
 
 ## Notes
 
-- ThetaData allows one terminal per account at a time. A second one started anywhere ends the first one's session
-  ("Invalid session ID. This can occur if more than one terminal is running"): stop the extra one and restart.
+- **One terminal per account.** ThetaData allows one terminal per account at a time, on any machine. A second one
+  started anywhere (another PC, a laptop, the jar double-clicked, `npm run dev` while SlayerTheta runs) ends the first
+  one's session ("Invalid session ID. This can occur if more than one terminal is running"), and restarting both makes
+  them take turns throwing each other off. Stop the extra one; the supervised one reconnects by itself. A machine
+  that needs ThetaData while another runs the terminal uses the relay (`THETA_RELAY_URL`), never a terminal of its
+  own.
 - The old `keep-up.sh` and the bundled `theta/jdk/` are gone. The JDK in git was broken (its `lib/modules` was a
   Git LFS pointer), and the script put the key on the command line and killed processes by name.
 - The SPX book Terrain reads is built by `theta/build_spx_book.py` against a running terminal and written to

@@ -37,9 +37,19 @@ Also note:
 - The Congress page needs only `/congress/*` (all open on this key); stock ownership ("Who is in it") reads `/institution/{t}/ownership` (open). The enterprise `/stock/{t}/ownership` and `/politician-portfolios/*` are extras the pages do not depend on.
 - **The key allows only 3 concurrent requests, across everyone using it** (UW answers 429 "You have exceeded 3
   concurrent requests" and sometimes 500 past that). `server/uwProxy.mjs` therefore runs at most 3 upstream calls at
-  once, queues the rest, retries 429/5xx with backoff, and serves the last good copy if a retry still fails. In
-  production every visitor shares those 3 slots, so the proxy cache is what keeps it usable — a higher plan or a
+  once and queues the rest. A 429 trips one breaker for the whole key: every caller waits out the vendor's
+  `Retry-After` (else 1, 2, 4 … 30 s) outside the slots, a viewer at most 8 s, background work not at all; a 429 is
+  retried once and a 5xx twice, and the browser is told how long is left (`Retry-After`), so one refusal never
+  multiplies into more calls. If the retry still fails the hub serves the last good copy (up to 4× the route's
+  freshness, 20 min for a slow route) and says so: every answer carries `Age`, `x-hub-at` (when the vendor answered)
+  and `x-hub-held: 1` once it is past its normal stale window, which `data/whales.ts` exposes as `UwAnswer.at`/`held`.
+  In production every visitor shares those 3 slots, so the proxy cache is what keeps it usable — a higher plan or a
   shared server-side cache is needed before real traffic.
+- **What the hub keeps warm with nobody watching** (`server/hub.mjs`, `.cache/hub-uw.json`): the paths viewers asked
+  for more than once, remembered across restarts with the time of their last ask. A path whose date or expiry has
+  passed is dropped at once, one nobody asked for in 3 days (`HUB_PIN_IDLE_DAYS`) is dropped, and one nobody asked for
+  in a day is refreshed every 5 minutes instead of every minute; nothing is refreshed outside 04:00–20:00 ET on trading
+  days (17:00 on early closes, closed on holidays, `shared/marketCalendar.mjs`).
 - Futures and the rate strip are not carried: the Trace Futures tab is hidden from the navigation and `/trace/futures` redirects to the Live Tape (the page file is kept).
 
 ## Unusual Whales
@@ -160,6 +170,13 @@ private-markets feed. No flagged congressional-trade feed. History stops at the 
 - Which exchange each ticker is on
 
 ## ThetaData v3
+
+**Status codes the terminal sends** (read from the v3 jar's `CustomStatusCodes`): 471 PERMISSION, **472 NO_DATA**
+(the only one that is an answer about the request: a contract that never quoted that day), 473 UNAUTHENTICATED, 475
+TERMINAL_PARSE, 571 SERVER_RESTART, 572 AUTHENTICATION_RESPONSE; older terminals and the relay also send 474
+DISCONNECTED and 478 INVALID_SESSION_ID. The hub keeps only 472 among 470–479 (`server/thetaProxy.mjs`
+`thetaKeepable`), so an outage code is never served after the terminal is back. A refused login reads
+`code: 'terminal_login'` (503) from `/api/theta` while the supervisor says so (`docs/theta-terminal.md`).
 
 The terminal must be running (it runs on the owner's machine, not in a cloud sandbox). REST is
 `GET http://127.0.0.1:25503/v3` — 81 paths. Streams are `ws://127.0.0.1:25520/v1/events`. A snapshot is the latest
