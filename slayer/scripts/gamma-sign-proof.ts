@@ -16,7 +16,9 @@ import { buildExpectedMoveCone, daySigmaOfIv, sigmaFromStraddle, STRADDLE_K, tou
 import { contractHigher } from '../src/data/liveHigher';
 import { buildFlowFromRows, buildHedgeFlowLadder } from '../src/data/hedgeFlow';
 import { blackScholesGreeks } from '../src/core/greeks';
-import { dealerOf } from '../src/core/dealerSign';
+import { dealerOf, keptLeg, keptVendorLeg } from '../src/core/dealerSign';
+import { dealerInventory } from '../src/core/volClock';
+import { dealerPuts } from '../src/data/book/scale';
 import { shownGreek } from '../src/components/gex/retailSign';
 import type { StrikeNode } from '../src/types/market';
 
@@ -233,6 +235,25 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
     }
   }
   check('every greek follows one model: dealers long the calls, short the puts — and prints in that sign', ok);
+}
+
+/* 9 — the flow book's contract counts follow the same model: dealers are long the calls (an ask buy leaves them fewer)
+   and short the puts (an ask buy leaves them MORE short) — the vendor's own put_gamma_ask prints with put_gamma_oi's
+   sign (SPY 10/30 755P: oi −101.3M, ask −784.7M, bid +750.1M). 1,000 open, 50,000 lifted, 5,000 hit. */
+{
+  const calls = dealerInventory(1000, 50000, 5000, 0, 60000);
+  const puts = dealerPuts(1000, 50000, 5000, 0, 60000);
+  check(`ask-heavy call: dealers long ${calls} (1,000 − 50,000 + 5,000); ask-heavy put: dealers short ${puts} (1,000 + 50,000 − 5,000)`, calls === -44000 && puts === 46000);
+  const vendorPutDealer = keptVendorLeg('P', -101.3e6 - 784.7e6 + 750.1e6, true);
+  const countPutDealer = keptLeg('P', 1, puts);
+  check('the put count moves the dealer the way the vendor\'s ask and bid columns do (both more short gamma)', Math.sign(vendorPutDealer) === Math.sign(countPutDealer));
+}
+
+/* 10 — a row without delta, vanna and charm is not a zero book: its contracts price them (C 780, P 765 above) */
+{
+  const book = expiryBookFromRows([row(780, 5_000_000, 0)], [hot('C', 780)] as never[], spot, expiry);
+  const n = book.find(x => x.strike === 780)!;
+  check(`no vendor delta: the call's $delta is its contracts' (${M(dealerOf(n.callDex))} for 1,000 OI)`, dealerOf(n.callDex) > 0 && dealerOf(n.callVanna) !== 0 && dealerOf(n.callCharm) !== 0);
 }
 
 if (fail) {
