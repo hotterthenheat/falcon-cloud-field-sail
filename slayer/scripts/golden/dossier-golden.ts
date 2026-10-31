@@ -238,7 +238,11 @@ for (const t of ['NVDA', 'GME']) {
   expectEqual('Dossier busiest: out of the money is + for the put and the call', [Math.round(put.otmPct), Math.round(call.otmPct)], [20, 20]);
   /* an alert's split: $600K ask, $200K bid, $200K mid → 75% of the sided premium (it read 60% of the whole) */
   const sides = flowSidesOf([{ premium: 1_000_000, side: 'ASK', alertSides: { ask: 600_000, bid: 200_000, other: 200_000 } }]);
-  expectEqual('Dossier flow ask share: ask over ask + bid premium', [sides.ask, sides.bid, sides.mid], [600_000, 200_000, 200_000]);
+  const { leanOfSides } = await import('../../src/data/traceLean');
+  expectEqual('Dossier flow ask share: ask over ask + bid premium', [sides.ask, sides.bid, sides.mid, leanOfSides(sides).askSided], [600_000, 200_000, 200_000, 75]);
+  const { unusualOf } = await import('../../src/data/stockOverview');
+  /* one "unusual" cut with Trace's fresh: 1.5× open interest (Dossier asked 2×, so a 1.7× alert was not unusual) */
+  expectEqual('Dossier unusual alerts at 1.4×, 1.5×, 1.7×, 2.5× open interest', unusualOf([1.4, 1.5, 1.7, 2.5].map(volOverOI => ({ volOverOI }))), 3);
 }
 
 done();

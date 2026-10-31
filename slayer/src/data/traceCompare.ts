@@ -4,7 +4,7 @@
 import type { SleeveKey } from '../types/compass';
 import type { BookContract, FlowPrint } from '../types/trace';
 import { sleeveForDte } from './compass';
-import { floorPackaged, FRESH_VOL_OI, moneynessFilter, notABet, type MoneynessKey, type SpreadTrade } from './flowBook';
+import { floorPackaged, FRESH_VOL_OI, moneynessFilter, notABet, SPREAD_LEG_PCT, type MoneynessKey, type SpreadTrade } from './flowBook';
 import type { ExpiryFlow } from './traceLive';
 import { fmtCount as num, usd as fmtUsd } from './traceRows';
 import { leanOfSides } from './traceLean';
@@ -126,7 +126,7 @@ export function buildTraceSide(
         return Math.round(weighted(pool, r => r.iv, pool.reduce((a, r) => a + r.volume, 0)));
       })(),
       ivLater: bets.some(r => r.dte >= 1 && r.iv > 0),
-      apart: { count: out.length, premium: out.reduce((a, r) => a + r.premium, 0), floor: out.filter(r => floorPackaged(r)).length, legs: out.filter(r => !floorPackaged(r) && r.multiPct >= 50).length, crosses: out.filter(r => !floorPackaged(r) && r.multiPct < 50).length },
+      apart: { count: out.length, premium: out.reduce((a, r) => a + r.premium, 0), floor: out.filter(r => floorPackaged(r)).length, legs: out.filter(r => !floorPackaged(r) && r.multiPct >= SPREAD_LEG_PCT).length, crosses: out.filter(r => !floorPackaged(r) && r.multiPct < SPREAD_LEG_PCT).length },
       builtToday: bets.filter(r => r.oi > 0 && r.volOverOI >= FRESH_VOL_OI).length,
     },
     /* the same contracts as the book figures: bets only */

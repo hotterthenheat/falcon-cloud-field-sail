@@ -225,6 +225,14 @@ const { buildCatches } = await import('../../src/data/flowBook');
   const row = (ticker: string) => ({ key: `${ticker}-big`, ticker, premium: 30_000_000, volume: 1, volOverOI: 0, sweepPct: 0, chgPct: 0, floorPct: 0, multiPct: 0, askPct: 50, earnDays: null, deltaOI: 0, lastAtMin: 600, lastAt: '10:00', last: 1 }) as never;
   const caught = buildCatches([row('NVDA'), row('ZZZ')]).filter(c => c.rules.includes('big-money')).map(c => c.row.ticker);
   expectEqual('big money at $30M: ZZZ yes, NVDA (line $36M) no', caught, ['ZZZ']);
+  /* one set of cuts: legs at half the day in multi-leg orders, swept at a quarter — on the card and every reason. A day
+     40% legs and 27% swept is not a spread-leg card (it was, at 30%) but is a swept one (it was not, at 40%), and
+     12,000 contracts 27% swept is hammering (it needed 30%) */
+  const { bookRowToPrint } = await import('../../src/data/tape');
+  const day = { ...(row('QQQ') as object), right: 'C', strike: 1, expiry: '12/17/2027', dte: 400, otmPct: 1, spot: 1, oi: 1, iv: 20, theta: 0, volume: 12_000, premium: 1_000_000, multiPct: 40, sweepPct: 27, sideVol: { ask: 6000, bid: 3000, mid: 3000 } } as never;
+  const card = bookRowToPrint(day);
+  expectEqual('day card at 40% legs, 27% swept: not legs, swept', [card.legs, card.sweep], [1, true]);
+  expectEqual('hammering at 12,000 contracts, 27% swept', buildCatches([day]).flatMap(c => c.rules), ['hammering']);
 }
 
 void stockClose;
