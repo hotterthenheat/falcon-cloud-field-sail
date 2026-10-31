@@ -1,0 +1,53 @@
+{
+	"response": [
+		{
+			"contract": {"right":"CALL","strike":765.000,"symbol":"SPY","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":183,"bid_size":162,"ask_exchange":6,"ask_condition":50,"bid_exchange":65,"ask":18.06,"bid":17.97,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.941"}
+			]
+			},
+		{
+			"contract": {"right":"PUT","strike":765.000,"symbol":"SPY","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":122,"bid_size":120,"ask_exchange":42,"ask_condition":50,"bid_exchange":42,"ask":25.75,"bid":25.64,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.939"}
+			]
+			},
+		{
+			"contract": {"right":"CALL","strike":760.000,"symbol":"SPY","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":145,"bid_size":155,"ask_exchange":11,"ask_condition":50,"bid_exchange":4,"ask":20.95,"bid":20.86,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.995"}
+			]
+			},
+		{
+			"contract": {"right":"PUT","strike":760.000,"symbol":"SPY","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":128,"bid_size":27,"ask_exchange":42,"ask_condition":50,"bid_exchange":73,"ask":23.57,"bid":23.47,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.933"}
+			]
+			},
+		{
+			"contract": {"right":"CALL","strike":755.000,"symbol":"SPY","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":198,"bid_size":111,"ask_exchange":42,"ask_condition":50,"bid_exchange":5,"ask":24.05,"bid":23.96,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.961"}
+			]
+			},
+		{
+			"contract": {"right":"PUT","strike":755.000,"symbol":"SPY","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":172,"bid_size":190,"ask_exchange":6,"ask_condition":50,"bid_exchange":42,"ask":21.60,"bid":21.48,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.938"}
+			]
+			},
+		{
+			"contract": {"right":"CALL","strike":770.000,"symbol":"SPY","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":254,"bid_size":171,"ask_exchange":6,"ask_condition":50,"bid_exchange":5,"ask":15.38,"bid":15.29,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.953"}
+			]
+			},
+		{
+			"contract": {"right":"PUT","strike":770.000,"symbol":"SPY","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":129,"bid_size":119,"ask_exchange":5,"ask_condition":50,"bid_exchange":42,"ask":28.29,"bid":27.99,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.937"}
+			]
+		}
+	]
+}
+

@@ -8,6 +8,8 @@
    THE YIELD is the name's: 0 unless its own yield is set (setDividend). Server-side readers and the proofs never load a
    rate, so they price at DEFAULT_R and q = 0, exactly as before. */
 
+import { nyIsoDate } from './nyTime';
+
 interface Carry {
   /** Continuously-compounded risk-free rate, annualized (0.042 = 4.2%). */
   r: number;
@@ -105,15 +107,59 @@ export function carryName(ticker: string): string {
   return u === 'SPXW' || u === 'XSP' ? 'SPX' : u === 'NDXP' ? 'NDX' : u === 'RUTW' ? 'RUT' : u;
 }
 
-/** Which day a carry is for: `on` is a past session's date (YYYY-MM-DD) — its own rate; absent, now */
-export interface CarryWhen {
-  on?: string;
+/* THE IMPLIED FORWARD of an expiry (core/parity.ts, off the chain's own call and put quotes): its net carry b = r − q.
+   Where one is known for today, that expiry is priced at q = r − b, so the model's forward is the market's — SPX gets
+   its real yield instead of none. Kept per name and expiry for the New York day it was read on. */
+export interface ForwardRead {
+  /** The parity forward and the spot it was read against */
+  F: number;
+  spot: number;
+  /** Implied net carry r − q (continuous, annualised), calendar years `t` to the expiry */
+  b: number;
+  t: number;
+  /** Strikes behind it, and their forwards' spread */
+  n: number;
+  lo: number;
+  hi: number;
+  /** When it was read (epoch ms) and New York's date then */
+  at: number;
+  day: string;
+}
+const forwards = new Map<string, ForwardRead>();
+const fwdKey = (ticker: string, expiry: string) => `${carryName(ticker)}|${expiry.slice(0, 10)}`;
+/** An expiry's implied forward, read now from its chain */
+export function setForward(ticker: string, expiry: string, f: ForwardRead): void {
+  if (!(f.F > 0) || !(f.spot > 0) || !Number.isFinite(f.b) || !/^\d{4}-\d{2}-\d{2}$/.test(expiry.slice(0, 10))) return;
+  const key = fwdKey(ticker, expiry);
+  const old = forwards.get(key);
+  forwards.set(key, f);
+  if (!old || Math.abs(old.b - f.b) > 1e-6) emit();
+}
+/** Today's implied forward for a name's expiry (`day` is New York's date now), or null */
+export function forwardFor(ticker: string, expiry: string, day: string): ForwardRead | null {
+  const f = forwards.get(fwdKey(ticker, expiry));
+  return f && f.day === day ? f : null;
 }
 
-/** This name's carry: the rate (today's, or `on`'s), and the name's yield or zero. */
+/** Which day and expiry a carry is for: `on` is a past session's date (YYYY-MM-DD) — its own rate, never today's
+    forward; `expiry` (YYYY-MM-DD) prices off that expiry's implied forward when one is known today */
+export interface CarryWhen {
+  on?: string;
+  expiry?: string;
+  /** The instant priced (epoch ms; default now): a forward is used only on the New York day it was read */
+  now?: number;
+}
+
+/** This name's carry: the rate (today's, or `on`'s), and the yield — the expiry's implied one where its forward is known
+    today, else the name's own yield or zero. */
 export function carryFor(ticker: string, when?: CarryWhen): Carry {
+  const r = when?.on ? rateOn(when.on).r : rate.r;
+  if (!when?.on && when?.expiry) {
+    const f = forwardFor(ticker, when.expiry, nyIsoDate(when.now));
+    if (f) return { r, q: r - f.b };
+  }
   const q = yields.get(ticker.trim().toUpperCase());
-  return { r: when?.on ? rateOn(when.on).r : rate.r, q: q ?? 0 };
+  return { r, q: q ?? 0 };
 }
 
 /** A real yield, as a fraction. A non-payer is 0. A missing yield is not stored. */
@@ -135,5 +181,6 @@ export function resetCarry(): void {
   rate = FIXED;
   byDay.clear();
   yields.clear();
+  forwards.clear();
   emit();
 }

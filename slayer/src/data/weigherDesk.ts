@@ -13,6 +13,9 @@ import type { OptionRight } from '../types/compass';
 import type { StrikeNode } from '../types/market';
 import { peekEntry } from './book/store';
 import { sameName } from './spotGexBook';
+import { carryFor, setForward, type ForwardRead } from '../core/carry';
+import { parityForward, type ParityPair } from '../core/parity';
+import { calendarYears } from '../core/volClock';
 
 // ---- the chain --------------------------------------------------------------
 
@@ -112,6 +115,9 @@ export interface DeskChain {
   takenAt?: number;
   /** This browser's copy from an earlier visit, shown until the terminal answers */
   kept?: boolean;
+  /** The expiry's implied forward from put-call parity on these quotes, when the book had enough of them: its contracts
+      are priced at the implied yield (core/carry carryFor) */
+  forward?: ForwardRead;
 }
 
 /** The expiry rail: requested horizons resolved to REAL sessions, deduped —
@@ -475,6 +481,7 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
   const byStrike = new Map<number, { call?: DeskContract; put?: DeskContract }>();
   let spot = 0;
   let quotedAt = 0;
+  let forward: ForwardRead | undefined;
   const now = Date.now();
   /* The terminal did not answer: an empty chain that says so. The desk keeps the chain it had. */
   if (got.error && !noData(got)) return { ticker: name, spot: 0, step: 1, rows: [], expiry, expectedMovePct: 0, source: 'live', quotedAt: 0, expiryIso: iso, optRoot: symbol, offline: true };
@@ -488,6 +495,30 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
       if (under != null && under > 0 && uAt >= spotAt) {
         spot = under;
         spotAt = uAt;
+      }
+    }
+    /* the expiry's implied forward from put-call parity on these same quotes (core/parity.ts), before any row is priced:
+       every contract of the expiry is then priced at its implied yield (core/carry carryFor with the expiry) */
+    if (spot > 0) {
+      const pairs = new Map<number, ParityPair>();
+      for (const item of items) {
+        const strike = numOr(item.contract.strike);
+        const word = String(item.contract.right || '').toLowerCase();
+        if (strike == null || !(strike > 0) || !/^[cp]/.test(word)) continue;
+        const key = contractKey(item.contract);
+        const book = key ? nbbo.get(key) : undefined;
+        const bid = book && Number.isFinite(book.bid) ? book.bid : (numOr(item.data.bid) ?? NaN);
+        const ask = book && Number.isFinite(book.ask) ? book.ask : (numOr(item.data.ask) ?? NaN);
+        const p = pairs.get(strike) ?? { strike, callBid: NaN, callAsk: NaN, putBid: NaN, putAsk: NaN };
+        if (word.startsWith('c')) Object.assign(p, { callBid: bid, callAsk: ask });
+        else Object.assign(p, { putBid: bid, putAsk: ask });
+        pairs.set(strike, p);
+      }
+      const t = calendarYears(iso, now);
+      const fwd = parityForward([...pairs.values()], spot, carryFor(name).r, t);
+      if (fwd) {
+        forward = { F: fwd.F, spot, b: fwd.b, t, n: fwd.n, lo: fwd.lo, hi: fwd.hi, at: now, day: nyIsoDate(now) };
+        setForward(name, iso, forward);
       }
     }
     for (const item of items) {
@@ -603,6 +634,7 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
     quotedAt,
     expiryIso: iso,
     optRoot: symbol,
+    ...(forward ? { forward } : {}),
   };
 }
 
