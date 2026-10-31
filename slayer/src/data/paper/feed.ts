@@ -8,7 +8,7 @@ import type { Candle } from '../../types/market';
 import type { DeskChain, DeskContract } from '../weigherDesk';
 import { isTradingDay, expiryFor, sessionCloseMinOn } from '../../core/calendar';
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
-import { longLeg, spreadBook, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
+import { longLeg, spreadBook, spreadSizes, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
 import { bookCandles, ensureBook } from '../uwBook';
 import { bellOf, dateAt, nyAt, sessionFrom, yearsToExpiry, OPEN_MIN } from './clock';
 import { paperIndex } from './products';
@@ -90,6 +90,10 @@ function legQuote(c: ContractId, spot: number, ms: number): Quote {
     intrinsic: cents(intrinsic),
     dead: q.bid <= 0 || !isFresh(q.takenAt, q.kept, ms, q.at),
     spot: s,
+    /* the sizes shown: a fill takes at most this many of one quote (its stamp is which quote it is) */
+    ...(Number.isFinite(q.bidSize) ? { bidSize: q.bidSize } : {}),
+    ...(Number.isFinite(q.askSize) ? { askSize: q.askSize } : {}),
+    ...(q.at > 0 ? { quotedAt: q.at } : {}),
   };
 }
 
@@ -118,6 +122,7 @@ export const optionQuote = (c: ContractId, ms: number, spot = spotOf(c.ticker)):
     intrinsic: cents(Math.max(0, Math.min(width, bought.intrinsic - sold.intrinsic))),
     dead: bid <= 0 || bought.dead || sold.dead,
     spot: bought.spot,
+    ...spreadSizes(bought, sold),
   };
 };
 

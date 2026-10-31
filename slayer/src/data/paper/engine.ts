@@ -9,7 +9,7 @@ import { MULT, nameGoesUp, type Bracket, type OrderKind, type Side } from '../re
 import { isBroadIndex, marginLineOf, marginOf, type MarginLine } from './margin';
 import type { DayNote, JournalEntry } from '../review/journal';
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from '../review/ladder';
-import { contractKey, contractWords, dteAt, legsOf, type ContractId, type Quote } from '../review/quotes';
+import { contractKey, contractWords, dteAt, fillableQty, legsOf, type ContractId, type Quote } from '../review/quotes';
 import { closeBasisOf } from '../review/history';
 import type { Candle } from '../../types/market';
 import { bellOf, dayBeginsAt, dayEndsAt, nyAt, tradingDayOf } from './clock';
@@ -97,6 +97,10 @@ export interface OptOrder {
   /** …and, waiting, the least net it takes a set: what the legs sold bring in less what the legs bought cost, a share
       (a credit: above 0; a debit: below) */
   net?: number;
+  /** Filled in pieces so far: a fill takes at most the size the quote shows (fillableQty); `qty` is what is left */
+  filled?: number;
+  /** …and how much of which quote it has taken (the same quote's size is not taken twice) */
+  took?: { at: number; qty: number };
 }
 /** How a fill came: an order's kind — or the market's (the bell), the rules' (an evaluation), the page's (it closed) */
 type OptFillHow = OrderKind | 'expired' | 'rule' | 'page';
@@ -1040,8 +1044,18 @@ function afterCover(a: PaperAccount, bought: OptOrder, at: PaperMoment): PaperAc
 /** What a short holds on its own as it opens (margin.ts, less its premium) — its R's measure */
 const heldAtOpen = (o: OptOrder, price: number, q: Quote): number => marginOf([{ key: 'x', contract: o.contract, dir: -1, qty: o.qty, avg: price, quote: q, secured: o.secured, spotIn: q.spot }]).held;
 
-function optFillNow(a: PaperAccount, o: OptOrder, price: number, how: OptFillHow, q: Quote, m: PaperMarket, note?: string): PaperAccount {
+function optFillNow(a: PaperAccount, o0: OptOrder, price: number, how: OptFillHow, q: Quote, m: PaperMarket, note?: string): PaperAccount {
   const at = momentAt(m.now);
+  /* the reader's order takes at most the size the quote shows (a leg of an order of several fills whole: its legs go
+     together); the rest stays working for the next quote. The rules' and the page's closes, and a settlement, are not
+     capped. */
+  const capped = !!o0.id && !o0.combo && (how === 'market' || how === 'limit' || how === 'stop');
+  const n = capped ? fillableQty(o0, q) : o0.qty;
+  if (n < 1) return a;
+  const rest = o0.qty - n;
+  const total = (o0.filled ?? 0) + n;
+  const used = o0.took && q.quotedAt != null && o0.took.at === q.quotedAt ? o0.took.qty : 0;
+  const o: OptOrder = rest > 0 ? { ...o0, qty: n } : o0;
   const opens = o.opens ?? o.side === 'buy';
   let [id, next] = nextId(a, 'f');
   const fill: OptFill = {
@@ -1068,10 +1082,17 @@ function optFillNow(a: PaperAccount, o: OptOrder, price: number, how: OptFillHow
     ...(o.combo ? { combo: o.combo, comboName: o.comboName } : {}),
     ...(opens && o.side === 'sell' ? { held: heldAtOpen(o, price, q) } : {}),
   };
-  next = setOpt(next, next.opt.orders.map(x => (x.id === o.id ? { ...x, status: 'filled' as const, done: at, fillPrice: fill.price } : x)), [...next.opt.fills, fill]);
+  next = setOpt(
+    next,
+    next.opt.orders.map(x =>
+      x.id !== o.id || !o.id ? x : rest > 0 ? { ...x, qty: rest, filled: total, ...(q.quotedAt != null ? { took: { at: q.quotedAt, qty: used + n } } : {}) } : { ...x, ...(x.filled ? { qty: total } : {}), status: 'filled' as const, done: at, fillPrice: fill.price }
+    ),
+    [...next.opt.fills, fill]
+  );
   if (!opens && o.side === 'sell') next = afterSell(next, o, q, at, m);
   if (!opens && o.side === 'buy') next = afterCover(next, o, at);
-  const { targets, stops } = rungsOf(o.side === 'buy' && opens ? o.bracket : undefined, o.qty);
+  /* the ways out a buy carried go on once all of it has filled */
+  const { targets, stops } = rungsOf(o.side === 'buy' && opens && rest === 0 ? o.bracket : undefined, total);
   if (targets.length || stops.length) {
     const [oco, n2] = nextId(next, 'g');
     next = n2;
@@ -1533,7 +1554,8 @@ function optTickOrders(a: PaperAccount, m: PaperMarket): PaperAccount {
       continue;
     }
     const opens = live.opens ?? live.side === 'buy';
-    const hits = live.kind === 'limit' ? (live.side === 'buy' ? q.ask <= live.price! : q.bid >= live.price!) : live.side === 'sell' ? q.bid <= live.price! : q.ask >= live.price!;
+    /* a market order left working is the rest of one that took all a quote showed: it fills on the next quotes */
+    const hits = live.kind === 'market' ? true : live.kind === 'limit' ? (live.side === 'buy' ? q.ask <= live.price! : q.bid >= live.price!) : live.side === 'sell' ? q.bid <= live.price! : q.ask >= live.price!;
     if (!hits) continue;
     /* the position it was placed against may have turned since: a way in the other way, or a way out with nothing left */
     const pos = heldOn(next, contractKey(live.contract));
