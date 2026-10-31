@@ -152,12 +152,15 @@ This map is built from the code as it stood on **2026-10-29, 12:15 UTC**. Seven 
 
 ## 3. Rule violations found (11)
 
+**Re-checked 31 Oct 2026 against 710a78f+ (Exposure series).** Marked **FIXED** where the code no longer does it; the rest stand as written.
+
 ### R1. ThetaData code paths reachable from Trace, Pinpoint and Dossier
 
 **Status:** confirmed. No request leaves, because `thetaCall` refuses on `/(trace|pinpoint|dossier)` at `theta.ts:91-93`. The three local guards disagree, though, so these paths run as far as that refusal.
 
 - **Index books.** Trace → `traceLive` → `liveQuote` → `uwBook` → `book/load.loadCore` → `book/tape.thetaTape`, which calls TH `/…/history/ohlc` and `/…/snapshot/*` (`book/load.ts:320,324` → `book/tape.ts:95,101`). The guard `uwOnlyDesk()` at `spotGexBook.ts:16` omits `/trace`.
-- **Theta OI fallback.** Trace → the same chain → `awaitSpotGex` at `book/load.ts:353-357`. This waits up to 4 s on Trace for a refused Theta read, so an index book (SPX) on Trace is slower to load or fails.
+- **Guards.** **FIXED:** `uwOnlyDesk()` (`spotGexBook.ts:12`), `listedNames` (`:131`) and `coneFeed` (`:206,219`) all read the one rule, `theta.ts thetaUseHere()`, which covers `/trace`.
+- **Theta OI fallback.** **FIXED:** `awaitSpotGex` and the Theta-OI book are gone from `book/load.ts`. Was: Trace → the same chain → `awaitSpotGex` at `book/load.ts:353-357`. This waits up to 4 s on Trace for a refused Theta read, so an index book (SPX) on Trace is slower to load or fails.
 - **Ticker lists.** Trace → `TickerSearch` → `listedNames.ensureListed` → TH `/stock/list/symbols` (`listedNames.ts:110`). Its guard at `:130` omits `/trace`.
 - **Cone and chart.** `coneFeed.fromTheta` (`coneFeed.ts:204`) and `StrikeChart`'s `thetaChartBars` branch (`StrikeChart.tsx:342,780`) use `uwOnlyDesk()`, so on Trace they take the Theta branch and draw nothing.
 - **Hidden rooms.** PaperRunner (`paper/thetaFeed.ts:251`) and every hidden Theta room (DeskKeep) keep calling `thetaCall` while the reader is on a UW room.
@@ -170,22 +173,22 @@ This map is built from the code as it stood on **2026-10-29, 12:15 UTC**. Seven 
 4. **Expected-move cone (Terrain, Weigher, Compass charts).** The IV is UW's term structure and interpolated IV first, with Theta only as a fallback (`coneFeed.ts:204`). IV is a Theta item on these pages. Confirmed.
 5. **Alerts re-arm.** The re-arm price is the UW quote on every room (`AlertsDrawer.tsx:211`), while the watcher judges the same alert against the Theta price on Theta rooms (`AlertWatcher.tsx:86-91`). Confirmed.
 6. **Indicator and script alerts.** They run on UW book candles even on Theta rooms (`AlertWatcher.tsx:28-31`). Confirmed.
-7. **The reverse substitution: Theta standing in for UW exposure.** When UW returns no strikes, the "UW book" is built from Theta OI, labelled `call_gex`/`put_gex`, with `g = spot²·0.01` and `call_gex = callOi / g` (`book/load.ts:353-370`). That is OI divided by dollar-gamma units, not GEX. Confirmed in code. It reaches Terrain, Compass, Weigher and Paper.
+7. **FIXED (removed).** **The reverse substitution: Theta standing in for UW exposure.** When UW returns no strikes, the "UW book" is built from Theta OI, labelled `call_gex`/`put_gex`, with `g = spot²·0.01` and `call_gex = callOi / g` (`book/load.ts:353-370`). That is OI divided by dollar-gamma units, not GEX. Confirmed in code. It reaches Terrain, Compass, Weigher and Paper.
 8. **Stale header comment.** `weigherChain.ts:1-3` says the Weigher chain falls back to UW, but `sheetChain` has no caller. Comment only.
 
 ### R3. Constants, defaults and seeded values shown as data
 
-1. **Index day change pinned at zero.** An index book with no UW stock-state gets `prev_close = price` (`book/load.ts:340`), and later `prev = … || num(state.open) || spot` (`:407`). Both make the day change +0.00%. The screener fallback does the same (`:349`). For SPX and NDX on Pinpoint (no Theta fallback there), the day change reads 0.00% while it is shown as data. Confirmed in code; not seen live, because the dev run returned empty answers.
-2. **Fabricated chain generator, still shipped.** `weigherDesk.buildDeskChain` (`weigherDesk.ts:169-302`) hashes OI (`:194-196`), volume, spread, last, high, low and sizes (`:225-246`), and `FALLBACK_IV = 0.3` is used at `:161,165,176`. It is unreachable today: `materialize` always sets `liveBook: true` (`book/levels.ts:396`) and `snapshotAtOpen` returns null (`levelview.ts:75-88`). `ContractPremiumPane`'s modelled path (`ContractPremiumPane.tsx:528-532`) is also unused, because both callers pass `traded`. Latent; delete it.
-3. **Strike volume of zero.** On the live book, strike volume is `0` whenever `flowVol` has no row (`exposure.ts:144`), and board-mode books never read flow-per-strike (`book/load.ts:304`). Suspected: 0 is shown as a volume.
-4. **Untimed quotes stamped "now".** An NBBO with no timestamp is stamped as the time it was read (`thetaQuote.ts:132`, `|| Date.now()`). Confirmed.
-5. **Cone scale constant.** `K_DEFAULT = 0.68` replaces the vendor's own move/IV ratio when it is out of range (`coneFeed.ts:47,90-99`). Suspected: a constant inside a drawn cone.
+1. **FIXED.** An index with no stock-state now takes the live rows' own price with `prev_close: 0`, so the day change reads "—" (`book/load.ts:336-347`). Was: **Index day change pinned at zero.** An index book with no UW stock-state gets `prev_close = price` (`book/load.ts:340`), and later `prev = … || num(state.open) || spot` (`:407`). Both make the day change +0.00%. The screener fallback does the same (`:349`). For SPX and NDX on Pinpoint (no Theta fallback there), the day change reads 0.00% while it is shown as data. Confirmed in code; not seen live, because the dev run returned empty answers.
+2. **FIXED (deleted).** `buildDeskChain` and `FALLBACK_IV` are gone (only a comment in `WeigherDesk.tsx:106` names it). Was: **Fabricated chain generator, still shipped.** `weigherDesk.buildDeskChain` (`weigherDesk.ts:169-302`) hashes OI (`:194-196`), volume, spread, last, high, low and sizes (`:225-246`), and `FALLBACK_IV = 0.3` is used at `:161,165,176`. It is unreachable today: `materialize` always sets `liveBook: true` (`book/levels.ts:396`) and `snapshotAtOpen` returns null (`levelview.ts:75-88`). `ContractPremiumPane`'s modelled path (`ContractPremiumPane.tsx:528-532`) is also unused, because both callers pass `traded`. Latent; delete it.
+3. **Strike volume of zero.** (Still: `exposure.ts:97`; `StrikeExposure.volume` is a number, so a blank needs a type change in `types/gex.ts`.) On the live book, strike volume is `0` whenever `flowVol` has no row (`exposure.ts:144`), and board-mode books never read flow-per-strike (`book/load.ts:304`). Suspected: 0 is shown as a volume.
+4. **FIXED.** `thetaQuote.readPrint` drops a print without a timestamp (`price > 0 && at > 0`). Was: **Untimed quotes stamped "now".** An NBBO with no timestamp is stamped as the time it was read (`thetaQuote.ts:132`, `|| Date.now()`). Confirmed.
+5. **FIXED.** `K_DEFAULT` is gone from `coneFeed.ts`. Was: **Cone scale constant.** `K_DEFAULT = 0.68` replaces the vendor's own move/IV ratio when it is out of range (`coneFeed.ts:47,90-99`). Suspected: a constant inside a drawn cone.
 6. **Synthetic index bid/ask.** An index's paper quote carries `bid = ask = price` (`paper/thetaFeed.ts:94-97`). Confirmed in code; whether it is displayed was not checked.
 
 ### R4. Vendor fields mislabelled
 
 1. **Dark-pool cross as the stock's price.** On Trace Dark Pool, when `/stock/T/quote` fails, the stock's "spot" is the newest dark-pool cross price (`traceLive.ts:986`), and the distances to the levels are drawn from it. Confirmed.
-2. **Theta OI labelled as gamma exposure** (`book/load.ts:363`; see R2.7). Confirmed.
+2. **FIXED (removed with R2.7).** **Theta OI labelled as gamma exposure** (`book/load.ts:363`; see R2.7).
 3. **Terrain head change from a mid.** The change is computed from the NBBO mid when the session has no print, while the price cell shows "—" (`Terrain.tsx:779-783`). Suspected.
 
 ---
@@ -234,4 +237,20 @@ Why this matters: the hub keeps every distinct path warm for 2 minutes after its
 6. **Kept rooms keep polling.** DeskKeep keeps each room's timers alive while hidden: the Compass scan every 8 s (`thetaBook.ts:855`), Trace polls every 4 to 30 s, the Pinpoint scan every 10 s. Only `document.hidden` is checked, never whether the room is the one on screen. Confirmed; this is the price of "keeps working across navigation".
 7. **Possible Weigher greek units mismatch.** Weigher Theta greeks: `theta / 365` and `vega / 100` (`weigherDesk.ts:645-646`; `thetaBook.ts:115`) assume ThetaData's theta is annual and its vega is per 1.00 of vol. Suspected; check one live row, since the dev server has no terminal.
 8. **Cone fallback on Trace.** `coneFeed` and `StrikeChart` use `uwOnlyDesk()`, which omits `/trace`, while `thetaCall` blocks Trace. Charts on Trace get the Theta branch and draw nothing, rather than the UW branch (R1). Confirmed.
-9. **Index day change on Pinpoint reads 0.00%.** See R3.1. Confirmed in code.
+9. **FIXED** with R3.1. **Index day change on Pinpoint reads 0.00%.**
+
+---
+
+## 7. Units checked live (Unusual Whales exposure routes)
+
+Read through the dev proxy on 31 Oct 2026 (SPY, the 2026-11-02 expiry, the 10/30 close, price 755.72):
+
+| Route · field | Against | Result |
+|---|---|---|
+| `spot-exposures/expiry-strike` `call_gamma_oi`, `put_gamma_oi` | Σ Γ·OI·100 over `option-contracts?expiry=` × S²·1% at the row's `price` | **Dollars per 1%, dealer sign** (calls +, puts −). 755C: 260.9 shares × 755.72²·0.01 = 1.49M, the row says 1,490,009.88; 755P: 17,743.9 × 5,711 = 101.34M, the row says −101,337,832.54. Exact. |
+| `spot-exposures/expiry-strike` `*_gamma_ask`, `*_gamma_bid` | the same columns' signs | **Dealer-signed**: `call_gamma_ask` < 0, `call_gamma_bid` > 0, `put_gamma_ask` < 0 (with `put_gamma_oi`), `put_gamma_bid` > 0 (755: −381.6M / +465.3M / −784.7M / +750.1M). A customer buy at the ask makes dealers shorter gamma on either right, so the flow book adds them to the OI figure (`exposureSegs.rowMeasures`, `scale.stampFlow`), and a put contract count grows with ask buying (`scale.dealerPuts`). |
+| `greek-exposure/strike-expiry` `call_gex`, `put_gex` | Σ Γ·OI·100 off the same contracts | **Shares (Γ·OI·100), dealer sign**, so `book/scale.ts nodeFrom` × S²·1% is right. But not priced at the current price: the ratio vendor ÷ Γ·OI·100 runs smoothly 0.64 (748C) → 1.01 (760C) → 1.28 (763C), the same on the puts, as a gamma priced near 760 would — the morning snapshot's price. Scaled by today's S² it is ~25% off at the money (755C: 197.2 × 5,711 = 1.13M against 1.49M), so it stands in only until the spot-exposure rows land, as the book does. |
+| `greek-exposure/strike-expiry` `call_delta`, `put_delta` | Δ·OI·100 | **Shares, holder's sign** (put delta negative), from the same earlier price (755C 4,374 vs 3,422; 755P −97,199 vs −162,997). `nodeFrom` turns the put leg and scales × S. |
+| `option-contracts` `gamma`, `vega` | Black-Scholes at the quoted vol | One long contract, per share; vega per 1.00 of vol ÷ 100 (per vol point) — the golden's `bsVega` reproduces the fixture's 775C/758P vega within 1% once both are at one price. |
+| `stock/SPY/info` | — | `has_dividend: true` and no `dividend_yield`: the carry's q stays 0 for SPY (and SPX) — `core/carry.ts` takes a name's yield only from that field. |
+
