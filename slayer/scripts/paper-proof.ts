@@ -7,7 +7,7 @@
   Run: npx tsx scripts/paper-proof.ts (npm run review:proof runs it with the backtest's).
 */
 
-import { addDays, bellOf, dayBeginsAt, dayEndsAt, nyAt, nyInstant, sessionTimeOn, tradingDayOf, yearsToExpiry } from '../src/data/paper/clock';
+import { addDays, bellOf, dayBeginsAt, dayEndsAt, lastTradeDayOf, nyAt, nyInstant, sessionTimeOn, tradingDayOf, tradingEndsAt, vixSchedule, yearsToExpiry } from '../src/data/paper/clock';
 import { isFresh } from '../src/data/paper/thetaFeed';
 import { bankedOf, paperCurveOf, closeStale, comboNatural, comboRefusal, endAccount, flattenAll, futBookOf, newAccount, optBookOf, optCancel, optClose, optPlace, optPlaceCombo, optRefusal, retireFutures, tick, viewOf, type PaperAccount, type PaperMarket } from '../src/data/paper/engine';
 import { NO_RULES, flatTimeOf, floorOf, readRules, ruleRefusal, type PaperPlan, type PropRules } from '../src/data/paper/rules';
@@ -922,6 +922,25 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   stamp = T0 + 3000;
   x = tick(x, sized(T0 + 4000)).account;
   ok('…a new quote fills the rest, 2; the order is filled, 5 in all, and its target rides all 5', x.opt.fills.length === 2 && x.opt.fills[1].qty === 2 && x.opt.orders[0].status === 'filled' && x.opt.orders[0].qty === 5 && x.opt.orders.some(o => o.oco && o.qty === 5 && o.status === 'working'), x.opt.orders.map(o => `${o.kind}:${o.qty}:${o.status}`).join(' '));
+}
+
+{
+  /* 6. VIX: the 2026-11-18 (Wednesday) contract last trades Tuesday 11-17 and settles on Wednesday's VIX opening print */
+  const W = '2026-11-18';
+  const vc: ContractId = { ticker: 'VIX', strike: 20, right: 'C', expiry: W };
+  ok('VIX: listed Wednesday 11-18, it last trades Tuesday 11-17 and settles on the 18th', lastTradeDayOf(vc) === '2026-11-17' && vixSchedule(W).settleDay === W && nyAt(tradingEndsAt(vc)).date === '2026-11-17');
+  const T0 = nyInstant('2026-11-17', 11 * 60);
+  let x = newAccount({ id: 'vix', kind: 'practice', name: 'vix', startCash: 10_000, now: T0, sandbox: true });
+  x = optPlace(x, fixed(() => 1.5, T0), { contract: vc, side: 'buy', qty: 1, kind: 'market' });
+  ok('…bought Tuesday at 1.50', optBookOf(x).positions.length === 1);
+  const wedNoon = nyInstant(W, 12 * 60);
+  ok('…on Wednesday it can no longer be traded', /stop trading/.test(optRefusal(x, fixed(() => 1.5, wedNoon), { contract: vc, side: 'sell', qty: 1, kind: 'market' }) ?? ''));
+  const tueNight = nyInstant('2026-11-17', 16 * 60 + 30);
+  x = tick(x, { ...fixed(() => 1.5, tueNight), open: () => false, closeOf: () => 25, openOf: () => NaN }).account;
+  ok('…after Tuesday’s close it is not settled on the 16:00 close (25): it waits for Wednesday’s open', optBookOf(x).positions.length === 1);
+  x = tick(x, { ...fixed(() => 1.5, nyInstant(W, 9 * 60 + 35)), closeOf: () => 25, openOf: (t: string, d: string) => (t === 'VIX' && d === W ? 22.4 : NaN) }).account;
+  const vt = optBookOf(x).trades[0];
+  ok('…it settles on the VIX opening print of the 18th, 22.40: worth 2.40, and says it is the SOQ’s stand-in', vt?.how === 'expired' && vt.avgOut === 2.4 && /opening print/.test(vt.note ?? '') && /special opening quotation/.test(vt.note ?? ''), `${vt?.avgOut} · ${vt?.note}`);
 }
 
 console.log(`\n${passed} held · ${failed} missed`);

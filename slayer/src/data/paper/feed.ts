@@ -10,7 +10,7 @@ import { isTradingDay, expiryFor, sessionCloseMinOn } from '../../core/calendar'
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
 import { longLeg, spreadBook, spreadSizes, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
 import { bookCandles, ensureBook } from '../uwBook';
-import { bellOf, dateAt, nyAt, sessionFrom, yearsToExpiry, OPEN_MIN } from './clock';
+import { dateAt, lastTradeDayOf, nyAt, sessionFrom, tradingEndsAt, yearsToExpiry, OPEN_MIN } from './clock';
 import { paperIndex } from './products';
 import { bookOf, feedOffline, isFresh, legQuoteOf, listedExpiries, nameQuote } from './thetaFeed';
 
@@ -72,7 +72,7 @@ function legQuote(c: ContractId, spot: number, ms: number): Quote {
   const q = legQuoteOf(c.ticker, c.expiry, c.strike, c.right);
   if (!q || !(q.ask > 0) || !(q.bid >= 0) || q.ask < q.bid) return { ...deadQuote(s), intrinsic: cents(intrinsic) };
   const mid = (q.bid + q.ask) / 2;
-  const t = Math.max(yearsToExpiry(c.expiry, ms), 1 / (252 * 390));
+  const t = Math.max(yearsToExpiry(lastTradeDayOf(c), ms), 1 / (252 * 390));
   const iv = s > 0 ? impliedVolFromPrice(mid, s, c.strike, t, c.right) : null;
   const g = iv != null ? blackScholesGreeks(s, c.strike, t, iv) : null;
   const dayOn = Math.max(0, t - 1 / 252);
@@ -141,7 +141,7 @@ export function ivOf(ticker: string, ms = Date.now()): number {
 /* The what-if: one leg's Black-Scholes value with the name at `spot`, at the IV its live mid implies */
 function legWhatIf(c: ContractId, ms: number, spot: number): number {
   const live = legQuote(c, spotOf(c.ticker), ms);
-  const t = Math.max(yearsToExpiry(c.expiry, ms), 1 / (252 * 390));
+  const t = Math.max(yearsToExpiry(lastTradeDayOf(c), ms), 1 / (252 * 390));
   if (!(live.iv > 0)) return NaN;
   return blackScholesPrice(spot, c.strike, t, live.iv, c.right);
 }
@@ -151,7 +151,7 @@ export const optionQuoteAt = (c: ContractId, ms: number, spot: number): Quote =>
   const v = c.short == null ? one(c) : one(longLeg(c)) - one({ ...longLeg(c), strike: c.short });
   const px = Number.isFinite(v) ? cents(Math.max(0, v)) : 0;
   const live = legQuote(longLeg(c), spotOf(c.ticker), ms);
-  const t = Math.max(yearsToExpiry(c.expiry, ms), 1 / (252 * 390));
+  const t = Math.max(yearsToExpiry(lastTradeDayOf(c), ms), 1 / (252 * 390));
   const g = live.iv > 0 ? blackScholesGreeks(spot, c.strike, t, live.iv) : null;
   return { bid: px, ask: px, mark: px, iv: live.iv, delta: g ? (c.right === 'C' ? g.deltaCall : g.deltaPut) : 0, gamma: g?.gamma ?? 0, theta: 0, vega: g?.vega ?? 0, rho: 0, intrinsic: 0, dead: !(px > 0), spot };
 };
@@ -203,7 +203,7 @@ export function listedNow(ticker: string, ms: number): ListedExpiry[] {
   const list = listedExpiries(ticker);
   if (!list) return [];
   return list
-    .filter(e => e >= from && bellOf(e) > ms)
+    .filter(e => e >= from && tradingEndsAt({ ticker, expiry: e }) > ms)
     .slice(0, 24)
     .map(e => {
       const d = dateAt(e);
@@ -261,7 +261,7 @@ export function liveDeskChain(ticker: string, expiry: string, ms: number, each =
   const rows = strikes.map(strike => ({ strike, call: contract(strike, 'C'), put: contract(strike, 'P') }));
   const gaps = strikes.slice(1).map((k, i) => k - strikes[i]).filter(g => g > 1e-9).sort((x, y) => x - y);
   const atmIv = ivs.length ? ivs[Math.floor(ivs.length / 2)] : NaN;
-  const t = yearsToExpiry(expiry, ms);
+  const t = yearsToExpiry(lastTradeDayOf({ ticker, expiry }), ms);
   const dte = Math.max(0, Math.round((dateAt(expiry).getTime() - dateAt(nyAt(ms).date).getTime()) / 86400000));
   return {
     ticker,

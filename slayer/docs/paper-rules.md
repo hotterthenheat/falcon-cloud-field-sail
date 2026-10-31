@@ -463,3 +463,8 @@ Every rule below has a known-number check in `scripts/paper-proof.ts` (paper) an
   all of it. Not capped: a leg of an order of several (the legs fill together or not at all), the rules' and the page's
   closes, a settlement — and any quote that carries no size (an old saved backtest day). Market buy 5 against an ask
   showing 3: 3 now, 2 on the next quote.
+- **VIX options** (`clock.ts vixSchedule`): the listed expiration is the Wednesday they settle; they **last trade on the
+  Tuesday before** (its close ends trading, and their time to expiry is counted to it). They settle on **the VIX index's
+  opening print of the settlement day** (the first real bar's open) — the best stand-in for the special opening quotation
+  (SOQ), which the feed does not carry, and the trade says so. Never on the 16:00 close. Held into Wednesday: it waits
+  for that print (asked from 09:32:30).
