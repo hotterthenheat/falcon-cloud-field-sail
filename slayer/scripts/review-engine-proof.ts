@@ -5,7 +5,7 @@
 */
 import { accountOf, advance, amend, attach, bankedOf, bookOf, equityCurveOf, sessionStatsOf, cancel, cashOf, cutsOf, dayStateOf, dayStopOf, equityAtOpen, floorOf, ladderRoom, namesOf, newSession, nextOpen, pendingSettlement, place, playStep, rebase, refusal, setBreakeven, setTrail, spokenFor, stampOf, statsOf, MULT, type Session } from '../src/data/review/engine';
 import { TRADE_COLUMNS, dayRowsOf, reportDaysCsv, reportTradesCsv, tradeFees } from '../src/data/review/reportCsv';
-import { csvCells } from '../src/data/review/journalManual';
+import { csvCells, readJournalCsv } from '../src/data/review/journalManual';
 import { splitQty } from '../src/data/review/ladder';
 import { chainAt, contractKey, contractWords, expiriesAt, quoteAt, quoteWith, spotForBid, yearsLeft } from '../src/data/review/quotes';
 import { LAST_MIN, barTime, closeMinOf, nbboAt, parseBars, parseListing, parseQuotes, putBars, putQuotes, spotAt } from '../src/data/review/history';
@@ -510,6 +510,15 @@ ok('the report adds up', sum.n === 2 && near(sum.net, trades[0].pnl + bt.pnl, 0.
   const sells = z.fills.filter(f => f.side === 'sell');
   ok('a sell limit of 5 against a bid showing 2: 2, 2, then 1, minute by minute, each at the bid', sells.map(f => f.qty).join() === '2,2,1' && sells.every(f => f.price === bidOf(spot('QQQ', D2, f.at.minute), 390, 'C')), sells.map(f => `${f.at.minute}:${f.qty}`).join(' '));
   ok('…and the trade is whole: bought 5, sold 5', bookOf(z).trades[0]?.qty === 5 && bookOf(z).positions.length === 0);
+}
+
+{
+  /* 11. a trades file with the contract column blank: an option row is still 100 to the point */
+  const got = readJournalCsv(['date,ticker,contract,side,qty,entry,exit', '2026-10-28,SPY241030C00580000,,long,2,1.00,1.50', '2026-10-28,SPY 580C,,long,1,1.00,2.00', '2026-10-28,AAPL,,long,10,100,101'].join('\n'));
+  ok('blank contract, an OCC symbol in the ticker: (1.50 − 1.00) × 2 × 100 = 100 — not 1', got.trades[0]?.pnl === 100, `${got.trades[0]?.pnl}`);
+  ok('…"SPY 580C" in the ticker: 100; a plain stock row stays 1 a share: 10', got.trades[1]?.pnl === 100 && got.trades[2]?.pnl === 10, `${got.trades[1]?.pnl} · ${got.trades[2]?.pnl}`);
+  const byQty = readJournalCsv(['date,ticker,side,contracts,entry,exit', '2026-10-28,SPY,long,3,2.00,2.50'].join('\n'));
+  ok('…a quantity headed "contracts": 0.50 × 3 × 100 = 150', byQty.trades[0]?.pnl === 150, `${byQty.trades[0]?.pnl}`);
 }
 
 console.log(misses ? `\n${misses} MISSED` : '\nall rules hold');

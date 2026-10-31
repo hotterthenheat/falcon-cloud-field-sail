@@ -484,3 +484,14 @@ Every rule below has a known-number check in `scripts/paper-proof.ts` (paper) an
 - **The chart's replay steps at bar boundaries** (`data/replay.ts`): inside a bar the name stands at that bar's close
   and the book is the newest snapshot at or before it. It no longer glides toward the next bar's close or blends toward
   the next snapshot (which showed the minute before it happened).
+- **An imported trades file** (`review/journalManual.ts`): a blank P&L is (exit − entry) × qty × multiplier; the
+  multiplier is 100 on an option row — a contract named, an option written in the ticker (an OCC symbol, "SPY 580C"), or
+  a quantity column headed "contracts" — and 1 for shares, unless the file gives one.
+- **How long a trade was held** is session minutes in both books (`core/tradingYear tradingMinutesBetween`): only the
+  minutes the market was open, an early close's 210. In Tuesday 15:50, out Wednesday 09:40: **20**, not 1,070 wall-clock
+  minutes. (A paper futures trade from before options-only keeps its wall-clock minutes.)
+- **The catch-up judges the plan's rules too**: on each replayed minute whose recorded quotes mark everything held, the
+  floor, the day's limit and the target are judged as the live tick judges them (`engine.ts judgeRulesNow`) — a floor
+  crossed at 10:11 while the reader was away fails the account at 10:11, closed at that minute's bids. The positions
+  held are fetched for those minutes as well. Only minutes on the account's own trading day are judged (the day's limit
+  is measured from its open); the flat-by times are left to the live tick.
