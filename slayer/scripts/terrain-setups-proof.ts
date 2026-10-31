@@ -50,7 +50,10 @@ check(
 const retired = readSetup(
   {
     seen: 5,
-    timeframe: '3m', // never existed
+    /* '7m' is on no menu and never was. This used to be '3m', until the
+       menu grew TradingView's 3-minute row (411b43b) — a real frame now, so
+       it is kept, and checked below. */
+    timeframe: '7m',
     chartStyle: 'line',
     overlays: { trails: false, levels: false, darkpool: true, volume: false },
   },
@@ -64,6 +67,8 @@ check(
   fellThrough.timeframe === '1h',
   String(fellThrough.timeframe)
 );
+check('a frame on the menu today is kept — 3m', readSetup({ seen: 1, timeframe: '3m' }, 'NVDA')?.timeframe === '3m');
+check('a frame on the menu the feed cannot draw is dropped — 1Y', !!readSetup({ seen: 1, timeframe: '1Y' }, 'NVDA') && !('timeframe' in readSetup({ seen: 1, timeframe: '1Y' }, 'NVDA')!));
 check('while the valid fields do apply', fellThrough.chartStyle === 'line' && fellThrough.overlays.darkpool === true);
 
 // 4. junk inside a nested object
