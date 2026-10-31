@@ -824,5 +824,30 @@ const roll = (a: PaperAccount, day: string) => {
   }
 }
 
+/* ================= the Practice math audit: known numbers ================= */
+/** A market where one contract stands at a set price, bid = ask = mark (no spread, no fees: sandbox) */
+const fixed = (price: () => number, t = now): PaperMarket => ({
+  ...market(),
+  now: t,
+  optQuote: (c: ContractId) => ({ ...priceWith(c, px[c.ticker] ?? 500, yearsToExpiry(c.expiry, t), 0.15), bid: price(), ask: price(), mark: price(), dead: false }),
+});
+{
+  /* 1. running average cost: buy 2 @ 1.00, sell 1 @ 2.00, buy 1 @ 3.00, mark 3.00 */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  let p = 1;
+  let x = newAccount({ id: 'avg', kind: 'practice', name: 'avg', startCash: 10_000, now: T0, sandbox: true });
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  x = optPlace(x, fixed(() => p, T0), { contract: c, side: 'buy', qty: 2, kind: 'market' });
+  p = 2;
+  x = optPlace(x, fixed(() => p, T0 + 60_000), { contract: c, side: 'sell', qty: 1, kind: 'market' });
+  p = 3;
+  x = optPlace(x, fixed(() => p, T0 + 120_000), { contract: c, side: 'buy', qty: 1, kind: 'market' });
+  const pos = optBookOf(x).positions[0];
+  const w = viewOf(x, fixed(() => 3, T0 + 180_000));
+  ok('running average cost: buy 2 @ 1, sell 1 @ 2, buy 1 @ 3 — the 1 left (avg 1) and the new 1 (3) average 2.00', pos?.avg === 2 && pos.qty === 2, `avg ${pos?.avg}`);
+  ok('…the piece sold banked 100 (2 − 1 on 1 contract), not 33.33', pos?.banked === 100, `banked ${pos?.banked}`);
+  ok('…marked at 3.00 the open P&L is 200, the balance start + 100, equity start + 300', w.openPnl === 200 && w.balance === 10_100 && w.equity === 10_300, `open ${w.openPnl} · balance ${w.balance} · equity ${w.equity}`);
+}
+
 console.log(`\n${passed} held · ${failed} missed`);
 if (failed) process.exit(1);

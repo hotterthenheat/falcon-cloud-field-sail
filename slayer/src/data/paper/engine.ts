@@ -356,7 +356,11 @@ export interface OptPosition {
   dir: 1 | -1;
   /** Contracts held, a count (a short of 2 is dir −1, qty 2) */
   qty: number;
+  /** Running average cost a share of what is still held: each exit takes avg × qty out of the basis */
   avg: number;
+  /** Premium of what is still held at that running average, dollars, unrounded (avg × 100 × qty) */
+  basis: number;
+  /** Entry fees still carried by what is held */
   fees: number;
   opened: PaperMoment;
   spotIn: number;
@@ -426,6 +430,13 @@ export function optBookOf(a: PaperAccount): { positions: OptPosition[]; trades: 
     flow: number;
     held: number;
     legs: OptLeg[];
+    /* the running average cost of what is still open: each exit takes its share (avg × qty) out, so a re-entry after a
+       partial exit is averaged with what is left, not with what was sold — premium (a share), entry fees, a short's hold */
+    basis: number;
+    feeBasis: number;
+    heldBasis: number;
+    /** What the pieces taken off banked against that running average, fees in */
+    banked: number;
   }
   const open = new Map<string, Open>();
   const trades: OptTrade[] = [];
@@ -438,7 +449,7 @@ export function optBookOf(a: PaperAccount): { positions: OptPosition[]; trades: 
       /* a way in: a buy, or a sell written as one — a sell with nothing held and no such mark (from before selling) is
          passed over, as it always was */
       if (way < 0 && !f.opens) continue;
-      open.set(key, (o = { first: f, dir: way, qty: 0, entered: 0, inSum: 0, feesIn: 0, exited: 0, outSum: 0, feesOut: 0, flow: 0, held: 0, legs: [] }));
+      open.set(key, (o = { first: f, dir: way, qty: 0, entered: 0, inSum: 0, feesIn: 0, exited: 0, outSum: 0, feesOut: 0, flow: 0, held: 0, legs: [], basis: 0, feeBasis: 0, heldBasis: 0, banked: 0 }));
     }
     if (way === o.dir) {
       o.legs.push({ id: f.id, at: f.at, side: f.side, qty: f.qty, price: f.price, fee: f.fee, bar: f.bar });
@@ -447,10 +458,22 @@ export function optBookOf(a: PaperAccount): { positions: OptPosition[]; trades: 
       o.inSum += f.price * f.qty;
       o.feesIn += f.fee;
       o.held += f.held ?? 0;
+      o.basis += f.price * f.qty;
+      o.feeBasis += f.fee;
+      o.heldBasis += f.held ?? 0;
       o.flow -= o.dir * f.price * MULT * f.qty + f.fee;
       continue;
     }
     const q = Math.min(f.qty, o.qty);
+    {
+      const share = o.qty > 0 ? q / o.qty : 0;
+      const avg = o.qty > 0 ? o.basis / o.qty : 0;
+      const feeShare = o.feeBasis * share;
+      o.banked += o.dir * (f.price - avg) * q * MULT - f.fee - feeShare;
+      o.basis -= avg * q;
+      o.feeBasis -= feeShare;
+      o.heldBasis -= o.heldBasis * share;
+    }
     o.qty -= q;
     o.exited += q;
     o.outSum += f.price * q;
@@ -497,19 +520,20 @@ export function optBookOf(a: PaperAccount): { positions: OptPosition[]; trades: 
     contract: o.first.contract,
     dir: o.dir,
     qty: o.qty,
-    avg: cents(o.inSum / o.entered),
-    fees: cents((o.feesIn * o.qty) / o.entered),
+    avg: cents(o.basis / o.qty),
+    basis: o.basis * MULT,
+    fees: cents(o.feeBasis),
     opened: o.first.at,
     spotIn: o.first.spot,
     tradeId: o.first.id,
     tag: o.first.tag,
     life: o.first.life,
     flow: o.flow,
-    banked: cents(o.dir * (o.outSum - (o.inSum / o.entered) * o.exited) * MULT - o.feesOut - o.feesIn * (o.exited / o.entered)),
+    banked: cents(o.banked),
     secured: o.first.secured,
     combo: o.first.combo,
     comboName: o.first.comboName,
-    held: cents((o.held * o.qty) / o.entered),
+    held: cents(o.heldBasis),
   }));
   return { positions, trades };
 }
@@ -732,9 +756,9 @@ export function viewOf(a: PaperAccount, m: PaperMarket): PaperView {
   const marked = ob.positions.map(p => {
     const quote = m.optQuote(p.contract);
     const value = cents(p.dir * quote.mark * MULT * p.qty);
-    const pnl = cents(p.dir * (quote.mark - p.avg) * MULT * p.qty - p.fees);
+    const pnl = cents(p.dir * (quote.mark * MULT * p.qty - p.basis) - p.fees);
     /* a long's R is on what it cost; a short's on what it held when it opened (or the premium, where nothing was held) */
-    const base = p.dir > 0 ? p.avg * MULT * p.qty + p.fees : p.held > 0 ? p.held : p.avg * MULT * p.qty;
+    const base = p.dir > 0 ? p.basis + p.fees : p.held > 0 ? p.held : p.basis;
     return { ...p, quote, value, pnl, r: base > 0 ? pnl / base : 0 };
   });
   const mg = marginOf(marked.map(p => ({ key: p.key, contract: p.contract, dir: p.dir, qty: p.qty, avg: p.avg, quote: p.quote, secured: p.secured, spotIn: p.spotIn, last: a.marks[p.key] })));
