@@ -948,7 +948,21 @@ export function rollModelDay(day: string): void {
   stateDay = day;
   seenAsks.clear();
   seenMids.clear();
+  pruneMemos(day);
   persistCalls();
+}
+
+/** The session memos the engine no longer needs, dropped at the roll: they used to grow for the life of the process
+    (every name's minute bars of every day read, a volume curve and an open-interest book per name and day). Kept: the
+    bars of the last 40 days (the volume curve reads three weeks back), today's curves, the last two counts' books. */
+function pruneMemos(day: string): void {
+  const oldest = ymd(Date.parse(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}T12:00:00Z`) - 40 * 86_400_000);
+  for (const key of [...barMemo.keys()]) if ((key.split('|')[1] ?? '') < oldest) barMemo.delete(key);
+  for (const key of [...curves.keys()]) if (key.split('|')[1] !== day) curves.delete(key);
+  const twoBack = ymd(Date.now() - 2 * 86_400_000);
+  for (const key of [...pinCache.keys()]) if ((key.split('|')[2] ?? '') < twoBack) pinCache.delete(key);
+  liveScoreMemo.clear();
+  priceMemo.clear();
 }
 
 /** The card and the contract read this. A pick's quote follows the live book; its signal keeps the one it fired on. */

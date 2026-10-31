@@ -17,6 +17,7 @@ import TraceBox, { Fact } from '../components/trace/TraceBox';
 import ContractLabel from '../components/ui/ContractLabel';
 import SessionSpark from '../components/compass/SessionSpark';
 import { usd2 as money } from '../core/format';
+import { BOOK_NAME } from '../data/compassParams';
 
 const pct = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`);
 const ink = (v: number | null) => (v == null || Math.abs(v) < 0.05 ? 'text-textPrimary' : v > 0 ? 'text-bull' : 'text-bear');
@@ -58,7 +59,7 @@ const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpe
     <button type="button" onClick={onOpen} className="text-left border border-borderSubtle bg-panel rounded-md overflow-hidden flex flex-col hover:border-borderMuted transition-colors" data-tracker-signal={s.key}>
       <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-borderSubtle">
         <ContractLabel contract={s.contract} right={s.right} logo={s.ticker} size="sm" />
-        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">Book {s.book}</span>
+        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">{BOOK_NAME[s.book]}</span>
         {s.how === 'late' && <span className="font-mono text-t10 text-warn border border-warn/40 rounded px-1.5 py-0.5" title="Scored after its mark from the recorded quotes at the mark">Late</span>}
         {tracked && <Bookmark className="w-3.5 h-3.5 text-textSecondary" aria-label="Tracked" />}
         <span className={`ml-auto font-mono text-t10 uppercase tracking-wider ${state.tone}`}>{state.word}</span>

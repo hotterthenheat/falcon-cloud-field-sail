@@ -53,7 +53,7 @@ const TradeReviewCard = ({ r, compact = false }: { r: TradeReview; compact?: boo
     <article id={r.key} className="border border-borderSubtle bg-panel rounded-md overflow-hidden" data-trade-review={r.key}>
       <header className="flex items-center gap-2 flex-wrap px-3.5 py-2.5 border-b border-borderSubtle">
         <ContractLabel contract={r.contract} right={right} logo={r.contract.split(' ')[0]} size="sm" />
-        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">Book {r.book}</span>
+        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">{BOOK_NAME[r.book as 'A' | 'B' | 'C'] ?? r.book}</span>
         {r.would ? (
           <Tip label="A mark scored late from recorded quotes cleared every gate. Late marks are never calls and never take a seat: this is what it would have done.">
             <span className="font-mono text-t10 text-warn border border-warn/40 rounded px-1.5 py-0.5">Would have called</span>

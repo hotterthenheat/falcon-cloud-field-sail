@@ -16,7 +16,9 @@ import { isoDate, type Expiry } from '../../core/calendar';
 const WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const expiryOfDay = (iso: string): Expiry => {
   const date = new Date(`${iso}T12:00:00`);
-  return { date, label: `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${String(date.getFullYear()).slice(2)}`, weekday: WEEK[date.getDay()], dte: 0, sessions: 0 };
+  /* "Today" only on today's New York date (every session read "Today · Oct 29") */
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  return { date, label: `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${String(date.getFullYear()).slice(2)}`, weekday: WEEK[date.getDay()], dte: iso === today ? 0 : 1, sessions: 0 };
 };
 
 /** The session the page shows: ?day=, else the newest on record. */

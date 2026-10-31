@@ -918,6 +918,23 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectEqual('track: hit rate and average return of the closed rows', [tr.byBook.A.hitRate, tr.byBook.A.avgRet, tr.all.outsideTrained, trackLine([]).hitRate], [2 / 3, Number(((50 + 1.8 + 10) / 3).toFixed(2)), 1, null]);
   expectEqual('track: a call\'s session from its mark when the field is absent', [sessionOfSignal({ ticker: 'SPY', firedAt: 0, mark: nyWallTime(2026, 10, 29, 8, 0) }), sessionOfSignal({ ticker: 'SPXW', firedAt: 0, mark: nyWallTime(2026, 10, 29, 8, 0) }), sessionOfSignal({ ticker: 'SPY', firedAt: 0, mark: nyWallTime(2026, 10, 29, 10, 0) })], ['pre', 'overnight', 'regular']);
 
+  /* i. memory over a long run: a day's bars older than 40 days are dropped at the session roll (were kept for the
+        life of the process, with every day's curve and open-interest book) */
+  let barReads = 0;
+  answer = p => {
+    if (p.includes('/history/ohlc')) {
+      barReads += 1;
+      return { status: 200, data: [{ open: 1, high: 1, low: 1, close: 1, volume: 1, timestamp: '2026-08-03T09:30:00.000' }], error: null };
+    }
+    return { status: 472, data: null, error: 'no_data' };
+  };
+  await model.minuteBars('ZZQX', '20260803');
+  await model.minuteBars('ZZQX', '20260803');
+  const memoised = barReads;
+  model.rollModelDay('20261116');
+  await model.minuteBars('ZZQX', '20260803');
+  expectEqual('bars of a day 15 weeks back: memoised, then dropped at the roll and read again', [memoised, barReads], [1, 2]);
+
   /* h. the names a viewer reads: no "Model 1/2", no "Book A/B/C", no vendor, in old records and new */
   expectEqual('viewer words', [
     userWords('Model 2 not scored: range compression'),
