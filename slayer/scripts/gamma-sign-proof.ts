@@ -344,6 +344,16 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   check(`the flip's crossings on the same bars at 100: ${flipCrossings(bars, 100)} (up through 100.5, back under; 100.01 is inside the band)`, flipCrossings(bars, 100) === 2);
 }
 
+/* 16 — spot under every strike (strikes 100…140, spot 50): the profile's window is the lowest strikes (100…110), the nearest —
+   it took the highest (140…120), the farthest */
+{
+  const { buildExposureProfile } = await import('../src/data/exposure');
+  const chain = Array.from({ length: 41 }, (_, i) => ({ ...emptyNode(100 + i), callGex: -1e5, netGex: -1e5, callOI: 10 }));
+  const p = buildExposureProfile({ ticker: 'TEST', spot: 50, chain } as never, '0DTE', 10);
+  const ks = p.strikes.map(s => s.strike);
+  check(`spot 50 under strikes 100–140: the window is ${Math.min(...ks)}–${Math.max(...ks)} (${ks.length} strikes)`, Math.min(...ks) === 100 && Math.max(...ks) === 110 && ks.length === 11);
+}
+
 if (fail) {
   console.log(`\n${fail} failed`);
   process.exit(1);

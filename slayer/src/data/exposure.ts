@@ -42,9 +42,11 @@ export function buildExposureProfile(
   const chain = liveChain && liveChain.length ? liveChain : snapshot.chain;
   const factor = 1;
 
-  // Window around spot, descending strikes (highest first)
+  // Window around spot, descending strikes (highest first). Spot under every strike sits at the bottom of the list
+  // (the lowest strikes are the nearest), not the top.
   const desc = [...chain].sort((a, b) => b.strike - a.strike);
-  const spotIdx = Math.max(0, desc.findIndex(n => n.strike <= spot));
+  const below = desc.findIndex(n => n.strike <= spot);
+  const spotIdx = below >= 0 ? below : Math.max(0, desc.length - 1);
   const start = Math.max(0, spotIdx - half);
   const window = desc.slice(start, start + half * 2 + 1);
 
