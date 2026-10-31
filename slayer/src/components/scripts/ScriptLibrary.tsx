@@ -183,7 +183,8 @@ const OVERLAY_ROWS: { key: keyof ChartOverlays; label: string; hint: string; pan
 const CLOCK_HELD = new Set<keyof ChartOverlays>(['trails', 'flow', 'netDrift', 'volDrift', 'session', 'cone', 'events']);
 /* Book lines and share VWAP have no session to cut on a rule clock. Keyed by the indicator, not the shelf group — search rewrites the group. */
 const CLOCK_HELD_CHART = new Set<keyof ChartIndicators>(['vwap', 'vwapBands', 'flowVwap', 'sideVwap', 'gammaEma', 'gammaVwap']);
-const ROW_GRID = 'grid grid-cols-[52px_minmax(0,1fr)_80px_28px_28px_44px] items-center px-2';
+const ROW_STYLE = { gridTemplateColumns: '52px minmax(0,1fr) 88px 28px 28px 44px' } as const;
+const ROW_GRID = 'grid items-center px-2';
 
 const ScriptLibrary = ({
   open,
@@ -407,7 +408,7 @@ const ScriptLibrary = ({
 
         {/* One size on every shelf: the shelves and the rows share a fixed height and the rows scroll inside it,
             so five Slayer scripts and eighteen technicals open the same card. */}
-        <div className="grid grid-cols-[176px_minmax(0,1fr)] gap-4 h-[56vh]" data-library>
+        <div className="grid gap-4 h-[56vh] min-h-0 overflow-hidden" style={{ gridTemplateColumns: '176px minmax(0,1fr)' }} data-library>
           {/* THE SHELVES */}
           <nav className="flex flex-col gap-1 pr-4 border-r border-borderSubtle overflow-y-auto" aria-label="Shelves">
             {(['Personal', 'Built in'] as const).map(section => (
@@ -438,8 +439,8 @@ const ScriptLibrary = ({
           {/* THE ROWS — the head pinned, the list scrolling under it; a new shelf or a
               new search fades its rows up softly (the house soft-in, keyed) instead of
               swapping them in a frame */}
-          <div className="min-w-0 h-full flex flex-col" role="table" aria-label="Scripts">
-            <div className={`${ROW_GRID} h-7 font-mono text-t8 uppercase tracking-widest text-textSecondary border-b border-borderSubtle shrink-0`} role="row">
+          <div className="min-w-0 min-h-0 h-full flex flex-col overflow-hidden" role="table" aria-label="Scripts">
+            <div style={ROW_STYLE} className={`${ROW_GRID} h-7 font-mono text-t8 uppercase tracking-widest text-textSecondary border-b border-borderSubtle shrink-0`} role="row">
               <span>Kind</span>
               <span>Name</span>
               <span>Shelf</span>
@@ -456,7 +457,7 @@ const ScriptLibrary = ({
                   const held = (barClock ?? 'time') !== 'time' && CLOCK_HELD.has(r.key);
                   return (
                     <div key={r.key}>
-                      <div role="row" className={`${ROW_GRID} min-h-[46px] overflow-hidden rounded-md ${on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}>
+                      <div role="row" style={ROW_STYLE} className={`${ROW_GRID} min-h-[46px] overflow-hidden rounded-md ${on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}>
                         <span className="inline-flex w-fit items-center font-mono text-t8 font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border bg-ink/[0.1] border-borderMuted text-textPrimary">chart</span>
                         <button
                           type="button"
@@ -537,6 +538,7 @@ const ScriptLibrary = ({
                       <div
                         role="row"
                         onMouseEnter={() => setHighlight(idx)}
+                        style={ROW_STYLE}
                         className={`${ROW_GRID} min-h-[46px] overflow-hidden rounded-md transition-colors ${hi ? 'bg-silver/[0.06]' : ''} ${r.on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}
                         data-library-row={r.key}
                         data-on={r.on || undefined}
@@ -602,12 +604,12 @@ const ScriptLibrary = ({
         </div>
 
         {/* THE FOOT */}
-        <div className="flex items-center gap-3 pt-3 border-t border-borderSubtle font-mono text-t10 text-textSecondary" data-library-foot>
-          <span>
+        <div className="shrink-0 flex items-center gap-3 pt-3 border-t border-borderSubtle font-mono text-t10 text-textSecondary min-w-0" data-library-foot>
+          <span className="shrink-0">
             <span className="text-textPrimary">{shipped}</span> shipped · <span className="text-textPrimary">{allRows.mine.length}</span> of your own
           </span>
-          <span>· Slayer and Pine rows draw on this pane with their own inputs · Chart rows are the tape's built-ins{fullscreen ? '' : ' · the editor opens beside a full-screen chart'}</span>
-          <span className="ml-auto whitespace-nowrap">↑↓ move · ↵ toggle · esc close</span>
+          <span className="min-w-0 truncate">Slayer and Pine draw on this pane. Chart rows are the tape's built-ins.</span>
+          <span className="ml-auto shrink-0 whitespace-nowrap">↑↓ move · ↵ toggle · esc close</span>
         </div>
       </Modal>
     </>
