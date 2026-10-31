@@ -1059,13 +1059,20 @@ function afterCover(a: PaperAccount, bought: OptOrder, at: PaperMoment): PaperAc
 /** What a short holds on its own as it opens (margin.ts, less its premium) — its R's measure */
 const heldAtOpen = (o: OptOrder, price: number, q: Quote): number => marginOf([{ key: 'x', contract: o.contract, dir: -1, qty: o.qty, avg: price, quote: q, secured: o.secured, spotIn: q.spot }]).held;
 
-function optFillNow(a: PaperAccount, o0: OptOrder, price: number, how: OptFillHow, q: Quote, m: PaperMarket, note?: string): PaperAccount {
+/** How many sets of an order of several its legs' quotes can fill together: each leg takes at most what is shown on the
+    side it trades into (fillableQty), so the set takes the fewest of them — for two legs, the spread's own size
+    (spreadSizes: bought at the long leg's ask and the short leg's bid). A leg with no size shown does not limit it. */
+export function comboFillable(legs: OptOrder[], m: Pick<PaperMarket, 'optQuote'>): number {
+  return legs.reduce((n, o) => Math.min(n, fillableQty(o, m.optQuote(o.contract))), Math.min(...legs.map(o => o.qty)));
+}
+
+function optFillNow(a: PaperAccount, o0: OptOrder, price: number, how: OptFillHow, q: Quote, m: PaperMarket, note?: string, sets?: number): PaperAccount {
   const at = momentAt(m.now);
-  /* the reader's order takes at most the size the quote shows (a leg of an order of several fills whole: its legs go
-     together); the rest stays working for the next quote. The rules' and the page's closes, and a settlement, are not
-     capped. */
-  const capped = !!o0.id && !o0.combo && (how === 'market' || how === 'limit' || how === 'stop');
-  const n = capped ? fillableQty(o0, q) : o0.qty;
+  /* the reader's order takes at most the size the quote shows; the rest stays working for the next quote. A leg of an
+     order of several takes the sets its legs can fill together (comboFillable, passed as `sets`): every leg fills the
+     same count, so the legs stay one set. The rules' and the page's closes, and a settlement, are not capped. */
+  const capped = !!o0.id && (how === 'market' || how === 'limit' || how === 'stop');
+  const n = !capped ? o0.qty : o0.combo ? Math.min(o0.qty, sets ?? o0.qty) : fillableQty(o0, q);
   if (n < 1) return a;
   const rest = o0.qty - n;
   const total = (o0.filled ?? 0) + n;
@@ -1314,9 +1321,10 @@ export function optPlaceCombo(a: PaperAccount, m: PaperMarket, cd: ComboDraft): 
   }
   next = { ...setOpt(next, [...next.opt.orders, ...orders]), touchedAt: m.now };
   if (why || cd.kind !== 'market') return next;
+  const sets = comboFillable(orders, m);
   for (const o of orders) {
     const q = m.optQuote(o.contract);
-    next = optFillNow(next, o, o.side === 'buy' ? q.ask : q.bid, 'market', q, m);
+    next = optFillNow(next, o, o.side === 'buy' ? q.ask : q.bid, 'market', q, m, undefined, sets);
   }
   return next;
 }
@@ -1614,7 +1622,9 @@ function optTickOrders(a: PaperAccount, m: PaperMarket): PaperAccount {
       next = optCancel(next, m, legs[0].id, 'nothing was held to close by then');
       continue;
     }
-    for (const o of legs) next = optFillNow(next, o, pxOf(o), 'limit', m.optQuote(o.contract), m);
+    const sets = comboFillable(legs, m);
+    if (sets < 1) continue;
+    for (const o of legs) next = optFillNow(next, o, pxOf(o), 'limit', m.optQuote(o.contract), m, undefined, sets);
   }
   /* what was looked at on a quote is judged up to now (a minute at a time: the account is not rewritten every tick) */
   if (judged.size && next.opt.orders.some(o => judged.has(o.id) && o.status === 'working' && Math.floor((o.judgedTo ?? 0) / 60_000) < Math.floor(m.now / 60_000)))
