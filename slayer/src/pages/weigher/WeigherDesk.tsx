@@ -1283,8 +1283,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const chainMove = (
     <span className="inline-flex items-center gap-2">
       {chain.expectedMovePct > 0 && (
-        <span className="font-mono text-t9 tnum text-textMuted whitespace-nowrap" title="The move the options are charging for by this expiry">
-          ±{chain.expectedMovePct.toFixed(1)}%
+        <span className="font-mono text-t9 tnum text-textMuted whitespace-nowrap" title={`One standard move (1σ) the at-the-money options charge for by this expiry, ${fmtDay(chain.expiry.date)}, off this chain's own quotes (the calendar days to it included) — Pinpoint's "one move" and Terrain's cone read their own vol and clock, so they can differ by a few hundredths`} data-chain-move>
+          ±{chain.expectedMovePct.toFixed(1)}% 1σ
         </span>
       )}
       <span className={`font-mono text-t9 uppercase tracking-widest whitespace-nowrap ${chain.offline ? 'text-bear' : 'text-textMuted'}`} data-chain-feed={chain.offline ? 'offline' : chain.kept ? 'kept' : 'live'} title={chain.offline ? 'Live data is not answering. The chain is the last one it gave.' : undefined}>

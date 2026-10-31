@@ -658,8 +658,8 @@ const DarkPool = () => {
           <>
             {/* only a name's day carries a share of volume */}
             {view && nameDay ? (
-              <Fact label={`Off-exchange ${dayAdv(nameDay?.iso ?? nameDayIso)}`} testId="share" title={`${dayPos(nameDay?.iso ?? nameDayIso)} dark shares at prices the lit tape also traded, over that session's volume. Own-terms buckets are counted apart`}>
-                {Number.isFinite(nameDay.sharePct) ? `${nameDay.sharePct.toFixed(0)}% ` : ''}<span className="text-textMuted">{Number.isFinite(nameDay.sharePct) ? 'of shares · ' : ''}≈{fmtUsd(nameDay.darkDollars)} · {nameDay.darkShares.toLocaleString('en-US')} sh</span>
+              <Fact label={`Off-exchange ${dayAdv(nameDay?.iso ?? nameDayIso)}`} testId="share" title={`${dayPos(nameDay?.iso ?? nameDayIso)} dark shares at prices the lit tape also traded, over the day's whole share volume, pre-market through 20:00 ET — the share the 20-session baseline compares. Own-terms buckets are counted apart`}>
+                {Number.isFinite(nameDay.sharePct) ? `${nameDay.sharePct.toFixed(1)}% ` : ''}<span className="text-textMuted">{Number.isFinite(nameDay.sharePct) ? "of the day's shares · " : ''}≈{fmtUsd(nameDay.darkDollars)} · {nameDay.darkShares.toLocaleString('en-US')} sh</span>
                 {nameDay.offShares > 0 && <span className="text-textMuted" title="Dark shares at prices the lit tape never traded: own-terms prints, set apart from every other figure"> · ≈{fmtUsd(nameDay.offDollars)} own terms apart</span>}
               </Fact>
             ) : (
