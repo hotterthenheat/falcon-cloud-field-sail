@@ -1,11 +1,14 @@
 /* The paper desk's market, live from ThetaData: each name's NBBO (an index's price), the expiries listed today, and
-   every contract's NBBO on the expiries the desk is looking at or holds. One snapshot ask per name and per expiry, on a
-   two-second beat while the tab is visible; nothing while it is hidden, and the client's breaker (data/theta.ts)
-   holds every ask while the terminal is down. The last answer of each is kept in this browser and painted on a
+   every contract's NBBO on the expiries the desk is looking at or holds. The expiries and the chains are the one stores
+   the Weigher reads too (data/chainDates.ts, data/chainStore.ts): on a two-second beat the strikes round the money (the
+   Weigher's own read, shared), and the whole expiry every WHOLE_EVERY_MS for the legs further out — it used to read the
+   whole expiry every two seconds on its own (audit D10). Nothing while the tab is hidden, and the client's breaker
+   (data/theta.ts) holds every ask while the terminal is down. The last answer of each is kept in this browser and painted on a
    reload, stamped with when it was taken; a kept or stale quote never fills. */
 
 import { thetaCall } from '../theta';
 import { listExpirations } from '../chainDates';
+import { chainSnapshot } from '../chainStore';
 import { readSaved, save as keep } from '../uwStore';
 import { flatRows } from '../review/history';
 import { nyAt, nyInstant } from './clock';
@@ -152,6 +155,8 @@ export interface LegQuote {
   askSize: number;
   /** The quote's own stamp (ms) */
   at: number;
+  /** When this leg was read (ms): a leg off the money comes with the whole-expiry read, less often */
+  readAt?: number;
 }
 export interface Book {
   /** By "strike|C" */
@@ -159,26 +164,36 @@ export interface Book {
   strikes: number[];
   takenAt: number;
   kept?: boolean;
+  /** When the whole expiry was last read */
+  wholeAt?: number;
 }
 const books = new Map<string, Book>();
+/** The strikes either side of the money read on every beat (the desk draws twenty a side) */
+const NEAR_STRIKES = 20;
+/** The whole expiry is read this often: a leg further out stays inside FRESH_MS of its read */
+const WHOLE_EVERY_MS = 6_000;
 const bookWant = new Map<string, number>();
 const legKey = (strike: number, right: 'C' | 'P') => `${+strike.toFixed(3)}|${right}`;
 async function pullBook(key: string): Promise<void> {
   const [root, exp] = key.split('|');
-  const got = await thetaCall(`/option/snapshot/quote?symbol=${encodeURIComponent(root)}&expiration=${ymd(exp)}&format=json`, true);
+  const cur = books.get(key);
+  const whole = !cur || !!cur.kept || Date.now() - (cur.wholeAt ?? 0) >= WHOLE_EVERY_MS;
+  const got = await chainSnapshot('quote', root, ymd(exp), whole ? null : NEAR_STRIKES, whole ? WHOLE_EVERY_MS - 1_000 : BEAT_MS - 500);
   if (!noteAnswer(got.error, got.status)) return;
   if (got.error) return;
-  const legs = new Map<string, LegQuote>();
+  const readAt = Date.now();
+  /* the legs this read did not carry keep their last quote and its read time */
+  const legs = new Map<string, LegQuote>(cur && !cur.kept ? cur.legs : []);
   for (const r of flatRows(got.data)) {
     const k = num(r.strike);
     const rw = String(r.right ?? '').toUpperCase();
     const right = rw.startsWith('C') ? 'C' : rw.startsWith('P') ? 'P' : null;
     if (!(k > 0) || !right) continue;
-    legs.set(legKey(k, right), { bid: num(r.bid), ask: num(r.ask), bidSize: num(r.bid_size), askSize: num(r.ask_size), at: stampOf(r.timestamp) });
+    legs.set(legKey(k, right), { bid: num(r.bid), ask: num(r.ask), bidSize: num(r.bid_size), askSize: num(r.ask_size), at: stampOf(r.timestamp), readAt });
   }
   if (!legs.size) return;
   const strikes = [...new Set([...legs.keys()].map(k => Number(k.split('|')[0])))].sort((a, b) => a - b);
-  const b: Book = { legs, strikes, takenAt: Date.now() };
+  const b: Book = { legs, strikes, takenAt: readAt, wholeAt: whole ? readAt : cur?.wholeAt };
   books.set(key, b);
   keep(`theta:paper:book|${key}`, 200, { legs: [...legs.entries()], strikes, takenAt: b.takenAt });
   emit();
@@ -193,7 +208,7 @@ export function bookOf(ticker: string, expiry: string): Book | null {
 export function legQuoteOf(ticker: string, expiry: string, strike: number, right: 'C' | 'P'): (LegQuote & { takenAt: number; kept: boolean }) | null {
   const b = bookOf(ticker, expiry);
   const q = b?.legs.get(legKey(strike, right));
-  return b && q ? { ...q, takenAt: b.takenAt, kept: !!b.kept } : null;
+  return b && q ? { ...q, takenAt: q.readAt ?? b.takenAt, kept: !!b.kept } : null;
 }
 
 /* ---- the beat ---- */

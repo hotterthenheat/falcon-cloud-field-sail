@@ -5,6 +5,9 @@
 import { expiryFor, isoDate, isTradingDay, type Expiry, MONTHS as MONTHS_SHORT } from '../core/calendar';
 import { keepTheta, keptTheta, noData, thetaGet } from './thetaFeed';
 import { listExpirations } from './chainDates';
+import { chainSnapshot } from './chainStore';
+/** A chain read this young is the chain now: the Weigher's refresh and another reader of the expiry share it */
+const CHAIN_FRESH_MS = 1_500;
 import { atmIvAt, expectedMovePctOf, readContract } from './weigherGate';
 import { weekdayDte } from './compassParams';
 import { nameTape } from './compassSession';
@@ -232,7 +235,7 @@ export async function readLegs(legs: readonly { ticker: string; expiry: string; 
         const hit = legCache.get(`${symbol}|${exp}`);
         let sheet = hit && Date.now() - hit.at < 4000 ? hit.quotes : null;
         if (!sheet) {
-          const quote = await thetaGet(`/option/snapshot/quote?symbol=${encodeURIComponent(symbol)}&expiration=${exp}&format=json`, true);
+          const quote = await chainSnapshot('quote', symbol, exp, null, 4000);
           if (quote.error) continue;
           sheet = new Map();
           for (const item of snapRows(quote.data)) {
@@ -458,8 +461,9 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
   const span = Math.min(40, Math.max(8, range));
   const expiration = ymd(iso);
   const [got, quote] = await Promise.all([
-    thetaGet(`/option/snapshot/greeks/first_order?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&right=both&strike_range=${span}&format=json`, true),
-    thetaGet(`/option/snapshot/quote?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&right=both&strike_range=${span}&format=json`, true),
+    /* the one chain store (data/chainStore.ts): a fresh read of these strikes or more — Paper's, the warm-up's — answers */
+    chainSnapshot('greeks', symbol, expiration, span, CHAIN_FRESH_MS),
+    chainSnapshot('quote', symbol, expiration, span, CHAIN_FRESH_MS),
   ]);
   const nbbo = new Map<string, { bid: number; ask: number; bidSize: number; askSize: number; at: number }>();
   if (!quote.error) {

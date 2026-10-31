@@ -89,6 +89,9 @@ const chainJob: Job = async (ticker, here) => {
   /* the expiry Weigher opens on for a name it has not shown: the front weekly */
   const front = rows.find(e => e.weekday === 0) ?? rows[0];
   const root = front.root || ticker;
+  /* a chain already held fresh — the Weigher's own read, Paper's, an earlier warm-up (data/chainStore.ts) — is not read again */
+  const { chainHeld } = await import('./chainStore');
+  if (chainHeld(root, front.iso, 20, CHAIN_KEPT_FRESH_MS)) return;
   const key = `chain:${ticker}|${root}|${front.iso}`;
   const kept = await feed.keptTheta<unknown>(key);
   if (kept && Date.now() - kept.at < CHAIN_KEPT_FRESH_MS) return;
