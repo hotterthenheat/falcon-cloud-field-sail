@@ -184,7 +184,7 @@ check('no vol means no cone', blank.past.length === 0 && blank.forward.length ==
   const w15 = tapeWindow('15s', 'rth', sat);
   check("15s on a Saturday is Friday's session, not an empty Saturday (was 1 calendar day)", w15.from === '20261030' && w15.to === '20261030' && spansOf(w15.from, w15.to, '15s').length === 1, JSON.stringify(w15));
   const w1 = tapeWindow('1m', 'rth', sat);
-  check('1m is five sessions: Mon 26 – Fri 30 (was 6 calendar days)', w1.from === '20261026', w1.from);
+  check('1m paints its last two sessions first (Thu 29 – Fri 30), then fills five: Mon 26 – Fri 30 (was 6 calendar days)', w1.from === '20261029' && w1.target === '20261026', `${w1.from} → ${w1.target}`);
   const h1 = tapeWindow('1h', 'rth', sat);
   const months = (Date.parse(`${h1.to.slice(0, 4)}-${h1.to.slice(4, 6)}-${h1.to.slice(6)}`) - Date.parse(`${h1.target.slice(0, 4)}-${h1.target.slice(4, 6)}-${h1.target.slice(6)}`)) / (30.44 * 86_400_000);
   check('1h fills 126 sessions on its own — six months (was 56 calendar days of 1m folded, ≈ 28 bars)', h1.target === sessionsBack('20261030', 126) && months >= 5.9, `${h1.target}, ${months.toFixed(1)} months`);

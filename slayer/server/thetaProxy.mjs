@@ -25,6 +25,10 @@ const send = (res, status, body, type = 'application/json') => {
 
 /* The client reads `code`; the sentence is for people and says nothing about the machine. */
 const DOWN = JSON.stringify({ error: 'The market data terminal is not running.', code: 'terminal_down' });
+/* A request the terminal took too long to answer: it is up and busy, so this is not an outage (no breaker, no cache) */
+const BUSY = JSON.stringify({ error: 'The market data terminal is busy; asked again shortly.', code: 'terminal_busy' });
+const timedOut = (e) => e?.name === 'TimeoutError' || e?.name === 'AbortError';
+const failed = (e) => (timedOut(e) ? { status: 504, body: Buffer.from(BUSY), type: 'application/json' } : { status: 503, body: Buffer.from(DOWN), type: 'application/json' });
 const LOST = JSON.stringify({ error: 'The market data session is reconnecting.', code: 'session_lost' });
 const NO_TERMINAL = JSON.stringify({ error: 'This deployment has no market data terminal configured.', code: 'terminal_unavailable' });
 
@@ -94,7 +98,8 @@ async function load(reqPath) {
 async function loadNow(reqPath) {
   const upstream = await fetch(`${BASE}/v3${reqPath}`, {
     headers: { Accept: 'application/json, text/csv', ...(RELAY ? { 'x-relay-secret': RELAY_SECRET } : {}) },
-    signal: AbortSignal.timeout(20_000),
+    /* a long history span on a terminal already answering seven others can take well over 20 s; a live snapshot cannot */
+    signal: AbortSignal.timeout(isHistory(reqPath) ? 90_000 : 20_000),
   });
   const buf = Buffer.from(await upstream.arrayBuffer());
   const type = upstream.headers.get('content-type') || 'text/plain';
@@ -108,7 +113,7 @@ async function loadNow(reqPath) {
    anyone watches it, whatever the number of viewers; the terminal's eight slots are far from full at that rate. */
 const hub = createHub({
   name: 'theta',
-  fetch: (p) => load(p).catch(() => ({ status: 503, body: Buffer.from(DOWN), type: 'application/json' })),
+  fetch: (p) => load(p).catch(failed),
   ttl: (p) => Math.max(thetaTtl(p), /\/snapshot\//.test(p) ? 900 : 0),
   refreshPerSec: Number(process.env.THETA_HUB_REFRESH_PER_SEC) || 25,
 });
