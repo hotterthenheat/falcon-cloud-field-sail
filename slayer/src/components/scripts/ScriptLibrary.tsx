@@ -183,8 +183,8 @@ const OVERLAY_ROWS: { key: keyof ChartOverlays; label: string; hint: string; pan
 const CLOCK_HELD = new Set<keyof ChartOverlays>(['trails', 'flow', 'netDrift', 'volDrift', 'session', 'cone', 'events']);
 /* Book lines and share VWAP have no session to cut on a rule clock. Keyed by the indicator, not the shelf group — search rewrites the group. */
 const CLOCK_HELD_CHART = new Set<keyof ChartIndicators>(['vwap', 'vwapBands', 'flowVwap', 'sideVwap', 'gammaEma', 'gammaVwap']);
-const ROW_STYLE = { gridTemplateColumns: '52px minmax(0,1fr) 88px 28px 28px 44px' } as const;
-const ROW_GRID = 'grid items-center px-2';
+const ROW_STYLE = { gridTemplateColumns: '68px minmax(0,1fr) 88px 28px 28px 44px' } as const;
+const ROW_GRID = 'grid items-center gap-x-2 px-2';
 
 const ScriptLibrary = ({
   open,
