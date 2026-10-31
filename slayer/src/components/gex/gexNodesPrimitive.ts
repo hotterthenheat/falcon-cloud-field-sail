@@ -3,6 +3,7 @@ import type { GexSnapshot } from '../../types/market';
 import { nySession } from '../../core/nyTime';
 import { dealerOf } from '../../core/dealerSign';
 import type { NodeLook } from '../../data/deskPrefs';
+import { selectNodeStrikes } from './nodeStrikes';
 
 /*
   The exposure field: one filled band per strike, from the midpoint of the strike below to the midpoint of the
@@ -246,6 +247,8 @@ class FieldRenderer {
     const pBot = paneH > 0 ? series.coordinateToPrice(paneH) : null;
     let rLo = 0;
     let rHi = R;
+    /* only the strikes that matter are drawn (nodeStrikes.ts); the rest stay in the rail and on hover */
+    let keep: ReadonlySet<number> | null = null;
     if (pTop != null && pBot != null && pTop !== pBot) {
       const loP = Math.min(pTop, pBot);
       const hiP = Math.max(pTop, pBot);
@@ -255,6 +258,7 @@ class FieldRenderer {
       while (j < R && strikes[j] <= hiP) j++;
       rLo = Math.max(0, i - 1);
       rHi = Math.min(R, j + 1);
+      keep = src.keptRows(i, j, loP, hiP);
     }
     /* An empty scale maps every strike to one y. Painting that is the stack. Wait for a real scale. */
     if (rHi - rLo >= 2) {
@@ -274,7 +278,7 @@ class FieldRenderer {
       const probeStrike = strikes[Math.min(R - 1, Math.max(rLo, (rLo + rHi) >> 1))] ?? 0;
       const probeA = series.priceToCoordinate(probeStrike) ?? -1;
       const probeB = series.priceToCoordinate(probeStrike + 1) ?? -1;
-      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${src.focusInk}|${src.look}`;
+      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${src.focusInk}|${src.look}|${src.keptKey}`;
       const cached = key === this.cacheKey && !!this.bmp;
       /* A moved view maps the last raster: both axes are affine, so one drawImage puts every cell where this frame's
          scales want it, until the gesture rests (SETTLE_MS) or the view leaves the raster or the scale drifts too far */
@@ -348,6 +352,7 @@ class FieldRenderer {
           let yBot = Math.round(Math.max(ya, yb));
           if (yBot < -myPx || yTop > hBmp + myPx) continue;
           if (yBot - yTop < 1) yBot = yTop + 1;
+          if (keep && !keep.has(r)) continue;
           const dim = focus != null && strikes[r] !== focus;
           let runKey = -1;
           let runL = 0;
@@ -588,6 +593,7 @@ class NodesRenderer {
     let last = 0;
     let rLo = 0;
     let rHi = 0;
+    let keep: ReadonlySet<number> = new Set<number>();
     if (haveField) {
       const vis = ts.getVisibleRange();
       if (vis) {
@@ -605,6 +611,7 @@ class NodesRenderer {
         while (j < R && strikes[j] <= hiP) j++;
         rLo = i;
         rHi = j;
+        keep = src.keptRows(i, j, loP, hiP);
       }
       /* an empty scale maps every strike to one y: wait for a real one */
       if (rHi - rLo >= 2) {
@@ -628,35 +635,25 @@ class NodesRenderer {
     const light = (0.299 * ground[0] + 0.587 * ground[1] + 0.114 * ground[2]) / 255 > 0.55;
     const crown: readonly [number, number, number] = light ? [24, 24, 30] : [255, 255, 255];
 
-    /* the strikes that bead: the heaviest in the window by their summed size, and the named levels' strikes */
+    /* the strikes that bead: the ones that matter now (nodeStrikes.ts — a fifth of the largest in view, eight at most,
+       the walls, the flip's strike and the pin always), each with a reading in the window */
     let selected: number[] = [];
     let strongRow = -1;
     if (fieldLive) {
-      const want = Math.max(6, Math.min(12, Math.round(paneH / 42)));
-      const key = `${src.rev}|${first}|${last}|${rLo}|${rHi}|${want}|${src.cwStrike}|${src.pwStrike}|${src.supremeStrike}|${src.flipPrice}`;
+      const key = `${src.keptKey}|${first}|${last}`;
       if (key !== this.selKey) {
-        const score = new Float64Array(R);
-        for (let c = first; c < last; c++) {
-          const base = c * R;
-          for (let r = rLo; r < rHi; r++) {
-            const v = vals[base + r];
-            if (v === v && v !== 0) score[r] += Math.abs(v);
+        const pick: number[] = [];
+        for (const r of keep) {
+          if (r < rLo || r >= rHi) continue;
+          for (let c = first; c < last; c++) {
+            const v = vals[c * R + r];
+            if (v === v && v !== 0) {
+              pick.push(r);
+              break;
+            }
           }
         }
-        const order: number[] = [];
-        for (let r = rLo; r < rHi; r++) if (score[r] > 0) order.push(r);
-        order.sort((a, b) => score[b] - score[a]);
-        const pick = new Set(order.slice(0, want));
-        for (const p of [src.cwStrike, src.pwStrike, src.supremeStrike]) {
-          if (p == null) continue;
-          const r = strikes.indexOf(p);
-          if (r >= rLo && r < rHi && score[r] > 0) pick.add(r);
-        }
-        if (src.flipPrice != null) {
-          const r = src.rowAt(src.flipPrice);
-          if (r >= rLo && r < rHi && score[r] > 0) pick.add(r);
-        }
-        this.sel = [...pick].sort((a, b) => a - b);
+        this.sel = pick.sort((a, b) => a - b);
         this.selKey = key;
       }
       selected = this.sel;
@@ -682,7 +679,7 @@ class NodesRenderer {
 
       /* ZONES: a 1px outline and a faint fill around the heaviest nodes, from the bar each became one to the edge */
       for (const z of zones) {
-        if (z.row < rLo || z.row >= rHi) continue;
+        if (z.row < rLo || z.row >= rHi || !keep.has(z.row)) continue;
         const y = yOf(strikes[z.row]);
         if (y == null) continue;
         const xs = ts.timeToCoordinate(cols[z.start].time as Time);
@@ -809,7 +806,7 @@ class NodesRenderer {
           const right = Math.round((W - 1) * hr);
           for (let r = rLo; r < rHi; r++) {
             const v = nowAt(r);
-            if (v !== v || v === 0) continue;
+            if (v !== v || v === 0 || !keep.has(r)) continue;
             const y = yOf(strikes[r]);
             if (y == null) continue;
             const th = Math.max(1, Math.min(6, rowGap(r) * 0.7));
@@ -839,7 +836,7 @@ class NodesRenderer {
     };
     const used: number[] = [];
     for (const z of zones) {
-      if (z.row < rLo || z.row >= rHi) continue;
+      if (z.row < rLo || z.row >= rHi || !keep.has(z.row)) continue;
       const strike = strikes[z.row];
       const y = yOf(strike);
       if (y == null || y < 0 || y > paneH) continue;
@@ -1027,6 +1024,43 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
 
   valueOf(l: GexSnapshot['levels'][number]): number {
     return levelValue(l, this.greek);
+  }
+
+  /** The cache key of keptRows' last answer (the field's raster and the bead selection key on it) */
+  keptKey = '';
+  private keptSet: ReadonlySet<number> = new Set<number>();
+
+  /**
+   * The rows the nodes draw, of the rows in view [rLo, rHi) (prices loP..hiP): nodeStrikes' rule on the newest column —
+   * a fifth of the largest strike in view (never less than half the book's largest), eight at most — plus the walls,
+   * the flip's strike and the pin (the supreme) while they are in view. Every other strike is left to the rail and the
+   * hover.
+   */
+  keptRows(rLo: number, rHi: number, loP: number, hiP: number): ReadonlySet<number> {
+    const key = `${this.rev}|${rLo}|${rHi}|${this.cwStrike}|${this.pwStrike}|${this.flipPrice}|${this.supremeStrike}`;
+    if (key === this.keptKey) return this.keptSet;
+    const R = this.strikes.length;
+    const C = this.cols.length;
+    const out = new Set<number>();
+    if (R && C) {
+      const base = (C - 1) * R;
+      let bookTop = 0;
+      for (let r = 0; r < R; r++) {
+        const v = this.values[base + r];
+        if (v === v && Math.abs(v) > bookTop) bookTop = Math.abs(v);
+      }
+      const rows = [];
+      for (let r = Math.max(0, rLo); r < Math.min(R, rHi); r++) rows.push({ strike: this.strikes[r], value: this.values[base + r] });
+      const kept = selectNodeStrikes(rows, { callWall: this.cwStrike, putWall: this.pwStrike, flip: this.flipPrice, pin: this.supremeStrike }, { lo: loP, hi: hiP, floor: bookTop / 2 });
+      for (const l of kept) {
+        /* a strike's own row; the flip, a price between strikes, beads the strike that holds it */
+        const r = l.value === l.value ? this.strikes.indexOf(l.price) : this.rowAt(l.price);
+        if (r >= 0) out.add(r);
+      }
+    }
+    this.keptKey = key;
+    this.keptSet = out;
+    return out;
   }
 
   /** The first column at or after time t (seconds) */
