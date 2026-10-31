@@ -178,13 +178,16 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
 {
   const S = 760;
   const iv = 0.174;
-  const straddle = STRADDLE_K * S * iv * Math.sqrt(1 / 365);
+  /* one session of a 30-day calendar-year vol on the trading clock (core/volClock: the variance kept, ≈ σ/√252), the
+     straddle that prices it, and back: the three must agree */
+  const daySigma = daySigmaOfIv(S, iv) ?? 0;
+  const straddle = STRADDLE_K * daySigma;
   const sigma = sigmaFromStraddle(straddle);
   const oldSigma = 0.68 * S * iv * Math.sqrt(1 / 365);
   const rows = [3, 5, 7, 10].map(d => ({ d, now: touchOdds(S, S + d, sigma), was: 2 * (1 - normal(d / oldSigma)) }));
   for (const r of rows) console.log(`     $${r.d} away: ${(r.now * 100).toFixed(0)}% (was ${(r.was * 100).toFixed(0)}%)`);
   const seven = rows.find(r => r.d === 7)!;
-  check(`SPY ${S}, ATM ${iv * 100}%, 1 session: 1σ $${sigma.toFixed(2)} (straddle $${straddle.toFixed(2)}); a level $7 away reads ${(seven.now * 100).toFixed(0)}% (was ${(seven.was * 100).toFixed(0)}%)`, Math.abs(seven.now - 0.31) < 0.015);
+  check(`SPY ${S}, ATM ${iv * 100}%, 1 session: 1σ $${sigma.toFixed(2)} (straddle $${straddle.toFixed(2)}); a level $7 away reads ${(seven.now * 100).toFixed(0)}% (was ${(seven.was * 100).toFixed(0)}%)`, Math.abs(seven.now - 2 * (1 - normal(Math.log((S + 7) / S) / (sigma / S)))) < 1e-5 && sigma > 8.2 && sigma < 8.9);
   const bars = [{ time: 0, open: S, high: S, low: S, close: S, volume: 0 }];
   const cone = buildExpectedMoveCone(bars, iv, 390);
   const tip = cone.forward[cone.forward.length - 1];
