@@ -32,7 +32,7 @@ export function strikeRole(strike: number, at: { supreme?: number; callWall?: nu
     words.push('flip');
     ink ??= FLIP;
   }
-  if (is(at.pin)) words.push('pin');
+  if (is(at.pin)) words.push('max OI');
   if (at.owned) words.push('you own');
   return { words, ink, underline: at.owned ? 'yours' : is(at.pin) ? 'pin' : undefined };
 }

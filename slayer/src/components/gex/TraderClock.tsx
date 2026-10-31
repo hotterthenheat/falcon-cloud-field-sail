@@ -84,7 +84,7 @@ export const PHASES: Phase[] = [
     name: 'Lunch',
     weight: 0.3,
     pressure: 'absorbs',
-    words: f => `volatility goes quiet and price sticks — ${f.pin != null ? `${fmtStrike(f.pin)} is the strike it sticks to (the gamma pin)` : 'the gamma pin holds price'}`,
+    words: f => `volatility usually goes quiet${f.pin != null ? ` — ${fmtStrike(f.pin)} holds the most open interest, a heavy strike, not a level price is drawn to` : ''}`,
   },
   {
     key: 'charm',
@@ -102,7 +102,7 @@ export const PHASES: Phase[] = [
     name: 'The turn',
     weight: 0.9,
     pressure: 'absorbs',
-    words: f => `today's gamma peaks, then starts to fade — ${f.pin != null ? `the pull of ${fmtStrike(f.pin)} doubles` : 'the gamma pin pulls hardest'}`,
+    words: f => `today's gamma peaks, then starts to fade — on a long-gamma book moves tend to be damped most now${f.pin != null ? `; the most open interest is at ${fmtStrike(f.pin)}` : ''}`,
   },
   {
     key: 'auction',
@@ -175,7 +175,7 @@ function hourPhases(win: Win, bars: readonly { time: number; high: number; low: 
     name: hhmm(s.from),
     weight: max > 0 && s.range > 0 ? 0.35 + 0.65 * (s.range / max) : 0.2,
     words: f => {
-      const where = f.pin != null ? `. The pin is ${fmtStrike(f.pin)}` : '';
+      const where = f.pin != null ? `. The most open interest is at ${fmtStrike(f.pin)}` : '';
       if (!(s.range > 0)) return `no print in this hour${where}`;
       let lo = Infinity;
       let hi = -Infinity;

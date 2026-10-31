@@ -206,7 +206,7 @@ export function readPosition(p: Position, profile: ExposureProfileData): Positio
   const on: string[] = [];
   if (eq(p.strike, L.callWall)) on.push('on the call wall');
   if (eq(p.strike, L.putWall)) on.push('on the put wall');
-  if (eq(p.strike, L.pin)) on.push('on the gamma pin');
+  if (eq(p.strike, L.pin)) on.push('on the largest-OI strike');
   if (eq(p.strike, L.supreme)) on.push('the supreme strike');
   const d = ((p.strike - spot) / spot) * 100;
   const rel = Math.abs(d) < 0.05 ? 'at spot' : `${Math.abs(d).toFixed(2)}% ${d > 0 ? 'above' : 'below'} spot`;

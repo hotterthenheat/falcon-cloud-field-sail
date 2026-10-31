@@ -63,7 +63,7 @@ export const book = (o: { seed?: number; groups?: string[] } = {}): Part => {
           put: Math.min(1, (wall ? 0.75 + r() * 0.25 : near * (0.2 + r() * 0.55)) * (i === callWall ? 0.5 : lean)),
           call: Math.min(1, (wall ? 0.75 + r() * 0.25 : near * (0.2 + r() * 0.55)) * (i === putWall ? 0.5 : 2 - lean)),
           cells: cols.map(() => ({ m: Math.min(1, (wall ? 0.7 : 0) + near * (0.1 + r() * 0.5)), sign: r() < (i < n * 0.52 ? 0.35 : 0.7) ? 1 : -1, fig: 0.4 + r() * 0.6 })),
-          label: i === supreme ? 'SUPREME' : i === putWall ? 'PUT WALL' : i === callWall ? 'CALL WALL' : i === pin ? 'PIN' : '',
+          label: i === supreme ? 'SUPREME' : i === putWall ? 'PUT WALL' : i === callWall ? 'CALL WALL' : i === pin ? 'MAX OI' : '',
           hue: i === supreme ? 'supreme' : i === putWall ? 'red' : i === callWall ? 'blue' : i === pin ? 'muted' : '',
         } as Row;
       });
@@ -94,7 +94,7 @@ export const book = (o: { seed?: number; groups?: string[] } = {}): Part => {
       const half = (gx1 - gx0) / 2 - 4;
       rows.forEach((row, i) => {
         const mid = row.y + rh / 2;
-        const heavy = !!row.label && row.label !== 'PIN';
+        const heavy = !!row.label && row.label !== 'MAX OI';
         /* the strike's mark, and its name where it has one */
         c.fillStyle = rgb(ink.line, sharp ? 0.6 : 0.7);
         if (keep(b, 0.55)) c.fillRect(at.x0, mid - 1, 12, 2);
@@ -127,7 +127,7 @@ export const book = (o: { seed?: number; groups?: string[] } = {}): Part => {
       });
       /* the walls run on under the words, faint */
       rows.forEach(row => {
-        if (!row.label || row.label === 'PIN' || !row.hue) return;
+        if (!row.label || row.label === 'MAX OI' || !row.hue) return;
         const y = row.y + rh / 2;
         c.fillStyle = rgb(ink[row.hue], sharp ? 0.2 : 0.3);
         if (sharp) c.fillRect(0, y, at.x0 - 6, 1);

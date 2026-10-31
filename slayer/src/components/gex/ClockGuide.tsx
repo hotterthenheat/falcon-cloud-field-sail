@@ -181,7 +181,7 @@ const ClockGuide = ({ nowBlock, line, bellShare, pin, supreme, charmStrike }: Cl
           <li className="text-t115 leading-relaxed text-textSecondary">
             {pin != null && (
               <>
-                Through lunch price tends to stick to <span className="font-mono tnum text-textPrimary">{fmtStrike(pin)}</span>.{' '}
+                The most open interest is at <span className="font-mono tnum text-textPrimary">{fmtStrike(pin)}</span> — a heavy strike, not a level price is drawn to.{' '}
               </>
             )}
             {supreme != null && (

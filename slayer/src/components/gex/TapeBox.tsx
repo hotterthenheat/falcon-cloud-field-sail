@@ -151,7 +151,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
         { key: 'flip', word: 'Flip', ink: FLIP, price: l.flipFound === false ? Number.NaN : l.flip },
         { key: 'putWall', word: 'Put wall', ink: PUT_WALL, price: l.putWall },
         /* a pin only where dealers are long gamma and price is near (data/exposure.ts) */
-        { key: 'pin', word: 'Pin', ink: INK_3, price: l.pinFound === false ? Number.NaN : l.pin },
+        { key: 'pin', word: 'Largest OI', ink: INK_3, price: l.pinFound === false ? Number.NaN : l.pin },
         { key: 'supreme', word: 'Supreme', ink: SUPREME, price: l.supreme },
       ];
       return all.filter(x => Number.isFinite(x.price));
@@ -512,7 +512,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     for (const l of linesRef.current) series.removePriceLine(l);
     linesRef.current = [];
     const pin = levels.find(l => l.key === 'pin');
-    if (pin && Number.isFinite(pin.price)) linesRef.current.push(series.createPriceLine({ price: pin.price, color: alpha(resolveInk(pin.ink, host), 0.7), lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: 'Pin' }));
+    if (pin && Number.isFinite(pin.price)) linesRef.current.push(series.createPriceLine({ price: pin.price, color: alpha(resolveInk(pin.ink, host), 0.7), lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: 'Max OI' }));
     if (focus != null) linesRef.current.push(series.createPriceLine({ price: focus, color: resolveInk(SILVER, host), lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: 'Kept' }));
     if (Number.isFinite(last) && last > 0) linesRef.current.push(series.createPriceLine({ price: last, color: resolveInk(INK_3, host), lineWidth: 1, lineStyle: LineStyle.Solid, lineVisible: false, axisLabelVisible: true, title: regularNamed ? 'Regular close' : '' }));
     // eslint-disable-next-line react-hooks/exhaustive-deps

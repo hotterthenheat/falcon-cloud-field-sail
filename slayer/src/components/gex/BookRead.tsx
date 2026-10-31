@@ -147,7 +147,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   const roleOf = (strike: number): { word: string; ink: string } | null => {
     const roles = levelRoles(strike, { supreme: levels.supreme, callWall: levels.callWall, putWall: levels.putWall, flip: levels.flipFound === false ? null : levels.flip });
     if (roles.length) return { word: roles.join(' · '), ink: ROLE_INKS[roles[0]] };
-    return strike === pinStrike ? { word: 'pin', ink: MUTED } : null;
+    return strike === pinStrike ? { word: 'max OI', ink: MUTED } : null;
   };
   const ROLE_INKS: Record<LevelRole, string> = { supreme: SUPREME, 'call wall': CALL_WALL, 'put wall': PUT_WALL, flip: FLIP };
   /* the one order (core/walls.ts levelRoles): supreme · call wall · put wall, then the flip */
