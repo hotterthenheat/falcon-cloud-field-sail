@@ -334,6 +334,8 @@ const Board = () => {
                   title={`0DTE includes ${BOOK_NAME.C}. 1–7 DTE uses ${BOOK_NAME.A} and ${BOOK_NAME.B}.`}
                   ink={CARD_INK.expiry}
                   testId="compass-expiry"
+                  /* a phone's half-width card: the choice whole ("0DTE · Nov 2"), its name in the title */
+                  labelFrom="sm"
                 />
                 <DropdownSelect
                   label="Type"
@@ -347,6 +349,7 @@ const Board = () => {
                   title="Calls, puts, or both."
                   ink={CARD_INK.kind}
                   testId="compass-side"
+                  labelFrom="sm"
                 />
                 <DropdownSelect
                   label="Layout"
@@ -423,9 +426,10 @@ const OdteOver = () => {
   const clock = `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   void tick;
   return (
-    <div className="flex flex-col items-center justify-center gap-2 h-[200px] border-t border-borderSubtle px-6" data-odte-over>
+    /* one line, not a 200px box around it */
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-borderSubtle px-5 py-3" data-odte-over>
       <p className="font-mono text-t10 uppercase tracking-widest text-textMuted">The tape opens again in</p>
-      <p className="holo-text font-mono text-t20 font-semibold tnum tracking-wide" data-odte-countdown>{clock}</p>
+      <p className="holo-text font-mono text-t15 font-semibold tnum tracking-wide" data-odte-countdown>{clock}</p>
     </div>
   );
 };

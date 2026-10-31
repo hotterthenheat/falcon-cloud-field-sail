@@ -32,6 +32,7 @@ const CompassLayout = () => {
   const outlet = useOutlet();
   const line = location.pathname.startsWith('/compass/blotter') ? BLOTTER_LINE : location.pathname.startsWith('/compass/tracker') ? TRACKER_LINE : location.pathname.startsWith('/compass/review') ? REVIEW_LINE : location.pathname.startsWith('/compass/study') ? STUDY_LINE : COMPASS_LINE;
   const onBoard = location.pathname === '/compass' || location.pathname === '/compass/';
+  const onBlotter = location.pathname.startsWith('/compass/blotter');
   /* every Compass page reads the server's board and record */
   useEffect(() => holdCompassFeed(), []);
   const page = (
@@ -40,7 +41,9 @@ const CompassLayout = () => {
     </div>
   );
   return (
-    <div className="flex flex-col xl:flex-1 xl:min-h-0">
+    /* the desk owns its first screen, Pinpoint's way (top bar + the head ≈ 174): a short page stretches and the footer
+       starts below the fold. The Blotter keeps its own height. */
+    <div className={`flex flex-col xl:flex-1 ${onBlotter ? 'xl:min-h-0' : 'min-h-[calc(100vh-174px)]'}`}>
       <header className="flex items-start gap-6 flex-wrap pb-3 border-b border-borderSubtle shrink-0" data-shell data-compass-shell>
         <div className="min-w-0 flex-1">
           <div className="h-6 flex items-center gap-2.5" data-shell-page>
@@ -63,7 +66,8 @@ const CompassLayout = () => {
               <div className="h-[46vh] min-h-[280px] xl:h-auto xl:flex-1 xl:min-h-0">
                 <CompassTape pathname={location.pathname} />
               </div>
-              <div className="min-h-[280px] xl:h-auto xl:flex-1 xl:min-h-0 min-w-0">
+              {/* with no name picked, one compact line — the tape takes the column's room */}
+              <div className="min-h-[280px] has-[[data-compass-name=empty]]:min-h-0 xl:h-auto xl:flex-1 xl:has-[[data-compass-name=empty]]:flex-none xl:min-h-0 min-w-0">
                 <CompassName />
               </div>
             </div>
@@ -135,8 +139,8 @@ const CompassName = () => {
   const picked = selectedId ? parseSetupId(selectedId) : null;
   if (!picked) {
     return (
-      <div className="h-full border border-borderSubtle rounded-md bg-panel flex items-center justify-center px-6" data-compass-name>
-        <p className="font-mono text-t11 text-textMuted text-center">Select a name. The other desks and what it passed sit here.</p>
+      <div className="border border-borderSubtle rounded-md bg-panel px-4 py-3" data-compass-name="empty">
+        <p className="font-mono text-t11 text-textMuted">Select a name. The other desks and what it passed sit here.</p>
       </div>
     );
   }
