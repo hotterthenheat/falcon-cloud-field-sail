@@ -190,6 +190,18 @@ export function closeMoveTitle(m: { pct: number | null; base: number | null; ext
   return `${head}${m.ext != null ? ` · ${m.extWord ?? 'after hours'} ${signedPct(m.ext)} since that close` : ''}`;
 }
 
+/* THE ONE STORE OF A NAME'S REGULAR CLOSES (audit D4). On a page that may read the terminal's daily rows the closes are
+   those rows — the price store (data/thetaQuote.ts) reads them for the name's quote anyway and hands them here
+   (setClosesReader, noteBarCloses with force) — and the vendor's daily rows (ohlc/1d) are read only where the terminal
+   may not be asked (Trace, the Dossier) or when it did not answer. */
+type ClosesRead = (ticker: string) => Promise<readonly { date: string; close: number }[] | null>;
+let closesReader: { read: ClosesRead; here: () => boolean } | null = null;
+/** The terminal's daily rows as this store's source where the page may read them (data/thetaQuote.ts registers it) */
+export function setClosesReader(read: ClosesRead, here: () => boolean): void {
+  closesReader = { read, here };
+}
+const newestFirst = (rows: readonly { date: string; close: number }[]) => rows.filter(c => c.close > 0).map(c => ({ date: c.date, close: c.close })).sort((a, b) => b.date.localeCompare(a.date));
+
 /* The regular closes per name, read once a New York day (they only change at the close) */
 const closesCache = new Map<string, { day: string; closes: { date: string; close: number }[] }>();
 const closesInflight = new Map<string, Promise<{ date: string; close: number }[]>>();
@@ -204,7 +216,7 @@ export function noteBarCloses(ticker: string, closes: readonly { date: string; c
   if (!closes.length) return;
   const t = ticker.toUpperCase();
   if (!force && peekRegularCloses(t)?.length) return;
-  const next = closes.slice(0, 5).map(c => ({ date: c.date, close: c.close }));
+  const next = newestFirst(closes).slice(0, 5);
   const cur = closesCache.get(t);
   const day = nyIsoDate();
   if (cur && cur.day === day && cur.closes.length === next.length && cur.closes.every((c, i) => c.date === next[i].date && c.close === next[i].close)) return;
@@ -217,9 +229,11 @@ export function loadRegularCloses(ticker: string): Promise<{ date: string; close
   if (hit) return Promise.resolve(hit);
   const running = closesInflight.get(t);
   if (running) return running;
-  const p = whalesDailyRecent(t)
-    .then(rows => {
-      const closes = regularCloses(Array.isArray(rows) ? rows : []).slice(0, 5);
+  const reader = closesReader?.here() ? closesReader : null;
+  const p = (reader ? reader.read(t).catch(() => null) : Promise.resolve(null))
+    .then(async held => (held && held.length ? newestFirst(held) : regularCloses((await whalesDailyRecent(t).catch(() => [])) ?? [])))
+    .then(all => {
+      const closes = all.slice(0, 5);
       /* an empty daily is not a close — caching it blocked the tape's own closes for the rest of the day */
       if (closes.length) closesCache.set(t, { day: nyIsoDate(), closes });
       return closes;

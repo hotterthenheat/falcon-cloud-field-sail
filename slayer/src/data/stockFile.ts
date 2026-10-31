@@ -11,7 +11,7 @@ import { darkPrint } from './traceLive';
 import { darkSizedFloor } from './traceDark';
 import { hashId, otmOf } from './traceRows';
 import { alertSides, darkPrintKey } from './sidesRule';
-import { uwCall, whalesAnalysts, whalesBars, whalesDailyLong, whalesEarnings, whalesFinancials, whalesOptionContracts, whalesScreener, whalesStock, type UwDaily } from './whales';
+import { uwCall, whalesAnalysts, whalesMinuteBars, whalesDailyLong, whalesEarnings, whalesFinancials, whalesOptionContracts, whalesScreener, whalesStock, type UwDaily } from './whales';
 import { nyClock, nyCloseMin, nyIsoDate, nyMinutes as nyMinuteOf, SESSION_OPEN_MIN } from '../core/nyTime';
 import { noteBarCloses, peekRegularCloses, regularCloses } from './dayChange';
 import { BoundedMap, body, createStore, keepFresh, keptRead, type Get, type KeptRead } from './feedStore';
@@ -579,7 +579,8 @@ async function loadTapes(ticker: string, headP: Promise<StockFile | null>): Prom
   const tapesP = Promise.all([
     flowTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
     darkTape(ticker, session, headP).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
-    whalesBars(ticker, '1m', 1000).catch(() => []),
+    /* the book's address (whales.ts whalesMinuteBars): one read of the name's minute bars for the page */
+    whalesMinuteBars(ticker).catch(() => []),
   ]);
   const head = await headP;
   const [flowR, darkR, barR] = await tapesP;

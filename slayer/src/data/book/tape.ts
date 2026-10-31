@@ -39,7 +39,16 @@ function tapeMark(symbol: string, minute: number): 'r' | 'pr' | 'po' {
   return 'po';
 }
 
-function pushPrint(out: UwBar[], px: number, at: number, symbol: string): void {
+/** The chart store's one-minute candles (data/thetaTape.ts heldMinuteBars) as the book's bars, each marked with its
+    session the way the vendor's are */
+export function uwBarsOf(symbol: string, bars: readonly Candle[]): UwBar[] {
+  return bars.map(c => {
+    const iso = new Date(c.time * 1000).toISOString();
+    return { open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume, start_time: iso, end_time: iso, market_time: tapeMark(symbol, nyMinutes(c.time * 1000)) };
+  });
+}
+
+export function pushPrint(out: UwBar[], px: number, at: number, symbol: string): void {
   if (!(px > 0) || !at) return;
   const barStart = Math.floor(at / 60000) * 60000;
   const iso = new Date(at).toISOString();

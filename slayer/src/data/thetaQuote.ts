@@ -8,7 +8,8 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { thetaAllowedHere, thetaCall } from './theta';
 import { BoundedMap } from './boundedMap';
-import { moveOffCloses } from './dayChange';
+import { moveOffCloses, noteBarCloses, setClosesReader } from './dayChange';
+import { RTH_WINDOW } from './thetaEligible';
 import { whalesState } from './whales';
 
 /* what the page in view may ask the terminal (data/theta.ts): a price, an option's quote, the daily closes */
@@ -208,8 +209,12 @@ async function readCloseRows(sym: string): Promise<{ date: string; close: number
   if (got.error) return hit?.closes ?? null;
   const closes = readCloses(got.data);
   closesFor.set(sym, { day, at: Date.now(), closes });
+  /* the one closes store (data/dayChange.ts) holds what the terminal said */
+  if (closes.length) noteBarCloses(sym, closes, true);
   return closes;
 }
+/* the closes store reads the terminal's daily rows where this page may ask them (the vendor's daily rows elsewhere) */
+setClosesReader(t => readCloseRows(symbolOf(t)), closesHere);
 
 /* A read that failed for a reason other than a down terminal (that is the breaker's, data/theta.ts) waits before the next:
    15 s, doubling to a minute, cleared by an answer. */
@@ -393,8 +398,9 @@ export function peekThetaCloseOn(ticker: string, iso: string): number | null {
   return closeOn.get(`${symbolOf(ticker)}|${iso}`) ?? null;
 }
 
-/* today's one-minute bars of a name, for the alerts that read an indicator or run a script: 09:30 through the 16:00
-   close bar, whole (an end of 16:00:00 kept only the prints stamped 16:00:00.000 in that bar) */
+/* today's one-minute bars of a name, for the alerts that read an indicator or run a script: the chart's regular-session
+   window (thetaEligible RTH_WINDOW, 09:30 to 15:59's last millisecond), so an alert and the chart read the same bars —
+   the alerts' window used to run to 16:00:59.999 and fire on a 16:00 bar the chart does not draw (audit D3) */
 const barsOf = new BoundedMap<string, { read: number; bars: Candle[] }>(60);
 const barsAsked = new Set<string>();
 const barsHere = () => thetaAllowedHere('/stock/history/ohlc');
@@ -408,7 +414,7 @@ export function ensureThetaBars(ticker: string): void {
   barsAsked.add(sym);
   const day = ymd(nyIsoDate());
   const root = isCashIndex(sym) ? 'index' : 'stock';
-  void thetaCall(`/${root}/history/ohlc?symbol=${encodeURIComponent(sym)}&start_date=${day}&end_date=${day}&interval=1m&start_time=09:30:00&end_time=16:00:59.999&format=json`)
+  void thetaCall(`/${root}/history/ohlc?symbol=${encodeURIComponent(sym)}&start_date=${day}&end_date=${day}&interval=1m&start_time=${RTH_WINDOW.start}&end_time=${RTH_WINDOW.end}&format=json`)
     .then(got => {
       if (got.error) {
         if (got.error === 'terminal_down') setStatus('down');

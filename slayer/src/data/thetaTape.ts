@@ -682,6 +682,55 @@ export function wantTape(symbol: string, grain: TapeGrain, session: DeskSession)
   };
 }
 
+/* ---- the book's one-minute bars off this store (audit D3, 2026-10-31) ----
+   The book (data/book/load.ts) used to read the vendor's one-minute bars (ohlc/1m?limit=1800) on every load beside the
+   chart's ThetaData tapes of the same name and minutes: two bar stores, two sources. On a page that reads ThetaData the
+   book now takes the chart's tapes from here, every session's one-minute bars; the vendor's are read only where the
+   terminal may not be asked (Pinpoint, the Dossier) or for a name no chart on the page reads. */
+const BOOK_SESSIONS: readonly DeskSession[] = ['overnight', 'pre', 'rth', 'post'];
+
+/** A name's one-minute bars as this store holds them, every desk session, oldest first; null until the regular
+    session's one-minute tape has been read live (not a kept copy, not while the terminal is down). */
+export function heldMinuteBars(symbol: string): Candle[] | null {
+  const name = symbol.trim().toUpperCase();
+  const rth = slots.get(keyOf(name, '1m', 'rth'));
+  if (!rth || !rth.takenAt || rth.state !== 'live' || !rth.bars.length) return null;
+  const all: Candle[] = [];
+  for (const s of BOOK_SESSIONS) {
+    const slot = s === 'rth' ? rth : slots.get(keyOf(name, '1m', s));
+    if (slot?.takenAt && slot.state === 'live') all.push(...slot.bars);
+  }
+  return dedupe(all);
+}
+
+/** The book's bars off this store: at once when held; when a chart on the page has asked for them and they have not
+    landed, once they land (at most `waitMs`); null when neither — the caller then reads its own. */
+export async function bookMinuteBars(symbol: string, waitMs = 10_000): Promise<Candle[] | null> {
+  const name = symbol.trim().toUpperCase();
+  if (typeof window === 'undefined' || thetaUseHere() !== 'all') return null;
+  /* a chart mounting with the book asks for its tapes in the same commit: one beat to hear it */
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const held = heldMinuteBars(name);
+  if (held) return held;
+  const rthKey = keyOf(name, '1m', 'rth');
+  if (!wanted.has(rthKey)) return null;
+  return new Promise(resolve => {
+    let off = () => {};
+    const finish = (v: Candle[] | null) => {
+      off();
+      window.clearTimeout(stop);
+      resolve(v);
+    };
+    const check = () => {
+      const h = heldMinuteBars(name);
+      if (h) return finish(h);
+      if (!wanted.has(rthKey) || slots.get(rthKey)?.state === 'offline') finish(null);
+    };
+    const stop = window.setTimeout(() => finish(heldMinuteBars(name)), waitMs);
+    off = subscribeTape(check);
+  });
+}
+
 const NONE: TapeRead = { bars: [], takenAt: 0, state: 'loading' };
 
 const weekly = new WeakMap<Candle[], TapeRead>();

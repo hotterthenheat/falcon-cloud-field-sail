@@ -428,6 +428,29 @@ export const whalesTermStructure = (ticker: string) => uw<UwTerm[]>(`/stock/${en
 export const whalesInterpIv = (ticker: string) => uw<UwInterp[]>(`/stock/${enc(ticker)}/interpolated-iv`);
 export const whalesBars = (ticker: string, size: '1m' | '5m' | '15m' | '1h', limit: number) =>
   uw<UwBar[]>(`/stock/${enc(ticker)}/ohlc/${size}?limit=${limit}`);
+/* ONE STORE OF A NAME'S VENDOR MINUTE BARS (audit D3): the book (Pinpoint, a name no chart reads) and the Dossier's file
+   read the same address — 1800 bars, two cash sessions and the evenings round them — shared in flight and held 30 s, so
+   a page asks once. */
+export const UW_MINUTE_LIMIT = 1800;
+const MINUTE_HOLD_MS = 30_000;
+const minuteHeld = new Map<string, { at: number; p: Promise<UwBar[]> }>();
+export function whalesMinuteBars(ticker: string): Promise<UwBar[]> {
+  const t = ticker.trim().toUpperCase();
+  const hit = minuteHeld.get(t);
+  if (hit && Date.now() - hit.at < MINUTE_HOLD_MS) return hit.p.then(rows => rows.slice());
+  const entry = { at: Date.now(), p: whalesBars(t, '1m', UW_MINUTE_LIMIT) };
+  minuteHeld.set(t, entry);
+  entry.p.then(
+    () => {
+      entry.at = Date.now();
+    },
+    () => {
+      if (minuteHeld.get(t) === entry) minuteHeld.delete(t);
+    },
+  );
+  if (minuteHeld.size > 120) for (const [k, v] of minuteHeld) if (Date.now() - v.at > MINUTE_HOLD_MS) minuteHeld.delete(k);
+  return entry.p.then(rows => rows.slice());
+}
 export interface UwDaily {
   date?: string;
   open?: string | number;

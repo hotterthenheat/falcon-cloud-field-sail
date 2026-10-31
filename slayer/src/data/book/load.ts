@@ -5,11 +5,11 @@ import { bookToday, expiryFor, isoDate, isTradingDay, nextSession, MONTHS as MON
 import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../../core/nyTime';
 import { keptOf } from '../../core/dealerSign';
 import { noteBarCloses } from '../dayChange';
-import { type GexSnapshot, type StrikeNode } from '../../types/market';
+import { type Candle, type GexSnapshot, type StrikeNode } from '../../types/market';
 import { levelsForName, readLevelsScope, type LevelsScope } from '../levelsScope';
 import { sameName } from '../spotGexBook';
 import { SIM_DESK } from '../deskMode';
-import { uwCall, whalesBars, whalesFlowStrike, whalesGreekExpiry, whalesGreekStrike, whalesGreekStrikeExpiry, whalesIvRank, whalesInterpIv, whalesOiStrike, whalesOptionContractsPaged, whalesScreener, whalesState, whalesTermStructure, type UwBar, type UwFlowStrike, type UwGreekStrike, type UwInterp, type UwIv, type UwTerm, type UwState } from '../whales';
+import { uwCall, whalesMinuteBars, whalesFlowStrike, whalesGreekExpiry, whalesGreekStrike, whalesGreekStrikeExpiry, whalesIvRank, whalesInterpIv, whalesOiStrike, whalesOptionContractsPaged, whalesScreener, whalesState, whalesTermStructure, type UwBar, type UwFlowStrike, type UwGreekStrike, type UwInterp, type UwIv, type UwTerm, type UwState } from '../whales';
 import { applyDay, needDay } from './day';
 import { historyFrom, noteSplit, vexOntoAll } from './levels';
 import { dayFracOf, dayIvOf, impliedMoveOf, termDteOf, termIvOf, termKOf, termMoveOf } from './move';
@@ -18,7 +18,8 @@ import { BOARD_MS, FULL_MS, LIVE_GAMMA_MS, cache, chartAll, chartSpan, closestDa
 import { readKept } from './kept';
 import { noteExposureRows } from './exposureLog';
 import { hasListedOptions } from '../symbolDirectory';
-import { CLOSE_MIN, candlesFrom, isCashIndex, cashToOf, closesFromTape, parseTape, quoteFromBars, regularCloseOf, thetaTape, twoCashSessions } from './tape';
+import { CLOSE_MIN, candlesFrom, isCashIndex, cashToOf, closesFromTape, parseTape, pushPrint, quoteFromBars, regularCloseOf, thetaTape, twoCashSessions, uwBarsOf } from './tape';
+import { bookMinuteBars, peekPrint } from '../thetaTape';
 
 
 /** The live open-interest gamma per strike (retail sign: calls +, puts −, dollars per 1%) — every expiry when `date` is
@@ -303,6 +304,16 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   const boardOnly = mode === 'board' && !cache.get(ticker)?.wantFull;
   /* a CBOE index has no stock-state or stock bars on this key (422 cboe_index_access_missing): neither is asked */
   const index = isCashIndex(ticker);
+  /* one bar store (audit D3): on a page that reads ThetaData, the chart's one-minute tapes of the name (data/thetaTape.ts)
+     are the book's bars; the vendor's minute bars only where the terminal may not be asked, or no chart reads the name */
+  const storeBars = bookMinuteBars(ticker).catch(() => null);
+  const asBook = (held: Candle[] | null): UwBar[] | null => {
+    if (!held?.length) return null;
+    const out = uwBarsOf(ticker, held);
+    const print = peekPrint(ticker);
+    if (print && !print.kept) pushPrint(out, print.price, print.at * 1000, ticker);
+    return out;
+  };
   const [stateRaw, strikeRaw, oiRows, flowRows, ivRows, termRows, interpRows, stockBars, live] = await Promise.all([
     index ? Promise.resolve(null) : (hot ? hotGet<UwState>(`/stock/${t}/stock-state`, true) : whalesState(ticker)).catch(() => null),
     (hot ? hotGet<UwGreekStrike[]>(`/stock/${t}/greek-exposure/strike`, true) : whalesGreekStrike(ticker)).catch(() => [] as UwGreekStrike[]),
@@ -315,7 +326,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     /* one-minute bars for every name, the same URL the full book and the Dossier read (one proxy copy) */
     /* Two cash sessions for the chart (yesterday and today). 1800 one-minute bars
        reach the prior open; the book's own candles stay today's session. */
-    index ? Promise.resolve([] as UwBar[]) : whalesBars(ticker, '1m', 1800).catch(() => [] as UwBar[]),
+    index ? Promise.resolve([] as UwBar[]) : storeBars.then(held => asBook(held) ?? whalesMinuteBars(ticker)).catch(() => [] as UwBar[]),
     liveGamma(ticker, null, hot).catch(() => null),
   ]);
   if (!still()) return;
@@ -324,7 +335,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   let bars: UwBar[] = Array.isArray(stockBars) ? stockBars : [];
   let tapeKind: 'vendor' | 'index' | 'stock' = 'vendor';
   if (bars.length === 0 && isCashIndex(ticker)) {
-    bars = await thetaTape(ticker, true);
+    bars = asBook(await storeBars) ?? (await thetaTape(ticker, true));
     if (bars.length) tapeKind = 'index';
     if (!still()) return;
   } else if (bars.length === 0) {
