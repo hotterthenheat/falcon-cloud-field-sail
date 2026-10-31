@@ -746,6 +746,12 @@ const roll = (a: PaperAccount, day: string) => {
   ok('Options Funding: a name off its 275-name whitelist is refused (NDX)', (ruleRefusal(on('of-growth-25k'), fixed(), { contract: { ticker: 'NDX', strike: 20000, right: 'C', expiry: E2 }, side: 'buy', qty: 1, kind: 'market' }, viewOf(on('of-growth-25k'), fixed()), 1) ?? '').includes('the 275 names on the firm’s list (as of 2026-10-29) only — NDX is not on it'));
   ok('…the names on it pass, written either way (SPY; BRK.B is its BRKB)', ruleRefusal(on('of-growth-25k'), fixed(), { contract: Cc(510), side: 'buy', qty: 1, kind: 'market' }, viewOf(on('of-growth-25k'), fixed()), 3.1) === null && !(ruleRefusal(on('of-growth-25k'), fixed(), { contract: { ticker: 'BRK.B', strike: 500, right: 'C', expiry: E2 }, side: 'buy', qty: 1, kind: 'market' }, viewOf(on('of-growth-25k'), fixed()), 1) ?? '').includes('not on it'));
   ok('the whitelist is data with its source: 275 names, optionsfunding.co, read 2026-10-29', OPTIONS_FUNDING_WHITELIST.names.length === 275 && new Set(OPTIONS_FUNDING_WHITELIST.names).size === 275 && OPTIONS_FUNDING_WHITELIST.url === 'https://optionsfunding.co/ticker-whitelist' && planById('of-express-50k')!.rules.underlyings === OPTIONS_FUNDING_WHITELIST.names && planById('sx-strix-25k')!.rules.underlyings === null);
+  ok('each firm’s commission is the figure its own page states (read 2026-10-31): Options Funding $0.65, TradeFundrr $0.30, Vanquish and Strix none', PROP_FIRMS.flatMap(f => f.plans).every(p => p.rules.fee === (p.firm === 'Options Funding' ? 0.65 : p.firm === 'TradeFundrr' ? 0.3 : null)));
+  ok('…Options Funding’s own example: opening and closing 10 contracts costs $13.00', (() => {
+    let x = optPlace(on('of-growth-50k'), fixed(), { contract: Cc(510), side: 'buy', qty: 10, kind: 'market' });
+    x = optClose(x, fixed(), Cc(510), 10);
+    return x.opt.fills.length === 2 && near(x.opt.fills.reduce((s, f) => s + f.fee, 0), 13);
+  })());
   const pro = on('sx-pro-50k');
   ok('Strix Pro: a credit spread is taken (a capped loss)', say(pro, { contract: bullPut }) === '');
   ok('…a call sold on its own is refused — no cap on its loss', say(pro, { contract: Cc(510) }).includes('sells only with a capped loss'));
