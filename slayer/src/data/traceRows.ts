@@ -695,9 +695,36 @@ export function prevSessionIso(iso: string = tapeSessionIso()): string {
   if (!m) return iso;
   return isoDate(sessionBefore(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))));
 }
+/** What a net-premium figure covers, so a page can say it beside the figure: the stretch (New York clocks), the source,
+    and what it leaves out. Every net figure Trace makes returns one. */
+export interface NetCovers {
+  /** "09:30" — the first minute or print counted, New York */
+  since: string;
+  /** "16:15" — the last */
+  until: string;
+  /** Whose figure: "net-prem-ticks", "market tide", "net flow by expiry", "flow by expiry", "the book's contracts", "the prints in hand" */
+  source: string;
+  /** Left out of it: "pre-market", "spread legs", "crosses", "compression", "after hours", "strikes off the cut"… */
+  leaves: string[];
+  /** True when the figure is the app's own estimate off contract shares, not the vendor's sum */
+  approx?: boolean;
+}
+const hhmm = (sec: number) => (sec > 0 ? clock(sec).time.slice(0, 5) : '—');
+/** A series' stretch, first to last point (epoch seconds) */
+export function coversOf(points: readonly { time: number }[], source: string, leaves: string[] = [], approx = false): NetCovers {
+  let first = 0;
+  let last = 0;
+  for (const p of points) {
+    if (!(p.time > 0)) continue;
+    if (!first || p.time < first) first = p.time;
+    if (p.time > last) last = p.time;
+  }
+  return { since: hhmm(first), until: hhmm(last), source, leaves, ...(approx ? { approx } : {}) };
+}
+
 /** The tide's net between two New York minutes [from, to): its running figure at the last point before `to`, less the last
     point before `from` (the tide runs from 07:30, so the regular session's own net is the difference) */
-export function tideBetween(rows: { time: number; callPrem: number; putPrem: number }[], from: number, to: number): { calls: number; puts: number; net: number; first: number; last: number } | null {
+export function tideBetween(rows: { time: number; callPrem: number; putPrem: number }[], from: number, to: number): { calls: number; puts: number; net: number; first: number; last: number; covers: NetCovers } | null {
   let base: { callPrem: number; putPrem: number } | null = null;
   let end: { time: number; callPrem: number; putPrem: number } | null = null;
   let first = 0;
@@ -713,7 +740,9 @@ export function tideBetween(rows: { time: number; callPrem: number; putPrem: num
   if (!end) return null;
   const calls = end.callPrem - (base?.callPrem ?? 0);
   const puts = end.putPrem - (base?.putPrem ?? 0);
-  return { calls, puts, net: calls - puts, first, last: end.time };
+  /* from the window's own start when a point before it is the base, else from the vendor's first minute (07:30) */
+  const since = base ? `${String(Math.floor(from / 60)).padStart(2, '0')}:${String(from % 60).padStart(2, '0')}` : hhmm(first);
+  return { calls, puts, net: calls - puts, first, last: end.time, covers: { since, until: hhmm(end.time), source: 'market tide', leaves: [] } };
 }
 
 /** A contract's OCC symbol from its parts — "SPY", 763, P, "10/22/2026" → SPY261022P00763000; an index's weekly root

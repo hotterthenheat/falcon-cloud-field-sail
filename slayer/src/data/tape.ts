@@ -3,7 +3,7 @@
 
 import type { BookContract, FlowPrint, PrintSentiment, TapeSummary } from '../types/trace';
 import { dayLean, SPREAD_LEG_PCT, SWEEP_DAY_PCT } from './traceLean';
-import { hashId } from './traceRows';
+import { coversOf, hashId, type NetCovers } from './traceRows';
 
 /** A day-book row as a print for the contract card. The anchor is the clip the caller hands in (a flow alert's print, or
     the contract's real last trade); without one the card speaks for the day — never an invented print. */
@@ -116,7 +116,9 @@ export function printKind(p: Pick<FlowPrint, 'sweep' | 'legs' | 'strat' | 'size'
   return 'SINGLE';
 }
 
-export function summarizeTape(prints: FlowPrint[]): TapeSummary {
+/** The tape's net is the prints in hand, bought less sold: spread legs, crosses, compression and mid prints are in no
+    lean; after-hours prints are said left out when none is in the set */
+export function summarizeTape(prints: FlowPrint[], afterHoursOut = !prints.some(p => p.extended)): TapeSummary & { covers: NetCovers } {
   let bull = 0;
   let bear = 0;
   let callCount = 0;
@@ -180,7 +182,8 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
     callPremium,
     putCount,
     putPremium,
-    pcRatio: callPremium > 0 ? Number((putPremium / callPremium).toFixed(2)) : 0,
+    /* no call premium is no ratio — NaN (TapeSummary types it a number), never a 0 that reads "no puts" */
+    pcRatio: callPremium > 0 ? Number((putPremium / callPremium).toFixed(2)) : NaN,
     sweeps,
     blocks,
     multi,
@@ -189,5 +192,9 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
     crosses: { count: crossCount, premium: crossPremium },
     spreadLegs: { count: legCount, premium: legPremium },
     largest: largest ? { ticker: largest.ticker, strike: largest.strike, right: largest.right, premium: largest.premium } : null,
+    covers: {
+      ...coversOf(prints.map(p => ({ time: p.epoch ?? 0 })), 'the prints in hand'),
+      leaves: ['spread legs', 'crosses', 'compression', 'mid prints', ...(afterHoursOut ? ['after hours'] : [])],
+    },
   };
 }

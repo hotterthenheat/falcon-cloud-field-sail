@@ -10,7 +10,7 @@ import type { DarkPoolPrint, DarkPoolView } from '../types/darkpool';
 import { marketPhase } from '../core/marketPhase';
 import { nyParts } from '../core/nyTime';
 import type { MoneynessKey, NetFlowSegment, SpreadTrade } from './flowBook';
-import { alertToPrint, byNewest, clock, contractRow, dteFrom, ensureIndexLevels, ensureSpots, extendedOf, heldFresh, indexRoot, lastRegularClose, liveSpotOf, liveTrades, mapBook, mapWithIndex, markAlertPackages, nextSessionIso, num, nyDateOf, nyIsoToday, prevSessionIso, printCondition, printKeyOf, printSideOf, rowsOf, SESSION_OPEN, sessionEndMin, tapeSessionIso, tickerOfRow, tradeToPrint } from './traceRows';
+import { alertToPrint, byNewest, clock, contractRow, coversOf, dteFrom, ensureIndexLevels, ensureSpots, extendedOf, heldFresh, indexRoot, lastRegularClose, liveSpotOf, liveTrades, mapBook, mapWithIndex, markAlertPackages, nextSessionIso, num, nyDateOf, nyIsoToday, prevSessionIso, printCondition, printKeyOf, printSideOf, rowsOf, SESSION_OPEN, sessionEndLabel, sessionEndMin, tapeSessionIso, type NetCovers, tickerOfRow, tradeToPrint } from './traceRows';
 import { dedupeSpreads, settleSpreadWith, spreadOf } from './traceSpreads';
 import { type DarkDay, darkDayOf, darkLevels, darkPrint, darkView, mergeDark } from './traceDark';
 
@@ -1690,7 +1690,7 @@ const minuteOf = (iso: unknown) => {
 
 /** The pane's lines are the vendor's minutes: a name's net-prem-ticks priced by its one-minute closes; a cut's
     /net-flow/expiry; a sector its own tide. */
-export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; mny: MoneynessKey; zeroDte: boolean; enabled: boolean }): LivePack<PaneFlowPoint[]> {
+export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; mny: MoneynessKey; zeroDte: boolean; enabled: boolean }): LivePack<PaneFlowPoint[]> & { covers: NetCovers } {
   const { ticker, seg, mny, zeroDte, enabled } = opts;
   const name = (ticker || '').trim().toUpperCase();
   const key = name ? `pane:${name}` : `pane:${seg}:${mny}:${zeroDte ? '0' : 'w'}`;
@@ -1701,7 +1701,19 @@ export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; 
   const bars = useLive(name ? `pane-bars:${name}` : 'pane-bars:off', async () => getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?limit=1000`).catch(() => [] as Record<string, unknown>[]), [] as Record<string, unknown>[], enabled && !!name, MINUTE_POLL_MS);
   const named = useMemo<PaneFlowPoint[]>(() => (name ? paneFromTicks(name, ticks.rows, bars.rows) : []), [name, ticks.rows, bars.rows]);
   const cut = useLive(name ? 'pane:cut:off' : key, () => readPaneCut(seg, mny, zeroDte), [] as PaneFlowPoint[], enabled && !name, MINUTE_POLL_MS);
-  return name ? { rows: named, at: ticks.at, fault: ticks.fault, waiting: ticks.waiting, kept: ticks.kept } : cut;
+  const covers = useMemo(() => (name ? paneCovers(name, named) : cutCovers(seg, mny, zeroDte, cut.rows)), [name, named, seg, mny, zeroDte, cut.rows]);
+  return name ? { rows: named, at: ticks.at, fault: ticks.fault, waiting: ticks.waiting, kept: ticks.kept, covers } : { ...cut, covers };
+}
+
+/** What a name's pane line covers: its regular session's minute ticks, every expiry and strike, from 09:30 — a cut's
+    line or the tide runs from the vendor's own day start (07:30), so the two are said apart */
+export function paneCovers(name: string, points: readonly PaneFlowPoint[]): NetCovers {
+  return coversOf(points, 'net-prem-ticks', ['pre-market', `after ${sessionEndLabel(name)}`]);
+}
+/** What a cut's line covers: the vendor's net flow by expiry (or a sector's tide) from its first minute */
+export function cutCovers(seg: NetFlowSegment, mny: MoneynessKey, zeroDte: boolean, points: readonly PaneFlowPoint[]): NetCovers {
+  if (seg.startsWith('sector:')) return coversOf(points, 'sector tide', []);
+  return coversOf(points, 'net flow by expiry', [...(mny !== 'all' ? [`strikes not ${mny.toUpperCase()}`] : []), zeroDte ? 'expiries after today' : 'expiries past the week']);
 }
 
 /** A name's running net call and put premium through its regular session, priced by its one-minute closes */
