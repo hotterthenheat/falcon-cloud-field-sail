@@ -280,7 +280,7 @@ const CongressCoverageLine = ({ coverage, window, unread, notMembers }: { covera
   /* "complete" only with no day read short */
   const done = covered && !coverage.reading && partial.length === 0;
   return (
-    <p className="px-5 pb-2 text-t11 leading-relaxed text-textMuted" data-congress-coverage title="Our data provider sends at most 200 reports a request, newest trade first; the page asks again from the oldest trade day it reached">
+    <span className="block px-5 pb-2 text-t11 leading-relaxed text-textMuted" data-congress-coverage title="Our data provider sends at most 200 reports a request, newest trade first; the page asks again from the oldest trade day it reached">
       {covered
         ? `${done ? 'Complete · ' : ''}Every report of a trade made since ${shortDay(start)}`
         : coverage.since
@@ -294,7 +294,7 @@ const CongressCoverageLine = ({ coverage, window, unread, notMembers }: { covera
       {notMembers ? (
         <span data-congress-not-members>{` · ${notMembers.toLocaleString('en-US')} executive-branch ${notMembers === 1 ? 'filing' : 'filings'} on the same feed (the President's and officials' OGE reports) left out — not members of Congress`}</span>
       ) : null}
-    </p>
+    </span>
   );
 };
 
