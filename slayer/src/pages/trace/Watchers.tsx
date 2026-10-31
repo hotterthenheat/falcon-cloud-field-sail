@@ -227,7 +227,7 @@ const Watchers = () => {
           </span>
         ),
       },
-      { key: 'contract', header: 'Contract', align: 'right', sortValue: a => a.row.strike, render: a => <ContractCell strike={a.row.strike} right={a.row.right} expiry={a.row.expiry} /> },
+      { key: 'contract', header: 'Contract', align: 'right', sortValue: a => a.row.strike, render: a => <ContractCell strike={a.row.strike} right={a.row.right} expiry={a.row.expiry} stack /> },
       { key: 'dte', header: 'DTE', align: 'right', sortValue: a => a.row.dte, render: a => <span className="text-textPrimary">{a.row.dte}d</span> },
       {
         key: 'reason',
@@ -258,9 +258,11 @@ const Watchers = () => {
         header: 'Last fill',
         align: 'right',
         sortValue: a => a.last,
+        /* the fill over its time: the column is the figure's width, not the two side by side */
         render: a => (
-          <span className="text-textPrimary">
-            ${a.last.toFixed(2)} <span className="text-t11 text-textSecondary">{a.time}</span>
+          <span className="inline-flex flex-col items-end align-middle leading-tight text-textPrimary whitespace-nowrap">
+            <span>${a.last.toFixed(2)}</span>
+            <span className="text-t11 text-textSecondary">{a.time}</span>
           </span>
         ),
       },
@@ -274,7 +276,7 @@ const Watchers = () => {
       },
       { key: 'vol', header: 'Vol', align: 'right', sortValue: a => a.row.volume, render: a => <span className={weightInk(a.row.volume, marks.vol)}>{num(a.row.volume)}</span> },
       { key: 'oi', header: 'OI', align: 'right', sortValue: a => a.row.oi, render: a => <span className={weightInk(a.row.oi, marks.oi)}>{num(a.row.oi)}</span> },
-      { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: a => a.row.volOverOI, render: a => <span className={a.row.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'} title={a.row.volOverOI > 0 || !(a.row.volume > 0) ? undefined : 'No open interest before the session — a new contract'}>{volOiText(a.row)}<OpeningTag flag={a.row.likelyOpening} volume={a.row.volume} oi={a.row.oi} /></span> },
+      { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: a => a.row.volOverOI, render: a => <span className={`inline-flex flex-col items-end gap-[2px] leading-none align-middle [&>[data-likely-opening]]:ml-0 ${a.row.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={a.row.volOverOI > 0 || !(a.row.volume > 0) ? undefined : 'No open interest before the session — a new contract'}>{volOiText(a.row)}<OpeningTag flag={a.row.likelyOpening} volume={a.row.volume} oi={a.row.oi} /></span> },
       { key: 'otm', header: 'OTM %', align: 'right', sortValue: a => otmSortValue(a.row.otmPct), render: a => <OtmCell otmPct={a.row.otmPct} ticker={a.row.ticker} /> },
       {
         key: 'earn',

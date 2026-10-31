@@ -33,8 +33,11 @@ const ContractCell = ({
   spot,
   otmPct,
   ticker,
+  stack = false,
 }: {
   ticker?: string;
+  /** No sub-line: the expiry stands under the strike and side, so a grid's contract column is half as wide */
+  stack?: boolean;
   strike: number;
   right: 'C' | 'P';
   expiry: string;
@@ -52,6 +55,16 @@ const ContractCell = ({
     dte = undefined;
   }
   const context = dte !== undefined || spot !== undefined || otmPct !== undefined;
+  if (stack && !context)
+    return (
+      <span className={`group/door inline-flex flex-col items-end gap-[3px] align-middle ${DOOR}`}>
+        <span className="inline-flex items-baseline gap-1.5 leading-none">
+          <span className={`font-mono text-xs font-bold text-textPrimary tnum ${DOOR_GROUP_TEXT}`}>{strike}</span>
+          <span className={`font-mono text-t11 font-semibold ${right === 'C' ? 'text-bull' : 'text-bear'} ${DOOR_GROUP_TEXT}`}>{right === 'C' ? 'call' : 'put'}</span>
+        </span>
+        <span className={`font-mono text-t11 leading-none text-textMuted tnum whitespace-nowrap ${DOOR_GROUP_TEXT}`}>{expiryLabel(expiry)}</span>
+      </span>
+    );
   /* leading-none + align-middle: a grid cell hands its children a 36px line, which would push the door out of a 39px row */
   const head = (
     <span className={`group/door inline-flex items-baseline gap-1.5 pb-[2px] leading-none align-middle ${DOOR}`}>

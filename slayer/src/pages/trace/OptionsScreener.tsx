@@ -108,7 +108,7 @@ const TOOLTIPS: Record<string, string> = {
   otm: 'Out of the money by this much of the spot, calls and puts alike',
   voloi: 'Volume over the open interest the session opened on; 1.5+ means positions built today',
   vol: "The screener's day volume, as of the last fill",
-  last: 'The last fill, its New York time, and the change on the previous close',
+  last: 'The last fill and the change on the previous close; its New York time is the row’s Time',
   sweep: 'Share of the volume swept across exchanges',
   floor: 'Share that printed on the floor',
   multi: 'Share that traded as legs of multi-leg orders',
@@ -243,7 +243,7 @@ const OptionsScreener = () => {
           </span>
         ),
       },
-      { key: 'contract', header: 'Contract', align: 'right', sortValue: r => r.strike, render: r => <ContractCell strike={r.strike} right={r.right} expiry={r.expiry} /> },
+      { key: 'contract', header: 'Contract', align: 'right', sortValue: r => r.strike, render: r => <ContractCell strike={r.strike} right={r.right} expiry={r.expiry} stack /> },
       { key: 'dte', header: 'DTE', align: 'right', sortValue: r => r.dte, render: r => <span className="text-textPrimary">{r.dte}d</span> },
       { key: 'otm', header: 'OTM %', align: 'right', sortValue: r => otmSortValue(r.otmPct), render: r => <OtmCell otmPct={r.otmPct} ticker={r.ticker} spot={r.spot} /> },
       {
@@ -251,9 +251,11 @@ const OptionsScreener = () => {
         header: 'Fill · Chg',
         align: 'right',
         sortValue: r => (Number.isFinite(r.chgPct) ? r.chgPct : -Infinity),
+        /* the fill over its change: the column is the figure's width, so the grid fits a 1280 screen. Its time is the
+           row's Time (the same last print), so it is not said twice */
         render: r => (
-          <span className="text-textPrimary">
-            ${r.last.toFixed(2)} {r.lastAt && r.lastAt !== '—' && <span className="text-t11 text-textSecondary">{r.lastAt}</span>}{' '}
+          <span className="inline-flex flex-col items-end align-middle leading-tight text-textPrimary whitespace-nowrap" title={r.lastAt && r.lastAt !== '—' ? `Filled at ${r.lastAt} ET` : undefined}>
+            <span>${r.last.toFixed(2)}</span>
             {Number.isFinite(r.chgPct) ? <span className={`text-t11 ${r.chgPct >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>{pctSigned(r.chgPct, 1)}</span> : <span className="text-t11 text-textMuted">new</span>}
           </span>
         ),
@@ -271,11 +273,20 @@ const OptionsScreener = () => {
           if (r.deltaOI === 0) return <span className="text-textSecondary" title={oiRowTitle(r)}>{lag}—</span>;
           const a = Math.abs(r.deltaOI);
           const tone = lag ? 'text-textPrimary' : a >= marks.doi.top ? 'text-supreme font-bold' : a >= marks.doi.bar ? (r.deltaOI > 0 ? 'text-bull dir-up' : 'text-bear dir-down') : 'text-textPrimary';
+          const tail = doiTail(r);
+          /* the change over its share (and the day a lagging count is on): the column is the figure's width */
           return (
-            <span className={tone} title={oiRowTitle(r)}>
-              {lag}
-              {r.deltaOI > 0 ? '+' : '−'}
-              {num(a)} <span className="text-t11">{doiTail(r)}</span>
+            <span className={`inline-flex flex-col items-end align-middle leading-tight whitespace-nowrap ${tone}`} title={oiRowTitle(r)}>
+              <span>
+                {r.deltaOI > 0 ? '+' : '−'}
+                {num(a)}
+              </span>
+              {(lag || tail) && (
+                <span className="text-t11">
+                  {lag}
+                  {tail}
+                </span>
+              )}
             </span>
           );
         },
@@ -283,13 +294,14 @@ const OptionsScreener = () => {
       { key: 'prem', header: 'Prem', align: 'right', sortValue: r => r.premium, render: r => <span className={weightInk(r.premium, marks.prem)}><TickFigure value={r.premium}>{fmtUsd(r.premium)}</TickFigure></span> },
       {
         key: 'iv',
-        header: 'IV · IV chg',
+        header: 'IV · chg',
         align: 'right',
         sortValue: r => r.iv,
         render: r =>
           r.iv > 0 ? (
-            <span className="text-textPrimary">
-              {r.iv.toFixed(0)}%{' '}
+            /* the level over its change on the day */
+            <span className="inline-flex flex-col items-end align-middle leading-tight text-textPrimary whitespace-nowrap">
+              <span>{r.iv.toFixed(0)}%</span>
               <span className={`text-t11 ${r.ivChg >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>
                 {r.ivChg >= 0 ? '+' : '−'}
                 {Math.abs(r.ivChg).toFixed(Math.abs(r.ivChg) >= 100 ? 0 : 1)}
@@ -299,7 +311,7 @@ const OptionsScreener = () => {
             <span className="text-textMuted">—</span>
           ),
       },
-      { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: r => r.volOverOI, render: r => <span className={`font-mono tnum ${r.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.volOverOI > 0 || !(r.volume > 0) ? undefined : 'No open interest before the session — a new contract'}>{volOiText(r)}<OpeningTag flag={r.likelyOpening} volume={r.volume} oi={r.oi} /></span> },
+      { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: r => r.volOverOI, render: r => <span className={`inline-flex flex-col items-end gap-[2px] leading-none align-middle [&>[data-likely-opening]]:ml-0 font-mono tnum ${r.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.volOverOI > 0 || !(r.volume > 0) ? undefined : 'No open interest before the session — a new contract'}>{volOiText(r)}<OpeningTag flag={r.likelyOpening} volume={r.volume} oi={r.oi} /></span> },
       { key: 'sweep', header: 'Sweep', align: 'right', sortValue: r => r.sweepPct, render: r => <span className={r.sweepPct >= 40 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.sweepPct)}%</span> },
       { key: 'floor', header: 'Floor', align: 'right', sortValue: r => r.floorPct, render: r => (r.floorPct === 0 ? <span className="text-textSecondary">—</span> : <span className={r.floorPct >= 50 ? 'text-textPrimary font-bold' : 'text-textPrimary'}>{Math.round(r.floorPct)}%</span>) },
       { key: 'multi', header: 'Multi', align: 'right', sortValue: r => r.multiPct, render: r => <span className={r.multiPct >= 30 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.multiPct)}%</span> },
