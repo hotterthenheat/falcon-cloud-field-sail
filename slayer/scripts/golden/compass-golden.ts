@@ -729,6 +729,34 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   const c = await minuteBars('QQQ', day11, 629);
   const d = await minuteBars('QQQ', day11, 629);
   expectEqual('stale bars: read, memo inside 2 s, read again once it is older and short of t-1, then memo', [a.at(-1)?.m, b2.at(-1)?.m, inside, c.at(-1)?.m, d.at(-1)?.m, reads], [628, 628, 1, 629, 629, 2]);
+  /* one read answers every name of a pass that asks for the same bars at once (SPY, a sector ETF) */
+  reads = 0;
+  await Promise.all(Array.from({ length: 6 }, () => minuteBars('IWM', day11)));
+  expectEqual('shared bar read: six names at once, one request (was six)', reads, 1);
+}
+
+/* ---- 12. the weekly read reaches Book B ------------------------------------------------------------------- */
+{
+  const { WEEKLY_STRIKES, bookBRange } = await import('../../src/data/compassParams');
+  const { setCompassHost } = await import('../../src/data/compassHost');
+  const { atMark, weeklyExpiry } = await import('../../src/data/compassScan');
+  /* Book B sits 8 to 12 strikes out on an index root, up to 13 to 17 on a 12-strike span; the weekly read was 4 */
+  expectEqual('Book B bands: index span 4 → 8..12, span 12 → 13..17; weekly read reaches 17', [bookBRange(4), bookBRange(12), WEEKLY_STRIKES], [{ inner: 8, outer: 12 }, { inner: 13, outer: 17 }, 17]);
+  const paths: string[] = [];
+  setCompassHost({
+    server: true,
+    theta: async p => {
+      paths.push(p);
+      if (p.startsWith('/option/list/expirations')) return { status: 200, data: [{ expiration: '2026-10-30' }, { expiration: '2026-11-02' }, { expiration: '2026-11-06' }], error: null };
+      return { status: 472, data: null, error: 'no_data' };
+    },
+    asset: async () => null,
+    econ: () => [],
+  });
+  const m12 = nyWallTime(2026, 10, 30, 10, 30);
+  expectEqual('nearest weekly expiry 1 to 7 sessions out', await weeklyExpiry('TLT', m12), '2026-11-02');
+  await atMark('TLT', m12, 'weekly');
+  expectEqual('the weekly read asks Book B\'s band (strike_range 17, was 4)', paths.filter(p => p.startsWith('/option/at_time/quote')).map(p => /strike_range=(\d+)/.exec(p)?.[1]), ['17']);
 }
 
 done();

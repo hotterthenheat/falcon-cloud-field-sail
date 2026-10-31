@@ -36,6 +36,7 @@ import {
   thetaBurns,
   lotteryEntry,
   P1_MIN,
+  WEEKLY_STRIKES,
   MODEL_1_NAME,
   MODEL_2_NAME,
   entryTimeOk,
@@ -43,7 +44,7 @@ import {
   flatTOf,
 } from './compassParams';
 import { COMPASS_TICKERS } from './compassUniverse';
-import { optionScanOpen, sessionDayOpen, sessionYmd } from './compassSession';
+import { optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
 import type { OptionRight, Setup } from '../types/compass';
 import type { PathBar } from './compassOutcome';
 import { CORE, INDEX, INPUT_NAMES, NO_DAILY, SECTOR_OF, UNDER, atmPair, curveFrom, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
@@ -245,15 +246,25 @@ async function loadBars(symbol: string, day: string, strict = false, need?: numb
   const path = index
     ? `/index/history/ohlc?symbol=${root}&start_date=${day}&end_date=${day}&interval=1m&format=json`
     : `/stock/history/ohlc?symbol=${root}&start_date=${day}&end_date=${day}&interval=1m&format=json`;
-  const got = await compassHost().theta(path);
+  /* every name of a pass reads SPY's and its sector ETF's bars at once: one request answers them all */
+  let job = barReads.get(key);
+  if (!job) {
+    job = compassHost().theta(path).finally(() => barReads.delete(key));
+    barReads.set(key, job);
+  }
+  const got = await job;
   if (faulted(got)) {
     if (strict) throw new InputFault(path);
     return hit?.bars ?? [];
   }
+  const memo = barMemo.get(key);
+  if (memo && memo.at >= Date.now() - 50 && memo !== hit) return memo.bars;
   const bars = got.error ? [] : barsOf(got.data);
   barMemo.set(key, { at: Date.now(), bars });
   return bars;
 }
+
+const barReads = new Map<string, Promise<{ status: number; data: unknown; error: string | null }>>();
 
 /** The scan's one-minute bar read (and memo), for the golden. */
 export const minuteBars = (symbol: string, day: string, need?: number): Promise<Bar[]> => loadBars(symbol, day, false, need);
@@ -329,8 +340,20 @@ async function fetchCurve(symbol: string, now: number): Promise<Curve | null> {
   return curveFrom(got.reverse().flat());
 }
 
+const priceMemo = new Map<string, { at: number; job: Promise<number> }>();
+
+/** The last trade of a stock or ETF now, shared by every name of a pass for three seconds (each name used to ask for
+    SPY's and its sector's trade on its own). */
+function priceNow(symbol: string): Promise<number> {
+  const hit = priceMemo.get(symbol);
+  if (hit && Date.now() - hit.at < 3_000) return hit.job;
+  const job = readPrice(symbol);
+  priceMemo.set(symbol, { at: Date.now(), job });
+  return job;
+}
+
 /** The last trade of a stock or ETF now (ThetaData's trade snapshot), or NaN. */
-async function priceNow(symbol: string): Promise<number> {
+async function readPrice(symbol: string): Promise<number> {
   const got = await compassHost().theta(`/stock/snapshot/trade?symbol=${encodeURIComponent(symbol)}&format=json`, true);
   if (got.error) return NaN;
   const row = (Array.isArray(got.data) ? got.data[0] : null) as Record<string, unknown> | null;
@@ -392,12 +415,35 @@ async function drain(now: number): Promise<void> {
   warming = false;
 }
 
+/** The session's one-time reads for these names, in the background and two at a time: the prior session's bars and
+    the volume curve (fifteen sessions of bars a name). A first mark used to wait on them inside its minute. */
+export async function warmSession(names: readonly string[], now = Date.now()): Promise<void> {
+  const unders = [...new Set(names.map(n => UNDER[n] ?? printOf(n)))];
+  const day = sessionYmd(now);
+  let i = 0;
+  const run = async () => {
+    while (i < unders.length) {
+      const name = unders[i++];
+      while (scanBusyFlag) await new Promise(resolve => setTimeout(resolve, 400));
+      try {
+        await loadPrior(name, day, false);
+        await curveFor(name, now);
+      } catch {
+        /* the pass reads it itself */
+      }
+    }
+  };
+  await Promise.all([run(), run()]);
+}
+
 /** Open interest per strike of one expiry, from ThetaData's open-interest snapshot (one ask per name and expiry). */
 async function pinOf(ticker: string, expiry: string, spot: number, strict = false): Promise<PinBook | null> {
   if (!CORE.has(ticker)) return null;
-  const key = `${ticker}|${expiry}`;
+  /* open interest is the clearing house's overnight count: it does not change inside a session, so one read a
+     session (an empty answer is asked again after five minutes) */
+  const key = `${ticker}|${expiry}|${sessionYmd(Date.now())}`;
   const hit = pinCache.get(key);
-  if (hit && Date.now() - hit.at < 5 * 60_000) return hit.book;
+  if (hit && (hit.book || Date.now() - hit.at < 5 * 60_000)) return hit.book;
   const got = await compassHost().theta(`/option/snapshot/open_interest?symbol=${encodeURIComponent(ticker)}&expiration=${expiry.replace(/-/g, '').slice(0, 8)}&format=json`);
   if (strict && faulted(got)) throw new InputFault('open interest');
   const byStrike = new Map<number, { strike: number; call: number; put: number }>();
@@ -509,7 +555,13 @@ async function seedQuotes(list: Setup[], now: number, strict = false): Promise<S
   const byContract = new Map<string, string>();
   for (const s of list) byContract.set(`${s.strike}|${s.right}`, s.id);
   const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:00`;
-  const got = await compassHost().theta(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&strike_range=16&interval=1m&start_time=${hm(Math.max(0, mark - 30))}&end_time=${hm(mark)}&format=json`);
+  /* The scan reads the quotes 5, 15 and 30 minutes back. On a 5-minute mark those are 5-minute points, and ThetaData's
+     5-minute NBBO points are its 1-minute ones at those instants (checked: SPY 2026-10-29 10:00-10:30, 56 of 56
+     equal), so the window is asked at 5 minutes: 7 points a contract, not 31. 09:29, 15:59 and 16:14 keep 1 minute.
+     A weekly expiry reads Book B's band (to 17 strikes out); the same-day read stays at 16. */
+  const step = clock.minute % 5 === 0 && mark === clock.hour * 60 + clock.minute ? 5 : 1;
+  const weekly = first.expiryDate.slice(0, 10) !== sessionIso(now);
+  const got = await compassHost().theta(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&strike_range=${weekly ? WEEKLY_STRIKES : 16}&interval=${step}m&start_time=${hm(Math.max(0, mark - 30))}&end_time=${hm(mark)}&format=json`);
   if (faulted(got)) {
     /* not marked as read: the next pass asks again, and a strict one does not score without it */
     if (strict) throw new InputFault('quotes 30 minutes back');
