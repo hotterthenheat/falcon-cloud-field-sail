@@ -22,7 +22,7 @@ export interface BookAtStrike {
   share: number;
   lean: Lean;
   role: 'call wall' | 'put wall' | 'supreme' | null;
-  /** Percent from the flip, signed (+ above) */
+  /** Percent from the flip, signed (+ above) — NaN when the book has no flip within ±10% (never 0, "on the flip") */
   flipDistPct: number;
   held: { tests: number; held: number; broke: number } | null;
   /** The odds the 4:00 print lands at or ABOVE the strike, percent — null when the close could not be read */
@@ -100,7 +100,7 @@ export function buildBook(ticker: string, profile: ExposureProfileData): Book {
       /* the house sign: negative = call-heavy = dealers absorb (push back); positive = put-heavy = they amplify (push along) */
       lean: r.net < 0 ? 'push back' : 'push along',
       role: r.role,
-      flipDistPct: flip > 0 ? ((r.strike - flip) / flip) * 100 : 0,
+      flipDistPct: Number.isFinite(flip) && flip > 0 ? ((r.strike - flip) / flip) * 100 : Number.NaN,
       held: bars.length ? testEvents(bars, r.strike, r.strike >= spot ? 'call' : 'put') : null,
       oddsAbove: above == null ? null : Math.min(100, above),
       oddsBelow: below == null ? null : Math.min(100, below),

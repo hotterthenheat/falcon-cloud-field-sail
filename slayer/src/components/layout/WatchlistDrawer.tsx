@@ -19,7 +19,8 @@ import {
   unwatchName, useNameWatch, useWatchlistOpen, watchName, type WatchSection, type WatchedName,
 } from '../../data/nameWatch';
 import CompanyLogo from '../ui/CompanyLogo';
-import { pickLegWalls } from '../../core/walls';
+import { scopeWalls } from '../../data/book/levels';
+import { levelsForName } from '../../data/levelsScope';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import TickerLookup from '../ui/TickerLookup';
 
@@ -56,9 +57,9 @@ function readName(symbol: string, uwOnly: boolean): NameRead {
   const change = uwOnly ? (q ? (q.phase === 'regular' ? q.changePct : q.extPct) : null) : thetaMove(held?.value)?.pct ?? null;
   const book = peekEntry(symbol);
   let near: NameRead['near'] = null;
-  if (spot != null && spot > 0 && book?.status === 'live' && book.all.length) {
-    /* the walls by the app's one rule (core/walls.ts): the most call-leg and the most put-leg gamma on the book */
-    const walls = pickLegWalls(book.all, x => x.callGex, x => x.putGex);
+  const walls = spot != null && spot > 0 && book?.status === 'live' ? scopeWalls(symbol, levelsForName(symbol)) : null;
+  if (spot != null && spot > 0 && walls) {
+    /* the walls Pinpoint prints for this name's levels scope (core/walls.ts, on the live chain: settled dates off) */
     const marks = [
       walls.callWall != null ? { word: 'call wall', at: walls.callWall } : null,
       walls.putWall != null ? { word: 'put wall', at: walls.putWall } : null,

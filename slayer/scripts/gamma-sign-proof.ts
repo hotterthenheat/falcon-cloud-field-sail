@@ -18,7 +18,7 @@ import { buildFlowFromRows, buildHedgeFlowLadder } from '../src/data/hedgeFlow';
 import { blackScholesGreeks } from '../src/core/greeks';
 import { dealerOf, keptLeg, keptVendorLeg } from '../src/core/dealerSign';
 import { dealerInventory } from '../src/core/volClock';
-import { dealerPuts } from '../src/data/book/scale';
+import { dealerPuts, emptyNode } from '../src/data/book/scale';
 import { shownGreek } from '../src/components/gex/retailSign';
 import type { StrikeNode } from '../src/types/market';
 
@@ -317,6 +317,14 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   const fri = Date.parse('2026-10-30T18:00:00Z');
   const got = [sessionsTo('2026-10-30', fri), sessionsTo('2026-11-02', fri), sessionsTo('2026-11-06', fri), sessionsTo('2026-11-27', Date.parse('2026-11-25T15:00:00Z'))];
   check(`sessions to expiry from Fri 10/30: same day ${got[0]}, Mon ${got[1]} (3 calendar days), next Fri ${got[2]}; Wed 11/25 → Fri 11/27 over Thanksgiving ${got[3]}`, JSON.stringify(got) === JSON.stringify([0, 1, 5, 1]));
+}
+
+/* 14 — a level the book does not have is blank, never the spot: a call-only book at 100 has no put wall and no flip */
+{
+  const { buildVannaCharm } = await import('../src/data/vannacharm');
+  const chain = [100, 105].map(k => ({ ...emptyNode(k), callGex: -1e6, netGex: -1e6, callOI: 100 }));
+  const vc = buildVannaCharm({ ticker: 'TEST', spot: 100, chain } as never, 'CHARM', -1);
+  check(`call-only book: put wall ${vc.read.putWall.price} (${vc.read.putWall.distPct}%), flip ${vc.read.flip.price} — not 100 "0.00% away"`, Number.isNaN(vc.read.putWall.price) && Number.isNaN(vc.read.putWall.distPct) && Number.isNaN(vc.read.flip.price) && vc.read.callWall.price === 100);
 }
 
 if (fail) {
