@@ -30,7 +30,7 @@ export interface GammaLeg {
 export interface FlipRead {
   /** The price where net gamma crosses zero, nearest spot inside the range — null when it does not cross there */
   flip: number | null;
-  /** Net gamma at spot, house sign (negative = dealers long gamma = absorbs) — the book's own net */
+  /** Net gamma at spot, house sign (negative = dealers long gamma = absorbs), re-priced AT spot: the book's own net when its legs were priced there */
   netAtSpot: number;
   /** The sign of net gamma between spot and the flip's far side: what the book becomes beyond the flip */
   beyond: 'long' | 'short' | null;
@@ -149,6 +149,13 @@ export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r?: numb
      the book is re-priced there like anywhere else */
   const ownSpot = legs.every(l => !l.s0 || l.s0 === spot);
   const at = (S: number) => (S === spot && ownSpot ? net0 : broadAt(S) + netGammaAt(narrow, spot, S, r, q));
+  /* a bracket found on the read-between grid is closed on the exact re-priced net, so the flip does not move with where
+     the grid happens to fall (spot is a grid point): the same book gives the same flip from any spot */
+  const exact = (S: number) => (S === spot && ownSpot ? net0 : netGammaAt(broad, spot, S, r, q) + netGammaAt(narrow, spot, S, r, q));
+  /* The net AT SPOT, re-priced there (spot is on both grids, so this is exact): a book priced at another price — the
+     close, read before the open — is not its own net at spot. The regime is read where price is, on the curve the
+     crossing is searched on, so the two never disagree. */
+  const netAtSpot = at(spot);
   const maxG = narrow.reduce((m, l) => Math.max(m, Math.abs(l.g0)), 0);
   let width = Infinity;
   for (const l of narrow) if (Math.abs(l.g0) >= 0.01 * maxG) width = Math.min(width, l.iv * Math.sqrt(l.t) * spot);
@@ -161,29 +168,46 @@ export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r?: numb
   let best: number | null = null;
   let bestD = Infinity;
   const all: number[] = [];
-  for (let i = 1; i < xs.length; i++) {
-    const y0 = ys[i - 1];
-    const y1 = ys[i];
-    if (y0 === 0 || y1 === 0 || Math.sign(y0) === Math.sign(y1)) continue;
-    /* bisection inside the bracket */
-    let a = xs[i - 1];
-    let b = xs[i];
-    let fa = y0;
-    for (let k = 0; k < 28; k++) {
-      const m = (a + b) / 2;
-      const fm = at(m);
-      if (Math.sign(fm) === Math.sign(fa)) {
-        a = m;
-        fa = fm;
-      } else b = m;
-    }
-    const x = (a + b) / 2;
+  const keep = (x: number) => {
     all.push(x);
     const d = Math.abs(x - spot);
     if (d < bestD) {
       bestD = d;
       best = x;
     }
+  };
+  /* Walk the nonzero points: a change of sign between two of them is a crossing. Across a run of exact zeros it is the
+     run's middle (a single zero point: that point) — never skipped; a zero touched without a change of sign is none. */
+  let j = -1;
+  for (let i = 0; i < xs.length; i++) {
+    if (ys[i] === 0) continue;
+    if (j >= 0 && Math.sign(ys[j]) !== Math.sign(ys[i])) {
+      if (i - j > 1) keep((xs[j + 1] + xs[i - 1]) / 2);
+      else {
+        let a = xs[j];
+        let b = xs[i];
+        const ea = exact(a);
+        const eb = exact(b);
+        /* the exact net brackets too (it nearly always does): bisect it; else the grid's own line */
+        const f = ea !== 0 && eb !== 0 && Math.sign(ea) !== Math.sign(eb) ? exact : at;
+        let fa = f === exact ? ea : ys[j];
+        for (let k = 0; k < 40; k++) {
+          const m = (a + b) / 2;
+          const fm = f(m);
+          if (fm === 0) {
+            a = b = m;
+            break;
+          }
+          if (Math.sign(fm) === Math.sign(fa)) {
+            a = m;
+            fa = fm;
+          } else b = m;
+        }
+        keep((a + b) / 2);
+      }
+    }
+    j = i;
   }
-  return { flip: best, netAtSpot: net0, beyond: best == null ? null : net0 < 0 ? 'short' : 'long', range, method: 'repriced', crossings: all };
+  const flip: number | null = best;
+  return { flip, netAtSpot, beyond: flip == null ? null : netAtSpot < 0 ? 'short' : 'long', range, method: 'repriced', crossings: all };
 }
