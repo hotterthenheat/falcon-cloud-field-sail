@@ -7,6 +7,7 @@ import { daysBetween, lastSessionIso, nyDayOf, nyTodayIso } from './nyDate';
 import type { DarkPoolPrint } from '../types/darkpool';
 import type { FlowPrint } from '../types/trace';
 import { darkPrint } from './traceLive';
+import { darkSizedFloor } from './traceDark';
 import { hashId, otmOf } from './traceRows';
 import { alertSides, darkPrintKey } from './sidesRule';
 import { uwCall, whalesAnalysts, whalesBars, whalesDailyLong, whalesEarnings, whalesFinancials, whalesOptionContracts, whalesScreener, whalesStock, type UwDaily } from './whales';
@@ -243,7 +244,8 @@ function darksFrom(rows: Record<string, unknown>[], spot: number): DarkPoolPrint
 }
 
 /* The tape is asked on the session the page names (to its 16:00 close once passed), as two asks merged on the print's
-   identity: the $500K+ prints and the 10,000-share+ prints. */
+   identity: the prints of DARK_MIN_PREMIUM and up — lowered to the name's own sized line (traceDark darkSizedFloor)
+   when that is under it, so every print the posture reads is asked for — and the 10,000-share+ prints. */
 const DARK_MIN_PREMIUM = 500_000;
 const DARK_MIN_SIZE = 10_000;
 
@@ -309,13 +311,17 @@ async function pageBack(base: string, stamp: string, limit: number, startMs: num
 /* When either ask could not page back to the open, both are cut to the window the shorter covers, so every print in the
    read is from one stated window. */
 const DARK_LIMIT = 500;
-async function darkTape(ticker: string, session: string): Promise<{ rows: Record<string, unknown>[]; window: TapeWindow }> {
+async function darkTape(ticker: string, session: string, headP: Promise<StockFile | null>): Promise<{ rows: Record<string, unknown>[]; window: TapeWindow }> {
+  /* the name's average day from the head's screener row; none known, the $250K floor */
+  const head = await headP.catch(() => null);
+  const adv = num(head?.screen?.avg30_volume) * num(head?.screen?.close);
+  const minPremium = Math.round(Math.min(DARK_MIN_PREMIUM, darkSizedFloor(adv > 0 ? adv : null)));
   const closeMs = nyInstant(session, 16);
   const openMs = nyInstant(session, 9, 30);
   const endMs = Date.now() >= closeMs ? closeMs : null;
   const base = `/darkpool/${encodeURIComponent(ticker)}?date=${session}&limit=${DARK_LIMIT}`;
   const [byPrem, bySize] = await Promise.all([
-    pageBack(`${base}&min_premium=${DARK_MIN_PREMIUM}`, 'executed_at', DARK_LIMIT, openMs, endMs, 12, darkPrintKey),
+    pageBack(`${base}&min_premium=${minPremium}`, 'executed_at', DARK_LIMIT, openMs, endMs, 12, darkPrintKey),
     pageBack(`${base}&min_size=${DARK_MIN_SIZE}`, 'executed_at', DARK_LIMIT, openMs, endMs, 6, darkPrintKey),
   ]);
   if (byPrem.error && bySize.error && !byPrem.rows.length && !bySize.rows.length) throw new Error(byPrem.error);
@@ -570,7 +576,7 @@ async function loadTapes(ticker: string, headP: Promise<StockFile | null>): Prom
   const session = lastSessionIso();
   const tapesP = Promise.all([
     flowTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
-    darkTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
+    darkTape(ticker, session, headP).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
     whalesBars(ticker, '1m', 1000).catch(() => []),
   ]);
   const head = await headP;

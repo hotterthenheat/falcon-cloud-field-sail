@@ -6,7 +6,7 @@ import { now } from '../core/clock';
 import { readSessionClock } from './moc';
 import { peekQuote, extendedLine, priceWords, screenerRead, screenerNeedsCloses } from './liveQuote';
 import { peekLive, peekTickerNews } from './liveRecord';
-import { darkReadable, peekStockFile, quarterFacts, type EarnRow, type StockFile } from './stockFile';
+import { peekStockFile, quarterFacts, type EarnRow, type StockFile } from './stockFile';
 import { lastSessionIso, nyTodayIso } from './nyDate';
 import { nyClock, nyIsoDate, nyMinutes, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
 import { peekRegularCloses } from './dayChange';
@@ -20,6 +20,7 @@ import type { BookContract, FlowPrint } from '../types/trace';
 import type { DarkPoolView } from '../types/darkpool';
 import { otmOf } from './traceRows';
 import { leanOfSides } from './traceLean';
+import { DARK_MIN_PRINTS, darkPosture } from './traceDark';
 
 export type PillarKey = 'trend' | 'numbers' | 'money' | 'news';
 export type Screen = 'STRONG' | 'MIXED' | 'WEAK';
@@ -714,8 +715,8 @@ export function flowSidesOf(flow: readonly Pick<FlowPrint, 'premium' | 'side' | 
   return out;
 }
 
-/** Fewer regular-session prints than this is too few to call buying or selling */
-export const DARK_MIN_PRINTS = 12;
+/** Fewer regular-session prints than this is too few to call buying or selling — Trace's own (traceDark) */
+export { DARK_MIN_PRINTS };
 const moneyFor = (ticker: string, spot: number, blocks: Candle[][], file: StockFile, dayPct: number): { read: MoneyRead; factors: Factor[] } => {
   const screen = file.screen;
   /* calls against puts is call_premium against put_premium; bullish against bearish is a separate read */
@@ -753,20 +754,21 @@ const moneyFor = (ticker: string, spot: number, blocks: Candle[][], file: StockF
   const ownTermsOut = file.dark.filter(p => !p.special);
   const darkShares = ownTermsOut.reduce((a, p) => a + p.size, 0);
   const darkNotional = ownTermsOut.reduce((a, p) => a + p.notional, 0);
-  /* the read: dollars paid over the print's own mid (buyer-initiated) against sold under it, Trace's convention */
-  const readPrints = file.dark.filter(darkReadable);
-  const readNotional = readPrints.reduce((a, p) => a + p.notional, 0);
-  const bought = readPrints.filter(p => p.intent === 'ACCUMULATION').reduce((a, p) => a + p.notional, 0);
-  const sold = readPrints.filter(p => p.intent === 'DISTRIBUTION').reduce((a, p) => a + p.notional, 0);
-  const netPosturePct = readNotional > 0 ? ((bought - sold) / readNotional) * 100 : 0;
-  /* the cut-off is gradeOfPosture's own: a lean under 18% is no lean, and under DARK_MIN_PRINTS prints there is no read */
-  const posture: DarkPoolView['posture'] = readPrints.length < DARK_MIN_PRINTS ? 'BALANCED' : netPosturePct >= 18 ? 'ACCUMULATING' : netPosturePct <= -18 ? 'DISTRIBUTING' : 'BALANCED';
+  /* the read is Trace's one posture (traceDark darkPosture) over the prints in hand: dollars paid over the print's own
+     mid against sold under it, each print sized for the name's own average day, the 18% edge on the unrounded net and
+     no posture under DARK_MIN_PRINTS prints */
+  const advUsd = (nOr(screen?.avg30_volume) ?? 0) * (nOr(screen?.close) ?? spot);
+  const pv = darkPosture(file.dark, { advUsd: t => (t === ticker && advUsd > 0 ? advUsd : null) });
+  const readPrints = pv.read;
+  const readNotional = pv.notional;
+  const netPosturePct = pv.net;
+  const posture: DarkPoolView['posture'] = pv.posture;
   const largest = [...readPrints].sort((a, b) => b.notional - a.notional)[0] ?? null;
   const instants = readPrints.map(p => p.epochMs ?? NaN).filter(Number.isFinite).sort((a, b) => a - b);
   const darkWindow = {
     read: readPrints.length,
     readNotional,
-    outsideRead: ownTermsOut.filter(p => !darkReadable(p)).length,
+    outsideRead: ownTermsOut.length - readPrints.length,
     inHand: file.dark.length,
     from: instants.length ? nyClock(instants[0]) : null,
     to: instants.length ? nyClock(instants[instants.length - 1]) : null,
