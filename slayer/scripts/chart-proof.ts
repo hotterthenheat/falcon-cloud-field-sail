@@ -34,6 +34,9 @@ import { sigmaToExpiry } from '../src/core/volClock';
 import { nyWallTime } from '../src/core/nyTime';
 import { vendorVol } from '../src/data/coneFeed';
 import type { Candle } from '../src/types/market';
+import { flowCaption, flowQuery, passesFlow, signedFlowBars } from '../src/data/flowBuckets';
+import { DEFAULT_FLOW_FILTERS } from '../src/data/deskPrefs';
+import type { FlowPrint } from '../src/types/trace';
 
 let pass = 0;
 let fail = 0;
@@ -210,6 +213,35 @@ check('no vol means no cone', blank.past.length === 0 && blank.forward.length ==
   check('a 30-day 20% vol over one session at S=600 is ≈ $7.49, not 600·0.2·√(1/365) = $6.28', Math.abs(day30 - 7.485) < 0.01, `$${day30.toFixed(2)}`);
   check('sigmaFracOver is the same σ per dollar', Math.abs(600 * sigmaFracOver(0.2, 240, '2026-10-28', noon) - truth) < 1e-6);
   check('a vendor vol is read as the fraction it is: 3.2 is 320% (was 3.2%)', vendorVol(3.2) === 3.2 && vendorVol(0.18) === 0.18 && vendorVol(-1) === 0);
+}
+
+/* the flow pane: which prints pass, which way each reads, and the bar each lands in */
+{
+  const t0 = nyWallTime(2026, 10, 30, 9, 30) / 1000;
+  const bars = [t0, t0 + 900, t0 + 1800, t0 + 7200];
+  const p = (at: number, right: 'C' | 'P', side: 'ASK' | 'BID' | 'MID', premium: number, extra: Partial<FlowPrint> = {}): FlowPrint =>
+    ({ id: at, time: '', ticker: 'SPY', legs: 1, strike: 760, right, otmPct: 1, expiry: '11/02/2026', dte: 3, fill: 1, bid: 1, ask: 1, fillPos: 0.5, side, ratioBidPct: 50, size: 10, premium, volume: 0, oi: 0, deltaOI: 0, spot: 757, iv: 0, volOverOI: 0, strat: 'unknown' as FlowPrint['strat'], sweep: false, epochMs: at * 1000, ...extra }) as FlowPrint;
+  const prints = [
+    p(t0 + 10, 'C', 'ASK', 100_000), // call bought: up
+    p(t0 + 20, 'P', 'BID', 60_000), // put sold: up
+    p(t0 + 950, 'P', 'ASK', 80_000), // put bought: down, second bar
+    p(t0 + 960, 'C', 'BID', 30_000), // call sold: down
+    p(t0 + 970, 'C', 'MID', 999_000), // mid: neither
+    p(t0 + 980, 'C', 'ASK', 999_000, { legs: 2 }), // a spread leg: neither
+    p(t0 + 2800, 'C', 'ASK', 50_000), // in the gap after the third bar (its span is 900s): nowhere
+    p(t0 + 7300, 'P', 'ASK', 70_000), // the fourth bar
+  ];
+  const out = signedFlowBars(prints, bars, 900);
+  check('flow pane: calls at the ask and puts at the bid read up, in their bar', out[0].net === 160_000 && out[0].count === 2, JSON.stringify(out[0]));
+  check('flow pane: puts at the ask and calls at the bid read down; mid prints and spread legs add nothing', out[1].net === -110_000 && out[1].count === 2, JSON.stringify(out[1]));
+  check('flow pane: a print in a session gap lands in no bar', out[2].count === 0 && out[3].net === -70_000, JSON.stringify(out.slice(2)));
+  check('flow pane: every bar comes back, quiet ones at zero', out.length === 4);
+  const f = { ...DEFAULT_FLOW_FILTERS, side: 'ask' as const, kind: 'sweep' as const, dte: '14' as const };
+  check('flow filters: an ask sweep inside 14 days passes, a bid one does not', passesFlow(p(t0, 'C', 'ASK', 60_000, { sweep: true }), f) && !passesFlow(p(t0, 'C', 'BID', 60_000, { sweep: true }), f));
+  check('flow filters: under the premium floor or past the DTE cap fails', !passesFlow(p(t0, 'C', 'ASK', 40_000, { sweep: true }), f) && !passesFlow(p(t0, 'C', 'ASK', 60_000, { sweep: true, dte: 30 }), f));
+  const q = flowQuery('SPY', f);
+  check('flow filters ask the tape the same narrowing', q.single === true && q.otm === true && q.side === 'ASK' && q.codes?.[0] === 'isoi' && q.maxDte === 14 && q.minPremium === 50_000, JSON.stringify(q));
+  check('flow caption reads the filters', flowCaption(f) === 'FLOW · SINGLE LEG · OTM · ASK · SWEEP · DTE 0–14 · ≥$50K', flowCaption(f));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

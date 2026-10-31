@@ -1434,8 +1434,11 @@ const StrikeChart = ({
     /* A short tape (a live-only one minutes old, a few hour bars) fills the same share of the width at a wider pitch
        rather than standing as a sliver at the left edge of an empty runway: the runway is always the bars' own
        fraction of the span, so the session dominates and the forward cone keeps at most a fifth of the plot. */
-    const history = Math.max(1, Math.min(len, Math.round(total * HISTORY_SHARE)));
-    const ahead = Math.max(3, Math.round((history * (1 - HISTORY_SHARE)) / HISTORY_SHARE));
+    /* never under 48 slots: a tape of a bar or two (the first live answer) is not blown up to fill the plot, and the
+       view the next bars land in keeps a sane pitch */
+    const span = Math.max(48, Math.min(total, Math.ceil(len / HISTORY_SHARE)));
+    const history = Math.round(span * HISTORY_SHARE);
+    const ahead = Math.max(3, span - history);
     chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, len - history), to: len + ahead });
   }, []);
 
@@ -4649,8 +4652,8 @@ const StrikeChart = ({
             return (
               <div
                 key={l.key}
-                className="absolute left-2 z-10 flex max-w-[calc(100%-72px)] items-center gap-x-1 overflow-hidden whitespace-nowrap font-mono text-t9 uppercase tracking-wider text-textMuted"
-                style={{ top: l.top - 3, left: railLeft ? 40 : 8 }}
+                className="absolute z-10 flex items-center gap-x-1 overflow-hidden whitespace-nowrap font-mono text-t9 uppercase tracking-wider text-textMuted"
+                style={{ top: l.top - 3, left: railLeft ? 40 : 8, right: PRICE_SCALE_MIN_WIDTH + 8 }}
                 title={flowCaption(flowFilters)}
                 data-flow-caption={l.key}
               >
