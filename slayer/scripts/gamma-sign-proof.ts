@@ -382,6 +382,57 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   check(`series close: 11/27 ${hm(closeOf('2026-11-27'))}, 11/30 ${hm(closeOf('2026-11-30'))}`, hm(closeOf('2026-11-27')) === '13:00' && hm(closeOf('2026-11-30')) === '16:00');
 }
 
+/* 19 — the book through the day (Pinpoint's BookThroughDay, data/flipLevel.ts levelNetPath with `times`): netGammaClockPath
+   holds each leg's base d₁ and each expiry's time terms, and must give, bit for bit, what moving the legs minute by minute
+   and calling netGammaAt gave — over flat legs, outright far wings, capped stand-in vols, last-day legs, carried t0/s0,
+   moved and unmoved minutes, and a carry with a dividend */
+{
+  const { netGammaClockPath } = await import('../src/core/gammaFlip');
+  let seed = 20261031;
+  const rnd = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const S0 = 757.12;
+  const exps = [0.5 / (390 * 252), 1 / 252, 3 / 252, 10 / 252, 45 / 252, 0.75];
+  const legs: GammaLeg[] = [];
+  for (let k = 0; k < 1500; k++) {
+    const strike = Math.round(S0 * (0.55 + rnd() * 0.9) * 2) / 2;
+    const t = exps[Math.floor(rnd() * exps.length)];
+    const side = (rnd() < 0.5 ? 1 : -1) as 1 | -1;
+    const kind = rnd();
+    legs.push({
+      strike,
+      g0: kind < 0.05 ? 0 : side * rnd() * 4e7,
+      iv: kind < 0.08 ? 0 : 0.08 + rnd() * 0.9,
+      t: kind > 0.08 && kind < 0.1 ? 0 : t,
+      s0: rnd() < 0.3 ? S0 * (0.995 + rnd() * 0.01) : undefined,
+      oi: rnd() < 0.85 ? Math.floor(rnd() * 60000) : undefined,
+      side: rnd() < 0.9 ? side : undefined,
+      ownIv: rnd() < 0.6,
+      t0: rnd() < 0.15 ? t * (1 + rnd() * 0.2) : undefined,
+    });
+  }
+  const n = 390;
+  const prices = Array.from({ length: n }, (_, i) => S0 * (1 + 0.02 * Math.sin(i / 37) + (rnd() - 0.5) * 0.004));
+  /* the minute's own clock: most moved back (earlier in the session), the last few at the live clock (0), one negative */
+  const backs = Array.from({ length: n }, (_, i) => (i >= n - 3 ? 0 : i === 5 ? -1e-6 : ((n - i) * 1) / (390 * 252)));
+  for (const [r, q] of [[0.043, 0.012], [0.05, 0], [undefined, undefined]] as const) {
+    const t0 = performance.now();
+    const want = prices.map((S, i) => {
+      const back = backs[i];
+      const these = back > 0 ? legs.map(l => (l.iv > 0 && l.t > 0 ? { ...l, t: l.t + back, t0: l.t } : l)) : legs;
+      return netGammaAt(these, S0, S, r, q);
+    });
+    const t1 = performance.now();
+    const got = netGammaClockPath(legs, S0, prices, backs, r, q);
+    const t2 = performance.now();
+    const same = got.length === want.length && got.every((v, i) => Object.is(v, want[i]));
+    const bad = got.findIndex((v, i) => !Object.is(v, want[i]));
+    check(`book through the day, r=${r ?? 'carry'} q=${q ?? 'carry'}: ${n} minutes × ${legs.length} legs bit-identical to netGammaAt minute by minute${bad >= 0 ? ` (first miss at ${bad}: ${got[bad]} vs ${want[bad]})` : ''} · ${(t1 - t0).toFixed(0)} ms → ${(t2 - t1).toFixed(0)} ms`, same);
+  }
+}
+
 if (fail) {
   console.log(`\n${fail} failed`);
   process.exit(1);

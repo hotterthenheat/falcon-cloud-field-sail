@@ -140,6 +140,84 @@ export function netGammaPath(legs: readonly GammaLeg[], S0: number, prices: read
   return sums;
 }
 
+/** netGammaAt at every price of a path, each price at its own clock: before price i every re-priceable leg is moved
+    `backs[i]` years earlier ({ ...leg, t: leg.t + back, t0: leg.t }, data/flipLevel.ts levelNetPath — none moved when the
+    back is not above 0). The same arithmetic in the same order as building those legs and calling netGammaAt minute by
+    minute, so each value is bit-identical (scripts/gamma-sign-proof.ts) — but nothing is allocated per minute, each leg's
+    d₁ at its base is worked out once, and the time-only terms (t, √t, the drift's lead, the time ratio, e^{−qt}) once per
+    expiry per minute rather than once per leg per minute. Pinpoint's book through the day re-prices ~390 minutes. */
+export function netGammaClockPath(legs: readonly GammaLeg[], S0: number, prices: readonly number[], backs: readonly number[], r?: number, q?: number): number[] {
+  const carry = getCarry();
+  const rate = r ?? carry.r;
+  const yld = q ?? carry.q;
+  const n = prices.length;
+  const sums = new Array<number>(n).fill(0);
+  /* per expiry (a leg's own t): each minute's moved t, its √t, e^{−q·t}, the lead −q·(t − t₀) and the ratio term */
+  interface Clock { t: Float64Array; sqrtT: Float64Array; disc: Float64Array; lead: Float64Array; tTerm: Float64Array; moved: Uint8Array }
+  const clocks = new Map<number, Clock>();
+  const clockOf = (t0: number): Clock => {
+    let c = clocks.get(t0);
+    if (c) return c;
+    c = { t: new Float64Array(n), sqrtT: new Float64Array(n), disc: new Float64Array(n), lead: new Float64Array(n), tTerm: new Float64Array(n), moved: new Uint8Array(n) };
+    for (let i = 0; i < n; i++) {
+      const back = backs[i];
+      const moved = back > 0;
+      const t = moved ? t0 + back : t0;
+      c.t[i] = t;
+      c.moved[i] = moved ? 1 : 0;
+      c.sqrtT[i] = Math.sqrt(t);
+      c.disc[i] = Math.exp(-yld * t);
+      /* moved: the base is the leg's own t (t₀ = leg.t), so these are the leg-independent terms of netGammaAt's ln */
+      c.lead[i] = moved ? -yld * (t - t0) : 0;
+      c.tTerm[i] = moved && t0 !== t ? 0.5 * Math.log(t0 / t) : 0;
+    }
+    clocks.set(t0, c);
+    return c;
+  };
+  for (const l of legs) {
+    if (!l.g0 && !(l.oi && l.side)) continue;
+    /* a leg netGammaAt carries flat is never moved (levelNetPath moves only legs with a vol and a time) */
+    if (!(l.iv > 0) || !(l.t > 0)) {
+      for (let i = 0; i < n; i++) sums[i] += l.g0;
+      continue;
+    }
+    const c = clockOf(l.t);
+    const base = l.s0 && l.s0 > 0 ? l.s0 : S0;
+    /* the base's time: the leg's own t once moved; unmoved, its t0 if it carries one */
+    const tStill = l.t0 && l.t0 > 0 ? l.t0 : l.t;
+    const aMoved = d1Of(base, l.strike, l.t, l.iv, rate, yld);
+    const aStill = d1Of(base, l.strike, tStill, l.iv, rate, yld);
+    const termMoved = (aMoved * aMoved) / 2;
+    const termStill = (aStill * aStill) / 2;
+    const leadStill = -yld * (l.t - tStill);
+    const tTermStill = tStill !== l.t ? 0.5 * Math.log(tStill / l.t) : 0;
+    /* d1Of's (r − q + σ²/2), as d1Of groups it, then times each minute's t */
+    const mu = rate - yld + (l.iv * l.iv) / 2;
+    const capOi = !!(l.oi && l.oi > 0);
+    const outrightOk = !!(l.oi && l.oi > 0 && l.side);
+    for (let i = 0; i < n; i++) {
+      const moved = c.moved[i] === 1;
+      const a = moved ? aMoved : aStill;
+      const t = c.t[i];
+      const S = prices[i];
+      if (Math.abs(a) > OUTRIGHT_D1) {
+        sums[i] += outrightOk ? l.side! * l.oi! * dollarGammaPerContract(S, l.strike, t, l.iv, rate, yld) : l.g0;
+        continue;
+      }
+      const sq = c.sqrtT[i];
+      const b = (Math.log(S / l.strike) + mu * t) / (l.iv * sq);
+      const ln = (moved ? c.lead[i] : leadStill) + Math.log(S / base) - (b * b) / 2 + (moved ? termMoved : termStill) + (moved ? c.tTerm[i] : tTermStill);
+      let g = l.g0 * Math.exp(Math.min(ln, 60));
+      if (capOi && (!l.ownIv || t <= 1 / 252)) {
+        const cap = Math.max(Math.abs(l.g0), (l.oi! * l.strike * c.disc[i]) / (SQRT2PI * l.iv * sq));
+        if (Math.abs(g) > cap) g = Math.sign(g) * cap;
+      }
+      sums[i] += g;
+    }
+  }
+  return sums;
+}
+
 /** Six deviations from the strike: past this a leg's printed gamma is under e^-18 of its peak (rounding). */
 const OUTRIGHT_D1 = 6;
 

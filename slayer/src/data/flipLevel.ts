@@ -6,7 +6,7 @@ import { bellDay, shortDay, todayScopeLabel } from './bookWindow';
 import { carryFor } from '../core/carry';
 import { tradingMinutesBetween, tradingYears } from '../core/tradingYear';
 import { vendorIvOnTradingClock } from '../core/volClock';
-import { dollarGammaPerContract, netGammaAt, netGammaPath, quietLegs, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
+import { dollarGammaPerContract, netGammaClockPath, netGammaPath, quietLegs, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
 import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
 import { bookCandles } from './book/levels';
@@ -414,14 +414,13 @@ export function levelNetPath(snapshot: MarketSnapshot, chain: readonly StrikeNod
   const y = carryFor(snapshot.ticker);
   /* every price at the same clock: one pass over the legs (netGammaPath, the same values as netGammaAt price by price) */
   if (!times) return { path: netGammaPath(legs, snapshot.spot, prices, y.r, y.q).map(v => (v === 0 ? 0 : -v)), complete: set.complete };
-  const path = prices.map((S, i) => {
-    const at = times?.[i];
-    /* each minute at its own clock: the time to expiry it had, its time now plus the session minutes since */
-    const back = at != null && Number.isFinite(at) ? tradingMinutesBetween(at, ref) / (390 * 252) : 0;
-    const these = back > 0 ? legs.map(l => (l.iv > 0 && l.t > 0 ? { ...l, t: l.t + back, t0: l.t } : l)) : legs;
-    const v = netGammaAt(these, snapshot.spot, S, y.r, y.q);
-    return v === 0 ? 0 : -v;
+  /* each minute at its own clock: the time to expiry it had, its time now plus the session minutes since — one pass over
+     the legs (netGammaClockPath: bit-identical to moving the legs and calling netGammaAt minute by minute) */
+  const backs = prices.map((_, i) => {
+    const at = times[i];
+    return at != null && Number.isFinite(at) ? tradingMinutesBetween(at, ref) / (390 * 252) : 0;
   });
+  const path = netGammaClockPath(legs, snapshot.spot, prices, backs, y.r, y.q).map(v => (v === 0 ? 0 : -v));
   return { path, complete: set.complete };
 }
 
