@@ -1012,7 +1012,9 @@ function tickerKnown(name: string): Promise<boolean> {
           knownTickers.delete(t);
           return true;
         }
-        return d != null && (d.data ?? null) != null;
+        /* uwCall has already unwrapped the vendor's { data } box: a carried name answers its state, an unknown one null */
+        const state = d != null && typeof d === 'object' && 'data' in d ? d.data : d;
+        return state != null;
       })
       .catch(() => {
         knownTickers.delete(t);
