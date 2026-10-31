@@ -3,13 +3,13 @@
   read from the quotes ThetaData recorded at that instant (compassScan atMark), scored by the scan's own scorer
   (compassModel scoreBook, late) with its gates and seats, written by the ledger (recordPicks), Book C swept from its
   15:20 quotes (scoreLottery), and every call settled by the ledger's own settlement (settleOpen: the one-minute NBBO,
-  the 1-second quotes of each stop/target minute, the fees). A late mark never makes an official call: what each mark
+  the 1-second quotes of each stop/target minute; P&L is (exit - fill) x 100, no fees). A late mark never makes an official call: what each mark
   would have called is the "would" list, and that list is the replay's book (five seats, one book a root, as live).
 
   Each session runs in its own process (the scorer's memos are per process) and writes
   .cache/compass/replay/YYYY-MM-DD.json: every mark and what happened to each name, the gate funnel (contracts on the
   board, past the spread, scored, at or over the line, inside the entry minutes), every contract at or over the line,
-  every call with its fill, exit and P&L after fees, and the checks below.
+  every call with its fill, exit and P&L, and the checks below.
 
     npx tsx scripts/compass-replay.ts 2026-10-26 2026-10-27 …     replay those sessions (two at a time), then the table
     npx tsx scripts/compass-replay.ts --table 2026-10-26 …         the table from the files already written
@@ -274,7 +274,8 @@ async function resettle(day: string): Promise<void> {
   const ledger = await import('../src/data/compassLedger');
   setCompassHost({ server: true, theta: async p => { const g = await rawGet(p); return thetaAnswer(g.status, g.body, g.type); }, asset: async () => null, econ: () => [] });
   ledger.importSignals([]);
-  ledger.importWould(doc.calls);
+  /* from scratch: every call settled again by the current rules (the no-fee P&L, the break-even stop at the fill) */
+  ledger.importWould(doc.calls.map(c => ({ ...(c as object), outcome: null, pathAt: 0, spark: [] })));
   await settleAll(ledger);
   doc.calls = ledger.wouldSignals().slice().sort((a, b) => a.firedAt - b.firedAt);
   fs.writeFileSync(file, JSON.stringify(doc, null, 1));
@@ -283,7 +284,7 @@ async function resettle(day: string): Promise<void> {
 
 /* ---- the table and the checks ---- */
 
-type Sig = { book: 'A' | 'B' | 'C'; ticker: string; contract: string; day: string; expiry: string; sleeve: string; firedAt: number; mark?: number; tapeSession?: 'overnight' | 'pre' | 'regular' | 'curb'; outsideTrained?: true; flatAt?: number; bid: number; ask: number; p1: number | null; prun: number | null; runner: boolean; closeMin?: number; outcome: { status: string; fill: { at: number; bid: number; ask: number } | null; exit: { at: number; px: number; why: string } | null; peak: number; ret: number | null; pnl: number | null; fees: number | null } | null };
+type Sig = { book: 'A' | 'B' | 'C'; ticker: string; contract: string; day: string; expiry: string; sleeve: string; firedAt: number; mark?: number; tapeSession?: 'overnight' | 'pre' | 'regular' | 'curb'; outsideTrained?: true; flatAt?: number; bid: number; ask: number; p1: number | null; prun: number | null; runner: boolean; closeMin?: number; outcome: { status: string; fill: { at: number; bid: number; ask: number } | null; exit: { at: number; px: number; why: string } | null; peak: number; ret: number | null; pnl: number | null } | null };
 
 const ny = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false });
 const nyMin = (ms: number) => {
@@ -308,7 +309,7 @@ async function checks(day: string, calls: Sig[]): Promise<string[]> {
       bad.push(`${day} ${w}: no outcome`);
       continue;
     }
-    for (const k of ['peak', 'ret', 'pnl', 'fees'] as const) nan(`${w} ${k}`, o[k]);
+    for (const k of ['peak', 'ret', 'pnl'] as const) nan(`${w} ${k}`, o[k]);
     const mark = c.mark ?? Math.floor(c.firedAt / 60_000) * 60_000;
     const t = nyMin(mark) - (9 * 60 + 30);
     const flatT = params.flatTOf(c.closeMin ?? null);
@@ -426,12 +427,11 @@ async function verify(list: string[]): Promise<void> {
       /* the exit by the rules, read again: every minute quote after the fill, and inside a minute the 1-second quotes
          when the minute's bid range crosses a level (stop or target) */
       const paid = fill?.ask ?? NaN;
-      const fees = (px: number) => Number((1.08 + px * 100 * 0.0000278 + 0.00279).toFixed(2));
       const runner = sig.book === 'B' || sig.runner;
       const flatMin = sig.closeMin != null && sig.closeMin < 960 ? sig.closeMin - 5 : 955;
       const stopOf = (peak: number) => {
         let s = paid * (1 - 0.5322);
-        if (peak >= paid * 1.25) s = Math.max(s, paid + fees(paid) / 100);
+        if (peak >= paid * 1.25) s = Math.max(s, paid);
         if (runner) {
           if (peak >= paid * 1.5) s = Math.max(s, paid * 1.25);
           if (peak >= paid * 2) s = Math.max(s, paid * 1.5);
@@ -468,13 +468,13 @@ async function verify(list: string[]): Promise<void> {
           prev = q;
         }
       }
-      const pnl = mine ? Number(((mine.px - paid) * 100 - fees(mine.px)).toFixed(2)) : NaN;
+      const pnl = mine ? Number(((mine.px - paid) * 100).toFixed(2)) : NaN;
       const same = fill && fill.ask === o.fill.ask && fill.t === o.fill.at && (sig.book === 'C' || (mine && mine.at === o.exit.at && Math.abs(mine.px - o.exit.px) < 1e-9 && mine.why === o.exit.why && pnl === o.pnl));
       if (same) ok += 1;
       const at = (ms: number) => minute.find(q => q.t === Math.floor(ms / 60_000) * 60_000);
       console.log(`${same ? 'OK   ' : 'CHECK'} ${day} ${BOOKW[sig.book]} ${sig.contract} ${sig.expiry} mark ${hms(mark)} fired ${hms(sig.firedAt)} @ ${sig.bid}×${sig.ask}`
         + `\n      raw: fill quote ${fill ? `${hms(fill.t)} ${fill.bid}×${fill.ask}` : 'none'} (engine ${hms(o.fill.at)} ask ${o.fill.ask}); exit minute ${(() => { const q = at(o.exit.at); return q ? `${hms(q.t)} ${q.bid}×${q.ask}` : '–'; })()}`
-        + `\n      engine exit ${hms(o.exit.at)} ${o.exit.px} ${o.exit.why} pnl ${o.pnl} fees ${o.fees} · re-read ${mine ? `${hms(mine.at)} ${mine.px} ${mine.why} pnl ${pnl}` : sig.book === 'C' ? '(Book C: fill only)' : 'none'}`);
+        + `\n      engine exit ${hms(o.exit.at)} ${o.exit.px} ${o.exit.why} pnl ${o.pnl} · re-read ${mine ? `${hms(mine.at)} ${mine.px} ${mine.why} pnl ${pnl}` : sig.book === 'C' ? '(Book C: fill only)' : 'none'}`);
     }
   }
   console.log(`\nVERIFIED ${ok} of ${n} calls agree with the raw rows`);

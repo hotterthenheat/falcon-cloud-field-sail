@@ -44,26 +44,9 @@ const BOOK_B_ASK = 1;
 const BOOK_B_HALVE = 0.5;
 export const BOOK_B_LOOKBACK = 30;
 
-/* Fees, per contract, an estimate (not a broker's schedule): $0.50 commission and $0.04 exchange, clearing and ORF a
-   side, and on the sale the SEC fee (Section 31: $27.80 per million of the sale, the FY2024 rate; was $20.60 here; the
-   SEC resets it each fiscal year, so check sec.gov's fee-rate advisory) and FINRA's TAF ($0.00279 a contract sold). */
-const COMMISSION = 0.5;
-const EXCHANGE = 0.04;
-export const SEC_FEE_RATE = 0.0000278;
-export const FINRA_TAF = 0.00279;
-
-/** The round trip's fees on one contract sold at `exitPx`, dollars, to the cent. */
-export function optionFees(exitPx: number): number {
-  const sec = Math.max(0, exitPx) * 100 * SEC_FEE_RATE;
-  return Number((COMMISSION * 2 + EXCHANGE * 2 + sec + FINRA_TAF).toFixed(2));
-}
-
-/** The bid that sells for no loss after the round trip's fees: the ask paid plus the fees per share. */
-export function breakEvenBid(entryAsk: number): number {
-  if (!(entryAsk > 0)) return entryAsk;
-  /* the fees at the break-even price itself, solved by one pass from the ask (the SEC part moves by under 0.01 cent) */
-  return entryAsk + optionFees(entryAsk) / 100;
-}
+/* No fees (owner, 2026-10-31): Compass does not place trades, it publishes entries and exits. A call's P&L is
+   (exit - entry) x 100 a contract, nothing else; the break-even stop is the entry ask itself. (Until then: $1.08 a
+   round trip, the SEC fee and FINRA's TAF were taken off every P&L and added to the break-even stop.) */
 
 const STOP_HAIRCUT = 0.5322;
 export const STOP_KEEP = 1 - STOP_HAIRCUT;
@@ -392,8 +375,8 @@ function hardStop(entryAsk: number): number {
 
 export function stopAfter(entryAsk: number, peak: number, runner: boolean): number {
   let stop = hardStop(entryAsk);
-  /* break-even means no loss after fees: at 1.25x the stop moves to the ask plus the round trip (was the bare ask) */
-  if (peak >= entryAsk * BE_PEAK) stop = Math.max(stop, breakEvenBid(entryAsk));
+  /* break-even: once the bid has reached 1.25x the ask, the stop moves up to the ask itself */
+  if (peak >= entryAsk * BE_PEAK) stop = Math.max(stop, entryAsk);
   if (!runner) return stop;
   if (peak >= entryAsk * TP1_BID) stop = Math.max(stop, entryAsk * TP1_STOP);
   if (peak >= entryAsk * TP2_BID) stop = Math.max(stop, entryAsk * TP2_STOP);

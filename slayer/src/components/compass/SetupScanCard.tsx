@@ -8,7 +8,6 @@ import ContractLabel from '../ui/ContractLabel';
 import SessionSpark from './SessionSpark';
 import { BOOK_NAME, MODELS_VALIDATED, OUTSIDE_TRAINED_WORD, UNVALIDATED_LINE, UNVALIDATED_WORD } from '../../data/compassParams';
 import { activeStop, signalOf } from '../../data/compassLedger';
-import { optionFees } from '../../data/compassOutcome';
 import { P1_MIN } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
 import { Tip } from '../ui/Tooltip';
@@ -100,7 +99,7 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const target = !priced || !(entry > 0) ? 0 : setup.band === 'lottery' ? Number((entry * 2).toFixed(2)) : runner ? 0 : Number((entry * 1.5).toFixed(2));
   const away = (px: number) => (Number.isFinite(liveBid) && liveBid > 0 && px > 0 ? `${px >= liveBid ? '+' : '−'}${Math.abs((px / liveBid - 1) * 100).toFixed(0)}%` : '');
   const closedOut = outcome?.status === 'closed' ? outcome : null;
-  const pnl = closedOut?.pnl ?? (paid > 0 && Number.isFinite(liveBid) ? (liveBid - paid) * 100 - optionFees(liveBid) : NaN);
+  const pnl = closedOut?.pnl ?? (paid > 0 && Number.isFinite(liveBid) ? (liveBid - paid) * 100 : NaN);
   const pnlWord = Number.isFinite(pnl) ? `${pnl >= 0 ? '+' : '−'}$${Math.abs(pnl).toFixed(0)}` : '—';
   const place = placeWord(setup);
   const line = setup.p1 == null ? '' : setup.p1 + 1e-12 >= P1_MIN ? 'The line cleared.' : 'Short of the line.';

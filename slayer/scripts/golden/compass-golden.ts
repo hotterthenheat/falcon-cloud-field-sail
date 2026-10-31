@@ -207,9 +207,10 @@ expectEqual('open after the fill', o.status, 'open');
 /* Stop: 0.4678 × 1.25 = 0.58475; the 10:40 bid 0.58 is through it */
 o = settleSignal({ book: 'A', right: 'C', runner: false, firedAt: fired }, [q(10, 31, 1.21, 1.25), q(10, 35, 0.9, 0.94), q(10, 40, 0.58, 0.62)], [], after);
 expectEqual('stop exit', [o.status, o.exit?.why, o.exit?.px], ['closed', 'Stop', 0.58]);
-/* return (0.58/1.25 - 1) = -53.6%; pnl (0.58 - 1.25)·100 - fees; fees 1.08 + 58·0.0000206·100… = 1.08 + 0.0012 → 1.08 */
+/* return (0.58/1.25 - 1) = -53.6%; pnl (0.58 - 1.25)·100 = -67, no fees (owner, 2026-10-31: Compass publishes, it
+   does not trade; was -68.08 with a $1.08 round trip) */
 expectEqual('stop return', o.ret, -53.6);
-expectNear('stop pnl after fees', o.pnl ?? NaN, -68.08, 1e-9);
+expectNear('stop pnl, (exit - fill) x 100, no fees (was -68.08)', o.pnl ?? NaN, -67, 1e-9);
 /* Take-profit for a non-runner: bid ≥ 1.50 × 1.25 = 1.875 sells at 1.88 (1.875 rounded to the cent) */
 o = settleSignal({ book: 'A', right: 'C', runner: false, firedAt: fired }, [q(10, 31, 1.21, 1.25), q(10, 50, 1.9, 1.94)], [], after);
 expectEqual('take-profit exit', [o.exit?.why, o.exit?.px, o.ret], ['Take profit 1.50×', 1.88, 50.4]);
@@ -237,7 +238,7 @@ expectEqual('early close: flat at 12:55', [o.exit?.why, o.exit?.px, o.exit?.at],
   const coarse = settleSignal(sigA, mins, [], after);
   const sharp = settleSignal(sigA, [...mins, ...fine], [], after);
   expectEqual('stop from minute quotes (the old read)', [coarse.exit?.px, coarse.exit?.at], [0.4, at(10, 40)]);
-  expectEqual('stop from the seconds (was 0.40 at 10:40)', [sharp.exit?.why, sharp.exit?.px, sharp.exit?.at, sharp.pnl], ['Stop', 0.58, at(10, 39, 20), -68.08]);
+  expectEqual('stop from the seconds (was 0.40 at 10:40)', [sharp.exit?.why, sharp.exit?.px, sharp.exit?.at, sharp.pnl], ['Stop', 0.58, at(10, 39, 20), -67]);
   /* a target touched inside a minute: 1.875 crossed in 10:49–10:50; the seconds sell it at 10:49:30 */
   const tpMins = [q(10, 31, 1.21, 1.25), q(10, 49, 1.7, 1.74), q(10, 50, 1.9, 1.94)];
   expectEqual('fine windows: the 1.50× target crossed in 10:49–10:50 (and 1.25× crossed in 10:31–10:49)', fineWindows(sigA, tpMins), [[at(10, 31), at(10, 49)], [at(10, 49), at(10, 50)]]);
@@ -372,7 +373,7 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
     expectEqual('late: RUTW 2845C would have called (Book A), marked late, at its mark', [got.called, got.late, got.firedAt], [want.called, want.late, mark]);
     expectEqual('late: fill at the first quote a full minute after the mark', [got.fill, got.fillAt], [want.fill, want.fillAt]);
     expectEqual('late: exit by the same rules from its mark', got.exit, want.exit);
-    /* read to the second, the break-even stop (16.90 + fees) was touched at 11:45:56, bid 16.30, inside a minute the
+    /* read to the second, the break-even stop (16.90, the fill) was touched at 11:45:56, bid 16.30, inside a minute the
        one-a-minute quotes saw above it; the minute read exits at 11:59, bid 15.10 */
     expectEqual('late: the stop judged on 1-second quotes', fineGot, { windows: 9, exit: { px: 16.3, why: 'Stop', at: nyWallTime(2026, 10, 29, 11, 45) + 56_000 } });
   } else {
@@ -385,36 +386,42 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
 /* ---- 6. the day summary ------------------------------------------------------------------------------------ */
 {
   const { daySummary } = await import('../../src/data/compassOutcome');
-  const closedAt = (px: number, ask: number, pnl: number, fees: number) => ({ status: 'closed' as const, fill: { at: 0, bid: ask - 0.04, ask }, exit: { at: 0, px, why: '' }, peak: 0, stop: 0, last: null, ret: 0, pnl, fees, heldMin: 0 });
+  const closedAt = (px: number, ask: number, pnl: number) => ({ status: 'closed' as const, fill: { at: 0, bid: ask - 0.04, ask }, exit: { at: 0, px, why: '' }, peak: 0, stop: 0, last: null, ret: 0, pnl, heldMin: 0 });
   const rows = [
-    /* won: 1.88 on a 1.25 fill, (1.88 - 1.25)·100 - 1.08 = 61.92 */
-    { outcome: closedAt(1.88, 1.25, 61.92, 1.08) },
-    /* lost: the stop test's -68.08 */
-    { outcome: closedAt(0.58, 1.25, -68.08, 1.08) },
-    /* open: fill 1.25, last bid 1.40: (1.40 - 1.25)·100 - (1.00 + 0.08 + 1.40·100·0.0000278 + 0.00279 TAF = 1.0867
-       → 1.09) = 13.91 (was 13.92 with the old SEC rate and no TAF) */
-    { outcome: { status: 'open' as const, fill: { at: 0, bid: 1.21, ask: 1.25 }, exit: null, peak: 1.4, stop: 0.58, last: { t: 0, bid: 1.4, ask: 1.44 }, ret: 12, pnl: null, fees: null, heldMin: 5 } },
+    /* won: 1.88 on a 1.25 fill, (1.88 - 1.25)·100 = 63 (was 61.92 after a $1.08 round trip) */
+    { outcome: closedAt(1.88, 1.25, 63) },
+    /* lost: the stop test's -67 */
+    { outcome: closedAt(0.58, 1.25, -67) },
+    /* open: fill 1.25, last bid 1.40: (1.40 - 1.25)·100 = 15 (was 13.91 after fees) */
+    { outcome: { status: 'open' as const, fill: { at: 0, bid: 1.21, ask: 1.25 }, exit: null, peak: 1.4, stop: 0.58, last: { t: 0, bid: 1.4, ask: 1.44 }, ret: 12, pnl: null, heldMin: 5 } },
     { outcome: null },
-    { outcome: { status: 'unavailable' as const, fill: null, exit: null, peak: 0, stop: 0, last: null, ret: null, pnl: null, fees: null, heldMin: null } },
+    { outcome: { status: 'unavailable' as const, fill: null, exit: null, peak: 0, stop: 0, last: null, ret: null, pnl: null, heldMin: null } },
   ];
   const d = daySummary(rows);
   expectEqual('day: calls, won, lost, open, filling, unavailable', [d.calls, d.won, d.lost, d.open, d.waiting, d.unavailable], [5, 1, 1, 1, 1, 1]);
-  /* net 61.92 - 68.08 = -6.16; open marked 13.92; fees 1.08 + 1.08 + 1.08 */
-  expectEqual('day: net per contract after the round trip', d.net, -6.16);
-  expectEqual('day: open calls marked at the bid', d.openMark, 13.91);
-  expectEqual('day: round-trip fees inside (1.08 + 1.08 + 1.09)', d.fees, 3.25);
-  /* the fee schedule: 1.00 commission + 0.08 exchange + SEC 0.0000278 of the sale + TAF 0.00279 */
-  const { optionFees: fees, breakEvenBid, stopAfter } = await import('../../src/data/compassParams');
-  expectEqual('fees: sale at 10.00 = 1.08 + 0.0278 + 0.0028 = 1.11 (was 1.10)', fees(10), 1.11);
-  /* break-even after fees: a 1.25 ask that peaked at 1.5625 (1.25x) stops at 1.25 + fees(1.25)/100, fees =
-     1.08 + 0.0035 + 0.0028 = 1.0863 → 1.09, so 1.2609 (was 1.25, a sale that lost the fees) */
-  expectNear('break-even stop includes the fees', stopAfter(1.25, 1.5625, false), 1.2609, 1e-9);
-  expectNear('break-even bid', breakEvenBid(2), 2 + 1.09 / 100, 1e-12);
+  /* net 63 - 67 = -4 (was -6.16 after fees); open marked 15 (was 13.91); no fee figure (was 3.25) */
+  expectEqual('day: net per contract, no fees', d.net, -4);
+  expectEqual('day: open calls marked at the bid, no fees', d.openMark, 15);
+  expectEqual('day: no fee figure in the summary', 'fees' in d, false);
+  /* break-even: a 1.25 ask that peaked at 1.5625 (1.25x) stops at the ask itself, 1.25 (was 1.2609, the ask plus the
+     round trip's fees) */
+  const { stopAfter } = await import('../../src/data/compassParams');
+  expectNear('break-even stop is the fill ask (was 1.2609 with fees)', stopAfter(1.25, 1.5625, false), 1.25, 1e-12);
+  const params = await import('../../src/data/compassParams');
+  expectEqual('no fee schedule left in compassParams', ['optionFees', 'breakEvenBid', 'SEC_FEE_RATE', 'FINRA_TAF'].filter(k => k in params), []);
+  const { settleSignal: settle, noFees } = await import('../../src/data/compassOutcome');
+  const be = settle({ book: 'A', right: 'C', runner: false, firedAt: nyWallTime(2026, 10, 28, 10, 30) + 12_000 }, [
+    { t: nyWallTime(2026, 10, 28, 10, 31), bid: 1.21, ask: 1.25 },
+    { t: nyWallTime(2026, 10, 28, 10, 35), bid: 1.6, ask: 1.64 },
+    { t: nyWallTime(2026, 10, 28, 10, 40), bid: 1.25, ask: 1.29 },
+  ], [], nyWallTime(2026, 10, 28, 17, 0));
+  expectEqual('break-even exit at the fill: P&L 0 (was 1.25 bid under the 1.2609 stop, -1.08)', [be.exit?.why, be.exit?.px, be.pnl], ['Stop', 1.25, 0]);
+  expectEqual('an old record\'s fees come off: (1.88 - 1.25)·100 = 63, not 61.92', noFees({ outcome: { ...closedAt(1.88, 1.25, 61.92), fees: 1.08 } as never }).outcome?.pnl, 63);
   const { weekdayDte: wdte } = await import('../../src/data/compassParams');
   /* sessions to expiry skip market holidays: Wed 11-25 to Fri 11-27 is 1 (was 2, Thanksgiving counted); Fri to Mon is 1 */
   expectEqual('sessions to expiry over Thanksgiving, and over a weekend', [wdte('20261125', '2026-11-27'), wdte('20261030', '2026-11-02'), wdte('20261030', '2026-10-30')], [1, 1, 0]);
-  /* a stop exactly at the fill still loses its fees: (1.25 - 1.25)·100 - 1.08 is a loss */
-  expectEqual('day: breakeven exit counts as lost', daySummary([{ outcome: closedAt(1.25, 1.25, -1.08, 1.08) }]).lost, 1);
+  /* a stop exactly at the fill made nothing: (1.25 - 1.25)·100 = 0 counts as not won */
+  expectEqual('day: an exit at the fill counts as lost (not won)', daySummary([{ outcome: closedAt(1.25, 1.25, 0) }]).lost, 1);
 }
 
 /* ---- 7. the server record ---------------------------------------------------------------------------------- */
@@ -901,7 +908,7 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectEqual('overnight path read through the flat\'s date', /start_date=20261028&end_date=20261029/.test(asked[0] ?? ''), true);
 
   /* g. the track record is the sum of its rows: every slice adds up to the whole, to the cent */
-  const closedAt = (contract: string, book: 'A' | 'B' | 'C', pnl: number, ret: number, fees: number, extra: Record<string, unknown> = {}) => ({ ...sigOf(contract, 1), book, outcome: { status: 'closed' as const, fill: null, exit: null, peak: 0, stop: 0, last: null, ret, pnl, fees, heldMin: 1 }, ...extra }) as unknown as Signal;
+  const closedAt = (contract: string, book: 'A' | 'B' | 'C', pnl: number, ret: number, _was: number, extra: Record<string, unknown> = {}) => ({ ...sigOf(contract, 1), book, outcome: { status: 'closed' as const, fill: null, exit: null, peak: 0, stop: 0, last: null, ret, pnl, heldMin: 1 }, ...extra }) as unknown as Signal;
   const rows = [
     closedAt('SPY 500C', 'A', 87.91, 50, 1.09),
     closedAt('TLT 82P', 'A', -0.08, 1.8, 1.08, { outsideTrained: true }),

@@ -82,7 +82,6 @@ const TradeReviewCard = ({ r, compact = false }: { r: TradeReview; compact?: boo
           <Num label="Decay" value={usd(p.decay)} tone={ink(p.decay)} title="Time passing at the exit's price of the underlying" />
           <Num label="IV" value={usd(p.iv)} tone={ink(p.iv)} title="The change in implied vol from the fill to the exit" />
           <Num label="Spread" value={usd(spread)} tone={ink(spread)} title="The ask paid over the mid, and the mid over the exit price" />
-          <Num label="Fees" value={usd(p.fees == null ? null : -p.fees)} tone="text-textSecondary" />
           <Num label="Underlying" value={pct(a.underMove)} tone={ink(a.underMove)} title="Its move from the fill to the exit, signed for the side" />
         </div>
         {!compact && (

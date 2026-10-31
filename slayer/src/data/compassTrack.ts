@@ -1,5 +1,5 @@
-/* Compass's track record, from the record itself: the calls, how many won and lost after fees, the hit rate, the
-   average return, the total P&L after fees and the worst trade, overall, by book and by the session the call was made
+/* Compass's track record, from the record itself: the calls, how many won and lost, the hit rate, the average
+   return, the total P&L ((exit - entry) x 100 a contract, no fees) and the worst trade, overall, by book and by the session the call was made
    in. One function for the Blotter's header and the replay's table (scripts/compass-replay.ts), so every number is
    the sum of the rows under it (scripts/golden/compass-golden.ts checks it). */
 
@@ -12,9 +12,9 @@ export interface TrackLine {
   calls: number;
   /** Closed with a P&L */
   closed: number;
-  /** Closed with a gain after fees */
+  /** Closed with a gain */
   won: number;
-  /** Closed at or under the fill after fees */
+  /** Closed at or under the fill */
   lost: number;
   /** Filled and still held, or not filled yet */
   open: number;
@@ -24,10 +24,8 @@ export interface TrackLine {
   hitRate: number | null;
   /** Mean of the closed calls' returns, percent; null with nothing closed */
   avgRet: number | null;
-  /** Closed calls' P&L per contract after the round trip's fees, dollars, to the cent */
+  /** Closed calls' P&L per contract, (exit - fill) x 100, dollars, to the cent */
   pnl: number;
-  /** The round trip's fees inside pnl */
-  fees: number;
   /** The closed call that lost the most */
   worst: { contract: string; day: string; pnl: number } | null;
   /** Calls made at a minute outside the trees' trained minutes */
@@ -60,7 +58,6 @@ export function trackLine(rows: readonly Pick<Signal, 'contract' | 'day' | 'outc
   let open = 0;
   let unavailable = 0;
   let pnl = 0;
-  let fees = 0;
   let retSum = 0;
   let worst: TrackLine['worst'] = null;
   let outsideTrained = 0;
@@ -71,7 +68,6 @@ export function trackLine(rows: readonly Pick<Signal, 'contract' | 'day' | 'outc
       if (o.pnl > 0) won += 1;
       else lost += 1;
       pnl += o.pnl;
-      fees += o.fees ?? 0;
       retSum += o.ret ?? 0;
       if (!worst || o.pnl < worst.pnl) worst = { contract: r.contract, day: r.day, pnl: o.pnl };
     } else if (o?.status === 'unavailable') unavailable += 1;
@@ -88,7 +84,6 @@ export function trackLine(rows: readonly Pick<Signal, 'contract' | 'day' | 'outc
     hitRate: closed ? won / closed : null,
     avgRet: closed ? Number((retSum / closed).toFixed(2)) : null,
     pnl: cents(pnl),
-    fees: cents(fees),
     worst,
     outsideTrained,
   };

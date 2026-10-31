@@ -1,5 +1,5 @@
-/* The track record at the head of the Blotter: calls, wins and losses after fees, the hit rate, the average return,
-   the P&L after fees and the worst trade, overall, by book and by the session the call was made in, for today, this
+/* The track record at the head of the Blotter: calls, wins and losses, the hit rate, the average return, the P&L
+   ((exit - entry) x 100 a contract, no fees) and the worst trade, overall, by book and by the session the call was made in, for today, this
    week or every recorded session. Every figure is data/compassTrack.ts over the same rows the grid lists. */
 
 import { useMemo, useState } from 'react';
@@ -66,7 +66,7 @@ const TrackRecord = ({ today, recent, all }: { today: string; recent: readonly S
           ariaLabel="Track record span"
           size="sm"
         />
-        <span className="font-mono text-t10 text-textMuted">Per contract, after fees. Closed calls only in the hit rate, the average and the P&amp;L.{tr.all.outsideTrained ? ` ${tr.all.outsideTrained} outside trained hours.` : ''}</span>
+        <span className="font-mono text-t10 text-textMuted">Per contract: (exit − entry) × 100. Closed calls only in the hit rate, the average and the P&amp;L.{tr.all.outsideTrained ? ` ${tr.all.outsideTrained} outside trained hours.` : ''}</span>
       </div>
       <div className="mt-2 overflow-x-auto">
         <table className="w-full font-mono text-t11 [&_th+th]:pl-3 [&_td+td]:pl-3">

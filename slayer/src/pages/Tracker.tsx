@@ -9,7 +9,7 @@ import { useTracker } from '../context/TrackerContext';
 import type { TrackedSetup } from '../types/tracker';
 import { nyClock, nyIsoDate } from '../core/nyTime';
 import { activeStop, useSignals, type Signal } from '../data/compassLedger';
-import { daySummary, optionFees } from '../data/compassOutcome';
+import { daySummary } from '../data/compassOutcome';
 import { backlogLine, holdCompassFeed, useCompassFeed } from '../data/compassFeed';
 import { EmptyBox, ErrorBox, asOfText } from '../components/ui/states';
 import { useThetaStatus } from '../data/thetaQuote';
@@ -50,8 +50,8 @@ const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpe
   const lottery = s.book === 'C';
   const runner = s.book === 'B' || s.runner;
   const closed = o?.status === 'closed';
-  /* per contract after the round trip: the exit's, or the last bid's while it is open */
-  const pnl = closed ? o?.pnl ?? null : paid > 0 && o?.last ? (o.last.bid - paid) * 100 - optionFees(o.last.bid) : null;
+  /* per contract, (exit - fill) x 100: the exit's, or the last bid's while it is open */
+  const pnl = closed ? o?.pnl ?? null : paid > 0 && o?.last ? (o.last.bid - paid) * 100 : null;
   const standing = paid > 0 && o && !lottery ? activeStop(paid, o.peak, runner) : null;
   const target = paid > 0 ? (lottery ? paid * 2 : runner ? 0 : paid * 1.5) : 0;
   const away = (px: number) => (now != null && now > 0 && px > 0 && !closed ? `${px >= now ? '+' : '−'}${Math.abs((px / now - 1) * 100).toFixed(0)}% from the bid` : undefined);
@@ -149,10 +149,10 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
       facts={
         <>
           <Fact label="Calls today" testId="calls">{day.calls}</Fact>
-          <Fact label="Won · lost · open" testId="open" title="Today's calls: closed with a gain after fees, closed at or under the fill, and still held.">
+          <Fact label="Won · lost · open" testId="open" title="Today's calls: closed with a gain, closed at or under the fill, and still held.">
             <span className="text-bull">{day.won}</span> · <span className="text-bear">{day.lost}</span> · {day.open}
           </Fact>
-          <Fact label="Net today" testId="net" title="Per contract: today's closed calls after an estimated $1.08 round trip plus the SEC fee.">{day.won + day.lost ? <span className={ink(day.net)}>{dollars(day.net)}</span> : '—'}</Fact>
+          <Fact label="Net today" testId="net" title="Per contract: today's closed calls, (exit − fill) × 100.">{day.won + day.lost ? <span className={ink(day.net)}>{dollars(day.net)}</span> : '—'}</Fact>
           <Fact label="Open at bid" testId="open-mark" title="Today's open calls marked at their last bid, after the same round-trip cost.">{day.open ? <span className={ink(day.openMark)}>{dollars(day.openMark)}</span> : '—'}</Fact>
           <Fact label="Tracked" testId="tracked" title="Signals you bookmarked from their page.">{tracked}</Fact>
         </>

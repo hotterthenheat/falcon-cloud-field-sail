@@ -57,7 +57,7 @@ const SessionReview = () => {
       facts={
         <>
           <Fact label="Calls" testId="calls">{calls.length}</Fact>
-          <Fact label="Won · lost" testId="won" title="Live calls, after the round trip's fees.">
+          <Fact label="Won · lost" testId="won" title="Live calls: a win is an exit above the fill.">
             <span className="text-bull">{calls.filter(t => (t.after.pnl ?? 0) > 0).length}</span> · <span className="text-bear">{calls.filter(t => t.after.pnl != null && t.after.pnl <= 0).length}</span>
           </Fact>
           <Fact label="Would have called" testId="would" title="Marks scored late from recorded quotes. Never calls, never seats.">{would.length}</Fact>

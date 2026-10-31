@@ -85,7 +85,7 @@ const lineOf = (s: Signal): Line => {
   const o = s.outcome;
   const status = o?.status ?? 'waiting';
   const paid = o?.fill?.ask ?? 0;
-  /* a win is a gain after the round trip's fees, the same rule as the day's count */
+  /* a win is a gain, the same rule as the day's count */
   const result: Result = status === 'closed' ? (o?.pnl != null && o.pnl > 0 ? 'win' : 'loss') : status;
   return {
     key: s.key,
@@ -144,7 +144,7 @@ const TOOLTIPS: Record<string, string> = {
   exitPx: 'The bid it left on, or the take-profit price.',
   out: 'When it left, New York time.',
   ret: 'Exit against the fill. An open signal shows its last bid against the fill.',
-  pnl: 'Per contract, after an estimated $1.08 round trip plus the SEC fee.',
+  pnl: 'Per contract: (exit − fill) × 100.',
   result: 'Win or loss once it closed. Hover for why.',
 };
 
@@ -225,7 +225,7 @@ const Blotter = () => {
       facts={
         <>
           <Fact label="Calls" testId="n">{day.calls.toLocaleString('en-US')}</Fact>
-          <Fact label="Won · lost · open" testId="won" title="Closed with a gain after fees, closed at or under the fill after fees, and still held. Filling and unavailable calls are in neither.">
+          <Fact label="Won · lost · open" testId="won" title="Closed with a gain, closed at or under the fill, and still held. Filling and unavailable calls are in neither.">
             <span className="text-bull">{day.won}</span> · <span className="text-bear">{day.lost}</span> · {day.open}
           </Fact>
           <Fact label="Avg win · loss" testId="avg-win" title="Average return of the closed calls that won, and of those that lost.">{cut.avgWin == null && cut.avgLoss == null ? '—' : `${cut.avgWin == null ? '—' : pctWords(cut.avgWin, 1)} · ${cut.avgLoss == null ? '—' : pctWords(cut.avgLoss, 1)}`}</Fact>

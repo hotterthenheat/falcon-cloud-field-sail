@@ -310,10 +310,10 @@ const Board = () => {
             facts={
               <>
                 <Fact label="Calls today" testId="found" title="Every call the scan fired today, on both sleeves. The blotter has each one.">{day.calls.toLocaleString('en-US')}</Fact>
-                <Fact label="Won · lost · open" testId="day" title="Today's calls: closed with a gain after fees, closed at or under the fill, and still held.">
+                <Fact label="Won · lost · open" testId="day" title="Today's calls: closed with a gain, closed at or under the fill, and still held.">
                   <span className="text-bull">{day.won}</span> · <span className="text-bear">{day.lost}</span> · {day.open}
                 </Fact>
-                <Fact label="Net today" testId="net" title="Per contract: today's closed calls after an estimated $1.08 round trip and the SEC fee.">
+                <Fact label="Net today" testId="net" title="Per contract: today's closed calls, (exit − fill) × 100.">
                   {day.won + day.lost ? <span className={day.net >= 0 ? 'text-bull' : 'text-bear'}>{`${day.net < 0 ? '−' : '+'}$${Math.abs(day.net).toFixed(2)}`}</span> : '—'}
                 </Fact>
                 <Fact label="Cleared" testId="best" title="Names on this sleeve whose best contract cleared the line. A call still needs a seat.">

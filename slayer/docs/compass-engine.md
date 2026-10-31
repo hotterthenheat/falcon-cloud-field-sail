@@ -91,8 +91,10 @@ Compass scans, calls and settles on the server, once for every viewer. Browsers 
   B's outer strike at the widest span); the same-day read is 16.
 - **Exits.** Books A and B settle on the contract's one-minute NBBO, and on its 1-second quotes in every minute
   whose range crosses the stop, the 1.50× target or a ratchet rung (at most 12 such minutes a call). The 1.25×
-  break-even stop is the ask plus the round trip's fees. Fees: $0.50 commission and $0.04 exchange a side, the SEC
-  fee (0.0000278 of the sale) and FINRA's TAF ($0.00279 a contract sold). The fill is the ask of the first one-minute
+  break-even stop is the fill ask itself (once the bid has reached 1.25× it). **No fees** (owner, 2026-10-31): Compass
+  publishes entries and exits and places no trades, so a call's P&L is (exit − fill ask) × 100 a contract and nothing
+  else (until then a $1.08 round trip, the SEC fee and FINRA's TAF came off every P&L and onto the break-even stop;
+  records settled then are read without them). The fill is the ask of the first one-minute
   quote stamped at or after the minute after the mark (the quote standing at that instant; ThetaData's 1-minute bars
   and quote points are stamped at the start of their minute, checked against the trades of SPY and SPX on
   2026-10-29). An overnight or pre-market call flats at its `flatAt` (09:20), reading its path through that date.
@@ -135,7 +137,7 @@ One file per session date, `.cache/compass/YYYY-MM-DD.json` (git-ignored):
 
 A `Signal` (`src/data/compassLedger.ts`) is the call: contract, book, the bid and ask it fired on and their stamp,
 Model 1 and Model 2, `how` (`live` or `late`), `mark`, and `outcome` (fill, exit, peak, stop, return, P&L per
-contract after fees). Every scored row's 56 inputs are also logged to `.cache/compass/rows/YYYY-MM-DD.jsonl` for
+contract, (exit − fill) × 100). Every scored row's 56 inputs are also logged to `.cache/compass/rows/YYYY-MM-DD.jsonl` for
 `scripts/compass-validate.ts` and `scripts/compass-validate.py`.
 
 After the session: `.cache/compass/review/YYYY-MM-DD.json` (every trade: the entry snapshot with the inputs that

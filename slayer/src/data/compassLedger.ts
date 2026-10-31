@@ -7,7 +7,7 @@
 import { useSyncExternalStore } from 'react';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import { currentPicks, noteLeft, takeWouldPicks, underCloses } from './compassModel';
-import { fineWindows, settleSignal, type Outcome, type PathQuote, type SignalBook } from './compassOutcome';
+import { fineWindows, noFees, settleSignal, type Outcome, type PathQuote, type SignalBook } from './compassOutcome';
 import { stopAfter } from './compassParams';
 import { compassHost } from './compassHost';
 import { nyIsoDate, nyParts, nyWallStamp } from '../core/nyTime';
@@ -88,13 +88,13 @@ export function onSignalsChange(fn: () => void): () => void {
 
 /** Replace the record with kept or served rows, newest first. */
 export function importSignals(next: readonly unknown[]): void {
-  rows = next.filter(validRow).slice().sort((a, b) => b.firedAt - a.firedAt);
+  rows = next.filter(validRow).map(noFees).sort((a, b) => b.firedAt - a.firedAt);
   emit();
 }
 
 /** Replace the "would have called" list (late marks), newest first. */
 export function importWould(next: readonly unknown[]): void {
-  wouldRows = next.filter(validRow).map(r => ({ ...r, would: true as const })).sort((a, b) => b.firedAt - a.firedAt);
+  wouldRows = next.filter(validRow).map(r => ({ ...noFees(r), would: true as const })).sort((a, b) => b.firedAt - a.firedAt);
   emit();
 }
 

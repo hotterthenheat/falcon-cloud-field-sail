@@ -6,6 +6,7 @@ import { feedHeaders } from './feedGate';
 import type { SessionReview } from './compassReview';
 import type { PooledStudy, StudyResult } from './compassStudy';
 import type { Signal } from './compassLedger';
+import { noFees } from './compassOutcome';
 import { userWords } from './compassParams';
 
 /** 'pooled' is every labelled session's study together (/api/compass/study?day=all; pass day 'all') */
@@ -113,7 +114,7 @@ export function useAllCalls(today: string, rev: number): Signal[] | null {
           const r = await fetch(`/api/compass/record?day=${d}`, { headers: auth.headers });
           if (!r.ok) continue;
           const doc = JSON.parse(userWords(await r.text())) as { calls?: Signal[] };
-          const got = Array.isArray(doc.calls) ? doc.calls : [];
+          const got = Array.isArray(doc.calls) ? doc.calls.map(noFees) : [];
           recordMemo.set(d, { at: Date.now(), calls: got });
           out.push(...got);
         }
