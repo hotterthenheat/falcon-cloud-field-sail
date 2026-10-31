@@ -5,11 +5,14 @@
   The rows below are the screener's answers through the dev proxy on 31 Oct 2026 (the fields that matter): SPY 1.0015%
   (ttm 7.582718 / close 757.12), QQQ 0.4463% (3.09182 / 692.74), SPX null (a cash index). The stock-info route carries no
   `dividend_yield` for SPY or QQQ at all, so before this the Weigher's q was 0 for every one of them.
+  Also W9 (outside Compass): the backtest's theta is the shared per-session one, on the name's carry.
   Run:  npx tsx scripts/carry-proof.ts
 */
 import { carryFor, setDividend } from '../src/core/carry';
 import { carryWords, screenerYield } from '../src/data/carryFeed';
 import { clockCarry, readContract } from '../src/data/weigherGate';
+import { blackScholesPrice, thetaPerSession } from '../src/core/greeks';
+import { thetaPerSession as backtestTheta } from '../src/data/review/quotes';
 
 let fail = 0;
 const check = (what: string, ok: boolean) => {
@@ -61,6 +64,21 @@ check(`the chance it finishes in the money moves too: call ${c0.itm.toFixed(2)}%
 console.log('     ' + carryWords('SPY', { state: 'known', q: spyQ! }));
 console.log('     ' + carryWords('SPX', { state: 'none' }));
 check('the hover names the yield, or says our data has none — never a number for SPX', carryWords('SPY', { state: 'known', q: spyQ! }).includes('1.00% dividend yield') && carryWords('SPXW', { state: 'none' }).includes('no dividend yield for SPX'));
+
+/* W9 (outside Compass) — the backtest's theta (data/review/quotes.ts) is the shared per-session theta, on the name's carry.
+   Its own copy was V(t − 1/252) − V(t) at the default carry; at q = 0 the shared one gives the same figure, so no
+   recorded backtest moves; with SPY's yield in the carry it moves the way the Weigher's does. */
+{
+  const t = 20 / 252;
+  const old = blackScholesPrice(757.12, 757, t - 1 / 252, 0.15, 'C') - blackScholesPrice(757.12, 757, t, 0.15, 'C');
+  const shared = thetaPerSession(757.12, 757, t, 0.15, 'C');
+  check(`the backtest imports the one theta (core/greeks thetaPerSession): ${backtestTheta === thetaPerSession}`, backtestTheta === thetaPerSession);
+  check(`at q = 0 it equals the backtest's old copy: ${old.toFixed(6)} vs ${shared.toFixed(6)} a share a session`, Math.abs(old - shared) < 1e-12);
+  const { r, q } = carryFor('SPY');
+  const withQ = thetaPerSession(757.12, 757, t, 0.15, 'C', r, q);
+  const atZero = thetaPerSession(757.12, 757, t, 0.15, 'C', r, 0);
+  check(`on SPY's carry (q ${(q * 100).toFixed(4)}%) the 757C's theta is ${withQ.toFixed(5)} against ${atZero.toFixed(5)} with none`, q > 0 && withQ !== atZero && Math.abs(withQ - atZero) < Math.abs(atZero) * 0.1);
+}
 
 console.log(fail ? `\n${fail} FAILED` : '\nall ok');
 process.exit(fail ? 1 : 0);

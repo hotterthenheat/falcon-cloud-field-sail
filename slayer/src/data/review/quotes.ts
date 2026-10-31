@@ -3,7 +3,8 @@
    are the contracts quoted that day. A minute with no two-sided quote is no market: orders wait. */
 
 import { sessionsBetween } from '../../core/calendar';
-import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
+import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice, thetaPerSession } from '../../core/greeks';
+import { carryFor } from '../../core/carry';
 import { CASH_INDEX_ROOTS, DAY_MIN, LAST_MIN, closePrintOf, dateOf, dayWords, lastTwoSidedAt, listingOf, midsUpTo, nbboAt, spotAt, tradesUpTo, underOf } from './history';
 
 export type Right = 'C' | 'P';
@@ -110,23 +111,22 @@ export const bookMark = (bid: number, ask: number, round: (v: number) => number)
 const intrinsicOf = (c: ContractId, spot: number) => (spot > 0 ? Math.max(0, c.right === 'C' ? spot - c.strike : c.strike - spot) : 0);
 const noQuote = (c: ContractId, spot: number): Quote => ({ bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic: cents(intrinsicOf(c, spot)), dead: true, spot });
 
-/** Theta a day, the one definition the paper desk and the backtest share: what the contract loses over ONE TRADING SESSION
-    on the trading clock, the name and the vol held — V(S, K, t − 1/252, σ) − V(S, K, t, σ), with t in trading years
-    (session minutes ÷ 390 × 252) and σ solved on that clock; inside the last session, intrinsic − V. A dollar figure a
-    share, negative. It is per SESSION: a page that quotes theta per calendar day (∂V/∂t ÷ 365) reads about 7/5 of it
-    smaller a week out, since a week is 5 sessions and 7 days. */
-export function thetaPerSession(S: number, K: number, t: number, iv: number, right: 'C' | 'P'): number {
-  const dayOn = Math.max(0, t - 1 / 252);
-  const intrinsic = S > 0 ? Math.max(0, right === 'C' ? S - K : K - S) : 0;
-  return (dayOn > 0 ? blackScholesPrice(S, K, dayOn, iv, right) : intrinsic) - blackScholesPrice(S, K, t, iv, right);
-}
+/** Theta a day — THE per-session theta (core/greeks thetaPerSession), the one the Weigher and the paper desk use: what
+    the contract loses over ONE TRADING SESSION on the trading clock, the name and the vol held — V(S, K, t − 1/252, σ) −
+    V(S, K, t, σ), with t in trading years (session minutes ÷ 390 × 252) and σ solved on that clock; inside the last
+    session, intrinsic − V. A dollar figure a share, negative. It is per SESSION: a page that quotes theta per calendar
+    day (∂V/∂t ÷ 365) reads about 7/5 of it smaller a week out, since a week is 5 sessions and 7 days. Re-exported here
+    for the readers that import it from this file. */
+export { thetaPerSession };
 
-/** Greeks of a bought leg from its mid, the name's price and the time left */
+/** Greeks of a bought leg from its mid, the name's price and the time left — on the name's carry (core/carry carryFor:
+    the rate, and its dividend yield where one is known), the vol solved, the greeks and the theta all on the same one */
 function greeksOn(c: ContractId, mid: number, spot: number, t: number): Pick<Quote, 'iv' | 'delta' | 'gamma' | 'theta' | 'vega' | 'rho'> {
-  const iv = t > 0 && spot > 0 ? impliedVolFromPrice(mid, spot, c.strike, t, c.right) : null;
+  const { r, q } = carryFor(c.ticker);
+  const iv = t > 0 && spot > 0 ? impliedVolFromPrice(mid, spot, c.strike, t, c.right, r, q) : null;
   if (iv == null) return { iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0 };
-  const g = blackScholesGreeks(spot, c.strike, t, iv);
-  const theta = thetaPerSession(spot, c.strike, t, iv, c.right);
+  const g = blackScholesGreeks(spot, c.strike, t, iv, r, q);
+  const theta = thetaPerSession(spot, c.strike, t, iv, c.right, r, q);
   return { iv, delta: c.right === 'C' ? g.deltaCall : g.deltaPut, gamma: g.gamma, theta, vega: g.vega, rho: c.right === 'C' ? g.rhoCall : g.rhoPut };
 }
 
@@ -216,7 +216,9 @@ function legWhatIf(c: ContractId, iso: string, minute: number, spot: number): nu
   const t = yearsLeft(iso, minute, c.expiry);
   if (t <= 0) return intrinsicOf(c, spot);
   if (live.dead || !(live.iv > 0)) return NaN;
-  return blackScholesPrice(spot, c.strike, t, live.iv, c.right);
+  /* the same carry the vol was solved on (greeksOn) */
+  const { r, q } = carryFor(c.ticker);
+  return blackScholesPrice(spot, c.strike, t, live.iv, c.right, r, q);
 }
 /** "Where would the name have to be, right now, for this contract to be worth X": the chart's target and stop lines are
     drawn from it, never a fill. The bid and the ask keep the minute's recorded spread around the model's value. */
