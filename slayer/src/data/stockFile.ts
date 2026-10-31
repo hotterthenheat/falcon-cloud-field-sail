@@ -3,6 +3,7 @@
 
 import { useEffect, useSyncExternalStore } from 'react';
 import type { Candle } from '../types/market';
+import { saneBars } from './barSanity';
 import { daysBetween, lastSessionIso, nyDayOf, nyTodayIso } from './nyDate';
 import type { DarkPoolPrint } from '../types/darkpool';
 import type { FlowPrint } from '../types/trace';
@@ -585,7 +586,7 @@ async function loadTapes(ticker: string, headP: Promise<StockFile | null>): Prom
   if (!head) return;
   const spot = num(head.screen?.close) || head.days[head.days.length - 1]?.close || 0;
   const got = head.status === 'live';
-  const minutes: Candle[] = [];
+  let minutes: Candle[] = [];
   for (const b of Array.isArray(barR) ? barR : []) {
     const time = Math.floor(Date.parse(String(b.start_time || b.end_time || '')) / 1000);
     const close = num(b.close);
@@ -596,6 +597,8 @@ async function loadTapes(ticker: string, headP: Promise<StockFile | null>): Prom
     minutes.push({ time, open: num(b.open) || close, high: num(b.high) || close, low: num(b.low) || close, close, volume: num(b.volume) });
   }
   minutes.sort((a, b) => a.time - b.time);
+  /* a bad print's wick cut back to its bar's body (barSanity.ts), before it can set the session's range */
+  minutes = saneBars(minutes);
   /* the session's range from its one-minute bars; the vendor's daily bar is kept where the minutes are thin */
   let days2 = head.days;
   let rangeAsOf: string | undefined;

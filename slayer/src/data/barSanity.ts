@@ -1,6 +1,7 @@
 /* One shared sanity rule for intraday bars, run on every chart read of them: ThetaData's bars in data/thetaTape.ts
-   pullIntraday (Terrain), and the one-minute book tape in data/book/tape.ts (UW's or ThetaData's bars, the Pinpoint and
-   desk charts). Daily bars have their own decimal-place rule (thetaTape.ts readEod).
+   pullIntraday (Terrain, the Weigher, Paper), the one-minute book tape in data/book/tape.ts (UW's or ThetaData's bars,
+   Pinpoint's charts) and a Dossier name's session minutes (data/stockFile.ts, which also set the day's range). Daily
+   bars have their own decimal-place rule (thetaTape.ts readEod).
 
    A bad print reaches a vendor bar's high or low and nothing else: on Fri 2026-10-23 SPY traded at 761 after the
    close, yet six Form T reports from one off-exchange venue (exchange 57, conditions 4 and 115 — neither may set the
