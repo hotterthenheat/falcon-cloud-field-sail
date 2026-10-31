@@ -8,7 +8,8 @@ import { chainForDate, expiryLabel } from '../../data/book/levels';
 import { ensureBook } from '../../data/book/load';
 import { peekSpot } from '../../data/book/day';
 import { snapshotFor } from '../../data/book/feed';
-import { useBookRev } from '../../data/book/store';
+import { bookStatus, useBookRev } from '../../data/book/store';
+import { ReadMiss } from '../../components/ui/BookDown';
 import { levelNetPath } from '../../data/flipLevel';
 import { rootTradesSession } from '../../data/compassSession';
 import { useSessionQuote } from '../../data/sessionQuote';
@@ -950,6 +951,10 @@ const Pane = ({
      `revision` also counts ThetaData's bars, which bumped this ~14 times a second on a first load (each a ~4 ms re-price
      of the whole book at ~320 prices) without changing any input. */
   const bookRev = useBookRev();
+  /* The options book did not come back (and no kept copy stands in): the rail, the field and the levels have nothing to
+     draw, and the pane says so with Pinpoint's retry card instead of letting them vanish */
+  const bookDown = optionable && bookStatus(ticker) === 'error';
+  const retryBook = useCallback(() => ensureBook(ticker, 'board', true), [ticker]);
   const flowStrikes = rail.rows.map(r => r.strike).join(',');
   const flow = useMemo(() => {
     if (!rail.rows.length) return null;
@@ -1339,6 +1344,17 @@ const Pane = ({
             </Deferred>
             {/* The pane's corner chip row: the field's key (the model, its switch, the colour scale and the cut's net
                 GEX) and, beside it, what is not in yet */}
+            {/* the book's retry where the rail's card is not on screen (rail off, or below xl where the rail is hidden) */}
+            {bookDown && !replay && (
+              <div className={`absolute z-20 left-16 bottom-14 max-w-[calc(100%-140px)] ${ladder ? 'xl:hidden' : ''}`} role="status" data-terrain-book-down="chip">
+                <span className="inline-flex max-w-full items-center gap-2 rounded-md border border-borderSubtle bg-canvas/90 px-2 py-1 font-mono text-t10 text-warn" title={`The book for ${ticker} did not come back from the feed. The page asks again on its own — or ask now.`}>
+                  <span className="min-w-0 truncate">Book did not land</span>
+                  <button type="button" onClick={retryBook} className="shrink-0 whitespace-nowrap rounded border border-borderMuted px-1.5 py-0.5 uppercase tracking-widest text-t9 text-textPrimary hover:bg-ink/[0.06]" data-book-retry>
+                    Try again
+                  </button>
+                </span>
+              </div>
+            )}
             {!replay && (overlays.trails || gapLines.length > 0) && (
               /* Chips in the top-right corner, under the expand door and in the price scale's top margin — they never
                  sit on a bar (the card it replaced stood over the candles and the volume at the bottom-left) */
@@ -1640,6 +1656,12 @@ const Pane = ({
               onSelect={price => setFocus(cur => (cur != null && Math.abs(cur - price) < 1e-9 ? null : price))}
               className="hidden xl:block"
             />
+          )}
+          {/* …and where the rail would stand, the book's failure card */}
+          {ladder && bookDown && rail.rows.length === 0 && (
+            <aside className="hidden xl:flex shrink-0 flex-col p-3 border-l border-borderSubtle overflow-y-auto" style={{ width: Math.min(cfg.ladderW ?? railRestWidth(paneCount, expanded), 340) }} data-terrain-book-down="rail">
+              <ReadMiss who={ticker} onRetry={retryBook} leave={false} compact />
+            </aside>
           )}
         </div>
         {/* The guide in focus — over the whole pane, the pane blurred behind it */}

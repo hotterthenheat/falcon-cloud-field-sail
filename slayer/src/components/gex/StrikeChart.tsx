@@ -28,7 +28,7 @@ import {
 import { chainForDate, deskTape } from '../../data/book/levels';
 import { ensureBook } from '../../data/book/load';
 import { peekDaySigma, peekIv } from '../../data/book/move';
-import { peekEntry, useBookRev } from '../../data/book/store';
+import { bookStatus, peekEntry, useBookRev } from '../../data/book/store';
 import { snapshotFor } from '../../data/book/feed';
 import { useBookMinutes } from '../../data/book/minutes';
 import { alignLatestColumn, ensureFieldCloses, ensureFieldCut, exposureGrid, gridColumns, heldStrikes, useExposureLogRev } from '../../data/book/exposureLog';
@@ -4444,7 +4444,8 @@ const StrikeChart = ({
     }
     if (!clock && overlays.cone && !coneTerm(ticker)) push(coneMissed(ticker) ? 'Expected move — no implied vol on this name' : 'Expected move — waiting on implied vol');
     if (overlays.levels && ![levels.callWall, levels.putWall, levels.flip, levels.supreme].some(v => Number.isFinite(v) && v > 0)) {
-      push('Key levels — the book has not named a wall yet');
+      /* the book did not come back at all: that, not "not named yet" */
+      push(bookStatus(ticker) === 'error' ? 'Book — the feed did not answer' : 'Key levels — the book has not named a wall yet');
     }
     if (overlays.alerts && !alerts.some(a => a.kind === 'price')) push('Alert lines — no price alert on this name');
     if (overlays.volume && drawn.length > 0 && drawn.every(b => !(b.volume > 0))) push('Volume — these bars have no share volume');
