@@ -33,6 +33,7 @@ import {
   harForecast,
   harRow,
   hourForecast,
+  hourReadAt,
   hourRows,
   hourX,
   lstsq,
@@ -43,6 +44,8 @@ import {
   type DayGrid,
   type HourRow,
 } from '../src/data/volOutlook';
+import { nyWallStamp } from '../src/core/nyTime';
+import type { Candle } from '../src/types/market';
 
 let fail = 0;
 const check = (what: string, ok: boolean, detail = '') => {
@@ -149,6 +152,19 @@ const gravityRv = new Map(gravity.map(g => [g.day, g.rv]));
     const ok = near(row.l15, ref.l15, 1e-12) && near(row.l60, ref.l60, 1e-12) && near(row.l390, ref.l390, 1e-12) && near(row.y, ref.y, 1e-12) && near(pred, ref.pred, 1e-12);
     check(`next hour at minute ${ref.j}: inputs, target and forecast = the study’s`, ok, `forecast ${(annualiseHour(Math.exp(pred)) * 100).toFixed(2)}% realised ${(annualiseHour(Math.exp(row.y)) * 100).toFixed(2)}%`);
   }
+  /* the tile's live path: today's bars as the chart's tape holds them (epoch seconds), read part-way through the day —
+     only the minutes closed by then, the decision it has reached */
+  const r29 = dayReturns(g29);
+  const tail = { day: '2026-10-29', r: Array.from(r29.slice(0, g29.last + 1)).slice(-390), count: 10_000 };
+  const candles: Candle[] = fixture.response
+    .filter((row: { timestamp: string; close: number }) => row.timestamp.startsWith('2026-10-30') && row.close > 0)
+    .map((row: { timestamp: string; open: number; close: number }) => ({ time: Math.floor(nyWallStamp(row.timestamp) / 1000), open: row.open, high: row.close, low: row.close, close: row.close, volume: 1 }));
+  for (const [clock, ref] of [['10:07', REF[0]], ['12:31', REF[1]], ['15:00', REF[2]]] as const) {
+    const now = nyWallStamp(`2026-10-30T${clock}:20.000`);
+    const live = hourReadAt(BETA_2026Q4, tail, candles, now);
+    check(`live read at ${clock} ET stands at minute ${ref.j} with the study’s forecast`, !!live && live.j === ref.j && near(live.forecast, annualiseHour(Math.exp(ref.pred)), 1e-12), live ? `${live.window} ${(live.forecast * 100).toFixed(2)}%, last hour ${(live.lastHour * 100).toFixed(2)}%` : 'none');
+  }
+  check('live read: none before 10:00', hourReadAt(BETA_2026Q4, tail, candles, nyWallStamp('2026-10-30T09:59:00.000')) === null);
 }
 
 /* ------------------------------------------------------------------ 3. the whole study, from its cache */

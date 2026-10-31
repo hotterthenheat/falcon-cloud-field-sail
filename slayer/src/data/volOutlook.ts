@@ -31,6 +31,8 @@ import { isTradingDay, isoDate, sessionBefore, sessionCloseMinOn } from '../core
 import { nyMinutes, nyParts } from '../core/nyTime';
 import { keepTheta, keptTheta, noData, thetaGet } from './thetaFeed';
 import { THETA_INDEX, flatRows, sessionsBack, spansOf } from './thetaTape';
+import { listLiveExpiries, loadLiveChain } from './weigherDesk';
+import { vendorIvOnTradingClock } from '../core/volClock';
 
 /* ------------------------------------------------------------------ the study's constants (lib.py, build_features.py) */
 
@@ -694,6 +696,11 @@ export function hourReadNow(ticker: string, today: readonly Candle[], nowMs = Da
   const o = store.get(t);
   const tail = tails.get(t);
   if (!o || !o.hourBeta || !tail) return null;
+  return hourReadAt(o.hourBeta, tail, today, nowMs);
+}
+
+/** The same read from a fit, the session before's returns tail and today's bars, at `nowMs` */
+export function hourReadAt(beta: readonly number[], tail: { day: string; r: readonly number[]; count: number }, today: readonly Candle[], nowMs: number): HourRead | null {
   const p = nyParts(nowMs);
   const iso = `${p.year}-${two(p.month)}-${two(p.day)}`;
   if (!isTradingDay(new Date(p.year, p.month - 1, p.day))) return null;
@@ -711,9 +718,73 @@ export function hourReadNow(ticker: string, today: readonly Candle[], nowMs = Da
   if (!g) return null;
   const r = dayReturns(g);
   const upto = Array.from(r.slice(0, Math.min(closed, g.last + 1)));
+  /* a closed minute with no print yet after the last bar is carried (a zero return), as the study's grid carries it
+     once the day's next print lands */
+  while (upto.length < closed) upto.push(0);
   const rows = hourRows([{ day: iso, r: upto }], tail.r, tail.count);
   const row = rows.find(x => x.j === j);
   if (!row) return null;
-  const f = hourForecast(o.hourBeta, row);
+  const f = hourForecast(beta, row);
   return { j, window: `${clockOf(j)}–${clockOf(j + 60)}`, forecast: annualiseHour(Math.exp(f)), lastHour: annualiseHour(Math.exp(row.l60)) };
+}
+
+/* ---- the implied side: the Weigher's own ATM IV for the first expiry after today ---- */
+
+export interface ImpliedRead {
+  /** The listed expiry it is read on, YYYY-MM-DD */
+  expiryIso: string;
+  /** ATM IV as quoted (percent, calendar year — the chain's IV column) and on the trading clock (fraction, the
+      forecast's clock: the same variance spread over trading time only, core/volClock vendorIvOnTradingClock) */
+  quotedPct: number;
+  trading: number;
+  /** When the chain was quoted, epoch ms */
+  at: number;
+}
+
+const implied = new Map<string, { read: ImpliedRead | null; at: number; busy: boolean }>();
+const IMPLIED_MS = 5 * 60_000;
+
+/** The ATM IV of the first listed expiry at least one session after today (weigherDesk loadLiveChain, weigherGate
+    atmIvAt), re-read every five minutes. A same-day expiry is not used: its vol prices the hours left today. */
+async function readImplied(ticker: string): Promise<ImpliedRead | null> {
+  const listed = await listLiveExpiries(ticker);
+  const pick = listed.rows.find(e => e.weekday >= 1);
+  if (!pick) return null;
+  const chain = await loadLiveChain(ticker, pick.dte, 8, pick.root);
+  const quoted = chain.atmIv ?? 0;
+  if (!(quoted > 0) || chain.offline) return null;
+  const at = chain.quotedAt || Date.now();
+  return { expiryIso: chain.expiryIso, quotedPct: quoted, trading: vendorIvOnTradingClock(quoted / 100, chain.expiryIso, Math.min(at, Date.now())), at };
+}
+
+export function ensureImplied(ticker: string): void {
+  const t = ticker.trim().toUpperCase();
+  if (!t) return;
+  const have = implied.get(t);
+  if (have && (have.busy || Date.now() - have.at < IMPLIED_MS)) return;
+  implied.set(t, { read: have?.read ?? null, at: Date.now(), busy: true });
+  void readImplied(t)
+    .catch(() => null)
+    .then(read => {
+      implied.set(t, { read: read ?? have?.read ?? null, at: Date.now(), busy: false });
+      emit();
+    });
+}
+
+export function useImplied(ticker: string): ImpliedRead | null {
+  const t = ticker.trim().toUpperCase();
+  useEffect(() => {
+    ensureImplied(t);
+    const id = window.setInterval(() => ensureImplied(t), IMPLIED_MS);
+    return () => window.clearInterval(id);
+  }, [t]);
+  useSyncExternalStore(
+    fn => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    () => rev,
+    () => rev,
+  );
+  return implied.get(t)?.read ?? null;
 }
