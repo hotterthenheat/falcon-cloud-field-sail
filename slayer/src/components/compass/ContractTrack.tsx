@@ -35,6 +35,8 @@ interface ContractTrackProps {
   emptyNote?: string;
   /** Set when the candles are the premium off the stock, not prints. */
   pathNote?: string;
+  /** The exits drawn, as multiples of the entry (the late sweep sells at 2× and 3×) */
+  multiples?: number[];
 }
 
 const px2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -66,6 +68,7 @@ const ContractTrack = ({
   traded,
   emptyNote = '',
   pathNote = '',
+  multiples = [1.5, 2, 3],
 }: ContractTrackProps) => {
   const [localTf, setLocalTf] = useState<Timeframe>('1m');
   const timeframe = timeframeProp ?? localTf;
@@ -117,7 +120,7 @@ const ContractTrack = ({
   const markWord = shown ? 'C' : 'Last';
   const markPx = shown ? shown.close : (series?.last ?? book.mark);
   const spotName = SPOT_NAME[setup.ticker] ?? setup.ticker;
-  const tps = [1.5, 2, 3].map((mult, i) => ({ level: i + 1, price: Number((book.entryPremium * mult).toFixed(2)) }));
+  const tps = multiples.map((mult, i) => ({ level: i + 1, price: Number((book.entryPremium * mult).toFixed(2)) }));
 
   const framePrices = useMemo(
     () => [book.entryPremium, book.stopPremium, ...tps.map(t => t.price)].filter(p => p > 0 && p <= book.entryPremium * 1.7),
@@ -132,7 +135,8 @@ const ContractTrack = ({
     return {
       entry: { time: lastT, price: book.entryPremium, mid: book.mark },
       entryWord: 'ASK',
-      floor: { price: book.stopPremium, brokeAt: null },
+      /* no stop, no line (the late sweep holds without one) */
+      floor: book.stopPremium > 0 ? { price: book.stopPremium, brokeAt: null } : null,
       targets: tps.map(t => ({ level: t.level, price: t.price, won: false })),
       silver: resolveInk('rgb(var(--silver))', host),
       bg: surface.bg,
@@ -143,7 +147,7 @@ const ContractTrack = ({
       insetTop: 48,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setup.ticker, book.entryPremium, book.stopPremium, book.mark, themeKey, traded]);
+  }, [setup.ticker, book.entryPremium, book.stopPremium, book.mark, themeKey, traded, multiples.join('|')]);
 
   return (
     <div

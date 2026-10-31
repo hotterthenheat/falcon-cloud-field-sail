@@ -425,7 +425,7 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
           <SetupGuide odte={setup.expiry === '0DTE'} />
         </GuideFocus>
         <div className="px-5 pt-4 pb-4 flex items-start gap-6 flex-wrap">
-          <div className="min-w-0 flex-1 flex items-center gap-3">
+          <div className="min-w-[min(100%,440px)] flex-1 flex items-center gap-3">
             <CompanyLogo ticker={setup.ticker} size={34} />
             <div className="min-w-0">
               <div className="min-h-6 flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -507,6 +507,7 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
             volume={sessionPrints.reduce((sum, p) => sum + p.size, 0)}
             emptyNote={traded && traded.length === 0 ? 'No trades on this contract. A minute with no print is not a candle.' : ''}
             pathNote={traded == null ? (thetaDown ? 'Live data offline. No bars.' : 'Reading the bars.') : ''}
+            multiples={setup.band === 'lottery' ? [2, 3] : undefined}
           />
         </div>
         {/* THE OTHER SIDE: the underlying, the trade card, the flow */}
