@@ -199,5 +199,68 @@ check('500 viewers cost about what 1 does (within three calls)', counts[500] <= 
   check('a 474 is not kept as the answer: the next ask after recovery reaches the terminal', a.status === 474 && b.status === 200, `${a.status} then ${b.status}`);
 }
 
+/* ---- the terminal's supervisor (theta/supervisor.mjs): a refused login is said once, and the jar gets only what it needs ---- */
+{
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const nodePath = await import('node:path');
+  const { spawn } = await import('node:child_process');
+  const run = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'theta-run-'));
+  process.env.THETA_RUN_DIR = run;
+  /* read when the module loads: nothing answers on port 9, so the stand-in terminal below is the only one */
+  process.env.THETA_REST_BASE = 'http://127.0.0.1:9';
+  const sup = await import('../theta/supervisor.mjs');
+
+  const env = sup.childEnv?.({ PATH: '/bin', Path: 'C:\\x', JAVA_TOOL_OPTIONS: '-Dx=1', UNUSUAL_WHALES_API_KEY: 'uw', SUPABASE_SERVICE_ROLE_KEY: 's', THETA_RELAY_SECRET: 'r', STRIPE_SECRET_KEY: 'k' }, { THETADATA_API_KEY: 'td1' }) ?? { UNUSUAL_WHALES_API_KEY: 'uw' };
+  check(
+    'the jar gets PATH, Java options and its key, not the app\'s other keys',
+    Object.keys(env).sort().join(' ') === 'JAVA_TOOL_OPTIONS PATH Path THETADATA_API_KEY',
+    Object.keys(env).sort().join(' '),
+  );
+  check('the jar\'s refusal line is read as a failed login', !!sup.loginRefused?.('ERROR Invalid credentials. Please check your credentials file, API key, or environment variable, and try again.'));
+
+  /* the lock: a live Node supervisor holds it while it refreshes the file; a PID left in a stale file does not */
+  const holder = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 20000)'], { stdio: 'ignore' });
+  const pidFile = nodePath.join(run, 'supervisor.pid');
+  fs.writeFileSync(pidFile, String(holder.pid));
+  const heldFresh = sup.lockHeld?.(pidFile);
+  const old = new Date(Date.now() - 10 * 60_000);
+  fs.utimesSync(pidFile, old, old);
+  const heldStale = sup.lockHeld?.(pidFile);
+  holder.kill();
+  fs.rmSync(pidFile, { force: true });
+  check('the lock: held by a live supervisor that refreshes it, not by a PID in a file ten minutes stale', heldFresh === true && heldStale === false, `${heldFresh} / ${heldStale}`);
+
+  if (process.platform !== 'win32') {
+    /* a stand-in for java that prints the jar's refusal, records its environment and stays up */
+    const fake = nodePath.join(run, 'fake-java.sh');
+    fs.writeFileSync(fake, '#!/bin/sh\nenv > env.txt\necho "Picked up JAVA_TOOL_OPTIONS"\necho "[main] ERROR Invalid credentials. Please check your credentials file, API key, or environment variable, and try again."\nexec sleep 30\n');
+    fs.chmodSync(fake, 0o755);
+    const jar = nodePath.join(run, 'ThetaTerminalv3.jar');
+    fs.writeFileSync(jar, '');
+    Object.assign(process.env, { THETA_JAVA: fake, THETA_JAR: jar, THETADATA_API_KEY: 'td1_proof_wrong', THETA_REST_BASE: 'http://127.0.0.1:9', UNUSUAL_WHALES_API_KEY: 'uw-proof-secret' });
+    const lines = [];
+    const stop = sup.superviseTheta({ log: (m) => lines.push(m), warm: false });
+    for (let i = 0; i < 40 && !lines.some((l) => /login failed/i.test(l)); i++) await sleep(200);
+    await sleep(300);
+    const said = lines.filter((l) => /ThetaData login failed: check THETADATA_API_KEY/.test(l)).length;
+    let state = null;
+    try {
+      state = JSON.parse(fs.readFileSync(nodePath.join(run, 'state.json'), 'utf8')).state;
+    } catch {
+      /* none */
+    }
+    const childEnvText = fs.existsSync(nodePath.join(run, 'env.txt')) ? fs.readFileSync(nodePath.join(run, 'env.txt'), 'utf8') : '';
+    check('a refused key: one clear line in the log within seconds', said === 1, lines.join(' | ').slice(0, 300));
+    check('… the state says login_failed for the proxy to report', state === 'login_failed', String(state));
+    check('… and the terminal is stopped, not restarted', !lines.slice(1).some((l) => /started terminal/.test(l)), lines.join(' | ').slice(0, 300));
+    check('the terminal process never saw the Unusual Whales key', childEnvText.includes('THETADATA_API_KEY=td1_proof_wrong') && !childEnvText.includes('uw-proof-secret'), childEnvText ? 'env seen' : 'no env.txt');
+    stop?.();
+    for (const k of ['THETA_JAVA', 'THETA_JAR', 'THETADATA_API_KEY', 'THETA_REST_BASE', 'UNUSUAL_WHALES_API_KEY']) delete process.env[k];
+  }
+  delete process.env.THETA_RUN_DIR;
+  fs.rmSync(run, { recursive: true, force: true });
+}
+
 console.log(failed ? `\n${failed} check(s) failed` : '\nall hub checks passed');
 process.exit(failed ? 1 : 0);

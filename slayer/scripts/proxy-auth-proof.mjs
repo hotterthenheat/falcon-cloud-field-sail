@@ -50,6 +50,11 @@ const supa = http.createServer((req, res) => {
 let outage = false;
 const terminal = http.createServer((req, res) => {
   res.setHeader('content-type', 'application/json');
+  if (req.url.includes('LOGINFAIL')) {
+    res.statusCode = 503;
+    res.end('not logged in');
+    return;
+  }
   if (req.url.includes('OUTAGE') && outage) {
     res.statusCode = 474;
     res.end('DISCONNECTED');
@@ -72,6 +77,9 @@ const token = (sub, { key = privateKey, exp = Date.now() / 1000 + 600, iss = `${
 /* ---- the proxies, called as a Node server would ---- */
 
 process.env.THETA_REST_BASE = `http://127.0.0.1:${terminal.address().port}`;
+/* the supervisor's state file, where the proxy reads a refused login (theta/supervisor.mjs) */
+const runDir = (await import('node:fs')).mkdtempSync((await import('node:path')).join((await import('node:os')).tmpdir(), 'proxy-proof-run-'));
+process.env.THETA_RUN_DIR = runDir;
 delete process.env.UNUSUAL_WHALES_API_KEY;
 const { proxyUw } = await import('../server/uwProxy.mjs');
 const { proxyTheta } = await import('../server/thetaProxy.mjs');
@@ -106,6 +114,18 @@ check('dev, no Supabase: theta passes the gate', show(await call(proxyTheta, TH)
   outage = false;
   const after = show(await call(proxyTheta, PAST));
   check('theta 474 during an outage, then the terminal is back: the next ask answers', `${during} then ${after}`, '474 then 200');
+}
+
+/* the supervisor says the key was refused: a failing terminal answers terminal_login, not "not running" */
+{
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const before = show(await call(proxyTheta, '/api/theta/stock/snapshot/quote?symbol=LOGINFAIL1&format=json'));
+  fs.writeFileSync(path.join(runDir, 'state.json'), JSON.stringify({ state: 'login_failed', at: Date.now(), pid: null, detail: 'invalid credentials' }));
+  await new Promise((r) => setTimeout(r, 5_100));
+  const after = show(await call(proxyTheta, '/api/theta/stock/snapshot/quote?symbol=LOGINFAIL2&format=json'));
+  check('theta: a refused login reads terminal_login (the supervisor\'s state file)', `${before} then ${after}`, '503 then 503 terminal_login');
+  fs.rmSync(runDir, { recursive: true, force: true });
 }
 
 /* ---- Unusual Whales: one breaker for the key, Retry-After honoured, the answer's age sent ---- */
