@@ -5,6 +5,7 @@
    Pure: no React, no fetch, no storage. */
 
 import { nyIsoDate, nyWallTime } from '../../core/nyTime';
+import { sessionCloseMinOn } from '../../core/calendar';
 
 /** Readings further apart than this are not joined into one segment. The chart still carries the last level across the bars of the same session. */
 export const JOIN_MS = 180_000;
@@ -20,11 +21,13 @@ export const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-/** 16:00 New York on the expiry, ms — the contracts are gone after it (the whole book never closes) */
+/** The cash close on the expiry, ms — 16:00 New York, 13:00 on an early close (core/calendar.ts EARLY_CLOSES: the day
+    after Thanksgiving, Christmas Eve) — the contracts are gone after it (the whole book never closes) */
 export const closeOf = (expiry: string): number => {
   if (expiry === ALL) return Infinity;
   const [y, m, d] = expiry.split('-').map(Number);
-  return nyWallTime(y, m, d, 16, 0);
+  const close = sessionCloseMinOn(expiry);
+  return nyWallTime(y, m, d, Math.floor(close / 60), close % 60);
 };
 
 /** 04:00 New York on the day of an instant */
