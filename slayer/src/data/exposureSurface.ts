@@ -4,7 +4,8 @@ import { buildExposureProfile, type StrikeWindow } from './exposure';
 import { DESK_DTES } from './weigherDesk';
 import { blackScholesGreeks } from '../core/greeks';
 import { spotChangePct } from './gex';
-import { bookToday, isoDate, nextSession, MONTHS } from '../core/calendar';
+import { bookToday, isoDate, isTradingDay, nextSession, MONTHS } from '../core/calendar';
+import { nyIsoDate } from '../core/nyTime';
 import { expiryOpen } from '../core/tradingYear';
 import { expiryLabel, peekIv } from './uwBook';
 import { HIGHER_KEYS, chainClock, contractHigher, strikeHigher, type HigherKey } from './liveHigher';
@@ -131,6 +132,19 @@ const EPS = 1e-6;
 
 const HIGHER: ReadonlySet<Greek> = new Set<Greek>(HIGHER_KEYS);
 
+/** Trading sessions after New York's today up to and including the expiry's (0 on the day itself; the day before, 1;
+    a Friday's for Monday, 1 — not the calendar days, which count the weekend). */
+export function sessionsTo(expiry: string, nowMs = Date.now()): number {
+  const [y, m, d] = nyIsoDate(nowMs).split('-').map(Number);
+  let n = 0;
+  for (let k = 1; k < 800; k++) {
+    const day = new Date(y, m - 1, d + k);
+    if (isoDate(day) > expiry) break;
+    if (isTradingDay(day)) n++;
+  }
+  return n;
+}
+
 /** At-the-money implied vol on this column's own contracts. 0 when none is printed — never a stand-in vol. */
 function atmIvOf(chain: readonly StrikeNode[], spot: number): number {
   if (!(spot > 0)) return 0;
@@ -200,7 +214,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
     const iv = c.date ? atmIvOf(c.chain, snapshot.spot) : nameIv;
     if (!c.date) return { dte: 0, short: 'Book', date: 'All', iv, sessions: 0 };
     const parts = c.date.split('-').map(Number);
-    return { dte: c.dte, short: c.dte === 0 ? '0DTE' : `${c.dte}d`, date: `${MONTHS[parts[1] - 1]} ${parts[2]}`, iv, sessions: c.dte, iso: c.date };
+    return { dte: c.dte, short: c.dte === 0 ? '0DTE' : `${c.dte}d`, date: `${MONTHS[parts[1] - 1]} ${parts[2]}`, iv, sessions: sessionsTo(c.date), iso: c.date };
   });
 
   const put = {} as ExposureSurface['put'];

@@ -5,7 +5,7 @@ import { bookToday, expiryFor, isoDate, nextSession } from '../../core/calendar'
 import { nyIsoDate, nyMinutes, nySessionPhase } from '../../core/nyTime';
 import { pickLegWalls } from '../../core/walls';
 import { registerChainDates } from '../chainDates';
-import { levelFlip } from '../flipLevel';
+import { levelFlip, regimeOfNet } from '../flipLevel';
 import { type Candle, type GexSnapshot, type Indicators, type MarketSnapshot, type StrikeNode, type TradePlan } from '../../types/market';
 import { getDeskSession, currentSessionBars, minuteInSession, sessionMeta, type DeskSession } from '../deskSession';
 import { type LevelsScope } from '../levelsScope';
@@ -92,7 +92,11 @@ export function deskTape(ticker: string, session: DeskSession = getDeskSession()
 /** Sum the per-expiry vega already on the book onto the aggregate chain (a new aggregate — see paintLegs). */
 export function vexOntoAll(entry: Entry): void {
   const agg = new Map<number, { call: number; put: number }>();
-  for (const chain of Object.values(entry.byDate)) {
+  /* the live dates only: a date that settled at the bell holds no vega (its contracts are gone), and summing its last
+     painted vex onto the whole book counted dead contracts */
+  const floor = isoDate(bookToday());
+  for (const [date, chain] of Object.entries(entry.byDate)) {
+    if (date < floor || !expiryOpen(date)) continue;
     for (const n of chain) {
       if (!n.callVex && !n.putVex) continue;
       const cur = agg.get(n.strike) ?? { call: 0, put: 0 };
@@ -179,7 +183,8 @@ function planFor(ticker: string, spot: number, chain: StrikeNode[], flipAt: numb
   const putWall = walls.putWall ?? Number.NaN;
   return {
     ticker,
-    direction: Number.isFinite(flip) && spot < flip ? 'BEARISH' : 'BULLISH',
+    /* set off the one regime below (materializeNow); until the flip is read nothing says bearish */
+    direction: 'BULLISH',
     score: 0,
     confidence: 0,
     entry: spot,
@@ -401,9 +406,23 @@ function materializeNow(entry: Entry, scope: LevelsScope): MarketSnapshot {
     uwFacts: entry.factsDates,
   };
   /* the plan's flip zone is the one flip (data/flipLevel.ts), read off the snapshot's own levels chain */
-  const flip = levelFlip(snap, chain).flip;
-  if (flip != null) snap.plan = { ...snap.plan, flipZone: flip, direction: entry.spot >= flip ? 'BULLISH' : 'BEARISH' };
+  const read = levelFlip(snap, chain);
+  /* the direction is the one regime (flipLevel.ts regimeOfNet on the net re-priced at spot): long gamma reads bullish,
+     short bearish — never "the side of the flip", which a book crossing twice gets wrong */
+  snap.plan = { ...snap.plan, flipZone: read.flip ?? Number.NaN, direction: regimeOfNet(read.netAtSpot) === 'SHORT' ? 'BEARISH' : 'BULLISH' };
   return snap;
+}
+
+/** A name's call and put walls in a levels scope, off the chain levelsFor reads for it (the front date's own chain for
+    "Today", else the live whole book with the settled dates off — liveAll), by the one rule (core/walls.ts). A peek:
+    no fetch; null until the book is live. Pages that print a name's walls without its levels (the watchlist) read this. */
+export function scopeWalls(ticker: string, scope: LevelsScope): { callWall: number | null; putWall: number | null } | null {
+  const entry = peekEntry(ticker);
+  if (!entry || entry.status !== 'live' || !entry.all.length) return null;
+  const chains = chainsFor(entry);
+  const today = chains['0DTE'];
+  const chain = scope === 'ALL' ? chains.ALL ?? liveAll(entry) : today && today.length ? today : chains.ALL ?? liveAll(entry);
+  return pickLegWalls(chain, n => n.callGex, n => n.putGex);
 }
 
 /** Every listed date of a full book has landed once — the Map's matrix window is final */
@@ -464,7 +483,11 @@ export function chainForDate(ticker: string, date: string | 'book' | null): { no
   if (!entry || entry.status !== 'live') return null;
   const kindOf = (nodes: StrikeNode[]): 'Flow' | 'OI' => (nodes.some(n => n.oiNetGex != null) ? 'Flow' : 'OI');
   if (date === 'book') {
-    return entry.all.length ? { nodes: entry.all, label: 'Whole book', kind: kindOf(entry.all), date: 'book', movedFrom: null } : null;
+    /* the whole book live in this session: the dates that settled come off (liveAll, the chain Pinpoint's levels read),
+       registered as the whole book so the flip and the hedge-flow ladder re-price it */
+    const all = liveAll(entry);
+    registerChainDates(all, 'ALL');
+    return all.length ? { nodes: all, label: 'Whole book', kind: kindOf(all), date: 'book', movedFrom: null } : null;
   }
   const floor = isoDate(bookToday());
   const dates = Object.keys(entry.byDate).filter(d => d >= floor && expiryOpen(d) && entry.byDate[d]?.length).sort();

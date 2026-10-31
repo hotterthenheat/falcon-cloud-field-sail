@@ -16,7 +16,7 @@ import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { done, expectEqual, expectNear, freezeClock, installUwFixtures, recordedAt } from './uwFixtures';
-import { byStrike, contractOi, contractVols, levelsOfRows, rawAnswers, rawFlip, rawLegs } from './pinpointRaw';
+import { byStrike, contractOi, contractVols, levelsOfRows, pricedFlip, pricedLegs, rawAnswers } from './pinpointRaw';
 
 const SET = 'terrain-2026-10-29';
 const THETA_SET = 'terrain-theta-2026-10-29';
@@ -72,7 +72,7 @@ const raw = rawAnswers(SET);
 /* Hand values, read off spot-exposures/expiry-strike for 2026-10-29: the strike with the most call_gamma_oi (775), the
    most put_gamma_oi (758), the most |call + put| (758); the flip re-priced independently below. They equal
    pinpoint-golden's SPY Today read of the same Oct 28 close. */
-const GOLD = { front: '2026-10-29', call: 775, put: 758, supreme: 758, flip: 771.10993193321 };
+const GOLD = { front: '2026-10-29', call: 775, put: 758, supreme: 758, flip: 771.1081929770314 };
 const house = levelsFor('SPY', '0DTE')!;
 const spot = book.peekSpot('SPY')!;
 const plotted = paneLevels(spot, house);
@@ -95,7 +95,11 @@ for (const [p, d] of raw) {
 const dates = new Set([GOLD.front]);
 const hand = levelsOfRows(byStrike(rows, dates));
 expectEqual('raw rows name the same walls and supreme', [hand.callWall, hand.putWall, hand.supreme], [GOLD.call, GOLD.put, GOLD.supreme]);
-const rf = rawFlip(rawLegs(rows, dates, contractVols(raw, 'SPY', spot, '2026-10-28'), contractOi(raw, 'SPY')), spot);
+/* the rows (and the close's quotes) are marked at the vendor's price, the close; before the open the page's spot is the
+   pre-market print — the rows are re-priced from their own price, the search runs from spot */
+const marked = Number([...rows].filter(r => r.expiry === GOLD.front).sort((a, b) => String(b.time).localeCompare(String(a.time)))[0].price);
+expectEqual(`before the open the house prices at the pre-market print (${spot}), not the rows' close (${marked})`, [spot, marked], [770.115, 772.31]);
+const rf = pricedFlip(pricedLegs(rows, dates, contractVols(raw, 'SPY', marked, '2026-10-28'), contractOi(raw, 'SPY')), spot);
 expectNear(`an independent re-pricing of the rows puts the flip at ${rf?.toFixed(2)}`, rf ?? NaN, GOLD.flip, (0.0002 * spot) / GOLD.flip);
 const none = paneLevels(spot, null);
 expectEqual('no house reading, nothing plotted', [none.callWall, none.putWall, none.flip, none.supreme].map(Number.isNaN), [true, true, true, true]);
@@ -290,8 +294,9 @@ expectEqual('the cone never narrows', widening, true);
 
 /* ---- 7. the levels' words at the edge ---- */
 /* Hand: the largest |call_gamma_oi + put_gamma_oi| on Oct 29 is 758's, 101,287,487.45; 775's is 70,661,411.04, so 69.76% */
-/* spot 772.31: 775 is (775 − 772.31) ÷ 772.31 = +0.348% away, 758 is −1.853% */
-const LEVEL_HAND = { callShare: 70661411.04 / 101287487.45, callWords: 'Call wall 775 · 70% of top · +0.35%', supremeWords: 'Supreme 758 · top node · −1.85%' };
+/* spot is the recorded pre-market print, stock-state close 770.115 (prev_close 772.31): 775 is (775 − 770.115) ÷ 770.115
+   = +0.634% away, 758 is (758 − 770.115) ÷ 770.115 = −1.573% */
+const LEVEL_HAND = { callShare: 70661411.04 / 101287487.45, callWords: 'Call wall 775 · 70% of top · +0.63%', supremeWords: 'Supreme 758 · top node · −1.57%' };
 const { rungLabel } = await import('../../src/components/gex/keyLevelsPrimitive');
 const top = Math.max(...rows.filter(r => r.expiry === GOLD.front).map(r => Math.abs(Number(r.call_gamma_oi) + Number(r.put_gamma_oi))));
 const lv = paneLevels(spot, house, { top });

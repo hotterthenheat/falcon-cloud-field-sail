@@ -4,7 +4,7 @@
 import { fmtUsd } from './gex';
 import { higherForStrikes } from './liveHigher';
 import { pickLegWalls } from '../core/walls';
-import { levelFlip } from './flipLevel';
+import { levelFlip, regimeOfNet } from './flipLevel';
 import { airPocketZones, findAirPockets } from './airPockets';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
 import type {
@@ -42,9 +42,11 @@ export function buildExposureProfile(
   const chain = liveChain && liveChain.length ? liveChain : snapshot.chain;
   const factor = 1;
 
-  // Window around spot, descending strikes (highest first)
+  // Window around spot, descending strikes (highest first). Spot under every strike sits at the bottom of the list
+  // (the lowest strikes are the nearest), not the top.
   const desc = [...chain].sort((a, b) => b.strike - a.strike);
-  const spotIdx = Math.max(0, desc.findIndex(n => n.strike <= spot));
+  const below = desc.findIndex(n => n.strike <= spot);
+  const spotIdx = below >= 0 ? below : Math.max(0, desc.length - 1);
   const start = Math.max(0, spotIdx - half);
   const window = desc.slice(start, start + half * 2 + 1);
 
@@ -140,17 +142,11 @@ export function buildExposureProfile(
   /* The empty runs between shelves over the same window, pushed after the walls so a pocket never displaces a wall's band. */
   zones.push(...airPocketZones(findAirPockets(strikes)));
 
-  /* the window's gamma regime, house sign (negative = dealers long gamma, absorbs): a volatility read, not a direction */
-  const biasThreshold = maxAbs.gex * 0.6;
-  let bias: GammaBias = 'NEUTRAL';
-  let biasNote = 'Balanced positioning';
-  if (netGex > biasThreshold) {
-    bias = 'SHORT_GAMMA';
-    biasNote = 'Net short gamma — moves amplified';
-  } else if (netGex < -biasThreshold) {
-    bias = 'LONG_GAMMA';
-    biasNote = 'Net long gamma — dips absorbed';
-  }
+  /* the gamma regime: the ONE rule (flipLevel.ts regimeOfNet) on the net re-priced at spot — the same sign the insight,
+     the levels and the flip read; a volatility read, not a direction. Neutral only on an exact zero. */
+  const regime = regimeOfNet(flipRead.netAtSpot);
+  const bias: GammaBias = regime === 'SHORT' ? 'SHORT_GAMMA' : regime === 'LONG' ? 'LONG_GAMMA' : 'NEUTRAL';
+  const biasNote = regime === 'SHORT' ? 'Net short gamma — moves amplified' : regime === 'LONG' ? 'Net long gamma — dips absorbed' : 'Balanced positioning';
 
   // Insight narrative — levels translated to English
   const fmtK = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));

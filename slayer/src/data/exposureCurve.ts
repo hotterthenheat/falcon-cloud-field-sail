@@ -1,8 +1,10 @@
 /* Dealer gamma as a function of spot. Each drawn date is re-priced with the flip's own legs (data/flipLevel.ts
-   datesNetAt), so the curve's zero over the levels' dates IS the flip. No vol, no legs: no curve — a Black-Scholes
-   stand-in is not drawn in its place. */
+   datesNetAt). The flip and the net at spot are the ONE flip (data/flipLevel.ts levelFlip) of the drawn dates' book —
+   the figure every page prints — never a second zero read off the drawn grid. No vol, no legs: no curve — a
+   Black-Scholes stand-in is not drawn in its place. */
 
-import { datesNetAt } from './flipLevel';
+import { datesNetAt, levelFlip } from './flipLevel';
+import { bookForDates } from './bookWindow';
 import type { ExposureSurface } from './exposureSurface';
 
 interface CurvePoint {
@@ -23,7 +25,7 @@ interface ExposureCurve {
   flip: number | null;
   /** The largest |figure| on the curve, the total or a date */
   maxAbs: number;
-  /** The total at the current spot */
+  /** The book's net at the current spot, re-priced there (levelFlip's netAtSpot), house sign — the regime's sign */
   atSpot: number;
 }
 
@@ -49,7 +51,7 @@ export function buildExposureCurve(surface: ExposureSurface, expiries: number[],
   const book = surface.book;
   const isos = drawn.map(e => surface.expiries[e]?.iso);
   if (book?.liveBook && isos.every((d): d is string => !!d)) {
-    const paths = datesNetAt(book, isos as string[], [...grid, S0]);
+    const paths = datesNetAt(book, isos as string[], grid);
     if (paths.every(p => p != null)) {
       const at = (i: number) => (paths as number[][]).map(p => p[i]);
       for (let i = 0; i < steps; i++) {
@@ -59,32 +61,9 @@ export function buildExposureCurve(surface: ExposureSurface, expiries: number[],
         maxAbs = Math.max(maxAbs, Math.abs(total));
         points.push({ spot: grid[i], total, byExpiry });
       }
-      const atSpot = at(steps).reduce((a, b) => a + b, 0);
-      return { points, spot: S0, expiries: drawn, flip: zeroOf(points, S0, surface.book!, isos as string[]), maxAbs, atSpot };
+      const read = levelFlip(bookForDates(book, isos as string[]));
+      return { points, spot: S0, expiries: drawn, flip: read.flip, maxAbs, atSpot: read.netAtSpot };
     }
   }
   return { points: [], spot: S0, expiries: drawn, flip: null, maxAbs: 1, atSpot: 0 };
-}
-
-/** The live curve's zero nearest spot: the bracketing grid step re-priced on a fine grid, then read between its points */
-function zeroOf(points: readonly CurvePoint[], S0: number, book: NonNullable<ExposureSurface['book']>, isos: string[]): number | null {
-  let best: [number, number] | null = null;
-  for (let i = 1; i < points.length; i++) {
-    const a = points[i - 1];
-    const b = points[i];
-    if (Math.sign(a.total) === Math.sign(b.total) || a.total === b.total) continue;
-    const mid = (a.spot + b.spot) / 2;
-    if (!best || Math.abs(mid - S0) < Math.abs((best[0] + best[1]) / 2 - S0)) best = [a.spot, b.spot];
-  }
-  if (!best) return null;
-  const N = 64;
-  const fine = Array.from({ length: N + 1 }, (_, i) => best![0] + ((best![1] - best![0]) * i) / N);
-  const paths = datesNetAt(book, isos, fine);
-  if (!paths.every(p => p != null)) return null;
-  const tot = fine.map((_, i) => (paths as number[][]).reduce((a, p) => a + p[i], 0));
-  for (let i = 1; i <= N; i++) {
-    if (Math.sign(tot[i - 1]) === Math.sign(tot[i]) || tot[i - 1] === tot[i]) continue;
-    return fine[i - 1] + ((0 - tot[i - 1]) * (fine[i] - fine[i - 1])) / (tot[i] - tot[i - 1]);
-  }
-  return null;
 }
