@@ -598,8 +598,8 @@ export const InsiderFile = () => {
         <RecordHead
           title={personDisplay(book.person)}
           kept={book.keptAt}
-          line={`${book.role} · ${book.ticker} · ${book.windowDays > 0 ? `${book.by === 'cik' ? 'every filing under their SEC id' : 'every filing under this name'} in the last year${book.capped ? ' — the latest 500' : ''}` : 'their filings in the market feed — their own file did not answer'}`}
-          status={book.by === 'name' && book.filers > 1 ? <p className="mt-0.5 text-t10 text-warn">{book.filers} SEC filers share this name; the rows may be more than one person.</p> : null}
+          line={`${book.role} · ${book.ticker} · ${book.windowDays > 0 ? `${book.by === 'cik' ? 'every filing under their filer id' : 'every filing under this name'} in the last year${book.capped ? ' — the latest 500' : ''}` : 'their filings in the market feed — their own file did not answer'}`}
+          status={book.by === 'name' && book.filers > 1 ? <p className="mt-0.5 text-t10 text-warn">{book.filers} filers share this name; the rows may be more than one person.</p> : null}
           facts={
             <>
               <HeadFact label="Filings" tip="Rows on the grid now">{rows.length}</HeadFact>
