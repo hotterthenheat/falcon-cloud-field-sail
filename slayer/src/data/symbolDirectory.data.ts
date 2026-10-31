@@ -5,7 +5,7 @@
    One line a symbol, most traded options first: SYMBOL \t NAME \t FLAGS. FLAGS: the kind (s stock, e ETF, i index,
    p preferred, w warrant, u unit, r right), "o" when options are listed today, then the exchange (Q Nasdaq, N NYSE,
    A NYSE American, P NYSE Arca, Z Cboe BZX, V IEX, O OTC, C Cboe index).
-   {"total":14199,"stocks":7148,"etfs":5775,"indexes":45,"preferred":382,"warrants":422,"units":303,"rights":124,"withOptions":6344,"retired":12695,"named":13939,"namedPct":98.2,"namedCommonPct":98.1,"namedOptionsPct":100,"sources":{"house":394,"nasdaqtrader":12900,"sec":255,"bundled":198,"previous":192,"vendor":0}} */
+   {"total":14199,"stocks":7148,"etfs":5775,"indexes":45,"preferred":382,"warrants":422,"units":303,"rights":124,"withOptions":6344,"retired":12695,"named":13939,"namedPct":98.2,"namedCommonPct":98.1,"namedOptionsPct":100,"sources":{"house":394,"nasdaqtrader":12900,"sec":255,"bundled":198,"previous":0,"vendor":192}} */
 
 export const BUILT_ON = '2026-10-31';
 export const DIRECTORY = String.raw`SPY	State Street SPDR S&P 500 ETF Trust	eoP
@@ -204,6 +204,7 @@ ACHR	Archer Aviation Inc. Class A	soN
 PURR	Hyperliquid Strategies Inc	soQ
 VKTX	Viking Therapeutics, Inc.	soQ
 UAL	United Airlines Holdings, Inc.	soQ
+BRK.B	Berkshire Hathaway Inc.	soN
 PG	The Procter & Gamble Company	soN
 CCJ	Cameco Corporation	soN
 MDB	MongoDB, Inc. Class A	soQ
@@ -2363,6 +2364,7 @@ ABSI	Absci Corporation	soQ
 AESI	Atlas Energy Solutions Inc.	soN
 AMCX	AMC Global Media Inc. Class A	soQ
 BEEM	Beam Global	soQ
+BF.B	Brown-Forman Corporation	soN
 BXSL	Blackstone Secured Lending Fund	soN
 CMRE	Costamare Inc. Common Stock $0.0001 par value	soN
 COSM	Cosmos Health Inc.	soQ
@@ -3058,6 +3060,7 @@ OEF	iShares S&P 100 Fund	eoP
 OMAH	VistaShares Target 15 Berkshire Select Income ETF	eoP
 OPCH	Option Care Health, Inc.	soQ
 ORLA	Orla Mining	so
+PBR.A	Petroleo Brasileiro S.A. Petrobras American Depositary Shares representing Preferred	soN
 PEN	Penumbra, Inc.	soN
 PHAT	Phathom Pharmaceuticals, Inc.	soQ
 PRE	Prenetics Global Limited Class A	soQ
@@ -3617,6 +3620,7 @@ BATT	Amplify Lithium & Battery Technology ETF	eoP
 BBNX	Beta Bionics, Inc.	soQ
 BCSF	Bain Capital Specialty Finance, Inc.	soN
 BEBE	TGE Value Creative Solutions Corp Class A	sN
+BF.A	Brown Forman Inc Class A	soN
 BIDG	Leverage Shares 2X Long BIDU Daily ETF	eoQ
 BOAT	SonicShares Global Shipping ETF	eoP
 BOC	Boston Omaha Corporation Class A	soN
@@ -3648,6 +3652,7 @@ CPT	Camden Property Trust	soN
 CTRN	Citi Trends, Inc.	soQ
 CUB	Lionheart Holdings Class A	sQ
 CVNY	YieldMax CVNA Option Income Strategy ETF	eoP
+CWEN.A	Clearway Energy, Inc.	so
 DAKT	Daktronics, Inc.	soQ
 DBP	Invesco DB Precious Metals Fund	eoP
 DDL	Dingdong (Cayman) Limited American Depositary Shares (each two representing three Ordinary	soN
@@ -4388,6 +4393,7 @@ MGV	Vanguard Morningstar Mega Cap Value ETF	eoP
 MITT	TPG Mortgage Investment Trust, Inc.	soN
 MKTW	MarketWise, Inc. Class A	sQ
 MNRS	Grayscale Bitcoin Miners ETF	so
+MOG.A	Moog Inc. Class A	soN
 MRAM	Everspin Technologies, Inc.	soQ
 MRGE		s
 MRTN	Marten Transport, Ltd.	soQ
@@ -4694,6 +4700,7 @@ GFF	Griffon Corporation	soN
 GGR	Gogoro Inc.	soQ
 GP	GreenPower Motor Company Inc.	sQ
 GRC	Gorman-Rupp Company (The)	soN
+HEI.A	Heico Corporation	soN
 HFWA	Heritage Financial Corporation	soQ
 HLIO	Helios Technologies, Inc.	soN
 HTBK	Heritage Commerce Corp	so
@@ -4913,6 +4920,7 @@ CPK	Chesapeake Utilities Corporation	soN
 CPSS	Consumer Portfolio Services, Inc.	soQ
 CPWR	Ocean Thermal Energy Corp	sO
 CRAI	CRA International,Inc.	soQ
+CRD.A	Crawford & Company	soN
 CRMT	America's Car-Mart, Inc.	sQ
 CRSH	YieldMax Short TSLA Option Income Strategy ETF	eoP
 CRTC	Xtrackers US National Critical Technologies ETF	eoP
@@ -5629,8 +5637,6 @@ BCML	BayCom Corp	soQ
 BEDZ	Advisorshares Hotel ETF	so
 BELT	Blackrock Long-Term US Equity ETF	so
 BEZ	Tradr 2X Short BE Daily ETF	eoZ
-BF.A	Brown Forman Inc Class A	soN
-BF.B	Brown-Forman Corporation	soN
 BFIX	Build Bond Innovation ETF	eoP
 BFOR	Barron's 400 ETF	eoP
 BFS	Saul Centers, Inc.	soN
@@ -5655,7 +5661,6 @@ BOXX	Alpha Architect 1-3 Month Box ETF	eoZ
 BPH	BP plc ADRhedged	eoP
 BPRE	Bluerock Private Real Estate Fund	soN
 BPRO	Bitwise Proficio Currency Debasement ETF	eoP
-BRK.B	Berkshire Hathaway Inc.	soN
 BRKW	Roundhill BRKB WeeklyPay ETF	eoZ
 BRT	BRT Apartments Corp. (MD)	soN
 BSRR	Sierra Bancorp	soQ
@@ -5717,7 +5722,6 @@ CPII	American Beacon Ionic Inflation Protection ETF	eoP
 CPNX	Tradr 2X Long CPNG Daily ETF	so
 CPTL	Global X Morningstar Capital Allocation Leaders ETF	eoQ
 CRBN	iShares Low Carbon Optimized MSCI ACWI ETF	eoP
-CRD.A	Crawford & Company	soN
 CSB	VictoryShares US Small Cap High Div Volatility Wtd ETF	eoQ
 CSBR	Champions Oncology, Inc.	soQ
 CSM	ProShares Large Cap Core Plus	eoZ
@@ -5728,7 +5732,6 @@ CVIE	Calvert International Responsible Index ETF	eoP
 CVLC	Calvert US Large-Cap Core Responsible Index ETF	eoP
 CVMC	Calvert US Mid-Cap Core Responsible Index ETF	eoP
 CVY	Invesco Zacks Multi-Asset Income ETF	eoP
-CWEN.A	Clearway Energy, Inc.	so
 CWII	REX CRWV Growth & Income ETF	so
 CWS	AdvisorShares Focused Equity ETF	eoP
 CYBN	Cybin	so
@@ -6021,7 +6024,6 @@ HDG	ProShares Hedge Replication ETF	eoP
 HEAL	Global X HealthTech ETF	eoQ
 HEEM	iShares Currency Hedged MSCI Emerging Markets ETF	eoZ
 HEGD	Swan Hedged Equity US Large Cap ETF	eoZ
-HEI.A	Heico Corporation	soN
 HELX	Franklin Genomic Advancements ETF	eoZ
 HEQT	Simplify Hedged Equity ETF	eoP
 HEZU	iShares Currency Hedged MSCI Eurozone ETF	eoP
@@ -6202,7 +6204,6 @@ MLRG	iShares MSCI USA ETF	eoP
 MMTM	State Street SPDR S&P 1500 Momentum Tilt ETF	eoP
 MNA	NYLIM Merger Arbitrage ETF	eoP
 MNTS	Momentus Inc. Class A	soQ
-MOG.A	Moog Inc. Class A	soN
 MOVE	Corvex, Inc.	soQ
 MPLT	MapLight Therapeutics, Inc.	soQ
 MQQQ	Tradr 2X Long Innovation 100 Monthly ETF	eoQ
@@ -6285,7 +6286,6 @@ PBE	Invesco Biotechnology & Genome ETF	eoP
 PBJ	Invesco Food & Beverage ETF	eoP
 PBLS	Parabilis Medicines, Inc.	soQ
 PBP	Invesco S&P 500 BuyWrite ETF	eoZ
-PBR.A	Petroleo Brasileiro S.A. Petrobras American Depositary Shares representing Preferred	soN
 PBRG	Leverage Shares 2X Long PBR Daily ETF	so
 PDBA	Invesco Agriculture Commodity Strategy No K-1 ETF	eoQ
 PDN	Invesco RAFI Developed Markets ex-U.S. Small-Mid ETF	eoP
@@ -6687,15 +6687,8 @@ AAAD	PGIM AAA CLO Aggregate Duration ETF	eP
 AAAP	Pacer Barings CLO Market Flex ETF	eQ
 AACG	ATA Creativity Global	sQ
 AACI	Armada Acquisition Corp. III Class A	sQ
-AACIU	Armada Acquisition Corp. III Units	uQ
-AACIW	Armada Acquisition Corp. III Warrants	wQ
 AACO	Abony Acquisition Corp. I Class A	sQ
-AACOU	Abony Acquisition Corp. I Units	uQ
-AACOW	Abony Acquisition Corp. I Warrants	wQ
 AACP	Apogee Acquisition Corp Class A	sQ
-AACPR	Apogee Acquisition Corp Rights	rQ
-AACPU	Apogee Acquisition Corp Units	uQ
-AACPW	Apogee Acquisition Corp Warrants	wQ
 AADR	AdvisorShares Dorsey Wright ADR ETF	eQ
 AAEQ	Alpha Architect US Equity 2 ETF	eQ
 AAGR		s
@@ -6720,7 +6713,6 @@ ABLD	Abacus FCF Real Assets Leaders ETF	eZ
 ABLG	Abacus FCF International Leaders ETF	eZ
 ABLS	Abacus FCF Small Cap Leaders ETF	eZ
 ABLV	Able View Global Inc. Class B	sQ
-ABLVW	Able View Global Inc. Warrants	wQ
 ABND	American Century Core Plus Income ETF	eP
 ABOT	Abacus FCF Innovation Leaders ETF	eZ
 ABPWW	Abpro Holdings, Inc.	sO
@@ -6728,8 +6720,6 @@ ABUF	Aptus Laddered Buffer ETF	eZ
 ABXB	Abacus Flexible Bond Leaders ETF	eZ
 ABXL	Abacus Global Management, Inc. 9.875% Fixed Rate Senior Notes due 2028	sN
 ACAA	Averin Capital Acquisition Corp. Class A	sQ
-ACAAU	Averin Capital Acquisition Corp. Units	uQ
-ACAAW	Averin Capital Acquisition Corp. Warrants	wQ
 ACBE	Pacer Metaurus Enhanced Core Income Autocallable ETF	eQ
 ACBH	Pacer Metaurus High Income Autocallable ETF	eQ
 ACCL	Acco Group Holdings Limited Class A	sQ
@@ -6738,8 +6728,6 @@ ACCV	Accelevation Holdings Corp. Class A	sQ
 ACEI	Innovator Equity Autocallable Income Strategy ETF	eP
 ACEP	ARS Core Equity Portfolio ETF	eQ
 ACGC	ACP Holdings Acquisition Corp. Class A	sQ
-ACGCU	ACP Holdings Acquisition Corp. Units	uQ
-ACGCW	ACP Holdings Acquisition Corp. Warrants	wQ
 ACGLN	Arch Capital Group Ltd. - Depositary	sQ
 ACGLO	Arch Capital Group Ltd. - Depositary	sQ
 ACGO	Hartford Alpha Capture Growth ETF	eZ
@@ -6758,7 +6746,6 @@ ACLZ	Corgi ACLS 2x Daily ETF	eZ
 ACMG	American Century Mid Cap Growth Insights ETF	eZ
 ACMM	Corgi ACMR 2x Daily ETF	eZ
 ACON	Aclarion, Inc.	sQ
-ACONW	Aclarion, Inc. Warrants	wQ
 ACP	abrdn Income Credit Strategies Fund	sN
 ACQQ	ProShares Nasdaq-100 Autocallable Income ETF	eQ
 ACRT	ProShares Russell 2000 Autocallable Income ETF	eQ
@@ -6781,8 +6768,6 @@ ACYN	FT Vest Laddered Autocallable Barrier & Income ETF	eP
 ACYQ	FT Vest Autocallable Barrier & High Income ETF	eP
 ACYS	FT Vest Laddered Autocallable Barrier & Resilient Income ETF	eP
 ADAC	American Drive Acquisition Company Class A	sQ
-ADACU	American Drive Acquisition Company Units	uQ
-ADACW	American Drive Acquisition Company Warrants	wQ
 ADAG	Adagene Inc. - ADS	sQ
 ADAMG	Adamas Trust, Inc. - 9.125% Senior Notes Due 2030	sQ
 ADAMH	Adamas Trust, Inc. - 9.875% Senior Notes Due 2030	sQ
@@ -6803,7 +6788,6 @@ ADIV	Guinness Atkinson Asia Pacific Dividend Builder ETF	eP
 ADME	Aptus Drawdown Managed Equity ETF	eZ
 ADPV	Adaptiv Select ETF	eP
 ADRX	ADARx Pharmaceuticals, Inc.	sQ
-ADSEW	ADS-TEC ENERGY PLC Warrants	wQ
 ADTX	Aditxt, Inc.	sO
 ADVB	Advanced Biomed Inc.	sQ
 ADVE	Matthews Asia Dividend Active ETF	eP
@@ -6814,8 +6798,6 @@ AEAE	AltEnergy Acquisition Corp	sO
 AEAEU	AltEnergy Acquisition Corp	sO
 AEAEW	AltEnergy Acquisition Corp	sO
 AEAQ	Activate Energy Acquisition Corp. Class A	sQ
-AEAQU	Activate Energy Acquisition Corp. Units	uQ
-AEAQW	Activate Energy Acquisition Corp. Warrants	wQ
 AEBI	Aebi Schmidt Holding AG	sQ
 AEF	abrdn Emerging Markets ex-China Fund, Inc.	sA
 AEFC	Aegon Funding Company LLC 5.10% Subordinated Notes due 2049	sN
@@ -6828,17 +6810,12 @@ AEMD	Aethlon Medical, Inc.	sQ
 AEMG	Harbor AlphaEdge Mid Cap Growth ETF	eP
 AEMV	Harbor AlphaEdge Mid Cap Value ETF	eP
 AENT	Alliance Entertainment Holding Corporation	sQ
-AENTW	Alliance Entertainment Holding Corporation Warrants	wQ
 AEON	AEON Biopharma, Inc. Class A	sA
 AERT	Aeries Technology, Inc. Class A	sQ
-AERTW	Aeries Technology, Inc. Warrants	wQ
 AESB	Harbor AlphaEdge Small Cap Core ETF	eP
 AESG	Harbor AlphaEdge Small Cap Growth ETF	eP
 AESL	Harbor AlphaEdge Small Cap Value ETF	eP
 AESP	Aeon Acquisition I Corp. Class A	sQ
-AESPR	Aeon Acquisition I Corp. Rights	rQ
-AESPU	Aeon Acquisition I Corp. Units	uQ
-AESPW	Aeon Acquisition I Corp. Warrants	wQ
 AESR	Anfield U.S. Equity Sector Rotation ETF	eZ
 AFB	AllianceBernstein National Municipal Income Fund Inc	sN
 AFDM	First Trust Active Factor International ETF	eQ
@@ -6852,13 +6829,10 @@ AFIB		s
 AFIF	Anfield Universal Fixed Income ETF	eZ
 AFIX	Allspring Broad Market Core Bond ETF	eP
 AFJK	Aimei Health Technology Co., Ltd	sQ
-AFJKR	Aimei Health Technology Co., Ltd Rights	rQ
-AFJKU	Aimei Health Technology Co., Ltd Units	uQ
 AFLG	First Trust Active Factor Large Cap ETF	eP
 AFMC	First Trust Active Factor Mid Cap ETF	eP
 AFOS	ARS Focused Opportunity Strategy ETF	eQ
 AFRI	Forafric Global PLC	sQ
-AFRIW	Forafric Global PLC Warrants	wQ
 AFSC	abrdn Focused U.S. Small Cap Active ETF	eQ
 AFSM	First Trust Active Factor Small Cap ETF	eP
 AGBK	AGI Inc Class A	sN
@@ -6910,11 +6884,9 @@ AIHY	Defiance AI Hyperscale Leaders ETF	eP
 AII	American Integrity Insurance Group, Inc.	sN
 AIIA	AI Infrastructure Acquisition Corp. Class A	sN
 AIIO	Robo.ai Inc. Class B	sQ
-AIIOW	Robo.ai Inc. Warrants	wQ
 AIIR	Air Global PLC	sQ
 AIM	AIM ImmunoTech Inc.	sA
 AIMD	Ainos, Inc.	sQ
-AIMDW	Ainos, Inc. Warrants	wQ
 AIMG	Defiance AI Magnificent 10 ETF	eQ
 AIMS	Acuitas Small Cap Active ETF	eQ
 AINF	Defiance Inference AI Chip ETF	eQ
@@ -6928,10 +6900,8 @@ AIQD	MicroSectors -3? Short Artificial Intelligence (AI) ETNs	eP
 AIQU	MicroSectors 3? Long Artificial Intelligence (AI) ETNs	eP
 AIRE	reAlpha Tech Corp.	sQ
 AIRI	Air Industries Group	sA
-AIRJW	AirJoule Technologies Corporation Warrants	wQ
 AIRT	Air T, Inc.	sQ
 AIRTP	Air T, Inc. - Trust Preferred Securities	sQ
-AISPW	Airship AI Holdings, Inc Warrants	wQ
 AIUP	FINQ FIRST U.S. Large Cap AI-Managed Equity ETF	eP
 AIX	Defiance US 100 Tech AI Moat ETF	eQ
 AIXI	XIAO-I Corporation	sQ
@@ -6951,39 +6921,25 @@ ALAR	Alarum Technologies Ltd.	sQ
 ALCO	Alico, Inc.	sQ
 ALDB	Aptus Laddered Deep Buffer ETF	eZ
 ALDF	Aldel Financial II Inc. Class A	sQ
-ALDFU	Aldel Financial II Inc. Units	uQ
-ALDFW	Aldel Financial II Inc. Warrants	wQ
 ALF	Centurion Acquisition Corp. Class A	sQ
-ALFUU	Centurion Acquisition Corp. Units	uQ
-ALFUW	Centurion Acquisition Corp. Warrants	wQ
 ALIL	Argent Focused Small Cap ETF	eQ
 ALIS	Calisa Acquisition Corp	sQ
-ALISR	Calisa Acquisition Corp Rights	rQ
-ALISU	Calisa Acquisition Corp Units	uQ
 ALLR	Allarity Therapeutics, Inc.	sQ
 ALMR	Alamar Biosciences, Inc. Class A	sQ
 ALOD		s
 ALOV	Aldabra 4 Liquidity Opportunity Vehicle, Inc. Class A	sQ
-ALOVU	Aldabra 4 Liquidity Opportunity Vehicle, Inc. Units	uQ
-ALOVW	Aldabra 4 Liquidity Opportunity Vehicle, Inc. Warrants	wQ
 ALP	Alpha Compute Corp	sQ
 ALPS	ALPS Group Inc	sQ
 ALPX	Alpex Acquisition Corporation Class A	sQ
-ALPXR	Alpex Acquisition Corporation Rights	rQ
-ALPXU	Alpex Acquisition Corporation Units	uQ
-ALPXW	Alpex Acquisition Corporation Warrants	wQ
 ALRG	Allspring LT Large Core ETF	eP
 ALUB	Alussa Energy Acquisition Corp. II Class A	sN
 ALUR	Allurion Technologies, Inc.	sO
 ALVO	Alvotech	sQ
-ALVOW	Alvotech Warrants	wQ
 ALX	Alexander's, Inc.	sN
 ALZN	Alzamend Neuro, Inc.	sQ
 AMA	Defiance Daily Target 2X Long AMAT ETF	eQ
 AMAA	Corgi AMZN 2x Daily ETF	eZ
 AMAC	AMR Resources Acquisition Corp Class A	sQ
-AMACU	AMR Resources Acquisition Corp Units	uQ
-AMACW	AMR Resources Acquisition Corp Warrants	wQ
 AMAN	Amanat Acquisition Corp Class A	sQ
 AMAX	Adaptive Hedged Multi-Asset Income ETF	eP
 AMBO	Ambow Education Holding Ltd. American Depository Shares (each representing twenty (20) Cla	sA
@@ -7000,8 +6956,6 @@ AMKL	Defiance Daily Target 2X Long AMKR ETF	eZ
 AMKX	Corgi AMKR 2x Daily ETF	eZ
 AMMO	VistaShares Defense Supercycle ETF	eP
 AMOD	Alpha Modus Holdings, Inc. Class A	sQ
-AMODW	Alpha Modus Holdings, Inc. Warrants	wQ
-AMPGZ	Amplitech Group, Inc. - Series B Right	rQ
 AMPU	Defiance Daily Target 2X Long AMPX ETF	eZ
 AMRO	Amaero Inc.	sQ
 AMS	American Shared Hospital Services	sA
@@ -7017,11 +6971,9 @@ ANEB	Anebulo Pharmaceuticals, Inc.	sO
 ANEL	Defiance Daily Target 2x Long ANET ETF	eQ
 ANG	Corgi FTSE Fallen Angels Bond ETF	eZ
 ANGH	Anghami Inc.	sQ
-ANGHW	Anghami Inc. Warrants	wQ
 ANGU	SEI Ang Research Enhanced U.S. Large Cap ETF	eQ
 ANL	Adlai Nortye Group Ltd.	sQ
 ANNA	AleAnna, Inc. Class A	sQ
-ANNAW	AleAnna, Inc. Warrants	wQ
 ANPA	Rich Sparkle Holdings Limited	sQ
 ANTA	Antalpha Platform Holding Company Class A	sQ
 ANTW	Anthropic AI Lab Ecosystem ETF	eP
@@ -7037,8 +6989,6 @@ AONC		s
 AONCW		s
 AOTG	AOT Growth and Innovation ETF	eQ
 APAC	StoneBridge Acquisition II Corporation Class A	sQ
-APACR	StoneBridge Acquisition II Corporation Rights	rQ
-APACU	StoneBridge Acquisition II Corporation Units	uQ
 APCB	ActivePassive Core Bond ETF	eP
 APCX	AppTech Payments Corp.	sO
 APCXW	AppTech Payments Corp.	sO
@@ -7046,11 +6996,8 @@ APDB	Aptus April Deep Buffer ETF	eZ
 APHG	Leverage Shares 2X Long APH Daily ETF	eZ
 APIE	ActivePassive International Equity ETF	eP
 APLM	Apollomics Inc. Class A	sQ
-APLMW	Apollomics Inc. Warrants	wQ
 APLU	Allspring Core Plus ETF	eP
 APMC	AmperCap Acquisition Company	sQ
-APMCR	AmperCap Acquisition Company Rights	rQ
-APMCU	AmperCap Acquisition Company Units	uQ
 APMD	Apnimed, Inc.	sQ
 APMI	Corgi AMAT 2x Daily ETF	eZ
 APMU	ActivePassive Intermediate Municipal Bond ETF	eP
@@ -7067,15 +7014,12 @@ APRW	AllianzIM U.S. Large Cap Buffer20 Apr ETF	eZ
 APRZ	TrueShares Structured Outcome (April) ETF	eZ
 APUE	ActivePassive U.S. Equity ETF	eP
 APUR	Aperture AC Class A	sQ
-APURR	Aperture AC Rights	rQ
 APUS	Apimeds Pharmaceuticals US, Inc.	sA
 APVO	Aptevo Therapeutics Inc.	sQ
 APWC	Asia Pacific Wire & Cable Corporation Limited	sQ
 APXC	Apex Critical Metals Corp.	sQ
 APXM	FT Vest U.S. Equity Max Buffer ETF - April	eZ
 APXT	Apex Treasury Corporation Class A	sQ
-APXTU	Apex Treasury Corporation Units	uQ
-APXTW	Apex Treasury Corporation Warrants	wQ
 AQB	AquaBounty Technologies, Inc.	sQ
 AQEC	AQE Core ETF	eZ
 AQLG	HCM Large Cap Growth ETF	eQ
@@ -7085,12 +7029,7 @@ ARAI	Arrive AI Inc.	sQ
 ARBB	ARB IOT Group Limited	sQ
 ARBEW		s
 ARCI	Archimedes Tech SPAC Partners III Co.	sQ
-ARCIU	Archimedes Tech SPAC Partners III Co. Units	uQ
-ARCIW	Archimedes Tech SPAC Partners III Co. Warrants	wQ
 ARCL	ARC Group Acquisition I Corp Class A	sQ
-ARCLR	ARC Group Acquisition I Corp Rights	rQ
-ARCLU	ARC Group Acquisition I Corp Units	uQ
-ARCLW	ARC Group Acquisition I Corp Warrants	wQ
 ARCM	Arrow Reserve Capital Management ETF	eZ
 ARCP	Aristotle Core Plus Income ETF	eP
 ARDC	Ares Dynamic Credit Allocation Fund, Inc.	sN
@@ -7108,8 +7047,6 @@ ARLU	AllianzIM U.S. Equity Buffer15 Uncapped Apr ETF	eZ
 ARMA	Corgi ARM 2x Daily ETF	eZ
 ARMS	Aristotle Multi-Sector Income ETF	eP
 ARMY	Tema International Defense ETF	eQ
-ARTCU	Art Technology Acquisition Corp. Units	uQ
-ARTCW	Art Technology Acquisition Corp. Warrants	wQ
 ARTL	Artelo Biosciences, Inc.	sQ
 ARTNA	Artesian Resources Corporation - Class A Non-Voting	sQ
 ARTW	Art's-Way Manufacturing Co., Inc.	sQ
@@ -7117,7 +7054,6 @@ ARWG	Archer Growth ETF	eZ
 ASBA	Associated Banc-Corp 6.625% Fixed-Rate Reset Subordinated Notes due 2033	sN
 ASBH	American Savings Bank, N.A.	sN
 ASBP	Aspire-Lakewood Holdings, Inc.	sQ
-ASBPW	Aspire-Lakewood Holdings, Inc. Warrants	wQ
 ASCE	Allspring SMID Core ETF	eP
 ASCI	abrdn International Small Cap Active ETF	eQ
 ASD	Defiance Autism Impact ETF	eQ
@@ -7132,11 +7068,7 @@ ASMU	Direxion Daily ASML Bull 2X ETF	eQ
 ASMZ	Corgi ASML 2x Daily ETF	eZ
 ASNS	Actelis Networks Inc.	sO
 ASPC	A SPAC III Acquisition Corp. Class A	sQ
-ASPCR	A SPAC III Acquisition Corp. Rights	rQ
-ASPCU	A SPAC III Acquisition Corp. Units	uQ
 ASPE	Aspen Neuroscience, Inc.	sQ
-ASPSW	Altisource Portfolio Solutions S.A. - Net Settle Stakeholder Warrants	wQ
-ASPSZ	Altisource Portfolio Solutions S.A. - Cash Exercise Stakeholder Warrants	wQ
 ASPU	Aspen Group Inc.	s
 ASTG	Leverage Shares 2X Long ASTS Daily ETF	eZ
 ASTLW	Algoma Steel Group Inc.	sQ
@@ -7160,9 +7092,6 @@ ATLCL	Atlanticus Holdings Corporation - 6.125% Senior Notes due 2026	sQ
 ATLCP	Atlanticus Holdings Corporation - 7.625% Series B Cumulative Perpetual Preferred Stock, no	sQ
 ATLCZ	Atlanticus Holdings Corporation - 9.25% Senior Notes due 2029	sQ
 ATLQ	JAB Acquisition Corp I Class A	sQ
-ATLQR	JAB Acquisition Corp I Rights	rQ
-ATLQU	JAB Acquisition Corp I Units	uQ
-ATLQW	JAB Acquisition Corp I Warrants	wQ
 ATPC	Agape ATP Corporation	sQ
 ATTO	Attovia Therapeutics, Inc.	sQ
 ATTR	Arin Tactical Tail Risk ETF	eZ
@@ -7182,7 +7111,6 @@ AUID	authID Inc.	sQ
 AUMI	Themes Gold Miners ETF	eQ
 AUNA	Auna SA Class A	sN
 AURE	Aurelion Inc. Class A	sQ
-AUROW	Aurora Innovation, Inc. Warrants	wQ
 AURX	Nuo Therapeutics, Inc.	sO
 AUSF	Global X Adaptive U.S. Factor ETF	eP
 AUSM	Allspring Ultra Short Municipal ETF	eP
@@ -7222,8 +7150,6 @@ AWX	Avalon Holdings Corporation	sA
 AXG	Solowin Holdings Class A	sQ
 AXIL	AXIL Brands, Inc.	sA
 AXIN	Axiom Intelligence Acquisition Corp 1 Class A	sQ
-AXINR	Axiom Intelligence Acquisition Corp 1 Rights	rQ
-AXINU	Axiom Intelligence Acquisition Corp 1 Units	uQ
 AXR	AMREP Corporation	sN
 AXTC	Corgi AXTI 2x Daily ETF	eZ
 AXTL	Leverage Shares 2X Long AXTI Daily ETF	eZ
@@ -7236,11 +7162,8 @@ AZTR	Azitra Inc	sA
 BABC	Corgi BABA 2x Daily ETF	eZ
 BABU	Direxion Daily BABA Bull 2X ETF	eQ
 BACC	Blue Acquisition Corp. Class A	sQ
-BACCR	Blue Acquisition Corp. Rights	rQ
-BACCU	Blue Acquisition Corp. Units	uQ
 BACK		s
 BAER	Bridger Aerospace Group Holdings, Inc.	sQ
-BAERW	Bridger Aerospace Group Holdings, Inc. Warrants	wQ
 BAFE	Brown Advisory Flexible Equity ETF	eQ
 BAFN	BayFirst Financial Corp.	sQ
 BAGX	EA Bridgeway Aggressive Investors ETF	eZ
@@ -7272,7 +7195,6 @@ BBBS	BondBloxx BBB Rated 1-5 Year Corporate Bond ETF	eP
 BBBYW		s
 BBCB	JPMorgan BetaBuilders USD Investment Grade Corporate Bond ETF	eZ
 BBCI	Bradbury Capital Inc.	sQ
-BBCIW	Bradbury Capital Inc. Warrants	wQ
 BBDO	Banco Bradesco Sa American Depositary Shares (each representing one Common Share)	sN
 BBEM	JPMorgan BetaBuilders Emerging Markets Equity ETF	eZ
 BBGI	Beasley Broadcast Group, Inc. Class A	sQ
@@ -7298,8 +7220,6 @@ BCAL	California BanCorp	sQ
 BCAT	BlackRock Capital Allocation Term Trust	sN
 BCAT.RT/WI		s
 BCCQ	Bleichroeder Acquisition Corp. III Class A	sQ
-BCCQU	Bleichroeder Acquisition Corp. III Units	uQ
-BCCQW	Bleichroeder Acquisition Corp. III Warrants	wQ
 BCDA	BioCardia, Inc.	sQ
 BCDF	Horizon Kinetics Blockchain Development ETF	eP
 BCDS		s
@@ -7308,7 +7228,6 @@ BCFN	Baron Financials ETF	eQ
 BCG	Binah Capital Group, Inc.	sQ
 BCGD	Baron Global Durable Advantage ETF	eN
 BCGS	Bancreek Global Select ETF	eP
-BCGWW	Binah Capital Group, Inc. Warrants	wQ
 BCHP	Principal Focused Blue Chip ETF	eZ
 BCHT	Birchtech Corp.	sA
 BCIL	Bancreek International Large Cap ETF	eP
@@ -7321,8 +7240,6 @@ BCSM	Baron SMID Cap ETF	eN
 BCSS	Bain Capital GSS Investment Corp. Class A	sN
 BCTF	Bancorp 34, Inc.	sO
 BCTK	Baron Technology ETF	eQ
-BCTXL	BriaCell Therapeutics Corp. Warrants	wQ
-BCTXZ	BriaCell Therapeutics Corp. Warrants	wQ
 BCUS	Bancreek U.S. Large Cap ETF	eP
 BCV	Bancroft Fund, Ltd.	sA
 BCX	BlackRock Resources	sN
@@ -7330,8 +7247,6 @@ BD	Russell Investments Core Plus Bond ETF	eP
 BDAI	Biddance AI Systems, Inc. Class A	sQ
 BDBT	Bluemonte Core Bond ETF	eP
 BDCI	BTC Development Corp. Class A	sQ
-BDCIU	BTC Development Corp. Units	uQ
-BDCIW	BTC Development Corp. Warrants	wQ
 BDCX	ETRACS Quarterly Pay 1.5x Leveraged MarketVector BDC Liquid Index ETN due June 10, 2050	eP
 BDCZ	ETRACS MarketVector Business Development Companies Liquid Index ETN due April 26, 2041	sP
 BDEC	Innovator U.S. Equity Buffer ETF - December	eZ
@@ -7340,15 +7255,11 @@ BDIV	AAM Brentview Dividend Growth ETF	eP
 BDJ	Blackrock Enhanced Equity Dividend Trust	sN
 BDL	Flanigan's Enterprises, Inc.	sA
 BDMD	Baird Medical Investment Holdings Ltd	sQ
-BDMDW	Baird Medical Investment Holdings Ltd Warrants	wQ
 BDRX	Biodexa Pharmaceuticals plc	sQ
 BDVG	IMGP Berkshire Dividend Growth ETF	eP
 BDVL	iShares Disciplined Volatility Equity Active ETF	eQ
 BDYN	iShares Dynamic Equity Active ETF	eQ
 BEAG	Bold Eagle Acquisition Corp. Class A	sQ
-BEAGR	Bold Eagle Acquisition Corp. Rights	rQ
-BEAGU	Bold Eagle Acquisition Corp. Units	uQ
-BEATW	Heartbeam, Inc. Warrants	wQ
 BEC	Corgi BE 2x Daily ETF	eZ
 BEDY	BNY Mellon Enhanced Dividend and Income ETF	eQ
 BEEP	Mobile Infrastructure Corporation	sQ
@@ -7359,7 +7270,6 @@ BELFA	Bel Fuse Inc. Class A	sQ
 BEMB	iShares J.P. Morgan Broad USD Emerging Markets Bond ETF	eZ
 BEMD	BNY Mellon Emerging Markets Debt ETF	eZ
 BENF	Beneficient Class A	sQ
-BENFW	Beneficient Warrants	wQ
 BENJ	Horizon Landmark ETF	eP
 BEPH	Brookfield BRP Holdings (Canada) Inc. 4.625% Perpetual Subordinated Notes	sN
 BEPI	Brookfield BRP Holdings (Canada) Inc. 4.875% Perpetual Subordinated Notes	sN
@@ -7370,7 +7280,6 @@ BESO	GSR Crypto Core3 ETF	eQ
 BESS	Bimergen Energy Corporation	sA
 BETE	ProShares Bitcoin & Ether Equal Weight ETF	eP
 BETH	ProShares Bitcoin & Ether Market Cap Weight ETF	eP
-BETRW	Better Home & Finance Holding Company Warrants	wQ
 BFAP	FT Vest Bitcoin Strategy Floor15 ETF April	eP
 BFC	Bank First Corporation	sQ
 BFEB	Innovator U.S. Equity Buffer ETF - February	eZ
@@ -7381,9 +7290,7 @@ BFLB	BufferLABS US Equity Dynamic Buffer ETF	eZ
 BFLX	iShares Flexible Equity Active ETF	eQ
 BFOC	FT Vest Bitcoin Strategy Floor15 ETF - October	eP
 BFRG	Bullfrog AI Holdings, Inc.	sQ
-BFRGW	Bullfrog AI Holdings, Inc. Warrants	wQ
 BFRI	Biofrontera Inc.	sQ
-BFRIW	Biofrontera Inc. Warrants	wQ
 BFRZ	Innovator Equity Managed 100 Buffer ETF	eP
 BFXU	FT Vest Laddered U.S. Equity Uncapped Accelerator ETF	eZ
 BGB	Blackstone Strategic Credit 2027 Term Fund	sN
@@ -7400,7 +7307,6 @@ BGIN	Bgin Blockchain Limited Class A	sQ
 BGL	Blue Gold Limited Class A	sQ
 BGLC	BioNexus Gene Lab Corp	sQ
 BGLD	FT Vest Gold Strategy Quarterly Buffer ETF	eZ
-BGLWW	Blue Gold Limited Warrants	wQ
 BGM	BGM Group Ltd. Class A	sQ
 BGMD		s
 BGMS	Bio Green Med Solution, Inc.	sQ
@@ -7415,10 +7321,7 @@ BGX	Blackstone Long Short Credit Income Fund	sN
 BGY	Blackrock Enhanced International Dividend Trust	sN
 BH	Biglari Holdings Inc. Class B	sN
 BH.A	Biglari Holdings Inc. Class A	sN
-BHAIU	BHAV Acquisition Corp II Units	uQ
 BHAV	BHAV Acquisition Corp Class A	sQ
-BHAVR	BHAV Acquisition Corp Rights	rQ
-BHAVU	BHAV Acquisition Corp Units	uQ
 BHDG	Nicholas Bitcoin Tail ETF	eQ
 BHFAL	Brighthouse Financial, Inc. - Junior Subordinated Debentures due 2058	sQ
 BHFAM	Brighthouse Financial, Inc. - Depositary	sQ
@@ -7432,10 +7335,7 @@ BHST	BioHarvest Sciences Inc.	sQ
 BHV	BlackRock Virginia Municipal Bond Trust	sN
 BHYB	Xtrackers USD High Yield BB-B ex Financials ETF	eZ
 BIAF	bioAffinity Technologies, Inc.	sQ
-BIAFW	bioAffinity Technologies, Inc. Warrants	wQ
 BIDD	iShares International Dividend Active ETF	eP
-BIDWR	Tribeca Strategic Acquisition Corp. Rights	rQ
-BIDWU	Tribeca Strategic Acquisition Corp. Units	uQ
 BIEI		s
 BIII	Black Spade Acquisition III Co Class A	sN
 BILD	Nomura Global Listed Infrastructure ETF	eP
@@ -7449,7 +7349,6 @@ BINV	Brandes International ETF	eZ
 BIO.B	Bio-Rad Laboratories, Inc. Class B	sN
 BIOF	Blue Biofuels, Inc.	sO
 BIOT	Instinct Bio Technical Company Holdings Inc.	sQ
-BIOTW	Instinct Bio Technical Company Holdings Inc. Warrants	wQ
 BIOY	GraniteShares YieldBOOST Biotech ETF	eQ
 BIPH	Brookfield Infrastructure Corporation 5.000% Subordinated Notes due 2081	sN
 BIPI	BIP Bermuda Holdings I Limited 5.125% Perpetual Subordinated Notes	sN
@@ -7457,10 +7356,7 @@ BIPJ	Brookfield Infrastructure Corporation 7.250% Subordinated Notes due 2084	sN
 BIT	BlackRock Multi-Sector Income Trust	sN
 BITC	Bitwise Trendwise Bitcoin and Treasuries Rotation Strategy ETF	eP
 BITW	Common Shares of Beneficial Interest	eP
-BIVIW	BioVie Inc. Warrants	wQ
 BIXI	Bitcoin Infrastructure Acquisition Corp Ltd. Class A	sQ
-BIXIU	Bitcoin Infrastructure Acquisition Corp Ltd. Units	uQ
-BIXIW	Bitcoin Infrastructure Acquisition Corp Ltd. Warrants	wQ
 BIYA	Baiya International Group Inc.	sQ
 BJAN	Innovator U.S. Equity Buffer ETF - January	eZ
 BJDX	Bluejay Diagnostics, Inc.	sQ
@@ -7474,8 +7370,6 @@ BKEM	BNY Mellon Emerging Markets Equity ETF	eP
 BKFI	BNY Mellon Active Core Bond ETF	eP
 BKGI	BNY Mellon Global Infrastructure Income ETF	eZ
 BKHA	Black Hawk Acquisition Corporation Class A	sQ
-BKHAR	Black Hawk Acquisition Corporation Rights	rQ
-BKHAU	Black Hawk Acquisition Corporation Units	uQ
 BKHY	BNY Mellon High Yield ETF	eP
 BKIE	BNY Mellon International Equity ETF	eP
 BKLG	BNY Mellon US Large Cap Equity Growth ETF	eP
@@ -7498,8 +7392,6 @@ BLIN	Bridgeline Digital, Inc.	sQ
 BLIV	BeLive Holdings	sQ
 BLNE	Beeline Holdings, Inc.	sQ
 BLRK	Bluerock Acquisition Corp. Class A	sQ
-BLRKU	Bluerock Acquisition Corp. Units	uQ
-BLRKW	Bluerock Acquisition Corp. Warrants	wQ
 BLSM	BlossomHill Therapeutics, Inc.	sQ
 BLST	Bluemonte Short Term Bond ETF	eP
 BLTD	Bluemonte Long Term Bond ETF	eP
@@ -7511,8 +7403,6 @@ BLUWW	Blue Water Acquisition Corp. III - Warrant.	sQ
 BLUX	Bluemonte Dynamic Total Market ETF	eP
 BLW	Blackrock Limited Duration Income Trust	sN
 BLZR	Trailblazer Acquisition Corp. Class A	sQ
-BLZRU	Trailblazer Acquisition Corp. Units	uQ
-BLZRW	Trailblazer Acquisition Corp. Warrants	wQ
 BMAR	Innovator U.S. Equity Buffer ETF - March	eZ
 BMAY	Innovator U.S. Equity Buffer ETF - May	eZ
 BME	Blackrock Health Sciences Trust	sN
@@ -7528,11 +7418,8 @@ BMRA	Biomerica, Inc.	sQ
 BMSI	BNY Mellon Muti-Sector Income ETF	eZ
 BMVP	Invesco Bloomberg MVP Multi-factor ETF	eP
 BNAI	Brand Engagement Network Inc.	sQ
-BNAIW	Brand Engagement Network Inc. Warrants	wQ
 BNAV	Amplify Fairlead Tactical Bitcoin ETF	eZ
 BNBX	BNB Plus Corp.	sO
-BNCWW	BNB Standard Corporation Warrants	wQ
-BNCWZ	BNB Standard Corporation Warrants	wQ
 BNDC	Northern Trust Core Bond ETF	eP
 BNDI	NEOS Enhanced Income Aggregate Bond ETF	eP
 BNDP	Vanguard Core-Plus Bond Index ETF	eQ
@@ -7564,8 +7451,6 @@ BOW	Bowhead Specialty Holdings Inc.	sN
 BOXA	Alpha Architect Aggregate Bond ETF	eZ
 BOXL	Boxlight Corporation Class A	sQ
 BPAC	Blueport Acquisition Ltd Class A	sQ
-BPACR	Blueport Acquisition Ltd Rights	rQ
-BPACU	Blueport Acquisition Ltd Units	uQ
 BPAY	iShares FinTech Active ETF	eP
 BPOPM	Popular, Inc. - Popular Capital Trust II - 6.125% Cumulative Monthly Income Trust Preferre	sQ
 BPRN	Princeton Bancorp, Inc.	sQ
@@ -7573,7 +7458,6 @@ BPTH	Bio-Path Holdings, Inc.	sO
 BPYPM	Brookfield Property Partners L.P. - 6.25% Class A Cumulative Redeemable Preferred Units, S	sQ
 BPYPN	Brookfield Property Partners L.P. - 5.750% Class A Cumulative Redeemable Perpetual Preferr	sQ
 BPYPO	Brookfield Property Partners L.P. - 6.375% Class A Cumulative Redeemable Perpetual Preferr	sQ
-BPYPP	Brookfield Property Partners L.P. - 6.50% Class A Cumulative Redeemable Perpetual Preferre	uQ
 BQ	Boqii Holding Limited Class A	sA
 BRAI	Braiin Limited	sQ
 BRAZ	Global X Brazil Active ETF	eP
@@ -7583,7 +7467,6 @@ BREE	MFS Blended Research Emerging Markets Equity ETF	eN
 BREM	iShares Emerging Markets Bond Active ETF	eQ
 BRES	Burney U.S. Equity Select ETF	eQ
 BREZ	Breeze Acquisition Corp. II	sQ
-BREZR	Breeze Acquisition Corp. II Rights	rQ
 BRFH	Barfresh Food Group Inc.	sQ
 BRHY	iShares High Yield Active ETF	eQ
 BRIA	BrilliA Inc Class A	sA
@@ -7594,24 +7477,18 @@ BRIF	FIS Bright Portfolios Focused Equity ETF	eP
 BRK.A	Berkshire Hathaway Inc.	sN
 BRKC	YieldMax BRK.B Option Income Strategy ETF	eP
 BRKH	Burtech Acquisition Corp II Class A	sQ
-BRKHU	Burtech Acquisition Corp II Units	uQ
-BRKHW	Burtech Acquisition Corp II Warrants	wQ
 BRKRP	Bruker Corporation - 6.375% Mandatory Convertible Preferred Stock, Series A	sQ
 BRKU	Direxion Daily BRKB Bull 2X ETF	eQ
 BRLN	iShares Floating Rate Loan Active ETF	eZ
 BRLS	Borealis Foods Inc. Class A	sQ
-BRLSW	Borealis Foods Inc. Warrants	wQ
 BRN	Barnwell Industries, Inc.	sA
 BRNX	BrenX Ltd.	sQ
 BRNY	Burney U.S. Factor Rotation ETF	eQ
 BROL	Baron Risk Optimized Large Cap ETF	eN
-BRRKU	Bluerock Acquisition Corp. II Units	uQ
 BRRR	Coinshares Bitcoin ETF	eQ
 BRSM	MFS Blended Research Small-Mid Cap ETF	eP
 BRSV	EA Bridgeway Select Small-Cap Value ETF	eZ
 BRTM	B&R Technology Merger Corp. Class A	sQ
-BRTMU	B&R Technology Merger Corp. Units	uQ
-BRTMW	B&R Technology Merger Corp. Warrants	wQ
 BRTR	iShares Total Return Active ETF	eQ
 BRTX	BioRestorative Therapies, Inc.	sQ
 BRVE	Braveheart Bio, Inc.	sQ
@@ -7620,8 +7497,6 @@ BRZD	MicroSectors -3x Short Brazil ETNs	eZ
 BRZL	MicroSectors 3x Long Brazil ETNs	eZ
 BRZX	Corgi Brazil 2x Daily ETF	eZ
 BSAA	BEST SPAC I Acquisition Corp. Class A	sQ
-BSAAR	BEST SPAC I Acquisition Corp. Rights	rQ
-BSAAU	BEST SPAC I Acquisition Corp. Units	uQ
 BSBK	Bogota Financial Corp.	sQ
 BSCA	Invesco BulletShares 2036 Corporate Bond ETF	eQ
 BSCL	BILI Social International, Inc.	sO
@@ -7666,7 +7541,6 @@ BSMZ	Invesco BulletShares 2035 Municipal Bond ETF	eQ
 BSPA	Ballston Spa Bancorp, Inc.	sO
 BSPM		s
 BSR	Beacon Unified Catalyst ETF	eP
-BSRT	BSR Real Estate Investment Trust Units	uN
 BSSX	Invesco BulletShares 2033 Municipal Bond ETF	eQ
 BST	BlackRock Science and Technology Trust	sN
 BSTP	Innovator Buffer Step-Up Strategy ETF	eP
@@ -7677,7 +7551,6 @@ BSTZ	BlackRock Science and Technology Term Trust	sN
 BSVN	Bank7 Corp.	sQ
 BTA	Beacon Tactical Alternatives Risk ETF	eP
 BTBD	BT Brands, Inc.	sQ
-BTBDW	BT Brands, Inc. Warrants	wQ
 BTCC	Grayscale Bitcoin High Income ETF	eP
 BTCK	7RCC Spot Bitcoin and Carbon Credit Futures ETF	eP
 BTCT	BTC Digital Ltd.	sQ
@@ -7687,7 +7560,6 @@ BTMD	Biote Corp. Class A	sQ
 BTO	John Hancock Financial Opportunities Fund	sN
 BTOC	Armlogi Holding Corp.	sQ
 BTOT	iShares Total USD Fixed Income Market ETF	eP
-BTSGU	BrightSpring Health Services, Inc. - Tangible Equity Unit	uQ
 BTT	BlackRock Municipal 2030 Target Term Trust	sN
 BTTC	Black Titan Corp	sQ
 BTTX		s
@@ -7712,7 +7584,6 @@ BUFZ	FT Vest Laddered Moderate Buffer ETF	eZ
 BUI	BlackRock Utility, Infrastructure & Power Opportunities Trust	sN
 BUIL	Rebuild America ETF	eZ
 BULD	Pacer BlueStar Engineering the Future ETF	eQ
-BULLW	Webull Corporation Warrants	wQ
 BULZ	MicroSectors FANG & Innovation 3x Leveraged ETN	eP
 BUSA	Brandes U.S. Value ETF	eZ
 BUSEP	First Busey Corporation - Depositary	sQ
@@ -7740,8 +7611,6 @@ BYLD	iShares Yield Optimized Bond ETF	eP
 BYNOU	byNordic Acquisition Corp	sO
 BYNOW	byNordic Acquisition Corp	sO
 BYRE	Principal Real Estate Active Opportunities ETF	eP
-BZAIW	Blaize Holdings, Inc. Warrants	wQ
-BZFDW	BuzzFeed, Inc. Warrants	wQ
 CAAA	First Trust AAA CMBS ETF	eP
 CABO	Cable One, Inc.	sN
 CABR	Caring Brands, Inc.	sQ
@@ -7750,8 +7619,6 @@ CAES	Cantor Equity Partners VII, Inc. Class A	sQ
 CAFX	Congress Intermediate Bond ETF	eP
 CAGE	Calamos Autocallable Growth ETF	eP
 CAII	Collective Acquisition Corp. II Class A	sQ
-CAIIU	Collective Acquisition Corp. II Units	uQ
-CAIIW	Collective Acquisition Corp. II Warrants	wQ
 CAIQ	Calamos Nasdaq Autocallable Income ETF	eQ
 CALI	iShares Short-Term California Muni Active ETF	eQ
 CAMC	Corgi CAMT 2x Daily ETF	eZ
@@ -7764,12 +7631,8 @@ CAOS	Alpha Architect Tail Risk ETF	eZ
 CAPA	Defiance AI Capacitors & MLCC ETF	eZ
 CAPE	DoubleLine Shiller CAPE U.S. Equities ETF	eP
 CAPN	Cayson Acquisition Corp	sQ
-CAPNR	Cayson Acquisition Corp Rights	rQ
-CAPNU	Cayson Acquisition Corp Units	uQ
 CAPS	Capstone Holding Corp.	sQ
 CAQ	Cambridge Acquisition Corp. Class A	sQ
-CAQUU	Cambridge Acquisition Corp. Units	uQ
-CAQUW	Cambridge Acquisition Corp. Warrants	wQ
 CARD	MAX Auto Industry -3x Inverse Leveraged ETN	eP
 CARK	CastleArk Large Growth ETF	eP
 CARL	Carlsmed, Inc.	sQ
@@ -7781,8 +7644,6 @@ CARY	Angel Oak Income ETF	eQ
 CAST	FreeCast, Inc. Class A	sQ
 CATF	American Century California Municipal Bond ETF	eP
 CATL	Catalyst Acquisition Corp. Class A	sQ
-CATLR	Catalyst Acquisition Corp. Rights	rQ
-CATLU	Catalyst Acquisition Corp. Units	uQ
 CAUD		s
 CAUG	Corgi U.S. Equities 15% Structured Buffer ETF - August Series	eZ
 CAYN	Calamos Least-Of Autocallable Income ETF	eP
@@ -7810,24 +7671,17 @@ CBXL	Calamos Laddered Bitcoin 90 Series Structured Alt Protection ETF	eZ
 CBXO	Calamos Bitcoin 90 Series Structured Alt Protection ETF - October	eZ
 CBXY	Calamos Bitcoin 90 Series Structured Alt Protection ETF - July	eZ
 CCAQ	Collective Acquisition Corp. Class A	sQ
-CCAQU	Collective Acquisition Corp. Units	uQ
-CCAQW	Collective Acquisition Corp. Warrants	wQ
 CCCT	Columbus Circle Capital Corp III Class A	sQ
-CCCTU	Columbus Circle Capital Corp III Units	uQ
-CCCTW	Columbus Circle Capital Corp III Warrants	wQ
 CCD	Calamos Dynamic Convertible & Income Fund - Closed End Fund	sQ
 CCEF	Calamos CEF Income & Arbitrage ETF	eP
 CCEL	Cryo-Cell International, Inc.	sA
 CCFE	Concourse Capital Focused Equity ETF	eQ
 CCFN	MUNCY COLUMBIA FINANCIAL Corp	sO
 CCG	Cheche Group Inc. Class A	sQ
-CCGWW	Cheche Group Inc. Warrants	wQ
 CCHH	CCH Holdings Ltd Class A	sQ
 CCID	Carlyle Credit Income Fund 7.375% Series D Term Preferred Shares due 2028	sN
 CCIF	Carlyle Credit Income Fund	sN
 CCII	Cohen Circle Acquisition Corp. II Class A	sQ
-CCIIU	Cohen Circle Acquisition Corp. II Units	uQ
-CCIIW	Cohen Circle Acquisition Corp. II Warrants	wQ
 CCM	Concord Medical Services Holdings Limited American Depositary Shares (Each represents thir	sN
 CCNEP	CNB Financial Corporation - Depositary	sQ
 CCNR	ALPS/CoreCommodity Natural Resources ETF	eQ
@@ -7838,21 +7692,16 @@ CCSB	Carbon Collective Short Duration Green Bond ETF	eQ
 CCSO	Carbon Collective Climate Solutions U.S. Equity ETF	eQ
 CCTG	CCSC Technology International Holdings Limited Class A	sQ
 CCUR		s
-CCXIU	Churchill Capital Corp XI Units	uQ
-CCXIW	Churchill Capital Corp XI Warrants	wQ
 CCZ	Comcast Holdings ZONES	sN
 CDIG	City Different Investments Global Equity ETF	eQ
 CDIO	Cardio Diagnostics Holdings Inc.	sQ
-CDIOW	Cardio Diagnostics Holdings Inc. Warrants	wQ
 CDLR	Cadeler A/S American Depositary Share (each representing four (4) Ordinary Shares)	sN
 CDNG	Leverage Shares 2X Long CDNS Daily ETF	eZ
 CDPI	Columbia High Dividend Premium Income ETF	eP
 CDRO	Codere Online Luxembourg, S.A.	sQ
-CDROW	Codere Online Luxembourg, S.A. Warrants	wQ
 CDT	CDT Equity Inc.	sQ
 CDTG	CDT Environmental Technology Investment Holdings Limited	sQ
 CDTI		s
-CDTTW	CDT Equity Inc. Warrants	wQ
 CDX	Simplify High Yield ETF	eP
 CDZIP	Cadiz, Inc. - Depositary	sQ
 CEE	The Central and Eastern Europe Fund, Inc. (The)	sN
@@ -7883,8 +7732,6 @@ CGABL	The Carlyle Group Inc. - 4.625% Subordinated Notes due 2061	sQ
 CGBL	Capital Group Core Balanced ETF	eP
 CGCB	Capital Group Core Bond ETF	eP
 CGCF	Cartesian Growth Corporation IV Class A	sQ
-CGCFU	Cartesian Growth Corporation IV Units	uQ
-CGCFW	Cartesian Growth Corporation IV Warrants	wQ
 CGCP	Capital Group Core Plus Income ETF	eP
 CGCV	Capital Group Conservative Equity ETF	eP
 CGDG	Capital Group Dividend Growers ETF	eP
@@ -7917,13 +7764,9 @@ CHA	Chagee Holdings Limited	sQ
 CHAG		s
 CHAI	Core AI Holdings, Inc.	sQ
 CHAR	Charlton Aria Acquisition Corporation Class A	sQ
-CHARR	Charlton Aria Acquisition Corporation Rights	rQ
-CHARU	Charlton Aria Acquisition Corporation Units	uQ
 CHCI	Comstock Holding Companies, Inc. Class A	sQ
 CHDG	Calamos Active Hedged Equity ETF	eZ
 CHEC	Chenghe Acquisition III Co. Class A	sQ
-CHECU	Chenghe Acquisition III Co. Units	uQ
-CHECW	Chenghe Acquisition III Co. Warrants	wQ
 CHEV	Charging Robotics Inc.	sO
 CHGA	Change Agents Corporation	sQ
 CHI	Calamos Convertible Opportunities and Income Fund - Closed End Fund	sQ
@@ -7934,8 +7777,6 @@ CHNR	China Natural Resources, Inc.	sQ
 CHNU	2x Chainlink ETF	eZ
 CHOW	ChowChow Cloud International Holdings Limited	sA
 CHPG	ChampionsGate Acquisition Corporation Class A	sQ
-CHPGR	ChampionsGate Acquisition Corporation Rights	rQ
-CHPGU	ChampionsGate Acquisition Corporation Units	uQ
 CHR	Cheer Holding, Inc. Class A	sQ
 CHRI	Global X S&P 500 Christian Values ETF	eQ
 CHRN	ChronoScale Holdings Corporation	sQ
@@ -7963,7 +7804,6 @@ CIK	UBS Asset Management Income Fund, Inc.	sA
 CIMN	Chimera Investment Corporation 9.000% Senior Notes due 2029	sN
 CIMO	Chimera Investment Corporation 9.250% Senior Notes due 2029	sN
 CIMP	Chimera Investment Corporation 8.875% Senior Notes due 2030	sN
-CINGW	Cingulate Inc. Warrants	wQ
 CIRC	Circle8 Group, Inc.	sQ
 CISO	CISO Global, Inc.	sQ
 CISS	C3is Inc.	sQ
@@ -7997,7 +7837,6 @@ CLOZ	Eldridge BBB-B CLO ETF	eP
 CLPS	CLPS Incorporation	sQ
 CLRO	ClearOne, Inc.	sQ
 CLSE	Convergence Long/Short Equity ETF	eZ
-CLSKW	CleanSpark, Inc. Warrants	wQ
 CLSM	ETC Cabana Target Leading Sector Moderate ETF	eQ
 CLST	Catalyst Bancorp, Inc.	sQ
 CLVR		s
@@ -8016,7 +7855,6 @@ CMTV	Community Bancorp.	sQ
 CNAF		s
 CNAV	Mohr Company Nav ETF	eZ
 CNCK	Coincheck Group N.V.	sQ
-CNCKW	Coincheck Group N.V. Warrants	wQ
 CNDA	Concord Acquisition Corp II	sO
 CNEQ	Alger Concentrated Equity ETF	eP
 CNEY	CN Energy Group Inc. Class A	sQ
@@ -8033,7 +7871,6 @@ CNTX	Context Therapeutics Inc.	sQ
 CNXU	Conexeu Sciences Inc.	sQ
 COAG	Hemab Therapeutics Holdings, Inc.	sQ
 COCH	Envoy Medical, Inc. Class A	sQ
-COCHW	Envoy Medical, Inc. Warrants	wQ
 COCP	Cocrystal Pharma, Inc.	sQ
 CODA	Coda Octopus Group, Inc.	sQ
 COE	51Talk Online Education Group	sA
@@ -8050,15 +7887,12 @@ COMS		s
 COMSP		s
 CONX	Direxion Daily COIN Bull 2X ETF	eQ
 COOT	Australian Oilseeds Holdings Limited	sQ
-COOTW	Australian Oilseeds Holdings Limited Warrants	wQ
 COPA	Themes Copper Miners ETF	eZ
 COPL	Copley Acquisition Corp	sN
 COPR	Idaho Copper Corporation	sA
 COPY	Tweedy, Browne Insider + Value ETF	eP
 CORB	AB Core Bond ETF	eP
 CORP	PIMCO Investment Grade Corporate Bond Exchange-Traded Fund	eP
-CORZW	Core Scientific, Inc. - Tranche 1 Warrants	wQ
-CORZZ	Core Scientific, Inc. - Tranche 2 Warrants	wQ
 COSO	CoastalSouth Bancshares, Inc.	sN
 COTG	Leverage Shares 2X Long COST Daily ETF	eQ
 CPAC	Cementos Pacasmayo S.A.A. American Depositary Shares (Each representing five Common Shares	sN
@@ -8095,16 +7929,9 @@ CPSY	Calamos S&P 500 Structured Alt Protection ETF January	eP
 CPU	Amplify Top 10 Semiconductors ETF	eP
 CPZ	Calamos Long/Short Equity & Dynamic Income Trust - Closed End Fund	sQ
 CRAC	Crown Reserve Acquisition Corp. I Class A	sQ
-CRACR	Crown Reserve Acquisition Corp. I Rights	rQ
-CRACU	Crown Reserve Acquisition Corp. I Units	uQ
-CRACW	Crown Reserve Acquisition Corp. I Warrants	wQ
 CRAM	Defiance China Memory ETF	eQ
 CRAN	Crane Harbor Acquisition Corp. II Class A	sQ
-CRANR	Crane Harbor Acquisition Corp. II Rights	rQ
-CRANU	Crane Harbor Acquisition Corp. II Units	uQ
 CRAQ	Cal Redwood Acquisition Corp. Class A	sQ
-CRAQR	Cal Redwood Acquisition Corp. Rights	rQ
-CRAQU	Cal Redwood Acquisition Corp. Units	uQ
 CRBD	Corebridge Financial Inc. 6.375% Junior Subordinated Notes due 2064	sN
 CRD	Corgi CRDO 2x Daily ETF	eZ
 CRD.B	Crawford & Company	sN
@@ -8116,10 +7943,8 @@ CREG	Smart Powerr Corp.	sO
 CREX	Creative Realities, Inc.	sQ
 CRF	Cornerstone Total Return Fund, Inc. (The)	sA
 CRGO	Freightos Limited	sQ
-CRGOW	Freightos Limited Warrants	wQ
 CRIB	Russell Investments Global Real Estate ETF	eP
 CRKN		s
-CRMLW	Critical Metals Corp. Warrants	wQ
 CRMU		s
 CROB	Defiance China Robotics ETF	eQ
 CRT	Cross Timbers Royalty Trust	sN
@@ -8138,7 +7963,6 @@ CSEN	Cohen & Steers Future of Energy Active ETF	eQ
 CSEP	Corgi U.S. Equities 15% Structured Buffer ETF - September Series	eZ
 CSHI	NEOS Enhanced Income 1-3 Month T-Bill ETF	eP
 CSHP	iShares Dynamic Short-Term Active ETF	eP
-CSHRW	CoinShares PLC Warrants	wQ
 CSIO	Cohen & Steers Infrastructure Opportunities Active ETF	eP
 CSMD	Congress SMid Growth ETF	eP
 CSNR	Cohen & Steers Natural Resources Active ETF	eP
@@ -8150,8 +7974,6 @@ CSSD	Cohen & Steers Short Duration Preferred and Income Active ETF	eP
 CSSV		s
 CSTK	Invesco Comstock Contrarian Equity ETF	eZ
 CTAA	ClearThink 1 Acquisition Corp. Class A	sQ
-CTAAR	ClearThink 1 Acquisition Corp. Rights	rQ
-CTAAU	ClearThink 1 Acquisition Corp. Units	uQ
 CTAG	Calamos Timpani Active SMID Growth ETF	eTXSE
 CTAP	Simplify US Equity PLUS Managed Futures Strategy ETF	eP
 CTAU	Corgi U.S. Equities 30% Structured Buffer ETF - August Series	eZ
@@ -8170,8 +7992,6 @@ CTW	CTW Class A	sQ
 CTWO	Common units	eP
 CTY	City Therapeutics, Inc.	sQ
 CUBB	Customers Bancorp, Inc 5.375% Subordinated Notes Due 2034	sN
-CUBWU	Lionheart Holdings Units	uQ
-CUBWW	Lionheart Holdings Warrants	wQ
 CUEN	Cuentas Inc.	sO
 CULL	Cullman Bancorp, Inc. /MD/	sO
 CUPR	Cuprina Holdings (Cayman) Limited Class A	sQ
@@ -8192,27 +8012,20 @@ CVV	CVD Equipment Corporation	sQ
 CWBK		s
 CWD	CaliberCos Inc. Class A	sQ
 CWY	GraniteShares YieldBOOST CRWV ETF	eQ
-CXAIW	CXApp Inc. Warrants	wQ
 CXII	Churchill Capital Corp XII Class A	sQ
-CXIIU	Churchill Capital Corp XII Units	uQ
-CXIIW	Churchill Capital Corp XII Warrants	wQ
 CXRN	Teucrium 2x Daily Corn ETF	eP
 CXSE	WisdomTree China ex-State-Owned Enterprises Fund	eQ
 CYAB	Cyabra, Inc.	sQ
 CYAN	Cyanotech Corp.	sO
 CYCU	Cycurion, Inc.	sQ
-CYCUW	Cycurion, Inc. Warrants	wQ
 CZA	Invesco Zacks Mid-Cap ETF	eP
 CZFS	Citizens Financial Services, Inc.	sQ
 CZWI	Citizens Community Bancorp, Inc.	sQ
 DAAQ	Digital Asset Acquisition Corp. Class A	sQ
-DAAQU	Digital Asset Acquisition Corp. Units	uQ
-DAAQW	Digital Asset Acquisition Corp. Warrants	wQ
 DABS	DoubleLine Asset-Backed Securities ETF	eP
 DACL	REX Defensive Autocallable Income ETF	eP
 DADS	Digital Asset Debt Strategy ETF	eQ
 DAIC	CID HoldCo, Inc.	sQ
-DAICW	CID HoldCo, Inc. Warrants	wQ
 DAK	Dakota Active Equity ETF	eQ
 DALI	First Trust Dorsey Wright DALI Equity ETF	eQ
 DAMD	Defiance Daily Target 2X Short AMD ETF	eP
@@ -8221,13 +8034,10 @@ DAPR	FT Vest U.S. Equity Deep Buffer ETF - April	eZ
 DARE	Dare Bioscience, Inc.	sQ
 DARP	Grizzle Growth ETF	eP
 DAUG	FT Vest U.S. Equity Deep Buffer ETF - August	eZ
-DAVEW	Dave Inc. Warrants	wQ
 DAVI	Davion Healthcare Plc	sQ
 DBAR	IMGP DBI Absolute Return ETF	eP
 DBAW	Xtrackers MSCI All World ex US Hedged Equity ETF	eP
 DBCA	D. Boral Acquisition I Corp. Class A	sQ
-DBCAU	D. Boral Acquisition I Corp. Units	uQ
-DBCAW	D. Boral Acquisition I Corp. Warrants	wQ
 DBGI	Digital Brands Group, Inc.	sQ
 DBL	DoubleLine Opportunistic Credit Fund	sN
 DBND	DoubleLine Opportunistic Core Bond ETF	eP
@@ -8293,7 +8103,6 @@ DFAI	Dimensional International Core Equity Market ETF	eP
 DFAL	Dimensional US Large Cap Core Equity Market ETF	eZ
 DFCA	Dimensional California Municipal Bond ETF	eP
 DFCF	Dimensional Core Fixed Income ETF	eP
-DFDVW	DeFi Development Corp. Warrants	wQ
 DFEB	FT Vest U.S. Equity Deep Buffer ETF - February	eZ
 DFEM	Dimensional Emerging Markets Core Equity 2 ETF	eP
 DFEV	Dimensional Emerging Markets Value ETF	eP
@@ -8301,15 +8110,12 @@ DFGP	Dimensional Global Core Plus Fixed Income ETF	eQ
 DFGV	DFA Intermediate Government Fixed Income Portfolio: ETF Class Shares	eQ
 DFGX	Dimensional International Core Fixed Income ETF	eQ
 DFII	FT Vest Bitcoin Strategy & Target Income ETF	eP
-DFLIW	Dragonfly Energy Holdings Corp Warrants	wQ
 DFMC	U.S. Micro Cap Portfolio: ETF Class Shares	eP
 DFNM	Dimensional National Municipal Bond ETF	eP
 DFNS	T3 Defense Inc.	sQ
-DFNSW	T3 Defense Inc. Warrants	wQ
 DFP	Flaherty & Crumrine Dynamic Preferred and Income Fund Inc.	sN
 DFSB	Dimensional Global Sustainability Fixed Income ETF	eP
 DFSC	DEFSEC Technologies Inc. - common stock, no R/S concurrent with offering	sQ
-DFSCW	DEFSEC Technologies Inc. Warrants	wQ
 DFSD	Dimensional Short-Duration Fixed Income ETF	eP
 DFSE	Dimensional Emerging Markets Sustainability Core 1 ETF	eP
 DFSI	Dimensional International Sustainability Core 1 ETF	eP
@@ -8353,7 +8159,6 @@ DIVY	Sound Equity Dividend Income ETF	eN
 DIVZ	Polen Dividend Income ETF	eP
 DJAN	FT Vest U.S. Equity Deep Buffer ETF - January	eZ
 DJCO	Daily Journal Corp. (S.C.)	sQ
-DJTWW	Trump Media & Technology Group Corp. Warrants	wQ
 DJUL	FT Vest U.S. Equity Deep Buffer ETF - July	eZ
 DJUN	FT Vest U.S. Equity Deep Buffer ETF - June	eZ
 DKI	DarkIris Inc. Class A	sQ
@@ -8367,24 +8172,18 @@ DLXY	Delixy Holdings Limited Class A	sQ
 DLY	DoubleLine Yield Opportunities Fund	sN
 DMA	Destra Multi-Alternative Fund	sN
 DMAA	Drugs Made In America Acquisition Corp.	sQ
-DMAAR	Drugs Made In America Acquisition Corp. Rights	rQ
-DMAAU	Drugs Made In America Acquisition Corp. Units	uQ
 DMAR	FT Vest U.S. Equity Deep Buffer ETF - March	eZ
 DMAX	iShares Large Cap Max Buffer Dec ETF	eZ
 DMAY	FT Vest U.S. Equity Deep Buffer ETF - May	eZ
 DMB	BNY Mellon Municipal Bond Infrastructure Fund, Inc.	sN
 DMBS	DoubleLine Mortgage ETF	eP
 DMII	Drugs Made In America Acquisition II Corp.	sQ
-DMIIR	Drugs Made In America Acquisition II Corp. Rights	rQ
-DMIIU	Drugs Made In America Acquisition II Corp. Units	uQ
 DMO	Western Asset Mortgage Opportunity Fund Inc.	sN
 DMRA	Damora Therapeutics, Inc.	sQ
 DMX	DoubleLine Multi-Sector Income ETF	eP
 DMXF	iShares ESG Advanced MSCI EAFE ETF	eQ
 DMXU	Xtrackers Bloomberg Developed Markets ex US Equity ETF	eP
 DNMX	Dynamix Corporation III Class A	sQ
-DNMXU	Dynamix Corporation III Units	uQ
-DNMXW	Dynamix Corporation III Warrants	wQ
 DNOV	FT Vest U.S. Equity Deep Buffer ETF - November	eZ
 DNP	DNP Select Income Fund, Inc.	sN
 DOCT	FT Vest U.S. Equity Deep Buffer ETF - October	eZ
@@ -8399,17 +8198,12 @@ DRAI	Draco Evolution AI ETF	eP
 DRAY	YieldMax DKNG Option Income Strategy ETF	eP
 DRCT	Direct Digital Holdings, Inc.	sO
 DRDB	Roman DBDR Acquisition Corp. II	sQ
-DRDBU	Roman DBDR Acquisition Corp. II Units	uQ
-DRDBW	Roman DBDR Acquisition Corp. II Warrants	wQ
 DRES	GMO Domestic Resilience ETF	eP
 DRK	DarkHorse Technologies Inc.	sQ
 DRKY	VistaShares Target 15 DRUKMacro Distribution ETF	eP
 DRMA	Dermata Therapeutics, Inc.	sQ
-DRTSW	Alpha Tau Medical Ltd. Warrants	wQ
 DRVR	Amplify S&P 500 Dividend Drivers ETF	eP
 DSAC	Daedalus Special Acquisition Corp. Class A	sQ
-DSACU	Daedalus Special Acquisition Corp. Units	uQ
-DSACW	Daedalus Special Acquisition Corp. Warrants	wQ
 DSC	DSC Holdings Ltd.	sQ
 DSEP	FT Vest U.S. Equity Deep Buffer ETF - September	eZ
 DSM	BNY Mellon Strategic Municipal Bond Fund, Inc.	sN
@@ -8420,7 +8214,6 @@ DSTX	Distillate International Fundamental Stability & Value ETF	eN
 DSU	Blackrock Debt Strategies Fund, Inc.	sN
 DSWL	Deswell Industries, Inc.	sQ
 DSY	Big Tree Cloud Holdings Limited Class A	sQ
-DSYWW	Big Tree Cloud Holdings Limited Warrants	wQ
 DTAN	Sparkline International Intangible Value ETF	eP
 DTB	DTE Energy Company 2020 Series G 4.375% Junior Subordinated Debentures due 2080	sN
 DTF	DTF Tax-Free Income 2028 Term Fund Inc.	sN
@@ -8429,8 +8222,6 @@ DTI	Drilling Tools International Corporation	sQ
 DTK	DTE Energy Company 2025 Series H 6.25% Junior Subordinated Debentures due 2085	sN
 DTRE	First Trust Alerian Disruptive Technology Real Estate ETF	eP
 DTSQ	DT Cloud Star Acquisition Corporation	sQ
-DTSQR	DT Cloud Star Acquisition Corporation Rights	rQ
-DTSQU	DT Cloud Star Acquisition Corporation Units	uQ
 DTSS	Datasea Intelligent Technology Ltd. Class A	sQ
 DTST	Data Storage Corporation	sQ
 DTW	DTE Energy Company 2017 Series E 5.25% Junior Subordinated Debentures due 2077	sN
@@ -8438,8 +8229,6 @@ DUKB	Duke Energy Corporation 5.625% Junior Subordinated Debentures due 2078	sN
 DUKH	Ocean Park High Income ETF	eQ
 DUKQ	Ocean Park Domestic ETF	eP
 DUKR	DUKE Robotics Corp.	sQ
-DUKRW	DUKE Robotics Corp. Warrants	wQ
-DUKU	Duke Energy Corporation Corporate Units	uN
 DUKX	Ocean Park International ETF	eQ
 DUKZ	Ocean Park Diversified Income ETF	eP
 DULL	MicroSectors Gold -3X Inverse Leveraged ETNs due January 29, 2043	eP
@@ -8474,8 +8263,6 @@ DYNB	Hartford Dynamic Bond ETF	eQ
 DYNCU	Dynamix Corp	sQ
 DYNCW	Dynamix Corp	sQ
 DYOR	Insight Digital Partners II Class A	sQ
-DYORU	Insight Digital Partners II Units	uQ
-DYORW	Insight Digital Partners II Warrants	wQ
 DYTA	SGI Dynamic Tactical ETF	eQ
 DZZ	DB Gold Double Short ETN due February 15, 2038	sP
 EAD	Allspring Income Opportunities Fund	sA
@@ -8502,9 +8289,7 @@ ECF	Ellsworth Growth and Income Fund Ltd.	sA
 ECML	Euclidean Fundamental Value ETF	eP
 ECOR	electroCore, Inc.	sQ
 ECX	ECARX Holdings Inc. Class A	sQ
-ECXWW	ECARX Holdings Inc. Warrants	wQ
 EDBL	Edible Garden AG Incorporated	sQ
-EDBLW	Edible Garden AG Incorporated Warrants	wQ
 EDD	Morgan Stanley Emerging Markets Domestic Debt Fund, Inc.	sN
 EDEN	iShares MSCI Denmark ETF	eZ
 EDF	Virtus Stone Harbor Emerging Markets Income Fund	sN
@@ -8543,8 +8328,6 @@ EGGQ	NestYield Visionary ETF	eQ
 EGGS	NestYield Total Return Guard ETF	eP
 EGGY	NestYield Dynamic Income ETF	eP
 EGHA	EGH Acquisition Corp. Class A	sQ
-EGHAR	EGH Acquisition Corp. Rights	rQ
-EGHAU	EGH Acquisition Corp. Units	uQ
 EGUS	iShares ESG Aware MSCI USA Growth ETF	eZ
 EHCC	Global X Ethereum Covered Call ETF	eZ
 EHGO	Eshallgo Inc. Class A	sQ
@@ -8601,7 +8384,6 @@ EMHC	State Street SPDR Bloomberg Emerging Markets USD Bond ETF	eP
 EMHY	iShares J.P. Morgan EM High Yield Bond ETF	eZ
 EMIF	iShares Emerging Markets Infrastructure ETF	eQ
 EMIS	Emmis Acquisition Corp. Class A	sQ
-EMISR	Emmis Acquisition Corp. Rights	rQ
 EMITF	Elbit Imaging Ltd.	s
 EMJL	Corgi Emerging Markets Equities 15% Structured Buffer ETF - July Series	eZ
 EMJN	Corgi Emerging Markets Equities 15% Structured Buffer ETF - June Series	eZ
@@ -8625,7 +8407,6 @@ EMXF	iShares ESG Advanced MSCI EM ETF	eQ
 EMXX	Corgi Emerging Markets 2x Daily ETF	eZ
 ENDW	Cambria Endowment Style ETF	eQ
 ENFY		s
-ENGNW	enGene Therapeutics Inc. Warrants	wQ
 ENGS	Energys Group Limited	sQ
 ENHA	Enhanced Group Inc. Class A	sN
 ENHE	iShares Enhanced Emerging Markets Active ETF	eQ
@@ -8635,7 +8416,6 @@ ENJ	Entergy New Orleans, LLC First Mortgage Bonds, 5.0% Series due December 1, 2
 ENO	Entergy New Orleans, LLC First Mortgage Bonds, 5.50% Series due April 1, 2066	sN
 ENOR	iShares MSCI Norway ETF	eZ
 ENRD	Einride AB	sQ
-ENRDW	Einride AB Warrants	wQ
 ENRG	Ninepoint North American Energy Independence ETF	eP
 ENSC	Ensysce Biosciences, Inc.	sQ
 ENSV	ENSERVCO Corporation	s
@@ -8648,7 +8428,6 @@ EOD	Allspring Global Dividend Opportunity Fund	sN
 EOI	Eaton Vance Enhance Equity Income Fund Eaton Vance Enhanced Equity Income Fund	sN
 EONR	EON Resources Inc. Class A	sA
 EOS	Eaton Vance Enhance Equity Income Fund II	sN
-EOSEW	Eos Energy Enterprises, Inc. Warrants	wQ
 EOT	Eaton Vance Municipal Income Trust EATON VANCE NATIONAL MUNICIPAL OPPORTUNITIES TRUST	sN
 EP	Empire Petroleum Corporation	sA
 EPAI	Harbor AI Inflection Strategy ETF	eP
@@ -8675,7 +8454,6 @@ ERET	iShares Environmentally Aware Real Estate ETF	eQ
 ERH	Allspring Utilities and High Income Fund	sA
 ERHE		s
 ERNA	Ernexa Therapeutics Inc.	sQ
-ERNAW	Ernexa Therapeutics Inc. Warrants	wQ
 EROK	EagleRock Land, LLC Class A shares representing limited liability company interests	sN
 ESBA	Empire State Realty OP, L.P. Series ES Operating Partnership Units Representing Limited Pa	sP
 ESBG	First Trust Enhanced Stocks, Bonds & Gold ETF	eP
@@ -8685,7 +8463,6 @@ ESGD	iShares ESG Aware MSCI EAFE ETF	eQ
 ESGG	Northern Trust STOXX Global ESG Select ETF	eZ
 ESIM	Eventide International ETF	eP
 ESLA	Estrella Immunopharma, Inc.	sQ
-ESLAW	Estrella Immunopharma, Inc. Warrants	wQ
 ESLG	Eventide Large Cap Growth ETF	eP
 ESLV	Eventide Large Cap Value ETF	eP
 ESMC	Escalon Medical Corp.	sO
@@ -8716,13 +8493,10 @@ ETW	Eaton Vance Corporation Eaton Vance Tax-Managed Global Buy-Write Opportunite
 ETX	Eaton Vance Municipal Income 2028 Term Trust	sN
 ETY	Eaton Vance Tax-Managed Diversified Equity Income Fund Common Shares of Beneficial Interes	sN
 EUDA	Euda Health Holdings Limited	sQ
-EUDAW	Euda Health Holdings Limited Warrants	wQ
 EUDG	WisdomTree Europe Quality Dividend Growth Fund	eP
 EUDV	ProShares MSCI Europe Dividend Growers ETF	eZ
 EUIG	iShares Euro Investment Grade Corporate Bond USD Hedged ETF	eZ
 EURK	Eureka Acquisition Corp Class A	sQ
-EURKR	Eureka Acquisition Corp Rights	rQ
-EURKU	Eureka Acquisition Corp Units	uQ
 EUSB	iShares ESG Advanced Universal USD Bond ETF	eP
 EUVX	Corgi Lithography & Semiconductor Photonics 2x Daily ETF	eZ
 EVAC	EQV Ventures Acquisition Corp. II Class A	sN
@@ -8743,8 +8517,6 @@ EVNT	AltShares Event-Driven ETF	eP
 EVO	Evotec SE	sQ
 EVOL	Evolving Systems, Inc.	s
 EVOX	Evolution Global Acquisition Corp Class A	sQ
-EVOXU	Evolution Global Acquisition Corp Units	uQ
-EVOXW	Evolution Global Acquisition Corp Warrants	wQ
 EVPF	Eaton Vance Preferred Securities and Income ETF	eQ
 EVSB	Eaton Vance Ultra-Short Income ETF	eP
 EVSD	Eaton Vance Short Duration Income ETF	eQ
@@ -8755,8 +8527,6 @@ EVUS	iShares ESG Aware MSCI USA Value ETF	eZ
 EVV	Eaton Vance Limited Duration Income Fund	sA
 EVYM	Eaton Vance High Income Municipal ETF	eQ
 EWAV	East West Ave Acquisition Corp.	sQ
-EWAVR	East West Ave Acquisition Corp. Rights	rQ
-EWAVU	East West Ave Acquisition Corp. Units	uQ
 EWJV	iShares MSCI Japan Value ETF	eQ
 EWO	iShares MSCI Austria ETF	eP
 EXEQ	Wedbush ReturnOnLeadership U.S. Large-Cap ETF	eP
@@ -8766,7 +8536,6 @@ EXOZ	eXoZymes Inc.	sQ
 EXPN	Horizon Expansion Leaders ETF	eZ
 EXUS	Nomura Focused International Core ETF	eQ
 EXYN	Exyn Technologies, Inc.	sQ
-EXYNW	Exyn Technologies, Inc. Warrants	wQ
 EYEG	AB Corporate Bond ETF	eQ
 EYLD	Cambria Emerging Shareholder Yield ETF	eZ
 EZGO	EZGO Technologies Ltd.	sQ
@@ -8778,9 +8547,6 @@ FAAA	Fidelity AAA CLO ETF	eQ
 FAAR	First Trust Alternative Absolute Return Strategy ETF	eQ
 FABC	Fabric.AI, Inc.	sQ
 FACT	FACT II Acquisition Corp. Class A	sQ
-FACTU	FACT II Acquisition Corp. Units	uQ
-FACTW	FACT II Acquisition Corp. Warrants	wQ
-FACWW	Factorial Energy Inc. Warrants	wQ
 FAI	First Trust Bloomberg Artificial Intelligence ETF	eP
 FALC		s
 FAMI	Farmmi, Inc. Class A	sQ
@@ -8803,7 +8569,6 @@ FBUF	Fidelity Dynamic Buffered Equity ETF	eZ
 FBX	Corgi META 2x Daily ETF	eZ
 FBYD	Falcon's Beyond Global, Inc. Class A	sQ
 FBYDP	Falcon's Beyond Global, Inc. - 11% Series B Cumulative Convertible Preferred Stock	sQ
-FBYDW	Falcon's Beyond Global, Inc. Warrants	wQ
 FBYY	GraniteShares YieldBOOST META ETF	eQ
 FCAL	First Trust California Municipal High income ETF	eQ
 FCAP	First Capital, Inc.	sQ
@@ -8838,8 +8603,6 @@ FDIV	MarketDesk Focused U.S. Dividend ETF	eQ
 FDLS	Inspire Fidelis Multi Factor ETF	eP
 FDM	First Trust DJ Select MicroCap ETF	eP
 FDMM	Freedom Metals Acquisition Corp. Class A	sQ
-FDMMU	Freedom Metals Acquisition Corp. Units	uQ
-FDMMW	Freedom Metals Acquisition Corp. Warrants	wQ
 FDND	FT Vest Dow Jones Internet & Target Income ETF	eZ
 FDRX	Founder-Led 2X Daily ETF	eQ
 FDSB	Fifth District Bancorp, Inc.	sQ
@@ -8864,8 +8627,6 @@ FEMV	Fidelity Enhanced Mid Cap Value ETF	eP
 FEMY	Femasys Inc.	sQ
 FEOE	First Eagle Overseas Equity ETF	eN
 FERA	Fifth Era Acquisition Corp I Class A	sQ
-FERAR	Fifth Era Acquisition Corp I Rights	rQ
-FERAU	Fifth Era Acquisition Corp I Units	uQ
 FESC	First Eagle Small Cap Equity ETF	eP
 FEUS	Northern Trust ESG & Climate US Large Cap Core ETF	eP
 FFA	First Trust Enhanced Equity Income Fund	sN
@@ -8892,9 +8653,6 @@ FGCPP	FG Communities Holdings Inc. - 8.00% Cumulative Series A Preferred Stock	s
 FGDL	Franklin Responsibly Sourced Gold ETF	eP
 FGI	FGI Industries Ltd.	sQ
 FGII	FG Imperii Acquisition Corp. Class A	sQ
-FGIIU	FG Imperii Acquisition Corp. Units	uQ
-FGIIW	FG Imperii Acquisition Corp. Warrants	wQ
-FGIWW	FGI Industries Ltd. Warrants	wQ
 FGN	F&G Annuities & Life, Inc. 7.950% Senior Notes due 2053	sN
 FGSI	FT Vest Growth Strength & Target Income ETF	eQ
 FGSM	Frontier Asset Global Small Cap Equity ETF	eP
@@ -8909,7 +8667,6 @@ FIEE	FiEE, Inc	sQ
 FIFT	HCM Select 50 ETF	eTXSE
 FIGB	Fidelity Investment Grade Bond ETF	eP
 FIGX	FIGX Capital Acquisition Corp. Class A	sQ
-FIGXU	FIGX Capital Acquisition Corp. Units	uQ
 FIGXW	FIGX Capital Acquisition Corp. - one-half of one redeemable warrant.	sQ
 FIIG	First Trust Intermediate Duration Investment Grade Corporate ETF	eP
 FIMU	Fidelity Intermediate Municipal Income ETF	eQ
@@ -8928,9 +8685,6 @@ FIYY	GraniteShares YieldBOOST 20Y Treasuries ETF	eQ
 FIZY	Fitz-Gerald Must Have Portfolio and Options Overlay ETF	eP
 FJAN	FT Vest U.S. Equity Buffer ETF - January	eZ
 FJDI	ARC Group Securities Acquisition I Class A	sQ
-FJDIR	ARC Group Securities Acquisition I Rights	rQ
-FJDIU	ARC Group Securities Acquisition I Units	uQ
-FJDIW	ARC Group Securities Acquisition I Warrants	wQ
 FJUL	FT Vest U.S. Equity Buffer ETF - July	eZ
 FJUN	FT Vest U.S. Equity Buffer ETF - June	eZ
 FKU	First Trust United Kingdom AlphaDEX Fund	eQ
@@ -8949,7 +8703,6 @@ FLCH	Franklin FTSE China ETF	eP
 FLCO	Franklin Investment Grade Corporate ETF	eP
 FLCV	Federated Hermes MDT Large Cap Value ETF	eP
 FLDB	Fidelity Low Duration Bond ETF	eQ
-FLDDW	Fold Holdings, Inc. Warrants	wQ
 FLDR	Fidelity Low Duration Bond Factor ETF	eZ
 FLDZ	TrueShares Patriot Defense ETF	eZ
 FLEL	Leverage Shares 2X Long FLEX Daily ETF	eZ
@@ -8983,8 +8736,6 @@ FLYU	MicroSectors Travel 3x Leveraged ETN	eP
 FLYX	flyExclusive, Inc. Class A	sA
 FLZH	Flash Sports & Media Holdings, Inc.	sO
 FMAC	Future Money Acquisition Corporation	sQ
-FMACR	Future Money Acquisition Corporation Rights	rQ
-FMACU	Future Money Acquisition Corporation Units	uQ
 FMAR	FT Vest U.S. Equity Buffer ETF - March	eZ
 FMAY	FT Vest U.S. Equity Buffer ETF - May	eZ
 FMB	First Trust Managed Municipal ETF	eQ
@@ -9019,7 +8770,6 @@ FMN	Federated Hermes Premier Municipal Income Fund	sN
 FMNY	First Trust New York Municipal High Income ETF	eP
 FMQQ	FMQQ The Next Frontier Internet ETF	eP
 FMST	Foremost Clean Energy Ltd.	sQ
-FMSTW	Foremost Clean Energy Ltd. Warrants	wQ
 FMTL	First Trust Indxx Critical Metals ETF	eP
 FMTM	MarketDesk Focused U.S. Momentum ETF	eQ
 FMUB	Fidelity Municipal Bond Opportunities ETF	eQ
@@ -9059,7 +8809,6 @@ FORTY	Formula Systems (1985) Ltd.	sQ
 FOWF	Pacer Solactive Whitney Future of Warfare ETF	eZ
 FOXO	Foxo Technologies Inc.	sO
 FOXX	Foxx Development Holdings Inc.	sQ
-FOXXW	Foxx Development Holdings Inc. Warrants	wQ
 FOXY	Simplify Currency Strategy ETF	eP
 FPA	First Trust Asia Pacific Ex-Japan AlphaDEX Fund	eQ
 FPAA	FPA Global Allocation ETF	eZ
@@ -9095,8 +8844,6 @@ FSEP	FT Vest U.S. Equity Buffer ETF - September	eZ
 FSEV	Fidelity Enhanced Small Cap Value ETF	eP
 FSGS	First Trust SMID Growth Strength ETF	eQ
 FSHP	Flag Ship Acquisition Corp.	sQ
-FSHPR	Flag Ship Acquisition Corp. Rights	rQ
-FSHPU	Flag Ship Acquisition Corp. Units	uQ
 FSI	Flexible Solutions International Inc. Common Stock (CDA)	sA
 FSIG	First Trust Limited Duration Investment Grade Corporate ETF	eP
 FSML	Franklin Small Cap Enhanced ETF	eP
@@ -9119,8 +8866,6 @@ FTG	FullerThaler Behavioral Growth ETF	eQ
 FTGS	First Trust Growth Strength ETF	eQ
 FTH	Faeth Therapeutics, Inc.	sQ
 FTHA	Forefront Tech Holdings Acquisition Corp Class A	sQ
-FTHAU	Forefront Tech Holdings Acquisition Corp Units	uQ
-FTHAW	Forefront Tech Holdings Acquisition Corp Warrants	wQ
 FTHB	FIS Faith Income ETF	eP
 FTHF	First Trust Emerging Markets Human Flourishing ETF	eP
 FTHY	First Trust High Yield Opportunities 2027 Term Fund	sN
@@ -9143,7 +8888,6 @@ FTSD	Franklin Short Duration U.S. Government ETF	eP
 FTSL	First Trust Senior Loan Fund	eQ
 FTWO	Strive Natural Resources and Security ETF	eN
 FUFU	BitFuFu Inc. Class A	sQ
-FUFUW	BitFuFu Inc. Warrants	wQ
 FULTP	Fulton Financial Corporation - Depositary	sQ
 FUNC	First United Corporation	sQ
 FUND	Sprott Focus Trust, Inc. - Closed End Fund	sQ
@@ -9151,22 +8895,14 @@ FURY	Fury Gold Mines Limited	sA
 FUSB	First US Bancshares, Inc.	sQ
 FUSD	Federated Hermes Ultrashort Bond ETF	eZ
 FUSE	Fusemachines Inc.	sQ
-FUSEW	Fusemachines Inc. Warrants	wQ
 FUSI	American Century Ultrashort Income ETF	eP
 FVAV	Fortress Value Acquisition Corp. V Class A	sQ
 FVC	First Trust Dorsey Wright Dynamic Focus 5 ETF	eQ
 FVN	Future Vision II Acquisition Corporation	sQ
-FVNNR	Future Vision II Acquisition Corporation Rights	rQ
-FVNNU	Future Vision II Acquisition Corporation Units	uQ
 FVR	FrontView REIT, Inc.	sN
 FWAC	Futurewave Acquisition Corporation	sQ
-FWACR	Futurewave Acquisition Corporation Rights	rQ
-FWACU	Futurewave Acquisition Corporation Units	uQ
-FWACW	Futurewave Acquisition Corporation Warrants	wQ
 FWD	AB Disruptors ETF	eP
 FXAC	FortuneX Acquisition Corporation	sQ
-FXACU	FortuneX Acquisition Corporation Units	uQ
-FXACW	FortuneX Acquisition Corporation Warrants	wQ
 FXED	Sound Enhanced Fixed Income ETF	eN
 FXHO	UTime Limited Class A	sQ
 FXNC	First National Corporation	sQ
@@ -9202,11 +8938,8 @@ GCBC	Greene County Bancorp, Inc.	sQ
 GCDT	Green Circle Decarbonize Technology Limited Class A	sA
 GCFB		s
 GCGR	General Catalyst Global Resilience Merger Corp. Class A	sQ
-GCGRU	General Catalyst Global Resilience Merger Corp. Units	uQ
-GCGRW	General Catalyst Global Resilience Merger Corp. Warrants	wQ
 GCL	GCL Global Holdings Ltd	sQ
 GCLO	Guggenheim Investment Grade CLO ETF	eP
-GCLWW	GCL Global Holdings Ltd Warrants	wQ
 GCOW	Pacer Global Cash Cows Dividend ETF	eZ
 GCPB	Goldman Sachs Core Plus Bond ETF	eN
 GCSH	Guggenheim Ultra Short Income ETF	eP
@@ -9243,7 +8976,6 @@ GEND	Genter Capital Dividend Income ETF	eP
 GENK	GEN Restaurant Group, Inc. Class A	sQ
 GENM	Genter Capital Municipal Quality Intermediate ETF	eP
 GENT	Genter Capital Taxable Quality Intermediate ETF	eP
-GENVR	Gen Digital Inc. - Contingent Value Rights	rQ
 GENW	Genter Capital International Dividend ETF	eP
 GEQ	Cambria Global EW 2 ETF	eQ
 GETR		s
@@ -9257,11 +8989,9 @@ GFGF		s
 GFLW	VictoryShares Free Cash Flow Growth ETF	eQ
 GFR	Greenfire Resources Ltd.	sN
 GFSG	Leverage Shares 2X Long GFS Daily ETF	eZ
-GFUZW	General Fusion Group Ltd. Warrants	wQ
 GGM	GGM Macro Alignment ETF	eP
 GGN	GAMCO Global Gold, Natural Resources & Income Trust	sA
 GGOV	iShares Global Government Bond USD Hedged Active ETF	eP
-GGROW	Gogoro Inc. Warrants	wQ
 GGRW	Gabelli Growth Innovators ETF	eP
 GGSM		s
 GGT	Gabelli Multi-Media Trust, Inc. (The)	sN
@@ -9272,13 +9002,10 @@ GHC	Graham Holdings Company	sN
 GHG	GreenTree Hospitality Group Ltd.	sN
 GHTA	Goose Hollow Tactical Allocation ETF	eZ
 GHXI	Gores Holdings XI, Inc. Class A	sQ
-GHXIU	Gores Holdings XI, Inc. Units	uQ
-GHXIW	Gores Holdings XI, Inc. Warrants	wQ
 GHY	PGIM Global High Yield Fund, Inc.	sN
 GHYG	iShares US & Intl High Yield Corp Bond ETF	eZ
 GIAX	Nicholas Global Equity and Income ETF	eP
 GIBO	GIBO Holdings Limited Class A	sQ
-GIBOW	GIBO Holdings Limited Warrants	wQ
 GIEQ	Goldman Sachs Data Enhanced International Equity ETF	eQ
 GIFT	Giftify, Inc.	sQ
 GIGL	Goldman Sachs Corporate Bond ETF	eP
@@ -9290,12 +9017,8 @@ GIPR	Generation Income Properties Inc.	sQ
 GISC	Guggenheim Securitized Income ETF	eP
 GITS	Global Interactive Technologies, Inc. Common Stock	sQ
 GIW	GigCapital8 Corp. Class A	sQ
-GIWWR	GigCapital8 Corp. Rights	rQ
-GIWWU	GigCapital8 Corp. Units	uQ
 GIX	GigCapital9 Corp. Class A	sQ
 GIXI	Gix Internet Ltd.	sQ
-GIXXR	GigCapital9 Corp. Rights	rQ
-GIXXU	GigCapital9 Corp. Units	uQ
 GJAN	FT Vest U.S. Equity Moderate Buffer ETF - January	eZ
 GJH	Synthetic Fixed-Income Securities Inc 6.375% (STRATS) Cl A-1	sN
 GJO	Synthetic Fixed-Income Securities, Inc. on behalf of STRATS(SM) Trust for Wal-Mart Stores,	sN
@@ -9317,7 +9040,6 @@ GLDN	Nicholas Gold Income ETF	eP
 GLE	Global Engine Group Holding Limited Class A	sQ
 GLED	GalaxyEdge Acquisition Corporation	sN
 GLIX	Lazard Listed Infrastructure ETF	eP
-GLNDW	Greenland Energy Company Warrants	wQ
 GLO	Clough Global Opportunities Fund	sA
 GLOF	iShares Global Equity Factor ETF	eP
 GLOW	VictoryShares WestEnd Global Equity ETF	eQ
@@ -9377,12 +9099,8 @@ GOVM	iShares 1-10 Year Treasury Bond ETF	eZ
 GOVX	GeoVax Labs, Inc.	sQ
 GOW	GOWell Energy Technology	sQ
 GPAC	General Purpose Acquisition Corp. Class A	sQ
-GPACU	General Purpose Acquisition Corp. Units	uQ
-GPACW	General Purpose Acquisition Corp. Warrants	wQ
 GPAK		s
 GPAT	GP-Act III Acquisition Corp. Class A	sQ
-GPATU	GP-Act III Acquisition Corp. Units	uQ
-GPATW	GP-Act III Acquisition Corp. Warrants	wQ
 GPJA	Georgia Power Company Series 2017A 5.00% Junior Subordinated Notes due October 1, 2077	sN
 GPLS		s
 GPRC		s
@@ -9392,7 +9110,6 @@ GQGU	GQG US Equity ETF	eP
 GQI	Natixis Gateway Quality Income ETF	eP
 GQQQ	Astoria US Quality Growth Kings ETF	eQ
 GQRE	Northern Trust Global Quality Real Estate ETF	eP
-GRABW	Grab Holdings Limited Warrants	wQ
 GRAM	Grana y Montero S.A.A.	s
 GRAN	Grande Group Limited Class A	sQ
 GRDX	GridAI Technologies Corp.	sQ
@@ -9401,7 +9118,6 @@ GRF	Eagle Capital Growth Fund, Inc.	sA
 GRI	GRI Bio, Inc.	sQ
 GRMC		s
 GRML	Greenland Mines Ltd	sQ
-GRMLW	Greenland Mines Ltd Warrants	wQ
 GRNB	VanEck Green Bond ETF	eP
 GRNI	Fundstrat Granny Shots US Large Cap & Income ETF	eP
 GRNJ	Fundstrat Granny Shots US Small- & Mid-Cap ETF	eP
@@ -9409,7 +9125,6 @@ GRNQ	Greenpro Capital Corp.	sQ
 GROM		s
 GROZ	Zacks Focus Growth ETF	eZ
 GRPZ	Invesco S&P SmallCap 600 GARP ETF	eP
-GRRRW	Gorilla Technology Group Inc. Warrants	wQ
 GRST		s
 GRVY	GRAVITY Co., Ltd.	sQ
 GRW	TCW Durable Growth ETF	eQ
@@ -9419,30 +9134,19 @@ GSEE	Goldman Sachs MarketBeta Emerging Markets Equity ETF	eZ
 GSEP	FT Vest U.S. Equity Moderate Buffer ETF - September	eZ
 GSGO	Goldman Sachs Growth Opportunities ETF	eQ
 GSHR	Gesher Acquisition Corp. II Class A	sQ
-GSHRU	Gesher Acquisition Corp. II Units	uQ
-GSHRW	Gesher Acquisition Corp. II Warrants	wQ
 GSIB	Themes Global Systemically Important Banks ETF	eQ
 GSID	Goldman Sachs MarketBeta International Equity ETF	eZ
 GSIW	Garden Stage Limited Class A	sQ
 GSJY	Goldman Sachs ActiveBeta Japan Equity ETF	eP
 GSRF	GSR IV Acquisition Corp. Class A	sQ
-GSRFR	GSR IV Acquisition Corp. Rights	rQ
-GSRFU	GSR IV Acquisition Corp. Units	uQ
 GSRV	GSR V Acquisition Corp. Class A	sQ
-GSRVR	GSR V Acquisition Corp. Rights	rQ
-GSRVU	GSR V Acquisition Corp. Units	uQ
 GSSC	GS ActiveBeta U.S. Small Cap Equity ETF	eP
 GSST	Goldman Sachs Ultra Short Bond ETF	eZ
 GSUN	Golden Sun Technology Group Limited Class A	sQ
 GTBP	GT Biopharma, Inc.	sQ
 GTEC	Greenland Technologies Holding Corporation Class A	sQ
 GTEN	Gores Holdings X, Inc. Class A	sQ
-GTENU	Gores Holdings X, Inc. Units	uQ
-GTENW	Gores Holdings X, Inc. Warrants	wQ
 GTERA	Globa Terra Acquisition Corporation Class A	sQ
-GTERR	Globa Terra Acquisition Corporation Rights	rQ
-GTERU	Globa Terra Acquisition Corporation Units	uQ
-GTERW	Globa Terra Acquisition Corporation Warrants	wQ
 GTIP	Goldman Sachs Access Inflation Protected USD Bond ETF	eZ
 GTN.A	Gray Media, Inc. Class A	sN
 GTND	Goaltender ETF	eP
@@ -9453,8 +9157,6 @@ GTOQ	Invesco High Yield Systematic Bond ETF	eQ
 GTOS	Invesco Short Duration Total Return Bond ETF	eZ
 GTR	WisdomTree Target Range Fund	eQ
 GUAC	Berto Acquisition Corp. II	sQ
-GUACU	Berto Acquisition Corp. II Units	uQ
-GUACW	Berto Acquisition Corp. II Warrants	wQ
 GUG	Guggenheim Active Allocation Fund	sN
 GULTU	Gulf Coast Ultra Deep Royalty Trust	sO
 GUMI	Goldman Sachs Ultra Short Municipal Income ETF	eP
@@ -9473,8 +9175,6 @@ GXUS	Goldman Sachs MarketBeta Total International Equity ETF	eP
 GYGY	Game Your Game, Inc.	sQ
 GYRO	Gyrodyne , LLC	sQ
 HACQ	HCM IV Acquisition Corp. Class A	sQ
-HACQU	HCM IV Acquisition Corp. Units	uQ
-HACQW	HCM IV Acquisition Corp. Warrants	wQ
 HAKY	Amplify HACK Cybersecurity Covered Call ETF	eP
 HALX	Tuttle Capital Heavy Assets Low Obsolescence ETF	eZ
 HAPI	Harbor Human Capital Factor US Large Cap ETF	eP
@@ -9484,7 +9184,6 @@ HAUG	Corgi U.S. Equities 100% Structured Buffer ETF - August Series	eZ
 HAUP		s
 HAVA	Harvard Ave Acquisition Corporation Class A	sQ
 HAVAR	Harvard Ave Acquisition Corporation - Rights that convert on a 1/10th of 1 basis to Class	sQ
-HAVAU	Harvard Ave Acquisition Corporation Units	uQ
 HAWG	HCM Hedged Equity ETF	eP
 HAWX	iShares Currency Hedged MSCI ACWI ex U.S. ETF	eP
 HBANL	Huntington Bancshares Incorporated - Depositary	sQ
@@ -9499,16 +9198,10 @@ HBRD	Invesco U.S. Hybrid Bond ETF	eP
 HBTA	Horizon Expedition Plus ETF	eP
 HBTC	Fortuna Hedged Bitcoin ETF	eZ
 HCAC	Hall Chadwick Acquisition Corp. Class A	sQ
-HCACR	Hall Chadwick Acquisition Corp. Rights	rQ
-HCACU	Hall Chadwick Acquisition Corp. Units	uQ
 HCAI	Huachen AI Parking Management Technology Holding Co., Ltd. Class A	sQ
 HCHL	Happy City Holdings Limited Class A	sQ
 HCIC	Hennessy Capital Investment Corp. VIII Class A	sQ
-HCICR	Hennessy Capital Investment Corp. VIII - Share Rights	rQ
-HCICU	Hennessy Capital Investment Corp. VIII Units	uQ
 HCMA	HCM III Acquisition Corp. Class A	sQ
-HCMAU	HCM III Acquisition Corp. Units	uQ
-HCMAW	HCM III Acquisition Corp. Warrants	wQ
 HCMT	Direxion HCM Tactical Enhanced US ETF	eP
 HCOW	Amplify COWS Covered Call ETF	eQ
 HCRB	Hartford Core Bond ETF	eZ
@@ -9519,7 +9212,6 @@ HDL	SUPER HI INTERNATIONAL HOLDING LTD.	sQ
 HDLB	ETRACS Monthly Pay 2xLeveraged US High Dividend Low Volatility ETN Series B due September	eP
 HDMV	First Trust Horizon Managed Volatility Developed International ETF	eP
 HDRN	Hadron Energy, Inc.	sQ
-HDRNW	Hadron Energy, Inc. Warrants	wQ
 HDUS	Hartford Disciplined US Equity ETF	eP
 HECA	Hedgeye Capital Allocation ETF	eP
 HECO	State Street Galaxy Hedged Digital Asset Ecosystem ETF	eQ
@@ -9588,15 +9280,12 @@ HOID	Tuttle - Rareview Humanoid Robotics ETF	eZ
 HOLA	JPMorgan International Hedged Equity Laddered Overlay ETF	eP
 HOLD	Harbor Alpha Layering ETF	eP
 HOLO	MicroCloud Hologram Inc.	sQ
-HOLOW	MicroCloud Hologram Inc. Warrants	wQ
 HOOC	Corgi HOOD 2x Daily ETF	eZ
 HOUR	Hour Loop, Inc.	sQ
 HOVNP	Hovnanian Enterprises Inc - Depositary Share representing 1/1000th of 7.625% Series A Pref	sQ
 HOVR	New Horizon Aircraft Ltd. Class A	sQ
-HOVRW	New Horizon Aircraft Ltd. Warrants	wQ
 HOYY	GraniteShares YieldBOOST HOOD ETF	eQ
 HPAI	Helport AI Limited	sQ
-HPAIW	Helport AI Limited Warrants	wQ
 HPCO		s
 HPEL	Leverage Shares 2X Long HPE Daily ETF	eZ
 HPF	John Hancock Pfd Income Fund II Pfd Income Fund II	sN
@@ -9607,10 +9296,8 @@ HQGO	Hartford US Quality Growth ETF	eQ
 HQH	abrdn Healthcare Investors	sN
 HQI	HireQuest, Inc.	sQ
 HQL	abrdn Life Sciences Investors	sN
-HQWWW	Horizon Quantum Holdings Ltd. Warrants	wQ
 HRSK	Toews Agility Shares Hedged Risk ETF	eP
 HSCS	HeartSciences Inc.	sQ
-HSCSW	HeartSciences Inc. Warrants	wQ
 HSCZ	iShares Currency Hedged MSCI EAFE Small-Cap ETF	eP
 HSEP	Corgi U.S. Equities 100% Structured Buffer ETF - September Series	eZ
 HSHP	Himalaya Shipping Ltd.	sN
@@ -9624,10 +9311,8 @@ HTFC	Horizon Technology Finance Corporation 6.25% Notes due 2027	sN
 HTLM	HomesToLife Ltd	sQ
 HTRB	Hartford Total Return Bond ETF	eP
 HTUS	Hull Tactical US ETF	eZ
-HTZWW	Hertz Global Holdings, Inc Warrants	wQ
 HUBC	Hub Cyber Security Ltd.	sQ
 HUBCW	Hub Cyber Security Ltd. - Warrant expiring 2/27/28	sQ
-HUBCZ	Hub Cyber Security Ltd. Warrants	wQ
 HUDI	Huadi International Group Co., Ltd.	sQ
 HUHU	HUHUTECH International Group Inc.	sQ
 HUIZ	Huize Holding Limited	sQ
@@ -9637,8 +9322,6 @@ HURC	Hurco Companies, Inc.	sQ
 HUSV	First Trust Horizon Managed Volatility Domestic ETF	eP
 HVAC	AdvisorShares HVAC and Industrials ETF	eP
 HVMC	Highview Merger Corp. Class A	sQ
-HVMCU	Highview Merger Corp. Units	uQ
-HVMCW	Highview Merger Corp. Warrants	wQ
 HVT.A	Haverty Furniture Companies, Inc.	sN
 HWBK	Hawthorn Bancshares, Inc.	sQ
 HWCPZ	Hancock Whitney Corporation - 6.25% Subordinated Notes due 2060	sQ
@@ -9679,11 +9362,7 @@ HYUP	Xtrackers High Beta High Yield Bond ETF	eP
 HYXF	iShares ESG Advanced High Yield Corporate Bond ETF	eQ
 IACL	GraniteShares US 100 Autocallable Income ETF	eZ
 IACO	Idea Acquisition Corp. Class A	sQ
-IACOU	Idea Acquisition Corp. Units	uQ
-IACOW	Idea Acquisition Corp. Warrants	wQ
 IACQ	Irenic Acquisition Corp. Class A	sQ
-IACQU	Irenic Acquisition Corp. Units	uQ
-IACQW	Irenic Acquisition Corp. Warrants	wQ
 IAE	Voya Asia Pacific High Dividend Equity Income Fund	s
 IAF	abrdn Australia Equity Fund, Inc.	sA
 IALT	iShares Systematic Alternatives Active ETF	eQ
@@ -9693,7 +9372,6 @@ IAUG	Innovator International Developed Power Buffer ETF August	eP
 IAUM	iShares Gold Trust Micro Shares	eP
 IAUX	i-80 Gold Corp.	sA
 IBAC	IB Acquisition Corp.	sQ
-IBACR	IB Acquisition Corp. Rights	rQ
 IBAT	iShares Energy Storage & Materials ETF	eQ
 IBCA	iShares iBonds Dec 2035 Term Corporate ETF	eP
 IBCB	iShares iBonds Dec 2036 Term Corporate ETF	eP
@@ -9770,10 +9448,7 @@ ICPI	iShares 0-1 Year TIPS Bond ETF	eP
 ICPY	Tweedy, Browne International Insider + Value ETF	eP
 ICTSF	Icts International N V	sO
 ICU	SeaStar Medical Holding Corporation	sQ
-ICUCW	SeaStar Medical Holding Corporation Warrants	wQ
 IDAC	Iron Dome Acquisition I Corp. Class A	sQ
-IDACU	Iron Dome Acquisition I Corp. Units	uQ
-IDACW	Iron Dome Acquisition I Corp. Warrants	wQ
 IDAI	T Stamp Inc. Class A	sQ
 IDAU	Corgi International Developed Equities 15% Structured Buffer ETF - August Series	eZ
 IDE	Voya Infrastructure, Industrials and Materials Fund	sN
@@ -9791,8 +9466,6 @@ IDX	VanEck Indonesia Index ETF	eP
 IDXG	Interpace Biosciences, Inc.	sO
 IDYN	iShares International Equity Factor Rotation Active ETF	eP
 IEAG	Infinite Eagle Acquisition Corp. Class A	sQ
-IEAGR	Infinite Eagle Acquisition Corp. Rights	rQ
-IEAGU	Infinite Eagle Acquisition Corp. Units	uQ
 IEUS	iShares MSCI Europe Small-Cap ETF	eQ
 IFBD	Infobird Co., Ltd	sQ
 IFEB	Innovator International Developed Power Buffer ETF February	eP
@@ -9804,8 +9477,6 @@ IFS	Intercorp Financial Services Inc.	sN
 IG	Principal Investment Grade Corporate Active ETF	eZ
 IGA	Voya Global Advantage and Premium Opportunity Fund	sN
 IGAC	Invest Green Acquisition Corporation Class A	sQ
-IGACR	Invest Green Acquisition Corporation Rights	rQ
-IGACU	Invest Green Acquisition Corporation Units	uQ
 IGB	Corgi FTSE U.S. IG Corporate Bond ETF	eZ
 IGBH	iShares Interest Rate Hedged Long-Term Corporate Bond ETF	eP
 IGCB	TCW Corporate Bond ETF	eN
@@ -9834,8 +9505,6 @@ ILDR	First Trust Innovation Leaders ETF	eP
 ILLR	Triller Group Inc.	sO
 ILLRW	Triller Group Inc.	sO
 ILLU	Illumination Acquisition Corp I Class A	sQ
-ILLUU	Illumination Acquisition Corp I Units	uQ
-ILLUW	Illumination Acquisition Corp I Warrants	wQ
 ILOW	AB International Low Volatility Equity ETF	eP
 ILS	Brookmont Catastrophic Bond ETF	eTXSE
 ILTB	iShares Core 10 Year USD Bond ETF	eP
@@ -9854,15 +9523,12 @@ IMNN	Imunon, Inc.	sQ
 IMOM	Alpha Architect International Quantitative Momentum ETF	eQ
 IMPPP	Imperial Petroleum Inc. - 8.75% Series A Cumulative Redeemable Perpetual Preferred	sQ
 IMRN	Immuron Limited	sQ
-IMSRW	Terrestrial Energy Inc. Warrants	wQ
 IMTB	iShares Core 5-10 Year USD Bond ETF	eP
 IMTE	Integrated Media Technology Limited	sQ
 IMTG	Invesco Agency MBS ETF	eZ
 IMUC		s
 INAB	IN8bio, Inc.	sQ
 INAC	Indigo Acquisition Corp.	sQ
-INACR	Indigo Acquisition Corp. Rights	rQ
-INACU	Indigo Acquisition Corp. Units	uQ
 INBKZ	First Internet Bancorp - Fixed-to-Floating Rate Subordinated Notes Due 2029	sQ
 INBS	Intelligent Bio Solutions Inc.	sQ
 INCE	Franklin Income Equity Focus ETF	eP
@@ -9905,22 +9571,14 @@ IPAV	Global X Infrastructure Development ex-U.S. ETF	eZ
 IPB	Merrill Lynch & Co., Inc. 6.0518% Index Plus Trust Certificates Series 2003-1	eN
 IPDN	Professional Diversity Network, Inc.	sQ
 IPFX	Inflection Point Acquisition Corp. VI Class A	sQ
-IPFXU	Inflection Point Acquisition Corp. VI Units	uQ
-IPFXW	Inflection Point Acquisition Corp. VI Warrants	wQ
 IPHA	Innate Pharma S.A.	sQ
 IPHX	Inflection Point Acquisition Corp. VIII Class A	sQ
-IPHXU	Inflection Point Acquisition Corp. VIII Units	uQ
-IPHXW	Inflection Point Acquisition Corp. VIII Warrants	wQ
 IPIC	iPic Entertainment Inc.	s
 IPM	Intelligent Protection Management Corp.	sQ
 IPST	IP Strategy Holdings, Inc.	sQ
 IPVV	InterPrivate Investment Partners V, Inc. Class A	sQ
-IPVVU	InterPrivate Investment Partners V, Inc. Units	uQ
-IPVVW	InterPrivate Investment Partners V, Inc. Warrants	wQ
 IPW	iPower Inc.	sQ
 IPXG	Inection Point Acquisition Corp. VII Class A	sQ
-IPXGU	Inection Point Acquisition Corp. VII Units	uQ
-IPXGW	Inection Point Acquisition Corp. VII Warrants	wQ
 IQDY	Northern Trust International Quality Dividend Dynamic ETF	eP
 IQGR	Astoria International Quality Growth Kings ETF	eQ
 IQHI	NYLIM MacKay High Income ETF	eP
@@ -9937,8 +9595,6 @@ IQSZ	Invesco Global Equity Net Zero ETF	eP
 IRAB	Iris Acquisition Corp II Class A	sN
 IREC	Corgi IREN 2x Daily ETF	eZ
 IRHO	Iron Horse Acquisitions II Corp.	sQ
-IRHOR	Iron Horse Acquisitions II Corp. Rights	rQ
-IRHOU	Iron Horse Acquisitions II Corp. Units	uQ
 IRLA	IRulya Therapeutics Inc.	sQ
 IROC	Invesco Rochester High Yield Municipal ETF	eZ
 IRTR	iShares LifePath Retirement ETF	eP
@@ -9954,8 +9610,6 @@ ISHG	iShares 1-3 Year International Treasury Bond ETF	eQ
 ISMD	Inspire Small/Mid Cap ETF	eP
 ISMF	iShares Managed Futures Active ETF	eZ
 ISNR	Snow Rothschild Acquisition Corp. Class A	sQ
-ISNRU	Snow Rothschild Acquisition Corp. Units	uQ
-ISNRW	Snow Rothschild Acquisition Corp. Warrants	wQ
 ISPC	iSpecimen Inc.	sQ
 ISRL	Defiance KSM Israel 120 ETF	eQ
 ISSB	IncomeSTKd 1x US Stocks & 1x Bitcoin Premium ETF	eZ
@@ -9975,8 +9629,6 @@ ITDH	iShares LifePath Target Date 2060 ETF	eP
 ITDI	iShares LifePath Target Date 2065 ETF	eP
 ITDJ	iShares LifePath Target Date 2070 ETF	eP
 ITHA	ITHAX Acquisition Corp III Class A	sQ
-ITHAU	ITHAX Acquisition Corp III Units	uQ
-ITHAW	ITHAX Acquisition Corp III Warrants	wQ
 ITIC	Investors Title Company	sQ
 ITOC	iTonic Holdings Ltd Class A	sQ
 ITRG	Integra Resources Corp.	sA
@@ -9984,7 +9636,6 @@ IUS	Invesco RAFI Strategic US ETF	eQ
 IVAI	Ives Ultra AI Opportunities Inc.	sN
 IVAL	Alpha Architect International Quantitative Value ETF	eQ
 IVDA	Iveda Solutions, Inc.	sQ
-IVDAW	Iveda Solutions, Inc. Warrants	wQ
 IVEP	Dan IVES Wedbush AI Power & Infrastructure ETF	eP
 IVF	INVO Fertility, Inc.	sQ
 IVSI	Applied Finance IVS International Large ETF	eQ
@@ -10093,8 +9744,6 @@ JOB	GEE Group Inc.	sA
 JOBC	Corgi JOBY 2x Daily ETF	eZ
 JOF	Japan Smaller Capitalization Fund Inc	sN
 JOJO	ATAC Credit Rotation ETF	eP
-JONER	Jones Ventures INTL Acquisition1 Corp Rights	rQ
-JONEU	Jones Ventures INTL Acquisition1 Corp Units	uQ
 JOUT	Johnson Outdoors Inc. Class A	sQ
 JOYT	JPMorgan Equity and Options Total Return ETF	eQ
 JPAN	Matthews Japan Active ETF	eP
@@ -10172,19 +9821,14 @@ KBDU		s
 KBFR	Innovator U.S. Small Cap Managed 10 Buffer ETF	eP
 KBNT		s
 KBON	Karbon Capital Partners Corp. Class A	sQ
-KBONU	Karbon Capital Partners Corp. Units	uQ
-KBONW	Karbon Capital Partners Corp. Warrants	wQ
 KBSX	FST Corp.	sQ
 KBUF	KraneShares 90% KWEB Defined Outcome January 2027 ETF	eP
 KCAI		s
 KCHP	KICK Korea Semiconductor Index ETF	eP
 KCHV	Kochav Defense Acquisition Corp. Class A	sQ
-KCHVR	Kochav Defense Acquisition Corp. Rights	rQ
-KCHVU	Kochav Defense Acquisition Corp. Units	uQ
 KCLI		s
 KCSH	KraneShares Sustainable Ultra Short Duration Index ETF	eP
 KDEC	Innovator U.S. Small Cap Power Buffer ETF - December	eZ
-KDKRW	Kodiak AI, Inc. Warrants	wQ
 KDRN	Kingsbarn Tactical Bond ETF	eP
 KDVD	Keeley Dividend ETF	eP
 KEAT	Keating Active ETF	eQ
@@ -10195,25 +9839,19 @@ KEQU	Kewaunee Scientific Corporation	sQ
 KEYG	Leverage Shares 2X Long KEYS Daily ETF	eZ
 KEYX	Corgi KEYS 2x Daily ETF	eZ
 KEYY	Keystone Acquisition Corp. Class A	sQ
-KEYYU	Keystone Acquisition Corp. Units	uQ
-KEYYW	Keystone Acquisition Corp. Warrants	wQ
 KF	Korea Fund, Inc. (The) New	sN
 KFEB	Innovator U.S. Small Cap Power Buffer ETF - February	eZ
 KFFB	Kentucky First Federal Bancorp	sQ
 KFII	K&F Growth Acquisition Corp. II Class A	sQ
-KFIIR	K&F Growth Acquisition Corp. II Rights	rQ
-KFIIU	K&F Growth Acquisition Corp. II Units	uQ
 KG	Kestrel Group, Ltd.	sQ
 KGEI	Kolibri Global Energy Inc.	sQ
 KGJI	Kingold Jewelry Inc.	s
 KGLD	Kurv Gold Enhanced Income ETF	eZ
 KHPI	Kensington Hedged Premium Income ETF	eZ
 KIDZ	KIDZ AI Inc. Class B	sQ
-KIDZW	KIDZ AI Inc. Warrants	wQ
 KIO	KKR Income Opportunities Fund	sN
 KIQQ	KraneShares InspereX Nasdaq Dynamic Buffered High Income Index ETF	eQ
 KITT	Nauticus Robotics, Inc.	sQ
-KITTW	Nauticus Robotics, Inc. Warrants	wQ
 KJAN	Innovator U.S. Small Cap Power Buffer ETF - January	eZ
 KJUL	Innovator U.S. Small Cap Power Buffer ETF - July	eZ
 KJUN	Innovator U.S. Small Cap Power Buffer ETF - June	eZ
@@ -10243,8 +9881,6 @@ KOOL	North Shore Equity Rotation ETF	eP
 KORP	American Century Diversified Corporate Bond ETF	eP
 KOSS	Koss Corporation	sQ
 KOYN	CSLM Digital Asset Acquisition Corp III Class A	sQ
-KOYNU	CSLM Digital Asset Acquisition Corp III Units	uQ
-KOYNW	CSLM Digital Asset Acquisition Corp III Warrants	wQ
 KPET	KPET Ultra Paceline Corporation Class A	sN
 KPHO	KraneShares Dragon Capital Growth of Vietnam Index ETF	eP
 KPLT	Katapult Holdings, Inc.	sQ
@@ -10253,8 +9889,6 @@ KPRO	KraneShares 100% KWEB Defined Outcome January 2027 ETF	eP
 KPRX	Kiora Pharmaceuticals, Inc.	sQ
 KQQQ	Kurv Technology Titans Select ETF	eQ
 KRAQ	KRAKacquisition Corp Class A	sQ
-KRAQU	KRAKacquisition Corp Units	uQ
-KRAQW	KRAKacquisition Corp Warrants	wQ
 KRKR	36Kr Holdings Inc.	sQ
 KRSA	Korsana Biosciences, Inc.	sQ
 KRSP	Rice Acquisition Corporation 3 Class A	sN
@@ -10271,19 +9905,14 @@ KTH	Structures Products Cp 8% CorTS Issued by Peco Energy Cap Tr II Preferred St
 KTN	Structured Products Corp 8.205% CorTS 8.205% Corporate Backed Trust Securities (CorTS)	sN
 KTTA	Pasithea Therapeutics Corp.	sQ
 KTWO	K2 Capital Acquisition Corporation Class A	sQ
-KTWOR	K2 Capital Acquisition Corporation Rights	rQ
-KTWOU	K2 Capital Acquisition Corporation Units	uQ
 KUST	Kustom Entertainment, Inc.	sQ
 KWH	GMO Power Infrastructure ETF	eP
 KWIN	KraneShares Wahed Alternative Income Index ETF	eP
-KYIVW	Kyivstar Group Ltd. Warrants	wQ
 KYLD	Kurv High Income ETF	eZ
 KYNB	Kyntra Bio, Inc.	sQ
 LABT	Lakewood-Amedex Biotherapeutics Inc.	sQ
 LADM	Pacer Swan SOS Laddered Moderate ETF	eZ
 LAFA	LaFayette Acquisition Corp.	sQ
-LAFAR	LaFayette Acquisition Corp. Rights	rQ
-LAFAU	LaFayette Acquisition Corp. Units	uQ
 LALT	First Trust Multi-Strategy Alternative ETF	eP
 LANDO	Gladstone Land Corporation - 6.00% Series B Cumulative Redeemable Preferred Stock	sQ
 LANDP	Gladstone Land Corporation - 6.00% Series C Cumulative Redeemable Preferred Stock	sQ
@@ -10292,8 +9921,6 @@ LAPR	Innovator Premium Income 15 Buffer ETF - April	eZ
 LARK	Landmark Bancorp Inc.	sQ
 LASC	Corgi LASR 2x Daily ETF	eZ
 LATA	Galata Acquisition Corp. II Class A	sQ
-LATAU	Galata Acquisition Corp. II Units	uQ
-LATAW	Galata Acquisition Corp. II Warrants	wQ
 LAWR	Robot Consulting Co., Ltd. - ADS	sQ
 LBAS		s
 LBAY	Leatherback Long/Short Alternative Yield ETF	eP
@@ -10304,12 +9931,9 @@ LBTYB	Liberty Global Ltd. Class B	sQ
 LBYE		s
 LCAP	Principal Capital Appreciation Select ETF	eZ
 LCCC	Lakeshore Acquisition III Corp.	sQ
-LCCCR	Lakeshore Acquisition III Corp. Rights	rQ
-LCCCU	Lakeshore Acquisition III Corp. Units	uQ
 LCDS	JPMorgan Fundamental Data Science Large Core ETF	eQ
 LCF	Touchstone US Large Cap Focused ETF	eZ
 LCFY	Locafy Limited	sQ
-LCFYW	Locafy Limited Warrants	wQ
 LCIV	Logan Capital International ETF	eN
 LCLG	Logan Capital Large Cap Growth ETF	eP
 LCLN	Lincoln International, Inc. Class A	sN
@@ -10327,7 +9951,6 @@ LDRT	iShares iBonds 1-5 Year Treasury Ladder ETF	eP
 LDRX	SGI Enhanced Market Leaders ETF	eQ
 LDSF	First Trust Low Duration Strategic Focus ETF	eQ
 LDUR	PIMCO Enhanced Low Duration Active Exchange-Traded Fund	eP
-LEDRU	Leader's Advantage Acquisition Corp. Units	uQ
 LEDS	SemiLEDS Corporation	sQ
 LEGO	Legato Merger Corp. IV	sA
 LEN.B	Lennar Corporation Class B	sN
@@ -10337,8 +9960,6 @@ LEO	BNY Mellon Strategic Municipals, Inc.	sN
 LEXI	Alexis Practical Tactical ETF	eQ
 LEXX	Lexaria Bioscience Corp.	sQ
 LFAC	Leapfrog Acquisition Corporation Class A	sQ
-LFACU	Leapfrog Acquisition Corporation Units	uQ
-LFACW	Leapfrog Acquisition Corporation Warrants	wQ
 LFAI	LifeX 2050 Longevity Income ETF	eZ
 LFAO	LifeX 2055 Longevity Income ETF	eZ
 LFAW	LifeX 2060 Longevity Income ETF	eZ
@@ -10379,7 +10000,6 @@ LIGB	Corgi FTSE 10 Year IG Corporate Bond ETF	eZ
 LILAP	Liberty Latin America Ltd. - 9.0% Fixed Rate Cumulative Perpetual Redeemable Series A Pref	sQ
 LIME	Neutron Holdings, Inc.	sQ
 LIMN	Liminatus Pharma, Inc. Class A	sQ
-LIMNW	Liminatus Pharma, Inc. Warrants	wQ
 LINK	Interlink Electronics, Inc.	sQ
 LINT	Direxion Daily INTC Bull 2X ETF	eQ
 LIPO	Lipella Pharmaceuticals Inc.	sO
@@ -10395,8 +10015,6 @@ LJAN	Innovator Premium Income 15 Buffer ETF - January	eZ
 LJUL	Innovator Premium Income 15 Buffer ETF - July	eZ
 LKOR	Northern Trust Credit-Scored US Long Corporate Bond ETF	eZ
 LKSP	Lake Superior Acquisition Corp. Class A	sQ
-LKSPR	Lake Superior Acquisition Corp. Rights	rQ
-LKSPU	Lake Superior Acquisition Corp. Units	uQ
 LLDR	Global X Long-Term Treasury Ladder ETF	eP
 LLMA	Global X LLM ETF	eZ
 LMPX		s
@@ -10406,7 +10024,6 @@ LMUB	iShares Long-Term National Muni Bond ETF	eP
 LND	Brasilagro Brazilian Agric Real Estate Co Sponsored ADR (Brazil)	sN
 LNKS	Linkers Industries Limited Class A	sQ
 LNOK	Defiance Daily Target 2X Long NOK ETF	eZ
-LNZAW	LanzaTech Global, Inc. Warrants	wQ
 LOBO	LOBO TECHNOLOGIES LTD. Class A	sQ
 LOCL	Local Bounti Corporation	sN
 LOCT	Innovator Premium Income 15 Buffer ETF - October	eZ
@@ -10419,19 +10036,11 @@ LONZ	PIMCO Senior Loan and Short-Term Active ETF	eP
 LOPP	Gabelli Love Our Planet & People ETF Gabelli Love Our Planet & People ETF	eP
 LOT	Lotus Technology Inc.	sQ
 LOTI	Liberty One Tactical Income ETF	eQ
-LOTWW	Lotus Technology Inc. Warrants	wQ
-LOVIU	Live Oak Acquisition Corp. VI Units	uQ
 LOWV	AB US Low Volatility Equity ETF	eP
 LPA	Logistic Properties of the Americas	sA
 LPAA	Launch One Acquisition Corp. Class A	sQ
-LPAAU	Launch One Acquisition Corp. Units	uQ
-LPAAW	Launch One Acquisition Corp. Warrants	wQ
 LPBB	Launch Two Acquisition Corp. Class A	sQ
-LPBBU	Launch Two Acquisition Corp. Units	uQ
-LPBBW	Launch Two Acquisition Corp. Warrants	wQ
 LPCV	Launchpad Cadenza Acquisition Corp I Class A	sQ
-LPCVU	Launchpad Cadenza Acquisition Corp I Units	uQ
-LPCVW	Launchpad Cadenza Acquisition Corp I Warrants	wQ
 LPRE	Long Pond Real Estate Select ETF	eP
 LPSV	Lone Peak SMID Value ETF	eP
 LQ	Simplify Tax Aware Alternatives ETF	eQ
@@ -10467,15 +10076,12 @@ LTB	Corgi FTSE 20 Year U.S. Treasury Bond ETF	eZ
 LTCH	Latch, Inc.	sO
 LTGO	Latigo Biotherapeutics, Inc.	sQ
 LTGR	Long Table Growth Corp. Class A	sQ
-LTGRU	Long Table Growth Corp. Units	uQ
-LTGRW	Long Table Growth Corp. Warrants	wQ
 LTRE		s
 LTRYW	Sports Entertainment Gaming Global Corp	sQ
 LTTI	FT Vest 20+ Year Treasury & Target Income ETF	eP
 LTUM	Lithium Corp	sO
 LUCD	Lucid Diagnostics Inc.	sQ
 LUCY	Innovative Eyewear, Inc.	sQ
-LUCYW	Innovative Eyewear, Inc. Warrants	wQ
 LUD	Luda Technology Group Limited	sA
 LUMA	KraneShares Photonic and Optical ETF	eP
 LUNC	Longnook Uncommon Compounders ETF	eP
@@ -10484,8 +10090,6 @@ LVDS	JPMorgan Fundamental Data Science Large Value ETF	eQ
 LVIG	Longview Advantage Fixed Income ETF	eQ
 LVLN	State Street SPDR S&P Leveraged Loan ETF	eP
 LWAC	LightWave Acquisition Corp. Class A	sQ
-LWACU	LightWave Acquisition Corp. Units	uQ
-LWACW	LightWave Acquisition Corp. Warrants	wQ
 LWLX	Tradr 2X Long LWLG Daily ETF	eZ
 LXEH	Lixiang Education Holding Co., Ltd.	sQ
 LYCA	Lycia Therapeutics, Inc.	sQ
@@ -10495,8 +10099,6 @@ LZMH	LZ Technology Holdings Limited Class B	sQ
 MAAS	Maase Inc. Class A	sQ
 MAAY	GraniteShares YieldBOOST MARA ETF	eQ
 MACI	Melar Acquisition Corp. I Class A	sQ
-MACIU	Melar Acquisition Corp. I Units	uQ
-MACIW	Melar Acquisition Corp. I Warrants	wQ
 MADE	iShares U.S. Manufacturing ETF	eP
 MAGG	Madison Aggregate Bond ETF	eP
 MAGH	Magnitude International Ltd	sQ
@@ -10541,16 +10143,10 @@ MBSD	Northern Trust Disciplined Duration MBS ETF	eP
 MBSF	Regan Floating Rate MBS ETF	eP
 MBSX	Regan Fixed Rate MBS ETF	eP
 MBVI	M3-Brigade Acquisition VI Corp. Class A	sQ
-MBVIU	M3-Brigade Acquisition VI Corp. Units	uQ
-MBVIW	M3-Brigade Acquisition VI Corp. Warrants	wQ
 MCAGR	Mountain Crest Acquisition Corp. V	sO
 MCAH	Mountain Crest Acquisition 6 Corp.	sQ
-MCAHR	Mountain Crest Acquisition 6 Corp. Rights	rQ
-MCAHU	Mountain Crest Acquisition 6 Corp. Units	uQ
 MCBK		s
 MCDS	JPMorgan Fundamental Data Science Mid Core ETF	eQ
-MCGAU	Yorkville Acquisition Corp. Units	uQ
-MCGAW	Yorkville Acquisition Corp. Warrants	wQ
 MCHG	Leverage Shares 2X Long MCHP Daily ETF	eZ
 MCHPP	Microchip Technology Incorporated - Depositary	sQ
 MCI	Barings Corporate Investors	sN
@@ -10562,12 +10158,10 @@ MCTA	Charming Medical Limited Class A	sQ
 MCVT	Miller Convertible Total Return ETF	eP
 MDAA	Myriad Dynamic Asset Allocation ETF	eP
 MDAI	Spectral AI, Inc. Class A	sQ
-MDAIW	Spectral AI, Inc. Warrants	wQ
 MDBH	MDB Capital Holdings, LLC - Class A common	sQ
 MDCE	Medical Care Technologies Inc.	sO
 MDCR	Pacer Swan SOS Moderate December ETF	eZ
 MDCX	Medicus Pharma Ltd.	sQ
-MDCXW	Medicus Pharma Ltd. Warrants	wQ
 MDIA	Mediaco Holding Inc. Class A	sQ
 MDLV	Morgan Dempsey Large Cap Value ETF	eZ
 MDPL	Monarch Dividend Plus Index ETF	eZ
@@ -10588,8 +10182,6 @@ MEMA	Man Active Emerging Markets Alternative ETF	eQ
 MEMS	Matthews Emerging Markets Discovery Active ETF	eQ
 MEMY	Tuttle Capital Meme Stock Income Blast ETF	eZ
 MESH	Meshflow Acquisition Corp. Class A	sQ
-MESHU	Meshflow Acquisition Corp. Units	uQ
-MESHW	Meshflow Acquisition Corp. Warrants	wQ
 METAM	Meta Platforms, Inc. - Depositary Shares representing a 1/20th Interest in a Share of Seri	sQ
 METCB	Ramaco Resources, Inc. Class B	sQ
 METCI	Ramaco Resources, Inc. - 8.250% Senior Notes due 2030	sQ
@@ -10598,8 +10190,6 @@ METD	Direxion Daily META Bear 1X ETF	eQ
 METG	Leverage Shares 2X Long META Daily ETF	eZ
 METL	Sprott Active Metals & Miners ETF	eQ
 MEVO	M Evo Global Acquisition Corp II Class A	sQ
-MEVOU	M Evo Global Acquisition Corp II Units	uQ
-MEVOW	M Evo Global Acquisition Corp II Warrants	wQ
 MF	MindForge Inc. Class A	sQ
 MFAN	MFA Financial, Inc. 8.875% Senior Notes due 2029	sN
 MFAO	MFA Financial, Inc. 9.000% Senior Notes due 2029	sN
@@ -10651,8 +10241,6 @@ MHX	Corgi MARA 2x Daily ETF	eZ
 MHY	Man Active High Yield ETF	eP
 MI	NFT Limited Class A	sA
 MIAC	Meridian3 Industrials Acquisition Corp Class A	sQ
-MIACU	Meridian3 Industrials Acquisition Corp Units	uQ
-MIACW	Meridian3 Industrials Acquisition Corp Warrants	wQ
 MICR	Micron Solutions, Inc.	s
 MIDE	Xtrackers S&P MidCap 400 Scored & Screened ETF	eP
 MIG	VanEck Moody's Analytics IG Corporate Bond ETF	eZ
@@ -10676,23 +10264,17 @@ MJUN	Pacer Swan SOS Moderate June ETF	eZ
 MKAM	MKAM ETF	eQ
 MKC.V	McCormick & Company, Incorporated	sN
 MKDW	MKDWELL Tech Inc.	sQ
-MKDWW	MKDWELL Tech Inc. Warrants	wQ
 MKLY	McKinley Acquisition Corporation Class A	sQ
-MKLYR	McKinley Acquisition Corporation Rights	rQ
-MKLYU	McKinley Acquisition Corporation Units	uQ
 MKTAY		s
 MKTN	Federated Hermes MDT Market Neutral ETF	eP
 MKZR	MacKenzie Realty Capital, Inc.	sQ
 MLAA	Mountain Lake Acquisition Corp. II Class A	sQ
-MLAAU	Mountain Lake Acquisition Corp. II Units	uQ
-MLAAW	Mountain Lake Acquisition Corp. II Warrants	wQ
 MLAB	Mesa Laboratories, Inc.	sQ
 MLCC	Global X MLCC & Electronic Components ETF	eZ
 MLCI	Mount Logan Capital Inc.	sQ
 MLCIL	Mount Logan Capital Inc. - 8.00% Notes Due 2031	sQ
 MLDR	Global X Intermediate-Term Treasury Ladder ETF	eP
 MLEC	Moolec Science SA	sQ
-MLECW	Moolec Science SA Warrants	wQ
 MLGO	MicroAlgo, Inc.	sQ
 MLP	Maui Land & Pineapple Company, Inc.	sN
 MLPB	ETRACS Alerian MLP Infrastructure Index ETN Series B due April 2, 2040	sP
@@ -10717,8 +10299,6 @@ MMSC	First Trust Multi-Manager Small Cap Opportunities ETF	eP
 MMSD	NYLIM MacKay Muni Short Duration ETF	eP
 MMT	Aberdeen Multi-Market Income Fund	sN
 MMTX	Miluna Acquisition Corp Class A	sQ
-MMTXU	Miluna Acquisition Corp Units	uQ
-MMTXW	Miluna Acquisition Corp Warrants	wQ
 MMU	Western Asset Managed Municipals Fund, Inc.	sN
 MNBD	ALPS BBH Intermediate Municipal Bond ETF	eP
 MNDR	Mobile-health Network Solutions Class A	sQ
@@ -10731,13 +10311,10 @@ MNSBP	MainStreet Bancshares, Inc. - Depositary	sQ
 MNSX	Corgi MNST 2x Daily ETF	eZ
 MNVR	Pacer Swan SOS Moderate (November) ETF	eZ
 MNVT	Moonvest ETF	eQ
-MNYWW	MoneyHero Limited Warrants	wQ
 MNZL	Manzil Russell Halal USA Broad Market ETF	eQ
-MOBBW	Mobilicom Limited Warrants	wQ
 MOBQ	Mobiquity Technologies, Inc.	sO
 MOBQW	Mobiquity Technologies, Inc.	sO
 MOBX	Mobix Labs, Inc. Class A	sQ
-MOBXW	Mobix Labs, Inc. Warrants	wQ
 MODD	Modular Medical, Inc.	sQ
 MODL	VictoryShares WestEnd U.S. Sector ETF	eQ
 MOG.B	Moog Inc. Class B	sN
@@ -10765,18 +10342,14 @@ MRA	GraniteShares Autocallable MARA ETF	eQ
 MRAI	Marpai, Inc.	sO
 MRBK	Meridian Corporation	sQ
 MRCO	Mercator Acquisition Corp. Class A	sQ
-MRCOU	Mercator Acquisition Corp. Units	uQ
-MRCOW	Mercator Acquisition Corp. Warrants	wQ
 MRCP	PGIM S&P 500 Buffer 12 ETF - March	eZ
 MRGR	ProShares Merger ETF	eZ
 MRM	MEDIROM Healthcare Technologies Inc.	sQ
 MRNO	Murano Global Investments PLC	sQ
-MRNOW	Murano Global Investments PLC Warrants	wQ
 MRSK	Toews Agility Shares Managed Risk ETF	eP
 MRT	Marti Technologies, Inc. Class A	sA
 MRVX	Corgi MRVL 2x Daily ETF	eZ
 MSAI	MultiSensor AI Holdings, Inc.	sQ
-MSAIW	MultiSensor AI Holdings, Inc. Warrants	wQ
 MSBIP	Midland States Bancorp, Inc. - Depositary	sQ
 MSC	Studio City International Holdings Limited	sN
 MSD	Morgan Stanley Emerging Markets Debt Fund, Inc.	sN
@@ -10809,13 +10382,10 @@ MSTI	Madison Short Term Strategic Income ETF	eP
 MSTP	GraniteShares 2x Long MSTR Daily ETF	eQ
 MSTQ	LHA Market State Tactical Q ETF	eZ
 MTAK	Market Technology Acquisition Corp Class A	sQ
-MTAKU	Market Technology Acquisition Corp Units	uQ
-MTAKW	Market Technology Acquisition Corp Warrants	wQ
 MTAL	Metals Acquisition Corp. II Class A	sN
 MTAW	Meta AI Lab Ecosystem ETF	eP
 MTC	MMTec, Inc.	sQ
 MTEK	Maris-Tech Ltd.	sQ
-MTEKW	Maris-Tech Ltd. Warrants	wQ
 MTEN	Mingteng International Corporation Inc. Class A	sQ
 MTEX	Mannatech, Incorporated	sQ
 MTGG	MayTech Global Growth ETF	eQ
@@ -10848,8 +10418,6 @@ MUSQ		s
 MUST	Columbia Multi-Sector Municipal Income ETF	eP
 MUY	YieldMax MU Option Income Strategy ETF	eQ
 MUZE	Muzero Acquisition Corp Class A	sQ
-MUZEU	Muzero Acquisition Corp Units	uQ
-MUZEW	Muzero Acquisition Corp Warrants	wQ
 MVAL	VanEck Morningstar Wide Moat Value ETF	eZ
 MVFD	Monarch Volume Factor Dividend Tree Index ETF	eZ
 MVFG	Monarch Volume Factor Global Unconstrained Index ETF	eZ
@@ -10897,9 +10465,6 @@ MYRX		s
 MYSE	Myseum.AI, Inc.	sQ
 MYSZ	My Size, Inc.	sQ
 MYX	Maywood Acquisition Corp. 2 Class A	sQ
-MYXXR	Maywood Acquisition Corp. 2 Rights	rQ
-MYXXU	Maywood Acquisition Corp. 2 Units	uQ
-MYXXW	Maywood Acquisition Corp. 2 Warrants	wQ
 MZYX	MOZAYYX Acquisition Corp. Class A	sN
 NAC	Nuveen California Quality Municipal Income Fund	sN
 NACP	Impact Shares NAACP Minority Empowerment ETF	eP
@@ -10908,9 +10473,6 @@ NAII	Natural Alternatives International, Inc.	sQ
 NAKAW	Nakamoto Inc.	sO
 NAMI	Jinxin Technology Holding Company	sQ
 NAMM	Namib Minerals	sQ
-NAMMW	Namib Minerals Warrants	wQ
-NAMSW	NewAmsterdam Pharma Company N.V. Warrants	wQ
-NANOW	Forge Nano Holdings Inc. Warrants	wQ
 NAPR	Innovator Growth-100 Power Buffer ETF - April	eZ
 NASB		s
 NATH	Nathans Famous, Inc.	sQ
@@ -10934,8 +10496,6 @@ NBJP	Neuberger Japan Equity ETF	eP
 NBN	Northeast Bank	sQ
 NBOS	Neuberger Option Strategy ETF	eP
 NBRG	Newbridge Acquisition Limited Class A	sQ
-NBRGR	Newbridge Acquisition Limited Rights	rQ
-NBRGU	Newbridge Acquisition Limited Units	uQ
 NBSD	Neuberger Short Duration Income ETF	eP
 NBSM	Neuberger Small-Mid Cap ETF	eP
 NBTR	Neuberger Total Return Bond ETF	eP
@@ -10948,12 +10508,8 @@ NCEW	New Century Logistics (BVI) Limited	sQ
 NCLO	Nuveen AA-BBB CLO ETF	eP
 NCNA	NuCana plc	sQ
 NCO	Southern Cross Acquisition I Corp.	sQ
-NCOOR	Southern Cross Acquisition I Corp. Rights	rQ
-NCOOU	Southern Cross Acquisition I Corp. Units	uQ
-NCOOW	Southern Cross Acquisition I Corp. Warrants	wQ
 NCPB	Nuveen Core Plus Bond ETF	eQ
 NCPL	Netcapital Inc.	sQ
-NCPLW	Netcapital Inc. Warrants	wQ
 NCRA	Nocera, Inc.	sQ
 NCTY	The9 Limited	sQ
 NCV	Virtus Convertible & Income Fund	sN
@@ -10972,7 +10528,6 @@ NEHI	NEOS Ethereum High Income ETF	eZ
 NELS	Nelson Select ETF	eZ
 NEMD	Neuberger Emerging Markets Debt Hard Currency ETF	eP
 NEN	New England Realty Associates Limited Partnership Class A Depositary Receipts Evidencing U	sA
-NEOVW	NeoVolta Inc. Warrants	wQ
 NEPH	Nephros, Inc.	sQ
 NEUP	Neuphoria Therapeutics Inc.	sQ
 NEWTG	NewtekOne, Inc. - 8.50% Fixed Rate Senior Notes due 2029	sQ
@@ -10984,7 +10539,6 @@ NEWZ	StockSnips AI-Powered Sentiment US All Cap ETF	eQ
 NEXI		s
 NEXM	NexMetals Mining Corp.	sQ
 NEXR	Nexera Technologies Ltd	sQ
-NEXRW	Nexera Technologies Ltd Warrants	wQ
 NFEB	Innovator Growth-100 Power Buffer ETF - February	eZ
 NFEGP	New Fortress Energy Inc. - Series A Mandatorily Convertible Preferred Stock	sQ
 NFJ	Virtus Dividend, Interest & Premium Strategy Fund	sN
@@ -10995,8 +10549,6 @@ NFXS	Direxion Daily NFLX Bear 1X ETF	eQ
 NGHT	Nicholas Bitcoin and Treasuries AfterDark ETF	eQ
 NGIF	Nuveen Global Infrastructure Fund: ETF Class Shares	eP
 NHIV	NewHold Investment Corp IV Class A	sQ
-NHIVU	NewHold Investment Corp IV Units	uQ
-NHIVW	NewHold Investment Corp IV Warrants	wQ
 NHPBP		s
 NHS	Neuberger High Yield Strategies Fund Inc.	sA
 NHYB	Nuveen High Yield Corporate Bond ETF	eP
@@ -11008,12 +10560,10 @@ NIE	Virtus Equity & Convertible Income Fund	sN
 NIHI	NEOS MSCI EAFE High Income ETF	eZ
 NIKI	Niki BioSolutions, Inc.	sQ
 NIM	Nuveen Select Maturities Municipal Fund	sN
-NIOBW	NioCorp Developments Ltd. Warrants	wQ
 NIPG	NIP Group Inc.	sQ
 NISM	NYLIM International Small-Mid Cap Equity ETF	eP
 NITE	The Nightview Fund NITE	eP
 NIVF	NewGenIvf Group Limited Class A	sQ
-NIVFW	NewGenIvf Group Limited Warrants	wQ
 NIXT	Research Affiliates Deletions ETF	eQ
 NIXX	Nixxy, Inc.	sQ
 NJAN	Innovator Growth-100 Power Buffer ETF - January	eZ
@@ -11036,8 +10586,6 @@ NMHIW		s
 NMI	Nuveen Municipal Income Fund, Inc.	sN
 NML	Neuberger Energy Infrastructure and Income Fund Inc.	sA
 NMP	NMP Acquisition Corp. Class A	sQ
-NMPAR	NMP Acquisition Corp. Rights	rQ
-NMPAU	NMP Acquisition Corp. Units	uQ
 NMRD	Nemaura Medical Inc.	s
 NMS	Nuveen Minnesota Quality Municipal Income Fund	sN
 NMT	Nuveen Massachusetts Quality Municipal Income Fund	sN
@@ -11052,20 +10600,14 @@ NOCT	Innovator Growth-100 Power Buffer ETF- October	eZ
 NODE	VanEck Onchain Economy ETF	eZ
 NODK	NI Holdings, Inc.	sQ
 NOEM	CO2 Energy Transition Corp.	sQ
-NOEMR	CO2 Energy Transition Corp. Rights	rQ
-NOEMU	CO2 Energy Transition Corp. Units	uQ
-NOEMW	CO2 Energy Transition Corp. Warrants	wQ
 NOEQ	Northern Trust US Equity ETF	eP
 NOMA	NOMADAR Corp. Class A	sQ
 NORD	Nordicus Partners Corporation	sQ
 NOVM	FT Vest U.S. Equity Max Buffer ETF - November	eZ
 NOVP	PGIM S&P 500 Buffer 12 ETF - November	eZ
-NOVTU	Novanta Inc. - Tangible Equity Units	uQ
 NOVZ	TrueShares Structured Outcome (November) ETF	eZ
 NOWX	Corgi NOW 2x Daily ETF	eZ
 NPAC	New Providence Acquisition Corp. III	sQ
-NPACU	New Providence Acquisition Corp. III Units	uQ
-NPACW	New Providence Acquisition Corp. III Warrants	wQ
 NPB	Northpointe Bancshares, Inc.	sN
 NPCT	Nuveen Core Plus Impact Fund	sN
 NPFD	Nuveen Variable Rate Preferred & Income Fund	sN
@@ -11085,12 +10627,8 @@ NROM	Noble Romans Inc.	sO
 NRR	Common Shares of Beneficial Interest of Bitwise NEAR ETF	eP
 NRSH	Aztlan North America Nearshoring Stock Selection ETF	eP
 NRSN	NeuroSense Therapeutics Ltd.	sQ
-NRSNW	NeuroSense Therapeutics Ltd. Warrants	wQ
 NRUC	National Rural Utilities Cooperative Finance Corporation 5.500% Subordinated Notes due 206	sN
 NSAI	NorthStrive Acquisition Corp I. Class A	sQ
-NSAIR	NorthStrive Acquisition Corp I. Rights	rQ
-NSAIU	NorthStrive Acquisition Corp I. Units	uQ
-NSAIW	NorthStrive Acquisition Corp I. Warrants	wQ
 NSCI	Nuveen Securitized Income ETF	eP
 NSEP	Innovator Growth-100 Power Buffer ETF - September	eZ
 NSI	National Security Emerging Markets Index ETF	eQ
@@ -11112,12 +10650,8 @@ NTSD	WisdomTree Efficient U.S. Plus International Equity Fund	eP
 NTSE	WisdomTree Emerging Markets Efficient Core Fund	eP
 NTSI	WisdomTree International Efficient Core Fund	eP
 NTWO	Newbury Street II Acquisition Corp Class A	sQ
-NTWOU	Newbury Street II Acquisition Corp Units	uQ
-NTWOW	Newbury Street II Acquisition Corp Warrants	wQ
 NUAG	Nuveen Enhanced Yield U.S. Aggregate Bond ETF	eP
-NUAIW	New Era Energy & Digital, Inc. Warrants	wQ
 NUBD	Nuveen ESG U.S. Aggregate Bond ETF	eP
-NUCLW	Eagle Nuclear Energy Corp. Warrants	wQ
 NUDG	Nuveen Dividend Growth Fund: ETF Class Shares	eP
 NUDM	Nuveen ESG International Developed Markets Equity ETF	eZ
 NUDV	Nuveen ESG Dividend ETF	eZ
@@ -11164,16 +10698,13 @@ NVTC	Corgi NVTS 2x Daily ETF	eZ
 NVVE	Nuvve Holding Corp.	sO
 NWAX	New America Acquisition I Corp. Class A	sN
 NWCL	newcleo plc	sQ
-NWCLW	newcleo plc Warrants	wQ
 NWFL	Norwood Financial Corp.	sQ
 NWGL	CL Workshop Group Limited	sQ
 NWTG	Newton Golf Company, Inc.	sQ
 NXAT	Nexus Advanced Technologies Inc.	sQ
-NXATW	Nexus Advanced Technologies Inc. Warrants	wQ
 NXB	NextBoat Inc. Common Stcok	sA
 NXG	NXG NextGen Infrastructure Income Fund	sN
 NXGL	NexGel, Inc	sQ
-NXGLW	NexGel, Inc Warrants	wQ
 NXL	Nexalin Technology, Inc.	sQ
 NXP	Nuveen Select Tax Free Income Portfolio	sN
 NXPG	Leverage Shares 2X Long NXPI Daily ETF	eZ
@@ -11191,10 +10722,7 @@ NYM	AB New York Intermediate Municipal ETF	eP
 NYXH	Nyxoah SA	sQ
 NYYY	xETFs NVDA Daily Income ETF	eP
 NZF	Nuveen Municipal Credit Income Fund	sN
-OABIW	OmniAb, Inc. Warrants	wQ
 OACC	Oaktree Acquisition Corp. III Life Sciences Class A	sQ
-OACCU	Oaktree Acquisition Corp. III Life Sciences Units	uQ
-OACCW	Oaktree Acquisition Corp. III Life Sciences Warrants	wQ
 OAEM	OneAscent Emerging Markets ETF	eP
 OAIM	OneAscent International Equity ETF	eP
 OAIW	OpenAI Lab Ecosystem ETF	eP
@@ -11206,8 +10734,6 @@ OALC	OneAscent Large Cap Core ETF	eP
 OASC	OneAscent Enhanced Small and Mid Cap ETF	eP
 OBA	Oxley Bridge Acquisition Limited Class A	sQ
 OBAI	Our Bond, Inc.	sQ
-OBAWU	Oxley Bridge Acquisition Limited Units	uQ
-OBAWW	Oxley Bridge Acquisition Limited Warrants	wQ
 OBIL	US Treasury 12 Month Bill ETF	eQ
 OBND	State Street Loomis Sayles Opportunistic Bond ETF	eZ
 OBT	Orange County Bancorp, Inc.	sQ
@@ -11222,11 +10748,7 @@ OCDB	Aptus October Deep Buffer ETF	eZ
 OCG	Oriental Culture Holding LTD	sQ
 OCIO	ClearShares OCIO ETF	eP
 OCLT	OceanLight Acquisition Corporation	sQ
-OCLTR	OceanLight Acquisition Corporation Rights	rQ
-OCLTU	OceanLight Acquisition Corporation Units	uQ
-OCLTW	OceanLight Acquisition Corporation Warrants	wQ
 OCNL	T-REX 2X Long DOCN Daily Target ETF	eZ
-OCSAW	Oculis Holding AG Warrants	wQ
 OCT	VanEck U.S. Equity Buffer ETF - October	eP
 OCTB	Aptus October Buffer ETF	eZ
 OCTH	Innovator Premium Income 20 Barrier ETF - October	eZ
@@ -11251,19 +10773,13 @@ OFSSH	OFS Capital Corporation - 4.95% Notes due 2028	sQ
 OFSSO	OFS Capital Corporation - 7.50% Notes due 2028	sQ
 OGCP	Empire State Realty OP, L.P. Series 60 Operating Partnership Units Representing Limited Pa	sP
 OGEN	Oragenics Inc.	sA
-OGGWZ	Osisko Gold Group Inc. Warrants	wQ
 OGSP	Obra High Grade Structured Products ETF	eP
 OHAC	Oceanhawk Acquisition Corp. Class A	sQ
-OHACR	Oceanhawk Acquisition Corp. Rights	rQ
-OHACU	Oceanhawk Acquisition Corp. Units	uQ
 OIA	Invesco Municipal Income Opportunities Trust	sN
 OIG	Orion180 Insurance Group Inc. Class A	sQ
 OILT	Texas Capital Texas Oil Index ETF	eTXSE
 OIM	OneIM Acquisition Corp. Class A	sQ
-OIMAU	OneIM Acquisition Corp. Units	uQ
-OIMAW	OneIM Acquisition Corp. Warrants	wQ
 OIO	OIO Group	sQ
-OIOWW	OIO Group Warrants	wQ
 OKLC	Corgi OKLO 2x Daily ETF	eZ
 OKYO	OKYO Pharma Limited	sQ
 OLB	The OLB Group, Inc.	sQ
@@ -11276,8 +10792,6 @@ OMSE	OMS Energy Technologies Inc.	sQ
 ONBPO	Old National Bancorp - Depositary	sQ
 ONBPP	Old National Bancorp - Depositary	sQ
 ONCH	1RT Acquisition Corp. Class A	sQ
-ONCHU	1RT Acquisition Corp. Units	uQ
-ONCHW	1RT Acquisition Corp. Warrants	wQ
 ONCO	Onconetix, Inc.	sQ
 ONDC	Corgi ONDS 2x Daily ETF	eZ
 ONEG	OneConstruction Group Limited	sQ
@@ -11286,16 +10800,11 @@ ONEN	ONE Nuclear Energy Inc.	sQ
 ONEO	State Street SPDR Russell 1000 Momentum Focus ETF	eP
 ONEZ	TrueShares Seasonality Laddered Buffered ETF	eZ
 ONFO	Onfolio Holdings Inc.	sQ
-ONFOW	Onfolio Holdings Inc. Warrants	wQ
 ONG	Leverage Shares 2X Long ON Daily ETF	eZ
 ONMD	OneMedNet Corp Class A	sQ
-ONMDW	OneMedNet Corp Warrants	wQ
 ONOF	Global X Adaptive U.S. Risk Management ETF	eP
 ONTX	Corgi ONTO 2x Daily ETF	eZ
 OOSP	Obra Opportunistic Structured Products ETF	eP
-OPENL	Opendoor Technologies Inc - Series A Warrants	wQ
-OPENW	Opendoor Technologies Inc - Series K Warrants	wQ
-OPENZ	Opendoor Technologies Inc - Series Z Warrants	wQ
 OPER	ETF ClearShares Ultra-Short Maturity ETF	eP
 OPHC	OptimumBank Holdings, Inc.	sA
 OPNW	OpenWorld, Inc.	sQ
@@ -11303,23 +10812,18 @@ OPP	RiverNorth/DoubleLine Strategic Opportunity Fund, Inc.	sN
 OPPG	WisdomTree GeoAlpha Opportunities Fund	eP
 OPTH	Optimi Health Corp.	sQ
 OPTO	Tuttle Capital Photonics Income Blast ETF	eZ
-OPTXW	Syntec Optics Holdings, Inc. Warrants	wQ
 OPTZ	Optimize Strategy Index ETF	eQ
 OPXS	Optex Systems Holdings, Inc.	sQ
 ORAC	Corgi ORCL 2x Daily ETF	eZ
 ORBT	Orbit International Corp.	sO
 ORCS	Direxion Daily ORCL Bear 1X ETF	eQ
 ORIQ	Origin Investment Corp I	sQ
-ORIQU	Origin Investment Corp I Units	uQ
-ORIQW	Origin Investment Corp I - Redeemable Warrant	wQ
 ORKT	Orangekloud Technology Inc. Class A	sQ
 ORO	Arrow Valtoro ETF	eZ
 OSCV	Opus Small Cap Value ETF	eZ
 OSCX	Defiance Daily Target 2x Long OSCR ETF	eQ
 OSEA	Harbor International Compounders ETF	eP
 OSPR	Osprey Acquisition Corp. III Class A	sQ
-OSPRU	Osprey Acquisition Corp. III Units	uQ
-OSPRW	Osprey Acquisition Corp. III Warrants	wQ
 OSRH	OSR Health, Inc.	sO
 OSRHW	OSR Health, Inc.	sO
 OSSL	Defiance Daily Target 2X Long OSS ETF	eZ
@@ -11329,8 +10833,6 @@ OTAI	Starlink AI Acquisition Corporation	sN
 OTAX	Optimal Tax Managed Equity ETF	eN
 OTF	Blue Owl Technology Finance Corp.	sN
 OTGA	OTG Acquisition Corp. I Class A	sQ
-OTGAU	OTG Acquisition Corp. I Units	uQ
-OTGAW	OTG Acquisition Corp. I Warrants	wQ
 OTGL	OTG Latin America ETF	eQ
 OTTW	Ottawa Bancorp, Inc.	s
 OUSL	Defiance Daily Target 2X Long OUST ETF	eZ
@@ -11348,7 +10850,6 @@ OWN	Inside Ownership 100 ETF	eZ
 OWNB	Bitwise Bitcoin Standard Corporations ETF	eP
 OWNS	Quaker Investment Trust CCM Affordable Housing MBS ETF	eP
 OXBR	Oxbridge Re Holdings Limited	sQ
-OXBRW	Oxbridge Re Holdings Limited Warrants	wQ
 OXLC	Oxford Lane Capital Corp. - Closed End Fund	sQ
 OXLCG	Oxford Lane Capital Corp. - 7.95% Notes due 2032	sQ
 OXLCI	Oxford Lane Capital Corp. - 8.75% Notes due 2030	sQ
@@ -11360,33 +10861,23 @@ OXLCZ	Oxford Lane Capital Corp. - 5.00% Notes due 2027	sQ
 OXSQG	Oxford Square Capital Corp. - 5.50% Notes due 2028	sQ
 OXSQH	Oxford Square Capital Corp. - 7.75% Notes due 2030	sQ
 OYSE	Oyster Enterprises II Acquisition Corp Class A	sQ
-OYSER	Oyster Enterprises II Acquisition Corp Rights	rQ
-OYSEU	Oyster Enterprises II Acquisition Corp Units	uQ
-OZ	Belpointe PREP, LLC Class A Units	uA
 OZKAP	Bank OZK - 4.625% Series A Non-Cumulative Perpetual Preferred Stock	sQ
 PAAA	PGIM AAA CLO ETF	eP
 PAAC	Proem Acquisition Corp I	sQ
-PAACU	Proem Acquisition Corp I Units	uQ
-PAACW	Proem Acquisition Corp I Warrants	wQ
 PAB	PGIM Active Aggregate Bond ETF	eP
 PABD	iShares Paris-Aligned Climate Optimized MSCI World ex USA ETF	eQ
 PABU	iShares Paris-Aligned Climate Optimized MSCI USA ETF	eQ
 PACH	Pioneer Acquisition I Corp Class A	sQ
-PACHU	Pioneer Acquisition I Corp Units	uQ
-PACHW	Pioneer Acquisition I Corp Warrants	wQ
 PAI	Western Asset Investment Grade Income Fund Inc.	sN
 PAII	Pyrophyte Acquisition Corp. II Class A	sN
 PALD	Direxion Daily PANW Bear 1X ETF	eQ
 PALI	Palisade Bio, Inc.	sQ
 PALO	Paloma Acquisition Corp I Class A	sQ
-PALOU	Paloma Acquisition Corp I Units	uQ
-PALOW	Paloma Acquisition Corp I Warrants	wQ
 PALU	Direxion Daily PANW Bull 2X ETF	eQ
 PAMT	PAMT CORP	sQ
 PAPI	Parametric Equity Premium Income ETF	eP
 PAPL	Pineapple Financial Inc.	sN
 PAPR	Innovator U.S. Equity Power Buffer ETF - April	eZ
-PARAW	Parabolic Technologies, Inc. Warrants	wQ
 PARK	Park Dental Partners, Inc.	sQ
 PASG	Passage Bio, Inc.	sQ
 PASW	Ping An Biomedical Co., Ltd. Class A	sQ
@@ -11394,8 +10885,6 @@ PATN	Pacer Nasdaq International Patent Leaders ETF	eQ
 PAUG	Innovator U.S. Equity Power Buffer ETF - August	eZ
 PAVS	Paranovus Entertainment Technology Ltd. Class A	sQ
 PAXG	Pine Tree Acquisition Corp. Class A	sQ
-PAXGR	Pine Tree Acquisition Corp. Rights	rQ
-PAXGU	Pine Tree Acquisition Corp. Units	uQ
 PAXS	PIMCO Access Income Fund	sN
 PAYD	Paid Inc.	sO
 PAYH	TrueShares S&P Autocallable High Income ETF	eZ
@@ -11420,7 +10909,6 @@ PBL	PGIM Portfolio Ballast ETF	eZ
 PBLA		s
 PBM	Psyence Biomedical Ltd.	sQ
 PBMR	PGIM S&P 500 Buffer 20 ETF - March	eZ
-PBMWW	Psyence Biomedical Ltd. Warrants	wQ
 PBMY	PGIM S&P 500 Buffer 20 ETF - May	eZ
 PBNC		s
 PBNV	PGIM S&P 500 Buffer 20 ETF - November	eZ
@@ -11436,8 +10924,6 @@ PBUB	Portfolio Building Block US Banks ETF	eQ
 PBUS	Invesco MSCI USA ETF	eZ
 PBWN	Portfolio Building Block World Ex US Industrials ETF	eQ
 PCAP	ProCap Acquisition Corp Class A	sQ
-PCAPU	ProCap Acquisition Corp Units	uQ
-PCAPW	ProCap Acquisition Corp Warrants	wQ
 PCEB	Polen Euro High Yield Bond ETF	eP
 PCF	High Income Securities Fund	sN
 PCFI	Polen Floating Rate Income ETF	eP
@@ -11458,8 +10944,6 @@ PCQ	PIMCO California Municipal Income Fund	sN
 PCR	Simplify VettaFi Private Credit Strategy ETF	eP
 PCSA	Processa Pharmaceuticals, Inc.	sQ
 PCSG	Polen 5Perspectives Small-Mid Growth ETF	eP
-PCTTU	PureCycle Technologies, Inc. Units	uQ
-PCTTW	PureCycle Technologies, Inc. Warrants	wQ
 PDCC	Pearl Diver Credit Company Inc.	sN
 PDDL	GraniteShares 2x Long PDD Daily ETF	eQ
 PDEC	Innovator U.S. Equity Power Buffer ETF - December	eZ
@@ -11471,9 +10955,6 @@ PDT	John Hancock Premium Dividend Fund	sN
 PDX	PIMCO Dynamic Income Strategy Fund	sN
 PEBK	Peoples Bancorp of North Carolina, Inc.	sQ
 PECE	Peace Acquisition Corp	sQ
-PECER	Peace Acquisition Corp Rights	rQ
-PECEU	Peace Acquisition Corp Units	uQ
-PECEW	Peace Acquisition Corp Warrants	wQ
 PED	Pedevco Corp.	sA
 PEMX	Putnam Emerging Markets ex-China ETF	eP
 PENU	T-REX 2X Long PENG Daily Target ETF	eZ
@@ -11506,13 +10987,10 @@ PFSA	Profusa, Inc.	sQ
 PFX	PhenixFIN Corporation	sQ
 PFXNZ	PhenixFIN Corporation - 5.25% Notes due 2028	sQ
 PGAC	Pantages Capital Acquisition Corporation Class A	sQ
-PGACR	Pantages Capital Acquisition Corporation Rights	rQ
-PGACU	Pantages Capital Acquisition Corporation Units	uQ
 PGHY	Invesco Global ex-US High Yield Corporate Bond ETF	eP
 PGP	Pimco Global StocksPlus & Income Fund	sN
 PGRI	Putnam International Stock ETF	eP
 PGRO	Putnam Focused Large Cap Growth ETF	eP
-PGYWW	Pagaya Technologies Ltd. Warrants	wQ
 PGZ	Principal Real Estate Income Fund	sN
 PHAR	Pharming Group N.V. - ADS	sQ
 PHDG	Invesco S&P 500 Downside Hedged ETF	eP
@@ -11530,7 +11008,6 @@ PIEL	Pacer International Export Leaders ETF	eZ
 PIEQ	Principal International Equity ETF	eZ
 PIFI	ClearShares Piton Intermediate Fixed Income ETF	eP
 PIII	P3 Health Partners Inc. Class A	sQ
-PIIIW	P3 Health Partners Inc. Warrants	wQ
 PIM	Franklin Master Intermediate Income Trust	sN
 PIPE	Invesco SteelPath MLP & Energy Infrastructure ETF	eZ
 PJAN	Innovator U.S. Equity Power Buffer ETF - January	eZ
@@ -11548,14 +11025,10 @@ PLAG	Planet Green Holdings Corp.	sA
 PLBC	Plumas Bancorp	sQ
 PLBL	Polibeli Group Ltd Class A	sQ
 PLCI	Pelican Acquisition II Corporation	sQ
-PLCIR	Pelican Acquisition II Corporation Rights	rQ
-PLCIU	Pelican Acquisition II Corporation Units	uQ
 PLGI	PL Growth and Income ETF	eZ
 PLGO	Pelagos Insurance Capital Limited	sN
 PLIB	Direxion PLTR Defined Income Boost ETF	eZ
 PLMK	Plum Acquisition Corp. IV Class A	sQ
-PLMKU	Plum Acquisition Corp. IV Units	uQ
-PLMKW	Plum Acquisition Corp. IV Warrants	wQ
 PLPC	Preformed Line Products Company	sQ
 PLRZ	Polyrizon Ltd.	sQ
 PLSM	Pulsenmore Ltd.	sQ
@@ -11595,8 +11068,6 @@ PMOC	PGIM S&P 500 Max Buffer ETF - October	eZ
 PMSE	PGIM S&P 500 Max Buffer ETF - September	eZ
 PMTL	First Trust Indxx Quality Precious Metals Miners ETF	eP
 PMTR	Perimeter Acquisition Corp. I Class A	sQ
-PMTRU	Perimeter Acquisition Corp. I Units	uQ
-PMTRW	Perimeter Acquisition Corp. I Warrants	wQ
 PMTU	PennyMac Mortgage Investment Trust 8.50% Senior Notes due 2028	sN
 PMTV	PennyMac Mortgage Investment Trust 9.00% Senior Notes due 2030	sN
 PMTW	PennyMac Mortgage Investment Trust 9.00% Senior Notes due 2030	sN
@@ -11611,16 +11082,11 @@ POCT	Innovator U.S. Equity Power Buffer ETF - October	eZ
 PODC	PodcastOne, Inc.	sQ
 POLA	Polar Power, Inc.	sQ
 POLE	Andretti Acquisition Corp. II Class A	sQ
-POLEU	Andretti Acquisition Corp. II Units	uQ
-POLEW	Andretti Acquisition Corp. II Warrants	wQ
 POMG	PRIMECAP Odyssey Discovery ETF	eP
 PONO	Pono Capital Four, Inc. Class A	sQ
-PONOR	Pono Capital Four, Inc. Rights	rQ
-PONOU	Pono Capital Four, Inc. Units	uQ
 POWWP	Outdoor Holding Company - 8.75% Series A Cumulative Redeemable Perpetual Preferred Stock	sQ
 PPCB	Propanc Biopharma, Inc.	sQ
 PPHC	Public Policy Holding Company, Inc.	sQ
-PPLC	PPL Corporation Corporate Units	uN
 PPRW		s
 PPT	Franklin Premier Income Trust	sN
 PPTY	U.S. Diversified Real Estate ETF	eP
@@ -11642,7 +11108,6 @@ PRAM	Defiance Memory & Photonics ETF	eZ
 PRAY	FIS Christian Stock Fund	eP
 PRCS	Parnassus Core Select ETF	eN
 PREF	Principal Spectrum Preferred Securities Active ETF	eP
-PRENW	Prenetics Global Limited Warrants	wQ
 PRFD	PIMCO Preferred and Capital Securities Active Exchange-Traded Fund	eP
 PRFX	PRF Technologies Ltd.	sQ
 PRH	Prudential Financial, Inc. 5.950% Junior Subordinated Notes due 2062	sN
@@ -11695,14 +11160,11 @@ PSNYW	Polestar Automotive Holding UK Limited - Class C-1 ADS (ADW)	sQ
 PSOX	Tema MLCC & PowerSemi ETF	eZ
 PSQA	Palmer Square CLO Senior Debt ETF	eP
 PSQL	Pasqal Holding SA	sQ
-PSQLW	Pasqal Holding SA Warrants	wQ
 PSQO	Palmer Square Credit Opportunities ETF	eP
 PSTP	Innovator Power Buffer Step-Up Strategy ETF	eP
 PSTR	PeakShares Sector Rotation ETF	eQ
 PTA	Cohen & Steers Tax-Advantaged Preferred Securities and Income Fund	sN
 PTAC	Patriot Acquisition Corp. Class A	sQ
-PTACU	Patriot Acquisition Corp. Units	uQ
-PTACW	Patriot Acquisition Corp. Warrants	wQ
 PTEU	Pacer TrendpilotTM European Index ETF	eZ
 PTHS	Pelthos Therapeutics Inc.	sA
 PTIV	Pineapple Financial Inc.	sA
@@ -11711,8 +11173,6 @@ PTL	Inspire 500 ETF	eP
 PTLE	PTL LTD Class A	sQ
 PTMC	Pacer Trendpilot US Mid Cap ETF	eZ
 PTOR	Praetorian Acquisition Corp. Class A	sQ
-PTORU	Praetorian Acquisition Corp. Units	uQ
-PTORW	Praetorian Acquisition Corp. Warrants	wQ
 PTPI	Petros Pharmaceuticals, Inc.	sO
 PTRB	PGIM Total Return Bond ETF	eP
 PTY	Pimco Corporate & Income Opportunity Fund	sN
@@ -11742,8 +11202,6 @@ PZIV	Pzena International Value ETF	eP
 PZLV	Pzena U.S. Large Cap Value ETF	eP
 PZT	Invesco New York AMT-Free Municipal Bond ETF	eP
 QADR	QDRO Acquisition Corp. Class A	sQ
-QADRU	QDRO Acquisition Corp. Units	uQ
-QADRW	QDRO Acquisition Corp. Warrants	wQ
 QALT	SEI DBi Multi-Strategy Alternative ETF	eQ
 QARP	Xtrackers Russell 1000 US Quality at a Reasonable Price ETF ETF	eP
 QAT	iShares MSCI Qatar ETF	eQ
@@ -11836,8 +11294,6 @@ QQXL	ProShares Ultra QQQ Top 30	eQ
 QRED	QuasarEdge Acquisition Corporation	sN
 QSE	Corgi Growth & Technology 10% Structured Buffer ETF - September Series	eZ
 QSEA	Quartzsea Acquisition Corporation	sQ
-QSEAR	Quartzsea Acquisition Corporation Rights	rQ
-QSEAU	Quartzsea Acquisition Corporation Units	uQ
 QSIG	WisdomTree U.S. Short Term Corporate Bond Fund	eZ
 QSIX	Pacer Metaurus Nasdaq 100 Dividend Multiplier 600 ETF	eQ
 QSML	WisdomTree U.S. SmallCap Quality Growth Fund	eQ
@@ -11858,8 +11314,6 @@ QUA	Corgi QBTS 2x Daily ETF	eZ
 QUCY	Quantum Cyber N.V.	sQ
 QUIZ	Zacks Quality International ETF	eP
 QUMS	Quantumsphere Acquisition Corp.	sQ
-QUMSR	Quantumsphere Acquisition Corp. Rights	rQ
-QUMSU	Quantumsphere Acquisition Corp. Units	uQ
 QUSA	VistaShares Target 15 USA Quality Income ETF	eP
 QVAL	Alpha Architect U.S. Quantitative Value ETF	eQ
 QVCG	QVC Group, Inc.	sQ
@@ -11880,11 +11334,8 @@ RADD	AB US Research Advanced ETF	eQ
 RADX	Radiopharm Theranostics Limited	sQ
 RAFE	PIMCO RAFI ESG U.S. ETF	eP
 RAIN	Rain Enhancement Technologies Holdco, Inc. Class A	sQ
-RAINW	Rain Enhancement Technologies Holdco, Inc. Warrants	wQ
 RAND	Rand Capital Corporation - Closed End Fund	sQ
 RANG	Range Capital Acquisition Corp.	sQ
-RANGR	Range Capital Acquisition Corp. Rights	rQ
-RANGU	Range Capital Acquisition Corp. Units	uQ
 RANK	Defiance KSM TipRanks Analyst ETF	eP
 RAUS	RACWI US ETF	eQ
 RAVI	Northern Trust Ultra-Short Fixed Income ETF	eP
@@ -11904,11 +11355,7 @@ RCS	PIMCO Strategic Income Fund, Inc.	sN
 RCT	RedCloud Holdings plc	sQ
 RCTR	First Trust Bloomberg Nuclear Power ETF	eP
 RDAC	Rising Dragon Acquisition Corp.	sQ
-RDACR	Rising Dragon Acquisition Corp. Rights	rQ
-RDACU	Rising Dragon Acquisition Corp. Units	uQ
 RDAG	Republic Digital Acquisition Company Class A	sQ
-RDAGU	Republic Digital Acquisition Company Units	uQ
-RDAGW	Republic Digital Acquisition Company Warrants	wQ
 RDDC	Corgi RDDT 2x Daily ETF	eZ
 RDFI	Rareview Dynamic Fixed Income ETF	eZ
 RDGT	Ridgetech, Inc.	sQ
@@ -11917,7 +11364,6 @@ RDOG	ALPS REIT Dividend Dogs ETF	eP
 RDTY	YieldMax R2000 0DTE Covered Strategy ETF	eQ
 RDYY	YieldMax RDDT Option Income Strategy ETF	eP
 RDZN	Roadzen, Inc.	sQ
-RDZNW	Roadzen, Inc. Warrants	wQ
 REA	Rare Earths Americas, Inc.	sA
 REBN	Reborn Coffee, Inc.	sQ
 RECI	Columbia Research Enhanced Core Premium Income ETF	eP
@@ -11940,15 +11386,10 @@ RERE	ATRenew Inc. American Depositary Shares (every three of which representing 
 RESM	Columbia Research Enhanced Small Cap ETF	eP
 RETO	ReTo Eco-Solutions, Inc. Class A	sQ
 REVB	Revelation Biosciences, Inc.	sQ
-REVBW	Revelation Biosciences, Inc. Warrants	wQ
 REVS	Columbia Research Enhanced Value ETF	eP
 REXC	Sprott Rare Earths Ex-China ETF	eQ
 RFAI	RF Acquisition Corp II	sQ
-RFAIR	RF Acquisition Corp II Rights	rQ
-RFAIU	RF Acquisition Corp II Units	uQ
 RFAM	RF Acquisition Corp III	sQ
-RFAMR	RF Acquisition Corp III Rights	rQ
-RFAMU	RF Acquisition Corp III Units	uQ
 RFCI	ALPS Dynamic Core Income ETF	eP
 RFDA	ALPS Dynamic US Dividend Advantage ETF	eP
 RFFC	ALPS Active Equity Opportunity ETF	eP
@@ -11962,14 +11403,11 @@ RGLO	Russell Investments Global Equity ETF	eQ
 RGNT	Regentis Biomaterials Ltd.	sA
 RGT	Royce Global Trust, Inc.	sN
 RGTC	Corgi RGTI 2x Daily ETF	eZ
-RGTIW	Rigetti Computing, Inc. - Redeemable warrants	wQ
 RGYY	GraniteShares YieldBoost RGTI ETF	eQ
 RHLD	Resolute Holdings Management	sN
 RHRX	Adaptive Tactical Rotation ETF	eP
 RHTX	RH Tactical Outlook ETF	eP
 RIBB	Ribbon Acquisition Corp Class A	sQ
-RIBBR	Ribbon Acquisition Corp Rights	rQ
-RIBBU	Ribbon Acquisition Corp Units	uQ
 RIBT	RiceBran Technologies	s
 RIFR	Russell Investments Global Infrastructure ETF	eQ
 RIGS	ALPS Strategic Income Fund	eP
@@ -12005,7 +11443,6 @@ RMBI	Richmond Mutual Bancorporation, Inc.	sQ
 RMCA	Rockefeller California Municipal Bond ETF	eP
 RMCF	Rocky Mountain Chocolate Factory, Inc.	sQ
 RMCO	Royalty Management Holding Corporation Class A	sQ
-RMCOW	Royalty Management Holding Corporation Warrants	wQ
 RMHY	Global X Adaptive Risk Managed Yield ETF	eP
 RMI	RiverNorth Opportunistic Municipal Income Fund, Inc.	sN
 RMIX	Suncrete, Inc. Class A	sQ
@@ -12017,18 +11454,13 @@ RMNY	Rockefeller New York Municipal Bond ETF	eP
 RMOP	Rockefeller Opportunistic Municipal Bond ETF	eP
 RMRC	ARMOR Core Risk-Managed ETF	eP
 RMSG	Real Messenger Corporation	sQ
-RMSGW	Real Messenger Corporation Warrants	wQ
 RMT	Royce Micro-Cap Trust, Inc.	sN
 RNAQ	Rainier Acquisition Corporation Class A	sQ
-RNAQU	Rainier Acquisition Corporation Units	uQ
-RNAQW	Rainier Acquisition Corporation Warrants	wQ
 RNAZ	TransCode Therapeutics, Inc.	sQ
 RND	First Trust Bloomberg R&D Leaders ETF	eP
 RNEM	Emerging Markets Equity Select ETF	eQ
 RNGC	Ranger Gold Corp.	sO
 RNGT	Range Capital Acquisition Corp II Class A	sQ
-RNGTU	Range Capital Acquisition Corp II Units	uQ
-RNGTW	Range Capital Acquisition Corp II Warrants	wQ
 RNIN	Bushido Capital US SMID Cap Equity ETF	eQ
 RNMN	RiverNorth Market Neutral ETF	eZ
 RNP	Cohen & Steers REIT and Preferred and Income Fund, Inc.	sN
@@ -12055,8 +11487,6 @@ RPID	Rapid Micro Biosystems, Inc. Class A	sQ
 RQI	Cohen & Steers Quality Income Realty Fund Inc	sN
 RRBI	Red River Bancshares, Inc.	sQ
 RREV	RRE Ventures Acquisition Corp. Class A	sQ
-RREVU	RRE Ventures Acquisition Corp. Units	uQ
-RREVW	RRE Ventures Acquisition Corp. Warrants	wQ
 RSBA	Return Stacked Bonds & Merger Arbitrage ETF	eZ
 RSBT	Return Stacked Bonds & Managed Futures ETF	eZ
 RSBY	Return Stacked Bonds & Futures Yield ETF	eZ
@@ -12075,8 +11505,6 @@ RSSS	Research Solutions, Inc	sQ
 RSSX	Return Stacked U.S. Stocks & Gold/Bitcoin ETF	eZ
 RSSY	Return Stacked U.S. Stocks & Futures Yield ETF	eZ
 RTAC	Renatus Tactical Acquisition Corp I Class A	sQ
-RTACU	Renatus Tactical Acquisition Corp I Units	uQ
-RTACW	Renatus Tactical Acquisition Corp I Warrants	wQ
 RTAI	Rareview Tax Advantaged Income ETF	eZ
 RTB	RTB Digital, Inc.	sQ
 RTHY	F/m Long-Term Treasury Inflation-Protected Security (TIPS) ETF	eQ
@@ -12087,15 +11515,12 @@ RTSN	Retension Pharmaceuticals, Inc.	sQ
 RTXG	Leverage Shares 2X Long RTX Daily ETF	eQ
 RTYY	GraniteShares YieldBoost RIOT ETF	eQ
 RULE	Adaptive Core ETF	eZ
-RUMBW	RUM Group Inc. Warrants	wQ
 RUSC	Russell Investments U.S. Small Cap Equity ETF	eQ
 RUSHB	Rush Enterprises, Inc. Class B	sQ
 RVER	Trenchless Fund ETF	eP
 RVII	Robinhood Ventures Fund II	sN
-RVMDW	Revolution Medicines, Inc. Warrants	wQ
 RVNL	GraniteShares 2x Long RIVN Daily ETF	eQ
 RVNU	Xtrackers Municipal Infrastructure Revenue Bond Active ETF	eP
-RVSNW	Rail Vision Ltd. Warrants	wQ
 RVT	Royce Small-Cap Trust, Inc.	sN
 RW	Rainwater Equity ETF	eP
 RWAYI	Runway Growth Finance Corp. - 7.25% Notes due 2031	sQ
@@ -12115,10 +11540,7 @@ RYM	RYTHM, Inc.	sQ
 RYOJ	rYojbaba Co., Ltd.	sQ
 RZAI	Roze AI Inc.	sQ
 RZC	Reinsurance Group of America, Incorporated 7.125% Fixed-Rate Reset Subordinated Debentures	sN
-RZLVW	Rezolve AI PLC Warrants	wQ
 SAAQ	Space Asset Acquisition Corp. Class A	sQ
-SAAQU	Space Asset Acquisition Corp. Units	uQ
-SAAQW	Space Asset Acquisition Corp. Warrants	wQ
 SABSW	SAB Biotherapeutics, Inc.	sQ
 SAC	Safeguard Acquisition Corp. Class A	sN
 SAFX	XCF Global, Inc. Class A	sQ
@@ -12127,7 +11549,6 @@ SAGP	Strategas Global Policy Opportunities ETF	eP
 SAGT	SAGTEC GLOBAL LIMITED Class A	sQ
 SAGU	Shreya Acquisition Group Class A	sN
 SAIH	SAIHEAT Limited Class A	sQ
-SAIHW	SAIHEAT Limited Warrants	wQ
 SAIQ	WISeSat.Space Holdings Corp.	sQ
 SAJ	Saratoga Investment Corp 8.00% Notes due 2027	sN
 SALI	Schroders US Autocallable Ladder Income ETF	eP
@@ -12137,7 +11558,6 @@ SAMT	Strategas Macro Thematic Opportunities ETF	eP
 SANG	Sangoma Technologies Corporation	sQ
 SAPX		s
 SASS	M.D. Sass Concentrated Value ETF	eP
-SATLW	Satellogic Inc. Warrants	wQ
 SAUG	FT Vest U.S. Small Cap Moderate Buffer ETF - August	eZ
 SAV	Saratoga Investment Corp 7.50% Notes due 2031	sN
 SAWG	AAM Sawgrass US Large Cap Quality Growth ETF	eP
@@ -12146,11 +11566,9 @@ SAX	Saratoga Investment Corp 8.00% Notes due 2031	sN
 SAY	Saratoga Investment Corp 8.125% Notes due 2027	sN
 SAZ	Saratoga Investment Corp 8.50% Notes due 2028	sN
 SBAR	Simplify Barrier Income ETF	eP
-SBCWW	SBC Medical Group Holdings Incorporated Warrants	wQ
 SBDS	Solo Brands, Inc.	sO
 SBFG	SB Financial Group, Inc.	sQ
 SBFM	Sunshine Biopharma Inc.	sQ
-SBFMW	Sunshine Biopharma Inc. Warrants	wQ
 SBI	Western Asset Intermediate Muni Fund Inc	sN
 SBIG	SBIG Holdings, Inc.	sO
 SBIGW	SBIG Holdings, Inc.	sO
@@ -12161,12 +11579,8 @@ SBR	Sabine Royalty Trust	sN
 SBXE	SilverBox Corp V Class A	sN
 SCA	GraniteShares Autocallable SMCI ETF	eQ
 SCAG	Scage Future	sQ
-SCAGW	Scage Future Warrants	wQ
 SCAP	Infrastructure Capital Small Cap Income ETF	eP
 SCAT	Southern Cross Acquisition II Corp.	sQ
-SCATR	Southern Cross Acquisition II Corp. Rights	rQ
-SCATU	Southern Cross Acquisition II Corp. Units	uQ
-SCATW	Southern Cross Acquisition II Corp. Warrants	wQ
 SCAU	Corgi U.S. Small-Cap 15% Structured Buffer ETF - August Series	eZ
 SCCD	Sachem Capital Corp. 6.00% Notes due 2026	sA
 SCCE	Sachem Capital Corp. 6.00% Notes due 2027	sA
@@ -12180,14 +11594,11 @@ SCEC	Sterling Capital Enhanced Core Bond ETF	eZ
 SCEP	Sterling Capital Hedged Equity Premium Income ETF	eZ
 SCHQ	Schwab Long-Term U.S. Treasury ETF	eP
 SCII	SC II Acquisition Corp. Class A	sQ
-SCIIR	SC II Acquisition Corp. Rights	rQ
-SCIIU	SC II Acquisition Corp. Units	uQ
 SCIN	Schwab International Bond ETF	eP
 SCIO	First Trust Structured Credit Income Opportunities ETF	eP
 SCJL	Corgi U.S. Small-Cap 15% Structured Buffer ETF - July Series	eZ
 SCJN	Corgi U.S. Small-Cap 15% Structured Buffer ETF - June Series	eZ
 SCKT	Socket Mobile, Inc.	sQ
-SCLXW	Scilex Holding Company Warrants	wQ
 SCLZ	Swan Enhanced Dividend Income ETF	eZ
 SCMB	Schwab Municipal Bond ETF	eP
 SCMC	Sterling Capital Multi-Strategy Income ETF	eZ
@@ -12198,10 +11609,7 @@ SCNX	Scienture Holdings, Inc.	sQ
 SCOP	Sprott Physical Copper Trust Units	eP
 SCOW	Pacer S&P SmallCap 600 Quality FCF Aristocrats ETF	eZ
 SCPQ	Social Commerce Partners Corporation Class A	sQ
-SCPQU	Social Commerce Partners Corporation Units	uQ
-SCPQW	Social Commerce Partners Corporation Warrants	wQ
 SCPS		s
-SCQCU	SPACCircle Acquisition Corp. Units	uQ
 SCSB	Sterling Capital Short Duration Bond ETF	eZ
 SCSE	Corgi U.S. Small-Cap 15% Structured Buffer ETF - September Series	eZ
 SCTX	Scribe Therapeutics Inc.	sQ
@@ -12210,15 +11618,12 @@ SCUS	Schwab Ultra-Short Income ETF	eP
 SCWO	374Water Inc.	sQ
 SCZM	Santacruz Silver Mining Ltd.	sQ
 SDA	SunCar Technology Group Inc.	sQ
-SDAWW	SunCar Technology Group Inc. Warrants	wQ
 SDCP	Virtus Newfleet Short Duration Core Plus Bond ETF	eP
 SDEV	Stablecoin Development Corporation	sA
 SDFI	AB Short Duration Income ETF	eP
 SDG	iShares MSCI Global Sustainable Development Goals ETF	eQ
 SDHC	Smith Douglas Homes Corp. Class A	sN
 SDHI	Siddhi Acquisition Corp Class A	sQ
-SDHIR	Siddhi Acquisition Corp Rights	rQ
-SDHIU	Siddhi Acquisition Corp Units	uQ
 SDHY	PGIM Short Duration High Yield Opportunities Fund	sN
 SDMF	Simplify DBi CTA Managed Futures Index ETF	eP
 SDOT	Sadot Group Inc.	sQ
@@ -12283,13 +11688,9 @@ SGVT	Schwab Government Money Market ETF	eP
 SHAG	WisdomTree Yield Enhanced U.S. Short-Term Aggregate Bond Fund	eZ
 SHDG	Soundwatch Hedged Equity ETF	eZ
 SHFS	SHF Holdings, Inc. Class A	sQ
-SHFSW	SHF Holdings, Inc. Warrants	wQ
 SHIM	Shimmick Corporation	sQ
-SHMDW	SCHMID Group N.V. Warrants	wQ
 SHNY	MicroSectors Gold 3X Leveraged ETNs due January 29, 2043	eP
 SHOC	Strive U.S. Semiconductor ETF	eN
-SHOTR	RMG ML Sports Holdings Rights	rQ
-SHOTU	RMG ML Sports Holdings Units	uQ
 SHPH	Shuttle Pharmaceuticals Holdings, Inc.	sQ
 SHPP	Pacer Industrials and Logistics ETF	eP
 SHPU	Direxion Daily SHOP Bull 2X ETF	eQ
@@ -12308,8 +11709,6 @@ SILC	Silicom Ltd	sQ
 SILO	Silo Pharma, Inc.	sQ
 SIM	Grupo Simec, S.A.B. de C.V.	sA
 SIMA	SIM Acquisition Corp. I Class A	sQ
-SIMAU	SIM Acquisition Corp. I Units	uQ
-SIMAW	SIM Acquisition Corp. I Warrants	wQ
 SIMX	Corgi SIMO 2x Daily ETF	eZ
 SIND	Sinda Ltd.	sN
 SING		s
@@ -12334,12 +11733,10 @@ SKHQ	Leverage Shares 2X Short Sk Hynix Daily ETF	eZ
 SKIL	Skillsoft Corp. Class A	sN
 SKK		s
 SKOR	Northern Trust Credit-Scored US Corporate Bond ETF	eQ
-SKYAW	SkyAI, Inc. Warrants	wQ
 SKYD.WS/WI		s
 SKYQ	Sky Quarry Inc.	sQ
 SKYX	SKYX Platforms Corp.	sQ
 SLBT	SL Science Holding Limited	sQ
-SLDPW	Solid Power, Inc. Warrants	wQ
 SLDR	Global X Short-Term Treasury Ladder ETF	eP
 SLGB	Smart Logistics Global Limited Class A	sQ
 SLJY	Amplify SILJ Junior Silver Miners Covered Call ETF	eP
@@ -12359,7 +11756,6 @@ SLVX	Nicholas Silver Income ETF	eP
 SLVY	FT Vest Silver Strategy & Target Income ETF	eZ
 SLWS	Wisdom Short Duration Income ETF	eP
 SLXN	Silexion Therapeutics Corp	sQ
-SLXNW	Silexion Therapeutics Corp Warrants	wQ
 SMAX	iShares Large Cap Max Buffer Sep ETF	eZ
 SMAY	FT Vest U.S. Small Cap Moderate Buffer ETF - May	eZ
 SMBS	Schwab Mortgage-Backed Securities ETF	eP
@@ -12395,7 +11791,6 @@ SMTJ	Synera Funds Takumi+ ETF	eP
 SMTK	SmartKem, Inc.	sQ
 SMX	SMX (Security Matters) Public Limited Company	sQ
 SMXT	Solarmax Technology Inc.	sQ
-SMXWW	SMX (Security Matters) Public Limited Company Warrants	wQ
 SMYY	GraniteShares YieldBOOST SMCI ETF	eQ
 SNAL	Snail, Inc. Class A	sQ
 SNAV	Mohr Sector Nav ETF	eZ
@@ -12417,8 +11812,6 @@ SNWV	SANUWAVE Health, Inc.	sQ
 SOAR	SOAR AI, Inc. Class A	sA
 SOBR	SOBR Safe, Inc.	sO
 SOCA	Solarius Capital Acquisition Corp. Class A	sQ
-SOCAU	Solarius Capital Acquisition Corp. Units	uQ
-SOCAW	Solarius Capital Acquisition Corp. Warrants	wQ
 SOFA	Direxion Daily SOFI Bull 2X ETF	eQ
 SOFC	Corgi SOFI 2x Daily ETF	eZ
 SOFO		s
@@ -12431,19 +11824,15 @@ SOJD	Southern Company (The) Series 2020A 4.95% Junior Subordinated Notes due Jan
 SOJE	Southern Company (The) Series 2020C 4.20% Junior Subordinated Notes due October 15, 2060	sN
 SOJF	Southern Company (The) Series 2025A 6.50% Junior Subordinated Notes due March 15, 2085	sN
 SOLM	Amplify Solana 3% Monthly Option Income ETF	eZ
-SOMN	Southern Company (The) 2025 Series A Corporate Units	uN
 SONG	Music Licensing Inc.	sO
 SONM	DNA X, Inc.	sQ
 SONX	Sonendo, Inc.	sO
 SOR	Source Capital, Inc. Cmn Shs of BI	sN
 SORA	AsiaStrategy	sQ
 SORN	Soren Acquisition Corp. Class A	sQ
-SORNU	Soren Acquisition Corp. Units	uQ
-SORNW	Soren Acquisition Corp. Warrants	wQ
 SOS	SOS Limited Class A	sN
 SOTK	Sono-Tek Corporation	sQ
 SOUL	Soulpower Acquisition Corporation Class A	sN
-SOUNW	SoundHound AI, Inc. Warrants	wQ
 SOUX	Defiance Daily Target 2X Long SOUN ETF	eQ
 SOVF	Sovereign's Capital Flourish Fund	eP
 SOWG	Sow Good Inc.	sQ
@@ -12461,8 +11850,6 @@ SPDV	AAM S&P 500 High Dividend Value ETF	eP
 SPE	Special Opportunities Fund, Inc	sN
 SPEC		s
 SPEG	Silver Pegasus Acquisition Corp Class A	sQ
-SPEGR	Silver Pegasus Acquisition Corp Rights	rQ
-SPEGU	Silver Pegasus Acquisition Corp Units	uQ
 SPHL	Springview Holdings Ltd	sQ
 SPIN	State Street US Equity Premium Income ETF	eZ
 SPIT	F/m Emerald Special Situations ETF	eQ
@@ -12485,7 +11872,6 @@ SPUC	Simplify US Equity Income ETF	eP
 SPUS	SP Funds S&P 500 Sharia Industry Exclusions ETF	eP
 SPUT	Innovator Equity Premium Income - Daily PutWrite ETF	eP
 SPWO	SP Funds S&P World (ex-US) ETF	eP
-SPWRW	SunPower Inc. Warrants	wQ
 SPXD	Xtrackers S&P 500 Diversified Sector Weight ETF	eQ
 SPXP	Direxion U.S. 500 Plus ETF	eP
 SPXX	Nuveen S&P 500 Dynamic Overwrite Fund	sN
@@ -12495,7 +11881,6 @@ SPYU	MAX S&P 500 4X Leveraged ETNs due October 30, 2043	eP
 SQBA	FT Vest U.S. Equity Quarterly 15 Buffer ETF	eZ
 SQBR	FT Vest U.S. Equity Quarterly 20 Barrier ETF	eZ
 SQFTP	Presidio Property Trust, Inc. - 9.375% Series D Cumulative Redeemable Perpetual Preferred	sQ
-SQFTW	Presidio Property Trust, Inc. - Series A Common Stock Purchase Warrants	wQ
 SQLT	iShares MSCI USA Small-Cap Quality Factor ETF	eZ
 SQLV	Royce Quant Small-Cap Quality Value ETF	eQ
 SQMX	FT Vest U.S. Equity Quarterly Max Buffer ETF	eZ
@@ -12513,14 +11898,9 @@ SRTM	Stratum Holdings Corp.	sQ
 SRV	NXG Cushing Midstream Energy Fund	sN
 SRXH	SRX Global Inc.	sA
 SSAC	SPACSphere Acquisition Corp. Class A	sQ
-SSACR	SPACSphere Acquisition Corp. Rights	rQ
-SSACU	SPACSphere Acquisition Corp. Units	uQ
-SSACW	SPACSphere Acquisition Corp. Warrants	wQ
 SSBI	Summit State Bank	sQ
 SSCP	SMART Small Cap ETF	eP
 SSEA	Starry Sea Acquisition Corp	sQ
-SSEAR	Starry Sea Acquisition Corp Rights	rQ
-SSEAU	Starry Sea Acquisition Corp Units	uQ
 SSFI	Day Hagan Smart Sector Fixed Income ETF	eP
 SSII	SS Innovations International Inc.	sQ
 SSKN	Strata Skin Sciences, Inc.	s
@@ -12543,7 +11923,6 @@ STG	Sunlands Technology Group American Depositary Shares, representing Class A	s
 STJO		s
 STK	Columbia Seligman Premium Technology Growth Fund Inc	sN
 STLL	Leverage Shares 2X Long STRL Daily ETF	eZ
-STLNW	Starling Oncology, Inc. Warrants	wQ
 STLR	Stellar ETF	eZ
 STLU	2x Stellar ETF	eZ
 STLY	HG Holdings, Inc.	sO
@@ -12570,8 +11949,6 @@ SUIL	2x Sui ETF	eZ
 SUIS	Canary Staked SUI ETF	eQ
 SUJA	Suja Life, Inc. Class A	sQ
 SUMA	SUMA Acquisition Corporation Class A	sQ
-SUMAR	SUMA Acquisition Corporation Rights	rQ
-SUMAU	SUMA Acquisition Corporation Units	uQ
 SUND	Sundance Strategies, Inc.	sO
 SUNE	SUNation Energy, Inc.	sQ
 SUPP	TCW Transform Supply Chain ETF	eQ
@@ -12580,50 +11957,34 @@ SURE	AdvisorShares Insider Advantage ETF	eP
 SURI	Simplify Propel Opportunities ETF	eP
 SUSC	iShares ESG Aware USD Corporate Bond ETF	eQ
 SVAQ	Silicon Valley Acquisition Corp. Class A	sQ
-SVAQU	Silicon Valley Acquisition Corp. Units	uQ
-SVAQW	Silicon Valley Acquisition Corp. Warrants	wQ
 SVCC	Stellar V Capital Corp. Class A	sQ
-SVCCU	Stellar V Capital Corp. Units	uQ
-SVCCW	Stellar V Capital Corp. Warrants	wQ
 SVCO	Silvaco Group, Inc.	sQ
 SVIAW	Silvia, Inc. - Warrant.	sQ
 SVIV	Spring Valley Acquisition Corp. IV Class A	sQ
-SVIVU	Spring Valley Acquisition Corp. IV Units	uQ
-SVIVW	Spring Valley Acquisition Corp. IV Warrants	wQ
 SVRE	SaverOne 2014 Ltd.	sQ
-SVREW	SaverOne 2014 Ltd. Warrants	wQ
 SVRN	SVRN, Inc.	sQ
 SVTN	Corgi FTSE 7-10 Year U.S. Treasury Bond ETF	eZ
 SWAG	Stran & Company, Inc.	sQ
-SWAGW	Stran & Company, Inc. Warrants	wQ
 SWKHL	SWK Holdings Corporation - 9.00% Senior Notes due 2027	sQ
 SWMR	Swarmer, Inc	sQ
 SWP	SWP Growth & Income ETF	eQ
 SWRD	Stewards Inc	sQ
 SWVL	Swvl Holdings Corp	sQ
-SWVLW	Swvl Holdings Corp Warrants	wQ
 SWZ	Total Return Securities Fund	sN
 SXQG	ETC 6 Meridian Quality Growth ETF	eP
 SXTC	China SXT Pharmaceuticals, Inc. Class A	sQ
 SXTP	60 Degrees Pharmaceuticals, Inc.	sQ
-SXTPW	60 Degrees Pharmaceuticals, Inc. Warrants	wQ
 SYFI	AB Short Duration High Yield ETF	eP
 SYNX	Silynxcom Ltd.	sA
 SYRA	Syra Health Corp	sO
 SYSB	iShares Systematic Bond ETF	eZ
 SYZ	Lazard US Systematic Small Cap Equity ETF	eQ
 SZZL	Sizzle Acquisition Corp. II Class A	sQ
-SZZLR	Sizzle Acquisition Corp. II Rights	rQ
-SZZLU	Sizzle Acquisition Corp. II Units	uQ
 TAAG	Awareness Group, Inc.	sO
 TABD	Transamerica Bond Active ETF	eP
 TACH	Titan Acquisition Corp. Class A	sQ
-TACHU	Titan Acquisition Corp. Units	uQ
-TACHW	Titan Acquisition Corp. Warrants	wQ
 TACK	Fairlead Tactical Sector ETF	eP
 TACN	T. Rowe Price Active Core International Equity ETF	eP
-TACOU	Berto Acquisition Corp. Units	uQ
-TACOW	Berto Acquisition Corp. Warrants	wQ
 TACU	T. Rowe Price Active Core U.S. Equity ETF	eP
 TAFI	AB Tax-Aware Short Duration Municipal ETF	eP
 TAFL	AB Tax-Aware Long Municipal ETF	eP
@@ -12640,8 +12001,6 @@ TAP.A	Molson Coors Beverage Company Class A	sN
 TAPR	Innovator Equity Defined Protection ETF - 2 Yr to April 2027	eZ
 TATT	TAT Technologies Ltd.	sQ
 TAVI	Tavia Acquisition Corp.	sQ
-TAVIR	Tavia Acquisition Corp. Rights	rQ
-TAVIU	Tavia Acquisition Corp. Units	uQ
 TAWN	MicroSectors 3x Long Taiwan ETNs	eZ
 TAX	Cambria Tax Aware ETF	eQ
 TAXE	Intermediate Municipal Income ETF	eQ
@@ -12654,8 +12013,6 @@ TAXX	BondBloxx IR+M Tax-Aware Short Duration ETF	eP
 TAYD	Taylor Devices, Inc.	sQ
 TBB	AT&T Inc. 5.350% Global Notes due 2066	sN
 TBCV	Thunder Bridge Capital Partners V, Ltd. Class A	sQ
-TBCVU	Thunder Bridge Capital Partners V, Ltd. Units	uQ
-TBCVW	Thunder Bridge Capital Partners V, Ltd. Warrants	wQ
 TBFC	The Brinsmere Fund Conservative ETF	eP
 TBFG	The Brinsmere Fund Growth ETF	eP
 TBG	TBG Dividend Focus ETF	eP
@@ -12681,8 +12038,6 @@ TCRX	TScan Therapeutics, Inc.	sQ
 TCV	Towle Small-Cap Value ETF	eP
 TCXB	TCGX Acquisition Corp. II Class A	sQ
 TDAC	Translational Development Acquisition Corp.	sQ
-TDACU	Translational Development Acquisition Corp. Units	uQ
-TDACW	Translational Development Acquisition Corp. Warrants	wQ
 TDAQ	TappAlpha Innovation 100 Growth & Daily Income ETF	eZ
 TDAX	TDAQ Lift ETF	eZ
 TDCB		s
@@ -12701,8 +12056,6 @@ TDTH	Trident Digital Tech Holdings Ltd Class B	sQ
 TDVG	T. Rowe Price Dividend Growth ETF	eP
 TDVI	FT Vest Technology Dividend Target Income ETF	eZ
 TDWD	Tailwind 2.0 Acquisition Corp. Class A	sQ
-TDWDR	Tailwind 2.0 Acquisition Corp. Rights	rQ
-TDWDU	Tailwind 2.0 Acquisition Corp. Units	uQ
 TEC	Harbor Transformative Technologies ETF	eP
 TECY	GraniteShares YieldBOOST Technology ETF	eQ
 TEI	Templeton Emerging Markets Income Fund, Inc.	sN
@@ -12739,8 +12092,6 @@ TGRT	T. Rowe Price Growth ETF	eP
 TGRW	T. Rowe Price Growth Stock ETF	eP
 TGRZ	China AI Tigers LLM ETF	eQ
 THEO	BOA Acquisition Corp. II Class A	sQ
-THEOR	BOA Acquisition Corp. II Rights	rQ
-THEOU	BOA Acquisition Corp. II Units	uQ
 THEQ	T. Rowe Price Hedged Equity ETF	eP
 THER		s
 THH	TryHard Holdings Limited	sQ
@@ -12786,8 +12137,6 @@ TKNZ	T. Rowe Price Active Crypto ETF	eP
 TKOI		s
 TLA	GraniteShares Autocallable TSLA ETF	eQ
 TLAC	Three Lions Acquisition Corp.	sQ
-TLACU	Three Lions Acquisition Corp. Units	uQ
-TLACW	Three Lions Acquisition Corp. Warrants	wQ
 TLCE	Thrivent Large Cap Stock ETF	eQ
 TLCI	Touchstone International Equity ETF	eP
 TLDR	The Laddered T-Bill ETF	eZ
@@ -12796,10 +12145,7 @@ TLG	Touchstone Large Company Growth ETF	eQ
 TLIE	American Beacon The London Company Income Equity ETF	eP
 TLIH	Ten-League International Holdings Limited	sQ
 TLNC	Talon Capital Corp. Class A	sQ
-TLNCU	Talon Capital Corp. Units	uQ
-TLNCW	Talon Capital Corp. Warrants	wQ
 TLOG		s
-TLSIW	TriSalus Life Sciences, Inc. Warrants	wQ
 TLTD	Northern Trust Morningstar Developed Markets ex-US Factor Tilt ETF	eP
 TLTE	Northern Trust Morningstar Emerging Markets Factor Tilt ETF	eP
 TLTP	Amplify TLT U.S. Treasury 12% Option Income ETF	eZ
@@ -12823,10 +12169,7 @@ TMNS	T. Rowe Price Short Municipal Income ETF	eQ
 TMS	Teamshares Inc.	sQ
 TMSF	T. Rowe Price Multi-Sector Income ETF	eQ
 TMSL	T. Rowe Price Small-Mid Cap ETF	eP
-TMSWW	Teamshares Inc. Warrants	wQ
 TMTS	Spartacus Acquisition Corp. II Class A	sQ
-TMTSU	Spartacus Acquisition Corp. II Units	uQ
-TMTSW	Spartacus Acquisition Corp. II Warrants	wQ
 TMUSI	T-Mobile US, Inc. - 5.500% Senior Notes due June 2070	sQ
 TMUSL	T-Mobile US, Inc. - 6.250% Senior Notes due 2069	sQ
 TMUSZ	T-Mobile US, Inc. - 5.500% Senior Notes due March 2070	sQ
@@ -12836,7 +12179,6 @@ TNBI	Tanke Biosciences Corp	sO
 TNGY	Tortoise Energy ETF	eN
 TNMG	TNL Mediagene	sQ
 TNON	Tenon Medical, Inc.	sQ
-TNONW	Tenon Medical, Inc. Warrants	wQ
 TNTW	Corgi FTSE 10-20 Year U.S. Treasury Bond ETF	eZ
 TNUK	Tortoise Nuclear Renaissance ETF	eP
 TNXT	T. Rowe Price Innovation Leaders ETF	eQ
@@ -12885,8 +12227,6 @@ TRBG	TurboGen Ltd.	sQ
 TREO	Tactical Resources Corp.	sQ
 TRFM	AAM Transformers ETF	eP
 TRGS	TRG Latin America Acquisitions Corp. Class A	sQ
-TRGSR	TRG Latin America Acquisitions Corp. Rights	rQ
-TRGSU	TRG Latin America Acquisitions Corp. Units	uQ
 TRIO	MC Trio Equity Buffered ETF	eZ
 TRND	Pacer Trendpilot Fund of Funds ETF	eP
 TRNI	Trinity Capital Inc. 7.875% Notes Due 2029	sN
@@ -12953,25 +12293,16 @@ TURF	T. Rowe Price Natural Resources ETF	eQ
 TUSB	Thrivent Ultra Short Bond ETF	eP
 TUSI	Touchstone Ultra Short Income ETF	eZ
 TVA	Texas Ventures Acquisition III Corp Class A	sQ
-TVACU	Texas Ventures Acquisition III Corp Units	uQ
-TVACW	Texas Ventures Acquisition III Corp Warrants	wQ
 TVAI	Thayer Ventures Acquisition Corporation II Class A	sQ
-TVAIR	Thayer Ventures Acquisition Corporation II Rights	rQ
-TVAIU	Thayer Ventures Acquisition Corporation II Units	uQ
 TVAL	T. Rowe Price Value ETF	eP
 TVC	Tennessee Valley Authority	sN
 TVE	Tennessee Valley Authority	sN
 TVGN	Tevogen Inc.	sQ
-TVGNW	Tevogen Inc. Warrants	wQ
 TVIV	Texas Ventures Acquisition IV Corp Class A	sQ
-TVIVU	Texas Ventures Acquisition IV Corp Units	uQ
-TVIVW	Texas Ventures Acquisition IV Corp Warrants	wQ
 TWAV	TaoWeave, Inc.	sQ
 TWFG	TWFG, Inc.	sQ
 TWG	Top Wealth Group Holding Limited Class A	sQ
 TWLV	Twelve Seas Investment Company III Class A	sQ
-TWLVR	Twelve Seas Investment Company III Rights	rQ
-TWLVU	Twelve Seas Investment Company III Units	uQ
 TWN	Taiwan Fund, Inc. (The)	sN
 TWOD	Two Harbors Investment Corp.	sO
 TWOX	iShares Large Cap Accelerated Outcome ETF	eZ
@@ -13000,7 +12331,6 @@ UBOH	United Bancshares Inc./Oh	sO
 UCAR	U Power Limited Class A	sQ
 UCBG	State Street SPDR UC Investments 90/10 Endowment Strategy Index ETF	eP
 UCFI	CN Healthy Food Tech Group Corp.	sQ
-UCFIW	CN Healthy Food Tech Group Corp. Warrants	wQ
 UCIB	ETRACS UBS Bloomberg Constant Maturity Commodity Index (CMCI) Total Return ETN Series B du	sP
 UCL	uCloudlink Group Inc.	sQ
 UCON	First Trust Smith Unconstrained Bond ETF	eP
@@ -13055,7 +12385,6 @@ USBC	USBC, Inc.	sA
 USCA	Xtrackers MSCI USA Climate Action Equity ETF	eP
 USCB	USCB Financial Holdings, Inc. Class A	sQ
 USCL	iShares Climate Conscious & Transition MSCI USA ETF	eQ
-USDEW	StablecoinX Inc. Warrants	wQ
 USDP	USD Partners LP	s
 USDX	SGI Enhanced Core ETF	eQ
 USE	USCF Energy Commodity Strategy Absolute Return Fund	eP
@@ -13097,8 +12426,6 @@ UXJL	FT Vest U.S. Equity Uncapped Accelerator ETF - July	eZ
 UXOC	FT Vest U.S. Equity Uncapped Accelerator ETF - October	eZ
 UYLD	Angel Oak UltraShort Income ETF	eQ
 UYSC	UY Scuti Acquisition Corp.	sQ
-UYSCR	UY Scuti Acquisition Corp. Rights	rQ
-UYSCU	UY Scuti Acquisition Corp. Units	uQ
 UZD	Array Digital Infrastructure, Inc. 6.250% Senior Notes due 2069	sN
 UZE	Array Digital Infrastructure, Inc. 5.500% Senior Notes due 2070	sN
 UZF	Array Digital Infrastructure, Inc. 5.500% Senior Notes due 2070	sN
@@ -13145,7 +12472,6 @@ VDIG	Vanguard Wellington Dividend Growth Active ETF	eZ
 VDV	Vanguard Developed Markets ex-US Value Index ETF	eZ
 VECA	Vernal Capital Acquisition Corp.	sN
 VEEA	Veea Inc.	sQ
-VEEAW	Veea Inc. Warrants	wQ
 VEEE	Twin Vee PowerCats Co.	sQ
 VEEM	VanEck MSCI EM Analyst Sentiment ETF	eQ
 VEFA	VanEck MSCI EAFE Analyst Sentiment ETF	eQ
@@ -13157,9 +12483,7 @@ VEMY	Virtus Stone Harbor Emerging Markets High Yield Bond ETF	eP
 VERF		s
 VETZ	Academy Veteran Bond ETF	eP
 VEXC	Vanguard Emerging Markets Ex-China ETF	eP
-VFSWW	VinFast Auto Ltd. Warrants	wQ
 VGAS	Verde Clean Fuels, Inc. Class A	sQ
-VGASW	Verde Clean Fuels, Inc. Warrants	wQ
 VGHY	Vanguard High-Yield Active ETF	eZ
 VGI	Virtus Global Multi-Sector Income Fund	sN
 VGM	Invesco Trust for Investment Grade Municipals Common Stock (DE)	sN
@@ -13171,8 +12495,6 @@ VGUS	Vanguard Ultra-Short Treasury ETF	eQ
 VGVT	Vanguard Government Securities Active ETF	eP
 VHAI		s
 VHCP	Vine Hill Capital Investment Corp. II Class A	sQ
-VHCPU	Vine Hill Capital Investment Corp. II Units	uQ
-VHCPW	Vine Hill Capital Investment Corp. II Warrants	wQ
 VHI	Valhi, Inc.	sN
 VHUB	VenHub Global, Inc.	sQ
 VIAG	Leverage Shares 2X Long VIAV Daily ETF	eZ
@@ -13191,8 +12513,6 @@ VKI	Invesco Advantage Municipal Income Trust II Common Shares of Beneficial Inte
 VKQ	Invesco Municipal Trust	sN
 VLGEA	Village Super Market, Inc. Class A	sQ
 VLOS	Velos Acquisition I Corp. Class A	sQ
-VLOSU	Velos Acquisition I Corp. Units	uQ
-VLOSW	Velos Acquisition I Corp. Warrants	wQ
 VLT	Invesco High Income Trust II	sN
 VLYPN	Valley National Bancorp - 8.250% Fixed-Rate Reset Non-Cumulative Perpetual Preferred Stock	sQ
 VLYPO	Valley National Bancorp - 5.5% Fixed to Floating Rate Series B Non-Cumulative Perpetual Pr	sQ
@@ -13206,8 +12526,6 @@ VMSB	Voya Multi-Sector Income ETF	eP
 VMSD	VictoryShares Short-Duration Municipal ETF	eQ
 VNIE	Vontobel International Equity Active ETF	eP
 VNME	Vendome Acquisition Corporation I Class A	sQ
-VNMEU	Vendome Acquisition Corporation I Units	uQ
-VNMEW	Vendome Acquisition Corporation I Warrants	wQ
 VNSE	Natixis Vaughan Nelson Select ETF	eP
 VNTG	Vantage Corp Class A	sA
 VOGX	Vogenx Inc	sQ
@@ -13227,12 +12545,10 @@ VRM	Vroom, Inc.	sQ
 VRPX		s
 VRTS	Virtus Investment Partners, Inc.	sN
 VRXA	Veraxa Biotech AG	sQ
-VRXAW	Veraxa Biotech AG Warrants	wQ
 VS	Versus Systems Inc.	sQ
 VSA	VisionSys AI Inc.	sQ
 VSDB	Vanguard Short Duration Bond ETF	eZ
 VSDM	Vanguard Short Duration Tax-Exempt Bond ETF	eZ
-VSECU	VSE Corporation - Tangible Equity Units	uQ
 VSEE	Vsee Health, Inc.	s
 VSEEW	Vsee Health, Inc.	sO
 VSHY	Virtus Newfleet Short Duration High Yield Bond ETF	eP
@@ -13259,7 +12575,6 @@ VUSI	Voya Ultra Short Income ETF	eP
 VUSV	Vanguard Wellington U.S. Value Active ETF	eZ
 VVOS	Vivos Therapeutics, Inc.	sQ
 VVR	Invesco Senior Income Trust Common Stock (DE)	sN
-VWAVW	VisionWave Holdings, Inc. Warrants	wQ
 VYLD	Inverse VIX Short-Term Futures ETNs due March 22, 2045	eP
 WABF	Western Asset Bond ETF	eQ
 WACLY		s
@@ -13310,8 +12625,6 @@ WEEL	Peerless Option Income Wheel ETF	eP
 WELD	Tema U.S. Manufacturing & Reshoring ETF	eP
 WENC	West Enclave Merger Corp.	sN
 WENN	Wen Acquisition Corp Class A	sQ
-WENNU	Wen Acquisition Corp Units	uQ
-WENNW	Wen Acquisition Corp Warrants	wQ
 WEPN	Nicholas Defense and Rare Earth Income ETF	eP
 WETH	Wetouch Technology Inc.	sQ
 WETO	Wetour Robotics Limited	sQ
@@ -13337,15 +12650,10 @@ WINVR	WinVest Acquisition Corp.	sO
 WIW	Western Asset Inflation-Linked Opportunities & Income Fund	sN
 WKEY	WISeQey Corp.	s
 WLCO	Wilco 63 Corporation Class A	sQ
-WLCOU	Wilco 63 Corporation Units	uQ
-WLCOW	Wilco 63 Corporation Warrants	wQ
 WLDR	Simplify Affinity World Leaders Equity ETF	eZ
 WLDS	Wearable Devices Ltd.	sQ
-WLDSW	Wearable Devices Ltd. Warrants	wQ
 WLDU	Leverage Shares 2x Long World Stock Daily ETF	eZ
 WLII	Willow Lane Acquisition Corp. II Class A	sQ
-WLIIU	Willow Lane Acquisition Corp. II Units	uQ
-WLIIW	Willow Lane Acquisition Corp. II Warrants	wQ
 WLTG	WealthTrust DBS Long Term Growth ETF	eN
 WLYB	John Wiley & Sons, Inc.	sN
 WMSB	Weitz Multisector Bond ETF	eP
@@ -13370,16 +12678,12 @@ WSO.B	Watsco, Inc. Class B	sN
 WSPC	WisdomTree Space Economy Fund	eQ
 WSTL	Westell Technologies, Inc.	s
 WSTN	Westin Acquisition Corp Class A	sQ
-WSTNR	Westin Acquisition Corp Rights	rQ
-WSTNU	Westin Acquisition Corp Units	uQ
 WTAL	WisdomTree Global Alpha Fund	eTXSE
 WTBN	WisdomTree Bianco Total Return Fund	eQ
 WTER	ALKALINE WATER Co INC	sO
 WTF	Waton Financial Limited	sQ
 WTFCN	Wintrust Financial Corporation - Depositary	sQ
 WTG	Wintergreen Acquisition Corp.	sQ
-WTGUR	Wintergreen Acquisition Corp. Rights	rQ
-WTGUU	Wintergreen Acquisition Corp. Units	uQ
 WTIB	USCF Oil Plus Bitcoin Strategy Fund	eP
 WTID	MicroSectors Energy 3X Inverse Leveraged ETNs	eP
 WTIP	WisdomTree Inflation Plus Fund	eQ
@@ -13417,10 +12721,7 @@ XBJL	Innovator U.S. Equity Accelerated 9 Buffer ETF - July	eZ
 XBNB		s
 XBOC	Innovator U.S. Equity Accelerated 9 Buffer ETF - October	eZ
 XBP	XBP Global Holdings, Inc.	sQ
-XBPEW	XBP Global Holdings, Inc. Warrants	wQ
 XCBE	X3 Acquisition Corp. Ltd. Class A	sQ
-XCBEU	X3 Acquisition Corp. Ltd. Units	uQ
-XCBEW	X3 Acquisition Corp. Ltd. Warrants	wQ
 XCCC	BondBloxx CCC-Rated USD High Yield Corporate Bond ETF	eP
 XCH	XCHG Limited - ADS	sQ
 XCHG	AB US Equity ETF	eP
@@ -13454,8 +12755,6 @@ XHOA	Corgi U.S. Real Estate 2x Daily ETF	eZ
 XIDV	Franklin International Dividend Booster Index ETF	eP
 XIGV	Defiance US 100 Tech Ex Software ETF	eZ
 XIII	Churchill Capital Corp XIII Class A	sQ
-XIIIU	Churchill Capital Corp XIII Units	uQ
-XIIIW	Churchill Capital Corp XIII Warrants	wQ
 XIJN	FT Vest U.S. Equity Buffer & Premium Income ETF - June	eZ
 XIMR	FT Vest U.S. Equity Buffer & Premium Income ETF - March	eZ
 XISE	FT Vest U.S. Equity Buffer & Premium Income ETF - September	eZ
@@ -13466,7 +12765,6 @@ XJR	iShares ESG Select Screened S&P Small-Cap ETF	eZ
 XJUL	FT Vest U.S. Equity Enhance & Moderate Buffer ETF - July	eZ
 XJUN	FT Vest U.S. Equity Enhance & Moderate Buffer ETF - June	eZ
 XKRE	Corgi U.S. Regional Banks 2x Daily ETF	eZ
-XLABW	Exascale Labs Holdings Inc. Warrants	wQ
 XLBI	State Street Materials Select Sector SPDR Premium Income ETF	eP
 XLBX	Corgi U.S. Materials 2x Daily ETF	eZ
 XLCD	MicroSectors -3x Short Communication Services (XLC) ETNs	eZ
@@ -13517,14 +12815,10 @@ XQTM	Corgi Quantum Computing 2x Daily ETF	eZ
 XRLX	FundX Conservative ETF	eP
 XRPM	Amplify XRP 3% Monthly Option Income ETF	eZ
 XRPNU		s
-XRPNW	Evernorth Holdings Inc. Warrants	wQ
-XRXDW	Xerox Holdings Corporation Warrants	wQ
 XSEM	Corgi U.S. Semiconductors 2x Daily ETF	eZ
 XSEP	FT Vest U.S. Equity Enhance & Moderate Buffer ETF - September	eZ
 XSHP	Kurv SpaceX Enhanced Income ETF	eZ
 XSLL	Xsolla SPAC 1 Class A	sQ
-XSLLU	Xsolla SPAC 1 Units	uQ
-XSLLW	Xsolla SPAC 1 Warrants	wQ
 XSPC	VegaShares Space & AI ETF	eQ
 XSPI	NEOS Boosted S&P 500 High Income ETF	eQ
 XSVN	BondBloxx Bloomberg Seven Year Target Duration US Treasury ETF	eP
@@ -13532,8 +12826,6 @@ XTAI	Corgi Taiwan 2x Daily ETF	eZ
 XTAP	Innovator U.S. Equity Accelerated Plus ETF - April	eZ
 XTEN	BondBloxx Bloomberg Ten Year Target Duration US Treasury ETF	eP
 XTER	Karman Line Acquisition Corp. Class A	sQ
-XTERU	Karman Line Acquisition Corp. Units	uQ
-XTERW	Karman Line Acquisition Corp. Warrants	wQ
 XTIA	XTI Aerospace, Inc. Common Stock	sQ
 XTJA	Innovator U.S. Equity Accelerated Plus ETF - January	eZ
 XTJL	Innovator U.S. Equity Accelerated Plus ETF - July	eZ
@@ -13579,7 +12871,6 @@ YCY	AA Mission Acquisition Corp. II Class A	sN
 YDDL	One and One Green Technologies. INC Class A	sQ
 YDEC	FT Vest International Equity Moderate Buffer ETF - December	eZ
 YDES	YD Bio Limited	sQ
-YDESW	YD Bio Limited Warrants	wQ
 YDKG	Yueda Digital Holding Class A	sQ
 YEAR	AB Ultra Short Income ETF	eP
 YECO		s
@@ -13595,8 +12886,6 @@ YHNAU	YHN Acquisition I Ltd	sQ
 YI	111, Inc.	sQ
 YIBO	Planet Image International Limited Class A	sQ
 YICC	Yorkville International Capital Corp. Class A	sQ
-YICCU	Yorkville International Capital Corp. Units	uQ
-YICCW	Yorkville International Capital Corp. Warrants	wQ
 YJ	Yunji Inc.	sQ
 YJUN	FT Vest International Equity Moderate Buffer ETF - June	eZ
 YLDE	Franklin ClearBridge Enhanced Income ETF	eQ
@@ -13642,7 +12931,6 @@ ZDEK	Innovator Equity Defined Protection ETF - 1 Yr December	eZ
 ZDIS	Virtus Zevenbergen Discovery Growth ETF	eP
 ZECP	Zacks Earnings Consistent Portfolio ETF	eZ
 ZEO	Zeo Energy Corporation Class A	sQ
-ZEOWW	Zeo Energy Corporation Warrants	wQ
 ZFEB	Innovator Equity Defined Protection ETF - 1 Yr February	eZ
 ZHOG	F/m Opportunistic Income ETF	eQ
 ZIG	The Acquirers Fund	eP
@@ -13657,8 +12945,6 @@ ZJYL	JIN MEDICAL INTERNATIONAL LTD. Class A	sQ
 ZKH	ZKH Group Limited	sN
 ZKIN	ZK International Group Co., Ltd	sQ
 ZKP	Lafayette Digital Acquisition Corp. I Class A	sQ
-ZKPU	Lafayette Digital Acquisition Corp. I Units	uQ
-ZKPW	Lafayette Digital Acquisition Corp. I Warrants	wQ
 ZMAR	Innovator Equity Defined Protection ETF - 1 Yr March	eZ
 ZMAY	Innovator Equity Defined Protection ETF - 1 Yr May	eZ
 ZMUN	F/m Ultrashort Tax-Free Municipal ETF	eQ
@@ -13667,7 +12953,6 @@ ZNOV	Innovator Equity Defined Protection ETF - 1 Yr November	eZ
 ZOCT	Innovator Equity Defined Protection ETF - 1 Yr October	eZ
 ZONE	Zone Frontier Inc. Class B	sA
 ZOOZ	ZOOZ Strategy Ltd.	sQ
-ZOOZW	ZOOZ Strategy Ltd. Warrants	wQ
 ZPTA	Zapata Quantum, Inc.	sO
 ZPTAW	Zapata Quantum, Inc.	sO
 ZSB		s
@@ -13692,13 +12977,22 @@ ZZZTS		s
 ZZZTT		s
 ZZZTX		s
 AAC.U	Ares Acquisition Corporation III Units	uN
+AACIU	Armada Acquisition Corp. III Units	uQ
+AACOU	Abony Acquisition Corp. I Units	uQ
+AACPU	Apogee Acquisition Corp Units	uQ
 ABR.PR.D	Arbor Realty Trust 6.375% Series D Cumulative Redeemable Preferred Stock	pN
 ABR.PR.E	Arbor Realty Trust 6.25% Series E Cumulative Redeemable Preferred Stock	pN
 ABR.PR.F	Arbor Realty Trust 6.25% Series F Fixed-to-Floating Rate Cumulative Redeemable Preferred S	pN
+ACAAU	Averin Capital Acquisition Corp. Units	uQ
+ACGCU	ACP Holdings Acquisition Corp. Units	uQ
 ACP.PR.A	abrdn Income Credit Strategies Fund 5.250% Series A Perpetual Preferred Stock	pN
 ACR.PR.C	ACRES Commercial Realty Corp. 8.625% Fixed-to-Floating Series C Cumulative Redeemable Pref	pN
 ACR.PR.D	ACRES Commercial Realty Corp. 7.875% Series D Cumulative Redeemable Preferred Stock	pN
+ADACU	American Drive Acquisition Company Units	uQ
 ADC.PR.A	Agree Realty Corporation Depositary	pN
+AEAQU	Activate Energy Acquisition Corp. Units	uQ
+AESPU	Aeon Acquisition I Corp. Units	uQ
+AFJKU	Aimei Health Technology Co., Ltd Units	uQ
 AGM.PR.D	Federal Agricultural Mortgage Corporation 5.700% Non-Cumulative Preferred Stock, Series D	pN
 AGM.PR.E	Federal Agricultural Mortgage Corporation 5.750% Non-Cumulative Preferred Stock, Series E	pN
 AGM.PR.F	Federal Agricultural Mortgage Corporation 5.250% Non-Cumulative Preferred Stock, Series F	pN
@@ -13716,24 +13010,39 @@ AHT.PR.H	Ashford Hospitality Trust Inc 7.50% Series H Cumulative Preferred Stock
 AHT.PR.I	Ashford Hospitality Trust Inc 7.50% Series I Cumulative Preferred Stock	pN
 AIIA.U	AI Infrastructure Acquisition Corp. Units	uN
 ALB.PR.A	Albemarle Corporation Depositary	pN
+ALDFU	Aldel Financial II Inc. Units	uQ
+ALFUU	Centurion Acquisition Corp. Units	uQ
+ALISU	Calisa Acquisition Corp Units	uQ
 ALL.PR.B	Allstate Corporation (The) 5.100% Fixed-to-Floating Rate Subordinated Debentures due 2053	pN
 ALL.PR.H	Allstate Corporation (The) Depositary	pN
 ALL.PR.I	Allstate Corporation (The) Depositary	pN
 ALL.PR.J	Allstate Corporation (The) Depositary	pN
+ALOVU	Aldabra 4 Liquidity Opportunity Vehicle, Inc. Units	uQ
+ALPXU	Alpex Acquisition Corporation Units	uQ
 ALTG.PR.A	Alta Equipment Group Inc. Depositary Shares (each representing 1/1000th in a share of 10%	pN
 ALUB.U	Alussa Energy Acquisition Corp. II Units	uN
+AMACU	AMR Resources Acquisition Corp Units	uQ
 AMH.PR.G	American Homes 4 Rent Series G cumulative redeemable perpetual preferred	pN
 AMH.PR.H	American Homes 4 Rent Series H cumulative redeemable perpetual Preferred	pN
 ANG.PR.D	American National Group Inc. Depositary	pN
+APACU	StoneBridge Acquisition II Corporation Units	uQ
+APMCU	AmperCap Acquisition Company Units	uQ
+APXTU	Apex Treasury Corporation Units	uQ
+ARCIU	Archimedes Tech SPAC Partners III Co. Units	uQ
+ARCLU	ARC Group Acquisition I Corp Units	uQ
 ARES.PR.B	Ares Management Corporation 6.75% Series B Mandatory Convertible Preferred Stock	pN
 ARR.PR.C	ARMOUR Residential REIT, Inc. 7% Series C Cumulative Redeemable Preferred Stock (liquidati	pN
+ARTCU	Art Technology Acquisition Corp. Units	uQ
 ASB.PR.E	Associated Banc-Corp Depositary	pN
 ASB.PR.F	Associated Banc-Corp Depositary	pN
+ASPCU	A SPAC III Acquisition Corp. Units	uQ
 ATH.PR.A	Athene Holding Ltd. Depositary	pN
 ATH.PR.B	Athene Holding Ltd. Depositary	pN
 ATH.PR.D	Athene Holding Ltd. Depositary	pN
 ATH.PR.E	Athene Holding Ltd. Depositary	pN
+ATLQU	JAB Acquisition Corp I Units	uQ
 AUB.PR.A	Atlantic Union Bankshares Corporation Depositary	pN
+AXINU	Axiom Intelligence Acquisition Corp 1 Units	uQ
 AXS.PR.E	Axis Capital Holdings Limited Depositary	pN
 BA.PR.A	Boeing Company (The) Depositary	pN
 BAC.PR.B	Bank of America Corporation Depositary	pN
@@ -13746,21 +13055,32 @@ BAC.PR.O	Bank of America Corporation Depositary	pN
 BAC.PR.P	Bank of America Corporation Depositary	pN
 BAC.PR.Q	Bank of America Corporation Depositary	pN
 BAC.PR.S	Bank of America Corporation Depositary	pN
+BACCU	Blue Acquisition Corp. Units	uQ
 BANC.PR.F	Banc of California, Inc. Depositary	pN
 BC.PR.C	Brunswick Corporation 6.375% Notes due 2049	pN
+BCCQU	Bleichroeder Acquisition Corp. III Units	uQ
 BCSS.U	Bain Capital GSS Investment Corp. Units	uN
 BCV.PR.A	Bancroft Fund Limited 5.375% Series A Cumulative Preferred	pA
+BDCIU	BTC Development Corp. Units	uQ
+BEAGU	Bold Eagle Acquisition Corp. Units	uQ
 BEBE.U	TGE Value Creative Solutions Corp Units	uN
 BEP.PR.A	Brookfield Renewable Partners L.P. 5.25% Class A Preferred Limited Partnership Units, Seri	pN
 BFH.PR.A	Bread Financial Holdings, Inc. Depositary	pN
 BFH.PR.B	Bread Financial Holdings, Inc. Depositary	pN
 BFS.PR.D	Saul Centers, Inc. Depositary	pN
 BFS.PR.E	Saul Centers, Inc. Depositary	pN
+BHAIU	BHAV Acquisition Corp II Units	uQ
+BHAVU	BHAV Acquisition Corp Units	uQ
 BHR.PR.B	Braemar Hotels & Resorts Inc. 5.50% Series B Cumulative Convertible Preferred Stock	pN
 BHR.PR.D	Braemar Hotels & Resorts Inc. 8.25% Series D Cumulative Preferred Stock	pN
+BIDWU	Tribeca Strategic Acquisition Corp. Units	uQ
 BIII.U	Black Spade Acquisition III Co Units	uN
 BIP.PR.A	Brookfield Infrastructure Partners LP 5.125% Class A Preferred Limited Partnership Units,	pN
 BIP.PR.B	Brookfield Infrastructure Partners LP 5.000% Class A Preferred Limited Partnership Units,	pN
+BIXIU	Bitcoin Infrastructure Acquisition Corp Ltd. Units	uQ
+BKHAU	Black Hawk Acquisition Corporation Units	uQ
+BLRKU	Bluerock Acquisition Corp. Units	uQ
+BLZRU	Trailblazer Acquisition Corp. Units	uQ
 BML.PR.G	Bank of America Corporation Depositary Shares (Each representing a 1/1200th interest in a	pN
 BML.PR.H	Bank of America Corporation Depositary Shares (Each representing a 1/1200th interest in a	pN
 BML.PR.J	Bank of America Corporation Depositary Shares (Each representing a 1/1200th interest in a	pN
@@ -13768,10 +13088,26 @@ BML.PR.L	Bank of America Corporation Depositary Shares (Each representing a 1/12
 BNY.PR.K	The Bank Of New York Mellon Corporation Depositary	pN
 BOH.PR.A	Bank of Hawaii Corporation Depositary	pN
 BOH.PR.B	Bank of Hawaii Corporation Depositary	pN
+BPACU	Blueport Acquisition Ltd Units	uQ
+BPYPP	Brookfield Property Partners L.P. - 6.50% Class A Cumulative Redeemable Perpetual Preferre	uQ
+BRKHU	Burtech Acquisition Corp II Units	uQ
+BRRKU	Bluerock Acquisition Corp. II Units	uQ
+BRTMU	B&R Technology Merger Corp. Units	uQ
+BSAAU	BEST SPAC I Acquisition Corp. Units	uQ
+BSRT	BSR Real Estate Investment Trust Units	uN
+BTSGU	BrightSpring Health Services, Inc. - Tangible Equity Unit	uQ
 BW.PR.A	Babcock & Wilcox Enterprises, Inc. 7.75% Series A Cumulative Perpetual Preferred Stock	pN
 BWIV.U	Blue Water Acquisition Corp. IV Units	uN
 C.PR.N	Citigroup Capital XIII 7.875% Fixed rate Floating Rate trust Preferred Securities (TruPS)	pN
 C.PR.R		p
+CAIIU	Collective Acquisition Corp. II Units	uQ
+CAPNU	Cayson Acquisition Corp Units	uQ
+CAQUU	Cambridge Acquisition Corp. Units	uQ
+CATLU	Catalyst Acquisition Corp. Units	uQ
+CCAQU	Collective Acquisition Corp. Units	uQ
+CCCTU	Columbus Circle Capital Corp III Units	uQ
+CCIIU	Cohen Circle Acquisition Corp. II Units	uQ
+CCXIU	Churchill Capital Corp XI Units	uQ
 CDR.PR.B	Cedar Realty Trust, Inc. 7.25% Series B Cumulative Redeemable Preferred Stock	pN
 CDR.PR.C	Cedar Realty Trust, Inc. 6.50% Series C Cumulative Redeemable Preferred Stock	pN
 CFG.PR.E	Citizens Financial Group, Inc. Depositary	pN
@@ -13779,8 +13115,12 @@ CFG.PR.H	Citizens Financial Group, Inc. Depositary	pN
 CFG.PR.I	Citizens Financial Group, Inc. Depositary	pN
 CFR.PR.B	Cullen/Frost Bankers, Inc. Depositary	pN
 CFTR.PR.A	Cantor Fitzgerald Income Trust, Inc. 9.50% Series A Cumulative Redeemable Preferred Stock	pN
+CGCFU	Cartesian Growth Corporation IV Units	uQ
+CHARU	Charlton Aria Acquisition Corporation Units	uQ
+CHECU	Chenghe Acquisition III Co. Units	uQ
 CHMI.PR.A	Cherry Hill Mortgage Investment Corporation 8.20% Series A Cumulative Redeemable Preferred	pN
 CHMI.PR.B	Cherry Hill Mortgage Investment Corporation 8.250% Series B Fixed-to-Floating Rate Cumulat	pN
+CHPGU	ChampionsGate Acquisition Corporation Units	uQ
 CIM.PR.A	Chimera Investment Corporation 8.00% Series A Cumulative Redeemable Preferred Stock	pN
 CIM.PR.B	Chimera Investment Corporation 8.00% Series B Fixed-to-Floating Rate Cumulative Redeemable	pN
 CIM.PR.C	Chimera Investment Corporation 7.75% Series C Fixed-to-Floating Rate Cumulative Redeemable	pN
@@ -13802,9 +13142,17 @@ COF.PR.K	Capital One Financial Corporation Depositary	pN
 COF.PR.L	Capital One Financial Corporation Depositary	pN
 COF.PR.N	Capital One Financial Corporation Depositary	pN
 COPL.U	Copley Acquisition Corp Units	uN
+CRACU	Crown Reserve Acquisition Corp. I Units	uQ
+CRANU	Crane Harbor Acquisition Corp. II Units	uQ
+CRAQU	Cal Redwood Acquisition Corp. Units	uQ
 CTA.PR.A	EIDP, Inc. Preferred Stock $3.50 Series	pN
 CTA.PR.B	EIDP, Inc. Preferred Stock $4.50 Series	pN
+CTAAU	ClearThink 1 Acquisition Corp. Units	uQ
 CTO.PR.A	CTO Realty Growth, Inc. 6.375% Series A Cumulative Redeemable Preferred Stock	pN
+CUBWU	Lionheart Holdings Units	uQ
+CXIIU	Churchill Capital Corp XII Units	uQ
+DAAQU	Digital Asset Acquisition Corp. Units	uQ
+DBCAU	D. Boral Acquisition I Corp. Units	uQ
 DBRG.PR.H		p
 DBRG.PR.I		p
 DBRG.PR.J		p
@@ -13814,15 +13162,24 @@ DLNG.PR.A	Dynagas LNG Partners LP 9.00% Series A Cumulative Redeemable Preferred
 DLR.PR.J	Digital Realty Trust, Inc. 5.250% Series J Cumulative Redeemable Preferred Stock	pN
 DLR.PR.K	Digital Realty Trust, Inc. 5.850% Series K Cumulative Redeemable Preferred Stock	pN
 DLR.PR.L	Digital Realty Trust, Inc. 5.200% Series L Cumulative Redeemable Preferred Stock	pN
+DMAAU	Drugs Made In America Acquisition Corp. Units	uQ
+DMIIU	Drugs Made In America Acquisition II Corp. Units	uQ
+DNMXU	Dynamix Corporation III Units	uQ
+DRDBU	Roman DBDR Acquisition Corp. II Units	uQ
+DSACU	Daedalus Special Acquisition Corp. Units	uQ
 DSX.PR.B	Diana Shipping Inc. Perpetual Preferred Shares Series B (Marshall Islands)	pN
+DTSQU	DT Cloud Star Acquisition Corporation Units	uQ
 DUK.PR.A	Duke Energy Corporation Depositary	pN
+DUKU	Duke Energy Corporation Corporate Units	uN
 DX.PR.C	Dynex Capital, Inc. 6.900% Series C Fixed-to-Floating Rate Cumulative Redeemable Preferred	pN
 DX.PR.D	Dynex Capital, Inc. 9.375% Series D Fixed-Rate Cumulative Redeemable Preferred Stock	pN
+DYORU	Insight Digital Partners II Units	uQ
 ECC.PR.D	Eagle Point Credit Company 6.75% Series D Preferred Stock	pN
 ECF.PR.A	Ellsworth Growth and Income Fund Ltd. 5.25% Series A Cumulative Preferred Shares (Liquidat	pA
 EFC.PR.B	Ellington Financial Inc. 6.250% Series B Fixed-Rate Reset Cumulative Redeemable Preferred	pN
 EFC.PR.C	Ellington Financial Inc. 8.625% Series C Fixed-Rate Reset Cumulative Redeemable Preferred	pN
 EFC.PR.D	Ellington Financial Inc. 7.00% Series D Cumulative Perpetual Redeemable Preferred Stock	pN
+EGHAU	EGH Acquisition Corp. Units	uQ
 EP.PR.C	El Paso Corporation Preferred Stock	pN
 EPR.PR.C	EPR Properties 5.75% Series C Cumulative Convertible Preferred	pN
 EPR.PR.E	EPR Properties Series E Cumulative Conv Pfd Shs Ser E	pN
@@ -13832,33 +13189,52 @@ EQH.PR.C	Equitable Holdings, Inc. Depositary	pN
 ET.PR.I	Energy Transfer L.P. Series I Fixed Rate Perpetual Preferred Units	pTXSE
 ETI.PR	Entergy Texas Inc 5.375% Series A Preferred Stock, Cumulative, No Par Value	pN
 ETSS.U	Energy Transition Special Opportunities Units	uN
+EURKU	Eureka Acquisition Corp Units	uQ
 EVAC.U	EQV Ventures Acquisition Corp. II Units	uN
+EVOXU	Evolution Global Acquisition Corp Units	uQ
+EWAVU	East West Ave Acquisition Corp. Units	uQ
 F.PR.B	Ford Motor Company 6.20% Notes due June 1, 2059	pN
 F.PR.C	Ford Motor Company 6% Notes due December 1, 2059	pN
 F.PR.D	Ford Motor Company 6.500% Notes due August 15, 2062	pN
+FACTU	FACT II Acquisition Corp. Units	uQ
 FBRT.PR.E	Franklin BSP Realty Trust, Inc. 7.50% Series E Cumulative Redeemable Preferred Stock	pN
 FCRS.U	FutureCrest Acquisition Corp. Units	uN
+FDMMU	Freedom Metals Acquisition Corp. Units	uQ
+FERAU	Fifth Era Acquisition Corp I Units	uQ
+FGIIU	FG Imperii Acquisition Corp. Units	uQ
 FHN.PR.E	First Horizon Corporation Depositary	pN
 FHN.PR.F	First Horizon Corporation Depositary	pN
 FHN.PR.H	First Horizon Corporation Depositary	pN
+FIGXU	FIGX Capital Acquisition Corp. Units	uQ
 FITB.PR.A	Fifth Third Bancorp Depositary	pN
 FITB.PR.I	Fifth Third Bancorp Depositary Share repstg 1/1000th Ownership Interest Perp Pfd Series I	pN
 FITB.PR.K	Fifth Third Bancorp Depositary	pN
 FITB.PR.M	Fifth Third Bancorp Depositary Shares Representing a 1/40th Ownership Interest in a Share	pN
+FJDIU	ARC Group Securities Acquisition I Units	uQ
 FLG.PR.A	Flagstar Bank, N.A. Depositary	pN
 FLG.PR.U	Flagstar Bank, N.A. Bifurcated Option Note Unit SecuritiES	pN
+FMACU	Future Money Acquisition Corporation Units	uQ
 FOUR.PR.A	Shift4 Payments, Inc. 6.00% Series A Mandatory Convertible Preferred Stock	pN
 FRT.PR.C	Federal Realty Investment Trust Depositary	pN
+FSHPU	Flag Ship Acquisition Corp. Units	uQ
+FTHAU	Forefront Tech Holdings Acquisition Corp Units	uQ
 FTRA.U	FutureCorp Space Acquisition 1 Units	uN
+FVNNU	Future Vision II Acquisition Corporation Units	uQ
+FWACU	Futurewave Acquisition Corporation Units	uQ
+FXACU	FortuneX Acquisition Corporation Units	uQ
 GAB.PR.G	Gabelli Equity Trust, Inc. (The) Series G Cumulative Preferred Stock	pN
 GAB.PR.H	Gabelli Equity Trust, Inc. (The) Pfd Ser H	pN
 GAB.PR.K	Gabelli Equity Trust, Inc. (The) 5.00% Series K Cumulative Preferred Stock	pN
 GAM.PR.B	General American Investors Company, Inc. Cumulative Preferred Stock	pN
+GCGRU	General Catalyst Global Resilience Merger Corp. Units	uQ
 GDV.PR.H	The Gabelli Dividend & Income Trust 5.375% Series H Cumulative Preferred	pN
 GDV.PR.K	The Gabelli Dividend & Income Trust 4.250% Series K Cumulative Preferred	pN
 GGN.PR.B	GAMCO Global Gold, Natural Reources & Income Trust 5.00% Series B Cumulative 25.00 Liquida	pA
 GGT.PR.E	Gabelli Multi-Media Trust Inc. (The) 5.125% Series E Cumulative Preferred Stock	pN
 GGT.PR.G	Gabelli Multi-Media Trust Inc. (The) 5.125% Series G Cumulative Preferred	pN
+GHXIU	Gores Holdings XI, Inc. Units	uQ
+GIWWU	GigCapital8 Corp. Units	uQ
+GIXXU	GigCapital9 Corp. Units	uQ
 GL.PR.D	Globe Life Inc. 4.25% Junior Subordinated Debentures due 2061	pN
 GLED.U	GalaxyEdge Acquisition Corporation Units	uN
 GLOP.PR.A	GasLog Partners LP 8.625% Series A Cumulative Redeemable Perpetual Fixed to Floating Rate	pN
@@ -13871,30 +13247,59 @@ GNL.PR.B	Global Net Lease, Inc. 6.875% Series B Cumulative Redeemable Perpetual 
 GNL.PR.D	Global Net Lease, Inc. 7.50% Series D Cumulative Redeemable Perpetual Preferred Stock	pN
 GNL.PR.E	Global Net Lease, Inc. 7.375% Series E Cumulative Redeemable Perpetual Preferred Stock	pN
 GNT.PR.A	GAMCO Natural Resources, Gold & Income Tust 5.20% Series A Cumulative Preferred Shares (Li	pN
+GPACU	General Purpose Acquisition Corp. Units	uQ
+GPATU	GP-Act III Acquisition Corp. Units	uQ
 GPMT.PR.A	Granite Point Mortgage Trust Inc. 7.00% Series A Fixed-to-Floating Rate Cumulative Redeema	pN
 GPUS.PR.D	Hyperscale Data, Inc. 13.00% Series D Cumulative Redeemable Perpetual Preferred Stock	pA
 GRBK.PR.A	Green Brick Partners, Inc. Depositary Shares (each representing a 1/1000th fractional inte	pN
 GS.PR.A	Goldman Sachs Group, Inc. (The) Depositary	pN
 GS.PR.C	Goldman Sachs Group, Inc. (The) Depositary Share repstg 1/1000th Preferred Series C	pN
 GS.PR.D	Goldman Sachs Group, Inc. (The) Dep Shs repstg 1/1000 Pfd Ser D Fltg	pN
+GSHRU	Gesher Acquisition Corp. II Units	uQ
 GSL.PR.B	Global Ship Lease, Inc. Depository Shares Representing 1/100th Perpetual Preferred Series	pN
+GSRFU	GSR IV Acquisition Corp. Units	uQ
+GSRVU	GSR V Acquisition Corp. Units	uQ
+GTENU	Gores Holdings X, Inc. Units	uQ
+GTERU	Globa Terra Acquisition Corporation Units	uQ
+GUACU	Berto Acquisition Corp. II Units	uQ
 GUT.PR.C	Gabelli Utility Trust (The) 5.375% Series C Cumulative Preferred	pN
+HACQU	HCM IV Acquisition Corp. Units	uQ
+HAVAU	Harvard Ave Acquisition Corporation Units	uQ
+HCACU	Hall Chadwick Acquisition Corp. Units	uQ
+HCICU	Hennessy Capital Investment Corp. VIII Units	uQ
+HCMAU	HCM III Acquisition Corp. Units	uQ
 HFRO.PR.A	Highland Opportunities and Income Fund 5.375% Series A Cumulative Preferred	pN
 HFRO.PR.B	Highland Opportunities and Income Fund 5.375% Series B Cumulative Preferred	pN
 HIG.PR.G	The Hartford Insurance Group, Inc. Depositary	pN
 HL.PR.B	Hecla Mining Company Preferred Stock	pN
 HPE.PR.C	Hewlett Packard Enterprise Company 7.625% Series C Mandatory Convertible Preferred Stock	pN
 HPP.PR.C	Hudson Pacific Properties, Inc. 4.750% Series C Cumulative Redeemable Preferred Stock	pN
+HVMCU	Highview Merger Corp. Units	uQ
 HYAC.U	Haymaker Acquisition Corp V Units	uN
+IACOU	Idea Acquisition Corp. Units	uQ
+IACQU	Irenic Acquisition Corp. Units	uQ
 ICR.PR.A	InPoint Commercial Real Estate Income, Inc. 6.75% Series A Cumulative Redeemable Preferred	pN
+IDACU	Iron Dome Acquisition I Corp. Units	uQ
+IEAGU	Infinite Eagle Acquisition Corp. Units	uQ
+IGACU	Invest Green Acquisition Corporation Units	uQ
 IIPR.PR.A	Innovative Industrial Properties, Inc. 9.00% Series A Cumulative Redeemable Preferred Stoc	pN
 IIPR.PR.B	Innovative Industrial Properties, Inc. 9.25% Series B Cumulative Redeemable Preferred Stoc	pN
+ILLUU	Illumination Acquisition Corp I Units	uQ
+INACU	Indigo Acquisition Corp. Units	uQ
 INN.PR.E	Summit Hotel Properties, Inc. 6.250% Series E Cumulative Redeemable Preferred Stock	pN
 INN.PR.F	Summit Hotel Properties, Inc. 5.875% Series F Cumulative Redeemable Preferred Stock	pN
+IPFXU	Inflection Point Acquisition Corp. VI Units	uQ
+IPHXU	Inflection Point Acquisition Corp. VIII Units	uQ
+IPVVU	InterPrivate Investment Partners V, Inc. Units	uQ
+IPXGU	Inection Point Acquisition Corp. VII Units	uQ
 IRAB.U	Iris Acquisition Corp II Units	uN
+IRHOU	Iron Horse Acquisitions II Corp. Units	uQ
+ISNRU	Snow Rothschild Acquisition Corp. Units	uQ
+ITHAU	ITHAX Acquisition Corp III Units	uQ
 IVR.PR.C	INVESCO MORTGAGE CAPITAL INC 7.5% Fixed-to-Floating Series C Cumulative Redeemable Preferr	pN
 JACS.U	Jackson Acquisition Company II Units	uN
 JENA.U	Jena Acquisition Corporation II Units	uN
+JONEU	Jones Ventures INTL Acquisition1 Corp Units	uQ
 JPM.PR.C	J P Morgan Chase & Co Depositary	pN
 JPM.PR.D	J P Morgan Chase & Co Depositary	pN
 JPM.PR.J	J P Morgan Chase & Co Depositary	pN
@@ -13902,33 +13307,63 @@ JPM.PR.K	J P Morgan Chase & Co Depositary	pN
 JPM.PR.L	J P Morgan Chase & Co Depositary	pN
 JPM.PR.M	J P Morgan Chase & Co Depositary	pN
 JXN.PR.A	Jackson Financial Inc. Depositary	pN
+KBONU	Karbon Capital Partners Corp. Units	uQ
 KCA.U	Kensington Capital Acquisition Corp. VI New Units	uN
 KCAC.U	Kensington Capital Acquisition Corp. VI Units	uN
+KCHVU	Kochav Defense Acquisition Corp. Units	uQ
 KEY.PR.I	KeyCorp Depositary	pN
 KEY.PR.J	KeyCorp Depositary	pN
 KEY.PR.K	KeyCorp Depositary	pN
 KEY.PR.L	KeyCorp Depositary	pN
+KEYYU	Keystone Acquisition Corp. Units	uQ
+KFIIU	K&F Growth Acquisition Corp. II Units	uQ
 KIM.PR.L	Kimco Realty Corporation Class L Depositary	pN
 KIM.PR.M	Kimco Realty Corporation Class M Depositary	pN
 KIM.PR.N	Kimco Realty Corporation Depositary	pN
 KKR.PR.D	KKR & Co. Inc. 6.25% Series D Mandatory Convertible Preferred Stock	pN
+KOYNU	CSLM Digital Asset Acquisition Corp III Units	uQ
 KPET.U	KPET Ultra Paceline Corporation Units	uN
+KRAQU	KRAKacquisition Corp Units	uQ
 KREF.PR.A	KKR Real Estate Finance Trust Inc. 6.50% Series A Cumulative Redeemable Preferred Stock	pN
 KRSP.U	Rice Acquisition Corporation 3 Units	uN
+KTWOU	K2 Capital Acquisition Corporation Units	uQ
+LAFAU	LaFayette Acquisition Corp. Units	uQ
+LATAU	Galata Acquisition Corp. II Units	uQ
+LCCCU	Lakeshore Acquisition III Corp. Units	uQ
+LEDRU	Leader's Advantage Acquisition Corp. Units	uQ
 LEGO.U	Legato Merger Corp. IV Units	uA
+LFACU	Leapfrog Acquisition Corporation Units	uQ
 LFT.PR.A	Lument Finance Trust, Inc. 7.875% Series A Cumulative Redeemable Preferred Stock	pN
+LKSPU	Lake Superior Acquisition Corp. Units	uQ
 LNC.PR.D	Lincoln National Corporation Depositary	pN
 LOB.PR.A	Live Oak Bancshares, Inc. Depositary	pN
+LOVIU	Live Oak Acquisition Corp. VI Units	uQ
+LPAAU	Launch One Acquisition Corp. Units	uQ
+LPBBU	Launch Two Acquisition Corp. Units	uQ
+LPCVU	Launchpad Cadenza Acquisition Corp I Units	uQ
+LTGRU	Long Table Growth Corp. Units	uQ
+LWACU	LightWave Acquisition Corp. Units	uQ
 LXP.PR.C	LXP Industrial Trust 6.5% Series C Cumulative Convertible Preferred Stock	pN
+MACIU	Melar Acquisition Corp. I Units	uQ
+MBVIU	M3-Brigade Acquisition VI Corp. Units	uQ
+MCAHU	Mountain Crest Acquisition 6 Corp. Units	uQ
+MCGAU	Yorkville Acquisition Corp. Units	uQ
 MER.PR.K	Bank of America Corporation Income Capital Obligation Notes initially due December 15, 206	pN
+MESHU	Meshflow Acquisition Corp. Units	uQ
 MET.PR.A	MetLife, Inc. Preferred Series A Floating Rate	pN
 MET.PR.E	MetLife, Inc. Depositary	pN
 MET.PR.F	MetLife, Inc. Depositary	pN
+MEVOU	M Evo Global Acquisition Corp II Units	uQ
 MFA.PR.B	MFA Financial, Inc. Preferred Series B	pN
 MFA.PR.C	MFA Financial, Inc. 6.50% Series C Fixed-to-Floating Rate Cumulative Redeemable Preferred	pN
+MIACU	Meridian3 Industrials Acquisition Corp Units	uQ
 MITT.PR.A	TPG Mortgage Investment Trust, Inc. 8.25% Series A Cumulative Redeemable Preferred Stock	pN
 MITT.PR.B	TPG Mortgage Investment Trust, Inc. 8.00% Series B Cumulative Redeemable Preferred Stock	pN
 MITT.PR.C	TPG Mortgage Investment Trust, Inc. 8.00% Series C Fixed-to-Floating Rate Cumulative Redee	pN
+MKLYU	McKinley Acquisition Corporation Units	uQ
+MLAAU	Mountain Lake Acquisition Corp. II Units	uQ
+MMTXU	Miluna Acquisition Corp Units	uQ
+MRCOU	Mercator Acquisition Corp. Units	uQ
 MS.PR.A	Morgan Stanley Dep Shs repstg 1/1000 Pfd Ser A	pN
 MS.PR.E	Morgan Stanley DEPOSITARY SHARES REP 1/1000TH SHARES FIXED/FLTG PREFERRED STOCK SERIES E	pN
 MS.PR.F	Morgan Stanley Dep Shs Rpstg 1/1000th Int Prd Ser F Fxd to Flag	pN
@@ -13938,13 +13373,18 @@ MS.PR.L	Morgan Stanley Depositary	pN
 MS.PR.O	Morgan Stanley Depositary	pN
 MS.PR.P	Morgan Stanley Depositary	pN
 MS.PR.Q	Morgan Stanley Depositary	pN
+MTAKU	Market Technology Acquisition Corp Units	uQ
 MTAL.U	Metals Acquisition Corp. II Units	uN
 MTB.PR.H	M&T Bank Corporation Perpetual Fixed-to-Floating Rate Non-Cumulative Preferred Stock, Seri	pN
 MTB.PR.J	M&T Bank Corporation Depositary	pN
 MTB.PR.K	M&T Bank Corporation Depositary	pN
 MTB.PR.L	M&T Bank Corporation Depositary	pN
 MTNE.U	CH4 Natural Solutions Corporation Units	uN
+MUZEU	Muzero Acquisition Corp Units	uQ
+MYXXU	Maywood Acquisition Corp. 2 Units	uQ
 MZYX.U	MOZAYYX Acquisition Corp. Units	uN
+NBRGU	Newbridge Acquisition Limited Units	uQ
+NCOOU	Southern Cross Acquisition I Corp. Units	uQ
 NCV.PR.A	Virtus Convertible & Income Fund 5.625% Series A Cumulative Preferred	pN
 NCZ.PR.A	Virtus Convertible & Income Fund II 5.50% Series A Cumulative Preferred	pN
 NEE.PR.N	NextEra Energy Capital Holdings Inc. Series N Junior Subordinated Debentures due March 1,	pN
@@ -13955,22 +13395,45 @@ NEE.PR.V	NextEra Energy, Inc. 7.375% Corporate Units	pN
 NEE.PR.W		p
 NGL.PR.B	NGL ENERGY PARTNERS LP 9.00% Class B Fixed-to-Floating Rate Cumulative Redeemable Perpetua	pN
 NGL.PR.C	NGL ENERGY PARTNERS LP 9.625% Class C Fixed-to-Floating Rate Cumulative Redeemable Perpetu	pN
+NHIVU	NewHold Investment Corp IV Units	uQ
 NLY.PR.F	Annaly Capital Management Inc 6.95% Series F	pN
 NLY.PR.G	Annaly Capital Management Inc 6.50% Series G Fixed-to-Floating Rate Cumulative Redeemable	pN
 NLY.PR.J	Annaly Capital Management Inc. 8.875% Series J Fixed-Rate Cumulative Redeemable Preferred	pN
+NMPAU	NMP Acquisition Corp. Units	uQ
+NOEMU	CO2 Energy Transition Corp. Units	uQ
+NOVTU	Novanta Inc. - Tangible Equity Units	uQ
+NPACU	New Providence Acquisition Corp. III Units	uQ
 NREF.PR.A	NexPoint Real Estate Finance, Inc. 8.50% Series A Cumulative Redeemable Preferred Stock	pN
+NSAIU	NorthStrive Acquisition Corp I. Units	uQ
+NTWOU	Newbury Street II Acquisition Corp Units	uQ
 NWAX.U	New America Acquisition I Corp. Units	uN
 NXDT.PR.A	NexPoint Diversified Real Estate Trust 5.50% Series A Cumulative Preferred Shares ($25.00	pN
+OACCU	Oaktree Acquisition Corp. III Life Sciences Units	uQ
 OAK.PR.A	Brookfield Oaktree Holdings, LLC 6.625% Series A Preferred Units	pN
 OAK.PR.B	Brookfield Oaktree Holdings, LLC 6.550% Series B Preferred Units	pN
+OBAWU	Oxley Bridge Acquisition Limited Units	uQ
 OCAC.U	Ocean Capital Acquisition Corporation Units	uN
+OCLTU	OceanLight Acquisition Corporation Units	uQ
+OHACU	Oceanhawk Acquisition Corp. Units	uQ
+OIMAU	OneIM Acquisition Corp. Units	uQ
+ONCHU	1RT Acquisition Corp. Units	uQ
 OPP.PR.A	RiverNorth/DoubleLine Strategic Opportunity Fund, Inc. 4.375% Series A Cumulative Preferre	pN
 OPP.PR.B	RiverNorth/DoubleLine Strategic Opportunity Fund, Inc. 4.75% Series B Cumulative Preferred	pN
 OPP.PR.C	RiverNorth/DoubleLine Strategic Opportunity Fund, Inc. 6.00% Series C Term Preferred Stock	pA
 ORCL.PR.D	Oracle Corporation Depositary	pN
+ORIQU	Origin Investment Corp I Units	uQ
+OSPRU	Osprey Acquisition Corp. III Units	uQ
 OTAI.U	Starlink AI Acquisition Corporation Units	uN
+OTGAU	OTG Acquisition Corp. I Units	uQ
+OYSEU	Oyster Enterprises II Acquisition Corp Units	uQ
+OZ	Belpointe PREP, LLC Class A Units	uA
+PAACU	Proem Acquisition Corp I Units	uQ
+PACHU	Pioneer Acquisition I Corp Units	uQ
 PAII.U	Pyrophyte Acquisition Corp. II Units	uN
+PALOU	Paloma Acquisition Corp I Units	uQ
+PAXGU	Pine Tree Acquisition Corp. Units	uQ
 PBI.PR.B	Pitney Bowes Inc 6.70% Notes Due 2043	pN
+PCAPU	ProCap Acquisition Corp Units	uQ
 PCG.PR.A	Pacific Gas & Electric Co. 6% Preferred Stock	pA
 PCG.PR.B	Pacific Gas & Electric Co. 5 1/2% Preferred Stock	pA
 PCG.PR.C	Pacific Gas & Electric Co. 5% 1st Preferred Stock	pA
@@ -13980,21 +13443,30 @@ PCG.PR.G	Pacific Gas & Electric Co. 4.80% 1st Preferred Stock	pA
 PCG.PR.H	Pacific Gas & Electric Co. 4.50% 1st Preferred Stock	pA
 PCG.PR.I	Pacific Gas & Electric Co. 4.36% 1st Preferred Stock	pA
 PCG.PR.X	PG&E Corp 6.000% Series A Mandatory Convertible Preferred Stock	pN
+PCTTU	PureCycle Technologies, Inc. Units	uQ
 PEB.PR.E	Pebblebrook Hotel Trust 6.375% Series E Cumulative Redeemable Preferred	pN
 PEB.PR.F	Pebblebrook Hotel Trust 6.3% Series F Cumulative Redeemable Preferred	pN
 PEB.PR.G	Pebblebrook Hotel Trust 6.375% Series G Cumulative Redeemable Preferred	pN
 PEB.PR.H	Pebblebrook Hotel Trust 5.700% Series H Cumulative Redeemable Preferred	pN
+PECEU	Peace Acquisition Corp Units	uQ
+PGACU	Pantages Capital Acquisition Corporation Units	uQ
 PHXE.PR	Phoenix Energy One, LLC Series A Cumulative Redeemable Preferred	pA
 PINE.PR.A	Alpine Income Property Trust, Inc. 8.00% Series A Cumulative Redeemable Preferred Stock	pN
+PLCIU	Pelican Acquisition II Corporation Units	uQ
+PLMKU	Plum Acquisition Corp. IV Units	uQ
 PLUN.U	Plutonian Acquisition Corp II Units	uN
 PMT.PR.A	PennyMac Mortgage Investment Trust 8.125% Series A Fixed-to-Floating Rate Cumulative Redee	pN
 PMT.PR.B	PennyMac Mortgage Investment Trust 8.00% Series B Fixed-to-Floating Rate Cumulative Redeem	pN
 PMT.PR.C	PennyMac Mortgage Investment Trust 6.75% Series C Cumulative Redeemable Preferred	pN
+PMTRU	Perimeter Acquisition Corp. I Units	uQ
 PNAQ.U	Pinnacle Acquisition Corporation Units	uN
 PNFP.PR.A	Pinnacle Financial Partners, Inc. Fixed-to-Floating Rate Non-Cumulative Perpetual Preferre	pN
 PNFP.PR.B	Pinnacle Financial Partners, Inc. Fixed-to-Floating Rate Non-Cumulative Perpetual Preferre	pN
 PNFP.PR.C	Pinnacle Financial Partners, Inc. Fixed-to-Floating Rate Non-Cumulative Perpetual Preferre	pN
+POLEU	Andretti Acquisition Corp. II Units	uQ
+PONOU	Pono Capital Four, Inc. Units	uQ
 PORT.U	Southport Acquisition Corp. II Units	uN
+PPLC	PPL Corporation Corporate Units	uN
 PRIF.PR.D	Priority Income Fund, Inc. 7.00% Series D Term Preferred Stock due 2029	pN
 PRIF.PR.K	Priority Income Fund, Inc. 7.000% Series K Cumulative Preferred Stock	pN
 PRIF.PR.L		p
@@ -14015,17 +13487,28 @@ PSA.PR.S	Public Storage Depositary	pN
 PSA.PR.T	Public Storage 6.000% Cumulative Preferred Shares of beneficial interest, Series T	pN
 PSA.PR.U	Public Storage 6.000% Cumulative Preferred Shares of Beneficial Interest, Series U	pN
 PSEC.PR.A	Prospect Capital Corporation 5.35% Series A Fixed Rate Cumulative Perpetual Preferred Stoc	pN
+PTACU	Patriot Acquisition Corp. Units	uQ
+PTORU	Praetorian Acquisition Corp. Units	uQ
 PW.PR.A	Power REIT 7.75% Series A Cumulative Perpetual Preferred Stock	pA
+QADRU	QDRO Acquisition Corp. Units	uQ
 QRED.U	QuasarEdge Acquisition Corporation Units	uN
+QSEAU	Quartzsea Acquisition Corporation Units	uQ
+QUMSU	Quantumsphere Acquisition Corp. Units	uQ
 QXO.PR.B	QXO, Inc. Depositary	pN
 RAC.U	Rithm Acquisition Corp. Units (each consists of one Class A Ordinary Share and one-third o	uN
+RANGU	Range Capital Acquisition Corp. Units	uQ
 RC.PR.C	Ready Capital Corporation 6.25% Series C Cumulative Convertible Preferred Stock	pN
 RC.PR.E	Ready Capital Corporation 6.50% Series E Cumulative Redeemable Preferred Stock	pN
+RDACU	Rising Dragon Acquisition Corp. Units	uQ
+RDAGU	Republic Digital Acquisition Company Units	uQ
 REXR.PR.B	Rexford Industrial Realty, Inc. 5.875% Series B Cumulative Redeemable Preferred Stock	pN
 REXR.PR.C	Rexford Industrial Realty, Inc. 5.625% Series C Cumulative Redeemable Preferred Stock	pN
 RF.PR.C	Regions Financial Corporation Depositary	pN
 RF.PR.E	Regions Financial Corporation Depositary	pN
 RF.PR.F	Regions Financial Corporation Depositary	pN
+RFAIU	RF Acquisition Corp II Units	uQ
+RFAMU	RF Acquisition Corp III Units	uQ
+RIBBU	Ribbon Acquisition Corp Units	uQ
 RITM.PR.A	Rithm Capital Corp. 7.50% Series A Fixed-to-Floating Rate Cumulative Redeemable Preferred	pN
 RITM.PR.B	Rithm Capital Corp. 7.125% Series B Fixed-to-Floating Rate Cumulative Redeemable Preferred	pN
 RITM.PR.C	Rithm Capital Corp. 6.375% Series C Fixed-to-Floating Rate Cumulative Redeemable Preferred	pN
@@ -14034,10 +13517,15 @@ RITM.PR.E	Rithm Capital Corp. 8.75% Series E Fixed-Rate Cumulative Redeemable Pr
 RITM.PR.F	Rithm Capital Corp. 8.750% Series F Fixed-Rate Reset Cumulative Redeemable Preferred Stock	pN
 RIV.PR.A	RiverNorth Opportunities Fund, Inc. 6.00% Series A Perpetual Preferred Stock	pN
 RLJ.PR.A	RLJ Lodging Trust $1.95 Series A Cumulative Convertible Preferred	pN
+RNAQU	Rainier Acquisition Corporation Units	uQ
+RNGTU	Range Capital Acquisition Corp II Units	uQ
 RNR.PR.F	RenaissanceRe Holdings Ltd. Depositary	pN
 RNR.PR.G	RenaissanceRe Holdings Ltd. Depositary	pN
 RPT.PR.C	Rithm Property Trust Inc. 9.875% Series C Fixed-to-Floating Rate Cumulative Redeemable Pre	pN
+RREVU	RRE Ventures Acquisition Corp. Units	uQ
+RTACU	Renatus Tactical Acquisition Corp I Units	uQ
 RWT.PR.A	Redwood Trust, Inc. 10.00% Series A Fixed-Rate Reset Cumulative Redeemable Preferred Stock	pN
+SAAQU	Space Asset Acquisition Corp. Units	uQ
 SAC.U	Safeguard Acquisition Corp. Units	uN
 SACH.PR.A	Sachem Capital Corp. 7.75% Series A Cumulative Redeemable Preferred Stock	pA
 SAGU.U	Shreya Acquisition Group Units	uN
@@ -14045,12 +13533,17 @@ SAMO.U	Samos Energy Acquisition Corporation Units	uN
 SB.PR.C	Safe Bulkers, Inc Cumulative Redeemable Perpetual Preferred Series C (Marshall Islands)	pN
 SB.PR.D	Safe Bulkers, Inc Perpetual Preferred Series D (Marshall Islands)	pN
 SBXE.U	SilverBox Corp V Units	uN
+SCATU	Southern Cross Acquisition II Corp. Units	uQ
 SCE.PR.G	SCE Trust II Trust Preferred Securities	pN
 SCE.PR.L	SCE TRUST VI	pN
 SCE.PR.M	SCE Trust VII 7.50% Trust Preference Securities	pN
 SCE.PR.N	SCE Trust VIII 6.95% Trust Preference Securities	pN
 SCHW.PR.D	The Charles Schwab Corporation Depositary	pN
 SCHW.PR.J	The Charles Schwab Corporation Depositary	pN
+SCIIU	SC II Acquisition Corp. Units	uQ
+SCPQU	Social Commerce Partners Corporation Units	uQ
+SCQCU	SPACCircle Acquisition Corp. Units	uQ
+SDHIU	Siddhi Acquisition Corp Units	uQ
 SEAL.PR.A	Seapeak LLC 9.00% Series A Cumulative Redeemable Perpetual Preferred Units	pN
 SEAL.PR.B	Seapeak LLC 8.50% Series B Fixed-to-Floating Rate Cumulative Redeemable Perpetual Preferre	pN
 SF.PR.B	Stifel Financial Corporation Depositary	pN
@@ -14058,29 +13551,53 @@ SF.PR.C	Stifel Financial Corporation Depositary	pN
 SF.PR.D	Stifel Financial Corporation Depositary	pN
 SHO.PR.H	Sunstone Hotel Investors, Inc. 6.125% Series H Cumulative Redeemable Preferred Stock	pN
 SHO.PR.I	Sunstone Hotel Investors, Inc. 5.70% Series I Cumulative Redeemable Preferred Stock	pN
+SHOTU	RMG ML Sports Holdings Units	uQ
+SIMAU	SIM Acquisition Corp. I Units	uQ
 SLG.PR.I	SL Green Realty Corporation Preferred Series I	pN
 SNUS.PR.H	Santander Holdings USA, Inc. Depositary	pN
 SNUS.PR.I		p
+SOCAU	Solarius Capital Acquisition Corp. Units	uQ
+SOMN	Southern Company (The) 2025 Series A Corporate Units	uN
+SORNU	Soren Acquisition Corp. Units	uQ
 SOUL.U	Soulpower Acquisition Corporation Units	uN
 SPE.PR.C	Special Opportunities Fund Inc. 2.75% Convertible Preferred Stock, Series C	pN
+SPEGU	Silver Pegasus Acquisition Corp Units	uQ
 SPG.PR.J	Simon Property Group, Inc. Simon Property Group 8 3/8% Series J Cumulative Redeemable Pref	pN
 SRG.PR.A	Seritage Growth Properties 7.00% Series A Cumulative Redeemable Preferred	pN
+SSACU	SPACSphere Acquisition Corp. Units	uQ
+SSEAU	Starry Sea Acquisition Corp Units	uQ
 STT.PR.G	State Street Corporation Depositary	pN
+SUMAU	SUMA Acquisition Corporation Units	uQ
+SVAQU	Silicon Valley Acquisition Corp. Units	uQ
+SVCCU	Stellar V Capital Corp. Units	uQ
+SVIVU	Spring Valley Acquisition Corp. IV Units	uQ
 SYF.PR.A	Synchrony Financial Depositary	pN
 SYF.PR.B	Synchrony Financial Depositary	pN
+SZZLU	Sizzle Acquisition Corp. II Units	uQ
 T.PR.A	AT&T Inc. Depositary	pN
 T.PR.C	AT&T Inc. Depositary	pN
+TACHU	Titan Acquisition Corp. Units	uQ
+TACOU	Berto Acquisition Corp. Units	uQ
+TAVIU	Tavia Acquisition Corp. Units	uQ
+TBCVU	Thunder Bridge Capital Partners V, Ltd. Units	uQ
 TCBI.PR.B	Texas Capital Bancshares, Inc. Depositary Shares 5.75% Fixed Rate Non-Cumulative Perpetual	pTXSE
+TDACU	Translational Development Acquisition Corp. Units	uQ
 TDS.PR.U	Telephone and Data Systems, Inc. Depositary	pN
 TDS.PR.V	Telephone and Data Systems, Inc. Depositary	pN
+TDWDU	Tailwind 2.0 Acquisition Corp. Units	uQ
 TEN.PR.E	Tsakos Energy Navigation Ltd Series E Fixed-to-Floating Rate Cumulative Redeemable Perpetu	pN
 TEN.PR.F	Tsakos Energy Navigation Ltd Series F Fixed-to-Floating Rate Cumulative Redeemable Perpetu	pN
 TFC.PR.I	Truist Financial Corporation Depositary	pN
 TFC.PR.O	Truist Financial Corporation Depositary	pN
 TFC.PR.R		p
 TFIN.PR	Triumph Financial, Inc. Depositary	pN
+THEOU	BOA Acquisition Corp. II Units	uQ
+TLACU	Three Lions Acquisition Corp. Units	uQ
+TLNCU	Talon Capital Corp. Units	uQ
+TMTSU	Spartacus Acquisition Corp. II Units	uQ
 TONT.U	Graf Global Corp. Units	uA
 TRAD.U	APEX Tech Acquisition Inc. Units	uN
+TRGSU	TRG Latin America Acquisitions Corp. Units	uQ
 TRTN.PR.A	Triton International Limited 8.50% Series A Cumulative Redeemable Perpetual Preference	pN
 TRTN.PR.B	Triton International Limited 8.00% Series B Cumulative Redeemable Perpetual Preference	pN
 TRTN.PR.C	Triton International Limited 7.375% Series C Cumulative Redeemable Perpetual Preference	pN
@@ -14089,6 +13606,10 @@ TRTN.PR.E	Triton International Limited 5.75% Series E Cumulative Redeemable Perp
 TRTN.PR.F	Triton International Limited 7.625% Series F Cumulative Redeemable Perpetual Preference	pN
 TRTN.PR.G	Triton International Limited 7.500% Series G Cumulative Redeemable Perpetual Preference	pN
 TRTX.PR.C	TPG RE Finance Trust, Inc. 6.25% Series C Cumulative Redeemable Preferred Stock	pN
+TVACU	Texas Ventures Acquisition III Corp Units	uQ
+TVAIU	Thayer Ventures Acquisition Corporation II Units	uQ
+TVIVU	Texas Ventures Acquisition IV Corp Units	uQ
+TWLVU	Twelve Seas Investment Company III Units	uQ
 TY.PR	Tri Continental Corporation Preferred Stock	pN
 UAC.U	United Acquisition Corp. I Units	uA
 UMH.PR.D	UMH Properties, Inc. 6.375% Series D Cumulative Redeemable Preferred Stock	pN
@@ -14098,16 +13619,22 @@ USB.PR.P	U.S. Bancorp Depositary	pN
 USB.PR.Q	U.S. Bancorp Depositary	pN
 USB.PR.R		p
 USB.PR.S	U.S. Bancorp Depositary	pN
+UYSCU	UY Scuti Acquisition Corp. Units	uQ
 VACI.U		u
 VECA.U	Vernal Capital Acquisition Corp. Units	uN
+VHCPU	Vine Hill Capital Investment Corp. II Units	uQ
 VII.U	Viking Acquisition Corp. II Units	uN
+VLOSU	Velos Acquisition I Corp. Units	uQ
+VNMEU	Vendome Acquisition Corporation I Units	uQ
 VNO.PR.L	Vornado Realty Trust Pfd Ser L %	pN
 VNO.PR.M	Vornado Realty Trust 5.25% Series M Cumulative Redeemable Preferred	pN
 VNO.PR.N	Vornado Realty Trust 5.25% Series N Cumulative Redeemable Preferred	pN
 VNO.PR.O	Vornado Realty Trust 4.45% Series O Cumulative Redeemable Preferred	pN
 VOYA.PR.B	Voya Financial, Inc. Depositary	pN
+VSECU	VSE Corporation - Tangible Equity Units	uQ
 WAL.PR.A	Western Alliance Bancorporation Depositary	pN
 WENC.U	West Enclave Merger Corp. Units	uN
+WENNU	Wen Acquisition Corp Units	uQ
 WFC.PR.A	Wells Fargo & Company Depositary	pN
 WFC.PR.C	Wells Fargo & Company Depositary	pN
 WFC.PR.D	Wells Fargo & Company Depositary	pN
@@ -14115,95 +13642,568 @@ WFC.PR.L	Wells Fargo & Company 7.50% Non-Cumulative Perpetual Convertible Class 
 WFC.PR.Y	Wells Fargo & Company Depositary	pN
 WFC.PR.Z	Wells Fargo & Company Depositary	pN
 WHR.PR.A	Whirlpool Corporation Depositary	pN
+WLCOU	Wilco 63 Corporation Units	uQ
+WLIIU	Willow Lane Acquisition Corp. II Units	uQ
 WPAC.U	White Pearl Acquisition Corp. Units	uN
 WRB.PR.E	W.R. Berkley Corporation 5.70% Subordinated Debentures due 2058	pN
 WRB.PR.F	W.R. Berkley Corporation 5.10% Subordinated Debentures due 2059	pN
 WRB.PR.G	W.R. Berkley Corporation 4.25% Subordinated Debentures due 2060	pN
 WRB.PR.H	W.R. Berkley Corporation 4.125% Subordinated Debentures due 2061	pN
+WSTNU	Westin Acquisition Corp Units	uQ
+WTGUU	Wintergreen Acquisition Corp. Units	uQ
+XCBEU	X3 Acquisition Corp. Ltd. Units	uQ
 XFLH.U	XFLH Capital Corporation Units	uN
+XIIIU	Churchill Capital Corp XIII Units	uQ
 XRN.PR.A	Chiron Real Estate Inc. Series A Cumulative Redeemable Preferred Stock	pN
 XRN.PR.B	Chiron Real Estate Inc. 8.00% Series B Cumulative Redeemable Preferred Stock	pN
+XSLLU	Xsolla SPAC 1 Units	uQ
+XTERU	Karman Line Acquisition Corp. Units	uQ
 YCY.U	AA Mission Acquisition Corp. II Units	uN
+YICCU	Yorkville International Capital Corp. Units	uQ
+ZKPU	Lafayette Digital Acquisition Corp. I Units	uQ
 AAC.WS	Ares Acquisition Corporation III Redeemable warrants	wN
+AACIW	Armada Acquisition Corp. III Warrants	wQ
+AACOW	Abony Acquisition Corp. I Warrants	wQ
+AACPR	Apogee Acquisition Corp Rights	rQ
+AACPW	Apogee Acquisition Corp Warrants	wQ
+ABLVW	Able View Global Inc. Warrants	wQ
+ACAAW	Averin Capital Acquisition Corp. Warrants	wQ
+ACGCW	ACP Holdings Acquisition Corp. Warrants	wQ
+ACONW	Aclarion, Inc. Warrants	wQ
+ADACW	American Drive Acquisition Company Warrants	wQ
+ADSEW	ADS-TEC ENERGY PLC Warrants	wQ
+AEAQW	Activate Energy Acquisition Corp. Warrants	wQ
+AENTW	Alliance Entertainment Holding Corporation Warrants	wQ
+AERTW	Aeries Technology, Inc. Warrants	wQ
+AESPR	Aeon Acquisition I Corp. Rights	rQ
+AESPW	Aeon Acquisition I Corp. Warrants	wQ
+AFJKR	Aimei Health Technology Co., Ltd Rights	rQ
+AFRIW	Forafric Global PLC Warrants	wQ
 AIIA.RT	AI Infrastructure Acquisition Corp. Rights	rN
+AIIOW	Robo.ai Inc. Warrants	wQ
+AIMDW	Ainos, Inc. Warrants	wQ
+AIRJW	AirJoule Technologies Corporation Warrants	wQ
+AISPW	Airship AI Holdings, Inc Warrants	wQ
+ALDFW	Aldel Financial II Inc. Warrants	wQ
+ALFUW	Centurion Acquisition Corp. Warrants	wQ
+ALISR	Calisa Acquisition Corp Rights	rQ
+ALOVW	Aldabra 4 Liquidity Opportunity Vehicle, Inc. Warrants	wQ
+ALPXR	Alpex Acquisition Corporation Rights	rQ
+ALPXW	Alpex Acquisition Corporation Warrants	wQ
 ALUB.WS	Alussa Energy Acquisition Corp. II Redeemable Warrants	wN
+ALVOW	Alvotech Warrants	wQ
+AMACW	AMR Resources Acquisition Corp Warrants	wQ
+AMODW	Alpha Modus Holdings, Inc. Warrants	wQ
+AMPGZ	Amplitech Group, Inc. - Series B Right	rQ
 AMPX.WS	Amprius Technologies, Inc. Warrants to purchase one share of Common Stock at an exercise p	wN
+ANGHW	Anghami Inc. Warrants	wQ
+ANNAW	AleAnna, Inc. Warrants	wQ
+APACR	StoneBridge Acquisition II Corporation Rights	rQ
+APLMW	Apollomics Inc. Warrants	wQ
+APMCR	AmperCap Acquisition Company Rights	rQ
+APURR	Aperture AC Rights	rQ
+APXTW	Apex Treasury Corporation Warrants	wQ
+ARCIW	Archimedes Tech SPAC Partners III Co. Warrants	wQ
+ARCLR	ARC Group Acquisition I Corp Rights	rQ
+ARCLW	ARC Group Acquisition I Corp Warrants	wQ
+ARTCW	Art Technology Acquisition Corp. Warrants	wQ
+ASBPW	Aspire-Lakewood Holdings, Inc. Warrants	wQ
 ASGI.RT		r
+ASPCR	A SPAC III Acquisition Corp. Rights	rQ
+ASPSW	Altisource Portfolio Solutions S.A. - Net Settle Stakeholder Warrants	wQ
+ASPSZ	Altisource Portfolio Solutions S.A. - Cash Exercise Stakeholder Warrants	wQ
+ATLQR	JAB Acquisition Corp I Rights	rQ
+ATLQW	JAB Acquisition Corp I Warrants	wQ
+AUROW	Aurora Innovation, Inc. Warrants	wQ
+AXINR	Axiom Intelligence Acquisition Corp 1 Rights	rQ
+BACCR	Blue Acquisition Corp. Rights	rQ
+BAERW	Bridger Aerospace Group Holdings, Inc. Warrants	wQ
 BBAI.WS	BigBear.ai, Inc. Redeemable Warrants	wN
+BBCIW	Bradbury Capital Inc. Warrants	wQ
 BCAT.RT		r
+BCCQW	Bleichroeder Acquisition Corp. III Warrants	wQ
+BCGWW	Binah Capital Group, Inc. Warrants	wQ
 BCSS.WS	Bain Capital GSS Investment Corp. Redeemable warrants	wN
+BCTXL	BriaCell Therapeutics Corp. Warrants	wQ
+BCTXZ	BriaCell Therapeutics Corp. Warrants	wQ
+BDCIW	BTC Development Corp. Warrants	wQ
+BDMDW	Baird Medical Investment Holdings Ltd Warrants	wQ
+BEAGR	Bold Eagle Acquisition Corp. Rights	rQ
+BEATW	Heartbeam, Inc. Warrants	wQ
 BEBE.WS	TGE Value Creative Solutions Corp Redeemable warrants	wN
+BENFW	Beneficient Warrants	wQ
 BESS.WS	Bimergen Energy Corporation Warrants	wA
+BETRW	Better Home & Finance Holding Company Warrants	wQ
+BFRGW	Bullfrog AI Holdings, Inc. Warrants	wQ
+BFRIW	Biofrontera Inc. Warrants	wQ
+BGLWW	Blue Gold Limited Warrants	wQ
+BHAVR	BHAV Acquisition Corp Rights	rQ
+BIAFW	bioAffinity Technologies, Inc. Warrants	wQ
+BIDWR	Tribeca Strategic Acquisition Corp. Rights	rQ
 BIII.WS	Black Spade Acquisition III Co Redeemable warrants	wN
+BIOTW	Instinct Bio Technical Company Holdings Inc. Warrants	wQ
+BIVIW	BioVie Inc. Warrants	wQ
+BIXIW	Bitcoin Infrastructure Acquisition Corp Ltd. Warrants	wQ
+BKHAR	Black Hawk Acquisition Corporation Rights	rQ
+BLRKW	Bluerock Acquisition Corp. Warrants	wQ
+BLZRW	Trailblazer Acquisition Corp. Warrants	wQ
+BNAIW	Brand Engagement Network Inc. Warrants	wQ
+BNCWW	BNB Standard Corporation Warrants	wQ
+BNCWZ	BNB Standard Corporation Warrants	wQ
+BPACR	Blueport Acquisition Ltd Rights	rQ
+BREZR	Breeze Acquisition Corp. II Rights	rQ
+BRKHW	Burtech Acquisition Corp II Warrants	wQ
+BRLSW	Borealis Foods Inc. Warrants	wQ
+BRTMW	B&R Technology Merger Corp. Warrants	wQ
+BSAAR	BEST SPAC I Acquisition Corp. Rights	rQ
+BTBDW	BT Brands, Inc. Warrants	wQ
+BULLW	Webull Corporation Warrants	wQ
 BWIV.WS	Blue Water Acquisition Corp. IV Warrants entitling the holder to purchase one Class A ordi	wN
+BZAIW	Blaize Holdings, Inc. Warrants	wQ
+BZFDW	BuzzFeed, Inc. Warrants	wQ
+CAIIW	Collective Acquisition Corp. II Warrants	wQ
+CAPNR	Cayson Acquisition Corp Rights	rQ
+CAQUW	Cambridge Acquisition Corp. Warrants	wQ
+CATLR	Catalyst Acquisition Corp. Rights	rQ
+CCAQW	Collective Acquisition Corp. Warrants	wQ
+CCCTW	Columbus Circle Capital Corp III Warrants	wQ
+CCGWW	Cheche Group Inc. Warrants	wQ
+CCIIW	Cohen Circle Acquisition Corp. II Warrants	wQ
+CCXIW	Churchill Capital Corp XI Warrants	wQ
+CDIOW	Cardio Diagnostics Holdings Inc. Warrants	wQ
+CDROW	Codere Online Luxembourg, S.A. Warrants	wQ
+CDTTW	CDT Equity Inc. Warrants	wQ
 CELG.RT	Bristol-Myers Squibb Company Celegne Contingent Value Rights	rN
+CGCFW	Cartesian Growth Corporation IV Warrants	wQ
+CHARR	Charlton Aria Acquisition Corporation Rights	rQ
+CHECW	Chenghe Acquisition III Co. Warrants	wQ
+CHPGR	ChampionsGate Acquisition Corporation Rights	rQ
+CINGW	Cingulate Inc. Warrants	wQ
 CLBR.WS	Colombier Acquisition Corp. III Warrants	wN
+CLSKW	CleanSpark, Inc. Warrants	wQ
+CNCKW	Coincheck Group N.V. Warrants	wQ
+COCHW	Envoy Medical, Inc. Warrants	wQ
+COOTW	Australian Oilseeds Holdings Limited Warrants	wQ
 COPL.WS	Copley Acquisition Corp Redeemable warrants	wN
 COPR.WS	Idaho Copper Corporation Common Stock Purchase Warrant	wA
+CORZW	Core Scientific, Inc. - Tranche 1 Warrants	wQ
+CORZZ	Core Scientific, Inc. - Tranche 2 Warrants	wQ
+CRACR	Crown Reserve Acquisition Corp. I Rights	rQ
+CRACW	Crown Reserve Acquisition Corp. I Warrants	wQ
+CRANR	Crane Harbor Acquisition Corp. II Rights	rQ
+CRAQR	Cal Redwood Acquisition Corp. Rights	rQ
+CRGOW	Freightos Limited Warrants	wQ
+CRMLW	Critical Metals Corp. Warrants	wQ
+CSHRW	CoinShares PLC Warrants	wQ
+CTAAR	ClearThink 1 Acquisition Corp. Rights	rQ
+CUBWW	Lionheart Holdings Warrants	wQ
+CXAIW	CXApp Inc. Warrants	wQ
+CXIIW	Churchill Capital Corp XII Warrants	wQ
+CYCUW	Cycurion, Inc. Warrants	wQ
+DAAQW	Digital Asset Acquisition Corp. Warrants	wQ
+DAICW	CID HoldCo, Inc. Warrants	wQ
+DAVEW	Dave Inc. Warrants	wQ
+DBCAW	D. Boral Acquisition I Corp. Warrants	wQ
+DFDVW	DeFi Development Corp. Warrants	wQ
+DFLIW	Dragonfly Energy Holdings Corp Warrants	wQ
+DFNSW	T3 Defense Inc. Warrants	wQ
+DFSCW	DEFSEC Technologies Inc. Warrants	wQ
 DGAC.RT	Disciplined Growth Acquisition Corporation Rights	rN
+DJTWW	Trump Media & Technology Group Corp. Warrants	wQ
+DMAAR	Drugs Made In America Acquisition Corp. Rights	rQ
+DMIIR	Drugs Made In America Acquisition II Corp. Rights	rQ
+DNMXW	Dynamix Corporation III Warrants	wQ
+DRDBW	Roman DBDR Acquisition Corp. II Warrants	wQ
+DRTSW	Alpha Tau Medical Ltd. Warrants	wQ
+DSACW	Daedalus Special Acquisition Corp. Warrants	wQ
 DSX.WS	Diana Shipping inc. Warrants	wN
+DSYWW	Big Tree Cloud Holdings Limited Warrants	wQ
+DTSQR	DT Cloud Star Acquisition Corporation Rights	rQ
+DUKRW	DUKE Robotics Corp. Warrants	wQ
+DYORW	Insight Digital Partners II Warrants	wQ
+ECXWW	ECARX Holdings Inc. Warrants	wQ
+EDBLW	Edible Garden AG Incorporated Warrants	wQ
+EGHAR	EGH Acquisition Corp. Rights	rQ
+EMISR	Emmis Acquisition Corp. Rights	rQ
+ENGNW	enGene Therapeutics Inc. Warrants	wQ
+ENRDW	Einride AB Warrants	wQ
 EONR.WS	EON Resources Inc. Warrants	wA
+EOSEW	Eos Energy Enterprises, Inc. Warrants	wQ
+ERNAW	Ernexa Therapeutics Inc. Warrants	wQ
+ESLAW	Estrella Immunopharma, Inc. Warrants	wQ
 ETSS.WS	Energy Transition Special Opportunities Warrants	wN
+EUDAW	Euda Health Holdings Limited Warrants	wQ
+EURKR	Eureka Acquisition Corp Rights	rQ
 EVAC.WS	EQV Ventures Acquisition Corp. II Redeemable Warrants	wN
 EVEX.WS		w
+EVOXW	Evolution Global Acquisition Corp Warrants	wQ
+EWAVR	East West Ave Acquisition Corp. Rights	rQ
+EXYNW	Exyn Technologies, Inc. Warrants	wQ
+FACTW	FACT II Acquisition Corp. Warrants	wQ
+FACWW	Factorial Energy Inc. Warrants	wQ
+FBYDW	Falcon's Beyond Global, Inc. Warrants	wQ
 FCRS.WS	FutureCrest Acquisition Corp. Redeemable warrants	wN
+FDMMW	Freedom Metals Acquisition Corp. Warrants	wQ
+FERAR	Fifth Era Acquisition Corp I Rights	rQ
+FGIIW	FG Imperii Acquisition Corp. Warrants	wQ
+FGIWW	FGI Industries Ltd. Warrants	wQ
+FJDIR	ARC Group Securities Acquisition I Rights	rQ
+FJDIW	ARC Group Securities Acquisition I Warrants	wQ
+FLDDW	Fold Holdings, Inc. Warrants	wQ
 FLYX.WS	flyExclusive, Inc. Redeemable warrants	wA
+FMACR	Future Money Acquisition Corporation Rights	rQ
+FMSTW	Foremost Clean Energy Ltd. Warrants	wQ
+FOXXW	Foxx Development Holdings Inc. Warrants	wQ
+FSHPR	Flag Ship Acquisition Corp. Rights	rQ
+FTHAW	Forefront Tech Holdings Acquisition Corp Warrants	wQ
 FTRA.WS	FutureCorp Space Acquisition 1 Redeemable warrants	wN
 FTW.WS	Presidio Production Company Warrants	wN
+FUFUW	BitFuFu Inc. Warrants	wQ
+FUSEW	Fusemachines Inc. Warrants	wQ
+FVNNR	Future Vision II Acquisition Corporation Rights	rQ
+FWACR	Futurewave Acquisition Corporation Rights	rQ
+FWACW	Futurewave Acquisition Corporation Warrants	wQ
+FXACW	FortuneX Acquisition Corporation Warrants	wQ
+GCGRW	General Catalyst Global Resilience Merger Corp. Warrants	wQ
+GCLWW	GCL Global Holdings Ltd Warrants	wQ
 GCTS.WS	GCT Semiconductor Holding, Inc. Warrants	wN
+GENVR	Gen Digital Inc. - Contingent Value Rights	rQ
+GFUZW	General Fusion Group Ltd. Warrants	wQ
+GGROW	Gogoro Inc. Warrants	wQ
+GHXIW	Gores Holdings XI, Inc. Warrants	wQ
+GIBOW	GIBO Holdings Limited Warrants	wQ
+GIWWR	GigCapital8 Corp. Rights	rQ
+GIXXR	GigCapital9 Corp. Rights	rQ
 GLED.RT	GalaxyEdge Acquisition Corporation Rights to receive one-fourth (1/4) of one	rN
+GLNDW	Greenland Energy Company Warrants	wQ
 GME.WS		w
+GPACW	General Purpose Acquisition Corp. Warrants	wQ
+GPATW	GP-Act III Acquisition Corp. Warrants	wQ
+GRABW	Grab Holdings Limited Warrants	wQ
+GRMLW	Greenland Mines Ltd Warrants	wQ
 GROY.WS	Gold Royalty Corp. Warrants	wA
+GRRRW	Gorilla Technology Group Inc. Warrants	wQ
+GSHRW	Gesher Acquisition Corp. II Warrants	wQ
+GSRFR	GSR IV Acquisition Corp. Rights	rQ
+GSRVR	GSR V Acquisition Corp. Rights	rQ
+GTENW	Gores Holdings X, Inc. Warrants	wQ
+GTERR	Globa Terra Acquisition Corporation Rights	rQ
+GTERW	Globa Terra Acquisition Corporation Warrants	wQ
+GUACW	Berto Acquisition Corp. II Warrants	wQ
+HACQW	HCM IV Acquisition Corp. Warrants	wQ
+HCACR	Hall Chadwick Acquisition Corp. Rights	rQ
+HCICR	Hennessy Capital Investment Corp. VIII - Share Rights	rQ
+HCMAW	HCM III Acquisition Corp. Warrants	wQ
+HDRNW	Hadron Energy, Inc. Warrants	wQ
+HOLOW	MicroCloud Hologram Inc. Warrants	wQ
+HOVRW	New Horizon Aircraft Ltd. Warrants	wQ
+HPAIW	Helport AI Limited Warrants	wQ
+HQWWW	Horizon Quantum Holdings Ltd. Warrants	wQ
+HSCSW	HeartSciences Inc. Warrants	wQ
+HTZWW	Hertz Global Holdings, Inc Warrants	wQ
+HUBCZ	Hub Cyber Security Ltd. Warrants	wQ
+HVMCW	Highview Merger Corp. Warrants	wQ
+IACOW	Idea Acquisition Corp. Warrants	wQ
+IACQW	Irenic Acquisition Corp. Warrants	wQ
 IAUX.WS	i-80 Gold Corp. Warrants	wA
+IBACR	IB Acquisition Corp. Rights	rQ
+ICUCW	SeaStar Medical Holding Corporation Warrants	wQ
+IDACW	Iron Dome Acquisition I Corp. Warrants	wQ
+IEAGR	Infinite Eagle Acquisition Corp. Rights	rQ
+IGACR	Invest Green Acquisition Corporation Rights	rQ
+ILLUW	Illumination Acquisition Corp I Warrants	wQ
+IMSRW	Terrestrial Energy Inc. Warrants	wQ
+INACR	Indigo Acquisition Corp. Rights	rQ
 INFQ.WS	Infleqtion, Inc. Warrants	wN
+IPFXW	Inflection Point Acquisition Corp. VI Warrants	wQ
+IPHXW	Inflection Point Acquisition Corp. VIII Warrants	wQ
+IPVVW	InterPrivate Investment Partners V, Inc. Warrants	wQ
+IPXGW	Inection Point Acquisition Corp. VII Warrants	wQ
 IRAB.WS	Iris Acquisition Corp II Redeemable Warrants	wN
+IRHOR	Iron Horse Acquisitions II Corp. Rights	rQ
+ISNRW	Snow Rothschild Acquisition Corp. Warrants	wQ
+ITHAW	ITHAX Acquisition Corp III Warrants	wQ
+IVDAW	Iveda Solutions, Inc. Warrants	wQ
 JACS.RT	Jackson Acquisition Company II Rights	rN
 JENA.RT	Jena Acquisition Corporation II Rights	rN
+JONER	Jones Ventures INTL Acquisition1 Corp Rights	rQ
+KBONW	Karbon Capital Partners Corp. Warrants	wQ
 KCAC.WS	Kensington Capital Acquisition Corp. VI Class 1 redeemable warrants	wN
+KCHVR	Kochav Defense Acquisition Corp. Rights	rQ
+KDKRW	Kodiak AI, Inc. Warrants	wQ
+KEYYW	Keystone Acquisition Corp. Warrants	wQ
+KFIIR	K&F Growth Acquisition Corp. II Rights	rQ
+KIDZW	KIDZ AI Inc. Warrants	wQ
+KITTW	Nauticus Robotics, Inc. Warrants	wQ
+KOYNW	CSLM Digital Asset Acquisition Corp III Warrants	wQ
 KPET.WS	KPET Ultra Paceline Corporation Warrants	wN
+KRAQW	KRAKacquisition Corp Warrants	wQ
 KRSP.WS	Rice Acquisition Corporation 3 Redeemable warrants	wN
+KTWOR	K2 Capital Acquisition Corporation Rights	rQ
+KYIVW	Kyivstar Group Ltd. Warrants	wQ
+LAFAR	LaFayette Acquisition Corp. Rights	rQ
+LATAW	Galata Acquisition Corp. II Warrants	wQ
+LCCCR	Lakeshore Acquisition III Corp. Rights	rQ
+LCFYW	Locafy Limited Warrants	wQ
 LEGO.WS	Legato Merger Corp. IV Redeemable Warrants	wA
+LFACW	Leapfrog Acquisition Corporation Warrants	wQ
+LIMNW	Liminatus Pharma, Inc. Warrants	wQ
+LKSPR	Lake Superior Acquisition Corp. Rights	rQ
+LNZAW	LanzaTech Global, Inc. Warrants	wQ
+LOTWW	Lotus Technology Inc. Warrants	wQ
+LPAAW	Launch One Acquisition Corp. Warrants	wQ
+LPBBW	Launch Two Acquisition Corp. Warrants	wQ
+LPCVW	Launchpad Cadenza Acquisition Corp I Warrants	wQ
+LTGRW	Long Table Growth Corp. Warrants	wQ
+LUCYW	Innovative Eyewear, Inc. Warrants	wQ
 LVWR.WS	LiveWire Group, Inc. Warrants	wN
+LWACW	LightWave Acquisition Corp. Warrants	wQ
 LZM.WS	Lifezone Metals Limited Warrants	wN
+MACIW	Melar Acquisition Corp. I Warrants	wQ
+MBVIW	M3-Brigade Acquisition VI Corp. Warrants	wQ
+MCAHR	Mountain Crest Acquisition 6 Corp. Rights	rQ
+MCGAW	Yorkville Acquisition Corp. Warrants	wQ
+MDAIW	Spectral AI, Inc. Warrants	wQ
+MDCXW	Medicus Pharma Ltd. Warrants	wQ
+MESHW	Meshflow Acquisition Corp. Warrants	wQ
+MEVOW	M Evo Global Acquisition Corp II Warrants	wQ
+MIACW	Meridian3 Industrials Acquisition Corp Warrants	wQ
+MKDWW	MKDWELL Tech Inc. Warrants	wQ
+MKLYR	McKinley Acquisition Corporation Rights	rQ
+MLAAW	Mountain Lake Acquisition Corp. II Warrants	wQ
+MLECW	Moolec Science SA Warrants	wQ
+MMTXW	Miluna Acquisition Corp Warrants	wQ
+MNYWW	MoneyHero Limited Warrants	wQ
+MOBBW	Mobilicom Limited Warrants	wQ
+MOBXW	Mobix Labs, Inc. Warrants	wQ
+MRCOW	Mercator Acquisition Corp. Warrants	wQ
+MRNOW	Murano Global Investments PLC Warrants	wQ
+MSAIW	MultiSensor AI Holdings, Inc. Warrants	wQ
+MTAKW	Market Technology Acquisition Corp Warrants	wQ
 MTAL.WS	Metals Acquisition Corp. II Warrants	wN
+MTEKW	Maris-Tech Ltd. Warrants	wQ
 MTNE.WS	CH4 Natural Solutions Corporation Warrants	wN
+MUZEW	Muzero Acquisition Corp Warrants	wQ
+MYXXR	Maywood Acquisition Corp. 2 Rights	rQ
+MYXXW	Maywood Acquisition Corp. 2 Warrants	wQ
 MZYX.WS	MOZAYYX Acquisition Corp. Redeemable warrants	wN
+NAMMW	Namib Minerals Warrants	wQ
+NAMSW	NewAmsterdam Pharma Company N.V. Warrants	wQ
+NANOW	Forge Nano Holdings Inc. Warrants	wQ
+NBRGR	Newbridge Acquisition Limited Rights	rQ
+NCOOR	Southern Cross Acquisition I Corp. Rights	rQ
+NCOOW	Southern Cross Acquisition I Corp. Warrants	wQ
+NCPLW	Netcapital Inc. Warrants	wQ
 NE.WS	Noble Corporation plc Tranche 1 Warrants	wN
+NEOVW	NeoVolta Inc. Warrants	wQ
+NEXRW	Nexera Technologies Ltd Warrants	wQ
+NHIVW	NewHold Investment Corp IV Warrants	wQ
+NIOBW	NioCorp Developments Ltd. Warrants	wQ
+NIVFW	NewGenIvf Group Limited Warrants	wQ
 NMCO.RT		r
+NMPAR	NMP Acquisition Corp. Rights	rQ
+NOEMR	CO2 Energy Transition Corp. Rights	rQ
+NOEMW	CO2 Energy Transition Corp. Warrants	wQ
+NPACW	New Providence Acquisition Corp. III Warrants	wQ
 NPWR.WS	NET Power Inc. Redeemable warrants	wN
+NRSNW	NeuroSense Therapeutics Ltd. Warrants	wQ
+NSAIR	NorthStrive Acquisition Corp I. Rights	rQ
+NSAIW	NorthStrive Acquisition Corp I. Warrants	wQ
 NSTR.WS	NorthStar Earth & Space Enterprises, Inc. Warrants	wA
+NTWOW	Newbury Street II Acquisition Corp Warrants	wQ
+NUAIW	New Era Energy & Digital, Inc. Warrants	wQ
+NUCLW	Eagle Nuclear Energy Corp. Warrants	wQ
 NVA.WS	Nova Minerals Corp Warrants to Purchase	wA
 NWAX.WS	New America Acquisition I Corp. Warrants	wN
+NWCLW	newcleo plc Warrants	wQ
+NXATW	Nexus Advanced Technologies Inc. Warrants	wQ
+NXGLW	NexGel, Inc Warrants	wQ
+OABIW	OmniAb, Inc. Warrants	wQ
+OACCW	Oaktree Acquisition Corp. III Life Sciences Warrants	wQ
+OBAWW	Oxley Bridge Acquisition Limited Warrants	wQ
 OCAC.RT	Ocean Capital Acquisition Corporation Rights	rN
 OCAC.WS	Ocean Capital Acquisition Corporation Warrants	wN
+OCLTR	OceanLight Acquisition Corporation Rights	rQ
+OCLTW	OceanLight Acquisition Corporation Warrants	wQ
+OCSAW	Oculis Holding AG Warrants	wQ
+OGGWZ	Osisko Gold Group Inc. Warrants	wQ
+OHACR	Oceanhawk Acquisition Corp. Rights	rQ
+OIMAW	OneIM Acquisition Corp. Warrants	wQ
+OIOWW	OIO Group Warrants	wQ
+ONCHW	1RT Acquisition Corp. Warrants	wQ
+ONFOW	Onfolio Holdings Inc. Warrants	wQ
+ONMDW	OneMedNet Corp Warrants	wQ
+OPENL	Opendoor Technologies Inc - Series A Warrants	wQ
+OPENW	Opendoor Technologies Inc - Series K Warrants	wQ
+OPENZ	Opendoor Technologies Inc - Series Z Warrants	wQ
+OPTXW	Syntec Optics Holdings, Inc. Warrants	wQ
+ORIQW	Origin Investment Corp I - Redeemable Warrant	wQ
+OSPRW	Osprey Acquisition Corp. III Warrants	wQ
 OTAI.RT	Starlink AI Acquisition Corporation Rights	rN
+OTGAW	OTG Acquisition Corp. I Warrants	wQ
+OXBRW	Oxbridge Re Holdings Limited Warrants	wQ
 OXY.WS	Occidental Petroleum Corporation Warrants	wN
+OYSER	Oyster Enterprises II Acquisition Corp Rights	rQ
+PAACW	Proem Acquisition Corp I Warrants	wQ
+PACHW	Pioneer Acquisition I Corp Warrants	wQ
 PAII.WS	Pyrophyte Acquisition Corp. II Warrants	wN
+PALOW	Paloma Acquisition Corp I Warrants	wQ
+PARAW	Parabolic Technologies, Inc. Warrants	wQ
+PAXGR	Pine Tree Acquisition Corp. Rights	rQ
+PBMWW	Psyence Biomedical Ltd. Warrants	wQ
+PCAPW	ProCap Acquisition Corp Warrants	wQ
+PCTTW	PureCycle Technologies, Inc. Warrants	wQ
+PECER	Peace Acquisition Corp Rights	rQ
+PECEW	Peace Acquisition Corp Warrants	wQ
 PEW.WS	GrabAGun Digital Holdings Inc. Warrants	wN
+PGACR	Pantages Capital Acquisition Corporation Rights	rQ
+PGYWW	Pagaya Technologies Ltd. Warrants	wQ
+PIIIW	P3 Health Partners Inc. Warrants	wQ
+PLCIR	Pelican Acquisition II Corporation Rights	rQ
+PLMKW	Plum Acquisition Corp. IV Warrants	wQ
 PLUN.RT	Plutonian Acquisition Corp II Rights	rN
+PMTRW	Perimeter Acquisition Corp. I Warrants	wQ
 PNAQ.RT	Pinnacle Acquisition Corporation Rights	rN
+POLEW	Andretti Acquisition Corp. II Warrants	wQ
+PONOR	Pono Capital Four, Inc. Rights	rQ
+PRENW	Prenetics Global Limited Warrants	wQ
 PSQH.WS	PSQ Holdings, Inc. Warrants	wN
+PSQLW	Pasqal Holding SA Warrants	wQ
+PTACW	Patriot Acquisition Corp. Warrants	wQ
+PTORW	Praetorian Acquisition Corp. Warrants	wQ
+QADRW	QDRO Acquisition Corp. Warrants	wQ
 QLEP.WS	Quantum Leap Acquisition Corp Warrants	wN
 QRED.RT	QuasarEdge Acquisition Corporation Rights to receive one-fourth (1/4) of one	rN
+QSEAR	Quartzsea Acquisition Corporation Rights	rQ
+QUMSR	Quantumsphere Acquisition Corp. Rights	rQ
 RAC.WS	Rithm Acquisition Corp. Redeemable warrants	wN
+RAINW	Rain Enhancement Technologies Holdco, Inc. Warrants	wQ
+RANGR	Range Capital Acquisition Corp. Rights	rQ
+RDACR	Rising Dragon Acquisition Corp. Rights	rQ
+RDAGW	Republic Digital Acquisition Company Warrants	wQ
+RDZNW	Roadzen, Inc. Warrants	wQ
+REVBW	Revelation Biosciences, Inc. Warrants	wQ
+RFAIR	RF Acquisition Corp II Rights	rQ
+RFAMR	RF Acquisition Corp III Rights	rQ
+RGTIW	Rigetti Computing, Inc. - Redeemable warrants	wQ
+RIBBR	Ribbon Acquisition Corp Rights	rQ
+RMCOW	Royalty Management Holding Corporation Warrants	wQ
+RMSGW	Real Messenger Corporation Warrants	wQ
+RNAQW	Rainier Acquisition Corporation Warrants	wQ
+RNGTW	Range Capital Acquisition Corp II Warrants	wQ
+RREVW	RRE Ventures Acquisition Corp. Warrants	wQ
+RTACW	Renatus Tactical Acquisition Corp I Warrants	wQ
+RUMBW	RUM Group Inc. Warrants	wQ
+RVMDW	Revolution Medicines, Inc. Warrants	wQ
+RVSNW	Rail Vision Ltd. Warrants	wQ
+RZLVW	Rezolve AI PLC Warrants	wQ
+SAAQW	Space Asset Acquisition Corp. Warrants	wQ
 SAC.WS	Safeguard Acquisition Corp. Warrants	wN
 SAGU.RT	Shreya Acquisition Group Rights	rN
 SAGU.WS	Shreya Acquisition Group Redeemable warrants, entitling the holder to purchase one Class A	wN
+SAIHW	SAIHEAT Limited Warrants	wQ
 SAMO.WS	Samos Energy Acquisition Corporation Warrants	wN
+SATLW	Satellogic Inc. Warrants	wQ
+SBCWW	SBC Medical Group Holdings Incorporated Warrants	wQ
+SBFMW	Sunshine Biopharma Inc. Warrants	wQ
 SBXE.WS	SilverBox Corp V Redeemable warrants	wN
+SCAGW	Scage Future Warrants	wQ
+SCATR	Southern Cross Acquisition II Corp. Rights	rQ
+SCATW	Southern Cross Acquisition II Corp. Warrants	wQ
+SCIIR	SC II Acquisition Corp. Rights	rQ
+SCLXW	Scilex Holding Company Warrants	wQ
+SCPQW	Social Commerce Partners Corporation Warrants	wQ
+SDAWW	SunCar Technology Group Inc. Warrants	wQ
+SDHIR	Siddhi Acquisition Corp Rights	rQ
+SHFSW	SHF Holdings, Inc. Warrants	wQ
+SHMDW	SCHMID Group N.V. Warrants	wQ
+SHOTR	RMG ML Sports Holdings Rights	rQ
+SIMAW	SIM Acquisition Corp. I Warrants	wQ
+SKYAW	SkyAI, Inc. Warrants	wQ
 SKYD.WS	Skydance Corporation Warrants to Purchase Class B	wN
 SKYH.WS	Sky Harbour Group Corporation Warrants	wN
+SLDPW	Solid Power, Inc. Warrants	wQ
 SLND.WS	Southland Holdings, Inc. Warrants	wA
+SLXNW	Silexion Therapeutics Corp Warrants	wQ
+SMXWW	SMX (Security Matters) Public Limited Company Warrants	wQ
+SOCAW	Solarius Capital Acquisition Corp. Warrants	wQ
+SORNW	Soren Acquisition Corp. Warrants	wQ
 SOUL.RT	Soulpower Acquisition Corporation Rights	rN
+SOUNW	SoundHound AI, Inc. Warrants	wQ
+SPEGR	Silver Pegasus Acquisition Corp Rights	rQ
+SPWRW	SunPower Inc. Warrants	wQ
+SQFTW	Presidio Property Trust, Inc. - Series A Common Stock Purchase Warrants	wQ
+SSACR	SPACSphere Acquisition Corp. Rights	rQ
+SSACW	SPACSphere Acquisition Corp. Warrants	wQ
+SSEAR	Starry Sea Acquisition Corp Rights	rQ
+STLNW	Starling Oncology, Inc. Warrants	wQ
+SUMAR	SUMA Acquisition Corporation Rights	rQ
+SVAQW	Silicon Valley Acquisition Corp. Warrants	wQ
+SVCCW	Stellar V Capital Corp. Warrants	wQ
+SVIVW	Spring Valley Acquisition Corp. IV Warrants	wQ
+SVREW	SaverOne 2014 Ltd. Warrants	wQ
+SWAGW	Stran & Company, Inc. Warrants	wQ
+SWVLW	Swvl Holdings Corp Warrants	wQ
+SXTPW	60 Degrees Pharmaceuticals, Inc. Warrants	wQ
+SZZLR	Sizzle Acquisition Corp. II Rights	rQ
+TACHW	Titan Acquisition Corp. Warrants	wQ
+TACOW	Berto Acquisition Corp. Warrants	wQ
+TAVIR	Tavia Acquisition Corp. Rights	rQ
+TBCVW	Thunder Bridge Capital Partners V, Ltd. Warrants	wQ
+TDACW	Translational Development Acquisition Corp. Warrants	wQ
+TDWDR	Tailwind 2.0 Acquisition Corp. Rights	rQ
 TGE.WS	The Generation Essentials Group Warrants	wA
+THEOR	BOA Acquisition Corp. II Rights	rQ
+TLACW	Three Lions Acquisition Corp. Warrants	wQ
+TLNCW	Talon Capital Corp. Warrants	wQ
+TLSIW	TriSalus Life Sciences, Inc. Warrants	wQ
+TMSWW	Teamshares Inc. Warrants	wQ
+TMTSW	Spartacus Acquisition Corp. II Warrants	wQ
+TNONW	Tenon Medical, Inc. Warrants	wQ
 TONT.WS	Graf Global Corp. Warrants	wA
 TRAD.RT	APEX Tech Acquisition Inc. Rights	rN
+TRGSR	TRG Latin America Acquisitions Corp. Rights	rQ
+TVACW	Texas Ventures Acquisition III Corp Warrants	wQ
+TVAIR	Thayer Ventures Acquisition Corporation II Rights	rQ
+TVGNW	Tevogen Inc. Warrants	wQ
+TVIVW	Texas Ventures Acquisition IV Corp Warrants	wQ
+TWLVR	Twelve Seas Investment Company III Rights	rQ
 UAC.WS	United Acquisition Corp. I Warrants	wA
+UCFIW	CN Healthy Food Tech Group Corp. Warrants	wQ
+USDEW	StablecoinX Inc. Warrants	wQ
+UYSCR	UY Scuti Acquisition Corp. Rights	rQ
 VACI.WS		w
 VAL.WS	Valaris Limited Warrants	wN
 VECA.RT	Vernal Capital Acquisition Corp. Rights	rN
+VEEAW	Veea Inc. Warrants	wQ
+VFSWW	VinFast Auto Ltd. Warrants	wQ
+VGASW	Verde Clean Fuels, Inc. Warrants	wQ
+VHCPW	Vine Hill Capital Investment Corp. II Warrants	wQ
 VII.WS	Viking Acquisition Corp. II Warrants to purchase one Class A	wN
+VLOSW	Velos Acquisition I Corp. Warrants	wQ
+VNMEW	Vendome Acquisition Corporation I Warrants	wQ
+VRXAW	Veraxa Biotech AG Warrants	wQ
+VWAVW	VisionWave Holdings, Inc. Warrants	wQ
 WENC.RT	West Enclave Merger Corp. Rights	rN
+WENNW	Wen Acquisition Corp Warrants	wQ
+WLCOW	Wilco 63 Corporation Warrants	wQ
+WLDSW	Wearable Devices Ltd. Warrants	wQ
+WLIIW	Willow Lane Acquisition Corp. II Warrants	wQ
 WPAC.RT	White Pearl Acquisition Corp. Rights	rN
+WSTNR	Westin Acquisition Corp Rights	rQ
+WTGUR	Wintergreen Acquisition Corp. Rights	rQ
+XBPEW	XBP Global Holdings, Inc. Warrants	wQ
+XCBEW	X3 Acquisition Corp. Ltd. Warrants	wQ
 XFLH.RT	XFLH Capital Corporation Rights to receive one-seventh (1/7) of one	rN
-YCY.WS	AA Mission Acquisition Corp. II Warrants	wN`;
+XIIIW	Churchill Capital Corp XIII Warrants	wQ
+XLABW	Exascale Labs Holdings Inc. Warrants	wQ
+XRPNW	Evernorth Holdings Inc. Warrants	wQ
+XRXDW	Xerox Holdings Corporation Warrants	wQ
+XSLLW	Xsolla SPAC 1 Warrants	wQ
+XTERW	Karman Line Acquisition Corp. Warrants	wQ
+YCY.WS	AA Mission Acquisition Corp. II Warrants	wN
+YDESW	YD Bio Limited Warrants	wQ
+YICCW	Yorkville International Capital Corp. Warrants	wQ
+ZEOWW	Zeo Energy Corporation Warrants	wQ
+ZKPW	Lafayette Digital Acquisition Corp. I Warrants	wQ
+ZOOZW	ZOOZ Strategy Ltd. Warrants	wQ`;

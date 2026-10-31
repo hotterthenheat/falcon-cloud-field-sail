@@ -378,6 +378,13 @@ dropUnnamedRoots();
 
 /* order: the vendor's volume rank, then the previous order, then common stock and funds before the rest, A to Z */
 const prevRank = new Map(previous.order.map((s, i) => [s, i]));
+/* the vendor and the old house list spell a class share's options as its root (BRKB): the listing takes that rank */
+for (const e of entries.values()) {
+  const r = rootOf(e.symbol);
+  if (r === e.symbol || entries.has(r)) continue;
+  if (!vendor.has(e.symbol) && vendor.has(r)) vendor.set(e.symbol, vendor.get(r));
+  if (!prevRank.has(e.symbol) && prevRank.has(r)) prevRank.set(e.symbol, prevRank.get(r));
+}
 const kindRank = { i: 0, s: 1, e: 1, p: 3, u: 3, w: 4, r: 4 };
 const list = [...entries.values()].sort((a, b) => {
   const va = vendor.get(a.symbol)?.vol ?? -1;

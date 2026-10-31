@@ -48,6 +48,7 @@ import { futWords } from '../../data/paper/products';
 import { dayBeginsAt, isVixRoot, nyMomentWords, vixSchedule } from '../../data/paper/clock';
 import { nyClock } from '../../core/nyTime';
 import { amendOrder, attachOpt, breakevenOrder, cancelOrder, cancelWorking, closeOpt, flattenAccount, liveMarket, placeComboOrder, placeOptOrder, readPaper, rebaseOrder, setInHand, trailOrder, usePaper } from '../../data/paper/store';
+import { listedOptionsKnown, useListedRev } from '../../data/listedNames';
 
 /* The chart's settings on this desk. A name's live chart has its book: the walls, the trails, the vol pane. An index's
    has no book of its own, so the overlays that read one are not offered, and no daily candle. */
@@ -155,7 +156,9 @@ const PaperDesk = () => {
 
   /* a plan that trades only some names: a pane on another name shows the plan's first */
   const allowed = account ? (rulesOf(account)?.underlyings ?? null) : null;
-  const shownName = (n: string) => (allowed && !allowed.includes(n.toUpperCase()) ? allowed[0] : n);
+  /* the desk trades options: a saved pane on a name with no listed options shows SPY */
+  useListedRev();
+  const shownName = (n: string) => (allowed && !allowed.includes(n.toUpperCase()) ? allowed[0] : listedOptionsKnown(n) === false ? 'SPY' : n);
   const panes = desk.panes.map(p => {
     const n = shownName(p.name);
     /* an index's candles are a minute each: no daily candle */
