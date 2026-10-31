@@ -7,6 +7,7 @@ import { ChevronDown, Link2, Unlink2 } from 'lucide-react';
 import { extendedLine, useLiveQuote } from '../../data/liveQuote';
 import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
 import { closeMoveTitle, sessionWhen, signedPct } from '../../data/dayChange';
+import { extTag } from '../../core/session';
 import { thetaUseHere } from '../../data/theta';
 import CompanyLogo from './CompanyLogo';
 import TickerLookup from './TickerLookup';
@@ -158,7 +159,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
               )}
               {mv && mv.ext != null && (
                 <span className="text-t9 tnum leading-none whitespace-nowrap text-textMuted" title={closeMoveTitle(mv)} data-scope-ext>
-                  {mv.extWord === 'pre-market' ? 'PM' : 'AH'} {signedPct(mv.ext)}
+                  {extTag(mv.extWord)} {signedPct(mv.ext)}
                 </span>
               )}
             </>
@@ -176,7 +177,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
             </span>
             {sessionMove && extendedLine(live) && (
               <span className="text-t9 tnum leading-none text-textMuted whitespace-nowrap" data-scope-ext>
-                {extendedLine(live)!.replace('after hours', 'AH').replace('pre-market', 'PM')}
+                {extendedLine(live)!.replace('after hours', 'AH').replace('pre-market', 'PM').replace('overnight', 'ON')}
               </span>
             )}
           </>

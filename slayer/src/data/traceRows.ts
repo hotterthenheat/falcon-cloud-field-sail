@@ -160,7 +160,7 @@ export const SETTLE_MS = 5 * 60_000;
     holiday; null in the session and in the pre-market */
 export function heldCloseMs(at: Date = new Date()): number | null {
   const ph = marketPhase(at);
-  if (ph !== 'after' && ph !== 'closed') return null;
+  if (ph !== 'after' && ph !== 'closed' && ph !== 'overnight') return null;
   return lastRegularClose(at)?.closeMs ?? null;
 }
 /** A read stamped `atMs` of the ended session's figures: it stands until the next session (read after the close settled) */

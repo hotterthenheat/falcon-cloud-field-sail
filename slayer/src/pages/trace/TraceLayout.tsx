@@ -41,7 +41,7 @@ const TraceLayout = () => {
   const phase = sessionPhase();
   const picked = useTraceSession();
   const onTape = active.path === '/trace/live-tape';
-  const shut = phase === 'closed' || phase === 'pre';
+  const shut = phase === 'closed' || phase === 'pre' || phase === 'overnight';
   /* the line follows the Session card: a shut tape is the last regular session only when that is what was picked */
   const subtitle = onTape && picked === 'extended'
     ? 'Prints outside the regular session — before the open and after the close, against thin quotes. Shown and labelled, never read as a side.'

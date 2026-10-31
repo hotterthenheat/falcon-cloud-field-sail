@@ -193,7 +193,7 @@ export interface MarketSnapshot {
   uwFacts?: ReadonlySet<string>;
   /** The day move outside the regular session (pre-market or after hours), kept apart from `changePercent`, and whether
       the day's change is known yet. */
-  dayMove?: { extPct: number | null; phase: 'pre' | 'regular' | 'post' | 'closed'; known: boolean };
+  dayMove?: { extPct: number | null; phase: 'overnight' | 'pre' | 'regular' | 'post' | 'closed'; known: boolean };
   /** The instant (epoch ms) a closed session's book is read as of, so its flip is priced at that session's clock
       (data/bookWindow.ts sessionBook). */
   asOf?: number;
