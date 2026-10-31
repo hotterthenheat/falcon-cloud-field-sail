@@ -4,6 +4,7 @@
 import { Controls, PhoneFold, RecordHead, Summary } from '../../components/record/recordHead';
 import { createStore, useStore } from '../../data/feedStore';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { keptPick, readKeptView, useKeepView } from './keptView';
 import { useNavigate } from 'react-router-dom';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Moon, Search, Sunrise, X } from 'lucide-react';
@@ -404,6 +405,8 @@ const BeatCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
 };
 /* ---- the page ----------------------------------------------------------------------- */
 
+const VIEW_KEY = 'slayer_earnings_view';
+
 const Earnings = () => {
   const navigate = useNavigate();
   const boardNames = useBoardNames();
@@ -421,9 +424,13 @@ const Earnings = () => {
   const knownEvents = useMemo(() => events.filter(e => e.known), [events]);
   /* the Fed's published FOMC dates and payrolls Friday; the CPI date the engine can only approximate stays off the board */
   const macro = useMemo(() => macroWindow(new Date(), 10, 20).filter(m => !/approximated/i.test(m.detail)), []);
-  const [week, setWeekRaw] = useState<WeekPick>('0');
+  /* the view is kept for the visit (keptView.ts, as News keeps its own): back from a name's page the calendar is as it
+     was left. Only a week the reader picked is kept; an untouched one still follows the rule below. */
+  const kept = useMemo(() => readKeptView(VIEW_KEY), []);
+  const keptWeek = kept?.weekTouched === true ? keptPick<WeekPick>(WEEK_OPTIONS, kept.week, '0') : null;
+  const [week, setWeekRaw] = useState<WeekPick>(() => keptWeek ?? '0');
   /* Once the lists are in, a this-week with no report left opens on next week; a reader's own pick is never overridden. */
-  const [weekTouched, setWeekTouched] = useState(false);
+  const [weekTouched, setWeekTouched] = useState(() => keptWeek != null);
   const setWeek = (w: WeekPick) => {
     setWeekTouched(true);
     setWeekRaw(w);
@@ -446,11 +453,12 @@ const Earnings = () => {
       setAutoNext(true);
     }
   }, [weekTouched, pending, failed, events.length, thisWeekLeft.length, nextWeekCount, week]);
-  const [show, setShow] = useState<ShowPick>('all');
-  const [layout, setLayout] = useState<Layout>('board');
+  const [show, setShow] = useState<ShowPick>(() => keptPick<ShowPick>(SHOW_OPTIONS, kept?.show, 'all'));
+  const [layout, setLayout] = useState<Layout>(() => keptPick<Layout>(LAYOUT_OPTIONS, kept?.layout, 'board'));
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
   /* the name asked for, and its answer */
-  const [asked, setAsked] = useState<string | null>(null);
+  const [asked, setAsked] = useState<string | null>(() => (typeof kept?.asked === 'string' && /^[A-Z0-9.]{1,8}$/.test(kept.asked) ? kept.asked : null));
+  useKeepView(VIEW_KEY, { week, weekTouched, show, layout, asked });
   const next = useNextReport(asked);
   const nextPending = useNextReportPending(asked);
 

@@ -3,6 +3,7 @@
 
 import { companyName, displayName, searchTickers } from '../../data/tickers';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { keptPick, keptStrings, readKeptView, useKeepView } from './keptView';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type IRowNode, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
@@ -347,15 +348,19 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
 
 /* ---- the page ------------------------------------------------------------------ */
 
+const VIEW_KEY = 'slayer_stocks_view';
+
 const Stocks = () => {
   const navigate = useNavigate();
   const phone = usePhoneCards();
   /* under 1440 the grid takes its stacked shape: the width a laptop's grid has (994 at 1280, 738 at 1024) */
   const narrow = useMediaQuery('(max-width: 1439.98px)');
   const boardNames = useBoardNames();
-  const [screen, setScreen] = useState<ScreenPick>('all');
-  const [sector, setSector] = useState<SectorPick>('all');
-  const [names, setNames] = useState<NamesPick>('all');
+  /* the cut is kept for the visit (keptView.ts, as News keeps its own): back from a name's page the list is as it was left */
+  const kept = useMemo(() => readKeptView(VIEW_KEY), []);
+  const [screen, setScreen] = useState<ScreenPick>(() => keptPick<ScreenPick>(SCREEN_OPTIONS, kept?.screen, 'all'));
+  const [sector, setSector] = useState<SectorPick>(() => keptPick<SectorPick>(SECTOR_OPTIONS, kept?.sector, 'all'));
+  const [names, setNames] = useState<NamesPick>(() => keptPick<NamesPick>(NAMES_OPTIONS, kept?.names, 'all'));
 
   /* The board is deterministic per session day; the rotation rolls it up */
   const liveBoard = useLiveStocks();
@@ -377,8 +382,9 @@ const Stocks = () => {
   }, [picks, screen, sector, names, boardNames]);
 
   /* The filter reads the names on the cut; any pick keeps its row. Sectors are the Sector control's and the rotation's. */
-  const [filter, setFilter] = useState<string[]>([]);
-  const [find, setFind] = useState('');
+  const [filter, setFilter] = useState<string[]>(() => keptStrings(kept?.filter));
+  const [find, setFind] = useState(() => (typeof kept?.find === 'string' ? kept.find.slice(0, 60) : ''));
+  useKeepView(VIEW_KEY, { screen, sector, names, filter, find });
   const filterGroups = useMemo<MultiGroup[]>(() => {
     const byName = new Map(cut.map(p => [p.ticker, p.name]));
     filter.forEach(f => {

@@ -3,6 +3,7 @@
 
 import { CoSub } from '../../components/record/CoName';
 import { useEffect, useMemo, useState } from 'react';
+import { keptPick, keptStrings, readKeptView, useKeepView } from './keptView';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { type ColDef, type ICellRendererParams, type IRowNode } from 'ag-grid-community';
@@ -312,13 +313,17 @@ const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window:
 
 /* ---- the page ------------------------------------------------------------------ */
 
+const VIEW_KEY = 'slayer_insiders_view';
+
 const Insiders = () => {
   const navigate = useNavigate();
   const boardNames = useBoardNames();
-  const [window, setWindow] = useState<Window>(90);
-  const [show, setShow] = useState<Show>('market');
-  const [role, setRole] = useState<RolePick>('any');
-  const [names, setNames] = useState<NamesPick>('all');
+  /* the cut is kept for the visit (keptView.ts, as News keeps its own): back from a person's page the list is as it was left */
+  const keptView = useMemo(() => readKeptView(VIEW_KEY), []);
+  const [window, setWindow] = useState<Window>(() => keptPick<Window>(WINDOW_OPTIONS, keptView?.window, 90));
+  const [show, setShow] = useState<Show>(() => keptPick<Show>(SHOW_OPTIONS, keptView?.show, 'market'));
+  const [role, setRole] = useState<RolePick>(() => keptPick<RolePick>(ROLE_OPTIONS, keptView?.role, 'any'));
+  const [names, setNames] = useState<NamesPick>(() => keptPick<NamesPick>(NAMES_OPTIONS, keptView?.names, 'all'));
 
   /* The feed is the live record when it answers; the cards cut it, the Filter keeps from the cut */
   const feed = useInsiderTrades(window, show === 'market' ? OPEN_MARKET_CODES : ALL_CODES);
@@ -342,7 +347,8 @@ const Insiders = () => {
   }, [feed, role, names, boardNames]);
 
   /* the filter reads the names, people and roles on the cut; any pick keeps its rows */
-  const [picks, setPicks] = useState<string[]>([]);
+  const [picks, setPicks] = useState<string[]>(() => keptStrings(keptView?.picks));
+  useKeepView(VIEW_KEY, { window, show, role, names, picks });
   const filterGroups = useMemo<MultiGroup[]>(() => {
     const count = (key: (t: InsiderTrade) => string) => {
       const m = new Map<string, number>();
