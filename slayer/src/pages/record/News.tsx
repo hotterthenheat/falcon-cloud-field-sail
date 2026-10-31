@@ -488,6 +488,14 @@ const StoryText = ({ storyId, body, source, url }: { storyId: string; body: stri
   );
 };
 
+/** A story the map has no pin for: it names no place the map knows and no company whose home city is on file. Quiet, and the first
+    thing on its line to give way. */
+const NoPlace = ({ className = '' }: { className?: string }) => (
+  <span className={`font-mono text-t9 text-textMuted whitespace-nowrap ${className}`} title="Not on the map: the story names no place the map knows, and no company whose home city is on file" data-news-no-place>
+    no location
+  </span>
+);
+
 /** One story on the wire. Memoized: a pick redraws the two rows whose open state changed, not the window. */
 const WireRow = memo(function WireRow({ e, open, stacked, onBoard, similar, onPick }: { e: GeoNewsEvent; open: boolean; stacked: boolean; onBoard: boolean; similar: number | undefined; onPick: (e: GeoNewsEvent) => void }) {
   const faded = freshnessOf(e) === 'faded';
@@ -521,6 +529,7 @@ const WireRow = memo(function WireRow({ e, open, stacked, onBoard, similar, onPi
           <span>·</span>
           <CatTag category={e.item.category} size={9} />
           {(e.item.major || onBoard) && <NewsFlag major={e.item.major} onBoard={onBoard} />}
+          {!e.origin.city && <NoPlace className="min-w-0 truncate" />}
           {(move != null || e.item.prediction.extMovePct != null || e.item.prediction.lastSession) && <span className="ml-auto tnum font-semibold"><PublishMove p={e.item.prediction} short /> <span className="font-normal text-textMuted">at publish</span></span>}
         </span>
       </button>
@@ -553,7 +562,7 @@ const WireRow = memo(function WireRow({ e, open, stacked, onBoard, similar, onPi
       <span className="min-h-5 min-w-0 flex items-center max-[1799.98px]:hidden"><NewsFlag major={e.item.major} onBoard={onBoard} className="flex-wrap gap-y-0.5 leading-[13px] min-w-0" /></span>
       <span className="min-w-0 flex items-center gap-2">
         <ImpactMark tier={tierOf(e.severity)} />
-        <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-t12 ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{(e.item.major || onBoard) && <NewsFlag major={e.item.major} onBoard={onBoard} className="inline-flex min-[1800px]:hidden mr-1.5 align-[1px]" />}{e.item.headline}{similar ? <span className="ml-1.5 font-mono text-t9 text-textMuted" title="Near-duplicate headlines within six hours, folded into this one" data-news-similar={similar}>+{similar} similar</span> : null}</span>
+        <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-t12 ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{(e.item.major || onBoard) && <NewsFlag major={e.item.major} onBoard={onBoard} className="inline-flex min-[1800px]:hidden mr-1.5 align-[1px]" />}{e.item.headline}{similar ? <span className="ml-1.5 font-mono text-t9 text-textMuted" title="Near-duplicate headlines within six hours, folded into this one" data-news-similar={similar}>+{similar} similar</span> : null}{!e.origin.city && <NoPlace className="ml-1.5" />}</span>
       </span>
       <span className="h-5 flex items-center justify-end font-mono text-t11 font-semibold tnum whitespace-nowrap"><PublishMove p={e.item.prediction} short /></span>
       <span className="h-5 flex items-center justify-end font-mono text-t10 text-textSecondary truncate max-[1799.98px]:hidden" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
@@ -565,7 +574,7 @@ const WireRow = memo(function WireRow({ e, open, stacked, onBoard, similar, onPi
 
 /* A row's height before it is measured: the headline's lines at the window's width (Inter at ~0.5em a character, fitted to the measured rows). */
 const wireEstimate = (stacked: boolean, e: GeoNewsEvent, width: number, similar: boolean): number => {
-  const len = e.item.headline.length + (similar ? 12 : 0);
+  const len = e.item.headline.length + (similar ? 12 : 0) + (e.origin.city ? 0 : 12);
   /* a phone's row clamps its headline to two lines, which nearly every headline fills: one height */
   if (stacked) return 76;
   const vw = typeof window === 'undefined' ? 1440 : window.innerWidth;
@@ -1086,8 +1095,27 @@ const News = () => {
               ) : (
                 <>
                   {rows.length > 0 && (
-                    <span className="text-textMuted" data-news-map-count title="Stories that name a company with a known home or a place in their headline sit on the map; the rest are in the list">
-                      {placedCount.toLocaleString('en-US')} of {rows.length.toLocaleString('en-US')} {rows.length === 1 ? 'story' : 'stories'} placed · {pins.length} {pins.length === 1 ? 'city' : 'cities'}
+                    <span
+                      className="text-textMuted"
+                      data-news-map-count
+                      title={`A story sits on the map when it names a place the map knows, or a company whose home city is on file${placedCount < rows.length ? `; the other ${(rows.length - placedCount).toLocaleString('en-US')} name neither and stand in the list marked “no location”` : ''}`}
+                    >
+                      {placedCount === 0 ? (
+                        <>no story on this cut names a place the map knows</>
+                      ) : (
+                        <>
+                          {/* each piece whole: a narrow line breaks between them, never inside one */}
+                          <span className="whitespace-nowrap">
+                            {placedCount.toLocaleString('en-US')} of {rows.length.toLocaleString('en-US')} {rows.length === 1 ? 'story' : 'stories'} placed · {pins.length} {pins.length === 1 ? 'city' : 'cities'}
+                          </span>
+                          {placedCount < rows.length && (
+                            <>
+                              {' '}
+                              <span className="whitespace-nowrap">· the rest name no place the map knows</span>
+                            </>
+                          )}
+                        </>
+                      )}
                     </span>
                   )}
                   <HeatLegend />
