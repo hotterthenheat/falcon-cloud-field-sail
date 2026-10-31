@@ -115,55 +115,32 @@ export function posAtMinute(range: ReplayRange, min: number): number {
 /** A position snapped to the frame grid */
 export const snapPos = (pos: number, length: number) => Math.max(0, Math.min(length, Math.floor(pos / FRAME_SEC) * FRAME_SEC));
 
-const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
-
-/** Where a position sits: the bar it is in and how far through it */
-function place(range: ReplayRange, pos: number): { k: number; u: number } {
-  const k = Math.max(0, Math.min(range.bars.length - 1, Math.floor(pos / BAR_SEC)));
-  const u = k >= range.bars.length - 1 ? 0 : Math.max(0, Math.min(1, (pos - k * BAR_SEC) / BAR_SEC));
-  return { k, u };
+/** Where a position sits: the bar it is in. The replay steps at bar boundaries — nothing inside a bar is drawn toward
+    the next bar's close or the next snapshot of the book (that would show the reader the minute before it happened). */
+function place(range: ReplayRange, pos: number): { k: number } {
+  return { k: Math.max(0, Math.min(range.bars.length - 1, Math.floor(pos / BAR_SEC))) };
 }
 
-/** The bars up to a position, the last one folded to where price was */
-function barsAt(range: ReplayRange, pos: number): Candle[] {
-  const { k, u } = place(range, pos);
-  const out = range.bars.slice(0, k + 1);
-  if (u > 0 && k + 1 < range.bars.length) {
-    const a = range.bars[k];
-    const b = range.bars[k + 1];
-    const close = lerp(a.close, b.close, u);
-    out[k] = { ...a, close, high: Math.max(a.high, close), low: Math.min(a.low, close) };
+/** The bars up to a position: through the bar it is in, as recorded */
+export function barsAt(range: ReplayRange, pos: number): Candle[] {
+  const { k } = place(range, pos);
+  return range.bars.slice(0, k + 1);
+}
+
+/** Where the name stands at a position: the close of the bar it is in — a step, not a glide toward the next one */
+export function replaySpotAt(range: ReplayRange, pos: number): number {
+  return range.bars[place(range, pos).k].close;
+}
+const spotAt = replaySpotAt;
+
+/** The book at a position: the newest snapshot at or before the bar it is in — never a later one, never a blend */
+export function levelsAt(range: ReplayRange, pos: number): GexLevel[] {
+  const { k } = place(range, pos);
+  for (let i = k; i >= 0; i--) {
+    const snap = range.snaps.get(range.bars[i].time);
+    if (snap) return snap.levels;
   }
-  return out;
-}
-
-function spotAt(range: ReplayRange, pos: number): number {
-  const { k, u } = place(range, pos);
-  const a = range.bars[k];
-  const b = range.bars[k + 1];
-  return b ? lerp(a.close, b.close, u) : a.close;
-}
-
-/** The book between two minutes, strike by strike */
-function levelsAt(range: ReplayRange, pos: number): GexLevel[] {
-  const { k, u } = place(range, pos);
-  const a = range.snaps.get(range.bars[k].time);
-  const b = k + 1 < range.bars.length ? range.snaps.get(range.bars[k + 1].time) : undefined;
-  if (!a && !b) return [];
-  if (!a || !b || u === 0) return (a ?? b)!.levels;
-  const byStrike = new Map<number, GexLevel>();
-  for (const l of a.levels) byStrike.set(l.strike, { ...l, value: l.value * (1 - u), dex: (l.dex ?? 0) * (1 - u), vex: (l.vex ?? 0) * (1 - u), callOI: (l.callOI ?? 0) * (1 - u), putOI: (l.putOI ?? 0) * (1 - u) });
-  for (const l of b.levels) {
-    const cur = byStrike.get(l.strike);
-    if (cur) {
-      cur.value += l.value * u;
-      cur.dex = (cur.dex ?? 0) + (l.dex ?? 0) * u;
-      cur.vex = (cur.vex ?? 0) + (l.vex ?? 0) * u;
-      cur.callOI = (cur.callOI ?? 0) + (l.callOI ?? 0) * u;
-      cur.putOI = (cur.putOI ?? 0) + (l.putOI ?? 0) * u;
-    } else byStrike.set(l.strike, { ...l, value: l.value * u, dex: (l.dex ?? 0) * u, vex: (l.vex ?? 0) * u, callOI: (l.callOI ?? 0) * u, putOI: (l.putOI ?? 0) * u });
-  }
-  return [...byStrike.values()].sort((x, y) => x.strike - y.strike);
+  return [];
 }
 
 /* Vanna and charm are not in the per-minute history, so a rewound node keeps
