@@ -11,6 +11,7 @@
 import type { Candle } from '../types/market';
 import { nyParts, nyWallTime } from '../core/nyTime';
 import { sessionCloseMinOn } from '../core/calendar';
+import { badWicks, mendWicks } from './barSanity';
 
 /** Conditions whose High, Low and Last columns are all marked and whose Late Report column is not
     (https://docs.thetadata.us/Articles/Errors-Exchanges-Conditions/Trade-Conditions.html, read 2026-10-29). */
@@ -276,4 +277,53 @@ export async function cleanExtendedBars(get: Get, symbol: string, w: Window, ste
     return !!past && d >= first && d < today;
   };
   return rebuildExtended(bars, stepSec, ticks, covered);
+}
+
+/* ---- bad wicks on any day (data/barSanity.ts): the flagged bar's own prints ---- */
+
+const wickReads = new Map<string, Promise<{ lo: number; hi: number } | null>>();
+/** Flagged bars read per call; any more are cut back to their body */
+const WICK_READS = 24;
+
+const hms = (t: number, ms = ''): string => {
+  const p = nyParts(t * 1000);
+  return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}:${String(p.second).padStart(2, '0')}${ms}`;
+};
+
+/** The lowest and highest price-setting print inside one bar, null when the prints did not come back or none may set a
+    price. A finished bar's prints never change, so a read is kept (a failed one is asked again a minute later). */
+function barPrintRange(get: Get, symbol: string, time: number, stepSec: number): Promise<{ lo: number; hi: number } | null> {
+  const day = ymdOf(time);
+  const key = `${symbol}|${time}|${stepSec}`;
+  const hit = wickReads.get(key);
+  if (hit) return hit;
+  const got = get(tradePath(symbol, day, day, hms(time), hms(time + stepSec - 1, '.999'))).then(a => {
+    if (a.error || !Array.isArray(a.data)) {
+      setTimeout(() => wickReads.get(key) === got && wickReads.delete(key), 60_000);
+      return null;
+    }
+    const { ticks } = readTicks(rowsOf(a.data));
+    let lo = Infinity;
+    let hi = 0;
+    for (const t of ticks) {
+      if (t.t < time || t.t >= time + stepSec) continue;
+      if (t.price < lo) lo = t.price;
+      if (t.price > hi) hi = t.price;
+    }
+    return hi > 0 ? { lo, hi } : null;
+  });
+  wickReads.set(key, got);
+  if (wickReads.size > 400) wickReads.delete(wickReads.keys().next().value as string);
+  return got;
+}
+
+/** A stock's intraday bars with every bad wick (barSanity.ts) rebuilt from that bar's price-setting prints, or cut back
+    to its body where they cannot be read. Bars with no bad wick are returned as they came, without a read. */
+export async function saneStockBars(get: Get, symbol: string, stepSec: number, bars: Candle[]): Promise<Candle[]> {
+  const cuts = badWicks(bars);
+  if (!cuts.length) return bars;
+  const idx = [...new Set(cuts.map(c => c.index))].slice(0, WICK_READS);
+  const ranges = new Map<number, { lo: number; hi: number } | null>();
+  await Promise.all(idx.map(async i => ranges.set(i, await barPrintRange(get, symbol, bars[i].time, stepSec))));
+  return mendWicks(bars, cuts, i => ranges.get(i) ?? null);
 }

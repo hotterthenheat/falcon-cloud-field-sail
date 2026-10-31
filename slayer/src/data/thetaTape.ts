@@ -10,7 +10,8 @@ import { isTradingDay, isEarlyClose, nyYmd, EARLY_CLOSES, sessionBefore, session
 import { minuteInSession, sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { etClock, keepTheta, keptTheta, noData, offlineWords, pageHidden, thetaDown, thetaGet } from './thetaFeed';
 import { thetaUseHere } from './theta';
-import { EXT_WINDOWS, cleanExtendedBars } from './thetaEligible';
+import { EXT_WINDOWS, cleanExtendedBars, saneStockBars } from './thetaEligible';
+import { saneBars } from './barSanity';
 
 export const THETA_INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
 
@@ -310,10 +311,13 @@ export async function pullIntraday(symbol: string, grain: Exclude<TapeGrain, 'da
   const bars = dedupe(got.flatMap(g => (g.error ? [] : readOhlc(g.data, session, symbol))));
   /* a stock's pre-market and after-hours bars take their prices from the prints that may set one (late reports at an
      old price do not; data/thetaEligible.ts) — the regular session is ThetaData's bars as they come */
-  if (root(symbol) === 'stock' && (session === 'pre' || session === 'post')) {
-    return { bars: await cleanExtendedBars(thetaGet, symbol, wins[0], STEP_SEC[grain] ?? 60, bars), offline };
+  const step = STEP_SEC[grain] ?? 60;
+  if (root(symbol) === 'stock') {
+    const clean = session === 'pre' || session === 'post' ? await cleanExtendedBars(thetaGet, symbol, wins[0], step, bars) : bars;
+    /* a bad print's wick on a day the prints above were not read (data/barSanity.ts): rebuilt from that bar's prints */
+    return { bars: await saneStockBars(thetaGet, symbol, step, clean), offline };
   }
-  return { bars, offline };
+  return { bars: saneBars(bars), offline };
 }
 
 async function pullEod(symbol: string, from: string, to: string): Promise<Pull> {

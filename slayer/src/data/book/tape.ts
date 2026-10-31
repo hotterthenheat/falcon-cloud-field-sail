@@ -7,6 +7,7 @@ import { type Candle } from '../../types/market';
 import { thetaAllowedHere } from '../theta';
 import { thetaCall } from '../theta';
 import { EXT_WINDOWS, cleanExtendedBars } from '../thetaEligible';
+import { saneBars } from '../barSanity';
 import { type UwBar } from '../whales';
 import { num } from './scale';
 
@@ -258,7 +259,7 @@ export function barVolumes(bars: readonly UwBar[]): Map<UwBar, number> {
 }
 
 export function candlesFrom(bars: UwBar[], cashTo = CLOSE_MIN): { cash: Candle[]; tape: Candle[] } {
-  const parsed: Candle[] = [];
+  let parsed: Candle[] = [];
   const vols = barVolumes(bars);
   for (const b of bars) {
     const time = Math.floor(Date.parse(b.start_time || b.end_time || '') / 1000);
@@ -275,6 +276,8 @@ export function candlesFrom(bars: UwBar[], cashTo = CLOSE_MIN): { cash: Candle[]
     });
   }
   parsed.sort((a, b) => a.time - b.time);
+  /* a bad print's wick cut back to its body (data/barSanity.ts) */
+  parsed = saneBars(parsed);
   if (!parsed.length) return { cash: [], tape: [] };
   const day = nyIsoDate(parsed[parsed.length - 1].time * 1000);
   const tape = parsed.filter(b => nyIsoDate(b.time * 1000) === day || nyMinutes(b.time * 1000) >= 20 * 60);
@@ -319,7 +322,7 @@ export function twoCashSessions(bars: UwBar[], cashTo: number, keepDays = 2): Ca
     if (days[days.length - 1] !== d) days.push(d);
   }
   const keep = new Set(days.slice(-keepDays));
-  return parsed.filter(c => keep.has(nyIsoDate(c.time * 1000)));
+  return saneBars(parsed.filter(c => keep.has(nyIsoDate(c.time * 1000))));
 }
 
 export function parseTape(bars: UwBar[]): Candle[] {
@@ -340,7 +343,7 @@ export function parseTape(bars: UwBar[]): Candle[] {
     });
   }
   parsed.sort((a, b) => a.time - b.time);
-  return parsed;
+  return saneBars(parsed);
 }
 
 /** The last regular session's close off the one-minute bars (the last bar the vendor marks "r"; its daily close for that

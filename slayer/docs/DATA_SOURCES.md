@@ -243,6 +243,18 @@ from `/stock/history/trade` (`data/thetaEligible.ts`):
   open the next bar with only its 16:00:00.000 prints.
 - Locked by `scripts/golden/extended-golden.ts` (set `extended-2026-10-29`).
 
+### Bad wicks on any day (`data/barSanity.ts`)
+
+Bars older than those 6 days still carry bad prints: SPY on 2026-10-23 traded at 761 after the close, yet ThetaData's
+17:00 fifteen-minute bar runs 723.5739–787.5169 (six Form T odd lots from exchange 57, conditions 4 and 115, which may
+not set a price). Every intraday chart read (`pullIntraday`; the book tape's `candlesFrom`, `twoCashSessions`,
+`parseTape`) runs one rule: a wick is bad only when it reaches past the bodies of its own bar and of the 10 bars on
+each side by more than max(8 × their median range, 0.5% of price). A stock's bad wick is rebuilt from that bar's own
+price-setting prints (one small `/stock/history/trade` read per flagged bar, at most 24 per read, kept); with no prints
+(an index, UW's bars, the terminal down) it is cut to the bar's body. Opens, closes and volumes are never changed and
+no bar is dropped. Locked by `scripts/golden/bar-sanity-golden.ts` (the bad day, plus the April 2025 crash and rally,
+two CPI mornings and 5 Aug 2024, whose regular sessions are untouched).
+
 ### Also in the same REST spec
 - Session calendar: today, a date, and the year's holidays
 - Treasury-rate history
