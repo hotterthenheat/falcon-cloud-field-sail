@@ -10,11 +10,13 @@ export const CONTROLS_LINE = 'flex items-center gap-2 flex-wrap max-sm:grid max-
 
 /* ---- the head's facts ------------------------------------------------------------ */
 
-export const Fact = ({ label, children, testId, title, wrap = false }: { label: string; children: ReactNode; testId?: string; title?: string; wrap?: boolean }) => (
+/* `reserve`: a min-width class the figure holds from its first frame (its usual width), so the row is as wide while it
+   reads as once it is in — the head's facts then wrap, or not, the same way before and after */
+export const Fact = ({ label, children, testId, title, wrap = false, reserve = '' }: { label: string; children: ReactNode; testId?: string; title?: string; wrap?: boolean; reserve?: string }) => (
   /* `wrap`: a fact that is a sentence takes the line's width */
   <div className={wrap ? 'min-w-0 basis-full' : 'min-w-0'} title={title}>
     <dt className="text-t11 text-textMuted whitespace-nowrap max-sm:whitespace-normal">{label}</dt>
-    <dd className={`mt-0.5 font-mono text-t12 tnum text-textPrimary ${wrap ? 'whitespace-normal break-words' : 'whitespace-nowrap max-sm:whitespace-normal max-sm:break-words'}`} data-trace-fact={testId}>
+    <dd className={`mt-0.5 font-mono text-t12 tnum text-textPrimary ${reserve} max-sm:min-w-0 ${wrap ? 'whitespace-normal break-words' : 'whitespace-nowrap max-sm:whitespace-normal max-sm:break-words'}`} data-trace-fact={testId}>
       {children}
     </dd>
   </div>
@@ -27,10 +29,11 @@ type Ink = 'supreme' | 'bull' | 'bear' | 'warn' | 'plain';
 const INK: Record<Ink, string> = { supreme: 'text-textSecondary', bull: 'text-bull', bear: 'text-bear', warn: 'text-warn', plain: 'text-textSecondary' };
 
 /** A champion: the label in its ink, the row's words as a door onto the row */
-export const Champion = ({ label, ink, onOpen, children, testId, title = "Open the contract's card" }: { label: string; ink: Ink; onOpen: () => void; children: ReactNode; testId?: string; title?: string }) => (
+export const Champion = ({ label, ink, onOpen, children, testId, title = "Open the contract's card", reserve = '' }: { label: string; ink: Ink; onOpen: () => void; children: ReactNode; testId?: string; title?: string; reserve?: string }) => (
   <div className="min-w-0">
     <dt className={`text-t11 whitespace-nowrap max-sm:whitespace-normal ${INK[ink]}`}>{label}</dt>
-    <dd className="mt-0.5 whitespace-nowrap max-sm:whitespace-normal" data-trace-champion={testId}>
+    {/* the Fact's font on the dd too: its line box is then the Fact's, so a champion arriving does not grow the row */}
+    <dd className={`mt-0.5 font-mono text-t12 whitespace-nowrap max-sm:whitespace-normal ${reserve} max-sm:min-w-0`} data-trace-champion={testId}>
       {/* the padding is the hit area (24px at a desk, 44px on a phone); the negative margin keeps the line where it was */}
       <button type="button" onClick={onOpen} title={title} className="inline-block py-[3px] -my-[3px] max-sm:py-[13px] max-sm:-my-[13px] font-mono text-t12 tnum font-semibold text-textPrimary hover:text-silver transition-colors text-left max-sm:break-words">
         {children}

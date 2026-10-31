@@ -145,6 +145,9 @@ interface TraceGridProps<T> {
   topSignal?: number;
   /** The rows on screen, in the grid's own order, as the reader scrolls (Multi-Leg reads their legs) */
   onVisible?: (rows: T[]) => void;
+  /** An endless grid's first read is out: the window keeps its screen-tall height while empty, so the rows landing
+      do not push what stands below it */
+  reading?: boolean;
   testId: string;
 }
 
@@ -162,7 +165,7 @@ interface EndlessFeed {
   extra?: ReactNode;
 }
 
-export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColumns = false, prose, tooltips, rowKey, onRowClick, selectedKey, height, autoHeight = false, initialSort, rowClass, animate = true, emptyText = 'Nothing on this cut', pinLeft, pinRight, phoneRow, endless, onDeep, topSignal, onVisible, testId }: TraceGridProps<T>) => {
+export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColumns = false, prose, tooltips, rowKey, onRowClick, selectedKey, height, autoHeight = false, initialSort, rowClass, animate = true, emptyText = 'Nothing on this cut', pinLeft, pinRight, phoneRow, endless, onDeep, topSignal, onVisible, reading = false, testId }: TraceGridProps<T>) => {
   const gridRef = useRef<AgGridReact<T>>(null);
   const phone = useIsPhone() && !!phoneRow;
   const hiddenSet = useMemo(() => hidden ?? new Set<string>(), [hidden]);
@@ -339,7 +342,9 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
   /* back to top for a windowed grid, past 600px; absolute writes each frame so a tick cannot shove the glide */
   const [showTop, setShowTop] = useState(false);
   /* endless: a window the height of the screen once the rows overflow half a page; never the pager */
-  const windowed = !!endless && gridRows.length > TRACE_PAGE / 2;
+  /* sized by the rows coming as well as the rows held: a cut's hold (the first page landing on an empty grid among
+     them) keeps the window it is about to need, and an empty first read keeps one too — no collapse between */
+  const windowed = !!endless && (Math.max(gridRows.length, rows.length) > TRACE_PAGE / 2 || (reading && rows.length === 0));
   const paged = !endless && gridRows.length > TRACE_PAGE;
   const endlessRef = useRef(endless);
   endlessRef.current = endless;

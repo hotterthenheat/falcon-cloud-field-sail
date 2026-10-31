@@ -411,15 +411,17 @@ const LiveTape = () => {
   const hold = useHold(null);
   const paused = hold.paused;
   const [away, setAway] = useState(false);
-  const [flowFilter, setFlowFilter] = useState<FlowFilter>('ALL');
-  const [sentFilter, setSentFilter] = useState<SentFilter>('ALL');
-  const [minPremKey, setMinPremKey] = useState<PremKey>('0');
-  const [rightKey, setRightKey] = useState<RightKey>('ALL');
-  const [sideKey, setSideKey] = useState<SideKey>('ALL');
+  /* a linked cut is the first frame's cut, not a second frame's: the head never paints the default and then reflows */
+  const [linked] = useState(() => (typeof window === 'undefined' ? TAPE_CUT_DEFAULT : queryToCut(new URLSearchParams(window.location.search)).cut));
+  const [flowFilter, setFlowFilter] = useState<FlowFilter>(linked.kind);
+  const [sentFilter, setSentFilter] = useState<SentFilter>(linked.lean);
+  const [minPremKey, setMinPremKey] = useState<PremKey>(linked.prem);
+  const [rightKey, setRightKey] = useState<RightKey>(linked.right);
+  const [sideKey, setSideKey] = useState<SideKey>(linked.side);
   /* the expiry is asked of the vendor too, so the tape refills with that expiry's prints from the whole session */
-  const [expiryPick, setExpiryPick] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [view, setView] = useState<TapeView>('STREAM');
+  const [expiryPick, setExpiryPick] = useState<string | null>(linked.expiry);
+  const [searchQuery, setSearchQuery] = useState(linked.q);
+  const [view, setView] = useState<TapeView>(linked.view);
   const [openPrint, setOpenPrint] = useState<FlowPrint | null>(null);
 
   const tickerQ = searchQuery.trim().toUpperCase();
@@ -953,12 +955,12 @@ const LiveTape = () => {
 
   const windowFacts = (
     <>
-      <Fact label={anchor && lane === 'prints' ? 'Last prints' : 'Window'} testId="window" title="The first and last print in this view, New York — the head covers only these">
+      <Fact label={anchor && lane === 'prints' ? 'Last prints' : 'Window'} testId="window" reserve="min-w-[10.75rem]" title="The first and last print in this view, New York — the head covers only these">
         {headReading ? <span className="text-textMuted">—</span> : windowSpan ? `${windowSpan} ET` : '—'}
         {cutSpan && cutSpan !== windowSpan && <span className="text-textSecondary"> · cut {cutSpan}</span>}
         {lane === 'prints' && jumpAt != null && <span className="text-textSecondary"> · from {nyClock(jumpAt, { zone: true })}</span>}
       </Fact>
-      <Fact label={lane === 'alerts' ? 'Flow alerts' : 'Prints'} testId="prints" title={lane === 'alerts' ? 'Each alert is a burst of prints on one contract' : 'The newest stretch; older pages load as you scroll'}>
+      <Fact label={lane === 'alerts' ? 'Flow alerts' : 'Prints'} testId="prints" reserve="min-w-[10.75rem]" title={lane === 'alerts' ? 'Each alert is a burst of prints on one contract' : 'The newest stretch; older pages load as you scroll'}>
         {headReading ? (
           <span className="text-textMuted">—</span>
         ) : searchQuery.trim() && filtered.length === 0 && rows.length > 0 ? (
@@ -971,7 +973,7 @@ const LiveTape = () => {
           </>
         )}
       </Fact>
-      <Fact label="Premium" testId="premium" title={`Call and put premium in this view${beamSummary.compression.count ? '; compression left out' : ''}${beamRollLegs.count ? '; roll legs left out' : ''}${beamSummary.covers ? ` · ${coversTip(beamSummary.covers)}` : ''}`}>
+      <Fact label="Premium" testId="premium" reserve="min-w-[11.75rem]" title={`Call and put premium in this view${beamSummary.compression.count ? '; compression left out' : ''}${beamRollLegs.count ? '; roll legs left out' : ''}${beamSummary.covers ? ` · ${coversTip(beamSummary.covers)}` : ''}`}>
         {headReading ? (
           <span className="text-textMuted">—</span>
         ) : (
@@ -980,7 +982,7 @@ const LiveTape = () => {
           </>
         )}
       </Fact>
-      <Fact label="Sweeps · blocks · multi" testId="kinds" title={`Blocks: one leg, ${BLOCK_MIN_SIZE}+ contracts and $${BLOCK_MIN_PREMIUM / 1000}K+ in one print; ${beamSummary.other} single prints besides`}>
+      <Fact label="Sweeps · blocks · multi" testId="kinds" reserve="min-w-[7.5rem]" title={`Blocks: one leg, ${BLOCK_MIN_SIZE}+ contracts and $${BLOCK_MIN_PREMIUM / 1000}K+ in one print; ${beamSummary.other} single prints besides`}>
         {headReading ? <span className="text-textMuted">—</span> : <>{num(beamSummary.sweeps)} <span className="text-textSecondary">·</span> {num(beamSummary.blocks)} <span className="text-textSecondary">·</span> {num(beamSummary.multi)}</>}
       </Fact>
       <Fact label="P/C premium" testId="pc" title="Put premium over call premium, this view only">
@@ -1010,11 +1012,11 @@ const LiveTape = () => {
   const dayAlertTop = dayAlertsSplit.bets[0] ?? null;
   const dayFacts = (
     <>
-      <Fact label="Market net" testId="day-net" title={`The market tide's net ${dayAdv(dayIso)}${dayNet ? ` · ${coversTip(dayNet.covers)}` : ''}. ${VENDOR_TOTAL_NOTE}`}>
+      <Fact label="Market net" testId="day-net" reserve="min-w-[13rem]" title={`The market tide's net ${dayAdv(dayIso)}${dayNet ? ` · ${coversTip(dayNet.covers)}` : ''}. ${VENDOR_TOTAL_NOTE}`}>
         {dayNet ? <span className={dayNet.net >= 0 ? 'text-bull' : 'text-bear'}>{dayNet.net >= 0 ? '+' : '−'}{fmtUsd(Math.abs(dayNet.net))}</span> : <span className="text-textMuted">{dayTide.waiting ? '…' : '—'}</span>}
         {dayNet && <span className="text-textSecondary"> · {shortDay(dayIso)}{coversSpan(dayNet.covers) ? ` ${coversSpan(dayNet.covers)}` : ''}</span>}
       </Fact>
-      <Fact label="Net calls · puts" testId="day-sides" title="Net call and net put premium; puts bought lean bearish">
+      <Fact label="Net calls · puts" testId="day-sides" reserve="min-w-[8.25rem]" title="Net call and net put premium; puts bought lean bearish">
         {dayNet ? (
           <>
             <span className={dayNet.calls >= 0 ? 'text-bull' : 'text-bear'}>{dayNet.calls >= 0 ? '+' : '−'}{fmtUsd(Math.abs(dayNet.calls))}</span> <span className="text-textSecondary">·</span> <span className={dayNet.puts >= 0 ? 'text-bear' : 'text-bull'}>{dayNet.puts >= 0 ? '+' : '−'}{fmtUsd(Math.abs(dayNet.puts))}</span>
@@ -1023,8 +1025,9 @@ const LiveTape = () => {
           <span className="text-textMuted">—</span>
         )}
       </Fact>
-      {dayTopBet && (
-        <Champion label="Most premium" ink="supreme" title={`The day's heaviest single bet, ${leanWords(dayLean(dayTopBet))}`} onOpen={() => {
+      {/* both day champions keep their place while they read and when the day has none: the row never reflows */}
+      {dayTopBet ? (
+        <Champion label="Most premium" ink="supreme" reserve="min-w-[9.25rem]" title={`The day's heaviest single bet, ${leanWords(dayLean(dayTopBet))}`} onOpen={() => {
           const day = bookRowToPrint(dayTopBet);
           /* the screener's day, not one fill: no quote is on the row, so none is drawn */
           setOpenPrint({ ...day, occ: dayTopBet.optionSymbol, bid: 0, ask: 0, dayCard: day.dayCard ?? { last: null, session: 'regular session' } });
@@ -1032,13 +1035,21 @@ const LiveTape = () => {
           {dayTopBet.ticker} {dayTopBet.strike}
           {dayTopBet.right} · {fmtUsd(dayTopBet.premium)}
         </Champion>
+      ) : (
+        <Fact label="Most premium" testId="day-top" reserve="min-w-[9.25rem]" title={dayTop.waiting ? "The day's heaviest single bet" : "None of the screener's heaviest contracts has a clear side — packages and legs are not bets"}>
+          <span className="text-textMuted">{dayTop.waiting ? '…' : '—'}</span>
+        </Fact>
       )}
-      {dayAlertTop && (
-        <Champion label="Largest alert" ink="plain" title="The day's largest flow alert of $5M+" onOpen={() => setOpenPrint(dayAlertTop)} testId="day-alert">
+      {dayAlertTop ? (
+        <Champion label="Largest alert" ink="plain" reserve="min-w-[9.25rem]" title="The day's largest flow alert of $5M+" onOpen={() => setOpenPrint(dayAlertTop)} testId="day-alert">
           {pill(dayAlertTop)}
         </Champion>
+      ) : (
+        <Fact label="Largest alert" testId="day-alert" reserve="min-w-[9.25rem]" title={dayAlerts.waiting ? "The day's largest flow alert of $5M+" : 'No flow alert of $5M+ that is a bet this session'}>
+          <span className="text-textMuted">{dayAlerts.waiting ? '…' : '—'}</span>
+        </Fact>
       )}
-      <Fact label="Last prints" testId="window" title="The stretch the tape below holds, walked back from the close">
+      <Fact label="Last prints" testId="window" reserve="min-w-[10.75rem]" title="The stretch the tape below holds, walked back from the close">
         {headReading ? <span className="text-textMuted">—</span> : windowSpan ? `${windowSpan} ET` : '—'}
       </Fact>
     </>
@@ -1082,20 +1093,34 @@ const LiveTape = () => {
                   {nameDay.packs.length > 0 && <span className="text-textMuted" title={nameDay.packs.map(c => `${c.strike}${c.right} ${fmtUsd(c.premium)} — ${notABetWord(c)}`).join('\n')}> · {num(nameDay.packs.length)} not bets</span>}
                 </Fact>
               )}
-              {whales.bull && whales.bull !== whales.all && (
-                <Champion label={lane === 'alerts' ? 'Top bull alert' : 'Top bull'} ink="bull" title="The biggest bullish print in view: a call bought or a put sold" onOpen={() => setOpenPrint(whales.bull)} testId="bull">
+              {/* the three champions keep their slots from the first frame (reading, none, or the largest itself),
+                  so the facts never reflow when the prints land */}
+              {whales.bull && whales.bull !== whales.all ? (
+                <Champion label={lane === 'alerts' ? 'Top bull alert' : 'Top bull'} ink="bull" reserve="min-w-[9.75rem]" title="The biggest bullish print in view: a call bought or a put sold" onOpen={() => setOpenPrint(whales.bull)} testId="bull">
                   {pill(whales.bull)}
                 </Champion>
+              ) : (
+                <Fact label={lane === 'alerts' ? 'Top bull alert' : 'Top bull'} testId="bull" reserve="min-w-[9.75rem]" title="The biggest bullish print in view: a call bought or a put sold">
+                  <span className="text-textMuted">{headReading ? '…' : whales.bull ? 'the largest' : '—'}</span>
+                </Fact>
               )}
-              {whales.bear && whales.bear !== whales.all && (
-                <Champion label={lane === 'alerts' ? 'Top bear alert' : 'Top bear'} ink="bear" title="The biggest bearish print in view: a put bought or a call sold" onOpen={() => setOpenPrint(whales.bear)} testId="bear">
+              {whales.bear && whales.bear !== whales.all ? (
+                <Champion label={lane === 'alerts' ? 'Top bear alert' : 'Top bear'} ink="bear" reserve="min-w-[9.75rem]" title="The biggest bearish print in view: a put bought or a call sold" onOpen={() => setOpenPrint(whales.bear)} testId="bear">
                   {pill(whales.bear)}
                 </Champion>
+              ) : (
+                <Fact label={lane === 'alerts' ? 'Top bear alert' : 'Top bear'} testId="bear" reserve="min-w-[9.75rem]" title="The biggest bearish print in view: a put bought or a call sold">
+                  <span className="text-textMuted">{headReading ? '…' : whales.bear ? 'the largest' : '—'}</span>
+                </Fact>
               )}
-              {whales.all && (
-                <Champion label={lane === 'alerts' ? 'Largest alert' : 'Largest'} ink="supreme" title={`The most premium in view${whales.all === whales.bull ? ' — also the top bull' : whales.all === whales.bear ? ' — also the top bear' : ''}`} onOpen={() => setOpenPrint(whales.all)} testId="largest">
+              {whales.all ? (
+                <Champion label={lane === 'alerts' ? 'Largest alert' : 'Largest'} ink="supreme" reserve="min-w-[9.75rem]" title={`The most premium in view${whales.all === whales.bull ? ' — also the top bull' : whales.all === whales.bear ? ' — also the top bear' : ''}`} onOpen={() => setOpenPrint(whales.all)} testId="largest">
                   {pill(whales.all)}
                 </Champion>
+              ) : (
+                <Fact label={lane === 'alerts' ? 'Largest alert' : 'Largest'} testId="largest" reserve="min-w-[9.75rem]" title="The most premium in view">
+                  <span className="text-textMuted">{headReading ? '…' : '—'}</span>
+                </Fact>
               )}
             </>
           )
@@ -1153,7 +1178,9 @@ const LiveTape = () => {
                   {dayAdv(dayIso) === 'today' ? 'Today' : shortDay(dayIso)} · {regularOnly ? (anchor ? '09:30–16:15 ET' : 'from 09:30 ET') : 'outside the regular session'} · the tide, the screener and the alerts, not the prints below
                 </span>
               </div>
-              <div className="grid gap-x-8 gap-y-2 md:grid-cols-3 text-t11">
+              {/* the height the three reads fill (a title and four lines), held from the first frame: they land
+                  one by one and must not push the rolls and the tape down */}
+              <div className="grid gap-x-8 gap-y-2 md:grid-cols-3 md:min-h-[117px] text-t11">
                 <div className="min-w-0" data-tape-day-tide>
                   <div className="text-textMuted" title={`The market tide. ${VENDOR_TOTAL_NOTE}`}>
                     Market net premium
@@ -1331,6 +1358,7 @@ const LiveTape = () => {
             animate={false}
             autoHeight
             endless={endless}
+            reading={tapeReading && !frozen && rows.length === 0}
             onDeep={setAway}
             topSignal={topSignal}
             emptyText={
