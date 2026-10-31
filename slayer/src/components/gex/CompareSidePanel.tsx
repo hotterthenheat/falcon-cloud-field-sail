@@ -82,7 +82,7 @@ const Tag = ({ tone, children }: { tone: Tone; children: ReactNode }) => (
 /** The levels' table: tag · strike · distance · dollars, a hairline under each row */
 const LEVEL_COLS = 'grid grid-cols-[72px_minmax(0,1fr)_48px_104px] items-center gap-x-1.5 h-6 border-b border-borderSubtle/40 last:border-b-0';
 /** The heaviest's table: rank · strike (+ its role) · dollars · what it did over the window */
-const HEAVY_COLS = 'grid grid-cols-[14px_minmax(0,1fr)_68px_60px] items-center gap-x-1.5 h-6 border-b border-borderSubtle/40 last:border-b-0';
+const HEAVY_COLS = 'grid grid-cols-[14px_minmax(0,1fr)_68px_60px] items-center gap-x-1.5 min-h-6 border-b border-borderSubtle/40 last:border-b-0';
 
 const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPick, open, onToggle, stacked = false, full = false }: Props) => {
   const U = sharedUnit(unit);
@@ -285,7 +285,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
           return (
             <div key={r.strike} className={HEAVY_COLS} data-side-heavy={r.strike}>
               <span className="font-mono text-t10 tnum tabular-nums text-textMuted">{i + 1}</span>
-              <span className="min-w-0 flex items-center gap-1.5 whitespace-nowrap">
+              <span className="min-w-0 py-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 whitespace-nowrap">
                 <Door k={r.strike} />
                 {roles.map(role => (
                   <Tag key={role.word} tone={role.tone}>{role.word}</Tag>
