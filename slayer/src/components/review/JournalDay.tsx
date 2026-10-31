@@ -120,7 +120,7 @@ const JournalDay = ({ day, total, holders, onDayNote, onOpen, onClose, today, co
       <div className="px-5 pt-4 pb-3 flex items-center gap-x-5 gap-y-2 flex-wrap">
         <span className="text-t15 font-semibold text-textPrimary">{longDay(day)}</span>
         <span className={`font-mono text-t22 font-semibold tnum leading-none ${rows.length ? dirInk(total!.net) : 'text-textMuted'}`} data-journal-day-net>
-          {rows.length ? usdSigned(total!.net) : '$0.00'}
+          {rows.length ? usdSigned(total!.net) : '—'}
         </span>
         <span className="font-mono text-t11 tnum text-textSecondary" data-journal-day-sum>
           {rows.length > 0 ? (

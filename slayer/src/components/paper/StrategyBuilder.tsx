@@ -6,7 +6,7 @@
 import { useMemo, useState } from 'react';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import { card, head, headWord } from '../review/DeskShell';
-import { usd } from '../review/words';
+import { usd, usdBal } from '../review/words';
 import { Act, Pills, PriceBox, SizeRow, labelCls } from './OrderPanel';
 import { MULT } from '../../data/review/engine';
 import { contractWords, strikeWords, type ContractId, type Quote, type Right } from '../../data/review/quotes';
@@ -246,7 +246,7 @@ const StrategyBuilder = ({ desk }: { desk: StrategyDesk }) => {
             <div className="font-mono text-t11 tnum leading-relaxed whitespace-normal break-words" data-order-status>
               {preview && !(sells && !desk.canSell) && (
                 <div className="text-textSecondary" data-strategy-margin>
-                  {sells ? <>Holds <span className="text-textPrimary font-semibold">{usd(preview.held)}</span> of margin · </> : null}free after {usd(preview.free)} <span className="text-textMuted">· fees {usd(fees)}</span>
+                  {sells ? <>Holds <span className="text-textPrimary font-semibold">{usd(preview.held)}</span> of margin · </> : null}free after <span className={preview.free < 0 ? 'text-bear font-semibold' : undefined}>{usdBal(preview.free)}</span> <span className="text-textMuted">· fees {usd(fees)}</span>
                 </div>
               )}
               {why.market && why.limit ? <div className="text-warn">{why.market === why.limit ? why.market : `Market — ${why.market} · Limit — ${why.limit}`}</div> : <div className="text-textMuted">{kind === 'condor' ? 'One order: both spreads fill together, each leg at its own bid or ask, or nothing fills' : 'Each leg at its own bid or ask — a sale at the bid, a buy at the ask'}</div>}
