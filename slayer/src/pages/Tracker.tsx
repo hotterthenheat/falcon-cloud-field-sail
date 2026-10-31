@@ -18,6 +18,8 @@ import ContractLabel from '../components/ui/ContractLabel';
 import SessionSpark from '../components/compass/SessionSpark';
 import { usd2 as money } from '../core/format';
 import { RIDING_WORD, modelOfBook } from '../data/compassParams';
+import { useCallReturn, type CallReturn } from '../data/compassReturn';
+import { ReturnFigure } from '../components/compass/LiveReturn';
 
 const pct = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`);
 const ink = (v: number | null) => (v == null || Math.abs(v) < 0.05 ? 'text-textPrimary' : v > 0 ? 'text-bull' : 'text-bear');
@@ -31,7 +33,7 @@ const Cell = ({ label, value, tone = 'text-textPrimary', note }: { label: string
 );
 const dollars = (v: number | null) => (v == null || !Number.isFinite(v) ? '—' : `${v < 0 ? '−' : '+'}$${Math.abs(v).toFixed(2)}`);
 
-function stateOf(s: Signal): { word: string; tone: string; line: string } {
+function stateOf(s: Signal, r: CallReturn): { word: string; tone: string; line: string } {
   const o = s.outcome;
   if (!o || o.status === 'waiting') return { word: 'Filling', tone: 'text-textSecondary', line: 'Fills at the ask of the first quote a full minute after the call.' };
   if (o.status === 'unavailable') return { word: 'Unavailable', tone: 'text-textMuted', line: 'No valid quote stood a minute after the call. No price was substituted.' };
@@ -39,19 +41,22 @@ function stateOf(s: Signal): { word: string; tone: string; line: string } {
     const win = o.pnl != null && o.pnl > 0;
     return { word: win ? 'Win' : 'Loss', tone: win ? 'text-bull' : 'text-bear', line: `${o.exit.why}. Left at ${money(o.exit.px)}, ${nyClock(o.exit.at, { zone: true })}.` };
   }
-  return { word: 'Open', tone: 'text-textPrimary', line: o.last ? `Last bid ${money(o.last.bid)} at ${nyClock(o.last.t, { zone: true })}.` : 'Filled. No later quote yet.' };
+  if (r.px != null && r.at) return { word: 'Open', tone: 'text-textPrimary', line: `${r.state === 'live' ? 'Live bid' : 'Last good bid'} ${money(r.px)} at ${nyClock(r.at, { seconds: true, zone: true })}.` };
+  return { word: 'Open', tone: 'text-textPrimary', line: 'Filled. No later quote yet.' };
 }
 
 const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpen: () => void }) => {
   const o = s.outcome;
   const paid = o?.fill?.ask ?? 0;
-  const now = o?.exit?.px ?? o?.last?.bid ?? null;
-  const state = stateOf(s);
+  /* the return from the fill on the contract's one live quote (the board card and the page read the same one) */
+  const ret = useCallReturn(s);
+  const now = o?.exit?.px ?? ret.px ?? o?.last?.bid ?? null;
+  const state = stateOf(s, ret);
   const lottery = s.book === 'C';
   const runner = s.book === 'B' || s.runner;
   const closed = o?.status === 'closed';
-  /* per contract, (exit - fill) x 100: the exit's, or the last bid's while it is open */
-  const pnl = closed ? o?.pnl ?? null : paid > 0 && o?.last ? (o.last.bid - paid) * 100 : null;
+  /* per contract, (exit - fill) x 100: the exit's, or the live (else last good) bid's while it is open */
+  const pnl = ret.pnl;
   const standing = paid > 0 && o && !lottery ? activeStop(paid, o.peak, runner) : null;
   const target = paid > 0 ? (lottery ? paid * 2 : runner ? 0 : paid * 1.5) : 0;
   const away = (px: number) => (now != null && now > 0 && px > 0 && !closed ? `${px >= now ? '+' : '−'}${Math.abs((px / now - 1) * 100).toFixed(0)}% from the bid` : undefined);
@@ -65,12 +70,16 @@ const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpe
         {tracked && <Bookmark className="w-3.5 h-3.5 text-textSecondary" aria-label="Tracked" />}
         <span className={`ml-auto font-mono text-t10 uppercase tracking-wider ${state.tone}`}>{state.word}</span>
       </div>
+      <div className="flex items-baseline justify-between gap-3 px-3.5 py-2 border-b border-borderSubtle/60 min-w-0" data-tracker-return>
+        <span className="font-mono text-t9 uppercase tracking-widest text-textMuted shrink-0">Return</span>
+        <ReturnFigure r={ret} id={s.key} size="lg" />
+      </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-borderSubtle/30">
         <Cell label="Hold" value={lottery ? '3× or 2×' : s.book === 'A' && s.runner ? 'Model 2 rides' : runner ? 'Ratchet' : 'Out at 1.50×'} />
         <Cell label="At call" value={`${s.bid.toFixed(2)}×${s.ask.toFixed(2)}`} />
         <Cell label="Filled" value={paid > 0 ? money(paid) : '—'} />
         <Cell label={closed ? 'Exit' : 'Bid'} value={now != null ? money(now) : '—'} />
-        <Cell label="P&L" value={dollars(pnl)} tone={ink(pnl)} note={pct(o?.ret ?? null)} />
+        <Cell label="P&L" value={dollars(pnl)} tone={ret.state === 'asof' ? 'text-textSecondary' : ink(pnl)} note={ret.state === 'asof' ? `as of ${nyClock(ret.at)}` : pct(ret.pct)} />
         <Cell label={standing?.name ?? 'Stop'} value={lottery ? 'None' : standing ? money(standing.stop) : '—'} tone={lottery ? 'text-textSecondary' : 'text-warn'} note={standing ? away(standing.stop) : undefined} />
         <Cell label="Target" value={target > 0 ? money(target) : runner && !lottery ? 'Ratchet' : '—'} note={target > 0 ? away(target) : undefined} />
         <Cell label="Peak bid" value={o && o.peak > 0 ? money(o.peak) : '—'} />
@@ -149,7 +158,7 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
       : theta === 'down' && rows.live.length
     ? `Live data offline — reconnecting. Paths as of ${readAt ? nyClock(readAt, { zone: true }) : 'the call'}.`
     : rows.live.length
-      ? `Paths read once a minute from the contract's own quotes${readAt ? `. Last read ${nyClock(readAt, { zone: true })}` : ''}.`
+      ? `Returns live on each contract's bid. Paths read once a minute from the contract's own quotes${readAt ? `. Last read ${nyClock(readAt, { zone: true })}` : ''}.`
       : false;
   const open = (s: Signal) => navigate(`/compass/${s.id}?day=${s.day}`, { state: { from: 'Tracker' } });
   const openTracked = (t: TrackedSetup) => navigate(`/compass/${t.id}`, { state: { from: 'Tracker' } });

@@ -22,6 +22,7 @@ const PROOFS = [
   'chart-proof',
   'clock-proof',
   'contract-quote-proof',
+  'compass-return-proof',
   'fixture-proof',
   'higher-proof',
   'paper-proof',
