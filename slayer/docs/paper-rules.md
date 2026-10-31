@@ -481,3 +481,6 @@ Every rule below has a known-number check in `scripts/paper-proof.ts` (paper) an
   short is never one. What each would have made is dir × (price − entry) × 100 × qty less the fee a contract each way
   on **every leg** (a spread pays two). Short 2.00, target 1.00: +$98.70; a debit spread in at 2.00, target 4.00:
   +$197.40.
+- **The chart's replay steps at bar boundaries** (`data/replay.ts`): inside a bar the name stands at that bar's close
+  and the book is the newest snapshot at or before it. It no longer glides toward the next bar's close or blends toward
+  the next snapshot (which showed the minute before it happened).
