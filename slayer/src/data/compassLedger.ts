@@ -7,7 +7,7 @@
 import { useSyncExternalStore } from 'react';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import { currentPicks, noteLeft, takeWouldPicks, underCloses } from './compassModel';
-import { settleSignal, type Outcome, type PathQuote, type SignalBook } from './compassOutcome';
+import { fineWindows, settleSignal, type Outcome, type PathQuote, type SignalBook } from './compassOutcome';
 import { stopAfter } from './compassParams';
 import { compassHost } from './compassHost';
 import { nyIsoDate, nyParts, nyWallStamp } from '../core/nyTime';
@@ -235,6 +235,31 @@ export async function contractPath(sig: Pick<Signal, 'ticker' | 'expiry' | 'stri
   return [...minute, ...readQuotes(fine.data)].sort((a, b) => a.t - b.t);
 }
 
+/* The 1-second quotes already read for a call's stop and target minutes, by signal key and window. */
+const fineMemo = new Map<string, { windows: Set<string>; quotes: PathQuote[] }>();
+
+/** A Book A or B call's minute path with the 1-second quotes of every minute whose range crossed its stop or a target
+    (compassOutcome fineWindows), each window read once. A window that does not answer is left to the next pass. */
+export async function withFineExits(sig: Pick<Signal, 'key' | 'ticker' | 'expiry' | 'strike' | 'right' | 'day' | 'book' | 'runner' | 'firedAt' | 'closeMin'>, minute: PathQuote[], now = Date.now()): Promise<PathQuote[]> {
+  if (sig.book === 'C') return minute;
+  const memo = fineMemo.get(sig.key) ?? { windows: new Set<string>(), quotes: [] };
+  const base = `/option/history/quote?symbol=${encodeURIComponent(sig.ticker)}&expiration=${ymd(sig.expiry)}&strike=${sig.strike}&right=${sig.right === 'C' ? 'call' : 'put'}&start_date=${ymd(sig.day)}&end_date=${ymd(sig.day)}`;
+  for (const [after, through] of fineWindows(sig, minute, now)) {
+    const id = `${after}|${through}`;
+    if (memo.windows.has(id)) continue;
+    const got = await compassHost().theta(`${base}&interval=1s&start_time=${clockOf(after + 1_000)}&end_time=${clockOf(through)}&format=json`);
+    if (got.error && got.error !== 'no_data') continue;
+    memo.windows.add(id);
+    memo.quotes.push(...readQuotes(got.data).filter(q => q.t > after && q.t <= through && q.t % 60_000 !== 0));
+  }
+  if (memo.windows.size) {
+    fineMemo.set(sig.key, memo);
+    if (fineMemo.size > 400) fineMemo.delete(fineMemo.keys().next().value as string);
+  }
+  if (!memo.quotes.length) return minute;
+  return [...minute, ...memo.quotes].sort((a, b) => a.t - b.t);
+}
+
 let reading = false;
 
 /** Read the path of every signal still open and settle it. A closed outcome is frozen and never asked for again. The
@@ -249,7 +274,9 @@ export async function settleOpen(now = Date.now()): Promise<void> {
       const quotes = await contractPath(sig, sig.outcome?.fill?.at ?? null);
       if (!quotes) return;
       const under = await underCloses(sig.ticker, ymd(sig.day));
-      let out = settleSignal(sig, quotes, under, Date.now());
+      /* Books A and B: the stop and target minutes are judged on their 1-second quotes */
+      const path = sig.book === 'C' ? quotes : await withFineExits(sig, quotes);
+      let out = settleSignal(sig, path, under, Date.now());
       if (sig.book === 'C' && out.fill && !sig.outcome?.fill) {
         const fine = await contractPath(sig, out.fill.at);
         if (fine) out = settleSignal(sig, fine, under, Date.now());

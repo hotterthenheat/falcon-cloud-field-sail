@@ -139,7 +139,9 @@ export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], unde
     } else {
       const hit = treeExit(paid, q.bid, peak, runner);
       if (hit) return closed(fill, { at: q.t, px: hit.px, why: hit.why === 'tp1' ? 'Take profit 1.50×' : 'Stop' }, peak, stopAfter(paid, peak, runner), q);
-      if (q.t - fill.t >= 60_000) {
+      /* the reversal reads the underlying's minute closes: it is judged on the minute quotes only, not on the 1-second
+         quotes added inside a minute that crossed the stop or a target */
+      if (q.t % 60_000 === 0 && q.t - fill.t >= 60_000) {
         const line = reversalLine(paid, q.bid, sig.right, ret5At(under, q.t));
         if (line) return closed(fill, { at: q.t, px: q.bid, why: line }, peak, stopAfter(paid, peak, runner), q);
       }
@@ -167,6 +169,43 @@ export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], unde
     fees: null,
     heldMin: Math.max(0, Math.round((last.t - fill.t) / 60_000)),
   };
+}
+
+/** The most 1-second windows read for one call's exits. */
+export const FINE_MAX = 12;
+
+/**
+ * The minutes whose 1-second quotes decide a Book A or B exit: each minute after the fill (up to the exit the minute
+ * quotes give) whose range, from the bid that ended the minute before to the bid that ends it, crosses the stop
+ * standing then, the 1.50× target of a non-runner, or a ratchet rung (1.25×, and a runner's 1.50×, 2×, 3×, 4×). One
+ * quote a minute cannot tell when inside the minute the stop or target was touched, or at what bid; the seconds can.
+ * Returned as [after, through] epoch ms, the exit's own minute first, at most FINE_MAX. Book C reads its seconds
+ * already (compassLedger contractPath).
+ */
+export function fineWindows(sig: SignalCore, quotes: readonly PathQuote[], now = Number.MAX_SAFE_INTEGER): [number, number][] {
+  if (sig.book === 'C') return [];
+  const minute = quotes.filter(q => q.t % 60_000 === 0);
+  const out = settleSignal(sig, minute, [], now);
+  if (!out.fill) return [];
+  const paid = out.fill.ask;
+  const runner = sig.book === 'B' || sig.runner;
+  const end = out.exit?.at ?? Infinity;
+  const rows = minute.filter(q => q.t > out.fill!.at && q.t <= end && validQuote(q)).sort((a, b) => a.t - b.t);
+  const rungs = runner ? [1.25, 1.5, 2, 3, 4] : [1.25, 1.5];
+  const found: [number, number][] = [];
+  let prev: PathQuote = { t: out.fill.at, bid: out.fill.bid, ask: out.fill.ask };
+  let peak = 0;
+  for (const q of rows) {
+    const lo = Math.min(prev.bid, q.bid);
+    const hi = Math.max(prev.bid, q.bid);
+    const levels = [stopAfter(paid, peak, runner), ...rungs.map(r => paid * r)];
+    if (levels.some(L => L >= lo && L <= hi)) found.push([prev.t, q.t]);
+    peak = Math.max(peak, q.bid);
+    prev = q;
+  }
+  if (found.length <= FINE_MAX) return found;
+  const last = found[found.length - 1];
+  return [last, ...found.slice(0, FINE_MAX - 1)];
 }
 
 export interface DaySummary {
