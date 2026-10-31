@@ -15,7 +15,7 @@ import { ladderExpiryOptions, LADDER_RANGES } from '../../../components/gex/ladd
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_WARM } from '../../../components/gex/paletteInk';
 import { useFocus } from '../../../context/FocusContext';
 import { expiryFor } from '../../../core/calendar';
-import { snapshotOf } from '../../../data/uwBook';
+import { snapshotOf } from '../../../data/book/feed';
 import { AGENDA_ORDERS, type AgendaOrder, type Target } from '../../../data/agenda';
 import { fmtDollars } from '../../../data/ahead';
 import { buildCompare, buildCompareSide, partnerFor, regimeWord, type CompareSide } from '../../../data/compare';

@@ -10,7 +10,7 @@ import { AsOf, asOfText } from '../ui/states';
 import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
 import { thetaAllowedHere } from '../../data/theta';
 import { extendedLine, sessionPrice, useLiveQuote } from '../../data/liveQuote';
-import { changeInk } from '../../data/uwBook';
+import { changeInk } from '../../data/book/day';
 import { uwKept } from '../../data/whales';
 import { sessionWhen } from '../../data/dayChange';
 

@@ -18,7 +18,8 @@ import {
   type UTCTimestamp,
   type Logical,
 } from 'lightweight-charts';
-import { liveBars, useBookRev } from '../../data/uwBook';
+import { liveBars } from '../../data/book/feed';
+import { useBookRev } from '../../data/book/store';
 import { aggregateCandles, tfMinutes, type Timeframe } from '../../data/timeframe';
 import { estimatePremium } from '../../data/compass';
 import { candleSeriesOptions, chartGround, chartSurface, getCandleTheme, useCandleThemeKey } from './candleTheme';

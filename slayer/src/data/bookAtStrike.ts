@@ -2,7 +2,9 @@
    dealers lean on a move through it, its part (a wall, the supreme, distance from the flip), how it held today,
    the close odds and what the day added. Built once per scan; the Weigher's chain and strike block read it. */
 
-import { bookCandles, bookHistory, peekIv, snapshotOf } from './uwBook';
+import { bookCandles, bookHistory } from './book/levels';
+import { peekIv } from './book/move';
+import { snapshotOf } from './book/feed';
 import { aheadClock, buildCloseOdds, buildCorridor, fmtDollars } from './ahead';
 import { buildBuilding, type BuildVerdict } from './building';
 import { readSessionClock } from './moc';

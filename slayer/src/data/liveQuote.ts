@@ -2,7 +2,9 @@
    A name with no print yet is null. */
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
-import { peekSpot, subscribeBook, tapeQuote } from './uwBook';
+import { peekSpot } from './book/day';
+import { subscribeBook } from './book/store';
+import { tapeQuote } from './book/tape';
 import { whalesQuote, whalesScreener, whalesState } from './whales';
 import { BoundedMap } from './boundedMap';
 import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from './dayChange';

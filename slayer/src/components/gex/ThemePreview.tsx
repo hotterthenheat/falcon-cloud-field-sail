@@ -3,7 +3,8 @@
 
 import { useEffect, useRef } from 'react';
 import { CandlestickSeries, createChart, HistogramSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
-import { liveBars, useBookRev } from '../../data/uwBook';
+import { liveBars } from '../../data/book/feed';
+import { useBookRev } from '../../data/book/store';
 import { aggregateCandles, tfMinutes, type Timeframe } from '../../data/timeframe';
 import { CANDLE_THEMES, candleSeriesOptions, chartSurface, type CandleThemeKey } from './candleTheme';
 import { readToken, useResolvedTheme } from '../../theme/theme';

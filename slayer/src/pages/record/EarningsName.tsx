@@ -30,7 +30,8 @@ import CompanyFile from '../../components/record/CompanyFile';
 import { EarningsVol } from '../../components/vendor/LiveDesk';
 import { Box as RecordBox, Door, Fact as RecordFact } from '../../components/record/ui';
 import { expiryOpen } from '../../core/tradingYear';
-import { peekIv, useBookRev } from '../../data/uwBook';
+import { peekIv } from '../../data/book/move';
+import { useBookRev } from '../../data/book/store';
 import { whalesGreekExpiry, whalesTermStructure, type UwGreekStrike, type UwTerm } from '../../data/whales';
 
 const BEAR = 'rgb(var(--bear))';

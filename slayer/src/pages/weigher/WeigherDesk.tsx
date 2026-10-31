@@ -21,7 +21,8 @@ import { chartGround, useCandleThemeKey } from '../../components/gex/candleTheme
 import { onGlide } from '../../core/glide';
 import { DOCK_ROOM } from '../../data/editorDock';
 import { useTicker } from '../../context/MarketDataContext';
-import { snapshotOf, useBookRev } from '../../data/uwBook';
+import { snapshotOf } from '../../data/book/feed';
+import { useBookRev } from '../../data/book/store';
 import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
 import { closeMoveTitle, signedPct } from '../../data/dayChange';
 import { buildPrints, fmtUsd } from '../../data/gex';

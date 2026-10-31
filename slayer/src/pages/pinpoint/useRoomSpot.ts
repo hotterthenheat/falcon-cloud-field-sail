@@ -5,7 +5,9 @@
    fallback is the regular close. */
 
 import { useRef, useSyncExternalStore } from 'react';
-import { bookStatus, ensureBook, peekSpot } from '../../data/uwBook';
+import { bookStatus } from '../../data/book/store';
+import { ensureBook } from '../../data/book/load';
+import { peekSpot } from '../../data/book/day';
 import { peekThetaPrice } from '../../data/thetaQuote';
 import { askThetaPrice } from '../../components/gex/LivePrice';
 import { thetaAllowedHere } from '../../data/theta';

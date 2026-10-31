@@ -8,7 +8,7 @@ import { fmtUsd } from '../../data/gex';
 import { FIELD_MODE_WORDS, setFieldMode, useFieldMode } from '../../data/fieldMode';
 import { useDeskPrefs } from '../../data/deskPrefs';
 import { exposureTodayFrom, ledgerFlowNet, priorSessionWords, useExposureLogRev, useFieldPoll, useServerExposure, type FieldMode, type ServerExposure } from '../../data/book/exposureLog';
-import { useBookRev } from '../../data/uwBook';
+import { useBookRev } from '../../data/book/store';
 import { nyClock, nyIsoDate, nyWallTime } from '../../core/nyTime';
 
 /** Where the field's day starts, in words: the server's record from the open, a recorder that started late, or (no

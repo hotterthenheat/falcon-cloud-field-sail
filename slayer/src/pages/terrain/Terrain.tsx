@@ -4,7 +4,11 @@ import { ChevronUp, Code2, Link2, Maximize2, Minimize2, Rows3, SlidersHorizontal
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
 import { useDeskSession, sessionMeta, type DeskSession } from '../../data/deskSession';
-import { chainForDate, ensureBook, expiryLabel, peekSpot, snapshotFor, useBookRev } from '../../data/uwBook';
+import { chainForDate, expiryLabel } from '../../data/book/levels';
+import { ensureBook } from '../../data/book/load';
+import { peekSpot } from '../../data/book/day';
+import { snapshotFor } from '../../data/book/feed';
+import { useBookRev } from '../../data/book/store';
 import { levelNetPath } from '../../data/flipLevel';
 import { rootTradesSession } from '../../data/compassSession';
 import { useSessionQuote } from '../../data/sessionQuote';

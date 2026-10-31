@@ -8,7 +8,9 @@ import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, use
 import { Play } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
-import { snapshotOf, useBookRev, usePinpointFeed, ensureBook } from '../../data/uwBook';
+import { snapshotOf, usePinpointFeed } from '../../data/book/feed';
+import { useBookRev } from '../../data/book/store';
+import { ensureBook } from '../../data/book/load';
 import { useListedRev } from '../../data/listedNames';
 import { sameName } from '../../data/spotGexBook';
 import { useFocus } from '../../context/FocusContext';

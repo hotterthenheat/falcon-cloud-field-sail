@@ -8,7 +8,9 @@ import { bookToday, isoDate, isTradingDay, nextSession, sessionBefore, today as 
 import { nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
 import { recordDay } from './bookWindow';
 import { datesOf, smileOf, yearsTo } from './flipLevel';
-import { ownIvDates, peekEntry, type OiChange } from './uwBook';
+import { ownIvDates } from './book/scale';
+import { peekEntry } from './book/store';
+import type { OiChange } from './book/oiChange';
 import { shownGamma } from '../components/gex/retailSign';
 import { CLOSE_MIN, OPEN_MIN, SESSION_MIN, fmtDollars, fmtStrike, hhmm, type AheadClock } from './ahead';
 import type { ExposureProfileData } from '../types/gex';

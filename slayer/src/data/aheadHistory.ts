@@ -1,7 +1,7 @@
 /* How today's range, clock and odds compare with what price did in the sessions on hand (the book's minute bars and history
    from uwBook), session by session in each session's own minutes. */
 
-import { bookCandles, bookHistory } from './uwBook';
+import { bookCandles, bookHistory } from './book/levels';
 import type { Candle } from '../types/market';
 
 /** Bars this far apart are one session; farther is the overnight (data/replay.ts) */

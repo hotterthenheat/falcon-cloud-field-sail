@@ -20,7 +20,9 @@ import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import { useNameUnit } from '../../data/distanceUnits';
 import { cadenceWords, longDay, recordDay, aheadWord, sessionDay } from '../../data/bookWindow';
 import { fmtDistance, sessionAtr } from '../../data/atr';
-import { bookCandles, peekDaySigma, peekIv, useBookRev } from '../../data/uwBook';
+import { bookCandles } from '../../data/book/levels';
+import { peekDaySigma, peekIv } from '../../data/book/move';
+import { useBookRev } from '../../data/book/store';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal */
 /* an armed alert wears the alert ink (palette ALERT) and the bell jingles */

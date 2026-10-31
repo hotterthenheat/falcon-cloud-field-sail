@@ -4,7 +4,7 @@
 import type { ExpiryChoice } from '../ui/ExpiryCard';
 import { bookToday, expiryFor, isoDate, sessionsBetween, today, MONTHS } from '../../core/calendar';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
-import { expiryDateFor } from '../../data/uwBook';
+import { expiryDateFor } from '../../data/book/levels';
 import type { ExposureExpiry } from '../../types/gex';
 
 const fmtDay = (d: Date) => `${MONTHS[d.getMonth()]} ${d.getDate()}`;

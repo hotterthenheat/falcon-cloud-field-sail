@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { RotateCcw } from 'lucide-react';
-import { bookStatus, ensureBook, useBookRev } from '../../data/uwBook';
+import { bookStatus, useBookRev } from '../../data/book/store';
+import { ensureBook } from '../../data/book/load';
 import { LeaveRead } from '../../components/ui/liveRead';
 
 /** The failure card. Try again stays. Back leaves, so a failed read is not a dead end. */

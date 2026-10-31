@@ -14,7 +14,7 @@ import { closeMoveTitle, sessionWhen } from '../../data/dayChange';
 import { asOfText } from '../ui/states';
 import { OfflineLine, useUwOnlyRoute } from './NavQuote';
 import { peekQuote, sessionPrice, useDayMoves } from '../../data/liveQuote';
-import { peekEntry, useBookRev } from '../../data/uwBook';
+import { peekEntry, useBookRev } from '../../data/book/store';
 import {
   MAX_NAMES, MAX_SECTIONS, addSection, closeWatchlist, moveName, nudgeName, removeSection, renameSection, restoreName, restoreSection, setNameFlag,
   unwatchName, useNameWatch, useWatchlistOpen, watchName, type WatchSection, type WatchedName,
