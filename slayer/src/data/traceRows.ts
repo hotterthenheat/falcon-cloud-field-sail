@@ -299,6 +299,14 @@ export interface SeenSpot {
 }
 export const spotSeen = new Map<string, SeenSpot>();
 export const spotScreenAt = new Map<string, number>();
+/* A name's average day in dollars (the screener's avg30_volume × its close), noted wherever a screener row is read —
+   the sized lines (dark prints, big money) scale to it */
+const advSeen = new Map<string, number>();
+export function noteAdv(ticker: string, advUsd: number): void {
+  if (ticker && advUsd > 0 && Number.isFinite(advUsd)) advSeen.set(ticker.toUpperCase(), advUsd);
+}
+/** A name's average daily dollar volume, null when no screener row for it has been read */
+export const advUsdOf = (ticker: string): number | null => advSeen.get((ticker || '').toUpperCase()) ?? null;
 export const spotAsks = new Map<string, Promise<void>>();
 export const SPOT_SCREEN_MS = 60_000;
 /** Note a price for a name, stamped by when it printed — the newest wins */
@@ -358,6 +366,7 @@ export async function ensureSpots(tickers: Iterable<string>): Promise<void> {
           const close = num(r.close);
           /* the screener row carries no clock of its own: stamped a little before the read, so a print seen since wins */
           if (t && close > 0) noteSpot(t, close, readAt - 5_000);
+          if (t && close > 0) noteAdv(t, num(r.avg30_volume) * close);
         }
       } catch {
         /* no price: the row keeps its own */

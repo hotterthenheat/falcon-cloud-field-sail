@@ -10,7 +10,7 @@ import type { DarkPoolPrint, DarkPoolView } from '../types/darkpool';
 import { marketPhase } from '../core/marketPhase';
 import { nyParts } from '../core/nyTime';
 import type { MoneynessKey, NetFlowSegment, SpreadTrade } from './flowBook';
-import { alertToPrint, byNewest, clock, contractRow, dteFrom, ensureIndexLevels, extendedOf, heldFresh, indexRoot, lastRegularClose, liveSpotOf, liveTrades, mapBook, mapWithIndex, markAlertPackages, nextSessionIso, num, nyDateOf, nyIsoToday, prevSessionIso, printCondition, quoteNoReadOf, rowsOf, SESSION_OPEN, sessionEndMin, sideOfTags, tapeSessionIso, tickerOfRow, tradeToPrint } from './traceRows';
+import { alertToPrint, byNewest, clock, contractRow, dteFrom, ensureIndexLevels, ensureSpots, extendedOf, heldFresh, indexRoot, lastRegularClose, liveSpotOf, liveTrades, mapBook, mapWithIndex, markAlertPackages, nextSessionIso, num, nyDateOf, nyIsoToday, prevSessionIso, printCondition, quoteNoReadOf, rowsOf, SESSION_OPEN, sessionEndMin, sideOfTags, tapeSessionIso, tickerOfRow, tradeToPrint } from './traceRows';
 import { dedupeSpreads, settleSpreadWith, spreadOf } from './traceSpreads';
 import { type DarkDay, darkDayOf, darkLevels, darkPrint, darkView, mergeDark } from './traceDark';
 
@@ -1007,10 +1007,12 @@ export function useNameDark(ticker: string | null, untilMs: number | null = null
       if (!(await tickerKnown(name))) return { view: null, lit: [] as DarkPoolPrint[], day: null, unknown: true };
       const [prints, levels, lit, quote, bars] = await Promise.all([
         getRows(`/darkpool/${encodeURIComponent(name)}?limit=200${cut}`),
+        /* (beside them, the name's screener row, cached a minute: its average day sizes the posture's prints) */
         getRows(`/darkpool/${encodeURIComponent(name)}/price-levels?date=${day0}`).catch(() => [] as Record<string, unknown>[]),
         getRows(`/lit-flow/${encodeURIComponent(name)}?limit=200${cut}`).catch(() => [] as Record<string, unknown>[]),
         stockLastOf(name),
         getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?date=${day0}&limit=1000`).catch(() => [] as Record<string, unknown>[]),
+        ensureSpots([name]),
       ]);
       /* the session's New York day, and only the session that was picked */
       const inSession = (p: DarkPoolPrint) => (session === 'regular' ? !p.extended : !!p.extended);

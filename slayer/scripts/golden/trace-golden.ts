@@ -193,5 +193,39 @@ for (const name of ['SPY', 'QQQ']) {
   expectEqual(`0DTE ${name}: net calls, net puts, call vol, put vol`, day.length === 1 ? [day[0].callNet, day[0].putNet, day[0].callVol, day[0].putVol].map(Math.round) : null, FPE[name]);
 }
 
+/* ---- 6. known numbers: one rule per figure, against hand-worked rows ------------------------------------------ */
+const { darkPrint } = await import('../../src/data/traceLive');
+const { postureOf, darkPosture, darkSizedFloor } = await import('../../src/data/traceDark');
+const { noteAdv } = await import('../../src/data/traceRows');
+const { printKind } = await import('../../src/data/tape');
+const { buildCatches } = await import('../../src/data/flowBook');
+{
+  /* a regular-session dark print 1¢ over (or under) a 9.99 × 10.01 quote, its dollars as given */
+  const dp = (ticker: string, over: boolean, usd: number, k: number) =>
+    darkPrint({ ticker, price: over ? '10.01' : '9.99', size: Math.round(usd / 10), premium: String(usd), nbbo_bid: '9.99', nbbo_ask: '10.01', executed_at: `2026-10-28T15:${String(10 + k).padStart(2, '0')}:00Z`, tracking_id: `${ticker}${k}` }, k);
+  /* six $588K paid over the mid, six $412K sold under: (3.528M − 2.472M) / 6M = 17.6% — under the 18% edge, Balanced
+     on Trace and Dossier alike (Trace rounded it to 18 and read Accumulating) */
+  const set = [...Array.from({ length: 6 }, (_, k) => dp('ZZZ', true, 588_000, k)), ...Array.from({ length: 6 }, (_, k) => dp('ZZZ', false, 412_000, k + 6))];
+  const t = postureOf(set);
+  const d = darkPosture(set);
+  expectEqual('dark posture at a 17.6% net: Trace and Dossier both Balanced, unrounded', [t.posture, d.posture, Number(t.net.toFixed(1)), Number(d.net.toFixed(1)), t.read], ['BALANCED', 'BALANCED', 17.6, 17.6, 12]);
+  /* five prints all over the mid are too few (12) to read on either page — Trace read them Accumulating */
+  const few = postureOf(set.slice(0, 5));
+  expectEqual('dark posture on 5 prints: too few to read', [few.posture, few.read, few.enough], ['BALANCED', 5, false]);
+  /* NVDA's ~$36B average day: its sized line is a second of it, $1,538,462; a $1M NVDA print is not read, a ZZZ one is */
+  noteAdv('NVDA', 36e9);
+  expectEqual('dark sized line: a second of the average day, $250K at the least', [Math.round(darkSizedFloor(36e9)), darkSizedFloor(20e6), darkSizedFloor(null)], [1538462, 250000, 250000]);
+  expectEqual('dark posture reads a $1M print on ZZZ, not on NVDA', [darkPosture([dp('NVDA', true, 1_000_000, 20)], { minPrints: 1 }).read.length, darkPosture([dp('ZZZ', true, 1_000_000, 21)], { minPrints: 1 }).read.length], [0, 1]);
+}
+{
+  /* a block needs both lines: 100 contracts AND $50K — a 100-lot at $0.05 ($500) and a 20-lot for $300K are single prints */
+  const k = (size: number, premium: number) => printKind({ sweep: false, legs: 1, strat: '—', size, premium });
+  expectEqual('print kind: 100 × $0.05, 20 for $300K, 100 for $60K', [k(100, 500), k(20, 300_000), k(100, 60_000)], ['SINGLE', 'SINGLE', 'BLOCK']);
+  /* big money: $25M at the least, a thousandth of the name's average dollar day where that is more (NVDA's $36B: $36M) */
+  const row = (ticker: string) => ({ key: `${ticker}-big`, ticker, premium: 30_000_000, volume: 1, volOverOI: 0, sweepPct: 0, chgPct: 0, floorPct: 0, multiPct: 0, askPct: 50, earnDays: null, deltaOI: 0, lastAtMin: 600, lastAt: '10:00', last: 1 }) as never;
+  const caught = buildCatches([row('NVDA'), row('ZZZ')]).filter(c => c.rules.includes('big-money')).map(c => c.row.ticker);
+  expectEqual('big money at $30M: ZZZ yes, NVDA (line $36M) no', caught, ['ZZZ']);
+}
+
 void stockClose;
 done();

@@ -8,7 +8,7 @@ import { reasonMatches, reasonsSignature, type UserReason } from './flowReasons'
 import type { SleeveKey } from '../types/compass';
 import type { BookContract } from '../types/trace';
 import { dayLean, leanWords } from './traceLean';
-import { usd } from './traceRows';
+import { advUsdOf, usd } from './traceRows';
 
 /** A New York minute of the day, spoken — "14:30" */
 const clockOf = (minute: number) => minuteLabel(minute);
@@ -142,8 +142,8 @@ export const WATCHERS: WatcherRule[] = [
     label: 'Big money',
     /* The contract's day premium, relative so it stays rare: the top tenth of the book's premium today, and $25M at
        the least */
-    reason: "In the top tenth of the book's premium in the session ($25M at the least)",
-    hint: "A contract whose day's premium is in the top 10% of the book's — and at least $25M",
+    reason: "In the top tenth of the book's premium in the session ($25M at the least, a thousandth of the name's average dollar day where that is more)",
+    hint: "A contract whose day's premium is in the top 10% of the book's — and at least $25M, or 0.1% of its name's average day's dollar volume when larger",
   },
   {
     key: 'into-earnings',
@@ -296,17 +296,26 @@ export function stockLike(r: { otmPct: number; dte: number }): boolean {
 }
 export const STOCK_LIKE_HINT = '25% or more in the money with a month or more to run: it trades like the stock, likely a replacement or roll, not a bet';
 
+/** Big money's floor, for every name */
+export const BIG_MONEY_MIN = 25_000_000;
+/** …and, where the name's average day is known, a thousandth of its dollar volume (NVDA's ~$36B day: $36M) */
+export const BIG_MONEY_ADV_SHARE = 0.001;
 /** The book's big-money line: its 90th-percentile premium, $25M at the least */
 function bigMoneyLine(rows: BookContract[]): number {
-  if (!rows.length) return 25_000_000;
+  if (!rows.length) return BIG_MONEY_MIN;
   const s = rows.map(r => r.premium).sort((a, b) => a - b);
-  return Math.max(25_000_000, s[Math.min(s.length - 1, Math.floor(s.length * 0.9))]);
+  return Math.max(BIG_MONEY_MIN, s[Math.min(s.length - 1, Math.floor(s.length * 0.9))]);
+}
+/** One contract's big-money line: the book's, raised to a thousandth of its name's average dollar day when known */
+export function bigMoneyLineFor(r: Pick<BookContract, 'ticker'>, bookLine = BIG_MONEY_MIN): number {
+  const adv = advUsdOf(r.ticker);
+  return Math.max(bookLine, adv != null ? adv * BIG_MONEY_ADV_SHARE : 0);
 }
 
-function rulesFor(r: BookContract, bigLine = 25_000_000): WatcherKey[] {
+function rulesFor(r: BookContract, bigLine = BIG_MONEY_MIN): WatcherKey[] {
   const out: WatcherKey[] = [];
   // "Big enough to move the day" has to stay rare or the words mean nothing.
-  if (r.premium >= bigLine) out.push('big-money');
+  if (r.premium >= bigMoneyLineFor(r, bigLine)) out.push('big-money');
   if (r.earnDays != null && r.earnDays <= 5 && r.deltaOI > 0 && r.volume >= 3000) out.push('into-earnings');
   // Climbing and falling are mirror predicates — chasers vs sellers, same bar.
   /* a day of spread legs has no lean to chase or sell on */

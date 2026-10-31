@@ -94,11 +94,14 @@ export function rankNotable(prints: FlowPrint[]): FlowPrint[] {
     .map(([, p]) => p);
 }
 
-/* A block is size in one print: one leg, BLOCK_MIN_SIZE contracts or BLOCK_MIN_PREMIUM dollars. A flow alert of several
-   prints is a burst unless its largest single trade is known to clear that line. */
+/* A block is size in one print: one leg of BLOCK_MIN_SIZE contracts or more AND BLOCK_MIN_PREMIUM dollars or more —
+   both, so a 100-lot at $0.05 ($500) is not a block, nor a 20-lot at $150. A flow alert of several prints is a burst
+   unless its largest single trade is known to clear that line. */
 export type PrintKind = 'SWEEP' | 'BLOCK' | 'MULTI' | 'SINGLE' | 'COMPRESSION' | 'BURST';
 export const BLOCK_MIN_SIZE = 100;
-export const BLOCK_MIN_PREMIUM = 250_000;
+export const BLOCK_MIN_PREMIUM = 50_000;
+/** Size and money in one print (both lines) */
+export const isBlockSized = (t: { size: number; premium: number }) => t.size >= BLOCK_MIN_SIZE && t.premium >= BLOCK_MIN_PREMIUM;
 export function printKind(p: Pick<FlowPrint, 'sweep' | 'legs' | 'strat' | 'size' | 'premium'> & Partial<Pick<FlowPrint, 'compression' | 'trades' | 'largestTrade' | 'floorPackage'>>): PrintKind {
   if (p.compression) return 'COMPRESSION';
   if (p.floorPackage) return 'MULTI';
@@ -106,9 +109,9 @@ export function printKind(p: Pick<FlowPrint, 'sweep' | 'legs' | 'strat' | 'size'
   if (p.legs > 1 || p.strat !== '—') return 'MULTI';
   if (p.trades != null && p.trades > 1) {
     const L = p.largestTrade;
-    return L && (L.size >= BLOCK_MIN_SIZE || L.premium >= BLOCK_MIN_PREMIUM) ? 'BLOCK' : 'BURST';
+    return L && isBlockSized(L) ? 'BLOCK' : 'BURST';
   }
-  if (p.size >= BLOCK_MIN_SIZE || p.premium >= BLOCK_MIN_PREMIUM) return 'BLOCK';
+  if (isBlockSized(p)) return 'BLOCK';
   return 'SINGLE';
 }
 
