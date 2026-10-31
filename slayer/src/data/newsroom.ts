@@ -186,9 +186,13 @@ const MACRO_ORIGINS: { re: RegExp; lat: number; lng: number; city: string }[] = 
   { re: /\b(?:crude|oil prices?|brent)\b/i, lat: 48.21, lng: 16.37, city: 'Vienna' },
 ];
 
-/** Internal 1–10 from the wire's own numbers — deterministic, never shown raw. */
-const severityOf = (n: NewsItem): number =>
-  Math.max(1, Math.min(10, Math.round(Math.abs(n.prediction.expMove1dPct) * 1.6 + n.magnitude * 5)));
+/** The tier a story starts on before its move: the vendor's major flag (NewsItem.magnitude 1) or not */
+const MAJOR_TIER = 4;
+const MINOR_TIER = 2.25;
+/** Internal 1–10 from the wire's own numbers — the move at publish and the vendor's major flag — deterministic, never
+    shown raw. */
+export const severityOf = (n: NewsItem): number =>
+  Math.max(1, Math.min(10, Math.round(Math.abs(n.prediction.expMove1dPct) * 1.6 + (n.magnitude >= 1 ? MAJOR_TIER : MINOR_TIER))));
 
 /** The map's grade from the vendor's own read. Neutral stays WATCH; a missing read is not graded for or against. */
 const gradeFromSentiment = (s: number | null): NewsGrade =>

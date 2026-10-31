@@ -305,12 +305,14 @@ export function newsFromWhales(rows: UwNews[], priorClose: PriorClose = noPrior)
       body: [`Reported by ${r.source || 'the wire'}.`],
       category,
       sentiment: sent,
-      magnitude: major ? 0.8 : 0.45,
+      /* the vendor's is_major flag as it is (1 / 0) — never a measured "how market-moving" figure */
+      magnitude: major ? 1 : 0,
       major,
       prediction: {
         expMove1dPct: move,
         expMove5dPct: move,
-        confidencePct: moved != null ? 58 : 0,
+        /* no model stands behind the figure: no confidence to state (it was a constant 58 on every measured story) */
+        confidencePct: NaN,
         analog: moved != null ? 'The figure is the name\'s regular-session move when the story crossed. Not a forecast.' : '',
         playbook: moved != null
           ? `The figure is how the name had moved on the regular session when the story crossed the wire${pm.ext != null ? `, with the ${pm.extWord} move apart` : ''} — a snapshot at publish, not today's move now, and not a forecast.`
