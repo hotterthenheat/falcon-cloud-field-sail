@@ -11,8 +11,8 @@
 import { compassHost, type ThetaAnswer } from './compassHost';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { setupIdOf } from './compass';
-import { GEX_CORE, inLottery, sessionScanOpen, weekdayDte } from './compassParams';
-import { deskPhase, odteAsleep, optionScanOpen, sessionIso, sessionYmd } from './compassSession';
+import { GEX_CORE, WEEKLY_STRIKES, inLottery, sessionScanOpen, weekdayDte } from './compassParams';
+import { deskPhase, odteAsleep, optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
 import { COMPASS_TICKERS } from './compassUniverse';
 import {
   commitClosest,
@@ -25,12 +25,14 @@ import {
   scoreLottery,
   setScanBusy,
   setScanReport,
+  setScoreClose,
   underAt,
+  warmSession,
   type ScoreResult,
 } from './compassModel';
 import { recordPicks, setSessionClose, settleOpen } from './compassLedger';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
-import { nyYmd as ymd } from '../core/calendar';
+import { nyYmd as ymd, sessionCloseMinOn } from '../core/calendar';
 
 export const INDEX_OF: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'XSP', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX', NDX: 'NDX', NDXP: 'NDX' };
 export const OPTION_OF: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW', NDX: 'NDXP' };
@@ -249,8 +251,9 @@ interface Draft {
   greeks: LiveGreeks;
 }
 
-/** Book A is four strikes from the money. Book B is twelve. Farther than that is not a call and not a closest, except
-    a same-day contract cheap enough for Book C. */
+/** Book A reaches the span (4 strikes on an index root, up to 12 on a single name). Book B is the band past it,
+    max(8, span + 1) to that + 4 strikes out, at an ask of 1.00 or less. A long chain keeps 12 strikes either side and
+    every contract asking 1.65 or less, which holds all of Book B (it asks 1.00 or less) and Book C. */
 function kept(list: Draft[]): Draft[] {
   if (list.length <= 80) return list;
   const strikes = [...new Set(list.map(d => d.strike))].sort((a, b) => a - b);
@@ -313,12 +316,14 @@ function build(drafts: Map<string, Draft[]>, expiry: string, sleeve: SleeveKey, 
   return kept(drafts.get(expiry) ?? []).map(d => toSetup(d.root, d.strike, d.right, d.exp, d.bid, d.ask, d.under, sleeve, d.at, d.greeks, listed));
 }
 
-/** One snapshot of one name: today's expiry (0DTE), one named expiry, or '*' for the nearest expiry 1 to 7 weekdays
-    out (every expiry within 11 calendar days in one ask, the nearest kept). */
+/** One snapshot of one name: today's expiry (0DTE), one named expiry, or '*' for the nearest expiry 1 to 7 sessions
+    out (every expiry within 11 calendar days in one ask, the nearest kept). A same-day read reaches 16 strikes out;
+    any other expiry reaches Book B's band (WEEKLY_STRIKES, 17): at the old 4 a weekly Book B (8 or more strikes out)
+    could never be read. */
 async function once(symbol: string, now: number, only: string, jump = false, freshMs = FRESH_MS): Promise<Snap> {
   const today = sessionIso(now);
   const weekly = only === '*';
-  const range = weekly ? 4 : 16;
+  const range = only.slice(0, 10) === today ? 16 : WEEKLY_STRIKES;
   const exp = weekly ? '*' : only.replace(/-/g, '');
   const got = await theta(`/option/snapshot/greeks/first_order?symbol=${symbol}&expiration=${exp}&right=both&strike_range=${range}${weekly ? '&max_dte=11' : ''}&format=json`, jump);
   if (got.error) return { setups: [], spot: 0, ok: got.error !== 'terminal_down', rows: 0 };
@@ -363,6 +368,17 @@ async function expirationsOf(symbol: string): Promise<string[] | null> {
   return list;
 }
 
+/** The nearest listed expiry 1 to 7 sessions out (YYYY-MM-DD), from the hourly expirations read, or null. */
+export async function weeklyExpiry(symbol: string, at: number): Promise<string | null> {
+  const list = await expirationsOf(symbol);
+  if (!list) return null;
+  const session = sessionIso(at);
+  return list.filter(e => {
+    const n = weekdayDte(session, e);
+    return n >= 1 && n <= 7;
+  }).sort()[0] ?? null;
+}
+
 /** The quotes that stood at one instant: ThetaData's recorded NBBO for every listed strike near the money, each with
     its own stamp (a quote that had not changed for 90 seconds is not on the board, as live). */
 export async function atMark(symbol: string, markAt: number, sleeve: 'odte' | 'weekly'): Promise<Snap> {
@@ -371,17 +387,14 @@ export async function atMark(symbol: string, markAt: number, sleeve: 'odte' | 'w
   if (sleeve === 'weekly') {
     const list = await expirationsOf(symbol);
     if (!list) return { setups: [], spot: 0, ok: false, rows: 0 };
-    const near = list.filter(e => {
-      const n = weekdayDte(session, e);
-      return n >= 1 && n <= 7;
-    }).sort()[0];
+    const near = await weeklyExpiry(symbol, markAt);
     if (!near) return { setups: [], spot: 0, ok: true, rows: 0 };
     expiry = near;
   }
   const day = ymd(markAt);
   const p = nyParts(markAt);
   const time = `${two(p.hour)}:${two(p.minute)}:${two(p.second)}.000`;
-  const range = sleeve === 'weekly' ? 4 : 16;
+  const range = sleeve === 'weekly' ? WEEKLY_STRIKES : 16;
   const got = await theta(`/option/at_time/quote?symbol=${encodeURIComponent(symbol)}&expiration=${expiry.replace(/-/g, '')}&right=both&strike_range=${range}&start_date=${day}&end_date=${day}&time_of_day=${time}&format=json`);
   if (got.error === 'terminal_down') return { setups: [], spot: 0, ok: false, rows: 0 };
   if (got.error) return { setups: [], spot: 0, ok: true, rows: 0 };
@@ -520,7 +533,10 @@ async function liveMark(markAt: number, sleeve: 'odte' | 'weekly'): Promise<void
       const scanAt = Date.now();
       /* the minute has passed: the quotes now are not the mark's, so the name is scored late */
       if (minuteStart(scanAt) !== markAt) return;
-      const snap = await once(symbol, scanAt, only, true);
+      /* a weekly name reads its own nearest expiry (one expiry, Book B's band) */
+      const exp = sleeve === 'weekly' ? (await weeklyExpiry(symbol, scanAt)) ?? '*' : only;
+      if (minuteStart(Date.now()) !== markAt) return;
+      const snap = await once(symbol, scanAt, exp, true);
       if (!snap.ok) return;
       answered = true;
       snaps.push({ symbol, spot: snap.spot });
@@ -543,7 +559,7 @@ async function liveMark(markAt: number, sleeve: 'odte' | 'weekly'): Promise<void
       commitClosest(sleeve, at);
       noteScanned(sleeve, at);
       noteSpots(snaps);
-      void fillSparks(names);
+      bg('the sparklines', fillSparks(names));
     }
     markChanged();
   } finally {
@@ -686,17 +702,38 @@ export function sessionClose(): number | null {
   return closeMin;
 }
 
+/** The close the calendar in core/calendar.ts gives for a session date (YYYYMMDD): 13:00 on a listed early close,
+    else null. Used until ThetaData's calendar answers, so a terminal that is down at the day roll cannot leave an early
+    close unknown (and the 13:00 day scanned and flattened as a full one). */
+export function calendarClose(day: string): number | null {
+  const m = sessionCloseMinOn(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}`);
+  return m < 16 * 60 ? m : null;
+}
+
+let closeAsked = 0;
+let closeBusy = false;
+
+/** ThetaData's calendar for the session, asked again every tick (at most every 10 s) until it answers; the
+    core/calendar close stands in meanwhile. */
 async function readClose(day: string): Promise<void> {
-  if (closeDay === day) return;
-  const got = await theta(`/calendar/on_date?date=${day}&format=json`);
-  if (got.error) return;
-  closeDay = day;
-  const row = asRows(got.data)[0];
-  const type = String(row?.type ?? '');
-  const m = /^(\d{2}):(\d{2})/.exec(String(row?.close ?? ''));
-  closeMin = type === 'early_close' && m ? Number(m[1]) * 60 + Number(m[2]) : null;
-  /* the calls recorded from now on settle against this session's close */
-  setSessionClose(closeMin);
+  if (closeDay === day || closeBusy || Date.now() - closeAsked < 10_000) return;
+  closeBusy = true;
+  closeAsked = Date.now();
+  try {
+    const got = await theta(`/calendar/on_date?date=${day}&format=json`);
+    if (got.error) return;
+    const row = asRows(got.data)[0];
+    if (!row) return;
+    closeDay = day;
+    const type = String(row.type ?? '');
+    const m = /^(\d{2}):(\d{2})/.exec(String(row.close ?? ''));
+    closeMin = type === 'early_close' && m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    /* the calls recorded from now on settle against this session's close, and the entries gate on its flat */
+    setSessionClose(closeMin);
+    setScoreClose(day, closeMin);
+  } finally {
+    closeBusy = false;
+  }
 }
 
 /** On an early-close day nothing is scored after the close: the curb and the later marks do not exist. */
@@ -710,7 +747,7 @@ function marksSince(from: number, now: number): { at: number; sleeve: 'odte' | '
   for (let t = minuteStart(from); t < minuteStart(now); t += 60_000) {
     const p = nyParts(t);
     const mins = p.hour * 60 + p.minute;
-    if (!sessionScanOpen(mins, p.weekday) || pastEarlyClose(mins)) continue;
+    if (!sessionScanOpen(mins, p.weekday) || !sessionDayOpen(t) || pastEarlyClose(mins)) continue;
     const odte = odteNames(t);
     if (odte.length) out.push({ at: t, sleeve: 'odte', names: odte });
     const weekly = weeklyNames(t);
@@ -720,6 +757,8 @@ function marksSince(from: number, now: number): { at: number; sleeve: 'odte' | '
 }
 
 export interface ScanOptions {
+  /** A line for the server's log (a pass that threw, a background read that failed) */
+  log?: (line: string) => void;
   /** The earliest mark to fill in from recorded quotes, epoch ms (the session's 09:30 by default) */
   backfillFrom?: (day: string) => number;
   /** A new session began: the server starts its file */
@@ -740,13 +779,39 @@ export function regularOpen(iso: string): number {
   return nyWallTime(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), Number(iso.slice(8, 10)), 9, 30);
 }
 
+const said = new Map<string, number>();
+
+/** Logs a failure of one step of the scan, the same line at most once a minute. */
+function fault(where: string, e: unknown): void {
+  const text = `[compass] ${where} failed: ${e instanceof Error ? e.message : String(e)}`;
+  if (Date.now() - (said.get(text) ?? 0) < 60_000) return;
+  said.set(text, Date.now());
+  if (said.size > 200) said.clear();
+  (opts.log ?? console.warn)(text);
+}
+
+/** A background step: run, never left unhandled. */
+function bg(where: string, job: Promise<unknown>): void {
+  job.catch(e => fault(where, e));
+}
+
 function rollDay(now: number): void {
   const next = sessionIso(now);
-  if (next === day) return;
-  day = next;
-  lotteryDay = '';
-  opts.onDay?.(next);
-  void readClose(next.replace(/-/g, ''));
+  if (next !== day) {
+    day = next;
+    lotteryDay = '';
+    /* the close is not known for the new session until its calendar answers */
+    closeDay = '';
+    closeAsked = 0;
+    closeMin = calendarClose(next.replace(/-/g, ''));
+    setSessionClose(closeMin);
+    setScoreClose(next.replace(/-/g, ''), closeMin);
+    opts.onDay?.(next);
+    /* the session's one-time reads (prior bars, volume curves, expirations), off the marks' critical path */
+    const names = [...new Set([...odteBook(now), ...WEEKLY_FOCUS])];
+    bg('the session warm-up', Promise.all([warmSession(names, now), ...WEEKLY_FOCUS.map(n => expirationsOf(n))]));
+  }
+  if (closeDay !== day.replace(/-/g, '')) bg('the session calendar', readClose(day.replace(/-/g, '')));
 }
 
 /** Fill the marks the live pass did not read, oldest first, one name at a time, while no live pass runs. */
@@ -794,21 +859,21 @@ async function tick(): Promise<void> {
     rollDay(now);
     const p = nyParts(now);
     const mins = p.hour * 60 + p.minute;
-    if (sessionScanOpen(mins, p.weekday) && !pastEarlyClose(mins)) {
+    if (sessionScanOpen(mins, p.weekday) && sessionDayOpen(now) && !pastEarlyClose(mins)) {
       const markAt = minuteStart(now);
       await Promise.all([liveMark(markAt, 'odte'), liveMark(markAt, 'weekly')]);
     }
     if (lotteryDay !== day && lotteryWindow(mins, p.second) && sessionIso(now) === day) {
       if (await lotterySweep(now, false)) lotteryDay = day;
     }
-    void refreshHeld(Date.now());
+    bg('the card quotes', refreshHeld(Date.now()));
     if (Date.now() - settleAt > 60_000) {
       settleAt = Date.now();
-      void settleOpen(Date.now());
+      bg('settlement', settleOpen(Date.now()));
     }
     if (Date.now() - lateAt > 5_000) {
       lateAt = Date.now();
-      void fillLate(Date.now());
+      bg('the late fill', fillLate(Date.now()));
     }
   } finally {
     ticking = false;
@@ -820,8 +885,8 @@ export function startScan(options: ScanOptions = {}): void {
   if (!stopped) return;
   opts = options;
   stopped = false;
-  void tick();
-  timer = setInterval(() => void tick(), 1_000);
+  bg('the scan tick', tick());
+  timer = setInterval(() => bg('the scan tick', tick()), 1_000);
 }
 
 /** Stop at the next step: no new pass starts and the late fill gives up its place. */

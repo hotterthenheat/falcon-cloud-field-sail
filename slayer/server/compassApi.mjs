@@ -12,6 +12,21 @@ import { gate, sendDenied } from './auth.mjs';
 import { thetaDirect } from './thetaProxy.mjs';
 import { uwDirect } from './uwProxy.mjs';
 
+/** Logs a promise nobody caught and an exception nobody handled, once per process. An unhandled rejection is logged
+    and the process keeps serving (an engine read that rejected must not take the dev server down); an uncaught
+    exception is only observed (uncaughtExceptionMonitor), so Node's own crash still happens. */
+export function installProcessLogger(log = (line) => console.error(line)) {
+  const flag = Symbol.for('slayer.processLogger');
+  if (globalThis[flag]) return;
+  globalThis[flag] = true;
+  const text = (e) => (e && e.stack ? e.stack : String(e));
+  process.on('unhandledRejection', (reason) => log(`[process] unhandled rejection: ${text(reason)}`));
+  process.on('uncaughtExceptionMonitor', (err, origin) => log(`[process] uncaught exception (${origin}): ${text(err)}`));
+}
+
+/** Backoff between engine start attempts: 5 s, doubling, at most 5 minutes. */
+export const startDelay = (attempt) => Math.min(300_000, 5_000 * 2 ** Math.max(0, attempt - 1));
+
 const send = (res, status, body) => {
   res.statusCode = status;
   res.setHeader('content-type', 'application/json');
@@ -29,10 +44,15 @@ export function compassMount(load, root = process.cwd()) {
   let stopped = false;
   const hosted = !!process.env.VERCEL;
   let ready = null;
+  let attempts = 0;
+  let retry = null;
+  let nextAt = 0;
+  /* one start at a time; a failed start is tried again with backoff (and by the first request after the wait), so one
+     bad import or a disk error is not "down until the process restarts" */
   const start = () => {
     if (ready) return ready;
+    if (engine || hosted || stopped || Date.now() < nextAt) return Promise.resolve();
     ready = (async () => {
-      if (hosted) return;
       try {
         mod = await load();
         if (stopped) return;
@@ -44,8 +64,22 @@ export function compassMount(load, root = process.cwd()) {
           scan: process.env.COMPASS_ENGINE !== '0',
           log: (line) => console.log(line),
         });
+        attempts = 0;
       } catch (e) {
-        console.warn(`[compass] the engine did not start: ${e && e.message ? e.message : e}`);
+        engine = null;
+        attempts += 1;
+        const wait = startDelay(attempts);
+        nextAt = Date.now() + wait;
+        console.warn(`[compass] the engine did not start (attempt ${attempts}): ${e && e.message ? e.message : e}; trying again in ${Math.round(wait / 1000)} s`);
+        if (!retry && !stopped) {
+          retry = setTimeout(() => {
+            retry = null;
+            void start();
+          }, wait);
+          retry.unref?.();
+        }
+      } finally {
+        ready = null;
       }
     })();
     return ready;
@@ -67,6 +101,8 @@ export function compassMount(load, root = process.cwd()) {
     },
     stop() {
       stopped = true;
+      if (retry) clearTimeout(retry);
+      retry = null;
       if (engine) engine.stop();
       engine = null;
     },
