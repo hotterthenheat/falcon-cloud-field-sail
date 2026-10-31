@@ -584,8 +584,14 @@ export function keptRun(have: Sessions | null, start: string): Sessions {
   return { days: have.days.filter(d => d.day >= start), tail: have.tail };
 }
 
-/** Bring a name's sessions up to `last`: the kept run (keptRun), then the missing sessions read (two months of minute
-    bars at a time, two reads at a time, so one name never holds the page's history slots) and digested onto its tail.
+/** Bring a name's sessions up to `last`: the kept run (keptRun), then the missing sessions read (28 days of minute bars
+    at a time, thetaTape spansOf, two reads at a time, so one name never holds the page's history slots) and digested
+    onto its tail.
+    Wider reads are no cheaper. The terminal takes up to end − start = 31 days (2026-07-15…08-15 answers, …08-16 is
+    "limited to no more than 1 month"), but its cost is per session read, not per request: five sessions cost about
+    2.1 s in one request and 2.8 s in five (IWM, 2026-10-31), a month 8–13 s either way. A cold SPY window (272
+    sessions) took 171–201 s in 15 reads of 28 days and 196–197 s in 13 reads of 31: the same. A cold start is
+    shortened by reading two names at once (data/volOutlookServer.ts), not by fewer requests.
     `offline`: a read failed for a reason other than "no data", and the run is the kept one. */
 export async function readSessions(
   ticker: string,

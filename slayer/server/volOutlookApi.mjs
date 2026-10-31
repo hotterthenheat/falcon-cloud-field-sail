@@ -11,7 +11,7 @@
 
 import path from 'node:path';
 import { gate, sendDenied } from './auth.mjs';
-import { thetaDirect } from './thetaProxy.mjs';
+import { thetaDirect, thetaSlots } from './thetaProxy.mjs';
 import { HOT_NAMES } from './hub.mjs';
 
 const send = (res, status, body) => {
@@ -42,6 +42,7 @@ export function volOutlookMount(load, root = process.cwd()) {
         srv = mod.startVolOutlookServer({
           dir: process.env.VOL_OUTLOOK_DIR || path.join(root, '.cache', 'vol-outlook'),
           theta: thetaDirect,
+          slots: thetaSlots,
           hot: HOT_NAMES,
           read: process.env.VOL_OUTLOOK !== '0',
           max: Number.isFinite(max) && max >= 0 ? Math.floor(max) : 25,
