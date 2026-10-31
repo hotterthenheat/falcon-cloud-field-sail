@@ -3,6 +3,10 @@ import { nyWallTime } from '../src/core/nyTime';
 import { tradingYears } from '../src/core/tradingYear';
 import { calendarYears, dealerInventory, flowConfidence, flowFirm, flowImbalance, markGap, quoteMaxAge, smoothSmile, usableMid, vendorIvOnTradingClock } from '../src/core/volClock';
 import { fmtElapsed, measureSpan } from '../src/data/measure';
+import { readSessionClock } from '../src/data/moc';
+import { barInTape } from '../src/data/thetaTape';
+import { extendedBar } from '../src/data/thetaEligible';
+import { nySession, nySessionPhase } from '../src/core/nyTime';
 import { holdBand, morningMiss, nodeMark, noteNodes, peakStrikes, priceTag } from '../src/data/nodeScore';
 
 const exp = '2026-10-27';
@@ -102,6 +106,19 @@ void early;
   if (d1.bars !== 2 || d1.tradingMin !== 780) throw new Error(`1D measure ${d1.bars} bars, ${d1.tradingMin} min (was 2880)`);
   const tg = measureSpan(nyWallTime(2026, 11, 25, 16, 0) / 1000, 100, nyWallTime(2026, 11, 27, 13, 0) / 1000, 101, 1440);
   if (tg.bars !== 1 || tg.tradingMin !== 210) throw new Error(`Thanksgiving week 1D measure ${tg.bars} bars, ${tg.tradingMin} min`);
+}
+
+/* an early close (2026-11-27, the day after Thanksgiving) ends the cash session at 13:00 everywhere */
+{
+  const at = (h: number, m: number) => nyWallTime(2026, 11, 27, h, m);
+  const auction = readSessionClock(new Date(at(12, 55)));
+  if (auction.phase !== 'AUCTION' || auction.secondsToClose !== 300) throw new Error(`early close auction ${auction.phase} ${auction.secondsToClose}s (was OPEN until 15:50)`);
+  if (readSessionClock(new Date(at(12, 45))).phase !== 'OPEN' || readSessionClock(new Date(at(13, 30))).phase !== 'AFTERHOURS') throw new Error('early close phases');
+  if (nySessionPhase(at(13, 30)) !== 'after' || nySession(at(10, 0)).close !== at(13, 0)) throw new Error('nySession / nySessionPhase ignore the early close');
+  const t1330 = at(13, 30) / 1000;
+  if (barInTape(t1330, 'rth') || !barInTape(t1330, 'post') || !barInTape(at(12, 59) / 1000, 'rth')) throw new Error('13:30 on a half day is the after-hours, not the cash session');
+  const mid = nyWallTime(2026, 11, 27, 0, 0) / 1000;
+  if (!extendedBar(t1330, 60, mid) || extendedBar(at(13, 0) / 1000, 60, mid) || extendedBar(at(12, 0) / 1000, 60, mid)) throw new Error('the 13:30 bar on a half day is an extended bar (rebuilt from price-setting prints)');
 }
 
 console.log('clock proof ok', { timeRatio, gRatio, twist });

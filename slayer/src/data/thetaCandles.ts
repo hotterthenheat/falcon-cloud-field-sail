@@ -48,8 +48,8 @@ function dedupe(bars: Candle[]): Candle[] {
   const out: Candle[] = [];
   for (const b of bars) {
     const prev = out[out.length - 1];
-    /* Same minute in two sessions: keep the earlier one. On a half day regular owns 13:00–15:59 and post also
-       opens then; the cash bar is not replaced by the after-hours copy. */
+    /* Same minute in two sessions: keep the earlier one. Sessions do not overlap (on a half day 13:00–19:59 is the
+       after-hours alone, thetaTape barInTape); this only guards a duplicated stamp. */
     if (prev && prev.time === b.time) continue;
     out.push(b);
   }

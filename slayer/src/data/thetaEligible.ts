@@ -10,6 +10,7 @@
 
 import type { Candle } from '../types/market';
 import { nyParts, nyWallTime } from '../core/nyTime';
+import { sessionCloseMinOn } from '../core/calendar';
 
 /** Conditions whose High, Low and Last columns are all marked and whose Late Report column is not
     (https://docs.thetadata.us/Articles/Errors-Exchanges-Conditions/Trade-Conditions.html, read 2026-10-29). */
@@ -84,16 +85,21 @@ export function readTicks(rows: readonly Record<string, unknown>[], seed?: Tick 
 }
 
 const OPEN_SEC = (9 * 60 + 30) * 60;
-const CLOSE_BAR_END = (16 * 60 + 1) * 60;
+/** The end of the closing minute's bar, seconds after New York midnight: 16:01, or 13:01 on an early close — on a half day
+    the 13:00–15:59 prints are the after-hours (data/thetaTape.ts barInTape) and are rebuilt like any other. */
+const closeBarEnd = (time: number): number => {
+  const p = nyParts(time * 1000);
+  return (sessionCloseMinOn(`${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`) + 1) * 60;
+};
 
 /** Seconds since New York midnight */
 const daySec = (t: number, mid: number) => t - mid;
 
-/** Is this bar outside the regular session? The 16:00 minute is the close and stays ThetaData's; a wider bar that
-    starts at 16:00 reaches past it and is rebuilt (the rule matches ThetaData's on the 16:00 prints). */
-function extendedBar(time: number, step: number, mid: number): boolean {
+/** Is this bar outside the regular session? The closing minute (16:00, 13:00 on an early close) stays ThetaData's; a wider
+    bar that starts at the close reaches past it and is rebuilt (the rule matches ThetaData's on the closing prints). */
+export function extendedBar(time: number, step: number, mid: number): boolean {
   const from = daySec(time, mid);
-  return from < OPEN_SEC || from + step > CLOSE_BAR_END;
+  return from < OPEN_SEC || from + step > closeBarEnd(time);
 }
 
 function lastBefore(ticks: readonly Tick[], t: number): number {
