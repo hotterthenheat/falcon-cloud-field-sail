@@ -89,7 +89,7 @@ function liveRun(key: string) {
         keepBox(key, rows);
       },
       e => {
-        const fault = vendorFault(e instanceof Error ? e.message : 'unusual whales') ?? 'failed';
+        const fault = vendorFault(e instanceof Error ? e.message : 'unreachable') ?? 'failed';
         const failAt = Date.now();
         sh.box = sh.box && sh.box.key === key ? { ...sh.box, fault, failAt } : { key, rows: sh.empty, at: null, fault, failAt };
       }
@@ -679,7 +679,7 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
         if (held.length >= BOOT_FILL) setHasOlder(true);
       } catch (e) {
         if (stop) return;
-        setFault(vendorFault(e instanceof Error ? e.message : 'unusual whales') ?? 'failed');
+        setFault(vendorFault(e instanceof Error ? e.message : 'unreachable') ?? 'failed');
         setWaiting(false);
       } finally {
         filling.current = false;

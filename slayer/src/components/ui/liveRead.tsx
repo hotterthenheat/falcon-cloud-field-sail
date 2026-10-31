@@ -19,8 +19,8 @@ export type FeedFault = 'down' | 'failed';
 export function vendorFault(text: string | null | undefined): FeedFault | null {
   if (!text) return null;
   const s = text.toLowerCase();
-  if (s.includes('terminal_down') || s.includes('not running') || s.includes('thetadata') || s.includes('theta terminal')) return 'down';
-  if (s.includes('unusual whales') || s.includes('unreachable') || s.includes('failed to fetch')) return 'failed';
+  if (s.includes('terminal_down') || s.includes('not running') || s.includes('thetadata') || s.includes('theta terminal') || s.includes('live data feed')) return 'down';
+  if (s.includes('unusual whales') || s.includes('flow feed') || s.includes('unreachable') || s.includes('failed to fetch')) return 'failed';
   return null;
 }
 

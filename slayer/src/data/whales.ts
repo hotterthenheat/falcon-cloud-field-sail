@@ -285,7 +285,7 @@ async function uwFetch(path: string, priority: boolean, low = false): Promise<Uw
       }
       break;
     }
-    if (!res) return { status: 0, data: null, error: 'unusual whales unreachable', at: null };
+    if (!res) return { status: 0, data: null, error: 'the flow feed is unreachable', at: null };
     const text = res.text;
     let parsed: unknown = null;
     try {
@@ -297,7 +297,7 @@ async function uwFetch(path: string, priority: boolean, low = false): Promise<Uw
     if (!res.ok) return { status: res.status, data: typeof parsed === 'string' ? null : data, error: faultWords(res.status, parsed, text), at: null };
     return { status: res.status, data, error: null, at: hubAt(res), held: res.headers.get('x-hub-held') === '1' };
   } catch (e) {
-    return { status: 0, data: null, error: e instanceof Error ? e.message : 'unusual whales unreachable', at: null };
+    return { status: 0, data: null, error: e instanceof Error ? e.message : 'the flow feed is unreachable', at: null };
   }
 }
 

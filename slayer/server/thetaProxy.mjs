@@ -39,7 +39,7 @@ const NO_TERMINAL = JSON.stringify({ error: 'This deployment has no market data 
    to theta/run/state.json. When it says the key was refused, a failed request answers terminal_login, so the page can
    say "ThetaData login failed: check THETADATA_API_KEY" instead of "not running". Read at most every 5 s. Through the
    relay, the relay sends the same code itself. */
-const LOGIN = JSON.stringify({ error: 'ThetaData refused the login: check THETADATA_API_KEY on the machine that runs the terminal.', code: 'terminal_login' });
+const LOGIN = JSON.stringify({ error: 'The live data feed refused the login: check the feed key on the machine that runs the terminal.', code: 'terminal_login' });
 const STATE_FILE = process.env.THETA_RUN_DIR ? path.join(process.env.THETA_RUN_DIR, 'state.json') : fileURLToPath(new URL('../theta/run/state.json', import.meta.url));
 let stateRead = { at: 0, login: false };
 function loginFailed() {

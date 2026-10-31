@@ -294,7 +294,7 @@ function noteRefused(header) {
 const coolLeft = () => Math.max(0, coolUntil - Date.now());
 const tooMany = () => ({
   status: 429,
-  body: Buffer.from(JSON.stringify({ error: 'unusual whales is rate limiting this key; asked again shortly', code: 'rate_limited_upstream' })),
+  body: Buffer.from(JSON.stringify({ error: 'the flow feed is rate limiting this key; asked again shortly', code: 'rate_limited_upstream' })),
   type: 'application/json',
 });
 const COOLING = Symbol('cooling');
@@ -349,7 +349,7 @@ async function load(path, key, lane) {
             new Promise((_, reject) => {
               hard = setTimeout(() => {
                 ctl.abort();
-                reject(Object.assign(new Error('unusual whales did not answer'), { name: 'TimeoutError' }));
+                reject(Object.assign(new Error('the flow feed did not answer'), { name: 'TimeoutError' }));
               }, CALL_MS);
             }),
           ]);
@@ -397,7 +397,7 @@ async function load(path, key, lane) {
         timer = setTimeout(() => {
           ticket.dead = true;
           if (ticket.entry) withdraw(ticket.entry);
-          resolve({ status: 504, body: Buffer.from(JSON.stringify({ error: 'unusual whales timed out' })), type: 'application/json' });
+          resolve({ status: 504, body: Buffer.from(JSON.stringify({ error: 'the flow feed timed out' })), type: 'application/json' });
         }, JOB_MS);
       }),
     ]);
@@ -456,7 +456,7 @@ export async function proxyUw(req, res) {
   }
   const key = process.env.UNUSUAL_WHALES_API_KEY;
   if (!key) {
-    send(res, 503, JSON.stringify({ error: 'unusual whales is not configured' }));
+    send(res, 503, JSON.stringify({ error: 'the flow feed is not configured' }));
     return;
   }
   try {
@@ -467,6 +467,6 @@ export async function proxyUw(req, res) {
     else for (const [k, v] of Object.entries(hub.ageHeaders(path, got))) res.setHeader(k, v);
     send(res, got.status, got.body, got.type);
   } catch {
-    send(res, 502, JSON.stringify({ error: 'unusual whales unreachable' }));
+    send(res, 502, JSON.stringify({ error: 'the flow feed is unreachable' }));
   }
 }
