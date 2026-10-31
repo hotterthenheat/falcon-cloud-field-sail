@@ -5,9 +5,9 @@ import { useMemo, useState } from 'react';
 import CardTabs from '../ui/CardTabs';
 import Fact from '../ui/Fact';
 import ContractLabel from '../ui/ContractLabel';
-import { readGate, thetaPerSessionHour } from '../../data/weigherGate';
+import { EUROPEAN_NOTE, readGate, sessionDte, thetaPerSessionHour } from '../../data/weigherGate';
 import { seatsNow, type LiveScore } from '../../data/compassModel';
-import { STOP_KEEP, TP1_STOP, TP2_STOP, TP3_STOP, TP4_TRAIL, DRIVE, weekdayDte } from '../../data/compassParams';
+import { STOP_KEEP, TP1_STOP, TP2_STOP, TP3_STOP, TP4_TRAIL, DRIVE } from '../../data/compassParams';
 import { odteDoneMin } from '../../data/compassSession';
 import { useEconCalendar } from '../../data/liveRecord';
 import { useNextReport } from '../../data/earningsFeed';
@@ -92,7 +92,7 @@ function speak(s: string): string | null {
   else if (/Inside the Book/i.test(s)) out = null;
   else if (/No high-impact/i.test(s)) out = 'No big number in the next 15 minutes.';
   else if (/Same-day contract/i.test(s)) out = 'It expires today.';
-  else if (/weekday sessions/i.test(s)) out = s.replace('weekday sessions to expiration.', 'sessions left.');
+  else if (/trading sessions to expiration/i.test(s)) out = s.replace('trading sessions to expiration.', 'trading sessions left.');
   else if (/Bid is above/i.test(s)) out = 'The bid is above $0.15.';
   else if (/^Spread /i.test(s)) out = s.replace('of the mid.', 'of the price.');
   else if (/Inside Book A/i.test(s)) out = s.replace(/Inside Book A\.\s*/i, '');
@@ -121,8 +121,10 @@ const StrikeCase = ({ ticker, c, right, chain, tick, score, listed, onPickAlt }:
   const ordered = useMemo(() => [...new Set(strikes.filter(k => k > 0))].sort((a, b) => a - b), [strikes]);
   const ret = held.retOpen;
   const side = ret == null || !Number.isFinite(ret) ? 'The opening price is not in yet.' : Math.abs(ret) >= DRIVE ? (ret > 0 ? 'The stock is up from the open, so the call is the side.' : 'The stock is down from the open, so the put is the side.') : 'The stock is flat from the open.';
-  const session = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  const dte = chain.expiryIso ? weekdayDte(session.replace(/-/g, ''), chain.expiryIso.replace(/-/g, '')) : NaN;
+  /* whole trading sessions after today's, on the clock the gate and theta read (data/weigherGate sessionDte) */
+  const dte = chain.expiryIso ? sessionDte(chain.expiryIso) : NaN;
+  /* the next trading hour's decay, the contract's own (what is left of the session when less); the session's rate where it has none */
+  const hourDecay = c.thetaHour != null && Number.isFinite(c.thetaHour) && c.thetaHour !== 0 ? Math.abs(c.thetaHour) : Number.isFinite(c.theta) && c.theta !== 0 ? Math.abs(thetaPerSessionHour(c.theta)) : null;
   const sleeve = dte === 0 ? '0 DTE' : dte >= 1 && dte <= 7 ? '1–7 DTE' : 'Later';
   const ask = c.ask > 0 ? c.ask : NaN;
   const be = Number.isFinite(ask) ? (right === 'C' ? c.strike + ask : c.strike - ask) : NaN;
@@ -267,7 +269,7 @@ const StrikeCase = ({ ticker, c, right, chain, tick, score, listed, onPickAlt }:
                       <span className="font-mono text-t12 text-textPrimary">{e.label} · {band}</span>
                       <span className="block text-t12 text-textSecondary">
                         {current
-                          ? `${speak(gate.status) ?? 'It does not clear.'} · premium ${show(ask)} · breakeven ${Number.isFinite(be) ? show(be) : '—'} · decay ${Number.isFinite(c.theta) && c.theta !== 0 ? show(Math.abs(c.theta)) : '—'} a day`
+                          ? `${speak(gate.status) ?? 'It does not clear.'} · premium ${show(ask)} · breakeven ${Number.isFinite(be) ? show(be) : '—'} · decay ${Number.isFinite(c.theta) && c.theta !== 0 ? show(Math.abs(c.theta)) : '—'} a session`
                           : 'Not loaded. Open it to read this strike.'}
                       </span>
                     </button>
@@ -284,14 +286,14 @@ const StrikeCase = ({ ticker, c, right, chain, tick, score, listed, onPickAlt }:
               <Fact big label="Window" value={sleeve} />
               {dte === 0 && (
                 <>
-                  <Fact big label="Decay an hour" value={Number.isFinite(c.theta) && c.theta !== 0 ? show(Math.abs(thetaPerSessionHour(c.theta))) : '—'} />
+                  <Fact big label="Decay an hour" value={hourDecay != null ? show(hourDecay) : '—'} />
                   <Fact big label="Volume" value={c.volume > 0 ? c.volume.toLocaleString('en-US') : '—'} />
                   <Fact big label="Open interest" value={c.oi > 0 ? c.oi.toLocaleString('en-US') : '—'} />
                   <Fact big label="Closes" value={clock(Math.max(0, stopMin - 1))} />
                 </>
               )}
               {dte > 0 && (
-                <Fact big label="Decay a day" value={Number.isFinite(c.theta) && c.theta !== 0 ? show(Math.abs(c.theta)) : '—'} />
+                <Fact big label="Decay a session" value={Number.isFinite(c.theta) && c.theta !== 0 ? show(Math.abs(c.theta)) : '—'} />
               )}
               {dte > 7 && <Fact big label="Time in the premium" value={c.mark > 0 && Number.isFinite(c.extrinsic) ? `${((c.extrinsic / c.mark) * 100).toFixed(0)}%` : '—'} />}
             </div>
@@ -308,6 +310,11 @@ const StrikeCase = ({ ticker, c, right, chain, tick, score, listed, onPickAlt }:
           </div>
         )}
       </div>
+      {c.europeanApprox && (
+        <span className="shrink-0 pt-1 text-t11 leading-snug text-warn" data-european-note>
+          {EUROPEAN_NOTE}
+        </span>
+      )}
       <span className="shrink-0 pt-1 text-t11 text-textMuted">{foot}</span>
     </div>
   );
