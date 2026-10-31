@@ -132,6 +132,31 @@ check('dev, no Supabase: theta passes the gate', show(await call(proxyTheta, TH)
   const ok = await call(proxyUw, '/api/uw/stock/AGE/info');
   check('uw 200 carries the answer\'s age (x-hub-at, Age)', `${ok.status} ${Number(ok.headers['x-hub-at']) > Date.now() - 5_000} ${ok.headers.age}`, '200 true 0');
 
+  /* the recorder has its own background slot: it does not queue behind a refresh that holds the refresh lane */
+  {
+    process.env.SLAYER_HUB_HOURS = 'open';
+    const { uwDirect } = await import('../server/uwProxy.mjs');
+    const slowPath = '/stock/SLOW/stock-state';
+    let slowMs = 10;
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (String(url).endsWith(slowPath)) await new Promise((r) => setTimeout(r, slowMs));
+      return inner(url, init);
+    };
+    await call(proxyUw, `/api/uw${slowPath}`);
+    /* past its 3 s freshness: the next ask is answered from the copy and a 2.5 s refresh runs behind it */
+    await new Promise((r) => setTimeout(r, 3_200));
+    slowMs = 2_500;
+    await call(proxyUw, `/api/uw${slowPath}`);
+    await new Promise((r) => setTimeout(r, 50));
+    const t = Date.now();
+    const rec = await uwDirect('/stock/REC/spot-exposures/strike?limit=500&page=0', { lane: 'record', maxAge: 45_000 });
+    check('uw recorder ask while a refresh holds the refresh lane: answered without waiting for it', `${rec.status} ${Date.now() - t < 1_500}`, '200 true');
+    await new Promise((r) => setTimeout(r, 2_600));
+    globalThis.fetch = inner;
+    delete process.env.SLAYER_HUB_HOURS;
+  }
+
   /* a vendor that keeps refusing with Retry-After 1: one retry after the breaker, not four calls */
   plan.set('/stock/RL1/info', [[429, 1]]);
   const t0 = Date.now();
