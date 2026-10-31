@@ -26,6 +26,9 @@ import {
 import { sessionAtr } from '../src/data/atr';
 import { volumeProfileAt } from '../src/data/volumeProfile';
 import { aggregateCandles } from '../src/data/timeframe';
+import { anchorSession, olderChunk, sessionsBack, spansOf, tapeWindow } from '../src/data/thetaTape';
+import { chartGrain } from '../src/data/thetaCandles';
+import { contractSpan } from '../src/data/thetaBook';
 import { buildExpectedMoveCone, daySigmaOfIv, sigmaFracOver, sigmaOverMinutes } from '../src/data/expectedMove';
 import { sigmaToExpiry } from '../src/core/volClock';
 import { nyWallTime } from '../src/core/nyTime';
@@ -171,6 +174,30 @@ check('no vol means no cone', blank.past.length === 0 && blank.forward.length ==
   check('1D is the New York trading day: 21:00 Tuesday (01:00 UTC) opens Wednesday, not a UTC-midnight cut', daily.length === 2 && daily[0].time === ny(10, 27, 9, 30) && daily[1].time === ny(10, 28, 9, 30) && daily[1].volume === 2, JSON.stringify(daily.map(b => b.volume)));
   const weekly = aggregateCandles([minute(ny(10, 28, 10, 0)), minute(ny(10, 30, 10, 0)), minute(ny(11, 2, 10, 0))], 7 * 1440);
   check('1W starts on Monday (Oct 26), not on a Thursday', weekly.length === 2 && weekly[0].time === ny(10, 26, 9, 30) && weekly[1].time === ny(11, 2, 9, 30), new Date(weekly[0].time * 1000).toISOString());
+}
+
+/* history counts trading sessions, from the last one that opened, and reaches back in ≤ 1-month chunks */
+{
+  const sat = nyWallTime(2026, 10, 31, 12, 0);
+  const monEarly = nyWallTime(2026, 11, 2, 7, 0);
+  check('a Saturday and 7 AM Monday both anchor the cash session on Friday', anchorSession('rth', sat) === '20261030' && anchorSession('rth', monEarly) === '20261030' && anchorSession('pre', monEarly) === '20261102');
+  const w15 = tapeWindow('15s', 'rth', sat);
+  check("15s on a Saturday is Friday's session, not an empty Saturday (was 1 calendar day)", w15.from === '20261030' && w15.to === '20261030' && spansOf(w15.from, w15.to, '15s').length === 1, JSON.stringify(w15));
+  const w1 = tapeWindow('1m', 'rth', sat);
+  check('1m is five sessions: Mon 26 – Fri 30 (was 6 calendar days)', w1.from === '20261026', w1.from);
+  const h1 = tapeWindow('1h', 'rth', sat);
+  const months = (Date.parse(`${h1.to.slice(0, 4)}-${h1.to.slice(4, 6)}-${h1.to.slice(6)}`) - Date.parse(`${h1.target.slice(0, 4)}-${h1.target.slice(4, 6)}-${h1.target.slice(6)}`)) / (30.44 * 86_400_000);
+  check('1h fills 126 sessions on its own — six months (was 56 calendar days of 1m folded, ≈ 28 bars)', h1.target === sessionsBack('20261030', 126) && months >= 5.9, `${h1.target}, ${months.toFixed(1)} months`);
+  check('every intraday span is ≤ 28 days (the terminal refuses more than a month)', spansOf(h1.target, h1.to, '1h').every(([a, b]) => (Date.parse(`${b.slice(0, 4)}-${b.slice(4, 6)}-${b.slice(6)}`) - Date.parse(`${a.slice(0, 4)}-${a.slice(4, 6)}-${a.slice(6)}`)) / 86_400_000 <= 27));
+  const back = olderChunk('1h', 'rth', h1.target);
+  check('a scroll-back chunk ends the day before the oldest and holds 20 sessions', back.to === '20260503' && back.from === sessionsBack('20260503', 20) && back.from === '20260406', JSON.stringify(back));
+  const eod = olderChunk('day', 'rth', '20200102');
+  check('an EOD chunk is a year at most', eod.to === '20200101' && eod.from === '20190102', JSON.stringify(eod));
+  check('native grains: 5m→5m, 10m→5m, 15m→15m, 45m→15m, 30m→30m, 1h/4h→1h, 3m→1m', ['5', '10', '15', '45', '30', '60', '240', '3'].map(m => chartGrain(Number(m))).join(',') === '5m,5m,15m,15m,30m,1h,1h,1m');
+  const c1 = contractSpan(2, false, sat);
+  const ch = contractSpan(20, false, sat);
+  check("a contract's 1m on a Saturday is Thursday and Friday (was Friday 00:00 → Saturday, empty Sunday)", c1.start === '20261029' && c1.end === '20261031', JSON.stringify(c1));
+  check("a contract's 1h window stays inside the month the terminal allows (was 40 days, refused)", ch.start >= '20261004', JSON.stringify(ch));
 }
 
 /* one σ everywhere: core/volClock's, the one Terrain's cone draws (S·σ_trading·√(minutes/(390·252))) */
