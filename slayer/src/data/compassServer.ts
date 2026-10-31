@@ -17,7 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { setCompassHost, type EconRow, type ThetaAnswer } from './compassHost';
-import { demoteLate, exportModelState, importModelState, lockReason, modelDay, onModelChange, onScoredRow, rollModelDay, type ModelPack } from './compassModel';
+import { demoteLate, exportModelState, importModelState, lockReason, modelDay, onLockReason, onModelChange, onScoredRow, rollModelDay, type ModelPack } from './compassModel';
 import { importSignals, importWould, onSignalsChange, setSessionClose, signals, wouldSignals, type Signal } from './compassLedger';
 import { exportMarks, importMarks, lotterySwept, onMarks, onScanMeta, scanMeta, sessionClose, setLotteryDay, setScanMeta, startScan, stopScan, type MarkRow, type ScanMeta } from './compassScan';
 import { sessionIso } from './compassSession';
@@ -84,6 +84,8 @@ export interface EngineOptions {
       session date YYYY-MM-DD); the session's 09:30 ET by default */
   backfillFrom?: (day: string) => number;
   log?: (line: string) => void;
+  /** How often a reader asks for the lock and a scanner refreshes it (LOCK_RETRY_MS; shorter in the golden) */
+  lockRetryMs?: number;
 }
 
 /* ---- ThetaData answers in the browser client's shape (data/theta.ts) ---- */
@@ -205,6 +207,9 @@ const alive = (pid: number) => {
     return (e as NodeJS.ErrnoException).code === 'EPERM';
   }
 };
+
+/** How often a reader asks for the engine lock, and a scanner refreshes it. */
+export const LOCK_RETRY_MS = 30_000;
 
 /** Takes the folder's engine lock, or says who holds it. A lock not refreshed for two minutes is stale. */
 function takeLock(dir: string): { ok: true } | { ok: false; pid: number } {
@@ -372,28 +377,36 @@ export function startCompassEngine(o: EngineOptions): Engine {
   load(day);
   const offs = [onModelChange(changed), onSignalsChange(changed), onMarks(changed), onScanMeta(changed)];
 
+  /* the model lock's reason, logged when it changes (a hash miss used to close scoring without a line in the log) */
+  let lockSaid = lockReason();
+  if (lockSaid) log(`[compass] model lock: ${lockSaid}`);
+  offs.push(onLockReason(text => {
+    if (text === lockSaid) return;
+    lockSaid = text;
+    log(text ? `[compass] model lock: ${text}` : '[compass] model files verified; scoring is open');
+    changed();
+  }));
+
   /* every scored row, as the trees read it, for the input check (scripts/compass-validate.ts): one line each in
      <dir>/rows/YYYY-MM-DD.jsonl */
   let rowBuf: string[] = [];
   const g = (v: number) => (Number.isFinite(v) ? Number(v.toPrecision(9)) : null);
-  if (!readOnly) {
-    offs.push(onScoredRow(r => {
-      rowBuf.push(JSON.stringify({
-        t: r.minute,
-        d: day,
-        k: r.setup.contract,
-        e: r.setup.expiryDate,
-        b: r.setup.bid,
-        a: r.setup.ask,
-        q: r.setup.quotedAt ?? 0,
-        s: r.setup.spot ?? null,
-        late: r.late || undefined,
-        x: r.x.map(g),
-        p1: g(r.p1),
-        p2: g(r.prun),
-      }));
+  const logRow = (r: Parameters<Parameters<typeof onScoredRow>[0]>[0]) => {
+    rowBuf.push(JSON.stringify({
+      t: r.minute,
+      d: day,
+      k: r.setup.contract,
+      e: r.setup.expiryDate,
+      b: r.setup.bid,
+      a: r.setup.ask,
+      q: r.setup.quotedAt ?? 0,
+      s: r.setup.spot ?? null,
+      late: r.late || undefined,
+      x: r.x.map(g),
+      p1: g(r.p1),
+      p2: r.prun == null ? null : g(r.prun),
     }));
-  }
+  };
   const flushRows = () => {
     if (!rowBuf.length) return;
     const lines = rowBuf;
@@ -405,56 +418,11 @@ export function startCompassEngine(o: EngineOptions): Engine {
       /* a read-only disk: the check runs without this day's rows */
     }
   };
-  const rowTimer = readOnly ? null : setInterval(flushRows, 2_000);
-
-  let lockTimer: ReturnType<typeof setInterval> | null = null;
-  let reloadTimer: ReturnType<typeof setInterval> | null = null;
-  if (!readOnly) {
-    lockTimer = setInterval(() => {
-      const lock = takeLock(o.dir);
-      if (!lock.ok) log(`[compass] engine lock taken by pid ${lock.pid}`);
-    }, 30_000);
-    startScan({
-      backfillFrom: o.backfillFrom,
-      onDay: next => {
-        if (next === day) return;
-        dirty = !readOnly;
-        save();
-        day = next;
-        rollModelDay(next.replace(/-/g, ''));
-        importModelState(exportModelState(), earlierOf(next));
-        importSignals(recentCalls(next));
-        importWould(recentWould(next));
-        importMarks([]);
-        changed();
-        log(`[compass] session ${next}`);
-      },
-    });
-    log(`[compass] engine running, record in ${o.dir}`);
-  } else {
-    /* a reader: the running engine's file, read again every five seconds */
-    let seen = 0;
-    reloadTimer = setInterval(() => {
-      const today = sessionIso(Date.now());
-      let mtime = 0;
-      try {
-        mtime = fs.statSync(dayFile(o.dir, today)).mtimeMs;
-      } catch {
-        mtime = 0;
-      }
-      if (today === day && mtime === seen) return;
-      seen = mtime;
-      day = today;
-      load(today);
-      changed();
-    }, 5_000);
-    log(`[compass] ${why}`);
-  }
 
   /* After a session settles, its review and study are built once: the trades reviewed, the movers counted, every
      scored row labelled. A day the engine missed after its close is built the next time it runs. */
   let building = false;
-  const reviewTimer = readOnly ? null : setInterval(() => {
+  const buildDue = () => {
     if (building) return;
     const p = nyParts(Date.now());
     const mins = p.hour * 60 + p.minute;
@@ -472,7 +440,97 @@ export function startCompassEngine(o: EngineOptions): Engine {
       .finally(() => {
         building = false;
       });
-  }, 60_000);
+  };
+
+  /* One process scans; the others read its file. The roles are not fixed for life: a scanner that finds the lock taken
+     by another live process stops scanning and becomes a reader, and a reader asks for the lock every 30 s and takes
+     over once the scanner is gone (its lock is stale after two minutes). */
+  let lockTimer: ReturnType<typeof setInterval> | null = null;
+  let reloadTimer: ReturnType<typeof setInterval> | null = null;
+  let rowTimer: ReturnType<typeof setInterval> | null = null;
+  let reviewTimer: ReturnType<typeof setInterval> | null = null;
+  let rowOff: (() => void) | null = null;
+  const clearRoleTimers = () => {
+    for (const t of [lockTimer, reloadTimer, rowTimer, reviewTimer]) if (t) clearInterval(t);
+    lockTimer = reloadTimer = rowTimer = reviewTimer = null;
+    rowOff?.();
+    rowOff = null;
+  };
+
+  const asReader = (reason: string) => {
+    clearRoleTimers();
+    stopScan();
+    flushRows();
+    readOnly = true;
+    why = reason;
+    let seen = 0;
+    /* the running engine's file, read again every five seconds */
+    reloadTimer = setInterval(() => {
+      const today = sessionIso(Date.now());
+      let mtime = 0;
+      try {
+        mtime = fs.statSync(dayFile(o.dir, today)).mtimeMs;
+      } catch {
+        mtime = 0;
+      }
+      if (today === day && mtime === seen) return;
+      seen = mtime;
+      day = today;
+      load(today);
+      changed();
+    }, 5_000);
+    if (o.scan !== false) {
+      lockTimer = setInterval(() => {
+        const lock = takeLock(o.dir);
+        if (lock.ok) {
+          log('[compass] the engine lock is free; this process takes over the scan');
+          asScanner(true);
+        }
+      }, o.lockRetryMs ?? LOCK_RETRY_MS);
+    }
+    changed();
+    log(`[compass] ${why}`);
+  };
+
+  const asScanner = (takeOver = false) => {
+    clearRoleTimers();
+    readOnly = false;
+    why = '';
+    if (takeOver) {
+      /* the file the previous scanner left is the state to resume from */
+      day = sessionIso(Date.now());
+      load(day);
+    }
+    rowOff = onScoredRow(logRow);
+    rowTimer = setInterval(flushRows, 2_000);
+    reviewTimer = setInterval(buildDue, 60_000);
+    lockTimer = setInterval(() => {
+      const lock = takeLock(o.dir);
+      if (!lock.ok) asReader(`Another server process (pid ${lock.pid}) took the engine lock; this one stopped scanning and serves its record.`);
+    }, o.lockRetryMs ?? LOCK_RETRY_MS);
+    startScan({
+      backfillFrom: o.backfillFrom,
+      log,
+      onDay: next => {
+        if (next === day) return;
+        dirty = !readOnly;
+        save();
+        day = next;
+        rollModelDay(next.replace(/-/g, ''));
+        importModelState(exportModelState(), earlierOf(next));
+        importSignals(recentCalls(next));
+        importWould(recentWould(next));
+        importMarks([]);
+        changed();
+        log(`[compass] session ${next}`);
+      },
+    });
+    changed();
+    log(`[compass] engine running, record in ${o.dir}`);
+  };
+
+  if (readOnly) asReader(why);
+  else asScanner();
 
   const state = (): CompassState => {
     if (cached && cached.rev === rev) return cached.state;
@@ -504,11 +562,8 @@ export function startCompassEngine(o: EngineOptions): Engine {
     stop: () => {
       stopScan();
       for (const off of offs) off();
-      if (lockTimer) clearInterval(lockTimer);
-      if (reviewTimer) clearInterval(reviewTimer);
-      if (rowTimer) clearInterval(rowTimer);
+      clearRoleTimers();
       flushRows();
-      if (reloadTimer) clearInterval(reloadTimer);
       if (saveTimer) clearTimeout(saveTimer);
       dirty = true;
       save();

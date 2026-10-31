@@ -101,3 +101,49 @@ export function predict(trees: readonly Tree[], x: readonly number[]): number {
   }
   return 1 / (1 + Math.exp(-sum));
 }
+
+/** Each column's training range, from the dump's feature_infos ([lo:hi]; null for an unused column). */
+export function trainingRanges(text: string): ([number, number] | null)[] {
+  const line = /^feature_infos=(.*)$/m.exec(text)?.[1] ?? '';
+  return line.trim().split(/\s+/).filter(Boolean).map(tok => {
+    const m = /^\[([^:]+):([^\]]+)\]$/.exec(tok);
+    if (!m) return null;
+    const lo = num(m[1]);
+    const hi = num(m[2]);
+    return Number.isFinite(lo) && Number.isFinite(hi) ? [lo, hi] as [number, number] : null;
+  });
+}
+
+/** The missing-value rules each column's splits carry (0 none, 1 zero, 2 NaN), over every tree. */
+export function missingTypes(text: string): Map<number, Set<number>> {
+  const out = new Map<number, Set<number>>();
+  for (const block of text.split(/\nTree=/).slice(1)) {
+    const feats = nums(/^split_feature=.*$/m.exec(block)?.[0] ?? '');
+    const kinds = nums(/^decision_type=.*$/m.exec(block)?.[0] ?? '');
+    feats.forEach((f, i) => {
+      const set = out.get(f) ?? new Set<number>();
+      set.add((kinds[i] >> 2) & 3);
+      out.set(f, set);
+    });
+  }
+  return out;
+}
+
+/** The columns where a NaN is not a missing value to the model: some split on it has missing type none (training
+    never had a NaN there, so LightGBM reads a NaN as 0) and 0 lies outside its training range. A row with a NaN in one
+    of these walks a branch no training row took, so the model's answer on it is undefined. */
+export function nanUnsafeColumns(text: string): number[] {
+  const ranges = trainingRanges(text);
+  const out: number[] = [];
+  for (const [col, kinds] of missingTypes(text)) {
+    const r = ranges[col];
+    if (kinds.has(NONE) && r && !(r[0] <= 0 && 0 <= r[1])) out.push(col);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** The first of `cols` that is NaN in the row, or -1. */
+export function firstNaN(x: readonly number[], cols: readonly number[]): number {
+  for (const c of cols) if (x[c] == null || Number.isNaN(x[c])) return c;
+  return -1;
+}
