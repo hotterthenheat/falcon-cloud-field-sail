@@ -73,6 +73,8 @@ import { splinePath } from './StrikePressureLadder';
 import type { PriceProjection } from './StrikeChart';
 import type { GexLevel, MarketSnapshot } from '../../types/market';
 import ExposureField from './ExposureField';
+import VolRegimeView from './VolRegimeView';
+import OiChangeView from './OiChangeView';
 import FilterTabs from '../ui/FilterTabs';
 import { CardRow, PointerFollowCard } from '../ui/PointerCard';
 import { attachScrollMore } from '../ui/scrollMore';
@@ -146,7 +148,8 @@ export const PALETTE_OPTIONS: DropdownOption<ProfilePalette>[] = [
   { value: 'thermal', label: 'Thermal', hint: 'Yellow in the middle, red where hedging amplifies a move, blue where it absorbs one' },
   { value: 'house', label: 'House', hint: 'Gold where hedging amplifies, ice where it absorbs' },
 ];
-const modeOf = (p: ProfilePalette): HeatMode => (p === 'house' ? HEAT_MODE : 'thermal-yellow');
+/** The heat ramp a palette choice reads (the rail's, and its Regime and OI change tabs', phone door included) */
+export const modeOf = (p: ProfilePalette): HeatMode => (p === 'house' ? HEAT_MODE : 'thermal-yellow');
 /** The spine may lean this far from the centre line, as a share of half the lane, either way */
 const MAX_LEAN = 0.44;
 /** Room kept at each end of the lane for a leg's figure; under it the figures wait for the read line */
@@ -165,6 +168,10 @@ const VIEW_TABS = [
   { value: 'net', label: 'Matrix' },
   { value: 'gex', label: 'Calendar' },
   { value: 'surface', label: 'Surface' },
+  /* THE MARKET'S TWO READS (2026-10-31, from the data audit): the VIX term structure and the overnight change in open
+     interest, each one shared answer for the desk (data/regimeFeed.ts) */
+  { value: 'regime', label: 'Regime' },
+  { value: 'oi', label: 'OI change' },
 ] as const;
 type RailView = (typeof VIEW_TABS)[number]['value'];
 /** The head on TWO ROWS below the full tier (2026-09-16: the view tabs and the host's Expiry
@@ -411,6 +418,8 @@ interface ProfilePanelProps {
   className?: string;
   /** Phone sheet. Ladder only — the calendar is the crash, and it stays unmounted. */
   lockView?: 'ladder';
+  /** The expiry cut the OI change tab reads ('book' or YYYY-MM-DD) and its words — the head's Expiry card's choice */
+  oiScope?: { expiry: string; label: string };
 }
 
 interface Placed {
@@ -431,7 +440,7 @@ interface Hover {
 
 const ProfilePanel = ({
   rows, maxAbs, legs, openRatio = null, palette = 'thermal', step, levels, flow, lane, onLane, greek, words = { pos: 'amplifies', neg: 'absorbs' }, focusPrice, onSelect, projection, onGuide, guideOpen = false,
-  ticker, width, onWidth, restWidth, chartFloor = CHART_MIN_W, headCard, onClose, closeHint = 'Hide this panel', className = '', lockView,
+  ticker, width, onWidth, restWidth, chartFloor = CHART_MIN_W, headCard, onClose, closeHint = 'Hide this panel', className = '', lockView, oiScope,
 }: ProfilePanelProps) => {
   const mode = modeOf(palette);
   /* ON PAPER (the page's light theme — the panel's own ground, never the chart's) the ramps are the paper ramps
@@ -462,6 +471,10 @@ const ProfilePanel = ({
   const [viewState, setView] = useState<RailView>(lockView ?? 'gex');
   const view = lockView ?? viewState;
   const onField = view === 'gex' || view === 'net' || view === 'surface';
+  /* the Regime and OI change tabs are DOM views over the quiet canvas, like the field: the ladder's pointer and drawing
+     stand down while they are up */
+  const onBoard = view === 'regime' || view === 'oi';
+  const quiet = onField || onBoard;
   const fieldView: 'matrix' | 'calendar' | 'profile' = view === 'net' ? 'matrix' : view === 'surface' ? 'profile' : 'calendar';
   const [gexTick, setGexTick] = useState(0);
   useEffect(() => {
@@ -676,8 +689,8 @@ const ProfilePanel = ({
       const canvas = canvasRef.current;
       const p = projection.current;
       if (!root || !canvas || !p) return;
-      /* the GEX tab stands over a quiet canvas — the field draws the book */
-      if (onField) {
+      /* the GEX tab stands over a quiet canvas — the field draws the book (and the Regime and OI change tabs theirs) */
+      if (quiet) {
         if (lastKey !== 'gex') {
           const c2 = canvas.getContext('2d');
           if (c2 && canvas.width && canvas.height) c2.clearRect(0, 0, canvas.width, canvas.height);
@@ -1541,7 +1554,7 @@ const ProfilePanel = ({
 
   /* THE POINTER — the nearest strike by height, anywhere in the lanes */
   const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (onField) return;
+    if (quiet) return;
     const root = rootRef.current;
     if (!root) return;
     const r = root.getBoundingClientRect();
@@ -1586,7 +1599,7 @@ const ProfilePanel = ({
   const draggedRef = useRef(false);
   const dragYRef = useRef<number | null>(null);
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (view !== 'ladder' || onField) return;
+    if (view !== 'ladder' || quiet) return;
     const t = e.target as HTMLElement;
     if (t.closest('button, [data-profile-views], [data-profile-tools], [data-split]')) return;
     dragYRef.current = e.clientY;
@@ -1600,7 +1613,7 @@ const ProfilePanel = ({
       draggedRef.current = false;
       return;
     }
-    if (onField) return;
+    if (quiet) return;
     if (hoverRef.current && onSelect) onSelect(hoverRef.current.strike);
   };
 
@@ -1814,21 +1827,21 @@ const ProfilePanel = ({
           tools, and the column heads under it name the lanes */}
       <div
         ref={headRef}
-        className={`absolute inset-x-0 top-0 flex flex-col px-2 ${onField ? 'pointer-events-auto' : 'pointer-events-none'}`}
-        style={onField ? undefined : { height: twoRowHead ? HEAD_TOP_2 : HEAD_TOP }}
+        className={`absolute inset-x-0 top-0 flex flex-col px-2 ${quiet ? 'pointer-events-auto' : 'pointer-events-none'}`}
+        style={quiet ? undefined : { height: twoRowHead ? HEAD_TOP_2 : HEAD_TOP }}
         data-profile-head
-        data-head-rows={onField ? undefined : twoRowHead ? 2 : 1}
+        data-head-rows={quiet ? undefined : twoRowHead ? 2 : 1}
       >
         {/* on GEX the row WRAPS: the tabs, then the field's cards through the slot, the close door pinned at the right */}
-        <div className={`flex items-center gap-1.5 min-w-0 ${onField ? 'flex-wrap gap-y-1 py-[3px] pr-7' : ''}`} style={onField ? { minHeight: HEAD_TOP } : { height: HEAD_TOP }}>
+        <div className={`flex items-center gap-1.5 min-w-0 ${quiet ? 'flex-wrap gap-y-1 py-[3px] pr-7' : ''}`} style={quiet ? { minHeight: HEAD_TOP } : { height: HEAD_TOP }}>
           {viewTabs}
           {onField && <div ref={setStripSlot} className="contents" data-profile-head-slot />}
-          {headCard && !onField && (
+          {headCard && (!quiet || view === 'oi') && (
             <span className="pointer-events-auto shrink-0 inline-flex" data-profile-head-card>
               {headCard}
             </span>
           )}
-          {!twoRowHead && showSize && !onField && (
+          {!twoRowHead && showSize && !quiet && (
             <span className="min-w-0 flex-1 flex items-center justify-center gap-2 text-t10 text-textMuted" data-lane-head="size">
               <Term k="Size at a strike" className="pointer-events-auto truncate">
                 Size · {greek}
@@ -1836,19 +1849,19 @@ const ProfilePanel = ({
               </Term>
             </span>
           )}
-          {!twoRowHead && showFlow && !onField && (
+          {!twoRowHead && showFlow && !quiet && (
             <span className="min-w-0 flex-1 flex items-center justify-center gap-2 text-t10 text-textMuted" data-lane-head="flow">
               <Term k="What a move forces" className="pointer-events-auto truncate">
                 What a move forces <span className="text-textMuted">· from gamma</span>
               </Term>
             </span>
           )}
-          <span className={onField ? 'absolute right-1.5 top-[3px] shrink-0 flex items-center pointer-events-auto' : 'ml-auto shrink-0 flex items-center gap-1 pointer-events-auto'} data-profile-tools={twoRowHead ? undefined : ''}>
-            {!twoRowHead && !onField && laneTools}
+          <span className={quiet ? 'absolute right-1.5 top-[3px] shrink-0 flex items-center pointer-events-auto' : 'ml-auto shrink-0 flex items-center gap-1 pointer-events-auto'} data-profile-tools={twoRowHead ? undefined : ''}>
+            {!twoRowHead && !quiet && laneTools}
             {closeDoor}
           </span>
         </div>
-        {twoRowHead && !onField && (
+        {twoRowHead && !quiet && (
           <div className="flex items-center gap-1 pointer-events-auto" style={{ height: HEAD_TOP_2 - HEAD_TOP }} data-profile-tools>
             {laneTools}
           </div>
@@ -1863,6 +1876,17 @@ const ProfilePanel = ({
       {onField && gexSnap && (gexSnap.chain?.length ?? 0) > 0 && (
         <div className="absolute inset-x-0 bottom-0 overflow-y-auto overflow-x-hidden pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-gex>
           <ExposureField snapshot={gexSnap} toolbar="panel" viewLock={fieldView} legsLock={view === 'net' ? 'all' : undefined} selectedStrike={focusPrice ?? null} onSelectStrike={onSelect} fullMode="portal" narrowHint="widen the panel or pick fewer" headSlot={stripSlot} />
+        </div>
+      )}
+      {/* THE REGIME AND OI CHANGE TABS: their own views under the head, the canvas quiet behind them */}
+      {view === 'regime' && (
+        <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-regime>
+          <VolRegimeView mode={mode} paper={paper} />
+        </div>
+      )}
+      {view === 'oi' && ticker && (
+        <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-oi>
+          <OiChangeView ticker={ticker} expiry={oiScope?.expiry ?? 'book'} scopeLabel={oiScope?.label ?? 'Whole book'} spot={liveSpot} mode={mode} paper={paper} focusPrice={focusPrice ?? null} onSelect={onSelect} />
         </div>
       )}
       {onField && (!gexSnap || (gexSnap.chain?.length ?? 0) === 0) && (

@@ -7,7 +7,7 @@ import { useDeskSession, sessionMeta, type DeskSession } from '../../data/deskSe
 import { chainForDate, expiryLabel } from '../../data/book/levels';
 import { ensureBook } from '../../data/book/load';
 import { peekSpot } from '../../data/book/day';
-import { snapshotFor } from '../../data/book/feed';
+import { snapshotFor, snapshotOf } from '../../data/book/feed';
 import { bookStatus, peekEntry, useBookRev } from '../../data/book/store';
 import type { StrikeNode } from '../../types/market';
 import { ReadMiss } from '../../components/ui/BookDown';
@@ -61,7 +61,8 @@ import { dealerOf } from '../../core/dealerSign';
 import { useMaxPain } from '../../components/gex/levelExtras';
 import { composeSnapshot, snapshotName } from '../../components/gex/snapshot';
 import { readSessionClock } from '../../data/moc';
-import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
+import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, modeOf, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
+import RegimeDoor from '../../components/gex/RegimeDoor';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import { netSinceOpenRatio } from '../../data/levelview';
 import { useLevelsFor } from '../../data/levelsFor';
@@ -184,6 +185,12 @@ const railCutChoices = (): ExpiryChoice<RailCut>[] => {
   }
   out.push({ value: 'book', label: 'Whole book', hint: 'Every listed expiry, on the contracts live in this session', date: null });
   return out;
+};
+/** The OI change tab's scope for the desk's cut: the whole book, or the cut's expiry in the card's words */
+const oiScopeOf = (cut: RailCut): { expiry: string; label: string } => {
+  if (cut === 'book') return { expiry: 'book', label: 'Whole book' };
+  const d = expiryFor(cut).date;
+  return { expiry: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, label: `${MONTHS[d.getMonth()]} ${d.getDate()}` };
 };
 type RailData = {
   rows: { strike: number; value: number; callOI?: number }[];
@@ -1641,6 +1648,7 @@ const Pane = ({
               /* The expiry card in the rail's head beside the view tabs — the desk's one cut, so a change here
                  changes every pane */
               headCard={<ExpiryCard label="Expiry" size="sm" value={railCut} choices={railCutChoices()} onChange={onRailCut} title="Which contracts the rails read" testId="terrain-expiry" />}
+              oiScope={oiScopeOf(railCut)}
               ticker={ticker}
               rows={rail.rows}
               maxAbs={rail.maxAbs}
@@ -2432,6 +2440,10 @@ const Terrain = () => {
           )
         )}
       </div>
+      {/* THE PHONE'S WAY IN to the rail's Regime and OI change tabs (the rail is not on a phone): one line, a sheet */}
+      {isPhone && panes[active] && (
+        <RegimeDoor ticker={panes[active].ticker} oiScope={oiScopeOf(cfg.railCut)} spot={snapshotOf(panes[active].ticker)?.spot ?? 0} mode={modeOf(cfg.palette)} paper={pageLight} />
+      )}
       {meterOn && <FrameMeter />}
     </div>
   );
