@@ -10,7 +10,7 @@ import type { BookContract } from '../types/trace';
 import { dayLean, FRESH_VOL_OI, leanWords, SPREAD_LEG_PCT, SWEEP_DAY_PCT } from './traceLean';
 
 export { FRESH_VOL_OI, SPREAD_LEG_PCT, SWEEP_DAY_PCT };
-import { advUsdOf, usd } from './traceRows';
+import { advUsdOf, likelyOpeningOf, usd } from './traceRows';
 
 /** A New York minute of the day, spoken — "14:30" */
 const clockOf = (minute: number) => minuteLabel(minute);
@@ -38,8 +38,8 @@ interface FlowScreen {
 
 export const FLOW_SCREENS: FlowScreen[] = [
   { key: 'active', label: 'Most active', hint: 'Heaviest volume first' },
-  { key: 'bullish', label: 'Unusually bullish', hint: 'Calls bought or puts sold, volume at least 0.8× open interest, by premium', tone: 'bull' },
-  { key: 'bearish', label: 'Unusually bearish', hint: 'Puts bought or calls sold, volume at least 0.8× open interest, by premium', tone: 'bear' },
+  { key: 'bullish', label: 'Unusually bullish', hint: 'Calls bought or puts sold on likely-opening days, volume at least 0.8× open interest, by premium — a day that may be closing gets no lean', tone: 'bull' },
+  { key: 'bearish', label: 'Unusually bearish', hint: 'Puts bought or calls sold on likely-opening days, volume at least 0.8× open interest, by premium — a day that may be closing gets no lean', tone: 'bear' },
   { key: 'fresh', label: 'New positioning', hint: 'Volume running past open interest — positions built in the session' },
   { key: 'conviction-calls', label: 'Conviction calls', hint: 'Out-of-the-money calls with heavy sweep share', tone: 'bull' },
   { key: 'conviction-puts', label: 'Conviction puts', hint: 'Out-of-the-money puts with heavy sweep share', tone: 'bear' },
@@ -47,16 +47,41 @@ export const FLOW_SCREENS: FlowScreen[] = [
   { key: 'long-term', label: 'Long-dated', hint: 'Three months out and beyond — patient money' },
 ];
 
-/** Call flow bought at the ask reads bullish, put flow bearish, only where the day has a side (dayLean). */
-function leansBull(r: BookContract): boolean {
-  if (notABet(r)) return false; // a floor package or a day of spread legs leans nowhere
+/** A contract's day opened new positions (traceRows likelyOpeningOf): the flag paired with the next count when the row
+    has one, else its volume against the open interest the session opened on. "Cannot be told" is not opening. */
+export function dayOpens(r: Pick<BookContract, 'volume' | 'oi' | 'likelyOpening'>): boolean {
+  return (r.likelyOpening !== undefined ? r.likelyOpening : likelyOpeningOf(r)) === true;
+}
+/** Which way a day's side points, opening or not: the bought side of calls up, of puts down */
+function sidedWay(r: BookContract): 'bull' | 'bear' | null {
+  if (notABet(r)) return null; // a floor package or a day of spread legs leans nowhere
   const l = dayLean(r).lean;
-  return r.right === 'C' ? l === 'ASK' : l === 'BID';
+  if (l !== 'ASK' && l !== 'BID') return null;
+  return (r.right === 'C') === (l === 'ASK') ? 'bull' : 'bear';
+}
+/** Call flow bought at the ask reads bullish, put flow bearish, only where the day has a side (dayLean) and likely
+    opened positions (dayOpens): a closing day bought or sold takes an old bet off, which says nothing of new money. */
+function leansBull(r: BookContract): boolean {
+  return sidedWay(r) === 'bull' && dayOpens(r);
 }
 function leansBear(r: BookContract): boolean {
-  if (notABet(r)) return false;
-  const l = dayLean(r).lean;
-  return r.right === 'P' ? l === 'ASK' : l === 'BID';
+  return sidedWay(r) === 'bear' && dayOpens(r);
+}
+/** What the lean left out of a set of days: the ones with a side that are not likely opening — shown, with no lean */
+export function closingLeftOut(rows: readonly BookContract[]): { count: number; premium: number; bull: number; bear: number } {
+  let count = 0;
+  let premium = 0;
+  let bull = 0;
+  let bear = 0;
+  for (const r of rows) {
+    const way = sidedWay(r);
+    if (!way || dayOpens(r)) continue;
+    count++;
+    if (Number.isFinite(r.premium)) premium += r.premium;
+    if (way === 'bull') bull++;
+    else bear++;
+  }
+  return { count, premium, bull, bear };
 }
 
 /** "Unusually" bullish or bearish also needs this much volume against open interest — said in the screens' hints */

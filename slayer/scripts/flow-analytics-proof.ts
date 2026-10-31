@@ -81,10 +81,13 @@ const R1b = (o: Partial<Opt> = {}) => opt({ id: 'r1b', t: '14:00:00.800', sym: '
   expectNear('R1 gap ms', r.gapMs, 800);
   expectNear('R1 ts = the earlier leg', r.ts, msOf('14:00:00.000'));
   expectEqual('R1 excludeIds', [...read.excludeIds].sort(), ['r1a', 'r1b']);
-  /* directional net: 100C sold on the bid = bearish $20,000, 105C bought = bullish $14,250 → −5,750 with the legs,
-     0 without them (the roll is one repositioning, not two bets) */
+  /* directional net: 105C bought, opening (vol 300 > oi 50) = bullish $14,250; 100C sold on the bid has no opening
+     read (vol 800 ≤ oi 5,000), so it leans nowhere (data/tape.ts printOpens, audit §8 F1) and is said left out →
+     +14,250 with the legs, 0 without them (the roll is one repositioning, not two bets) */
   const prints = printsOfRows([R1a(), R1b()]);
-  expectNear('R1 tape net with both legs', summarizeTape(prints).netPremium, -5750);
+  const both = summarizeTape(prints);
+  expectNear('R1 tape net with both legs (the closing leg left out of the lean)', both.netPremium, 14250);
+  expectEqual('R1 the closing leg is left out, its $20,000 said', [both.notOpening.count, both.notOpening.premium], [1, 20000]);
   expectNear('R1 tape net without the roll legs', summarizeTape(withoutRollLegs(prints, read)).netPremium, 0);
 }
 /* duplicates: r1a twice (same id) is one print — counted twice it would be a 200-lot, off 95 by more than 10% */

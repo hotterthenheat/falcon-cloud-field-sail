@@ -3,7 +3,7 @@
 
 import type { BookContract, FlowPrint, PrintSentiment, TapeSummary } from '../types/trace';
 import { dayLean, SPREAD_LEG_PCT, SWEEP_DAY_PCT } from './traceLean';
-import { coversOf, hashId, type NetCovers } from './traceRows';
+import { coversOf, hashId, likelyOpeningOf, type NetCovers } from './traceRows';
 
 /** A day-book row as a print for the contract card. The anchor is the clip the caller hands in (a flow alert's print, or
     the contract's real last trade); without one the card speaks for the day — never an invented print. */
@@ -45,6 +45,7 @@ export function bookRowToPrint(
     premium: clip ? (clip.premium != null && Number.isFinite(clip.premium) ? Math.round(clip.premium) : Number.NaN) : Math.round(row.premium),
     volume: row.volume,
     oi: row.oi,
+    ...(row.likelyOpening !== undefined ? { likelyOpening: row.likelyOpening } : {}),
     deltaOI: row.deltaOI,
     spot: row.spot,
     iv: row.iv,
@@ -65,12 +66,36 @@ export const isSpreadLeg = (p: Pick<FlowPrint, 'legs'> & Partial<Pick<FlowPrint,
 export const notCrownable = (p: Pick<FlowPrint, 'legs'> & Partial<Pick<FlowPrint, 'compression' | 'floorPackage' | 'cross'>>): boolean =>
   !!p.compression || !!p.floorPackage || !!p.cross || isSpreadLeg(p);
 
-/** At the ask was bought, on the bid sold: calls bought and puts sold read bullish. A mid print, an after-hours print,
-    compression and a spread leg read neither. */
-export function sentimentOf(p: FlowPrint): PrintSentiment {
+/** Opening, not closing: only a print that likely opened new positions leans. A closing trade bought at the ask or
+    sold on the bid takes an old bet off, so it says nothing about where new money points. The flag a source has told
+    wins (a book row paired with the next session's count); otherwise the print's own day volume against the open
+    interest the session opened on (traceRows likelyOpeningOf). "Cannot be told" is not opening. */
+export const printOpens = (p: Pick<FlowPrint, 'volume' | 'oi'> & Partial<Pick<FlowPrint, 'likelyOpening'>>): boolean =>
+  (p.likelyOpening !== undefined ? p.likelyOpening : likelyOpeningOf({ volume: p.volume, oi: p.oi })) === true;
+
+/** The way a print's side points, opening or not: calls bought and puts sold up. A mid print, an after-hours print,
+    compression and a spread leg point nowhere. */
+function sidedRead(p: FlowPrint): PrintSentiment {
   if (p.side === 'MID' || p.extended || p.compression || isSpreadLeg(p)) return 'NEUTRAL';
   return (p.right === 'C' && p.side === 'ASK') || (p.right === 'P' && p.side === 'BID') ? 'BULLISH' : 'BEARISH';
 }
+
+/** At the ask was bought, on the bid sold: calls bought and puts sold read bullish, on a likely-opening print only
+    (printOpens). A print that may be closing reads neither and still shows. A mid print, an after-hours print,
+    compression and a spread leg read neither. */
+export function sentimentOf(p: FlowPrint): PrintSentiment {
+  const s = sidedRead(p);
+  return s !== 'NEUTRAL' && !printOpens(p) ? 'NEUTRAL' : s;
+}
+
+/** "$310K", "$3.4M" — the left-out money in a hover */
+const shortUsd = (v: number): string => {
+  const a = Math.abs(v);
+  if (a >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+  if (a >= 1e3) return `$${Math.round(v / 1e3)}K`;
+  return `$${Math.round(v)}`;
+};
 
 /** The Notable order: premium, aggression, size and how far out of the money, each against the buffer's own largest.
     The score orders the list and is never shown. */
@@ -116,8 +141,9 @@ export function printKind(p: Pick<FlowPrint, 'sweep' | 'legs' | 'strat' | 'size'
   return 'SINGLE';
 }
 
-/** The tape's net is the prints in hand, bought less sold: spread legs, crosses, compression and mid prints are in no
-    lean; after-hours prints are said left out when none is in the set */
+/** The tape's net is the prints in hand, bought less sold, on likely-opening prints only: spread legs, crosses,
+    compression, mid prints and prints that may be closing are in no lean (the last counted in notOpening and named, with
+    their money, in what the figure leaves out); after-hours prints are said left out when none is in the set */
 export function summarizeTape(prints: FlowPrint[], afterHoursOut = !prints.some(p => p.extended)): TapeSummary & { covers: NetCovers } {
   let bull = 0;
   let bear = 0;
@@ -134,6 +160,8 @@ export function summarizeTape(prints: FlowPrint[], afterHoursOut = !prints.some(
   let legPremium = 0;
   let crossCount = 0;
   let crossPremium = 0;
+  let notOpenCount = 0;
+  let notOpenPremium = 0;
   let largest: FlowPrint | null = null;
 
   for (const p of prints) {
@@ -166,8 +194,11 @@ export function summarizeTape(prints: FlowPrint[], afterHoursOut = !prints.some(
       continue;
     }
     if (!notCrownable(p) && (!largest || p.premium > largest.premium)) largest = p;
-    const s = sentimentOf(p);
-    if (s === 'BULLISH') bull += p.premium;
+    const s = sidedRead(p);
+    if (s !== 'NEUTRAL' && !printOpens(p)) {
+      notOpenCount++;
+      if (Number.isFinite(p.premium)) notOpenPremium += p.premium;
+    } else if (s === 'BULLISH') bull += p.premium;
     else if (s === 'BEARISH') bear += p.premium;
   }
 
@@ -191,10 +222,20 @@ export function summarizeTape(prints: FlowPrint[], afterHoursOut = !prints.some(
     compression: { count: compCount, premium: compPremium },
     crosses: { count: crossCount, premium: crossPremium },
     spreadLegs: { count: legCount, premium: legPremium },
+    notOpening: { count: notOpenCount, premium: notOpenPremium },
     largest: largest ? { ticker: largest.ticker, strike: largest.strike, right: largest.right, premium: largest.premium } : null,
     covers: {
       ...coversOf(prints.map(p => ({ time: p.epoch ?? 0 })), 'the prints in hand'),
-      leaves: ['spread legs', 'crosses', 'compression', 'mid prints', ...(afterHoursOut ? ['after hours'] : [])],
+      leaves: [
+        'spread legs',
+        'crosses',
+        'compression',
+        'mid prints',
+        ...(afterHoursOut ? ['after hours'] : []),
+        ...(notOpenCount
+          ? [`${notOpenCount.toLocaleString('en-US')} ${notOpenCount === 1 ? 'print' : 'prints'} not likely opening, perhaps closing (${shortUsd(notOpenPremium)}: shown, no lean)`]
+          : []),
+      ],
     },
   };
 }

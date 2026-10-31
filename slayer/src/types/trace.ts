@@ -58,6 +58,9 @@ export interface FlowPrint {
   alertRule?: string;
   /** Printed outside the regular session — never read bullish or bearish */
   extended?: boolean;
+  /** Opening, not closing, when a source has told it (a book row paired with the next count, traceRows
+      likelyOpeningOf); absent: read off the print's own volume and open interest (data/tape.ts printOpens) */
+  likelyOpening?: boolean | null;
   /** A flow alert's last fill, New York "HH:MM:SS" (`time` is its first) */
   fillEnd?: string;
   /** Per-share theta, as the vendor sends it */
@@ -188,5 +191,7 @@ export interface TapeSummary {
   /** In the call/put money, never in a side's total or the largest */
   spreadLegs: { count: number; premium: number };
   crosses: { count: number; premium: number };
+  /** Sided prints that are not likely opening (data/tape.ts printOpens): shown, in the call/put money, in no lean */
+  notOpening: { count: number; premium: number };
   largest: LargestPrint | null;
 }
