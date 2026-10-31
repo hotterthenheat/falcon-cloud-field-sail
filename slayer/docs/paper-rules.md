@@ -386,11 +386,13 @@ buy at the ask** (a limit never worse than its price). Fees as before, a contrac
 | A credit spread | width × 100 (net: width − credit) |
 | An iron condor / butterfly | the most the two spreads can lose at expiry, once (net: the wider side − both credits) |
 | A cash-secured put | strike × 100 (net: strike − premium) |
-| A single sold against a long of the same kind and expiry | the distance between the strikes where the long is further out, else nothing |
+| A single sold against a long of the same kind, same expiry or later (a calendar, a diagonal) | the distance between the strikes where the long is further out, else nothing |
+| A naked call and a naked put on one name (a short straddle or strangle) | **once** (CBOE): the greater of the two sides' Reg T estimates plus the other side's premium now — 510C and 490P sold at 2.00 with SPY at 500: 9,200 + 200 = **9,400**, not 18,400 |
 | A naked short (practice) | **Reg T estimate**: the greater of 20% × the name − out of the money + the premium now, or 10% × the name (a call) / the strike (a put) + the premium — 15% / 10% on a broad-based index (SPX, NDX, RUT, XSP, VIX …). An estimate: a broker's own figure can differ |
 
-The account card shows **Free** and **Margin held**. **A margin call** is equity under what the open shorts need (free
-plus the longs at their bid below zero): every new way in is refused with the call in words, ways out are not, and
+The account card shows **Free** and **Margin held**. **A margin call** is free under zero — cash under what the open
+shorts hold. A long option held is not counted toward it: under Reg T a listed option has no loan value (2026-10-31; it
+was free plus the longs at their bid): every new way in is refused with the call in words, ways out are not, and
 nothing is sold off by itself (no plan here says otherwise).
 
 **Expiry and assignment.** At 16:00 a short settles at what it is worth in the money on the 16:00 print, bought back in
@@ -418,3 +420,86 @@ Options Funding trades only the **275 names of its whitelist** (`whitelists.ts`:
 read 2026-10-29; a name compares without dots, so BRK.B is the list's BRKB). Strix names a 275-symbol list of its own
 that was not read here, so Strix plans do not check names and say so. A plan saved before these fields is read with the
 firm's current permissions when it loads (`store.ts migrate`).
+
+## Practice math (2026-10-31 audit — current)
+
+Every rule below has a known-number check in `scripts/paper-proof.ts` (paper) and `scripts/review-engine-proof.ts`
+(backtest) under "the Practice math audit".
+
+- **Average cost is a running average.** Each way in adds its premium (and its fee) to what is held; each way out takes
+  its share — the average × the contracts sold — back out, and what it made against that average is banked. A buy after
+  a partial sale averages with what is left, not with what was sold. Buy 2 @ 1.00, sell 1 @ 2.00, buy 1 @ 3.00, marked
+  at 3.00: average **2.00**, banked **$100**, open **$200** (equity +$300 either way; the old lifetime average said 1.67,
+  $33.33 and $266.67, and the balance a firm's target and drawdown read was $66.67 short). A closed trade's `avgIn` is
+  still the average of every way in (what the trade paid), and its P&L is its cash, unchanged.
+- **Early closes** (`core/calendar` EARLY_CLOSES: the day after Thanksgiving, July 3, December 24). The options session
+  ends at **13:00**: the bell (`clock.ts bellOf`) is 13:00, a contract expiring that day settles then, the session stops
+  taking fills (`feed.ts optionsOpen`), and a late name's window runs to 13:15 (catch-up replays to there, not 16:15).
+  **Time to expiry** is the trading clock's: session minutes left today plus each later session's own minutes (210 on an
+  early close) over 390 × 252 — no five-minute floor, 0 at the close. A contract expiring 2026-11-27 has 210/390 of a
+  session before that open; from the Wednesday before, 390 + 210 = 600 minutes.
+  **A quote is fresh** when it was read in the last 8 seconds, is not a kept one, carries today's stamp, and — past the
+  day's close — changed after the close. A snapshot read at 13:30 that answers with the 12:59 quote is frozen and fills
+  nothing. **A plan's times** written against the 16:00 bell keep their distance from the real close: flat by 15:55 →
+  12:55, 15:59 → 12:59, the 16:10 close → 13:10; a time between 13:00 and 15:00 is 12:59; a time before 13:00 stands.
+  The words on the page still say the plan's own time (a UI follow-up).
+- **The drawdown is the equity curve's** — its worst fall from a high, open trades in. A backtest reads it off its
+  minute curve (`review/engine.ts equityCurveOf`: cash and every contract held at its mid, each minute from the first
+  fill to the clock; `sessionStatsOf`); a paper account off its ticks (`PaperAccount.curve`, kept from 2026-10-31; an
+  older account reads its days' highs and lows, worst order first: `paperCurveOf`). Two trades down $300 each in the
+  same minute and closed +$50 each: **$600**, where the closed trades and each trade's own low said $300. Given no curve
+  (an imported journal) `statsOf` still reads the trades, and says so (`drawdownFrom: 'trades'`).
+- **A $0 trade is a scratch** — not a win, not a loss, out of the win rate (wins ÷ wins and losses), and it neither
+  starts nor breaks a losing run.
+- **Sharpe and Sortino** are on the daily equity returns (the start, then each day's close: a backtest's bells, a paper
+  account's ledger), annualised by √252, no risk-free rate taken off: mean ÷ sample standard deviation; mean ÷ downside
+  deviation (√ of the mean squared negative return over every day). +1%, −1%, +1%: Sharpe 4.58, Sortino 9.17. Fewer
+  than three points: none said.
+- **A fill takes at most the size the quote shows** (paper and backtest, one model: `review/quotes.ts fillableQty`). A
+  buy takes the ask's size, a sell the bid's; a spread the fewer its legs show on that side (bought: the long leg's ask
+  and the short leg's bid). What the quote cannot fill stays working: a limit at its price, a market order as a market
+  order that fills on the following quotes (the next live quote, the next recorded minute) — each quote's size is taken
+  once (the order keeps the quote's stamp and what it took of it). A bracket goes on once all of the buy has filled, for
+  all of it. Not capped: a leg of an order of several (the legs fill together or not at all), the rules' and the page's
+  closes, a settlement — and any quote that carries no size (an old saved backtest day). Market buy 5 against an ask
+  showing 3: 3 now, 2 on the next quote.
+- **VIX options** (`clock.ts vixSchedule`): the listed expiration is the Wednesday they settle; they **last trade on the
+  Tuesday before** (its close ends trading, and their time to expiry is counted to it). They settle on **the VIX index's
+  opening print of the settlement day** (the first real bar's open) — the best stand-in for the special opening quotation
+  (SOQ), which the feed does not carry, and the trade says so. Never on the 16:00 close. Held into Wednesday: it waits
+  for that print (asked from 09:32:30).
+- **Consistency and profitable days count closed P&L** — each session's balance at its end less its balance at its
+  start (`PaperDay.closeBal`, kept at the roll), the same measure the profit target reads. A trade still open does not
+  make a day: closed +$299.40 with +$499.70 still open is a $299.40 day, not $799.10.
+- **A phase may start its own drawdown** (`drawdown.perPhase`): its floor is measured from the balance the phase began
+  at, its high mark starts again there, and the floor stops trailing at that balance (`lockAt` 0). Set for TradeFundrr
+  Pre-Prop, whose Prop step is a step of its own: begun at 26,300 and closed as high as 29,500, its floor is 26,300 —
+  not the first step's 25,000. Every other plan keeps one floor across its phases. An account saved before this keeps
+  the plan it was saved with.
+- **A trade's ways out in the journal** (`review/excursion.ts`) face the way the trade does: a long's are its sells, a
+  short's its buy backs (a buy limit under the entry its target, a buy stop over it its stop) — the order that opened a
+  short is never one. What each would have made is dir × (price − entry) × 100 × qty less the fee a contract each way
+  on **every leg** (a spread pays two). Short 2.00, target 1.00: +$98.70; a debit spread in at 2.00, target 4.00:
+  +$197.40.
+- **The chart's replay steps at bar boundaries** (`data/replay.ts`): inside a bar the name stands at that bar's close
+  and the book is the newest snapshot at or before it. It no longer glides toward the next bar's close or blends toward
+  the next snapshot (which showed the minute before it happened).
+- **An imported trades file** (`review/journalManual.ts`): a blank P&L is (exit − entry) × qty × multiplier; the
+  multiplier is 100 on an option row — a contract named, an option written in the ticker (an OCC symbol, "SPY 580C"), or
+  a quantity column headed "contracts" — and 1 for shares, unless the file gives one.
+- **How long a trade was held** is session minutes in both books (`core/tradingYear tradingMinutesBetween`): only the
+  minutes the market was open, an early close's 210. In Tuesday 15:50, out Wednesday 09:40: **20**, not 1,070 wall-clock
+  minutes. (A paper futures trade from before options-only keeps its wall-clock minutes.)
+- **The catch-up judges the plan's rules too**: on each replayed minute whose recorded quotes mark everything held, the
+  floor, the day's limit and the target are judged as the live tick judges them (`engine.ts judgeRulesNow`) — a floor
+  crossed at 10:11 while the reader was away fails the account at 10:11, closed at that minute's bids. The positions
+  held are fetched for those minutes as well. Only minutes on the account's own trading day are judged (the day's limit
+  is measured from its open); the flat-by times are left to the live tick.
+- **Theta a day is per trading session** (`review/quotes.ts thetaPerSession`, the paper desk's and the backtest's one
+  definition): θ = V(S, K, t − 1/252, σ) − V(S, K, t, σ), t in trading years (session minutes ÷ 390 × 252), σ solved on
+  that clock from the mid, the name and the vol held; inside the last session, intrinsic − V. ATM 100, 20%, five
+  sessions left: about −0.12 a share. A page that quotes theta per calendar day (∂V/∂t ÷ 365, as the Weigher's) reads
+  about a third less a week out — 7 calendar days are 5 sessions — so the two are not the same unit, and say so.
+- **The paper chain's ATM IV and priced move**: the IV at the name is the average of the call's and the put's at the
+  two listed strikes either side of it, straight between them by strike (`feed.ts atmIvAt`, the Weigher's rule); the
+  move is `core/volClock sigmaToExpiry` on that vol moved onto the calendar year with the variance kept.

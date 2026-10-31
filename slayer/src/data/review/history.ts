@@ -5,7 +5,7 @@
    Each answer is loaded once (in memory, and kept in this browser's store, since a past day never changes) and then
    read synchronously by the engine and the desk. */
 
-import { isTradingDay, isoDate, MONTHS } from '../../core/calendar';
+import { isTradingDay, isoDate, sessionLengthOn, MONTHS } from '../../core/calendar';
 import { nyParts } from '../../core/nyTime';
 import { thetaCall } from '../theta';
 import { readSaved, save as keep } from '../uwStore';
@@ -208,12 +208,14 @@ export const underOf = (ticker: string): string => {
 export function parseBars(day: string, rows: Row[]): DayBars | null {
   const at = new Array<Candle | null>(DAY_MIN).fill(null);
   let closePrint = NaN;
+  /* the session's length that day: 390, 210 on a 13:00 early close (nothing after the close is a session minute) */
+  const len = sessionLengthOn(day);
   for (const r of rows) {
     const m = minuteOfStamp(r.timestamp);
     const close = num(r.close ?? r.price);
-    /* the 16:00:00 row is not a minute of the session: it is the closing print */
-    if (m === DAY_MIN && close > 0) closePrint = close;
-    if (!(m >= 0 && m < DAY_MIN) || !(close > 0)) continue;
+    /* the 16:00:00 row (13:00:00 on an early close) is not a minute of the session: it is the closing print */
+    if (m === len && close > 0) closePrint = close;
+    if (!(m >= 0 && m < len) || !(close > 0)) continue;
     const open = num(r.open);
     const high = num(r.high);
     const low = num(r.low);
@@ -328,7 +330,7 @@ export const printClock = (minute: number): string => {
 export function closeBasisOf(ticker: string, day: string): { price: number; print: string } | null {
   const d = bars.get(`bars|${underOf(ticker)}|${day}`);
   if (!d) return null;
-  if (d.closePrint != null && d.closePrint > 0) return { price: d.closePrint, print: '16:00' };
+  if (d.closePrint != null && d.closePrint > 0) return { price: d.closePrint, print: printClock(sessionLengthOn(day)) };
   const list = dayBars(ticker, day);
   const last = list[list.length - 1];
   if (!last || !(last.close > 0)) return null;
@@ -339,6 +341,12 @@ export function closeBasisOf(ticker: string, day: string): { price: number; prin
     (an early close's last trade, never a flat zero-volume candle) — NaN until the day's bars are loaded, or where there were none */
 export function closePrintOf(ticker: string, day: string): number {
   return closeBasisOf(ticker, day)?.price ?? NaN;
+}
+/** The name's opening print that day: the first real bar's open — NaN until the day's bars are loaded, or where there
+    were none. VIX options settle on it, as the best stand-in for the SOQ (the vendor does not carry the SOQ). */
+export function openPrintOf(ticker: string, day: string): number {
+  const first = dayBars(ticker, day)[0];
+  return first && first.open > 0 ? first.open : NaN;
 }
 /** Where the name stood at the end of a minute: the last real print at or before it (NaN until its bars are loaded) */
 export function spotAt(ticker: string, day: string, minute: number): number {
@@ -441,6 +449,18 @@ const NO_MARKET = -2;
 interface LegDay {
   bid: number[];
   ask: number[];
+  /** The sizes shown at the bid and the ask, where the rows carried them (NaN where not) — what a fill is capped at */
+  bidSize?: number[];
+  askSize?: number[];
+}
+/** A standing quote, and the minute whose row it is (its identity: a fill takes a quote's shown size once) */
+export interface Standing {
+  bid: number;
+  ask: number;
+  bidSize?: number;
+  askSize?: number;
+  /** The minute of the row it is */
+  at: number;
 }
 export const legKey = (c: Leg) => `${c.ticker.toUpperCase()}|${c.expiry}|${+c.strike.toFixed(3)}|${c.right}`;
 const legs = new Map<string, LegDay | null>();
@@ -472,6 +492,14 @@ export function parseQuotes(ticker: string, rows: Row[], only?: Leg): Map<string
     if (bid >= 0 && ask > 0 && ask >= bid) {
       d.bid[m] = bid;
       d.ask[m] = ask;
+      const bs = num(r.bid_size);
+      const as = num(r.ask_size);
+      if (Number.isFinite(bs) || Number.isFinite(as)) {
+        d.bidSize ??= new Array<number>(d.bid.length).fill(NaN);
+        d.askSize ??= new Array<number>(d.ask.length).fill(NaN);
+        d.bidSize[m] = bs;
+        d.askSize[m] = as;
+      }
     } else {
       d.bid[m] = NO_MARKET;
       d.ask[m] = NO_MARKET;
@@ -479,8 +507,11 @@ export function parseQuotes(ticker: string, rows: Row[], only?: Leg): Map<string
   }
   return out;
 }
-const pack = (d: LegDay) => ({ b: d.bid.map(v => (Number.isFinite(v) ? v : -1)), a: d.ask.map(v => (Number.isFinite(v) ? v : -1)) });
-const unpack = (p: { b: number[]; a: number[] }): LegDay => ({ bid: p.b.map(v => (v === -1 ? NaN : v)), ask: p.a.map(v => (v === -1 ? NaN : v)) });
+type Packed = { b: number[]; a: number[]; bs?: number[]; as?: number[] };
+const packArr = (x: number[]) => x.map(v => (Number.isFinite(v) ? v : -1));
+const unpackArr = (x: number[]) => x.map(v => (v === -1 ? NaN : v));
+const pack = (d: LegDay): Packed => ({ b: packArr(d.bid), a: packArr(d.ask), ...(d.bidSize && d.askSize ? { bs: packArr(d.bidSize), as: packArr(d.askSize) } : {}) });
+const unpack = (p: Packed): LegDay => ({ bid: unpackArr(p.b), ask: unpackArr(p.a), ...(p.bs && p.as ? { bidSize: unpackArr(p.bs), askSize: unpackArr(p.as) } : {}) });
 const hasAny = (d: LegDay) => d.ask.some(v => v > 0);
 
 /** Load one contract's quotes for a day */
@@ -499,7 +530,7 @@ export async function ensureLeg(c: Leg, day: string): Promise<boolean> {
     emit();
     return false;
   }
-  const v = got.value && !isNone(got.value) ? unpack(got.value as { b: number[]; a: number[] }) : null;
+  const v = got.value && !isNone(got.value) ? unpack(got.value as Packed) : null;
   legs.set(key, v);
   legWant.set(key, v ? 'ready' : 'none');
   emit();
@@ -517,7 +548,7 @@ export async function ensureChainDay(ticker: string, expiry: string, day: string
   const path = `/option/history/quote?symbol=${encodeURIComponent(t)}&expiration=${ymd(expiry)}&right=both&strike_range=${CHAIN_SPAN}&date=${ymd(day)}&interval=1m&format=json`;
   const got = await load(key, path, rows => {
     const all = parseQuotes(t, rows);
-    const out: Record<string, { b: number[]; a: number[] }> = {};
+    const out: Record<string, Packed> = {};
     for (const [k, d] of all) if (hasAny(d)) out[k] = pack(d);
     return Object.keys(out).length ? out : null;
   });
@@ -526,7 +557,7 @@ export async function ensureChainDay(ticker: string, expiry: string, day: string
     emit();
     return false;
   }
-  const v = got.value && !isNone(got.value) ? (got.value as Record<string, { b: number[]; a: number[] }>) : null;
+  const v = got.value && !isNone(got.value) ? (got.value as Record<string, Packed>) : null;
   if (v) for (const [k, p] of Object.entries(v)) if (!legs.get(`leg|${k}|${day}`)) {
     legs.set(`leg|${k}|${day}`, unpack(p));
     legWant.set(`leg|${k}|${day}`, 'ready');
@@ -543,7 +574,7 @@ export const legKnown = (c: Leg, day: string): boolean => legs.has(`leg|${legKey
 /** The NBBO standing at the end of a minute: that minute's row, else the last one before it that day (a quote stands
     until it changes) — null before the day's first, where the day is not loaded, or after the name's last bar of an
     early close */
-export function nbboAt(c: Leg, day: string, minute: number): { bid: number; ask: number } | null {
+export function nbboAt(c: Leg, day: string, minute: number): Standing | null {
   const d = legs.get(`leg|${legKey(c)}|${day}`);
   if (!d) return null;
   const m = Math.max(0, Math.min(LAST_MIN, minute));
@@ -553,21 +584,27 @@ export function nbboAt(c: Leg, day: string, minute: number): { bid: number; ask:
 }
 /** The quote recorded on minute `m` itself — not one carried forward from earlier. Null where that minute has no
     two-sided row (a late-close minute is not judged without this). */
-export function rowAt(d: { bid: number[]; ask: number[] }, m: number): { bid: number; ask: number } | null {
+export function rowAt(d: { bid: number[]; ask: number[]; bidSize?: number[]; askSize?: number[] }, m: number): Standing | null {
   if (!(m >= 0) || m >= d.ask.length) return null;
   const ask = d.ask[m];
   const bid = d.bid[m];
   if (ask === NO_MARKET || !Number.isFinite(ask) || !Number.isFinite(bid)) return null;
   if (!(ask > 0) || !(bid >= 0) || ask < bid) return null;
-  return { bid, ask };
+  const bs = d.bidSize?.[m];
+  const as = d.askSize?.[m];
+  return { bid, ask, ...(bs != null && Number.isFinite(bs) ? { bidSize: bs } : {}), ...(as != null && Number.isFinite(as) ? { askSize: as } : {}), at: m };
 }
 /** The quote standing at the end of minute `m` of a parsed day (parseQuotes): its own row, else the last before it;
     null before the first, or where that minute's row was no market. Does not look past the minute it was asked for. */
-export function standingAt(d: { bid: number[]; ask: number[] }, m: number): { bid: number; ask: number } | null {
+export function standingAt(d: { bid: number[]; ask: number[]; bidSize?: number[]; askSize?: number[] }, m: number): Standing | null {
   const cap = Math.min(m, d.ask.length - 1);
   for (let k = cap; k >= 0; k--) {
     if (d.ask[k] === NO_MARKET) return null;
-    if (Number.isFinite(d.ask[k]) && Number.isFinite(d.bid[k])) return { bid: d.bid[k], ask: d.ask[k] };
+    if (Number.isFinite(d.ask[k]) && Number.isFinite(d.bid[k])) {
+      const bs = d.bidSize?.[k];
+      const as = d.askSize?.[k];
+      return { bid: d.bid[k], ask: d.ask[k], ...(bs != null && Number.isFinite(bs) ? { bidSize: bs } : {}), ...(as != null && Number.isFinite(as) ? { askSize: as } : {}), at: k };
+    }
   }
   return null;
 }
@@ -697,8 +734,8 @@ export function putListing(ticker: string, day: string, l: Listing): void {
   listings.set(`list|${ticker.toUpperCase()}|${day}`, l);
   listWant.set(`list|${ticker.toUpperCase()}|${day}`, 'ready');
 }
-export function putQuotes(c: Leg, day: string, bid: number[], ask: number[]): void {
-  legs.set(`leg|${legKey(c)}|${day}`, { bid: [...bid], ask: [...ask] });
+export function putQuotes(c: Leg, day: string, bid: number[], ask: number[], bidSize?: number[], askSize?: number[]): void {
+  legs.set(`leg|${legKey(c)}|${day}`, { bid: [...bid], ask: [...ask], ...(bidSize && askSize ? { bidSize: [...bidSize], askSize: [...askSize] } : {}) });
   legWant.set(`leg|${legKey(c)}|${day}`, 'ready');
 }
 export function putWindow(first: string): void {

@@ -23,8 +23,9 @@
      A TRADES file has `date` and `ticker` (or `symbol`), and `pnl` or `entry` and `exit`:
        date, time (HH:MM, New York), ticker, contract (free words, "SPY 580C Oct 30"), side (long, short, buy or sell),
        qty, entry, exit, pnl, fees, multiplier, notes
-       A trade's blank pnl is (exit − entry) × qty × multiplier, turned over for a short; the multiplier is 100 when a
-       contract is named and 1 when not, unless the file says.
+       A trade's blank pnl is (exit − entry) × qty × multiplier, turned over for a short; the multiplier is 100 on an
+       option row (a contract named, an option written in the ticker — "SPY241018C00500000", "SPY 580C" — or a quantity
+       column headed "contracts") and 1 when not, unless the file says.
 */
 
 import { useSyncExternalStore } from 'react';
@@ -373,6 +374,12 @@ const sideOf = (s: string | undefined): ManualSide | null => {
   return null;
 };
 const TIME = /^([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/;
+/** An option written in the ticker cell: an OCC symbol ("SPY241018C00500000", "SPY   241018C00500000"), a strike and a
+    right ("SPY 580C", "SPY 580 PUT"), or the words call / put */
+const OPTION_WORDS = /^[A-Z.]{1,6}\s*\d{6}[CP]\d{8}$|\b\d+(\.\d+)?\s*(C|P|CALLS?|PUTS?)\b|\b(CALLS?|PUTS?)\b/i;
+/** Is a trades-file row an option (100 to the point): a contract named, an option written in its ticker, or a quantity
+    the file calls "contracts" */
+export const isOptionRow = (rawTicker: string, contract: string, qtyHeader?: string): boolean => !!contract.trim() || OPTION_WORDS.test(rawTicker.trim()) || (qtyHeader ?? '').trim().toLowerCase() === 'contracts';
 
 /** A CSV in the format at the head of this file, read: a days file or a trades file, and every line it could not read
     with the reason */
@@ -422,7 +429,8 @@ export function readJournalCsv(text: string): CsvRead {
       }
       return;
     }
-    const ticker = (at(cells, 'ticker') ?? '').trim().toUpperCase().slice(0, 12);
+    const rawTicker = (at(cells, 'ticker') ?? '').trim().toUpperCase();
+    const ticker = rawTicker.slice(0, 12);
     if (!ticker) return out.misses.push({ line, why: 'No ticker on this line' });
     const side = sideOf(at(cells, 'side'));
     if (!side) return out.misses.push({ line, why: `side "${(at(cells, 'side') ?? '').trim()}" is not long, short, buy or sell` });
@@ -430,7 +438,8 @@ export function readJournalCsv(text: string): CsvRead {
     let pnl = nums.pnl;
     if (pnl == null) {
       if (nums.entry == null || nums.exit == null || nums.qty == null) return out.misses.push({ line, why: 'No P&L, and no entry, exit and qty to work it out from' });
-      const mult = nums.multiplier ?? (contract ? 100 : 1);
+      /* 100 for an option row — a contract named, an option in the ticker, or a "contracts" column — else 1 (shares) */
+      const mult = nums.multiplier ?? (isOptionRow(rawTicker, contract, col.qty != null ? lines[0][col.qty] : undefined) ? 100 : 1);
       pnl = (nums.exit - nums.entry) * nums.qty * mult * (side === 'short' ? -1 : 1);
     }
     const time = (at(cells, 'time') ?? '').trim();

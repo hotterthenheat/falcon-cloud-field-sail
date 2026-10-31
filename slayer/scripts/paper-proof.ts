@@ -7,17 +7,22 @@
   Run: npx tsx scripts/paper-proof.ts (npm run review:proof runs it with the backtest's).
 */
 
-import { addDays, dayBeginsAt, dayEndsAt, nyAt, nyInstant, tradingDayOf, yearsToExpiry } from '../src/data/paper/clock';
-import { bankedOf, closeStale, comboNatural, comboRefusal, endAccount, flattenAll, futBookOf, newAccount, optBookOf, optCancel, optClose, optPlace, optPlaceCombo, optRefusal, retireFutures, tick, viewOf, type PaperAccount, type PaperMarket } from '../src/data/paper/engine';
-import { NO_RULES, floorOf, readRules, ruleRefusal, type PaperPlan, type PropRules } from '../src/data/paper/rules';
+import { addDays, bellOf, dayBeginsAt, dayEndsAt, lastTradeDayOf, nyAt, nyInstant, sessionTimeOn, tradingDayOf, tradingEndsAt, vixSchedule, yearsToExpiry } from '../src/data/paper/clock';
+import { isFresh } from '../src/data/paper/thetaFeed';
+import { bankedOf, paperCurveOf, closeStale, comboNatural, comboRefusal, endAccount, flattenAll, futBookOf, newAccount, optBookOf, optCancel, optClose, optPlace, optPlaceCombo, optRefusal, retireFutures, tick, viewOf, type PaperAccount, type PaperMarket } from '../src/data/paper/engine';
+import { NO_RULES, flatTimeOf, floorOf, progressOf, readRules, ruleRefusal, type PaperPlan, type PropRules } from '../src/data/paper/rules';
 import { CUSTOM_DEFAULTS, PROP_FIRMS, customPlan, planById } from '../src/data/paper/propFirms';
 import { marginOf } from '../src/data/paper/margin';
 import { OPTIONS_FUNDING_WHITELIST } from '../src/data/paper/whitelists';
-import { optionsOpen } from '../src/data/paper/feed';
+import { atmIvAt, expectedMovePctOf, optionQuote, optionsOpen } from '../src/data/paper/feed';
+import { putBook, putName } from '../src/data/paper/thetaFeed';
+import { thetaPerSession } from '../src/data/review/quotes';
+import { blackScholesPrice } from '../src/core/greeks';
 import { isPaperIndex } from '../src/data/paper/products';
 import { optionRootOf } from '../src/data/paper/thetaFeed';
 import type { ContractId } from '../src/data/review/quotes';
 import { priceWith } from './paper-test-pricer';
+import { excursionOf } from '../src/data/review/excursion';
 import { replayGaps, type Fetched } from '../src/data/paper/catchUp';
 import { legKey } from '../src/data/review/history';
 import { gapOf } from '../src/data/paper/engine';
@@ -822,6 +827,239 @@ const roll = (a: PaperAccount, day: string) => {
     z = tick(z, market()).account;
     ok('a practice account’s SPY 0DTE still settles at the 16:00 close', optBookOf(z).trades[0]?.how === 'expired');
   }
+}
+
+/* ================= the Practice math audit: known numbers ================= */
+/** A market where one contract stands at a set price, bid = ask = mark (no spread, no fees: sandbox) */
+const fixed = (price: () => number, t = now): PaperMarket => ({
+  ...market(),
+  now: t,
+  optQuote: (c: ContractId) => ({ ...priceWith(c, px[c.ticker] ?? 500, yearsToExpiry(c.expiry, t), 0.15), bid: price(), ask: price(), mark: price(), dead: false }),
+});
+{
+  /* 1. running average cost: buy 2 @ 1.00, sell 1 @ 2.00, buy 1 @ 3.00, mark 3.00 */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  let p = 1;
+  let x = newAccount({ id: 'avg', kind: 'practice', name: 'avg', startCash: 10_000, now: T0, sandbox: true });
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  x = optPlace(x, fixed(() => p, T0), { contract: c, side: 'buy', qty: 2, kind: 'market' });
+  p = 2;
+  x = optPlace(x, fixed(() => p, T0 + 60_000), { contract: c, side: 'sell', qty: 1, kind: 'market' });
+  p = 3;
+  x = optPlace(x, fixed(() => p, T0 + 120_000), { contract: c, side: 'buy', qty: 1, kind: 'market' });
+  const pos = optBookOf(x).positions[0];
+  const w = viewOf(x, fixed(() => 3, T0 + 180_000));
+  ok('running average cost: buy 2 @ 1, sell 1 @ 2, buy 1 @ 3 — the 1 left (avg 1) and the new 1 (3) average 2.00', pos?.avg === 2 && pos.qty === 2, `avg ${pos?.avg}`);
+  ok('…the piece sold banked 100 (2 − 1 on 1 contract), not 33.33', pos?.banked === 100, `banked ${pos?.banked}`);
+  ok('…marked at 3.00 the open P&L is 200, the balance start + 100, equity start + 300', w.openPnl === 200 && w.balance === 10_100 && w.equity === 10_300, `open ${w.openPnl} · balance ${w.balance} · equity ${w.equity}`);
+}
+
+{
+  /* 2. early closes: 2026-11-27 (the day after Thanksgiving) closes at 13:00 */
+  const EC = '2026-11-27';
+  ok('early close: the bell of 2026-11-27 is 13:00 New York', nyAt(bellOf(EC)).minutes === 13 * 60);
+  ok('…before its open a contract expiring that day has 210 of a 390-minute session left (210 / 390 / 252)', near(yearsToExpiry(EC, nyInstant(EC, 8 * 60)), 210 / 390 / 252, 1e-12), `${yearsToExpiry(EC, nyInstant(EC, 8 * 60)) * 252 * 390}`);
+  ok('…at 13:00 it has none; at 12:00, 60 minutes', yearsToExpiry(EC, nyInstant(EC, 13 * 60)) === 0 && near(yearsToExpiry(EC, nyInstant(EC, 12 * 60)) * 252 * 390, 60, 1e-9));
+  ok('…from Wednesday 11-25 before the open: 390 + (Thanksgiving shut) + 210 = 600 minutes', near(yearsToExpiry(EC, nyInstant('2026-11-25', 8 * 60)) * 252 * 390, 600, 1e-9));
+  ok('…the options session is shut at 13:30 that day, open at 12:30', !optionsOpen(nyInstant(EC, 13 * 60 + 30)) && optionsOpen(nyInstant(EC, 12 * 60 + 30)));
+  const t1330 = nyInstant(EC, 13 * 60 + 30);
+  ok('a quote read fresh at 13:30 but stamped 12:59 is frozen — it does not fill', !isFresh(t1330 - 1000, false, t1330, nyInstant(EC, 12 * 60 + 59)));
+  ok('…stamped after the close (a late name’s 13:05 quote, read 13:05) it is live; in the session any stamp from today is', isFresh(nyInstant(EC, 13 * 60 + 5), false, nyInstant(EC, 13 * 60 + 5) + 500, nyInstant(EC, 13 * 60 + 5)) && isFresh(nyInstant(EC, 11 * 60), false, nyInstant(EC, 11 * 60) + 500, nyInstant(EC, 9 * 60 + 40)));
+  ok('…a quote stamped on another day is frozen', !isFresh(nyInstant(EC, 10 * 60), false, nyInstant(EC, 10 * 60) + 500, nyInstant('2026-11-25', 15 * 60)));
+  const tf = newAccount({ id: 'tfec', kind: 'evaluation', name: 'tf', startCash: 0, plan: planById('tf-preprop-25k')!, now: nyInstant(EC, 10 * 60) });
+  const fl = flatTimeOf(tf, EC, null, {});
+  ok('a plan’s flat by 15:55 is 12:55 on a 13:00 close (the same five minutes before the real close)', !!fl && nyAt(fl.at).minutes === 12 * 60 + 55, fl ? `${nyAt(fl.at).minutes}` : 'none');
+  ok('…15:59 → 12:59, 16:10 → 13:10; a full day keeps them', sessionTimeOn(EC, 15 * 60 + 59) === 12 * 60 + 59 && sessionTimeOn(EC, 16 * 60 + 10) === 13 * 60 + 10 && sessionTimeOn('2026-11-25', 15 * 60 + 55) === 15 * 60 + 55);
+}
+
+{
+  /* 3. margin: S 500, short 510C @ 2 and short 490P @ 2 (premium now 2 each) */
+  const E = '2026-10-16';
+  const q2 = { bid: 2, ask: 2, mark: 2, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic: 0, dead: false, spot: 500 };
+  const sc = { key: 'c', contract: { ticker: 'SPY', strike: 510, right: 'C' as const, expiry: E }, dir: -1 as const, qty: 1, avg: 2, quote: q2, spotIn: 500 };
+  const sp = { key: 'p', contract: { ticker: 'SPY', strike: 490, right: 'P' as const, expiry: E }, dir: -1 as const, qty: 1, avg: 2, quote: q2, spotIn: 500 };
+  const strangle = marginOf([sc, sp]);
+  ok('a short strangle is margined once (CBOE): the greater side, 9,200 (20% × 500 − 10 + 2), + the other’s 200 premium = 9,400 — not 18,400', near(strangle.req, 9_400) && strangle.lines.length === 1, `${strangle.req}`);
+  ok('…its own money held is 9,400 less the 400 credit = 9,000', near(strangle.held, 9_000), `${strangle.held}`);
+  const twoCalls = marginOf([{ ...sc, qty: 2 }, sp]);
+  ok('…a second call with no put against it is naked on its own: 9,400 + 9,200 = 18,600', near(twoCalls.req, 18_600), `${twoCalls.req}`);
+  const later = marginOf([sc, { key: 'l', contract: { ticker: 'SPY', strike: 515, right: 'C' as const, expiry: '2026-11-20' }, dir: 1 as const, qty: 1, avg: 3, quote: q2, spotIn: 500 }]);
+  ok('a short call covered by a later-expiry long call (a diagonal) holds the 5 between the strikes × 100 = 500', near(later.req, 500) && later.lines[0]?.kind === 'covered', `${later.req}`);
+  const earlier = marginOf([sc, { key: 'e', contract: { ticker: 'SPY', strike: 515, right: 'C' as const, expiry: '2026-10-09' }, dir: 1 as const, qty: 1, avg: 3, quote: q2, spotIn: 500 }]);
+  ok('…a long that expires first does not cover it: naked, 9,200', near(earlier.req, 9_200), `${earlier.req}`);
+  /* a long held does not hold a short: 10,000 cash, a long call bid 5 (−500 paid), a short 490P naked */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  let x = newAccount({ id: 'xs', kind: 'practice', name: 'xs', startCash: 10_000, now: T0, sandbox: true });
+  x = optPlace(x, fixed(() => 5, T0), { contract: { ticker: 'SPY', strike: 500, right: 'C', expiry: E }, side: 'buy', qty: 2, kind: 'market' });
+  const w = viewOf(x, fixed(() => 5, T0));
+  ok('excess is what is free: a long option has no loan value (Reg T) — 9,000 cash, 1,000 of calls, nothing short → excess 9,000', w.excess === 9_000 && w.free === 9_000, `${w.excess}`);
+}
+
+{
+  /* 4. a paper account's drawdown is its equity's, tick by tick: buy 1 @ 2.00 (sandbox), then 1.50, 3.00, 2.50, 1.00 */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  let p = 2;
+  let x = newAccount({ id: 'dd', kind: 'practice', name: 'dd', startCash: 10_000, now: T0, sandbox: true });
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  x = optPlace(x, fixed(() => p, T0), { contract: c, side: 'buy', qty: 1, kind: 'market' });
+  let t = T0;
+  for (const v of [1.5, 3, 2.5, 1]) {
+    p = v;
+    t += 2000;
+    x = tick(x, fixed(() => p, t)).account;
+  }
+  ok('the paper drawdown follows the ticks: peak 10,100 (at 3.00), down to 9,900 (at 1.00) — 200', x.curve?.maxDd === 200 && x.curve.peak === 10_100, JSON.stringify(x.curve));
+  ok('…and the report reads it from there', paperCurveOf(x).maxDrawdown === 200);
+}
+
+{
+  /* 5. a fill takes at most the size the quote shows: 3 at the ask, 2 at the bid; each tick a new quote unless its stamp is the same */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  let stamp = T0;
+  const sized = (t: number): PaperMarket => ({ ...fixed(() => 2, t), optQuote: (c: ContractId) => ({ ...fixed(() => 2, t).optQuote(c), askSize: 3, bidSize: 2, quotedAt: stamp }) });
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  let x = newAccount({ id: 'sz', kind: 'practice', name: 'sz', startCash: 10_000, now: T0, sandbox: true });
+  x = optPlace(x, sized(T0), { contract: c, side: 'buy', qty: 5, kind: 'market', bracket: { target: 3 } });
+  ok('paper: a market buy of 5 against an ask showing 3 fills 3; 2 stay working, and no target yet', x.opt.fills.length === 1 && x.opt.fills[0].qty === 3 && x.opt.orders[0].status === 'working' && x.opt.orders[0].qty === 2 && !x.opt.orders.some(o => o.oco));
+  x = tick(x, sized(T0 + 2000)).account;
+  ok('…the same quote read again (its stamp unchanged) fills nothing more', x.opt.fills.length === 1);
+  stamp = T0 + 3000;
+  x = tick(x, sized(T0 + 4000)).account;
+  ok('…a new quote fills the rest, 2; the order is filled, 5 in all, and its target rides all 5', x.opt.fills.length === 2 && x.opt.fills[1].qty === 2 && x.opt.orders[0].status === 'filled' && x.opt.orders[0].qty === 5 && x.opt.orders.some(o => o.oco && o.qty === 5 && o.status === 'working'), x.opt.orders.map(o => `${o.kind}:${o.qty}:${o.status}`).join(' '));
+}
+
+{
+  /* 6. VIX: the 2026-11-18 (Wednesday) contract last trades Tuesday 11-17 and settles on Wednesday's VIX opening print */
+  const W = '2026-11-18';
+  const vc: ContractId = { ticker: 'VIX', strike: 20, right: 'C', expiry: W };
+  ok('VIX: listed Wednesday 11-18, it last trades Tuesday 11-17 and settles on the 18th', lastTradeDayOf(vc) === '2026-11-17' && vixSchedule(W).settleDay === W && nyAt(tradingEndsAt(vc)).date === '2026-11-17');
+  const T0 = nyInstant('2026-11-17', 11 * 60);
+  let x = newAccount({ id: 'vix', kind: 'practice', name: 'vix', startCash: 10_000, now: T0, sandbox: true });
+  x = optPlace(x, fixed(() => 1.5, T0), { contract: vc, side: 'buy', qty: 1, kind: 'market' });
+  ok('…bought Tuesday at 1.50', optBookOf(x).positions.length === 1);
+  const wedNoon = nyInstant(W, 12 * 60);
+  ok('…on Wednesday it can no longer be traded', /stop trading/.test(optRefusal(x, fixed(() => 1.5, wedNoon), { contract: vc, side: 'sell', qty: 1, kind: 'market' }) ?? ''));
+  const tueNight = nyInstant('2026-11-17', 16 * 60 + 30);
+  x = tick(x, { ...fixed(() => 1.5, tueNight), open: () => false, closeOf: () => 25, openOf: () => NaN }).account;
+  ok('…after Tuesday’s close it is not settled on the 16:00 close (25): it waits for Wednesday’s open', optBookOf(x).positions.length === 1);
+  x = tick(x, { ...fixed(() => 1.5, nyInstant(W, 9 * 60 + 35)), closeOf: () => 25, openOf: (t: string, d: string) => (t === 'VIX' && d === W ? 22.4 : NaN) }).account;
+  const vt = optBookOf(x).trades[0];
+  ok('…it settles on the VIX opening print of the 18th, 22.40: worth 2.40, and says it is the SOQ’s stand-in', vt?.how === 'expired' && vt.avgOut === 2.4 && /opening print/.test(vt.note ?? '') && /special opening quotation/.test(vt.note ?? ''), `${vt?.avgOut} · ${vt?.note}`);
+}
+
+{
+  /* the Weigher's two bugs, in the paper chain: ATM IV between the strikes either side of the name; one expected-move formula */
+  const row = (k: number, c: number, p: number) => ({ strike: k, call: { iv: c }, put: { iv: p } });
+  /* unsorted, and the middle element of the old list was 30: at 501.5 between 500 (avg 20) and 505 (avg 25) → 20 + 5 × 1.5/5 = 21.5 */
+  ok('ATM IV: the call and put average at the two strikes either side of the name, straight between them — 21.5, not the list’s middle', near(atmIvAt([row(510, 30, 32), row(500, 19, 21), row(505, 24, 26), row(495, 40, 44)], 501.5), 21.5, 1e-9));
+  ok('…one side alone stands for its strike; past the strikes, the nearest', near(atmIvAt([row(500, 20, NaN), row(505, NaN, 30)], 502.5), 25, 1e-9) && atmIvAt([row(500, 20, 22)], 510) === 21);
+  /* a trading-clock 20% vol on the 2026-10-16 expiry from 2026-09-23 10:00: the move is S·σ·√T on the trading clock */
+  const ms = nyInstant('2026-09-23', 10 * 60);
+  const em = expectedMovePctOf(500, 20, { ticker: 'SPY', expiry: '2026-10-16' }, ms);
+  const want = 20 * Math.sqrt(yearsToExpiry('2026-10-16', ms));
+  ok('the expected move goes through sigmaToExpiry and keeps the variance: 20% on the trading clock → 20 × √T_trading %', near(em, want, 0.002), `${em} vs ${want}`);
+}
+
+{
+  /* 7. consistency and profitable days count each session's CLOSED P&L, as the target does (TradeFundrr: $0.30 a side) */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  const pxk: Record<number, number> = { 500: 2, 505: 1 };
+  const mk = (t: number): PaperMarket => ({ ...fixed(() => 0, t), optQuote: (c: ContractId) => ({ ...fixed(() => pxk[c.strike], t).optQuote(c) }) });
+  const E = '2026-10-16';
+  let x = newAccount({ id: 'tf7', kind: 'evaluation', name: 'tf7', startCash: 0, plan: planById('tf-preprop-25k')!, now: T0 });
+  x = optPlace(x, mk(T0), { contract: { ticker: 'SPY', strike: 500, right: 'C', expiry: E }, side: 'buy', qty: 1, kind: 'market' });
+  x = optPlace(x, mk(T0), { contract: { ticker: 'SPY', strike: 505, right: 'C', expiry: E }, side: 'buy', qty: 1, kind: 'market' });
+  pxk[500] = 5;
+  pxk[505] = 6;
+  x = optPlace(x, mk(T0 + 60_000), { contract: { ticker: 'SPY', strike: 500, right: 'C', expiry: E }, side: 'sell', qty: 1, kind: 'market' });
+  const pr = progressOf(x, viewOf(x, mk(T0 + 60_000)));
+  /* closed: (5 − 2) × 100 − 0.60 = 299.40; still open: (6 − 1) × 100 − 0.30 = 499.70, not counted */
+  ok('the best day is the day’s closed P&L, 299.40 — not 799.10 with the open trade in', near(pr.best, 299.4), `${pr.best}`);
+  ok('…and it is a profitable day (≥ 250) on what closed', pr.good === 1 && near(pr.profit, 299.4), `${pr.good} · ${pr.profit}`);
+}
+
+{
+  /* 8. a phase that carries its own drawdown: TradeFundrr Pre-Prop's Prop step starts its floor again */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  const a0 = newAccount({ id: 'tf8', kind: 'evaluation', name: 'tf8', startCash: 0, plan: planById('tf-preprop-25k')!, now: T0 });
+  ok('Pre-Prop step: a $3,000 end-of-day floor under 25,000, stopping at the start — 22,000', floorOf(a0) === 22_000);
+  const step2 = { ...a0, phase: 1, phaseStart: { at: T0, day: a0.day, equity: 26_300 }, peak: 29_500 };
+  ok('Prop step, begun at 26,300 and closed as high as 29,500: the floor is its own, 29,500 − 3,000 stopping at 26,300 → 26,300 (not the first step’s 25,000)', floorOf(step2) === 26_300, `${floorOf(step2)}`);
+  const step2b = { ...step2, peak: 27_000 };
+  ok('…below where it stops: 27,000 − 3,000 = 24,000', floorOf(step2b) === 24_000);
+  ok('…a plan without it keeps one floor for every phase (Options Funding Growth: one phase, unchanged)', planById('of-growth-50k')!.rules.drawdown?.perPhase !== true);
+}
+
+{
+  /* 9. a paper short's ways out are its buy backs, priced the way it faces, fees on every leg */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  let p = 2;
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'P', expiry: '2026-10-16' };
+  let x = newAccount({ id: 'ex9', kind: 'practice', name: 'ex9', startCash: 25_000, now: T0 });
+  x = optPlace(x, fixed(() => p, T0), { contract: c, side: 'sell', qty: 2, kind: 'market' });
+  x = optPlace(x, fixed(() => p, T0 + 1000), { contract: c, side: 'buy', qty: 1, kind: 'limit', price: 1 });
+  x = optPlace(x, fixed(() => p, T0 + 2000), { contract: c, side: 'buy', qty: 1, kind: 'stop', price: 3 });
+  p = 1.5;
+  x = optClose(x, fixed(() => p, T0 + 60_000), c, 2);
+  const t9 = optBookOf(x).trades[0];
+  const e9 = excursionOf({ key: `ex9:${t9.id}`, s: x, t: t9, fut: false, paper: true });
+  ok('a short’s target is the buy back under it: at 1.00, (2.00 − 1.00) × 100 − 0.65 × 2 = +98.70; the opening sell is not one', e9.targets.length === 1 && e9.targets[0].price === 1 && near(e9.targets[0].pnl ?? NaN, 98.7), JSON.stringify(e9.targets));
+  ok('…its stop the buy stop over it: at 3.00, −101.30', e9.stops.length === 1 && near(e9.stops[0].pnl ?? NaN, -101.3), JSON.stringify(e9.stops));
+  /* a debit spread: two legs, so the fee is 0.65 × 2 legs × 2 ways a set */
+  let y = newAccount({ id: 'ex9b', kind: 'practice', name: 'ex9b', startCash: 25_000, now: T0 });
+  const sp: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16', short: 505 };
+  y = optPlace(y, fixed(() => 2, T0), { contract: sp, side: 'buy', qty: 1, kind: 'market', bracket: { target: 4 } });
+  y = optClose(y, fixed(() => 2.5, T0 + 60_000), sp, 1);
+  const ts = optBookOf(y).trades[0];
+  const es = excursionOf({ key: `ex9b:${ts.id}`, s: y, t: ts, fut: false, paper: true });
+  ok('a spread’s target at 4.00 is (4 − 2) × 100 − 0.65 × 2 legs × 2 = 197.40 — every leg’s fee', es.targets.length === 1 && near(es.targets[0].pnl ?? NaN, 197.4), JSON.stringify(es.targets));
+}
+
+{
+  /* 11. a paper trade's hold is in session minutes, as a backtest's: in Tuesday 15:50, out Wednesday 09:40 → 10 + 10 = 20 */
+  const T0 = nyInstant('2026-09-22', 15 * 60 + 50);
+  const T1 = nyInstant('2026-09-23', 9 * 60 + 40);
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  let x = newAccount({ id: 'hm', kind: 'practice', name: 'hm', startCash: 10_000, now: T0, sandbox: true });
+  x = optPlace(x, fixed(() => 2, T0), { contract: c, side: 'buy', qty: 1, kind: 'market' });
+  x = optPlace(x, fixed(() => 2.5, T1), { contract: c, side: 'sell', qty: 1, kind: 'market' });
+  ok('held overnight 15:50 → 09:40: 20 session minutes, not 1,070 on the wall clock', optBookOf(x).trades[0]?.heldMin === 20, `${optBookOf(x).trades[0]?.heldMin}`);
+}
+
+{
+  /* 11. the catch-up runs the plan's rules on the minutes it replays: a $500 static floor, 10 bought at 2.00, a target that
+     waits at 9.00; away 10:00–11:00, the history has the contract bidding 1.40 / 1.50 from 10:10 */
+  const DAY = '2026-09-24';
+  const T0 = nyInstant(DAY, 10 * 60);
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  let x = newAccount({ id: 'cu', kind: 'evaluation', name: 'cu', startCash: 0, plan: customPlan({ ...CUSTOM_DEFAULTS, size: 10_000, drawdown: 500, drawdownMode: 'static' }), now: T0 });
+  x = optPlace(x, fixed(() => 2, T0), { contract: c, side: 'buy', qty: 10, kind: 'market' });
+  x = optPlace(x, fixed(() => 2, T0 + 1000), { contract: c, side: 'sell', qty: 10, kind: 'limit', price: 9 });
+  const bid = new Array(390).fill(NaN);
+  const ask = new Array(390).fill(NaN);
+  for (let m = 30; m < 390; m++) {
+    bid[m] = m < 40 ? 1.95 : 1.4;
+    ask[m] = m < 40 ? 2.05 : 1.5;
+  }
+  const f: Fetched = { quotes: new Map([[`${legKey(c)}|${DAY}`, { bid, ask }]]), bars: new Map([[`SPY|${DAY}`, [{ time: Math.floor(nyInstant(DAY, 9 * 60 + 30) / 1000), close: 500 }]]]), failed: new Map() };
+  x = replayGaps(x, f, nyInstant(DAY, 11 * 60), 'L1');
+  /* at 10:11 (minute 40) the mark is 1.45: 10,000 − 20.00 + 1.45 × 1,000 − 6.50 fees = 9,443.50, under the 9,500 floor */
+  ok('replayed: the floor is judged on the minute it was crossed — failed at 10:11, everything closed at that minute’s bid', x.status === 'failed' && x.statusAt === nyInstant(DAY, 10 * 60 + 11) && optBookOf(x).positions.length === 0 && x.opt.fills[x.opt.fills.length - 1].price === 1.4, `${x.status} · ${x.statusAt ? nyAt(x.statusAt).minutes : '-'} · ${x.opt.fills.map(q => q.price).join(',')}`);
+}
+
+{
+  /* 12. theta a day is one trading session on the trading clock: V(t − 1/252) − V(t). ATM, S = K = 100, σ 20%, five
+     sessions left: ≈ 0.3989 × 100 × 0.20 × (√(4/252) − √(5/252)) = −0.119 a share. A per-calendar-day theta seven days
+     out (∂V/∂t ÷ 365, T = 7/365) is −0.079 — the 1.5× is 7 days over 5 sessions, and the session's own curvature. */
+  const th = thetaPerSession(100, 100, 5 / 252, 0.2, 'C');
+  ok('theta per session: ATM 100, 20%, five sessions left → −0.119 a share', near(th, -0.1186, 0.01), th.toFixed(4));
+  ok('…inside the last session it is what is left above intrinsic, lost: intrinsic − V', near(thetaPerSession(100, 95, 0.5 / 252, 0.2, 'C'), 5 - blackScholesPrice(100, 95, 0.5 / 252, 0.2, 'C'), 1e-9));
+  /* the paper desk's live quote uses that same definition */
+  const ms = nyInstant('2026-09-23', 11 * 60);
+  putName('ZZQ', { bid: 100, ask: 100, px: 100, takenAt: ms });
+  putBook('ZZQ', '2026-09-30', [{ strike: 100, right: 'C', bid: 2.0, ask: 2.2 }], ms);
+  const lq = optionQuote({ ticker: 'ZZQ', strike: 100, right: 'C', expiry: '2026-09-30' }, ms);
+  ok('…and the paper desk’s quote carries exactly it, on its own IV and trading clock', lq.iv > 0 && near(lq.theta, thetaPerSession(100, 100, yearsToExpiry('2026-09-30', ms), lq.iv, 'C'), 1e-12), `${lq.theta} · iv ${lq.iv}`);
 }
 
 console.log(`\n${passed} held · ${failed} missed`);

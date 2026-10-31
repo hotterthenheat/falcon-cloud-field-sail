@@ -9,10 +9,11 @@ import { MULT, nameGoesUp, type Bracket, type OrderKind, type Side } from '../re
 import { isBroadIndex, marginLineOf, marginOf, type MarginLine } from './margin';
 import type { DayNote, JournalEntry } from '../review/journal';
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from '../review/ladder';
-import { contractKey, contractWords, dteAt, legsOf, type ContractId, type Quote } from '../review/quotes';
+import { contractKey, contractWords, dteAt, fillableQty, legsOf, type ContractId, type Quote } from '../review/quotes';
 import { closeBasisOf } from '../review/history';
+import { tradingMinutesBetween } from '../../core/tradingYear';
 import type { Candle } from '../../types/market';
-import { bellOf, dayBeginsAt, dayEndsAt, nyAt, tradingDayOf } from './clock';
+import { dayBeginsAt, dayEndsAt, isVixRoot, nyAt, tradingDayOf, tradingEndsAt, vixSchedule } from './clock';
 import { paperFut } from './products';
 import { closeMeasure, judgePass, judgeRoll, judgeTick, lateCloseOf, mustBeFlat, nakedCallsBarred, peakAfterRoll, peakAfterTick, putsSecured, ruleRefusal, type EarningsWhen, type PaperPlan, type RuleId } from './rules';
 
@@ -47,6 +48,9 @@ export interface PaperMarket {
   /** The name's close on a past or today's date (what an expiring contract settles on): the 16:00 closing print when
       one was recorded, else the last real print — NaN until it is known. Never a flat zero-volume candle. */
   closeOf?: (ticker: string, day: string) => number;
+  /** The name's opening print on a date (the first real bar's open) — what a VIX option settles on, the SOQ's stand-in.
+      NaN until it is known. */
+  openOf?: (ticker: string, day: string) => number;
   /** A replayed minute of the history (store.ts catch-up), not the live market */
   replay?: boolean;
 }
@@ -97,6 +101,10 @@ export interface OptOrder {
   /** …and, waiting, the least net it takes a set: what the legs sold bring in less what the legs bought cost, a share
       (a credit: above 0; a debit: below) */
   net?: number;
+  /** Filled in pieces so far: a fill takes at most the size the quote shows (fillableQty); `qty` is what is left */
+  filled?: number;
+  /** …and how much of which quote it has taken (the same quote's size is not taken twice) */
+  took?: { at: number; qty: number };
 }
 /** How a fill came: an order's kind — or the market's (the bell), the rules' (an evaluation), the page's (it closed) */
 type OptFillHow = OrderKind | 'expired' | 'rule' | 'page';
@@ -191,6 +199,9 @@ export interface PaperDay {
   /** The day's start balance — what it was worth less what was open (closed trades only) */
   bal?: number;
   close?: number;
+  /** The balance at the roll (closed trades only): with `bal`, the day's closed P&L — what consistency and profitable
+      days count */
+  closeBal?: number;
   hi: number;
   lo: number;
 }
@@ -246,6 +257,9 @@ export interface PaperAccount {
   ledger: Record<string, PaperDay>;
   /** The high mark a trailing floor follows */
   peak: number;
+  /** The account's equity, tick by tick, as one running figure: its highest, and its worst fall from a high — the report's
+      drawdown (a list of trades cannot see two down at once). Kept from 2026-10-31; an older account starts it then. */
+  curve?: { peak: number; maxDd: number };
   /** The day's loss limit was reached: no way in until the day rolls */
   dayOver?: { day: string; why: string };
   /** Options' fee, a contract each way */
@@ -356,7 +370,11 @@ export interface OptPosition {
   dir: 1 | -1;
   /** Contracts held, a count (a short of 2 is dir −1, qty 2) */
   qty: number;
+  /** Running average cost a share of what is still held: each exit takes avg × qty out of the basis */
   avg: number;
+  /** Premium of what is still held at that running average, dollars, unrounded (avg × 100 × qty) */
+  basis: number;
+  /** Entry fees still carried by what is held */
   fees: number;
   opened: PaperMoment;
   spotIn: number;
@@ -397,7 +415,7 @@ export interface OptTrade {
   thetaIn: number;
   spotIn: number;
   spotOut: number;
-  /** Real minutes it was on */
+  /** Session minutes it was on (the market's open minutes, as a backtest counts them) */
   heldMin: number;
   plannedStop?: number;
   tag?: string;
@@ -426,6 +444,13 @@ export function optBookOf(a: PaperAccount): { positions: OptPosition[]; trades: 
     flow: number;
     held: number;
     legs: OptLeg[];
+    /* the running average cost of what is still open: each exit takes its share (avg × qty) out, so a re-entry after a
+       partial exit is averaged with what is left, not with what was sold — premium (a share), entry fees, a short's hold */
+    basis: number;
+    feeBasis: number;
+    heldBasis: number;
+    /** What the pieces taken off banked against that running average, fees in */
+    banked: number;
   }
   const open = new Map<string, Open>();
   const trades: OptTrade[] = [];
@@ -438,7 +463,7 @@ export function optBookOf(a: PaperAccount): { positions: OptPosition[]; trades: 
       /* a way in: a buy, or a sell written as one — a sell with nothing held and no such mark (from before selling) is
          passed over, as it always was */
       if (way < 0 && !f.opens) continue;
-      open.set(key, (o = { first: f, dir: way, qty: 0, entered: 0, inSum: 0, feesIn: 0, exited: 0, outSum: 0, feesOut: 0, flow: 0, held: 0, legs: [] }));
+      open.set(key, (o = { first: f, dir: way, qty: 0, entered: 0, inSum: 0, feesIn: 0, exited: 0, outSum: 0, feesOut: 0, flow: 0, held: 0, legs: [], basis: 0, feeBasis: 0, heldBasis: 0, banked: 0 }));
     }
     if (way === o.dir) {
       o.legs.push({ id: f.id, at: f.at, side: f.side, qty: f.qty, price: f.price, fee: f.fee, bar: f.bar });
@@ -447,10 +472,22 @@ export function optBookOf(a: PaperAccount): { positions: OptPosition[]; trades: 
       o.inSum += f.price * f.qty;
       o.feesIn += f.fee;
       o.held += f.held ?? 0;
+      o.basis += f.price * f.qty;
+      o.feeBasis += f.fee;
+      o.heldBasis += f.held ?? 0;
       o.flow -= o.dir * f.price * MULT * f.qty + f.fee;
       continue;
     }
     const q = Math.min(f.qty, o.qty);
+    {
+      const share = o.qty > 0 ? q / o.qty : 0;
+      const avg = o.qty > 0 ? o.basis / o.qty : 0;
+      const feeShare = o.feeBasis * share;
+      o.banked += o.dir * (f.price - avg) * q * MULT - f.fee - feeShare;
+      o.basis -= avg * q;
+      o.feeBasis -= feeShare;
+      o.heldBasis -= o.heldBasis * share;
+    }
     o.qty -= q;
     o.exited += q;
     o.outSum += f.price * q;
@@ -483,7 +520,8 @@ export function optBookOf(a: PaperAccount): { positions: OptPosition[]; trades: 
       thetaIn: o.first.theta,
       spotIn: o.first.spot,
       spotOut: f.spot,
-      heldMin: Math.max(0, Math.round((f.at.at - o.first.at.at) / 60_000)),
+      /* session minutes, as a backtest's: the minutes the market was open while it was held (core/tradingYear) */
+      heldMin: tradingMinutesBetween(o.first.at.at, f.at.at),
       plannedStop: o.first.plannedStop,
       tag: o.first.tag,
       note: f.note,
@@ -497,19 +535,20 @@ export function optBookOf(a: PaperAccount): { positions: OptPosition[]; trades: 
     contract: o.first.contract,
     dir: o.dir,
     qty: o.qty,
-    avg: cents(o.inSum / o.entered),
-    fees: cents((o.feesIn * o.qty) / o.entered),
+    avg: cents(o.basis / o.qty),
+    basis: o.basis * MULT,
+    fees: cents(o.feeBasis),
     opened: o.first.at,
     spotIn: o.first.spot,
     tradeId: o.first.id,
     tag: o.first.tag,
     life: o.first.life,
     flow: o.flow,
-    banked: cents(o.dir * (o.outSum - (o.inSum / o.entered) * o.exited) * MULT - o.feesOut - o.feesIn * (o.exited / o.entered)),
+    banked: cents(o.banked),
     secured: o.first.secured,
     combo: o.first.combo,
     comboName: o.first.comboName,
-    held: cents((o.held * o.qty) / o.entered),
+    held: cents(o.heldBasis),
   }));
   return { positions, trades };
 }
@@ -708,7 +747,8 @@ export interface PaperView {
   /** …and all they hold, the premium in (free = cash − marginReq) */
   marginReq: number;
   marginLines: MarginLine[];
-  /** Free plus the longs at their bid: under 0 is a margin call (equity under what the open shorts need) */
+  /** What is free (cash − what the shorts hold): under 0 is a margin call. A long option has no loan value under Reg T,
+      so the longs held are not counted toward it. */
   excess: number;
   /** Equity is under what the open shorts need: nothing new opens until it is cured */
   marginCall: boolean;
@@ -732,9 +772,9 @@ export function viewOf(a: PaperAccount, m: PaperMarket): PaperView {
   const marked = ob.positions.map(p => {
     const quote = m.optQuote(p.contract);
     const value = cents(p.dir * quote.mark * MULT * p.qty);
-    const pnl = cents(p.dir * (quote.mark - p.avg) * MULT * p.qty - p.fees);
+    const pnl = cents(p.dir * (quote.mark * MULT * p.qty - p.basis) - p.fees);
     /* a long's R is on what it cost; a short's on what it held when it opened (or the premium, where nothing was held) */
-    const base = p.dir > 0 ? p.avg * MULT * p.qty + p.fees : p.held > 0 ? p.held : p.avg * MULT * p.qty;
+    const base = p.dir > 0 ? p.basis + p.fees : p.held > 0 ? p.held : p.basis;
     return { ...p, quote, value, pnl, r: base > 0 ? pnl / base : 0 };
   });
   const mg = marginOf(marked.map(p => ({ key: p.key, contract: p.contract, dir: p.dir, qty: p.qty, avg: p.avg, quote: p.quote, secured: p.secured, spotIn: p.spotIn, last: a.marks[p.key] })));
@@ -743,8 +783,8 @@ export function viewOf(a: PaperAccount, m: PaperMarket): PaperView {
   const equity = cents(cash + optValue);
   const equityBid = cents(cash + opt.reduce((x, p) => x + (p.dir > 0 ? p.quote.bid : -(p.quote.ask > 0 ? p.quote.ask : p.quote.mark)) * MULT * p.qty, 0));
   const free = cents(cash - mg.req);
-  const longBid = opt.reduce((x, p) => x + (p.dir > 0 ? p.quote.bid * MULT * p.qty : 0), 0);
-  const excess = cents(free + longBid);
+  /* Reg T gives a listed option no loan value: the longs held do not hold the shorts, so excess is what is free */
+  const excess = free;
   const openPnl = cents(opt.reduce((x, p) => x + p.pnl, 0));
   const dayOpen = a.ledger[a.day]?.open ?? a.startCash;
   const closed = cents(ob.trades.reduce((x, t) => x + t.pnl, 0) + fb.trades.reduce((x, t) => x + t.pnl, 0));
@@ -836,7 +876,7 @@ export function draftOf(a: PaperAccount, d: OptDraft): OptDraft & { opens: boole
 /** An expiring SPY, QQQ, IWM or DIA contract on a plan that closes it at 16:10: from the bell to then it may still be closed */
 export const lateWindow = (a: PaperAccount, c: ContractId, now: number): boolean => {
   const late = lateCloseOf(a, c);
-  return late != null && now >= bellOf(c.expiry) && now < late;
+  return late != null && now >= tradingEndsAt(c) && now < late;
 };
 /** What closing a way out leaves: what is held less what the working ways out already speak for */
 const reservedOf = (a: PaperAccount, key: string, dir: 1 | -1) => (dir > 0 ? optReserved(a, key) : workingCovers(a, key).reduce((x, o) => x + o.qty, 0));
@@ -887,7 +927,7 @@ export function optRefusal(a: PaperAccount, m: PaperMarket, d0: OptDraft, alone 
   const d = draftOf(a, d0);
   const opening = d.opens;
   const late = !opening && lateWindow(a, d.contract, m.now);
-  if (bellOf(d.contract.expiry) <= m.now && !late) return 'That contract has expired';
+  if (tradingEndsAt(d.contract) <= m.now && !late) return isVixRoot(d.contract.ticker) && d.contract.expiry >= nyAt(m.now).date ? 'VIX options stop trading at the close the day before they settle' : 'That contract has expired';
   if (d.contract.short != null) {
     const { strike, short, right } = d.contract;
     if (short === strike) return 'A spread needs two different strikes';
@@ -1012,8 +1052,18 @@ function afterCover(a: PaperAccount, bought: OptOrder, at: PaperMoment): PaperAc
 /** What a short holds on its own as it opens (margin.ts, less its premium) — its R's measure */
 const heldAtOpen = (o: OptOrder, price: number, q: Quote): number => marginOf([{ key: 'x', contract: o.contract, dir: -1, qty: o.qty, avg: price, quote: q, secured: o.secured, spotIn: q.spot }]).held;
 
-function optFillNow(a: PaperAccount, o: OptOrder, price: number, how: OptFillHow, q: Quote, m: PaperMarket, note?: string): PaperAccount {
+function optFillNow(a: PaperAccount, o0: OptOrder, price: number, how: OptFillHow, q: Quote, m: PaperMarket, note?: string): PaperAccount {
   const at = momentAt(m.now);
+  /* the reader's order takes at most the size the quote shows (a leg of an order of several fills whole: its legs go
+     together); the rest stays working for the next quote. The rules' and the page's closes, and a settlement, are not
+     capped. */
+  const capped = !!o0.id && !o0.combo && (how === 'market' || how === 'limit' || how === 'stop');
+  const n = capped ? fillableQty(o0, q) : o0.qty;
+  if (n < 1) return a;
+  const rest = o0.qty - n;
+  const total = (o0.filled ?? 0) + n;
+  const used = o0.took && q.quotedAt != null && o0.took.at === q.quotedAt ? o0.took.qty : 0;
+  const o: OptOrder = rest > 0 ? { ...o0, qty: n } : o0;
   const opens = o.opens ?? o.side === 'buy';
   let [id, next] = nextId(a, 'f');
   const fill: OptFill = {
@@ -1040,10 +1090,17 @@ function optFillNow(a: PaperAccount, o: OptOrder, price: number, how: OptFillHow
     ...(o.combo ? { combo: o.combo, comboName: o.comboName } : {}),
     ...(opens && o.side === 'sell' ? { held: heldAtOpen(o, price, q) } : {}),
   };
-  next = setOpt(next, next.opt.orders.map(x => (x.id === o.id ? { ...x, status: 'filled' as const, done: at, fillPrice: fill.price } : x)), [...next.opt.fills, fill]);
+  next = setOpt(
+    next,
+    next.opt.orders.map(x =>
+      x.id !== o.id || !o.id ? x : rest > 0 ? { ...x, qty: rest, filled: total, ...(q.quotedAt != null ? { took: { at: q.quotedAt, qty: used + n } } : {}) } : { ...x, ...(x.filled ? { qty: total } : {}), status: 'filled' as const, done: at, fillPrice: fill.price }
+    ),
+    [...next.opt.fills, fill]
+  );
   if (!opens && o.side === 'sell') next = afterSell(next, o, q, at, m);
   if (!opens && o.side === 'buy') next = afterCover(next, o, at);
-  const { targets, stops } = rungsOf(o.side === 'buy' && opens ? o.bracket : undefined, o.qty);
+  /* the ways out a buy carried go on once all of it has filled */
+  const { targets, stops } = rungsOf(o.side === 'buy' && opens && rest === 0 ? o.bracket : undefined, total);
   if (targets.length || stops.length) {
     const [oco, n2] = nextId(next, 'g');
     next = n2;
@@ -1381,8 +1438,8 @@ export interface PaperEvent {
   key?: string;
 }
 
-/** Is an option position's expiry past: 16:00 New York on its date */
-const expired = (c: ContractId, now: number) => bellOf(c.expiry) <= now;
+/** Has an option stopped trading: the close of its expiry (13:00 on an early close) — Tuesday's close for VIX */
+const expired = (c: ContractId, now: number) => tradingEndsAt(c) <= now;
 const nyClockOf = (ms: number) => {
   const t = nyAt(ms);
   return `${String(Math.floor(t.minutes / 60)).padStart(2, '0')}:${String(t.minutes % 60).padStart(2, '0')} ET`;
@@ -1418,7 +1475,9 @@ function passIf(a: PaperAccount, v: PaperView, m: PaperMarket, events: PaperEven
   }
   events.push({ kind: 'passed', at: m.now, words: `${planName(plan)} · ${verdict.why}` });
   const start = { at: m.now, day: a.day, equity: v.balance };
-  return logged({ ...a, phase: (a.phase ?? 0) + 1, phaseStart: start }, m.now, verdict.why, 'pass');
+  /* a plan whose every phase carries its own drawdown starts the high mark again from where the phase begins */
+  const restart = plan.rules.drawdown?.perPhase ? { peak: v.balance } : {};
+  return logged({ ...a, phase: (a.phase ?? 0) + 1, phaseStart: start, ...restart }, m.now, verdict.why, 'pass');
 }
 
 /** The day rolls at 17:00 New York: day orders go, the day that was is written down, an evaluation's high mark and
@@ -1431,7 +1490,7 @@ function roll(a: PaperAccount, m: PaperMarket, events: PaperEvent[]): PaperAccou
   if (!Number.isFinite(v.equity)) return a;
   const was = a.day;
   const ledger = { ...a.ledger };
-  if (ledger[was]) ledger[was] = { ...ledger[was], close: v.equity };
+  if (ledger[was]) ledger[was] = { ...ledger[was], close: v.equity, ...(Number.isFinite(v.balance) ? { closeBal: v.balance } : {}) };
   let next: PaperAccount = { ...a, ledger };
   const when = momentAt(m.now);
   /* a day order with minutes still to replay waits for them: the replay ends it at its own day's bell */
@@ -1505,7 +1564,8 @@ function optTickOrders(a: PaperAccount, m: PaperMarket): PaperAccount {
       continue;
     }
     const opens = live.opens ?? live.side === 'buy';
-    const hits = live.kind === 'limit' ? (live.side === 'buy' ? q.ask <= live.price! : q.bid >= live.price!) : live.side === 'sell' ? q.bid <= live.price! : q.ask >= live.price!;
+    /* a market order left working is the rest of one that took all a quote showed: it fills on the next quotes */
+    const hits = live.kind === 'market' ? true : live.kind === 'limit' ? (live.side === 'buy' ? q.ask <= live.price! : q.bid >= live.price!) : live.side === 'sell' ? q.bid <= live.price! : q.ask >= live.price!;
     if (!hits) continue;
     /* the position it was placed against may have turned since: a way in the other way, or a way out with nothing left */
     const pos = heldOn(next, contractKey(live.contract));
@@ -1698,14 +1758,17 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
       if (next.opt.orders.some(o => contractKey(o.contract) === p.key && gapOf(o, m.now) != null)) continue;
       const when = momentAt(m.now);
       next = setOpt(next, next.opt.orders.map(o => (o.status === 'working' && contractKey(o.contract) === p.key ? { ...o, status: 'cancelled' as const, done: when, why: 'the contract expired' } : o)));
-      /* on the name's 16:00 close that day, not wherever it stands when the page next ticks; it waits until that is known */
-      const close = m.closeOf ? m.closeOf(p.contract.ticker, p.contract.expiry) : NaN;
+      /* on the name's 16:00 close that day, not wherever it stands when the page next ticks; it waits until that is known.
+         VIX settles the morning after its last trade, on the VIX index's opening print — the stand-in for the SOQ */
+      const vix = isVixRoot(p.contract.ticker) ? vixSchedule(p.contract.expiry) : null;
+      const close = vix ? (m.openOf ? m.openOf('VIX', vix.settleDay) : NaN) : m.closeOf ? m.closeOf(p.contract.ticker, p.contract.expiry) : NaN;
       if (!(close > 0)) continue;
       const q = { ...m.optQuote(p.contract), spot: close };
       const value = settleValue(p.contract, close);
-      const print = printOf(p.contract.ticker, p.contract.expiry, close);
+      const print = vix ? 'open' : printOf(p.contract.ticker, p.contract.expiry, close);
       const on = print === '16:00' ? 'the 16:00 close' : `the ${print} print`;
-      const note = p.dir < 0 ? settleWords(p.contract, close, value, print) : late != null ? `no live quote at its ${nyClockOf(late)} close — settled at ${on}` : undefined;
+      const vixWords = vix ? `settled at ${value.toFixed(2)} on the VIX opening print of ${vix.settleDay} (${close.toFixed(2)}) — the stand-in for the special opening quotation, which the feed does not carry` : undefined;
+      const note = vixWords ?? (p.dir < 0 ? settleWords(p.contract, close, value, print) : late != null ? `no live quote at its ${nyClockOf(late)} close — settled at ${on}` : undefined);
       next = optFillNow(next, { id: '', placed: when, contract: p.contract, side: p.dir > 0 ? 'sell' : 'buy', qty: p.qty, kind: 'market', tif: 'day', status: 'working', tag: p.tag, life: m.life, opens: false }, value, 'expired', q, m, note);
     }
     /* the plan's holding rules (rules.ts): flat by its time, nothing past the close, over a weekend, or through a
@@ -1737,43 +1800,81 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
       }
     }
     next = optTickOrders(next, m);
-    /* the plan's floor and its day's limit, as it happens — judged only on fresh quotes in the session, or with nothing open */
-    const plan = next.plan;
-    if (plan && !plan.legacy && next.status === 'open') {
-      const v = viewOf(next, m);
-      const fresh = v.opt.every(p => m.fresh?.(p.contract) ?? true);
-      if (!v.opt.length || (fresh && m.open())) {
-        next = { ...next, peak: peakAfterTick(next, v) };
-        const verdict = judgeTick(next, v);
-        const label = planName(plan);
-        if (verdict?.kind === 'fail') {
-          next = flattenAll(next, m, 'rule', verdict.why);
-          next = logged({ ...next, status: 'failed', statusAt: m.now, statusRule: verdict.rule, statusWhy: `Failed — ${verdict.why}` }, m.now, `Failed — ${verdict.why}`, 'fail');
-          events.push({ kind: 'failed', at: m.now, words: `${label} failed — ${verdict.why}` });
-        } else if (verdict?.kind === 'pause') {
-          next = flattenAll(next, m, 'rule', 'the day’s loss limit was reached');
-          next = logged({ ...next, dayOver: { day: next.day, why: verdict.why } }, m.now, `The day is over — ${verdict.why}`, 'rule');
-          events.push({ kind: 'day-over', at: m.now, words: `The day is over — ${verdict.why}. No new positions until the next trading day` });
-        }
-      }
-      /* the target, met with all it waits on (it reads the balance, which no quote moves) */
-      if (next.status === 'open') next = passIf(next, viewOf(next, m), m, events);
-    }
+    next = judgeRulesNow(next, m, events);
   }
   next = keepHeld(next, m);
   next = keepClosed(before, next, m);
-  /* the day's high and low of what the account is worth */
+  /* the day's high and low of what the account is worth, and its running drawdown */
   const d = next.ledger[next.day];
-  if (d && optBookOf(next).positions.length) {
-    const eq = viewOf(next, m).equity;
-    if (Number.isFinite(eq) && (eq > d.hi || eq < d.lo)) next = { ...next, ledger: { ...next.ledger, [next.day]: { ...d, hi: Math.max(d.hi, eq), lo: Math.min(d.lo, eq) } } };
-  }
+  const holding = optBookOf(next).positions.length > 0;
+  const eq = holding || !next.curve || next.opt.fills.length !== before.opt.fills.length ? viewOf(next, m).equity : NaN;
+  if (d && holding && Number.isFinite(eq) && (eq > d.hi || eq < d.lo)) next = { ...next, ledger: { ...next.ledger, [next.day]: { ...d, hi: Math.max(d.hi, eq), lo: Math.min(d.lo, eq) } } };
+  if (Number.isFinite(eq)) next = keepCurve(next, eq);
   fillEvents(before, next, events);
   return { account: next, events };
 }
 
+/** The plan's floor and its day's limit, as it happens — judged only on fresh quotes in the session, or with nothing
+    open — and the target. The live tick asks it every tick; the catch-up asks it on every replayed minute whose quotes
+    mark everything held (catchUp.ts). */
+export function judgeRulesNow(a: PaperAccount, m: PaperMarket, events: PaperEvent[]): PaperAccount {
+  let next = a;
+  /* the plan's floor and its day's limit, as it happens — judged only on fresh quotes in the session, or with nothing open */
+  const plan = next.plan;
+  if (plan && !plan.legacy && next.status === 'open') {
+    const v = viewOf(next, m);
+    const fresh = v.opt.every(p => m.fresh?.(p.contract) ?? true);
+    if (!v.opt.length || (fresh && m.open())) {
+      next = { ...next, peak: peakAfterTick(next, v) };
+      const verdict = judgeTick(next, v);
+      const label = planName(plan);
+      if (verdict?.kind === 'fail') {
+        next = flattenAll(next, m, 'rule', verdict.why);
+        next = logged({ ...next, status: 'failed', statusAt: m.now, statusRule: verdict.rule, statusWhy: `Failed — ${verdict.why}` }, m.now, `Failed — ${verdict.why}`, 'fail');
+        events.push({ kind: 'failed', at: m.now, words: `${label} failed — ${verdict.why}` });
+      } else if (verdict?.kind === 'pause') {
+        next = flattenAll(next, m, 'rule', 'the day’s loss limit was reached');
+        next = logged({ ...next, dayOver: { day: next.day, why: verdict.why } }, m.now, `The day is over — ${verdict.why}`, 'rule');
+        events.push({ kind: 'day-over', at: m.now, words: `The day is over — ${verdict.why}. No new positions until the next trading day` });
+      }
+    }
+    /* the target, met with all it waits on (it reads the balance, which no quote moves) */
+    if (next.status === 'open') next = passIf(next, viewOf(next, m), m, events);
+  }
+  return next;
+}
+
+/** The running drawdown, moved by one reading of equity */
+function keepCurve(a: PaperAccount, eq: number): PaperAccount {
+  const c = a.curve ?? { peak: Math.max(a.startCash, eq), maxDd: 0 };
+  const peak = Math.max(c.peak, eq);
+  const maxDd = Math.max(c.maxDd, cents(peak - eq));
+  return a.curve && peak === c.peak && maxDd === c.maxDd ? a : { ...a, curve: { peak, maxDd } };
+}
+/** The report's figures for a paper account, off its own equity: the drawdown off its ticks (`curve`; the days' highs and
+    lows, worst order first, for an account from before it was kept), Sharpe and Sortino off its days' closes */
+export function paperCurveOf(a: PaperAccount): { maxDrawdown: number; daily: number[] } {
+  const days = Object.keys(a.ledger).sort();
+  let peak = a.startCash;
+  let dd = 0;
+  for (const day of days) {
+    const x = a.ledger[day];
+    peak = Math.max(peak, x.open, x.hi);
+    dd = Math.max(dd, peak - x.lo);
+    if (x.close != null) {
+      peak = Math.max(peak, x.close);
+      dd = Math.max(dd, peak - x.close);
+    }
+  }
+  const maxDrawdown = a.curve ? Math.max(a.curve.maxDd, 0) : cents(dd);
+  return { maxDrawdown, daily: [a.startCash, ...days.filter(d => a.ledger[d].close != null).map(d => a.ledger[d].close!)] };
+}
+
 /** A change the reader made (an order, a close): the trades it closed are written down the way a tick's are */
 export function afterHand(before: PaperAccount, after: PaperAccount, m: PaperMarket): PaperAccount {
-  return keepClosed(before, keepHeld(after, m), m);
+  const next = keepClosed(before, keepHeld(after, m), m);
+  if (next.opt.fills.length === before.opt.fills.length) return next;
+  const eq = viewOf(next, m).equity;
+  return Number.isFinite(eq) ? keepCurve(next, eq) : next;
 }
 

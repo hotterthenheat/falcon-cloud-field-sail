@@ -4,9 +4,9 @@
    days a move walks must be loaded first (store.ts does that). */
 
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from './ladder';
-import { contractKey, dteAt, legsOf, markAt, quoteAt, quoteWith, settlementAt, spotForBid, type ContractId, type Quote, type SettleStyle } from './quotes';
-import { LAST_MIN, dateOf, dayNumber, sessionAfter } from './history';
-import { sessionsBetween } from '../../core/calendar';
+import { contractKey, dteAt, fillableQty, legsOf, markAt, quoteAt, quoteWith, settlementAt, spotForBid, type ContractId, type Quote, type SettleStyle } from './quotes';
+import { LAST_MIN, barTime, dayNumber, sessionAfter } from './history';
+import { tradingMinutesBetween } from '../../core/tradingYear';
 import type { DayNote, JournalEntry } from './journal';
 import { usd2 as money } from '../../core/format';
 
@@ -51,6 +51,10 @@ export interface Order {
   peak?: number;
   /** When a switch last moved it (breakeven) — the book says so */
   moved?: Moment;
+  /** Filled in pieces so far: a fill takes at most the size the quote shows (fillableQty); `qty` is what is left */
+  filled?: number;
+  /** …and how much of which quote it has taken (the same quote's size is not taken twice) */
+  took?: { at: number; qty: number };
 }
 /** What rides a buy: a ladder's rungs (or the single target and stop), the two switches — and what they wait on */
 export interface Bracket extends LadderBracket {
@@ -162,7 +166,7 @@ export interface Position {
   key: string;
   contract: ContractId;
   qty: number;
-  /** Average price paid, dollars a share */
+  /** Running average cost a share of what is still held (each sale takes avg × qty out of the basis) */
   avg: number;
   /** Fees paid on the buys still held */
   fees: number;
@@ -255,8 +259,9 @@ export function lowOpenOf(contract: ContractId, legs: Pick<TradeLeg, 'at' | 'sid
   }
   return cents(low);
 }
-/** Session minutes between two moments: whole sessions between the days, and the minutes inside them */
-const heldMinutes = (a: Moment, b: Moment) => Math.max(0, (a.day === b.day ? 0 : sessionsBetween(dateOf(a.day), dateOf(b.day))) * (LAST_MIN + 1) + (b.minute - a.minute));
+/** Session minutes between two moments, on the trading clock (core/tradingYear): only the minutes the market was open —
+    an early close counts its 210 — the measure a paper trade's hold is read in too */
+const heldMinutes = (a: Moment, b: Moment) => tradingMinutesBetween(barTime(a.day, a.minute) * 1000, barTime(b.day, b.minute) * 1000);
 /** Every fill, in order, folded into the positions still open and the trades that closed */
 export function bookOf(s: Session): Book {
   interface Open {
@@ -271,6 +276,11 @@ export function bookOf(s: Session): Book {
     lastHow: FillHow;
     lastOrder: string | null;
     legs: TradeLeg[];
+    /* the running average cost of what is still held (a share, and the entry fees it carries): each sale takes avg × qty
+       out, so a buy after a partial sale averages with what is left, not with what was sold */
+    basis: number;
+    feeBasis: number;
+    banked: number;
   }
   const open = new Map<string, Open>();
   const trades: Trade[] = [];
@@ -279,16 +289,25 @@ export function bookOf(s: Session): Book {
     const key = contractKey(f.contract);
     let o = open.get(key);
     if (f.side === 'buy') {
-      if (!o) open.set(key, (o = { first: f, qty: 0, bought: 0, paid: 0, feesIn: 0, got: 0, feesOut: 0, sold: 0, lastHow: f.how, lastOrder: f.orderId, legs: [] }));
+      if (!o) open.set(key, (o = { first: f, qty: 0, bought: 0, paid: 0, feesIn: 0, got: 0, feesOut: 0, sold: 0, lastHow: f.how, lastOrder: f.orderId, legs: [], basis: 0, feeBasis: 0, banked: 0 }));
       o.legs.push({ at: f.at, side: 'buy', qty: f.qty, price: f.price, fee: f.fee });
       o.qty += f.qty;
       o.bought += f.qty;
       o.paid += f.price * f.qty;
       o.feesIn += f.fee;
+      o.basis += f.price * f.qty;
+      o.feeBasis += f.fee;
       continue;
     }
     if (!o) continue;
     const q = Math.min(f.qty, o.qty);
+    if (o.qty > 0) {
+      const avg = o.basis / o.qty;
+      const feeShare = (o.feeBasis * q) / o.qty;
+      o.banked += (f.price - avg) * q * MULT - f.fee - feeShare;
+      o.basis -= avg * q;
+      o.feeBasis -= feeShare;
+    }
     o.qty -= q;
     o.sold += q;
     o.got += f.price * q;
@@ -330,14 +349,14 @@ export function bookOf(s: Session): Book {
     key,
     contract: o.first.contract,
     qty: o.qty,
-    avg: cents(o.paid / o.bought),
-    fees: cents((o.feesIn * o.qty) / o.bought),
-    cost: cents(((o.paid * MULT + o.feesIn) * o.qty) / o.bought),
+    avg: cents(o.basis / o.qty),
+    fees: cents(o.feeBasis),
+    cost: cents(o.basis * MULT + o.feeBasis),
     opened: o.first.at,
     spotIn: o.first.spot,
     tradeId: o.first.id,
     tag: o.first.tag,
-    banked: cents(o.got * MULT - o.feesOut - (o.paid * MULT + o.feesIn) * (o.sold / o.bought)),
+    banked: cents(o.banked),
   }));
   return { positions, trades };
 }
@@ -461,7 +480,15 @@ function afterSell(s: Session, sold: Order, q: Quote, at: Moment): Session {
   return next;
 }
 
-function fillNow(s: Session, o: Order, price: number, how: FillHow, q: Quote, at: Moment, settle?: SettleStyle): Session {
+function fillNow(s: Session, o0: Order, price: number, how: FillHow, q: Quote, at: Moment, settle?: SettleStyle): Session {
+  /* the reader's order takes at most the size the quote shows; the rest stays working for the next quote (a limit at its
+     price, a market order at the next minute's) — a settlement or the engine's own close is not capped */
+  const capped = !!o0.id && how !== 'expired' && !settle;
+  const n = capped ? fillableQty(o0, q) : o0.qty;
+  if (n < 1) return s;
+  const rest = o0.qty - n;
+  const total = (o0.filled ?? 0) + n;
+  const o: Order = rest > 0 ? { ...o0, qty: n } : o0;
   let [id, next] = nextId(s, 'f');
   const fill: Fill = { id, orderId: o.id || null, at, contract: o.contract, side: o.side, qty: o.qty, price: cents(price), fee: how === 'expired' ? 0 : cents(s.fee * o.qty * legsOf(o.contract)), how, spot: q.spot, delta: q.delta, iv: q.iv, theta: q.theta, tag: o.tag, plannedStop: plannedStopOf(o, at), ...(settle ? { settle } : {}) };
   /* a sell that leaves the position flat closes the trade: its lowest mark is read now, while its days are loaded */
@@ -472,11 +499,18 @@ function fillNow(s: Session, o: Order, price: number, how: FillHow, q: Quote, at
       fill.lowOpen = lowOpenOf(o.contract, legs);
     }
   }
-  next = { ...next, fills: [...next.fills, fill], orders: next.orders.map(x => (x.id === o.id ? { ...x, qty: o.qty, status: 'filled' as const, done: at, fillPrice: fill.price } : x)) };
+  const used = o0.took && q.quotedAt != null && o0.took.at === q.quotedAt ? o0.took.qty : 0;
+  next = {
+    ...next,
+    fills: [...next.fills, fill],
+    orders: next.orders.map(x =>
+      x.id !== o.id ? x : rest > 0 ? { ...x, qty: rest, filled: total, ...(q.quotedAt != null ? { took: { at: q.quotedAt, qty: used + n } } : {}) } : { ...x, qty: total, status: 'filled' as const, done: at, fillPrice: fill.price }
+    ),
+  };
   /* a sell: the ladder it belongs to — or stands beside — is made to fit what is still held */
   if (o.side === 'sell') next = afterSell(next, o, q, at);
-  /* a buy that carried ways out leaves them working, as one group */
-  const { targets, stops } = rungsOf(o.side === 'buy' ? o.bracket : undefined, o.qty);
+  /* a buy that carried ways out leaves them working, as one group — once all of it has filled */
+  const { targets, stops } = rungsOf(o.side === 'buy' && rest === 0 ? o.bracket : undefined, total);
   if (targets.length || stops.length) {
     const [oco, n2] = nextId(next, 'g');
     next = n2;
@@ -814,7 +848,7 @@ function minuteOrders(s: Session, at: Moment): Session {
     if (q.dead) continue;
     if (o.side === 'sell') {
       /* waits on the NAME: the minute it is there, the contracts are sold at that minute's bid — whatever it is */
-      const hit = o.on === 'name' ? nameHit(o, q.spot) : o.kind === 'limit' ? q.bid >= o.price! : o.kind === 'stop' ? q.bid <= o.price! : false;
+      const hit = o.kind === 'market' ? true : o.on === 'name' ? nameHit(o, q.spot) : o.kind === 'limit' ? q.bid >= o.price! : o.kind === 'stop' ? q.bid <= o.price! : false;
       if (!hit) continue;
       /* never more than is held: what is left of the position is what it sells */
       const held = heldOf(next, o.contract);
@@ -822,11 +856,11 @@ function minuteOrders(s: Session, at: Moment): Session {
         next = cancelled(next, o.id, at, 'nothing was held by then');
         continue;
       }
-      next = fillNow(next, held < o.qty ? { ...o, qty: held } : o, o.on === 'name' || o.kind === 'stop' ? q.bid : Math.max(o.price!, q.bid), o.kind, q, at);
+      next = fillNow(next, held < o.qty ? { ...o, qty: held } : o, o.kind === 'market' || o.on === 'name' || o.kind === 'stop' ? q.bid : Math.max(o.price!, q.bid), o.kind, q, at);
       continue;
     }
     /* a buy that waits: a limit when the ask comes down to it, a stop when the ask comes up to it — at that ask */
-    const hit = o.kind === 'limit' ? q.ask <= o.price! : o.kind === 'stop' ? q.ask >= o.price! : false;
+    const hit = o.kind === 'market' ? true : o.kind === 'limit' ? q.ask <= o.price! : o.kind === 'stop' ? q.ask >= o.price! : false;
     if (!hit) continue;
     const px = o.kind === 'limit' ? Math.min(o.price!, q.ask) : q.ask;
     /* the reader's daily stop was reached while this order rested: it does not open a position on a day that is over */
@@ -925,10 +959,52 @@ interface Stats {
   expectancy: number;
   expectancyR: number;
   maxDrawdown: number;
+  /** Where the drawdown was read from: the account's equity curve, or (none given) the closed trades and each one's own low */
+  drawdownFrom: 'curve' | 'trades';
   losingRun: number;
   avgHeldMin: number;
   best: number;
   worst: number;
+  /** Trades that closed at exactly $0 — neither a win nor a loss */
+  scratches: number;
+  /** Annualised (√252) Sharpe and Sortino of the daily equity returns, where a daily curve of 3 points or more is given:
+      mean ÷ sample standard deviation; mean ÷ downside deviation (√ of the mean squared negative return, over every day).
+      Null where it cannot be said (too few days, or no spread). No risk-free rate is taken off. */
+  sharpe: number | null;
+  sortino: number | null;
+}
+/** The account's own curve, for the figures a list of trades cannot give */
+export interface StatsCurve {
+  /** The account's equity in time order (a backtest's every minute, from the start) — the drawdown is its worst fall
+      from a high */
+  equity?: number[];
+  /** …or the drawdown, already read off a curve kept elsewhere (a paper account's ticks) */
+  maxDrawdown?: number;
+  /** The account's equity at the start and at each day's close, in order — Sharpe and Sortino are on its returns */
+  daily?: number[];
+}
+/** The worst fall from a high of a curve, in dollars */
+export function drawdownOfCurve(curve: number[]): number {
+  let peak = -Infinity;
+  let dd = 0;
+  for (const v of curve) {
+    if (!Number.isFinite(v)) continue;
+    peak = Math.max(peak, v);
+    dd = Math.max(dd, peak - v);
+  }
+  return cents(dd);
+}
+/** Annualised Sharpe and Sortino of the returns of a daily equity curve (start, then each close) — see Stats */
+export function ratiosOfDaily(daily: number[]): { sharpe: number | null; sortino: number | null } {
+  const eq = daily.filter(v => Number.isFinite(v) && v > 0);
+  const r: number[] = [];
+  for (let i = 1; i < eq.length; i++) r.push(eq[i] / eq[i - 1] - 1);
+  if (r.length < 2) return { sharpe: null, sortino: null };
+  const mean = r.reduce((x, v) => x + v, 0) / r.length;
+  const sd = Math.sqrt(r.reduce((x, v) => x + (v - mean) ** 2, 0) / (r.length - 1));
+  const down = Math.sqrt(r.reduce((x, v) => x + Math.min(0, v) ** 2, 0) / r.length);
+  const k = Math.sqrt(252);
+  return { sharpe: sd > 1e-12 ? (mean / sd) * k : null, sortino: down > 1e-12 ? (mean / down) * k : null };
 }
 /** What the report's figures need of a closed trade — a backtest's or a paper account's. A trade with no R (a paper future
     entered without a stop) is left out of the R figures. */
@@ -944,10 +1020,14 @@ interface Scored {
 /** A close, as one number for order: the instant where there is one, the replayed stamp where not (a journal is one kind or
     the other, so the two are never compared) */
 const closedStamp = (m: Scored['closed']): number => ('at' in m ? m.at : stampOf(m));
-export function statsOf(trades: Scored[]): Stats {
+/** The report's figures. `curve`: the account's own equity — the drawdown is read off it (a list of trades alone cannot
+    see two trades down at once), and Sharpe / Sortino off its daily closes. A trade that closed at exactly $0 is a
+    scratch: not a win, not a loss, and it neither starts nor breaks a losing run. */
+export function statsOf(trades: Scored[], curve?: StatsCurve): Stats {
   const n = trades.length;
   const wins = trades.filter(t => t.pnl > 0);
-  const losses = trades.filter(t => t.pnl <= 0);
+  const losses = trades.filter(t => t.pnl < 0);
+  const scratches = trades.filter(t => t.pnl === 0).length;
   const sum = (a: Scored[]) => a.reduce((x, t) => x + t.pnl, 0);
   const withR = trades.filter(t => t.r != null);
   let peak = 0;
@@ -960,15 +1040,19 @@ export function statsOf(trades: Scored[]): Stats {
     run += t.pnl;
     peak = Math.max(peak, run);
     dd = Math.max(dd, peak - run);
-    cur = t.pnl <= 0 ? cur + 1 : 0;
+    if (t.pnl < 0) cur++;
+    else if (t.pnl > 0) cur = 0;
     lr = Math.max(lr, cur);
   }
+  const fromCurve = curve?.maxDrawdown != null && Number.isFinite(curve.maxDrawdown) ? curve.maxDrawdown : curve?.equity?.length ? drawdownOfCurve(curve.equity) : null;
+  if (fromCurve != null) dd = fromCurve;
+  const ratios = curve?.daily ? ratiosOfDaily(curve.daily) : { sharpe: null, sortino: null };
   const gw = sum(wins);
   const gl = Math.abs(sum(losses));
   return {
     n,
     wins: wins.length,
-    winRate: n ? wins.length / n : 0,
+    winRate: wins.length + losses.length ? wins.length / (wins.length + losses.length) : 0,
     net: cents(sum(trades)),
     avgWin: wins.length ? cents(gw / wins.length) : 0,
     avgLoss: losses.length ? cents(-gl / losses.length) : 0,
@@ -976,11 +1060,58 @@ export function statsOf(trades: Scored[]): Stats {
     expectancy: n ? cents(sum(trades) / n) : 0,
     expectancyR: withR.length ? withR.reduce((x, t) => x + (t.r ?? 0), 0) / withR.length : 0,
     maxDrawdown: cents(dd),
+    drawdownFrom: fromCurve != null ? 'curve' : 'trades',
     losingRun: lr,
     avgHeldMin: n ? trades.reduce((x, t) => x + t.heldMin, 0) / n : 0,
     best: n ? Math.max(...trades.map(t => t.pnl)) : 0,
     worst: n ? Math.min(...trades.map(t => t.pnl)) : 0,
+    scratches,
+    ...ratios,
   };
+}
+
+/** A backtest's equity at the end of every minute from its start to its clock: cash, and every contract held at its mark
+    (the account's own mid — a minute that is no market keeps the last mid it had). The report's drawdown is read off it. */
+export function equityCurveOf(s: Session): number[] {
+  const fills = [...s.fills].sort((a, b) => stampOf(a.at) - stampOf(b.at));
+  const out: number[] = [s.startCash];
+  if (!fills.length) return out;
+  const held = new Map<string, { c: ContractId; qty: number; last: number }>();
+  let cash = s.startCash;
+  let k = 0;
+  const end = s.cursor;
+  for (let day: string | null = fills[0].at.day, guard = 0; day && day <= end.day && guard < 2000; day = sessionAfter(day), guard++) {
+    const m0 = day === fills[0].at.day ? fills[0].at.minute : 0;
+    const m1 = day === end.day ? Math.min(LAST_MIN, end.minute) : LAST_MIN;
+    for (let m = m0; m <= m1; m++) {
+      while (k < fills.length && (fills[k].at.day < day || (fills[k].at.day === day && fills[k].at.minute <= m))) {
+        const f = fills[k++];
+        const key = contractKey(f.contract);
+        const h = held.get(key) ?? { c: f.contract, qty: 0, last: f.price };
+        const way = f.side === 'buy' ? 1 : -1;
+        h.qty += way * f.qty;
+        h.last = f.price;
+        cash += -way * f.price * MULT * f.qty - f.fee;
+        if (h.qty === 0) held.delete(key);
+        else held.set(key, h);
+      }
+      let v = cash;
+      for (const h of held.values()) {
+        const mk = markAt(h.c, day, m).mark;
+        if (Number.isFinite(mk)) h.last = mk;
+        v += h.qty * h.last * MULT;
+      }
+      out.push(cents(v));
+    }
+  }
+  return out;
+}
+/** The report's figures for a backtest, read off its own equity: the drawdown off its minute curve, Sharpe and Sortino
+    off its bells (`closes`) */
+export function sessionStatsOf(s: Session): Stats {
+  const { trades } = bookOf(s);
+  const days = Object.keys(s.closes ?? {}).sort();
+  return statsOf(trades, { equity: equityCurveOf(s), daily: [s.startCash, ...days.map(d => s.closes![d].equity)] });
 }
 
 interface Cut {
