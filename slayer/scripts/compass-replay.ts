@@ -247,14 +247,38 @@ async function replayOne(day: string): Promise<void> {
   }
 
   /* settlement: the ledger's own, over the whole session (every path is complete) */
-  for (let pass = 0; pass < 3; pass++) {
-    await new Promise(res => setTimeout(res, 100));
-    await ledger.settleOpen(Date.now() + pass * 60_000);
-  }
+  await settleAll(ledger);
   const calls = ledger.wouldSignals().slice().sort((a, b) => a.firedAt - b.firedAt);
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(path.join(OUT, `${day}.json`), JSON.stringify({ day, close: closeMin, builtAt: Date.now(), asked, refused, marks, lottery, calls }, null, 1));
   console.log(`${day}: ${marks.length / 2} marks, ${calls.length} calls, ${asked} asks, ${refused.length} snapshots refused, ${Math.round((Date.now() - t0) / 1000)} s`);
+}
+
+/** The ledger's settlement until every call is closed or unavailable (a pass started by recordPicks may still be
+    running: settleOpen returns at once while one is; the replay used to write the file before it finished). */
+async function settleAll(ledger: typeof import('../src/data/compassLedger')): Promise<void> {
+  const pending = () => ledger.wouldSignals().filter(s => !s.outcome || (s.outcome.status !== 'closed' && s.outcome.status !== 'unavailable'));
+  for (let pass = 0; pass < 120 && pending().length; pass++) {
+    await ledger.settleOpen(Date.now() + pass * 60_000);
+    if (pending().length) await new Promise(res => setTimeout(res, 2_000));
+  }
+  if (pending().length) console.error(`${pending().length} calls did not settle: ${pending().map(s => s.contract).join(', ')}`);
+}
+
+/** Settle the calls of a replay file written before settleAll (or after a settlement fault), and write it back. */
+async function resettle(day: string): Promise<void> {
+  const file = path.join(OUT, `${day}.json`);
+  const doc = JSON.parse(fs.readFileSync(file, 'utf8')) as { calls: unknown[] };
+  const { setCompassHost } = await import('../src/data/compassHost');
+  const { thetaAnswer } = await import('../src/data/compassServer');
+  const ledger = await import('../src/data/compassLedger');
+  setCompassHost({ server: true, theta: async p => { const g = await rawGet(p); return thetaAnswer(g.status, g.body, g.type); }, asset: async () => null, econ: () => [] });
+  ledger.importSignals([]);
+  ledger.importWould(doc.calls);
+  await settleAll(ledger);
+  doc.calls = ledger.wouldSignals().slice().sort((a, b) => a.firedAt - b.firedAt);
+  fs.writeFileSync(file, JSON.stringify(doc, null, 1));
+  console.log(`${day}: ${doc.calls.length} calls settled again`);
 }
 
 /* ---- the table and the checks ---- */
@@ -460,6 +484,10 @@ const BOOKW: Record<string, string> = { A: 'A Core', B: 'B Wing', C: 'C Late swe
 
 /* ---- main ---- */
 
+if (args.includes('--settle')) {
+  for (const d of days) await resettle(d);
+  process.exit(0);
+}
 if (args.includes('--one')) {
   await replayOne(days[0]);
   process.exit(0);
