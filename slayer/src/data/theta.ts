@@ -115,10 +115,14 @@ export const uwOnlyRoute = (): boolean => thetaUseHere() === 'none';
 /* a live price or a chart candle: a stock's or an index's snapshot, its bars, or its daily closes (the day's change),
    and a stock's prints, which its extended-hours candles are built from (data/thetaEligible.ts) */
 const PRICE_PATH = /^\/(stock|index)\/(snapshot\/(quote|trade|price|ohlc)|history\/(ohlc|eod))(\?|$)|^\/stock\/history\/trade(\?|$)/;
+/* the reference reads every page that prices an option needs: the pricing rate (data/rateFeed.ts) and the year's market
+   holidays (data/holidayFeed.ts) — not greeks, open interest or flow, so Pinpoint may ask them; Trace and the Dossier
+   still ask nothing and price at the last rate this browser kept */
+const REFERENCE_PATH = /^\/(interest_rate\/history\/eod|calendar\/year_holidays)(\?|$)/;
 /** May this ThetaData request be made on the page in view? */
 export const thetaAllowedHere = (path: string): boolean => {
   const use = thetaUseHere();
-  return use === 'all' || (use === 'prices' && PRICE_PATH.test(path));
+  return use === 'all' || (use === 'prices' && (PRICE_PATH.test(path) || REFERENCE_PATH.test(path)));
 };
 
 /* The terminal spells a class share's stock with its dot (BRK.B) and its option root without (BRKB): every option

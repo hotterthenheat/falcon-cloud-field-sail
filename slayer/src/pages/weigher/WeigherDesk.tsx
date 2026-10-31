@@ -2,7 +2,7 @@
    with the positions and watchlist under them marked at live quotes. */
 
 import { extTag, optionProductOf, productHours, sessionAt, sessionBadge, useMarketSession } from '../../core/session';
-import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Maximize2, Minimize2, Plus, Scale, X } from 'lucide-react';
 import { listedOptionsKnown } from '../../data/listedNames';
@@ -26,7 +26,9 @@ import { onGlide } from '../../core/glide';
 import { DOCK_ROOM } from '../../data/editorDock';
 import { useTicker } from '../../context/MarketDataContext';
 import { snapshotOf } from '../../data/book/feed';
-import { useBookRev } from '../../data/book/store';
+import { bookStatus, subscribeBook, useBookRev } from '../../data/book/store';
+import { wantDateFacts } from '../../data/book/load';
+import { sameName } from '../../data/spotGexBook';
 import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
 import { closeMoveTitle, signedPct } from '../../data/dayChange';
 import { buildPrints, fmtUsd } from '../../data/gex';
@@ -48,6 +50,8 @@ import {
   attachSession,
   refreshLiveChain,
   keepSlow,
+  vendorGammaRows,
+  withVendorGamma,
   optionsOpen,
   readLegs,
   exitPrice,
@@ -609,7 +613,15 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   /* the one session (core/session.ts): Sunday 20:00 is the overnight, not "closed today" */
   const marketPhaseNow = useMarketSession().phase;
   const session = marketPhaseNow === 'closed' ? 'closed' : marketPhaseNow === 'regular' ? 'rth' : marketPhaseNow;
-  const [chain, setChain] = useState<DeskChain>(() => blankChain(ticker, dte));
+  const [chainRead, setChain] = useState<DeskChain>(() => blankChain(ticker, dte));
+  /* each contract's gamma is the options-flow vendor's own, off the option-contracts rows the name's book already read for
+     this expiry (data/weigherDesk.ts withVendorGamma): nothing is asked twice — the book reads a date it has not yet */
+  const gammaNodes = useSyncExternalStore(subscribeBook, () => vendorGammaRows(chainRead.ticker, chainRead.expiryIso), () => null);
+  const bookLive = useSyncExternalStore(subscribeBook, () => bookStatus(sameName(chainRead.ticker)) === 'live', () => false);
+  useEffect(() => {
+    if (bookLive && !gammaNodes && chainRead.source === 'live' && chainRead.rows.length && chainRead.expiryIso) wantDateFacts(chainRead.ticker, [chainRead.expiryIso]);
+  }, [bookLive, gammaNodes, chainRead.ticker, chainRead.expiryIso, chainRead.source, chainRead.rows.length]);
+  const chain = useMemo(() => withVendorGamma(chainRead, gammaNodes), [chainRead, gammaNodes]);
   const [listed, setListed] = useState<{ rows: ListedExpiry[]; down: boolean; takenAt?: number } | null>(null);
   const [chainWait, setChainWait] = useState(true);
   const loadedKey = useRef('');

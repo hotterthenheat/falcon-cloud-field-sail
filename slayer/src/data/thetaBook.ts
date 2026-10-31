@@ -265,7 +265,10 @@ export function useContractBars(ticker: string, expiration: string, strike: numb
 interface ContractLive {
   bid: number;
   ask: number;
+  /** The quote's own stamp */
   at: number;
+  /** When this browser heard it, epoch ms: a quote not heard for a while is no longer live */
+  heard: number;
   under: number;
   delta: number;
   theta: number;
@@ -292,13 +295,31 @@ const quoteBox = new Map<string, ContractLive>();
 const quoteWant = new Map<string, QuoteWant>();
 const quoteHeard = new Set<() => void>();
 let quoteTimer: number | null = null;
+/* One read per contract at a time: every reader of a contract (the board card, its page, the Tracker, the Blotter, a
+   page's several figures) shares the read in flight, and a reader that mounts just after a read does not read again. */
+const quoteInflight = new Map<string, Promise<void>>();
+const quoteLastPull = new Map<string, number>();
+/** A reader mounting within this of the last read takes that read's quote */
+const QUOTE_REUSE_MS = 2_500;
+/** The 3-second poll skips a contract read this recently (a reader's mount read it) */
+const QUOTE_SKIP_MS = 2_000;
 
 function quoteKey(ticker: string, expiration: string, strike: number, right: OptionRight): string {
-  return `${ticker}|${expiration}|${strike}|${right}`;
+  return `${ticker}|${expiration.slice(0, 10)}|${strike}|${right}`;
+}
+
+function pullQuoteOnce(key: string, want: QuoteWant, minGap: number): Promise<void> {
+  const running = quoteInflight.get(key);
+  if (running) return running;
+  if (minGap > 0 && Date.now() - (quoteLastPull.get(key) ?? 0) < minGap) return Promise.resolve();
+  quoteLastPull.set(key, Date.now());
+  const read = pullQuote(key, want).finally(() => quoteInflight.delete(key));
+  quoteInflight.set(key, read);
+  return read;
 }
 
 async function pullQuote(key: string, want: QuoteWant): Promise<void> {
-  const exp = want.expiration.replace(/-/g, '');
+  const exp = want.expiration.slice(0, 10).replace(/-/g, '');
   const rightWord = want.right === 'C' ? 'call' : 'put';
   const got = await theta(
     `/option/snapshot/greeks/first_order?symbol=${encodeURIComponent(want.ticker)}&expiration=${exp}&strike=${want.strike}&right=${rightWord}&format=json`,
@@ -320,6 +341,7 @@ async function pullQuote(key: string, want: QuoteWant): Promise<void> {
       bid: nextBid,
       ask: nextAsk,
       at: nyWallStamp(parsed.quote.timestamp) || Date.now(),
+      heard: Date.now(),
       under: field(parsed.quote.underlying_price),
       delta: field(parsed.quote.delta),
       theta: perDay(field(parsed.quote.theta)),
@@ -336,7 +358,7 @@ async function pullQuote(key: string, want: QuoteWant): Promise<void> {
 
 function pullQuotes(): void {
   if (hidden() || deskPhase() === 'closed') return;
-  for (const [key, want] of quoteWant) void pullQuote(key, want).then(() => quoteHeard.forEach(fn => fn()));
+  for (const [key, want] of quoteWant) void pullQuoteOnce(key, want, QUOTE_SKIP_MS).then(() => quoteHeard.forEach(fn => fn()));
 }
 
 function stopQuotes(): void {
@@ -349,7 +371,8 @@ function armQuotes(): void {
   quoteTimer = window.setInterval(pullQuotes, 3_000);
 }
 
-/** One contract's quote for the page that shows it: polled every 3 seconds while that page is open. */
+/** One contract's quote for whatever shows it: polled every 3 seconds while anything holds it, once per contract
+    however many readers hold it. */
 export function useContractLive(ticker: string, expiration: string, strike: number, right: OptionRight, on: boolean): ContractLive | null {
   const key = quoteKey(ticker, expiration, strike, right);
   /* held with its contract's key: a switch never shows the last contract's quote, and a pull for it that lands late is
@@ -366,7 +389,7 @@ export function useContractLive(ticker: string, expiration: string, strike: numb
       if (!dead) setHeld({ key, row: quoteBox.get(key) ?? null });
     };
     quoteHeard.add(hear);
-    void pullQuote(key, want).then(hear);
+    void pullQuoteOnce(key, want, QUOTE_REUSE_MS).then(hear);
     return () => {
       dead = true;
       quoteHeard.delete(hear);

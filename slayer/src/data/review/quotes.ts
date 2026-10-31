@@ -119,10 +119,11 @@ const noQuote = (c: ContractId, spot: number): Quote => ({ bid: 0, ask: 0, mark:
     for the readers that import it from this file. */
 export { thetaPerSession };
 
-/** Greeks of a bought leg from its mid, the name's price and the time left — on the name's carry (core/carry carryFor:
-    the rate, and its dividend yield where one is known), the vol solved, the greeks and the theta all on the same one */
-function greeksOn(c: ContractId, mid: number, spot: number, t: number): Pick<Quote, 'iv' | 'delta' | 'gamma' | 'theta' | 'vega' | 'rho'> {
-  const { r, q } = carryFor(c.ticker);
+/** Greeks of a bought leg from its mid, the name's price and the time left — on the name's carry for that day (core/carry
+    carryFor: the day's own rate, and its dividend yield where one is known), the vol solved, the greeks and the theta all
+    on the same one */
+function greeksOn(c: ContractId, iso: string, mid: number, spot: number, t: number): Pick<Quote, 'iv' | 'delta' | 'gamma' | 'theta' | 'vega' | 'rho'> {
+  const { r, q } = carryFor(c.ticker, { on: iso });
   const iv = t > 0 && spot > 0 ? impliedVolFromPrice(mid, spot, c.strike, t, c.right, r, q) : null;
   if (iv == null) return { iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0 };
   const g = blackScholesGreeks(spot, c.strike, t, iv, r, q);
@@ -137,7 +138,7 @@ function legQuote(c: ContractId, iso: string, minute: number): Quote {
   if (!q || !(q.ask > 0) || !(q.bid > 0)) return { ...noQuote(c, spot), bid: q?.bid ?? 0, ask: q?.ask ?? 0, mark: q ? mid4((q.bid + q.ask) / 2) : NaN };
   const mark = mid4((q.bid + q.ask) / 2);
   const sizes = { ...(q.bidSize != null ? { bidSize: q.bidSize } : {}), ...(q.askSize != null ? { askSize: q.askSize } : {}), quotedAt: dateOf(iso).getTime() / 60_000 + q.at };
-  return { bid: q.bid, ask: q.ask, mark, ...greeksOn(c, (q.bid + q.ask) / 2, spot, yearsLeft(iso, minute, c.expiry)), intrinsic: cents(intrinsic), dead: false, spot, ...sizes };
+  return { bid: q.bid, ask: q.ask, mark, ...greeksOn(c, iso, (q.bid + q.ask) / 2, spot, yearsLeft(iso, minute, c.expiry)), intrinsic: cents(intrinsic), dead: false, spot, ...sizes };
 }
 
 /** The quote at the end of a minute, as it was recorded: a spread is its two legs at their natural prices */
@@ -217,7 +218,7 @@ function legWhatIf(c: ContractId, iso: string, minute: number, spot: number): nu
   if (t <= 0) return intrinsicOf(c, spot);
   if (live.dead || !(live.iv > 0)) return NaN;
   /* the same carry the vol was solved on (greeksOn) */
-  const { r, q } = carryFor(c.ticker);
+  const { r, q } = carryFor(c.ticker, { on: iso });
   return blackScholesPrice(spot, c.strike, t, live.iv, c.right, r, q);
 }
 /** "Where would the name have to be, right now, for this contract to be worth X": the chart's target and stop lines are

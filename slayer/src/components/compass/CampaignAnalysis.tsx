@@ -23,6 +23,8 @@ import GreeksRow from './GreeksRow';
 import ContractFacts from './ContractFacts';
 import SetupDrivers, { neighborRows } from './SetupDrivers';
 import { PROCESS_META, processState, stagesOf, type Stage } from './setupProcess';
+import { ReturnFigure } from './LiveReturn';
+import { pctWord, pnlWord, returnInk, returnTip, useCallReturn } from '../../data/compassReturn';
 import { choiceRight } from '../../data/compass';
 import { activeStop, contractPath, signalOf, signals, useSignals, type Signal } from '../../data/compassLedger';
 import type { PathQuote } from '../../data/compassOutcome';
@@ -122,10 +124,10 @@ interface CampaignAnalysisProps {
 }
 
 /** The board card's stat — 13px figure, a whispered label. */
-const RailStat = ({ label, value, ink = 'text-textPrimary' }: { label: string; value: string; ink?: string }) => (
+const RailStat = ({ label, value, ink = 'text-textPrimary', tip }: { label: string; value: string; ink?: string; tip?: string }) => (
   <span className="flex flex-col gap-0.5 min-w-0">
     <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">{label}</span>
-    <Tip label={value}>
+    <Tip label={tip ?? value}>
       <span className={`font-mono text-t13 font-semibold tnum truncate ${ink}`}>{value}</span>
     </Tip>
   </span>
@@ -184,6 +186,9 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
   const signal = useMemo(() => past ?? signalOf(setup.id), [record, setup.id, past]); // eslint-disable-line react-hooks/exhaustive-deps
   const outcome = signal?.outcome ?? null;
   const isPast = past != null;
+  /* the call's return from its fill: the one live quote per contract the board, the Tracker and the Blotter read too
+     (an open call on its record page reads it as well), its capture at the exit once closed */
+  const ret = useCallReturn(signal);
   const navigate = useNavigate();
   const tracked = isTracked(setup.id);
   const [trackNo, setTrackNo] = useState<string | null>(null);
@@ -478,6 +483,11 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
             </div>
           </div>
           <dl className="flex flex-wrap gap-x-5 gap-y-2" data-setup-facts data-quote-at={quoteAt}>
+            {signal && ticket ? (
+              <Fact label={ret.state === 'captured' ? 'At the exit' : 'Return from the fill'} testId="return">
+                <ReturnFigure r={ret} id={signal.key} size="lg" />
+              </Fact>
+            ) : null}
             <Fact label={isPast ? 'Last bid' : 'Bid'} testId="bid">{q.bid > 0 ? money(q.bid) : 'No bid'}</Fact>
             <Fact label={isPast ? 'Last ask' : 'Ask'} testId="premium">{q.ask > 0 ? money(q.ask) : '—'}</Fact>
             {q.bid > 0 && q.ask >= q.bid ? (
@@ -620,13 +630,22 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
                 <div className="px-3.5 py-2.5 grid grid-cols-3 gap-x-3 gap-y-2.5">
                   <RailStat label={basis > 0 ? 'Filled' : 'Entry'} value={line > 0 ? money(line) : '—'} />
                   <RailStat label={isPast ? (closed ? 'Exit' : 'Last bid') : 'Bid'} value={isPast && closed && closed.exitPx > 0 ? money(closed.exitPx) : q.bid > 0 ? money(q.bid) : '—'} />
-                  <RailStat label={isPast && closed ? 'Return' : 'Captured'} value={isPast && outcome?.ret != null ? `${outcome.ret >= 0 ? '+' : '−'}${Math.abs(outcome.ret).toFixed(1)}%` : capWord} ink={isPast && outcome?.ret != null ? (outcome.ret >= 0 ? 'text-bull' : 'text-bear') : !Number.isFinite(captured) ? 'text-textMuted' : captured >= 0 ? 'text-bull' : 'text-bear'} />
+                  {signal ? (
+                    <RailStat
+                      label={ret.state === 'captured' ? 'Captured' : ret.state === 'asof' ? `Return · ${nyClock(ret.at)}` : 'Return'}
+                      value={ret.pct != null ? pctWord(ret.pct) : ret.state === 'unavailable' ? 'No fill' : ret.state === 'noquote' ? 'No quote' : 'Waiting for fill'}
+                      ink={ret.pct == null ? 'text-textMuted' : ret.state === 'asof' ? 'text-textSecondary' : returnInk(ret.pct)}
+                      tip={returnTip(ret)}
+                    />
+                  ) : (
+                    <RailStat label="Captured" value={capWord} ink={!Number.isFinite(captured) ? 'text-textMuted' : captured >= 0 ? 'text-bull' : 'text-bear'} />
+                  )}
                   <RailStat label="Ask" value={q.ask > 0 ? money(q.ask) : '—'} />
                   <RailStat label="Mark" value={q.mark > 0 ? money(q.mark) : '—'} />
                   <RailStat label="Spread" value={q.bid > 0 && q.ask >= q.bid ? `${(spreadFrac * 100).toFixed(1)}% wide` : 'No bid'} ink={q.bid > 0 && spreadFrac <= spreadCap ? 'text-textPrimary' : 'text-textSecondary'} />
                   <RailStat label="Intrinsic" value={Number.isFinite(intrinsic) ? money(intrinsic) : '—'} />
                   <RailStat label="Extrinsic" value={Number.isFinite(intrinsic) && q.mark > 0 ? money(Math.max(0, q.mark - intrinsic)) : '—'} />
-                  <RailStat label={isPast ? 'P&L' : 'Quote'} value={isPast ? (outcome?.pnl != null ? `${outcome.pnl < 0 ? '−' : '+'}${money(Math.abs(outcome.pnl))}` : '—') : quoteAt ? nyClock(quoteAt, { seconds: true, zone: true }) : '—'} ink={isPast && outcome?.pnl != null ? (outcome.pnl >= 0 ? 'text-bull' : 'text-bear') : 'text-textPrimary'} />
+                  <RailStat label={isPast ? 'P&L' : 'Quote'} value={isPast ? (ret.pnl != null ? pnlWord(ret.pnl) : '—') : quoteAt ? nyClock(quoteAt, { seconds: true, zone: true }) : '—'} ink={isPast && ret.pnl != null ? (ret.state === 'asof' ? 'text-textSecondary' : returnInk(ret.pnl)) : 'text-textPrimary'} tip={isPast && ret.pnl != null ? returnTip(ret) : undefined} />
                 </div>
 
                 {setup.band === 'lottery' ? (

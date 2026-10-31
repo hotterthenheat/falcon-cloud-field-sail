@@ -19,6 +19,7 @@ import { backlogLine, useCompassFeed } from '../../data/compassFeed';
 import { useAllCalls, useCompassDoc } from '../../data/compassReviewFeed';
 import TradeReviewCard from '../../components/compass/TradeReviewCard';
 import TrackRecord from '../../components/compass/TrackRecord';
+import LiveReturn, { LivePnl } from '../../components/compass/LiveReturn';
 import { Link } from 'react-router-dom';
 import { EmptyBox, ErrorBox, LoadingBox, asOfText } from '../../components/ui/states';
 import { useThetaStatus } from '../../data/thetaQuote';
@@ -132,8 +133,10 @@ const COLUMNS: Column<Line>[] = [
   { key: 'exitPx', header: 'Exit', align: 'right', sortValue: r => r.exitPx ?? -1, render: r => (r.exitPx == null ? blank : <span className="tnum text-textPrimary">{usd(r.exitPx)}</span>) },
   { key: 'out', header: 'Out ET', align: 'right', sortValue: r => r.out ?? 0, render: r => (r.out == null ? blank : <span className="tnum text-textSecondary">{nyClock(r.out)}</span>) },
   { key: 'held', header: 'Held', align: 'right', sortValue: r => r.held ?? -1, render: r => (r.held == null ? blank : <span className="tnum text-textSecondary">{heldWords(r.held)}</span>) },
-  { key: 'ret', header: 'Return', align: 'right', sortValue: r => r.ret ?? -1e9, render: r => (r.ret == null ? blank : <span className={`tnum ${dirInk(r.ret)}`}>{pctWords(r.ret, 1)}</span>) },
-  { key: 'pnl', header: 'P&L', align: 'right', sortValue: r => r.pnl ?? -1e9, render: r => (r.pnl == null ? blank : <span className={`tnum ${dirInk(r.pnl)}`}>{`${r.pnl < 0 ? '−' : '+'}${usd(Math.abs(r.pnl))}`}</span>) },
+  /* the return from the fill: live on the contract's one quote while open (the board, the page and the Tracker read the
+     same one), captured at the exit once closed */
+  { key: 'ret', header: 'Return', align: 'right', sortValue: r => r.ret ?? -1e9, render: r => <LiveReturn signal={r.sig} detail="short" /> },
+  { key: 'pnl', header: 'P&L', align: 'right', sortValue: r => r.pnl ?? -1e9, render: r => (r.result === 'open' ? <LivePnl signal={r.sig} /> : r.pnl == null ? blank : <span className={`tnum ${dirInk(r.pnl)}`}>{`${r.pnl < 0 ? '−' : '+'}${usd(Math.abs(r.pnl))}`}</span>) },
   { key: 'result', header: 'Result', align: 'right', sortValue: r => r.result, render: r => <Tip label={r.why || undefined}><span className={RESULT_INK[r.result]}>{RESULT_WORD[r.result]}</span></Tip> },
   {
     key: 'open',
@@ -146,7 +149,7 @@ const COLUMNS: Column<Line>[] = [
     ),
   },
 ];
-const WIDTHS: Record<string, number> = { day: 70, fired: 84, contract: 150, book: 72, p1: 66, quote: 104, paid: 74, exitPx: 74, out: 60, held: 62, ret: 72, pnl: 84, result: 74, open: 66 };
+const WIDTHS: Record<string, number> = { day: 70, fired: 84, contract: 150, book: 72, p1: 66, quote: 104, paid: 74, exitPx: 74, out: 60, held: 62, ret: 150, pnl: 84, result: 74, open: 66 };
 const TOOLTIPS: Record<string, string> = {
   fired: 'When the scan sent the call, New York time.',
   book: `The model that made the call: ${MODEL_WORD[1]}, or ${MODEL_WORD[3]} (the late sweep, by rule).`,
@@ -155,7 +158,7 @@ const TOOLTIPS: Record<string, string> = {
   paid: 'The ask of the first quote a full minute after the call.',
   exitPx: 'The bid it left on, or the take-profit price.',
   out: 'When it left, New York time.',
-  ret: 'Exit against the fill. An open signal shows its last bid against the fill.',
+  ret: 'From the fill: (bid − fill) ÷ fill, live on the bid while it is open (the exit sells on the bid), captured at the exit once closed. No fees.',
   pnl: 'Per contract: (exit − fill) × 100.',
   result: 'Win or loss once it closed. Hover for why.',
 };
@@ -297,7 +300,7 @@ const Blotter = () => {
           phoneRow={r => (
             <PhoneRow
               title={<ContractLabel contract={r.label} right={r.right} logo={r.ticker} size="sm" />}
-              aside={<span className={r.ret == null ? RESULT_INK[r.result] : dirInk(r.ret)}>{r.ret == null ? RESULT_WORD[r.result] : pctWords(r.ret, 1)}</span>}
+              aside={<LiveReturn signal={r.sig} detail="short" />}
               figures={[
                 <span key="i">{dayCell(r.date)} · {r.late ? `${nyClock(r.mark)} ET mark, scored late` : `${nyClock(r.fired)} ET`} · {modelOfBook(r.book)}{r.book === 'A' && r.sig.runner ? ` · ${RIDING_WORD}` : ''}</span>,
                 <span key="p">{r.paid > 0 ? `Filled ${usd(r.paid)}` : `Quote ${r.bid.toFixed(2)} × ${r.ask.toFixed(2)}`}{r.exitPx != null ? ` · exit ${usd(r.exitPx)}${r.out ? ` ${nyClock(r.out)}` : ''}` : ''}</span>,

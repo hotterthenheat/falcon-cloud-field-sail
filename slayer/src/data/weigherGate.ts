@@ -10,7 +10,8 @@
    money is flagged, not re-priced. */
 
 import { blackScholesGreeks, blackScholesPrice, decayOver, impliedVolFromPrice, thetaPerSession } from '../core/greeks';
-import { carryFor, getCarry, DEFAULT_R } from '../core/carry';
+import { carryFor, forwardFor, getCarry, DEFAULT_R } from '../core/carry';
+import { nyIsoDate } from '../core/nyTime';
 import { tradingMinutes, tradingYears, TRADING_DAYS } from '../core/tradingYear';
 import { quotedVolPoint, sigmaMoveOfQuotedIv } from '../core/volClock';
 import { SPAN_INDEX, strikeSpan, bookBRange, P1_MIN, BID_MIN, SPREAD_MAX, DRIVE, onScanGrid, inLottery, releaseBlocks, QUOTE_MAX_AGE_MS, SEAT_CAP, LOTTERY_ASK_MAX } from './compassParams';
@@ -197,8 +198,17 @@ export function readContract(input: {
   let vol: number | null = null;
   let from: 'vendor' | 'mark' = 'vendor';
   const vendor = input.vendorIv;
-  if (vendor != null && vendor > 0 && vendor < 5) vol = vendor * volPt;
-  else {
+  if (vendor != null && vendor > 0 && vendor < 5) {
+    vol = vendor * volPt;
+    /* the vendor solves its IV with no yield (q = 0, its forward S·e^{rT}). Priced on the expiry's own implied forward,
+       that vol would misprice the contract by the forward's gap (7.9 points of SPX in January), so it is restated: the
+       vendor's own model price, solved again on the implied carry. The price, and the theta off it, do not move. */
+    if (carry.implied && carry.q !== 0) {
+      const own = blackScholesPrice(spot, strike, t, vol, right, carry.r, 0);
+      const again = own > 0 ? solveIv(own, spot, strike, t, right, carry) : null;
+      if (again != null && again > 0) vol = again;
+    }
+  } else {
     const mark = bid >= 0 && ask >= bid && ask > 0 ? (ask + bid) / 2 : NaN;
     vol = mark > 0 ? solveIv(mark, spot, strike, t, right, carry) : null;
     from = 'mark';
@@ -219,11 +229,13 @@ export function readContract(input: {
 
 /** The name's carry restated on the trading clock: rate and yield × T_calendar / T_trading, so r·T_trading is the
     calendar's r·T (interest accrues overnight and on weekends; variance does not). volPt² is that ratio. */
-export function clockCarry(ticker: string, expiryIso: string, now = Date.now()): Carry & { k: number } {
-  const c = carryFor(ticker);
-  const pt = quotedVolPoint(isoOf(expiryIso), now);
+export function clockCarry(ticker: string, expiryIso: string, now = Date.now()): Carry & { k: number; implied: boolean } {
+  /* the expiry's implied yield where its parity forward is known today, else the name's own (core/carry carryFor) */
+  const iso = isoOf(expiryIso);
+  const c = carryFor(ticker, { expiry: iso, now });
+  const pt = quotedVolPoint(iso, now);
   const k = pt * pt;
-  return { r: c.r * k, q: c.q * k, k };
+  return { r: c.r * k, q: c.q * k, k, implied: forwardFor(ticker, iso, nyIsoDate(now)) != null };
 }
 
 /** A row's price as a function of spot, on the same clock and carry the row was read on (its quoted IV moved onto the

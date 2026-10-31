@@ -8,6 +8,8 @@
 import { isTradingDay, isoDate, sessionLengthOn, MONTHS } from '../../core/calendar';
 import { nyParts } from '../../core/nyTime';
 import { thetaCall } from '../theta';
+import { ensureDayRates } from '../rateFeed';
+import { subscribeCarry } from '../../core/carry';
 import { readSaved, save as keep } from '../uwStore';
 import type { Candle } from '../../types/market';
 
@@ -115,6 +117,8 @@ export const subscribeHistory = (fn: () => void) => {
   };
 };
 export const historyRev = () => rev;
+/* a day's own rate landing (data/rateFeed.ts ensureDayRates → core/carry) re-prices that day's greeks */
+subscribeCarry(emit);
 
 /** Where a piece of the past stands: here, on its way, not recorded (no quote that day), or the terminal is away */
 export type Need = 'ready' | 'loading' | 'none' | 'offline';
@@ -236,6 +240,8 @@ export async function ensureBars(ticker: string, day: string): Promise<boolean> 
   const key = `bars|${t}|${day}`;
   if (bars.has(key)) return bars.get(key) != null;
   barsWant.set(key, 'loading');
+  /* the day's own rate, for its greeks (data/review/quotes.ts greeksOn) */
+  ensureDayRates(day);
   const root = INDEXES.has(t) ? 'index' : 'stock';
   /* the index route takes no `date=` (the terminal answers 400 "start_date is required"): a one-day range for both */
   const path = `/${root}/history/ohlc?symbol=${encodeURIComponent(t)}&start_date=${ymd(day)}&end_date=${ymd(day)}&interval=1m&format=json`;
@@ -255,6 +261,7 @@ export async function ensureBars(ticker: string, day: string): Promise<boolean> 
 export async function ensureBarsRange(ticker: string, from: string, to: string): Promise<void> {
   const t = underOf(ticker);
   const days = daysBetween(from, to).filter(d => !bars.has(`bars|${t}|${d}`));
+  for (const d of daysBetween(from, to)) ensureDayRates(d);
   if (!days.length) return;
   /* what this browser kept, day by day */
   const kept = await Promise.all(days.map(d => readSaved(`theta:bars|${t}|${d}`)));

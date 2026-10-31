@@ -15,6 +15,8 @@ import { Tip } from '../ui/Tooltip';
 import { usd2 as money } from '../../core/format';
 import { useContractLive } from '../../data/thetaBook';
 import { PROCESS_META, processState } from './setupProcess';
+import { useCallReturn } from '../../data/compassReturn';
+import { ReturnFigure } from './LiveReturn';
 
 const Stat = ({ label, value, ink = 'text-textPrimary', right = false }: { label: string; value: string; ink?: string; right?: boolean }) => (
   <span className={`flex flex-col gap-0.5 min-w-0 ${right ? 'items-end text-right' : ''}`}>
@@ -66,8 +68,12 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const ticket = setup.band === 'top' || setup.band === 'wing' || setup.band === 'lottery';
   const closest = setup.band === 'closest';
   const priced = ticket || closest;
-  const live = useContractLive(setup.ticker, setup.expiryDate || '', setup.strike, setup.right, priced && !!setup.expiryDate);
   const signal = ticket ? signalOf(setup.id) : null;
+  /* a call that has left (closed, or never filled) shows its record: its contract's quote is not read for it */
+  const settled = signal?.outcome?.status === 'closed' || signal?.outcome?.status === 'unavailable';
+  const live = useContractLive(setup.ticker, setup.expiryDate || '', setup.strike, setup.right, priced && !!setup.expiryDate && !settled);
+  /* the return from the fill, on the same one quote per contract the page, the Tracker and the Blotter read */
+  const ret = useCallReturn(signal);
   const paid = signal?.outcome?.fill?.ask ?? 0;
   /* One quote, both sides. A live quote replaces the scan's. Never a bid from one and an ask from the other, and never a mid standing in for a side the quote did not print. */
   const liveQuote = live && Number.isFinite(live.bid) && Number.isFinite(live.ask) && live.ask >= live.bid && live.ask > 0 ? { bid: live.bid, ask: live.ask, at: live.at } : null;
@@ -88,7 +94,9 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const target = !priced || !(entry > 0) ? 0 : setup.band === 'lottery' ? Number((entry * 2).toFixed(2)) : runner ? 0 : Number((entry * 1.5).toFixed(2));
   const away = (px: number) => (Number.isFinite(liveBid) && liveBid > 0 && px > 0 ? `${px >= liveBid ? '+' : '−'}${Math.abs((px / liveBid - 1) * 100).toFixed(0)}%` : '');
   const closedOut = outcome?.status === 'closed' ? outcome : null;
-  const pnl = closedOut?.pnl ?? (paid > 0 && Number.isFinite(liveBid) ? (liveBid - paid) * 100 : NaN);
+  const pnl = signal ? ret.pnl ?? NaN : NaN;
+  /* the bid the return is read on (the live one, or the last good one with its time) */
+  const shownBid = ret.state === 'live' || ret.state === 'asof' ? ret.px ?? NaN : liveBid;
   const pnlWord = Number.isFinite(pnl) ? `${pnl >= 0 ? '+' : '−'}$${Math.abs(pnl).toFixed(0)}` : '—';
   const delta = live && Number.isFinite(live.delta) ? live.delta : setup.greeks.delta;
   const proc = processState(delta, !!closedOut);
@@ -162,11 +170,18 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
           {priced ? when.join(' · ') : [...when, setup.whyText || 'Not a ticket.'].filter(Boolean).join(' · ')}
         </p>
 
+        {ticket ? (
+          <div className="flex items-baseline justify-between gap-3 min-w-0" data-card-return>
+            <span className="font-mono text-t9 uppercase tracking-wider text-textMuted shrink-0">Return</span>
+            <ReturnFigure r={ret} id={signal?.key ?? setup.id} size="lg" className="justify-end" />
+          </div>
+        ) : null}
+
         {priced ? (
           <>
             <div className="grid grid-cols-3 gap-2 items-start" data-card-numbers>
               <Stat label={paid > 0 ? 'Filled' : 'Ask'} value={entry > 0 ? money(entry) : '—'} />
-              <Stat label={closedOut ? 'Exit' : 'Bid'} value={closedOut?.exit ? money(closedOut.exit.px) : Number.isFinite(liveBid) ? money(liveBid) : '—'} />
+              <Stat label={closedOut ? 'Exit' : 'Bid'} value={closedOut?.exit ? money(closedOut.exit.px) : Number.isFinite(shownBid) ? money(shownBid) : '—'} />
               <Stat label="P&L" value={pnlWord} ink={!Number.isFinite(pnl) ? 'text-textMuted' : pnl >= 0 ? 'text-bull' : 'text-bear'} right />
             </div>
             <div className="flex items-center gap-x-3 gap-y-1 flex-wrap font-mono text-t10 text-textSecondary tnum" data-card-distances>

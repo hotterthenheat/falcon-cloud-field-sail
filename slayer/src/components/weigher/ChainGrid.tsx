@@ -117,7 +117,7 @@ const CHAIN_COL: ColDef<ChainGridRow> = { sortable: false, resizable: true, supp
 type ChainGridRow =
   | { kind: 'row'; key: string; c: DeskContract }
   | { kind: 'divider'; key: string; spot: number }
-  | { kind: 'drill'; key: string; c: DeskContract; ticker: string; head?: (c: DeskContract) => ReactNode; extra?: (c: DeskContract) => ReactNode };
+  | { kind: 'drill'; key: string; c: DeskContract; ticker: string; expiry?: string; head?: (c: DeskContract) => ReactNode; extra?: (c: DeskContract) => ReactNode };
 const CHAIN_ROW_H = 30;
 const DIVIDER_H = 22;
 const DRILL_H = 210;
@@ -196,7 +196,7 @@ const FullRow = (p: ICellRendererParams<ChainGridRow>) => {
       <div className="px-3 py-2.5 border-b border-ink/[0.05] flex flex-col gap-3">
         {/* The case first: the word, the reasons, the alternatives — then the figures */}
         {data.kind === 'drill' && data.head?.(data.c)}
-        <WeighGrids c={data.c} ticker={data.kind === 'drill' ? data.ticker : ''} />
+        <WeighGrids c={data.c} ticker={data.kind === 'drill' ? data.ticker : ''} expiry={data.kind === 'drill' ? data.expiry : undefined} />
         {data.kind === 'drill' && data.extra?.(data.c)}
       </div>
     </div>
@@ -347,7 +347,7 @@ export const ChainCard = memo(function ChainCard({
     let divider = -1;
     ordered.forEach((c, i) => {
       out.push({ kind: 'row', key: `s${c.strike}`, c });
-      if (inlineDrill && sel != null && Math.abs(c.strike - sel) < 1e-9) out.push({ kind: 'drill', key: `d${c.strike}`, c, ticker: chain.ticker, head: drillHead, extra: drillExtra });
+      if (inlineDrill && sel != null && Math.abs(c.strike - sel) < 1e-9) out.push({ kind: 'drill', key: `d${c.strike}`, c, ticker: chain.ticker, expiry: chain.expiryIso, head: drillHead, extra: drillExtra });
       const next = ordered[i + 1];
       if (anchorSpot > 0 && c.strike > anchorSpot && next && next.strike <= anchorSpot) {
         divider = out.length;
@@ -569,10 +569,11 @@ export const StatCell = ({ label, value, term, ink }: { label: string; value: st
 /** The weigh-up's two sections — Stats and The Greeks — shared verbatim by the desk's Strike card and Pulse's
     inline drilldown, so the two surfaces can never drift apart. A fragment on purpose: hosts that SPREAD the
     sections (justify-evenly) need them as direct children. */
-const WeighGrids = ({ c, ticker }: { c: DeskContract; ticker: string }) => {
-  /* the carry the greeks are priced with: the rate, and the name's own dividend yield or that our data has none */
+const WeighGrids = ({ c, ticker, expiry }: { c: DeskContract; ticker: string; expiry?: string }) => {
+  /* the carry the greeks are priced with: the rate in use, and the expiry's own forward, the name's own dividend yield or
+     that our data has none */
   const read = useYield(ticker || null);
-  const carry = ticker ? carryWords(ticker, read) : undefined;
+  const carry = ticker ? carryWords(ticker, read, expiry) : undefined;
   return (
   <>
         <div className="flex flex-col gap-2">

@@ -1,0 +1,53 @@
+{
+	"response": [
+		{
+			"contract": {"right":"CALL","strike":7635.000,"symbol":"SPXW","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":8,"bid_size":17,"ask_exchange":5,"ask_condition":50,"bid_exchange":5,"ask":206.90,"bid":205.90,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.952"}
+			]
+			},
+		{
+			"contract": {"right":"PUT","strike":7635.000,"symbol":"SPXW","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":36,"bid_size":8,"ask_exchange":5,"ask_condition":50,"bid_exchange":5,"ask":230.50,"bid":229.20,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.912"}
+			]
+			},
+		{
+			"contract": {"right":"CALL","strike":7630.000,"symbol":"SPXW","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":28,"bid_size":8,"ask_exchange":5,"ask_condition":50,"bid_exchange":5,"ask":210.00,"bid":208.90,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.952"}
+			]
+			},
+		{
+			"contract": {"right":"PUT","strike":7630.000,"symbol":"SPXW","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":32,"bid_size":8,"ask_exchange":5,"ask_condition":50,"bid_exchange":5,"ask":228.30,"bid":227.20,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.895"}
+			]
+			},
+		{
+			"contract": {"right":"CALL","strike":7625.000,"symbol":"SPXW","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":27,"bid_size":27,"ask_exchange":5,"ask_condition":50,"bid_exchange":5,"ask":212.90,"bid":211.90,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.994"}
+			]
+			},
+		{
+			"contract": {"right":"PUT","strike":7625.000,"symbol":"SPXW","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":28,"bid_size":8,"ask_exchange":5,"ask_condition":50,"bid_exchange":5,"ask":226.40,"bid":225.30,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.910"}
+			]
+			},
+		{
+			"contract": {"right":"CALL","strike":7640.000,"symbol":"SPXW","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":8,"bid_size":27,"ask_exchange":5,"ask_condition":50,"bid_exchange":5,"ask":203.90,"bid":202.90,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.969"}
+			]
+			},
+		{
+			"contract": {"right":"PUT","strike":7640.000,"symbol":"SPXW","expiration":"2027-01-15"},
+			"data": [
+				{"ask_size":29,"bid_size":8,"ask_exchange":5,"ask_condition":50,"bid_exchange":5,"ask":232.20,"bid":231.20,"bid_condition":50,"timestamp":"2026-10-30T15:29:59.989"}
+			]
+		}
+	]
+}
+
