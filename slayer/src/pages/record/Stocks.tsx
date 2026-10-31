@@ -23,7 +23,7 @@ import { nyClock, nyIsoDate, nySessionPhase } from '../../core/nyTime';
 import { isTradingDay } from '../../core/calendar';
 import { shortDay as shortDayWord } from '../../data/nyDate';
 import { gradeHelp, gradeOfComposite, type Grade } from '../../data/stockOverview';
-import { Controls, HeadFact, PhoneFold, RecordHead, RecordPanel, Summary } from '../../components/record/RecordFrame';
+import { Controls, HeadFact, PhoneFold, RecordHead, RecordPanel, Summary } from '../../components/record/recordHead';
 import { lookup, SECTORS, UNIVERSE, type Sector } from '../../data/universe';
 import { searchListed } from '../../data/listedNames';
 import { ROTATION_SECTORS } from './recordSkeletons';

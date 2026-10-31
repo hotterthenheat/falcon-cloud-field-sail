@@ -5,7 +5,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Archive, ArchiveRestore, ArrowRight, Plus, RotateCcw, Square, Trash2, X } from 'lucide-react';
-import { Fact } from '../../components/trace/TraceBox';
+import { Fact } from '../../components/trace/traceFrame';
 import RenameDoor from '../../components/review/RenameDoor';
 import ThetaLine from '../../components/review/ThetaLine';
 import { dirInk, usd, usdSigned } from '../../components/review/words';

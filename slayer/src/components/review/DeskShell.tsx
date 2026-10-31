@@ -11,7 +11,7 @@ import PaneFoot from '../gex/PaneFoot';
 import ReplayStrip from '../gex/ReplayStrip';
 import StrikeChart, { DEFAULT_INDICATORS, DEFAULT_OVERLAYS, type ChartIndicators, type ChartLayerApi, type ChartOverlays, type ChartStyle, type ChartTape, type CrosshairSync, type PriceScale, type TradeMark } from '../gex/StrikeChart';
 import { chartGround, useCandleThemeKey } from '../gex/candleTheme';
-import { Fact } from '../trace/TraceBox';
+import { Fact } from '../trace/traceFrame';
 import CardTabs from '../ui/CardTabs';
 import CompanyLogo from '../ui/CompanyLogo';
 import { useFadeClose } from '../ui/useFadeClose';

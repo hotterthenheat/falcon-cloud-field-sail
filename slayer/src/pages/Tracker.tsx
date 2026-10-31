@@ -13,7 +13,7 @@ import { daySummary, optionFees } from '../data/compassOutcome';
 import { backlogLine, holdCompassFeed, useCompassFeed } from '../data/compassFeed';
 import { EmptyBox, ErrorBox, asOfText } from '../components/ui/states';
 import { useThetaStatus } from '../data/thetaQuote';
-import TraceBox, { Fact } from '../components/trace/TraceBox';
+import TraceBox, { Fact } from '../components/trace/traceFrame';
 import ContractLabel from '../components/ui/ContractLabel';
 import SessionSpark from '../components/compass/SessionSpark';
 import { usd2 as money } from '../core/format';

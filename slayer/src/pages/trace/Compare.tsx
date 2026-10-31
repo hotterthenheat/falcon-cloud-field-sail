@@ -26,7 +26,7 @@ import { LiveHold, SessionMark, useHold } from '../../components/trace/LiveHold'
 import NetFlowPane, { CLOCK_OPTIONS, MONEY_OPTIONS } from '../../components/trace/NetFlowPane';
 import ReadDoor from '../../components/trace/ReadDoor';
 import TermLine from '../../components/trace/TermLine';
-import TraceBox, { Champion, Fact } from '../../components/trace/TraceBox';
+import TraceBox, { Champion, Fact } from '../../components/trace/traceFrame';
 import { CompareGuide } from '../../components/trace/TraceGuide';
 import { CMP_COLUMNS, CMP_LIST_HEAD_H, CMP_LIST_ROW_H, CMP_LISTED, CMP_PANE_H, CMP_ROW_H, CMP_SECTION_H } from './traceSkeletons';
 import { useIsBelowXl, useIsPhone } from '../../components/ui/useMediaQuery';

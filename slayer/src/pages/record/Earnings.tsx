@@ -1,7 +1,7 @@
 /* Who reports when, and what the options charge for it: the head's facts, one line of controls, the week as a board of
    five days (or a list of days), then every report in a paged grid. */
 
-import { Controls, PhoneFold, RecordHead, Summary } from '../../components/record/RecordFrame';
+import { Controls, PhoneFold, RecordHead, Summary } from '../../components/record/recordHead';
 import { createStore, useStore } from '../../data/feedStore';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';

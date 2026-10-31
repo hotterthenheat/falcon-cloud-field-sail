@@ -19,7 +19,7 @@ import { bracketLabel, seatLabel } from '../../data/congress';
 import { useInsiderFlow, useTickerCongress } from '../../data/liveRecord';
 import { When } from '../../components/record/when';
 import { nyIsoDate } from '../../core/nyTime';
-import { KeptNote } from '../../components/record/RecordFrame';
+import { KeptNote } from '../../components/record/recordHead';
 import { MIN_PRICED_PRINTS, reportDayLabel, reportedNow, useLiveDossier, useLiveReactions, useNextReport, useNextReportPending, useWireCheck } from '../../data/earningsFeed';
 import { useStockCard } from '../../data/liveFiles';
 import { FUND_TYPES } from '../../data/liveFiles';

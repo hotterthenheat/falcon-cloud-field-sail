@@ -20,7 +20,7 @@ import { directionInk, earnMarks } from '../../components/trace/earnedInk';
 import FlowSearch from '../../components/trace/FlowSearch';
 import { LiveHold, SessionMark, useHold } from '../../components/trace/LiveHold';
 import ReadDoor from '../../components/trace/ReadDoor';
-import TraceBox, { Champion, Fact } from '../../components/trace/TraceBox';
+import TraceBox, { Champion, Fact } from '../../components/trace/traceFrame';
 import { NetFlowGuide } from '../../components/trace/TraceGuide';
 
 /* signed on purpose: a champion's figure keeps its sign */

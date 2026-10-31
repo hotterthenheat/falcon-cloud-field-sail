@@ -12,7 +12,7 @@ import Lean from '../../components/trace/Lean';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import RichRead from '../../components/ui/RichRead';
 import NetFlowPane from '../../components/trace/NetFlowPane';
-import TraceBox, { Fact } from '../../components/trace/TraceBox';
+import TraceBox, { Fact } from '../../components/trace/traceFrame';
 import { OdteGuide } from '../../components/trace/TraceGuide';
 import FlowSearch, { useSearchedName } from '../../components/trace/FlowSearch';
 import SameDayName from '../../components/trace/SameDayName';
