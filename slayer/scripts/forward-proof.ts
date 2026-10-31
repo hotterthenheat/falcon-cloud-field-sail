@@ -4,7 +4,7 @@
 
   Known numbers (the audit's probes, /tmp/qa/theta-docs/report.md §2(a); copied to scripts/fixtures/theta-carry/):
   /option/at_time/quote at 15:30 ET on 2026-10-30, the 2027-01-15 expiry (77 days), four strikes; the spot then
-  (SPX 7552.04 off /index/at_time/price, SPY 752.855 the mid off /stock/at_time/quote); SOFR 3.94%.
+  (SPX 7552.04, the index's at-time price; SPY 752.855, the mid of its at-time quote); SOFR 3.94%.
     SPX parity forward 7611.35–7611.55 (spread 0.2), implied carry ≈ 3.71%, q ≈ 0.23% at SOFR; S·e^{0.042T} 7619.3 (+7.9)
     SPY parity forward 757.09–757.49, q ≈ 1.1% at SOFR; S·e^{0.042T} 759.56 (+2.3)
   Run:  npx tsx scripts/forward-proof.ts
