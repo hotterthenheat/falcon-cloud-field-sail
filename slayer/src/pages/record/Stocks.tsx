@@ -281,13 +281,19 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
     </span>
     <span className={`mt-1 block h-[12px] font-mono text-t8 uppercase tracking-widest whitespace-nowrap ${leader ? 'text-supreme' : PHASE_INK[s.phase]}`}>{leader ? 'LEADING' : PHASE_WORD[s.phase]}</span>
     {/* the members' real return, and the return against the board said as points */}
-    <span className="mt-0.5 block h-[12px] font-mono text-t9 tnum whitespace-nowrap overflow-hidden">
-      <span className="text-textMuted">1w </span>
-      <span className={s.ret1w != null ? dirInk(s.ret1w) : 'text-textMuted'}>{s.ret1w != null ? signedPct(s.ret1w) : '—'}</span>
-      <span className="text-textMuted"> · 1m </span>
-      <span className={s.ret1m != null ? dirInk(s.ret1m) : 'text-textMuted'}>{s.ret1m != null ? signedPct(s.ret1m) : '—'}</span>
+    {/* the lines fold at a window, never clip one, where a card is narrow (five across on a 1024 laptop) */}
+    <span className="mt-0.5 block leading-[12px] font-mono text-t9 tnum">
+      <span className="whitespace-nowrap">
+        <span className="text-textMuted">1w </span>
+        <span className={s.ret1w != null ? dirInk(s.ret1w) : 'text-textMuted'}>{s.ret1w != null ? signedPct(s.ret1w) : '—'}</span>
+      </span>
+      <span className="text-textMuted"> · </span>
+      <span className="whitespace-nowrap">
+        <span className="text-textMuted">1m </span>
+        <span className={s.ret1m != null ? dirInk(s.ret1m) : 'text-textMuted'}>{s.ret1m != null ? signedPct(s.ret1m) : '—'}</span>
+      </span>
     </span>
-    <span className="mt-0.5 block h-[12px] font-mono text-t8 tnum whitespace-nowrap overflow-hidden text-textMuted">
+    <span className="mt-0.5 block leading-[12px] font-mono text-t8 tnum text-textMuted">
       <span className={dirInk(s.rs1m)}>{s.rs1m > 0 ? '+' : s.rs1m < 0 ? '−' : ''}{Math.abs(s.rs1m).toFixed(1)} pts</span> vs board, 1m · {s.count} {s.count === 1 ? 'name' : 'names'}
     </span>
   </button>
@@ -485,10 +491,11 @@ const Stocks = () => {
             <HeadFact label="Above their 50-day" testId="stocks-breadth" tone={quiet ? 'text-textMuted' : facts.breadth >= 55 ? 'text-bull' : facts.breadth <= 40 ? 'text-bear' : undefined} tip="The share of the names whose last price is above their 50-day simple average">
               <span data-stocks-breadth>{quiet ? '—' : `${facts.breadth}%`}</span>
             </HeadFact>
+            {/* the two sector words are figures in the head's line: a touch hit area (tap-40), not the Dossier's 40px phone box that pushed them off their labels */}
             <HeadFact label="Leading sector" testId="stocks-leader">
               <span data-stocks-leader>
                 {quiet ? '—' : (
-                  <button type="button" onClick={() => toggleSector(top.sector)} title={`Keep the grid to ${top.sector}`} className="text-supreme font-semibold hover:underline underline-offset-2">
+                  <button type="button" onClick={() => toggleSector(top.sector)} title={`Keep the grid to ${top.sector}`} className="tap-40 text-supreme font-semibold hover:underline underline-offset-2" data-touch-skip>
                     {top.sector}
                   </button>
                 )}
@@ -497,7 +504,7 @@ const Stocks = () => {
             <HeadFact label="Ranked last" testId="stocks-trailer" tip="The sector whose names grade worst, its direction beside it; it can rank last and still be turning up">
               <span data-stocks-trailer>
                 {quiet ? '—' : (
-                  <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="text-bear hover:underline underline-offset-2">
+                  <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="tap-40 text-bear hover:underline underline-offset-2" data-touch-skip>
                     {bottom.sector} <span className="text-textMuted font-normal">· {PHASE_WORD[bottom.phase].toLowerCase()}</span>
                   </button>
                 )}

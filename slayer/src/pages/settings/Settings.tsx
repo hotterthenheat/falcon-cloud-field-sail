@@ -1212,7 +1212,7 @@ const Settings = () => {
 
       {/* The rail and boxes sit in the footer's own 1072 px measure, centred, so their edges meet the footer's columns with the sidebar in or out;
    the head stays full width. */}
-      <div className="grid grid-cols-1 xl:grid-cols-[168px_minmax(0,1fr)] gap-4 items-start w-full max-w-[1072px] mx-auto" data-settings>
+      <div className="grid grid-cols-1 xl:grid-cols-[168px_minmax(0,1fr)] gap-4 items-start w-full max-w-[1072px]" data-settings>
         {/* THE RAIL — the subpages, the one open lit */}
         <nav className="xl:sticky xl:top-5 flex xl:flex-col gap-0.5 flex-wrap" aria-label="Settings sections" data-settings-rail>
           {SECTIONS.filter(s => !s.owners || owner).map(s => {
