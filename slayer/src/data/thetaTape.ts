@@ -252,7 +252,17 @@ export function readEod(data: unknown): Candle[] {
     const at = nyWallStamp(b.created ?? b.last_trade ?? b.timestamp ?? b.date);
     const close = num(b.close);
     if (!at || !(close > 0)) continue;
-    bars.push({ time: dayClose(Math.floor(at / 1000)), open: num(b.open) || close, high: num(b.high) || close, low: num(b.low) || close, close, volume: num(b.volume) });
+    const open = num(b.open) || close;
+    /* A wick off by a decimal place is a bad print, not a day (SPY's 2 Feb 2026 row has a low of 69.005 under a 689–696
+       body, and it drew every daily chart down to zero): a low under half the body's foot or a high over twice its top
+       is dropped to the body. */
+    const foot = Math.min(open, close);
+    const top = Math.max(open, close);
+    const rawLow = num(b.low);
+    const rawHigh = num(b.high);
+    const low = rawLow > 0 && rawLow >= foot * 0.5 ? Math.min(rawLow, foot) : foot;
+    const high = rawHigh > 0 && rawHigh <= top * 2 ? Math.max(rawHigh, top) : top;
+    bars.push({ time: dayClose(Math.floor(at / 1000)), open, high, low, close, volume: num(b.volume) });
   }
   return dedupe(bars);
 }
