@@ -264,11 +264,11 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
   const quoteOk = !missing && !stale && spreadPass(bidPx, q.ask);
   const tapeOpen = !isPast && (optionScanOpen(setup.ticker, setup.expiry === '0DTE' ? 0 : 1) || (ticket && tape.option !== 'closed'));
   const gate = entryGate({ sessionOpen: tapeOpen, expired, quoteOk, executionQuote: false });
-  const line = basis > 0 ? basis : setup.ask > 0 ? setup.ask : 0;
+  /* THE BASE every number on the chart measures from: the fill once it filled, the call's ask before (said on the line) */
+  const line = basis > 0 ? basis : signal && signal.ask > 0 ? signal.ask : setup.ask > 0 ? setup.ask : 0;
+  const lineWord = basis > 0 ? 'FILL' : signal && signal.ask > 0 ? 'ASK AT CALL' : 'ASK';
   const captured = line > 0 && q.bid > 0 ? ((q.bid - line) / line) * 100 : NaN;
   const capWord = Number.isFinite(captured) ? `${captured >= 0 ? '+' : '−'}${Math.abs(captured).toFixed(1)}%` : '—';
-  /* the late sweep has no stop: none is drawn */
-  const chartQuote = line > 0 ? { ...q, entryPremium: line, stopPremium: setup.band === 'lottery' ? 0 : Number((line * STOP_KEEP).toFixed(2)) } : q;
   const checkFail = ticket
     ? null
     : setup.band === 'closest'
@@ -278,6 +278,10 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
   const runner = setup.band === 'wing' || riding;
   const liveStop = basis > 0 && setup.band !== 'lottery' && setup.band !== 'closest' ? activeStop(basis, outcome?.peak ?? 0, runner) : null;
   const stopHit = !isPast && !missing && liveStop != null && q.bid >= 0 && q.bid <= liveStop.stop;
+  /* the chart's stop is the one standing (the ratchet's rung once it climbed), else 0.4678 × the base; the late sweep
+     has none, so none is drawn */
+  const chartStop = setup.band === 'lottery' || !(line > 0) ? 0 : liveStop ? liveStop.stop : Number((line * STOP_KEEP).toFixed(2));
+  const chartQuote = line > 0 ? { ...q, entryPremium: line, stopPremium: chartStop } : q;
   const tp1Mult = 1.5;
   const tp1Hit = !isPast && ticket && !runner && setup.band !== 'lottery' && basis > 0 && q.bid >= basis * tp1Mult;
   const changed = !stopHit && !tp1Hit ? tapeChange(sessionPrints) : null;
@@ -510,6 +514,7 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
             emptyNote={traded && traded.length === 0 ? 'No trades on this contract. A minute with no print is not a candle.' : ''}
             pathNote={traded == null ? (thetaDown ? 'Live data offline. No bars.' : 'Reading the bars.') : ''}
             multiples={setup.band === 'lottery' ? [2, 3] : undefined}
+            entryWord={lineWord}
           />
           </div>
           {!isPast && <ContractFlow ticker={setup.ticker} strike={setup.strike} right={setup.right} expiryDate={setup.expiryDate} step={atmStep} session={desk} allSessions={setup.expiry === '0DTE'} />}

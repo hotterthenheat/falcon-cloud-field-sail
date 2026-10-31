@@ -37,6 +37,8 @@ interface ContractTrackProps {
   pathNote?: string;
   /** The exits drawn, as multiples of the entry (the late sweep sells at 2× and 3×) */
   multiples?: number[];
+  /** What the entry line is: the fill once it filled, the call's ask before. Every percent on the chart is from it. */
+  entryWord?: string;
 }
 
 const px2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -69,6 +71,7 @@ const ContractTrack = ({
   emptyNote = '',
   pathNote = '',
   multiples = [1.5, 2, 3],
+  entryWord = 'ASK',
 }: ContractTrackProps) => {
   const [localTf, setLocalTf] = useState<Timeframe>('1m');
   const timeframe = timeframeProp ?? localTf;
@@ -133,8 +136,9 @@ const ContractTrack = ({
     const host = tapeRef.current;
     const lastT = (traded && traded.length ? traded[traded.length - 1].time : Math.floor(Date.now() / 1000)) as UTCTimestamp;
     return {
-      entry: { time: lastT, price: book.entryPremium, mid: book.mark },
-      entryWord: 'ASK',
+      /* the entry line and every percent on the chart measure from the same price: the fill, or the call's ask */
+      entry: { time: lastT, price: book.entryPremium, mid: book.entryPremium },
+      entryWord,
       /* no stop, no line (the late sweep holds without one) */
       floor: book.stopPremium > 0 ? { price: book.stopPremium, brokeAt: null } : null,
       targets: tps.map(t => ({ level: t.level, price: t.price, won: false })),
@@ -147,7 +151,7 @@ const ContractTrack = ({
       insetTop: 48,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setup.ticker, book.entryPremium, book.stopPremium, book.mark, themeKey, traded, multiples.join('|')]);
+  }, [setup.ticker, book.entryPremium, book.stopPremium, book.mark, themeKey, traded, multiples.join('|'), entryWord]);
 
   return (
     <div

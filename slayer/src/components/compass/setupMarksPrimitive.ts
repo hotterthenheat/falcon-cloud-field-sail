@@ -93,8 +93,11 @@ class MarksRenderer {
         ctx.fillText(text, chipX + chipW / 2, y + 0.5 * vr);
       };
 
+      /* a stop lifted to the entry (break-even) is one line with one label, never two words printed over each other */
+      const stopAtEntry = !!data.floor && !!data.entry && Math.abs(data.floor.price - data.entry.price) < 0.005;
+
       /* THE STOP — a line across the tape at the real premium. */
-      if (data.floor) {
+      if (data.floor && !stopAtEntry) {
         const raw = yOf(data.floor.price);
         const px = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const word = `STOP  ${px(data.floor.price)}${fromEntry(data.floor.price)}${data.floor.brokeAt ? '  broke' : ''}`;
@@ -122,7 +125,7 @@ class MarksRenderer {
       if (data.entry) {
         const raw = yOf(data.entry.price);
         const px = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        const word = `${data.entryWord || 'ASK'}  ${px(data.entry.mid)}`;
+        const word = `${data.entryWord || 'ASK'}${stopAtEntry ? ' · STOP' : ''}  ${px(data.entry.mid)}`;
         if (onScale(raw)) {
           rule(0, raw, right, ENTRY, 0.95, false);
           figure(word, raw, ENTRY, raw > topLimit);
