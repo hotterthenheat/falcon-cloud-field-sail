@@ -3,7 +3,7 @@
 
 import type { ReactNode } from 'react';
 import { card } from './DeskShell';
-import { dirInk, heldWords, pct, usd, usdSigned } from './words';
+import { dirInk, heldWords, pct, ratioWords, RATIO_TITLE, scratchWords, SCRATCH_TITLE, usd, usdSigned } from './words';
 import { statsOf } from '../../data/review/engine';
 import { keptOf } from '../../data/review/excursion';
 import { dayMinOf, type JournalRow } from '../../data/review/journal';
@@ -30,17 +30,22 @@ interface Props {
   periodDays: Map<string, DayTotal>;
   /** "This month" · "All time" — what the figures are of */
   periodLabel: string;
+  /** The page's figures, where it has them — read off the account's own equity when one account is shown whole */
+  stats?: ReturnType<typeof statsOf>;
+  /** One account, all of it — Sharpe and Sortino are its daily closes' */
+  whole?: boolean;
 }
 
-const JournalStats = ({ rows, periodDays, periodLabel }: Props) => {
-  const s = statsOf(rows.map(r => r.t));
+const JournalStats = ({ rows, periodDays, periodLabel, stats, whole = false }: Props) => {
+  const s = stats ?? statsOf(rows.map(r => r.t));
+  const onCurve = s.drawdownFrom === 'curve';
   const gross = grossOf(rows);
   const runs = runsOf(rows);
   const kept = keptOf(rows);
   const ranked = [...periodDays.values()].sort((a, b) => b.net - a.net);
   const bestDay = ranked[0];
   const worstDay = ranked[ranked.length - 1];
-  const losses = s.n - s.wins;
+  const losses = s.n - s.wins - s.scratches;
   const avgHeld = s.n ? heldWords(s.avgHeldMin, rows[0] ? dayMinOf(rows[0]) : 390) : '—';
   const none = <span className="text-textMuted">—</span>;
 
@@ -57,7 +62,14 @@ const JournalStats = ({ rows, periodDays, periodLabel }: Props) => {
         <Row label="Won · lost" testId="won">
           {s.n ? (
             <>
-              <span className="text-bull">{s.wins}</span> · <span className="text-bear">{losses}</span> <span className="text-textMuted">· {pct(s.winRate)}</span>
+              <span className="text-bull">{s.wins}</span> · <span className="text-bear">{losses}</span>
+              {s.scratches > 0 && (
+                <span className="text-textMuted" title={SCRATCH_TITLE}>
+                  {' '}
+                  · {scratchWords(s.scratches)}
+                </span>
+              )}
+              {s.wins + losses > 0 && <span className="text-textMuted"> · {pct(s.winRate)}</span>}
             </>
           ) : (
             none
@@ -114,7 +126,22 @@ const JournalStats = ({ rows, periodDays, periodLabel }: Props) => {
         </Row>
       </Group>
       <Group>
-        <Row label="Worst drop from a high" title="The most the running total fell from its best before it made a new one" testId="drop">{!s.n ? none : s.maxDrawdown > 0 ? <span className="text-bear">−{usd(s.maxDrawdown)}</span> : <span className="text-textSecondary">none</span>}</Row>
+        <Row
+          label={onCurve ? 'Account’s worst drop' : 'Worst drop from a high'}
+          title={onCurve ? 'The account’s worst fall from a high, its open positions marked — not only what the closed trades added up to' : 'The most the running total of these closed trades fell from its best before it made a new one, each trade’s own open dip counted'}
+          testId="drop"
+        >
+          {!s.n && !onCurve ? none : s.maxDrawdown > 0 ? <span className="text-bear">−{usd(s.maxDrawdown)}</span> : <span className="text-textSecondary">none</span>}
+        </Row>
+        <Row label="Sharpe · Sortino" title={whole ? RATIO_TITLE : 'Read off one account’s own daily closes — pick one account and All time'} testId="ratios">
+          {whole ? (
+            <>
+              {ratioWords(s.sharpe)} · {ratioWords(s.sortino)}
+            </>
+          ) : (
+            none
+          )}
+        </Row>
         <Row label="Kept of the best" title={kept.share != null ? `Your trades were up ${usdSigned(kept.best, 0)} at their best, added together; ${usdSigned(kept.made, 0)} of it was taken` : 'None of these trades was ever up'} testId="kept">
           {kept.share != null ? pct(kept.share) : none}
         </Row>

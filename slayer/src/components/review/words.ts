@@ -24,3 +24,12 @@ export const heldWords = (min: number, dayMin = 390): string => {
   const n = d < 10 ? +d.toFixed(1) : Math.round(d);
   return `${n} ${n === 1 ? 'day' : 'days'}`;
 };
+
+/** Sharpe or Sortino, to two places — "—" where it cannot be said (under two closed days, or no spread) */
+export const ratioWords = (v: number | null): string => (v == null || !Number.isFinite(v) ? '—' : `${v < 0 ? MINUS : ''}${Math.abs(v).toFixed(2)}`);
+/** What Sharpe and Sortino are read off, for their title */
+export const RATIO_TITLE =
+  'Annualised (×√252) on the account’s day-to-day returns, close to close: Sharpe is the mean over its spread, Sortino the mean over its downside only. No risk-free rate is taken off. Shown once two days have closed.';
+/** "1 scratch" · "3 scratches" */
+export const scratchWords = (n: number): string => `${n} ${n === 1 ? 'scratch' : 'scratches'}`;
+export const SCRATCH_TITLE = 'A scratch closed at exactly $0: neither a win nor a loss, it is left out of the win rate and neither starts nor breaks a losing run';
