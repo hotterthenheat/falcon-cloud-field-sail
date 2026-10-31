@@ -99,7 +99,8 @@ const RecordTableBoxSkeleton = (props: { rows?: number; cols?: number; title?: n
   </div>
 );
 
-/** The wire standing: the head with four facts, four cards, the map beside the story card, the rows, the sentence.
+/** The wire standing: the head with four facts, the controls, the tape and the map across the card, the kinds, the rows
+    with the story beside them from xl, the sentence.
     The wire drips 24 stories through a day (news.ts FEED_SIZE) — 21 is an afternoon's count */
 const NewsInner = ({ rows = NEWS_WINDOW_ROWS }: { rows?: number }) => (
   <div className="flex flex-col min-w-0" aria-hidden data-skeleton="news-wire">
@@ -115,89 +116,83 @@ const NewsInner = ({ rows = NEWS_WINDOW_ROWS }: { rows?: number }) => (
       <Trigger w={116} />
       <Trigger w={128} />
       <Trigger w={104} />
-      {/* the heat legend: cool · warm · hot · where the news lands (measured 241) */}
-      <Line w={241} h={9} className="ml-2" />
       {/* the Filter card at rest prints "Everything" (measured 138) */}
-      <Trigger w={138} />
+      <Trigger w={138} className="ml-auto" />
     </div>
-    <div className="grid border-t border-borderSubtle" style={{ gridTemplateColumns: 'minmax(0, 1040px) minmax(340px, 1fr)' }}>
-      <div className="min-w-0 flex flex-col border-r border-borderSubtle">
-        {/* the tape over the map */}
-        <div className="px-4 h-[30px] border-b border-ink/[0.06] flex items-center gap-6 overflow-hidden">
-          {[220, 180, 260, 200, 240].map((w, i) => (
-            <span key={i} className="inline-flex items-center gap-2 shrink-0">
-              <Block w={8} h={8} className="rounded-[2px]" />
-              <Line w={34} h={10} />
-              <Line w={w} h={9} />
-            </span>
-          ))}
-        </div>
-        {/* the map's band — 960 × 440, and never taller than the live map's cap */}
-        <div className="relative h-[200px] lg:h-[300px] overflow-hidden">
-            {[[0.2, 0.36], [0.28, 0.4], [0.47, 0.3], [0.52, 0.34], [0.72, 0.42], [0.8, 0.5], [0.62, 0.58], [0.3, 0.62]].map(([x, y], i) => (
-              <Skeleton key={i} className="absolute rounded-full" style={{ left: `${x * 100}%`, top: `${y * 100}%`, width: 10 + (i % 3) * 4, height: 10 + (i % 3) * 4 }} />
-            ))}
-            {/* the kinds' pills at the map's foot */}
-            <div className="absolute bottom-3 left-2 right-2 flex flex-wrap justify-center gap-1">
-              {[34, 56, 60, 52, 48, 40, 54, 66].map((w, i) => (
-                <Block key={i} w={w + 24} h={24} className="rounded-full" style={{ opacity: i === 0 ? 0.6 : 0.25 }} />
-              ))}
-            </div>
-          </div>
-        {/* the read line under the map */}
-        <div className="px-4 h-[26px] border-t border-ink/[0.06] flex items-center">
-          <Line w={420} h={9} />
-          <Line w={90} h={9} className="ml-auto" />
-        </div>
-      </div>
-      {/* the story scrolls in the map's band — it does not set the row's height */}
-      <div className="min-w-0">
-        <div className="px-4 pt-3 pb-3 flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <Block w={16} h={16} className="rounded-full" />
-          <Line w={44} h={12} />
-          <Line w={40} h={9} />
-          <Line w={90} h={9} className="ml-auto" />
-        </div>
-        <Line w="92%" h={12} />
-        <Line w="70%" h={12} />
-        <Skeleton className="h-[4px] w-full rounded-full" />
-        <div className="grid grid-cols-3 gap-x-3 gap-y-2.5">
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={i}>
-              <Line w={64} h={8} />
-              <Line w={48} h={12} className="mt-1" />
-            </div>
-          ))}
-        </div>
-        <Skeleton className="h-[6px] w-full rounded-full" />
-        {Array.from({ length: 3 }, (_, i) => (
-          <div key={i}>
-            <Line w={70} h={8} />
-            <Line w="96%" h={10} className="mt-1" />
-            <Line w="60%" h={10} className="mt-1" />
-          </div>
-        ))}
-        </div>
-      </div>
-    </div>
+    {/* the tape, then the map across the card at the live stage's own height (index.css [data-news-stage]) */}
     <div className="border-t border-borderSubtle">
-      <div className="px-5 h-[22px] flex items-center gap-3">
-        {[30, 34, 30, 36, 60, 30, 28].map((w, i) => (
-          <Line key={i} w={w} h={8} />
+      <div className="px-4 h-[30px] border-b border-ink/[0.06] flex items-center gap-6 overflow-hidden">
+        {[220, 180, 260, 200, 240].map((w, i) => (
+          <span key={i} className="inline-flex items-center gap-2 shrink-0">
+            <Block w={8} h={8} className="rounded-[2px]" />
+            <Line w={34} h={10} />
+            <Line w={w} h={9} />
+          </span>
         ))}
       </div>
-      {Array.from({ length: rows }, (_, r) => (
-        <div key={r} className="px-5 grid items-center gap-x-3 border-t border-borderSubtle/40" style={{ height: NEWS_ROW_H, gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}>
-          <Line w={36} h={9} />
-          <Line w={54} h={10} />
-          <Line w={60} h={9} />
-          <Line w={40} h={8} />
-          <Line w={`${52 + ((r * 17) % 40)}%`} h={10} />
-          <Line w={40} h={10} className="ml-auto" />
-          <Line w={28} h={9} className="ml-auto" />
-        </div>
+      <div className="relative overflow-hidden" data-news-stage>
+        {[[0.14, 0.36], [0.2, 0.42], [0.47, 0.3], [0.52, 0.34], [0.72, 0.42], [0.8, 0.5], [0.62, 0.58], [0.3, 0.7]].map(([x, y], i) => (
+          <Skeleton key={i} className="absolute rounded-full" style={{ left: `${x * 100}%`, top: `${y * 100}%`, width: 10 + (i % 3) * 4, height: 10 + (i % 3) * 4 }} />
+        ))}
+      </div>
+      {/* the read line under the map: the count, the legend, the sessions */}
+      <div className="px-4 min-h-[30px] py-1.5 border-t border-ink/[0.06] flex flex-wrap items-center gap-x-4 gap-y-1">
+        <Line w={180} h={9} />
+        <Line w={300} h={9} />
+        <Line w={160} h={9} className="ml-auto" />
+      </div>
+    </div>
+    {/* the kinds' pills over the list */}
+    <div className="px-5 py-2 border-t border-borderSubtle flex items-center gap-1 overflow-hidden">
+      {[34, 56, 60, 52, 48, 40, 54, 66].map((w, i) => (
+        <Block key={i} w={w + 24} h={24} className="rounded-full shrink-0" style={{ opacity: i === 0 ? 0.6 : 0.25 }} />
       ))}
+    </div>
+    {/* the rows, the story beside them from xl (as the live band) */}
+    <div className="grid border-t border-borderSubtle grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] min-[1800px]:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="min-w-0 xl:border-r xl:border-borderSubtle">
+        <div className="px-5 h-[22px] flex items-center gap-3 max-[899.98px]:hidden">
+          {[30, 34, 60, 30].map((w, i) => (
+            <Line key={i} w={w} h={8} className={i === 3 ? 'ml-auto' : i === 2 ? 'ml-[88px]' : ''} />
+          ))}
+        </div>
+        {Array.from({ length: rows }, (_, r) => (
+          <div key={r} className="px-5 grid items-center gap-x-3 border-t border-borderSubtle/40 grid-cols-[56px_88px_minmax(0,1fr)_68px]" style={{ height: NEWS_ROW_H }}>
+            <Line w={36} h={9} />
+            <Line w={54} h={10} />
+            <Line w={`${52 + ((r * 17) % 40)}%`} h={10} />
+            <Line w={40} h={10} className="ml-auto" />
+          </div>
+        ))}
+      </div>
+      <div className="min-w-0 max-xl:hidden">
+        <div className="px-4 pt-3 pb-3 flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <Block w={16} h={16} className="rounded-full" />
+            <Line w={44} h={12} />
+            <Line w={40} h={9} />
+            <Line w={90} h={9} className="ml-auto" />
+          </div>
+          <Line w="92%" h={12} />
+          <Line w="70%" h={12} />
+          <Skeleton className="h-[4px] w-full rounded-full" />
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+            {Array.from({ length: 2 }, (_, i) => (
+              <div key={i}>
+                <Line w={64} h={8} />
+                <Line w={48} h={12} className="mt-1" />
+              </div>
+            ))}
+          </div>
+          {Array.from({ length: 2 }, (_, i) => (
+            <div key={i}>
+              <Line w={70} h={8} />
+              <Line w="96%" h={10} className="mt-1" />
+              <Line w="60%" h={10} className="mt-1" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
     {/* the sentence: pt-3 + one 12px line on relaxed leading + pb-4 (measured 49) */}
     <div className="px-5 pb-4 pt-3 border-t border-borderSubtle/40 h-[49px] flex items-center">
