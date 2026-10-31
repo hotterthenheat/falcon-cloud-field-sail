@@ -13,7 +13,7 @@ export const THETA_ALLOWED = [
   /^\/stock\/history\/(?:eod|ohlc|trade|quote)(?:\?|$)/,
   /^\/option\/list\/(?:symbols|expirations|strikes|dates\/(?:trade|quote)|contracts\/(?:trade|quote))(?:\?|$)/,
   /^\/option\/snapshot\/(?:quote|ohlc|open_interest|greeks\/(?:first_order|second_order|all|implied_volatility))(?:\?|$)/,
-  /^\/option\/history\/(?:eod|ohlc|quote|trade|open_interest|greeks\/(?:eod|first_order|second_order|all|implied_volatility))(?:\?|$)/,
+  /^\/option\/history\/(?:eod|ohlc|quote|trade|trade_quote|open_interest|greeks\/(?:eod|first_order|second_order|all|implied_volatility))(?:\?|$)/,
   /^\/option\/at_time\/quote(?:\?|$)/,
   /^\/index\/list\/symbols(?:\?|$)/,
   /^\/index\/snapshot\/(?:price|ohlc)(?:\?|$)/,

@@ -62,7 +62,7 @@ check(`every endpoint the app calls passes the allowlist (${called.length - deni
 /* ---- what is shut ---- */
 const FLAT = ['/option/flat_file/trade_quote', '/option/flat_file/eod', '/option/flat_file/open_interest', '/option/flat_file/quote', '/stock/flat_file/trade_quote', '/stock/flat_file/eod', '/stock/flat_file/quote', '/index/flat_file/eod'];
 check(`all 8 flat-file endpoints are denied (they passed /^\\/option\\/.+/ and /^\\/stock\\/.+/ before)`, FLAT.every(p => !thetaAllowed(`${p}?date=20261030&format=json`) && !thetaAllowed(p)));
-const NEVER = ['/option/snapshot/market_value', '/stock/snapshot/market_value', '/index/snapshot/market_value', '/option/history/trade_quote', '/stock/history/trade_quote', '/option/history/trade_greeks/all', '/option/snapshot/binomial_greeks/all', '/stock/at_time/trade', '/option/flat_file', '/stock/anything/else', '/option/snapshot/greeks/first_order/../../../flat_file/eod'];
+const NEVER = ['/option/snapshot/market_value', '/stock/snapshot/market_value', '/index/snapshot/market_value', '/stock/history/trade_quote', '/option/history/trade_greeks/all', '/option/snapshot/binomial_greeks/all', '/stock/at_time/trade', '/option/flat_file', '/stock/anything/else', '/option/snapshot/greeks/first_order/../../../flat_file/eod'];
 check(`endpoints the app does not call are shut too: ${NEVER.filter(p => !thetaAllowed(`${p}?symbol=SPY`)).length}/${NEVER.length}`, NEVER.every(p => !thetaAllowed(`${p}?symbol=SPY`)));
 check('a query cannot smuggle a path in: /option/history/eod?x=/flat_file/ passes, /option/flat_file/eod?x=/history/eod does not', thetaAllowed('/option/history/eod?symbol=SPY&x=/flat_file/') && !thetaAllowed('/option/flat_file/eod?x=/option/history/eod'));
 
