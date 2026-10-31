@@ -20,7 +20,36 @@ import type { MarkRow } from './compassScan';
 export interface SessionReview {
   day: string;
   builtAt: number;
+  /** The build rules it was made under (REVIEW_VERSION); absent on a file from before the stamp */
+  version?: number;
   trades: TradeReview[];
+}
+
+/** The rules a review and a study are built under. 2: no fees anywhere (a trade's P&L is (exit - fill) x 100). A file
+    stamped lower, or not at all, was built under older rules (fees taken from its P&L) and is built again. */
+export const REVIEW_VERSION = 2;
+
+const builtMemo = new Map<string, { mtime: number; ok: boolean }>();
+
+/** The review or study file exists and was built under today's rules. */
+export function builtCurrent(file: string): boolean {
+  let mtime = 0;
+  try {
+    mtime = fs.statSync(file).mtimeMs;
+  } catch {
+    return false;
+  }
+  const hit = builtMemo.get(file);
+  if (hit && hit.mtime === mtime) return hit.ok;
+  let ok = false;
+  try {
+    const got = JSON.parse(fs.readFileSync(file, 'utf8')) as { version?: unknown };
+    ok = typeof got.version === 'number' && got.version >= REVIEW_VERSION;
+  } catch {
+    ok = false;
+  }
+  builtMemo.set(file, { mtime, ok });
+  return ok;
 }
 
 async function trees(file: string): Promise<ExplainTree[] | null> {
@@ -52,13 +81,13 @@ export async function buildSession(dir: string, day: string, record: { calls: Si
   for (const sig of [...record.calls, ...(record.would ?? [])]) {
     trades.push(await reviewTrade(sig, deps));
   }
-  const review: SessionReview = { day, builtAt: Date.now(), trades };
+  const review: SessionReview = { day, builtAt: Date.now(), version: REVIEW_VERSION, trades };
   writeAtomic(reviewFile(dir, day), JSON.stringify(review));
   log(`[compass] review ${day}: ${trades.length} trades`);
   const labels: Label[] = [];
   const study = await runStudy({ ...deps, marks: record.marks, calls: record.calls, would: record.would ?? [], reviews: trades, onLabel: l => labels.push(l) });
   writeAtomic(path.join(dir, 'labels', `${day}.jsonl`), labels.map(l => JSON.stringify(l)).join('\n') + '\n');
-  writeAtomic(studyFile(dir, day), JSON.stringify(study));
+  writeAtomic(studyFile(dir, day), JSON.stringify({ ...study, version: REVIEW_VERSION }));
   log(`[compass] study ${day}: ${study.movers.length} movers, ${study.labels} labels`);
   return { review, study };
 }

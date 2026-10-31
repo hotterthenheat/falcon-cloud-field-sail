@@ -1,11 +1,11 @@
 /* The track record at the head of the Blotter: calls, wins and losses, the hit rate, the average return, the P&L
-   ((exit - entry) x 100 a contract, no fees) and the worst trade, overall, by book and by the session the call was made in, for today, this
+   ((exit - entry) x 100 a contract, no fees) and the worst trade, overall, by model and by the session the call was made in, for today, this
    week or every recorded session. Every figure is data/compassTrack.ts over the same rows the grid lists. */
 
 import { useMemo, useState } from 'react';
 import type { Signal } from '../../data/compassLedger';
-import { trackRecord, type TrackLine } from '../../data/compassTrack';
-import { BOOK_NAME, SESSION_WORD } from '../../data/compassParams';
+import { trackLine, trackRecord, type TrackLine } from '../../data/compassTrack';
+import { MODEL_WORD, RIDING_WORD, SESSION_WORD } from '../../data/compassParams';
 import FilterTabs from '../ui/FilterTabs';
 
 type Scope = 'today' | 'week' | 'all';
@@ -53,7 +53,11 @@ const TrackRecord = ({ today, recent, all }: { today: string; recent: readonly S
     return [...pool];
   }, [scope, today, recent, all, weekOf]);
   const weekLabel = thisWeek ? 'This week' : `Week of ${SHORT_MONTHS[Number(weekOf.slice(5, 7)) - 1]} ${Number(weekOf.slice(8, 10))}`;
-  const tr = useMemo(() => trackRecord(rows as Signal[]), [rows]);
+  const tr = useMemo(() => {
+    const t = trackRecord(rows as Signal[]);
+    /* the books Model 1 calls are one line; the calls Model 2 rode, a line of their own */
+    return { ...t, model1: trackLine(rows.filter(r => r.book !== 'C')), riding: trackLine(rows.filter(r => r.book === 'A' && r.runner)) };
+  }, [rows]);
   const sessions = (['overnight', 'pre', 'regular'] as const).filter(k => tr.bySession[k].calls > 0 || k === 'regular');
   return (
     <div className="border-t border-borderSubtle px-5 py-3" data-track-record={scope}>
@@ -83,7 +87,9 @@ const TrackRecord = ({ today, recent, all }: { today: string; recent: readonly S
           </thead>
           <tbody>
             <Row label="All calls" line={tr.all} strong testId="all" />
-            {(['A', 'B', 'C'] as const).map(b => <Row key={b} label={BOOK_NAME[b]} line={tr.byBook[b]} testId={`book-${b}`} />)}
+            <Row label={MODEL_WORD[1]} line={tr.model1} testId="book-A" />
+            {tr.riding.calls > 0 && <Row label={`· ${RIDING_WORD}`} line={tr.riding} testId="riding" />}
+            <Row label={MODEL_WORD[3]} line={tr.byBook.C} testId="book-C" />
             {sessions.map(k => <Row key={k} label={SESSION_WORD[k]} line={tr.bySession[k]} testId={`session-${k}`} />)}
           </tbody>
         </table>
