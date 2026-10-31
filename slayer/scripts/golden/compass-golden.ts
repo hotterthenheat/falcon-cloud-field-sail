@@ -547,4 +547,78 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   engine9b.stop();
 }
 
+/* ---- 10. the engine stays up ------------------------------------------------------------------------------- */
+{
+  const { spawnSync } = await import('node:child_process');
+  const { mkdtempSync, writeFileSync: write10 } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const api = (await import('../../server/compassApi.mjs')) as {
+    startDelay: (n: number) => number;
+    compassMount: (load: () => Promise<unknown>, root?: string) => { start: () => Promise<void>; stop: () => void };
+  };
+  expectEqual('start backoff: 5 s, 10 s, 20 s, capped at 5 min', [1, 2, 3, 7, 12].map(api.startDelay), [5_000, 10_000, 20_000, 300_000, 300_000]);
+  /* a start that failed is not memoised: inside its backoff it waits, after it the next start loads again */
+  freezeClock('2026-10-29T15:00:00Z');
+  let loads = 0;
+  const warn = console.warn;
+  console.warn = () => {};
+  const mount = api.compassMount(async () => {
+    loads += 1;
+    throw new Error('the import failed');
+  }, tmpdir());
+  await mount.start();
+  await mount.start();
+  const inside = loads;
+  freezeClock('2026-10-29T15:00:06Z');
+  await mount.start();
+  mount.stop();
+  console.warn = warn;
+  expectEqual('a failed engine start is tried again after its backoff (was: down until restart)', [inside, loads], [1, 2]);
+  /* the process logger, in a child: an unhandled rejection is logged and the process keeps running */
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', "const m = await import(process.argv[1]); m.installProcessLogger(l => console.log(l.split('\\n')[0])); Promise.reject(new Error('sentinel')); setTimeout(() => console.log('still up'), 50);", join(here, '..', '..', 'server', 'compassApi.mjs')], { encoding: 'utf8' });
+  expectEqual('process logger: the rejection is logged, the process lives', [child.status, child.stdout.trim().split('\n')], [0, ['[process] unhandled rejection: Error: sentinel', 'still up']]);
+  /* the model lock's reason reaches the log: a model folder whose universe file is not the locked one */
+  const badPublic = mkdtempSync(join(tmpdir(), 'compass-badpublic-'));
+  const { mkdirSync: mk10 } = await import('node:fs');
+  mk10(join(badPublic, 'config'), { recursive: true });
+  write10(join(badPublic, 'config', 'universe_458.json'), '["SPY"]');
+  const lockKid = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', [
+    "const { startCompassEngine } = await import(process.argv[1] + '/compassServer.ts');",
+    "const { scoreBook } = await import(process.argv[1] + '/compassModel.ts');",
+    "const e = startCompassEngine({ dir: process.argv[2], publicDir: process.argv[3], theta: async () => ({ status: 503, body: '', type: '' }), scan: false, log: l => { if (l.includes('model lock')) console.log(l); } });",
+    'await scoreBook([], Date.now(), true);',
+    'e.stop();',
+  ].join('\n'), join(here, '..', '..', 'src', 'data'), mkdtempSync(join(tmpdir(), 'compass-lockdir-')), badPublic], { encoding: 'utf8', cwd: join(here, '..', '..') });
+  expectEqual('model lock: its reason is logged (was: never logged)', lockKid.stdout.trim(), '[compass] model lock: Universe hash does not match. Scoring is closed.');
+
+  /* the early close: the core calendar stands in until ThetaData's calendar answers */
+  const { calendarClose } = await import('../../src/data/compassScan');
+  expectEqual('early close from the calendar: 2026-11-27 13:00, 2026-10-30 full', [calendarClose('20261127'), calendarClose('20261030')], [780, null]);
+  /* holidays: Thanksgiving 2026-11-26 is no session, and the night before it belongs to it */
+  const { sessionDayOpen, sessionYmd: sYmd, optionScanOpen: open10 } = await import('../../src/data/compassSession');
+  const ny = (d: number, h: number, m: number) => nyWallTime(2026, 11, d, h, m);
+  expectEqual('holiday: Wed 11-25 21:00 and Thu 11-26 10:00 belong to Fri 11-27 (was 11-26)', [sYmd(ny(25, 21, 0)), sYmd(ny(26, 10, 0))], ['20261127', '20261127']);
+  expectEqual('holiday: no scan Wed night or Thursday; Thursday night and Friday scan', [sessionDayOpen(ny(25, 21, 0)), sessionDayOpen(ny(26, 10, 0)), sessionDayOpen(ny(26, 21, 0)), sessionDayOpen(ny(27, 10, 0))], [false, false, true, true]);
+  expectEqual('holiday: SPXW is off the scan on Thanksgiving (was on)', [open10('SPXW', 1, ny(26, 10, 0)), open10('SPXW', 0, ny(27, 10, 0))], [false, true]);
+
+  /* the engine lock: a reader takes over once the scanner's lock is stale, and a scanner that loses it stops */
+  const { startCompassEngine: start10 } = await import('../../src/data/compassServer');
+  freezeClock('2026-10-31T15:00:00Z');
+  const dir10 = mkdtempSync(join(tmpdir(), 'compass-lock-'));
+  const lockFile = join(dir10, 'engine.lock');
+  const other = process.ppid;
+  write10(lockFile, JSON.stringify({ pid: other, at: Date.now() }));
+  const eng = start10({ dir: dir10, publicDir: join(here, '..', '..', 'public'), theta: async () => ({ status: 503, body: '', type: '' }), scan: true, lockRetryMs: 60, log: () => {} });
+  const role = () => eng.state()?.engine.readOnly;
+  const first = role();
+  write10(lockFile, JSON.stringify({ pid: other, at: Date.now() - 200_000 }));
+  await new Promise(r => setTimeout(r, 250));
+  const took = role();
+  write10(lockFile, JSON.stringify({ pid: other, at: Date.now() }));
+  await new Promise(r => setTimeout(r, 250));
+  const lost = role();
+  eng.stop();
+  expectEqual('engine lock: reader, takes over a stale lock, gives it up to a live holder (was: reader for life, scanner never stops)', [first, took, lost], [true, false, true]);
+}
+
 done();

@@ -12,7 +12,7 @@ import { compassHost, type ThetaAnswer } from './compassHost';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { setupIdOf } from './compass';
 import { GEX_CORE, inLottery, sessionScanOpen, weekdayDte } from './compassParams';
-import { deskPhase, odteAsleep, optionScanOpen, sessionIso, sessionYmd } from './compassSession';
+import { deskPhase, odteAsleep, optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
 import { COMPASS_TICKERS } from './compassUniverse';
 import {
   commitClosest,
@@ -30,7 +30,7 @@ import {
 } from './compassModel';
 import { recordPicks, setSessionClose, settleOpen } from './compassLedger';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
-import { nyYmd as ymd } from '../core/calendar';
+import { nyYmd as ymd, sessionCloseMinOn } from '../core/calendar';
 
 export const INDEX_OF: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'XSP', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX', NDX: 'NDX', NDXP: 'NDX' };
 export const OPTION_OF: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW', NDX: 'NDXP' };
@@ -543,7 +543,7 @@ async function liveMark(markAt: number, sleeve: 'odte' | 'weekly'): Promise<void
       commitClosest(sleeve, at);
       noteScanned(sleeve, at);
       noteSpots(snaps);
-      void fillSparks(names);
+      bg('the sparklines', fillSparks(names));
     }
     markChanged();
   } finally {
@@ -686,17 +686,37 @@ export function sessionClose(): number | null {
   return closeMin;
 }
 
+/** The close the calendar in core/calendar.ts gives for a session date (YYYYMMDD): 13:00 on a listed early close,
+    else null. Used until ThetaData's calendar answers, so a terminal that is down at the day roll cannot leave an early
+    close unknown (and the 13:00 day scanned and flattened as a full one). */
+export function calendarClose(day: string): number | null {
+  const m = sessionCloseMinOn(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}`);
+  return m < 16 * 60 ? m : null;
+}
+
+let closeAsked = 0;
+let closeBusy = false;
+
+/** ThetaData's calendar for the session, asked again every tick (at most every 10 s) until it answers; the
+    core/calendar close stands in meanwhile. */
 async function readClose(day: string): Promise<void> {
-  if (closeDay === day) return;
-  const got = await theta(`/calendar/on_date?date=${day}&format=json`);
-  if (got.error) return;
-  closeDay = day;
-  const row = asRows(got.data)[0];
-  const type = String(row?.type ?? '');
-  const m = /^(\d{2}):(\d{2})/.exec(String(row?.close ?? ''));
-  closeMin = type === 'early_close' && m ? Number(m[1]) * 60 + Number(m[2]) : null;
-  /* the calls recorded from now on settle against this session's close */
-  setSessionClose(closeMin);
+  if (closeDay === day || closeBusy || Date.now() - closeAsked < 10_000) return;
+  closeBusy = true;
+  closeAsked = Date.now();
+  try {
+    const got = await theta(`/calendar/on_date?date=${day}&format=json`);
+    if (got.error) return;
+    const row = asRows(got.data)[0];
+    if (!row) return;
+    closeDay = day;
+    const type = String(row.type ?? '');
+    const m = /^(\d{2}):(\d{2})/.exec(String(row.close ?? ''));
+    closeMin = type === 'early_close' && m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    /* the calls recorded from now on settle against this session's close */
+    setSessionClose(closeMin);
+  } finally {
+    closeBusy = false;
+  }
 }
 
 /** On an early-close day nothing is scored after the close: the curb and the later marks do not exist. */
@@ -710,7 +730,7 @@ function marksSince(from: number, now: number): { at: number; sleeve: 'odte' | '
   for (let t = minuteStart(from); t < minuteStart(now); t += 60_000) {
     const p = nyParts(t);
     const mins = p.hour * 60 + p.minute;
-    if (!sessionScanOpen(mins, p.weekday) || pastEarlyClose(mins)) continue;
+    if (!sessionScanOpen(mins, p.weekday) || !sessionDayOpen(t) || pastEarlyClose(mins)) continue;
     const odte = odteNames(t);
     if (odte.length) out.push({ at: t, sleeve: 'odte', names: odte });
     const weekly = weeklyNames(t);
@@ -720,6 +740,8 @@ function marksSince(from: number, now: number): { at: number; sleeve: 'odte' | '
 }
 
 export interface ScanOptions {
+  /** A line for the server's log (a pass that threw, a background read that failed) */
+  log?: (line: string) => void;
   /** The earliest mark to fill in from recorded quotes, epoch ms (the session's 09:30 by default) */
   backfillFrom?: (day: string) => number;
   /** A new session began: the server starts its file */
@@ -740,13 +762,35 @@ export function regularOpen(iso: string): number {
   return nyWallTime(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), Number(iso.slice(8, 10)), 9, 30);
 }
 
+const said = new Map<string, number>();
+
+/** Logs a failure of one step of the scan, the same line at most once a minute. */
+function fault(where: string, e: unknown): void {
+  const text = `[compass] ${where} failed: ${e instanceof Error ? e.message : String(e)}`;
+  if (Date.now() - (said.get(text) ?? 0) < 60_000) return;
+  said.set(text, Date.now());
+  if (said.size > 200) said.clear();
+  (opts.log ?? console.warn)(text);
+}
+
+/** A background step: run, never left unhandled. */
+function bg(where: string, job: Promise<unknown>): void {
+  job.catch(e => fault(where, e));
+}
+
 function rollDay(now: number): void {
   const next = sessionIso(now);
-  if (next === day) return;
-  day = next;
-  lotteryDay = '';
-  opts.onDay?.(next);
-  void readClose(next.replace(/-/g, ''));
+  if (next !== day) {
+    day = next;
+    lotteryDay = '';
+    /* the close is not known for the new session until its calendar answers */
+    closeDay = '';
+    closeAsked = 0;
+    closeMin = calendarClose(next.replace(/-/g, ''));
+    setSessionClose(closeMin);
+    opts.onDay?.(next);
+  }
+  if (closeDay !== day.replace(/-/g, '')) bg('the session calendar', readClose(day.replace(/-/g, '')));
 }
 
 /** Fill the marks the live pass did not read, oldest first, one name at a time, while no live pass runs. */
@@ -794,21 +838,21 @@ async function tick(): Promise<void> {
     rollDay(now);
     const p = nyParts(now);
     const mins = p.hour * 60 + p.minute;
-    if (sessionScanOpen(mins, p.weekday) && !pastEarlyClose(mins)) {
+    if (sessionScanOpen(mins, p.weekday) && sessionDayOpen(now) && !pastEarlyClose(mins)) {
       const markAt = minuteStart(now);
       await Promise.all([liveMark(markAt, 'odte'), liveMark(markAt, 'weekly')]);
     }
     if (lotteryDay !== day && lotteryWindow(mins, p.second) && sessionIso(now) === day) {
       if (await lotterySweep(now, false)) lotteryDay = day;
     }
-    void refreshHeld(Date.now());
+    bg('the card quotes', refreshHeld(Date.now()));
     if (Date.now() - settleAt > 60_000) {
       settleAt = Date.now();
-      void settleOpen(Date.now());
+      bg('settlement', settleOpen(Date.now()));
     }
     if (Date.now() - lateAt > 5_000) {
       lateAt = Date.now();
-      void fillLate(Date.now());
+      bg('the late fill', fillLate(Date.now()));
     }
   } finally {
     ticking = false;
@@ -820,8 +864,8 @@ export function startScan(options: ScanOptions = {}): void {
   if (!stopped) return;
   opts = options;
   stopped = false;
-  void tick();
-  timer = setInterval(() => void tick(), 1_000);
+  bg('the scan tick', tick());
+  timer = setInterval(() => bg('the scan tick', tick()), 1_000);
 }
 
 /** Stop at the next step: no new pass starts and the late fill gives up its place. */

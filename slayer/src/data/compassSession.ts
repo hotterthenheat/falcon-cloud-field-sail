@@ -110,6 +110,7 @@ const equityOption = (mins: number, trading: boolean, ticker: string): OptionPha
     0 DTE runs until the minute before its own stop. 1–7 DTE runs through the session's own close. The halt sends nothing, except VIX 0 DTE's last look at 09:29. */
 export function optionScanOpen(ticker: string, dte: number, at: At = now()): boolean {
   if (!Number.isFinite(dte) || dte < 0 || dte > 7) return false;
+  if (!sessionDayOpen(at)) return false;
   const root = ticker.toUpperCase();
   const p = nyParts(at);
   const mins = p.hour * 60 + p.minute;
@@ -224,14 +225,30 @@ function nextWeekday(year: number, month: number, day: number) {
   return q;
 }
 
-/** The session this clock belongs to. After 8:15 PM ET the session is the next trading day. Wednesday night is Thursday's book. */
-export function sessionYmd(at: At = now()): string {
+/** The weekday this clock would belong to if every weekday traded: after 8:15 PM ET (and from Friday 17:00) the next
+    weekday. */
+function nominalSession(at: At) {
   const p = nyParts(at);
   const mins = p.hour * 60 + p.minute;
-  if (p.weekday === 6 || p.weekday === 0) return ymdOf(nextWeekday(p.year, p.month, p.day));
-  if (p.weekday === 5 && mins >= 17 * 60) return ymdOf(nextWeekday(p.year, p.month, p.day));
-  if (mins >= 20 * 60 + 15) return ymdOf(nextWeekday(p.year, p.month, p.day));
-  return ymdOf(p);
+  if (p.weekday === 6 || p.weekday === 0) return nextWeekday(p.year, p.month, p.day);
+  if (p.weekday === 5 && mins >= 17 * 60) return nextWeekday(p.year, p.month, p.day);
+  if (mins >= 20 * 60 + 15) return nextWeekday(p.year, p.month, p.day);
+  return p;
+}
+
+/** The session this clock belongs to. After 8:15 PM ET the session is the next trading day. Wednesday night is
+    Thursday's book. A market holiday is not a session: its day and the night before it belong to the next trading
+    day (core/calendar MARKET_HOLIDAYS). */
+export function sessionYmd(at: At = now()): string {
+  let q = nominalSession(at);
+  for (let i = 0; i < 10 && !isTradingDay(dayOf(q)); i++) q = nextWeekday(q.year, q.month, q.day);
+  return ymdOf(q);
+}
+
+/** This clock's session trades at all: false on a market holiday and through the overnight before it (Wednesday
+    20:15 ET before Thanksgiving belongs to the holiday, and no tape runs). The scan's minute grid is not this. */
+export function sessionDayOpen(at: At = now()): boolean {
+  return isTradingDay(dayOf(nominalSession(at)));
 }
 
 export function sessionIso(at: At = now()): string {

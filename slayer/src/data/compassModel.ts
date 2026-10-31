@@ -1,7 +1,7 @@
 /* Compass scorer. Books A and B call Model 1 (entry) and Model 2 (runner). Book C calls neither. A hash or
    tree-count miss scores nothing. */
 
-import { parseBoosters, predict, type Tree } from './lgbm';
+import { nanUnsafeColumns, parseBoosters, predict, type Tree } from './lgbm';
 import { compassHost } from './compassHost';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { nyYmd as ymd, sessionBefore } from '../core/calendar';
@@ -39,13 +39,17 @@ import {
   P1_MIN,
 } from './compassParams';
 import { COMPASS_TICKERS } from './compassUniverse';
-import { optionScanOpen, sessionYmd } from './compassSession';
+import { optionScanOpen, sessionDayOpen, sessionYmd } from './compassSession';
 import type { OptionRight, Setup } from '../types/compass';
 import type { PathBar } from './compassOutcome';
 import { CORE, INDEX, NO_DAILY, SECTOR_OF, UNDER, atmPair, curveFrom, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
 
 let ENTRY: Tree[] = [];
 let RUNNER: Tree[] = [];
+/* The columns each model never saw a NaN in and whose 0 (what LightGBM reads a NaN as there) lies outside the
+   training range: a NaN in one of them walks a branch no training row took (lgbm.ts nanUnsafeColumns). */
+let ENTRY_UNSAFE: number[] = [];
+let RUNNER_UNSAFE: number[] = [];
 let locked = false;
 /* Empty until a load has been tried and failed: an unscored session is not a failed load. */
 let lockText = '';
@@ -55,16 +59,34 @@ export function lockReason(): string {
   return lockText;
 }
 
+const lockFns = new Set<(text: string) => void>();
+
+/** Called when the lock's reason changes ('' once the files verify): the server logs it. */
+export function onLockReason(fn: (text: string) => void): () => void {
+  lockFns.add(fn);
+  return () => lockFns.delete(fn);
+}
+
+function setLock(text: string): void {
+  if (text === lockText) return;
+  lockText = text;
+  for (const fn of lockFns) fn(text);
+}
+
 async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function loadOne(url: string, expect: string): Promise<Tree[] | null> {
+/** One model file: its trees, or why it was refused (missing, a hash miss, not 300 numerical trees). */
+async function loadOne(url: string, expect: string): Promise<{ trees: Tree[]; text: string } | string> {
   const bytes = await compassHost().asset(url);
-  if (!bytes) return null;
-  if (await sha256Hex(bytes) !== expect) return null;
-  return parseBoosters(new TextDecoder().decode(bytes), TREE_N);
+  if (!bytes) return `${url} is missing`;
+  const got = await sha256Hex(bytes);
+  if (got !== expect) return `${url} hashes to ${got.slice(0, 12)}…, not ${expect.slice(0, 12)}…`;
+  const text = new TextDecoder().decode(bytes);
+  const trees = parseBoosters(text, TREE_N);
+  return trees ? { trees, text } : `${url} is not ${TREE_N} numerical trees`;
 }
 
 async function ensureModels(): Promise<boolean> {
@@ -74,31 +96,33 @@ async function ensureModels(): Promise<boolean> {
     try {
       const raw = await compassHost().asset('/config/universe_458.json');
       if (!raw) {
-        lockText = 'Universe file missing. Scoring is closed.';
+        setLock('Universe file missing. Scoring is closed.');
         return false;
       }
       if (await sha256Hex(raw) !== UNIVERSE_SHA) {
-        lockText = 'Universe hash does not match. Scoring is closed.';
+        setLock('Universe hash does not match. Scoring is closed.');
         return false;
       }
       const names = JSON.parse(new TextDecoder().decode(raw)) as unknown;
       if (!Array.isArray(names) || names.length !== UNIVERSE_N || names.some((n, i) => n !== COMPASS_TICKERS[i])) {
-        lockText = 'Universe list does not match. Scoring is closed.';
+        setLock('Universe list does not match. Scoring is closed.');
         return false;
       }
       const entry = await loadOne('/models/model_entry_all6months.txt', ENTRY_SHA);
       const runner = await loadOne('/models/model_runner_all6months.txt', RUNNER_SHA);
-      if (!entry || !runner) {
-        lockText = 'The read failed its check. Scoring is closed.';
+      if (typeof entry === 'string' || typeof runner === 'string') {
+        setLock(`The read failed its check (${[entry, runner].filter(v => typeof v === 'string').join('; ')}). Scoring is closed.`);
         return false;
       }
-      ENTRY = entry;
-      RUNNER = runner;
+      ENTRY = entry.trees;
+      RUNNER = runner.trees;
+      ENTRY_UNSAFE = nanUnsafeColumns(entry.text);
+      RUNNER_UNSAFE = nanUnsafeColumns(runner.text);
       locked = true;
-      lockText = '';
+      setLock('');
       return true;
     } catch {
-      lockText = 'Model files could not be read. Scoring is closed.';
+      setLock('Model files could not be read. Scoring is closed.');
       return false;
     } finally {
       loading = null;
@@ -972,7 +996,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
   const mark = Math.floor(now / 60_000) * 60_000;
   const clock = nyParts(now);
   const minute = clock.hour * 60 + clock.minute;
-  if (!merge && !sessionScanOpen(minute, clock.weekday)) return 'scored';
+  if (!merge && !(sessionScanOpen(minute, clock.weekday) && sessionDayOpen(now))) return 'scored';
   if (releaseShut(now)) return 'scored';
   const blocked = new Set<string>(DO_NOT_REQUEST);
   const day = sessionYmd(now);
@@ -1397,7 +1421,7 @@ const claimedSleeves = new Set<string>();
 function scanSlot(now: number): number {
   const p = nyParts(now);
   const m = p.hour * 60 + p.minute;
-  if (!sessionScanOpen(m, p.weekday)) return -1;
+  if (!sessionScanOpen(m, p.weekday) || !sessionDayOpen(now)) return -1;
   if (m === 9 * 60 + 29 || m === 15 * 60 + 59 || m === 16 * 60 + 14) return 10_000 + m;
   return Math.floor(m / 5);
 }
