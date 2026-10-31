@@ -3,7 +3,7 @@
   Run: node scripts/hub-proof.mjs
 */
 
-import { canonical, createHub } from '../server/hub.mjs';
+import { canonical, createHub, marketHours } from '../server/hub.mjs';
 
 let failed = 0;
 const check = (name, ok, detail) => {
@@ -131,6 +131,72 @@ check('500 viewers cost about what 1 does (within three calls)', counts[500] <= 
   const [a, b] = await Promise.all([hub.get('/slow'), hub.get('/slow')]);
   check('a viewer joining a background refresh promotes it once', promoted.length === 1 && promoted[0] === '/slow', JSON.stringify(promoted));
   check('the joined refresh answers the viewers (no second vendor call)', n === 2 && String(a.body) === '2' && String(b.body) === '2', `calls ${n}`);
+}
+
+/* ---- market hours know the calendar ---- */
+{
+  delete process.env.SLAYER_HUB_HOURS;
+  const at = (iso) => marketHours(Date.parse(iso));
+  check('Thanksgiving 2026, 10:00 ET: closed', at('2026-11-26T15:00:00Z') === false);
+  check('the day after Thanksgiving (early close), 12:00 ET: open', at('2026-11-27T17:00:00Z') === true);
+  check('the day after Thanksgiving, 17:30 ET: closed (after-hours end at 17:00)', at('2026-11-27T22:30:00Z') === false);
+  check('an ordinary Monday, 17:30 ET: open (after hours run to 20:00)', at('2026-11-30T22:30:00Z') === true);
+  check('Good Friday 2029 (projected): closed', at('2029-03-30T15:00:00Z') === false);
+}
+
+/* ---- the popular-paths file: what is over is let go, and the file is always rewritten ---- */
+{
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const nodePath = await import('node:path');
+  const dir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'hub-proof-'));
+  const file = nodePath.join(dir, 'hub-pins.json');
+  const now = Date.now();
+  fs.writeFileSync(
+    file,
+    JSON.stringify([
+      { p: '/stock/SPY/stock-state', at: now },
+      { p: '/stock/SPY/spot-exposures/expiry-strike?expirations[]=2026-10-29&limit=500', at: now },
+      { p: '/stock/SPY/greek-exposure/strike-expiry?expiry=2026-11-03', at: now },
+      { p: '/stock/OLD/stock-state', at: now - 5 * 86_400_000 },
+    ]),
+  );
+  let day = '2026-11-02';
+  const v = vendor();
+  const hub = createHub({ hours: () => true, name: 'proof-pins', file, today: () => day, fetch: v.fetch, ttl: () => 3_000, refreshPerSec: 50 });
+  await sleep(700);
+  const called = [...v.calls.keys()].sort();
+  check(
+    'only live pins are kept warm (no expired expiry, no pin idle for days)',
+    called.join(' ') === '/stock/SPY/greek-exposure/strike-expiry?expiry=2026-11-03 /stock/SPY/stock-state',
+    called.join(' '),
+  );
+  /* the next morning the 11-03 expiry is still live; the morning after it is over */
+  day = '2026-11-04';
+  await sleep(400);
+  check('a pin whose expiry passes overnight is let go', !hub.pinned?.().some((k) => k.includes('2026-11-03')), JSON.stringify(hub.pinned?.()));
+  /* nothing was asked twice this run: the file is still rewritten without what is over */
+  hub.savePins?.();
+  const kept = JSON.parse(fs.readFileSync(file, 'utf8')).map((x) => (typeof x === 'string' ? x : x.p));
+  check('the pin file is rewritten without the expired and idle paths', kept.join(' ') === '/stock/SPY/stock-state', kept.join(' '));
+  /* an old file of bare paths still loads */
+  fs.writeFileSync(file, JSON.stringify(['/stock/QQQ/stock-state', '/stock/QQQ/oi-change?date=2020-01-03']));
+  const v2 = vendor();
+  createHub({ hours: () => true, name: 'proof-pins-old', file, today: () => day, fetch: v2.fetch, ttl: () => 3_000, refreshPerSec: 50 });
+  await sleep(500);
+  check('an old pin file of bare paths loads, minus the dated ones', [...v2.calls.keys()].join(' ') === '/stock/QQQ/stock-state', [...v2.calls.keys()].join(' '));
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+/* ---- a status the caller marks as a fault is never kept (ThetaData's 474 during an outage) ---- */
+{
+  let down = true;
+  const v = vendor(() => (down ? 474 : 200));
+  const hub = createHub({ hours: () => true, name: 'proof-keepable', fetch: v.fetch, ttl: () => 60_000, refreshPerSec: 50, keepable: (s) => s === 200 || s === 472 });
+  const a = await hub.get('/option/history/quote?date=20261028');
+  down = false;
+  const b = await hub.get('/option/history/quote?date=20261028');
+  check('a 474 is not kept as the answer: the next ask after recovery reaches the terminal', a.status === 474 && b.status === 200, `${a.status} then ${b.status}`);
 }
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall hub checks passed');
