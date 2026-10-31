@@ -99,13 +99,35 @@ export const CLS_INDEX = ['SPXW', 'SPX', 'NDXP', 'NDX', 'XSP', 'RUTW', 'RUT', 'S
 /** NVDA is 1. META is 0. The old LLY/BKNG list is not this. */
 export const CLS_HIGHBETA = ['AFRM', 'AGQ', 'AMC', 'BITX', 'BOIL', 'CLSK', 'COIN', 'CVNA', 'DJT', 'FAS', 'GME', 'HOOD', 'IREN', 'JNUG', 'KOLD', 'LABU', 'MARA', 'MSTR', 'NUGT', 'NVDA', 'NVDL', 'PLTR', 'RIOT', 'SMCI', 'SOXL', 'SOXS', 'SPXL', 'SPXS', 'SPXU', 'SQQQ', 'SVIX', 'SVXY', 'TNA', 'TQQQ', 'TSLA', 'TSLL', 'TZA', 'UPRO', 'UPST', 'UVIX', 'UVXY', 'VXX', 'YINN'] as const;
 
-export const MODEL_1_NAME = 'Model 1';
+/* The names a viewer reads, in one place (rename here): the entry tree, the runner tree and the three books. Never
+   show "Model 1", "Model 2" or "Book A/B/C" on a page; the code's own book letters stay A, B and C. */
+export const MODEL_1_NAME = 'Hit score';
 /* The live inputs were rebuilt (volume curve, prior session) and have not been re-checked against the training rows,
    so every Book A/B call is marked as unvalidated until that check is done. */
 export const MODELS_VALIDATED = false;
 export const UNVALIDATED_WORD = 'Unvalidated';
 export const UNVALIDATED_LINE = 'Unvalidated model: the live inputs have not yet been re-checked against the training data.';
-export const MODEL_2_NAME = 'Model 2';
+export const MODEL_2_NAME = 'Runner score';
+export const BOOK_NAME: Record<'A' | 'B' | 'C', string> = { A: 'Core', B: 'Wing', C: 'Late sweep' };
+
+/** Engine text as a viewer reads it: the tree and book names above in place of "Model 1", "Model 2" and "Book A/B/C",
+    and no data vendor named. The browser runs every Compass answer through it (compassFeed, compassReviewFeed), so a
+    record, review or study written before a rename (or by older code) reads the same as a new one. */
+export function userWords(text: string): string {
+  const b = (k: string) => BOOK_NAME[k as 'A' | 'B' | 'C'] ?? k;
+  return text
+    .replace(/\bModel 1\b/g, MODEL_1_NAME)
+    .replace(/\bModel 2\b/g, MODEL_2_NAME)
+    .replace(/\bBooks? A, B,? (and|or) C\b/g, (_, w) => `${b('A')}, ${b('B')} ${w} ${b('C')}`)
+    .replace(/\bBooks? A,? (and|or) (?:Book )?B\b/g, (_, w) => `${b('A')} ${w} ${b('B')}`)
+    .replace(/\bBook A\/B\b/g, `${b('A')}/${b('B')}`)
+    .replace(/\bBook ([ABC])\b/g, (_, k) => b(k))
+    .replace(/\bquotes ThetaData recorded\b/g, 'recorded quotes')
+    .replace(/\b[Tt]he quotes ThetaData has\b/g, 'the recorded quotes')
+    .replace(/ThetaData(?:'s|’s|&apos;s) recorded/g, 'the recorded')
+    .replace(/\bfrom ThetaData\b/g, 'from the live data')
+    .replace(/ThetaData/g, 'Live data');
+}
 
 export function printOf(root: string): string {
   return PRINT_OF[root] ?? root;
@@ -120,9 +142,10 @@ export function inModelWindow(t: number): boolean {
   return Number.isFinite(t) && t >= MODEL_T_MIN && t <= MODEL_T_MAX;
 }
 
-/** A Book A or B entry needs this many minutes between the mark and the flat: the trained minutes end at t = 330,
-    55 minutes before the 15:55 flat (t = 385), and an early close moves the flat, not the training. */
+/** A Book A or B entry needs this many minutes between the mark and its session's flat, and ENTRY_MIN_SINCE since its
+    session's open. Every session flats five minutes before it ends, so no call is made near any flat. */
 export const ENTRY_MIN_LEFT = 55;
+export const ENTRY_MIN_SINCE = 15;
 
 /** The flat of a session as minutes after 09:30: 385 (15:55) on a full day, five minutes before an early close
     (12:55 is 205 on a 13:00 close). `closeMin` is the close as a minute of the day, or null on a full day. */
@@ -131,12 +154,68 @@ export function flatTOf(closeMin: number | null | undefined): number {
   return close - 5 - (9 * 60 + 30);
 }
 
-/** The time-of-day gate on a Book A or B entry: the mark is inside the trees' trained minutes (t 15 to 330) and at
-    least ENTRY_MIN_LEFT minutes before the session's flat. A 09:30 mark, a 15:55 mark, a curb mark to 16:55 and every
-    overnight mark fail it; on a 13:00 close the last entry is t = 150 (12:00). */
-export function entryTimeOk(t: number, flatT = FLAT_T): boolean {
-  return inModelWindow(t) && flatT - t >= ENTRY_MIN_LEFT;
+/** The option tape sessions a call can be made in. */
+export type TapeSession = 'overnight' | 'pre' | 'regular' | 'curb';
+export const SESSION_WORD: Record<TapeSession, string> = { overnight: 'Overnight', pre: 'Pre-market', regular: 'Regular', curb: 'Curb' };
+
+const OVERNIGHT_OPEN = 20 * 60 + 15;
+const PRE_OPEN = 7 * 60 + 30;
+const HALT_AT = 9 * 60 + 25;
+const REGULAR_OPEN = 9 * 60 + 30;
+const CURB_CLOSE = 17 * 60;
+
+/** The session a New York minute of the day is in, for a root with the overnight index session (SPX, XSP, VIX, RUT:
+    20:15 to 09:25) or without it (the equity options' pre-market from 07:30), with the minutes since that session
+    opened and the minutes left to its flat (five minutes before it ends: 09:20 before the 09:25 halt, 15:55 or five
+    before an early close, 16:55 in the curb). Null in the halt, after the curb and outside a root's tape.
+    `closeMin` is the regular close (minute of the day), 16:00 when null. */
+export function tapeSession(minuteOfDay: number, overnightRoot: boolean, closeMin: number | null = null): { kind: TapeSession; since: number; left: number } | null {
+  const m = ((Math.round(minuteOfDay) % 1440) + 1440) % 1440;
+  const close = closeMin != null && closeMin < 16 * 60 ? closeMin : 16 * 60;
+  const preFlat = HALT_AT - 5;
+  if (m >= OVERNIGHT_OPEN || m < HALT_AT) {
+    if (overnightRoot) {
+      const since = m >= OVERNIGHT_OPEN ? m - OVERNIGHT_OPEN : m + 1440 - OVERNIGHT_OPEN;
+      return { kind: 'overnight', since, left: m >= OVERNIGHT_OPEN ? 1440 - m + preFlat : preFlat - m };
+    }
+    if (m >= PRE_OPEN && m < HALT_AT) return { kind: 'pre', since: m - PRE_OPEN, left: preFlat - m };
+    return null;
+  }
+  if (m < REGULAR_OPEN) return null;
+  if (m < close) return { kind: 'regular', since: m - REGULAR_OPEN, left: close - 5 - m };
+  /* an early close has no curb: nothing trades after it until the overnight session */
+  if (close === 16 * 60 && m < CURB_CLOSE) return { kind: 'curb', since: m - close, left: CURB_CLOSE - 5 - m };
+  return null;
 }
+
+/** The minute of the day a t (minutes after 09:30, negative before it) stands for. */
+const minuteOfT = (t: number) => t + 9 * 60 + 30;
+
+/** The time-of-day gate on a Book A or B entry, session by session: at least 15 minutes since the open of the session
+    the mark is in and at least 55 minutes before that session's flat. Regular session: 09:45 to 15:00 (12:00 on a
+    13:00 close). Overnight (the index roots): 20:30 to 08:25. Pre-market (the equity options): 07:45 to 08:25. The curb
+    never has 55 minutes left after its 15th. A mark outside the trees' trained minutes (t 15 to 330) may call; the
+    call is marked "outside trained hours" (inModelWindow). `flatT` is the regular flat as t (flatTOf). */
+export function entryTimeOk(t: number, flatT = FLAT_T, overnightRoot = true): boolean {
+  if (!Number.isFinite(t)) return false;
+  const w = tapeSession(minuteOfT(t), overnightRoot, flatT + 5 + 9 * 60 + 30);
+  return !!w && w.since >= ENTRY_MIN_SINCE && w.left >= ENTRY_MIN_LEFT;
+}
+
+/** Minutes from the mark to its session's flat (NaN outside a session): the theta burn and the call's own flat. */
+export function minutesToFlat(t: number, flatT = FLAT_T, overnightRoot = true): number {
+  const w = tapeSession(minuteOfT(t), overnightRoot, flatT + 5 + 9 * 60 + 30);
+  return w ? w.left : NaN;
+}
+
+/** The session a mark belongs to, for the record and the track record. */
+export function sessionKindOf(t: number, flatT = FLAT_T, overnightRoot = true): TapeSession | null {
+  return tapeSession(minuteOfT(t), overnightRoot, flatT + 5 + 9 * 60 + 30)?.kind ?? null;
+}
+
+/** The roots with the overnight index session. */
+export const OVERNIGHT_ROOTS: readonly string[] = ['SPX', 'SPXW', 'XSP', 'VIX', 'RUT', 'RUTW'];
+export const OUTSIDE_TRAINED_WORD = 'Outside trained hours';
 
 /** Every 5 minutes while an option tape is open, plus the last minute before a 0 DTE stop.
  *  09:29 is VIX. 15:59 is a 16:00 stop. 16:14 is a 16:15 stop. The halt sends nothing else. */
@@ -279,19 +358,19 @@ export function bookBRange(span: number): { inner: number; outer: number } {
 /** How far from the money the weekly read reaches: Book B's outer strike at the widest span (12 → 13 to 17). */
 export const WEEKLY_STRIKES = bookBRange(12).outer;
 
-export function bookAPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, p1: number, flatT = FLAT_T): boolean {
+export function bookAPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, p1: number, flatT = FLAT_T, overnightRoot = true): boolean {
   return onScanGrid(t)
-    && entryTimeOk(t, flatT)
+    && entryTimeOk(t, flatT, overnightRoot)
     && dist <= span
     && dte >= DTE_MIN && dte <= DTE_MAX
     && spreadPass(bid, ask)
     && p1 >= P1_MIN;
 }
 
-export function bookBPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, priorBid: number, priorAsk: number, p1: number, flatT = FLAT_T): boolean {
+export function bookBPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, priorBid: number, priorAsk: number, p1: number, flatT = FLAT_T, overnightRoot = true): boolean {
   const band = bookBRange(span);
   return onScanGrid(t)
-    && entryTimeOk(t, flatT)
+    && entryTimeOk(t, flatT, overnightRoot)
     && dte >= DTE_MIN && dte <= DTE_MAX
     && dist >= band.inner && dist <= band.outer
     && ask <= BOOK_B_ASK

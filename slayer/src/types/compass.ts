@@ -179,6 +179,13 @@ export interface Setup {
   late?: boolean;
   /** The scan mark the call belongs to, epoch ms of its minute */
   mark?: number;
+  /** The option tape session the call was made in (compassParams tapeSession) */
+  tapeSession?: 'overnight' | 'pre' | 'regular' | 'curb';
+  /** The mark's minute lies outside the trees' trained minutes (t 15 to 330): allowed, and labelled */
+  outsideTrained?: boolean;
+  /** When the call's session flats it (epoch ms): 09:20 overnight and pre-market, 15:55 (or five before an early
+      close) in the regular session */
+  flatAt?: number;
   /** P(TP1) from the entry model at the scan that picked this contract. */
   p1?: number;
   /** P(runner) from the runner model at that same scan. */

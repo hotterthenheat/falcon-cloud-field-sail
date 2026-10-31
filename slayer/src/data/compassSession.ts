@@ -117,7 +117,10 @@ export function optionScanOpen(ticker: string, dte: number, at: At = now()): boo
   const tape = nameTape(ticker, dte === 0, at);
   if (tape.option === 'halt') return dte === 0 && root === 'VIX' && mins === 9 * 60 + 29;
   if (tape.option === 'closed') return false;
-  if (dte === 0 && tape.done) return false;
+  /* "done" is the calendar day's own same-day contract after its stop. From 20:15 the session is the next day's, and
+     its same-day contract (tomorrow's expiry) trades the overnight session: it is not done. The 0DTE sleeve of the
+     index roots used to be skipped from 20:15 to midnight every night. */
+  if (dte === 0 && tape.done && sessionYmd(at) === `${p.year}${String(p.month).padStart(2, '0')}${String(p.day).padStart(2, '0')}`) return false;
   return true;
 }
 

@@ -31,6 +31,8 @@ export interface SignalCore {
   firedAt: number;
   /** The session's last regular minute on an early-close day (13:00 ET is 780): the flats move with it */
   closeMin?: number;
+  /** The call's own flat, epoch ms (its session's: 09:20 overnight and pre-market). Absent: the day's flat. */
+  flatAt?: number;
 }
 
 export type OutcomeStatus = 'waiting' | 'open' | 'closed' | 'unavailable';
@@ -126,12 +128,14 @@ export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], unde
   const flatMin = early != null ? early - 5 : FLAT_MIN;
   const lotteryFlatMin = early != null ? early - 10 : LOTTERY_FLAT_MIN;
   const flatWord = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')} flat`;
+  /* a Book A/B call that carries its session's flat (an overnight or pre-market call flats at 09:20, before the halt) */
+  const ownFlat = !lottery && sig.flatAt != null && sig.flatAt > sig.firedAt ? sig.flatAt : null;
   let peak = 0;
   let last: PathQuote = fill;
   for (let i = fillAt + 1; i < rows.length; i++) {
     const q = rows[i];
     if (!validQuote(q)) continue;
-    const late = dayOf(q.t) !== day || minuteOfDay(q.t) >= (lottery ? lotteryFlatMin : flatMin);
+    const late = ownFlat != null ? q.t >= ownFlat : dayOf(q.t) !== day || minuteOfDay(q.t) >= (lottery ? lotteryFlatMin : flatMin);
     if (lottery) {
       const hit = lotteryExit(paid, q.bid, (q.t - fill.t) / 1000);
       if (hit) return closed(fill, { at: q.t, px: hit.px, why: hit.why }, Math.max(peak, q.bid), 0, q);
@@ -145,13 +149,13 @@ export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], unde
         const line = reversalLine(paid, q.bid, sig.right, ret5At(under, q.t));
         if (line) return closed(fill, { at: q.t, px: q.bid, why: line }, peak, stopAfter(paid, peak, runner), q);
       }
-      if (late) return closed(fill, { at: q.t, px: q.bid, why: flatWord(flatMin) }, peak, stopAfter(paid, peak, runner), q);
+      if (late) return closed(fill, { at: q.t, px: q.bid, why: flatWord(ownFlat != null ? minuteOfDay(ownFlat) : flatMin) }, peak, stopAfter(paid, peak, runner), q);
     }
     peak = Math.max(peak, q.bid);
     last = q;
   }
   /* The session is over and no quote stood at the flat: the last quote printed is the exit. */
-  const over = dayOf(now) !== day || minuteOfDay(now) >= (early != null ? early : 16 * 60) + 5;
+  const over = ownFlat != null ? now >= ownFlat + 10 * 60_000 : dayOf(now) !== day || minuteOfDay(now) >= (early != null ? early : 16 * 60) + 5;
   if (over) {
     const p = nyParts(last.t);
     const why = `Last quote ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')} ET`;
