@@ -405,6 +405,8 @@ const ROWS: Record<TerrainLayout, string> = {
 /* Height of the time axis lightweight-charts draws under the plot, in px. Measured, not chosen: with `timeVisible:
    true` and this font the axis canvas runs 858→884 in a 1000px viewport. */
 const TIME_AXIS_PX = 26;
+/** The floating desk bar's margin from the screen's foot, and from the expanded chart's time axis above it */
+const DESK_BAR_GAP_PX = 8;
 
 /* Clearance for the price gutter lightweight-charts draws down the right of the plot, in px. Floating chrome has to
    stop short of that gutter or it lands on the price ticks. */
@@ -659,6 +661,9 @@ interface PaneProps {
   /** Which contracts this pane's rail reads — the desk's one choice, changed from any rail's head */
   railCut: RailCut;
   onRailCut: (cut: RailCut) => void;
+  /** Expanded: the floating desk bar's height. The pane keeps that much (and a margin) clear at its foot, so the bar
+      sits under the time axis instead of across the flow pane. 0 when no bar floats over this pane. */
+  footRoom?: number;
 }
 
 /** The strike rail's rest width on this desk: a narrow column beside the tape, not two fifths of the pane (the rail took
@@ -702,7 +707,7 @@ const Pane = ({
   onCrosshair, registerSync, replay, onToggleReplay, onExitReplay,
   drawing, onToggleDrawing, onExitDraw,
   isActive, onActivate, paneCount, closing = false, menuOpen, onMenu,
-  boxRef, cell = '', palette, railCut, onRailCut, arriveFocus = null,
+  boxRef, cell = '', palette, railCut, onRailCut, arriveFocus = null, footRoom = 0,
 }: PaneProps) => {
   /* the field's scale, for the key in the chart's corner (0 while the field is off) */
   const [fieldScale, setFieldScale] = useState(0);
@@ -1232,7 +1237,11 @@ const Pane = ({
         {/* Chart and rail on one line, and that line is the whole pane — `absolute inset-0`, not a flex row under a
             header. */}
         <div className="absolute inset-0 flex">
-          <div className="group relative flex-1 min-w-0">
+          <div
+            className="group relative flex-1 min-w-0"
+            /* Expanded, the desk bar floats at the foot: the chart ends above it, its time axis and flow pane whole */
+            style={expanded && footRoom > 0 ? { paddingBottom: footRoom + DESK_BAR_GAP_PX * 2 } : undefined}
+          >
             {/* One pane per frame: each chart mounts a frame after the last behind its skeleton, so a four-pane desk
                 opens on its next frame instead of building four charts in the click. */}
             <Deferred index={index} fallback={<ChartSkeleton className="h-full" />} className="h-full animate-fade-in">
@@ -1269,7 +1278,7 @@ const Pane = ({
               railTopOk={expanded}
               /* IN fullscreen the desk bar floats over the pane's foot (the bar below: `fixed`, 12px above the time
                  axis), where the replay card also lives — the bar lay across the card's controls. */
-              footInset={expanded ? 44 : 0}
+              footInset={expanded && !(footRoom > 0) ? 44 : 0}
               replay={replay}
               onExitReplay={chartExitReplay}
               focusPrice={focus}
@@ -1732,6 +1741,23 @@ const Terrain = () => {
   setPaneRef.current = setPane;
 
   const [expanded, setExpanded] = useState<number | null>(null);
+  /* The floating desk bar's height while a pane is expanded — the pane reserves it at its foot */
+  const [deskBarH, setDeskBarH] = useState(0);
+  const barFloats = expanded !== null;
+  const deskBarObs = useRef<ResizeObserver | null>(null);
+  const deskBarRef = useCallback((el: HTMLDivElement | null) => {
+    deskBarObs.current?.disconnect();
+    deskBarObs.current = null;
+    if (!el || !barFloats) {
+      setDeskBarH(0);
+      return;
+    }
+    const read = () => setDeskBarH(Math.ceil(el.getBoundingClientRect().height));
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    deskBarObs.current = ro;
+  }, [barFloats]);
   const expandedRef = useRef<number | null>(null);
   expandedRef.current = expanded;
   /* The takeover leaves on a fade instead of vanishing — the same hook the Pulse fullscreen uses, so the two desks
@@ -2059,7 +2085,7 @@ const Terrain = () => {
           expanded !== null
             ? {
                 right: (panes[expanded]?.ladder && !belowLg ? panes[expanded]?.ladderW ?? railRestWidth(cfg.layout, true) : 0) + PRICE_GUTTER_PX + 8,
-                bottom: TIME_AXIS_PX + 12,
+                bottom: deskBarH > 0 ? DESK_BAR_GAP_PX : TIME_AXIS_PX + 12,
               }
             : undefined
         }
@@ -2074,6 +2100,7 @@ const Terrain = () => {
             : 'order-last shrink-0 mt-1 flex items-center justify-end gap-2'
         }
         data-terrain-desk-bar={expanded !== null ? 'floating' : 'docked'}
+        ref={deskBarRef}
         /* Floating over the expanded pane, it is chrome over that tape and wears its ground like the strip does
            (index.css) — dark words on Stone */
         data-chart-chrome={expanded !== null ? '' : undefined}
@@ -2315,6 +2342,7 @@ const Terrain = () => {
             /* The odd pane out takes the whole row. Three panes in two columns leaves the second row half empty — at
                1440, the most ordinary laptop width there is, that is a quarter of the desk showing nothing. */
             cell={cfg.layout === 3 && i === 2 ? 'xl:col-span-2 2xl:col-span-1' : ''}
+            footRoom={expanded === i && !isPhone ? deskBarH : 0}
           />
           </PaneBoundary>
           )
