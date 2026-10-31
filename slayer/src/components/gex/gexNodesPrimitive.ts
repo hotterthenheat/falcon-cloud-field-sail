@@ -483,6 +483,13 @@ export function signedDollars(v: number, bare = false): string {
   if (a >= 1e3) return `${sign}${d}${(a / 1e3).toFixed(0)}K`;
   return `${sign}${d}${a.toFixed(0)}`;
 }
+/** The narrow tag's figure: no $, no decimal past three digits (+155M, −2.3B) */
+function shortDollars(v: number): string {
+  const a = Math.abs(v);
+  const sign = v < 0 ? '−' : '+';
+  const [n, u] = a >= 1e9 ? [a / 1e9, 'B'] : a >= 1e6 ? [a / 1e6, 'M'] : a >= 1e3 ? [a / 1e3, 'K'] : [a, ''];
+  return `${sign}${n >= 100 ? n.toFixed(0) : n.toFixed(1)}${u}`;
+}
 const priceText = (p: number): string => (Math.abs(p - Math.round(p)) < 1e-9 ? p.toFixed(0) : p.toFixed(2));
 
 /** The row's newest reading inside the window, NaN for none */
@@ -840,7 +847,7 @@ class NodesRenderer {
       const role = roleOf(strike, strong);
       const t = Math.min(1, Math.abs(z.value) / (ref || 1));
       const ink = rgba(strong ? crown : (z.value > 0 ? BEADS.pos : BEADS.neg)[Math.min(STEPS - 1, Math.floor(t * STEPS))], 1);
-      const text = narrow ? `${priceText(strike)} ${role.short} ${signedDollars(z.value, true)}` : `${priceText(strike)} · ${role.name} · ${signedDollars(z.value)}`;
+      const text = narrow ? `${priceText(strike)}${role.short === 'N' ? '' : ` ${role.short}`} ${shortDollars(z.value)}` : `${priceText(strike)} · ${role.name} · ${signedDollars(z.value)}`;
       tags.push({ price: strike, y, ty: y, text, ink, prio: 10, w: 0, zone: true });
       used.push(strike);
     }
@@ -1260,6 +1267,20 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     /* the raster keys on the hand-off: a new look is a new raster */
     this.rev++;
     this.requestUpdate?.();
+  }
+
+  /** The heaviest nodes at the newest column, largest first: strike and dealer value (what the zones outline) */
+  topNow(n = 3): { strike: number; value: number }[] {
+    const R = this.strikes.length;
+    const C = this.cols.length;
+    if (!R || !C) return [];
+    const base = (C - 1) * R;
+    const out: { strike: number; value: number }[] = [];
+    for (let r = 0; r < R; r++) {
+      const v = this.values[base + r];
+      if (v === v && v !== 0) out.push({ strike: this.strikes[r], value: v });
+    }
+    return out.sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, n);
   }
 
   setTagsOn(on: boolean): void {

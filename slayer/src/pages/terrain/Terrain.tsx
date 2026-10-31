@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronUp, Code2, Link2, Maximize2, Minimize2, Rows3, SlidersHorizontal, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
 import { useDeskSession, sessionMeta, type DeskSession } from '../../data/deskSession';
-import { chainForDate, expiryLabel, peekSpot, snapshotFor, useBookRev } from '../../data/uwBook';
+import { chainForDate, ensureBook, expiryLabel, peekSpot, snapshotFor, useBookRev } from '../../data/uwBook';
 import { levelNetPath } from '../../data/flipLevel';
 import { rootTradesSession } from '../../data/compassSession';
 import { useSessionQuote } from '../../data/sessionQuote';
@@ -648,6 +648,37 @@ interface PaneProps {
     STRIKES switch and the panel's × fold it away. */
 const railRestWidth = (panes: number, expanded: boolean): number => Math.max(PROFILE_MIN_W, expanded || panes === 1 ? 320 : panes === 3 ? 180 : 210);
 
+/** One pane's fault stays in its cell: the other panes keep drawing, and this one offers to draw again (a new name or
+    interval clears it too) — a throw in one chart used to take the whole desk down */
+class PaneBoundary extends Component<{ children: ReactNode; name: string; resetKey: string; cell: string }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[terrain pane]', this.props.name, error, info.componentStack);
+  }
+  componentDidUpdate(prev: { resetKey: string }) {
+    if (this.state.error && prev.resetKey !== this.props.resetKey) this.setState({ error: null });
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className={`relative min-h-0 min-w-0 flex flex-col items-center justify-center gap-2 rounded-md border border-bear/25 bg-bear/[0.03] p-4 text-center ${this.props.cell}`} data-pane-fault>
+        <span className="font-mono text-t10 font-semibold uppercase tracking-widest text-bear">{this.props.name} could not draw</span>
+        <span className="max-w-[360px] font-mono text-t10 text-textMuted break-words">{this.state.error.message}</span>
+        <button
+          type="button"
+          onClick={() => this.setState({ error: null })}
+          className="mt-1 rounded border border-borderMuted px-2 py-1 font-mono text-t10 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05]"
+        >
+          Draw it again
+        </button>
+      </div>
+    );
+  }
+}
+
 const Pane = ({
   cfg, onCfg, revision, expanded, onToggleExpand, index, tall,
   onCrosshair, registerSync, replay, onToggleReplay, onExitReplay,
@@ -664,6 +695,14 @@ const Pane = ({
   const chartEnterDraw = useStable(onToggleDrawing);
   const chartExitReplay = useStable(onExitReplay);
   const { ticker, timeframe, overlays, indicators, chartStyle, clock, compares, priceScale, sessionOr, ladder } = cfg;
+  /* The pane holds its own name's book, docked or expanded: the takeover hides the tab strip that was asking for it,
+     and an expanded pane's rail and nodes went stale with nothing refreshing them. ensureBook is a no-op while the
+     book is fresh. */
+  useEffect(() => {
+    ensureBook(ticker, 'board');
+    const id = window.setInterval(() => ensureBook(ticker, 'board'), 30_000);
+    return () => window.clearInterval(id);
+  }, [ticker, expanded]);
   /* Its own theme, else the page's default — Glacier on the dark terminal, Stone on paper — re-read on a flip */
   const pageDefault = usePageDefaultCandleKey();
   const theme = cfg.theme ?? pageDefault;
@@ -2208,8 +2247,8 @@ const Terrain = () => {
         {panes.map((pane, i) =>
           /* A real branch, not `hidden`. */
           isPhone && i !== active ? null : (
+          <PaneBoundary key={i} name={pane.ticker} resetKey={`${pane.ticker}|${pane.timeframe}`} cell={cfg.layout === 3 && i === 2 ? 'xl:col-span-2 2xl:col-span-1' : ''}>
           <Pane
-            key={i}
             arriveFocus={i === 0 ? arrive?.focus ?? null : null}
             cfg={pane}
             onCfg={patch => setPane(i, patch)}
@@ -2242,6 +2281,7 @@ const Terrain = () => {
                1440, the most ordinary laptop width there is, that is a quarter of the desk showing nothing. */
             cell={cfg.layout === 3 && i === 2 ? 'xl:col-span-2 2xl:col-span-1' : ''}
           />
+          </PaneBoundary>
           )
         )}
       </div>

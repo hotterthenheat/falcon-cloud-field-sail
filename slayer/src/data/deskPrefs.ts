@@ -31,6 +31,9 @@ export interface FlowFilters {
       few pages of it reach back to the open on a busy name */
   prem: '50k' | '250k' | 'all';
 }
+/** The node-pressure distances a reader picks from, percent of price */
+export const NODE_ALERT_PCTS: readonly number[] = [0.1, 0.15, 0.25, 0.5];
+
 export const DEFAULT_FLOW_FILTERS: FlowFilters = { leg: 'single', mny: 'otm', side: 'all', kind: 'all', dte: '60', prem: '50k' };
 
 interface DeskPrefs {
@@ -50,10 +53,12 @@ interface DeskPrefs {
   nodeLook: NodeLook;
   /** the flow pane's filters */
   flowFilters: FlowFilters;
+  /** node pressure: how near a heavy node or the flip, in percent of price, fires the alert */
+  nodeAlertPct: number;
 }
 
 const KEY = 'slayer_desk_prefs';
-const DEFAULT_DESK_PREFS: DeskPrefs = { opensOn: { ticker: null, timeframe: null, page: null }, alertsSound: true, clock: 'ny', nodeLook: 'both', flowFilters: DEFAULT_FLOW_FILTERS };
+const DEFAULT_DESK_PREFS: DeskPrefs = { opensOn: { ticker: null, timeframe: null, page: null }, alertsSound: true, clock: 'ny', nodeLook: 'both', flowFilters: DEFAULT_FLOW_FILTERS, nodeAlertPct: 0.15 };
 
 function asTimeframe(v: unknown): Timeframe | null {
   if (typeof v !== 'string') return null;
@@ -89,6 +94,7 @@ let prefs: DeskPrefs = (() => {
       clock: p.clock === 'local' ? 'local' : 'ny',
       nodeLook: asLook(p.nodeLook),
       flowFilters: asFlowFilters(p.flowFilters),
+      nodeAlertPct: typeof p.nodeAlertPct === 'number' && p.nodeAlertPct > 0 && p.nodeAlertPct <= 5 ? p.nodeAlertPct : 0.15,
     };
   } catch {
     return DEFAULT_DESK_PREFS;
