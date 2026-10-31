@@ -28,6 +28,7 @@ import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../
 import { nyClock } from '../../core/nyTime';
 import { DarkPoolGuide } from '../../components/trace/TraceGuide';
 import { DP_SHELF_H, DP_STRIP_HEAD_H, TracePageSkeleton } from './traceSkeletons';
+import DarkBaselineStrip from '../../components/trace/DarkBaselineStrip';
 
 const signedPct = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
 const dirInk = (v: number) => (v > 0 ? 'text-bull' : v < 0 ? 'text-bear' : 'text-textMuted');
@@ -630,6 +631,8 @@ const DarkPool = () => {
     <RichRead text="The dark tape has not printed yet." />
   );
 
+  /* the baseline's day: the last closed session, or today's while it trades */
+  const baselineIso = closed?.iso ?? nyIsoToday();
   const shelfWords = `${facts.support} support · ${facts.resistance} resistance · ${facts.pivots} pivot${facts.pivots === 1 ? '' : 's'}`;
 
   return (
@@ -810,6 +813,8 @@ const DarkPool = () => {
           </div>
         </div>
         )}
+        {/* a name's day against its own last 20 sessions: read only when asked */}
+        {view && !litLane && !nameBook.rows.unknown && <DarkBaselineStrip ticker={view.ticker} todayIso={baselineIso} sessionLive={!closed} />}
         <TraceGrid rows={cut} columns={columns} hidden={gridHidden} widths={WIDTHS} flexes={SAYS_FLEX} prose={SAYS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={p => setOpenCross(p)} selectedKey={openCross ? keyOf(openCross) : null} initialSort={{ key: 'time', dir: 'desc' }} phoneRow={crossPhoneRow} autoHeight emptyText={srcReading ? 'Reading the tape…' : named && nameBook.rows.unknown ? `No ticker “${named}” — check the symbol` : !named && parseContractQuery(query) ? 'Dark-pool crosses are stock prints: search a ticker (NVDA), not a contract' : named ? `No ${litLane ? 'lit prints' : 'crosses'} for ${named} ${dayAdv(nameDayIso)}${terms === 'own' ? ' on own terms' : ''}` : litLane ? 'No lit prints on this cut' : 'No crosses on this cut'} endless={named && tapeKind !== 'lit' ? endlessOf(nameOlder, `${named} crosses`, `the start of ${named}'s day reached`, hold.paused) : regularView && tapeKind === 'dark' ? endlessOf(regOlder, 'crosses', "the day's crosses reached", hold.paused, 'Smaller crosses ↓') : { onNear: () => {}, state: 'end', note: `${num(cut.length)} ${tapeKind === 'lit' ? 'lit prints' : 'crosses'} in hand; the live feed grows as prints arrive. Type a name to page back through its day` }} testId="dark-pool" />
         {(named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault) && cut.length === 0 ? <FeedFallback fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} /> : null}
       </TraceBox>

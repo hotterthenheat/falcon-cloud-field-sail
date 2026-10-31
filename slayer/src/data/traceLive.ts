@@ -1012,7 +1012,9 @@ function tickerKnown(name: string): Promise<boolean> {
           knownTickers.delete(t);
           return true;
         }
-        return d != null && (d.data ?? null) != null;
+        /* uwCall has already unwrapped the vendor's { data } box: a carried name answers its state, an unknown one null */
+        const state = d != null && typeof d === 'object' && 'data' in d ? d.data : d;
+        return state != null;
       })
       .catch(() => {
         knownTickers.delete(t);
@@ -1199,6 +1201,19 @@ async function loadNewestOi(rows: BookContract[]): Promise<void> {
 /** Pair the open interest of the rows a grid has on screen (TraceGrid onVisible) */
 export function pairOiFor(rows: readonly BookContract[]): void {
   void loadNewestOi(rows.slice(0, OI_HISTORIC_CAP));
+}
+
+/** The next session's count for a contract (its vendor symbol) traded on `sessionIso`, from what pairOiFor has already
+    read — never asks: { oi, before } once paired; null or undefined when not to hand */
+export function nextOiOf(occ: string, sessionIso: string): { oi: number; before: number } | null | undefined {
+  return newestOiCache.get(`${occ}:${nextSessionIso(sessionIso)}`);
+}
+/** Called whenever pairOiFor's counts change; returns the unsubscribe */
+export function onNextOi(f: () => void): () => void {
+  newestOiListeners.add(f);
+  return () => {
+    newestOiListeners.delete(f);
+  };
 }
 
 /** The rows with the open interest of their volume's session wherever it is out (see above) */
