@@ -108,7 +108,9 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
   const exec = special ? null : execOf(price, bid, ask);
   /* the vendor's tracking_id is NOT unique — distinct prints (other sizes, other cumulative volumes) share one — so the
      id folds in the fields that tell them apart; stable across polls, so the accumulator still de-dupes repeats */
-  const id = hashId(row.tracking_id != null ? `${row.tracking_id}-${row.executed_at}-${row.size}-${row.price}-${row.volume}` : `${row.ticker}-${row.executed_at}-${i}`);
+  /* with no tracking id, the print's content — never its place on the page, which repeats it under two ids across pages */
+  void i;
+  const id = hashId(row.tracking_id != null ? `${row.tracking_id}-${row.executed_at}-${row.size}-${row.price}-${row.volume}` : `${row.ticker}-${row.executed_at}-${row.size}-${row.price}-${row.volume}-${row.premium}`);
   const place = quotePlace(vs, price);
   const where = place.cents === 0 ? 'at the mid' : place.cents > 0 ? `${place.text.slice(1)} over the mid` : `${place.text.slice(1)} under the mid`;
   const read = special
@@ -270,10 +272,13 @@ export function darkView(ticker: string, prints: DarkPoolPrint[], levels: DarkPo
 
 export const DARK_CAP = 2000;
 
-export function mergeDark(prev: DarkPoolPrint[], incoming: DarkPoolPrint[]): DarkPoolPrint[] {
+/** Merge a poll into the accumulated prints, newest first, no print twice; `gone` (ids the vendor has since cancelled)
+    are taken back out of what was merged */
+export function mergeDark(prev0: DarkPoolPrint[], incoming: DarkPoolPrint[], gone?: ReadonlySet<number>): DarkPoolPrint[] {
+  const prev = gone?.size ? prev0.filter(r => !gone.has(r.id)) : prev0;
   const seen = new Set(prev.map(r => r.id));
-  const fresh = incoming.filter(r => !seen.has(r.id) && (seen.add(r.id), true));
-  if (!fresh.length) return prev;
+  const fresh = incoming.filter(r => !gone?.has(r.id) && !seen.has(r.id) && (seen.add(r.id), true));
+  if (!fresh.length) return prev.length === prev0.length ? prev0 : prev;
   const next = fresh.concat(prev);
   return next.length > DARK_CAP ? next.slice(0, DARK_CAP) : next;
 }

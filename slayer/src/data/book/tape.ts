@@ -235,8 +235,31 @@ export async function tapeQuote(symbol: string): Promise<{ close: number; prev_c
   return quoted;
 }
 
+/** Each one-minute bar's own volume. `total_volume` is the day's running total, never a bar's: a bar with no `volume`
+    field takes the difference of the running total from the bar before it on the same New York day (0 where there is
+    none); a bar that says 0 traded 0. */
+export function barVolumes(bars: readonly UwBar[]): Map<UwBar, number> {
+  const out = new Map<UwBar, number>();
+  const timed = bars.map(b => ({ b, t: Date.parse(b.start_time || b.end_time || '') })).filter(x => Number.isFinite(x.t)).sort((a, z) => a.t - z.t);
+  let day = '';
+  let prevTotal: number | null = null;
+  for (const { b, t } of timed) {
+    const d = nyIsoDate(t);
+    if (d !== day) {
+      day = d;
+      prevTotal = null;
+    }
+    const total = b.total_volume != null && b.total_volume !== '' ? num(b.total_volume) : null;
+    if (b.volume != null && b.volume !== '') out.set(b, num(b.volume));
+    else out.set(b, total != null && prevTotal != null ? Math.max(0, total - prevTotal) : 0);
+    if (total != null) prevTotal = total;
+  }
+  return out;
+}
+
 export function candlesFrom(bars: UwBar[], cashTo = CLOSE_MIN): { cash: Candle[]; tape: Candle[] } {
   const parsed: Candle[] = [];
+  const vols = barVolumes(bars);
   for (const b of bars) {
     const time = Math.floor(Date.parse(b.start_time || b.end_time || '') / 1000);
     if (!time) continue;
@@ -248,7 +271,7 @@ export function candlesFrom(bars: UwBar[], cashTo = CLOSE_MIN): { cash: Candle[]
       high: num(b.high) || close,
       low: num(b.low) || close,
       close,
-      volume: num(b.volume) || num(b.total_volume),
+      volume: vols.get(b) ?? 0,
     });
   }
   parsed.sort((a, b) => a.time - b.time);
@@ -272,6 +295,7 @@ export function candlesFrom(bars: UwBar[], cashTo = CLOSE_MIN): { cash: Candle[]
 
 export function twoCashSessions(bars: UwBar[], cashTo: number, keepDays = 2): Candle[] {
   const parsed: Candle[] = [];
+  const vols = barVolumes(bars);
   for (const b of bars) {
     const time = Math.floor(Date.parse(b.start_time || b.end_time || '') / 1000);
     if (!time) continue;
@@ -285,7 +309,7 @@ export function twoCashSessions(bars: UwBar[], cashTo: number, keepDays = 2): Ca
       high: num(b.high) || close,
       low: num(b.low) || close,
       close,
-      volume: num(b.volume) || num(b.total_volume),
+      volume: vols.get(b) ?? 0,
     });
   }
   parsed.sort((a, b) => a.time - b.time);
@@ -300,6 +324,7 @@ export function twoCashSessions(bars: UwBar[], cashTo: number, keepDays = 2): Ca
 
 export function parseTape(bars: UwBar[]): Candle[] {
   const parsed: Candle[] = [];
+  const vols = barVolumes(bars);
   for (const b of bars) {
     const time = Math.floor(Date.parse(b.start_time || b.end_time || '') / 1000);
     if (!time) continue;
@@ -311,7 +336,7 @@ export function parseTape(bars: UwBar[]): Candle[] {
       high: num(b.high) || close,
       low: num(b.low) || close,
       close,
-      volume: num(b.volume) || num(b.total_volume),
+      volume: vols.get(b) ?? 0,
     });
   }
   parsed.sort((a, b) => a.time - b.time);
