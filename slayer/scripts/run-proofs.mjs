@@ -37,6 +37,7 @@ const PROOFS = [
   'vol-outlook-proof',
   'weigher-density-proof',
   'session-proof',
+  'session-literal-proof',
   'symbol-directory-proof',
   'opening-lean-proof',
   'tape-cache-proof',

@@ -1,12 +1,11 @@
 /* The last session's open-interest change, contract by contract (oi-change): what was built and drained overnight. */
 
-import { isoDate, isTradingDay } from '../../core/calendar';
 import { nyIsoDate, nyMinutes } from '../../core/nyTime';
 import { uwCall } from '../whales';
 import { PREMARKET_MIN } from './load';
 import { num, parseOcc } from './scale';
 import { emit, isHot } from './store';
-import { CLOSE_MIN } from './tape';
+import { addDays, isSessionDay, regularCloseMin, sessionDayAtOrBefore } from '../../core/session';
 
 
 /* ---- the last session's open-interest change, contract by contract ---------------------------------------------- */
@@ -46,13 +45,9 @@ const oiChangeWait = new Set<string>();
 /** The last session that has finished: today's after its 4:00 close, else the trading day before today */
 function finishedSessionIso(): string {
   const iso = nyIsoDate();
-  const [y, m, d] = iso.split('-').map(Number);
-  if (isTradingDay(new Date(y, m - 1, d)) && nyMinutes() >= CLOSE_MIN) return iso;
-  for (let back = 1; back < 12; back++) {
-    const p = new Date(y, m - 1, d - back);
-    if (isTradingDay(p)) return isoDate(p);
-  }
-  return iso;
+  /* its own close: 13:00 on an early close (core/session.ts regularCloseMin) */
+  if (isSessionDay(iso) && nyMinutes() >= regularCloseMin(iso)) return iso;
+  return sessionDayAtOrBefore(addDays(iso, -1));
 }
 /* While the count in hand is behind the last finished session, the first page is probed every five minutes and the
    whole count is read again once it carries a newer date. */
@@ -60,9 +55,9 @@ const OI_STALE_MS = 5 * 60_000;
 const oiChangeChecked = new Map<string, number>();
 /** A trading day between 07:00 ET and the close — when a new open-interest count can appear */
 function oiCheckWindow(now: number = Date.now()): boolean {
-  const [y, m, d] = nyIsoDate(now).split('-').map(Number);
+  const iso = nyIsoDate(now);
   const mins = nyMinutes(now);
-  return isTradingDay(new Date(y, m - 1, d)) && mins >= PREMARKET_MIN && mins < CLOSE_MIN;
+  return isSessionDay(iso) && mins >= PREMARKET_MIN && mins < regularCloseMin(iso);
 }
 /** `depth` 'top' reads one page each way (the largest changes — what moves a wall), for a name read in passing (the
     Board, the Agenda's rows); 'full' every page, for Building. A top read in hand is upgraded when full is asked. */

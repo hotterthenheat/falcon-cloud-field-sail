@@ -17,9 +17,9 @@
    through the later bars of the same New York session. It is not carried across a session, a weekend, or a holiday.
    JOIN_MS only joins two raw answers into one segment. It does not punch a hole between them. */
 
-import { nyWall, windowAt } from '../../core/session';
+import { isSessionDay, nyWall, sessionAt, windowAt } from '../../core/session';
 import { useEffect, useSyncExternalStore } from 'react';
-import { nyIsoDate, nyMinutes, nyParts, nyWallTime } from '../../core/nyTime';
+import { nyIsoDate, nyParts, nyWallTime } from '../../core/nyTime';
 import { isTradingDay } from '../../core/calendar';
 import { keptOf, dealerOf } from '../../core/dealerSign';
 import { uwCall } from '../whales';
@@ -538,7 +538,6 @@ const serverState = new Map<string, ServerExposure>();
 const serverPull = new Map<string, { at: number; since: number; busy: boolean; past: Set<string> }>();
 /** The server's record is asked again this often while a field shows the name (only what changed since the last ask) */
 const SERVER_EVERY_MS = 5 * 60_000;
-const OPEN_MIN = 9 * 60 + 30;
 
 interface ServedDay {
   format: string;
@@ -586,15 +585,19 @@ export function pullExposureServer(ticker: string, now: number = Date.now()): vo
   void (async () => {
     try {
       const today = nyIsoDate(now);
-      const [y, m, d] = today.split('-').map(Number);
-      const trading = isTradingDay(new Date(y, m - 1, d));
-      if (!trading || nyMinutes(now) < OPEN_MIN) {
-        const prev = priorSessions(1, now)[0];
-        if (prev && !pull.past.has(prev)) {
-          pull.past.add(prev);
-          await pullDay(t, prev, 0);
+      /* the session module's last regular session that has opened: before today's open, or on a day with none, the
+         session before is the one the chart shows — asked once; a day with no session is not asked at all (nothing is
+         recorded on a weekend or a holiday) */
+      const last = sessionAt(now).lastRegular;
+      if (last !== today && !pull.past.has(last)) {
+        pull.past.add(last);
+        const was = await pullDay(t, last, 0);
+        if (!isSessionDay(today)) {
+          if (was.ok) setServer(t, { state: 'on', recording: !!was.body.recording, firstAt: was.body.firstAt ?? serverState.get(t)?.firstAt ?? null });
+          else if (was.off && serverState.get(t)?.state !== 'on') setServer(t, { state: 'off', recording: false, firstAt: null });
         }
       }
+      if (!isSessionDay(today)) return;
       const got = await pullDay(t, today, pull.since);
       if (got.ok) {
         /* segments that end after a little before the last read: one a later reading extended is sent again whole */

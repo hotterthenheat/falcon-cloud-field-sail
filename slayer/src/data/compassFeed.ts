@@ -11,6 +11,7 @@ import { noteCompassCall } from './compassAlerts';
 import { feedHeaders } from './feedGate';
 import type { Setup } from '../types/compass';
 import { viewerWords } from './compassParams';
+import { phaseAt } from '../core/session';
 
 /** The served state (data/compassServer.ts CompassState), as this browser reads it. */
 interface Served {
@@ -48,6 +49,17 @@ export interface CompassFeed {
 
 const KEEP = 'slayer_compass_state_v2';
 const POLL_MS = 5_000;
+/* With no stock session trading (core/session.ts: a night, a weekend, a holiday) the engine calls nothing and the state
+   stands still: it is read once a minute, not every five seconds (audit D11: 720 reads an hour of the same state). */
+const CLOSED_POLL_MS = 60_000;
+const marketMoving = (now = Date.now()): boolean => {
+  const ph = phaseAt(now);
+  return ph === 'pre' || ph === 'regular' || ph === 'post';
+};
+let lastPullAt = 0;
+const tick = () => {
+  if (marketMoving() || Date.now() - lastPullAt >= CLOSED_POLL_MS - 500) void pull();
+};
 
 let feed: CompassFeed = { status: 'loading', at: 0, day: '', engine: null, lock: '', close: null, marks: [], error: '' };
 let rev = 0;
@@ -95,6 +107,7 @@ let inflight = false;
 async function pull(): Promise<void> {
   if (inflight || (typeof document !== 'undefined' && document.hidden)) return;
   inflight = true;
+  lastPullAt = Date.now();
   try {
     const auth = await feedHeaders();
     if (!auth.ok) {
@@ -150,7 +163,7 @@ export function holdCompassFeed(): () => void {
   stopTimer = null;
   if (!timer && typeof window !== 'undefined') {
     void pull();
-    timer = setInterval(() => void pull(), POLL_MS);
+    timer = setInterval(tick, POLL_MS);
     document.addEventListener('visibilitychange', onVisible);
   }
   return () => {

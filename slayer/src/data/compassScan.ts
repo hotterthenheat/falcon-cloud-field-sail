@@ -33,6 +33,7 @@ import {
 import { recordPicks, setSessionClose, settleOpen } from './compassLedger';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import { nyYmd as ymd, sessionCloseMinOn } from '../core/calendar';
+import { REGULAR_OPEN_MIN } from '../core/session';
 
 export const INDEX_OF: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'XSP', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX', NDX: 'NDX', NDXP: 'NDX' };
 export const OPTION_OF: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW', NDX: 'NDXP' };
@@ -169,13 +170,19 @@ function contractWord(symbol: string, strike: number, right: OptionRight): strin
   return `${symbol} ${k}${right}`;
 }
 
-function sessionsAhead(expiration: string, now: number): number {
+/** Sessions left to a contract's expiry: whole days ahead, or on its expiry day the share of a session left to the
+    close. The close is the day's own (core/calendar sessionCloseMinOn: 13:00 on an early close — it was 16:00 always,
+    which overstated a 0DTE contract's time on a half day). On a full day every term is what it was — 16:00 less the
+    minute over the 6.5-hour session, and 1 before the open ((960 − 570) / 390) — so a regular day's calls are
+    bit-identical (scripts/session-proof.ts checks every minute; compass-golden and lgbm-parity unchanged). */
+export function sessionsAhead(expiration: string, now: number): number {
   const dte = Math.max(0, Math.round((Date.parse(`${expiration}T21:00:00Z`) - now) / 86400000));
   if (dte > 0) return dte;
   const p = nyParts(now);
   const mins = p.hour * 60 + p.minute;
-  if (mins < 9 * 60 + 30) return 1;
-  return Math.max(16 * 60 - mins, 5) / (6.5 * 60);
+  const close = sessionCloseMinOn(`${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`);
+  if (mins < REGULAR_OPEN_MIN) return (close - REGULAR_OPEN_MIN) / (6.5 * 60);
+  return Math.max(close - mins, 5) / (6.5 * 60);
 }
 
 interface LiveGreeks {

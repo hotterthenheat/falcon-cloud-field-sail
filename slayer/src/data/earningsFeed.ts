@@ -11,6 +11,7 @@ import { peekRegularCloses, phaseOf } from './dayChange';
 import { loadCloses } from './stockFile';
 import { screenerNeedsCloses, screenerRead } from './liveQuote';
 import { nyIsoDate, nyWallTime } from '../core/nyTime';
+import { REGULAR_OPEN_MIN, regularCloseMin, sessionAt } from '../core/session';
 import { uwCall, whalesEarnings, whalesEarningsSlot, whalesOptionContracts, whalesScreener } from './whales';
 import { body, createStore, keepFresh, keptRead, liveGet, type Get, type KeptRead } from './feedStore';
 
@@ -43,12 +44,9 @@ const num = (v: unknown): number => {
 
 /* built once: a formatter costs far more to make than to use, and these run per report */
 const NY_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
-const NY_HM = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const nyToday = (): string => NY_DAY.format(new Date());
-const nyMinutesNow = (): number => {
-  const p = NY_HM.formatToParts(new Date());
-  return Number(p.find(x => x.type === 'hour')?.value ?? 0) * 60 + Number(p.find(x => x.type === 'minute')?.value ?? 0);
-};
+/* the minute of New York's day (core/session.ts sessionAt) */
+const nyMinutesNow = (): number => sessionAt(Date.now()).minute;
 
 const parseIso = (iso: string): Date => {
   const [y, m, d] = iso.split('-').map(Number);
@@ -177,7 +175,7 @@ export function reportedNow(e: { ticker?: string; iso?: string; slot: ReportSlot
   if (iso > today) return false;
   /* the company's own results on the wire today */
   if (e.ticker && wireOut.has(`${e.ticker.toUpperCase()}|${iso}`)) return true;
-  return minutes >= (e.slot === 'BMO' && e.timeKnown !== false ? 9 * 60 + 30 : 16 * 60);
+  return minutes >= (e.slot === 'BMO' && e.timeKnown !== false ? REGULAR_OPEN_MIN : regularCloseMin(iso));
 }
 
 /* Before the open the slot rule cannot tell a print that is out, and actual_eps lags the wire, so the name's own
@@ -192,7 +190,7 @@ function checkWire(tickers: readonly string[], iso: string): Promise<boolean> {
   const today = nyToday();
   const minutes = nyMinutesNow();
   /* only on the day, before the open, from 04:00 — outside that window the slot rule and the dates answer */
-  if (iso !== today || minutes < 4 * 60 || minutes >= 9 * 60 + 30) return Promise.resolve(false);
+  if (iso !== today || minutes < 4 * 60 || minutes >= REGULAR_OPEN_MIN) return Promise.resolve(false);
   const want = tickers.map(t => t.toUpperCase()).filter(t => !wireOut.has(`${t}|${iso}`) && Date.now() - (wireAt.get(t) ?? 0) > WIRE_EVERY);
   if (!want.length) return Promise.resolve(false);
   const [y, m, d] = iso.split('-').map(Number);
@@ -262,7 +260,7 @@ const nextSession = (iso: string): string => {
 /** The session that reacts to a report: the report day before the open, else the next session (holidays skipped) */
 export const reactionIsoOf = (iso: string, slot: ReportSlot, timeKnown: boolean): string => (slot === 'BMO' && timeKnown ? iso : nextSession(iso));
 /** The reacting session is today and has opened (from 09:30) — the vendor's frozen figure is not shown then */
-const reactionSessionOn = (rIso: string, today: string = nyToday()): boolean => rIso === today && nyMinutesNow() >= 9 * 60 + 30;
+const reactionSessionOn = (rIso: string, today: string = nyToday()): boolean => rIso === today && sessionAt(Date.now()).lastRegular === today;
 const liveMoves = new Map<string, { pct: number; live: boolean; at: number }>();
 const liveMoveAsked = new Map<string, number>();
 const LIVE_MOVE_EVERY = 60_000;
@@ -272,7 +270,7 @@ async function refreshReactions(items: readonly { ticker: string; iso?: string; 
   if (!reactionSessionOn(today, today)) return false;
   const now = Date.now();
   /* after the bell each name's regular close is a daily-row read — the known names only, at most thirty */
-  const afterBell = nyMinutesNow() >= 16 * 60;
+  const afterBell = nyMinutesNow() >= regularCloseMin(today);
   /* a move read in the session is the day's move once the bell has rung */
   if (afterBell) for (const [k, v] of liveMoves) if (v.live) liveMoves.set(k, { ...v, live: false });
   const want = items

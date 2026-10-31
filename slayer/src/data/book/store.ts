@@ -2,13 +2,13 @@
    the small shared records the loaders and readers both hold. */
 
 import { useSyncExternalStore } from 'react';
-import { bookToday, isoDate, isTradingDay } from '../../core/calendar';
-import { nyIsoDate, nyMinutes } from '../../core/nyTime';
+import { bookToday, isoDate } from '../../core/calendar';
+
 import { type MarketPhase } from '../dayChange';
 import { type Candle, type GexSnapshot, type StrikeNode } from '../../types/market';
 import { uwCall } from '../whales';
 import { ownIvDates, type LiveGamma } from './scale';
-import { OPEN_MIN } from './tape';
+import { sessionAt } from '../../core/session';
 import { keepBook } from './kept';
 
 export const BOARD_MS = 90_000;
@@ -248,14 +248,8 @@ export function horizonFactsMissing(entry: Entry): string[] {
 /** The session on record's date (data/bookWindow.ts recordDay, kept here without the import cycle): today's from the
     open on, else the last session that ran */
 export function recordIso(): string {
-  const iso = nyIsoDate();
-  const [y, m, d] = iso.split('-').map(Number);
-  if (isTradingDay(new Date(y, m - 1, d)) && nyMinutes() >= OPEN_MIN) return iso;
-  for (let back = 1; back < 12; back++) {
-    const p = new Date(y, m - 1, d - back);
-    if (isTradingDay(p)) return isoDate(p);
-  }
-  return iso;
+  /* the session module's last regular session that has opened (core/session.ts sessionAt lastRegular) */
+  return sessionAt(Date.now()).lastRegular;
 }
 
 /** Every live listed date carries its own strikes */

@@ -166,6 +166,45 @@ check('KO options closed 08:00', !open('2026-11-02 08:00', 'equityOption'));
 check('no options pre-market on a holiday (Thanksgiving)', !open('2026-11-26 08:00', 'extEtfOption'));
 check('early close: SPY options end 13:15, NVDA curb 13:00–13:14', open('2026-11-27 13:14', 'extEtfOption') && !open('2026-11-27 13:15', 'extEtfOption') && sessionAt(ny('2026-11-27 13:05'), 'extEquityOption').window?.kind === 'curb');
 
+/* ---- the surfaces moved onto the session module (audit "Sessions", 2026-10-31) ---- */
+{
+  const { sessionsAhead } = await import('../src/data/compassScan');
+  const { nyParts } = await import('../src/core/nyTime');
+  /* the formula it replaced, verbatim: 16:00 and the 6.5-hour session on every day */
+  const before = (expiration: string, now: number): number => {
+    const dte = Math.max(0, Math.round((Date.parse(`${expiration}T21:00:00Z`) - now) / 86400000));
+    if (dte > 0) return dte;
+    const p = nyParts(now);
+    const mins = p.hour * 60 + p.minute;
+    if (mins < 9 * 60 + 30) return 1;
+    return Math.max(16 * 60 - mins, 5) / (6.5 * 60);
+  };
+  /* every minute of full days (a Monday, a Friday, a DST Monday), against expiries today, tomorrow and a week out:
+     bit-identical (Object.is), so the Compass calls the live path makes on a regular day do not move */
+  let same = 0;
+  let diff = '';
+  for (const day of ['2026-10-26', '2026-10-30', '2026-11-02', '2026-11-30', '2027-03-15']) {
+    for (const exp of [day, '2026-12-31', '2027-03-19']) {
+      for (let m = 0; m < 24 * 60; m++) {
+        const at = nyInstant(day, m);
+        const a = sessionsAhead(exp, at);
+        const b = before(exp, at);
+        if (Object.is(a, b)) same += 1;
+        else if (!diff) diff = `${day} ${m} ${exp}: ${a} vs ${b}`;
+      }
+    }
+  }
+  check(`compassScan sessionsAhead: every minute of five full days × three expiries bit-identical to the old formula (${same})`, !diff, diff);
+  /* an early close (the day after Thanksgiving, 13:00): the 0DTE time left runs to 13:00, not 16:00 */
+  check('sessionsAhead early close 12:00 → 60 min of 390', sessionsAhead('2026-11-27', ny('2026-11-27 12:00')) === 60 / 390, sessionsAhead('2026-11-27', ny('2026-11-27 12:00')));
+  check('sessionsAhead early close 12:58 → the 5-minute floor', sessionsAhead('2026-11-27', ny('2026-11-27 12:58')) === 5 / 390);
+  check('sessionsAhead early close before the open → 210 of 390 (was a whole session)', sessionsAhead('2026-11-27', ny('2026-11-27 08:00')) === 210 / 390);
+  check('sessionsAhead full day before the open → 1', sessionsAhead('2026-11-30', ny('2026-11-30 08:00')) === 1);
+
+  const { REGULAR_OPEN_MIN, REGULAR_CLOSE_MIN, regularCloseMin } = await import('../src/core/session');
+  check('the session module names the open and a full close (570, 960) and a half day\'s 13:00', REGULAR_OPEN_MIN === 570 && REGULAR_CLOSE_MIN === 960 && regularCloseMin('2026-11-27') === 780 && regularCloseMin('2026-11-30') === 960);
+}
+
 if (failed) {
   console.log(`\n${failed} check(s) failed`);
   process.exit(1);

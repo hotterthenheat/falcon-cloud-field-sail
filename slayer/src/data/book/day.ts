@@ -1,8 +1,7 @@
 /* The price and the day's change: the regular session's change kept apart from the move outside it, and the Board's
    ten-second price refresh. */
 
-import { isTradingDay } from '../../core/calendar';
-import { nyIsoDate, nyMinutes } from '../../core/nyTime';
+import { nyIsoDate } from '../../core/nyTime';
 import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from '../dayChange';
 import { DEFAULT_BOARD_NAMES } from '../boardNames';
 import { SIM_DESK } from '../deskMode';
@@ -10,7 +9,7 @@ import { uwCall } from '../whales';
 import { monDayOf } from './move';
 import { num } from './scale';
 import { cache, emit, peekEntry, recordIso, type Entry } from './store';
-import { CLOSE_MIN, OPEN_MIN } from './tape';
+import { phaseAt } from '../../core/session';
 
 
 /** When the price Pinpoint reads for a name was printed (epoch ms) — null until its book is live */
@@ -34,8 +33,8 @@ export function refreshBoardPrices(tickers: readonly string[]): void {
     return e?.status === 'live' && e.state?.market_time === 'regular';
   });
   if (!live.length) return;
-  const [y, m, d] = nyIsoDate().split('-').map(Number);
-  if (!isTradingDay(new Date(y, m - 1, d)) || nyMinutes() < OPEN_MIN || nyMinutes() >= CLOSE_MIN) return;
+  /* the regular session trades (core/session.ts: 09:30 to its own close, 13:00 on an early close) */
+  if (phaseAt(now) !== 'regular') return;
   /* one ask per group; a group asked in the last ten seconds (by the Board or the page on it) is not asked again */
   const groups = [...new Set(live.map(t => (UNIVERSE_SET.has(t) ? UNIVERSE.join(',') : t)))].filter(g => now - (askedAt.get(g) ?? 0) >= PRICES_MS - 500);
   if (!groups.length) return;

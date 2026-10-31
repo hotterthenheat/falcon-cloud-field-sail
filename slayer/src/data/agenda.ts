@@ -3,7 +3,8 @@
 
 import { aheadWord, recordDay } from './bookWindow';
 import { levelTicks } from './levelRecord';
-import { nyIsoDate, nyMinutes } from '../core/nyTime';
+import { nyIsoDate } from '../core/nyTime';
+import { phaseAt } from '../core/session';
 import { buildCloseOdds, fmtDollars, fmtStrike, type AheadClock } from './ahead';
 import { SHELF_SHARE } from './airPockets';
 import { buildWallContext, pathFlowWords, chanceLabel, holdLabel, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
@@ -170,7 +171,7 @@ function todayCash(bars: readonly Candle[]): Candle[] {
   const rec = recordDay();
   /* After today's close the targets are the next session's; the finished session's record is the Map's "How the levels held". */
   if (!rec.isToday || rec.done) return [];
-  return bars.filter(b => nyIsoDate(b.time * 1000) === rec.date && nyMinutes(b.time * 1000) >= 570 && nyMinutes(b.time * 1000) < 960);
+  return bars.filter(b => nyIsoDate(b.time * 1000) === rec.date && phaseAt(b.time * 1000) === 'regular');
 }
 
 /* One strike's odds must reach this before the page says the close leans anywhere. */

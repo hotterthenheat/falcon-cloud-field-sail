@@ -8,14 +8,16 @@ import { datesOf } from './flipLevel';
 import { lastSessionSupreme, ofLast, rangeFrom, recentSessions, sessionSoFar } from './aheadHistory';
 import { inCashSession, sessionBars } from './levelview';
 import { nyMinutes } from '../core/nyTime';
+import { REGULAR_CLOSE_MIN, REGULAR_OPEN_MIN, regularCloseMin, sessionAt } from '../core/session';
 import { type ExposureSurface } from './exposureSurface';
 import type { SessionClock } from './moc';
 import type { ExposureProfileData } from '../types/gex';
 import type { MarketSnapshot } from '../types/market';
 import { fmtStrikeOrDash as fmtStrike } from '../core/format';
 
-export const OPEN_MIN = 9 * 60 + 30;
-export const CLOSE_MIN = 16 * 60;
+/** The drawing frame of a session, 09:30–16:00 (core/session.ts); a day's own close is AheadClock.closeMin */
+export const OPEN_MIN = REGULAR_OPEN_MIN;
+export const CLOSE_MIN = REGULAR_CLOSE_MIN;
 export const SESSION_MIN = CLOSE_MIN - OPEN_MIN; // 390
 
 export { fmtStrike };
@@ -39,17 +41,22 @@ export interface AheadClock {
   /** Trading minutes still to run: the rest of today, or a whole day when the market is shut */
   minutesLeft: number;
   label: string;
+  /** Today's own close, minutes (13:00 on an early close); a full day's 16:00 when absent */
+  closeMin?: number;
 }
 
 export function aheadClock(clock: SessionClock): AheadClock {
   const [h, m] = clock.etTime.split(':').map(Number);
   const mins = h * 60 + m;
   const inSession = clock.phase === 'OPEN' || clock.phase === 'AUCTION';
+  /* the session's own close (core/session.ts): 13:00 on an early close, so the time left is not overstated */
+  const closeMin = regularCloseMin(sessionAt(Date.now()).tradingDay);
   return {
     nowMin: inSession ? mins : null,
     inSession,
-    minutesLeft: inSession ? Math.max(1, CLOSE_MIN - mins) : SESSION_MIN,
+    minutesLeft: inSession ? Math.max(1, closeMin - mins) : closeMin - OPEN_MIN,
     label: clock.label,
+    closeMin,
   };
 }
 
@@ -120,7 +127,8 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
   const { callWall, putWall, flip } = profile.levels;
   const gravityEnd = gravityFor(clock.minutesLeft);
   const start = clock.nowMin ?? OPEN_MIN;
-  const span = Math.max(1, CLOSE_MIN - start);
+  const close = clock.closeMin ?? CLOSE_MIN;
+  const span = Math.max(1, close - start);
 
   /* The band at the close: the expected move around the pulled centre, then
      a wall inside reach becomes the edge */
@@ -150,8 +158,8 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
     const hi = Math.max(lo1, hi1);
     return { min: t, lo1: lo, hi1: hi, lo2: spot - 2 * s, hi2: spot + 2 * s, mid: Math.min(hi, Math.max(lo, c)) };
   };
-  for (let t = start; t <= CLOSE_MIN; t += 5) cone.push(at(t));
-  if (cone[cone.length - 1]?.min !== CLOSE_MIN) cone.push(at(CLOSE_MIN));
+  for (let t = start; t <= close; t += 5) cone.push(at(t));
+  if (cone[cone.length - 1]?.min !== close) cone.push(at(close));
 
   /* Today's path so far: the session's one-minute closes, the newest at now.
      Outside the session the whole last session is laid over the day. */

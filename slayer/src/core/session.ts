@@ -47,6 +47,12 @@ export {
 } from '../../shared/marketSession.mjs';
 export type { MarketSessionAt, Phase, Product, WindowKind, SessionWindow } from '../../shared/marketSession.mjs';
 
+/** The regular session's open, minutes of the New York day (09:30) — the rule itself is shared/marketSession.mjs */
+export const REGULAR_OPEN_MIN = 9 * 60 + 30;
+/** A full day's regular close (16:00). A date's own close is regularCloseMin(iso): 13:00 on an early close. Read the
+    session through this module — a bare 9*60+30, 16*60, 570 or 960 elsewhere fails scripts/session-literal-proof.ts */
+export const REGULAR_CLOSE_MIN = 16 * 60;
+
 /** The phase's name as the site prints it */
 export const PHASE_LABEL: Record<Phase, string> = {
   overnight: 'Overnight',

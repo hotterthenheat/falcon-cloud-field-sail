@@ -200,7 +200,7 @@ async function readCloseRows(sym: string): Promise<{ date: string; close: number
   const hit = closesFor.get(sym);
   /* once a New York day, and again after the bell for today's own row — a minute apart at most, and never on a day with
      no session (a weekend or a holiday writes no row: every price poll asked again, all evening) */
-  if (hit && hit.day === day && (nyMinutes() < 960 || hit.closes.some(c => c.date === day) || !isTradingDay(nyToday()) || Date.now() - hit.at < AFTER_BELL_REASK_MS)) return hit.closes;
+  if (hit && hit.day === day && (nyMinutes() < sessionCloseMinOn(day) || hit.closes.some(c => c.date === day) || !isTradingDay(nyToday()) || Date.now() - hit.at < AFTER_BELL_REASK_MS)) return hit.closes;
   /* a page that may not ask for daily rows keeps what an earlier page read */
   if (!closesHere()) return hit?.closes ?? null;
   const root = isCashIndex(sym) ? 'index' : 'stock';
