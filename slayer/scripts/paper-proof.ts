@@ -14,7 +14,10 @@ import { NO_RULES, flatTimeOf, floorOf, progressOf, readRules, ruleRefusal, type
 import { CUSTOM_DEFAULTS, PROP_FIRMS, customPlan, planById } from '../src/data/paper/propFirms';
 import { marginOf } from '../src/data/paper/margin';
 import { OPTIONS_FUNDING_WHITELIST } from '../src/data/paper/whitelists';
-import { atmIvAt, expectedMovePctOf, optionsOpen } from '../src/data/paper/feed';
+import { atmIvAt, expectedMovePctOf, optionQuote, optionsOpen } from '../src/data/paper/feed';
+import { putBook, putName } from '../src/data/paper/thetaFeed';
+import { thetaPerSession } from '../src/data/review/quotes';
+import { blackScholesPrice } from '../src/core/greeks';
 import { isPaperIndex } from '../src/data/paper/products';
 import { optionRootOf } from '../src/data/paper/thetaFeed';
 import type { ContractId } from '../src/data/review/quotes';
@@ -1042,6 +1045,21 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   x = replayGaps(x, f, nyInstant(DAY, 11 * 60), 'L1');
   /* at 10:11 (minute 40) the mark is 1.45: 10,000 − 20.00 + 1.45 × 1,000 − 6.50 fees = 9,443.50, under the 9,500 floor */
   ok('replayed: the floor is judged on the minute it was crossed — failed at 10:11, everything closed at that minute’s bid', x.status === 'failed' && x.statusAt === nyInstant(DAY, 10 * 60 + 11) && optBookOf(x).positions.length === 0 && x.opt.fills[x.opt.fills.length - 1].price === 1.4, `${x.status} · ${x.statusAt ? nyAt(x.statusAt).minutes : '-'} · ${x.opt.fills.map(q => q.price).join(',')}`);
+}
+
+{
+  /* 12. theta a day is one trading session on the trading clock: V(t − 1/252) − V(t). ATM, S = K = 100, σ 20%, five
+     sessions left: ≈ 0.3989 × 100 × 0.20 × (√(4/252) − √(5/252)) = −0.119 a share. A per-calendar-day theta seven days
+     out (∂V/∂t ÷ 365, T = 7/365) is −0.079 — the 1.5× is 7 days over 5 sessions, and the session's own curvature. */
+  const th = thetaPerSession(100, 100, 5 / 252, 0.2, 'C');
+  ok('theta per session: ATM 100, 20%, five sessions left → −0.119 a share', near(th, -0.1186, 0.01), th.toFixed(4));
+  ok('…inside the last session it is what is left above intrinsic, lost: intrinsic − V', near(thetaPerSession(100, 95, 0.5 / 252, 0.2, 'C'), 5 - blackScholesPrice(100, 95, 0.5 / 252, 0.2, 'C'), 1e-9));
+  /* the paper desk's live quote uses that same definition */
+  const ms = nyInstant('2026-09-23', 11 * 60);
+  putName('ZZQ', { bid: 100, ask: 100, px: 100, takenAt: ms });
+  putBook('ZZQ', '2026-09-30', [{ strike: 100, right: 'C', bid: 2.0, ask: 2.2 }], ms);
+  const lq = optionQuote({ ticker: 'ZZQ', strike: 100, right: 'C', expiry: '2026-09-30' }, ms);
+  ok('…and the paper desk’s quote carries exactly it, on its own IV and trading clock', lq.iv > 0 && near(lq.theta, thetaPerSession(100, 100, yearsToExpiry('2026-09-30', ms), lq.iv, 'C'), 1e-12), `${lq.theta} · iv ${lq.iv}`);
 }
 
 console.log(`\n${passed} held · ${failed} missed`);

@@ -110,13 +110,23 @@ export const bookMark = (bid: number, ask: number, round: (v: number) => number)
 const intrinsicOf = (c: ContractId, spot: number) => (spot > 0 ? Math.max(0, c.right === 'C' ? spot - c.strike : c.strike - spot) : 0);
 const noQuote = (c: ContractId, spot: number): Quote => ({ bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic: cents(intrinsicOf(c, spot)), dead: true, spot });
 
+/** Theta a day, the one definition the paper desk and the backtest share: what the contract loses over ONE TRADING SESSION
+    on the trading clock, the name and the vol held — V(S, K, t − 1/252, σ) − V(S, K, t, σ), with t in trading years
+    (session minutes ÷ 390 × 252) and σ solved on that clock; inside the last session, intrinsic − V. A dollar figure a
+    share, negative. It is per SESSION: a page that quotes theta per calendar day (∂V/∂t ÷ 365) reads about 7/5 of it
+    smaller a week out, since a week is 5 sessions and 7 days. */
+export function thetaPerSession(S: number, K: number, t: number, iv: number, right: 'C' | 'P'): number {
+  const dayOn = Math.max(0, t - 1 / 252);
+  const intrinsic = S > 0 ? Math.max(0, right === 'C' ? S - K : K - S) : 0;
+  return (dayOn > 0 ? blackScholesPrice(S, K, dayOn, iv, right) : intrinsic) - blackScholesPrice(S, K, t, iv, right);
+}
+
 /** Greeks of a bought leg from its mid, the name's price and the time left */
 function greeksOn(c: ContractId, mid: number, spot: number, t: number): Pick<Quote, 'iv' | 'delta' | 'gamma' | 'theta' | 'vega' | 'rho'> {
   const iv = t > 0 && spot > 0 ? impliedVolFromPrice(mid, spot, c.strike, t, c.right) : null;
   if (iv == null) return { iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0 };
   const g = blackScholesGreeks(spot, c.strike, t, iv);
-  const dayOn = Math.max(0, t - 1 / 252);
-  const theta = (dayOn > 0 ? blackScholesPrice(spot, c.strike, dayOn, iv, c.right) : intrinsicOf(c, spot)) - blackScholesPrice(spot, c.strike, t, iv, c.right);
+  const theta = thetaPerSession(spot, c.strike, t, iv, c.right);
   return { iv, delta: c.right === 'C' ? g.deltaCall : g.deltaPut, gamma: g.gamma, theta, vega: g.vega, rho: c.right === 'C' ? g.rhoCall : g.rhoPut };
 }
 

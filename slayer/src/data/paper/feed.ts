@@ -9,7 +9,7 @@ import type { DeskChain, DeskContract } from '../weigherDesk';
 import { isTradingDay, expiryFor, sessionCloseMinOn } from '../../core/calendar';
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
 import { calendarYears, sigmaToExpiry } from '../../core/volClock';
-import { longLeg, spreadBook, spreadSizes, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
+import { longLeg, spreadBook, spreadSizes, thetaPerSession, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
 import { bookCandles, ensureBook } from '../uwBook';
 import { dateAt, lastTradeDayOf, nyAt, sessionFrom, tradingEndsAt, yearsToExpiry, OPEN_MIN } from './clock';
 import { paperIndex } from './products';
@@ -76,8 +76,8 @@ function legQuote(c: ContractId, spot: number, ms: number): Quote {
   const t = Math.max(yearsToExpiry(lastTradeDayOf(c), ms), 1 / (252 * 390));
   const iv = s > 0 ? impliedVolFromPrice(mid, s, c.strike, t, c.right) : null;
   const g = iv != null ? blackScholesGreeks(s, c.strike, t, iv) : null;
-  const dayOn = Math.max(0, t - 1 / 252);
-  const theta = iv != null ? (dayOn > 0 ? blackScholesPrice(s, c.strike, dayOn, iv, c.right) : intrinsic) - blackScholesPrice(s, c.strike, t, iv, c.right) : 0;
+  /* theta a day: what it loses over one trading session on the trading clock (quotes.ts thetaPerSession) */
+  const theta = iv != null ? thetaPerSession(s, c.strike, t, iv, c.right) : 0;
   return {
     bid: q.bid,
     ask: q.ask,
