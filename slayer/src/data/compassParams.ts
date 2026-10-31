@@ -276,6 +276,9 @@ export function bookBRange(span: number): { inner: number; outer: number } {
   return { inner, outer: inner + 4 };
 }
 
+/** How far from the money the weekly read reaches: Book B's outer strike at the widest span (12 → 13 to 17). */
+export const WEEKLY_STRIKES = bookBRange(12).outer;
+
 export function bookAPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, p1: number, flatT = FLAT_T): boolean {
   return onScanGrid(t)
     && entryTimeOk(t, flatT)

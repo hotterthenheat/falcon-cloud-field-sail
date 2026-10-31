@@ -11,7 +11,7 @@
 import { compassHost, type ThetaAnswer } from './compassHost';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { setupIdOf } from './compass';
-import { GEX_CORE, inLottery, sessionScanOpen, weekdayDte } from './compassParams';
+import { GEX_CORE, WEEKLY_STRIKES, inLottery, sessionScanOpen, weekdayDte } from './compassParams';
 import { deskPhase, odteAsleep, optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
 import { COMPASS_TICKERS } from './compassUniverse';
 import {
@@ -27,6 +27,7 @@ import {
   setScanReport,
   setScoreClose,
   underAt,
+  warmSession,
   type ScoreResult,
 } from './compassModel';
 import { recordPicks, setSessionClose, settleOpen } from './compassLedger';
@@ -250,8 +251,9 @@ interface Draft {
   greeks: LiveGreeks;
 }
 
-/** Book A is four strikes from the money. Book B is twelve. Farther than that is not a call and not a closest, except
-    a same-day contract cheap enough for Book C. */
+/** Book A reaches the span (4 strikes on an index root, up to 12 on a single name). Book B is the band past it,
+    max(8, span + 1) to that + 4 strikes out, at an ask of 1.00 or less. A long chain keeps 12 strikes either side and
+    every contract asking 1.65 or less, which holds all of Book B (it asks 1.00 or less) and Book C. */
 function kept(list: Draft[]): Draft[] {
   if (list.length <= 80) return list;
   const strikes = [...new Set(list.map(d => d.strike))].sort((a, b) => a - b);
@@ -314,12 +316,14 @@ function build(drafts: Map<string, Draft[]>, expiry: string, sleeve: SleeveKey, 
   return kept(drafts.get(expiry) ?? []).map(d => toSetup(d.root, d.strike, d.right, d.exp, d.bid, d.ask, d.under, sleeve, d.at, d.greeks, listed));
 }
 
-/** One snapshot of one name: today's expiry (0DTE), one named expiry, or '*' for the nearest expiry 1 to 7 weekdays
-    out (every expiry within 11 calendar days in one ask, the nearest kept). */
+/** One snapshot of one name: today's expiry (0DTE), one named expiry, or '*' for the nearest expiry 1 to 7 sessions
+    out (every expiry within 11 calendar days in one ask, the nearest kept). A same-day read reaches 16 strikes out;
+    any other expiry reaches Book B's band (WEEKLY_STRIKES, 17): at the old 4 a weekly Book B (8 or more strikes out)
+    could never be read. */
 async function once(symbol: string, now: number, only: string, jump = false, freshMs = FRESH_MS): Promise<Snap> {
   const today = sessionIso(now);
   const weekly = only === '*';
-  const range = weekly ? 4 : 16;
+  const range = only.slice(0, 10) === today ? 16 : WEEKLY_STRIKES;
   const exp = weekly ? '*' : only.replace(/-/g, '');
   const got = await theta(`/option/snapshot/greeks/first_order?symbol=${symbol}&expiration=${exp}&right=both&strike_range=${range}${weekly ? '&max_dte=11' : ''}&format=json`, jump);
   if (got.error) return { setups: [], spot: 0, ok: got.error !== 'terminal_down', rows: 0 };
@@ -364,6 +368,17 @@ async function expirationsOf(symbol: string): Promise<string[] | null> {
   return list;
 }
 
+/** The nearest listed expiry 1 to 7 sessions out (YYYY-MM-DD), from the hourly expirations read, or null. */
+export async function weeklyExpiry(symbol: string, at: number): Promise<string | null> {
+  const list = await expirationsOf(symbol);
+  if (!list) return null;
+  const session = sessionIso(at);
+  return list.filter(e => {
+    const n = weekdayDte(session, e);
+    return n >= 1 && n <= 7;
+  }).sort()[0] ?? null;
+}
+
 /** The quotes that stood at one instant: ThetaData's recorded NBBO for every listed strike near the money, each with
     its own stamp (a quote that had not changed for 90 seconds is not on the board, as live). */
 export async function atMark(symbol: string, markAt: number, sleeve: 'odte' | 'weekly'): Promise<Snap> {
@@ -372,17 +387,14 @@ export async function atMark(symbol: string, markAt: number, sleeve: 'odte' | 'w
   if (sleeve === 'weekly') {
     const list = await expirationsOf(symbol);
     if (!list) return { setups: [], spot: 0, ok: false, rows: 0 };
-    const near = list.filter(e => {
-      const n = weekdayDte(session, e);
-      return n >= 1 && n <= 7;
-    }).sort()[0];
+    const near = await weeklyExpiry(symbol, markAt);
     if (!near) return { setups: [], spot: 0, ok: true, rows: 0 };
     expiry = near;
   }
   const day = ymd(markAt);
   const p = nyParts(markAt);
   const time = `${two(p.hour)}:${two(p.minute)}:${two(p.second)}.000`;
-  const range = sleeve === 'weekly' ? 4 : 16;
+  const range = sleeve === 'weekly' ? WEEKLY_STRIKES : 16;
   const got = await theta(`/option/at_time/quote?symbol=${encodeURIComponent(symbol)}&expiration=${expiry.replace(/-/g, '')}&right=both&strike_range=${range}&start_date=${day}&end_date=${day}&time_of_day=${time}&format=json`);
   if (got.error === 'terminal_down') return { setups: [], spot: 0, ok: false, rows: 0 };
   if (got.error) return { setups: [], spot: 0, ok: true, rows: 0 };
@@ -521,7 +533,10 @@ async function liveMark(markAt: number, sleeve: 'odte' | 'weekly'): Promise<void
       const scanAt = Date.now();
       /* the minute has passed: the quotes now are not the mark's, so the name is scored late */
       if (minuteStart(scanAt) !== markAt) return;
-      const snap = await once(symbol, scanAt, only, true);
+      /* a weekly name reads its own nearest expiry (one expiry, Book B's band) */
+      const exp = sleeve === 'weekly' ? (await weeklyExpiry(symbol, scanAt)) ?? '*' : only;
+      if (minuteStart(Date.now()) !== markAt) return;
+      const snap = await once(symbol, scanAt, exp, true);
       if (!snap.ok) return;
       answered = true;
       snaps.push({ symbol, spot: snap.spot });
@@ -792,6 +807,9 @@ function rollDay(now: number): void {
     setSessionClose(closeMin);
     setScoreClose(next.replace(/-/g, ''), closeMin);
     opts.onDay?.(next);
+    /* the session's one-time reads (prior bars, volume curves, expirations), off the marks' critical path */
+    const names = [...new Set([...odteBook(now), ...WEEKLY_FOCUS])];
+    bg('the session warm-up', Promise.all([warmSession(names, now), ...WEEKLY_FOCUS.map(n => expirationsOf(n))]));
   }
   if (closeDay !== day.replace(/-/g, '')) bg('the session calendar', readClose(day.replace(/-/g, '')));
 }
