@@ -2,6 +2,7 @@
    terminal answers, lets a single probe through while it does not (data/theta.ts holds the rest back), and keeps the
    last good answer in this browser so a reload paints it, stamped with when it was taken. */
 
+import { LIVE_RECONNECTING } from '../copy/feeds';
 import { useSyncExternalStore } from 'react';
 import { thetaCall } from './theta';
 import { readSaved, save } from './uwStore';
@@ -99,6 +100,6 @@ export function etClock(at: number): string {
 
 /** The line a box shows while the terminal is down. */
 export const offlineWords = (takenAt: number): string =>
-  takenAt > 0 ? `ThetaData offline — reconnecting · as of ${etClock(takenAt)}` : 'ThetaData offline — reconnecting';
+  takenAt > 0 ? `${LIVE_RECONNECTING} · as of ${etClock(takenAt)}` : LIVE_RECONNECTING;
 
 export const thetaRev = (): number => rev;

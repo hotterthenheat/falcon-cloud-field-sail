@@ -23,6 +23,7 @@ import { scopeWalls } from '../../data/book/levels';
 import { levelsForName } from '../../data/levelsScope';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import TickerLookup from '../ui/TickerLookup';
+import { quoteStamp } from '../../copy/feeds';
 
 /** The Map's default window is not read here. A wall is shown only when that name's live book is already in. */
 const usd = (v: number) => `$${v.toFixed(2)}`;
@@ -142,7 +143,7 @@ const NameRow = ({
             </span>
           </span>
           <span className="ml-auto flex flex-col items-end leading-tight font-mono tnum">
-            <span className={`text-t11 ${read.live ? 'text-textPrimary' : 'text-textSecondary'}`} title={read.at ? `ThetaData · ${asOfText(read.at)}` : undefined}>{spot != null ? usd(spot) : '—'}</span>
+            <span className={`text-t11 ${read.live ? 'text-textPrimary' : 'text-textSecondary'}`} title={read.at ? quoteStamp(asOfText(read.at)) : undefined}>{spot != null ? usd(spot) : '—'}</span>
             {change != null && <span className={`text-t10 ${change >= 0 ? 'text-bull' : 'text-bear'}`}>{pctSigned(change)}</span>}
           </span>
         </button>

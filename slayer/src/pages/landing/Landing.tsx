@@ -169,7 +169,7 @@ const STEPS: TourStep[] = [
     name: 'Practice',
     /* the headline leads with paper trading, as the room's first row does */
     lead: 'Paper trade today’s live option quotes.',
-    rest: 'A practice account on each contract’s live bid and ask — options off the chain, the same order card and chart as the desk, and nothing reaches a broker. The backtest replays recorded ThetaData sessions at the bid and ask each contract had. One journal keeps every closed trade.',
+    rest: 'A practice account on each contract’s live bid and ask — options off the chain, the same order card and chart as the desk, and nothing reaches a broker. The backtest replays recorded market sessions at the bid and ask each contract had. One journal keeps every closed trade.',
     /* paper trading leads the room — its still is the options desk in use, not the start page (the photographer's
        `photo=1` window, embed.ts) */
     path: '/practice/paper',

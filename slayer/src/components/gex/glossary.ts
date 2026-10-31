@@ -10,7 +10,7 @@ const WORDS = {
   thin: "Too thin to be a trapdoor (or a wall): dealers lean one way here, but with under a third of the heaviest strike's net gamma — too little hedging to slow or speed a move by itself",
   flip: 'Flip: the price where the net dealer gamma, re-priced at that price, crosses zero — on one side their hedging absorbs moves (long gamma), on the other it amplifies them (short gamma)',
   charm: 'Charm: how the dealers’ delta drifts as time passes with price standing still — near the close of an expiring contract it forces hedging trades on its own, often the late-day drift',
-  nope: 'NOPE (net options pricing effect): the net delta of the day’s option trades divided by the shares of stock traded, as the vendor prints it. 0 is balanced; +2 means the option flow carries twice the stock’s own volume in bullish delta, −2 the same in bearish — the further from 0, the harder options lean on the stock',
+  nope: 'NOPE (net options pricing effect): the net delta of the day’s option trades divided by the shares of stock traded, as the feed prints it. 0 is balanced; +2 means the option flow carries twice the stock’s own volume in bullish delta, −2 the same in bearish — the further from 0, the harder options lean on the stock',
   dex: 'DEX (delta exposure): the shares dealers hold to hedge their delta — the stock they own (+) or are short (−) right now',
   vex: 'VEX (vega exposure): how much the dealers’ book gains or loses when implied volatility moves one point',
   vanna: 'Vanna: how the dealers’ delta changes when implied volatility moves — a drop in vol makes them buy or sell stock without price moving',
