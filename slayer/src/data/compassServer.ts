@@ -21,7 +21,7 @@ import { demoteLate, exportModelState, importModelState, lockReason, modelDay, o
 import { importSignals, importWould, onSignalsChange, setSessionClose, signals, wouldSignals, type Signal } from './compassLedger';
 import { exportMarks, importMarks, lotterySwept, onMarks, onScanMeta, scanMeta, sessionClose, setLotteryDay, setScanMeta, startScan, stopScan, type MarkRow, type ScanMeta } from './compassScan';
 import { sessionIso } from './compassSession';
-import { buildSession, reviewFile, studyFile } from './compassReview';
+import { buildSession, builtCurrent, reviewFile, studyFile } from './compassReview';
 import { poolStudies, type Label, type PooledStudy, type StudyDay, type StudyResult } from './compassStudy';
 import { nyParts } from '../core/nyTime';
 import type { Setup } from '../types/compass';
@@ -424,13 +424,14 @@ export function startCompassEngine(o: EngineOptions): Engine {
   };
 
   /* After a session settles, its review and study are built once: the trades reviewed, the movers counted, every
-     scored row labelled. A day the engine missed after its close is built the next time it runs. */
+     scored row labelled. A day the engine missed after its close is built the next time it runs, and so is a day whose
+     review or study was built under older rules (compassReview REVIEW_VERSION: fees once came off its P&L). */
   let building = false;
   const buildDue = () => {
     if (building) return;
     const p = nyParts(Date.now());
     const mins = p.hour * 60 + p.minute;
-    const days = recordDays(o.dir).filter(d => !fs.existsSync(studyFile(o.dir, d)) || !fs.existsSync(reviewFile(o.dir, d)));
+    const days = recordDays(o.dir).filter(d => !builtCurrent(studyFile(o.dir, d)) || !builtCurrent(reviewFile(o.dir, d)));
     const todo = days.filter(d => d < day || (d === day && mins >= 16 * 60 + 20 && mins < 20 * 60 + 15)).pop();
     if (!todo) return;
     const f = todo === day ? snapshotFile() : readDay(o.dir, todo);
