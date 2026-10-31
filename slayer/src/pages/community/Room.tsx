@@ -118,7 +118,7 @@ let viewMemory: View = 'feed';
 const Room = () => {
   const profile = useProfile();
   /* THE WALL (the first launch) — UP by rest night; `?open` on the URL takes it down, `?wall` puts it up. The wall
-     itself — the lamp, the beam, the countdown, the notify field — is the house's (components/ui/ComingSoonWall),
+     itself — the lamp, the beam, the countdown, the opening line — is the house's (components/ui/ComingSoonWall),
      the same glass over the Watchlist. */
   /* The beta door: an owner, or anyone an owner put in the beta (Settings › People), walks through the wall by
      rest; `?wall` still puts it up for them */
@@ -316,7 +316,7 @@ const Room = () => {
       </header>
 
       {/* walled, the room is at least as tall as the wall's card (ComingSoonWall: calc(100vh − 140px), 600px at least),
-          so the countdown and the notify field never stand over the footer */}
+          so the countdown and the opening line never stand over the footer */}
       <div className={`relative ${walled ? 'min-h-[max(600px,calc(100vh-140px))]' : ''}`} data-room data-walled={walled || undefined}>
         <div className={`${ROOM_GRID} ${walled ? 'pointer-events-none select-none' : ''}`} aria-hidden={walled || undefined} data-room-grid>
           {/* ---- THE READER ---------------------------------------------------------- */}
