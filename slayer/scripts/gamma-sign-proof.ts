@@ -364,6 +364,14 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   check(`whole-book call vex at 770: ${entry.all[0].callVex} (the settled 10/27 date's −5 left off)`, entry.all[0].callVex === -3);
 }
 
+/* 18 — the exposure log's series end at the expiry's own close: 13:00 New York on the day after Thanksgiving, not 16:00
+   (the field drew three hours of a dead 11/27 series) */
+{
+  const { closeOf } = await import('../src/data/book/exposureSegs');
+  const hm = (ms: number) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
+  check(`series close: 11/27 ${hm(closeOf('2026-11-27'))}, 11/30 ${hm(closeOf('2026-11-30'))}`, hm(closeOf('2026-11-27')) === '13:00' && hm(closeOf('2026-11-30')) === '16:00');
+}
+
 if (fail) {
   console.log(`\n${fail} failed`);
   process.exit(1);
