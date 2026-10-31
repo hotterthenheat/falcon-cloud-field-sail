@@ -25,7 +25,7 @@ import Fact from '../ui/Fact';
 import { levelRoles, wallPlace, type LevelRole } from '../../core/walls';
 import { fmtStrike, pctWhole as pct } from '../../core/format';
 
-const ROLE_TONE: Record<LevelRole, Tone> = { supreme: 'supreme', 'call wall': 'bull', 'put wall': 'bear', flip: 'white' };
+const ROLE_TONE: Record<LevelRole, Tone> = { supreme: 'supreme', 'call wall': 'glacier', 'put wall': 'ember', flip: 'white' };
 
 /** The panel's width open, and its tab's width folded */
 const SIDE_W = 320;
@@ -258,8 +258,8 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         {(greeks && greeks.length > 1 ? greeks : [greek]).map(g => (
           <Level key={g} word={greeks && greeks.length > 1 ? GREEK_LABEL[g] : 'supreme'} tone="supreme" k={s.supreme[g].strike} g={g} />
         ))}
-        <Level word="call wall" tone="bull" k={s.callWall.strike} />
-        <Level word="put wall" tone="bear" k={s.putWall.strike} />
+        <Level word="call wall" tone="glacier" k={s.callWall.strike} />
+        <Level word="put wall" tone="ember" k={s.putWall.strike} />
         <Level word="flip" tone="white" k={s.flip} />
       </div>
       {/* why a wall sits where it does, in one line — said only when the levels look odd */}

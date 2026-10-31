@@ -27,6 +27,8 @@ const toneSurface: Record<Tone, string> = {
   // back to the neutral surface so `tone="holo"` on a Panel can't tint it.
   holo: 'border-borderSubtle bg-panel',
   neutral: 'border-borderSubtle bg-panel',
+  glacier: 'border-glacier/30 bg-glacier/[0.04]',
+  ember: 'border-ember/30 bg-ember/[0.04]',
 };
 
 const toneDivider: Record<Tone, string> = {
@@ -39,6 +41,8 @@ const toneDivider: Record<Tone, string> = {
   supreme: 'border-supreme/20',
   holo: 'border-borderSubtle',
   neutral: 'border-borderSubtle',
+  glacier: 'border-glacier/20',
+  ember: 'border-ember/20',
 };
 
 /** The base dark surface every widget sits in. */

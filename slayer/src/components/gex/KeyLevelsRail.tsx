@@ -15,10 +15,10 @@ interface KeyLevelsRailProps {
   priceFormat?: (price: number) => string;
 }
 
-// Level identity colors — same hierarchy as the chart price lines
+// Level identity colors — the chart's price lines' own: the walls wear glacier and ember (paletteInk), never the sign's green and red
 const KIND_TEXT: Record<KeyLevelKind, string> = {
-  'call-wall': 'text-bull',
-  'put-wall': 'text-bear',
+  'call-wall': 'text-glacier',
+  'put-wall': 'text-ember',
   flip: 'text-flip',
   supreme: 'text-supreme',
   pin: 'text-textSecondary',

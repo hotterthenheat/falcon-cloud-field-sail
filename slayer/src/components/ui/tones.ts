@@ -2,7 +2,8 @@
 
 /* crown: a black box with magenta words, the engine's top pick only. supreme: the magenta tint at chip scale.
    white: bright neutral ink (Compass process states). holo: flat silver for terminal hardware (counts, chrome). */
-export type Tone = 'bull' | 'bear' | 'warn' | 'select' | 'white' | 'crown' | 'supreme' | 'holo' | 'neutral';
+/* glacier and ember: the walls' (and the legs') inks — a call wall is never the sign's green, a put wall never its red */
+export type Tone = 'bull' | 'bear' | 'warn' | 'select' | 'white' | 'crown' | 'supreme' | 'holo' | 'neutral' | 'glacier' | 'ember';
 
 export const toneDot: Record<Tone, string> = {
   bull: 'bg-bull',
@@ -15,6 +16,8 @@ export const toneDot: Record<Tone, string> = {
   supreme: 'bg-supreme',
   holo: 'holo-bg',
   neutral: 'bg-textMuted',
+  glacier: 'bg-glacier',
+  ember: 'bg-ember',
 };
 
 export const toneBadge: Record<Tone, string> = {
@@ -34,5 +37,7 @@ export const toneBadge: Record<Tone, string> = {
      Not .holo-text: background-clip:text would clip the chip's tint to the glyphs. */
   holo: 'bg-silver/[0.09] text-silver border-silver/25',
   neutral: 'bg-ink/[0.04] text-textSecondary border-borderSubtle',
+  glacier: 'bg-glacier/10 text-glacier border-glacier/25',
+  ember: 'bg-ember/10 text-ember border-ember/25',
 };
 

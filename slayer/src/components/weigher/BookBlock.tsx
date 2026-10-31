@@ -23,7 +23,7 @@ const BookBlock = ({ read, c }: { read: BookAtStrike | null; c: DeskContract }) 
   if (!read) return null;
   /* a level the book could not place is NaN (no flip inside ±10%, a wall with no gamma): a dash, never "NaN%" */
   const part = read.role ? read.role : Number.isFinite(read.flipDistPct) ? `${Math.abs(read.flipDistPct).toFixed(1)}% ${read.flipDistPct >= 0 ? 'above' : 'below'} the flip` : '—';
-  const partInk = read.role === 'call wall' ? 'text-bull' : read.role === 'put wall' ? 'text-bear' : read.role === 'supreme' ? 'text-supreme' : undefined;
+  const partInk = read.role === 'call wall' ? 'text-glacier' : read.role === 'put wall' ? 'text-ember' : read.role === 'supreme' ? 'text-supreme' : undefined;
   /* held + broke = the tests; the count of visits is implied so the cell keeps to one line */
   const held = read.held ? (read.held.tests === 0 ? 'not reached today' : `held ${read.held.held} · broke ${read.held.broke}`) : '—';
   /* the odds the contract wants: a call wants the print at or above the strike, a put at or below */

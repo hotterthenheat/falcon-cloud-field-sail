@@ -321,8 +321,9 @@ const lightInks = (el: Element): PanelInks => {
     ink3: t('--text-muted'),
     silver: t('--silver'),
     silverSoft: t('--silver', 0.6),
-    callWall: t('--bull'),
-    putWall: t('--bear'),
+    /* the dark set's walls (glacier, ember), cut deep for paper — never the sign's green and red */
+    callWall: t('--glacier'),
+    putWall: t('--ember'),
     supreme: t('--supreme'),
     /* 0.09: the supreme's own magenta label on its row stays 4.5:1 on the light page's panel */
     supremeWash: t('--supreme', 0.09),
