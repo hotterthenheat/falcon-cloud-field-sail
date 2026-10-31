@@ -146,7 +146,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
           const asOf = thetaRead.live ? '' : ` · last print kept from ${new Date(p.read).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET`;
           return (
             <>
-              <span className={`text-t11 tnum leading-none ${thetaRead.live ? 'text-textPrimary' : 'text-textSecondary'}`} title={`ThetaData last print${asOf}`} data-scope-price>
+              <span className={`text-t11 tnum leading-none ${thetaRead.live ? 'text-textPrimary' : 'text-textSecondary'}`} title={`Live last print${asOf}`} data-scope-price>
                 ${p.price.toFixed(2)}
               </span>
               {mv && (

@@ -60,7 +60,7 @@ export const SetupsTile = ({ state }: TileProps) => {
   const expiryChip = useMemo(() => expiryFor(SLEEVES.find(s => s.key === sleeve)?.dte ?? 5).label, [sleeve]);
   const open = useCallback((s: Setup) => door(`/compass/${setupIdOf({ ticker: s.ticker, strike: s.strike, right: s.right, scanner: 'top-setups', sleeve })}`), [door, sleeve]);
   if (ranked.length === 0) {
-    if (view.status === 'down') return <EmptyBox title="ThetaData offline" reason="Compass scans on the terminal’s live quotes. The cards come back when it answers." />;
+    if (view.status === 'down') return <EmptyBox title="Live data offline" reason="Compass scans on live option quotes. The cards come back when it answers." />;
     if (view.status === 'loading') return <LoadingBox shape="block" className="h-full p-2" label="Compass is scanning" />;
     return <TileEmpty words="Nothing cleared the bar on this expiry yet." />;
   }
@@ -70,7 +70,7 @@ export const SetupsTile = ({ state }: TileProps) => {
       <Cards ranked={ranked} expiryChip={expiryChip} onOpen={open} />
       <TileRead testId="setups">
         {earlier ? <AsOf at={earlier.at} prefix="last scan" className="mr-1.5" /> : null}
-        {view.status === 'down' ? <span className="text-warn">ThetaData offline. </span> : null}
+        {view.status === 'down' ? <span className="text-warn">Live data offline. </span> : null}
         {ranked.length} {ranked.length === 1 ? 'setup' : 'setups'} cleared the bar. First: {top.contract} — {top.headline}
       </TileRead>
     </div>
@@ -155,7 +155,7 @@ export const ChainTile = ({ ctx, state, size }: TileProps) => {
       </div>
       <TileRead testId="chain">
         {chain.kept && chain.takenAt ? <AsOf at={chain.takenAt} className="mr-1.5" /> : null}
-        {chain.offline ? <span className="text-warn">ThetaData offline. </span> : null}
+        {chain.offline ? <span className="text-warn">Live data offline. </span> : null}
         {chain.rows.length > 0 && chain.expectedMovePct > 0 ? (
           <>
             {ctx.ticker} options are charging for a move of ±{chain.expectedMovePct.toFixed(1)}% by {fmtDay(chain.expiry.date)}
@@ -270,7 +270,7 @@ export const PositionsTile = ({ ctx, state }: TileProps) => {
         <ListGrid rows={rows} selectedId={null} onPick={pick} hedgeOf={hedgeOf} emptyText="Nothing here yet" testId="pulse-positions" />
       </div>
       <TileRead testId="positions">
-        {theta === 'down' && <span className="text-warn">ThetaData offline{keptAt ? ` · marks ${asOfText(keptAt)}` : ' · no marks'}. </span>}
+        {theta === 'down' && <span className="text-warn">Live data offline{keptAt ? ` · marks ${asOfText(keptAt)}` : ' · no marks'}. </span>}
         {ownRows.length > 0 && (
           priced.length > 0 ? (
             <>

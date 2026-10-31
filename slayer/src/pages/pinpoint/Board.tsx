@@ -123,7 +123,7 @@ const SpotCell = ({ data }: ICellRendererParams<BoardRow>) => {
   return (
     <span className="flex flex-col justify-center leading-[14px] font-mono text-t12">
       <LivePrice ticker={data.ticker} compact />
-      <span className="text-t10 text-textMuted tnum whitespace-nowrap" title="The price the vendor marked this name's rows at — every distance on the board is measured from it">
+      <span className="text-t10 text-textMuted tnum whitespace-nowrap" title="The price the feed marked this name's rows at — every distance on the board is measured from it">
         levels at {data.spot.toFixed(2)}
       </span>
     </span>

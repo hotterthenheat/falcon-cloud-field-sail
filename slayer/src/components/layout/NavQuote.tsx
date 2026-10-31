@@ -3,6 +3,7 @@
    component, re-rendering only when that name's reading changes, so nothing else on the rail moves with the tape. With
    the terminal down it shows the last reading, stamped with when it was taken. */
 
+import { LIVE_OFFLINE, LIVE_OFFLINE_KEPT, marketStamp, quoteStamp } from '../../copy/feeds';
 import { memo, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AsOf, asOfText } from '../ui/states';
@@ -102,9 +103,9 @@ export function useNavQuote(ticker: string): NavQuoteRead {
 
 /** The offline line under the subject: which feed is down, and how old the price beside it is */
 export const OfflineLine = memo(({ asOf, className = '' }: { asOf: number | null; className?: string }) => (
-  <span className={`flex items-center gap-1.5 font-mono text-t9 uppercase tracking-widest text-warn ${className}`} title="The ThetaData terminal is not answering. The price is the last one it gave." data-theta-offline>
+  <span className={`flex items-center gap-1.5 font-mono text-t9 uppercase tracking-widest text-warn ${className}`} title={LIVE_OFFLINE_KEPT} data-theta-offline>
     <span aria-hidden className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />
-    <span className="truncate">ThetaData offline{asOf ? ` · ${asOfText(asOf)}` : ''}</span>
+    <span className="truncate">{LIVE_OFFLINE}{asOf ? ` · ${asOfText(asOf)}` : ''}</span>
   </span>
 ));
 OfflineLine.displayName = 'OfflineLine';
@@ -114,7 +115,7 @@ export const NavPrice = memo(({ ticker, compact = false }: { ticker: string; com
   const q = useNavQuote(ticker);
   return (
     <>
-      <span className={`shrink-0 font-mono text-t11 tnum ${q.live ? 'text-textPrimary' : 'text-textSecondary'}`} data-subject-price title={q.asOf ? `ThetaData · ${asOfText(q.asOf)}` : q.source === 'uw' ? 'Unusual Whales · this session' : 'ThetaData · last trade'}>
+      <span className={`shrink-0 font-mono text-t11 tnum ${q.live ? 'text-textPrimary' : 'text-textSecondary'}`} data-subject-price title={q.asOf ? quoteStamp(asOfText(q.asOf)) : q.source === 'uw' ? marketStamp('this session') : quoteStamp('last trade')}>
         {q.priceText}
       </span>
       {q.change != null && (
@@ -123,7 +124,7 @@ export const NavPrice = memo(({ ticker, compact = false }: { ticker: string; com
           {compact && q.extText ? <span className="text-textMuted"> · {q.extText.replace('after hours', 'AH')}</span> : null}
         </span>
       )}
-      {compact && q.offline && <span aria-label="ThetaData offline" title={`ThetaData offline${q.asOf ? ` · ${asOfText(q.asOf)}` : ''}`} className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" data-theta-offline />}
+      {compact && q.offline && <span aria-label={LIVE_OFFLINE} title={`${LIVE_OFFLINE}${q.asOf ? ` · ${asOfText(q.asOf)}` : ''}`} className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" data-theta-offline />}
     </>
   );
 });

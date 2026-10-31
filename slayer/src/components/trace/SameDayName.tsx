@@ -112,7 +112,7 @@ const SameDayName = ({ name, iso, query }: { name: string; iso: string; query: s
         data={{ name, rows: rows.length }}
         facts={
           <>
-            <Fact label="Net calls" testId="name-calls" title="Same-day call premium at the ask less on the bid (the vendor's flow by expiry)">
+            <Fact label="Net calls" testId="name-calls" title="Same-day call premium at the ask less on the bid (the flow by expiry)">
               {day ? <Lean v={day.callNet} /> : <span className="text-textMuted">{fpe.waiting ? '…' : '—'}</span>}
             </Fact>
             <Fact label="Net puts" testId="name-puts" title="Same-day put premium at the ask less on the bid">

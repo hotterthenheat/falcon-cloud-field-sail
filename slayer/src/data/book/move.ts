@@ -113,7 +113,7 @@ export function peekScopeMove(ticker: string, date?: string | null): ScopeMove |
   const name = d ? monDayOf(d) : null;
   const vendor = d ? e.termMove?.[d] : undefined;
   const of = (straddle: number, source: ScopeMove['source'], words: string): ScopeMove => ({ move: sigmaFromStraddle(straddle), straddle, until: d, multi, source, words: `1σ = ${words} × ${STRADDLE_TO_SIGMA.toFixed(2)}` });
-  if (vendor && vendor > 0) return of(vendor, 'vendor', `the vendor's straddle into ${name}`);
+  if (vendor && vendor > 0) return of(vendor, 'vendor', `the printed at-the-money straddle into ${name}`);
   const t = now().getTime();
   const until = d ?? session;
   const atm = d ? e.termIv?.[d] : undefined;

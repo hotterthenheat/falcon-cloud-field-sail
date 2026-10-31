@@ -126,7 +126,7 @@ export const levelsControls = ({ ctx }: { ctx: WorkspaceCtx; state: TileState })
   if (!fam) return [];
   const spot = ctx.exposure.levels.spot;
   const ratio = measuredRatio(fam);
-  return [{ id: 'lens', label: 'Prices in', options: LENSES.map(k => ({ value: k, label: twinLabel(fam, k), hint: k === 'index' && ratio == null ? 'Waits on both live prices (ThetaData)' : fmtTwin(twinPrice(k, spot, ratio)) })), title: 'The instrument the levels are priced in' }];
+  return [{ id: 'lens', label: 'Prices in', options: LENSES.map(k => ({ value: k, label: twinLabel(fam, k), hint: k === 'index' && ratio == null ? 'Waits on both live prices' : fmtTwin(twinPrice(k, spot, ratio)) })), title: 'The instrument the levels are priced in' }];
 };
 
 export const LevelsTile = ({ ctx, state }: TileProps) => {
@@ -168,7 +168,7 @@ export const TargetsTile = ({ ctx, state, size }: TileProps) => {
   const agenda = agendaOf(ctx.snapshot, order);
   const door = useDoor();
   const { focusOn } = useFocus();
-  if (!agenda) return <TileNoBook ticker={ctx.ticker} why={surface30(ctx.snapshot) ? 'The ranking waits on the name’s at-the-money IV from Unusual Whales.' : undefined} />;
+  if (!agenda) return <TileNoBook ticker={ctx.ticker} why={surface30(ctx.snapshot) ? 'The ranking waits on the name’s at-the-money IV.' : undefined} />;
   const wide = size.room !== 'small';
   /** # · strike · reached · holds · at stake (the stake's lane only where there is room for it) */
   const cols = wide ? '26px minmax(0,1fr) 46px 86px 104px' : '26px minmax(0,1fr) 46px 60px';

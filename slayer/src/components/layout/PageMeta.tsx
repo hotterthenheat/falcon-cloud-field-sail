@@ -25,9 +25,9 @@ const page = (name: string, description: string, section?: string): Meta => ({ t
 const TOP: Record<string, Meta> = {
   /* The products' own pages. */
   '/products/pulse': page('Pulse', 'The live desk: tiles — the chart, the book, key levels, the wire — that you add, drag and size, on a desk that saves as you go.', 'Products'),
-  '/products/practice': page('Practice', 'Three rooms: paper trading on today’s live option quotes, a backtest that replays a recorded ThetaData session at the bid and ask each contract had, and the journal every closed trade lands in.', 'Products'),
+  '/products/practice': page('Practice', 'Three rooms: paper trading on today’s live option quotes, a backtest that replays a recorded market session at the bid and ask each contract had, and the journal every closed trade lands in.', 'Products'),
   '/products/paper': page('Paper Trade','The live desk with nothing at stake: a practice account trading options off the chain at each contract’s live bid and ask.', 'Products'),
-  '/products/backtest': page('Backtest', 'A recorded ThetaData session replayed a minute at a time and traded with pretend money, filled at the bid and ask each contract had, with your own rules and a report at the end.', 'Products'),
+  '/products/backtest': page('Backtest', 'A recorded market session replayed a minute at a time and traded with pretend money, filled at the bid and ask each contract had, with your own rules and a report at the end.', 'Products'),
   '/products/journal': page('Journal', 'Every closed trade on its day, with the period’s figures beside the month, and a page of its own for each trade: the chart, the shape of it, your tags and your words.', 'Products'),
   '/products/terrain': page('Terrain', 'The chart page: one to four charts side by side on one set of controls, the dealer book beside any of them as a strike rail, the key levels on the candles with one switch, drawing tools, your own Pine scripts, and replay a bar at a time.', 'Products'),
   '/products/compass': page('Compass', 'Contracts scored on the terminal’s live quotes, same day and one to seven days out: a board of the calls that clear the bar, a page for every call with its chart and quote, the blotter of every call, and a Tracker for the ones you follow.', 'Products'),

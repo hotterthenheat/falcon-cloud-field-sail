@@ -141,7 +141,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: LineChart,
     glyph: 'paper',
     ink: NAV_INK.paperDesk,
-    description: 'Trade today’s option chains with pretend money on live ThetaData quotes — a practice account',
+    description: 'Trade today’s option chains with pretend money on live option quotes — a practice account',
     group: 'Practice',
   },
   {
@@ -151,7 +151,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: History,
     glyph: 'backtest',
     ink: NAV_INK.backtest,
-    description: 'Replay a past session on ThetaData’s recorded quotes and trade its option contracts with pretend money — test an edge',
+    description: 'Replay a past session on recorded market quotes and trade its option contracts with pretend money — test an edge',
     group: 'Practice',
   },
   {

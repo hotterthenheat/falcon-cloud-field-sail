@@ -21,7 +21,7 @@ export const LiveSpot = ({ ticker, className }: { ticker: string; className?: st
   if (held?.live) return <SpotPrice value={held.value.price} className={className} />;
   const stamp = held ? asOfText(held.value.at) : null;
   return (
-    <span className="inline-flex items-center gap-1" title={status === 'down' ? `ThetaData offline${stamp ? ` · ${stamp}` : ''}` : stamp ?? 'Waiting on ThetaData'} data-live-spot={held ? 'kept' : 'none'}>
+    <span className="inline-flex items-center gap-1" title={status === 'down' ? `Live data offline${stamp ? ` · ${stamp}` : ''}` : stamp ?? 'Waiting on live prices'} data-live-spot={held ? 'kept' : 'none'}>
       <span className={`${className ?? ''} !text-textMuted`}>{held ? `$${held.value.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</span>
       {status === 'down' && <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-warn" />}
     </span>
@@ -29,7 +29,7 @@ export const LiveSpot = ({ ticker, className }: { ticker: string; className?: st
 };
 
 /** A tile with no book to read for its name */
-export const TileNoBook = ({ ticker, why }: { ticker: string; why?: string }) => <EmptyBox title={`No book for ${ticker} yet`} reason={why ?? 'The dealer book has not landed from Unusual Whales.'} />;
+export const TileNoBook = ({ ticker, why }: { ticker: string; why?: string }) => <EmptyBox title={`No book for ${ticker} yet`} reason={why ?? 'The dealer book has not landed yet.'} />;
 
 /** The one read line at the tile's foot */
 export const TileRead = ({ children, testId }: { children: ReactNode; testId?: string }) => (

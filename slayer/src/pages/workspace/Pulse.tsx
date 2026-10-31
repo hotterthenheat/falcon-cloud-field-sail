@@ -344,7 +344,7 @@ const Pulse = () => {
           <PhoneChart key={scanSnapshot.ticker} snapshot={scanSnapshot} revision={revision} onPick={changeTicker} />
         ) : (
           bookStatus(activeTicker) === 'error' ? (
-            <EmptyBox title={`No book for ${activeTicker} yet`} reason="Unusual Whales did not answer for this name's dealer book. The desk asks again shortly." />
+            <EmptyBox title={`No book for ${activeTicker} yet`} reason="The market-data feed did not answer for this name's dealer book. The desk asks again shortly." />
           ) : (
             <ChartTileSkeleton />
           )
