@@ -1,5 +1,6 @@
 /* The Dossier's shell: the page's name and one line over it, the source on the right (hidden on a phone). */
 
+import { SessionTag } from '../../components/ui/SessionTag';
 import { Suspense } from 'react';
 import { useLocation, useOutlet } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -35,6 +36,8 @@ const RecordLayout = () => {
               <PageIcon className="w-3.5 h-3.5" />
             </span>
             <h1 className="text-t15 font-semibold leading-tight text-textPrimary">{page.label}</h1>
+            {/* the session these numbers belong to (core/session.ts) */}
+            <SessionTag className="ml-1 max-sm:hidden" />
           </div>
           <p className="mt-0.5 text-t11 text-textMuted max-sm:hidden">{page.subtitle}</p>
         </div>

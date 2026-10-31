@@ -10,12 +10,13 @@ import type { FeedFault } from '../ui/liveRead';
 import { shortDay } from './dayWords';
 
 /* the badge is a label, never the pause button */
-const PHASE_WORD: Record<MarketPhase, string> = { regular: 'Live', late: 'Stocks closed · index to 16:15', after: 'After hours', pre: 'Pre-market', closed: 'Closed' };
+const PHASE_WORD: Record<MarketPhase, string> = { overnight: 'Overnight', regular: 'Live', late: 'Stocks closed · index to 16:15', after: 'After hours', pre: 'Pre-market', closed: 'Closed' };
 const PHASE_HINT: Record<MarketPhase, string> = {
   regular: 'The regular session is open',
   late: 'Stock options closed at 16:00 ET; index and ETF options trade to 16:15 ET',
   after: 'The session has closed; prints now are after hours, against thin quotes',
   pre: 'Before the bell; prints now are pre-market',
+  overnight: 'Overnight: stocks trade on the overnight venues and index options in global trading hours; equity options open at 9:30 ET. The page shows the last regular session',
   closed: 'The market is closed; the page shows the last session',
 };
 function usePhase(): MarketPhase {

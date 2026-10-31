@@ -2,7 +2,7 @@
    The dot rides the shared brand clock (brandClock.ts); the word is data/marketState.ts, re-read every 30 s. */
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { readMarketState } from '../data/marketState';
+import { useMarketSession } from '../core/session';
 import { alignBrandLoops } from './brandClock';
 
 type SignatureState = 'live' | 'delayed' | 'closed';
@@ -18,15 +18,9 @@ const WORD: Record<SignatureState, string> = {
   closed: 'rgb(var(--text-muted))',
 };
 
-/** The market's word: live while open, closed when shut. */
-const useMarketWord = (): SignatureState => {
-  const [word, setWord] = useState<SignatureState>(() => readMarketState().word);
-  useEffect(() => {
-    const id = window.setInterval(() => setWord(readMarketState().word), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
-  return word;
-};
+/** The market's word: live while any session trades (overnight, pre-market, regular, after hours), closed when shut —
+    re-rendered when the session turns (core/session.ts) */
+const useMarketWord = (): SignatureState => (useMarketSession().phase === 'closed' ? 'closed' : 'live');
 
 interface SignatureDotProps {
   state: SignatureState;

@@ -4,6 +4,7 @@
 import { dollars3, signedPct } from '../pages/record/money';
 import { now } from '../core/clock';
 import { readSessionClock } from './moc';
+import { phaseAt } from '../core/session';
 import { peekQuote, extendedLine, priceWords, screenerRead, screenerNeedsCloses } from './liveQuote';
 import { peekLive, peekTickerNews } from './liveRecord';
 import { peekStockFile, quarterFacts, type EarnRow, type StockFile } from './stockFile';
@@ -1256,7 +1257,9 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   const name = displayName(u?.name ?? tickerName(ticker)) || ticker;
   const sector = u?.sector ?? null;
   const clock = readSessionClock();
-  const marketWord = clock.phase === 'OPEN' ? 'market open' : clock.phase === 'AUCTION' ? 'the closing auction' : clock.phase === 'PREMARKET' ? 'before the open' : clock.phase === 'AFTERHOURS' ? 'after hours' : 'market closed';
+  /* the one session (core/session.ts): overnight, pre-market, the session (and its closing auction), after hours, closed */
+  const phase = phaseAt(Date.now());
+  const marketWord = phase === 'regular' ? (clock.phase === 'AUCTION' ? 'the closing auction' : 'market open') : phase === 'overnight' ? 'overnight' : phase === 'pre' ? 'pre-market' : phase === 'post' ? 'after hours' : 'market closed';
   const file = peekStockFile(ticker);
   /* the read is the screener row's: until the name's file lands there is no read to give (never a placeholder word) */
   if (file.status !== 'live') return null;

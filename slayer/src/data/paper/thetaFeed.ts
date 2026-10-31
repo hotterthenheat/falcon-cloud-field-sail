@@ -8,7 +8,8 @@ import { thetaCall } from '../theta';
 import { readSaved, save as keep } from '../uwStore';
 import { flatRows } from '../review/history';
 import { nyAt, nyInstant } from './clock';
-import { isTradingDay, sessionCloseMinOn } from '../../core/calendar';
+import { sessionCloseMinOn } from '../../core/calendar';
+import { productOf, sessionAt } from '../../core/session';
 
 /** A quote older than this (from when it was read) does not fill: the desk says the feed is behind */
 export const FRESH_MS = 8_000;
@@ -220,10 +221,14 @@ function want(map: Map<string, number>, key: string): void {
   start();
   queueMicrotask(beat);
 }
-/** The options session and a few minutes either side: the quotes move. Outside it they are read once a minute. */
-function inSession(now: number): boolean {
-  const t = nyAt(now);
-  return isTradingDay(new Date(`${t.date}T12:00:00`)) && t.minutes >= 9 * 60 + 25 && t.minutes <= 16 * 60 + 20;
+/** Does this read move now (core/session.ts)? A book (`b|ROOT|expiry`) while its root's options trade — an index's
+    (SPX, XSP, VIX, RUT) through Global Trading Hours and the curb, a stock's 09:30–16:00 — and five minutes either side;
+    a name's price (`n|TICKER`) in every session the stock tape trades (overnight to after hours). Outside, once a minute. */
+function inSession(now: number, key: string): boolean {
+  const [kind, name] = key.split('|');
+  if (kind === 'n') return sessionAt(now).open;
+  const product = productOf(name ?? '', true);
+  return sessionAt(now, product).open || sessionAt(now + 5 * 60_000, product).open || sessionAt(now - 5 * 60_000, product).open;
 }
 const OUT_OF_SESSION_MS = 60_000;
 const pulled = new Map<string, number>();
@@ -234,9 +239,8 @@ async function beat(): Promise<void> {
   try {
     const now = Date.now();
     for (const m of [nameWant, bookWant]) for (const [k, at] of m) if (now - at > WANT_MS) m.delete(k);
-    const live = inSession(now);
     const due = (k: string) => {
-      if (!live && now - (pulled.get(k) ?? 0) < OUT_OF_SESSION_MS) return false;
+      if (!inSession(now, k) && now - (pulled.get(k) ?? 0) < OUT_OF_SESSION_MS) return false;
       pulled.set(k, now);
       return true;
     };
