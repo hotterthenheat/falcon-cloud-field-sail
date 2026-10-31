@@ -25,6 +25,7 @@ import {
 } from '../src/data/indicators';
 import { sessionAtr } from '../src/data/atr';
 import { volumeProfileAt } from '../src/data/volumeProfile';
+import { aggregateCandles } from '../src/data/timeframe';
 import { buildExpectedMoveCone, daySigmaOfIv, sigmaFracOver, sigmaOverMinutes } from '../src/data/expectedMove';
 import { sigmaToExpiry } from '../src/core/volClock';
 import { nyWallTime } from '../src/core/nyTime';
@@ -154,6 +155,22 @@ check('no vol means no cone', blank.past.length === 0 && blank.forward.length ==
   const at = (px: number, volume: number): Candle => ({ time: 0, open: px, high: px, low: px, close: 3.5, volume });
   const vp = volumeProfileAt([at(1.5, 9), at(2.5, 1), at(3.5, 20), at(4.5, 6)], 1);
   check('value area annexes the heavier pair of rows: VAL 1, VAH 4 (was 3, 5)', vp.vpoc === 3.5 && vp.val === 1 && vp.vah === 4, `${vp.val}..${vp.vah}`);
+}
+
+/* buckets count from the session's open (TradingView), not from the unix epoch */
+{
+  const ny = (mo: number, d: number, h: number, mi: number) => nyWallTime(2026, mo, d, h, mi) / 1000;
+  const minute = (time: number, px = 100): Candle => ({ time, open: px, high: px, low: px, close: px, volume: 1 });
+  const day: Candle[] = [];
+  for (let i = 0; i < 390; i++) day.push(minute(ny(10, 28, 9, 30) + i * 60));
+  const h1 = aggregateCandles(day, 60);
+  check('1h bars open at 9:30, 10:30 … 15:30 — seven, the first an hour long (was 9:30–10:00)', h1.length === 7 && h1[0].time === ny(10, 28, 9, 30) && h1[1].time === ny(10, 28, 10, 30) && h1[0].volume === 60 && h1[6].volume === 30, `${h1.length} bars, first ${h1[0].volume} min`);
+  const post = aggregateCandles([minute(ny(10, 28, 15, 59)), minute(ny(10, 28, 16, 0)), minute(ny(10, 28, 16, 59))], 60);
+  check('the after-hours starts its own hour at 16:00', post.length === 2 && post[1].time === ny(10, 28, 16, 0));
+  const daily = aggregateCandles([minute(ny(10, 27, 15, 0)), minute(ny(10, 27, 21, 0)), minute(ny(10, 28, 10, 0))], 1440);
+  check('1D is the New York trading day: 21:00 Tuesday (01:00 UTC) opens Wednesday, not a UTC-midnight cut', daily.length === 2 && daily[0].time === ny(10, 27, 9, 30) && daily[1].time === ny(10, 28, 9, 30) && daily[1].volume === 2, JSON.stringify(daily.map(b => b.volume)));
+  const weekly = aggregateCandles([minute(ny(10, 28, 10, 0)), minute(ny(10, 30, 10, 0)), minute(ny(11, 2, 10, 0))], 7 * 1440);
+  check('1W starts on Monday (Oct 26), not on a Thursday', weekly.length === 2 && weekly[0].time === ny(10, 26, 9, 30) && weekly[1].time === ny(11, 2, 9, 30), new Date(weekly[0].time * 1000).toISOString());
 }
 
 /* one σ everywhere: core/volClock's, the one Terrain's cone draws (S·σ_trading·√(minutes/(390·252))) */
