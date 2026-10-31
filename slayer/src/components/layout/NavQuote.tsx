@@ -12,6 +12,7 @@ import { thetaAllowedHere } from '../../data/theta';
 import { extendedLine, sessionPrice, useLiveQuote } from '../../data/liveQuote';
 import { changeInk } from '../../data/uwBook';
 import { uwKept } from '../../data/whales';
+import { sessionWhen } from '../../data/dayChange';
 
 /** The page in view may not ask the terminal for prices: it reads Unusual Whales (re-read on every navigation) */
 export function useUwOnlyRoute(): boolean {
@@ -27,10 +28,18 @@ const signed = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).
 
 export interface NavQuoteRead {
   priceText: string;
+  /** The day's change (data/dayChange.ts moveOffCloses): the last regular session's close, or the live price in the
+      session, against the regular close before it */
   changeText: string;
   change: number | null;
-  /** The extended-hours move, when the print is past today's close */
+  /** The extended-hours move of the last trade from the last regular close, labelled ("after hours +0.19%") */
   extText: string | null;
+  /** The headline price is an extended-hours print: which */
+  priceWord: 'after hours' | 'pre-market' | null;
+  /** The session the day's change belongs to when it is not today's ("Fri Oct 30"), else null */
+  dayWhen: string | null;
+  /** The regular close the extended move is measured from, when outside the session */
+  regClose: number | null;
   /** The reading is this session's */
   live: boolean;
   /** The terminal did not answer */
@@ -40,6 +49,7 @@ export interface NavQuoteRead {
   /** Which feed the price is from */
   source: 'theta' | 'uw';
 }
+
 
 /** The vendor's state this browser kept for a name (data/uwStore.ts), until the fresh quote lands: its last print and
     the print's instant */
@@ -70,17 +80,21 @@ export function useNavQuote(ticker: string): NavQuoteRead {
   const keptUw = useKeptState(uwOnly && !uw ? sym : null);
   if (uwOnly && !uw && keptUw) {
     /* the vendor's quote is on its way: the last one this browser kept, stamped, never as live */
-    return { priceText: money(keptUw.price), changeText: '', change: null, extText: null, live: false, offline: false, asOf: keptUw.at, source: 'uw' };
+    return { priceText: money(keptUw.price), changeText: '', change: null, extText: null, priceWord: null, dayWhen: null, regClose: null, live: false, offline: false, asOf: keptUw.at, source: 'uw' };
   }
   if (uwOnly) {
-    /* before the open the lead is the last session's change; the extended move rides beside it */
+    /* the day's change is the regular session's (before the open: the last session's); the extended move rides beside it */
     const px = sessionPrice(uw);
-    const change = uw ? (uw.phase === 'regular' ? uw.changePct : uw.extPct) : null;
+    const change = uw && Number.isFinite(uw.changePct) ? uw.changePct : null;
+    const ext = uw && uw.phase !== 'regular' ? extendedLine(uw) : null;
     return {
       priceText: px != null && px > 0 ? money(px) : '—',
-      changeText: change != null && Number.isFinite(change) ? signed(change) : '',
-      change: change != null && Number.isFinite(change) ? change : null,
-      extText: extendedLine(uw),
+      changeText: change != null ? signed(change) : '',
+      change,
+      extText: ext,
+      priceWord: uw && uw.extPrice != null && uw.phase !== 'regular' ? (uw.phase === 'pre' ? 'pre-market' : 'after hours') : null,
+      dayWhen: uw && uw.phase !== 'regular' ? sessionWhen(uw.regDate) : null,
+      regClose: uw?.regClose ?? null,
       live: !!uw,
       offline: false,
       asOf: null,
@@ -89,11 +103,15 @@ export function useNavQuote(ticker: string): NavQuoteRead {
   }
   const v = held?.value ?? null;
   const move = thetaMove(v);
+  const pct = move?.pct ?? null;
   return {
     priceText: v ? money(v.price) : '—',
-    changeText: move ? signed(move.pct) : '',
-    change: move ? move.pct : null,
-    extText: move?.ext != null ? `after hours ${signed(move.ext)}` : null,
+    changeText: pct != null ? signed(pct) : '',
+    change: pct,
+    extText: move?.ext != null ? `${move.extWord ?? 'after hours'} ${signed(move.ext)}` : null,
+    priceWord: move?.ext != null ? move.extWord : null,
+    dayWhen: sessionWhen(move?.regDate),
+    regClose: move?.regClose ?? null,
     live: !!held?.live,
     offline: status === 'down',
     asOf: held && !held.live ? held.value.at : null,
@@ -110,18 +128,35 @@ export const OfflineLine = memo(({ asOf, className = '' }: { asOf: number | null
 ));
 OfflineLine.displayName = 'OfflineLine';
 
-/** Price and change, inline (the rail's subject and the phone strip) */
+/** Price and change, inline (the rail's subject and the phone strip): the last trade, the day's change, and outside
+    the session the extended move, short ("AH +0.19%") */
 export const NavPrice = memo(({ ticker, compact = false }: { ticker: string; compact?: boolean }) => {
   const q = useNavQuote(ticker);
+  const priceTitle = q.asOf
+    ? quoteStamp(asOfText(q.asOf))
+    : q.priceWord
+      ? `Last trade, ${q.priceWord}${q.regClose != null ? ` · regular close ${q.regClose.toFixed(2)}` : ''}`
+      : q.source === 'uw'
+        ? marketStamp('this session')
+        : quoteStamp('last trade');
+  const changeTitle = `${q.dayWhen ? `${q.dayWhen}’s regular-session change` : 'The day’s change'} (the regular close, or the live price in the session, against the regular close before it)${q.extText ? ` · ${q.extText} since the close` : ''}`;
+  const tag = q.priceWord === 'pre-market' ? 'PM' : q.priceWord ? 'AH' : null;
+  const extShort = q.extText ? q.extText.replace('after hours ', 'AH ').replace('pre-market ', 'PM ') : null;
   return (
     <>
-      <span className={`shrink-0 font-mono text-t11 tnum ${q.live ? 'text-textPrimary' : 'text-textSecondary'}`} data-subject-price title={q.asOf ? quoteStamp(asOfText(q.asOf)) : q.source === 'uw' ? marketStamp('this session') : quoteStamp('last trade')}>
+      <span className={`shrink-0 font-mono text-t11 tnum ${q.live ? 'text-textPrimary' : 'text-textSecondary'}`} data-subject-price title={priceTitle}>
         {q.priceText}
+        {/* the rail has no room for the extended move: the price says which session it is, the hover gives the move */}
+        {tag && !compact && <sup className="ml-0.5 text-t8 text-textMuted" data-subject-price-tag>{tag}</sup>}
       </span>
       {q.change != null && (
-        <span className="min-w-0 truncate font-mono text-t10 tnum" style={{ color: changeInk(q.change) }} title={`From the last regular close${q.extText ? ` · ${q.extText}` : ''}`} data-subject-change>
+        <span className="shrink-0 font-mono text-t10 tnum" style={{ color: changeInk(q.change) }} title={changeTitle} data-subject-change>
           {q.changeText}
-          {compact && q.extText ? <span className="text-textMuted"> · {q.extText.replace('after hours', 'AH')}</span> : null}
+        </span>
+      )}
+      {compact && extShort && (
+        <span className="min-w-0 truncate font-mono text-t9 tnum text-textMuted" title={changeTitle} data-subject-ext>
+          {extShort}
         </span>
       )}
       {compact && q.offline && <span aria-label={LIVE_OFFLINE} title={`${LIVE_OFFLINE}${q.asOf ? ` · ${asOfText(q.asOf)}` : ''}`} className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" data-theta-offline />}

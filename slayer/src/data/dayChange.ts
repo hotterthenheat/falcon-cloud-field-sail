@@ -1,8 +1,8 @@
 /* After the close the vendor's stock-state is the post-market bar and its prev_close is today's close, so close − prev_close is only
    the after-hours move. The day's change after the bell is today's regular close against the one before (daily rows, market_time 'r'). */
 import { whalesDailyRecent, type UwDaily } from './whales';
-import { nyIsoDate, nySessionPhase } from '../core/nyTime';
-import { isTradingDay, today as nyToday } from '../core/calendar';
+import { nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
+import { isTradingDay, sessionCloseMinOn, today as nyToday } from '../core/calendar';
 
 export type MarketPhase = 'pre' | 'regular' | 'post' | 'closed';
 
@@ -98,6 +98,92 @@ export function dayChangeOf(state: StateLike, closes: readonly { date: string; c
     };
   }
   return { dayPct: prevClose > 0 && last > 0 ? ((last - prevClose) / prevClose) * 100 : Number.NaN, extPct: null, phase, base: prevClose };
+}
+
+/* ---- The app's one price/change convention, off a last trade and the daily closes (any feed) ----
+   headline price = the last trade, any session, with its time;
+   the day's change = the last regular session's close (the live price inside the session) against the regular close
+   before it — on a weekend or a holiday that is the last session's change, named by its date;
+   outside the session the last trade's move from that regular close is kept apart, labelled after hours / pre-market. */
+export interface CloseMove {
+  /** The regular session's change, percent; null while the close it needs is not written (after the bell, before the daily row) */
+  dayPct: number | null;
+  /** The move of the last trade from the last regular close, outside the session; null in the session or when equal */
+  extPct: number | null;
+  /** Which extended session the last trade is in */
+  extWord: 'pre-market' | 'after hours' | null;
+  phase: MarketPhase;
+  /** The close the day's change is measured from */
+  base: number | null;
+  /** The last regular close (outside the session) and its New York date */
+  regClose: number | null;
+  regDate: string | null;
+}
+
+const isoToDate = (iso: string): Date => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
+/** The day's change and the extended move off a last trade, its instant, and the regular closes (any order, one per
+    date). `todayClose` is today's regular close when another feed already has it (after the bell, before the daily row). */
+export function moveOffCloses(price: number, priceAt: number, closesIn: readonly { date: string; close: number }[], now = Date.now(), todayClose: number | null = null): CloseMove {
+  const today = nyIsoDate(now);
+  const trading = isTradingDay(isoToDate(today));
+  const m = nyMinutes(now);
+  const closes = [...closesIn].filter(c => c.close > 0).sort((a, b) => b.date.localeCompare(a.date));
+  if (todayClose && todayClose > 0 && !closes.some(c => c.date === today)) closes.unshift({ date: today, close: todayClose });
+  const none: CloseMove = { dayPct: null, extPct: null, extWord: null, phase: 'closed', base: null, regClose: null, regDate: null };
+  if (!(price > 0)) return none;
+  const printDay = priceAt > 0 ? nyIsoDate(priceAt) : today;
+  const inSession = trading && m >= 570 && m < sessionCloseMinOn(today);
+  if (inSession && printDay === today) {
+    const base = closes.find(c => c.date < today)?.close ?? null;
+    return { ...none, phase: 'regular', base, dayPct: base ? ((price - base) / base) * 100 : null };
+  }
+  /* outside the session: the last regular session whose close is due by now */
+  const due = (c: { date: string }) => c.date < today || (c.date === today && trading && m >= sessionCloseMinOn(today));
+  const sessions = closes.filter(due);
+  const todayMissing = trading && m >= sessionCloseMinOn(today) && sessions[0]?.date !== today;
+  const last = todayMissing ? undefined : sessions[0];
+  const before = todayMissing ? undefined : sessions[1];
+  const printMin = priceAt > 0 ? nyMinutes(priceAt) : m;
+  const extWord: CloseMove['extWord'] = printDay === today && trading && printMin >= 240 && printMin < 570 ? 'pre-market' : 'after hours';
+  const phase: MarketPhase = extWord === 'pre-market' ? 'pre' : trading && m >= 240 ? 'post' : 'closed';
+  if (!last) return { ...none, phase, base: sessions[0]?.close ?? null };
+  const ext = Math.abs(price - last.close) >= 0.005 ? ((price - last.close) / last.close) * 100 : null;
+  return {
+    dayPct: before ? ((last.close - before.close) / before.close) * 100 : null,
+    extPct: ext,
+    extWord: ext != null ? extWord : null,
+    phase,
+    base: before?.close ?? null,
+    regClose: last.close,
+    regDate: last.date,
+  };
+}
+
+/** "−1.77%" with a true minus sign */
+export const signedPct = (v: number, digits = 2): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(digits)}%`;
+
+const DOW3 = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "Fri Oct 30" for a New York date other than today, else null */
+export const sessionWhen = (iso: string | null | undefined): string | null => {
+  if (!iso || iso === nyIsoDate()) return null;
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return `${DOW3[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${MON3[m - 1]} ${d}`;
+};
+
+/** The hover of a day's change by the one convention: which session, which closes, and the extended move apart */
+export function closeMoveTitle(m: { pct: number | null; base: number | null; ext: number | null; extWord: string | null; regClose: number | null; regDate: string | null }): string {
+  const day = sessionWhen(m.regDate);
+  const head =
+    m.pct == null
+      ? 'Today’s regular close is not written yet'
+      : `${day ? `${day}’s regular-session change` : 'The day’s change'}${m.regClose != null && m.base != null ? `: ${m.regClose.toFixed(2)} close against ${m.base.toFixed(2)}` : m.base != null ? `, against the regular close ${m.base.toFixed(2)}` : ''}`;
+  return `${head}${m.ext != null ? ` · ${m.extWord ?? 'after hours'} ${signedPct(m.ext)} since that close` : ''}`;
 }
 
 /* The regular closes per name, read once a New York day (they only change at the close) */

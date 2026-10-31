@@ -5,6 +5,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { ensureThetaPrice, peekThetaPrice, subscribeTheta, thetaMove, thetaStatus, useThetaStatus, type Held, type ThetaPrice, type ThetaStatus } from '../../data/thetaQuote';
 import { changeInk } from '../../data/uwBook';
+import { closeMoveTitle } from '../../data/dayChange';
 import { nyStamp } from '../../core/nyTime';
 import { LIVE_OFFLINE, LIVE_RECONNECTING } from '../../copy/feeds';
 
@@ -56,7 +57,8 @@ export function LivePrice({ ticker, levelsAt, compact = false }: { ticker: strin
   return (
     <span className="inline-flex items-baseline gap-1.5 font-mono tnum whitespace-nowrap" title={[held.live ? `Live quote · printed ${nyStamp(p.at, { seconds: true, zone: true })}` : `${LIVE_RECONNECTING}. Last print kept at ${nyStamp(p.read, { zone: true })}.`, levelsTitle].filter(Boolean).join(' ')} data-live-price={held.live ? 'live' : 'kept'}>
       <span className="text-textPrimary">{p.price.toFixed(2)}</span>
-      {move && <span style={{ color: changeInk(move.pct) }}>{pctWords(move.pct)}</span>}
+      {move && move.pct != null && <span style={{ color: changeInk(move.pct) }} title={closeMoveTitle(move)} data-live-change>{pctWords(move.pct)}</span>}
+      {move && move.ext != null && !compact && <span className="text-t10 text-textMuted" title={closeMoveTitle(move)} data-live-ext>{move.extWord === 'pre-market' ? 'PM' : 'AH'} {pctWords(move.ext)}</span>}
       {!held.live && <span className="text-t9 uppercase tracking-widest text-warn">{compact ? nyStamp(p.read, { zone: true }) : `offline · ${nyStamp(p.read, { zone: true })}`}</span>}
     </span>
   );
